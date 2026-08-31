@@ -48,6 +48,7 @@ import {
     applyPushToTurnTracking,
     isInterruptedTerminalReason,
     shouldSkipWithdrawnResultForward,
+    stopBackgroundTasksAllSettled,
 } from './utils/stopAction';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
@@ -195,14 +196,19 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.emitAbortedEvent('turn', receipt?.still_queued?.length ?? 0)
     }
 
-    /** 遍历停止运行中的后台任务（'turn-queue-tasks' 档；单个失败不中断） */
+    /** 遍历停止运行中的后台任务（'turn-queue-tasks' 档；单个失败不中断）。
+     *  并行 allSettled：总延迟从 N×RTT 降为最慢单个；失败逐个 warn（保失败日志） */
     private async stopAllBackgroundTasks(): Promise<void> {
-        for (const taskId of this.backgroundTaskIds) {
-            try {
-                await this.queryRef?.stopTask(taskId)
-            } catch (e) {
-                logger.warn('[remote]: stopTask failed', taskId, e)
-            }
+        const failures = await stopBackgroundTasksAllSettled(
+            this.backgroundTaskIds,
+            (taskId) => {
+                const query = this.queryRef
+                if (!query) return Promise.resolve()
+                return query.stopTask(taskId)
+            },
+        )
+        for (const { taskId, error } of failures) {
+            logger.warn('[remote]: stopTask failed', taskId, error)
         }
     }
 

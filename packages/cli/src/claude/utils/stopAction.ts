@@ -78,6 +78,25 @@ export function shouldSkipWithdrawnResultForward(suppressNext: boolean, terminal
 }
 
 /**
+ * 后台任务并行停止（'turn-queue-tasks' 档）：Promise.allSettled 并发——单个 rejection
+ * 不中断其余任务，总延迟从 N×RTT 降为最慢单个。失败不吞：按 { taskId, error } 返回，
+ * 由调用方映射 logger.warn（保失败日志）。
+ */
+export async function stopBackgroundTasksAllSettled(
+    taskIds: Iterable<string>,
+    stopTask: (taskId: string) => Promise<void>,
+): Promise<{ taskId: string; error: unknown }[]> {
+    const ids = [...taskIds]
+    if (ids.length === 0) return []
+    const results = await Promise.allSettled(ids.map(id => stopTask(id)))
+    const failures: { taskId: string; error: unknown }[] = []
+    results.forEach((r, i) => {
+        if (r.status === 'rejected') failures.push({ taskId: ids[i]!, error: r.reason })
+    })
+    return failures
+}
+
+/**
  * push 来源：'turn' = 新 turn 的首 push（initial / inputLoop 泵 / bash 注入——三者都只在
  * agent idle 时发生，push 即新 turn 起点）；'steer' = turn 运行中经 steer sink 的插队 push。
  */

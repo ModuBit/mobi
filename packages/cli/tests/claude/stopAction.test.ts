@@ -23,6 +23,7 @@ import {
     isInterruptedTerminalReason,
     shouldSkipWithdrawnResultForward,
     normalizeStopKind,
+    stopBackgroundTasksAllSettled,
 } from '../../src/claude/utils/stopAction'
 
 /**
@@ -112,6 +113,34 @@ describe('isInterruptedTerminalReason（中断终态判别，web normalizeAgent 
         expect(isInterruptedTerminalReason('completed')).toBe(false)
         expect(isInterruptedTerminalReason(undefined)).toBe(false)
         expect(isInterruptedTerminalReason(null)).toBe(false)
+    })
+})
+
+describe('stopBackgroundTasksAllSettled（后台任务并行停止）', () => {
+    it('全部成功 → 无失败记录，每个任务各调一次 stopTask', async () => {
+        const stopped: string[] = []
+        const failures = await stopBackgroundTasksAllSettled(['a', 'b'], async (id) => { stopped.push(id) })
+        expect(stopped.sort()).toEqual(['a', 'b'])
+        expect(failures).toEqual([])
+    })
+    it('单个 rejection 不中断其余任务，失败按 { taskId, error } 返回（保失败日志）', async () => {
+        const stopped: string[] = []
+        const boom = new Error('boom')
+        const failures = await stopBackgroundTasksAllSettled(
+            ['a', 'b', 'c'],
+            async (id) => {
+                if (id === 'b') throw boom
+                stopped.push(id)
+            },
+        )
+        expect(stopped.sort()).toEqual(['a', 'c'])
+        expect(failures).toEqual([{ taskId: 'b', error: boom }])
+    })
+    it('空集合 → 直接返回，不调 stopTask', async () => {
+        let calls = 0
+        const failures = await stopBackgroundTasksAllSettled([], async () => { calls++ })
+        expect(calls).toBe(0)
+        expect(failures).toEqual([])
     })
 })
 
