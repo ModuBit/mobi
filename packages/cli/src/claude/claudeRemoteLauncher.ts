@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
-import { claudeRemote, commandLifecycleToFact, isReplayUserMessage } from "./claudeRemote";
+import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState } from "./claudeRemote";
 import { parseInboundCrossSession } from './utils/inboundCrossSession';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
@@ -85,6 +85,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * （如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源（见 reportAssistantUsage）
      */
     private lastRequestModel: string | undefined
+    /** turn 追踪（批次 A 撤回）：均为单值标量（D10）。hasOutput 由 sdkOutputLoop 回调置位、
+     *  result 到达复位；lastPushedNativeId 在 push 用户消息时覆盖记录（丢失只降级不误删） */
+    private turnTracking: TurnTrackingState = { hasOutput: false, lastPushedNativeId: null }
 
     constructor(
         session: Session,
@@ -153,6 +156,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * compact / 中断已在 claudeRemote 层过滤（不到此）。记忆 maxTokens/costUsd 供 compact 复用。
      */
     private handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): void {
+        // 非 compact result 到达即 turn 正常收尾：复位输出观测（撤回复验判据，批次 A §5.3）。
+        // 中断（aborted_*）result 不经过此回调（claudeRemote 层过滤）——撤回复验读的正是
+        // 「被中断 turn 是否产出过输出」，此处提前复位会造成误判（复验永远看到 false）
+        this.turnTracking.hasOutput = false
         // compact 的 result：用量已由 compact_boundary 的 post_tokens 上报，此处只回填累计成本
         // （compact 自身的 total_cost_usd），避免连续 /compact 期间 lastCostUsd 冻结
         if (isCompact) {
@@ -741,10 +748,20 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
                         // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
-                        // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返
+                        // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返。
+                        // 同时是 turn 追踪的 push 接线点（批次 A）：normal / bash 注入 / steer 三条
+                        // push 路径都经 onBound 汇聚到此——新 turn 从 push 起算，覆盖记录
+                        // lastPushedNativeId（撤回目标）并复位 hasOutput（清上一中断 turn 的残留置位）
                         onMessagesBound: (bindings) => {
+                            const last = bindings[bindings.length - 1]
+                            if (last) {
+                                this.turnTracking.lastPushedNativeId = last.nativeId
+                                this.turnTracking.hasOutput = false
+                            }
                             session.client.emitMessagesBound(bindings, session.sessionId ?? undefined)
                         },
+                        // 撤回复验判据：本 turn 有任何模型输出即置位（见 TurnTrackingState）
+                        onTurnOutput: () => { this.turnTracking.hasOutput = true },
                     });
 
                     session.consumeOneTimeFlags();

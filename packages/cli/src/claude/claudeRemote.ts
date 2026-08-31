@@ -234,6 +234,20 @@ export function isReplayUserMessage(message: SDKMessage): message is SDKUserMess
     return message.type === 'user' && (message as SDKUserMessageReplay).isReplay === true
 }
 
+/** 本 turn 是否已产出「模型输出」（撤回复验判据，批次 A §5.3）：
+ *  stream_event/assistant 为准；result/system/user/replay 不算（user 含 isReplay 回显）。 */
+export function shouldCountAsTurnOutput(message: SDKMessage): boolean {
+    return message.type === 'stream_event' || message.type === 'assistant'
+}
+
+/** turn 追踪状态（批次 A 撤回，launcher 持有）。均为单值标量（spec D10 内存纪律）：
+ *  - hasOutput：本 turn 是否已产出模型输出，sdkOutputLoop 的 onTurnOutput 置位、result 复位；
+ *  - lastPushedNativeId：最近一次 push 用户消息的 nativeId（丢失只降级为不撤回，不会误删）。 */
+export interface TurnTrackingState {
+    hasOutput: boolean
+    lastPushedNativeId: string | null
+}
+
 /** command_lifecycle 帧 → lifecycle fact 的状态映射。
  *  CC 对排队消息（push 时预设的 command_uuid = nativeId）的生命周期回执：
  *  started → processing、completed → done、cancelled / discarded / refused 直传；
@@ -409,6 +423,11 @@ export async function sdkOutputLoop(
          * post_tokens 为可选字段（失败时缺失）→ 传入 undefined，launcher 保持上一轮读数。
          */
         onCompactBoundary?: (postTokens: number | undefined) => void
+        /**
+         * turn 输出观测（批次 A 撤回复验判据）：本 turn 一旦有模型输出即触发。
+         * launcher 置位 turnTracking.hasOutput，stopKind='turn' 停止时据此区分撤回与中断。
+         */
+        onTurnOutput?: () => void
     },
 ): Promise<void> {
     let queryStarted = false;
@@ -448,6 +467,9 @@ export async function sdkOutputLoop(
             logger.debug(`[sdkOutputLoop] First message received from SDK: ${message.type}/${('subtype' in message ? (message as { subtype: string }).subtype : '-')}`);
         }
         logger.debugLargeJson(`[sdkOutputLoop] Message ${message.type}`, message);
+
+        // 撤回复验判据：本 turn 一旦有任何模型输出即置位（launcher 持有状态，见 TurnTrackingState）
+        if (opts.onTurnOutput && shouldCountAsTurnOutput(message)) opts.onTurnOutput()
 
         // 处理流式事件：累积 delta 到 snapshot sender + 捕获 usage（供装配注入）
         if (message.type === 'stream_event') {
@@ -677,6 +699,8 @@ export async function claudeRemote(opts: {
     onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void,
     /** compact_boundary 到达：post_tokens 为压缩后 token（失败时 undefined），launcher 据此上报压缩后占用 */
     onCompactBoundary?: (postTokens: number | undefined) => void,
+    /** turn 输出观测（批次 A 撤回复验判据，透传给 sdkOutputLoop，见 TurnTrackingState） */
+    onTurnOutput?: () => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
@@ -972,6 +996,7 @@ export async function claudeRemote(opts: {
             onCompactCompleted: opts.onCompactCompleted,
             onContextUsage: opts.onContextUsage,
             onCompactBoundary: opts.onCompactBoundary,
+            onTurnOutput: opts.onTurnOutput,
             signal: loopAbort.signal,
         }).catch((e) => { outputLoopError = e })
         // 防首条消息等待窗口的未处理 rejection：race 接管前先挂 no-op catch
