@@ -62,19 +62,11 @@ export function resolvePostInterruptAction(state: {
 }
 
 /** 中断终态判别（与 web normalizeAgent.handleResultOutput 同口径）：
- *  SDK result 的 terminal_reason 命中 aborted_* 即「turn 被中断的死亡回执」。 */
+ *  SDK result 的 terminal_reason 命中 aborted_* 即「turn 被中断的死亡回执」。
+ *  （撤回后转发抑制：调用点 claudeRemoteLauncher onMessage 在本判别为 true 的分支内
+ *  直接查 suppressNextInterruptedResult 标志——helper 内层判别在调用点恒真，已内联。） */
 export function isInterruptedTerminalReason(reason: unknown): boolean {
     return reason === 'aborted_streaming' || reason === 'aborted_tools'
-}
-
-/**
- * 撤回后是否跳过该中断 result 的 hub 转发（E2E 残留缺陷修复）：
- * withdrawn fact 已发、hub 已按撤回锚软删除——之后到达的本 turn 死亡回执（aborted_* result）
- * 若照常落库会以「更大 seq」复活为灰行，破坏「撤回之后什么都不该有」的语义。
- * 只拦撤回后第一条中断 result（标志消费即清）；非中断 result（后续新 turn 正常收尾）一律放行。
- */
-export function shouldSkipWithdrawnResultForward(suppressNext: boolean, terminalReason: unknown): boolean {
-    return suppressNext && isInterruptedTerminalReason(terminalReason)
 }
 
 /**

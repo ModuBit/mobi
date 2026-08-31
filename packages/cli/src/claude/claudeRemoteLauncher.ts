@@ -47,7 +47,6 @@ import {
     resolvePostInterruptAction,
     applyPushToTurnTracking,
     isInterruptedTerminalReason,
-    shouldSkipWithdrawnResultForward,
     stopBackgroundTasksAllSettled,
 } from './utils/stopAction';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
@@ -596,8 +595,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
                     if (isInterruptedTerminalReason(reason)) {
                         // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 hub 转发/落库。
+                        // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
                         // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
-                        if (shouldSkipWithdrawnResultForward(this.suppressNextInterruptedResult, reason)) {
+                        if (this.suppressNextInterruptedResult) {
                             this.suppressNextInterruptedResult = false
                             return
                         }

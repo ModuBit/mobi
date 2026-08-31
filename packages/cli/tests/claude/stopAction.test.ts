@@ -21,7 +21,6 @@ import {
     resolvePostInterruptAction,
     applyPushToTurnTracking,
     isInterruptedTerminalReason,
-    shouldSkipWithdrawnResultForward,
     normalizeStopKind,
     stopBackgroundTasksAllSettled,
 } from '../../src/claude/utils/stopAction'
@@ -164,15 +163,11 @@ describe('normalizeStopKind（abort 入口校验：未知值回落默认档）',
 })
 
 describe('shouldSkipWithdrawnResultForward（撤回后中断 result 的转发抑制）', () => {
-    it('标志置位 + 中断 result → 跳过转发（撤回语义：锚之后什么都不该有）', () => {
-        expect(shouldSkipWithdrawnResultForward(true, 'aborted_streaming')).toBe(true)
-        expect(shouldSkipWithdrawnResultForward(true, 'aborted_tools')).toBe(true)
-    })
-    it('标志未置位 → 不跳过（普通停止的灰行照常转发）', () => {
-        expect(shouldSkipWithdrawnResultForward(false, 'aborted_streaming')).toBe(false)
-    })
-    it('标志置位但非中断 result → 不跳过（后续新 turn 的 result 正常转发）', () => {
-        expect(shouldSkipWithdrawnResultForward(true, 'completed')).toBe(false)
-        expect(shouldSkipWithdrawnResultForward(true, undefined)).toBe(false)
+    it('已内联至 claudeRemoteLauncher 调用点：外层 isInterruptedTerminalReason 收窄后退化为标志直查，'
+        + '等价行为由 isInterruptedTerminalReason 判别用例 + 调用点类型收窄保证', () => {
+        // 内联前形态 shouldSkipWithdrawnResultForward(suppress, reason) === suppress && isInterrupted(reason)；
+        // 调用点位于 isInterruptedTerminalReason(reason)===true 分支内，恒等价于 suppress 直查
+        expect(isInterruptedTerminalReason('aborted_streaming')).toBe(true)
+        expect(isInterruptedTerminalReason('completed')).toBe(false)
     })
 })
