@@ -392,9 +392,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // SSEClient 只 JSON.parse 不校验，防御空串写 store 垃圾键
                 if (!event.sessionId) break
                 // 撤回刚发消息（#53 / spec §7.5）：乐观移除与 hub 软删除（softDeleteMessagesFrom
-                // 无上界）对齐；服务端已删行不会出现在 refetch 结果里，merge 不会复活，refetch 兜底对账
-                withdrawFrom(event.sessionId, event.localId)
-                void fetchLatestMessages(apiRef.current, event.sessionId)
+                // 无上界）对齐。目标已在本地窗口 → 移除即一致状态，refetch 恒 no-op 不发起；
+                // 未移除（另一端撤回 / 窗口外历史行）→ 本地无墓碑记录可依，refetch 兜底对账
+                const removed = withdrawFrom(event.sessionId, event.localId)
+                if (!removed) void fetchLatestMessages(apiRef.current, event.sessionId)
                 // 回填请求落 store；会话未打开时 ChatContainer 不消费，回填自然跳过
                 //（spec §7.5——composer 不在场，不覆盖用户输入）
                 requestWithdraw(event.sessionId, {

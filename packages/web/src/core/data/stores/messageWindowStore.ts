@@ -398,8 +398,11 @@ export function rewindFrom(sessionId: string, deleteFromSeq: number): void {
  * 同时记 tombstone（目标锚点 + 被移除的全部尾随行，localId/id 双记）：迟到的 acked
  * 行广播 / snapshot 以同 id 重放时在 merge/ingest 前被跳过，防「已乐观移除的行被当
  * 新增合并」复活（E2E 缺陷）。
+ *
+ * 返回是否实际移除了行：SSE 层据此决定是否 refetch 对账——已乐观移除（本地窗口即
+ * 一致状态）时跳过 refetch；目标不在本地窗口（另一端撤回 / 窗口外历史行）才拉取。
  */
-export function withdrawFrom(sessionId: string, localId: string): void {
+export function withdrawFrom(sessionId: string, localId: string): boolean {
     const prev = _internal.getState(sessionId)
     recordWithdrawnIds(sessionId, [localId])
     const idx = prev.messages.findIndex(m => m.localId === localId || m.id === localId)
@@ -408,7 +411,7 @@ export function withdrawFrom(sessionId: string, localId: string): void {
             recordWithdrawnIds(sessionId, [m.localId, m.id])
         }
     }
-    filterMessages(sessionId, m => !isWithdrawn(sessionId, m))
+    return filterMessages(sessionId, m => !isWithdrawn(sessionId, m))
 }
 
 /** 发送状态机（sending/sent/failed） */

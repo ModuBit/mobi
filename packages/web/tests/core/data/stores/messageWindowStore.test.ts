@@ -406,6 +406,14 @@ describe('withdrawFrom（消息撤回，#53：移除目标行及其后全部，�
         withdrawFrom('s1', 'nope')
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b'])
     })
+
+    it('返回是否实际移除了行（目标在窗口 → true；已不在窗口/不存在 → false）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        expect(withdrawFrom('s1', 'a')).toBe(true)
+        // 行已移除：目标不在本地窗口，返回 false（SSE 层据此决定是否 refetch 对账）
+        expect(withdrawFrom('s1', 'a')).toBe(false)
+        expect(withdrawFrom('s1', 'nope')).toBe(false)
+    })
 })
 
 describe('removeQueuedMessages（清队列档批量取消，与 hub 批删同步）', () => {
