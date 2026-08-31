@@ -12,6 +12,7 @@ import {
     updateMessageStatus,
     reconcileLatestMessages,
     withdrawFrom,
+    removeQueuedMessages,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
@@ -388,5 +389,40 @@ describe('withdrawFrom（消息撤回，#53：移除目标行及其后全部，�
         ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2)])
         withdrawFrom('s1', 'nope')
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b'])
+    })
+})
+
+describe('removeQueuedMessages（清队列档批量取消，与 hub 批删同步）', () => {
+    beforeEach(() => _resetForTest())
+
+    it('移除全部 lifecycle=queued 行，保留其他 lifecycle', () => {
+        ingestIncomingMessages('s1', [
+            msg('q1', 1),
+            msg('done', 2),
+            msg('pushed', 3),
+        ])
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: prev.messages.map(m => m.id === 'q1'
+                ? { ...m, lifecycle: 'queued' as const }
+                : m.id === 'done'
+                    ? { ...m, lifecycle: 'done' as const }
+                    : { ...m, lifecycle: 'pushed' as const }),
+        }))
+        removeQueuedMessages('s1')
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['done', 'pushed'])
+    })
+
+    it('保留 sending/failed 乐观在途行（与 isQueuedInMobi 排除口径一致）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: [
+                ...prev.messages,
+                { ...msg('sending', null), lifecycle: 'queued' as const, status: 'sending' as const } as DecryptedMessage,
+                { ...msg('failed', null), lifecycle: 'queued' as const, status: 'failed' as const } as DecryptedMessage,
+                { ...msg('queued2', null), lifecycle: 'queued' as const } as DecryptedMessage,
+            ],
+        }))
+        removeQueuedMessages('s1')
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'sending', 'failed'])
     })
 })

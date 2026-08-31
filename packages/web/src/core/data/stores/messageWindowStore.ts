@@ -27,7 +27,7 @@
 import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
-import { mergeMessages } from '@/core/lib/messages'
+import { mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
 import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMessagesSubmitted'
 
 /** 贴底稳定大小（用户在底部看最新） */
@@ -362,6 +362,21 @@ export function updateMessageStatus(sessionId: string, localId: string, status: 
             return { ...m, status }
         })
         if (!changed) return prev
+        return _internal.buildState(prev, { messages: next })
+    })
+}
+
+/**
+ * 清队列档批量取消（stopKind=turn-queue / turn-queue-tasks）：乐观移除全部本地 queued 行，
+ * 与 hub 批量物理删除同步发生——abort onSettled 的 fetchLatest 走 merge（只增/更新不删），
+ * 缺这步服务端已删的 queued 行残留，QueuedMessagesBar 悬浮条不消失（E2E 缺陷）。
+ * 展示口径单源 isQueuedInMobi：排除 status sending/failed 的乐观在途行（未被 hub 建行的，
+ * hub 批删删不到它们，照常留在输入轨道）。
+ */
+export function removeQueuedMessages(sessionId: string): void {
+    _internal.updateState(sessionId, prev => {
+        const next = prev.messages.filter(m => !isQueuedInMobi(m))
+        if (next.length === prev.messages.length) return prev
         return _internal.buildState(prev, { messages: next })
     })
 }

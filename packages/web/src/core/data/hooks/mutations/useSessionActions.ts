@@ -16,10 +16,10 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import type { StopKind } from '@mobi/shared'
+import { isCancelQueued, DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
-import { clearMessageWindow, fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
+import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 
 /**
@@ -59,6 +59,12 @@ export function useSessionActions(sessionId: string | null): {
                 throw new Error('Session unavailable')
             }
             await api.sessions.abort(sessionId, stopKind)
+        },
+        onMutate: (stopKind?: StopKind) => {
+            // 清队列档：乐观移除本地 queued 行，与 hub 批删同步——onSettled 的 fetchLatest
+            // 走 merge（只增/更新不删），缺这步悬浮条残留（单条取消靠 onMutate 乐观删除，同款模式）
+            if (!sessionId) return
+            if (isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) removeQueuedMessages(sessionId)
         },
         onSuccess: () => void invalidateSession(),
         onSettled: () => {
