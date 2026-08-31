@@ -402,13 +402,15 @@ export class SyncEngine {
     }
 
     async abortSession(sessionId: string, stopKind: StopKind = DEFAULT_STOP_KIND): Promise<void> {
-        // 清队列档：hub 层排队消息就地批量删除（CC 层队列由 CLI interrupt(cancelQueued) 清，
-        // 见 rpcGateway payload 的 stopKind）。store 在本层持有（同 rewind 的 this.store.messages 用法），
-        // web 路由层不接触 store。
+        // 先 RPC 后批删：CLI 已收到（受理）才成立，此刻才删 hub 层排队消息——RPC 抛错
+        // （CLI 离线/超时）则不删（安全方向：少删不误删，重试后仍有得删）。
+        // 取舍：result 回拉竞态（CLI 中断 result 先于批删到达、pump 拉走 queued 消息）窗口
+        // 极小可接受，且 CC 层消息由 cancelQueued 兜底。store 在本层持有（同 rewind 的
+        // this.store.messages 用法），web 路由层不接触 store。
+        await this.rpcGateway.abortSession(sessionId, stopKind)
         if (isCancelQueued(stopKind)) {
             this.store.messages.cancelAllQueuedMessages(sessionId)
         }
-        await this.rpcGateway.abortSession(sessionId, stopKind)
     }
 
     // 停止后台任务

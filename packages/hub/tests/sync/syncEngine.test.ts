@@ -356,4 +356,36 @@ describe('SyncEngine.abortSession stopKind', () => {
             h.cleanup()
         }
     })
+
+    test("清队列档 RPC 抛错（CLI 离线/超时）→ queued 行保留（先受理后批删，少删不误删）", async () => {
+        const store = new Store(':memory:')
+        const sessionId = store.sessions.getOrCreateSession('abort-rpc-fail-test', null, null, 'default').id
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'loc-queued')
+
+        const fakeSocket = {
+            timeout() { return this },
+            async emitWithAck() {
+                throw new Error('cli offline')
+            },
+        }
+        const sockets = new Map([['sock-1', fakeSocket]])
+        const io = { of() { return { sockets } } } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod(method: string) {
+                return method.endsWith(':abort') ? 'sock-1' : null
+            },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const engine = new SyncEngine(store, io, registry, sseManager)
+
+        try {
+            await expect(engine.abortSession(sessionId, 'turn-queue')).rejects.toThrow('cli offline')
+
+            // RPC 未受理 → 不批删：queued 行保留（安全方向：少删不误删，重试后仍有得删）
+            expect(store.messages.getUnsubmittedLocalMessages(sessionId)).toHaveLength(1)
+        } finally {
+            engine.stop()
+            store.close()
+        }
+    })
 })
