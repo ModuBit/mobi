@@ -604,9 +604,20 @@ export class ApiSessionClient extends EventEmitter {
         this.emitFacts([{ kind: 'acked', nativeId, at: Date.now() }])
     }
 
-    /** 上报 command_lifecycle 终态信号（CC 排队消息生命周期回执转译，见 commandLifecycleToFact） */
-    emitLifecycleFact(nativeId: string, state: 'processing' | 'done' | 'cancelled' | 'discarded'): void {
-        this.emitFacts([{ kind: 'lifecycle', nativeId, state, at: Date.now() }])
+    /** 上报 command_lifecycle 终态信号（CC 排队消息生命周期回执转译，见 commandLifecycleToFact）。
+     *  state 含 refused（跨会话 peer 消息被拒收）；terminalReason 开放透传（上游 Open set，U-13） */
+    emitLifecycleFact(
+        nativeId: string,
+        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
+        at?: number,
+        terminalReason?: string,
+    ): void {
+        this.emitFacts([{ kind: 'lifecycle', nativeId, state, at, ...(terminalReason ? { terminalReason } : {}) }])
+    }
+
+    /** 上报撤回（#53：最后一条 user 无输出即停）——hub 据此软删除并广播 message-withdrawn 回填 */
+    emitWithdrawnFact(nativeId: string): void {
+        this.emitFacts([{ kind: 'withdrawn', nativeId, at: Date.now() }])
     }
 
     /** 消息事实上报统一出口：一批 fact 一次往返（messages-facts 事件） */

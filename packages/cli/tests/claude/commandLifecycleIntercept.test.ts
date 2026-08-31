@@ -41,6 +41,21 @@ describe('commandLifecycleToFact', () => {
             .toEqual({ nativeId: 'cmd-1', state: 'discarded' })
     })
 
+    it('refused 直传（跨会话 peer 消息被拒收，U-8）', () => {
+        expect(commandLifecycleToFact({ type: 'command_lifecycle', command_uuid: 'cmd-1', state: 'refused' }))
+            .toEqual({ nativeId: 'cmd-1', state: 'refused' })
+    })
+
+    it('terminal_reason 开放透传（上游 Open set，U-13）', () => {
+        expect(commandLifecycleToFact({
+            type: 'command_lifecycle', command_uuid: 'cmd-1', state: 'cancelled', terminal_reason: 'api_error',
+        }))
+            .toEqual({ nativeId: 'cmd-1', state: 'cancelled', terminalReason: 'api_error' })
+        // 无 terminal_reason 的帧不带该字段
+        expect(commandLifecycleToFact({ type: 'command_lifecycle', command_uuid: 'cmd-1', state: 'completed' }))
+            .toEqual({ nativeId: 'cmd-1', state: 'done' })
+    })
+
     it('queued → null（不上报，Hub 已有初始排队态）', () => {
         expect(commandLifecycleToFact({ type: 'command_lifecycle', command_uuid: 'cmd-1', state: 'queued' }))
             .toBeNull()

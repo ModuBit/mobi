@@ -236,20 +236,26 @@ export function isReplayUserMessage(message: SDKMessage): message is SDKUserMess
 
 /** command_lifecycle 帧 → lifecycle fact 的状态映射。
  *  CC 对排队消息（push 时预设的 command_uuid = nativeId）的生命周期回执：
- *  started → processing、completed → done、cancelled / discarded 直传；
+ *  started → processing、completed → done、cancelled / discarded / refused 直传；
+ *  terminal_reason 开放透传（上游 Open set，U-13，转 fact 的 terminalReason 供 web 标注）；
  *  queued 不上报（Hub 已有初始排队态），非法/缺字段返回 null。 */
 export function commandLifecycleToFact(
     message: unknown
-): { nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded' } | null {
+): { nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused'; terminalReason?: string } | null {
     if (typeof message !== 'object' || message === null) return null
-    const m = message as { type?: unknown; command_uuid?: unknown; state?: unknown }
+    const m = message as { type?: unknown; command_uuid?: unknown; state?: unknown; terminal_reason?: unknown }
     if (m.type !== 'command_lifecycle') return null
     if (typeof m.command_uuid !== 'string' || m.command_uuid.length === 0) return null
     const s = m.state
-    if (s === 'started') return { nativeId: m.command_uuid, state: 'processing' }
-    if (s === 'completed') return { nativeId: m.command_uuid, state: 'done' }
-    if (s === 'cancelled' || s === 'discarded') return { nativeId: m.command_uuid, state: s }
-    return null
+    let state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused'
+    if (s === 'started') state = 'processing'
+    else if (s === 'completed') state = 'done'
+    else if (s === 'cancelled' || s === 'discarded' || s === 'refused') state = s
+    else return null
+    // terminal_reason 开放透传（上游 Open set，U-13）
+    return typeof m.terminal_reason === 'string' && m.terminal_reason.length > 0
+        ? { nativeId: m.command_uuid, state, terminalReason: m.terminal_reason }
+        : { nativeId: m.command_uuid, state }
 }
 
 function resolveResumeSessionId(claudeArgs: string[] | undefined, cwd: string): string | null {

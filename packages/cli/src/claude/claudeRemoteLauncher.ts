@@ -384,7 +384,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // command_uuid = push 时预设的 nativeId，Hub 按 nativeId 反查推进
             const lifecycleSignal = commandLifecycleToFact(message)
             if (lifecycleSignal) {
-                session.client.emitLifecycleFact(lifecycleSignal.nativeId, lifecycleSignal.state)
+                session.client.emitLifecycleFact(
+                    lifecycleSignal.nativeId,
+                    lifecycleSignal.state,
+                    undefined,
+                    lifecycleSignal.terminalReason,
+                )
                 return
             }
 
