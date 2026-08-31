@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
 import { Store } from '../../src/store'
-import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages } from '../../src/store/messages'
+import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages, getMessagesByNativeId, markTerminalReason, softDeleteMessagesFrom } from '../../src/store/messages'
 
 /** 建一个带 metadata/deleted_at 列的最小 messages 表（无 FK/无 sessions，纯模块级函数测试，参照 messages-byposition.test.ts） */
 function makeDb(): Database {
@@ -374,5 +374,69 @@ describe('advanceMessagesLifecycle：withdrawn 防护（模块级直连）', () 
 
         expect(advanceMessagesLifecycle(db, 's1', 'nu-1', 'done', 3000)).toEqual([])
         expect(getMessages(db, 's1')[0].lifecycle).toBe('withdrawn')
+    })
+})
+
+describe('markTerminalReason（command_lifecycle 终态原因落档，I2）', () => {
+    let db: Database
+    beforeEach(() => { db = makeDb() })
+
+    test('写入 metadata.terminalReason，按 id 集合命中（1:N 批内全部落档）', () => {
+        const m1 = addMessage(db, 's1', WEBAPP_USER, 'l1', 'persistent', { nativeId: 'nu-1' })
+        const m2 = addMessage(db, 's1', WEBAPP_USER, 'l2', 'persistent', { nativeId: 'nu-1' })
+        const written = markTerminalReason(db, 's1', [m1.id, m2.id], 'api_error')
+        expect(written).toBe(2)
+        const rows = getMessages(db, 's1')
+        expect(rows.find(r => r.localId === 'l1')!.metadata?.terminalReason).toBe('api_error')
+        expect(rows.find(r => r.localId === 'l2')!.metadata?.terminalReason).toBe('api_error')
+    })
+
+    test('first-write-wins：已有 terminalReason 不被迟到帧覆盖；无 reason 行才补写', () => {
+        const m1 = addMessage(db, 's1', WEBAPP_USER, 'l1')
+        const m2 = addMessage(db, 's1', WEBAPP_USER, 'l2')
+        const m3 = addMessage(db, 's1', WEBAPP_USER, 'l3')
+        markTerminalReason(db, 's1', [m1.id, m2.id], 'api_error')
+        // m1 已有 reason 不覆盖；m3 无 reason 补写
+        const written = markTerminalReason(db, 's1', [m1.id, m3.id], 'budget_exhausted')
+        expect(written).toBe(1)
+        const rows = getMessages(db, 's1')
+        expect(rows.find(r => r.localId === 'l1')!.metadata?.terminalReason).toBe('api_error')
+        expect(rows.find(r => r.localId === 'l2')!.metadata?.terminalReason).toBe('api_error')
+        expect(rows.find(r => r.localId === 'l3')!.metadata?.terminalReason).toBe('budget_exhausted')
+    })
+
+    test('空 id 集合 / 行不存在 → 返回 0 不抛错', () => {
+        expect(markTerminalReason(db, 's1', [], 'api_error')).toBe(0)
+        expect(markTerminalReason(db, 's1', ['ghost-id'], 'api_error')).toBe(0)
+    })
+
+    test('已有 nativeId 等 metadata 的行：terminalReason 合并写入不覆盖既有键', () => {
+        const m = addMessage(db, 's1', WEBAPP_USER, 'l1', 'persistent', { nativeId: 'nu-1', nativeAckAt: 111 })
+        markTerminalReason(db, 's1', [m.id], 'api_error')
+        expect(getMessages(db, 's1')[0].metadata).toEqual({ nativeId: 'nu-1', nativeAckAt: 111, terminalReason: 'api_error' })
+    })
+})
+
+describe('getMessagesByNativeId（撤回目标定位：同 nativeId 全部未删行，I4）', () => {
+    let db: Database
+    beforeEach(() => { db = makeDb() })
+
+    test('合并批多行共享 nativeId：全部返回且按 seq 升序', () => {
+        addMessage(db, 's1', WEBAPP_USER, 'l1', 'persistent', { nativeId: 'nu-1' })
+        addMessage(db, 's1', WEBAPP_USER, 'l2', 'persistent', { nativeId: 'nu-1' })
+        const rows = getMessagesByNativeId(db, 's1', 'nu-1')
+        expect(rows.map(r => r.localId)).toEqual(['l1', 'l2'])
+    })
+
+    test('软删除行不可见（重复 withdrawn fact 幂等）、其他 nativeId 不串', () => {
+        addMessage(db, 's1', WEBAPP_USER, 'l1', 'persistent', { nativeId: 'nu-1' })
+        addMessage(db, 's1', WEBAPP_USER, 'l2', 'persistent', { nativeId: 'nu-2' })
+        softDeleteMessagesFrom(db, 's1', 1, 1)   // 只软删 seq=1 的 l1
+        expect(getMessagesByNativeId(db, 's1', 'nu-1')).toEqual([])
+        expect(getMessagesByNativeId(db, 's1', 'nu-2')).toHaveLength(1)
+    })
+
+    test('查无行 → 空数组', () => {
+        expect(getMessagesByNativeId(db, 's1', 'nu-ghost')).toEqual([])
     })
 })

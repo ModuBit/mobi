@@ -456,17 +456,39 @@ export function getMessagesByIds(
     return rows.map(toStoredMessage)
 }
 
-/** 按 nativeId 定位最新一行（同 nativeId 理论唯一，防御性取一）；软删除行不可见——
- *  撤回/rewind 已截断的行查不到，天然幂等（重复 withdrawn fact 不重复受理）。 */
-export function getMessageByNativeId(
+/** 按 nativeId 定位全部未删行（合并批 1:N——collectBatch 可把多条消息并成一 push 共享
+ *  nativeId），按 seq 升序；软删除行不可见——撤回/rewind 已截断的行查不到，天然幂等
+ *  （重复 withdrawn fact 不重复受理）。撤回以此定位目标：只取一行会漏删批内前几行（I4）。 */
+export function getMessagesByNativeId(
     db: Database,
     sessionId: string,
     nativeId: string
-): StoredMessage | null {
-    const row = db.prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND native_id = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1`
-    ).get(sessionId, nativeId) as DbMessageRow | undefined
-    return row ? toStoredMessage(row) : null
+): StoredMessage[] {
+    const rows = db.prepare(
+        `SELECT * FROM messages WHERE session_id = ? AND native_id = ? AND deleted_at IS NULL ORDER BY seq ASC`
+    ).all(sessionId, nativeId) as DbMessageRow[]
+    return rows.map(toStoredMessage)
+}
+
+/** command_lifecycle 终态的 terminal_reason 落档（metadata.terminalReason，与 nativeAckAt 双写
+ *  同构）：只写本次推进命中的行（ids 来自 advanceMessagesLifecycle 的 RETURNING，避免同
+ *  nativeId 已终态未推进行被迟到帧补写）。first-write-wins：已有 reason 不被覆盖。
+ *  返回实际写入行数。 */
+export function markTerminalReason(
+    db: Database,
+    sessionId: string,
+    ids: string[],
+    reason: string
+): number {
+    if (ids.length === 0) return 0
+    const placeholders = ids.map(() => '?').join(',')
+    const result = db.prepare(
+        `UPDATE messages
+         SET metadata = json_set(COALESCE(metadata, '{}'), '$.terminalReason', ?)
+         WHERE session_id = ? AND id IN (${placeholders})
+           AND json_extract(COALESCE(metadata, '{}'), '$.terminalReason') IS NULL`
+    ).run(reason, sessionId, ...ids)
+    return result.changes
 }
 
 /** 从 user 消息 content 信封提取撤回回填载荷（SSE message-withdrawn，批次 A）：

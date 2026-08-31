@@ -25,7 +25,8 @@ import {
     bindNativeIds,
     cancelAllQueuedMessages,
     cancelQueuedMessage,
-    getMessageByNativeId,
+    getMessagesByNativeId,
+    markTerminalReason,
     getMessageSubmitState,
     getMessages,
     getMessagesAfter,
@@ -125,9 +126,15 @@ export class MessageStore {
         return getMessagesByIds(this.db, sessionId, ids)
     }
 
-    /** 按 nativeId 定位最新未删行（同 nativeId 理论唯一，防御性取一）；查不到返回 null */
-    getMessageByNativeId(sessionId: string, nativeId: string): StoredMessage | null {
-        return getMessageByNativeId(this.db, sessionId, nativeId)
+    /** 按 nativeId 定位全部未删行（合并批 1:N，seq 升序）；撤回目标定位用（I4） */
+    getMessagesByNativeId(sessionId: string, nativeId: string): StoredMessage[] {
+        return getMessagesByNativeId(this.db, sessionId, nativeId)
+    }
+
+    /** command_lifecycle 终态的 terminal_reason 落档（metadata.terminalReason，first-write-wins）；
+     *  返回实际写入行数 */
+    markTerminalReason(sessionId: string, ids: string[], reason: string): number {
+        return markTerminalReason(this.db, sessionId, ids, reason)
     }
 
     getUnsubmittedLocalMessages(sessionId: string): StoredMessage[] {

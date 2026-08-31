@@ -714,6 +714,7 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
         const storeCalls: string[] = []
         const pushedSpy = { args: null as { sid: string; lids: string[]; at: number } | null }
         const lifecycleSpy = { args: null as { sid: string; nativeId: string; state: string; at: number } | null }
+        const terminalReasonSpy = { args: null as { sid: string; ids: string[]; reason: string } | null }
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
@@ -727,6 +728,11 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
                         lifecycleSpy.args = { sid, nativeId, state, at }
                         return opts.lifecycleReturn ?? []
                     },
+                    markTerminalReason: (sid: string, ids: string[], reason: string) => {
+                        storeCalls.push('terminalReason')
+                        terminalReasonSpy.args = { sid, ids, reason }
+                        return ids.length
+                    },
                     getMessagesByIds: () => {
                         storeCalls.push('byIds')
                         return opts.byIdsReturn?.filter(() => true) ?? []
@@ -739,7 +745,7 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
             backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
-        return { deps, events, storeCalls, pushedSpy, lifecycleSpy }
+        return { deps, events, storeCalls, pushedSpy, lifecycleSpy, terminalReasonSpy }
     }
 
     /** fake socket 变体：额外捕获 socket.to(room).emit(...) 的广播（update new-message 断言用） */
@@ -815,6 +821,48 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
         ])
     })
 
+    test('lifecycle fact 带 terminalReason：落档 markTerminalReason（按推进 ids）+ 广播行含 metadata.terminalReason（I2）', () => {
+        const fakeSocket = makeFakeSocket()
+        const advancedMsg = {
+            ...makeMsg('m1', 'loc-1', 1),
+            lifecycle: 'refused' as const,
+            lifecycleAt: 5000,
+            metadata: { nativeId: 'nu-1', terminalReason: 'policy' },
+        }
+        const { deps, events, lifecycleSpy, terminalReasonSpy } = makeFactsDeps({
+            lifecycleReturn: ['m1'],
+            byIdsReturn: [advancedMsg],
+        })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [{ kind: 'lifecycle', nativeId: 'nu-1', state: 'refused', terminalReason: 'policy', at: 5000 }],
+        })
+
+        // 推进 + 落档都发生：落档按推进命中的 ids，reason 原样透传
+        expect(lifecycleSpy.args).toEqual({ sid: 's1', nativeId: 'nu-1', state: 'refused', at: 5000 })
+        expect(terminalReasonSpy.args).toEqual({ sid: 's1', ids: ['m1'], reason: 'policy' })
+
+        // 广播行含 terminalReason——web footer 据此渲染原因文案
+        const payload = fakeSocket.broadcasts[0].payload as { body: { message: { metadata?: { terminalReason?: string } } } }
+        expect(payload.body.message.metadata?.terminalReason).toBe('policy')
+        expect(events[0]).toEqual(expect.objectContaining({ type: 'message-received' }))
+    })
+
+    test('lifecycle fact 缺 terminalReason：不调 markTerminalReason（纯 state 推进）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, terminalReasonSpy } = makeFactsDeps({ lifecycleReturn: ['m1'] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [{ kind: 'lifecycle', nativeId: 'nu-1', state: 'processing', at: 3000 }],
+        })
+
+        expect(terminalReasonSpy.args).toBeNull()
+    })
+
     test('lifecycle fact 无命中（乱序/重复帧）→ 不广播', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events } = makeFactsDeps({ lifecycleReturn: [] })
@@ -869,8 +917,8 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
 
     /** 构造 withdrawn/refused fact 专用 deps：mock nativeId 定位 / 软删除 / lifecycle 推进 */
     function makeWithdrawDeps(opts: {
-        /** getMessageByNativeId 返回的行（null = 查不到） */
-        row?: StoredMessage | null
+        /** getMessagesByNativeId 返回的未删行（空数组 = 查不到） */
+        rows?: StoredMessage[]
     } = {}) {
         const events: SyncEvent[] = []
         const softDeleteSpy = { args: null as { sid: string; fromSeq: number } | null }
@@ -878,7 +926,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
-                    getMessageByNativeId: () => opts.row ?? null,
+                    getMessagesByNativeId: () => opts.rows ?? [],
                     softDeleteMessagesFrom: (sid: string, fromSeq: number) => {
                         softDeleteSpy.args = { sid, fromSeq }
                         return 2
@@ -887,6 +935,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
                         advanceSpy.args = { sid, nativeId, state, at }
                         return ['m1']
                     },
+                    markTerminalReason: () => 0,
                     getMessagesByIds: () => [],
                 },
                 sessions: {},
@@ -902,7 +951,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
     test('withdrawn fact：目标行起软删除 + lifecycle 留档 + SSE message-withdrawn（含 blocks/originalText）', () => {
         const fakeSocket = makeFakeSocket()
         const row: StoredMessage = { ...makeMsg('m1', 'loc-1', 5), content: WITHDRAW_CONTENT }
-        const { deps, events, softDeleteSpy, advanceSpy } = makeWithdrawDeps({ row })
+        const { deps, events, softDeleteSpy, advanceSpy } = makeWithdrawDeps({ rows: [row] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', {
@@ -929,9 +978,34 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
         expect(evt.originalText).toBe('第一段\n第二段')
     })
 
+    test('合并批多行共享 nativeId（I4）：软删除自最小 seq 起，回填取批内第一行', () => {
+        const fakeSocket = makeFakeSocket()
+        const first: StoredMessage = {
+            ...makeMsg('m1', 'loc-first', 3),
+            content: { role: 'user', content: [{ type: 'text', text: '批内第一条' }], meta: { sentFrom: 'webapp' } },
+        }
+        const second: StoredMessage = {
+            ...makeMsg('m2', 'loc-second', 5),
+            content: { role: 'user', content: [{ type: 'text', text: '批内第二条' }], meta: { sentFrom: 'webapp' } },
+        }
+        const { deps, events, softDeleteSpy } = makeWithdrawDeps({ rows: [first, second] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'withdrawn', nativeId: 'nu-1', at: 4000 }] })
+
+        // 只删 seq 最大行会残留批内前几行——必须从最小 seq 起（无上界）
+        expect(softDeleteSpy.args).toEqual({ sid: 's1', fromSeq: 3 })
+
+        // 回填语义：composer 还原「撤回批次」的第一条消息（批 = 一次 push，用户视角是一条提交）
+        const evt = events[0] as Extract<SyncEvent, { type: 'message-withdrawn' }>
+        expect(evt.localId).toBe('loc-first')
+        expect(evt.blocks).toEqual([{ type: 'text', text: '批内第一条' }])
+        expect(evt.originalText).toBe('批内第一条')
+    })
+
     test('nativeId 查不到行（不存在或已软删除）→ 不删除不推进不广播，不抛错', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, events, softDeleteSpy, advanceSpy } = makeWithdrawDeps({ row: null })
+        const { deps, events, softDeleteSpy, advanceSpy } = makeWithdrawDeps({ rows: [] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         expect(() => fakeSocket.emit('messages-facts', {
@@ -947,7 +1021,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
     test('withdrawn fact 缺 nativeId → 静默忽略', () => {
         const fakeSocket = makeFakeSocket()
         const row: StoredMessage = { ...makeMsg('m1', 'loc-1', 5), content: WITHDRAW_CONTENT }
-        const { deps, events, softDeleteSpy } = makeWithdrawDeps({ row })
+        const { deps, events, softDeleteSpy } = makeWithdrawDeps({ rows: [row] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', {
@@ -978,7 +1052,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
             ...makeMsg('m1', 'loc-1', 3),
             content: { role: 'user', content: '纯文本消息', meta: { sentFrom: 'webapp' } },
         }
-        const { deps, events } = makeWithdrawDeps({ row })
+        const { deps, events } = makeWithdrawDeps({ rows: [row] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'withdrawn', nativeId: 'nu-1' }] })

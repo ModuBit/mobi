@@ -639,12 +639,16 @@ interrupt（用户停止）
 
 ---
 
-## 60. refused 的 terminalReason 未在 hub 侧落库留档（2026-08-31 实现裁定）
+## 60. terminal_reason 全链路（已闭环，2026-08-31 终审修复）
 
-**背景**：批次 A（停止 × 队列语义闭环）给 lifecycle 终态补全了 `refused`，`command_lifecycle` 帧携带的 `terminal_reason` 已透传进 lifecycle fact。但 hub 受理时（`sessionHandlers.processLifecycleFact`）**只消费 state、不落库 `terminalReason`**——`messages.metadata` 无此字段，当前消费走 CC 侧消息 metadata（web footer 由 `metaById.get(block.id)?.terminalReason` 读 assistant 消息信封内的 terminal_reason，非 lifecycle fact 通道）。
+**真实链路**（原条目「web footer 由 CC 侧 metadata 读 terminal_reason」的表述与事实不符，已更正）：
 
-**后果**：从 hub DB 侧查不到某条消息被拒收/异常终止的原因；历史行（CC metadata 之外仅 lifecycle state 留档）无法事后审计 terminal_reason。
+```
+CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 terminal_reason 透传进 lifecycle fact
+  → hub processLifecycleFact（sessionHandlers.ts）—— fact.terminalReason 写进命中行的 metadata.terminalReason
+    （store markTerminalReason，与 nativeAckAt 双写同构，first-write-wins）并随行广播
+      → web ChatContainer footer —— metaById.get(block.id)?.terminalReason 读消息 metadata
+        （terminalReasonLabelKey 只解释已知 key：api_error / budget_exhausted）
+```
 
-**方向**：若有审计需求（如导出/检索「为什么这条消息死了」），需给 `messages.metadata` 加 terminalReason 字段并在 `processLifecycleFact` 落库 + 随行广播——与 `nativeAckAt` 双写模式同构。
-
-**优先级**：低。当前无消费缺口（web 实时展示不依赖 hub 留档），纯审计需求触发时再补。
+**状态**：已实现（批次 A 终审修复）。hub DB 侧可直接审计「为什么这条消息死了」；web 实时展示走同一条广播链路，无需额外改动。

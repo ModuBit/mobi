@@ -616,37 +616,42 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     }
 
     /** command_lifecycle 终态推进（messages-facts 新增 fact）：单调推进（终态不回退/不互覆）→
-     *  按 id 回读推进后的行 → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。
-     *  无命中（乱序/重复帧）静默返回，不广播。
-     *  fact.terminalReason 不落库：hub messages.metadata 无此字段，web footer 文案由 CC 侧
-     *  metadata 提供（批次 A Task 12），hub 只消费 state。 */
+     *  fact.terminalReason 落档 metadata.terminalReason（与 nativeAckAt 双写同构，first-write-wins；
+     *  只写本次推进命中的行——web footer 据此渲染终态原因，spec §7.6）→ 按 id 回读推进后的行
+     *  → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。
+     *  无命中（乱序/重复帧）静默返回，不广播。 */
     const processLifecycleFact = (
         sid: string,
         nativeId: string,
         state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
-        at: number
+        at: number,
+        terminalReason?: string
     ) => {
         const ids = store.messages.advanceMessagesLifecycle(sid, nativeId, state, at)
         if (ids.length === 0) return
+        if (terminalReason) store.messages.markTerminalReason(sid, ids, terminalReason)
         const rows = store.messages.getMessagesByIds(sid, ids)
         if (rows.length > 0) broadcastStoredMessages(sid, rows)
     }
 
-    /** 撤回事实（messages-facts withdrawn，#53 / 批次 A）：按 nativeId 定位目标行 → 自该行 seq
-     *  起软删除（无上界——撤回的是用户刚发的消息及其后派生行，竞态迟到行也属撤回范围，与
-     *  rewind 的「受理时点上界」语义有意不同）→ lifecycle 留档 withdrawn → SSE message-withdrawn
-     *  （localId/blocks/originalText 供 web 乐观移除气泡并回填 composer）。
+    /** 撤回事实（messages-facts withdrawn，#53 / 批次 A）：按 nativeId 定位全部未删行（合并批
+     *  1:N——collectBatch 可把多条消息并成一 push 共享 nativeId，只取一行会漏删批内前几行，I4）
+     *  → 自最小 seq 起软删除（无上界——撤回的是用户刚发的消息及其后派生行，竞态迟到行也属
+     *  撤回范围，与 rewind 的「受理时点上界」语义有意不同）→ lifecycle 留档 withdrawn →
+     *  SSE message-withdrawn（localId/blocks/originalText 供 web 乐观移除气泡并回填 composer；
+     *  多行时取批内第一行——批 = 一次 push，用户视角是一条提交，composer 还原第一条）。
      *  定位失败（行不存在/已被撤回或 rewind 软删除）静默忽略：撤回是尽力而为，失败=消息残留。 */
     const processWithdrawnFact = (sid: string, nativeId: string, at: number) => {
-        const row = store.messages.getMessageByNativeId(sid, nativeId)
-        if (!row) return   // getMessageByNativeId 已过滤软删除行：重复 fact / rewind 竞态天然幂等
-        store.messages.softDeleteMessagesFrom(sid, row.seq)
+        const rows = store.messages.getMessagesByNativeId(sid, nativeId)
+        const first = rows[0]
+        if (!first) return   // 无未删行：重复 fact / rewind 竞态天然幂等
+        store.messages.softDeleteMessagesFrom(sid, first.seq)
         store.messages.advanceMessagesLifecycle(sid, nativeId, 'withdrawn', at)
-        const { blocks, originalText } = extractWithdrawnContent(row.content)
+        const { blocks, originalText } = extractWithdrawnContent(first.content)
         onWebappEvent?.({
             type: 'message-withdrawn',
             sessionId: sid,
-            localId: row.localId ?? row.id,
+            localId: first.localId ?? first.id,
             blocks,
             originalText,
         })
@@ -737,7 +742,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                         && (fact.state === 'processing' || fact.state === 'done'
                             || fact.state === 'cancelled' || fact.state === 'discarded'
                             || fact.state === 'refused')) {
-                        processLifecycleFact(data.sid, fact.nativeId, fact.state, fact.at ?? now)
+                        // terminalReason 运行时收窄（socket 载荷不经 Zod）：非 string 视为缺省
+                        const reason = typeof fact.terminalReason === 'string' && fact.terminalReason.length > 0
+                            ? fact.terminalReason
+                            : undefined
+                        processLifecycleFact(data.sid, fact.nativeId, fact.state, fact.at ?? now, reason)
                     }
                     break
                 case 'withdrawn':
