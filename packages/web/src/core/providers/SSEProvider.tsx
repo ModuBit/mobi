@@ -42,7 +42,7 @@ import {
     withdrawFrom,
 } from '@/core/data/stores/messageWindowStore'
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
-import { requestWithdraw, nextWithdrawNonce } from '@/core/data/stores/withdrawStore'
+import { requestWithdraw } from '@/core/data/stores/withdrawStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 
 /**
@@ -401,7 +401,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     localId: event.localId,
                     segments: safeDeserializeSegments(event.blocks),
                     originalText: event.originalText,
-                    nonce: nextWithdrawNonce(),
                 })
                 break
             }

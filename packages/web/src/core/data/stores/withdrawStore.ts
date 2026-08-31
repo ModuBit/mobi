@@ -30,19 +30,9 @@ export interface WithdrawRequest {
     localId: string
     segments: ComposerSegments | null
     originalText: string | null
-    /** 单调递增，驱动 ChatContainer 的 nonce effect（并发旧请求被覆盖） */
-    nonce: number
     /** 请求落 store 时刻（store 盖章）：会话视图以挂载时刻为基线甄别陈旧请求，
      *  早于基线的丢弃、晚于基线（含 render→effect 窗口新到的）照常回填 */
     createdAt: number
-}
-
-/** 模块级 nonce 计数器：进程内单调递增，保证后到请求可辨识 */
-let withdrawNonceCounter = 0
-
-/** 撤回请求 nonce：单调递增（每次调用 +1） */
-export function nextWithdrawNonce(): number {
-    return ++withdrawNonceCounter
 }
 
 type WithdrawRequestInput = Omit<WithdrawRequest, 'createdAt'>
@@ -95,7 +85,7 @@ export function useWithdrawRequest(sessionId: string): WithdrawRequest | undefin
 
 // 非组件侧（SSEProvider / 测试）使用的命令式入口：走 getState 转发 store action
 
-/** 落入撤回请求（同会话旧请求被覆盖，nonce 由 nextWithdrawNonce 供给，createdAt 由 store 盖章） */
+/** 落入撤回请求（同会话旧请求被覆盖，createdAt 由 store 盖章） */
 export function requestWithdraw(sessionId: string, req: WithdrawRequestInput): void {
     useWithdrawStore.getState().requestWithdraw(sessionId, req)
 }
@@ -113,5 +103,4 @@ export function clearSession(sessionId: string): void {
 /** 测试用：清空所有状态（vitest 隔离） */
 export function _resetForTest(): void {
     useWithdrawStore.setState({ pendingBySession: new Map() })
-    withdrawNonceCounter = 0
 }
