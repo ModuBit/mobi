@@ -52,11 +52,14 @@ function terminalStatusPalette(status: BackgroundTask['status'], token: GlobalTo
 /**
  * 后台任务卡片组件
  * 展示单个后台任务的状态、图标、描述和指标
+ * clickDisabled：无 sidechain 数据（toolUseId=null）的卡片不可点击打开 drawer，
+ * cursor 降级 + opacity 微降，让「不可点」有视觉反馈
  */
-export function BackgroundTaskCard({ task, onClick, onStop }: {
+export function BackgroundTaskCard({ task, onClick, onStop, clickDisabled = false }: {
     task: BackgroundTask
     onClick: () => void
     onStop?: (e: React.MouseEvent) => void
+    clickDisabled?: boolean
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
@@ -177,14 +180,20 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
 
     return (
         <>
-            <div style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                width: 'var(--agent-card-width, 200px)', height: 40,
-                padding: '4px 8px', borderRadius: 8, cursor: 'pointer',
-                border: 'none', background: agentCardBg(name, isDark),
-                boxSizing: 'border-box',
-                opacity: isRunning ? 1 : 0.75,
-            }} onClick={onClick}>
+            <div
+                data-testid={`bg-task-card-${task.taskId}`}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    width: 'var(--agent-card-width, 200px)', height: 40,
+                    padding: '4px 8px', borderRadius: 8,
+                    cursor: clickDisabled ? 'default' : 'pointer',
+                    border: 'none', background: agentCardBg(name, isDark),
+                    boxSizing: 'border-box',
+                    // disabled 再降一档：不可点击的卡片比终态淡出更弱（终态 0.75 / 禁用 0.55）
+                    opacity: clickDisabled ? 0.55 : isRunning ? 1 : 0.75,
+                }}
+                onClick={onClick}
+            >
                 <div style={{ flexShrink: 0, lineHeight: 0 }}>
                     {task.toolName === 'Agent' ? (
                         <PixelAvatar name={task.taskId} status={taskAvatarStatus(task.status)} size={24} />

@@ -227,5 +227,10 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
         )
         fireEvent.click(screen.getByText('后台研究'))
         expect(onTaskClick).not.toHaveBeenCalled()
+        // 禁用态视觉反馈：cursor 降级 + opacity 微降（final review Minor #4）
+        const card = document.querySelector('[data-testid="bg-task-card-bt-2"]') as HTMLElement
+        expect(card).toBeTruthy()
+        expect(card.style.cursor).toBe('default')
+        expect(card.style.opacity).toBe('0.55')
     })
 })
