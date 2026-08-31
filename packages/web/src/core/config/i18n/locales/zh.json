@@ -180,6 +180,17 @@
         "retry": "重试",
         "switchMode": "切换到 {{mode}} 模式",
         "aborted": "会话已中断",
+        "stop": {
+            "menu": {
+                "title": "停止",
+                "turn": "停止本轮",
+                "turnDesc": "中断当前回答，排队消息照常执行",
+                "turnQueue": "停止并清空队列",
+                "turnQueueDesc": "中断回答，并取消所有排队消息",
+                "turnQueueTasks": "全部停止",
+                "turnQueueTasksDesc": "中断回答、取消排队消息，并终止所有后台任务"
+            }
+        },
         "permission": {
             "title": "需要权限确认",
             "toolRequest": "工具 {{tool}} 请求执行权限"

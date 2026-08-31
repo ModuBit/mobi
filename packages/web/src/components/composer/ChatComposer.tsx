@@ -22,7 +22,7 @@ import { HoverSelect } from '@/components/ui/HoverSelect'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import {
     isSegmentEmpty,
@@ -93,7 +93,8 @@ interface ChatComposerProps {
     onModelChange?: (model: string | null) => void
     /** 发送回调：入参为当前输入的完整分段（文本 + 附件双桶 + 引用），wire 格式由 useSendMessage 序列化 */
     onSend: (segments: ComposerSegments) => void
-    onAbort?: () => void
+    /** 中止会话：入参为停止档位（键盘快捷键路径固定 'turn'；按钮长短按见 SubmitButton） */
+    onAbort?: (stopKind: StopKind) => void
     abortPending?: boolean
     onActivate?: () => void
     activatePending?: boolean
@@ -595,7 +596,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 slash.reset()
             } else if (action === 'abort') {
                 e.preventDefault()
-                onAbort?.()
+                onAbort?.('turn')
             }
             return
         }
@@ -606,7 +607,7 @@ export function ChatComposer(props: ChatComposerProps) {
             if (mention.handleKeyDown(e)) return
             if (running && onAbort && !abortPending) {
                 e.preventDefault()
-                onAbort()
+                onAbort('turn')
             }
             return
         }

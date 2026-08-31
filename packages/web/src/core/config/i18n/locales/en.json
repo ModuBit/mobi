@@ -180,6 +180,17 @@
         "retry": "Retry",
         "switchMode": "Switch to {{mode}} mode",
         "aborted": "Session aborted",
+        "stop": {
+            "menu": {
+                "title": "Stop",
+                "turn": "Stop this turn",
+                "turnDesc": "Interrupt the current answer; queued messages will still run",
+                "turnQueue": "Stop & clear queue",
+                "turnQueueDesc": "Interrupt the answer and cancel all queued messages",
+                "turnQueueTasks": "Stop everything",
+                "turnQueueTasksDesc": "Interrupt the answer, cancel queued messages, and stop all background tasks"
+            }
+        },
         "permission": {
             "title": "Permission Required",
             "toolRequest": "Tool {{tool}} requests execution permission"

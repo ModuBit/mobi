@@ -61,3 +61,20 @@ export function resolveSubmitButtonState(input: ResolveSubmitButtonStateInput): 
     // 空闲且空内容 → 发送（禁用）
     return { kind: 'send', disabled: true }
 }
+
+// ──────────────────────────────────────────────────────────────
+// 停止态长按判定（spec D1：点按=只停本轮；长按弹三档菜单）
+// ──────────────────────────────────────────────────────────────
+
+/** 长按判定阈值（ms）：pointerdown 起算，达到即开三档菜单 */
+export const LONG_PRESS_MS = 500
+
+export type StopPressKind = 'click' | 'longpress'
+
+/**
+ * pointerdown→pointerup 时长 → 点按或长按（达到阈值即长按）。
+ * 提为纯函数以便阈值语义单源可测；pointer 时序的组装在 SubmitButton。
+ */
+export function resolveStopPress(upElapsedMs: number): StopPressKind {
+    return upElapsedMs >= LONG_PRESS_MS ? 'longpress' : 'click'
+}

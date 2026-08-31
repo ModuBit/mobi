@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-import { Button } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import { Button, Menu, Popover } from 'antd'
 import { ArrowUpOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
-import type { SubmitButtonState } from './submitButtonState'
+import { useTranslation } from 'react-i18next'
+import type { StopKind } from '@mobi/shared'
+import { resolveStopPress, type SubmitButtonState } from './submitButtonState'
 
 const spinKf = keyframes`
     to { transform: rotate(360deg); }
@@ -61,13 +64,51 @@ function SquareIcon() {
     )
 }
 
+/** 三档菜单项（key 即 StopKind，顺序即档位递进） */
+const STOP_KIND_ITEMS: ReadonlyArray<{ kind: StopKind; labelKey: string; descKey: string }> = [
+    { kind: 'turn', labelKey: 'chat.stop.menu.turn', descKey: 'chat.stop.menu.turnDesc' },
+    { kind: 'turn-queue', labelKey: 'chat.stop.menu.turnQueue', descKey: 'chat.stop.menu.turnQueueDesc' },
+    { kind: 'turn-queue-tasks', labelKey: 'chat.stop.menu.turnQueueTasks', descKey: 'chat.stop.menu.turnQueueTasksDesc' },
+]
+
+/** 三档停止菜单（Popover content）：主标题 + 副标题说明，key 即 StopKind */
+function StopKindMenu(props: { onPick: (kind: StopKind) => void }) {
+    const { onPick } = props
+    const { t } = useTranslation()
+    return (
+        <div style={{ minWidth: 240, padding: '4px 0' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+                padding: '2px 12px 6px',
+                fontSize: 12,
+                color: 'var(--ant-color-text-tertiary)',
+                userSelect: 'none',
+            }}>
+                {t('chat.stop.menu.title')}
+            </div>
+            <Menu
+                selectable={false}
+                onClick={({ key }) => onPick(key as StopKind)}
+                items={STOP_KIND_ITEMS.map(({ kind, labelKey, descKey }) => ({
+                    key: kind,
+                    label: (
+                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.45, padding: '2px 0' }}>
+                            <span>{t(labelKey)}</span>
+                            <span style={{ fontSize: 11, color: 'var(--ant-color-text-tertiary)' }}>{t(descKey)}</span>
+                        </div>
+                    ),
+                }))}
+            />
+        </div>
+    )
+}
+
 export interface SubmitButtonProps {
     /** 按钮状态（由 resolveSubmitButtonState 推导） */
     state: SubmitButtonState
     /** 点击发送 */
     onSubmit: () => void
-    /** 点击中止 */
-    onAbort?: () => void
+    /** 中止会话：入参为停止档位（点按=turn，长按菜单三选一，spec D1） */
+    onAbort?: (stopKind: StopKind) => void
 }
 
 /**
@@ -75,37 +116,159 @@ export interface SubmitButtonProps {
  *
  * 由 state.kind 决定形态：
  * - send → 主色圆形 ↑（禁用态由 state.disabled 控制）
- * - stop → 主色圆形 + 方块 ■（变大）；方块态额外叠加外圈旋转光环传递"运行中"，
- *   abortPending 时光环隐藏（Button 自身 loading 转圈）+ 禁用以防重复中止
+ * - stop → 主色圆形 + 方块 ■（变大）；点按只停本轮（'turn'），长按 500ms 弹三档菜单
+ *   （Popover 全编程控制：pointerdown 起 timer，到阈值开菜单；触发长按后抑制释放 click）。
+ *   方块态额外叠加外圈旋转光环传递"运行中"，abortPending 时光环隐藏（Button 自身 loading 转圈）
+ *   + 禁用以防重复中止
  *
  * 不挂在 antd X Sender 的 disabled 上下文里，故请求权限期间（Sender disabled）仍可点击。
  */
 export function SubmitButton(props: SubmitButtonProps) {
     const { state, onSubmit, onAbort } = props
 
-    if (state.kind === 'send') {
-        return (
-            <Button
-                type="primary"
-                shape="circle"
-                icon={<ArrowUpOutlined />}
-                disabled={state.disabled}
-                onClick={onSubmit}
-            />
-        )
+    const stopState = state.kind === 'stop' ? state : null
+    return (
+        <>
+            {state.kind === 'send' && (
+                <Button
+                    type="primary"
+                    shape="circle"
+                    icon={<ArrowUpOutlined />}
+                    disabled={state.disabled}
+                    onClick={onSubmit}
+                />
+            )}
+            {stopState && (
+                <StopButtonState
+                    state={stopState}
+                    onAbort={onAbort}
+                />
+            )}
+        </>
+    )
+}
+
+/** 停止态（独立组件承载长按时序的 state/refs，发送态零开销） */
+function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'stop' }>; onAbort?: (stopKind: StopKind) => void }) {
+    const { state, onAbort } = props
+    const { t } = useTranslation()
+
+    // 三档菜单开合：全编程控制（trigger=[]），pointer 时序自管
+    const [menuOpen, setMenuOpen] = useState(false)
+    const wrapRef = useRef<HTMLSpanElement>(null)
+    // pointerdown 时刻（null=无按 press 在途）；长按 timer；长按已触发标记（抑制释放 click）
+    const downAtRef = useRef<number | null>(null)
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const longPressFiredRef = useRef(false)
+    // pointerup 已自行处理 abort（click 消费该标记防双触发；null 时 click 走键盘兜底路径）
+    const pointerHandledRef = useRef(false)
+
+    const clearTimer = () => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current)
+            timerRef.current = null
+        }
     }
 
-    // 停止态：方块 + 外圈旋转光环（abortPending 时光环隐藏，Button 自身转圈）
+    // 菜单开着时点外部关闭（trigger=[] 下 antd 不接管，外部点击需自监听；
+    // Popover 内容挂在 portal 不在 wrapRef 内，靠 .ant-popover 祖先识别豁免——
+    // 否则 mousedown 先关菜单，菜单项的 click 就再也收不到）
+    useEffect(() => {
+        if (!menuOpen) return
+        const onDocMouseDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement
+            if (wrapRef.current?.contains(target)) return
+            if (typeof target.closest === 'function' && target.closest('.ant-popover')) return
+            setMenuOpen(false)
+        }
+        document.addEventListener('mousedown', onDocMouseDown)
+        return () => document.removeEventListener('mousedown', onDocMouseDown)
+    }, [menuOpen])
+
+    // 卸载清 timer（防泄漏）
+    useEffect(() => clearTimer, [])
+
+    const startPress = (e: React.PointerEvent) => {
+        // 只响应左键；abortPending（转圈禁用）时不可再触发停止
+        if (e.button !== 0 || state.loading || state.disabled) return
+        // 新按压即收起旧菜单（长按会再次弹出）
+        setMenuOpen(false)
+        downAtRef.current = Date.now()
+        longPressFiredRef.current = false
+        pointerHandledRef.current = false
+        clearTimer()
+        // 到阈值即开菜单（无需等释放）；触发长按后释放不再当点按
+        timerRef.current = setTimeout(() => {
+            timerRef.current = null
+            longPressFiredRef.current = true
+            setMenuOpen(true)
+        }, 500)
+    }
+
+    const cancelPress = () => {
+        // 按压中断（移出/系统取消）：撤 timer + 作废时长，释放不再触发任何停止
+        clearTimer()
+        downAtRef.current = null
+    }
+
+    const finishPress = () => {
+        const startedAt = downAtRef.current
+        cancelPress()
+        if (longPressFiredRef.current) {
+            longPressFiredRef.current = false
+            // 长按释放：菜单保持打开，交由点选/点外部收场；
+            // 吞掉随后合成的 click（否则 handleClick 的键盘兜底分支会误发 'turn' 中止）
+            pointerHandledRef.current = true
+            return
+        }
+        if (startedAt == null) return
+        pointerHandledRef.current = true
+        if (resolveStopPress(Date.now() - startedAt) === 'click') onAbort?.('turn')
+    }
+
+    const handleClick = () => {
+        // pointerup 路径已处理（含点按 abort）→ 只吞掉这次 click 防双触发
+        if (pointerHandledRef.current) {
+            pointerHandledRef.current = false
+            return
+        }
+        // 无 pointer 在途（键盘 Enter 聚焦触发）→ 兜底当点按
+        if (downAtRef.current == null) onAbort?.('turn')
+    }
+
+    const pickStopKind = (kind: StopKind) => {
+        setMenuOpen(false)
+        onAbort?.(kind)
+    }
+
     return (
-        <StopWrap $ring={!state.loading}>
-            <Button
-                type="primary"
-                shape="circle"
-                icon={<SquareIcon />}
-                loading={state.loading}
-                disabled={state.disabled}
-                onClick={onAbort}
-            />
-        </StopWrap>
+        <span ref={wrapRef}>
+            <Popover
+                open={menuOpen}
+                onOpenChange={setMenuOpen}
+                trigger={[]}
+                // spec D8：PC/移动统一 Popover，placement top（antd 自动翻转兜底底部溢出）
+                placement="top"
+                content={<StopKindMenu onPick={pickStopKind} />}
+            >
+                <StopWrap $ring={!state.loading} style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
+                    <Button
+                        type="primary"
+                        shape="circle"
+                        icon={<SquareIcon />}
+                        aria-label={t('chat.stop.menu.title')}
+                        loading={state.loading}
+                        disabled={state.disabled}
+                        onPointerDown={startPress}
+                        onPointerUp={finishPress}
+                        onPointerCancel={cancelPress}
+                        onPointerLeave={cancelPress}
+                        // 触屏长按的系统 contextmenu（放大镜/菜单）会打断 press 时序，抑制
+                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={handleClick}
+                    />
+                </StopWrap>
+            </Popover>
+        </span>
     )
 }

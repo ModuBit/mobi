@@ -21,6 +21,7 @@ import { DownOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
 
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
+import type { StopKind } from '@mobi/shared'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
@@ -800,8 +801,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (import.meta.env.DEV) console.log('[Send] sendMutation.mutate 已调用')
     }
 
-    const handleAbort = async () => {
-        await sessionActions.abortSession()
+    const handleAbort = async (stopKind: StopKind) => {
+        await sessionActions.abortSession(stopKind)
     }
 
     const handlePermissionModeChange = async (mode: string) => {
