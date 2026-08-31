@@ -16,7 +16,13 @@
 
 import { describe, it, expect } from 'vitest'
 
-import { resolveStopAction, resolvePostInterruptAction, applyPushToTurnTracking } from '../../src/claude/utils/stopAction'
+import {
+    resolveStopAction,
+    resolvePostInterruptAction,
+    applyPushToTurnTracking,
+    isInterruptedTerminalReason,
+    shouldSkipWithdrawnResultForward,
+} from '../../src/claude/utils/stopAction'
 
 /**
  * stopKind='turn' 的撤回三分支（spec §3.3）：初判只定意向；
@@ -79,5 +85,31 @@ describe('resolvePostInterruptAction（interrupt 返回后的复验裁决，C1 �
 
     it('守卫优先于输出判据（两者同真时仍 stop，语义一致）', () => {
         expect(resolvePostInterruptAction({ turnHasOutput: true, stillQueuedCount: 2 })).toBe('stop')
+    })
+})
+
+describe('isInterruptedTerminalReason（中断终态判别，web normalizeAgent 同口径）', () => {
+    it('aborted_streaming / aborted_tools → true', () => {
+        expect(isInterruptedTerminalReason('aborted_streaming')).toBe(true)
+        expect(isInterruptedTerminalReason('aborted_tools')).toBe(true)
+    })
+    it('正常/compact/completed/缺失 → false', () => {
+        expect(isInterruptedTerminalReason('completed')).toBe(false)
+        expect(isInterruptedTerminalReason(undefined)).toBe(false)
+        expect(isInterruptedTerminalReason(null)).toBe(false)
+    })
+})
+
+describe('shouldSkipWithdrawnResultForward（撤回后中断 result 的转发抑制）', () => {
+    it('标志置位 + 中断 result → 跳过转发（撤回语义：锚之后什么都不该有）', () => {
+        expect(shouldSkipWithdrawnResultForward(true, 'aborted_streaming')).toBe(true)
+        expect(shouldSkipWithdrawnResultForward(true, 'aborted_tools')).toBe(true)
+    })
+    it('标志未置位 → 不跳过（普通停止的灰行照常转发）', () => {
+        expect(shouldSkipWithdrawnResultForward(false, 'aborted_streaming')).toBe(false)
+    })
+    it('标志置位但非中断 result → 不跳过（后续新 turn 的 result 正常转发）', () => {
+        expect(shouldSkipWithdrawnResultForward(true, 'completed')).toBe(false)
+        expect(shouldSkipWithdrawnResultForward(true, undefined)).toBe(false)
     })
 })

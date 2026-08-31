@@ -42,7 +42,13 @@ import { reportRewindCompletion } from "./utils/rewindReport";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { classifyMessage, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
-import { resolveStopAction, resolvePostInterruptAction, applyPushToTurnTracking } from './utils/stopAction';
+import {
+    resolveStopAction,
+    resolvePostInterruptAction,
+    applyPushToTurnTracking,
+    isInterruptedTerminalReason,
+    shouldSkipWithdrawnResultForward,
+} from './utils/stopAction';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
@@ -98,6 +104,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     /** nextMessage 是否持有被暂存的待投递批次（mode 变更/isolate 时 stash）。
      *  暂存批次不在 MessageQueue 里但下轮必投——撤回初判把它视同「队列非空」 */
     private pendingBatchHeld = false
+    /** 撤回生效后待拦的死亡回执：撤回后本 turn 的第一条中断 result 不转发 hub（E2E 残留缺陷
+     *  修复——否则该 result 以更大 seq 落库，web 仍渲染「Session aborted」灰行）。消费即清除 */
+    private suppressNextInterruptedResult = false
 
     constructor(
         session: Session,
@@ -170,6 +179,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
             this.session.client.emitWithdrawnFact(this.turnTracking.lastPushedNativeId)
             this.turnTracking.lastPushedNativeId = null
+            // 撤回生效：拦下本 turn 即将到达的中断 result（死亡回执），不转发 hub/落库——
+            // hub 已按撤回锚软删除，回执再落库会以更大 seq 复活为灰行（spec §5.2）
+            this.suppressNextInterruptedResult = true
             return                                       // 撤回路径抑制 aborted event（spec D6/§5.2）
         }
         this.emitAbortedEvent('turn', receipt?.still_queued?.length ?? 0)
@@ -563,19 +575,27 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     return
                 }
 
-                // 中断 result 注入停止变体信息（emitAbortedEvent 的消费点，见 pendingAbortInfo 注释）。
-                // 正常/compact result 到达即作废待注入信息（跨 turn 陈旧防护）。
+                // 中断 result 处理（emitAbortedEvent 的消费点，见 pendingAbortInfo 注释）。
+                // 正常/compact result 到达即作废待注入信息与撤回抑制标志（跨 turn 陈旧防护）。
                 // RawJSONLines 无 'result' discriminant（见 sdkToLogConverter case 'result'），走开放形状断言
                 if ((logMessage as { type?: string }).type === 'result') {
                     const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
-                    const interrupted = reason === 'aborted_streaming' || reason === 'aborted_tools'
-                    if (interrupted && this.pendingAbortInfo) {
-                        const target = logMessage as unknown as Record<string, unknown>
-                        target.stopKind = this.pendingAbortInfo.stopKind
-                        target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
+                    if (isInterruptedTerminalReason(reason)) {
+                        // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 hub 转发/落库。
+                        // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
+                        if (shouldSkipWithdrawnResultForward(this.suppressNextInterruptedResult, reason)) {
+                            this.suppressNextInterruptedResult = false
+                            return
+                        }
+                        if (this.pendingAbortInfo) {
+                            const target = logMessage as unknown as Record<string, unknown>
+                            target.stopKind = this.pendingAbortInfo.stopKind
+                            target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
+                            this.pendingAbortInfo = null
+                        }
+                    } else {
                         this.pendingAbortInfo = null
-                    } else if (!interrupted) {
-                        this.pendingAbortInfo = null
+                        this.suppressNextInterruptedResult = false
                     }
                 }
 
@@ -935,6 +955,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 为 per-process）；待注入停止信息与暂存批次标记不跨轮残留
                     this.backgroundTaskIds = new Set<string>();
                     this.pendingAbortInfo = null;
+                    this.suppressNextInterruptedResult = false;
                     this.pendingBatchHeld = false;
                     if (this.queryControlRef) {
                         this.queryControlRef.current = null;
