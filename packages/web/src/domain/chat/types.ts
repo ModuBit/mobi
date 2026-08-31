@@ -15,7 +15,7 @@
  */
 
 import type { MessageStatus } from '@/core/data/api/types'
-import type { PermissionUpdate, UserContentBlock } from '@mobi/shared'
+import type { PermissionUpdate, StopKind, UserContentBlock } from '@mobi/shared'
 
 /** 消息元数据 */
 export type MessageMeta = {
@@ -46,7 +46,9 @@ export type AgentEvent =
     | { type: 'compact-completed' }
     // goal_progress：CLI 扫描 SDK ToolResult 原始 JSON 行提取的目标达成状态
     | { type: 'goal-progress'; met: boolean; condition: string; reason?: string; iterations?: number; durationMs?: number; tokens?: number }
-    | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
+    // aborted：CLI 批注入停止对账字段（缺省 = 旧格式，渲染与现状一致，spec §4.3）
+    | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number;
+        stopKind?: StopKind; stillQueuedCount?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string;
         numTurns: number | null; ttftMs?: number; costUsd?: number;
         inputTokens?: number; outputTokens?: number;

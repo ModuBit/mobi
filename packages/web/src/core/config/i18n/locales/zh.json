@@ -180,6 +180,13 @@
         "retry": "重试",
         "switchMode": "切换到 {{mode}} 模式",
         "aborted": "会话已中断",
+        "abortedStillQueued": "会话已中断 · {{count}} 条消息仍会执行",
+        "abortedQueueCleared": "会话已中断，队列已清空",
+        "abortedAllStopped": "会话已中断，队列与后台任务已停止",
+        "terminalReason": {
+            "api_error": "API 错误",
+            "budget_exhausted": "额度耗尽"
+        },
         "stop": {
             "menu": {
                 "title": "停止",

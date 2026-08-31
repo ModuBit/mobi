@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
-import { asNumber, asString, getField, isObject } from '@mobi/shared'
+import { asNumber, asString, getField, isObject, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
@@ -470,7 +470,15 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const model = modelUsage ? (Object.keys(modelUsage)[0] ?? undefined) : undefined
 
     if (isAborted) {
-        return createEventMessage(ctx, { type: 'aborted', numTurns, durationMs, tokens })
+        // CLI 批在中断 result 上附带的停止对账字段（stopKind/stillQueuedCount，下划线/驼峰双格式
+        // 兼容 terminal_reason 既有先例）；缺省不带——旧格式渲染与现状一致（spec §4.3）
+        const stopKind = asString(data.stop_kind) ?? asString(data.stopKind)
+        const stillQueuedCount = asNumber(data.still_queued_count) ?? asNumber(data.stillQueuedCount)
+        return createEventMessage(ctx, {
+            type: 'aborted', numTurns, durationMs, tokens,
+            ...(stopKind ? { stopKind: stopKind as StopKind } : {}),
+            ...(stillQueuedCount !== undefined ? { stillQueuedCount } : {}),
+        })
     }
 
     // 提取错误信息

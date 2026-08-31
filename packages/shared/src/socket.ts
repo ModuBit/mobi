@@ -157,6 +157,8 @@ export interface NativeMessageMetadata {
     nativeSessionId?: string
     /** CC 接收确认时刻（isReplay 回显落点）；缺省 = 未确认（不可 rewind） */
     nativeAckAt?: number
+    /** command_lifecycle 终态的 terminal_reason（开放透传，web 只解释已知 key，spec §7.6） */
+    terminalReason?: string
 }
 
 export interface ClientToServerEvents {

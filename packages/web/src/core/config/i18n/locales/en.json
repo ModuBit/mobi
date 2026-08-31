@@ -180,6 +180,13 @@
         "retry": "Retry",
         "switchMode": "Switch to {{mode}} mode",
         "aborted": "Session aborted",
+        "abortedStillQueued": "Session aborted · {{count}} message(s) will still run",
+        "abortedQueueCleared": "Session aborted, queue cleared",
+        "abortedAllStopped": "Session aborted, queue and background tasks stopped",
+        "terminalReason": {
+            "api_error": "API error",
+            "budget_exhausted": "Budget exhausted"
+        },
         "stop": {
             "menu": {
                 "title": "Stop",

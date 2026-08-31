@@ -187,7 +187,19 @@ export function formatEvent(
             const tokens = Number(event.tokens) || 0
             const hasMetrics = durationMs > 0 || tokens > 0
 
-            const parts: string[] = [t('chat.aborted')]
+            // 文案优先级（spec §4.3，自上而下首条命中）：
+            // stillQueued>0（对账异常信号）> 队列已清空 > 队列与后台任务已停止 > 现状
+            const stillQueued = Number(event.stillQueuedCount) || 0
+            const stopKind = typeof event.stopKind === 'string' ? event.stopKind : undefined
+            const baseLabel = stillQueued > 0
+                ? t('chat.abortedStillQueued', { count: stillQueued })
+                : stopKind === 'turn-queue'
+                    ? t('chat.abortedQueueCleared')
+                    : stopKind === 'turn-queue-tasks'
+                        ? t('chat.abortedAllStopped')
+                        : t('chat.aborted')
+
+            const parts: string[] = [baseLabel]
             if (hasMetrics) {
                 let durationText: string
                 if (durationMs >= 60000) {

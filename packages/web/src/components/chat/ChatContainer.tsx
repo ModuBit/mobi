@@ -37,6 +37,7 @@ import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
+import { terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
@@ -634,9 +635,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const isUserText = block?.kind === 'user-text'
 
             // 终态标注判据：cancelled/discarded 的用户消息「这条没被处理」一眼可见；
-            // 其余 lifecycle（含 done）与非排队消息不标注（用户不关心传输细节）
+            // 其余 lifecycle（含 done）与非排队消息不标注（用户不关心传输细节）。
+            // cancelled 附带 terminal_reason 原因标注（已知 key 才出，spec §7.6）
             const terminalLifecycle = isUserText && block ? lifecycleById.get(block.id) : null
             const isTerminalLifecycle = terminalLifecycle === 'cancelled' || terminalLifecycle === 'discarded'
+            const terminalReasonKey = terminalLifecycle === 'cancelled' && block
+                ? terminalReasonLabelKey(metaById.get(block.id)?.terminalReason)
+                : null
 
             // rewind 判据（footer 操作组与移动长按菜单同源，spec §5.5）
             const rewindable = isUserText && block
@@ -684,6 +689,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         >
                             <StopOutlined style={{ fontSize: 11 }} />
                             {t(terminalLifecycle === 'cancelled' ? 'chat.message.terminalCancelled' : 'chat.message.terminalDiscarded')}
+                            {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
                     </div>
