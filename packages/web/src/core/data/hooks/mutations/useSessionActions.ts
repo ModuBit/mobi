@@ -67,9 +67,12 @@ export function useSessionActions(sessionId: string | null): {
             if (isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) removeQueuedMessages(sessionId)
         },
         onSuccess: () => void invalidateSession(),
-        onSettled: () => {
-            // 清队列档后 QueuedMessagesBar 数据随 refetch 清空（hub 已物理删除 queued 行，spec §6.2）
+        onSettled: (_data, _error, stopKind) => {
+            // 仅清队列档 refetch：hub 已物理删除 queued 行，merge 不会复活，靠整页拉取清空
+            // QueuedMessagesBar（spec §6.2）；普通停止的行更新由 SSE 增量到位，不再拉整页。
+            // mutationFn 入参可为 undefined（点按路径），按缺省档判断
             if (!sessionId) return
+            if (!isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) return
             void fetchLatestMessages(api, sessionId)
         },
     })
