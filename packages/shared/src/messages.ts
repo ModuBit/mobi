@@ -155,6 +155,17 @@ export const LIFECYCLE_RANK: Record<Exclude<MessageLifecycle, null>, number> = {
     queued: 0, pushed: 1, acked: 2, processing: 3, done: 4, cancelled: 4, discarded: 4, refused: 4, withdrawn: 5,
 }
 
+/**
+ * command_lifecycle 帧可驱动的 lifecycle 状态（单一来源）——MessageLifecycle 的命令轨道子集：
+ * started→processing、completed→done、cancelled/discarded/refused 直传（CLI commandLifecycleToFact 转译）。
+ * 与 MessageLifecycle/LIFECYCLE_RANK 的对应：排除 queued/pushed/acked（hub 自身推进，不经
+ * command_lifecycle 帧）与 withdrawn（撤回留档，仅 hub 内部写入）；本集合全部落在 rank 3/4 档。
+ * satisfies 保证不越出 MessageLifecycle 值域（消费端勿手写字面量联合副本，新增状态只改这里）。
+ */
+export const COMMAND_LIFECYCLE_STATES = ['processing', 'done', 'cancelled', 'discarded', 'refused'] as const satisfies readonly MessageLifecycle[]
+
+export type CommandLifecycleState = (typeof COMMAND_LIFECYCLE_STATES)[number]
+
 /** candidate 是否比 current 更靠后（rank 严格更大且不同 rank——同 rank 的不同终态互不覆盖）。
  *  null（非排队轨道）不参与推进。 */
 export function isLifecycleAhead(current: MessageLifecycle | null | undefined, candidate: MessageLifecycle | null | undefined): boolean {
@@ -212,7 +223,7 @@ export type MessageFact =
     | { kind: 'attached'; nativeSessionId: string }
     | { kind: 'pushed'; localIds: string[]; at?: number }
     | { kind: 'acked'; nativeId: string; at?: number }
-    | { kind: 'lifecycle'; nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused'; terminalReason?: string; at?: number }
+    | { kind: 'lifecycle'; nativeId: string; state: CommandLifecycleState; terminalReason?: string; at?: number }
     | { kind: 'withdrawn'; nativeId: string; at?: number }
 
 /** 从消息 content 信封读取 sentFrom 来源标识 */

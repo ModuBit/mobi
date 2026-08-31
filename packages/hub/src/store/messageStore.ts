@@ -16,7 +16,7 @@
 
 import type { Database } from 'bun:sqlite'
 
-import type { MessageCategory, NativeMessageMetadata } from '@mobi/shared'
+import type { CommandLifecycleState, MessageCategory, NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import {
@@ -106,12 +106,13 @@ export class MessageStore {
         return advanceMessagesAcked(this.db, sessionId, nativeId, ackedAt)
     }
 
-    /** 按 nativeId 单调推进 lifecycle 至 command_lifecycle 终态（processing/done/cancelled/discarded/refused），
+    /** 按 nativeId 单调推进 lifecycle 至 command_lifecycle 状态（单源 CommandLifecycleState）+
+     *  withdrawn（撤回留档，仅 hub 内部——非 command_lifecycle 帧），
      *  已处终态（含 withdrawn）不被覆盖、processing 不回退，返回实际推进的行 id。 */
     advanceMessagesLifecycle(
         sessionId: string,
         nativeId: string,
-        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused' | 'withdrawn',
+        state: CommandLifecycleState | 'withdrawn',
         at: number
     ): string[] {
         return advanceMessagesLifecycle(this.db, sessionId, nativeId, state, at)

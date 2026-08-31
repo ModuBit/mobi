@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, ContextUsageSchema, GoalStatusSchema, type ClientToServerEvents, type MessageFact } from '@mobi/shared'
+import { COMMAND_LIFECYCLE_STATES, SNAPSHOT_PENDING_ID, ContextUsageSchema, GoalStatusSchema, type ClientToServerEvents, type CommandLifecycleState, type MessageFact } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -623,10 +623,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
      *  terminalReason 只在终态帧落档：processing（started 帧）捎带的 reason 是瞬时值，
      *  first-write-wins 会把它永久锁定、挡住后续真实终态原因。
      *  无命中（乱序/重复帧）静默返回，不广播。 */
+    /** command_lifecycle 状态运行时白名单（socket 载荷不经 Zod，fact.state 运行时收窄；
+     *  取值单源 @mobi/shared COMMAND_LIFECYCLE_STATES） */
+    const COMMAND_LIFECYCLE_STATE_SET: ReadonlySet<string> = new Set(COMMAND_LIFECYCLE_STATES)
+
     const processLifecycleFact = (
         sid: string,
         nativeId: string,
-        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
+        state: CommandLifecycleState,
         at: number,
         terminalReason?: string
     ) => {
@@ -759,9 +763,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     break
                 case 'lifecycle':
                     if (typeof fact.nativeId === 'string' && fact.nativeId.length > 0
-                        && (fact.state === 'processing' || fact.state === 'done'
-                            || fact.state === 'cancelled' || fact.state === 'discarded'
-                            || fact.state === 'refused')) {
+                        && COMMAND_LIFECYCLE_STATE_SET.has(fact.state)) {
                         // terminalReason 运行时收窄（socket 载荷不经 Zod）：非 string 视为缺省
                         const reason = typeof fact.terminalReason === 'string' && fact.terminalReason.length > 0
                             ? fact.terminalReason

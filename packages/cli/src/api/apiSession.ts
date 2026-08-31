@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
+import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -608,7 +608,7 @@ export class ApiSessionClient extends EventEmitter {
      *  state 含 refused（跨会话 peer 消息被拒收）；terminalReason 开放透传（上游 Open set，U-13） */
     emitLifecycleFact(
         nativeId: string,
-        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
+        state: CommandLifecycleState,
         at?: number,
         terminalReason?: string,
     ): void {

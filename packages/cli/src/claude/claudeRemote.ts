@@ -43,7 +43,7 @@ import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
-import { isAbortedTerminalReason } from "@mobi/shared";
+import { isAbortedTerminalReason, type CommandLifecycleState } from "@mobi/shared";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
@@ -257,13 +257,13 @@ export interface TurnTrackingState {
  *  queued 不上报（Hub 已有初始排队态），非法/缺字段返回 null。 */
 export function commandLifecycleToFact(
     message: unknown
-): { nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused'; terminalReason?: string } | null {
+): { nativeId: string; state: CommandLifecycleState; terminalReason?: string } | null {
     if (typeof message !== 'object' || message === null) return null
     const m = message as { type?: unknown; command_uuid?: unknown; state?: unknown; terminal_reason?: unknown }
     if (m.type !== 'command_lifecycle') return null
     if (typeof m.command_uuid !== 'string' || m.command_uuid.length === 0) return null
     const s = m.state
-    let state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused'
+    let state: CommandLifecycleState
     if (s === 'started') state = 'processing'
     else if (s === 'completed') state = 'done'
     else if (s === 'cancelled' || s === 'discarded' || s === 'refused') state = s

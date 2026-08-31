@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
+import { isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type CommandLifecycleState, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
@@ -418,7 +418,7 @@ export function advanceMessagesAcked(
 }
 
 /** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded/refused——CC command_lifecycle
- *  终态；withdrawn——撤回留档，仅 hub 内部使用）。
+ *  状态，取值单源 CommandLifecycleState；withdrawn——撤回留档，仅 hub 内部使用）。
  *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4，含 refused)
  *  可从 queued/pushed/acked/processing 推进（withdrawn 走同档——queued/pushed/acked/processing 可撤回，
  *  已终态行不可），但已处终态(含 withdrawn)不被覆盖、processing 不回退——
@@ -427,7 +427,7 @@ export function advanceMessagesLifecycle(
     db: Database,
     sessionId: string,
     nativeId: string,
-    state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused' | 'withdrawn',
+    state: CommandLifecycleState | 'withdrawn',
     at: number
 ): string[] {
     const rows = db.prepare(
