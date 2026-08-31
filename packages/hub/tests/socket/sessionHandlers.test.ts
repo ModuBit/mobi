@@ -919,14 +919,21 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
     function makeWithdrawDeps(opts: {
         /** getMessagesByNativeId 返回的未删行（空数组 = 查不到） */
         rows?: StoredMessage[]
+        /** hasQueuedMessagesAfter 返回值：锚 seq 之后是否仍有 hub 层排队行 */
+        queuedAfter?: boolean
     } = {}) {
         const events: SyncEvent[] = []
         const softDeleteSpy = { args: null as { sid: string; fromSeq: number } | null }
         const advanceSpy = { args: null as { sid: string; nativeId: string; state: string; at: number } | null }
+        const queuedAfterSpy = { args: null as { sid: string; seq: number } | null }
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
                     getMessagesByNativeId: () => opts.rows ?? [],
+                    hasQueuedMessagesAfter: (sid: string, seq: number) => {
+                        queuedAfterSpy.args = { sid, seq }
+                        return opts.queuedAfter ?? false
+                    },
                     softDeleteMessagesFrom: (sid: string, fromSeq: number) => {
                         softDeleteSpy.args = { sid, fromSeq }
                         return 2
@@ -945,7 +952,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
             backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
-        return { deps, events, softDeleteSpy, advanceSpy }
+        return { deps, events, softDeleteSpy, advanceSpy, queuedAfterSpy }
     }
 
     test('withdrawn fact：目标行起软删除 + lifecycle 留档 + SSE message-withdrawn（含 blocks/originalText）', () => {
@@ -1013,6 +1020,38 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
             facts: [{ kind: 'withdrawn', nativeId: 'nu-ghost' }],
         })).not.toThrow()
 
+        expect(softDeleteSpy.args).toBeNull()
+        expect(advanceSpy.args).toBeNull()
+        expect(events).toEqual([])
+    })
+
+    test('撤回守卫 1a：锚行 lifecycle 已终态（done）→ 跳过撤回，不软删不推进不广播', () => {
+        const fakeSocket = makeFakeSocket()
+        // 终态行未被软删除（例如 result 回拉先于 withdrawn fact 落档 done）——此时撤回不再适用：
+        // advance 会拒绝 done→withdrawn，但软删除先于其执行且不可逆，必须在软删前拦截
+        const row: StoredMessage = { ...makeMsg('m1', 'loc-1', 5), lifecycle: 'done', content: WITHDRAW_CONTENT }
+        const { deps, events, softDeleteSpy, advanceSpy, queuedAfterSpy } = makeWithdrawDeps({ rows: [row] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'withdrawn', nativeId: 'nu-1', at: 4000 }] })
+
+        expect(softDeleteSpy.args).toBeNull()
+        expect(advanceSpy.args).toBeNull()
+        expect(events).toEqual([])
+        // 守卫 1a 先于守卫 1b：无需查排队上界
+        expect(queuedAfterSpy.args).toBeNull()
+    })
+
+    test('撤回守卫 1b：锚 seq 之后仍有 hub 层排队行 → 跳过撤回（不连带删掉尚未到 CLI 的 B）', () => {
+        const fakeSocket = makeFakeSocket()
+        const row: StoredMessage = { ...makeMsg('m1', 'loc-1', 5), lifecycle: 'pushed', content: WITHDRAW_CONTENT }
+        const { deps, events, softDeleteSpy, advanceSpy, queuedAfterSpy } = makeWithdrawDeps({ rows: [row], queuedAfter: true })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'withdrawn', nativeId: 'nu-1', at: 4000 }] })
+
+        // 排队查询以锚行 seq 为界（锚自身不计入）
+        expect(queuedAfterSpy.args).toEqual({ sid: 's1', seq: 5 })
         expect(softDeleteSpy.args).toBeNull()
         expect(advanceSpy.args).toBeNull()
         expect(events).toEqual([])

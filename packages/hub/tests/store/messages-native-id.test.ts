@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
 import { Store } from '../../src/store'
-import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages, getMessagesByNativeId, markTerminalReason, softDeleteMessagesFrom } from '../../src/store/messages'
+import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages, getMessagesByNativeId, hasQueuedMessagesAfter, markTerminalReason, softDeleteMessagesFrom } from '../../src/store/messages'
 
 /** 建一个带 metadata/deleted_at 列的最小 messages 表（无 FK/无 sessions，纯模块级函数测试，参照 messages-byposition.test.ts） */
 function makeDb(): Database {
@@ -326,6 +326,39 @@ describe('advanceMessagesLifecycle（command_lifecycle 终态推进）', () => {
     })
 })
 
+describe('hasQueuedMessagesAfter（撤回守卫 1b：锚后排队行探测）', () => {
+    let db: Database
+    beforeEach(() => { db = makeDb() })
+
+    function seedQueued(localId: string, lifecycle: string) {
+        const msg = addMessage(db, 's1', WEBAPP_USER, localId, 'persistent')
+        db.prepare(`UPDATE messages SET lifecycle = ? WHERE id = ?`).run(lifecycle, msg.id)
+    }
+
+    test('锚 seq 之后有 queued 未删行 → true', () => {
+        seedQueued('l-anchor', 'pushed')
+        seedQueued('l-after', 'queued')
+        const anchorSeq = getMessages(db, 's1').find(r => r.localId === 'l-anchor')!.seq
+        expect(hasQueuedMessagesAfter(db, 's1', anchorSeq)).toBe(true)
+    })
+
+    test('锚自身是 queued 不计入（seq 严格大于）', () => {
+        seedQueued('l-anchor', 'queued')
+        const anchorSeq = getMessages(db, 's1')[0].seq
+        expect(hasQueuedMessagesAfter(db, 's1', anchorSeq)).toBe(false)
+    })
+
+    test('锚后行已推进（pushed）或已软删 → false', () => {
+        seedQueued('l-anchor', 'pushed')
+        seedQueued('l-pushed', 'pushed')
+        seedQueued('l-deleted', 'queued')
+        const anchorSeq = getMessages(db, 's1').find(r => r.localId === 'l-anchor')!.seq
+        const deletedSeq = getMessages(db, 's1').find(r => r.localId === 'l-deleted')!.seq
+        softDeleteMessagesFrom(db, 's1', deletedSeq)
+        expect(hasQueuedMessagesAfter(db, 's1', anchorSeq)).toBe(false)
+    })
+})
+
 describe('cancelAllQueuedMessages（停止并清空队列——批量删除 queued 行）', () => {
     let store: Store
     let sessionId: string
@@ -417,15 +450,15 @@ describe('markTerminalReason（command_lifecycle 终态原因落档，I2）', ()
     })
 })
 
-describe('getMessagesByNativeId（撤回目标定位：同 nativeId 全部未删行，I4）', () => {
+describe('getMessagesByNativeId（撤回目标定位：批首单行，min seq，I4）', () => {
     let db: Database
     beforeEach(() => { db = makeDb() })
 
-    test('合并批多行共享 nativeId：全部返回且按 seq 升序', () => {
+    test('合并批多行共享 nativeId：只返回批首行（min seq，LIMIT 1——软删自最小 seq 起语义不变）', () => {
         addMessage(db, 's1', WEBAPP_USER, 'l1', 'persistent', { nativeId: 'nu-1' })
         addMessage(db, 's1', WEBAPP_USER, 'l2', 'persistent', { nativeId: 'nu-1' })
         const rows = getMessagesByNativeId(db, 's1', 'nu-1')
-        expect(rows.map(r => r.localId)).toEqual(['l1', 'l2'])
+        expect(rows.map(r => r.localId)).toEqual(['l1'])
     })
 
     test('软删除行不可见（重复 withdrawn fact 幂等）、其他 nativeId 不串', () => {

@@ -26,6 +26,7 @@ import {
     cancelAllQueuedMessages,
     cancelQueuedMessage,
     getMessagesByNativeId,
+    hasQueuedMessagesAfter,
     markTerminalReason,
     getMessageSubmitState,
     getMessages,
@@ -126,9 +127,14 @@ export class MessageStore {
         return getMessagesByIds(this.db, sessionId, ids)
     }
 
-    /** 按 nativeId 定位全部未删行（合并批 1:N，seq 升序）；撤回目标定位用（I4） */
+    /** 按 nativeId 定位未删批首行（min seq，LIMIT 1）；撤回目标定位用（I4） */
     getMessagesByNativeId(sessionId: string, nativeId: string): StoredMessage[] {
         return getMessagesByNativeId(this.db, sessionId, nativeId)
+    }
+
+    /** 锚 seq 之后是否仍有 hub 层排队行——撤回守卫 1b（用户连发场景不连带删后续排队消息） */
+    hasQueuedMessagesAfter(sessionId: string, seq: number): boolean {
+        return hasQueuedMessagesAfter(this.db, sessionId, seq)
     }
 
     /** command_lifecycle 终态的 terminal_reason 落档（metadata.terminalReason，first-write-wins）；

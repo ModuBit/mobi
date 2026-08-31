@@ -456,16 +456,18 @@ export function getMessagesByIds(
     return rows.map(toStoredMessage)
 }
 
-/** 按 nativeId 定位全部未删行（合并批 1:N——collectBatch 可把多条消息并成一 push 共享
- *  nativeId），按 seq 升序；软删除行不可见——撤回/rewind 已截断的行查不到，天然幂等
- *  （重复 withdrawn fact 不重复受理）。撤回以此定位目标：只取一行会漏删批内前几行（I4）。 */
+/** 按 nativeId 定位未删批首行（LIMIT 1，合并批 1:N——collectBatch 可把多条消息并成一 push
+ *  共享 nativeId，批首行 seq 即最小 seq）；软删除行不可见——撤回/rewind 已截断的行查不到，
+ *  天然幂等（重复 withdrawn fact 不重复受理）。撤回以此定位目标：唯一调用方
+ *  （processWithdrawnFact）只用首行的 seq/localId/content，软删除自最小 seq 起且无上界，
+ *  单行定位不改变批语义（I4）。 */
 export function getMessagesByNativeId(
     db: Database,
     sessionId: string,
     nativeId: string
 ): StoredMessage[] {
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND native_id = ? AND deleted_at IS NULL ORDER BY seq ASC`
+        `SELECT * FROM messages WHERE session_id = ? AND native_id = ? AND deleted_at IS NULL ORDER BY seq ASC LIMIT 1`
     ).all(sessionId, nativeId) as DbMessageRow[]
     return rows.map(toStoredMessage)
 }
@@ -510,6 +512,19 @@ export function getUnsubmittedLocalMessages(db: Database, sessionId: string): St
         `SELECT * FROM messages WHERE session_id = ? AND lifecycle = 'queued' ${NOT_DELETED_FILTER} ORDER BY seq ASC`
     ).all(sessionId) as DbMessageRow[]
     return rows.map(toStoredMessage)
+}
+
+/** 锚 seq 之后是否仍存在 hub 层排队（lifecycle='queued'）的未删行——撤回守卫 1b（批次 A）：
+ *  用户连发场景下后续消息 B 尚未到 CLI（hub 排队中），撤回 A 的无上界软删会连带删掉 B。
+ *  LIMIT 1 探测即返回，O(1)。 */
+export function hasQueuedMessagesAfter(db: Database, sessionId: string, seq: number): boolean {
+    const row = db.prepare(
+        `SELECT 1 FROM messages
+         WHERE session_id = ? AND seq > ? AND lifecycle = 'queued' AND deleted_at IS NULL
+         LIMIT 1`
+    ).get(sessionId, seq)
+    // bun:sqlite 的 .get() 无命中返回 null（非 undefined）
+    return row !== null && row !== undefined
 }
 
 /** 删除一条仍排队（queued）的消息；已推进（pushed 及之后）则不删。 */

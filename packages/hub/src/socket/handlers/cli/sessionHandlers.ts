@@ -19,6 +19,7 @@ import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
+import { hubLogger } from '../../../logger'
 import type { Store, StoredMessage, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
@@ -634,17 +635,34 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         if (rows.length > 0) broadcastStoredMessages(sid, rows)
     }
 
-    /** 撤回事实（messages-facts withdrawn，#53 / 批次 A）：按 nativeId 定位全部未删行（合并批
-     *  1:N——collectBatch 可把多条消息并成一 push 共享 nativeId，只取一行会漏删批内前几行，I4）
-     *  → 自最小 seq 起软删除（无上界——撤回的是用户刚发的消息及其后派生行，竞态迟到行也属
+    /** command_lifecycle 已终态集合（与 advanceMessagesLifecycle 的 rank 4 终态同口径）：
+     *  撤回守卫 1a——终态锚行的消息生命周期已收尾（已回答/已取消/已丢弃/已拒收），撤回不再适用 */
+    const TERMINAL_LIFECYCLES: ReadonlySet<string> = new Set(['done', 'cancelled', 'discarded', 'refused'])
+
+    /** 撤回事实（messages-facts withdrawn，#53 / 批次 A）：按 nativeId 定位未删批首行（min seq，
+     *  合并批 1:N——collectBatch 可把多条消息并成一 push 共享 nativeId，取单行即可覆盖整批，
+     *  I4）→ 软删守卫（1a/1b，任一命中静默跳过——撤回是尽力而为，跳过=消息保留=安全方向）→
+     *  自锚行 seq 起软删除（无上界——撤回的是用户刚发的消息及其后派生行，竞态迟到行也属
      *  撤回范围，与 rewind 的「受理时点上界」语义有意不同）→ lifecycle 留档 withdrawn →
      *  SSE message-withdrawn（localId/blocks/originalText 供 web 乐观移除气泡并回填 composer；
      *  多行时取批内第一行——批 = 一次 push，用户视角是一条提交，composer 还原第一条）。
-     *  定位失败（行不存在/已被撤回或 rewind 软删除）静默忽略：撤回是尽力而为，失败=消息残留。 */
+     *  定位失败（行不存在/已被撤回或 rewind 软删除）静默忽略：失败=消息残留。 */
     const processWithdrawnFact = (sid: string, nativeId: string, at: number) => {
         const rows = store.messages.getMessagesByNativeId(sid, nativeId)
         const first = rows[0]
         if (!first) return   // 无未删行：重复 fact / rewind 竞态天然幂等
+        // 守卫 1a：锚行已终态——消息已收尾，撤回不再适用。advanceMessagesLifecycle 会拒绝
+        // 终态→withdrawn 的留档，但软删除先于其执行且不可逆，必须在软删前拦截
+        if (TERMINAL_LIFECYCLES.has(first.lifecycle ?? '')) {
+            hubLogger.debug(`[messages-facts] withdrawn skipped: anchor already terminal (sid=${sid} nativeId=${nativeId} lifecycle=${first.lifecycle})`)
+            return
+        }
+        // 守卫 1b：锚 seq 之后仍有 hub 层排队行——用户连发场景下 B 尚未到 CLI，
+        // 无上界软删会把 B 一并删掉（跳过=整条撤回让位，B 保留）
+        if (store.messages.hasQueuedMessagesAfter(sid, first.seq)) {
+            hubLogger.debug(`[messages-facts] withdrawn skipped: queued rows exist after anchor (sid=${sid} nativeId=${nativeId} seq=${first.seq})`)
+            return
+        }
         store.messages.softDeleteMessagesFrom(sid, first.seq)
         store.messages.advanceMessagesLifecycle(sid, nativeId, 'withdrawn', at)
         const { blocks, originalText } = extractWithdrawnContent(first.content)
