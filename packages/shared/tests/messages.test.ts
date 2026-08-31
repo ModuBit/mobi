@@ -21,6 +21,9 @@ import {
     isClaudeChatVisibleSystemSubtype,
     isClaudeChatVisibleMessage,
     isLifecycleAhead,
+    isCancelQueued,
+    shouldStopTasks,
+    DEFAULT_STOP_KIND,
 } from '../src/messages'
 
 describe('isRoleWrappedRecord', () => {
@@ -276,5 +279,23 @@ describe('isLifecycleAhead', () => {
         expect(isLifecycleAhead('processing', 'withdrawn')).toBe(true)
         expect(isLifecycleAhead('withdrawn', 'queued')).toBe(false)
         expect(isLifecycleAhead('withdrawn', 'done')).toBe(false)
+    })
+})
+
+describe('StopKind 判别函数', () => {
+    it('缺省值为 turn', () => {
+        expect(DEFAULT_STOP_KIND).toBe('turn')
+    })
+    it('turn 档不清队列不停任务', () => {
+        expect(isCancelQueued('turn')).toBe(false)
+        expect(shouldStopTasks('turn')).toBe(false)
+    })
+    it('turn-queue 档清队列不停任务', () => {
+        expect(isCancelQueued('turn-queue')).toBe(true)
+        expect(shouldStopTasks('turn-queue')).toBe(false)
+    })
+    it('turn-queue-tasks 档清队列且停任务', () => {
+        expect(isCancelQueued('turn-queue-tasks')).toBe(true)
+        expect(shouldStopTasks('turn-queue-tasks')).toBe(true)
     })
 })

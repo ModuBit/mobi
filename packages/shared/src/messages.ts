@@ -164,6 +164,26 @@ export function isLifecycleAhead(current: MessageLifecycle | null | undefined, c
 }
 
 /**
+ * 停止动作三档（批次 A：停止 × 队列语义闭环）。
+ * - 'turn'：只中断当前 turn（web 点按停止；队列照跑、后台任务存活）
+ * - 'turn-queue'：中断当前 turn + 清空两层队列（hub queued 物理删除 + CC 层 cancel_queued）
+ * - 'turn-queue-tasks'：再终止全部运行中的后台任务（遍历 stopTask）
+ */
+export type StopKind = 'turn' | 'turn-queue' | 'turn-queue-tasks'
+
+export const DEFAULT_STOP_KIND: StopKind = 'turn'
+
+/** 该档位是否需要随 interrupt 发送 cancel_queued（清 CC 层队列） */
+export function isCancelQueued(kind: StopKind): boolean {
+    return kind !== 'turn'
+}
+
+/** 该档位是否需要遍历停止运行中的后台任务 */
+export function shouldStopTasks(kind: StopKind): boolean {
+    return kind === 'turn-queue-tasks'
+}
+
+/**
  * CLI→Hub 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
  * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。
  * 与旧 4 事件（messages-submitted/bound/native-attached/acked）语义对照：
