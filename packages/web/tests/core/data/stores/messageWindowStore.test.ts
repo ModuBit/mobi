@@ -11,6 +11,7 @@ import {
     markMessagesSubmitted,
     updateMessageStatus,
     reconcileLatestMessages,
+    withdrawFrom,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
@@ -365,5 +366,27 @@ describe('reconcileLatestMessages（rewind 超时对账）', () => {
         await pending
 
         expect(getMessageWindowState('s1').messages).toEqual([])
+    })
+})
+
+describe('withdrawFrom（消息撤回，#53：移除目标行及其后全部，与 hub softDeleteMessagesFrom 无上界对齐）', () => {
+    beforeEach(() => _resetForTest())
+
+    it('移除目标 localId 及其后全部行', () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2), msg('c', 3), msg('d', 4)])
+        withdrawFrom('s1', 'b')
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+
+    it('命中 id（hub 侧 localId 缺失时以行 id 作锚点）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2)])
+        withdrawFrom('s1', 'a')
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual([])
+    })
+
+    it('目标不存在时不移除任何行', () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2)])
+        withdrawFrom('s1', 'nope')
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b'])
     })
 })

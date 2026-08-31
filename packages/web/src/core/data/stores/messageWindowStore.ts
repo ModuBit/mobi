@@ -336,6 +336,21 @@ export function rewindFrom(sessionId: string, deleteFromSeq: number): void {
     })
 }
 
+/**
+ * 消息撤回（#53）：移除目标 localId 及其后全部行——与 hub softDeleteMessagesFrom
+ * 的「无上界软删除」对齐，兜住撤回期间竞态到达的后继行。锚点兼容 localId / id
+ * （hub 广播的 localId 取 row.localId ?? row.id）；目标不存在时不动任何行
+ * （撤回尽力而为，fetchLatestMessages refetch 兜底对账）。
+ */
+export function withdrawFrom(sessionId: string, localId: string): void {
+    _internal.updateState(sessionId, prev => {
+        const idx = prev.messages.findIndex(m => m.localId === localId || m.id === localId)
+        if (idx === -1) return prev
+        const next = prev.messages.slice(0, idx)
+        return _internal.buildState(prev, { messages: next })
+    })
+}
+
 /** 发送状态机（sending/sent/failed） */
 export function updateMessageStatus(sessionId: string, localId: string, status: MessageStatus): void {
     if (!localId) return

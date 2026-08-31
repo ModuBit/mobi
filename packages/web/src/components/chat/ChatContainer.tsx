@@ -27,7 +27,7 @@ import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
-import { isSegmentEmpty, type ComposerSegments } from '@/domain/chat/composerSegments'
+import { isSegmentEmpty, emptySegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -50,6 +50,7 @@ import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/t
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
+import { useWithdrawStore, useWithdrawRequest } from '@/core/data/stores/withdrawStore'
 import { reconcileLatestMessages } from '@/core/data/stores/messageWindowStore'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -408,8 +409,38 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 会话视图卸载清理（本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建）
     useEffect(() => {
-        return () => useRewindStore.getState().clearSession(sessionId)
+        return () => {
+            useRewindStore.getState().clearSession(sessionId)
+            // 滞留的撤回请求随会话视图离场丢弃（spec §7.5：composer 不在场不回填）
+            useWithdrawStore.getState().clearSession(sessionId)
+        }
     }, [sessionId])
+
+    // ──────────────────────────────────────────────────────────────
+    // 消息撤回消费（#53 / spec §7.5 / D6：无 toast/系统消息，回填即反馈）
+    // ──────────────────────────────────────────────────────────────
+
+    // SSE 层已落 store 的撤回请求（reactive 订阅：请求到达即触发下方 effect）
+    const withdrawRequest = useWithdrawRequest(sessionId)
+    // 挂载首帧只丢弃「会话打开前」滞留的陈旧请求、不回填——撤回回填只服务
+    // 「用户正看着消息消失」的即时反馈，隔了会话切换的陈旧回填会覆盖用户当前输入
+    const withdrawMountedRef = useRef(false)
+    useEffect(() => {
+        if (!withdrawMountedRef.current) {
+            withdrawMountedRef.current = true
+            useWithdrawStore.getState().clearSession(sessionId)
+            return
+        }
+        if (!withdrawRequest) return
+        const req = useWithdrawStore.getState().consumeWithdraw(sessionId)
+        if (!req) return
+        // 结构化还原成功按分段回填（附件双桶 + 引用一并恢复）；失败兜底 originalText 纯文本
+        if (req.segments) {
+            setDraftRequest({ segments: req.segments, nonce: ++draftNonceRef.current })
+        } else if (req.originalText) {
+            setDraftRequest({ segments: { ...emptySegments(), text: req.originalText }, nonce: ++draftNonceRef.current })
+        }
+    }, [withdrawRequest, sessionId])
 
     // rewind 卡死兜底（对齐 clearStuck 模式，spec §4.5）：
     // - truncated 已到、completed 30s 未到（CLI 崩溃于文件恢复阶段，失败模式 #9）→ 超时视为完成（filesRestored 按 false）

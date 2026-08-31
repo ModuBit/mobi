@@ -26,7 +26,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { App } from 'antd'
 import { NotificationPermissionGate, resetPermissionPrompt } from '@/components/NotificationPermissionGate'
 import { useNotificationStore } from '@/core/data/stores/notificationStore'
-import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
+import type { Session, SyncEvent, DecryptedMessage, UserContentBlock } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
@@ -39,8 +39,25 @@ import {
     markMessagesSubmitted as markSubmittedInStore,
     clearMessageWindow,
     fetchLatestMessages,
+    withdrawFrom,
 } from '@/core/data/stores/messageWindowStore'
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
+import { requestWithdraw, nextWithdrawNonce } from '@/core/data/stores/withdrawStore'
+import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
+
+/**
+ * blocks → composer 分段还原（撤回回填，spec §7.5）。
+ * 信封内层 blocks 为 UserContentBlock[]；形状异常（旧 hub / 脏数据）→ null，
+ * 消费方兜底 originalText 纯文本（与排队消息「编辑回填」同构）。
+ */
+function safeDeserializeSegments(blocks: unknown[]): ComposerSegments | null {
+    if (!Array.isArray(blocks)) return null
+    try {
+        return deserializeSegments(blocks as UserContentBlock[])
+    } catch {
+        return null
+    }
+}
 
 /**
  * 使用 setQueryData 直接更新 session 缓存
@@ -370,6 +387,21 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     markSubmittedInStore(event.sessionId, event.localIds, event.submittedAt)
                 }
                 break
+            case 'message-withdrawn': {
+                // 撤回刚发消息（#53 / spec §7.5）：乐观移除与 hub 软删除（softDeleteMessagesFrom
+                // 无上界）对齐；服务端已删行不会出现在 refetch 结果里，merge 不会复活，refetch 兜底对账
+                withdrawFrom(event.sessionId, event.localId)
+                void fetchLatestMessages(apiRef.current, event.sessionId)
+                // 回填请求落 store；会话未打开时 ChatContainer 不消费，回填自然跳过
+                //（spec §7.5——composer 不在场，不覆盖用户输入）
+                requestWithdraw(event.sessionId, {
+                    localId: event.localId,
+                    segments: safeDeserializeSegments(event.blocks),
+                    originalText: event.originalText,
+                    nonce: nextWithdrawNonce(),
+                })
+                break
+            }
             case 'machine-updated':
                 scheduleInvalidation('machines')
                 break
