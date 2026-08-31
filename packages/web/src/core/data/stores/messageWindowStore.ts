@@ -323,8 +323,9 @@ export async function reconcileLatestMessages(api: MobiApi, sessionId: string): 
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         updateStateForGeneration(sessionId, 'latest', gen, p => {
             // 服务端真相为主体；本地乐观行（未提交，服务端必然无行）merge 回来防丢输入——
-            // sending/queued/failed 都可能尚未在服务端落行（queued = 运行中排队，POST 消费在途）
-            const localPending = p.messages.filter(m => m.status === 'sending' || m.status === 'queued' || m.status === 'failed')
+            // sending/queued/failed 都可能尚未在服务端落行（queued = 运行中排队，POST 消费在途）。
+            // 乐观行同样过撤回墓碑闸门：重入窗口的已撤回行不得借对账复活
+            const localPending = filterWithdrawn(sessionId, p.messages.filter(m => m.status === 'sending' || m.status === 'queued' || m.status === 'failed'))
             const messages = mergeMessages(filterWithdrawn(sessionId, res.data.messages), localPending)
             // hasMore 必须跟随响应更新：替换后窗口只剩一页，沿用旧值 false 会让
             // 已加载的更早历史永远无法再加载（fetchOlderMessages 的 !prev.hasMore 守卫）
@@ -342,6 +343,22 @@ export async function reconcileLatestMessages(api: MobiApi, sessionId: string): 
 // queued/optimistic actions
 // ──────────────────────────────────────────────────────────────
 
+/**
+ * 按谓词过滤窗口消息（各「移除行」action 的共用脚手架）：
+ * updateState + filter + 长度守卫（无行命中不动 state，避免无意义 notify）+ buildState。
+ * 返回是否实际移除了行（供撤回判断「目标是否在本地窗口」）。
+ */
+function filterMessages(sessionId: string, pred: (m: DecryptedMessage) => boolean): boolean {
+    let removed = false
+    _internal.updateState(sessionId, prev => {
+        const next = prev.messages.filter(pred)
+        if (next.length === prev.messages.length) return prev
+        removed = true
+        return _internal.buildState(prev, { messages: next })
+    })
+    return removed
+}
+
 /** 乐观发送（useSendMessage onMutate） */
 export function appendOptimisticMessage(sessionId: string, message: DecryptedMessage): void {
     _internal.updateState(sessionId, prev => _internal.buildState(prev, { messages: [...prev.messages, message] }))
@@ -349,11 +366,7 @@ export function appendOptimisticMessage(sessionId: string, message: DecryptedMes
 
 /** 取消排队（useCancelQueuedMessage onMutate）—— 按 localId 或 id 移除 */
 export function removeOptimisticMessage(sessionId: string, localId: string): void {
-    _internal.updateState(sessionId, prev => {
-        const next = prev.messages.filter(m => m.localId !== localId && m.id !== localId)
-        if (next.length === prev.messages.length) return prev
-        return _internal.buildState(prev, { messages: next })
-    })
+    filterMessages(sessionId, m => m.localId !== localId && m.id !== localId)
 }
 
 /** SSE messages-submitted：queued 被 agent 消费，翻 lifecycleAt + lifecycle */
@@ -373,11 +386,7 @@ export function markMessagesSubmitted(sessionId: string, localIds: string[], sub
  * oldestSeq 不变（只删尾部，最小 seq 不动）。
  */
 export function rewindFrom(sessionId: string, deleteFromSeq: number): void {
-    _internal.updateState(sessionId, prev => {
-        const next = prev.messages.filter(m => m.seq == null || m.seq < deleteFromSeq)
-        if (next.length === prev.messages.length) return prev
-        return _internal.buildState(prev, { messages: next })
-    })
+    filterMessages(sessionId, m => m.seq == null || m.seq < deleteFromSeq)
 }
 
 /**
@@ -399,11 +408,7 @@ export function withdrawFrom(sessionId: string, localId: string): void {
             recordWithdrawnIds(sessionId, [m.localId, m.id])
         }
     }
-    _internal.updateState(sessionId, p => {
-        const next = p.messages.filter(m => !isWithdrawn(sessionId, m))
-        if (next.length === p.messages.length) return p
-        return _internal.buildState(p, { messages: next })
-    })
+    filterMessages(sessionId, m => !isWithdrawn(sessionId, m))
 }
 
 /** 发送状态机（sending/sent/failed） */
@@ -429,9 +434,5 @@ export function updateMessageStatus(sessionId: string, localId: string, status: 
  * hub 批删删不到它们，照常留在输入轨道）。
  */
 export function removeQueuedMessages(sessionId: string): void {
-    _internal.updateState(sessionId, prev => {
-        const next = prev.messages.filter(m => !isQueuedInMobi(m))
-        if (next.length === prev.messages.length) return prev
-        return _internal.buildState(prev, { messages: next })
-    })
+    filterMessages(sessionId, m => !isQueuedInMobi(m))
 }

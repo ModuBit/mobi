@@ -326,6 +326,22 @@ describe('reconcileLatestMessages（rewind 超时对账）', () => {
         expect([...ids].sort()).toEqual(['a', 'f', 'opt', 'q'])
     })
 
+    it('tombstone 命中的 localPending 行对账不复活（撤回闸门覆盖乐观行合并路径）', async () => {
+        const opt = { ...msg('opt', null), localId: 'loc-opt', status: 'queued' as const } as DecryptedMessage
+        ingestIncomingMessages('s1', [msg('a', 3)])
+        appendOptimisticMessage('s1', opt)
+        withdrawFrom('s1', 'loc-opt') // 撤回：墓碑 + 乐观移除
+        // 模拟重入路径把同 id 乐观行带回窗口（迟到重放/重试等）
+        appendOptimisticMessage('s1', opt)
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toContain('opt')
+
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+        await reconcileLatestMessages(api, 's1')
+
+        // 修复前：localPending 合并不经 filterWithdrawn，已撤回行对账时复活
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+
     it('hasMore 跟随响应更新：旧窗口 hasMore=false 且已加载全量历史，替换后只剩一页 hasMore=true 时不得沿用旧值（否则更早历史永远无法再加载）', async () => {
         _internal.updateState('s1', prev => _internal.buildState(prev, {
             messages: [msg('old', 1), msg('a', 3), msg('b', 4)],
