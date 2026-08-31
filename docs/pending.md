@@ -478,6 +478,8 @@ mobi.app（dmg 分发）
 
 ## 53. 撤回刚发消息（发送后未响应时 Esc 回填输入框）
 
+**状态**：✅ 2026-08-31 已实施（方案 A，随批次 A 停止×队列语义闭环，spec：`docs/superpowers/specs/2026-08-31-stop-queue-semantics-design.md`）。撤回走 `messages-facts` 的 `withdrawn` fact → hub 软删除 + SSE `message-withdrawn` → web 清窗 + 回填 composer，并带两段式复验（interrupt 返回后复验「无输出」，等待期出输出降级普通停止）。方案 B 保留为后续优化项，已知边界（resume 复活）不解决。以下为原始设计记录。
+
 **背景**（2026-08-18 讨论）：对齐 CC CLI 的 Esc 行为——发出消息后、还没响应时停止，这条消息回到输入框，可改错字重发。用户诉求很具体：「发出去发现发错/错别字，紧急终止后想改重发」。
 
 **最终语义**（三分支，统一进 Stop/interrupt，2026-08-18 定）：
@@ -511,7 +513,7 @@ interrupt（用户停止）
 - `packages/hub/src/store/messages.ts` — `softDeleteMessagesFrom`（软删除复用）
 - rewind 回填链路：`rewindStore.ts` / `draftRequest` / `collectRewindBatchText`
 
-**优先级**：简单版 A 已定，待实施；优化点 B 后续。
+**优先级**：简单版 A 已实施（2026-08-31）；优化点 B 后续。
 
 ---
 
@@ -634,3 +636,15 @@ interrupt（用户停止）
 **相关 memory**：`xmarkdown-append-only-assumption`（库的流式管线假设）、`streaming-ux-smoothness`（单段决策过程）
 
 **优先级**：中。日常长度（<16k）无感；长回复（>30k 字符的代码生成场景）真实可感。
+
+---
+
+## 60. refused 的 terminalReason 未在 hub 侧落库留档（2026-08-31 实现裁定）
+
+**背景**：批次 A（停止 × 队列语义闭环）给 lifecycle 终态补全了 `refused`，`command_lifecycle` 帧携带的 `terminal_reason` 已透传进 lifecycle fact。但 hub 受理时（`sessionHandlers.processLifecycleFact`）**只消费 state、不落库 `terminalReason`**——`messages.metadata` 无此字段，当前消费走 CC 侧消息 metadata（web footer 由 `metaById.get(block.id)?.terminalReason` 读 assistant 消息信封内的 terminal_reason，非 lifecycle fact 通道）。
+
+**后果**：从 hub DB 侧查不到某条消息被拒收/异常终止的原因；历史行（CC metadata 之外仅 lifecycle state 留档）无法事后审计 terminal_reason。
+
+**方向**：若有审计需求（如导出/检索「为什么这条消息死了」），需给 `messages.metadata` 加 terminalReason 字段并在 `processLifecycleFact` 落库 + 随行广播——与 `nativeAckAt` 双写模式同构。
+
+**优先级**：低。当前无消费缺口（web 实时展示不依赖 hub 留档），纯审计需求触发时再补。

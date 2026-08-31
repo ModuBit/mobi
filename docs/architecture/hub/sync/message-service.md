@@ -55,6 +55,7 @@ flowchart TB
 | `sendMessage()` | 发送消息 |
 | `markMessagesPushed()` | 把 localId 对应的 queued 消息推进为 pushed（`lifecycle`/`lifecycleAt` 落库，first-write-wins） |
 | `cancelQueuedMessage()` | 取消仍排队的消息（物理删除）；已 push 的不动 |
+| `cancelAllQueuedMessages()` | 批量取消该会话所有 queued 消息（物理删除，返回条数）；abort `stopKind` 含清队列档时由 hub 受理侧触发（批次 A） |
 
 ## 消息发送流程
 

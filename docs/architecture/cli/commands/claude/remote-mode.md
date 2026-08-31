@@ -151,7 +151,7 @@ flowchart TB
 |------|----------|------|
 | **Ctrl+C** | 终端 `onExit` handler | `requestExit('exit')` → 中止 SDK → 清理退出 |
 | **双击空格** | 终端 `onSwitchToLocal` handler | `requestExit('switch')` → 切换到 Local |
-| **RPC abort** | Hub 侧发送 abort RPC | 中止当前 SDK 查询 |
+| **RPC abort** | Hub 侧发送 abort RPC | 三档分派（`stopKind`，批次 A）：`'turn'` 只停本轮（含撤回两段式判定）；`'turn-queue'` 加 `interrupt({cancelQueued:true})` 清 CC 层队列；`'turn-queue-tasks'` 再遍历 `stopTask` 终止后台任务（`perTaskStopAffordance: true` 下点按不再连带后台） |
 | **RPC switch** | Hub 侧发送 switch RPC | 切换到 Local 模式 |
 
 ## claudeRemote — SDK 集成
@@ -261,7 +261,7 @@ const sdkOptions: Options = {
 
 **门控效果**：用户在 agent 运行期间发送的消息（status='queued'）会排队悬浮在 Web 端，等 agent idle（result 到达）后才被真正拉取并送给 SDK，此时 CLI 通过 `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts` 统一出口，`messages-facts` 事件 pushed fact）通知 Hub 将这批消息的 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）。
 
-**command_lifecycle 帧拦截**：CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。`onMessage` 中纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）把 started→processing、completed→done、cancelled/discarded 直传，控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报 Hub 终态推进。
+**command_lifecycle 帧拦截**：CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。`onMessage` 中纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）把 started→processing、completed→done、cancelled/discarded/refused 直传（帧上可选 `terminal_reason` 原样透传进 fact），控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报 Hub 终态推进。
 
 ## PermissionHandler — 工具权限审批
 

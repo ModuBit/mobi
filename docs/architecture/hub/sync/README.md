@@ -215,7 +215,7 @@ flowchart LR
 |------|------|
 | `spawnSession()` | 创建新会话 |
 | `resumeSession()` | 恢复会话 |
-| `abortSession()` | 中止会话 |
+| `abortSession()` | 中止会话（`stopKind` 三档：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） |
 | `archiveSession()` | 归档会话 |
 | `switchSession()` | 切换本地/远程模式 |
 | `renameSession()` | 重命名会话（更新 Hub DB 后 best-effort 同步 CC customTitle） |

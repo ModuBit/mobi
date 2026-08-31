@@ -58,7 +58,7 @@ flowchart TB
 |------|------|------------|
 | `approvePermission` | 批准权限请求 | `{sessionId}:permission` |
 | `denyPermission` | 拒绝权限请求 | `{sessionId}:permission` |
-| `abortSession` | 中止会话 | `{sessionId}:abort` |
+| `abortSession` | 中止会话（`stopKind` 三档：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`；后两档 hub 侧同步 `cancelAllQueuedMessages` 批量清 queued 行） | `{sessionId}:abort` |
 | `switchSession` | 切换 local/remote | `{sessionId}:switch` |
 | `requestSessionConfig` | 请求配置更新 | `{sessionId}:set-session-config` |
 | `requestRename` | 回写 CC customTitle（Mobi → CC 标题同步，best-effort） | `{sessionId}:rename-session` |

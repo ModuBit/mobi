@@ -17,7 +17,7 @@
 | POST | `/sessions/:id/resume` | 恢复会话 | - |
 | POST | `/sessions/:id/upload` | 上传文件 | 会话活跃 |
 | POST | `/sessions/:id/upload/delete` | 删除上传文件 | 会话活跃 |
-| POST | `/sessions/:id/abort` | 中止会话 | 会话活跃 |
+| POST | `/sessions/:id/abort` | 中止会话（body 可带 `stopKind`：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） | 会话活跃 |
 | POST | `/sessions/:id/archive` | 归档会话 | 会话活跃 |
 | POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 |
 | POST | `/sessions/:id/permission-mode` | 设置权限模式 | 会话活跃 |

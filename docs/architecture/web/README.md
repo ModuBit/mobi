@@ -453,6 +453,9 @@ sequenceDiagram
     else messages-submitted（排队消息已推送给 Claude Code）
         Provider->>Provider: markMessagesSubmitted()（lifecycle 翻为 pushed，缓存就地修补）
         QC->>UI: 自动 re-render
+    else message-withdrawn（撤回刚发消息，批次 A）
+        Provider->>Provider: messageWindowStore 乐观移除该 localId 及其后全部行<br/>+ composer 回填（deserializeSegments(blocks)，失败兜底 originalText）
+        QC->>UI: 自动 re-render
     else session-added / session-removed
         Provider->>QC: invalidateQueries(sessions) / projectViews 批失效
         QC->>UI: 刷新列表
@@ -467,6 +470,7 @@ sequenceDiagram
 - `session-updated` 使用 `setQueryData` 直接修补缓存，避免心跳触发 API 请求
 - `message-received` 使用 `invalidateQueries` 触发 refetch，因为消息有分页和去重逻辑
 - `messages-submitted` 使用 `markMessagesSubmitted` 就地修补缓存（把命中 localId 的消息 `lifecycle` 翻为 `'pushed'`、`lifecycleAt`/`positionAt` 跳到 submittedAt），避免 refetch 抖动
+- `message-withdrawn`（撤回，#53）走乐观移除 + 回填，与 hub `softDeleteMessagesFrom` 无上界对齐；会话未打开时只落 store 移除、跳过回填（composer 不在场，不覆盖用户输入）
 - 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求；列表失效分 `sessions` / `projectViews`（projects / projectSessions / recentSessions 三个 key）等 scope 批量执行
 - `project-removed` 后名下会话已被 Hub 解绑进「最近」，与 `session-*` 共用 `projectViews` 批失效
 - **sessions 单一数据源**：`useProjectSessions` / `useRecentSessions` 的 queryFn 把分页会话 upsert 进全局 sessions 缓存（`mergeSessions`），列表只持 sessionIds——列表数据永远是全局缓存的视图而非独立副本

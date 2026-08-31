@@ -307,6 +307,7 @@ Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `connection-changed`：连接状态变化
 - `idle-timeout-warning`：空闲超时预警
 - `messages-submitted`：排队消息被 CLI 推送给 Claude Code（`lifecycle='pushed'` + `lifecycleAt` 落库；事件名与载荷 `{localIds, submittedAt}` 沿用旧名），Web 据此把悬浮消息翻为正式消息
+- `message-withdrawn`：撤回刚发消息（批次 A，载荷 `{sessionId, localId, blocks, originalText}`），Web 据此乐观移除气泡并回填 composer
 
 Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新。
 
@@ -346,11 +347,11 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 
 | 列 / 字段 | 含义 |
 |------|------|
-| `lifecycle` (`messages.lifecycle` / `DecryptedMessage.lifecycle`，类型 `MessageLifecycle`) | 排队生命周期：`NULL`（非排队轨道，如 agent/CLI/system 输出）/ `'queued'`（webapp 提交待消费）/ `'pushed'`（已推给 Claude Code，原 `queue_state='consumed'`）/ `'acked'`（CC isReplay 回显确认，原 `metadata.nativeAckAt`）/ `'processing'`/`'done'`/`'cancelled'`/`'discarded'`（CC command_lifecycle 终态回执，P2 已接入）/ `'withdrawn'`（预留，pending #53 撤回）。「是否排队」的唯一读取依据 |
+| `lifecycle` (`messages.lifecycle` / `DecryptedMessage.lifecycle`，类型 `MessageLifecycle`) | 排队生命周期：`NULL`（非排队轨道，如 agent/CLI/system 输出）/ `'queued'`（webapp 提交待消费）/ `'pushed'`（已推给 Claude Code，原 `queue_state='consumed'`）/ `'acked'`（CC isReplay 回显确认，原 `metadata.nativeAckAt`）/ `'processing'`/`'done'`/`'cancelled'`/`'discarded'`/`'refused'`（CC command_lifecycle 终态回执，P2 已接入；`refused` 为批次 A 补全的拒收终态）/ `'withdrawn'`（撤回，pending #53 批次 A 已实施）。「是否排队」的唯一读取依据 |
 | `lifecycle_at` (`lifecycleAt`) | 最近一次 lifecycle 转换的时刻；非排队消息恒 `NULL`。不参与排序（排序请用 `positionAt`，不要 COALESCE 本字段） |
 | `position_at` (`positionAt`) | 排序锚点；insert 时 = `created_at`，排队消息 push 时跳到 push 时刻（保留「运行中消费的消息排在 turn 之后」UX） |
 
-转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded}`，`queued→withdrawn`。推进序由 shared `LIFECYCLE_RANK` 定义（与 Hub SQL CASE rank 同语义，勿单边改：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4——done/cancelled/discarded 同 rank 互不覆盖、withdrawn 单独高位 5），`isLifecycleAhead` 为其判定函数。
+转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded|refused}`，`queued→withdrawn`。推进序由 shared `LIFECYCLE_RANK` 定义（与 Hub SQL CASE rank 同语义，勿单边改：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4——done/cancelled/discarded/refused 同 rank 互不覆盖、withdrawn 单独高位 5），`isLifecycleAhead` 为其判定函数。
 
 ### 事实上报协议（messages-facts，CLI→Hub）
 
@@ -362,13 +363,14 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 **`messages-facts`**（�
 | `bound` | localId → nativeId 锚点绑定（push 时生成，可带 nativeSessionId） | `processBound` → `bindNativeIds`（幂等，逐项校验） |
 | `attached` | native 会话 id 确立，补写缺 nativeSessionId 的行 | `processAttached` → `attachNativeSessionId`（只补空缺） |
 | `acked` | CC isReplay 回显确认 | `processAcked` → `advanceMessagesAcked` + `markMessagesAcked` |
-| `lifecycle` | command_lifecycle 终态信号 | `processLifecycleFact` → `advanceMessagesLifecycle`（单调推进，见下） |
+| `lifecycle` | command_lifecycle 终态信号（state 含 `refused`，可带 `terminalReason`） | `processLifecycleFact` → `advanceMessagesLifecycle`（单调推进，见下） |
+| `withdrawn` | 撤回刚发消息（pending #53，批次 A）：最后一条 user 无任何输出时停止 | `processWithdrawnFact` → 按 nativeId 定位行 → `softDeleteMessagesFrom(seq)`（无上界，兜住竞态行）→ `advanceMessagesLifecycle` 留档 `'withdrawn'` → SSE `message-withdrawn`（web 清窗 + 回填 composer，见「停止三档与撤回」） |
 
 `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。旧 4 事件（`messages-submitted`/`messages-bound`/`messages-native-attached`/`messages-acked`）保留兼容旧 CLI 二进制——Hub 双受理、处理体共享防逻辑分叉（#54 收敛清理时下线）。注意 SSE `messages-submitted`（Hub→Web）名字与载荷 `{localIds, submittedAt}` 不变。
 
 ### 终态接入：command_lifecycle 帧拦截
 
-CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。CLI `onMessage` 中用纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）拦截：**started→processing、completed→done、cancelled/discarded 直传**（queued 不上报，Hub 已有初始排队态）；控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报。Hub `advanceMessagesLifecycle` 按 nativeId 单调推进（CASE rank：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4，已处终态/withdrawn 不被覆盖、processing 不回退，乱序帧安全），推进后 `getMessagesByIds` 回读完整行，`broadcastStoredMessages` 逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费，见「终态 UI 可见性」）。
+CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。CLI `onMessage` 中用纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）拦截：**started→processing、completed→done、cancelled/discarded/refused 直传**，帧上可选 `terminal_reason` 原样透传进 fact（开放 string，web 消费时才解释；hub 只消费 state 不落库——见 pending #60）；queued 不上报（Hub 已有初始排队态）。控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报。Hub `advanceMessagesLifecycle` 按 nativeId 单调推进（CASE rank：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4（含 refused），已处终态/withdrawn 不被覆盖、processing 不回退，乱序帧安全），推进后 `getMessagesByIds` 回读完整行，`broadcastStoredMessages` 逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费，见「终态 UI 可见性」）。
 
 ### 终态 UI 可见性（P3，粗粒度）
 
@@ -379,7 +381,23 @@ CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `comma
 - **悬浮条「已丢弃」分区**：`isDiscardedInMobi`（`lifecycle==='cancelled' || 'discarded'`，剔除 `status='sending'/'failed'` 乐观在途/失败态）。`QueuedMessagesBar` 增「已丢弃」分区——灰色删除线 + 状态词（已取消/已丢弃），**无任何操作按钮**，消息不再静默消失。`ComposerInfoPanel` 数据源与 `hasContent` 门禁（hasQueued 信号）均纳入 discarded：turn 死亡常态下无 requests/todos/tasks/agents，丢弃分区是面板唯一内容，只算 queued 会让面板整体卸载。
 - **气泡终态标注**：`ChatContainer` 以 `lifecycleById` 为判据，cancelled/discarded 的用户气泡 footer 同排左侧加灰色小标注（icon + 状态词，不抢焦）；`ctxKey` 加 `terminalLifecycleCount` 让缓存失效，标注随广播即时出现（lifecycle 翻转不动 block 引用，不进签名就「刷新才见」）。
 
-**粗粒度边界**：done/processing/pushed/acked 无任何标注（用户不关心传输细节）；withdrawn 不做（#53 预留）。
+**粗粒度边界**：done/processing/pushed/acked 无任何标注（用户不关心传输细节）；cancelled 附带 terminal_reason 原因标注（命中已知 key 才出：`api_error`/`budget_exhausted`）；refused 走终态推进（同 rank 互不覆盖）但标注按现状未单列；withdrawn 不需要标注——消息已软删除，撤回生效即从列表消失。
+
+### 停止三档与撤回（批次 A，2026-08-31）
+
+停止动作从「一个按钮一种结果」分化为三档（shared `StopKind`，判别函数 `isCancelQueued`/`shouldStopTasks` 集中语义，spec：`docs/superpowers/specs/2026-08-31-stop-queue-semantics-design.md`）：
+
+| stopKind | 语义 | hub 层队列（lifecycle='queued'） | CC 层队列（已 push 未执行） | 后台任务 |
+|---|---|---|---|---|
+| `'turn'`（点按，缺省） | 只停本轮 | 不动 | 不动（`interrupt()`） | 继续运行（`perTaskStopAffordance: true`） |
+| `'turn-queue'` | 停本轮 + 清空队列 | `cancelAllQueuedMessages` 批量物理删除 | `interrupt({cancelQueued:true})`，被取消消息由 command_lifecycle `'cancelled'` 帧自动回流落库 | 继续运行 |
+| `'turn-queue-tasks'` | 全部停止 | 同上 | 同上 | `backgroundTasks()` 遍历逐个 `stopTask(id)`（单个失败不中断） |
+
+CLI `handleAbortRequest(stopKind)` 是分派中心（`claudeRemoteLauncher.ts`）。撤回是 `'turn'` 档内嵌的三分支判定：turn 已有输出或 CLI 本地 pump 队列非空 → 普通停止；**无输出且队列空且 `lastPushedNativeId` 非空** → 撤回两段式（D4）：`interrupt()` 返回后复验 `turnHasOutput`——仍无输出则上报 withdrawn fact 并抑制 aborted 灰行（撤回生效），等待期模型抢先输出则降级普通停止。两个判定标志均为单值标量（`turnTracking`：`hasOutput` result 复位、`lastPushedNativeId` push 用户消息时覆盖），丢失只降级不误删。
+
+停止灰行对账：中断 result 注入 `stopKind`/`stillQueuedCount`（SDK `interrupt` 回执的 `still_queued` 长度），aborted event 按优先级渲染「N 条消息仍会执行」＞「队列已清空」＞「队列与后台任务已停止」，字段缺省渲染与历史一致。撤回的 web 消费：SSE `message-withdrawn` → `messageWindowStore` 乐观移除该 localId 及其后全部行（与软删除无上界对齐）+ composer 回填（`deserializeSegments(blocks)`，失败兜底 `originalText`；会话未打开只落移除不回填）。
+
+已知边界：撤回只清 Hub/Web，CLI `.jsonl` 残留行在 resume 时复活（pending #53；方案 B 用 `resumeSessionAt` 裁剪，后续做）。
 
 ### 不变量与单一决策点
 
@@ -414,7 +432,8 @@ flowchart LR
 | **Gated Pump（C-2）** | CLI `userInputLoop` | agent 运行时不 pull，等 result 才拉取，消息始终停留在 MessageQueue |
 | **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts`） | → Hub `messages-facts` handler → `processSubmitted` → `markMessagesPushed`（queued→pushed，first-write-wins）→ SSE `messages-submitted` |
 | **回显确认（acked）** | CLI `onMessage` 检测 isReplay 回显 → `emitMessagesAcked`（`emitFacts`） | → Hub `processAcked`：按 nativeId 双写——先 `advanceMessagesAcked` 推进 `lifecycle='acked'` 再写 `metadata.nativeAckAt`（rewind 判据不动，共一时间戳消除分叉），推进行逐行广播 |
-| **终态接入（command_lifecycle）** | CLI `onMessage` 帧拦截 `commandLifecycleToFact`（started→processing、completed→done、cancelled/discarded 直传）→ `emitLifecycleFact`（`emitFacts`） | → Hub `processLifecycleFact` → `advanceMessagesLifecycle`（nativeId 单调推进，CASE rank 防乱序回退）→ `getMessagesByIds` 回读 → 逐行广播 update new-message（Web 单调合并实时生效，见「终态 UI 可见性」） |
+| **终态接入（command_lifecycle）** | CLI `onMessage` 帧拦截 `commandLifecycleToFact`（started→processing、completed→done、cancelled/discarded/refused 直传，terminal_reason 透传）→ `emitLifecycleFact`（`emitFacts`） | → Hub `processLifecycleFact` → `advanceMessagesLifecycle`（nativeId 单调推进，CASE rank 防乱序回退）→ `getMessagesByIds` 回读 → 逐行广播 update new-message（Web 单调合并实时生效，见「终态 UI 可见性」） |
+| **撤回（withdrawn，#53）** | CLI `handleAbortRequest('turn')` 撤回两段式判定（无输出 + 队列空 + `lastPushedNativeId` 非空，interrupt 后复验）→ `emitWithdrawnFact`（`emitFacts`） | → Hub `processWithdrawnFact` → `softDeleteMessagesFrom(seq)` + lifecycle 留档 `'withdrawn'` → SSE `message-withdrawn`（Web 乐观移除 + composer 回填，见「停止三档与撤回」） |
 | **首页钉入** | Hub `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`lifecycle='queued'`，`getUnsubmittedLocalMessages`），追加到列表尾部、不参与 `nextBeforeSeq`/`hasMore` 计算。翻页游标 = 页内最老消息的 seq（**不分 lifecycle**）——跳过 queued 会让整页全 queued 时 `hasMore=false` 锁死更早历史；queued 锚点 position 跳变的漂移由 Web `mergeMessages` id 去重兜底 |
 | **session-end 兜底** | Hub `sessionHandlers` | CLI 离线时把所有剩余 `lifecycle='queued'` 消息 force-push（`markMessagesPushed`），防止悬浮条卡死 |
 | **取消（CLI 权威）** | Web `DELETE` → Hub | Hub 先 `getMessageSubmitState`（`lifecycle!=='queued'` 即已提交）；DB 仍 queued 时问 CLI `cancel-queued-message`：`tryCancel` 返回 `submitted`（in-flight，已 collect）/`cancelled`（仍在队列）/`not-in-queue`（尚未送达）。仅 `cancelled`/`not-in-queue` 才物理删 DB——**in-flight 绝不删**，防幽灵消息 |
@@ -654,7 +673,7 @@ type ChatBlock =
 
 | 消息 | 转换结果 |
 |------|----------|
-| SDK `result` (aborted) | `AgentEvent { type: 'aborted', numTurns }` |
+| SDK `result` (aborted) | `AgentEvent { type: 'aborted', numTurns }`；批次 A 起可附 `stopKind`/`stillQueuedCount`（停止灰行三档文案与对账） |
 | SDK `result` (error) | `AgentEvent { type: 'execution-error', subtype, errors, numTurns }` |
 | System `api_error` | `AgentEvent { type: 'api-error', retryAttempt, maxRetries, error }` |
 | System `api_retry` | `AgentEvent { type: 'api-retry', attempt, maxRetries, retryDelayMs, errorStatus, error }`（连续重试去重，只保留最新一条） |
