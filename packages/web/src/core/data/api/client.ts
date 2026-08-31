@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, UserMessageContent } from '@mobi/shared'
+import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -103,7 +103,9 @@ export function createMobiApi() {
                 client.post(`/api/sessions/${sessionId}/effort`, { effort }),
             // 会话操作
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
-            abort: (sessionId: string) => client.post(`/api/sessions/${sessionId}/abort`),
+            // 中断会话：stopKind 三档停止（缺省 'turn' 只停本轮，hub 侧同款缺省语义）
+            abort: (sessionId: string, stopKind?: StopKind) =>
+                client.post(`/api/sessions/${sessionId}/abort`, { stopKind }),
             switch: (sessionId: string) => client.post(`/api/sessions/${sessionId}/switch`),
             resume: (sessionId: string) => client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/resume`),
             // 停止后台任务

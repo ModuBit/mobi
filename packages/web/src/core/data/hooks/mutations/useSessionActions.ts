@@ -16,9 +16,10 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import type { StopKind } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
-import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
+import { clearMessageWindow, fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 
 /**
@@ -26,7 +27,7 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
  * 提供所有会话相关的操作方法（归档、删除、中断、恢复等）
  */
 export function useSessionActions(sessionId: string | null): {
-    abortSession: () => Promise<void>
+    abortSession: (stopKind?: StopKind) => Promise<void>
     archiveSession: () => Promise<void>
     switchSession: () => Promise<void>
     resumeSession: () => Promise<string>
@@ -51,15 +52,20 @@ export function useSessionActions(sessionId: string | null): {
         await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
     }
 
-    // 中断会话
+    // 中断会话（stopKind 三档停止，缺省 'turn'）
     const abortMutation = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (stopKind?: StopKind) => {
             if (!sessionId) {
                 throw new Error('Session unavailable')
             }
-            await api.sessions.abort(sessionId)
+            await api.sessions.abort(sessionId, stopKind)
         },
         onSuccess: () => void invalidateSession(),
+        onSettled: () => {
+            // 清队列档后 QueuedMessagesBar 数据随 refetch 清空（hub 已物理删除 queued 行，spec §6.2）
+            if (!sessionId) return
+            void fetchLatestMessages(api, sessionId)
+        },
     })
 
     // 归档会话
@@ -166,7 +172,7 @@ export function useSessionActions(sessionId: string | null): {
     })
 
     return {
-        abortSession: abortMutation.mutateAsync,
+        abortSession: (stopKind?: StopKind) => abortMutation.mutateAsync(stopKind),
         archiveSession: archiveMutation.mutateAsync,
         switchSession: switchMutation.mutateAsync,
         resumeSession: resumeMutation.mutateAsync,
