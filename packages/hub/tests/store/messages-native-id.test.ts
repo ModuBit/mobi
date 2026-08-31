@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
 import { Store } from '../../src/store'
-import { addMessage, advanceMessagesLifecycle, bindNativeIds, getMessages } from '../../src/store/messages'
+import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages } from '../../src/store/messages'
 
 /** 建一个带 metadata/deleted_at 列的最小 messages 表（无 FK/无 sessions，纯模块级函数测试，参照 messages-byposition.test.ts） */
 function makeDb(): Database {
@@ -304,6 +304,65 @@ describe('advanceMessagesLifecycle（command_lifecycle 终态推进）', () => {
         seedPushed('l1', 'nu-1')
         expect(store.messages.advanceMessagesLifecycle(sessionId, 'ghost', 'processing', 3000)).toEqual([])
         expect(store.messages.getMessages(sessionId)[0].lifecycle).toBe('pushed')
+    })
+
+    test('refused 作为终态可推进（queued/pushed 轨道），与 done 互不覆盖（同 rank first-terminal-wins）', () => {
+        // refused 从 pushed 直达终态（跨会话 peer 消息被拒收，U-8）
+        seedPushed('l1', 'nu-1')
+        const ids = store.messages.advanceMessagesLifecycle(sessionId, 'nu-1', 'refused', 3000)
+        expect(ids).toHaveLength(1)
+        const row = store.messages.getMessages(sessionId).find(r => r.localId === 'l1')!
+        expect(row.lifecycle).toBe('refused')
+        expect(row.lifecycleAt).toBe(3000)
+
+        // 已 done 的行不被 refused 覆盖（同为 rank 4 终态）
+        seedPushed('l2', 'nu-2')
+        store.messages.advanceMessagesLifecycle(sessionId, 'nu-2', 'done', 4000)
+        const again = store.messages.advanceMessagesLifecycle(sessionId, 'nu-2', 'refused', 5000)
+        expect(again).toEqual([])
+        const doneRow = store.messages.getMessages(sessionId).find(r => r.localId === 'l2')!
+        expect(doneRow.lifecycle).toBe('done')
+        expect(doneRow.lifecycleAt).toBe(4000)
+    })
+})
+
+describe('cancelAllQueuedMessages（停止并清空队列——批量删除 queued 行）', () => {
+    let store: Store
+    let sessionId: string
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        sessionId = store.sessions.getOrCreateSession('cancel-all-queued-test', null, null, 'default').id
+    })
+
+    test('只删 queued 行，返回删除数；pushed 与 null 轨道不受影响', () => {
+        // queued：webapp 用户消息（排队轨道）
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'l-queued')
+        // pushed：已推进（不可删——队列清空只针对未消费消息）
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'l-pushed')
+        store.messages.markMessagesPushed(sessionId, ['l-pushed'], 1000)
+        // null：无 localId（非排队轨道）
+        store.messages.addMessage(sessionId, WEBAPP_USER, null)
+
+        const db = (store as unknown as { db: Database }).db
+        const deleted = cancelAllQueuedMessages(db, sessionId)
+        expect(deleted).toBe(1)
+
+        const rows = store.messages.getMessages(sessionId)
+        expect(rows.find(r => r.localId === 'l-queued')).toBeUndefined()
+        expect(rows.find(r => r.localId === 'l-pushed')!.lifecycle).toBe('pushed')
+        expect(rows).toHaveLength(2)
+    })
+
+    test('MessageStore 包装方法透传（返回删除行数）', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'l-1')
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'l-2')
+        expect(store.messages.cancelAllQueuedMessages(sessionId)).toBe(2)
+        expect(store.messages.getUnsubmittedLocalMessages(sessionId)).toEqual([])
+    })
+
+    test('无 queued 行 → 返回 0', () => {
+        expect(store.messages.cancelAllQueuedMessages(sessionId)).toBe(0)
     })
 })
 

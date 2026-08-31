@@ -417,15 +417,15 @@ export function advanceMessagesAcked(
     return rows.map(r => r.id)
 }
 
-/** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded——CC command_lifecycle 终态）。
- *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4)可从
+/** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded/refused——CC command_lifecycle 终态）。
+ *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4，含 refused)可从
  *  queued/pushed/acked/processing 推进，但已处终态(含 withdrawn)不被覆盖、processing 不回退——
  *  乱序帧安全。单语句 UPDATE RETURNING 原子推进，返回实际推进行 id（供 handler 回读行广播）。 */
 export function advanceMessagesLifecycle(
     db: Database,
     sessionId: string,
     nativeId: string,
-    state: 'processing' | 'done' | 'cancelled' | 'discarded',
+    state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
     at: number
 ): string[] {
     const rows = db.prepare(
@@ -478,6 +478,15 @@ export function cancelQueuedMessage(
         `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND lifecycle = 'queued'`
     ).run(sessionId, localId)
     return { cancelled: result.changes > 0, submitted: result.changes === 0 }
+}
+
+/** 批量删除仍排队（queued）的消息（停止并清空队列，批次 A）；返回删除行数。
+ *  已推进（pushed 及之后）与 null 轨道不受影响——CC 层的取消走 command_lifecycle 帧回流。 */
+export function cancelAllQueuedMessages(db: Database, sessionId: string): number {
+    const result = db.prepare(
+        `DELETE FROM messages WHERE session_id = ? AND lifecycle = 'queued'`
+    ).run(sessionId)
+    return result.changes
 }
 
 /** 查询某 localId 消息的提交状态（非破坏性）。exists=false 表示 DB 中无此消息。 */

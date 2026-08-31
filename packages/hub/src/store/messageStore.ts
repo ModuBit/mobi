@@ -23,6 +23,7 @@ import {
     addMessage,
     attachNativeSessionId,
     bindNativeIds,
+    cancelAllQueuedMessages,
     cancelQueuedMessage,
     getMessageSubmitState,
     getMessages,
@@ -102,15 +103,20 @@ export class MessageStore {
         return advanceMessagesAcked(this.db, sessionId, nativeId, ackedAt)
     }
 
-    /** 按 nativeId 单调推进 lifecycle 至 command_lifecycle 终态（processing/done/cancelled/discarded），
+    /** 按 nativeId 单调推进 lifecycle 至 command_lifecycle 终态（processing/done/cancelled/discarded/refused），
      *  已处终态（含 withdrawn）不被覆盖、processing 不回退，返回实际推进的行 id。 */
     advanceMessagesLifecycle(
         sessionId: string,
         nativeId: string,
-        state: 'processing' | 'done' | 'cancelled' | 'discarded',
+        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
         at: number
     ): string[] {
         return advanceMessagesLifecycle(this.db, sessionId, nativeId, state, at)
+    }
+
+    /** 批量删除仍排队的消息（停止并清空队列）；返回删除行数 */
+    cancelAllQueuedMessages(sessionId: string): number {
+        return cancelAllQueuedMessages(this.db, sessionId)
     }
 
     /** 按 id 集合回读行（advance* 返回 id，广播需完整行），按 seq 升序。 */
