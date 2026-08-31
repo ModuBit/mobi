@@ -150,6 +150,7 @@
         "message": {
             "terminalCancelled": "Cancelled",
             "terminalDiscarded": "Discarded",
+            "terminalRefused": "Refused",
             "crossSessionFrom": "From {{from}}",
             "crossSessionFromUnknown": "From another session"
         },

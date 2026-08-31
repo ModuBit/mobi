@@ -37,7 +37,7 @@ import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
-import { terminalReasonLabelKey } from '@/domain/chat/terminalReason'
+import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
@@ -672,12 +672,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const block = item.block
             const isUserText = block?.kind === 'user-text'
 
-            // 终态标注判据：cancelled/discarded 的用户消息「这条没被处理」一眼可见；
+            // 终态标注判据：cancelled/discarded/refused 的用户消息「这条没被处理/没被接收」一眼可见；
             // 其余 lifecycle（含 done）与非排队消息不标注（用户不关心传输细节）。
-            // cancelled 附带 terminal_reason 原因标注（已知 key 才出，spec §7.6）
+            // 终态附带 terminal_reason 原因标注（已知 key 才出，spec §7.6——refused 与 cancelled 同等适用）
             const terminalLifecycle = isUserText && block ? lifecycleById.get(block.id) : null
-            const isTerminalLifecycle = terminalLifecycle === 'cancelled' || terminalLifecycle === 'discarded'
-            const terminalReasonKey = terminalLifecycle === 'cancelled' && block
+            const terminalLabelKey = terminalLifecycleLabelKey(terminalLifecycle)
+            const terminalReasonKey = terminalLabelKey !== null && block
                 ? terminalReasonLabelKey(metaById.get(block.id)?.terminalReason)
                 : null
 
@@ -718,7 +718,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 ...item,
                 header: crossSessionFrom !== null ? <CrossSessionTag from={crossSessionFrom} /> : undefined,
                 classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
-                footer: isTerminalLifecycle ? (
+                footer: terminalLabelKey !== null ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span
                             data-testid="user-msg-terminal"
@@ -726,7 +726,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
                         >
                             <StopOutlined style={{ fontSize: 11 }} />
-                            {t(terminalLifecycle === 'cancelled' ? 'chat.message.terminalCancelled' : 'chat.message.terminalDiscarded')}
+                            {t(terminalLabelKey)}
                             {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
@@ -774,9 +774,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             if (md?.nativeId) nativeIdCount++
             if (md?.nativeSessionId) nativeSidCount++
             if (md?.nativeAckAt != null) nativeAckCount++
-            // lifecycle 终态翻转（queued→cancelled/discarded 广播）不动 block 引用，
+            // lifecycle 终态翻转（queued→cancelled/discarded/refused 广播）不动 block 引用，
             // 但 footer 标注依赖 lifecycleById → 须入签名让缓存失效、footer 随帧重建
-            if (m.lifecycle === 'cancelled' || m.lifecycle === 'discarded') terminalLifecycleCount++
+            if (isTerminalUserLifecycle(m.lifecycle)) terminalLifecycleCount++
         }
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
             + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
@@ -790,7 +790,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             + `|${chainHeadIds === null ? 'unk' : chainHeadIds.size}`
             // metadata 签名：ack/attach 补写后 rewind 图标即时刷新（而非「刷新才见」）
             + `|${nativeIdCount}-${nativeSidCount}-${nativeAckCount}`
-            // lifecycle 终态签名：cancelled/discarded 广播到达后标注即时出现（而非「刷新才见」）
+            // lifecycle 终态签名：cancelled/discarded/refused 广播到达后标注即时出现（而非「刷新才见」）
             + `|${terminalLifecycleCount}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
             ? prevItemsRef.current.cache
