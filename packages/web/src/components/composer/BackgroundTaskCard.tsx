@@ -19,7 +19,7 @@ import { theme, Popconfirm, Drawer, Button } from 'antd'
 import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { GlobalToken } from 'antd/es/theme/interface'
-import { Terminal, CircleStop, Eye, Zap } from 'lucide-react'
+import { Terminal, CircleStop, Eye, Zap, CircleDashed } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
@@ -52,20 +52,22 @@ function terminalStatusPalette(status: BackgroundTask['status'], token: GlobalTo
 /**
  * 后台任务卡片组件
  * 展示单个后台任务的状态、图标、描述和指标
- * clickDisabled：无 sidechain 数据（toolUseId=null）的卡片不可点击打开 drawer，
+ * 无 sidechain 数据（toolUseId=null）的任务不可点击打开 drawer（单点语义收敛在本组件）：
  * cursor 降级 + opacity 微降，让「不可点」有视觉反馈
  */
-export function BackgroundTaskCard({ task, onClick, onStop, clickDisabled = false }: {
+export function BackgroundTaskCard({ task, onClick, onStop }: {
     task: BackgroundTask
     onClick: () => void
     onStop?: (e: React.MouseEvent) => void
-    clickDisabled?: boolean
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const isMobile = useIsMobile()
     const isRunning = task.status === 'running'
+    // 无 sidechain 数据（toolUseId=null）的任务打开不了 drawer——点击守卫由本组件内聚，
+    // 调用方无需（也不应）再判 toolUseId
+    const clickable = task.toolUseId != null
     const name = task.description ?? 'Background task'
 
     const [stopHovered, setStopHovered] = useState(false)
@@ -186,13 +188,13 @@ export function BackgroundTaskCard({ task, onClick, onStop, clickDisabled = fals
                     display: 'flex', alignItems: 'center', gap: 6,
                     width: 'var(--agent-card-width, 200px)', height: 40,
                     padding: '4px 8px', borderRadius: 8,
-                    cursor: clickDisabled ? 'default' : 'pointer',
+                    cursor: clickable ? 'pointer' : 'default',
                     border: 'none', background: agentCardBg(name, isDark),
                     boxSizing: 'border-box',
-                    // disabled 再降一档：不可点击的卡片比终态淡出更弱（终态 0.75 / 禁用 0.55）
-                    opacity: clickDisabled ? 0.55 : isRunning ? 1 : 0.75,
+                    // 不可点击的卡片再降一档 opacity（比终态淡出更弱），让「不可点」可感知
+                    opacity: clickable ? (isRunning ? 1 : 0.75) : 0.55,
                 }}
-                onClick={onClick}
+                onClick={() => { if (!clickable) return; onClick() }}
             >
                 <div style={{ flexShrink: 0, lineHeight: 0 }}>
                     {task.toolName === 'Agent' ? (
@@ -239,11 +241,23 @@ export function BackgroundTaskCard({ task, onClick, onStop, clickDisabled = fals
 
 /**
  * 非Agent工具图标
+ * unknown = CircleDashed 中性图形（补建条目无法确证工具类型，诚实降级，不冒充 Bash 终端）
  * running = LoadingOutlined 转圈（通用 loading，小尺寸内联位用品牌动画会糊）
  * 终态 = 柔色底圆 + 浓色 Terminal 图标（语义：bash 工具的结果）
  */
 function ToolIcon({ toolName, status }: { toolName: string; status: BackgroundTask['status'] }) {
     const { token } = theme.useToken()
+
+    if (toolName === 'unknown') {
+        return (
+            <div style={{
+                width: 24, height: 24, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+            }}>
+                <CircleDashed size={16} style={{ color: token.colorTextTertiary }} />
+            </div>
+        )
+    }
 
     if (toolName === 'Monitor') {
         return (

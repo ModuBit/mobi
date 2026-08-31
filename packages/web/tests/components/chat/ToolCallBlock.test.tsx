@@ -177,4 +177,19 @@ describe('ToolCallBlock 后台 Agent drawer（批次 B，spec D5）', () => {
         fireEvent.click(screen.getByTestId('tool-view-detail'))
         expect(screen.getByTestId('tool-detail-drawer')).toBeInTheDocument()
     })
+
+    it('disableDrawer（drawer 内嵌套块）不渲染「查看详情」死链入口（review fix2 C4）', () => {
+        render(
+            <ToolCallRenderer
+                block={makeBgAgentBlock()}
+                metadata={null}
+                sessionId="s1"
+                disableDrawer
+            />,
+        )
+
+        // 入口隐藏：drawer 内点击本就无响应的死链不再渲染
+        expect(screen.queryByTestId('tool-view-detail')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('tool-detail-drawer')).not.toBeInTheDocument()
+    })
 })

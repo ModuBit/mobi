@@ -85,10 +85,12 @@ export type AgentMetrics = {
 export type BackgroundTask = {
     taskId: string
     toolUseId: string | null
-    toolName: 'Bash' | 'Agent' | 'Monitor'
+    /** 'unknown'：task_updated 补建条目无法确证工具类型（hub 诚实降级，不冒充 Bash） */
+    toolName: 'Bash' | 'Agent' | 'Monitor' | 'unknown'
     description: string
     subagentType?: string
-    status: 'running' | 'completed' | 'failed' | 'stopped'
+    /** 'paused'：task_updated patch 可携带 paused；渲染上不视作 running（不挂停止按钮、不转圈） */
+    status: 'running' | 'completed' | 'failed' | 'stopped' | 'paused'
     /** 是否为后台任务。shared schema 必填（新写入合约），此处可选以兼容存量 DB 记录；渲染时默认按后台处理 */
     isBackground?: boolean
     metrics?: AgentMetrics

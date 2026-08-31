@@ -214,7 +214,7 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
         expect(onTaskClick).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'bt-1', toolUseId: 'tu-1' }))
     })
 
-    it('toolUseId 为 null 时点击不回调', async () => {
+    it('toolUseId 为 null 时点击不回调，且卡片不可点（cursor 非 pointer）', async () => {
         const { useBackgroundTasksStore } = await loadStores()
         useBackgroundTasksStore.getState().setTasks('test-session', [
             makeBgTask('bt-2', { toolUseId: null }),
@@ -226,11 +226,26 @@ describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
             { wrapper }
         )
         fireEvent.click(screen.getByText('后台研究'))
+        // 行为层断言：不设任何禁用 prop 也要成立——守卫由 BackgroundTaskCard 内聚
         expect(onTaskClick).not.toHaveBeenCalled()
-        // 禁用态视觉反馈：cursor 降级 + opacity 微降（final review Minor #4）
-        const card = document.querySelector('[data-testid="bg-task-card-bt-2"]') as HTMLElement
+        // 不可点卡与可点卡 cursor 行为不同（非 pointer）
+        const disabledCard = document.querySelector('[data-testid="bg-task-card-bt-2"]') as HTMLElement
+        expect(disabledCard).toBeTruthy()
+        expect(disabledCard.style.cursor).not.toBe('pointer')
+    })
+
+    it('可点卡（toolUseId 非空）cursor 为 pointer，与禁用卡行为区分', async () => {
+        const { useBackgroundTasksStore } = await loadStores()
+        useBackgroundTasksStore.getState().setTasks('test-session', [
+            makeBgTask('bt-ok', { toolUseId: 'tu-ok' }),
+        ])
+
+        render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={() => {}} onClear={async () => {}} />,
+            { wrapper }
+        )
+        const card = document.querySelector('[data-testid="bg-task-card-bt-ok"]') as HTMLElement
         expect(card).toBeTruthy()
-        expect(card.style.cursor).toBe('default')
-        expect(card.style.opacity).toBe('0.55')
+        expect(card.style.cursor).toBe('pointer')
     })
 })

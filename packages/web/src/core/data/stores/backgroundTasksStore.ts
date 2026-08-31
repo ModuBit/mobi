@@ -21,7 +21,8 @@ import type { BackgroundTask } from '@/domain/chat/types'
 export type BackgroundTaskRemovedNotification = {
     taskId: string
     description: string
-    toolName: 'Bash' | 'Agent' | 'Monitor'
+    /** 与 BackgroundTask.toolName 同口径（'unknown' 为补建条目的诚实降级值） */
+    toolName: BackgroundTask['toolName']
     status: 'completed' | 'failed' | 'stopped'
     /** 后台任务完成摘要 */
     summary?: string

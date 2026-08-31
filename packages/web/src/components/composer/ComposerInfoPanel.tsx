@@ -371,7 +371,17 @@ export function ComposerInfoPanel({
                         sessionId={sessionId}
                         api={api}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
-                        onTaskClick={(task) => { if (task.toolUseId) setDrawerBlockId(task.toolUseId) }}
+                        onTaskClick={(task) => {
+                            // 先查后设（C1）：点击时先在 agents/byIdMap 里解析 toolUseId 对应的
+                            // tool-call block，查到才设置 drawerBlockId——同时消灭「静默设置后不渲染」
+                            // 与「残留 id 之后无操作自动弹开」两个症状。
+                            // 窗口外 block 点击无反馈是已知限制（查询即守卫，不残留状态）
+                            const blockId = task.toolUseId
+                            const found = blockId != null
+                                ? agents.find(a => a.block.id === blockId)?.block ?? byIdMap.get(blockId)
+                                : undefined
+                            if (found?.kind === 'tool-call') setDrawerBlockId(found.id)
+                        }}
                         onClear={handleClearState}
                     />
 

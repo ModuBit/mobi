@@ -56,18 +56,40 @@ function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolP
     }
 }
 
+/** 「查看详情」入口：前台 Agent（有 summary）与后台 Agent 两个分支共用，同 testid/onClick/样式/文案 */
+function ViewDetailLink({ onViewDetail }: { onViewDetail: () => void }) {
+    const { t } = useTranslation()
+    const { token } = antTheme.useToken()
+    return (
+        <div
+            data-testid="tool-view-detail"
+            onClick={(e) => { e.stopPropagation(); onViewDetail() }}
+            style={{
+                marginTop: 8, fontSize: 12,
+                color: token.colorPrimary,
+                cursor: 'pointer',
+            }}
+        >
+            {t('chat.tool.viewDetail')} →
+        </div>
+    )
+}
+
 function ToolCallPreviewContent({
     toolCallBlock,
     metadata,
     onViewDetail,
     showInput,
-    maxHeight
+    maxHeight,
+    drawerDisabled
 }: {
     toolCallBlock: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     onViewDetail: () => void
     showInput?: boolean
     maxHeight: number
+    /** drawer 内嵌套块（disableDrawer 上下文）不渲染「查看详情」入口，消除点击无响应死链 */
+    drawerDisabled?: boolean
 }) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
@@ -137,17 +159,7 @@ function ToolCallPreviewContent({
                     }}>
                         {summary}
                     </div>
-                    <div
-                        data-testid="tool-view-detail"
-                        onClick={(e) => { e.stopPropagation(); onViewDetail() }}
-                        style={{
-                            marginTop: 8, fontSize: 12,
-                            color: token.colorPrimary,
-                            cursor: 'pointer',
-                        }}
-                    >
-                        {t('chat.tool.viewDetail')} →
-                    </div>
+                    {!drawerDisabled && <ViewDetailLink onViewDetail={onViewDetail} />}
                 </div>
             )
         }
@@ -175,17 +187,7 @@ function ToolCallPreviewContent({
                 }}>
                     {summary ?? t('chat.backgroundTask.running', 'Running...')}
                 </div>
-                <div
-                    data-testid="tool-view-detail"
-                    onClick={(e) => { e.stopPropagation(); onViewDetail() }}
-                    style={{
-                        marginTop: 8, fontSize: 12,
-                        color: token.colorPrimary,
-                        cursor: 'pointer',
-                    }}
-                >
-                    {t('chat.tool.viewDetail')} →
-                </div>
+                {!drawerDisabled && <ViewDetailLink onViewDetail={onViewDetail} />}
             </div>
         )
     }
@@ -305,13 +307,13 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     }, [agentRunning, isBgAgent])
 
     const [drawerOpen, setDrawerOpen] = useState(false)
-    // 后台 agent 不再禁用 drawer（批次 B，spec D5）：前后台入口统一；
-    // isBgAgent 仍保留给「前台完成自动收起」effect（语义无关）
-    const drawerDisabled = disableDrawer
+    // 后台 agent 不再禁用 drawer（批次 B，spec D5）：前后台入口统一。
+    // isBgAgent 在「前台完成自动收起」effect 中有实际语义：后台 agent 完成不自动收起，
+    // 保留 summary/「查看详情」展示
     const handleViewDetail = useCallback(() => {
-        if (drawerDisabled) return
+        if (disableDrawer) return
         setDrawerOpen(true)
-    }, [drawerDisabled])
+    }, [disableDrawer])
 
     // 判断 title 是否已包含 description 信息
     // Agent 工具的 title 由 getAgentTitle 动态生成，不含 description 字段，或 title 等于/以 description 开头时跳过
@@ -367,12 +369,13 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                     metadata={metadata}
                     onViewDetail={handleViewDetail}
                     showInput={hasPermission}
+                    drawerDisabled={disableDrawer}
                     maxHeight={toolPresentation.previewMaxHeight
                         ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
                         : PREVIEW_MAX_HEIGHT.DEFAULT)}
                 />
             </Think>
-            {!drawerDisabled && (
+            {!disableDrawer && (
                 <ToolDetailDrawer
                     block={block}
                     metadata={metadata}

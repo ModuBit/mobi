@@ -168,9 +168,8 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                     {items.map(item => item.kind === 'agent'
                         ? <AgentCard key={item.agent.block.id} agent={item.agent} onClick={() => onAgentClick(item.agent.block)} />
                         : <BackgroundTaskCard key={item.task.taskId} task={item.task}
-                            onClick={() => { if (item.task.toolUseId) onTaskClick(item.task) }}
-                            // 无 sidechain 数据（toolUseId=null）的卡片不可打开 drawer，给禁用态视觉反馈
-                            clickDisabled={!item.task.toolUseId}
+                            // 不可点（toolUseId=null）的守卫由 BackgroundTaskCard 内聚，此处无条件透传
+                            onClick={() => onTaskClick(item.task)}
                             onStop={item.task.status === 'running' ? (e) => handleStop(e, item.task) : undefined} />)}
                 </div>
             </div>
