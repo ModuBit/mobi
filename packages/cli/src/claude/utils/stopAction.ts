@@ -28,15 +28,21 @@ export function resolveStopAction(state: {
 
 /**
  * interrupt 返回后的复验裁决（两段式第二段；C1 修法 2 / I1 的独立防线）：
+ * - anchorChanged → 守卫降级 stop：await interrupt() 窗口内撤回锚被新 push 覆盖（queue-drain
+ *   竞态——新消息被消费成新 turn，覆盖 lastPushedNativeId 并复位 hasOutput，其余守卫全过），
+ *   此时撤回会删掉一条已在执行的新消息，降级普通停止
  * - still_queued 非空 → 守卫降级 stop：撤回目标（或其后消息）仍停在 CC 队列、停止后还会执行，
  *   此时软删除会制造「消息已删但仍执行」的僵尸——即使初判错了也删不掉会执行的消息
  * - turnHasOutput → 等待期模型抢先输出，降级普通停止（spec D4 原有语义）
- * 两者皆否 → 撤回生效。
+ * 三者皆否 → 撤回生效。
  */
 export function resolvePostInterruptAction(state: {
     turnHasOutput: boolean
     stillQueuedCount: number
+    /** 复验时 lastPushedNativeId !== 初判记录的锚（queue-drain 竞态守卫；省略视为未变化） */
+    anchorChanged?: boolean
 }): 'withdraw' | 'stop' {
+    if (state.anchorChanged) return 'stop'
     if (state.stillQueuedCount > 0) return 'stop'
     if (state.turnHasOutput) return 'stop'
     return 'withdraw'

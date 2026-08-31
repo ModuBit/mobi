@@ -154,6 +154,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // { still_queued, cancelled? }；上游补类型后删断言（spec §5.5）
         const interruptWithOpts = this.queryRef.interrupt.bind(this.queryRef) as
             (opts?: { cancelQueued?: boolean }) => Promise<{ still_queued?: string[] } | undefined>
+        // 撤回锚在 await interrupt() 之前快照：窗口内新消息被消费成新 turn 会覆盖
+        // lastPushedNativeId 并复位 hasOutput——复验时锚已变化即降级普通停止（queue-drain 竞态守卫）
+        const withdrawAnchor = this.turnTracking.lastPushedNativeId
         const receipt = await interruptWithOpts(isCancelQueued(stopKind) ? { cancelQueued: true } : undefined)
 
         if (stopKind !== 'turn') {
@@ -171,9 +174,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         if (action === 'withdraw' && this.turnTracking.lastPushedNativeId) {
             // 复验：await interrupt() 返回即 abort 处理完成。守卫裁决收口在
             // resolvePostInterruptAction（C1 修法 2 / I1 独立防线）——回执仍列排队消息
-            // （cancelQueued 未带或未生效，撤回目标还会执行）或窗口期冒出输出 → 降级普通停止
+            // （cancelQueued 未带或未生效，撤回目标还会执行）、窗口期冒出输出、
+            // 或撤回锚已被新 turn 的 push 覆盖 → 降级普通停止
             const stillQueuedCount = receipt?.still_queued?.length ?? 0
-            if (resolvePostInterruptAction({ turnHasOutput: this.turnTracking.hasOutput, stillQueuedCount }) === 'stop') {
+            if (resolvePostInterruptAction({
+                turnHasOutput: this.turnTracking.hasOutput,
+                stillQueuedCount,
+                anchorChanged: this.turnTracking.lastPushedNativeId !== withdrawAnchor,
+            }) === 'stop') {
                 this.emitAbortedEvent('turn', stillQueuedCount)
                 return
             }

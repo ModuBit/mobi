@@ -86,6 +86,20 @@ describe('resolvePostInterruptAction（interrupt 返回后的复验裁决，C1 �
     it('守卫优先于输出判据（两者同真时仍 stop，语义一致）', () => {
         expect(resolvePostInterruptAction({ turnHasOutput: true, stillQueuedCount: 2 })).toBe('stop')
     })
+
+    it('锚未变化（anchorChanged 省略/false）→ 不影响裁决（既有语义不变）', () => {
+        expect(resolvePostInterruptAction({ turnHasOutput: false, stillQueuedCount: 0, anchorChanged: false })).toBe('withdraw')
+    })
+
+    it('撤回锚在 await interrupt() 窗口内被新 push 覆盖 → stop（queue-drain 竞态降级）', () => {
+        // 初判后等待 interrupt 返回期间，新消息被消费成新 turn：lastPushedNativeId 覆盖为新锚、
+        // hasOutput 复位——两个守卫全过，若不查锚变化会撤回一条已在执行的新消息
+        expect(resolvePostInterruptAction({ turnHasOutput: false, stillQueuedCount: 0, anchorChanged: true })).toBe('stop')
+    })
+
+    it('锚变化优先于其余判据（即使复验全过仍降级）', () => {
+        expect(resolvePostInterruptAction({ turnHasOutput: false, stillQueuedCount: 0, anchorChanged: true })).toBe('stop')
+    })
 })
 
 describe('isInterruptedTerminalReason（中断终态判别，web normalizeAgent 同口径）', () => {
