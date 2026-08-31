@@ -668,3 +668,23 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 **触发时机**：子代理可观测性落地后流量上升，或出现多会话并用的实际卡顿时启动讨论。
 
 **相关**：`packages/hub/src/sse/sseManager.ts`、`packages/web/src/core/providers/SSEProvider.tsx`
+
+---
+
+## 62. 后台任务状态链路两缺陷：runtime_state 双写竞态丢字段 + sidechain 消息不实时（2026-08-31 批次 B E2E 复现）
+
+**缺陷一：hub `runtime_state` 双写路径竞态丢字段（U-4「重连后台任务快照」的真实根因）**
+
+`packages/hub/src/socket/handlers/cli/sessionHandlers.ts:212`（消息事件路径，写 todos/tasks/backgroundTasks/teamState）与 `packages/hub/src/sync/sessionCache.ts:356` `updateRuntimeStateField`（contextUsage/model/effort 等路径）都是「读快照 → 全量 `setRuntimeState` 覆盖写」，两路径并发时后写覆盖先写，字段丢失。E2E 实测：后台任务 running 中 `runtimeState.backgroundTasks` 在 DB 为 null（SSE 内存链有值故面板当时正常），web 断开重连后首拉 DB → 面板空白。
+
+**方向**：runtime_state 写入收敛为单点（store 层按字段 merge 或加写锁/队列），禁止调用方各自读-改-写全量覆盖。修复后重验 U-4（重连后面板恢复）。
+
+**缺陷二：后台 Agent drawer 内容不随 SSE 实时增长**
+
+子代理消息（`parent_tool_use_id` 非空）经 hub 落库并广播，但 web 主消息窗口（messageWindowStore）的增量路径不纳入 sidechain 消息 → reducer 重组看不到新 sidechain → Agent tool block 的 `children` 冻结在初始拉取快照。E2E 实测：drawer 打开 36s 内子代理消息持续落库（seq 106→117），drawer 内容恒 6 条。该缺陷先于批次 B 存在（forwardSubagentText 之前 children 只有 tool_use 心跳，同样冻结，只是无感）。
+
+**方向**：SSE 增量将 sidechain 消息并入窗口（或独立 sidechain 缓存按 toolUseId 归组），触发对应 block children 更新；注意与消息窗口化（#40）的窗口边界语义协调。
+
+**相关**：批次 B spec `docs/superpowers/specs/2026-08-31-task-subagent-observability-design.md` D6/D7；台账 U-4/U-23。
+
+**优先级**：中高。后台 agent 是远程场景核心工作流，状态丢失与不可观测直接影响信任。

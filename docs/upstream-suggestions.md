@@ -28,15 +28,17 @@
 **为什么一批**：全部动 `claudeRemoteLauncher.ts` 的 interrupt/队列链路 + web 停止按钮（SubmitButton）/QueuedMessagesBar，语义互相咬合（停止哪些消息、剩几条、各自什么状态）。
 **前置**：与 pending #53（撤回刚发消息）、#28（中途采纳）**一并设计**——四者共享同一套 interrupt/队列语义，割裂做会返工。
 
-### 批次 B｜任务面板与子代理可观测性（2 高 + 2 中）
+### 批次 B｜任务面板与子代理可观测性（2 高 + 2 中）✅ 已完成（2026-08-31）
 
 **目标**：后台任务与 subagent「看得全、滤得净、重连不丢、内容可读」。
 
-- **U-1** `ambient` 标记过滤家务任务（高，**U-3** `is_backgrounded`/`spawn_depth` 并入实现）
-- **U-23** `forwardSubagentText` 子代理对话流全文转发（中高）——面板从状态卡升级为可读对话
-- **U-4** 重连后台任务快照（中，先验证是否已自动受益；`Query.backgroundTasks()` 可作查询补充）
+- ~~**U-1** `ambient` 标记过滤家务任务~~（✅ 含 **U-3** `is_backgrounded` 第三信号 + 中途后台化补建；`spawn_depth` 留观察）
+- ~~**U-23** `forwardSubagentText` 子代理对话流全文转发~~（✅ E2E 验证：sidechain 落库含 text/thinking，Agent drawer 渲染可读对话）
+- **U-4** 重连后台任务快照（⚠️ 已验证**未自动受益**：web 重连后面板空白，根因是 hub `runtime_state` 双写路径竞态丢字段，见 pending #62——修复不属 SDK 消费侧，单独处理）
 
 **为什么一批**：同一条链路——cli hook/系统消息/子代理消息转发 → hub `runtime_state` → web 任务/subagent 面板。
+
+**遗留**（E2E 复现并定位根因，单独修）：① web 后台 Agent drawer 内容不随 SSE 实时增长（sidechain 消息不入主消息窗口增量路径，children 冻结在初始快照）；② U-4 的 hub `runtime_state` 双写竞态。见 `docs/pending.md` #62。
 
 ### 批次 C｜审批、工具与 MCP 状态保真（1 高 + 4 中/低）
 
@@ -91,7 +93,7 @@
 **落地位置**：cli `packages/cli/src/claude/utils/sessionHookForwarder.ts` 透传字段 → hub `runtime_state`（tasks / backgroundTasks）随帧存储 → web 任务面板与活跃指示过滤 `ambient === true` 条目（可选提供「显示家务任务」开关）。
 
 **优先级**：高（低成本、填补历史痛点）。
-**状态**：待决策
+**状态**：✅ 已采纳（2026-08-31 批次 B 实施：hub `backgroundTasks.ts` 信号入口过滤（活跃集合 + task_started 双入口，`skip_transcript` 不过滤）、cli `collectLiveTaskIds` 滤『全部停止』遍历源，spec：`docs/superpowers/specs/2026-08-31-task-subagent-observability-design.md`）
 
 ---
 
@@ -117,7 +119,7 @@
 **落地位置**：与 U-1 同链路，建议合并实现。
 
 **优先级**：中（并入 U-1）。
-**状态**：待决策
+**状态**：✅ 已采纳（2026-08-31 批次 B 实施：`is_backgrounded` 作第三 OR 信号并入现有双信号判定（不替换），并补 `task_updated patch.is_backgrounded` 中途后台化补建（带 knownTaskIds 守卫防正常任务被降级覆盖）；`spawn_depth` 本批不消费留观察，spec 同上）
 
 ---
 
@@ -130,7 +132,7 @@
 **落地位置**：cli 重连链路确认消费该快照——可能零改动自动受益，验证即可。
 
 **优先级**：中。
-**状态**：待决策（先验证是否已自动受益）
+**状态**：⚠️ 已验证未自动受益（2026-08-31 批次 B E2E：后台任务 running 中 web 断开重连后面板空白。SDK 快照机制本身可用，但 mobi hub `runtime_state` 双写路径（消息事件 / sessionCache 事件）全量覆盖无锁，并发时 `backgroundTasks` 字段被覆盖丢失，DB 持久层无数据可拉。修复见 `docs/pending.md` #62，属 hub 并发域而非 SDK 消费侧）
 
 ---
 
@@ -373,7 +375,7 @@
 **落地位置**：cli 开 option → cli 消息转发层按 `parent_tool_use_id` 归组透传 → web subagent 面板嵌套渲染。
 
 **优先级**：中高。
-**状态**：待决策
+**状态**：✅ 已采纳（2026-08-31 批次 B 实施：cli `forwardSubagentText: true` + web 三处 drawer 入口统一（ToolCallBlock 解禁 isBgAgent / TasksPanel 卡片点击 / completed 态补查看详情链接）。E2E 验证 sidechain 落库含 text×3+thinking×3，drawer 渲染子代理可读对话。遗留：drawer 内容不随 SSE 实时增长（pending #62），先于本批存在）
 
 ---
 
