@@ -620,6 +620,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
      *  fact.terminalReason 落档 metadata.terminalReason（与 nativeAckAt 双写同构，first-write-wins；
      *  只写本次推进命中的行——web footer 据此渲染终态原因，spec §7.6）→ 按 id 回读推进后的行
      *  → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。
+     *  terminalReason 只在终态帧落档：processing（started 帧）捎带的 reason 是瞬时值，
+     *  first-write-wins 会把它永久锁定、挡住后续真实终态原因。
      *  无命中（乱序/重复帧）静默返回，不广播。 */
     const processLifecycleFact = (
         sid: string,
@@ -630,7 +632,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     ) => {
         const ids = store.messages.advanceMessagesLifecycle(sid, nativeId, state, at)
         if (ids.length === 0) return
-        if (terminalReason) store.messages.markTerminalReason(sid, ids, terminalReason)
+        if (state !== 'processing' && terminalReason) store.messages.markTerminalReason(sid, ids, terminalReason)
         const rows = store.messages.getMessagesByIds(sid, ids)
         if (rows.length > 0) broadcastStoredMessages(sid, rows)
     }

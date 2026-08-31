@@ -863,6 +863,35 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
         expect(terminalReasonSpy.args).toBeNull()
     })
 
+    test('processing 帧携带 terminalReason：不落档（防瞬时 reason 锁定、挡住真实终态原因）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, terminalReasonSpy } = makeFactsDeps({ lifecycleReturn: ['m1'] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        // started 帧可能捎带瞬时 reason（如内部中断码）——first-write-wins 会把它永久落档，
+        // 后续真实终态帧的 reason 被 IS NULL 守卫挡住，web footer 永远显示错误原因
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [{ kind: 'lifecycle', nativeId: 'nu-1', state: 'processing', terminalReason: 'transient', at: 3000 }],
+        })
+
+        // state 推进照常（行已广播），但 reason 不落档
+        expect(terminalReasonSpy.args).toBeNull()
+    })
+
+    test('终态帧（cancelled）携带 terminalReason：正常落档', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, terminalReasonSpy } = makeFactsDeps({ lifecycleReturn: ['m1'] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [{ kind: 'lifecycle', nativeId: 'nu-1', state: 'cancelled', terminalReason: 'user_cancelled', at: 4000 }],
+        })
+
+        expect(terminalReasonSpy.args).toEqual({ sid: 's1', ids: ['m1'], reason: 'user_cancelled' })
+    })
+
     test('lifecycle fact 无命中（乱序/重复帧）→ 不广播', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events } = makeFactsDeps({ lifecycleReturn: [] })
