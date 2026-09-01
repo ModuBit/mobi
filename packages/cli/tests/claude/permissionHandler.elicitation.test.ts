@@ -63,6 +63,20 @@ function getPending(handler: PermissionHandler, id: string): PendingPermissionRe
     return pending!
 }
 
+/** 取 mock session 上的 updateAgentState */
+function updateAgentStateOf(session: ReturnType<typeof createMockDeps>['session']) {
+    return session.client.updateAgentState
+}
+
+/** 按时序折叠全部 updateAgentState 调用（lastRequests 每次重置状态，观察不到移除） */
+function foldedRequests(updateAgentState: ReturnType<typeof vi.fn>): Record<string, unknown> {
+    let state: { requests?: Record<string, unknown> } = { requests: {} }
+    for (const call of updateAgentState.mock.calls) {
+        state = (call[0] as (s: { requests?: Record<string, unknown> }) => { requests?: Record<string, unknown> })(state)
+    }
+    return state.requests ?? {}
+}
+
 const FORM_SCHEMA = {
     type: 'object',
     properties: {
@@ -160,6 +174,31 @@ describe('handleElicitation', () => {
 
         controller.abort()
         expect(await pendingPromise).toEqual({ action: 'cancel' })
+    })
+
+    it('仅 abort（无 turn 重置跟随）时 agentState.requests 中该条目被移除（spec D5 已决即消失）', async () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const controller = new AbortController()
+
+        const pendingPromise = handler.handleElicitation(
+            {
+                mode: 'form',
+                serverName: 's',
+                message: 'm',
+                requestedSchema: { ...FORM_SCHEMA },
+            },
+            { signal: controller.signal, requestId: 'el-abort-clean-1' }
+        )
+
+        // abort 前卡片已在 agentState.requests
+        expect(foldedRequests(updateAgentStateOf(session))['el-abort-clean-1']).toBeDefined()
+
+        controller.abort()
+        expect(await pendingPromise).toEqual({ action: 'cancel' })
+
+        // 仅 abort、无 turn 重置跟随：卡片必须被移除，不残留
+        expect(foldedRequests(updateAgentStateOf(session))['el-abort-clean-1']).toBeUndefined()
     })
 
     it('turn 重置（resetForNewTurn）后返回 cancel', async () => {

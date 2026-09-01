@@ -506,7 +506,13 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             // elicitation 响应的转型单点位（spec D3）：本 promise resolve 的
             // { approved, answers } 由 handlePermissionResponse elicitation 分支放行
             const outcome = await new Promise<{ approved: boolean; answers?: PermissionAnswers }>((resolve, reject) => {
-                const abortHandler = () => reject(new Error('elicitation aborted'));
+                // abort（SDK 侧 elicitation 完成/会话关闭等）→ 清 pending + 移除 agentState 卡片
+                // （spec D5「已决即消失」，对齐 handlePermissionRequest 既有模式），reject 转 cancel
+                const abortHandler = () => {
+                    this.pendingRequests.delete(options.requestId);
+                    this.finalizeRequest(options.requestId);
+                    reject(new Error('elicitation aborted'));
+                };
                 options.signal.addEventListener('abort', abortHandler, { once: true });
                 this.addPendingRequest(
                     options.requestId,
