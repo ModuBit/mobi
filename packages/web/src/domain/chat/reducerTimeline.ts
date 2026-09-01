@@ -236,6 +236,11 @@ export function reduceTimeline(
 
         if (msg.role === 'agent') {
             const isSnapshot = msg.snapshot === true
+            // 截断标注（spec D6）挂在消息最后一个 text 块上（气泡尾部）：正文被截断的诚实呈现，
+            // 无 text 块（仅 tool_use 被截断）不标——截断语义只接管「正文被当完整消息渲染」这一处
+            const lastTextIdx = msg.aborted === true
+                ? msg.content.reduce((last, c, i) => (c.type === 'text' ? i : last), -1)
+                : -1
             // agent block 的稳定 id：snapshot 与 full message 共享 localId（CLI 侧统一为 sdkUuid），
             // 用 localId 作 key 前缀避免 snapshot→full 时 block.id 变化触发 TextBlock 重 mount。
             // 用 `||` 而非 `??`：防空字符串 localId 退化成畸形 ':idx' 导致 duplicate key
@@ -268,6 +273,7 @@ export function reduceTimeline(
                         meta: msg.meta,
                         isSynthetic: msg.isSynthetic,
                         isSnapshot,
+                        ...(idx === lastTextIdx ? { aborted: true } : {}),
                     })
                     continue
                 }

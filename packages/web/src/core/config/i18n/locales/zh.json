@@ -184,6 +184,11 @@
         "abortedStillQueued": "会话已中断 · {{count}} 条消息仍会执行",
         "abortedQueueCleared": "会话已中断，队列已清空",
         "abortedAllStopped": "会话已中断，队列与后台任务已停止",
+        "abortedTruncated": "已截断",
+        "elicitation": {
+            "submit": "提交",
+            "decline": "拒绝"
+        },
         "terminalReason": {
             "api_error": "API 错误",
             "budget_exhausted": "额度耗尽"

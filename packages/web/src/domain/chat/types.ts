@@ -150,6 +150,8 @@ export type NormalizedMessage = ({
 } | {
     role: 'agent'
     content: NormalizedAgentContent[]
+    /** assistant 正文在流完成前被 interrupt/abort 截断（spec D6：渲染「已截断」中性标注） */
+    aborted?: boolean
 } | {
     role: 'event'
     content: AgentEvent
@@ -228,6 +230,8 @@ export type AgentTextBlock = {
     isStreaming?: boolean
     /** 是否为流式 snapshot（snapshot 字段由 Hub 透传，尚未落库） */
     isSnapshot?: boolean
+    /** 源 assistant 消息被截断（spec D6）：该块为消息内最后一个 text 块时渲染「已截断」中性标注 */
+    aborted?: boolean
 }
 
 export type AgentReasoningBlock = {

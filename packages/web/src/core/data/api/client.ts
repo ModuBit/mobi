@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -246,12 +246,18 @@ export function createMobiApi() {
 
         // Permissions
         permissions: {
-            approve: (sessionId: string, requestId: string, body?: {
-                mode?: 'acceptEdits' | 'default' | 'auto'
-                updatedPermissions?: import('@mobi/shared').PermissionUpdate[]
-                decision?: string
-                answers?: import('@mobi/shared').PermissionAnswers
-            }) =>
+            // 批准请求体（T1 单源收口：mode/decision/updatedPermissions/answers 均用具名类型，
+            // 不再内联声明半新半旧）
+            approve: (
+                sessionId: string,
+                requestId: string,
+                body?: {
+                    mode?: PermissionMode
+                    updatedPermissions?: PermissionUpdate[]
+                    decision?: string
+                    answers?: PermissionAnswers
+                },
+            ) =>
                 client.post(`/api/sessions/${sessionId}/permissions/${requestId}/approve`, body),
             deny: (sessionId: string, requestId: string, body?: { decision?: string; reason?: string }) =>
                 client.post(`/api/sessions/${sessionId}/permissions/${requestId}/deny`, body),

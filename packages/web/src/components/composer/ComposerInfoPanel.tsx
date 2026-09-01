@@ -22,18 +22,23 @@
 import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { ChevronDown } from 'lucide-react'
 import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SDKUIHints, TodoItem, TaskItem, PermissionUpdate } from '@mobi/shared'
+import type { SDKUIHints, TodoItem, TaskItem, PermissionUpdate, PermissionAnswers } from '@mobi/shared'
 import { PermissionFooter, getPermissionDisplayText } from '@/components/tool-card/PermissionFooter'
 import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
+import { isElicitationToolName, parseElicitationPayload } from '@/domain/tool/elicitation'
+import { ElicitationFormCard } from '@/components/chat/ElicitationFormCard'
 import type { ComposerSegments } from '@/domain/chat/composerSegments'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
+import { queryKeys } from '@/core/lib/query-keys'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
@@ -77,6 +82,8 @@ function ToolInteractionPanel({
     const pendingRequests = useMemo(() => {
         if (!requests) return []
         return Object.entries(requests).map(([requestId, request]) => {
+            // mcp_elicitation 由独立 ElicitationFormCard 消费（spec D1 渲染层分流），不进通用审批卡
+            if (isElicitationToolName(request.tool)) return null
             const req = request as {
                 tool?: string; arguments?: unknown; createdAt?: number | null
                 sdkHints?: SDKUIHints
@@ -108,7 +115,7 @@ function ToolInteractionPanel({
                     ? joinQuestionHeaders(req.arguments) ?? undefined
                     : undefined,
             }
-        })
+        }).filter((entry) => entry !== null)
     }, [requests])
 
     if (pendingRequests.length === 0) return null
@@ -161,6 +168,88 @@ function ToolInteractionPanel({
                     />
                 )
             })}
+        </div>
+    )
+}
+
+/** 判定「请求已被处理」的 404（首次提交成功但 SSE 滞后致卡片残留，用户重复点击）：静默收起不报错 */
+function isPermissionRequestGone(e: unknown): boolean {
+    if (!isAxiosError(e) || e.response?.status !== 404) return false
+    const data = e.response.data as { code?: string; error?: string } | undefined
+    return data?.code === 'permission_request_gone' || data?.error === 'Request not found'
+}
+
+/**
+ * Elicitation 表单区（批次 C，spec D1 渲染层分流）：过滤 agentState.requests 的 mcp_elicitation
+ * 条目逐个渲染 ElicitationFormCard。提交/拒绝复用既有审批提交 API（approve 带 answers 通道，spec D3）；
+ * 成功（或 404 已处理）后失效 session 重拉 agentState——卡片随条目从 requests 移除而卸载（spec D5），
+ * 本区不维护「已提交」本地态。
+ */
+function ElicitationRequestsSection({
+    requests,
+    api,
+    sessionId,
+    disabled,
+    onDone,
+}: {
+    requests: AgentState['requests']
+    api: MobiApi
+    sessionId: string
+    disabled: boolean
+    onDone: () => void
+}) {
+    const { t } = useTranslation()
+    const queryClient = useQueryClient()
+    const [submitError, setSubmitError] = useState<string | null>(null)
+
+    const entries = useMemo(
+        () => Object.entries(requests ?? {}).filter(([, request]) => isElicitationToolName(request.tool)),
+        [requests],
+    )
+    if (entries.length === 0) return null
+
+    // 与 PermissionFooter.run 同口径：成功或「已被处理」都失效 session 让 UI 立即移除卡片
+    const settle = () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+        onDone()
+    }
+
+    const run = async (action: () => Promise<unknown>) => {
+        setSubmitError(null)
+        try {
+            await action()
+        } catch (e) {
+            if (!isPermissionRequestGone(e)) {
+                setSubmitError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+                return
+            }
+        }
+        settle()
+    }
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {entries.map(([id, request]) => {
+                // arguments 缺失/形态不符时给空载荷兜底渲染：至少保留拒绝出口，避免 pending 卡死
+                const payload = parseElicitationPayload(request.arguments)
+                    ?? { serverName: '', message: '', requestedSchema: null }
+                return (
+                    <ElicitationFormCard
+                        key={id}
+                        requestId={id}
+                        serverName={payload.serverName}
+                        message={payload.message}
+                        requestedSchema={payload.requestedSchema}
+                        sdkHints={request.sdkHints}
+                        disabled={disabled}
+                        onSubmit={(answers: PermissionAnswers) => run(() => api.permissions.approve(sessionId, id, { answers }))}
+                        onDecline={(reason?: string) => run(() => api.permissions.deny(sessionId, id, reason ? { reason } : undefined))}
+                    />
+                )
+            })}
+            {submitError ? (
+                <div style={{ fontSize: 12, color: 'var(--ant-color-error)' }} role="alert">{submitError}</div>
+            ) : null}
         </div>
     )
 }
@@ -356,6 +445,14 @@ export function ComposerInfoPanel({
                     <QueuedMessagesSection
                         sessionId={sessionId}
                         onEdit={onEditQueued}
+                    />
+
+                    <ElicitationRequestsSection
+                        requests={agentState?.requests}
+                        api={api}
+                        sessionId={sessionId}
+                        disabled={disabled}
+                        onDone={onRequestDone}
                     />
 
                     <ToolInteractionPanel

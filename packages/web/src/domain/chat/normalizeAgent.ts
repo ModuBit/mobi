@@ -157,6 +157,9 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
         isSidechain,
         content: blocks,
         meta: ctx.meta,
+        // SDK 顶层 aborted（cli 展开整个 assistantMsg 带入，spec D6）：正文被截断的中性标注信号。
+        // 显式构造会丢顶层字段，需在此补读；仅 true 时携带，与 cli 侧落库口径一致（缺省不带）。
+        ...(getField(data, 'aborted') === true ? { aborted: true } : {}),
         usage: inputTokens !== null && outputTokens !== null ? {
             input_tokens: inputTokens,
             output_tokens: outputTokens,

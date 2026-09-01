@@ -961,3 +961,49 @@ describe('isSkippableAgentContent', () => {
         })).toBe(false)
     })
 })
+
+describe('assistant aborted 保留（批次 C，spec D6）', () => {
+    const baseParams = {
+        messageId: 'abort-msg-id',
+        localId: null,
+        createdAt: Date.now(),
+    }
+
+    it('aborted === true 的 assistant 消息 normalized 后带 aborted', () => {
+        // cli 侧 sdkToLogConverter 展开 ...assistantMsg，aborted 落在 output data 顶层
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    aborted: true,
+                    message: { content: '半截回复' },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.aborted).toBe(true)
+    })
+
+    it('无 aborted 字段的消息 normalized 后不含该字段', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: { content: '完整回复' },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.aborted).toBeUndefined()
+    })
+})

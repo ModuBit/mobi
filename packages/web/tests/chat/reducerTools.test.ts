@@ -723,6 +723,23 @@ describe('getPermissions', () => {
         const map = getPermissions({ requests: { r1: { tool: 'Bash', arguments: {} } } } as unknown as AgentState)
         expect(map.get('r1')?.permission.suggestions).toBeUndefined()
     })
+
+    it('mcp_elicitation 条目不进 permissions map（不建幽灵工具块）', () => {
+        const agentState = {
+            requests: {
+                r1: {
+                    tool: 'mcp_elicitation',
+                    arguments: { serverName: 'tester', message: '请填写', requestedSchema: { type: 'object', properties: {} } },
+                },
+                r2: { tool: 'Bash', arguments: { command: 'ls' } },
+            },
+        } as unknown as AgentState
+
+        const map = getPermissions(agentState)
+        expect(map.size).toBe(1)
+        expect(map.has('r1')).toBe(false)
+        expect(map.get('r2')?.toolName).toBe('Bash')
+    })
 })
 
 describe('collectToolIdsFromMessages', () => {

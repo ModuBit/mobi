@@ -17,6 +17,7 @@
 import type { AgentState } from '@/core/data/api/types'
 import type { ChatBlock, ChatToolCall, MessageMeta, NormalizedMessage, ToolCallBlock, ToolPermission } from './types'
 import { recordTool } from '@/core/lib/diag'
+import { isElicitationToolName } from '@/domain/tool/elicitation'
 
 /** 权限条目 */
 export type PermissionEntry = {
@@ -34,6 +35,9 @@ export function getPermissions(agentState: AgentState | null | undefined): Map<s
     const requests = agentState?.requests ?? null
     if (requests) {
         for (const [id, request] of Object.entries(requests)) {
+            // elicitation 由独立 ElicitationFormCard 消费（批次 C，spec D1）——
+            // 进 reducer 会被 ensureToolBlock 建成无消息来源的幽灵工具块
+            if (isElicitationToolName(request.tool)) continue
             map.set(id, {
                 toolName: request.tool,
                 input: request.arguments,

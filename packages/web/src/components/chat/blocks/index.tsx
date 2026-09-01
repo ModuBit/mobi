@@ -61,7 +61,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                 </CollapsibleUserMessage>
             )
         case 'agent-text':
-            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} />
+            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
         case 'agent-reasoning':
             return <ReasoningBlock text={block.text} thinking={ctx.isThinking} isStreaming={block.isStreaming} durationMs={block.durationMs} />
         case 'cli-output':
