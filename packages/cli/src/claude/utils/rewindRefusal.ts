@@ -60,3 +60,45 @@ export function extractRewindRefusalFromResult(result: {
     }
     return null
 }
+
+/**
+ * refusal recovery 依赖（launcher 注入，便于单测）。
+ * 路径 A（pendingRewind 非空）：clear + emitRewindCompleted(false) — web store progress 条目仍在，
+ *   corrective 有效。claudeRemote 已 return，while 循环继续 → 常规轮 plain resume。
+ * 路径 B（pendingRewind 已空）：onRewindTruncated 已发 success + 删 progress 条目。
+ *   corrective emit 会被 web completeRewind 守卫吞——用 sendSessionEvent 兜底让用户看到 refusal 原因。
+ *   根修需 web 侧 completeRewind 允许无 progress 时覆盖已有 completion——见 progress ledger 扩展范围。
+ */
+export interface RewindRefusalHandlerDeps {
+    /** 当前 pendingRewind（路径 A 非空，路径 B 已空） */
+    pendingRewind: unknown
+    /** 清空 pendingRewind（路径 A 专用，launcher 注入 session.pendingRewind = null） */
+    clearPendingRewind: () => void
+    /** 上报 rewind 终态（false = 失败，携带 error 文本） */
+    emitRewindCompleted: (filesRestored: boolean, error?: string) => void
+    /** 发送 session 事件（路径 B 兜底，让用户看到 refusal 消息） */
+    sendSessionEvent: (event: { type: 'message'; message: string }) => void
+}
+
+/**
+ * rewind refusal recovery 分流（路径 A/B）。
+ *
+ * 路径 A（startup 抛错，pendingRewind 非空）：clear + emitRewindCompleted(false)，
+ *   不发 sendSessionEvent（progress 条目仍在，corrective emit 有效，无需兜底）。
+ * 路径 B（首个 result is_error，pendingRewind 已空）：emitRewindCompleted(false) +
+ *   sendSessionEvent 兜底（progress 条目已被 onRewindTruncated 删，corrective emit 被
+ *   web completeRewind 守卫吞）。
+ */
+export function handleRewindRefusal(deps: RewindRefusalHandlerDeps, msg: string): void {
+    if (deps.pendingRewind) {
+        // 路径 A：clear + emit（progress 条目仍在，corrective 有效）
+        deps.clearPendingRewind()
+        deps.emitRewindCompleted(false, `rewind rejected: ${msg}`)
+    } else {
+        // 路径 B：onRewindTruncated 已发 success，progress 条目已删，
+        // corrective emit 会被 web completeRewind 守卫吞——用 sessionEvent 兜底
+        // 让用户至少看到 refusal 原因。emitRewindCompleted 仍发，待 web 根修后即生效。
+        deps.emitRewindCompleted(false, `rewind rejected: ${msg}`)
+        deps.sendSessionEvent({ type: 'message', message: `rewind rejected: ${msg}` })
+    }
+}

@@ -39,6 +39,7 @@ import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
 import { reportRewindCompletion } from "./utils/rewindReport";
+import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
@@ -733,34 +734,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             session.pendingRewind = null;
                             await reportRewindCompletion(session.client, rewind);
                         } : undefined,
-                        /**
-                         * rewind refusal 恢复（spec E1）：SDK 拒绝截断时触发。
-                         *
-                         * 路径 A（startup 抛错）：pendingRewind 尚未被 onRewindTruncated 清空。
-                         *   clear pendingRewind + emitRewindCompleted(false) — web store 有 progress 条目，
-                         *   corrective 有效。claudeRemote 已 return，while 循环继续 → 常规轮 plain resume。
-                         *
-                         * 路径 B（首个 result is_error + 前缀）：onRewindTruncated 已清 pendingRewind
-                         *   + 报告成功（emitRewindCompleted(true)）。web completeRewind 已删 progressBySession
-                         *   条目，后续 emitRewindCompleted(false) 被守卫 if(!prev) 吞掉（finding 1）。
-                         *   兜底用 sessionEvent 把 refusal 原因通知 web（用户可见消息），
-                         *   emitRewindCompleted 仍发（T7 web store 修 completeRewind 允许覆盖后即生效）。
-                         */
                         onRewindRefusal: rewind ? async (msg: string) => {
-                            if (session.pendingRewind) {
-                                // 路径 A：clear + emit（progress 条目仍在，corrective 有效）
-                                session.pendingRewind = null;
-                            }
-                            // 两条路径都发 emitRewindCompleted（路径 B 依赖 T7 web store 修复覆盖语义）
-                            session.client.emitRewindCompleted(false, `rewind rejected: ${msg}`);
-                            // 路径 B 兜底：onRewindTruncated 已发 success，progress 条目已删，
-                            // corrective emit 会被吞——用 sessionEvent 让用户至少看到 refusal 原因
-                            if (!session.pendingRewind) {
-                                session.client.sendSessionEvent({
-                                    type: 'message',
-                                    message: `rewind rejected: ${msg}`,
-                                });
-                            }
+                            handleRewindRefusal({
+                                pendingRewind: session.pendingRewind,
+                                clearPendingRewind: () => { session.pendingRewind = null },
+                                emitRewindCompleted: (filesRestored, error) =>
+                                    session.client.emitRewindCompleted(filesRestored, error),
+                                sendSessionEvent: (event) =>
+                                    session.client.sendSessionEvent(event),
+                            }, msg)
                         } : undefined,
                         path: session.path,
                         allowedTools: session.allowedTools ?? [],
