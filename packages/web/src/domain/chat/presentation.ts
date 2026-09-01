@@ -28,6 +28,22 @@ export function getCrossSessionFrom(meta: MessageMeta | undefined): string | nul
     return typeof from === 'string' && from.length > 0 ? from : null
 }
 
+/** 入站 turn 来源合法值（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒 */
+type TurnOrigin = 'peer' | 'scheduled' | 'loop'
+
+const TURN_ORIGIN_VALUES: readonly TurnOrigin[] = ['peer', 'scheduled', 'loop']
+
+/**
+ * 入站 turn 来源提取（user 消息 meta.turnOrigin，CLI 落库时写入）。
+ * 仅认 peer/scheduled/loop 三个合法值；缺失或非法时返回 null，UI 回退 peer 行为（from 驱动，旧消息兼容）。
+ */
+export function getTurnOrigin(meta: MessageMeta | undefined): TurnOrigin | null {
+    const raw = (meta as { turnOrigin?: unknown } | undefined)?.turnOrigin
+    return typeof raw === 'string' && (TURN_ORIGIN_VALUES as readonly string[]).includes(raw)
+        ? (raw as TurnOrigin)
+        : null
+}
+
 /** /compact 命令字面量，web 端判定压缩状态用 */
 export const COMPACT_COMMAND = '/compact'
 

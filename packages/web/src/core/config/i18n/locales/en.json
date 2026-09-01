@@ -152,7 +152,9 @@
             "terminalDiscarded": "Discarded",
             "terminalRefused": "Refused",
             "crossSessionFrom": "From {{from}}",
-            "crossSessionFromUnknown": "From another session"
+            "crossSessionFromUnknown": "From another session",
+            "turnOriginScheduled": "⏰ Scheduled task",
+            "turnOriginLoop": "🔁 /loop"
         },
         "turnDetail": {
             "duration": "Duration",

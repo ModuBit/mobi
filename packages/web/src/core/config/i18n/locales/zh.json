@@ -152,7 +152,9 @@
             "terminalDiscarded": "已丢弃",
             "terminalRefused": "已拒收",
             "crossSessionFrom": "来自 {{from}}",
-            "crossSessionFromUnknown": "来自其他会话"
+            "crossSessionFromUnknown": "来自其他会话",
+            "turnOriginScheduled": "⏰ 定时任务",
+            "turnOriginLoop": "🔁 /loop"
         },
         "turnDetail": {
             "duration": "耗时",

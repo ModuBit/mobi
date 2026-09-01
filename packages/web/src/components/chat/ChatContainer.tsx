@@ -35,7 +35,7 @@ import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleIt
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
-import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom, getTurnOrigin } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
@@ -688,7 +688,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 : false
 
             // 跨会话入站来源标签挂气泡 header（填充背景之外、气泡体上方，随 placement: end 右对齐）
+            // turnOrigin=scheduled/loop 时 from 为空串（降级 null），但仍需展示标签，故判据并入 turnOrigin
             const crossSessionFrom = isUserText && block ? getCrossSessionFrom(block.meta) : null
+            const turnOrigin = isUserText && block ? getTurnOrigin(block.meta) : null
+            const showCrossSessionTag = crossSessionFrom !== null || turnOrigin !== null
 
             // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
@@ -712,7 +715,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
-                header: crossSessionFrom !== null ? <CrossSessionTag from={crossSessionFrom} /> : undefined,
+                header: showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : undefined,
                 classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
                 footer: terminalLabelKey !== null ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

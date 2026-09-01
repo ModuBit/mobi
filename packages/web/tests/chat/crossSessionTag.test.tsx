@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { CrossSessionTag } from '@/components/chat/blocks/CrossSessionTag'
-import { getCrossSessionFrom } from '@/domain/chat/presentation'
+import { getCrossSessionFrom, getTurnOrigin } from '@/domain/chat/presentation'
 
 // mock i18next：只提供本组件用到的文案映射
 vi.mock('react-i18next', () => ({
@@ -27,6 +27,8 @@ vi.mock('react-i18next', () => ({
             const map: Record<string, string> = {
                 'chat.message.crossSessionFrom': `来自 ${opts?.from}`,
                 'chat.message.crossSessionFromUnknown': '来自其他会话',
+                'chat.message.turnOriginScheduled': '⏰ 定时任务',
+                'chat.message.turnOriginLoop': '🔁 /loop',
             }
             return map[key] ?? key
         },
@@ -48,13 +50,43 @@ describe('getCrossSessionFrom（跨会话入站来源提取）', () => {
     })
 })
 
+describe('getTurnOrigin（入站 turn 来源提取）', () => {
+    it('peer / scheduled / loop 三种合法值原样返回', () => {
+        expect(getTurnOrigin({ turnOrigin: 'peer' })).toBe('peer')
+        expect(getTurnOrigin({ turnOrigin: 'scheduled' })).toBe('scheduled')
+        expect(getTurnOrigin({ turnOrigin: 'loop' })).toBe('loop')
+    })
+
+    it('turnOrigin 缺失 / 非合法枚举 / meta 整体缺失 → 一律 null（回退 peer 行为）', () => {
+        expect(getTurnOrigin({})).toBeNull()
+        expect(getTurnOrigin({ turnOrigin: 'unknown' })).toBeNull()
+        expect(getTurnOrigin({ turnOrigin: 42 })).toBeNull()
+        expect(getTurnOrigin(undefined)).toBeNull()
+    })
+})
+
 describe('CrossSessionTag（跨会话入站来源 chip）', () => {
-    it('有来源：显示「来自 {from}」', () => {
+    it('peer + 有来源：显示「来自 {from}」', () => {
+        render(<CrossSessionTag from="mobi-ab" turnOrigin="peer" />)
+        expect(screen.getByText('来自 mobi-ab')).toBeTruthy()
+    })
+
+    it('scheduled：显示定时任务标签（不看 from）', () => {
+        render(<CrossSessionTag from={null} turnOrigin="scheduled" />)
+        expect(screen.getByText('⏰ 定时任务')).toBeTruthy()
+    })
+
+    it('loop：显示 /loop 标签', () => {
+        render(<CrossSessionTag from={null} turnOrigin="loop" />)
+        expect(screen.getByText('🔁 /loop')).toBeTruthy()
+    })
+
+    it('无 turnOrigin（旧消息）：回退 peer 行为（from 驱动）', () => {
         render(<CrossSessionTag from="mobi-ab" />)
         expect(screen.getByText('来自 mobi-ab')).toBeTruthy()
     })
 
-    it('来源缺失（信封降级落库）：显示通用文案', () => {
+    it('无 turnOrigin 且 from 缺失：回退通用文案', () => {
         render(<CrossSessionTag from={null} />)
         expect(screen.getByText('来自其他会话')).toBeTruthy()
     })
