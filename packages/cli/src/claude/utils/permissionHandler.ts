@@ -153,14 +153,19 @@ export function coerceElicitationContent(
     return content;
 }
 
-/** 单字段转型：合法值返回转型结果，缺失/无法转型返回 undefined（按字段缺失处理） */
-function coerceFieldValue(value: unknown, fieldSchema: Record<string, unknown>): unknown {
+/**
+ * 按 JSON Schema type 转型单值（不含 enum 处理）。
+ * integer 与 number 同走数值转型，integer 额外要求整数值。
+ * 无 type（enum-only 字段）时调用方应跳过此函数直接做成员校验。
+ */
+function coerceByType(value: unknown, type: string): unknown {
     if (typeof value === 'string') {
-        const type = fieldSchema.enum ? 'string' : fieldSchema.type;
         if (type === 'string') return value;
-        if (type === 'number') {
+        if (type === 'number' || type === 'integer') {
             const n = Number(value);
-            return Number.isFinite(n) ? n : undefined;
+            if (!Number.isFinite(n)) return undefined;
+            if (type === 'integer' && !Number.isInteger(n)) return undefined;
+            return n;
         }
         if (type === 'boolean') {
             if (value === 'true') return true;
@@ -170,14 +175,35 @@ function coerceFieldValue(value: unknown, fieldSchema: Record<string, unknown>):
         return undefined;
     }
     if (typeof value === 'number') {
-        if (fieldSchema.type === 'number') return value;
-        if (fieldSchema.type === 'string') return String(value);
+        if (type === 'number' || type === 'integer') {
+            if (type === 'integer' && !Number.isInteger(value)) return undefined;
+            return value;
+        }
+        if (type === 'string') return String(value);
         return undefined;
     }
     if (typeof value === 'boolean') {
-        if (fieldSchema.type === 'boolean') return value;
-        if (fieldSchema.type === 'string') return String(value);
+        if (type === 'boolean') return value;
+        if (type === 'string') return String(value);
         return undefined;
+    }
+    return undefined;
+}
+
+/**
+ * 单字段转型：合法值返回转型结果，缺失/无法转型/enum 非成员返回 undefined（按字段缺失处理）。
+ * enum 字段：先按 type 转型（无 type 则原样取值），再校验成员资格——
+ * rpc 'permission' 通道无 zod 校验，enum 成员检查由本函数承担（防注入 enum 外的值）。
+ */
+function coerceFieldValue(value: unknown, fieldSchema: Record<string, unknown>): unknown {
+    if (Array.isArray(fieldSchema.enum)) {
+        const type = typeof fieldSchema.type === 'string' ? fieldSchema.type : null;
+        const coerced = type ? coerceByType(value, type) : value;
+        if (coerced === undefined) return undefined;
+        return fieldSchema.enum.includes(coerced) ? coerced : undefined;
+    }
+    if (typeof fieldSchema.type === 'string') {
+        return coerceByType(value, fieldSchema.type);
     }
     return undefined;
 }
@@ -295,7 +321,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         // 下方通用 allow 分支（没有 updatedInput / updatedPermissions 语义）
         if (pending.toolName === ELICITATION_TOOL_NAME) {
             pending.resolve({ approved: response.approved, answers: response.answers } as unknown as PermissionResult);
-            completion.status = response.approved ? 'approved' : 'denied';
             return completion;
         }
 

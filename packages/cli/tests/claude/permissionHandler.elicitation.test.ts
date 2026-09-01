@@ -265,6 +265,82 @@ describe('coerceElicitationContent', () => {
         )
         expect(content).toEqual({ mode: 'fast' })
     })
+
+    // ─── code-review 修复：integer / enum 成员校验 / 无 type 的 enum ───────────
+
+    it('integer 类型：字符串数字转 number，非整数值按缺失处理', () => {
+        const ok = coerceElicitationContent(
+            { port: '8000' },
+            { type: 'object', properties: { port: { type: 'integer' } }, required: ['port'] }
+        )
+        expect(ok).toEqual({ port: 8000 })
+
+        // 非整数 → required 时 null，非 required 时跳过
+        const req = coerceElicitationContent(
+            { port: '5.5' },
+            { type: 'object', properties: { port: { type: 'integer' } }, required: ['port'] }
+        )
+        expect(req).toBeNull()
+
+        const opt = coerceElicitationContent(
+            { port: '5.5' },
+            { type: 'object', properties: { port: { type: 'integer' } } }
+        )
+        expect(opt).toEqual({})
+    })
+
+    it('integer 类型：number 原生值通过，浮点数按缺失处理', () => {
+        const ok = coerceElicitationContent(
+            { port: 8000 },
+            { type: 'object', properties: { port: { type: 'integer' } } }
+        )
+        expect(ok).toEqual({ port: 8000 })
+
+        const bad = coerceElicitationContent(
+            { port: 5.5 },
+            { type: 'object', properties: { port: { type: 'integer' } }, required: ['port'] }
+        )
+        expect(bad).toBeNull()
+    })
+
+    it('enum 成员校验：值不在 enum 内按缺失处理（required → null）', () => {
+        const req = coerceElicitationContent(
+            { mode: 'yolo' },
+            { type: 'object', properties: { mode: { type: 'string', enum: ['fast', 'slow'] } }, required: ['mode'] }
+        )
+        expect(req).toBeNull()
+
+        const opt = coerceElicitationContent(
+            { mode: 'yolo' },
+            { type: 'object', properties: { mode: { type: 'string', enum: ['fast', 'slow'] } } }
+        )
+        expect(opt).toEqual({})
+    })
+
+    it('enum 合法成员透传（string/number/boolean 各类型）', () => {
+        expect(coerceElicitationContent(
+            { mode: 'fast' },
+            { type: 'object', properties: { mode: { type: 'string', enum: ['fast', 'slow'] } } }
+        )).toEqual({ mode: 'fast' })
+
+        // number enum（type:number + enum）
+        expect(coerceElicitationContent(
+            { level: '2' },
+            { type: 'object', properties: { level: { type: 'number', enum: [1, 2, 3] } } }
+        )).toEqual({ level: 2 })
+
+        // 无 type 的 enum：成员类型即值类型，匹配成员才透传
+        expect(coerceElicitationContent(
+            { flag: true },
+            { type: 'object', properties: { flag: { enum: [true, false] } } }
+        )).toEqual({ flag: true })
+
+        // 无 type 的 enum：非成员按缺失
+        expect(coerceElicitationContent(
+            { flag: 'maybe' },
+            { type: 'object', properties: { flag: { enum: [true, false] } }, required: ['flag'] }
+        )).toBeNull()
+    })
 })
 
 describe('handlePermissionResponse elicitation 分支', () => {
