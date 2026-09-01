@@ -1075,7 +1075,10 @@ export async function claudeRemote(opts: {
             try {
                 warmRef = await startup({ options: sdkOptions })
             } catch (e) {
-                if (isRewindRefusalError(e)) {
+                // 门控 onRewindRefusal 已定义才走 recovery（与 sdkOutputLoop result 路径的 F3 门控一致）：
+                // 未定义（防御：非 rewind 轮误现 refusal 前缀）时按普通 startup 失败向上抛，
+                // 由 launcher catch 补发 completed { error }，不静默 return 丢错误
+                if (isRewindRefusalError(e) && opts.onRewindRefusal) {
                     // recovery（spec E1）：clear pending + plain resume（不带截断点）保留证据 + 报错。
                     // refusal 是 deterministic，重发必败——不 retry 截断，让 launcher 清 pendingRewind
                     // 后 while 循环自然以常规轮重启（plain resume，保留全部历史证据）。

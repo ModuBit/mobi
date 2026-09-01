@@ -169,6 +169,20 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
         expect(onRewindRefusal).not.toHaveBeenCalled()
         expect(onRewindTruncated).not.toHaveBeenCalled()
     })
+
+    it('onRewindRefusal 未定义 + refusal → 按普通 startup 失败向上抛（防御门控）', async () => {
+        // 防御：非 rewind 轮若误配 refusal 前缀错误，不应静默 return 丢错误——
+        // 门控 onRewindRefusal 已定义才走 recovery，否则按普通 startup 失败向上抛
+        mockedStartup.mockRejectedValue(new Error(`${REWIND_REFUSAL_PREFIX} unexpected`))
+
+        const opts = {
+            ...truncationOpts(),
+            onRewindTruncated: vi.fn().mockResolvedValue(undefined),
+            // 不带 onRewindRefusal
+        }
+
+        await expect(claudeRemote(opts)).rejects.toThrow(REWIND_REFUSAL_PREFIX)
+    })
 })
 
 /**

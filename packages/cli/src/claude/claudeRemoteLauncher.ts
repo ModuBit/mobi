@@ -940,6 +940,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         session.client.emitRewindCompleted(
                             rewind.filesRestored,
                             `rewind truncation failed: ${e instanceof Error ? e.message : String(e)}`,
+                            rewind.skippedLinks,
                         );
                         session.pendingRewind = null;
                     }
