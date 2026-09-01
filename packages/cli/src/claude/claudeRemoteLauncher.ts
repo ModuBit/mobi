@@ -733,6 +733,20 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             session.pendingRewind = null;
                             await reportRewindCompletion(session.client, rewind);
                         } : undefined,
+                        /**
+                         * rewind refusal 恢复（spec E1）：SDK 拒绝截断时触发。
+                         * 路径 A（startup 抛错）：pendingRewind 尚未清空 → clear + emitRewindCompleted(false)。
+                         *   claudeRemote 已 return，while 循环继续 → 常规轮重启（plain resume，保留证据）。
+                         * 路径 B（首个 result is_error + 前缀）：onRewindTruncated 已清 pendingRewind + 报告成功。
+                         *   此处补发 emitRewindCompleted(false, refused) 做 corrective 回报。
+                         * 两种路径共用同一 handler：pendingRewind 非空（路径 A）则 clear，已空（路径 B）跳过 clear。
+                         */
+                        onRewindRefusal: rewind ? async (msg: string) => {
+                            if (session.pendingRewind) {
+                                session.pendingRewind = null;
+                            }
+                            session.client.emitRewindCompleted(false, `rewind rejected: ${msg}`);
+                        } : undefined,
                         path: session.path,
                         allowedTools: session.allowedTools ?? [],
                         mcpServers: session.mcpServers,

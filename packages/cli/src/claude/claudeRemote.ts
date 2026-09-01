@@ -56,6 +56,7 @@ import type { PushOrigin } from './utils/stopAction'
 import type { PromptPayload } from '@/utils/promptBuilder'
 import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
+import { isRewindRefusalError, extractRewindRefusalFromResult } from './utils/rewindRefusal'
 
 /**
  * 特殊命令处理结果
@@ -432,6 +433,12 @@ export async function sdkOutputLoop(
          * launcher 置位 turnTracking.hasOutput，stopKind='turn' 停止时据此区分撤回与中断。
          */
         onTurnOutput?: () => void
+        /**
+         * rewind refusal 检测（路径 B，spec E1）：startup 成功但首个 result 是
+         * error_during_execution 且 message 以 refusal 前缀开头时触发。
+         * launcher 做 corrective 回报（emitRewindCompleted(false, refused)）。
+         */
+        onRewindRefusal?: (msg: string) => void
     },
 ): Promise<void> {
     let queryStarted = false;
@@ -536,7 +543,19 @@ export async function sdkOutputLoop(
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
         if (message.type === 'result') {
             opts.onRunningChange(false);
-            const { terminal_reason } = message as SDKResultMessage;
+            const resultMsg = message as SDKResultMessage;
+
+            // rewind refusal 检测（路径 B，spec E1）：startup 成功但首个 result 是
+            // error_during_execution，message 以 refusal 前缀开头。触发 onRewindRefusal
+            // 让 launcher 做 corrective 回报。检测在 onRunningChange/onReady 之前——
+            // refusal 是 deterministic 错误，不构成正常 turn 收尾。
+            const refusalMsg = extractRewindRefusalFromResult(resultMsg)
+            if (refusalMsg) {
+                logger.warn('[sdkOutputLoop] rewind refused in result', refusalMsg)
+                opts.onRewindRefusal?.(refusalMsg)
+            }
+
+            const { terminal_reason } = resultMsg;
             const isInterrupt = isAbortedTerminalReason(terminal_reason);
 
             if (isInterrupt) {
@@ -674,6 +693,12 @@ export async function claudeRemote(opts: {
     resumeDropsTurn?: string,
     /** rewind 截断完成后（startup 预热 boot 加载历史到锚点）立即回调，做两段回报 */
     onRewindTruncated?: () => Promise<void>,
+    /**
+     * rewind refusal 恢复（spec E1）：SDK 拒绝截断（startup 抛错或首个 result is_error）时触发。
+     * launcher 应 clear pendingRewind + plain resume（不带截断点，保留证据）+ emitRewindCompleted(false)。
+     * refusal 是 deterministic，重发必败——host 不应 retry，而是放弃截断回到 plain resume。
+     */
+    onRewindRefusal?: (msg: string) => Promise<void> | void,
     mcpServers?: Record<string, McpServerConfig>,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
@@ -1023,6 +1048,7 @@ export async function claudeRemote(opts: {
             onContextUsage: opts.onContextUsage,
             onCompactBoundary: opts.onCompactBoundary,
             onTurnOutput: opts.onTurnOutput,
+            onRewindRefusal: opts.onRewindRefusal,
             signal: loopAbort.signal,
         }).catch((e) => { outputLoopError = e })
         // 防首条消息等待窗口的未处理 rejection：race 接管前先挂 no-op catch
@@ -1040,8 +1066,22 @@ export async function claudeRemote(opts: {
             // 截断轮：串行 startup 截断 → 回报 → 等用户消息。回报必须落在 nextMessage 之前——
             // 用户消息依赖 Web 回填（rewind-completed），回填依赖回报，若等 nextMessage 再回报会死锁。
             // 截断轮不提前激活（截断本身就是要丢历史，窗口内无旁路流量价值），行为与现状一致。
-            // startup 失败（进程 spawn 失败）向上抛，由 launcher catch 补发 completed { error }
-            warmRef = await startup({ options: sdkOptions })
+            // startup 失败（进程 spawn 失败）向上抛，由 launcher catch 补发 completed { error }；
+            // 但 refusal（SDK 拒绝截断）走 onRewindRefusal recovery（spec E1），不向上抛。
+            try {
+                warmRef = await startup({ options: sdkOptions })
+            } catch (e) {
+                if (isRewindRefusalError(e)) {
+                    // recovery（spec E1）：clear pending + plain resume（不带截断点）保留证据 + 报错。
+                    // refusal 是 deterministic，重发必败——不 retry 截断，让 launcher 清 pendingRewind
+                    // 后 while 循环自然以常规轮重启（plain resume，保留全部历史证据）。
+                    logger.warn('[claudeRemote] rewind refused, falling back to plain resume', e)
+                    await opts.onRewindRefusal?.(e instanceof Error ? e.message : String(e))
+                    return  // 由 onRewindRefusal 触发 clear + 终态回报，while 循环继续 plain resume
+                }
+                // 非 refusal 的 startup 失败仍向上抛，由 launcher catch 补发 completed { error }
+                throw e
+            }
             await opts.onRewindTruncated?.()
             const msg = await opts.nextMessage()
             if (!msg) {
