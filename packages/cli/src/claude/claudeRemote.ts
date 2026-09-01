@@ -549,10 +549,13 @@ export async function sdkOutputLoop(
             // error_during_execution，message 以 refusal 前缀开头。触发 onRewindRefusal
             // 让 launcher 做 corrective 回报，并短路——refusal 是 deterministic 错误，
             // 不走正常 turn 收尾（onReady/onContextUsage 处理 refusal error result 无意义）。
+            // 门控于 opts.onRewindRefusal 已定义（F3 修复）：非 rewind 轮不传 onRewindRefusal，
+            // 若 result 碰巧以 refusal 前缀开头也不 continue——避免跳过 onReady/onContextUsage
+            // 致 UI 卡 running 态
             const refusalMsg = extractRewindRefusalFromResult(resultMsg)
-            if (refusalMsg) {
+            if (refusalMsg && opts.onRewindRefusal) {
                 logger.warn('[sdkOutputLoop] rewind refused in result', refusalMsg)
-                opts.onRewindRefusal?.(refusalMsg)
+                opts.onRewindRefusal(refusalMsg)
                 continue
             }
 

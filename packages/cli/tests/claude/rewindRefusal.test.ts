@@ -299,59 +299,147 @@ describe('claudeRemote rewind refusal recovery（路径 B：result is_error）',
         // 正常走 turn 收尾（onReady 被调用）
         expect(onReady).toHaveBeenCalled()
     })
+
+    it('refusal 前缀 result 但 onRewindRefusal 未定义（非 rewind 轮）→ 不短路，走正常 turn 收尾（onReady 被调）', async () => {
+        const refusalMsg = `${REWIND_REFUSAL_PREFIX} truncated range contains queued message`
+        const refusalResult = {
+            type: 'result' as const,
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [refusalMsg],
+            terminal_reason: 'error_during_execution',
+            duration_ms: 0,
+            duration_api_ms: 0,
+            num_turns: 0,
+            stop_reason: null,
+            total_cost_usd: 0,
+            usage: {},
+            modelUsage: {},
+            permission_denials: [],
+            uuid: 'test-uuid',
+            session_id: 'test-session',
+        }
+        const fakeQuery = {
+            [Symbol.asyncIterator]() {
+                let yielded = false
+                return {
+                    async next() {
+                        if (yielded) return { done: true, value: undefined }
+                        yielded = true
+                        return { done: false, value: refusalResult }
+                    },
+                }
+            },
+            close: vi.fn(),
+        }
+        // 常规轮（无 resumeSessionAt）→ onRewindRefusal 未定义
+        const warmRef = { query: vi.fn().mockReturnValue(fakeQuery), close: vi.fn() }
+        // 用 startup 成功 + 不传 resumeSessionAt 模拟常规轮
+        mockedStartup.mockResolvedValue(warmRef as never)
+
+        const onReady = vi.fn()
+        const onContextUsage = vi.fn()
+
+        const opts = {
+            ...truncationOpts(),
+            resumeSessionAt: undefined,
+            resumeDropsTurn: undefined,
+            // 不传 onRewindTruncated / onRewindRefusal —— 模拟非 rewind 轮
+            nextMessage: vi.fn().mockResolvedValue({
+                message: 'hello', mode: { permissionMode: 'default' as const }, localIds: ['loc-1'],
+            }),
+            onReady,
+            onContextUsage,
+        }
+
+        await claudeRemote(opts)
+
+        // refusal 前缀 result 但 onRewindRefusal 未定义 → 不短路 → onReady 被调（F3 修复）
+        expect(onReady).toHaveBeenCalled()
+        // onContextUsage 也应被调（非中断 result）
+        expect(onContextUsage).toHaveBeenCalled()
+    })
 })
 
 /**
- * handleRewindRefusal launcher handler 单测（A/B 分流 + sendSessionEvent 兜底）。
- * 路径 A：pendingRewind 非空 → clear + emitRewindCompleted(false) + 不发 sendSessionEvent。
- * 路径 B：pendingRewind 已空 → emitRewindCompleted(false) + 发 sendSessionEvent 兜底。
+ * handleRewindRefusal launcher handler 单测（A/B 分流 + 真实 filesRestored/skippedLinks 透传）。
+ * 路径 A（pendingRewind 非空）：clear + emitRewindCompleted(pendingRewind.filesRestored, msg, skippedLinks) + 不发 sendSessionEvent。
+ * 路径 B（pendingRewind 已空）：emitRewindCompleted(fallbackRewindData.filesRestored, msg, skippedLinks) + 发 sendSessionEvent 兜底。
  */
 describe('handleRewindRefusal（launcher handler A/B 分流）', () => {
     const REFUSAL_MSG = `${REWIND_REFUSAL_PREFIX} truncated range contains queued message`
 
     /** 构造 handler deps mock */
-    function makeDeps(opts: { pendingRewind?: unknown } = {}): RewindRefusalHandlerDeps & {
+    function makeDeps(opts: {
+        pendingRewind?: RewindRefusalHandlerDeps['pendingRewind']
+        fallbackRewindData?: RewindRefusalHandlerDeps['fallbackRewindData']
+    } = {}): RewindRefusalHandlerDeps & {
         emitRewindCompleted: ReturnType<typeof vi.fn>
         sendSessionEvent: ReturnType<typeof vi.fn>
         clearPendingRewind: ReturnType<typeof vi.fn>
     } {
         return {
             pendingRewind: opts.pendingRewind ?? null,
+            fallbackRewindData: opts.fallbackRewindData ?? null,
             clearPendingRewind: vi.fn(),
             emitRewindCompleted: vi.fn(),
             sendSessionEvent: vi.fn(),
         }
     }
 
-    it('路径 A（pendingRewind 非空）→ clear + emitRewindCompleted(false) + 不发 sendSessionEvent', () => {
-        const deps = makeDeps({ pendingRewind: { nativeId: 'u1', resumeAt: 'a1' } })
+    it('路径 A（pendingRewind 非空, filesRestored=true, skippedLinks=3）→ clear + emitRewindCompleted(true, msg, 3) + 不发 sendSessionEvent', () => {
+        const deps = makeDeps({
+            pendingRewind: { nativeId: 'u1', resumeAt: 'a1', filesRestored: true, skippedLinks: 3 },
+        })
 
         handleRewindRefusal(deps, REFUSAL_MSG)
 
         // 路径 A：clear 被调用
         expect(deps.clearPendingRewind).toHaveBeenCalledTimes(1)
-        // emitRewindCompleted(false, refused)
+        // emitRewindCompleted 传真实 filesRestored + skippedLinks（F1/F5 修复）
         expect(deps.emitRewindCompleted).toHaveBeenCalledTimes(1)
-        expect(deps.emitRewindCompleted).toHaveBeenCalledWith(false, `rewind rejected: ${REFUSAL_MSG}`)
+        expect(deps.emitRewindCompleted).toHaveBeenCalledWith(true, `rewind rejected: ${REFUSAL_MSG}`, 3)
         // 路径 A 不发 sendSessionEvent（progress 条目仍在，corrective emit 有效，无需兜底）
         expect(deps.sendSessionEvent).not.toHaveBeenCalled()
     })
 
-    it('路径 B（pendingRewind 已空）→ emitRewindCompleted(false) + 发 sendSessionEvent 兜底', () => {
-        const deps = makeDeps({ pendingRewind: null })
+    it('路径 A（filesRestored=false, skippedLinks undefined）→ emitRewindCompleted(false, msg, undefined)', () => {
+        const deps = makeDeps({
+            pendingRewind: { nativeId: 'u1', resumeAt: 'a1', filesRestored: false },
+        })
+
+        handleRewindRefusal(deps, REFUSAL_MSG)
+
+        expect(deps.emitRewindCompleted).toHaveBeenCalledWith(false, `rewind rejected: ${REFUSAL_MSG}`, undefined)
+    })
+
+    it('路径 B（pendingRewind 已空, fallbackRewindData 有值）→ emitRewindCompleted(true, msg, 3) + 发 sendSessionEvent 兜底', () => {
+        const deps = makeDeps({
+            pendingRewind: null,
+            fallbackRewindData: { filesRestored: true, skippedLinks: 3 },
+        })
 
         handleRewindRefusal(deps, REFUSAL_MSG)
 
         // 路径 B：clear 不被调用（pendingRewind 已被 onRewindTruncated 清空）
         expect(deps.clearPendingRewind).not.toHaveBeenCalled()
-        // emitRewindCompleted(false, refused) 仍发（待 web 根修后即生效）
+        // emitRewindCompleted 传 fallback 的真实 filesRestored + skippedLinks（F1/F5 修复）
         expect(deps.emitRewindCompleted).toHaveBeenCalledTimes(1)
-        expect(deps.emitRewindCompleted).toHaveBeenCalledWith(false, `rewind rejected: ${REFUSAL_MSG}`)
+        expect(deps.emitRewindCompleted).toHaveBeenCalledWith(true, `rewind rejected: ${REFUSAL_MSG}`, 3)
         // 路径 B 兜底：sendSessionEvent 让用户看到 refusal 原因
         expect(deps.sendSessionEvent).toHaveBeenCalledTimes(1)
         expect(deps.sendSessionEvent).toHaveBeenCalledWith({
             type: 'message',
             message: `rewind rejected: ${REFUSAL_MSG}`,
         })
+    })
+
+    it('路径 B（pendingRewind 空, fallbackRewindData 也空）→ emitRewindCompleted(false, msg, undefined)', () => {
+        const deps = makeDeps({ pendingRewind: null, fallbackRewindData: null })
+
+        handleRewindRefusal(deps, REFUSAL_MSG)
+
+        expect(deps.emitRewindCompleted).toHaveBeenCalledWith(false, `rewind rejected: ${REFUSAL_MSG}`, undefined)
+        expect(deps.sendSessionEvent).toHaveBeenCalledTimes(1)
     })
 })

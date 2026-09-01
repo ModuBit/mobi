@@ -737,9 +737,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onRewindRefusal: rewind ? async (msg: string) => {
                             handleRewindRefusal({
                                 pendingRewind: session.pendingRewind,
+                                // 路径 B 回退：onRewindTruncated 已清空 session.pendingRewind，
+                                // 但 rewind 局部变量仍持有受理阶段的真实 filesRestored/skippedLinks
+                                fallbackRewindData: {
+                                    filesRestored: rewind.filesRestored,
+                                    skippedLinks: rewind.skippedLinks,
+                                },
                                 clearPendingRewind: () => { session.pendingRewind = null },
-                                emitRewindCompleted: (filesRestored, error) =>
-                                    session.client.emitRewindCompleted(filesRestored, error),
+                                emitRewindCompleted: (filesRestored, error, skippedLinks) =>
+                                    session.client.emitRewindCompleted(filesRestored, error, skippedLinks),
                                 sendSessionEvent: (event) =>
                                     session.client.sendSessionEvent(event),
                             }, msg)
