@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "elicitation-test": {
+            "type": "stdio",
+            "command": "bun",
+            "args": [
+                "/Users/manerfan/workspace/github/modu/mobi/packages/cli/tests/fixtures/elicitation-mcp/server.ts"
+            ]
+        }
+    }
+}
