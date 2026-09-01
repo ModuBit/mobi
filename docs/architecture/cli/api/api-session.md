@@ -43,7 +43,7 @@ Claude 进程输出 → loop.ts → ApiSessionClient.sendClaudeSessionMessage(bo
 - **用户消息**: `type === 'user'` 且非 sidechain/meta → 作为 `user` 角色发送
 - **Agent 输出**: 所有其他消息作为 `agent` 角色发送
 - **Summary 更新**: 检测 `type === 'summary'`，自动更新 session metadata
-- **入站跨会话消息**: `sendInboundCrossSessionMessage(text, fromName, nativeId)`（2026-08-28）——UserPromptSubmit hook 观测的 peer 消息唯一持久化入口，`role=user` + `meta.crossSession={from}`（sentFrom 恒 'cli' 不排队）
+- **入站跨会话消息**: `sendInboundCrossSessionMessage(text, kind, fromName, nativeId)`（2026-08-28；2026-09-01 批次 D 加 kind）——UserPromptSubmit hook 观测的入站 turn（`classifyInboundTurn` 甄别 peer/scheduled/loop）唯一持久化入口，`role=user` + `meta.crossSession={from}` + `meta.turnOrigin=kind`（sentFrom 恒 'cli' 不排队）
 
 ### Hub → Claude（下行）
 
