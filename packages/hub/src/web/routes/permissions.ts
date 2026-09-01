@@ -24,10 +24,11 @@ import { requireSessionFromParam, requireSyncEngine } from './guards'
 
 const decisionSchema = z.enum(['approved', 'approved_for_session', 'denied', 'abort'])
 
-// Flat format: Record<string, string[]> (AskUserQuestion)
+// Flat format: string/string[]（AskUserQuestion）+ number/boolean（elicitation 表单值，spec D3）
 // Nested format: Record<string, { answers: string[] }> (request_user_input)
+// 与 shared 单源 PermissionAnswers 类型对齐
 const answersSchema = z.union([
-    z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+    z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])),
     z.record(z.string(), z.object({ answers: z.array(z.string()) }))
 ])
 

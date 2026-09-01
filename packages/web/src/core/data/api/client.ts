@@ -250,7 +250,7 @@ export function createMobiApi() {
                 mode?: 'acceptEdits' | 'default' | 'auto'
                 updatedPermissions?: import('@mobi/shared').PermissionUpdate[]
                 decision?: string
-                answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>
+                answers?: import('@mobi/shared').PermissionAnswers
             }) =>
                 client.post(`/api/sessions/${sessionId}/permissions/${requestId}/approve`, body),
             deny: (sessionId: string, requestId: string, body?: { decision?: string; reason?: string }) =>

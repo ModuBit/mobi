@@ -16,7 +16,7 @@
 
 import type { AgentState } from "@/api/types";
 import type { PermissionMode } from "@mobi/shared/types";
-import type { PermissionUpdate, SDKUIHints } from "@mobi/shared";
+import type { PermissionAnswers, PermissionUpdate, SDKUIHints } from "@mobi/shared";
 
 type RpcHandlerManagerLike = {
     registerHandler<TRequest = unknown, TResponse = unknown>(
@@ -97,7 +97,7 @@ export type PermissionCompletion = {
     reason?: string;
     mode?: string;
     allowTools?: string[];
-    answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>;
+    answers?: PermissionAnswers;
     updatedPermissions?: PermissionUpdate[];
 };
 

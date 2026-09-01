@@ -251,6 +251,15 @@ export const PermissionUpdateSchema = z.discriminatedUnion('type', [
 export type PermissionUpdate = z.infer<typeof PermissionUpdateSchema>
 export type PermissionUpdateDestination = z.infer<typeof PermissionUpdateDestinationSchema>
 
+/**
+ * 审批/elicitation 表单 answers 值类型（批次 C，spec D3）：
+ * flat string/string[]（AskUserQuestion 等既有消费）+ number/boolean（elicitation 表单值）
+ * + 嵌套格式（request_user_input）。elicitation cli 端按 requestedSchema 转型后组 content。
+ */
+export type PermissionAnswers =
+    | Record<string, string | number | boolean | string[]>
+    | Record<string, { answers: string[] }>
+
 export const AgentStateRequestSchema = z.object({
     tool: z.string(),
     arguments: z.unknown(),

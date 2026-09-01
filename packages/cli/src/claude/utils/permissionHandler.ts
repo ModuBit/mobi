@@ -24,7 +24,7 @@
 import { logger } from "@/lib";
 import type { SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
-import type { PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
+import type { PermissionAnswers, PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
 import { Session } from "../session";
 import { PermissionMode } from "../types";
 import { isObject } from "@mobi/shared";
@@ -41,7 +41,7 @@ interface PermissionResponse {
     mode?: PermissionMode;
     /** @deprecated 权限范围改由 updatedPermissions 表达，保留作后退字段 */
     allowTools?: string[];
-    answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>;
+    answers?: PermissionAnswers;
     /** Web 回传的持久化放行建议，透传进 PermissionResult 让 SDK 持久化 */
     updatedPermissions?: MobiPermissionUpdate[];
     receivedAt?: number;
@@ -63,13 +63,16 @@ function isQuestionToolName(toolName: string): boolean {
     return isAskUserQuestionToolName(toolName) || isRequestUserInputToolName(toolName);
 }
 
-function buildAskUserQuestionUpdatedInput(input: unknown, answers: Record<string, string | string[]> | Record<string, { answers: string[] }>): Record<string, unknown> {
+function buildAskUserQuestionUpdatedInput(input: unknown, answers: PermissionAnswers): Record<string, unknown> {
     // 归一化为 flat 格式并转为 SDK 要求的 string value
     const sdkAnswers: Record<string, string> = {};
     for (const [key, value] of Object.entries(answers)) {
         let flat: string[];
         if (typeof value === 'string') {
             flat = [value];
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
+            // elicitation 表单值（批次 C 放宽，spec D3）：AskUserQuestion 场景 SDK 仍要求 string，转字符串
+            flat = [String(value)];
         } else if (Array.isArray(value)) {
             flat = value;
         } else if (value && typeof value === 'object' && 'answers' in value) {

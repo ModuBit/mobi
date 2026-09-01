@@ -15,7 +15,7 @@
  */
 
 import type { ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ProjectSessionsResult } from '../store/sessions'
@@ -386,7 +386,7 @@ export class SyncEngine {
         requestId: string,
         mode?: PermissionMode,
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-        answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>,
+        answers?: PermissionAnswers,
         updatedPermissions?: PermissionUpdate[]
     ): Promise<void> {
         await this.rpcGateway.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions)

@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -117,7 +117,7 @@ export class RpcGateway {
         requestId: string,
         mode?: PermissionMode,
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-        answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>,
+        answers?: PermissionAnswers,
         updatedPermissions?: PermissionUpdate[]
     ): Promise<void> {
         await this.sessionRpc(sessionId, 'permission', {
