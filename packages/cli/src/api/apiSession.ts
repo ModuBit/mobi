@@ -683,9 +683,9 @@ export class ApiSessionClient extends EventEmitter {
         this.rewindReportQueue.enqueue({ event: 'rewound-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
     }
 
-    /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因（部分失败如实报错） */
-    emitRewindCompleted(filesRestored: boolean, error?: string): void {
-        this.rewindReportQueue.enqueue({ event: 'rewind-completed', body: { sid: this.sessionId, filesRestored, error } })
+    /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */
+    emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void {
+        this.rewindReportQueue.enqueue({ event: 'rewind-completed', body: { sid: this.sessionId, filesRestored, error, skippedLinks } })
     }
 
     /**

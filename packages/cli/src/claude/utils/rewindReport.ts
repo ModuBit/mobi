@@ -23,8 +23,8 @@ export interface RewindReportClient {
     fetchRewindBoundary(nativeId: string): Promise<number>
     /** 截断成功上报（Hub 即刻软删除 + 转 SSE） */
     emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void
-    /** 终态上报（Web 解禁输入 / 关闭弹窗的完成标志） */
-    emitRewindCompleted(filesRestored: boolean, error?: string): void
+    /** 终态上报（Web 解禁输入 / 关闭弹窗的完成标志）；skippedLinks>0 时部分路径被安全护栏跳过 */
+    emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void
 }
 
 /**
@@ -60,5 +60,5 @@ export async function reportRewindCompletion(
         filesError = `rewind boundary lookup failed: ${e instanceof Error ? e.message : String(e)}`;
     }
 
-    client.emitRewindCompleted(rewind.filesRestored, filesError);
+    client.emitRewindCompleted(rewind.filesRestored, filesError, rewind.skippedLinks);
 }

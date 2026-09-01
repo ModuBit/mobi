@@ -157,6 +157,8 @@ export type PendingRewind = {
   resumeAt: string
   /** 文件是否已在受理阶段回滚成功（截断前执行——截断后 checkpoint 作废，PoC poc8 实测） */
   filesRestored: boolean
+  /** 被安全护栏跳过的文件数（spec E2）；来自 rewindFiles 结果 */
+  skippedLinks?: number
 }
 
 export interface EnhancedMode {

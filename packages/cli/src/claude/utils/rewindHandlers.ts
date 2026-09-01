@@ -154,6 +154,7 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             // 文件回滚先于截断（PoC poc8 实测：截断后被截区间的 file checkpoint 立即作废，
             // 截断前调用才有效）。失败 → 干净失败：不截断、不清队列
             let filesRestored = false;
+            let skippedLinks: number | undefined;
             if (restoreFiles) {
                 const query = queryControl.current;
                 if (!query) {
@@ -168,13 +169,14 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
                         };
                     }
                     filesRestored = true;
+                    skippedLinks = result.skippedLinks;
                 } catch (e) {
                     return { accepted: false, reason: `file restore failed: ${e instanceof Error ? e.message : String(e)}` };
                 }
             }
 
             // 记录待执行 rewind：launcher while 循环读到后以 resumeSessionAt 截断重启（不清 sessionId）
-            session.pendingRewind = { nativeId, resumeAt, filesRestored };
+            session.pendingRewind = { nativeId, resumeAt, filesRestored, skippedLinks };
 
             // 清空未消费排队项：丢弃项经 onBatchConsumed 通知 Hub（防 Web 悬浮条卡死，对齐 /clear 丢弃路径）
             messageQueue.clearPending();

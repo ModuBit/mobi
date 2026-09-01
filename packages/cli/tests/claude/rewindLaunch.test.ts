@@ -175,7 +175,7 @@ describe('reportRewindCompletion（两段回报）', () => {
 
         expect(client.truncated).toHaveBeenCalledWith('u1', 5)
         expect(client.completed).toHaveBeenCalledTimes(1)
-        expect(client.completed).toHaveBeenCalledWith(true, undefined)
+        expect(client.completed).toHaveBeenCalledWith(true, undefined, undefined)
         // 顺序：truncated 必须先于 completed
         const order: string[] = []
         client.truncated.mock.calls.forEach(() => order.push('t'))
@@ -189,7 +189,7 @@ describe('reportRewindCompletion（两段回报）', () => {
         await reportRewindCompletion(client, rewind)
 
         expect(client.truncated).not.toHaveBeenCalled()
-        expect(client.completed).toHaveBeenCalledWith(true, expect.stringContaining('boundary not found'))
+        expect(client.completed).toHaveBeenCalledWith(true, expect.stringContaining('boundary not found'), undefined)
     })
 
     it('边界反查抛错 → 跳过 truncated，completed 带 error', async () => {
@@ -198,7 +198,7 @@ describe('reportRewindCompletion（两段回报）', () => {
         await reportRewindCompletion(client, rewind)
 
         expect(client.truncated).not.toHaveBeenCalled()
-        expect(client.completed).toHaveBeenCalledWith(true, expect.stringContaining('lookup failed'))
+        expect(client.completed).toHaveBeenCalledWith(true, expect.stringContaining('lookup failed'), undefined)
     })
 
     it('文件未回滚（restoreFiles false）→ completed filesRestored false', async () => {
@@ -207,7 +207,7 @@ describe('reportRewindCompletion（两段回报）', () => {
 
         await reportRewindCompletion(client, noFiles)
 
-        expect(client.completed).toHaveBeenCalledWith(false, undefined)
+        expect(client.completed).toHaveBeenCalledWith(false, undefined, undefined)
     })
 })
 
