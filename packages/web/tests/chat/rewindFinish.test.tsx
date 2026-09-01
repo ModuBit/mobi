@@ -93,7 +93,7 @@ function eventBlock(type: string): AgentEventBlock {
     return { kind: 'agent-event', id: `e-${type}`, createdAt: 2000, event: { type } as AgentEventBlock['event'] }
 }
 
-const opts = { contextResetLabel: '上下文已重置', rewoundToHereLabel: '已回退至此' }
+const opts = { contextResetLabel: '上下文已重置', rewoundToHereLabel: '已回退至此', skippedLinksLabel: '{{count}} 个路径被安全护栏跳过（symlink/链接）' }
 
 describe('buildChatBubbleItems rewind 渲染', () => {
     it('rewind-completed 事件 → 「已回退至此」分隔线（对齐 context-cleared 形态）', () => {
@@ -106,6 +106,23 @@ describe('buildChatBubbleItems rewind 渲染', () => {
         const divider = items.find(it => it.role === 'divider')
         expect(divider).toBeTruthy()
         expect(JSON.stringify(divider?.content)).toContain('已回退至此')
+    })
+
+    it('rewind-completed skippedLinks>0 → 分隔线显示跳过提示（spec E2）', () => {
+        const items = buildChatBubbleItems(
+            [userTextBlock('hello'), {
+                ...eventBlock('rewind-completed'),
+                event: { type: 'rewind-completed', filesRestored: true, skippedLinks: 3 } as AgentEventBlock['event'],
+            }],
+            { metadata: null, isThinking: false },
+            false,
+            { ...opts, skippedLinksLabel: '3 个路径被安全护栏跳过（symlink/链接）' },
+        )
+        const divider = items.find(it => it.role === 'divider')
+        expect(divider).toBeTruthy()
+        const html = JSON.stringify(divider?.content)
+        expect(html).toContain('已回退至此')
+        expect(html).toContain('3 个路径被安全护栏跳过')
     })
 
     it('REWIND_COMMAND 起点标记行 → 不渲染任何气泡', () => {

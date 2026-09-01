@@ -108,6 +108,35 @@ describe('rewindStore 状态机', () => {
         expect(useRewindStore.getState().completionBySession.has(sid)).toBe(true)
     })
 
+    it('completeRewind 存 skippedLinks（spec E2）', () => {
+        const sid = 'sess-1'
+        useRewindStore.getState().beginRewind(sid, 'u1')
+        useRewindStore.getState().completeRewind(sid, true, undefined, 3)
+        const completion = useRewindStore.getState().completionBySession.get(sid)
+        expect(completion?.skippedLinks).toBe(3)
+    })
+
+    it('completeRewind corrective 覆盖：progress 不存在但已有 completion → 允许覆盖（T4 路径 B refusal）', () => {
+        const sid = 'sess-1'
+        // 模拟 onRewindTruncated 先 emit success（progress 被清、completion 已存）
+        useRewindStore.getState().beginRewind(sid, 'u1')
+        useRewindStore.getState().completeRewind(sid, true)
+        expect(useRewindStore.getState().progressBySession.has(sid)).toBe(false)
+        expect(useRewindStore.getState().completionBySession.has(sid)).toBe(true)
+
+        // corrective emitRewindCompleted(false, refused) 到达：progress 已无但 completion 已存 → 允许覆盖
+        const applied = useRewindStore.getState().completeRewind(sid, false, 'refused')
+        expect(applied).toBe(true)
+        const completion = useRewindStore.getState().completionBySession.get(sid)
+        expect(completion?.filesRestored).toBe(false)
+        expect(completion?.error).toBe('refused')
+    })
+
+    it('completeRewind stray：progress 与 completion 均不存在 → 丢弃（返回 false）', () => {
+        expect(useRewindStore.getState().completeRewind('stray-1', true)).toBe(false)
+        expect(useRewindStore.getState().completionBySession.size).toBe(0)
+    })
+
     it('clearSession 清理；beginRewind 清掉旧终态', () => {
         const sid = 'sess-1'
         useRewindStore.getState().beginRewind(sid, 'u1')
