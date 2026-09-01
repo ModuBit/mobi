@@ -155,3 +155,77 @@ describe('ElicitationFormCard（批次 C，spec D4）', () => {
         expect(onSubmit).not.toHaveBeenCalled()
     })
 })
+
+// ─── code-review 修复：required boolean/number/integer + 不支持类型 ──────────
+
+describe('ElicitationFormCard required 类型修正', () => {
+    beforeEach(() => {
+        onSubmit.mockClear()
+        onDecline.mockClear()
+    })
+    afterEach(() => { cleanup() })
+
+    it('required boolean：默认 Switch off（值 false）可直接提交 false', async () => {
+        const requiredBoolSchema = {
+            type: 'object',
+            required: ['confirmed'],
+            properties: { confirmed: { type: 'boolean', title: '确认' } },
+        }
+        renderCard({ requestedSchema: requiredBoolSchema })
+
+        // 不触碰 Switch，直接提交
+        fireEvent.click(screen.getByRole('button', { name: /提\s*交/ }))
+
+        await waitFor(() => {
+            expect(onSubmit).toHaveBeenCalledTimes(1)
+        })
+        expect(onSubmit).toHaveBeenCalledWith({ confirmed: false })
+    })
+
+    it('required number：填数字可直接提交（不被 async-validator type 错误拦截）', async () => {
+        const requiredNumSchema = {
+            type: 'object',
+            required: ['count'],
+            properties: { count: { type: 'number', title: '数量' } },
+        }
+        renderCard({ requestedSchema: requiredNumSchema })
+
+        fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '7' } })
+        fireEvent.click(screen.getByRole('button', { name: /提\s*交/ }))
+
+        await waitFor(() => {
+            expect(onSubmit).toHaveBeenCalledTimes(1)
+        })
+        expect(onSubmit).toHaveBeenCalledWith({ count: 7 })
+    })
+
+    it('required integer：填整数可直接提交', async () => {
+        const requiredIntSchema = {
+            type: 'object',
+            required: ['port'],
+            properties: { port: { type: 'integer', title: '端口' } },
+        }
+        renderCard({ requestedSchema: requiredIntSchema })
+
+        fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '8080' } })
+        fireEvent.click(screen.getByRole('button', { name: /提\s*交/ }))
+
+        await waitFor(() => {
+            expect(onSubmit).toHaveBeenCalledTimes(1)
+        })
+        expect(onSubmit).toHaveBeenCalledWith({ port: 8080 })
+    })
+
+    it('不支持的字段类型（array）渲染禁用控件而非可输入输入框', () => {
+        const arraySchema = {
+            type: 'object',
+            properties: { tags: { type: 'array', items: { type: 'string' }, title: '标签' } },
+        }
+        renderCard({ requestedSchema: arraySchema })
+
+        // array 字段渲染成禁用 input（标记不支持），不可填值（避免必败 decline）
+        const textbox = screen.getByRole('textbox')
+        expect(textbox).toBeDisabled()
+        expect(screen.getByText('标签')).toBeInTheDocument()
+    })
+})

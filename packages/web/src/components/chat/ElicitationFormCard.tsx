@@ -42,14 +42,30 @@ export type ElicitationFormCardProps = {
 }
 
 /**
+ * 必填校验规则：按字段类型选 rule.type，避免 async-validator 默认 'string' 对
+ * number/boolean 值报类型错（required boolean 的 false、required number 的数值都被拦截）。
+ */
+function requiredRule(field: ElicitationFieldSchema): { required: true; type?: 'string' | 'number' | 'boolean' } {
+    if (field.type === 'boolean') return { required: true, type: 'boolean' }
+    if (field.type === 'number' || field.type === 'integer') return { required: true, type: 'number' }
+    if (field.enum?.length) {
+        const t = typeof field.enum[0]
+        if (t === 'number') return { required: true, type: 'number' }
+        if (t === 'boolean') return { required: true, type: 'boolean' }
+    }
+    return { required: true }
+}
+
+/**
  * 按 requestedSchema 单字段生成表单控件（spec D4：string→Input、enum→Select、
- * number→InputNumber、boolean→Switch；嵌套对象/数组 cli 端已 decline 兜底，此处不处理）
+ * number/integer→InputNumber、boolean→Switch；array/object 等不支持类型渲染禁用 input——
+ * cli 端无法转型，避免用户填值后被静默 decline）
  */
 function renderFieldControl(field: ElicitationFieldSchema) {
     if (field.enum && field.enum.length > 0) {
         return (
             <Select
-                options={field.enum.map((value) => ({ value, label: value }))}
+                options={field.enum.map((value) => ({ value, label: typeof value === 'string' ? value : String(value) }))}
                 allowClear
                 style={{ width: '100%' }}
             />
@@ -57,13 +73,16 @@ function renderFieldControl(field: ElicitationFieldSchema) {
     }
     switch (field.type) {
         case 'number':
+        case 'integer':
             return <InputNumber style={{ width: '100%' }} />
         case 'boolean':
             // Switch 的表单值走 checked（antd 约定），保证 onFinish 收到原生 boolean
             return <Switch />
         case 'string':
-        default:
             return <Input />
+        default:
+            // array/object 等不支持的字段类型：cli 端无法转型，禁用输入避免必败 decline
+            return <Input disabled placeholder="不支持的字段类型" />
     }
 }
 
@@ -131,18 +150,24 @@ export function ElicitationFormCard({
             </div>
 
             <Form layout="vertical" onFinish={handleSubmit} disabled={disabled}>
-                {fields.map(({ name, field, required }) => (
+                {fields.map(({ name, field, required }) => {
+                    // required boolean 初值 false：让用户不触碰 Switch 也能直接提交 false
+                    // （否则 Switch 默认 undefined，required 校验拦截，无法以 false 提交）
+                    const initialBoolean = field.type === 'boolean' && required ? false : undefined
+                    return (
                     <Form.Item
                         key={name}
                         name={name}
                         label={field.title || name}
                         tooltip={field.description}
                         valuePropName={field.type === 'boolean' ? 'checked' : 'value'}
-                        rules={required ? [{ required: true }] : undefined}
+                        initialValue={initialBoolean}
+                        rules={required ? [requiredRule(field)] : undefined}
                     >
                         {renderFieldControl(field)}
                     </Form.Item>
-                ))}
+                    )
+                })}
 
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <Button disabled={disabled} onClick={() => onDecline()}>

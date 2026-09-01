@@ -201,6 +201,8 @@ function ElicitationRequestsSection({
     const { t } = useTranslation()
     const queryClient = useQueryClient()
     const [submitError, setSubmitError] = useState<string | null>(null)
+    // 正在提交的 requestId（approve/deny await 期间 disable 对应卡片，防双击重复请求）
+    const [submittingId, setSubmittingId] = useState<string | null>(null)
 
     const entries = useMemo(
         () => Object.entries(requests ?? {}).filter(([, request]) => isElicitationToolName(request.tool)),
@@ -214,8 +216,9 @@ function ElicitationRequestsSection({
         onDone()
     }
 
-    const run = async (action: () => Promise<unknown>) => {
+    const run = async (id: string, action: () => Promise<unknown>) => {
         setSubmitError(null)
+        setSubmittingId(id)
         try {
             await action()
         } catch (e) {
@@ -223,6 +226,8 @@ function ElicitationRequestsSection({
                 setSubmitError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
                 return
             }
+        } finally {
+            setSubmittingId(null)
         }
         settle()
     }
@@ -241,9 +246,9 @@ function ElicitationRequestsSection({
                         message={payload.message}
                         requestedSchema={payload.requestedSchema}
                         sdkHints={request.sdkHints}
-                        disabled={disabled}
-                        onSubmit={(answers: PermissionAnswers) => run(() => api.permissions.approve(sessionId, id, { answers }))}
-                        onDecline={(reason?: string) => run(() => api.permissions.deny(sessionId, id, reason ? { reason } : undefined))}
+                        disabled={disabled || submittingId === id}
+                        onSubmit={(answers: PermissionAnswers) => run(id, () => api.permissions.approve(sessionId, id, { answers }))}
+                        onDecline={(reason?: string) => run(id, () => api.permissions.deny(sessionId, id, reason ? { reason } : undefined))}
                     />
                 )
             })}

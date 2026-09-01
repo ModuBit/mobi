@@ -33,7 +33,7 @@ export type ElicitationFieldSchema = {
     type?: string
     title?: string
     description?: string
-    enum?: string[]
+    enum?: (string | number | boolean)[]
 }
 
 /** MCP elicitation requestedSchema（spec D4：不支持的嵌套对象/数组由 cli 端 decline 兜底） */
