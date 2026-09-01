@@ -51,6 +51,7 @@ import { TerminalManager } from '@/terminal/TerminalManager'
 import { applyVersionedAck } from './versionedUpdate'
 import { IdleTimer } from '@/modules/common/idleTimer'
 import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
+import type { InboundTurnKind } from '../claude/utils/inboundCrossSession'
 
 /** 兜底重连初始退避（ms），上限 30s */
 const MANUAL_RECONNECT_BASE_DELAY_MS = 1_000
@@ -501,7 +502,7 @@ export class ApiSessionClient extends EventEmitter {
      * 该消息未经 hub 发送通道，此处是它唯一的持久化入口；
      * sentFrom 保留 'cli'（永不排队），来源标注放 meta.crossSession。
      */
-    sendInboundCrossSessionMessage(text: string, fromName: string | null, nativeId: string): void {
+    sendInboundCrossSessionMessage(text: string, kind: InboundTurnKind, fromName: string | null, nativeId: string): void {
         const content: MessageContent = {
             role: 'user',
             content: {
@@ -513,7 +514,9 @@ export class ApiSessionClient extends EventEmitter {
                 // crossSession 恒写入：fromName 降级（信封缺 from-name）时为空串，
                 // web 端判空后显示「来自 其他会话」。键缺失会让 web 的 compact 误判守卫
                 // （排除 crossSession 消息）失效，降级消息会被误渲染成 compact-summary
-                crossSession: { from: fromName ?? '' }
+                crossSession: { from: fromName ?? '' },
+                // turnOrigin 区分入站来源（spec 批次 D）：peer/scheduled/loop
+                turnOrigin: kind
             }
         }
         this.socket.emit('message', {

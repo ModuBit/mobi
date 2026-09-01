@@ -43,6 +43,40 @@ export interface InboundCrossSession {
     fromName: string | null
 }
 
+export type InboundTurnKind = 'peer' | 'scheduled' | 'loop'
+
+export interface InboundTurn {
+    kind: InboundTurnKind
+    /** 落库正文：peer=信封内正文；scheduled/loop=hook input.prompt 原文 */
+    text: string
+    /** peer 的发送方会话名；scheduled/loop 为 null */
+    fromName: string | null
+}
+
+/**
+ * 按 hook input 的 source + 信封甄别入站 turn（spec 批次 D）。
+ * - source='system' + 信封 → peer（跨会话消息，复用 parseInboundCrossSession 的信封解析）
+ * - source='schedule_wakeup' → scheduled（CronCreate/routine 触发）
+ * - source='loop_wakeup' → loop（/loop 唤醒）
+ * - 其他（user/sdk/poll_event/无信封的 system）→ null，走常规用户消息流，不落库
+ *
+ * source 灰度期可能缺省（0.3.250 起）：缺省时仅信封存在按 peer 兜底（与 parseInboundCrossSession 一致）。
+ */
+export function classifyInboundTurn(input: InboundPromptInput): InboundTurn | null {
+    // scheduled / loop：source 显式标识，不依赖信封
+    if (input.source === 'schedule_wakeup') {
+        return { kind: 'scheduled', text: input.prompt.trim(), fromName: null }
+    }
+    if (input.source === 'loop_wakeup') {
+        return { kind: 'loop', text: input.prompt.trim(), fromName: null }
+    }
+
+    // peer：source=system（或灰度缺省）+ 信封
+    if (input.source !== undefined && input.source !== 'system') return null
+    const peer = parseInboundCrossSession(input)
+    return peer ? { kind: 'peer', ...peer } : null
+}
+
 // 开标签整体捕获（属性顺序/存在性不假设），from-name 再子提取——属性缺失时正文仍可降级提取
 const ENVELOPE_RE = /<cross-session-message[^>]*>([\s\S]*?)<\/cross-session-message>/
 const FROM_NAME_RE = /\bfrom-name="([^"]*)"/

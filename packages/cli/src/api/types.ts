@@ -157,7 +157,10 @@ export const MessageMetaSchema = z.object({
     allowedTools: z.array(z.string()).nullable().optional(),
     disallowedTools: z.array(z.string()).nullable().optional(),
     /** 跨会话入站消息来源标注（UserPromptSubmit hook 观测的 peer 消息，from = 来源会话名） */
-    crossSession: z.object({ from: z.string() }).optional()
+    crossSession: z.object({ from: z.string() }).optional(),
+    /** 入站 turn 来源（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒。
+     *  仅 hook 观测的入站 turn 落库时携带；普通 webapp user 消息缺省 */
+    turnOrigin: z.enum(['peer', 'scheduled', 'loop']).optional()
 })
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>

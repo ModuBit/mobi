@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState } from "./claudeRemote";
-import { parseInboundCrossSession } from './utils/inboundCrossSession';
+import { classifyInboundTurn } from './utils/inboundCrossSession';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
@@ -674,9 +674,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 绝不影响会话主流程。
         const handleInboundPrompt = (input: { prompt: string; source?: string }) => {
             try {
-                const parsed = parseInboundCrossSession(input);
-                if (!parsed) return;
-                session.client.sendInboundCrossSessionMessage(parsed.text, parsed.fromName, randomUUID());
+                const turn = classifyInboundTurn(input);
+                if (turn) {
+                    session.client.sendInboundCrossSessionMessage(turn.text, turn.kind, turn.fromName, randomUUID());
+                }
             } catch (e) {
                 logger.debug('[remote]: inbound cross-session prompt handling failed', e);
             }
