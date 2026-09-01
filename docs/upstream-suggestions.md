@@ -40,17 +40,19 @@
 
 **遗留**（E2E 复现并定位根因，单独修）：① web 后台 Agent drawer 内容不随 SSE 实时增长（sidechain 消息不入主消息窗口增量路径，children 冻结在初始快照）；② U-4 的 hub `runtime_state` 双写竞态。见 `docs/pending.md` #62。
 
-### 批次 C｜审批、工具与 MCP 状态保真（1 高 + 4 中/低）
+### 批次 C｜审批、工具与 MCP 状态保真（2026-09-01 对照 SDK 0.3.251 收敛）
 
-**目标**：审批可达性 + 工具/MCP 在 web 端的状态不再靠猜。
+**目标**：审批可达性 + 工具/MCP 在 web 端的状态不再靠猜。**实施前逐条对照当前 sdk.d.ts 复核——7 条中 2 条字段已被上游撤除（U-14a tool_result_meta、U-17 tool_use_meta），教训：台账条目实施前必须重验**。
 
-- **U-12** 后台 subagent 权限请求到达 `canUseTool`（高）——审批完整性缺口，凡权限必可达
-- **U-25** MCP 运行时热管理四件套（中高）——配置热更新/启停/重连/状态查询，不用重启会话
-- **U-26** `onElicitation` MCP 表单进审批 UI（中）——带 elicitation 的 MCP 不再静默被拒
-- **U-15** `Query.reinitialize()` 断线重放挂起审批（中，先验证 0.3.217 自动补收）
-- **U-14** `tool_result_meta` + `aborted` 标记（中）、**U-7** `user_message_uuid`（低）、**U-17** `tool_use_meta`（中低）
+- **U-12** 后台 subagent 权限请求到达 `canUseTool`（高）→ ✅ 代码已全通（四层都在），批次 C E2E 顺手验证
+- **U-26** `onElicitation` MCP 表单进审批 UI（中）→ ✅ form 模式批次 C 实施（协议零改动走审批链路 + 自写测试 MCP）；url 模式 → pending #63
+- **U-14b** `aborted` 截断标注（中）→ ✅ 批次 C 实施（半截 assistant 正文标「已截断」）
+- **U-25** MCP 运行时热管理（中高）→ pending #63（跟 skill/plugin 管理一批；`setMcpServers` 无消费场景明确不做）
+- **U-15** `Query.reinitialize()`（中）→ ❌ 不适用（mobi 审批经 agentState.requests 持久化自恢复），留观察 pending #64
+- **U-7** `user_message_uuid`（低）→ pending #65
+- **U-14a** `tool_result_meta` / **U-17** `tool_use_meta` → ❌ 0.3.251 已无此字段，不适用
 
-**为什么一批**：都落在「cli 透传字段/控制请求 → web normalize/工具卡片/审批卡片/设置页」这条消费链上。
+spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`（本地留存）。
 
 ### 批次 D｜跨会话数据面（2 条，中）
 
@@ -171,7 +173,7 @@
 **落地位置**：cli 透传（assistantPartialAssembler / 转发层）→ hub 消息持久化附带 → web 错误展示组件关联显示。
 
 **优先级**：低。
-**状态**：待决策
+**状态**：⏸️ pending #65（2026-09-01 裁定：错误归因暂无强烈实际痛点，user 消息 native uuid 与 mobi localId/nativeId 双轨对齐成本可能大于收益；出现排队失败归因需求或做 edit-and-retry（`refused_user_message_uuid` 配套）时重启）
 
 ---
 
@@ -236,7 +238,7 @@
 **落地位置**：cli `permissionHandler.ts`（读取 `agent_id`、透传）；web 审批卡片显示来源 agent。
 
 **优先级**：高（远程控制场景的核心完整性：凡权限必可达）。
-**状态**：待决策
+**状态**：✅ 已实现（代码链路全通，早于批次 C：cli `permissionHandler.ts` 透传 `agentID` + `agentInfoMap` 反查、shared `SDKUIHints` 三字段、web `PermissionFooter.tsx` 渲染来源 agent。批次 C 仅 E2E 顺手验证，spec 同批次 C）
 
 ---
 
@@ -258,7 +260,7 @@
 **落地位置**：web `domain/chat`（normalize/reducer 消费 sidecar 字段）、工具卡片状态渲染。
 
 **优先级**：中。
-**状态**：待决策
+**状态**：⚠️ 收敛拆分（2026-09-01 对照 SDK 0.3.251：`tool_result_meta` **已被上游撤除**（0.3.216 引入后不在当前 sdk.d.ts），被拒/被取消分类仍靠 `INTERRUPTED_PATTERN` 文案匹配，无结构化替代；`aborted`（sdk.d.ts:3221，assistant 消息截断标记）✅ 批次 C 立项实施中——cli `sdkToLogConverter` 透传 + web 半截 assistant 气泡标「已截断」。spec：批次 C）
 
 ---
 
@@ -271,7 +273,7 @@
 **落地位置**：cli 传输恢复链路调用 `reinitialize()`；先验证 0.3.217 的自动补收在 mobi 链路是否已生效。
 
 **优先级**：中。
-**状态**：待决策（先验证自动补收）
+**状态**：❌ 不适用（2026-09-01 核实：mobi 审批经 `agentState.requests` 持久化（cli→hub update-state RPC→web 首拉自恢复），web 刷新/重连不丢审批卡片；SDK 0.3.217 迟连补收面向 Remote Control 路径、`reinitialize()` 面向 SDK 传输层重连，mobi 均无对应场景（cli↔SDK 进程内 stdio）。留观察场景见 pending #64）
 
 ---
 
@@ -297,7 +299,7 @@
 **落地位置**：web 工具卡片标题渲染层读 `tool_use_meta` 回退 `knownTools` 注册表。
 
 **优先级**：中低。
-**状态**：待决策
+**状态**：❌ 不适用（2026-09-01 对照 SDK 0.3.251：`tool_use_meta` / `icon_url` **不在当前 sdk.d.ts**——0.3.179/0.3.181 引入后被上游撤除。若后续以其他形态回归再评估）
 
 ---
 
@@ -401,7 +403,7 @@
 **落地位置**：cli 会话控制链路（QueryControlRef 透传）→ hub → web 设置页 / inspector MCP 状态。
 
 **优先级**：中高。
-**状态**：待决策
+**状态**：⏸️ pending #63（2026-09-01 裁定：跟 skill/plugin 管理一批做「配置资产管理面」。收敛结论：状态查询 + 重连对用户配置层 MCP 有效、价值真实；`toggleMcpServer` 会话级语义易困惑暂缓；`setMcpServers` 只覆盖 dynamic 层，mobi 无消费场景，明确不做）
 
 ---
 
@@ -414,7 +416,7 @@
 **落地位置**：cli 接回调 → 透传 web 渲染表单 → 结果回传（可参照 AskUserQuestion 卡片形态）。
 
 **优先级**：中。
-**状态**：待决策
+**状态**：✅ form 模式已采纳（2026-09-01 批次 C 立项实施中：elicitation 以合成 toolName 走现有审批链路（agentState.requests，hub/shared 协议零改动）、web 按 requestedSchema 渲染动态表单、answers 通道放宽 number/boolean、自写带 elicitation 的测试 MCP 验证；url 模式 decline 兜底，→ pending #63。spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`）
 
 ---
 

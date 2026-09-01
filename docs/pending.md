@@ -688,3 +688,41 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 **相关**：批次 B spec `docs/superpowers/specs/2026-08-31-task-subagent-observability-design.md` D6/D7；台账 U-4/U-23。
 
 **优先级**：中高。后台 agent 是远程场景核心工作流，状态丢失与不可观测直接影响信任。
+
+---
+
+## 63. 配置资产管理面：MCP 管理 + skill/plugin 管理（2026-09-01）
+
+**范围**：用户级「配置资产」的统一管理面——MCP 服务器、skill、plugin 三类资产的管理 UI 与生命周期控制。分散在三个上游能力上：
+
+1. **MCP 运行时热管理**（台账 U-25 收敛后）：`mcpServerStatus()` 状态查询 + `reconnectMcpServer()` 重连对用户配置层 MCP 有效（连接层操作），价值真实——用户配的 MCP 连接失败（外部服务挂了/token 过期）目前 web 端完全不可见。`toggleMcpServer` 会话级启停不持久化、易困惑，暂缓；`setMcpServers` 只覆盖 dynamic 层（mobi dynamic 层只有 `mobi`/`mobi-web` 基础设施），**无消费场景，明确不做**。
+2. **MCP elicitation url 授权模式**（台账 U-26 拆出的另一半）：涉及 web→hub→cli 三端「打开授权页 + elicitationId 完成通知关联」链路，且有远程场景浏览器归属问题（用户在自己设备完成 OAuth，完成通知怎么回流 cli）。
+3. **skill 管理 / plugin 管理**：reloadSkills 等场景（互链 #49 插件化架构观察）。
+
+**为什么一批**：三类资产共享同一组设施——资产列表 UI、状态展示、启停/重连动作、cli Query 控制链路（hub socket RPC 转发）、配置读写与脱敏。割裂做会重复建设。
+
+**前置核实**：实施前对照当前 sdk.d.ts 复核四件套契约（本批 U-14a/U-17 已发现台账字段被上游撤除的先例）。
+
+**相关**：批次 C spec `docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md` D2；台账 U-25/U-26；#49。
+
+---
+
+## 64. SDK `Query.reinitialize()` 场景观察（2026-09-01）
+
+**结论**：台账 U-15（断线重放挂起审批）对 mobi **不适用**——mobi 审批经 `agentState.requests` 持久化（cli addPendingRequest → hub update-state RPC 落档 → web 首拉自恢复），web 刷新/重连不丢审批卡片；SDK 0.3.217 的迟连补收面向 Remote Control 路径，mobi 是 stdio host 单客户端，不走那条通道；`reinitialize()` 面向「SDK 传输中断恢复」，mobi cli↔SDK 进程内 stdio 无此场景（进程死 = Query 消亡 = 审批取消）。
+
+**留观察**：后续若出现以下场景可重启评估——① cli↔SDK 引入跨进程/远程传输形态（如远程 runner 演进）；② 出现「SDK 侧传输重置但进程存活」的新链路。届时 reinitialize 是现成能力。
+
+**相关**：批次 C spec D7 前置分析；台账 U-15。
+
+---
+
+## 65. `user_message_uuid` 错误归因回链（2026-09-01）
+
+**能力**：SDK 错误 result 与 turn 首帧携带 `user_message_uuid`（sdk.d.ts:3211 确认在），把回复/失败绑定到触发它的用户消息；`refused_user_message_uuid` 同族（rewind 目标 + edit-and-retry composer 预填）。
+
+**价值**：排队/并发场景下 web 错误提示标注「这条失败对应你发的哪条消息」。当前不做的原因：需要 user 消息 native uuid 与 mobi localId/nativeId 双轨全链路对齐，连通成本可能大于收益；错误归因暂无强烈实际痛点。
+
+**重启时机**：出现「多排队消息下失败归因不清」的真实反馈，或做 edit-and-retry（refused_user_message_uuid 的 composer 预填是现成配套）时一并设计。
+
+**相关**：台账 U-7。
