@@ -28,7 +28,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     startup: vi.fn(),
 }))
 vi.mock('@/ui/logger', () => ({
-    logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+    logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn(), debugLargeJson: vi.fn() },
 }))
 
 const mockedStartup = vi.mocked(startup)
@@ -166,5 +166,135 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
         await expect(claudeRemote(opts)).rejects.toThrow('spawn failed')
         expect(onRewindRefusal).not.toHaveBeenCalled()
         expect(onRewindTruncated).not.toHaveBeenCalled()
+    })
+})
+
+/**
+ * 路径 B 端到端测试（spec E1）：startup 成功 → onRewindTruncated 报告成功 →
+ * warmRef.query 返回首个 result 是 error_during_execution + refusal 前缀 →
+ * sdkOutputLoop 检测 → 调 onRewindRefusal + 短路（不调 onReady/onContextUsage）。
+ */
+describe('claudeRemote rewind refusal recovery（路径 B：result is_error）', () => {
+    beforeEach(() => {
+        mockedStartup.mockReset()
+    })
+
+    it('首个 result 是 refusal error → 调 onRewindRefusal + 短路（不调 onReady/onContextUsage）', async () => {
+        const refusalMsg = `${REWIND_REFUSAL_PREFIX} truncated range contains queued message`
+        // 构造只产出一条 refusal result 然后结束的 Query 流
+        const refusalResult = {
+            type: 'result' as const,
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [refusalMsg],
+            terminal_reason: 'error_during_execution',
+            duration_ms: 0,
+            duration_api_ms: 0,
+            num_turns: 0,
+            stop_reason: null,
+            total_cost_usd: 0,
+            usage: {},
+            modelUsage: {},
+            permission_denials: [],
+            uuid: 'test-uuid',
+            session_id: 'test-session',
+        }
+        const fakeQuery = {
+            [Symbol.asyncIterator]() {
+                let yielded = false
+                return {
+                    async next() {
+                        if (yielded) return { done: true, value: undefined }
+                        yielded = true
+                        return { done: false, value: refusalResult }
+                    },
+                }
+            },
+            close: vi.fn(),
+        }
+        const warmRef = { query: vi.fn().mockReturnValue(fakeQuery), close: vi.fn() }
+        mockedStartup.mockResolvedValue(warmRef as never)
+
+        const onRewindRefusal = vi.fn()
+        const onRewindTruncated = vi.fn().mockResolvedValue(undefined)
+        const onReady = vi.fn()
+        const onContextUsage = vi.fn()
+
+        const opts = {
+            ...truncationOpts(),
+            nextMessage: vi.fn().mockResolvedValue({
+                message: 'hello', mode: { permissionMode: 'default' as const }, localIds: ['loc-1'],
+            }),
+            onRewindTruncated,
+            onRewindRefusal,
+            onReady,
+            onContextUsage,
+        }
+
+        await claudeRemote(opts)
+
+        // onRewindTruncated 已触发（startup 成功后报告截断成功）
+        expect(onRewindTruncated).toHaveBeenCalledTimes(1)
+        // refusal result 触发 onRewindRefusal
+        expect(onRewindRefusal).toHaveBeenCalledTimes(1)
+        expect(onRewindRefusal).toHaveBeenCalledWith(refusalMsg)
+        // 短路验证：refusal result 不走正常 turn 收尾
+        expect(onReady).not.toHaveBeenCalled()
+        expect(onContextUsage).not.toHaveBeenCalled()
+    })
+
+    it('首个 result 非 refusal error（普通错误）→ 不调 onRewindRefusal', async () => {
+        const normalErrorResult = {
+            type: 'result' as const,
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: ['some other runtime error'],
+            terminal_reason: 'error_during_execution',
+            duration_ms: 0,
+            duration_api_ms: 0,
+            num_turns: 0,
+            stop_reason: null,
+            total_cost_usd: 0,
+            usage: {},
+            modelUsage: {},
+            permission_denials: [],
+            uuid: 'test-uuid',
+            session_id: 'test-session',
+        }
+        const fakeQuery = {
+            [Symbol.asyncIterator]() {
+                let yielded = false
+                return {
+                    async next() {
+                        if (yielded) return { done: true, value: undefined }
+                        yielded = true
+                        return { done: false, value: normalErrorResult }
+                    },
+                }
+            },
+            close: vi.fn(),
+        }
+        const warmRef = { query: vi.fn().mockReturnValue(fakeQuery), close: vi.fn() }
+        mockedStartup.mockResolvedValue(warmRef as never)
+
+        const onRewindRefusal = vi.fn()
+        const onReady = vi.fn()
+
+        const opts = {
+            ...truncationOpts(),
+            nextMessage: vi.fn().mockResolvedValue({
+                message: 'hello', mode: { permissionMode: 'default' as const }, localIds: ['loc-1'],
+            }),
+            onRewindTruncated: vi.fn().mockResolvedValue(undefined),
+            onRewindRefusal,
+            onReady,
+        }
+
+        await claudeRemote(opts)
+
+        // 非 refusal error 不触发 onRewindRefusal
+        expect(onRewindRefusal).not.toHaveBeenCalled()
+        // 正常走 turn 收尾（onReady 被调用）
+        expect(onReady).toHaveBeenCalled()
     })
 })

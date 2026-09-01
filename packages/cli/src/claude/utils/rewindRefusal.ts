@@ -38,7 +38,8 @@ export function isRewindRefusalError(error: unknown): boolean {
 
 /**
  * 从 SDK result 消息提取 refusal 文本（路径 B：startup 成功但首个 result 是 refusal error）。
- * SDKResultError.errors 数组或 SDKResultSuccess.result 字段都可能携带 refusal 前缀文本。
+ * SDKResultError.errors 数组是标准路径；result 字段是防御性分支——某些非标准 error
+ * 形状可能把错误文本放在 result 而非 errors，is_error:true 守卫已确保只检 error result。
  * 返回匹配到的 refusal 文本，非 refusal result 返回 null。
  */
 export function extractRewindRefusalFromResult(result: {
@@ -47,13 +48,13 @@ export function extractRewindRefusalFromResult(result: {
     result?: string
 }): string | null {
     if (!result.is_error) return null
-    // SDKResultError: errors 数组
+    // SDKResultError: errors 数组（标准路径）
     if (Array.isArray(result.errors)) {
         for (const e of result.errors) {
             if (typeof e === 'string' && e.startsWith(REWIND_REFUSAL_PREFIX)) return e
         }
     }
-    // SDKResultSuccess with is_error: result 字段
+    // 防御性分支：非标准 error 形状可能把错误文本放在 result 字段
     if (typeof result.result === 'string' && result.result.startsWith(REWIND_REFUSAL_PREFIX)) {
         return result.result
     }
