@@ -93,7 +93,7 @@ function eventBlock(type: string): AgentEventBlock {
     return { kind: 'agent-event', id: `e-${type}`, createdAt: 2000, event: { type } as AgentEventBlock['event'] }
 }
 
-const opts = { contextResetLabel: '上下文已重置', rewoundToHereLabel: '已回退至此', skippedLinksLabel: '{{count}} 个路径被安全护栏跳过（symlink/链接）' }
+const opts = { contextResetLabel: '上下文已重置', rewoundToHereLabel: '已回退至此', rewindFailedLabel: '回退失败', skippedLinksLabel: '{{count}} 个路径被安全护栏跳过（symlink/链接）' }
 
 describe('buildChatBubbleItems rewind 渲染', () => {
     it('rewind-completed 事件 → 「已回退至此」分隔线（对齐 context-cleared 形态）', () => {
@@ -123,6 +123,62 @@ describe('buildChatBubbleItems rewind 渲染', () => {
         const html = JSON.stringify(divider?.content)
         expect(html).toContain('已回退至此')
         expect(html).toContain('3 个路径被安全护栏跳过')
+    })
+
+    it('rewind-completed 有 error → 显示「回退失败 · error」（F2: isFailed 基于 error 而非 filesRestored）', () => {
+        const items = buildChatBubbleItems(
+            [userTextBlock('hello'), {
+                ...eventBlock('rewind-completed'),
+                event: { type: 'rewind-completed', filesRestored: false, error: 'rewind rejected: refused' } as AgentEventBlock['event'],
+            }],
+            { metadata: null, isThinking: false },
+            false,
+            opts,
+        )
+        const divider = items.find(it => it.role === 'divider')
+        expect(divider).toBeTruthy()
+        const html = JSON.stringify(divider?.content)
+        expect(html).toContain('回退失败')
+        expect(html).toContain('rewind rejected: refused')
+        expect(html).not.toContain('已回退至此')
+    })
+
+    it('rewind-completed filesRestored=true + error → 显示「回退失败 · error」+ skippedLinks（文件回滚成功但截断失败中间态）', () => {
+        const items = buildChatBubbleItems(
+            [userTextBlock('hello'), {
+                ...eventBlock('rewind-completed'),
+                event: { type: 'rewind-completed', filesRestored: true, error: 'rewind rejected: refused', skippedLinks: 2 } as AgentEventBlock['event'],
+            }],
+            { metadata: null, isThinking: false },
+            false,
+            { ...opts, skippedLinksLabel: '2 个路径被安全护栏跳过（symlink/链接）' },
+        )
+        const divider = items.find(it => it.role === 'divider')
+        expect(divider).toBeTruthy()
+        const html = JSON.stringify(divider?.content)
+        // 有 error → 失败文案
+        expect(html).toContain('回退失败')
+        expect(html).toContain('rewind rejected: refused')
+        // filesRestored=true + skippedLinks>0 → 仍显跳过提示
+        expect(html).toContain('2 个路径被安全护栏跳过')
+    })
+
+    it('rewind-completed filesRestored=false 但无 error → 显示「已回退至此」（F2: 无 error 即非失败）', () => {
+        const items = buildChatBubbleItems(
+            [userTextBlock('hello'), {
+                ...eventBlock('rewind-completed'),
+                event: { type: 'rewind-completed', filesRestored: false } as AgentEventBlock['event'],
+            }],
+            { metadata: null, isThinking: false },
+            false,
+            opts,
+        )
+        const divider = items.find(it => it.role === 'divider')
+        expect(divider).toBeTruthy()
+        const html = JSON.stringify(divider?.content)
+        // 无 error → 成功文案（filesRestored=false 不再等同于失败）
+        expect(html).toContain('已回退至此')
+        expect(html).not.toContain('回退失败')
     })
 
     it('REWIND_COMMAND 起点标记行 → 不渲染任何气泡', () => {
