@@ -245,8 +245,8 @@ export interface ClientToServerEvents {
     'messages-acked': (data: { sid: string; nativeId: string }) => void
     /** rewind 截断成功（CLI → Hub）：Hub 即刻按 deleteFromSeq 软删除并转 SSE */
     'rewound-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
-    /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因，转 SSE */
-    'rewind-completed': (data: { sid: string; filesRestored: boolean; error?: string }) => void
+    /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因；skippedLinks>0 时部分路径被安全护栏跳过 */
+    'rewind-completed': (data: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number }) => void
     'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void
     /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */

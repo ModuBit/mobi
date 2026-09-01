@@ -587,7 +587,9 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         type: z.literal('rewind-completed'),
         /** 文件是否已恢复（false 时 error 携带原因） */
         filesRestored: z.boolean(),
-        error: z.string().optional()
+        error: z.string().optional(),
+        /** 被安全护栏跳过的文件数（symlink/hardlink/非常规文件，spec E2）；>0 时 web 提示 */
+        skippedLinks: z.number().optional()
     }),
     // 撤回刚发消息（#53 / 批次 A）：hub 已软删除该行及其后全部行，blocks 为 content
     // 信封内层 UserContentBlock[]（web deserializeSegments 还原 composer，失败兜底 originalText）

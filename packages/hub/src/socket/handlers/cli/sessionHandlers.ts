@@ -855,9 +855,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
     // rewind 终态（CLI 两段回报第二段）：filesRestored false 时 error 携带原因，转 SSE。
     // 重放安全（web 无进行中态即忽略），ack 确认制同上
-    socket.on('rewind-completed', (data: { sid: string; filesRestored: boolean; error?: string }, ack?: () => void) => {
+    socket.on('rewind-completed', (data: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number }, ack?: () => void) => {
         if (!data || typeof data.sid !== 'string' || typeof data.filesRestored !== 'boolean'
-            || (data.error !== undefined && typeof data.error !== 'string')) {
+            || (data.error !== undefined && typeof data.error !== 'string')
+            || (data.skippedLinks !== undefined && typeof data.skippedLinks !== 'number')) {
             ack?.()
             return
         }
@@ -867,7 +868,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             ack?.()
             return
         }
-        emitRewindEvent({ type: 'rewind-completed', sessionId: data.sid, filesRestored: data.filesRestored, error: data.error })
+        emitRewindEvent({ type: 'rewind-completed', sessionId: data.sid, filesRestored: data.filesRestored, error: data.error, skippedLinks: data.skippedLinks })
         ack?.()
     })
 }
