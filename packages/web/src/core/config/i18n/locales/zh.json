@@ -226,6 +226,7 @@
             "filesFailedBoundary": "对话已回退，但文件快照定位失败，文件未恢复",
             "timedOut": "回退超时，已解锁输入",
             "rewoundToHere": "已回退至此",
+            "rewindFailed": "回退失败",
             "skippedLinks": "{{count}} 个路径被安全护栏跳过（symlink/链接）",
             "notice": "此消息之后的所有对话将被移除",
             "targetLabel": "回退至此",

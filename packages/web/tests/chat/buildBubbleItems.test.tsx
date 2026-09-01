@@ -127,7 +127,23 @@ const defaultCtx: ChatBlockContext = {
     disabled: false,
 }
 
-const defaultOptions = { contextResetLabel: 'Context cleared' }
+const defaultOptions = {
+    contextResetLabel: 'Context cleared',
+    rewoundToHereLabel: 'Rewound to here',
+    rewindFailedLabel: 'Rewind failed',
+    skippedLinksLabel: '{{count}} path(s) skipped',
+}
+
+/** 把 React span 的 children（可能是 string/number/array/嵌套）拍平成纯文本，便于子串断言 */
+function childrenToText(children: unknown): string {
+    if (children == null || children === false) return ''
+    if (typeof children === 'string' || typeof children === 'number') return String(children)
+    if (Array.isArray(children)) return children.map(childrenToText).join('')
+    if (typeof children === 'object' && 'props' in children) {
+        return childrenToText((children as React.ReactElement).props?.children)
+    }
+    return ''
+}
 
 /* ═══════════════════════════════════════════════════════════════
  * 测试用例
@@ -346,6 +362,82 @@ describe('buildChatBubbleItems', () => {
             expect(items[0].role).toBe('user')
             expect(items[1].role).toBe('divider')
             expect(items[2].role).toBe('assistant')
+        })
+    })
+
+    /* ─── 5. rewind-completed 分隔线 ─── */
+
+    describe('rewind-completed', () => {
+        it('filesRestored=true → 显示「已回退至此」', () => {
+            const blocks = [
+                createAgentEvent({
+                    id: 'ev-rw',
+                    event: { type: 'rewind-completed', filesRestored: true } as AgentEventBlock['event'],
+                }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items).toHaveLength(1)
+            expect(items[0].role).toBe('divider')
+            const container = items[0].content as React.ReactElement<{ children: React.ReactNode }>
+            const text = childrenToText(container.props.children)
+            expect(text).toContain('Rewound to here')
+        })
+
+        it('filesRestored=false 且 error 存在 → 显示「回退失败」+ error 文本', () => {
+            const blocks = [
+                createAgentEvent({
+                    id: 'ev-rw-fail',
+                    event: {
+                        type: 'rewind-completed',
+                        filesRestored: false,
+                        error: 'rewind rejected: Resume rejected by --resume-drops-turn: ...',
+                    } as AgentEventBlock['event'],
+                }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items).toHaveLength(1)
+            expect(items[0].role).toBe('divider')
+            const container = items[0].content as React.ReactElement<{ children: React.ReactNode }>
+            const text = childrenToText(container.props.children)
+            expect(text).toContain('Rewind failed')
+            expect(text).toContain('rewind rejected: Resume rejected')
+            // 不应显示成功文案
+            expect(text).not.toContain('Rewound to here')
+        })
+
+        it('filesRestored=true + skippedLinks>0 → 追加跳过提示', () => {
+            const blocks = [
+                createAgentEvent({
+                    id: 'ev-rw-skip',
+                    event: { type: 'rewind-completed', filesRestored: true, skippedLinks: 3 } as AgentEventBlock['event'],
+                }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            const container = items[0].content as React.ReactElement<{ children: React.ReactNode }>
+            const text = childrenToText(container.props.children)
+            expect(text).toContain('Rewound to here')
+            expect(text).toContain('3 path(s) skipped')
+        })
+
+        it('filesRestored=false + error 时仍显失败文案（不因 skippedLinks 走成功分支）', () => {
+            const blocks = [
+                createAgentEvent({
+                    id: 'ev-rw-fail-skip',
+                    event: {
+                        type: 'rewind-completed',
+                        filesRestored: false,
+                        error: 'rewind rejected: x',
+                        skippedLinks: 2,
+                    } as AgentEventBlock['event'],
+                }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            const container = items[0].content as React.ReactElement<{ children: React.ReactNode }>
+            const text = childrenToText(container.props.children)
+            expect(text).toContain('Rewind failed')
+            expect(text).not.toContain('Rewound to here')
+            // 失败分支不拼 skippedLinks（与成功分支互斥）
+            expect(text).not.toContain('2 path(s) skipped')
         })
     })
 })

@@ -652,7 +652,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             chatBlocks,
             { metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending },
             !!session?.running,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
         )
 
         // block.id === 消息 id（normalize 以消息 id 作 block id），按 id 建消息 metadata 索引，

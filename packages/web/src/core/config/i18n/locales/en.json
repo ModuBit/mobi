@@ -226,6 +226,7 @@
             "filesFailedBoundary": "Conversation was rewound, but the file snapshot could not be located; files were not restored",
             "timedOut": "Rewind timed out; input unlocked",
             "rewoundToHere": "Rewound to here",
+            "rewindFailed": "Rewind failed",
             "skippedLinks": "{{count}} path(s) skipped by safety guard (symlink/links)",
             "notice": "All messages after this point will be removed",
             "targetLabel": "Rewind to",

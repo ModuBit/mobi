@@ -66,8 +66,9 @@ export function extractRewindRefusalFromResult(result: {
  * 路径 A（pendingRewind 非空）：clear + emitRewindCompleted(false) — web store progress 条目仍在，
  *   corrective 有效。claudeRemote 已 return，while 循环继续 → 常规轮 plain resume。
  * 路径 B（pendingRewind 已空）：onRewindTruncated 已发 success + 删 progress 条目。
- *   corrective emit 会被 web completeRewind 守卫吞——用 sendSessionEvent 兜底让用户看到 refusal 原因。
- *   根修需 web 侧 completeRewind 允许无 progress 时覆盖已有 completion——见 progress ledger 扩展范围。
+ *   T7 三分守卫已允许 corrective 覆盖（无 progress 但有 completion → 覆盖），故
+ *   emitRewindCompleted(false) 能正确改写终态。sendSessionEvent 保留作 belt-and-suspenders：
+ *   终态分隔线不显 error 文本时仍可见 refusal 原因（见 buildBubbleItems rewind-completed 渲染）。
  */
 export interface RewindRefusalHandlerDeps {
     /** 当前 pendingRewind（路径 A 非空，路径 B 已空） */
@@ -76,7 +77,7 @@ export interface RewindRefusalHandlerDeps {
     clearPendingRewind: () => void
     /** 上报 rewind 终态（false = 失败，携带 error 文本） */
     emitRewindCompleted: (filesRestored: boolean, error?: string) => void
-    /** 发送 session 事件（路径 B 兜底，让用户看到 refusal 消息） */
+    /** 发送 session 事件（路径 B belt-and-suspenders，终态分隔线不显 error 时仍可见 refusal 原因） */
     sendSessionEvent: (event: { type: 'message'; message: string }) => void
 }
 
@@ -86,8 +87,8 @@ export interface RewindRefusalHandlerDeps {
  * 路径 A（startup 抛错，pendingRewind 非空）：clear + emitRewindCompleted(false)，
  *   不发 sendSessionEvent（progress 条目仍在，corrective emit 有效，无需兜底）。
  * 路径 B（首个 result is_error，pendingRewind 已空）：emitRewindCompleted(false) +
- *   sendSessionEvent 兜底（progress 条目已被 onRewindTruncated 删，corrective emit 被
- *   web completeRewind 守卫吞）。
+ *   sendSessionEvent belt-and-suspenders（T7 三分守卫已允许 corrective 覆盖，emit 即生效；
+ *   sendSessionEvent 确保终态分隔线不显 error 文本时仍可见 refusal 原因）。
  */
 export function handleRewindRefusal(deps: RewindRefusalHandlerDeps, msg: string): void {
     if (deps.pendingRewind) {
@@ -95,9 +96,10 @@ export function handleRewindRefusal(deps: RewindRefusalHandlerDeps, msg: string)
         deps.clearPendingRewind()
         deps.emitRewindCompleted(false, `rewind rejected: ${msg}`)
     } else {
-        // 路径 B：onRewindTruncated 已发 success，progress 条目已删，
-        // corrective emit 会被 web completeRewind 守卫吞——用 sessionEvent 兜底
-        // 让用户至少看到 refusal 原因。emitRewindCompleted 仍发，待 web 根修后即生效。
+        // 路径 B：onRewindTruncated 已发 success，progress 条目已删。
+        // T7 三分守卫已允许 corrective 覆盖（无 progress 但有 completion → 覆盖），emitRewindCompleted
+        // 能正确改写终态分隔线为失败文案。sendSessionEvent 作 belt-and-suspenders：终态分隔线
+        // 不显 error 文本时仍可见 refusal 原因（见 buildBubbleItems rewind-completed 渲染）。
         deps.emitRewindCompleted(false, `rewind rejected: ${msg}`)
         deps.sendSessionEvent({ type: 'message', message: `rewind rejected: ${msg}` })
     }

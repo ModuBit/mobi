@@ -28,6 +28,8 @@ export type BuildBubbleOptions = {
     contextResetLabel: string
     /** rewind 截断点「已回退至此」分隔线的翻译文本 */
     rewoundToHereLabel: string
+    /** rewind 失败分隔线「回退失败」的翻译文本（filesRestored=false 且 error 存在时使用） */
+    rewindFailedLabel: string
     /** skippedLinks>0 时显示的安全护栏跳过提示（{{count}} 插值） */
     skippedLinksLabel: string
 }
@@ -98,16 +100,20 @@ export function buildChatBubbleItems(
 
         // rewind-completed 事件渲染为「已回退至此」分隔线（对齐 context-cleared 分隔线形态，spec §4.4）；
         // 同时它是 isRewindInProgress 的完成标志（纯状态信号，此处承担视觉呈现）；
+        // filesRestored=false 且 error 存在（路径 B refusal 等）→ 改显「回退失败」+ error 文本，避免误导用户；
         // skippedLinks>0 时追加「N 个路径被安全护栏跳过（symlink/链接）」提示（spec E2）
         if (block.kind === 'agent-event' && block.event.type === 'rewind-completed') {
-            const skippedLinks = (block.event as { skippedLinks?: number }).skippedLinks
+            const ev = block.event as { filesRestored?: boolean; error?: string; skippedLinks?: number }
+            const isFailed = ev.filesRestored === false && typeof ev.error === 'string' && ev.error.length > 0
+            const skippedLinks = ev.skippedLinks
             items.push({
                 key: block.id,
                 role: 'divider',
                 content: (
                     <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
-                        {options.rewoundToHereLabel}
-                        {skippedLinks && skippedLinks > 0
+                        {isFailed ? options.rewindFailedLabel : options.rewoundToHereLabel}
+                        {isFailed && ev.error ? ` · ${ev.error}` : ''}
+                        {!isFailed && skippedLinks && skippedLinks > 0
                             ? ` · ${options.skippedLinksLabel.replace('{{count}}', String(skippedLinks))}`
                             : ''}
                     </span>
