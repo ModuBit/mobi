@@ -54,16 +54,18 @@
 
 spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`（本地留存）；架构文档：`docs/architecture/tool-permission.md` 场景五。
 
-### 批次 D｜跨会话数据面（2 条，中）
+### 批次 D｜跨会话数据面（2 条，中）✅ 已完成（2026-09-01）
 
-- **U-18** 跨会话增强包（结构化 name/body、subkind、前置拒绝、notify_when_idle）
+- **U-18** 跨会话增强包 → ✅ 收敛为 source 细分（`classifyInboundTurn` 识别 schedule_wakeup/loop_wakeup + `meta.turnOrigin` + web CrossSessionTag 三标签）；结构化 name/body ❌spike 证 SDK 0.3.251 不 emit peer 到 onMessage（hook 是唯一观测点）、前置拒绝/notify_when_idle ❌mobi 不发送跨会话无消费场景
 - ~~**U-8** `command_lifecycle: refused` 拒收终态~~（✅ 已随批次 A 实施，2026-08-31）
 
 **为什么一批**：mobi 差异化能力的数据面升级，全部动跨会话转发/标签渲染链路；U-8 依赖 U-13 的 lifecycle 帧透传，实际已随批次 A（U-13）一并落地。
 
-### 批次 E｜rewind/resume 护栏（1 条，中）
+**spike 记录**（2026-09-01 E2E 实测 SDK 0.3.251）：A 会话 SendMessage 给空闲 B → B DB 只 1 条 hook 落的 crossSession user 行（无 onMessage 转发第 2 条）→ SDK 不 emit peer 到 onMessage。判据：launcher onMessage 对普通 user message 会落库，若 emit 则重复。
 
-- **U-16** `resumeDropsTurn` + `skippedLinks`——搭 rewind 相关迭代的车，不单独立项（Options.forkSession 同域参考）。
+### 批次 E｜rewind/resume 护栏（1 条，中）✅ 已完成（2026-09-01）
+
+- **U-16** `resumeDropsTurn` + `skippedLinks` → ✅ 实施：截断重启传 `resumeDropsTurn=nativeId` 让 SDK 校验截断区间 + refusal（`Resume rejected by --resume-drops-turn:` 前缀）走 plain resume recovery（clear pending + 不带截断点重启保留证据 + 不重试）；`rewindFiles` 结果 `skippedLinks` 跨 shared/cli/hub/web 四包透传到终态 UI「N 路径被安全护栏跳过」。corrective `completeRewind` 覆盖语义（无 progress 时覆盖已有 completion）根治路径 B refusal card 显 success 的 correctness 缺口。
 
 ### 批次 F｜成本与预算（3 条，gateway 依赖）
 
@@ -286,7 +288,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli `resumeSessionAt` 调用处（`session.ts`）+ web rewind 结果提示。
 
 **优先级**：中。
-**状态**：待决策
+**状态**：✅ 已采纳（2026-09-01 批次 E 实施：截断重启传 `resumeDropsTurn=nativeId` 让 SDK 校验截断区间 + refusal 走 plain resume recovery（clear pending + 不带截断点重启保留证据 + 不重试）+ `rewindFiles` 结果 `skippedLinks` 跨 shared/cli/hub/web 四包透传到终态 UI + completeRewind corrective 覆盖语义根治路径 B card correctness。spec：`docs/superpowers/specs/2026-09-01-cross-session-source-rewind-guard-design.md`）
 
 ---
 
@@ -312,7 +314,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 跨会话转发层（结构化字段透传）→ web 跨会话标签/卡片渲染。
 
 **优先级**：中（跨会话是 mobi 差异化能力，数据面升级性价比高）。
-**状态**：待决策
+**状态**：✅ 已采纳（2026-09-01 批次 D 实施：收敛为 source 细分——`classifyInboundTurn` 识别 `schedule_wakeup`/`loop_wakeup` + `meta.turnOrigin` + web CrossSessionTag 三标签「📨 来自 xxx」/「⏰ 定时任务」/「🔁 /loop」。结构化 name/body ❌不适用（spike E2E 实测 SDK 0.3.251 不 emit peer 到 onMessage，hook 是唯一观测点，看不到 origin 字段）；前置拒绝/notify_when_idle ❌不适用（mobi 不发送跨会话消息，无消费场景）。spec：`docs/superpowers/specs/2026-09-01-cross-session-source-rewind-guard-design.md`）
 
 ---
 
