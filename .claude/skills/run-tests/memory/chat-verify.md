@@ -37,7 +37,9 @@ mobi 没有独立的停止按钮——**停止 = composer 右下角的 send/stop
 - **输入框空 + running/sending → 停止态（方块 ■，svg 是 `<rect>`）**
 - 输入框空 + 空闲 → 发送态 disabled
 
-要点停止：先 `Ctrl+A` + `Backspace` 清空输入框，按钮才翻成停止态。时间敏感场景（长任务执行中）用 `evaluate_script` 定位 + `.click()` 比 `take_snapshot` 拿 uid 快：
+要点停止：先 `Ctrl+A` + `Backspace` 清空输入框，按钮才翻成停止态。时间敏感场景（长任务执行中）用 `evaluate_script` 定位 + `.click()` 比 `take_snapshot` 拿 uid 快。
+
+**过早停止无效（2026-09-01 实测）**：发送后立即轮询到 stop 态就点会打空——112ms 时 SDK turn 尚未真正开始（首 token ~5s），点了停止 turn 照常跑完（DB 消息完整、无 aborted）。验证 abort/截断类场景必须**先等 assistant 正文流式输出开始**（如轮询 main innerText 出现目标内容）再点停止，才截在真实 turn 上：
 
 ```js
 () => {

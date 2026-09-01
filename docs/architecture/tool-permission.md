@@ -75,7 +75,7 @@ canUseTool: async (toolName, input, options) => {
 
 | 路由 | 用途 |
 |------|------|
-| `POST /sessions/:id/permissions/:requestId/approve` | 批准，可附带 `{ mode, allowTools, decision, answers }` |
+| `POST /sessions/:id/permissions/:requestId/approve` | 批准，可附带 `{ mode, allowTools, decision, answers }`；answers 值类型 `PermissionAnswers`（string/number/boolean/string[] + 嵌套格式，批次 C 为 elicitation 表单值放宽） |
 | `POST /sessions/:id/permissions/:requestId/deny` | 拒绝，可附带 `{ decision, reason }` |
 
 **RpcGateway** — `packages/hub/src/sync/rpcGateway.ts`
@@ -267,6 +267,18 @@ SDK 收到的最终工具输入变为：
 
 ---
 
+## 场景五：MCP Elicitation（批次 C）
+
+**触发**：MCP 服务器主动发起 form elicitation（`Options.onElicitation` 回调，MCP 协议层用户输入请求——不是工具审批）。
+
+**CLI 端**：`PermissionHandler.handleElicitation` —— `mode === 'url'` 一律 decline（授权链路留 pending #63）；form 模式校验 `requestedSchema`（object + properties）后以**合成 toolName `mcp_elicitation`** 走既有 pending 体系（D1：hub/shared 协议零改动），pending id 用 control_request envelope 的 `requestId`；`serverName`/`message`/`requestedSchema` 放 `arguments`，`title`/`displayName`/`description` 走 `sdkHints`。响应回来后 `coerceElicitationContent` 按 schema 逐字段转型（number/boolean/enum）组 `ElicitResult.content`——**转型单点位在 handleElicitation 内**；abort/turn 重置经 `cancelPendingRequests` reject 统一转 `{ action: 'cancel' }`（不向 SDK 抛异常/null，fail-closed 契约）。
+
+**Web UI**：`ElicitationFormCard` —— elicitation 没有 tool_use 消息，不进 reducer block 体系：`getPermissions` 与 `ToolInteractionPanel` 按 `isElicitationToolName` 过滤（防 ensureToolBlock 建幽灵工具块），由 `ComposerInfoPanel` 内的请求区直接消费 `agentState.requests` 渲染表单卡片（composer 面板区域）。表单按 schema 字段类型映射：string→Input（enum→Select）、number→InputNumber、boolean→Switch；提交走既有 approve API 的 answers 通道（值含 number/boolean）。
+
+**生命周期**：与工具审批一致——已决即从 `requests` 移除、卡片消失、不落档历史；刷新/重连后由 agentState.requests 首拉恢复。
+
+---
+
 ## 关键文件索引
 
 | 层 | 文件 | 职责 |
@@ -293,3 +305,6 @@ SDK 收到的最终工具输入变为：
 | **Web** | `packages/web/src/components/tool-card/AskUserQuestionFooter.tsx` | AskUserQuestion 选项 UI |
 | **Web** | `packages/web/src/components/tool-card/RequestUserInputFooter.tsx` | RequestUserInput 输入 UI |
 | **Web** | `packages/web/src/components/chat/blocks/ToolCallBlock.tsx` | 工具调用块，判断 pending 状态渲染 Footer |
+| **Web** | `packages/web/src/components/chat/ElicitationFormCard.tsx` | MCP elicitation 表单卡片（场景五，schema 四类型映射） |
+| **Web** | `packages/web/src/components/composer/ComposerInfoPanel.tsx` | elicitation 请求区挂载（过滤 + 渲染，直接消费 agentState.requests） |
+| **测试** | `packages/cli/tests/fixtures/elicitation-mcp/server.ts` | E2E 测试 MCP（trigger_elicitation 工具，响应回显断言闭环） |

@@ -40,19 +40,19 @@
 
 **遗留**（E2E 复现并定位根因，单独修）：① web 后台 Agent drawer 内容不随 SSE 实时增长（sidechain 消息不入主消息窗口增量路径，children 冻结在初始快照）；② U-4 的 hub `runtime_state` 双写竞态。见 `docs/pending.md` #62。
 
-### 批次 C｜审批、工具与 MCP 状态保真（2026-09-01 对照 SDK 0.3.251 收敛）
+### 批次 C｜审批、工具与 MCP 状态保真（2026-09-01 对照 SDK 0.3.251 收敛）✅ 已完成（2026-09-01）
 
 **目标**：审批可达性 + 工具/MCP 在 web 端的状态不再靠猜。**实施前逐条对照当前 sdk.d.ts 复核——7 条中 2 条字段已被上游撤除（U-14a tool_result_meta、U-17 tool_use_meta），教训：台账条目实施前必须重验**。
 
-- **U-12** 后台 subagent 权限请求到达 `canUseTool`（高）→ ✅ 代码已全通（四层都在），批次 C E2E 顺手验证
-- **U-26** `onElicitation` MCP 表单进审批 UI（中）→ ✅ form 模式批次 C 实施（协议零改动走审批链路 + 自写测试 MCP）；url 模式 → pending #63
-- **U-14b** `aborted` 截断标注（中）→ ✅ 批次 C 实施（半截 assistant 正文标「已截断」）
+- **U-12** 后台 subagent 权限请求到达 `canUseTool`（高）→ ✅ 代码已全通（四层都在），批次 C E2E 验证通过（后台 agent Write 审批卡片带来源 agent 标注、批准后继续执行）
+- **U-26** `onElicitation` MCP 表单进审批 UI（中）→ ✅ form 模式批次 C 实施（协议零改动走审批链路 + 自写测试 MCP，E2E accept/decline 双路径通过）；url 模式 → pending #63
+- **U-14b** `aborted` 截断标注（中）→ ✅ 批次 C 实施（半截 assistant 正文标「已截断」，E2E UI+DB 双证据）
 - **U-25** MCP 运行时热管理（中高）→ pending #63（跟 skill/plugin 管理一批；`setMcpServers` 无消费场景明确不做）
 - **U-15** `Query.reinitialize()`（中）→ ❌ 不适用（mobi 审批经 agentState.requests 持久化自恢复），留观察 pending #64
 - **U-7** `user_message_uuid`（低）→ pending #65
 - **U-14a** `tool_result_meta` / **U-17** `tool_use_meta` → ❌ 0.3.251 已无此字段，不适用
 
-spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`（本地留存）。
+spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`（本地留存）；架构文档：`docs/architecture/tool-permission.md` 场景五。
 
 ### 批次 D｜跨会话数据面（2 条，中）
 
@@ -260,7 +260,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：web `domain/chat`（normalize/reducer 消费 sidecar 字段）、工具卡片状态渲染。
 
 **优先级**：中。
-**状态**：⚠️ 收敛拆分（2026-09-01 对照 SDK 0.3.251：`tool_result_meta` **已被上游撤除**（0.3.216 引入后不在当前 sdk.d.ts），被拒/被取消分类仍靠 `INTERRUPTED_PATTERN` 文案匹配，无结构化替代；`aborted`（sdk.d.ts:3221，assistant 消息截断标记）✅ 批次 C 立项实施中——cli `sdkToLogConverter` 透传 + web 半截 assistant 气泡标「已截断」。spec：批次 C）
+**状态**：⚠️ 收敛拆分（2026-09-01 对照 SDK 0.3.251：`tool_result_meta` **已被上游撤除**（0.3.216 引入后不在当前 sdk.d.ts），被拒/被取消分类仍靠 `INTERRUPTED_PATTERN` 文案匹配，无结构化替代；`aborted`（sdk.d.ts:3221，assistant 消息截断标记）✅ 已实施（批次 C：cli `...assistantMsg` 展开自动落库零改动 + web normalize 保留 `aborted` + 半截 assistant 气泡尾部中性「已截断」标注。E2E 验证：UI Truncated tag + DB content 含 `"aborted":true` 双证据。spec：批次 C）
 
 ---
 
@@ -416,7 +416,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 接回调 → 透传 web 渲染表单 → 结果回传（可参照 AskUserQuestion 卡片形态）。
 
 **优先级**：中。
-**状态**：✅ form 模式已采纳（2026-09-01 批次 C 立项实施中：elicitation 以合成 toolName 走现有审批链路（agentState.requests，hub/shared 协议零改动）、web 按 requestedSchema 渲染动态表单、answers 通道放宽 number/boolean、自写带 elicitation 的测试 MCP 验证；url 模式 decline 兜底，→ pending #63。spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`）
+**状态**：✅ form 模式已实施（2026-09-01 批次 C：elicitation 以合成 toolName `mcp_elicitation` 走现有审批链路（agentState.requests，hub/shared 协议零改动）、web `ElicitationFormCard` 按 requestedSchema 渲染动态表单、answers 通道放宽 number/boolean、自写测试 MCP 验证。E2E 全链路通过：accept 回显 content number/boolean 原生类型（转型正确）、decline 绕过 required 直达 server。url 模式 decline 兜底 → pending #63。spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md`；架构文档：`docs/architecture/tool-permission.md` 场景五）
 
 ---
 
