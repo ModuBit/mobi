@@ -31,6 +31,8 @@ import {
     type SDKResultMessage,
     type SDKCompactBoundaryMessage,
     type McpServerConfig,
+    type ElicitationRequest,
+    type ElicitationResult,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
@@ -675,6 +677,8 @@ export async function claudeRemote(opts: {
     getSessionConfig: () => EnhancedMode,
     flushConfig?: () => void,
     canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
+    /** MCP elicitation 受理（批次 C）：form 走审批链路，url decline 兜底 */
+    onElicitation: (request: ElicitationRequest, options: { signal: AbortSignal; requestId: string }) => Promise<ElicitationResult | null>,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>,
@@ -894,6 +898,8 @@ export async function claudeRemote(opts: {
             const result = await opts.canCallTool(toolName, input, options);
             return result;
         },
+        // MCP elicitation 受理（批次 C，spec D1/D2）：form 走审批链路，url decline 兜底
+        ...(opts.onElicitation ? { onElicitation: opts.onElicitation } : {}),
         pathToClaudeCodeExecutable: claudeExecutable,
         settings: opts.hookSettingsPath,
         // env 会整体替换子进程环境（不与 process.env 合并），故必须自行展开，

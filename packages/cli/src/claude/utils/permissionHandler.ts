@@ -22,7 +22,7 @@
  */
 
 import { logger } from "@/lib";
-import type { SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ElicitationRequest, ElicitationResult, SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
 import type { PermissionAnswers, PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
 import { Session } from "../session";
@@ -106,6 +106,80 @@ function buildRequestUserInputUpdatedInput(input: unknown, answers: unknown): Re
         ...input,
         answers
     };
+}
+
+/** MCP elicitation 走审批链路的合成 toolName（spec D1）——web 端按此名分流表单卡片 */
+export const ELICITATION_TOOL_NAME = 'mcp_elicitation';
+
+/**
+ * requestedSchema 最小合法性：object + properties（MCP elicitation 仅允许 primitive/enum 字段）。
+ * schema 缺失/形态不对视为 malformed，直接 decline 并留 cli 日志（spec D4）。
+ */
+function isValidElicitationSchema(schema: unknown): schema is Record<string, unknown> {
+    return isObject(schema)
+        && (schema as { type?: unknown }).type === 'object'
+        && isObject((schema as { properties?: unknown }).properties);
+}
+
+/**
+ * answers → ElicitResult.content：按 requestedSchema.properties 逐字段转型（spec D3）。
+ * required 字段缺失或值类型无法转型返回 null（调用方转 decline）。
+ * 非 required 字段缺省跳过；转型失败（如 number 列收到非数值串）按字段缺失处理。
+ * schema 外的 answers 字段不进 content（防注入未知键）；嵌套 { answers: string[] } 格式
+ * 是 request_user_input 专用，elicitation 表单不产生，按缺失处理。
+ * 纯函数：rpc 'permission' 通道无 zod 运行时校验，required/类型检查由本函数承担。
+ */
+export function coerceElicitationContent(
+    answers: PermissionAnswers,
+    requestedSchema: Record<string, unknown>,
+): Record<string, unknown> | null {
+    const properties = requestedSchema.properties as Record<string, Record<string, unknown>>;
+    const required = Array.isArray(requestedSchema.required) ? (requestedSchema.required as unknown[]) : [];
+    const raw = (answers ?? {}) as Record<string, unknown>;
+    const content: Record<string, unknown> = {};
+
+    for (const [key, fieldSchema] of Object.entries(properties)) {
+        let value: unknown = raw[key];
+        // 嵌套格式（request_user_input 专用）不是合法的 elicitation 表单值
+        if (isObject(value) && 'answers' in value) value = undefined;
+
+        const coerced = coerceFieldValue(value, fieldSchema);
+        if (coerced === undefined) {
+            if (required.includes(key)) return null;
+            continue;
+        }
+        content[key] = coerced;
+    }
+    return content;
+}
+
+/** 单字段转型：合法值返回转型结果，缺失/无法转型返回 undefined（按字段缺失处理） */
+function coerceFieldValue(value: unknown, fieldSchema: Record<string, unknown>): unknown {
+    if (typeof value === 'string') {
+        const type = fieldSchema.enum ? 'string' : fieldSchema.type;
+        if (type === 'string') return value;
+        if (type === 'number') {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : undefined;
+        }
+        if (type === 'boolean') {
+            if (value === 'true') return true;
+            if (value === 'false') return false;
+            return undefined;
+        }
+        return undefined;
+    }
+    if (typeof value === 'number') {
+        if (fieldSchema.type === 'number') return value;
+        if (fieldSchema.type === 'string') return String(value);
+        return undefined;
+    }
+    if (typeof value === 'boolean') {
+        if (fieldSchema.type === 'boolean') return value;
+        if (fieldSchema.type === 'string') return String(value);
+        return undefined;
+    }
+    return undefined;
 }
 
 export class PermissionHandler extends BasePermissionHandler<PermissionResponse, PermissionResult> {
@@ -214,6 +288,15 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                 const cmd = (pending.input as { command?: string } | null)?.command;
                 if (cmd) this.parseBashPermission(`Bash(${cmd})`);
             }
+        }
+
+        // MCP elicitation（批次 C）：approved + answers → 放行原始 answers 给 handleElicitation
+        // 转型（转型单点位在该处，spec D3）；拒绝 → decline。注意 elicitation 的 accept 不走
+        // 下方通用 allow 分支（没有 updatedInput / updatedPermissions 语义）
+        if (pending.toolName === ELICITATION_TOOL_NAME) {
+            pending.resolve({ approved: response.approved, answers: response.answers } as unknown as PermissionResult);
+            completion.status = response.approved ? 'approved' : 'denied';
+            return completion;
         }
 
         // Update permission mode
@@ -401,6 +484,56 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             sdkHints,
         });
     }
+
+    /**
+     * MCP elicitation 受理（批次 C，spec D1/D2）：form 模式构造 pending 走审批链路，
+     * url 模式 decline 兜底（授权链路归 pending #63）。pending id 用 control_request
+     * envelope 的 requestId（web 提交时原样回传，闭环匹配）。
+     * pendingRequests 的 reject（turn 重置/会话重置/abort）统一转 { action: 'cancel' }，
+     * 不向 SDK 抛异常（SDK 契约：意外异常/null = 不回包，挂到 server 超时）。
+     */
+    handleElicitation = async (
+        request: ElicitationRequest,
+        options: { signal: AbortSignal; requestId: string },
+    ): Promise<ElicitationResult | null> => {
+        // url 授权模式本批不做（spec D2）
+        if (request.mode === 'url') return { action: 'decline' };
+        if (!isValidElicitationSchema(request.requestedSchema)) {
+            logger.warn(`[elicitation] malformed requestedSchema from ${request.serverName}, declining`);
+            return { action: 'decline' };
+        }
+        try {
+            // elicitation 响应的转型单点位（spec D3）：本 promise resolve 的
+            // { approved, answers } 由 handlePermissionResponse elicitation 分支放行
+            const outcome = await new Promise<{ approved: boolean; answers?: PermissionAnswers }>((resolve, reject) => {
+                const abortHandler = () => reject(new Error('elicitation aborted'));
+                options.signal.addEventListener('abort', abortHandler, { once: true });
+                this.addPendingRequest(
+                    options.requestId,
+                    ELICITATION_TOOL_NAME,
+                    { serverName: request.serverName, message: request.message, requestedSchema: request.requestedSchema },
+                    {
+                        resolve: (value) => {
+                            options.signal.removeEventListener('abort', abortHandler);
+                            resolve(value as unknown as { approved: boolean; answers?: PermissionAnswers });
+                        },
+                        reject: (error: Error) => {
+                            options.signal.removeEventListener('abort', abortHandler);
+                            reject(error);
+                        }
+                    },
+                    { sdkHints: { title: request.title, displayName: request.displayName, description: request.description } },
+                );
+            });
+            if (!outcome.approved) return { action: 'decline' };
+            const content = coerceElicitationContent(outcome.answers ?? {}, request.requestedSchema);
+            if (!content) return { action: 'decline' };
+            // coerceElicitationContent 只产 string/number/boolean 原始值，满足 ElicitResult.content 的 primitive map 契约
+            return { action: 'accept', content: content as NonNullable<ElicitationResult['content']> };
+        } catch {
+            return { action: 'cancel' };
+        }
+    };
 
     /**
      * Handles individual permission requests

@@ -736,6 +736,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         getSessionConfig: this.getSessionConfig,
                         flushConfig: this.flushConfig,
                         canCallTool: permissionHandler.handleToolCall,
+                        onElicitation: permissionHandler.handleElicitation,
                         onInboundPrompt: handleInboundPrompt,
                         onQueryReady: (query) => {
                             this.queryRef = query;
