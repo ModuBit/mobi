@@ -106,6 +106,26 @@ describe('claudeRemote rewind 截断空跑轮', () => {
         expect(mockedQuery).not.toHaveBeenCalled()
     })
 
+    it('resumeDropsTurn 与 resumeSessionAt 配对传入 sdkOptions（spec E1 截断护栏）', async () => {
+        const fake = emptyQuery()
+        const warmRef = { query: vi.fn().mockReturnValue(fake), close: vi.fn() }
+        mockedStartup.mockResolvedValue(warmRef as never)
+        const nextMessage = vi.fn().mockResolvedValue({
+            message: 'hello', mode: { permissionMode: 'default' as const }, localIds: ['loc-1'],
+        })
+        // 截断轮同时携带 resumeSessionAt（保留锚）+ resumeDropsTurn（丢弃的 turn prompt UUID）
+        const opts = { ...truncationOpts(), resumeDropsTurn: 'user-msg-uuid', nextMessage }
+
+        await claudeRemote(opts)
+
+        // SDK startup 收到配对的 resumeSessionAt + resumeDropsTurn，
+        // fork 时校验截断区间只含该 turn；含其他则 refusal（T3 只验传参，refusal 处理在 T4）
+        expect(mockedStartup).toHaveBeenCalledTimes(1)
+        const [startupArg] = mockedStartup.mock.calls[0] as [{ options: Record<string, unknown> }]
+        expect(startupArg.options.resumeSessionAt).toBe('anchor-assistant-1')
+        expect(startupArg.options.resumeDropsTurn).toBe('user-msg-uuid')
+    })
+
     it('不携带 resumeSessionAt 时走常规轮（不进入截断分支）', async () => {
         const fake = emptyQuery()
         mockedQuery.mockReturnValue(fake as never)

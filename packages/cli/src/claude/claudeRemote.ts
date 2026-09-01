@@ -665,6 +665,13 @@ export async function claudeRemote(opts: {
      * 截断确认后经 onRewindTruncated 回报（先截断后软删除），再等用户消息
      */
     resumeSessionAt?: string,
+    /**
+     * 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
+     * SDK fork 时校验截断区间只含该 turn；含其他则 refusal（error_during_execution，
+     * 消息前缀 "Resume rejected by --resume-drops-turn:"）。refusal 检测/recovery 在 T4。
+     * 仅在 resumeSessionAt 有值时配对传入，其余轮 undefined。
+     */
+    resumeDropsTurn?: string,
     /** rewind 截断完成后（startup 预热 boot 加载历史到锚点）立即回调，做两段回报 */
     onRewindTruncated?: () => Promise<void>,
     mcpServers?: Record<string, McpServerConfig>,
@@ -864,6 +871,9 @@ export async function claudeRemote(opts: {
         // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被
         // 模型当成「空消息」触发一轮无意义回复。此处仅在 rewind 轮有值，其余轮 undefined。
         resumeSessionAt: opts.resumeSessionAt,
+        // 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
+        // SDK fork 时校验截断区间只含该 turn；含其他则 refusal。refusal 检测/recovery 在 T4。
+        resumeDropsTurn: opts.resumeDropsTurn,
         sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
         permissionMode: baseConfig.permissionMode,

@@ -724,6 +724,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // rewind 截断轮携带保留锚（其前最近一条 assistant entry uuid）：
                         // 语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃
                         resumeSessionAt: rewind?.resumeAt,
+                        // 配对护栏（spec E1）：丢弃的 turn prompt UUID（= rewind 目标 user msg nativeId），
+                        // SDK fork 时校验截断区间只含该 turn；含其他则 refusal（refusal 处理在 T4）
+                        resumeDropsTurn: rewind?.nativeId,
                         // startup 截断完成后回报（先截断后软删除），并清 pendingRewind。
                         // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
                         onRewindTruncated: rewind ? async () => {
