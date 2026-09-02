@@ -165,8 +165,7 @@ flowchart TB
 flowchart TB
     Start["runClaude(options)"] --> Validate["验证 Runner spawn 要求<br/>runner 启动时强制 remote"]
     Validate --> Bootstrap["bootstrapSession()<br/>创建 API 客户端、注册会话"]
-    Bootstrap --> SDK["extractSDKMetadataAsync()<br/>后台提取 SDK 元数据"]
-    SDK --> MCP["startMobiMcpServer(apiSession)<br/>启动 MCP Server"]
+    Bootstrap --> MCP["startMobiMcpServer(apiSession)<br/>启动 MCP Server"]
     MCP --> Hook["startHookServer()<br/>启动 Hook Server"]
     Hook --> Settings["generateHookSettingsFile()<br/>生成 Hook 配置"]
     Settings --> Lifecycle["createRunnerLifecycle()<br/>创建生命周期管理器"]
@@ -175,6 +174,7 @@ flowchart TB
     Queue --> UserMsg["session.onUserMessage()<br/>注册消息处理器"]
     UserMsg --> RPC["registerHandler('set-session-config')<br/>注册远程配置 RPC"]
     RPC --> Loop["loop()"]
+    Loop --> Caps["会话 Query 就绪（onQueryReady）<br/>discoverCapabilities 三方法拉取能力面"]
 ```
 
 核心组件初始化：
@@ -374,8 +374,9 @@ packages/cli/src/
 │   │   ├── types.ts                      # PermissionResult 等类型
 │   │   ├── utils.ts                      # Claude 路径查找、调试日志
 │   │   ├── prompts.ts                    # Plan mode 相关常量
-│   │   └── metadataExtractor.ts          # SDK 元数据后台提取
+│   │   └── metadataExtractor.ts          # SDK 元数据 refreshMetadata RPC 兜底提取（headless 进程；hub 首次激活补拉 / SWR 后台刷新触发）
 │   └── utils/
+│       ├── capabilityDiscovery.ts         # 会话 Query 三方法能力面发现（onQueryReady 后拉取落 metadata）
 │       ├── permissionHandler.ts          # 工具权限审批处理器（506 行）
 │       ├── sessionScanner.ts             # Local 模式 JSONL 监听（243 行）
 │       ├── OutgoingMessageQueue.ts       # 有序消息发送队列（207 行）
