@@ -42,7 +42,7 @@ import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
-import { discoverCapabilities } from "@/claude/utils/capabilityDiscovery";
+import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,

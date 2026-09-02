@@ -64,6 +64,7 @@ function minimalOpts() {
 
 describe('Options.stderr 实时捕获（spec 批次 G U-20）', () => {
     beforeEach(() => {
+        vi.clearAllMocks()
         mockedStartup.mockReset()
     })
 
@@ -78,5 +79,21 @@ describe('Options.stderr 实时捕获（spec 批次 G U-20）', () => {
         await claudeRemote(minimalOpts() as never)
 
         expect(logger.debug).toHaveBeenCalledWith('[claude stderr]', '[claude] boot warning: something odd')
+    })
+
+    it('超长 stderr chunk 被截断到 4096 + truncated 标记', async () => {
+        const warmRef = { query: vi.fn().mockReturnValue(emptyQuery()), close: vi.fn() }
+        const bigChunk = 'x'.repeat(5000)
+        mockedStartup.mockImplementation(async ({ options }) => {
+            options?.stderr?.(bigChunk)
+            return warmRef as never
+        })
+
+        await claudeRemote(minimalOpts() as never)
+
+        expect(logger.debug).toHaveBeenCalledWith(
+            '[claude stderr]',
+            `${'x'.repeat(4096)}…[truncated]`,
+        )
     })
 })

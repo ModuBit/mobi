@@ -941,9 +941,13 @@ export async function claudeRemote(opts: {
         ...(opts.onElicitation ? { onElicitation: opts.onElicitation } : {}),
         // U-20：实时捕获 claude 进程 stderr 落 debug 日志。退出错误已由 SDK formatStderrTail
         // 自动追加到错误 message（launcher catch 透传）；此处覆盖「hang 不退出」的诊断场景——
-        // stderr 实时可见进程卡在哪（spec 批次 G）
+        // stderr 实时可见进程卡在哪（spec 批次 G）。chunk 截断防病态输出挤占 ringBuffer 配额
         stderr: (data: string) => {
-            logger.debug('[claude stderr]', data);
+            const MAX_STDERR_CHUNK = 4096;
+            const truncated = data.length > MAX_STDERR_CHUNK
+                ? `${data.slice(0, MAX_STDERR_CHUNK)}…[truncated]`
+                : data;
+            logger.debug('[claude stderr]', truncated);
         },
         pathToClaudeCodeExecutable: claudeExecutable,
         settings: opts.hookSettingsPath,
