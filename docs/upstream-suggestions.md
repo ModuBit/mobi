@@ -75,6 +75,8 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 
 **前置**：统一等 gateway-ccr-backend 推进后一并做，提前做没有消费场景。
 
+**裁定（2026-09-02）**：整体搁置等 gateway。U-6 单独做没有消费场景（估算标注的价值依赖托管价场景）；U-22 预算限额逻辑确认不做（用户裁定）；U-10 / spend-limit / taskBudget 硬绑或 @alpha。详见 pending #66。
+
 ### 批次 G｜低优杂项（7 条，随手带）
 
 - **U-27** 动态能力发现 `supportedModels`/`supportedCommands`/`supportedAgents`（中）
@@ -162,7 +164,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：web 成本摘要卡（读 assistant usage / modelUsage 的展示层）；cli/hub 透传字段。
 
 **优先级**：中（依赖 gateway/CCR 落地后价值放大）。
-**状态**：待决策
+**状态**：⏸️ pending #66（2026-09-02 裁定：整体搁置等 gateway-ccr-backend——估算标注单独做没有消费场景，托管价（managed）消费场景随 gateway 落地才出现；届时与 U-10 组合一并设计）
 
 ---
 
@@ -214,7 +216,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 会话 options 的 `managedSettings` + gateway provider 配置层。
 
 **优先级**：低（需决策，与 gateway-ccr-backend 合并考虑）。
-**状态**：待决策
+**状态**：⏸️ pending #66（2026-09-02 裁定：等 gateway-ccr-backend 落地，与 U-6 组合做——mobi 作为 host 托管 provider 时才需要自声明价目表）
 
 ---
 
@@ -366,7 +368,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli spawn args + web 会话设置；依赖 gateway 落地。
 
 **优先级**：低（需决策，随 gateway 推进）。
-**状态**：待决策
+**状态**：⏸️ pending #66（2026-09-02 裁定：**预算限额逻辑确认不做**——maxBudgetUsd 语义已核实为估算美元（按官方牌价折算，非真实账单），per-query 语义在 mobi 需「上限−已花费」换算成会话累计，价值不足以支撑；gateway spend-limit 与 taskBudget（@alpha）留 gateway 落地时再议）
 
 ---
 

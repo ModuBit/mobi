@@ -726,3 +726,18 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 **重启时机**：出现「多排队消息下失败归因不清」的真实反馈，或做 edit-and-retry（refused_user_message_uuid 的 composer 预填是现成配套）时一并设计。
 
 **相关**：台账 U-7。
+
+---
+
+## 66. 批次 F（成本与预算）整体搁置——与 gateway-ccr-backend 一并做（2026-09-02）
+
+**范围**：台账批次 F 三条——U-6（`costBasis`/`canonicalModel`/`provider` 计价来源标注）、U-22（预算护栏）、U-10（`managedSettings.modelPricing`）。
+
+**裁定**：
+
+- **U-6 搁置**：估算标注单独做没有消费场景——`costBasis: 'managed'`（托管价）的消费场景随 gateway 落地才出现，届时与 U-10 组合设计（mobi 自声明价目表 → 标注才有「托管价」可信来源）。已核实 SDK 0.3.251 契约：`ModelUsage.canonicalModel?/provider?/costBasis?: 'list'|'managed'|'unknown'`，mobi 当前只消费 modelUsage 的 contextWindow 与 total_cost_usd，三字段零消费，接入时走 ContextUsage 透传链（cli `calcContextUsageFromResult` 按 requestModel 精确匹配主模型提取）。
+- **U-22 预算限额逻辑不做**：maxBudgetUsd 语义已核实（sdk.d.ts:1643）——按官方牌价折算的**估算美元**（非真实账单，第三方网关有偏差）+ **per-query** 语义（mobi 每轮新 query，要做会话累计需「上限−已花费」逐轮换算）。价值不足以支撑换算链路 + 估算偏差的成本。gateway spend-limit（结构化警告）与 taskBudget（@alpha，token 预算）留 gateway 落地时再议。
+
+**重启时机**：gateway-ccr-backend 推进时（当前卡点见 `.claude/worktrees/gateway/.scratch/gateway/HANDOFF-2026-08-11-slot-env.md`——CCR profiles[] RPC 读写丢失，卡 ③ 槽位 env 注入；CCR 已发 3.0.21/3.0.22 新版，值得先升级复测）。
+
+**相关**：台账批次 F / U-6 / U-10 / U-22；memory `project_gateway-ccr-backend`、`project_gateway-ccr-port-model`。
