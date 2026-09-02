@@ -939,6 +939,12 @@ export async function claudeRemote(opts: {
         },
         // MCP elicitation 受理（批次 C，spec D1/D2）：form 走审批链路，url decline 兜底
         ...(opts.onElicitation ? { onElicitation: opts.onElicitation } : {}),
+        // U-20：实时捕获 claude 进程 stderr 落 debug 日志。退出错误已由 SDK formatStderrTail
+        // 自动追加到错误 message（launcher catch 透传）；此处覆盖「hang 不退出」的诊断场景——
+        // stderr 实时可见进程卡在哪（spec 批次 G）
+        stderr: (data: string) => {
+            logger.debug('[claude stderr]', data);
+        },
         pathToClaudeCodeExecutable: claudeExecutable,
         settings: opts.hookSettingsPath,
         // env 会整体替换子进程环境（不与 process.env 合并），故必须自行展开，
