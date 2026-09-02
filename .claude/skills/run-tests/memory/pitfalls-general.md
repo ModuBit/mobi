@@ -1,9 +1,9 @@
 ---
 name: pitfalls-general
-description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style）
+description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因）
 metadata:
   type: pitfall
-  last_verified: 2026-08-27
+  last_verified: 2026-09-02
 ---
 
 # 通用误判
@@ -13,6 +13,29 @@ metadata:
 CDP `upload_file` 的 filePath 只允许 workspace roots 内路径，`/tmp/...` 直接 Access denied。
 测试图片先复制进仓库内目录（如 `.scratch/e2e/`，已 gitignore）再传。
 
+
+## claude 进程数观测：HEADLESS 兜底进程别误判为「extractor 未退场」（2026-09-02）
+
+验证「会话启动不再 spawn 第二个 claude 进程」类命题时，**resume/激活窗口会出现 1-2 个瞬态
+HEADLESS 进程（存活仅几秒）**——它们来自 hub 侧既有 refreshMetadata 兜底路径
+（`syncEngine.ts` 首次激活补拉 + SWR 后台刷新 → session RPC `refreshMetadata` →
+CLI `extractSDKMetadata` headless spawn），**不是** CLI bootstrap 的旧 extractor
+（该链路已在批次 G 删除）。只数进程数会把这俩误判成「extractor 还在」。
+
+正确做法（身份级采样，300ms 轮询记录 pid/ppid/特征而非只记 count）：
+
+```bash
+ps -eo pid,ppid,command | grep stream-json | grep -v grep \
+  | grep "claude-agent-sdk-darwin-arm64/claude" \
+  | awk '{print $1"|"$2"|"($0 ~ /no-session-persistence/ ? "HEADLESS" : ($0 ~ /permission-prompt-tool/ ? "SESSION" : "OTHER"))}'
+```
+
+- `HEADLESS` = `--no-session-persistence`、无 `--permission-prompt-tool`/`--model`（extractSDKMetadata 形态）
+- `SESSION` = 带 `--session-id`/`--permission-prompt-tool`（会话主进程）
+- 坑：shell 单遍 awk 收集「runner 全部后代」不可靠（spawn detach 后 ppid 链断）；也别用
+  `--profile e2e` grep 后代——会话 CLI 是 runner 经中间层 spawn 的。直接全表 grep + 参数特征分类最稳
+- 注意排除生产进程：`/tmp/claude-501/...bin` 路径是安装版 SDK 提取目录（生产/其他会话），
+  repo `node_modules/.bun/...` 路径才是 dev/e2e 树。**观测绝不能变成 kill**——生产进程混在同表里
 
 ## token 用途（易用错）
 

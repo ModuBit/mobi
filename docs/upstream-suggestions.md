@@ -344,7 +344,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 错误处理层捕获 stderr 并透传 → web 会话错误提示。
 
 **优先级**：中低（诊断体验，出问题时价值大）。
-**状态**：✅ 已采纳为小项（2026-09-02 核实：SDK 0.3.211+ 退出错误 message 已自动追加 stderr tail（`formatStderrTail`，sdk.mjs 核实），launcher catch → `sendSessionEvent` 透传链完整——「无信息 exit code 1」痛点已随 SDK 升级自然解决。剩余增量：① 接 `Options.stderr` callback 实时落 debug 日志（进程 hang 不退出的场景）；② web 长 stderr 展示折叠检查；③ local 模式 launcher catch 链路对齐。并入批次 G 实施，不单独 spec）
+**状态**：✅ 已实施（2026-09-02 批次 G：commit 8465628a + 收尾 36ac94e9——`Options.stderr` callback 实时落 debug 日志，chunk 超 4096 截断防挤占 ringBuffer；web 渲染检查结论（2026-09-02）：无需改动——SDK `formatStderrTail` 硬性截 stderr tail 至 2048 字符（消息总长 ≤ ~2.2KB），web `AgentEventBlock` 默认 white-space 渲染（无 pre-wrap）多行自动折叠为段落、`reducerEvents` 对连续重复 message 事件去重，长 stderr 不会刷屏；local 模式核实为终端直连子进程（`spawnWithAbort` 默认 stdio inherit，stderr 直达用户终端），无接线缺口。核实底稿：SDK 0.3.211+ 退出错误 message 已自动追加 stderr tail（`formatStderrTail`，sdk.mjs 核实），launcher catch → `sendSessionEvent` 透传链完整——「无信息 exit code 1」痛点已随 SDK 升级自然解决）
 
 ---
 
@@ -435,7 +435,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 会话就绪后拉取上报 hub → web 模型选择器 / sender 补全。
 
 **优先级**：中。
-**状态**：✅ 已采纳（2026-09-02 设计定稿待实施：`runClaude` 启动时经会话 Query 调三方法 → `updateMetadata` 落 hub，替换 `runClaude.ts` 的 `extractSDKMetadataAsync` 专用进程调用；extractor 本体保留服务 machine RPC（创建会话前兜底）。三方法在 WarmQuery 上不可用、须在提前激活创建的 Query 实例上调，锚点 `onQueryReady` 公共点；web 消费面核实恰为 models/commands/agents 三件套，`outputStyle/account/fastModeState` 零消费可丢）
+**状态**：✅ 已实施（2026-09-02 批次 G：commit b51cc557 + 01bc411c——launcher onQueryReady 经 discoverCapabilities 三方法落 metadata，extractSDKMetadataAsync 专用进程退场；E2E 验证通过。设计定稿 2026-09-02：`runClaude` 启动时经会话 Query 调三方法 → `updateMetadata` 落 hub，替换 `runClaude.ts` 的 `extractSDKMetadataAsync` 专用进程调用；extractor 本体保留服务 machine RPC（创建会话前兜底）。三方法在 WarmQuery 上不可用、须在提前激活创建的 Query 实例上调，锚点 `onQueryReady` 公共点；web 消费面核实恰为 models/commands/agents 三件套，`outputStyle/account/fastModeState` 零消费可丢。E2E（2026-09-02）：首轮会话 sdkMetadata models=5/commands=43/agents=5 非空、改名→Exit→resume 二次刷新后 `name` 等全部 metadata 字段保留、会话活跃期无第二个 SDK claude 进程——resume 窗口的瞬态 HEADLESS 进程经身份级采样归因为 hub 侧既有 refreshMetadata 兜底路径（首次激活补拉 + SWR），与本次退场的 CLI bootstrap extractor 无关）
 
 ---
 
