@@ -482,7 +482,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 
 以下为 07-08 ~ 08-31 升级批次中**改变 mobi 可见行为**的上游变化，不立项但需逐条确认现状无恙：
 
-- **Todo/task 工具在新模型上默认移除**（SDK 0.3.233）——新模型会话不再产生 TodoWrite 调用，todo 渲染路径静默变空；需要时用 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` 或 `tools` 显式保留
+- **Todo/task 工具在新模型上默认移除**（SDK 0.3.233）——新模型会话不再产生 TodoWrite 调用，todo 渲染路径静默变空；需要时用 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` 或 `tools` 显式保留。**已适配（2026-09-02）**：曾保底注入 `=1`，裁定跟随上游默认不注入（新模型去掉外挂记忆拐杖是正向裁剪，mobi 忠实呈现；TodoPanel/任务面板优雅降级为空）；用户想要可在 settings.json `claudeEnv` 显式配 `'1'`
 - **subagent 默认不再嵌套（depth 1）+ 并发上限 20**（SDK 0.3.217，2.1.224 又移除了每会话 200 个总数上限）——subagent 面板的层级/数量预期变化
 - **auto-compact 对未知模型 ID 强制窗口钳制**（claude 2.1.223）——mobi 网关自定义模型名场景下上下文会按假设窗口提前压缩，可用 `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1` 还原；与 pending #57（水位窗口猜测）联动评估
 - **`canUseTool` 返回 allow 无 `updatedInput` 的契约修正**（SDK 0.3.207）——按文档契约以原始输入执行（此前被当 deny 报 ZodError）；确认 mobi `permissionHandler.ts` 的返回形态兼容
