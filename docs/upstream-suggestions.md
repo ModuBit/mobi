@@ -82,6 +82,8 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 - **U-27** 动态能力发现 `supportedModels`/`supportedCommands`/`supportedAgents`（中）
 - **U-19** `ANTHROPIC_DEFAULT_MODEL`、**U-20** 退出错误带 stderr（配 `stderr` callback 实时捕获）、**U-21** `timestamp`、**U-28** `includeHookEvents`、**U-29** `title` 预设标题、**U-9** `--restricted`（需决策）、**U-30** `onUserDialog`（低）
 
+**盘点裁定（2026-09-02 逐条讨论）**：U-27/U-20 采纳（设计定稿待实施）；U-29/U-21/U-28 不做；U-19 暂缓；U-9 上游未暴露 SDK 接入面；U-30 缓（pending #67）。批次 H（U-24 @alpha）保持观察。
+
 ### 批次 H｜架构演进观察（1 条，@alpha）
 
 - **U-24** `sessionStore` transcript 双写镜像——scanner 轮询的长远替代方向，上游 stable 后启动。
@@ -203,7 +205,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli spawn args（`claudeArgs.ts` / `spawnArgs.ts`）+ web 会话创建选项。
 
 **优先级**：低（需决策）。
-**状态**：待决策
+**状态**：⏸️ 上游未暴露（2026-09-02 核实：`--restricted` 是 claude CLI flag，SDK 0.3.251 Options 无对应字段、无 extra args 机制——mobi 经 SDK 起 claude 没有官方入口，产品决策（远程控制只读会话形态）留 SDK 暴露接入面后一并议）
 
 ---
 
@@ -329,7 +331,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 会话 env 注入层（claudeEnv 配置）。
 
 **优先级**：中低。
-**状态**：待决策
+**状态**：⏸️ 暂缓（2026-09-02 裁定：mobi 的 `initialModel` 链路已覆盖「新会话起始模型」；此 env 的「不传时默认值」场景待有真实需求再议）
 
 ---
 
@@ -342,7 +344,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 错误处理层捕获 stderr 并透传 → web 会话错误提示。
 
 **优先级**：中低（诊断体验，出问题时价值大）。
-**状态**：待决策
+**状态**：✅ 已采纳为小项（2026-09-02 核实：SDK 0.3.211+ 退出错误 message 已自动追加 stderr tail（`formatStderrTail`，sdk.mjs 核实），launcher catch → `sendSessionEvent` 透传链完整——「无信息 exit code 1」痛点已随 SDK 升级自然解决。剩余增量：① 接 `Options.stderr` callback 实时落 debug 日志（进程 hang 不退出的场景）；② web 长 stderr 展示折叠检查；③ local 模式 launcher catch 链路对齐。并入批次 G 实施，不单独 spec）
 
 ---
 
@@ -355,7 +357,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 转发透传 → web 气泡时间显示。
 
 **优先级**：低。
-**状态**：待决策
+**状态**：❌ 不做（2026-09-02 裁定：mobi 显示面核实——时间只出现在 user 消息 footer 与 result 详情，**assistant 气泡不显示时间**，而 timestamp 恰只挂 assistant 消息；显示的两处偏差在 cli/hub 同机部署下为毫秒级。三端 schema 扩展换毫秒级修正，价值不足。重启时机：assistant 气泡加时间显示、或 runner 与 hub 分机部署）
 
 ---
 
@@ -433,7 +435,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 会话就绪后拉取上报 hub → web 模型选择器 / sender 补全。
 
 **优先级**：中。
-**状态**：待决策
+**状态**：✅ 已采纳（2026-09-02 设计定稿待实施：`runClaude` 启动时经会话 Query 调三方法 → `updateMetadata` 落 hub，替换 `runClaude.ts` 的 `extractSDKMetadataAsync` 专用进程调用；extractor 本体保留服务 machine RPC（创建会话前兜底）。三方法在 WarmQuery 上不可用、须在提前激活创建的 Query 实例上调，锚点 `onQueryReady` 公共点；web 消费面核实恰为 models/commands/agents 三件套，`outputStyle/account/fastModeState` 零消费可丢）
 
 ---
 
@@ -446,7 +448,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 开 option → 消息分类器归 ephemeral → web hook 状态显示。
 
 **优先级**：中低。
-**状态**：待决策
+**状态**：❌ 不做（2026-09-02 裁定：用户确认暂不需要展示 hook 事件。mobi hook 面窄——自身跨会话 hook 毫秒级完成无显示价值；用户自配 hooks 的执行状态间接可从工具结果/回复异常感知。重启时机：出现「配了 hooks 但排查不了」的真实反馈）
 
 ---
 
@@ -459,7 +461,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli query options 透传（web 创建会话时带初始名）。
 
 **优先级**：中低。
-**状态**：待决策
+**状态**：❌ 不做（2026-09-02 裁定：预设标题需要用户创建时手动输入，违背零操作预期；现状 agent 首聊经 `change_title` MCP 自动起名已覆盖无操作场景，首聊前的无名窗口仅数十秒占位。重启时机：用户出现「想创建时自己命名」的真实需求）
 
 ---
 
@@ -472,7 +474,7 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 **落地位置**：cli 接回调 + 声明 kinds → web 对话框渲染 → 结果回传。
 
 **优先级**：低（kind 面目前很窄，出现更多 kind 后价值上升）。
-**状态**：待决策
+**状态**：⏸️ pending #67（2026-09-02 裁定：缓——fail-closed 默认行为已可用（refusal 错误结束 turn，CC 自动 fallback 重试不受影响），接入是罕见场景下「错误提示 → 可交互对话框」的升级；等 dialogKind 通道扩为通用机制（kind 为开放 string，上游明示会新增）再一并接，一个 UI 承载多场景。机制认知详见 pending #67）
 
 ---
 

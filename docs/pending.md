@@ -741,3 +741,24 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 **重启时机**：gateway-ccr-backend 推进时（当前卡点见 `.claude/worktrees/gateway/.scratch/gateway/HANDOFF-2026-08-11-slot-env.md`——CCR profiles[] RPC 读写丢失，卡 ③ 槽位 env 注入；CCR 已发 3.0.21/3.0.22 新版，值得先升级复测）。
 
 **相关**：台账批次 F / U-6 / U-10 / U-22；memory `project_gateway-ccr-backend`、`project_gateway-ccr-port-model`。
+
+---
+
+## 67. `onUserDialog` CLI 系统对话框通道——缓至 dialogKind 扩面（2026-09-02）
+
+**机制认知**（与权限审批/AskUserQuestion/elicitation 的四格区分）：
+
+| 机制 | 发起者 | 传输 | mobi 状态 |
+|---|---|---|---|
+| `canUseTool` 权限审批 | CLI（工具要执行） | 控制通道 | ✅ 审批卡片 |
+| **`onUserDialog`** | CLI（自身流程岔路口） | 控制通道 | ❌ 本条 |
+| AskUserQuestion 工具 | 模型（对话中想问） | 消息流 + answers | ✅ 选项卡片 |
+| `onElicitation` | MCP 服务器 | 控制通道 | ✅ 批次 C 表单卡 |
+
+**契约**（sdk.d.ts:1613-1647 / 4221）：CLI 经 `request_user_dialog` 控制请求让 host 渲染阻塞对话框；双声明机制——`onUserDialog` 回调 + `supportedDialogKinds` 白名单，未声明的 kind **根本不 emit**（fail-closed），走默认行为。kind 为开放 string union（上游明示会新增）。当前唯一 kind：`refusal_fallback_prompt`（模型安全拒答 `stop_reason: "refusal"` 后，CC 自动在 fallback 模型重试之外、某些情况下询问用户）；未声明时默认 = 经典 refusal 错误结束 turn，**CC 的自动 fallback 重试不受影响**。
+
+**缓的理由**：默认行为已可用，接入是罕见场景下「错误提示 → 可交互对话框」的升级，三端工作量（回调 + 白名单 + web 新对话框 UI + 回答回传）不划算。
+
+**重启时机**：① 上游新增更多 dialogKind（对话框成为通用机制）——一个 UI 承载多场景时再接；② 出现「拒答后用户想参与决定」的真实反馈。
+
+**相关**：台账 U-30。
