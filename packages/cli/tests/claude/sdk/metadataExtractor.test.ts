@@ -47,7 +47,7 @@ vi.mock('@/ui/logger', () => ({
 vi.mock('@mobi/shared', () => ({}))
 
 // 在 mock 设置之后 import
-import { extractSDKMetadata, extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor'
+import { extractSDKMetadata } from '@/claude/sdk/metadataExtractor'
 
 // 构造模拟的 initializationResult 响应
 function makeInitResponse(overrides?: Record<string, unknown>) {
@@ -172,61 +172,5 @@ describe('extractSDKMetadata', () => {
         expect(result.fastModeState).toBeUndefined()
         // commands 仍正常返回
         expect(result.commands).toHaveLength(1)
-    })
-})
-
-describe('extractSDKMetadataAsync', () => {
-    it('有 agents 时回调 onComplete', async () => {
-        const onComplete = vi.fn()
-
-        extractSDKMetadataAsync(onComplete)
-
-        await new Promise(r => setTimeout(r, 50))
-        expect(onComplete).toHaveBeenCalledOnce()
-
-        const metadata = onComplete.mock.calls[0][0]
-        expect(metadata.agents).toHaveLength(1)
-    })
-
-    it('有 commands 时也回调 onComplete', async () => {
-        mockInitializationResult.mockResolvedValue(makeInitResponse({
-            agents: undefined,
-        }))
-
-        const onComplete = vi.fn()
-
-        extractSDKMetadataAsync(onComplete)
-
-        await new Promise(r => setTimeout(r, 50))
-        expect(onComplete).toHaveBeenCalledOnce()
-
-        const metadata = onComplete.mock.calls[0][0]
-        expect(metadata.commands).toHaveLength(1)
-    })
-
-    it('agents 和 commands 都为 undefined 时不回调 onComplete', async () => {
-        mockInitializationResult.mockResolvedValue(makeInitResponse({
-            commands: undefined,
-            agents: undefined,
-        }))
-
-        const onComplete = vi.fn()
-
-        extractSDKMetadataAsync(onComplete)
-
-        // 等待足够时间确认不会调用
-        await new Promise(resolve => setTimeout(resolve, 50))
-        expect(onComplete).not.toHaveBeenCalled()
-    })
-
-    it('提取失败时不回调 onComplete', async () => {
-        mockInitializationResult.mockRejectedValue(new Error('failed'))
-
-        const onComplete = vi.fn()
-
-        extractSDKMetadataAsync(onComplete)
-
-        await new Promise(resolve => setTimeout(resolve, 50))
-        expect(onComplete).not.toHaveBeenCalled()
     })
 })

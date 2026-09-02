@@ -42,6 +42,7 @@ import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
+import { discoverCapabilities } from "@/claude/utils/capabilityDiscovery";
 import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
@@ -776,6 +777,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     }
                                 };
                             }
+                            // U-27：会话能力面经三方法落 metadata（替代 extractSDKMetadataAsync
+                            // 专用 headless 进程）。异步不阻塞 turn；失败静默保旧值（spec 批次 G）
+                            void discoverCapabilities(query, (caps) => {
+                                session.client.updateMetadata((metadata) => ({
+                                    ...metadata,
+                                    sdkMetadata: caps,
+                                }));
+                            });
                         },
                         nextMessage: async () => {
                             if (pending) {

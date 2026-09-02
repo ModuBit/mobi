@@ -20,7 +20,6 @@ import { AgentState, SessionModel } from '@/api/types';
 import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
 import { MessageQueue } from '@/utils/MessageQueue';
 import { hashObject } from '@/utils/deterministicJson';
-import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
@@ -119,21 +118,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         projectId: options.projectId
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
-
-    // 提取 SDK 元数据（传入工作目录以发现项目级命令和 skills）
-    extractSDKMetadataAsync(async (extractedMetadata) => {
-        logger.debug('[start] SDK metadata extracted, updating session:', extractedMetadata);
-        try {
-            // 更新会话元数据，保存完整的 SDK 元数据
-            apiSession.updateMetadata((currentMetadata) => ({
-                ...currentMetadata,
-                sdkMetadata: extractedMetadata
-            }));
-            logger.debug('[start] Session metadata updated with SDK capabilities');
-        } catch (error) {
-            logger.debug('[start] Failed to update session metadata:', error);
-        }
-    }, workingDirectory);
 
     // Variable to track current session instance (updated via onSessionReady callback)
     // 提前到 startMobiMcpServer 之前：MCP change_title handler 需要它回写 agent 侧标题
