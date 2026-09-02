@@ -50,6 +50,12 @@ export async function discoverCapabilities(
             query.supportedCommands(),
             query.supportedAgents(),
         ])
+        // 空结果守卫（对齐旧 extractor 的 agents||commands 门）：三件套全空说明发现不可信，
+        // 不覆写 hub 旧快照（web 模型选择器/命令面板将清空），保旧值待下代进程再刷
+        if (models.length === 0 && commands.length === 0 && agents.length === 0) {
+            logger.debug('[capabilityDiscovery] empty capability set, keeping stale metadata')
+            return
+        }
         onCapabilities({ models, commands, agents })
     } catch (e) {
         logger.debug('[capabilityDiscovery] failed, keeping stale metadata:', e)

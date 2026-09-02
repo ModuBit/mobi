@@ -108,6 +108,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     /** 撤回生效后待拦的死亡回执：撤回后本 turn 的第一条中断 result 不转发 hub（E2E 残留缺陷
      *  修复——否则该 result 以更大 seq 落库，web 仍渲染「Session aborted」灰行）。消费即清除 */
     private suppressNextInterruptedResult = false
+    /** 已做过能力发现的 nativeSessionId——onQueryReady 每轮触发，per-session 去重防重复拉取与乱序覆写（批次 G F3）。
+     *  语义对齐 launch 循环的 isNewSession 检测：resume 出新 native session（compact 切换等）会变，rewind 截断轮不变 */
+    private capabilityDiscoveredForSession: string | null = null;
 
     constructor(
         session: Session,
@@ -778,13 +781,17 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 };
                             }
                             // U-27：会话能力面经三方法落 metadata（替代 extractSDKMetadataAsync
-                            // 专用 headless 进程）。异步不阻塞 turn；失败静默保旧值（spec 批次 G）
-                            void discoverCapabilities(query, (caps) => {
-                                session.client.updateMetadata((metadata) => ({
-                                    ...metadata,
-                                    sdkMetadata: caps,
-                                }));
-                            });
+                            // 专用 headless 进程）。异步不阻塞 turn；失败静默保旧值（spec 批次 G）。
+                            // per-session 去重：onQueryReady 每轮触发，同一会话只发现一次
+                            if (session.sessionId && session.sessionId !== this.capabilityDiscoveredForSession) {
+                                this.capabilityDiscoveredForSession = session.sessionId;
+                                void discoverCapabilities(query, (caps) => {
+                                    session.client.updateMetadata((metadata) => ({
+                                        ...metadata,
+                                        sdkMetadata: caps,
+                                    }));
+                                });
+                            }
                         },
                         nextMessage: async () => {
                             if (pending) {

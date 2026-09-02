@@ -68,4 +68,31 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
         await expect(discoverCapabilities(query as never, onCapabilities)).resolves.toBeUndefined()
         expect(onCapabilities).not.toHaveBeenCalled()
     })
+
+    it('三方法全部返回空数组 → 不回调 onCapabilities（空结果守卫，保旧快照）', async () => {
+        const query = makeQuery({
+            supportedModels: vi.fn().mockResolvedValue([]),
+            supportedCommands: vi.fn().mockResolvedValue([]),
+            supportedAgents: vi.fn().mockResolvedValue([]),
+        })
+        const onCapabilities = vi.fn()
+
+        await discoverCapabilities(query as never, onCapabilities)
+
+        expect(onCapabilities).not.toHaveBeenCalled()
+    })
+
+    it('部分为空（models 空但 commands 有值）→ 正常回调（仅全空才守卫）', async () => {
+        const query = makeQuery({ supportedModels: vi.fn().mockResolvedValue([]) })
+        const onCapabilities = vi.fn()
+
+        await discoverCapabilities(query as never, onCapabilities)
+
+        expect(onCapabilities).toHaveBeenCalledTimes(1)
+        expect(onCapabilities).toHaveBeenCalledWith({
+            models: [],
+            commands: [{ name: 'compact', description: '', argumentHint: '' }],
+            agents: [{ name: 'Explore', description: '' }],
+        })
+    })
 })
