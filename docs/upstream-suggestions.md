@@ -483,12 +483,12 @@ spec：`docs/superpowers/specs/2026-09-01-permission-tool-mcp-fidelity-design.md
 以下为 07-08 ~ 08-31 升级批次中**改变 mobi 可见行为**的上游变化，不立项但需逐条确认现状无恙：
 
 - **Todo/task 工具在新模型上默认移除**（SDK 0.3.233）——新模型会话不再产生 TodoWrite 调用，todo 渲染路径静默变空；需要时用 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` 或 `tools` 显式保留。**已适配（2026-09-02）**：曾保底注入 `=1`，裁定跟随上游默认不注入（新模型去掉外挂记忆拐杖是正向裁剪，mobi 忠实呈现；TodoPanel/任务面板优雅降级为空）；用户想要可在 settings.json `claudeEnv` 显式配 `'1'`
-- **subagent 默认不再嵌套（depth 1）+ 并发上限 20**（SDK 0.3.217，2.1.224 又移除了每会话 200 个总数上限）——subagent 面板的层级/数量预期变化
-- **auto-compact 对未知模型 ID 强制窗口钳制**（claude 2.1.223）——mobi 网关自定义模型名场景下上下文会按假设窗口提前压缩，可用 `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1` 还原；与 pending #57（水位窗口猜测）联动评估
-- **`canUseTool` 返回 allow 无 `updatedInput` 的契约修正**（SDK 0.3.207）——按文档契约以原始输入执行（此前被当 deny 报 ZodError）；确认 mobi `permissionHandler.ts` 的返回形态兼容
-- **usage limit 重置后自动续跑**（claude 2.1.234，`/config` 可关）——会出现「无用户输入的 idle→running」迁移，mobi 会话状态机与 StatusBar 计时需能解释
-- **后台任务通知轮间以 `<system-reminder>` 包裹投递**（claude 2.1.234）——消息流解析/渲染 system-reminder 的命中面变宽
-- **Bash 输入重定向权限检查反复**（2.1.232 引入 2.1.233 回退）——权限规则覆盖范围在上游快速变动，审批 UI 不应假设特定语法必不触发
+- **subagent 默认不再嵌套（depth 1）+ 并发上限 20**（SDK 0.3.217，2.1.224 又移除了每会话 200 个总数上限）——subagent 面板的层级/数量预期变化。**已确认无影响（2026-09-02）**：mobi 后台任务面板是扁平列表（taskId upsert）无层级概念，也无数量假设；超限 spawn 失败以 tool_result 错误经工具卡片可见；总数上限移除对远程长会话纯利好
+- **auto-compact 对未知模型 ID 强制窗口钳制**（claude 2.1.223）——mobi 网关自定义模型名场景下上下文会按假设窗口提前压缩，可用 `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1` 还原；与 pending #57（水位窗口猜测）联动评估。**已确认跟随新默认（2026-09-02）**：未注入还原 env——钳制防小窗口网关模型爆 "prompt is too long"，且与 mobi `guessContextWindow` 200k 口径对齐（水位显示与 compact 时机一致）；大窗口网关模型如需用满，claudeEnv 显式关闭钳制；根治归 #57 方向 3（hub 模型配置表，仅修 mobi 侧显示，修不了 CC 钳制）
+- **`canUseTool` 返回 allow 无 `updatedInput` 的契约修正**（SDK 0.3.207）——按文档契约以原始输入执行（此前被当 deny 报 ZodError）；确认 mobi `permissionHandler.ts` 的返回形态兼容。**已确认无影响（2026-09-02）**：mobi 全部 7 处 allow 分支都显式携带 `updatedInput`（AskUserQuestion/表单合成 + 通用放行透传 + sandbox 路径），触发不了旧 bug；修复使未来潜在遗漏从崩溃降级为按原始输入执行，纯利好
+- **usage limit 重置后自动续跑**（claude 2.1.234，`/config` 可关）——会出现「无用户输入的 idle→running」迁移，mobi 会话状态机与 StatusBar 计时需能解释。**已确认无影响（2026-09-02）**：run-started 链路不区分翻转起因（#56 已落地）；StatusBar 取 max(runStartedAt, lastUserMessageAt) 单调不回跳，续跑轮正确起算；等待期 idleTimer 默认 1 天（configuration.ts）大于典型 5h 重置窗口不打断——周 limit 挂机数天的理论边界可接受且可配置
+- **后台任务通知轮间以 `<system-reminder>` 包裹投递**（claude 2.1.234）——消息流解析/渲染 system-reminder 的命中面变宽。**已核实（2026-09-02）+ 裁定不做适配、不展示**：mobi 全链路零 system-reminder 过滤逻辑，生产库已落库 136 条（99 条内嵌 tool_result block）——web 看不见是 normalizeUserContent 不认 tool_result block 的结构性副产品，非过滤；若上游改为独立文本形态投递会原样渲染为用户气泡（库中已有 role:'user' 纯文本 task-notification 先例）。不展示的理由：内容是给模型看的轮间状态注入，用户关心的信息已有专用通道（TodoPanel / backgroundTasks 卡片 / 系统灰行），原文展示纯噪音且渲染为用户气泡属错误归因；将来若真涌入，正确动作是识别后转系统灰行或丢弃而非展示
+- **Bash 输入重定向权限检查反复**（2.1.232 引入 2.1.233 回退）——权限规则覆盖范围在上游快速变动，审批 UI 不应假设特定语法必不触发。**已确认无影响（2026-09-02）**：mobi 审批兜底是字面匹配设计（PermissionFooter `buildFallbackUpdate` 把 command 字面存 mobi 自己的 Set，`parseBashPermission` 字面填），不做语法解析，与上游权限规则引擎语义解耦——上游规则覆盖变动只影响弹窗频率（即上游行为本身），mobi 侧免疫
 
 ---
 
