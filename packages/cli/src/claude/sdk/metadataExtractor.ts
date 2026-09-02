@@ -115,3 +115,21 @@ export async function extractSDKMetadata(cwd?: string): Promise<SDKMetadata> {
         return {}
     }
 }
+
+/**
+ * 异步提取 SDK 元数据，完成后回调通知
+ *
+ * @param onComplete 元数据就绪后的回调
+ * @param cwd 可选的工作目录，传入后可获取项目级别的 .claude/commands 和 skills
+ */
+export function extractSDKMetadataAsync(onComplete: (metadata: SDKMetadata) => void, cwd?: string): void {
+    extractSDKMetadata(cwd)
+        .then(metadata => {
+            if (metadata.agents || metadata.commands) {
+                onComplete(metadata)
+            }
+        })
+        .catch(error => {
+            logger.debug('[metadataExtractor] Async extraction failed:', error)
+        })
+}

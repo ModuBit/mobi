@@ -20,6 +20,7 @@ import { AgentState, SessionModel } from '@/api/types';
 import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
 import { MessageQueue } from '@/utils/MessageQueue';
 import { hashObject } from '@/utils/deterministicJson';
+import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
@@ -118,6 +119,22 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         projectId: options.projectId
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
+
+    // 本地模式没有 remote Query，能力面经 headless 提取兜底（批次 G 前的唯一路径，此处收窄为 local 专属）；
+    // 远程模式由 launcher onQueryReady 的 discoverCapabilities 供给（批次 G U-27）
+    if (startingMode === 'local') {
+        extractSDKMetadataAsync(async (extractedMetadata) => {
+            logger.debug('[start] SDK metadata extracted, updating session:', extractedMetadata);
+            try {
+                apiSession.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    sdkMetadata: extractedMetadata
+                }));
+            } catch (error) {
+                logger.debug('[start] Failed to update session metadata:', error);
+            }
+        }, workingDirectory);
+    }
 
     // Variable to track current session instance (updated via onSessionReady callback)
     // 提前到 startMobiMcpServer 之前：MCP change_title handler 需要它回写 agent 侧标题
