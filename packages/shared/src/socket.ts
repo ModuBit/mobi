@@ -171,6 +171,8 @@ export interface ClientToServerEvents {
         permissionMode?: PermissionMode
         model?: string | null
         effort?: EffortLevel
+        /** 当前 output style：随 keep-alive 上报，hub 落 runtimeState.outputStyle 供 resume 回放 */
+        outputStyle?: string
     }) => void
     'session-end': (data: { sid: string; time: number }) => void
     'update-metadata': (data: { sid: string; expectedVersion: number; metadata: unknown }, cb: (answer: {

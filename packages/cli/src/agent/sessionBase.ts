@@ -147,14 +147,25 @@ export class AgentSessionBase<Mode> {
         }
     };
 
-    protected getKeepAliveRuntime(): { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel } | undefined {
-        if (this.permissionMode === undefined && this.model === undefined && this.effort === undefined) {
+    /**
+     * keep-alive 附带的 runtime 快照：permissionMode/model/effort/outputStyle 会经 hub
+     * 落 runtimeState 持久化——进程重启后 resume 链路回放这些字段（syncEngine resume 分支），
+     * 缺报即回落默认值。outputStyle 与 effort 同款：切换受理（setOutputStyle）后即时生效于后续上报。
+     */
+    protected getKeepAliveRuntime(): { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string } | undefined {
+        if (
+            this.permissionMode === undefined
+            && this.model === undefined
+            && this.effort === undefined
+            && this.outputStyle === undefined
+        ) {
             return undefined;
         }
         return {
             permissionMode: this.permissionMode,
             model: this.model,
             effort: this.effort,
+            outputStyle: this.outputStyle,
         };
     }
 

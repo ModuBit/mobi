@@ -464,6 +464,8 @@ export const RuntimeStateSchema = z.object({
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
+    /** 当前 output style（CLI keep-alive 上报落库，进程重启后 resume 回放；default 视为未设置可省略） */
+    outputStyle: z.string().optional(),
     contextUsage: ContextUsageSchema.optional(),
     /** 当前/最近一次 goalStatus；null 表示无 goal 或已清空 */
     goalStatus: GoalStatusSchema.nullable().optional(),

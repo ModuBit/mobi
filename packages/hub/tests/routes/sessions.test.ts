@@ -43,6 +43,7 @@ const mockSyncEngine = {
         session: mockSession,
     }),
     applySessionConfig: async () => undefined,
+    switchOutputStyle: async () => undefined,
     clearRuntimeStateFields: (_sessionId: string, _fields: string[], _namespace: string) => true,
 } as unknown as SyncEngine
 
@@ -199,6 +200,89 @@ describe('Sessions API', () => {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({ effort: 'high' }),
+            })
+
+            expect(res.status).toBe(404)
+            setup.cleanup()
+        })
+    })
+
+    describe('POST /api/sessions/:id/output-style', () => {
+        test('合法的 style 值返回 ok', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/output-style', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ style: 'concise' }),
+            })
+
+            expect(res.status).toBe(200)
+            const body = await res.json() as { ok: boolean }
+            expect(body.ok).toBe(true)
+        })
+
+        test('空 style 返回 400', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/output-style', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ style: '' }),
+            })
+
+            expect(res.status).toBe(400)
+        })
+
+        test('CLI 未受理（running/rewind 守卫拒绝）返回 409', async () => {
+            const engineRejected = {
+                resolveSessionAccess: (_id: string, _ns: string) => ({
+                    ok: true as const,
+                    sessionId: 'test-session-1',
+                    session: mockSession,
+                }),
+                switchOutputStyle: async () => {
+                    throw new Error('Output style switch was not accepted')
+                },
+            } as unknown as SyncEngine
+
+            const setup = await setupTestApp(engineRejected)
+            const token = await getAuthToken(setup.app)
+
+            const res = await setup.app.request('/api/sessions/test-session-1/output-style', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ style: 'concise' }),
+            })
+
+            expect(res.status).toBe(409)
+            setup.cleanup()
+        })
+
+        test('不存在的 session 返回 404', async () => {
+            const engineWithNoSession = {
+                resolveSessionAccess: () => ({ ok: false as const, reason: 'not-found' as const }),
+            } as unknown as SyncEngine
+
+            const setup = await setupTestApp(engineWithNoSession)
+            const token = await getAuthToken(setup.app)
+
+            const res = await setup.app.request('/api/sessions/non-existent/output-style', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ style: 'concise' }),
             })
 
             expect(res.status).toBe(404)

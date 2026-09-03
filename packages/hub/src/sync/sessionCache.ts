@@ -293,6 +293,7 @@ export class SessionCache {
         permissionMode?: PermissionMode
         model?: string | null
         effort?: EffortLevel
+        outputStyle?: string
     }): void {
         const t = clampAliveTime(payload.time)
         if (!t) return
@@ -305,6 +306,7 @@ export class SessionCache {
         const previousPermissionMode = session.permissionMode
         const previousModel = session.runtimeState?.model
         const previousEffort = session.runtimeState?.effort
+        const previousOutputStyle = session.runtimeState?.outputStyle
         const previousMode = session.mode
 
         session.active = true
@@ -323,12 +325,16 @@ export class SessionCache {
         if (payload.effort !== undefined) {
             this.updateRuntimeStateField(session, payload.sid, 'effort', payload.effort, t, session.namespace)
         }
+        if (payload.outputStyle !== undefined) {
+            this.updateRuntimeStateField(session, payload.sid, 'outputStyle', payload.outputStyle, t, session.namespace)
+        }
 
         const now = Date.now()
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
         const modeChanged = previousPermissionMode !== session.permissionMode
             || previousModel !== session.runtimeState?.model
             || previousEffort !== session.runtimeState?.effort
+            || previousOutputStyle !== session.runtimeState?.outputStyle
             || previousMode !== session.mode
         const shouldBroadcast = (!wasActive && session.active)
             || (wasRunning !== session.running)
@@ -347,7 +353,8 @@ export class SessionCache {
                     mode: session.mode,
                     permissionMode: session.permissionMode,
                     model: session.runtimeState?.model,
-                    effort: session.runtimeState?.effort
+                    effort: session.runtimeState?.effort,
+                    outputStyle: session.runtimeState?.outputStyle
                 }
             })
         }
@@ -729,6 +736,11 @@ export class SessionCache {
         // 合并 effort（如果新会话没有 effort，保留旧会话的 effort）
         if (oldState.effort !== undefined && newState.effort === undefined) {
             merged.effort = oldState.effort
+        }
+
+        // 合并 outputStyle（resume 后新会话 keep-alive 尚未上报前，保留旧会话的值）
+        if (oldState.outputStyle !== undefined && newState.outputStyle === undefined) {
+            merged.outputStyle = oldState.outputStyle
         }
 
         return merged

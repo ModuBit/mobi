@@ -389,3 +389,73 @@ describe('SyncEngine.abortSession stopKind', () => {
         }
     })
 })
+
+/**
+ * resume 回放：进程重启后 spawnSession 的 resume 分支必须把 runtimeState 持久化的
+ * effort/outputStyle 回放给 CLI（否则回落默认值）。
+ */
+describe('SyncEngine.resumeSession 回放 runtimeState', () => {
+    test('effort 与 outputStyle 均传入 spawn-mobi-session RPC 参数', async () => {
+        const store = new Store(':memory:')
+        const emitCalls: { method: string; params: unknown }[] = []
+        // engine 后建（fakeSocket 构造时尚无引用）：spawn 受理时同步注册新会话并 active，
+        // 让 resumeSession 的 waitForSessionActive 立即通过
+        const engineRef: { engine?: SyncEngine } = {}
+
+        const fakeSocket = {
+            timeout() { return this },
+            async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
+                emitCalls.push(payload)
+                if (payload.method.endsWith(':spawn-mobi-session')) {
+                    const engine = engineRef.engine!
+                    const spawned = engine.getOrCreateSession(
+                        'tag-resumed-new', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
+                    )
+                    engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
+                    return { type: 'success', sessionId: spawned.id }
+                }
+                return { ok: true }
+            },
+        }
+        const io = {
+            of() { return { sockets: new Map([['sock-1', fakeSocket]]) } },
+        } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod(method: string) {
+                return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
+            },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+
+        const engine = new SyncEngine(store, io, registry, sseManager)
+        engineRef.engine = engine
+        try {
+            // 机器在线（同 namespace）
+            engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
+            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+
+            // 已结束会话：runtimeState 持久化 effort + outputStyle（keep-alive 落库的终态）
+            const session = engine.getOrCreateSession(
+                'tag-resume-replay',
+                { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' },
+                null,
+                'default',
+                'remote',
+                { effort: 'high', outputStyle: 'concise' }
+            )
+
+            const result = await engine.resumeSession(session.id, 'default')
+            expect(result.type).toBe('success')
+
+            const spawnCall = emitCalls.find(c => c.method.endsWith(':spawn-mobi-session'))
+            expect(spawnCall).toBeTruthy()
+            const params = spawnCall!.params as Record<string, unknown>
+            expect(params.resumeSessionId).toBe('native-1')
+            expect(params.effort).toBe('high')
+            expect(params.outputStyle).toBe('concise')
+        } finally {
+            engine.stop()
+            store.close()
+        }
+    })
+})

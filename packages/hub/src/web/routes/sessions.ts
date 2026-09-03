@@ -500,6 +500,38 @@ export function createSessionsRoutes(
         }
     })
 
+    // 不用 OUTPUT_STYLES 枚举校验：CLI 支持自定义 style（settings.json），此处只挡空串，
+    // 合法性由 CLI 侧 switch-output-style handler 守卫（/clear 语义受理 + running/rewind 拒绝）
+    const outputStyleSchema = z.object({
+        style: z.string().min(1),
+    })
+
+    app.post('/sessions/:id/output-style', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = outputStyleSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        try {
+            await engine.switchOutputStyle(sessionResult.sessionId, parsed.data.style)
+            return c.json({ ok: true })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to switch output style'
+            return c.json({ error: message }, 409)
+        }
+    })
+
     // rewind 预检：透传 CLI RPC 结果（{ canRewind, canRestoreFiles }），Web 据此渲染两选项/降级单选项弹窗
     app.post('/sessions/:id/rewind/dry-run', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)

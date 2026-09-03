@@ -291,6 +291,7 @@ export class SyncEngine {
         permissionMode?: PermissionMode
         model?: string | null
         effort?: EffortLevel
+        outputStyle?: string
     }): void {
         // 激活翻转入参快照：handleSessionAlive 同步更新 sessionCache，前后各读一次即可判定翻转
         const wasActive = this.sessionCache.getSession(payload.sid)?.active ?? false
@@ -496,6 +497,17 @@ export class SyncEngine {
         this.sessionCache.applySessionConfig(sessionId, applied)
     }
 
+    /**
+     * 切换 output style（/clear 语义）：受理转发 CLI，权威值由重启后 init 上报的
+     * metadata.sdkMetadata.outputStyle 与 keep-alive 的 runtimeState.outputStyle 回流，此处不写 sessionCache。
+     */
+    async switchOutputStyle(sessionId: string, style: string): Promise<void> {
+        const result = await this.rpcGateway.switchOutputStyle(sessionId, style)
+        if (!result || typeof result !== 'object' || (result as { accepted?: boolean }).accepted !== true) {
+            throw new Error('Output style switch was not accepted')
+        }
+    }
+
     async spawnSession(
         machineId: string,
         directory: string,
@@ -570,7 +582,8 @@ export class SyncEngine {
             undefined,
             undefined,
             resumeToken,
-            session.runtimeState?.effort ?? undefined
+            session.runtimeState?.effort ?? undefined,
+            session.runtimeState?.outputStyle ?? undefined
         )
 
         if (spawnResult.type !== 'success') {

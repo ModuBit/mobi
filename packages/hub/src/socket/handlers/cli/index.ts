@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ContextUsage, GoalStatus, PermissionMode } from '@mobi/shared/types'
+import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode } from '@mobi/shared/types'
 import type { Store, StoredMachine, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
@@ -35,6 +35,8 @@ type SessionAlivePayload = {
     mode?: 'local' | 'remote'
     permissionMode?: PermissionMode
     model?: string | null
+    effort?: EffortLevel
+    outputStyle?: string
 }
 
 type SessionEndPayload = {

@@ -18,7 +18,7 @@ import { COMMAND_LIFECYCLE_STATES, SNAPSHOT_PENDING_ID, ContextUsageSchema, Goal
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
+import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
 import { hubLogger } from '../../../logger'
 import type { Store, StoredMessage, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
@@ -52,6 +52,8 @@ type SessionAlivePayload = {
     mode?: 'local' | 'remote'
     permissionMode?: PermissionMode
     model?: string | null
+    effort?: EffortLevel
+    outputStyle?: string
 }
 
 type SessionEndPayload = {

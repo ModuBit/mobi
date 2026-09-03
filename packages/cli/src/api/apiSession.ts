@@ -737,7 +737,7 @@ export class ApiSessionClient extends EventEmitter {
     keepAlive(
         running: boolean,
         mode: 'local' | 'remote',
-        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel }
+        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string }
     ): void {
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
