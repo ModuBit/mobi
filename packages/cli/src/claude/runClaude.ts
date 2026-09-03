@@ -487,6 +487,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         }
         const result = applyOutputStyleSwitch({
             running: session.running,
+            rewindBusy: session.pendingRewind !== null || session.rewindInFlight,
             setOutputStyle: session.setOutputStyle,
             clearSessionId: session.clearSessionId,
             markPendingExit: () => { session.pendingOutputStyleExit = true; },

@@ -19,9 +19,10 @@ import { applyOutputStyleSwitch } from '../../src/claude/utils/outputStyleSwitch
 import { OUTPUT_STYLE_EXIT_SENTINEL } from '../../src/claude/utils/outputStyleSentinel'
 
 /** 装配纯函数依赖替身（结构化注入，无需拉起真实 Session / MessageQueue） */
-function setup(running = false) {
+function setup(running = false, opts: { rewindBusy?: boolean } = {}) {
     const deps = {
         running,
+        rewindBusy: opts.rewindBusy ?? false,
         setOutputStyle: vi.fn(),
         clearSessionId: vi.fn(),
         markPendingExit: vi.fn(),
@@ -50,7 +51,23 @@ describe('applyOutputStyleSwitch', () => {
         expect(deps.pushIsolateAndClear).not.toHaveBeenCalled()
     })
 
-    it('idle → 受理，且副作用顺序：setOutputStyle → clearSessionId → clearPending → markPendingExit → 哨兵入队', () => {
+    it('rewind 占用中（pendingRewind / rewindInFlight）→ 拒绝且五步副作用零调用', () => {
+        // rewind 受理后哨兵消费前的窗口内受理切换会 clearPending 吞掉 rewind 哨兵，
+        // 产生「已清 sessionId + 残留 pendingRewind」坏组合——拒绝优于清位
+        const deps = setup(false, { rewindBusy: true });
+
+        const result = applyOutputStyleSwitch(deps, 'explanatory')
+
+        expect(result.accepted).toBe(false)
+        expect(result.reason).toContain('rewind')
+        expect(deps.setOutputStyle).not.toHaveBeenCalled()
+        expect(deps.clearSessionId).not.toHaveBeenCalled()
+        expect(deps.markPendingExit).not.toHaveBeenCalled()
+        expect(deps.clearPending).not.toHaveBeenCalled()
+        expect(deps.pushIsolateAndClear).not.toHaveBeenCalled()
+    })
+
+    it('idle → 受理，且置位先于哨兵入队', () => {
         const deps = setup(false)
 
         const result = applyOutputStyleSwitch(deps, 'explanatory')
@@ -64,13 +81,8 @@ describe('applyOutputStyleSwitch', () => {
             OUTPUT_STYLE_EXIT_SENTINEL,
             { permissionMode: 'default' },
         )
-        // 顺序即语义：置位与哨兵入队同一同步段，置位在前（launcher 消费哨兵时读位）
-        expect(vi.mocked(deps.setOutputStyle).mock.invocationCallOrder[0])
-            .toBeLessThan(vi.mocked(deps.clearSessionId).mock.invocationCallOrder[0])
-        expect(vi.mocked(deps.clearSessionId).mock.invocationCallOrder[0])
-            .toBeLessThan(vi.mocked(deps.clearPending).mock.invocationCallOrder[0])
-        expect(vi.mocked(deps.clearPending).mock.invocationCallOrder[0])
-            .toBeLessThan(vi.mocked(deps.markPendingExit).mock.invocationCallOrder[0])
+        // 唯一真时序约束：markPendingExit 置位必须先于哨兵入队（launcher 消费哨兵时读位，
+        // 哨兵先到而标志后置会被判 stale 白耗一次哨兵）。其余三步顺序无语义，不锁定
         expect(vi.mocked(deps.markPendingExit).mock.invocationCallOrder[0])
             .toBeLessThan(vi.mocked(deps.pushIsolateAndClear).mock.invocationCallOrder[0])
     })

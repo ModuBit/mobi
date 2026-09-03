@@ -21,6 +21,12 @@ import type { EnhancedMode } from '../types'
 export interface OutputStyleSwitchDeps {
     /** 前台 turn 是否运行中（闸门：running 中拒绝切换） */
     running: boolean
+    /**
+     * rewind 占用中（pendingRewind 待截断 / rewindInFlight 受理中）：此时受理切换的
+     * clearPending 会静默吞掉 rewind 哨兵，产生「已清 sessionId + 残留 pendingRewind」
+     * 坏组合（resumeSessionAt 语义悬空、rewind-completed 永不回报）——拒绝优于清位
+     */
+    rewindBusy: boolean
     /** 更新 session.outputStyle（下轮循环经 applyStartupOutputStyle 生效） */
     setOutputStyle: (style: string) => void
     /** 清除 native sessionId（下次循环不 resume、起新 native query，/clear 语义） */
@@ -47,6 +53,11 @@ export interface OutputStyleSwitchDeps {
 export function applyOutputStyleSwitch(deps: OutputStyleSwitchDeps, style: string): { accepted: boolean; reason?: string } {
     if (deps.running) {
         return { accepted: false, reason: 'session is running' };
+    }
+    // rewind 占用窗口（受理后、哨兵消费前）拒绝：clearPending 会吞掉 rewind 哨兵，
+    // 且清 sessionId 后残留的 pendingRewind 语义悬空——拒绝优于清位
+    if (deps.rewindBusy) {
+        return { accepted: false, reason: 'rewind is in progress' };
     }
     deps.setOutputStyle(style);
     deps.clearSessionId();
