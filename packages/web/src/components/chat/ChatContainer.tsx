@@ -975,6 +975,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
                 sending={sendMutation.isPending}
                 compressing={isCompressing}
+                clearInProgress={isClearing}
+                outputStyle={session?.metadata?.sdkMetadata?.outputStyle}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}

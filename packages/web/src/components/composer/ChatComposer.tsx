@@ -18,7 +18,6 @@ import { useState, useCallback, useMemo, useRef, useEffect, createElement } from
 import styled from '@emotion/styled'
 import { Button, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { HoverSelect } from '@/components/ui/HoverSelect'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +55,8 @@ import { ActivateCover } from '@/components/ui/ActivateCover'
 import { getPermissionModeColor } from './permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from './permissionModeOption'
 import { getPermissionModeIcon } from './permissionModeIcons'
+import { CompactHoverSelect, MODEL_DROPDOWN_CLASS } from './CompactHoverSelect'
+import { OutputStyleSwitch } from './OutputStyleSwitch'
 import { SubmitButton } from './SubmitButton'
 import { ContextRing } from './ContextRing'
 import { resolveSubmitButtonState } from './submitButtonState'
@@ -80,6 +81,10 @@ interface ChatComposerProps {
     runStartedAt?: number
     /** 是否正在压缩历史（compact）：压缩期间不显示 loading 状态栏，避免与列表内的 CommandProgressBubble 重复 */
     compressing?: boolean
+    /** /clear 进行中：output style 切换器禁用（切换同为 /clear 语义，避免并发清空） */
+    clearInProgress?: boolean
+    /** 当前 output style（session.metadata.sdkMetadata.outputStyle，init 回报；undefined → default） */
+    outputStyle?: string | null
     agentState?: AgentState | null
     metadata?: SessionMetadataSummary | null
     agentFlavor?: string | null
@@ -146,31 +151,7 @@ const ComposerDock = styled.div`
     }
 `
 
-// 紧凑 Select 使用 ui/HoverSelect 共享定义（composer 与新建会话页共用）
-
-// 缩小 dropdown 弹出层的 option 字体（全局注入一次）
-const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
-const MODEL_DROPDOWN_CLASS = 'model-select-dropdown'
-let compactStyleInjected = false
-function useCompactDropdownStyle() {
-    if (!compactStyleInjected && typeof document !== 'undefined') {
-        const style = document.createElement('style')
-        style.textContent = `
-.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }
-.${COMPACT_DROPDOWN_CLASS} { max-width: 100vw !important; }
-@media (max-width: 640px) {
-    .${MODEL_DROPDOWN_CLASS} { right: auto !important; left: 12px !important; max-width: calc(100vw - 24px) !important; }
-}
-.effort-popover .ant-popover-container { padding: 4px 0 !important; }
-.effort-popover .ant-popover-arrow { display: none !important; }
-.effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
-.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: 4px; }
-.effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }
-`
-        document.head.appendChild(style)
-        compactStyleInjected = true
-    }
-}
+// 紧凑 Select 与 dropdown 样式注入统一在 CompactHoverSelect.tsx（composer / output style 切换器共用）
 
 // Footer Bar / Sub Bar 中 icon 按钮的统一样式
 const ACTION_BUTTON_STYLE: React.CSSProperties = {
@@ -178,23 +159,7 @@ const ACTION_BUTTON_STYLE: React.CSSProperties = {
     background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
 } as const
 
-// 预配置的紧凑 Select，复用共享样式属性
-function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
-    useCompactDropdownStyle()
-    const { classNames: propsClassNames, ...rest } = props
-    // antd Select 的 classNames 是对象 | 函数联合；仅取对象式分支的 popup.root（函数式由 antd 内部消费）
-    const extraPopupRoot = typeof propsClassNames === 'object' ? propsClassNames?.popup?.root : undefined
-    return (
-        <HoverSelect
-            {...rest}
-            $compact
-            size="small"
-            variant="filled"
-            popupMatchSelectWidth={false}
-            classNames={{ popup: { root: [COMPACT_DROPDOWN_CLASS, extraPopupRoot].filter(Boolean).join(' ') } }}
-        />
-    )
-}
+// 预配置的紧凑 Select 已抽出为共享的 CompactHoverSelect.tsx（composer / output style 切换器共用）
 
 // ============ Effort 级别颜色 ============
 const EFFORT_COLORS: Record<EffortLevel, string> = {
@@ -281,6 +246,8 @@ export function ChatComposer(props: ChatComposerProps) {
         lastActivityAt,
         runStartedAt,
         compressing = false,
+        clearInProgress = false,
+        outputStyle = null,
         agentState,
         metadata,
         agentFlavor,
@@ -889,6 +856,19 @@ export function ChatComposer(props: ChatComposerProps) {
                                         />
                                     ),
                                 }] : []),
+                                // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）
+                                {
+                                    key: 'outputStyle',
+                                    render: () => (
+                                        <OutputStyleSwitch
+                                            sessionId={sessionId}
+                                            outputStyle={outputStyle}
+                                            running={running}
+                                            clearInProgress={clearInProgress}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                        />
+                                    ),
+                                },
                                 // model + effort
                                 ...(onModelChange ? [{
                                     key: 'model',
