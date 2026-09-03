@@ -70,7 +70,6 @@ bun run lint:deps    # 依赖方向检查
 | 配置指南 | [docs/configuration.md](docs/configuration.md) |
 | Claude / Agent SDK 文档 | [docs/claude-agent-sdk/README.md](docs/claude-agent-sdk/README.md)（链接索引，每次拿最新） |
 | 待处理项 | [docs/pending.md](docs/pending.md) |
-| 上游新功能引入建议 | [docs/upstream-suggestions.md](docs/upstream-suggestions.md) |
 
 ## 文档同步
 
