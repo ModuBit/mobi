@@ -677,6 +677,27 @@ export async function userInputLoop(
     }
 }
 
+/**
+ * 启动期 output style 接线：SDK Options 无顶层 outputStyle 字段（仅 Settings.outputStyle，
+ * 且 Options.settings 槽位已被 hookSettingsPath 占用，string|Settings 二选一不可叠加），
+ * 改为 query 建立后经 applyFlagSettings 注入 session 级 flag layer。
+ *
+ * 时序：caller 须在首条用户消息 push 进 SDK input stream 之前 await（attach 点紧后调用），
+ * 保证首轮 prompt 即带 style。空值不调用（CC 读 settings 默认）。fire-and-forget 容错与
+ * runClaude.ts 动态配置（setModel/applyFlagSettings effortLevel）一致：失败仅 debug 日志，
+ * style 退化默认，不阻塞会话启动。
+ */
+export async function applyStartupOutputStyle(response: Query, outputStyle: string | undefined): Promise<void> {
+    if (!outputStyle) {
+        return;
+    }
+    try {
+        await response.applyFlagSettings({ outputStyle });
+    } catch (e) {
+        logger.debug(`[claudeRemote] applyFlagSettings(outputStyle=${outputStyle}) failed, falling back to settings default:`, e);
+    }
+}
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -688,6 +709,12 @@ export async function claudeRemote(opts: {
      * 截断确认后经 onRewindTruncated 回报（先截断后软删除），再等用户消息
      */
     resumeSessionAt?: string,
+    /**
+     * output style（prompt 组装期决策）：session 当前值，undefined = CC 读 settings 默认。
+     * 不走 sdkOptions（Options 无顶层字段且 settings 槽位被占）——query attach 后经
+     * applyStartupOutputStyle → applyFlagSettings 注入 session 级 flag layer
+     */
+    outputStyle?: string,
     /**
      * 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
      * SDK fork 时校验截断区间只含该 turn；含其他则 refusal（error_during_execution，
@@ -900,6 +927,8 @@ export async function claudeRemote(opts: {
         // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被
         // 模型当成「空消息」触发一轮无意义回复。此处仅在 rewind 轮有值，其余轮 undefined。
         resumeSessionAt: opts.resumeSessionAt,
+        // output style 不走 sdkOptions：Options 无顶层字段、settings 槽位已被
+        // hookSettingsPath 占用——query attach 后经 applyStartupOutputStyle 注入
         // 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal。refusal 检测/recovery 在 T4。
         resumeDropsTurn: opts.resumeDropsTurn,
@@ -1119,6 +1148,8 @@ export async function claudeRemote(opts: {
                 // 首条消息等待窗口内的旁路流量（跨会话等 SDK 注入）被即时消费落库
                 response = warmRef.query(messages)
                 warmConsumed = true
+                // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
+                await applyStartupOutputStyle(response, opts.outputStyle)
                 // 把 Query 引用传给外部，用于 interrupt/close 控制
                 opts.onQueryReady?.(response);
                 startOutputLoop(response)
@@ -1156,6 +1187,9 @@ export async function claudeRemote(opts: {
             // 只是 attach 时复用；常规轮已提前激活（warmConsumed=true）不进此分支
             response = warmRef.query(messages)
             warmConsumed = true
+            // output style 注入须先于任何用户消息 push——截断轮 attach 前特殊命令处理
+            // （bash 注入）已可能 push 进 messages，attach 后立即补注（见 helper 时序注释）
+            await applyStartupOutputStyle(response, opts.outputStyle)
             // 把 Query 引用传给外部，用于 interrupt/close 控制
             opts.onQueryReady?.(response);
             startOutputLoop(response)
@@ -1169,6 +1203,8 @@ export async function claudeRemote(opts: {
                 effort: fallbackConfig.effort,
             }
             response = query({ prompt: messages, options: fallbackOptions })
+            // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
+            await applyStartupOutputStyle(response, opts.outputStyle)
             // 把 Query 引用传给外部，用于 interrupt/close 控制
             opts.onQueryReady?.(response);
             startOutputLoop(response)

@@ -36,6 +36,7 @@ export type AgentSessionBaseOptions<Mode> = {
     permissionMode?: SessionPermissionMode;
     model?: SessionModel;
     effort?: EffortLevel;
+    outputStyle?: string;
 };
 
 export class AgentSessionBase<Mode> {
@@ -58,6 +59,7 @@ export class AgentSessionBase<Mode> {
     protected permissionMode?: SessionPermissionMode;
     protected model?: SessionModel;
     protected effort?: EffortLevel;
+    protected outputStyle?: string;
 
     constructor(opts: AgentSessionBaseOptions<Mode>) {
         this.path = opts.path;
@@ -74,6 +76,7 @@ export class AgentSessionBase<Mode> {
         this.permissionMode = opts.permissionMode;
         this.model = opts.model;
         this.effort = opts.effort;
+        this.outputStyle = opts.outputStyle;
 
         this.client.keepAlive(this.running, this.mode, this.getKeepAliveRuntime());
         this.keepAliveInterval = setInterval(() => {
@@ -165,5 +168,9 @@ export class AgentSessionBase<Mode> {
 
     getEffort(): EffortLevel | undefined {
         return this.effort;
+    }
+
+    getOutputStyle(): string | undefined {
+        return this.outputStyle;
     }
 }

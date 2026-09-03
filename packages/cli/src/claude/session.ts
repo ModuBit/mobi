@@ -71,6 +71,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         permissionMode?: PermissionMode;
         model?: SessionModel;
         effort?: EffortLevel;
+        outputStyle?: string;
         additionalDirectories?: string[];
     }) {
         super({
@@ -91,6 +92,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
             permissionMode: opts.permissionMode,
             model: opts.model,
             effort: opts.effort,
+            outputStyle: opts.outputStyle,
         });
 
         this.claudeEnvVars = opts.claudeEnvVars;
@@ -113,6 +115,10 @@ export class Session extends AgentSessionBase<EnhancedMode> {
 
     setEffort = (effort: EffortLevel): void => {
         this.effort = effort;
+    };
+
+    setOutputStyle = (style: string): void => {
+        this.outputStyle = style;
     };
 
     recordLocalLaunchFailure = (message: string, exitReason: LocalLaunchExitReason): void => {

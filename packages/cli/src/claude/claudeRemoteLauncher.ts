@@ -38,6 +38,7 @@ import type { RawJSONLines } from "./types";
 import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
+import { OUTPUT_STYLE_EXIT_SENTINEL } from "./utils/outputStyleSentinel";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
@@ -730,6 +731,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // rewind 截断轮携带保留锚（其前最近一条 assistant entry uuid）：
                         // 语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃
                         resumeSessionAt: rewind?.resumeAt,
+                        // output style：session 当前值，每轮循环读取（切换 RPC 更新后经哨兵重启生效）
+                        outputStyle: session.getOutputStyle(),
                         // 配对护栏（spec E1）：丢弃的 turn prompt UUID（= rewind 目标 user msg nativeId），
                         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal（refusal 处理在 T4）
                         resumeDropsTurn: rewind?.nativeId,
@@ -822,7 +825,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 //   的实际接线，复用 isolate 机制）
                                 // - 空：本轮截断已执行后的残留哨兵（RPC 落在 query 轮间隙时入队）→
                                 //   丢弃，继续等下一条用户消息，避免误触发本轮早退
-                                if (msg.isolate && msg.message === REWIND_EXIT_SENTINEL) {
+                                if (msg.isolate && (msg.message === REWIND_EXIT_SENTINEL || msg.message === OUTPUT_STYLE_EXIT_SENTINEL)) {
                                     if (session.pendingRewind) {
                                         logger.debug('[remote]: rewind exit sentinel received, ending current query round');
                                         return null;
