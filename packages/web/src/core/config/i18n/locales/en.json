@@ -537,7 +537,18 @@
         "switchToRemote": "Switch to Remote Mode",
         "dropToUpload": "Drop files here to upload",
         "uploadPendingWarning": "Please wait for file uploads to complete",
-        "removeQuote": "Remove quote"
+        "removeQuote": "Remove quote",
+        "outputStyle": "Output Style",
+        "outputStyleSwitchTitle": "Switch Output Style",
+        "outputStyleSwitchConfirm": "Switching the output style clears the current context (same as /clear); the conversation starts fresh. Switch to \"{{label}}\"?",
+        "outputStyleRunningDisabled": "Session is running; switch after it finishes",
+        "outputStyleDescriptions": {
+            "default": "Claude completes coding tasks efficiently and provides concise responses",
+            "proactive": "Claude executes immediately, minimizes interruptions, and prefers action over planning",
+            "concise": "Claude responds tersely, leading with results and skipping preamble and narration",
+            "explanatory": "Claude explains its implementation choices and codebase patterns",
+            "learning": "Claude pauses and asks you to write small pieces of code for hands-on practice"
+        }
     },
     "status": {
         "percentLeft": "{{percent}}% left"

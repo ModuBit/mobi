@@ -537,7 +537,18 @@
         "switchToRemote": "切换到远程模式",
         "dropToUpload": "松开以上传文件",
         "uploadPendingWarning": "请等待文件上传完成",
-        "removeQuote": "移除引用"
+        "removeQuote": "移除引用",
+        "outputStyle": "Output Style",
+        "outputStyleSwitchTitle": "切换 Output Style",
+        "outputStyleSwitchConfirm": "切换 output style 将清空当前上下文（与 /clear 相同），当前会话的对话历史将从新开始。确定切换到「{{label}}」？",
+        "outputStyleRunningDisabled": "会话运行中，结束后可切换",
+        "outputStyleDescriptions": {
+            "default": "高效完成编码任务，回复简洁",
+            "proactive": "立即执行、尽量少打断，行动优先于规划",
+            "concise": "回复精炼，结果先行，跳过铺垫与过程叙述",
+            "explanatory": "解释实现选择与代码库模式",
+            "learning": "会停下来请你亲手写小段代码进行实践"
+        }
     },
     "status": {
         "percentLeft": "{{percent}}% 剩余"

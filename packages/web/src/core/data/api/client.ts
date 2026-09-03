@@ -101,6 +101,8 @@ export function createMobiApi() {
                 client.post(`/api/sessions/${sessionId}/model`, { model: mode }),
             setEffort: (sessionId: string, effort: string) =>
                 client.post(`/api/sessions/${sessionId}/effort`, { effort }),
+            switchOutputStyle: (sessionId: string, style: string) =>
+                client.post(`/api/sessions/${sessionId}/output-style`, { style }),
             // 会话操作
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
             // 中断会话：stopKind 三档停止（缺省 'turn' 只停本轮，hub 侧同款缺省语义）
