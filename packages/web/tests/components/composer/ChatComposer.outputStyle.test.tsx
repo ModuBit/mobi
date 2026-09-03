@@ -138,7 +138,7 @@ describe('OutputStyleSwitch', () => {
         await expectConfirmDialog('Explanatory')
 
         fireEvent.click(modalButton(true))
-        expect(mutateSpy).toHaveBeenCalledWith({ sessionId: 's1', style: 'explanatory' })
+        expect(mutateSpy).toHaveBeenCalledWith({ sessionId: 's1', style: 'Explanatory' })
     })
 
     it('running 时 disabled，外层 title 提示结束后可切换', () => {
@@ -166,7 +166,7 @@ describe('OutputStyleSwitch', () => {
 
     it('当前值显示：outputStyle 透传选中 label；undefined → Default', () => {
         // antd v6 选中值渲染在 .ant-select-content（title 为选中 label）
-        const { unmount } = renderSwitch({ outputStyle: 'learning' })
+        const { unmount } = renderSwitch({ outputStyle: 'Learning' })
         expect(document.querySelector('.ant-select-content')?.textContent).toBe('Learning')
         expect(document.querySelector('.ant-select-content')).toHaveAttribute('title', 'Learning')
         unmount()
@@ -185,8 +185,8 @@ describe('OutputStyleSwitch', () => {
     }
 
     it('availableStyles 含自定义名（如 my-style）→ 下拉追加该项，可被选中', async () => {
-        // 内置名（proactive）已在基础列表 → 去重不追加；仅追加非内置的 my-style
-        renderSwitch({ availableStyles: ['default', 'proactive', 'my-style'] })
+        // 内置名（规范形 Proactive）已在基础列表 → 去重不追加；仅追加非内置的 my-style
+        renderSwitch({ availableStyles: ['default', 'Proactive', 'my-style'] })
 
         const options = await openDropdown()
         // 内置五项 + 自定义 my-style = 6
@@ -204,7 +204,7 @@ describe('OutputStyleSwitch', () => {
         unmount()
         cleanup()
 
-        renderSwitch({ availableStyles: ['default', 'concise'] })
+        renderSwitch({ availableStyles: ['default', 'Concise'] })
         expect(await openDropdown()).toHaveLength(5)
         expect(screen.queryByText('my-style')).not.toBeInTheDocument()
     })

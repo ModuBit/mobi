@@ -53,12 +53,12 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
         })
     })
 
-    it('init 携带 output_style / available_output_styles → 透传进能力面（web 切换器数据源）', async () => {
+    it('init 携带 output_style / available_output_styles → 透传进能力面（web 切换器数据源，CC 规范形）', async () => {
         const query = makeQuery({
             initializationResult: vi.fn().mockResolvedValue({
                 commands: [], agents: [], models: [],
-                output_style: 'proactive',
-                available_output_styles: ['default', 'proactive', 'concise'],
+                output_style: 'Proactive',
+                available_output_styles: ['default', 'Proactive', 'Concise'],
             }),
         })
         const onCapabilities = vi.fn()
@@ -67,8 +67,8 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
 
         expect(onCapabilities).toHaveBeenCalledWith(
             expect.objectContaining({
-                outputStyle: 'proactive',
-                availableOutputStyles: ['default', 'proactive', 'concise'],
+                outputStyle: 'Proactive',
+                availableOutputStyles: ['default', 'Proactive', 'Concise'],
             }),
         )
     })

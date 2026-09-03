@@ -151,6 +151,8 @@ export class AgentSessionBase<Mode> {
      * keep-alive 附带的 runtime 快照：permissionMode/model/effort/outputStyle 会经 hub
      * 落 runtimeState 持久化——进程重启后 resume 链路回放这些字段（syncEngine resume 分支），
      * 缺报即回落默认值。outputStyle 与 effort 同款：切换受理（setOutputStyle）后即时生效于后续上报。
+     * outputStyle undefined = 「跟随 CC settings」（NewSessionPage 默认不携带字段 spawn）：
+     * 不上报该字段 → runtimeState 不落 → resume 不回放，用户 settings 的默认 style 保持权威。
      */
     protected getKeepAliveRuntime(): { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string } | undefined {
         if (

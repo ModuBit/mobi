@@ -17,10 +17,11 @@
 /**
  * NewSessionPage 参数区 output style 选择器规格。
  *
- * - 默认选中 'default'（Select 选中值显示 Default）
- * - 下拉展开后五个内置选项完整（Default / Proactive / Concise / Explanatory / Learning）
- * - 选中 explanatory 后提交 → spawnSession 收到 outputStyle: 'explanatory'
- * - 不改默认直接提交 → spawnSession 收到 outputStyle: 'default'
+ * - 默认选中「跟随 CC 设置」（不携带字段 spawn，CC settings 默认 style 保持权威）
+ * - 下拉展开后「跟随 CC 设置」+ 五个内置选项完整（Default / Proactive / Concise / Explanatory / Learning）
+ * - 选中 Explanatory 后提交 → spawnSession 收到 outputStyle: 'Explanatory'（CC 规范形）
+ * - 显式选中 Default 后提交 → spawnSession 收到 outputStyle: 'default'
+ * - 不改默认直接提交 → spawnSession 入参不含 outputStyle 字段
  *
  * 环境注入：通过 localStorage「最近使用项目」恢复路径预选项目（绕开
  * EnvironmentBar 交互），让 gate（机器 + 目录）直接通过以便提交。
@@ -160,9 +161,10 @@ function renderPage() {
     return render(<NewSessionPage />, { wrapper })
 }
 
-/** 定位 output style 选择器根节点：按选中值文本匹配（Default/Explanatory 等，
- *  与其它 Select 区分：模型=Auto、项目名、权限模式为 i18n key） */
-function outputStyleSelect(selectedLabel = 'Default'): HTMLElement {
+/** 定位 output style 选择器根节点：按选中值文本匹配（跟随 CC 设置 / Default / Explanatory 等，
+ *  与其它 Select 区分：模型=Auto、项目名、权限模式为 i18n key）。identity i18n mock 下
+ *  「跟随 CC 设置」项 label 即 i18n key 原文 */
+function outputStyleSelect(selectedLabel = 'composer.outputStyleFollowSetting'): HTMLElement {
     const select = Array.from(document.querySelectorAll('.ant-select'))
         .find(el => el.querySelector('.ant-select-content')?.textContent === selectedLabel)
     if (!(select instanceof HTMLElement)) throw new Error(`output style select not found: ${selectedLabel}`)
@@ -201,16 +203,17 @@ async function submit() {
 }
 
 describe('NewSessionPage output style 选择器', () => {
-    it('默认选中 default（Select 值显示 Default）', async () => {
+    it('默认选中「跟随 CC 设置」（Select 值显示 i18n key）', async () => {
         renderPage()
         // gate 经 localStorage 恢复路径通过后输入区启用，选择器随即渲染
         await waitFor(() => {
             expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
         })
-        expect(outputStyleSelect().querySelector('.ant-select-content')?.textContent).toBe('Default')
+        expect(outputStyleSelect().querySelector('.ant-select-content')?.textContent)
+            .toBe('composer.outputStyleFollowSetting')
     })
 
-    it('下拉展开后五个内置选项完整', async () => {
+    it('下拉展开后「跟随 CC 设置」+ 五个内置选项完整（共 6 项）', async () => {
         renderPage()
         await waitFor(() => {
             expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
@@ -218,14 +221,14 @@ describe('NewSessionPage output style 选择器', () => {
         fireEvent.mouseDown(outputStyleSelect())
         await waitFor(() => {
             const texts = dropdownOptionTexts().join('\n')
-            for (const label of ['Default', 'Proactive', 'Concise', 'Explanatory', 'Learning']) {
+            for (const label of ['composer.outputStyleFollowSetting', 'Default', 'Proactive', 'Concise', 'Explanatory', 'Learning']) {
                 expect(texts).toContain(label)
             }
         })
-        expect(dropdownOptionTexts()).toHaveLength(5)
+        expect(dropdownOptionTexts()).toHaveLength(6)
     })
 
-    it('选中 explanatory 后提交 → spawnSession 收到 outputStyle: explanatory', async () => {
+    it('选中 Explanatory 后提交 → spawnSession 收到 outputStyle: Explanatory（CC 规范形）', async () => {
         renderPage()
         await waitFor(() => {
             expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
@@ -237,19 +240,35 @@ describe('NewSessionPage output style 选择器', () => {
 
         await submit()
         expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({
-            outputStyle: 'explanatory',
+            outputStyle: 'Explanatory',
             machineId: 'm1',
             directory: '/home/u/demo',
         }))
     })
 
-    it('默认直接提交 → spawnSession 收到 outputStyle: default', async () => {
+    it('显式选中 Default 后提交 → spawnSession 收到 outputStyle: default（显式选择仍显式传）', async () => {
+        renderPage()
+        await waitFor(() => {
+            expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
+        })
+        await selectOutputStyle('Default')
+        await waitFor(() => {
+            expect(outputStyleSelect('Default')).not.toHaveClass('ant-select-disabled')
+        })
+
+        await submit()
+        expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({ outputStyle: 'default' }))
+    })
+
+    it('默认（跟随 CC 设置）直接提交 → spawnSession 入参不含 outputStyle 字段', async () => {
         renderPage()
         await waitFor(() => {
             expect(outputStyleSelect()).not.toHaveClass('ant-select-disabled')
         })
 
         await submit()
-        expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({ outputStyle: 'default' }))
+        // 字段值 undefined（对象键存在但 JSON 序列化后不携带——CC settings 默认 style 保持权威）
+        const input = spawnSpy.mock.calls[0][0] as Record<string, unknown>
+        expect(input.outputStyle).toBeUndefined()
     })
 })

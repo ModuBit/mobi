@@ -441,7 +441,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
                 null,
                 'default',
                 'remote',
-                { effort: 'high', outputStyle: 'concise' }
+                { effort: 'high', outputStyle: 'Concise' }
             )
 
             const result = await engine.resumeSession(session.id, 'default')
@@ -452,7 +452,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
             const params = spawnCall!.params as Record<string, unknown>
             expect(params.resumeSessionId).toBe('native-1')
             expect(params.effort).toBe('high')
-            expect(params.outputStyle).toBe('concise')
+            expect(params.outputStyle).toBe('Concise')
         } finally {
             engine.stop()
             store.close()

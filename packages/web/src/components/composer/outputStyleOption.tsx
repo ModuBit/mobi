@@ -32,6 +32,8 @@ export interface OutputStyleSelectOption {
     label: string
     /** i18n 键后缀（composer.outputStyleDescriptions.<key>）；非内置项无 */
     descriptionKey?: string
+    /** 描述行 i18n 完整键覆盖（如「跟随 CC 设置」项不对应任何内置 style，描述不走 Descriptions 命名空间） */
+    descriptionOverrideKey?: string
 }
 
 /** 构建内置 output style 下拉选项（顺序对齐 CC /config 官方菜单序） */
@@ -59,15 +61,19 @@ export function renderOutputStyleOption(
 ): ReactNode {
     const raw = (option ?? {}) as { value?: string; data?: { value?: string } }
     const source = raw.data ?? raw
-    const value = source.value || raw.value || 'default'
+    // ?? 而非 ||：'' 是「跟随 CC 设置」哨兵值，不能坍缩为 'default'
+    const value = source.value ?? raw.value ?? 'default'
     const known = options.find((o) => o.value === value)
     const label = known?.label ?? OUTPUT_STYLE_LABELS[value as keyof typeof OUTPUT_STYLE_LABELS] ?? value
+    // 描述键：override（完整 i18n 键，如「跟随 CC 设置」项）优先，内置项走 Descriptions 后缀拼接
+    const descriptionI18nKey = known?.descriptionOverrideKey
+        ?? (known?.descriptionKey ? `composer.outputStyleDescriptions.${known.descriptionKey}` : undefined)
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
             <span style={{ fontWeight: 500 }}>{label}</span>
-            {known?.descriptionKey && (
+            {descriptionI18nKey && (
                 <span style={{ fontSize: 12, lineHeight: 1.35, color: 'var(--ant-color-text-secondary)', whiteSpace: 'normal' }}>
-                    {t(`composer.outputStyleDescriptions.${known.descriptionKey}`)}
+                    {t(descriptionI18nKey)}
                 </span>
             )}
         </div>

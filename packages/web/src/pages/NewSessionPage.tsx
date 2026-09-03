@@ -24,7 +24,7 @@ import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeTone } from '@mobi/shared'
+import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
@@ -229,8 +229,9 @@ export function NewSessionPage() {
     const [model, setModel] = useState(() => loadPreferredModel())
     const [effort, setEffort] = useState<EffortLevel>(() => loadPreferredEffort())
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => loadPreferredPermissionMode())
-    // output style：新建会话即定初值，随 spawn 透传到 CLI（无偏好持久化，每次从 default 起）
-    const [outputStyle, setOutputStyle] = useState<string>('default')
+    // output style：默认「跟随 CC 设置」（不携带字段，spawn 后由 CLI 读用户 settings 默认值），
+    // 显式选中任一项才随 spawn 透传到 CLI（无偏好持久化，每次从跟随起）
+    const [outputStyle, setOutputStyle] = useState<string>(OUTPUT_STYLE_FOLLOW_SETTING)
 
     // 环境配置（项目即环境：机器 + 工作目录均为所选项目的派生快照，不再手动选择/输入）
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
@@ -586,7 +587,9 @@ export function NewSessionPage() {
                 agent,
                 model: model === 'auto' ? undefined : model,
                 effort,
-                outputStyle,
+                // 空串哨兵 → 不携带字段：用户不主动选时 CC settings 默认 style 保持权威，
+                // 不被 flag 层静默覆盖（keep-alive 亦不报该字段，resume 不回放）
+                outputStyle: outputStyle || undefined,
                 permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
@@ -676,8 +679,18 @@ export function NewSessionPage() {
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
     const PermissionModeIcon = getPermissionModeIcon(permissionMode ?? 'default')
 
-    // output style 选项（内置五项，顺序对齐 CC /config 官方菜单序）
-    const outputStyleOptions = useMemo(() => buildOutputStyleSelectOptions(), [])
+    // output style 选项：头部「跟随 CC 设置」+ 内置五项（顺序对齐 CC /config 官方菜单序）
+    const outputStyleOptions = useMemo(
+        () => [
+            {
+                value: OUTPUT_STYLE_FOLLOW_SETTING,
+                label: t('composer.outputStyleFollowSetting'),
+                descriptionOverrideKey: 'composer.outputStyleFollowSettingDesc',
+            },
+            ...buildOutputStyleSelectOptions(),
+        ],
+        [t],
+    )
 
     // ============ ActionItems ============
 
@@ -719,7 +732,7 @@ export function NewSessionPage() {
                 />
             ),
         },
-        // Output style（新建即定初值，随 spawn 透传；无 /clear 语义故不做确认弹窗）
+        // Output style（默认跟随 CC settings；显式选中才随 spawn 透传；无 /clear 语义故不做确认弹窗）
         {
             key: 'outputStyle',
             render: () => (

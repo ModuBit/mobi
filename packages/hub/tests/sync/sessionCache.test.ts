@@ -517,22 +517,22 @@ describe('SessionCache.handleSessionAlive outputStyle 落库', () => {
     test('keep-alive 携带 outputStyle 时落 runtimeState（resume 回放的数据源）', () => {
         const session = cache.getOrCreateSession('tag-style-1', { path: '/tmp/p' }, null, 'default')
 
-        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, outputStyle: 'concise' })
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, outputStyle: 'Concise' })
 
         // 内存层
-        expect(cache.getSession(session.id)?.runtimeState?.outputStyle).toBe('concise')
+        expect(cache.getSession(session.id)?.runtimeState?.outputStyle).toBe('Concise')
         // 落库（直接读 store 绕过内存）——进程重启后 resume 链路从这里回放
         const stored = store.sessions.getSession(session.id)
-        expect((stored?.runtimeState as { outputStyle?: string })?.outputStyle).toBe('concise')
+        expect((stored?.runtimeState as { outputStyle?: string })?.outputStyle).toBe('Concise')
     })
 
     test('不带 outputStyle 的 keep-alive 不覆盖已有值（undefined 语义 = 未变化）', () => {
         const session = cache.getOrCreateSession(
-            'tag-style-2', { path: '/tmp/p' }, null, 'default', 'remote', { outputStyle: 'concise' }
+            'tag-style-2', { path: '/tmp/p' }, null, 'default', 'remote', { outputStyle: 'Concise' }
         )
 
         cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
 
-        expect(cache.getSession(session.id)?.runtimeState?.outputStyle).toBe('concise')
+        expect(cache.getSession(session.id)?.runtimeState?.outputStyle).toBe('Concise')
     })
 })

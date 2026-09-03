@@ -31,19 +31,29 @@ import { buildOutputStyleSelectOptions, renderOutputStyleOption } from '@/compon
 afterEach(cleanup)
 
 describe('buildOutputStyleSelectOptions', () => {
-    it('内置五选项，官方菜单序', () => {
+    it('内置五选项，官方菜单序，值为 CC 规范形（default 小写 + 四驼峰）', () => {
         const options = buildOutputStyleSelectOptions()
-        expect(options.map((o) => o.value)).toEqual(['default', 'proactive', 'concise', 'explanatory', 'learning'])
+        expect(options.map((o) => o.value)).toEqual(['default', 'Proactive', 'Concise', 'Explanatory', 'Learning'])
         expect(options[0].label).toBe('Default')
     })
 })
 
 describe('renderOutputStyleOption', () => {
-    it('内置项渲染名称 + i18n 描述双行', () => {
+    it('内置项渲染名称 + i18n 描述双行（descriptionKey = 规范形 style 值）', () => {
         const options = buildOutputStyleSelectOptions()
-        render(<div>{renderOutputStyleOption({ value: 'proactive' }, options, (k) => k)}</div>)
+        render(<div>{renderOutputStyleOption({ value: 'Proactive' }, options, (k) => k)}</div>)
         expect(screen.getByText('Proactive')).toBeInTheDocument()
-        expect(screen.getByText('composer.outputStyleDescriptions.proactive')).toBeInTheDocument()
+        expect(screen.getByText('composer.outputStyleDescriptions.Proactive')).toBeInTheDocument()
+    })
+
+    it('descriptionOverrideKey 优先于 Descriptions 命名空间（「跟随 CC 设置」项）', () => {
+        const options = [
+            { value: '', label: '跟随 CC 设置', descriptionOverrideKey: 'composer.outputStyleFollowSettingDesc' },
+            ...buildOutputStyleSelectOptions(),
+        ]
+        render(<div>{renderOutputStyleOption({ value: '' }, options, (k) => k)}</div>)
+        expect(screen.getByText('跟随 CC 设置')).toBeInTheDocument()
+        expect(screen.getByText('composer.outputStyleFollowSettingDesc')).toBeInTheDocument()
     })
 
     it('非内置名（init 上报的自定义 style）渲染原名、无描述行', () => {
@@ -55,7 +65,7 @@ describe('renderOutputStyleOption', () => {
 
     it('antd optionRender 的 .data 包装结构正确解包', () => {
         const options = buildOutputStyleSelectOptions()
-        render(<div>{renderOutputStyleOption({ data: { value: 'learning' } }, options, (k) => k)}</div>)
+        render(<div>{renderOutputStyleOption({ data: { value: 'Learning' } }, options, (k) => k)}</div>)
         expect(screen.getByText('Learning')).toBeInTheDocument()
     })
 })

@@ -15,11 +15,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { OUTPUT_STYLES, OUTPUT_STYLE_LABELS, isBuiltinOutputStyle } from '../src/styles'
+import { OUTPUT_STYLES, OUTPUT_STYLE_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, isBuiltinOutputStyle } from '../src/styles'
 
 describe('OUTPUT_STYLES', () => {
-    it('顺序对齐 CC /config 官方菜单序（2026-09-03 实抄）', () => {
-        expect(OUTPUT_STYLES).toEqual(['default', 'proactive', 'concise', 'explanatory', 'learning'])
+    it('值为 CC init 上报规范形（default 小写 + 四驼峰，2026-09-03 E2E 实测）', () => {
+        expect(OUTPUT_STYLES).toEqual(['default', 'Proactive', 'Concise', 'Explanatory', 'Learning'])
     })
 
     it('每个 style 都有 label 且一一对应', () => {
@@ -27,8 +27,13 @@ describe('OUTPUT_STYLES', () => {
         for (const s of OUTPUT_STYLES) expect(OUTPUT_STYLE_LABELS[s]).toBeTruthy()
     })
 
-    it('isBuiltinOutputStyle 判定', () => {
+    it('isBuiltinOutputStyle 按规范形判定（availableStyles 去重依赖）', () => {
         expect(isBuiltinOutputStyle('default')).toBe(true)
+        expect(isBuiltinOutputStyle('Proactive')).toBe(true)
         expect(isBuiltinOutputStyle('my-style')).toBe(false)
+    })
+
+    it('OUTPUT_STYLE_FOLLOW_SETTING 为空串哨兵（spawn 不携带字段）', () => {
+        expect(OUTPUT_STYLE_FOLLOW_SETTING).toBe('')
     })
 })

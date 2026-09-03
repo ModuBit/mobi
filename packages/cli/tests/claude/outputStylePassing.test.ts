@@ -37,8 +37,8 @@ describe('outputStyle sentinel', () => {
 describe('applyStartupOutputStyle', () => {
     it('outputStyle 非空时经 applyFlagSettings 注入 flag layer', async () => {
         const fn = vi.fn().mockResolvedValue(undefined)
-        await applyStartupOutputStyle(fakeQuery(fn), 'explanatory')
-        expect(fn).toHaveBeenCalledWith({ outputStyle: 'explanatory' })
+        await applyStartupOutputStyle(fakeQuery(fn), 'Explanatory')
+        expect(fn).toHaveBeenCalledWith({ outputStyle: 'Explanatory' })
     })
 
     it('outputStyle 为空时不调用（CC 读 settings 默认）', async () => {
@@ -49,6 +49,6 @@ describe('applyStartupOutputStyle', () => {
 
     it('applyFlagSettings 失败时吞掉并降级（不阻塞会话启动）', async () => {
         const fn = vi.fn().mockRejectedValue(new Error('boom'))
-        await expect(applyStartupOutputStyle(fakeQuery(fn), 'explanatory')).resolves.toBeUndefined()
+        await expect(applyStartupOutputStyle(fakeQuery(fn), 'Explanatory')).resolves.toBeUndefined()
     })
 })

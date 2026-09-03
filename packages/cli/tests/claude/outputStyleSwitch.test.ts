@@ -40,7 +40,7 @@ describe('applyOutputStyleSwitch', () => {
     it('running 中 → 拒绝，所有副作用均未触发', () => {
         const deps = setup(true)
 
-        const result = applyOutputStyleSwitch(deps, 'explanatory')
+        const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
         expect(result.accepted).toBe(false)
         expect(result.reason).toContain('running')
@@ -56,7 +56,7 @@ describe('applyOutputStyleSwitch', () => {
         // 产生「已清 sessionId + 残留 pendingRewind」坏组合——拒绝优于清位
         const deps = setup(false, { rewindBusy: true });
 
-        const result = applyOutputStyleSwitch(deps, 'explanatory')
+        const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
         expect(result.accepted).toBe(false)
         expect(result.reason).toContain('rewind')
@@ -70,10 +70,10 @@ describe('applyOutputStyleSwitch', () => {
     it('idle → 受理，且置位先于哨兵入队', () => {
         const deps = setup(false)
 
-        const result = applyOutputStyleSwitch(deps, 'explanatory')
+        const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
         expect(result.accepted).toBe(true)
-        expect(deps.setOutputStyle).toHaveBeenCalledWith('explanatory')
+        expect(deps.setOutputStyle).toHaveBeenCalledWith('Explanatory')
         expect(deps.clearSessionId).toHaveBeenCalledTimes(1)
         expect(deps.clearPending).toHaveBeenCalledTimes(1)
         expect(deps.markPendingExit).toHaveBeenCalledTimes(1)
