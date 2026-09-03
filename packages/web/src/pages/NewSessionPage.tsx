@@ -735,7 +735,7 @@ export function NewSessionPage() {
                 />
             ),
         },
-        // Model + Effort 选择
+        // Model + Effort 选择（移动端下拉满宽：698493a5 的有意调整，收编共享组件后保留）
         {
             key: 'model',
             render: () => (
@@ -746,6 +746,7 @@ export function NewSessionPage() {
                     onChange={v => handleModelSelect(v as string)}
                     disabled={inputDisabled}
                     options={modelSelectOptions}
+                    mobileFullWidth
                     classNames={{ popup: { root: MODEL_DROPDOWN_CLASS } }}
                     optionRender={(option) => {
                         const desc = (option.data as { description?: string })?.description
