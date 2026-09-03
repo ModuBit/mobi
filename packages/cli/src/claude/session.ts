@@ -45,6 +45,13 @@ export class Session extends AgentSessionBase<EnhancedMode> {
      */
     pendingRewind: PendingRewind | null = null;
     /**
+     * output style 切换待退轮标记：切换 RPC handler 受理后置位（同时入队
+     * OUTPUT_STYLE_EXIT_SENTINEL 唤醒阻塞中的 nextMessage），launcher 消费哨兵时
+     * 读取——非空则放行退轮（下轮循环经 applyStartupOutputStyle 以新 style 重启）
+     * 并清位；空则视为残留哨兵丢弃。与 pendingRewind 同构的「哨兵 + 状态位」配对。
+     */
+    pendingOutputStyleExit: boolean = false;
+    /**
      * rewind RPC 受理中占位（多端并发互斥）：rewind handler 入口在任何 await 前同步置位、
      * finally 释放。与 pendingRewind 语义分离——本字段挡住「文件回滚耗时窗口内并发第二个
      * rewind 覆盖 pendingRewind 单槽」的竞态。见 rewindHandlers.ts

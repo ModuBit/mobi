@@ -17,6 +17,8 @@
 /**
  * output style 切换的退出哨兵：入队 isolate 队列唤醒阻塞中的 nextMessage 并
  * 触发当前 query 循环退出（机制同 REWIND_EXIT_SENTINEL，见 rewindHandlers.ts）。
- * launcher 的 nextMessage 识别后直接丢弃。与 rewind 哨兵互异以便日志区分来源。
+ * launcher 的 nextMessage 识别后按 session.pendingOutputStyleExit 门控放行退轮并
+ * 直接丢弃消息本身。与 rewind 哨兵互异以便日志区分来源。NUL 前缀确保用户输入
+ * 不可能碰撞（Web 输入无法产生控制字符，与 rewind 哨兵同款结构性防御）。
  */
-export const OUTPUT_STYLE_EXIT_SENTINEL = '__mobi_output_style_exit__'
+export const OUTPUT_STYLE_EXIT_SENTINEL = '\x00mobi:output-style-exit'

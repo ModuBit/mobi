@@ -28,6 +28,10 @@ describe('outputStyle sentinel', () => {
     it('与 rewind 哨兵互异（launcher 按值区分丢弃行为）', () => {
         expect(OUTPUT_STYLE_EXIT_SENTINEL).not.toBe(REWIND_EXIT_SENTINEL)
     })
+
+    it('带 NUL 前缀（Web 输入无法产生控制字符，用户消息不可能碰撞）', () => {
+        expect(OUTPUT_STYLE_EXIT_SENTINEL.startsWith('\x00')).toBe(true)
+    })
 })
 
 describe('applyStartupOutputStyle', () => {

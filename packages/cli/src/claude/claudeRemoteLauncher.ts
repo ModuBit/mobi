@@ -816,21 +816,29 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 // 重置空闲计时器（用户发送消息）
                                 session.client.resetIdleTimer();
 
-                                // rewind 退出哨兵：识别后不暂存 pending、不推送 SDK（NUL 前缀串
-                                // 作为 prompt 会污染会话）。判定以「实时」session.pendingRewind 为准——
-                                // 局部 rewind 是轮起快照，截断轮中已被 onRewindTruncated 清空，不能作判据：
-                                // - 非空：哨兵对应尚未消费的 rewind（常规轮的新 rewind / 截断轮中抵达的
-                                //   第二次 rewind）→ return null 结束本轮，launcher 下轮循环读到
-                                //   pendingRewind 后以 resumeSessionAt 截断重启（plan 中 requestLoopExit
-                                //   的实际接线，复用 isolate 机制）
-                                // - 空：本轮截断已执行后的残留哨兵（RPC 落在 query 轮间隙时入队）→
-                                //   丢弃，继续等下一条用户消息，避免误触发本轮早退
+                                // 退出哨兵（rewind / output style 切换）：识别后不暂存 pending、
+                                // 不推送 SDK（NUL 前缀串作为 prompt 会污染会话）。退轮门控按哨兵
+                                // 种类读「实时」session 状态——局部 rewind 是轮起快照，截断轮中已被
+                                // onRewindTruncated 清空，不能作判据：
+                                // - rewind 哨兵：session.pendingRewind 非空（常规轮的新 rewind / 截断轮
+                                //   中抵达的第二次 rewind）→ return null 结束本轮，launcher 下轮循环
+                                //   读到 pendingRewind 后以 resumeSessionAt 截断重启
+                                // - output style 哨兵：session.pendingOutputStyleExit 置位（切换 RPC
+                                //   受理时写入）→ return null 结束本轮并清位，下轮循环以新 style 经
+                                //   applyStartupOutputStyle 重启
+                                // - 门控均不满足：本轮已执行后的残留哨兵（RPC 落在 query 轮间隙时
+                                //   入队）→ 丢弃，继续等下一条用户消息，避免误触发本轮早退
                                 if (msg.isolate && (msg.message === REWIND_EXIT_SENTINEL || msg.message === OUTPUT_STYLE_EXIT_SENTINEL)) {
-                                    if (session.pendingRewind) {
-                                        logger.debug('[remote]: rewind exit sentinel received, ending current query round');
+                                    const gateRewind = msg.message === REWIND_EXIT_SENTINEL && session.pendingRewind !== null;
+                                    const gateOutputStyle = msg.message === OUTPUT_STYLE_EXIT_SENTINEL && session.pendingOutputStyleExit;
+                                    if (gateRewind || gateOutputStyle) {
+                                        if (gateOutputStyle) {
+                                            session.pendingOutputStyleExit = false;
+                                        }
+                                        logger.debug(`[remote]: exit sentinel received (${msg.message}), ending current query round`);
                                         return null;
                                     }
-                                    logger.debug('[remote]: stale rewind exit sentinel dropped, keep waiting for user message');
+                                    logger.debug(`[remote]: stale exit sentinel (${msg.message}) dropped, keep waiting for user message`);
                                     continue;
                                 }
 
