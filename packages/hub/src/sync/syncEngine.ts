@@ -500,12 +500,29 @@ export class SyncEngine {
     /**
      * 切换 output style（/clear 语义）：受理转发 CLI，权威值由重启后 init 上报的
      * metadata.sdkMetadata.outputStyle 与 keep-alive 的 runtimeState.outputStyle 回流，此处不写 sessionCache。
+     *
+     * 错误分层（路由据此区分 409 / 502）：
+     * - CLI 明确拒绝（handler throw 的 `switch-output-style rejected: ...` 经 RPC 以
+     *   `{ error: message }` 回传）→ 原样上抛，副作用确定未发生（路由 409 带原因）
+     * - RPC 超时 / 断连 / 响应异常 → CLI 可能已受理并重启，副作用未知 → 包装为
+     *   message 含 `unconfirmed` 标记的错误（路由 502 + accepted:'unknown'，引导刷新确认
+     *   而非盲目重试——重试 = 再触发一次 /clear 多丢一轮上下文）
      */
     async switchOutputStyle(sessionId: string, style: string): Promise<void> {
-        const result = await this.rpcGateway.switchOutputStyle(sessionId, style)
-        if (!result || typeof result !== 'object' || (result as { accepted?: boolean }).accepted !== true) {
-            throw new Error('Output style switch was not accepted')
+        let result: unknown
+        try {
+            result = await this.rpcGateway.switchOutputStyle(sessionId, style)
+        } catch (error) {
+            throw new Error('output style switch unconfirmed', { cause: error })
         }
+        if (result && typeof result === 'object' && (result as { accepted?: boolean }).accepted === true) {
+            return
+        }
+        // 非 accepted 响应：CLI handler throw 时 RpcHandlerManager 以 { error: message } 回传，原样透出
+        const rpcError = result && typeof result === 'object' && typeof (result as { error?: unknown }).error === 'string'
+            ? (result as { error: string }).error
+            : null
+        throw new Error(rpcError ?? 'Output style switch was not accepted')
     }
 
     async spawnSession(

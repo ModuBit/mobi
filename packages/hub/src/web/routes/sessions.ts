@@ -528,7 +528,13 @@ export function createSessionsRoutes(
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to switch output style'
-            return c.json({ error: message }, 409)
+            // CLI 明确拒绝（message 含 `rejected`，CLI handler throw 回传）→ 409 带原因；
+            // 其余（unconfirmed：RPC 超时/断连/响应异常）副作用未知 → 502 + accepted:'unknown'，
+            // 前端提示刷新确认而非重试（重试 = 再触发 /clear 多丢一轮上下文）
+            if (message.includes('rejected')) {
+                return c.json({ error: message }, 409)
+            }
+            return c.json({ error: message, accepted: 'unknown' }, 502)
         }
     })
 
