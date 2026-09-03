@@ -18,7 +18,6 @@ import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } fro
 import { App, Button, Input, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
 import styled from '@emotion/styled'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { HoverSelect } from '@/components/ui/HoverSelect'
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
@@ -71,6 +70,9 @@ import { isSegmentEmpty, serializeSegments, type ComposerSegments } from '@/doma
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/components/composer/permissionModeOption'
 import { getPermissionModeIcon } from '@/components/composer/permissionModeIcons'
+// 紧凑 Select 与 dropdown 全局样式均收口在共享模块（与 ChatComposer 同源，不再本地复制）
+import { CompactHoverSelect, MODEL_DROPDOWN_CLASS } from '@/components/composer/CompactHoverSelect'
+import { buildOutputStyleSelectOptions, renderOutputStyleOption } from '@/components/composer/outputStyleOption'
 
 const { useToken } = antTheme
 
@@ -92,30 +94,6 @@ const EFFORT_COLORS: Record<EffortLevel, string> = {
     medium: 'var(--ant-color-info)',
     high: 'var(--ant-color-warning)',
     xhigh: 'var(--ant-color-error)',
-}
-
-// compact dropdown 样式注入（全局一次）
-const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
-const MODEL_DROPDOWN_CLASS = 'model-select-dropdown'
-let compactStyleInjected = false
-function useCompactDropdownStyle() {
-    if (!compactStyleInjected && typeof document !== 'undefined') {
-        const style = document.createElement('style')
-        style.textContent = `
-.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }
-.${COMPACT_DROPDOWN_CLASS} { max-width: 100vw !important; }
-@media (max-width: 640px) {
-    .${MODEL_DROPDOWN_CLASS} { left: 12px !important; right: 12px !important; max-width: calc(100vw - 24px) !important; }
-}
-.effort-popover .ant-popover-container { padding: 4px 0 !important; }
-.effort-popover .ant-popover-arrow { display: none !important; }
-.effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
-.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: 4px; }
-.effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }
-`
-        document.head.appendChild(style)
-        compactStyleInjected = true
-    }
 }
 
 /* ========== 样式组件 ========== */
@@ -170,25 +148,6 @@ const InputCard = styled.div`
         background: var(--ant-color-bg-container) !important;
     }
 `
-
-// 紧凑 Select 使用 ui/HoverSelect 共享定义（与 composer 共用）
-
-function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
-    useCompactDropdownStyle()
-    const { classNames: propsClassNames, ...rest } = props
-    // antd Select 的 classNames 是对象 | 函数联合；仅取对象式分支的 popup.root（函数式由 antd 内部消费）
-    const extraPopupRoot = typeof propsClassNames === 'object' ? propsClassNames?.popup?.root : undefined
-    return (
-        <HoverSelect
-            {...rest}
-            $compact
-            size="small"
-            variant="filled"
-            popupMatchSelectWidth={false}
-            classNames={{ popup: { root: [COMPACT_DROPDOWN_CLASS, extraPopupRoot].filter(Boolean).join(' ') } }}
-        />
-    )
-}
 
 /* ========== 辅助组件 ========== */
 
@@ -270,6 +229,8 @@ export function NewSessionPage() {
     const [model, setModel] = useState(() => loadPreferredModel())
     const [effort, setEffort] = useState<EffortLevel>(() => loadPreferredEffort())
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => loadPreferredPermissionMode())
+    // output style：新建会话即定初值，随 spawn 透传到 CLI（无偏好持久化，每次从 default 起）
+    const [outputStyle, setOutputStyle] = useState<string>('default')
 
     // 环境配置（项目即环境：机器 + 工作目录均为所选项目的派生快照，不再手动选择/输入）
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
@@ -625,6 +586,7 @@ export function NewSessionPage() {
                 agent,
                 model: model === 'auto' ? undefined : model,
                 effort,
+                outputStyle,
                 permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
@@ -678,7 +640,7 @@ export function NewSessionPage() {
         }
     }, [
         selectedMachineId, selectedDirectory, isPending,
-        agent, model, effort, permissionMode, sessionType, worktreeName,
+        agent, model, effort, permissionMode, outputStyle, sessionType, worktreeName,
         selectedProjectId, spawnSession, navigate, messageApi, api.messages,
     ])
 
@@ -713,6 +675,9 @@ export function NewSessionPage() {
     const permissionModeTone = getPermissionModeTone(permissionMode ?? 'default')
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
     const PermissionModeIcon = getPermissionModeIcon(permissionMode ?? 'default')
+
+    // output style 选项（内置五项，顺序对齐 CC /config 官方菜单序）
+    const outputStyleOptions = useMemo(() => buildOutputStyleSelectOptions(), [])
 
     // ============ ActionItems ============
 
@@ -751,6 +716,22 @@ export function NewSessionPage() {
                     listHeight={320}
                     classNames={{ popup: { root: PERMISSION_MODE_DROPDOWN_CLASS } }}
                     style={{ color: permissionModeColor }}
+                />
+            ),
+        },
+        // Output style（新建即定初值，随 spawn 透传；无 /clear 语义故不做确认弹窗）
+        {
+            key: 'outputStyle',
+            render: () => (
+                <CompactHoverSelect
+                    $token={token}
+                    value={outputStyle}
+                    onChange={v => setOutputStyle(String(v))}
+                    disabled={inputDisabled}
+                    options={outputStyleOptions}
+                    optionRender={(option) => renderOutputStyleOption(option, outputStyleOptions, t)}
+                    virtual={false}
+                    title={t('composer.outputStyle')}
                 />
             ),
         },
@@ -822,6 +803,7 @@ export function NewSessionPage() {
     ], [
         t, token, inputDisabled, effort, model, permissionMode,
         permissionModeColor, permissionSelectOptions, modelSelectOptions,
+        outputStyle, outputStyleOptions,
         handleAttach, handleModelSelect, handleModelEffortSelect, hasFinePointer,
         effortPopoverModel,
     ])

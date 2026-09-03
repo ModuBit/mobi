@@ -542,6 +542,7 @@
         "outputStyleSwitchTitle": "Switch Output Style",
         "outputStyleSwitchConfirm": "Switching the output style clears the current context (same as /clear); the conversation starts fresh. Switch to \"{{label}}\"?",
         "outputStyleRunningDisabled": "Session is running; switch after it finishes",
+        "outputStyleSwitchFailed": "Failed to switch, please retry",
         "outputStyleDescriptions": {
             "default": "Claude completes coding tasks efficiently and provides concise responses",
             "proactive": "Claude executes immediately, minimizes interruptions, and prefers action over planning",

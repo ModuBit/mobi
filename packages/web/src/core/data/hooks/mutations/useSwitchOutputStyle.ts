@@ -15,6 +15,8 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { App } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 
@@ -22,10 +24,15 @@ import { queryKeys } from '@/core/lib/query-keys'
  * 切换 output style（/clear 语义，CLI 重启后 init 回报新值经 metadata 回流）。
  * 成功后失效会话详情 + 会话列表缓存，让切换器显示刷新（同 useSessionActions 的
  * invalidateSession 模式）。
+ * 失败时弹 message 反馈：用户确认瞬间会话恰好转 running（web 侧 running 滞后）
+ * → CLI 拒绝切换 → 选择器静默回弹，没有可见提示会让人以为切成功了。
  */
 export function useSwitchOutputStyle() {
     const api = useMobiApi()
     const queryClient = useQueryClient()
+    const { t } = useTranslation()
+    // mutation 层经 App.useApp 拿 message（同 useNotify 模式，组件树在 <App> 内即可用）
+    const { message: messageApi } = App.useApp()
 
     return useMutation({
         mutationFn: ({ sessionId, style }: { sessionId: string; style: string }) =>
@@ -33,6 +40,9 @@ export function useSwitchOutputStyle() {
         onSuccess: (_data, { sessionId }) => {
             void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
             void queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+        },
+        onError: () => {
+            messageApi.error(t('composer.outputStyleSwitchFailed'))
         },
     })
 }

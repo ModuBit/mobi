@@ -542,6 +542,7 @@
         "outputStyleSwitchTitle": "切换 Output Style",
         "outputStyleSwitchConfirm": "切换 output style 将清空当前上下文（与 /clear 相同），当前会话的对话历史将从新开始。确定切换到「{{label}}」？",
         "outputStyleRunningDisabled": "会话运行中，结束后可切换",
+        "outputStyleSwitchFailed": "切换失败，请稍后重试",
         "outputStyleDescriptions": {
             "default": "高效完成编码任务，回复简洁",
             "proactive": "立即执行、尽量少打断，行动优先于规划",
