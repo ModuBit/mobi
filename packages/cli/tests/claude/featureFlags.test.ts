@@ -18,8 +18,10 @@ import { describe, test, expect } from 'vitest'
 import { buildClaudeFeatureEnv, CLAUDE_AGENT_TEAMS_ENV, CLAUDE_TODO_TOOLS_ENV } from '../../src/claude/featureFlags'
 
 describe('buildClaudeFeatureEnv', () => {
-    test('全部关闭时返回空对象（跟随上游默认：任务工具在新模型上不注入）', () => {
-        expect(buildClaudeFeatureEnv({ agentTeams: false, claudeEnv: {} })).toEqual({})
+    test('全部关闭时仅含 todo tools 保底注入（mobi 恢复保底：任务可见性对远程监控有价值）', () => {
+        expect(buildClaudeFeatureEnv({ agentTeams: false, claudeEnv: {} })).toEqual({
+            [CLAUDE_TODO_TOOLS_ENV]: '1',
+        })
     })
 
     test('agentTeams 开启时注入 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', () => {
@@ -27,12 +29,12 @@ describe('buildClaudeFeatureEnv', () => {
         expect(env[CLAUDE_AGENT_TEAMS_ENV]).toBe('1')
     })
 
-    test('claudeEnv 显式开启 todo tools（用户想找回任务工具时经 settings.json 配置）', () => {
+    test('todo tools 保底注入可被 claudeEnv 显式关闭（用户跟随 Claude Code 新默认时不注入任务工具）', () => {
         const env = buildClaudeFeatureEnv({
             agentTeams: false,
-            claudeEnv: { [CLAUDE_TODO_TOOLS_ENV]: '1' },
+            claudeEnv: { [CLAUDE_TODO_TOOLS_ENV]: '0' },
         })
-        expect(env[CLAUDE_TODO_TOOLS_ENV]).toBe('1')
+        expect(env[CLAUDE_TODO_TOOLS_ENV]).toBe('0')
     })
 
     test('claudeEnv 的变量被合并进返回', () => {
@@ -59,7 +61,7 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: 'not-an-object' as unknown as Record<string, string>,
         })
-        expect(env).toEqual({})
+        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1' })
     })
 
     test('claudeEnv 为数组时防御为仅含内置注入（数组也是 object，须显式排除）', () => {
@@ -70,7 +72,7 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: ['ANTHROPIC_LOG', 'debug'] as unknown as Record<string, string>,
         })
-        expect(env).toEqual({})
+        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1' })
     })
 
     test('claudeEnv 值非 string 时跳过该键（保证返回类型 Record<string,string>）', () => {

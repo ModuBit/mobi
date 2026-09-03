@@ -22,9 +22,11 @@ export const CLAUDE_AGENT_TEAMS_ENV = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS';
 /**
  * 任务工具开关（由 claude 侧读取）。SDK 0.3.233 / Claude Code 2.1.233 起
  * TaskCreate/TaskGet/TaskUpdate/TaskList/TodoWrite 在新模型（Opus 4.8 / Sonnet 5 及
- * 更新）默认移出工具面——这是上游按模型能力的刻意裁剪，mobi 跟随默认不注入；
- * 用户想要找回任务工具（TodoPanel / 任务面板展示），在 settings.json claudeEnv
- * 显式配 { "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1" } 即可。
+ * 更新）默认移出工具面——mobi Web 的 TodoPanel 与任务面板消费这些工具调用流，
+ * 保底注入维持任务可见性；用户可在 settings.json claudeEnv 显式置 '0' 跟随新默认。
+ *
+ * 历史裁定（2026-09-02）：曾改为跟随上游默认不注入，因任务可见性对远程监控有价值，
+ * 2026-09-03 应用户要求恢复保底注入。
  */
 export const CLAUDE_TODO_TOOLS_ENV = 'CLAUDE_CODE_ENABLE_TODO_TOOLS';
 
@@ -55,7 +57,10 @@ export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<st
     const agentTeams = opts?.agentTeams ?? configuration.isAgentTeamsEnabled;
     const rawClaudeEnv = opts?.claudeEnv ?? configuration.claudeEnv;
 
-    const env: Record<string, string> = {};
+    const env: Record<string, string> = {
+        // 任务工具保底（见 CLAUDE_TODO_TOOLS_ENV 注释）；claudeEnv 层可覆盖为 '0'
+        [CLAUDE_TODO_TOOLS_ENV]: '1',
+    };
 
     if (agentTeams) {
         env[CLAUDE_AGENT_TEAMS_ENV] = '1';
