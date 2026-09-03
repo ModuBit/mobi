@@ -13,7 +13,7 @@
     },
     "dependencies": {
         "@mobi/shared": "workspace:*",
-        "@socket.io/bun-engine": "^0.1.1",
+        "@socket.io/bun-engine": "^0.1.2",
         "cookie": "^2.0.1",
         "hono": "^4.13.5",
         "jose": "^6.2.10",
