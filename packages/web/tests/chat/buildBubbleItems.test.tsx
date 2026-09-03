@@ -436,8 +436,8 @@ describe('buildChatBubbleItems', () => {
             const text = childrenToText(container.props.children)
             expect(text).toContain('Rewind failed')
             expect(text).not.toContain('Rewound to here')
-            // 失败分支不拼 skippedLinks（与成功分支互斥）
-            expect(text).not.toContain('2 path(s) skipped')
+            // skippedLinks>0 时无论成败都追加跳过提示（文件回滚成功但截断失败的中间态也需展示）
+            expect(text).toContain('2 path(s) skipped')
         })
     })
 })
