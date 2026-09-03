@@ -1,7 +1,9 @@
 {
     "name": "mobi",
     "private": true,
-    "workspaces": ["packages/*"],
+    "workspaces": [
+        "packages/*"
+    ],
     "scripts": {
         "dev": "bun run --parallel dev:hub dev:web",
         "build": "bun run build:hub && bun run build:web",
@@ -33,11 +35,11 @@
         "husky": "^9.1.7",
         "lint-staged": "^17.4.1",
         "typescript": "^6.0.3",
-        "typescript-eslint": "^8.68.0"
+        "typescript-eslint": "^8.69.0"
     },
     "dependencies": {
-        "@tiptap/extension-task-item": "^3.30.5",
-        "@tiptap/extension-task-list": "^3.30.5"
+        "@tiptap/extension-task-item": "^3.31.2",
+        "@tiptap/extension-task-list": "^3.31.2"
     },
     "lint-staged": {
         "packages/*/src/**/*.{ts,tsx}": "eslint --fix"
