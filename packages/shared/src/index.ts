@@ -17,6 +17,7 @@
 export * from './schemas'
 export * from './socket'
 export * from './modes'
+export * from './styles'
 export * from './messages'
 export type * from './types'
 export * from './utils'
