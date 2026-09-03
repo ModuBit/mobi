@@ -18,21 +18,24 @@
  * output style 切换器（ChatComposer 参数区，权限模式切换器旁）。
  *
  * 切换语义是 /clear（清空上下文），故运行中 / clear 进行中 / 提交 pending 均禁用；
- * 选中后先弹确认框说明清空后果，确认才调 mutation（CLI 重启 + init 回报经
- * session.metadata.sdkMetadata.outputStyle 回流刷新当前值）。
+ * 选中后先弹确认框说明清空后果，确认才调 mutation（CLI 重启后当前值经
+ * runtimeState.outputStyle keep-alive 回流刷新，≤2s）。
  */
 
 import { useMemo } from 'react'
 import { App, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { isBuiltinOutputStyle } from '@mobi/shared'
 import { useSwitchOutputStyle } from '@/core/data/hooks/mutations/useSwitchOutputStyle'
 import { CompactHoverSelect } from './CompactHoverSelect'
 import { buildOutputStyleSelectOptions, renderOutputStyleOption } from './outputStyleOption'
 
 export interface OutputStyleSwitchProps {
     sessionId: string
-    /** 当前 output style（session.metadata.sdkMetadata.outputStyle，init 回报；undefined → default） */
+    /** 当前 output style（runtimeState.outputStyle keep-alive 为权威，sdkMetadata 仅老会话兜底；undefined → default） */
     outputStyle?: string | null
+    /** init 上报的可选 style 名（session.metadata.sdkMetadata.availableOutputStyles）；非内置名追加为下拉项，用户切到内置后可切回自定义 */
+    availableStyles?: string[]
     /** 会话运行中：禁用切换（/clear 语义不可在运行中清空上下文） */
     running?: boolean
     /** /clear 进行中：禁用切换（同属清空上下文链路，避免并发冲突） */
@@ -44,6 +47,7 @@ export interface OutputStyleSwitchProps {
 export function OutputStyleSwitch({
     sessionId,
     outputStyle,
+    availableStyles,
     running = false,
     clearInProgress = false,
     disabled = false,
@@ -52,7 +56,16 @@ export function OutputStyleSwitch({
     const { token } = theme.useToken()
     const { modal } = App.useApp()
     const outputStyleMutation = useSwitchOutputStyle()
-    const outputStyleOptions = useMemo(() => buildOutputStyleSelectOptions(), [])
+    // 基础内置五项 + 追加 init 上报的非内置名（内置名已在基础列表，天然去重）
+    const outputStyleOptions = useMemo(
+        () => [
+            ...buildOutputStyleSelectOptions(),
+            ...(availableStyles ?? [])
+                .filter((name) => !isBuiltinOutputStyle(name))
+                .map((name) => ({ value: name, label: name })),
+        ],
+        [availableStyles],
+    )
 
     const currentOutputStyle = outputStyle ?? 'default'
     const switchDisabled = running || clearInProgress || disabled || outputStyleMutation.isPending

@@ -83,8 +83,10 @@ interface ChatComposerProps {
     compressing?: boolean
     /** /clear 进行中：output style 切换器禁用（切换同为 /clear 语义，避免并发清空） */
     clearInProgress?: boolean
-    /** 当前 output style（session.metadata.sdkMetadata.outputStyle，init 回报；undefined → default） */
+    /** 当前 output style（runtimeState.outputStyle keep-alive 为权威，sdkMetadata 仅老会话兜底；undefined → default） */
     outputStyle?: string | null
+    /** init 上报的可选 style 名（sdkMetadata.availableOutputStyles），透传 OutputStyleSwitch 追加非内置下拉项 */
+    availableOutputStyles?: string[]
     agentState?: AgentState | null
     metadata?: SessionMetadataSummary | null
     agentFlavor?: string | null
@@ -248,6 +250,7 @@ export function ChatComposer(props: ChatComposerProps) {
         compressing = false,
         clearInProgress = false,
         outputStyle = null,
+        availableOutputStyles,
         agentState,
         metadata,
         agentFlavor,
@@ -863,6 +866,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                         <OutputStyleSwitch
                                             sessionId={sessionId}
                                             outputStyle={outputStyle}
+                                            availableStyles={availableOutputStyles}
                                             running={running}
                                             clearInProgress={clearInProgress}
                                             disabled={controlsDisabled || showLocalModeCover}

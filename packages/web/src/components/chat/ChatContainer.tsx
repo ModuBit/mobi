@@ -980,6 +980,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 // sdkMetadata.outputStyle 是 init 时快照，而 init 先于 applyFlagSettings，
                 // 会系统性滞后于实际生效值，仅作老会话兜底
                 outputStyle={session?.runtimeState?.outputStyle ?? session?.metadata?.sdkMetadata?.outputStyle}
+                availableOutputStyles={session?.metadata?.sdkMetadata?.availableOutputStyles}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}

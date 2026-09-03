@@ -22,7 +22,8 @@
  * - running / clear 进行中 / mutation pending：切换器 disabled；running 时外层
  *   title 提示结束后可切换
  * - 弹窗取消：mutation 不被调用
- * - 当前值：session.metadata.sdkMetadata.outputStyle 透传，undefined → 'default'
+ * - 当前值：outputStyle 透传（runtimeState.outputStyle 为权威），undefined → 'default'
+ * - availableStyles：init 上报的可选名，非内置名（如 my-style）追加为下拉项可切回；内置名去重
  *
  * Select 交互说明：antd v6 的 DOM 结构与 v5 不同——选中值在 `.ant-select-content`
  * （无 .ant-select-selection-item），展开用 fireEvent.mouseDown(`.ant-select`)，选项
@@ -172,5 +173,39 @@ describe('OutputStyleSwitch', () => {
 
         renderSwitch()
         expect(document.querySelector('.ant-select-content')?.textContent).toBe('Default')
+    })
+
+    /** 展开下拉（不选），返回当前展开的选项元素列表 */
+    async function openDropdown(): Promise<NodeListOf<Element>> {
+        fireEvent.mouseDown(document.querySelector('.ant-select')!)
+        await waitFor(() => {
+            expect(document.querySelectorAll('.ant-select-item-option')).not.toHaveLength(0)
+        })
+        return document.querySelectorAll('.ant-select-item-option')
+    }
+
+    it('availableStyles 含自定义名（如 my-style）→ 下拉追加该项，可被选中', async () => {
+        // 内置名（proactive）已在基础列表 → 去重不追加；仅追加非内置的 my-style
+        renderSwitch({ availableStyles: ['default', 'proactive', 'my-style'] })
+
+        const options = await openDropdown()
+        // 内置五项 + 自定义 my-style = 6
+        expect(options).toHaveLength(6)
+        expect(screen.getByText('my-style')).toBeInTheDocument()
+
+        // 自定义项可被选中并走确认流程（原名直出，无 i18n label）
+        fireEvent.click(screen.getByText('my-style'))
+        await expectConfirmDialog('my-style')
+    })
+
+    it('availableStyles 为 undefined 或全为内置名 → 下拉只有内置五项', async () => {
+        const { unmount } = renderSwitch({ availableStyles: undefined })
+        expect(await openDropdown()).toHaveLength(5)
+        unmount()
+        cleanup()
+
+        renderSwitch({ availableStyles: ['default', 'concise'] })
+        expect(await openDropdown()).toHaveLength(5)
+        expect(screen.queryByText('my-style')).not.toBeInTheDocument()
     })
 })
