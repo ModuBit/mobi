@@ -144,6 +144,7 @@ export class ApiMachineClient {
                     sessionType,
                     worktreeName,
                     effort,
+                    outputStyle,
                     projectId
                 } = params || {}
 
@@ -164,6 +165,7 @@ export class ApiMachineClient {
                     sessionType,
                     worktreeName,
                     effort,
+                    outputStyle,
                     projectId
                 })
 

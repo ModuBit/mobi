@@ -33,6 +33,11 @@ export function buildClaudeSpawnArgs(options: SpawnSessionOptions): string[] {
     if (options.effort !== undefined) {
         args.push('--effort', options.effort)
     }
+    if (options.outputStyle !== undefined) {
+        // mobi 自有 flag：CC 二进制无此 CLI 参数，子进程 parseStartOptions 消费，
+        // 经 Session opts → applyStartupOutputStyle（applyFlagSettings）注入
+        args.push('--output-style', options.outputStyle)
+    }
     if (options.permissionMode) {
         args.push('--permission-mode', options.permissionMode)
     }

@@ -28,6 +28,8 @@ export interface SpawnInput {
     agent?: AgentType
     model?: string
     effort?: EffortLevel
+    /** CC output style（照 effort 全链路透传到 CLI Session 构造） */
+    outputStyle?: string
     permissionMode?: PermissionMode
     sessionType?: SessionType
     worktreeName?: string
@@ -58,6 +60,7 @@ export function useSpawnSession(): {
                     input.sessionType,
                     input.worktreeName,
                     input.effort,
+                    input.outputStyle,
                     input.projectId
                 )
 

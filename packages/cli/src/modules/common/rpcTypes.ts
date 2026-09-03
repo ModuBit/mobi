@@ -25,6 +25,7 @@ export interface SpawnSessionOptions {
     agent?: 'claude'  // Mobi 当前仅支持 Claude
     model?: string
     effort?: EffortLevel  // reasoning effort (low | medium | high | xhigh)
+    outputStyle?: string  // CC output style（Default/Proactive/Concise/Explanatory/Learning 或自定义名）
     permissionMode?: PermissionMode
     token?: string
     sessionType?: 'simple' | 'worktree'

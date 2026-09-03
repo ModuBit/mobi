@@ -32,6 +32,8 @@ interface LoopOptions {
     model?: SessionModel
     permissionMode?: PermissionMode
     effort?: EffortLevel
+    /** CC output style（Web spawn 透传；经 applyStartupOutputStyle（applyFlagSettings）注入） */
+    outputStyle?: string
     startingMode?: 'local' | 'remote'
     startedBy?: 'runner' | 'terminal'
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
@@ -77,6 +79,7 @@ export async function loop(opts: LoopOptions) {
         permissionMode: opts.permissionMode ?? 'default',
         model: opts.model,
         effort: opts.effort,
+        outputStyle: opts.outputStyle,
         additionalDirectories: opts.additionalDirectories
     });
 

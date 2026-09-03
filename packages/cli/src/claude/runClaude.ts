@@ -48,6 +48,8 @@ export interface StartOptions {
     model?: string
     permissionMode?: PermissionMode
     effort?: EffortLevel
+    /** CC output style（Web spawn 透传；经 Session opts → applyStartupOutputStyle 注入） */
+    outputStyle?: string
     startingMode?: 'local' | 'remote'
     shouldStartRunner?: boolean
     claudeEnvVars?: Record<string, string>
@@ -511,6 +513,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             model: currentModel,
             permissionMode: options.permissionMode,
             effort: currentEffort,
+            outputStyle: options.outputStyle,
             startingMode,
             additionalDirectories,
             messageQueue,

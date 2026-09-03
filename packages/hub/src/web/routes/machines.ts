@@ -52,6 +52,7 @@ const spawnBodySchema = z.object({
     agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
     model: z.string().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
+    outputStyle: z.string().optional(),
     permissionMode: PermissionModeSchema.optional(),
     sessionType: z.enum(['simple', 'worktree']).optional(),
     worktreeName: z.string().optional(),
@@ -145,6 +146,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             parsed.data.worktreeName,
             undefined, // resumeSessionId
             parsed.data.effort,
+            parsed.data.outputStyle,
             parsed.data.projectId
         )
         return c.json(result)

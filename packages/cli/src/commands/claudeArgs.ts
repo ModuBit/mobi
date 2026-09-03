@@ -80,6 +80,11 @@ export function parseStartOptions(args: string[]): {
             i += 1
             options.effort = effort as EffortLevel
             unknownArgs.push('--effort', effort)
+        } else if (arg === '--output-style') {
+            // CC output style（Web spawn 透传；mobi 自有 flag，不下传 claude 二进制——
+            // 注入走 Session opts → applyStartupOutputStyle（applyFlagSettings））
+            options.outputStyle = consumeFlagValue(args, i, '--output-style')
+            i += 1
         } else if (arg === '--started-by') {
             // 设置启动来源
             options.startedBy = consumeFlagValue(args, i, arg) as 'runner' | 'terminal'

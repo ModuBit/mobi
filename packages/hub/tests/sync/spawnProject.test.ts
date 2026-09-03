@@ -74,6 +74,7 @@ describe('spawn 链路透传 projectId', () => {
                 undefined,
                 undefined,
                 undefined,
+                undefined,
                 'project-42'
             )
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
@@ -117,6 +118,7 @@ describe('spawn 链路透传 projectId', () => {
             'machine-p3',
             '/tmp/proj',
             'claude',
+            undefined,
             undefined,
             undefined,
             undefined,
