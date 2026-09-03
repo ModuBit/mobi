@@ -15,9 +15,11 @@
  */
 
 import { useMemo, useState, useEffect } from 'react'
-import { App, Modal, Radio, Typography } from 'antd'
+import { App, Button, Modal, Radio, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined } from '@ant-design/icons'
+import { MobileDrawer } from '@/components/ui/MobileDrawer'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useAssignSessionProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import type { Session } from '@/core/data/api/types'
@@ -51,16 +53,19 @@ export function AssignProjectModal({ session, open, onClose }: AssignProjectModa
     )
 
     const [selected, setSelected] = useState<string | null>(null)
+    const isMobile = useIsMobile()
 
     // 打开时重置选择，避免上次选择残留
     useEffect(() => {
         if (open) setSelected(null)
     }, [open, session?.id])
 
-    const handleOk = async () => {
-        if (!session || !selected) return
+    // 提交归属变更。PC 走 Modal onOk（先 Radio 选中再确认）；
+    // mobile 点行即提交（无独立确定按钮）
+    const handlePick = async (projectId: string) => {
+        if (!session) return
         try {
-            await assignMutation.mutateAsync({ sessionId: session.id, projectId: selected })
+            await assignMutation.mutateAsync({ sessionId: session.id, projectId })
             messageApi.success(t('common.success'))
             onClose()
         } catch {
@@ -68,11 +73,48 @@ export function AssignProjectModal({ session, open, onClose }: AssignProjectModa
         }
     }
 
+    // mobile：底部 Drawer 大点按行，点行即提交。
+    // 手势返回哨兵由 MobileDrawer 内置（组件不变量），无需额外接线
+    if (isMobile) {
+        return (
+            <MobileDrawer open={open} onClose={onClose} title={t('project.assignTitle')}>
+                {machineProjects.length === 0 ? (
+                    <Text type="secondary" style={{ padding: '16px 20px', display: 'block' }}>
+                        {t('project.assignEmpty')}
+                    </Text>
+                ) : (
+                    <div style={{ padding: '8px 0' }}>
+                        {machineProjects.map(project => (
+                            <Button
+                                key={project.id}
+                                type="text"
+                                block
+                                disabled={assignMutation.isPending}
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                onClick={() => handlePick(project.id)}
+                            >
+                                <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                                    <span>
+                                        <FolderOutlined style={{ marginRight: 6 }} />
+                                        {project.name}
+                                    </span>
+                                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                                        {project.folders.find(f => f.primary)?.path}
+                                    </Text>
+                                </span>
+                            </Button>
+                        ))}
+                    </div>
+                )}
+            </MobileDrawer>
+        )
+    }
+
     return (
         <Modal
             title={t('project.assignTitle')}
             open={open}
-            onOk={handleOk}
+            onOk={() => selected && handlePick(selected)}
             onCancel={onClose}
             confirmLoading={assignMutation.isPending}
             okButtonProps={{ disabled: !selected }}
