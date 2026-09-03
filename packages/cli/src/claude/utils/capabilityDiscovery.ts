@@ -17,11 +17,15 @@
 import { logger } from '@/ui/logger'
 import type { AgentInfo, ModelInfo, SlashCommand } from '@mobi/shared'
 
-/** 三方法返回的能力面（写入 metadata.sdkMetadata 的子集；其余字段不再产出，web 零消费已核实） */
+/** 三方法返回的能力面（写入 metadata.sdkMetadata 的子集；output style 两字段供 web 切换器消费） */
 export interface SessionCapabilities {
     models: ModelInfo[]
     commands: SlashCommand[]
     agents: AgentInfo[]
+    /** 当前 output style（init 上报 `output_style`；web 切换器当前值显示的数据源） */
+    outputStyle?: string
+    /** 可选 output style 列表（init 上报 `available_output_styles`，含用户自定义名） */
+    availableOutputStyles?: string[]
 }
 
 /** 能力发现所需的 Query 结构子集（不 import SDK 类型，便于测试替身） */
@@ -44,7 +48,10 @@ export async function discoverCapabilities(
     onCapabilities: (caps: SessionCapabilities) => void,
 ): Promise<void> {
     try {
-        await query.initializationResult()
+        const init = (await query.initializationResult() ?? {}) as {
+            output_style?: string
+            available_output_styles?: string[]
+        }
         const [models, commands, agents] = await Promise.all([
             query.supportedModels(),
             query.supportedCommands(),
@@ -56,7 +63,13 @@ export async function discoverCapabilities(
             logger.debug('[capabilityDiscovery] empty capability set, keeping stale metadata')
             return
         }
-        onCapabilities({ models, commands, agents })
+        onCapabilities({
+            models,
+            commands,
+            agents,
+            outputStyle: init.output_style,
+            availableOutputStyles: init.available_output_styles,
+        })
     } catch (e) {
         logger.debug('[capabilityDiscovery] failed, keeping stale metadata:', e)
     }

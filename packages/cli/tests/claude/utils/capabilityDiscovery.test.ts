@@ -48,7 +48,29 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
             models: [{ value: 'sonnet', displayName: 'Sonnet', description: '' }],
             commands: [{ name: 'compact', description: '', argumentHint: '' }],
             agents: [{ name: 'Explore', description: '' }],
+            outputStyle: undefined,
+            availableOutputStyles: undefined,
         })
+    })
+
+    it('init 携带 output_style / available_output_styles → 透传进能力面（web 切换器数据源）', async () => {
+        const query = makeQuery({
+            initializationResult: vi.fn().mockResolvedValue({
+                commands: [], agents: [], models: [],
+                output_style: 'proactive',
+                available_output_styles: ['default', 'proactive', 'concise'],
+            }),
+        })
+        const onCapabilities = vi.fn()
+
+        await discoverCapabilities(query as never, onCapabilities)
+
+        expect(onCapabilities).toHaveBeenCalledWith(
+            expect.objectContaining({
+                outputStyle: 'proactive',
+                availableOutputStyles: ['default', 'proactive', 'concise'],
+            }),
+        )
     })
 
     it('initializationResult 拒绝 → onCapabilities 不被调、不向上抛（失败静默）', async () => {
@@ -93,6 +115,8 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
             models: [],
             commands: [{ name: 'compact', description: '', argumentHint: '' }],
             agents: [{ name: 'Explore', description: '' }],
+            outputStyle: undefined,
+            availableOutputStyles: undefined,
         })
     })
 })
