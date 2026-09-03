@@ -27,7 +27,7 @@ import type { PermissionResult, PermissionUpdate, PermissionDecisionClassificati
 import type { PermissionAnswers, PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
 import { Session } from "../session";
 import { PermissionMode } from "../types";
-import { isObject } from "@mobi/shared";
+import { isObject, ELICITATION_TOOL_NAME } from "@mobi/shared";
 import {
     BasePermissionHandler,
     type PendingPermissionRequest,
@@ -107,9 +107,6 @@ function buildRequestUserInputUpdatedInput(input: unknown, answers: unknown): Re
         answers
     };
 }
-
-/** MCP elicitation 走审批链路的合成 toolName（spec D1）——web 端按此名分流表单卡片 */
-export const ELICITATION_TOOL_NAME = 'mcp_elicitation';
 
 /**
  * requestedSchema 最小合法性：object + properties（MCP elicitation 仅允许 primitive/enum 字段）。
@@ -521,6 +518,9 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         request: ElicitationRequest,
         options: { signal: AbortSignal; requestId: string },
     ): Promise<ElicitationResult | null> => {
+        // pre-aborted 快速返回：DOM AbortSignal 语义下，对已中止信号注册的 abort 监听器
+        // 永不触发——不挡这里，pending 卡片与 promise 会悬挂到 turn 重置（code-review R3）
+        if (options.signal.aborted) return { action: 'cancel' };
         // url 授权模式本批不做（spec D2）
         if (request.mode === 'url') return { action: 'decline' };
         if (!isValidElicitationSchema(request.requestedSchema)) {

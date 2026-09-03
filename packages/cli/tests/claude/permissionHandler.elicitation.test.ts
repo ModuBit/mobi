@@ -17,11 +17,8 @@
 // ============ 批次 C：elicitation 受理与响应转型（spec D1/D2/D3）============
 
 import { describe, it, expect, vi } from 'vitest'
-import {
-    PermissionHandler,
-    ELICITATION_TOOL_NAME,
-    coerceElicitationContent
-} from '../../src/claude/utils/permissionHandler'
+import { PermissionHandler, coerceElicitationContent } from '../../src/claude/utils/permissionHandler'
+import { ELICITATION_TOOL_NAME } from '@mobi/shared'
 import type { AgentState } from '../../src/api/types'
 import type { PendingPermissionRequest } from '../../src/modules/common/permission/BasePermissionHandler'
 
@@ -199,6 +196,27 @@ describe('handleElicitation', () => {
 
         // 仅 abort、无 turn 重置跟随：卡片必须被移除，不残留
         expect(foldedRequests(updateAgentStateOf(session))['el-abort-clean-1']).toBeUndefined()
+    })
+
+    it('入口即 aborted（pre-aborted signal）快速返回 cancel，不建 pending（DOM 语义：已中止信号的 abort 监听器永不触发）', async () => {
+        const { session, updateAgentState } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const controller = new AbortController()
+        controller.abort()
+
+        const result = await handler.handleElicitation(
+            {
+                mode: 'form',
+                serverName: 's',
+                message: 'm',
+                requestedSchema: { ...FORM_SCHEMA },
+            },
+            { signal: controller.signal, requestId: 'el-preabort-1' }
+        )
+
+        expect(result).toEqual({ action: 'cancel' })
+        // 不建卡片（否则监听器永不触发，卡片与 promise 悬挂到 turn 重置）
+        expect(foldedRequests(updateAgentState)['el-preabort-1']).toBeUndefined()
     })
 
     it('turn 重置（resetForNewTurn）后返回 cancel', async () => {

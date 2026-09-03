@@ -937,8 +937,9 @@ export async function claudeRemote(opts: {
             const result = await opts.canCallTool(toolName, input, options);
             return result;
         },
-        // MCP elicitation 受理（批次 C，spec D1/D2）：form 走审批链路，url decline 兜底
-        ...(opts.onElicitation ? { onElicitation: opts.onElicitation } : {}),
+        // MCP elicitation 受理（批次 C，spec D1/D2）：form 走审批链路，url decline 兜底。
+        // opts 类型声明 onElicitation 非可选（唯一 caller launcher 恒绑定），无需守卫
+        onElicitation: opts.onElicitation,
         // U-20：实时捕获 claude 进程 stderr 落 debug 日志。退出错误已由 SDK formatStderrTail
         // 自动追加到错误 message（launcher catch 透传）；此处覆盖「hang 不退出」的诊断场景——
         // stderr 实时可见进程卡在哪（spec 批次 G）。chunk 截断防病态输出挤占 ringBuffer 配额

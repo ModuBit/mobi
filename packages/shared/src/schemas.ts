@@ -260,6 +260,13 @@ export type PermissionAnswers =
     | Record<string, string | number | boolean | string[]>
     | Record<string, { answers: string[] }>
 
+/**
+ * MCP elicitation 借道 agentState.requests 通道时使用的合成工具名（批次 C，spec D1）。
+ * elicitation 条目与普通审批在类型上不可区分，cli/web 运行时都靠该名判断——
+ * 单一来源在 shared，两端字面量漂移即编译错误（此前双字面量仅靠注释同步）。
+ */
+export const ELICITATION_TOOL_NAME = 'mcp_elicitation'
+
 export const AgentStateRequestSchema = z.object({
     tool: z.string(),
     arguments: z.unknown(),

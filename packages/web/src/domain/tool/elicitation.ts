@@ -14,15 +14,11 @@
  * limitations under the License.
  */
 
-import { isObject } from '@mobi/shared'
+import { isObject, ELICITATION_TOOL_NAME } from '@mobi/shared'
 
-/**
- * MCP elicitation 合成工具名（批次 C，spec D1）。
- * cli 侧 ELICITATION_TOOL_NAME 的 web 端字面量锚定——elicitation 借道 agentState.requests
- * 通道下发，类型上与普通审批条目不可区分，运行时靠该合成名判断；web 不跨包 import cli 常量
- * （既有 web/cli 解耦惯例），改 cli 常量时需同步此处。
- */
-export const ELICITATION_TOOL_NAME = 'mcp_elicitation'
+// 合成工具名单一来源在 @mobi/shared（cli/web 运行时共用，字面量漂移即编译错误）；
+// web 内部消费方仍从本模块导入，re-export 保持既有导入面
+export { ELICITATION_TOOL_NAME }
 
 export function isElicitationToolName(toolName: string): boolean {
     return toolName === ELICITATION_TOOL_NAME

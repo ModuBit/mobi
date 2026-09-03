@@ -471,3 +471,62 @@ describe('reduceTimeline', () => {
         })
     })
 })
+
+// ============ 截断标注（spec D6）——code-review R1 补强 ============
+
+describe('aborted 截断标注（挂在最后一个渲染为 agent-text 的块）', () => {
+    function makeCtx() {
+        return {
+            permissionsById: new Map<string, PermissionEntry>(),
+            groups: new Map<string, TracedMessage[]>(),
+            consumedGroupIds: new Set<string>(),
+            titleChangesByToolUseId: new Map<string, string>(),
+            emittedTitleChangeToolUseIds: new Set<string>(),
+            hiddenToolUseIds: new Map<string, string>(),
+        }
+    }
+
+    it('最后一个 text 块被分流为 cli-output 时，标注落到此前的 agent-text 块（而非丢失）', () => {
+        const msg: TracedMessage = {
+            id: 'msg-abort-cli',
+            localId: 'local-abort-cli',
+            createdAt: Date.now(),
+            role: 'agent',
+            isSidechain: false,
+            aborted: true,
+            content: [
+                { type: 'text', text: '半截正文' },
+                { type: 'text', text: '<local-command-stdout>done</local-command-stdout>' },
+            ],
+        }
+
+        const { blocks } = reduceTimeline([msg], makeCtx())
+
+        const agentTexts = blocks.filter(b => b.kind === 'agent-text')
+        expect(agentTexts).toHaveLength(1)
+        // 截断标志必须存在：不能因末尾 text 分流成 cli-output 而静默丢失
+        expect((agentTexts[0] as { aborted?: boolean }).aborted).toBe(true)
+    })
+
+    it('末块就是 agent-text 时标注落在末块（既有行为不回归）', () => {
+        const msg: TracedMessage = {
+            id: 'msg-abort-plain',
+            localId: 'local-abort-plain',
+            createdAt: Date.now(),
+            role: 'agent',
+            isSidechain: false,
+            aborted: true,
+            content: [
+                { type: 'text', text: '前文' },
+                { type: 'text', text: '被截断的尾段' },
+            ],
+        }
+
+        const { blocks } = reduceTimeline([msg], makeCtx())
+
+        const agentTexts = blocks.filter(b => b.kind === 'agent-text')
+        expect(agentTexts).toHaveLength(2)
+        expect((agentTexts[0] as { aborted?: boolean }).aborted).toBeUndefined()
+        expect((agentTexts[1] as { aborted?: boolean }).aborted).toBe(true)
+    })
+})
