@@ -41,6 +41,7 @@ import { getInvokedCwd } from '@/utils/invokedCwd';
 import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';
+import { applyOutputStyleSwitch } from './utils/outputStyleSwitch';
 import { createMobiWebMcpServer } from '@/webtools/server';
 
 export interface StartOptions {
@@ -467,6 +468,35 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         messageQueue,
         queryControl: queryControlRef,
         workingDirectory,
+    });
+
+    // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。pendingOutputStyleExit 挂在
+    // Session 上（launcher while 循环与哨兵配对消费），session 未就绪时拒绝；running 中拒绝
+    // （Web 端已 disable，双保险）。受理细节见 applyOutputStyleSwitch
+    apiSession.rpcHandlerManager.registerHandler('switch-output-style', async (payload: unknown) => {
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Invalid output style payload');
+        }
+        const { style } = payload as { style?: unknown };
+        if (typeof style !== 'string' || style.length === 0) {
+            throw new Error('switch-output-style requires non-empty style string');
+        }
+        const session = currentSessionRef.current;
+        if (!session) {
+            throw new Error('switch-output-style rejected: session is not ready');
+        }
+        const result = applyOutputStyleSwitch({
+            running: session.running,
+            setOutputStyle: session.setOutputStyle,
+            clearSessionId: session.clearSessionId,
+            markPendingExit: () => { session.pendingOutputStyleExit = true; },
+            clearPending: () => messageQueue.clearPending(),
+            pushIsolateAndClear: (msg, mode, localId) => messageQueue.pushIsolateAndClear(msg, mode, localId),
+        }, style);
+        if (!result.accepted) {
+            throw new Error(`switch-output-style rejected: ${result.reason}`);
+        }
+        return { accepted: true };
     });
 
     let loopError: unknown = null;
