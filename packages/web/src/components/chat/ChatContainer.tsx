@@ -976,7 +976,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 sending={sendMutation.isPending}
                 compressing={isCompressing}
                 clearInProgress={isClearing}
-                outputStyle={session?.metadata?.sdkMetadata?.outputStyle}
+                // 当前值以 runtimeState 为权威（keep-alive 实时上报，切换后 ≤2s 刷新）；
+                // sdkMetadata.outputStyle 是 init 时快照，而 init 先于 applyFlagSettings，
+                // 会系统性滞后于实际生效值，仅作老会话兜底
+                outputStyle={session?.runtimeState?.outputStyle ?? session?.metadata?.sdkMetadata?.outputStyle}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}
