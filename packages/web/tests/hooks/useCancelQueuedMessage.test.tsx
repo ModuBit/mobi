@@ -16,7 +16,8 @@
 
 /**
  * useCancelQueuedMessage 单元测试
- * 验证乐观删除、onSuccess 分支 fetchLatest、onError fetchLatest
+ * 验证乐观删除、onSuccess 分支 fetchLatest、onError fetchLatest、
+ * 编辑取消成功后的回填信箱（卸载竞态安全——悬浮条先于 mutation settle 卸载）
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -24,6 +25,7 @@ import { renderHook, act, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { DecryptedMessage } from '@/core/data/api/types'
+import type { ComposerSegments } from '@/domain/chat/composerSegments'
 
 // fetchLatestMessages 走网络，测试用 spy 替换；removeOptimisticMessage 保留真实以验证 store 状态
 const mocks = vi.hoisted(() => ({
@@ -47,6 +49,10 @@ import {
     getMessageWindowState,
     _resetForTest,
 } from '@/core/data/stores/messageWindowStore'
+import {
+    consumeComposerBackfill,
+    _resetForTest as resetBackfillStore,
+} from '@/core/data/stores/composerBackfillStore'
 
 const SESSION_ID = 's1'
 
@@ -82,6 +88,7 @@ describe('useCancelQueuedMessage', () => {
     beforeEach(() => {
         qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
         _resetForTest()
+        resetBackfillStore()
         mocks.cancel.mockReset()
         mocks.fetchLatest.mockReset()
     })
@@ -98,7 +105,7 @@ describe('useCancelQueuedMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('local-1')
+            result.current.mutate({ localId: 'local-1' })
         })
         await waitFor(() => expect(mocks.cancel).toHaveBeenCalledTimes(1))
 
@@ -116,7 +123,7 @@ describe('useCancelQueuedMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('local-1')
+            result.current.mutate({ localId: 'local-1' })
         })
         await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -133,7 +140,7 @@ describe('useCancelQueuedMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('local-1')
+            result.current.mutate({ localId: 'local-1' })
         })
         // 确认 mutation 已完成（onSuccess 已执行）
         await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -150,11 +157,110 @@ describe('useCancelQueuedMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('local-1')
+            result.current.mutate({ localId: 'local-1' })
         })
         await waitFor(() => expect(result.current.isError).toBe(true))
 
         expect(mocks.fetchLatest).toHaveBeenCalledTimes(1)
         expect(mocks.fetchLatest.mock.calls[0][1]).toBe(SESSION_ID)
+    })
+
+    // ─── 编辑取消的回填信箱（修复：per-call 回调随悬浮条卸载被 react-query 丢弃）───
+
+    const textSegments: ComposerSegments = { text: '编辑我', files: [], images: [], quotes: [] }
+
+    it('编辑取消 cancelled → 写回填信箱（segments 载荷，交长命组件回填）', async () => {
+        mocks.cancel.mockResolvedValue({ data: { status: 'cancelled' } })
+
+        const { result } = renderHook(() => useCancelQueuedMessage(SESSION_ID), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate({ localId: 'local-1', backfill: { segments: textSegments, originalText: null } })
+        })
+        await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+        expect(consumeComposerBackfill(SESSION_ID)).toMatchObject({
+            localId: 'local-1',
+            segments: textSegments,
+        })
+    })
+
+    it('编辑取消 cancelled 且结构化还原失败 → 信箱走 originalText 兜底', async () => {
+        mocks.cancel.mockResolvedValue({ data: { status: 'cancelled' } })
+
+        const { result } = renderHook(() => useCancelQueuedMessage(SESSION_ID), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate({ localId: 'local-1', backfill: { segments: null, originalText: '纯文本兜底' } })
+        })
+        await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+        expect(consumeComposerBackfill(SESSION_ID)).toMatchObject({
+            localId: 'local-1',
+            segments: null,
+            originalText: '纯文本兜底',
+        })
+    })
+
+    it('编辑取消 submitted → 写 notice 信箱（alreadySubmitted 提示），不写回填载荷', async () => {
+        mocks.cancel.mockResolvedValue({ data: { status: 'submitted' } })
+
+        const { result } = renderHook(() => useCancelQueuedMessage(SESSION_ID), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate({ localId: 'local-1', backfill: { segments: textSegments, originalText: null } })
+        })
+        await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+        const req = consumeComposerBackfill(SESSION_ID)
+        expect(req).toMatchObject({ localId: 'local-1', notice: 'alreadySubmitted' })
+        expect(req!.segments).toBeNull()
+        expect(req!.originalText).toBeNull()
+    })
+
+    it('纯取消（无 backfill 载荷）不写回填信箱', async () => {
+        mocks.cancel.mockResolvedValue({ data: { status: 'cancelled' } })
+
+        const { result } = renderHook(() => useCancelQueuedMessage(SESSION_ID), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate({ localId: 'local-1' })
+        })
+        await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+        expect(consumeComposerBackfill(SESSION_ID)).toBeNull()
+    })
+
+    it('组件卸载后 mutation settle 仍写回填信箱（悬浮条 onMutate 乐观移除后即卸载的竞态）', async () => {
+        let resolveCancel!: (v: { data: { status: string } }) => void
+        mocks.cancel.mockImplementation(
+            () => new Promise<{ data: { status: string } }>((res) => { resolveCancel = res }),
+        )
+
+        const { result, unmount } = renderHook(() => useCancelQueuedMessage(SESSION_ID), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate({ localId: 'local-1', backfill: { segments: textSegments, originalText: null } })
+        })
+        // 模拟悬浮条卸载：onMutate 移除消息 → 队列空 → 组件树卸载，mutation 仍在途
+        unmount()
+        resolveCancel({ data: { status: 'cancelled' } })
+
+        await waitFor(() => {
+            expect(consumeComposerBackfill(SESSION_ID)).toMatchObject({
+                localId: 'local-1',
+                segments: textSegments,
+            })
+        })
     })
 })

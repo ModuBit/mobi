@@ -105,10 +105,10 @@ function agentMsg(id: string, text: string): DecryptedMessage {
 }
 
 /** 包裹 ConfigProvider 渲染 */
-function renderBar(messages: DecryptedMessage[], onEdit = vi.fn()) {
+function renderBar(messages: DecryptedMessage[]) {
     return render(
         <ConfigProvider>
-            <QueuedMessagesBar sessionId="s1" messages={messages} onEdit={onEdit} />
+            <QueuedMessagesBar sessionId="s1" messages={messages} />
         </ConfigProvider>,
     )
 }
@@ -194,41 +194,33 @@ describe('QueuedMessagesBar', () => {
         expect(queryByText('agent 回复')).toBeNull()
     })
 
-    it('点击取消按钮 → cancelMutation.mutate(localId)', () => {
-        const onEdit = vi.fn()
-        const { container } = renderBar([queuedMsg('q1', '要取消')], onEdit)
+    it('点击取消按钮 → cancelMutation.mutate({ localId })（纯取消无回填载荷）', () => {
+        const { container } = renderBar([queuedMsg('q1', '要取消')])
 
         // cancel 按钮（DeleteOutlined → .anticon-delete）
         const cancelBtn = container.querySelector('.anticon-delete')!.closest('button')!
         fireEvent.click(cancelBtn)
 
         expect(cancelMock.mutate).toHaveBeenCalledTimes(1)
-        expect(cancelMock.mutate).toHaveBeenCalledWith('q1')
-        // 取消不触发编辑
-        expect(onEdit).not.toHaveBeenCalled()
+        expect(cancelMock.mutate).toHaveBeenCalledWith({ localId: 'q1' })
     })
 
-    it('点击编辑 + cancel 返回 cancelled → onEdit 收到纯文本分段', () => {
-        const onEdit = vi.fn()
-        const { container } = renderBar([queuedMsg('q1', '编辑我')], onEdit)
+    it('点击编辑 → mutate 携带回填载荷（纯文本消息还原为仅 text 段）', () => {
+        const { container } = renderBar([queuedMsg('q1', '编辑我')])
 
         // edit 按钮（EditOutlined → .anticon-edit）
         const editBtn = container.querySelector('.anticon-edit')!.closest('button')!
         fireEvent.click(editBtn)
 
-        // handleEdit 传 { onSuccess } 给 mutate，提取并手动触发
+        // 回填载荷随 variables 进 hook，由钩子级回调写信箱（卸载竞态安全，见 hook 测试）
         expect(cancelMock.mutate).toHaveBeenCalledTimes(1)
-        const callArgs = cancelMock.mutate.mock.calls[0]
-        expect(callArgs[0]).toBe('q1')
-        const opts = callArgs[1] as { onSuccess: (res: { data: { status: string } }) => void }
-
-        // cancel 成功 → 结构化回填（纯文本消息还原为仅 text 段）
-        opts.onSuccess({ data: { status: 'cancelled' } })
-        expect(onEdit).toHaveBeenCalledWith({ text: '编辑我', files: [], images: [], quotes: [] })
+        expect(cancelMock.mutate).toHaveBeenCalledWith({
+            localId: 'q1',
+            backfill: { segments: { text: '编辑我', files: [], images: [], quotes: [] }, originalText: null },
+        })
     })
 
-    it('带附件/引用的排队消息编辑 → onEdit 收到含 files/images/quotes 的完整分段（回填往返集成）', () => {
-        const onEdit = vi.fn()
+    it('带附件/引用的排队消息编辑 → backfill 载荷含 files/images/quotes 完整分段（回填往返集成）', () => {
         const structured: DecryptedMessage = {
             ...queuedMsg('q1', ''),
             content: {
@@ -250,36 +242,22 @@ describe('QueuedMessagesBar', () => {
                 meta: { sentFrom: 'webapp' },
             },
         } as unknown as DecryptedMessage
-        const { container } = renderBar([structured], onEdit)
+        const { container } = renderBar([structured])
 
         fireEvent.click(container.querySelector('.anticon-edit')!.closest('button')!)
-        const opts = cancelMock.mutate.mock.calls[0]![1] as {
-            onSuccess: (res: { data: { status: string } }) => void
-        }
-        opts.onSuccess({ data: { status: 'cancelled' } })
 
-        expect(onEdit).toHaveBeenCalledWith({
-            text: '看这两份材料',
-            files: [{ id: 'd1', filename: 'report.pdf', path: '/up/report.pdf', mimeType: 'application/pdf', size: 123 }],
-            images: [{ id: 'g1', filename: 'pic.png', path: '/up/pic.png', mimeType: 'image/png', size: 456 }],
-            quotes: [{ messageId: 'm9', role: 'agent', excerpt: '被引用的消息' }],
+        expect(cancelMock.mutate).toHaveBeenCalledWith({
+            localId: 'q1',
+            backfill: {
+                segments: {
+                    text: '看这两份材料',
+                    files: [{ id: 'd1', filename: 'report.pdf', path: '/up/report.pdf', mimeType: 'application/pdf', size: 123 }],
+                    images: [{ id: 'g1', filename: 'pic.png', path: '/up/pic.png', mimeType: 'image/png', size: 456 }],
+                    quotes: [{ messageId: 'm9', role: 'agent', excerpt: '被引用的消息' }],
+                },
+                originalText: null,
+            },
         })
-    })
-
-    it('点击编辑 + cancel 返回 submitted → 不调 onEdit', () => {
-        const onEdit = vi.fn()
-        const { container } = renderBar([queuedMsg('q1', '编辑我')], onEdit)
-
-        const editBtn = container.querySelector('.anticon-edit')!.closest('button')!
-        fireEvent.click(editBtn)
-
-        const opts = cancelMock.mutate.mock.calls[0][1] as {
-            onSuccess: (res: { data: { status: string } }) => void
-        }
-
-        // 已被 agent 抢先处理 → 不回填
-        opts.onSuccess({ data: { status: 'submitted' } })
-        expect(onEdit).not.toHaveBeenCalled()
     })
 
     it('cancelled/discarded 终态消息不渲染（丢弃分区已移除，终态可见性由聊天流内标注承担）', () => {
@@ -314,8 +292,7 @@ describe('QueuedMessagesBar', () => {
     })
 
     it('点击 steer 按钮 → steerMutation.mutate(localId)', () => {
-        const onEdit = vi.fn()
-        const { container } = renderBar([queuedMsg('q1', '要 steer')], onEdit)
+        const { container } = renderBar([queuedMsg('q1', '要 steer')])
 
         // steer 按钮（ThunderboltOutlined → .anticon-thunderbolt）
         const steerBtn = container.querySelector('.anticon-thunderbolt')!.closest('button')!
@@ -323,8 +300,7 @@ describe('QueuedMessagesBar', () => {
 
         expect(steerMock.mutate).toHaveBeenCalledTimes(1)
         expect(steerMock.mutate).toHaveBeenCalledWith('q1', expect.objectContaining({ onError: expect.any(Function) }))
-        // steer 不触发取消/编辑
+        // steer 不触发取消
         expect(cancelMock.mutate).not.toHaveBeenCalled()
-        expect(onEdit).not.toHaveBeenCalled()
     })
 })

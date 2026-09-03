@@ -136,7 +136,6 @@ const defaultProps = {
     api: mockApi,
     disabled: false,
     onPermissionDone: vi.fn(),
-    onEditQueued: vi.fn(),
 }
 
 describe('ComposerInfoPanel', () => {
@@ -263,16 +262,15 @@ describe('ComposerInfoPanel', () => {
         expect(scrollEl.style.maxHeight).toBe('40dvh')
     })
 
-    it('有排队消息时渲染排队条并回填编辑', () => {
-        const onEditQueued = vi.fn()
+    it('有排队消息时渲染排队条', () => {
         messagesMock.data = [queuedMsg('q-1', '排队的内容预览')]
         const { container, unmount } = render(
-            <ComposerInfoPanel {...defaultProps} onEditQueued={onEditQueued} />,
+            <ComposerInfoPanel {...defaultProps} />,
             { wrapper }
         )
         // 排队条展示消息预览文本
         expect(container.textContent).toContain('排队的内容预览')
-        // 编辑按钮存在（具体取消/编辑交互由 QueuedMessagesBar 自身测试覆盖）
+        // 编辑按钮存在（编辑回填走 composerBackfillStore 信箱，交互由 QueuedMessagesBar/hook 测试覆盖）
         expect(container.querySelectorAll('button').length).toBeGreaterThan(0)
         unmount()
     })

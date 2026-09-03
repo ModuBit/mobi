@@ -36,7 +36,6 @@ import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/as
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { isElicitationToolName, parseElicitationPayload } from '@/domain/tool/elicitation'
 import { ElicitationFormCard } from '@/components/chat/ElicitationFormCard'
-import type { ComposerSegments } from '@/domain/chat/composerSegments'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { queryKeys } from '@/core/lib/query-keys'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
@@ -336,8 +335,6 @@ export type ComposerInfoPanelProps = {
     onRequestDone: () => void
     todos?: TodoItem[]
     tasks?: TaskItem[]
-    /** 排队消息编辑回填：把取消成功的排队消息完整分段写回 composer 并聚焦 */
-    onEditQueued: (segments: ComposerSegments) => void
 }
 
 /**
@@ -348,25 +345,16 @@ export type ComposerInfoPanelProps = {
  * 注意：与原 react-query 不同——store 每次 SSE 写入都 notify（无结构化共享），
  * 本组件会随消息变动重渲染。已知 trade-off（select 在 hook body 不触发无限循环，
  * getSnapshot 返回稳定 state 引用）；若流式期 reconcile 开销显著，后续加 selector 缓存。
+ *
+ * 编辑回填不经本组件：mutation settle 前排队可能清空、本区随之下卸载，
+ * 回填载荷经 composerBackfillStore 由 ChatContainer 消费（见 useCancelQueuedMessage）。
  */
-function QueuedMessagesSection({
-    sessionId,
-    onEdit,
-}: {
-    sessionId: string
-    onEdit: (segments: ComposerSegments) => void
-}) {
+function QueuedMessagesSection({ sessionId }: { sessionId: string }) {
     // 只取排队子集。cancelled/discarded 终态消息不进 composer 区——
     // 终态可见性由聊天流内的灰色标注承担（ChatContainer footer 标注）
     const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter(isQueuedInMobi))
     if (messages.length === 0) return null
-    return (
-        <QueuedMessagesBar
-            sessionId={sessionId}
-            messages={messages}
-            onEdit={onEdit}
-        />
-    )
+    return <QueuedMessagesBar sessionId={sessionId} messages={messages} />
 }
 
 /**
@@ -382,7 +370,6 @@ export function ComposerInfoPanel({
     onRequestDone,
     todos,
     tasks,
-    onEditQueued,
 }: ComposerInfoPanelProps) {
     const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
@@ -447,10 +434,7 @@ export function ComposerInfoPanel({
                 style={{ maxHeight: '40dvh', overflow: 'auto' }}
             >
                 <Space orientation="vertical" size={8} style={{ width: '100%' }}>
-                    <QueuedMessagesSection
-                        sessionId={sessionId}
-                        onEdit={onEditQueued}
-                    />
+                    <QueuedMessagesSection sessionId={sessionId} />
 
                     <ElicitationRequestsSection
                         requests={agentState?.requests}

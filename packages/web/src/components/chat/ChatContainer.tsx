@@ -50,7 +50,7 @@ import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/t
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
-import { useWithdrawStore, useWithdrawRequest } from '@/core/data/stores/withdrawStore'
+import { useComposerBackfillStore, useComposerBackfillRequest } from '@/core/data/stores/composerBackfillStore'
 import { reconcileLatestMessages } from '@/core/data/stores/messageWindowStore'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -412,39 +412,44 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     useEffect(() => {
         return () => {
             useRewindStore.getState().clearSession(sessionId)
-            // 滞留的撤回请求随会话视图离场丢弃（spec §7.5：composer 不在场不回填）
-            useWithdrawStore.getState().clearSession(sessionId)
+            // 滞留的回填请求随会话视图离场丢弃（spec §7.5：composer 不在场不回填）
+            useComposerBackfillStore.getState().clearSession(sessionId)
         }
     }, [sessionId])
 
     // ──────────────────────────────────────────────────────────────
-    // 消息撤回消费（#53 / spec §7.5 / D6：无 toast/系统消息，回填即反馈）
+    // composer 回填请求消费（撤回 #53 / spec §7.5 / D6；排队消息编辑共用此信箱）
     // ──────────────────────────────────────────────────────────────
 
-    // SSE 层已落 store 的撤回请求（reactive 订阅：请求到达即触发下方 effect）
-    const withdrawRequest = useWithdrawRequest(sessionId)
+    // 请求方（SSE 层 / mutation hook）已落 store 的回填请求（reactive 订阅：请求到达即触发下方 effect）
+    const backfillRequest = useComposerBackfillRequest(sessionId)
     // 本次会话视图创建时刻（首帧 render 判定陈旧基线）：早于它的请求属于
     // 「会话未在场」时期，丢弃不回填——隔了会话切换的陈旧回填会覆盖用户当前输入
-    const withdrawMountedAtRef = useRef(Date.now())
+    const backfillMountedAtRef = useRef(Date.now())
     useEffect(() => {
         // 陈旧甄别只看 createdAt < 视图创建时刻——时间锚定判据天然幂等，effect 每次重跑直接判定即可；
         // render→effect 窗口新到的请求（createdAt >= 基线）照常落到消费回填——
         // 该窗口若被当陈旧清掉，行已被乐观移除且服务端软删，composer 回填是
         // 该文本在 UI 的唯一归宿，丢了即静默丢内容（review Important 修复）
-        if (!withdrawRequest) return
-        if (withdrawRequest.createdAt < withdrawMountedAtRef.current) {
-            useWithdrawStore.getState().clearSession(sessionId)
+        if (!backfillRequest) return
+        if (backfillRequest.createdAt < backfillMountedAtRef.current) {
+            useComposerBackfillStore.getState().clearSession(sessionId)
             return
         }
-        const req = useWithdrawStore.getState().consumeWithdraw(sessionId)
+        const req = useComposerBackfillStore.getState().consumeComposerBackfill(sessionId)
         if (!req) return
+        // 排队消息编辑但消息已被 agent 处理：不回填，仅提示（本组件长命，toast 在此渲染）
+        if (req.notice === 'alreadySubmitted') {
+            messageApi.info(t('chat.queued.alreadySubmitted'))
+            return
+        }
         // 结构化还原成功按分段回填（附件双桶 + 引用一并恢复）；失败兜底 originalText 纯文本
         if (req.segments) {
             setDraftRequest({ segments: req.segments, nonce: ++draftNonceRef.current })
         } else if (req.originalText) {
             setDraftRequest({ segments: { ...emptySegments(), text: req.originalText }, nonce: ++draftNonceRef.current })
         }
-    }, [withdrawRequest, sessionId])
+    }, [backfillRequest, sessionId, messageApi, t])
 
     // rewind 卡死兜底（对齐 clearStuck 模式，spec §4.5）：
     // - truncated 已到、completed 30s 未到（CLI 崩溃于文件恢复阶段，失败模式 #9）→ 超时视为完成（filesRestored 按 false）

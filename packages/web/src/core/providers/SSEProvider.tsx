@@ -42,7 +42,7 @@ import {
     withdrawFrom,
 } from '@/core/data/stores/messageWindowStore'
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
-import { requestWithdraw } from '@/core/data/stores/withdrawStore'
+import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 
 /**
@@ -398,7 +398,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 if (!removed) void fetchLatestMessages(apiRef.current, event.sessionId)
                 // 回填请求落 store；会话未打开时 ChatContainer 不消费，回填自然跳过
                 //（spec §7.5——composer 不在场，不覆盖用户输入）
-                requestWithdraw(event.sessionId, {
+                requestComposerBackfill(event.sessionId, {
                     localId: event.localId,
                     segments: safeDeserializeSegments(event.blocks),
                     originalText: event.originalText,

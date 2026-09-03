@@ -108,7 +108,7 @@ interface ChatComposerProps {
     goal?: GoalStatus | null
     /**
      * 外部结构化回填请求（rewind 收尾把锚点批分段灌回 sender 并聚焦；
-     * 排队消息编辑走内部 onEditQueued → applySegments 通道，不经此 props）：
+     * 排队消息编辑经 composerBackfillStore 信箱由 ChatContainer 消费后也走此通道）：
      * nonce 单调递增触发应用，同 nonce 不重复；segments 全空时忽略
      */
     draftRequest?: { segments: ComposerSegments; nonce: number }
@@ -368,7 +368,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 结构化回填（排队消息编辑 / rewind 收尾共用）：text + 附件双桶（占位附件还原，
     // 不再上传，MIME 由扩展名兜底重 derive）+ 引用 chip 一并恢复并聚焦。
-    // setter 均为稳定引用，回调恒稳定——下游 nonce effect / onEditQueued 传值无稳定性顾虑
+    // setter 均为稳定引用，回调恒稳定——下游 nonce effect 无稳定性顾虑
     const applySegments = useCallback((segments: ComposerSegments) => {
         const refs = [...segments.files, ...segments.images]
         setText(segments.text)
@@ -804,7 +804,6 @@ export function ChatComposer(props: ChatComposerProps) {
                 }}
                 todos={todos}
                 tasks={tasks}
-                onEditQueued={applySegments}
             />
 
             <StatusBar

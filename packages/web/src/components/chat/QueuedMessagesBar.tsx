@@ -24,7 +24,7 @@ import { isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
 import { summarizeBlocks } from '@/domain/chat/userContentSummary'
-import { deserializeSegments, emptySegments, type ComposerSegments } from '@/domain/chat/composerSegments'
+import { deserializeSegments } from '@/domain/chat/composerSegments'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
@@ -41,18 +41,19 @@ function userBlocksOf(msg: DecryptedMessage): UserContentBlock[] | null {
 export interface QueuedMessagesBarProps {
     sessionId: string
     messages: DecryptedMessage[]
-    /** 编辑：取消该消息 + 把完整分段（text + 附件双桶 + 引用）回填 composer */
-    onEdit: (segments: ComposerSegments) => void
 }
 
 /**
  * 排队消息悬浮条
  * agent 运行中时新发的消息进入排队，在此展示，支持插队/取消/编辑。
+ * 编辑回填不依赖本组件的存活：onMutate 乐观移除会让本条消失、队列可能清空导致
+ * 本组件在 mutation settle 前卸载，回填载荷随 cancel variables 进 hook，
+ * 经 composerBackfillStore 由长命的 ChatContainer 消费（见 useCancelQueuedMessage）。
  * cancelled/discarded 终态消息不在此展示——终态可见性由聊天流内的灰色标注承担
  *（ChatContainer footer 标注），composer 区不再呈现终态列表。
  */
 export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactElement | null {
-    const { sessionId, messages, onEdit } = props
+    const { sessionId, messages } = props
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const [messageApi, contextHolder] = message.useMessage()
@@ -83,29 +84,23 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
 
     const handleCancel = (msg: DecryptedMessage) => {
         if (!msg.localId) return
-        cancelMutation.mutate(msg.localId)
+        cancelMutation.mutate({ localId: msg.localId })
     }
 
     const handleEdit = (msg: DecryptedMessage) => {
         if (!msg.localId) return
-        cancelMutation.mutate(msg.localId, {
-            onSuccess: (res) => {
-                // 只有真正取消成功才回填；已被 agent 处理则提示
-                if (res.data.status === 'cancelled') {
-                    // 结构化还原：normalize 归一后 deserialize 为分段（text + 附件双桶 + 引用）；
-                    // normalize 失败（快照/乐观形态）兜底 originalText 纯文本。
-                    // 剔除指向被取消消息自身的 quote（防御：引用不可能合法指向排队中的本条，
-                    // 残留只会产生 dangling 引用块）
-                    const blocks = userBlocksOf(msg)
-                        ?.filter(b => b.type !== 'quote' || b.messageId !== msg.id)
-                    if (blocks) {
-                        onEdit(deserializeSegments(blocks))
-                    } else {
-                        onEdit({ ...emptySegments(), text: msg.originalText ?? '' })
-                    }
-                } else {
-                    messageApi.info(t('chat.queued.alreadySubmitted'))
-                }
+        // 结构化还原提前到调用侧（msg 信封只有这里拿得到）：normalize 归一后 deserialize
+        // 为分段（text + 附件双桶 + 引用）；normalize 失败（快照/乐观形态）兜底 originalText 纯文本。
+        // 剔除指向被取消消息自身的 quote（防御：引用不可能合法指向排队中的本条，
+        // 残留只会产生 dangling 引用块）。
+        // 回填动作不在本组件回调里做——见 QueuedMessagesBarProps 上方的卸载竞态说明
+        const blocks = userBlocksOf(msg)
+            ?.filter(b => b.type !== 'quote' || b.messageId !== msg.id)
+        cancelMutation.mutate({
+            localId: msg.localId,
+            backfill: {
+                segments: blocks ? deserializeSegments(blocks) : null,
+                originalText: blocks ? null : msg.originalText ?? null,
             },
         })
     }
@@ -150,7 +145,7 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                                 text={previewOf(msg)}
                                 cancelPending={
                                     cancelMutation.isPending &&
-                                    cancelMutation.variables === msg.localId
+                                    cancelMutation.variables?.localId === msg.localId
                                 }
                                 steerPending={
                                     steerMutation.isPending &&

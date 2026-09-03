@@ -56,6 +56,8 @@ mobi 没有独立的停止按钮——**停止 = composer 右下角的 send/stop
 
 running 中发消息 → 进 QueuedMessagesBar 悬浮条（`Queued (N)`），不进主 timeline。停止 / turn 结束后消息被消费 → 翻为主 timeline 的独立 user bubble（经 `messages-submitted` SSE → `markMessagesSubmitted` 把 queueState pending→consumed）。
 
+**验证排队消息操作按钮的点击坑**（2026-09-03）：CDP 合成事件（`.click()` / PointerEvent+MouseEvent 序列）对悬浮条内 antd Button **时灵时不灵**——React 合成事件偶尔不触发。可靠做法是直调 React props：`const k = Object.keys(btn).find(k => k.startsWith('__reactProps$')); btn[k].onClick({stopPropagation(){},preventDefault(){}})`。另注意长 turn 窗口有限（glm ~2-3min），排障耗时会导致排队消息先被 auto-push 消费、编辑按钮随条消失。
+
 ## 坑
 
 - **不用 `wait_for`** — 文本匹配不可靠；用 `take_snapshot` 轮询
