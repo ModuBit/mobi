@@ -23,6 +23,8 @@ import {
     PlayCircleOutlined,
     PushpinOutlined,
     CloseOutlined,
+    SwapOutlined,
+    ImportOutlined,
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -32,6 +34,7 @@ import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { useAssignSessionProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
@@ -50,6 +53,7 @@ import { MobileRecentGroup } from './MobileRecentGroup'
 import { MobilePinnedGroup } from './MobilePinnedGroup'
 import { useMenuNavigate } from './useMenuNavigate'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
+import { AssignProjectModal } from '@/components/project/AssignProjectModal'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
 import { usePagedSectionList } from './usePagedSectionList'
@@ -127,6 +131,32 @@ export function MobileProjectList() {
             invalidateProjectViews(queryClient),
         ])
     }, [queryClient])
+
+    // 归属变更：换项目 / 归入项目（选择器）+ 移至最近（直接执行）
+    const assignMutation = useAssignSessionProject()
+    const [assignSession, setAssignSession] = useState<Session | null>(null)
+
+    const handleOpenAssign = useCallback(() => {
+        if (!actionSessionId) return
+        const session = findSession(actionSessionId)
+        if (!session) return
+        setAssignSession(session)
+        setActionSessionId(null)
+    }, [actionSessionId, findSession])
+
+    const handleMoveToRecent = useCallback(async () => {
+        if (!actionSessionId) return
+        setActionLoading('moveToRecent')
+        try {
+            await assignMutation.mutateAsync({ sessionId: actionSessionId, projectId: null })
+            messageApi.success(t('common.success'))
+            setActionSessionId(null)
+        } catch {
+            messageApi.error(t('common.error'))
+        } finally {
+            setActionLoading(null)
+        }
+    }, [actionSessionId, assignMutation, messageApi, t])
 
     // 关闭 ActionSheet
     const closeActionSheet = useCallback(() => {
@@ -345,6 +375,44 @@ export function MobileProjectList() {
                             {actionSession.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
                         </Button>
 
+                        {/* 归属操作：按归属动态显示（游离=归入项目；项目内=换项目+移至最近） */}
+                        {actionSession.projectId ? (
+                            <>
+                                <Button
+                                    type="text"
+                                    block
+                                    icon={<SwapOutlined />}
+                                    disabled={!!actionLoading}
+                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    onClick={handleOpenAssign}
+                                >
+                                    {t('project.changeProject')}
+                                </Button>
+                                <Button
+                                    type="text"
+                                    block
+                                    icon={<ImportOutlined />}
+                                    disabled={!!actionLoading}
+                                    loading={actionLoading === 'moveToRecent'}
+                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    onClick={handleMoveToRecent}
+                                >
+                                    {t('project.toRecent')}
+                                </Button>
+                            </>
+                        ) : (
+                            <Button
+                                type="text"
+                                block
+                                icon={<SwapOutlined />}
+                                disabled={!!actionLoading}
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                onClick={handleOpenAssign}
+                            >
+                                {t('project.assignTo')}
+                            </Button>
+                        )}
+
                         {/* 归档 / 恢复 */}
                         {actionSession.active ? (
                             <Button
@@ -424,6 +492,13 @@ export function MobileProjectList() {
                     autoFocus
                 />
             </Modal>
+
+            {/* 归入/换项目选择器（端别自适应，见 AssignProjectModal） */}
+            <AssignProjectModal
+                session={assignSession}
+                open={!!assignSession}
+                onClose={() => setAssignSession(null)}
+            />
 
             {/* 新建项目表单（移动端渲染为底部 Drawer） */}
             <ProjectFormModal
