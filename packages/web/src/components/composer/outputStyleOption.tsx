@@ -25,7 +25,7 @@
 
 import type { ReactNode } from 'react'
 import { theme } from 'antd'
-import { FormatPainterOutlined } from '@ant-design/icons'
+import { LineStyle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { OUTPUT_STYLES, OUTPUT_STYLE_LABELS } from '@mobi/shared'
 import { CompactHoverSelect } from './CompactHoverSelect'
@@ -84,9 +84,9 @@ export function renderOutputStyleOption(
     )
 }
 
-/** 收起态图标（格式刷 =「样式」语义）：会话页切换器与新建页选择器共用，单点维护 */
+/** 收起态图标（lucide LineStyle——样式线列表，直观对应对话风格）：两处调用共用，单点维护 */
 export function OutputStyleIcon() {
-    return <FormatPainterOutlined style={{ fontSize: 12, opacity: 0.55 }} />
+    return <LineStyle size={12} strokeWidth={2} className="opacity-55" />
 }
 
 export interface OutputStyleSelectProps {
