@@ -19,7 +19,7 @@ import { App, Button, Input, Spin, Popover, Typography, Segmented, theme as antT
 import styled from '@emotion/styled'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { Sender } from '@ant-design/x'
-import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
+import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined, FormatPainterOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -732,22 +732,6 @@ export function NewSessionPage() {
                 />
             ),
         },
-        // Output style（默认跟随 CC settings；显式选中才随 spawn 透传；无 /clear 语义故不做确认弹窗）
-        {
-            key: 'outputStyle',
-            render: () => (
-                <CompactHoverSelect
-                    $token={token}
-                    value={outputStyle}
-                    onChange={v => setOutputStyle(String(v))}
-                    disabled={inputDisabled}
-                    options={outputStyleOptions}
-                    optionRender={(option) => renderOutputStyleOption(option, outputStyleOptions, t)}
-                    virtual={false}
-                    title={t('composer.outputStyle')}
-                />
-            ),
-        },
         // Model + Effort 选择（移动端下拉满宽：698493a5 的有意调整，收编共享组件后保留）
         {
             key: 'model',
@@ -811,6 +795,23 @@ export function NewSessionPage() {
                             </div>
                         )
                     }}
+                />
+            ),
+        },
+        // Output style（默认跟随 CC settings；显式选中才随 spawn 透传；无 /clear 语义故不做确认弹窗）；排模型之后
+        {
+            key: 'outputStyle',
+            render: () => (
+                <CompactHoverSelect
+                    $token={token}
+                    prefix={<FormatPainterOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
+                    value={outputStyle}
+                    onChange={v => setOutputStyle(String(v))}
+                    disabled={inputDisabled}
+                    options={outputStyleOptions}
+                    optionRender={(option) => renderOutputStyleOption(option, outputStyleOptions, t)}
+                    virtual={false}
+                    title={t('composer.outputStyle')}
                 />
             ),
         },

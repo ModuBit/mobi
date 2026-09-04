@@ -24,6 +24,7 @@
 
 import { useMemo } from 'react'
 import { App, theme } from 'antd'
+import { FormatPainterOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isBuiltinOutputStyle } from '@mobi/shared'
 import { useSwitchOutputStyle } from '@/core/data/hooks/mutations/useSwitchOutputStyle'
@@ -89,6 +90,7 @@ export function OutputStyleSwitch({
         >
             <CompactHoverSelect
                 $token={token}
+                prefix={<FormatPainterOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
                 value={currentOutputStyle}
                 options={outputStyleOptions}
                 disabled={switchDisabled}

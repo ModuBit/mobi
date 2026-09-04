@@ -859,20 +859,6 @@ export function ChatComposer(props: ChatComposerProps) {
                                         />
                                     ),
                                 }] : []),
-                                // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）
-                                {
-                                    key: 'outputStyle',
-                                    render: () => (
-                                        <OutputStyleSwitch
-                                            sessionId={sessionId}
-                                            outputStyle={outputStyle}
-                                            availableStyles={availableOutputStyles}
-                                            running={running}
-                                            clearInProgress={clearInProgress}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                        />
-                                    ),
-                                },
                                 // model + effort
                                 ...(onModelChange ? [{
                                     key: 'model',
@@ -940,6 +926,20 @@ export function ChatComposer(props: ChatComposerProps) {
                                         />
                                     ),
                                 }] : []),
+                                // output style 切换器（/clear 语义，运行中 / clear 进行中禁用）；排模型之后
+                                {
+                                    key: 'outputStyle',
+                                    render: () => (
+                                        <OutputStyleSwitch
+                                            sessionId={sessionId}
+                                            outputStyle={outputStyle}
+                                            availableStyles={availableOutputStyles}
+                                            running={running}
+                                            clearInProgress={clearInProgress}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                        />
+                                    ),
+                                },
                                 // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
                                 ...(!isMobile && contextUsage ? [{
                                     key: 'contextRing',
