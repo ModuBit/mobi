@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { theme } from 'antd'
 import type { ContextUsage, ContextUsageCategoryKey } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 
 /** 方格网列数（20 × 5 = 100 格） */
 const GRID_COLUMNS = 20
@@ -40,18 +41,6 @@ const CATEGORY_META: Record<ContextUsageCategoryKey, { label: string; light: str
 /** 可展开逐项明细的类目（逐 server / 逐 skill / 逐 memory 文件） */
 const EXPANDABLE_KEYS = new Set<ContextUsageCategoryKey>(['mcpTools', 'memoryFiles', 'skills'])
 
-/**
- * 主题暗色判定：antd useToken 无显式 mode，按 colorBgBase 十六进制 RGB 均值 <128 判暗色。
- * mobi 两主题底色 #faf9f5 / #141413，均值分别 ~249 / ~20，判定稳健。
- */
-function isDarkBackground(colorBgBase: string): boolean {
-    const m = /^#?([0-9a-f]{6})$/i.exec(colorBgBase.trim())
-    if (!m) return false
-    const n = Number.parseInt(m[1], 16)
-    const avg = (((n >> 16) & 0xff) + ((n >> 8) & 0xff) + (n & 0xff)) / 3
-    return avg < 128
-}
-
 /** 类目/明细色点的视觉语言：淡底 + 45° 斜纹 + 描边（与方格格一致） */
 function stripeDotStyle(color: string, angle: 45 | 135 = 45): React.CSSProperties {
     return {
@@ -72,13 +61,14 @@ function stripeDotStyle(color: string, angle: 45 | 135 = 45): React.CSSPropertie
  * - breakdown 缺省（旧 CLI / local 模式）整体渲染 null，由挂载方兜底
  */
 export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
-    const { token } = theme.useToken()
+    const { token } = theme.useToken()  // 文本色等 antd token（仅模式判定走 uiStore 单一来源）
+    // 主题判定单一来源（与 AutoDetectCodeBlock 等同款惯例）
+    const isDark = useUiStore((state) => resolveTheme(state.theme) === 'dark')
     const [expanded, setExpanded] = useState<Set<ContextUsageCategoryKey>>(new Set())
 
     const breakdown = usage.breakdown
     if (!breakdown) return null
 
-    const isDark = isDarkBackground(token.colorBgBase)
     const neutral = isDark ? '#5e5d59' : '#b0aea5'
     const max = usage.maxTokens > 0 ? usage.maxTokens : 1 // 防 0 除
 
@@ -86,7 +76,8 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
     const pct = (tokens: number) => `${Math.round((tokens / max) * 100)}%`
 
     /** 格数分配：有占用至少 1 格，否则按占比四舍五入 */
-    const cellCount = (tokens: number) => Math.max(tokens > 0 ? 1 : 0, Math.round((tokens / max) * TOTAL_CELLS))
+    // 上限钳制：第三方渠道 contextWindow 与 breakdown 锚定窗口不一致时 tokens/max 可能 >1，防溢出网格
+    const cellCount = (tokens: number) => Math.min(TOTAL_CELLS, Math.max(tokens > 0 ? 1 : 0, Math.round((tokens / max) * TOTAL_CELLS)))
 
     const hasBuffer = breakdown.autocompactBufferTokens != null
     const categoryCounts = breakdown.categories.map((c) => cellCount(c.tokens))

@@ -14,14 +14,17 @@
  * limitations under the License.
  */
 
+import type { ContextUsageBreakdown } from '@mobi/shared'
 import type { AssistantUsage } from './contextUsageCalc'
 
-/** 上次真实 turn 的水位记忆（窗口/成本/瞬时 usage），上下文重置时整体归零。
- *  集中成对象：三份记忆总是同生共死（上报时一起读、重置时一起清），单值散落会漏 */
+/** 上次真实 turn 的水位记忆（窗口/成本/瞬时 usage/类目细分），上下文重置时整体归零。
+ *  集中成对象：多份记忆总是同生共死（上报时一起读、重置时一起清），单值散落会漏 */
 export type ContextUsageMemory = {
     lastMaxTokens: number
     lastCostUsd: number
     lastAssistantUsage: AssistantUsage | undefined
+    /** 最近一次类目细分（result 时拉取缓存）：实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失 */
+    lastBreakdown: ContextUsageBreakdown | undefined
 }
 
 /** 上下文重置所需的 client 能力面（结构化子集，测试无需拉起真实 ApiSessionClient） */
@@ -46,4 +49,5 @@ export function applyContextReset(client: ContextResetClient, memory: ContextUsa
     memory.lastMaxTokens = 0
     memory.lastCostUsd = 0
     memory.lastAssistantUsage = undefined
+    memory.lastBreakdown = undefined
 }

@@ -91,6 +91,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         lastMaxTokens: 0,
         lastCostUsd: 0,
         lastAssistantUsage: undefined,
+        lastBreakdown: undefined,
     }
     /**
      * CLI 请求的模型名（system/init.model，与 result.modelUsage key 同源）。
@@ -287,8 +288,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         if (r.maxTokens > 0) this.contextMemory.lastMaxTokens = r.maxTokens
         if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
-        // 类目细分（summary 口径，零 API）：拉取失败静默——细分缺失 ≠ 错误，水位本体照常上报
+        // 类目细分（summary 口径，零 API）：拉取失败静默——细分缺失 ≠ 错误，水位本体照常上报。
+        // 成功时缓存进记忆：后续实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失
         const breakdown = await this.fetchBreakdown()
+        if (breakdown) this.contextMemory.lastBreakdown = breakdown
         try {
             this.session.client.reportContextUsage(
                 breakdown ? { ...r.usage, breakdown } : r.usage
@@ -333,6 +336,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (rawMax <= 0) return
             this.contextMemory.lastMaxTokens = rawMax
             const breakdown = extractBreakdown(summary) ?? undefined
+            if (breakdown) this.contextMemory.lastBreakdown = breakdown
             if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
             this.session.client.reportContextUsage({
                 totalTokens: summary.totalTokens,
@@ -529,7 +533,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (this.contextMemory.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
             const usage = calcContextUsageFromAssistant(u, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
             if (!usage) return
-            try { session.client.reportContextUsage(usage) } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
+            // 附带最近一次缓存的类目细分：流式期间水位实时上涨，细分随之上报，
+            // 否则无 breakdown 的实时上报会把 result 时落的细分整体覆盖掉（Popover 闪烁）
+            const breakdown = this.contextMemory.lastBreakdown
+            try {
+                session.client.reportContextUsage(breakdown ? { ...usage, breakdown } : usage)
+            } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
         }
 
         // 记录 CLI 请求名（箭头捕获 this，供 onMessage 内调用）。
