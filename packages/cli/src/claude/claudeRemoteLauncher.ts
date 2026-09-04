@@ -30,7 +30,8 @@ import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, type AssistantUsage } from "./utils/contextUsageCalc";
+import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage } from "./utils/contextUsageCalc";
+import { applyContextReset, type ContextUsageMemory } from "./utils/contextReset";
 import { guessContextWindow } from "./utils/modelContextWindow";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -80,14 +81,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 消息 payload push 进 SDK input stream
     // （payload 可为数组 content block——队列消息可能是带图片的 PromptPayload）
     private steerSink: ((payload: PromptPayload, localId?: string) => boolean) | null = null;
-    // 上次真实 turn 的窗口大小与累计成本，供 compact_boundary 上报时复用
+    // 上次真实 turn 的窗口/成本/瞬时 usage 记忆，供实时水位与 compact_boundary 上报复用
     // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）。
+    // 三份记忆同生共死（上报一起读、上下文重置一起清），故集中为对象经 applyContextReset 整体归零。
     // 初值 0 = 窗口未知：主线 assistant 到达时按模型名猜（guessContextWindow）预填，
     // result.modelUsage 到达后始终为权威真实值
-    private lastMaxTokens = 0;
-    private lastCostUsd = 0;
-    /** 本 turn 最后一条主线 assistant 的 usage（瞬时水位来源；/clear 时重置） */
-    private lastAssistantUsage: AssistantUsage | undefined
+    private contextMemory: ContextUsageMemory = {
+        lastMaxTokens: 0,
+        lastCostUsd: 0,
+        lastAssistantUsage: undefined,
+    }
     /**
      * CLI 请求的模型名（system/init.model，与 result.modelUsage key 同源）。
      * 窗口猜测用它而非 assistant.message.model——网关渠道后者是上游真实名
@@ -274,14 +277,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // compact 的 result：用量已由 compact_boundary 的 post_tokens 上报，此处只回填累计成本
         // （compact 自身的 total_cost_usd），避免连续 /compact 期间 lastCostUsd 冻结
         if (isCompact) {
-            this.lastCostUsd = resultMsg.total_cost_usd ?? this.lastCostUsd
+            this.contextMemory.lastCostUsd = resultMsg.total_cost_usd ?? this.contextMemory.lastCostUsd
             return
         }
         // 请求名传入 result 刷新：modelUsage 多模型条目时按请求名精确选中主模型，
         // 不靠「inputTokens 最大」启发式（子代理流量大的 turn 会误选，见 calcContextUsageFromResult）
-        const r = calcContextUsageFromResult(resultMsg, this.lastAssistantUsage, this.lastMaxTokens, this.lastCostUsd, this.lastRequestModel)
-        if (r.maxTokens > 0) this.lastMaxTokens = r.maxTokens
-        if (r.costUsd !== undefined) this.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
+        const r = calcContextUsageFromResult(resultMsg, this.contextMemory.lastAssistantUsage, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd, this.lastRequestModel)
+        if (r.maxTokens > 0) this.contextMemory.lastMaxTokens = r.maxTokens
+        if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
         try {
             this.session.client.reportContextUsage(r.usage)
@@ -295,7 +298,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * 窗口大小与成本。组装逻辑见 calcContextUsageFromCompact（纯函数）。
      */
     private handleCompactBoundary(postTokens: number | undefined): void {
-        const usage = calcContextUsageFromCompact(postTokens, this.lastMaxTokens, this.lastCostUsd)
+        const usage = calcContextUsageFromCompact(postTokens, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
         if (!usage) return
         try {
             this.session.client.reportContextUsage(usage)
@@ -459,18 +462,18 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
         const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage'], model?: string) => {
             if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
-            this.lastAssistantUsage = u
+            this.contextMemory.lastAssistantUsage = u
             // 窗口未记忆（首 turn / resume 后新进程）→ 按模型名预填猜测值，实时上报立即生效，
             // 不必等第一个 result。注意：猜测仅在 result.modelUsage 携带 contextWindow 时才被
             // 真实值覆盖；渠道不返回该字段时猜测值整个会话生效（已知取舍，pending #57）。
             // 猜测输入优先用 init 的请求名（lastRequestModel）——网关渠道 assistant.message.model
             // 是上游真实名（如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源，会猜出
             // 与 result 修正值不一致的窗口（实测 [1M] 请求被按上游名猜成 200k）
-            if (this.lastMaxTokens === 0) {
-                this.lastMaxTokens = guessContextWindow(this.lastRequestModel ?? model) ?? 0
+            if (this.contextMemory.lastMaxTokens === 0) {
+                this.contextMemory.lastMaxTokens = guessContextWindow(this.lastRequestModel ?? model) ?? 0
             }
-            if (this.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
-            const usage = calcContextUsageFromAssistant(u, this.lastMaxTokens, this.lastCostUsd)
+            if (this.contextMemory.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
+            const usage = calcContextUsageFromAssistant(u, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
             if (!usage) return
             try { session.client.reportContextUsage(usage) } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
         }
@@ -834,6 +837,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     if (gateRewind || gateOutputStyle) {
                                         if (gateOutputStyle) {
                                             session.pendingOutputStyleExit = false;
+                                            // /clear 语义对齐：切换同为清空上下文重启，重启前发
+                                            // 边界事件（web 渲染「已重置」分隔线）+ 清水位 + 归零
+                                            // 记忆——此前只有 /clear 路径做，切换后水位残留旧值
+                                            applyContextReset(session.client, this.contextMemory);
                                         }
                                         logger.debug(`[remote]: exit sentinel received (${msg.message}), ending current query round`);
                                         return null;
@@ -892,13 +899,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');
-                            session.client.sendSessionEvent({ type: 'context-cleared' });
-                            // 清空用量：/clear 后新会话从 0 开始，避免用量线残留上个会话的旧值
-                            session.client.clearContextUsage();
-                            // 重置成本/窗口记忆，避免下个 compact_boundary 复用上个会话的累计成本
-                            this.lastMaxTokens = 0;
-                            this.lastCostUsd = 0;
-                            this.lastAssistantUsage = undefined;
+                            // /clear 语义收口：边界事件 + 清水位 + 归零记忆（与 output style 切换共用）
+                            applyContextReset(session.client, this.contextMemory);
                         },
                         onContextUsage: (resultMsg, isCompact) => {
                             this.handleContextUsage(resultMsg, isCompact);
