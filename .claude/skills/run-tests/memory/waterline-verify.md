@@ -37,3 +37,14 @@ metadata:
 - 圆环 aria-label 是 `N%`——`svg[role="button"]` 是其稳定选择器；a11y snapshot 里显示为 button "N%"
 - e2e 走网关渠道（模型选择器 glm-5.2）时 result.modelUsage 的 key 仍是 CLI 请求名（claude-sonnet-4-6），窗口大小取自该模型（200k），非网关上游
 - 两把尺子：turn 概要 tokens = result 累计（流量）；圆环 % = contextUsage/maxTokens（水位）。断言时别混
+
+## 类目细分（breakdown，2026-09-04 新增）
+
+contextUsage 现可携带 `breakdown`（getContextUsage summary 口径）。E2E 断言扩展：
+
+```bash
+sqlite3 ~/.mobi-e2e/mobi.db "SELECT json_extract(runtime_state,'$.contextUsage.breakdown.categories'), json_extract(runtime_state,'$.contextUsage.breakdown.autocompactBufferTokens') FROM sessions WHERE id='<sid>';"
+```
+
+- Popover：点 `svg[role=button]`（圆环）→ 方格网 + 类目列表（CC 序：System prompt → System tools → MCP tools → Memory files → Skills → Messages → Free space → Autocompact buffer）；MCP/Memory/Skills 行可点击展开逐项明细
+- 口径注意：类目数字是**本地估算**，各类目之和可能 > totalTokens（total 是实测 usage 锚定）——圆环 % 与方格网占比不是同一把尺子，勿互推
