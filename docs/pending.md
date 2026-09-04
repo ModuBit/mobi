@@ -762,3 +762,18 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 **重启时机**：① 上游新增更多 dialogKind（对话框成为通用机制）——一个 UI 承载多场景时再接；② 出现「拒答后用户想参与决定」的真实反馈。
 
 **相关**：台账 U-30。
+
+---
+
+## 68. Output style 支持——web 端查看/切换（✅ 2026-09-03 已实施，随批次当期落地）
+
+**状态**：已实施并 E2E 验证（spec：`docs/superpowers/specs/2026-09-03-output-style-support-design.md`，plan 同名；commits 7c1213dc..e09ab8f2）。用户提前触发（原「待真实需求再立项」不再适用）。
+
+**实施要点与偏差**（相对本条原始记录）：
+
+- **切换语义**：SDK 实测**无 `Options.outputStyle` 字段**（调研时误读 `Settings` 接口），改用官方 `Query.applyFlagSettings({ outputStyle })` flag layer——query attach 后注入（与 `control.setModel` 同构模式）
+- **运行中切换**：学 CC 的 /clear 语义——CLI `switch-output-style` RPC → `setOutputStyle` + `clearSessionId` + isolate 哨兵退轮（复用 rewind 哨兵机制 + `pendingOutputStyleExit` 门控），新 query attach 后 applyFlagSettings 注入新值；running/rewind 占用窗口拒绝
+- **当前值权威源**：`runtime_state.outputStyle`（keep-alive ≤2s），**不是** `sdkMetadata.outputStyle`——init 先于 flag apply，快照系统性滞后（E2E 实证）；sdkMetadata 仅老会话兜底
+- **resume 回放**：`RuntimeStateSchema.outputStyle` + keep-alive 持久化 + spawn resume 分支回放（照 effort 先例），进程重启 style 不丢
+- **metadata 数据源**：U-27 重构时 capabilityDiscovery 裁掉了 style 两字段（当时 web 零消费），本特性补回（`2a466f94`）
+- **未做**（spec §5）：自定义 style md 扫描与描述映射（会话页下拉已消费 `availableOutputStyles` 真实列表——自定义名可显示/选中，仅无描述）；style 文件管理 UI；settings 回写
