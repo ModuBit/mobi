@@ -401,6 +401,44 @@ export const TeamStateSchema = z.object({
 
 export type TeamState = z.infer<typeof TeamStateSchema>
 
+/** 类目细分中的类目 key（语义化，CC 显示名带后缀变体，key 化避免 web 端字符串匹配；顺序 = CC 实现序） */
+export const CONTEXT_USAGE_CATEGORY_KEYS = [
+    'systemPrompt',
+    'systemTools',
+    'mcpTools',
+    'memoryFiles',
+    'skills',
+    'messages',
+] as const
+
+export const ContextUsageCategoryKeySchema = z.enum(CONTEXT_USAGE_CATEGORY_KEYS)
+
+export type ContextUsageCategoryKey = z.infer<typeof ContextUsageCategoryKeySchema>
+
+/**
+ * 上下文类目细分（SDK getContextUsage({detail:'summary'}) 口径：总量锚定最近 response usage，
+ * 类目数字为本地估算）。可选字段——缺省 = 该轮无细分（旧 CLI / local 模式 / 采集失败）。
+ */
+export const ContextUsageBreakdownSchema = z.object({
+    /** 按 CC 顺序排列的类目占用（不含 free / autocompact buffer，二者单独成字段） */
+    categories: z.array(z.object({
+        key: ContextUsageCategoryKeySchema,
+        tokens: z.number(),
+    })),
+    /** 剩余空间（autocompact buffer 之外的净剩余） */
+    freeTokens: z.number(),
+    /** 自动压缩预留 buffer（auto-compact 关闭时缺省）；实际可用 = maxTokens − totalTokens − autocompactBufferTokens */
+    autocompactBufferTokens: z.number().optional(),
+    /** MCP 逐 server 占用（serverName 聚合） */
+    mcpTools: z.array(z.object({ name: z.string(), tokens: z.number() })),
+    /** Skills 逐项占用（带 plugin 时 name 形如 "plugin:skill"） */
+    skills: z.array(z.object({ name: z.string(), tokens: z.number() })),
+    /** CLAUDE.md 等 memory 文件逐个占用 */
+    memoryFiles: z.array(z.object({ path: z.string(), tokens: z.number() })),
+})
+
+export type ContextUsageBreakdown = z.infer<typeof ContextUsageBreakdownSchema>
+
 /**
  * 上下文窗口用量快照
  *
@@ -416,7 +454,8 @@ export type TeamState = z.infer<typeof TeamStateSchema>
  * 上报时机：每条主线 assistant 消息实时上报（turn 内上涨）；result 兜底一次；compact_boundary
  * 用 post_tokens 反映压缩后占用。注意 result.usage 是 turn 内累计，不是瞬时水位，不作 totalTokens。
  *
- * 不再包含分类细分（system/tools/mcp/memory）——那只有 getContextUsage 能给，代价过高。
+ * 分类细分经可选 breakdown 字段携带（getContextUsage({detail:'summary'}) 本地估算口径，
+ * 缺省 = 该轮无细分——旧 CLI / local 模式 / 采集失败）。
  * 「距窗口上限剩余」= maxTokens − totalTokens，无需阈值。
  */
 export const ContextUsageSchema = z.object({
@@ -434,6 +473,14 @@ export const ContextUsageSchema = z.object({
     outputTokens: z.number().optional(),
     cacheReadTokens: z.number().optional(),
     cacheCreationTokens: z.number().optional(),
+    /**
+     * CC 权威窗口（getContextUsage 的 rawMaxTokens，经 CC 内部解析链：env → settings →
+     * clientdata → 模型默认档位）。可选——旧 CLI / 采集失败时缺省，guessContextWindow 仍是最后 fallback。
+     * 优先级：result.modelUsage.contextWindow（实测） > rawMaxTokens > guessContextWindow（缓解 pending #57）
+     */
+    rawMaxTokens: z.number().optional(),
+    /** 类目细分（见 ContextUsageBreakdownSchema），缺省 = 该轮无细分 */
+    breakdown: ContextUsageBreakdownSchema.optional(),
 })
 
 export type ContextUsage = z.infer<typeof ContextUsageSchema>
