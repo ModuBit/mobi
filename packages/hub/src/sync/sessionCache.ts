@@ -254,7 +254,9 @@ export class SessionCache {
             running: existing?.running ?? false,
             runningAt: existing?.runningAt ?? 0,
             runtimeState,
-            permissionMode: existing?.permissionMode,
+            // permissionMode：内存优先；hub 重启（existing 为空）时从 DB runtimeState 恢复——
+            // keep-alive 落库的权威值，缺省 undefined = 回落 default（与存量会话行为一致）
+            permissionMode: existing?.permissionMode ?? runtimeState?.permissionMode,
             mode: existing?.mode,
             tag: stored.tag,
             // 归属项目（null = 游离）：必须显式带上，否则路由层读 session.projectId 恒 undefined
@@ -317,7 +319,9 @@ export class SessionCache {
             session.mode = payload.mode
         }
         if (payload.permissionMode !== undefined) {
+            // 顶层快照（SSE 广播/resume spawn 读取）+ runtimeState 落库（hub 重启后 refreshSession 恢复）双写
             session.permissionMode = payload.permissionMode
+            this.updateRuntimeStateField(session, payload.sid, 'permissionMode', payload.permissionMode, t, session.namespace)
         }
         if (payload.model !== undefined) {
             this.updateRuntimeStateField(session, payload.sid, 'model', payload.model, t, session.namespace)

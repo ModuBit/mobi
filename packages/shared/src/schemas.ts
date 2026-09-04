@@ -464,6 +464,8 @@ export const RuntimeStateSchema = z.object({
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
+    /** 当前权限模式（CLI keep-alive 上报落库，hub 重启后 resume 回放；与 model/effort/outputStyle 同款不对称防御） */
+    permissionMode: z.enum(PERMISSION_MODES).optional(),
     /** 当前 output style（CLI keep-alive 上报落库，进程重启后 resume 回放；default 视为未设置可省略） */
     outputStyle: z.string().optional(),
     contextUsage: ContextUsageSchema.optional(),

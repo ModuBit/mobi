@@ -536,3 +536,52 @@ describe('SessionCache.handleSessionAlive outputStyle 落库', () => {
         expect(cache.getSession(session.id)?.runtimeState?.outputStyle).toBe('Concise')
     })
 })
+
+describe('SessionCache.handleSessionAlive permissionMode 落库', () => {
+    let store: Store
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        cache = new SessionCache(store, stubPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('keep-alive 携带 permissionMode 时落 runtimeState（resume 回放的数据源）', () => {
+        const session = cache.getOrCreateSession('tag-perm-1', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, permissionMode: 'acceptEdits' })
+
+        // 内存层（顶层快照 + runtimeState 双写）
+        expect(cache.getSession(session.id)?.permissionMode).toBe('acceptEdits')
+        expect(cache.getSession(session.id)?.runtimeState?.permissionMode).toBe('acceptEdits')
+        // 落库（直接读 store 绕过内存）——hub 重启后 resume 链路从这里回放
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { permissionMode?: string })?.permissionMode).toBe('acceptEdits')
+    })
+
+    test('hub 重启后 refreshSession 从 runtimeState.permissionMode 恢复顶层快照', () => {
+        const session = cache.getOrCreateSession('tag-perm-2', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false, permissionMode: 'plan' })
+
+        // 模拟 hub 重启：新 cache 实例（内存全空），从同一 DB warmup
+        const revivedCache = new SessionCache(store, stubPublisher)
+        revivedCache.warmupCache()
+
+        expect(revivedCache.getSession(session.id)?.permissionMode).toBe('plan')
+    })
+
+    test('不带 permissionMode 的 keep-alive 不覆盖已有值（undefined 语义 = 未变化）', () => {
+        const session = cache.getOrCreateSession(
+            'tag-perm-3', { path: '/tmp/p' }, null, 'default', 'remote', { permissionMode: 'plan' }
+        )
+
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
+
+        expect(cache.getSession(session.id)?.runtimeState?.permissionMode).toBe('plan')
+    })
+})
