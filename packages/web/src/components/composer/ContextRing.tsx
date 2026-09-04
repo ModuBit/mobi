@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-import { theme, Popover } from 'antd'
+import { theme, Popover, Tooltip } from 'antd'
 import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
-import { calcCacheHitRate, formatCacheHitRate } from '@/core/lib/cacheHitRate'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -73,7 +72,7 @@ interface ContextRingProps {
 
 /**
  * 上下文水位圆环（瞬时水位，数据来自 runtimeState.contextUsage）。
- * 弧长 = 已用比例；点击 Popover 详情（PC/移动统一，触屏支持点击触发）。
+ * hover Tooltip 概要（已用/上限/百分比）；点击 Popover 详情（PC/移动统一，触屏支持点击触发）。
  * 无数据不渲染——由挂载方保证（contextUsage 为空不挂）。
  */
 export function ContextRing({ usage, size = 20 }: ContextRingProps) {
@@ -86,10 +85,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
         : token.colorTextTertiary
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const ticks = degradationTicks(usage.maxTokens)
-    const hitRate = calcCacheHitRate(usage)
-    // 细分四项随 assistant 路径上报；compact 路径只有总量 → 整组隐藏
-    const hasBreakdown = usage.inputTokens !== undefined && usage.outputTokens !== undefined
-        && usage.cacheReadTokens !== undefined && usage.cacheCreationTokens !== undefined
+    const usedSummary = `${formatTokens(usage.totalTokens)} / ${formatTokens(usage.maxTokens)} (${pct}%)`
 
     const ring = (
         <svg
@@ -126,9 +122,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('session.contextUsage.title')}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.used')}</span>
-                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                            {formatTokens(usage.totalTokens)} / {formatTokens(usage.maxTokens)} ({pct}%)
-                        </span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{usedSummary}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.remaining')}</span>
@@ -138,37 +132,13 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cost')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>${usage.costUsd.toFixed(2)}</span>
                     </div>
-                    {/* 瞬时请求细分（compact 路径无细分整组隐藏）：四项 token + 缓存命中率 */}
-                    {hasBreakdown && (
-                        <>
-                            <div style={{ marginTop: 4, borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 4, display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.input')}</span>
-                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.inputTokens!)}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.output')}</span>
-                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.outputTokens!)}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheRead')}</span>
-                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.cacheReadTokens!)}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheWrite')}</span>
-                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.cacheCreationTokens!)}</span>
-                            </div>
-                            {hitRate !== undefined && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                                    <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheHit')}</span>
-                                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCacheHitRate(hitRate)}</span>
-                                </div>
-                            )}
-                        </>
-                    )}
                 </div>
             )}
         >
-            {ring}
+            {/* hover=Tooltip 概要 / click=Popover 详情：触发分离，点击行为不变 */}
+            <Tooltip title={usedSummary} placement="top" mouseEnterDelay={0.15}>
+                {ring}
+            </Tooltip>
         </Popover>
     )
 }

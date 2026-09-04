@@ -34,7 +34,6 @@ vi.mock('react-i18next', () => ({
                 'session.contextUsage.output': '输出',
                 'session.contextUsage.cacheRead': '缓存读',
                 'session.contextUsage.cacheWrite': '缓存写',
-                'session.contextUsage.cacheHit': '缓存命中',
             }
             return dict[key] ?? key
         },
@@ -122,7 +121,7 @@ describe('ContextRing', () => {
         expect(document.body.textContent).toContain('87k')
     })
 
-    it('带细分时展示输入/输出/缓存读/缓存写四项与命中率（assistant 路径）', async () => {
+    it('有细分数据也不渲染瞬时请求细分组（输入/输出/缓存读/缓存写/命中率整组移除）', async () => {
         render(<ContextRing usage={makeUsage({
             totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.89,
             inputTokens: 1199, outputTokens: 744, cacheReadTokens: 127744, cacheCreationTokens: 256,
@@ -132,24 +131,23 @@ describe('ContextRing', () => {
             expect(document.body.textContent).toContain('129k / 1.0m (13%)')
         })
         const text = document.body.textContent!
-        // 四项细分（formatTokens 归一：1199→1k / 744→744 / 127744→128k / 256→256）
-        expect(text).toContain('输入'); expect(text).toContain('1k')
-        expect(text).toContain('输出'); expect(text).toContain('744')
-        expect(text).toContain('缓存读'); expect(text).toContain('128k')
-        expect(text).toContain('缓存写'); expect(text).toContain('256')
-        // 命中率 = 127744/(1199+256+127744) ≈ 98.9%（一位小数，与 turn 概要同口径）
-        expect(text).toContain('缓存命中'); expect(text).toContain('98.9%')
+        // 细分五行都是单轮瞬时数字，放水位视图说明不了什么（命中率也只是本轮 prompt 内的
+        // 缓存覆盖比、非累计命中率）——整组移除，只留水位/剩余/成本概要
+        expect(text).not.toContain('输入')
+        expect(text).not.toContain('输出')
+        expect(text).not.toContain('缓存读')
+        expect(text).not.toContain('缓存写')
+        expect(text).not.toContain('缓存命中')
     })
 
-    it('无细分时（compact 路径）不渲染四项与命中率行', async () => {
+    it('hover 圆环 Tooltip 展示已用概要（143k / 1.0m (14%) 形态），点击行为不变', async () => {
         render(<ContextRing usage={makeUsage()} />)
-        fireEvent.click(screen.getByRole('button', { name: '13%' }))
+        fireEvent.mouseEnter(screen.getByRole('button', { name: '13%' }))
+        // Tooltip 同样 portal 到 body，但 hover 不打开 Popover（触发分离：hover=tooltip / click=popover）
         await waitFor(() => {
             expect(document.body.textContent).toContain('13k / 100k (13%)')
         })
-        const text = document.body.textContent!
-        expect(text).not.toContain('输入')
-        expect(text).not.toContain('缓存命中')
+        expect(document.body.textContent).not.toContain('累计成本')
     })
 
     it('usage 全 0 时正常渲染不抛错（灰环，aria-label 0%）', () => {

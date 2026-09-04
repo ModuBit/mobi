@@ -138,12 +138,7 @@
             "title": "Context Usage",
             "used": "Used",
             "cost": "Total Cost",
-            "remaining": "Remaining",
-            "input": "Input",
-            "output": "Output",
-            "cacheRead": "Cache read",
-            "cacheWrite": "Cache write",
-            "cacheHit": "Cache hit"
+            "remaining": "Remaining"
         }
     },
     "chat": {
