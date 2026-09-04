@@ -25,6 +25,11 @@ export type ContextUsageMemory = {
     lastAssistantUsage: AssistantUsage | undefined
     /** 最近一次类目细分（result 时拉取缓存）：实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失 */
     lastBreakdown: ContextUsageBreakdown | undefined
+    /** CC 有效窗口（getContextUsage summary 的 rawMaxTokens）：经 CC 内部解析链（env → settings →
+     *  clientdata → 模型档位），已含用户 autocompact 阈值（如设 350k 时 = 350k，非模型最大 1m）。
+     *  水位语义「距压缩还有多少」，此值优先于 modelUsage.contextWindow（模型最大窗口）。
+     *  0 = 未知（尚未采集或渠道不支持），回落旧链 */
+    lastCcWindowTokens: number
 }
 
 /** 上下文重置所需的 client 能力面（结构化子集，测试无需拉起真实 ApiSessionClient） */
@@ -50,4 +55,5 @@ export function applyContextReset(client: ContextResetClient, memory: ContextUsa
     memory.lastCostUsd = 0
     memory.lastAssistantUsage = undefined
     memory.lastBreakdown = undefined
+    memory.lastCcWindowTokens = 0
 }

@@ -93,6 +93,21 @@ describe('calcContextUsageFromResult（新口径）', () => {
         expect(r.maxTokens).toBe(1_000_000)
     })
 
+    it('CC 有效窗口（rawMaxTokens，含 autocompact 阈值）优先于 modelUsage.contextWindow', () => {
+        // 用户设 autocompact 350k：模型最大窗口 1m，但压缩线在 350k——水位语义「距压缩还有多少」
+        const r = calcContextUsageFromResult(
+            makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }),
+            undefined, 0, 0, undefined, 350_000)
+        expect(r.maxTokens).toBe(350_000)
+    })
+
+    it('CC 窗口未知（0/undefined）→ 回落 modelUsage.contextWindow', () => {
+        const r = calcContextUsageFromResult(
+            makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }),
+            undefined, 200_000, 0, undefined, 0)
+        expect(r.maxTokens).toBe(1_000_000)
+    })
+
     /** 复现自会话 019bef94 的真实 result：子代理（sonnet）累计 inputTokens 反超主线（opus[1M]） */
     const makeMultiModelResult = (): SDKResultMessage => ({
         type: 'result', subtype: 'success', uuid: 'u', session_id: 's',

@@ -591,7 +591,7 @@ interrupt（用户停止）
 **更好的方案方向**（待讨论）：
 
 1. **resume 场景持久化恢复**：hub 的 `runtimeState.contextUsage.maxTokens` 本就持久化了上次会话的窗口大小——CLI 会话启动/resume 时从 hub 拉取该值初始化记忆，替代猜测（比猜准、零新知识源）。可与猜测叠加：持久值优先、无持久值才猜
-2. **SDK 透出**：Claude Agent SDK 未来若在 metadata/modelInfo 中暴露各模型 contextWindow，直接接入替换猜测
+2. **SDK 透出**：~~Claude Agent SDK 未来若在 metadata/modelInfo 中暴露各模型 contextWindow，直接接入替换猜测~~（✅ 2026-09-05 等价落地——`getContextUsage({detail:'summary'})` 的 `rawMaxTokens` 即 CC 内部解析链产物（env → settings → clientdata → 模型档位，**含用户 autocompact 阈值**），已作为窗口第一优先级接入：`ContextUsageMemory.lastCcWindowTokens` > `modelUsage.contextWindow`（模型最大窗口）> `guessContextWindow`。真机实证：用户设 autocompact 350k 时环分母 = 350k 而非模型 1m，「距压缩还有多少」语义正确）
 3. **hub 集中维护模型配置表**：服务端权威的「模型 → 窗口」映射（可随版本更新），CLI 拉取使用——把窗口知识从 CLI 硬编码升级为可运营数据，顺带覆盖网关自定义模型名场景
 
 **相关文件**：

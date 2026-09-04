@@ -106,6 +106,7 @@ export function calcContextUsageFromResult(
     lastMaxTokens: number,
     lastCostUsd: number,
     requestModel?: string,
+    ccWindowTokens?: number,
 ): ResultUsageRefresh {
     const entries = Object.entries(resultMsg.modelUsage ?? {})
     const exactPair = requestModel ? entries.find(([name]) => name === requestModel) : undefined
@@ -113,7 +114,12 @@ export function calcContextUsageFromResult(
     const mainPair = exactPair
         ?? (entries.length > 0 ? entries.reduce((a, b) => (b[1].inputTokens > a[1].inputTokens ? b : a)) : undefined)
     const main = mainPair?.[1]
-    const maxTokens = main?.contextWindow || lastMaxTokens
+    // 窗口优先级：CC 有效窗口（getContextUsage rawMaxTokens，经 CC 内部解析链、含用户
+    // autocompact 阈值——设 350k 时 = 350k 而非模型最大 1m；水位语义「距压缩还有多少」）
+    // > modelUsage.contextWindow（模型最大窗口实测）> lastMaxTokens 记忆
+    const maxTokens = (ccWindowTokens && ccWindowTokens > 0)
+        ? ccWindowTokens
+        : (main?.contextWindow || lastMaxTokens)
     const costUsd = resultMsg.total_cost_usd
     return {
         // 兜底水位的成本用「最新已知」值（result 值 ?? 调用方旧记忆），避免缺字段时报 $0.00

@@ -25,7 +25,7 @@ import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import type { PromptPayload } from "@/utils/promptBuilder";
-import type { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -46,7 +46,7 @@ import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import { extractBreakdown } from './utils/contextBreakdown';
-import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type ContextUsageBreakdown, type StopKind } from '@mobi/shared';
+import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
     resolvePostInterruptAction,
@@ -92,6 +92,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         lastCostUsd: 0,
         lastAssistantUsage: undefined,
         lastBreakdown: undefined,
+        lastCcWindowTokens: 0,
     }
     /** 水位上报代际：compact_boundary（真实水位骤变）与主线 assistant 实时上报（更新读数）各自递增；
      *  handleContextUsage 的 result 上报在 fetchBreakdown await 前后比对，代际变化 = 期间已有更新数据
@@ -287,22 +288,25 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             return
         }
         // 请求名传入 result 刷新：modelUsage 多模型条目时按请求名精确选中主模型，
-        // 不靠「inputTokens 最大」启发式（子代理流量大的 turn 会误选，见 calcContextUsageFromResult）
-        const r = calcContextUsageFromResult(resultMsg, this.contextMemory.lastAssistantUsage, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd, this.lastRequestModel)
+        // 不靠「inputTokens 最大」启发式（子代理流量大的 turn 会误选，见 calcContextUsageFromResult）。
+        // 类目细分 + CC 有效窗口（rawMaxTokens，含用户 autocompact 阈值）先拉取再参与计算，
+        // 让本轮 result 的窗口口径即用上最新值（而非滞后一轮）。await 期间代际变化（下轮流式
+        // 上报 / compact_boundary 到达）→ 本条旧 turn 读数放弃，此刻再发会让水位环短暂回退
+        const generation = this.contextUsageGeneration
+        const summary = await this.fetchContextSummary()
+        if (generation !== this.contextUsageGeneration) return
+        if (summary) {
+            if (summary.rawMaxTokens > 0) this.contextMemory.lastCcWindowTokens = summary.rawMaxTokens
+            const breakdown = extractBreakdown(summary) ?? undefined
+            if (breakdown) this.contextMemory.lastBreakdown = breakdown
+        }
+        const r = calcContextUsageFromResult(resultMsg, this.contextMemory.lastAssistantUsage, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd, this.lastRequestModel, this.contextMemory.lastCcWindowTokens)
         if (r.maxTokens > 0) this.contextMemory.lastMaxTokens = r.maxTokens
         if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
-        // 类目细分（summary 口径，零 API）：拉取失败静默——细分缺失 ≠ 错误，水位本体照常上报。
-        // 成功时缓存进记忆：后续实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失。
-        // await 期间代际变化（下轮流式上报 / compact_boundary 到达）→ 本条旧 turn 读数放弃，
-        // 此刻再发会让水位环短暂回退（改动前此上报同步、无此窗口）
-        const generation = this.contextUsageGeneration
-        const breakdown = await this.fetchBreakdown()
-        if (generation !== this.contextUsageGeneration) return
-        if (breakdown) this.contextMemory.lastBreakdown = breakdown
         try {
             this.session.client.reportContextUsage(
-                breakdown ? { ...r.usage, breakdown } : r.usage
+                this.contextMemory.lastBreakdown ? { ...r.usage, breakdown: this.contextMemory.lastBreakdown } : r.usage
             )
         } catch (e) {
             logger.debug('[remote]: reportContextUsage failed', e)
@@ -310,15 +314,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
-     * 拉取类目细分（summary 口径，零 API/零 LLM——本地估算）。
+     * 拉取 getContextUsage summary（detail:'summary'，零 API/零 LLM——本地估算）。
      * query 不在（已关闭）/调用失败 → undefined，调用方按无细分上报。
      */
-    private async fetchBreakdown(): Promise<ContextUsageBreakdown | undefined> {
+    private async fetchContextSummary(): Promise<SDKControlGetContextUsageResponse | undefined> {
         const query = this.queryRef
         if (!query?.getContextUsage) return undefined
         try {
-            const summary = await query.getContextUsage({ detail: 'summary' })
-            return extractBreakdown(summary) ?? undefined
+            return await query.getContextUsage({ detail: 'summary' })
         } catch (e) {
             logger.debug('[remote]: getContextUsage failed', e)
             return undefined
@@ -343,6 +346,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 : guessContextWindow(summary.model) ?? 0
             if (rawMax <= 0) return
             this.contextMemory.lastMaxTokens = rawMax
+            this.contextMemory.lastCcWindowTokens = summary.rawMaxTokens > 0 ? summary.rawMaxTokens : 0
             const breakdown = extractBreakdown(summary) ?? undefined
             if (breakdown) this.contextMemory.lastBreakdown = breakdown
             if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
