@@ -223,3 +223,46 @@ describe('ContextRing', () => {
         expect(document.querySelectorAll('svg[role="button"] line').length).toBe(1)
     })
 })
+
+// 带类目细分的 usage（夹具风格同 ContextBreakdown.test.tsx）
+const usageWithBreakdown = {
+    totalTokens: 68300,
+    maxTokens: 200000,
+    percentage: 34,
+    costUsd: 1.24,
+    breakdown: {
+        categories: [
+            { key: 'systemPrompt', tokens: 18200 },
+            { key: 'systemTools', tokens: 9600 },
+            { key: 'mcpTools', tokens: 12400 },
+            { key: 'memoryFiles', tokens: 8900 },
+            { key: 'skills', tokens: 6800 },
+            { key: 'messages', tokens: 12100 },
+        ],
+        freeTokens: 112000,
+        autocompactBufferTokens: 20000,
+        mcpTools: [
+            { name: 'context7', tokens: 4100 },
+            { name: 'mobi-web', tokens: 3200 },
+        ],
+        skills: [{ name: 'superpowers', tokens: 2400 }],
+        memoryFiles: [{ path: '~/.claude/CLAUDE.md', tokens: 4200 }],
+    },
+} as unknown as ContextUsage
+
+describe('ContextRing 细分挂载', () => {
+    afterEach(cleanup)
+
+    it('usage.breakdown 存在时 Popover 内渲染类目细分段', async () => {
+        render(<ContextRing usage={usageWithBreakdown} />)
+        fireEvent.click(screen.getByRole('button'))
+        await waitFor(() => expect(screen.getByText('System prompt')).toBeTruthy())
+    })
+
+    it('breakdown 缺省时不渲染细分段（退化现状）', async () => {
+        render(<ContextRing usage={makeUsage({ totalTokens: 68300, maxTokens: 200_000, percentage: 34 })} />)
+        fireEvent.click(screen.getByRole('button'))
+        await waitFor(() => expect(screen.getByText(/200/)).toBeTruthy()) // 概要行照常
+        expect(screen.queryByText('System prompt')).toBeNull()
+    })
+})

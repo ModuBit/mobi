@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { ContextBreakdown } from './ContextBreakdown'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -140,6 +141,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cost')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>${usage.costUsd.toFixed(2)}</span>
                     </div>
+                    <ContextBreakdown usage={usage} />
                 </div>
             )}
         >
