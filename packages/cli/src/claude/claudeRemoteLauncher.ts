@@ -315,6 +315,39 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
+     * query 启动时采集首轮前水位：fresh query 无 response usage，summary 的 totalTokens
+     * 回退为类目估算之和（= 静态基础占用：system prompt + 工具定义 + CLAUDE.md + skills），
+     * rawMaxTokens 是 CC 权威窗口（替代 guessContextWindow 的 [1m] 正则猜测优先级）。
+     * 仅在尚无窗口记忆时上报（lastMaxTokens===0 = 本会话还没有 result）；拉取期间已有
+     * result 到达（竞态）则放弃——result 路径的实测值更权威。
+     */
+    private async reportStartupContextUsage(query: Query): Promise<void> {
+        if (!query.getContextUsage) return
+        if (this.contextMemory.lastMaxTokens > 0) return
+        try {
+            const summary = await query.getContextUsage({ detail: 'summary' })
+            if (this.contextMemory.lastMaxTokens > 0) return  // 双检：await 期间 result 已到达
+            const rawMax = summary.rawMaxTokens > 0
+                ? summary.rawMaxTokens
+                : guessContextWindow(summary.model) ?? 0
+            if (rawMax <= 0) return
+            this.contextMemory.lastMaxTokens = rawMax
+            const breakdown = extractBreakdown(summary) ?? undefined
+            if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
+            this.session.client.reportContextUsage({
+                totalTokens: summary.totalTokens,
+                maxTokens: rawMax,
+                percentage: (summary.totalTokens / rawMax) * 100,
+                costUsd: 0,
+                rawMaxTokens: rawMax,
+                ...(breakdown ? { breakdown } : {}),
+            })
+        } catch (e) {
+            logger.debug('[remote]: startup getContextUsage failed', e)
+        }
+    }
+
+    /**
      * 上下文用量上报（compact_boundary）：用 post_tokens 反映压缩后真实占用，复用上次记忆的
      * 窗口大小与成本。组装逻辑见 calcContextUsageFromCompact（纯函数）。
      */
@@ -793,6 +826,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onInboundPrompt: handleInboundPrompt,
                         onQueryReady: (query) => {
                             this.queryRef = query;
+                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，方法内有双检）
+                            void this.reportStartupContextUsage(query);
                             // 暴露给外部用于动态 setModel/setPermissionMode
                             if (this.queryControlRef) {
                                 this.queryControlRef.current = query;
