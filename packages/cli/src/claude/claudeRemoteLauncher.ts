@@ -45,7 +45,8 @@ import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
-import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
+import { extractBreakdown } from './utils/contextBreakdown';
+import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type ContextUsageBreakdown, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
     resolvePostInterruptAction,
@@ -266,7 +267,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * 组装逻辑见 calcContextUsageFromResult（纯函数）。
      * compact / 中断已在 claudeRemote 层过滤（不到此）。记忆 maxTokens/costUsd 供 compact 复用。
      */
-    private handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): void {
+    private async handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): Promise<void> {
         // 非 compact result 到达即 turn 正常收尾：复位输出观测并作废撤回锚（撤回复验判据，批次 A §5.3）。
         // 撤回窗口只存在于「消息已 push、turn 未完成」期间——turn 正常完成后消息已被处理，
         // 不再可撤（否则闲置时点停止会误删已完成对话）。中断（aborted_*）result 不经过此回调
@@ -286,10 +287,30 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         if (r.maxTokens > 0) this.contextMemory.lastMaxTokens = r.maxTokens
         if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
+        // 类目细分（summary 口径，零 API）：拉取失败静默——细分缺失 ≠ 错误，水位本体照常上报
+        const breakdown = await this.fetchBreakdown()
         try {
-            this.session.client.reportContextUsage(r.usage)
+            this.session.client.reportContextUsage(
+                breakdown ? { ...r.usage, breakdown } : r.usage
+            )
         } catch (e) {
             logger.debug('[remote]: reportContextUsage failed', e)
+        }
+    }
+
+    /**
+     * 拉取类目细分（summary 口径，零 API/零 LLM——本地估算）。
+     * query 不在（已关闭）/调用失败 → undefined，调用方按无细分上报。
+     */
+    private async fetchBreakdown(): Promise<ContextUsageBreakdown | undefined> {
+        const query = this.queryRef
+        if (!query?.getContextUsage) return undefined
+        try {
+            const summary = await query.getContextUsage({ detail: 'summary' })
+            return extractBreakdown(summary) ?? undefined
+        } catch (e) {
+            logger.debug('[remote]: getContextUsage failed', e)
+            return undefined
         }
     }
 
@@ -903,7 +924,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             applyContextReset(session.client, this.contextMemory);
                         },
                         onContextUsage: (resultMsg, isCompact) => {
-                            this.handleContextUsage(resultMsg, isCompact);
+                            void this.handleContextUsage(resultMsg, isCompact);
                         },
                         onCompactBoundary: (postTokens) => {
                             this.handleCompactBoundary(postTokens);
