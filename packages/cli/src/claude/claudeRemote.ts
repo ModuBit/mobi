@@ -942,10 +942,16 @@ export async function claudeRemote(opts: {
         // systemPrompt 统一走 preset + append：customSystemPrompt 与 appendSystemPrompt
         // 都作为追加内容拼在 claude_code 默认 prompt 之后（详见 buildAppendSystemPrompt），
         // 不再用纯字符串整体替换——那会丢掉 claude_code 默认 prompt。
+        // snapshot: true（SDK 0.3.259，官方推荐值）：首录 prompt 记进 session transcript，
+        // resume 原样复用——mobi 每轮重新 launch query，不开 snapshot 时每次都重新渲染
+        // prompt（CC 升级/CLAUDE.md/settings 变化致漂移），开启后 API prompt-cache 前缀稳定。
+        // 会话期 append 无修改通道（仅来自启动参数 message.meta），锁死首录无副作用；
+        // output style 切换走 /clear 语义新 session，按新 session 重新记录，天然无冲突
         systemPrompt: {
             type: 'preset' as const,
             preset: 'claude_code' as const,
             append: buildAppendSystemPrompt(baseConfig),
+            snapshot: true,
         },
         // rewind 文件回滚依赖 file checkpoint（Query.rewindFiles 的前置条件，
         // SDK 类型注明 "Requires file checkpointing to be enabled"）
