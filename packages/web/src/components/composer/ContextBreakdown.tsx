@@ -41,16 +41,23 @@ const CATEGORY_META: Record<ContextUsageCategoryKey, { label: string; light: str
 /** 可展开逐项明细的类目（逐 server / 逐 skill / 逐 memory 文件） */
 const EXPANDABLE_KEYS = new Set<ContextUsageCategoryKey>(['mcpTools', 'memoryFiles', 'skills'])
 
-/** 类目/明细色点的视觉语言：淡底 + 45° 斜纹 + 描边（与方格格一致） */
+/** 斜纹单元格视觉公式：淡底 + 45°/135° 斜纹 + inset 描边（方格格与明细色点共用，改视觉参数只动这里） */
+function hatchCellStyle(color: string, angle: 45 | 135 = 45): React.CSSProperties {
+    return {
+        backgroundColor: `${color}29`,
+        backgroundImage: `repeating-linear-gradient(${angle}deg, ${color} 0 1.5px, transparent 1.5px 4px)`,
+        boxShadow: `inset 0 0 0 1px ${color}99`,
+    }
+}
+
+/** 类目/明细色点（与方格格同一视觉语言，仅尺寸不同） */
 function stripeDotStyle(color: string, angle: 45 | 135 = 45): React.CSSProperties {
     return {
         width: 9,
         height: 9,
         borderRadius: 2,
         flexShrink: 0,
-        backgroundColor: `${color}29`,
-        backgroundImage: `repeating-linear-gradient(${angle}deg, ${color} 0 1.5px, transparent 1.5px 4px)`,
-        boxShadow: `inset 0 0 0 1px ${color}99`,
+        ...hatchCellStyle(color, angle),
     }
 }
 
@@ -70,18 +77,34 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
     if (!breakdown) return null
 
     const neutral = isDark ? '#5e5d59' : '#b0aea5'
-    const max = usage.maxTokens > 0 ? usage.maxTokens : 1 // 防 0 除
+    // 细分口径分母 = breakdown 自身合计（类目和 + free + buffer），不用 usage.maxTokens——
+    // 第三方渠道两者可能锚定不同窗口（breakdown 按 CC rawMaxTokens 估算、maxTokens 来自
+    // result.modelUsage），自口径保证方格恒 100 格、行百分比不超 100%；窗口一致时两者相等
+    const breakdownTotal = breakdown.categories.reduce((a, c) => a + c.tokens, 0)
+        + breakdown.freeTokens + (breakdown.autocompactBufferTokens ?? 0)
+    const max = breakdownTotal > 0 ? breakdownTotal : 1 // 防 0 除
 
     /** 百分比文本：Math.round 取整 */
     const pct = (tokens: number) => `${Math.round((tokens / max) * 100)}%`
 
-    /** 格数分配：有占用至少 1 格，否则按占比四舍五入 */
-    // 上限钳制：第三方渠道 contextWindow 与 breakdown 锚定窗口不一致时 tokens/max 可能 >1，防溢出网格
+    /** 格数分配：有占用至少 1 格，否则按占比四舍五入（min/max 双侧钳制属病态数据防御） */
     const cellCount = (tokens: number) => Math.min(TOTAL_CELLS, Math.max(tokens > 0 ? 1 : 0, Math.round((tokens / max) * TOTAL_CELLS)))
 
     const hasBuffer = breakdown.autocompactBufferTokens != null
     const categoryCounts = breakdown.categories.map((c) => cellCount(c.tokens))
-    const bufferCount = hasBuffer ? cellCount(breakdown.autocompactBufferTokens!) : 0
+    let bufferCount = hasBuffer ? cellCount(breakdown.autocompactBufferTokens!) : 0
+    // 四舍五入溢出防御：各类目钳制独立进行，总和仍可能超 100（每类目 round 误差累积）——
+    // 从计数最大的类目逐格回收（不低于 1 格），保证「100 格 = 100%」的网格隐喻不被破坏
+    let overflow = categoryCounts.reduce((a, b) => a + b, 0) + bufferCount - TOTAL_CELLS
+    while (overflow > 0) {
+        let mi = -1
+        let mv = 0
+        categoryCounts.forEach((c, i) => { if (c > mv) { mv = c; mi = i } })
+        if (bufferCount > mv) bufferCount--
+        else if (mv > 1) categoryCounts[mi]--
+        else break  // 全部已到底线（极端病态数据），放弃钳制
+        overflow--
+    }
     const usedCells = categoryCounts.reduce((a, b) => a + b, 0) + bufferCount
     // free 格兜底补齐到 100（类目四舍五入误差由 free 吸收）
     const freeCells = Math.max(0, TOTAL_CELLS - usedCells)
@@ -106,12 +129,7 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
         }
         const c = kind === 'buffer' ? neutral : color!
         const angle = kind === 'buffer' ? 135 : 45
-        return {
-            ...base,
-            backgroundColor: `${c}29`,
-            backgroundImage: `repeating-linear-gradient(${angle}deg, ${c} 0 1.5px, transparent 1.5px 4px)`,
-            boxShadow: `inset 0 0 0 1px ${c}99`,
-        }
+        return { ...base, ...hatchCellStyle(c, angle) }
     }
 
     // 渲染顺序：类目（breakdown.categories 给定序）→ free → buffer（带 data-buffer-cell 钩子）

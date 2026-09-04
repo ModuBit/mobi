@@ -473,12 +473,6 @@ export const ContextUsageSchema = z.object({
     outputTokens: z.number().optional(),
     cacheReadTokens: z.number().optional(),
     cacheCreationTokens: z.number().optional(),
-    /**
-     * CC 权威窗口（getContextUsage 的 rawMaxTokens，经 CC 内部解析链：env → settings →
-     * clientdata → 模型默认档位）。可选——旧 CLI / 采集失败时缺省，guessContextWindow 仍是最后 fallback。
-     * 优先级：result.modelUsage.contextWindow（实测） > rawMaxTokens > guessContextWindow（缓解 pending #57）
-     */
-    rawMaxTokens: z.number().optional(),
     /** 类目细分（见 ContextUsageBreakdownSchema），缺省 = 该轮无细分 */
     breakdown: ContextUsageBreakdownSchema.optional(),
 })

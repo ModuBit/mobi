@@ -124,6 +124,16 @@ describe('extractBreakdown', () => {
         expect(extractBreakdown(fixture({ categories: [] }))).toBeNull()
     })
 
+    it('类目名全部落不进映射表（CC 重命名类目）→ 聚合后为空仍返回 null，而非空 categories 的非 null 值', () => {
+        const renamed = fixture({
+            categories: [
+                { name: 'Sys prompt', tokens: 100, color: 'x' },
+                { name: 'Free space', tokens: 1000, color: 'x' },
+            ],
+        })
+        expect(extractBreakdown(renamed)).toBeNull()
+    })
+
     it('未知类目名忽略不抛错（CC 未来加类目前向兼容）', () => {
         const b = extractBreakdown(fixture({
             categories: [...fixture().categories, { name: 'Future thing', tokens: 999, color: 'x' }],

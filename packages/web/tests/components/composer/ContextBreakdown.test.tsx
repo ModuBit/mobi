@@ -84,4 +84,31 @@ describe('ContextBreakdown', () => {
         const { container } = render(<ContextBreakdown usage={{ ...usage, breakdown: undefined } as unknown as ContextUsage} />)
         expect(container.innerHTML).toBe('')
     })
+
+    it('breakdown 与 maxTokens 锚定不同窗口时（第三方渠道）：网格 ≤100 格、行百分比 ≤100%', () => {
+        // breakdown 按 1M 窗口估算而 usage.maxTokens=200k——分母若误用 maxTokens，
+        // messages 类目 400k/200k×100=200 格、pct 200%，网格与行双溢出
+        const mismatched = {
+            ...usage,
+            maxTokens: 200000,
+            breakdown: {
+                ...usage.breakdown!,
+                categories: [
+                    { key: 'systemPrompt', tokens: 30000 },
+                    { key: 'messages', tokens: 400000 },
+                ],
+                freeTokens: 550000,
+                autocompactBufferTokens: 20000,
+            },
+        } as unknown as ContextUsage
+        const { container } = render(<ContextBreakdown usage={mismatched} />)
+        const cells = container.querySelectorAll('[data-testid="waffle-cell"]')
+        expect(cells.length).toBeLessThanOrEqual(100)
+        // 行百分比文本均为 ≤100% 的整数（截取 % 前数字）
+        container.querySelectorAll('span').forEach((span) => {
+            const text = span.textContent ?? ''
+            const m = text.match(/^(\d+)%$/)
+            if (m) expect(Number(m[1])).toBeLessThanOrEqual(100)
+        })
+    })
 })

@@ -43,7 +43,9 @@ const DEFERRED_TARGET_BY_NAME: Record<string, ContextUsageCategoryKey> = {
  * - deferred 变体合并进主类目；'Custom agents' 丢弃（契约不含该类目）
  * - 'Free space' / 'Autocompact buffer' 不进 categories，单独成字段（auto-compact 关闭时后者缺省）
  * - 类目按 CONTEXT_USAGE_CATEGORY_KEYS 顺序产出，零值类目不产出（与 CC 同款 tokens>0 才有）
- * - 未知类目名忽略（CC 未来加类目前向兼容）；categories 为空返回 null（结构变化/失败兜底，调用方跳过）
+ * - 未知类目名忽略（CC 未来加类目前向兼容）；聚合后 categories 为空返回 null
+ *   （守卫在输出端而非输入端：CC 重命名全部类目时所有 name 落不进映射表，
+ *   输入非空但聚合为空——同样按结构变化兜底，调用方跳过而非渲染空细分）
  */
 export function extractBreakdown(response: SDKControlGetContextUsageResponse): ContextUsageBreakdown | null {
     if (!response.categories?.length) return null
@@ -76,6 +78,9 @@ export function extractBreakdown(response: SDKControlGetContextUsageResponse): C
     const categories = CONTEXT_USAGE_CATEGORY_KEYS
         .filter(key => (tokensByKey.get(key) ?? 0) > 0)
         .map(key => ({ key, tokens: tokensByKey.get(key)! }))
+
+    // 输出端空类目守卫：映射表全部落空（CC 结构变化）→ null，调用方按无细分跳过
+    if (categories.length === 0) return null
 
     // MCP 逐工具按 serverName 聚合
     const mcpTokensByServer = new Map<string, number>()

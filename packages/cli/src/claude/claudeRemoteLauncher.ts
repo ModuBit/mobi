@@ -93,6 +93,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         lastAssistantUsage: undefined,
         lastBreakdown: undefined,
     }
+    /** 水位上报代际：compact_boundary（真实水位骤变）与主线 assistant 实时上报（更新读数）各自递增；
+     *  handleContextUsage 的 result 上报在 fetchBreakdown await 前后比对，代际变化 = 期间已有更新数据
+     *  上报（下轮流式 / compact post_tokens），此刻再发旧 turn 读数会让水位环短暂回退，放弃 */
+    private contextUsageGeneration = 0
     /**
      * CLI 请求的模型名（system/init.model，与 result.modelUsage key 同源）。
      * 窗口猜测用它而非 assistant.message.model——网关渠道后者是上游真实名
@@ -289,8 +293,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
         // 类目细分（summary 口径，零 API）：拉取失败静默——细分缺失 ≠ 错误，水位本体照常上报。
-        // 成功时缓存进记忆：后续实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失
+        // 成功时缓存进记忆：后续实时上报附带，防流式期间细分被无 breakdown 的上报覆盖丢失。
+        // await 期间代际变化（下轮流式上报 / compact_boundary 到达）→ 本条旧 turn 读数放弃，
+        // 此刻再发会让水位环短暂回退（改动前此上报同步、无此窗口）
+        const generation = this.contextUsageGeneration
         const breakdown = await this.fetchBreakdown()
+        if (generation !== this.contextUsageGeneration) return
         if (breakdown) this.contextMemory.lastBreakdown = breakdown
         try {
             this.session.client.reportContextUsage(
@@ -343,7 +351,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 maxTokens: rawMax,
                 percentage: (summary.totalTokens / rawMax) * 100,
                 costUsd: 0,
-                rawMaxTokens: rawMax,
                 ...(breakdown ? { breakdown } : {}),
             })
         } catch (e) {
@@ -356,6 +363,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * 窗口大小与成本。组装逻辑见 calcContextUsageFromCompact（纯函数）。
      */
     private handleCompactBoundary(postTokens: number | undefined): void {
+        // 压缩后类目结构骤变（messages 大幅缩小），压缩前缓存的细分已失真——作废，
+        // 防后续实时上报继续附带 pre-compact 细分与已变小的 totalTokens 同屏矛盾
+        this.contextMemory.lastBreakdown = undefined
+        // 代际推进：作废 fetchBreakdown await 期间的旧 turn result 上报（读数已由 post_tokens 代表）
+        this.contextUsageGeneration++
         const usage = calcContextUsageFromCompact(postTokens, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
         if (!usage) return
         try {
@@ -533,6 +545,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (this.contextMemory.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
             const usage = calcContextUsageFromAssistant(u, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
             if (!usage) return
+            // 实时读数代表当前最新水位，推进代际：作废仍在途的上一轮 result 上报（防乱序回退）
+            this.contextUsageGeneration++
             // 附带最近一次缓存的类目细分：流式期间水位实时上涨，细分随之上报，
             // 否则无 breakdown 的实时上报会把 result 时落的细分整体覆盖掉（Popover 闪烁）
             const breakdown = this.contextMemory.lastBreakdown
@@ -833,10 +847,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         canCallTool: permissionHandler.handleToolCall,
                         onElicitation: permissionHandler.handleElicitation,
                         onInboundPrompt: handleInboundPrompt,
-                        onQueryReady: (query) => {
+                        onQueryReady: (query, { isResume }) => {
                             this.queryRef = query;
-                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，方法内有双检）
-                            void this.reportStartupContextUsage(query);
+                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，方法内有双检）。
+                            // resume 会话跳过：hub 已持久化真实水位/成本（web 首拉恢复），
+                            // 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
+                            if (!isResume) void this.reportStartupContextUsage(query);
                             // 暴露给外部用于动态 setModel/setPermissionMode
                             if (this.queryControlRef) {
                                 this.queryControlRef.current = query;

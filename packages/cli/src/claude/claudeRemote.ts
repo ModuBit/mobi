@@ -773,7 +773,7 @@ export async function claudeRemote(opts: {
     /** turn 输出观测（批次 A 撤回复验判据，透传给 sdkOutputLoop，见 TurnTrackingState） */
     onTurnOutput?: () => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
-    onQueryReady?: (query: Query) => void,
+    onQueryReady?: (query: Query, meta: { isResume: boolean }) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
     // push 携带可选 localId：steal 路径的消息同样预设 uuid 并上报绑定
     onSteerSinkReady?: (push: (payload: PromptPayload, localId?: string) => boolean) => void,
@@ -1157,7 +1157,7 @@ export async function claudeRemote(opts: {
                 // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
                 await applyStartupOutputStyle(response, opts.outputStyle)
                 // 把 Query 引用传给外部，用于 interrupt/close 控制
-                opts.onQueryReady?.(response);
+                opts.onQueryReady?.(response, { isResume: startFrom != null });
                 startOutputLoop(response)
             }
             const msg = await opts.nextMessage()
@@ -1197,7 +1197,7 @@ export async function claudeRemote(opts: {
             // （bash 注入）已可能 push 进 messages，attach 后立即补注（见 helper 时序注释）
             await applyStartupOutputStyle(response, opts.outputStyle)
             // 把 Query 引用传给外部，用于 interrupt/close 控制
-            opts.onQueryReady?.(response);
+            opts.onQueryReady?.(response, { isResume: startFrom != null });
             startOutputLoop(response)
         } else if (!warmConsumed) {
             // fallback attach（startup 失败路径，行为同现状）：首条消息到了再冷启动 attach
@@ -1212,7 +1212,7 @@ export async function claudeRemote(opts: {
             // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
             await applyStartupOutputStyle(response, opts.outputStyle)
             // 把 Query 引用传给外部，用于 interrupt/close 控制
-            opts.onQueryReady?.(response);
+            opts.onQueryReady?.(response, { isResume: startFrom != null });
             startOutputLoop(response)
         }
 
