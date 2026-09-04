@@ -14,10 +14,18 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { ContextRing, resolveRingTone } from '@/components/composer/ContextRing'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { ContextUsage } from '@mobi/shared'
+
+// mock 移动端断点（partial mock，默认桌面端；移动端用例 mockReturnValue(true)）
+vi.mock('@/core/data/hooks/useMediaQuery', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/core/data/hooks/useMediaQuery')>()
+    return { ...actual, useIsMobile: vi.fn(() => false) }
+})
+const mockedIsMobile = vi.mocked(useIsMobile)
 
 // mock i18next：contextUsage 命名空间映射中文词，其余透传 key（initReactI18next 必须 noop 导出，
 // 避免 i18n 顶层 init 报错）
@@ -56,6 +64,10 @@ afterAll(() => {
 
 // vitest 未开 globals，渲染型测试必须显式 cleanup，否则 DOM 跨用例累积
 afterEach(cleanup)
+
+beforeEach(() => {
+    mockedIsMobile.mockReturnValue(false)
+})
 
 function makeUsage(overrides: Partial<ContextUsage> = {}): ContextUsage {
     return {
@@ -145,9 +157,36 @@ describe('ContextRing', () => {
         fireEvent.mouseEnter(screen.getByRole('button', { name: '13%' }))
         // Tooltip 同样 portal 到 body，但 hover 不打开 Popover（触发分离：hover=tooltip / click=popover）
         await waitFor(() => {
-            expect(document.body.textContent).toContain('13k / 100k (13%)')
+            expect(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden)').length).toBe(1)
         })
-        expect(document.body.textContent).not.toContain('累计成本')
+        expect(document.body.textContent).toContain('13k / 100k (13%)')
+    })
+
+    it('Popover 打开后 Tooltip 隐藏（两者同屏重叠）', async () => {
+        render(<ContextRing usage={makeUsage()} />)
+        const ring = screen.getByRole('button', { name: '13%' })
+        fireEvent.mouseEnter(ring)
+        await waitFor(() => {
+            expect(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden)').length).toBe(1)
+        })
+        fireEvent.click(ring)
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('累计成本') // Popover 已开
+        })
+        // jsdom 不触发 CSS transition，rc-motion 退场不完成——模拟浏览器动画结束事件
+        const tip = document.querySelector('.ant-tooltip')
+        if (tip) fireEvent.transitionEnd(tip)
+        await waitFor(() => {
+            expect(document.querySelectorAll('.ant-tooltip:not(.ant-tooltip-hidden)').length).toBe(0)
+        })
+    })
+
+    it('移动端不渲染 Tooltip（无 hover，tap 直开 Popover）', async () => {
+        mockedIsMobile.mockReturnValue(true)
+        render(<ContextRing usage={makeUsage()} />)
+        fireEvent.mouseEnter(screen.getByRole('button', { name: '13%' }))
+        await new Promise((r) => setTimeout(r, 300)) // 越过 mouseEnterDelay，确认永不弹出
+        expect(document.querySelectorAll('.ant-tooltip').length).toBe(0)
     })
 
     it('usage 全 0 时正常渲染不抛错（灰环，aria-label 0%）', () => {

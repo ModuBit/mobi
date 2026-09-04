@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
+import { useState } from 'react'
 import { theme, Popover, Tooltip } from 'antd'
 import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -86,6 +88,10 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const ticks = degradationTicks(usage.maxTokens)
     const usedSummary = `${formatTokens(usage.totalTokens)} / ${formatTokens(usage.maxTokens)} (${pct}%)`
+    // 受控 Popover：打开期间隐藏 hover Tooltip（两者同屏重叠）；移动端无 hover，整体禁用
+    const isMobile = useIsMobile()
+    const [popoverOpen, setPopoverOpen] = useState(false)
+    const tooltipTitle = isMobile || popoverOpen ? undefined : usedSummary
 
     const ring = (
         <svg
@@ -116,6 +122,8 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
         <Popover
             trigger="click"
             placement="topRight"
+            open={popoverOpen}
+            onOpenChange={setPopoverOpen}
             styles={{ content: { minWidth: 'min(280px, 80vw)' } }}
             content={(
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, display: 'grid', gap: 4, padding: '4px 2px' }}>
@@ -135,8 +143,8 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                 </div>
             )}
         >
-            {/* hover=Tooltip 概要 / click=Popover 详情：触发分离，点击行为不变 */}
-            <Tooltip title={usedSummary} placement="top" mouseEnterDelay={0.15}>
+            {/* hover=Tooltip 概要 / click=Popover 详情：触发分离；移动端与 Popover 打开期间不弹 Tooltip */}
+            <Tooltip title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
                 {ring}
             </Tooltip>
         </Popover>
