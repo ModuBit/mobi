@@ -23,13 +23,11 @@
  */
 
 import { useMemo } from 'react'
-import { App, theme } from 'antd'
-import { FormatPainterOutlined } from '@ant-design/icons'
+import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { isBuiltinOutputStyle } from '@mobi/shared'
 import { useSwitchOutputStyle } from '@/core/data/hooks/mutations/useSwitchOutputStyle'
-import { CompactHoverSelect } from './CompactHoverSelect'
-import { buildOutputStyleSelectOptions, renderOutputStyleOption } from './outputStyleOption'
+import { buildOutputStyleSelectOptions, OutputStyleSelect } from './outputStyleOption'
 
 export interface OutputStyleSwitchProps {
     sessionId: string
@@ -54,7 +52,6 @@ export function OutputStyleSwitch({
     disabled = false,
 }: OutputStyleSwitchProps) {
     const { t } = useTranslation()
-    const { token } = theme.useToken()
     const { modal } = App.useApp()
     const outputStyleMutation = useSwitchOutputStyle()
     // 基础内置五项 + 追加 init 上报的非内置名（内置名已在基础列表，天然去重）
@@ -88,16 +85,12 @@ export function OutputStyleSwitch({
             style={{ display: 'inline-flex' }}
             title={running ? t('composer.outputStyleRunningDisabled') : t('composer.outputStyle')}
         >
-            <CompactHoverSelect
-                $token={token}
-                prefix={<FormatPainterOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
+            <OutputStyleSelect
                 value={currentOutputStyle}
                 options={outputStyleOptions}
                 disabled={switchDisabled}
                 loading={outputStyleMutation.isPending}
                 onChange={handleOutputStyleChange}
-                optionRender={(option) => renderOutputStyleOption(option, outputStyleOptions, t)}
-                virtual={false}
             />
         </span>
     )

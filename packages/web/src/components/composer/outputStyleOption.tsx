@@ -15,7 +15,7 @@
  */
 
 /**
- * output style 下拉选项构建与渲染。
+ * output style 下拉选项构建、渲染与选择器组件收口。
  *
  * 渲染策略与 permissionModeOption 同款（名称 + secondary 描述双行），但不共用组件——
  * 数据结构（label 为 CC 英文原名不走 i18n、descriptionKey 走 i18n 键名空间）
@@ -24,7 +24,11 @@
  */
 
 import type { ReactNode } from 'react'
+import { theme } from 'antd'
+import { FormatPainterOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { OUTPUT_STYLES, OUTPUT_STYLE_LABELS } from '@mobi/shared'
+import { CompactHoverSelect } from './CompactHoverSelect'
 
 export interface OutputStyleSelectOption {
     value: string
@@ -77,5 +81,45 @@ export function renderOutputStyleOption(
                 </span>
             )}
         </div>
+    )
+}
+
+/** 收起态图标（格式刷 =「样式」语义）：会话页切换器与新建页选择器共用，单点维护 */
+export function OutputStyleIcon() {
+    return <FormatPainterOutlined style={{ fontSize: 12, opacity: 0.55 }} />
+}
+
+export interface OutputStyleSelectProps {
+    value: string
+    options: OutputStyleSelectOption[]
+    /** CompactHoverSelect 的 onChange 值形态是 unknown，调用方自行 String() 归一 */
+    onChange: (value: unknown) => void
+    disabled?: boolean
+    loading?: boolean
+    title?: string
+}
+
+/**
+ * output style 紧凑选择器（纯展示）：CompactHoverSelect 装配收口点
+ * （icon prefix + 双行 optionRender + 虚拟滚动关闭，两处调用不再各自装配）。
+ * 无确认弹窗 / 无 mutation——会话页（/clear 语义）用 OutputStyleSwitch 包确认后复用本组件，
+ * 新建页（本地 state，无 /clear 语义）直接使用。
+ */
+export function OutputStyleSelect({ value, options, onChange, disabled, loading, title }: OutputStyleSelectProps) {
+    const { token } = theme.useToken()
+    const { t } = useTranslation()
+    return (
+        <CompactHoverSelect
+            $token={token}
+            prefix={<OutputStyleIcon />}
+            value={value}
+            options={options}
+            disabled={disabled}
+            loading={loading}
+            onChange={onChange}
+            optionRender={(option) => renderOutputStyleOption(option, options, t)}
+            virtual={false}
+            title={title}
+        />
     )
 }

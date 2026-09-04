@@ -19,7 +19,7 @@ import { App, Button, Input, Spin, Popover, Typography, Segmented, theme as antT
 import styled from '@emotion/styled'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { Sender } from '@ant-design/x'
-import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined, FormatPainterOutlined } from '@ant-design/icons'
+import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -72,7 +72,7 @@ import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermis
 import { getPermissionModeIcon } from '@/components/composer/permissionModeIcons'
 // 紧凑 Select 与 dropdown 全局样式均收口在共享模块（与 ChatComposer 同源，不再本地复制）
 import { CompactHoverSelect, MODEL_DROPDOWN_CLASS } from '@/components/composer/CompactHoverSelect'
-import { buildOutputStyleSelectOptions, renderOutputStyleOption } from '@/components/composer/outputStyleOption'
+import { buildOutputStyleSelectOptions, OutputStyleSelect } from '@/components/composer/outputStyleOption'
 
 const { useToken } = antTheme
 
@@ -802,15 +802,11 @@ export function NewSessionPage() {
         {
             key: 'outputStyle',
             render: () => (
-                <CompactHoverSelect
-                    $token={token}
-                    prefix={<FormatPainterOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
+                <OutputStyleSelect
                     value={outputStyle}
                     onChange={v => setOutputStyle(String(v))}
                     disabled={inputDisabled}
                     options={outputStyleOptions}
-                    optionRender={(option) => renderOutputStyleOption(option, outputStyleOptions, t)}
-                    virtual={false}
                     title={t('composer.outputStyle')}
                 />
             ),

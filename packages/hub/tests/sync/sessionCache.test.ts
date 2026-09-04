@@ -585,3 +585,44 @@ describe('SessionCache.handleSessionAlive permissionMode 落库', () => {
         expect(cache.getSession(session.id)?.runtimeState?.permissionMode).toBe('plan')
     })
 })
+
+describe('permissionMode 持久化 — code-review 收口', () => {
+    let store: Store
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        cache = new SessionCache(store, stubPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('applySessionConfig 切换 permissionMode 同样双写落库（对齐 model/effort 路径）', () => {
+        // code-review：web 侧切换只写内存顶层快照、依赖 keep-alive 回流落库——CLI 掉线期间 hub
+        // 重启则丢。同函数内 model/effort 都走 updateRuntimeStateField，permissionMode 不该例外
+        const session = cache.getOrCreateSession('tag-perm-4', { path: '/tmp/p' }, null, 'default')
+
+        cache.applySessionConfig(session.id, { permissionMode: 'plan' })
+
+        expect(cache.getSession(session.id)?.permissionMode).toBe('plan')
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { permissionMode?: string })?.permissionMode).toBe('plan')
+    })
+
+    test('handleSessionAlive 落库失败时顶层快照不脏写（内存与 DB 不分叉）', () => {
+        // code-review：先写 session.permissionMode 再 updateRuntimeStateField（内部 setRuntimeState
+        // 未命中即 throw），异常路径下内存已是新值而 DB 留旧值。顺序应与 model/effort 一致：落库成功后才写内存
+        const session = cache.getOrCreateSession('tag-perm-5', { path: '/tmp/p' }, null, 'default')
+        // 模拟并发删除：DB 行消失 → setRuntimeState UPDATE 未命中 → throw
+        expect(store.sessions.deleteSession(session.id, 'default')).toBe(true)
+
+        expect(() => cache.handleSessionAlive({
+            sid: session.id, time: Date.now(), running: false, permissionMode: 'plan',
+        })).toThrow()
+
+        expect(cache.getSession(session.id)?.permissionMode).toBeUndefined()
+        expect(cache.getSession(session.id)?.runtimeState?.permissionMode).toBeUndefined()
+    })
+})

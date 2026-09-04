@@ -421,6 +421,29 @@ describe('RuntimeStateSchema with backgroundTasks', () => {
     })
 })
 
+describe('RuntimeStateSchema permissionMode 枚举漂移防御', () => {
+    it('合法值正常解析', () => {
+        const result = RuntimeStateSchema.parse({ permissionMode: 'acceptEdits' })
+        expect(result.permissionMode).toBe('acceptEdits')
+    })
+
+    it('非法枚举值（如新版 CLI 引入新权限模式）单字段降级为 undefined，不拖垮整条解析', () => {
+        // code-review：safeParse 全有全无——若普通 enum，未知值会让整条 runtimeState 解析失败，
+        // model/effort/outputStyle/todos 等恢复字段一并丢失
+        const result = RuntimeStateSchema.safeParse({
+            permissionMode: 'someNewMode',
+            model: 'opus',
+            effort: 'medium',
+        })
+        expect(result.success).toBe(true)
+        if (result.success) {
+            expect(result.data.permissionMode).toBeUndefined()
+            expect(result.data.model).toBe('opus')
+            expect(result.data.effort).toBe('medium')
+        }
+    })
+})
+
 describe('ContextUsageSchema', () => {
     const validUsage = {
         totalTokens: 124000,
