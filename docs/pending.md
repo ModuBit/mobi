@@ -777,3 +777,35 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 - **resume 回放**：`RuntimeStateSchema.outputStyle` + keep-alive 持久化 + spawn resume 分支回放（照 effort 先例），进程重启 style 不丢
 - **metadata 数据源**：U-27 重构时 capabilityDiscovery 裁掉了 style 两字段（当时 web 零消费），本特性补回（`2a466f94`）
 - **未做**（spec §5）：自定义 style md 扫描与描述映射（会话页下拉已消费 `availableOutputStyles` 真实列表——自定义名可显示/选中，仅无描述）；style 文件管理 UI；settings 回写
+
+---
+
+## 69. 后台 MCP 任务 resource_links 文件引用渲染（挂起，与「聊天页打开文件」一并做）（2026-09-04）
+
+**来源**：upstream-suggestions 台账 #6（SDK 0.3.259）。SDK 契约已核实——`SDKTaskNotificationMessage.resource_links?: SDKMcpResourceLink[]`（sdk.d.ts:5157）：仅 backgrounded mcp_task 完成时填充，CLI 在把最终结果渲染成模型文本前收集其中的 `resource_link` content block（该任务按引用返回的文件），经 `tool_use_id` 关联发起调用；`SDKMcpResourceLink = { uri, name, title?, description?, mimeType?, size? }`（≤50 条 / 64KiB）。后台任务 tool_result 是占位文本，真实结果经 notification 到达——这是 host 得知「那次工具调用产出哪些文件」的唯一位置。
+
+**为何挂起**：mobi 现有 MCP 源（mobi-web fetch）返回 markdown 文本不产 resource_link，全链路无真实数据可验证；且 web 缺「按 uri 打开文件」的通用通道（uri 是任意 scheme 的 MCP resource URI）。
+
+**重启时机**：与「聊天页打开文件」特性一并立项。届时应连同前台 `tool_use_result.resourceLinks`（同规格字段，SDK 对普通 MCP 工具结果同样收集，mobi 目前也零消费）做统一的「工具产出文件引用渲染」，而非只做后台任务变体。
+
+**落地四件套**：hub task_notification 提取存 backgroundTasks（当前 backgroundTasks.ts:303-378 只取 status/summary，resource_links 被丢弃）+ shared `BackgroundTaskItemSchema` 扩展 + web 任务卡片/面板渲染链接 + uri→文件的打开通道。
+
+**相关**：upstream-suggestions 台账 #6；#63（配置资产管理面）。
+
+---
+
+## 70. Output style「设为默认」——updateSettings 官方回写通道（2026-09-04 挂起，用户拍板暂缓）
+
+**来源**：upstream-suggestions 台账 #8（SDK 0.3.259）。SDK 契约已核实——`query.updateSettings('localSettings', settings)`（sdk.d.ts:2684-2693）：经 CLI 自己的 writer（/config 同款路径 + gitignore 维护 + hardened write）合并写入 settings 文件并 live-apply；key allowlist 当前仅 `outputStyle`，不支持删除；目标是项目的 `.claude/settings.local.json`（gitignored 项目级本地文件，**非用户全局**）。mobi 未传 settingSources（SDK 默认全源加载），不会被 setting-sources 门拒绝。
+
+**价值**：用户调好的 style 目前只活在单个会话里，新会话要重选；「设为默认」让它记住到项目级。
+
+**实施要点**（技术通路已畅通，工作量约 1 小时）：
+
+1. **范围语义**：写的是当前会话项目目录的 `.claude/settings.local.json`——只影响该项目后续会话，不跨项目。mobi 远程场景下文件落在会话所在机器，与手机操作视角一致
+2. **live-apply 与 mobi /clear 切换语义冲突**：updateSettings 自带 live-apply（当前会话 style 立即变、上下文不清），与 mobi 切换的 /clear 重建语义不一致。干净做法：**「设为默认」= updateSettings（持久化）+ 复用现 switch-output-style 哨兵退轮（应用）**，现有切换 RPC 加 `persist: boolean` 参数，UI 一次点击完成两步
+3. web 切换器加「设为默认」菜单项（切换器位置见 output style 特性，commits 7c1213dc..e09ab8f2）
+
+**重启时机**：用户反馈「调好的风格不想每次重选」时启动。
+
+**相关**：upstream-suggestions 台账 #8；output style spec `docs/superpowers/specs/2026-09-03-output-style-support-design.md` §5（当时明确不做回写，本条是产品决策重启）。
