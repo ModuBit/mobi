@@ -51,7 +51,7 @@ describe('startWebApiTokenWatcher', () => {
         await rm(dataDir, { recursive: true, force: true })
     })
 
-    test('外部重写 settings.json 的 webApiToken 后，configuration 热更新', async () => {
+    test('外部重写 settings.hub.json 的 webApiToken 后，configuration 热更新', async () => {
         const before = configuration.webApiToken
         watcher = startWebApiTokenWatcher()
 
@@ -59,7 +59,7 @@ describe('startWebApiTokenWatcher', () => {
         await new Promise(r => setTimeout(r, 300))
 
         // 原子重写（tmp + rename，模拟 CLI updateSettings 与 hub writeSettings）
-        const settingsFile = join(dataDir, 'settings.json')
+        const settingsFile = join(dataDir, 'settings.hub.json')
         const newToken = 'rotated-web-token-' + Date.now()
         await writeFile(settingsFile + '.tmp', JSON.stringify({ webApiToken: newToken }))
         await rename(settingsFile + '.tmp', settingsFile)
@@ -76,7 +76,7 @@ describe('startWebApiTokenWatcher', () => {
         // 等待 FSEvents/inotify 注册目录监听
         await new Promise(r => setTimeout(r, 300))
 
-        const settingsFile = join(dataDir, 'settings.json')
+        const settingsFile = join(dataDir, 'settings.hub.json')
         await writeFile(settingsFile + '.tmp', JSON.stringify({ webApiToken: before, hubName: 'changed' }))
         await rename(settingsFile + '.tmp', settingsFile)
 

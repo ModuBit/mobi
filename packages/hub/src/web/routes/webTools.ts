@@ -16,7 +16,7 @@
 
 /**
  * web 工具配置路由（纯透传 → runner RPC）：
- * hub 不存任何 web 工具状态，配置真相源在目标机器的 ~/.mobi/settings.json
+ * hub 不存任何 web 工具状态，配置真相源在目标机器的 ~/.mobi/settings.cli.json
  */
 import { Hono } from 'hono'
 import { VerifyWebToolsProviderSchema } from '@mobi/shared'

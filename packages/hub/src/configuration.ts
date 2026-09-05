@@ -17,8 +17,8 @@
 /**
  * Configuration for mobi-hub
  *
- * Configuration is loaded with priority: environment variable > settings.json > default
- * When values are read from environment variables and not present in settings.json,
+ * Configuration is loaded with priority: environment variable > settings.hub.json > default
+ * When values are read from environment variables and not present in settings.hub.json,
  * they are automatically saved for future use
  *
  * Optional environment variables:
@@ -38,8 +38,28 @@ import { join } from 'node:path'
 import { hubLogger } from './logger'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getOrCreateWebApiToken } from './config/webApiToken'
-import { getSettingsFile } from './config/settings'
+import { getCliSettingsFile, getSettingsFile, updateSettingsFile } from './config/settings'
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
+
+/**
+ * co-located cliApiToken 同步：同目录存在 settings.cli.json 且其尚无连接凭证时，
+ * 把 hub 的 cliApiToken 写一份进去（cli 文件归 cli 所有，此写仅发生在 cli 字段缺省时，
+ * 不覆盖用户经 `mobi auth login` 配置的值）。远程部署无同目录文件，自动跳过。
+ */
+async function syncCliApiTokenToCoLocatedCli(dataDir: string, token: string): Promise<void> {
+    const cliFile = getCliSettingsFile(dataDir)
+    if (!existsSync(cliFile)) return
+    try {
+        await updateSettingsFile<Record<string, unknown>>(cliFile, (current) => {
+            // 空文件（仅迁移占位）与已有凭证均不写：cli 文件归 cli 所有，此写仅在缺省时补一份
+            if (Object.keys(current).length === 0 || current.cliApiToken) return current
+            return { ...current, cliApiToken: token }
+        })
+        hubLogger.info(`[Hub] Synced cliApiToken to co-located ${cliFile}`)
+    } catch (e) {
+        hubLogger.warn(`[Hub] Sync cliApiToken to cli settings failed (ignored): ${e}`)
+    }
+}
 
 export type ConfigSource = 'env' | 'file' | 'default'
 
@@ -72,7 +92,7 @@ class Configuration {
     /** Web API token 是否为新生成（首次启动展示用） */
     public readonly webApiTokenIsNew: boolean
 
-    /** Path to settings.json file */
+    /** Path to settings.hub.json file */
     public readonly settingsFile: string
 
     /** Data directory for credentials and state */
@@ -156,6 +176,16 @@ class Configuration {
             : join(dataDir, 'mobi.db')
 
         // 3. Load hub settings (with persistence)
+        // 拆分迁移前置：旧 settings.json → settings.hub.json + settings.cli.json（一次性，
+        // 解析失败会抛错终止启动，防静默丢配置）
+        const { migrateLegacySettings } = await import('./config/migrateSettings')
+        const migration = await migrateLegacySettings(dataDir)
+        if (migration.reason === 'parse-error') {
+            throw new Error(
+                `Cannot parse legacy settings file in ${dataDir}. Please fix or remove it and restart.`
+            )
+        }
+
         const settingsResult = await loadServerSettings(dataDir)
 
         if (settingsResult.savedToFile) {
@@ -173,6 +203,9 @@ class Configuration {
         // 5. Load CLI API token
         const tokenResult = await getOrCreateCliApiToken(dataDir)
         config._setCliApiToken(tokenResult.token, tokenResult.source, tokenResult.isNew)
+        // co-located 便利：同目录存在 cli 配置且其无连接凭证时同步一份，
+        // 保持「hub 首启 → 本机 cli 即连」的开箱体验；远程部署无同目录文件自动跳过
+        await syncCliApiTokenToCoLocatedCli(dataDir, tokenResult.token)
 
         // 6. Load Web API token
         const webTokenResult = await getOrCreateWebApiToken(dataDir)

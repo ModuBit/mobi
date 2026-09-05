@@ -909,7 +909,7 @@ export async function claudeRemote(opts: {
 
         opts.onMessage(createBashToolResultMessage(toolCallId, output, hasError))
 
-        // 注入输出到 SDK context（默认开启，settings.json 的 bashInjectContext 可关）。
+        // 注入输出到 SDK context（默认开启，settings.cli.json 的 bashInjectContext 可关）。
         // 模型据此感知并响应；注入本身不回显（见 sink 注释）。高危拦截路径已 return，不会走到这。
         // sink 未接通（首条消息即 !cmd，query 未启动）时 push 无意义，按未注入处理。
         // 注入文本不经 sanitizeUserMessage：它是 XML 标签包裹的结构化命令/输出（非用户自由文本），

@@ -128,7 +128,7 @@ flowchart TB
 | `login` | 交互式输入并保存 CLI_API_TOKEN |
 | `logout` | 清除本地凭据（Token 和 Machine ID） |
 
-Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交互式输入。
+Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.cli.json` > 交互式输入。
 
 详见 [Auth 认证系统](./commands/auth)。
 

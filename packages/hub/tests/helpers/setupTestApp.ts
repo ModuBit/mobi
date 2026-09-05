@@ -20,12 +20,25 @@ import { createConfiguration, resetConfiguration } from '../../src/configuration
 import type { SSEManager } from '../../src/sse/sseManager'
 import type { VisibilityTracker } from '../../src/visibility/visibilityTracker'
 import type { SyncEngine } from '../../src/sync/syncEngine'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 export const testJwtSecret = new Uint8Array(32)
 crypto.getRandomValues(testJwtSecret)
 
 export const testCliApiToken = 'test-cli-api-token'
 export const testWebApiToken = 'test-web-api-token'
+
+/** 进程级隔离 MOBI_HOME：createConfiguration（含 settings 迁移/生成写盘）不得触碰真实 ~/.mobi */
+let isolatedHome: string | null = null
+
+function ensureIsolatedMobiHome(): string {
+    if (!isolatedHome) {
+        isolatedHome = mkdtempSync(join(tmpdir(), 'mobi-hub-test-home-'))
+    }
+    return isolatedHome
+}
 
 export async function setupTestApp(
     syncEngine: SyncEngine | null = null,
@@ -34,10 +47,12 @@ export async function setupTestApp(
     const store = new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
     process.env.WEB_API_TOKEN = testWebApiToken
-    // 钉死 publicUrl 为 http：createConfiguration 会读本地 ~/.mobi/settings.json（env > file > default），
+    // 钉死 publicUrl 为 http：createConfiguration 会读 settings.hub.json（env > file > default），
     // 若本机配了 https publicUrl(部署用) 会污染 secure cookie 判定 → auth Secure 断言误失败。
     // env 优先级最高,显式设 http 隔离测试环境。
     process.env.MOBI_PUBLIC_URL = 'http://localhost:2222'
+    // MOBI_HOME 指向进程级临时目录：配置读/写/迁移全部隔离，绝不落真实用户目录
+    process.env.MOBI_HOME = ensureIsolatedMobiHome()
     resetConfiguration()
     await createConfiguration()
 
@@ -60,6 +75,7 @@ export async function setupTestApp(
         delete process.env.CLI_API_TOKEN
         delete process.env.WEB_API_TOKEN
         delete process.env.MOBI_PUBLIC_URL
+        delete process.env.MOBI_HOME
         resetConfiguration()
     }
 

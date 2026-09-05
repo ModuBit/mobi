@@ -28,6 +28,21 @@ flowchart LR
 | GET | `/cli/sessions/:id/messages` | 获取消息列表 |
 | POST | `/cli/machines` | 创建或加载机器 |
 | GET | `/cli/machines/:id` | 获取机器 |
+| GET | `/cli/web-token` | 读取当前 webApiToken + `envOverride` 标志 |
+| POST | `/cli/web-token` | 轮换 webApiToken（落盘 + 热更新 configuration） |
+
+## web-token（远程轮换）
+
+webApiToken 归 hub 所有（`settings.hub.json`），cli 与 hub 可不同机器部署，
+cli 经此 API 代行原「直接写文件」的轮换语义（`mobi auth web-token` / `rotate-web-token`）。
+
+```
+GET  /cli/web-token  → { webToken: string, envOverride: boolean }
+POST /cli/web-token  → { webToken: string, envOverride: boolean }
+```
+
+- `envOverride: true`：hub 以 `WEB_API_TOKEN` 环境变量运行，重启后轮换会被 env 值覆盖（POST 在轮换**前**取值）
+- POST 复用 [`webApiToken.ts`](/packages/hub/src/config/webApiToken.ts) 的 `rotateWebApiToken()` 持久化，随后 `_setWebApiToken()` 即时热更新 configuration 单例（不等 settingsWatcher）
 
 ## 会话操作
 

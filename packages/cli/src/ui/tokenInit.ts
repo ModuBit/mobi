@@ -19,7 +19,7 @@
  *
  * Handles CLI_API_TOKEN initialization with priority:
  * 1. Environment variable (highest - allows temporary override)
- * 2. Settings file (~/.mobi/settings.json)
+ * 2. Settings file (~/.mobi/settings.cli.json)
  * 3. Interactive prompt (only when both above are missing)
  */
 
@@ -35,7 +35,7 @@ import { initializeApiUrl } from '@/ui/apiUrlInit'
  * Must be called before any API operations
  */
 export async function initializeToken(): Promise<void> {
-    // Initialize API URL first (env > settings.json > default)
+    // Initialize API URL first (env > settings.cli.json > default)
     await initializeApiUrl()
 
     // 1. Environment variable has highest priority (allows temporary override)
@@ -72,7 +72,7 @@ async function promptForToken(): Promise<string> {
     console.log(chalk.yellow('\nNo CLI_API_TOKEN found.'))
     console.log(chalk.gray('Where to find the token:'))
     console.log(chalk.gray('  1. Check the server startup logs (first run shows generated token)'))
-    console.log(chalk.gray('  2. Read ~/.mobi/settings.json on the server'))
+    console.log(chalk.gray('  2. Read ~/.mobi/settings.hub.json on the server'))
     console.log(chalk.gray('  3. Ask your server administrator (if token is set via env var)\n'))
 
     try {

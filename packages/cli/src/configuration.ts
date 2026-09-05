@@ -37,6 +37,8 @@ class Configuration {
     public readonly mobiHomeDir: string
     public readonly logsDir: string
     public readonly settingsFile: string
+    /** hub 配置文件（listen* 等），仅本机 co-located 部署时可写；远程部署时它在 hub 机器上 */
+    public readonly hubSettingsFile: string
     public readonly privateKeyFile: string
     public readonly runnerStateFile: string
     public readonly runnerLockFile: string
@@ -81,7 +83,10 @@ class Configuration {
         }
 
         this.logsDir = join(this.mobiHomeDir, 'logs')
-        this.settingsFile = join(this.mobiHomeDir, 'settings.json')
+        // cli 专属配置（连接凭证/machineId/claudeEnv 等），随 cli 部署位置走；
+        // hub 配置在 settings.hub.json（本机 co-located 时同目录，远程时在 hub 机器上）
+        this.settingsFile = join(this.mobiHomeDir, 'settings.cli.json')
+        this.hubSettingsFile = join(this.mobiHomeDir, 'settings.hub.json')
         this.privateKeyFile = join(this.mobiHomeDir, 'access.key')
         this.runnerStateFile = join(this.mobiHomeDir, 'runner.state.json')
         this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
@@ -102,7 +107,7 @@ class Configuration {
             mkdirSync(this.logsDir, { recursive: true })
         }
 
-        // 同步读取 settings.json（如果存在）
+        // 同步读取 settings.cli.json（如果存在）
         try {
             if (existsSync(this.settingsFile)) {
                 const content = readFileSync(this.settingsFile, 'utf8')
@@ -193,7 +198,7 @@ class Configuration {
     }
 
     /**
-     * settings.json 的 claudeEnv：注入给 claude 子进程的额外环境变量。
+     * settings.cli.json 的 claudeEnv：注入给 claude 子进程的额外环境变量。
      * 由 buildClaudeFeatureEnv 合并，优先级高于 process.env 与内置开关。
      * 未配置时返回空对象。值的精细过滤（非 string 跳过）交给 buildClaudeFeatureEnv。
      */
@@ -205,7 +210,7 @@ class Configuration {
      * !bash 本地执行后是否把命令+输出注入 SDK context（默认开启）。
      * true = 注入即响应（模型感知输出并回复，等同 Claude CLI respondToBashCommands:true）；
      * false = 仅本地执行 + UI 合成工具对，模型不参与（!cmd 不耗 token）。
-     * settings.json 的 bashInjectContext 显式为 boolean 时覆盖默认。
+     * settings.cli.json 的 bashInjectContext 显式为 boolean 时覆盖默认。
      */
     get bashInjectContext(): boolean {
         return this.settings.bashInjectContext ?? true

@@ -24,7 +24,7 @@
 import chalk from 'chalk'
 import { spawn } from 'node:child_process'
 import { configuration } from '@/configuration'
-import { readSettings } from '@/persistence'
+import { readSettings, readHubSettings } from '@/persistence'
 import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
 import { findAllMobiProcesses } from '@/runner/doctor'
 import { readRunnerState } from '@/persistence'
@@ -138,18 +138,32 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
         console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
         console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
 
-        // Settings
+        // Settings（cli 与 hub 分文件展示：hub 与 cli 可不同机器部署，
+        // 本机读不到 hub 文件时提示远端而非报错）
         let settings;
         try {
             settings = await readSettings();
-            console.log(chalk.bold('\n📄 Settings (settings.json):'));
+            console.log(chalk.bold('\n📄 CLI Settings (settings.cli.json):'));
             // Hide cliApiToken in output for security
             const displaySettings = { ...settings, cliApiToken: settings.cliApiToken ? '***' : undefined };
             console.log(chalk.gray(JSON.stringify(displaySettings, null, 2)));
         } catch (_error) {
-            console.log(chalk.bold('\n📄 Settings:'));
+            console.log(chalk.bold('\n📄 CLI Settings:'));
             console.log(chalk.red('❌ Failed to read settings'));
             settings = {};
+        }
+        try {
+            const hubSettings = await readHubSettings();
+            console.log(chalk.bold('\n📄 Hub Settings (settings.hub.json):'));
+            if (Object.keys(hubSettings).length === 0 && !existsSync(configuration.hubSettingsFile)) {
+                // 非 co-located 部署：hub 文件不在本机是正常形态，不是故障
+                console.log(chalk.gray(`Not found locally (${configuration.hubSettingsFile}) — hub may be deployed on a remote machine.`));
+            } else {
+                console.log(chalk.gray(JSON.stringify(hubSettings, null, 2)));
+            }
+        } catch (_error) {
+            console.log(chalk.bold('\n📄 Hub Settings:'));
+            console.log(chalk.red('❌ Failed to read hub settings'));
         }
         // Authentication status (direct-connect)
         console.log(chalk.bold('\n🔐 Direct Connect Auth'));

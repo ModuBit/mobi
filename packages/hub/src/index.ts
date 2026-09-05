@@ -51,7 +51,7 @@ import type { WebSocketData } from '@socket.io/bun-engine'
 function formatSource(source: ConfigSource | 'generated'): string {
     switch (source) {
         case 'env': return 'environment'
-        case 'file': return 'settings.json'
+        case 'file': return 'settings.hub.json'
         case 'default': return 'default'
         case 'generated': return 'generated'
     }
@@ -218,7 +218,7 @@ async function main() {
         backgroundTaskTracker
     })
 
-    // 启动 settings.json 监听：webApiToken 轮换时热 reload，无需重启 hub
+    // 启动 settings.hub.json 监听：webApiToken 轮换时热 reload，无需重启 hub
     const settingsWatcher = startWebApiTokenWatcher()
 
     hubLogger.info('')

@@ -15,11 +15,19 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resetConfiguration, createConfiguration } from '../../src/configuration'
 import { verifyWebCredential } from '../../src/web/auth/verifyWebCredential'
 
 describe('verifyWebCredential', () => {
+    let isolatedHome: string
+
     beforeEach(async () => {
+        // MOBI_HOME 指向临时目录：createConfiguration（含迁移/写盘）不得触碰真实 ~/.mobi
+        isolatedHome = mkdtempSync(join(tmpdir(), 'mobi-verify-web-cred-'))
+        process.env.MOBI_HOME = isolatedHome
         process.env.WEB_API_TOKEN = 'the-web-token'
         process.env.CLI_API_TOKEN = 'the-cli-token'
         resetConfiguration()
@@ -29,7 +37,9 @@ describe('verifyWebCredential', () => {
     afterEach(() => {
         delete process.env.WEB_API_TOKEN
         delete process.env.CLI_API_TOKEN
+        delete process.env.MOBI_HOME
         resetConfiguration()
+        rmSync(isolatedHome, { recursive: true, force: true })
     })
 
     test('webApiToken 验证通过', async () => {

@@ -17,9 +17,10 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { PROTOCOL_VERSION } from '@mobi/shared'
-import { configuration } from '../../configuration'
+import { configuration, getConfiguration } from '../../configuration'
 import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
+import { rotateWebApiToken } from '../../config/webApiToken'
 import { checkProjectAssignable, type Machine, type Session, type SyncEngine } from '../../sync/syncEngine'
 
 const bearerSchema = z.string().regex(/^Bearer\s+(.+)$/i)
@@ -106,6 +107,28 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
 
         c.set('namespace', parsedToken.namespace)
         return await next()
+    })
+
+    // webApiToken 远程读取/轮换：webApiToken 归 hub 所有（settings.hub.json），
+    // cli 与 hub 可不同机器部署，cli 经此 API 代行原「直接写文件」的 rotate 语义
+    app.get('/web-token', (c) => {
+        return c.json({
+            webToken: configuration.webApiToken,
+            // hub 侧 WEB_API_TOKEN env 优先级高于文件：cli 据此提示轮换在 hub 重启后会被覆盖
+            envOverride: configuration.webApiTokenSource === 'env'
+        })
+    })
+
+    app.post('/web-token', async (c) => {
+        // envOverride 先于轮换取值：_setWebApiToken 会把 source 改写为 'file'
+        const envOverride = configuration.webApiTokenSource === 'env'
+        const rotated = await rotateWebApiToken(getConfiguration().dataDir)
+        // 立即热更新 configuration 单例（不等 settingsWatcher 的文件事件，也覆盖 watcher 失效的场景）
+        getConfiguration()._setWebApiToken(rotated.token, 'file', true)
+        return c.json({
+            webToken: rotated.token,
+            envOverride
+        })
     })
 
     app.post('/sessions', async (c) => {

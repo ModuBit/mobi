@@ -31,11 +31,9 @@ export interface Settings {
   // This ID is used as the actual database ID on the server
   // All machine operations use this ID
   machineId?: string
-  machineIdConfirmedByServer?: boolean
-  runnerAutoStartWhenRunningMobi?: boolean
+  // cli 的连接凭证（`mobi auth login` 写入，随 cli 部署位置走）；
+  // hub 侧验证基准存 settings.hub.json，两份语义独立
   cliApiToken?: string
-  // Web 浏览器登录专用 token（由 hub 生成、与本机 settings.json 共享）
-  webApiToken?: string
   // API URL for server connections (priority: env MOBI_API_URL > this > default)
   apiUrl?: string
   // Legacy field name (for migration, read-only)
@@ -46,11 +44,8 @@ export interface Settings {
   timeoutWarningMs?: number      // 预警提前时间
   // 升级 channel: 'stable' | 'rc'，默认 'stable'
   updateChannel?: 'stable' | 'rc'
-  // Hub 配置（与 hub 共享 settings.json）
-  listenHost?: string
-  listenPort?: number
   // 注入给 claude 子进程的额外环境变量（优先级高于 process.env 与内置开关）
-  // 由 buildClaudeFeatureEnv 合并进 sdkOptions.env，用户可在 settings.json 自由扩展
+  // 由 buildClaudeFeatureEnv 合并进 sdkOptions.env，用户可在 settings.cli.json 自由扩展
   claudeEnv?: Record<string, string>
   // !bash 命令本地执行后，是否把命令+输出作为隐藏上下文注入 SDK，让模型感知并响应。
   // true（默认）= 注入即响应（等同 Claude CLI 的 respondToBashCommands:true）；
@@ -58,6 +53,12 @@ export interface Settings {
   bashInjectContext?: boolean
   // web 工具配置（provider 启停/凭据/当前选择），由 runner RPC 读写；会话进程 mtime 惰性读
   webTools?: WebToolsConfig
+}
+
+/** hub 设置文件受限写形状：cli 只允许写 listen*（hub 监听配置），其余字段归 hub 所有 */
+export interface HubListenSettings {
+  listenHost?: string
+  listenPort?: number
 }
 
 const defaultSettings: Settings = {}
@@ -100,22 +101,28 @@ export async function readSettings(): Promise<Settings> {
   }
 }
 
-export async function writeSettings(settings: Settings): Promise<void> {
-  if (!existsSync(configuration.mobiHomeDir)) {
-    await mkdir(configuration.mobiHomeDir, { recursive: true })
+export async function readHubSettings(): Promise<HubListenSettings> {
+  if (!existsSync(configuration.hubSettingsFile)) {
+    return {}
   }
 
-  await writeFile(configuration.settingsFile, JSON.stringify(settings, null, 2))
+  try {
+    const content = await readFile(configuration.hubSettingsFile, 'utf8')
+    return JSON.parse(content)
+  } catch {
+    return {}
+  }
 }
 
 /**
- * Atomically update settings with multi-process safety via file locking
- * @param updater Function that takes current settings and returns updated settings
- * @returns The updated settings
+ * 设置文件锁内的读-改-写（cli 与 hub 对称的锁协议：.lock wx 独占创建 + 重试 + stale 清理）。
+ * cli 文件与 hub 文件各有自己的锁文件，跨进程互斥。
  */
-export async function updateSettings(
-  updater: (current: Settings) => Settings | Promise<Settings>
-): Promise<Settings> {
+async function withSettingsLock<S extends object>(
+  settingsFile: string,
+  read: () => Promise<S>,
+  updater: (current: S) => S | Promise<S>
+): Promise<S> {
   // Timing constants
   const LOCK_RETRY_INTERVAL_MS = 100;  // How long to wait between lock attempts
   const MAX_LOCK_ATTEMPTS = 50;        // Maximum number of attempts (5 seconds total)
@@ -125,8 +132,8 @@ export async function updateSettings(
     await mkdir(configuration.mobiHomeDir, { recursive: true });
   }
 
-  const lockFile = configuration.settingsFile + '.lock';
-  const tmpFile = configuration.settingsFile + '.tmp';
+  const lockFile = settingsFile + '.lock';
+  const tmpFile = settingsFile + '.tmp';
   let fileHandle;
   let attempts = 0;
 
@@ -161,14 +168,14 @@ export async function updateSettings(
 
   try {
     // Read current settings with defaults
-    const current = await readSettings() || { ...defaultSettings };
+    const current = await read();
 
     // Apply update
     const updated = await updater(current);
 
     // Write atomically using rename
     await writeFile(tmpFile, JSON.stringify(updated, null, 2));
-    await rename(tmpFile, configuration.settingsFile); // Atomic on POSIX
+    await rename(tmpFile, settingsFile); // Atomic on POSIX
 
     return updated;
   } finally {
@@ -176,6 +183,33 @@ export async function updateSettings(
     await fileHandle.close();
     await unlink(lockFile).catch(() => { }); // Remove lock file
   }
+}
+
+/**
+ * Atomically update cli settings with multi-process safety via file locking
+ * @param updater Function that takes current settings and returns updated settings
+ * @returns The updated settings
+ */
+export async function updateSettings(
+  updater: (current: Settings) => Settings | Promise<Settings>
+): Promise<Settings> {
+  return withSettingsLock(configuration.settingsFile, readSettings, updater)
+}
+
+/**
+ * 受限写本机 hub 设置文件的 listen* 字段（co-located 部署时 hub 与 cli 同 MOBI_HOME）。
+ * 锁内读-改-写且只合并 listen*：hub 文件其余字段（token/vapidKeys 等）归 hub 所有，
+ * 不得被 cli 侧写覆盖。远程部署时 hub 文件不在本机，此写只影响本机残留文件——
+ * 远程场景的 hub 监听配置应直接编辑 hub 机器上的 settings.hub.json。
+ */
+export async function updateHubSettings(
+  updater: (current: HubListenSettings) => HubListenSettings | Promise<HubListenSettings>
+): Promise<HubListenSettings> {
+  return withSettingsLock(configuration.hubSettingsFile, readHubSettings, async (current) => {
+    const next = await updater(current)
+    // listen* 允许更新，其余字段（hub 所有：token/vapidKeys 等）原样保留
+    return { ...current, listenHost: next.listenHost, listenPort: next.listenPort }
+  })
 }
 
 //

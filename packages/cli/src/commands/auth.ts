@@ -16,12 +16,53 @@
 
 import chalk from 'chalk'
 import os from 'node:os'
-import { randomBytes } from 'node:crypto'
 import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import { configuration } from '@/configuration'
 import { readSettings, clearMachineId, updateSettings } from '@/persistence'
 import type { CommandDefinition } from './types'
+
+/** GET/POST /cli/web-token 响应（hub 侧 webApiToken 归 hub 所有，cli 经 API 读取/轮换） */
+interface WebTokenApiResponse {
+    webToken: string
+    /** hub 以 WEB_API_TOKEN 环境变量启动时为 true：重启后轮换会被 env 值覆盖 */
+    envOverride: boolean
+}
+
+/**
+ * 调 hub 的 web-token HTTP API。webApiToken 持久化在 hub 机器的 settings.hub.json，
+ * cli 与 hub 可不同机器部署，任何部署形态下都经 API 读写而非本地文件。
+ */
+async function requestWebToken(method: 'GET' | 'POST'): Promise<WebTokenApiResponse> {
+    const res = await fetch(`${configuration.apiUrl}/cli/web-token`, {
+        method,
+        headers: { authorization: `Bearer ${configuration.cliApiToken}` },
+        signal: AbortSignal.timeout(10_000)
+    })
+    if (res.status === 401) {
+        throw new Error('CLI_API_TOKEN 未被 hub 接受，请先运行 mobi auth login 配置凭证')
+    }
+    if (!res.ok) {
+        throw new Error(`hub 返回 ${res.status}（${configuration.apiUrl}/cli/web-token）`)
+    }
+    return await res.json() as WebTokenApiResponse
+}
+
+function printWebToken(result: WebTokenApiResponse, rotated: boolean): void {
+    console.log(chalk.bold(`\nWeb API Token${rotated ? '（已轮换）' : ''} (Web 浏览器登录用)\n`))
+    console.log(chalk.green(`  ${result.webToken}`))
+    if (rotated) {
+        console.log(chalk.gray('\n  已持久化到 hub 的 settings.hub.json 并即时生效。'))
+        console.log(chalk.gray('  注意：已登录的 Web 会话最长 1 天后自然失效，新登录需用上方 token。'))
+    } else {
+        console.log(chalk.gray('\n  轮换: mobi auth rotate-web-token'))
+    }
+    if (result.envOverride) {
+        console.log(chalk.yellow('  ⚠ hub 以 WEB_API_TOKEN 环境变量运行：env 优先级高于文件，hub 重启后轮换会被 env 值覆盖失效。'))
+        console.log(chalk.gray('    如需持久轮换，请先移除/更新 hub 侧该环境变量再 rotate。'))
+    }
+    console.log('')
+}
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
     const subcommand = args[0]
@@ -83,38 +124,16 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
     }
 
     if (subcommand === 'web-token') {
-        // 回显当前 webApiToken（Web 浏览器登录用，与 CLI 密钥独立）
-        // 与 hub 校验源保持一致（env > file），避免显示与实际校验不一致的 token
-        const settings = await readSettings()
-        const token = process.env.WEB_API_TOKEN ?? settings.webApiToken
-        if (!token) {
-            console.error(chalk.red('webApiToken 尚未配置。'))
-            console.error(chalk.gray('  启动 hub 时会自动生成，或运行 mobi auth rotate-web-token 生成。'))
-            process.exit(1)
-        }
-        const source = process.env.WEB_API_TOKEN ? 'environment' : configuration.settingsFile
-        console.log(chalk.bold('\nWeb API Token (Web 浏览器登录用)\n'))
-        console.log(chalk.green(`  ${token}`))
-        console.log(chalk.gray(`\n  来源: ${source}`))
-        console.log(chalk.gray('  轮换: mobi auth rotate-web-token'))
-        console.log('')
+        // 回显当前 webApiToken（Web 浏览器登录用）——经 hub API 读取，
+        // 与 hub 校验源保持一致（env > hub 文件），远程部署同样可用
+        printWebToken(await requestWebToken('GET'), false)
         return
     }
 
     if (subcommand === 'rotate-web-token') {
-        // 生成新 webApiToken 并原子写入 settings.json
-        // hub 进程的 settingsWatcher 会检测到变化并热 reload，无需重启 hub
-        const newToken = randomBytes(32).toString('base64url')
-        await updateSettings(current => ({ ...current, webApiToken: newToken }))
-        console.log(chalk.green('\nWeb API Token 已轮换。'))
-        console.log(chalk.gray('  hub 将自动热加载新 token（无需重启）。'))
-        if (process.env.WEB_API_TOKEN) {
-            console.log(chalk.yellow('  ⚠ 检测到 WEB_API_TOKEN 环境变量：env 优先级高于文件，hub 重启后本次轮换会被 env 值覆盖失效。'))
-            console.log(chalk.gray('    如需持久轮换，请先移除/更新该环境变量再 rotate。'))
-        }
-        console.log(chalk.gray('  注意：已登录的 Web 会话最长 1 天后自然失效，新登录需用下方 token：\n'))
-        console.log(chalk.green(`  ${newToken}\n`))
-        console.log(chalk.gray(`  已写入: ${configuration.settingsFile}`))
+        // 经 hub API 生成新 webApiToken：hub 落盘 settings.hub.json 并即时热更新，
+        // 无需重启 hub；远程部署（cli/hub 不同机器）下这是唯一可行的轮换途径
+        printWebToken(await requestWebToken('POST'), true)
         return
     }
 
@@ -146,7 +165,7 @@ ${chalk.bold('Usage:')}
   mobi auth rotate-web-token     Rotate webApiToken (hub 热加载)
 
 ${chalk.gray('For initial setup, use:')} ${chalk.cyan('mobi setup settings')}
-${chalk.gray('Token priority:')} env CLI_API_TOKEN > ~/.mobi/settings.json > auto-generated
+${chalk.gray('Token priority:')} env CLI_API_TOKEN > ~/.mobi/settings.cli.json > auto-generated
 `)
 }
 

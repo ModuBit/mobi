@@ -17,7 +17,7 @@
 import { existsSync } from 'node:fs'
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { readSettingsOrThrow, writeSettings, type Settings } from './settings'
+import { updateSettingsFile, type Settings } from './settings'
 
 /**
  * 获取或创建操作的结果类型
@@ -56,7 +56,7 @@ export type SettingsValueReadResult<T> = {
  * @example
  * ```typescript
  * const result = await getOrCreateSettingsValue({
- *   settingsFile: '/path/to/settings.json',
+ *   settingsFile: '/path/to/settings.hub.json',
  *   readValue: (settings) => settings.apiKey ? { value: settings.apiKey } : null,
  *   writeValue: (settings, value) => { settings.apiKey = value },
  *   generate: () => crypto.randomUUID()
@@ -71,19 +71,26 @@ export async function getOrCreateSettingsValue<T>(options: {
     writeValue: (settings: Settings, value: T) => void
     generate: () => T
 }): Promise<GetOrCreateResult<T>> {
-    const settings = await readSettingsOrThrow(options.settingsFile)
-    const existing = options.readValue(settings)
-    if (existing) {
-        if (existing.writeBack) {
-            await writeSettings(options.settingsFile, settings)
+    // 锁内读-改-写：读值/writeBack/生成写入在同一临界区完成，
+    // 与 cli 受限写（同锁协议）互斥，避免整文件覆盖丢字段
+    let created = false
+    let value!: T
+    await updateSettingsFile(options.settingsFile, (settings) => {
+        const existing = options.readValue(settings)
+        if (existing) {
+            if (existing.writeBack) {
+                options.writeValue(settings, existing.value)
+            }
+            value = existing.value
+            return settings
         }
-        return { value: existing.value, created: false }
-    }
-
-    const generated = options.generate()
-    options.writeValue(settings, generated)
-    await writeSettings(options.settingsFile, settings)
-    return { value: generated, created: true }
+        const generated = options.generate()
+        options.writeValue(settings, generated)
+        value = generated
+        created = true
+        return settings
+    })
+    return { value, created }
 }
 
 /**

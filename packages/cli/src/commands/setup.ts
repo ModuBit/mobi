@@ -26,7 +26,7 @@ ${chalk.bold('mobi setup')} - Interactive setup wizard (first-time)
 
 ${chalk.bold('Usage:')}
   mobi setup                 Interactive setup wizard
-  mobi setup settings        Configure settings.json
+  mobi setup settings        Configure settings.cli.json + settings.hub.json
   mobi setup service install Install and start system service
   mobi setup service remove  Remove system service
   mobi setup service status  Show service status

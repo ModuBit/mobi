@@ -19,7 +19,7 @@
  *
  * Handles MOBI_API_URL initialization with priority:
  * 1. Environment variable (highest - allows temporary override)
- * 2. Settings file (~/.mobi/settings.json)
+ * 2. Settings file (~/.mobi/settings.cli.json)
  * 3. Default value (http://localhost:2222)
  */
 

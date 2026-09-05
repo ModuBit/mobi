@@ -33,7 +33,7 @@ type HookSettings = {
         enabled?: boolean;
     };
     /**
-     * 注入给 claude 进程的环境变量。settings.json 的标准字段，
+     * 注入给 claude 进程的环境变量。settings.cli.json 的标准字段，
      * 相比污染 mobi 自身的 process.env 更内聚——变量只作用于本次会话拉起的 claude。
      */
     env?: Record<string, string>;

@@ -52,10 +52,10 @@ describe('getOrCreateWebApiToken', () => {
         expect(again.source).toBe('file')
     })
 
-    test('环境变量 WEB_API_TOKEN 优先级高于 settings.json 文件值', async () => {
+    test('环境变量 WEB_API_TOKEN 优先级高于 settings.hub.json 文件值', async () => {
         // 预置文件中的竞争 token，证明 env 真正胜过 file
         await writeFile(
-            join(dataDir, 'settings.json'),
+            join(dataDir, 'settings.hub.json'),
             JSON.stringify({ webApiToken: 'file-token-value' })
         )
         process.env.WEB_API_TOKEN = 'env-web-token-value'
@@ -65,10 +65,10 @@ describe('getOrCreateWebApiToken', () => {
         expect(result.source).toBe('env')
     })
 
-    test('环境变量 WEB_API_TOKEN 持久化到已有 settings.json', async () => {
-        // 预置一个不含 webApiToken 的 settings.json，覆盖持久化子分支
+    test('环境变量 WEB_API_TOKEN 持久化到已有 settings.hub.json', async () => {
+        // 预置一个不含 webApiToken 的 settings.hub.json，覆盖持久化子分支
         await writeFile(
-            join(dataDir, 'settings.json'),
+            join(dataDir, 'settings.hub.json'),
             JSON.stringify({ cliApiToken: 'x' })
         )
         process.env.WEB_API_TOKEN = 'env-web-token-value'
@@ -76,7 +76,7 @@ describe('getOrCreateWebApiToken', () => {
         const result = await getOrCreateWebApiToken(dataDir)
         expect(result.token).toBe('env-web-token-value')
 
-        const content = await readFile(join(dataDir, 'settings.json'), 'utf8')
+        const content = await readFile(join(dataDir, 'settings.hub.json'), 'utf8')
         const parsed = JSON.parse(content)
         // env 值被写入磁盘
         expect(parsed.webApiToken).toBe('env-web-token-value')
@@ -84,11 +84,11 @@ describe('getOrCreateWebApiToken', () => {
         expect(parsed.cliApiToken).toBe('x')
     })
 
-    test('不破坏 settings.json 中的其他字段', async () => {
-        await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ cliApiToken: 'preexisting' }))
+    test('不破坏 settings.hub.json 中的其他字段', async () => {
+        await writeFile(join(dataDir, 'settings.hub.json'), JSON.stringify({ cliApiToken: 'preexisting' }))
         await getOrCreateWebApiToken(dataDir)
 
-        const content = await readFile(join(dataDir, 'settings.json'), 'utf8')
+        const content = await readFile(join(dataDir, 'settings.hub.json'), 'utf8')
         const parsed = JSON.parse(content)
         expect(parsed.cliApiToken).toBe('preexisting')
         expect(typeof parsed.webApiToken).toBe('string')

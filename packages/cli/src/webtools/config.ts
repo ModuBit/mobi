@@ -17,7 +17,7 @@
 /**
  * web 工具配置的 mtime 惰性读取（read-through cache）。
  *
- * 生效机制 = 文件系统即广播：runner 落盘 settings.json 后，任何会话进程的
+ * 生效机制 = 文件系统即广播：runner 落盘 settings.cli.json 后，任何会话进程的
  * 下一次 web 工具调用 statSync 检查 mtime、变了才重读 → 热更新零通知零协调。
  * 不用 FSWatcher：原子写是 tmp+rename 换 inode，Linux inotify 会盯旧 inode 静默失效。
  */
@@ -28,7 +28,7 @@ import { configuration } from '@/configuration'
 let cache: { file: string; mtimeMs: number; config: WebToolsConfig } | null = null
 
 /**
- * 读取 web 工具配置（默认 ~/.mobi/settings.json）。mtime 未变走缓存。
+ * 读取 web 工具配置（默认 ~/.mobi/settings.cli.json）。mtime 未变走缓存。
  *
  * 边界兜底：文件不存在 → 空配置；读取/解析/校验失败 → 沿用上一次缓存值
  * （从未成功读过则空配置）——坏配置不该把工具打挂。

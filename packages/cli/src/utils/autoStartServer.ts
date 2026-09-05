@@ -25,7 +25,7 @@
  *
  * 触发条件保持既有语义：
  * 1. MOBI_API_URL 未设置（使用默认 localhost）
- * 2. settings.json 中存在 cliApiToken（hub 曾启动过）且未配置独立 apiUrl
+ * 2. settings.cli.json 中存在 cliApiToken（hub 曾启动过）且未配置独立 apiUrl
  * 3. hub 未在运行（health 探测，而非旧的"端口被占用"近似判断）
  */
 
@@ -71,16 +71,16 @@ async function shouldAutoStartServer(): Promise<boolean> {
         return false
     }
 
-    // Condition 2: Check settings.json
+    // Condition 2: Check settings.cli.json
     const settings = await readSettings()
 
-    // 2a: apiUrl is set in settings.json (user configured a specific hub)
+    // 2a: apiUrl is set in settings.cli.json (user configured a specific hub)
     if (settings.apiUrl || settings.serverUrl) {
-        logger.debug('[AUTO-START] apiUrl is set in settings.json, skipping auto-start')
+        logger.debug('[AUTO-START] apiUrl is set in settings.cli.json, skipping auto-start')
         return false
     }
 
-    // 2b: cliApiToken exists in settings.json (hub was previously started)
+    // 2b: cliApiToken exists in settings.cli.json (hub was previously started)
     if (!settings.cliApiToken) {
         logger.debug('[AUTO-START] No cliApiToken in settings, skipping auto-start')
         return false

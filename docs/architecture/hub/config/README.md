@@ -6,23 +6,48 @@
 
 Configuration 管理 Hub 的所有运行时配置，遵循统一的优先级策略，确保配置可追溯、可持久化。
 
+> 2026-09-05 起配置按部署归属拆分：hub 配置在 `settings.hub.json`，cli 配置在 `settings.cli.json`（归 cli 包所有，见 `docs/configuration.md`）。hub 与 cli 支持不同机器部署。
+
+## 配置文件拆分迁移
+
+**文件**: [`packages/hub/src/config/migrateSettings.ts`](/packages/hub/src/config/migrateSettings.ts)
+
+旧单文件 `settings.json` → `settings.hub.json` + `settings.cli.json` 的自动迁移，在 `createConfiguration()` 加载服务器设置**之前**执行：
+
+```mermaid
+flowchart TB
+    Start["migrateLegacySettings(dataDir)"] --> HasLegacy{"旧 settings.json<br/>存在?"}
+    HasLegacy -->|否| Skip["幂等跳过<br/>reason: no-legacy"]
+    HasLegacy -->|是| Parse{"解析成功?"}
+    Parse -->|否| Fail["fail-fast 不动文件<br/>reason: parse-error"]
+    Parse -->|是| Split["按字段归属拆分<br/>cli 专属字段 → settings.cli.json<br/>其余 → settings.hub.json<br/>死字段丢弃"]
+    Split --> Merge["补缺合并写入两新文件<br/>（新文件已有值不被覆盖）<br/>锁内 updateSettingsFile"]
+    Merge --> Archive["旧文件 rename 为<br/>settings.json.bak"]
+```
+
+| 语义 | 行为 |
+|------|------|
+| 无旧文件 | 幂等跳过 |
+| 解析失败 | fail-fast 终止启动（由调用方报错），不动任何文件 |
+| 新文件已存在（如升级后先跑过 wizard） | 旧字段仅补缺、不覆盖新值，之后同样归档 |
+
 ## 配置优先级
 
 所有配置项遵循同一优先级链：
 
 ```mermaid
 flowchart LR
-    ENV["环境变量<br/>（最高）"] --> File["settings.json<br/>（持久化）"] --> Default["默认值"]
+    ENV["环境变量<br/>（最高）"] --> File["settings.hub.json<br/>（持久化）"] --> Default["默认值"]
     ENV -.->|"首次写入"| File
 ```
 
 | 优先级 | 来源 | 说明 |
 |--------|------|------|
 | 1 | 环境变量 | 最高优先级，运行时覆盖 |
-| 2 | `settings.json` | 持久化存储，跨重启保留 |
+| 2 | `settings.hub.json` | 持久化存储，跨重启保留 |
 | 3 | 默认值 | 内置默认配置 |
 
-**关键行为**：当配置来自环境变量且 `settings.json` 中不存在时，会自动写入文件。这确保了：
+**关键行为**：当配置来自环境变量且 `settings.hub.json` 中不存在时，会自动写入文件。这确保了：
 - 首次通过环境变量设置的值不会丢失
 - 后续重启即使未设置环境变量也能从文件读取
 
@@ -59,15 +84,15 @@ configuration.listenPort
 |------|------|----------|--------|--------|
 | `dataDir` | `string` | `MOBI_HOME` | `~/.mobi` | 不持久化 |
 | `dbPath` | `string` | `DB_PATH` | `{dataDir}/mobi.db` | 不持久化 |
-| `settingsFile` | `string` | — | `{dataDir}/settings.json` | 不持久化 |
-| `listenHost` | `string` | `MOBI_LISTEN_HOST` | `127.0.0.1` | `settings.json` |
-| `listenPort` | `number` | `MOBI_LISTEN_PORT` | `2222` | `settings.json` |
-| `publicUrl` | `string` | `MOBI_PUBLIC_URL` | `http://localhost:{port}` | `settings.json` |
-| `corsOrigins` | `string[]` | `CORS_ORIGINS` | 从 publicUrl 派生 | `settings.json` |
-| `cliApiToken` | `string` | `CLI_API_TOKEN` | 自动生成 | `settings.json` |
-| `webApiToken` | `string` | `WEB_API_TOKEN` | 自动生成 | `settings.json` |
+| `settingsFile` | `string` | — | `{dataDir}/settings.hub.json` | 不持久化 |
+| `listenHost` | `string` | `MOBI_LISTEN_HOST` | `127.0.0.1` | `settings.hub.json` |
+| `listenPort` | `number` | `MOBI_LISTEN_PORT` | `2222` | `settings.hub.json` |
+| `publicUrl` | `string` | `MOBI_PUBLIC_URL` | `http://localhost:{port}` | `settings.hub.json` |
+| `corsOrigins` | `string[]` | `CORS_ORIGINS` | 从 publicUrl 派生 | `settings.hub.json` |
+| `cliApiToken` | `string` | `CLI_API_TOKEN` | 自动生成 | `settings.hub.json` |
+| `webApiToken` | `string` | `WEB_API_TOKEN` | 自动生成 | `settings.hub.json` |
 
-> `dataDir` 和 `dbPath` 仅通过环境变量设置，不持久化到 `settings.json`。
+> `dataDir` 和 `dbPath` 仅通过环境变量设置，不持久化到 `settings.hub.json`。
 
 ## 配置项详解
 
@@ -79,13 +104,13 @@ configuration.listenPort
 
 ```mermaid
 flowchart TB
-    Load["loadServerSettings()"] --> ReadFile["读取 settings.json"]
+    Load["loadServerSettings()"] --> ReadFile["读取 settings.hub.json"]
     ReadFile --> ParseError{"解析失败?"}
     ParseError -->|是| Throw["抛出错误<br/>提示修复文件"]
     ParseError -->|否| Each["逐项按优先级加载<br/>env > file > default"]
     Each --> CORS["CORS 特殊处理"]
     CORS --> NewEnv{"有新环境变量<br/>需写入文件?"}
-    NewEnv -->|是| Save["保存到 settings.json"]
+    NewEnv -->|是| Save["保存到 settings.hub.json"]
     NewEnv -->|否| Return["返回配置"]
     Save --> Return
 ```
@@ -114,11 +139,11 @@ flowchart TB
     Warn --> Persist
     Persist --> Return1["source: env"]
 
-    Env -->|无| File["从 settings.json 读取"]
+    Env -->|无| File["从 settings.hub.json 读取"]
     File --> HasFile{"文件中存在?"}
     HasFile -->|是| Normalize2["标准化 + 返回"]
     HasFile -->|否| Generate["生成 32 字节<br/>base64url token"]
-    Generate --> Save["保存到 settings.json"]
+    Generate --> Save["保存到 settings.hub.json"]
     Save --> Return2["source: generated"]
 ```
 
@@ -135,14 +160,14 @@ flowchart TB
 
 **文件**: [`packages/hub/src/config/webApiToken.ts`](/packages/hub/src/config/webApiToken.ts)
 
-Web 浏览器登录专用密钥（`POST /api/auth` 的校验源），与 CLI 的 `cliApiToken` **完全独立、互不通用**。三级来源：环境变量 `WEB_API_TOKEN` > `settings.json` > 自动生成（32 字节 base64url）。
+Web 浏览器登录专用密钥（`POST /api/auth` 的校验源），与 CLI 的 `cliApiToken` **完全独立、互不通用**。三级来源：环境变量 `WEB_API_TOKEN` > `settings.hub.json` > 自动生成（32 字节 base64url）。
 
 | 属性 | 说明 |
 |------|------|
 | 用途 | Web 登录（换 JWT）；不可访问 `/cli/*` |
 | 生成 | 32 字节（256 位）随机数，base64url 编码 |
 | 自动持久化 | 环境变量首次使用时写入文件，防止丢失 |
-| 热轮换 | `mobi auth rotate-web-token` 重写 settings.json，hub 经 [`settingsWatcher.ts`](./settingsWatcher.ts)（fs.watch）热 reload，无需重启 |
+| 热轮换 | `mobi auth rotate-web-token` 经 hub API（`POST /cli/web-token`，cliApiToken 鉴权）调用 `rotateWebApiToken()` 落盘并即时热更新 configuration 单例；settingsWatcher 兜底监听文件变化，无需重启 hub。远程部署（cli/hub 不同机器）下 API 是唯一轮换途径 |
 
 > 轮换后已签发的 JWT 最长 1 天自然失效；新登录需用新 webApiToken。查看当前值：`mobi auth web-token`。
 
@@ -163,12 +188,12 @@ Web 端 JWT 签名密钥，独立存储在 `jwt-secret.json` 中：
 
 **文件**: [`packages/hub/src/config/vapidKeys.ts`](/packages/hub/src/config/vapidKeys.ts)
 
-Web Push 通知的 VAPID 密钥对，存储在 `settings.json` 中：
+Web Push 通知的 VAPID 密钥对，存储在 `settings.hub.json` 中：
 
 | 属性 | 说明 |
 |------|------|
 | 生成 | `web-push` 库的 `generateVAPIDKeys()` |
-| 存储 | `settings.json` 的 `vapidKeys` 字段 |
+| 存储 | `settings.hub.json` 的 `vapidKeys` 字段 |
 | 用途 | PushService 推送时的身份验证 |
 
 ### Owner ID
@@ -190,11 +215,11 @@ Hub 所有者的数字标识，用于 CLI 认证：
 
 **文件**: [`packages/hub/src/config/generators.ts`](/packages/hub/src/config/generators.ts)
 
-"存在则读取，不存在则生成并保存"的通用模式，操作 `settings.json` 中的字段：
+"存在则读取，不存在则生成并保存"的通用模式，操作 `settings.hub.json` 中的字段：
 
 ```mermaid
 flowchart TB
-    Start["getOrCreateSettingsValue()"] --> Read["读取 settings.json"]
+    Start["getOrCreateSettingsValue()"] --> Read["读取 settings.hub.json"]
     Read --> Exists{"readValue()<br/>返回值?"}
     Exists -->|有值| WB{"需要回写?"}
     WB -->|是| WriteBack["writeSettings()"]
@@ -221,36 +246,45 @@ flowchart TB
 
 **文件**: [`packages/hub/src/config/settings.ts`](/packages/hub/src/config/settings.ts)
 
-`settings.json` 的底层读写：
+`settings.hub.json` 的底层读写与锁协议：
 
 | 函数 | 说明 |
 |------|------|
+| `getSettingsFile(dataDir)` | 返回 `settings.hub.json` 路径 |
+| `getCliSettingsFile(dataDir)` | 返回 `settings.cli.json` 路径（迁移/同步代写用） |
+| `getLegacySettingsFile(dataDir)` | 返回旧 `settings.json` 路径（迁移用） |
 | `readSettings()` | 读取并解析 JSON，解析失败返回 `null`（不覆盖） |
 | `readSettingsOrThrow()` | 读取失败抛出错误 |
-| `writeSettings()` | 原子写入（`.tmp` + `rename`） |
+| `writeSettings()` | 原子写入（`.tmp` + `rename`），调用方须持锁 |
+| `withSettingsLock()` | 文件锁（`.lock` wx 独占 + 重试 + stale 清理，与 cli 侧对称） |
+| `updateSettingsFile()` | 锁内读-改-写统一入口；泛型支持对 cli 文件做受限写 |
+
+> 所有 hub 对设置文件的写都必须走 `updateSettingsFile`（或持锁后 `writeSettings`），与 cli 侧受限写互斥，避免整文件覆盖丢字段。
 
 ## 代码结构
 
 ```
 packages/hub/src/
-├── configuration.ts          # Configuration 单例 + createConfiguration()
+├── configuration.ts          # Configuration 单例 + createConfiguration()（含迁移触发、co-located cliApiToken 同步）
 └── config/
+    ├── migrateSettings.ts    # 旧 settings.json 自动迁移（拆分 + 补缺合并 + .bak 归档）
     ├── cliApiToken.ts        # CLI API Token 管理
-    ├── webApiToken.ts        # Web API Token 管理（与 cliApiToken 独立）
-    ├── settingsWatcher.ts    # settings.json 监听（webApiToken 热轮换）
+    ├── webApiToken.ts        # Web API Token 管理（与 cliApiToken 独立；含 rotateWebApiToken）
+    ├── settingsWatcher.ts    # settings.hub.json 监听（webApiToken 热轮换）
     ├── serverSettings.ts     # 服务器设置（host/port/CORS）
     ├── jwtSecret.ts          # JWT 签名密钥
     ├── vapidKeys.ts          # Web Push VAPID 密钥
     ├── ownerId.ts            # 所有者 ID
-    ├── generators.ts         # 通用 getOrCreate 模式
-    └── settings.ts           # settings.json 读写
+    ├── generators.ts         # 通用 getOrCreate 模式（锁内读-改-写）
+    └── settings.ts           # settings.hub.json 读写 + 锁协议
 ```
 
 ## 文件分布
 
 ```
 ~/.mobi/
-├── settings.json       # 主配置文件（服务器设置、CLI/Web Token、VAPID Keys）
+├── settings.hub.json       # Hub 配置（服务器设置、CLI/Web Token、VAPID Keys）
+├── settings.cli.json       # CLI 配置（machineId/claudeEnv/webTools 等，归 cli 所有）
 ├── jwt-secret.json     # JWT 密钥（独立文件，权限 600）
 ├── owner-id.json       # 所有者 ID（独立文件，权限 600）
 └── mobi.db             # SQLite 数据库
@@ -262,10 +296,10 @@ packages/hub/src/
 |----------|--------|--------|
 | `MOBI_HOME` | 数据目录 | 不持久化 |
 | `DB_PATH` | 数据库路径 | 不持久化 |
-| `MOBI_LISTEN_HOST` | 监听地址 | `settings.json` |
-| `MOBI_LISTEN_PORT` | 监听端口 | `settings.json` |
-| `MOBI_PUBLIC_URL` | 公开 URL | `settings.json` |
-| `CORS_ORIGINS` | CORS 来源 | `settings.json` |
-| `CLI_API_TOKEN` | CLI 认证 Token（CLI 专用） | `settings.json` |
-| `WEB_API_TOKEN` | Web 登录 Token（Web 专用，与 CLI 独立） | `settings.json` |
+| `MOBI_LISTEN_HOST` | 监听地址 | `settings.hub.json` |
+| `MOBI_LISTEN_PORT` | 监听端口 | `settings.hub.json` |
+| `MOBI_PUBLIC_URL` | 公开 URL | `settings.hub.json` |
+| `CORS_ORIGINS` | CORS 来源 | `settings.hub.json` |
+| `CLI_API_TOKEN` | CLI 认证 Token（CLI 专用） | `settings.hub.json` |
+| `WEB_API_TOKEN` | Web 登录 Token（Web 专用，与 CLI 独立） | `settings.hub.json` |
 | `VAPID_SUBJECT` | Web Push 联系方式 | 不持久化 |

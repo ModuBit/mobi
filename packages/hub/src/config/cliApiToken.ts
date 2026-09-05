@@ -18,14 +18,14 @@
  * CLI API Token management
  *
  * Handles automatic generation and persistence of CLI_API_TOKEN.
- * Priority: environment variable > settings.json > auto-generate
+ * Priority: environment variable > settings.hub.json > auto-generate
  */
 
 import { hubLogger } from '../logger'
 import { generateSecureToken } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
 import { getOrCreateSettingsValue } from './generators'
-import { getSettingsFile, readSettings, writeSettings } from './settings'
+import { getSettingsFile, updateSettingsFile } from './settings'
 
 export interface CliApiTokenResult {
     token: string
@@ -78,8 +78,8 @@ function normalizeCliApiToken(rawToken: string, source: CliApiTokenSource): { to
  *
  * Priority:
  * 1. CLI_API_TOKEN environment variable (highest - backward compatible)
- * 2. settings.json cliApiToken field
- * 3. Auto-generate and save to settings.json
+ * 2. settings.hub.json cliApiToken field
+ * 3. Auto-generate and save to settings.hub.json
  */
 export async function getOrCreateCliApiToken(dataDir: string): Promise<CliApiTokenResult> {
     const settingsFile = getSettingsFile(dataDir)
@@ -93,11 +93,10 @@ export async function getOrCreateCliApiToken(dataDir: string): Promise<CliApiTok
         }
 
         // Persist env token to file if not already saved (prevents token loss on env var issues)
-        const settings = await readSettings(settingsFile)
-        if (settings !== null && !settings.cliApiToken) {
-            settings.cliApiToken = normalized.token
-            await writeSettings(settingsFile, settings)
-        }
+        await updateSettingsFile(settingsFile, (settings) => {
+            if (settings.cliApiToken) return settings
+            return { ...settings, cliApiToken: normalized.token }
+        })
 
         return { token: normalized.token, source: 'env', isNew: false, filePath: settingsFile }
     }

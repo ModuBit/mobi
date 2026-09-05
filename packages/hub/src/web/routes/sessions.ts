@@ -500,7 +500,7 @@ export function createSessionsRoutes(
         }
     })
 
-    // 不用 OUTPUT_STYLES 枚举校验：CLI 支持自定义 style（settings.json），此处只挡空串，
+    // 不用 OUTPUT_STYLES 枚举校验：CLI 支持自定义 style（settings.cli.json），此处只挡空串，
     // 合法性由 CLI 侧 switch-output-style handler 守卫（/clear 语义受理 + running/rewind 拒绝）
     const outputStyleSchema = z.object({
         style: z.string().min(1),

@@ -18,15 +18,15 @@
  * Hub Settings Management
  *
  * Handles loading and persistence of hub configuration.
- * Priority: environment variable > settings.json > default value
+ * Priority: environment variable > settings.hub.json > default value
  *
- * When a value is loaded from environment variable and not present in settings.json,
- * it will be saved to settings.json for future use
+ * When a value is loaded from environment variable and not present in settings.hub.json,
+ * it will be saved to settings.hub.json for future use
  */
 
 import { hostname } from 'node:os'
 
-import { getSettingsFile, readSettings, writeSettings } from './settings'
+import { getSettingsFile, readSettings, withSettingsLock, writeSettings } from './settings'
 
 export interface ServerSettings {
     listenHost: string
@@ -90,6 +90,8 @@ function deriveCorsOrigins(publicUrl: string): string[] {
  */
 export async function loadServerSettings(dataDir: string): Promise<ServerSettingsResult> {
     const settingsFile = getSettingsFile(dataDir)
+    // 锁内完成 读→env 回填→写 整个临界区（与 cli 受限写/其他 hub 写点互斥）
+    return withSettingsLock(settingsFile, async () => {
     const settings = await readSettings(settingsFile)
 
     // If settings file exists but couldn't be parsed, fail fast
@@ -203,4 +205,5 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         sources,
         savedToFile: needsSave,
     }
+    })
 }

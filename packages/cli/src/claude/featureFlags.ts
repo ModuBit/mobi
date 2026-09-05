@@ -23,7 +23,7 @@ export const CLAUDE_AGENT_TEAMS_ENV = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS';
  * 任务工具开关（由 claude 侧读取）。SDK 0.3.233 / Claude Code 2.1.233 起
  * TaskCreate/TaskGet/TaskUpdate/TaskList/TodoWrite 在新模型（Opus 4.8 / Sonnet 5 及
  * 更新）默认移出工具面——mobi Web 的 TodoPanel 与任务面板消费这些工具调用流，
- * 保底注入维持任务可见性；用户可在 settings.json claudeEnv 显式置 '0' 跟随新默认。
+ * 保底注入维持任务可见性；用户可在 settings.cli.json claudeEnv 显式置 '0' 跟随新默认。
  *
  * 历史裁定（2026-09-02）：曾改为跟随上游默认不注入，因任务可见性对远程监控有价值，
  * 2026-09-03 应用户要求恢复保底注入。
@@ -37,7 +37,7 @@ export const CLAUDE_TODO_TOOLS_ENV = 'CLAUDE_CODE_ENABLE_TODO_TOOLS';
 export type ClaudeFeatureEnvOptions = {
     /** 是否启用 agent teams 内置快捷开关 */
     agentTeams?: boolean;
-    /** settings.json 的 claudeEnv（用户自定义注入变量） */
+    /** settings.cli.json 的 claudeEnv（用户自定义注入变量） */
     claudeEnv?: Record<string, string>;
 };
 
@@ -49,9 +49,9 @@ export type ClaudeFeatureEnvOptions = {
  *
  * 优先级（从低到高）：
  *   1. 内置快捷开关（MOBI_AGENT_TEAMS → CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS）
- *   2. settings.json 的 claudeEnv（用户显式配置，最具体，覆盖同名内置开关）
+ *   2. settings.cli.json 的 claudeEnv（用户显式配置，最具体，覆盖同名内置开关）
  *
- * claudeEnv 由用户在 settings.json 编辑，需防御非对象 / 非 string 值，避免污染返回类型。
+ * claudeEnv 由用户在 settings.cli.json 编辑，需防御非对象 / 非 string 值，避免污染返回类型。
  */
 export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<string, string> {
     const agentTeams = opts?.agentTeams ?? configuration.isAgentTeamsEnabled;
@@ -66,7 +66,7 @@ export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<st
         env[CLAUDE_AGENT_TEAMS_ENV] = '1';
     }
 
-    // 用户在 settings.json 显式配置的 env，优先级最高
+    // 用户在 settings.cli.json 显式配置的 env，优先级最高
     // 注意：数组也是 object，须显式排除（否则 Object.entries 拿到数值键注入子进程）
     if (rawClaudeEnv && typeof rawClaudeEnv === 'object' && !Array.isArray(rawClaudeEnv)) {
         for (const [key, value] of Object.entries(rawClaudeEnv)) {

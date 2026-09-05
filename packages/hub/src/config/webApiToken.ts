@@ -18,12 +18,12 @@
  * Web API Token 管理
  *
  * Web 浏览器登录专用密钥，与 CLI 的 cliApiToken 完全独立。
- * 优先级：环境变量 WEB_API_TOKEN > settings.json > 自动生成
+ * 优先级：环境变量 WEB_API_TOKEN > settings.hub.json > 自动生成
  */
 
 import { generateSecureToken } from '../utils/crypto'
 import { getOrCreateSettingsValue } from './generators'
-import { getSettingsFile, readSettings, writeSettings } from './settings'
+import { getSettingsFile, updateSettingsFile } from './settings'
 
 export interface WebApiTokenResult {
     token: string
@@ -37,8 +37,8 @@ export interface WebApiTokenResult {
  *
  * 优先级：
  * 1. WEB_API_TOKEN 环境变量（最高）
- * 2. settings.json 的 webApiToken 字段
- * 3. 自动生成并保存到 settings.json
+ * 2. settings.hub.json 的 webApiToken 字段
+ * 3. 自动生成并保存到 settings.hub.json
  */
 export async function getOrCreateWebApiToken(dataDir: string): Promise<WebApiTokenResult> {
     const settingsFile = getSettingsFile(dataDir)
@@ -47,11 +47,10 @@ export async function getOrCreateWebApiToken(dataDir: string): Promise<WebApiTok
     const envToken = process.env.WEB_API_TOKEN
     if (envToken) {
         // 持久化到文件（若尚未保存），避免环境变量丢失导致 token 失踪
-        const settings = await readSettings(settingsFile)
-        if (settings !== null && !settings.webApiToken) {
-            settings.webApiToken = envToken
-            await writeSettings(settingsFile, settings)
-        }
+        await updateSettingsFile(settingsFile, (settings) => {
+            if (settings.webApiToken) return settings
+            return { ...settings, webApiToken: envToken }
+        })
         return { token: envToken, source: 'env', isNew: false, filePath: settingsFile }
     }
 
@@ -69,4 +68,19 @@ export async function getOrCreateWebApiToken(dataDir: string): Promise<WebApiTok
         isNew: result.created,
         filePath: settingsFile
     }
+}
+
+/**
+ * 轮换 Web API token：强制生成新值并覆盖持久化
+ *
+ * 供 CLI 经 HTTP API（POST /cli/web-token）远程调用——webApiToken 归 hub 所有，
+ * 远程部署下 CLI 无法直接写 hub 的 settings.hub.json。
+ * 调用方（路由）负责同步热更新 configuration 单例。
+ * 注意：若 hub 以 WEB_API_TOKEN 环境变量启动，重启后 env 值仍会覆盖本次轮换。
+ */
+export async function rotateWebApiToken(dataDir: string): Promise<WebApiTokenResult> {
+    const settingsFile = getSettingsFile(dataDir)
+    const token = generateSecureToken()
+    await updateSettingsFile(settingsFile, (settings) => ({ ...settings, webApiToken: token }))
+    return { token, source: 'generated', isNew: true, filePath: settingsFile }
 }
