@@ -30,6 +30,11 @@ flowchart TB
 | 无旧文件 | 幂等跳过 |
 | 解析失败 | fail-fast 终止启动（由调用方报错），不动任何文件 |
 | 新文件已存在（如升级后先跑过 wizard） | 旧字段仅补缺、不覆盖新值，之后同样归档 |
+| 旧文件无 cli 专属字段且 cli 文件不存在 | 不写空 `{}` 占位 cli 文件（避免阻断 co-located cliApiToken 同步） |
+
+> cli 侧另有对称的单侧迁移（`packages/cli/src/persistence.ts` 的 `migrateLegacyCliSettings`）：
+> 远程部署形态下 hub 的迁移够不到 cli 机器，cli 命令执行时把旧文件的 cli 专属字段
+> 补缺搬进本机 `settings.cli.json`，不归档旧文件（归档权在本迁移）。
 
 ## 配置优先级
 

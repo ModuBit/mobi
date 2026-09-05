@@ -83,6 +83,77 @@ describe('cli settings 拆分', () => {
         expect(readJson(hubFile())).toEqual({ listenPort: 3333 })
     })
 
+    it('hub 文件解析失败时 updateHubSettings 抛错且不覆盖文件（fail-fast 防丢 hub 字段）', async () => {
+        writeFileSync(hubFile(), '{broken json')
+        const { updateHubSettings } = await loadPersistence()
+
+        await expect(updateHubSettings(s => ({ ...s, listenPort: 3333 }))).rejects.toThrow()
+
+        // 原文件原样保留（不被「只剩 listen*」的内容覆盖）
+        expect(readFileSync(hubFile(), 'utf8')).toBe('{broken json')
+    })
+
+    describe('migrateLegacyCliSettings（cli 侧一次性迁移，远程部署形态）', () => {
+        const legacyFile = () => join(home, 'settings.json')
+
+        it('旧 settings.json 存在时把 cli 字段补缺写入 cli 文件，旧文件保留（归档权归 hub 迁移）', async () => {
+            writeFileSync(legacyFile(), JSON.stringify({
+                cliApiToken: 'legacy-token',
+                machineId: 'legacy-mid',
+                claudeEnv: { FOO: '1' },
+                webApiToken: 'hub-field',
+                listenPort: 2222,
+            }))
+            const { migrateLegacyCliSettings } = await loadPersistence()
+
+            await migrateLegacyCliSettings()
+
+            const cli = readJson(cliFile())
+            expect(cli.cliApiToken).toBe('legacy-token')
+            expect(cli.machineId).toBe('legacy-mid')
+            expect(cli.claudeEnv).toEqual({ FOO: '1' })
+            // hub 专属字段不进 cli 文件
+            expect(cli.webApiToken).toBeUndefined()
+            expect(cli.listenPort).toBeUndefined()
+            // 旧文件保留给 hub 侧迁移
+            expect(existsSync(legacyFile())).toBe(true)
+        })
+
+        it('cli 文件已有值不覆盖（补缺语义，幂等）', async () => {
+            writeFileSync(legacyFile(), JSON.stringify({ cliApiToken: 'legacy-token', machineId: 'legacy-mid' }))
+            writeFileSync(cliFile(), JSON.stringify({ cliApiToken: 'current-token' }))
+            const { migrateLegacyCliSettings } = await loadPersistence()
+
+            await migrateLegacyCliSettings()
+
+            const cli = readJson(cliFile())
+            expect(cli.cliApiToken).toBe('current-token')
+            expect(cli.machineId).toBe('legacy-mid')
+        })
+
+        it('无旧文件时幂等跳过；旧文件解析失败时跳过不阻断（cli 有交互式 prompt 兜底）', async () => {
+            const { migrateLegacyCliSettings } = await loadPersistence()
+            await expect(migrateLegacyCliSettings()).resolves.toBeUndefined()
+            expect(existsSync(cliFile())).toBe(false)
+
+            writeFileSync(legacyFile(), '{broken json')
+            await expect(migrateLegacyCliSettings()).resolves.toBeUndefined()
+            expect(existsSync(cliFile())).toBe(false)
+        })
+
+        it('cli 文件被清空后重复迁移仍能补齐（hasMissing 判定不误跳）', async () => {
+            writeFileSync(legacyFile(), JSON.stringify({ cliApiToken: 'legacy-token' }))
+            const { migrateLegacyCliSettings } = await loadPersistence()
+
+            await migrateLegacyCliSettings()
+            expect(readJson(cliFile()).cliApiToken).toBe('legacy-token')
+
+            writeFileSync(cliFile(), JSON.stringify({}))
+            await migrateLegacyCliSettings()
+            expect(readJson(cliFile()).cliApiToken).toBe('legacy-token')
+        })
+    })
+
     it('非原子 writeSettings 已删除（所有写必须走锁内入口）', async () => {
         const persistence = await loadPersistence()
         expect((persistence as Record<string, unknown>).writeSettings).toBeUndefined()

@@ -23,6 +23,7 @@
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import { configuration } from '@/configuration'
 import { isProcessAlive } from '@/utils/process';
 import type { WebToolsConfig } from '@mobi/shared'
@@ -106,12 +107,11 @@ export async function readHubSettings(): Promise<HubListenSettings> {
     return {}
   }
 
-  try {
-    const content = await readFile(configuration.hubSettingsFile, 'utf8')
-    return JSON.parse(content)
-  } catch {
-    return {}
-  }
+  // 解析失败抛错（fail-fast，与 hub 侧 readSettingsRaw 对称）：
+  // updateHubSettings 锁内经此读取，吞错返回 {} 会把 hub 文件覆盖成只剩 listen*，
+  // webApiToken/vapidKeys 等字段全丢
+  const content = await readFile(configuration.hubSettingsFile, 'utf8')
+  return JSON.parse(content)
 }
 
 /**
@@ -209,6 +209,75 @@ export async function updateHubSettings(
     const next = await updater(current)
     // listen* 允许更新，其余字段（hub 所有：token/vapidKeys 等）原样保留
     return { ...current, listenHost: next.listenHost, listenPort: next.listenPort }
+  })
+}
+
+/** 旧单文件中 cli 专属字段（与 hub 侧 migrateSettings 的 CLI_ONLY_FIELDS + cliApiToken 对应） */
+const LEGACY_CLI_FIELDS = [
+  'machineId',
+  'cliApiToken',
+  'apiUrl',
+  'serverUrl',
+  'updateChannel',
+  'disconnectTimeoutMs',
+  'idleTimeoutMs',
+  'timeoutWarningMs',
+  'claudeEnv',
+  'bashInjectContext',
+  'webTools',
+] as const
+
+/**
+ * cli 侧旧单文件 settings.json 的一次性迁移（hub 与 cli 不同机器部署时，
+ * hub 的迁移够不到 cli 机器，cli 自己把存量 cli 字段搬进 settings.cli.json）。
+ *
+ * 语义：旧文件存在 → 取 cli 专属字段补缺写入 cli 文件（已有值不覆盖，幂等）。
+ * 不归档旧文件——归档权归 hub 侧迁移：co-located 时 hub 启动会统一 rename .bak；
+ * 远程部署时旧文件留在 cli 机器上无害（新代码不再读它）。
+ * 解析失败仅警告跳过不阻断：cli 侧凭证缺失还有交互式 prompt 兜底，
+ * fail-fast 会把坏旧文件放大成所有命令不可用。
+ */
+export async function migrateLegacyCliSettings(): Promise<void> {
+  const legacyFile = join(configuration.mobiHomeDir, 'settings.json')
+  if (!existsSync(legacyFile)) {
+    return
+  }
+
+  let legacy: Record<string, unknown>
+  try {
+    legacy = JSON.parse(await readFile(legacyFile, 'utf8')) as Record<string, unknown>
+  } catch (error) {
+    console.error(`[PERSISTENCE] Legacy settings file cannot be parsed, skipping cli migration: ${legacyFile}`, error)
+    return
+  }
+
+  const cliSplit: Record<string, unknown> = {}
+  for (const key of LEGACY_CLI_FIELDS) {
+    if (key in legacy) {
+      cliSplit[key] = legacy[key]
+    }
+  }
+  if (Object.keys(cliSplit).length === 0) {
+    return
+  }
+
+  // 已无缺失字段则不写盘（迁移幂等，避免每次启动无谓 I/O）
+  const current = await readSettings()
+  const hasMissing = Object.keys(cliSplit).some(
+    key => (current as unknown as Record<string, unknown>)[key] === undefined
+  )
+  if (!hasMissing) {
+    return
+  }
+
+  await updateSettings(currentSettings => {
+    const merged = { ...currentSettings } as unknown as Record<string, unknown>
+    for (const [key, value] of Object.entries(cliSplit)) {
+      if (merged[key] === undefined) {
+        merged[key] = value
+      }
+    }
+    return merged as unknown as Settings
   })
 }
 

@@ -85,9 +85,12 @@ export async function migrateLegacySettings(dataDir: string): Promise<MigrationR
     }
 
     // 补缺合并而非整文件覆盖：新文件已存在时（升级后先跑过 wizard 等）保留其已有值，
-    // 旧文件只填缺失字段；锁内读-改-写与其他写点互斥
+    // 旧文件只填缺失字段；锁内读-改-写与其他写点互斥。
+    // cli 拆分结果为空且 cli 文件不存在时不写：空 {} 占位会阻断 co-located 同步
     await updateSettingsFile(hubFile, (existing) => ({ ...hubSplit, ...existing }))
-    await updateSettingsFile<Record<string, unknown>>(getCliSettingsFile(dataDir), (existing) => ({ ...cliSplit, ...existing }))
+    if (Object.keys(cliSplit).length > 0 || existsSync(getCliSettingsFile(dataDir))) {
+        await updateSettingsFile<Record<string, unknown>>(getCliSettingsFile(dataDir), (existing) => ({ ...cliSplit, ...existing }))
+    }
     await rename(legacyFile, legacyFile + '.bak')
 
     hubLogger.info(`[Hub] Migrated legacy ${legacyFile} -> ${hubFile} + ${getCliSettingsFile(dataDir)} (legacy kept as ${legacyFile}.bak)`)

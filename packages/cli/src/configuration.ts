@@ -129,6 +129,36 @@ class Configuration {
         } catch {
             // 忽略读取错误，使用默认值
         }
+
+        // 拆分迁移前的旧单文件 settings.json 兜底（远程部署形态：hub 的迁移够不到 cli
+        // 机器，落盘迁移由 runCli 的 migrateLegacyCliSettings 异步完成，但本构造器在
+        // 模块加载时同步执行、早于它——此处内存合并保证首启命令就能读到存量配置）
+        const legacySettingsFile = join(this.mobiHomeDir, 'settings.json')
+        if (existsSync(legacySettingsFile)) {
+            try {
+                const legacy = JSON.parse(readFileSync(legacySettingsFile, 'utf8')) as Record<string, unknown>
+                if (this.settings.disconnectTimeoutMs === undefined && typeof legacy.disconnectTimeoutMs === 'number') {
+                    this.settings.disconnectTimeoutMs = legacy.disconnectTimeoutMs
+                }
+                if (this.settings.idleTimeoutMs === undefined && typeof legacy.idleTimeoutMs === 'number') {
+                    this.settings.idleTimeoutMs = legacy.idleTimeoutMs
+                }
+                if (this.settings.timeoutWarningMs === undefined && typeof legacy.timeoutWarningMs === 'number') {
+                    this.settings.timeoutWarningMs = legacy.timeoutWarningMs
+                }
+                if (this.settings.claudeEnv === undefined
+                    && typeof legacy.claudeEnv === 'object'
+                    && legacy.claudeEnv !== null
+                    && !Array.isArray(legacy.claudeEnv)) {
+                    this.settings.claudeEnv = legacy.claudeEnv as Record<string, string>
+                }
+                if (this.settings.bashInjectContext === undefined && typeof legacy.bashInjectContext === 'boolean') {
+                    this.settings.bashInjectContext = legacy.bashInjectContext
+                }
+            } catch {
+                // 旧文件解析失败忽略：落盘迁移同样会跳过并警告，cli 凭证有交互式 prompt 兜底
+            }
+        }
     }
 
     get apiUrl(): string {

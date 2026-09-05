@@ -142,6 +142,18 @@ describe('migrateLegacySettings', () => {
         expect(cli.machineId).toBe('mid-1')
     })
 
+    test('旧文件无 cli 专属字段且 cli 文件不存在时不写空占位文件', async () => {
+        // 空 {} 占位会让 co-located cliApiToken 同步的空对象分支永久跳过，阻断开箱即连
+        writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ webApiToken: 'w', listenPort: 2222 }))
+
+        const result = await migrateLegacySettings(dataDir)
+
+        expect(result).toEqual({ migrated: true, reason: 'migrated' })
+        expect(existsSync(join(dataDir, 'settings.cli.json'))).toBe(false)
+        const hub = readJson(join(dataDir, 'settings.hub.json'))
+        expect(hub.webApiToken).toBe('w')
+    })
+
     test('旧文件解析失败 → fail-fast 不动任何文件', async () => {
         writeFileSync(join(dataDir, 'settings.json'), '{broken json')
 

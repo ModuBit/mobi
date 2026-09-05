@@ -71,11 +71,19 @@
 
 ## 旧 settings.json 自动迁移
 
-升级到拆分版后，hub 首次启动时自动执行一次性迁移：
+升级到拆分版后自动执行一次性迁移，hub 与 cli 两侧独立进行：
+
+**hub 侧**（hub 首次启动时，co-located 与远程 hub 机器都覆盖）：
 
 1. 旧 `settings.json` 存在 → 按字段归属拆入两个新文件（**新文件已有值不被覆盖**，旧字段只补缺）
 2. 旧文件 rename 为 `settings.json.bak` 保留
 3. 旧文件解析失败 → fail-fast 终止启动（防静默丢配置），修复或移除后重启
+
+**cli 侧**（任意 `mobi` 命令执行时；远程部署形态下 hub 的迁移够不到 cli 机器，由 cli 自行搬迁）：
+
+1. 旧 `settings.json` 存在 → 取 cli 专属字段补缺写入 `settings.cli.json`（已有值不覆盖，幂等）
+2. 旧文件**不归档**——归档权归 hub 侧迁移（co-located 时 hub 启动统一 rename；远程部署时留在磁盘无害，新代码不再读它）
+3. 解析失败仅警告跳过（cli 凭证缺失还有交互式 prompt 兜底），不阻断命令
 
 迁移幂等：无旧文件时跳过。
 

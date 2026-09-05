@@ -31,6 +31,11 @@ export async function runCli(): Promise<void> {
         logger.debug(`[PROFILE] 已加载 profile: ${profile}`)
     }
 
+    // cli 侧旧单文件 settings.json 的一次性迁移（profile 的 MOBI_HOME 已就位）。
+    // 须先于 configuration 首次读 settings：远程部署形态下 hub 的迁移够不到 cli 机器
+    const { migrateLegacyCliSettings } = await import('@/persistence')
+    await migrateLegacyCliSettings()
+
     if (args.includes('-v') || args.includes('--version')) {
         console.log(`mobi version: ${packageJson.version}`)
         process.exit(0)

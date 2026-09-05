@@ -42,17 +42,17 @@ import { getCliSettingsFile, getSettingsFile, updateSettingsFile } from './confi
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
 
 /**
- * co-located cliApiToken 同步：同目录存在 settings.cli.json 且其尚无连接凭证时，
- * 把 hub 的 cliApiToken 写一份进去（cli 文件归 cli 所有，此写仅发生在 cli 字段缺省时，
- * 不覆盖用户经 `mobi auth login` 配置的值）。远程部署无同目录文件，自动跳过。
+ * co-located cliApiToken 同步：把 hub 的 cliApiToken 写一份到同目录 settings.cli.json
+ * （cli 文件不存在时创建，保证全新安装的「hub 首启 → 本机 cli 即连」开箱体验）。
+ * cli 文件归 cli 所有：仅在 cli 字段缺省时写入，不覆盖用户经 `mobi auth login` 配置的值；
+ * 空文件（仅占位）同样视为缺凭证补写。远程部署无同目录文件，创建一个只含凭证的
+ * cli 文件在 hub 机器上无害且不会被任何进程读取。
  */
 async function syncCliApiTokenToCoLocatedCli(dataDir: string, token: string): Promise<void> {
     const cliFile = getCliSettingsFile(dataDir)
-    if (!existsSync(cliFile)) return
     try {
         await updateSettingsFile<Record<string, unknown>>(cliFile, (current) => {
-            // 空文件（仅迁移占位）与已有凭证均不写：cli 文件归 cli 所有，此写仅在缺省时补一份
-            if (Object.keys(current).length === 0 || current.cliApiToken) return current
+            if (current.cliApiToken) return current
             return { ...current, cliApiToken: token }
         })
         hubLogger.info(`[Hub] Synced cliApiToken to co-located ${cliFile}`)

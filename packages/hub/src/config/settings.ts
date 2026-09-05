@@ -16,7 +16,7 @@
 
 import { hubLogger } from '../logger'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 /**
@@ -70,9 +70,14 @@ export async function withSettingsLock<T>(
     const MAX_LOCK_ATTEMPTS = 50
     const STALE_LOCK_TIMEOUT_MS = 10000
 
-    const { open, stat, unlink } = await import('node:fs/promises')
+    // 锁文件落盘前确保父目录存在（与 writeSettings 的 mkdir 一致），
+    // 否则对尚不存在目录的首次写会在 open 锁文件时 ENOENT
+    if (!existsSync(dirname(settingsFile))) {
+        await mkdir(dirname(settingsFile), { recursive: true, mode: 0o700 })
+    }
+
     const lockFile = settingsFile + '.lock'
-    let fileHandle: import('node:fs/promises').FileHandle | null = null
+    let fileHandle: FileHandle | null = null
     let attempts = 0
 
     while (attempts < MAX_LOCK_ATTEMPTS) {
@@ -161,7 +166,14 @@ export async function updateSettingsFile<S extends object = Settings>(
 ): Promise<S> {
     return withSettingsLock(settingsFile, async () => {
         const current = await readSettingsRaw<S>(settingsFile)
+        // mutate 前快照：updater 两种风格都兼容——原地修改（writeValue 契约）与新对象（spread）
+        const before = JSON.stringify(current)
         const updated = await updater(current)
+        // 值未变不写盘：get-or-create 命中、迁移补缺无缺等纯读路径不刷新 mtime
+        //（否则每次 hub 启动多次无谓 I/O，且触发 settingsWatcher 的目录事件）
+        if (JSON.stringify(updated) === before) {
+            return updated
+        }
         await writeSettings(settingsFile, updated as Settings)
         return updated
     })
