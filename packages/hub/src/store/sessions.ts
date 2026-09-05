@@ -262,6 +262,46 @@ export function setRuntimeState(
     }
 }
 
+/**
+ * runtime_state 字段级合并写（所有「改一个字段」调用方的单点入口）。
+ *
+ * 读 DB 最新值 → 按 patch 合并 → 写回，整个函数同步完成（bun:sqlite 同步 API + JS 单线程），
+ * 调用方之间不存在读-改-写交叠窗口——杜绝「各自持快照全量覆盖」丢字段
+ * （#62：session-message 路径落库的 todos/backgroundTasks 曾被 sessionCache
+ * 陈旧内存快照的 contextUsage/model 写覆盖）。
+ *
+ * patch 语义：出现的 key 覆盖（value === undefined 视为清除该字段），未出现的 key 保留 DB 现值。
+ * 返回 null = 会话不存在（含 namespace 不匹配）或写库失败；
+ * changed = 合并结果与现值是否不同（不变时跳过写库、seq 不推进，调用方据此省略广播）。
+ */
+export function mergeRuntimeState(
+    db: Database,
+    id: string,
+    patch: Record<string, unknown>,
+    updatedAt: number,
+    namespace: string
+): { merged: Record<string, unknown>; changed: boolean } | null {
+    const row = getSessionByNamespace(db, id, namespace)
+    if (!row) return null
+
+    const current = (row.runtimeState as Record<string, unknown> | null) ?? {}
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) {
+            delete merged[key]
+        } else {
+            merged[key] = value
+        }
+    }
+
+    // 读写之间无 await，JSON 串相等即内容相等（spread 保持 key 序）
+    if (JSON.stringify(merged) === JSON.stringify(current)) {
+        return { merged, changed: false }
+    }
+    if (!setRuntimeState(db, id, merged, updatedAt, namespace)) return null
+    return { merged, changed: true }
+}
+
 /** 合法的 runtimeState 可清理字段 */
 const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'goalStatus'])
 

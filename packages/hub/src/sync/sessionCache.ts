@@ -373,14 +373,14 @@ export class SessionCache {
         timestamp: number,
         namespace: string
     ): void {
-        const current = session.runtimeState?.[field]
-        if (value === current) return
-        const newRuntimeState = { ...session.runtimeState, [field]: value }
-        const updated = this.store.sessions.setRuntimeState(sessionId, newRuntimeState, timestamp, namespace)
-        if (!updated) {
+        // 字段级合并写（读 DB 最新 → patch 合并 → 写回），不基于内存 session.runtimeState
+        // 展开全量覆盖——内存快照不随 session-message 等直写 DB 的路径实时更新，
+        // 全量覆盖会抹掉 DB 侧较新的 todos/backgroundTasks 等（#62 双写竞态）
+        const result = this.store.sessions.mergeRuntimeState(sessionId, { [field]: value }, timestamp, namespace)
+        if (!result) {
             throw new Error(`Failed to update session ${String(field)}`)
         }
-        session.runtimeState = newRuntimeState
+        session.runtimeState = result.merged as RuntimeState
     }
 
     /**
@@ -486,28 +486,34 @@ export class SessionCache {
         session.running = false
         session.runningAt = t
 
-        // Session 结束时标记 team members/tasks 为 completed
-        const runtimeState = session.runtimeState as Record<string, unknown> | undefined
-        if (runtimeState?.teamState) {
-            const teamName = (runtimeState.teamState as { teamName: string }).teamName
-            const endedTeamState = handleTeamSessionEnd(runtimeState.teamState as Parameters<typeof handleTeamSessionEnd>[0])
+        // Session 结束时标记 team members/tasks 为 completed。
+        // 从 DB 现读做收尾判定与计算（内存 runtimeState 可能落后于 session-message 路径的
+        // 直写），再走字段级合并写——不基于陈旧内存快照全量覆盖（#62 双写竞态）
+        const freshRuntimeState = (this.store.sessions.getSession(session.id)?.runtimeState
+            ?? session.runtimeState) as Record<string, unknown> | undefined
+        if (freshRuntimeState?.teamState) {
+            const teamName = (freshRuntimeState.teamState as { teamName: string }).teamName
+            const endedTeamState = handleTeamSessionEnd(freshRuntimeState.teamState as Parameters<typeof handleTeamSessionEnd>[0])
             // 标记 completed 后走 applyTeamStateDelta 自动清理（all-done → null）
-            runtimeState.teamState = applyTeamStateDelta(null, {
+            const newTeamState = applyTeamStateDelta(null, {
                 _action: 'update',
                 ...endedTeamState,
             }) ?? undefined
             // 完成该 team 创建的 runtime_state.tasks
-            const tasks = runtimeState.tasks as Array<Record<string, unknown>> | undefined
-            if (tasks) {
-                runtimeState.tasks = tasks.map(t =>
-                    (t.metadata as Record<string, unknown>)?._teamName === teamName
-                        && t.status !== 'completed' && t.status !== 'deleted'
-                        ? { ...t, status: 'completed' }
-                        : t
-                )
+            const tasks = freshRuntimeState.tasks as Array<Record<string, unknown>> | undefined
+            const newTasks = tasks?.map(t =>
+                (t.metadata as Record<string, unknown>)?._teamName === teamName
+                    && t.status !== 'completed' && t.status !== 'deleted'
+                    ? { ...t, status: 'completed' }
+                    : t
+            )
+            // 持久化更新（tasks 仅在 DB 现值存在时入 patch）
+            const patch: Record<string, unknown> = { teamState: newTeamState }
+            if (tasks) patch.tasks = newTasks
+            const merged = this.store.sessions.mergeRuntimeState(session.id, patch, Date.now(), session.namespace)
+            if (merged) {
+                session.runtimeState = merged.merged as RuntimeState
             }
-            // 持久化更新
-            this.store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), session.namespace)
         }
 
         // 广播（teamState 已自动清理，无需额外包含 runtimeState）

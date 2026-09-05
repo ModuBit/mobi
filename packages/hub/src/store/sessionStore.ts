@@ -33,6 +33,7 @@ import {
     setSessionPinned as setSessionPinnedFromDb,
     setRuntimeState,
     clearRuntimeStateFields,
+    mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
     type ProjectSessionsResult,
@@ -89,6 +90,19 @@ export class SessionStore {
      */
     clearRuntimeStateFields(id: string, fields: string[], namespace: string): boolean {
         return clearRuntimeStateFields(this.db, id, fields, namespace)
+    }
+
+    /**
+     * runtime_state 字段级合并写（读 DB 最新 → patch 合并 → 写回，同步原子）。
+     * patch 值 undefined = 清除该字段；返回 null = 会话不存在/写库失败
+     */
+    mergeRuntimeState(
+        id: string,
+        patch: Record<string, unknown>,
+        updatedAt: number,
+        namespace: string
+    ): { merged: Record<string, unknown>; changed: boolean } | null {
+        return mergeRuntimeState(this.db, id, patch, updatedAt, namespace)
     }
 
     getSession(id: string): StoredSession | null {
