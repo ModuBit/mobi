@@ -89,6 +89,8 @@ export function createSpecialCommandContext(
         onCompletionEvent?: (message: string) => void
         onContextCleared?: () => void
         onSessionReset?: () => void
+        /** /compact 开始：转 launcher 幂等收口（与 system:status{compacting} 双源同汇） */
+        onCompactStart?: () => void
         onReady: () => void
     },
     executeBash: (cmd: string, localIds: string[]) => Promise<void>
@@ -103,7 +105,9 @@ export function createSpecialCommandContext(
             opts.onSessionReset?.()
         },
         onCompactStart: () => {
-            opts.onCompletionEvent?.('Compaction started')
+            // 统一 started 信号：转 launcher 幂等收口（与 system:status{compacting} 双源同汇，
+            // 同一次压缩只发一次 compact-started）。替代退役的 'Compaction started' 字符串事件。
+            opts.onCompactStart?.()
         },
         executeBash,
         onReady: opts.onReady,
@@ -406,6 +410,13 @@ export async function sdkOutputLoop(
          * 失败路径（如 "Not enough messages to compact."）无 compact_summary，靠此解禁输入。
          */
         onCompactCompleted?: () => void
+        /**
+         * compact 开始信号（统一手动/自动两条路径的 started 源）：
+         * SDK `system:status {status:'compacting'}` 到达时触发（2026-09-05 实测，0.3.259）。
+         * 手动 /compact 另有 specialCommand 路径提前触发，双源幂等收口在 launcher（CompactStartGate）。
+         * 注意：实测该消息可先于 init 到达，处理不得依赖 init。
+         */
+        onCompactStart?: () => void
         /** 中止信号，外部调用 abort() 时停止迭代 */
         signal?: AbortSignal
         /**
@@ -523,6 +534,15 @@ export async function sdkOutputLoop(
                     .catch((e) => {
                         logger.debug(`[sdkOutputLoop] Session file wait failed: ${systemInit.session_id}`, e);
                     });
+            }
+        }
+
+        // 处理 system/status：压缩开始信号（status:'compacting'），统一手动/自动两条路径的
+        // started 源。status 消息本身 ephemeral 不透传，只转信号给 launcher 幂等收口。
+        // 注意：实测该消息可先于 init 到达，处理不得依赖 init。
+        if (message.type === 'system' && message.subtype === 'status') {
+            if ((message as { status?: string }).status === 'compacting') {
+                opts.onCompactStart?.();
             }
         }
 
@@ -761,6 +781,8 @@ export async function claudeRemote(opts: {
     onCompletionEvent?: (message: string) => void,
     /** compact 结束（result）时触发，发结构化完成事件给 web 作压缩态退出信号（成功失败都发） */
     onCompactCompleted?: () => void,
+    /** compact 开始（system:status{compacting}）时触发，launcher 幂等收口后发 compact-started 事件 */
+    onCompactStart?: () => void,
     onContextCleared?: () => void,
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
     onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
@@ -1095,6 +1117,7 @@ export async function claudeRemote(opts: {
             onRunningChange: updateRunning,
             onCompletionEvent: opts.onCompletionEvent,
             onCompactCompleted: opts.onCompactCompleted,
+            onCompactStart: opts.onCompactStart,
             onContextUsage: opts.onContextUsage,
             onCompactBoundary: opts.onCompactBoundary,
             onTurnOutput: opts.onTurnOutput,

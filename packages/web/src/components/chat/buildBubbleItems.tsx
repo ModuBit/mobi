@@ -131,6 +131,12 @@ export function buildChatBubbleItems(
             continue
         }
 
+        // compact-started 是纯开始信号（供 isCompressing 进入压缩态，手动/自动统一），
+        // 不渲染气泡：压缩中视觉由 isCompressing 驱动的 CommandProgressBubble 承担
+        if (block.kind === 'agent-event' && block.event.type === 'compact-started') {
+            continue
+        }
+
         // rewind 起点合成行（ChatContainer 本地插入的 REWIND_COMMAND 标记，非真实消息）：
         // 仅驱动 isRewindInProgress 禁用 sender，不渲染气泡
         if (block.kind === 'user-text' && getUserPlainText(block.blocks).trim() === REWIND_COMMAND) {

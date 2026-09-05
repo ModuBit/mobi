@@ -125,6 +125,7 @@ function createOutputLoopOpts(overrides?: Record<string, unknown>) {
         onRunningChange: vi.fn(),
         onCompletionEvent: vi.fn(),
         onCompactCompleted: vi.fn(),
+        onCompactStart: vi.fn(),
         onAbortFlush: vi.fn(),
         ...overrides,
     }
@@ -391,6 +392,35 @@ describe('sdkOutputLoop', () => {
         await sdkOutputLoop(asyncIterableFrom([resultMsg]), ctx, opts)
 
         expect(opts.onCompletionEvent).not.toHaveBeenCalled()
+    })
+
+    // ── system:status → onCompactStart（压缩生命周期统一 started 信号源）──
+
+    /** 创建模拟的 system/status 消息 */
+    function mockSystemStatusMessage(status: string | null) {
+        return { type: 'system' as const, subtype: 'status' as const, status, session_id: 'test-session' }
+    }
+
+    it('status{compacting} 触发 onCompactStart（实测该消息可先于 init 到达，处理不依赖 init）', async () => {
+        const opts = createOutputLoopOpts()
+        const ctx: LoopContext = { isCompactCommand: false, hasInput: false }
+
+        // 实测顺序：status:compacting 是流的第一条消息（init 之前）
+        await sdkOutputLoop(asyncIterableFrom([mockSystemStatusMessage('compacting'), mockSystemInitMessage()]), ctx, opts)
+
+        expect(opts.onCompactStart).toHaveBeenCalledTimes(1)
+    })
+
+    it('status:null（压缩结束清除）与其他 status 值不触发 onCompactStart', async () => {
+        const opts = createOutputLoopOpts()
+        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+
+        await sdkOutputLoop(asyncIterableFrom([
+            mockSystemStatusMessage(null),
+            mockSystemStatusMessage('requesting'),
+        ]), ctx, opts)
+
+        expect(opts.onCompactStart).not.toHaveBeenCalled()
     })
 })
 

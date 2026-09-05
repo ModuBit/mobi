@@ -367,6 +367,19 @@ describe('buildChatBubbleItems', () => {
 
     /* ─── 5. rewind-completed 分隔线 ─── */
 
+    describe('compact-started', () => {
+        it('compact-started 是纯状态信号，不渲染气泡（压缩中视觉由 CommandProgressBubble 承担）', () => {
+            const blocks = [
+                createUserText({ id: 'u1' }),
+                createAgentEvent({ id: 'ev-started', event: { type: 'compact-started' } as AgentEventBlock['event'] }),
+                createAgentText({ id: 'a1' }),
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items).toHaveLength(2)
+            expect(items.map(i => i.key)).toEqual(['u1', 'a1'])
+        })
+    })
+
     describe('rewind-completed', () => {
         it('filesRestored=true → 显示「已回退至此」', () => {
             const blocks = [

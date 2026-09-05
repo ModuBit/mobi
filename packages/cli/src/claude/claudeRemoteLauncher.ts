@@ -32,6 +32,7 @@ import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage } from "./utils/contextUsageCalc";
 import { applyContextReset, type ContextUsageMemory } from "./utils/contextReset";
+import { CompactStartGate } from "./utils/compactLifecycle";
 import { guessContextWindow } from "./utils/modelContextWindow";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -114,6 +115,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private backgroundTaskIds: ReadonlySet<string> = new Set<string>()
     /** 待注入到下一条中断 result 的停止信息（emitAbortedEvent 的落点，见该方法的注释） */
     private pendingAbortInfo: { stopKind: StopKind; stillQueuedCount: number } | null = null
+    /** compact started 幂等闸门：手动 specialCommand 与 system:status{compacting} 双源同汇，
+     *  同一次压缩只发一次 compact-started；boundary/completed 终态清位（见 handleCompactStart） */
+    private compactStartGate = new CompactStartGate()
     /** nextMessage 是否持有被暂存的待投递批次（mode 变更/isolate 时 stash）。
      *  暂存批次不在 MessageQueue 里但下轮必投——撤回初判把它视同「队列非空」 */
     private pendingBatchHeld = false
@@ -367,10 +371,24 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
+     * compact 开始（幂等收口）：手动 /compact（specialCommand，早于 SDK 实际压缩）与
+     * 自动压缩（system:status{compacting}）双源同汇，同一次压缩只发一次 compact-started
+     * session event，web 据此进入压缩态（自动压缩也获得「压缩中」感知）。
+     * 终态清位：handleCompactBoundary（成功）与 onCompactCompleted（成功失败都到）。
+     */
+    private handleCompactStart(): void {
+        if (!this.compactStartGate.shouldEmit()) return
+        logger.debug('[remote]: Compaction started')
+        this.session.client.sendSessionEvent({ type: 'compact-started' })
+    }
+
+    /**
      * 上下文用量上报（compact_boundary）：用 post_tokens 反映压缩后真实占用，复用上次记忆的
      * 窗口大小与成本。组装逻辑见 calcContextUsageFromCompact（纯函数）。
      */
     private handleCompactBoundary(postTokens: number | undefined): void {
+        // 压缩成功终态：started 闸门清位，允许下一次压缩重新触发
+        this.compactStartGate.reset()
         // 压缩后类目结构骤变（messages 大幅缩小），压缩前缓存的细分已失真——作废，
         // 防后续实时上报继续附带 pre-compact 细分与已变小的 totalTokens 同屏矛盾
         this.contextMemory.lastBreakdown = undefined
@@ -993,7 +1011,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onCompactCompleted: () => {
                             logger.debug('[remote]: Compaction completed');
+                            // 压缩终态（成功失败都到）：started 闸门清位（失败路径无 boundary，靠此兜底）
+                            this.compactStartGate.reset();
                             session.client.sendSessionEvent({ type: 'compact-completed' });
+                        },
+                        onCompactStart: () => {
+                            this.handleCompactStart();
                         },
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');

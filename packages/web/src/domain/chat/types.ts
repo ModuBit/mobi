@@ -43,6 +43,8 @@ export type AgentEvent =
     | { type: 'turn-duration'; durationMs: number }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
+    // 压缩开始（手动 /compact 与自动压缩统一 started 信号，CLI 幂等收口后发出）
+    | { type: 'compact-started' }
     | { type: 'compact-completed' }
     // goal_progress：CLI 扫描 SDK ToolResult 原始 JSON 行提取的目标达成状态
     | { type: 'goal-progress'; met: boolean; condition: string; reason?: string; iterations?: number; durationMs?: number; tokens?: number }

@@ -146,6 +146,9 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 |----------|------|------|
 | `switch` | `{ mode: 'local'|'remote' }` | 通知模式切换 |
 | `message` | `{ message: string }` | 系统消息 |
+| `context-cleared` | - | /clear 完成（web 退出清空态 + 清水位） |
+| `compact-started` | - | 压缩开始（手动 /compact 与自动压缩双源同汇，launcher `CompactStartGate` 幂等收口；web 进入压缩态） |
+| `compact-completed` | - | 压缩结束（compact result 时无论成败；web 退出压缩态兜底） |
 | `permission-mode-changed` | `{ mode }` | 权限模式变更 |
 | `ready` | - | Session 就绪 |
 

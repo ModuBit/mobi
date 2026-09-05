@@ -556,6 +556,9 @@ export class ApiSessionClient extends EventEmitter {
     } | {
         type: 'context-cleared'
     } | {
+        /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */
+        type: 'compact-started'
+    } | {
         type: 'compact-completed'
     } | {
         type: 'permission-mode-changed'

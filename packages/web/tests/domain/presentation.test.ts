@@ -97,3 +97,39 @@ describe('isCommandInProgress (/compact)', () => {
         expect(isCompressing([])).toBe(false)
     })
 })
+
+describe('isCommandInProgress (/compact, started 事件驱动)', () => {
+    /** compact-started：统一 started 信号（手动 specialCommand 与自动压缩双源同汇） */
+    function compactStarted(): ChatBlock {
+        return { kind: 'agent-event', id: 's', createdAt: 0, event: { type: 'compact-started' } }
+    }
+    /** compact_boundary：压缩数据事件（成功终态之一） */
+    function compactBoundary(): ChatBlock {
+        return { kind: 'agent-event', id: 'b', createdAt: 0, event: { type: 'compact', trigger: 'auto', preTokens: 100, postTokens: 50, durationMs: 10 } }
+    }
+
+    const isCompressing = (blocks: ChatBlock[]) =>
+        isCommandInProgress(blocks, COMPACT_COMMAND, isCompactCompletion, (block) =>
+            block.kind === 'agent-event' && block.event.type === 'compact-started')
+
+    it('compact-started 事件 → 进行中（自动压缩无 sentinel user-text 也生效）', () => {
+        expect(isCompressing([agentText('hi'), compactStarted()])).toBe(true)
+    })
+
+    it('started → boundary → completed → 已完成', () => {
+        expect(isCompressing([compactStarted(), compactBoundary(), compactCompleted()])).toBe(false)
+    })
+
+    it('started → boundary（无 completed，如后台消息流未结束）→ 已完成（boundary 是成功终态）', () => {
+        expect(isCompressing([compactStarted(), compactBoundary()])).toBe(false)
+    })
+
+    it('manual 双源：sentinel 与 started 同时存在仍正确判定', () => {
+        expect(isCompressing([userText('/compact'), compactStarted(), compactBoundary(), compactCompleted()])).toBe(false)
+        expect(isCompressing([userText('/compact'), compactStarted()])).toBe(true)
+    })
+
+    it('旧数据兼容：无 started 时 sentinel 路径不受影响', () => {
+        expect(isCompressing([userText('/compact'), compactSummary()])).toBe(false)
+    })
+})

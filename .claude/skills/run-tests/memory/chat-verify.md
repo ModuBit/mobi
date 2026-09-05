@@ -86,3 +86,15 @@ running 中发消息 → 进 QueuedMessagesBar 悬浮条（`Queued (N)`），不
 - **按钮定位坑**：composer 右下角合并按钮 x>1300 且 y>700 的定位法会误中「Open File/Terminal/Review」等按钮——用 `ta.closest('.ant-sender')` 容器内找按钮；stop 态判据 = svg 含 `<rect>`，排除 `<title>Stop loading</title>`（abortPending disabled 态）。
 - **撤回成功断言链**：composer 回填原文（textarea.value）+ DB 行 `lifecycle='withdrawn'`+`deleted_at` 非空 + 无灰行。DB 是硬证据——UI innerText 匹配文本会误判（agent 输出/思考里提及同样文字）。
 - **延迟生效坑**：CLI 修复只对**修复后 spawn 的新会话进程**生效——重验 CLI 行为必须新建会话，旧会话进程还是旧代码。
+
+## slash 命令输入坑（2026-09-05，compact E2E 实测）
+
+- **Enter 被 slash 下拉吃掉变补全** — 输入 `/compact` 后直接 Enter，`useSlashCommandInteraction.selectCurrent` 会把首条建议补全进输入框（contains 过滤下 `/autocompact` 排在 `/compact` 前），消息没发出去。**正确流程**：type `/compact` → `press_key Escape`（关下拉）→ `press_key Enter` 提交。
+- **Ctrl+A 清空不一定生效** — click 聚焦后 Ctrl+A+Backspace 仍残留旧文本，与后续输入拼接成 `/autocompact/compact` 被当普通消息发出。提交前用 `evaluate_script` 读 `textarea.value` 确认内容。
+- **seed 项目的 machineId 必须用真实 runner** — 假 id（如 `m-e2e`）在发消息时 `POST /api/machines/<id>/spawn` 404 且 UI 无提示（消息留在输入框）。查真实 id：`sqlite3 ~/.mobi-e2e/mobi.db "SELECT id,status FROM machines"`（runner 在线后 UPDATE projects.machine_id，**刷新页面**清 react-query 缓存）。
+
+## compact 生命周期验证（2026-09-05）
+
+- **落库断言**：`sqlite3 ~/.mobi-e2e/mobi.db "SELECT json_extract(content,'$.content.data.type'), category FROM messages WHERE json_extract(content,'$.content.type')='event'"` — 成功压缩应见 `compact-started`（幂等仅一条）+ `compact-completed`，均 persistent。
+- **成功/失败双路径**：≥3 轮对话压缩成功（渲染 `📦 Context compacted · pre → post · 耗时` + 统计卡片 + 水位骤降）；压缩后再压走失败路径（`Not enough messages to compact.`，13ms），sender 不卡死（compact-completed 兜底）。
+- **「压缩中」气泡实时窗口难抓**（失败路径 13ms / 成功 13.8s 需卡点轮询）——isCompressing 判定逻辑由 presentation 单测覆盖，实时视觉留给真机 auto-compact 自然观察。

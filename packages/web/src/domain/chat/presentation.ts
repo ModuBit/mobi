@@ -50,30 +50,43 @@ export const COMPACT_COMMAND = '/compact'
 /**
  * compact 是否已完成（用于 isCompressing 解禁输入）。
  *
- * 两条完成信号：
+ * 三条完成信号：
  * - compact-summary block：成功路径，SDK 发 compact_boundary 后 CLI 回灌的压缩总结
  * - compact-completed event：CLI 在 compact 的 result 时（**无论成功失败**）发出的
  *   结构化事件。失败路径（如 "Not enough messages to compact."）不会产生 compact-summary，
  *   靠此事件兜底退出 compressing 状态，否则 sender 永久 disabled。
+ * - compact event（compact_boundary）：**自动压缩的唯一终态信号**——compact-completed 只在
+ *   手动 /compact（CLI isCompactCommand 置位）时发出，auto 压缩无此事件，boundary 到达即
+ *   压缩完成。手动路径 boundary 先于 completed 到达，扫描从末尾向前先遇 completed，不冲突。
  */
 export function isCompactCompletion(block: ChatBlock): boolean {
     if (block.kind === 'compact-summary') return true
-    return block.kind === 'agent-event' && block.event.type === 'compact-completed'
+    if (block.kind === 'agent-event' && block.event.type === 'compact-completed') return true
+    return block.kind === 'agent-event' && block.event.type === 'compact'
+}
+
+/** compact-started：统一 started 信号（手动 specialCommand 与自动压缩双源同汇，CLI 幂等发出） */
+export function isCompactStart(block: ChatBlock): boolean {
+    return block.kind === 'agent-event' && block.event.type === 'compact-started'
 }
 
 /**
  * 推导某斜杠命令是否进行中：从末尾向前扫，先遇到完成标志 block → false（已完成），
- * 先遇到 user-text → 判断是否目标命令；扫到首个 user-text 为止（不固定窗口，避免命令后被大量中间 block 推出窗口）。
- * /compact、/clear 等命令期间禁用输入：compact-summary/compact-completed（compact）/ context-cleared（clear）为完成标志。
+ * 再遇到 started 标志（isStart，可选——事件驱动的命令生命周期）→ true，
+ * 最后遇 user-text → 判断是否目标命令（sentinel 兜底，兼容无 started 事件的旧历史）；
+ * 扫到首个 user-text 为止（不固定窗口，避免命令后被大量中间 block 推出窗口）。
+ * /compact、/clear 等命令期间禁用输入。
  */
 export function isCommandInProgress(
     chatBlocks: ChatBlock[],
     command: string,
-    isCompletion: (block: ChatBlock) => boolean
+    isCompletion: (block: ChatBlock) => boolean,
+    isStart?: (block: ChatBlock) => boolean
 ): boolean {
     for (let i = chatBlocks.length - 1; i >= 0; i--) {
         const block = chatBlocks[i]
         if (isCompletion(block)) return false
+        if (isStart?.(block)) return true
         if (block.kind === 'user-text') {
             return getUserPlainText(block.blocks).trim() === command
         }

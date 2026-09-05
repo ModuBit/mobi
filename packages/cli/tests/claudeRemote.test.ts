@@ -132,8 +132,11 @@ describe('createSpecialCommandContext', () => {
         const onReady = vi.fn()
         const executeBash = vi.fn()
 
+        // onCompactStart 统一转 launcher 幂等收口（不再走 onCompletionEvent 字符串文案）
+        const onCompactStart = vi.fn()
+
         const ctx = createSpecialCommandContext(
-            { onCompletionEvent, onContextCleared, onSessionReset, onReady },
+            { onCompletionEvent, onContextCleared, onSessionReset, onCompactStart, onReady },
             executeBash
         )
 
@@ -144,7 +147,8 @@ describe('createSpecialCommandContext', () => {
 
         // Test onCompactStart
         ctx.onCompactStart()
-        expect(onCompletionEvent).toHaveBeenCalledWith('Compaction started')
+        expect(onCompactStart).toHaveBeenCalled()
+        expect(onCompletionEvent).not.toHaveBeenCalledWith('Compaction started')
 
         // Test onReady
         ctx.onReady()

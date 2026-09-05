@@ -35,7 +35,7 @@ import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleIt
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
-import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom, getTurnOrigin } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom, getTurnOrigin } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
@@ -381,9 +381,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return blocks
     }, [rawBlocks, hasNextPage, bgCompletedTasks, rewindProgress, rewindCompletion])
 
-    // 从 chatBlocks 推导压缩状态：完成标志见 isCompactCompletion（compact-summary 成功路径 + compact-completed 失败兜底）
+    // 从 chatBlocks 推导压缩状态：started 见 isCompactStart（手动/自动统一信号）；
+    // 完成标志见 isCompactCompletion（compact-summary 成功 + compact-completed 失败兜底
+    // + compact_boundary 自动压缩唯一终态）；user-text '/compact' sentinel 兼容旧历史
     const isCompressing = useMemo(
-        () => isCommandInProgress(chatBlocks, COMPACT_COMMAND, isCompactCompletion),
+        () => isCommandInProgress(chatBlocks, COMPACT_COMMAND, isCompactCompletion, isCompactStart),
         [chatBlocks]
     )
 

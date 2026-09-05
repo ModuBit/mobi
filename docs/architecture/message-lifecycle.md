@@ -62,7 +62,7 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 
-`turn-result`（← result）、`compact`/`microcompact`（← compact_boundary 等）、`bg-task-*`（← task_* 系列）、`aborted`、`tool-progress` 等——纯渲染语义，由 ① 的消息**派生**，不回写。
+`turn-result`（← result）、`compact`/`microcompact`（← compact_boundary 等）、`bg-task-*`（← task_* 系列）、`aborted`、`tool-progress` 等——纯渲染语义，由 ① 的消息**派生**，不回写。例外：`compact-started`/`compact-completed` 不是 SDK 消息派生，而是 CLI 自产 session event（`content.type='event'`，压缩生命周期统一信号——started 由手动 /compact 与 SDK `system:status{compacting}` 双源同汇经 `CompactStartGate` 幂等发出，completed 在 compact result 时发出）。
 
 ### usage 账本两把尺子（易混，2026-08-26 实测钉死）
 
@@ -678,7 +678,7 @@ type ChatBlock =
 | System `api_error` | `AgentEvent { type: 'api-error', retryAttempt, maxRetries, error }` |
 | System `api_retry` | `AgentEvent { type: 'api-retry', attempt, maxRetries, retryDelayMs, errorStatus, error }`（连续重试去重，只保留最新一条） |
 | System `turn_duration` | `AgentEvent { type: 'turn-duration', durationMs }` |
-| System `compact_boundary` | `AgentEvent { type: 'compact', trigger, preTokens }` |
+| System `compact_boundary` | `AgentEvent { type: 'compact', trigger, preTokens, postTokens, durationMs }` |
 | System `init` (model: ready) | 不输出（标记 hasReadyEvent） |
 
 ### 流式 Snapshot 生命周期
