@@ -120,6 +120,8 @@
 
 ## 28. 中途采纳（agent 运行时新消息自动 interrupt、在 tool 边界采纳）
 
+**状态**：❌ 2026-09-06 用户拍板不做（当前「轮次级排队」已够用，interrupt 编排复杂度不值）。以下调研记录留档，若未来体验反馈反转可重启。
+
 **背景**：排队消息功能（本次实施）落地后，消息入队默认是「轮次级」采纳——等当前 agent loop 跑完（`ResultMessage`）才被 SDK 拉取。本项是再进一步的「tool 边界级」采纳：agent 运行时用户发新消息 → mobi 主动调 `queryRef.interrupt()` → claude 在下一个安全点（当前 tool 跑完）结束本轮 → 队列里这条消息立即被采纳，实现 Claude Code TUI 那种"自然对话、随时转向"的体感。
 
 **为何 deferred**（2026-07-12 用户决策）：
@@ -196,9 +198,9 @@
 
 ---
 
-## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（第二步）待做
+## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（✅ 两步均已完成，余实机 E2E）
 
-**状态**（2026-08-03）：方向已定 —— **抛弃 react-virtuoso 虚拟化，切回 antdx Bubble.List 全量渲染**。第一步（恢复 Bubble.List 完整态）已完成并 E2E 验证；第二步（数据层窗口化钳制 DOM）待做。
+**状态**（2026-09-06）：方向已定 —— **抛弃 react-virtuoso 虚拟化，切回 antdx Bubble.List 全量渲染**。第一步（恢复 Bubble.List 完整态）✅ 已完成并 E2E 验证；第二步（数据层窗口化）✅ C-2 与 C-1 均已完成，仅余实机 E2E（窗口滑动/上滚回补/offsetTop restore 单测覆盖不到）。
 
 ### 决策过程
 
@@ -245,7 +247,7 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 
 **C-2（store 去.pages + 渲染层 window）已完成（2026-08-04）**：新建 `messageWindowStore`（自管 external store，扁平 `DecryptedMessage[]` + 独立游标 + generation 防竞态）替代 `useMessages` 的 `useInfiniteQuery`（消除 react-query pages + SSE append page\[0\] 三重不匹配）。store 全量不 trim（C-2 钳 DOM 不钳内存）。trim 推到 BubbleListChat 渲染层（reduce 之后，sidechain 天然完整）。window 动态 N \[400, 800\]（对齐 hapi 双阈值）+ 贴末尾⇄滑动状态机 + N=800 offsetTop restore。SSE/optimistic/submitted/cancel 全改调 store action。单测 1411 + typecheck + lint 全绿。spec: `docs/superpowers/specs/2026-08-03-message-window-store-design.md`，plan: `docs/superpowers/plans/2026-08-03-message-window-store.md`。
 
-**C-1（store 层 turn 边界 trim 钳内存）待做（2026-08-15 前提已验证，暂不实施）**：在 store 加按 turn 边界 trim（user message + compact-summary + context-cleared 为 turn 起点，保整 turn 保 sidechain）。**前提已实证**（2026-08-15，dev DB 5 会话 227 条 sidechain 消息）：交错模式全部 `U S+`（sidechain 落在 user turn 内），跨 turn 违反 0——「SDK Task 同步阻塞、subagent 不跨 user turn」成立，按 turn 切不会断 sidechain。实施要点（评估过）：turn 起点在原始 DecryptedMessage 层判定（顶层 role=user + compact 边界 + context-cleared，不依赖 normalize）；阈值建议 1500（> 渲染层 EXPAND_WINDOW=800 不影响上滚体验区）；fetchOlder prepend 天然把裁掉的历史加回（内存按需回升，新消息再触发收敛）；appendMessage 高频只做 O(1) 长度判断，跨阈值才 O(n) 扫边界。
+**C-1（store 层 turn 边界 trim 钳内存）✅ 已完成（2026-09-06）**：`messageWindowStore` 加 `isTurnStart`（原始层判定：user 信封 / compact_boundary / context-cleared）+ `trimByTurnBoundary`（丢最少整 turn 使剩余 ≤ TRIM_TARGET=1000，滞回带 [1000,1500]；末 turn 超目标兜底只留最后一个整 turn；无起点/整体一 turn 不裁）+ `trimAfterMerge` 统一口（仅 hasMore=true 才裁——历史穷尽时裁了上滚拉不回，用户拍板）。挂 ingest / fetchLatest / reconcile 三个增长点，fetchOlder 不裁（用户主动拉历史）。append 热路径未超阈值仅 O(1) 长度判断。裁掉历史由 fetchOlder prepend 按需回补，oldestSeq 裁后重算。测试 10 条红→绿 + 存量消费方全绿。前提实证记录（2026-08-15）：sidechain 全部 `U S+` 落在 user turn 内不跨 turn，整 turn 裁不断 sidechain 归组。
 
 **E2E 验证**：C-2 window 滑动/N=800/offsetTop 单测覆盖不到（jsdom offsetTop=0），E2E 受 dev session 恢复环境限制（runner 不恢复 demo session），留实机测（deploy 含 C-2 二进制后真机验证 window 滑动 + N=800 裁顶 + offsetTop restore + 重连补拉 merge + 流式 snapshot update）。
 
@@ -439,18 +441,6 @@ mobi.app（dmg 分发）
 
 ---
 
-## 50. settings.json 职责拆分（2026-08-16）
-
-**背景**：`~/.mobi/settings.json` 目前承载了过多职责（machine 身份、token、hub server 配置、claudeEnv、超时、bash 注入开关，后续还要加 webTools 配置），读写方横跨 hub / runner / CLI 多进程，靠文件锁 + 原子写维持一致性。
-
-**方向**：按使用方拆分成职责分明的配置文件，共用的放共享文件，hub 用的、runner/cli 用的、插件用的各自独立，避免单一文件成为所有进程的写入热点与耦合点。
-
-**注意**：拆分时需兼容现有字段的迁移读取；`updateSettings` 的文件锁与 tmp+rename 原子写模式应保留到各拆分文件。
-
-**优先级**：中。web 工具配置（webTools 段）落地后启动评估——它会让 settings.json 再多一个高频读写的配置段，正好是拆分的触发点。
-
----
-
 ## 51. Web 工具配置页打磨项（2026-08-16；2026-08-17 review 修复后更新）
 
 **背景**：自定义 Web 工具特性（toolAliases 替换内置 WebSearch/WebFetch）已落地，配置页 V1 固定取第一台在线机器。E2E 与最终审查遗留以下打磨点：
@@ -470,7 +460,7 @@ mobi.app（dmg 分发）
 
 **方向**：把在场性协议扩展到整个 submission——providers 条目不在场=保持该条目、路由字段不在场=保持现值、显式 null/空 providers=清除。runner 侧 `mergeProviderCredentials` 升级为完整配置 merge，web 侧删掉 `providersWith()` 回填逻辑、改为只提交变更的字段。
 
-**前置**：协议变更是 breaking change（旧语义下「缺字段=清除」被部分调用方依赖，如 allowClear 路由清除靠缺字段实现），需要版本协商或兼容窗口；与 pending #50（settings.json 拆分）的迁移时机一并考虑。
+**前置**：协议变更是 breaking change（旧语义下「缺字段=清除」被部分调用方依赖，如 allowClear 路由清除靠缺字段实现），需要版本协商或兼容窗口；settings.json 拆分已完成（原 #50），迁移时机约束解除。
 
 **优先级**：低。当前 web 是唯一写入方、`providersWith()` 已封装集中，风险可控；第二个写入方出现时升级为高。
 
@@ -517,93 +507,6 @@ interrupt（用户停止）
 
 ---
 
-## 54. CLI→Hub 消息元数据事件散乱，需收敛（2026-08-18）
-
-**背景**：2026-08-18 讨论 isReplay（CC 接收确认）时，梳理 CLI→Hub 的 socket 事件发现，消息的「native 事实」被拆成多个独立事件、各写一个字段，随新字段的加入持续膨胀：
-
-- `messages-submitted` —— 写 `queue_state`/`submitted_at`（排队轨道）
-- `messages-bound` —— 写 `nativeId`（push 预设 uuid）
-- `messages-native-attached` —— 补写 `nativeSessionId`（CC 会话建立后）
-- `messages-acked`（规划中）—— 写 `nativeAckAt`（CC 回显确认）
-
-概念上都是「同一条消息的元数据」，却散成 4 个事件、4 次往返、4 种载荷结构，Hub 侧也各写各的字段。加上命名风格不统一（`message` 无前缀 / `messages-*` 复数 / `rewound-truncated` vs `rewind-completed` 同族不同词 / `terminal:*` 冒号分隔），进一步放大散乱感。
-
-**方向**（待定，先记录不实施）：
-
-- 收敛为统一「消息 native 事实」事件（合并 bound/attached/acked 或统一载荷结构），一次往返写齐 nativeId + nativeSessionId + ackAt
-- 或至少统一命名规范（native 事实族统一 `messages-native:*` 之类的前缀）
-
-**注意**：收敛是 breaking change（旧事件名有 CLI/Hub 双侧消费方），需版本协商/兼容窗口；与 isReplay（ack 事件）落地时机一并考虑——若 ack 先落地，散乱会再加一个事件，收敛成本更高。
-
-**优先级**：低。先按现状加 `messages-acked` 完成 isReplay，收敛独立立项。
-
----
-
-## 55. StatusBar 本轮计时的起点应落 runtime_state（✅ 2026-08-22 已实施，方案 1）
-
-**状态**：已按方案 1 落地——CLI `SessionBase.onRunningChange` 在 running 翻转 false→true 时经 `run-started` socket 事件上报轮次起点；hub `sessionCache.handleRunStarted` 落库 `runtimeState.runStartedAt`（时间倒退保护：重报旧值静默忽略）+ SSE 推 runtimeState patch；web `ChatContainer.resolveRunStartedAt` 取 runtimeState 权威值与窗口内 `lastUserMessageAt` 的最大值（单调不回跳），StatusBar 计时不再随消息窗口化失守。以下为原始调研记录。
-
-**背景**：composer 状态栏计时（AgentLoadingBubble）刷新页面后曾归零，已用「最后一条 user 消息时间戳」（`lastUserMessageAt`，2026-08-21 commit 19dd8db1）作过渡方案。但消息列表窗口化后，长运行会话的窗口内可能不含本轮 user 消息——计时起点失真（回退 mount 时间或窗口内错误的旧轮消息）。
-
-**现状链路事实**（2026-08-21 调研）：
-- `running` 既不在 runtime_state 也不入库——hub 内存 sessionCache 实时态，CLI 经 `session-alive` 心跳（volatile）周期上报；hub 重启即丢，心跳恢复
-- `runningAt` 不能复用：`sessionCache.ts` 每次心跳都无条件覆盖 `runningAt = t`（语义 = 最近心跳时刻，非 running 翻转时刻）
-- `RuntimeStateSchema`（shared）现无任何时间字段
-
-**方向**（讨论中，待定）：
-1. CLI 轮次开始（收到用户消息 / query 启动）上报精确时间 → hub 写 `runtime_state.runStartedAt`（落库 + SSE，与 context-usage / goal-status 通道同构）→ web StatusBar 优先用它，回退 lastUserMessageAt
-2. 或改 `runningAt` 语义：仅在 running 翻转时更新（心跳不覆盖）——改动最小，但 hub 重启后丢失，精度受心跳周期限制
-
-**相关文件**：`packages/shared/src/schemas.ts`（RuntimeStateSchema）、`packages/hub/src/sync/sessionCache.ts`（handleSessionAlive / handleRunStarted）、`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`（run-started handler，参照 context-usage）、`packages/cli/src/api/apiSession.ts`（reportRunStarted）、`packages/cli/src/agent/sessionBase.ts`（onRunningChange 翻转上报）、web 透传链 `ChatContainer → ChatComposer → StatusBar → AgentLoadingBubble`
-
-**优先级**：已完成（方案 1）。
-
----
-
-## 56. 消息信封「投影税」——native schema 包裹层的消费成本（2026-08-25）
-
-**背景**（2026-08-25 assembler 深挖时梳理）：CLI 把 Claude Code 原生消息（RawJSONLines）整体塞进 mobi 信封 `{ role: 'agent', content: { type: 'output', data: <原样 body> }, meta }` 后存 Hub DB。信封是**加包装不是改内容**——`data` 不透明透传，Hub 不做 Zod 校验不剥字段（无 metadata SWR 死循环那类 strip 风险），native schema 演进无损保存。当前无正确性问题（DB 是只读投影、无回喂 SDK 路径、web 有 `safeStringify` 兜底）。
-
-**代价（投影税，三处）**：
-
-1. **层层下钻**：web 取 native 字段要 `content.content.data.message.xxx` 多级取值（`normalize.ts` 的 `extractAnthropicMessageId` 四级链、`getField` 的 snake/camel 双格式兼容都是为这层包装交的税）
-2. **双层 schema 演进**：信封（shared 定义）与 native（Anthropic 定义）各自变化，normalize 层要跟（好在 native 层对 mobi 只读，只需"能读出要用的"）
-3. **对账/导出映射**：拿 DB 行与 `.jsonl` transcript 对照（如 abort 场景的合并键验证）需先剥信封
-
-**待讨论方向**（仅记录，未定）：
-
-- normalize 层是否有机会一次性解包出 native 视图（typed），减少散落各处的下钻与 getField
-- 信封结构是否收敛/扁平化（`data` 提升为消息本体一等字段），或维持现状接受税
-- 与 assembler 去留讨论（见 memory `project_sdk-partial-assembler`，web 消费层若改为能吃 block 级行则 assembler 可删）相关——两者都动"web 怎么消费消息"这层，宜一并讨论
-
-**相关文件**：`packages/cli/src/api/apiSession.ts`（sendClaudeSessionMessage 信封构造）、`packages/shared/src/messages.ts`（unwrapRoleWrappedRecordEnvelope）、`packages/web/src/domain/chat/normalize.ts`（解包 + extractAnthropicMessageId）、`packages/web/src/domain/chat/normalizeAgent.ts`
-
-**优先级**：低。当前无正确性问题，纯结构优化；与 assembler 去留讨论捆绑启动。
-
----
-
-## 57. 水位窗口大小的猜测预填是过渡方案，需要更好的来源（2026-08-26）
-
-**背景**：上下文水位的分母 `maxTokens`（窗口大小）权威来源只有 `result.modelUsage[model].contextWindow`——turn 结束才到达。导致新会话首个 turn / resume 后（新进程内存清零）实时上报全程被 `lastMaxTokens === 0` 拦截，圆环整个首 turn 缺席（复杂首 turn 也一样）。
-
-**已落地的过渡方案**（2026-08-26）：`guessContextWindow(model)` 按模型名猜测预填（名字含 `[1m]` 忽略大小写 → 1M；其余一律 200k），主线 assistant 到达时若窗口未记忆则填充，实时上报立即生效；result 到达时用真实 `contextWindow` 覆盖。**局限**：窗口知识硬编码在 CLI 内，猜测可能过时/错——新窗口档位（如 `[2m]`）出现要手动追加分支；网关渠道自定义模型名不带 `[1m]` 时按 200k 猜可能偏小（偏小比缺席好，但仍是错的）；首 turn 内百分比可能短暂不准。**补充边界**（2026-08-26 code-review）：「result 权威修正」有前提——部分第三方网关的 result.modelUsage 不携带 contextWindow，`calcContextUsageFromResult` 的 `main?.contextWindow || lastMaxTokens` 会回退到猜测值本身，错误读数整个会话生效、无法自愈（如实际 128k/1M 的非 Claude 模型按 200k 记忆显示失真百分比）。这是用户拍板的「宁显示不错缺席」取舍；方向 3（hub 集中配置表）是唯一能同时覆盖此场景的方案。
-
-**更好的方案方向**（待讨论）：
-
-1. **resume 场景持久化恢复**：hub 的 `runtimeState.contextUsage.maxTokens` 本就持久化了上次会话的窗口大小——CLI 会话启动/resume 时从 hub 拉取该值初始化记忆，替代猜测（比猜准、零新知识源）。可与猜测叠加：持久值优先、无持久值才猜
-2. **SDK 透出**：~~Claude Agent SDK 未来若在 metadata/modelInfo 中暴露各模型 contextWindow，直接接入替换猜测~~（✅ 2026-09-05 等价落地——`getContextUsage({detail:'summary'})` 的 `rawMaxTokens` 即 CC 内部解析链产物（env → settings → clientdata → 模型档位，**含用户 autocompact 阈值**），已作为窗口第一优先级接入：`ContextUsageMemory.lastCcWindowTokens` > `modelUsage.contextWindow`（模型最大窗口）> `guessContextWindow`。真机实证：用户设 autocompact 350k 时环分母 = 350k 而非模型 1m，「距压缩还有多少」语义正确）
-3. **hub 集中维护模型配置表**：服务端权威的「模型 → 窗口」映射（可随版本更新），CLI 拉取使用——把窗口知识从 CLI 硬编码升级为可运营数据，顺带覆盖网关自定义模型名场景
-
-**相关文件**：
-
-- `packages/cli/src/claude/utils/modelContextWindow.ts` — 当前猜测实现（规则演进点）
-- `packages/cli/src/claude/claudeRemoteLauncher.ts` — `reportAssistantUsage` 预填接线、`lastMaxTokens` 记忆
-- `packages/hub/src/sync/sessionCache.ts` — 方向 1 的数据源（runtimeState.contextUsage 落库）
-
-**优先级**：低。过渡方案已消除「首 turn 全程缺席」的主要体验缺口，残余为短暂精度问题；方向 1 成本最低，建议与下次水位相关迭代一并做。
-
----
-
 ## 58. Supervisor 控制socket 存在性看门狗（unlink 幽灵防御）（2026-08-26）
 
 **背景**：E2E 每轮清理（`e2e-cleanup.sh` 绕过 supervisor 强杀子进程 + `rm -rf ~/.mobi-e2e`）曾累积 10 个「幽灵 supervisor」——控制 socket 文件随数据目录被删后，supervisor 探活 connect 得到 ENOENT、指令送不到，事件循环靠控制 server listen 撑着永不退出，且对 `ensureSupervisorRunning`/`doctor clean` 完全不可见。已通过 **e2e 切换 start-sync 直跑形态**（不再经过 supervisor）+ **doctor clean 识别 supervisor 类型** 消除该场景；但生产 A/B 路径（`mobi service start` / launchd）仍存在理论性 unlink 幽灵风险（窗口小：需旧实例 >1s 无应答 + 新实例并发 bind 或外部删除 socket 文件）。
@@ -639,22 +542,6 @@ interrupt（用户停止）
 
 ---
 
-## 60. terminal_reason 全链路（已闭环，2026-08-31 终审修复）
-
-**真实链路**（原条目「web footer 由 CC 侧 metadata 读 terminal_reason」的表述与事实不符，已更正）：
-
-```
-CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 terminal_reason 透传进 lifecycle fact
-  → hub processLifecycleFact（sessionHandlers.ts）—— fact.terminalReason 写进命中行的 metadata.terminalReason
-    （store markTerminalReason，与 nativeAckAt 双写同构，first-write-wins）并随行广播
-      → web ChatContainer footer —— metaById.get(block.id)?.terminalReason 读消息 metadata
-        （terminalReasonLabelKey 只解释已知 key：api_error / budget_exhausted）
-```
-
-**状态**：已实现（批次 A 终审修复）。hub DB 侧可直接审计「为什么这条消息死了」；web 实时展示走同一条广播链路，无需额外改动。
-
----
-
 ## 61. SSE 通道拆分评估：全局事件与会话消息分通道，或升级 WebSocket（2026-08-31）
 
 **现状**：所有会话消息与全局事件共用一条 SSE 连接。单通道意味着：会话消息流量（尤其子代理批量输出、大 thinking 块）与全局事件互相挤占，任何一端的慢消费都会拖住另一端；多会话打开时全部消息涌进同一连接，移动端弱网下感知最明显。
@@ -672,6 +559,8 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 ---
 
 ## 62. 后台任务状态链路两缺陷：runtime_state 双写竞态丢字段 + sidechain 消息不实时（2026-08-31 批次 B E2E 复现）
+
+**状态**（2026-09-06）：缺陷一 ✅ 已修——store 层单点 `mergeRuntimeState`（读 DB 最新 → patch 字段合并 → 写回，同步原子；patch 值 undefined=清除、深等跳过写库不推 seq），`updateRuntimeStateField` 与 `handleSessionEnd` 的 teamState 收尾都改走它，不再基于陈旧内存快照全量覆盖；回归测试 `tests/sync/runtimeStateConvergence.test.ts` 8 条红→绿。缺陷二 ⚠️ 当前代码单测判定**不复现**——全链路测试 `tests/chat/sidechainLive.test.ts`（SSE ingest → 窗口 → normalize → tracer 分组 → Agent block children 增长，含乱序 orphan 与 snapshot 覆盖场景）4 条全通；08-31 的 E2E 冻结观察应已被后续修复覆盖，待实机 E2E 终判（U-4 重连面板恢复 + drawer 实时增长一并验）。用户拍板：条目保留，后续单独跟进 E2E。
 
 **缺陷一：hub `runtime_state` 双写路径竞态丢字段（U-4「重连后台任务快照」的真实根因）**
 
@@ -765,21 +654,6 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 
 ---
 
-## 68. Output style 支持——web 端查看/切换（✅ 2026-09-03 已实施，随批次当期落地）
-
-**状态**：已实施并 E2E 验证（spec：`docs/superpowers/specs/2026-09-03-output-style-support-design.md`，plan 同名；commits 7c1213dc..e09ab8f2）。用户提前触发（原「待真实需求再立项」不再适用）。
-
-**实施要点与偏差**（相对本条原始记录）：
-
-- **切换语义**：SDK 实测**无 `Options.outputStyle` 字段**（调研时误读 `Settings` 接口），改用官方 `Query.applyFlagSettings({ outputStyle })` flag layer——query attach 后注入（与 `control.setModel` 同构模式）
-- **运行中切换**：学 CC 的 /clear 语义——CLI `switch-output-style` RPC → `setOutputStyle` + `clearSessionId` + isolate 哨兵退轮（复用 rewind 哨兵机制 + `pendingOutputStyleExit` 门控），新 query attach 后 applyFlagSettings 注入新值；running/rewind 占用窗口拒绝
-- **当前值权威源**：`runtime_state.outputStyle`（keep-alive ≤2s），**不是** `sdkMetadata.outputStyle`——init 先于 flag apply，快照系统性滞后（E2E 实证）；sdkMetadata 仅老会话兜底
-- **resume 回放**：`RuntimeStateSchema.outputStyle` + keep-alive 持久化 + spawn resume 分支回放（照 effort 先例），进程重启 style 不丢
-- **metadata 数据源**：U-27 重构时 capabilityDiscovery 裁掉了 style 两字段（当时 web 零消费），本特性补回（`2a466f94`）
-- **未做**（spec §5）：自定义 style md 扫描与描述映射（会话页下拉已消费 `availableOutputStyles` 真实列表——自定义名可显示/选中，仅无描述）；style 文件管理 UI；settings 回写
-
----
-
 ## 69. 后台 MCP 任务 resource_links 文件引用渲染（挂起，与「聊天页打开文件」一并做）（2026-09-04）
 
 **来源**：upstream-suggestions 台账 #6（SDK 0.3.259）。SDK 契约已核实——`SDKTaskNotificationMessage.resource_links?: SDKMcpResourceLink[]`（sdk.d.ts:5157）：仅 backgrounded mcp_task 完成时填充，CLI 在把最终结果渲染成模型文本前收集其中的 `resource_link` content block（该任务按引用返回的文件），经 `tool_use_id` 关联发起调用；`SDKMcpResourceLink = { uri, name, title?, description?, mimeType?, size? }`（≤50 条 / 64KiB）。后台任务 tool_result 是占位文本，真实结果经 notification 到达——这是 host 得知「那次工具调用产出哪些文件」的唯一位置。
@@ -791,21 +665,3 @@ CLI commandLifecycleToFact（claudeRemote.ts）—— command_lifecycle 帧的 t
 **落地四件套**：hub task_notification 提取存 backgroundTasks（当前 backgroundTasks.ts:303-378 只取 status/summary，resource_links 被丢弃）+ shared `BackgroundTaskItemSchema` 扩展 + web 任务卡片/面板渲染链接 + uri→文件的打开通道。
 
 **相关**：upstream-suggestions 台账 #6；#63（配置资产管理面）。
-
----
-
-## 70. Output style「设为默认」——updateSettings 官方回写通道（2026-09-04 挂起，用户拍板暂缓）
-
-**来源**：upstream-suggestions 台账 #8（SDK 0.3.259）。SDK 契约已核实——`query.updateSettings('localSettings', settings)`（sdk.d.ts:2684-2693）：经 CLI 自己的 writer（/config 同款路径 + gitignore 维护 + hardened write）合并写入 settings 文件并 live-apply；key allowlist 当前仅 `outputStyle`，不支持删除；目标是项目的 `.claude/settings.local.json`（gitignored 项目级本地文件，**非用户全局**）。mobi 未传 settingSources（SDK 默认全源加载），不会被 setting-sources 门拒绝。
-
-**价值**：用户调好的 style 目前只活在单个会话里，新会话要重选；「设为默认」让它记住到项目级。
-
-**实施要点**（技术通路已畅通，工作量约 1 小时）：
-
-1. **范围语义**：写的是当前会话项目目录的 `.claude/settings.local.json`——只影响该项目后续会话，不跨项目。mobi 远程场景下文件落在会话所在机器，与手机操作视角一致
-2. **live-apply 与 mobi /clear 切换语义冲突**：updateSettings 自带 live-apply（当前会话 style 立即变、上下文不清），与 mobi 切换的 /clear 重建语义不一致。干净做法：**「设为默认」= updateSettings（持久化）+ 复用现 switch-output-style 哨兵退轮（应用）**，现有切换 RPC 加 `persist: boolean` 参数，UI 一次点击完成两步
-3. web 切换器加「设为默认」菜单项（切换器位置见 output style 特性，commits 7c1213dc..e09ab8f2）
-
-**重启时机**：用户反馈「调好的风格不想每次重选」时启动。
-
-**相关**：upstream-suggestions 台账 #8；output style spec `docs/superpowers/specs/2026-09-03-output-style-support-design.md` §5（当时明确不做回写，本条是产品决策重启）。
