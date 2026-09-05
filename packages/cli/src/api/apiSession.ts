@@ -682,7 +682,8 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** rewind 截断成功上报（CLI → Hub，ack 确认制）：Hub 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
-    emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void {        this.rewindReportQueue.enqueue({ event: 'rewind-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
+    emitRewindTruncated(nativeId: string, deleteFromSeq: number): void {
+        this.rewindReportQueue.enqueue({ event: 'rewind-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
     }
 
     /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */

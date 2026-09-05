@@ -18,6 +18,7 @@ import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shar
 import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { TaskItem } from '@mobi/shared/types'
 import type { Store } from '../store'
+import { hubLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
 import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
@@ -513,6 +514,9 @@ export class SessionCache {
             const merged = this.store.sessions.mergeRuntimeState(session.id, patch, Date.now(), session.namespace)
             if (merged) {
                 session.runtimeState = merged.merged as RuntimeState
+            } else {
+                // 合并写失败（会话行消失 / namespace 不匹配）：收尾判定照常广播，但持久化已丢失——留痕便于诊断
+                hubLogger.warn(`[sessionCache] handleSessionEnd mergeRuntimeState failed, teamState 收尾未持久化 (id=${session.id})`)
             }
         }
 

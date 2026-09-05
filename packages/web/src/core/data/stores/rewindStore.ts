@@ -27,12 +27,12 @@ import { rewindFrom } from '@/core/data/stores/messageWindowStore'
  */
 
 /** rewind-truncated SSE 载荷（shared SyncEventSchema 已收录，单一来源） */
-export type RewoundTruncatedEvent = Extract<SyncEvent, { type: 'rewind-truncated' }>
+export type RewindTruncatedEvent = Extract<SyncEvent, { type: 'rewind-truncated' }>
 
 /** rewind-completed SSE 载荷（终态；filesRestored false 时 error 携带原因） */
 export type RewindCompletedEvent = Extract<SyncEvent, { type: 'rewind-completed' }>
 
-export type RewindSseEvent = RewoundTruncatedEvent | RewindCompletedEvent
+export type RewindSseEvent = RewindTruncatedEvent | RewindCompletedEvent
 
 /** rewind 进行中状态（beginRewind 创建，completeRewind 清除） */
 export type RewindProgress = {

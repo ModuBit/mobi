@@ -25,7 +25,7 @@ vi.mock('@/ui/logger', () => ({
 function makeClient(): RewindReportClient & { emitRewindCompleted: ReturnType<typeof vi.fn> } {
     return {
         fetchRewindBoundary: vi.fn().mockResolvedValue(5),
-        emitRewoundTruncated: vi.fn(),
+        emitRewindTruncated: vi.fn(),
         emitRewindCompleted: vi.fn(),
     } as unknown as RewindReportClient & { emitRewindCompleted: ReturnType<typeof vi.fn> }
 }

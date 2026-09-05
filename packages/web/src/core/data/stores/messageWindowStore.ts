@@ -24,66 +24,17 @@
  *（fetch in flight 时若窗口被 clear，旧响应自动失效）。
  */
 
-import { isObject } from '@mobi/shared'
-import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
 import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
 import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMessagesSubmitted'
+import { trimByTurnBoundary } from '@/domain/chat/turnBoundary'
 
 /** 贴底稳定大小（用户在底部看最新） */
 export const VISIBLE_WINDOW = 400
 /** 上滚看历史的容忍上限（2× VISIBLE_WINDOW，对齐 hapi 双阈值语义） */
 export const EXPAND_WINDOW = 800
-
-// ───────── turn 边界裁剪（#40 C-1）────────────────────────────────
-// C-2 只钳了渲染 DOM，store 的 messages 数组仍随会话总量无界增长，且每条 SSE
-// 增量都要对全量数组跑归约——超长会话内存与计算成本线性上涨。此处按整 turn
-// 裁掉最老历史：前提已实证（2026-08-15 dev DB 5 会话 227 条 sidechain），sidechain
-// 全部落在 user turn 之内不跨 turn（SDK Task 同步阻塞），整 turn 裁剪必不断 sidechain。
-// 被裁历史由 fetchOlder prepend 按需回补（用户主动上滚才发生），贴底后下次超阈值再收敛。
-
-/** 裁剪触发阈值：窗口超过才做一次 O(n) 边界扫描（未超过时 append 路径仅 O(1) 长度判断） */
-export const TRIM_THRESHOLD = 1500
-/** 裁剪保留目标（滞回带 [TRIM_TARGET, TRIM_THRESHOLD]，避免频繁裁剪抖动） */
-export const TRIM_TARGET = 1000
-
-/**
- * 原始层 turn 起点判定（不依赖 normalize）：三种消息开启新 turn——
- * user 信封（用户发言）、system:compact_boundary（压缩后即新上下文）、
- * context-cleared 事件（/clear 完成）。
- */
-export function isTurnStart(content: unknown): boolean {
-    const record = unwrapRoleWrappedRecordEnvelope(content)
-    if (!record) return false
-    if (record.role === 'user') return true
-    if (record.role !== 'agent' && record.role !== 'assistant') return false
-    const c = isObject(record.content) ? (record.content as { type?: string; data?: { type?: string; subtype?: string } }) : null
-    if (!c) return false
-    if (c.type === 'event' && c.data?.type === 'context-cleared') return true
-    if (c.type === 'output' && c.data?.type === 'system' && c.data?.subtype === 'compact_boundary') return true
-    return false
-}
-
-/**
- * 按 turn 边界从头部裁剪：丢最少的整 turn 使剩余 ≤ TRIM_TARGET（保留最多历史）。
- * 找不到满足目标的起点（最后一个 turn 自身超过目标）→ 兜底只保留最后一个整 turn；
- * 完全没有 turn 起点 / 整体就是一个 turn → 不裁（原引用返回，避免裁出 orphan 开头）。
- */
-export function trimByTurnBoundary(messages: DecryptedMessage[]): DecryptedMessage[] {
-    if (messages.length <= TRIM_THRESHOLD) return messages
-    let firstUnderTarget = -1
-    let lastTurnStart = -1
-    for (let i = 0; i < messages.length; i += 1) {
-        if (!isTurnStart(messages[i].content)) continue
-        lastTurnStart = i
-        if (firstUnderTarget === -1 && messages.length - i <= TRIM_TARGET) firstUnderTarget = i
-    }
-    const cut = firstUnderTarget !== -1 ? firstUnderTarget : lastTurnStart
-    if (cut <= 0) return messages
-    return messages.slice(cut)
-}
 
 export interface MessageWindowState {
     sessionId: string
@@ -238,6 +189,16 @@ function trimAfterMerge(prev: InternalState, messages: DecryptedMessage[]): { me
     return { messages: trimmed, oldestSeq: computeOldestSeq(trimmed) }
 }
 
+/**
+ * 整窗替换后的统一收口（fetchLatest / reconcile 共用）：窗口内容整体来自服务端响应，
+ * 无论是否发生裁剪都必须重算 oldestSeq 游标（流式 ingest 不走这里——流式沿用
+ * prev.oldestSeq 避免每条 chunk O(n)）。
+ */
+function replaceWindowAndTrim(prev: InternalState, messages: DecryptedMessage[], hasMore: boolean) {
+    const { messages: trimmed, oldestSeq } = trimAfterMerge(prev, messages)
+    return { messages: trimmed, hasMore, oldestSeq: oldestSeq ?? computeOldestSeq(trimmed), isLoading: false, hasFetchedLatest: true }
+}
+
 export function getMessageWindowState(sessionId: string): MessageWindowState {
     return getState(sessionId)
 }
@@ -316,8 +277,7 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
             // 撤回墓碑闸门：响应迟到 / hub 侧撤回落库竞态时，响应仍可能含已撤回行——跳过不合并
             const merged = mergeMessages(prev.messages, filterWithdrawn(sessionId, res.data.messages))
             // turn 边界裁剪（#40 C-1）：重连补拉把窗口带回全量时收敛内存
-            const { messages, oldestSeq } = trimAfterMerge(prev, merged)
-            return _internal.buildState(prev, { messages, hasMore: res.data.page.hasMore, isLoading: false, oldestSeq: oldestSeq ?? computeOldestSeq(messages), hasFetchedLatest: true })
+            return _internal.buildState(prev, replaceWindowAndTrim(prev, merged, res.data.page.hasMore))
         })
     } catch (err) {
         // 静默吞错会让首次加载失败时用户看到空会话（ChatWelcome）无反馈——至少留日志便于诊断
@@ -398,8 +358,7 @@ export async function reconcileLatestMessages(api: MobiApi, sessionId: string): 
             const messages = mergeMessages(filterWithdrawn(sessionId, res.data.messages), localPending)
             // hasMore 必须跟随响应更新：替换后窗口只剩一页，沿用旧值 false 会让
             // 已加载的更早历史永远无法再加载（fetchOlderMessages 的 !prev.hasMore 守卫）
-            const { messages: trimmed, oldestSeq } = trimAfterMerge(p, messages)
-            return _internal.buildState(p, { messages: trimmed, hasMore: res.data.page.hasMore, oldestSeq: oldestSeq ?? computeOldestSeq(trimmed), isLoading: false, hasFetchedLatest: true })
+            return _internal.buildState(p, replaceWindowAndTrim(p, messages, res.data.page.hasMore))
         })
     } catch (err) {
         // 对账失败保持现状（超时兜底按原路径收尾），留日志诊断

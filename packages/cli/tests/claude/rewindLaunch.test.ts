@@ -157,7 +157,7 @@ describe('reportRewindCompletion（两段回报）', () => {
             fetchRewindBoundary: vi.fn(() =>
                 boundary instanceof Error ? Promise.reject(boundary) : Promise.resolve(boundary)
             ),
-            emitRewoundTruncated: truncated,
+            emitRewindTruncated: truncated,
             emitRewindCompleted: completed,
         }
     }

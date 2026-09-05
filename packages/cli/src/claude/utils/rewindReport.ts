@@ -22,7 +22,7 @@ export interface RewindReportClient {
     /** 反查锚点批首行 seq（Hub 软删除定界） */
     fetchRewindBoundary(nativeId: string): Promise<number>
     /** 截断成功上报（Hub 即刻软删除 + 转 SSE） */
-    emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void
+    emitRewindTruncated(nativeId: string, deleteFromSeq: number): void
     /** 终态上报（Web 解禁输入 / 关闭弹窗的完成标志）；skippedLinks>0 时部分路径被安全护栏跳过 */
     emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void
 }
@@ -50,7 +50,7 @@ export async function reportRewindCompletion(
     try {
         const deleteFromSeq = await client.fetchRewindBoundary(rewind.nativeId);
         if (deleteFromSeq > 0) {
-            client.emitRewoundTruncated(rewind.nativeId, deleteFromSeq);
+            client.emitRewindTruncated(rewind.nativeId, deleteFromSeq);
         } else {
             logger.warn(`[rewindReport] boundary not found for ${rewind.nativeId}, skipping truncated report`);
             filesError = 'rewind boundary not found on hub';
