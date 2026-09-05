@@ -71,6 +71,9 @@ interface ContextRingProps {
     usage: ContextUsage
     /** 圆环直径 px（PC 工具栏 20 / 移动 header 22，默认 20） */
     size?: number
+    /** Popover 弹出方位（默认 top：PC composer 底部向上弹出不遮 composer；
+     *  移动 header 环贴屏顶无空间，传 bottomRight 向下拉出如菜单） */
+    placement?: 'top' | 'bottomRight' | 'bottom'
 }
 
 /**
@@ -78,7 +81,7 @@ interface ContextRingProps {
  * hover Tooltip 概要（已用/上限/百分比）；点击 Popover 详情（PC/移动统一，触屏支持点击触发）。
  * 无数据不渲染——由挂载方保证（contextUsage 为空不挂）。
  */
-export function ContextRing({ usage, size = 20 }: ContextRingProps) {
+export function ContextRing({ usage, size = 20, placement = 'top' }: ContextRingProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const { pct, tone } = resolveRingTone(usage.percentage)
@@ -127,7 +130,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
         <Popover
             trigger="click"
             // top + 箭头指向触发中心：topRight 的箭头锚在弹出层角上，与圆环错位
-            placement="top"
+            placement={placement}
             arrow={{ pointAtCenter: true }}
             open={popoverOpen}
             onOpenChange={(open) => {

@@ -89,7 +89,7 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
         <>
             {/* 移动端水位圆环（PC 挂 composer 工具栏）——参照 codex/chatgpt 双端分流 */}
             {isMobile && session.runtimeState?.contextUsage ? (
-                <ContextRing usage={session.runtimeState.contextUsage} size={22} />
+                <ContextRing usage={session.runtimeState.contextUsage} size={22} placement="bottomRight" />
             ) : null}
             {showExpand && (
                 <AppTooltip title={t('session.inspector.expand')}>
