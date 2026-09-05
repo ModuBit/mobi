@@ -125,9 +125,17 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
             placement="topRight"
             open={popoverOpen}
             onOpenChange={setPopoverOpen}
-            styles={{ content: { minWidth: 'min(280px, 80vw)', maxHeight: 'min(420px, 65dvh)', overflowY: 'auto' } }}
+            /* 定宽（视口约束）：明细长路径 nowrap 会撑爆固有宽度致横向溢出屏幕，
+               固定 width 让 ellipsis 生效；maxHeight 纵向限高滚动（类目/明细多时） */
+            styles={{
+                content: {
+                    width: 'min(300px, calc(100vw - 32px))',
+                    maxHeight: 'min(420px, 65dvh)',
+                    overflowY: 'auto',
+                },
+            }}
             content={(
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, display: 'grid', gap: 4, padding: '4px 2px' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 4, padding: '4px 2px' }}>
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('session.contextUsage.title')}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.used')}</span>

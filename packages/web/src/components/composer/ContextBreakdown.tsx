@@ -167,7 +167,7 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
     )
 
     return (
-        <div style={{ display: 'grid', gap: 10, fontFamily: 'var(--font-mono)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10, fontFamily: 'var(--font-mono)' }}>
             {/* 方格网：20 列 × 5 行 = 100 格 */}
             <div
                 style={{
@@ -180,7 +180,7 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
             </div>
 
             {/* 类目列表 */}
-            <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 4, fontSize: 12 }}>
                 {breakdown.categories.map((c) => {
                     const meta = CATEGORY_META[c.key]
                     const color = isDark ? meta.dark : meta.light
@@ -207,7 +207,7 @@ export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
                             </div>
                             {/* 逐项明细（展开后渲染） */}
                             {expandable && isOpen && (
-                                <div style={{ display: 'grid', gap: 2, paddingLeft: 23 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 2, paddingLeft: 23 }}>
                                     {detailItems(c.key).map((item) => (
                                         <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: token.colorTextTertiary }}>
                                             <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
