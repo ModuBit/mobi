@@ -241,6 +241,33 @@ export function formatEvent(
         // goal-progress：每 turn 的目标达成状态标注（stream 三大展示面之一）
         // met=true 达成(success 绿，由 reducer display.color=success + AgentEventBlock 配合)，
         // met=false active(中性灰)。后跟 condition + 可选统计
+        // compact_boundary：上下文压缩完成（手动 /compact 与 auto-compact 共用此事件）。
+        // auto-compact 唯一的用户可见信号就在这——手动路径另有 user 消息 + compact-summary 撑着，
+        // 此 case 缺失时自动压缩在聊天里完全隐形（与 goal-progress 当年同坑：落 default:null）
+        case 'compact': {
+            const pre = Number(event.preTokens) || 0
+            const post = Number(event.postTokens) || 0
+            const durationMs = Number(event.durationMs) || 0
+            const stats: string[] = []
+            if (pre > 0) stats.push(`${formatTokensCount(pre)} → ${formatTokensCount(post)}`)
+            if (durationMs > 0) stats.push(formatDurationMs(durationMs))
+            return (
+                <div style={{ fontFamily: 'var(--font-mono)' }}>
+                    <span>📦 {t('chat.contextCompacted')}</span>
+                    {stats.length > 0 && <span> · {stats.join(' · ')}</span>}
+                </div>
+            )
+        }
+        // microcompact_boundary：工具结果等旧内容的微压缩（上下文结构不变），只报节省量
+        case 'microcompact': {
+            const saved = Number(event.tokensSaved) || 0
+            return (
+                <div style={{ fontFamily: 'var(--font-mono)' }}>
+                    <span>📦 {t('chat.contextMicrocompacted')}</span>
+                    {saved > 0 && <span> · {formatTokensCount(saved)} tokens</span>}
+                </div>
+            )
+        }
         case 'goal-progress': {
             const met = event.met === true
             const condition = typeof event.condition === 'string' ? event.condition : ''

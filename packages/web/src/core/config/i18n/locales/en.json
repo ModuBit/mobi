@@ -169,6 +169,8 @@
         "thought": "Thought",
         "thoughtDuration": "Thought · {{secs}}s",
         "contextReset": "Context was reset",
+        "contextCompacted": "Context compacted",
+        "contextMicrocompacted": "Context microcompacted",
         "compactSummary": "Conversation compressed",
         "compacting": "Compressing conversation...",
         "clearing": "Clearing context...",

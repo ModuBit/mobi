@@ -130,6 +130,58 @@ describe('formatEvent turn-result', () => {
     })
 })
 
+// 防漏网根因（与 goal-progress 同坑）：auto-compact 时 SDK 发 compact_boundary，
+// normalizeAgent 已产出 {type:'compact'} 事件，但 formatEvent 缺 case 落 default:return null
+// → 聊天里完全无提示（手动 /compact 有 user 消息 + compact-summary 撑着看不出）。
+describe('formatEvent compact / microcompact', () => {
+    afterEach(cleanup)
+
+    // formatEvent 的 t 由调用方注入（真实渲染走 i18n），测试用最小映射解析文案
+    const zhT = (k: string) =>
+        ({ 'chat.contextCompacted': '上下文已压缩', 'chat.contextMicrocompacted': '上下文已微压缩' })[k] ?? k
+
+    const renderCompactEvent = (event: AgentEvent) =>
+        render(<ConfigProvider>{formatEvent(event, zhT) as React.ReactNode}</ConfigProvider>)
+
+    it('compact 事件渲染压缩统计（label · pre → post tokens · 耗时）', () => {
+        renderCompactEvent({
+            type: 'compact',
+            trigger: 'auto',
+            preTokens: 318983,
+            postTokens: 30326,
+            durationMs: 140848,
+        })
+        expect(screen.getByText(/上下文已压缩/)).toBeInTheDocument()
+        expect(screen.getByText(/319\.0k/)).toBeInTheDocument()
+        expect(screen.getByText(/30\.3k/)).toBeInTheDocument()
+        expect(screen.getByText(/2m 20s/)).toBeInTheDocument()
+    })
+
+    it('compact 缺耗时时只显示 token 变化（数据缺失容错）', () => {
+        renderCompactEvent({
+            type: 'compact',
+            trigger: 'manual',
+            preTokens: 1000,
+            postTokens: 500,
+            durationMs: 0,
+        })
+        expect(screen.getByText(/上下文已压缩/)).toBeInTheDocument()
+        expect(screen.getByText(/1\.0k/)).toBeInTheDocument()
+        expect(screen.getByText(/→ 500/)).toBeInTheDocument()
+    })
+
+    it('microcompact 事件渲染节省 token 数', () => {
+        renderCompactEvent({
+            type: 'microcompact',
+            trigger: 'auto',
+            preTokens: 50000,
+            tokensSaved: 45000,
+        })
+        expect(screen.getByText(/上下文已微压缩/)).toBeInTheDocument()
+        expect(screen.getByText(/45\.0k tokens/)).toBeInTheDocument()
+    })
+})
+
 // 防漏网根因：Task 7 只测到 normalize 层，没跨 reducer→render，
 // 导致 formatEvent 缺 goal-progress case（落 default:return null）无人发现。
 // 此 describe 覆盖 reducer→render 全链：formatEvent 对 goal-progress 返回非 null JSX
