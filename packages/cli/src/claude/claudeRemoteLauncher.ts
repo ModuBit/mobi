@@ -93,6 +93,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         lastAssistantUsage: undefined,
         lastBreakdown: undefined,
         lastCcWindowTokens: 0,
+        lastModelContextTokens: 0,
     }
     /** 水位上报代际：compact_boundary（真实水位骤变）与主线 assistant 实时上报（更新读数）各自递增；
      *  handleContextUsage 的 result 上报在 fetchBreakdown await 前后比对，代际变化 = 期间已有更新数据
@@ -302,12 +303,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         }
         const r = calcContextUsageFromResult(resultMsg, this.contextMemory.lastAssistantUsage, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd, this.lastRequestModel, this.contextMemory.lastCcWindowTokens)
         if (r.maxTokens > 0) this.contextMemory.lastMaxTokens = r.maxTokens
+        if (r.modelContextTokens !== undefined) this.contextMemory.lastModelContextTokens = r.modelContextTokens
         if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
         try {
-            this.session.client.reportContextUsage(
-                this.contextMemory.lastBreakdown ? { ...r.usage, breakdown: this.contextMemory.lastBreakdown } : r.usage
-            )
+            this.session.client.reportContextUsage({
+                ...r.usage,
+                ...(this.contextMemory.lastBreakdown ? { breakdown: this.contextMemory.lastBreakdown } : {}),
+                ...(this.contextMemory.lastModelContextTokens > 0 ? { modelContextTokens: this.contextMemory.lastModelContextTokens } : {}),
+            })
         } catch (e) {
             logger.debug('[remote]: reportContextUsage failed', e)
         }
@@ -375,7 +379,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const usage = calcContextUsageFromCompact(postTokens, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
         if (!usage) return
         try {
-            this.session.client.reportContextUsage(usage)
+            // 模型最大窗口自记忆附带（compact 上报本体只有总量口径）
+            this.session.client.reportContextUsage({
+                ...usage,
+                ...(this.contextMemory.lastModelContextTokens > 0 ? { modelContextTokens: this.contextMemory.lastModelContextTokens } : {}),
+            })
         } catch (e) {
             logger.debug('[remote]: reportContextUsage (compact) failed', e)
         }
@@ -551,11 +559,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (!usage) return
             // 实时读数代表当前最新水位，推进代际：作废仍在途的上一轮 result 上报（防乱序回退）
             this.contextUsageGeneration++
-            // 附带最近一次缓存的类目细分：流式期间水位实时上涨，细分随之上报，
+            // 附带最近一次缓存的类目细分与模型最大窗口：流式期间水位实时上涨，细分随之上报，
             // 否则无 breakdown 的实时上报会把 result 时落的细分整体覆盖掉（Popover 闪烁）
             const breakdown = this.contextMemory.lastBreakdown
+            const modelContextTokens = this.contextMemory.lastModelContextTokens
             try {
-                session.client.reportContextUsage(breakdown ? { ...usage, breakdown } : usage)
+                session.client.reportContextUsage({
+                    ...usage,
+                    ...(breakdown ? { breakdown } : {}),
+                    ...(modelContextTokens > 0 ? { modelContextTokens } : {}),
+                })
             } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
         }
 

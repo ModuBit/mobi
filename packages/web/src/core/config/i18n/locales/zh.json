@@ -138,7 +138,8 @@
             "title": "上下文水位",
             "used": "已用",
             "cost": "累计成本",
-            "remaining": "剩余"
+            "remaining": "剩余",
+            "modelLimit": "模型上限"
         }
     },
     "chat": {

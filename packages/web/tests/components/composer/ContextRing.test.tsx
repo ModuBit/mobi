@@ -37,6 +37,7 @@ vi.mock('react-i18next', () => ({
                 'session.contextUsage.title': '上下文水位',
                 'session.contextUsage.used': '已用',
                 'session.contextUsage.remaining': '剩余',
+                'session.contextUsage.modelLimit': '模型上限',
                 'session.contextUsage.cost': '累计成本',
                 'session.contextUsage.input': '输入',
                 'session.contextUsage.output': '输出',
@@ -131,6 +132,28 @@ describe('ContextRing', () => {
         // 剩余行：label + 归一数值（87,000 → 87k）
         expect(document.body.textContent).toContain('剩余')
         expect(document.body.textContent).toContain('87k')
+    })
+
+    it('模型上限行：modelContextTokens 与 maxTokens 不同才渲染（信息展示，不作分母）', async () => {
+        // CC 有效窗口 350k 作分母，模型最大 1m 单独展示
+        render(<ContextRing usage={makeUsage({
+            maxTokens: 350_000,
+            modelContextTokens: 1_000_000,
+        })} />)
+        fireEvent.click(screen.getByRole('button', { name: '13%' }))
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('模型上限')
+        })
+        expect(document.body.textContent).toContain('1.0m')
+
+        // 与分母一致（未设 autocompact）→ 省略该行
+        cleanup()
+        render(<ContextRing usage={makeUsage({ maxTokens: 100_000, modelContextTokens: 100_000 })} />)
+        fireEvent.click(screen.getByRole('button', { name: '13%' }))
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('剩余')
+        })
+        expect(document.body.textContent).not.toContain('模型上限')
     })
 
     it('有细分数据也不渲染瞬时请求细分组（输入/输出/缓存读/缓存写/命中率整组移除）', async () => {

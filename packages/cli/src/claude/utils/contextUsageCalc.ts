@@ -71,8 +71,11 @@ export function calcContextUsageFromAssistant(
 export interface ResultUsageRefresh {
     /** 兜底上报用水位；null = 本次不报（无可靠 assistant usage），保持上一轮读数 */
     usage: ContextUsage | null
-    /** 本次窗口大小（result 新值 || 调用方旧记忆；0 = 未知，调用方不应采纳） */
+    /** 本次窗口大小（CC 有效窗口优先；0 = 未知，调用方不应采纳） */
     maxTokens: number
+    /** 模型最大窗口（modelUsage 主模型 contextWindow，未受 autocompact 收缩）。
+     *  信息展示用（web Popover「模型上限」行），不参与百分比计算；undefined = result 未携带 */
+    modelContextTokens: number | undefined
     /** 本次累计成本；undefined = result 未携带（如部分错误 result），调用方应保持旧记忆 */
     costUsd: number | undefined
 }
@@ -125,6 +128,7 @@ export function calcContextUsageFromResult(
         // 兜底水位的成本用「最新已知」值（result 值 ?? 调用方旧记忆），避免缺字段时报 $0.00
         usage: calcContextUsageFromAssistant(lastAssistantUsage, maxTokens, costUsd ?? lastCostUsd),
         maxTokens,
+        modelContextTokens: main?.contextWindow,
         costUsd,
     }
 }

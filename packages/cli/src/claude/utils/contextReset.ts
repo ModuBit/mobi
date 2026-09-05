@@ -30,6 +30,9 @@ export type ContextUsageMemory = {
      *  水位语义「距压缩还有多少」，此值优先于 modelUsage.contextWindow（模型最大窗口）。
      *  0 = 未知（尚未采集或渠道不支持），回落旧链 */
     lastCcWindowTokens: number
+    /** 模型最大窗口（result.modelUsage 主模型 contextWindow）：信息展示（Popover「模型上限」行），
+     *  不参与百分比计算；缺字段的 result 不覆写。0 = 未知 */
+    lastModelContextTokens: number
 }
 
 /** 上下文重置所需的 client 能力面（结构化子集，测试无需拉起真实 ApiSessionClient） */
@@ -56,4 +59,5 @@ export function applyContextReset(client: ContextResetClient, memory: ContextUsa
     memory.lastAssistantUsage = undefined
     memory.lastBreakdown = undefined
     memory.lastCcWindowTokens = 0
+    memory.lastModelContextTokens = 0
 }

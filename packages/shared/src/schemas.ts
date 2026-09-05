@@ -475,6 +475,9 @@ export const ContextUsageSchema = z.object({
     cacheCreationTokens: z.number().optional(),
     /** 类目细分（见 ContextUsageBreakdownSchema），缺省 = 该轮无细分 */
     breakdown: ContextUsageBreakdownSchema.optional(),
+    /** 模型最大窗口（modelUsage 主模型 contextWindow，未受 autocompact 收缩）。
+     *  仅信息展示（Popover「模型上限」行），不参与百分比计算；缺省 = 未知（隐藏该行） */
+    modelContextTokens: z.number().optional(),
 })
 
 export type ContextUsage = z.infer<typeof ContextUsageSchema>

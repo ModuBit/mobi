@@ -99,6 +99,8 @@ describe('calcContextUsageFromResult（新口径）', () => {
             makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }),
             undefined, 0, 0, undefined, 350_000)
         expect(r.maxTokens).toBe(350_000)
+        // 模型最大窗口单独透出（信息展示，不作分母）
+        expect(r.modelContextTokens).toBe(1_000_000)
     })
 
     it('CC 窗口未知（0/undefined）→ 回落 modelUsage.contextWindow', () => {

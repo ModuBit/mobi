@@ -137,6 +137,13 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.remaining')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(remaining)}</span>
                     </div>
+                    {/* 模型最大窗口：信息展示（分母是 CC 有效窗口，含 autocompact 阈值）；两者一致时省略 */}
+                    {usage.modelContextTokens != null && usage.modelContextTokens !== usage.maxTokens && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                            <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.modelLimit')}</span>
+                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.modelContextTokens)}</span>
+                        </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cost')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>${usage.costUsd.toFixed(2)}</span>
