@@ -198,9 +198,9 @@
 
 ---
 
-## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（✅ 两步均已完成，余实机 E2E）
+## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（✅ 两步均已完成，2026-09-06 实机 E2E 通过）
 
-**状态**（2026-09-06）：方向已定 —— **抛弃 react-virtuoso 虚拟化，切回 antdx Bubble.List 全量渲染**。第一步（恢复 Bubble.List 完整态）✅ 已完成并 E2E 验证；第二步（数据层窗口化）✅ C-2 与 C-1 均已完成，仅余实机 E2E（窗口滑动/上滚回补/offsetTop restore 单测覆盖不到）。
+**状态**（2026-09-06）：方向已定 —— **抛弃 react-virtuoso 虚拟化，切回 antdx Bubble.List 全量渲染**。第一步（恢复 Bubble.List 完整态）✅ 已完成并 E2E 验证；第二步（数据层窗口化）✅ C-2 与 C-1 均已完成。实机 E2E（2026-09-06，e2e profile）：真实会话多轮交互——消息追加、Agent 卡片、drawer、任务面板——全部正常（即窗口常规路径实机通过）；C-1 trim 触发需 >1500 条大会话，实机未单独构造（trim 纯函数与 store 集成共 10 条单测覆盖），后续大会话使用中顺带观察即可。条目关闭。
 
 ### 决策过程
 
@@ -558,9 +558,9 @@ interrupt（用户停止）
 
 ---
 
-## 62. 后台任务状态链路两缺陷：runtime_state 双写竞态丢字段 + sidechain 消息不实时（2026-08-31 批次 B E2E 复现）
+## 62. 后台任务状态链路两缺陷：runtime_state 双写竞态丢字段 + sidechain 消息不实时（2026-08-31 批次 B E2E 复现）✅ 2026-09-06 实机 E2E 终判通过
 
-**状态**（2026-09-06）：缺陷一 ✅ 已修——store 层单点 `mergeRuntimeState`（读 DB 最新 → patch 字段合并 → 写回，同步原子；patch 值 undefined=清除、深等跳过写库不推 seq），`updateRuntimeStateField` 与 `handleSessionEnd` 的 teamState 收尾都改走它，不再基于陈旧内存快照全量覆盖；回归测试 `tests/sync/runtimeStateConvergence.test.ts` 8 条红→绿。缺陷二 ⚠️ 当前代码单测判定**不复现**——全链路测试 `tests/chat/sidechainLive.test.ts`（SSE ingest → 窗口 → normalize → tracer 分组 → Agent block children 增长，含乱序 orphan 与 snapshot 覆盖场景）4 条全通；08-31 的 E2E 冻结观察应已被后续修复覆盖，待实机 E2E 终判（U-4 重连面板恢复 + drawer 实时增长一并验）。用户拍板：条目保留，后续单独跟进 E2E。
+**状态**（2026-09-06）：缺陷一 ✅ 已修——store 层单点 `mergeRuntimeState`（读 DB 最新 → patch 字段合并 → 写回，同步原子；patch 值 undefined=清除、深等跳过写库不推 seq），`updateRuntimeStateField` 与 `handleSessionEnd` 的 teamState 收尾都改走它，不再基于陈旧内存快照全量覆盖；回归测试 `tests/sync/runtimeStateConvergence.test.ts` 8 条红→绿。缺陷二 ⚠️ 当前代码单测判定**不复现**——全链路测试 `tests/chat/sidechainLive.test.ts`（SSE ingest → 窗口 → normalize → tracer 分组 → Agent block children 增长，含乱序 orphan 与 snapshot 覆盖场景）4 条全通；08-31 的 E2E 冻结观察应已被后续修复覆盖。**实机 E2E 终判（2026-09-06，e2e profile）双双通过**：① 缺陷二——真实 Agent 子代理运行中打开 drawer，气泡数 1→2→3→5 持续增长；轮次结束后重开 drawer 历史完整恢复；② 缺陷一 U-4——后台 Bash 任务 running 中 DB `runtime_state.backgroundTasks` 非空，页面刷新后任务面板从 DB 恢复显示。条目关闭。
 
 **缺陷一：hub `runtime_state` 双写路径竞态丢字段（U-4「重连后台任务快照」的真实根因）**
 
