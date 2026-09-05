@@ -387,6 +387,13 @@ export interface LoopContext {
      * initial 处理完成后回填（handleStreamEvent 读取本字段，不再走 opts.initialModel）。
      */
     initialModel?: string
+    /**
+     * 本 turn 是否出现过压缩活动（system:status{compacting}，手动/自动都置位）。
+     * result 时与 isCompactCommand 一起触发 onCompactCompleted 兜底——auto 压缩被中止
+     * （Stop/断连）时无 compact_boundary 也无 isCompactCommand，缺此标志 web 端
+     * compact-started 扫不到任何终态，sender 永久禁用。消费处重置。
+     */
+    compactStarted: boolean
 }
 
 /**
@@ -542,6 +549,7 @@ export async function sdkOutputLoop(
         // 注意：实测该消息可先于 init 到达，处理不得依赖 init。
         if (message.type === 'system' && message.subtype === 'status') {
             if ((message as { status?: string }).status === 'compacting') {
+                ctx.compactStarted = true;
                 opts.onCompactStart?.();
             }
         }
@@ -588,12 +596,16 @@ export async function sdkOutputLoop(
                 logger.debug('[sdkOutputLoop] Result received');
             }
 
-            // 读取并重置 isCompactCommand：发结构化完成事件，web 据此退出压缩态（成功失败都发）
+            // 读取并重置压缩标志：发结构化完成事件，web 据此退出压缩态（成功失败都发）。
+            // isCompactCommand=手动 /compact；compactStarted=本 turn 出现过压缩活动（含 auto、
+            // 含中止）——auto 压缩被中止时无 boundary 也无 isCompactCommand，缺此兜底
+            // web 端 compact-started 扫不到终态，sender 永久禁用。
             const wasCompact = ctx.isCompactCommand
-            if (ctx.isCompactCommand) {
+            if (ctx.isCompactCommand || ctx.compactStarted) {
                 logger.debug('[sdkOutputLoop] Compaction completed');
                 opts.onCompactCompleted?.();
                 ctx.isCompactCommand = false;
+                ctx.compactStarted = false;
             }
 
             // 通知就绪
@@ -1064,7 +1076,7 @@ export async function claudeRemote(opts: {
     };
 
     // 双循环共享上下文：hasInput 门控 init→running；initialModel 由 initial 处理后回填
-    const loopCtx: LoopContext = { isCompactCommand: false, hasInput: false }
+    const loopCtx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: false }
 
     /** 输入 push 统一前置：标记已有输入并立即置 running（提前激活后 init 不再驱动 running） */
     const markInputPushed = (): void => {

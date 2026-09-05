@@ -170,6 +170,21 @@ describe('formatEvent compact / microcompact', () => {
         expect(screen.getByText(/→ 500/)).toBeInTheDocument()
     })
 
+    it('失败压缩（post_tokens 缺失兜底 0）不渲染「pre → 0」假统计', () => {
+        // CLI 注释明确 post_tokens 可选（失败时缺失），normalizeAgent 兜底 0——
+        // 渲染 "319.0k → 0" 等于对用户声称压缩成功且压到 0 tokens
+        renderCompactEvent({
+            type: 'compact',
+            trigger: 'auto',
+            preTokens: 318983,
+            postTokens: 0,
+            durationMs: 0,
+        })
+        expect(screen.getByText(/上下文已压缩/)).toBeInTheDocument()
+        expect(screen.getByText(/319\.0k/)).toBeInTheDocument()
+        expect(screen.queryByText(/→/)).not.toBeInTheDocument()
+    })
+
     it('microcompact 事件渲染节省 token 数', () => {
         renderCompactEvent({
             type: 'microcompact',

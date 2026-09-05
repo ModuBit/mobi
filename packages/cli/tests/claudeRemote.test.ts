@@ -145,9 +145,9 @@ describe('createSpecialCommandContext', () => {
         expect(onContextCleared).toHaveBeenCalled()
         expect(onSessionReset).toHaveBeenCalled()
 
-        // Test onCompactStart
+        // Test onCompactStart（times(1) 锁定单次转发；幂等契约本身由 CompactStartGate 单测覆盖）
         ctx.onCompactStart()
-        expect(onCompactStart).toHaveBeenCalled()
+        expect(onCompactStart).toHaveBeenCalledTimes(1)
         expect(onCompletionEvent).not.toHaveBeenCalledWith('Compaction started')
 
         // Test onReady

@@ -248,8 +248,12 @@ export function formatEvent(
             const pre = Number(event.preTokens) || 0
             const post = Number(event.postTokens) || 0
             const durationMs = Number(event.durationMs) || 0
+            // post 缺失（失败压缩 post_tokens 可选，CLI 侧兜底 0）时不得渲染「pre → 0」
+            // 假统计——对用户声称压缩成功且压到 0 tokens；仅 pre/post 均有效才显示变化
             const stats: string[] = []
-            if (pre > 0) stats.push(`${formatTokensCount(pre)} → ${formatTokensCount(post)}`)
+            if (pre > 0 && post > 0) stats.push(`${formatTokensCount(pre)} → ${formatTokensCount(post)}`)
+            else if (pre > 0) stats.push(formatTokensCount(pre))
+            else if (post > 0) stats.push(`${formatTokensCount(post)} tokens`)
             if (durationMs > 0) stats.push(formatDurationMs(durationMs))
             return (
                 <div style={{ fontFamily: 'var(--font-mono)' }}>

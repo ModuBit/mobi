@@ -195,7 +195,7 @@ describe('sdkOutputLoop', () => {
     it('处理 assistant 消息时调用 onMessage', async () => {
         const msg = mockAssistantMessage()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
 
@@ -231,7 +231,7 @@ describe('sdkOutputLoop', () => {
             session_id: 'test-session',
         } as SDKMessage
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([assistant1, toolResult, assistant2]), ctx, opts)
 
@@ -245,7 +245,7 @@ describe('sdkOutputLoop', () => {
     it('收到 assistant 消息时调用 snapshotSender.markFullDelivered（标记 full 已到）', async () => {
         const msg = mockAssistantMessage()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
         expect(opts.snapshotSender.markFullDelivered).toHaveBeenCalled()
     })
@@ -256,7 +256,7 @@ describe('sdkOutputLoop', () => {
         const opts = createOutputLoopOpts({
             snapshotSender: { ...base.snapshotSender, consumePendingFull: vi.fn().mockReturnValue(pending) },
         })
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         // 不发 assistant（full 未到），模拟中断/abort 在流式中
         await sdkOutputLoop(asyncIterableFrom([]), ctx, opts)
         expect(opts.onAbortFlush).toHaveBeenCalledWith(pending)
@@ -265,7 +265,7 @@ describe('sdkOutputLoop', () => {
     it('迭代结束时无 pending（full 已到）→ 不调用 onAbortFlush', async () => {
         const msg = mockAssistantMessage() // assistant 触发 markFullDelivered
         const opts = createOutputLoopOpts() // consumePendingFull mock 返回 null
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
         expect(opts.onAbortFlush).not.toHaveBeenCalled()
     })
@@ -278,7 +278,7 @@ describe('sdkOutputLoop', () => {
         })
         const controller = new AbortController()
         controller.abort()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         await sdkOutputLoop(asyncIterableFrom([mockAssistantMessage()]), ctx, { ...opts, signal: controller.signal })
         expect(opts.onAbortFlush).toHaveBeenCalledWith(pending)
     })
@@ -286,7 +286,7 @@ describe('sdkOutputLoop', () => {
     it('处理 system/init 消息时调用 onRunningChange(true) + onSessionFound（hasInput=true）', async () => {
         const msg = mockSystemInitMessage('session-123')
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
 
@@ -297,7 +297,7 @@ describe('sdkOutputLoop', () => {
     it('提前激活窗口（hasInput=false）init 不置 running，仅解析 session', async () => {
         const msg = mockSystemInitMessage('session-123')
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: false }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: false }
 
         await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
 
@@ -308,7 +308,7 @@ describe('sdkOutputLoop', () => {
     it('处理 result 消息时调用 onRunningChange(false) + onReady，不阻塞', async () => {
         const resultMsg = mockResultMessage()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         // 核心验证：result 后不阻塞，函数立即返回
         const start = Date.now()
@@ -327,7 +327,7 @@ describe('sdkOutputLoop', () => {
         // 取舍见 assistantPartialAssembler.ts 类注释（暂时保留 assembler 的代价）。
         const { iterable, push, end } = createPushableAsyncIterable<any>()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         const loopPromise = sdkOutputLoop(iterable, ctx, opts)
 
@@ -350,7 +350,7 @@ describe('sdkOutputLoop', () => {
     it('isCompactCommand 在 result 时触发 onCompactCompleted 并重置', async () => {
         const resultMsg = mockResultMessage()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: true, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: true, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([resultMsg]), ctx, opts)
 
@@ -364,7 +364,7 @@ describe('sdkOutputLoop', () => {
 
     it('迭代器耗尽时正常返回', async () => {
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         // 空迭代器
         await sdkOutputLoop(asyncIterableFrom([]), ctx, opts)
@@ -376,7 +376,7 @@ describe('sdkOutputLoop', () => {
     it('处理 stream_event 消息时不调用 onMessage（continue 跳过）', async () => {
         const streamMsg = mockStreamEventMessage()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([streamMsg]), ctx, opts)
 
@@ -387,7 +387,7 @@ describe('sdkOutputLoop', () => {
     it('非 isCompactCommand 的 result 不触发 onCompletionEvent', async () => {
         const resultMsg = mockResultMessage()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([resultMsg]), ctx, opts)
 
@@ -403,17 +403,41 @@ describe('sdkOutputLoop', () => {
 
     it('status{compacting} 触发 onCompactStart（实测该消息可先于 init 到达，处理不依赖 init）', async () => {
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: false }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: false }
 
         // 实测顺序：status:compacting 是流的第一条消息（init 之前）
         await sdkOutputLoop(asyncIterableFrom([mockSystemStatusMessage('compacting'), mockSystemInitMessage()]), ctx, opts)
 
         expect(opts.onCompactStart).toHaveBeenCalledTimes(1)
+        // turn 级压缩活动标记置位：result（含 aborted）时据此兜底发 completed
+        expect(ctx.compactStarted).toBe(true)
+    })
+
+    it('auto 压缩中止（compactStarted 后无 boundary 直接 aborted result）仍触发 onCompactCompleted——否则 web 端压缩态永久卡死', async () => {
+        const opts = createOutputLoopOpts()
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
+
+        await sdkOutputLoop(asyncIterableFrom([
+            mockSystemStatusMessage('compacting'),
+            mockResultMessage('aborted_interrupt'),
+        ]), ctx, opts)
+
+        expect(opts.onCompactStart).toHaveBeenCalledTimes(1)
+        expect(opts.onCompactCompleted).toHaveBeenCalledTimes(1)
+    })
+
+    it('普通 turn（无压缩活动）不触发 onCompactCompleted', async () => {
+        const opts = createOutputLoopOpts()
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
+
+        await sdkOutputLoop(asyncIterableFrom([mockResultMessage()]), ctx, opts)
+
+        expect(opts.onCompactCompleted).not.toHaveBeenCalled()
     })
 
     it('status:null（压缩结束清除）与其他 status 值不触发 onCompactStart', async () => {
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
 
         await sdkOutputLoop(asyncIterableFrom([
             mockSystemStatusMessage(null),
@@ -433,7 +457,7 @@ describe('userInputLoop', () => {
 
     it('普通消息被推入 messages PushableAsyncIterable', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
 
         // nextMessage 先返回普通消息，再返回 null 结束
@@ -469,7 +493,7 @@ describe('userInputLoop', () => {
 
     it('null 返回时 messages.end() 被调用', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
 
         const nextMessage = vi.fn().mockResolvedValue(null)
@@ -485,7 +509,7 @@ describe('userInputLoop', () => {
 
     it('/clear 命令时 messages.end() 被调用', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
 
         const nextMessage = vi.fn().mockResolvedValue({ message: '/clear', mode: {} })
@@ -502,7 +526,7 @@ describe('userInputLoop', () => {
 
     it('/compact 命令设置 ctx.isCompactCommand 并推入 messages', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
 
         let callCount = 0
@@ -537,7 +561,7 @@ describe('userInputLoop', () => {
 
     it('!bash 命令被处理后继续等待下一条', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
 
         let callCount = 0
@@ -575,7 +599,7 @@ describe('userInputLoop', () => {
 
     it('agent 运行时不拉消息，idle 后才拉（gated pump C-2）', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
         const ac = new AbortController()
 
@@ -631,7 +655,7 @@ describe('取消机制 (AbortController)', () => {
     it('sdkOutputLoop 在 signal abort 后停止迭代', async () => {
         const { iterable, push, end } = createPushableAsyncIterable<any>()
         const opts = createOutputLoopOpts()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const controller = new AbortController()
 
         const loopPromise = sdkOutputLoop(iterable, ctx, { ...opts, signal: controller.signal })
@@ -656,7 +680,7 @@ describe('取消机制 (AbortController)', () => {
 
     it('userInputLoop 在 signal abort 后退出，不再等待 nextMessage', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const specialCommandCtx = createMockSpecialCommandCtx()
         const controller = new AbortController()
 
@@ -685,7 +709,7 @@ describe('取消机制 (AbortController)', () => {
     it('Promise.race + abort 协调：sdkOutputLoop 结束时 userInputLoop 不挂起', async () => {
         // 模拟 sdkOutputLoop 立即结束（空迭代器），userInputLoop 挂起在 nextMessage
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const controller = new AbortController()
 
         const nextMessage = vi.fn().mockImplementation(() => new Promise<null>(() => {}))
@@ -716,7 +740,7 @@ describe('取消机制 (AbortController)', () => {
 
     it('门控等待 idle 时 abort 能打破等待并退出（C-2 gated pump）', async () => {
         const messages = new PushableAsyncIterable<any>()
-        const ctx: LoopContext = { isCompactCommand: false, hasInput: true }
+        const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const controller = new AbortController()
         const specialCommandCtx = createMockSpecialCommandCtx()
 

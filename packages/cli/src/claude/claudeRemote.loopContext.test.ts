@@ -58,12 +58,12 @@ async function drive(ctx: LoopContext): Promise<{ runningChanges: boolean[] }> {
 
 describe('sdkOutputLoop init→running 门控（提前激活）', () => {
     it('hasInput=false（提前激活窗口）→ init 不置 running，result 复位不误报', async () => {
-        const { runningChanges } = await drive({ isCompactCommand: false, hasInput: false })
+        const { runningChanges } = await drive({ isCompactCommand: false, compactStarted: false, hasInput: false })
         expect(runningChanges).toEqual([false])
     })
 
     it('hasInput=true（真实输入后）→ init 置 running，result 复位', async () => {
-        const { runningChanges } = await drive({ isCompactCommand: false, hasInput: true })
+        const { runningChanges } = await drive({ isCompactCommand: false, compactStarted: false, hasInput: true })
         expect(runningChanges).toEqual([true, false])
     })
 })
