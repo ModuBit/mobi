@@ -164,15 +164,19 @@ describe('OutputStyleSwitch', () => {
         })
     })
 
-    it('当前值显示：outputStyle 透传选中 label；undefined → Default', () => {
-        // antd v6 选中值渲染在 .ant-select-content（title 为选中 label）
+    it('收起态仅图标（label 征用为图标节点，同权限切换器）；下拉项仍走名称+描述', async () => {
+        // iconOnly 后选中值渲染的是图标节点而非名称文本（.ant-select-content 内无 label 文本）
         const { unmount } = renderSwitch({ outputStyle: 'Learning' })
-        expect(document.querySelector('.ant-select-content')?.textContent).toBe('Learning')
-        expect(document.querySelector('.ant-select-content')).toHaveAttribute('title', 'Learning')
+        const content = document.querySelector('.ant-select-content')
+        expect(content?.textContent).not.toBe('Learning')
+        expect(content?.querySelector('svg')).not.toBeNull()
         unmount()
 
-        renderSwitch()
-        expect(document.querySelector('.ant-select-content')?.textContent).toBe('Default')
+        // 展开下拉：选项仍按名称+描述渲染（label 不承担名称，optionRender 从 options 元数据取）
+        renderSwitch({ outputStyle: 'Learning' })
+        const options = await openDropdown()
+        const learning = Array.from(options).find((el) => el.textContent?.includes('Learning'))
+        expect(learning).toBeDefined()
     })
 
     /** 展开下拉（不选），返回当前展开的选项元素列表 */

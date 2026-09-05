@@ -81,6 +81,12 @@ export const shadcnLightComponents = {
 
 // Claude 暖调组件配置 - Dark 模式
 export const shadcnDarkComponents = {
+    // Tooltip 背景走 colorBgSpotlight（全局 dark token 是米白，服务于浅底场景）——
+    // 组件级覆写为深底浅字，与 dark 面板视觉一致
+    Tooltip: {
+        colorBgSpotlight: '#3d3d3a',
+        colorTextLightSolid: '#faf9f5',
+    },
     Button: {
         primaryShadow: 'none',
         defaultShadow: 'none',

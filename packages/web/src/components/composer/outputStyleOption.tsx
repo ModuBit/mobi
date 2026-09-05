@@ -97,6 +97,9 @@ export interface OutputStyleSelectProps {
     disabled?: boolean
     loading?: boolean
     title?: string
+    /** 收起态仅图标（label 征用为图标节点，同 ChatComposer 权限切换器同款）；
+     *  下拉项详情由 optionRender 全权渲染，label 不再承担名称 */
+    iconOnly?: boolean
 }
 
 /**
@@ -105,15 +108,20 @@ export interface OutputStyleSelectProps {
  * 无确认弹窗 / 无 mutation——会话页（/clear 语义）用 OutputStyleSwitch 包确认后复用本组件，
  * 新建页（本地 state，无 /clear 语义）直接使用。
  */
-export function OutputStyleSelect({ value, options, onChange, disabled, loading, title }: OutputStyleSelectProps) {
+export function OutputStyleSelect({ value, options, onChange, disabled, loading, title, iconOnly }: OutputStyleSelectProps) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
+    // iconOnly：label 换成图标节点，收起态宽度塌缩为单个 icon（与权限模式切换器一致）
+    const displayOptions = iconOnly
+        ? options.map((o) => ({ ...o, label: <OutputStyleIcon /> }))
+        : options
     return (
         <CompactHoverSelect
             $token={token}
-            prefix={<OutputStyleIcon />}
+            // iconOnly 时 label 已是图标节点，prefix 不再叠加（避免双图标，同权限切换器）
+            prefix={iconOnly ? undefined : <OutputStyleIcon />}
             value={value}
-            options={options}
+            options={displayOptions}
             disabled={disabled}
             loading={loading}
             onChange={onChange}

@@ -91,6 +91,7 @@ export function OutputStyleSwitch({
                 disabled={switchDisabled}
                 loading={outputStyleMutation.isPending}
                 onChange={handleOutputStyleChange}
+                iconOnly
             />
         </span>
     )

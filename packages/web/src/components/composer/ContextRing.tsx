@@ -89,10 +89,13 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const ticks = degradationTicks(usage.maxTokens)
     const usedSummary = `${formatTokens(usage.totalTokens)} / ${formatTokens(usage.maxTokens)} (${pct}%)`
-    // 受控 Popover：打开期间隐藏 hover Tooltip（两者同屏重叠）；移动端无 hover，整体禁用
+    // 受控 Popover：打开期间隐藏 hover Tooltip（两者同屏重叠）；移动端无 hover，整体禁用。
+    // 关闭 Popover 后抑制 Tooltip 直至鼠标离开环——antd 在 hover 上下文未销毁时会因
+    // title 从 undefined 恢复立即重弹，造成「关掉 Popover 又冒出 Tooltip」
     const isMobile = useIsMobile()
     const [popoverOpen, setPopoverOpen] = useState(false)
-    const tooltipTitle = isMobile || popoverOpen ? undefined : usedSummary
+    const [suppressTooltip, setSuppressTooltip] = useState(false)
+    const tooltipTitle = isMobile || popoverOpen || suppressTooltip ? undefined : usedSummary
 
     const ring = (
         <svg
@@ -101,6 +104,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
             width={size}
             height={size}
             viewBox="0 0 24 24"
+            onMouseLeave={() => setSuppressTooltip(false)}
             style={{ display: 'block', cursor: 'pointer', animation: tone === 'danger' ? `${pulse} 1.3s ease-in-out infinite` : undefined }}
         >
             <circle cx="12" cy="12" r={R} fill="none" stroke={token.colorBorderSecondary} strokeWidth="2.5" />
@@ -122,20 +126,26 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
     return (
         <Popover
             trigger="click"
-            placement="topRight"
+            // top + 箭头指向触发中心：topRight 的箭头锚在弹出层角上，与圆环错位
+            placement="top"
+            arrow={{ pointAtCenter: true }}
             open={popoverOpen}
-            onOpenChange={setPopoverOpen}
+            onOpenChange={(open) => {
+                setPopoverOpen(open)
+                if (!open) setSuppressTooltip(true)
+            }}
             /* 定宽（视口约束）：明细长路径 nowrap 会撑爆固有宽度致横向溢出屏幕，
-               固定 width 让 ellipsis 生效；maxHeight 纵向限高滚动（类目/明细多时） */
+               固定 width 让 ellipsis 生效（纵向限高滚动在内容层 hide-scrollbar） */
             styles={{
                 content: {
                     width: 'min(300px, calc(100vw - 32px))',
-                    maxHeight: 'min(420px, 65dvh)',
-                    overflowY: 'auto',
                 },
             }}
             content={(
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 4, padding: '4px 2px' }}>
+                <div
+                    className="hide-scrollbar"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 4, padding: '4px 2px', maxHeight: 'min(420px, 65dvh)', overflowY: 'auto' }}
+                >
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('session.contextUsage.title')}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.used')}</span>
