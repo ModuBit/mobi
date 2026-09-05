@@ -24,6 +24,8 @@
  *（fetch in flight 时若窗口被 clear，旧响应自动失效）。
  */
 
+import { isObject } from '@mobi/shared'
+import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
 import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
@@ -34,6 +36,54 @@ import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMess
 export const VISIBLE_WINDOW = 400
 /** 上滚看历史的容忍上限（2× VISIBLE_WINDOW，对齐 hapi 双阈值语义） */
 export const EXPAND_WINDOW = 800
+
+// ───────── turn 边界裁剪（#40 C-1）────────────────────────────────
+// C-2 只钳了渲染 DOM，store 的 messages 数组仍随会话总量无界增长，且每条 SSE
+// 增量都要对全量数组跑归约——超长会话内存与计算成本线性上涨。此处按整 turn
+// 裁掉最老历史：前提已实证（2026-08-15 dev DB 5 会话 227 条 sidechain），sidechain
+// 全部落在 user turn 之内不跨 turn（SDK Task 同步阻塞），整 turn 裁剪必不断 sidechain。
+// 被裁历史由 fetchOlder prepend 按需回补（用户主动上滚才发生），贴底后下次超阈值再收敛。
+
+/** 裁剪触发阈值：窗口超过才做一次 O(n) 边界扫描（未超过时 append 路径仅 O(1) 长度判断） */
+export const TRIM_THRESHOLD = 1500
+/** 裁剪保留目标（滞回带 [TRIM_TARGET, TRIM_THRESHOLD]，避免频繁裁剪抖动） */
+export const TRIM_TARGET = 1000
+
+/**
+ * 原始层 turn 起点判定（不依赖 normalize）：三种消息开启新 turn——
+ * user 信封（用户发言）、system:compact_boundary（压缩后即新上下文）、
+ * context-cleared 事件（/clear 完成）。
+ */
+export function isTurnStart(content: unknown): boolean {
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record) return false
+    if (record.role === 'user') return true
+    if (record.role !== 'agent' && record.role !== 'assistant') return false
+    const c = isObject(record.content) ? (record.content as { type?: string; data?: { type?: string; subtype?: string } }) : null
+    if (!c) return false
+    if (c.type === 'event' && c.data?.type === 'context-cleared') return true
+    if (c.type === 'output' && c.data?.type === 'system' && c.data?.subtype === 'compact_boundary') return true
+    return false
+}
+
+/**
+ * 按 turn 边界从头部裁剪：丢最少的整 turn 使剩余 ≤ TRIM_TARGET（保留最多历史）。
+ * 找不到满足目标的起点（最后一个 turn 自身超过目标）→ 兜底只保留最后一个整 turn；
+ * 完全没有 turn 起点 / 整体就是一个 turn → 不裁（原引用返回，避免裁出 orphan 开头）。
+ */
+export function trimByTurnBoundary(messages: DecryptedMessage[]): DecryptedMessage[] {
+    if (messages.length <= TRIM_THRESHOLD) return messages
+    let firstUnderTarget = -1
+    let lastTurnStart = -1
+    for (let i = 0; i < messages.length; i += 1) {
+        if (!isTurnStart(messages[i].content)) continue
+        lastTurnStart = i
+        if (firstUnderTarget === -1 && messages.length - i <= TRIM_TARGET) firstUnderTarget = i
+    }
+    const cut = firstUnderTarget !== -1 ? firstUnderTarget : lastTurnStart
+    if (cut <= 0) return messages
+    return messages.slice(cut)
+}
 
 export interface MessageWindowState {
     sessionId: string
@@ -176,6 +226,18 @@ function computeOldestSeq(messages: DecryptedMessage[]): number | null {
     return oldest
 }
 
+/**
+ * 合并后的统一裁剪口：仅历史未穷尽（hasMore=true）时裁——历史已全部加载时裁掉的行
+ * 上滚拉不回（fetchOlder 被 !hasMore 守卫拦截），用户将永久丢失这段查看能力。
+ * 实际发生裁剪时重算 oldestSeq（fetchOlder 游标指向新的最老行，从那里继续往前拉）。
+ */
+function trimAfterMerge(prev: InternalState, messages: DecryptedMessage[]): { messages: DecryptedMessage[]; oldestSeq: number | null | undefined } {
+    if (!prev.hasMore) return { messages, oldestSeq: undefined }
+    const trimmed = trimByTurnBoundary(messages)
+    if (trimmed === messages) return { messages, oldestSeq: undefined }
+    return { messages: trimmed, oldestSeq: computeOldestSeq(trimmed) }
+}
+
 export function getMessageWindowState(sessionId: string): MessageWindowState {
     return getState(sessionId)
 }
@@ -253,7 +315,9 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         updateStateForGeneration(sessionId, 'latest', gen, prev => {
             // 撤回墓碑闸门：响应迟到 / hub 侧撤回落库竞态时，响应仍可能含已撤回行——跳过不合并
             const merged = mergeMessages(prev.messages, filterWithdrawn(sessionId, res.data.messages))
-            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false, oldestSeq: computeOldestSeq(merged), hasFetchedLatest: true })
+            // turn 边界裁剪（#40 C-1）：重连补拉把窗口带回全量时收敛内存
+            const { messages, oldestSeq } = trimAfterMerge(prev, merged)
+            return _internal.buildState(prev, { messages, hasMore: res.data.page.hasMore, isLoading: false, oldestSeq: oldestSeq ?? computeOldestSeq(messages), hasFetchedLatest: true })
         })
     } catch (err) {
         // 静默吞错会让首次加载失败时用户看到空会话（ChatWelcome）无反馈——至少留日志便于诊断
@@ -301,6 +365,11 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
             messages = resolveMessageCache(messages, m, options)
         }
         if (messages === prev.messages) return prev
+        // turn 边界裁剪（#40 C-1）：超阈值时裁头，游标随裁剪点前移（历史由 fetchOlder 回补）
+        const { messages: trimmed, oldestSeq: trimmedOldest } = trimAfterMerge(prev, messages)
+        if (trimmed !== messages) {
+            return _internal.buildState(prev, { messages: trimmed, oldestSeq: trimmedOldest })
+        }
         // oldestSeq：prev 无值（空 store 首次 SSE 早到）则算一次建立游标；
         // 流式期 prev.oldestSeq 已有，新消息 seq 递增不改变 min，沿用 prev.oldestSeq 避免每条 chunk O(n)
         const oldestSeq = prev.oldestSeq === null ? computeOldestSeq(messages) : prev.oldestSeq
@@ -329,7 +398,8 @@ export async function reconcileLatestMessages(api: MobiApi, sessionId: string): 
             const messages = mergeMessages(filterWithdrawn(sessionId, res.data.messages), localPending)
             // hasMore 必须跟随响应更新：替换后窗口只剩一页，沿用旧值 false 会让
             // 已加载的更早历史永远无法再加载（fetchOlderMessages 的 !prev.hasMore 守卫）
-            return _internal.buildState(p, { messages, hasMore: res.data.page.hasMore, oldestSeq: computeOldestSeq(messages), isLoading: false, hasFetchedLatest: true })
+            const { messages: trimmed, oldestSeq } = trimAfterMerge(p, messages)
+            return _internal.buildState(p, { messages: trimmed, hasMore: res.data.page.hasMore, oldestSeq: oldestSeq ?? computeOldestSeq(trimmed), isLoading: false, hasFetchedLatest: true })
         })
     } catch (err) {
         // 对账失败保持现状（超时兜底按原路径收尾），留日志诊断
