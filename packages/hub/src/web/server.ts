@@ -97,6 +97,13 @@ export function createWebApp(options: {
 
     app.use('*', logger())
 
+    // 未捕获异常兜底：打出真实堆栈再回 500。Hono 默认 onError 静默返回纯文本
+    // "Internal Server Error"，路由内任何 throw 在 hub 日志里零痕迹，无法定位故障
+    app.onError((err, c) => {
+        hubLogger.error(`[Web] Unhandled error on ${c.req.method} ${c.req.path}`, err)
+        return c.json({ error: 'Internal Server Error' }, 500)
+    })
+
     /**
      * 静态资源 Cache-Control 注入（Hub 远端 PWA 冷启动慢的根因修复）。
      *
