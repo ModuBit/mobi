@@ -535,6 +535,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
         );
 
+        // 消费前排序屏障：排队消息被消费时（collectBatch → onBatchConsumed → pushed fact 直连
+        // emit），先清空本发送队列——上一轮消息（含 result）经 setTimeout(0) 异步发送，不 flush 的
+        // 话 fact 抢在 result 落库前到达 Hub，position_at 跳变早于 result created_at，
+        // Web 按 positionAt 排序会把排队消息排到上一轮 result 之前（详见 setBeforeCollect）。
+        session.queue.setBeforeCollect(() => messageQueue.flush());
+
         permissionHandler.setOnPermissionRequest((toolCallId: string) => {
             messageQueue.releaseToolCall(toolCallId);
         });

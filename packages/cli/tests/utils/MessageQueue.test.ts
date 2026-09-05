@@ -720,6 +720,49 @@ describe('MessageQueue clearPending（rewind 前清空）', () => {
     });
 });
 
+describe('MessageQueue beforeCollect（消费前排序屏障）', () => {
+    it('collectBatch 前先 await beforeCollect 完成再触发 onBatchConsumed', async () => {
+        // 保序契约：上一轮消息经 OutgoingMessageQueue 的 setTimeout(0) 异步发送，而
+        // onBatchConsumed（pushed fact）走直连 emit——不先 flush 上游发送队列，
+        // fact 会抢在上一轮 result 落库前到达 Hub，position_at 跳变早于 result created_at，
+        // Web 排序会把排队消息排到上一轮 result 之前（真实 bug：queue 消息跑到 result 前）
+        const queue = new MessageQueue<string>(mode => mode);
+        const events: string[] = [];
+        queue.setOnBatchConsumed(() => events.push('consumed'));
+        queue.setBeforeCollect(async () => {
+            events.push('flush-start');
+            await new Promise(resolve => setTimeout(resolve, 10));
+            events.push('flush-done');
+        });
+
+        queue.push('msg', 'local', 'loc-1');
+        await queue.waitForMessagesAndGetAsString();
+
+        expect(events).toEqual(['flush-start', 'flush-done', 'consumed']);
+    });
+
+    it('队列已有存量（同步 collect 路径）与等待后消费路径都在 collect 前触发 hook', async () => {
+        const queue = new MessageQueue<string>(mode => mode);
+        const order: string[] = [];
+        queue.setBeforeCollect(() => { order.push('hook'); });
+
+        // 路径一：队列已有消息，waitForMessagesAndGetAsString 同步返回
+        queue.push('a', 'local');
+        await queue.waitForMessagesAndGetAsString();
+        expect(order).toEqual(['hook']);
+
+        // 路径二：队列空、等待推送后再消费
+        const waitPromise = queue.waitForMessagesAndGetAsString().then(r => {
+            order.push('collect-2');
+            return r;
+        });
+        queue.push('b', 'local');
+        const r2 = await waitPromise;
+        expect(r2?.message).toBe('b');
+        expect(order).toEqual(['hook', 'hook', 'collect-2']);
+    });
+});
+
 describe('MessageQueue PromptPayload 数组穿透', () => {
     const blocks: PromptPayload = [
         { type: 'text', text: 'hi' },

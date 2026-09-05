@@ -68,6 +68,8 @@ export class MessageQueue<T> {
     private closed = false;
     private onMessageHandler: ((message: PromptPayload, mode: T) => void) | null = null;
     private onBatchConsumedHandler: ((localIds: string[]) => void) | null = null;
+    /** collectBatch 前的排序屏障（见 setBeforeCollect） */
+    private beforeCollectHandler: (() => void | Promise<void>) | null = null;
     /**
      * 已被 collectBatch/steal 取出（即将喂给 agent）、但 Hub 尚未确认 consumed 的 localId。
      * 取消竞态防护：此集合内的消息已离开队列，不可取消，否则会产生幽灵消息
@@ -101,6 +103,19 @@ export class MessageQueue<T> {
     /** 设置「一批消息被 collectBatch shift 消费」回调（用于 emit messages-facts pushed fact） */
     setOnBatchConsumed(handler: ((localIds: string[]) => void) | null): void {
         this.onBatchConsumedHandler = handler;
+    }
+
+    /**
+     * 设置「collectBatch 消费前」的排序屏障 hook（每次消费前 await）。
+     *
+     * 为什么需要：collectBatch 触发的 onBatchConsumed（pushed fact）走直连 socket emit，
+     * 而上游发送队列（OutgoingMessageQueue）经 setTimeout(0) 异步发送上一轮消息（含 result）。
+     * turn 结束立即消费排队消息时，fact 会抢在上一轮 result 落库前到达 Hub——position_at
+     * 跳变时刻早于 result 的 created_at，Web 按 positionAt 排序时排队消息会被排到
+     * 上一轮 result 之前。屏障保证「先清空上游发送队列，再上报消费事实」。
+     */
+    setBeforeCollect(handler: (() => void | Promise<void>) | null): void {
+        this.beforeCollectHandler = handler;
     }
 
     /**
@@ -376,6 +391,7 @@ export class MessageQueue<T> {
     async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: PromptPayload, mode: T, isolate: boolean, hash: string, localIds: string[] } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
+            await this.beforeCollectHandler?.();
             return this.collectBatch();
         }
 
@@ -391,6 +407,7 @@ export class MessageQueue<T> {
             return null;
         }
 
+        await this.beforeCollectHandler?.();
         return this.collectBatch();
     }
 
