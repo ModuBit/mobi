@@ -12,7 +12,7 @@ MCP 系统的核心是随 Claude 会话启动的 HTTP MCP Server，对外暴露 
 flowchart LR
     Claude["Claude Code"] -->|"HTTP POST<br/>StreamableHTTP"| HTTP["HTTP MCP Server<br/>startMobiMcpServer"]
     HTTP -->|"sendClaudeSessionMessage<br/>type: summary"| Session["ApiSessionClient"]
-    Session -->|"emit('message')"| Hub["Hub"]
+    Session -->|"emit('session-message')"| Hub["Hub"]
 
     subgraph "CLI 主进程（runClaude.ts）"
         HTTP
@@ -43,7 +43,7 @@ sequenceDiagram
     Note over Claude,Hub: Claude 调用 change_title
     Claude->>MobiServer: POST /mcp (StreamableHTTP)
     MobiServer->>Session: handler(title)
-    Session->>Hub: emit('message', { type: summary })
+    Session->>Hub: emit('session-message', { type: summary })
     Session->>Hub: updateMetadata({ summary: { text, updatedAt } })
     MobiServer-->>Claude: tool response
 ```
@@ -74,14 +74,14 @@ flowchart TB
 flowchart TB
     Call["change_title({ title })"] --> Handler["handler(title)"]
     Handler --> Send["client.sendClaudeSessionMessage({<br/>type: 'summary',<br/>summary: title,<br/>leafUuid: randomUUID()<br/>})"]
-    Send --> Emit["socket.emit('message', {...})<br/>发送到 Hub"]
+    Send --> Emit["socket.emit('session-message', {...})<br/>发送到 Hub"]
     Send --> Update["updateMetadata({<br/>summary: { text, updatedAt }<br/>})"]
     Update --> MetaUpdate["socket.emitWithAck('update-metadata')<br/>更新 Hub metadata"]
     Handler --> RenameCC["syncClaudeRename(getClaudeSession(), title)<br/>best-effort 回写 CC customTitle"]
 ```
 
 `sendClaudeSessionMessage` 对 `type: 'summary'` 的处理：
-1. 通过 Socket.IO `emit('message')` 发送消息到 Hub
+1. 通过 Socket.IO `emit('session-message')` 发送消息到 Hub
 2. 自动调用 `updateMetadata()` 将标题写入 session metadata（`summary.text` + `summary.updatedAt`）
 
 `syncClaudeRename` 调 SDK `renameSession(claudeSessionId, title, { dir })` 把标题回写到 Claude Code 的 session 文件（`custom-title` entry），保持 CC 会话列表标题与 mobi 一致（LWW）。会话未就绪 / SDK 失败时静默吞错（best-effort），不影响 mobi 侧已完成的改名。与 Web UI 重命名走 `rename-session` RPC → `syncClaudeRename` 复用同一函数。

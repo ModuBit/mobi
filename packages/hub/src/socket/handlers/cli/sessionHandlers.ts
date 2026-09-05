@@ -105,7 +105,7 @@ export type SessionHandlersDeps = {
     emitAccessError: EmitAccessError
     /** 活跃后台任务集合（写侧：background_tasks_changed replace；读侧：rewind API 闸门） */
     backgroundTaskTracker: BackgroundTaskTracker
-    /** rewind 软删除上界（读侧：rewound-truncated 消费；写侧：SyncEngine 受理时 mark，共用实例） */
+    /** rewind 软删除上界（读侧：rewind-truncated 消费；写侧：SyncEngine 受理时 mark，共用实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
@@ -131,7 +131,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     // 豁免通道补建/直落终态复活（running 幽灵卡 / 空 ghost 终态条目）
     const filteredTaskIds = new Set<string>()
 
-    socket.on('message', (data: unknown) => {
+    socket.on('session-message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
         if (!parsed.success) {
             return
@@ -352,7 +352,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 message
             }
         }
-        socket.to(`session:${sid}`).emit('update', update)
+        socket.to(`session:${sid}`).emit('session-update', update)
 
         onWebappEvent?.({
             type: 'message-received',
@@ -401,7 +401,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     agentState: null
                 }
             }
-            socket.to(`session:${sid}`).emit('update', update)
+            socket.to(`session:${sid}`).emit('session-update', update)
             onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, metadata } })
         }
     }
@@ -448,7 +448,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     agentState: { version: result.version, value: agentState }
                 }
             }
-            socket.to(`session:${sid}`).emit('update', update)
+            socket.to(`session:${sid}`).emit('session-update', update)
             onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, agentState: result.value, agentStateVersion: result.version } })
         }
     }
@@ -557,7 +557,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         })
     })
 
-    // ===== 用户消息事实共享处理体（旧 4 事件与 messages-facts 统一事件共用，防逻辑分叉）=====
+    // ===== 用户消息事实共享处理体（messages-facts 各 fact kind 共用）=====
 
     /** 补写/推进行的统一广播：按 message 落库后的广播模式逐行推给 Web（update new-message +
      *  SSE message-received）——Web 端据此刷新 rewind 判据与 lifecycle 展示（P3 消费）。
@@ -566,7 +566,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     const broadcastStoredMessages = (sid: string, msgs: StoredMessage[]) => {
         for (const msg of msgs) {
             const message = { ...toDecryptedMessage(msg), seq: msg.seq }
-            socket.to(`session:${sid}`).emit('update', {
+            socket.to(`session:${sid}`).emit('session-update', {
                 id: randomUUID(),
                 seq: msg.seq,
                 createdAt: Date.now(),
@@ -705,48 +705,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         })
     }
 
-    // CLI 消费了排队消息 → 推进 lifecycle=pushed 后转发 SSE 给 Web
-    socket.on('messages-submitted', (data: { sid: string; localIds: string[] }) => {
-        if (!data || typeof data.sid !== 'string' || !Array.isArray(data.localIds)) {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        processSubmitted(data.sid, data.localIds, Date.now())
-    })
-
-    // CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定；幂等落库，
-    // 补写行按 message 落库后的广播模式推给 Web（Web 端据此刷新 rewind 判据，否则 hover 不显 icon、刷新才见）
-    socket.on('messages-bound', (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => {
-        if (!data || typeof data.sid !== 'string' || !Array.isArray(data.bindings)) {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        processBound(data.sid, data.bindings)
-    })
-
-    // CLI 收到 isReplay 回显时上报：按 nativeId 写 nativeAckAt（first-write-wins）+ 推进 lifecycle='acked'，
-    // 并按 message 落库后的广播模式推补写行给 Web（Web 端据此刷新 rewind 判据）
-    socket.on('messages-acked', (data: { sid: string; nativeId: string }) => {
-        if (!data || typeof data.sid !== 'string' || typeof data.nativeId !== 'string' || data.nativeId.length === 0) {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        processAcked(data.sid, data.nativeId)
-    })
-
-    // CLI→Hub 统一消息事实：批内多 kind 分发。旧 4 事件双受理（旧 CLI 兼容），处理体共享防分叉。
+    // CLI→Hub 统一消息事实：批内多 kind 分发。
     // fact.at 缺省取 hub 接收时刻（每批一个 now，批内共时）
     socket.on('messages-facts', (data: { sid: string; facts: MessageFact[] }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.facts)) {
@@ -804,31 +763,16 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
     })
 
-    // rewind 两段回报 SSE 事件（shared SyncEventSchema 已收录 rewound-truncated / rewind-completed）
-    const emitRewindEvent = (event: Extract<SyncEvent, { type: 'rewound-truncated' | 'rewind-completed' }>) => {
+    // rewind 两段回报 SSE 事件（shared SyncEventSchema 已收录 rewind-truncated / rewind-completed）
+    const emitRewindEvent = (event: Extract<SyncEvent, { type: 'rewind-truncated' | 'rewind-completed' }>) => {
         onWebappEvent?.(event)
     }
-
-    // CLI onSessionFound 且 native session 变化时上报：批量补写该会话缺 nativeSessionId 的消息行，
-    // 并按 message 落库后的广播模式把补写行推给 Web（Web 端据此刷新 rewind 判据）
-    socket.on('messages-native-attached', (data: { sid: string; nativeSessionId: string }) => {
-        if (!data || typeof data.sid !== 'string'
-            || typeof data.nativeSessionId !== 'string' || data.nativeSessionId.length === 0) {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        processAttached(data.sid, data.nativeSessionId)
-    })
 
     // rewind 截断成功（CLI 两段回报第一段，含 CLI 反查的锚点批首行 seq）：
     // Hub 即刻软删除（先 CLI 截断成功再 Hub 删），随即转 SSE 过渡态。
     // 软删除带上界（M3）：只删 rewind 受理时点已存在的行——回报迟到时，受理后新发的消息不被误删。
     // ack 确认制（M5）：CLI 可靠队列据此出队；去重后重放回报仅回 ack（软删除/SSE 不重复执行）
-    socket.on('rewound-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }, ack?: () => void) => {
+    socket.on('rewind-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }, ack?: () => void) => {
         // deleteFromSeq 须为正整数（seq 从 1 起）：Hub 是软删除的执行端，CLI 端 reportRewindCompletion
         // 的 >0 防御不足以兜底异常载荷——0/负数会让 seq >= fromSeq 命中全部行，整会话历史被软删除
         if (!data || typeof data.sid !== 'string'
@@ -851,7 +795,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 受理时记录的上界（一次性消费；无记录 = hub 重启丢内存 → 回退无上界删除，旧行为）
         const bound = rewindDeleteBoundTracker?.consume(data.sid) ?? undefined
         store.messages.softDeleteMessagesFrom(data.sid, data.deleteFromSeq, bound)
-        emitRewindEvent({ type: 'rewound-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })
+        emitRewindEvent({ type: 'rewind-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })
         ack?.()
     })
 

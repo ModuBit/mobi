@@ -30,7 +30,7 @@ export interface RewindReportClient {
 /**
  * rewind 截断轮完成后的两段回报（截断已生效时由 launcher 调用）：
  *
- * 1. `rewound-truncated`（含 deleteFromSeq = 锚点批首行 seq，1:N 批整批同删的定界）
+ * 1. `rewind-truncated`（含 deleteFromSeq = 锚点批首行 seq，1:N 批整批同删的定界）
  *    → Hub 即刻软删除并转 SSE，Web 先显示过渡态
  * 2. `rewind-completed`（含 filesRestored）→ 终态，Web 清理窗口 / 回填 sender / 解禁输入
  *

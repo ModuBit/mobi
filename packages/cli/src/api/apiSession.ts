@@ -239,7 +239,7 @@ export class ApiSessionClient extends EventEmitter {
             this.terminalManager.close(payload.terminalId)
         }))
 
-        this.socket.on('update', (data: Update) => {
+        this.socket.on('session-update', (data: Update) => {
             try {
                 if (!data.body) return
 
@@ -441,7 +441,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
-        this.socket.emit('message', {
+        this.socket.emit('session-message', {
             sid: this.sessionId,
             message: content,
             // 使用 Claude Code 的 uuid 作为 localId，供 Hub DB 去重
@@ -466,7 +466,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /** 发送流式内容快照（不落库，Hub 直接透传给 Web） */
     sendContentSnapshot(message: DecryptedMessage): void {
-        this.socket.emit('message', {
+        this.socket.emit('session-message', {
             sid: this.sessionId,
             message: message.content,
             localId: message.localId ?? undefined,
@@ -491,7 +491,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
-        this.socket.emit('message', {
+        this.socket.emit('session-message', {
             sid: this.sessionId,
             message: content
         })
@@ -519,7 +519,7 @@ export class ApiSessionClient extends EventEmitter {
                 turnOrigin: kind
             }
         }
-        this.socket.emit('message', {
+        this.socket.emit('session-message', {
             sid: this.sessionId,
             message: content,
             // hook 输入无稳定 native 锚，localId 仅作唯一标识（随机 uuid）；
@@ -541,7 +541,7 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         }
-        this.socket.emit('message', {
+        this.socket.emit('session-message', {
             sid: this.sessionId,
             message: content
         })
@@ -575,7 +575,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
-        this.socket.emit('message', {
+        this.socket.emit('session-message', {
             sid: this.sessionId,
             message: content
         })
@@ -682,8 +682,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** rewind 截断成功上报（CLI → Hub，ack 确认制）：Hub 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
-    emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void {
-        this.rewindReportQueue.enqueue({ event: 'rewound-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
+    emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void {        this.rewindReportQueue.enqueue({ event: 'rewind-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
     }
 
     /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */

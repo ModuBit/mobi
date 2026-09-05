@@ -116,7 +116,7 @@ function makeEnv() {
     return {
         env: { deps, session, events },
         sendMessage: (content: unknown) => {
-            handlers.get('message')?.({ sid: SID, message: content })
+            handlers.get('session-message')?.({ sid: SID, message: content })
         },
     }
 }

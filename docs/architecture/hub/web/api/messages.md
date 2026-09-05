@@ -147,6 +147,6 @@ sequenceDiagram
     Web->>WebServer: POST /api/sessions/:id/messages
     WebServer->>MessageService: sendMessage()
     MessageService->>MessageService: 持久化到 Store
-    MessageService->>Socket.IO: emit('update')
+    MessageService->>Socket.IO: emit('session-update')
     Socket.IO->>CLI: 推送消息
 ```

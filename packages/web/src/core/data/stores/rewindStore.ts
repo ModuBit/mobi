@@ -21,13 +21,13 @@ import { rewindFrom } from '@/core/data/stores/messageWindowStore'
 /**
  * rewind 生命周期 store（per-session keyed，SSEProvider 写入、ChatContainer 消费）。
  *
- * 职责：承载两段回报（rewound-truncated → rewind-completed）的会话内状态机，
+ * 职责：承载两段回报（rewind-truncated → rewind-completed）的会话内状态机，
  * 供 ChatContainer 追加本地合成块（起点/终点）、驱动 isRewindInProgress 禁用 sender、
  * 30s 超时兜底解锁。对齐 backgroundTasksStore 的「SSE 层写、组件层读」模式。
  */
 
-/** rewound-truncated SSE 载荷（shared SyncEventSchema 已收录，单一来源） */
-export type RewoundTruncatedEvent = Extract<SyncEvent, { type: 'rewound-truncated' }>
+/** rewind-truncated SSE 载荷（shared SyncEventSchema 已收录，单一来源） */
+export type RewoundTruncatedEvent = Extract<SyncEvent, { type: 'rewind-truncated' }>
 
 /** rewind-completed SSE 载荷（终态；filesRestored false 时 error 携带原因） */
 export type RewindCompletedEvent = Extract<SyncEvent, { type: 'rewind-completed' }>
@@ -40,7 +40,7 @@ export type RewindProgress = {
     nativeId: string
     /** Web 确认 rewind 的时刻（POST 受理成功后） */
     startedAt: number
-    /** rewound-truncated 到达时刻（null = 截断未回报）；30s 超时兜底自此起算 */
+    /** rewind-truncated 到达时刻（null = 截断未回报）；30s 超时兜底自此起算 */
     truncatedAt: number | null
     /** 截断起始 seq（消息窗口清除范围，Task 14 消费） */
     deleteFromSeq: number | null
@@ -61,7 +61,7 @@ interface RewindState {
     completionBySession: Map<string, RewindCompletion>
     /** Web 确认 rewind（POST 受理成功）→ 进入进行中态（清掉旧终态） */
     beginRewind: (sessionId: string, nativeId: string) => void
-    /** SSE rewound-truncated → 记录截断回报（30s 超时兜底自此起算） */
+    /** SSE rewind-truncated → 记录截断回报（30s 超时兜底自此起算） */
     markTruncated: (sessionId: string, deleteFromSeq: number) => void
     /** SSE rewind-completed / 超时兜底 → 终态（清除进行中态）。返回是否生效（false = 守卫吞掉，无进行中态） */
     completeRewind: (sessionId: string, filesRestored: boolean, error?: string, skippedLinks?: number) => boolean
@@ -168,10 +168,10 @@ export function useRewindCompletion(sessionId: string): RewindCompletion | undef
 export function parseRewindSseEvent(event: unknown): RewindSseEvent | null {
     if (!event || typeof event !== 'object') return null
     const type = (event as Record<string, unknown>).type
-    if (type !== 'rewound-truncated' && type !== 'rewind-completed') return null
+    if (type !== 'rewind-truncated' && type !== 'rewind-completed') return null
     const parsed = SyncEventSchema.safeParse(event)
     if (!parsed.success) return null
-    return parsed.data.type === 'rewound-truncated' || parsed.data.type === 'rewind-completed'
+    return parsed.data.type === 'rewind-truncated' || parsed.data.type === 'rewind-completed'
         ? parsed.data
         : null
 }
@@ -186,7 +186,7 @@ export function ingestRewindSseEvent(event: unknown): boolean {
     const parsed = parseRewindSseEvent(event)
     if (!parsed) return false
     const store = useRewindStore.getState()
-    if (parsed.type === 'rewound-truncated') {
+    if (parsed.type === 'rewind-truncated') {
         // 远端发起（另一 tab/设备 rewind，本 tab 无进行中态）→ 由 truncated 驱动进入生命周期（#4）：
         // 后续 completed 落终态（「已回退至此」分隔线）、30s 超时兜底随之生效，sender 同步禁用。
         // 载荷不含锚点，nativeId 留空（completion.nativeId 仅存档不消费）；

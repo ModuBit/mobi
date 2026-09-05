@@ -35,7 +35,7 @@ import { registerWebToolsConfigHandler } from '../modules/common/handlers/webToo
 import { registerMachineFileHandlers } from '../modules/common/handlers/machineFiles'
 
 interface ServerToRunnerEvents {
-    update: (data: Update) => void
+    'machine-update': (data: Update) => void
     'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     error: (data: { message: string }) => void
 }
@@ -309,7 +309,7 @@ export class ApiMachineClient {
             callback(await this.rpcHandlerManager.handleRequest(data))
         })
 
-        this.socket.on('update', (data: Update) => {
+        this.socket.on('machine-update', (data: Update) => {
             if (data.body.t !== 'update-machine') {
                 return
             }

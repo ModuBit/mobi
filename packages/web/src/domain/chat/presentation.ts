@@ -111,7 +111,7 @@ export function isClearInProgress(chatBlocks: ChatBlock[]): boolean {
  */
 export const REWIND_COMMAND = '/rewind'
 
-/** rewind 完成标志：CLI 两段回报的终态事件（rewound-truncated 非终态——文件恢复仍在途，spec §4.5） */
+/** rewind 完成标志：CLI 两段回报的终态事件（rewind-truncated 非终态——文件恢复仍在途，spec §4.5） */
 export function isRewindCompletion(block: ChatBlock): boolean {
     return block.kind === 'agent-event' && block.event.type === 'rewind-completed'
 }

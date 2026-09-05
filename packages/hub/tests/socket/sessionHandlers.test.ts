@@ -450,7 +450,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         // 1. Agent tool_use → member running + task in_progress
-        fakeSocket.emit('message', agentDispatch)
+        fakeSocket.emit('session-message', agentDispatch)
         const dispatchState = runtimeStateRef.current?.teamState
         expect(dispatchState).toBeDefined()
         expect(dispatchState!.members).toHaveLength(1)
@@ -458,7 +458,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
         expect(dispatchState!.members![0].toolUseIds).toEqual(['tu-1'])
 
         // 2. tool_result → member/task completed → 全 done → teamState 清空
-        fakeSocket.emit('message', agentResult)
+        fakeSocket.emit('session-message', agentResult)
         expect(runtimeStateRef.current?.teamState).toBeUndefined()
     })
 
@@ -467,7 +467,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
         const { deps, runtimeStateRef } = makeTeamDeps()
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('message', {
+        fakeSocket.emit('session-message', {
             ...agentDispatch,
             message: {
                 ...agentDispatch.message,
@@ -485,7 +485,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
                 },
             },
         })
-        fakeSocket.emit('message', agentResult)
+        fakeSocket.emit('session-message', agentResult)
 
         const state = runtimeStateRef.current?.teamState
         expect(state).toBeDefined()
@@ -496,16 +496,17 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
     })
 })
 
-describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
+describe('messages-facts bound：CLI 上报用户消息 native_id 绑定', () => {
     function makeBoundDeps(opts: { bindReturn: StoredMessage[]; sessionOk?: boolean }) {
         const events: SyncEvent[] = []
-        const bindSpy = { args: null as { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] } | null }
+        /** fact 逐条分发 → processBound 每条一次调用，记录全部调用 */
+        const bindCalls: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }[] = []
         const accessError = { called: false }
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
                     bindNativeIds: (sid: string, bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[]) => {
-                        bindSpy.args = { sid, bindings }
+                        bindCalls.push({ sid, bindings })
                         return opts.bindReturn
                     },
                 },
@@ -519,83 +520,82 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
             backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
-        return { deps, events, bindSpy, accessError }
+        return { deps, events, bindCalls, accessError }
     }
 
-    test('合法 bindings → 委托 store.bindNativeIds 并广播补写行给 Web（刷新 rewind 判据）', () => {
+    test('合法 bound fact → 委托 store.bindNativeIds 并广播补写行给 Web（刷新 rewind 判据）', () => {
         const fakeSocket = makeFakeSocket()
         const boundMsg = makeMsg('m-1', 'loc-1', 1)
-        const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: [boundMsg] })
+        const { deps, bindCalls, events } = makeBoundDeps({ bindReturn: [boundMsg] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
-        expect(bindSpy.args!.sid).toBe('s1')
-        expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }])
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'bound', localId: 'loc-1', nativeId: 'uu-1' }] })
+        expect(bindCalls).toEqual([
+            { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] },
+        ])
         // 补写行经 message-received SSE 广播给 Web，供其刷新 rewind 判据
         expect(events).toEqual([{ type: 'message-received', sessionId: 's1', message: expect.objectContaining({ id: 'm-1', localId: 'loc-1' }) }])
     })
 
     test('补写为空（已绑定过）→ 不广播', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: [] })
+        const { deps, bindCalls, events } = makeBoundDeps({ bindReturn: [] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
-        expect(bindSpy.args).not.toBeNull()
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'bound', localId: 'loc-1', nativeId: 'uu-1' }] })
+        expect(bindCalls).toHaveLength(1)
         expect(events).toEqual([])
     })
 
     test('session 不存在 → 不 invoke', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy, accessError } = makeBoundDeps({ bindReturn: [], sessionOk: false })
+        const { deps, bindCalls, accessError } = makeBoundDeps({ bindReturn: [], sessionOk: false })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 'unknown', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
+        fakeSocket.emit('messages-facts', { sid: 'unknown', facts: [{ kind: 'bound', localId: 'loc-1', nativeId: 'uu-1' }] })
         expect(accessError.called).toBe(true)
-        expect(bindSpy.args).toBeNull()
+        expect(bindCalls).toHaveLength(0)
     })
 
-    test('空 bindings / 非法 payload → 直接忽略', () => {
+    test('空 facts / 非法 payload → 直接忽略', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy } = makeBoundDeps({ bindReturn: [] })
+        const { deps, bindCalls } = makeBoundDeps({ bindReturn: [] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [] })
-        fakeSocket.emit('messages-bound', null)
-        fakeSocket.emit('messages-bound', { sid: 's1' })
-        expect(bindSpy.args).toBeNull()
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [] })
+        fakeSocket.emit('messages-facts', null)
+        fakeSocket.emit('messages-facts', { sid: 's1' })
+        expect(bindCalls).toHaveLength(0)
     })
 
-    test('混入无效元素的 bindings → 只透传有效项（null/缺字段/空串不落库）', () => {
+    test('混入无效元素的 facts → 只处理有效项（缺字段/空串/未知 kind 不落库）', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy } = makeBoundDeps({ bindReturn: [] })
+        const { deps, bindCalls } = makeBoundDeps({ bindReturn: [] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', {
+        fakeSocket.emit('messages-facts', {
             sid: 's1',
-            bindings: [
-                null,
-                { localId: 'loc-1', metadata: { nativeId: 'uu-1' } },                 // 有效
-                { localId: 'loc-2', metadata: { nativeId: '' } },                     // 空串 nativeId → 占坑，丢弃
-                { localId: 'loc-3', metadata: { nativeId: undefined } },              // 缺字段 → bindNativeIds 会抛错，丢弃
-                { localId: 'loc-3' },                                                 // 整个 metadata 缺失 → 丢弃
-                { localId: '', metadata: { nativeId: 'uu-3' } },                      // 空 localId → 永远匹配不到行，丢弃
-                'garbage',
-                { localId: 'loc-4', metadata: { nativeId: 'uu-4', nativeSessionId: 'ns-1' } },  // 有效（带 session 归属）
+            facts: [
+                null as unknown as { kind: string },                                    // 非对象 → 顶层跳过
+                { kind: 'bound', localId: 'loc-1', nativeId: 'uu-1' },                  // 有效
+                { kind: 'bound', localId: 'loc-2', nativeId: '' },                      // 空串 nativeId → 占坑，跳过
+                { kind: 'bound', localId: 'loc-3' },                                    // 缺 nativeId → 跳过
+                { kind: 'bound', localId: '', nativeId: 'uu-3' },                       // 空 localId → processBound 校验丢弃
+                { kind: 'unknown-kind' },                                               // 未知 kind → switch 跳过
+                { kind: 'bound', localId: 'loc-4', nativeId: 'uu-4', nativeSessionId: 'ns-1' },  // 有效（带 session 归属）
             ],
         })
-        expect(bindSpy.args).not.toBeNull()
-        expect(bindSpy.args!.bindings).toEqual([
-            { localId: 'loc-1', metadata: { nativeId: 'uu-1' } },
-            { localId: 'loc-4', metadata: { nativeId: 'uu-4', nativeSessionId: 'ns-1' } },
+        expect(bindCalls.map(c => c.bindings)).toEqual([
+            [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }],
+            [{ localId: 'loc-4', metadata: { nativeId: 'uu-4', nativeSessionId: 'ns-1' } }],
         ])
     })
 
     test('全部元素无效 → 不 invoke', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy } = makeBoundDeps({ bindReturn: [] })
+        const { deps, bindCalls } = makeBoundDeps({ bindReturn: [] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [null, { localId: 'loc-1', nativeId: '' }] })
-        expect(bindSpy.args).toBeNull()
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'bound', localId: 'loc-1', nativeId: '' }] })
+        expect(bindCalls).toHaveLength(0)
     })
 })
 
-describe('messages-acked：isReplay 回显确认（双写）', () => {
+describe('messages-facts acked：isReplay 回显确认（双写）', () => {
     /** 构造 messages-acked 专用 deps：mock nativeAckAt 写入（markMessagesAcked）与 lifecycle
      *  推进（advanceMessagesAcked）两个 store 方法，各自捕获调用参数；返回值可定制
      * （交错/重复 acked fact 下两写命中集不同，见广播并集用例）。 */
@@ -643,12 +643,12 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         return { deps, nativeAckSpy, advanceSpy, calls, events }
     }
 
-    test('messages-acked：推进 lifecycle=acked（双写——nativeAckAt 路径照旧）', () => {
+    test('acked fact：推进 lifecycle=acked（双写——nativeAckAt 路径照旧）', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, nativeAckSpy, advanceSpy, calls } = makeAckedDeps()
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-1' })
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'acked', nativeId: 'nu-1' }] })
 
         // 原有 nativeAckAt 写入路径照常触发
         expect(nativeAckSpy.args).not.toBeNull()
@@ -681,7 +681,7 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-2' })
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'acked', nativeId: 'nu-2' }] })
 
         // 只按 mark 返回广播会让 advance 推进过的行不广播——Web 端 lifecycle 停留
         // 'pushed' 直到刷新（正是本特性要消灭的「刷新才见」bug 类）
@@ -697,7 +697,7 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-1' })
+        fakeSocket.emit('messages-facts', { sid: 's1', facts: [{ kind: 'acked', nativeId: 'nu-1' }] })
 
         expect(events).toEqual([])
     })
@@ -807,7 +807,7 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
         expect(fakeSocket.broadcasts).toHaveLength(1)
         const b = fakeSocket.broadcasts[0]
         expect(b.room).toBe('session:s1')
-        expect(b.event).toBe('update')
+        expect(b.event).toBe('session-update')
         const payload = b.payload as { seq: number; body: { t: string; sid: string; message: { id: string; lifecycle: string; lifecycleAt: number } } }
         expect(payload.body.t).toBe('new-message')
         expect(payload.body.sid).toBe('s1')
@@ -922,19 +922,6 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
         expect(fakeSocket.broadcasts).toEqual([])
     })
 
-    test('旧事件 messages-submitted 行为不变（回归锁定）', () => {
-        const fakeSocket = makeFakeSocket()
-        const { deps, events, pushedSpy } = makeFactsDeps({ pushedReturn: ['loc-1'] })
-        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-
-        fakeSocket.emit('messages-submitted', { sid: 's1', localIds: ['loc-1'] })
-
-        expect(pushedSpy.args!.sid).toBe('s1')
-        expect(pushedSpy.args!.lids).toEqual(['loc-1'])
-        expect(pushedSpy.args!.at).toBeTypeOf('number')
-        expect(events).toHaveLength(1)
-        expect((events[0] as Extract<SyncEvent, { type: 'messages-submitted' }>).localIds).toEqual(['loc-1'])
-    })
 })
 
 describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收终态）', () => {

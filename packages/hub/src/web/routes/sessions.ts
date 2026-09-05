@@ -562,7 +562,7 @@ export function createSessionsRoutes(
     })
 
     // rewind 执行：闸门（该会话在途后台任务 → 409）通过即转发 CLI RPC 受理（202）。
-    // 结果不经本响应返回——CLI 截断/文件恢复经 socket 两段回报（rewound-truncated → rewind-completed）→ SSE 推 Web
+    // 结果不经本响应返回——CLI 截断/文件恢复经 socket 两段回报（rewind-truncated → rewind-completed）→ SSE 推 Web
     app.post('/sessions/:id/rewind', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine

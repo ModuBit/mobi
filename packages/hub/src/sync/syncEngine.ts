@@ -438,7 +438,7 @@ export class SyncEngine {
             throw err
         }
         // 受理成功 → 记录软删除上界（受理时点最大 seq，M3：迟到截断回报不得吞掉受理后新行）。
-        // CLI socket handler 的 rewound-truncated 消费此上界收窄软删除范围；
+        // CLI socket handler 的 rewind-truncated 消费此上界收窄软删除范围；
         // CLI 干净拒绝（accepted:false）不标记——rewind 不会执行，无迟到回报可防御
         if (!result || typeof result !== 'object' || (result as { accepted?: unknown }).accepted !== false) {
             this.rewindDeleteBounds.markAccepted(sessionId, maxSeq)

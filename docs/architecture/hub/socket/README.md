@@ -162,7 +162,7 @@ CLI 连接后自动加入房间，用于 Socket.IO 的广播定向：
 | `session:{sessionId}` | auth 中携带 sessionId 且有权限 | 同会话的 CLI 客户端接收 `update` 事件 |
 | `machine:{machineId}` | auth 中携带 machineId 且有权限 | 同机器的 CLI 客户端接收 `update` 事件 |
 
-`socket.to(room).emit('update', ...)` 将事件广播给同房间的其他客户端。
+hub→CLI 推送按域分事件名：session room 走 `session-update`，machine room 走 `machine-update`（body.t 判别不变）。
 
 ### 乐观锁
 

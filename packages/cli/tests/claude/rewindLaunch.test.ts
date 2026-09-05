@@ -168,7 +168,7 @@ describe('reportRewindCompletion（两段回报）', () => {
         //
     })
 
-    it('边界可达 → 先 rewound-truncated（含批首行 seq）再 rewind-completed', async () => {
+    it('边界可达 → 先 rewind-truncated（含批首行 seq）再 rewind-completed', async () => {
         const client = fakeClient(5)
 
         await reportRewindCompletion(client, rewind)

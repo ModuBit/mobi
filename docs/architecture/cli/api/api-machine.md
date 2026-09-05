@@ -95,7 +95,7 @@ Runner 启动完成后调用 `setRPCHandlers`，注入核心 RPC 方法：
 `update` 事件处理 `update-machine` 类型的推送：
 
 ```
-socket.on('update', data)
+socket.on('machine-update', data)
     │
     ├── 过滤: body.t !== 'update-machine' → 忽略
     ├── 过滤: machineId !== this.machine.id → 忽略

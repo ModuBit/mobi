@@ -16,7 +16,7 @@
 
 /**
  * rewind 软删除上界记录（M3 防御）：rewind API 受理时记录该会话当时的最大 seq，
- * `rewound-truncated` 截断回报到达时消费——软删除收窄为 `deleteFromSeq <= seq <= 上界`。
+ * `rewind-truncated` 截断回报到达时消费——软删除收窄为 `deleteFromSeq <= seq <= 上界`。
  *
  * 动机：截断回报可能**迟到**（CLI 卡住数十秒后恢复）。Web 超时兜底已解锁输入，
  * 用户迟到窗口内发的新消息 seq 大于锚点 seq，无上界的 `seq >= deleteFromSeq`

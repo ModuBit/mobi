@@ -214,9 +214,8 @@ export function isAbortedTerminalReason(reason: unknown): boolean {
 /**
  * CLI→Hub 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
  * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。
- * 与旧 4 事件（messages-submitted/bound/native-attached/acked）语义对照：
- * pushed ← submitted、bound/attached/acked 同名、lifecycle 为新增（command_lifecycle 帧转译）。
- * withdrawn（撤回，#53 已在本批转正，不再是预留扩展）。
+ * kind 语义：pushed=排队消息已推给 SDK、bound=native 锚点绑定、attached=native session 补写、
+ * acked=CC isReplay 回显确认、lifecycle=command_lifecycle 帧转译、withdrawn=撤回（#53）。
  */
 export type MessageFact =
     | { kind: 'bound'; localId: string; nativeId: string; nativeSessionId?: string }

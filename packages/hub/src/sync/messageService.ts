@@ -147,7 +147,7 @@ export class MessageService {
                 message
             }
         }
-        this.io.of('/cli').to(`session:${sessionId}`).emit('update', update)
+        this.io.of('/cli').to(`session:${sessionId}`).emit('session-update', update)
 
         this.publisher.emit({
             type: 'message-received',

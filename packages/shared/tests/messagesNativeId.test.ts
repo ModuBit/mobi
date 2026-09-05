@@ -71,9 +71,9 @@ describe('DecryptedMessageSchema metadata（rewind 锚点）', () => {
 })
 
 describe('SyncEventSchema rewind 两段回报事件', () => {
-    it('rewound-truncated 载荷含 sessionId 与 deleteFromSeq', () => {
+    it('rewind-truncated 载荷含 sessionId 与 deleteFromSeq', () => {
         const parsed = SyncEventSchema.safeParse({
-            type: 'rewound-truncated', sessionId: 's1', deleteFromSeq: 3,
+            type: 'rewind-truncated', sessionId: 's1', deleteFromSeq: 3,
         })
         expect(parsed.success).toBe(true)
     })

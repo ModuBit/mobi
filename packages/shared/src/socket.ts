@@ -141,7 +141,10 @@ export const UpdateSchema = z.object({
 export type Update = z.infer<typeof UpdateSchema>
 
 export interface ServerToClientEvents {
-    update: (data: Update) => void
+    /** Hub→CLI 会话推送（session room）：new-message / update-session 三种 body，按 body.t 判别 */
+    'session-update': (data: Update) => void
+    /** Hub→CLI 机器推送（machine room）：update-machine body */
+    'machine-update': (data: Update) => void
     'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     'terminal:open': (data: TerminalOpenPayload) => void
     'terminal:write': (data: TerminalWritePayload) => void
@@ -162,7 +165,8 @@ export interface NativeMessageMetadata {
 }
 
 export interface ClientToServerEvents {
-    message: (data: { sid: string; message: unknown; localId?: string; metadata?: NativeMessageMetadata; snapshot?: boolean; category?: MessageCategory }) => void
+    /** CLI→Hub 会话消息落库主通道（agent output / agent event / snapshot 透传，按 content 判别） */
+    'session-message': (data: { sid: string; message: unknown; localId?: string; metadata?: NativeMessageMetadata; snapshot?: boolean; category?: MessageCategory }) => void
     'session-alive': (data: {
         sid: string
         time: number
@@ -233,20 +237,12 @@ export interface ClientToServerEvents {
     ping: (callback: () => void) => void
     'usage-report': (data: unknown) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
-    // ===== 消息事实协议（新，收敛方向）=====
+    // ===== 消息事实协议 =====
     /** CLI→Hub 统一消息事实事件：批内合并多 kind fact 一次往返（MessageFact 联合见 messages.ts）。
-     *  旧 CLI 二进制仍发下方旧 4 事件，Hub 双受理；#54 收敛清理时下线旧事件 */
+     *  原 4 个独立事件（messages-submitted/bound/native-attached/acked）已下线，语义由各 fact kind 承载 */
     'messages-facts': (data: { sid: string; facts: MessageFact[] }) => void
-    // ===== 旧 4 事件（保留兼容旧 CLI 二进制，新 CLI 已改发 messages-facts）=====
-    'messages-submitted': (data: { sid: string; localIds: string[] }) => void
-    /** CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定（同一 push 的批内 N 条共享一个 nativeId） */
-    'messages-bound': (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => void
-    /** CLI onSessionFound 且 native session 变化时上报：Hub 补写该会话缺 nativeSessionId 的消息行（幂等） */
-    'messages-native-attached': (data: { sid: string; nativeSessionId: string }) => void
-    /** CLI 收到 isReplay 回显时上报：Hub 按 nativeId 写 metadata.nativeAckAt（first-write-wins） */
-    'messages-acked': (data: { sid: string; nativeId: string }) => void
     /** rewind 截断成功（CLI → Hub）：Hub 即刻按 deleteFromSeq 软删除并转 SSE */
-    'rewound-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
+    'rewind-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
     /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因；skippedLinks>0 时部分路径被安全护栏跳过 */
     'rewind-completed': (data: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number }) => void
     'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void

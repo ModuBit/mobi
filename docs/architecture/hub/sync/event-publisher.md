@@ -72,7 +72,7 @@ flowchart LR
     publisher -->|broadcast| sse[SSEManager]
 ```
 
-> **Socket 事件**：CLI 通过 Socket.IO 发送给 Hub 的事件，如 `socket.emit('message', data)`
+> **Socket 事件**：CLI 通过 Socket.IO 发送给 Hub 的事件，如 `socket.emit('session-message', data)`
 
 ### SessionHandlers
 

@@ -41,7 +41,7 @@ describe('rewind 协议事件类型', () => {
 
     it('messages-native-attached / 两段回报事件载荷形态', () => {
         const attached: Parameters<ClientToServerEvents['messages-native-attached']>[0] = { sid: 's1', nativeSessionId: 'ns-1' }
-        const truncated: Parameters<ClientToServerEvents['rewound-truncated']>[0] = { sid: 's1', nativeId: 'u1', deleteFromSeq: 3 }
+        const truncated: Parameters<ClientToServerEvents['rewind-truncated']>[0] = { sid: 's1', nativeId: 'u1', deleteFromSeq: 3 }
         const completed: Parameters<ClientToServerEvents['rewind-completed']>[0] = { sid: 's1', filesRestored: false, error: 'boom' }
         expect(attached.nativeSessionId).toBe('ns-1')
         expect(truncated.deleteFromSeq).toBe(3)

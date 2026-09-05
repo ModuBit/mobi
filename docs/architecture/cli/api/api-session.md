@@ -37,7 +37,7 @@ Claude 进程输出 → loop.ts → ApiSessionClient.sendClaudeSessionMessage(bo
                                          └── 其他 → { role:'agent', content:{output, data} }
                                          │
                                          ▼
-                                   socket.emit('message')
+                                   socket.emit('session-message')
 ```
 
 - **用户消息**: `type === 'user'` 且非 sidechain/meta → 作为 `user` 角色发送
@@ -48,7 +48,7 @@ Claude 进程输出 → loop.ts → ApiSessionClient.sendClaudeSessionMessage(bo
 ### Hub → Claude（下行）
 
 ```
-socket.on('update', { body.t === 'new-message' })
+socket.on('session-update', { body.t === 'new-message' })
                     │
                     ▼
             handleIncomingMessage()
@@ -57,7 +57,7 @@ socket.on('update', { body.t === 'new-message' })
                     ├── UserMessageSchema 解析
                     ├── localId 合并（Hub 放在 message 外层，合并进 UserMessage）
                     ├── enqueueUserMessage()
-                    └── 其他 → emit('message')
+                    └── 其他 → emit('session-message')
                     │
                     ▼
             pendingMessageCallback → loop.ts 处理
@@ -165,7 +165,7 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 | `emitLifecycleFact(nativeId, state)` | `lifecycle` | `onMessage` 中 `commandLifecycleToFact` 拦截 CC 的 command_lifecycle 帧（started→processing、completed→done、cancelled/discarded/refused 直传，可选 `terminal_reason` 透传），转终态信号上报 |
 | `emitWithdrawnFact(nativeId)` | `withdrawn` | 撤回刚发消息（#53，批次 A）：`handleAbortRequest('turn')` 撤回两段式复验通过后上报，Hub 侧软删除 + SSE `message-withdrawn` |
 
-不再直接 emit 旧 4 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）——旧事件由 Hub 保留兼容旧 CLI 二进制双受理（#54 收敛清理时下线）。
+统一走 `messages-facts` 事件（#54 收敛已完成）：原 4 个独立事件已从 Hub 与 shared 协议中下线。
 
 ### 上下文用量上报
 

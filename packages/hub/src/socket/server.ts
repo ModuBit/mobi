@@ -76,7 +76,7 @@ export type SocketServerDeps = {
     /** 活跃后台任务集合（CLI 事件维护，rewind API 闸门读取）。
      *  缺省时 socket server 自建实例——仅测试用；生产组装层（index.ts）必须传入与 web 路由层共用的同一实例 */
     backgroundTaskTracker?: BackgroundTaskTracker
-    /** rewind 软删除上界（SyncEngine 受理时写，CLI rewound-truncated 读）。
+    /** rewind 软删除上界（SyncEngine 受理时写，CLI rewind-truncated 读）。
      *  生产组装层（index.ts）必须传入与 SyncEngine 共用的同一实例 */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null

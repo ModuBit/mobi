@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
+import { unwrapRoleWrappedRecordEnvelope, unwrapOutputMessage } from '@mobi/shared/messages'
 import { safeStringify } from '@mobi/shared'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import type { NormalizedMessage, MessageMeta } from './types'
@@ -28,19 +28,14 @@ initDiag()
 /**
  * 从 DecryptedMessage.content 信封提取 Anthropic message.id。
  * snapshot 与 full 共享同一 message.id（同一条 Anthropic message 的流式阶段与最终落库），
- * 是双保险第二道（reducer 按 (messageId, type) 去重）的键。与 messageCache 的 extractMessageId
- * 同源逻辑，normalize 层内联以避免 domain→cache 反向依赖。
+ * 是双保险第二道（reducer 按 (messageId, type) 去重）的键。
+ * 解包走 shared 的 `unwrapOutputMessage` 单点（与 normalizeAgent 等消费方同一信封视图），
+ * 不再手写 `content.data.message` 逐级下钻；非 output 信封（user/event/未知形态）返回 null。
+ * 与 messageCache 的 extractMessageId 同源逻辑，不直接引用以避免 domain→cache 反向依赖。
  */
 function extractAnthropicMessageId(content: unknown): string | null {
-    if (!content || typeof content !== 'object') return null
-    const envelope = content as Record<string, unknown>
-    const inner = envelope.content
-    if (!inner || typeof inner !== 'object') return null
-    const data = (inner as Record<string, unknown>).data
-    if (!data || typeof data !== 'object') return null
-    const message = (data as Record<string, unknown>).message
-    if (!message || typeof message !== 'object') return null
-    const id = (message as Record<string, unknown>).id
+    const unwrapped = unwrapOutputMessage(content)
+    const id = unwrapped?.message?.id
     return typeof id === 'string' ? id : null
 }
 

@@ -396,7 +396,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // rewind 生命周期（spec §4.1 / §4.5）
     // ──────────────────────────────────────────────────────────────
 
-    // rewind 进行中：禁用输入（完成标志 rewind-completed；rewound-truncated 非终态——文件恢复仍在途）
+    // rewind 进行中：禁用输入（完成标志 rewind-completed；rewind-truncated 非终态——文件恢复仍在途）
     const isRewinding = useMemo(() => isRewindInProgress(chatBlocks), [chatBlocks])
 
     // rewind 弹窗状态：draft 记录目标锚点与入口（PC Popover / 移动 Drawer）；

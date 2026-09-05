@@ -221,7 +221,7 @@ describe('SyncEngine.rewind 受理上界', () => {
         const h = makeRewindEngine('throw')
         try {
             await expect(h.engine.rewind(h.sessionId, 'u1', false)).rejects.toThrow('rpc timeout')
-            // 迟到的 rewound-truncated 消费到的上界 = 受理时点 maxSeq，不吞受理后新行
+            // 迟到的 rewind-truncated 消费到的上界 = 受理时点 maxSeq，不吞受理后新行
             expect(h.tracker.consume(h.sessionId)).toBe(3)
         } finally {
             h.cleanup()

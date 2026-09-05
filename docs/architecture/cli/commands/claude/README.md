@@ -298,7 +298,7 @@ Session 通过 `ApiSessionClient` 与 Hub 保持双向实时通信：
 | `update-metadata` | CLI → Hub | 更新会话元数据（版本化，乐观锁） |
 | `update-state` | CLI → Hub | 更新 AgentState（版本化，乐观锁） |
 | `session-end` | CLI → Hub | 通知会话结束 |
-| `messages-facts` | CLI → Hub | 统一消息事实事件（`{ sid, facts: MessageFact[] }`）：pushed / bound / attached / acked / lifecycle 五 kind 批内合并一次往返；旧 4 事件（messages-submitted 等）由 Hub 保留兼容双受理 |
+| `messages-facts` | CLI → Hub | 统一消息事实事件（`{ sid, facts: MessageFact[] }`）：pushed / bound / attached / acked / lifecycle 五 kind 批内合并一次往返；旧 4 独立事件已下线，Hub 只受理 messages-facts |
 | `cancel-queued-message` | Hub → CLI | RPC：取消 CLI 内存队列中缓冲的排队消息 |
 | `update` | Hub → CLI | 接收状态更新（消息、session、machine） |
 | `rpc-request` | Hub → CLI | RPC 请求（abort、switch、set-session-config 等） |
@@ -336,7 +336,7 @@ Hub 可通过 RPC 远程控制 CLI 会话：
 ```mermaid
 flowchart TB
     subgraph Hub["Hub 侧"]
-        User["Web 用户发送消息"] --> Emit["Socket.emit('message')"]
+        User["Web 用户发送消息"] --> Emit["Socket.emit('session-message')"]
     end
 
     Emit -->|"onUserMessage()"| Queue["MessageQueue<br/>带 EnhancedMode 上下文"]

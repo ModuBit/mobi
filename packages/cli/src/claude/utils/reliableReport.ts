@@ -32,7 +32,7 @@ import { logger } from '@/ui/logger';
 
 /** 待上报的 rewind 回报（event + body 与 hub socket handler 入参同构） */
 export type PendingRewindReport =
-    | { event: 'rewound-truncated'; body: { sid: string; nativeId: string; deleteFromSeq: number } }
+    | { event: 'rewind-truncated'; body: { sid: string; nativeId: string; deleteFromSeq: number } }
     | { event: 'rewind-completed'; body: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number } };
 
 /** socket.io client 的最小 ack 形状（便于单测替身） */

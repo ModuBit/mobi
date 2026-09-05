@@ -76,7 +76,7 @@ function parseNativeId(payload: unknown): string {
  *   锚点复检 → 文件回滚（**先于截断**：PoC poc8 实测截断后被截区间的 checkpoint 立即
  *   作废，截断前调用才有效）→ 记录 pendingRewind → clearPending → isolate 哨兵触发
  *   当前 query 循环退出 → 受理即返 `{ accepted: true }`；结果经 socket 两段回报
- *   （rewound-truncated / rewind-completed，launcher 截断轮完成后发出）。
+ *   （rewind-truncated / rewind-completed，launcher 截断轮完成后发出）。
  *
  * 失败语义（PoC 定案）：
  * - 文件回滚失败（截断未发生）→ 干净失败：不同步截断/清队列，同步返回

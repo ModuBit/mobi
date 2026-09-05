@@ -58,9 +58,9 @@ describe('isRewindInProgress（rewind 期间禁用 sender 的状态机）', () =
         expect(isRewindInProgress(after)).toBe(false)
     })
 
-    it('isRewindCompletion 只认 rewind-completed（rewound-truncated 非终态）', () => {
+    it('isRewindCompletion 只认 rewind-completed（rewind-truncated 非终态）', () => {
         expect(isRewindCompletion(agentEvent('rewind-completed'))).toBe(true)
-        expect(isRewindCompletion(agentEvent('rewound-truncated'))).toBe(false)
+        expect(isRewindCompletion(agentEvent('rewind-truncated'))).toBe(false)
         expect(isRewindCompletion(userText(REWIND_COMMAND))).toBe(false)
     })
 })
@@ -155,12 +155,12 @@ describe('rewind SSE 事件接入', () => {
     })
 
     it('parseRewindSseEvent：识别两段回报，形状不符返回 null', () => {
-        expect(parseRewindSseEvent({ type: 'rewound-truncated', sessionId: 's', deleteFromSeq: 5 }))
-            .toEqual({ type: 'rewound-truncated', sessionId: 's', deleteFromSeq: 5 })
+        expect(parseRewindSseEvent({ type: 'rewind-truncated', sessionId: 's', deleteFromSeq: 5 }))
+            .toEqual({ type: 'rewind-truncated', sessionId: 's', deleteFromSeq: 5 })
         expect(parseRewindSseEvent({ type: 'rewind-completed', sessionId: 's', filesRestored: false, error: 'boom' }))
             .toEqual({ type: 'rewind-completed', sessionId: 's', filesRestored: false, error: 'boom' })
         expect(parseRewindSseEvent({ type: 'message-received' })).toBeNull()
-        expect(parseRewindSseEvent({ type: 'rewound-truncated', sessionId: 's', deleteFromSeq: 'x' })).toBeNull()
+        expect(parseRewindSseEvent({ type: 'rewind-truncated', sessionId: 's', deleteFromSeq: 'x' })).toBeNull()
         expect(parseRewindSseEvent(null)).toBeNull()
     })
 
@@ -169,7 +169,7 @@ describe('rewind SSE 事件接入', () => {
         useRewindStore.getState().beginRewind(sid, 'u1')
 
         expect(ingestRewindSseEvent({ type: 'heartbeat' })).toBe(false)
-        expect(ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 7 })).toBe(true)
+        expect(ingestRewindSseEvent({ type: 'rewind-truncated', sessionId: sid, deleteFromSeq: 7 })).toBe(true)
         expect(useRewindStore.getState().progressBySession.get(sid)?.deleteFromSeq).toBe(7)
 
         expect(ingestRewindSseEvent({ type: 'rewind-completed', sessionId: sid, filesRestored: false, error: 'io' })).toBe(true)
@@ -180,7 +180,7 @@ describe('rewind SSE 事件接入', () => {
     it('远端发起（#4）：无本地 progress 的 truncated → 由事件驱动进入生命周期（sender 随之禁用、终态可见）', () => {
         const sid = 'sess-remote'
         // 另一 tab/设备发起的 rewind：本 tab 未 beginRewind，直接收到广播 truncated
-        expect(ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 4 })).toBe(true)
+        expect(ingestRewindSseEvent({ type: 'rewind-truncated', sessionId: sid, deleteFromSeq: 4 })).toBe(true)
 
         const progress = useRewindStore.getState().progressBySession.get(sid)
         expect(progress).toBeDefined()
@@ -198,7 +198,7 @@ describe('rewind SSE 事件接入', () => {
     it('本地已发起时 truncated 不覆盖真实锚点（远端进入只兜无 progress 的会话）', () => {
         const sid = 'sess-local'
         useRewindStore.getState().beginRewind(sid, 'u9')
-        ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 2 })
+        ingestRewindSseEvent({ type: 'rewind-truncated', sessionId: sid, deleteFromSeq: 2 })
         expect(useRewindStore.getState().progressBySession.get(sid)?.nativeId).toBe('u9')
     })
 
@@ -211,7 +211,7 @@ describe('rewind SSE 事件接入', () => {
                 { id: 'm2', seq: 2, localId: null, content: { role: 'user', content: { type: 'text', text: 'b' } }, createdAt: 2 } as never,
             ],
         }))
-        ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 2 })
+        ingestRewindSseEvent({ type: 'rewind-truncated', sessionId: sid, deleteFromSeq: 2 })
         expect(getMessageWindowState(sid).messages.map(m => m.id)).toEqual(['m1'])
     })
 })

@@ -366,7 +366,7 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 **`messages-facts`**（�
 | `lifecycle` | command_lifecycle 终态信号（state 含 `refused`，可带 `terminalReason`） | `processLifecycleFact` → `advanceMessagesLifecycle`（单调推进，见下） |
 | `withdrawn` | 撤回刚发消息（pending #53，批次 A）：最后一条 user 无任何输出时停止 | `processWithdrawnFact` → 按 nativeId 定位行 → `softDeleteMessagesFrom(seq)`（无上界，兜住竞态行）→ `advanceMessagesLifecycle` 留档 `'withdrawn'` → SSE `message-withdrawn`（web 清窗 + 回填 composer，见「停止三档与撤回」） |
 
-`at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。旧 4 事件（`messages-submitted`/`messages-bound`/`messages-native-attached`/`messages-acked`）保留兼容旧 CLI 二进制——Hub 双受理、处理体共享防逻辑分叉（#54 收敛清理时下线）。注意 SSE `messages-submitted`（Hub→Web）名字与载荷 `{localIds, submittedAt}` 不变。
+`at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。原 4 个独立 socket 事件（`messages-submitted`/`messages-bound`/`messages-native-attached`/`messages-acked`）已下线（#54 收敛完成，Hub 只受理 `messages-facts`）。注意 SSE `messages-submitted`（Hub→Web）名字与载荷 `{localIds, submittedAt}` 不变。
 
 ### 终态接入：command_lifecycle 帧拦截
 

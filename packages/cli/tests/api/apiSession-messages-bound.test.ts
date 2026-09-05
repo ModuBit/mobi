@@ -98,7 +98,7 @@ describe('sendClaudeSessionMessage 携带 native metadata', () => {
             message: { content: [] },
         } as never)
 
-        expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        expect(mockSocket.emit).toHaveBeenCalledWith('session-message', expect.objectContaining({
             sid: 'session-1',
             localId: 'sdk-uuid-1',
             metadata: { nativeId: 'sdk-uuid-1', nativeSessionId: 'cc-sess-1' },
@@ -126,7 +126,7 @@ describe('sendClaudeSessionMessage 携带 native metadata', () => {
             message: {},
         } as never)
 
-        expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        expect(mockSocket.emit).toHaveBeenCalledWith('session-message', expect.objectContaining({
             sid: 'session-1',
             localId: undefined,
             metadata: { nativeId: undefined, nativeSessionId: undefined },

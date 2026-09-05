@@ -36,7 +36,7 @@ function makeFakeSocket(connected = true) {
 }
 
 const truncated: PendingRewindReport = {
-    event: 'rewound-truncated',
+    event: 'rewind-truncated',
     body: { sid: 's1', nativeId: 'u1', deleteFromSeq: 3 },
 }
 const completed: PendingRewindReport = {
@@ -59,11 +59,11 @@ describe('ReliableRewindReportQueue', () => {
         queue.enqueue(truncated)
         queue.enqueue(completed)
         // 只发了队首 truncated，completed 等待
-        expect(fake.calls.map(c => c.event)).toEqual(['rewound-truncated'])
+        expect(fake.calls.map(c => c.event)).toEqual(['rewind-truncated'])
 
         fake.calls[0]!.ack(null)
         // truncated 已确认 → completed 接续发出
-        expect(fake.calls.map(c => c.event)).toEqual(['rewound-truncated', 'rewind-completed'])
+        expect(fake.calls.map(c => c.event)).toEqual(['rewind-truncated', 'rewind-completed'])
         expect(queue.size).toBe(1)
 
         fake.calls[1]!.ack(null)

@@ -74,7 +74,7 @@ sequenceDiagram
     API->>MS: sendMessage()
     MS->>Store: addMessage()
     Store-->>MS: msg
-    MS->>IO: emit('update', new-message)
+    MS->>IO: emit('session-update', new-message)
     IO-->>CLI: 推送消息
     MS->>Pub: emit('message-received')
     Pub->>SSE: broadcast()

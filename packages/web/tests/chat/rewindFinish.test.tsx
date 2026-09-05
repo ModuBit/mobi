@@ -67,14 +67,14 @@ describe('messageWindowStore.rewindFrom', () => {
         expect(getMessageWindowState(sid).messagesVersion).toBe(v1)
     })
 
-    it('SSE rewound-truncated → ingest 即清窗（视图未挂载也保持窗口正确）', () => {
+    it('SSE rewind-truncated → ingest 即清窗（视图未挂载也保持窗口正确）', () => {
         const sid = 'sess-r3'
         useRewindStore.setState({ progressBySession: new Map(), completionBySession: new Map() })
         useRewindStore.getState().beginRewind(sid, 'u3')
         _internal.updateState(sid, prev => _internal.buildState(prev, {
             messages: [row('m1', 1), row('m2', 2), row('m3', 3)],
         }))
-        const consumed = ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 2 })
+        const consumed = ingestRewindSseEvent({ type: 'rewind-truncated', sessionId: sid, deleteFromSeq: 2 })
         expect(consumed).toBe(true)
         expect(getMessageWindowState(sid).messages.map(m => m.id)).toEqual(['m1'])
         expect(useRewindStore.getState().progressBySession.get(sid)?.deleteFromSeq).toBe(2)

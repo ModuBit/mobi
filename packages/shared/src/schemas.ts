@@ -636,7 +636,7 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         message: DecryptedMessageSchema
     }),
     SessionChangedSchema.extend({
-        type: z.literal('rewound-truncated'),
+        type: z.literal('rewind-truncated'),
         /** 软删除起点：seq >= deleteFromSeq 的消息行已标记删除 */
         deleteFromSeq: z.number()
     }),

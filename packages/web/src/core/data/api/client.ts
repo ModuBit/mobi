@@ -120,7 +120,7 @@ export function createMobiApi() {
                     `/api/sessions/${sessionId}/rewind/dry-run`,
                     { nativeId },
                 ),
-            // rewind 执行：闸门通过即受理（202），结果经 SSE 两段回报（rewound-truncated → rewind-completed）
+            // rewind 执行：闸门通过即受理（202），结果经 SSE 两段回报（rewind-truncated → rewind-completed）
             rewind: (sessionId: string, nativeId: string, restoreFiles: boolean) =>
                 client.post(`/api/sessions/${sessionId}/rewind`, { nativeId, restoreFiles }),
             // 清理 runtimeState 指定字段

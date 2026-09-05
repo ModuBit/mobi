@@ -36,7 +36,7 @@ function makeFakeSocket() {
         to(room: string) {
             return {
                 emit(event: string, payload: unknown) {
-                    if (event === 'update') updates.push({ room, payload })
+                    if (event === 'session-update') updates.push({ room, payload })
                 },
             }
         },
@@ -81,7 +81,7 @@ describe('message 事件带 metadata', () => {
         const { deps, events } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('message', {
+        fakeSocket.emit('session-message', {
             sid,
             message: WEBAPP_USER,
             localId: 'local-1',
@@ -105,12 +105,12 @@ describe('message 事件带 metadata', () => {
         const { deps } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('message', { sid, message: WEBAPP_USER, localId: 'local-2' })
+        fakeSocket.emit('session-message', { sid, message: WEBAPP_USER, localId: 'local-2' })
         expect(store.messages.getMessages(sid, 10)[0].metadata).toBeNull()
     })
 })
 
-describe('messages-native-attached', () => {
+describe('messages-facts attached（native session 补写）', () => {
     let store: Store
     let sid: string
 
@@ -127,7 +127,7 @@ describe('messages-native-attached', () => {
         const { deps, events } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-native-attached', { sid, nativeSessionId: 'ns-1' })
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
 
         const rows = store.messages.getMessages(sid, 10)
         expect(rows.find(r => r.localId === 'local-1')?.metadata?.nativeSessionId).toBe('ns-1')
@@ -148,20 +148,20 @@ describe('messages-native-attached', () => {
         const { deps, events } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-native-attached', { sid, nativeSessionId: 'ns-1' })
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
         expect(fakeSocket.updates).toHaveLength(0)
         expect(events).toEqual([])
     })
 
-    test('非法载荷（缺 nativeSessionId / 空串）→ 忽略', () => {
+    test('非法载荷（缺 nativeSessionId / 空串 / facts 缺失）→ 忽略', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, accessError } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-native-attached', { sid })
-        fakeSocket.emit('messages-native-attached', { sid, nativeSessionId: '' })
-        fakeSocket.emit('messages-native-attached', null)
-        expect(accessError.called).toBe(false)  // 载荷校验先于 access 检查，静默忽略
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached' }] })
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: '' }] })
+        fakeSocket.emit('messages-facts', null)
+        expect(accessError.called).toBe(false)  // 载荷校验先于 fact 分发，静默忽略
     })
 
     test('session 不存在 → access error，不落库', () => {
@@ -169,12 +169,12 @@ describe('messages-native-attached', () => {
         const { deps, accessError } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-native-attached', { sid: 'ghost', nativeSessionId: 'ns-1' })
+        fakeSocket.emit('messages-facts', { sid: 'ghost', facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
         expect(accessError.called).toBe(true)
     })
 })
 
-describe('messages-acked（isReplay 回显确认）', () => {
+describe('messages-facts acked（isReplay 回显确认）', () => {
     let store: Store
     let sid: string
 
@@ -190,7 +190,7 @@ describe('messages-acked（isReplay 回显确认）', () => {
         const { deps, events } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-acked', { sid, nativeId: 'uu-1' })
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'acked', nativeId: 'uu-1' }] })
 
         const row = store.messages.getMessages(sid, 10)[0]
         expect(row.metadata?.nativeAckAt).toBeTypeOf('number')
@@ -211,7 +211,7 @@ describe('messages-acked（isReplay 回显确认）', () => {
         const { deps, events } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-acked', { sid, nativeId: 'uu-1' })
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'acked', nativeId: 'uu-1' }] })
         expect(fakeSocket.updates).toHaveLength(0)
         expect(events).toEqual([])
     })
@@ -221,9 +221,9 @@ describe('messages-acked（isReplay 回显确认）', () => {
         const { deps, accessError } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-acked', { nativeId: 'uu-1' })
-        fakeSocket.emit('messages-acked', { sid, nativeId: '' })
-        fakeSocket.emit('messages-acked', null)
+        fakeSocket.emit('messages-facts', { facts: [{ kind: 'acked', nativeId: 'uu-1' }] })
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'acked', nativeId: '' }] })
+        fakeSocket.emit('messages-facts', null)
         expect(accessError.called).toBe(false)
         expect(fakeSocket.updates).toHaveLength(0)
     })
@@ -233,12 +233,12 @@ describe('messages-acked（isReplay 回显确认）', () => {
         const { deps, accessError } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('messages-acked', { sid: 'ghost', nativeId: 'uu-1' })
+        fakeSocket.emit('messages-facts', { sid: 'ghost', facts: [{ kind: 'acked', nativeId: 'uu-1' }] })
         expect(accessError.called).toBe(true)
     })
 })
 
-describe('rewound-truncated / rewind-completed（两段回报）', () => {
+describe('rewind-truncated / rewind-completed（两段回报）', () => {
     let store: Store
     let sid: string
 
@@ -247,7 +247,7 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         sid = store.sessions.getOrCreateSession('rewind-report-test', { path: '/tmp/x' }, null, 'default').id
     })
 
-    test('rewound-truncated → 软删除 + SSE 广播', () => {
+    test('rewind-truncated → 软删除 + SSE 广播', () => {
         for (let i = 1; i <= 5; i++) {
             store.messages.addMessage(
                 sid,
@@ -260,17 +260,17 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         const { deps, rewindEvents } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u3', deleteFromSeq: 3 })
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u3', deleteFromSeq: 3 })
 
         // seq >= 3 的行已软删除（读取路径过滤后只剩 1、2）
         expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([1, 2])
 
-        const truncated = rewindEvents.find(e => e.type === 'rewound-truncated')
+        const truncated = rewindEvents.find(e => e.type === 'rewind-truncated')
         expect(truncated).toBeDefined()
         expect(truncated!.deleteFromSeq).toBe(3)
     })
 
-    test('rewound-truncated 带受理上界 → 只删受理时已存在的行（M3：迟到回报不吞新消息）', () => {
+    test('rewind-truncated 带受理上界 → 只删受理时已存在的行（M3：迟到回报不吞新消息）', () => {
         for (let i = 1; i <= 3; i++) {
             store.messages.addMessage(
                 sid,
@@ -294,11 +294,11 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         // 迟到回报：deleteFromSeq = 2 → 只删 2..3，4..5（受理后新消息）保留
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 })
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 })
         expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([1, 4, 5])
 
         // 新 rewind（不同锚点）未受理（无上界记录）→ 回退无上界删除到尾
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: 1 })
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1', deleteFromSeq: 1 })
         expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([])
     })
 
@@ -316,16 +316,16 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         const ack1 = { called: false }
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 }, () => { ack1.called = true })
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 }, () => { ack1.called = true })
         expect(ack1.called).toBe(true)
         expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([1])
-        expect(events.filter(e => e.type === 'rewound-truncated')).toHaveLength(1)
+        expect(events.filter(e => e.type === 'rewind-truncated')).toHaveLength(1)
 
         // CLI 可靠队列重放（ack 丢失场景）：原样重发 → 幂等跳过 + ack
         const ack2 = { called: false }
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 }, () => { ack2.called = true })
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 }, () => { ack2.called = true })
         expect(ack2.called).toBe(true)
-        expect(events.filter(e => e.type === 'rewound-truncated')).toHaveLength(1)
+        expect(events.filter(e => e.type === 'rewind-truncated')).toHaveLength(1)
 
         // completed 同样回 ack（重放由 web 守卫消化，hub 不去重）
         const ack3 = { called: false }
@@ -340,8 +340,8 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         const acks: boolean[] = []
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1' }, () => { acks.push(true) })
-        fakeSocket.emit('rewound-truncated', { sid: 'ghost', nativeId: 'u1', deleteFromSeq: 1 }, () => { acks.push(true) })
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1' }, () => { acks.push(true) })
+        fakeSocket.emit('rewind-truncated', { sid: 'ghost', nativeId: 'u1', deleteFromSeq: 1 }, () => { acks.push(true) })
         fakeSocket.emit('rewind-completed', { sid: 'ghost', filesRestored: true }, () => { acks.push(true) })
         expect(acks).toEqual([true, true, true])
     })
@@ -367,11 +367,11 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         const { deps, events, accessError } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1' })                          // 缺 deleteFromSeq
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: NaN })      // 非有限数
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: 0 })        // 下界：0 会命中全部行
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: -1 })       // 负数
-        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: 1.5 })      // 小数（非整数）
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1' })                          // 缺 deleteFromSeq
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1', deleteFromSeq: NaN })      // 非有限数
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1', deleteFromSeq: 0 })        // 下界：0 会命中全部行
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1', deleteFromSeq: -1 })       // 负数
+        fakeSocket.emit('rewind-truncated', { sid, nativeId: 'u1', deleteFromSeq: 1.5 })      // 小数（非整数）
         fakeSocket.emit('rewind-completed', { sid })                                            // 缺 filesRestored
         fakeSocket.emit('rewind-completed', { sid, filesRestored: 'yes' })                      // 类型错
         expect(store.messages.getMessages(sid, 10)).toHaveLength(2)
