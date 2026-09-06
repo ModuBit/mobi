@@ -37,6 +37,13 @@ export type {
 export type { SessionSummary, SessionSummaryMetadata } from './sessionSummary'
 
 export type {
+    RpcAcceptResult,
+    SessionConfigApplyKind,
+    SessionConfigField,
+    SessionConfigFieldKey
+} from './sessionConfig'
+
+export type {
     AgentFlavor,
     ClaudePermissionMode,
     ClaudeModelPreset,

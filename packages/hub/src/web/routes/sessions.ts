@@ -22,7 +22,7 @@ import { safeDecodeHeader } from '../utils/headers'
 import { Hono } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import { checkProjectAssignable, type SyncEngine, type Session } from '../../sync/syncEngine'
+import { checkProjectAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome } from '../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
@@ -85,14 +85,12 @@ const abortSchema = z.object({
 })
 
 /**
- * 配置切换 apply 的结构化结果（深化候选⑥）：accepted:false + confirmed 区分
- * 409（CLI 明确拒绝，副作用确定未发生）与 502 + accepted:'unknown'（RPC 层异常，
- * 副作用未知，引导刷新确认而非盲目重试）。apply 返回 void 或 accepted:true = 受理成功。
+ * 配置切换 apply 的结构化结果（深化候选⑥）：复用 syncEngine 的 OutputStyleSwitchOutcome
+ * 形状（accepted:false + confirmed 区分 409（CLI 明确拒绝，副作用确定未发生）与
+ * 502 + accepted:'unknown'（RPC 层异常，副作用未知，引导刷新确认而非盲目重试））。
+ * apply 返回 void 或 accepted:true = 受理成功。
  */
-type ConfigApplyOutcome =
-    | { accepted: true }
-    | { accepted: false; reason: string; confirmed: true }
-    | { accepted: false; reason: string; confirmed: false; cause?: string }
+type ConfigApplyOutcome = OutputStyleSwitchOutcome
 
 /**
  * 会话配置切换路由工厂（深化候选②）：四个「改会话的一个配置项」端点共享的样板收口

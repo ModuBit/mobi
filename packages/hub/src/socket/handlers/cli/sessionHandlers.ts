@@ -434,8 +434,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
     // ===== 会话事实上报（深化候选③）：公共前置收口 =====
     // 载荷 schema 表：统一 Zod 校验（此前各 handler 手写 typeof / Zod / isFinite 三种风格并存）。
-    // session-alive / session-end 只严格校验 sid + time（历史行为：其余字段透传，CLI 是其值权威）；
-    // context-usage / goal-status 的非空载荷必须是合法 schema（防 malformed 落库 + SSE 推 web 崩溃）
+    // session-alive / session-end / run-started 只严格校验鉴权与关键标量字段（历史行为：
+    // 其余字段透传，CLI 是其值权威）；context-usage / goal-status 的非空载荷必须是合法
+    // schema（防 malformed 落库 + SSE 推 web 崩溃）
     const factSchemas = {
         'session-alive': z.object({ sid: z.string(), time: z.number() }).passthrough(),
         'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
