@@ -16,21 +16,16 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
-import { OUTPUT_STYLE_EXIT_SENTINEL } from '../../src/claude/utils/outputStyleSentinel'
-import { REWIND_EXIT_SENTINEL } from '../../src/claude/utils/rewindSentinel'
+import { RESTART_EXIT_SENTINEL } from '../../src/claude/utils/queryRestart'
 import { applyStartupOutputStyle } from '../../src/claude/claudeRemote'
 
 /** 最小 Query 桩：只实现被测的 applyFlagSettings */
 const fakeQuery = (applyFlagSettings: Query['applyFlagSettings']): Query =>
     ({ applyFlagSettings }) as unknown as Query
 
-describe('outputStyle sentinel', () => {
-    it('与 rewind 哨兵互异（launcher 按值区分丢弃行为）', () => {
-        expect(OUTPUT_STYLE_EXIT_SENTINEL).not.toBe(REWIND_EXIT_SENTINEL)
-    })
-
+describe('restart exit sentinel', () => {
     it('带 NUL 前缀（Web 输入无法产生控制字符，用户消息不可能碰撞）', () => {
-        expect(OUTPUT_STYLE_EXIT_SENTINEL.startsWith('\x00')).toBe(true)
+        expect(RESTART_EXIT_SENTINEL.startsWith('\x00')).toBe(true)
     })
 })
 

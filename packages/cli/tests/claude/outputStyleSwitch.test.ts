@@ -16,16 +16,16 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { applyOutputStyleSwitch } from '../../src/claude/utils/outputStyleSwitch'
-import { OUTPUT_STYLE_EXIT_SENTINEL } from '../../src/claude/utils/outputStyleSentinel'
+import { RESTART_EXIT_SENTINEL } from '../../src/claude/utils/queryRestart'
 
 /** 装配纯函数依赖替身（结构化注入，无需拉起真实 Session / MessageQueue） */
-function setup(running = false, opts: { rewindBusy?: boolean } = {}) {
+function setup(running = false, opts: { restartBusy?: boolean } = {}) {
     const deps = {
         running,
-        rewindBusy: opts.rewindBusy ?? false,
+        restartBusy: opts.restartBusy ?? false,
         setOutputStyle: vi.fn(),
         clearSessionId: vi.fn(),
-        markPendingExit: vi.fn(),
+        markPendingRestart: vi.fn(),
         clearPending: vi.fn(),
         pushIsolateAndClear: vi.fn(),
     }
@@ -46,15 +46,15 @@ describe('applyOutputStyleSwitch', () => {
         expect(result.reason).toContain('running')
         expect(deps.setOutputStyle).not.toHaveBeenCalled()
         expect(deps.clearSessionId).not.toHaveBeenCalled()
-        expect(deps.markPendingExit).not.toHaveBeenCalled()
+        expect(deps.markPendingRestart).not.toHaveBeenCalled()
         expect(deps.clearPending).not.toHaveBeenCalled()
         expect(deps.pushIsolateAndClear).not.toHaveBeenCalled()
     })
 
-    it('rewind 占用中（pendingRewind / rewindInFlight）→ 拒绝且五步副作用零调用', () => {
-        // rewind 受理后哨兵消费前的窗口内受理切换会 clearPending 吞掉 rewind 哨兵，
-        // 产生「已清 sessionId + 残留 pendingRewind」坏组合——拒绝优于清位
-        const deps = setup(false, { rewindBusy: true });
+    it('重启通道占用中（rewind 待截断 / rewindInFlight）→ 拒绝且五步副作用零调用', () => {
+        // rewind 受理后哨兵消费前的窗口内受理切换会 clearPending 吞掉对方哨兵，
+        // 产生「已清 sessionId + 残留对方请求」坏组合——拒绝优于清位
+        const deps = setup(false, { restartBusy: true });
 
         const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
@@ -62,7 +62,7 @@ describe('applyOutputStyleSwitch', () => {
         expect(result.reason).toContain('rewind')
         expect(deps.setOutputStyle).not.toHaveBeenCalled()
         expect(deps.clearSessionId).not.toHaveBeenCalled()
-        expect(deps.markPendingExit).not.toHaveBeenCalled()
+        expect(deps.markPendingRestart).not.toHaveBeenCalled()
         expect(deps.clearPending).not.toHaveBeenCalled()
         expect(deps.pushIsolateAndClear).not.toHaveBeenCalled()
     })
@@ -76,14 +76,14 @@ describe('applyOutputStyleSwitch', () => {
         expect(deps.setOutputStyle).toHaveBeenCalledWith('Explanatory')
         expect(deps.clearSessionId).toHaveBeenCalledTimes(1)
         expect(deps.clearPending).toHaveBeenCalledTimes(1)
-        expect(deps.markPendingExit).toHaveBeenCalledTimes(1)
+        expect(deps.markPendingRestart).toHaveBeenCalledTimes(1)
         expect(deps.pushIsolateAndClear).toHaveBeenCalledWith(
-            OUTPUT_STYLE_EXIT_SENTINEL,
+            RESTART_EXIT_SENTINEL,
             { permissionMode: 'default' },
         )
-        // 唯一真时序约束：markPendingExit 置位必须先于哨兵入队（launcher 消费哨兵时读位，
+        // 唯一真时序约束：markPendingRestart 置位必须先于哨兵入队（launcher 消费哨兵时读位，
         // 哨兵先到而标志后置会被判 stale 白耗一次哨兵）。其余三步顺序无语义，不锁定
-        expect(vi.mocked(deps.markPendingExit).mock.invocationCallOrder[0])
+        expect(vi.mocked(deps.markPendingRestart).mock.invocationCallOrder[0])
             .toBeLessThan(vi.mocked(deps.pushIsolateAndClear).mock.invocationCallOrder[0])
     })
 
@@ -95,7 +95,7 @@ describe('applyOutputStyleSwitch', () => {
         expect(result.accepted).toBe(true)
         expect(deps.setOutputStyle).toHaveBeenCalledWith('default')
         expect(deps.pushIsolateAndClear).toHaveBeenCalledWith(
-            OUTPUT_STYLE_EXIT_SENTINEL,
+            RESTART_EXIT_SENTINEL,
             { permissionMode: 'default' },
         )
     })

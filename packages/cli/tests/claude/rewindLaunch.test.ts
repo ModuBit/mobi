@@ -69,7 +69,7 @@ function truncationOpts() {
 
 /**
  * launcher rewind 接线的单元覆盖：claudeRemote 截断空跑轮（resumeSessionAt 启动参数）
- * 与两段回报（reportRewindCompletion）。launcher while 循环的 pendingRewind 消费
+ * 与两段回报（reportRewindCompletion）。launcher while 循环的 pendingRestart 消费
  * 为薄接线（读字段 → 透传 → 清空），完整链路由 E2E 验证。
  * @see packages/cli/src/claude/claudeRemote.ts（resumeSessionAt 分支）
  * @see packages/cli/src/claude/utils/rewindReport.ts

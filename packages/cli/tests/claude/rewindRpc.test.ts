@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { registerRewindHandlers, type RewindSessionView } from '../../src/claude/utils/rewindHandlers'
 import { MessageQueue } from '../../src/utils/MessageQueue'
-import { REWIND_EXIT_SENTINEL } from '../../src/claude/utils/rewindSentinel'
+import { RESTART_EXIT_SENTINEL } from '../../src/claude/utils/queryRestart'
 import type { EnhancedMode, QueryControlRef } from '../../src/claude/types'
 
 vi.mock('../../src/claude/utils/rewindAnchor', () => ({
@@ -45,9 +45,17 @@ function setup(opts: {
     const session: RewindSessionView = {
         sessionId: 'native-sess-1',
         running: false,
-        pendingRewind: null,
+        pendingRestart: null,
+        restartBusy: false,
         rewindInFlight: false,
         ...opts.session,
+    }
+    // 未显式覆盖时与真实 Session 同源派生（getter）：restartBusy = 槽非空 || rewindInFlight，
+    // 保证「置 rewindInFlight / pendingRestart 即 busy」的桩行为与生产对象一致
+    if (opts.session?.restartBusy === undefined) {
+        Object.defineProperty(session, 'restartBusy', {
+            get: () => session.pendingRestart !== null || session.rewindInFlight,
+        })
     }
     const messageQueue = new MessageQueue<EnhancedMode>(m => JSON.stringify(m))
     const queryControl: QueryControlRef = { current: null }
@@ -72,7 +80,7 @@ function setup(opts: {
 }
 
 /**
- * rewind RPC handler：dry-run 预检、执行闸门、文件回滚先于截断、pendingRewind 状态与哨兵入队。
+ * rewind RPC handler：dry-run 预检、执行闸门、文件回滚先于截断、pendingRestart 置位与哨兵入队。
  * @see packages/cli/src/claude/utils/rewindHandlers.ts
  */
 describe('rewind RPC handlers', () => {
@@ -139,7 +147,7 @@ describe('rewind RPC handlers', () => {
             expect(result.canRestoreFiles).toBe(true)
         })
 
-        it('rewind 在途（rewindInFlight / pendingRewind）→ canRewind false（reason 含 in progress）', async () => {
+        it('重启通道在途（rewindInFlight / restartBusy）→ canRewind false（reason 含 in progress）', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const inflight = setup({ session: { rewindInFlight: true } })
             const result1 = await inflight.handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
@@ -148,14 +156,14 @@ describe('rewind RPC handlers', () => {
             // 不做锚点预检（busy 与锚点无关，省一次 transcript 读取）
             expect(mockedFindAnchor).not.toHaveBeenCalled()
 
-            const pending = setup({ session: { pendingRewind: { nativeId: 'u0', resumeAt: 'a0', filesRestored: false } } })
+            const pending = setup({ session: { restartBusy: true } })
             const result2 = await pending.handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean }
             expect(result2.canRewind).toBe(false)
         })
     })
 
     describe('rewind 执行', () => {
-        it('rewind 在途（rewindInFlight / pendingRewind）→ busy 拒绝，不动队列不查锚点', async () => {
+        it('重启通道在途（rewindInFlight / restartBusy）→ busy 拒绝，不动队列不查锚点', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const inflight = setup({ session: { rewindInFlight: true } })
             const result1 = await inflight.handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
@@ -163,7 +171,7 @@ describe('rewind RPC handlers', () => {
             expect(result1.reason).toContain('in progress')
             expect(mockedFindAnchor).not.toHaveBeenCalled()
 
-            const pending = setup({ session: { pendingRewind: { nativeId: 'u0', resumeAt: 'a0', filesRestored: false } } })
+            const pending = setup({ session: { restartBusy: true } })
             const result2 = await pending.handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
             expect(result2.accepted).toBe(false)
         })
@@ -176,7 +184,7 @@ describe('rewind RPC handlers', () => {
             }))
             const { handlers, session } = setup({ rewindFiles })
 
-            // 第一个请求进入文件回滚的 await（未完成，pendingRewind 尚未置位）
+            // 第一个请求进入文件回滚的 await（未完成，pendingRestart 尚未置位）
             const first = handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: true })
             await vi.waitFor(() => expect(session.rewindInFlight).toBe(true))
 
@@ -188,7 +196,7 @@ describe('rewind RPC handlers', () => {
             // 第一个请求正常完成
             releaseRestore!()
             expect(await first).toEqual({ accepted: true })
-            expect(session.pendingRewind).toEqual({ nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
+            expect(session.pendingRestart).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
             expect(session.rewindInFlight).toBe(false)
         })
 
@@ -203,7 +211,7 @@ describe('rewind RPC handlers', () => {
             // 第二次：同样的请求可重新走完整流程并受理
             const second = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
             expect(second.accepted).toBe(true)
-            expect(session.pendingRewind).toEqual({ nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
+            expect(session.pendingRestart).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
         })
 
         it('队列非空 → 拒绝且不清队列', async () => {
@@ -237,7 +245,7 @@ describe('rewind RPC handlers', () => {
 
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('/clear')
-            expect(session.pendingRewind).toBeNull()
+            expect(session.pendingRestart).toBeNull()
         })
 
         it('restoreFiles 但 query 句柄不可达 → 干净失败（不截断不清队列）', async () => {
@@ -248,7 +256,7 @@ describe('rewind RPC handlers', () => {
 
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('query handle')
-            expect(session.pendingRewind).toBeNull()
+            expect(session.pendingRestart).toBeNull()
         })
 
         it('restoreFiles 且 rewindFiles canRewind false → 干净失败，文件未回滚', async () => {
@@ -262,7 +270,7 @@ describe('rewind RPC handlers', () => {
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('file restore unavailable')
             expect(result.reason).toContain('No file checkpoint found')
-            expect(session.pendingRewind).toBeNull()
+            expect(session.pendingRestart).toBeNull()
         })
 
         it('restoreFiles 且 rewindFiles 抛错 → 干净失败', async () => {
@@ -275,23 +283,23 @@ describe('rewind RPC handlers', () => {
 
             expect(result.accepted).toBe(false)
             expect(result.reason).toContain('file restore failed')
-            expect(session.pendingRewind).toBeNull()
+            expect(session.pendingRestart).toBeNull()
         })
 
-        it('闸门通过（restoreFiles false）→ accepted：pendingRewind 置位 + 哨兵入队', async () => {
+        it('闸门通过（restoreFiles false）→ accepted：pendingRestart 置位 + 哨兵入队', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, session, messageQueue } = setup()
 
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
 
             expect(result.accepted).toBe(true)
-            // pendingRewind 状态（launcher 下轮消费）：文件未回滚
-            expect(session.pendingRewind).toEqual({ nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
+            // pendingRestart 状态（launcher 下轮消费）：文件未回滚
+            expect(session.pendingRestart).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
             // 哨兵以 isolate 入队（清队已在闸门前保证空队列）：下次 collect 单独取出，供 launcher nextMessage 识别退出
             expect(messageQueue.size()).toBe(1)
             const batch = await messageQueue.waitForMessagesAndGetAsString()
             expect(batch?.isolate).toBe(true)
-            expect(batch?.message).toBe(REWIND_EXIT_SENTINEL)
+            expect(batch?.message).toBe(RESTART_EXIT_SENTINEL)
         })
 
         it('闸门通过（restoreFiles true + rewindFiles 成功）→ accepted 且 filesRestored true', async () => {
@@ -302,9 +310,9 @@ describe('rewind RPC handlers', () => {
             const result = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: true }) as { accepted: boolean }
 
             expect(result.accepted).toBe(true)
-            // 文件回滚先于截断（截断前 checkpoint 才有效），结果携带进 pendingRewind 供终态回报
+            // 文件回滚先于截断（截断前 checkpoint 才有效），结果携带进 pendingRestart 供终态回报
             expect(rewindFiles).toHaveBeenCalledWith('u1')
-            expect(session.pendingRewind).toEqual({ nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
+            expect(session.pendingRestart).toEqual({ kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
         })
     })
 })

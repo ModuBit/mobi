@@ -758,7 +758,7 @@ export async function claudeRemote(opts: {
     onRewindTruncated?: () => Promise<void>,
     /**
      * rewind refusal 恢复（spec E1）：SDK 拒绝截断（startup 抛错或首个 result is_error）时触发。
-     * launcher 应 clear pendingRewind + plain resume（不带截断点，保留证据）+ emitRewindCompleted(false)。
+     * launcher 应 clear pendingRestart 槽位 + plain resume（不带截断点，保留证据）+ emitRewindCompleted(false)。
      * refusal 是 deterministic，重发必败——host 不应 retry，而是放弃截断回到 plain resume。
      */
     onRewindRefusal?: (msg: string) => Promise<void> | void,
@@ -1161,7 +1161,7 @@ export async function claudeRemote(opts: {
                 // 由 launcher catch 补发 completed { error }，不静默 return 丢错误
                 if (isRewindRefusalError(e) && opts.onRewindRefusal) {
                     // recovery（spec E1）：clear pending + plain resume（不带截断点）保留证据 + 报错。
-                    // refusal 是 deterministic，重发必败——不 retry 截断，让 launcher 清 pendingRewind
+                    // refusal 是 deterministic，重发必败——不 retry 截断，让 launcher 清 pendingRestart 槽位
                     // 后 while 循环自然以常规轮重启（plain resume，保留全部历史证据）。
                     logger.warn('[claudeRemote] rewind refused, falling back to plain resume', e)
                     await opts.onRewindRefusal?.(e instanceof Error ? e.message : String(e))

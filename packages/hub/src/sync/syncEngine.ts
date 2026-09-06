@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
+import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'

@@ -38,8 +38,7 @@ import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
 import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
-import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
-import { OUTPUT_STYLE_EXIT_SENTINEL } from "./utils/outputStyleSentinel";
+import { RESTART_EXIT_SENTINEL } from "./utils/queryRestart";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
@@ -676,12 +675,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 logger.debug('[remote]: launch');
                 messageBuffer.addMessage('═'.repeat(40), 'status');
 
-                // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，pendingRewind 已置位。
+                // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，pendingRestart{rewind} 已置位。
                 // SDK 的截断由下面 claudeRemote 的 startup 预热承载（resumeSessionAt 加载到
                 // 锚点即截断，不再走空跑轮）。两段回报经 onRewindTruncated 回调移到 startup
                 // 截断后——对齐设计文档「先 CLI 截断成功，再 Hub 软删除（CLI 失败则 Hub 不动）」，
                 // 截断失败由下方 catch 补发 completed { error }。rewind 局部变量保留 resumeAt 供传参。
-                const rewind = session.pendingRewind;
+                const restart = session.pendingRestart;
+                const rewind = restart?.kind === 'rewind' ? restart : undefined;
                 if (rewind) {
                     messageBuffer.addMessage(`Rewinding session to anchor ${rewind.resumeAt.slice(0, 8)}...`, 'status');
                 }
@@ -713,22 +713,22 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // 配对护栏（spec E1）：丢弃的 turn prompt UUID（= rewind 目标 user msg nativeId），
                         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal（refusal 处理在 T4）
                         resumeDropsTurn: rewind?.nativeId,
-                        // startup 截断完成后回报（先截断后软删除），并清 pendingRewind。
+                        // startup 截断完成后回报（先截断后软删除），并清 pendingRestart 槽位。
                         // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
                         onRewindTruncated: rewind ? async () => {
-                            session.pendingRewind = null;
+                            session.pendingRestart = null;
                             await reportRewindCompletion(session.client, rewind);
                         } : undefined,
                         onRewindRefusal: rewind ? async (msg: string) => {
                             handleRewindRefusal({
-                                pendingRewind: session.pendingRewind,
-                                // 路径 B 回退：onRewindTruncated 已清空 session.pendingRewind，
+                                pendingRewind: session.pendingRestart?.kind === 'rewind' ? session.pendingRestart : null,
+                                // 路径 B 回退：onRewindTruncated 已清空 pendingRestart 槽位，
                                 // 但 rewind 局部变量仍持有受理阶段的真实 filesRestored/skippedLinks
                                 fallbackRewindData: {
                                     filesRestored: rewind.filesRestored,
                                     skippedLinks: rewind.skippedLinks,
                                 },
-                                clearPendingRewind: () => { session.pendingRewind = null },
+                                clearPendingRewind: () => { session.pendingRestart = null },
                                 emitRewindCompleted: (filesRestored, error, skippedLinks) =>
                                     session.client.emitRewindCompleted(filesRestored, error, skippedLinks),
                                 sendSessionEvent: (event) =>
@@ -797,33 +797,30 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 // 重置空闲计时器（用户发送消息）
                                 session.client.resetIdleTimer();
 
-                                // 退出哨兵（rewind / output style 切换）：识别后不暂存 pending、
-                                // 不推送 SDK（NUL 前缀串作为 prompt 会污染会话）。退轮门控按哨兵
-                                // 种类读「实时」session 状态——局部 rewind 是轮起快照，截断轮中已被
-                                // onRewindTruncated 清空，不能作判据：
-                                // - rewind 哨兵：session.pendingRewind 非空（常规轮的新 rewind / 截断轮
-                                //   中抵达的第二次 rewind）→ return null 结束本轮，launcher 下轮循环
-                                //   读到 pendingRewind 后以 resumeSessionAt 截断重启
-                                // - output style 哨兵：session.pendingOutputStyleExit 置位（切换 RPC
-                                //   受理时写入）→ return null 结束本轮并清位，下轮循环以新 style 经
-                                //   applyStartupOutputStyle 重启
-                                // - 门控均不满足：本轮已执行后的残留哨兵（RPC 落在 query 轮间隙时
-                                //   入队）→ 丢弃，继续等下一条用户消息，避免误触发本轮早退
-                                if (msg.isolate && (msg.message === REWIND_EXIT_SENTINEL || msg.message === OUTPUT_STYLE_EXIT_SENTINEL)) {
-                                    const gateRewind = msg.message === REWIND_EXIT_SENTINEL && session.pendingRewind !== null;
-                                    const gateOutputStyle = msg.message === OUTPUT_STYLE_EXIT_SENTINEL && session.pendingOutputStyleExit;
-                                    if (gateRewind || gateOutputStyle) {
-                                        if (gateOutputStyle) {
-                                            session.pendingOutputStyleExit = false;
+                                // 退出哨兵（rewind / output style 切换共用 RESTART_EXIT_SENTINEL）：
+                                // 识别后不暂存 pending、不推送 SDK（NUL 前缀串作为 prompt 会污染会话）。
+                                // 门控读「实时」session.pendingRestart——局部 rewind 是轮起快照，截断轮
+                                // 中已被 onRewindTruncated 清空，不能作判据：
+                                // - 槽非空：受理后的待执行请求 → return null 结束本轮；rewind 槽位保留，
+                                //   下轮循环顶层读到后以 resumeSessionAt 截断重启；outputStyle 槽位即清，
+                                //   并按 /clear 语义对齐发边界事件 + 清水位 + 归零记忆（重启前），下轮循环
+                                //   以新 style 经 applyStartupOutputStyle 重启
+                                // - 槽为空：本轮已执行后的残留哨兵（受理侧闸门已放行或槽位已被消费）→
+                                //   丢弃，继续等下一条用户消息，避免误触发本轮早退
+                                if (msg.isolate && msg.message === RESTART_EXIT_SENTINEL) {
+                                    const gate = session.pendingRestart;
+                                    if (gate) {
+                                        if (gate.kind === 'outputStyle') {
+                                            session.pendingRestart = null;
                                             // /clear 语义对齐：切换同为清空上下文重启，重启前发
                                             // 边界事件（web 渲染「已重置」分隔线）+ 清水位 + 归零
                                             // 记忆——此前只有 /clear 路径做，切换后水位残留旧值
                                             applyContextReset(session.client, () => this.contextTracker.reset());
                                         }
-                                        logger.debug(`[remote]: exit sentinel received (${msg.message}), ending current query round`);
+                                        logger.debug('[remote]: exit sentinel received, ending current query round');
                                         return null;
                                     }
-                                    logger.debug(`[remote]: stale exit sentinel (${msg.message}) dropped, keep waiting for user message`);
+                                    logger.debug('[remote]: stale exit sentinel dropped, keep waiting for user message');
                                     continue;
                                 }
 
@@ -959,13 +956,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 截断失败（claudeRemote 抛错）：补发 completed { error } 而不发 truncated——
                     // 对齐设计文档「CLI 失败则 Hub 不动」：Hub 不软删除，Web 收到 error 终态解锁
                     // 并 toast 原因。文件回滚结果 filesRestored 在 RPC 阶段已确定（先于截断），如实携带。
-                    if (rewind && session.pendingRewind === rewind) {
+                    if (rewind && session.pendingRestart === restart) {
                         session.client.emitRewindCompleted(
                             rewind.filesRestored,
                             `rewind truncation failed: ${e instanceof Error ? e.message : String(e)}`,
                             rewind.skippedLinks,
                         );
-                        session.pendingRewind = null;
+                        session.pendingRestart = null;
                     }
                     // 增强错误日志：序列化非标准错误对象
                     // 用 error 级而非 debug：SDK 崩溃错误（含 stderr tail，见 getProcessExitError）

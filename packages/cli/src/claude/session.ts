@@ -21,7 +21,8 @@ import { AgentSessionBase } from '@/agent/sessionBase';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
-import type { EnhancedMode, PermissionMode, PendingRewind } from './types';
+import type { EnhancedMode, PermissionMode } from './types';
+import type { QueryRestartRequest } from './utils/queryRestart';
 import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
 
 type LocalLaunchFailure = {
@@ -40,21 +41,24 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
     /**
-     * rewind 待执行状态：rewind RPC handler 写（受理成功时）、claudeRemoteLauncher 的
-     * while 循环读（下轮以 resumeSessionAt 截断重启）。挂在本对象上的理由见 PendingRewind 注释。
+     * 重启请求单槽（深化候选④，类型见 utils/queryRestart.ts）：rewind 截断重启与
+     * output style /clear 重启共用——受理侧写（rewindHandlers / applyOutputStyleSwitch）、
+     * launcher 消费：哨兵 RESTART_EXIT_SENTINEL 唤醒 nextMessage，本槽非空则放行退轮，
+     * while 循环顶层按 kind 分派。置位即互斥；置位与哨兵入队必须在同一同步段。
      */
-    pendingRewind: PendingRewind | null = null;
+    pendingRestart: QueryRestartRequest | null = null;
     /**
-     * output style 切换待退轮标记：切换 RPC handler 受理后置位（同时入队
-     * OUTPUT_STYLE_EXIT_SENTINEL 唤醒阻塞中的 nextMessage），launcher 消费哨兵时
-     * 读取——非空则放行退轮（下轮循环经 applyStartupOutputStyle 以新 style 重启）
-     * 并清位；空则视为残留哨兵丢弃。与 pendingRewind 同构的「哨兵 + 状态位」配对。
+     * 重启通道忙：槽非空（rewind 待截断 / outputStyle 待重启）或 rewind 受理中
+     * （文件回滚 await 窗口，槽尚未置位）——两个受理侧据此互斥，
+     * 挡住「clearPending 吞掉对方哨兵 / 槽位被覆盖」的竞态。见 rewindHandlers.ts
      */
-    pendingOutputStyleExit: boolean = false;
+    get restartBusy(): boolean {
+        return this.pendingRestart !== null || this.rewindInFlight;
+    }
     /**
      * rewind RPC 受理中占位（多端并发互斥）：rewind handler 入口在任何 await 前同步置位、
-     * finally 释放。与 pendingRewind 语义分离——本字段挡住「文件回滚耗时窗口内并发第二个
-     * rewind 覆盖 pendingRewind 单槽」的竞态。见 rewindHandlers.ts
+     * finally 释放。与 pendingRestart 语义分离——本字段挡住「文件回滚耗时窗口内并发第二个
+     * rewind 覆盖单槽」的竞态。见 rewindHandlers.ts
      */
     rewindInFlight: boolean = false;
     localLaunchFailure: LocalLaunchFailure | null = null;

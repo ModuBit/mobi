@@ -477,7 +477,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         await syncAgentRename(claudeLocator(currentSessionRef.current), title);
     });
 
-    // rewind RPC（Web → Hub → CLI）：dry-run 预检与执行闸门。pendingRewind 状态挂在 Session 上——
+    // rewind RPC（Web → Hub → CLI）：dry-run 预检与执行闸门。pendingRestart 状态挂在 Session 上——
     // launcher while 循环与此处共享同一实例（loop 创建、onSessionReady 回填 currentSessionRef），
     // 文件回滚在受理阶段经 queryControlRef（running query 句柄）先于截断执行
     registerRewindHandlers({
@@ -488,7 +488,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         workingDirectory,
     });
 
-    // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。pendingOutputStyleExit 挂在
+    // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。pendingRestart 挂在
     // Session 上（launcher while 循环与哨兵配对消费），session 未就绪时拒绝；running 中拒绝
     // （Web 端已 disable，双保险）。受理细节见 applyOutputStyleSwitch
     apiSession.rpcHandlerManager.registerHandler('switch-output-style', async (payload: unknown) => {
@@ -508,10 +508,10 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         }
         const result = applyOutputStyleSwitch({
             running: session.running,
-            rewindBusy: session.pendingRewind !== null || session.rewindInFlight,
+            restartBusy: session.restartBusy,
             setOutputStyle: session.setOutputStyle,
             clearSessionId: session.clearSessionId,
-            markPendingExit: () => { session.pendingOutputStyleExit = true; },
+            markPendingRestart: () => { session.pendingRestart = { kind: 'outputStyle' }; },
             clearPending: () => messageQueue.clearPending(),
             pushIsolateAndClear: (msg, mode, localId) => messageQueue.pushIsolateAndClear(msg, mode, localId),
         }, styleParsed.data);
