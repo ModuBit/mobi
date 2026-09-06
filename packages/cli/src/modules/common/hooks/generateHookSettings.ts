@@ -39,14 +39,17 @@ type HookSettings = {
     env?: Record<string, string>;
     /**
      * 入站跨会话消息控制（官方 settings 键）。headless 会话按权限模式分类可能默认
-     * hold（dialogExpiry 5 分钟后丢弃），hook 观测收不到——mobi 会话显式 accept，
-     * 使跨会话 peer 消息直达（cross-session-messaging.md §Control inbound messages）。
+     * hold（dialogExpiry 5 分钟后丢弃），mobi 会话显式 accept 使跨会话 peer 消息直达
+     * （cross-session-messaging.md §Control inbound messages）。值见 {@link CROSS_SESSION_INBOUND_ACCEPT}。
      */
     crossSessionInbound?: 'accept' | 'hold' | 'refuse';
     hooks: {
         SessionStart: HookCommandConfig[];
     };
 };
+
+/** mobi 会话的入站跨会话消息策略（settings 文件与 remote 内联 settings 共用，防两处漂移） */
+export const CROSS_SESSION_INBOUND_ACCEPT = 'accept' as const;
 
 export type HookSettingsOptions = {
     filenamePrefix: string;
@@ -92,7 +95,7 @@ function buildHookSettings(
     };
 
     const settings: HookSettings = { hooks };
-    settings.crossSessionInbound = 'accept';
+    settings.crossSessionInbound = CROSS_SESSION_INBOUND_ACCEPT;
     if (hooksEnabled !== undefined) {
         settings.hooksConfig = {
             enabled: hooksEnabled

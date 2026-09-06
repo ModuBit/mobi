@@ -29,7 +29,7 @@ import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from '@/claude/agent
 import { startHookServer, type HookServer } from '@/claude/utils/startHookServer';
 import { applySessionIdBinding } from '@/claude/utils/sessionIdBinding';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
-import { buildSessionMcpServers, buildRemoteInlineHookSettings } from '@/mcp/sessionTransports';
+import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
 import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
@@ -153,11 +153,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // remote：SDK 进程内装配（mcpServers 走 createSdkMcpServer、SessionStart hook 走
     // SDK 进程内回调、settings 内联对象），零端口零临时文件；
     // local：HTTP MCP server + HTTP Hook server + settings 文件（claude 子进程不可达进程内回调）。
-    const mobiMcpServer = startingMode === 'local'
-        ? await startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current))
-        : null;
-    logger.debug(`[START] MOBI MCP server: ${mobiMcpServer ? `http at ${mobiMcpServer.url}` : 'in-process (sdk)'}`);
-
     // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
     const processCleanupRef = { current: null as (() => void) | null };
 
@@ -169,16 +164,22 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         return `${message.slice(0, maxLength)}...`;
     };
 
+    let mobiMcpServer: Awaited<ReturnType<typeof startMobiMcpServer>> | null = null;
     let hookServer: HookServer | null = null;
     let hookSettingsPath: string | null = null;
     if (startingMode === 'local') {
-        hookServer = await startHookServer({
-            onSessionHook: (sessionId, data) => {
-                logger.debug(`[START] Session hook received: ${sessionId}`, data);
-                // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
-                applySessionIdBinding(() => currentSessionRef.current, sessionId);
-            }
-        });
+        // 两个 loopback 监听互不依赖，并行拉起
+        [mobiMcpServer, hookServer] = await Promise.all([
+            startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current)),
+            startHookServer({
+                onSessionHook: (sessionId, data) => {
+                    logger.debug(`[START] Session hook received: ${sessionId}`, data);
+                    // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
+                    applySessionIdBinding(() => currentSessionRef.current, sessionId);
+                }
+            }),
+        ]);
+        logger.debug(`[START] MOBI MCP server: http at ${mobiMcpServer.url}`);
         logger.debug(`[START] Hook server started on port ${hookServer.port}`);
 
         hookSettingsPath = generateHookSettingsFile(hookServer.port, hookServer.token, {
@@ -187,8 +188,10 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             env: buildClaudeFeatureEnv()
         });
         logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
+    } else {
+        logger.debug('[START] MOBI MCP server: in-process (sdk)');
     }
-    const hookSettings: string | Settings = hookSettingsPath ?? buildRemoteInlineHookSettings();
+    const hookSettings: string | Settings = hookSettingsPath ?? REMOTE_INLINE_HOOK_SETTINGS;
 
     // Print log file path
     const logPath = logger.logFilePath;

@@ -24,19 +24,15 @@
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
-import { syncAgentRename, type AgentSessionLocator } from '@/agent/agentCapabilities'
-import { createChangeTitleTool } from './changeTitleTool'
+import type { AgentSessionLocator } from '@/agent/agentCapabilities'
+import { createChangeTitleToolForSession } from './changeTitleTool'
 
 export function createMobiSdkMcpServer(
     client: ApiSessionClient,
     /** 取当前 agent 会话定位（flavor + sessionId + path），用于回写 agent 侧标题 */
     getAgentLocator: () => AgentSessionLocator | null,
 ) {
-    const changeTitleTool = createChangeTitleTool({
-        sendSummary: (message) => client.sendClaudeSessionMessage(message),
-        syncRename: syncAgentRename,
-        getAgentLocator,
-    })
+    const changeTitleTool = createChangeTitleToolForSession(client, getAgentLocator)
 
     return createSdkMcpServer({
         name: 'mobi',

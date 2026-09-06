@@ -31,20 +31,16 @@ import { AddressInfo } from "node:net";
 import { asMcpInputSchema } from "@/mcp/mcpSchemaCompat";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
-import { syncAgentRename, type AgentSessionLocator } from "@/agent/agentCapabilities";
-import { createChangeTitleTool } from "@/mcp/changeTitleTool";
+import type { AgentSessionLocator } from "@/agent/agentCapabilities";
+import { createChangeTitleToolForSession } from "@/mcp/changeTitleTool";
 
 export async function startMobiMcpServer(
     client: ApiSessionClient,
     /** 取当前 agent 会话定位（flavor + sessionId + path），用于回写 agent 侧标题 */
     getAgentLocator: () => AgentSessionLocator | null,
 ) {
-    // 核心工具：依赖注入 hub summary 通道与 agent 改名能力
-    const changeTitleTool = createChangeTitleTool({
-        sendSummary: (message) => client.sendClaudeSessionMessage(message),
-        syncRename: syncAgentRename,
-        getAgentLocator,
-    });
+    // 核心工具：组装逻辑收口于 sessionTransports（与 remote 进程内壳共用）
+    const changeTitleTool = createChangeTitleToolForSession(client, getAgentLocator);
 
     //
     // Create the MCP server (工具注册，不预先绑定 transport)
@@ -95,7 +91,6 @@ export async function startMobiMcpServer(
 
     return {
         url: baseUrl.toString(),
-        toolNames: [changeTitleTool.name],
         stop: () => {
             logger.debug('[mobiMCP] Stopping server');
             mcp.close();

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { buildSessionMcpServers, buildRemoteInlineHookSettings } from '@/mcp/sessionTransports'
+import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports'
 import type { ApiSessionClient } from '@/api/apiSession'
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 
@@ -59,9 +59,9 @@ describe('buildSessionMcpServers', () => {
     })
 })
 
-describe('buildRemoteInlineHookSettings', () => {
+describe('REMOTE_INLINE_HOOK_SETTINGS', () => {
     it('仅含 crossSessionInbound（官方 settings 键），不含 env 与 hook 条目', () => {
-        const settings: Settings = buildRemoteInlineHookSettings()
+        const settings: Settings = REMOTE_INLINE_HOOK_SETTINGS
 
         expect(settings).toEqual({ crossSessionInbound: 'accept' })
         expect(Object.keys(settings)).toEqual(['crossSessionInbound'])

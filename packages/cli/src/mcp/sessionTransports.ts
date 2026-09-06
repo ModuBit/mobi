@@ -25,8 +25,9 @@
 
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
-import { ApiSessionClient } from '@/api/apiSession'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
+import type { ApiSessionClient } from '@/api/apiSession'
+import { CROSS_SESSION_INBOUND_ACCEPT } from '@/modules/common/hooks/generateHookSettings'
 import { createMobiWebMcpServer } from '@/webtools/server'
 import { createMobiSdkMcpServer } from './mobiSdkMcpServer'
 
@@ -59,6 +60,6 @@ export function buildSessionMcpServers(opts: {
  * （跨会话 peer 消息直达，原 settings 文件语义平移）。env 走 SDK Options.env、
  * SessionStart hook 走 SDK 进程内回调，均不进 settings。
  */
-export function buildRemoteInlineHookSettings(): Settings {
-    return { crossSessionInbound: 'accept' }
+export const REMOTE_INLINE_HOOK_SETTINGS: Settings = {
+    crossSessionInbound: CROSS_SESSION_INBOUND_ACCEPT,
 }

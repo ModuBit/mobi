@@ -30,7 +30,7 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { logger } from '@/ui/logger'
 import type { ApiSessionClient } from '@/api/apiSession'
-import type { AgentSessionLocator } from '@/agent/agentCapabilities'
+import { syncAgentRename, type AgentSessionLocator } from '@/agent/agentCapabilities'
 
 export const CHANGE_TITLE_TOOL_NAME = 'change_title' as const
 
@@ -119,3 +119,18 @@ export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
 }
 
 export type ChangeTitleTool = ReturnType<typeof createChangeTitleTool>
+
+/**
+ * 会话场景的组装入口（local HTTP 壳与 remote SDK 进程内壳共用，消除 deps 装配复制）：
+ * hub summary 通道 = ApiSessionClient、agent 改名能力 = syncAgentRename。
+ */
+export function createChangeTitleToolForSession(
+    client: ApiSessionClient,
+    getAgentLocator: () => AgentSessionLocator | null,
+) {
+    return createChangeTitleTool({
+        sendSummary: (message) => client.sendClaudeSessionMessage(message),
+        syncRename: syncAgentRename,
+        getAgentLocator,
+    })
+}
