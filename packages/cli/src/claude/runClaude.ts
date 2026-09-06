@@ -168,18 +168,35 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     let hookServer: HookServer | null = null;
     let hookSettingsPath: string | null = null;
     if (startingMode === 'local') {
-        // 两个 loopback 监听互不依赖，并行拉起
-        [mobiMcpServer, hookServer] = await Promise.all([
-            startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current)),
-            startHookServer({
-                onSessionHook: (sessionId, data) => {
-                    logger.debug(`[START] Session hook received: ${sessionId}`, data);
-                    // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
-                    applySessionIdBinding(() => currentSessionRef.current, sessionId);
-                }
-            }),
-        ]);
-        logger.debug(`[START] MOBI MCP server: http at ${mobiMcpServer.url}`);
+        // 两个 loopback 监听互不依赖，并行拉起；先 resolve 的一侧立即登记进容器，
+        // 便于另一侧失败时手动 stop，避免孤儿监听（lifecycle 此时还未建立）。
+        // 容器属性而非裸 let：TS 控制流不追踪闭包内赋值，属性收窄在读点会重置
+        const localServers: {
+            mcp: Awaited<ReturnType<typeof startMobiMcpServer>> | null;
+            hook: HookServer | null;
+        } = { mcp: null, hook: null };
+        const mcpPromise = startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current))
+            .then((server) => { localServers.mcp = server; return server; });
+        const hookPromise = startHookServer({
+            onSessionHook: (sessionId, data) => {
+                logger.debug(`[START] Session hook received: ${sessionId}`, data);
+                // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
+                applySessionIdBinding(() => currentSessionRef.current, sessionId);
+            }
+        }).then((server) => { localServers.hook = server; return server; });
+
+        try {
+            await Promise.all([mcpPromise, hookPromise]);
+        } catch (error) {
+            localServers.mcp?.stop();
+            localServers.hook?.stop();
+            throw error;
+        }
+        // Promise.all 成功 ⇒ 两侧均已赋值（写入外层变量，onAfterClose 依赖其清理）
+        const mcpServer = localServers.mcp!;
+        hookServer = localServers.hook!;
+        mobiMcpServer = mcpServer;
+        logger.debug(`[START] MOBI MCP server: http at ${mcpServer.url}`);
         logger.debug(`[START] Hook server started on port ${hookServer.port}`);
 
         hookSettingsPath = generateHookSettingsFile(hookServer.port, hookServer.token, {

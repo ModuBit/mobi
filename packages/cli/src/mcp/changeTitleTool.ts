@@ -22,8 +22,9 @@
  * transport 适配器只做壳：local 模式经 HTTP MCP Server 的 registerTool 挂载，
  * remote 模式经 SDK createSdkMcpServer 进程内挂载（ADR 0001）。
  *
- * 依赖注入而非直接 import（syncAgentRename / ApiSessionClient），
- * 便于单测与未来 agent flavor 复用。
+ * {@link createChangeTitleTool} 保持纯依赖注入（便于单测与未来 agent flavor 复用）；
+ * {@link createChangeTitleToolForSession} 是会话场景的组装入口，绑定具体依赖
+ * （ApiSessionClient + syncAgentRename），两个 transport 壳都从它取工具实例。
  */
 
 import { z } from 'zod'

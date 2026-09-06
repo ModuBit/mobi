@@ -60,6 +60,6 @@ export function buildSessionMcpServers(opts: {
  * （跨会话 peer 消息直达，原 settings 文件语义平移）。env 走 SDK Options.env、
  * SessionStart hook 走 SDK 进程内回调，均不进 settings。
  */
-export const REMOTE_INLINE_HOOK_SETTINGS: Settings = {
+export const REMOTE_INLINE_HOOK_SETTINGS: Settings = Object.freeze({
     crossSessionInbound: CROSS_SESSION_INBOUND_ACCEPT,
-}
+}) as Settings
