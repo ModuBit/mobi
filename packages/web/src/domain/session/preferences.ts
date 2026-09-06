@@ -16,13 +16,14 @@
 
 import type { AgentType } from './types'
 import { CLAUDE_MODEL_FALLBACK } from './types'
-import { EFFORT_LEVELS, PERMISSION_MODES, type EffortLevel, type PermissionMode } from '@mobi/shared'
+import { EFFORT_LEVELS, OUTPUT_STYLE_FOLLOW_SETTING, PERMISSION_MODES, type EffortLevel, type PermissionMode } from '@mobi/shared'
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
 const MODEL_STORAGE_KEY = 'mobi:newSession:model'
 const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
 const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 const PERMISSION_MODE_STORAGE_KEY = 'mobi:newSession:permissionMode'
+const OUTPUT_STYLE_STORAGE_KEY = 'mobi:newSession:outputStyle'
 const LAST_USED_PROJECT_STORAGE_KEY = 'mobi:newSession:lastUsedProject'
 
 const VALID_MODELS = CLAUDE_MODEL_FALLBACK.map(m => m.value)
@@ -132,6 +133,28 @@ export function loadPreferredPermissionMode(): PermissionMode {
  */
 export function savePreferredPermissionMode(mode: PermissionMode): void {
     savePreference(PERMISSION_MODE_STORAGE_KEY, mode)
+}
+
+/**
+ * 加载首选 output style
+ *
+ * 校验放宽为「非空白字符串」：值域除内置五项外还有用户自定义 style 名（动态集合，
+ * 无法静态枚举），存过的自定义名即使已被删除也尊重用户显式选择（与 ChatComposer
+ * 会话内选择同语义）；只有从未选择时回退「跟随 CC 设置」。
+ */
+export function loadPreferredOutputStyle(): string {
+    return loadPreference(
+        OUTPUT_STYLE_STORAGE_KEY,
+        (v): v is string => v.trim().length > 0,
+        OUTPUT_STYLE_FOLLOW_SETTING
+    )
+}
+
+/**
+ * 保存首选 output style
+ */
+export function savePreferredOutputStyle(style: string): void {
+    savePreference(OUTPUT_STYLE_STORAGE_KEY, style)
 }
 
 /**

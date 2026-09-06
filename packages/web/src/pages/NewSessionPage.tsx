@@ -53,6 +53,8 @@ import {
     savePreferredEffort,
     loadPreferredPermissionMode,
     savePreferredPermissionMode,
+    loadPreferredOutputStyle,
+    savePreferredOutputStyle,
     loadLastUsedProjectId,
     saveLastUsedProjectId,
 } from '@/domain/session/preferences'
@@ -231,7 +233,7 @@ export function NewSessionPage() {
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => loadPreferredPermissionMode())
     // output style：默认「跟随 CC 设置」（不携带字段，spawn 后由 CLI 读用户 settings 默认值），
     // 显式选中任一项才随 spawn 透传到 CLI（无偏好持久化，每次从跟随起）
-    const [outputStyle, setOutputStyle] = useState<string>(OUTPUT_STYLE_FOLLOW_SETTING)
+    const [outputStyle, setOutputStyle] = useState<string>(() => loadPreferredOutputStyle())
 
     // 环境配置（项目即环境：机器 + 工作目录均为所选项目的派生快照，不再手动选择/输入）
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
@@ -804,7 +806,11 @@ export function NewSessionPage() {
             render: () => (
                 <OutputStyleSelect
                     value={outputStyle}
-                    onChange={v => setOutputStyle(String(v))}
+                    onChange={v => {
+                        const style = String(v)
+                        setOutputStyle(style)
+                        savePreferredOutputStyle(style)
+                    }}
                     disabled={inputDisabled}
                     options={outputStyleOptions}
                     title={t('composer.outputStyle')}
