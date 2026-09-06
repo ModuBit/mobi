@@ -99,7 +99,7 @@ export async function claudeLocalLauncher(
                 claudeArgs: session.claudeArgs,
                 mcpServers: session.mcpServers,
                 allowedTools: session.allowedTools,
-                hookSettingsPath: session.hookSettingsPath,
+                hookSettings: session.hookSettings,
                 systemPromptAppend,
                 additionalDirectories: session.additionalDirectories,
             });

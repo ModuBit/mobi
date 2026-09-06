@@ -45,7 +45,7 @@ function minimalOpts() {
         sessionId: null as string | null,
         path: '/work/dir',
         allowedTools: [],
-        hookSettingsPath: '/tmp/hook.json',
+        hookSettings: '/tmp/hook.json',
         getSessionConfig: () => ({ permissionMode: 'default' as const }),
         canCallTool: vi.fn(),
         // 提前激活后主流程在「等首条消息」处挂起，须 resolve null 走 `if (!msg) return`

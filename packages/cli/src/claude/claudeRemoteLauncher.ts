@@ -31,6 +31,7 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { applyContextReset } from "./utils/contextReset";
+import { applySessionIdBinding } from "./utils/sessionIdBinding";
 import { CompactStartGate } from "./utils/compactLifecycle";
 import { ContextUsageTracker } from "./contextUsageTracker";
 import { EnhancedMode, type QueryControlRef } from "./types";
@@ -738,7 +739,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         path: session.path,
                         allowedTools: session.allowedTools ?? [],
                         mcpServers: session.mcpServers,
-                        hookSettingsPath: session.hookSettingsPath,
+                        hookSettings: session.hookSettings,
                         getSessionConfig: this.getSessionConfig,
                         flushConfig: this.flushConfig,
                         canCallTool: permissionHandler.handleToolCall,
@@ -839,7 +840,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onSessionFound: (sessionId) => {
-                            session.onSessionFound(sessionId);
+                            // 绑定幂等守卫：systemInit 与 SessionStart hook（remote 进程内回调，ADR 0001）
+                            // 双源共用，同 id 不重复触发
+                            applySessionIdBinding(() => session, sessionId);
                             // attach：native session 变化（首启/新会话/compact 切换）→ Hub 补写空缺行
                             reportNativeAttach(sessionId);
                             if (!scannerPromise) {

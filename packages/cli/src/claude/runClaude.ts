@@ -26,9 +26,11 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
 import { registerAgentCapabilities, syncAgentRename } from '@/agent/agentCapabilities';
 import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from '@/claude/agentCapabilities';
-import { startHookServer } from '@/claude/utils/startHookServer';
+import { startHookServer, type HookServer } from '@/claude/utils/startHookServer';
 import { applySessionIdBinding } from '@/claude/utils/sessionIdBinding';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
+import { buildSessionMcpServers, buildRemoteInlineHookSettings } from '@/mcp/sessionTransports';
+import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
@@ -43,7 +45,7 @@ import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';
 import { applyOutputStyleSwitch } from './utils/outputStyleSwitch';
-import { createMobiWebMcpServer } from '@/webtools/server';
+import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface StartOptions {
     model?: string
@@ -147,9 +149,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // 注册 Claude agent 能力（随会话生命周期常驻；后续 syncAgentRename 等按 flavor 调用）
     registerAgentCapabilities(CLAUDE_FLAVOR, claudeCapabilities);
 
-    // Start MOBI MCP server
-    const mobiMcpServer = await startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current));
-    logger.debug(`[START] MOBI MCP server started at ${mobiMcpServer.url}`);
+    // —— transport 分流（ADR 0001）——
+    // remote：SDK 进程内装配（mcpServers 走 createSdkMcpServer、SessionStart hook 走
+    // SDK 进程内回调、settings 内联对象），零端口零临时文件；
+    // local：HTTP MCP server + HTTP Hook server + settings 文件（claude 子进程不可达进程内回调）。
+    const mobiMcpServer = startingMode === 'local'
+        ? await startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current))
+        : null;
+    logger.debug(`[START] MOBI MCP server: ${mobiMcpServer ? `http at ${mobiMcpServer.url}` : 'in-process (sdk)'}`);
 
     // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
     const processCleanupRef = { current: null as (() => void) | null };
@@ -162,22 +169,26 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         return `${message.slice(0, maxLength)}...`;
     };
 
-    // Start Hook server for receiving Claude session notifications
-    const hookServer = await startHookServer({
-        onSessionHook: (sessionId, data) => {
-            logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
-            applySessionIdBinding(() => currentSessionRef.current, sessionId);
-        }
-    });
-    logger.debug(`[START] Hook server started on port ${hookServer.port}`);
+    let hookServer: HookServer | null = null;
+    let hookSettingsPath: string | null = null;
+    if (startingMode === 'local') {
+        hookServer = await startHookServer({
+            onSessionHook: (sessionId, data) => {
+                logger.debug(`[START] Session hook received: ${sessionId}`, data);
+                // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
+                applySessionIdBinding(() => currentSessionRef.current, sessionId);
+            }
+        });
+        logger.debug(`[START] Hook server started on port ${hookServer.port}`);
 
-    const hookSettingsPath = generateHookSettingsFile(hookServer.port, hookServer.token, {
-        filenamePrefix: 'session-hook',
-        logLabel: 'generateHookSettings',
-        env: buildClaudeFeatureEnv()
-    });
-    logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
+        hookSettingsPath = generateHookSettingsFile(hookServer.port, hookServer.token, {
+            filenamePrefix: 'session-hook',
+            logLabel: 'generateHookSettings',
+            env: buildClaudeFeatureEnv()
+        });
+        logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
+    }
+    const hookSettings: string | Settings = hookSettingsPath ?? buildRemoteInlineHookSettings();
 
     // Print log file path
     const logPath = logger.logFilePath;
@@ -194,9 +205,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             processCleanupRef.current = null;
         },
         onAfterClose: () => {
-            mobiMcpServer.stop();
-            hookServer.stop();
-            cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
+            mobiMcpServer?.stop();
+            hookServer?.stop();
+            if (hookSettingsPath) {
+                cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
+            }
         }
     });
 
@@ -531,7 +544,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             messageQueue,
             api,
             allowedTools: [
-                ...mobiMcpServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),
+                // change_title 预授权：两种模式的工具前缀一致（mcp__mobi__，SDK 按注册名生成）
+                `mcp__mobi__${CHANGE_TITLE_TOOL_NAME}`,
                 // mobi-web 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
                 'mcp__mobi-web__web_search',
                 'mcp__mobi-web__web_fetch',
@@ -541,20 +555,17 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 currentSessionRef.current = sessionInstance;
                 syncSessionModes();
             },
-            mcpServers: {
-                'mobi': {
-                    type: 'http' as const,
-                    url: mobiMcpServer.url,
-                },
-                // mobi web 工具：in-process SDK server（remote 模式经 toolAliases 替换内置 WebSearch/WebFetch；
-                // local 模式经 mcpConfig 序列化过滤，不做替换）
-                'mobi-web': createMobiWebMcpServer(),
-            },
+            mcpServers: buildSessionMcpServers({
+                startingMode,
+                httpMcpUrl: mobiMcpServer?.url ?? null,
+                client: apiSession,
+                getAgentLocator: () => claudeLocator(currentSessionRef.current),
+            }),
             apiSession,
             claudeEnvVars: options.claudeEnvVars,
             claudeArgs: options.claudeArgs,
             startedBy,
-            hookSettingsPath,
+            hookSettings,
             processCleanupRef,
             queryControlRef,
             getSessionConfig: () => ({

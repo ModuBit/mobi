@@ -25,7 +25,7 @@ import { withBunRuntimeEnv } from "@/utils/bunRuntime";
 import { spawnWithAbort } from "@/utils/spawnWithAbort";
 import { stripNewlinesForWindowsShellArg } from "@/utils/shellEscape";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
-import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerConfig, Settings } from "@anthropic-ai/claude-agent-sdk";
 
 export async function claudeLocal(opts: {
     abort: AbortSignal,
@@ -35,7 +35,7 @@ export async function claudeLocal(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[]
     allowedTools?: string[]
-    hookSettingsPath: string
+    hookSettings: string | Settings
     /** 追加到 claude 默认 system prompt 之后的内容（含 mobi base + 用户 custom/append） */
     systemPromptAppend: string
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
@@ -88,8 +88,12 @@ export async function claudeLocal(opts: {
     }
 
     // Add hook settings for session tracking
-    args.push('--settings', opts.hookSettingsPath);
-    logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
+    // local 模式只接受 settings 文件路径（内联 Settings 对象仅 remote 模式，见 ADR 0001）
+    if (typeof opts.hookSettings !== 'string') {
+        throw new Error('local 模式 hook settings 必须是文件路径，内联 Settings 仅 remote 模式');
+    }
+    args.push('--settings', opts.hookSettings);
+    logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettings}`);
 
     // 添加项目 .mobi 目录，使 Claude 可访问上传的附件
     const mobiDir = join(opts.path, '.mobi')

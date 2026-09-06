@@ -57,7 +57,7 @@ function truncationOpts() {
         resumeDropsTurn: 'user-msg-uuid',
         path: '/work/dir',
         allowedTools: [],
-        hookSettingsPath: '/tmp/hook.json',
+        hookSettings: '/tmp/hook.json',
         getSessionConfig: () => ({ permissionMode: 'default' as const }),
         canCallTool: vi.fn(),
         nextMessage: vi.fn(() => new Promise<never>(() => { /* 永不 resolve */ })),

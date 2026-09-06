@@ -31,6 +31,7 @@ import {
     type SDKResultMessage,
     type SDKCompactBoundaryMessage,
     type McpServerConfig,
+    type Settings,
     type ElicitationRequest,
     type ElicitationResult,
 } from '@anthropic-ai/claude-agent-sdk'
@@ -711,7 +712,7 @@ export async function userInputLoop(
 
 /**
  * 启动期 output style 接线：SDK Options 无顶层 outputStyle 字段（仅 Settings.outputStyle，
- * 且 Options.settings 槽位已被 hookSettingsPath 占用，string|Settings 二选一不可叠加），
+ * 且 Options.settings 槽位已被 hookSettings 占用，string|Settings 二选一不可叠加），
  * 改为 query 建立后经 applyFlagSettings 注入 session 级 flag layer。
  *
  * 时序：caller 须在首条用户消息 push 进 SDK input stream 之前 await（attach 点紧后调用），
@@ -766,7 +767,7 @@ export async function claudeRemote(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     allowedTools: string[],
-    hookSettingsPath: string,
+    hookSettings: string | Settings,
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
     additionalDirectories?: string[],
     getSessionConfig: () => EnhancedMode,
@@ -962,7 +963,7 @@ export async function claudeRemote(opts: {
         // 模型当成「空消息」触发一轮无意义回复。此处仅在 rewind 轮有值，其余轮 undefined。
         resumeSessionAt: opts.resumeSessionAt,
         // output style 不走 sdkOptions：Options 无顶层字段、settings 槽位已被
-        // hookSettingsPath 占用——query attach 后经 applyStartupOutputStyle 注入
+        // hookSettings 占用——query attach 后经 applyStartupOutputStyle 注入
         // 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal。refusal 检测/recovery 在 T4。
         resumeDropsTurn: opts.resumeDropsTurn,
@@ -1020,7 +1021,7 @@ export async function claudeRemote(opts: {
             logger.debug('[claude stderr]', truncated);
         },
         pathToClaudeCodeExecutable: claudeExecutable,
-        settings: opts.hookSettingsPath,
+        settings: opts.hookSettings,
         // env 会整体替换子进程环境（不与 process.env 合并），故必须自行展开，
         // 否则 PATH / HOME / ANTHROPIC_API_KEY 等继承变量会丢失
         env: { ...process.env, ...buildClaudeFeatureEnv() } as Record<string, string>,
@@ -1043,6 +1044,17 @@ export async function claudeRemote(opts: {
                         // 自己的 push 先行调用过，此处幂等无妨。
                         markInputPushed();
                         opts.onInboundPrompt?.({ prompt: input.prompt, source: input.source })
+                    }
+                    return { continue: true }
+                }],
+            }],
+            // remote 模式 SessionStart 进程内回调（ADR 0001，替代 local 的 HTTP Hook Server）：
+            // sessionId 绑定走同一 onSessionFound 通道（守卫收口于 claudeRemoteLauncher 的
+            // applySessionIdBinding），与 systemInit 源共用幂等语义。只观测不干预，恒放行。
+            SessionStart: [{
+                hooks: [async (input) => {
+                    if (input.hook_event_name === 'SessionStart' && input.session_id) {
+                        opts.onSessionFound(input.session_id)
                     }
                     return { continue: true }
                 }],

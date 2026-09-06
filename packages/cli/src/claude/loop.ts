@@ -25,7 +25,7 @@ import { ApiClient } from "@/lib"
 import type { SessionModel } from "@/api/types"
 import type { EffortLevel } from "@mobi/shared/types"
 import { PermissionMode, QueryControlRef, type EnhancedMode } from "./types"
-import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
+import type { McpServerConfig, Settings } from "@anthropic-ai/claude-agent-sdk"
 
 interface LoopOptions {
     path: string
@@ -47,7 +47,7 @@ interface LoopOptions {
     messageQueue: MessageQueue<EnhancedMode>
     allowedTools?: string[]
     onSessionReady?: (session: Session) => void
-    hookSettingsPath: string
+    hookSettings: string | Settings
     processCleanupRef?: { current: (() => void) | null }
     queryControlRef?: QueryControlRef
     getSessionConfig?: () => EnhancedMode
@@ -75,7 +75,7 @@ export async function loop(opts: LoopOptions) {
         mode: startingMode,
         startedBy,
         startingMode,
-        hookSettingsPath: opts.hookSettingsPath,
+        hookSettings: opts.hookSettings,
         permissionMode: opts.permissionMode ?? 'default',
         model: opts.model,
         effort: opts.effort,

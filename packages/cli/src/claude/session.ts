@@ -18,7 +18,7 @@ import { ApiClient, ApiSessionClient } from '@/lib';
 import { MessageQueue } from '@/utils/MessageQueue';
 import { logger } from '@/ui/logger';
 import { AgentSessionBase } from '@/agent/sessionBase';
-import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import type { McpServerConfig, Settings } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode, PermissionMode } from './types';
@@ -35,7 +35,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     claudeArgs?: string[];
     readonly mcpServers: Record<string, McpServerConfig>;
     readonly allowedTools?: string[];
-    readonly hookSettingsPath: string;
+    readonly hookSettings: string | Settings;
     readonly startedBy: 'runner' | 'terminal';
     readonly startingMode: 'local' | 'remote';
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
@@ -78,7 +78,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         mode?: 'local' | 'remote';
         startedBy: 'runner' | 'terminal';
         startingMode: 'local' | 'remote';
-        hookSettingsPath: string;
+        hookSettings: string | Settings;
         permissionMode?: PermissionMode;
         model?: SessionModel;
         effort?: EffortLevel;
@@ -110,7 +110,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.claudeArgs = opts.claudeArgs;
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
-        this.hookSettingsPath = opts.hookSettingsPath;
+        this.hookSettings = opts.hookSettings;
         this.startedBy = opts.startedBy;
         this.startingMode = opts.startingMode;
         this.additionalDirectories = opts.additionalDirectories ?? [];
