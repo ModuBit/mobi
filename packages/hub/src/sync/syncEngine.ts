@@ -16,6 +16,7 @@
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
+import { randomUUID } from 'node:crypto'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ProjectSessionsResult } from '../store/sessions'
@@ -66,6 +67,24 @@ export type {
 export type ResumeSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'no_machine_online' | 'resume_unavailable' | 'resume_failed' }
+
+/**
+ * fork 会话创建（POST /api/sessions/:id/fork）的结构化结果：
+ * 各失败 reason 由路由映射 HTTP 状态（session-not-found/access-denied → 404/403，
+ * 锚点与 turn 起点校验 → 400，parent-native-missing → 409）。
+ */
+export type ForkSessionResult =
+    | { ok: true; sessionId: string }
+    | {
+        ok: false
+        reason:
+        | 'session-not-found'        // parent 会话不存在（含删除中/已删）
+        | 'access-denied'            // parent 会话跨 namespace
+        | 'anchor-not-found'         // 锚点行不存在或不属于该会话
+        | 'anchor-before-boundary'   // 锚点不在边界后（compact/clear 之前，spec §2）
+        | 'turn-start-not-found'     // 锚点所在 turn 起点找不到（理论不可达，防御）
+        | 'parent-native-missing'    // parent 无 nativeSessionId（激活无 resumeToken）
+    }
 
 /**
  * output style 切换的结构化结果（深化候选⑥）：在 CLI 的 RpcAcceptResult 之上叠加
@@ -457,11 +476,66 @@ export class SyncEngine {
         return result
     }
 
+    /**
+     * fork 会话创建（web 点 fork → 建行 + 复制锚点 turn + 溯源消息，fork-session spec §5.1）。
+     * 校验（锚点存在/归属/边界后、turn 起点）与建行事务分离但全同步执行（bun:sqlite 同步 API，
+     * JS 单线程内无交错窗口）。成功后 refreshSession 使 fork 行进缓存并发 session-added SSE，
+     * web 列表即时出现「待激活」项。CLI 离线时点 fork 允许（复制是 hub 侧动作）。
+     */
+    forkSession(sessionId: string, anchorNativeId: string, namespace: string): ForkSessionResult {
+        const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
+        if (!access.ok) {
+            return { ok: false, reason: access.reason === 'access-denied' ? 'access-denied' : 'session-not-found' }
+        }
+
+        // parent 无 nativeSessionId 时激活无 resumeToken 可用，fork 无意义（防患于未然）
+        const parentNativeId = access.session.metadata?.nativeSessionId
+        if (!parentNativeId) {
+            return { ok: false, reason: 'parent-native-missing' }
+        }
+
+        // 锚点行存在且属于该会话（getMessagesByNativeId 会话内查询天然限定归属；软删行不可见）
+        const anchorRows = this.store.messages.getMessagesByNativeId(sessionId, anchorNativeId)
+        if (anchorRows.length === 0) {
+            return { ok: false, reason: 'anchor-not-found' }
+        }
+        const anchor = anchorRows[0]
+
+        // 边界判据（fork/rewind 入口共用）：seq <= contextBoundarySeq = 边界之前，不可 fork（spec §2）
+        const boundarySeq = this.store.contextBoundary.resolve(sessionId)
+        if (anchor.seq <= boundarySeq) {
+            return { ok: false, reason: 'anchor-before-boundary' }
+        }
+
+        // 锚点所在 turn 起点（从锚点向 seq 下方找最近 isTurnStart；找不到 = 理论不可达，防御拒绝）
+        const turnStartSeq = this.store.sessionFork.findTurnStartSeq(sessionId, anchor.seq)
+        if (turnStartSeq === null) {
+            return { ok: false, reason: 'turn-start-not-found' }
+        }
+
+        const parent = this.store.sessions.getSession(sessionId)
+        if (!parent) {
+            return { ok: false, reason: 'session-not-found' }
+        }
+
+        const result = this.store.sessionFork.forkSessionAtAnchor({
+            parent,
+            anchor,
+            turnStartSeq,
+            forkNativeId: randomUUID(),
+            parentNativeId,
+        })
+
+        // fork 行进内存缓存（首次新增触发 session-added SSE）
+        this.sessionCache.refreshSession(result.sessionId)
+
+        return { ok: true, sessionId: result.sessionId }
+    }
+
     async archiveSession(sessionId: string): Promise<void> {
         await this.rpcGateway.killSession(sessionId)
         this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now() })
     }
-
     async switchSession(sessionId: string, to: 'remote' | 'local'): Promise<void> {
         await this.rpcGateway.switchSession(sessionId, to)
     }

@@ -154,6 +154,29 @@ export type SDKMetadata = z.infer<typeof SDKMetadataSchema>
 
 // ============ 元数据 Schema ============
 
+/**
+ * fork 激活簿记（点 fork 时写入，激活成功后清除，fork-session spec §5.1）。
+ * CLI 激活时据此组装 forkSession/resumeSessionAt/sessionId 三个 SDK option。
+ */
+export const ForkFromMetadataSchema = z.object({
+    /** parent 的 mobi 会话行 id（溯源消息 ref / 激活预检的目标会话） */
+    parentSessionId: z.string(),
+    /** parent 当前 native session id（激活时作 resumeToken） */
+    parentNativeId: z.string(),
+    /** 分叉锚点消息的 native id（激活时作 resumeSessionAt） */
+    anchorNativeId: z.string(),
+})
+
+export type ForkFromMetadata = z.infer<typeof ForkFromMetadataSchema>
+
+/** fork 持久溯源（终身保留；存在即禁止再次 fork，fork 入口判据与「fork 自」系统消息消费） */
+export const ForkedFromMetadataSchema = z.object({
+    /** parent 的 mobi 会话行 id */
+    sessionId: z.string(),
+})
+
+export type ForkedFromMetadata = z.infer<typeof ForkedFromMetadataSchema>
+
 export const MetadataSchema = z.object({
     path: z.string(),
     host: z.string(),
@@ -165,6 +188,10 @@ export const MetadataSchema = z.object({
     nativeSessionId: z.string().optional(),
     /** 上下文边界指针：最近一次 compact/clear 边界消息的 seq（O(1) 边界判定，fork/rewind 入口共用；缺失=未回填） */
     contextBoundarySeq: z.number().optional(),
+    /** fork 激活簿记：激活成功后清除（fork-session spec §5.1）。必须声明——否则 sessionCache 的 zod strip 会裁掉（ticket 02 先例） */
+    forkFrom: ForkFromMetadataSchema.optional(),
+    /** fork 持久溯源：终身保留，存在即禁止再次 fork（fork-session spec §2） */
+    forkedFrom: ForkedFromMetadataSchema.optional(),
     tools: z.array(z.string()).optional(),
     /** SDK 元数据（来自 initializationResult） */
     sdkMetadata: SDKMetadataSchema.optional(),

@@ -23,6 +23,7 @@ import { MessageStore } from './messageStore'
 import { ContextBoundaryStore } from './contextBoundary'
 import { ProjectStore } from './projectStore'
 import { PushStore } from './pushStore'
+import { SessionForkStore } from './sessionFork'
 import { SessionStore } from './sessionStore'
 import { UserStore } from './userStore'
 
@@ -40,6 +41,7 @@ export { MessageStore } from './messageStore'
 export { ContextBoundaryStore } from './contextBoundary'
 export { ProjectStore } from './projectStore'
 export { PushStore } from './pushStore'
+export { SessionForkStore } from './sessionFork'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
@@ -64,6 +66,7 @@ export class Store {
     readonly machines: MachineStore
     readonly messages: MessageStore
     readonly contextBoundary: ContextBoundaryStore
+    readonly sessionFork: SessionForkStore
     readonly users: UserStore
     readonly push: PushStore
     readonly projects: ProjectStore
@@ -110,6 +113,7 @@ export class Store {
         this.machines = new MachineStore(this.db)
         this.messages = new MessageStore(this.db)
         this.contextBoundary = new ContextBoundaryStore(this.db)
+        this.sessionFork = new SessionForkStore(this.db)
         this.users = new UserStore(this.db)
         this.push = new PushStore(this.db)
         this.projects = new ProjectStore(this.db)

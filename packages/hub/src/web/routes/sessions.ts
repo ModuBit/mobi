@@ -22,7 +22,7 @@ import { safeDecodeHeader } from '../utils/headers'
 import { Hono } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import { checkProjectAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome } from '../../sync/syncEngine'
+import { checkProjectAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
@@ -78,6 +78,33 @@ const rewindSchema = z.object({
     nativeId: z.string().min(1),
     restoreFiles: z.boolean()
 })
+
+/** fork 创建 body：anchorNativeId = agent 回复消息的 nativeId（分叉锚点，fork-session spec §4.3） */
+const forkSchema = z.object({
+    anchorNativeId: z.string().min(1)
+})
+
+/**
+ * forkSession 失败 reason → HTTP 状态映射（fork-session spec 边界情况）：
+ * - 会话不存在（删除中/已删）→ 404；跨 namespace → 403
+ * - 锚点校验 / turn 起点防御分支 → 400
+ * - parent 无 nativeSessionId（激活无 resumeToken，服务端状态不支持）→ 409
+ */
+const FORK_FAILURE_STATUS: Record<Exclude<Exclude<ForkSessionResult, { ok: true }>['reason'], 'access-denied' | 'session-not-found'>, 400 | 409> = {
+    'anchor-not-found': 400,
+    'anchor-before-boundary': 400,
+    'turn-start-not-found': 400,
+    'parent-native-missing': 409,
+}
+
+const FORK_FAILURE_MESSAGES: Record<Exclude<ForkSessionResult, { ok: true }>['reason'], string> = {
+    'session-not-found': 'Session not found',
+    'access-denied': 'Session access denied',
+    'anchor-not-found': 'Anchor message not found',
+    'anchor-before-boundary': 'Anchor message is before the last context boundary',
+    'turn-start-not-found': 'Turn start not found',
+    'parent-native-missing': 'Session has no native session id to fork from',
+}
 
 /** abort body：停止档位三档（批次 A）；取值单一来源 shared STOP_KIND_VALUES（勿手写副本），缺省 'turn' 只中断当前 turn */
 const abortSchema = z.object({
@@ -568,6 +595,33 @@ export function createSessionsRoutes(
             const message = error instanceof Error ? error.message : 'Failed to rewind'
             return c.json({ error: message }, 409)
         }
+    })
+
+    // fork 会话创建：建待激活会话行 + 复制锚点 turn + 溯源消息（fork-session spec §5.1）。
+    // 纯 hub 侧动作，不要求会话 active（CLI 离线时点 fork 允许），不碰 CLI RPC。
+    // 成功响应 { sessionId } = 新会话 id（web 跳转用）；失败带 reason code 供 web 归因
+    app.post('/sessions/:id/fork', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = forkSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body: anchorNativeId is required' }, 400)
+        }
+
+        const result = engine.forkSession(sessionResult.sessionId, parsed.data.anchorNativeId, c.get('namespace'))
+        if (!result.ok) {
+            if (result.reason === 'session-not-found' || result.reason === 'access-denied') {
+                return c.json({ error: FORK_FAILURE_MESSAGES[result.reason], code: result.reason }, result.reason === 'access-denied' ? 403 : 404)
+            }
+            return c.json({ error: FORK_FAILURE_MESSAGES[result.reason], code: result.reason }, FORK_FAILURE_STATUS[result.reason])
+        }
+
+        return c.json({ sessionId: result.sessionId })
     })
 
     // 清除 session runtimeState 中的指定字段
