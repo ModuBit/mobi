@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-import { DEFAULT_STOP_KIND, STOP_KIND_VALUES, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
-import { EFFORT_LEVELS } from '@mobi/shared/modes'
+import { DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { isWithinDir } from '@mobi/shared/pathSecurity'
-import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
@@ -30,10 +28,6 @@ import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { serveFileContent } from './serveFileContent'
-
-const permissionModeSchema = z.object({
-    mode: PermissionModeSchema
-})
 
 /**
  * HTML 预览 iframe 的 Content-Security-Policy。
@@ -54,10 +48,6 @@ const PREVIEW_CSP = [
     "object-src 'none'",
     "frame-src 'none'",
 ].join('; ')
-
-const modelSchema = z.object({
-    model: z.string().nullable()
-})
 
 /** PATCH /sessions/:id 通用 body：重命名 / 归入项目 / 置顶共用一个端点，至少携带一项 */
 const patchSessionSchema = z.object({
@@ -93,6 +83,72 @@ const rewindSchema = z.object({
 const abortSchema = z.object({
     stopKind: z.enum(STOP_KIND_VALUES).default(DEFAULT_STOP_KIND)
 })
+
+/**
+ * 会话配置切换路由工厂（深化候选②）：四个「改会话的一个配置项」端点共享的样板收口
+ * （requireSyncEngine → requireSession → body 校验 → apply → 409）。
+ * 字段的 schema / bodyKey / 生效语义声明在 shared SESSION_CONFIG_FIELDS（单一声明源）；
+ * 逐字段差异（apply 目标、flavor 等前置校验、错误分层）以参数注入。
+ * 对外路由路径保持历史形状（web API 兼容契约）。
+ */
+function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
+    app: Hono<WebAppEnv>,
+    getSyncEngine: () => SyncEngine | null,
+    opts: {
+        /** URL 路径段（历史路由形状，web API 兼容契约） */
+        path: string
+        field: K
+        /** 字段特有前置校验（如 permission-mode 的 flavor 规则）；返回 string = 400 错误消息 */
+        validate?: (
+            value: z.infer<(typeof SESSION_CONFIG_FIELDS)[K]['schema']>,
+            session: Session
+        ) => string | null
+        apply: (engine: SyncEngine, sessionId: string, value: z.infer<(typeof SESSION_CONFIG_FIELDS)[K]['schema']>) => Promise<void>
+        /** 应用失败的响应映射；缺省统一 409（output-style 的 409/502 分层在此注入） */
+        mapError?: (message: string) => { status: 409 | 502; payload: Record<string, unknown> }
+    }
+): void {
+    const field = SESSION_CONFIG_FIELDS[opts.field]
+    const bodySchema = z.object({ [field.bodyKey]: field.schema })
+
+    app.post(`/sessions/:id/${opts.path}`, async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = bodySchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        const value = parsed.data[field.bodyKey] as z.infer<(typeof SESSION_CONFIG_FIELDS)[K]['schema']>
+        if (opts.validate) {
+            const invalid = opts.validate(value, sessionResult.session)
+            if (invalid) {
+                return c.json({ error: invalid }, 400)
+            }
+        }
+
+        try {
+            await opts.apply(engine, sessionResult.sessionId, value)
+            return c.json({ ok: true })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : `Failed to apply ${opts.field}`
+            if (opts.mapError) {
+                const { status, payload } = opts.mapError(message)
+                return c.json({ error: message, ...payload }, status)
+            }
+            return c.json({ error: message }, 409)
+        }
+    })
+}
 
 export function createSessionsRoutes(
     getSyncEngine: () => SyncEngine | null,
@@ -406,136 +462,44 @@ export function createSessionsRoutes(
         return c.json({ ok: true })
     })
 
-    app.post('/sessions/:id/permission-mode', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = permissionModeSchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        const flavor = sessionResult.session.metadata?.flavor ?? 'claude'
-        const mode = parsed.data.mode
-
-        const allowedModes = getPermissionModesForFlavor(flavor)
-        if (allowedModes.length === 0) {
-            return c.json({ error: 'Permission mode not supported for session flavor' }, 400)
-        }
-
-        if (!isPermissionModeAllowedForFlavor(mode, flavor)) {
-            return c.json({ error: 'Invalid permission mode for session flavor' }, 400)
-        }
-
-        try {
-            await engine.applySessionConfig(sessionResult.sessionId, { permissionMode: mode })
-            return c.json({ ok: true })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to apply permission mode'
-            return c.json({ error: message }, 409)
-        }
-    })
-
-    app.post('/sessions/:id/model', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = modelSchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        try {
-            await engine.applySessionConfig(sessionResult.sessionId, { model: parsed.data.model })
-            return c.json({ ok: true })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to apply model'
-            return c.json({ error: message }, 409)
-        }
-    })
-
-    const effortSchema = z.object({
-        effort: z.enum(EFFORT_LEVELS)
-    })
-
-    app.post('/sessions/:id/effort', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = effortSchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        try {
-            await engine.applySessionConfig(sessionResult.sessionId, { effort: parsed.data.effort })
-            return c.json({ ok: true })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to apply effort'
-            return c.json({ error: message }, 409)
-        }
-    })
-
-    // 不用 OUTPUT_STYLES 枚举校验：CLI 支持自定义 style（settings.cli.json），此处只挡空串，
-    // 合法性由 CLI 侧 switch-output-style handler 守卫（/clear 语义受理 + running/rewind 拒绝）
-    const outputStyleSchema = z.object({
-        style: z.string().min(1),
-    })
-
-    app.post('/sessions/:id/output-style', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = outputStyleSchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        try {
-            await engine.switchOutputStyle(sessionResult.sessionId, parsed.data.style)
-            return c.json({ ok: true })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to switch output style'
-            // CLI 明确拒绝（message 含 `rejected`，CLI handler throw 回传）→ 409 带原因；
-            // 其余（unconfirmed：RPC 超时/断连/响应异常）副作用未知 → 502 + accepted:'unknown'，
-            // 前端提示刷新确认而非重试（重试 = 再触发 /clear 多丢一轮上下文）
-            if (message.includes('rejected')) {
-                return c.json({ error: message }, 409)
+    registerSessionConfigRoute(app, getSyncEngine, {
+        path: 'permission-mode',
+        field: 'permissionMode',
+        validate: (mode, session) => {
+            const flavor = session.metadata?.flavor ?? 'claude'
+            if (getPermissionModesForFlavor(flavor).length === 0) {
+                return 'Permission mode not supported for session flavor'
             }
-            return c.json({ error: message, accepted: 'unknown' }, 502)
-        }
+            if (!isPermissionModeAllowedForFlavor(mode, flavor)) {
+                return 'Invalid permission mode for session flavor'
+            }
+            return null
+        },
+        apply: (engine, sessionId, mode) => engine.applySessionConfig(sessionId, { permissionMode: mode }),
+    })
+
+    registerSessionConfigRoute(app, getSyncEngine, {
+        path: 'model',
+        field: 'model',
+        apply: (engine, sessionId, model) => engine.applySessionConfig(sessionId, { model }),
+    })
+
+    registerSessionConfigRoute(app, getSyncEngine, {
+        path: 'effort',
+        field: 'effort',
+        apply: (engine, sessionId, effort) => engine.applySessionConfig(sessionId, { effort }),
+    })
+
+    // output style 切换（/clear 语义）：错误分层有用户数据安全语义——CLI 明确拒绝（message 含
+    // `rejected`，CLI handler throw 回传）→ 409 带原因；其余（unconfirmed：RPC 超时/断连/响应异常）
+    // 副作用未知 → 502 + accepted:'unknown'，前端提示刷新确认而非重试（重试 = 再触发 /clear 多丢一轮上下文）
+    registerSessionConfigRoute(app, getSyncEngine, {
+        path: 'output-style',
+        field: 'outputStyle',
+        apply: (engine, sessionId, style) => engine.switchOutputStyle(sessionId, style),
+        mapError: (message) => message.includes('rejected')
+            ? { status: 409, payload: {} }
+            : { status: 502, payload: { accepted: 'unknown' } },
     })
 
     // rewind 预检：透传 CLI RPC 结果（{ canRewind, canRestoreFiles }），Web 据此渲染两选项/降级单选项弹窗
