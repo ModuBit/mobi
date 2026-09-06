@@ -23,6 +23,9 @@ sqlite3 -readonly ~/.mobi-e2e/mobi.db "SELECT \
 
 ## 切换链路断言
 
+直接调 API（免 UI 下拉操作）：`POST /api/sessions/<sid>/output-style`，body `{ "style": "Concise" }`
+——**路径不带 /config 前缀**（`/sessions/:id/output-style`，与 model/effort/permission-mode 同级）。
+
 web 确认切换 → `runtime_state.outputStyle` 变化 + `metadata.nativeSessionId` 换新（/clear 语义）。
 切换后上下文重置副作用（与 /clear 对齐，applyContextReset 收口）：
 - `runtime_state.contextUsage` → NULL（水位圆环消失）；新 native 会话首个 turn 后重新填充，inputTokens 应为全新小水位（非旧会话累计）

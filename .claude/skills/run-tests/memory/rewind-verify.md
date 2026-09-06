@@ -25,7 +25,7 @@ metadata:
 4. **截断真生效（上下文探针，最硬断言）**：rewind 后发「我之前让你回复过哪些数字？只列出你实际能看到的，不要调用任何工具」→ 模型只答被保留的数字（被截断回合的数字不出现）= transcript 真被截断、且哨兵未把 NUL 串当 prompt。
 5. **软删除 SQL 断言**：`SELECT seq, deleted_at IS NOT NULL FROM messages WHERE session_id='<sid>' ORDER BY seq` → 锚点批首行 seq 起全部翻 1。
 6. **回填断言**：rewind 完成后 `textarea.value` = 锚点消息原文、sender 解锁、`Rewound to here` 分隔线出现。
-7. **哨兵泄漏断言**：`SELECT count(*) FROM messages WHERE content LIKE '%mobi:rewind-exit%'` = 0。
+7. **哨兵泄漏断言**（2026-09-06 起单槽 RESTART_EXIT_SENTINEL）：`SELECT count(*) FROM messages WHERE content LIKE '%mobi:rewind-exit%' OR content LIKE '%mobi:restart-exit%' OR content LIKE '%mobi:output-style-exit%'` = 0（三个名字一起查，防旧会话混淆）。
 8. **连续 rewind**：rewind 完成发新消息 → 在新消息上再次 rewind 仍成功（launcher while 循环健康、无残留 pending）。
 
 ## 坑（易误判为 bug）
@@ -39,6 +39,9 @@ metadata:
   别反复尝试抓 in-flight 状态（sender disabled / 其余入口隐藏）——这类互斥验证靠单测，E2E 只断言终态。
 - **已回填 sender 上 Ctrl+A 不清空**：rewind 回填后 Ctrl+A + type_text 会**追加**而非替换。
   探针消息须先清空（连续 Backspace）或接受追加（探针问句在文末同样生效）。
+- **fetch 直调 rewind 后紧跟发消息会冲掉分隔线渲染**：受理即返后立刻发下一条消息，
+  「Rewound to here」分隔线可能来不及/不渲染（实测 rewoundLine=false）；同一 tab 上
+  发起后不动、或二次 rewind 后检查则正常可见——分隔线断言别放在紧跟发消息之后。
 
 ## 双 tab 同步验证（多端生命周期，2026-08-20 验证）
 

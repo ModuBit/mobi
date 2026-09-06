@@ -61,6 +61,10 @@ store.close()
 
 `bun /tmp/e2e-seed.ts` 后浏览器刷新即见。机器无需在线（列表/置顶/归组等纯 DB 链路均可用）。
 
+⚠️ **seed 项目的 machineId 必须用真实机器 id**（先 `SELECT id FROM machines;` 取，或 bootstrap
+就绪后从 /api/machines 读）——虚构 id（如 `m-e2e`）建出的项目在发消息建会话时报 404
+`Machine not found`（spawn 按 machineId 找机器）。事后可 `UPDATE projects SET machine_id=...` 补救。
+
 ## 坑（误判）
 
 - **bootstrap 依赖 shell PATH 里的 bun** — 脚本内部裸调 `bun`；Claude 会话的 shell 常无 `~/.bun/bin`，表现为「等待 Hub 就绪超时 + 日志 `bun: command not found`」且静默失败。先 `export PATH="$HOME/.bun/bin:$PATH"` 再跑 bootstrap（2026-09-03）
