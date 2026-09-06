@@ -339,13 +339,39 @@ describe('resolveMessageCache', () => {
         expect(result[1].id).toBe('msg-1')
     })
 
-    it('full 按 parentUuid 清理 snapshot（assembler 聚合 full 后 parentUuid 不漂移）', () => {
-        // 前提：CLI 的 assembler 把 SDK 拆分的 full 按 message.id 聚合成一条 → snapshot 与 full
-        // 1-vs-1 → parentUuid 不漂移 → parentUuid 清理可靠（= message queue 之前的稳定态）
+    it('full 按 Anthropic messageId 清理 snapshot——parentUuid 漂移不误删同锚点的流式行', () => {
+        // 生产缺陷场景（2026-09-06 dump 实锤）：snapshot chunk 的 parentUuid 取转换器链尾
+        //（500ms 节流期会被中途落库的消息推进）→ 流式期间漂移；full_N 到达时按 parentUuid
+        // 全量清理会误删恰好同锚点的 N+1 流式行 → 正文气泡消失，下一 chunk append 重现，循环。
+        // snapshot 与 full 共享 Anthropic message.id（convertSnapshot 写入 opts.messageId），
+        // 按 messageId 精确清理才是稳定关联。
+        const prevSnap = makeMsg({ id: 'snap-prev', snapshot: true, content: makeContent('p1', [text('上一条流式残留')], 'anthropic-A') })
+        const streamNext = makeMsg({ id: 'snap-next', snapshot: true, content: makeContent('p1', [text('回答流式输出中')], 'anthropic-B') })
+        const fullPrev = makeMsg({ id: 'msg-prev', content: makeContent('p1', [text('上一条完整')], 'anthropic-A') })
+
+        const result = resolveMessageCache([prevSnap, streamNext], fullPrev)
+
+        // 只清理 anthropic-A 的 snapshot；正在流式的 anthropic-B 行必须存活
+        expect(result).toHaveLength(2)
+        expect(result.map(m => m.id).sort()).toEqual(['msg-prev', 'snap-next'])
+        expect(result.find(m => m.id === 'snap-next')?.snapshot).toBe(true)
+    })
+
+    it('full 缺 messageId 时回退 parentUuid 清理（历史格式兜底）', () => {
         const snapshot = makeMsg({ id: 'snap-1', snapshot: true, content: makeContent('p1', [thinking('t1')]) })
         const received = makeMsg({ id: 'msg-1', content: makeContent('p1', [thinking('t1')]) })
 
         const result = resolveMessageCache([snapshot], received)
+        expect(result).toHaveLength(1)
+        expect(result[0].id).toBe('msg-1')
+    })
+
+    it('full 按 messageId 清理时，无 messageId 的同锚点 snapshot 行仍按 parentUuid 兜底清理', () => {
+        // 混合场景：流式行 messageId 缺失（旧格式/字段缺失），不能因主键切换而残留
+        const legacySnap = makeMsg({ id: 'snap-legacy', snapshot: true, content: makeContent('p1', [thinking('legacy')]) })
+        const full = makeMsg({ id: 'msg-1', content: makeContent('p1', [text('完整')], 'anthropic-A') })
+
+        const result = resolveMessageCache([legacySnap], full)
         expect(result).toHaveLength(1)
         expect(result[0].id).toBe('msg-1')
     })

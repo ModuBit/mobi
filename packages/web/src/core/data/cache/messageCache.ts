@@ -30,6 +30,24 @@ export function extractParentUuid(content: unknown): string | null {
 }
 
 /**
+ * 从 output 信封提取 Anthropic message.id（snapshot 与 full 共享的稳定关联键）。
+ * 与 domain/chat/normalize.ts 的 extractAnthropicMessageId 同源逻辑，不直接引用
+ * 以避免 domain→cache 反向依赖。
+ */
+export function extractAnthropicMessageId(content: unknown): string | null {
+    if (!content || typeof content !== 'object') return null
+    const envelope = content as Record<string, unknown>
+    const inner = envelope.content
+    if (!inner || typeof inner !== 'object') return null
+    const data = (inner as Record<string, unknown>).data
+    if (!data || typeof data !== 'object') return null
+    const message = (data as Record<string, unknown>).message
+    if (!message || typeof message !== 'object') return null
+    const id = (message as Record<string, unknown>).id
+    return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/**
  * 合并 native metadata（rewind 锚点），first-write-wins：只补旧值空缺的字段，
  * 不覆盖已有值（与 hub 侧 store 的 mergeMetadata 语义对齐）。
  * 用于重复消息（skipIfNotSnapshot）命中时，把 messages-bound 补写的 nativeId/nativeSessionId
@@ -71,16 +89,23 @@ export function resolveMessageCache(
 ): DecryptedMessage[] {
     if (!old) return [msg]
 
-    // 当非 snapshot 消息（full）到达时，移除相同 parentUuid 的 snapshot。
-    // 前提：CLI 的 assembler 把 SDK 拆分的 full 按 message.id 聚合成一条，使 snapshot（一条）
-    // 与 full（一条）1-vs-1、parentUuid 不漂移，清理可靠（= message queue 之前的稳定态）。
-    // parentUuid 的已知边界（null：会话首条 assistant；SSE 乱序）由 reducer 的 (message.id, type)
-    // 过滤兜底（见 normalize 后的 dedupe），双保险。
+    // 当非 snapshot 消息（full）到达时，移除同一条消息的 snapshot。
+    // 关联键优先 Anthropic message.id（snapshot 与 full 共享，convertSnapshot 写入
+    // opts.messageId）——snapshot chunk 的 parentUuid 取转换器链尾，500ms 节流期会被
+    // 中途落库的消息推进而漂移；按 parentUuid 全量清理会误删恰好同锚点的其它流式行
+    //（正文气泡消失/重现循环，2026-09-06 dump 实锤）。
+    // 兜底：messageId 缺失的行（历史格式/字段缺失）仍按 parentUuid 匹配清理，防残留。
     let base = old
     if (!msg.snapshot) {
+        const msgId = extractAnthropicMessageId(msg.content)
         const parentUuid = extractParentUuid(msg.content)
-        if (parentUuid) {
-            const filtered = old.filter(m => !m.snapshot || extractParentUuid(m.content) !== parentUuid)
+        if (msgId || parentUuid) {
+            const filtered = old.filter(m => {
+                if (!m.snapshot) return true
+                const mId = extractAnthropicMessageId(m.content)
+                if (mId) return mId !== msgId  // 有主键按主键比（主键稳定，不受链尾漂移影响）
+                return extractParentUuid(m.content) !== parentUuid  // 无主键行回退 parentUuid
+            })
             if (filtered.length !== old.length) base = filtered
         }
     }

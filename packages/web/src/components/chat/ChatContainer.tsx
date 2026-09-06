@@ -667,6 +667,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const metaById = new Map<string, NativeMessageMetadata | null>(
             messages.map(m => [m.id, m.metadata ?? null]),
         )
+        // 与 metaById 同源同式：message.id → seq（rewind 边界判据的比较操作数，fork-session spec §2/§6）
+        const seqById = new Map<string, number | null>(
+            messages.map(m => [m.id, m.seq ?? null]),
+        )
         // 与 metaById 同源同式：message.id → lifecycle（终态标注判据，P3 粗粒度可见）
         const lifecycleById = new Map<string, DecryptedMessage['lifecycle']>(
             messages.map(m => [m.id, m.lifecycle ?? null]),
@@ -688,9 +692,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // rewind 判据（footer 操作组与移动长按菜单同源，spec §5.5）
             const rewindable = isUserText && block
                 ? canRewindMessage(
-                    { metadata: metaById.get(block.id) },
+                    { metadata: metaById.get(block.id), seq: seqById.get(block.id) },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active },
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
                     chainHeadIds?.has(block.id),
                 )
                 : false
@@ -754,9 +758,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 text: collectUserText(block.blocks),
                 nativeId: meta?.nativeId ?? null,
                 canRewind: canRewindMessage(
-                    { metadata: meta },
+                    { metadata: meta, seq: seqById.get(block.id) },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active },
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
                     chainHeadIds?.has(block.id),
                 ),
             })
@@ -797,6 +801,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             + `|${chainHeadIds === null ? 'unk' : chainHeadIds.size}`
             // metadata 签名：ack/attach 补写后 rewind 图标即时刷新（而非「刷新才见」）
             + `|${nativeIdCount}-${nativeSidCount}-${nativeAckCount}`
+            // 上下文边界指针入签名：compact/clear 推进 contextBoundarySeq 翻 canRewind（边界前旧行入口隐藏），footer 须随帧刷新
+            + `|${metadata?.contextBoundarySeq ?? ''}`
             // lifecycle 终态签名：cancelled/discarded/refused 广播到达后标注即时出现（而非「刷新才见」）
             + `|${terminalLifecycleCount}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey

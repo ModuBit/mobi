@@ -71,6 +71,21 @@ describe('canRewindMessage', () => {
         expect(canRewindMessage(base, 'ns-1', idle, false)).toBe(true)
         expect(canRewindMessage(base, 'ns-1', idle, undefined)).toBe(true)
     })
+
+    it('边界判据（fork-session spec §2/§6，用户裁决 rewind 对齐）：seq ≤ contextBoundarySeq（compact/clear 之前）→ 不可，> 边界 → 可', () => {
+        const row = { ...base, seq: 5 }
+        expect(canRewindMessage(row, 'ns-1', { running: false, backgroundTasks: 0, contextBoundarySeq: 10 })).toBe(false)
+        expect(canRewindMessage(row, 'ns-1', { running: false, backgroundTasks: 0, contextBoundarySeq: 5 })).toBe(false)
+        expect(canRewindMessage(row, 'ns-1', { running: false, backgroundTasks: 0, contextBoundarySeq: 4 })).toBe(true)
+    })
+
+    it('contextBoundarySeq 缺失（存量会话未回填）→ 按 0 处理保守放行，不误伤存量行（hub 侧首次消费会回填）', () => {
+        expect(canRewindMessage({ ...base, seq: 5 }, 'ns-1', idle)).toBe(true)
+    })
+
+    it('行 seq 缺失（快照流式行）无法比较 → 保守不隐藏（放行侧由 Hub 闸门 + CLI 预检把守）', () => {
+        expect(canRewindMessage(base, 'ns-1', { running: false, backgroundTasks: 0, contextBoundarySeq: 100 })).toBe(true)
+    })
 })
 
 describe('collectChainHeadUserRowIds（链首用户行骨架）', () => {

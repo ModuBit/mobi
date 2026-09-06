@@ -30,6 +30,8 @@ export type { NativeMessageMetadata }
 /** 判据入参的最小消息形状 */
 export type RewindableMessage = {
     metadata?: NativeMessageMetadata | null
+    /** 消息行权威序（DecryptedMessage.seq）；边界判据的比较操作数，缺失（快照流式行）时跳过边界判定 */
+    seq?: number | null
 }
 
 /** 会话侧状态（running/active 来自 session DTO；backgroundTasks 计数来自 backgroundTasksStore；
@@ -41,6 +43,9 @@ export type RewindSessionState = {
     rewinding?: boolean
     /** 会话激活（CLI 在线）；false = 离线，rewind RPC 无法送达 → 隐藏入口；undefined = 不可判定（保守不隐藏） */
     active?: boolean
+    /** 上下文边界指针（会话 metadata.contextBoundarySeq，hub compact_boundary 落库 / context-cleared 事件时推进）；
+     *  缺失（存量会话未回填）按 0 处理 = 保守放行，不误伤存量行 */
+    contextBoundarySeq?: number
 }
 
 /**
@@ -69,7 +74,12 @@ export function canRewindMessage(
     // 链首（会话或 /clear 新链的第一条用户消息）其前无 assistant 锚点 → CLI 预检必拒，直接隐藏
     if (isChainHead) return false
     // 同一 transcript 链才可 rewind（/clear 前旧行 nativeSessionId 不一致）
-    return message.metadata.nativeSessionId === sessionNativeSessionId
+    if (message.metadata.nativeSessionId !== sessionNativeSessionId) return false
+    // 边界判据（fork-session spec §2/§6，用户裁决 rewind 对齐）：compact/clear 之前（seq ≤ 边界指针）不可 rewind，
+    // 与 fork 入口共用同一依据。指针缺失按 0 处理 = 存量会话未回填时保守放行；行 seq 缺失（快照流式行）
+    // 无法比较 → 同样不因边界隐藏（误判方向只会隐藏入口的保守原则，放行侧由 Hub 闸门 + CLI 预检把守）
+    if (message.seq != null && message.seq <= (sessionState.contextBoundarySeq ?? 0)) return false
+    return true
 }
 
 /** 回填行输入（结构化类型：seq 排序锚 + native 锚点 + 原文载体，与 DecryptedMessage 字段同构） */
