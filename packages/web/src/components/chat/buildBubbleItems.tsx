@@ -16,7 +16,7 @@
 
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
-import { REWIND_COMMAND } from '@/domain/chat/presentation'
+import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
 import type { ChatBlockContext } from './blocks'
 import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
@@ -132,8 +132,10 @@ export function buildChatBubbleItems(
         }
 
         // compact-started 是纯开始信号（供 isCompressing 进入压缩态，手动/自动统一），
-        // 不渲染气泡：压缩中视觉由 isCompressing 驱动的 CommandProgressBubble 承担
-        if (block.kind === 'agent-event' && block.event.type === 'compact-started') {
+        // 不渲染气泡：压缩中视觉由 isCompressing 驱动的 CommandProgressBubble 承担。
+        // 谓词复用 presentation 单点（completed 分支不可复用 isCompactCompletion——
+        // 那会连 compact-summary / boundary 统计气泡一起吞掉，纯信号语义更窄）
+        if (isCompactStart(block)) {
             continue
         }
 
