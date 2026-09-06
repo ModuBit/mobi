@@ -278,14 +278,20 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * 组装逻辑见 calcContextUsageFromResult（纯函数）。
      * compact / 中断已在 claudeRemote 层过滤（不到此）。记忆 maxTokens/costUsd 供 compact 复用。
      */
-    private async handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): Promise<void> {
-        // 非 compact result 到达即 turn 正常收尾：复位输出观测并作废撤回锚（撤回复验判据，批次 A §5.3）。
-        // 撤回窗口只存在于「消息已 push、turn 未完成」期间——turn 正常完成后消息已被处理，
-        // 不再可撤（否则闲置时点停止会误删已完成对话）。中断（aborted_*）result 不经过此回调
-        // （claudeRemote 层过滤）——撤回复验读的正是「被中断 turn 是否产出过输出」，
-        // 此处提前复位会造成误判（复验永远看到 false）
+    /**
+     * 非 compact result 到达即 turn 正常收尾：复位输出观测并作废撤回锚（撤回复验判据，批次 A §5.3）。
+     * 撤回窗口只存在于「消息已 push、turn 未完成」期间——turn 正常完成后消息已被处理，
+     * 不再可撤（否则闲置时点停止会误删已完成对话）。中断（aborted_*）result 不经过此回调
+     * （claudeRemote 层过滤）——撤回复验读的正是「被中断 turn 是否产出过输出」，
+     * 此处提前复位会造成误判（复验永远看到 false）
+     */
+    private resetTurnTracking(): void {
         this.turnTracking.hasOutput = false
         this.turnTracking.lastPushedNativeId = null
+    }
+
+    private async handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): Promise<void> {
+        this.resetTurnTracking()
         // compact 的 result：用量已由 compact_boundary 的 post_tokens 上报，此处只回填累计成本
         // （compact 自身的 total_cost_usd），避免连续 /compact 期间 lastCostUsd 冻结
         if (isCompact) {
