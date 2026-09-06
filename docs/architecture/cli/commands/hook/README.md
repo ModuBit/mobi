@@ -3,9 +3,12 @@
 文件 
 - [`packages/cli/src/commands/hookForwarder.ts`](/packages/cli/src/commands/hookForwarder.ts)
 - [`packages/cli/src/claude/utils/startHookServer.ts`](/packages/cli/src/claude/utils/startHookServer.ts)
+- [`packages/cli/src/claude/utils/sessionIdBinding.ts`](/packages/cli/src/claude/utils/sessionIdBinding.ts)
 - [`packages/cli/src/modules/common/hooks/generateHookSettings.ts`](/packages/cli/src/modules/common/hooks/generateHookSettings.ts)
 
-Hook 系统将 Claude Code 的 SessionStart hook 通知转发给主 CLI 进程，用于感知 Claude 会话 ID 的变化（新建、恢复、压缩、分叉等）。由三个协作组件构成：Hook Server、Hook Settings、Hook Forwarder。
+Hook 系统将 Claude Code 的 SessionStart hook 通知转发给主 CLI 进程，用于感知 Claude 会话 ID 的变化（新建、恢复、压缩、分叉等）。
+
+**transport 按控制方向分流（ADR 0001）**：本文描述的「Hook Server + Hook Settings + Hook Forwarder」三组件链路属于 **local 模式**（claude 是独立子进程，只能走 HTTP）。**remote 模式**（SDK Query 在 mobi 进程内）不启动任何 HTTP 组件——SessionStart 以 SDK `hooks.SessionStart` 进程内回调直达（与 `UserPromptSubmit` 观测回调同机制），sessionId 绑定守卫共用 `sessionIdBinding.ts` 的 `applySessionIdBinding`。
 
 ## 架构概览
 
@@ -51,7 +54,7 @@ sequenceDiagram
     Forwarder->>HookServer: POST /hook/session-start<br/>x-mobi-hook-token: {token}
     HookServer->>HookServer: 验证 token
     HookServer->>RunClaude: onSessionHook(sessionId, data)
-    RunClaude->>RunClaude: 检测 session ID 变化<br/>触发 onSessionFound()
+    RunClaude->>RunClaude: applySessionIdBinding() 幂等守卫<br/>检测 session ID 变化触发 onSessionFound()
     RunClaude->>Hub: updateMetadata() → Socket.IO<br/>emitWithAck('update-metadata')
     RunClaude->>RunClaude: [local] scanner.onNewSession()<br/>[remote] logConverter.updateSessionId()
 ```
@@ -217,12 +220,14 @@ packages/cli/src/
 ├── commands/
 │   └── hookForwarder.ts                    # hook-forwarder 命令入口
 ├── claude/
-│   ├── runClaude.ts                        # 启动 Hook Server + 生成配置 + 处理回调
+│   ├── runClaude.ts                        # [local] 启动 Hook Server + 生成配置 + 处理回调
+│   │                                       # [remote] 不启动 HTTP 组件，SDK 进程内回调直达
 │   └── utils/
-│       ├── startHookServer.ts              # Hook Server HTTP 服务
+│       ├── startHookServer.ts              # Hook Server HTTP 服务（local）
+│       ├── sessionIdBinding.ts             # 绑定幂等守卫（双 transport 共享）
 │       └── sessionHookForwarder.ts         # Forwarder 逻辑：stdin → HTTP POST
 └── modules/common/hooks/
-    └── generateHookSettings.ts             # Claude Code hooks 配置文件生成
+    └── generateHookSettings.ts             # Claude Code hooks 配置文件生成（local）
 ```
 
 | 文件 | 入口 |

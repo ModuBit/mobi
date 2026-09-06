@@ -172,7 +172,7 @@ startup 预热成功后**不等首条用户消息**即 attach query 并启动 `s
 
 ### 入站跨会话消息观测
 
-SDK 进程内 hook（`sdkOptions.hooks.UserPromptSubmit`）把入站 prompt 直达 wrapper（`onInboundPrompt` → launcher `handleInboundPrompt`）：`parseInboundCrossSession`（`claude/utils/inboundCrossSession.ts`）按 `source` 字段 + `<cross-session-message>` 信封甄别后，经 `ApiSessionClient.sendInboundCrossSessionMessage` 落库为带 `meta.crossSession = { from }` 的 user 消息（web 端渲染「📨 来自 xxx」标签）。会话 hook settings 注入 `crossSessionInbound: "accept"` 防 headless 默认 hold 吞消息。
+SDK 进程内 hook（`sdkOptions.hooks.UserPromptSubmit`）把入站 prompt 直达 wrapper（`onInboundPrompt` → launcher `handleInboundPrompt`）：`parseInboundCrossSession`（`claude/utils/inboundCrossSession.ts`）按 `source` 字段 + `<cross-session-message>` 信封甄别后，经 `ApiSessionClient.sendInboundCrossSessionMessage` 落库为带 `meta.crossSession = { from }` 的 user 消息（web 端渲染「📨 来自 xxx」标签）。SDK `Options.settings` 内联 `{ crossSessionInbound: "accept" }` 防 headless 默认 hold 吞消息（remote 不落盘 settings 文件，见 ADR 0001）。
 
 ### 执行流程
 
@@ -233,7 +233,11 @@ const sdkOptions: Options = {
     canUseTool: canCallTool,     // 权限审批回调
     abortController,
     pathToClaudeCodeExecutable,
-    settings: hookSettingsPath,
+    settings: { crossSessionInbound: 'accept' },  // 内联对象（ADR 0001：remote 零临时文件）
+    hooks: {                       // SDK 进程内 hook 回调
+        UserPromptSubmit: [...],   // 入站跨会话消息观测
+        SessionStart: [...],       // sessionId 绑定（守卫收口于 launcher 的 applySessionIdBinding）
+    },
     additionalDirectories: [blobsDir, ...(opts.additionalDirectories ?? [])],
 }
 ```

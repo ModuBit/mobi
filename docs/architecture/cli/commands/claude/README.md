@@ -165,10 +165,11 @@ flowchart TB
 flowchart TB
     Start["runClaude(options)"] --> Validate["验证 Runner spawn 要求<br/>runner 启动时强制 remote"]
     Validate --> Bootstrap["bootstrapSession()<br/>创建 API 客户端、注册会话"]
-    Bootstrap --> MCP["startMobiMcpServer(apiSession)<br/>启动 MCP Server"]
-    MCP --> Hook["startHookServer()<br/>启动 Hook Server"]
-    Hook --> Settings["generateHookSettingsFile()<br/>生成 Hook 配置"]
-    Settings --> Lifecycle["createRunnerLifecycle()<br/>创建生命周期管理器"]
+    Bootstrap --> Branch{"startingMode<br/>transport 分流（ADR 0001）"}
+    Branch -->|"local"| LocalTransport["startMobiMcpServer()<br/>startHookServer()<br/>generateHookSettingsFile()"]
+    Branch -->|"remote"| RemoteTransport["buildSessionMcpServers()<br/>SDK 进程内 server + SessionStart 回调<br/>内联 settings（零端口零临时文件）"]
+    LocalTransport --> Lifecycle["createRunnerLifecycle()<br/>创建生命周期管理器"]
+    RemoteTransport --> Lifecycle
     Lifecycle --> State["设置初始 AgentState<br/>controlledByUser"]
     State --> Queue["创建 MessageQueue<br/>带模式上下文的消息队列"]
     Queue --> UserMsg["session.onUserMessage()<br/>注册消息处理器"]
@@ -184,8 +185,8 @@ flowchart TB
 | **ApiClient** | `packages/cli/src/api/api.ts` | HTTP 客户端，与 Hub REST API 通信 |
 | **ApiSessionClient** | `packages/cli/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
 | **Session** | `packages/cli/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
-| **MCP Server** | `packages/cli/src/claude/utils/startMobiMcpServer.ts` | 暴露 `change_title` 等工具 |
-| **Hook Server** | `packages/cli/src/claude/utils/startHookServer.ts` | 接收 Claude SessionStart 通知 |
+| **MCP Server** | `packages/cli/src/claude/utils/startMobiMcpServer.ts`（local HTTP）/ `packages/cli/src/mcp/mobiSdkMcpServer.ts`（remote 进程内） | 暴露 `change_title`（核心共享：`packages/cli/src/mcp/changeTitleTool.ts`） |
+| **Hook Server** | `packages/cli/src/claude/utils/startHookServer.ts`（local HTTP）；remote 走 SDK `hooks.SessionStart` 进程内回调 | 接收 Claude SessionStart 通知，绑定守卫见 `claude/utils/sessionIdBinding.ts` |
 | **MessageQueue** | `packages/cli/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
 | **RunnerLifecycle** | `packages/cli/src/agent/runnerLifecycle.ts` | 进程信号处理和清理 |
 
@@ -380,8 +381,9 @@ packages/cli/src/
 │       ├── permissionHandler.ts          # 工具权限审批处理器（506 行）
 │       ├── sessionScanner.ts             # Local 模式 JSONL 监听（243 行）
 │       ├── OutgoingMessageQueue.ts       # 有序消息发送队列（207 行）
-│       ├── startMobiMcpServer.ts        # MCP Server 启动（stateless HTTP transport）
-│       ├── startHookServer.ts            # Hook HTTP Server（178 行）
+│       ├── startMobiMcpServer.ts        # MCP Server（local 模式 HTTP transport 壳）
+│       ├── startHookServer.ts            # Hook HTTP Server（local 模式）
+│       ├── sessionIdBinding.ts          # sessionId 绑定幂等守卫（双 transport 共享核心）
 │       ├── sessionHookForwarder.ts       # Hook 转发器（151 行）
 │       ├── sdkToLogConverter.ts          # SDK 消息 → 日志格式转换
 │       ├── systemPrompt.ts               # 系统提示词
