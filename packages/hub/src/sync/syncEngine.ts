@@ -38,7 +38,8 @@ import {
     type RpcSaveFileResponse,
     type RpcSetWebToolsConfigResponse,
     type RpcVerifyWebToolsProviderResponse,
-    type RpcWriteFileRangeResponse
+    type RpcWriteFileRangeResponse,
+    type SpawnSessionOptions
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 import { hubLogger } from '../logger'
@@ -528,20 +529,9 @@ export class SyncEngine {
     async spawnSession(
         machineId: string,
         directory: string,
-        agent: 'claude' = 'claude',  // Mobi 当前仅支持 Claude
-        model?: string,
-        permissionMode?: PermissionMode,
-        sessionType?: 'simple' | 'worktree',
-        worktreeName?: string,
-        resumeSessionId?: string,
-        effort?: EffortLevel,
-        outputStyle?: string,
-        projectId?: string,
+        options: SpawnSessionOptions = {},
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
-        return await this.rpcGateway.spawnSession(
-            machineId, directory, agent, model, permissionMode,
-            sessionType, worktreeName, resumeSessionId, effort, outputStyle, projectId
-        )
+        return await this.rpcGateway.spawnSession(machineId, directory, options)
     }
 
     async resumeSession(sessionId: string, namespace: string): Promise<ResumeSessionResult> {
@@ -593,14 +583,13 @@ export class SyncEngine {
         const spawnResult = await this.rpcGateway.spawnSession(
             targetMachine.id,
             metadata.path,
-            'claude',  // Mobi 当前仅支持 Claude
-            session.runtimeState?.model ?? undefined,
-            session.permissionMode,
-            undefined,
-            undefined,
-            resumeToken,
-            session.runtimeState?.effort ?? undefined,
-            session.runtimeState?.outputStyle ?? undefined
+            {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/projectId
+                model: session.runtimeState?.model ?? undefined,
+                permissionMode: session.permissionMode,
+                resumeSessionId: resumeToken,
+                effort: session.runtimeState?.effort ?? undefined,
+                outputStyle: session.runtimeState?.outputStyle ?? undefined,
+            }
         )
 
         if (spawnResult.type !== 'success') {

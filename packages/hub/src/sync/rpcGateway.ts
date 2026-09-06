@@ -19,6 +19,22 @@ import { DEFAULT_STOP_KIND, type PermissionAnswers, type PermissionUpdate, type 
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
+/** spawn 会话选项（深化候选②：位置参数 → 对象——effort/outputStyle 等字段此前靠
+ *  第 9/10 位次约定透传，新增字段漏位/错位无法被类型捕获）。
+ *  仅进程内签名；'spawn-mobi-session' 的 wire payload 本就是对象，线上协议不变 */
+export type SpawnSessionOptions = {
+    /** Mobi 当前仅支持 Claude */
+    agent?: 'claude'
+    model?: string
+    permissionMode?: PermissionMode
+    sessionType?: 'simple' | 'worktree'
+    worktreeName?: string
+    resumeSessionId?: string
+    effort?: EffortLevel
+    outputStyle?: string
+    projectId?: string
+}
+
 export type RpcRefreshMetadataResponse = {
     success: boolean
     metadata?: SDKMetadata
@@ -190,16 +206,9 @@ export class RpcGateway {
     async spawnSession(
         machineId: string,
         directory: string,
-        agent: 'claude' = 'claude',  // Mobi 当前仅支持 Claude
-        model?: string,
-        permissionMode?: PermissionMode,
-        sessionType?: 'simple' | 'worktree',
-        worktreeName?: string,
-        resumeSessionId?: string,
-        effort?: string,
-        outputStyle?: string,
-        projectId?: string,
+        options: SpawnSessionOptions = {},
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
+        const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, projectId } = options
         try {
             const result = await this.machineRpc(
                 machineId,

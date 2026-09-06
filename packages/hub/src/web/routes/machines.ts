@@ -139,15 +139,16 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const result = await engine.spawnSession(
             machineId,
             parsed.data.directory,
-            parsed.data.agent,
-            parsed.data.model,
-            parsed.data.permissionMode,
-            parsed.data.sessionType,
-            parsed.data.worktreeName,
-            undefined, // resumeSessionId
-            parsed.data.effort,
-            parsed.data.outputStyle,
-            parsed.data.projectId
+            {   // 选项对象化（深化候选②）：resumeSessionId 等缺省字段不再靠 undefined 占位对位
+                agent: parsed.data.agent,
+                model: parsed.data.model,
+                permissionMode: parsed.data.permissionMode,
+                sessionType: parsed.data.sessionType,
+                worktreeName: parsed.data.worktreeName,
+                effort: parsed.data.effort,
+                outputStyle: parsed.data.outputStyle,
+                projectId: parsed.data.projectId,
+            }
         )
         return c.json(result)
     })

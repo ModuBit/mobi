@@ -67,15 +67,7 @@ describe('spawn 链路透传 projectId', () => {
             const result = await engine.spawnSession(
                 'machine-p1',
                 '/tmp/proj',
-                'claude',
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                'project-42'
+                { projectId: 'project-42' }
             )
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
             expect(capture.emitCalls).toHaveLength(1)
@@ -117,15 +109,7 @@ describe('spawn 链路透传 projectId', () => {
         const result = await gateway.spawnSession(
             'machine-p3',
             '/tmp/proj',
-            'claude',
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            'project-99'
+            { projectId: 'project-99' }
         )
         expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
         expect(capture.emitCalls).toHaveLength(1)

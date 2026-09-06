@@ -38,7 +38,7 @@ const mockMachine: Machine = {
     runnerStateVersion: 0,
 }
 
-/** 捕获 spawnSession 调用参数（projectId 应为最后一个位置参数） */
+/** 捕获 spawnSession 调用参数（projectId 应在 options 对象中） */
 const spawnCalls: unknown[][] = []
 
 /** mock 项目表：id → 项目（machineId 校验用） */
@@ -100,7 +100,7 @@ describe('Machines API', () => {
         expect(res.status).toBe(200)
     })
 
-    test('POST /api/machines/:id/spawn body 中的 projectId 透传给 engine.spawnSession（最后一个位置参数）', async () => {
+    test('POST /api/machines/:id/spawn body 中的 projectId 透传给 engine.spawnSession options', async () => {
         const token = await getAuthToken(app)
         // project-7 归属目标机器 test-machine-1 → 校验通过
         projects.set('project-7', { id: 'project-7', namespace: 'default', machineId: 'test-machine-1' })
@@ -118,7 +118,7 @@ describe('Machines API', () => {
         expect(res.status).toBe(200)
         expect(spawnCalls.length).toBe(before + 1)
         const args = spawnCalls[spawnCalls.length - 1]
-        expect(args[args.length - 1]).toBe('project-7')
+        expect((args[2] as { projectId?: string }).projectId).toBe('project-7')
     })
 
     test('POST /api/machines/:id/spawn projectId 归属其它机器 → 403 且不触发 spawn', async () => {
