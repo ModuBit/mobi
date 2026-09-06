@@ -163,6 +163,8 @@ export const MetadataSchema = z.object({
     summary: MetadataSummarySchema.optional(),
     machineId: z.string().optional(),
     nativeSessionId: z.string().optional(),
+    /** 上下文边界指针：最近一次 compact/clear 边界消息的 seq（O(1) 边界判定，fork/rewind 入口共用；缺失=未回填） */
+    contextBoundarySeq: z.number().optional(),
     tools: z.array(z.string()).optional(),
     /** SDK 元数据（来自 initializationResult） */
     sdkMetadata: SDKMetadataSchema.optional(),

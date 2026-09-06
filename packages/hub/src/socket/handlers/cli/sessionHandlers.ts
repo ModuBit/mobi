@@ -26,7 +26,7 @@ import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import { toDecryptedMessage } from '../../../sync/messageService'
-import { extractWithdrawnContent } from '../../../store/messages'
+import { extractWithdrawnContent, isContextBoundaryContent } from '../../../store/messages'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
 import {
@@ -162,6 +162,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const category: MessageCategory = parsed.data.category ?? 'persistent'
 
         const msg = store.messages.addMessage(sid, content, localId, category, parsed.data.metadata ?? null)
+
+        // 边界指针推进（fork/rewind 入口判据，fork-session spec §2）。两个写入时机：
+        // compact_boundary 落库 → 该行 seq；context-cleared 事件到达 → 当前 MAX(seq)。
+        // 二者刚落库后 MAX 恒含该行 seq，统一取 MAX 兼容 resume 重放去重路径下
+        // msg.seq 落后于当前 MAX 的情况；单调守卫在 advance 内部（不回退、幂等）
+        if (isContextBoundaryContent(content)) {
+            store.contextBoundary.advance(sid, store.messages.getMaxSeq(sid))
+        }
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)

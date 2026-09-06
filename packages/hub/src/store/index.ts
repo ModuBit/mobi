@@ -20,6 +20,7 @@ import { dirname } from 'node:path'
 
 import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
+import { ContextBoundaryStore } from './contextBoundary'
 import { ProjectStore } from './projectStore'
 import { PushStore } from './pushStore'
 import { SessionStore } from './sessionStore'
@@ -36,6 +37,7 @@ export type {
 } from './types'
 export { MachineStore } from './machineStore'
 export { MessageStore } from './messageStore'
+export { ContextBoundaryStore } from './contextBoundary'
 export { ProjectStore } from './projectStore'
 export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
@@ -61,6 +63,7 @@ export class Store {
     readonly sessions: SessionStore
     readonly machines: MachineStore
     readonly messages: MessageStore
+    readonly contextBoundary: ContextBoundaryStore
     readonly users: UserStore
     readonly push: PushStore
     readonly projects: ProjectStore
@@ -106,6 +109,7 @@ export class Store {
         this.sessions = new SessionStore(this.db)
         this.machines = new MachineStore(this.db)
         this.messages = new MessageStore(this.db)
+        this.contextBoundary = new ContextBoundaryStore(this.db)
         this.users = new UserStore(this.db)
         this.push = new PushStore(this.db)
         this.projects = new ProjectStore(this.db)

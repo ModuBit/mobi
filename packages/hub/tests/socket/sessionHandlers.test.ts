@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHandlers'
 import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
+import { Store } from '../../src/store'
 import type { StoredMessage, StoredSession } from '../../src/store/types'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 
@@ -1088,8 +1089,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
         expect(events).toEqual([])
     })
 
-    test("lifecycle fact 新终态 'refused' 通过白名单 → advanceMessagesLifecycle 收到 refused", () => {
-        const fakeSocket = makeFakeSocket()
+    test("lifecycle fact 新终态 'refused' 通过白名单 → advanceMessagesLifecycle 收到 refused", () => {        const fakeSocket = makeFakeSocket()
         const { deps, advanceSpy } = makeWithdrawDeps({})
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
@@ -1115,5 +1115,79 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
         const evt = events[0] as Extract<SyncEvent, { type: 'message-withdrawn' }>
         expect(evt.blocks).toEqual([{ type: 'text', text: '纯文本消息' }])
         expect(evt.originalText).toBe('纯文本消息')
+    })
+})
+
+// ============ 边界指针维护：session-message 两个写入时机（fork-session spec §2 / ticket 02）============
+
+describe('session-message：边界消息落库推进 contextBoundarySeq', () => {
+    /** system:compact_boundary 输出信封 / context-cleared 事件信封 / 普通 user 信封（真实形态） */
+    const compactBoundary = { role: 'agent', content: { type: 'output', data: { type: 'system', subtype: 'compact_boundary' } } }
+    const contextCleared = { role: 'agent', content: { id: 'evt-1', type: 'event', data: { type: 'context-cleared' } } }
+    const userEnvelope = (text: string) => ({ role: 'user', content: { type: 'text', text }, meta: { sentFrom: 'webapp' } })
+
+    /** 真实 Store 注入（指针写回走完整 metadata CAS 链路），fake socket 只补消息通道 */
+    function makeRealStoreDeps() {
+        const store = new Store(':memory:')
+        const sid = store.sessions.getOrCreateSession('boundary-handler-test', { path: '/tmp/x' }, null, 'default').id
+        const events: SyncEvent[] = []
+        const deps: SessionHandlersDeps = {
+            store,
+            resolveSessionAccess: (id: string) => {
+                const session = store.sessions.getSession(id)
+                return session ? { ok: true as const, value: session } : { ok: false as const, reason: 'not-found' as const }
+            },
+            emitAccessError: () => {},
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            onWebappEvent: (e: SyncEvent) => { events.push(e) },
+        }
+        return { store, sid, deps, events }
+    }
+
+    /** 读取会话行 metadata 上的边界指针 */
+    const readBoundarySeq = (store: Store, sid: string): number | undefined =>
+        ((store.sessions.getSession(sid)?.metadata ?? {}) as Record<string, unknown>).contextBoundarySeq as number | undefined
+
+    test('compact_boundary 落库 → 指针 = 该行 seq；之后落库的消息 seq > 指针', () => {
+        const fakeSocket = makeFakeSocket()
+        const { store, sid, deps } = makeRealStoreDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', { sid, message: userEnvelope('before') })
+        fakeSocket.emit('session-message', { sid, message: compactBoundary })
+        expect(readBoundarySeq(store, sid)).toBe(2)
+
+        fakeSocket.emit('session-message', { sid, message: userEnvelope('after') })
+        const afterSeq = store.messages.getMaxSeq(sid)
+        expect(afterSeq).toBe(3)
+        expect(afterSeq).toBeGreaterThan(readBoundarySeq(store, sid)!)
+    })
+
+    test('context-cleared 事件 → 指针推进到当前 MAX(seq)；之后落库的消息 seq > 指针', () => {
+        const fakeSocket = makeFakeSocket()
+        const { store, sid, deps } = makeRealStoreDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', { sid, message: userEnvelope('before') })
+        fakeSocket.emit('session-message', { sid, message: contextCleared })
+        expect(readBoundarySeq(store, sid)).toBe(2)
+
+        fakeSocket.emit('session-message', { sid, message: userEnvelope('after') })
+        expect(store.messages.getMaxSeq(sid)).toBeGreaterThan(readBoundarySeq(store, sid)!)
+    })
+
+    test('非边界消息不推进指针', () => {
+        const fakeSocket = makeFakeSocket()
+        const { store, sid, deps } = makeRealStoreDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', { sid, message: userEnvelope('普通消息') })
+        // microcompact_boundary 不是边界（微压缩不换上下文）
+        fakeSocket.emit('session-message', {
+            sid,
+            message: { role: 'agent', content: { type: 'output', data: { type: 'system', subtype: 'microcompact_boundary' } } },
+        })
+
+        expect(readBoundarySeq(store, sid)).toBeUndefined()
     })
 })

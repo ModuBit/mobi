@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type CommandLifecycleState, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
+import { isObject, isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type CommandLifecycleState, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
@@ -88,6 +88,24 @@ function extractIsSidechain(content: unknown): boolean {
 function extractParentToolUseId(content: unknown): string | null {
     const c = content as { parentToolUseId?: string; content?: { data?: { parentToolUseId?: string } } } | undefined
     return c?.parentToolUseId ?? c?.content?.data?.parentToolUseId ?? null
+}
+
+/**
+ * 边界消息识别（fork/rewind 入口判据「边界指针」的判定来源，fork-session spec §2）：
+ * 两种边界——system:compact_boundary（压缩完成，新上下文起点）与 context-cleared 事件
+ * （/clear 完成）。语义与 web 端 turnBoundary.isTurnStart 同源（两端各自实现：
+ * web 端用于渲染裁剪，hub 端用于边界指针维护），改动信封结构时须两端同步。
+ */
+export function isContextBoundaryContent(content: unknown): boolean {
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record) return false
+    if (record.role !== 'agent' && record.role !== 'assistant') return false
+    if (!isObject(record.content)) return false
+    const { type, data } = record.content as { type?: unknown; data?: unknown }
+    if (!isObject(data)) return false
+    // microcompact_boundary（微压缩，上下文结构不变）不是边界，精确匹配排除
+    return (type === 'event' && data.type === 'context-cleared')
+        || (type === 'output' && data.type === 'system' && data.subtype === 'compact_boundary')
 }
 
 function toStoredMessage(row: DbMessageRow): StoredMessage {
@@ -610,6 +628,24 @@ export function getMaxSeq(db: Database, sessionId: string): number {
         'SELECT COALESCE(MAX(seq), 0) AS maxSeq FROM messages WHERE session_id = ?'
     ).get(sessionId) as { maxSeq: number } | undefined
     return row?.maxSeq ?? 0
+}
+
+/**
+ * 最近一条边界行的 seq（contextBoundarySeq 惰性回填的扫描源，fork-session spec §2）：
+ * 按未删行 seq 降序逐行判定 isContextBoundaryContent，命中即返回；无边界返回 0。
+ * 软删行不计入——与读取路径同口径（rewind 截断跨过边界行时，指针回填落到更早边界或 0）。
+ * 仅在字段缺失的回填路径调用（一次性 O(n) 扫描），热路径不经过此处。
+ */
+export function findLatestBoundarySeq(db: Database, sessionId: string): number {
+    const rows = db.prepare(
+        'SELECT seq, content FROM messages WHERE session_id = ? AND deleted_at IS NULL ORDER BY seq DESC'
+    ).all(sessionId) as Array<{ seq: number; content: string }>
+    for (const row of rows) {
+        if (isContextBoundaryContent(safeJsonParse(row.content))) {
+            return row.seq
+        }
+    }
+    return 0
 }
 
 export function mergeSessionMessages(
