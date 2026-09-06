@@ -209,3 +209,98 @@ describe('SyncEngine.forkSession', () => {
         }
     })
 })
+
+/**
+ * resumeSession fork 待激活行（激活协议 spec §5.2 步骤 1 的 hub 侧前提）：
+ * resumeToken 必须取 fork 行 metadata.nativeSessionId（预生成 fork id）——CLI 的
+ * bootstrapSession 靠 --resume <该值> 经 getSessionByClaudeSessionId 命中 fork 行并复用
+ * tag 绑定既有行（不触发 mergeSessions）。改成 parentNativeId 会把 CLI 绑到 parent 行，
+ * 触发 fork 行向 parent 的 merge（数据污染）；forkFrom 缺失时的激活退化由 CLI 侧
+ * forkFrom 驱动路径兜底（resolveStartSessionId），hub 侧不做特殊改写。
+ * 本测试锁定该契约，防止未来把 resumeToken「修正」为 parentNativeId。
+ */
+describe('SyncEngine.resumeSession fork 待激活行', () => {
+    function makeSpawnEngine(): { engine: SyncEngine; store: Store; spawnParams: () => Record<string, unknown> | null; cleanup: () => void } {
+        const store = new Store(':memory:')
+        let spawnCall: Record<string, unknown> | null = null
+        const engineRef: { engine?: SyncEngine } = {}
+
+        const fakeSocket = {
+            timeout() { return this },
+            async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
+                if (payload.method.endsWith(':spawn-mobi-session')) {
+                    const engine = engineRef.engine!
+                    const spawned = engine.getOrCreateSession(
+                        'tag-fork-resumed', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
+                    )
+                    engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
+                    spawnCall = payload.params as Record<string, unknown>
+                    return { type: 'success', sessionId: spawned.id }
+                }
+                return { ok: true }
+            },
+        }
+        const io = {
+            of() { return { sockets: new Map([['sock-1', fakeSocket]]) } },
+        } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod(method: string) {
+                return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
+            },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const engine = new SyncEngine(store, io, registry, sseManager)
+        engineRef.engine = engine
+        return {
+            engine,
+            store,
+            spawnParams: () => spawnCall,
+            cleanup: () => {
+                engine.stop()
+                store.close()
+            },
+        }
+    }
+
+    test('resumeToken 用 fork 行预生成 nativeSessionId（禁改 parentNativeId）', async () => {
+        const h = makeSpawnEngine()
+        try {
+            // 机器在线（同 namespace，targetMachine 匹配前置）
+            h.engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
+            h.engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+
+            // 建 parent + fork 行（走 forkSession 编排，fork 行 metadata 由 store 层写入）
+            const parent = h.engine.getOrCreateSession(
+                'fork-resume-parent',
+                { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'parent-native-1' },
+                null,
+                'default',
+            )
+            h.store.messages.addMessage(parent.id, userMsg('第一个问题'), 'l1')
+            h.store.messages.addMessage(
+                parent.id, agentResult(), null, 'persistent',
+                { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
+            )
+            const forkResult = h.engine.forkSession(parent.id, 'anchor-native', 'default')
+            expect(forkResult.ok).toBe(true)
+            if (!forkResult.ok) return
+
+            const forkSession = h.engine.getSession(forkResult.sessionId)!
+            // fork 行建行时预生成 fork native id（≠ parent 的 native id）
+            const forkNativeId = forkSession.metadata?.nativeSessionId
+            expect(forkNativeId).toBeTruthy()
+            expect(forkNativeId).not.toBe('parent-native-1')
+
+            const result = await h.engine.resumeSession(forkSession.id, 'default')
+            expect(result.type).toBe('success')
+
+            const params = h.spawnParams()
+            expect(params).toBeTruthy()
+            // 契约：resumeToken = fork 行预生成 id（CLI bootstrapSession 据此绑定 fork 行）
+            expect(params!.resumeSessionId).toBe(forkNativeId)
+            expect(params!.resumeSessionId).not.toBe('parent-native-1')
+        } finally {
+            h.cleanup()
+        }
+    })
+})

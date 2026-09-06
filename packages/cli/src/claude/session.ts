@@ -23,6 +23,7 @@ import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode, PermissionMode } from './types';
 import type { QueryRestartRequest } from './utils/queryRestart';
+import type { ForkActivationPlan } from './utils/forkActivation';
 import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
 
 type LocalLaunchFailure = {
@@ -62,6 +63,12 @@ export class Session extends AgentSessionBase<EnhancedMode> {
      */
     rewindInFlight: boolean = false;
     localLaunchFailure: LocalLaunchFailure | null = null;
+    /**
+     * fork 激活计划（fork-session spec §5.2）：bootstrap 从 fork 行 metadata.forkFrom
+     * 解析；首条消息触发激活，init 返回预生成 id 时由 launcher 置 null 并上报 hub
+     * 清除 forkFrom。null = 非 fork 激活轮（普通 / 已激活）。
+     */
+    forkActivation: ForkActivationPlan | null;
 
     constructor(opts: {
         api: ApiClient;
@@ -84,6 +91,8 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         effort?: EffortLevel;
         outputStyle?: string;
         additionalDirectories?: string[];
+        /** fork 激活计划（runClaude 从 bootstrap metadata 解析后传入；缺省 null） */
+        forkActivation?: ForkActivationPlan | null;
     }) {
         super({
             api: opts.api,
@@ -114,6 +123,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.startedBy = opts.startedBy;
         this.startingMode = opts.startingMode;
         this.additionalDirectories = opts.additionalDirectories ?? [];
+        this.forkActivation = opts.forkActivation ?? null;
     }
 
     setPermissionMode = (mode: PermissionMode): void => {

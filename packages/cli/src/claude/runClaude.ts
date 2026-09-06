@@ -45,6 +45,7 @@ import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';
 import { applyOutputStyleSwitch } from './utils/outputStyleSwitch';
+import { resolveForkActivation } from './utils/forkActivation';
 import type { Settings } from '@anthropic-ai/claude-agent-sdk';
 
 export interface StartOptions {
@@ -125,6 +126,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         projectId: options.projectId
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
+
+    // fork 激活识别（fork-session spec §5.2 步骤 2）：fork 行 metadata.forkFrom 存在
+    // → 本次进程生命周期内为 fork 激活模式，激活计划随 Session 传递给 launcher
+    const forkActivation = resolveForkActivation(sessionInfo.metadata);
+    if (forkActivation) {
+        logger.debug(`[START] Fork activation pending: parent=${forkActivation.parentNativeId}, anchor=${forkActivation.anchorNativeId}, fork=${forkActivation.forkNativeId}`);
+    }
 
     // 本地模式没有 remote Query，能力面经 headless 提取兜底（批次 G 前的唯一路径，此处收窄为 local 专属）；
     // 远程模式由 launcher onQueryReady 的 discoverCapabilities 供给（批次 G U-27）
@@ -588,6 +596,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             hookSettings,
             processCleanupRef,
             queryControlRef,
+            forkActivation,
             getSessionConfig: () => ({
                 // 权限模式单一真相源 = session：plan 由 enter_plan_mode 工具进入 / ExitPlanMode 退出，
                 // 都不经过 set-session-config（不更新 currentPermissionMode）。若此处仍读局部变量，

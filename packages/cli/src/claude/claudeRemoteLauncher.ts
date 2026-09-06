@@ -42,6 +42,7 @@ import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { RESTART_EXIT_SENTINEL } from "./utils/queryRestart";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
+import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage } from "./utils/forkActivation";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
@@ -273,6 +274,21 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
+     * fork 激活收口（fork-session spec §5.2 步骤 4/5）：init 返回预生成 fork id 时，
+     * CC 已物化 fork transcript——清除本地激活簿记并经 updateMetadata（现有版本化通道）
+     * 上报 hub 清除 forkFrom（omitForkFrom 保留持久溯源 forkedFrom，badge 解除）。
+     * 幂等：forkActivation 置 null 后的 init（compact 切换 / 重启轮）不再触发；
+     * init session_id 与预生成 id 不符（异常路径）不上报，激活簿记保留待错误/重试路径收口。
+     */
+    private settleForkActivation(sessionId: string | undefined): void {
+        const activation = this.session.forkActivation
+        if (!activation || !sessionId || sessionId !== activation.forkNativeId) return
+        this.session.forkActivation = null
+        logger.debug('[remote]: fork activated, clearing forkFrom metadata');
+        this.session.client.updateMetadata(omitForkFrom)
+    }
+
+    /**
      * 拉取 getContextUsage summary（detail:'summary'，零 API/零 LLM——本地估算）。
      * query 不在（已关闭）/调用失败 → undefined，调用方按无细分上报。
      */
@@ -498,6 +514,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // 模型切换自动更新——tracker 的窗口猜测与 result.modelUsage 用同源的模型名
             if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
                 this.contextTracker.onInit((message as { model?: string }).model)
+                // fork 激活收口（fork-session spec §5.2 步骤 4/5）：init 返回预生成 id 即 CC
+                // 已物化 fork transcript——清本地簿记 + 上报 hub 清除 forkFrom（保留 forkedFrom）
+                this.settleForkActivation((message as { session_id?: string }).session_id)
             }
 
             if (message.type === 'assistant') {
@@ -687,6 +706,32 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     messageBuffer.addMessage(`Rewinding session to anchor ${rewind.resumeAt.slice(0, 8)}...`, 'status');
                 }
 
+                // fork 激活预检（fork-session spec §5.2 步骤 3）：锚点必须仍在 parent transcript 上
+                // （parent 可能已 rewind 深于锚点 / transcript 文件丢失）。失败 → 上报错误态并结束
+                // launcher 循环——首条消息不消费（hub 侧保持 queued），forkFrom 保留（badge 不解除，
+                // 会话可删除），下次发消息重新 spawn 预检即重试
+                const forkActivation = session.forkActivation;
+                if (forkActivation) {
+                    const precheck = await verifyForkAnchorExists(
+                        forkActivation.parentNativeId,
+                        session.path,
+                        forkActivation.anchorNativeId,
+                    );
+                    if (precheck !== 'ok') {
+                        logger.warn(`[remote]: fork activation precheck failed (${precheck})`, forkActivation);
+                        // 错误态双通道：时间线消息给阅读，metadata.forkError 给 web 错误态渲染
+                        // （t06 契约：失败保留 forkFrom，叠加 forkError）
+                        session.client.updateMetadata((metadata) => withForkError(metadata, precheck));
+                        session.client.sendSessionEvent({
+                            type: 'message',
+                            message: forkActivationFailureMessage('anchor_gone'),
+                        });
+                        messageBuffer.addMessage('Fork activation failed: anchor gone from parent transcript', 'status');
+                        return;
+                    }
+                    logger.debug(`[remote]: fork activation precheck passed (anchor ${forkActivation.anchorNativeId.slice(0, 8)}...)`);
+                }
+
                 const isNewSession = session.sessionId !== previousSessionId;
                 if (isNewSession) {
                     messageBuffer.addMessage('Starting new Claude session...', 'status');
@@ -736,6 +781,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     session.client.sendSessionEvent(event),
                             }, msg)
                         } : undefined,
+                        // fork 激活（fork-session spec §5.2）：预检通过后携带激活计划，
+                        // claudeRemote 据此组装 resume(parent)+forkSession+resumeSessionAt(锚点)+sessionId(预生成 id)
+                        forkActivation: forkActivation ?? undefined,
                         path: session.path,
                         allowedTools: session.allowedTools ?? [],
                         mcpServers: session.mcpServers,
@@ -966,6 +1014,18 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             rewind.skippedLinks,
                         );
                         session.pendingRestart = null;
+                    }
+                    // fork 激活轮异常（resume 失败 / 进程崩溃，fork-session spec §5.3）：forkFrom
+                    // 保留待重试（预检已过，重发消息重新 spawn 即重试），上报错误态供用户感知。
+                    // 激活已收口（forkActivation 置 null）的轮不触发
+                    if (session.forkActivation) {
+                        const resumeDetail = e instanceof Error ? e.message : String(e);
+                        // 错误态双通道（同预检失败）：时间线消息 + metadata.forkError
+                        session.client.updateMetadata((metadata) => withForkError(metadata, 'activation-failed', resumeDetail));
+                        session.client.sendSessionEvent({
+                            type: 'message',
+                            message: forkActivationFailureMessage('resume_failed', resumeDetail),
+                        });
                     }
                     // 增强错误日志：序列化非标准错误对象
                     // 用 error 级而非 debug：SDK 崩溃错误（含 stderr tail，见 getProcessExitError）

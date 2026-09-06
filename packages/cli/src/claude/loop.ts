@@ -26,6 +26,7 @@ import type { SessionModel } from "@/api/types"
 import type { EffortLevel } from "@mobi/shared/types"
 import { PermissionMode, QueryControlRef, type EnhancedMode } from "./types"
 import type { McpServerConfig, Settings } from "@anthropic-ai/claude-agent-sdk"
+import type { ForkActivationPlan } from "./utils/forkActivation"
 
 interface LoopOptions {
     path: string
@@ -52,6 +53,8 @@ interface LoopOptions {
     queryControlRef?: QueryControlRef
     getSessionConfig?: () => EnhancedMode
     flushConfig?: () => void
+    /** fork 激活计划（runClaude 从 bootstrap metadata 解析后传入，fork-session spec §5.2） */
+    forkActivation?: ForkActivationPlan | null
 }
 
 export async function loop(opts: LoopOptions) {
@@ -80,7 +83,8 @@ export async function loop(opts: LoopOptions) {
         model: opts.model,
         effort: opts.effort,
         outputStyle: opts.outputStyle,
-        additionalDirectories: opts.additionalDirectories
+        additionalDirectories: opts.additionalDirectories,
+        forkActivation: opts.forkActivation
     });
 
     const cleanup = opts.processCleanupRef;

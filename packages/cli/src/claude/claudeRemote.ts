@@ -58,6 +58,7 @@ import type { PromptPayload } from '@/utils/promptBuilder'
 import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 import { isRewindRefusalError, extractRewindRefusalFromResult } from './utils/rewindRefusal'
+import type { ForkActivationPlan } from './utils/forkActivation'
 
 /**
  * 特殊命令处理结果
@@ -303,6 +304,56 @@ function resolveResumeSessionId(claudeArgs: string[] | undefined, cwd: string): 
     }
 
     return null;
+}
+
+/**
+ * fork 激活轮的 SDK 启动四值（fork-session spec §5.2，纯函数便于单测锁定契约）：
+ * resume 指 parent、forkSession 恒 true（SDK 约束 sessionId+resume 组合必须携带）、
+ * resumeSessionAt 指分叉锚点、sessionId 指预生成 fork id。
+ */
+export function buildForkStartupFields(plan: ForkActivationPlan): {
+    resume: string
+    forkSession: true
+    resumeSessionAt: string
+    sessionId: string
+} {
+    return {
+        resume: plan.parentNativeId,
+        forkSession: true,
+        resumeSessionAt: plan.anchorNativeId,
+        sessionId: plan.forkNativeId,
+    }
+}
+
+/**
+ * 解析本轮 query 的 resume 起点（纯函数便于单测）：
+ * - fork 激活轮：恒取 forkFrom.parentNativeId，**完全绕过 claudeCheckSession 守卫**——
+ *   守卫检查的是 mobi 行自身的 nativeSessionId（fork 预生成 id 无 transcript，必判失败
+ *   → startFrom=null → 退化成新会话而非 fork）。fork 激活的权威数据是 forkFrom 簿记，
+ *   不依赖 claudeArgs 里的 --resume（该值是 hub spawn 时传的 fork 行预生成 id，
+ *   只用于 bootstrapSession 绑定 mobi 行，激活不消费它）
+ * - 普通轮：沿用现状——sessionId transcript 有效则用之，无效回落 claudeArgs 的 --resume
+ */
+export function resolveStartSessionId(opts: {
+    forkActivation?: ForkActivationPlan | null
+    sessionId: string | null
+    path: string
+    claudeArgs?: string[]
+}): string | null {
+    if (opts.forkActivation) {
+        return opts.forkActivation.parentNativeId
+    }
+
+    let startFrom = opts.sessionId;
+    if (startFrom && !claudeCheckSession(startFrom, opts.path)) {
+        startFrom = null;
+    }
+
+    if (!startFrom) {
+        startFrom = resolveResumeSessionId(opts.claudeArgs, opts.path);
+    }
+
+    return startFrom
 }
 
 function handleStreamEvent(
@@ -763,6 +814,13 @@ export async function claudeRemote(opts: {
      * refusal 是 deterministic，重发必败——host 不应 retry，而是放弃截断回到 plain resume。
      */
     onRewindRefusal?: (msg: string) => Promise<void> | void,
+    /**
+     * fork 激活计划（fork-session spec §5.2）：待激活分叉会话的首条消息触发轮携带。
+     * 携带时 resume 权威值取 forkFrom.parentNativeId（绕过 claudeCheckSession 守卫，
+     * 见 resolveStartSessionId），sdkOptions 追加 forkSession/resumeSessionAt/sessionId，
+     * 首条消息 turn 开始时 CC 物化 fork transcript 并以预生成 id 返回 init。
+     */
+    forkActivation?: ForkActivationPlan,
     mcpServers?: Record<string, McpServerConfig>,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
@@ -824,14 +882,13 @@ export async function claudeRemote(opts: {
     }
 
     // Check if session is valid
-    let startFrom = opts.sessionId;
-    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
-        startFrom = null;
-    }
-
-    if (!startFrom) {
-        startFrom = resolveResumeSessionId(opts.claudeArgs, opts.path);
-    }
+    const forkFields = opts.forkActivation ? buildForkStartupFields(opts.forkActivation) : null
+    const startFrom = resolveStartSessionId({
+        forkActivation: opts.forkActivation,
+        sessionId: opts.sessionId,
+        path: opts.path,
+        claudeArgs: opts.claudeArgs,
+    })
 
     // Set environment variables for Claude Code SDK
     if (opts.claudeEnvVars) {
@@ -960,14 +1017,22 @@ export async function claudeRemote(opts: {
         resume: startFrom ?? undefined,
         // rewind 截断：resume 时只加载到该 uuid（锚点前最近一条 assistant message）为止。
         // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被
-        // 模型当成「空消息」触发一轮无意义回复。此处仅在 rewind 轮有值，其余轮 undefined。
-        resumeSessionAt: opts.resumeSessionAt,
+        // 模型当成「空消息」触发一轮无意义回复。rewind 轮取 opts.resumeSessionAt；
+        // fork 激活轮取分叉锚点（fork 直接用 agent 回复 uuid，无需向前换算，spec §6），
+        // 两者互斥（fork 不占 rewind 的重启单槽，走正常消息触发路径）
+        resumeSessionAt: forkFields?.resumeSessionAt ?? opts.resumeSessionAt,
+        // fork 激活（fork-session spec §5.2）：resume+forkSession+resumeSessionAt 三字段
+        // 独立可选、组合成立（spec §3 PoC 实证）。仅 fork 激活轮有值
+        forkSession: forkFields?.forkSession,
         // output style 不走 sdkOptions：Options 无顶层字段、settings 槽位已被
         // hookSettings 占用——query attach 后经 applyStartupOutputStyle 注入
         // 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal。refusal 检测/recovery 在 T4。
         resumeDropsTurn: opts.resumeDropsTurn,
-        sessionId: pregeneratedSessionId,
+        // 新会话轮：预生成的 nativeSessionId；fork 激活轮：预生成 id 来自 forkFrom 簿记
+        // （forkNativeId，spec §5.2——SDK sessionId option 语义保证 CC 采用）；
+        // resume 轮：undefined
+        sessionId: forkFields?.sessionId ?? pregeneratedSessionId,
         mcpServers: opts.mcpServers,
         permissionMode: baseConfig.permissionMode,
         model: baseConfig.model,
