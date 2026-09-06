@@ -198,71 +198,6 @@
 
 ---
 
-## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（✅ 两步均已完成，2026-09-06 实机 E2E 通过）
-
-**状态**（2026-09-06）：方向已定 —— **抛弃 react-virtuoso 虚拟化，切回 antdx Bubble.List 全量渲染**。第一步（恢复 Bubble.List 完整态）✅ 已完成并 E2E 验证；第二步（数据层窗口化）✅ C-2 与 C-1 均已完成。实机 E2E（2026-09-06，e2e profile）：真实会话多轮交互——消息追加、Agent 卡片、drawer、任务面板——全部正常（即窗口常规路径实机通过）；C-1 trim 触发需 >1500 条大会话，实机未单独构造（trim 纯函数与 store 集成共 10 条单测覆盖），后续大会话使用中顺带观察即可。条目关闭。
-
-### 决策过程
-
-react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**严重（估高→RO 实测异步修正，14 次跳动/收缩 3509px）。修复路径逐条排除：
-
-- **内容估高启发式**（`heightEstimates`）不可行：`content` 是 ReactNode（markdown/代码块/工具卡），高度与字符数无关；`maxHeight` 组件（折叠态受 CSS 限高）、group 计算（折叠 vs 展开高度差极大）使估高对离群 item 必错。
-- **离屏预实测**（A）准但复杂（离屏渲染须与真实渲染同 CSS/markdown）。
-- **加大 `increaseViewportBy`**（B）依赖 virtuoso RO 异步测量，未验证。
-- **数据层窗口化**（C，参考 hapi）彻底消除跳动（全量真实高度，无估高无修正），代价是 DOM 随总量增长 → 需 window 钳制。
-
-最终选 C：抛弃虚拟化，Bubble.List 全量渲染。理由：虚拟化的所有坑（估高跳动、firstItemIndex、key 碰撞、遮罩、followOutput trap、scroll-fight）都是虚拟化副产物，全量渲染全部消失；唯一代价（DOM 增长）由第二步 window 解决。
-
-**为何不照搬 hapi**：hapi `message-window-store` 自管 cache（不靠 react-query），因为 react-query infinite query 保留所有 pages 的模型与"trim 旧页省内存"冲突。mobi 用 react-query 管 messages，故 window 走 **bubbleItems 层 trim**（B）——不动数据层、零 trace 断裂风险（mobi `reduceChatBlocks` 的 sidechain parentUUID 链 / tool\_use-result 配对在 messages 层 trim 会断），契合 react-query。详见 brainstorming 决策记录。
-
-### 第一步：恢复 Bubble.List 完整态（✅ 已完成）
-
-**改动**：
-
-- 新建 `packages/web/src/components/chat/BubbleListChat.tsx`：antdx `Bubble.List`（`autoScroll={false}`）+ `useStickToBottom`（适配 `.ant-bubble-list-scroll-content`）+ 恢复 prepend 维持 scrollTop（`pendingRestoreRef` + useLayoutEffect delta pin）/ fill 级联 / 顶部 skeleton / prefetch。
-- `ChatContainer.tsx`：`VirtuosoChatList` → `BubbleListChat`，CSS 回到 `.ant-bubble-list-scroll-box/content` 式。
-- `useStickToBottom.ts`：内容层 selector `[data-testid='virtuoso-item-list']` → `.ant-bubble-list-scroll-content`，逻辑（手势 stop / 几何 re-follow 延时 / smooth 门闩 / pointerDown 守卫）全保留。
-- 删 `VirtuosoChatList.tsx` + `VirtuosoChatList.test.tsx`（虚拟化代码留存于 tag `chat-list-virtualized`，已 push）。
-
-**E2E 修复的一个 bug**：`BubbleListRef.scrollBoxNativeElement` 在 `useLayoutEffect` 时为 null（antdx 内部 effect 时序晚于父组件 useLayoutEffect），导致 scrollBoxRef 不设、RO 拿不到 scroller。改用 `querySelector('.ant-bubble-list-scroll-box')`（旧代码方式，不依赖 ref 时序）。
-
-**E2E 验证**（cp dev DB 副本 213 条会话）：
-
-
-| 项                   | 结果                                     |
-| ------------------- | -------------------------------------- |
-| 渲染（Bubble.List 结构）  | ✅ scrollBox/content DOM                |
-| 初始贴底                | ✅ dist=-1，RO fire                      |
-| 流式期贴底               | ✅ 全程 maxDist=0 / over80=0 帧            |
-| 流式期 DOM 稳定          | ✅ 10 bubble 0 重建                       |
-| prepend 历史加载        | ✅ 33→65 bubble                         |
-| prepend 维持视口        | ✅ scrollTop=0+delta，原首项仍在视口            |
-| prepend DOM 稳定      | ✅ 原 33 bubble 0 重建                     |
-| useStickToBottom 协调 | ✅ wheel following=false，RO 不破坏 restore |
-
-
-**保留**（期间优化全部保留）：`reconcileChatBlocks`/`reconcileBubbleItems` 结构化共享、`buildChatBubbleItems`、`CollapsibleUserMessage` RO measure、`FilePathText` CSS ellipsis、streaming 修复、通知系统、所有 `domain/chat` 逻辑。
-
-### 第二步：数据层窗口化（C-2 已完成，C-1 待做）
-
-**C-2（store 去.pages + 渲染层 window）已完成（2026-08-04）**：新建 `messageWindowStore`（自管 external store，扁平 `DecryptedMessage[]` + 独立游标 + generation 防竞态）替代 `useMessages` 的 `useInfiniteQuery`（消除 react-query pages + SSE append page\[0\] 三重不匹配）。store 全量不 trim（C-2 钳 DOM 不钳内存）。trim 推到 BubbleListChat 渲染层（reduce 之后，sidechain 天然完整）。window 动态 N \[400, 800\]（对齐 hapi 双阈值）+ 贴末尾⇄滑动状态机 + N=800 offsetTop restore。SSE/optimistic/submitted/cancel 全改调 store action。单测 1411 + typecheck + lint 全绿。spec: `docs/superpowers/specs/2026-08-03-message-window-store-design.md`，plan: `docs/superpowers/plans/2026-08-03-message-window-store.md`。
-
-**C-1（store 层 turn 边界 trim 钳内存）✅ 已完成（2026-09-06）**：`messageWindowStore` 加 `isTurnStart`（原始层判定：user 信封 / compact_boundary / context-cleared）+ `trimByTurnBoundary`（丢最少整 turn 使剩余 ≤ TRIM_TARGET=1000，滞回带 [1000,1500]；末 turn 超目标兜底只留最后一个整 turn；无起点/整体一 turn 不裁）+ `trimAfterMerge` 统一口（仅 hasMore=true 才裁——历史穷尽时裁了上滚拉不回，用户拍板）。挂 ingest / fetchLatest / reconcile 三个增长点，fetchOlder 不裁（用户主动拉历史）。append 热路径未超阈值仅 O(1) 长度判断。裁掉历史由 fetchOlder prepend 按需回补，oldestSeq 裁后重算。测试 10 条红→绿 + 存量消费方全绿。前提实证记录（2026-08-15）：sidechain 全部 `U S+` 落在 user turn 内不跨 turn，整 turn 裁不断 sidechain 归组。
-
-**E2E 验证**：C-2 window 滑动/N=800/offsetTop 单测覆盖不到（jsdom offsetTop=0），E2E 受 dev session 恢复环境限制（runner 不恢复 demo session），留实机测（deploy 含 C-2 二进制后真机验证 window 滑动 + N=800 裁顶 + offsetTop restore + 重连补拉 merge + 流式 snapshot update）。
-
-**相关文件**：
-
-- `packages/web/src/components/chat/BubbleListChat.tsx` — Bubble.List + useStickToBottom + restore/fill/prefetch
-- `packages/web/src/components/chat/useStickToBottom.ts` — 贴底跟随（适配 Bubble.List）
-- `packages/web/src/components/chat/ChatContainer.tsx` — 数据流（reconcile/streaming/通知）
-
-**相关 memory**：\[\[project\_bubble-list-virtualization\]\]（虚拟化已废弃，tag `chat-list-virtualized` 留存）、\[\[project\_virtuoso-mount-flicker\]\]/\[\[project\_scroll-fight-pointer-drag\]\]/\[\[project\_virtuoso-prepend-firstitemindex\]\]/\[\[project\_virtuoso-followoutput-trap\]\]/\[\[project\_virtuoso-key-collision\]\]（virtuoso 踩坑记录，方向已废弃但留作参考）。
-
-**优先级**：高（长会话 DOM 增长会卡顿，需 window 钳制）。
-
----
-
 ## 41. 会话产出「知识化」——可检索的个人 coding 工作日志
 
 **背景**：mobi 的 hub SQLite 里躺着每一次重构、每一次 debug、每一次架构决策的完整会话记录，但目前**用完即弃**——对话流走完就没人再看。这是 mobi 最大的未开发价值。
@@ -555,28 +490,6 @@ interrupt（用户停止）
 **触发时机**：子代理可观测性落地后流量上升，或出现多会话并用的实际卡顿时启动讨论。
 
 **相关**：`packages/hub/src/sse/sseManager.ts`、`packages/web/src/core/providers/SSEProvider.tsx`
-
----
-
-## 62. 后台任务状态链路两缺陷：runtime_state 双写竞态丢字段 + sidechain 消息不实时（2026-08-31 批次 B E2E 复现）✅ 2026-09-06 实机 E2E 终判通过
-
-**状态**（2026-09-06）：缺陷一 ✅ 已修——store 层单点 `mergeRuntimeState`（读 DB 最新 → patch 字段合并 → 写回，同步原子；patch 值 undefined=清除、深等跳过写库不推 seq），`updateRuntimeStateField` 与 `handleSessionEnd` 的 teamState 收尾都改走它，不再基于陈旧内存快照全量覆盖；回归测试 `tests/sync/runtimeStateConvergence.test.ts` 8 条红→绿。缺陷二 ⚠️ 当前代码单测判定**不复现**——全链路测试 `tests/chat/sidechainLive.test.ts`（SSE ingest → 窗口 → normalize → tracer 分组 → Agent block children 增长，含乱序 orphan 与 snapshot 覆盖场景）4 条全通；08-31 的 E2E 冻结观察应已被后续修复覆盖。**实机 E2E 终判（2026-09-06，e2e profile）双双通过**：① 缺陷二——真实 Agent 子代理运行中打开 drawer，气泡数 1→2→3→5 持续增长；轮次结束后重开 drawer 历史完整恢复；② 缺陷一 U-4——后台 Bash 任务 running 中 DB `runtime_state.backgroundTasks` 非空，页面刷新后任务面板从 DB 恢复显示。条目关闭。
-
-**缺陷一：hub `runtime_state` 双写路径竞态丢字段（U-4「重连后台任务快照」的真实根因）**
-
-`packages/hub/src/socket/handlers/cli/sessionHandlers.ts:212`（消息事件路径，写 todos/tasks/backgroundTasks/teamState）与 `packages/hub/src/sync/sessionCache.ts:356` `updateRuntimeStateField`（contextUsage/model/effort 等路径）都是「读快照 → 全量 `setRuntimeState` 覆盖写」，两路径并发时后写覆盖先写，字段丢失。E2E 实测：后台任务 running 中 `runtimeState.backgroundTasks` 在 DB 为 null（SSE 内存链有值故面板当时正常），web 断开重连后首拉 DB → 面板空白。
-
-**方向**：runtime_state 写入收敛为单点（store 层按字段 merge 或加写锁/队列），禁止调用方各自读-改-写全量覆盖。修复后重验 U-4（重连后面板恢复）。
-
-**缺陷二：后台 Agent drawer 内容不随 SSE 实时增长**
-
-子代理消息（`parent_tool_use_id` 非空）经 hub 落库并广播，但 web 主消息窗口（messageWindowStore）的增量路径不纳入 sidechain 消息 → reducer 重组看不到新 sidechain → Agent tool block 的 `children` 冻结在初始拉取快照。E2E 实测：drawer 打开 36s 内子代理消息持续落库（seq 106→117），drawer 内容恒 6 条。该缺陷先于批次 B 存在（forwardSubagentText 之前 children 只有 tool_use 心跳，同样冻结，只是无感）。
-
-**方向**：SSE 增量将 sidechain 消息并入窗口（或独立 sidechain 缓存按 toolUseId 归组），触发对应 block children 更新；注意与消息窗口化（#40）的窗口边界语义协调。
-
-**相关**：批次 B spec `docs/superpowers/specs/2026-08-31-task-subagent-observability-design.md` D6/D7；台账 U-4/U-23。
-
-**优先级**：中高。后台 agent 是远程场景核心工作流，状态丢失与不可观测直接影响信任。
 
 ---
 
