@@ -626,3 +626,51 @@ describe('permissionMode 持久化 — code-review 收口', () => {
         expect(cache.getSession(session.id)?.runtimeState?.permissionMode).toBeUndefined()
     })
 })
+
+describe('SessionCache.deleteSession fork 守卫（isSessionRowDeletable，fork-session spec §4.3）', () => {
+    let store: Store
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        cache = new SessionCache(store, stubPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('active 的待激活 fork 行（forkFrom 在场、非 running）可删——fork 行未激活不算 active', async () => {
+        const session = cache.getOrCreateSession('tag-fork-del-1', {
+            path: '/tmp/p',
+            host: 'h',
+            forkFrom: { parentSessionId: 'parent-1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' },
+            forkedFrom: { sessionId: 'parent-1' },
+        }, null, 'default')
+
+        // keep-alive 置 active（首条消息触发 spawn 的中间态），未 running
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
+        expect(cache.getSession(session.id)?.active).toBe(true)
+
+        await expect(cache.deleteSession(session.id)).resolves.toBeUndefined()
+    })
+
+    test('running 中的 fork 行不可删（spawn 进行中，防孤儿 CLI 进程）', async () => {
+        const session = cache.getOrCreateSession('tag-fork-del-2', {
+            path: '/tmp/p',
+            host: 'h',
+            forkFrom: { parentSessionId: 'parent-1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' },
+        }, null, 'default')
+
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
+
+        await expect(cache.deleteSession(session.id)).rejects.toThrow('Cannot delete active session')
+    })
+
+    test('active 的常规会话（无 forkFrom）仍不可删（既有守卫不变）', async () => {
+        const session = cache.getOrCreateSession('tag-fork-del-3', { path: '/tmp/p', host: 'h' }, null, 'default')
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
+
+        await expect(cache.deleteSession(session.id)).rejects.toThrow('Cannot delete active session')
+    })
+})

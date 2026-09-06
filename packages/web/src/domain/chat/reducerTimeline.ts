@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
+import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, CustomBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
@@ -173,6 +173,21 @@ export function reduceTimeline(
                 event,
                 meta: msg.meta
             }))
+            continue
+        }
+
+        if (msg.role === 'custom') {
+            // 自定义消息（ADR 0002，如 fork 溯源）：block 数组已在归一层剔除 unknown，
+            // 此处透传成单块，由渲染层注册表按 block.type + ref.targetType 分发
+            const customBlock: CustomBlock = {
+                kind: 'custom',
+                id: msg.id,
+                localId: msg.localId,
+                createdAt: msg.createdAt,
+                blocks: msg.content,
+                meta: msg.meta
+            }
+            blocks.push(customBlock)
             continue
         }
 

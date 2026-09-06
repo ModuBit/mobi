@@ -23,6 +23,7 @@ import { Hono } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkProjectAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
+import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
@@ -736,7 +737,8 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
-        if (sessionResult.session.active) {
+        // 守卫单一来源 sessionDeleteGuard：fork 行未激活（forkFrom 在场且非 running）不算 active，可删
+        if (!isSessionRowDeletable(sessionResult.session)) {
             return c.json({ error: 'Cannot delete active session. Archive it first.' }, 409)
         }
 

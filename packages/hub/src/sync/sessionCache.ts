@@ -20,6 +20,7 @@ import type { TaskItem } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { hubLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
+import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
 import { RuntimeStateStore } from './runtimeStateStore'
 import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
@@ -582,7 +583,8 @@ export class SessionCache {
             throw new Error('Session not found')
         }
 
-        if (session.active) {
+        // 守卫单一来源 sessionDeleteGuard（fork 行未激活不算 active，spec §4.3）
+        if (!isSessionRowDeletable(session)) {
             throw new Error('Cannot delete active session')
         }
 

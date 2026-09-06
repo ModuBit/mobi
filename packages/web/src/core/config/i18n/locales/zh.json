@@ -140,6 +140,17 @@
             "cost": "累计成本",
             "remaining": "剩余",
             "modelLimit": "模型上限"
+        },
+        "fork": {
+            "forkName": "{{name}} · 分叉",
+            "pendingFallback": "分叉会话",
+            "pendingBadge": "待激活",
+            "errorBadge": "激活失败",
+            "errorReason": {
+                "anchorInvalidated": "父会话已回退，分叉点失效",
+                "activationFailed": "分叉激活失败，恢复连接后重新发送消息即可重试",
+                "unknown": "分叉激活失败"
+            }
         }
     },
     "chat": {
@@ -230,6 +241,18 @@
             "targetLabel": "回退至此",
             "restoreDesc": "将工作目录文件回滚到此刻的快照",
             "rewindOnlyDesc": "代码保持现状，仅重写后续对话"
+        },
+        "fork": {
+            "title": "从此分叉",
+            "notice": "分叉将创建一个新会话，当前会话保持不变",
+            "targetLabel": "分叉自这条回复",
+            "create": "创建分叉会话",
+            "createDesc": "复制此前的对话历史，可立即输入新方向",
+            "unavailable": "该消息暂无法分叉",
+            "anchorMissing": "分叉点已失效，无法分叉",
+            "beforeBoundary": "上下文边界之前的消息无法分叉",
+            "turnStartMissing": "分叉点所在轮次定位失败，无法分叉",
+            "parentNativeMissing": "当前会话状态不支持分叉"
         },
         "expand": "展开",
         "collapse": "收起",
@@ -341,6 +364,9 @@
             "file": "[文件]",
             "image": "[图片]",
             "quote": "[引用]"
+        },
+        "custom": {
+            "sessionRefMissing": "已删除的会话"
         }
     },
     "files": {

@@ -40,7 +40,7 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
-import { getSessionDisplayName } from '@/core/utils/sessionUtils'
+import { ForkRowTitle } from './ForkRowTitle'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
@@ -338,13 +338,13 @@ export function MobileProjectList() {
                 ⚠️ 故意使用 antd 原生 Drawer，**不要改成 MobileDrawer**。
                 这是轻量操作菜单：内容固定（几个按钮）、高度低、用完即关，
                 不需要 MobileDrawer 的下拉关闭手势、拖拽指示条、85dvh maxHeight。
-                title 显示当前操作的 session 名称（getSessionDisplayName），让用户
+                title 显示当前操作的 session 名称（ForkRowTitle，fork 感知命名），让用户
                 明确知道正在修改哪个会话 */}
             <Drawer
                 placement="bottom"
                 open={!!actionSessionId}
                 onClose={closeActionSheet}
-                title={actionSession ? getSessionDisplayName(actionSession) : undefined}
+                title={actionSession ? <ForkRowTitle session={actionSession}>{(title) => title}</ForkRowTitle> : undefined}
                 closable={false}
                 styles={{ body: { padding: '8px 0 max(24px, env(safe-area-inset-bottom))' } }}
             >

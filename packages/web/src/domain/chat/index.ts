@@ -31,6 +31,7 @@ export type {
     CliOutputBlock,
     AgentEventBlock,
     ToolCallBlock,
+    CustomBlock,
     ChatBlock
 } from './types'
 

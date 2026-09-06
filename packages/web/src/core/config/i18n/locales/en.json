@@ -140,6 +140,17 @@
             "cost": "Total Cost",
             "remaining": "Remaining",
             "modelLimit": "Model Limit"
+        },
+        "fork": {
+            "forkName": "{{name}} · forked",
+            "pendingFallback": "Forked session",
+            "pendingBadge": "Pending",
+            "errorBadge": "Activation failed",
+            "errorReason": {
+                "anchorInvalidated": "Parent session was rewound past the fork point; the fork anchor is no longer valid",
+                "activationFailed": "Fork activation failed. Re-send a message once the connection is restored to retry",
+                "unknown": "Fork activation failed"
+            }
         }
     },
     "chat": {
@@ -230,6 +241,18 @@
             "targetLabel": "Rewind to",
             "restoreDesc": "Restore working directory files to this snapshot",
             "rewindOnlyDesc": "Keep code as-is, rewrite the conversation only"
+        },
+        "fork": {
+            "title": "Fork from here",
+            "notice": "Forking creates a new session; the current session stays unchanged",
+            "targetLabel": "Fork from this reply",
+            "create": "Create forked session",
+            "createDesc": "Copies the conversation up to this point — type a new direction right away",
+            "unavailable": "This message cannot be forked",
+            "anchorMissing": "The fork point is no longer valid",
+            "beforeBoundary": "Messages before the context boundary cannot be forked",
+            "turnStartMissing": "Could not locate the turn of the fork point",
+            "parentNativeMissing": "This session cannot be forked in its current state"
         },
         "expand": "Expand",
         "collapse": "Collapse",
@@ -341,6 +364,9 @@
             "file": "[File]",
             "image": "[Image]",
             "quote": "[Quote]"
+        },
+        "custom": {
+            "sessionRefMissing": "Deleted session"
         }
     },
     "files": {

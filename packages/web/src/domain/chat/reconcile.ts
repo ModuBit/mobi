@@ -21,6 +21,7 @@ import type {
     AgentTextBlock,
     ChatBlock,
     CliOutputBlock,
+    CustomBlock,
     EventDisplay,
     ToolCallBlock,
     ToolPermission,
@@ -278,6 +279,12 @@ function reconcileBlock(block: ChatBlock, prevById: ChatBlocksById): ChatBlock {
     if (block.kind === 'compact-summary') {
         // compact-summary 消息不需要特殊处理，直接返回
         return block
+    }
+
+    if (block.kind === 'custom') {
+        // custom 消息（ADR 0002）：内容静态（block 数组来自归一层，每次归一都是新引用，
+        // 引用比较无意义），无内部状态可合并——与 compact-summary 同策略直接返回
+        return block satisfies CustomBlock
     }
 
     const prevBlock = prev as AgentEventBlock

@@ -20,6 +20,9 @@ import { useTranslation } from 'react-i18next'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
+import { resolveForkSessionState } from './forkSessionLabel'
+import { ForkRowTitle } from './ForkRowTitle'
+import { ForkStateBadge } from './ForkStateBadge'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session } from '@/core/data/api/types'
@@ -47,6 +50,8 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
     const avatarStatus = getSessionAvatarStatus(session)
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt, t)
+    // fork 行：自动命名「〈parent 标题〉 · 分叉」+ 待激活/激活失败徽标（spec §4.3）
+    const forkState = resolveForkSessionState(session, t)
 
     return (
         <SessionItem
@@ -58,7 +63,13 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
             onTouchMove={longPress.onTouchMove}
         >
             <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
-            <SessionName $token={token}>{displayName}</SessionName>
+            {forkState.isForkRow ? <ForkRowTitle session={session}>{(title) => <SessionName $token={token}>{title}</SessionName>}</ForkRowTitle> : <SessionName $token={token}>{displayName}</SessionName>}
+            {forkState.isForkRow && (
+                <ForkStateBadge
+                    variant={forkState.isActivationFailed ? 'error' : 'pending'}
+                    errorText={forkState.errorText}
+                />
+            )}
             <TimeLabel $token={token}>{relativeTime}</TimeLabel>
             <MoreButton
                 $token={token}

@@ -177,6 +177,35 @@ export const ForkedFromMetadataSchema = z.object({
 
 export type ForkedFromMetadata = z.infer<typeof ForkedFromMetadataSchema>
 
+/**
+ * fork 激活失败错误态（fork-session spec §5.3）。
+ *
+ * 契约：CLI 激活预检/激活失败时写入（ticket 04 对接），激活成功或用户删除会话时清除。
+ * ⚠️ 失败时必须保留 forkFrom（不清除）——web 的待激活判定与 hub 的删除守卫都以 forkFrom
+ * 在场为「未激活」依据；forkError 只是叠加的失败标记，不是替代。
+ */
+export const ForkErrorMetadataSchema = z.object({
+    /** 失败原因码（稳定契约，web 按码映射文案；未知码回退通用文案）。已知码见 FORK_ERROR_CODES */
+    code: z.string(),
+    /** 失败时刻（epoch ms） */
+    at: z.number(),
+    /** 附加调试细节（可选，UI 不直接展示） */
+    detail: z.string().optional(),
+})
+
+export type ForkErrorMetadata = z.infer<typeof ForkErrorMetadataSchema>
+
+/**
+ * fork 激活失败原因码已知集合（web 文案映射用；生产方 ticket 04 按此取值，新增码时同步扩展）。
+ * code 字段本身保持松散 string——schema 不硬拒未知码，老 web 端遇新码回退通用文案（向前兼容）。
+ * - 'anchor-invalidated'：激活预检失败，锚点已不在 parent transcript 上（parent rewind 深于锚点）
+ * - 'parent-transcript-missing'：激活预检失败，parent transcript 文件缺失
+ * - 'activation-failed'：resume spawn / fork query 执行失败（如 CLI 离线），恢复后重发消息即重试
+ */
+export const FORK_ERROR_CODES = ['anchor-invalidated', 'parent-transcript-missing', 'activation-failed'] as const
+
+export type ForkErrorCode = (typeof FORK_ERROR_CODES)[number]
+
 export const MetadataSchema = z.object({
     path: z.string(),
     host: z.string(),
@@ -192,6 +221,8 @@ export const MetadataSchema = z.object({
     forkFrom: ForkFromMetadataSchema.optional(),
     /** fork 持久溯源：终身保留，存在即禁止再次 fork（fork-session spec §2） */
     forkedFrom: ForkedFromMetadataSchema.optional(),
+    /** fork 激活失败错误态：失败时保留 forkFrom 并叠加本字段（激活成功或删除时清除，fork-session spec §5.3；ticket 04 写入） */
+    forkError: ForkErrorMetadataSchema.optional(),
     tools: z.array(z.string()).optional(),
     /** SDK 元数据（来自 initializationResult） */
     sdkMetadata: SDKMetadataSchema.optional(),

@@ -15,7 +15,7 @@
  */
 
 import { unwrapRoleWrappedRecordEnvelope, unwrapOutputMessage } from '@mobi/shared/messages'
-import { safeStringify } from '@mobi/shared'
+import { normalizeContentBlocks, safeStringify } from '@mobi/shared'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import type { NormalizedMessage, MessageMeta } from './types'
 import { isSkippableAgentContent, normalizeAgentRecord } from './normalizeAgent'
@@ -118,6 +118,26 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             originalText: message.originalText,
             snapshot,
             messageId,
+        }
+    }
+
+    // 自定义消息（ADR 0002）：mobi 注入（首期为 fork 溯源），content 走统一 block 词汇表全词汇通道。
+    // unknown block / 未注册 targetType 的 ref 由 normalizeContentBlocks 统一剔除；全部无法识别
+    // （返回 null）则整条消息不渲染——空自定义消息没有展示意义
+    if (record.role === 'custom') {
+        const blocks = normalizeContentBlocks(record.content, { allowRef: true })
+        if (!blocks) return null
+        return {
+            id: message.id,
+            localId: message.localId,
+            createdAt: message.createdAt,
+            role: 'custom',
+            isSidechain: false,
+            content: blocks,
+            meta: record.meta as MessageMeta | undefined,
+            status: message.status,
+            originalText: message.originalText,
+            snapshot,
         }
     }
 

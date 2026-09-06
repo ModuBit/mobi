@@ -24,6 +24,9 @@ import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeS
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
+import { resolveForkSessionState } from './forkSessionLabel'
+import { ForkRowTitle } from './ForkRowTitle'
+import { ForkStateBadge } from './ForkStateBadge'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import type { Session } from '@/core/data/api/types'
 import {
@@ -64,6 +67,9 @@ export function SessionRow({
     const { t } = useTranslation()
     const sessionBadge = useNotificationBadgeStore((s) => s.badges.get(session.id))
     const hasUnread = Boolean(sessionBadge && (sessionBadge.ready || sessionBadge.permission))
+    // fork 行：自动命名「〈parent 标题〉 · 分叉」+ 待激活/激活失败徽标（spec §4.3）。
+    // 徽标状态纯函数可得；parent 标题查询由 ForkRowTitle 承担且仅 fork 行挂载
+    const forkState = resolveForkSessionState(session, t)
 
     if (isRenaming) {
         return (
@@ -91,9 +97,26 @@ export function SessionRow({
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
             <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
-            <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
-                <SessionName>{displayName}</SessionName>
-            </AppTooltip>
+            {forkState.isForkRow ? (
+                // fork 行标题实时取 parent（ForkRowTitle 内部承担查询），tooltip 展示解析后的标题
+                <ForkRowTitle session={session}>
+                    {(title) => (
+                        <AppTooltip title={title} mouseEnterDelay={0.5} placement="right">
+                            <SessionName>{title}</SessionName>
+                        </AppTooltip>
+                    )}
+                </ForkRowTitle>
+            ) : (
+                <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
+                    <SessionName>{displayName}</SessionName>
+                </AppTooltip>
+            )}
+            {forkState.isForkRow && (
+                <ForkStateBadge
+                    variant={forkState.isActivationFailed ? 'error' : 'pending'}
+                    errorText={forkState.errorText}
+                />
+            )}
             {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
             <TimeLabel $token={token} className="session-time">{relativeTime}</TimeLabel>
             <SessionActions className="session-actions">

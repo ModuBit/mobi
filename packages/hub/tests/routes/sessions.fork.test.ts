@@ -175,3 +175,67 @@ describe('POST /api/sessions/:id/fork', () => {
         expect(res.status).toBe(409)
     })
 })
+
+describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）', () => {
+    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let cleanup: () => void
+
+    function setupWithSession(session: Partial<Session>, deleteResult: 'ok' | Error) {
+        const engine = {
+            resolveSessionAccess: (_id: string, _ns: string) => ({
+                ok: true as const,
+                sessionId: 'test-session-1',
+                session: { ...mockSession, ...session } as Session,
+            }),
+            deleteSession: (_sessionId: string) =>
+                deleteResult === 'ok' ? Promise.resolve() : Promise.reject(deleteResult),
+        } as unknown as SyncEngine
+        return setupTestApp(engine).then(s => {
+            app = s.app
+            cleanup = s.cleanup
+        })
+    }
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    async function del(token: string) {
+        return app.request('/api/sessions/test-session-1', {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+    }
+
+    test('待激活 fork 行（active + forkFrom、非 running）可删 → 200', async () => {
+        await setupWithSession({
+            active: true,
+            running: false,
+            metadata: { path: '/tmp/test', host: 'test-host', forkFrom: { parentSessionId: 'p', parentNativeId: 'pn', anchorNativeId: 'an' } },
+        }, 'ok')
+        const token = await getAuthToken(app)
+
+        const res = await del(token)
+        expect(res.status).toBe(200)
+    })
+
+    test('active 常规会话（无 forkFrom）不可删 → 409', async () => {
+        await setupWithSession({ active: true, running: false }, 'ok')
+        const token = await getAuthToken(app)
+
+        const res = await del(token)
+        expect(res.status).toBe(409)
+    })
+
+    test('running 中的 fork 行不可删 → 409', async () => {
+        await setupWithSession({
+            active: true,
+            running: true,
+            metadata: { path: '/tmp/test', host: 'test-host', forkFrom: { parentSessionId: 'p', parentNativeId: 'pn', anchorNativeId: 'an' } },
+        }, 'ok')
+        const token = await getAuthToken(app)
+
+        const res = await del(token)
+        expect(res.status).toBe(409)
+    })
+})

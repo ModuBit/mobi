@@ -15,7 +15,7 @@
  */
 
 import type { MessageStatus } from '@/core/data/api/types'
-import type { PermissionUpdate, StopKind, UserContentBlock } from '@mobi/shared'
+import type { PermissionUpdate, StopKind, UserContentBlock, ContentBlock } from '@mobi/shared'
 
 /** 消息元数据 */
 export type MessageMeta = {
@@ -157,6 +157,10 @@ export type NormalizedMessage = ({
 } | {
     role: 'event'
     content: AgentEvent
+} | {
+    /** mobi 注入的自定义消息（ADR 0002）：content = 统一 block 词汇表归一后的数组（全词汇通道） */
+    role: 'custom'
+    content: ContentBlock[]
 }) & {
     id: string
     localId: string | null
@@ -309,4 +313,19 @@ export type ToolCallBlock = {
     meta?: MessageMeta
 }
 
-export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | CompactSummaryBlock | ToolCallBlock | AgentEventBlock
+/**
+ * 自定义消息块（ADR 0002）：hub/mobi 注入的非 CC 消息（首期为 fork 溯源「fork 自会话 xxx」）。
+ * blocks 为统一词汇表（text/ref/image/document/quote）归一后的数组——unknown block 与未注册
+ * targetType 的 ref 已在归一层（normalizeContentBlocks allowRef）剔除；渲染层按 block.type +
+ * ref.targetType 两级注册表分发（见 blocks/CustomBlock.tsx），未注册项跳过不渲染。
+ */
+export type CustomBlock = {
+    kind: 'custom'
+    id: string
+    localId: string | null
+    createdAt: number
+    blocks: ContentBlock[]
+    meta?: MessageMeta
+}
+
+export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | CompactSummaryBlock | ToolCallBlock | AgentEventBlock | CustomBlock
