@@ -25,7 +25,7 @@ import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import type { PromptPayload } from "@/utils/promptBuilder";
-import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKResultMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
