@@ -27,6 +27,7 @@ import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
 import { registerAgentCapabilities, syncAgentRename } from '@/agent/agentCapabilities';
 import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from '@/claude/agentCapabilities';
 import { startHookServer } from '@/claude/utils/startHookServer';
+import { applySessionIdBinding } from '@/claude/utils/sessionIdBinding';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
@@ -165,15 +166,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-
-            const currentSession = currentSessionRef.current;
-            if (currentSession) {
-                const previousSessionId = currentSession.sessionId;
-                if (previousSessionId !== sessionId) {
-                    logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
-                    currentSession.onSessionFound(sessionId);
-                }
-            }
+            // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
+            applySessionIdBinding(() => currentSessionRef.current, sessionId);
         }
     });
     logger.debug(`[START] Hook server started on port ${hookServer.port}`);
