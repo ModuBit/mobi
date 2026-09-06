@@ -18,10 +18,11 @@ import { COMMAND_LIFECYCLE_STATES, SNAPSHOT_PENDING_ID, ContextUsageSchema, Goal
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
+import type { RuntimeState } from '@mobi/shared/types'
 import { hubLogger } from '../../../logger'
 import type { Store, StoredMessage, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
+import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import { toDecryptedMessage } from '../../../sync/messageService'
@@ -44,28 +45,6 @@ import {
 } from '../../../sync/backgroundTasks'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
-
-type SessionAlivePayload = {
-    sid: string
-    time: number
-    running?: boolean
-    mode?: 'local' | 'remote'
-    permissionMode?: PermissionMode
-    model?: string | null
-    effort?: EffortLevel
-    outputStyle?: string
-}
-
-type SessionEndPayload = {
-    sid: string
-    time: number
-}
-
-type IdleTimeoutWarningPayload = {
-    sid: string
-    timeoutAt: number
-    remainingMs: number
-}
 
 type ResolveSessionAccess = (sessionId: string) => AccessResult<StoredSession>
 
@@ -107,17 +86,15 @@ export type SessionHandlersDeps = {
     backgroundTaskTracker: BackgroundTaskTracker
     /** rewind 软删除上界（读侧：rewind-truncated 消费；写侧：SyncEngine 受理时 mark，共用实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
-    onSessionAlive?: (payload: SessionAlivePayload) => void
-    onSessionEnd?: (payload: SessionEndPayload) => void
-    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
-    onGoalStatus?: (payload: { sid: string; goalStatus: GoalStatus | null }) => void
-    /** CLI 轮次起点上报（running 翻转 false→true 时）→ 落库 runtimeState.runStartedAt + SSE 推 */
-    onRunStarted?: (payload: { sid: string; runStartedAt: number }) => void
+    /** 会话事实上报落库入口（深化候选③：单一声明源见 sync/sessionFacts.ts，
+     *  实现方为 SyncEngine/SessionCache——此前五个 onXxx 回调在此/在 CliHandlersDeps/
+     *  SocketServerDeps 手写三遍且已漂移） */
+    factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onRunStarted, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, factsSink, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -455,90 +432,58 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
     socket.on('update-state', handleUpdateState)
 
-    socket.on('session-alive', (data: SessionAlivePayload) => {
-        if (!data || typeof data.sid !== 'string' || typeof data.time !== 'number') {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
+    // ===== 会话事实上报（深化候选③）：公共前置收口 =====
+    // 载荷 schema 表：统一 Zod 校验（此前各 handler 手写 typeof / Zod / isFinite 三种风格并存）。
+    // session-alive / session-end 只严格校验 sid + time（历史行为：其余字段透传，CLI 是其值权威）；
+    // context-usage / goal-status 的非空载荷必须是合法 schema（防 malformed 落库 + SSE 推 web 崩溃）
+    const factSchemas = {
+        'session-alive': z.object({ sid: z.string(), time: z.number() }).passthrough(),
+        'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
+        'goal-status': z.object({ sid: z.string(), goalStatus: GoalStatusSchema.nullable() }),
+        'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
+        'session-end': z.object({ sid: z.string(), time: z.number() }).passthrough(),
+    } as const
+
+    /** 事实上报公共前置：payload 校验 → session 鉴权 → sink 分发。
+     *  新增一种事实 = schema 表加一项 + SessionFactsSink 加一个方法 + 一行转发，不再复制样板 */
+    const validateAndForward = <S extends z.ZodType<{ sid: string }>>(
+        schema: S,
+        raw: unknown,
+        deliver: (data: z.infer<S>) => void
+    ): void => {
+        const parsed = schema.safeParse(raw)
+        if (!parsed.success) return
+        const sessionAccess = resolveSessionAccess(parsed.data.sid)
         if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
+            emitAccessError('session', parsed.data.sid, sessionAccess.reason)
             return
         }
-        onSessionAlive?.(data)
-    })
+        deliver(parsed.data)
+    }
 
-    socket.on('context-usage', (data: { sid: string; contextUsage: ContextUsage | null }) => {
-        // null = 清空（/clear）；非 null 必须是合法 ContextUsage
-        // （与 goal-status 等 handler 一致用 Zod 校验，防 malformed payload 落库 + SSE 推 web 崩溃）
-        if (!data || typeof data.sid !== 'string') return
-        if (data.contextUsage !== null) {
-            const parsed = ContextUsageSchema.safeParse(data.contextUsage)
-            if (!parsed.success) return
-            data.contextUsage = parsed.data
+    // CLI 离线收尾：把仍排队的本地 user 消息全部 invoke，防悬浮条卡死（通知性副作用，
+    // 不属「落库事实」，故独立于 sink——挂 session-end 转发之后）
+    const forcePushUnsubmittedAfterEnd = (sid: string): void => {
+        const unsubmitted = store.messages.getUnsubmittedLocalMessages(sid)
+        if (unsubmitted.length === 0) return
+        const pushedAt = Date.now()
+        const lids = unsubmitted.map(m => m.localId).filter((l): l is string => Boolean(l))
+        const fresh = store.messages.markMessagesPushed(sid, lids, pushedAt)
+        if (fresh.length > 0) {
+            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: pushedAt })
         }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        onContextUsage?.(data)
-    })
+    }
 
-    socket.on('goal-status', (data: { sid: string; goalStatus: GoalStatus | null }) => {
-        // null = 清空（达成后/手动清理）；非 null 必须是合法 GoalStatus
-        // （与 message/updateState 等 handler 一致用 Zod 校验，防 malformed payload 落库 + SSE 推 web 崩溃）
-        if (!data || typeof data.sid !== 'string') return
-        if (data.goalStatus !== null) {
-            const parsed = GoalStatusSchema.safeParse(data.goalStatus)
-            if (!parsed.success) return
-            data.goalStatus = parsed.data
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        onGoalStatus?.(data)
-    })
+    socket.on('session-alive', (raw) => validateAndForward(factSchemas['session-alive'], raw, (data) => factsSink?.handleSessionAlive?.(data)))
+    socket.on('context-usage', (raw) => validateAndForward(factSchemas['context-usage'], raw, (data) => factsSink?.handleContextUsage?.(data)))
+    socket.on('goal-status', (raw) => validateAndForward(factSchemas['goal-status'], raw, (data) => factsSink?.handleGoalStatus?.(data)))
+    socket.on('run-started', (raw) => validateAndForward(factSchemas['run-started'], raw, (data) => factsSink?.handleRunStarted?.(data)))
+    socket.on('session-end', (raw) => validateAndForward(factSchemas['session-end'], raw, (data) => {
+        factsSink?.handleSessionEnd?.(data)
+        forcePushUnsubmittedAfterEnd(data.sid)
+    }))
 
-    socket.on('run-started', (data: { sid: string; runStartedAt: number }) => {
-        // 轮次起点（epoch ms）：CLI running 翻转 false→true 时上报（SessionBase.onRunningChange）
-        if (!data || typeof data.sid !== 'string' || typeof data.runStartedAt !== 'number'
-            || !Number.isFinite(data.runStartedAt) || data.runStartedAt <= 0) {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        onRunStarted?.(data)
-    })
-
-    socket.on('session-end', (data: SessionEndPayload) => {
-        if (!data || typeof data.sid !== 'string' || typeof data.time !== 'number') {
-            return
-        }
-        const sessionAccess = resolveSessionAccess(data.sid)
-        if (!sessionAccess.ok) {
-            emitAccessError('session', data.sid, sessionAccess.reason)
-            return
-        }
-        onSessionEnd?.(data)
-
-        // CLI 离线：把仍排队的本地 user 消息全部 invoke，防悬浮条卡死
-        const unsubmitted = store.messages.getUnsubmittedLocalMessages(data.sid)
-        if (unsubmitted.length > 0) {
-            const pushedAt = Date.now()
-            const lids = unsubmitted.map(m => m.localId).filter((l): l is string => Boolean(l))
-            const fresh = store.messages.markMessagesPushed(data.sid, lids, pushedAt)
-            if (fresh.length > 0) {
-                onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt: pushedAt })
-            }
-        }
-    })
-
-    socket.on('idle-timeout-warning', (data: IdleTimeoutWarningPayload) => {
+    socket.on('idle-timeout-warning', (data: { sid?: unknown; timeoutAt?: unknown; remainingMs?: unknown }) => {
         if (!data || typeof data.sid !== 'string' || typeof data.timeoutAt !== 'number' || typeof data.remainingMs !== 'number') {
             return
         }

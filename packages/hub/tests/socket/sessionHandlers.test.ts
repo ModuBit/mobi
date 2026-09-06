@@ -191,7 +191,7 @@ describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus'
             },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
-            onGoalStatus: (payload: { sid: string; goalStatus: unknown }) => { captured.push(payload) },
+            factsSink: { handleGoalStatus: (payload: { sid: string; goalStatus: unknown }) => { captured.push(payload) } },
         }
         return { deps, captured, accessError }
     }
@@ -266,7 +266,7 @@ describe('context-usage：CLI 上报水位 → 校验 + 委派 onContextUsage', 
             },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
-            onContextUsage: (payload: { sid: string; contextUsage: unknown }) => { captured.push(payload) },
+            factsSink: { handleContextUsage: (payload: { sid: string; contextUsage: unknown }) => { captured.push(payload) } },
         }
         return { deps, captured, accessError }
     }
@@ -343,7 +343,7 @@ describe('run-started：CLI 轮次起点上报 → 校验 + 委派 onRunStarted'
             },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
-            onRunStarted: (payload: { sid: string; runStartedAt: number }) => { captured.push(payload) },
+            factsSink: { handleRunStarted: (payload: { sid: string; runStartedAt: number }) => { captured.push(payload) } },
         }
         return { deps, captured, accessError }
     }

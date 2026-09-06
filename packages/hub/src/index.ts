@@ -183,16 +183,9 @@ async function main() {
         },
         // Web 端实时事件（如文件变更、终端输出）→ 转发给 SyncEngine 处理
         onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
-        // CLI 心跳保活 → 更新会话活跃状态
-        onSessionAlive: (payload) => syncEngine?.handleSessionAlive(payload),
-        // CLI 上下文用量上报 → 落库 runtimeState.contextUsage + SSE 推
-        onContextUsage: (payload) => syncEngine?.handleContextUsage(payload),
-        // CLI goal 状态上报 → 落库 runtimeState.goalStatus + SSE 推
-        onGoalStatus: (payload) => syncEngine?.handleGoalStatus(payload),
-        // CLI 轮次起点上报（running 翻转）→ 落库 runtimeState.runStartedAt + SSE 推
-        onRunStarted: (payload) => syncEngine?.handleRunStarted(payload),
-        // CLI 断开/结束 → 清理会话资源
-        onSessionEnd: (payload) => syncEngine?.handleSessionEnd(payload),
+        // 会话事实上报（心跳/水位/目标/轮次/结束）→ sink 落库 + SSE 推（深化候选③）；
+        // 惰性：socket server 先于 SyncEngine 创建，handler 触发时才取 sink
+        factsSink: () => syncEngine?.factsSink,
         // CLI 机器心跳 → 更新机器在线状态
         onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload)
     })

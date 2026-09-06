@@ -21,8 +21,8 @@ import { jwtVerify } from 'jose'
 import { parseCookie } from 'cookie'
 import { z } from 'zod'
 import { RPC_MAX_HTTP_BUFFER_SIZE } from '@mobi/shared'
-import type { ContextUsage, GoalStatus } from '@mobi/shared/types'
 import type { Store } from '../store'
+import type { SessionFactsSink } from '../sync/sessionFacts'
 import { configuration } from '../configuration'
 import { constantTimeEquals } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
@@ -81,12 +81,10 @@ export type SocketServerDeps = {
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
     onWebappEvent?: (event: SyncEvent) => void
-    onSessionAlive?: (payload: { sid: string; time: number; running?: boolean; mode?: 'local' | 'remote' }) => void
-    onSessionEnd?: (payload: { sid: string; time: number }) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
-    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
-    onGoalStatus?: (payload: { sid: string; goalStatus: GoalStatus | null }) => void
-    onRunStarted?: (payload: { sid: string; runStartedAt: number }) => void
+    /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts）。
+     *  支持惰性求值——组装层 socket server 先于 SyncEngine 创建，handler 触发时才取 sink */
+    factsSink?: SessionFactsSink | (() => SessionFactsSink | undefined)
 }
 
 export function createSocketServer(deps: SocketServerDeps): {
@@ -182,13 +180,10 @@ export function createSocketServer(deps: SocketServerDeps): {
         terminalRegistry,
         backgroundTaskTracker,
         rewindDeleteBoundTracker: deps.rewindDeleteBoundTracker,
-        // 以下回调转发给 SyncEngine 处理状态同步
-        onSessionAlive: deps.onSessionAlive,  // CLI心跳保活
-        onSessionEnd: deps.onSessionEnd,      // CLI会话结束
-        onMachineAlive: deps.onMachineAlive,  // CLI机器心跳
-        onContextUsage: deps.onContextUsage,  // CLI上下文用量上报
-        onGoalStatus: deps.onGoalStatus,      // CLI goal 状态上报
-        onRunStarted: deps.onRunStarted,      // CLI 轮次起点上报
+        // 会话事实（心跳/水位/目标/轮次/结束）→ sink 落库；机器心跳 → SyncEngine。
+        // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪
+        onMachineAlive: deps.onMachineAlive,
+        factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
         onWebappEvent: deps.onWebappEvent     // Web端实时事件
     }))
 

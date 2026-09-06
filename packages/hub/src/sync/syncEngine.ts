@@ -20,6 +20,7 @@ import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ProjectSessionsResult } from '../store/sessions'
 import { RewindDeleteBoundTracker } from './rewindDeleteBoundTracker'
+import type { SessionFactsSink } from './sessionFacts'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
@@ -93,6 +94,13 @@ export class SyncEngine {
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
         this.store = store
         this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
+        this.factsSink = {
+            handleSessionAlive: (payload) => this.handleSessionAlive(payload),
+            handleSessionEnd: (payload) => this.sessionCache.handleSessionEnd(payload),
+            handleContextUsage: (payload) => this.sessionCache.handleContextUsage(payload),
+            handleGoalStatus: (payload) => this.sessionCache.handleGoalStatus(payload),
+            handleRunStarted: (payload) => this.sessionCache.handleRunStarted(payload),
+        }
         this.warmupCache()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }
@@ -308,21 +316,13 @@ export class SyncEngine {
         }
     }
 
-    handleSessionEnd(payload: { sid: string; time: number }): void {
-        this.sessionCache.handleSessionEnd(payload)
-    }
-
-    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage | null }): void {
-        this.sessionCache.handleContextUsage(payload)
-    }
-
-    handleGoalStatus(payload: { sid: string; goalStatus: GoalStatus | null }): void {
-        this.sessionCache.handleGoalStatus(payload)
-    }
-
-    handleRunStarted(payload: { sid: string; runStartedAt: number }): void {
-        this.sessionCache.handleRunStarted(payload)
-    }
+    /**
+     * CLI 会话事实上报 sink（深化候选③）：socket 层校验/鉴权后的落库入口，单一声明源见
+     * sync/sessionFacts.ts。session-alive 走本类编排版（激活翻转补拉 sdkMetadata），
+     * 其余直连 sessionCache——此前这里是四个一行透传方法，逐个暴露在 SyncEngine 公共
+     * interface 上；收敛为 sink 后新增事实不再扩门面面积。
+     */
+    readonly factsSink: SessionFactsSink
 
     handleMachineAlive(payload: { machineId: string; time: number }): void {
         this.machineCache.handleMachineAlive(payload)
@@ -449,7 +449,7 @@ export class SyncEngine {
 
     async archiveSession(sessionId: string): Promise<void> {
         await this.rpcGateway.killSession(sessionId)
-        this.handleSessionEnd({ sid: sessionId, time: Date.now() })
+        this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now() })
     }
 
     async switchSession(sessionId: string, to: 'remote' | 'local'): Promise<void> {

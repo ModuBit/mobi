@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode } from '@mobi/shared/types'
 import type { Store, StoredMachine, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
+import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -28,43 +28,9 @@ import { registerRpcHandlers } from './rpcHandlers'
 import { registerSessionHandlers } from './sessionHandlers'
 import { cleanupTerminalHandlers, registerTerminalHandlers } from './terminalHandlers'
 
-type SessionAlivePayload = {
-    sid: string
-    time: number
-    running?: boolean
-    mode?: 'local' | 'remote'
-    permissionMode?: PermissionMode
-    model?: string | null
-    effort?: EffortLevel
-    outputStyle?: string
-}
-
-type SessionEndPayload = {
-    sid: string
-    time: number
-}
-
 type MachineAlivePayload = {
     machineId: string
     time: number
-}
-
-export type ContextUsagePayload = {
-    sid: string
-    /** null 表示清空（/clear 后新会话从 0 开始） */
-    contextUsage: ContextUsage | null
-}
-
-export type GoalStatusPayload = {
-    sid: string
-    /** null 表示清空（达成 10s 后 / 手动清理） */
-    goalStatus: GoalStatus | null
-}
-
-export type RunStartedPayload = {
-    sid: string
-    /** 轮次起点（epoch ms，CLI running 翻转 false→true 时上报） */
-    runStartedAt: number
 }
 
 export type CliHandlersDeps = {
@@ -76,20 +42,15 @@ export type CliHandlersDeps = {
     backgroundTaskTracker: BackgroundTaskTracker
     /** rewind 软删除上界（SyncEngine 受理时写；与 SyncEngine 共用同一实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
-    onSessionAlive?: (payload: SessionAlivePayload) => void
-    onSessionEnd?: (payload: SessionEndPayload) => void
+    /** 机器心跳（机器级事实，经 machineHandlers 更新在线状态；不属于会话事实 sink） */
     onMachineAlive?: (payload: MachineAlivePayload) => void
-    /** CLI 事件驱动上报上下文用量 → 落库 runtimeState.contextUsage + SSE 推 */
-    onContextUsage?: (payload: ContextUsagePayload) => void
-    /** CLI 事件驱动上报 goal 状态 → 落库 runtimeState.goalStatus + SSE 推 */
-    onGoalStatus?: (payload: GoalStatusPayload) => void
-    /** CLI 轮次起点上报（running 翻转）→ 落库 runtimeState.runStartedAt + SSE 推 */
-    onRunStarted?: (payload: RunStartedPayload) => void
+    /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
+    factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onGoalStatus, onRunStarted, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -148,11 +109,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         emitAccessError,
         backgroundTaskTracker,
         rewindDeleteBoundTracker,
-        onSessionAlive,
-        onSessionEnd,
-        onContextUsage,
-        onGoalStatus,
-        onRunStarted,
+        factsSink,
         onWebappEvent
     })
     registerMachineHandlers(socket, {
