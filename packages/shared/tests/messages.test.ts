@@ -26,8 +26,15 @@ import {
     DEFAULT_STOP_KIND,
     STOP_KIND_VALUES,
     LIFECYCLE_RANK,
+    MESSAGE_ROLES,
     type MessageFact,
 } from '../src/messages'
+
+describe('MESSAGE_ROLES', () => {
+    it('三足鼎立：user / agent / custom（ADR 0002）', () => {
+        expect(MESSAGE_ROLES).toEqual(['user', 'agent', 'custom'])
+    })
+})
 
 describe('isRoleWrappedRecord', () => {
     it('含 role 和 content 的对象返回 true', () => {

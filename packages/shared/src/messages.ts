@@ -22,6 +22,20 @@ type RoleWrappedRecord = {
     meta?: unknown
 }
 
+/**
+ * 消息信封 role 词汇（来源维度，单一来源）——三足鼎立（ADR 0002）：
+ * - 'user'：mobi 构造的用户消息
+ * - 'agent'：CC 返回的原始消息
+ * - 'custom'：mobi 注入的自定义消息（如 fork 溯源「fork 自会话 xxx」），不来自 CC
+ *
+ * 信封传输/读取保持松散 string（见 RoleWrappedRecord）：历史信封还有 'assistant'
+ * （老路径遗留，读取兼容），消费方一律对 role 做显式值判别、未知值走各自默认分支
+ * （`role === 'agent'` 类判别天然免疫新值）——新增 role 取值只改这里 + 消费方按需显式接入。
+ */
+export const MESSAGE_ROLES = ['user', 'agent', 'custom'] as const
+
+export type MessageRole = (typeof MESSAGE_ROLES)[number]
+
 // Claude 系统消息中可见的子类型
 const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'api_error',
