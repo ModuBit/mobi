@@ -25,15 +25,14 @@ import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import type { PromptPayload } from "@/utils/promptBuilder";
-import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKResultMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage } from "./utils/contextUsageCalc";
-import { applyContextReset, type ContextUsageMemory } from "./utils/contextReset";
+import { applyContextReset } from "./utils/contextReset";
 import { CompactStartGate } from "./utils/compactLifecycle";
-import { guessContextWindow } from "./utils/modelContextWindow";
+import { ContextUsageTracker } from "./contextUsageTracker";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
@@ -46,7 +45,6 @@ import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
-import { extractBreakdown } from './utils/contextBreakdown';
 import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
@@ -83,29 +81,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 消息 payload push 进 SDK input stream
     // （payload 可为数组 content block——队列消息可能是带图片的 PromptPayload）
     private steerSink: ((payload: PromptPayload, localId?: string) => boolean) | null = null;
-    // 上次真实 turn 的窗口/成本/瞬时 usage 记忆，供实时水位与 compact_boundary 上报复用
-    // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）。
-    // 三份记忆同生共死（上报一起读、上下文重置一起清），故集中为对象经 applyContextReset 整体归零。
-    // 初值 0 = 窗口未知：主线 assistant 到达时按模型名猜（guessContextWindow）预填，
-    // result.modelUsage 到达后始终为权威真实值
-    private contextMemory: ContextUsageMemory = {
-        lastMaxTokens: 0,
-        lastCostUsd: 0,
-        lastAssistantUsage: undefined,
-        lastBreakdown: undefined,
-        lastCcWindowTokens: 0,
-        lastModelContextTokens: 0,
-    }
-    /** 水位上报代际：compact_boundary（真实水位骤变）与主线 assistant 实时上报（更新读数）各自递增；
-     *  handleContextUsage 的 result 上报在 fetchBreakdown await 前后比对，代际变化 = 期间已有更新数据
-     *  上报（下轮流式 / compact post_tokens），此刻再发旧 turn 读数会让水位环短暂回退，放弃 */
-    private contextUsageGeneration = 0
-    /**
-     * CLI 请求的模型名（system/init.model，与 result.modelUsage key 同源）。
-     * 窗口猜测用它而非 assistant.message.model——网关渠道后者是上游真实名
-     * （如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源（见 reportAssistantUsage）
-     */
-    private lastRequestModel: string | undefined
+    // 上次真实 turn 的窗口/成本/瞬时 usage 记忆、代际守卫、窗口口径——全部内藏在 tracker，
+    // launcher 只在 SDK 事件点转发（深化候选①，见 contextUsageTracker.ts 与其编排测试）
+    private readonly contextTracker = new ContextUsageTracker({
+        // 读：queryRef 生命周期归 launcher，tracker 只见通道；写：hub 上报通道
+        fetchSummary: () => this.fetchContextSummary(),
+        reportUsage: (usage) => this.session.client.reportContextUsage(usage),
+    })
     /** turn 追踪（批次 A 撤回）：均为单值标量（D10）。hasOutput 由 sdkOutputLoop 回调置位、
      *  result 到达复位；lastPushedNativeId 在 push 用户消息时覆盖记录（丢失只降级不误删） */
     private turnTracking: TurnTrackingState = { hasOutput: false, lastPushedNativeId: null }
@@ -290,43 +272,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.turnTracking.lastPushedNativeId = null
     }
 
-    private async handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): Promise<void> {
-        this.resetTurnTracking()
-        // compact 的 result：用量已由 compact_boundary 的 post_tokens 上报，此处只回填累计成本
-        // （compact 自身的 total_cost_usd），避免连续 /compact 期间 lastCostUsd 冻结
-        if (isCompact) {
-            this.contextMemory.lastCostUsd = resultMsg.total_cost_usd ?? this.contextMemory.lastCostUsd
-            return
-        }
-        // 请求名传入 result 刷新：modelUsage 多模型条目时按请求名精确选中主模型，
-        // 不靠「inputTokens 最大」启发式（子代理流量大的 turn 会误选，见 calcContextUsageFromResult）。
-        // 类目细分 + CC 有效窗口（rawMaxTokens，含用户 autocompact 阈值）先拉取再参与计算，
-        // 让本轮 result 的窗口口径即用上最新值（而非滞后一轮）。await 期间代际变化（下轮流式
-        // 上报 / compact_boundary 到达）→ 本条旧 turn 读数放弃，此刻再发会让水位环短暂回退
-        const generation = this.contextUsageGeneration
-        const summary = await this.fetchContextSummary()
-        if (generation !== this.contextUsageGeneration) return
-        if (summary) {
-            if (summary.rawMaxTokens > 0) this.contextMemory.lastCcWindowTokens = summary.rawMaxTokens
-            const breakdown = extractBreakdown(summary) ?? undefined
-            if (breakdown) this.contextMemory.lastBreakdown = breakdown
-        }
-        const r = calcContextUsageFromResult(resultMsg, this.contextMemory.lastAssistantUsage, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd, this.lastRequestModel, this.contextMemory.lastCcWindowTokens)
-        if (r.maxTokens > 0) this.contextMemory.lastMaxTokens = r.maxTokens
-        if (r.modelContextTokens !== undefined) this.contextMemory.lastModelContextTokens = r.modelContextTokens
-        if (r.costUsd !== undefined) this.contextMemory.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
-        if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
-        try {
-            this.session.client.reportContextUsage({
-                ...r.usage,
-                ...(this.contextMemory.lastBreakdown ? { breakdown: this.contextMemory.lastBreakdown } : {}),
-                ...(this.contextMemory.lastModelContextTokens > 0 ? { modelContextTokens: this.contextMemory.lastModelContextTokens } : {}),
-            })
-        } catch (e) {
-            logger.debug('[remote]: reportContextUsage failed', e)
-        }
-    }
-
     /**
      * 拉取 getContextUsage summary（detail:'summary'，零 API/零 LLM——本地估算）。
      * query 不在（已关闭）/调用失败 → undefined，调用方按无细分上报。
@@ -343,74 +288,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
-     * query 启动时采集首轮前水位：fresh query 无 response usage，summary 的 totalTokens
-     * 回退为类目估算之和（= 静态基础占用：system prompt + 工具定义 + CLAUDE.md + skills），
-     * rawMaxTokens 是 CC 权威窗口（替代 guessContextWindow 的 [1m] 正则猜测优先级）。
-     * 仅在尚无窗口记忆时上报（lastMaxTokens===0 = 本会话还没有 result）；拉取期间已有
-     * result 到达（竞态）则放弃——result 路径的实测值更权威。
-     */
-    private async reportStartupContextUsage(query: Query): Promise<void> {
-        if (!query.getContextUsage) return
-        if (this.contextMemory.lastMaxTokens > 0) return
-        try {
-            const summary = await query.getContextUsage({ detail: 'summary' })
-            if (this.contextMemory.lastMaxTokens > 0) return  // 双检：await 期间 result 已到达
-            const rawMax = summary.rawMaxTokens > 0
-                ? summary.rawMaxTokens
-                : guessContextWindow(summary.model) ?? 0
-            if (rawMax <= 0) return
-            this.contextMemory.lastMaxTokens = rawMax
-            this.contextMemory.lastCcWindowTokens = summary.rawMaxTokens > 0 ? summary.rawMaxTokens : 0
-            const breakdown = extractBreakdown(summary) ?? undefined
-            if (breakdown) this.contextMemory.lastBreakdown = breakdown
-            if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
-            this.session.client.reportContextUsage({
-                totalTokens: summary.totalTokens,
-                maxTokens: rawMax,
-                percentage: (summary.totalTokens / rawMax) * 100,
-                costUsd: 0,
-                ...(breakdown ? { breakdown } : {}),
-            })
-        } catch (e) {
-            logger.debug('[remote]: startup getContextUsage failed', e)
-        }
-    }
-
-    /**
      * compact 开始（幂等收口）：手动 /compact（specialCommand，早于 SDK 实际压缩）与
      * 自动压缩（system:status{compacting}）双源同汇，同一次压缩只发一次 compact-started
      * session event，web 据此进入压缩态（自动压缩也获得「压缩中」感知）。
-     * 终态清位：handleCompactBoundary（成功）与 onCompactCompleted（成功失败都到）。
+     * 终态清位：onCompactBoundary 回调（成功）与 onCompactCompleted（成功失败都到）。
      */
     private handleCompactStart(): void {
         if (!this.compactStartGate.shouldEmit()) return
         logger.debug('[remote]: Compaction started')
         this.session.client.sendSessionEvent({ type: 'compact-started' })
-    }
-
-    /**
-     * 上下文用量上报（compact_boundary）：用 post_tokens 反映压缩后真实占用，复用上次记忆的
-     * 窗口大小与成本。组装逻辑见 calcContextUsageFromCompact（纯函数）。
-     */
-    private handleCompactBoundary(postTokens: number | undefined): void {
-        // 压缩成功终态：started 闸门清位，允许下一次压缩重新触发
-        this.compactStartGate.reset()
-        // 压缩后类目结构骤变（messages 大幅缩小），压缩前缓存的细分已失真——作废，
-        // 防后续实时上报继续附带 pre-compact 细分与已变小的 totalTokens 同屏矛盾
-        this.contextMemory.lastBreakdown = undefined
-        // 代际推进：作废 fetchBreakdown await 期间的旧 turn result 上报（读数已由 post_tokens 代表）
-        this.contextUsageGeneration++
-        const usage = calcContextUsageFromCompact(postTokens, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
-        if (!usage) return
-        try {
-            // 模型最大窗口自记忆附带（compact 上报本体只有总量口径）
-            this.session.client.reportContextUsage({
-                ...usage,
-                ...(this.contextMemory.lastModelContextTokens > 0 ? { modelContextTokens: this.contextMemory.lastModelContextTokens } : {}),
-            })
-        } catch (e) {
-            logger.debug('[remote]: reportContextUsage (compact) failed', e)
-        }
     }
 
     public async launch(): Promise<RemoteLauncherExitReason> {
@@ -571,46 +457,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 工具开始执行时添加，收到 tool_result 时移除
         const ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
-        // 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
-        const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage'], model?: string) => {
-            if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
-            this.contextMemory.lastAssistantUsage = u
-            // 窗口未记忆（首 turn / resume 后新进程）→ 按模型名预填猜测值，实时上报立即生效，
-            // 不必等第一个 result。注意：猜测仅在 result.modelUsage 携带 contextWindow 时才被
-            // 真实值覆盖；渠道不返回该字段时猜测值整个会话生效（已知取舍，pending #57）。
-            // 猜测输入优先用 init 的请求名（lastRequestModel）——网关渠道 assistant.message.model
-            // 是上游真实名（如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源，会猜出
-            // 与 result 修正值不一致的窗口（实测 [1M] 请求被按上游名猜成 200k）
-            if (this.contextMemory.lastMaxTokens === 0) {
-                this.contextMemory.lastMaxTokens = guessContextWindow(this.lastRequestModel ?? model) ?? 0
-            }
-            if (this.contextMemory.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
-            const usage = calcContextUsageFromAssistant(u, this.contextMemory.lastMaxTokens, this.contextMemory.lastCostUsd)
-            if (!usage) return
-            // 实时读数代表当前最新水位，推进代际：作废仍在途的上一轮 result 上报（防乱序回退）
-            this.contextUsageGeneration++
-            // 附带最近一次缓存的类目细分与模型最大窗口：流式期间水位实时上涨，细分随之上报，
-            // 否则无 breakdown 的实时上报会把 result 时落的细分整体覆盖掉（Popover 闪烁）
-            const breakdown = this.contextMemory.lastBreakdown
-            const modelContextTokens = this.contextMemory.lastModelContextTokens
-            try {
-                session.client.reportContextUsage({
-                    ...usage,
-                    ...(breakdown ? { breakdown } : {}),
-                    ...(modelContextTokens > 0 ? { modelContextTokens } : {}),
-                })
-            } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
-        }
-
-        // 记录 CLI 请求名（箭头捕获 this，供 onMessage 内调用）。
-        // init 先于一切 assistant 到达且每次新 query（含 resume）都重发，模型切换自动更新；
-        // 窗口猜测与 result.modelUsage 同源的模型名
-        const rememberRequestModel = (msg: SDKMessage) => {
-            if (msg.type === 'system' && (msg as SDKSystemMessage).subtype === 'init') {
-                const requestModel = (msg as SDKSystemMessage).model
-                if (requestModel) this.lastRequestModel = requestModel
-            }
-        }
+        // 主线 assistant 到达即实时上报水位（turn 内逐步上涨），编排收口在 contextTracker.onAssistantUsage。
 
         const onMessage = (message: SDKMessage): void => {
             // 重置空闲计时器（Agent 输出）
@@ -647,15 +494,18 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             formatClaudeMessageForInk(message, messageBuffer);
             permissionHandler.onMessage(message);
 
-            // 记录 CLI 请求名（实现见 rememberRequestModel 注释）
-            rememberRequestModel(message)
+            // 记录 CLI 请求名：init 先于一切 assistant 到达且每次新 query（含 resume）都重发，
+            // 模型切换自动更新——tracker 的窗口猜测与 result.modelUsage 用同源的模型名
+            if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
+                this.contextTracker.onInit((message as { model?: string }).model)
+            }
 
             if (message.type === 'assistant') {
                 const usageMsg = message as SDKAssistantMessage;
                 // 主线 assistant（子代理 parent_tool_use_id 非空，其 usage 是独立子上下文不作水位）；
-                // 有效性判据（渠道零值跳过）统一在 reportAssistantUsage 内的 hasAssistantUsage
+                // 有效性判据（渠道零值跳过）统一在 tracker.onAssistantUsage 内的 hasAssistantUsage
                 if (!usageMsg.parent_tool_use_id && usageMsg.message?.usage) {
-                    reportAssistantUsage(usageMsg.message.usage, usageMsg.message.model);
+                    this.contextTracker.onAssistantUsage(usageMsg.message.usage, usageMsg.message.model);
                 }
                 const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
@@ -896,10 +746,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onInboundPrompt: handleInboundPrompt,
                         onQueryReady: (query, { isResume }) => {
                             this.queryRef = query;
-                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，方法内有双检）。
+                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。
                             // resume 会话跳过：hub 已持久化真实水位/成本（web 首拉恢复），
                             // 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
-                            if (!isResume) void this.reportStartupContextUsage(query);
+                            if (!isResume) void this.contextTracker.collectStartupUsage(query);
                             // 暴露给外部用于动态 setModel/setPermissionMode
                             if (this.queryControlRef) {
                                 this.queryControlRef.current = query;
@@ -968,7 +818,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                             // /clear 语义对齐：切换同为清空上下文重启，重启前发
                                             // 边界事件（web 渲染「已重置」分隔线）+ 清水位 + 归零
                                             // 记忆——此前只有 /clear 路径做，切换后水位残留旧值
-                                            applyContextReset(session.client, this.contextMemory);
+                                            applyContextReset(session.client, () => this.contextTracker.reset());
                                         }
                                         logger.debug(`[remote]: exit sentinel received (${msg.message}), ending current query round`);
                                         return null;
@@ -1033,13 +883,19 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');
                             // /clear 语义收口：边界事件 + 清水位 + 归零记忆（与 output style 切换共用）
-                            applyContextReset(session.client, this.contextMemory);
+                            applyContextReset(session.client, () => this.contextTracker.reset());
                         },
                         onContextUsage: (resultMsg, isCompact) => {
-                            void this.handleContextUsage(resultMsg, isCompact);
+                            // 非 compact result 到达即 turn 正常收尾（中断 result 不经过此回调——
+                            // 撤回复验语义见 resetTurnTracking）
+                            if (!isCompact) this.resetTurnTracking()
+                            void this.contextTracker.onResult(resultMsg, isCompact)
                         },
                         onCompactBoundary: (postTokens) => {
-                            this.handleCompactBoundary(postTokens);
+                            // 压缩成功终态：started 闸门清位，允许下一次压缩重新触发；
+                            // 水位上报（post_tokens）收口在 tracker
+                            this.compactStartGate.reset();
+                            this.contextTracker.onCompactBoundary(postTokens)
                         },
                         onSessionReset: () => {
                             logger.debug('[remote]: Session reset');
