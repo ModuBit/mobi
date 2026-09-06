@@ -391,6 +391,14 @@ vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     }),
 }))
 
+// fork 会话创建（POST + 失效 + 跳转收口在 hook 内，容器不直接依赖 queryClient/router 上下文）
+vi.mock('@/core/data/hooks/mutations/useForkSession', () => ({
+    useForkSession: () => ({
+        forkSession: vi.fn().mockResolvedValue('forked-session-id'),
+        isPending: false,
+    }),
+}))
+
 // api client：rewind 预检/执行不会真实发起
 vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => ({

@@ -123,6 +123,10 @@ export function createMobiApi() {
             // rewind 执行：闸门通过即受理（202），结果经 SSE 两段回报（rewind-truncated → rewind-completed）
             rewind: (sessionId: string, nativeId: string, restoreFiles: boolean) =>
                 client.post(`/api/sessions/${sessionId}/rewind`, { nativeId, restoreFiles }),
+            // fork 会话创建：建待激活会话行 + 复制锚点 turn（fork-session spec §5.1，hub 侧纯动作不要求 CLI 在线）；
+            // 成功返回新会话 id 供跳转；失败 { error, code } 供归因文案（code 经 forkRejectReasonKey 映射）
+            fork: (sessionId: string, anchorNativeId: string) =>
+                client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/fork`, { anchorNativeId }),
             // 清理 runtimeState 指定字段
             clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),

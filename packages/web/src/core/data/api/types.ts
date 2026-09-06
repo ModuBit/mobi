@@ -23,6 +23,9 @@ import type {
     AgentState,
     AttachmentMetadata,
     DecryptedMessage as ProtocolDecryptedMessage,
+    ForkErrorMetadata,
+    ForkFromMetadata,
+    ForkedFromMetadata,
     NativeMessageMetadata,
     Session,
     SessionSummary,
@@ -35,6 +38,9 @@ import type {
 export type {
     AgentState,
     AttachmentMetadata,
+    ForkErrorMetadata,
+    ForkFromMetadata,
+    ForkedFromMetadata,
     NativeMessageMetadata,
     Session,
     SessionSummary,
@@ -68,8 +74,12 @@ export type SessionMetadataSummary = {
     machineId?: string
     /** 会话当前所属上游 session uuid（rewind 判据与消息行 metadata.nativeSessionId 比对） */
     nativeSessionId?: string
-    /** 上下文边界指针：最近一次 compact/clear 边界消息的 seq（rewind 入口边界判据；缺失 = 存量会话未回填，按保守放行处理） */
+    /** 上下文边界指针：最近一次 compact/clear 边界消息的 seq（rewind/fork 入口边界判据；缺失 = 存量会话未回填，按保守放行处理） */
     contextBoundarySeq?: number
+    /** fork 激活簿记：存在 = 待激活分叉会话（fork 入口隐藏，fork-session spec §4.1） */
+    forkFrom?: ForkFromMetadata
+    /** fork 持久溯源：存在 = 本会话已是分叉会话（fork 入口隐藏，spec §2 fork 的 fork 禁止） */
+    forkedFrom?: ForkedFromMetadata
     tools?: string[]
     flavor?: string | null
     worktree?: WorktreeMetadata

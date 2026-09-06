@@ -26,6 +26,7 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
@@ -39,8 +40,10 @@ import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactS
 import { collectUserText } from '@/domain/chat/userContent'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { canForkMessage, collectForkTargetBlockIds, extractForkRejectCode, forkRejectReasonKey, agentBlockMessageKey } from '@/domain/chat/fork'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
+import { AgentMessageFooter } from './AgentMessageFooter'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
@@ -120,13 +123,15 @@ export function resolveRunStartedAt(
     return Math.max(fromRuntime, fromMessages)
 }
 
-/** 用户消息气泡 hover 时显示 header 中的复制按钮 */
+/** 气泡 hover 时显示 footer 中的操作按钮（用户消息复制/rewind 与 agent 回复复制/fork 同模式） */
 const bubbleCopyStyles = css`
-    .user-msg-bubble .msg-copy-btn {
+    .user-msg-bubble .msg-copy-btn,
+    .agent-msg-bubble .msg-copy-btn {
         opacity: 0;
         transition: opacity 0.15s ease;
     }
-    .user-msg-bubble:hover .msg-copy-btn {
+    .user-msg-bubble:hover .msg-copy-btn,
+    .agent-msg-bubble:hover .msg-copy-btn {
         opacity: 1;
     }
 `
@@ -552,6 +557,39 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [])
 
     // ──────────────────────────────────────────────────────────────
+    // fork 生命周期（fork-session spec §4.2/§4.3）：入口 → 确认 → 创建 → 跳转
+    // fork 无 dry-run 预检（hub 侧纯动作，失败确认后 toast 归因）；
+    // draft 记录锚点与入口（PC Popover / 移动 Drawer），messageId 定位 PC Popover
+    // ──────────────────────────────────────────────────────────────
+    const [forkDraft, setForkDraft] = useState<{ anchorNativeId: string; source: 'popover' | 'drawer'; targetText: string | null; messageId?: string } | null>(null)
+    // fork 会话创建 mutation（POST + 项目维度视图失效 + 跳转新会话，导航收口在 hook 内）
+    const { forkSession, isPending: forkPending } = useForkSession(sessionId)
+
+    // PC 入口：messageId 标识锚定消息（footer Popover 定位），锚点 = agent 回复 nativeId
+    const openForkPopover = useCallback((messageId: string, anchorNativeId: string, targetText: string) => {
+        setForkDraft({ anchorNativeId, source: 'popover', targetText, messageId })
+    }, [])
+
+    // 取消 fork（Popover/Drawer 取消按钮 / 点击外部）
+    const cancelFork = useCallback(() => {
+        setForkDraft(null)
+    }, [])
+
+    // fork 确认执行：成功即跳转（本组件随 ChatPane key 切换卸载）；失败 toast 归因，收起确认 UI
+    const confirmFork = useCallback(async () => {
+        if (!forkDraft) return
+        try {
+            await forkSession(forkDraft.anchorNativeId)
+            setForkDraft(null)
+        } catch (err) {
+            setForkDraft(null)
+            const code = extractForkRejectCode(err)
+            console.warn('[fork] forkSession rejected:', code)
+            messageApi.error(t(forkRejectReasonKey(code)))
+        }
+    }, [forkDraft, forkSession, messageApi, t])
+
+    // ──────────────────────────────────────────────────────────────
     // 移动端长按操作菜单（spec §5.2）：事件委托到滚动容器
     //（antdx Bubble item 不透传 touch handlers，靠 data-bubble-key 定位目标行）
     // ──────────────────────────────────────────────────────────────
@@ -676,9 +714,19 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             messages.map(m => [m.id, m.lifecycle ?? null]),
         )
 
+        // ── fork 判据数据（fork-session spec §4.1/§4.2）──
+        // 入口仅挂「turn 的 result 落点」：每 turn 最后一条 agent 文本块的 id 集合
+        const forkTargetBlockIds = collectForkTargetBlockIds(chatBlocks)
+        // agent 文本块 → 消息行查表 key（agent-text block.id 前缀 = localId || 消息 id，
+        // 与 reducerTimeline blockId 同构；按 key 建行索引供锚点/seq 查询）
+        const forkRowByKey = new Map<string, { metadata: NativeMessageMetadata | null; seq: number | null }>(
+            messages.map(m => [m.localId || m.id, { metadata: m.metadata ?? null, seq: m.seq ?? null }]),
+        )
+
         const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
+            const isAgentText = block?.kind === 'agent-text'
 
             // 终态标注判据：cancelled/discarded/refused 的用户消息「这条没被处理/没被接收」一眼可见；
             // 其余 lifecycle（含 done）与非排队消息不标注（用户不关心传输细节）。
@@ -698,6 +746,23 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     chainHeadIds?.has(block.id),
                 )
                 : false
+
+            // fork 判据（仅 agent 文本块落点，与移动长按菜单同源，fork-session spec §4.1）
+            const forkRow = isAgentText && block && forkTargetBlockIds.has(block.id)
+                ? forkRowByKey.get(agentBlockMessageKey(block))
+                : undefined
+            const forkable = !!forkRow && !!block && canForkMessage(
+                { metadata: forkRow.metadata, seq: forkRow.seq },
+                sessionNativeSessionId,
+                {
+                    running: !!session?.running,
+                    backgroundTasks: backgroundTasksCount,
+                    mode: session?.mode,
+                    forkedFrom: metadata?.forkedFrom,
+                    forkFrom: metadata?.forkFrom,
+                    contextBoundarySeq: metadata?.contextBoundarySeq,
+                },
+            )
 
             // 跨会话入站来源标签挂气泡 header（填充背景之外、气泡体上方，随 placement: end 右对齐）
             // turnOrigin=scheduled/loop 时 from 为空串（降级 null），但仍需展示标签，故判据并入 turnOrigin
@@ -725,10 +790,31 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             ) : undefined
 
+            // agent 回复 footer（fork 入口，PC）：仅落点 + 判据通过时渲染（无禁用态，误判只隐藏入口）；
+            // 挂载点选择：agent 气泡无现成 footer，新建 AgentMessageFooter 挂 footerPlacement: outer-end，
+            // 视觉对齐 UserMessageFooter 的 hover 操作组模式
+            const agentFooter = isAgentText && block && forkable && forkRow ? (
+                <AgentMessageFooter
+                    text={block.text}
+                    createdAt={block.createdAt}
+                    onFork={() => {
+                        const nativeId = forkRow.metadata?.nativeId
+                        if (nativeId) openForkPopover(block.id, nativeId, block.text)
+                    }}
+                    forkOpen={forkDraft?.source === 'popover' && forkDraft?.messageId === block.id}
+                    forkTargetText={forkDraft?.targetText ?? null}
+                    forkLoading={forkPending}
+                    onForkConfirm={() => { void confirmFork() }}
+                    onForkCancel={cancelFork}
+                />
+            ) : undefined
+
             return {
                 ...item,
                 header: showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : undefined,
-                classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
+                classNames: isUserText
+                    ? { root: 'user-msg-bubble' }
+                    : agentFooter ? { root: 'agent-msg-bubble' } : undefined,
                 footer: terminalLabelKey !== null ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span
@@ -742,7 +828,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
                     </div>
-                ) : baseFooter,
+                ) : (baseFooter ?? agentFooter),
                 footerPlacement: 'outer-end' as const,
             }
         })
@@ -751,19 +837,48 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const actionsInfo = new Map<string, MessageActionTarget>()
         for (const item of decorated) {
             const block = item.block
-            if (block?.kind !== 'user-text') continue
-            const meta = metaById.get(block.id)
-            actionsInfo.set(item.key, {
-                key: item.key,
-                text: collectUserText(block.blocks),
-                nativeId: meta?.nativeId ?? null,
-                canRewind: canRewindMessage(
-                    { metadata: meta, seq: seqById.get(block.id) },
+            if (block?.kind === 'user-text') {
+                const meta = metaById.get(block.id)
+                actionsInfo.set(item.key, {
+                    key: item.key,
+                    text: collectUserText(block.blocks),
+                    nativeId: meta?.nativeId ?? null,
+                    canRewind: canRewindMessage(
+                        { metadata: meta, seq: seqById.get(block.id) },
+                        sessionNativeSessionId,
+                        { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
+                        chainHeadIds?.has(block.id),
+                    ),
+                    forkAnchorId: null,
+                    canFork: false,
+                })
+                continue
+            }
+            // agent 回复落点：可 fork 时进长按菜单（复制 + 从此分叉）；不可 fork 不进（长按行为与既有一致）
+            if (block?.kind === 'agent-text' && forkTargetBlockIds.has(block.id)) {
+                const row = forkRowByKey.get(agentBlockMessageKey(block))
+                const canFork = !!row && canForkMessage(
+                    { metadata: row.metadata, seq: row.seq },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
-                    chainHeadIds?.has(block.id),
-                ),
-            })
+                    {
+                        running: !!session?.running,
+                        backgroundTasks: backgroundTasksCount,
+                        mode: session?.mode,
+                        forkedFrom: metadata?.forkedFrom,
+                        forkFrom: metadata?.forkFrom,
+                        contextBoundarySeq: metadata?.contextBoundarySeq,
+                    },
+                )
+                if (!canFork) continue
+                actionsInfo.set(item.key, {
+                    key: item.key,
+                    text: block.text,
+                    nativeId: null,
+                    canRewind: false,
+                    forkAnchorId: row?.metadata?.nativeId ?? null,
+                    canFork,
+                })
+            }
         }
         actionsInfoByRef.current = actionsInfo
 
@@ -805,13 +920,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             + `|${metadata?.contextBoundarySeq ?? ''}`
             // lifecycle 终态签名：cancelled/discarded/refused 广播到达后标注即时出现（而非「刷新才见」）
             + `|${terminalLifecycleCount}`
+            // fork 状态入签名：会话模式 / 溯源字段翻 canFork；fork Popover 激活与执行中翻转时 footer 内容须重建
+            + `|${session?.mode ?? ''}|${metadata?.forkedFrom ? 1 : 0}-${metadata?.forkFrom ? 1 : 0}`
+            + `|${forkDraft?.source === 'popover' ? forkDraft.messageId ?? '' : ''}|${forkPending}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
             ? prevItemsRef.current.cache
             : new Map()
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, session?.active, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind])
+    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
@@ -955,24 +1073,35 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 </AnimatePresence>
             </div>
 
-            {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组） */}
+            {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组）：
+                用户消息 → 复制/回退并编辑；agent 回复落点 → 复制/从此分叉（fork-session spec §4.2） */}
             {isMobile && (
                 <MessageActionsDrawer
                     open={actionsTarget !== null}
                     target={actionsTarget}
                     rewindActive={rewindDraft?.source === 'drawer' && actionsTarget !== null}
+                    forkActive={forkDraft?.source === 'drawer' && actionsTarget !== null}
                     dryRun={rewindDryRun}
-                    loading={rewindExecuting}
+                    loading={rewindExecuting || forkPending}
                     onClose={() => {
                         setActionsTarget(null)
                         setRewindDraft(null)
                         setRewindDryRun(null)
+                        setForkDraft(null)
                     }}
                     onRewind={(nativeId) => { void openRewindDialog(nativeId, 'drawer') }}
                     onConfirmRewind={(restoreFiles) => { void confirmRewind(restoreFiles) }}
                     onCancelRewind={() => {
                         setRewindDraft(null)
                         setRewindDryRun(null)
+                    }}
+                    onFork={(anchorNativeId) => {
+                        // 移动端入口：锚点来自长按目标，预览文本取 Drawer 选中消息原文
+                        setForkDraft({ anchorNativeId, source: 'drawer', targetText: actionsTarget?.text ?? null })
+                    }}
+                    onConfirmFork={() => { void confirmFork() }}
+                    onCancelFork={() => {
+                        setForkDraft(null)
                     }}
                 />
             )}
