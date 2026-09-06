@@ -85,6 +85,16 @@ const abortSchema = z.object({
 })
 
 /**
+ * 配置切换 apply 的结构化结果（深化候选⑥）：accepted:false + confirmed 区分
+ * 409（CLI 明确拒绝，副作用确定未发生）与 502 + accepted:'unknown'（RPC 层异常，
+ * 副作用未知，引导刷新确认而非盲目重试）。apply 返回 void 或 accepted:true = 受理成功。
+ */
+type ConfigApplyOutcome =
+    | { accepted: true }
+    | { accepted: false; reason: string; confirmed: true }
+    | { accepted: false; reason: string; confirmed: false; cause?: string }
+
+/**
  * 会话配置切换路由工厂（深化候选②）：四个「改会话的一个配置项」端点共享的样板收口
  * （requireSyncEngine → requireSession → body 校验 → apply → 409）。
  * 字段的 schema / bodyKey / 生效语义声明在 shared SESSION_CONFIG_FIELDS（单一声明源）；
@@ -103,9 +113,7 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
             value: z.infer<(typeof SESSION_CONFIG_FIELDS)[K]['schema']>,
             session: Session
         ) => string | null
-        apply: (engine: SyncEngine, sessionId: string, value: z.infer<(typeof SESSION_CONFIG_FIELDS)[K]['schema']>) => Promise<void>
-        /** 应用失败的响应映射；缺省统一 409（output-style 的 409/502 分层在此注入） */
-        mapError?: (message: string) => { status: 409 | 502; payload: Record<string, unknown> }
+        apply: (engine: SyncEngine, sessionId: string, value: z.infer<(typeof SESSION_CONFIG_FIELDS)[K]['schema']>) => Promise<ConfigApplyOutcome | void>
     }
 ): void {
     const field = SESSION_CONFIG_FIELDS[opts.field]
@@ -137,14 +145,17 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
         }
 
         try {
-            await opts.apply(engine, sessionResult.sessionId, value)
+            const outcome = await opts.apply(engine, sessionResult.sessionId, value)
+            if (outcome && outcome.accepted === false) {
+                // 结构化分层（深化候选⑥）：confirmed 由 CLI 明确回答支撑，不再反解错误文案
+                if (outcome.confirmed) {
+                    return c.json({ error: outcome.reason }, 409)
+                }
+                return c.json({ error: outcome.reason, accepted: 'unknown' }, 502)
+            }
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : `Failed to apply ${opts.field}`
-            if (opts.mapError) {
-                const { status, payload } = opts.mapError(message)
-                return c.json({ error: message, ...payload }, status)
-            }
             return c.json({ error: message }, 409)
         }
     })
@@ -490,16 +501,14 @@ export function createSessionsRoutes(
         apply: (engine, sessionId, effort) => engine.applySessionConfig(sessionId, { effort }),
     })
 
-    // output style 切换（/clear 语义）：错误分层有用户数据安全语义——CLI 明确拒绝（message 含
-    // `rejected`，CLI handler throw 回传）→ 409 带原因；其余（unconfirmed：RPC 超时/断连/响应异常）
-    // 副作用未知 → 502 + accepted:'unknown'，前端提示刷新确认而非重试（重试 = 再触发 /clear 多丢一轮上下文）
+    // output style 切换（/clear 语义）：错误分层有用户数据安全语义——CLI 明确拒绝
+    // （结构化 accepted:false，深化候选⑥）→ 409 带原因；RPC 层异常（unconfirmed：
+    // 超时/断连/响应畸形）副作用未知 → 502 + accepted:'unknown'，前端提示刷新确认
+    // 而非重试（重试 = 再触发 /clear 多丢一轮上下文）
     registerSessionConfigRoute(app, getSyncEngine, {
         path: 'output-style',
         field: 'outputStyle',
         apply: (engine, sessionId, style) => engine.switchOutputStyle(sessionId, style),
-        mapError: (message) => message.includes('rejected')
-            ? { status: 409, payload: {} }
-            : { status: 502, payload: { accepted: 'unknown' } },
     })
 
     // rewind 预检：透传 CLI RPC 结果（{ canRewind, canRestoreFiles }），Web 据此渲染两选项/降级单选项弹窗

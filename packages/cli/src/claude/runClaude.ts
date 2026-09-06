@@ -491,22 +491,25 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。pendingRestart 挂在
     // Session 上（launcher while 循环与哨兵配对消费），session 未就绪时拒绝；running 中拒绝
     // （Web 端已 disable，双保险）。受理细节见 applyOutputStyleSwitch
-    apiSession.rpcHandlerManager.registerHandler('switch-output-style', async (payload: unknown) => {
+    apiSession.rpcHandlerManager.registerHandler('switch-output-style', (payload: unknown) => {
+        // 结构化受理结果（深化候选⑥，rewind 先例）：业务拒绝不 throw——RPC 错误通道
+        // 只剩 message 字符串，hub 据 `includes('rejected')` 反解 409/502 分层会因文案
+        // 改动静默失效；accepted:false 即「副作用确定未发生」，语义由结构承载
         if (!payload || typeof payload !== 'object') {
-            throw new Error('Invalid output style payload');
+            return { accepted: false, reason: 'Invalid output style payload' };
         }
         const { style } = payload as { style?: unknown };
         // 校验同源 shared SESSION_CONFIG_FIELDS.outputStyle（深化候选②）：只挡空串，
         // 自定义 style 合法性由本 handler 的 /clear 语义受理 + running/rewind 拒绝守卫
         const styleParsed = SESSION_CONFIG_FIELDS.outputStyle.schema.safeParse(style);
         if (styleParsed.success !== true) {
-            throw new Error('switch-output-style requires non-empty style string');
+            return { accepted: false, reason: 'switch-output-style requires non-empty style string' };
         }
         const session = currentSessionRef.current;
         if (!session) {
-            throw new Error('switch-output-style rejected: session is not ready');
+            return { accepted: false, reason: 'session is not ready' };
         }
-        const result = applyOutputStyleSwitch({
+        return applyOutputStyleSwitch({
             running: session.running,
             restartBusy: session.restartBusy,
             setOutputStyle: session.setOutputStyle,
@@ -515,10 +518,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             clearPending: () => messageQueue.clearPending(),
             pushIsolateAndClear: (msg, mode, localId) => messageQueue.pushIsolateAndClear(msg, mode, localId),
         }, styleParsed.data);
-        if (!result.accepted) {
-            throw new Error(`switch-output-style rejected: ${result.reason}`);
-        }
-        return { accepted: true };
     });
 
     let loopError: unknown = null;

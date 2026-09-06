@@ -67,6 +67,16 @@ export type ResumeSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'no_machine_online' | 'resume_unavailable' | 'resume_failed' }
 
+/**
+ * output style 切换的结构化结果（深化候选⑥）：在 CLI 的 RpcAcceptResult 之上叠加
+ * confirmed（RPC 是否得到 CLI 明确回答），路由据此区分 409（confirmed：副作用确定
+ * 未发生）与 502 + accepted:'unknown'（unconfirmed：副作用未知，引导刷新确认）。
+ */
+export type OutputStyleSwitchOutcome =
+    | { accepted: true }
+    | { accepted: false; reason: string; confirmed: true }
+    | { accepted: false; reason: string; confirmed: false; cause?: string }
+
 export class SyncEngine {
     private readonly eventPublisher: EventPublisher
     private readonly sessionCache: SessionCache
@@ -502,28 +512,47 @@ export class SyncEngine {
      * 切换 output style（/clear 语义）：受理转发 CLI，权威值由重启后 init 上报的
      * metadata.sdkMetadata.outputStyle 与 keep-alive 的 runtimeState.outputStyle 回流，此处不写 sessionCache。
      *
-     * 错误分层（路由据此区分 409 / 502）：
-     * - CLI 明确拒绝（handler throw 的 `switch-output-style rejected: ...` 经 RPC 以
-     *   `{ error: message }` 回传）→ 原样上抛，副作用确定未发生（路由 409 带原因）
-     * - RPC 超时 / 断连 / 响应异常 → CLI 可能已受理并重启，副作用未知 → 包装为
-     *   message 含 `unconfirmed` 标记的错误（路由 502 + accepted:'unknown'，引导刷新确认
-     *   而非盲目重试——重试 = 再触发一次 /clear 多丢一轮上下文）
+     * 结构化受理结果（深化候选⑥，rewind 先例——CLI 拒绝不走 throw，分层不再依赖
+     * 错误文案子串匹配），路由据 confirmed 区分 409 / 502：
+     * - confirmed: true = CLI 明确回答（accepted:false 业务拒绝，或 handler throw 的
+     *   {error} 包装——受理段同步无 await，throw 即未受理），副作用确定未发生
+     * - confirmed: false = RPC 层异常（超时 / 断连 / 响应畸形），CLI 可能已受理并重启，
+     *   副作用未知（路由 502 + accepted:'unknown'，引导刷新确认而非盲目重试——重试 =
+     *   再触发一次 /clear 多丢一轮上下文）
      */
-    async switchOutputStyle(sessionId: string, style: string): Promise<void> {
+    async switchOutputStyle(sessionId: string, style: string): Promise<OutputStyleSwitchOutcome> {
         let result: unknown
         try {
             result = await this.rpcGateway.switchOutputStyle(sessionId, style)
         } catch (error) {
-            throw new Error('output style switch unconfirmed', { cause: error })
+            return {
+                accepted: false,
+                reason: 'output style switch unconfirmed',
+                confirmed: false,
+                cause: error instanceof Error ? error.message : String(error),
+            }
         }
-        if (result && typeof result === 'object' && (result as { accepted?: boolean }).accepted === true) {
-            return
+        if (result && typeof result === 'object' && (result as { accepted?: unknown }).accepted === true) {
+            return { accepted: true }
         }
-        // 非 accepted 响应：CLI handler throw 时 RpcHandlerManager 以 { error: message } 回传，原样透出
-        const rpcError = result && typeof result === 'object' && typeof (result as { error?: unknown }).error === 'string'
+        if (result && typeof result === 'object' && (result as { accepted?: unknown }).accepted === false) {
+            // CLI 结构化拒绝（RpcAcceptResult）：副作用确定未发生
+            const reason = (result as { reason?: unknown }).reason
+            return {
+                accepted: false,
+                reason: typeof reason === 'string' && reason.length > 0 ? reason : 'output style switch rejected',
+                confirmed: true,
+            }
+        }
+        // handler throw 的 {error} 包装（Method not found 等）：受理段同步，throw 即未受理
+        const rpcError = typeof (result as { error?: unknown } | null)?.error === 'string'
             ? (result as { error: string }).error
             : null
-        throw new Error(rpcError ?? 'Output style switch was not accepted')
+        return {
+            accepted: false,
+            reason: rpcError ?? 'Output style switch was not accepted',
+            confirmed: rpcError !== null,
+        }
     }
 
     async spawnSession(

@@ -69,3 +69,17 @@ export const SESSION_CONFIG_FIELDS = {
 } as const satisfies Record<string, SessionConfigField>
 
 export type SessionConfigFieldKey = keyof typeof SESSION_CONFIG_FIELDS
+
+/**
+ * restart 语义配置切换的结构化受理结果（深化候选⑥，rewind 先例）：
+ * CLI RPC handler 返回 `{accepted, reason?}`——业务拒绝不走 throw（RPC 错误通道只剩
+ * message 字符串，跨包据文案反解分层会因改文案静默失效），语义由结构承载。
+ * hub 侧在此之上叠加 confirmed（RPC 是否得到 CLI 明确回答）区分 409 / 502。
+ */
+export type RpcAcceptResult = {
+    accepted: true
+} | {
+    accepted: false
+    /** 拒绝原因（用户可读，web toast / 409 body 透出） */
+    reason: string
+}

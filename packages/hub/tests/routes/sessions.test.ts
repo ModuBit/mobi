@@ -240,17 +240,19 @@ describe('Sessions API', () => {
             expect(res.status).toBe(400)
         })
 
-        test('CLI 明确拒绝（running/rewind 守卫，rejected message）返回 409 带原因', async () => {
+        test('CLI 明确拒绝（running/rewind 守卫，结构化 accepted:false + confirmed）返回 409 带原因', async () => {
             const engineRejected = {
                 resolveSessionAccess: (_id: string, _ns: string) => ({
                     ok: true as const,
                     sessionId: 'test-session-1',
                     session: mockSession,
                 }),
-                // CLI handler throw 经 RPC 以 { error: 'switch-output-style rejected: ...' } 回传，syncEngine 原样上抛
-                switchOutputStyle: async () => {
-                    throw new Error('switch-output-style rejected: session is running')
-                },
+                // CLI handler 返回结构化拒绝（深化候选⑥：不走 throw，语义由结构承载）
+                switchOutputStyle: async () => ({
+                    accepted: false as const,
+                    reason: 'session is running',
+                    confirmed: true as const,
+                }),
             } as unknown as SyncEngine
 
             const setup = await setupTestApp(engineRejected)
@@ -267,11 +269,11 @@ describe('Sessions API', () => {
 
             expect(res.status).toBe(409)
             const body = await res.json() as { error: string }
-            expect(body.error).toContain('rejected')
+            expect(body.error).toBe('session is running')
             setup.cleanup()
         })
 
-        test('结果未知（RPC 超时/断连，unconfirmed 标记）返回 502 + accepted unknown', async () => {
+        test('结果未知（RPC 超时/断连，结构化 accepted:false + unconfirmed）返回 502 + accepted unknown', async () => {
             // CLI 可能已受理并重启（副作用未知）：502 + accepted:'unknown' 引导刷新确认而非盲目重试
             const engineUnconfirmed = {
                 resolveSessionAccess: (_id: string, _ns: string) => ({
@@ -279,9 +281,12 @@ describe('Sessions API', () => {
                     sessionId: 'test-session-1',
                     session: mockSession,
                 }),
-                switchOutputStyle: async () => {
-                    throw new Error('output style switch unconfirmed')
-                },
+                switchOutputStyle: async () => ({
+                    accepted: false as const,
+                    reason: 'output style switch unconfirmed',
+                    confirmed: false as const,
+                    cause: 'rpc timeout',
+                }),
             } as unknown as SyncEngine
 
             const setup = await setupTestApp(engineUnconfirmed)

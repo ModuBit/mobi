@@ -459,3 +459,93 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
         }
     })
 })
+
+describe('SyncEngine.switchOutputStyle 结构化分层（深化候选⑥）', () => {
+    interface StyleHandle {
+        engine: SyncEngine
+        sessionId: string
+        cleanup: () => void
+    }
+
+    /** CLI RPC 响应可控的最小 engine（响应形状四档：accepted / rejected / error 包装 / RPC 异常） */
+    function makeStyleEngine(rpcResponse: () => unknown): StyleHandle {
+        const store = new Store(':memory:')
+        const sessionId = store.sessions.getOrCreateSession('style-engine-test', null, null, 'default').id
+
+        const fakeSocket = {
+            timeout() { return this },
+            async emitWithAck() {
+                return await rpcResponse()
+            },
+        }
+        const sockets = new Map([['sock-1', fakeSocket]])
+        const io = { of() { return { sockets } } } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod(method: string) {
+                return method.endsWith(':switch-output-style') ? 'sock-1' : null
+            },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+
+        const engine = new SyncEngine(store, io, registry, sseManager)
+        return {
+            engine, sessionId,
+            cleanup: () => {
+                engine.stop()
+                store.close()
+            },
+        }
+    }
+
+    test('CLI 受理（accepted:true）→ { accepted: true }', async () => {
+        const h = makeStyleEngine(() => ({ accepted: true }))
+        try {
+            await expect(h.engine.switchOutputStyle(h.sessionId, 'Concise')).resolves.toEqual({ accepted: true })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('CLI 结构化拒绝（accepted:false）→ confirmed:true（副作用确定未发生，409）', async () => {
+        const h = makeStyleEngine(() => ({ accepted: false, reason: 'session is running' }))
+        try {
+            await expect(h.engine.switchOutputStyle(h.sessionId, 'Concise')).resolves.toEqual({
+                accepted: false, reason: 'session is running', confirmed: true,
+            })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('RPC 异常（超时/断连）→ confirmed:false（副作用未知，502 + accepted unknown）', async () => {
+        const h = makeStyleEngine(async () => { throw new Error('rpc timeout after 30s') })
+        try {
+            const result = await h.engine.switchOutputStyle(h.sessionId, 'Concise')
+            expect(result).toMatchObject({ accepted: false, confirmed: false })
+            expect((result as { reason: string }).reason).toContain('unconfirmed')
+            expect((result as { cause: string }).cause).toContain('rpc timeout')
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('CLI handler throw（{error} 包装，受理段同步 throw 即未受理）→ confirmed:true', async () => {
+        const h = makeStyleEngine(() => ({ error: 'Method not found' }))
+        try {
+            const result = await h.engine.switchOutputStyle(h.sessionId, 'Concise')
+            expect(result).toMatchObject({ accepted: false, reason: 'Method not found', confirmed: true })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('畸形响应（非 accepted/error 形状）→ confirmed:false（保守按未知处理）', async () => {
+        const h = makeStyleEngine(() => null)
+        try {
+            const result = await h.engine.switchOutputStyle(h.sessionId, 'Concise')
+            expect(result).toMatchObject({ accepted: false, confirmed: false })
+        } finally {
+            h.cleanup()
+        }
+    })
+})
