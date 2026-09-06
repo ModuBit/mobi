@@ -3,7 +3,8 @@
 ## Contexts
 
 - [CLI](./packages/cli/CONTEXT.md): 本地拉起并托管 Claude Code 会话进程，向 hub 同步状态与消息
-- Hub、Web、Shared 的 CONTEXT.md 待各自领域首次建模时创建
+- [Hub](./packages/hub/CONTEXT.md): 会话实体的持久化与多端同步（首次建模于分叉会话特性）
+- Web、Shared 的 CONTEXT.md 待各自领域首次建模时创建
 
 ## Relationships
 

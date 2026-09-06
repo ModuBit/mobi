@@ -578,3 +578,20 @@ interrupt（用户停止）
 **落地四件套**：hub task_notification 提取存 backgroundTasks（当前 backgroundTasks.ts:303-378 只取 status/summary，resource_links 被丢弃）+ shared `BackgroundTaskItemSchema` 扩展 + web 任务卡片/面板渲染链接 + uri→文件的打开通道。
 
 **相关**：upstream-suggestions 台账 #6；#63（配置资产管理面）。
+
+---
+
+## 70. 消息结构治理：role 划分与 content 表达（2026-09-06，高优先级）
+
+**背景**：分叉会话特性设计自定义消息时暴露——现有消息结构（信封 `role` / `content.type` / block 形态 / category）多年增量演化后语义混杂、难以扩展。本次为「custom 消息内层怎么表达」反复拉扯，根因是底层模型没治理过。
+
+**已知乱点**（初步盘点，治理时需全面梳理）：
+
+- 信封 `role`（`'user' | 'agent'` 松散 string）语义漂移：既是来源标签又隐含展示形态，`shared/messages.ts:82` 已注明「role 不可信、判别在 content.type」——但真实原因从未理清成文
+- `content.type` 取值空间无统一注册：`output`/`event`/`text` 等散落各处，web 归一化层 switch 分发与 shared schema 双源维护
+- 用户消息有 AG-UI 对齐的 block schema（`userContentSchema.ts`），agent 消息是 CC 原始结构透传，自定义消息（ADR 0002）又是另一套——三套表达并存
+- category（处置）/ role（来源）/ content.type（语义）三维度耦合处无文档，消费方各自取舍
+
+**治理方向**：以 AG-UI 成熟模型为参照（mobi 用户消息已对齐其 block 模式），统一信封-内容-分发的分层契约；产出可能是新的 shared schema + ADR。与 ADR 0002（自定义消息首类型 `fork-source`）协同——治理先行可避免 fork-source 落成又一个特例。
+
+**优先级**：高。消息结构是三端共用地基，每次新消息类型都在放大混乱。

@@ -16,6 +16,18 @@ _Avoid_: headless 模式（旧口头称呼）
 
 两个词的区分标准是**谁在控制会话**（本地终端 vs Web 远程），不是进程拓扑。
 
+### 锚点
+
+两个锚点同源（都取自消息的 native uuid），方向相反：rewind 从锚点**向前丢弃**，fork 从锚点**向前保留**。
+
+**Rewind 锚点**:
+rewind 的回退目标——用户消息的 nativeId，激活时换算为其前最近一条 assistant entry（resumeSessionAt 保留锚），截断重启只保留该锚（含）之前的历史。
+_Avoid_: 直接把用户消息 uuid 当 resumeSessionAt（会保留该条导致重发重复）
+
+**分叉锚点**:
+fork 的分叉基点——agent 回复消息的 nativeId，激活时直接作截断式 fork 的 resumeSessionAt（含该条），分叉会话的历史锁定在点 fork 时刻的锚点，不受 parent 后续变化影响。
+_Avoid_: 分叉点（口语）、fork 点
+
 ### 进程角色
 
 **Runner**:
