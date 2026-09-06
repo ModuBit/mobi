@@ -21,6 +21,7 @@ import type { Store } from '../store'
 import { hubLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
+import { RuntimeStateStore } from './runtimeStateStore'
 import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
 import {
@@ -130,10 +131,14 @@ export class SessionCache {
      */
     private readonly lastBroadcastAtBySessionId: Map<string, number> = new Map()
 
+    /** runtimeState 写路径单一收口（深化候选⑤，见 runtimeStateStore.ts） */
+    private readonly runtimeStateStore: RuntimeStateStore
+
     constructor(
         private readonly store: Store,
         private readonly publisher: EventPublisher
     ) {
+        this.runtimeStateStore = new RuntimeStateStore(store)
     }
 
     getSessions(): Session[] {
@@ -255,9 +260,6 @@ export class SessionCache {
             running: existing?.running ?? false,
             runningAt: existing?.runningAt ?? 0,
             runtimeState,
-            // permissionMode：内存优先；hub 重启（existing 为空）时从 DB runtimeState 恢复——
-            // keep-alive 落库的权威值，缺省 undefined = 回落 default（与存量会话行为一致）
-            permissionMode: existing?.permissionMode ?? runtimeState?.permissionMode,
             mode: existing?.mode,
             tag: stored.tag,
             // 归属项目（null = 游离）：必须显式带上，否则路由层读 session.projectId 恒 undefined
@@ -267,6 +269,16 @@ export class SessionCache {
             // 「置顶」分组按钮态/成员资格与分页查询打架（见 sessions_pinned 回归）
             pinned: stored.pinned
         }
+
+        // permissionMode 顶层可写快照已删除（深化候选⑤）：降级为 runtimeState.permissionMode 的
+        // 只读投影 getter——可写副本仅剩 runtimeState 一处（RuntimeStateStore.merge），「双写漂移」
+        // 类 bug（2fd3150e 漏落库 / 88da6179 失败脏写）失去存在土壤。getter 使 wire 形状不变
+        // （GET /sessions/:id 与 session-updated 全量载荷 JSON 序列化时自动带值），hub 重启后
+        // refreshSession 也自动从 DB runtimeState 恢复；严格模式下赋值会 TypeError（暴露漏改的写点）
+        Object.defineProperty(session, 'permissionMode', {
+            get: () => session.runtimeState?.permissionMode,
+            enumerable: true,
+        })
 
         this.sessions.set(sessionId, session)
         // 只在真正新增 session 时广播，避免循环触发
@@ -306,10 +318,6 @@ export class SessionCache {
 
         const wasActive = session.active
         const wasRunning = session.running
-        const previousPermissionMode = session.permissionMode
-        const previousModel = session.runtimeState?.model
-        const previousEffort = session.runtimeState?.effort
-        const previousOutputStyle = session.runtimeState?.outputStyle
         const previousMode = session.mode
 
         session.active = true
@@ -319,29 +327,21 @@ export class SessionCache {
         if (payload.mode !== undefined) {
             session.mode = payload.mode
         }
-        if (payload.permissionMode !== undefined) {
-            // 先落库（失败 throw 时内存不脏，与 model/effort 分支一致），成功后写顶层快照
-            //（SSE 广播/resume spawn 读取）——双写保证 hub 重启后 refreshSession 可从 DB 恢复
-            this.updateRuntimeStateField(session, payload.sid, 'permissionMode', payload.permissionMode, t, session.namespace)
-            session.permissionMode = payload.permissionMode
-        }
-        if (payload.model !== undefined) {
-            this.updateRuntimeStateField(session, payload.sid, 'model', payload.model, t, session.namespace)
-        }
-        if (payload.effort !== undefined) {
-            this.updateRuntimeStateField(session, payload.sid, 'effort', payload.effort, t, session.namespace)
-        }
-        if (payload.outputStyle !== undefined) {
-            this.updateRuntimeStateField(session, payload.sid, 'outputStyle', payload.outputStyle, t, session.namespace)
-        }
+
+        // keep-alive 携带的配置字段（缺省 = 本字段未上报，不参与合并）——
+        // 落库 + 内存回填 + changed 判定由 RuntimeStateStore 单一收口，新增字段零接线
+        const configPatch: Partial<RuntimeState> = {}
+        if (payload.permissionMode !== undefined) configPatch.permissionMode = payload.permissionMode
+        if (payload.model !== undefined) configPatch.model = payload.model
+        if (payload.effort !== undefined) configPatch.effort = payload.effort
+        if (payload.outputStyle !== undefined) configPatch.outputStyle = payload.outputStyle
+        const configChanged = Object.keys(configPatch).length > 0
+            ? this.runtimeStateStore.merge(session, configPatch, t).changed
+            : false
 
         const now = Date.now()
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
-        const modeChanged = previousPermissionMode !== session.permissionMode
-            || previousModel !== session.runtimeState?.model
-            || previousEffort !== session.runtimeState?.effort
-            || previousOutputStyle !== session.runtimeState?.outputStyle
-            || previousMode !== session.mode
+        const modeChanged = configChanged || previousMode !== session.mode
         const shouldBroadcast = (!wasActive && session.active)
             || (wasRunning !== session.running)
             || modeChanged
@@ -366,27 +366,9 @@ export class SessionCache {
         }
     }
 
-    private updateRuntimeStateField<K extends keyof RuntimeState>(
-        session: Session,
-        sessionId: string,
-        field: K,
-        value: RuntimeState[K],
-        timestamp: number,
-        namespace: string
-    ): void {
-        // 字段级合并写（读 DB 最新 → patch 合并 → 写回），不基于内存 session.runtimeState
-        // 展开全量覆盖——内存快照不随 session-message 等直写 DB 的路径实时更新，
-        // 全量覆盖会抹掉 DB 侧较新的 todos/backgroundTasks 等（#62 双写竞态）
-        const result = this.store.sessions.mergeRuntimeState(sessionId, { [field]: value }, timestamp, namespace)
-        if (!result) {
-            throw new Error(`Failed to update session ${String(field)}`)
-        }
-        session.runtimeState = result.merged as RuntimeState
-    }
-
     /**
      * 处理上下文用量上报（CLI 事件驱动采集）。
-     * 落库到 runtimeState.contextUsage（updateRuntimeStateField 复用 model/effort 同款路径）
+     * 落库到 runtimeState.contextUsage（RuntimeStateStore 单一收口）
      * + SSE 推 runtimeState patch 给 web。作为 runtimeState 字段落库，resume 时首屏从 DB
      * 直接读到值，下次 init/result 采集即覆盖成最新。
      */
@@ -395,10 +377,7 @@ export class SessionCache {
         if (!session) return
         try {
             // contextUsage 为 null → 清空（/clear 后新会话从 0 开始）；否则落库覆盖
-            this.updateRuntimeStateField(
-                session, payload.sid, 'contextUsage', payload.contextUsage ?? undefined,
-                Date.now(), session.namespace,
-            )
+            this.runtimeStateStore.merge(session, { contextUsage: payload.contextUsage ?? undefined })
         } catch {
             // 落库失败不阻塞采集流程（CLI 下次事件会重试上报）
             return
@@ -412,9 +391,9 @@ export class SessionCache {
 
     /**
      * 处理 goal 状态上报（CLI 事件驱动：reportGoalStatus RPC → emit 'goal-status'）。
-     * 落库到 runtimeState.goalStatus（复用 updateRuntimeStateField 同款路径）
+     * 落库到 runtimeState.goalStatus（RuntimeStateStore 单一收口）
      * + SSE 推 runtimeState patch 给 web。
-     * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理），undefined 让 updateRuntimeStateField
+     * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理），undefined 让 merge
      * 把字段从 runtimeState 移除（JSON.stringify 丢弃 undefined 键 → DB 无此字段 → resume 读不到）。
      */
     handleGoalStatus(payload: { sid: string; goalStatus: GoalStatus | null }): void {
@@ -422,10 +401,7 @@ export class SessionCache {
         if (!session) return
         try {
             // goalStatus 为 null → 清空；否则落库覆盖
-            this.updateRuntimeStateField(
-                session, payload.sid, 'goalStatus', payload.goalStatus ?? undefined,
-                Date.now(), session.namespace,
-            )
+            this.runtimeStateStore.merge(session, { goalStatus: payload.goalStatus ?? undefined })
         } catch {
             // 落库失败不阻塞 CLI 流程（下次 turn 会重试上报）
             return
@@ -439,7 +415,7 @@ export class SessionCache {
 
     /**
      * 处理轮次起点上报（CLI running 翻转 false→true 时，SessionBase.onRunningChange 触发）。
-     * 落库到 runtimeState.runStartedAt（复用 updateRuntimeStateField 同款路径）
+     * 落库到 runtimeState.runStartedAt（RuntimeStateStore 单一收口）
      * + SSE 推 runtimeState patch 给 web——StatusBar 计时的权威来源，不随消息窗口化丢失
      *（docs/pending.md #55）。轮次结束后保留旧值（running=false 时 UI 不消费）
      */
@@ -458,10 +434,7 @@ export class SessionCache {
             return
         }
         try {
-            this.updateRuntimeStateField(
-                session, payload.sid, 'runStartedAt', payload.runStartedAt,
-                Date.now(), session.namespace,
-            )
+            this.runtimeStateStore.merge(session, { runStartedAt: payload.runStartedAt })
         } catch {
             // 落库失败不阻塞 CLI 流程（下次翻转会重试上报）
             return
@@ -508,13 +481,12 @@ export class SessionCache {
                     ? { ...t, status: 'completed' }
                     : t
             )
-            // 持久化更新（tasks 仅在 DB 现值存在时入 patch）
+            // 持久化更新（tasks 仅在 DB 现值存在时入 patch），写序由 RuntimeStateStore 保证
             const patch: Record<string, unknown> = { teamState: newTeamState }
             if (tasks) patch.tasks = newTasks
-            const merged = this.store.sessions.mergeRuntimeState(session.id, patch, Date.now(), session.namespace)
-            if (merged) {
-                session.runtimeState = merged.merged as RuntimeState
-            } else {
+            try {
+                this.runtimeStateStore.merge(session, patch)
+            } catch {
                 // 合并写失败（会话行消失 / namespace 不匹配）：收尾判定照常广播，但持久化已丢失——留痕便于诊断
                 hubLogger.warn(`[sessionCache] handleSessionEnd mergeRuntimeState failed, teamState 收尾未持久化 (id=${session.id})`)
             }
@@ -555,16 +527,18 @@ export class SessionCache {
             return
         }
 
+        const patch: Record<string, unknown> = {}
         for (const key of SessionCache.LIVE_CONFIG_KEYS) {
             const value = config[key]
-            if (value === undefined) continue
-            // 与 model/effort 同款双写：内存顶层快照即时生效 + runtimeState 落库兜 hub 重启
-            //（web 切换后 CLI keep-alive 会再带回同值，此处先落库消除「CLI 掉线期间重启丢切换」窗口）
-            this.updateRuntimeStateField(session, sessionId, key, value, Date.now(), session.namespace)
-            if (key === 'permissionMode') {
-                // permissionMode 独有顶层快照：resumeSession / toSessionSummary 等读路径消费
-                session.permissionMode = value as PermissionMode
+            if (value !== undefined) {
+                patch[key] = value
             }
+        }
+        if (Object.keys(patch).length > 0) {
+            // 落库 + 内存回填经 RuntimeStateStore 单一收口（permissionMode 顶层读点是投影
+            // getter，无需再写快照）；web 切换后 CLI keep-alive 会再带回同值，此处先落库
+            // 消除「CLI 掉线期间重启丢切换」窗口
+            this.runtimeStateStore.merge(session, patch)
         }
 
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
