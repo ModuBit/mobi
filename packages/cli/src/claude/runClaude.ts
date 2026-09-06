@@ -33,7 +33,7 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '@/agent/sessionFactory';
 import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '@/agent/runnerLifecycle';
-import { EFFORT_LEVELS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
+import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@/utils/promptBuilder';
 import { normalizeClaudeSessionModel } from './model';
@@ -250,47 +250,60 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // SDK Query 动态控制引用，用于 setModel/setPermissionMode
     const queryControlRef: QueryControlRef = { current: null };
 
+    // live 配置字段的「session 状态读写 + 运行中动态 apply」接线表（深化候选②）：
+    // 新增 live 字段在此注册一行，diff 与动态 apply 由 syncSessionModes 统一遍历；
+    // 值校验 schema 同源 shared SESSION_CONFIG_FIELDS（hub 路由与本文件 handler 共用）
+    type LiveConfigKey = 'permissionMode' | 'model' | 'effort'
+    type LiveConfigValue = PermissionMode | SessionModel | EffortLevel
+    type LiveQueryControl = NonNullable<QueryControlRef['current']>
+    const LIVE_CONFIG_APPLIERS: Record<LiveConfigKey, {
+        get: (s: Session) => LiveConfigValue | undefined
+        set: (s: Session, v: LiveConfigValue) => void
+        applyLive: (control: LiveQueryControl, v: LiveConfigValue) => Promise<void>
+    }> = {
+        permissionMode: {
+            get: (s) => s.getPermissionMode(),
+            set: (s, v) => s.setPermissionMode(v as PermissionMode),
+            applyLive: (c, v) => c.setPermissionMode(v as PermissionMode),
+        },
+        model: {
+            get: (s) => s.getModel(),
+            set: (s, v) => s.setModel(v as SessionModel),
+            applyLive: (c, v) => c.setModel(v as SessionModel ?? undefined),
+        },
+        effort: {
+            get: (s) => s.getEffort(),
+            set: (s, v) => s.setEffort(v as EffortLevel),
+            // effort 不在 SDK Query 构造函数选项中，运行时只能通过 applyFlagSettings 修改
+            applyLive: (c, v) => c.applyFlagSettings({ effortLevel: v as EffortLevel }),
+        },
+    };
+
     const syncSessionModes = () => {
         const sessionInstance = currentSessionRef.current;
         if (!sessionInstance) {
             return;
         }
 
-        const prevMode = sessionInstance.getPermissionMode();
-        const prevModel = sessionInstance.getModel();
-        const prevEffort = sessionInstance.getEffort();
-        const modeChanged = prevMode !== currentPermissionMode;
-        const modelChanged = prevModel !== currentModel;
-        const effortChanged = prevEffort !== currentEffort;
-
-        if (!modeChanged && !modelChanged && !effortChanged) {
+        const nextConfig: Record<LiveConfigKey, LiveConfigValue> = {
+            permissionMode: currentPermissionMode,
+            model: currentModel,
+            effort: currentEffort,
+        };
+        const changed = (Object.keys(LIVE_CONFIG_APPLIERS) as LiveConfigKey[])
+            .filter((key) => LIVE_CONFIG_APPLIERS[key].get(sessionInstance) !== nextConfig[key]);
+        if (changed.length === 0) {
             return;
         }
 
-        if (modeChanged) {
-            sessionInstance.setPermissionMode(currentPermissionMode);
-        }
-        if (modelChanged) {
-            sessionInstance.setModel(currentModel);
-        }
-        if (effortChanged) {
-            sessionInstance.setEffort(currentEffort);
+        for (const key of changed) {
+            LIVE_CONFIG_APPLIERS[key].set(sessionInstance, nextConfig[key]);
         }
 
         const control = queryControlRef.current;
         if (control) {
-            const promises: Promise<void>[] = [];
-            if (modeChanged) {
-                promises.push(control.setPermissionMode(currentPermissionMode));
-            }
-            if (modelChanged) {
-                promises.push(control.setModel(currentModel ?? undefined));
-            }
-            if (effortChanged) {
-                // effort 不在 SDK Query 构造函数选项中，运行时只能通过 applyFlagSettings 修改
-                promises.push(control.applyFlagSettings({ effortLevel: currentEffort }));
-            }
-            Promise.all(promises).catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
+            Promise.all(changed.map((key) => LIVE_CONFIG_APPLIERS[key].applyLive(control, nextConfig[key])))
+                .catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
         }
 
         logger.debug(`[loop] Synced session config: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}, effort=${currentEffort}`);
@@ -439,10 +452,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         }
 
         if (config.effort !== undefined) {
-            if (typeof config.effort !== 'string' || !EFFORT_LEVELS.includes(config.effort as EffortLevel)) {
+            // 校验同源 shared SESSION_CONFIG_FIELDS（深化候选②）：EFFORT_LEVELS 枚举单一来源，
+            // hub 路由与此处不再各自手写枚举判断
+            const parsed = SESSION_CONFIG_FIELDS.effort.schema.safeParse(config.effort);
+            if (!parsed.success) {
                 throw new Error('Invalid effort level');
             }
-            currentEffort = config.effort as EffortLevel;
+            currentEffort = parsed.data as EffortLevel;
         }
 
         syncSessionModes();
@@ -480,7 +496,10 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             throw new Error('Invalid output style payload');
         }
         const { style } = payload as { style?: unknown };
-        if (typeof style !== 'string' || style.length === 0) {
+        // 校验同源 shared SESSION_CONFIG_FIELDS.outputStyle（深化候选②）：只挡空串，
+        // 自定义 style 合法性由本 handler 的 /clear 语义受理 + running/rewind 拒绝守卫
+        const styleParsed = SESSION_CONFIG_FIELDS.outputStyle.schema.safeParse(style);
+        if (styleParsed.success !== true) {
             throw new Error('switch-output-style requires non-empty style string');
         }
         const session = currentSessionRef.current;
@@ -495,7 +514,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             markPendingExit: () => { session.pendingOutputStyleExit = true; },
             clearPending: () => messageQueue.clearPending(),
             pushIsolateAndClear: (msg, mode, localId) => messageQueue.pushIsolateAndClear(msg, mode, localId),
-        }, style);
+        }, styleParsed.data);
         if (!result.accepted) {
             throw new Error(`switch-output-style rejected: ${result.reason}`);
         }
