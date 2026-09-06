@@ -545,23 +545,26 @@ export class SessionCache {
         }
     }
 
+    /** live 字段的落库键（深化候选②：新增 live 字段在此追加即获得「落库+内存+广播」，
+     *  restart 语义字段如 outputStyle 不在此列——不写缓存，权威值由重启后 init/keep-alive 回流） */
+    static readonly LIVE_CONFIG_KEYS = ['permissionMode', 'model', 'effort'] as const
+
     applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel }): void {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session) {
             return
         }
 
-        if (config.permissionMode !== undefined) {
+        for (const key of SessionCache.LIVE_CONFIG_KEYS) {
+            const value = config[key]
+            if (value === undefined) continue
             // 与 model/effort 同款双写：内存顶层快照即时生效 + runtimeState 落库兜 hub 重启
             //（web 切换后 CLI keep-alive 会再带回同值，此处先落库消除「CLI 掉线期间重启丢切换」窗口）
-            this.updateRuntimeStateField(session, sessionId, 'permissionMode', config.permissionMode, Date.now(), session.namespace)
-            session.permissionMode = config.permissionMode
-        }
-        if (config.model !== undefined) {
-            this.updateRuntimeStateField(session, sessionId, 'model', config.model, Date.now(), session.namespace)
-        }
-        if (config.effort !== undefined) {
-            this.updateRuntimeStateField(session, sessionId, 'effort', config.effort, Date.now(), session.namespace)
+            this.updateRuntimeStateField(session, sessionId, key, value, Date.now(), session.namespace)
+            if (key === 'permissionMode') {
+                // permissionMode 独有顶层快照：resumeSession / toSessionSummary 等读路径消费
+                session.permissionMode = value as PermissionMode
+            }
         }
 
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
