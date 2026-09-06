@@ -36,7 +36,7 @@ export const CHANGE_TITLE_TOOL_NAME = 'change_title' as const
 
 export interface ChangeTitleToolDeps {
     /** 发送 summary 消息到 Hub（更新 mobi 侧标题 + Web 显示） */
-    sendSummary: Pick<ApiSessionClient, 'sendClaudeSessionMessage'>['sendClaudeSessionMessage']
+    sendSummary: ApiSessionClient['sendClaudeSessionMessage']
     /** 回写 agent 侧标题（实现为 syncAgentRename；会话未就绪时 throw） */
     syncRename: (locator: AgentSessionLocator | null, title: string) => Promise<void>
     /** 取当前 agent 会话定位（flavor + sessionId + path），用于回写 agent 侧标题 */

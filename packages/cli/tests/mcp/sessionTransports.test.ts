@@ -48,6 +48,15 @@ describe('buildSessionMcpServers', () => {
         expect(servers.mobi).toEqual({ type: 'http', url: 'http://127.0.0.1:12345' })
         expect(servers['mobi-web']).toBeDefined()
     })
+
+    it('local 模式缺 httpMcpUrl 属装配 bug，显式报错而非静默空串', () => {
+        expect(() => buildSessionMcpServers({
+            startingMode: 'local',
+            httpMcpUrl: null,
+            client: fakeClient,
+            getAgentLocator: () => null,
+        })).toThrow(/httpMcpUrl/)
+    })
 })
 
 describe('buildRemoteInlineHookSettings', () => {

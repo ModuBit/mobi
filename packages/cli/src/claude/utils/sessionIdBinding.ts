@@ -42,7 +42,7 @@ export function applySessionIdBinding(
     if (currentSession) {
         const previousSessionId = currentSession.sessionId;
         if (previousSessionId !== newSessionId) {
-            logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${newSessionId}`);
+            logger.debug(`[sessionBinding] Claude session ID changed: ${previousSessionId} -> ${newSessionId}`);
             currentSession.onSessionFound(newSessionId);
         }
     }

@@ -40,7 +40,13 @@ export function buildSessionMcpServers(opts: {
 }): Record<string, McpServerConfig> {
     const mobi: McpServerConfig = opts.startingMode === 'remote'
         ? createMobiSdkMcpServer(opts.client, opts.getAgentLocator)
-        : { type: 'http', url: opts.httpMcpUrl ?? '' }
+        : (() => {
+            // local 模式必须提供 HTTP server url；null 属装配时序 bug，显式失败而非静默空串
+            if (!opts.httpMcpUrl) {
+                throw new Error('local 模式 buildSessionMcpServers 缺少 httpMcpUrl（startMobiMcpServer 未先启动?）')
+            }
+            return { type: 'http' as const, url: opts.httpMcpUrl }
+        })()
 
     return {
         mobi,
