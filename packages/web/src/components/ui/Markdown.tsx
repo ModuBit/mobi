@@ -21,6 +21,7 @@ import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import { useStreamingContent } from './useStreamingContent'
+import { ActionLink } from './ActionLink'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
@@ -49,14 +50,22 @@ const MENTION_EXTENSIONS = [mention()]
 /** 脚注引用扩展（稳定引用，不依赖运行时数据） */
 const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
 
-/** 所有链接在新标签页打开 */
+/** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别） */
+const MOBI_URI_PREFIX = 'mobi://'
+
+/** 链接渲染：mobi:// 内部动作链接交 ActionLink 拦截分发（ADR 0003），其余统一新标签页打开 */
 const ExternalLink: FC<ComponentProps<{ href?: string }>> = (
     { href, children, domNode, streamStatus, lang, block, ...rest },
-) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
-        {children}
-    </a>
-)
+) => {
+    if (href?.toLowerCase().startsWith(MOBI_URI_PREFIX)) {
+        return <ActionLink uri={href}>{children}</ActionLink>
+    }
+    return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+            {children}
+        </a>
+    )
+}
 
 /** 默认的 code 渲染：块级走 CodeHighlighter（未指定 lang 时自动检测），行内保持原生 <code> */
 const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children }) => {

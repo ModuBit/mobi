@@ -15,9 +15,10 @@
  */
 
 /**
- * 自定义消息管线测试（ADR 0002 / fork-session spec §4.3）：
+ * 自定义消息管线测试（ADR 0002 / ADR 0003 mobi URI 动作协议）：
  * normalize（role==='custom' 分流）→ reducerTimeline（CustomBlock 进时间线）→ buildBubbleItems（system 气泡）。
- * 覆盖：text+ref 组合、unknown block / 未注册 targetType 剔除、全不可识别整条跳过、seq 置顶（自然保序）。
+ * 覆盖：动作链接文本、unknown block / 历史 ref block 剔除（ref 已由动作链接文本取代）、
+ * 全不可识别整条跳过、seq 置顶（自然保序）。
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -44,19 +45,15 @@ function makeCustomMessage(content: unknown, overrides: Partial<DecryptedMessage
 }
 
 describe('normalize custom 分支', () => {
-    it('text + ref(session) 组合应归一为 custom 消息（溯源消息形态）', () => {
-        const message = makeCustomMessage([
+    it('动作链接文本（溯源消息形态）归一为 custom 消息', () => {
+        const content = [
             { type: 'text', text: 'fork 自会话 ' },
-            { type: 'ref', targetType: 'session', id: 'parent-1' },
-        ])
-
-        const result = normalizeDecryptedMessage(message)
+            { type: 'text', text: '[父会话](mobi://session/open?id=parent-1)' },
+        ]
+        const result = normalizeDecryptedMessage(makeCustomMessage(content))
         expect(result).not.toBeNull()
         expect(result!.role).toBe('custom')
-        expect(result!.content).toEqual([
-            { type: 'text', text: 'fork 自会话 ' },
-            { type: 'ref', targetType: 'session', id: 'parent-1' },
-        ])
+        expect(result!.content).toEqual(content)
     })
 
     it('裸 string content 应收敛为单 text block', () => {
@@ -65,7 +62,7 @@ describe('normalize custom 分支', () => {
         expect(result!.content).toEqual([{ type: 'text', text: '纯文本溯源' }])
     })
 
-    it('unknown block 与未注册 targetType 的 ref 应剔除，合法 block 保留', () => {
+    it('unknown block 与历史 ref block 应剔除，合法 block 保留', () => {
         const message = makeCustomMessage([
             { type: 'text', text: '前段' },
             { type: 'mystery', payload: 1 },
@@ -87,10 +84,11 @@ describe('normalize custom 分支', () => {
 describe('custom 消息接入时间线', () => {
     it('应产生 CustomBlock 并保持在消息序位置（溯源消息 seq 1 → 置顶时间线）', () => {
         // seq 1 的溯源消息在最前，其后是常规 agent 消息——归约保序，置顶自然实现
-        const provenance = normalizeDecryptedMessage(makeCustomMessage([
+        const provenanceContent = [
             { type: 'text', text: 'fork 自会话 ' },
-            { type: 'ref', targetType: 'session', id: 'parent-1' },
-        ]))!
+            { type: 'text', text: '[父会话](mobi://session/open?id=parent-1)' },
+        ]
+        const provenance = normalizeDecryptedMessage(makeCustomMessage(provenanceContent))!
         const agent = normalizeDecryptedMessage({
             id: 'agent-1',
             seq: 2,
@@ -105,10 +103,7 @@ describe('custom 消息接入时间线', () => {
         const { blocks } = reduceChatBlocks([provenance, agent], null)
         expect(blocks[0]?.kind).toBe('custom')
         const custom = blocks[0] as CustomBlock
-        expect(custom.blocks).toEqual([
-            { type: 'text', text: 'fork 自会话 ' },
-            { type: 'ref', targetType: 'session', id: 'parent-1' },
-        ])
+        expect(custom.blocks).toEqual(provenanceContent)
         expect(blocks.some(b => b.kind === 'agent-text')).toBe(true)
     })
 

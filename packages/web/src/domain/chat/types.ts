@@ -315,9 +315,10 @@ export type ToolCallBlock = {
 
 /**
  * 自定义消息块（ADR 0002）：hub/mobi 注入的非 CC 消息（首期为 fork 溯源「fork 自会话 xxx」）。
- * blocks 为统一词汇表（text/ref/image/document/quote）归一后的数组——unknown block 与未注册
- * targetType 的 ref 已在归一层（normalizeContentBlocks allowRef）剔除；渲染层按 block.type +
- * ref.targetType 两级注册表分发（见 blocks/CustomBlock.tsx），未注册项跳过不渲染。
+ * blocks 为统一词汇表（text/image/document/quote）数组——unknown block 已在归一层
+ * （normalizeContentBlocks）剔除；渲染层按 block.type 分发（见 blocks/CustomBlock.tsx），
+ * 未注册项跳过不渲染。内部动作不走 block：文本中的 mobi:// 动作链接由 Markdown
+ * 链接拦截层分发（ADR 0003，见 ui/ActionLink.tsx）。
  */
 export type CustomBlock = {
     kind: 'custom'

@@ -15,24 +15,19 @@
  */
 
 /**
- * CustomBlockView 渲染测试（ADR 0002 两级注册：block.type 分发 + ref.targetType 注册表）：
- * text 直出、ref(session) 标题实时取 + 点击跳转、parent 已删降级灰文本、未注册 targetType 跳过。
+ * CustomBlockView 渲染测试（ADR 0003：custom text 走 Markdown，动作链接由拦截层分发）：
+ * 纯文本渲染不变、text 含 mobi:// 动作链接点击分发（session/open → navigate）、
+ * 未注册 URI toast 降级、image/document/quote 分支与未知 block 类型跳过。
+ * XMarkdown mock 为极简 md 链接渲染器（[label](href) → 注入的 a 渲染器），
+ * 走真实 Markdown 组件的链接拦截分支；真实解析链路由 E2E 覆盖。
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { ComponentType, ReactNode } from 'react'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { message } from 'antd'
 
-// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——项目已知坑） ============
-
-const sessionsGet = vi.hoisted(() => vi.fn())
-const mockApi = {
-    sessions: { get: sessionsGet },
-    visibility: { report: vi.fn().mockResolvedValue(undefined) },
-}
-vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: () => mockApi,
-}))
+// ============ mock（hook/函数均返回稳定引用，避免 effect 死循环——项目已知坑） ============
 
 const navigateSpy = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({
@@ -47,6 +42,35 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
+// antd message 静态 API spy（不整包 mock，theme 等走真实实现）
+const messageInfoSpy = vi.spyOn(message, 'info').mockImplementation(() => undefined as never)
+
+beforeEach(() => {
+    navigateSpy.mockClear()
+    messageInfoSpy.mockClear()
+})
+
+// XMarkdown mock：极简 md 链接解析——[label](href) 经注入的 a 渲染器出真实 <a>，其余文本原样
+vi.mock('@ant-design/x-markdown', () => ({
+    XMarkdown: ({ content, components }: {
+        content: string
+        components?: { a?: ComponentType<{ href?: string; children?: ReactNode }> }
+    }) => {
+        const A = components?.a
+        // split 带两个捕获组：普通段下标 %3==0，label 段 %3==1，href 段 %3==2
+        const parts = content.split(/\[([^\]]*)\]\(([^)]*)\)/)
+        return (
+            <div data-testid="xmd">
+                {parts.map((part, i) => {
+                    if (i % 3 === 1) return A ? <A key={i} href={parts[i + 1]}>{part}</A> : <span key={i}>{part}</span>
+                    if (i % 3 === 2) return null
+                    return <span key={i}>{part}</span>
+                })}
+            </div>
+        )
+    },
+}))
+
 import { CustomBlockView } from '@/components/chat/blocks/CustomBlock'
 import type { CustomBlock } from '@/domain/chat/types'
 
@@ -57,55 +81,51 @@ function makeBlock(blocks: CustomBlock['blocks']): CustomBlock {
 }
 
 function renderView(block: CustomBlock): ReturnType<typeof render> {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    return render(
-        <QueryClientProvider client={queryClient}>
-            <CustomBlockView block={block} />
-        </QueryClientProvider>,
-    )
+    return render(<CustomBlockView block={block} />)
 }
 
 describe('CustomBlockView', () => {
-    it('text 段直出', () => {
+    it('纯文本 text 经 Markdown 渲染，内容不变、无链接行为', () => {
         renderView(makeBlock([{ type: 'text', text: 'fork 自会话 ' }]))
-        // getByText 默认 normalizer 会 trim 文本，查询串用 trim 后形态
         expect(screen.getByText('fork 自会话')).toBeTruthy()
+        expect(screen.queryByRole('link')).toBeNull()
+        expect(navigateSpy).not.toHaveBeenCalled()
     })
 
-    it('ref(session)：标题实时取，渲染为可点击链接，点击跳转该会话', async () => {
-        sessionsGet.mockResolvedValue({ data: { session: { id: 'parent-1', metadata: { name: '父会话' } } } })
+    it('text 含已注册动作链接：点击 navigate 到目标会话', () => {
         renderView(makeBlock([
-            { type: 'text', text: 'fork 自会话 ' },
-            { type: 'ref', targetType: 'session', id: 'parent-1' },
+            { type: 'text', text: 'fork 自会话 [父会话](mobi://session/open?id=parent-1)' },
         ]))
-
-        const link = await screen.findByRole('link', { name: '父会话' })
+        const link = screen.getByRole('link', { name: '父会话' })
         fireEvent.click(link)
+        expect(navigateSpy).toHaveBeenCalledTimes(1)
         expect(navigateSpy).toHaveBeenCalledWith(
             expect.objectContaining({ params: { sessionId: 'parent-1' } }),
         )
+        expect(messageInfoSpy).not.toHaveBeenCalled()
     })
 
-    it('parent 已删（404）→ 降级灰文本不可点', async () => {
-        sessionsGet.mockRejectedValue(new Error('Session not found'))
-        renderView(makeBlock([{ type: 'ref', targetType: 'session', id: 'gone' }]))
-
-        // 降级文案出现且无 link role（不可点）
-        await screen.findByText('chat.custom.sessionRefMissing')
-        expect(screen.queryByRole('link')).toBeNull()
-    })
-
-    it('未注册 targetType 的 ref 跳过（注册表无渲染器）', () => {
-        const { container } = renderView(makeBlock([
-            { type: 'ref', targetType: 'file', id: 'f-1' },
+    it('text 含未注册 mobi URI：点击 toast 不跳转', () => {
+        renderView(makeBlock([
+            { type: 'text', text: '看看 [文件](mobi://file/open?path=x)' },
         ]))
-        expect(container.querySelector('span[role="link"]')).toBeNull()
+        fireEvent.click(screen.getByRole('link', { name: '文件' }))
+        expect(messageInfoSpy).toHaveBeenCalledWith('chat.action.unsupported')
+        expect(navigateSpy).not.toHaveBeenCalled()
+    })
+
+    it('image/document/quote 分支维持跳过不渲染', () => {
+        renderView(makeBlock([
+            { type: 'quote', role: 'user', messageId: 'm-1', excerpt: '被引用内容' },
+        ]))
+        expect(screen.queryByText('被引用内容')).toBeNull()
+        expect(screen.queryByRole('link')).toBeNull()
     })
 
     it('未知 block 类型跳过（向前兼容）', () => {
         const { container } = renderView(makeBlock([
             { type: 'mystery' } as unknown as CustomBlock['blocks'][number],
         ]))
-        expect(container.querySelector('span[role="link"]')).toBeNull()
+        expect(container.querySelector('a')).toBeNull()
     })
 })

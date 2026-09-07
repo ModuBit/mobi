@@ -17,75 +17,23 @@
 import type React from 'react'
 import { memo } from 'react'
 import { theme as antTheme } from 'antd'
-import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
 import type { ContentBlock } from '@mobi/shared'
 import type { CustomBlock as CustomBlockType } from '@/domain/chat'
-import { useSession } from '@/core/data/hooks/queries/useSession'
-import { getSessionDisplayName } from '@/core/utils/sessionUtils'
+import { Markdown } from '@/components/ui/Markdown'
 
 /**
- * 自定义消息渲染器（ADR 0002）：按 block.type 一级分发 + ref.targetType 二级注册表。
- * - text 段直出；ref 渲染为可跳转链接（首期仅 session）
- * - 未注册的 block 类型 / ref.targetType 跳过不渲染（向前兼容，未来在此注册新渲染器）
+ * 自定义消息渲染器（ADR 0002）：按 block.type 一级分发。
+ * - text 段经 Markdown 渲染——内部动作（如 fork 溯源跳转）是文本中的 mobi:// 动作
+ *   链接（ADR 0003），由 Markdown 链接拦截层统一分发，本组件无二级注册表
+ * - 未注册的 block 类型跳过不渲染（向前兼容，未来在此注册新渲染器）
  */
-
-/** ref.targetType 渲染器注册表（受控开放，ADR 0002）：新增 targetType 只需注册新渲染器 */
-const REF_TARGET_RENDERERS: Record<string, React.ComponentType<{ refId: string }>> = {
-    session: SessionRefLink,
-}
-
-/** ref(session) 渲染器：标题实时取（SSE session-updated/removed 驱动缓存失效），点击跳转该会话 */
-function SessionRefLink({ refId }: { refId: string }) {
-    const { token } = antTheme.useToken()
-    const { t } = useTranslation()
-    const navigate = useNavigate()
-    const { data: session } = useSession(refId)
-
-    // 会话已删 / 取不到标题 → 灰文本不可点（spec §4.3 降级）
-    if (!session) {
-        return (
-            <span style={{ color: token.colorTextQuaternary }}>
-                {t('chat.custom.sessionRefMissing')}
-            </span>
-        )
-    }
-
-    return (
-        <span
-            role="link"
-            tabIndex={0}
-            style={{
-                color: token.colorTextSecondary,
-                textDecoration: 'underline',
-                textUnderlineOffset: 2,
-                cursor: 'pointer',
-            }}
-            onClick={(e) => {
-                e.stopPropagation()
-                void navigate({ to: '/sessions/$sessionId', params: { sessionId: refId } })
-            }}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                    void navigate({ to: '/sessions/$sessionId', params: { sessionId: refId } })
-                }
-            }}
-        >
-            {getSessionDisplayName(session)}
-        </span>
-    )
-}
 
 /** 单个 block → 渲染节点；未注册类型返回 null（调用方跳过）。key 由调用方（位置序）提供 */
 function renderBlock(block: ContentBlock, key: string): React.ReactNode {
     switch (block.type) {
         case 'text':
-            return <span key={key}>{block.text}</span>
-        case 'ref': {
-            const RefRenderer = REF_TARGET_RENDERERS[block.targetType]
-            if (!RefRenderer) return null
-            return <RefRenderer key={key} refId={block.id} />
-        }
+            // 非流式、不带 slash command / mention：custom 消息由 mobi 生成，无用户输入语法
+            return <Markdown key={key} content={block.text} />
         default:
             // image/document/quote：词汇表已定义但渲染器首期未对 custom 通道开放，跳过
             return null

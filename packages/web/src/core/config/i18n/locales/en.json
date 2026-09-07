@@ -365,8 +365,8 @@
             "image": "[Image]",
             "quote": "[Quote]"
         },
-        "custom": {
-            "sessionRefMissing": "Deleted session"
+        "action": {
+            "unsupported": "Unsupported action"
         }
     },
     "files": {
