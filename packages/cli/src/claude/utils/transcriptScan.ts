@@ -29,7 +29,8 @@ const MAX_PAGES = 40
  * 空页 / 末页不满（扫完）、或超过 MAX_PAGES（防病态长链）为止。
  *
  * @param onHit 命中时回调一次（scanned 为旧→新全量已扫前缀，hitIndex 为命中位置）——
- *              需要命中上下文的消费方用（如 rewind 找锚点前驱 assistant），存在性判定忽略
+ *              需要命中上下文的消费方用（如 rewind 找锚点前驱 assistant）；
+ *              不传即纯存在性判定，逐页判定不累积前缀（省去回看用不到的累积成本）
  * @returns 'found' | 'not-found'（读取异常不在此吞：由消费方按各自失败语义处理）
  */
 export async function scanTranscriptForUuid(
@@ -38,7 +39,8 @@ export async function scanTranscriptForUuid(
     uuid: string,
     onHit?: (scanned: SessionMessage[], hitIndex: number) => void,
 ): Promise<'found' | 'not-found'> {
-    const scanned: SessionMessage[] = []
+    // 纯存在性判定（无 onHit）不累积前缀：逐页判定即弃，不为回看语义白付累积与全前缀 findIndex
+    const scanned: SessionMessage[] | null = onHit ? [] : null
 
     for (let page = 0; page < MAX_PAGES; page++) {
         const messages = await getSessionMessages(sessionId, { dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
@@ -46,11 +48,15 @@ export async function scanTranscriptForUuid(
             logger.debug(`[transcriptScan] exhausted transcript without hitting ${uuid} (page=${page})`)
             return 'not-found'
         }
-        scanned.push(...messages)
 
-        const idx = scanned.findIndex(m => m.uuid === uuid)
-        if (idx >= 0) {
-            onHit?.(scanned, idx)
+        if (scanned) {
+            scanned.push(...messages)
+            const idx = scanned.findIndex(m => m.uuid === uuid)
+            if (idx >= 0) {
+                onHit?.(scanned, idx)
+                return 'found'
+            }
+        } else if (messages.some(m => m.uuid === uuid)) {
             return 'found'
         }
 

@@ -19,9 +19,8 @@ import { UserMessageContentSchema, normalizeUserContent } from '@mobi/shared'
 import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
-import { isSessionEnqueueable } from '../../sync/sessionDeleteGuard'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireSessionFromParam, requireSyncEngine } from './guards'
+import { isSessionEnqueueable, requireSessionFromParam, requireSyncEngine } from './guards'
 
 const querySchema = z.object({
     limit: z.coerce.number().int().min(1).max(200).optional(),

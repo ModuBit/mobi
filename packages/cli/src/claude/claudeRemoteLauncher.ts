@@ -44,6 +44,7 @@ import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage, type ForkActivationFailureReason } from "./utils/forkActivation";
 import type { ApiSessionClient } from "@/api/apiSession";
+import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
@@ -84,7 +85,7 @@ function reportForkActivationFailure(
     client: ForkFailureReporter,
     reason: ForkActivationFailureReason,
     detail?: string,
-    forkErrorCode: string = 'activation-failed',
+    forkErrorCode: ForkErrorCode = 'activation-failed',
 ): void {
     client.updateMetadata((metadata) => withForkError(metadata, forkErrorCode, detail));
     client.sendSessionEvent({

@@ -463,13 +463,12 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
                 const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
                 const newString = typeof edit.new_string === 'string' ? edit.new_string : null
                 if (oldString === null || newString === null) return null
-                const patch = patchForEdit(props.block.tool.structuredPatch, idx)?.[0]
                 return (
                     <DiffView
                         key={idx}
                         oldString={oldString}
                         newString={newString}
-                        structuredPatches={patch ? [patch] : undefined}
+                        structuredPatches={patchForEdit(props.block.tool.structuredPatch, idx)}
                         filePath={idx === 0 ? filePath ?? undefined : undefined}
                         variant="inline"
                         statsType="edit"
