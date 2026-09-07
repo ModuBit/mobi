@@ -64,6 +64,11 @@ export function isTurnResultContent(content: unknown): boolean {
  * 锚定的是「落点回复」assistant 行——result 行紧随其后，若复制止于锚点，
  * fork 会话该 turn 的概要行因缺 result 行而消失）。
  *
+ * ⚠️ 扫描只看主链 persistent 行（与 findTurnStartSeq 同口径）——sidechain / 非 persistent
+ * 行不参与 result 定位判定，但不代表它们不被复制：复制按 [turnStart..终点] 的 seq 范围
+ * 整段截取（见 forkSessionAtAnchor），锚点与 result 之间夹带的 sidechain 行照常随行，
+ * 侧链嵌套引用随整 turn 切割保持闭合。
+ *
  * 向下扫到下一个 turn 起点前（不跨 turn），命中 result 行即返回其 seq；
  * 锚点本身是 result、或 turn 无 result（防御）→ 返回 anchorSeq 按原范围复制。
  */

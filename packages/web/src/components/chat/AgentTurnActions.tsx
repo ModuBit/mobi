@@ -26,8 +26,8 @@ export interface AgentTurnActionsProps {
     text: string
     /** 是否渲染 fork 入口（不可 fork 的 turn 仍保留复制——复制不受 fork 守卫约束） */
     showFork?: boolean
-    /** 点击 fork 入口（父组件置 forkDraft 打开 Popover） */
-    onFork: () => void
+    /** 点击 fork 入口（父组件置 forkDraft 打开 Popover）；showFork=false 时无需传 */
+    onFork?: () => void
     // ── fork 锚定 Popover（PC 入口，与 UserMessageFooter rewind 同模式）──
     /** 这条消息是否是被激活的分叉目标（Popover 受控 open，由 forkDraft 命中本条置 true） */
     forkOpen?: boolean

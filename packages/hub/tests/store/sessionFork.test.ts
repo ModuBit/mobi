@@ -211,7 +211,8 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         })
     })
 
-    test('溯源标题优先 metadata.name（冻结文案的身份字段语义）', () => {        const store = new Store(':memory:')
+    test('溯源标题优先 metadata.name（冻结文案的身份字段语义）', () => {
+        const store = new Store(':memory:')
         const parent = store.sessions.getOrCreateSession(
             'fork-parent-2',
             { path: '/tmp/proj', host: 'h-1', name: '自定义名', nativeSessionId: 'parent-native-1' },
