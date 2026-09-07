@@ -106,7 +106,9 @@ export interface ForkSessionAtAnchorResult {
 
 /**
  * 单事务建 fork 会话：建行（预生成 native id + forkFrom/forkedFrom + 配置快照继承）
- * → 溯源自定义消息（seq 1，置顶时间线）→ 复制 [turnStartSeq..anchor.seq] 的未删行（seq 按原序保序）。
+ * → 复制 [turnStartSeq..anchor.seq] 的未删行（seq 1 起按原序保序）→ 溯源自定义消息
+ * 追加在复制行之后（seq = 复制行数 + 1，时间线最新位置——溯源「fork 自会话 x」
+ * 紧跟被复制的内容，而非置顶最前）。
  *
  * 复制行语义（spec §5.1）：
  * - id 重新生成（messages.id 全局唯一）、session_id 改写为 fork 行
@@ -188,24 +190,7 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
             project_id: parent.projectId,
         })
 
-        // 2. 溯源自定义消息：category='persistent'，seq 1 → 置顶时间线（spec §5.1）
-        db.prepare(`
-            INSERT INTO messages (
-                id, session_id, content, created_at, seq, local_id, metadata, is_sidechain,
-                parent_tool_use_id, category, lifecycle, lifecycle_at, position_at
-            ) VALUES (
-                @id, @session_id, @content, @created_at, 1, NULL, NULL, 0,
-                NULL, 'persistent', NULL, NULL, @position_at
-            )
-        `).run({
-            id: randomUUID(),
-            session_id: forkSessionId,
-            content: JSON.stringify(provenanceContent),
-            created_at: now,
-            position_at: now,
-        })
-
-        // 3. 复制 [turnStartSeq..anchor.seq] 的未删行：seq 按原序从 2 起保序
+        // 2. 复制 [turnStartSeq..anchor.seq] 的未删行：seq 从 1 起按原序保序
         type CopyRow = {
             content: string
             local_id: string | null
@@ -231,7 +216,6 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
         `)
         let seq = 1
         for (const row of rows) {
-            seq += 1
             insert.run({
                 id: randomUUID(),
                 session_id: forkSessionId,
@@ -245,7 +229,27 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
                 category: row.category,
                 position_at: now,
             })
+            seq += 1
         }
+
+        // 3. 溯源自定义消息：category='persistent'，seq 排在复制行之后（时间线最新位置，
+        //    「fork 自会话 x」紧跟被复制的内容而非置顶最前）
+        db.prepare(`
+            INSERT INTO messages (
+                id, session_id, content, created_at, seq, local_id, metadata, is_sidechain,
+                parent_tool_use_id, category, lifecycle, lifecycle_at, position_at
+            ) VALUES (
+                @id, @session_id, @content, @created_at, @seq, NULL, NULL, 0,
+                NULL, 'persistent', NULL, NULL, @position_at
+            )
+        `).run({
+            id: randomUUID(),
+            session_id: forkSessionId,
+            content: JSON.stringify(provenanceContent),
+            created_at: now,
+            seq,
+            position_at: now,
+        })
 
         return { sessionId: forkSessionId, copiedCount: rows.length }
     })

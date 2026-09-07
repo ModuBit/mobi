@@ -49,7 +49,8 @@ export function resolveForkErrorText(forkError: ForkErrorMetadata, t: TFunction)
 }
 
 export type ForkSessionRowState = {
-    /** 是否 fork 行（forkFrom 在场） */
+    /** 是否 fork 行（forkFrom 或 forkedFrom 在场——forkFrom 激活即清除，持久区分靠终身
+     *  保留的 forkedFrom；否则激活后「· 分叉」后缀消失、与 parent 标题无法区分） */
     isForkRow: boolean
     /** 待激活态（forkFrom 在场且无 forkError） */
     isPendingActivation: boolean
@@ -69,16 +70,18 @@ const NON_FORK_STATE: ForkSessionRowState = {
 
 /**
  * fork 行徽标状态（纯函数，只读 session 自身 metadata，独立导出便于单测）。
- * forkError 的存废即徽标切换依据：hub 激活清除 forkFrom（SSE 到达）→ 徽标消失；
- * 激活失败写入 forkError → 徽标转错误态。
+ * forkFrom 存废驱动待激活/错误态徽标：hub 激活清除 forkFrom（SSE 到达）→ 徽标消失；
+ * 激活失败写入 forkError → 徽标转错误态。isForkRow 另含 forkedFrom（终身保留）——
+ * 已激活的分叉会话仍是 fork 行（标题后缀「· 分叉」的依据）。
  */
 export function resolveForkSessionState(session: Session, t: TFunction): ForkSessionRowState {
     const forkFrom = session.metadata?.forkFrom
+    const forkedFrom = session.metadata?.forkedFrom
     const forkError = session.metadata?.forkError
-    if (!forkFrom) return NON_FORK_STATE
+    if (!forkFrom && !forkedFrom) return NON_FORK_STATE
     return {
         isForkRow: true,
-        isPendingActivation: !forkError,
+        isPendingActivation: !!forkFrom && !forkError,
         isActivationFailed: Boolean(forkError),
         errorText: forkError ? resolveForkErrorText(forkError, t) : null,
     }
@@ -98,10 +101,14 @@ export function resolveForkRowTitle(parentSession: Session | null | undefined, t
 /**
  * fork 行标题 hook：实时取 parent 会话（SSE session-updated/removed 驱动缓存失效，
  * parent 改名/删除后标题自动跟随/降级）。只应挂载在 fork 行上（非 fork 行零开销）。
+ * parent 取值：待激活/错误态看 forkFrom.parentSessionId；已激活看终身保留的
+ * forkedFrom.sessionId（forkFrom 已被清除）。
  */
 export function useForkRowTitle(forkSession: Session): string {
     const { t } = useTranslation()
-    const parentSessionId = forkSession.metadata?.forkFrom?.parentSessionId ?? null
+    const parentSessionId = forkSession.metadata?.forkFrom?.parentSessionId
+        ?? forkSession.metadata?.forkedFrom?.sessionId
+        ?? null
     const { data: parentSession } = useSession(parentSessionId)
     return resolveForkRowTitle(parentSession, t)
 }

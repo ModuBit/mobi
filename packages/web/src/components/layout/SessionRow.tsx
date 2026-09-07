@@ -111,7 +111,7 @@ export function SessionRow({
                     <SessionName>{displayName}</SessionName>
                 </AppTooltip>
             )}
-            {forkState.isForkRow && (
+            {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge
                     variant={forkState.isActivationFailed ? 'error' : 'pending'}
                     errorText={forkState.errorText}

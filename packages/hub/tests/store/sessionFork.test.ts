@@ -172,7 +172,7 @@ describe('sessionFork.findTurnStartSeq：向 seq 下方找最近 turn 起点', (
 // ============ forkSessionAtAnchor：建 fork 行 + 复制锚点 turn + 溯源消息 ============
 
 describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息', () => {
-    test('复制范围 = [turn起点..锚点] 含侧链行；更早 turn 不复制；溯源消息 seq 最先', () => {
+    test('复制范围 = [turn起点..锚点] 含侧链行；更早 turn 不复制；溯源消息排复制行之后', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
 
@@ -180,14 +180,14 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
 
         expect(result.sessionId).not.toBe(parent.id)
         const forkMessages = store.messages.getMessages(result.sessionId, 200)
-        // 溯源 + seq3 user + seq4 侧链 + seq5 锚点 = 4 行
+        // 复制行 seq 1-3（user/侧链/锚点），溯源消息 seq 4 排最后（紧跟被复制内容）
         expect(forkMessages).toHaveLength(4)
         expect(forkMessages.map(m => m.seq)).toEqual([1, 2, 3, 4])
-        // seq 1 = 溯源消息；其余按原序对应 parent 的 seq 3/4/5
         const texts = forkMessages.map(m => JSON.stringify(m.content))
-        expect(texts[1]).toContain('第二个问题')
-        expect(texts[2]).toContain('isSidechain')
-        expect(texts[3]).toContain('result')
+        expect(texts[0]).toContain('第二个问题')
+        expect(texts[1]).toContain('isSidechain')
+        expect(texts[2]).toContain('result')
+        expect(texts[3]).toContain('fork 自会话')
     })
 
     test('溯源消息：role custom、动作链接 text block（ADR 0003）、category persistent、无 localId', () => {
@@ -196,8 +196,8 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
 
         const result = forkStandard(store, parent)
 
-        const provenance = store.messages.getMessages(result.sessionId, 200)[0]
-        expect(provenance.seq).toBe(1)
+        const provenance = store.messages.getMessages(result.sessionId, 200)[3]
+        expect(provenance.seq).toBe(4)
         expect(provenance.category).toBe('persistent')
         expect(provenance.localId).toBeNull()
         expect(provenance.lifecycle).toBeNull()
@@ -236,7 +236,7 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         })
         void anchor
 
-        const content = store.messages.getMessages(result.sessionId, 200)[0].content as { content: Array<{ text: string }> }
+        const content = store.messages.getMessages(result.sessionId, 200)[2].content as { content: Array<{ text: string }> }
         expect(content.content[0].text).toContain('[自定义名](mobi://session/open?id=')
     })
 
@@ -288,9 +288,9 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
             expect(msg.sessionId).toBe(result.sessionId)
         }
         // user 行 local_id 保留（fork 链上 uuid 有效，去重无冲突）
-        expect(forkMessages[1].localId).toBe('l2')
+        expect(forkMessages[0].localId).toBe('l2')
         // 锚点行 native 事实原样保留（nativeSessionId = parent 链值）
-        expect(forkMessages[3].metadata).toEqual({ nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' })
+        expect(forkMessages[2].metadata).toEqual({ nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' })
     })
 
     test('lifecycle 重置中性值：已推进（pushed）的复制行 lifecycle/lifecycleAt 置 null', () => {
@@ -301,9 +301,9 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         const result = forkStandard(store, parent)
 
         const forkMessages = store.messages.getMessages(result.sessionId, 200)
-        expect(forkMessages[1].localId).toBe('l2')
-        expect(forkMessages[1].lifecycle).toBeNull()
-        expect(forkMessages[1].lifecycleAt).toBeNull()
+        expect(forkMessages[0].localId).toBe('l2')
+        expect(forkMessages[0].lifecycle).toBeNull()
+        expect(forkMessages[0].lifecycleAt).toBeNull()
     })
 
     test('配置快照继承：runtimeState 原样继承，namespace 沿用 parent', () => {
@@ -338,7 +338,7 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         const forkMessages = store.messages.getMessages(result.sessionId, 200)
         // 溯源 + 边界行 + user + 锚点 = 4 行；seq2 即 compact_boundary 行
         expect(forkMessages).toHaveLength(4)
-        expect(JSON.stringify(forkMessages[1].content)).toContain('compact_boundary')
+        expect(JSON.stringify(forkMessages[0].content)).toContain('compact_boundary')
     })
 
     test('软删行（rewind 截断）不复制', () => {

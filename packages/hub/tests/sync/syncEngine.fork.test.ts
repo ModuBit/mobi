@@ -109,7 +109,8 @@ describe('SyncEngine.forkSession', () => {
 
             const messages = h.store.messages.getMessages(result.sessionId, 200)
             expect(messages.map(m => m.seq)).toEqual([1, 2, 3])
-            expect(JSON.stringify(messages[0].content)).toContain('custom')
+            // 复制行在前（seq 1-2），溯源消息排最后（seq 3，紧跟被复制内容）
+            expect(JSON.stringify(messages[2].content)).toContain('custom')
         } finally {
             h.cleanup()
         }

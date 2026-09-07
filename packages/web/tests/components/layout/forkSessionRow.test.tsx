@@ -126,6 +126,16 @@ describe('resolveForkSessionState（纯函数）', () => {
         const text = resolveForkErrorText({ code: 'some-future-code', at: 1 }, tStub)
         expect(text).toBe('session.fork.errorReason.unknown')
     })
+
+    it('已激活行（仅 forkedFrom，forkFrom 已清）→ 仍是 fork 行但无待激活/错误徽标', () => {
+        const activated = resolveForkSessionState(makeSession({
+            metadata: {
+                path: '/p', host: 'h',
+                forkedFrom: { sessionId: 'parent-1' },
+            },
+        }) as Session, tStub)
+        expect(activated).toMatchObject({ isForkRow: true, isPendingActivation: false, isActivationFailed: false, errorText: null })
+    })
 })
 
 describe('SessionRow fork 行', () => {
@@ -190,6 +200,23 @@ describe('SessionRow fork 行', () => {
         )
         expect(await screen.findByTestId('fork-state-badge-error')).toBeInTheDocument()
         expect(screen.queryByTestId('fork-state-badge-pending')).toBeNull()
+    })
+
+    it('已激活 fork 行（仅 forkedFrom）：仍显示「· 分叉」标题，无徽标', async () => {
+        sessionsGet.mockResolvedValue({
+            data: { session: { id: 'parent-1', metadata: { path: '/p', host: 'h', name: '父会话' } } },
+        })
+        renderRow(
+            <SessionRow
+                {...baseProps}
+                session={makeSession({
+                    metadata: { path: '/p', host: 'h', forkedFrom: { sessionId: 'parent-1' } },
+                }) as Session}
+                onDelete={vi.fn()}
+            />,
+        )
+        expect(await screen.findByText('父会话 · 分叉')).toBeInTheDocument()
+        expect(screen.queryByTestId(/^fork-state-badge/)).toBeNull()
     })
 
     it('非 fork 行：常规命名，无徽标', () => {

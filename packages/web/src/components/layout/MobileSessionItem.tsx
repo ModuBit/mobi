@@ -64,7 +64,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
         >
             <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
             {forkState.isForkRow ? <ForkRowTitle session={session}>{(title) => <SessionName $token={token}>{title}</SessionName>}</ForkRowTitle> : <SessionName $token={token}>{displayName}</SessionName>}
-            {forkState.isForkRow && (
+            {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge
                     variant={forkState.isActivationFailed ? 'error' : 'pending'}
                     errorText={forkState.errorText}
