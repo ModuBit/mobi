@@ -1150,12 +1150,17 @@ describe('session-message：边界消息落库推进 contextBoundarySeq', () => 
 
     test('compact_boundary 落库 → 指针 = 该行 seq；之后落库的消息 seq > 指针', () => {
         const fakeSocket = makeFakeSocket()
-        const { store, sid, deps } = makeRealStoreDeps()
+        const { store, sid, deps, events } = makeRealStoreDeps()
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('session-message', { sid, message: userEnvelope('before') })
         fakeSocket.emit('session-message', { sid, message: compactBoundary })
         expect(readBoundarySeq(store, sid)).toBe(2)
+        // 指针推进必须广播 session-updated（web fork/rewind 入口读会话摘要的
+        // contextBoundarySeq，不广播则不刷新页面时入口不消失）
+        const updated = events.find(e => e.type === 'session-updated')
+        const updatedMeta = updated && 'data' in updated ? (updated.data as { metadata?: Record<string, unknown> } | null)?.metadata : undefined
+        expect(updatedMeta?.contextBoundarySeq).toBe(2)
 
         fakeSocket.emit('session-message', { sid, message: userEnvelope('after') })
         const afterSeq = store.messages.getMaxSeq(sid)
@@ -1165,12 +1170,13 @@ describe('session-message：边界消息落库推进 contextBoundarySeq', () => 
 
     test('context-cleared 事件 → 指针推进到当前 MAX(seq)；之后落库的消息 seq > 指针', () => {
         const fakeSocket = makeFakeSocket()
-        const { store, sid, deps } = makeRealStoreDeps()
+        const { store, sid, deps, events } = makeRealStoreDeps()
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('session-message', { sid, message: userEnvelope('before') })
         fakeSocket.emit('session-message', { sid, message: contextCleared })
         expect(readBoundarySeq(store, sid)).toBe(2)
+        expect(events.some(e => e.type === 'session-updated')).toBe(true)
 
         fakeSocket.emit('session-message', { sid, message: userEnvelope('after') })
         expect(store.messages.getMaxSeq(sid)).toBeGreaterThan(readBoundarySeq(store, sid)!)
@@ -1178,7 +1184,7 @@ describe('session-message：边界消息落库推进 contextBoundarySeq', () => 
 
     test('非边界消息不推进指针', () => {
         const fakeSocket = makeFakeSocket()
-        const { store, sid, deps } = makeRealStoreDeps()
+        const { store, sid, deps, events } = makeRealStoreDeps()
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('session-message', { sid, message: userEnvelope('普通消息') })
@@ -1189,5 +1195,6 @@ describe('session-message：边界消息落库推进 contextBoundarySeq', () => 
         })
 
         expect(readBoundarySeq(store, sid)).toBeUndefined()
+        expect(events.some(e => e.type === 'session-updated')).toBe(false)
     })
 })

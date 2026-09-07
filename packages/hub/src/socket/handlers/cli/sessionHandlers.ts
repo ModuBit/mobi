@@ -169,6 +169,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // msg.seq 落后于当前 MAX 的情况；单调守卫在 advance 内部（不回退、幂等）
         if (isContextBoundaryContent(content)) {
             store.contextBoundary.advance(sid, store.messages.getMaxSeq(sid))
+            // 指针写在 session metadata 上，必须广播 session-updated 驱动 web 缓存失效——
+            // web 的 fork/rewind 入口读 SessionMetadataSummary.contextBoundarySeq，
+            // 不广播则 compact/clear 后不刷新页面时入口不消失（陈旧缓存放行，前端实测坑）
+            onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: store.sessions.getSession(sid) })
         }
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
