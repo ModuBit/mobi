@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Session, WorktreeMetadata } from './schemas'
+import type { ForkedFromMetadata, ForkFromMetadata, Session, WorktreeMetadata } from './schemas'
 
 export type SessionSummaryMetadata = {
     name?: string
@@ -23,6 +23,15 @@ export type SessionSummaryMetadata = {
     summary?: { text: string }
     flavor?: string | null
     worktree?: WorktreeMetadata
+    /**
+     * fork 相关字段必须随摘要输出（白名单序列化，缺了 web 列表拿不到——
+     * 「待激活」badge / 「〈parent〉 · 分叉」命名 / 再 fork 禁止判据全靠它们；
+     * contextBoundarySeq 同理，rewind/fork 入口判据的 web 侧消费源）
+     */
+    forkFrom?: ForkFromMetadata
+    forkedFrom?: ForkedFromMetadata
+    forkError?: { code: string; at: number; detail?: string }
+    contextBoundarySeq?: number
 }
 
 export type SessionSummary = {
@@ -56,7 +65,11 @@ export function toSessionSummary(session: Session): SessionSummary {
         machineId: session.metadata.machineId ?? undefined,
         summary: session.metadata.summary ? { text: session.metadata.summary.text } : undefined,
         flavor: session.metadata.flavor ?? null,
-        worktree: session.metadata.worktree
+        worktree: session.metadata.worktree,
+        forkFrom: session.metadata.forkFrom,
+        forkedFrom: session.metadata.forkedFrom,
+        forkError: session.metadata.forkError,
+        contextBoundarySeq: session.metadata.contextBoundarySeq
     } : null
 
     const todoProgress = session.runtimeState?.todos?.length ? {

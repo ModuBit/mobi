@@ -232,6 +232,18 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         expect(parsed.data?.forkedFrom).toEqual({ sessionId: parent.id })
     })
 
+    test('fork 行 tag 非空——CLI bootstrapSession 按 nativeSessionId 查行后复用 tag 绑定（E2E P0 回归）', () => {
+        const { store, parent } = makeParent()
+        seedStandardTranscript(store, parent.id)
+
+        const result = forkStandard(store, parent)
+
+        const forkRow = store.sessions.getSession(result.sessionId)!
+        expect(forkRow.tag).toBeTruthy()
+        // tag 唯一：不与 parent 复用（两行独立绑定，互不串扰）
+        expect(forkRow.tag).not.toBe(store.sessions.getSession(parent.id)!.tag)
+    })
+
     test('复制行：session_id 改写、local_id 保留、native 事实原样保留（rewind 锚点可用）', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)

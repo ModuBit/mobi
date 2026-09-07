@@ -217,6 +217,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const api = useMobiApi()
 
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
+    /** 待激活分叉会话（forkFrom 在场）：composer 放行 + 发送先触发 resume（spec §4.3） */
+    const isPendingFork = !!metadata?.forkFrom
 
     // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
     const lastActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
@@ -972,6 +974,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const handleSend = (segments: ComposerSegments) => {
         if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: segments.text.length })
         if (isSegmentEmpty(segments)) return
+        // 待激活分叉会话（spec §4.3「首条消息激活」）：composer 放行后消息照常入队，
+        // 但需先触发 resume spawn——CLI 绑定 fork 行并消费激活协议后才会消费队列。
+        // resume 失败不拦截入队：消息保持 queued，重试路径直接消费（spec §5.3「重发即重试」）
+        if (isPendingFork && !session?.active) {
+            void sessionActions.resumeSession().catch(() => {})
+        }
         sendMutation.mutate(segments)
         if (import.meta.env.DEV) console.log('[Send] sendMutation.mutate 已调用')
     }
@@ -1121,7 +1129,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}
-                allowSendWhenInactive={false}
+                // 待激活分叉会话放行 composer（首条消息即激活）；其余 inactive 会话维持 Resume 门控
+                allowSendWhenInactive={isPendingFork}
                 running={session?.running ?? false}
                 lastActivityAt={lastActivityAt}
                 runStartedAt={runStartedAt}

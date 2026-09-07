@@ -136,9 +136,11 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
 
     const now = Date.now()
     const run = db.transaction((): ForkSessionAtAnchorResult => {
-        // 1. 新建 fork 会话行（tag 置 null：hub 侧直建，不走 CLI getOrCreateSession 的 tag 复用语义；
+        // 1. 新建 fork 会话行。tag 必须非空：resume spawn 后 CLI bootstrapSession 以
+        //    「nativeSessionId 查行 → 复用行 tag」绑定既有行，tag NULL 会让 CLI 判定
+        //    「未找到」另建新行 → hub mergeSessions 摧毁 fork 行（E2E P0 实证）。
         //    namespace / machine_id / project_id / runtime_state 继承 parent——配置快照含
-        //    model/effort/outputStyle/permissionMode，激活后 CLI keep-alive 回流同值）
+        //    model/effort/outputStyle/permissionMode，激活后 CLI keep-alive 回流同值
         const forkSessionId = randomUUID()
         db.prepare(`
             INSERT INTO sessions (
@@ -148,7 +150,7 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
                 runtime_state, runtime_state_updated_at,
                 project_id, seq
             ) VALUES (
-                @id, NULL, @namespace, @machine_id, @now, @now,
+                @id, @tag, @namespace, @machine_id, @now, @now,
                 @metadata, 1,
                 NULL, 1,
                 @runtime_state, @runtime_state_updated_at,
@@ -156,6 +158,7 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
             )
         `).run({
             id: forkSessionId,
+            tag: randomUUID(),
             namespace: parent.namespace,
             machine_id: parent.machineId,
             now,

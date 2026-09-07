@@ -187,4 +187,21 @@ describe('toSessionSummary', () => {
         expect(toSessionSummary(makeSession({ projectId: null })).projectId).toBeNull()
         expect(toSessionSummary(makeSession()).projectId).toBeNull()
     })
+
+    it('fork 字段随摘要透传——web 列表 badge/命名/判据的消费源（E2E P1 回归）', () => {
+        const summary = toSessionSummary(makeSession({
+            metadata: {
+                path: '/proj',
+                host: 'h-1',
+                forkFrom: { parentSessionId: 'p1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' },
+                forkedFrom: { sessionId: 'p1' },
+                forkError: { code: 'activation-failed', at: 123 },
+                contextBoundarySeq: 15,
+            },
+        }))
+        expect(summary.metadata?.forkFrom).toEqual({ parentSessionId: 'p1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' })
+        expect(summary.metadata?.forkedFrom).toEqual({ sessionId: 'p1' })
+        expect(summary.metadata?.forkError?.code).toBe('activation-failed')
+        expect(summary.metadata?.contextBoundarySeq).toBe(15)
+    })
 })
