@@ -46,6 +46,42 @@ export function isTurnStartContent(content: unknown): boolean {
     return isContextBoundaryContent(content)
 }
 
+/**
+ * turn 终点判定：agent result 输出行（usage 概要数据源，web turn-result 概要行的落库形态）。
+ * 与 isTurnStartContent 同属 fork 复制切割的信封判据。
+ */
+export function isTurnResultContent(content: unknown): boolean {
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record || record.role !== 'agent') return false
+    const inner = record.content
+    if (!isObject(inner) || inner.type !== 'output') return false
+    const data = inner.data
+    return isObject(data) && data.type === 'result'
+}
+
+/**
+ * 锚点所在 turn 的终点 seq（复制上界扩展，问题实证：web ⑂ 挂 turn-result 概要行、
+ * 锚定的是「落点回复」assistant 行——result 行紧随其后，若复制止于锚点，
+ * fork 会话该 turn 的概要行因缺 result 行而消失）。
+ *
+ * 向下扫到下一个 turn 起点前（不跨 turn），命中 result 行即返回其 seq；
+ * 锚点本身是 result、或 turn 无 result（防御）→ 返回 anchorSeq 按原范围复制。
+ */
+function findTurnEndSeq(db: Database, sessionId: string, anchorSeq: number): number {
+    const rows = db.prepare(
+        `SELECT seq, content FROM messages
+         WHERE session_id = ? AND seq > ? AND deleted_at IS NULL
+           AND is_sidechain = 0 AND category = 'persistent'
+         ORDER BY seq ASC`
+    ).iterate(sessionId, anchorSeq)
+    for (const row of rows as IterableIterator<{ seq: number; content: string }>) {
+        const parsed = safeJsonParse(row.content)
+        if (isTurnStartContent(parsed)) break
+        if (isTurnResultContent(parsed)) return row.seq
+    }
+    return anchorSeq
+}
+
 /** 向 seq 下方找锚点所在 turn 的最近起点（主链 persistent 未删行）。
  *  sidechain 行不参与判定——侧链可能嵌 user 信封，但 turn 归组只看主链（与 web trimByTurnBoundary 同前提：
  *  sidechain 全部落在 user turn 之内不跨 turn）。找不到返回 null（理论不可达：任何锚点下方必有 user 或边界）。
@@ -106,9 +142,9 @@ export interface ForkSessionAtAnchorResult {
 
 /**
  * 单事务建 fork 会话：建行（预生成 native id + forkFrom/forkedFrom + 配置快照继承）
- * → 复制 [turnStartSeq..anchor.seq] 的未删行（seq 1 起按原序保序）→ 溯源自定义消息
- * 追加在复制行之后（seq = 复制行数 + 1，时间线最新位置——溯源「fork 自会话 x」
- * 紧跟被复制的内容，而非置顶最前）。
+ * → 复制 [turnStartSeq..turn 终点] 的未删行（seq 1 起按原序保序，上界经 findTurnEndSeq
+ * 扩到 turn 的 result 行）→ 溯源自定义消息追加在复制行之后（seq = 复制行数 + 1，
+ * 时间线最新位置——溯源「fork 自会话 x」紧跟被复制的内容，而非置顶最前）。
  *
  * 复制行语义（spec §5.1）：
  * - id 重新生成（messages.id 全局唯一）、session_id 改写为 fork 行
@@ -130,8 +166,11 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
     // 会话 metadata 继承 parent（path/host/machineId/flavor 等身份字段随行），叠加 fork 专属字段。
     // contextBoundarySeq 刻意剥离：指针语义锚定 parent 的 seq 序列，残留在 fork 行上会让 fork 消息
     // 全部误判「边界之前」（rewind 入口被锁死）——剥离后由读侧 resolve 按 fork 自身行惰性回填。
+    // summary 同样剥离：parent 的动态生成物（displayName 优先级高于 name，不剥离会盖住
+    // 「· 分叉」后缀标题），fork 激活后由 CLI 按自身 transcript 重新产出。
     const baseMetadata = { ...((parent.metadata ?? {}) as Record<string, unknown>) }
     delete baseMetadata[CONTEXT_BOUNDARY_SEQ_KEY]
+    delete baseMetadata.summary
     const forkMetadata = {
         ...baseMetadata,
         // 标题落库即区分（用户裁决：DB 里就是不同的，web 不做运行时拼接）：
@@ -194,7 +233,8 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
             project_id: parent.projectId,
         })
 
-        // 2. 复制 [turnStartSeq..anchor.seq] 的未删行：seq 从 1 起按原序保序
+        // 2. 复制 [turnStartSeq..turn 终点] 的未删行：上界扩展到 turn 的 result 行
+        //    （findTurnEndSeq，概要行数据源），seq 从 1 起按原序保序
         type CopyRow = {
             content: string
             local_id: string | null
@@ -203,11 +243,12 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
             parent_tool_use_id: string | null
             category: string
         }
+        const copyEndSeq = findTurnEndSeq(db, parent.id, anchor.seq)
         const rows = db.prepare(
             `SELECT * FROM messages
              WHERE session_id = ? AND seq >= ? AND seq <= ? AND deleted_at IS NULL
              ORDER BY seq ASC`
-        ).all(parent.id, turnStartSeq, anchor.seq) as unknown as CopyRow[]
+        ).all(parent.id, turnStartSeq, copyEndSeq) as unknown as CopyRow[]
 
         const insert = db.prepare(`
             INSERT INTO messages (

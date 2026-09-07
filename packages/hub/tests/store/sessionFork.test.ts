@@ -345,6 +345,83 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         expect(JSON.stringify(forkMessages[0].content)).toContain('compact_boundary')
     })
 
+    /** 以指定锚点 + turn 起点 seq=1 执行 fork（新测试的 transcript turn 起点均在 seq1） */
+    function forkAtSeq1(store: Store, parent: { id: string }, anchorNativeId: string) {
+        const anchor = store.messages.getMessagesByNativeId(parent.id, anchorNativeId)[0]
+        return store.sessionFork.forkSessionAtAnchor({
+            parent: store.sessions.getSession(parent.id)!,
+            anchor,
+            turnStartSeq: 1,
+            forkNativeId: 'fork-native-1',
+            parentNativeId: 'parent-native-1',
+        })
+    }
+
+    test('锚点是落点 assistant 行（⑂ 入口语义）→ 复制上界扩展到 turn 的 result 行（含）', () => {
+        const { store, parent } = makeParent()
+        // turn：user(seq1) → assistant(seq2，锚点) → result(seq3)
+        store.messages.addMessage(parent.id, userMsg('第一个问题'), 'l1')
+        store.messages.addMessage(parent.id, assistantMsg(), null, 'persistent', { nativeId: 'anchor-assistant' })
+        store.messages.addMessage(
+            parent.id, agentResult(), null, 'persistent', { nativeId: 'anchor-result' },
+        )
+
+        const result = forkAtSeq1(store, parent, 'anchor-assistant')
+
+        const forkMessages = store.messages.getMessages(result.sessionId, 200)
+        // 复制 = user + assistant + result（上界扩展）+ 溯源消息
+        expect(forkMessages).toHaveLength(4)
+        expect(JSON.stringify(forkMessages[2].content)).toContain('"type":"result"')
+    })
+
+    test('锚点之后进入下一 turn（user 行）→ 不跨 turn 复制，无 result 则止于锚点', () => {
+        const { store, parent } = makeParent()
+        // turn1：user(seq1) → assistant(seq2，锚点)；turn2：user(seq3) → result(seq4)
+        store.messages.addMessage(parent.id, userMsg('第一轮'), 'l1')
+        store.messages.addMessage(parent.id, assistantMsg(), null, 'persistent', { nativeId: 'anchor-assistant' })
+        store.messages.addMessage(parent.id, userMsg('第二轮'), 'l2')
+        store.messages.addMessage(
+            parent.id, agentResult(), null, 'persistent', { nativeId: 'next-turn-result' },
+        )
+
+        const result = forkAtSeq1(store, parent, 'anchor-assistant')
+
+        const forkMessages = store.messages.getMessages(result.sessionId, 200)
+        // 复制 = user + assistant + 溯源消息；下一轮的 user/result 不被拖入
+        expect(forkMessages).toHaveLength(3)
+        expect(JSON.stringify(forkMessages.map(m => m.content))).not.toContain('第二轮')
+        expect(JSON.stringify(forkMessages.map(m => m.content))).not.toContain('"type":"result"')
+    })
+
+    test('继承 metadata 剥离 summary（parent 动态生成物，不剥离会盖住「· 分叉」标题）', () => {
+        const store = new Store(':memory:')
+        const parent = store.sessions.getOrCreateSession(
+            'fork-parent-summary',
+            { path: '/tmp/proj', host: 'h-1', name: '父标题', summary: { text: '动态摘要', updatedAt: 1 } as never, nativeSessionId: 'parent-native-1' },
+            null,
+            'default',
+            { model: 'opus', effort: 'high', outputStyle: 'default', permissionMode: 'default' },
+        )
+        store.messages.addMessage(parent.id, userMsg('hi'), 'l1')
+        store.messages.addMessage(
+            parent.id, agentResult(), null, 'persistent',
+            { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
+        )
+        const anchorRow = store.messages.getMessagesByNativeId(parent.id, 'anchor-native')[0]
+
+        const result = store.sessionFork.forkSessionAtAnchor({
+            parent: store.sessions.getSession(parent.id)!,
+            anchor: anchorRow,
+            turnStartSeq: 1,
+            forkNativeId: 'fork-native-1',
+            parentNativeId: 'parent-native-1',
+        })
+
+        const raw = store.sessions.getSession(result.sessionId)!.metadata as Record<string, unknown>
+        expect(raw).not.toHaveProperty('summary')
+        expect(raw.name).toBe('父标题 · 分叉')
+    })
+
     test('软删行（rewind 截断）不复制', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
