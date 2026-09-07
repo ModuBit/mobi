@@ -28,5 +28,5 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [上下文水位验证](waterline-verify.md) — assistant usage 落库断言 / contextUsage=四项和瞬时水位 / 圆环 svg[role=button] 双端断言 / 两把尺子别混
 - [跨会话消息可见性验证](cross-session-visibility-verify.md) — hook 观测落库+标签全链路 / 审批窗口入站消息被 CC 丢弃的坑 / 未 prompt 场景须真机验证
 - [Agent drawer 验证](agent-drawer-verify.md) — 运行中/已完成两种 drawer 入口 / 实时增长采样 / 后台任务 runtime_state DB 断言 / fill 不触发 React 状态坑
-- [fork 分叉会话验证](fork-verify.md) — fork API 直调 / 复制完整性 SQL 断言 / 激活探针 / P0+P1 已修回归通过 / 已知问题：激活首条消息 409 竞态（幽灵气泡）
+- [fork 分叉会话验证](fork-verify.md) — fork API 直调 / 复制完整性 SQL 断言 / 激活探针 / 溯源消息动作链接形态（ADR 0003）+ DOMPurify 剥 href P0 与激活补投 P1 / 锚点须选 transcript 内 uuid 的坑
 - [tool 字段渲染适配点](tool-field-render-adapters.md) — 新增 block.tool 字段须适配 ToolInfo/adaptedBlock/chatBlockToToolCardBlock 三处 + structuredPatch diff 行号验证 recipe
