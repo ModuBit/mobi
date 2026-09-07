@@ -42,6 +42,9 @@ export type ChatBlockContext = {
     onDone?: () => void
     /** 禁止打开详情 Drawer（Agent Drawer 内的工具卡片不应再开 Drawer） */
     disableDrawer?: boolean
+    /** turn-result 概要行尾的操作组工厂（复制/fork，PC only；按 block.id 命中才返回节点，
+     *  其余事件/未命中返回 undefined） */
+    turnResultActions?: (block: ChatBlock) => React.ReactNode
 }
 
 /** 根据 block 类型渲染对应组件 */
@@ -72,7 +75,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         case 'tool-call':
             return <ToolCallRenderer block={block} metadata={ctx.metadata} api={ctx.api} sessionId={ctx.sessionId} disabled={ctx.disabled} onDone={ctx.onDone} />
         case 'agent-event':
-            return <AgentEventBlock block={block} />
+            return <AgentEventBlock block={block} actions={ctx.turnResultActions?.(block)} />
         case 'custom':
             return <CustomBlockView block={block} />
         default:

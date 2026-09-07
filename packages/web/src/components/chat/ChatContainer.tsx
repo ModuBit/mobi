@@ -43,7 +43,7 @@ import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, e
 import { canForkMessage, collectForkTargetBlockIds, extractForkRejectCode, forkRejectReasonKey, agentBlockMessageKey } from '@/domain/chat/fork'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
-import { AgentMessageFooter } from './AgentMessageFooter'
+import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
@@ -132,6 +132,14 @@ const bubbleCopyStyles = css`
     }
     .user-msg-bubble:hover .msg-copy-btn,
     .agent-msg-bubble:hover .msg-copy-btn {
+        opacity: 1;
+    }
+    /* turn-result 概要行操作组（AgentTurnActions）：同一 hover 显现模式 */
+    .turn-result-bubble .msg-copy-btn {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .turn-result-bubble:hover .msg-copy-btn {
         opacity: 1;
     }
 `
@@ -697,7 +705,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
             chatBlocks,
-            { metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending },
+            {
+                metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
+                turnResultActions: (block) => turnResultActionsByKey.get(block.id),
+            },
             !!session?.running,
             { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
         )
@@ -725,10 +736,55 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             messages.map(m => [m.localId || m.id, { metadata: m.metadata ?? null, seq: m.seq ?? null }]),
         )
 
+        // ── turn-result 概要行操作组（position A）──
+        // 落点 agent 文本与其 turn-result 概要事件配对：文本块是 fork 判据载体，操作组展示在
+        // 概要行尾。扫描 chatBlocks，「最近一个可 fork 落点文本」配给其后首个 turn-result 事件
+        // （配对即清空——无落点文本的 turn 不继承上一轮的操作组）
+        const turnResultActionsByKey = new Map<string, React.ReactNode>()
+        {
+            let current: { key: string; text: string; row: { metadata: NativeMessageMetadata | null; seq: number | null } } | null = null
+            for (const block of chatBlocks) {
+                if (block.kind === 'agent-text') {
+                    const row = forkTargetBlockIds.has(block.id)
+                        ? forkRowByKey.get(agentBlockMessageKey(block))
+                        : undefined
+                    const forkable = !!row && canForkMessage(
+                        { metadata: row.metadata, seq: row.seq },
+                        sessionNativeSessionId,
+                        {
+                            running: !!session?.running,
+                            backgroundTasks: backgroundTasksCount,
+                            mode: session?.mode,
+                            forkedFrom: metadata?.forkedFrom,
+                            forkFrom: metadata?.forkFrom,
+                            contextBoundarySeq: metadata?.contextBoundarySeq,
+                        },
+                    )
+                    current = row && forkable ? { key: block.id, text: block.text, row } : null
+                } else if (block.kind === 'agent-event' && block.event.type === 'turn-result' && current) {
+                    const matched = current
+                    turnResultActionsByKey.set(block.id, isMobile ? undefined : (
+                        <AgentTurnActions
+                            text={matched.text}
+                            onFork={() => {
+                                const nativeId = matched.row.metadata?.nativeId
+                                if (nativeId) openForkPopover(matched.key, nativeId, matched.text)
+                            }}
+                            forkOpen={forkDraft?.source === 'popover' && forkDraft?.messageId === matched.key}
+                            forkTargetText={forkDraft?.targetText ?? null}
+                            forkLoading={forkPending}
+                            onForkConfirm={() => { void confirmFork() }}
+                            onForkCancel={cancelFork}
+                        />
+                    ))
+                    current = null
+                }
+            }
+        }
+
         const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
-            const isAgentText = block?.kind === 'agent-text'
 
             // 终态标注判据：cancelled/discarded/refused 的用户消息「这条没被处理/没被接收」一眼可见；
             // 其余 lifecycle（含 done）与非排队消息不标注（用户不关心传输细节）。
@@ -749,22 +805,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )
                 : false
 
-            // fork 判据（仅 agent 文本块落点，与移动长按菜单同源，fork-session spec §4.1）
-            const forkRow = isAgentText && block && forkTargetBlockIds.has(block.id)
-                ? forkRowByKey.get(agentBlockMessageKey(block))
-                : undefined
-            const forkable = !!forkRow && !!block && canForkMessage(
-                { metadata: forkRow.metadata, seq: forkRow.seq },
-                sessionNativeSessionId,
-                {
-                    running: !!session?.running,
-                    backgroundTasks: backgroundTasksCount,
-                    mode: session?.mode,
-                    forkedFrom: metadata?.forkedFrom,
-                    forkFrom: metadata?.forkFrom,
-                    contextBoundarySeq: metadata?.contextBoundarySeq,
-                },
-            )
+            // fork 判据已移入 turn-result 操作组配对扫描（见 turnResultActionsByKey 构建）；
+            // 移动长按菜单的 fork 判据在 actionsInfo 内独立计算（同源同式）
 
             // 跨会话入站来源标签挂气泡 header（填充背景之外、气泡体上方，随 placement: end 右对齐）
             // turnOrigin=scheduled/loop 时 from 为空串（降级 null），但仍需展示标签，故判据并入 turnOrigin
@@ -792,31 +834,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             ) : undefined
 
-            // agent 回复 footer（fork 入口，PC）：仅落点 + 判据通过时渲染（无禁用态，误判只隐藏入口）；
-            // 挂载点选择：agent 气泡无现成 footer，新建 AgentMessageFooter 挂 footerPlacement: outer-end，
-            // 视觉对齐 UserMessageFooter 的 hover 操作组模式
-            const agentFooter = isAgentText && block && forkable && forkRow ? (
-                <AgentMessageFooter
-                    text={block.text}
-                    createdAt={block.createdAt}
-                    onFork={() => {
-                        const nativeId = forkRow.metadata?.nativeId
-                        if (nativeId) openForkPopover(block.id, nativeId, block.text)
-                    }}
-                    forkOpen={forkDraft?.source === 'popover' && forkDraft?.messageId === block.id}
-                    forkTargetText={forkDraft?.targetText ?? null}
-                    forkLoading={forkPending}
-                    onForkConfirm={() => { void confirmFork() }}
-                    onForkCancel={cancelFork}
-                />
-            ) : undefined
+            // agent 回复 footer 已移除：复制/fork 操作组移入 turn-result 概要行尾（AgentTurnActions，
+            // position A）——时间以概要行为唯一来源，原 footer 悬浮时间戳是重复展示
 
             return {
                 ...item,
                 header: showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : undefined,
                 classNames: isUserText
                     ? { root: 'user-msg-bubble' }
-                    : agentFooter ? { root: 'agent-msg-bubble' } : undefined,
+                    : block?.kind === 'agent-event' && turnResultActionsByKey.has(block.id)
+                        ? { root: 'turn-result-bubble' }
+                        : undefined,
                 footer: terminalLabelKey !== null ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span
@@ -830,7 +858,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
                     </div>
-                ) : (baseFooter ?? agentFooter),
+                ) : baseFooter,
                 footerPlacement: 'outer-end' as const,
             }
         })
@@ -931,7 +959,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork])
+    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝

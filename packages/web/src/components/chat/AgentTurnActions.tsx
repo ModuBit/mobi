@@ -20,13 +20,10 @@ import { useTranslation } from 'react-i18next'
 import { CopyButton } from './CopyButton'
 import { IconButton } from '@/components/ui/IconButton'
 import { ForkConfirmView } from './ForkConfirmView'
-import { formatMessageTime } from '@/core/utils/timeFormat'
 
-export interface AgentMessageFooterProps {
+export interface AgentTurnActionsProps {
     /** 消息原文（复制用） */
     text: string
-    /** 消息时间戳（footer 常驻最右） */
-    createdAt: number
     /** 点击 fork 入口（父组件置 forkDraft 打开 Popover） */
     onFork: () => void
     // ── fork 锚定 Popover（PC 入口，与 UserMessageFooter rewind 同模式）──
@@ -41,23 +38,24 @@ export interface AgentMessageFooterProps {
 }
 
 /**
- * agent 回复 footer 操作组（fork-session spec §4.2）：
- * `[复制] [⑂] ············ 12:34` —— 仅挂在「turn 的 result 落点」（collectForkTargetBlockIds
- * 判定的每轮最后一条 agent 文本块）且 canForkMessage 通过时渲染，视觉对齐 UserMessageFooter
- * 的 hover 操作组模式（msg-copy-btn CSS 模式，hover 才显示）。
+ * agent turn 操作组（原 AgentMessageFooter，时间以 turn-result meta 行为唯一来源后
+ * 不再自带时间戳）：`[复制] [⑂]` 挂到 turn-result 概要行尾（position A），
+ * 仅挂在「turn 的 result 落点」对应的概要行且 canForkMessage 通过时渲染，
+ * hover 才显示（.turn-result-bubble .msg-copy-btn CSS 模式，移动端不渲染——
+ * 长按 Drawer 是移动端唯一 fork/复制入口）。
  *
  * fork 入口（PC）：⑂ 图标外包受控 Popover 锚定确认视图——与 rewind 的 ⏪ Popover 同构。
  * 点击 ⑂ 触发 onFork（父组件记 forkDraft），forkOpen 置 true 打开；点击外部或取消收起。
  */
-export function AgentMessageFooter({
-    text, createdAt, onFork,
+export function AgentTurnActions({
+    text, onFork,
     forkOpen, forkTargetText, forkLoading, onForkConfirm, onForkCancel,
-}: AgentMessageFooterProps) {
+}: AgentTurnActionsProps) {
     const { t } = useTranslation()
     const forkActive = !!forkOpen
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span className="msg-copy-btn">
                 <CopyButton text={text} size={14} />
             </span>
@@ -93,7 +91,6 @@ export function AgentMessageFooter({
                     />
                 </Popover>
             </span>
-            <span style={{ marginLeft: 'auto', paddingLeft: 8, fontSize: 11, opacity: 0.6 }}>{formatMessageTime(createdAt)}</span>
-        </div>
+        </span>
     )
 }

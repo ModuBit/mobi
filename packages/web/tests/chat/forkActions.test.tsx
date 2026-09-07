@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { AgentMessageFooter } from '@/components/chat/AgentMessageFooter'
+import { AgentTurnActions } from '@/components/chat/AgentTurnActions'
 import { ForkConfirmView } from '@/components/chat/ForkConfirmView'
 import { MessageActionsDrawer } from '@/components/chat/MessageActionsDrawer'
 
@@ -64,23 +64,22 @@ afterEach(() => {
     globalThis.ResizeObserver = origRO
 })
 
-describe('AgentMessageFooter（agent 回复 footer 操作组：[复制][⑂]）', () => {
-    it('操作组两项都挂 msg-copy-btn（hover 显示模式）+ 时间戳最右', () => {
+describe('AgentTurnActions（turn-result 概要行操作组：[复制][⑂]）', () => {
+    it('操作组两项都挂 msg-copy-btn（hover 显示模式）；无时间戳（时间以概要行为唯一来源）', () => {
         const { container } = render(
-            <AgentMessageFooter text="reply" createdAt={new Date(2026, 0, 1, 12, 34).getTime()} onFork={vi.fn()} />,
+            <AgentTurnActions text="reply" onFork={vi.fn()} />,
         )
         const root = container.firstElementChild as HTMLElement
         const children = Array.from(root.children) as HTMLElement[]
-        expect(children.length).toBe(3)
+        expect(children.length).toBe(2)
         expect(children[0].className).toContain('msg-copy-btn')
         expect(children[1].className).toContain('msg-copy-btn')
-        expect(children[2].textContent).toBe('01/01 12:34')
-        expect(children[2].style.marginLeft).toBe('auto')
+        expect(root.textContent).not.toMatch(/\d{2}:\d{2}/)
     })
 
     it('点 ⑂ → 触发 onFork（父组件置 forkOpen 打开 Popover）', () => {
         const onFork = vi.fn()
-        render(<AgentMessageFooter text="reply" createdAt={Date.now()} onFork={onFork} />)
+        render(<AgentTurnActions text="reply" onFork={onFork} />)
         fireEvent.click(screen.getByRole('button', { name: '从此分叉' }))
         expect(onFork).toHaveBeenCalledTimes(1)
     })
@@ -88,8 +87,8 @@ describe('AgentMessageFooter（agent 回复 footer 操作组：[复制][⑂]）'
     it('forkOpen → Popover 渲染确认视图（警示条 + 目标预览 + 创建选项 + 取消）', () => {
         const onForkConfirm = vi.fn()
         render(
-            <AgentMessageFooter
-                text="reply" createdAt={Date.now()} onFork={vi.fn()}
+            <AgentTurnActions
+                text="reply" onFork={vi.fn()}
                 forkOpen forkTargetText="已完成重构" forkLoading={false}
                 onForkConfirm={onForkConfirm} onForkCancel={vi.fn()}
             />,
@@ -104,8 +103,8 @@ describe('AgentMessageFooter（agent 回复 footer 操作组：[复制][⑂]）'
         const onFork = vi.fn()
         const onForkConfirm = vi.fn()
         render(
-            <AgentMessageFooter
-                text="reply" createdAt={Date.now()} onFork={onFork}
+            <AgentTurnActions
+                text="reply" onFork={onFork}
                 forkOpen forkTargetText="done" forkLoading={false}
                 onForkConfirm={onForkConfirm} onForkCancel={vi.fn()}
             />,
@@ -117,7 +116,7 @@ describe('AgentMessageFooter（agent 回复 footer 操作组：[复制][⑂]）'
     })
 
     it('forkOpen=false → 不渲染确认内容', () => {
-        render(<AgentMessageFooter text="reply" createdAt={Date.now()} onFork={vi.fn()} />)
+        render(<AgentTurnActions text="reply" onFork={vi.fn()} />)
         expect(screen.queryByRole('button', { name: '创建分叉会话' })).toBeNull()
     })
 })

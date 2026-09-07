@@ -15,13 +15,14 @@
  */
 
 import { memo } from 'react'
+import type { ReactNode } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { AgentEventBlock as AgentEventBlockType } from '@/domain/chat'
 import { formatEvent } from '@/domain/chat'
 
-/** Agent 事件渲染 */
-export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block: AgentEventBlockType }) {
+/** Agent 事件渲染。actions 仅 turn-result 概要行消费（复制/fork 操作组，挂行尾） */
+export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }: { block: AgentEventBlockType; actions?: ReactNode }) {
     const { token } = antTheme.useToken()
     const { t } = useTranslation()
 
@@ -67,7 +68,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block:
         )
     }
 
-    const content = formatEvent(block.event, t, block.createdAt)
+    const content = formatEvent(block.event, t, block.createdAt, actions)
     if (content === null) return null
 
     const d = block.display

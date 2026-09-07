@@ -61,7 +61,7 @@ function DetailRow({ label, value }: { label: string; value: string | number }) 
  * 只显示「duration · time」，不显示 token 数、不可展开（反正也没有 token 细分）。
  * 判据是 tokens===0 这个数据特征，不维护命令清单。
  */
-function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdAt?: number }) {
+function TurnResultMeta({ event, createdAt, actions }: { event: TurnResultEvent; createdAt?: number; actions?: React.ReactNode }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const [open, setOpen] = useState(false)
@@ -75,15 +75,19 @@ function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdA
 
     return (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextTertiary }}>
-            <span
-                {...(hasDetail ? { role: 'button' as const, onClick: () => setOpen(o => !o) } : {})}
-                style={{ cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
-            >
-                {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
-                {dur}{!noTokens && <> · {formatTokensCount(event.tokens)}</>}
-                {event.cacheHitRate !== undefined && <> · ⚡{formatCacheHitRate(event.cacheHitRate)}</>}
-                {time && <span style={{ marginLeft: 8 }}>{time}</span>}
-            </span>
+            {/* 概要行 flex：actions（复制/fork 操作组）贴行尾；展开详情 grid 独立其下不参与 */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span
+                    {...(hasDetail ? { role: 'button' as const, onClick: () => setOpen(o => !o) } : {})}
+                    style={{ cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none', flex: 1, minWidth: 0 }}
+                >
+                    {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
+                    {dur}{!noTokens && <> · {formatTokensCount(event.tokens)}</>}
+                    {event.cacheHitRate !== undefined && <> · ⚡{formatCacheHitRate(event.cacheHitRate)}</>}
+                    {time && <span style={{ marginLeft: 8 }}>{time}</span>}
+                </span>
+                {actions}
+            </div>
             {hasDetail && (
                 <div
                     style={{
@@ -135,11 +139,12 @@ export function extractApiErrorDetail(error: unknown): string | null {
     return null
 }
 
-/** 格式化 Agent 事件为可渲染内容 */
+/** 格式化 Agent 事件为可渲染内容。actions 仅 turn-result 消费——操作组挂概要行尾（position A） */
 export function formatEvent(
     event: { type: string; [key: string]: unknown },
     t: (key: string, params?: Record<string, unknown>) => string,
     createdAt?: number,
+    actions?: React.ReactNode,
 ): React.ReactNode {
     switch (event.type) {
         case 'api-retry': {
@@ -236,7 +241,7 @@ export function formatEvent(
             return t('chat.planMode.enterFailed')
         }
         case 'turn-result': {
-            return <TurnResultMeta event={event as TurnResultEvent} createdAt={createdAt} />
+            return <TurnResultMeta event={event as TurnResultEvent} createdAt={createdAt} actions={actions} />
         }
         // goal-progress：每 turn 的目标达成状态标注（stream 三大展示面之一）
         // met=true 达成(success 绿，由 reducer display.color=success + AgentEventBlock 配合)，
