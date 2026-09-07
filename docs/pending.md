@@ -595,3 +595,16 @@ interrupt（用户停止）
 **治理方向**：以 AG-UI 成熟模型为参照（mobi 用户消息已对齐其 block 模式），统一信封-内容-分发的分层契约；产出可能是新的 shared schema + ADR。与 ADR 0002（自定义消息首类型 `fork-source`）协同——治理先行可避免 fork-source 落成又一个特例。
 
 **优先级**：高。消息结构是三端共用地基，每次新消息类型都在放大混乱。
+
+## 71. mobi URI 协议后续迭代：file/open、message/send、agent 感知（2026-09-07）
+
+**背景**：内部操作协议已落地骨架与第一期（ADR 0003、spec `.scratch/mobi-uri-protocol/`——URI 权威 + 动作注册表 + `session/open` 迁移 fork 溯源）。后续迭代按价值排序逐个注册新动作，协议本体不动。
+
+**待做项**（按建议顺序）：
+
+1. `file/open?path=…`：确保侧边面板打开 + 打开文件 tab（`workspaceStore.openFileInTab` 已有，补面板开合前置）；注册后可顺手做 pending #69（resource_links 文件引用渲染）与 Read 工具卡片路径点击
+2. `message/send?text=…`：自动发送消息（快捷指令按钮场景）；risk='send'——内容必须完整可见，点击即确认
+3. agent 感知注入：remote 会话系统提示注入协议说明（可用动作、格式、使用时机），让模型主动生成动作链接；做成分级开关默认开
+4. 远期：PWA 跨端解析（通知点击走同一动作分发）、消息卡片（飞书式 action button 引用同一套 URI）
+
+**依赖**：#70 消息结构治理与本协议正交但共享词汇演进（ref 已退场，动作链接是其唯一后继形态）。

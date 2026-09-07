@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted（2026-09-07）
+accepted（2026-09-07）。ref block 设计部分被 [ADR 0003](0003-mobi-uri-action-protocol.md) 取代（2026-09-07）：mobi URI 动作链接成为内部动作唯一权威编码，ref block 从词汇表删除，词汇收缩为 text/image/document/quote。
 
 ## 背景
 
