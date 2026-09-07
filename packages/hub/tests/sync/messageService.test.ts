@@ -65,3 +65,54 @@ describe('MessageService.getMessagesPage 游标', () => {
         expect(result.page.nextBeforeSeq).toBe(1)
     })
 })
+
+describe('MessageService.redeliverQueued（fork 激活翻转补投）', () => {
+    /** mock io：捕获 room emit */
+    function makeServiceWithIo(opts: { queued: StoredMessage[] }) {
+        const emits: Array<{ room: string; event: string; args: unknown[] }> = []
+        const io = {
+            of: () => ({
+                to: (room: string) => ({
+                    emit: (event: string, ...args: unknown[]) => { emits.push({ room, event, args }) },
+                }),
+            }),
+        }
+        const store = {
+            messages: {
+                getUnsubmittedLocalMessages: (_sid: string) => opts.queued,
+            },
+        }
+        const service = new MessageService(store as never, io as never, {} as never)
+        return { service, emits }
+    }
+
+    const userMsg = (text: string) => ({
+        role: 'user',
+        content: [{ type: 'text', text }],
+        meta: { sentFrom: 'webapp' },
+    })
+
+    test('仍 queued 的行重放为 new-message 房间广播（body 形态与 sendMessage 一致）', () => {
+        const queued = [msg(1, { content: userMsg('激活前的首条消息') })]
+        const { service, emits } = makeServiceWithIo({ queued })
+
+        service.redeliverQueued('s1')
+
+        expect(emits).toHaveLength(1)
+        const { room, event, args } = emits[0]
+        expect(room).toBe('session:s1')
+        expect(event).toBe('session-update')
+        const update = args[0] as { body: { t: string; sid: string; message: { seq: number } } }
+        expect(update.body.t).toBe('new-message')
+        expect(update.body.sid).toBe('s1')
+        expect(update.body.message.seq).toBe(1)
+    })
+
+    test('无 queued 行时不广播', () => {
+        const { service, emits } = makeServiceWithIo({ queued: [] })
+
+        service.redeliverQueued('s1')
+
+        expect(emits).toHaveLength(0)
+    })
+})

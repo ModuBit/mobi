@@ -370,3 +370,42 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
         }
     })
 })
+
+describe('fork 激活翻转补投排队消息', () => {
+    test('session-alive 激活翻转时把仍 queued 的消息补发进 CLI 房间（入队广播早于 CLI 进房的时序窗）', () => {
+        const store = new Store(':memory:')
+        const emits: Array<{ room: string; args: unknown[] }> = []
+        const io = {
+            of: () => ({
+                to: (room: string) => ({
+                    emit: (...args: unknown[]) => { emits.push({ room, args }) },
+                    sockets: new Map(),
+                }),
+            }),
+        } as unknown as import('socket.io').Server
+        const registry = { getSocketIdForMethod() { return null } } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const engine = new SyncEngine(store, io, registry, sseManager)
+        try {
+            const session = engine.getOrCreateSession(
+                'fork-redeliver',
+                { path: '/tmp/proj', host: 'h-1' },
+                null,
+                'default',
+            )
+            // 激活窗口期入队的首条消息（CLI 尚未进房，入队广播必然落空）
+            store.messages.addMessage(session.id, userMsg('激活前的首条消息'), 'l-redeliver')
+
+            engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
+
+            const redelivered = emits.filter(e =>
+                e.room === `session:${session.id}`
+                && (e.args[0] as string) === 'session-update'
+                && (e.args[1] as { body: { t: string } }).body.t === 'new-message')
+            expect(redelivered).toHaveLength(1)
+        } finally {
+            engine.stop()
+            store.close()
+        }
+    })
+})

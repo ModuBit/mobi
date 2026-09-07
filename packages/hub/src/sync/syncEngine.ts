@@ -343,6 +343,9 @@ export class SyncEngine {
         // fire-and-forget 幂等：已提取过则 CAS 内容相等即静默，不会形成 refetch↔SSE 循环。
         if (!wasActive && isActive) {
             void this.refreshSDKMetadataBackground(payload.sid)
+            // 待激活 fork 首条消息补投：入队广播落在 CLI 进房之前（web 发送侧先触发 resume
+            // spawn），无补发路径会永久滞留 queued——激活翻转即 CLI 已在房内，此时补发必达
+            this.messageService.redeliverQueued(payload.sid)
         }
     }
 

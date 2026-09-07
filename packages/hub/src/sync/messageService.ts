@@ -156,6 +156,35 @@ export class MessageService {
         })
     }
 
+    /**
+     * 补投仍排队（lifecycle='queued'）的用户消息到 CLI 房间（fork 激活翻转时调用）。
+     *
+     * 入队广播与 CLI 进房存在时序窗：web 发送侧先 fire-and-forget 触发 resume spawn，
+     * POST /messages 的房间广播落在 CLI socket join 之前——首连场景下 emit 落空，
+     * 消息永久滞留 queued（CLI 的断线 backfill 只覆盖「重连且 lastSeenMessageSeq 非空」）。
+     * 在激活翻转点整体补发，body 形态与 sendMessage 逐字段一致；幂等性由两端保证：
+     * CLI lastSeenMessageSeq 去重 + 消费后 lifecycle 推进（不再 queued，不会二次补投）。
+     * 只重放 CLI 房间，不发 message-received SSE——web 端在入队时已渲染，重复推送会造成
+     * 排队条闪烁。
+     */
+    redeliverQueued(sessionId: string): void {
+        const queued = this.store.messages.getUnsubmittedLocalMessages(sessionId)
+        if (queued.length === 0) return
+        for (const msg of queued) {
+            const message = toDecryptedMessage(msg)
+            this.io.of('/cli').to(`session:${sessionId}`).emit('session-update', {
+                id: msg.id,
+                seq: msg.seq,
+                createdAt: msg.createdAt,
+                body: {
+                    t: 'new-message' as const,
+                    sid: sessionId,
+                    message
+                }
+            })
+        }
+    }
+
     /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycleAt 落库），返回实际更新的 localId 列表 */
     markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): string[] {
         return this.store.messages.markMessagesPushed(sessionId, localIds, pushedAt)
