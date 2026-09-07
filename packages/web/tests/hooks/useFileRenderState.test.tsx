@@ -140,7 +140,7 @@ describe('useFileRenderState', () => {
         expect(result.current.status === 'ready' && result.current.wrap).toBe(true)
     })
 
-    it('html → needsContent（拉 content），默认 view=source', async () => {
+    it('html → needsContent（拉 content），默认 view=render（预览）', async () => {
         mockedMeta.mockReturnValue({ data: { mime: 'text/html', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
         const blob = { text: async () => '<html></html>' } as unknown as Blob
         mockedContent.mockReturnValue({ data: { blob, mime: 'text/html', etag: 'e' }, isLoading: false, error: null } as any)
@@ -149,8 +149,8 @@ describe('useFileRenderState', () => {
         // html needsContent → shouldFetchContent=true
         expect(mockedContent).toHaveBeenCalledWith('s', 'a.html', true, 'e')
         expect(result.current.status === 'ready' && result.current.kind.kind).toBe('html')
-        // html 默认 source（区别于 markdown 默认 render）
-        expect(result.current.status === 'ready' && result.current.view).toBe('source')
+        // html 默认 render（预览），与 markdown 一致；用户可经 toggleView 切源码
+        expect(result.current.status === 'ready' && result.current.view).toBe('render')
     })
 
     it('text/markdown ready + active → editable=true；html → false', async () => {

@@ -86,11 +86,11 @@ export function useFileRenderState(sessionId: string, filePath: string, active =
         sessionId, filePath, shouldFetchContent, meta?.etag,
     )
 
-    // view 默认值：markdown=render（保持回归）；html=source（默认源码，用户可选切预览）
+    // view 默认值：统一 render（markdown=渲染；html=预览，用户可切源码）
     // filePath 变化或 kind 变化时重置（如从 .md 切到 .html）
     const [view, setView] = useState<'render' | 'source'>('render')
     useEffect(() => {
-        setView(kind?.kind === 'html' ? 'source' : 'render')
+        setView('render')
     }, [filePath, kind?.kind])
     const toggleView = useCallback(() => setView((v) => v === 'render' ? 'source' : 'render'), [])
 

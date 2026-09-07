@@ -123,7 +123,7 @@ export default function FileContentView({ sessionId, tabId, filePath, active = t
     ]
     // .md / .html 文件：渲染/源码切换（图标随当前 view 变化）；isMarkdown || isHtml 隐含 toggleView 已定义
     // - markdown: render→source 用 viewSource；source→render 用 viewRender
-    // - html: source(默认)→render(预览) 用 viewPreview；render→source 用 viewSource
+    // - html: render(预览,默认)→source 用 viewSource；source→render(预览) 用 viewPreview
     if (isMarkdown || isHtml) {
         const inRenderMode = view === 'render'
         // 切换目标文案：render 态下要切去 source（viewSource）；source 态下要切去 渲染/预览
