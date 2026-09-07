@@ -78,6 +78,7 @@ function chatBlockToToolCardBlock(block: Extract<ChatBlock, { kind: 'tool-call' 
             startedAt: block.tool.startedAt,
             createdAt: block.tool.createdAt,
             permission: block.tool.permission ? convertPermission(block.tool.permission) : null,
+            structuredPatch: block.tool.structuredPatch,
         },
         children: block.children
             .filter((b): b is Extract<ChatBlock, { kind: 'tool-call' }> => b.kind === 'tool-call')

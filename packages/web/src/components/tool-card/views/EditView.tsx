@@ -34,6 +34,7 @@ export function EditView(props: ToolViewProps) {
         <DiffView
             oldString={oldString}
             newString={newString}
+            structuredPatches={props.block.tool.structuredPatch}
             filePath={filePath ?? undefined}
             variant="inline"
             statsType="edit"

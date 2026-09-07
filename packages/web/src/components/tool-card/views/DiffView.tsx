@@ -18,6 +18,8 @@ import { useMemo, useState } from 'react'
 import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from './lineNumberUtils'
+import { parseStructuredPatchRows } from './structuredPatchUtils'
+import type { StructuredPatch } from '@/domain/chat/types'
 import { FilePathText } from '@/components/ui/FilePathText'
 import { ToolViewPanel } from './ToolViewPanel'
 
@@ -85,17 +87,35 @@ function diffLines(oldStr: string, newStr: string): Array<{ value: string; added
     return result
 }
 
+/** Diff 渲染行（两套数据源统一到此模型：structuredPatch 解析结果 / old-new 自 diff 结果） */
+type DiffRow = {
+    value: string
+    added?: boolean
+    removed?: boolean
+    lineNum?: number
+}
+
 /**
  * Diff 内联视图
  */
 function DiffInlineView(props: {
     oldString: string
     newString: string
+    /** 工具完成后的原生 diff patch（携带文件真实行号），优先于 old/new 自 diff */
+    structuredPatches?: StructuredPatch[]
     filePath?: string
     statsType?: 'edit' | 'write'
 }) {
     const { token } = useToken()
-    const diff = useMemo(() => diffLines(props.oldString, props.newString), [props.oldString, props.newString])
+
+    // 数据源双轨：有原生 structuredPatch（工具完成后）直接解析，内容与行号和 CC 完全一致；
+    // 无（执行中预览 / 历史消息缺 patch）回退到 old/new 自 diff，行号为片段相对行号
+    const diff = useMemo<DiffRow[]>(() => {
+        if (props.structuredPatches && props.structuredPatches.length > 0) {
+            return parseStructuredPatchRows(props.structuredPatches)
+        }
+        return diffLines(props.oldString, props.newString)
+    }, [props.structuredPatches, props.oldString, props.newString])
 
     // 计算 diff 统计（复用 diff 结果，O(n) 复杂度）
     const diffStats = useMemo(() => {
@@ -103,9 +123,14 @@ function DiffInlineView(props: {
         return formatDiffStats(stats, props.statsType ?? 'edit')
     }, [diff, props.statsType])
 
-    // 计算每行的行号（基于 newString 的行号）
-    const linesWithNumbers = useMemo(() => {
-        const result: Array<{ value: string; added?: boolean; removed?: boolean; lineNum?: number }> = []
+    // 计算每行的行号：patch 路径已带真实文件行号直接透传；
+    // 回退路径（自 diff）基于 newString 从 1 起算（片段相对行号）
+    const linesWithNumbers = useMemo<DiffRow[]>(() => {
+        if (props.structuredPatches && props.structuredPatches.length > 0) {
+            return diff
+        }
+
+        const result: DiffRow[] = []
         let newLineNum = 1
 
         for (const part of diff) {
@@ -129,7 +154,7 @@ function DiffInlineView(props: {
         }
 
         return result
-    }, [diff])
+    }, [diff, props.structuredPatches])
 
     // 计算行号列宽度（根据最大行号）
     const maxLineNum = useMemo(() => getMaxLineNum(linesWithNumbers), [linesWithNumbers])
@@ -218,6 +243,8 @@ function DiffInlineView(props: {
 export function DiffView(props: {
     oldString: string
     newString: string
+    /** 工具完成后的原生 diff patch（携带文件真实行号），优先于 old/new 自 diff */
+    structuredPatches?: StructuredPatch[]
     filePath?: string
     variant?: 'preview' | 'inline'
     statsType?: 'edit' | 'write'
@@ -241,6 +268,7 @@ export function DiffView(props: {
         <DiffInlineView
             oldString={props.oldString}
             newString={props.newString}
+            structuredPatches={props.structuredPatches}
             filePath={props.filePath}
             statsType={props.statsType}
         />

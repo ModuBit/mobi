@@ -50,6 +50,10 @@ export function MultiEditView(props: ToolViewProps) {
                     key={idx}
                     oldString={edit.old_string}
                     newString={edit.new_string}
+                    // MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐
+                    structuredPatches={props.block.tool.structuredPatch?.[idx]
+                        ? [props.block.tool.structuredPatch[idx]]
+                        : undefined}
                     filePath={idx === 0 ? filePath ?? undefined : undefined}
                     statsType="edit"
                 />
@@ -80,6 +84,10 @@ export function MultiEditFullView(props: ToolViewProps) {
                     key={idx}
                     oldString={edit.old_string}
                     newString={edit.new_string}
+                    // MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐
+                    structuredPatches={props.block.tool.structuredPatch?.[idx]
+                        ? [props.block.tool.structuredPatch[idx]]
+                        : undefined}
                     filePath={idx === 0 ? filePath ?? undefined : undefined}
                     variant="inline"
                     statsType="edit"

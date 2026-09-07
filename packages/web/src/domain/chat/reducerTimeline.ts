@@ -452,6 +452,10 @@ export function reduceTimeline(
                     if (c.agentMetrics) {
                         completedBlock.tool.agentMetrics = c.agentMetrics
                     }
+                    // tool-result 携带的原生 diff patch（Edit/MultiEdit/Write，真实文件行号）
+                    if (c.structuredPatch) {
+                        completedBlock.tool.structuredPatch = c.structuredPatch
+                    }
                     replaceBlockById(blocks, blockIndexById, c.tool_use_id, completedBlock)
                     toolBlocksById.set(c.tool_use_id, completedBlock)
                     continue

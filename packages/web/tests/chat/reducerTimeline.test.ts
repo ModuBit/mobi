@@ -111,6 +111,54 @@ describe('reduceTimeline', () => {
             expect(uniqueIds.size).toBe(3)
         })
 
+        it('tool-result 携带 structuredPatch 时挂载到 tool 块（Edit 原生 diff 行号）', () => {
+            const messages: TracedMessage[] = [
+                createToolCallMessage('tool-edit', 'Edit', { file_path: '/a.ts' }, { createdAt: 1000 }),
+                {
+                    ...createToolResultMessage('tool-edit', 'The file has been updated.', { createdAt: 2000 }),
+                    content: [{
+                        type: 'tool-result' as const,
+                        tool_use_id: 'tool-edit',
+                        content: 'The file has been updated.',
+                        is_error: false,
+                        uuid: 'u1',
+                        parentUUID: null,
+                        structuredPatch: [{
+                            oldStart: 193,
+                            oldLines: 4,
+                            newStart: 193,
+                            newLines: 4,
+                            lines: ['     ctx', '-    old', '+    new'],
+                        }],
+                    }],
+                },
+            ]
+
+            const context = {
+                permissionsById: new Map<string, PermissionEntry>(),
+                groups: new Map<string, TracedMessage[]>(),
+                consumedGroupIds: new Set<string>(),
+                titleChangesByToolUseId: new Map<string, string>(),
+                emittedTitleChangeToolUseIds: new Set<string>(),
+                hiddenToolUseIds: new Set<string>(),
+            }
+
+            const { blocks } = reduceTimeline(messages, context)
+
+            expect(blocks).toHaveLength(1)
+            const block = blocks[0]
+            expect(block.kind).toBe('tool-call')
+            if (block.kind === 'tool-call') {
+                expect(block.tool.structuredPatch).toEqual([{
+                    oldStart: 193,
+                    oldLines: 4,
+                    newStart: 193,
+                    newLines: 4,
+                    lines: ['     ctx', '-    old', '+    new'],
+                }])
+            }
+        })
+
         it('应正确处理乱序到达的 tool-result', () => {
             // 模拟 tool-result 乱序到达
             const messages: TracedMessage[] = [

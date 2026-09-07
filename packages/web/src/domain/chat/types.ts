@@ -111,6 +111,18 @@ export type ToolUse = {
     parentUUID: string | null
 }
 
+/**
+ * Claude Code 原生 unified diff patch（Edit/MultiEdit/Write 的 tool_use_result.structuredPatch）
+ * lines 为 unified 前缀（' ' context / '-' 删除 / '+' 新增）+ 原行内容（前缀后无分隔空格，已实证）
+ */
+export type StructuredPatch = {
+    oldStart: number
+    oldLines: number
+    newStart: number
+    newLines: number
+    lines: string[]
+}
+
 export type ToolResult = {
     type: 'tool-result'
     tool_use_id: string
@@ -121,6 +133,8 @@ export type ToolResult = {
     permissions?: ToolResultPermission
     /** Agent 工具的完成指标（来自 tool_use_result） */
     agentMetrics?: AgentMetrics
+    /** Edit/MultiEdit/Write 的原生 diff patch（来自 tool_use_result.structuredPatch，携带文件真实行号） */
+    structuredPatch?: StructuredPatch[]
 }
 
 export type NormalizedAgentContent =
@@ -204,6 +218,8 @@ export type ChatToolCall = {
     result?: unknown
     permission?: ToolPermission
     agentMetrics?: AgentMetrics
+    /** Edit/MultiEdit/Write 的原生 diff patch（来自 tool-result，携带文件真实行号） */
+    structuredPatch?: StructuredPatch[]
     agentSummary?: string
     /** SDK tool_use_summary 挂载的工具组摘要（区别于 subagent 专用的 agentSummary） */
     summary?: string

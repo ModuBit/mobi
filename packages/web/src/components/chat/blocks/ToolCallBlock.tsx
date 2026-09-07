@@ -118,6 +118,7 @@ function ToolCallPreviewContent({
                 startedAt: tool.startedAt,
                 createdAt: tool.createdAt,
                 permission: tool.permission ? convertPermission(tool.permission) : null,
+                structuredPatch: tool.structuredPatch,
             },
             children: toolCallBlock.children
                 .filter((b): b is Extract<ChatBlock, { kind: 'tool-call' }> => b.kind === 'tool-call')
@@ -133,6 +134,7 @@ function ToolCallPreviewContent({
                         startedAt: child.tool.startedAt,
                         createdAt: child.tool.createdAt,
                         permission: child.tool.permission ? convertPermission(child.tool.permission) : null,
+                        structuredPatch: child.tool.structuredPatch,
                     },
                     children: [],
                 })),

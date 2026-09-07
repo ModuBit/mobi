@@ -15,6 +15,7 @@
  */
 
 import type { PermissionUpdate, SDKUIHints } from '@mobi/shared'
+import type { StructuredPatch } from '@/domain/chat/types'
 
 /**
  * 工具权限类型
@@ -43,6 +44,8 @@ export type ToolInfo = {
     createdAt: number
     permission: ToolPermission | null
     sdkHints?: SDKUIHints
+    /** Edit/MultiEdit/Write 的原生 diff patch（来自 tool-result，携带文件真实行号） */
+    structuredPatch?: StructuredPatch[]
 }
 
 /**

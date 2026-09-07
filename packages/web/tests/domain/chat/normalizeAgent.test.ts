@@ -255,6 +255,126 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
+    it('tool_use_result.structuredPatch 提取到 tool-result block（Edit 原生 diff 行号）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    message: {
+                        role: 'user',
+                        content: [
+                            {
+                                tool_use_id: 'call_edit1',
+                                type: 'tool_result',
+                                content: 'The file /a.ts has been updated.',
+                                is_error: false,
+                            },
+                        ],
+                    },
+                    tool_use_result: {
+                        filePath: '/a.ts',
+                        oldString: 'old',
+                        newString: 'new',
+                        originalFile: null,
+                        structuredPatch: [{
+                            oldStart: 193,
+                            oldLines: 4,
+                            newStart: 193,
+                            newLines: 4,
+                            lines: ['     ctx', '-    old', '+    new'],
+                        }],
+                        userModified: false,
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        if (result && result.role === 'agent') {
+            const block = result.content[0]
+            expect(block.type).toBe('tool-result')
+            if (block.type === 'tool-result') {
+                expect(block.structuredPatch).toEqual([{
+                    oldStart: 193,
+                    oldLines: 4,
+                    newStart: 193,
+                    newLines: 4,
+                    lines: ['     ctx', '-    old', '+    new'],
+                }])
+            }
+        }
+    })
+
+    it('structuredPatch 形态不合法（lines 含非字符串）时整体丢弃，走回退渲染', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    message: {
+                        role: 'user',
+                        content: [
+                            { tool_use_id: 'call_edit2', type: 'tool_result', content: 'done', is_error: false },
+                        ],
+                    },
+                    tool_use_result: {
+                        structuredPatch: [{
+                            oldStart: 1,
+                            oldLines: 1,
+                            newStart: 1,
+                            newLines: 1,
+                            lines: ['not-a-structured-patch-line', 42],
+                        }],
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        if (result && result.role === 'agent') {
+            const block = result.content[0]
+            if (block.type === 'tool-result') {
+                expect(block.structuredPatch).toBeUndefined()
+            }
+        }
+    })
+
+    it('tool_use_result 无 structuredPatch（如 Bash）时不产生该字段', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    message: {
+                        role: 'user',
+                        content: [
+                            { tool_use_id: 'call_bash', type: 'tool_result', content: 'ok', is_error: false },
+                        ],
+                    },
+                    tool_use_result: { stdout: 'ok', stderr: '', interrupted: false },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        if (result && result.role === 'agent') {
+            const block = result.content[0]
+            if (block.type === 'tool-result') {
+                expect(block.structuredPatch).toBeUndefined()
+            }
+        }
+    })
+
     it('should handle system:compact_boundary with snake_case metadata', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

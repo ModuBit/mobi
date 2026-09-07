@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
+import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, ToolResult, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
@@ -55,6 +55,30 @@ function normalizeAgentEvent(value: unknown): AgentEvent | null {
     return value as AgentEvent
 }
 
+/**
+ * 从 tool_use_result 提取 structuredPatch（Edit/MultiEdit/Write 的原生 unified diff，
+ * 携带文件真实行号）。任一 patch 形态不合法则整体放弃——部分数据会打乱 MultiEdit
+ * 的 patch↔edit 索引对齐，宁可整体回退到 old/new 自 diff 渲染。
+ */
+function extractStructuredPatches(toolUseResult: Record<string, unknown> | null): StructuredPatch[] | undefined {
+    if (!toolUseResult) return undefined
+    const raw = getField(toolUseResult, 'structuredPatch')
+    if (!Array.isArray(raw) || raw.length === 0) return undefined
+
+    const patches: StructuredPatch[] = []
+    for (const entry of raw) {
+        if (!isObject(entry)) return undefined
+        const oldStart = asNumber(entry.oldStart)
+        const oldLines = asNumber(entry.oldLines)
+        const newStart = asNumber(entry.newStart)
+        const newLines = asNumber(entry.newLines)
+        if (oldStart === null || oldLines === null || newStart === null || newLines === null) return undefined
+        if (!Array.isArray(entry.lines) || entry.lines.some((line) => typeof line !== 'string')) return undefined
+        patches.push({ oldStart, oldLines, newStart, newLines, lines: entry.lines as string[] })
+    }
+    return patches
+}
+
 function buildToolResultBlock(
     block: Record<string, unknown>,
     uuid: string,
@@ -62,6 +86,7 @@ function buildToolResultBlock(
     contentOverride?: unknown,
     permissions?: ToolResultPermission,
     agentMetrics?: AgentMetrics,
+    structuredPatch?: StructuredPatch[],
 ): ToolResult | null {
     if (typeof block.tool_use_id !== 'string') return null
     const isError = Boolean(block.is_error)
@@ -75,6 +100,7 @@ function buildToolResultBlock(
         parentUUID,
         ...(permissions && { permissions }),
         ...(agentMetrics && { agentMetrics }),
+        ...(structuredPatch && { structuredPatch }),
     }
 }
 
@@ -268,6 +294,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
                     undefined,
                     permissions,
                     agentMetrics,
+                    extractStructuredPatches(toolUseResult),
                 )
                 if (result) blocks.push(result)
             }

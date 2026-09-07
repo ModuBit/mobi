@@ -395,6 +395,7 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
         <DiffView
             oldString={oldString}
             newString={newString}
+            structuredPatches={props.block.tool.structuredPatch}
             filePath={filePath ?? undefined}
             variant="inline"
             statsType="edit"
@@ -426,6 +427,7 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
         <DiffView
             oldString=""
             newString={content}
+            structuredPatches={props.block.tool.structuredPatch}
             filePath={filePath ?? undefined}
             variant="inline"
             statsType="write"
@@ -460,11 +462,14 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
                 const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
                 const newString = typeof edit.new_string === 'string' ? edit.new_string : null
                 if (oldString === null || newString === null) return null
+                // MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐
+                const patch = props.block.tool.structuredPatch?.[idx]
                 return (
                     <DiffView
                         key={idx}
                         oldString={oldString}
                         newString={newString}
+                        structuredPatches={patch ? [patch] : undefined}
                         filePath={idx === 0 ? filePath ?? undefined : undefined}
                         variant="inline"
                         statsType="edit"
