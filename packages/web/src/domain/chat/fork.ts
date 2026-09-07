@@ -23,6 +23,7 @@
 
 import type { ForkedFromMetadata, ForkFromMetadata, NativeMessageMetadata } from '@mobi/shared'
 import type { ChatBlock } from './types'
+import { isAfterContextBoundary } from './contextBoundary'
 import { REWIND_COMMAND } from './presentation'
 import { getUserPlainText } from './userContent'
 
@@ -72,9 +73,8 @@ export function canForkMessage(
     if (!message.metadata?.nativeId || !message.metadata.nativeSessionId) return false
     // 同一 transcript 链才可 fork（/clear 前旧行 nativeSessionId 不一致）
     if (message.metadata.nativeSessionId !== sessionNativeSessionId) return false
-    // 边界判据（与 rewind 入口共用同一依据）：compact/clear 之前（seq ≤ 边界指针）不可 fork。
-    // 指针缺失按 0 处理 = 存量会话未回填时保守放行；行 seq 缺失（快照流式行）无法比较 → 不因边界隐藏
-    if (message.seq != null && message.seq <= (sessionState.contextBoundarySeq ?? 0)) return false
+    // 边界判据（与 rewind 入口共用同一依据与单一来源谓词）：compact/clear 之前不可 fork
+    if (!isAfterContextBoundary(message.seq, sessionState.contextBoundarySeq)) return false
     return true
 }
 

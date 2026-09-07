@@ -23,6 +23,7 @@
 import type { NativeMessageMetadata, UserContentBlock } from '@mobi/shared'
 import { normalizeUserContent } from '@mobi/shared'
 import { deserializeSegments, type ComposerSegments } from './composerSegments'
+import { isAfterContextBoundary } from './contextBoundary'
 import { summarizeBlocks, joinSummaries, EMPTY_SUMMARY_LABELS } from './userContentSummary'
 
 export type { NativeMessageMetadata }
@@ -75,10 +76,9 @@ export function canRewindMessage(
     if (isChainHead) return false
     // 同一 transcript 链才可 rewind（/clear 前旧行 nativeSessionId 不一致）
     if (message.metadata.nativeSessionId !== sessionNativeSessionId) return false
-    // 边界判据（fork-session spec §2/§6，用户裁决 rewind 对齐）：compact/clear 之前（seq ≤ 边界指针）不可 rewind，
-    // 与 fork 入口共用同一依据。指针缺失按 0 处理 = 存量会话未回填时保守放行；行 seq 缺失（快照流式行）
-    // 无法比较 → 同样不因边界隐藏（误判方向只会隐藏入口的保守原则，放行侧由 Hub 闸门 + CLI 预检把守）
-    if (message.seq != null && message.seq <= (sessionState.contextBoundarySeq ?? 0)) return false
+    // 边界判据（fork-session spec §2/§6，用户裁决 rewind 对齐；单一来源谓词与 fork 入口共用）：
+    // compact/clear 之前不可 rewind，缺失语义（保守放行）见 isAfterContextBoundary
+    if (!isAfterContextBoundary(message.seq, sessionState.contextBoundarySeq)) return false
     return true
 }
 

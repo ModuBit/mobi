@@ -84,6 +84,7 @@ export type ForkSessionResult =
         | 'anchor-before-boundary'   // 锚点不在边界后（compact/clear 之前，spec §2）
         | 'turn-start-not-found'     // 锚点所在 turn 起点找不到（理论不可达，防御）
         | 'parent-native-missing'    // parent 无 nativeSessionId（激活无 resumeToken）
+        | 'fork-of-fork-forbidden'   // parent 自身是分叉会话（spec §2：分叉会话禁止再 fork，服务端兜底）
     }
 
 /**
@@ -494,6 +495,11 @@ export class SyncEngine {
             return { ok: false, reason: 'parent-native-missing' }
         }
 
+        // 分叉会话禁止再 fork（spec §2）：web 入口隐藏之外的服务端兜底（直调 API 防线）
+        if (access.session.metadata?.forkedFrom) {
+            return { ok: false, reason: 'fork-of-fork-forbidden' }
+        }
+
         // 锚点行存在且属于该会话（getMessagesByNativeId 会话内查询天然限定归属；软删行不可见）
         const anchorRows = this.store.messages.getMessagesByNativeId(sessionId, anchorNativeId)
         if (anchorRows.length === 0) {
@@ -637,6 +643,20 @@ export class SyncEngine {
         return await this.rpcGateway.spawnSession(machineId, directory, options)
     }
 
+    /**
+     * fork 行激活失败的 hub 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
+     * forkError 上报通道不可达，错误态由 hub 直接落档）。仅 forkFrom 在场的行生效；
+     * best-effort，写失败仅 warn（下次激活重试路径会重新标记）。
+     */
+    private markForkActivationErrorIfPending(sessionId: string, code: string, detail?: string): void {
+        const session = this.getSession(sessionId)
+        if (!session?.metadata?.forkFrom) return
+        const ok = this.store.sessionFork.markForkActivationError(sessionId, code, detail)
+        if (!ok) {
+            hubLogger.warn(`[forkSession] forkError 落档放弃（并发竞争或会话消失）: ${sessionId}`)
+        }
+    }
+
     async resumeSession(sessionId: string, namespace: string): Promise<ResumeSessionResult> {
         const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
         if (!access.ok) {
@@ -664,6 +684,8 @@ export class SyncEngine {
 
         const onlineMachines = this.machineCache.getOnlineMachinesByNamespace(namespace)
         if (onlineMachines.length === 0) {
+            // fork 行：CLI 离线也激活不了——hub 侧落 forkError 错误态（spec §5.3）
+            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'no machine online')
             return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
         }
 
@@ -680,6 +702,7 @@ export class SyncEngine {
         })()
 
         if (!targetMachine) {
+            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'no machine online')
             return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
         }
 
@@ -696,11 +719,13 @@ export class SyncEngine {
         )
 
         if (spawnResult.type !== 'success') {
+            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', spawnResult.message)
             return { type: 'error', message: spawnResult.message, code: 'resume_failed' }
         }
 
         const becameActive = await this.waitForSessionActive(spawnResult.sessionId)
         if (!becameActive) {
+            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'session failed to become active')
             return { type: 'error', message: 'Session failed to become active', code: 'resume_failed' }
         }
 

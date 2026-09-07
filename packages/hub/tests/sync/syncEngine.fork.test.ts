@@ -16,6 +16,8 @@
 
 import { describe, test, expect } from 'bun:test'
 
+import { MetadataSchema } from '@mobi/shared'
+
 import { SyncEngine } from '../../src/sync/syncEngine'
 import { Store } from '../../src/store'
 import type { RpcRegistry } from '../../src/socket/rpcRegistry'
@@ -299,6 +301,70 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
             // 契约：resumeToken = fork 行预生成 id（CLI bootstrapSession 据此绑定 fork 行）
             expect(params!.resumeSessionId).toBe(forkNativeId)
             expect(params!.resumeSessionId).not.toBe('parent-native-1')
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('分叉会话禁止再 fork（服务端兜底，spec §2）', () => {
+        const h = makeSpawnEngine()
+        try {
+            const parent = h.engine.getOrCreateSession(
+                'fork-of-fork-parent',
+                { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'parent-native-1' },
+                null,
+                'default',
+            )
+            h.store.messages.addMessage(parent.id, userMsg('第一个问题'), 'l1')
+            h.store.messages.addMessage(
+                parent.id, agentResult(), null, 'persistent',
+                { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
+            )
+            const forkResult = h.engine.forkSession(parent.id, 'anchor-native', 'default')
+            expect(forkResult.ok).toBe(true)
+            if (!forkResult.ok) return
+
+            // 对 fork 行再 fork：web 入口隐藏之外的服务端防线（直调 API）
+            h.store.messages.addMessage(
+                forkResult.sessionId, agentResult(), null, 'persistent',
+                { nativeId: 'fork-anchor-native', nativeSessionId: 'parent-native-1' },
+            )
+            const again = h.engine.forkSession(forkResult.sessionId, 'fork-anchor-native', 'default')
+            expect(again).toEqual({ ok: false, reason: 'fork-of-fork-forbidden' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('resumeSession 失败 → hub 落 forkError 错误态（CLI 离线场景，spec §5.3）', async () => {
+        const h = makeSpawnEngine()
+        try {
+            // 不注册任何在线机器 → resumeSession 走 no_machine_online 失败路径
+            const parent = h.engine.getOrCreateSession(
+                'fork-offline-parent',
+                { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'parent-native-1' },
+                null,
+                'default',
+            )
+            h.store.messages.addMessage(parent.id, userMsg('第一个问题'), 'l1')
+            h.store.messages.addMessage(
+                parent.id, agentResult(), null, 'persistent',
+                { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
+            )
+            const forkResult = h.engine.forkSession(parent.id, 'anchor-native', 'default')
+            expect(forkResult.ok).toBe(true)
+            if (!forkResult.ok) return
+
+            const result = await h.engine.resumeSession(forkResult.sessionId, 'default')
+            expect(result.type).toBe('error')
+
+            // forkError 落档 + forkFrom 保留（未激活判定与删除守卫的依据，shared 契约）
+            const forkRow = h.store.sessions.getSession(forkResult.sessionId)!
+            const parsed = MetadataSchema.safeParse(forkRow.metadata)
+            expect(parsed.success).toBe(true)
+            const metadata = parsed.data!
+            expect(metadata.forkError?.code).toBe('activation-failed')
+            expect(metadata.forkFrom).toBeTruthy()
         } finally {
             h.cleanup()
         }

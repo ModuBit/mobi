@@ -17,10 +17,12 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { MessageContentSchema, MetadataSchema, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
+import { MessageContentSchema, MetadataSchema, isObject, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
 
 import { isContextBoundaryContent } from './messages'
+import { CONTEXT_BOUNDARY_SEQ_KEY } from './contextBoundary'
 import { safeJsonParse } from './json'
+import { getSession, updateSessionMetadata } from './sessions'
 import type { StoredMessage, StoredSession } from './types'
 
 /**
@@ -107,7 +109,7 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
     // contextBoundarySeq 刻意剥离：指针语义锚定 parent 的 seq 序列，残留在 fork 行上会让 fork 消息
     // 全部误判「边界之前」（rewind 入口被锁死）——剥离后由读侧 resolve 按 fork 自身行惰性回填。
     const baseMetadata = { ...((parent.metadata ?? {}) as Record<string, unknown>) }
-    delete baseMetadata.contextBoundarySeq
+    delete baseMetadata[CONTEXT_BOUNDARY_SEQ_KEY]
     const forkMetadata = {
         ...baseMetadata,
         nativeSessionId: forkNativeId,
@@ -228,6 +230,42 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
     return run()
 }
 
+/**
+ * fork 行激活失败的 hub 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
+ * forkError 上报通道不可达，错误态由 hub 直接落 metadata）。保留 forkFrom（未激活判定
+ * 与删除守卫的依据，shared FORK_ERROR_METADATA 契约），叠加 forkError。
+ * 走 metadata_version CAS 重试一次即放弃（尽力而为，对齐 advanceContextBoundarySeq）。
+ *
+ * @returns 是否写入成功（会话不存在 / 并发放弃为 false，调用方仅 warn）
+ */
+export function markForkActivationError(
+    db: Database,
+    sessionId: string,
+    code: string,
+    detail?: string,
+): boolean {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const stored = getSession(db, sessionId)
+        if (!stored) return false
+
+        // StoredSession.metadata 已是解析后的对象（unknown | null），直接叠加
+        const baseMetadata = isObject(stored.metadata) ? stored.metadata : {}
+        const result = updateSessionMetadata(
+            db,
+            sessionId,
+            { ...baseMetadata, forkError: { code, at: Date.now(), ...(detail ? { detail } : {}) } },
+            stored.metadataVersion,
+            stored.namespace,
+            // 纯簿记标记：不动 updated_at（对齐 advanceContextBoundarySeq）
+            { touchUpdatedAt: false }
+        )
+        if (result.result === 'success') return true
+        if (result.result === 'error') return false
+        // version-mismatch → 循环重试一次
+    }
+    return false
+}
+
 /** fork 会话创建领域存储（Store 聚合的子 Store，见 hub 编码规范；ContextBoundaryStore 同例） */
 export class SessionForkStore {
     private readonly db: Database
@@ -244,5 +282,10 @@ export class SessionForkStore {
     /** 单事务建 fork 会话（见 forkSessionAtAnchor） */
     forkSessionAtAnchor(params: ForkSessionAtAnchorParams): ForkSessionAtAnchorResult {
         return forkSessionAtAnchor(this.db, params)
+    }
+
+    /** 激活失败落 forkError（spec §5.3 CLI 离线场景，见 markForkActivationError） */
+    markForkActivationError(sessionId: string, code: string, detail?: string): boolean {
+        return markForkActivationError(this.db, sessionId, code, detail)
     }
 }

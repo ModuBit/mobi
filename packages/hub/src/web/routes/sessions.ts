@@ -96,6 +96,7 @@ const FORK_FAILURE_STATUS: Record<Exclude<Exclude<ForkSessionResult, { ok: true 
     'anchor-before-boundary': 400,
     'turn-start-not-found': 400,
     'parent-native-missing': 409,
+    'fork-of-fork-forbidden': 400,
 }
 
 const FORK_FAILURE_MESSAGES: Record<Exclude<ForkSessionResult, { ok: true }>['reason'], string> = {
@@ -105,6 +106,7 @@ const FORK_FAILURE_MESSAGES: Record<Exclude<ForkSessionResult, { ok: true }>['re
     'anchor-before-boundary': 'Anchor message is before the last context boundary',
     'turn-start-not-found': 'Turn start not found',
     'parent-native-missing': 'Session has no native session id to fork from',
+    'fork-of-fork-forbidden': 'Fork sessions cannot be forked again',
 }
 
 /** abort body：停止档位三档（批次 A）；取值单一来源 shared STOP_KIND_VALUES（勿手写副本），缺省 'turn' 只中断当前 turn */
