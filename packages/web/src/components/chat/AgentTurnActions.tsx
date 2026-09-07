@@ -55,7 +55,8 @@ export function AgentTurnActions({
     const forkActive = !!forkOpen
 
     return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        // paddingLeft 与概要文字保持呼吸间距（actions 贴 flex 行尾，无它则紧贴时间戳）
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, paddingLeft: 12 }}>
             <span className="msg-copy-btn">
                 <CopyButton text={text} size={14} />
             </span>
