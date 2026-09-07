@@ -32,8 +32,9 @@ import { Markdown } from '@/components/ui/Markdown'
 function renderBlock(block: ContentBlock, key: string): React.ReactNode {
     switch (block.type) {
         case 'text':
-            // 非流式、不带 slash command / mention：custom 消息由 mobi 生成，无用户输入语法
-            return <Markdown key={key} content={block.text} />
+            // 非流式、不带 slash command / mention：custom 消息由 mobi 生成，无用户输入语法。
+            // x-markdown-inline：收起块级 p 边距、链接色随系统行灰调（markdown.css 尾部作用域规则）
+            return <Markdown key={key} content={block.text} className="x-markdown-inline" />
         default:
             // image/document/quote：词汇表已定义但渲染器首期未对 custom 通道开放，跳过
             return null

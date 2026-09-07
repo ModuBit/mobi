@@ -220,3 +220,14 @@ html[data-theme='dark'] .x-markdown .mention-badge {
 .x-markdown [class*="codeHighlighter-header-title"] {
     display: none;
 }
+
+/* custom 消息系统行（ADR 0003，12px 灰调）内的 Markdown 变体：
+   收起块级 p 边距（系统行是无边框紧凑行），链接色继承行内灰调而非全局固定色
+   （.x-markdown a 的 #3d3d3a 与暗色主题覆盖都不适用于灰调系统行） */
+.x-markdown.x-markdown-inline p {
+    margin: 0;
+}
+
+.x-markdown.x-markdown-inline a {
+    color: inherit;
+}

@@ -107,7 +107,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
         expect(row.content).toContain('[my-proj](mobi://session/open?id=p-1)')
     })
 
-    test('范围守卫：agent 消息含 ref 字面量不改写；custom 无 ref 不改写；未注册 targetType 丢弃', () => {
+    test('范围守卫：agent 消息含 ref 字面量不改写；custom 无 ref 不改写；未注册 targetType 整行保守跳过', () => {
         const store = makeStore()
         makeSession(store, 's-1', { name: 'x' })
 
@@ -132,10 +132,9 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
         migrateLegacyRefMessages(getDb(store))
 
         const after = getDb(store).prepare('SELECT id, content FROM messages WHERE session_id = ? ORDER BY seq').all('s-1') as Array<{ id: string; content: string }>
-        // m1（agent）、m2（无 ref）原样；m3 的 ref 被丢弃 → content 变为空数组
+        // m1（agent）、m2（无 ref）、m3（未注册 targetType）全部原样——保守跳过保留原始数据
         expect(after[0].content).toBe(before[0].content)
         expect(after[1].content).toBe(before[1].content)
-        const m3 = JSON.parse(after[2].content)
-        expect(m3.content).toEqual([])
+        expect(after[2].content).toBe(before[2].content)
     })
 })

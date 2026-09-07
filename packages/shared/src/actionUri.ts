@@ -84,16 +84,21 @@ export function parseActionUri(raw: string): RegisteredAction | UnregisteredActi
     }
     if (url.protocol.toLowerCase() !== `${MOBI_URI_SCHEME}:`) return null
 
+    // 语法收紧（spec §3）：host 就是资源域本身——端口/userinfo 是仿冒形似 URI 的藏身处
+    // （mobi://session:6379/open 的 hostname 会静默剥离端口），一律拒绝
+    if (url.port !== '' || url.username !== '' || url.password !== '') return null
+
     const domain = url.hostname.toLowerCase()
-    // path 去掉首斜杠后必须恰好一段（多段/空段 = 畸形）
-    const segments = url.pathname.replace(/^\//, '').split('/').filter(Boolean)
-    if (segments.length !== 1) return null
-    const action = segments[0].toLowerCase()
+    // path 必须恰好 `/动作`——尾斜杠（/open/）与多段同样拒绝，杜绝归一化放行
+    const action = url.pathname.slice(1)
+    if (action === '' || action.includes('/')) return null
     if (!DOMAIN_RE.test(domain) || !ACTION_RE.test(action)) return null
 
     const key = `${domain}/${action}`
     const definition = (ACTION_REGISTRY as Record<string, ActionDefinition>)[key]
     if (!definition) return { key: null, domain, action }
+    // web 消费端对「未注册 {key:null}」与「畸形 null」统一 toast「不支持的操作」（spec Q10-A）；
+    // 三态返回保留给未来细分文案
 
     // query 键值 → 校验；未知键由 zod object 默认剥离，值经 schema 校验
     const rawParams: Record<string, string> = {}

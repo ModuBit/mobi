@@ -80,7 +80,11 @@ function rewriteCustomRefBlocks(
     if (!isObject(content) || content.role !== 'custom' || !Array.isArray(content.content)) return null
     // 以 unknown 层面遍历：'ref' 已不在 ContentBlock 词汇里，按判别联合收窄会把 ref 分支推成 never
     const blocks = content.content as unknown[]
-    if (!blocks.some((block) => isObject(block) && block.type === 'ref')) return null
+    const refBlocks = blocks.filter((block) => isObject(block) && block.type === 'ref')
+    if (refBlocks.length === 0) return null
+    // 保守跳过（ticket 02 裁决）：含未注册 targetType 的行整行不改写——保留原始数据，
+    // 未来注册新资源域时可再迁移；只丢 ref 块会不可逆销毁 id
+    if (refBlocks.some((block) => (block as Record<string, unknown>).targetType !== 'session')) return null
 
     const out: ContentBlock[] = []
     for (const item of blocks) {
@@ -91,6 +95,7 @@ function rewriteCustomRefBlocks(
             { targetType: String(item.targetType), id: String(item.id) },
             titleResolver(String(item.id)),
         )
+        // 行级守卫已保证 targetType === 'session'，null 分支仅防御（保持类型完备）
         if (linkText === null) continue
 
         const prev = out[out.length - 1]

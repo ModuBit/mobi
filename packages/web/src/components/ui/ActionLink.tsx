@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { memo, type MouseEvent, type ReactNode } from 'react'
+import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { message } from 'antd'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -62,12 +62,11 @@ export const ActionLink = memo(function ActionLink({ uri, children }: ActionLink
     const { t } = useTranslation()
     const navigate = useNavigate()
 
-    const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
-        // 拦截原生导航：mobi URI 不是 http 资源，动作经本页路由分发
-        e.preventDefault()
+    const dispatch = () => {
         const parsed = parseActionUri(uri)
         if (!parsed?.key) {
-            // 未注册（key=null）与畸形（null）同一降级——结构上不存在该动作
+            // 未注册（key=null）与畸形（null）统一降级为「不支持的操作」——
+            // spec Q10-A：单条文案，不区分参数问题（三态返回保留给未来细分）
             message.info(t('chat.action.unsupported'))
             return
         }
@@ -77,8 +76,23 @@ export const ActionLink = memo(function ActionLink({ uri, children }: ActionLink
         executor(parsed.params as never, { navigate })
     }
 
+    // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
+    // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
+    const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault()
+        e.stopPropagation()
+        dispatch()
+    }
+
+    const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        e.stopPropagation()
+        dispatch()
+    }
+
     return (
-        <a href={uri} onClick={handleClick}>
+        <a href={uri} onClick={handleClick} onKeyDown={handleKeyDown}>
             {children}
         </a>
     )

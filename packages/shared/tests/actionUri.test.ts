@@ -47,11 +47,14 @@ describe('parseActionUri：未注册与畸形', () => {
         expect(parseActionUri('mobi://session/close?id=s-1')).toEqual({ key: null, domain: 'session', action: 'close' })
     })
 
-    it('畸形矩阵 → null：坏 scheme / path 多段 / path 空 / 非法字符 / 非 URL', () => {
+    it('畸形矩阵 → null：坏 scheme / path 多段 / path 空 / 尾斜杠 / 端口 / userinfo / 非法字符 / 非 URL', () => {
         expect(parseActionUri('https://session/open?id=x')).toBeNull()
         expect(parseActionUri('mobi://session/open/extra?id=x')).toBeNull()
         expect(parseActionUri('mobi://session')).toBeNull()
         expect(parseActionUri('mobi://session/open?id=')).toBeNull()      // 已注册但 id 空参数校验失败
+        expect(parseActionUri('mobi://session/open/')).toBeNull()          // 尾斜杠（路径归一化放行=仿冒面）
+        expect(parseActionUri('mobi://session:6379/open?id=x')).toBeNull() // 端口被 hostname 静默剥离，须拒绝
+        expect(parseActionUri('mobi://a@session/open?id=x')).toBeNull()    // userinfo 同上
         expect(parseActionUri('mobi://se ssion/open?id=x')).toBeNull()
         expect(parseActionUri('not a url')).toBeNull()
         expect(parseActionUri('')).toBeNull()
