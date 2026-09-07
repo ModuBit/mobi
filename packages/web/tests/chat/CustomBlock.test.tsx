@@ -32,6 +32,8 @@ import { message } from 'antd'
 const navigateSpy = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => navigateSpy,
+    // 动作分发 hook（useActionDispatcher）读当前会话上下文
+    useParams: () => ({ sessionId: 'sess-1' }),
 }))
 
 vi.mock('react-i18next', async (orig) => {
@@ -107,7 +109,7 @@ describe('CustomBlockView', () => {
 
     it('text 含未注册 mobi URI：点击 toast 不跳转', () => {
         renderView(makeBlock([
-            { type: 'text', text: '看看 [文件](mobi://file/open?path=x)' },
+            { type: 'text', text: '看看 [文件](mobi://file/download?path=x)' },
         ]))
         fireEvent.click(screen.getByRole('link', { name: '文件' }))
         expect(messageInfoSpy).toHaveBeenCalledWith('chat.action.unsupported')

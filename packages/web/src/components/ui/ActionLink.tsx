@@ -16,9 +16,10 @@
 
 import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { message } from 'antd'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 
 /**
  * mobi:// 动作链接的 web 执行面（ADR 0003）：
@@ -26,11 +27,15 @@ import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/sha
  * - ACTION_EXECUTORS：`注册键 → 执行器` 分发表。注册表（shared，协议权威：参数
  *   约束 + 风险等级）与执行器（web，运行时副作用）分离——新增动作 = shared 注册
  *   新键 + 此表补执行器，ActionLink 分发逻辑不动
+ * - useActionDispatcher：分发逻辑的 hook 化出口，非链接形态的点击入口
+ *   （如用户消息附件卡）用它构造 URI 后走同一条执行链
  */
 
-/** 动作执行所需的运行时能力（当前仅路由跳转；file/open、message/send 等后续在此扩展） */
+/** 动作执行所需的运行时能力（路由跳转 + 当前会话上下文；message/send 等后续在此扩展） */
 export interface ActionExecutorContext {
     navigate: ReturnType<typeof useNavigate>
+    /** 当前会话 id（/sessions/:id 路由内可用；file/open 的 inspector 状态按会话隔离） */
+    sessionId?: string
 }
 
 /** 单个动作执行器：参数是 shared 注册表校验后的强类型载荷 */
@@ -44,6 +49,36 @@ const ACTION_EXECUTORS: {
         // 会话不存在不做渲染时校验：navigate 后由会话页既有 not-found 态承接（ADR 0003 Q10-A）
         void navigate({ to: '/sessions/$sessionId', params: { sessionId: params.id } })
     },
+    'file/open': (params, { sessionId }) => {
+        // 无会话上下文（理论不可达：消息渲染都在 /sessions/:id 路由内）→ 静默忽略
+        if (!sessionId) return
+        const store = useWorkspaceStore.getState()
+        // 两步语义：打开文件 tab（expand !== false 时再检测并展开 inspector，
+        // 默认抢屏；expand=false 只静默更新 tab，供「后台准备」类场景）
+        store.openFileTab(sessionId, params.path, params.name ?? params.path.split('/').pop() ?? params.path)
+        if (params.expand) store.setExpanded(sessionId, true)
+    },
+}
+
+/** 构造动作分发 hook：解析 URI（未注册/畸形统一 toast 降级）后按注册键分发执行 */
+export function useActionDispatcher() {
+    const { t } = useTranslation()
+    const navigate = useNavigate()
+    const { sessionId } = useParams({ strict: false }) as { sessionId?: string }
+
+    return (uri: string) => {
+        const parsed = parseActionUri(uri)
+        if (!parsed?.key) {
+            // 未注册（key=null）与畸形（null）统一降级为「不支持的操作」——
+            // spec Q10-A：单条文案，不区分参数问题（三态返回保留给未来细分）
+            message.info(t('chat.action.unsupported'))
+            return
+        }
+        // 分发点：parsed.key 与 parsed.params 是同一注册键的关联联合，桥接处收窄一次
+        // （执行器表类型层面已按键约束参数，收窄不损失内部类型安全）
+        const executor = ACTION_EXECUTORS[parsed.key] as ActionExecutor<never>
+        executor(parsed.params as never, { navigate, sessionId })
+    }
 }
 
 export interface ActionLinkProps {
@@ -59,36 +94,21 @@ export interface ActionLinkProps {
  * 正常链接样式；href 仅作语义与降级展示，点击被 preventDefault 拦截。
  */
 export const ActionLink = memo(function ActionLink({ uri, children }: ActionLinkProps) {
-    const { t } = useTranslation()
-    const navigate = useNavigate()
-
-    const dispatch = () => {
-        const parsed = parseActionUri(uri)
-        if (!parsed?.key) {
-            // 未注册（key=null）与畸形（null）统一降级为「不支持的操作」——
-            // spec Q10-A：单条文案，不区分参数问题（三态返回保留给未来细分）
-            message.info(t('chat.action.unsupported'))
-            return
-        }
-        // 分发点：parsed.key 与 parsed.params 是同一注册键的关联联合，桥接处收窄一次
-        // （执行器表类型层面已按键约束参数，收窄不损失内部类型安全）
-        const executor = ACTION_EXECUTORS[parsed.key] as ActionExecutor<never>
-        executor(parsed.params as never, { navigate })
-    }
+    const dispatch = useActionDispatcher()
 
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
     // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault()
         e.stopPropagation()
-        dispatch()
+        dispatch(uri)
     }
 
     const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
         if (e.key !== 'Enter') return
         e.preventDefault()
         e.stopPropagation()
-        dispatch()
+        dispatch(uri)
     }
 
     return (

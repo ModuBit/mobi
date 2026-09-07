@@ -40,11 +40,31 @@ export interface ActionDefinition<P extends z.ZodType = z.ZodType> {
 /**
  * 动作注册表：`资源域/动作` → 定义的唯一权威映射。
  * 未注册的组合在结构上不存在——不存在该动作，而非被禁止的动作。
- * 新动作（file/open、message/send 等）只在此注册新键，协议本体不动。
+ * 新动作（message/send 等）只在此注册新键，协议本体不动。
  */
 export const ACTION_REGISTRY = {
     'session/open': {
         params: z.object({ id: z.string().min(1) }),
+        risk: 'navigate',
+    },
+    /**
+     * 在 inspector pane 打开文件（ADR 0003 第二期第一个动作）：
+     * - path：相对会话 cwd 的路径，或 `/` 开头的绝对路径（POSIX 惯例，透传给
+     *   read-file 读取链，`resolve(cwd, path)` 天然双支持）。实际可达范围由服务端
+     *   读取策略约束（当前 = 严格 cwd 子树）——协议只承诺透传，边界演进不动参数。
+     * - name：tab 显示名，缺省取 path 基名。
+     * - expand：是否检测并展开 inspector（false = 只更新 tab 不抢屏），缺省 true。
+     */
+    'file/open': {
+        params: z.object({
+            path: z.string().min(1),
+            name: z.string().optional(),
+            // query 键值恒为 string（解析侧），构造侧传 boolean：union 双形态后 transform
+            // 成 boolean 输出。不用 z.coerce.boolean()（Boolean('false') === true 的经典坑）
+            expand: z.union([z.boolean(), z.enum(['true', 'false'])])
+                .optional()
+                .transform((v) => v !== 'false' && v !== false),
+        }),
         risk: 'navigate',
     },
 } as const satisfies Record<string, ActionDefinition>
@@ -118,14 +138,19 @@ export function parseActionUri(raw: string): RegisteredAction | UnregisteredActi
 }
 
 /**
- * 构造 mobi URI（写入侧：hub 注入消息、测试）。参数值经 encodeURIComponent；
- * 已注册键才可构造——写入侧不允许产出未注册动作。
+ * 构造 mobi URI（写入侧：hub 注入消息、测试；渲染层点击时构造同走此处）。
+ * 参数值经 encodeURIComponent；undefined/null 参数（可选字段缺省）整键剔除，
+ * 不落 `undefined` 字面量；已注册键才可构造——写入侧不允许产出未注册动作。
+ * 入参用 z.input（transform 前形态：expand 可传 boolean 或省略），解析侧输出才是
+ * z.output 的 transform 后类型——两侧类型由同一 schema 关联，不重复声明。
  */
-export function buildActionUri<K extends ActionKey>(key: K, params: z.infer<(typeof ACTION_REGISTRY)[K]['params']>): string {
+export function buildActionUri<K extends ActionKey>(key: K, params: z.input<(typeof ACTION_REGISTRY)[K]['params']>): string {
     if (!(key in ACTION_REGISTRY)) throw new Error(`未注册的 mobi 动作: ${key}`)
     const [domain, action] = key.split('/')
     const search = new URLSearchParams(
-        Object.entries(params as Record<string, string>).map(([name, value]): [string, string] => [name, String(value)]),
+        Object.entries(params as Record<string, unknown>)
+            .filter(([, value]) => value !== undefined && value !== null)
+            .map(([name, value]): [string, string] => [name, String(value)]),
     )
     return `${MOBI_URI_SCHEME}://${domain}/${action}?${search.toString()}`
 }

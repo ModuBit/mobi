@@ -34,6 +34,8 @@ import { message } from 'antd'
 const navigateSpy = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => navigateSpy,
+    // 动作分发 hook（useActionDispatcher）读当前会话上下文
+    useParams: () => ({ sessionId: 'sess-1' }),
 }))
 
 vi.mock('react-i18next', async (orig) => {
@@ -95,8 +97,8 @@ describe('Markdown mobi:// 链接拦截', () => {
         )
     })
 
-    it('未注册动作（file/open）：正常链接样式，点击 toast 不跳转', () => {
-        renderLink('mobi://file/open?path=x')
+    it('未注册动作（file/download）：正常链接样式，点击 toast 不跳转', () => {
+        renderLink('mobi://file/download?path=x')
         fireEvent.click(screen.getByRole('link'))
         expect(messageInfoSpy).toHaveBeenCalledWith('chat.action.unsupported')
         expect(navigateSpy).not.toHaveBeenCalled()

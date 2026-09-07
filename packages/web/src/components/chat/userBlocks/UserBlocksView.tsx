@@ -25,6 +25,8 @@ import type {
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
+import { buildActionUri } from '@mobi/shared'
+import { useActionDispatcher } from '@/components/ui/ActionLink'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */
@@ -89,9 +91,28 @@ function QuoteView({ block }: UserBlockViewProps<UserQuoteBlock>) {
  * document 视图：FileCard 小尺寸文件卡。图标由 FileCard 按扩展名自动映射
  * PresetIcons（pdf/word/markdown/excel/ppt/zip/java/javascript/python 等，缺省 default），
  * 无需自维护映射表。
+ *
+ * 点击 = mobi://file/open（ADR 0003 二期）：在 inspector pane 打开该附件
+ * （block.source.value 即 .mobi/uploads 相对路径，与 inspector 读文件同一条
+ * read-file 链）。URI 由 block 数据渲染时构造走统一执行链——block 结构化字段
+ * 本身就是冻结快照（消息即快照，Q3 裁决），不改落库内容。
  */
 function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
-    return <FileCard size="small" type="file" name={block.filename} byte={block.size} />
+    const dispatch = useActionDispatcher()
+    // data source 是骨架占位（无磁盘路径），没有可打开目标 → 不绑定点击
+    const path = block.source.type === 'url' ? block.source.value : null
+    const handleClick = path
+        ? () => dispatch(buildActionUri('file/open', { path, name: block.filename }))
+        : undefined
+    return (
+        <span
+            role={handleClick ? 'button' : undefined}
+            style={{ cursor: handleClick ? 'pointer' : undefined, display: 'inline-flex' }}
+            onClick={handleClick}
+        >
+            <FileCard size="small" type="file" name={block.filename} byte={block.size} />
+        </span>
+    )
 }
 
 /** 缩略图尺寸：聊天气泡内的小方块（微信/Slack 风格），点击可放大看原图 */
@@ -180,9 +201,7 @@ export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBl
                 if (seg.kind === 'documents') {
                     return (
                         <Space key={`docs-${seg.blocks[0].id}`} size={8} wrap style={{ maxWidth: '100%' }}>
-                            {seg.blocks.map(d => (
-                                <FileCard key={d.id} size="small" type="file" name={d.filename} byte={d.size} />
-                            ))}
+                            {seg.blocks.map(d => <DocumentView key={d.id} block={d} env={renderEnv} />)}
                         </Space>
                     )
                 }

@@ -95,6 +95,12 @@ interface WorkspaceState {
      * 否则把当前 tab 由 tree 转为 file。
      */
     openFileInTab: (sessionId: string, tabId: string, filePath: string, fileName: string) => void
+    /**
+     * 自足的「打开文件」入口（mobi://file/open 动作执行器消费，无调用方 tab 上下文）：
+     * 同 filePath 已开的 file tab → 切激活（去重）；否则优先就地转换已有 tree tab，
+     * 无 tree tab 才新建 file tab 并激活。
+     */
+    openFileTab: (sessionId: string, filePath: string, fileName: string) => void
     /** 「终端」动作：新建一个终端 tab 并激活；返回新 tab id */
     openTerminalTab: (sessionId: string) => string
     /** 重命名终端 tab（title 去空白后为空则回退默认"终端 N"） */
@@ -180,6 +186,39 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             )
             const next = new Map(state.sessions)
             next.set(sessionId, { ...cur, tabs, activeTabId: tabId })
+            return { sessions: next }
+        }),
+
+    openFileTab: (sessionId, filePath, fileName) =>
+        set((state) => {
+            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+            // 去重：同 filePath 已存在 → 切激活
+            const existed = cur.tabs.find((t) => t.mode === 'file' && t.filePath === filePath)
+            if (existed) {
+                if (cur.activeTabId === existed.id) return state
+                const next = new Map(state.sessions)
+                next.set(sessionId, { ...cur, activeTabId: existed.id })
+                return { sessions: next }
+            }
+            // 优先就地转换已有 tree tab（保留其位置）；无 tree tab 才新建
+            const treeTab = cur.tabs.find((t) => t.mode === 'tree')
+            const tabs = treeTab
+                ? cur.tabs.map((t) =>
+                      t.id === treeTab.id
+                          ? { ...t, mode: 'file' as const, filePath, fileName, viewState: undefined }
+                          : t,
+                  )
+                : [
+                      ...cur.tabs,
+                      {
+                          id: uuid(),
+                          mode: 'file' as const,
+                          filePath,
+                          fileName,
+                      },
+                  ]
+            const next = new Map(state.sessions)
+            next.set(sessionId, { ...cur, tabs, activeTabId: treeTab?.id ?? tabs[tabs.length - 1].id })
             return { sessions: next }
         }),
 

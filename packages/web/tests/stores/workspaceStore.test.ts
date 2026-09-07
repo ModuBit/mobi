@@ -115,6 +115,38 @@ describe('workspaceStore', () => {
         expect(s.activeTabId).toBe(t1) // 切回已存在的文件 tab
     })
 
+    it('openFileTab 无 tab：新建 file tab 并激活（不要求调用方指定 tabId）', () => {
+        useWorkspaceStore.getState().openFileTab('s1', '.mobi/uploads/a.pdf', 'a.pdf')
+
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: '.mobi/uploads/a.pdf', fileName: 'a.pdf' })
+        expect(s.activeTabId).toBe(s.tabs[0].id)
+    })
+
+    it('openFileTab 已有 tree tab：就地转换为 file tab（不新增）', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const treeId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        useWorkspaceStore.getState().openFileTab('s1', '.mobi/uploads/b.md', 'b.md')
+
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0]).toMatchObject({ id: treeId, mode: 'file', filePath: '.mobi/uploads/b.md' })
+    })
+
+    it('openFileTab 同文件已开：只切激活（去重，含多 tab 场景）', () => {
+        useWorkspaceStore.getState().openFileTab('s1', 'src/a.ts', 'a.ts')
+        useWorkspaceStore.getState().openTerminalTab('s1') // active 切到终端
+        const before = useWorkspaceStore.getState().getSession('s1')
+
+        useWorkspaceStore.getState().openFileTab('s1', 'src/a.ts', 'a.ts')
+
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(before.tabs.length)
+        expect(s.tabs.find((t) => t.filePath === 'src/a.ts')?.mode).toBe('file')
+        expect(s.activeTabId).toBe(before.tabs[0].id)
+    })
+
     it('closeTab 关闭非末位 tab：保留 active', () => {
         const [t1, t2] = openTwoTabs('s1')
         useWorkspaceStore.getState().setActiveTab('s1', t2)

@@ -25,6 +25,12 @@ vi.mock('@/components/ui/Markdown', () => ({
     Markdown: ({ content }: { content: string }) => <div data-testid="md">{content}</div>,
 }))
 
+// 动作分发 hook 读路由会话上下文（file/open 执行器按会话隔离 inspector 状态）
+vi.mock('@tanstack/react-router', () => ({
+    useNavigate: () => vi.fn(),
+    useParams: () => ({ sessionId: 'sess-1' }),
+}))
+
 const { UserBlocksView, USER_BLOCK_RENDERERS } = await import('@/components/chat/userBlocks/UserBlocksView')
 
 afterEach(cleanup)
@@ -181,6 +187,44 @@ describe('UserBlocksView 按 block 分发渲染', () => {
         })
         // 失败态预览关闭：外层不再有 role=button（点卡片不弹兜底图放大）
         expect(fallbackImg.closest('[role="button"]')).toBeNull()
+    })
+})
+
+describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
+    it('点击文件卡：inspector 新建 file tab + 展开（默认两步语义）', async () => {
+        const { useWorkspaceStore } = await import('@/core/data/stores/workspaceStore')
+        render(
+            <UserBlocksView
+                blocks={[{
+                    type: 'document',
+                    source: { type: 'url', value: '.mobi/uploads/report.pdf', mimeType: 'application/pdf' },
+                    id: 'd1', filename: 'report.pdf', size: 12345,
+                }]}
+                env={{ sessionId: 'sess-1' }}
+            />,
+        )
+
+        fireEvent.click(screen.getByRole('button'))
+
+        const s = useWorkspaceStore.getState().getSession('sess-1')
+        expect(s.expanded).toBe(true)
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: '.mobi/uploads/report.pdf', fileName: 'report.pdf' })
+        expect(s.activeTabId).toBe(s.tabs[0].id)
+    })
+
+    it('data source 占位块（无磁盘路径）不绑定点击', () => {
+        render(
+            <UserBlocksView
+                blocks={[{
+                    type: 'document',
+                    source: { type: 'data', value: 'base64xxx', mimeType: 'application/pdf' },
+                    id: 'd2', filename: 'inline.pdf', size: 1,
+                }]}
+                env={{ sessionId: 'sess-1' }}
+            />,
+        )
+        expect(screen.queryByRole('button')).toBeNull()
     })
 })
 

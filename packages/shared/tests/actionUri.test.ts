@@ -43,7 +43,7 @@ describe('parseActionUri：已注册动作', () => {
 
 describe('parseActionUri：未注册与畸形', () => {
     it('未注册 domain/action 返回可判别的 { key: null }（web toast 文案区分）', () => {
-        expect(parseActionUri('mobi://file/open?path=/tmp')).toEqual({ key: null, domain: 'file', action: 'open' })
+        expect(parseActionUri('mobi://file/download?path=/tmp')).toEqual({ key: null, domain: 'file', action: 'download' })
         expect(parseActionUri('mobi://session/close?id=s-1')).toEqual({ key: null, domain: 'session', action: 'close' })
     })
 
@@ -62,18 +62,45 @@ describe('parseActionUri：未注册与畸形', () => {
 })
 
 describe('ACTION_REGISTRY 与 buildActionUri：注册表契约', () => {
-    it('首期仅注册 session/open，risk=navigate（send 枚举供二期）', () => {
-        expect(Object.keys(ACTION_REGISTRY)).toEqual(['session/open'])
+    it('注册 session/open 与 file/open，均 risk=navigate（send 枚举供 message/send）', () => {
+        expect(Object.keys(ACTION_REGISTRY)).toEqual(['session/open', 'file/open'])
         expect(ACTION_REGISTRY['session/open'].risk).toBe('navigate')
+        expect(ACTION_REGISTRY['file/open'].risk).toBe('navigate')
     })
 
     it('buildActionUri 拒绝未注册键（写入侧不允许产出未注册动作）', () => {
         // @ts-expect-error 未注册键类型层即拒绝
-        expect(() => buildActionUri('file/open', { path: '/tmp' })).toThrow()
+        expect(() => buildActionUri('message/send', { text: 'hi' })).toThrow()
     })
 
     it('scheme 常量', () => {
         expect(MOBI_URI_SCHEME).toBe('mobi')
+    })
+})
+
+describe('file/open：解析与构造（ADR 0003 二期）', () => {
+    it('最小参数（相对路径）解析：expand 缺省 true，name 缺省 undefined', () => {
+        const parsed = parseActionUri('mobi://file/open?path=.mobi%2Fuploads%2Fa.pdf')
+        expect(parsed).toMatchObject({ key: 'file/open', params: { path: '.mobi/uploads/a.pdf', expand: true } })
+        expect((parsed as { params: { name?: string } }).params.name).toBeUndefined()
+    })
+
+    it('绝对路径 + name + expand=false：枚举字面量 transform 成 boolean', () => {
+        const uri = buildActionUri('file/open', { path: '/tmp/demo/x.md', name: 'x.md', expand: false })
+        const parsed = parseActionUri(uri)
+        expect(parsed).toMatchObject({
+            key: 'file/open',
+            params: { path: '/tmp/demo/x.md', name: 'x.md', expand: false },
+        })
+    })
+
+    it('buildActionUri 剔除 undefined 可选参数（不落 undefined 字面量）', () => {
+        const uri = buildActionUri('file/open', { path: 'a.md', name: undefined, expand: undefined })
+        expect(uri).toBe('mobi://file/open?path=a.md')
+    })
+
+    it('path 缺失 → 畸形 null（统一降级文案）', () => {
+        expect(parseActionUri('mobi://file/open?name=a.md')).toBeNull()
     })
 })
 
