@@ -24,6 +24,7 @@ import { ContextBoundaryStore } from './contextBoundary'
 import { ProjectStore } from './projectStore'
 import { PushStore } from './pushStore'
 import { SessionForkStore } from './sessionFork'
+import { migrateLegacyRefMessages } from './legacyRefMigration'
 import { SessionStore } from './sessionStore'
 import { UserStore } from './userStore'
 
@@ -117,6 +118,12 @@ export class Store {
         this.users = new UserStore(this.db)
         this.push = new PushStore(this.db)
         this.projects = new ProjectStore(this.db)
+
+        // ADR 0003 存量迁移：ref block 溯源消息 → mobi URI 动作链接（幂等，见 legacyRefMigration）
+        const migrated = migrateLegacyRefMessages(this.db)
+        if (migrated.rewritten > 0) {
+            console.log(`[Store] legacy ref 消息迁移完成: scanned=${migrated.scanned} rewritten=${migrated.rewritten}`)
+        }
     }
 
     close(): void {

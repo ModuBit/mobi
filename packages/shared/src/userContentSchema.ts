@@ -44,52 +44,23 @@ const QuoteBlockSchema = z.object({
     type: z.literal('quote'),
     messageId: z.string(),
     // 被引用消息的作者。quote 由 composer 产出、只引用 user/agent 消息；对 custom 消息的
-    // 引用由 ref 词汇承担（ADR 0002），此处刻意不扩 'custom'——避免迫使消费方窄化类型同步放宽
+    // 引用由 mobi URI 动作链接（ADR 0003）承担，此处刻意不扩 'custom'——避免迫使消费方窄化类型同步放宽
     role: z.enum(['user', 'agent']),
     excerpt: z.string().max(QUOTE_EXCERPT_MAX),
 })
 
-/** ref block 基础结构：实体引用，可跳转（如「fork 自会话 xxx」的会话引用）。
- * 结构层宽松接受任意 targetType（字符串）——注册校验在归一层做跳过处理而非 schema 硬拒，
- * 老消费端遇到未来新注册的 targetType 不会因 schema 拒绝而丢整条消息（向前兼容）。 */
-const RefBlockSchema = z.object({
-    type: z.literal('ref'),
-    targetType: z.string(),
-    id: z.string(),
-})
-
 /**
- * ref.targetType 受控开放注册表（ADR 0002）：targetType → 该类型引用的载荷 schema。
- * 首期仅 'session'；未来 file / message / project 等只在此注册新键 + web 侧注册渲染器，
- * schema 结构永不动。注册表 schema 对 ref block 的公共字段（type/targetType/id）之外
- * 做逐类型追加约束，归一层用其复核已注册 ref 的载荷完整性。
- */
-export const REF_TARGET_SCHEMAS = {
-    session: z.object({ id: z.string() }),
-} as const
-
-/** 已注册的 ref 目标类型 */
-export type RefTargetType = keyof typeof REF_TARGET_SCHEMAS
-
-/** targetType 是否已注册（归一层跳过未注册值的判据；新增注册键后自动放行） */
-export function isRegisteredRefTargetType(targetType: string): targetType is RefTargetType {
-    return targetType in REF_TARGET_SCHEMAS
-}
-
-/**
- * 统一 content block 词汇表（ADR 0002）：text / image / document / quote / ref 五种，
+ * 统一 content block 词汇表（ADR 0002/0003）：text / image / document / quote 四种，
  * 跨来源（user / custom 消息）共享。新渲染需求先问「现有 block 能否组合」，
  * 不能才在此加 block 类型——加的是词汇，不是业务类型分支。
+ * 内部动作（跳转/打开/发送）不走 block，由 mobi URI 动作链接承担（ADR 0003，actionUri.ts）。
  */
 export const ContentBlockSchema = z.discriminatedUnion('type', [
-    TextBlockSchema, ImageBlockSchema, DocumentBlockSchema, QuoteBlockSchema, RefBlockSchema,
-])
-
-/** 用户消息通道词汇 = 统一词汇去掉 ref（用户输入不接受实体引用，防伪造跳转）。
- * 独立成 schema 而非 ContentBlockSchema 的运行时过滤子集：写入侧（hub/CLI）可直接用于校验。 */
-export const UserContentBlockSchema = z.discriminatedUnion('type', [
     TextBlockSchema, ImageBlockSchema, DocumentBlockSchema, QuoteBlockSchema,
 ])
+
+/** 用户消息通道词汇别名：ref 退场（ADR 0003）后与统一词汇表重合，名称保留给写入侧（hub/CLI）语义 */
+export const UserContentBlockSchema = ContentBlockSchema
 
 /** 用户消息 content 三形态：裸 string / 单 block / block 数组 */
 export const UserMessageContentSchema = z.union([
@@ -113,9 +84,8 @@ export type UserImageBlock = z.infer<typeof ImageBlockSchema>
 export type UserDocumentBlock = z.infer<typeof DocumentBlockSchema>
 export type UserQuoteBlock = z.infer<typeof QuoteBlockSchema>
 export type UserContentBlock = z.infer<typeof UserContentBlockSchema>
-/** 统一词汇表类型（含 ref），custom 通道消费 */
-export type ContentBlock = z.infer<typeof ContentBlockSchema>
-export type RefBlock = z.infer<typeof RefBlockSchema>
+/** 统一词汇表类型（= UserContentBlock，ref 退场后两通道重合） */
+export type ContentBlock = UserContentBlock
 /** 全词汇消息 content 三形态（custom 通道 wire 形态） */
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
@@ -159,32 +129,20 @@ function parseLegacyAttachment(raw: unknown): UserDocumentBlock | undefined {
     }
 }
 
-/** 归一化的通道词汇子集（ADR 0002：消费方按 role 决定接受子集） */
-export interface NormalizeContentOptions {
-    /** 是否接受 ref block：user 输入通道 false（拒绝，遇 ref 剔除，防伪造跳转）；custom 通道 true（全词汇） */
-    allowRef?: boolean
-}
-
-/** 已注册 ref 的载荷完整性复核（注册表 schema 对公共字段之外的追加约束） */
-function isAcceptableRef(block: RefBlock): boolean {
-    if (!isRegisteredRefTargetType(block.targetType)) return false
-    return REF_TARGET_SCHEMAS[block.targetType].safeParse(block).success
-}
-
 /**
  * 读取侧跨来源归一（三形态 + legacy 平铺兼容）：string / 单 block / block 数组 / 旧平铺对象 → ContentBlock[]。
  *
- * - 通道子集由 {@link NormalizeContentOptions} 决定：user 通道（默认）拒绝 ref，custom 通道全词汇
- * - 未注册 targetType 的 ref 与 unknown block 同处理：剔除并打 debug 日志
+ * - ref 退场（ADR 0003）后单通道：所有来源接受同一词汇，历史 ref block 输入按 unknown 剔除
+ *   （存量 ref 消息由 hub 迁移为 mobi URI 动作链接，见 hub 侧迁移）
+ * - unknown block 剔除并打 debug 日志
  * - 全部无法识别 / 空字符串 / 空数组 / 畸形输入返回 null
  */
-export function normalizeContentBlocks(raw: unknown, options: NormalizeContentOptions = {}): ContentBlock[] | null {
-    const { allowRef = false } = options
+export function normalizeContentBlocks(raw: unknown): ContentBlock[] | null {
     if (typeof raw === 'string') {
         return raw.length > 0 ? [{ type: 'text', text: raw }] : null
     }
     if (Array.isArray(raw)) {
-        return normalizeBlockList(raw, allowRef)
+        return normalizeBlockList(raw)
     }
     if (isObject(raw)) {
         // 旧平铺对象携带 attachments 时必须先走 legacy 通道——
@@ -193,7 +151,7 @@ export function normalizeContentBlocks(raw: unknown, options: NormalizeContentOp
             const legacy = LegacyFlatObjectSchema.safeParse(raw)
             if (legacy.success) {
                 const text = typeof legacy.data.text === 'string' ? legacy.data.text : ''
-                return normalizeBlockList([text, ...(legacy.data.attachments ?? [])], allowRef)
+                return normalizeBlockList([text, ...(legacy.data.attachments ?? [])])
             }
         }
 
@@ -202,7 +160,6 @@ export function normalizeContentBlocks(raw: unknown, options: NormalizeContentOp
         if (asBlock.success) {
             // 空 text block 无渲染/提交意义，与空串 string 收敛一致
             if (asBlock.data.type === 'text' && asBlock.data.text === '') return null
-            if (asBlock.data.type === 'ref' && !(allowRef && isAcceptableRef(asBlock.data))) return null
             return [asBlock.data]
         }
     }
@@ -210,15 +167,14 @@ export function normalizeContentBlocks(raw: unknown, options: NormalizeContentOp
 }
 
 /**
- * 用户消息通道归一入口（user 词汇 = 统一词汇去掉 ref）。
- * 泛化前的既有签名与行为：存量调用方（hub/CLI/web）零改动。
- * 返回类型收窄为 UserContentBlock[] 安全——ref 在此通道不可能出现在结果里。
+ * 用户消息通道归一入口。ref 退场后与 {@link normalizeContentBlocks} 等价，
+ * 名称保留给存量调用方（hub/CLI/web）语义清晰：返回类型收窄为 UserContentBlock[]。
  */
 export function normalizeUserContent(raw: unknown): UserContentBlock[] | null {
-    return normalizeContentBlocks(raw, { allowRef: false }) as UserContentBlock[] | null
+    return normalizeContentBlocks(raw) as UserContentBlock[] | null
 }
 
-function normalizeBlockList(items: readonly unknown[], allowRef: boolean): ContentBlock[] | null {
+function normalizeBlockList(items: readonly unknown[]): ContentBlock[] | null {
     const out: ContentBlock[] = []
     for (const item of items) {
         if (typeof item === 'string') {
@@ -231,11 +187,6 @@ function normalizeBlockList(items: readonly unknown[], allowRef: boolean): Conte
         if (parsedBlock.success) {
             // 空 text block 同样跳过（混合数组里冗余的空段）
             if (parsedBlock.data.type === 'text' && parsedBlock.data.text === '') continue
-            // 通道子集拒绝（user 通道遇 ref 剔除）与未注册 targetType 跳过同收此处
-            if (parsedBlock.data.type === 'ref' && !(allowRef && isAcceptableRef(parsedBlock.data))) {
-                logDroppedBlock(item)
-                continue
-            }
             out.push(parsedBlock.data)
             continue
         }

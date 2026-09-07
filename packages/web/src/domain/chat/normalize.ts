@@ -121,11 +121,11 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
         }
     }
 
-    // 自定义消息（ADR 0002）：mobi 注入（首期为 fork 溯源），content 走统一 block 词汇表全词汇通道。
-    // unknown block / 未注册 targetType 的 ref 由 normalizeContentBlocks 统一剔除；全部无法识别
-    // （返回 null）则整条消息不渲染——空自定义消息没有展示意义
+    // 自定义消息（ADR 0002）：mobi 注入（首期为 fork 溯源），content 走统一 block 词汇表。
+    // unknown block（含历史 ref，已由 mobi URI 动作链接取代并迁移）由 normalizeContentBlocks
+    // 统一剔除；全部无法识别（返回 null）则整条消息不渲染——空自定义消息没有展示意义
     if (record.role === 'custom') {
-        const blocks = normalizeContentBlocks(record.content, { allowRef: true })
+        const blocks = normalizeContentBlocks(record.content)
         if (!blocks) return null
         return {
             id: message.id,

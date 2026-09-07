@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { MessageContentSchema, MetadataSchema, isObject, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
+import { MessageContentSchema, MetadataSchema, isObject, sessionOpenLink, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
 
 import { isContextBoundaryContent } from './messages'
 import { CONTEXT_BOUNDARY_SEQ_KEY } from './contextBoundary'
@@ -62,6 +62,24 @@ export function findTurnStartSeq(db: Database, sessionId: string, upToSeq: numbe
         }
     }
     return null
+}
+
+/**
+ * 会话冻结标题解析（写入侧文案的权威语义，对齐 web getSessionDisplayName 的稳定子集）：
+ * name → path 基名 → id 前 8 位。刻意不含 summary.text——summary 是动态生成物，
+ * 冻结文案（消息即快照，ADR 0003）要的是身份字段。hub/legacyRefMigration 共用。
+ */
+export function resolveSessionTitle(metadata: unknown, sessionId: string): string {
+    if (isObject(metadata)) {
+        const name = metadata.name
+        if (typeof name === 'string' && name.length > 0) return name
+        const path = metadata.path
+        if (typeof path === 'string' && path.length > 0) {
+            const base = path.split('/').filter(Boolean).pop()
+            if (base) return base
+        }
+    }
+    return sessionId.slice(0, 8)
 }
 
 export interface ForkSessionAtAnchorParams {
@@ -123,10 +141,10 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
         throw new Error(`fork session metadata failed MetadataSchema validation: ${parsed.error.message}`)
     }
 
-    // 溯源消息 content（ADR 0002：通用 block 词汇表组合，零专用类型）——落库前经 shared schema 校验
+    // 溯源消息 content（ADR 0003：mobi URI 动作链接，ref block 已退场）——文案写入时冻结
+    // （消息即快照：parent 改名不跟随、删除不影响文案只影响点击落点），落库前经 shared schema 校验
     const provenanceBlocks = [
-        { type: 'text', text: 'fork 自会话 ' },
-        { type: 'ref', targetType: 'session', id: parent.id },
+        { type: 'text', text: `fork 自会话 ${sessionOpenLink(parent.id, resolveSessionTitle(parent.metadata, parent.id))}` },
     ] satisfies ContentBlock[]
     const provenanceParsed = MessageContentSchema.safeParse(provenanceBlocks)
     if (!provenanceParsed.success) {

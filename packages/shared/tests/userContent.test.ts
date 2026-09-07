@@ -19,7 +19,6 @@ import {
     ContentBlockSchema,
     MessageContentSchema,
     normalizeContentBlocks,
-    REF_TARGET_SCHEMAS,
     UserContentBlockSchema,
     UserMessageContentSchema,
     normalizeUserContent,
@@ -117,8 +116,8 @@ describe('normalizeUserContent 四形态归一', () => {
     })
 })
 
-describe('ContentBlockSchema 统一词汇表（ADR 0002）', () => {
-    it('包含统一五型：text / image / document / quote / ref', () => {
+describe('ContentBlockSchema 统一词汇表（ADR 0002/0003）', () => {
+    it('包含统一四型：text / image / document / quote', () => {
         expect(ContentBlockSchema.safeParse({ type: 'text', text: 'hi' }).success).toBe(true)
         expect(ContentBlockSchema.safeParse({
             type: 'image',
@@ -131,73 +130,42 @@ describe('ContentBlockSchema 统一词汇表（ADR 0002）', () => {
             id: '2', filename: 'r.pdf', size: 20,
         }).success).toBe(true)
         expect(ContentBlockSchema.safeParse({ type: 'quote', messageId: 'm', role: 'user', excerpt: '…' }).success).toBe(true)
-        expect(ContentBlockSchema.safeParse({ type: 'ref', targetType: 'session', id: 's-1' }).success).toBe(true)
     })
 
-    it('UserContentBlockSchema 仍是四型子集（不含 ref）', () => {
-        expect(UserContentBlockSchema.safeParse({ type: 'text', text: 'hi' }).success).toBe(true)
+    it('ref 已退场（ADR 0003：mobi URI 动作链接取代），按未知 block 拒绝', () => {
+        expect(ContentBlockSchema.safeParse({ type: 'ref', targetType: 'session', id: 's-1' }).success).toBe(false)
         expect(UserContentBlockSchema.safeParse({ type: 'ref', targetType: 'session', id: 's-1' }).success).toBe(false)
     })
 
-    it('ref block 缺 id / targetType 被拒绝', () => {
-        expect(ContentBlockSchema.safeParse({ type: 'ref', targetType: 'session' }).success).toBe(false)
-        expect(ContentBlockSchema.safeParse({ type: 'ref', id: 's-1' }).success).toBe(false)
-    })
-
-    it('ref block 结构层宽松接受任意 targetType（注册校验在归一层，向前兼容）', () => {
-        expect(ContentBlockSchema.safeParse({ type: 'ref', targetType: 'not-yet-registered', id: 'x' }).success).toBe(true)
-    })
-
-    it('targetType 注册表首期仅注册 session', () => {
-        expect(Object.keys(REF_TARGET_SCHEMAS)).toEqual(['session'])
-        expect(REF_TARGET_SCHEMAS.session.safeParse({ id: 's-1' }).success).toBe(true)
-        expect(REF_TARGET_SCHEMAS.session.safeParse({ id: 42 }).success).toBe(false)
-    })
-
-    it('MessageContentSchema 三形态接受含 ref 的全词汇组合', () => {
+    it('MessageContentSchema 三形态接受全词汇组合', () => {
         expect(MessageContentSchema.safeParse('hi').success).toBe(true)
-        expect(MessageContentSchema.safeParse({ type: 'ref', targetType: 'session', id: 's-1' }).success).toBe(true)
+        expect(MessageContentSchema.safeParse({ type: 'text', text: 'fork 自会话 …' }).success).toBe(true)
         expect(MessageContentSchema.safeParse([
             { type: 'text', text: 'fork 自会话 ' },
-            { type: 'ref', targetType: 'session', id: 's-1' },
+            { type: 'quote', messageId: 'm', role: 'agent', excerpt: '…' },
         ]).success).toBe(true)
     })
 })
 
-describe('normalizeContentBlocks 跨来源归一（三形态 + 通道子集）', () => {
-    const forkNotice = [
-        { type: 'text', text: 'fork 自会话 ' },
-        { type: 'ref', targetType: 'session', id: 's-1' },
-    ]
-
-    it('custom 通道（allowRef: true）：string / 单 block / 数组三形态全词汇', () => {
-        expect(normalizeContentBlocks('hi', { allowRef: true })).toEqual([{ type: 'text', text: 'hi' }])
-        expect(normalizeContentBlocks({ type: 'ref', targetType: 'session', id: 's-1' }, { allowRef: true }))
-            .toEqual([{ type: 'ref', targetType: 'session', id: 's-1' }])
-        expect(normalizeContentBlocks(forkNotice, { allowRef: true })).toEqual(forkNotice)
+describe('normalizeContentBlocks 跨来源归一（ref 退场后单通道）', () => {
+    it('string / 单 block / 数组三形态', () => {
+        expect(normalizeContentBlocks('hi')).toEqual([{ type: 'text', text: 'hi' }])
+        expect(normalizeContentBlocks({ type: 'text', text: 'a' })).toEqual([{ type: 'text', text: 'a' }])
+        expect(normalizeContentBlocks([{ type: 'text', text: 'a' }, { type: 'quote', messageId: 'm', role: 'agent', excerpt: '…' }]))
+            .toEqual([{ type: 'text', text: 'a' }, { type: 'quote', messageId: 'm', role: 'agent', excerpt: '…' }])
     })
 
-    it('user 通道（默认）遇 ref 剔除，其余 block 保留', () => {
+    it('历史 ref block 输入按 unknown 剔除（存量已由 hub 迁移为动作链接）', () => {
         expect(normalizeContentBlocks([{ type: 'ref', targetType: 'session', id: 's-1' }, { type: 'text', text: 'b' }]))
             .toEqual([{ type: 'text', text: 'b' }])
-        // 单 ref 对象被整体剔除 → null（与未知 block 收敛一致）
         expect(normalizeContentBlocks({ type: 'ref', targetType: 'session', id: 's-1' })).toEqual(null)
-    })
-
-    it('allowRef: true 也跳过未注册 targetType 的 ref', () => {
-        expect(normalizeContentBlocks([
-            { type: 'ref', targetType: 'unregistered-kind', id: 'x' },
-            { type: 'text', text: 'b' },
-        ], { allowRef: true })).toEqual([{ type: 'text', text: 'b' }])
-        expect(normalizeContentBlocks({ type: 'ref', targetType: 'unregistered-kind', id: 'x' }, { allowRef: true }))
-            .toEqual(null)
     })
 
     it('legacy 平铺兼容与 normalizeUserContent 同构', () => {
         expect(normalizeContentBlocks({
             type: 'text', text: 'a',
             attachments: [{ id: '1', filename: 'f.pdf', mimeType: 'application/pdf', size: 1, path: '/p/f.pdf' }],
-        }, { allowRef: true })).toEqual([
+        })).toEqual([
             { type: 'text', text: 'a' },
             {
                 type: 'document',
@@ -208,19 +176,14 @@ describe('normalizeContentBlocks 跨来源归一（三形态 + 通道子集）',
     })
 
     it('畸形输入返回 null；未知 block 剔除', () => {
-        expect(normalizeContentBlocks(42, { allowRef: true })).toEqual(null)
-        expect(normalizeContentBlocks([{ type: 'audio' }, { type: 'ref', targetType: 'session', id: 's-1' }], { allowRef: true }))
-            .toEqual([{ type: 'ref', targetType: 'session', id: 's-1' }])
-        expect(normalizeContentBlocks([{ type: 'audio' }], { allowRef: true })).toEqual(null)
+        expect(normalizeContentBlocks(42)).toEqual(null)
+        expect(normalizeContentBlocks([{ type: 'audio' }, { type: 'text', text: 'b' }]))
+            .toEqual([{ type: 'text', text: 'b' }])
+        expect(normalizeContentBlocks([{ type: 'audio' }])).toEqual(null)
     })
 })
 
 describe('向后兼容：normalizeUserContent（user 通道入口）行为不变', () => {
-    it('ref 一律剔除——存量调用方零改动', () => {
-        expect(normalizeUserContent([{ type: 'ref', targetType: 'session', id: 's-1' }, { type: 'text', text: 'b' }]))
-            .toEqual([{ type: 'text', text: 'b' }])
-    })
-
     it('四形态归一行为不变（存量测试语义）', () => {
         expect(normalizeUserContent('hi')).toEqual([{ type: 'text', text: 'hi' }])
         expect(normalizeUserContent({ type: 'text', text: 'a' })).toEqual([{ type: 'text', text: 'a' }])

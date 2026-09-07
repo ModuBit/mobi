@@ -190,7 +190,7 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         expect(texts[3]).toContain('result')
     })
 
-    test('溯源消息：role custom、text+ref(session) blocks、category persistent、无 localId', () => {
+    test('溯源消息：role custom、动作链接 text block（ADR 0003）、category persistent、无 localId', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
 
@@ -203,8 +203,41 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         expect(provenance.lifecycle).toBeNull()
         const content = provenance.content as { role: string; content: Array<Record<string, unknown>> }
         expect(content.role).toBe('custom')
-        expect(content.content[0]).toEqual({ type: 'text', text: 'fork 自会话 ' })
-        expect(content.content[1]).toEqual({ type: 'ref', targetType: 'session', id: parent.id })
+        expect(content.content).toHaveLength(1)
+        // 标题冻结自 parent（name 缺省 → path 基名 'proj'）；parent 改名后文案不跟随
+        expect(content.content[0]).toEqual({
+            type: 'text',
+            text: `fork 自会话 [proj](mobi://session/open?id=${parent.id})`,
+        })
+    })
+
+    test('溯源标题优先 metadata.name（冻结文案的身份字段语义）', () => {
+        const store = new Store(':memory:')
+        const parent = store.sessions.getOrCreateSession(
+            'fork-parent-2',
+            { path: '/tmp/proj', host: 'h-1', name: '自定义名', nativeSessionId: 'parent-native-1' },
+            null,
+            'default',
+            { model: 'opus', effort: 'high', outputStyle: 'default', permissionMode: 'default' },
+        )
+        store.messages.addMessage(parent.id, userMsg('hi'), 'l1')
+        const anchor = store.messages.addMessage(
+            parent.id, agentResult(), null, 'persistent',
+            { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
+        )
+        const anchorRow = store.messages.getMessagesByNativeId(parent.id, 'anchor-native')[0]
+
+        const result = store.sessionFork.forkSessionAtAnchor({
+            parent: store.sessions.getSession(parent.id)!,
+            anchor: anchorRow,
+            turnStartSeq: 1,
+            forkNativeId: 'fork-native-2',
+            parentNativeId: 'parent-native-1',
+        })
+        void anchor
+
+        const content = store.messages.getMessages(result.sessionId, 200)[0].content as { content: Array<{ text: string }> }
+        expect(content.content[0].text).toContain('[自定义名](mobi://session/open?id=')
     })
 
     test('fork 行 metadata：nativeSessionId=预生成 id、forkFrom 三字段、forkedFrom 溯源；MetadataSchema 不裁掉', () => {
