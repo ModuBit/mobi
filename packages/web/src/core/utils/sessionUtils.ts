@@ -26,17 +26,16 @@ interface SessionMetadata {
 
 /**
  * 获取会话显示名称
- * 优先级：summary.text > metadata.name > path 最后一段 > session.id 前8位 > 'Unknown'
+ * 优先级：summary.text > name > path 最后一段 > id 前8位 > 'Unknown'
  * fork 行（forkedFrom/forkFrom 在场）反转：name > 其余——标题由 hub 建行时落库
  * （含「· 分叉」后缀，身份字段）；fork 激活后自身 CLI 产出的 summary 会回填 metadata，
  * 若 summary 优先会把后缀盖掉，fork 行与普通会话无法从标题区分
  */
 export function getSessionDisplayName(session: Session): string {
     const metadata = session.metadata as SessionMetadata & { forkedFrom?: unknown; forkFrom?: unknown } | undefined
-    if (metadata?.forkedFrom || metadata?.forkFrom) {
-        return metadata?.name || metadata?.path?.split('/').pop() || session.id?.slice(0, 8) || 'Unknown'
-    }
-    return metadata?.summary?.text || metadata?.name || metadata?.path?.split('/').pop() || session.id?.slice(0, 8) || 'Unknown'
+    const base = metadata?.name || metadata?.path?.split('/').pop() || session.id?.slice(0, 8) || 'Unknown'
+    const isFork = !!(metadata?.forkedFrom || metadata?.forkFrom)
+    return isFork ? base : (metadata?.summary?.text || base)
 }
 
 /**

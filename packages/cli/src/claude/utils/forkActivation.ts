@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@/ui/logger'
+import { scanTranscriptForUuid } from './transcriptScan'
 import type { Metadata } from '@/api/types'
 
 /**
@@ -37,11 +37,6 @@ export type ForkActivationFailureReason = 'anchor_gone' | 'resume_failed'
 
 /** 激活预检结果——失败细分直接对齐 shared FORK_ERROR_CODES（web 按码映射文案） */
 export type ForkPrecheckResult = 'ok' | 'anchor-invalidated' | 'parent-transcript-missing'
-
-/** 正向分页每页条数（对齐 findRewindAnchor） */
-const PAGE_SIZE = 50
-/** 最大回扫页数（防病态长链死循环；50×40=2000 条 entry 覆盖常规会话） */
-const MAX_PAGES = 40
 
 /**
  * 从 fork 行 metadata 解析激活计划：
@@ -69,38 +64,25 @@ export function resolveForkActivation(
 /**
  * 激活前预检（spec §5.2 步骤 3）：分页扫描 parent transcript，验证 anchorNativeId 仍在
  * （parent 可能已 rewind 深于锚点 / transcript 文件丢失——spec §5.3 前两行场景）。
- * 复用 findRewindAnchor 的分页思路但只做存在性判定（fork 直接用 agent 回复 uuid 作
- * resumeSessionAt，无需向前换算 assistant 前驱），命中即止。
- * 失败细分：transcript 读取抛错 = 'parent-transcript-missing'；扫完未命中 = 'anchor-invalidated'
- * （parent rewind 深于锚点的常态路径）。失败方向是「不激活」，不向上抛。
+ * 复用 scanTranscriptForUuid 共享骨架（与 findRewindAnchor 同一分页语义），
+ * 只做存在性判定（fork 直接用 agent 回复 uuid 作 resumeSessionAt，无需向前换算
+ * assistant 前驱）。失败细分：transcript 读取抛错 = 'parent-transcript-missing'；
+ * 扫完未命中 = 'anchor-invalidated'（parent rewind 深于锚点的常态失败方向是
+ * 「不激活」，不向上抛）。
  */
 export async function verifyForkAnchorExists(
     parentNativeId: string,
     dir: string,
     anchorNativeId: string,
 ): Promise<ForkPrecheckResult> {
-    for (let page = 0; page < MAX_PAGES; page++) {
-        let messages: Awaited<ReturnType<typeof getSessionMessages>>
-        try {
-            messages = await getSessionMessages(parentNativeId, { dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
-        } catch (e) {
-            logger.debug(`[forkActivation] scan parent transcript failed at page=${page}`, e)
-            return 'parent-transcript-missing'
-        }
-        if (messages.length === 0) {
-            // 空页：transcript 已扫完（或文件不存在）仍未命中 → 预检失败
-            logger.debug(`[forkActivation] anchor ${anchorNativeId} not in parent transcript (exhausted at page=${page})`)
-            return 'anchor-invalidated'
-        }
-        if (messages.some(m => m.uuid === anchorNativeId)) return 'ok'
-        if (messages.length < PAGE_SIZE) {
-            // 末页不满：全量已扫完，锚点不存在
-            return 'anchor-invalidated'
-        }
+    try {
+        return await scanTranscriptForUuid(parentNativeId, dir, anchorNativeId) === 'found'
+            ? 'ok'
+            : 'anchor-invalidated'
+    } catch (e) {
+        logger.debug(`[forkActivation] scan parent transcript failed`, e)
+        return 'parent-transcript-missing'
     }
-    // 超出回扫上限仍未命中：按锚点失效拒绝（防病态长链）
-    logger.warn(`[forkActivation] exceeded MAX_PAGES (${MAX_PAGES}) without hitting ${anchorNativeId}`)
-    return 'anchor-invalidated'
 }
 
 /**

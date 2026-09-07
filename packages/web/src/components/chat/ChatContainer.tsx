@@ -123,22 +123,17 @@ export function resolveRunStartedAt(
     return Math.max(fromRuntime, fromMessages)
 }
 
-/** 气泡 hover 时显示 footer 中的操作按钮（用户消息复制/rewind 与 agent 回复复制/fork 同模式） */
+/** 气泡 hover 时显示 footer 中的操作按钮（用户消息复制/rewind、agent 回复复制/fork、
+ * turn-result 概要行操作组同一 hover 显现模式） */
 const bubbleCopyStyles = css`
     .user-msg-bubble .msg-copy-btn,
-    .agent-msg-bubble .msg-copy-btn {
-        opacity: 0;
-        transition: opacity 0.15s ease;
-    }
-    .user-msg-bubble:hover .msg-copy-btn,
-    .agent-msg-bubble:hover .msg-copy-btn {
-        opacity: 1;
-    }
-    /* turn-result 概要行操作组（AgentTurnActions）：同一 hover 显现模式 */
+    .agent-msg-bubble .msg-copy-btn,
     .turn-result-bubble .msg-copy-btn {
         opacity: 0;
         transition: opacity 0.15s ease;
     }
+    .user-msg-bubble:hover .msg-copy-btn,
+    .agent-msg-bubble:hover .msg-copy-btn,
     .turn-result-bubble:hover .msg-copy-btn {
         opacity: 1;
     }
@@ -711,6 +706,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const forkRowByKey = new Map<string, { metadata: NativeMessageMetadata | null; seq: number | null }>(
             messages.map(m => [m.localId || m.id, { metadata: m.metadata ?? null, seq: m.seq ?? null }]),
         )
+        // canForkMessage 的会话状态入参一次构造（PC 概要行操作组与移动长按菜单共用，
+        // 判据字段增删只改这一处）；canForkMessage 调用同样收口为 forkableOfRow
+        const forkSessionState = {
+            running: !!session?.running,
+            backgroundTasks: backgroundTasksCount,
+            mode: session?.mode,
+            forkedFrom: metadata?.forkedFrom,
+            forkFrom: metadata?.forkFrom,
+            contextBoundarySeq: metadata?.contextBoundarySeq,
+        }
+        const forkableOfRow = (row: { metadata: NativeMessageMetadata | null; seq: number | null }) =>
+            canForkMessage({ metadata: row.metadata, seq: row.seq }, sessionNativeSessionId, forkSessionState)
 
         // ── turn-result 概要行操作组（position A）──
         // 落点 agent 文本与其 turn-result 概要事件配对：文本块是 fork 判据载体，操作组展示在
@@ -725,20 +732,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     const row = forkTargetBlockIds.has(block.id)
                         ? forkRowByKey.get(agentBlockMessageKey(block))
                         : undefined
-                    const forkable = !!row && canForkMessage(
-                        { metadata: row.metadata, seq: row.seq },
-                        sessionNativeSessionId,
-                        {
-                            running: !!session?.running,
-                            backgroundTasks: backgroundTasksCount,
-                            mode: session?.mode,
-                            forkedFrom: metadata?.forkedFrom,
-                            forkFrom: metadata?.forkFrom,
-                            contextBoundarySeq: metadata?.contextBoundarySeq,
-                        },
-                    )
                     // 落点文本存在即入配对（复制不受 fork 守卫约束），forkable 仅控制 ⑂ 入口
-                    current = row ? { key: block.id, text: block.text, row, forkable } : null
+                    current = row ? { key: block.id, text: block.text, row, forkable: forkableOfRow(row) } : null
                 } else if (block.kind === 'agent-event' && block.event.type === 'turn-result' && current) {
                     const matched = current
                     turnResultActionsByKey.set(block.id, isMobile ? undefined : (
@@ -890,26 +885,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // agent 回复落点：可 fork 时进长按菜单（复制 + 从此分叉）；不可 fork 不进（长按行为与既有一致）
             if (block?.kind === 'agent-text' && forkTargetBlockIds.has(block.id)) {
                 const row = forkRowByKey.get(agentBlockMessageKey(block))
-                const canFork = !!row && canForkMessage(
-                    { metadata: row.metadata, seq: row.seq },
-                    sessionNativeSessionId,
-                    {
-                        running: !!session?.running,
-                        backgroundTasks: backgroundTasksCount,
-                        mode: session?.mode,
-                        forkedFrom: metadata?.forkedFrom,
-                        forkFrom: metadata?.forkFrom,
-                        contextBoundarySeq: metadata?.contextBoundarySeq,
-                    },
-                )
-                if (!canFork) continue
+                if (!row || !forkableOfRow(row)) continue
                 actionsInfo.set(item.key, {
                     key: item.key,
                     text: block.text,
                     nativeId: null,
                     canRewind: false,
                     forkAnchorId: row?.metadata?.nativeId ?? null,
-                    canFork,
+                    canFork: true,
                 })
             }
         }

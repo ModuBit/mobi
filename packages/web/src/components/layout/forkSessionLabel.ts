@@ -45,9 +45,6 @@ export function resolveForkErrorText(forkError: ForkErrorMetadata, t: TFunction)
 }
 
 export type ForkSessionRowState = {
-    /** 是否 fork 行（forkFrom 或 forkedFrom 在场——forkFrom 激活即清除，持久区分靠终身
-     *  保留的 forkedFrom；否则激活后「· 分叉」后缀消失、与 parent 标题无法区分） */
-    isForkRow: boolean
     /** 待激活态（forkFrom 在场且无 forkError） */
     isPendingActivation: boolean
     /** 激活失败错误态（forkError 在场） */
@@ -58,7 +55,6 @@ export type ForkSessionRowState = {
 
 /** 非 fork 行的统一返回（避免调用方判空分支重复） */
 const NON_FORK_STATE: ForkSessionRowState = {
-    isForkRow: false,
     isPendingActivation: false,
     isActivationFailed: false,
     errorText: null,
@@ -67,16 +63,14 @@ const NON_FORK_STATE: ForkSessionRowState = {
 /**
  * fork 行徽标状态（纯函数，只读 session 自身 metadata，独立导出便于单测）。
  * forkFrom 存废驱动待激活/错误态徽标：hub 激活清除 forkFrom（SSE 到达）→ 徽标消失；
- * 激活失败写入 forkError → 徽标转错误态。isForkRow 另含 forkedFrom（终身保留）——
- * 已激活的分叉会话仍是 fork 行（标题后缀「· 分叉」的依据）。
+ * 激活失败写入 forkError → 徽标转错误态。「是否 fork 行」本身不在此判定——
+ * 标题区分走 metadata.name（hub 落库，sessionUtils 判 forkedFrom/forkFrom）。
  */
 export function resolveForkSessionState(session: Session, t: TFunction): ForkSessionRowState {
     const forkFrom = session.metadata?.forkFrom
-    const forkedFrom = session.metadata?.forkedFrom
     const forkError = session.metadata?.forkError
-    if (!forkFrom && !forkedFrom) return NON_FORK_STATE
+    if (!forkFrom && !session.metadata?.forkedFrom) return NON_FORK_STATE
     return {
-        isForkRow: true,
         isPendingActivation: !!forkFrom && !forkError,
         isActivationFailed: Boolean(forkError),
         errorText: forkError ? resolveForkErrorText(forkError, t) : null,

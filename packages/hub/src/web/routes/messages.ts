@@ -19,6 +19,7 @@ import { UserMessageContentSchema, normalizeUserContent } from '@mobi/shared'
 import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
+import { isSessionEnqueueable } from '../../sync/sessionDeleteGuard'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 
@@ -95,15 +96,13 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        // 待激活分叉会话（forkFrom 在场）放行入队：激活窗口期的首条消息排队，
-        // CLI 激活后消费（spec §4.3/§5.3——web 发送侧同步触发 resume spawn，
-        // 600ms+ 的 spawn 窗口内 409 会产生幽灵乐观气泡，E2E 实证）。其余 inactive 会话维持门控
+        // 待激活分叉会话放行入队（语义见 isSessionEnqueueable）；其余 inactive 会话维持门控
         const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
         const { sessionId, session } = sessionResult
-        if (!session.active && !session.metadata?.forkFrom) {
+        if (!isSessionEnqueueable(session)) {
             return c.json({ error: 'Session is inactive' }, 409)
         }
 

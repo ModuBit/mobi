@@ -74,10 +74,9 @@ describe('resolveForkActivation', () => {
     })
 })
 
-describe('buildForkStartupFields（spec §5.2 四值契约）', () => {
-    it('resume 指 parent / forkSession 恒 true / resumeSessionAt 指锚点 / sessionId 指预生成 fork id', () => {
+describe('buildForkStartupFields（spec §5.2 三值契约）', () => {
+    it('forkSession 恒 true / resumeSessionAt 指锚点 / sessionId 指预生成 fork id', () => {
         expect(buildForkStartupFields(plan)).toEqual({
-            resume: 'parent-native-1',
             forkSession: true,
             resumeSessionAt: 'anchor-uuid-1',
             sessionId: 'fork-native-1',

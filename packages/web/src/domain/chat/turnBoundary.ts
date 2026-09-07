@@ -23,7 +23,10 @@
 
 import { isObject } from '@mobi/shared'
 import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
+import { REWIND_COMMAND } from './presentation'
+import { getUserPlainText } from './userContent'
 import type { DecryptedMessage } from '@/core/data/api/types'
+import type { ChatBlock } from './types'
 
 /** 裁剪触发阈值：窗口超过才做一次 O(n) 边界扫描（未超过时 append 路径仅 O(1) 长度判断） */
 export const TRIM_THRESHOLD = 1500
@@ -44,6 +47,23 @@ export function isTurnStart(content: unknown): boolean {
     if (!c) return false
     if (c.type === 'event' && c.data?.type === 'context-cleared') return true
     if (c.type === 'output' && c.data?.type === 'system' && c.data?.subtype === 'compact_boundary') return true
+    return false
+}
+
+/**
+ * 块级 turn 起点判定（块空间镜像同文件的 isTurnStart 消息级语义——两处同文件互为镜像，
+ * turn 边界词汇变化须同步）：user 信封（含 compact 总结消息）、context-cleared 事件、
+ * compact_boundary（compact 事件）。rewind 起点 synthetic 行（REWIND_COMMAND，
+ * 不发送不落库）不是真实用户发言，不算新 turn。
+ */
+export function isTurnStartBlock(block: ChatBlock): boolean {
+    if (block.kind === 'user-text') {
+        return getUserPlainText(block.blocks).trim() !== REWIND_COMMAND
+    }
+    if (block.kind === 'compact-summary') return true
+    if (block.kind === 'agent-event') {
+        return block.event.type === 'context-cleared' || block.event.type === 'compact'
+    }
     return false
 }
 

@@ -86,29 +86,20 @@ const forkSchema = z.object({
 })
 
 /**
- * forkSession 失败 reason → HTTP 状态映射（fork-session spec 边界情况）：
+ * forkSession 失败 reason → { HTTP 状态, 错误文案 }（fork-session spec 边界情况，单表映射）：
  * - 会话不存在（删除中/已删）→ 404；跨 namespace → 403
  * - 锚点校验 / turn 起点防御分支 → 400
  * - parent 无 nativeSessionId（激活无 resumeToken，服务端状态不支持）→ 409
  */
-const FORK_FAILURE_STATUS: Record<Exclude<Exclude<ForkSessionResult, { ok: true }>['reason'], 'access-denied' | 'session-not-found'>, 400 | 409> = {
-    'anchor-not-found': 400,
-    'anchor-not-agent': 400,
-    'anchor-before-boundary': 400,
-    'turn-start-not-found': 400,
-    'parent-native-missing': 409,
-    'fork-of-fork-forbidden': 400,
-}
-
-const FORK_FAILURE_MESSAGES: Record<Exclude<ForkSessionResult, { ok: true }>['reason'], string> = {
-    'session-not-found': 'Session not found',
-    'access-denied': 'Session access denied',
-    'anchor-not-found': 'Anchor message not found',
-    'anchor-not-agent': 'Anchor must be an agent reply',
-    'anchor-before-boundary': 'Anchor message is before the last context boundary',
-    'turn-start-not-found': 'Turn start not found',
-    'parent-native-missing': 'Session has no native session id to fork from',
-    'fork-of-fork-forbidden': 'Fork sessions cannot be forked again',
+const FORK_FAILURE: Record<Exclude<ForkSessionResult, { ok: true }>['reason'], { status: 400 | 403 | 404 | 409; message: string }> = {
+    'session-not-found': { status: 404, message: 'Session not found' },
+    'access-denied': { status: 403, message: 'Session access denied' },
+    'anchor-not-found': { status: 400, message: 'Anchor message not found' },
+    'anchor-not-agent': { status: 400, message: 'Anchor must be an agent reply' },
+    'anchor-before-boundary': { status: 400, message: 'Anchor message is before the last context boundary' },
+    'turn-start-not-found': { status: 400, message: 'Turn start not found' },
+    'parent-native-missing': { status: 409, message: 'Session has no native session id to fork from' },
+    'fork-of-fork-forbidden': { status: 400, message: 'Fork sessions cannot be forked again' },
 }
 
 /** abort body：停止档位三档（批次 A）；取值单一来源 shared STOP_KIND_VALUES（勿手写副本），缺省 'turn' 只中断当前 turn */
@@ -620,10 +611,8 @@ export function createSessionsRoutes(
 
         const result = engine.forkSession(sessionResult.sessionId, parsed.data.anchorNativeId, c.get('namespace'))
         if (!result.ok) {
-            if (result.reason === 'session-not-found' || result.reason === 'access-denied') {
-                return c.json({ error: FORK_FAILURE_MESSAGES[result.reason], code: result.reason }, result.reason === 'access-denied' ? 403 : 404)
-            }
-            return c.json({ error: FORK_FAILURE_MESSAGES[result.reason], code: result.reason }, FORK_FAILURE_STATUS[result.reason])
+            const failure = FORK_FAILURE[result.reason]
+            return c.json({ error: failure.message, code: result.reason }, failure.status)
         }
 
         return c.json({ sessionId: result.sessionId })

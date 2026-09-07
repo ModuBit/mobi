@@ -137,17 +137,7 @@ export class MessageService {
         const msg = this.store.messages.addMessage(sessionId, content, payload.localId ?? undefined)
         const message = toDecryptedMessage(msg)
 
-        const update = {
-            id: msg.id,
-            seq: msg.seq,
-            createdAt: msg.createdAt,
-            body: {
-                t: 'new-message' as const,
-                sid: sessionId,
-                message
-            }
-        }
-        this.io.of('/cli').to(`session:${sessionId}`).emit('session-update', update)
+        this.emitNewMessageToCli(sessionId, msg, message)
 
         this.publisher.emit({
             type: 'message-received',
@@ -171,17 +161,7 @@ export class MessageService {
         const queued = this.store.messages.getUnsubmittedLocalMessages(sessionId)
         if (queued.length === 0) return
         for (const msg of queued) {
-            const message = toDecryptedMessage(msg)
-            this.io.of('/cli').to(`session:${sessionId}`).emit('session-update', {
-                id: msg.id,
-                seq: msg.seq,
-                createdAt: msg.createdAt,
-                body: {
-                    t: 'new-message' as const,
-                    sid: sessionId,
-                    message
-                }
-            })
+            this.emitNewMessageToCli(sessionId, msg, toDecryptedMessage(msg))
         }
     }
 
@@ -198,5 +178,24 @@ export class MessageService {
     /** 查询某 localId 消息的提交状态（非破坏性，用于 steer 前置校验） */
     getMessageSubmitState(sessionId: string, localId: string): { exists: boolean, submitted: boolean } {
         return this.store.messages.getMessageSubmitState(sessionId, localId)
+    }
+
+    /**
+     * CLI 房间 new-message 广播的单一构造点（sendMessage 与 redeliverQueued 共用）：
+     * update 载荷形态（id/seq/createdAt/body{t:'new-message',sid,message}）只在此声明，
+     * 补投路径与正常入队路径对 CLI 天然一致，无「逐字段对齐」的注释约定负担。
+     * 不含 message-received SSE——那由 sendMessage 在调用后按需单独发。
+     */
+    private emitNewMessageToCli(sessionId: string, msg: { id: string; seq: number | null; createdAt: number }, message: ReturnType<typeof toDecryptedMessage>): void {
+        this.io.of('/cli').to(`session:${sessionId}`).emit('session-update', {
+            id: msg.id,
+            seq: msg.seq,
+            createdAt: msg.createdAt,
+            body: {
+                t: 'new-message' as const,
+                sid: sessionId,
+                message
+            }
+        })
     }
 }

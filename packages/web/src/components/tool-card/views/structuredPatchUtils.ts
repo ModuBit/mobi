@@ -63,3 +63,13 @@ export function parseStructuredPatchRows(
     }
     return rows
 }
+
+/** MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐：取第 idx 条编辑的 patch
+ * （单元素数组形态，DiffView 的 structuredPatches 入参），越界/缺失返回 undefined */
+export function patchForEdit(
+    patches: StructuredPatch[] | undefined,
+    idx: number,
+): StructuredPatch[] | undefined {
+    const patch = patches?.[idx]
+    return patch ? [patch] : undefined
+}

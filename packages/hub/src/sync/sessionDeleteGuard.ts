@@ -30,3 +30,13 @@ export function isSessionRowDeletable(session: Pick<Session, 'active' | 'running
     if (session.running) return false
     return Boolean(session.metadata?.forkFrom)
 }
+
+/**
+ * 会话行入队守卫（消息发送路由预检，与 isSessionRowDeletable 同属 fork 生命周期
+ * 门控的命名归宿）：常规 inactive 会话不可入队（409）；待激活 fork 行放行——
+ * 激活窗口期的首条消息排队，CLI 激活后消费（spec §4.3/§5.3——web 发送侧同步触发
+ * resume spawn，600ms+ 的 spawn 窗口内 409 会产生幽灵乐观气泡，E2E 实证）。
+ */
+export function isSessionEnqueueable(session: Pick<Session, 'active' | 'metadata'>): boolean {
+    return session.active || Boolean(session.metadata?.forkFrom)
+}

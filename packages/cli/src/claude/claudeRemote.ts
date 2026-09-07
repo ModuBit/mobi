@@ -307,18 +307,17 @@ function resolveResumeSessionId(claudeArgs: string[] | undefined, cwd: string): 
 }
 
 /**
- * fork 激活轮的 SDK 启动四值（fork-session spec §5.2，纯函数便于单测锁定契约）：
- * resume 指 parent、forkSession 恒 true（SDK 约束 sessionId+resume 组合必须携带）、
+ * fork 激活轮的 SDK 启动三值（fork-session spec §5.2，纯函数便于单测锁定契约）：
+ * forkSession 恒 true（SDK 约束 sessionId+resume 组合必须携带）、
  * resumeSessionAt 指分叉锚点、sessionId 指预生成 fork id。
+ * resume 起点不经此处——resolveStartSessionId 恒取 forkFrom.parentNativeId（绕过守卫）。
  */
 export function buildForkStartupFields(plan: ForkActivationPlan): {
-    resume: string
     forkSession: true
     resumeSessionAt: string
     sessionId: string
 } {
     return {
-        resume: plan.parentNativeId,
         forkSession: true,
         resumeSessionAt: plan.anchorNativeId,
         sessionId: plan.forkNativeId,

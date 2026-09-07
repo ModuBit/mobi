@@ -17,6 +17,7 @@
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
 import { DiffView } from '@/components/tool-card/views/DiffView'
+import { patchForEdit } from './structuredPatchUtils'
 
 type Edit = { old_string: string; new_string: string }
 
@@ -50,10 +51,7 @@ export function MultiEditView(props: ToolViewProps) {
                     key={idx}
                     oldString={edit.old_string}
                     newString={edit.new_string}
-                    // MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐
-                    structuredPatches={props.block.tool.structuredPatch?.[idx]
-                        ? [props.block.tool.structuredPatch[idx]]
-                        : undefined}
+                    structuredPatches={patchForEdit(props.block.tool.structuredPatch, idx)}
                     filePath={idx === 0 ? filePath ?? undefined : undefined}
                     statsType="edit"
                 />
@@ -84,10 +82,7 @@ export function MultiEditFullView(props: ToolViewProps) {
                     key={idx}
                     oldString={edit.old_string}
                     newString={edit.new_string}
-                    // MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐
-                    structuredPatches={props.block.tool.structuredPatch?.[idx]
-                        ? [props.block.tool.structuredPatch[idx]]
-                        : undefined}
+                    structuredPatches={patchForEdit(props.block.tool.structuredPatch, idx)}
                     filePath={idx === 0 ? filePath ?? undefined : undefined}
                     variant="inline"
                     statsType="edit"

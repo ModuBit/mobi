@@ -42,7 +42,8 @@ import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { RESTART_EXIT_SENTINEL } from "./utils/queryRestart";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
-import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage } from "./utils/forkActivation";
+import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage, type ForkActivationFailureReason } from "./utils/forkActivation";
+import type { ApiSessionClient } from "@/api/apiSession";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
@@ -65,6 +66,31 @@ interface PermissionsField {
     result: 'approved' | 'denied';
     mode?: ClaudePermissionMode;
     allowedTools?: string[];
+}
+
+/** fork 激活失败上报的最小 client 面（结构化参数，避免依赖具体 client 实现类） */
+type ForkFailureReporter = Pick<ApiSessionClient, 'updateMetadata' | 'sendSessionEvent'>;
+
+/**
+ * fork 激活失败的双通道上报收口（fork-session spec §5.3，预检失败 / init id 不匹配 /
+ * query 异常三路共用）：metadata.forkError 给 web 错误态渲染（状态渠道），时间线错误
+ * 消息给阅读（forkActivationFailureMessage）。两种失败均保留 forkFrom（badge 不解除：
+ * 删除守卫与待激活判定依赖其在场，重发消息即重试）。
+ *
+ * @param forkErrorCode web 按码映射文案的 shared FORK_ERROR_CODES 值；缺省 'activation-failed'
+ *                      （anchor_gone 场景由调用方传预检细分码）
+ */
+function reportForkActivationFailure(
+    client: ForkFailureReporter,
+    reason: ForkActivationFailureReason,
+    detail?: string,
+    forkErrorCode: string = 'activation-failed',
+): void {
+    client.updateMetadata((metadata) => withForkError(metadata, forkErrorCode, detail));
+    client.sendSessionEvent({
+        type: 'message',
+        message: forkActivationFailureMessage(reason, detail),
+    });
 }
 
 class ClaudeRemoteLauncher extends RemoteLauncherBase {
@@ -294,11 +320,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         }
         this.session.forkActivation = null
         logger.warn(`[remote]: fork activation id mismatch: init=${sessionId}, expected=${activation.forkNativeId}`)
-        this.session.client.updateMetadata((metadata) => withForkError(metadata, 'activation-failed', `init session id mismatch: ${sessionId}`))
-        this.session.client.sendSessionEvent({
-            type: 'message',
-            message: forkActivationFailureMessage('resume_failed', `session id mismatch (${sessionId})`),
-        })
+        reportForkActivationFailure(this.session.client, 'resume_failed', `init session id mismatch: ${sessionId}`)
     }
 
     /**
@@ -733,12 +755,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     if (precheck !== 'ok') {
                         logger.warn(`[remote]: fork activation precheck failed (${precheck})`, forkActivation);
                         // 错误态双通道：时间线消息给阅读，metadata.forkError 给 web 错误态渲染
-                        // （t06 契约：失败保留 forkFrom，叠加 forkError）
-                        session.client.updateMetadata((metadata) => withForkError(metadata, precheck));
-                        session.client.sendSessionEvent({
-                            type: 'message',
-                            message: forkActivationFailureMessage('anchor_gone'),
-                        });
+                        reportForkActivationFailure(session.client, 'anchor_gone', undefined, precheck);
                         messageBuffer.addMessage('Fork activation failed: anchor gone from parent transcript', 'status');
                         return;
                     }
@@ -1034,11 +1051,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     if (session.forkActivation) {
                         const resumeDetail = e instanceof Error ? e.message : String(e);
                         // 错误态双通道（同预检失败）：时间线消息 + metadata.forkError
-                        session.client.updateMetadata((metadata) => withForkError(metadata, 'activation-failed', resumeDetail));
-                        session.client.sendSessionEvent({
-                            type: 'message',
-                            message: forkActivationFailureMessage('resume_failed', resumeDetail),
-                        });
+                        reportForkActivationFailure(session.client, 'resume_failed', resumeDetail);
                     }
                     // 增强错误日志：序列化非标准错误对象
                     // 用 error 级而非 debug：SDK 崩溃错误（含 stderr tail，见 getProcessExitError）

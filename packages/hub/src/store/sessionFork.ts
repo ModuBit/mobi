@@ -22,7 +22,7 @@ import { MessageContentSchema, MetadataSchema, isObject, sessionOpenLink, unwrap
 import { isContextBoundaryContent } from './messages'
 import { CONTEXT_BOUNDARY_SEQ_KEY } from './contextBoundary'
 import { safeJsonParse } from './json'
-import { getSession, updateSessionMetadata } from './sessions'
+import { casUpdateSessionMetadataBestEffort } from './sessions'
 import type { StoredMessage, StoredSession } from './types'
 
 /**
@@ -311,7 +311,7 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
  * fork 行激活失败的 hub 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
  * forkError 上报通道不可达，错误态由 hub 直接落 metadata）。保留 forkFrom（未激活判定
  * 与删除守卫的依据，shared FORK_ERROR_METADATA 契约），叠加 forkError。
- * 走 metadata_version CAS 重试一次即放弃（尽力而为，对齐 advanceContextBoundarySeq）。
+ * CAS/重试/尽力而为语义见 casUpdateSessionMetadataBestEffort。
  *
  * @returns 是否写入成功（会话不存在 / 并发放弃为 false，调用方仅 warn）
  */
@@ -321,26 +321,9 @@ export function markForkActivationError(
     code: string,
     detail?: string,
 ): boolean {
-    for (let attempt = 0; attempt < 2; attempt++) {
-        const stored = getSession(db, sessionId)
-        if (!stored) return false
-
-        // StoredSession.metadata 已是解析后的对象（unknown | null），直接叠加
-        const baseMetadata = isObject(stored.metadata) ? stored.metadata : {}
-        const result = updateSessionMetadata(
-            db,
-            sessionId,
-            { ...baseMetadata, forkError: { code, at: Date.now(), ...(detail ? { detail } : {}) } },
-            stored.metadataVersion,
-            stored.namespace,
-            // 纯簿记标记：不动 updated_at（对齐 advanceContextBoundarySeq）
-            { touchUpdatedAt: false }
-        )
-        if (result.result === 'success') return true
-        if (result.result === 'error') return false
-        // version-mismatch → 循环重试一次
-    }
-    return false
+    return casUpdateSessionMetadataBestEffort(db, sessionId, () => ({
+        forkError: { code, at: Date.now(), ...(detail ? { detail } : {}) },
+    }))
 }
 
 /** fork 会话创建领域存储（Store 聚合的子 Store，见 hub 编码规范；ContextBoundaryStore 同例） */

@@ -19,7 +19,7 @@ import type { Database } from 'bun:sqlite'
 import { isObject } from '@mobi/shared'
 
 import { findLatestBoundarySeq } from './messages'
-import { getSession, updateSessionMetadata } from './sessions'
+import { casUpdateSessionMetadataBestEffort, getSession } from './sessions'
 
 /**
  * 会话行 metadata 上的边界指针（fork/rewind 入口判据，fork-session spec §2）：
@@ -45,37 +45,17 @@ function readBoundarySeq(metadata: unknown): number | null {
  * 两处均以「当前 MAX(seq)」调用——边界行刚落库后 MAX 恒含该行 seq，且兼容 resume
  * 重放去重路径下 msg.seq 落后于当前 MAX 的情况）。
  *
- * 走会话 metadata 的乐观并发（updateSessionMetadata 的 metadata_version CAS），
- * version-mismatch 重试一次，仍失败放弃——指针推进是尽力而为：失败只损失一次推进，
- * 下次边界或读侧回填会补上，不加锁。
+ * CAS/重试/尽力而为语义见 casUpdateSessionMetadataBestEffort。
  *
  * @returns 指针是否已 ≥ seq（含本就满足的单调幂等；会话不存在 / 放弃为 false）
  */
 export function advanceContextBoundarySeq(db: Database, sessionId: string, seq: number): boolean {
-    for (let attempt = 0; attempt < 2; attempt++) {
-        const stored = getSession(db, sessionId)
-        if (!stored) return false
-
+    return casUpdateSessionMetadataBestEffort(db, sessionId, (stored) => {
         // 单调守卫：指针只前进不回退（重复推进 / 乱序到达天然幂等）
         const current = readBoundarySeq(stored.metadata)
-        if (current !== null && current >= seq) return true
-
-        const base = isObject(stored.metadata) ? stored.metadata : {}
-        const result = updateSessionMetadata(
-            db,
-            sessionId,
-            { ...base, [CONTEXT_BOUNDARY_SEQ_KEY]: seq },
-            stored.metadataVersion,
-            stored.namespace,
-            // 纯簿记指针：不动 updated_at（对齐 sessionCache.updateSDKMetadata 的写法），
-            // 避免边界事件把会话在「最近」列表顶到最前
-            { touchUpdatedAt: false }
-        )
-        if (result.result === 'success') return true
-        if (result.result === 'error') return false
-        // version-mismatch → 循环重试一次
-    }
-    return false
+        if (current !== null && current >= seq) return null
+        return { [CONTEXT_BOUNDARY_SEQ_KEY]: seq }
+    })
 }
 
 /**

@@ -16,6 +16,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
 import type { Config as DOMPurifyConfig } from 'dompurify'
+import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
 import Latex, { containsLatex, ensureKatexLoaded } from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
@@ -51,8 +52,8 @@ const MENTION_EXTENSIONS = [mention()]
 /** 脚注引用扩展（稳定引用，不依赖运行时数据） */
 const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
 
-/** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别） */
-const MOBI_URI_PREFIX = 'mobi://'
+/** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别；scheme 权威声明在 shared actionUri） */
+const MOBI_URI_PREFIX = `${MOBI_URI_SCHEME}://`
 
 /**
  * DOMPurify URI 白名单：x-markdown 渲染管线在 HTML sanitize 阶段用 DOMPurify 默认

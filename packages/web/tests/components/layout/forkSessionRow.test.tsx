@@ -106,13 +106,12 @@ function renderRow(ui: React.ReactElement): ReturnType<typeof render> {
 describe('resolveForkSessionState（纯函数）', () => {
     it('非 fork 行：无徽标状态', () => {
         const state = resolveForkSessionState(makeSession({ metadata: { path: '/p', host: 'h' } }), tStub)
-        expect(state.isForkRow).toBe(false)
-        expect(state.isPendingActivation).toBe(false)
+        expect(state).toMatchObject({ isPendingActivation: false, isActivationFailed: false, errorText: null })
     })
 
     it('forkFrom 在场 → 待激活；forkError 在场 → 错误态并映射文案', () => {
         const pending = resolveForkSessionState(makeSession(), tStub)
-        expect(pending).toMatchObject({ isForkRow: true, isPendingActivation: true, isActivationFailed: false, errorText: null })
+        expect(pending).toMatchObject({ isPendingActivation: true, isActivationFailed: false, errorText: null })
 
         const failed = resolveForkSessionState(makeSession({
             metadata: {
@@ -121,7 +120,7 @@ describe('resolveForkSessionState（纯函数）', () => {
                 forkError: { code: 'anchor-invalidated', at: 1 },
             },
         }) as Session, tStub)
-        expect(failed).toMatchObject({ isForkRow: true, isPendingActivation: false, isActivationFailed: true })
+        expect(failed).toMatchObject({ isPendingActivation: false, isActivationFailed: true })
         expect(failed.errorText).toBe('父会话已回退，分叉点失效')
 
         // 未知 code 回退通用文案
@@ -136,7 +135,7 @@ describe('resolveForkSessionState（纯函数）', () => {
                 forkedFrom: { sessionId: 'parent-1' },
             },
         }) as Session, tStub)
-        expect(activated).toMatchObject({ isForkRow: true, isPendingActivation: false, isActivationFailed: false, errorText: null })
+        expect(activated).toMatchObject({ isPendingActivation: false, isActivationFailed: false, errorText: null })
     })
 })
 

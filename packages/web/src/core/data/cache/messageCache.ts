@@ -30,11 +30,6 @@ export function extractParentUuid(content: unknown): string | null {
 }
 
 /**
- * 从 output 信封提取 Anthropic message.id（snapshot 与 full 共享的稳定关联键）。
- * 单点实现下沉 shared（与 reducer 去重键同源），见 shared/messages.ts extractAnthropicMessageId。
- */
-
-/**
  * 合并 native metadata（rewind 锚点），first-write-wins：只补旧值空缺的字段，
  * 不覆盖已有值（与 hub 侧 store 的 mergeMetadata 语义对齐）。
  * 用于重复消息（skipIfNotSnapshot）命中时，把 messages-bound 补写的 nativeId/nativeSessionId

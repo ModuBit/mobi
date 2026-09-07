@@ -24,10 +24,7 @@
 import type { ForkedFromMetadata, ForkFromMetadata, NativeMessageMetadata } from '@mobi/shared'
 import type { ChatBlock } from './types'
 import { isAfterContextBoundary } from './contextBoundary'
-import { REWIND_COMMAND } from './presentation'
-import { getUserPlainText } from './userContent'
-
-export type { NativeMessageMetadata, ForkedFromMetadata, ForkFromMetadata }
+import { isTurnStartBlock } from './turnBoundary'
 
 /** 判据入参的最小消息形状（与 rewind.ts RewindableMessage 同构） */
 export type ForkableMessage = {
@@ -76,20 +73,6 @@ export function canForkMessage(
     // 边界判据（与 rewind 入口共用同一依据与单一来源谓词）：compact/clear 之前不可 fork
     if (!isAfterContextBoundary(message.seq, sessionState.contextBoundarySeq)) return false
     return true
-}
-
-/** 块级 turn 起点判定（块空间镜像 turnBoundary.isTurnStart 的消息级语义）：
- *  user 信封（含 compact 总结消息）、context-cleared 事件、compact_boundary（compact 事件）。
- *  rewind 起点 synthetic 行（REWIND_COMMAND，不发送不落库）不是真实用户发言，不算新 turn。 */
-function isTurnStartBlock(block: ChatBlock): boolean {
-    if (block.kind === 'user-text') {
-        return getUserPlainText(block.blocks).trim() !== REWIND_COMMAND
-    }
-    if (block.kind === 'compact-summary') return true
-    if (block.kind === 'agent-event') {
-        return block.event.type === 'context-cleared' || block.event.type === 'compact'
-    }
-    return false
 }
 
 /**

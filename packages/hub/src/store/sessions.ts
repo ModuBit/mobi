@@ -17,6 +17,8 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
+import { isObject } from '@mobi/shared'
+
 import type { StoredSession, VersionedUpdateResult } from './types'
 import { safeJsonParse } from './json'
 import { updateVersionedField } from './versionedUpdates'
@@ -194,6 +196,44 @@ export function updateSessionMetadata(
             touch_updated_at: touchUpdatedAt ? 1 : 0
         }
     })
+}
+
+/**
+ * 会话 metadata 簿记写的乐观并发配方（单一来源，advanceContextBoundarySeq /
+ * markForkActivationError 等簿记写者共用）：读会话行 → buildNext 算增量字段 →
+ * updateSessionMetadata CAS；version-mismatch 重试一次，仍失败放弃——
+ * 簿记写是尽力而为：失败只损失一次推进/标记，后续事件或读侧会补上，不加锁。
+ * 恒不动 updated_at（纯簿记，避免把会话在「最近」列表顶到最前）。
+ *
+ * @param buildNext 基于重读的会话行返回要叠加的增量字段（与既有 metadata 合并写入）；
+ *                  返回 null 表示幂等跳过（无需写，视为成功，如单调守卫已满足）
+ * @returns 是否写入成功（幂等跳过为 true；会话不存在 / 并发放弃为 false，调用方仅 warn）
+ */
+export function casUpdateSessionMetadataBestEffort(
+    db: Database,
+    sessionId: string,
+    buildNext: (stored: StoredSession) => Record<string, unknown> | null,
+): boolean {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const stored = getSession(db, sessionId)
+        if (!stored) return false
+        const next = buildNext(stored)
+        if (next === null) return true
+
+        const base = isObject(stored.metadata) ? stored.metadata : {}
+        const result = updateSessionMetadata(
+            db,
+            sessionId,
+            { ...base, ...next },
+            stored.metadataVersion,
+            stored.namespace,
+            { touchUpdatedAt: false }
+        )
+        if (result.result === 'success') return true
+        if (result.result === 'error') return false
+        // version-mismatch → 循环重试一次
+    }
+    return false
 }
 
 export function updateSessionAgentState(

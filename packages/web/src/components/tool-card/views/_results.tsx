@@ -32,6 +32,7 @@ import { ToolViewPanel } from '@/components/tool-card/views/ToolViewPanel'
 
 import { parseAskUserQuestionInput, normalizeAnswers, parseAnswersFromResultText } from '@/domain/tool/askUserQuestion'
 import { useTranslation } from 'react-i18next'
+import { patchForEdit } from './structuredPatchUtils'
 
 const { useToken } = antTheme
 
@@ -462,8 +463,7 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
                 const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
                 const newString = typeof edit.new_string === 'string' ? edit.new_string : null
                 if (oldString === null || newString === null) return null
-                // MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐
-                const patch = props.block.tool.structuredPatch?.[idx]
+                const patch = patchForEdit(props.block.tool.structuredPatch, idx)?.[0]
                 return (
                     <DiffView
                         key={idx}
