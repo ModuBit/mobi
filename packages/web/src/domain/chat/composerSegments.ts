@@ -68,23 +68,13 @@ export function isSegmentEmpty(segments: ComposerSegments): boolean {
 /**
  * 分段 → UserContentBlock[]（wire 形态）。
  *
- * - 固定顺序 document → image → quote → text：与 CLI 侧 blocks 化约定一致，正文恒收尾
+ * - 固定顺序 image → document → quote → text：图片在前（视觉卡片更易扫读，用户预期），
+ *   正文恒收尾；CLI 侧按 block 顺序遍历、两类间无顺序依赖
  * - quote 仅取首条 + excerpt 截断至 QUOTE_EXCERPT_MAX（与 schema 约束对齐）
  * - text trim 后非空才入列；纯文本退化为单 text block，全空返回 []（调用方据此拦截）
  */
 export function serializeSegments(segments: ComposerSegments): UserContentBlock[] {
     const out: UserContentBlock[] = []
-
-    for (const f of segments.files) {
-        out.push({
-            type: 'document',
-            source: { type: 'url', value: f.path, mimeType: f.mimeType },
-            id: f.id,
-            filename: f.filename,
-            size: f.size,
-            ...(f.previewUrl !== undefined ? { previewUrl: f.previewUrl } : {}),
-        })
-    }
 
     for (const img of segments.images) {
         out.push({
@@ -94,6 +84,17 @@ export function serializeSegments(segments: ComposerSegments): UserContentBlock[
             filename: img.filename,
             size: img.size,
             ...(img.previewUrl !== undefined ? { previewUrl: img.previewUrl } : {}),
+        })
+    }
+
+    for (const f of segments.files) {
+        out.push({
+            type: 'document',
+            source: { type: 'url', value: f.path, mimeType: f.mimeType },
+            id: f.id,
+            filename: f.filename,
+            size: f.size,
+            ...(f.previewUrl !== undefined ? { previewUrl: f.previewUrl } : {}),
         })
     }
 

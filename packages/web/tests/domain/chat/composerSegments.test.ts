@@ -35,10 +35,10 @@ const seg = {
 }
 
 describe('composerSegments', () => {
-    it('serializeSegments 固定顺序 files(document)→images→quote→text', () => {
+    it('serializeSegments 固定顺序 images→files(document)→quote→text（图片在前）', () => {
         expect(serializeSegments(seg)).toEqual([
-            { type: 'document', source: { type: 'url', value: '/u/r.pdf', mimeType: 'application/pdf' }, id: 'f1', filename: 'r.pdf', size: 5 },
             { type: 'image', source: { type: 'url', value: '/u/p.png', mimeType: 'image/png' }, id: 'g1', filename: 'p.png', size: 7 },
+            { type: 'document', source: { type: 'url', value: '/u/r.pdf', mimeType: 'application/pdf' }, id: 'f1', filename: 'r.pdf', size: 5 },
             { type: 'quote', messageId: 'm1', role: 'agent', excerpt: 'E' },
             { type: 'text', text: '帮我看看' },
         ])
