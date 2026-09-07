@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-import { useTranslation } from 'react-i18next'
 import type { ForkErrorMetadata, Session } from '@/core/data/api/types'
-import { useSession } from '@/core/data/hooks/queries/useSession'
-import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string
 
@@ -25,11 +22,10 @@ type TFunction = (key: string, options?: Record<string, unknown>) => string
  * fork 会话行的列表呈现（fork-session spec §4.3）：
  * - metadata.forkFrom 在场 = 未激活（激活成功后 hub 清除、SSE session-updated 驱动缓存更新即消失）
  * - metadata.forkError 在场 = 激活失败错误态（叠加在 forkFrom 之上，spec §5.3）
- * - 标题自动命名「〈parent 标题〉 · 分叉」，parent 标题实时取（useSession 查询单会话），
- *   取不到（已删/加载中）降级「分叉会话」
+ * - 标题由 hub 建行时落库（metadata.name = 「〈parent 标题〉 · 分叉」，写入时冻结），
+ *   web 侧不拼接——走 getSessionDisplayName 的 name 优先路径自然命中
  *
- * 徽标状态（pending/error/错误文案）只依赖 session 自身 metadata，走纯函数 resolveForkSessionState；
- * 依赖查询的只有 parent 标题（useForkRowTitle）——两入口分离，非 fork 行零查询开销。
+ * 状态只依赖 session 自身 metadata，走纯函数 resolveForkSessionState；fork 行零额外查询。
  */
 
 /** 激活失败原因码 → 展示文案（未知码回退通用文案；code 集合见 shared FORK_ERROR_CODES。
@@ -85,30 +81,4 @@ export function resolveForkSessionState(session: Session, t: TFunction): ForkSes
         isActivationFailed: Boolean(forkError),
         errorText: forkError ? resolveForkErrorText(forkError, t) : null,
     }
-}
-
-/**
- * fork 行标题（纯函数）：「〈parent 标题〉 · 分叉」。parentSession 实时取失败
- * （已删/未加载）时降级「分叉会话」（spec §4.3）。
- */
-export function resolveForkRowTitle(parentSession: Session | null | undefined, t: TFunction): string {
-    const parentTitle = parentSession ? getSessionDisplayName(parentSession) : null
-    return parentTitle
-        ? t('session.fork.forkName', { name: parentTitle })
-        : t('session.fork.pendingFallback')
-}
-
-/**
- * fork 行标题 hook：实时取 parent 会话（SSE session-updated/removed 驱动缓存失效，
- * parent 改名/删除后标题自动跟随/降级）。只应挂载在 fork 行上（非 fork 行零开销）。
- * parent 取值：待激活/错误态看 forkFrom.parentSessionId；已激活看终身保留的
- * forkedFrom.sessionId（forkFrom 已被清除）。
- */
-export function useForkRowTitle(forkSession: Session): string {
-    const { t } = useTranslation()
-    const parentSessionId = forkSession.metadata?.forkFrom?.parentSessionId
-        ?? forkSession.metadata?.forkedFrom?.sessionId
-        ?? null
-    const { data: parentSession } = useSession(parentSessionId)
-    return resolveForkRowTitle(parentSession, t)
 }

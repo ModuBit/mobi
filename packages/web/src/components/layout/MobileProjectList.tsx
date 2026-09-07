@@ -41,8 +41,6 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
-import { ForkRowTitle } from './ForkRowTitle'
-import { resolveForkSessionState } from './forkSessionLabel'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
@@ -279,7 +277,7 @@ export function MobileProjectList() {
 
     // ActionSheet 当前操作的 session
     const actionSession = actionSessionId ? findSession(actionSessionId) : null
-    // 非 fork 行的 Drawer 标题（fork 行由 ForkRowTitle 承担）
+    // Drawer 标题（fork 行标题已由 hub 落库，displayName 自然区分）
     const actionSessionDisplayTitle = actionSession ? getSessionDisplayName(actionSession) : ''
 
     return (
@@ -342,19 +340,12 @@ export function MobileProjectList() {
                 ⚠️ 故意使用 antd 原生 Drawer，**不要改成 MobileDrawer**。
                 这是轻量操作菜单：内容固定（几个按钮）、高度低、用完即关，
                 不需要 MobileDrawer 的下拉关闭手势、拖拽指示条、85dvh maxHeight。
-                title 显示当前操作的 session 名称（ForkRowTitle，fork 感知命名），让用户
-                明确知道正在修改哪个会话 */}
+                title 显示当前操作的 session 名称（fork 行标题已落库，displayName 自然区分） */}
             <Drawer
                 placement="bottom"
                 open={!!actionSessionId}
                 onClose={closeActionSheet}
-                title={actionSession ? (
-                    // 仅 fork 行挂 ForkRowTitle（parent 标题查询在非 fork 行会走 pendingFallback
-                    // 恒显示「分叉会话」兜底，SessionRow/MobileSessionItem 同一门控）
-                    resolveForkSessionState(actionSession, t).isForkRow
-                        ? <ForkRowTitle session={actionSession}>{(title) => title}</ForkRowTitle>
-                        : actionSessionDisplayTitle
-                ) : undefined}
+                title={actionSessionDisplayTitle || undefined}
                 closable={false}
                 styles={{ body: { padding: '8px 0 max(24px, env(safe-area-inset-bottom))' } }}
             >

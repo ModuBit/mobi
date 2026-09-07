@@ -21,7 +21,6 @@ import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { resolveForkSessionState } from './forkSessionLabel'
-import { ForkRowTitle } from './ForkRowTitle'
 import { ForkStateBadge } from './ForkStateBadge'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
@@ -50,7 +49,8 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
     const avatarStatus = getSessionAvatarStatus(session)
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt, t)
-    // fork 行：自动命名「〈parent 标题〉 · 分叉」+ 待激活/激活失败徽标（spec §4.3）
+    // fork 行：hub 建行时标题已落库（metadata.name 含「· 分叉」后缀），
+    // 待激活/激活失败徽标纯 metadata 可判（spec §4.3）
     const forkState = resolveForkSessionState(session, t)
 
     return (
@@ -63,7 +63,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
             onTouchMove={longPress.onTouchMove}
         >
             <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
-            {forkState.isForkRow ? <ForkRowTitle session={session}>{(title) => <SessionName $token={token}>{title}</SessionName>}</ForkRowTitle> : <SessionName $token={token}>{displayName}</SessionName>}
+            <SessionName $token={token}>{displayName}</SessionName>
             {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge
                     variant={forkState.isActivationFailed ? 'error' : 'pending'}

@@ -16,7 +16,7 @@
 
 /**
  * fork 会话行测试（fork-session spec §4.3）：
- * 待激活/错误态徽标、自动命名「〈parent 标题〉 · 分叉」（parent 实时取，已删降级）、
+ * 待激活/错误态徽标（标题由 hub 落库 metadata.name，web 不拼接、不发 parent 查询）、
  * 待激活行可删除（deleteSession active 守卫的 web 侧呈现：fork 行未激活不算 active）。
  */
 
@@ -26,15 +26,15 @@ import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Session } from '@/core/data/api/types'
 
-// i18n mock：fork 相关 key 做真实插值，其余透传 key（对齐既有测试惯例）
+// i18n mock：fork 徽标相关 key 做真实插值，其余透传 key（对齐既有测试惯例）
 vi.mock('react-i18next', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-i18next')>()
     return {
         ...actual,
         useTranslation: () => ({
             t: (key: string) => {
-                if (key === 'session.fork.forkName') return '父会话 · 分叉'
-                if (key === 'session.fork.pendingFallback') return '分叉会话'
+                if (key === 'session.fork.pendingBadge') return '待激活'
+                if (key === 'session.fork.errorBadge') return '激活失败'
                 if (key === 'session.fork.errorReason.anchorInvalidated') return '父会话已回退，分叉点失效'
                 if (key === 'session.fork.errorReason.unknown') return '分叉激活失败'
                 return key
@@ -85,6 +85,8 @@ function makeSession(overrides: Partial<Session> = {}): Session {
         metadata: {
             path: '/tmp/p',
             host: 'h',
+            // hub 建行时落库的冻结标题（web 不拼接）
+            name: '父会话 · 分叉',
             forkFrom: { parentSessionId: 'parent-1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' },
         },
         metadataVersion: 1,
@@ -155,10 +157,7 @@ describe('SessionRow fork 行', () => {
         pinLoading: false,
     }
 
-    it('待激活行：显示「〈parent 标题〉 · 分叉」+ 待激活徽标，删除按钮可用（未激活不算 active）', async () => {
-        sessionsGet.mockResolvedValue({
-            data: { session: { id: 'parent-1', metadata: { path: '/p', host: 'h', name: '父会话' } } },
-        })
+    it('待激活行：显示落库标题「〈parent 标题〉 · 分叉」+ 待激活徽标，删除按钮可用，不发 parent 查询', async () => {
         const onDelete = vi.fn()
         renderRow(
             <SessionRow {...baseProps} session={makeSession()} onDelete={onDelete} />,
@@ -173,24 +172,18 @@ describe('SessionRow fork 行', () => {
         expect(deleteBtn).not.toBeDisabled()
         fireEvent.click(deleteBtn)
         expect(onDelete).toHaveBeenCalledTimes(1)
-    })
 
-    it('parent 已删（404）→ 标题降级「分叉会话」', async () => {
-        sessionsGet.mockRejectedValue(new Error('Session not found'))
-        renderRow(<SessionRow {...baseProps} session={makeSession()} onDelete={vi.fn()} />)
-        expect(await screen.findByText('分叉会话')).toBeInTheDocument()
+        // 标题纯 metadata 落库，无 parent 查询开销
+        expect(sessionsGet).not.toHaveBeenCalled()
     })
 
     it('激活失败行：错误徽标（tooltip 映射文案），无待激活徽标', async () => {
-        sessionsGet.mockResolvedValue({
-            data: { session: { id: 'parent-1', metadata: { path: '/p', host: 'h', name: '父会话' } } },
-        })
         renderRow(
             <SessionRow
                 {...baseProps}
                 session={makeSession({
                     metadata: {
-                        path: '/p', host: 'h',
+                        path: '/p', host: 'h', name: '父会话 · 分叉',
                         forkFrom: { parentSessionId: 'parent-1', parentNativeId: 'pn', anchorNativeId: 'an' },
                         forkError: { code: 'anchor-invalidated', at: 1 },
                     },
@@ -202,21 +195,22 @@ describe('SessionRow fork 行', () => {
         expect(screen.queryByTestId('fork-state-badge-pending')).toBeNull()
     })
 
-    it('已激活 fork 行（仅 forkedFrom）：仍显示「· 分叉」标题，无徽标', async () => {
-        sessionsGet.mockResolvedValue({
-            data: { session: { id: 'parent-1', metadata: { path: '/p', host: 'h', name: '父会话' } } },
-        })
+    it('已激活 fork 行（仅 forkedFrom）：仍显示落库「· 分叉」标题，无徽标', () => {
         renderRow(
             <SessionRow
                 {...baseProps}
                 session={makeSession({
-                    metadata: { path: '/p', host: 'h', forkedFrom: { sessionId: 'parent-1' } },
+                    metadata: {
+                        path: '/p', host: 'h', name: '父会话 · 分叉',
+                        forkedFrom: { sessionId: 'parent-1' },
+                    },
                 }) as Session}
                 onDelete={vi.fn()}
             />,
         )
-        expect(await screen.findByText('父会话 · 分叉')).toBeInTheDocument()
+        expect(screen.getByText('父会话 · 分叉')).toBeInTheDocument()
         expect(screen.queryByTestId(/^fork-state-badge/)).toBeNull()
+        expect(sessionsGet).not.toHaveBeenCalled()
     })
 
     it('非 fork 行：常规命名，无徽标', () => {
@@ -236,14 +230,11 @@ describe('SessionRow fork 行', () => {
 })
 
 describe('MobileSessionItem fork 行', () => {
-    it('待激活行：命名 + 待激活徽标', async () => {
-        sessionsGet.mockResolvedValue({
-            data: { session: { id: 'parent-1', metadata: { path: '/p', host: 'h', name: '父会话' } } },
-        })
+    it('待激活行：落库标题 + 待激活徽标', () => {
         renderRow(
             <MobileSessionItem session={makeSession()} active={false} onClick={vi.fn()} onLongPress={vi.fn()} />,
         )
-        expect(await screen.findByText('父会话 · 分叉')).toBeInTheDocument()
+        expect(screen.getByText('父会话 · 分叉')).toBeInTheDocument()
         expect(screen.getByTestId('fork-state-badge-pending')).toBeInTheDocument()
     })
 })

@@ -142,8 +142,6 @@
             "modelLimit": "Model Limit"
         },
         "fork": {
-            "forkName": "{{name}} · forked",
-            "pendingFallback": "Forked session",
             "pendingBadge": "Pending",
             "errorBadge": "Activation failed",
             "errorReason": {

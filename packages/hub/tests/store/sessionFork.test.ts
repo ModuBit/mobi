@@ -211,8 +211,7 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         })
     })
 
-    test('溯源标题优先 metadata.name（冻结文案的身份字段语义）', () => {
-        const store = new Store(':memory:')
+    test('溯源标题优先 metadata.name（冻结文案的身份字段语义）', () => {        const store = new Store(':memory:')
         const parent = store.sessions.getOrCreateSession(
             'fork-parent-2',
             { path: '/tmp/proj', host: 'h-1', name: '自定义名', nativeSessionId: 'parent-native-1' },
@@ -238,15 +237,20 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
 
         const content = store.messages.getMessages(result.sessionId, 200)[2].content as { content: Array<{ text: string }> }
         expect(content.content[0].text).toContain('[自定义名](mobi://session/open?id=')
+        // fork 行标题同样取 name 冻结
+        const forkRaw = store.sessions.getSession(result.sessionId)!.metadata as Record<string, unknown>
+        expect(forkRaw.name).toBe('自定义名 · 分叉')
     })
 
-    test('fork 行 metadata：nativeSessionId=预生成 id、forkFrom 三字段、forkedFrom 溯源；MetadataSchema 不裁掉', () => {
+    test('fork 行 metadata：标题落库「〈parent 标题〉 · 分叉」、nativeSessionId=预生成 id、forkFrom 三字段、forkedFrom 溯源', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
 
         const result = forkStandard(store, parent)
 
         const raw = store.sessions.getSession(result.sessionId)!.metadata as Record<string, unknown>
+        // 标题写入时冻结（resolveSessionTitle：name → path 基名 → id 前 8 位），web 不拼接
+        expect(raw.name).toBe('proj · 分叉')
         expect(raw.nativeSessionId).toBe('fork-native-1')
         expect(raw.forkFrom).toEqual({
             parentSessionId: parent.id,

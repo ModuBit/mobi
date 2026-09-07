@@ -142,8 +142,6 @@
             "modelLimit": "模型上限"
         },
         "fork": {
-            "forkName": "{{name}} · 分叉",
-            "pendingFallback": "分叉会话",
             "pendingBadge": "待激活",
             "errorBadge": "激活失败",
             "errorReason": {

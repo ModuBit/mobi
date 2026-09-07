@@ -134,6 +134,10 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
     delete baseMetadata[CONTEXT_BOUNDARY_SEQ_KEY]
     const forkMetadata = {
         ...baseMetadata,
+        // 标题落库即区分（用户裁决：DB 里就是不同的，web 不做运行时拼接）：
+        // 「〈parent 标题〉 · 分叉」，parent 标题与溯源消息同用 resolveSessionTitle 冻结语义
+        // （name → path 基名 → id 前 8 位）——parent 改名后 fork 标题不跟随
+        name: `${resolveSessionTitle(parent.metadata, parent.id)} · 分叉`,
         nativeSessionId: forkNativeId,
         forkFrom,
         forkedFrom,
