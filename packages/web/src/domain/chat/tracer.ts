@@ -132,7 +132,9 @@ export function traceMessages(messages: NormalizedMessage[]): TracedMessage[] {
             continue
         }
 
-        results.push({ ...message })
+        // 防线：isSidechain 且非根匹配（prompt 不挂任何 Task）、又无 parentUuid 可回溯的消息
+        // 无法归属任何 subagent——与 orphan 挂起语义一致，宁可不渲染，绝不放行主线
+        //（曾因兜底 results.push 把 sidechain 消息泄漏成主线用户气泡，2026-09-07）
     }
 
     return results

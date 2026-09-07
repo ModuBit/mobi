@@ -143,7 +143,7 @@ export type NormalizedAgentContent =
     | ToolUse
     | ToolResult
     | { type: 'summary'; summary: string }
-    | { type: 'sidechain'; uuid: string; prompt: string }
+    | { type: 'sidechain'; uuid: string; prompt: string; /** 消息自身的 parentUuid（sidechain 中段消息靠它沿链归属）；root 消息恒缺省（其 parentUuid 指向主线，不可用于回溯） */ parentUUID?: string }
 
 export type NormalizedMessage = ({
     role: 'user'

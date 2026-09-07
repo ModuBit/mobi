@@ -188,7 +188,9 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
             createdAt: ctx.createdAt,
             role: 'agent',
             isSidechain: true,
-            content: [{ type: 'sidechain', uuid, prompt: messageContent }]
+            // parentUUID 必须保留：tracer 靠它沿链归属 subagent 面板（root 靠 prompt 匹配，
+            // 中段消息靠 parentUuid 回溯——丢失会走 tracer 兜底放行主线，泄漏成用户气泡）
+            content: [{ type: 'sidechain', uuid, ...(parentUUID ? { parentUUID } : {}), prompt: messageContent }]
         }
     }
     // Sidechain 数组内容（agent prompt 以数组形式发送）
@@ -206,7 +208,8 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
                     createdAt: ctx.createdAt,
                     role: 'agent',
                     isSidechain: true,
-                    content: [{ type: 'sidechain', uuid, prompt }]
+                    // 同上：parentUUID 供 tracer 沿链归属（如 MCP 截图反馈等 sidechain 中段消息）
+                    content: [{ type: 'sidechain', uuid, ...(parentUUID ? { parentUUID } : {}), prompt }]
                 }
             }
         }

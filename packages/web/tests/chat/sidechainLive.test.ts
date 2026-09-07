@@ -113,6 +113,31 @@ function sidechainAssistant(id: string, uuid: string, parentUuid: string, text: 
     } as unknown as DecryptedMessage
 }
 
+/** sidechain 中段的 MCP 截图反馈：data.type=user、message.content=[text]（生产缺陷形态） */
+function screenshotFeedback(): DecryptedMessage {
+    return {
+        id: 'm-sc-img',
+        seq: 0,
+        snapshot: false,
+        createdAt: 3500,
+        content: {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    uuid: 's-img',
+                    parentUuid: 's-1',
+                    isSidechain: true,
+                    message: {
+                        content: [{ type: 'text', text: '[Image: original 2210x950, displayed at 2000x860. Multiply coordinates by 1.10 to map to original image.]' }],
+                    },
+                },
+            },
+        },
+    } as unknown as DecryptedMessage
+}
+
 function agentChildrenOfTask(messages: DecryptedMessage[]): number {
     const normalized = messages
         .map(m => normalizeDecryptedMessage(m))
@@ -174,5 +199,27 @@ describe('#62 缺陷二：sidechain SSE 增量 → Agent drawer children 实时�
         ingestIncomingMessages(SID, [sidechainAssistant('m-sc-1', 's-1', 's-root', '子代理输出一')])
         ingestIncomingMessages(SID, [sidechainRoot()])
         expect(agentChildrenOfTask(getMessageWindowState(SID).messages)).toBe(2)
+    })
+
+    it('MCP 截图反馈（sidechain 中段数组 user 消息）挂进 children，不泄漏主线', () => {
+        // 生产缺陷（2026-09-07）：chrome-devtools 截图反馈以 data.type=user、message.content=[text]
+        // 进入 sidechain 中段。handleUserOutput 的 sidechain 数组分支转 sidechain prompt 形态时
+        // 丢失 parentUUID → tracer 既匹配不上 Task prompt、又取不到 parentUuid → 兜底放行主线，
+        // 以 user-text 气泡渲染成「没人发的用户消息」（刷新后主线 fetch 排除 sidechain 而消失）。
+        ingestIncomingMessages(SID, [taskMessage()])
+        ingestIncomingMessages(SID, [sidechainRoot()])
+        ingestIncomingMessages(SID, [sidechainAssistant('m-sc-1', 's-1', 's-root', '子代理输出一')])
+        ingestIncomingMessages(SID, [screenshotFeedback()])
+
+        const messages = getMessageWindowState(SID).messages
+        // 挂进 Task children（root + assistant + 截图反馈）
+        expect(agentChildrenOfTask(messages)).toBe(3)
+        // 主线时间线（顶层 blocks）不得出现泄漏块；Task children 里的 user-text 是
+        // subagent 面板的合法渲染（sidechain prompt 本就显示为用户气泡），不算泄漏
+        const { blocks } = reduceChatBlocks(
+            messages.map(m => normalizeDecryptedMessage(m)).filter(m => m !== null),
+            null,
+        )
+        expect(blocks.some(b => b.kind === 'user-text' && b.blocks.some(x => x.type === 'text' && x.text.includes('[Image')))).toBe(false)
     })
 })
