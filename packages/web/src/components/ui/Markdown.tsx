@@ -15,6 +15,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
+import type { Config as DOMPurifyConfig } from 'dompurify'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
 import Latex, { containsLatex, ensureKatexLoaded } from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
@@ -52,6 +53,17 @@ const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
 
 /** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别） */
 const MOBI_URI_PREFIX = 'mobi://'
+
+/**
+ * DOMPurify URI 白名单：x-markdown 渲染管线在 HTML sanitize 阶段用 DOMPurify 默认
+ * 协议正则（只放行 http/https/mailto/tel 等）过滤 href，`mobi://` 会被整体剥除——
+ * ExternalLink 拿不到 href，动作链接拦截（ActionLink）永远不会触发。
+ * 在默认正则上追加 mobi scheme（scheme 必须显式带冒号，任意值不会因此放行）；
+ * 点击行为仍由 ActionLink preventDefault 拦截，不产生真实导航。
+ */
+const DOMPURIFY_CONFIG: DOMPurifyConfig = {
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|mobi):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+}
 
 /** 链接渲染：mobi:// 内部动作链接交 ActionLink 拦截分发（ADR 0003），其余统一新标签页打开 */
 const ExternalLink: FC<ComponentProps<{ href?: string }>> = (
@@ -238,6 +250,7 @@ export const Markdown = memo(function Markdown({
                     components={mergedComponents}
                     paragraphTag={paragraphTag}
                     config={mergedConfig}
+                    dompurifyConfig={DOMPURIFY_CONFIG}
                 />
                 {footnotes.length > 0 && <FootnoteSources footnotes={footnotes} />}
             </div>
