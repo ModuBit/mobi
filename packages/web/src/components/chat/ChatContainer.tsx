@@ -703,30 +703,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [messages, hasNextPage])
 
     const decoratedItems = useMemo(() => {
-        const baseItems = buildChatBubbleItems(
-            chatBlocks,
-            {
-                metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
-                turnResultActions: (block) => turnResultActionsByKey.get(block.id),
-            },
-            !!session?.running,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
-        )
-
-        // block.id === 消息 id（normalize 以消息 id 作 block id），按 id 建消息 metadata 索引，
-        // 供 footer rewind 判据取该行的 native 锚点
-        const metaById = new Map<string, NativeMessageMetadata | null>(
-            messages.map(m => [m.id, m.metadata ?? null]),
-        )
-        // 与 metaById 同源同式：message.id → seq（rewind 边界判据的比较操作数，fork-session spec §2/§6）
-        const seqById = new Map<string, number | null>(
-            messages.map(m => [m.id, m.seq ?? null]),
-        )
-        // 与 metaById 同源同式：message.id → lifecycle（终态标注判据，P3 粗粒度可见）
-        const lifecycleById = new Map<string, DecryptedMessage['lifecycle']>(
-            messages.map(m => [m.id, m.lifecycle ?? null]),
-        )
-
         // ── fork 判据数据（fork-session spec §4.1/§4.2）──
         // 入口仅挂「turn 的 result 落点」：每 turn 最后一条 agent 文本块的 id 集合
         const forkTargetBlockIds = collectForkTargetBlockIds(chatBlocks)
@@ -739,7 +715,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         // ── turn-result 概要行操作组（position A）──
         // 落点 agent 文本与其 turn-result 概要事件配对：文本块是 fork 判据载体，操作组展示在
         // 概要行尾。扫描 chatBlocks，「最近一个可 fork 落点文本」配给其后首个 turn-result 事件
-        // （配对即清空——无落点文本的 turn 不继承上一轮的操作组）
+        // （配对即清空——无落点文本的 turn 不继承上一轮的操作组）。
+        // ⚠️ 必须先于 buildChatBubbleItems：ctx.turnResultActions 工厂闭包引用本 Map
         const turnResultActionsByKey = new Map<string, React.ReactNode>()
         {
             let current: { key: string; text: string; row: { metadata: NativeMessageMetadata | null; seq: number | null } } | null = null
@@ -781,6 +758,30 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 }
             }
         }
+
+        // block.id === 消息 id（normalize 以消息 id 作 block id），按 id 建消息 metadata 索引，
+        // 供 footer rewind 判据取该行的 native 锚点
+        const metaById = new Map<string, NativeMessageMetadata | null>(
+            messages.map(m => [m.id, m.metadata ?? null]),
+        )
+        // 与 metaById 同源同式：message.id → seq（rewind 边界判据的比较操作数，fork-session spec §2/§6）
+        const seqById = new Map<string, number | null>(
+            messages.map(m => [m.id, m.seq ?? null]),
+        )
+        // 与 metaById 同源同式：message.id → lifecycle（终态标注判据，P3 粗粒度可见）
+        const lifecycleById = new Map<string, DecryptedMessage['lifecycle']>(
+            messages.map(m => [m.id, m.lifecycle ?? null]),
+        )
+
+        const baseItems = buildChatBubbleItems(
+            chatBlocks,
+            {
+                metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
+                turnResultActions: (block) => turnResultActionsByKey.get(block.id),
+            },
+            !!session?.running,
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
+        )
 
         const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
