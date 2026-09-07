@@ -119,6 +119,19 @@ describe('AgentTurnActions（turn-result 概要行操作组：[复制][⑂]）',
         render(<AgentTurnActions text="reply" onFork={vi.fn()} />)
         expect(screen.queryByRole('button', { name: '创建分叉会话' })).toBeNull()
     })
+
+    it('showFork=false（turn 不可 fork）→ 隐藏 ⑂ 但保留复制', () => {
+        const onFork = vi.fn()
+        const { container } = render(
+            <AgentTurnActions text="reply" showFork={false} onFork={onFork} />,
+        )
+        expect(screen.queryByRole('button', { name: '从此分叉' })).toBeNull()
+        // 复制按钮仍在（操作组只剩 copy 一项）
+        const children = Array.from((container.firstElementChild as HTMLElement).children) as HTMLElement[]
+        expect(children.length).toBe(1)
+        expect(children[0].className).toContain('msg-copy-btn')
+        expect(onFork).not.toHaveBeenCalled()
+    })
 })
 
 describe('ForkConfirmView（共用确认视图，PC Popover 与移动 Drawer）', () => {

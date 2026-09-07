@@ -719,7 +719,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         // ⚠️ 必须先于 buildChatBubbleItems：ctx.turnResultActions 工厂闭包引用本 Map
         const turnResultActionsByKey = new Map<string, React.ReactNode>()
         {
-            let current: { key: string; text: string; row: { metadata: NativeMessageMetadata | null; seq: number | null } } | null = null
+            let current: { key: string; text: string; row: { metadata: NativeMessageMetadata | null; seq: number | null }; forkable: boolean } | null = null
             for (const block of chatBlocks) {
                 if (block.kind === 'agent-text') {
                     const row = forkTargetBlockIds.has(block.id)
@@ -737,12 +737,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                             contextBoundarySeq: metadata?.contextBoundarySeq,
                         },
                     )
-                    current = row && forkable ? { key: block.id, text: block.text, row } : null
+                    // 落点文本存在即入配对（复制不受 fork 守卫约束），forkable 仅控制 ⑂ 入口
+                    current = row ? { key: block.id, text: block.text, row, forkable } : null
                 } else if (block.kind === 'agent-event' && block.event.type === 'turn-result' && current) {
                     const matched = current
                     turnResultActionsByKey.set(block.id, isMobile ? undefined : (
                         <AgentTurnActions
                             text={matched.text}
+                            showFork={matched.forkable}
                             onFork={() => {
                                 const nativeId = matched.row.metadata?.nativeId
                                 if (nativeId) openForkPopover(matched.key, nativeId, matched.text)

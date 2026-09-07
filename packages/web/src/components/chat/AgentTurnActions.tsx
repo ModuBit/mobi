@@ -24,6 +24,8 @@ import { ForkConfirmView } from './ForkConfirmView'
 export interface AgentTurnActionsProps {
     /** 消息原文（复制用） */
     text: string
+    /** 是否渲染 fork 入口（不可 fork 的 turn 仍保留复制——复制不受 fork 守卫约束） */
+    showFork?: boolean
     /** 点击 fork 入口（父组件置 forkDraft 打开 Popover） */
     onFork: () => void
     // ── fork 锚定 Popover（PC 入口，与 UserMessageFooter rewind 同模式）──
@@ -48,7 +50,7 @@ export interface AgentTurnActionsProps {
  * 点击 ⑂ 触发 onFork（父组件记 forkDraft），forkOpen 置 true 打开；点击外部或取消收起。
  */
 export function AgentTurnActions({
-    text, onFork,
+    text, showFork = true, onFork,
     forkOpen, forkTargetText, forkLoading, onForkConfirm, onForkCancel,
 }: AgentTurnActionsProps) {
     const { t } = useTranslation()
@@ -60,38 +62,40 @@ export function AgentTurnActions({
             <span className="msg-copy-btn">
                 <CopyButton text={text} size={14} />
             </span>
-            <span className="msg-copy-btn">
-                <Popover
-                    open={forkActive}
-                    trigger="click"
-                    placement="bottomRight"
-                    onOpenChange={(next) => {
-                        // 受控 Popover：open 由 forkOpen（forkDraft 命中）驱动；
-                        // 点击展开交给 child onClick（记 forkDraft），这里只处理关闭。
-                        if (!next) onForkCancel?.()
-                    }}
-                    content={
-                        <div style={{ width: 320 }}>
-                            <ForkConfirmView
-                                targetText={forkTargetText ?? null}
-                                loading={forkLoading ?? false}
-                                onConfirm={() => onForkConfirm?.()}
-                                onCancel={() => onForkCancel?.()}
-                            />
-                        </div>
-                    }
-                >
-                    <IconButton
-                        icon={<GitFork size={14} />}
-                        size={14}
-                        aria-label={t('chat.fork.title')}
-                        tooltip={forkActive ? undefined : t('chat.fork.title')}
-                        tooltipPlacement="top"
-                        active={forkActive}
-                        onClick={forkActive ? undefined : onFork}
-                    />
-                </Popover>
-            </span>
+            {showFork && (
+                <span className="msg-copy-btn">
+                    <Popover
+                        open={forkActive}
+                        trigger="click"
+                        placement="bottomRight"
+                        onOpenChange={(next) => {
+                            // 受控 Popover：open 由 forkOpen（forkDraft 命中）驱动；
+                            // 点击展开交给 child onClick（记 forkDraft），这里只处理关闭。
+                            if (!next) onForkCancel?.()
+                        }}
+                        content={
+                            <div style={{ width: 320 }}>
+                                <ForkConfirmView
+                                    targetText={forkTargetText ?? null}
+                                    loading={forkLoading ?? false}
+                                    onConfirm={() => onForkConfirm?.()}
+                                    onCancel={() => onForkCancel?.()}
+                                />
+                            </div>
+                        }
+                    >
+                        <IconButton
+                            icon={<GitFork size={14} />}
+                            size={14}
+                            aria-label={t('chat.fork.title')}
+                            tooltip={forkActive ? undefined : t('chat.fork.title')}
+                            tooltipPlacement="top"
+                            active={forkActive}
+                            onClick={forkActive ? undefined : onFork}
+                        />
+                    </Popover>
+                </span>
+            )}
         </span>
     )
 }
