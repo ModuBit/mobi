@@ -32,12 +32,15 @@ type TFunction = (key: string, options?: Record<string, unknown>) => string
  * 依赖查询的只有 parent 标题（useForkRowTitle）——两入口分离，非 fork 行零查询开销。
  */
 
-/** 激活失败原因码 → 展示文案（未知码回退通用文案；code 集合见 shared FORK_ERROR_CODES） */
+/** 激活失败原因码 → 展示文案（未知码回退通用文案；code 集合见 shared FORK_ERROR_CODES。
+ * 三个稳定码各自成文案：transcript 缺失（换机/文件丢失）与父会话回退（需回父会话重新分叉）
+ * 恢复方式不同，不得共用） */
 export function resolveForkErrorText(forkError: ForkErrorMetadata, t: TFunction): string {
     switch (forkError.code) {
         case 'anchor-invalidated':
-        case 'parent-transcript-missing':
             return t('session.fork.errorReason.anchorInvalidated')
+        case 'parent-transcript-missing':
+            return t('session.fork.errorReason.parentTranscriptMissing')
         case 'activation-failed':
             return t('session.fork.errorReason.activationFailed')
         default:

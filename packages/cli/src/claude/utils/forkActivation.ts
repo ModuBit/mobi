@@ -124,7 +124,9 @@ export function withForkError(metadata: Metadata, code: string, detail?: string)
 
 /**
  * fork 激活失败的用户可见文案（经 sendSessionEvent 落时间线，错误态）。
- * anchor_gone 对齐 spec §5.3 的「父会话已回退，分叉点失效」；resume_failed 附带细节。
+ * 刻意英文：CLI 无 web i18n 通道，本地化展示由 forkError → web resolveForkErrorText
+ * 按码映射承担（状态渠道）；时间线文案对齐 CC 系统消息与 messageBuffer 的英文惯例，
+ * 避免同一失败出现中英两个漂移来源。anchor_gone 对齐 spec §5.3；resume_failed 附带细节。
  * 两种失败均保留 forkFrom（badge 不解除）：会话可删除，重发消息即重试。
  */
 export function forkActivationFailureMessage(
@@ -132,7 +134,7 @@ export function forkActivationFailureMessage(
     detail?: string,
 ): string {
     if (reason === 'anchor_gone') {
-        return '分叉激活失败：父会话已回退，分叉点失效。可删除该分叉会话，或回到父会话重新分叉。'
+        return 'Fork activation failed: the parent session was rewound past the fork anchor. You can delete this forked session, or go back to the parent session and fork again.'
     }
-    return `分叉激活失败：父会话加载失败（${detail ?? '未知原因'}）。可重发消息重试，或删除该分叉会话。`
+    return `Fork activation failed: failed to load the parent session (${detail ?? 'unknown reason'}). Resend a message to retry, or delete this forked session.`
 }

@@ -48,15 +48,17 @@ export function isTurnStartContent(content: unknown): boolean {
 
 /** 向 seq 下方找锚点所在 turn 的最近起点（主链 persistent 未删行）。
  *  sidechain 行不参与判定——侧链可能嵌 user 信封，但 turn 归组只看主链（与 web trimByTurnBoundary 同前提：
- *  sidechain 全部落在 user turn 之内不跨 turn）。找不到返回 null（理论不可达：任何锚点下方必有 user 或边界）。 */
+ *  sidechain 全部落在 user turn 之内不跨 turn）。找不到返回 null（理论不可达：任何锚点下方必有 user 或边界）。
+ *  iterate 流式逐行判定、命中即止——行 content 可达数十 KB，.all() 会把整段范围物化进内存。 */
 export function findTurnStartSeq(db: Database, sessionId: string, upToSeq: number): number | null {
     const rows = db.prepare(
         `SELECT seq, content FROM messages
          WHERE session_id = ? AND seq <= ? AND deleted_at IS NULL
            AND is_sidechain = 0 AND category = 'persistent'
          ORDER BY seq DESC`
-    ).all(sessionId, upToSeq) as Array<{ seq: number; content: string }>
-    for (const row of rows) {
+    ).iterate(sessionId, upToSeq)
+    for (const row of rows as IterableIterator<{ seq: number; content: string }>) {
+        // for..of 提前返回自动 IteratorClose，游标即止
         if (isTurnStartContent(safeJsonParse(row.content))) {
             return row.seq
         }

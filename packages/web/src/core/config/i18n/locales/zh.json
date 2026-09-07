@@ -148,6 +148,7 @@
             "errorBadge": "激活失败",
             "errorReason": {
                 "anchorInvalidated": "父会话已回退，分叉点失效",
+                "parentTranscriptMissing": "父会话的本地记录文件缺失（如更换设备），无法激活分叉",
                 "activationFailed": "分叉激活失败，恢复连接后重新发送消息即可重试",
                 "unknown": "分叉激活失败"
             }

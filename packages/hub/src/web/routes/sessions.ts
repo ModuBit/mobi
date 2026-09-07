@@ -93,6 +93,7 @@ const forkSchema = z.object({
  */
 const FORK_FAILURE_STATUS: Record<Exclude<Exclude<ForkSessionResult, { ok: true }>['reason'], 'access-denied' | 'session-not-found'>, 400 | 409> = {
     'anchor-not-found': 400,
+    'anchor-not-agent': 400,
     'anchor-before-boundary': 400,
     'turn-start-not-found': 400,
     'parent-native-missing': 409,
@@ -103,6 +104,7 @@ const FORK_FAILURE_MESSAGES: Record<Exclude<ForkSessionResult, { ok: true }>['re
     'session-not-found': 'Session not found',
     'access-denied': 'Session access denied',
     'anchor-not-found': 'Anchor message not found',
+    'anchor-not-agent': 'Anchor must be an agent reply',
     'anchor-before-boundary': 'Anchor message is before the last context boundary',
     'turn-start-not-found': 'Turn start not found',
     'parent-native-missing': 'Session has no native session id to fork from',

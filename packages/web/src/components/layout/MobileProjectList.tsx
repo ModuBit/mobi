@@ -36,11 +36,13 @@ import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinne
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useAssignSessionProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMobiApi } from '@/core/data/api/client'
+import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { ForkRowTitle } from './ForkRowTitle'
+import { resolveForkSessionState } from './forkSessionLabel'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
@@ -277,6 +279,8 @@ export function MobileProjectList() {
 
     // ActionSheet 当前操作的 session
     const actionSession = actionSessionId ? findSession(actionSessionId) : null
+    // 非 fork 行的 Drawer 标题（fork 行由 ForkRowTitle 承担）
+    const actionSessionDisplayTitle = actionSession ? getSessionDisplayName(actionSession) : ''
 
     return (
         <>
@@ -344,7 +348,13 @@ export function MobileProjectList() {
                 placement="bottom"
                 open={!!actionSessionId}
                 onClose={closeActionSheet}
-                title={actionSession ? <ForkRowTitle session={actionSession}>{(title) => title}</ForkRowTitle> : undefined}
+                title={actionSession ? (
+                    // 仅 fork 行挂 ForkRowTitle（parent 标题查询在非 fork 行会走 pendingFallback
+                    // 恒显示「分叉会话」兜底，SessionRow/MobileSessionItem 同一门控）
+                    resolveForkSessionState(actionSession, t).isForkRow
+                        ? <ForkRowTitle session={actionSession}>{(title) => title}</ForkRowTitle>
+                        : actionSessionDisplayTitle
+                ) : undefined}
                 closable={false}
                 styles={{ body: { padding: '8px 0 max(24px, env(safe-area-inset-bottom))' } }}
             >

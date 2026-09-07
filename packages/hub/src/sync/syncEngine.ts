@@ -15,7 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, unwrapRoleWrappedRecordEnvelope, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import { randomUUID } from 'node:crypto'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
@@ -81,6 +81,7 @@ export type ForkSessionResult =
         | 'session-not-found'        // parent 会话不存在（含删除中/已删）
         | 'access-denied'            // parent 会话跨 namespace
         | 'anchor-not-found'         // 锚点行不存在或不属于该会话
+        | 'anchor-not-agent'          // 锚点不是 agent 回复行（直调 API 防线，spec §2）
         | 'anchor-before-boundary'   // 锚点不在边界后（compact/clear 之前，spec §2）
         | 'turn-start-not-found'     // 锚点所在 turn 起点找不到（理论不可达，防御）
         | 'parent-native-missing'    // parent 无 nativeSessionId（激活无 resumeToken）
@@ -509,6 +510,14 @@ export class SyncEngine {
             return { ok: false, reason: 'anchor-not-found' }
         }
         const anchor = anchorRows[0]
+
+        // 锚点必须是 agent 回复行（spec §2「任意历史轮次的 result」）——web 入口只挂 agent
+        // 回复落点，此处是直调 API 防线：user/事件行的 nativeId（尤其合并批 1:N 共享时取批首行）
+        // 会让 [turnStart..anchor] 切割落在批中间，产出语义不完整的 fork
+        const anchorRecord = unwrapRoleWrappedRecordEnvelope(anchor.content)
+        if (!anchorRecord || anchorRecord.role !== 'agent') {
+            return { ok: false, reason: 'anchor-not-agent' }
+        }
 
         // 边界判据（fork/rewind 入口共用）：seq <= contextBoundarySeq = 边界之前，不可 fork（spec §2）
         const boundarySeq = this.store.contextBoundary.resolve(sessionId)

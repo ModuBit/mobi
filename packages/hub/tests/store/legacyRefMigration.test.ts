@@ -62,7 +62,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
     test('text+ref 合并为单 text block，标题取 parent name', () => {
         const store = makeStore()
         makeSession(store, 'p-1', { name: '我的项目', path: '/tmp/proj' })
-        makeSession(store, 'fork-1', {})
+        makeSession(store, 'fork-1', { forkedFrom: { sessionId: 'p-root' } })
         seedLegacyProvenance(store, 'fork-1', 'p-1')
 
         const result = migrateLegacyRefMessages(getDb(store))
@@ -78,7 +78,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
     test('幂等：二次运行 rewritten=0（改写后行不再命中 LIKE）', () => {
         const store = makeStore()
         makeSession(store, 'p-1', { name: 'x' })
-        makeSession(store, 'fork-1', {})
+        makeSession(store, 'fork-1', { forkedFrom: { sessionId: 'p-root' } })
         seedLegacyProvenance(store, 'fork-1', 'p-1')
 
         migrateLegacyRefMessages(getDb(store))
@@ -87,7 +87,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
 
     test('parent 已删 → 冻结降级文案「已删除的会话」', () => {
         const store = makeStore()
-        makeSession(store, 'fork-1', {})
+        makeSession(store, 'fork-1', { forkedFrom: { sessionId: 'p-root' } })
         seedLegacyProvenance(store, 'fork-1', 'p-gone')
 
         migrateLegacyRefMessages(getDb(store))
@@ -99,7 +99,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
     test('无 name 时标题取 path 基名', () => {
         const store = makeStore()
         makeSession(store, 'p-1', { path: '/home/u/my-proj' })
-        makeSession(store, 'fork-1', {})
+        makeSession(store, 'fork-1', { forkedFrom: { sessionId: 'p-root' } })
         seedLegacyProvenance(store, 'fork-1', 'p-1')
 
         migrateLegacyRefMessages(getDb(store))
@@ -109,7 +109,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
 
     test('范围守卫：agent 消息含 ref 字面量不改写；custom 无 ref 不改写；未注册 targetType 整行保守跳过', () => {
         const store = makeStore()
-        makeSession(store, 's-1', { name: 'x' })
+        makeSession(store, 's-1', { name: 'x', forkedFrom: { sessionId: 'p-root' } })
 
         // agent 信封透传（tool 输出文本碰巧含字面量）
         store.messages.addMessage('s-1', {

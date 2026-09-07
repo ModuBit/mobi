@@ -68,10 +68,12 @@ const DOMAIN_RE = /^[a-z0-9-]+$/
 const ACTION_RE = /^[a-z0-9-]+$/
 
 /**
- * 解析 mobi URI 为动作（畸形返回 null，已注册但参数校验失败返回 { key: null } 判别式）。
+ * 解析 mobi URI 为动作，返回三态：RegisteredAction（已注册且参数过校验）/
+ * UnregisteredAction（语法合法但 domain/action 未注册，{ key: null } 判别式）/ null（畸形）。
  *
- * - 未注册/畸形与「注册了但参数坏」在 web 侧 toast 文案需区分（不支持的操作 vs 无法识别的参数），
- *   故返回三态：RegisteredAction | UnregisteredAction | null
+ * 畸形桶包含「已注册但参数校验失败」——web 消费端对 null 与 { key: null } 统一 toast
+ * 「不支持的操作」（spec Q10-A，见 parseActionUri 内注释）；未来若需细分「参数无法识别」
+ * 文案，须引入第四态而非复用 { key: null }（那会把注册动作误分类为未注册）。
  */
 export type UnregisteredAction = { key: null; domain: string; action: string }
 

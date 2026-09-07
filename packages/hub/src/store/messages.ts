@@ -635,12 +635,14 @@ export function getMaxSeq(db: Database, sessionId: string): number {
  * 按未删行 seq 降序逐行判定 isContextBoundaryContent，命中即返回；无边界返回 0。
  * 软删行不计入——与读取路径同口径（rewind 截断跨过边界行时，指针回填落到更早边界或 0）。
  * 仅在字段缺失的回填路径调用（一次性 O(n) 扫描），热路径不经过此处。
+ * iterate 流式逐行判定、命中即止——行 content 可达数十 KB，.all() 会把全表物化进内存。
  */
 export function findLatestBoundarySeq(db: Database, sessionId: string): number {
     const rows = db.prepare(
         'SELECT seq, content FROM messages WHERE session_id = ? AND deleted_at IS NULL ORDER BY seq DESC'
-    ).all(sessionId) as Array<{ seq: number; content: string }>
-    for (const row of rows) {
+    ).iterate(sessionId)
+    for (const row of rows as IterableIterator<{ seq: number; content: string }>) {
+        // for..of 提前返回自动 IteratorClose，游标即止
         if (isContextBoundaryContent(safeJsonParse(row.content))) {
             return row.seq
         }

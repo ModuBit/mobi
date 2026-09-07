@@ -116,6 +116,16 @@ export function unwrapOutputMessage(messageContent: unknown): UnwrappedOutputMes
 }
 
 /**
+ * 从 output 信封提取 Anthropic message.id（snapshot 与 full 共享的稳定关联键）。
+ * snapshot↔full 关联清理（web messageCache）与 reducer 双保险去重键（web normalize）
+ * 必须同键——单点实现，消费方直接 import（此前两处手写下钻靠注释声明同源，易漂移）。
+ */
+export function extractAnthropicMessageId(messageContent: unknown): string | null {
+    const id = unwrapOutputMessage(messageContent)?.message?.id
+    return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/**
  * 判断 Claude 系统消息子类型是否在聊天中可见
  */
 export function isClaudeChatVisibleSystemSubtype(subtype: unknown): subtype is string {

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { unwrapRoleWrappedRecordEnvelope, unwrapOutputMessage } from '@mobi/shared/messages'
-import { normalizeContentBlocks, safeStringify } from '@mobi/shared'
+import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
+import { extractAnthropicMessageId, normalizeContentBlocks, safeStringify } from '@mobi/shared'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import type { NormalizedMessage, MessageMeta } from './types'
 import { isSkippableAgentContent, normalizeAgentRecord } from './normalizeAgent'
@@ -26,18 +26,9 @@ import { initDiag, recordSnapshot } from '@/core/lib/diag'
 initDiag()
 
 /**
- * 从 DecryptedMessage.content 信封提取 Anthropic message.id。
- * snapshot 与 full 共享同一 message.id（同一条 Anthropic message 的流式阶段与最终落库），
- * 是双保险第二道（reducer 按 (messageId, type) 去重）的键。
- * 解包走 shared 的 `unwrapOutputMessage` 单点（与 normalizeAgent 等消费方同一信封视图），
- * 不再手写 `content.data.message` 逐级下钻；非 output 信封（user/event/未知形态）返回 null。
- * 与 messageCache 的 extractMessageId 同源逻辑，不直接引用以避免 domain→cache 反向依赖。
+ * 从 DecryptedMessage.content 信封提取 Anthropic message.id：
+ * 单点实现在 shared（snapshot↔full 关联清理与 reducer 去重键同源），直接 import。
  */
-function extractAnthropicMessageId(content: unknown): string | null {
-    const unwrapped = unwrapOutputMessage(content)
-    const id = unwrapped?.message?.id
-    return typeof id === 'string' ? id : null
-}
 
 /**
  * 标准化解密消息

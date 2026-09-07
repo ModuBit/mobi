@@ -148,6 +148,7 @@
             "errorBadge": "Activation failed",
             "errorReason": {
                 "anchorInvalidated": "Parent session was rewound past the fork point; the fork anchor is no longer valid",
+                "parentTranscriptMissing": "The parent session's local transcript file is missing (e.g. after switching devices); the fork cannot be activated",
                 "activationFailed": "Fork activation failed. Re-send a message once the connection is restored to retry",
                 "unknown": "Fork activation failed"
             }

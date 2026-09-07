@@ -277,15 +277,28 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * fork 激活收口（fork-session spec §5.2 步骤 4/5）：init 返回预生成 fork id 时，
      * CC 已物化 fork transcript——清除本地激活簿记并经 updateMetadata（现有版本化通道）
      * 上报 hub 清除 forkFrom（omitForkFrom 保留持久溯源 forkedFrom，badge 解除）。
-     * 幂等：forkActivation 置 null 后的 init（compact 切换 / 重启轮）不再触发；
-     * init session_id 与预生成 id 不符（异常路径）不上报，激活簿记保留待错误/重试路径收口。
+     * 幂等：forkActivation 置 null 后的 init（compact 切换 / 重启轮）不再触发。
+     * init 返回非预生成 id（SDK 未采纳 sessionId option，异常路径）→ 按激活失败双通道
+     * 收口（forkError + 时间线消息，forkFrom 保留供重试/删除）：若只静默保留簿记，
+     * 下条消息会从父 transcript 重演 fork、丢失首轮上下文且每条消息循环复发。
      */
     private settleForkActivation(sessionId: string | undefined): void {
         const activation = this.session.forkActivation
-        if (!activation || !sessionId || sessionId !== activation.forkNativeId) return
+        if (!activation) return
+        if (!sessionId) return // init 未返回 id：保持簿记，等后续 init 收口
+        if (sessionId === activation.forkNativeId) {
+            this.session.forkActivation = null
+            logger.debug('[remote]: fork activated, clearing forkFrom metadata');
+            this.session.client.updateMetadata(omitForkFrom)
+            return
+        }
         this.session.forkActivation = null
-        logger.debug('[remote]: fork activated, clearing forkFrom metadata');
-        this.session.client.updateMetadata(omitForkFrom)
+        logger.warn(`[remote]: fork activation id mismatch: init=${sessionId}, expected=${activation.forkNativeId}`)
+        this.session.client.updateMetadata((metadata) => withForkError(metadata, 'activation-failed', `init session id mismatch: ${sessionId}`))
+        this.session.client.sendSessionEvent({
+            type: 'message',
+            message: forkActivationFailureMessage('resume_failed', `session id mismatch (${sessionId})`),
+        })
     }
 
     /**

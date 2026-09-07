@@ -141,6 +141,22 @@ describe('SyncEngine.forkSession', () => {
         }
     })
 
+    test('锚点是 user 行（直调 API 防线）→ anchor-not-agent', () => {
+        const h = makeEngine()
+        try {
+            const { parent } = seedParent(h)
+            // userMsg 行默认无 nativeId——直插一个带 nativeId 的 user 行验证角色守卫
+            h.store.messages.addMessage(
+                parent.id, userMsg('带 nativeId 的用户行'), 'l-user',
+                'persistent', { nativeId: 'user-native' },
+            )
+            const result = h.engine.forkSession(parent.id, 'user-native', 'default')
+            expect(result).toEqual({ ok: false, reason: 'anchor-not-agent' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
     test('会话不存在 / 跨 namespace → session-not-found', () => {
         const h = makeEngine()
         try {

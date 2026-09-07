@@ -30,7 +30,8 @@ import { resolveSessionTitle } from './sessionFork'
  *
  * 范围守卫：只动 `role === 'custom'` 且 content 为 block 数组的信封（ref 的唯一生产者）——
  * agent 消息是 CC 原始结构透传，tool 输出文本里碰巧含 `"type":"ref"` 字面量的行不受影响。
- * LIKE 全量扫描仅启动时一次，量级可接受；存量行归零后等价于空扫描。
+ * 扫描范围限定 fork 会话行（见函数内注释），存量行归零后每轮启动只剩 sessions 小表的
+ * LIKE 筛选（fork 行数有限），无 messages 全表扫描。
  */
 
 /** 迁移结果（观测用，hub 启动日志可打点） */
@@ -42,14 +43,20 @@ export interface LegacyRefMigrationResult {
 }
 
 export function migrateLegacyRefMessages(db: Database): LegacyRefMigrationResult {
+    // 扫描范围收窄：ref 的唯一生产者是 fork 溯源消息，而溯源消息只存在于 fork 会话行
+    // （metadata.forkedFrom 在场）。sessions 表量级远小于 messages，先 LIKE 筛出 fork 行，
+    // 再按 session_id 索引过滤消息——避免每轮启动对 messages 全表做无前缀 LIKE 扫描
     const rows = db.prepare(
-        `SELECT id, content FROM messages WHERE content LIKE '%"type":"ref"%'`
+        `SELECT m.id, m.content FROM messages m
+         JOIN sessions s ON s.id = m.session_id
+         WHERE s.metadata LIKE '%forkedFrom%' AND m.content LIKE '%"type":"ref"%'`
     ).all() as Array<{ id: string; content: string }>
 
     // 标题解析：会话行存在走 resolveSessionTitle（name → path 基名 → id 前缀），
-    // 行不存在（parent 已删）冻结降级文案
+    // 行不存在（parent 已删）冻结降级文案；语句编译一次循环外复用
+    const titleStmt = db.prepare('SELECT metadata FROM sessions WHERE id = ?')
     const titleResolver = (sessionId: string): string => {
-        const row = db.prepare('SELECT metadata FROM sessions WHERE id = ?').get(sessionId) as { metadata: string | null } | null
+        const row = titleStmt.get(sessionId) as { metadata: string | null } | null
         if (!row) return '已删除的会话'
         return resolveSessionTitle(safeJsonParse(row.metadata), sessionId)
     }

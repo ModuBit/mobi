@@ -221,11 +221,10 @@ describe('withForkError（fork 失败上报：保留 forkFrom，叠加失败标�
     })
 })
 
-describe('forkActivationFailureMessage（错误态文案，reason 区分）', () => {
-    it('anchor_gone：明确「父会话已回退，分叉点失效」（spec §5.3 文案）', () => {
+describe('forkActivationFailureMessage（错误态文案，reason 区分；英文惯例见函数注释）', () => {
+    it('anchor_gone：明确「父会话已回退过分叉锚点」（spec §5.3 语义）', () => {
         const text = forkActivationFailureMessage('anchor_gone')
-        expect(text).toContain('父会话已回退')
-        expect(text).toContain('分叉点失效')
+        expect(text).toContain('rewound past the fork anchor')
     })
 
     it('resume_failed：携带失败细节，与 anchor_gone 文案可区分', () => {

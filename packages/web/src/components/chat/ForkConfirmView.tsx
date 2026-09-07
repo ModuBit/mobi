@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Spin } from 'antd'
 import styled from '@emotion/styled'
 import { GitFork, TriangleAlert } from 'lucide-react'
@@ -159,6 +159,12 @@ export function ForkConfirmView({ targetText, loading, onConfirm, onCancel }: Fo
     const { t } = useTranslation()
     // 已点选确认（loading 态选项转圈；loading 期间整卡禁用防重复提交）
     const [chosen, setChosen] = useState(false)
+
+    // loading 收尾即复位：失败后 Popover/Drawer 关闭重开时组件不卸载，chosen 残留会让
+    // 重试首帧直接渲染 Spin 而非 GitFork 图标（视觉跳变）
+    useEffect(() => {
+        if (!loading) setChosen(false)
+    }, [loading])
 
     return (
         <Root>

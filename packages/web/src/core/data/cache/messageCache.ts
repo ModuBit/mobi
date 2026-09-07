@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { isLifecycleAhead } from '@mobi/shared'
+import { extractAnthropicMessageId, isLifecycleAhead } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared'
 
 /** 从 DecryptedMessage.content 信封中提取 parentUuid */
@@ -31,21 +31,8 @@ export function extractParentUuid(content: unknown): string | null {
 
 /**
  * 从 output 信封提取 Anthropic message.id（snapshot 与 full 共享的稳定关联键）。
- * 与 domain/chat/normalize.ts 的 extractAnthropicMessageId 同源逻辑，不直接引用
- * 以避免 domain→cache 反向依赖。
+ * 单点实现下沉 shared（与 reducer 去重键同源），见 shared/messages.ts extractAnthropicMessageId。
  */
-export function extractAnthropicMessageId(content: unknown): string | null {
-    if (!content || typeof content !== 'object') return null
-    const envelope = content as Record<string, unknown>
-    const inner = envelope.content
-    if (!inner || typeof inner !== 'object') return null
-    const data = (inner as Record<string, unknown>).data
-    if (!data || typeof data !== 'object') return null
-    const message = (data as Record<string, unknown>).message
-    if (!message || typeof message !== 'object') return null
-    const id = (message as Record<string, unknown>).id
-    return typeof id === 'string' && id.length > 0 ? id : null
-}
 
 /**
  * 合并 native metadata（rewind 锚点），first-write-wins：只补旧值空缺的字段，
