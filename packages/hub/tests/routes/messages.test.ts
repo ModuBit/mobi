@@ -65,13 +65,16 @@ function makeMockEngine(opts: {
 }
 
 /** mock engine 捕获 POST /messages 透传给 sendMessage 的 payload */
-function makeSendEngine() {
+function makeSendEngine(opts: { active?: boolean; forkFrom?: unknown } = {}) {
     const sent: { sessionId: string; payload: unknown }[] = []
     const engine = {
         resolveSessionAccess: (_id: string, _ns: string) => ({
             ok: true as const,
             sessionId: 'test-session-1',
-            session: mockSession,
+            session: { ...mockSession, active: opts.active ?? true, metadata: {
+                ...mockSession.metadata,
+                ...(opts.forkFrom ? { forkFrom: opts.forkFrom } : {}),
+            } },
         }),
         sendMessage: async (sessionId: string, payload: unknown) => {
             sent.push({ sessionId, payload })
@@ -110,6 +113,23 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
             sessionId: 'test-session-1',
             payload: { content: 'hi', localId: 'l1', sentFrom: 'webapp' },
         }])
+    })
+
+    test('inactive 非 fork 会话 → 409 门控保持', async () => {
+        const { engine, sent } = makeSendEngine({ active: false })
+        const res = await postMessage(engine, { content: 'hi' })
+        expect(res.status).toBe(409)
+        expect(sent).toEqual([])
+    })
+
+    test('inactive 待激活 fork 会话 → 放行入队（激活窗口首条消息，spec §4.3/§5.3）', async () => {
+        const { engine, sent } = makeSendEngine({
+            active: false,
+            forkFrom: { parentSessionId: 'p1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' },
+        })
+        const res = await postMessage(engine, { content: 'hi' })
+        expect(res.status).toBe(200)
+        expect(sent).toHaveLength(1)
     })
 
     test('新格式：block 数组直传', async () => {

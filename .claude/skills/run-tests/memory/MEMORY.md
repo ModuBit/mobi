@@ -6,7 +6,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [浏览器连接](browser-connect.md) — Chrome DevTools MCP 复用、僵尸进程清理
 - [登录](login.md) — token 输入 + Connect 提交、验证跳转
 - [自定义输入框操作](input-box.md) — click → Ctrl+A → type_text 通用规范（登录 / 聊天共用）
-- [创建会话](create-session.md) — 项目即环境：可搜索下拉选项目 / 下拉底部新建项目自动回填 / 发消息即建
+- [创建会话](create-session.md) — 项目即环境：可搜索下拉选项目 / 下拉底部新建项目自动回填 / 发消息即建 / **权限模式残留须显式选回 Auto**（plan-mode 用例污染 localStorage）
 - [项目实体化 UI](create-project.md) — 建项目 / 项目内新建会话 / 归入项目往返 / 编辑 folders / 删项目（Escape 关 modal / hover 按钮 evaluate click 坑）
 - [终端游离会话](terminal-session.md) — script 造 PTY 后台跑 CLI，会话入 Recent
 - [文件树验证](file-tree-verify.md) — 展开 inspector 文件树 / 虚拟滚动下数条目（看 network 响应非 DOM）/ 截断字段
@@ -28,3 +28,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [上下文水位验证](waterline-verify.md) — assistant usage 落库断言 / contextUsage=四项和瞬时水位 / 圆环 svg[role=button] 双端断言 / 两把尺子别混
 - [跨会话消息可见性验证](cross-session-visibility-verify.md) — hook 观测落库+标签全链路 / 审批窗口入站消息被 CC 丢弃的坑 / 未 prompt 场景须真机验证
 - [Agent drawer 验证](agent-drawer-verify.md) — 运行中/已完成两种 drawer 入口 / 实时增长采样 / 后台任务 runtime_state DB 断言 / fill 不触发 React 状态坑
+- [fork 分叉会话验证](fork-verify.md) — fork API 直调 / 复制完整性 SQL 断言 / 激活探针 / P0+P1 已修回归通过 / 已知问题：激活首条消息 409 竞态（幽灵气泡）

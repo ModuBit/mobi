@@ -95,11 +95,17 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        // 待激活分叉会话（forkFrom 在场）放行入队：激活窗口期的首条消息排队，
+        // CLI 激活后消费（spec §4.3/§5.3——web 发送侧同步触发 resume spawn，
+        // 600ms+ 的 spawn 窗口内 409 会产生幽灵乐观气泡，E2E 实证）。其余 inactive 会话维持门控
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
-        const sessionId = sessionResult.sessionId
+        const { sessionId, session } = sessionResult
+        if (!session.active && !session.metadata?.forkFrom) {
+            return c.json({ error: 'Session is inactive' }, 409)
+        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = sendMessageBodySchema.safeParse(body)
