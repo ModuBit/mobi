@@ -196,7 +196,10 @@ export class ContextUsageTracker {
             this.memory.lastMaxTokens = rawMax
             this.memory.lastCcWindowTokens = summary.rawMaxTokens > 0 ? summary.rawMaxTokens : 0
             const breakdown = extractBreakdown(summary) ?? undefined
-            if (breakdown) this.memory.lastBreakdown = breakdown
+            // 启动快照不缓存进 lastBreakdown：采样时机注定早于 MCP 就绪（/clear 重启瞬间
+            // MCP server 尚未连接完成，CC 类目里没有 MCP tools），缓存会让这份不完整明细
+            // 随首 turn 的实时上报持续扩散（总量/明细口径错位），直到首个 result 才自愈。
+            // 快照只随本次启动上报发出，首 turn 流式期间实时上报不带明细，result 刷新后恢复
             if (summary.totalTokens <= 0 && !breakdown) return  // 全空响应不产出 0 水位噪声
             this.channels.reportUsage({
                 totalTokens: summary.totalTokens,

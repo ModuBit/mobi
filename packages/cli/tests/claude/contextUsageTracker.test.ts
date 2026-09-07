@@ -213,18 +213,21 @@ describe('onCompactBoundary（压缩后上报）', () => {
 })
 
 describe('collectStartupUsage（query 启动首轮前水位）', () => {
-    it('无窗口记忆：rawMaxTokens 采纳 + 细分缓存 + 静态基线读数上报', async () => {
+    it('无窗口记忆：rawMaxTokens 采纳 + 静态基线读数上报；细分不缓存（不完整快照不得随实时上报扩散）', async () => {
         const { tracker, reportUsage } = makeTracker()
         const getContextUsage = vi.fn(async () => SUMMARY_WITH_BREAKDOWN(400_000))
         await tracker.collectStartupUsage({ getContextUsage } as never)
         expect(reportUsage).toHaveBeenCalledTimes(1)
         expect(reportUsage).toHaveBeenCalledWith({
             totalTokens: 40_000, maxTokens: 400_000, percentage: 10, costUsd: 0,
-            breakdown: EXPECTED_BREAKDOWN,
+            breakdown: EXPECTED_BREAKDOWN,  // 启动上报本身仍携带快照明细
         })
-        // 窗口记忆已落：后续流式上报不触发猜测
+        // 启动采样早于 MCP 就绪（快照缺 MCP tools 类目），不缓存 → 后续流式上报不带明细
         tracker.onAssistantUsage(U(100, 0, 10, 0))
-        expect(reportUsage).toHaveBeenLastCalledWith(expect.objectContaining({ maxTokens: 400_000 }))
+        expect(reportUsage).toHaveBeenLastCalledWith({
+            totalTokens: 110, maxTokens: 400_000, percentage: 110 / 400_000 * 100, costUsd: 0,
+            inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheCreationTokens: 0,
+        })  // 无 breakdown，等首个 result 的 fetchSummary 刷新
     })
 
     it('rawMaxTokens=0（渠道不支持）→ 按 summary.model 猜测兜底', async () => {
