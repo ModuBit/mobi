@@ -111,18 +111,49 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 4px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {visible.map((child) => (
-                    <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ minWidth: 0, flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, color: token.colorTextSecondary }}>
-                            <span style={{ marginRight: 8, display: 'inline-block', width: 16, textAlign: 'center', verticalAlign: 'middle' }}>
-                                <TaskStateIcon state={child.tool.state} />
-                            </span>
-                            <span style={{ verticalAlign: 'middle', wordBreak: 'break-all' }}>
-                                {formatTaskChildLabel(child, metadata)}
-                            </span>
+                {visible.map((child) => {
+                    const presentation = getToolPresentation({
+                        toolName: child.tool.name,
+                        input: child.tool.input,
+                        result: child.tool.result,
+                        childrenCount: child.children.length,
+                        description: child.tool.description,
+                        metadata
+                    })
+                    const row = presentation.row
+                    return (
+                        <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ minWidth: 0, flex: 1, fontSize: 11, color: token.colorTextSecondary }}>
+                                <span style={{ marginRight: 8, display: 'inline-block', width: 16, textAlign: 'center', verticalAlign: 'middle' }}>
+                                    <TaskStateIcon state={child.tool.state} />
+                                </span>
+                                {row?.chip ? (
+                                    // 工具行新形态（与顶层工具卡同一推导单源）：subagent 的
+                                    // Edit/Write 等子调用同样动词+chip+统计，chip 点击打开文件
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, verticalAlign: 'middle', minWidth: 0 }}>
+                                        <span style={{ fontWeight: 600 }}>{row.verb}</span>
+                                        {row.rowMeta ? (
+                                            <span style={{ color: token.colorTextTertiary }}>{row.rowMeta}</span>
+                                        ) : null}
+                                        <FileChip chip={row.chip} />
+                                        {row.stats ? (
+                                            <span style={{ fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                                                <span style={{ color: token.colorSuccess }}>+{row.stats.add}</span>
+                                                {row.stats.del > 0 ? (
+                                                    <span style={{ color: token.colorError, marginLeft: 4 }}>−{row.stats.del}</span>
+                                                ) : null}
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                ) : (
+                                    <span style={{ fontFamily: 'var(--font-mono)', verticalAlign: 'middle', wordBreak: 'break-all' }}>
+                                        {presentation.title}
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
                 {remaining > 0 ? (
                     <div style={{ fontSize: 11, color: token.colorTextTertiary, fontStyle: 'italic' }}>
                         (+{remaining} more)
@@ -131,24 +162,6 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
             </div>
         </div>
     )
-}
-
-// 格式化 Task 子任务标签
-function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSummary | null): string {
-    const presentation = getToolPresentation({
-        toolName: child.tool.name,
-        input: child.tool.input,
-        result: child.tool.result,
-        childrenCount: child.children.length,
-        description: child.tool.description,
-        metadata
-    })
-
-    if (presentation.subtitle) {
-        return truncate(`${presentation.title}: ${presentation.subtitle}`, 140)
-    }
-
-    return presentation.title
 }
 
 /** 提取 Agent 工具的 prompt 文本 */

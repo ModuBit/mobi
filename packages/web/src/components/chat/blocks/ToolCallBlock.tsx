@@ -30,6 +30,7 @@ import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { FilePathText } from '@/components/ui/FilePathText'
+import { FileChip } from '@/components/ui/FileChip'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
 import { formatAgentMetrics } from '@/core/lib/metricsFormat'
@@ -338,7 +339,29 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                 }
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-                        {toolPresentation.isFilePath ? (
+                        {toolPresentation.row?.chip ? (
+                            // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
+                            // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起
+                            <>
+                                <span style={{ fontWeight: 500, fontSize: 13, flexShrink: 0 }}>
+                                    {toolPresentation.row.verb}
+                                </span>
+                                {toolPresentation.row.rowMeta && (
+                                    <span style={{ fontSize: 11, color: token.colorTextTertiary, flexShrink: 0 }}>
+                                        {toolPresentation.row.rowMeta}
+                                    </span>
+                                )}
+                                <FileChip chip={toolPresentation.row.chip} />
+                                {toolPresentation.row.stats && (
+                                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                        <span style={{ color: token.colorSuccess }}>+{toolPresentation.row.stats.add}</span>
+                                        {toolPresentation.row.stats.del > 0 && (
+                                            <span style={{ color: token.colorError, marginLeft: 4 }}>−{toolPresentation.row.stats.del}</span>
+                                        )}
+                                    </span>
+                                )}
+                            </>
+                        ) : toolPresentation.isFilePath ? (
                             <FilePathText path={toolPresentation.title} />
                         ) : (
                             <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>

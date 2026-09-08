@@ -58,6 +58,24 @@ vi.mock('@/components/ui/FilePathText', () => ({
     FilePathText: ({ path }: { path: string }) => <span>{path}</span>,
 }))
 
+// 工具行新形态的 FileChip 内部走守卫链（router hooks + api），文件级 mock
+vi.mock('@tanstack/react-router', () => ({
+    useNavigate: () => vi.fn(),
+    useParams: () => ({ sessionId: 's1' }),
+}))
+vi.mock('@/core/data/api/client', async (orig) => {
+    const actual = await orig<typeof import('@/core/data/api/client')>()
+    return {
+        ...actual,
+        useMobiApi: () => ({
+            sessions: {
+                get: async () => ({ data: { session: { id: 's1', active: true } } }),
+                resume: vi.fn(async () => ({ data: { sessionId: 's1' } })),
+            },
+        }),
+    }
+})
+
 import { ToolCallRenderer } from '@/components/chat/blocks/ToolCallBlock'
 
 function makeWriteBlock(overrides: Partial<{ state: ChatBlock extends { kind: 'tool-call' } ? import('@/domain/chat').ChatToolCall['state'] : never }> = {}): Extract<ChatBlock, { kind: 'tool-call' }> {
@@ -135,6 +153,73 @@ describe('ToolCallRenderer 审批中（pending）渲染', () => {
 
         expect(screen.getByTestId('tool-call-think')).toBeInTheDocument()
         expect(screen.getByTestId('tool-call-title').textContent).toContain('Write')
+    })
+})
+
+describe('ToolCallRenderer 工具行新形态（动词 + chip + 统计）', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+    afterEach(cleanup)
+
+    function makeEditBlock(): Extract<ChatBlock, { kind: 'tool-call' }> {
+        return {
+            kind: 'tool-call',
+            id: 'tool-edit',
+            localId: 'local-2',
+            createdAt: 1000,
+            tool: {
+                id: 'tool-edit',
+                name: 'Edit',
+                input: { file_path: '/demo/src/a.ts', old_string: 'a\nb', new_string: 'x\ny\nz' },
+                state: 'completed',
+                createdAt: 1000,
+                startedAt: null,
+                completedAt: null,
+                description: null,
+                permission: undefined,
+            },
+            children: [],
+        } as unknown as Extract<ChatBlock, { kind: 'tool-call' }>
+    }
+
+    it('Edit 标题渲染动词 + 可点击 chip + diff 统计，替代 Edit(path) 文字形态', () => {
+        render(<ToolCallRenderer block={makeEditBlock()} metadata={null} sessionId="s1" />)
+        const title = screen.getByTestId('tool-call-title')
+        const chip = title.querySelector('a.tool-chip-link')
+        expect(chip).not.toBeNull()
+        expect(chip).toHaveAttribute('href', expect.stringContaining('mobi://file/open'))
+        expect(title.textContent).toContain('Edit')
+        expect(title.textContent).toContain('+3')
+        expect(title.textContent).toContain('−2')
+        // 旧形态文字不再出现
+        expect(title.textContent).not.toContain('Edit(/demo/src/a.ts)')
+    })
+
+    it('Bash 标题 chip 为纯展示（无链接）', () => {
+        const block = {
+            kind: 'tool-call',
+            id: 'tool-bash',
+            localId: 'local-3',
+            createdAt: 1000,
+            tool: {
+                id: 'tool-bash',
+                name: 'Bash',
+                input: { command: 'bun run test' },
+                state: 'completed',
+                createdAt: 1000,
+                startedAt: null,
+                completedAt: null,
+                description: null,
+                permission: undefined,
+            },
+            children: [],
+        } as unknown as Extract<ChatBlock, { kind: 'tool-call' }>
+
+        render(<ToolCallRenderer block={block} metadata={null} sessionId="s1" />)
+        const title = screen.getByTestId('tool-call-title')
+        expect(title.textContent).toContain('bun run test')
+        expect(title.querySelector('a.tool-chip-link')).toBeNull()
     })
 })
 

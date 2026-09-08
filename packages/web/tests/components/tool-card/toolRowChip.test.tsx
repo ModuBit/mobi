@@ -165,6 +165,48 @@ describe('工具行新形态：纯展示 chip（Glob）', () => {
     })
 })
 
+describe('Task 卡子任务摘要行', () => {
+    it('subagent 的 Edit 子调用同样渲染动词+chip+统计（与顶层工具卡同一推导）', () => {
+        const editChild: ToolCallBlock = {
+            id: 'child-1',
+            kind: 'tool-call',
+            children: [],
+            tool: {
+                name: 'Edit',
+                input: { file_path: '/proj/src/child.ts', old_string: 'a\nb', new_string: 'x' },
+                result: undefined,
+                state: 'completed',
+                description: null,
+                startedAt: null,
+                createdAt: Date.now(),
+                permission: null,
+            },
+        } as ToolCallBlock
+        const taskBlock: ToolCallBlock = {
+            id: 'task-1',
+            kind: 'tool-call',
+            children: [editChild],
+            tool: {
+                name: 'Task',
+                input: { subagent_type: 'general-purpose', description: 'd', prompt: 'p' },
+                result: undefined,
+                state: 'completed',
+                description: null,
+                startedAt: null,
+                createdAt: Date.now(),
+                permission: null,
+            },
+        } as ToolCallBlock
+
+        renderCard(taskBlock)
+        const chip = screen.getByRole('link', { name: '/proj/src/child.ts' })
+        expect(chip).toHaveAttribute('href', expect.stringContaining('mobi://file/open'))
+        expect(screen.getByText('Edit')).toBeInTheDocument()
+        expect(screen.getByText('+1')).toBeInTheDocument()
+        expect(screen.getByText('−2')).toBeInTheDocument()
+    })
+})
+
 describe('非 minimal 卡维持 title 形态', () => {
     it('Bash 不渲染 chip（有完整 body 视图，header chip 冗余）', () => {
         renderCard(makeBlock('Bash', { command: 'bun run test' }))
