@@ -36,6 +36,11 @@ export function getInputStringAny(input: unknown, keys: string[]): string | null
     return null
 }
 
+/** 数一个文本的行数（按 \n split 口径；工具行推导与工具卡 subtitle 共用） */
+export function countLines(text: string): number {
+    return text.split('\n').length
+}
+
 /**
  * 截断文本
  */

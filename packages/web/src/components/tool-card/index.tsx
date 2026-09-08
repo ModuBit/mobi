@@ -38,7 +38,7 @@ import { getToolIcon, StatusStateIcon } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent, type ToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
-import { FileChip } from '@/components/ui/FileChip'
+import { ToolRowItems } from '@/components/ui/ToolRowItems'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
 
@@ -127,28 +127,11 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
                                 <span style={{ marginRight: 8, display: 'inline-block', width: 16, textAlign: 'center', verticalAlign: 'middle' }}>
                                     <TaskStateIcon state={child.tool.state} />
                                 </span>
-                                {row?.chip ? (
-                                    // 工具行新形态（与顶层工具卡同一推导单源）：subagent 的
+                                {row && row.chip ? (
+                                    // 工具行新形态（与消息列表同一共享渲染段）：subagent 的
                                     // Edit/Write 等子调用同样动词+chip+统计，chip 点击打开文件
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, verticalAlign: 'middle', minWidth: 0 }}>
-                                        <span style={{ fontWeight: 600 }}>{row.verb}</span>
-                                        {row.summary ? (
-                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto', minWidth: 0 }}>
-                                                {row.summary}
-                                            </span>
-                                        ) : null}
-                                        {row.rowMeta ? (
-                                            <span style={{ color: token.colorTextTertiary }}>{row.rowMeta}</span>
-                                        ) : null}
-                                        <FileChip chip={row.chip} />
-                                        {row.stats ? (
-                                            <span style={{ fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-                                                <span style={{ color: token.colorSuccess }}>+{row.stats.add}</span>
-                                                {row.stats.del > 0 ? (
-                                                    <span style={{ color: token.colorError, marginLeft: 4 }}>−{row.stats.del}</span>
-                                                ) : null}
-                                            </span>
-                                        ) : null}
+                                        <ToolRowItems row={row} dense />
                                     </span>
                                 ) : (
                                     <span style={{ fontFamily: 'var(--font-mono)', verticalAlign: 'middle', wordBreak: 'break-all' }}>
@@ -430,33 +413,12 @@ function ToolCardInner(props: ToolCardProps) {
                         <StatusStateIcon state={props.block.tool.state} />
                         {getToolIcon(toolName)}
                     </div>
-                    {presentation.row?.chip && presentation.minimal ? (
+                    {presentation.row && presentation.minimal ? (
                         // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
                         // 仅 minimal 行形态工具（四件套等）；chip 点击语义止于打开文件，
                         // 行其余区域点击语义仍是打开详情 Modal
                         <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 0', overflow: 'hidden' }}>
-                            <Text strong style={{ flexShrink: 0, fontSize: 13, lineHeight: '20px' }}>
-                                {presentation.row.verb}
-                            </Text>
-                            {presentation.row.summary ? (
-                                <Text type="secondary" style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto', minWidth: 0 }}>
-                                    {presentation.row.summary}
-                                </Text>
-                            ) : null}
-                            {presentation.row.rowMeta ? (
-                                <Text type="secondary" style={{ flexShrink: 0, fontSize: 12 }}>
-                                    {presentation.row.rowMeta}
-                                </Text>
-                            ) : null}
-                            <FileChip chip={presentation.row.chip} />
-                            {presentation.row.stats ? (
-                                <span style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
-                                    <span style={{ color: token.colorSuccess }}>+{presentation.row.stats.add}</span>
-                                    {presentation.row.stats.del > 0 ? (
-                                        <span style={{ color: token.colorError, marginLeft: 4 }}>−{presentation.row.stats.del}</span>
-                                    ) : null}
-                                </span>
-                            ) : null}
+                            <ToolRowItems row={presentation.row} />
                         </div>
                     ) : (
                         <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0' }}>

@@ -28,8 +28,18 @@ import type { ToolRowChip } from '@/core/lib/toolRow'
  *
  * 点击 stopPropagation：工具行本体的点击语义是展开详情，chip 的点击语义止于打开文件，
  * 两个目标物理分离（mockup 变体 A 定案）。
+ *
+ * 纯展示 chip（无 uri，会话中最常见——Bash/Grep/Glob）走零 hook 快路径：
+ * 守卫链（7 个 hook + Popconfirm）只在可点击变体上挂载，消息列表几十个 chip
+ * 不各养一份守卫订阅。
  */
 export const FileChip = memo(function FileChip({ chip }: { chip: ToolRowChip }) {
+    if (!chip.uri) return <span className="tool-chip">{chip.text}</span>
+    return <FileChipLink chip={chip} />
+})
+
+/** 可点击变体：守卫分发 + Popconfirm 恢复引导（与 ActionLink 同一 hook） */
+const FileChipLink = memo(function FileChipLink({ chip }: { chip: ToolRowChip }) {
     const { requestDispatch, popconfirmProps } = useGuardedActionDispatch()
 
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
@@ -38,18 +48,11 @@ export const FileChip = memo(function FileChip({ chip }: { chip: ToolRowChip }) 
         void requestDispatch(chip.uri!)
     }
 
-    const chipElement = chip.uri ? (
-        <a
-            href={chip.uri}
-            className="tool-chip tool-chip-link"
-            onClick={handleClick}
-        >
-            {chip.text}
-        </a>
-    ) : (
-        <span className="tool-chip">{chip.text}</span>
+    return (
+        <Popconfirm {...popconfirmProps}>
+            <a href={chip.uri} className="tool-chip tool-chip-link" onClick={handleClick}>
+                {chip.text}
+            </a>
+        </Popconfirm>
     )
-
-    if (!chip.uri) return chipElement
-    return <Popconfirm {...popconfirmProps}>{chipElement}</Popconfirm>
 })

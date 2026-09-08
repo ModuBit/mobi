@@ -16,7 +16,7 @@
 
 import { buildActionUri } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
-import { getInputStringAny } from './toolInputUtils'
+import { getInputStringAny, countLines } from './toolInputUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -69,11 +69,6 @@ const DISPLAY_ONLY_CHIP_KEYS: Record<string, string[]> = {
     WebSearch: ['query'],
 }
 
-/** 数一个文本的行数（与 knownTools countLines 同口径：按 \n split） */
-function countLines(text: string): number {
-    return text.split('\n').length
-}
-
 /** Edit 单次替换的增删行数：old 行数计删、new 行数计增（静态推算，非语义 diff） */
 function editStats(oldString: string, newString: string): ToolRowStats {
     return { add: countLines(newString), del: countLines(oldString) }
@@ -100,20 +95,22 @@ function inferFileBearingRow(toolName: string, input: unknown, metadata: Session
 
     let rowMeta: string | null = null
     let stats: ToolRowStats | null = null
+    // input 的对象形态统一收口一次，各工具分支只判字段
+    const obj = isObject(input) ? input : null
     if (toolName === 'Read') {
         rowMeta = readRowMeta(input)
-    } else if (toolName === 'Edit' && isObject(input)
-        && typeof input.old_string === 'string' && typeof input.new_string === 'string') {
-        stats = editStats(input.old_string, input.new_string)
-    } else if (toolName === 'MultiEdit' && isObject(input) && Array.isArray(input.edits)) {
-        stats = input.edits.reduce<ToolRowStats>((acc, edit) => {
+    } else if (toolName === 'Edit' && obj
+        && typeof obj.old_string === 'string' && typeof obj.new_string === 'string') {
+        stats = editStats(obj.old_string, obj.new_string)
+    } else if (toolName === 'MultiEdit' && obj && Array.isArray(obj.edits)) {
+        stats = obj.edits.reduce<ToolRowStats>((acc, edit) => {
             if (!isObject(edit) || typeof edit.old_string !== 'string' || typeof edit.new_string !== 'string') return acc
             const s = editStats(edit.old_string, edit.new_string)
             return { add: acc.add + s.add, del: acc.del + s.del }
         }, { add: 0, del: 0 })
-        if (input.edits.length > 1) rowMeta = `${input.edits.length} edits`
-    } else if (toolName === 'Write' && isObject(input)) {
-        const content = typeof input.content === 'string' ? input.content : null
+        if (obj.edits.length > 1) rowMeta = `${obj.edits.length} edits`
+    } else if (toolName === 'Write' && obj) {
+        const content = typeof obj.content === 'string' ? obj.content : null
         if (content !== null) stats = { add: countLines(content), del: 0 }
     }
 

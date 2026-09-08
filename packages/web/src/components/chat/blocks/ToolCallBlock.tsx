@@ -30,7 +30,7 @@ import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { FilePathText } from '@/components/ui/FilePathText'
-import { FileChip } from '@/components/ui/FileChip'
+import { ToolRowItems } from '@/components/ui/ToolRowItems'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
 import { formatAgentMetrics } from '@/core/lib/metricsFormat'
@@ -274,14 +274,16 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     const tool = block.tool
     const isLoading = tool.state === 'running'
     const hasPermission = tool.permission && tool.permission.status === 'pending'
-    const toolPresentation = getToolPresentation({
+    // 流式期间 block 引用随 SSE 帧更替，memo 化避免每帧重跑 presentation 推导
+    // （inferToolRow 含行数 split 与 URI 构造，乘以工具行数放大）
+    const toolPresentation = useMemo(() => getToolPresentation({
         toolName: tool.name,
         input: tool.input,
         result: tool.result,
         childrenCount: block.children?.length ?? 0,
         description: tool.description ?? null,
         metadata
-    })
+    }), [tool.name, tool.input, tool.result, block.children?.length, tool.description, metadata])
 
     const isError = tool.state === 'error'
     const isAgent = isAgentTool(tool.name)
@@ -339,34 +341,10 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                 }
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-                        {toolPresentation.row?.chip ? (
+                        {toolPresentation.row ? (
                             // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
                             // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起
-                            <>
-                                <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
-                                    {toolPresentation.row.verb}
-                                </span>
-                                {toolPresentation.row.summary && (
-                                    // 纯展示工具的 description（Bash 的 title 语义）：优先于人读摘要，允许收缩截断
-                                    <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto', minWidth: 0 }}>
-                                        {toolPresentation.row.summary}
-                                    </span>
-                                )}
-                                {toolPresentation.row.rowMeta && (
-                                    <span style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }}>
-                                        {toolPresentation.row.rowMeta}
-                                    </span>
-                                )}
-                                <FileChip chip={toolPresentation.row.chip} />
-                                {toolPresentation.row.stats && (
-                                    <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                        <span style={{ color: token.colorSuccess }}>+{toolPresentation.row.stats.add}</span>
-                                        {toolPresentation.row.stats.del > 0 && (
-                                            <span style={{ color: token.colorError, marginLeft: 4 }}>−{toolPresentation.row.stats.del}</span>
-                                        )}
-                                    </span>
-                                )}
-                            </>
+                            <ToolRowItems row={toolPresentation.row} />
                         ) : toolPresentation.isFilePath ? (
                             <FilePathText path={toolPresentation.title} />
                         ) : (

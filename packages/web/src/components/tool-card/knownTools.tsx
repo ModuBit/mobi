@@ -23,7 +23,7 @@ import { LineSquiggle } from 'lucide-react'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
 import { resolveDisplayPath } from '@/core/utils/path'
-import { getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
+import { getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay, countLines } from '@/core/lib/toolInputUtils'
 import { inferToolRow, type ToolRow } from '@/core/lib/toolRow'
 import { TOOL_ICON_MAP, LUCIDE_TOOL_NAMES } from './toolIcons'
 
@@ -136,10 +136,6 @@ function parseResultJson(result: unknown): Record<string, unknown> | null {
     } catch {
         return null
     }
-}
-
-function countLines(text: string): number {
-    return text.split('\n').length
 }
 
 function formatChecklistCount(items: ChecklistItem[], noun: string): string | null {
