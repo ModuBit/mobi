@@ -65,6 +65,13 @@ store.close()
 就绪后从 /api/machines 读）——虚构 id（如 `m-e2e`）建出的项目在发消息建会话时报 404
 `Machine not found`（spawn 按 machineId 找机器）。事后可 `UPDATE projects SET machine_id=...` 补救。
 
+## 会话 CLI 代码新鲜度（2026-09-08）
+
+runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，但**进程启动即固化代码**——
+改 CLI 源码后，已运行的 runner / 会话 CLI 仍是旧代码。验证 CLI 侧行为变更（RPC handler、
+边界校验等）前必须 cleanup + bootstrap 重启环境；否则表现为「修复无效」，极易误判为代码 bug。
+判别手段：`ps -eo pid,ppid,command | grep "packages/cli/src/index.ts claude"` 看会话 CLI 启动时间。
+
 ## 坑（误判）
 
 - **bootstrap 依赖 shell PATH 里的 bun** — 脚本内部裸调 `bun`；Claude 会话的 shell 常无 `~/.bun/bin`，表现为「等待 Hub 就绪超时 + 日志 `bun: command not found`」且静默失败。先 `export PATH="$HOME/.bun/bin:$PATH"` 再跑 bootstrap（2026-09-03）
