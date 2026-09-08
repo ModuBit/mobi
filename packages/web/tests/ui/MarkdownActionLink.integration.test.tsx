@@ -108,7 +108,7 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
         // 锁定 raw HTML 锚点也过 DOMPurify（mobi scheme 白名单）并被 components.a 拦截
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         const link = await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' }))
-        expect(link.getAttribute('href')).toBe('mobi://file/open?path=src%2Fmain.ts&name=main.ts')
+        expect(link.getAttribute('href')).toBe('mobi://file/open?path=src%2Fmain.ts')
         expect(link.className).toContain('mention-badge')
 
         fireEvent.click(link)

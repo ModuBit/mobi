@@ -23,7 +23,7 @@ import { createHash, randomUUID } from 'crypto'
 import { resolve, join } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { validatePath, validateReadPath, expandHomePath } from '../pathSecurity'
+import { validatePath, validateReadPath, resolveReadPath, validateWritePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { lookupMime } from './fileMime'
 
@@ -113,11 +113,10 @@ export function registerFileHandlers(
     homeDir: string = homedir(),
 ): void {
     // 读边界（cwd ∪ home−黑名单）与写边界（严格 cwd）分离——读放宽不放大写风险。
-    // 读路径解析必须与边界判定同一解析：~ 先展开再 resolve，否则 ~/x 会被当字面目录名
+    // ~ 展开语义内聚在 shared 校验层（validateReadPath/validateWritePath/resolveReadPath），
+    // 调用方不做手工复合，杜绝「校验对象 ≠ 实际读取对象」的漂移
     const readable = (path: string) => validateReadPath(path, workingDirectory, homeDir)
-    const resolveReadable = (path: string) => resolve(workingDirectory, expandHomePath(path, homeDir))
-    // 写判定同样先展开 ~：否则 ~/x 会被 resolve 成 cwd/~/x 而误判为 cwd 内可写
-    const writableOf = (path: string) => validatePath(expandHomePath(path, homeDir), workingDirectory).valid
+    const writableOf = (path: string) => validateWritePath(path, workingDirectory, homeDir).valid
 
     // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
     rpcHandlerManager.registerHandler<ReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
@@ -129,7 +128,7 @@ export function registerFileHandlers(
         }
 
         try {
-            const meta = await fileMetaAt(resolveReadable(data.path))
+            const meta = await fileMetaAt(resolveReadPath(data.path, workingDirectory, homeDir))
             return { success: true, meta, writable: writableOf(data.path) }
         } catch (error) {
             logger.debug('Failed to stat file:', error)
@@ -152,7 +151,9 @@ export function registerFileHandlers(
         }
 
         try {
-            const st = await stat(resolveReadable(data.path))
+            // 同一请求内复用一次解析结果（stat 与后续读取同路径）
+            const resolvedPath = resolveReadPath(data.path, workingDirectory, homeDir)
+            const st = await stat(resolvedPath)
             // ?? 0 只挡 null/undefined，挡不住 NaN（Math.floor(NaN)=NaN 会绕过越界检查），需 Number.isFinite 显式校验
             const rawOffset = Math.floor(data.offset ?? 0)
             const rawLength = Math.floor(data.length ?? FILE_RANGE_CHUNK)
@@ -166,7 +167,7 @@ export function registerFileHandlers(
             }
 
             // createReadStream 的 end 是 inclusive，区间读取由共享核心处理
-            return { success: true, chunk: await fileRangeAt(resolveReadable(data.path), offset, length) }
+            return { success: true, chunk: await fileRangeAt(resolvedPath, offset, length) }
         } catch (error) {
             logger.debug('Failed to read file range:', error)
             return rpcError(getErrorMessage(error, 'Failed to read file range'))

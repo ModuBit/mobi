@@ -82,8 +82,9 @@ function mention(): TokenizerAndRendererExtension {
             const { mention, path } = token as unknown as { mention: string; path: string }
             // 点击 = mobi://file/open（ADR 0003）：渲染时构造 URI 走统一执行链（消息即快照，
             // 落库不动）。Markdown 管线把带 mobi href 的 <a> 拦截为 ActionLink 分发；
-            // class 保留 mention-badge 样式（经 ExternalLink → ActionLink 的 className 透传）
-            const uri = buildActionUri('file/open', { path, name: path.split('/').pop() ?? path })
+            // class 保留 mention-badge 样式（经 ExternalLink → ActionLink 的 className 透传）。
+            // name 缺省由 file/open 执行器的基名兜底规则统一处理，此处不重复编码
+            const uri = buildActionUri('file/open', { path })
             return `<a class="mention-badge" href="${escapeHtml(uri)}">${escapeHtml(mention)}</a>`
         },
     }

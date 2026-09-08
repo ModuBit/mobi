@@ -26,7 +26,7 @@ import { groupUserBlocks } from '@/domain/chat/userContent'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { buildActionUri } from '@mobi/shared'
-import { useActionDispatcher } from '@/components/ui/ActionLink'
+import { ActionLink } from '@/components/ui/ActionLink'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */
@@ -89,29 +89,25 @@ function QuoteView({ block }: UserBlockViewProps<UserQuoteBlock>) {
 
 /**
  * document 视图：FileCard 小尺寸文件卡。图标由 FileCard 按扩展名自动映射
- * PresetIcons（pdf/word/markdown/excel/ppt/zip/java/javascript/python 等，缺省 default），
- * 无需自维护映射表。
+ * PresetIcons（pdf/word/markdown/excel/ppt/zip/java/javascript/python 等，缺省 default）。
  *
  * 点击 = mobi://file/open（ADR 0003 二期）：在 inspector pane 打开该附件
  * （block.source.value 即 .mobi/uploads 相对路径，与 inspector 读文件同一条
  * read-file 链）。URI 由 block 数据渲染时构造走统一执行链——block 结构化字段
  * 本身就是冻结快照（消息即快照，Q3 裁决），不改落库内容。
+ * 点击入口复用 ActionLink（preventDefault/键盘分发已收口），不用手搓可点击 span。
  */
 function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
-    const dispatch = useActionDispatcher()
+    const card = <FileCard size="small" type="file" name={block.filename} byte={block.size} />
     // data source 是骨架占位（无磁盘路径），没有可打开目标 → 不绑定点击
-    const path = block.source.type === 'url' ? block.source.value : null
-    const handleClick = path
-        ? () => dispatch(buildActionUri('file/open', { path, name: block.filename }))
-        : undefined
+    if (block.source.type !== 'url') return card
     return (
-        <span
-            role={handleClick ? 'button' : undefined}
-            style={{ cursor: handleClick ? 'pointer' : undefined, display: 'inline-flex' }}
-            onClick={handleClick}
+        <ActionLink
+            uri={buildActionUri('file/open', { path: block.source.value, name: block.filename })}
+            style={{ display: 'inline-flex' }}
         >
-            <FileCard size="small" type="file" name={block.filename} byte={block.size} />
-        </span>
+            {card}
+        </ActionLink>
     )
 }
 

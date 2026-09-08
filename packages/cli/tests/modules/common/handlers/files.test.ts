@@ -83,33 +83,6 @@ describe('file RPC handlers', () => {
         })
     })
 
-    it('~ 路径 writable 判定正确（cwd/~/x 不误判为 cwd 内可写）', async () => {
-        // 回归：writableOf 未展开 ~ 时，~/x 被 resolve 成 cwd/~/x 误判 writable=true
-        const homeDir = await mkdtemp(join(tmpdir(), 'mobi-home-'))
-        try {
-            await writeFile(join(rootDir, 'a.txt'), 'hello')
-            await writeFile(join(homeDir, 'note.md'), 'hello')
-            const rpc2 = new RpcHandlerManager({ scopePrefix: 'read-boundary-test' })
-            registerFileHandlers(rpc2, rootDir, homeDir)
-
-            const r = (await rpc2.handleRequest({
-                method: 'read-boundary-test:readFileMeta',
-                params: { path: '~/note.md' },
-            })) as { success: boolean; writable?: boolean }
-            expect(r.success).toBe(true)
-            expect(r.writable).toBe(false)
-
-            // cwd 内文件 writable=true
-            const r2 = (await rpc2.handleRequest({
-                method: 'read-boundary-test:readFileMeta',
-                params: { path: 'a.txt' },
-            })) as { success: boolean; writable?: boolean }
-            expect(r2.writable).toBe(true)
-        } finally {
-            await rm(homeDir, { recursive: true, force: true })
-        }
-    })
-
     describe('读边界放宽（ADR 0004：cwd ∪ home−黑名单）', () => {
         let homeDir: string
         let rpc2: RpcHandlerManager
@@ -152,6 +125,24 @@ describe('file RPC handlers', () => {
                 params: { path: '.mobi/uploads/a.pdf' },
             })) as { success: boolean }
             expect(r.success).toBe(true)
+        })
+
+        it('writable 判定：~ 路径=false（cwd/~/x 不误判），cwd 内=true', async () => {
+            // 回归：writableOf 未展开 ~ 时，~/x 被 resolve 成 cwd/~/x 误判 writable=true
+            await writeFile(join(homeDir, 'note.md'), 'hello')
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:readFileMeta`,
+                params: { path: '~/note.md' },
+            })) as { success: boolean; writable?: boolean }
+            expect(r.success).toBe(true)
+            expect(r.writable).toBe(false)
+
+            await writeFile(join(rootDir, 'a.txt'), 'hello')
+            const r2 = (await rpc2.handleRequest({
+                method: `${SCOPE2}:readFileMeta`,
+                params: { path: 'a.txt' },
+            })) as { success: boolean; writable?: boolean }
+            expect(r2.writable).toBe(true)
         })
 
         it('readFileRange 走同一读边界（~ 路径读字节）', async () => {

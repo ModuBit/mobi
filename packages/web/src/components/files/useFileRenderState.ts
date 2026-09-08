@@ -41,12 +41,7 @@ export type RenderState =
          * 详见 buildReadFileUrl 的说明。
          */
         etag: string
-        /** 是否在写边界（严格 cwd 子树）内：CLI readFileMeta 下发；缺省视为 true（旧版兼容） */
-        writable: boolean
-        /**
-         * 是否可编辑（当前就能改）：text/markdown 且在写边界内且在线。
-         * 只读挂编辑器的判定用 editableType（mime 维度）+ editable（能不能改）组合
-         */
+        /** 是否可编辑（当前就能改）：text/markdown 且在写边界内且在线。false 时编辑器以只读态挂载 */
         editable: boolean
         view: 'render' | 'source'
         toggleView: () => void
@@ -123,20 +118,20 @@ export function useFileRenderState(sessionId: string, filePath: string, active =
     if (metaLoading) return { status: 'meta-loading' }
     if (metaError) return { status: 'meta-error', error: metaError }
     if (!meta || !kind) return { status: 'meta-loading' }
-    // writable：CLI 写边界下发；缺省（旧版 CLI 未带字段）视为可写，保持兼容
-    const writable = meta.writable !== false
     // editable：当前就能改 = mime 可编辑（text/markdown）且在写边界内且在线（active）。
+    // writable 取自 CLI 下发，缺省（旧版 CLI 未带字段）视为可写保持兼容。
     // too-large 已在上方拦截不会到 ready。只读（!editable）的 text/markdown 仍挂编辑器
     // （readOnly 态），渲染效果与编辑态一致——见 FileContentView
+    const writable = meta.writable !== false
     const editable = active && writable && (kind.kind === 'text' || kind.kind === 'markdown')
     if (tooLarge) return { status: 'too-large' }
     if (!needsContent(kind)) {
         // pdf / image / media：src 直连端点，不依赖 content；etag 并入 URL 以感知内容变化
-        return { status: 'ready', kind, text: '', etag: meta.etag, writable, editable, view, toggleView, wrap, toggleWrap }
+        return { status: 'ready', kind, text: '', etag: meta.etag, editable, view, toggleView, wrap, toggleWrap }
     }
     if (contentLoading) return { status: 'content-loading', kind, view, toggleView, wrap, toggleWrap }
     if (contentError) return { status: 'content-error', error: contentError }
     if (!file) return { status: 'empty' }
     // text===null 时短暂以空串渲染（与原 `text ?? ''` 一致），blob 解析完更新
-    return { status: 'ready', kind, text: text ?? '', etag: meta.etag, writable, editable, view, toggleView, wrap, toggleWrap }
+    return { status: 'ready', kind, text: text ?? '', etag: meta.etag, editable, view, toggleView, wrap, toggleWrap }
 }

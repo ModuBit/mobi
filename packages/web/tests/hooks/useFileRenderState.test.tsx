@@ -174,13 +174,11 @@ describe('useFileRenderState', () => {
         mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e', writable: false }, isLoading: false, error: null } as any)
         mockedContent.mockReturnValue({ data: { blob, mime: 'text/plain', etag: 'e' }, isLoading: false, error: null } as any)
         const t = renderState('s', 'a.txt').result.current
-        expect(t.status === 'ready' && t.writable).toBe(false)
         expect(t.status === 'ready' && t.editable).toBe(false)
 
         // meta 不带 writable（旧版 CLI）→ 视为可写
         mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
         const t2 = renderState('s', 'a.txt').result.current
-        expect(t2.status === 'ready' && t2.writable).toBe(true)
         expect(t2.status === 'ready' && t2.editable).toBe(true)
     })
 

@@ -246,7 +246,8 @@ describe('FileContentView', () => {
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="~/notes/a.md" />)
         const editor = await screen.findByTestId('md-editor')
         expect(editor).toHaveAttribute('data-read-only', 'true')
-        expect(editor).toHaveTextContent('# notes')
+        // draft 经 useFileEditor effect 异步回填，文本断言等待回填完成
+        await waitFor(() => expect(editor).toHaveTextContent('# notes'))
     })
 
     it('中文本（1-2MB）→ 仍挂编辑器（CodeMirror 虚拟化承载，不再走 pre/高亮只读渲染）', async () => {

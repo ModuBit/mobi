@@ -204,7 +204,7 @@ describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
             />,
         )
 
-        fireEvent.click(screen.getByRole('button'))
+        fireEvent.click(screen.getByRole('link'))
 
         const s = useWorkspaceStore.getState().getSession('sess-1')
         expect(s.expanded).toBe(true)
@@ -224,7 +224,7 @@ describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
                 env={{ sessionId: 'sess-1' }}
             />,
         )
-        expect(screen.queryByRole('button')).toBeNull()
+        expect(screen.queryByRole('link')).toBeNull()
     })
 })
 

@@ -106,21 +106,39 @@ export function expandHomePath(targetPath: string, homeDir: string): string {
 }
 
 /**
+ * 读路径解析（读边界的唯一解析出口）：`~` 展开后相对 cwd resolve。
+ * validateReadPath 与所有需要 abs 路径的调用方共用，保证「校验对象 = 实际读取对象」。
+ */
+export function resolveReadPath(targetPath: string, workingDirectory: string, homeDir: string): string {
+    return resolve(workingDirectory, expandHomePath(targetPath, homeDir))
+}
+
+/**
  * 读边界校验（ADR 0004）：允许集 = cwd 子树 ∪ (home 子树 − 黑名单)，其余一律拒绝。
  *
  * - 黑名单先于一切允许域判定：cwd 恰为 home 时 `.ssh` 等仍受保护；黑名单只匹配
  *   home 直接子级，cwd 内同名目录（如 `src/.config/`、`.mobi/uploads/` 附件）不误伤
  * - `~` 前缀先展开再判定（resolve(cwd, '~/x') 会把 `~` 当字面目录名，必须先行展开）
  * - 相对/绝对双支持：`resolve(cwd, path)` 的 POSIX 语义——绝对路径忽略 cwd 直接采用
+ * - 需要 abs 路径的调用方用 {@link resolveReadPath}，不要手抄 expand+resolve 复合
  */
 export function validateReadPath(targetPath: string, workingDirectory: string, homeDir: string): PathValidationResult {
-    const expanded = expandHomePath(targetPath, homeDir)
-    const resolvedTarget = resolve(workingDirectory, expanded)
+    const resolvedTarget = resolveReadPath(targetPath, workingDirectory, homeDir)
 
     if (homeDir && isWithinBlacklistedDir(resolvedTarget, homeDir)) {
         return { valid: false, error: `Access denied: Path '${targetPath}' is in a protected directory` }
     }
     if (isWithinDir(resolvedTarget, workingDirectory)) return { valid: true }
     if (homeDir) return validateHomeDirPath(resolvedTarget, homeDir)
+    return { valid: false, error: `Access denied: Path '${targetPath}' is outside the working directory` }
+}
+
+/**
+ * 写边界校验（ADR 0004）：严格 cwd 子树，`~` 展开内聚于此——调用方无需记忆
+ * 「写前先展开」。与读边界分离：读放宽不放大写风险。
+ */
+export function validateWritePath(targetPath: string, workingDirectory: string, homeDir: string): PathValidationResult {
+    const resolvedTarget = resolve(workingDirectory, expandHomePath(targetPath, homeDir))
+    if (isWithinDir(resolvedTarget, workingDirectory)) return { valid: true }
     return { valid: false, error: `Access denied: Path '${targetPath}' is outside the working directory` }
 }

@@ -35,9 +35,9 @@ describe('mentionPlugin', () => {
         expect(html).not.toContain('<s>')
     })
 
-    it('badge 是 file/open 动作链接（a href=mobi://file/open，name 取基名）', () => {
+    it('badge 是 file/open 动作链接（a href=mobi://file/open，name 由执行器基名兜底）', () => {
         const html = render('看 @src/app/main.ts end')
-        expect(html).toContain('href="mobi://file/open?path=src%2Fapp%2Fmain.ts&amp;name=main.ts"')
+        expect(html).toContain('href="mobi://file/open?path=src%2Fapp%2Fmain.ts"')
     })
 
     it('两个 mention 之间的内容不被渲染为删除线', () => {

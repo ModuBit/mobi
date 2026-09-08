@@ -72,6 +72,23 @@ export interface SessionInspectorState {
  * 默认状态：首次打开即收起，tabs 为空。
  * freeze 防止外部直接修改污染全局默认值。
  */
+/** 同 filePath 的 file tab 去重激活（openFileInTab / openFileTab 共用规则）：
+ * 已开未激活 → 切激活；已激活 → 返回原 state 短路（后续转换分支不得执行，否则
+ * viewState 被误清）；未开 → 返回 null 表示继续走打开分支。改动只此一处。 */
+function dedupeToActiveFileTab(
+    state: WorkspaceState,
+    sessionId: string,
+    cur: SessionInspectorState,
+    filePath: string,
+): WorkspaceState | { sessions: Map<string, SessionInspectorState> } | null {
+    const existed = cur.tabs.find((t) => t.mode === 'file' && t.filePath === filePath)
+    if (!existed) return null
+    if (cur.activeTabId === existed.id) return state
+    const next = new Map(state.sessions)
+    next.set(sessionId, { ...cur, activeTabId: existed.id })
+    return { sessions: next }
+}
+
 export const DEFAULT_INSPECTOR_STATE: Readonly<SessionInspectorState> = Object.freeze({
     expanded: false,
     splitRatio: 0.5,
@@ -170,13 +187,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         set((state) => {
             const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
             // 去重：同 filePath 已存在 → 切激活
-            const existed = cur.tabs.find((t) => t.mode === 'file' && t.filePath === filePath)
-            if (existed) {
-                if (cur.activeTabId === existed.id) return state
-                const next = new Map(state.sessions)
-                next.set(sessionId, { ...cur, activeTabId: existed.id })
-                return { sessions: next }
-            }
+            const deduped = dedupeToActiveFileTab(state, sessionId, cur, filePath)
+            if (deduped) return deduped
             // 转换：把 tabId 指向的 tab 转为 file（tree→file 或 file→换文件）。
             // 关键：换文件时必须清旧 viewState——viewState 属于上一个文件的内容（缩放/滚动），
             // 同 tab 切到新文件（含 pdf↔pdf、pdf↔非pdf、非pdf↔非pdf）旧值已失效，
@@ -193,13 +205,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         set((state) => {
             const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
             // 去重：同 filePath 已存在 → 切激活
-            const existed = cur.tabs.find((t) => t.mode === 'file' && t.filePath === filePath)
-            if (existed) {
-                if (cur.activeTabId === existed.id) return state
-                const next = new Map(state.sessions)
-                next.set(sessionId, { ...cur, activeTabId: existed.id })
-                return { sessions: next }
-            }
+            const deduped = dedupeToActiveFileTab(state, sessionId, cur, filePath)
+            if (deduped) return deduped
             // 优先就地转换已有 tree tab（保留其位置）；无 tree tab 才新建
             const treeTab = cur.tabs.find((t) => t.mode === 'tree')
             const tabs = treeTab
