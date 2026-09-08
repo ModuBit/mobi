@@ -105,13 +105,14 @@ export function isWithinBlacklistedDir(targetPath: string, homeDir: string): boo
 }
 
 /**
- * `~` 前缀展开为 homeDir：仅支持裸 `~` 与 `~/` 前缀；`~user` 多用户语义不支持，
- * 按字面路径处理。非 `~` 开头或 homeDir 为空时原样返回——homeDir 为空时 `~` 前缀
- * 路径的拒绝由 validateReadPath / validateWritePath 显式承担（见 HOME_PREFIX_RE）。
+ * `~` 前缀展开为 homeDir：仅支持裸 `~` 与 `~/` 前缀（HOME_PREFIX_RE 单源判定）；
+ * `~user` 多用户语义不支持，按字面路径处理。非 `~` 开头或 homeDir 为空时原样返回——
+ * homeDir 为空时 `~` 前缀路径的拒绝由 validateReadPath / validateWritePath 显式承担。
  */
 export function expandHomePath(targetPath: string, homeDir: string): string {
-    if (targetPath === '~') return homeDir
-    if (homeDir && targetPath.startsWith('~/')) return resolve(homeDir, targetPath.slice(2))
+    if (HOME_PREFIX_RE.test(targetPath)) {
+        return homeDir ? resolve(homeDir, targetPath === '~' ? '' : targetPath.slice(2)) : targetPath
+    }
     return targetPath
 }
 

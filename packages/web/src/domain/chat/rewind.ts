@@ -25,6 +25,7 @@ import { normalizeUserContent } from '@mobi/shared'
 import { deserializeSegments, type ComposerSegments } from './composerSegments'
 import { isAfterContextBoundary } from './contextBoundary'
 import { summarizeBlocks, joinSummaries, EMPTY_SUMMARY_LABELS } from './userContentSummary'
+import { extractApiError } from '@/core/data/api/client'
 
 export type { NativeMessageMetadata }
 
@@ -189,17 +190,13 @@ export function rewindRejectReasonKey(reason: string | undefined):
 
 /**
  * rewind 执行失败 catch 的 reason 提取：优先取 HTTP 错误体里的 `error` 字段
- * （hub 409 透传的 CLI 拒绝原因，如 busy），非 HTTP 错误回退 Error.message。
+ * （hub 409/403 透传的 CLI 拒绝原因，如 busy），非 HTTP 错误回退 Error.message。
  * 裸读 err.message 只会拿到 axios 标准串（"Request failed with status code 409"），
  * 409 体里的 reason 永远到不了文案映射。
+ * 实现统一收口到 api client 的 extractApiError（同一提取语义，勿再复制）。
  */
 export function extractRewindRejectReason(err: unknown): string {
-    const body = (err as { response?: { data?: { error?: unknown } } } | null)?.response?.data
-    if (typeof body?.error === 'string' && body.error.length > 0) return body.error
-    // 网络/超时等非 HTTP 错误：Error.message（axios 错误本身是 Error 子类，.message 即标准串）
-    const message = (err as { message?: unknown } | null)?.message
-    if (typeof message === 'string' && message.length > 0) return message
-    return String(err)
+    return extractApiError(err)
 }
 
 /**

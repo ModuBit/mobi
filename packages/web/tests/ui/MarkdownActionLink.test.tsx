@@ -33,12 +33,7 @@ import { message } from 'antd'
 
 const navigateSpy = vi.hoisted(() => vi.fn())
 // 会话激活态与恢复动作 mock（ActionLink 的会话恢复守卫消费；默认激活=不拦截）
-vi.mock('@/core/data/hooks/queries/useSession', () => ({
-    useSession: () => ({ data: { active: true } }),
-}))
-vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
-    useSessionActions: () => ({ resumeSession: vi.fn(async () => ''), isPending: false }),
-}))
+vi.mock('@/core/data/hooks/mutations/useSessionActions', async () => await import('../helpers/sessionActionMocks'))
 
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => navigateSpy,

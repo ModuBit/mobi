@@ -396,8 +396,8 @@ export function softDeleteMessagesFrom(
 /** markMessagesPushed 结果：实际推进的 localId + 实际写入的 position_at（供 SSE 广播，Web 端据此原地更新排序） */
 export type MarkPushedResult = { localIds: string[]; positionAt: number }
 
-/** position 排序域（与 queryByPosition 主时间线一致）：地板只看会话主时间线的行 */
-const POSITION_TIMELINE_FILTER = "category = 'persistent' AND deleted_at IS NULL AND is_sidechain = 0"
+/** position 排序域（与 queryByPosition 主时间线一致）：地板只看会话主时间线的行，由既有过滤条件组合而成 */
+const POSITION_TIMELINE_FILTER = `${HISTORY_CATEGORY_FILTER} ${NOT_DELETED_FILTER} AND is_sidechain = 0`
 
 /**
  * 把 localId 对应的 queued 消息推进为 pushed：写 lifecycle/lifecycle_at + 跳 position_at。

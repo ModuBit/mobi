@@ -28,7 +28,7 @@ import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
-import { serveFileContent } from './serveFileContent'
+import { fileMetaHttpStatus, serveFileContent } from './serveFileContent'
 
 /**
  * HTML 预览 iframe 的 Content-Security-Policy。
@@ -907,10 +907,8 @@ export function createSessionsRoutes(
         try {
             const meta = await engine.readFileMeta(sessionResult.sessionId, path)
             if (!meta.success) {
-                // 结构化 code 三分流：ENOENT→404 / ACCESS_DENIED→403（读边界拒绝，原因随 body
-                // 透出给前端展示）/ 其他→500。与 serveFileContent 的分流口径一致
-                const status = meta.code === 'ENOENT' ? 404 : meta.code === 'ACCESS_DENIED' ? 403 : 500
-                return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, status)
+                // 结构化 code → 状态码分流单点在 fileMetaHttpStatus（与 serveFileContent 共用）
+                return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, fileMetaHttpStatus(meta.code))
             }
             return c.json({ success: true, meta: meta.meta, writable: meta.writable })
         } catch (error) {

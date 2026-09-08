@@ -52,12 +52,8 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
-// 会话激活态与恢复动作 mock（ActionLink 的会话恢复守卫消费）
-const sessionState = vi.hoisted(() => ({ active: true }))
+// 恢复动作 mock（ActionLink 的会话恢复守卫消费）；激活态经 queryClient 单例缓存注入
 const resumeSessionSpy = vi.hoisted(() => vi.fn(async () => 'sess-1'))
-vi.mock('@/core/data/hooks/queries/useSession', () => ({
-    useSession: () => ({ data: { active: sessionState.active } }),
-}))
 vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     useSessionActions: () => ({ resumeSession: resumeSessionSpy, isPending: false }),
 }))
@@ -68,13 +64,14 @@ beforeEach(() => {
     navigateSpy.mockClear()
     messageInfoSpy.mockClear()
     resumeSessionSpy.mockClear()
-    sessionState.active = true
-    // 全局 inspector store 跨用例残留（前一用例可能开过 tab），逐用例清空
+    // 全局 inspector store / queryClient 缓存跨用例残留，逐用例清空
     useWorkspaceStore.getState().clearAll()
+    queryClient.clear()
 })
 
 import { Markdown } from '@/components/ui/Markdown'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { queryClient } from '@/core/lib/queryClient'
 
 afterEach(cleanup)
 
@@ -143,7 +140,8 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
     })
 
     it('会话未激活点击 file/open：弹确认气泡，恢复成功后用（可能变更的）新 id 执行动作', async () => {
-        sessionState.active = false
+        // 未激活态经 queryClient 缓存注入（ActionLink 零订阅判定读同 key 缓存）
+        queryClient.setQueryData(['session', 'sess-1'], { active: false })
         resumeSessionSpy.mockResolvedValue('sess-new')
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         const link = await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' }))
@@ -164,7 +162,7 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
     })
 
     it('会话未激活点击 file/open：取消则什么都不做', async () => {
-        sessionState.active = false
+        queryClient.setQueryData(['session', 'sess-1'], { active: false })
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         fireEvent.click(await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' })))
         // 气泡出现后点取消

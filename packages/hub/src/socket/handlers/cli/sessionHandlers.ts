@@ -475,16 +475,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     }
 
     // CLI 离线收尾：把仍排队的本地 user 消息全部 invoke，防悬浮条卡死（通知性副作用，
-    // 不属「落库事实」，故独立于 sink——挂 session-end 转发之后）
+    // 不属「落库事实」，故独立于 sink——挂 session-end 转发之后）。
+    // 推进 + 广播与 processSubmitted 同一套，只负责算出待推进的 localId 集合
     const forcePushUnsubmittedAfterEnd = (sid: string): void => {
         const unsubmitted = store.messages.getUnsubmittedLocalMessages(sid)
         if (unsubmitted.length === 0) return
-        const pushedAt = Date.now()
         const lids = unsubmitted.map(m => m.localId).filter((l): l is string => Boolean(l))
-        const { localIds: fresh, positionAt } = store.messages.markMessagesPushed(sid, lids, pushedAt)
-        if (fresh.length > 0) {
-            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: positionAt })
-        }
+        processSubmitted(sid, lids, Date.now())
     }
 
     socket.on('session-alive', (raw) => validateAndForward(factSchemas['session-alive'], raw, (data) => factsSink?.handleSessionAlive?.(data)))

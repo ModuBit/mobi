@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-import { memo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { memo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { message, Popconfirm } from 'antd'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { queryClient } from '@/core/lib/queryClient'
+import { queryKeys } from '@/core/lib/query-keys'
+import type { Session } from '@/core/data/api/types'
 
 /**
  * mobi:// 动作链接的 web 执行面（ADR 0003）：
@@ -112,20 +114,24 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
     const { t } = useTranslation()
     const dispatch = useActionDispatcher()
     const { sessionId } = useParams({ strict: false }) as { sessionId?: string }
-    // 链接所在会话的激活态（file/open 的 tab 状态按会话隔离，恢复后可能变 id）
-    const { data: session } = useSession(sessionId ?? null)
+    // 恢复动作走现成 mutation（内部处理 mergeSessions 的 navigate / invalidate）
     const { resumeSession, isPending: resuming } = useSessionActions(sessionId ?? null)
 
-    const [confirmOpen, setConfirmOpen] = useState(false)
-    const pendingUriRef = useRef<string | null>(null)
+    // confirmOpen 与待重放动作同生共死，单状态表达；null=未弹出
+    const [pendingUri, setPendingUri] = useState<string | null>(null)
 
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
     // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
     const requestDispatch = () => {
-        // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）
-        if (sessionId && session && session.active === false && uri.startsWith('mobi://file/')) {
-            pendingUriRef.current = uri
-            setConfirmOpen(true)
+        // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）。
+        // 激活态读 react-query 缓存（会话页常驻 useSession 同 key 查询），零订阅不随链接数膨胀；
+        // 缓存未加载时不拦截（维持原行为）。守卫按 registry key 结构化判定，非 URI 字符串前缀
+        if (!sessionId) return dispatch(uri)
+        const parsed = parseActionUri(uri)
+        if (parsed?.key !== 'file/open') return dispatch(uri)
+        const session = queryClient.getQueryData<Session>(queryKeys.session(sessionId))
+        if (session && session.active === false) {
+            setPendingUri(uri)
             return
         }
         dispatch(uri)
@@ -146,7 +152,6 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
 
     /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭 */
     const handleResume = async () => {
-        const pendingUri = pendingUriRef.current
         try {
             // resumeSession 内部已处理 mergeSessions 的 navigate（新 id 路由替换）
             const newSessionId = await resumeSession()
@@ -154,21 +159,19 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
         } catch {
             message.error(t('chat.action.resumeFailed'))
         } finally {
-            pendingUriRef.current = null
-            setConfirmOpen(false)
+            setPendingUri(null)
         }
     }
 
     const handleCancel = () => {
-        pendingUriRef.current = null
-        setConfirmOpen(false)
+        setPendingUri(null)
     }
 
     return (
         <Popconfirm
             title={t('chat.action.sessionInactive')}
             description={t('chat.action.sessionInactiveHint')}
-            open={confirmOpen}
+            open={pendingUri !== null}
             okText={t('chat.action.resume')}
             cancelText={t('common.cancel')}
             okButtonProps={{ loading: resuming }}

@@ -15,26 +15,16 @@
  */
 
 import type { TokenizerAndRendererExtension } from 'marked'
-import { buildActionUri } from '@mobi/shared'
+import { buildActionUri, MENTION_PATH_CHARS } from '@mobi/shared'
 
-/**
- * @ 路径合法字符（与 mentionParser 的 MENTION_PATH_CHARS 一致）。
- *
- * 排除法而非白名单：真实文件名空间太大（中日韩文、emoji、括号 `备份(1).pdf`、
- * `#`/`+`/`@`/`|` 等符号），白名单永远有遗漏；只要排除掉有歧义或结构风险的字符，
- * 其余一律放行，行为是「宽容识别 + 服务端读边界诚实承接不可达」。
- *
- * 排除集及理由：
- * - `\s`（空格/tab/换行）：token 终止符。纯文本流无 delimiter，路径含空格无法
- *   与「mention 后跟正文」区分（GitHub/Slack/Discord 的 @ 同样不支持空格）
- * - `` ` ``：markdown 行内代码结构符，避免与代码 span 嵌套纠缠
- * - `<` `>` `"`：HTML/attribute 结构符（防止吞半个标签 / 进 href 属性）
- * - `\`：markdown 转义符 + Windows 分隔符歧义
- */
-const PATH_CHARS = "[^\\s`<>\"\\\\]"
+/** @ 路径字符集协议单源在 shared（MENTION_PATH_CHARS，排除法，见其文档） */
+const PATH_CHARS = MENTION_PATH_CHARS
 
-/** 匹配 mention token：@ 后跟至少一个路径字符（u flag 支持 \p 转义） */
+/** 匹配 mention token：@ 后跟至少一个路径字符 */
 const MENTION_RE = new RegExp(`^@(${PATH_CHARS}+)`, 'u')
+
+/** start() 热路径用：模块级预编译，避免每次渲染重复构造正则 */
+const MENTION_START_RE = new RegExp('@' + PATH_CHARS, 'u')
 
 /** HTML entity 转义，防止 XSS */
 function escapeHtml(text: string): string {
@@ -72,7 +62,7 @@ function mention(): TokenizerAndRendererExtension {
         level: 'inline',
         start(src: string) {
             // 找下一个「@ 后跟路径字符」的位置，提示 marked 在此停止 text 消费、尝试本扩展
-            const idx = src.search(new RegExp('@' + PATH_CHARS, 'u'))
+            const idx = src.search(MENTION_START_RE)
             return idx === -1 ? undefined : idx
         },
         tokenizer(src: string) {

@@ -17,25 +17,16 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
-import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { HelmetProvider } from 'react-helmet-async'
 import { router } from './router'
 import { ThemeProvider } from './core/config/theme/ThemeProvider'
 import { initDiag } from './core/lib/diag'
+import { queryClient } from './core/lib/queryClient'
 import './index.css'
 
 // 渲染链路诊断埋点：默认关，?diag=1 或 localStorage 开启；窗口挂 window.__mobiDiag
 initDiag()
-
-const queryClient = new QueryClient({
-    defaultOptions: {
-        queries: {
-            staleTime: 30_000,
-            gcTime: 10 * 60_000,
-            retry: 2,
-        }
-    }
-})
 
 // 移动端调试面板（vConsole）：通过连点 NewSessionPage 品牌 Icon ≥5 次开启
 // 见 core/lib/vconsole.ts，桌面端不启用，未开启时不进 bundle

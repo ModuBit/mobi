@@ -65,7 +65,20 @@ export function extractApiError(error: unknown): string {
         const data = error.response?.data as { error?: string } | undefined
         if (data?.error) return data.error
     }
-    return error instanceof Error ? error.message : 'Request failed'
+    if (error instanceof Error) return error.message
+    // duck-typed 错误对象（非 Error 实例但带 message，如测试构造/非 axios 封装）
+    const message = (error as { message?: unknown } | null)?.message
+    if (typeof message === 'string' && message) return message
+    // 其余抛出值直接文本化，保底空串回退
+    return String(error ?? '') || 'Request failed'
+}
+
+/**
+ * 把请求异常转成带真实文案的 Error（cause 保留原异常），供 queryFn rethrow——
+ * react-query 的 error.message 即为 UI 可直接展示的服务端原因。
+ */
+export function toApiError(error: unknown): Error {
+    return Object.assign(new Error(extractApiError(error)), { cause: error })
 }
 
 export function createApiClient(): AxiosInstance {

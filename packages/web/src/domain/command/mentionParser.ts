@@ -15,6 +15,7 @@
  */
 
 import { findStandaloneTriggerBeforeCursor } from './triggerDetector'
+import { MENTION_PATH_CHARS as MENTION_PATH_CHARS_SRC } from '@mobi/shared'
 
 /** 拼接 @ 引用路径（保留用户输入的相对形式） */
 export function buildMentionPath(mentionInput: string, selectedName: string): string {
@@ -24,11 +25,10 @@ export function buildMentionPath(mentionInput: string, selectedName: string): st
 }
 
 /**
- * @ 引用路径的合法字符——排除法（与 mentionPlugin 的 PATH_CHARS 同一排除集）：
- * 仅排除空白（token 终止符，纯文本流无法区分路径与后续正文）与 HTML/markdown
- * 结构符（`` ` `` `<` `>` `"` `\`），其余字符（中日韩文、emoji、括号、符号）一律放行。
+ * @ 引用路径字符集协议单源在 shared（MENTION_PATH_CHARS，排除法），本处组装成
+ * 「整串合法」锚定正则供光标检测使用，与渲染端 mentionPlugin 消费同一字符集
  */
-const MENTION_PATH_CHARS = /^[^\s`<>"\\]*$/u
+const MENTION_PATH_CHARS = new RegExp(`^${MENTION_PATH_CHARS_SRC}*$`, 'u')
 
 /**
  * 在完整文本中找到包含光标位置的 @mention 模式
