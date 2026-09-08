@@ -42,8 +42,9 @@ interface ServeOptions {
  * 流程：readFileMeta → 304 协商缓存 → Range(206) 解析 → 响应头 → stream 分片翻译。
  * read-file（单文件读取/下载）与 serve-file（HTML 预览静态资源）共用，避免复制粘贴。
  *
- * meta 读取失败时分流状态码：cli 侧 stat 对不存在文件抛 ENOENT，结构化 code='ENOENT' → 404
- * （对 iframe 友好，浏览器渲染原生缺页而非崩溃）；其他错误 → 500。
+ * meta 读取失败时分流状态码：cli 侧结构化 code——'ENOENT' → 404（对 iframe 友好，
+ * 浏览器渲染原生缺页而非崩溃）；'ACCESS_DENIED' → 403（读边界拒绝，真实原因随 body
+ * 下发给前端展示）；其他错误 → 500。
  */
 export async function serveFileContent(
     c: Context,
@@ -53,7 +54,7 @@ export async function serveFileContent(
 ): Promise<Response> {
     const meta = await reader.readFileMeta(absPath)
     if (!meta.success || !meta.meta) {
-        const status = meta.code === 'ENOENT' ? 404 : 500
+        const status = meta.code === 'ENOENT' ? 404 : meta.code === 'ACCESS_DENIED' ? 403 : 500
         return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, status)
     }
     const { mime, size, etag } = meta.meta

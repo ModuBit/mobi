@@ -110,9 +110,11 @@ describe('file RPC handlers', () => {
             const r = (await rpc2.handleRequest({
                 method: `${SCOPE2}:readFileMeta`,
                 params: { path: '~/.ssh/id_rsa' },
-            })) as { success: boolean; error?: string }
+            })) as { success: boolean; error?: string; code?: string }
             expect(r.success).toBe(false)
             expect(r.error).toContain('protected directory')
+            // 结构化码随响应透出，hub 据此映射 403（web 端展示真实原因而非笼统 500）
+            expect(r.code).toBe('ACCESS_DENIED')
         })
 
         it('cwd 内 .mobi/uploads 不受黑名单影响（黑名单只匹配 home 直接子级）', async () => {

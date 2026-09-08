@@ -63,17 +63,17 @@ function resolveAllowedMachinePath(
     relPath: string | undefined,
     homeDir: string,
 ): { abs: string } | { error: string; code?: string } {
-    // 空路径拒绝
-    if (!relPath) return { error: 'Invalid path: outside readable boundary' }
+    // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，hub 据此映射 403；EXT_FORBIDDEN 除外）
+    if (!relPath) return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
     const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
     // 解析与校验同源：validateReadPath 的 valid 结果自带 resolvedPath，无手抄二次解析
     const validation = validateReadPath(relPath, effectiveCwd, homeDir)
     if (!validation.valid) {
-        return { error: validation.error ?? 'Invalid path: outside readable boundary' }
+        return { error: validation.error ?? 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
     }
     // cwd 自身不是可读文件目标（对齐旧 resolveWithinCwd 的「cwd 自身拒绝」语义）
     if (validation.resolvedPath === resolve(effectiveCwd)) {
-        return { error: 'Invalid path: outside readable boundary' }
+        return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
     }
     const denied = assertAllowedExt(validation.resolvedPath)
     if (denied) {

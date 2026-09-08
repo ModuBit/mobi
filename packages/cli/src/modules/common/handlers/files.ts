@@ -114,7 +114,8 @@ export function registerFileHandlers(
 ): void {
     // 读边界（cwd ∪ home−黑名单）与写边界（严格 cwd）分离——读放宽不放大写风险。
     // ~ 展开语义内聚在 shared 校验层（validateReadPath/validateWritePath），
-    // valid 结果自带 resolvedPath，调用方直接用它读写，杜绝「校验对象 ≠ 实际读写对象」的漂移
+    // valid 结果自带 resolvedPath，调用方直接用它读写，杜绝「校验对象 ≠ 实际读写对象」的漂移。
+    // 边界拒绝统一带结构化码 ACCESS_DENIED，hub 据此映射 403（区别于 ENOENT→404 / 其他→500）
     const readable = (path: string) => validateReadPath(path, workingDirectory, homeDir)
     const writable = (path: string) => validateWritePath(path, workingDirectory, homeDir)
 
@@ -124,7 +125,7 @@ export function registerFileHandlers(
 
         const validation = readable(data.path)
         if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path')
+            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }
 
         try {
@@ -147,7 +148,7 @@ export function registerFileHandlers(
 
         const validation = readable(data.path)
         if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path')
+            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }
 
         try {
@@ -181,7 +182,7 @@ export function registerFileHandlers(
         // 被显式拒绝（不做字面目录名写入），hash/stat 校验与实际写入都用 resolvedPath
         const validation = writable(data.path)
         if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path')
+            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }
 
         try {
@@ -241,7 +242,7 @@ export function registerFileHandlers(
 
         const validation = writable(data.path)
         if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path')
+            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }
 
         const resolvedPath = validation.resolvedPath

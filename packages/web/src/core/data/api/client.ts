@@ -53,6 +53,21 @@ export function setUnauthorizedHandler(handler: () => void): () => void {
 // 创建 API 客户端（使用当前页面的 origin）
 // cookie 链路：withCredentials 让浏览器自动随同源请求携带 httpOnly cookie，
 // 不再手写 Authorization header（CORS credentials 配套见 hub server.ts）
+
+/**
+ * 从请求异常中提取服务端下发的业务错误文案。
+ * axios 对非 2xx 抛 AxiosError，其 message 只有笼统的「Request failed with status code N」；
+ * hub 的错误响应 body 恒为 { success:false, error }，把真实原因（如读边界的
+ * 「Access denied: ... protected directory」）提取出来供 UI 直接展示。
+ */
+export function extractApiError(error: unknown): string {
+    if (axios.isAxiosError(error)) {
+        const data = error.response?.data as { error?: string } | undefined
+        if (data?.error) return data.error
+    }
+    return error instanceof Error ? error.message : 'Request failed'
+}
+
 export function createApiClient(): AxiosInstance {
     const client = axios.create({
         baseURL: window.location.origin,

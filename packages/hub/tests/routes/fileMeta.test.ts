@@ -45,7 +45,13 @@ const mockSyncEngine = {
     }),
     readFileMeta: async (_sessionId: string, path: string) => {
         if (path === 'missing.txt') {
-            return { success: false, error: 'File not found' }
+            return { success: false, error: 'File not found', code: 'ENOENT' }
+        }
+        if (path === 'secret.txt') {
+            return { success: false, error: 'Access denied: protected directory', code: 'ACCESS_DENIED' }
+        }
+        if (path === 'boom.txt') {
+            return { success: false, error: 'stat crashed' }
         }
         return {
             success: true,
@@ -96,16 +102,42 @@ describe('GET /api/sessions/:id/file-meta', () => {
         expect(body.error).toMatch(/path/i)
     })
 
-    test('500：readFileMeta 返回失败', async () => {
+    test('404：readFileMeta 返回 ENOENT（结构化码分流）', async () => {
         const token = await getAuthToken(app)
 
         const res = await app.request('/api/sessions/s1/file-meta?path=missing.txt', {
             headers: { Authorization: `Bearer ${token}` },
         })
 
-        expect(res.status).toBe(500)
+        expect(res.status).toBe(404)
         const body = (await res.json()) as { success: boolean; error: string }
         expect(body.success).toBe(false)
         expect(body.error).toBe('File not found')
+    })
+
+    test('403：readFileMeta 返回 ACCESS_DENIED（读边界拒绝，原因随 body 透出）', async () => {
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/file-meta?path=secret.txt', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+
+        expect(res.status).toBe(403)
+        const body = (await res.json()) as { success: boolean; error: string }
+        expect(body.success).toBe(false)
+        expect(body.error).toContain('Access denied')
+    })
+
+    test('500：readFileMeta 返回失败（无结构化码）', async () => {
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/file-meta?path=boom.txt', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+
+        expect(res.status).toBe(500)
+        const body = (await res.json()) as { success: boolean; error: string }
+        expect(body.success).toBe(false)
+        expect(body.error).toBe('stat crashed')
     })
 })

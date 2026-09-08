@@ -15,7 +15,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useMobiApi } from '@/core/data/api/client'
+import { extractApiError, useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { FileNode, ListDirectoryResponse } from '@/core/data/api/types'
 
@@ -83,9 +83,15 @@ export function useFileContent(sessionId: string | null, filePath: string | null
         queryKey: queryKeys.sessionFile(sessionId!, filePath!, etag),
         queryFn: async () => {
             if (!sessionId || !filePath) return null
-            // 304 命中 → 端点不下发 body，这里返回 null（与「未加载」同义），
-            // 浏览器侧缓存主要靠 react-query cache + refetch 协商
-            return await api.files.read(sessionId, filePath)
+            try {
+                // 304 命中 → 端点不下发 body，这里返回 null（与「未加载」同义），
+                // 浏览器侧缓存主要靠 react-query cache + refetch 协商
+                return await api.files.read(sessionId, filePath)
+            } catch (error) {
+                // 非 2xx 被 axios throw，AxiosError.message 只有笼统状态码文案；
+                // 提取 hub body 里的真实原因（如读边界拒绝详情）供 meta-error 态展示
+                throw Object.assign(new Error(extractApiError(error)), { cause: error })
+            }
         },
         enabled: !!sessionId && !!filePath && enabled,
     })
@@ -109,12 +115,18 @@ export function useFileMeta(sessionId: string | null, filePath: string | null) {
         queryKey: queryKeys.sessionFileMeta(sessionId!, filePath!),
         queryFn: async () => {
             if (!sessionId || !filePath) return null
-            const res = await api.files.meta(sessionId, filePath)
-            if (res.data.success === false || !res.data.meta) {
-                throw new Error(res.data.error ?? 'file-meta failed')
+            try {
+                const res = await api.files.meta(sessionId, filePath)
+                if (res.data.success === false || !res.data.meta) {
+                    throw new Error(res.data.error ?? 'file-meta failed')
+                }
+                // writable 在响应顶层（CLI 通道语义），并入 meta 对象方便消费方单点取用
+                return { ...res.data.meta, writable: res.data.writable }
+            } catch (error) {
+                // axios throw 的 AxiosError.message 只有「Request failed with status code N」，
+                // 提取 hub body 的真实原因（读边界拒绝详情 / ENOENT 等）供 meta-error 态展示
+                throw Object.assign(new Error(extractApiError(error)), { cause: error })
             }
-            // writable 在响应顶层（CLI 通道语义），并入 meta 对象方便消费方单点取用
-            return { ...res.data.meta, writable: res.data.writable }
         },
         enabled: !!sessionId && !!filePath,
     })

@@ -907,7 +907,10 @@ export function createSessionsRoutes(
         try {
             const meta = await engine.readFileMeta(sessionResult.sessionId, path)
             if (!meta.success) {
-                return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, 500)
+                // 结构化 code 三分流：ENOENT→404 / ACCESS_DENIED→403（读边界拒绝，原因随 body
+                // 透出给前端展示）/ 其他→500。与 serveFileContent 的分流口径一致
+                const status = meta.code === 'ENOENT' ? 404 : meta.code === 'ACCESS_DENIED' ? 403 : 500
+                return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, status)
             }
             return c.json({ success: true, meta: meta.meta, writable: meta.writable })
         } catch (error) {
