@@ -54,6 +54,11 @@ describe('detectMentionAtCursor', () => {
         expect(detectMentionAtCursor('@~/x', 4)).toEqual({ atIndex: 0, afterAt: '~/x' })
     })
 
+    it('中文路径触发（Unicode 字母不截断补全）', () => {
+        const p = '~/Documents/代位追偿/张磊-行驶证.pdf'
+        expect(detectMentionAtCursor(`@${p}`, p.length + 1)).toEqual({ atIndex: 0, afterAt: p })
+    })
+
     it('光标离开 mention 词（后跟空白）不触发', () => {
         expect(detectMentionAtCursor('@foo bar', 8)).toBeNull()
     })

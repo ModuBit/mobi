@@ -17,11 +17,11 @@
 import type { TokenizerAndRendererExtension } from 'marked'
 import { buildActionUri } from '@mobi/shared'
 
-/** @ 路径合法字符（与 mentionParser 的 MENTION_PATH_CHARS 一致） */
-const PATH_CHARS = '[a-zA-Z0-9./_\\-~]'
+/** @ 路径合法字符（与 mentionParser 的 MENTION_PATH_CHARS 一致）：Unicode 字母/数字（中文路径）+ 路径符号 */
+const PATH_CHARS = '[\\p{L}\\p{N}./_\\-~]'
 
-/** 匹配 mention token：@ 后跟至少一个路径字符 */
-const MENTION_RE = new RegExp(`^@(${PATH_CHARS}+)`)
+/** 匹配 mention token：@ 后跟至少一个路径字符（u flag 支持 \p 转义） */
+const MENTION_RE = new RegExp(`^@(${PATH_CHARS}+)`, 'u')
 
 /** HTML entity 转义，防止 XSS */
 function escapeHtml(text: string): string {
@@ -59,7 +59,7 @@ function mention(): TokenizerAndRendererExtension {
         level: 'inline',
         start(src: string) {
             // 找下一个「@ 后跟路径字符」的位置，提示 marked 在此停止 text 消费、尝试本扩展
-            const idx = src.search(/@[a-zA-Z0-9./_\-~]/)
+            const idx = src.search(new RegExp('@' + PATH_CHARS, 'u'))
             return idx === -1 ? undefined : idx
         },
         tokenizer(src: string) {

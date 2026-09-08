@@ -23,8 +23,8 @@ export function buildMentionPath(mentionInput: string, selectedName: string): st
     return dirPart + selectedName
 }
 
-/** @ 引用路径的合法字符（含路径分隔符 / . ~ 等） */
-const MENTION_PATH_CHARS = /^[a-zA-Z0-9./_\-~]*$/
+/** @ 引用路径的合法字符（含路径分隔符 / . ~ 等 + Unicode 字母/数字，支持中文路径） */
+const MENTION_PATH_CHARS = /^[\p{L}\p{N}./_\-~]*$/u
 
 /**
  * 在完整文本中找到包含光标位置的 @mention 模式

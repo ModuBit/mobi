@@ -82,6 +82,14 @@ describe('mentionPlugin', () => {
         expect(html).toContain('@.abc/a/b/c')
     })
 
+    it('中文路径整体识别为 badge（Unicode 字母不截断）', () => {
+        const html = render('@~/Documents/代位追偿/张磊-行驶证.pdf 这个你能解析出来么')
+        expect(html).toContain('class="mention-badge"')
+        expect(html).toContain('@~/Documents/代位追偿/张磊-行驶证.pdf')
+        // URI 里路径整体编码（含中文段），不在中文处断开
+        expect(html).toContain('path=%7E%2FDocuments%2F%E4%BB%A3%E4%BD%8D%E8%BF%BD%E5%81%BF%2F%E5%BC%A0%E7%A3%8A-%E8%A1%8C%E9%A9%B6%E8%AF%81.pdf')
+    })
+
     it('不误伤 email（a@b.com 不识别为 mention，@ 也不破坏 email）', () => {
         const html = render('联系 a@b.com 联系')
         expect(html).not.toContain('class="mention-badge"')
