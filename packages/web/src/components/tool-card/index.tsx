@@ -134,8 +134,9 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
                                         <ToolRowItems row={row} dense />
                                     </span>
                                 ) : (
+                                    // 非 row 工具维持旧摘要语义：title + subtitle + 140 截断
                                     <span style={{ fontFamily: 'var(--font-mono)', verticalAlign: 'middle', wordBreak: 'break-all' }}>
-                                        {presentation.title}
+                                        {truncate(presentation.subtitle ? `${presentation.title}: ${presentation.subtitle}` : presentation.title, 140)}
                                     </span>
                                 )}
                             </div>

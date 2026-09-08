@@ -58,10 +58,15 @@ describe('inferToolRow：跳转类工具（file/open 可点击）', () => {
         expect(row?.stats).toEqual({ add: 3, del: 3 })
     })
 
-    it('Write：chip 可点击，stats 全计为新增', () => {
+    it('Write：chip 可点击，stats 全计为新增（尾随换行不计）', () => {
         const row = inferToolRow('Write', { file_path: '/home/u/proj/src/d.ts', content: 'a\nb\n' }, metadata)
         expect(row?.chip?.uri).toContain('mobi://file/open')
-        expect(row?.stats).toEqual({ add: 3, del: 0 })
+        expect(row?.stats).toEqual({ add: 2, del: 0 })
+    })
+
+    it('Edit：纯插入（old_string 空）不计删除行', () => {
+        const row = inferToolRow('Edit', { file_path: '/home/u/proj/src/f.ts', old_string: '', new_string: 'x\ny' }, metadata)
+        expect(row?.stats).toEqual({ add: 2, del: 0 })
     })
 
     it('cwd 内绝对路径 chip 文本显示为相对项目根', () => {

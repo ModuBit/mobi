@@ -32,7 +32,6 @@ import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
 import { ContentDrawer, DRAWER_WIDTH_PRESETS } from '@/components/ui/ContentDrawer'
-import { FilePathText } from '@/components/ui/FilePathText'
 import { AgentDrawerContent } from './AgentDrawerContent'
 
 const { Text } = Typography
@@ -161,13 +160,9 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                 {getToolIcon(tool.name, ICON_STYLE_LG)}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-                {presentation.isFilePath ? (
-                    <FilePathText path={presentation.title} strong style={{ fontSize: 14 }} />
-                ) : (
-                    <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
-                        {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}
-                    </Text>
-                )}
+                <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
+                    {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}
+                </Text>
                 {!isAgentTool(tool.name) && truncatedSubtitle && (
                     <Text type="secondary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {truncatedSubtitle}

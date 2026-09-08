@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import { buildActionUri } from '@mobi/shared'
-import { isObject } from '@mobi/shared'
+import { buildActionUri, isObject } from '@mobi/shared'
 import { getInputStringAny, countLines } from './toolInputUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -79,7 +78,6 @@ function readRowMeta(input: unknown): string | null {
     if (!isObject(input) || typeof input.offset !== 'number') return null
     const from = input.offset + 1
     if (typeof input.limit === 'number') return `L${from}–${input.offset + input.limit}`
-    if (typeof input.content === 'string') return `L${from}–${input.offset + countLines(input.content)}`
     return `L${from}–`
 }
 

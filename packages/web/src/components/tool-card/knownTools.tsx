@@ -99,8 +99,6 @@ export type ToolPresentation = {
     minimal: boolean
     /** 是否需要宽 Drawer（代码类工具） */
     wideDrawer?: boolean
-    /** title 是否为文件路径（启用中间省略） */
-    isFilePath?: boolean
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
     /** 工具行新形态（动词+chip，toolRow.ts 推导单源）；null = 维持 title 形态渲染 */
@@ -207,8 +205,6 @@ export const knownTools: Record<string, {
     minimal?: boolean | ((opts: ToolOpts) => boolean)
     /** 是否需要宽 Drawer（代码类工具） */
     wideDrawer?: boolean
-    /** title 是否为文件路径（启用中间省略） */
-    isFilePath?: boolean
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
 }> = {
@@ -358,7 +354,6 @@ export const knownTools: Record<string, {
         },
         minimal: true,
         wideDrawer: true,
-        isFilePath: false,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     MultiEdit: {
@@ -373,7 +368,6 @@ export const knownTools: Record<string, {
         },
         minimal: true,
         wideDrawer: true,
-        isFilePath: false,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Write: {
@@ -390,7 +384,6 @@ export const knownTools: Record<string, {
         },
         minimal: true,
         wideDrawer: true,
-        isFilePath: false,
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     WebFetch: {
@@ -573,7 +566,6 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             subtitle: known.subtitle ? known.subtitle(opts) : null,
             minimal,
             wideDrawer: known.wideDrawer ?? false,
-            isFilePath: known.isFilePath ?? false,
             previewMaxHeight: known.previewMaxHeight,
             row,
         }

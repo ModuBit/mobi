@@ -36,9 +36,11 @@ export function getInputStringAny(input: unknown, keys: string[]): string | null
     return null
 }
 
-/** 数一个文本的行数（按 \n split 口径；工具行推导与工具卡 subtitle 共用） */
+/** 数一个文本的行数：尾随换行不计、空串为 0（'a\nb\n' = 2 行——行数语义，
+ *  供工具行 diff 统计与工具卡 subtitle 共用） */
 export function countLines(text: string): number {
-    return text.split('\n').length
+    if (text.length === 0) return 0
+    return text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
 }
 
 /**

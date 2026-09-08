@@ -29,7 +29,6 @@ import { getToolResultViewComponent } from '@/components/tool-card/views/_result
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
-import { FilePathText } from '@/components/ui/FilePathText'
 import { ToolRowItems } from '@/components/ui/ToolRowItems'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
@@ -345,8 +344,6 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                             // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
                             // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起
                             <ToolRowItems row={toolPresentation.row} />
-                        ) : toolPresentation.isFilePath ? (
-                            <FilePathText path={toolPresentation.title} />
                         ) : (
                             <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
                                 {toolPresentation.title}
