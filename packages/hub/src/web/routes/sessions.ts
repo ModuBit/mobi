@@ -909,7 +909,7 @@ export function createSessionsRoutes(
             if (!meta.success) {
                 return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, 500)
             }
-            return c.json({ success: true, meta: meta.meta })
+            return c.json({ success: true, meta: meta.meta, writable: meta.writable })
         } catch (error) {
             return c.json({
                 success: false,

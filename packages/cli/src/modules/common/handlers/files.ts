@@ -21,8 +21,9 @@ import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { createReadStream } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { resolve, join } from 'path'
+import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { validatePath } from '../pathSecurity'
+import { validatePath, validateReadPath, expandHomePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { lookupMime } from './fileMime'
 
@@ -62,6 +63,8 @@ interface FileMeta {
 export interface ReadFileMetaResponse {
     success: boolean
     meta?: FileMeta
+    /** 可写性：路径是否在写边界（严格 cwd 子树）内。false 时 web 端 inspector 直接只读态 */
+    writable?: boolean
     error?: string
     /** 结构化错误码（如 'ENOENT'），供 hub 精确分流 404/500，不依赖 error 文案正则 */
     code?: string
@@ -103,20 +106,31 @@ export async function fileRangeAt(absPath: string, offset: number, length: numbe
     return new Uint8Array(Buffer.concat(chunks))
 }
 
-export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
+export function registerFileHandlers(
+    rpcHandlerManager: RpcHandlerManager,
+    workingDirectory: string,
+    /** 用户 home（读边界 home 通道 + 黑名单基准；显式注入便于测试，缺省取系统 home） */
+    homeDir: string = homedir(),
+): void {
+    // 读边界（cwd ∪ home−黑名单）与写边界（严格 cwd）分离——读放宽不放大写风险。
+    // 读路径解析必须与边界判定同一解析：~ 先展开再 resolve，否则 ~/x 会被当字面目录名
+    const readable = (path: string) => validateReadPath(path, workingDirectory, homeDir)
+    const resolveReadable = (path: string) => resolve(workingDirectory, expandHomePath(path, homeDir))
+    // 写判定同样先展开 ~：否则 ~/x 会被 resolve 成 cwd/~/x 而误判为 cwd 内可写
+    const writableOf = (path: string) => validatePath(expandHomePath(path, homeDir), workingDirectory).valid
+
     // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
     rpcHandlerManager.registerHandler<ReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
         logger.debug('Read file meta:', data.path)
 
-        const validation = validatePath(data.path, workingDirectory)
+        const validation = readable(data.path)
         if (!validation.valid) {
             return rpcError(validation.error ?? 'Invalid file path')
         }
 
         try {
-            const resolvedPath = resolve(workingDirectory, data.path)
-            const meta = await fileMetaAt(resolvedPath)
-            return { success: true, meta }
+            const meta = await fileMetaAt(resolveReadable(data.path))
+            return { success: true, meta, writable: writableOf(data.path) }
         } catch (error) {
             logger.debug('Failed to stat file:', error)
             // 透传 errno code（ENOENT 等）让 hub 基于结构化码判 404，不再依赖文案
@@ -132,14 +146,13 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
     rpcHandlerManager.registerHandler<ReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {
         logger.debug('Read file range:', data.path, data.offset, data.length)
 
-        const validation = validatePath(data.path, workingDirectory)
+        const validation = readable(data.path)
         if (!validation.valid) {
             return rpcError(validation.error ?? 'Invalid file path')
         }
 
         try {
-            const resolvedPath = resolve(workingDirectory, data.path)
-            const st = await stat(resolvedPath)
+            const st = await stat(resolveReadable(data.path))
             // ?? 0 只挡 null/undefined，挡不住 NaN（Math.floor(NaN)=NaN 会绕过越界检查），需 Number.isFinite 显式校验
             const rawOffset = Math.floor(data.offset ?? 0)
             const rawLength = Math.floor(data.length ?? FILE_RANGE_CHUNK)
@@ -153,7 +166,7 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
             }
 
             // createReadStream 的 end 是 inclusive，区间读取由共享核心处理
-            return { success: true, chunk: await fileRangeAt(resolvedPath, offset, length) }
+            return { success: true, chunk: await fileRangeAt(resolveReadable(data.path), offset, length) }
         } catch (error) {
             logger.debug('Failed to read file range:', error)
             return rpcError(getErrorMessage(error, 'Failed to read file range'))

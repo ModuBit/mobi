@@ -35,6 +35,11 @@ describe('mentionPlugin', () => {
         expect(html).not.toContain('<s>')
     })
 
+    it('badge 是 file/open 动作链接（a href=mobi://file/open，name 取基名）', () => {
+        const html = render('看 @src/app/main.ts end')
+        expect(html).toContain('href="mobi://file/open?path=src%2Fapp%2Fmain.ts&amp;name=main.ts"')
+    })
+
     it('两个 mention 之间的内容不被渲染为删除线', () => {
         const html = render('balabala @~/a/b/c balabals @~/e/f/g balabala')
         const badgeMatches = html.match(/class="mention-badge"/g)

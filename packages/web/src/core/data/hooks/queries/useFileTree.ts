@@ -92,14 +92,14 @@ export function useFileContent(sessionId: string | null, filePath: string | null
 }
 
 /**
- * 文件元数据：mime / size / etag。
+ * 文件元数据：mime / size / etag / writable。
  * 用于在不拉取文件体的前提下，决定渲染策略（如代码高亮 vs 二进制提示）
- * 或做协商缓存的条件请求。
+ * 或做协商缓存的条件请求；writable（是否在写边界内）驱动 inspector 只读态。
  */
-export type FileMeta = { mime: string; size: number; etag: string }
+export type FileMeta = { mime: string; size: number; etag: string; writable?: boolean }
 
 /**
- * 获取文件元数据（mime/size/etag）。
+ * 获取文件元数据（mime/size/etag/writable）。
  * hub 返回 success:false 或缺少 meta 时抛错，由 react-query 透出 error。
  */
 export function useFileMeta(sessionId: string | null, filePath: string | null) {
@@ -113,7 +113,8 @@ export function useFileMeta(sessionId: string | null, filePath: string | null) {
             if (res.data.success === false || !res.data.meta) {
                 throw new Error(res.data.error ?? 'file-meta failed')
             }
-            return res.data.meta
+            // writable 在响应顶层（CLI 通道语义），并入 meta 对象方便消费方单点取用
+            return { ...res.data.meta, writable: res.data.writable }
         },
         enabled: !!sessionId && !!filePath,
     })

@@ -22,7 +22,6 @@ import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import './editor.css'
-
 /** 按扩展名异步加载 CodeMirror 语言包（未匹配则返回 null，纯文本无高亮） */
 async function langFor(filePath: string): Promise<Extension | null> {
     const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
@@ -48,6 +47,8 @@ interface Props {
     text: string
     filePath: string
     wrap: boolean
+    /** 只读态：不可输入但渲染效果与编辑态完全一致（离线查看 / 无写权限文件） */
+    readOnly?: boolean
     onChange: (text: string) => void
 }
 
@@ -56,16 +57,17 @@ interface Props {
  *
  * - filePath 维度重建 editor（切文件另起一个 CodeMirror 实例）
  * - 语言包按需动态 import，首屏不加载全部
- * - wrap / 主题（深浅）通过 Compartment 动态 reconfigure，不重建 editor
+ * - wrap / 主题（深浅）/ readOnly 通过 Compartment 动态 reconfigure，不重建 editor
  * - 外部 text 变化（OCC reload）→ dispatch changes 同步，仅当与当前内容不同
  * - onChange 用 ref 持有，避免 docChanged 触发时闭包 stale
  */
-export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
+export function CodeEditorView({ text, filePath, wrap, readOnly = false, onChange }: Props) {
     const host = useRef<HTMLDivElement>(null)
     const view = useRef<EditorView | null>(null)
     const langComp = useRef(new Compartment())
     const wrapComp = useRef(new Compartment())
     const themeComp = useRef(new Compartment())
+    const readComp = useRef(new Compartment())
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
 
     // onChange 用 ref，避免 docChanged 闭包 stale + 避免 editor 重建
@@ -86,6 +88,7 @@ export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
             langComp.current.of([]),
             wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
             themeComp.current.of(isDark ? oneDark : []),
+            readComp.current.of(readOnlyExtensions(readOnly)),
             EditorView.updateListener.of((u) => {
                 if (u.docChanged && !syncingRef.current) onChangeRef.current(u.state.doc.toString())
             }),
@@ -104,7 +107,7 @@ export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
             view.current?.destroy()
             view.current = null
         }
-        // 仅 filePath 变化重建；text/wrap/isDark 用闭包初值，由下方专门 effect 同步
+        // 仅 filePath 变化重建；text/wrap/isDark/readOnly 用闭包初值，由下方专门 effect 同步
     }, [filePath])
 
     // 外部 text 变化 → 同步（仅当与当前 doc 不同，避免光标/历史重置）
@@ -133,5 +136,17 @@ export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
         })
     }, [isDark])
 
+    // 只读切换
+    useEffect(() => {
+        view.current?.dispatch({
+            effects: readComp.current.reconfigure(readOnlyExtensions(readOnly)),
+        })
+    }, [readOnly])
+
     return <div ref={host} className="code-editor-view" style={{ height: '100%' }} />
+}
+
+/** CodeMirror 只读双 extension：readOnly 挡命令，editable=false 移除可编辑光标 */
+function readOnlyExtensions(readOnly: boolean): Extension[] {
+    return readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []
 }

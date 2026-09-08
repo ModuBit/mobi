@@ -54,6 +54,8 @@ export type RpcFileMeta = { mime: string; size: number; etag: string }
 export type RpcReadFileMetaResponse = {
     success: boolean
     meta?: RpcFileMeta
+    /** 可写性：路径是否在写边界（严格 cwd 子树）内，session 通道下发；machine 通道不下发 */
+    writable?: boolean
     error?: string
     /** 结构化错误码（如 'ENOENT'），hub 据此精确分流 404/500 */
     code?: string

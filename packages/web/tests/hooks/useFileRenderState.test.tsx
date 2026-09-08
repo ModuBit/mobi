@@ -169,6 +169,21 @@ describe('useFileRenderState', () => {
         expect(h.status === 'ready' && h.editable).toBe(false)
     })
 
+    it('writable=false → editable=false（写边界外只读）；缺省视为可写（旧版 CLI 兼容）', async () => {
+        const blob = { text: async () => 'hi' } as unknown as Blob
+        mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e', writable: false }, isLoading: false, error: null } as any)
+        mockedContent.mockReturnValue({ data: { blob, mime: 'text/plain', etag: 'e' }, isLoading: false, error: null } as any)
+        const t = renderState('s', 'a.txt').result.current
+        expect(t.status === 'ready' && t.writable).toBe(false)
+        expect(t.status === 'ready' && t.editable).toBe(false)
+
+        // meta 不带 writable（旧版 CLI）→ 视为可写
+        mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const t2 = renderState('s', 'a.txt').result.current
+        expect(t2.status === 'ready' && t2.writable).toBe(true)
+        expect(t2.status === 'ready' && t2.editable).toBe(true)
+    })
+
     it('active=false → editable=false（离线不编辑）', async () => {
         mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
         const blob = { text: async () => 'hi' } as unknown as Blob

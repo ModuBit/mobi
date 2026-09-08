@@ -83,6 +83,88 @@ describe('file RPC handlers', () => {
         })
     })
 
+    it('~ 路径 writable 判定正确（cwd/~/x 不误判为 cwd 内可写）', async () => {
+        // 回归：writableOf 未展开 ~ 时，~/x 被 resolve 成 cwd/~/x 误判 writable=true
+        const homeDir = await mkdtemp(join(tmpdir(), 'mobi-home-'))
+        try {
+            await writeFile(join(rootDir, 'a.txt'), 'hello')
+            await writeFile(join(homeDir, 'note.md'), 'hello')
+            const rpc2 = new RpcHandlerManager({ scopePrefix: 'read-boundary-test' })
+            registerFileHandlers(rpc2, rootDir, homeDir)
+
+            const r = (await rpc2.handleRequest({
+                method: 'read-boundary-test:readFileMeta',
+                params: { path: '~/note.md' },
+            })) as { success: boolean; writable?: boolean }
+            expect(r.success).toBe(true)
+            expect(r.writable).toBe(false)
+
+            // cwd 内文件 writable=true
+            const r2 = (await rpc2.handleRequest({
+                method: 'read-boundary-test:readFileMeta',
+                params: { path: 'a.txt' },
+            })) as { success: boolean; writable?: boolean }
+            expect(r2.writable).toBe(true)
+        } finally {
+            await rm(homeDir, { recursive: true, force: true })
+        }
+    })
+
+    describe('读边界放宽（ADR 0004：cwd ∪ home−黑名单）', () => {
+        let homeDir: string
+        let rpc2: RpcHandlerManager
+        const SCOPE2 = 'read-boundary-test'
+
+        beforeEach(async () => {
+            homeDir = await mkdtemp(join(tmpdir(), 'mobi-home-'))
+            rpc2 = new RpcHandlerManager({ scopePrefix: SCOPE2 })
+            registerFileHandlers(rpc2, rootDir, homeDir)
+        })
+        afterEach(async () => {
+            await rm(homeDir, { recursive: true, force: true })
+        })
+
+        it('~ 路径（home 通道）meta 可读：expand 后 stat 到真实文件', async () => {
+            await writeFile(join(homeDir, 'note.md'), 'E2E home note')
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:readFileMeta`,
+                params: { path: '~/note.md' },
+            })) as { success: boolean; error?: string }
+            expect(r.success).toBe(true)
+        })
+
+        it('黑名单目录（home 直接子级 .ssh）拒绝', async () => {
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:readFileMeta`,
+                params: { path: '~/.ssh/id_rsa' },
+            })) as { success: boolean; error?: string }
+            expect(r.success).toBe(false)
+            expect(r.error).toContain('protected directory')
+        })
+
+        it('cwd 内 .mobi/uploads 不受黑名单影响（黑名单只匹配 home 直接子级）', async () => {
+            const dir = join(rootDir, '.mobi', 'uploads')
+            const fs = await import('fs/promises')
+            await fs.mkdir(dir, { recursive: true })
+            await writeFile(join(dir, 'a.pdf'), 'x')
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:readFileMeta`,
+                params: { path: '.mobi/uploads/a.pdf' },
+            })) as { success: boolean }
+            expect(r.success).toBe(true)
+        })
+
+        it('readFileRange 走同一读边界（~ 路径读字节）', async () => {
+            await writeFile(join(homeDir, 'bin.dat'), 'abcdef')
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:readFileRange`,
+                params: { path: '~/bin.dat', offset: 0, length: 3 },
+            })) as { success: boolean; chunk?: Uint8Array }
+            expect(r.success).toBe(true)
+            expect(Array.from(r.chunk ?? [])).toEqual([97, 98, 99])
+        })
+    })
+
     describe('readFileRange', () => {
         it('读取指定 [offset, offset+length) 段，字节正确', async () => {
             await writeFile(join(rootDir, 'b.bin'), Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))

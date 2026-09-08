@@ -195,7 +195,8 @@ html[data-theme='dark'] .x-markdown .slash-command-badge {
     color: #d1cfc5;
 }
 
-/* Mention Badge（@path 文件引用） */
+/* Mention Badge（@path 文件引用）：渲染为 mobi://file/open 动作链接（a 元素，点击在
+   inspector pane 打开文件），链接语义样式在此复位为纯 badge 外观 */
 .x-markdown .mention-badge {
     display: inline-block;
     background: #e8e6dc;
@@ -207,6 +208,8 @@ html[data-theme='dark'] .x-markdown .slash-command-badge {
     font-weight: 500;
     vertical-align: baseline;
     white-space: nowrap;
+    cursor: pointer;
+    text-decoration: none;
 }
 
 html[data-theme='dark'] .x-markdown .mention-badge {

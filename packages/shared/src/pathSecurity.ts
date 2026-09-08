@@ -94,3 +94,33 @@ export function isWithinBlacklistedDir(targetPath: string, homeDir: string): boo
         return target === normalizedDir || target.startsWith(prefix)
     })
 }
+
+/**
+ * `~` 前缀展开为 homeDir：仅支持裸 `~` 与 `~/` 前缀；`~user` 多用户语义不支持，
+ * 按字面路径处理（交给边界校验拒绝）。非 `~` 开头或 homeDir 为空时原样返回。
+ */
+export function expandHomePath(targetPath: string, homeDir: string): string {
+    if (targetPath === '~') return homeDir
+    if (homeDir && targetPath.startsWith('~/')) return resolve(homeDir, targetPath.slice(2))
+    return targetPath
+}
+
+/**
+ * 读边界校验（ADR 0004）：允许集 = cwd 子树 ∪ (home 子树 − 黑名单)，其余一律拒绝。
+ *
+ * - 黑名单先于一切允许域判定：cwd 恰为 home 时 `.ssh` 等仍受保护；黑名单只匹配
+ *   home 直接子级，cwd 内同名目录（如 `src/.config/`、`.mobi/uploads/` 附件）不误伤
+ * - `~` 前缀先展开再判定（resolve(cwd, '~/x') 会把 `~` 当字面目录名，必须先行展开）
+ * - 相对/绝对双支持：`resolve(cwd, path)` 的 POSIX 语义——绝对路径忽略 cwd 直接采用
+ */
+export function validateReadPath(targetPath: string, workingDirectory: string, homeDir: string): PathValidationResult {
+    const expanded = expandHomePath(targetPath, homeDir)
+    const resolvedTarget = resolve(workingDirectory, expanded)
+
+    if (homeDir && isWithinBlacklistedDir(resolvedTarget, homeDir)) {
+        return { valid: false, error: `Access denied: Path '${targetPath}' is in a protected directory` }
+    }
+    if (isWithinDir(resolvedTarget, workingDirectory)) return { valid: true }
+    if (homeDir) return validateHomeDirPath(resolvedTarget, homeDir)
+    return { valid: false, error: `Access denied: Path '${targetPath}' is outside the working directory` }
+}

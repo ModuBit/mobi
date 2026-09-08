@@ -45,6 +45,20 @@ describe('CodeEditorView', () => {
         expect(document.querySelector('.cm-editor')).toBeInTheDocument()
     })
 
+    it('readOnly → .cm-content contentEditable=false，动态切换生效', async () => {
+        // 用 container 作用域断言：本文件无 afterEach(cleanup)，querySelector 会命中前序用例残留的 editor
+        const { container, rerender } = render(
+            <CodeEditorView text="x" filePath="a.ts" readOnly onChange={() => {}} wrap={false} />,
+        )
+        // EditorView.editable.of(false) 落到 .cm-content 的 contentEditable=false
+        expect(container.querySelector('.cm-content')).toHaveAttribute('contenteditable', 'false')
+        // 动态切回可编辑（Compartment reconfigure，不重建 editor）
+        rerender(<CodeEditorView text="x" filePath="a.ts" onChange={() => {}} wrap={false} />)
+        await waitFor(() => {
+            expect(container.querySelector('.cm-content')).toHaveAttribute('contenteditable', 'true')
+        })
+    })
+
     it('外部 text 同步不触发 onChange（防 dispatch→onChange 循环）', async () => {
         // 回归：保存后 refetch 回灌 text → CodeEditorView dispatch 同步 →
         // 不应回灌 onChange（否则 → editor.update → 又保存 → 循环）

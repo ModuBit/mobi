@@ -15,6 +15,7 @@
  */
 
 import type { TokenizerAndRendererExtension } from 'marked'
+import { buildActionUri } from '@mobi/shared'
 
 /** @ 路径合法字符（与 mentionParser 的 MENTION_PATH_CHARS 一致） */
 const PATH_CHARS = '[a-zA-Z0-9./_\\-~]'
@@ -42,7 +43,9 @@ function isMentionPath(path: string): boolean {
 }
 
 /**
- * 将用户消息中的 @<path> mention 渲染为 Badge。
+ * 将用户消息中的 @<path> mention 渲染为 Badge 形态的 file/open 动作链接
+ * （`<a class="mention-badge" href="mobi://file/open?...">`，点击在 inspector pane 打开文件；
+ * path 解析基准 = 会话 cwd，实际可达范围由服务端读边界裁决）。
  *
  * inline 级扩展，优先级高于 marked 内置的 GFM 删除线（`~text~`）——否则用户输入
  * `@~/a/b/c` 里的 `~` 会被删除线语法吞掉，把两个 mention 之间的内容渲染为删除线。
@@ -76,8 +79,12 @@ function mention(): TokenizerAndRendererExtension {
             return token
         },
         renderer(token) {
-            const { mention } = token as unknown as { mention: string }
-            return `<span class="mention-badge">${escapeHtml(mention)}</span>`
+            const { mention, path } = token as unknown as { mention: string; path: string }
+            // 点击 = mobi://file/open（ADR 0003）：渲染时构造 URI 走统一执行链（消息即快照，
+            // 落库不动）。Markdown 管线把带 mobi href 的 <a> 拦截为 ActionLink 分发；
+            // class 保留 mention-badge 样式（经 ExternalLink → ActionLink 的 className 透传）
+            const uri = buildActionUri('file/open', { path, name: path.split('/').pop() ?? path })
+            return `<a class="mention-badge" href="${escapeHtml(uri)}">${escapeHtml(mention)}</a>`
         },
     }
 }

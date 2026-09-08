@@ -68,13 +68,14 @@ const DOMPURIFY_CONFIG: DOMPurifyConfig = {
 
 /** 链接渲染：mobi:// 内部动作链接交 ActionLink 拦截分发（ADR 0003），其余统一新标签页打开 */
 const ExternalLink: FC<ComponentProps<{ href?: string }>> = (
-    { href, children, domNode, streamStatus, lang, block, ...rest },
+    { href, children, domNode, streamStatus, lang, block, className, ...rest },
 ) => {
     if (href?.toLowerCase().startsWith(MOBI_URI_PREFIX)) {
-        return <ActionLink uri={href}>{children}</ActionLink>
+        // className 透传：raw HTML 形态的 mobi 链接（如 mention badge）带原样式 class
+        return <ActionLink uri={href} className={className}>{children}</ActionLink>
     }
     return (
-        <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+        <a href={href} target="_blank" rel="noopener noreferrer" className={className} {...rest}>
             {children}
         </a>
     )

@@ -82,6 +82,19 @@ vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
     }
 })
 
+// 编辑器 mock：text/markdown 一律挂编辑器（readonly = !editable），编辑器内部行为
+// 由 CodeEditorView.test / MarkdownEditorView.test 覆盖，这里只断言「挂了哪个 + 只读态」
+vi.mock('@/components/files/CodeEditorView', () => ({
+    CodeEditorView: ({ text, readOnly }: { text: string; readOnly?: boolean }) => (
+        <div data-testid="code-editor" data-read-only={String(!!readOnly)}>{text}</div>
+    ),
+}))
+vi.mock('@/components/files/MarkdownEditorView', () => ({
+    MarkdownEditorView: ({ text, readOnly }: { text: string; readOnly?: boolean }) => (
+        <div data-testid="md-editor" data-read-only={String(!!readOnly)}>{text}</div>
+    ),
+}))
+
 // FileTreeView 还依赖 api client 与 auth
 // 注意：useDebouncedFileSearch 的 effect 依赖 useMobiApi() 的返回引用，
 // 生产中 useMobiApi 用 useMemo([]) 稳定；mock 必须镜像这一契约——返回稳定单例，
@@ -200,30 +213,52 @@ describe('FileContentView', () => {
         expect(fileNode).toHaveStyle({ fontWeight: '600' })
     })
 
-    it('小文本（<1MB）→ CodeHighlight 高亮渲染', async () => {
+    it('小文本（<1MB）+ 离线 → 只读 CodeEditorView（编辑器统一渲染）', async () => {
         setMock(
             { mime: 'text/typescript', size: 100, etag: '11-1' },
             { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
         )
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
-        // Shiki 异步高亮：await codeToHtml 完成 → 出现 .shiki-wrap（高亮成功的标志）
-        await waitFor(() => {
-            expect(document.querySelector('.shiki-wrap')).toBeInTheDocument()
-        })
+        const editor = await screen.findByTestId('code-editor')
+        expect(editor).toHaveAttribute('data-read-only', 'true')
+        // draft 经 useFileEditor effect 异步回填，文本断言等待回填完成
+        await waitFor(() => expect(editor).toHaveTextContent('const x = 1'))
     })
 
-    it('中文本（1-2MB）→ 纯 pre 不高亮（useHighlight=false）', async () => {
-        // 1.5MB：≥ textHighlight(1MB) 且 < textPlain(2MB) → 纯 pre
+    it('在线 + 写边界内 → 可编辑编辑器（data-read-only=false）', async () => {
+        setMock(
+            { mime: 'text/typescript', size: 100, etag: '11-1', writable: true },
+            { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
+        )
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        const editor = await screen.findByTestId('code-editor')
+        expect(editor).toHaveAttribute('data-read-only', 'false')
+    })
+
+    it('在线但写边界外（home 通道只读文件 writable=false）→ 只读编辑器', async () => {
+        setMock(
+            { mime: 'text/markdown', size: 100, etag: '11-1', writable: false },
+            { blob: new Blob(['# notes'], { type: 'text/markdown' }), mime: 'text/markdown' },
+        )
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="~/notes/a.md" />)
+        const editor = await screen.findByTestId('md-editor')
+        expect(editor).toHaveAttribute('data-read-only', 'true')
+        expect(editor).toHaveTextContent('# notes')
+    })
+
+    it('中文本（1-2MB）→ 仍挂编辑器（CodeMirror 虚拟化承载，不再走 pre/高亮只读渲染）', async () => {
+        // 1.5MB：≥ textHighlight(1MB) 且 < textPlain(2MB) → ready 编辑器
         setMock(
             { mime: 'text/plain', size: 1.5 * 1024 * 1024, etag: '11-1' },
             { blob: new Blob(['plain content'], { type: 'text/plain' }), mime: 'text/plain' },
         )
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/big.txt" />)
-        // 纯文本分支渲染出 <pre>，内容为 plain content
-        expect(await screen.findByText('plain content')).toBeInTheDocument()
-        // 无 shiki-wrap（不高亮）
+        expect(await screen.findByTestId('code-editor')).toBeInTheDocument()
+        // 无 shiki-wrap（只读高亮渲染已退役，编辑器统一渲染）
         expect(document.querySelector('.shiki-wrap')).not.toBeInTheDocument()
     })
 
@@ -437,19 +472,19 @@ describe('FileContentView', () => {
         })
     })
 
-    it('.md 默认渲染（XMarkdown）', async () => {
+    it('.md 默认渲染（只读 WYSIWYG 编辑器）', async () => {
         setMock(
             { mime: 'text/markdown', size: 100, etag: '11-1' },
             { blob: new Blob(['body content'], { type: 'text/markdown' }), mime: 'text/markdown' },
         )
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="README.md" />)
-        // .x-markdown 是 Markdown.tsx 容器 className，渲染成功的标志
-        await waitFor(() => {
-            expect(document.querySelector('.x-markdown')).toBeInTheDocument()
-        })
+        // 离线只读：TipTap WYSIWYG 只读态（与编辑态同一渲染器）
+        const editor = await screen.findByTestId('md-editor')
+        expect(editor).toHaveAttribute('data-read-only', 'true')
+        await waitFor(() => expect(editor).toHaveTextContent('body content'))
     })
 
-    it('.md 切源码（CodeHighlight Shiki）', async () => {
+    it('.md 切源码（只读 CodeEditorView）', async () => {
         setMock(
             { mime: 'text/markdown', size: 100, etag: '11-1' },
             { blob: new Blob(['# title'], { type: 'text/markdown' }), mime: 'text/markdown' },
@@ -458,10 +493,9 @@ describe('FileContentView', () => {
         // 点 Ellipsis → 切源码
         fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
         fireEvent.click(await screen.findByText('files.viewSource'))
-        // .shiki-wrap 是 CodeHighlight 高亮成功的标志
-        await waitFor(() => {
-            expect(document.querySelector('.shiki-wrap')).toBeInTheDocument()
-        })
+        const editor = await screen.findByTestId('code-editor')
+        expect(editor).toHaveAttribute('data-read-only', 'true')
+        expect(editor).toHaveTextContent('# title')
     })
 
     it('非 .md 文本文件 Ellipsis 无 toggleView', async () => {

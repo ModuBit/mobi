@@ -19,6 +19,8 @@ import {
     validateHomeDirPath,
     isWithinBlacklistedDir,
     isWithinDir,
+    expandHomePath,
+    validateReadPath,
     DEFAULT_BLACKLISTED_DIR_NAMES,
 } from '../src/pathSecurity'
 
@@ -105,5 +107,81 @@ describe('isWithinDir', () => {
     })
     it('base 为空 → false', () => {
         expect(isWithinDir('/proj/x', '')).toBe(false)
+    })
+})
+
+describe('expandHomePath', () => {
+    it('裸 ~ → homeDir', () => {
+        expect(expandHomePath('~', HOME)).toBe(HOME)
+    })
+    it('~/ 前缀 → homeDir 下解析', () => {
+        expect(expandHomePath('~/notes/a.md', HOME)).toBe(`${HOME}/notes/a.md`)
+    })
+    it('~user 不展开（不支持多用户语义，按字面处理）', () => {
+        expect(expandHomePath('~other/x', HOME)).toBe('~other/x')
+    })
+    it('非 ~ 开头原样返回', () => {
+        expect(expandHomePath('src/a.ts', HOME)).toBe('src/a.ts')
+        expect(expandHomePath('/abs/a.ts', HOME)).toBe('/abs/a.ts')
+    })
+    it('homeDir 为空时 ~ 路径原样返回（交给边界校验拒绝）', () => {
+        expect(expandHomePath('~/x', '')).toBe('~/x')
+    })
+})
+
+describe('validateReadPath（读边界：cwd 子树 ∪ home−黑名单）', () => {
+    const CWD = '/home/testuser/proj'
+    const OUTSIDE_CWD = '/tmp/sessions/proj'
+
+    it('cwd 子树内相对/绝对路径 → 允许', () => {
+        expect(validateReadPath('src/a.ts', CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${CWD}/src/a.ts`, CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${OUTSIDE_CWD}/src/a.ts`, OUTSIDE_CWD, HOME).valid).toBe(true)
+    })
+
+    it('home 子树（cwd 外）→ 允许', () => {
+        expect(validateReadPath(`${HOME}/notes/a.md`, CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${HOME}/documents`, CWD, HOME).valid).toBe(true)
+    })
+
+    it('黑名单目录（home 直接子级）→ 拒绝，即使在 cwd 外的 home 内', () => {
+        const r = validateReadPath(`${HOME}/.ssh/id_rsa`, CWD, HOME)
+        expect(r.valid).toBe(false)
+        expect(r.error).toContain('protected directory')
+        expect(validateReadPath('~/.aws/credentials', CWD, HOME).valid).toBe(false)
+    })
+
+    it('cwd 恰为 home 时黑名单仍然生效（黑名单先于一切允许域）', () => {
+        expect(validateReadPath('.ssh/id_rsa', HOME, HOME).valid).toBe(false)
+        expect(validateReadPath(`${HOME}/.gnupg/x`, HOME, HOME).valid).toBe(false)
+    })
+
+    it('cwd 内项目子目录与黑名单同名不误伤（黑名单只匹配 home 直接子级）', () => {
+        expect(validateReadPath('src/.config/settings.json', CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${CWD}/.mobi/uploads/a.pdf`, CWD, HOME).valid).toBe(true)
+    })
+
+    it('home 外路径 → 拒绝', () => {
+        const r = validateReadPath('/etc/passwd', CWD, HOME)
+        expect(r.valid).toBe(false)
+        expect(r.error).toContain('outside the home directory')
+    })
+
+    it('../ 穿越逃出 cwd 且不在 home → 拒绝', () => {
+        expect(validateReadPath('../../etc/passwd', CWD, HOME).valid).toBe(false)
+    })
+
+    it('home 兄弟目录 → 拒绝', () => {
+        expect(validateReadPath('/home/other/x', CWD, HOME).valid).toBe(false)
+    })
+
+    it('~ 展开后按 home 边界判定', () => {
+        expect(validateReadPath('~/notes/a.md', CWD, HOME).valid).toBe(true)
+    })
+
+    it('homeDir 为空：仅 cwd 子树可用（~/x 按字面相对路径对待，cwd 内即允许）', () => {
+        expect(validateReadPath('src/a.ts', CWD, '').valid).toBe(true)
+        expect(validateReadPath('/etc/passwd', CWD, '').valid).toBe(false)
+        expect(validateReadPath('~/x', CWD, '').valid).toBe(true)
     })
 })

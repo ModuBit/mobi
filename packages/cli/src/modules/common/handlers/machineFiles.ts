@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-import { extname, isAbsolute, relative, resolve } from 'path'
+import { extname, resolve } from 'path'
 import { stat } from 'fs/promises'
+import { homedir } from 'os'
 import { logger } from '@/ui/logger'
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
+import { expandHomePath, validateReadPath } from '../pathSecurity'
 import { fileMetaAt, fileRangeAt } from './files'
 import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse } from './files'
 
@@ -29,7 +31,8 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
  * - 同名覆盖 common handlers 在 machine 连接上的默认注册——registerHandler 是 Map.set，
  *   apiMachine 装配顺序里本模块后注册即生效。默认版 workingDirectory 固定为 runner 启动目录，
  *   无法按项目寻址；本版以显式 cwd 参数化（缺省回退 process.cwd()，对齐 uploads.ts 惯例）
- * - 安全边界 = cwd 严格约束：relative 判定天然拒 ../ 逃逸与同前缀兄弟目录（startsWith 会误放行）
+ * - 安全边界 = 读边界（ADR 0004：cwd 子树 ∪ home−黑名单，与 session 通道同源 validateReadPath）；
+ *   扩展名白名单是本通道独有的第二道收窄（附件/内嵌页场景不需要任意文本读取）
  * - 类型白名单收窄攻击面：图片全家桶（附件预览）+ html/js/css（聊天内嵌页面渲染预留）。
  *   扩名单只动这一个集合，敏感类扩展名永不入列
  */
@@ -51,13 +54,29 @@ interface MachineReadFileRangeRequest extends ReadFileRangeRequest {
     cwd?: string
 }
 
-/** 相对路径解析为 cwd 内绝对路径；逃逸（../ / 绝对路径 / cwd 自身）返回 null */
-function resolveWithinCwd(cwd: string, relPath: string): string | null {
-    if (!relPath) return null
-    const abs = resolve(cwd, relPath)
-    const rel = relative(cwd, abs)
-    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null
-    return abs
+/**
+ * machine 通道读取的统一入口策略：读边界（cwd ∪ home−黑名单）→ 扩展名白名单。
+ * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
+ */
+function resolveAllowedMachinePath(
+    cwd: string,
+    relPath: string | undefined,
+    homeDir: string,
+): { abs: string } | { error: string; code?: string } {
+    // 空路径 / cwd 自身不是可读文件目标（对齐旧 resolveWithinCwd 的「cwd 自身拒绝」语义）
+    if (!relPath) return { error: 'Invalid path: outside readable boundary' }
+    const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
+    const abs = resolve(effectiveCwd, expandHomePath(relPath, homeDir))
+    if (abs === resolve(effectiveCwd)) return { error: 'Invalid path: outside readable boundary' }
+    const validation = validateReadPath(relPath, effectiveCwd, homeDir)
+    if (!validation.valid) {
+        return { error: validation.error ?? 'Invalid path: outside readable boundary' }
+    }
+    const denied = assertAllowedExt(abs)
+    if (denied) {
+        return { error: denied, code: 'EXT_FORBIDDEN' }
+    }
+    return { abs }
 }
 
 function assertAllowedExt(absPath: string): string | null {
@@ -69,28 +88,12 @@ function assertAllowedExt(absPath: string): string | null {
 }
 
 /**
- * machine 通道读取的统一入口策略：cwd 归一 → 严格 cwd 边界 → 扩展名白名单。
- * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
+ * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界 → 扩展名白名单）。
  */
-function resolveAllowedMachinePath(
-    cwd: string,
-    relPath: string | undefined,
-): { abs: string } | { error: string; code?: string } {
-    const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
-    const abs = resolveWithinCwd(effectiveCwd, relPath ?? '')
-    if (!abs) {
-        return { error: 'Invalid path: outside cwd boundary' }
-    }
-    const denied = assertAllowedExt(abs)
-    if (denied) {
-        return { error: denied, code: 'EXT_FORBIDDEN' }
-    }
-    return { abs }
-}
-
-export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager): void {
+export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
+    const resolveAllowed = (cwd: string, relPath: string | undefined) => resolveAllowedMachinePath(cwd, relPath, homeDir)
     rpcHandlerManager.registerHandler<MachineReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
-        const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path)
+        const resolved = resolveAllowed(data.cwd ?? '', data.path)
         if ('error' in resolved) {
             return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
         }
@@ -110,7 +113,7 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
     })
 
     rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {
-        const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path)
+        const resolved = resolveAllowed(data.cwd ?? '', data.path)
         if ('error' in resolved) {
             return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
         }

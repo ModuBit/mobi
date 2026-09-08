@@ -80,6 +80,8 @@ const ImageWithInputRule = Image.extend({
 
 interface Props {
     text: string
+    /** 只读态：不可编辑但渲染效果与编辑态完全一致（离线查看 / 无写权限文件）；工具栏隐藏、浮窗不弹 */
+    readOnly?: boolean
     onChange: (markdown: string) => void
 }
 
@@ -89,9 +91,10 @@ interface Props {
  * - @tiptap/markdown 提供双向序列化：setContent(md, {contentType:'markdown'}) 解析、getMarkdown() 序列化
  * - onChange 用 ref 持有（避免 editor 重建）；外部 text 变化时用 syncingRef 守卫，
  *   避免 setContent 触发的 onUpdate 回灌导致循环（保存成功/重载场景）
- * - 顶部 MarkdownToolbar（格式/插入/表格操作）+ BubbleMenu（选中浮窗：格式/链接编辑）
+ * - 顶部 MarkdownToolbar（格式/插入/表格操作）+ BubbleMenu（选中浮窗：格式/链接编辑），
+ *   readOnly 下隐藏 / 不弹（editable=false 时无编辑语义）
  */
-export function MarkdownEditorView({ text, onChange }: Props) {
+export function MarkdownEditorView({ text, readOnly = false, onChange }: Props) {
     const onChangeRef = useRef(onChange)
     onChangeRef.current = onChange
     // 外部同步 text 时置 true，跳过 onUpdate 回灌，避免循环
@@ -104,6 +107,8 @@ export function MarkdownEditorView({ text, onChange }: Props) {
 
     const editor = useEditor({
         immediatelyRender: false,
+        // editable 初始态；运行时切换由下方 effect 走 setEditable（不重建 editor）
+        editable: !readOnly,
         extensions: [
             // 禁用 StarterKit 默认 codeBlock（用 MermaidCodeBlock + MermaidPreview decoration）+ link（用扩展版 autolink 配置）
             StarterKit.configure({ codeBlock: false, link: false }),
@@ -141,38 +146,43 @@ export function MarkdownEditorView({ text, onChange }: Props) {
         syncingRef.current = false
     }, [text, editor])
 
+    // 只读切换：运行时 setEditable（不重建 editor）
+    useEffect(() => {
+        editor?.setEditable(!readOnly)
+    }, [editor, readOnly])
+
     return (
         <div className="markdown-editor-view" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {editor && <MarkdownToolbar editor={editor} />}
+            {editor && !readOnly && <MarkdownToolbar editor={editor} />}
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
                 <EditorContent editor={editor} />
             </div>
             {editor && (
                 <>
-                    {/* 格式 menu：选中文本（非空选区）时显示；选中图片时让位给 imageMenu */}
+                    {/* 格式 menu：选中文本（非空选区）时显示；选中图片时让位给 imageMenu；只读态不弹 */}
                     <BubbleMenu
                         editor={editor}
                         pluginKey="formatMenu"
                         appendTo={() => document.body}
-                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => !state.selection.empty && !editor.isActive('image')}
+                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => editor.isEditable && !state.selection.empty && !editor.isActive('image')}
                     >
                         <MdBubbleContent editor={editor} />
                     </BubbleMenu>
-                    {/* 链接 menu：光标定位链接（collapsed 选区 + 在 link 内）时显示 */}
+                    {/* 链接 menu：光标定位链接（collapsed 选区 + 在 link 内）时显示；只读态不弹 */}
                     <BubbleMenu
                         editor={editor}
                         pluginKey="linkMenu"
                         appendTo={() => document.body}
-                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => state.selection.empty && editor.isActive('link')}
+                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => editor.isEditable && state.selection.empty && editor.isActive('link')}
                     >
                         <LinkBubble editor={editor} />
                     </BubbleMenu>
-                    {/* 图片 menu：点击图片（NodeSelection 选中 image 节点）时显示 */}
+                    {/* 图片 menu：点击图片（NodeSelection 选中 image 节点）时显示；只读态不弹 */}
                     <BubbleMenu
                         editor={editor}
                         pluginKey="imageMenu"
                         appendTo={() => document.body}
-                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => !state.selection.empty && editor.isActive('image')}
+                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => editor.isEditable && !state.selection.empty && editor.isActive('image')}
                     >
                         <ImageBubble editor={editor} />
                     </BubbleMenu>

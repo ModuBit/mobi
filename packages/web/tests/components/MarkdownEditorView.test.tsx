@@ -41,6 +41,20 @@ describe('MarkdownEditorView', () => {
         })
     })
 
+    it('readOnly → contenteditable=false 且工具栏隐藏；动态切回可编辑', async () => {
+        const { rerender } = render(<MarkdownEditorView text="# Hello" readOnly onChange={() => {}} />)
+        await waitFor(() => {
+            expect(document.querySelector('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+        })
+        // 只读态工具栏不渲染
+        expect(document.querySelector('.md-toolbar-wrap')).not.toBeInTheDocument()
+        // 动态切回可编辑（setEditable，不重建 editor）
+        rerender(<MarkdownEditorView text="# Hello" onChange={() => {}} />)
+        await waitFor(() => {
+            expect(document.querySelector('.ProseMirror')).toHaveAttribute('contenteditable', 'true')
+        })
+    })
+
     it('filePath/text 变化不崩', async () => {
         const { rerender } = render(<MarkdownEditorView text="# A" onChange={() => {}} />)
         await waitFor(() => expect(document.querySelector('.ProseMirror')).toBeInTheDocument())

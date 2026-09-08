@@ -84,6 +84,8 @@ export function useActionDispatcher() {
 export interface ActionLinkProps {
     /** 完整 mobi URI（即 Markdown 链接的 href） */
     uri: string
+    /** 透传原链接元素的 class（如 mention badge 的 mention-badge，保样式连续性） */
+    className?: string
     children?: ReactNode
 }
 
@@ -93,7 +95,7 @@ export interface ActionLinkProps {
  * 渲染为原生 <a>：复用 `.x-markdown a` 的链接样式与键盘语义，所有 mobi 链接都是
  * 正常链接样式；href 仅作语义与降级展示，点击被 preventDefault 拦截。
  */
-export const ActionLink = memo(function ActionLink({ uri, children }: ActionLinkProps) {
+export const ActionLink = memo(function ActionLink({ uri, className, children }: ActionLinkProps) {
     const dispatch = useActionDispatcher()
 
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
@@ -112,7 +114,7 @@ export const ActionLink = memo(function ActionLink({ uri, children }: ActionLink
     }
 
     return (
-        <a href={uri} onClick={handleClick} onKeyDown={handleKeyDown}>
+        <a href={uri} className={className} onClick={handleClick} onKeyDown={handleKeyDown}>
             {children}
         </a>
     )

@@ -23,8 +23,6 @@ import type { TFunction } from 'i18next'
 import { Copy, FileCode, Eye, RefreshCw, WrapText } from 'lucide-react'
 import { queryKeys } from '@/core/lib/query-keys'
 import FileDownloadPrompt from '@/components/files/FileDownloadPrompt'
-import TextContentView from '@/components/files/TextContentView'
-import MarkdownContentView from '@/components/files/MarkdownContentView'
 import HtmlPreviewView from '@/components/files/HtmlPreviewView'
 import ImageContentView from '@/components/files/ImageContentView'
 import PdfContentView from '@/components/files/PdfContentView'
@@ -242,35 +240,30 @@ function renderReady(
             // 不可直显二进制，提示下载
             return <FileDownloadPrompt sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
         case 'markdown':
-            // editable → Typora 式 WYSIWYG；否则只读渲染（含 render/source 切换）
-            if (state.editable) {
-                // view=source → 源码编辑器（CodeMirror，所见即 md 源码）；
-                // view=render（默认）→ tiptap WYSIWYG。两视图共用同一份 draft，切换不丢内容
-                if (state.view === 'source') {
-                    return (
-                        <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
-                            <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} onChange={editor.update} />
-                        </Suspense>
-                    )
-                }
+            // text/markdown 一律挂编辑器（Q9-A 裁决：编辑与只读渲染效果必须一致）：
+            // - view=source → 源码编辑器（CodeMirror，所见即 md 源码）
+            // - view=render（默认）→ tiptap WYSIWYG
+            // readOnly = !editable（离线或无写权限）；两视图共用同一份 draft，切换不丢内容
+            if (state.view === 'source') {
                 return (
                     <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
-                        <MarkdownEditorView text={editor.draft} onChange={editor.update} />
+                        <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} readOnly={!state.editable} onChange={editor.update} />
                     </Suspense>
                 )
             }
-            return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} wrap={state.wrap} />
+            return (
+                <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                    <MarkdownEditorView text={editor.draft} readOnly={!state.editable} onChange={editor.update} />
+                </Suspense>
+            )
         case 'html':
             return <HtmlPreviewView sessionId={sessionId} filePath={filePath} view={state.view} text={state.text} wrap={state.wrap} />
         case 'text':
-            // editable → CodeMirror 编辑器；否则只读高亮
-            if (state.editable) {
-                return (
-                    <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
-                        <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} onChange={editor.update} />
-                    </Suspense>
-                )
-            }
-            return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} wrap={state.wrap} />
+            // 一律 CodeMirror：只读（!editable）与编辑态同一渲染器，效果一致
+            return (
+                <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                    <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} readOnly={!state.editable} onChange={editor.update} />
+                </Suspense>
+            )
     }
 }

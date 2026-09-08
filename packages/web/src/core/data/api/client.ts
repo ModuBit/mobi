@@ -224,10 +224,11 @@ export function createMobiApi() {
                 const blob = new Blob([res.data as ArrayBuffer], { type: mime })
                 return { blob, mime, etag }
             },
-            // file-meta：轻量元数据（mime/size/etag），不拉文件体，
-            // 供「代码高亮 P1」等场景按 mime 决定渲染策略、按 etag 做条件请求
+            // file-meta：轻量元数据（mime/size/etag/writable），不拉文件体，
+            // 供「代码高亮 P1」等场景按 mime 决定渲染策略、按 etag 做条件请求；
+            // writable = 是否在写边界（严格 cwd 子树）内，false 时 inspector 直接只读态
             meta: (sessionId: string, path: string) =>
-                client.get<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string }>(
+                client.get<{ success: boolean; meta?: { mime: string; size: number; etag: string }; writable?: boolean; error?: string }>(
                     `/api/sessions/${sessionId}/file-meta`,
                     { params: { path } },
                 ),
