@@ -157,6 +157,14 @@ describe('validateReadPath（读边界：cwd 子树 ∪ home−黑名单）', ()
         expect(validateReadPath(`${HOME}/.gnupg/x`, HOME, HOME).valid).toBe(false)
     })
 
+    it('cwd 恰为 home 时 .mobi/uploads 附件可读（mobi 自有内容区豁免，与写边界对称）', () => {
+        // 回归：黑名单拦 .mobi 但 uploads 是用户上传内容，不豁免则上传成功读回 403
+        expect(validateReadPath('.mobi/uploads/a.pdf', HOME, HOME).valid).toBe(true)
+        expect(validateReadPath('~/.mobi/uploads/sub/b.png', HOME, HOME).valid).toBe(true)
+        // settings.json 等敏感内容不豁免
+        expect(validateReadPath('~/.mobi/settings.json', HOME, HOME).valid).toBe(false)
+    })
+
     it('cwd 内项目子目录与黑名单同名不误伤（黑名单只匹配 home 直接子级）', () => {
         expect(validateReadPath('src/.config/settings.json', CWD, HOME).valid).toBe(true)
         expect(validateReadPath(`${CWD}/.mobi/uploads/a.pdf`, CWD, HOME).valid).toBe(true)

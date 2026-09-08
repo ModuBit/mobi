@@ -27,7 +27,11 @@ vi.mock('@/components/ui/Markdown', () => ({
 
 // 动作分发 hook 读路由会话上下文（file/open 执行器按会话隔离 inspector 状态）
 // 会话激活态与恢复动作 mock（ActionLink 的会话恢复守卫消费；默认激活=不拦截）
-vi.mock('@/core/data/hooks/mutations/useSessionActions', async () => await import('../../helpers/sessionActionMocks'))
+vi.mock('@/core/data/api/client', async (orig) => {
+    const actual = await orig<typeof import('@/core/data/api/client')>()
+    const helper = await import('../../helpers/sessionActionMocks')
+    return { ...actual, useMobiApi: helper.useMobiApi }
+})
 
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => vi.fn(),
@@ -209,9 +213,13 @@ describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
 
         fireEvent.click(screen.getByRole('link'))
 
-        const s = useWorkspaceStore.getState().getSession('sess-1')
+        // 守卫链路 async（fetchQuery 校验激活态）→ store 更新异步抵达，用 waitFor 等待
+        const s = await waitFor(() => {
+            const state = useWorkspaceStore.getState().getSession('sess-1')
+            expect(state.tabs).toHaveLength(1)
+            return state
+        })
         expect(s.expanded).toBe(true)
-        expect(s.tabs).toHaveLength(1)
         expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: '.mobi/uploads/report.pdf', fileName: 'report.pdf' })
         expect(s.activeTabId).toBe(s.tabs[0].id)
     })

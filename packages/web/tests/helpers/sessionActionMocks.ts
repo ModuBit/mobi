@@ -17,11 +17,13 @@
 import { vi } from 'vitest'
 
 /**
- * ActionLink 会话恢复守卫的测试 mock 模块（vi.mock 工厂直接引用）：
- * 默认会话激活（不拦截）；需要自控恢复行为/激活态的用例（如 MarkdownActionLink
- * 集成测试）自带 hoisted mock，勿用本文件。
+ * ActionLink 会话恢复守卫的 useMobiApi mock 模块（vi.mock 工厂按路径 spread 进
+ * 真实 client 模块）：默认会话始终激活（不拦截）、resume no-op。
+ * 需要自控激活态/恢复行为的用例（如 MarkdownActionLink 集成测试）自带 hoisted mock。
  */
-export const useSessionActions = () => ({
-    resumeSession: vi.fn(async () => ''),
-    isPending: false,
+export const useMobiApi = () => ({
+    sessions: {
+        get: vi.fn(async () => ({ data: { session: { active: true } } })),
+        resume: vi.fn(async () => ({ data: { sessionId: '' } })),
+    },
 })

@@ -12,6 +12,8 @@
         "./messages": "./src/messages.ts",
         "./profile": "./src/profile.ts",
         "./pathSecurity": "./src/pathSecurity.ts",
+        "./mention": "./src/mention.ts",
+        "./fileMeta": "./src/fileMeta.ts",
         "./upload": "./src/upload.ts",
         "./exitLogger": "./src/exitLogger.ts",
         "./logger": "./src/logger.ts"

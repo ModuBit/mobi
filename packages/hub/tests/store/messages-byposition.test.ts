@@ -133,7 +133,8 @@ describe('lifecycle + position_at', () => {
         const after = page[page.length - 1] // 跳变后排到时间线末尾（result 之后）
         expect(after.localId).toBe('loc-1')
         expect(after.positionAt).toBe(resultMsg.positionAt + 1)
-        expect(after.lifecycleAt).toBe(resultMsg.positionAt + 1)
+        // lifecycle_at 记录真实进入 pushed 时刻（pushedAt），只有 position_at 用地板修正值
+        expect(after.lifecycleAt).toBe(staleFactAt)
     })
 
     test('markMessagesPushed：无候选返回空', () => {

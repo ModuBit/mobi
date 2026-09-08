@@ -49,17 +49,9 @@ export type RpcCommandResponse = {
     error?: string
 }
 
-// 文件元数据（流式读取前置查询）
-export type RpcFileMeta = { mime: string; size: number; etag: string }
-export type RpcReadFileMetaResponse = {
-    success: boolean
-    meta?: RpcFileMeta
-    /** 可写性：路径是否在写边界（严格 cwd 子树）内，session 通道下发；machine 通道不下发 */
-    writable?: boolean
-    error?: string
-    /** 结构化错误码（如 'ENOENT'），hub 据此精确分流 404/500 */
-    code?: string
-}
+// 文件元数据（流式读取前置查询）——响应形状单源在 shared，此处别名兼容既有引用
+import type { RpcFileMeta, ReadFileMetaResponse as RpcReadFileMetaResponse } from '@mobi/shared/fileMeta'
+export type { RpcFileMeta, RpcReadFileMetaResponse }
 
 // 文件范围读取响应（chunk 为二进制，经 Socket.IO 原生序列化原样透传）
 export type RpcReadFileRangeResponse = {

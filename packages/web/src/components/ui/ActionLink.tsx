@@ -20,7 +20,7 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { useMobiApi } from '@/core/data/api/client'
 import { queryClient } from '@/core/lib/queryClient'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { Session } from '@/core/data/api/types'
@@ -113,23 +113,29 @@ export interface ActionLinkProps {
 export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
     const { t } = useTranslation()
     const dispatch = useActionDispatcher()
+    const api = useMobiApi()
+    const navigate = useNavigate()
     const { sessionId } = useParams({ strict: false }) as { sessionId?: string }
-    // 恢复动作走现成 mutation（内部处理 mergeSessions 的 navigate / invalidate）
-    const { resumeSession, isPending: resuming } = useSessionActions(sessionId ?? null)
 
     // confirmOpen 与待重放动作同生共死，单状态表达；null=未弹出
     const [pendingUri, setPendingUri] = useState<string | null>(null)
+    const [resuming, setResuming] = useState(false)
 
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
     // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
-    const requestDispatch = () => {
+    const requestDispatch = async () => {
         // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）。
-        // 激活态读 react-query 缓存（会话页常驻 useSession 同 key 查询），零订阅不随链接数膨胀；
-        // 缓存未加载时不拦截（维持原行为）。守卫按 registry key 结构化判定，非 URI 字符串前缀
+        // 守卫按 registry key 结构化判定；激活态走 fetchQuery——staleTime 内用缓存快路径，
+        // 过期/被 SSE 失效则取最新（getQueryData 会拿 stale 缓存误放行刚离线的会话）
         if (!sessionId) return dispatch(uri)
-        const parsed = parseActionUri(uri)
-        if (parsed?.key !== 'file/open') return dispatch(uri)
-        const session = queryClient.getQueryData<Session>(queryKeys.session(sessionId))
+        if (parseActionUri(uri)?.key !== 'file/open') return dispatch(uri)
+        const session = await queryClient.fetchQuery({
+            queryKey: queryKeys.session(sessionId),
+            queryFn: async () => {
+                const res = await api.sessions.get(sessionId)
+                return res.data.session as Session
+            },
+        })
         if (session && session.active === false) {
             setPendingUri(uri)
             return
@@ -140,25 +146,35 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault()
         e.stopPropagation()
-        requestDispatch()
+        void requestDispatch()
     }
 
     const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
         if (e.key !== 'Enter') return
         e.preventDefault()
         e.stopPropagation()
-        requestDispatch()
+        void requestDispatch()
     }
 
-    /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭 */
+    /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭。
+     *  内联轻量 resume（api + invalidate + navigate），语义同 useSessionActions.resumeSession
+     *  ——不引整套 8-mutation hook：每个链接实例一份，长消息里随链接数线性膨胀 */
     const handleResume = async () => {
+        if (!sessionId) return
+        setResuming(true)
         try {
-            // resumeSession 内部已处理 mergeSessions 的 navigate（新 id 路由替换）
-            const newSessionId = await resumeSession()
-            if (pendingUri) dispatch(pendingUri, { sessionId: newSessionId || sessionId })
+            const res = await api.sessions.resume(sessionId)
+            const newSessionId = res.data.sessionId || sessionId
+            // resume 可能 mergeSessions 变更 id：失效会话缓存并替换路由后再重放动作
+            await queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+            if (newSessionId !== sessionId) {
+                await navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId }, replace: true })
+            }
+            if (pendingUri) dispatch(pendingUri, { sessionId: newSessionId })
         } catch {
             message.error(t('chat.action.resumeFailed'))
         } finally {
+            setResuming(false)
             setPendingUri(null)
         }
     }

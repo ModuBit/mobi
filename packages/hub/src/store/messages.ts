@@ -431,11 +431,13 @@ export function markMessagesPushed(
             `SELECT MAX(position_at) AS p FROM messages WHERE session_id = ? AND ${POSITION_TIMELINE_FILTER}`
         ).get(sessionId) as { p: number | null }
         const effectiveAt = Math.max(pushedAt, (maxRow.p ?? 0) + 1)
+        // lifecycle_at = pushedAt（真实进入 pushed 态的时刻，见本文件「lifecycle_at 记录当前态
+        // 进入时刻」不变量）；position_at 才用地板修正后的 effectiveAt——广播 positionAt 亦然
         const result = db.prepare(
             `UPDATE messages
              SET lifecycle = 'pushed', lifecycle_at = ?, position_at = ?
              WHERE session_id = ? AND lifecycle = 'queued' AND local_id IN (${candidates.map(() => '?').join(',')})`
-        ).run(effectiveAt, effectiveAt, sessionId, ...candidates)
+        ).run(pushedAt, effectiveAt, sessionId, ...candidates)
         void result
         return { localIds: candidates, positionAt: effectiveAt }
     })

@@ -52,18 +52,29 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
-// 恢复动作 mock（ActionLink 的会话恢复守卫消费）；激活态经 queryClient 单例缓存注入
-const resumeSessionSpy = vi.hoisted(() => vi.fn(async () => 'sess-1'))
-vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
-    useSessionActions: () => ({ resumeSession: resumeSessionSpy, isPending: false }),
-}))
+// 会话激活态与恢复动作 mock（ActionLink 会话守卫经 fetchQuery 走 api.sessions.get）
+const sessionState = vi.hoisted(() => ({ active: true }))
+const resumeSpy = vi.hoisted(() => vi.fn(async () => ({ data: { sessionId: 'sess-1' } })))
+vi.mock('@/core/data/api/client', async (orig) => {
+    const actual = await orig<typeof import('@/core/data/api/client')>()
+    return {
+        ...actual,
+        useMobiApi: () => ({
+            sessions: {
+                get: async () => ({ data: { session: { id: 'sess-1', active: sessionState.active } } }),
+                resume: resumeSpy,
+            },
+        }),
+    }
+})
 
 const messageInfoSpy = vi.spyOn(message, 'info').mockImplementation(() => undefined as never)
 
 beforeEach(() => {
     navigateSpy.mockClear()
     messageInfoSpy.mockClear()
-    resumeSessionSpy.mockClear()
+    resumeSpy.mockClear()
+    sessionState.active = true
     // 全局 inspector store / queryClient 缓存跨用例残留，逐用例清空
     useWorkspaceStore.getState().clearAll()
     queryClient.clear()
@@ -133,16 +144,18 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
         expect(link.className).toContain('mention-badge')
 
         fireEvent.click(link)
-        const s = useWorkspaceStore.getState().getSession('sess-1')
-        expect(s.expanded).toBe(true)
-        expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: 'src/main.ts', fileName: 'main.ts' })
+        // 守卫判定走 async fetchQuery，动作在微任务后分发
+        await waitFor(() => {
+            const s = useWorkspaceStore.getState().getSession('sess-1')
+            expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: 'src/main.ts', fileName: 'main.ts' })
+        })
+        expect(useWorkspaceStore.getState().getSession('sess-1').expanded).toBe(true)
         expect(messageInfoSpy).not.toHaveBeenCalled()
     })
 
     it('会话未激活点击 file/open：弹确认气泡，恢复成功后用（可能变更的）新 id 执行动作', async () => {
-        // 未激活态经 queryClient 缓存注入（ActionLink 零订阅判定读同 key 缓存）
-        queryClient.setQueryData(['session', 'sess-1'], { active: false })
-        resumeSessionSpy.mockResolvedValue('sess-new')
+        sessionState.active = false
+        resumeSpy.mockResolvedValue({ data: { sessionId: 'sess-new' } })
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         const link = await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' }))
         fireEvent.click(link)
@@ -150,10 +163,10 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
         // 气泡出现，未直接执行动作
         expect(await screen.findByText('chat.action.sessionInactiveHint')).toBeInTheDocument()
         expect(useWorkspaceStore.getState().getSession('sess-1').tabs).toHaveLength(0)
-        expect(resumeSessionSpy).not.toHaveBeenCalled()
+        expect(resumeSpy).not.toHaveBeenCalled()
 
         fireEvent.click(await screen.findByRole('button', { name: 'chat.action.resume' }))
-        await waitFor(() => expect(resumeSessionSpy).toHaveBeenCalledTimes(1))
+        await waitFor(() => expect(resumeSpy).toHaveBeenCalledTimes(1))
         // 动作重放挂在恢复后的新会话 id 下（resume 可能 mergeSessions 变更 id）
         await waitFor(() => {
             const ns = useWorkspaceStore.getState().getSession('sess-new')
@@ -162,13 +175,13 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
     })
 
     it('会话未激活点击 file/open：取消则什么都不做', async () => {
-        queryClient.setQueryData(['session', 'sess-1'], { active: false })
+        sessionState.active = false
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         fireEvent.click(await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' })))
         // 气泡出现后点取消
         fireEvent.click(await screen.findByRole('button', { name: 'common.cancel' }))
         // 行为断言：不恢复、不打开 tab（气泡关闭由 antd 受控 open 驱动，动画时序不在此锁）
-        expect(resumeSessionSpy).not.toHaveBeenCalled()
+        expect(resumeSpy).not.toHaveBeenCalled()
         expect(useWorkspaceStore.getState().getSession('sess-1').tabs).toHaveLength(0)
     })
 })

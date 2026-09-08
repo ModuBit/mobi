@@ -16,6 +16,7 @@
 
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { createReadStream } from 'fs'
@@ -54,21 +55,8 @@ export interface ReadFileMetaRequest {
     path: string
 }
 
-interface FileMeta {
-    mime: string
-    size: number
-    etag: string
-}
-
-export interface ReadFileMetaResponse {
-    success: boolean
-    meta?: FileMeta
-    /** 可写性：路径是否在写边界（严格 cwd 子树）内。false 时 web 端 inspector 直接只读态 */
-    writable?: boolean
-    error?: string
-    /** 结构化错误码（如 'ENOENT'），供 hub 精确分流 404/500，不依赖 error 文案正则 */
-    code?: string
-}
+// 响应形状单源在 shared（ReadFileMetaResponse），此处 re-export 供 machineFiles 等消费方
+export type { ReadFileMetaResponse }
 
 export interface ReadFileRangeRequest {
     path: string

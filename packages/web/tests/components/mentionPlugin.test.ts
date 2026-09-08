@@ -121,6 +121,13 @@ describe('mentionPlugin', () => {
         expect(html).toContain('@john')
     })
 
+    it('路径中的 @ 截断 token：不贪婪吞掉后续 @（@ 是触发符）', () => {
+        // 回归：@ 在排除集外时 @src/a@docs/b 被并成一个指向不存在路径的 mention
+        const html = render('看 @src/a@docs/b 谢谢')
+        expect(html).toContain('@src/a')
+        expect(html).not.toContain('src/a@docs/b')
+    })
+
     it('删除线语法在无 mention 干涉时仍正常生效', () => {
         const html = render('普通 ~删除线~ 文本')
         expect(html).toContain('<del>')

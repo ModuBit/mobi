@@ -29,5 +29,8 @@
  * - `` ` ``：markdown 行内代码结构符，避免与代码 span 嵌套纠缠
  * - `<` `>` `"`：HTML/attribute 结构符（防止吞半个标签 / 进 href 属性）
  * - `\`：markdown 转义符 + Windows 分隔符歧义
+ * - `@`：触发符本身。不排除则 token 贪婪吞掉后续 @（`@src/a@docs/b` 被并成
+ *   一个指向不存在路径的 mention）；排除后与 email 防误伤同一机制自然截断。
+ *   路径名含 @ 的文件不支持 mention（GitHub 同例）
  */
-export const MENTION_PATH_CHARS = '[^\\s`<"\\\\]'
+export const MENTION_PATH_CHARS = '[^\\s`<"\\\\@]'

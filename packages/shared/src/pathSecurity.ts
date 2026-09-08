@@ -128,6 +128,17 @@ export function resolveReadPath(targetPath: string, workingDirectory: string, ho
 }
 
 /**
+ * mobi 自有上传内容区豁免：黑名单拦 `.mobi`（settings.json 含凭证），但 `.mobi/uploads`
+ * 是用户上传给自己的文件（写边界放行写入的内容）——不豁免则 cwd==home 时上传成功、
+ * 读回却被 403（写读不对称），machine 通道附件预览也永远不可达。settings.json 等
+ * `.mobi` 下其余内容不豁免。
+ */
+export function isWithinHomeMobiUploads(targetPath: string, homeDir: string): boolean {
+    if (!homeDir) return false
+    return isWithinDir(targetPath, resolve(homeDir, '.mobi', 'uploads'))
+}
+
+/**
  * 读边界校验（ADR 0004）：允许集 = cwd 子树 ∪ (home 子树 − 黑名单)，其余一律拒绝。
  *
  * - 黑名单先于一切允许域判定：cwd 恰为 home 时 `.ssh` 等仍受保护；黑名单只匹配
@@ -143,7 +154,9 @@ export function validateReadPath(targetPath: string, workingDirectory: string, h
     }
     const resolvedTarget = resolveReadPath(targetPath, workingDirectory, homeDir)
 
-    if (homeDir && isWithinBlacklistedDir(resolvedTarget, homeDir)) {
+    if (homeDir
+        && isWithinBlacklistedDir(resolvedTarget, homeDir)
+        && !isWithinHomeMobiUploads(resolvedTarget, homeDir)) {
         return { valid: false, error: `Access denied: Path '${targetPath}' is in a protected directory` }
     }
     if (isWithinDir(resolvedTarget, workingDirectory)) return { valid: true, resolvedPath: resolvedTarget }

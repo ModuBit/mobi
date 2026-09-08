@@ -18,6 +18,7 @@ import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
 import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent } from '@mobi/shared'
+import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -256,7 +257,7 @@ export function createMobiApi() {
             // 供「代码高亮 P1」等场景按 mime 决定渲染策略、按 etag 做条件请求；
             // writable = 是否在写边界（严格 cwd 子树）内，false 时 inspector 直接只读态
             meta: (sessionId: string, path: string) =>
-                client.get<{ success: boolean; meta?: { mime: string; size: number; etag: string }; writable?: boolean; error?: string }>(
+                client.get<ReadFileMetaResponse>(
                     `/api/sessions/${sessionId}/file-meta`,
                     { params: { path } },
                 ),
