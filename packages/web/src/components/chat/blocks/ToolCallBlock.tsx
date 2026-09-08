@@ -343,17 +343,17 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                             // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
                             // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起
                             <>
-                                <span style={{ fontWeight: 500, fontSize: 13, flexShrink: 0 }}>
+                                <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
                                     {toolPresentation.row.verb}
                                 </span>
                                 {toolPresentation.row.rowMeta && (
-                                    <span style={{ fontSize: 11, color: token.colorTextTertiary, flexShrink: 0 }}>
+                                    <span style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }}>
                                         {toolPresentation.row.rowMeta}
                                     </span>
                                 )}
                                 <FileChip chip={toolPresentation.row.chip} />
                                 {toolPresentation.row.stats && (
-                                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                    <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                         <span style={{ color: token.colorSuccess }}>+{toolPresentation.row.stats.add}</span>
                                         {toolPresentation.row.stats.del > 0 && (
                                             <span style={{ color: token.colorError, marginLeft: 4 }}>−{toolPresentation.row.stats.del}</span>

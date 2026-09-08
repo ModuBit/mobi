@@ -132,13 +132,14 @@ h1, h2, h3, h4 {
     white-space: nowrap;
     vertical-align: bottom;
     font-family: var(--font-mono);
-    font-size: 11.5px;
-    line-height: 18px;
-    padding: 0 8px;
-    border-radius: 5px;
-    background: var(--ant-color-fill-tertiary);
-    color: var(--ant-color-text-tertiary);
-    border: 1px solid transparent;
+    font-size: 12px;
+    line-height: 20px;
+    padding: 1px 10px;
+    border-radius: 6px;
+    /* 对比 mockup：底色要明显浮于行背景（fill-tertiary 深色主题下对比不足），常显淡边框给 chip 结构感 */
+    background: var(--ant-color-fill-secondary);
+    color: var(--ant-color-text-secondary);
+    border: 1px solid var(--ant-color-border-secondary);
     text-decoration: none;
     transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
@@ -149,6 +150,6 @@ h1, h2, h3, h4 {
 
 .tool-chip-link:hover {
     color: var(--ant-color-text);
-    background: var(--ant-color-fill-secondary);
+    background: var(--ant-color-fill);
     border-color: var(--ant-color-border);
 }
