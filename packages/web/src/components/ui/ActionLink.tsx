@@ -174,6 +174,10 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
             okButtonProps={{ loading: resuming }}
             onConfirm={handleResume}
             onCancel={handleCancel}
+            onOpenChange={(open) => {
+                // 受控模式下点击气泡外区域（rc-trigger outside click）也走关闭清理
+                if (!open) handleCancel()
+            }}
         >
             {/* Popconfirm 需要 anchor；链接本体语义不变（键盘 Enter 走同一守卫） */}
             <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
