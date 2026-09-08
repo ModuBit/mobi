@@ -17,11 +17,19 @@
 import { trimIdent } from "@/utils/trimIdent";
 
 /**
- * mobi 注入的基础 system prompt：要求模型调用 mobi 自有 MCP 工具管理会话标题。
+ * mobi 注入的基础 system prompt：
+ * 1. change_title 指令：要求模型调用 mobi 自有 MCP 工具管理会话标题
+ * 2. mobi URI 协议段：教模型在回复中用 mobi://file/open 链接承载文件引用，
+ *    web 端 Markdown 渲染链拦截后打开 inspector（ADR 0003）；含 URI 模板、
+ *    使用时机约束（防链接噪音）与 URL 编码提醒三要素
  * 这段始终追加在 claude_code 默认 system prompt 之后。
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     ALWAYS when you start a new chat - you must call a tool "mcp__mobi__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it. When chat name is too generic and you have a change to make it more specific - call the tool again. This title is needed to easily find the chat in the future. Help human.
+
+    When your final response mentions files the user may want to open directly (e.g. "compared a.ts with b.ts"), render them as clickable links: [a.ts](mobi://file/open?path=a.ts).
+    - path accepts a path relative to the current working directory, or an absolute path; URL-encode non-ASCII characters.
+    - Use it ONLY where opening the file genuinely helps the user (comparisons, references to files you created or edited) - never wrap paths inside code snippets, and not every file mention.
 `))();
 
 /**
