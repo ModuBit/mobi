@@ -59,12 +59,26 @@ describe('detectMentionAtCursor', () => {
         expect(detectMentionAtCursor(`@${p}`, p.length + 1)).toEqual({ atIndex: 0, afterAt: p })
     })
 
+    it('emoji / 括号 / # + 等符号路径触发（排除法放行）', () => {
+        const p = '~/备份(1)/📸图#2+c++.pdf'
+        expect(detectMentionAtCursor(`@${p}`, p.length + 1)).toEqual({ atIndex: 0, afterAt: p })
+    })
+
+    it('空白终止补全：空格前触发、光标越过空格不再触发', () => {
+        // 光标在空格前 → afterAt 只含空格前路径段
+        expect(detectMentionAtCursor('@~/My Docs/a.pdf', 5)).toEqual({ atIndex: 0, afterAt: '~/My' })
+        // 光标越过空格 → @ 到光标间含空白 → 整段失效（渲染端 badge 同样截到 ~/My）
+        expect(detectMentionAtCursor('@~/My Docs/a.pdf', 16)).toBeNull()
+    })
+
     it('光标离开 mention 词（后跟空白）不触发', () => {
         expect(detectMentionAtCursor('@foo bar', 8)).toBeNull()
     })
 
-    it('@ 后含非法字符不触发', () => {
-        expect(detectMentionAtCursor('@foo(bar)', 10)).toBeNull()
+    it('@ 后含结构排除字符（" <）不触发', () => {
+        expect(detectMentionAtCursor('@foo"bar', 8)).toBeNull()
+        expect(detectMentionAtCursor('@foo<bar>', 9)).toBeNull()
+        expect(detectMentionAtCursor('@foo`bar', 8)).toBeNull()
     })
 
     it('取光标前最近的独立词 @', () => {
