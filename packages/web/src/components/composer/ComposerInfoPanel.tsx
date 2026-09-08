@@ -37,6 +37,8 @@ import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { isElicitationToolName, parseElicitationPayload } from '@/domain/tool/elicitation'
 import { ElicitationFormCard } from '@/components/chat/ElicitationFormCard'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
+import { inferToolRow } from '@/core/lib/toolRow'
+import { FileChip } from '@/components/ui/FileChip'
 import { queryKeys } from '@/core/lib/query-keys'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
@@ -156,13 +158,21 @@ function ToolInteractionPanel({
                     ? null
                     : getPermissionDescription(tool.name, tool.input)
                 const subtitle = detail && !titleText.includes(detail) ? detail : undefined
+                // 文件 Chip（审批前先看文件再决策）：跳转类工具的路径同步可点击，
+                // 走与工具行同一守卫分发；chip 即授权细节，subtitle 让位避免重复
+                const row = inferToolRow(tool.name, tool.input, metadata)
+                const chipNode = row?.chip?.uri
+                    ? <FileChip chip={row.chip} />
+                    : undefined
+                const subtitleForChip = chipNode ? undefined : subtitle
 
                 return (
                     <ToolRequestCard
                         key={id}
                         testId={`tool-request-toggle-${id}`}
                         titleText={titleText}
-                        subtitle={subtitle}
+                        subtitle={subtitleForChip}
+                        chipNode={chipNode}
                         footerNode={footerNode}
                     />
                 )
@@ -262,10 +272,13 @@ function ElicitationRequestsSection({
  * 单个工具交互请求卡片：标题区（图标 + 标题 + 展开箭头）作为折叠头，
  * 折叠/展开能力上移到此层，Footer 自身不再含折叠头（消除两层标题头语义重复）。
  * 中性背景/边框避免与 Footer 内层中性组件色温断裂；attention 浓缩到左侧图标。
+ * chipNode 是可交互元素（文件 Chip），渲染在折叠 button 之外——按钮内嵌链接非法且
+ * 点击语义冲突（折叠 vs 打开文件）。
  */
-function ToolRequestCard({ titleText, subtitle, footerNode, testId }: {
+function ToolRequestCard({ titleText, subtitle, chipNode, footerNode, testId }: {
     titleText: string
     subtitle?: string
+    chipNode?: ReactNode
     footerNode: ReactNode
     testId: string
 }) {
@@ -319,6 +332,9 @@ function ToolRequestCard({ titleText, subtitle, footerNode, testId }: {
                     }}
                 />
             </button>
+            {chipNode ? (
+                <div style={{ marginTop: 6 }}>{chipNode}</div>
+            ) : null}
             {!collapsed ? (
                 <div id={`${testId}-panel`} style={{ marginTop: 8 }}>{footerNode}</div>
             ) : null}

@@ -105,12 +105,17 @@ export interface ActionLinkProps {
  * 未注册 / 畸形 URI 统一 toast「不支持的操作」降级（不做静态置灰、不做渲染时目标校验）。
  * 渲染为原生 <a>：复用 `.x-markdown a` 的链接样式与键盘语义，所有 mobi 链接都是
  * 正常链接样式；href 仅作语义与降级展示，点击被 preventDefault 拦截。
- *
- * 会话恢复守卫：会话未激活（session.active === false）时 file/open 动作读不到文件
+ * 会话恢复守卫（未激活 → Popconfirm 引导恢复）在 useGuardedActionDispatch，与此组件共用。
+ */
+/**
+ * 会话恢复守卫 hook：file/open 动作在会话未激活（session.active === false）时读不到文件
  * ——点击先弹 Popconfirm 引导恢复会话，恢复成功（后端可能 mergeSessions 变更 id）
  * 后用新 sessionId 重放原动作；取消则什么都不做。session 数据未加载时不拦截。
+ *
+ * ActionLink（Markdown 链接）与 FileChip（工具行路径 chip）共用同一守卫链，
+ * Popconfirm props 由调用方包在自己的触发元素外。
  */
-export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
+export function useGuardedActionDispatch() {
     const { t } = useTranslation()
     const dispatch = useActionDispatcher()
     const api = useMobiApi()
@@ -121,12 +126,10 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
     const [pendingUri, setPendingUri] = useState<string | null>(null)
     const [resuming, setResuming] = useState(false)
 
-    // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
-    // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
-    const requestDispatch = async () => {
-        // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）。
-        // 守卫按 registry key 结构化判定；激活态走 fetchQuery——staleTime 内用缓存快路径，
-        // 过期/被 SSE 失效则取最新（getQueryData 会拿 stale 缓存误放行刚离线的会话）
+    // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）。
+    // 守卫按 registry key 结构化判定；激活态走 fetchQuery——staleTime 内用缓存快路径，
+    // 过期/被 SSE 失效则取最新（getQueryData 会拿 stale 缓存误放行刚离线的会话）
+    const requestDispatch = async (uri: string) => {
         if (!sessionId) return dispatch(uri)
         if (parseActionUri(uri)?.key !== 'file/open') return dispatch(uri)
         const session = await queryClient.fetchQuery({
@@ -141,19 +144,6 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
             return
         }
         dispatch(uri)
-    }
-
-    const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
-        e.preventDefault()
-        e.stopPropagation()
-        void requestDispatch()
-    }
-
-    const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
-        if (e.key !== 'Enter') return
-        e.preventDefault()
-        e.stopPropagation()
-        void requestDispatch()
     }
 
     /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭。
@@ -183,21 +173,44 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
         setPendingUri(null)
     }
 
+    const popconfirmProps = {
+        title: t('chat.action.sessionInactive'),
+        description: t('chat.action.sessionInactiveHint'),
+        open: pendingUri !== null,
+        okText: t('chat.action.resume'),
+        cancelText: t('common.cancel'),
+        okButtonProps: { loading: resuming },
+        onConfirm: handleResume,
+        onCancel: handleCancel,
+        onOpenChange: (open: boolean) => {
+            // 受控模式下点击气泡外区域（rc-trigger outside click）也走关闭清理
+            if (!open) handleCancel()
+        },
+    }
+
+    return { requestDispatch, popconfirmProps }
+}
+
+export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
+    const { requestDispatch, popconfirmProps } = useGuardedActionDispatch()
+
+    // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
+    // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
+    const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault()
+        e.stopPropagation()
+        void requestDispatch(uri)
+    }
+
+    const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        e.stopPropagation()
+        void requestDispatch(uri)
+    }
+
     return (
-        <Popconfirm
-            title={t('chat.action.sessionInactive')}
-            description={t('chat.action.sessionInactiveHint')}
-            open={pendingUri !== null}
-            okText={t('chat.action.resume')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ loading: resuming }}
-            onConfirm={handleResume}
-            onCancel={handleCancel}
-            onOpenChange={(open) => {
-                // 受控模式下点击气泡外区域（rc-trigger outside click）也走关闭清理
-                if (!open) handleCancel()
-            }}
-        >
+        <Popconfirm {...popconfirmProps}>
             {/* Popconfirm 需要 anchor；链接本体语义不变（键盘 Enter 走同一守卫） */}
             <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
                 {children}

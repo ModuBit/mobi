@@ -16,6 +16,25 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 
+// Edit 等跳转类工具的 permission 卡会渲染 FileChip（内部用 router hooks + api 守卫链），
+// 文件级 mock：本文件其他组件不经此二通道（api 由 props 传入），不影响既有用例
+vi.mock('@tanstack/react-router', () => ({
+    useNavigate: () => vi.fn(),
+    useParams: () => ({ sessionId: 'test-session' }),
+}))
+vi.mock('@/core/data/api/client', async (orig) => {
+    const actual = await orig<typeof import('@/core/data/api/client')>()
+    return {
+        ...actual,
+        useMobiApi: () => ({
+            sessions: {
+                get: async () => ({ data: { session: { id: 'test-session', active: true } } }),
+                resume: vi.fn(async () => ({ data: { sessionId: 'test-session' } })),
+            },
+        }),
+    }
+})
+
 // Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要
 // 使用 vi.hoisted 确保在任何模块导入之前执行
 vi.hoisted(() => {
@@ -197,6 +216,29 @@ describe('ComposerInfoPanel', () => {
         )
         // subtitle 显示具体命令
         expect(container.textContent).toContain('echo hi > test.txt')
+    })
+
+    it('Edit permission 卡渲染可点击文件 Chip（审批前先看文件），subtitle 让位避免重复', () => {
+        const agentState = {
+            requests: {
+                'req-1': {
+                    tool: 'Edit',
+                    arguments: { file_path: '/proj/src/a.ts', old_string: 'a', new_string: 'b' },
+                    createdAt: null,
+                    sdkHints: { displayName: 'Edit' },
+                },
+            },
+        } as unknown as AgentState
+
+        const { container } = render(
+            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
+            { wrapper }
+        )
+        // chip 为链接形态（file/open URI），路径文本只出现一次（chip，不在 subtitle 重复）
+        const chip = container.querySelector('a.tool-chip-link')
+        expect(chip).not.toBeNull()
+        expect(chip).toHaveAttribute('href', expect.stringContaining('mobi://file/open'))
+        expect(container.textContent).toContain('/proj/src/a.ts')
     })
 
     it('无 sdkHints 时 titleText 已含具体内容，subtitle 去重不重复显示', () => {

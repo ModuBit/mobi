@@ -24,6 +24,7 @@ import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
 import { resolveDisplayPath } from '@/core/utils/path'
 import { getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
+import { inferToolRow, type ToolRow } from '@/core/lib/toolRow'
 import { TOOL_ICON_MAP, LUCIDE_TOOL_NAMES } from './toolIcons'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
@@ -102,6 +103,8 @@ export type ToolPresentation = {
     isFilePath?: boolean
     /** 预览卡片最大高度（px） */
     previewMaxHeight?: number
+    /** 工具行新形态（动词+chip，toolRow.ts 推导单源）；null = 维持 title 形态渲染 */
+    row: ToolRow | null
 }
 
 /** 代码/文件操作工具的内联预览最大高度 */
@@ -552,12 +555,16 @@ export const knownTools: Record<string, {
 }
 
 export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadata: SessionMetadataSummary | null }): ToolPresentation {
+    // 工具行新形态推导一次，三条返回路径共用（Agent/Task 等不参与的工具得 null）
+    const row = inferToolRow(opts.toolName, opts.input, opts.metadata)
+
     if (opts.toolName.startsWith('mcp__')) {
         return {
             icon: <LineSquiggle size={14} />,
             title: formatMCPTitle(opts.toolName),
             subtitle: null,
-            minimal: true
+            minimal: true,
+            row,
         }
     }
 
@@ -571,7 +578,8 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             minimal,
             wideDrawer: known.wideDrawer ?? false,
             isFilePath: known.isFilePath ?? false,
-            previewMaxHeight: known.previewMaxHeight
+            previewMaxHeight: known.previewMaxHeight,
+            row,
         }
     }
 
@@ -587,6 +595,7 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
         icon: <ToolOutlined style={DEFAULT_ICON_STYLE} />,
         title: opts.toolName,
         subtitle: subtitle ? truncate(subtitle, 80) : null,
-        minimal: true
+        minimal: true,
+        row,
     }
 }

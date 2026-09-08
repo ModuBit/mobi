@@ -38,6 +38,7 @@ import { getToolIcon, StatusStateIcon } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent, type ToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
+import { FileChip } from '@/components/ui/FileChip'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
 
@@ -411,9 +412,34 @@ function ToolCardInner(props: ToolCardProps) {
                         <StatusStateIcon state={props.block.tool.state} />
                         {getToolIcon(toolName)}
                     </div>
-                    <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0' }}>
-                        {toolTitle}
-                    </Text>
+                    {presentation.row?.chip && presentation.minimal ? (
+                        // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
+                        // 仅 minimal 行形态工具（四件套等）；chip 点击语义止于打开文件，
+                        // 行其余区域点击语义仍是打开详情 Modal
+                        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 0', overflow: 'hidden' }}>
+                            <Text strong style={{ flexShrink: 0, fontSize: 13, lineHeight: '20px' }}>
+                                {presentation.row.verb}
+                            </Text>
+                            {presentation.row.rowMeta ? (
+                                <Text type="secondary" style={{ flexShrink: 0, fontSize: 12 }}>
+                                    {presentation.row.rowMeta}
+                                </Text>
+                            ) : null}
+                            <FileChip chip={presentation.row.chip} />
+                            {presentation.row.stats ? (
+                                <span style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
+                                    <span style={{ color: token.colorSuccess }}>+{presentation.row.stats.add}</span>
+                                    {presentation.row.stats.del > 0 ? (
+                                        <span style={{ color: token.colorError, marginLeft: 4 }}>−{presentation.row.stats.del}</span>
+                                    ) : null}
+                                </span>
+                            ) : null}
+                        </div>
+                    ) : (
+                        <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0' }}>
+                            {toolTitle}
+                        </Text>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
