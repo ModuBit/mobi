@@ -23,7 +23,16 @@
  * 本文件用真实 XMarkdown 锁定「md 链接文本 → 带 href 的 <a> → 点击分发」全链路。
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+
+// Popconfirm（rc resize-observer）依赖 ResizeObserver，jsdom 没有
+beforeAll(() => {
+    vi.stubGlobal('ResizeObserver', class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    })
+})
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { message } from 'antd'
@@ -43,14 +52,29 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
+// 会话激活态与恢复动作 mock（ActionLink 的会话恢复守卫消费）
+const sessionState = vi.hoisted(() => ({ active: true }))
+const resumeSessionSpy = vi.hoisted(() => vi.fn(async () => 'sess-1'))
+vi.mock('@/core/data/hooks/queries/useSession', () => ({
+    useSession: () => ({ data: { active: sessionState.active } }),
+}))
+vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
+    useSessionActions: () => ({ resumeSession: resumeSessionSpy, isPending: false }),
+}))
+
 const messageInfoSpy = vi.spyOn(message, 'info').mockImplementation(() => undefined as never)
 
 beforeEach(() => {
     navigateSpy.mockClear()
     messageInfoSpy.mockClear()
+    resumeSessionSpy.mockClear()
+    sessionState.active = true
+    // 全局 inspector store 跨用例残留（前一用例可能开过 tab），逐用例清空
+    useWorkspaceStore.getState().clearAll()
 })
 
 import { Markdown } from '@/components/ui/Markdown'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 
 afterEach(cleanup)
 
@@ -116,5 +140,37 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
         expect(s.expanded).toBe(true)
         expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: 'src/main.ts', fileName: 'main.ts' })
         expect(messageInfoSpy).not.toHaveBeenCalled()
+    })
+
+    it('会话未激活点击 file/open：弹确认气泡，恢复成功后用（可能变更的）新 id 执行动作', async () => {
+        sessionState.active = false
+        resumeSessionSpy.mockResolvedValue('sess-new')
+        render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
+        const link = await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' }))
+        fireEvent.click(link)
+
+        // 气泡出现，未直接执行动作
+        expect(await screen.findByText('chat.action.sessionInactiveHint')).toBeInTheDocument()
+        expect(useWorkspaceStore.getState().getSession('sess-1').tabs).toHaveLength(0)
+        expect(resumeSessionSpy).not.toHaveBeenCalled()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'chat.action.resume' }))
+        await waitFor(() => expect(resumeSessionSpy).toHaveBeenCalledTimes(1))
+        // 动作重放挂在恢复后的新会话 id 下（resume 可能 mergeSessions 变更 id）
+        await waitFor(() => {
+            const ns = useWorkspaceStore.getState().getSession('sess-new')
+            expect(ns.tabs[0]).toMatchObject({ mode: 'file', filePath: 'src/main.ts' })
+        })
+    })
+
+    it('会话未激活点击 file/open：取消则什么都不做', async () => {
+        sessionState.active = false
+        render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
+        fireEvent.click(await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' })))
+        // 气泡出现后点取消
+        fireEvent.click(await screen.findByRole('button', { name: 'common.cancel' }))
+        // 行为断言：不恢复、不打开 tab（气泡关闭由 antd 受控 open 驱动，动画时序不在此锁）
+        expect(resumeSessionSpy).not.toHaveBeenCalled()
+        expect(useWorkspaceStore.getState().getSession('sess-1').tabs).toHaveLength(0)
     })
 })

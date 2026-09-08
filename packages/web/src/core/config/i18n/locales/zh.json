@@ -365,7 +365,11 @@
             "quote": "[引用]"
         },
         "action": {
-            "unsupported": "不支持的操作"
+            "unsupported": "不支持的操作",
+            "sessionInactive": "会话未激活",
+            "sessionInactiveHint": "需要先恢复会话才能打开文件，是否恢复？",
+            "resume": "恢复",
+            "resumeFailed": "恢复会话失败，请重试"
         }
     },
     "files": {

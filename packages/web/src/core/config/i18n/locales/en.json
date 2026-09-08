@@ -365,7 +365,11 @@
             "quote": "[Quote]"
         },
         "action": {
-            "unsupported": "Unsupported action"
+            "unsupported": "Unsupported action",
+            "sessionInactive": "Session inactive",
+            "sessionInactiveHint": "The session needs to be resumed before opening files. Resume now?",
+            "resume": "Resume",
+            "resumeFailed": "Failed to resume session, please try again"
         }
     },
     "files": {

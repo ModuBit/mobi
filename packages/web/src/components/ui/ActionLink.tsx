@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { message } from 'antd'
+import { memo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { message, Popconfirm } from 'antd'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { useSession } from '@/core/data/hooks/queries/useSession'
+import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 
 /**
  * mobi:// 动作链接的 web 执行面（ADR 0003）：
@@ -60,13 +62,18 @@ const ACTION_EXECUTORS: {
     },
 }
 
-/** 构造动作分发 hook：解析 URI（未注册/畸形统一 toast 降级）后按注册键分发执行 */
+/**
+ * 构造动作分发 hook：解析 URI（未注册/畸形统一 toast 降级）后按注册键分发执行。
+ *
+ * @param opts.sessionId 覆盖路由推断的会话 id——恢复会话后后端可能 mergeSessions
+ * 改变 id，恢复成功方用新 id 重放动作（file/open 的 tab 状态按会话隔离）
+ */
 export function useActionDispatcher() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { sessionId } = useParams({ strict: false }) as { sessionId?: string }
 
-    return (uri: string) => {
+    return (uri: string, opts?: { sessionId?: string }) => {
         const parsed = parseActionUri(uri)
         if (!parsed?.key) {
             // 未注册（key=null）与畸形（null）统一降级为「不支持的操作」——
@@ -77,7 +84,7 @@ export function useActionDispatcher() {
         // 分发点：parsed.key 与 parsed.params 是同一注册键的关联联合，桥接处收窄一次
         // （执行器表类型层面已按键约束参数，收窄不损失内部类型安全）
         const executor = ACTION_EXECUTORS[parsed.key] as ActionExecutor<never>
-        executor(parsed.params as never, { navigate, sessionId })
+        executor(parsed.params as never, { navigate, sessionId: opts?.sessionId ?? sessionId })
     }
 }
 
@@ -96,28 +103,82 @@ export interface ActionLinkProps {
  * 未注册 / 畸形 URI 统一 toast「不支持的操作」降级（不做静态置灰、不做渲染时目标校验）。
  * 渲染为原生 <a>：复用 `.x-markdown a` 的链接样式与键盘语义，所有 mobi 链接都是
  * 正常链接样式；href 仅作语义与降级展示，点击被 preventDefault 拦截。
+ *
+ * 会话恢复守卫：会话未激活（session.active === false）时 file/open 动作读不到文件
+ * ——点击先弹 Popconfirm 引导恢复会话，恢复成功（后端可能 mergeSessions 变更 id）
+ * 后用新 sessionId 重放原动作；取消则什么都不做。session 数据未加载时不拦截。
  */
 export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
+    const { t } = useTranslation()
     const dispatch = useActionDispatcher()
+    const { sessionId } = useParams({ strict: false }) as { sessionId?: string }
+    // 链接所在会话的激活态（file/open 的 tab 状态按会话隔离，恢复后可能变 id）
+    const { data: session } = useSession(sessionId ?? null)
+    const { resumeSession, isPending: resuming } = useSessionActions(sessionId ?? null)
+
+    const [confirmOpen, setConfirmOpen] = useState(false)
+    const pendingUriRef = useRef<string | null>(null)
 
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
     // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
+    const requestDispatch = () => {
+        // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）
+        if (sessionId && session && session.active === false && uri.startsWith('mobi://file/')) {
+            pendingUriRef.current = uri
+            setConfirmOpen(true)
+            return
+        }
+        dispatch(uri)
+    }
+
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault()
         e.stopPropagation()
-        dispatch(uri)
+        requestDispatch()
     }
 
     const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
         if (e.key !== 'Enter') return
         e.preventDefault()
         e.stopPropagation()
-        dispatch(uri)
+        requestDispatch()
+    }
+
+    /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭 */
+    const handleResume = async () => {
+        const pendingUri = pendingUriRef.current
+        try {
+            // resumeSession 内部已处理 mergeSessions 的 navigate（新 id 路由替换）
+            const newSessionId = await resumeSession()
+            if (pendingUri) dispatch(pendingUri, { sessionId: newSessionId || sessionId })
+        } catch {
+            message.error(t('chat.action.resumeFailed'))
+        } finally {
+            pendingUriRef.current = null
+            setConfirmOpen(false)
+        }
+    }
+
+    const handleCancel = () => {
+        pendingUriRef.current = null
+        setConfirmOpen(false)
     }
 
     return (
-        <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
-            {children}
-        </a>
+        <Popconfirm
+            title={t('chat.action.sessionInactive')}
+            description={t('chat.action.sessionInactiveHint')}
+            open={confirmOpen}
+            okText={t('chat.action.resume')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ loading: resuming }}
+            onConfirm={handleResume}
+            onCancel={handleCancel}
+        >
+            {/* Popconfirm 需要 anchor；链接本体语义不变（键盘 Enter 走同一守卫） */}
+            <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
+                {children}
+            </a>
+        </Popconfirm>
     )
 })
