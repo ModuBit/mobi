@@ -132,6 +132,11 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
                                     // Edit/Write 等子调用同样动词+chip+统计，chip 点击打开文件
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, verticalAlign: 'middle', minWidth: 0 }}>
                                         <span style={{ fontWeight: 600 }}>{row.verb}</span>
+                                        {row.summary ? (
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto', minWidth: 0 }}>
+                                                {row.summary}
+                                            </span>
+                                        ) : null}
                                         {row.rowMeta ? (
                                             <span style={{ color: token.colorTextTertiary }}>{row.rowMeta}</span>
                                         ) : null}
@@ -433,6 +438,11 @@ function ToolCardInner(props: ToolCardProps) {
                             <Text strong style={{ flexShrink: 0, fontSize: 13, lineHeight: '20px' }}>
                                 {presentation.row.verb}
                             </Text>
+                            {presentation.row.summary ? (
+                                <Text type="secondary" style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto', minWidth: 0 }}>
+                                    {presentation.row.summary}
+                                </Text>
+                            ) : null}
                             {presentation.row.rowMeta ? (
                                 <Text type="secondary" style={{ flexShrink: 0, fontSize: 12 }}>
                                     {presentation.row.rowMeta}

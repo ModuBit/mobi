@@ -42,6 +42,9 @@ export type ToolRowStats = { add: number; del: number }
 export type ToolRow = {
     /** 行首动词（工具名） */
     verb: string
+    /** 动词后的自然语言摘要（纯展示工具的 description——Bash 的 title 语义就是它，
+     *  新形态必须保留而非被 command chip 挤掉；跳转类路径 chip 即摘要，恒为 null） */
+    summary: string | null
     /** 路径/命令 chip；null = 无 chip */
     chip: ToolRowChip | null
     /** 动词后附加信息（Read 行号区间 / MultiEdit 编辑数） */
@@ -55,14 +58,14 @@ function filePathOf(input: unknown): string | null {
     return getInputStringAny(input, ['file_path', 'path', 'file'])
 }
 
-/** 纯展示工具 → chip 文本键的映射（无 URI） */
+/** 纯展示工具 → chip 文本键的映射（无 URI）。WebFetch 不入此表：其旧形态 title 是
+ *  hostname（新形态完整 URL 属信息退化），维持原 title 渲染 */
 const DISPLAY_ONLY_CHIP_KEYS: Record<string, string[]> = {
     Bash: ['command', 'cmd'],
     shell_command: ['command', 'cmd'],
     Glob: ['pattern'],
     Grep: ['pattern'],
     LS: ['path'],
-    WebFetch: ['url'],
     WebSearch: ['query'],
 }
 
@@ -85,7 +88,7 @@ function readRowMeta(input: unknown): string | null {
     return `L${from}–`
 }
 
-/** 跳转类工具的推导（四件套各自的能力差异在此收口） */
+/** 跳转类工具的推导（四件套各自的能力差异在此收口）；路径 chip 即摘要，无 summary */
 function inferFileBearingRow(toolName: string, input: unknown, metadata: SessionMetadataSummary | null): ToolRow | null {
     const filePath = filePathOf(input)
     if (!filePath) return null
@@ -114,25 +117,25 @@ function inferFileBearingRow(toolName: string, input: unknown, metadata: Session
         if (content !== null) stats = { add: countLines(content), del: 0 }
     }
 
-    return { verb: toolName, chip, rowMeta, stats }
+    return { verb: toolName, summary: null, chip, rowMeta, stats }
 }
 
-/** 纯展示工具的推导：同款 chip 形态、无 URI */
-function inferDisplayOnlyRow(toolName: string, input: unknown, metadata: SessionMetadataSummary | null): ToolRow | null {
+/** 纯展示工具的推导：同款 chip 形态、无 URI；description 语义收进 summary 不丢 */
+function inferDisplayOnlyRow(toolName: string, input: unknown, description: string | null, metadata: SessionMetadataSummary | null): ToolRow | null {
     const keys = DISPLAY_ONLY_CHIP_KEYS[toolName]
     if (!keys) return null
     const text = getInputStringAny(input, keys)
     if (!text) return null
-    // LS 的 path 是目录，cwd 内时同样转相对显示；其余（command/pattern/url）原样
+    // LS 的 path 是目录，cwd 内时同样转相对显示；其余（command/pattern）原样
     const display = toolName === 'LS' ? resolveDisplayPath(text, metadata) : text
-    return { verb: toolName, chip: { text: display }, rowMeta: null, stats: null }
+    return { verb: toolName, summary: description, chip: { text: display }, rowMeta: null, stats: null }
 }
 
 /** 推导工具行新形态（位置参数，与 getPermissionDescription 同款）。跳转类工具缺 file_path、纯展示工具缺 chip 键、
  *  以及 Agent/Task 等不参与新形态的工具一律返回 null（渲染层维持现状）。 */
-export function inferToolRow(toolName: string, input: unknown, metadata: SessionMetadataSummary | null): ToolRow | null {
+export function inferToolRow(toolName: string, input: unknown, metadata: SessionMetadataSummary | null, description: string | null = null): ToolRow | null {
     if ((FILE_BEARING_TOOLS as readonly string[]).includes(toolName)) {
         return inferFileBearingRow(toolName, input, metadata)
     }
-    return inferDisplayOnlyRow(toolName, input, metadata)
+    return inferDisplayOnlyRow(toolName, input, description, metadata)
 }

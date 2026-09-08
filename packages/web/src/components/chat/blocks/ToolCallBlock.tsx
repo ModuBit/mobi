@@ -346,6 +346,12 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                                 <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
                                     {toolPresentation.row.verb}
                                 </span>
+                                {toolPresentation.row.summary && (
+                                    // 纯展示工具的 description（Bash 的 title 语义）：优先于人读摘要，允许收缩截断
+                                    <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '0 1 auto', minWidth: 0 }}>
+                                        {toolPresentation.row.summary}
+                                    </span>
+                                )}
                                 {toolPresentation.row.rowMeta && (
                                     <span style={{ fontSize: 12, color: token.colorTextTertiary, flexShrink: 0 }}>
                                         {toolPresentation.row.rowMeta}
@@ -371,7 +377,9 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                         {isBgAgent && (
                             <Zap size={12} style={{ flexShrink: 0, color: '#f5b800' }} />
                         )}
-                        {!titleContainsDescription && tool.description && (
+                        {/* description 尾缀：title 与 summary 都未承载时才显示（row.summary 是纯展示
+                            工具的 description 同义词，已渲染则尾缀跳过，避免同文案两处重复） */}
+                        {!titleContainsDescription && !toolPresentation.row?.summary && tool.description && (
                             <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>
                                 {tool.description.length > 60 ? `${tool.description.slice(0, 60)}...` : tool.description}
                             </span>

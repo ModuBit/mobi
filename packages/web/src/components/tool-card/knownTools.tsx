@@ -556,7 +556,7 @@ export const knownTools: Record<string, {
 
 export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadata: SessionMetadataSummary | null }): ToolPresentation {
     // 工具行新形态推导一次，三条返回路径共用（Agent/Task 等不参与的工具得 null）
-    const row = inferToolRow(opts.toolName, opts.input, opts.metadata)
+    const row = inferToolRow(opts.toolName, opts.input, opts.metadata, opts.description)
 
     if (opts.toolName.startsWith('mcp__')) {
         return {

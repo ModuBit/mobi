@@ -77,10 +77,16 @@ describe('inferToolRow：跳转类工具（file/open 可点击）', () => {
 })
 
 describe('inferToolRow：纯展示 chip（不可点击）', () => {
-    it('Bash：command 用 chip 形态但无 URI', () => {
-        const row = inferToolRow('Bash', { command: 'bun run test:web' }, metadata)
+    it('Bash：command 用 chip 形态但无 URI，description 收进 summary 不丢', () => {
+        const row = inferToolRow('Bash', { command: 'bun run test:web' }, metadata, '跑测试')
         expect(row?.chip).toEqual({ text: 'bun run test:web' })
         expect(row?.chip?.uri).toBeUndefined()
+        expect(row?.summary).toBe('跑测试')
+    })
+
+    it('Bash：无 description 时 summary 为空', () => {
+        const row = inferToolRow('Bash', { command: 'ls' }, metadata)
+        expect(row?.summary).toBeNull()
     })
 
     it('shell_command 与 Bash 同形态', () => {
