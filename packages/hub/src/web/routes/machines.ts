@@ -225,7 +225,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
      * machine 通道读文件：跨会话存活的静态资源读取（消息附件预览等）。
      * cwd/path 均为显式查询参数（客户端自报信任模型，与 upload/list-directory 一致）；
      * cwd 先过 homeDir 黑白名单校验，路径边界与类型白名单由 cli 策略层最终裁决
-     * （严格 cwd + 图片/html/js/css 白名单，见 cli machineFiles handler）。
+     * （读边界 cwd ∪ home−黑名单 + 图片/html/js/css 白名单，见 cli machineFiles handler 与 ADR 0004）。
      * 复用 serveFileContent 全套机制（meta→304→Range→stream），仅数据源换成 machine reader。
      */
     app.get('/machines/:id/read-file', async (c) => {

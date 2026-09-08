@@ -51,7 +51,7 @@ export const ACTION_REGISTRY = {
      * 在 inspector pane 打开文件（ADR 0003 第二期第一个动作）：
      * - path：相对会话 cwd 的路径，或 `/` 开头的绝对路径（POSIX 惯例，透传给
      *   read-file 读取链，`resolve(cwd, path)` 天然双支持）。实际可达范围由服务端
-     *   读取策略约束（当前 = 严格 cwd 子树）——协议只承诺透传，边界演进不动参数。
+     *   读边界约束（cwd 子树 ∪ home−黑名单，ADR 0004）——协议只承诺透传，边界演进不动参数。
      * - name：tab 显示名，缺省取 path 基名。
      * - expand：是否检测并展开 inspector（false = 只更新 tab 不抢屏），缺省 true。
      */

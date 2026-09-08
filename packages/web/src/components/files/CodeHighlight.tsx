@@ -42,7 +42,7 @@ export default function CodeHighlight({ code, filePath, wrap = true }: CodeHighl
 
     if (!html) {
         // fallback：纯文本，样式与 FileContentView 原文本分支对齐
-        // padding 由调用方外层容器（markdown-content-view / text-content-view）统一管
+        // padding 由调用方外层容器（text-content-view）统一管
         return (
             <pre style={{
                 fontSize: 12,

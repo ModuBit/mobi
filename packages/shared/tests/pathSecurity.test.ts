@@ -21,6 +21,7 @@ import {
     isWithinDir,
     expandHomePath,
     validateReadPath,
+    validateWritePath,
     DEFAULT_BLACKLISTED_DIR_NAMES,
 } from '../src/pathSecurity'
 
@@ -179,9 +180,40 @@ describe('validateReadPath（读边界：cwd 子树 ∪ home−黑名单）', ()
         expect(validateReadPath('~/notes/a.md', CWD, HOME).valid).toBe(true)
     })
 
-    it('homeDir 为空：仅 cwd 子树可用（~/x 按字面相对路径对待，cwd 内即允许）', () => {
+    it('valid 结果携带展开后的绝对路径（校验对象 = 实际读取对象）', () => {
+        const r = validateReadPath('~/notes/a.md', CWD, HOME)
+        expect(r.valid).toBe(true)
+        if (r.valid) expect(r.resolvedPath).toBe(`${HOME}/notes/a.md`)
+        const abs = validateReadPath(`${CWD}/src/a.ts`, CWD, HOME)
+        if (abs.valid) expect(abs.resolvedPath).toBe(`${CWD}/src/a.ts`)
+    })
+
+    it('homeDir 为空：仅 cwd 子树可用，~ 前缀显式拒绝（语义保留给 home 展开）', () => {
         expect(validateReadPath('src/a.ts', CWD, '').valid).toBe(true)
         expect(validateReadPath('/etc/passwd', CWD, '').valid).toBe(false)
-        expect(validateReadPath('~/x', CWD, '').valid).toBe(true)
+        expect(validateReadPath('~/x', CWD, '').valid).toBe(false)
+        expect(validateReadPath('~', CWD, '').valid).toBe(false)
+    })
+})
+
+describe('validateWritePath（写边界：严格 cwd 子树）', () => {
+    const CWD = '/home/testuser/proj'
+
+    it('cwd 子树内路径 → 允许且携带 resolvedPath', () => {
+        const r = validateWritePath('src/a.ts', CWD, HOME)
+        expect(r.valid).toBe(true)
+        if (r.valid) expect(r.resolvedPath).toBe(`${CWD}/src/a.ts`)
+    })
+
+    it('~ 前缀路径 → 拒绝（写边界严格 cwd，不做字面目录名写入）', () => {
+        expect(validateWritePath('~/notes/a.md', CWD, HOME).valid).toBe(false)
+    })
+
+    it('homeDir 为空时 ~ 前缀同样显式拒绝', () => {
+        expect(validateWritePath('~/x', CWD, '').valid).toBe(false)
+    })
+
+    it('../ 穿越逃出 cwd → 拒绝', () => {
+        expect(validateWritePath('../outside.txt', CWD, HOME).valid).toBe(false)
     })
 })

@@ -20,6 +20,12 @@ export const FILE_SIZE_LIMITS = {
     textHighlight: 1 * 1024 * 1024,
     /** 纯文本上限（≥ 此值 → 下载）*/
     textPlain: 2 * 1024 * 1024,
+    /**
+     * Markdown 上限（≥ 此值 → 下载）。独立于 textPlain：markdown 由 TipTap/ProseMirror
+     * 渲染（只读也挂编辑器，ADR 0004 渲染一致性裁决），PM 无虚拟化，大文档冻结点
+     * 远早于 CodeMirror/代码高亮，阈值需单独下调
+     */
+    markdown: 512 * 1024,
     /** 图片直显上限（≥ 此值 → 下载，移动端位图安全）*/
     image: 5 * 1024 * 1024,
     /** PDF 查看上限（≥ 此值 → 下载）*/

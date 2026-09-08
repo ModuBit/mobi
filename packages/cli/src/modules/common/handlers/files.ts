@@ -20,10 +20,10 @@ import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { createReadStream } from 'fs'
 import { createHash, randomUUID } from 'crypto'
-import { resolve, join } from 'path'
+import { join } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { validatePath, validateReadPath, resolveReadPath, validateWritePath } from '../pathSecurity'
+import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { lookupMime } from './fileMime'
 
@@ -113,10 +113,10 @@ export function registerFileHandlers(
     homeDir: string = homedir(),
 ): void {
     // 读边界（cwd ∪ home−黑名单）与写边界（严格 cwd）分离——读放宽不放大写风险。
-    // ~ 展开语义内聚在 shared 校验层（validateReadPath/validateWritePath/resolveReadPath），
-    // 调用方不做手工复合，杜绝「校验对象 ≠ 实际读取对象」的漂移
+    // ~ 展开语义内聚在 shared 校验层（validateReadPath/validateWritePath），
+    // valid 结果自带 resolvedPath，调用方直接用它读写，杜绝「校验对象 ≠ 实际读写对象」的漂移
     const readable = (path: string) => validateReadPath(path, workingDirectory, homeDir)
-    const writableOf = (path: string) => validateWritePath(path, workingDirectory, homeDir).valid
+    const writable = (path: string) => validateWritePath(path, workingDirectory, homeDir)
 
     // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
     rpcHandlerManager.registerHandler<ReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
@@ -128,8 +128,8 @@ export function registerFileHandlers(
         }
 
         try {
-            const meta = await fileMetaAt(resolveReadPath(data.path, workingDirectory, homeDir))
-            return { success: true, meta, writable: writableOf(data.path) }
+            const meta = await fileMetaAt(validation.resolvedPath)
+            return { success: true, meta, writable: writable(data.path).valid }
         } catch (error) {
             logger.debug('Failed to stat file:', error)
             // 透传 errno code（ENOENT 等）让 hub 基于结构化码判 404，不再依赖文案
@@ -151,8 +151,8 @@ export function registerFileHandlers(
         }
 
         try {
-            // 同一请求内复用一次解析结果（stat 与后续读取同路径）
-            const resolvedPath = resolveReadPath(data.path, workingDirectory, homeDir)
+            // 同一请求内复用校验返回的解析结果（stat 与后续读取同路径）
+            const resolvedPath = validation.resolvedPath
             const st = await stat(resolvedPath)
             // ?? 0 只挡 null/undefined，挡不住 NaN（Math.floor(NaN)=NaN 会绕过越界检查），需 Number.isFinite 显式校验
             const rawOffset = Math.floor(data.offset ?? 0)
@@ -177,7 +177,9 @@ export function registerFileHandlers(
     rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
         logger.debug('Write file request:', data.path)
 
-        const validation = validatePath(data.path, workingDirectory)
+        // 写边界（严格 cwd 子树）与可写性判定同源 validateWritePath；~ 前缀路径
+        // 被显式拒绝（不做字面目录名写入），hash/stat 校验与实际写入都用 resolvedPath
+        const validation = writable(data.path)
         if (!validation.valid) {
             return rpcError(validation.error ?? 'Invalid file path')
         }
@@ -185,7 +187,7 @@ export function registerFileHandlers(
         try {
             if (data.expectedHash !== null && data.expectedHash !== undefined) {
                 try {
-                    const existingBuffer = await readFile(data.path)
+                    const existingBuffer = await readFile(validation.resolvedPath)
                     const existingHash = createHash('sha256').update(existingBuffer).digest('hex')
 
                     if (existingHash !== data.expectedHash) {
@@ -200,7 +202,7 @@ export function registerFileHandlers(
                 }
             } else {
                 try {
-                    await stat(data.path)
+                    await stat(validation.resolvedPath)
                     return rpcError('File already exists but was expected to be new')
                 } catch (error) {
                     const nodeError = error as NodeJS.ErrnoException
@@ -211,7 +213,7 @@ export function registerFileHandlers(
             }
 
             const buffer = Buffer.from(data.content, 'base64')
-            await writeFile(data.path, buffer)
+            await writeFile(validation.resolvedPath, buffer)
 
             const hash = createHash('sha256').update(buffer).digest('hex')
 
@@ -224,7 +226,7 @@ export function registerFileHandlers(
 
     // saveFile：覆盖已存在文件 + etag OCC + 原子写（tmp+rename）。
     // 对称 readFileMeta（etag = ${size}-${mtimeMs}）；baseEtag 由前端 readFileMeta 提供。
-    // 仅覆盖已存在文件（新建走 upload 链路）；越权由 validatePath（含工作目录约束）拦截。
+    // 仅覆盖已存在文件（新建走 upload 链路）；越权由 writable 校验（写边界严格 cwd）拦截。
     rpcHandlerManager.registerHandler<SaveFileRequest, SaveFileResponse>('saveFile', async (data) => {
         logger.debug('Save file:', data.path, 'baseEtag:', data.baseEtag)
 
@@ -237,12 +239,12 @@ export function registerFileHandlers(
             return rpcError('File too large (max 50MB)')
         }
 
-        const validation = validatePath(data.path, workingDirectory)
+        const validation = writable(data.path)
         if (!validation.valid) {
             return rpcError(validation.error ?? 'Invalid file path')
         }
 
-        const resolvedPath = resolve(workingDirectory, data.path)
+        const resolvedPath = validation.resolvedPath
         try {
             // OCC：stat 算当前 etag，比对 baseEtag
             let st: Awaited<ReturnType<typeof stat>>

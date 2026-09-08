@@ -21,7 +21,7 @@ import { logger } from '@/ui/logger'
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { resolveReadPath, validateReadPath } from '../pathSecurity'
+import { validateReadPath } from '../pathSecurity'
 import { fileMetaAt, fileRangeAt } from './files'
 import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse } from './files'
 
@@ -63,21 +63,23 @@ function resolveAllowedMachinePath(
     relPath: string | undefined,
     homeDir: string,
 ): { abs: string } | { error: string; code?: string } {
-    // 空路径 / cwd 自身不是可读文件目标（对齐旧 resolveWithinCwd 的「cwd 自身拒绝」语义）
+    // 空路径拒绝
     if (!relPath) return { error: 'Invalid path: outside readable boundary' }
     const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
-    // 解析走 shared resolveReadPath，与 validateReadPath 判定同一变换（无手抄副本）
-    const abs = resolveReadPath(relPath, effectiveCwd, homeDir)
-    if (abs === resolve(effectiveCwd)) return { error: 'Invalid path: outside readable boundary' }
+    // 解析与校验同源：validateReadPath 的 valid 结果自带 resolvedPath，无手抄二次解析
     const validation = validateReadPath(relPath, effectiveCwd, homeDir)
     if (!validation.valid) {
         return { error: validation.error ?? 'Invalid path: outside readable boundary' }
     }
-    const denied = assertAllowedExt(abs)
+    // cwd 自身不是可读文件目标（对齐旧 resolveWithinCwd 的「cwd 自身拒绝」语义）
+    if (validation.resolvedPath === resolve(effectiveCwd)) {
+        return { error: 'Invalid path: outside readable boundary' }
+    }
+    const denied = assertAllowedExt(validation.resolvedPath)
     if (denied) {
         return { error: denied, code: 'EXT_FORBIDDEN' }
     }
-    return { abs }
+    return { abs: validation.resolvedPath }
 }
 
 function assertAllowedExt(absPath: string): string | null {

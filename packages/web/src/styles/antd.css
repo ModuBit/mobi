@@ -116,7 +116,6 @@
 
 /* 文本/代码类内容视图：外层固定（padding 常驻，不随内容滚走），内部 .content-scroll 独立滚动。
    pre.shiki / fallback <pre> 不再自带 padding，全靠外层，避免多层叠加 */
-.markdown-content-view,
 .text-content-view {
     height: 100%;
     padding: 12px;
@@ -128,7 +127,6 @@
     overflow: auto;
 }
 /* 源码模式（行号列有背景）去左 padding，行号贴左；其余三边 padding 保留 */
-.markdown-content-view.source-view,
 .text-content-view.source-view {
     padding-left: 0;
 }

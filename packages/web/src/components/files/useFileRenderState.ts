@@ -55,9 +55,10 @@ export type ReadyRenderState = Extract<RenderState, { status: 'ready' }>
 /** 按 kind + size 判是否超阈值（与原 FileContentView 一致） */
 function isTooLarge(kind: FileKind, size: number): boolean {
     switch (kind.kind) {
+        // markdown 阈值独立下调：TipTap/PM 无虚拟化（见 FILE_SIZE_LIMITS.markdown）
         case 'text':
-        case 'markdown':
         case 'html': return size >= FILE_SIZE_LIMITS.textPlain
+        case 'markdown': return size >= FILE_SIZE_LIMITS.markdown
         case 'image': return size >= FILE_SIZE_LIMITS.image
         case 'pdf': return size >= FILE_SIZE_LIMITS.pdf
         // media-native / media-download / binary：无 size 阈值

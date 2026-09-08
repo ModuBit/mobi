@@ -17,7 +17,7 @@
 import { resolve, sep } from 'path';
 
 export { validateHomeDirPath, isWithinBlacklistedDir, expandHomePath, validateReadPath, resolveReadPath, validateWritePath } from '@mobi/shared/pathSecurity'
-export type { PathValidationResult } from '@mobi/shared/pathSecurity'
+export type { PathValidationResult, PathResolution } from '@mobi/shared/pathSecurity'
 
 /**
  * 校验路径是否在 workingDirectory 范围内（支持相对路径）

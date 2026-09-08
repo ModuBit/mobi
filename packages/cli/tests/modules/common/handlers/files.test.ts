@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -143,6 +143,30 @@ describe('file RPC handlers', () => {
                 params: { path: 'a.txt' },
             })) as { success: boolean; writable?: boolean }
             expect(r2.writable).toBe(true)
+        })
+
+        it('writeFile 写边界：~ 路径拒绝（写与 writable 同源 validateWritePath）', async () => {
+            // 回归：旧 validatePath 不展开 ~，~/evil 被 resolve 成字面 cwd/~/evil（在 cwd 内）
+            // 放行并真实写入项目内的字面 ~ 目录——与 writable 判定（false）自相矛盾
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:writeFile`,
+                params: { path: '~/evil.md', content: Buffer.from('x').toString('base64') },
+            })) as { success: boolean; error?: string }
+            expect(r.success).toBe(false)
+            expect(r.error).toContain('outside the working directory')
+            // 关键：字面 cwd/~/evil.md 不得被创建
+            await expect(stat(join(rootDir, '~', 'evil.md'))).rejects.toMatchObject({ code: 'ENOENT' })
+        })
+
+        it('saveFile 写边界：~ 路径拒绝（不落字面 cwd/~ 目录）', async () => {
+            await writeFile(join(homeDir, 'note.md'), 'hello')
+            const r = (await rpc2.handleRequest({
+                method: `${SCOPE2}:saveFile`,
+                params: { path: '~/note.md', content: new Uint8Array([120]), baseEtag: '' },
+            })) as { success: boolean; error?: string }
+            expect(r.success).toBe(false)
+            expect(r.error).toContain('outside the working directory')
+            await expect(stat(join(rootDir, '~', 'note.md'))).rejects.toMatchObject({ code: 'ENOENT' })
         })
 
         it('readFileRange 走同一读边界（~ 路径读字节）', async () => {
