@@ -49,8 +49,9 @@ describe('buildAppendSystemPrompt', () => {
   });
 
   it('base 含 mobi://file/open 协议段：模板字面量、时机约束、编码提醒三要素', () => {
-    // 模板字面量锁死：agent 照抄输出的就是 web 端解析的 wire 格式，改坏即全链路失效
-    expect(systemPrompt).toContain('[a.ts](mobi://file/open?path=a.ts)');
+    // 模板字面量锁死：agent 照抄输出的就是 web 端解析的 wire 格式，改坏即全链路失效。
+    // 示例路径必须带目录（src/a.ts）——纯文件名示例会被模型字面仿写成「只能给文件名」
+    expect(systemPrompt).toContain('[a.ts](mobi://file/open?path=src/a.ts)');
     // 时机约束：仅在有打开价值时用（防链接噪音）
     expect(systemPrompt).toMatch(/only/i);
     // 编码提醒：非 ASCII 路径需 URL 编码
