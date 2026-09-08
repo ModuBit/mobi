@@ -67,7 +67,7 @@ function makeFakeSocket() {
  */
 function makeDeps(opts: {
     unsubmitted: StoredMessage[]
-    markInvokedReturn: string[]
+    markPushedReturn: { localIds: string[]; positionAt: number }
     sessionOk?: boolean
 }): { deps: SessionHandlersDeps; events: SyncEvent[]; markInvokedSpy: { args: { sid: string; lids: string[]; at: number } | null }; accessError: { called: boolean } } {
     const events: SyncEvent[] = []
@@ -80,7 +80,7 @@ function makeDeps(opts: {
                 getUnsubmittedLocalMessages: () => opts.unsubmitted,
                 markMessagesPushed: (sid: string, lids: string[], at: number) => {
                     markInvokedSpy.args = { sid, lids, at }
-                    return opts.markInvokedReturn
+                    return opts.markPushedReturn
                 },
             },
             sessions: {},
@@ -102,7 +102,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events, markInvokedSpy } = makeDeps({
             unsubmitted: [makeMsg('m1', 'loc-1', 1), makeMsg('m2', 'loc-2', 2)],
-            markInvokedReturn: ['loc-1', 'loc-2'],
+            markPushedReturn: { localIds: ['loc-1', 'loc-2'], positionAt: 1000 },
         })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
@@ -123,7 +123,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
 
     test('无 unsubmitted local 消息 → 不 invoke、不广播', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, events, markInvokedSpy } = makeDeps({ unsubmitted: [], markInvokedReturn: [] })
+        const { deps, events, markInvokedSpy } = makeDeps({ unsubmitted: [], markPushedReturn: { localIds: [], positionAt: 0 } })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('session-end', { sid: 's1', time: Date.now() })
@@ -136,7 +136,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events, markInvokedSpy } = makeDeps({
             unsubmitted: [makeMsg('m1', 'loc-1', 1), makeMsg('m2', null, 2)],
-            markInvokedReturn: ['loc-1'],
+            markPushedReturn: { localIds: ['loc-1'], positionAt: 1000 },
         })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
@@ -152,7 +152,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events, markInvokedSpy, accessError } = makeDeps({
             unsubmitted: [],
-            markInvokedReturn: [],
+            markPushedReturn: { localIds: [], positionAt: 0 },
             sessionOk: false,
         })
 
@@ -168,7 +168,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events } = makeDeps({
             unsubmitted: [makeMsg('m1', 'loc-1', 1)],
-            markInvokedReturn: [],  // 竞态：UPDATE 时已被 invoke
+            markPushedReturn: { localIds: [], positionAt: 0 },  // 竞态：UPDATE 时已被 invoke
         })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
@@ -707,7 +707,7 @@ describe('messages-facts acked：isReplay 回显确认（双写）', () => {
 describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
     /** 构造 messages-facts 专用 deps：mock 全部 store.messages 事实写入方法，各自捕获调用参数 */
     function makeFactsDeps(opts: {
-        pushedReturn?: string[]
+        pushedReturn?: { localIds: string[]; positionAt: number }
         lifecycleReturn?: string[]
         byIdsReturn?: StoredMessage[]
     }) {
@@ -722,7 +722,7 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
                     markMessagesPushed: (sid: string, lids: string[], at: number) => {
                         storeCalls.push('pushed')
                         pushedSpy.args = { sid, lids, at }
-                        return opts.pushedReturn ?? []
+                        return opts.pushedReturn ?? { localIds: [], positionAt: 0 }
                     },
                     advanceMessagesLifecycle: (sid: string, nativeId: string, state: 'processing' | 'done' | 'cancelled' | 'discarded', at: number) => {
                         storeCalls.push('lifecycle')
@@ -773,7 +773,7 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
 
     test('混合批：pushed fact 走 markMessagesPushed + SSE messages-submitted（at 透传）', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, events, pushedSpy } = makeFactsDeps({ pushedReturn: ['loc-1'] })
+        const { deps, events, pushedSpy } = makeFactsDeps({ pushedReturn: { localIds: ['loc-1'], positionAt: 1234 } })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', {

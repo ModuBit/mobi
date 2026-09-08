@@ -124,10 +124,21 @@ export function useFileEditor(
 
     const update = useCallback((text: string) => {
         setConflict(null)
+        // 同值/无变更短路（纵深防御）：编辑器噪音（挂载、程序性事务回灌）或「撤销回
+        // 原文」都不算编辑——清 draft、取消待保存，杜绝「打开文件即自动保存」。
+        // 注意 markdown 编辑器的 round-trip 归一化产物 ≠ 原文，此短路挡不住它，
+        // 根治靠编辑器侧的 emitUpdate:false / setEditable 守卫（见 MarkdownEditorView）
+        if (text === baseText) {
+            if (timer.current) { clearTimeout(timer.current); timer.current = null }
+            setDraftSync(null)
+            return
+        }
+        // 重复同值 onChange：待保存 timer 已在跑，不重设（避免无限顺延）
+        if (text === draftRef.current) return
         setDraftSync(text)
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(() => { void doSave(false) }, AUTOSAVE_DEBOUNCE_MS)
-    }, [doSave, setDraftSync])
+    }, [doSave, setDraftSync, baseText])
 
     const saveNow = useCallback(() => {
         if (timer.current) { clearTimeout(timer.current); timer.current = null }

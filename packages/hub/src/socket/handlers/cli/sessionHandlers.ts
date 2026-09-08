@@ -481,9 +481,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         if (unsubmitted.length === 0) return
         const pushedAt = Date.now()
         const lids = unsubmitted.map(m => m.localId).filter((l): l is string => Boolean(l))
-        const fresh = store.messages.markMessagesPushed(sid, lids, pushedAt)
+        const { localIds: fresh, positionAt } = store.messages.markMessagesPushed(sid, lids, pushedAt)
         if (fresh.length > 0) {
-            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: pushedAt })
+            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: positionAt })
         }
     }
 
@@ -543,12 +543,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     }
 
     /** 消费排队消息 → 推进 lifecycle=pushed 后转发 SSE（原 messages-submitted 处理体）。
-     *  DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉。 */
+     *  DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉。
+     *  submittedAt 广播的是 markMessagesPushed 写入的实际 position_at（含地板修正），
+     *  非 CLI fact.at 原值——Web 端用它当 positionAt 原地重排，必须与 DB 一致。 */
     const processSubmitted = (sid: string, localIds: string[], pushedAt: number) => {
         if (localIds.length === 0) return
-        const fresh = store.messages.markMessagesPushed(sid, localIds, pushedAt)
+        const { localIds: fresh, positionAt } = store.messages.markMessagesPushed(sid, localIds, pushedAt)
         if (fresh.length > 0) {
-            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: pushedAt })
+            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: positionAt })
         }
     }
 

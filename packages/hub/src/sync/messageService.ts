@@ -18,6 +18,7 @@ import { normalizeUserContent } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
+import type { MarkPushedResult } from '../store/messages'
 import { EventPublisher } from './eventPublisher'
 
 /**
@@ -165,8 +166,8 @@ export class MessageService {
         }
     }
 
-    /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycleAt 落库），返回实际更新的 localId 列表 */
-    markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): string[] {
+    /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycleAt 落库 + position 地板），返回实际更新的 localId 与写入的 position_at */
+    markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): MarkPushedResult {
         return this.store.messages.markMessagesPushed(sessionId, localIds, pushedAt)
     }
 

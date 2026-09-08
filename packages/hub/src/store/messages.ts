@@ -393,29 +393,53 @@ export function softDeleteMessagesFrom(
     return result.changes
 }
 
-/** 把 localId 对应的 queued 消息推进为 pushed：写 lifecycle/lifecycle_at + 跳 position_at。返回实际更新的 localId。 */
+/** markMessagesPushed 结果：实际推进的 localId + 实际写入的 position_at（供 SSE 广播，Web 端据此原地更新排序） */
+export type MarkPushedResult = { localIds: string[]; positionAt: number }
+
+/** position 排序域（与 queryByPosition 主时间线一致）：地板只看会话主时间线的行 */
+const POSITION_TIMELINE_FILTER = "category = 'persistent' AND deleted_at IS NULL AND is_sidechain = 0"
+
+/**
+ * 把 localId 对应的 queued 消息推进为 pushed：写 lifecycle/lifecycle_at + 跳 position_at。
+ * 返回实际更新的 localId 与实际写入的 position_at。
+ *
+ * position 地板：position_at = max(pushedAt, 时间线当前 MAX(position_at) + 1)，事务内原子计算。
+ * pushedAt 来自 CLI 时钟（messages-facts pushed fact.at），而时间线内相邻消息（如同批 flush 的
+ * result）的 position_at 是 hub 落库时刻——跨时钟比较不保证严格大于，且同毫秒 tie 时 seq 决胜
+ * （排队消息 seq 是入队时分配的旧值）必排到 result 之前。max+1 把排序正确性收归 hub 单点：
+ * 消费时刻的排队消息必然严格排在时间线所有既有消息（含同批 flush 的 result）之后，与任何
+ * 时钟域、传输延迟无关。pushedAt 正常（晚于全部既有行）时行为不变。
+ */
 export function markMessagesPushed(
     db: Database,
     sessionId: string,
     localIds: string[],
     pushedAt: number
-): string[] {
-    if (localIds.length === 0) return []
-    // 候选 = 仍 queued 的；first-write-wins：已推进的不动（position_at 已是 push 时刻，不能二次跳变）
-    const rows = db.prepare(
-        `SELECT local_id FROM messages
-         WHERE session_id = ? AND local_id IN (${localIds.map(() => '?').join(',')})
-           AND lifecycle = 'queued'`
-    ).all(sessionId, ...localIds) as { local_id: string }[]
-    const candidates = rows.map(r => r.local_id)
-    if (candidates.length === 0) return []
-    const result = db.prepare(
-        `UPDATE messages
-         SET lifecycle = 'pushed', lifecycle_at = ?, position_at = ?
-         WHERE session_id = ? AND lifecycle = 'queued' AND local_id IN (${candidates.map(() => '?').join(',')})`
-    ).run(pushedAt, pushedAt, sessionId, ...candidates)
-    void result
-    return candidates
+): MarkPushedResult {
+    if (localIds.length === 0) return { localIds: [], positionAt: pushedAt }
+    // 事务包裹：MAX 读取与 UPDATE 原子，防并发写入插在两者之间造成 position 重复/回退
+    const run = db.transaction((): MarkPushedResult => {
+        // 候选 = 仍 queued 的；first-write-wins：已推进的不动（position_at 已是 push 时刻，不能二次跳变）
+        const rows = db.prepare(
+            `SELECT local_id FROM messages
+             WHERE session_id = ? AND local_id IN (${localIds.map(() => '?').join(',')})
+               AND lifecycle = 'queued'`
+        ).all(sessionId, ...localIds) as { local_id: string }[]
+        const candidates = rows.map(r => r.local_id)
+        if (candidates.length === 0) return { localIds: [], positionAt: pushedAt }
+        const maxRow = db.prepare(
+            `SELECT MAX(position_at) AS p FROM messages WHERE session_id = ? AND ${POSITION_TIMELINE_FILTER}`
+        ).get(sessionId) as { p: number | null }
+        const effectiveAt = Math.max(pushedAt, (maxRow.p ?? 0) + 1)
+        const result = db.prepare(
+            `UPDATE messages
+             SET lifecycle = 'pushed', lifecycle_at = ?, position_at = ?
+             WHERE session_id = ? AND lifecycle = 'queued' AND local_id IN (${candidates.map(() => '?').join(',')})`
+        ).run(effectiveAt, effectiveAt, sessionId, ...candidates)
+        void result
+        return { localIds: candidates, positionAt: effectiveAt }
+    })
+    return run()
 }
 
 /** 按 nativeId 把 pushed 消息推进为 acked（CC 回显确认）。单条 UPDATE ... RETURNING 原子推进，

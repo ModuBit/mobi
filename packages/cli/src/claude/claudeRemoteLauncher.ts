@@ -483,6 +483,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // emit），先清空本发送队列——上一轮消息（含 result）经 setTimeout(0) 异步发送，不 flush 的
         // 话 fact 抢在 result 落库前到达 Hub，position_at 跳变早于 result created_at，
         // Web 按 positionAt 排序会把排队消息排到上一轮 result 之前（详见 setBeforeCollect）。
+        // 屏障只保证「fact 晚于 result 发出」；跨时钟时间戳比较（fact.at vs result 落库时刻）
+        // 的残余竞态由 Hub 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底。
         session.queue.setBeforeCollect(() => messageQueue.flush());
 
         permissionHandler.setOnPermissionRequest((toolCallId: string) => {

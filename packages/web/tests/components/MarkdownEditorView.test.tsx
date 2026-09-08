@@ -41,6 +41,25 @@ describe('MarkdownEditorView', () => {
         })
     })
 
+    it('回归：挂载（editable / readOnly）不触发 onChange——setEditable 无条件 emit update', async () => {
+        // v3 setEditable(editable, emitUpdate=true) 同值调用也 emit，onUpdate 把
+        // round-trip 归一化 md 当用户编辑灌 draft → 打开即自动保存（只读文件保存被拒）
+        const editable = vi.fn()
+        render(<MarkdownEditorView text={'# Title\n\n- a\n- b\n'} onChange={editable} />)
+        const readOnly = vi.fn()
+        const { rerender } = render(<MarkdownEditorView text={'# Title\n\n- a\n- b\n'} readOnly onChange={readOnly} />)
+        await waitFor(() => {
+            expect(document.querySelectorAll('.ProseMirror').length).toBe(2)
+        })
+        await new Promise((r) => setTimeout(r, 100))
+        expect(editable).not.toHaveBeenCalled()
+        expect(readOnly).not.toHaveBeenCalled()
+        rerender(<MarkdownEditorView text={'# Title\n\n- a\n- b\n'} onChange={() => {}} />)
+        // 回归点二：运行时 readOnly 切换同样是程序性操作，不得产生 onChange
+        await new Promise((r) => setTimeout(r, 100))
+        expect(readOnly).not.toHaveBeenCalled()
+    })
+
     it('readOnly → contenteditable=false 且工具栏隐藏；动态切回可编辑', async () => {
         const { rerender } = render(<MarkdownEditorView text="# Hello" readOnly onChange={() => {}} />)
         await waitFor(() => {

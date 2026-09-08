@@ -65,18 +65,18 @@ describe('lifecycle + position_at', () => {
         expect(after.positionAt).toBe(pushedAt) // 跳到 push 时刻（保留 turn 之后排序 UX）
     })
 
-    test('markMessagesPushed：queued→pushed 单调，position_at 跳变到传入时刻', () => {
-        const t1 = 2000
+    test('markMessagesPushed：queued→pushed 单调，position_at 跳到 max(传入时刻, 时间线max+1)', () => {
+        const t1 = Date.now() + 100_000 // 未来时刻：地板不触发，跳到传入时刻
         addMessage(db, 's', { role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'webapp' } }, 'l1')
         expect(getUnsubmittedLocalMessages(db, 's')[0].lifecycle).toBe('queued')
 
-        expect(markMessagesPushed(db, 's', ['l1'], t1)).toEqual(['l1'])
+        expect(markMessagesPushed(db, 's', ['l1'], t1)).toEqual({ localIds: ['l1'], positionAt: t1 })
         const after = getMessages(db, 's', 10)[0]
         expect(after.lifecycle).toBe('pushed')
         expect(after.lifecycleAt).toBe(t1)
         expect(after.positionAt).toBe(t1)
         // 二次 mark（first-write-wins）不再命中
-        expect(markMessagesPushed(db, 's', ['l1'], t1 + 5)).toEqual([])
+        expect(markMessagesPushed(db, 's', ['l1'], t1 + 5)).toEqual({ localIds: [], positionAt: t1 + 5 })
     })
 
     test('cancelQueuedMessage：lifecycle=queued 可删，pushed 不可删', () => {
@@ -95,13 +95,14 @@ describe('lifecycle + position_at', () => {
     })
 
     test('markMessagesPushed first-write-wins（pushed 不二次跳变）', () => {
-        addMessage(db, 's', WEBAPP_USER, 'loc-1')
+        const web = addMessage(db, 's', WEBAPP_USER, 'loc-1')
+        // pushedAt=100 早于时间线 max（消息 created_at=now）→ 地板到 web.positionAt + 1
         const r1 = markMessagesPushed(db, 's', ['loc-1'], 100)
         const r2 = markMessagesPushed(db, 's', ['loc-1'], 200)
-        expect(r1).toEqual(['loc-1'])
-        expect(r2).toEqual([]) // 已 pushed，不再更新
+        expect(r1).toEqual({ localIds: ['loc-1'], positionAt: web.positionAt + 1 })
+        expect(r2.localIds).toEqual([]) // 已 pushed，不再更新
         const after = getMessages(db, 's', 10)[0]
-        expect(after.positionAt).toBe(100) // 不被 200 覆盖
+        expect(after.positionAt).toBe(web.positionAt + 1) // 不被 200 覆盖
         expect(getUnsubmittedLocalMessages(db, 's')).toEqual([])
     })
 
@@ -117,11 +118,29 @@ describe('lifecycle + position_at', () => {
         expect(cancelQueuedMessage(db, 's', 'never')).toEqual({ cancelled: false, submitted: false })
     })
 
+    test('markMessagesPushed：position 地板——pushedAt 早于时间线 max 时跳到 max+1', () => {
+        // 复刻线上竞态（session ed7937ae）：result 由 hub 落库（position_at = 落库时刻），
+        // 排队消息的 pushed fact 携带 CLI 时钟时间戳，早于 hub 落库 result 的时刻（传输+处理延迟），
+        // 同毫秒 tie 时 seq 决胜（排队消息 seq 是入队旧值）必排到 result 之前。
+        // 地板语义：position_at 严格大于时间线当前 max，排序正确性收归 hub 单点，不依赖时钟域。
+        const resultMsg = addMessage(db, 's', { role: 'agent' }, undefined) // result 行，position = 落库时刻
+        addMessage(db, 's', WEBAPP_USER, 'loc-1') // 更早排队（position = 入队时刻）
+        const staleFactAt = resultMsg.positionAt - 5 // CLI fact.at 早于 result 落库时刻
+        const r = markMessagesPushed(db, 's', ['loc-1'], staleFactAt)
+        expect(r.localIds).toEqual(['loc-1'])
+        expect(r.positionAt).toBe(resultMsg.positionAt + 1)
+        const page = getMessages(db, 's', 10)
+        const after = page[page.length - 1] // 跳变后排到时间线末尾（result 之后）
+        expect(after.localId).toBe('loc-1')
+        expect(after.positionAt).toBe(resultMsg.positionAt + 1)
+        expect(after.lifecycleAt).toBe(resultMsg.positionAt + 1)
+    })
+
     test('markMessagesPushed：无候选返回空', () => {
-        expect(markMessagesPushed(db, 's', [], 100)).toEqual([])
+        expect(markMessagesPushed(db, 's', [], 100)).toEqual({ localIds: [], positionAt: 100 })
         addMessage(db, 's', WEBAPP_USER, 'loc-1')
         markMessagesPushed(db, 's', ['loc-1'], 100)
-        expect(markMessagesPushed(db, 's', ['loc-1'], 200)).toEqual([])
+        expect(markMessagesPushed(db, 's', ['loc-1'], 200)).toEqual({ localIds: [], positionAt: 200 })
     })
 
     test('markMessagesPushed：多条混合（部分已 pushed）只更新 queued 的', () => {
@@ -130,8 +149,8 @@ describe('lifecycle + position_at', () => {
         addMessage(db, 's', WEBAPP_USER, 'loc-3')
         markMessagesPushed(db, 's', ['loc-2'], 100)
         const fresh = markMessagesPushed(db, 's', ['loc-1', 'loc-2', 'loc-3'], 200)
-        expect(fresh.sort()).toEqual(['loc-1', 'loc-3'])
-        expect(markMessagesPushed(db, 's', ['loc-1', 'loc-2', 'loc-3'], 300)).toEqual([])
+        expect(fresh.localIds.sort()).toEqual(['loc-1', 'loc-3'])
+        expect(markMessagesPushed(db, 's', ['loc-1', 'loc-2', 'loc-3'], 300)).toEqual({ localIds: [], positionAt: 300 })
     })
 
     test('getMessages：beforeSeq 指向已删除行 → 返回空', () => {
@@ -151,14 +170,15 @@ describe('lifecycle + position_at', () => {
     })
 
     test('重复 localId（resume 重放）：仍可排队则保留已推进状态，不再可排队则归 NULL', () => {
+        const pushAt = Date.now() + 60_000 // 未来时刻：地板不触发，position 跳到传入时刻
         // 先排队 + push
         addMessage(db, 's', WEBAPP_USER, 'loc-1')
-        markMessagesPushed(db, 's', ['loc-1'], 500)
+        markMessagesPushed(db, 's', ['loc-1'], pushAt)
         // resume 重放同 localId（webapp 内容）→ 保持 pushed，不回退为 queued
         const replayed = addMessage(db, 's', { role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'webapp' } }, 'loc-1')
         expect(replayed.lifecycle).toBe('pushed')
-        expect(replayed.positionAt).toBe(500)
-        expect(replayed.lifecycleAt).toBe(500)
+        expect(replayed.positionAt).toBe(pushAt)
+        expect(replayed.lifecycleAt).toBe(pushAt)
 
         // resume 重放为 CLI 回显 → 归入非排队轨道
         const asCli = addMessage(db, 's', CLI_ECHO, 'loc-1')
@@ -166,9 +186,10 @@ describe('lifecycle + position_at', () => {
     })
 
     test('重复 localId 退出排队轨道时清空 lifecycle_at（维持非排队消息 lifecycleAt=null 不变量）', () => {
+        const pushAt = Date.now() + 60_000
         addMessage(db, 's', WEBAPP_USER, 'loc-1')
-        markMessagesPushed(db, 's', ['loc-1'], 500)
-        expect(getMessages(db, 's', 10)[0].lifecycleAt).toBe(500)
+        markMessagesPushed(db, 's', ['loc-1'], pushAt)
+        expect(getMessages(db, 's', 10)[0].lifecycleAt).toBe(pushAt)
         // 退出排队轨道 → lifecycle_at 必须清空，否则留下 lifecycle=NULL 但 lifecycle_at 非空的脏行
         const asCli = addMessage(db, 's', CLI_ECHO, 'loc-1')
         expect(asCli.lifecycle).toBeNull()

@@ -56,6 +56,32 @@ describe('useFileEditor', () => {
         expect(result.current.dirty).toBe(false)
     })
 
+    it('update 与磁盘基线同值 → 不产生 draft、不调度保存（回归：打开即自动保存）', async () => {
+        mutateAsync.mockResolvedValue({ etag: 'e1', conflict: false })
+        const { result } = renderEditor()
+        act(() => result.current.update('old'))
+        expect(result.current.dirty).toBe(false)
+        expect(result.current.draft).toBe('old')
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 1000)
+        })
+        expect(mutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('编辑后撤销回原文 → 清 draft、取消待保存', async () => {
+        mutateAsync.mockResolvedValue({ etag: 'e1', conflict: false })
+        const { result } = renderEditor()
+        act(() => result.current.update('edited'))
+        expect(result.current.dirty).toBe(true)
+        act(() => result.current.update('old'))
+        expect(result.current.dirty).toBe(false)
+        expect(result.current.draft).toBe('old')
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 1000)
+        })
+        expect(mutateAsync).not.toHaveBeenCalled()
+    })
+
     it('update → dirty=true，draft 更新', () => {
         mutateAsync.mockResolvedValue({ etag: 'e1', conflict: false })
         const { result } = renderEditor()

@@ -34,6 +34,7 @@ import {
     getSidechainMessages,
     getUnsubmittedLocalMessages,
     markMessagesPushed,
+    type MarkPushedResult,
     mergeSessionMessages,
     markMessagesAcked,
     advanceMessagesAcked,
@@ -96,8 +97,8 @@ export class MessageStore {
         return mergeSessionMessages(this.db, fromSessionId, toSessionId)
     }
 
-    /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycle_at 落库 + position_at 跳变），返回实际更新的 localId 列表 */
-    markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): string[] {
+    /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycle_at 落库 + position_at 跳变地板），返回实际更新的 localId 与写入的 position_at */
+    markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): MarkPushedResult {
         return markMessagesPushed(this.db, sessionId, localIds, pushedAt)
     }
 

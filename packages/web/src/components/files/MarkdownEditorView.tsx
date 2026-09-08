@@ -89,16 +89,14 @@ interface Props {
  * Typora 式 MD WYSIWYG 编辑器：渲染态即编辑态。
  *
  * - @tiptap/markdown 提供双向序列化：setContent(md, {contentType:'markdown'}) 解析、getMarkdown() 序列化
- * - onChange 用 ref 持有（避免 editor 重建）；外部 text 变化时用 syncingRef 守卫，
- *   避免 setContent 触发的 onUpdate 回灌导致循环（保存成功/重载场景）
+ * - onChange 用 ref 持有（避免 editor 重建）；外部 text 回填 / editable 切换均为程序性
+ *   操作（emitUpdate:false / 同值跳过），永不触发 onUpdate 回灌
  * - 顶部 MarkdownToolbar（格式/插入/表格操作）+ BubbleMenu（选中浮窗：格式/链接编辑），
  *   readOnly 下隐藏 / 不弹（editable=false 时无编辑语义）
  */
 export function MarkdownEditorView({ text, readOnly = false, onChange }: Props) {
     const onChangeRef = useRef(onChange)
     onChangeRef.current = onChange
-    // 外部同步 text 时置 true，跳过 onUpdate 回灌，避免循环
-    const syncingRef = useRef(false)
     // 最近一次产出/消费的 markdown：区分「自产回灌」与「外部变更」。
     // 初始 '' 保证首次挂载走 setContent 把 text 按 markdown 正确解析（useEditor 的 content 默认按 HTML 解析）；
     // 之后 text 若来自自身 onUpdate（getMarkdown 回灌）→ 与 lastEmitted 相等 → 跳过 setContent，
@@ -128,7 +126,6 @@ export function MarkdownEditorView({ text, readOnly = false, onChange }: Props) 
         ],
         content: text,
         onUpdate: ({ editor }) => {
-            if (syncingRef.current) return
             const md = editor.getMarkdown()
             lastEmittedRef.current = md
             onChangeRef.current(md)
@@ -140,15 +137,21 @@ export function MarkdownEditorView({ text, readOnly = false, onChange }: Props) 
         if (!editor) return
         // text 来自自身 onUpdate 回灌（=== lastEmitted）→ 不再 setContent，避免 edit→md→text→setContent 死循环
         if (text === lastEmittedRef.current) return
-        syncingRef.current = true
-        editor.commands.setContent(text, { contentType: 'markdown' })
+        // emitUpdate:false——程序化回填不是用户编辑，永不触发 onUpdate
+        //（默认 true 会灌进 draft 触发「打开即自动保存 round-trip 归一化版」）
+        editor.commands.setContent(text, { contentType: 'markdown', emitUpdate: false })
         lastEmittedRef.current = text
-        syncingRef.current = false
     }, [text, editor])
 
-    // 只读切换：运行时 setEditable（不重建 editor）
+    // 只读切换：运行时 setEditable（不重建 editor）。
+    // 两个守卫缺一不可——setEditable 在 v3 里无条件 emit update（甚至同值调用、
+    // transaction 为空 tr），onUpdate 会把 getMarkdown 的 round-trip 结果当成用户
+    // 编辑灌进 draft，触发「打开文件即自动保存一次归一化版」（只读文件则保存被拒报错）
     useEffect(() => {
-        editor?.setEditable(!readOnly)
+        if (!editor) return
+        if (!!editor.isEditable === !readOnly) return
+        // 程序性切换无内容变更，emitUpdate=false：不触发 onChange
+        editor.setEditable(!readOnly, false)
     }, [editor, readOnly])
 
     return (

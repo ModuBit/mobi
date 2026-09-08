@@ -113,6 +113,10 @@ export class MessageQueue<T> {
      * turn 结束立即消费排队消息时，fact 会抢在上一轮 result 落库前到达 Hub——position_at
      * 跳变时刻早于 result 的 created_at，Web 按 positionAt 排序时排队消息会被排到
      * 上一轮 result 之前。屏障保证「先清空上游发送队列，再上报消费事实」。
+     *
+     * 屏障的边界：只保证 emit 顺序，fact.at（CLI 时钟）与 result 落库时刻（Hub 时钟）
+     * 跨时钟比较仍可能不严格大于（同毫秒 tie 时 seq 决胜排队消息必输）——该残余竞态由
+     * Hub 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底，见 hub store/messages.ts。
      */
     setBeforeCollect(handler: (() => void | Promise<void>) | null): void {
         this.beforeCollectHandler = handler;
