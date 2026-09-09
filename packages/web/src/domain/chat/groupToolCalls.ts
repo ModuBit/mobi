@@ -54,9 +54,16 @@ export type GroupedBlock = ChatBlock | ToolCallGroup
 /** 判断 reasoning 是否活跃（正在思考）—— 由调用方（buildBubbleItems）构造，供组头动态标题与组内 thinking 展开态使用 */
 export type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
 
-/** 工具是否活跃（运行中/待审批）—— 组头「正在 xxx」动态标题的判定来源 */
-export function isActiveTool(block: ToolCallBlock): boolean {
+/** 工具是否活跃（运行中/待审批）—— 组头「正在 xxx」动态标题的判定来源（仅供本文件与组渲染器内部使用） */
+function isActiveTool(block: ToolCallBlock): boolean {
   return block.tool.state === 'running' || block.tool.state === 'pending'
+}
+
+/** 追加失败计数后缀（>0 时）——汇总/动态两种标题形态共用，保证失败计数不变式单一实现 */
+function withFailedSuffix(text: string, failedCount: number | undefined, t: Translate): string {
+  return failedCount != null && failedCount > 0
+    ? `${text} · ${t('chat.group.failed', { count: failedCount })}`
+    : text
 }
 
 /**
@@ -113,10 +120,14 @@ function extractActiveTarget(name: string, input: unknown): string {
  * 格式化折叠组标题（汇总形态：全部落定或无活跃内容时）。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「思考 X.X 秒」，全无（local/历史）兜底「思考」。
  * tool 部分：按类别计数——文件操作类按去重文件数（同文件多次编辑计 1 个文件，数量=真实文件数），其余按调用次数。
- * 失败计数：组内失败工具数 > 0 时追加「· N 个失败」。
+ * 失败计数：组内失败工具数 > 0 时追加「· N 个失败」；调用方可传预计算的 failedCount 免去内部重复遍历。
  * 文案经 i18n（t 由组件层传入 useTranslation 的 t）。
  */
-export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): string {
+export function formatGroupTitle(
+  blocks: CollapsibleBlock[],
+  t: Translate,
+  opts: { failedCount?: number } = {},
+): string {
   // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
   const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
@@ -164,39 +175,37 @@ export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): stri
 
   const base = capitalize(parts.join(t('chat.group.separator')))
   // 含失败工具时追加失败计数（与主体同语言）
-  const failedCount = countFailedInGroup(blocks)
-  if (failedCount > 0) {
-    return `${base} · ${t('chat.group.failed', { count: failedCount })}`
-  }
-  return base
+  const failedCount = opts.failedCount ?? countFailedInGroup(blocks)
+  return withFailedSuffix(base, failedCount, t)
 }
 
 /**
  * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待审批」）。
  * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
  * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到 file_path → 「正在写入文件」）。
+ * failedCount 传入时（组渲染器已预计算）动态标题同样追加「· N 个失败」，失败不变式两态通用。
  */
 export function formatGroupActiveTitle(
   blocks: CollapsibleBlock[],
-  opts: { t: Translate; isActiveReasoning?: IsActiveReasoning },
+  opts: { t: Translate; isActiveReasoning?: IsActiveReasoning; failedCount?: number },
 ): string | null {
-  const { t, isActiveReasoning } = opts
+  const { t, isActiveReasoning, failedCount } = opts
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i]
     if (block.kind === 'agent-reasoning') {
-      if (isActiveReasoning?.(block)) return t('chat.group.running.thinking')
+      if (isActiveReasoning?.(block)) return withFailedSuffix(t('chat.group.running.thinking'), failedCount, t)
       continue
     }
     if (!isActiveTool(block)) continue
     const target = extractActiveTarget(block.tool.name, block.tool.input)
     // 等待审批（pending）优先展示「等待审批」；运行中展示「正在 xxx」
     if (block.tool.state === 'pending') {
-      return target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval')
+      return withFailedSuffix(target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval'), failedCount, t)
     }
     const category = TOOL_CATEGORY_MAP[block.tool.name]
     // MCP 的 server 目标走插值；其余类别拼在文案后（拿不到目标则只展示类别文案）
-    if (!category) return t('chat.group.running.mcp', { server: target })
-    return target ? `${t(`chat.group.running.${category}`)} ${target}` : t(`chat.group.running.${category}`)
+    if (!category) return withFailedSuffix(t('chat.group.running.mcp', { server: target }), failedCount, t)
+    return withFailedSuffix(target ? `${t(`chat.group.running.${category}`)} ${target}` : t(`chat.group.running.${category}`), failedCount, t)
   }
   return null
 }

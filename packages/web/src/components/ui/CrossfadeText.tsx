@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 
 /** 淡入/淡出时长（单点来源：动画字符串与旧层清理定时器均由此派生） */
 const FADE_MS = 200
@@ -22,15 +22,17 @@ const FADE_MS = 200
 /**
  * 文案切换 crossfade：新文案淡入、旧文案淡出（FADE_MS）。
  * 旧文案以绝对定位叠底淡出，不占布局（高度由当前文案决定，避免撑动）；
+ * wrapper overflow:hidden 裁剪旧层——旧文案比新文案宽时不溢出压到相邻 UI。
  * 内层 span 以文案为 key，文案变化即重挂载重启淡入动画。
- * 旧层用定时器清理（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠），
+ * 旧层在 paint 前（useLayoutEffect）就位，避免「先消失一帧再闪回淡出」；
+ * 定时器清理旧层（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠），
  * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
  */
 export function CrossfadeText({ text, style }: { text: string; style?: CSSProperties }) {
     const [leaving, setLeaving] = useState<string | null>(null)
     const prevTextRef = useRef(text)
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (prevTextRef.current === text) return
         setLeaving(prevTextRef.current)
         prevTextRef.current = text
@@ -39,7 +41,7 @@ export function CrossfadeText({ text, style }: { text: string; style?: CSSProper
     }, [text])
 
     return (
-        <span style={{ position: 'relative', display: 'inline-flex', ...style }}>
+        <span style={{ position: 'relative', display: 'inline-flex', overflow: 'hidden', ...style }}>
             <span key={text} style={{ animation: `crossfade-in ${FADE_MS}ms ease` }}>{text}</span>
             {leaving != null && (
                 <span

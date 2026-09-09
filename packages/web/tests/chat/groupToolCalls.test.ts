@@ -852,4 +852,18 @@ describe('formatGroupActiveTitle', () => {
     const block = makeToolCall({ id: 'm1', name: 'mcp__github__search', state: 'running' })
     expect(formatGroupActiveTitle([block], { t })).toBe('正在调用 github')
   })
+
+  it('failedCount 传入时动态标题同样追加失败后缀（不变式两态通用）', () => {
+    const block = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
+    block.tool.input = { command: 'bun test' }
+    expect(formatGroupActiveTitle([block], { t, failedCount: 2 })).toBe('正在执行命令 bun test · 2 个失败')
+    // 无失败（0 / 未传）不追加
+    expect(formatGroupActiveTitle([block], { t, failedCount: 0 })).toBe('正在执行命令 bun test')
+  })
+
+  it('waiting 审批 + failedCount 同样追加', () => {
+    const block = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
+    block.tool.input = { file_path: 'src/a.ts' }
+    expect(formatGroupActiveTitle([block], { t, failedCount: 1 })).toBe('等待审批 src/a.ts · 1 个失败')
+  })
 })

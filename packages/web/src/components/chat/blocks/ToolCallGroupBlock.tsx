@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { Think } from '@ant-design/x'
 import { Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -34,7 +34,7 @@ import { CrossfadeText } from '@/components/ui/CrossfadeText'
 /**
  * 组头状态 icon：Layers 图标承载组状态——组活跃（运行/审批中）蓝呼吸，落定绿静态；
  * 含失败工具时右上角叠小红角标提示。主体不染红（避免一个失败染红整组），
- * 也不掩盖失败（角标可见 + 标题「· N failed」承载计数）。
+ * 失败计数由标题「· N 个失败」后缀承载（汇总/动态两种形态均追加，withFailedSuffix 单点实现）。
  */
 function ToolCallGroupIcon({ hasError, hasActive }: { hasError: boolean; hasActive: boolean }) {
   return (
@@ -70,17 +70,13 @@ export function ToolCallGroupRenderer({
 } & ChatBlockContext) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  // 单处派生：失败数/动态标题/活跃态一次算清（activeTitle 非 null ⟺ 组活跃），
-  // 避免各自独立扫描 blocks 造成判定漂移与热路径重复遍历
-  const { failedCount, title, hasActive } = useMemo(() => {
-    const failedCount = countFailedInGroup(blocks)
-    const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning })
-    return {
-      failedCount,
-      hasActive: activeTitle != null,
-      title: activeTitle ?? formatGroupTitle(blocks, t),
-    }
-  }, [blocks, t, isActiveReasoning])
+  // 失败数/动态标题/活跃态单处派生（activeTitle 非 null ⟺ 组活跃）。
+  // failedCount 只算一次、传给两种标题形态（动态形态也追加「· N 个失败」，失败不变式两态通用）。
+  // 注：blocks/isActiveReasoning 每帧都是新引用，此处不做 memo——计算本身即每帧必付的成本
+  const failedCount = countFailedInGroup(blocks)
+  const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning, failedCount })
+  const hasActive = activeTitle != null
+  const title = activeTitle ?? formatGroupTitle(blocks, t, { failedCount })
 
   return (
     <Think
