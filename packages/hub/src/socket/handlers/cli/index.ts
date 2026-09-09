@@ -90,7 +90,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     let snapshotLease: SnapshotCliLease | null = null
     if (sessionId && resolveSessionAccess(sessionId).ok) {
         socket.join(`session:${sessionId}`)
-        snapshotLease = snapshotSync.attachCli(sessionId, socket.id)
+        snapshotLease = snapshotSync.attachCli(sessionId)
     }
 
     const machineId = typeof auth?.machineId === 'string' ? auth.machineId : null

@@ -50,7 +50,7 @@ export type SnapshotIngestResult =
 
 export interface SnapshotSubscription {
     resolve(publication: SnapshotPublication): SnapshotPublication | null
-    resync(sessionId: string, namespace?: string): Array<Extract<SnapshotPublication, { type: 'message-snapshot' }>>
+    resync(sessionId: string): Array<Extract<SnapshotPublication, { type: 'message-snapshot' }>>
     close(): void
 }
 
@@ -77,12 +77,17 @@ type CursorEntry = {
  */
 export class SnapshotSync {
     private readonly cache = new Map<string, Map<string, CacheEntry>>()
-    private readonly cursors = new Map<string, Map<string, CursorEntry>>()
+    /** 订阅 → 会话 → 流 的游标（按会话嵌套，per-session 清理一层 delete 即达） */
+    private readonly cursors = new Map<string, Map<string, Map<string, CursorEntry>>>()
     private readonly cliOwners = new Map<string, symbol>()
     private readonly stats: SnapshotDeltaStats
     private readonly ttlMs: number
     private readonly cursorTtlMs: number
     private readonly now: () => number
+    /** 扇出字节缓存：同一 publication 广播给 N 个订阅只测一次 */
+    private readonly publicationBytes = new WeakMap<object, number>()
+    /** sweep 节流时点：ingest/resolve 是流式热路径，全量扫描最多每 TTL/10 一次 */
+    private lastSweepAt = Number.NEGATIVE_INFINITY
 
     constructor(options?: { stats?: SnapshotDeltaStats; ttlMs?: number; cursorTtlMs?: number; now?: () => number }) {
         this.stats = options?.stats ?? new SnapshotDeltaStats(false)
@@ -117,16 +122,16 @@ export class SnapshotSync {
         const { sessionId, frame } = input
         const entries = this.cache.get(sessionId)
         const entry = entries?.get(frame.localId)
-        if (!entries || !entry) {
+        if (!entry) {
             return { status: 'ignored', reason: 'missing-baseline' }
         }
         if (entry.rev !== frame.baseRev) {
-            entries.delete(frame.localId)
+            entries?.delete(frame.localId)
             return { status: 'ignored', reason: 'revision-gap' }
         }
         const blocks = locateSnapshotBlocks(entry.content)
         if (blocks === null || !applySnapshotBlockDeltas(blocks, frame.deltas)) {
-            entries.delete(frame.localId)
+            entries?.delete(frame.localId)
             return { status: 'ignored', reason: 'invalid-delta' }
         }
         entry.rev = frame.rev
@@ -144,7 +149,7 @@ export class SnapshotSync {
         }
     }
 
-    attachCli(sessionId: string, _socketId: string): SnapshotCliLease {
+    attachCli(sessionId: string): SnapshotCliLease {
         const lease = Symbol(sessionId)
         this.cliOwners.set(sessionId, lease)
         return {
@@ -152,11 +157,8 @@ export class SnapshotSync {
                 if (this.cliOwners.get(sessionId) !== lease) return
                 this.cliOwners.delete(sessionId)
                 this.cache.delete(sessionId)
-                const prefix = `${sessionId}\u0000`
-                for (const cursorMap of this.cursors.values()) {
-                    for (const key of cursorMap.keys()) {
-                        if (key.startsWith(prefix)) cursorMap.delete(key)
-                    }
+                for (const bySession of this.cursors.values()) {
+                    bySession.delete(sessionId)
                 }
             },
         }
@@ -171,39 +173,31 @@ export class SnapshotSync {
     /** snapshot-stream-end 是流式生命周期的权威终态，同时清缓存和全部订阅游标。 */
     endStream(sessionId: string, localId: string): void {
         this.deleteCachedStream(sessionId, localId)
-        const key = this.streamKey(sessionId, localId)
-        for (const cursorMap of this.cursors.values()) {
-            cursorMap.delete(key)
+        for (const bySession of this.cursors.values()) {
+            bySession.get(sessionId)?.delete(localId)
         }
     }
 
     attachSubscription(options: { id: string; wantsDelta: boolean }): SnapshotSubscription {
-        const cursorMap = new Map<string, CursorEntry>()
-        this.cursors.set(options.id, cursorMap)
-        const isActive = () => this.cursors.get(options.id) === cursorMap
+        const bySession = new Map<string, Map<string, CursorEntry>>()
+        this.cursors.set(options.id, bySession)
+        const isActive = () => this.cursors.get(options.id) === bySession
         return {
             resolve: (publication) => isActive()
-                ? this.resolveForSubscription(publication, options.wantsDelta, cursorMap)
+                ? this.resolveForSubscription(publication, options.wantsDelta, bySession)
                 : null,
-            resync: (sessionId, namespace) => {
+            resync: (sessionId) => {
                 if (!isActive()) return []
                 this.sweepExpiredCache()
-                cursorMap.clear()
+                bySession.clear()
                 const entries = this.cache.get(sessionId)
                 if (!entries) return []
                 const baselines: Array<Extract<SnapshotPublication, { type: 'message-snapshot' }>> = []
                 for (const [localId, entry] of entries) {
                     if (options.wantsDelta) {
-                        cursorMap.set(this.streamKey(sessionId, localId), { rev: entry.rev, touchedAt: this.now() })
+                        this.sessionCursors(bySession, sessionId).set(localId, { rev: entry.rev, touchedAt: this.now() })
                     }
-                    const publication: Extract<SnapshotPublication, { type: 'message-snapshot' }> = {
-                        type: 'message-snapshot',
-                        sessionId,
-                        namespace,
-                        message: buildSnapshotMessage(localId, entry.content, entry.rev),
-                    }
-                    this.stats.record('hub-to-web', 'full', publication)
-                    baselines.push(publication)
+                    baselines.push(this.fullPublication(sessionId, localId, entry.content, entry.rev))
                 }
                 return baselines
             },
@@ -218,44 +212,43 @@ export class SnapshotSync {
     private resolveForSubscription(
         publication: SnapshotPublication,
         wantsDelta: boolean,
-        cursorMap: Map<string, CursorEntry>,
+        bySession: Map<string, Map<string, CursorEntry>>,
     ): SnapshotPublication | null {
         this.sweepExpiredCache()
         if (publication.type === 'message-snapshot') {
             const localId = publication.message.localId
             const rev = publication.message.snapshotRev
             if (wantsDelta && localId !== null && rev !== undefined) {
-                cursorMap.set(this.streamKey(publication.sessionId, localId), { rev, touchedAt: this.now() })
+                this.sessionCursors(bySession, publication.sessionId).set(localId, { rev, touchedAt: this.now() })
             }
-            this.stats.record('hub-to-web', 'full', publication)
+            this.recordToWeb('full', publication)
             return publication
         }
 
-        const key = this.streamKey(publication.sessionId, publication.localId)
-        const cursor = cursorMap.get(key)
+        const streams = bySession.get(publication.sessionId)
+        const cursor = streams?.get(publication.localId)
         const cursorCurrent = cursor && this.now() - cursor.touchedAt <= this.cursorTtlMs
             ? cursor.rev
             : undefined
-        if (cursor && cursorCurrent === undefined) cursorMap.delete(key)
+        if (streams && cursor && cursorCurrent === undefined) streams.delete(publication.localId)
         if (wantsDelta && cursorCurrent === publication.baseRev) {
-            cursorMap.set(key, { rev: publication.rev, touchedAt: this.now() })
-            this.stats.record('hub-to-web', 'delta', publication)
+            this.sessionCursors(bySession, publication.sessionId).set(publication.localId, { rev: publication.rev, touchedAt: this.now() })
+            this.recordToWeb('delta', publication)
             return publication
         }
 
         const cached = this.cache.get(publication.sessionId)?.get(publication.localId)
         if (!cached) return null
         if (wantsDelta) {
-            cursorMap.set(key, { rev: cached.rev, touchedAt: this.now() })
+            this.sessionCursors(bySession, publication.sessionId).set(publication.localId, { rev: cached.rev, touchedAt: this.now() })
         }
-        const full: SnapshotPublication = {
-            type: 'message-snapshot',
-            sessionId: publication.sessionId,
-            namespace: publication.namespace,
-            message: buildSnapshotMessage(publication.localId, cached.content, cached.rev),
-        }
-        this.stats.record('hub-to-web', 'full', full)
-        return full
+        return this.fullPublication(
+            publication.sessionId,
+            publication.localId,
+            cached.content,
+            cached.rev,
+            publication.namespace,
+        )
     }
 
     private entryMap(sessionId: string): Map<string, CacheEntry> {
@@ -274,21 +267,62 @@ export class SnapshotSync {
         if (entries.size === 0) this.cache.delete(sessionId)
     }
 
+    /** 构造全量基线事件并记 hub-to-web 全量观测（resync 与订阅兜底路径共用）。 */
+    private fullPublication(
+        sessionId: string,
+        localId: string,
+        content: unknown,
+        rev: number,
+        /** 订阅兜底路径透传入站 publication 的 namespace（投递元数据归投递层，module 不自行派生） */
+        namespace?: string,
+    ): Extract<SnapshotPublication, { type: 'message-snapshot' }> {
+        const publication: Extract<SnapshotPublication, { type: 'message-snapshot' }> = {
+            type: 'message-snapshot',
+            sessionId,
+            namespace,
+            message: buildSnapshotMessage(localId, content, rev),
+        }
+        this.recordToWeb('full', publication)
+        return publication
+    }
+
+    /** hub-to-web 观测：同一 publication 扇出给 N 个订阅时字节只测一次（对齐旧 broadcast 的 precomputedBytes 纪律）。 */
+    private recordToWeb(kind: 'full' | 'delta', publication: object): void {
+        let bytes = this.publicationBytes.get(publication)
+        if (bytes === undefined) {
+            bytes = this.stats.bytesOf(publication)
+            this.publicationBytes.set(publication, bytes)
+        }
+        this.stats.record('hub-to-web', kind, publication, bytes)
+    }
+
+    /** 取订阅在某会话下的流游标表，缺则建。 */
+    private sessionCursors(
+        bySession: Map<string, Map<string, CursorEntry>>,
+        sessionId: string,
+    ): Map<string, CursorEntry> {
+        let streams = bySession.get(sessionId)
+        if (!streams) {
+            streams = new Map()
+            bySession.set(sessionId, streams)
+        }
+        return streams
+    }
+
     private sweepExpiredCache(): void {
         const now = this.now()
+        // 节流：ingest/resolve 是流式热路径，每帧 delta × N 订阅扇出都会触发，
+        // 实际扫描最多每 TTL/10 一次（惰性清理语义不变，清理时点在 TTL/10 粒度内滑动）
+        if (now - this.lastSweepAt < this.ttlMs / 10) return
+        this.lastSweepAt = now
         for (const [sessionId, entries] of this.cache) {
             for (const [localId, entry] of entries) {
                 if (now - entry.touchedAt > this.ttlMs) {
                     entries.delete(localId)
-                    const key = this.streamKey(sessionId, localId)
-                    for (const cursorMap of this.cursors.values()) cursorMap.delete(key)
+                    for (const bySession of this.cursors.values()) bySession.get(sessionId)?.delete(localId)
                 }
             }
             if (entries.size === 0) this.cache.delete(sessionId)
         }
-    }
-
-    private streamKey(sessionId: string, localId: string): string {
-        return `${sessionId}\u0000${localId}`
     }
 }

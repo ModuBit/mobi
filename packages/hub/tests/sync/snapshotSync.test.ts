@@ -88,11 +88,11 @@ describe('SnapshotSync', () => {
 
     test('迟到的旧 CLI lease 不能清理新连接接管后的快照', () => {
         const sync = new SnapshotSync()
-        const oldLease = sync.attachCli('session-1', 'socket-old')
+        const oldLease = sync.attachCli('session-1')
         sync.ingest({
             kind: 'full', sessionId: 'session-1', localId: 'stream-1', content: textEnvelope('a'), rev: 1,
         })
-        const currentLease = sync.attachCli('session-1', 'socket-current')
+        const currentLease = sync.attachCli('session-1')
 
         oldLease.disconnect()
         expect(sync.ingest({ kind: 'delta', sessionId: 'session-1', frame: delta(2, 1, 'b') }).status)

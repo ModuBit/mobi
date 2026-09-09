@@ -126,33 +126,22 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         const { sid, localId, snapshot } = parsed.data
 
-        // 增量帧：Socket adapter 只负责载荷与访问校验；版本衔接和缓存推进由 SnapshotSync 决定。
-        if (parsed.data.snapshotDelta) {
-            const frame = parsed.data.snapshotDelta
+        // 增量帧与全量基线：Socket adapter 只负责载荷与访问校验；版本衔接和缓存推进由 SnapshotSync 决定。
+        if (parsed.data.snapshotDelta || snapshot) {
             const sessionAccess = resolveSessionAccess(sid)
             if (!sessionAccess.ok) {
                 emitAccessError('session', sid, sessionAccess.reason)
                 return
             }
-            const result = snapshotSync.ingest({ kind: 'delta', sessionId: sid, frame })
-            if (result.status === 'accepted') onWebappEvent?.(result.publication)
-            return
-        }
-
-        // 快照消息：不落库。SnapshotSync 保存可独立解释的基线，并返回待发布事件。
-        if (snapshot) {
-            const sessionAccess = resolveSessionAccess(sid)
-            if (!sessionAccess.ok) {
-                emitAccessError('session', sid, sessionAccess.reason)
-                return
-            }
-            const result = snapshotSync.ingest({
-                kind: 'full',
-                sessionId: sid,
-                localId: localId ?? null,
-                content: parsed.data.message,
-                rev: parsed.data.frame?.rev ?? null,
-            })
+            const result = snapshotSync.ingest(parsed.data.snapshotDelta
+                ? { kind: 'delta', sessionId: sid, frame: parsed.data.snapshotDelta }
+                : {
+                    kind: 'full',
+                    sessionId: sid,
+                    localId: localId ?? null,
+                    content: parsed.data.message,
+                    rev: parsed.data.frame?.rev ?? null,
+                })
             if (result.status === 'accepted') onWebappEvent?.(result.publication)
             return
         }

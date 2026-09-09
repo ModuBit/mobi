@@ -25,12 +25,12 @@ import type { SyncEngine } from '../../src/sync/syncEngine'
  */
 
 function makeApp(namespace: string, synced = 1) {
-    const resyncCalls: Array<{ subscriptionId: string; sessionId: string; namespace?: string }> = []
+    const resyncCalls: Array<{ subscriptionId: string; sessionId: string }> = []
     // 最小 fake：路由只保留鉴权与订阅属主校验，具体基线构造由 SnapshotSync 测试覆盖。
     const manager = {
         getSubscription: (id: string) => (id === 'sub-1' ? { id: 'sub-1', namespace: 'ns-a' } : null),
-        resyncSnapshots: (subscriptionId: string, sessionId: string, targetNamespace?: string) => {
-            resyncCalls.push({ subscriptionId, sessionId, namespace: targetNamespace })
+        resyncSnapshots: (subscriptionId: string, sessionId: string) => {
+            resyncCalls.push({ subscriptionId, sessionId })
             return synced
         },
     }
@@ -85,7 +85,7 @@ describe('POST /snapshot-resync — 订阅属主校验（D1）', () => {
             body: JSON.stringify({ subscriptionId: 'sub-1', sessionId: 's1' }),
         })
         expect(res.status).toBe(200)
-        expect(resyncCalls).toEqual([{ subscriptionId: 'sub-1', sessionId: 's1', namespace: 'ns-a' }])
+        expect(resyncCalls).toEqual([{ subscriptionId: 'sub-1', sessionId: 's1' }])
         expect(await res.json()).toEqual({ ok: true, synced: 2 })
     })
 })

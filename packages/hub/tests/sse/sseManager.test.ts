@@ -37,7 +37,7 @@ function makeConnection(id: string, namespace: string, opts?: { visible?: boolea
 describe('SSEManager', () => {
     test('hasActiveConnection: 有连接返回 true,无连接返回 false', () => {
         const tracker = new VisibilityTracker()
-        const manager = new SSEManager(0, tracker)
+        const manager = new SSEManager(0, tracker, new SnapshotSync())
         expect(manager.hasActiveConnection('ns1')).toBe(false)
 
         manager.subscribe({
@@ -50,7 +50,7 @@ describe('SSEManager', () => {
 
     test('hasVisibleConnection: 有可见连接返回 true,只有 hidden 或无连接返回 false', () => {
         const tracker = new VisibilityTracker()
-        const manager = new SSEManager(0, tracker)
+        const manager = new SSEManager(0, tracker, new SnapshotSync())
         expect(manager.hasVisibleConnection('ns1')).toBe(false)
 
         manager.subscribe({
@@ -69,7 +69,7 @@ describe('SSEManager', () => {
 
     test('hasVisibleConnection: 连接从 visible 切到 hidden 后变 false', () => {
         const tracker = new VisibilityTracker()
-        const manager = new SSEManager(0, tracker)
+        const manager = new SSEManager(0, tracker, new SnapshotSync())
         manager.subscribe({
             id: 'c1', namespace: 'ns1', visibility: 'visible',
             send: () => {}, sendHeartbeat: () => {},
@@ -83,7 +83,7 @@ describe('SSEManager', () => {
 
     test('sendToast 发给该 namespace 所有连接(含 hidden 后台)', async () => {
         const tracker = new VisibilityTracker()
-        const manager = new SSEManager(0, tracker)
+        const manager = new SSEManager(0, tracker, new SnapshotSync())
         const visibleConn = makeConnection('c1', 'ns1', { visible: true })
         const hiddenConn = makeConnection('c2', 'ns1', { visible: false })
 
@@ -100,7 +100,7 @@ describe('SSEManager', () => {
 
     test('sendToast 不发给其它 namespace', async () => {
         const tracker = new VisibilityTracker()
-        const manager = new SSEManager(0, tracker)
+        const manager = new SSEManager(0, tracker, new SnapshotSync())
         const other = makeConnection('c1', 'ns2', { visible: true })
         manager.subscribe({ id: other.id, namespace: 'ns2', visibility: 'visible', send: other.send, sendHeartbeat: other.sendHeartbeat })
 
@@ -163,7 +163,7 @@ describe('SSEManager', () => {
             kind: 'full', sessionId: 's1', localId: 'u1', content: textEnvelope('active'), rev: 4,
         })
 
-        expect(manager.resyncSnapshots('c1', 's1', 'ns1')).toBe(1)
+        expect(manager.resyncSnapshots('c1', 's1')).toBe(1)
         expect(connection.calls).toHaveLength(1)
         expect(connection.calls[0]).toMatchObject({
             type: 'message-snapshot', namespace: 'ns1', message: { localId: 'u1', snapshotRev: 4 },

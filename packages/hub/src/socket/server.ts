@@ -80,8 +80,8 @@ export type SocketServerDeps = {
     /** rewind 软删除上界（SyncEngine 受理时写，CLI rewind-truncated 读）。
      *  生产组装层（index.ts）必须传入与 SyncEngine 共用的同一实例 */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
-    /** 快照同步 module。缺省自建仅供测试；生产组装层与 SSEManager 共用同一实例。 */
-    snapshotSync?: SnapshotSync
+    /** 快照同步 module。必传：CLI ingest 与 SSEManager 的订阅必须共享同一实例，漏传会静默脑裂 */
+    snapshotSync: SnapshotSync
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
     onWebappEvent?: (event: SyncEvent) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
@@ -148,7 +148,7 @@ export function createSocketServer(deps: SocketServerDeps): {
 
     // 单实例共享（缺省自建仅测试路径用）：CLI 连接事件维护，rewind API 闸门读取
     const backgroundTaskTracker = deps.backgroundTaskTracker ?? new BackgroundTaskTracker()
-    const snapshotSync = deps.snapshotSync ?? new SnapshotSync()
+    const snapshotSync = deps.snapshotSync
 
     const rpcRegistry = new RpcRegistry()
     const terminalRegistry = new TerminalRegistry({

@@ -40,10 +40,11 @@ export class SSEManager {
     private readonly visibilityTracker: VisibilityTracker
     private readonly snapshotSync: SnapshotSync
 
-    constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker, snapshotSync?: SnapshotSync) {
+    constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker, snapshotSync: SnapshotSync) {
         this.heartbeatMs = heartbeatMs
         this.visibilityTracker = visibilityTracker
-        this.snapshotSync = snapshotSync ?? new SnapshotSync()
+        // 必传：CLI ingest 与 SSE 订阅必须共享同一实例，组装层漏传会静默脑裂（快照事件全丢）
+        this.snapshotSync = snapshotSync
     }
 
     subscribe(options: {
@@ -58,7 +59,8 @@ export class SSEManager {
         send: (event: SyncEvent) => void | Promise<void>
         sendHeartbeat: () => void | Promise<void>
     }): SSESubscription {
-        this.connections.get(options.id)?.snapshot.close()
+        // 同 id 重订阅的接管由 attachSubscription 的 isActive 单一机制承载：
+        // 新订阅顶掉 cursors 条目后，旧 handle 永久失效，无需在此显式 close
         const subscription: SSEConnection = {
             id: options.id,
             namespace: options.namespace,
@@ -176,13 +178,14 @@ export class SSEManager {
         }
     }
 
-    /** 为指定订阅补发会话内所有活跃流的完整基线，并重建该订阅的游标。 */
-    resyncSnapshots(subscriptionId: string, sessionId: string, namespace?: string): number {
+    /** 为指定订阅补发会话内所有活跃流的完整基线，并重建该订阅的游标。
+     *  namespace 是投递层路由元数据，由本层盖章（module 只决定快照内容）。 */
+    resyncSnapshots(subscriptionId: string, sessionId: string): number {
         const connection = this.connections.get(subscriptionId)
         if (!connection) return 0
-        const baselines = connection.snapshot.resync(sessionId, namespace)
+        const baselines = connection.snapshot.resync(sessionId)
         for (const baseline of baselines) {
-            this.deliver(connection, baseline)
+            this.deliver(connection, { ...baseline, namespace: connection.namespace })
         }
         return baselines.length
     }

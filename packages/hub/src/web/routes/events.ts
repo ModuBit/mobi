@@ -204,7 +204,6 @@ export function createEventsRoutes(
         const synced = manager.resyncSnapshots(
             parsed.data.subscriptionId,
             sessionResult.sessionId,
-            c.get('namespace'),
         )
 
         return c.json({ ok: true, synced })

@@ -16,6 +16,7 @@
 
 import { describe, test, expect, spyOn } from 'bun:test'
 import { createSocketServer, extractTerminalToken } from '../../src/socket/server'
+import { SnapshotSync } from '../../src/sync/snapshotSync'
 import { testJwtSecret } from '../helpers/setupTestApp'
 import { AUTH_COOKIE_NAME } from '../../src/web/auth/session'
 import { hubLogger } from '../../src/logger'
@@ -65,7 +66,7 @@ describe('extractTerminalToken 双源提取', () => {
 describe('CORS 守卫', () => {
     test('corsOrigins 含 * 触发 warn', () => {
         const warnSpy = spyOn(hubLogger, 'warn').mockImplementation(() => undefined)
-        createSocketServer({ store: null as never, jwtSecret: testJwtSecret, corsOrigins: ['*'] })
+        createSocketServer({ store: null as never, jwtSecret: testJwtSecret, corsOrigins: ['*'], snapshotSync: new SnapshotSync() })
         expect(warnSpy).toHaveBeenCalled()
         expect(String(warnSpy.mock.calls[0][0])).toContain('CORS')
         warnSpy.mockRestore()
@@ -73,7 +74,7 @@ describe('CORS 守卫', () => {
 
     test('corsOrigins 具体域名不 warn', () => {
         const warnSpy = spyOn(hubLogger, 'warn').mockImplementation(() => undefined)
-        createSocketServer({ store: null as never, jwtSecret: testJwtSecret, corsOrigins: ['http://localhost:3000'] })
+        createSocketServer({ store: null as never, jwtSecret: testJwtSecret, corsOrigins: ['http://localhost:3000'], snapshotSync: new SnapshotSync() })
         expect(warnSpy).not.toHaveBeenCalled()
         warnSpy.mockRestore()
     })
@@ -88,7 +89,8 @@ describe('bun-engine maxHttpBufferSize', () => {
         const { engine } = createSocketServer({
             store: null as never,
             jwtSecret: testJwtSecret,
-            corsOrigins: ['http://localhost:3000']
+            corsOrigins: ['http://localhost:3000'],
+            snapshotSync: new SnapshotSync()
         })
         const FILE_RANGE_CHUNK = 2 * 1024 * 1024
         // 大于 2MB chunk 才能容纳 cli 回传的整段二进制响应

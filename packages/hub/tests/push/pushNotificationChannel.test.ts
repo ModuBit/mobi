@@ -18,6 +18,7 @@ import { describe, test, expect, mock } from 'bun:test'
 import { PushNotificationChannel } from '../../src/push/pushNotificationChannel'
 import { VisibilityTracker } from '../../src/visibility/visibilityTracker'
 import { SSEManager } from '../../src/sse/sseManager'
+import { SnapshotSync } from '../../src/sync/snapshotSync'
 import type { PushService } from '../../src/push/pushService'
 
 /** 最小 Session 桩,满足 channel 读取的字段 */
@@ -48,7 +49,7 @@ type TestConnection = ReturnType<typeof makeConnection>
 /** 组装 channel:真实 SSEManager(按需挂连接)+ mock pushService(控制订阅态) */
 function setup(opts: { connections?: TestConnection[]; hasPush?: boolean }) {
     const tracker = new VisibilityTracker()
-    const manager = new SSEManager(0, tracker)
+    const manager = new SSEManager(0, tracker, new SnapshotSync())
     for (const conn of (opts.connections ?? [])) {
         manager.subscribe({
             id: conn.id,
