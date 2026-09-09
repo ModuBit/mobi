@@ -183,6 +183,10 @@ pre, code {
     .pixel-loader-cell {
         opacity: 0.35 !important;
     }
+    /* shimmer 停扫时冻结在高光居中位（50%）——回落到默认 0% 会让文字永久半暗 */
+    .shimmer-text {
+        background-position: 50% 0 !important;
+    }
 }
 
 /* ==================== 排印 tracking 分档（Apple optical sizing） ====================

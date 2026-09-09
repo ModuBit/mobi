@@ -111,7 +111,7 @@ function extractActiveTarget(name: string, input: unknown, description: string |
     const parsed = parseMCPToolName(name)
     return parsed ? formatMCPServerDisplay(parsed.server) : ''
   }
-  if (description) return truncate(description, ACTIVE_TARGET_MAX)
+  if (description) return truncate(description.split('\n')[0], ACTIVE_TARGET_MAX)
   const raw = targetOf(category, input)
   if (raw == null) return ''
   const display = category === 'shell' ? raw.split('\n')[0] : raw

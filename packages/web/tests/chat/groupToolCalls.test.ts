@@ -785,6 +785,13 @@ describe('formatGroupActiveTitle', () => {
     expect(formatGroupActiveTitle([block], { t })).toBe(`正在执行命令 ${'c'.repeat(21)}...`)
   })
 
+  it('running 工具：多行 description 取首行（换行不进组头单行标题）', () => {
+    const block = makeToolCall({ id: 'b2', name: 'Bash', state: 'running' })
+    block.tool.input = { command: 'bun test' }
+    block.tool.description = '第一行描述\n第二行描述'
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 第一行描述')
+  })
+
   it('running 工具：带文件路径（write）', () => {
     const block = makeToolCall({ id: 'w1', name: 'Write', state: 'running' })
     block.tool.input = { file_path: 'src/a.md' }

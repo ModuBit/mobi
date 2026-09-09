@@ -213,16 +213,21 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
     return <span style={dotStyle} />
 }
 
+/** 不染状态色的状态集合：动 = 活、静 = 落定，颜色只留给语义例外（错误红/审批橙）——running 靠动效表达活跃 */
+const UNCOLORED_DOT_STATES: ReadonlySet<StatusDotState> = new Set(['running', 'completed'])
+
+/** 状态 → 显示色：UNCOLORED_DOT_STATES 内的状态返回 undefined（继承默认色）。状态显示色的统一取色口 */
+export function statusColorOf(dotState: StatusDotState): string | undefined {
+    return UNCOLORED_DOT_STATES.has(dotState) ? undefined : STATUS_DOT_COLORS[dotState]
+}
+
 /**
  * 状态 → icon 强调样式（颜色 + 动画）：由图标本身承载状态时的统一样式来源，
- * 色板沿用 STATUS_DOT_COLORS（全 app 唯一状态色来源），动画用 icon 专用呼吸。
- * 状态语言：动 = 活、静 = 落定，颜色只留给语义例外——completed/running 均用默认色
- * （running 靠呼吸表达活跃，蓝色是主题外来冷色），错误红/审批橙保留。
+ * 色板走 statusColorOf（去色语义单点），动画用 icon 专用呼吸。
  */
 export function statusIconStyle(state: ToolCallState | AgentStatus): CSSProperties {
     const dotState = toStatusDotState(state)
-    if (dotState === 'completed' || dotState === 'running') return { animation: STATUS_ANIMATIONS[dotState] }
-    return { color: STATUS_DOT_COLORS[dotState], animation: STATUS_ANIMATIONS[dotState] }
+    return { color: statusColorOf(dotState), animation: STATUS_ANIMATIONS[dotState] }
 }
 
 type StatusIconProps = {

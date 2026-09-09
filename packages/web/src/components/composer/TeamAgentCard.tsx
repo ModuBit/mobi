@@ -16,7 +16,7 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import { STATUS_DOT_COLORS, type StatusDotState } from '@/components/tool-card/toolIcons'
+import { statusColorOf, type StatusDotState } from '@/components/tool-card/toolIcons'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import type { TeamMember } from '@mobi/shared'
 
@@ -41,7 +41,8 @@ export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
             : rawStatus === 'completed' ? 'completed'
             : rawStatus === 'shutdown' ? 'error'
             : 'inactive'
-    const labelColor = STATUS_DOT_COLORS[dotState]
+    // running/completed 去色（动=活、静=落定，见 statusColorOf），语义例外（错误红/审批橙）保留
+    const labelColor = statusColorOf(dotState)
     const isRunning = dotState === 'running'
     // PixelAvatar 生命状态：running 奋力输出、active/idle 待命活着、其余休眠（灰滤镜）
     const avatarStatus: AgentStatus =

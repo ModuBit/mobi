@@ -25,8 +25,9 @@ import { STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
  * goal 徽标（StatusBar 内渲染，靠右）。
  *
  * 仅 active 态存在：达成(met:true)后 cli 立即 reportGoalStatus(null) → goalStatus=null →
- * 徽标不渲染，所以这里统一用运行中状态色（STATUS_DOT_COLORS.running = #4dabf7 蓝），
- * 与 StatusBar 里 StatusStateIcon 的 running 态同款，复用全 app 唯一状态色来源。
+ * 徽标不渲染。运行蓝（STATUS_DOT_COLORS.running = #4dabf7）是**有意的例外**——
+ * running 在状态语言里已去色（动 = 活，见 statusColorOf），goal 徽标按产品规格保留
+ * 品牌蓝以示强调，不走 statusColorOf 的去色语义。
  *
  * 概要只显示 `◎ active` 状态标识（尽量短）；condition 全文不进徽标，只出现在 click 详情里：
  * condition 全文 / evaluator reason / 统计 / 清理按钮(仅 sessionId+onClear 都传时)。

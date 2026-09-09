@@ -53,6 +53,22 @@ describe('AgentLoadingBubble', () => {
         expect(status).not.toBeNull()
     })
 
+    it('失活/停滞不再播放像素波前（波前的「持续推进」不与停滞警告矛盾）', () => {
+        // inactive：非运行态直接回退状态点
+        const inactive = render(<AgentLoadingBubble agentId="agent-1" status="inactive" />)
+        expect(inactive.container.querySelector('.pixel-loader')).toBeNull()
+
+        // outputting 但静默超阈值（stalled）：波前停播，警示文本接管
+        const stalled = render(
+            <AgentLoadingBubble
+                agentId="agent-1"
+                status="outputting"
+                lastActivityAt={Date.now() - 200_000}
+            />,
+        )
+        expect(stalled.container.querySelector('.pixel-loader')).toBeNull()
+    })
+
     // ============ 静默告警（pending #34：上游挂死可观测）============
 
     it('静默超阈值 → 切换为等待响应提示（不再轮换 vibing 动词）', async () => {
