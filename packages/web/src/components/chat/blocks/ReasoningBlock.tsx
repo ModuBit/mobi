@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, memo, useRef } from 'react'
+import { useState, useEffect, memo, useRef } from 'react'
 import { Think } from '@ant-design/x'
 import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
@@ -23,21 +23,27 @@ import { StatusIcon } from '@/components/tool-card/toolIcons'
 import { useSmoothStickBottom } from '@/components/chat/useSmoothStickBottom'
 
 /** 思考过程渲染 */
-export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isStreaming, durationMs }: {
+export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isStreaming, durationMs, inGroup }: {
     text: string
     thinking: boolean
     isStreaming?: boolean
     /** thinking 块流式生成耗时（ms）；仅 remote 打点注入，local/历史消息为 undefined → 不展示时长 */
     durationMs?: number
+    /** 是否渲染在折叠组内：组内永远默认收起（不随 thinking 自动开合）；散落块运行中自动展开、结束自动收起 */
+    inGroup?: boolean
 }) {
     const { t } = useTranslation()
-    // thinking 永远默认收起，展开权完全交给用户（不随 thinking 状态自动开合：
-    // 进行中不自动展开、完成后也不强制收起已手动展开的块）；活跃感由标题「思考中...」+ blink 承载
-    const [expanded, setExpanded] = useState(false)
+    // 散落块：运行中默认展开（思考内容是当下的主角），结束自动收起；
+    // 组内块：组头已收拢，永远默认收起，展开权交给用户
+    const [expanded, setExpanded] = useState(thinking && !inGroup)
     const contentRef = useRef<HTMLDivElement>(null)
     // 高度信号源：内容盒被 maxHeight:200 clamp 固定后 border-box 恒定、RO 静默，
     // 流式增长无人跟随——观测不受上限约束的内层元素（思考多了就不贴底的根因）
     const innerRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        if (!inGroup && !thinking) setExpanded(false)
+    }, [thinking, inGroup])
 
     // 流式期间内容盒缓动贴底（替代 scrollTop = scrollHeight 硬跳——换行时
     // 内容瞬跳一行，快输出下「一跳一跳」）；RO 观测内层内容高度，逐字揭示的

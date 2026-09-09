@@ -93,12 +93,13 @@ export function ToolCallGroupRenderer({
     >
       <div style={{ paddingLeft: 12, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {blocks.map(block => block.kind === 'agent-reasoning' ? (
-          // 组内 reasoning 用真实活跃态：正在思考时行头展开（「思考中...」），完成收起（「思考完成」）
+          // 组内 reasoning：永远默认收起（inGroup），进行中由标题「思考中...」+ blink 表达活跃
           <ReasoningBlock
             key={block.id}
             text={block.text}
             thinking={isActiveReasoning?.(block) ?? false}
             durationMs={block.durationMs}
+            inGroup
           />
         ) : (
           <ToolCallRenderer
