@@ -100,16 +100,18 @@ function targetOf(category: ToolCategory, input: unknown): string | null {
 }
 
 /**
- * 提取运行中工具的尾随目标内容（命令/文件路径/模式等），拿不到返回空串（组头退回类别文案）。
- * 多行命令取首行；超长截断。
+ * 提取运行中工具的尾随目标内容，拿不到返回空串（组头退回类别文案）。
+ * 优先 CLI 生成的人话描述（description，如 Bash 的意图摘要），比原始命令/路径更可读；
+ * 无描述再按类别从 input 提取（多行命令取首行，超长截断）。
  */
-function extractActiveTarget(name: string, input: unknown): string {
+function extractActiveTarget(name: string, input: unknown, description: string | null): string {
   const category = TOOL_CATEGORY_MAP[name]
   // MCP 工具：目标即 server 显示名（从工具名必然可解析，无 input 依赖）
   if (!category) {
     const parsed = parseMCPToolName(name)
     return parsed ? formatMCPServerDisplay(parsed.server) : ''
   }
+  if (description) return truncate(description, ACTIVE_TARGET_MAX)
   const raw = targetOf(category, input)
   if (raw == null) return ''
   const display = category === 'shell' ? raw.split('\n')[0] : raw
@@ -197,7 +199,7 @@ export function formatGroupActiveTitle(
       continue
     }
     if (!isActiveTool(block)) continue
-    const target = extractActiveTarget(block.tool.name, block.tool.input)
+    const target = extractActiveTarget(block.tool.name, block.tool.input, block.tool.description)
     // 等待审批（pending）优先展示「等待审批」；运行中展示「正在 xxx」
     if (block.tool.state === 'pending') {
       return withFailedSuffix(target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval'), failedCount, t)

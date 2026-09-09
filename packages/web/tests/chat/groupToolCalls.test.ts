@@ -774,6 +774,17 @@ describe('formatGroupActiveTitle', () => {
     expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 bun run test')
   })
 
+  it('running 工具：优先展示人话描述（description），无描述回退 input 目标内容', () => {
+    const block = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
+    block.tool.input = { command: 'bun run typecheck 2>&1 | tail -1' }
+    block.tool.description = 'typecheck + web 全量'
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 typecheck + web 全量')
+
+    block.tool.description = null
+    block.tool.input = { command: 'c'.repeat(30) }
+    expect(formatGroupActiveTitle([block], { t })).toBe(`正在执行命令 ${'c'.repeat(21)}...`)
+  })
+
   it('running 工具：带文件路径（write）', () => {
     const block = makeToolCall({ id: 'w1', name: 'Write', state: 'running' })
     block.tool.input = { file_path: 'src/a.md' }
