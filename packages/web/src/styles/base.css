@@ -113,9 +113,16 @@ pre, code {
     to { opacity: 0; }
 }
 
-/* 运行态标题微光：一道高光周期扫过（折叠组动态标题等强调场景，配 .shimmer-text 类） */
+/* 运行态标题微光：一道高光周期扫过（折叠组动态标题等强调场景，配 .shimmer-text 类）。
+   高光不用固定白色（浅色模式下白高光与浅背景融合、视觉上像文字消失），
+   而是文字自身色的透明度渐变——任意主题下都呈现为「文字提亮扫过」 */
 .shimmer-text {
-    background: linear-gradient(90deg, currentColor 35%, #fff 50%, currentColor 65%);
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, currentColor 35%, transparent) 30%,
+        currentColor 50%,
+        color-mix(in srgb, currentColor 35%, transparent) 70%
+    );
     background-size: 200% 100%;
     -webkit-background-clip: text;
     background-clip: text;
