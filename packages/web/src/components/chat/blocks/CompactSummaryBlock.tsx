@@ -15,11 +15,12 @@
  */
 
 import { Think } from '@ant-design/x'
+import { HistoryOutlined } from '@ant-design/icons'
 import { useState, useMemo, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CompactSummaryBlock } from '@/domain/chat/types'
 import { Markdown } from '@/components/ui/Markdown'
-import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { statusIconStyle } from '@/components/tool-card/toolIcons'
 
 /** 格式化 token 数量 */
 function formatTokens(tokens: number): string {
@@ -52,7 +53,7 @@ export const CompactSummaryBlockComponent = memo(function CompactSummaryBlockCom
 
     return (
         <Think
-            icon={<StatusStateIcon state="completed" />}
+            icon={<span style={{ display: 'inline-flex', ...statusIconStyle('completed') }}><HistoryOutlined style={{ fontSize: 14 }} /></span>}
             title={title}
             expanded={expanded}
             onExpand={setExpanded}

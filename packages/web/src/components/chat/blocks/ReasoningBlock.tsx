@@ -19,7 +19,7 @@ import { Think } from '@ant-design/x'
 import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
-import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { statusIconStyle } from '@/components/tool-card/toolIcons'
 import { useSmoothStickBottom } from '@/components/chat/useSmoothStickBottom'
 
 /** 思考过程渲染 */
@@ -56,8 +56,7 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
     return (
         <Think
             icon={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <StatusStateIcon state={thinking ? 'running' : 'completed'} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', ...statusIconStyle(thinking ? 'running' : 'completed') }}>
                     <ThinkIcon />
                 </span>
             }

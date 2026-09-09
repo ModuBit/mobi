@@ -23,7 +23,7 @@ import { isObject } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
-import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { StatusToolIcon } from '@/components/tool-card/toolIcons'
 import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool, isTeamAgentTool } from '@/components/tool-card/knownTools'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
@@ -332,12 +332,7 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
         <>
             <Think
                 className="tool-call-think"
-                icon={
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <StatusStateIcon state={tool.state} />
-                        {getToolIcon(tool.name)}
-                    </span>
-                }
+                icon={<StatusToolIcon name={tool.name} state={tool.state} />}
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {toolPresentation.row ? (

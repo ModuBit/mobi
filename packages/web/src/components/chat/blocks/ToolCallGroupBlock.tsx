@@ -16,21 +16,22 @@
 
 import { useState, useMemo } from 'react'
 import { Think } from '@ant-design/x'
+import { Layers } from 'lucide-react'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
-import { StatusStateIcon, STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
+import { STATUS_DOT_COLORS, statusIconStyle } from '@/components/tool-card/toolIcons'
 import { formatGroupTitle, countFailedInGroup } from '@/domain/chat/groupToolCalls'
 
 /**
- * 组头状态 icon：主体 completed 绿点（组已落定），含失败工具时右上角叠小红角标提示。
+ * 组头状态 icon：Layers 图标染 completed 绿（组已落定），含失败工具时右上角叠小红角标提示。
  * 主体不染红（避免一个失败染红整组），也不掩盖失败（角标可见 + 标题「· N failed」承载计数）。
  */
 function ToolCallGroupIcon({ hasError }: { hasError: boolean }) {
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-      <StatusStateIcon state="completed" />
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', ...statusIconStyle('completed') }}>
+      <Layers size={14} />
       {hasError && (
         <span
           style={{
@@ -41,7 +42,7 @@ function ToolCallGroupIcon({ hasError }: { hasError: boolean }) {
             height: 4,
             borderRadius: '50%',
             background: STATUS_DOT_COLORS.error,
-            // 描一圈容器底色，避免红点与绿点重叠时糊在一起
+            // 描一圈容器底色，避免红点与图标重叠时糊在一起
             boxShadow: '0 0 0 1px var(--ant-color-bg-container)',
           }}
         />

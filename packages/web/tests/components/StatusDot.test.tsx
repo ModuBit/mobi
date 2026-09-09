@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { StatusStateIcon, STATUS_DOT_COLORS, toStatusDotState } from '@/components/tool-card/toolIcons'
+import { StatusStateIcon, StatusToolIcon, statusIconStyle, STATUS_DOT_COLORS, toStatusDotState } from '@/components/tool-card/toolIcons'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 
 /** jsdom 把 inline color 规范化为 rgb()，断言时对齐 */
@@ -105,5 +105,41 @@ describe('StatusStateIcon', () => {
         const { container } = render(<StatusStateIcon state="outputting" />)
         const dot = container.firstChild as HTMLElement
         expect(dot.style.background).toBe(rgb('#4dabf7'))
+    })
+})
+
+describe('statusIconStyle', () => {
+    it('返回状态色 + icon 呼吸动画（running）', () => {
+        const style = statusIconStyle('running')
+        expect(style.color).toBe('#4dabf7')
+        expect(style.animation).toContain('status-icon-breathe')
+    })
+
+    it('静态状态无动画（completed/error）', () => {
+        expect(statusIconStyle('completed').animation).toBeUndefined()
+        expect(statusIconStyle('error').animation).toBeUndefined()
+    })
+})
+
+describe('StatusToolIcon', () => {
+    it('以状态色 + 呼吸动画包裹工具图标（无独立圆点）', () => {
+        const { container } = render(<StatusToolIcon name="Bash" state="running" />)
+        const wrapper = container.firstChild as HTMLElement
+        expect(wrapper.style.color).toBe(rgb('#4dabf7'))
+        expect(wrapper.style.animation).toContain('status-icon-breathe')
+        // 内部是工具图标（anticon），不再渲染圆点
+        expect(wrapper.querySelector('.anticon')).not.toBeNull()
+    })
+
+    it('completed 绿色静态，error 红色静态', () => {
+        const completed = render(<StatusToolIcon name="Bash" state="completed" />)
+        const completedWrapper = completed.container.firstChild as HTMLElement
+        expect(completedWrapper.style.color).toBe(rgb('#66bb6a'))
+        expect(completedWrapper.style.animation).toBe('')
+
+        const error = render(<StatusToolIcon name="Bash" state="error" />)
+        const errorWrapper = error.container.firstChild as HTMLElement
+        expect(errorWrapper.style.color).toBe(rgb('#ef5350'))
+        expect(errorWrapper.style.animation).toBe('')
     })
 })

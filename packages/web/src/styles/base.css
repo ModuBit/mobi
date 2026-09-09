@@ -97,6 +97,12 @@ pre, code {
     50% { opacity: 1; transform: scale(1.1); }
 }
 
+/* 状态图标呼吸动画（图标承载状态时用，幅度小于圆点避免晃眼） */
+@keyframes status-icon-breathe {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(1.08); }
+}
+
 /* ToolCard pending 焦点色带脉动（权限等待时的左侧高亮条） */
 @keyframes tool-card-pulse {
     0%, 100% { opacity: 0.55; }

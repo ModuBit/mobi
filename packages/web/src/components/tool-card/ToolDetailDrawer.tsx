@@ -27,7 +27,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { ChatBlock } from '@/domain/chat'
 import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
-import { getToolIcon, ICON_STYLE_LG, StatusStateIcon } from './toolIcons'
+import { getToolIcon, ICON_STYLE_LG, statusIconStyle } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
@@ -155,8 +155,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     // 标题栏
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, color: token.colorTextSecondary }}>
-                <StatusStateIcon state={tool.state} />
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, ...statusIconStyle(tool.state) }}>
                 {getToolIcon(tool.name, ICON_STYLE_LG)}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -180,9 +179,8 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <div style={labelStyle}>{t('chat.tool.output')}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <StatusStateIcon state={tool.state} />
                     {statusText ? (
-                        <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
+                        <Text type="secondary" style={{ fontSize: 11, ...statusIconStyle(tool.state) }}>{statusText}</Text>
                     ) : null}
                 </div>
             </div>

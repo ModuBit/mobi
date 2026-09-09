@@ -40,7 +40,9 @@ vi.mock('@/components/tool-card/toolIcons', async (importOriginal) => {
     return {
         ...actual,
         getToolIcon: () => <span data-testid="tool-icon" />,
-        StatusStateIcon: ({ state }: { state: string }) => <span data-testid="status-icon" data-state={state} />,
+        StatusToolIcon: ({ name, state }: { name: string; state: string }) => (
+            <span data-testid="status-icon" data-state={state} data-name={name} />
+        ),
     }
 })
 
