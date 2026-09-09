@@ -22,24 +22,14 @@ import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
-import { STATUS_DOT_COLORS, statusIconStyle } from '@/components/tool-card/toolIcons'
+import { STATUS_DOT_COLORS, StatusIcon } from '@/components/tool-card/toolIcons'
 import {
-  isActiveTool,
   countFailedInGroup,
   formatGroupTitle,
   formatGroupActiveTitle,
   type IsActiveReasoning,
 } from '@/domain/chat/groupToolCalls'
 import { CrossfadeText } from '@/components/ui/CrossfadeText'
-
-/** 组内是否存在活跃块（运行中/等待审批的工具，或正在思考的 reasoning）—— 组头 icon 与标题形态的判定来源 */
-function hasActiveBlock(blocks: Array<ToolCallBlock | AgentReasoningBlock>, isActiveReasoning?: IsActiveReasoning): boolean {
-  return blocks.some(b =>
-    b.kind === 'agent-reasoning'
-      ? (isActiveReasoning?.(b) ?? false)
-      : isActiveTool(b)
-  )
-}
 
 /**
  * 组头状态 icon：Layers 图标承载组状态——组活跃（运行/审批中）蓝呼吸，落定绿静态；
@@ -48,7 +38,7 @@ function hasActiveBlock(blocks: Array<ToolCallBlock | AgentReasoningBlock>, isAc
  */
 function ToolCallGroupIcon({ hasError, hasActive }: { hasError: boolean; hasActive: boolean }) {
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', ...statusIconStyle(hasActive ? 'running' : 'completed') }}>
+    <StatusIcon state={hasActive ? 'running' : 'completed'} style={{ position: 'relative' }}>
       <Layers size={14} />
       {hasError && (
         <span
@@ -65,7 +55,7 @@ function ToolCallGroupIcon({ hasError, hasActive }: { hasError: boolean; hasActi
           }}
         />
       )}
-    </span>
+    </StatusIcon>
   )
 }
 
@@ -80,14 +70,17 @@ export function ToolCallGroupRenderer({
 } & ChatBlockContext) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  // hasError 与标题「· N failed」共用 countFailedInGroup，避免两处独立判定漂移
-  const failedCount = useMemo(() => countFailedInGroup(blocks), [blocks])
-  // 组头标题：有活跃块（运行中/等待审批/正在思考）展示时序最新的一个，否则回退汇总统计
-  const title = useMemo(
-    () => formatGroupActiveTitle(blocks, { t, isActiveReasoning }) ?? formatGroupTitle(blocks, t),
-    [blocks, t, isActiveReasoning],
-  )
-  const hasActive = useMemo(() => hasActiveBlock(blocks, isActiveReasoning), [blocks, isActiveReasoning])
+  // 单处派生：失败数/动态标题/活跃态一次算清（activeTitle 非 null ⟺ 组活跃），
+  // 避免各自独立扫描 blocks 造成判定漂移与热路径重复遍历
+  const { failedCount, title, hasActive } = useMemo(() => {
+    const failedCount = countFailedInGroup(blocks)
+    const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning })
+    return {
+      failedCount,
+      hasActive: activeTitle != null,
+      title: activeTitle ?? formatGroupTitle(blocks, t),
+    }
+  }, [blocks, t, isActiveReasoning])
 
   return (
     <Think
@@ -121,3 +114,4 @@ export function ToolCallGroupRenderer({
     </Think>
   )
 }
+

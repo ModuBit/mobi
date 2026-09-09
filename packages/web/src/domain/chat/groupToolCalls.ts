@@ -16,8 +16,7 @@
 
 import type { AgentReasoningBlock, ChatBlock, ToolCallBlock } from '@/domain/chat'
 import { capitalize } from '@/core/utils/sessionUtils'
-import { parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
-import { isObject } from '@mobi/shared'
+import { parseMCPToolName, formatMCPServerDisplay, getInputString, truncate } from '@/core/lib/toolInputUtils'
 
 /** 最小翻译函数签名（结构上兼容 i18next 的 t，保持 domain 层纯净可测） */
 export type Translate = (key: string, opts?: Record<string, unknown>) => string
@@ -53,9 +52,7 @@ export type ToolCallGroup = {
 export type GroupedBlock = ChatBlock | ToolCallGroup
 
 /** 判断 reasoning 是否活跃（正在思考）—— 由调用方（buildBubbleItems）构造，供组头动态标题与组内 thinking 展开态使用 */
-type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
-
-export type { IsActiveReasoning }
+export type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
 
 /** 工具是否活跃（运行中/待审批）—— 组头「正在 xxx」动态标题的判定来源 */
 export function isActiveTool(block: ToolCallBlock): boolean {
@@ -64,56 +61,35 @@ export function isActiveTool(block: ToolCallBlock): boolean {
 
 /**
  * 组内失败工具数（state=error 的 tool-call；reasoning 不计）。
- * 组头红角标（hasError）与标题「· N failed」共用此函数，避免两处独立判定漂移。
+ * 组头红角标（hasError）与标题「· N 个失败」共用此函数，避免两处独立判定漂移。
  */
 export function countFailedInGroup(blocks: CollapsibleBlock[]): number {
   return blocks.filter(b => b.kind === 'tool-call' && b.tool.state === 'error').length
 }
 
-/** 组头汇总文案的各类别 i18n key（key 本身带 _one/_other 复数后缀，由 i18next count 解析） */
-const TITLE_KEYS: Record<ToolCategory, string> = {
-  shell: 'chat.group.shell',
-  read: 'chat.group.read',
-  glob: 'chat.group.glob',
-  grep: 'chat.group.grep',
-  webfetch: 'chat.group.webfetch',
-  websearch: 'chat.group.websearch',
-  write: 'chat.group.write',
-  edit: 'chat.group.edit',
+/**
+ * 类别元数据单源：目标 input 字段 + 计数语义。
+ * 标题 i18n key 由类别名派生（chat.group.<cat> / chat.group.running.<cat>），不另设平行表。
+ * countBy：文件操作类按「去重目标数」计数（同文件多次读/写/编辑计 1 个文件），
+ * 其余类别语义即次数、按调用次数计。新增类别只改此表一处。
+ */
+const CATEGORY_META: Record<ToolCategory, { inputKey: string; countBy: 'unique-target' | 'calls' }> = {
+  shell: { inputKey: 'command', countBy: 'calls' },
+  read: { inputKey: 'file_path', countBy: 'unique-target' },
+  glob: { inputKey: 'pattern', countBy: 'calls' },
+  grep: { inputKey: 'pattern', countBy: 'calls' },
+  webfetch: { inputKey: 'url', countBy: 'calls' },
+  websearch: { inputKey: 'query', countBy: 'calls' },
+  write: { inputKey: 'file_path', countBy: 'unique-target' },
+  edit: { inputKey: 'file_path', countBy: 'unique-target' },
 }
 
-/** 组头「正在 xxx」动态文案的各类别 i18n key */
-const RUNNING_TITLE_KEYS: Record<ToolCategory, string> = {
-  shell: 'chat.group.running.shell',
-  read: 'chat.group.running.read',
-  glob: 'chat.group.running.glob',
-  grep: 'chat.group.running.grep',
-  webfetch: 'chat.group.running.webfetch',
-  websearch: 'chat.group.running.websearch',
-  write: 'chat.group.running.write',
-  edit: 'chat.group.running.edit',
-}
-
-/** 各类别的目标内容对应 input 字段（shell=命令 / 文件类=路径 / 检索类=模式等） */
-const TARGET_INPUT_KEY: Record<ToolCategory, string> = {
-  shell: 'command',
-  read: 'file_path',
-  write: 'file_path',
-  edit: 'file_path',
-  glob: 'pattern',
-  grep: 'pattern',
-  webfetch: 'url',
-  websearch: 'query',
-}
-
-/** 运行态尾随目标内容的长度上限（超长截断加省略号） */
+/** 运行态尾随目标内容的长度上限（经 truncate 截断） */
 const ACTIVE_TARGET_MAX = 24
 
-/** 提取类别目标内容原始值（不截断/不取首行）；拿不到返回 null */
+/** 提取类别目标内容原始值（不截断/不取首行）；拿不到（缺失/空串）返回 null */
 function targetOf(category: ToolCategory, input: unknown): string | null {
-  if (!isObject(input)) return null
-  const raw = input[TARGET_INPUT_KEY[category]]
-  return typeof raw === 'string' && raw !== '' ? raw : null
+  return getInputString(input, CATEGORY_META[category].inputKey) || null
 }
 
 /**
@@ -130,13 +106,13 @@ function extractActiveTarget(name: string, input: unknown): string {
   const raw = targetOf(category, input)
   if (raw == null) return ''
   const display = category === 'shell' ? raw.split('\n')[0] : raw
-  return display.length > ACTIVE_TARGET_MAX ? `${display.slice(0, ACTIVE_TARGET_MAX - 1)}…` : display
+  return truncate(display, ACTIVE_TARGET_MAX)
 }
 
 /**
  * 格式化折叠组标题（汇总形态：全部落定或无活跃内容时）。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「思考 X.X 秒」，全无（local/历史）兜底「思考」。
- * tool 部分：按类别去重计数——同文件多次读/写/编辑计 1 个文件（数量=真实文件数，非调用次数）。
+ * tool 部分：按类别计数——文件操作类按去重文件数（同文件多次编辑计 1 个文件，数量=真实文件数），其余按调用次数。
  * 失败计数：组内失败工具数 > 0 时追加「· N 个失败」。
  * 文案经 i18n（t 由组件层传入 useTranslation 的 t）。
  */
@@ -146,30 +122,19 @@ export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): stri
   const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
   const totalThinkMs = reasoningBlocks.reduce((sum, b) => sum + (b.durationMs ?? 0), 0)
 
-  // tool 计数：文件操作类（read/write/edit）按文件路径去重——同文件多次读/写/编辑计 1 个文件
-  //（数量=真实文件数，非调用次数），拿不到路径的块无法合并、各自计 1；
-  // 其余类别（shell/glob/grep/webfetch/websearch）语义即「次数」，按调用次数计。MCP 同为次数。
-  const FILE_CATEGORIES = new Set<ToolCategory>(['read', 'write', 'edit'])
-  const counts: Partial<Record<ToolCategory, number>> = {}
-  const filePaths = new Map<ToolCategory, Set<string>>()
-  const unknownFilePaths = new Map<ToolCategory, number>()
+  // tool 计数：单次遍历同时累计调用次数、去重目标集合、无目标块数，读取端按计数语义取值
+  const buckets = new Map<ToolCategory, { targets: Set<string>; unknown: number; calls: number }>()
   const mcpCounts: Record<string, number> = {}
   for (const block of blocks) {
     if (block.kind === 'agent-reasoning') continue
     const cat = TOOL_CATEGORY_MAP[block.tool.name]
     if (cat) {
-      if (FILE_CATEGORIES.has(cat)) {
-        const target = targetOf(cat, block.tool.input)
-        if (target == null) {
-          unknownFilePaths.set(cat, (unknownFilePaths.get(cat) ?? 0) + 1)
-        } else {
-          const paths = filePaths.get(cat) ?? new Set<string>()
-          paths.add(target)
-          filePaths.set(cat, paths)
-        }
-      } else {
-        counts[cat] = (counts[cat] ?? 0) + 1
-      }
+      const bucket = buckets.get(cat) ?? { targets: new Set<string>(), unknown: 0, calls: 0 }
+      bucket.calls++
+      const target = targetOf(cat, block.tool.input)
+      if (target == null) bucket.unknown++
+      else bucket.targets.add(target)
+      buckets.set(cat, bucket)
     } else {
       const parsed = parseMCPToolName(block.tool.name)
       if (parsed) {
@@ -185,17 +150,19 @@ export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): stri
       ? t('chat.group.thoughtDuration', { secs: (totalThinkMs / 1000).toFixed(1) })
       : t('chat.group.thought'))
   }
-  for (const [cat, key] of Object.entries(TITLE_KEYS) as [ToolCategory, string][]) {
-    const n = FILE_CATEGORIES.has(cat)
-      ? (filePaths.get(cat)?.size ?? 0) + (unknownFilePaths.get(cat) ?? 0)
-      : counts[cat]
-    if (n) parts.push(t(key, { count: n }))
+  // Object.keys 按 meta 表定义序输出（与既有时序文案顺序一致）
+  for (const cat of Object.keys(CATEGORY_META) as ToolCategory[]) {
+    const bucket = buckets.get(cat)
+    if (!bucket) continue
+    const meta = CATEGORY_META[cat]
+    const n = meta.countBy === 'unique-target' ? bucket.targets.size + bucket.unknown : bucket.calls
+    if (n) parts.push(t(`chat.group.${cat}`, { count: n }))
   }
   for (const [server, n] of Object.entries(mcpCounts)) {
     parts.push(t('chat.group.mcp', { server: formatMCPServerDisplay(server), count: n }))
   }
 
-  const base = capitalize(parts.join(String(t('chat.group.separator'))))
+  const base = capitalize(parts.join(t('chat.group.separator')))
   // 含失败工具时追加失败计数（与主体同语言）
   const failedCount = countFailedInGroup(blocks)
   if (failedCount > 0) {
@@ -221,16 +188,15 @@ export function formatGroupActiveTitle(
       continue
     }
     if (!isActiveTool(block)) continue
-    const category = TOOL_CATEGORY_MAP[block.tool.name]
     const target = extractActiveTarget(block.tool.name, block.tool.input)
     // 等待审批（pending）优先展示「等待审批」；运行中展示「正在 xxx」
     if (block.tool.state === 'pending') {
       return target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval')
     }
-    const key = category ? RUNNING_TITLE_KEYS[category] : 'chat.group.running.mcp'
+    const category = TOOL_CATEGORY_MAP[block.tool.name]
     // MCP 的 server 目标走插值；其余类别拼在文案后（拿不到目标则只展示类别文案）
-    if (!category) return t(key, { server: target })
-    return target ? `${t(key)} ${target}` : t(key)
+    if (!category) return t('chat.group.running.mcp', { server: target })
+    return target ? `${t(`chat.group.running.${category}`)} ${target}` : t(`chat.group.running.${category}`)
   }
   return null
 }

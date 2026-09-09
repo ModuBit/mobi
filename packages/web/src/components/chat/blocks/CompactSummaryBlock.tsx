@@ -20,7 +20,7 @@ import { useState, useMemo, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CompactSummaryBlock } from '@/domain/chat/types'
 import { Markdown } from '@/components/ui/Markdown'
-import { statusIconStyle } from '@/components/tool-card/toolIcons'
+import { StatusIcon } from '@/components/tool-card/toolIcons'
 
 /** 格式化 token 数量 */
 function formatTokens(tokens: number): string {
@@ -53,7 +53,7 @@ export const CompactSummaryBlockComponent = memo(function CompactSummaryBlockCom
 
     return (
         <Think
-            icon={<span style={{ display: 'inline-flex', ...statusIconStyle('completed') }}><HistoryOutlined style={{ fontSize: 14 }} /></span>}
+            icon={<StatusIcon state="completed"><HistoryOutlined style={{ fontSize: 14 }} /></StatusIcon>}
             title={title}
             expanded={expanded}
             onExpand={setExpanded}

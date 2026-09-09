@@ -15,8 +15,9 @@
  */
 
 /**
- * 共享的工具图标映射和状态图标组件
- * 用于 ToolInlinePreview 和 ToolDetailDrawer
+ * 工具图标映射 + 全 app 状态视觉基座（状态点/状态图标）。
+ * 状态色唯一来源 STATUS_DOT_COLORS；状态承载组件 StatusStateIcon（点）、
+ * StatusIcon/StatusToolIcon（图标本体）。供 chat blocks、tool-card、layout 等多域消费。
  */
 
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
@@ -166,20 +167,12 @@ type StatusStateIconProps = {
     style?: CSSProperties
 }
 
-/** 各 StatusDotState 对应的动画；未列出的状态（completed/inactive/error）为静态 */
-const STATUS_DOT_ANIMATION: Partial<Record<StatusDotState, string>> = {
-    running: 'status-dot-breathe 1.1s ease-in-out infinite',
-    pending: 'status-dot-breathe 1.5s ease-in-out infinite',
-    awaiting_auth: 'status-dot-shake 0.45s ease-in-out infinite',
-    idle: 'status-dot-breathe-slow 3s ease-in-out infinite',
-}
-
-/** 各 StatusDotState 对应的 icon 动画（幅度小于圆点，避免图标晃眼）；未列出状态为静态 */
-const STATUS_ICON_ANIMATION: Partial<Record<StatusDotState, string>> = {
-    running: 'status-icon-breathe 1.1s ease-in-out infinite',
-    pending: 'status-icon-breathe 1.5s ease-in-out infinite',
-    awaiting_auth: 'status-icon-breathe 0.45s ease-in-out infinite',
-    idle: 'status-icon-breathe 3s ease-in-out infinite',
+/** 各状态动画表：dot=状态点载体、icon=图标本体载体（节奏逐状态单点定义，两载体不漂移）；未列出的状态（completed/inactive/error）为静态 */
+const STATUS_ANIMATIONS: Partial<Record<StatusDotState, { dot?: string; icon?: string }>> = {
+    running: { dot: 'status-dot-breathe 1.1s ease-in-out infinite', icon: 'status-icon-breathe 1.1s ease-in-out infinite' },
+    pending: { dot: 'status-dot-breathe 1.5s ease-in-out infinite', icon: 'status-icon-breathe 1.5s ease-in-out infinite' },
+    awaiting_auth: { dot: 'status-dot-shake 0.45s ease-in-out infinite', icon: 'status-icon-breathe 0.45s ease-in-out infinite' },
+    idle: { dot: 'status-dot-breathe-slow 3s ease-in-out infinite', icon: 'status-icon-breathe 3s ease-in-out infinite' },
 }
 
 /**
@@ -195,7 +188,7 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
         background: STATUS_DOT_COLORS[dotState],
         display: 'inline-block',
         flexShrink: 0,
-        animation: STATUS_DOT_ANIMATION[dotState],
+        animation: STATUS_ANIMATIONS[dotState]?.dot,
         ...style,
     }
     return <span className="status-state-dot" style={dotStyle} />
@@ -207,7 +200,27 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
  */
 export function statusIconStyle(state: ToolCallState | AgentStatus): CSSProperties {
     const dotState = toStatusDotState(state)
-    return { color: STATUS_DOT_COLORS[dotState], animation: STATUS_ICON_ANIMATION[dotState] }
+    return { color: STATUS_DOT_COLORS[dotState], animation: STATUS_ANIMATIONS[dotState]?.icon }
+}
+
+type StatusIconProps = {
+    /** 工具侧 ToolCallState 或 session 侧 AgentStatus */
+    state: ToolCallState | AgentStatus
+    style?: CSSProperties
+    /** 任意图标节点（ThinkIcon/Layers/antd icon…）；要按工具名取图标用 StatusToolIcon */
+    children: ReactNode
+}
+
+/**
+ * 状态图标：「图标本体承载状态」的统一载体——图标染状态色，running/pending 呼吸，
+ * completed/error 静态。取代「状态点 + 图标」双元素。
+ */
+export function StatusIcon({ state, style, children }: StatusIconProps): ReactNode {
+    return (
+        <span style={{ display: 'inline-flex', flexShrink: 0, ...statusIconStyle(state), ...style }}>
+            {children}
+        </span>
+    )
 }
 
 /** 状态工具图标的属性 */
@@ -219,14 +232,11 @@ type StatusToolIconProps = {
     style?: CSSProperties
 }
 
-/**
- * 状态工具图标：以工具图标本身承载状态（取代原「状态点 + 工具图标」双元素），
- * running/pending 呼吸，completed/error 静态着色。
- */
+/** 状态工具图标：StatusIcon 的按名取图便捷入口 */
 export function StatusToolIcon({ name, state, style }: StatusToolIconProps): ReactNode {
     return (
-        <span style={{ display: 'inline-flex', flexShrink: 0, ...statusIconStyle(state), ...style }}>
+        <StatusIcon state={state} style={style}>
             {getToolIcon(name)}
-        </span>
+        </StatusIcon>
     )
 }

@@ -152,8 +152,9 @@ export function buildChatBubbleItems(
         const blockCtx: ChatBlockContext = {
             ...ctx,
             // done 由 content_block_stop 打点（仅 remote）：思考已完成的 reasoning 不再显示「思考中」，
-            // 消除「thinking 流完→text 开头」误判窗口。local 无 done（undefined）→ 退化为现有逻辑
-            isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock && !block.done,
+            // 消除「thinking 流完→text 开头」误判窗口。local 无 done（undefined）→ 退化为现有逻辑。
+            // 判定直接复用 isActiveReasoning（同一谓词驱动组内组外 reasoning 状态，防口径漂移）
+            isThinking: block.kind === 'agent-reasoning' && isActiveReasoning(block),
         }
 
         // 流式 snapshot 块（未落库）逐字揭示，不依赖 turn running 状态：

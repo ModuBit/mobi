@@ -801,14 +801,14 @@ describe('formatGroupActiveTitle', () => {
   it('多行命令取首行', () => {
     const block = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
     block.tool.input = { command: 'cd /very/long/path/to/somewhere/deeper\necho done' }
-    // 首行 38 字符，截断为前 23 字符 + …
-    expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 cd /very/long/path/to/s…')
+    // 首行 38 字符，按既有 truncate 规则截为 24 字符（21 + '...'）
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 cd /very/long/path/to...')
   })
 
   it('超长目标内容截断', () => {
     const block = makeToolCall({ id: 'r1', name: 'Read', state: 'running' })
     block.tool.input = { file_path: 'a'.repeat(40) }
-    expect(formatGroupActiveTitle([block], { t })).toBe(`正在读取文件 ${'a'.repeat(23)}…`)
+    expect(formatGroupActiveTitle([block], { t })).toBe(`正在读取文件 ${'a'.repeat(21)}...`)
   })
 
   it('多个活跃块取时序最新的一个（数组序最后）', () => {

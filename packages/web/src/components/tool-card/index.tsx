@@ -34,7 +34,7 @@ import { RequestUserInputFooter } from './RequestUserInputFooter'
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { getToolPresentation, isTerminalTool, isAgentTool } from './knownTools'
-import { getToolIcon, statusIconStyle } from './toolIcons'
+import { getToolIcon, StatusIcon as StatusIconShell } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent, type ToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
@@ -410,9 +410,9 @@ function ToolCardInner(props: ToolCardProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, ...statusIconStyle(props.block.tool.state) }}>
+                    <StatusIconShell state={props.block.tool.state} style={{ justifyContent: 'center' }}>
                         {getToolIcon(toolName)}
-                    </div>
+                    </StatusIconShell>
                     {presentation.row && presentation.minimal ? (
                         // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
                         // 仅 minimal 行形态工具（四件套等）；chip 点击语义止于打开文件，

@@ -27,7 +27,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { ChatBlock } from '@/domain/chat'
 import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
-import { getToolIcon, ICON_STYLE_LG, statusIconStyle } from './toolIcons'
+import { getToolIcon, ICON_STYLE_LG, StatusIcon, statusIconStyle } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
@@ -155,9 +155,9 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     // 标题栏
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, ...statusIconStyle(tool.state) }}>
+            <StatusIcon state={tool.state}>
                 {getToolIcon(tool.name, ICON_STYLE_LG)}
-            </div>
+            </StatusIcon>
             <div style={{ minWidth: 0, flex: 1 }}>
                 <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
                     {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}

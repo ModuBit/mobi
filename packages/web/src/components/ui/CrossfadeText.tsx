@@ -16,44 +16,38 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
-/** 旧文案淡出时长（与 group-title-fade-out 动画时长一致） */
-const LEAVE_MS = 200
+/** 淡入/淡出时长（单点来源：动画字符串与旧层清理定时器均由此派生） */
+const FADE_MS = 200
 
 /**
- * 文案切换 crossfade：新文案淡入、旧文案淡出（~200ms）。
- * 旧文案以绝对定位叠底淡出，不占布局（高度由当前文案决定，避免撑动）。
- * 旧层用定时器清理（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠）。
- * 连续快速变化时旧层直接被最新一次切换替换，不累积。
- * 用于折叠组组头等文案高频动态更新的场景。
+ * 文案切换 crossfade：新文案淡入、旧文案淡出（FADE_MS）。
+ * 旧文案以绝对定位叠底淡出，不占布局（高度由当前文案决定，避免撑动）；
+ * 内层 span 以文案为 key，文案变化即重挂载重启淡入动画。
+ * 旧层用定时器清理（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠），
+ * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
  */
 export function CrossfadeText({ text, style }: { text: string; style?: CSSProperties }) {
-    const [display, setDisplay] = useState(text)
     const [leaving, setLeaving] = useState<string | null>(null)
     const prevTextRef = useRef(text)
 
     useEffect(() => {
         if (prevTextRef.current === text) return
         setLeaving(prevTextRef.current)
-        setDisplay(text)
         prevTextRef.current = text
-    }, [text])
-
-    useEffect(() => {
-        if (leaving == null) return
-        const timer = setTimeout(() => setLeaving(null), LEAVE_MS)
+        const timer = setTimeout(() => setLeaving(null), FADE_MS)
         return () => clearTimeout(timer)
-    }, [leaving])
+    }, [text])
 
     return (
         <span style={{ position: 'relative', display: 'inline-flex', ...style }}>
-            <span key={display} style={{ animation: 'group-title-fade-in 200ms ease' }}>{display}</span>
+            <span key={text} style={{ animation: `crossfade-in ${FADE_MS}ms ease` }}>{text}</span>
             {leaving != null && (
                 <span
                     aria-hidden
                     style={{
                         position: 'absolute',
                         inset: 0,
-                        animation: 'group-title-fade-out 200ms ease forwards',
+                        animation: `crossfade-out ${FADE_MS}ms ease forwards`,
                         whiteSpace: 'nowrap',
                     }}
                 >

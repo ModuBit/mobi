@@ -103,12 +103,12 @@ pre, code {
     50% { opacity: 0.45; transform: scale(1.08); }
 }
 
-/* 组头标题 crossfade：文案切换时新文案淡入、旧文案淡出 */
-@keyframes group-title-fade-in {
+/* CrossfadeText 文案切换 crossfade：新文案淡入、旧文案淡出（时长由组件 FADE_MS 单点驱动） */
+@keyframes crossfade-in {
     from { opacity: 0; }
     to { opacity: 1; }
 }
-@keyframes group-title-fade-out {
+@keyframes crossfade-out {
     from { opacity: 1; }
     to { opacity: 0; }
 }
