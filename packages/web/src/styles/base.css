@@ -78,13 +78,14 @@ pre, code {
     font-family: var(--font-mono);
 }
 
-/* 状态点呼吸动画（pending，缩放+透明度让小尺寸下可辨） */
-@keyframes status-dot-breathe {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(1.25); }
+/* 像素网格加载器（PixelLoader）：格子静态样式 + 点亮波形；chevron 波形 delay 由组件逐格注入 */
+.pixel-loader-cell {
+    width: 4px;
+    height: 4px;
+    border-radius: 1px;
+    background: var(--ant-color-text);
+    animation: pixel-on 650ms ease-in-out infinite;
 }
-
-/* 像素网格加载器单格点亮（PixelLoader chevron 波前）：快速亮起、停留、回落到暗态 */
 @keyframes pixel-on {
     0%, 100% { opacity: 0.15; }
     18%, 42% { opacity: 1; }
@@ -134,11 +135,17 @@ pre, code {
     to { opacity: 0; }
 }
 
-/* 运行态标题微光：一道窄高光周期扫过（折叠组动态标题等强调场景，配 .shimmer-text 类）。
+/* CrossfadeText 当前文案层：文案切换淡入（时长由组件注入 --fade-ms） */
+.crossfade-text {
+    animation: crossfade-in var(--fade-ms, 200ms) ease;
+}
+
+/* 运行态标题微光：一道窄高光周期扫过（CrossfadeText shimmer 变体等强调场景）。
    参考 beautifului shimmer：高光带只占渐变中段（35%→65%），两侧弱色；
    高光不用固定白色（浅色模式下白高光与浅背景融合、视觉上像文字消失），
    而用文字自身色的透明度混合——任意主题下都呈现为「文字提亮扫过」。
-   位移 150% → -50% 对 200% 宽渐变恰好一个无缝循环（无空窗停顿） */
+   位移 150% → -50% 对 200% 宽渐变恰好一个无缝循环（无空窗停顿）。
+   动画整体收在本类（组件不拼动画串），reduced-motion 按类停用一次即覆盖 */
 .shimmer-text {
     background: linear-gradient(
         90deg,
@@ -150,6 +157,7 @@ pre, code {
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
+    animation: crossfade-in var(--fade-ms, 200ms) ease, shimmer-sweep 1.4s linear infinite;
 }
 @keyframes shimmer-sweep {
     from { background-position: 150% 0; }
@@ -162,12 +170,13 @@ pre, code {
     50% { opacity: 1; }
 }
 
-/* 无障碍：尊重用户的减少动画偏好（焦点色带脉动 + 状态点弧/扩散环 + 像素网格加载器） */
+/* 无障碍：尊重用户的减少动画偏好（焦点色带脉动 + 状态点弧/扩散环 + 像素网格 + 微光扫过） */
 @media (prefers-reduced-motion: reduce) {
     [data-slot="focus-bar"],
     .status-dot-arc,
     .status-dot-sonar::after,
-    .pixel-loader-cell {
+    .pixel-loader-cell,
+    .shimmer-text {
         animation: none !important;
     }
     /* 网格冻结到暗态而非全亮（beautifului 同款处理：静止但可辨认出「非空闲」） */

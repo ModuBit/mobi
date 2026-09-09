@@ -112,7 +112,7 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             {/* 运行中用像素网格波前（beautifului Loading State 同款语言：持续推进）；
                 待审批保留橙点微光——审批是需要行动的语义例外，不与「忙」混同 */}
             {isAwaitingAuth
-                ? <StatusStateIcon state={status} style={{ width: 8, height: 8 }} />
+                ? <StatusStateIcon state={status} />
                 : <PixelLoader />}
             <BlinkText blinking color={stalled ? token.colorWarning : CLAUDE_ORANGE} aria-live="polite" style={{ fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />

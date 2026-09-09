@@ -137,7 +137,7 @@ export const STATUS_DOT_COLORS: Record<StatusDotState, string> = {
 /**
  * 将 session 侧 AgentStatus 或工具侧 ToolCallState 映射到统一 StatusDotState。
  * - outputting / running → running（旋转弧，忙）
- * - pending → pending（橙呼吸，工具排队，沿用原工具行为）
+ * - pending → pending（橙点静态，工具排队）
  * - awaiting_auth → awaiting_auth（橙点微光，session 等审批）
  * - idle → idle（sonar 扩散环，session 等输入）
  * - completed → completed（绿静态，工具执行成功）
@@ -168,20 +168,20 @@ type StatusStateIconProps = {
 }
 
 /**
- * 各状态动画表：dot=状态点载体、icon=图标本体载体（节奏逐状态单点定义，两载体不漂移）。
- * dot 载体只有 pending 仍呼吸——running（旋转弧）/idle（sonar 扩散环）/awaiting_auth（橙点微光）
- * 的状态表达已改由形状/CSS 类承载（见 StatusStateIcon）；未列出的状态为静态
+ * 各状态图标本体呼吸节奏（icon 载体的动画单点来源）；未列出的状态为静态。
+ * dot 载体已不含动画——running（旋转弧）/idle（sonar 扩散环）由形状承载，
+ * pending/awaiting_auth 为静态橙点（见 StatusStateIcon）
  */
-const STATUS_ANIMATIONS: Partial<Record<StatusDotState, { dot?: string; icon?: string }>> = {
-    running: { icon: 'status-icon-breathe 1.1s ease-in-out infinite' },
-    pending: { dot: 'status-dot-breathe 1.5s ease-in-out infinite', icon: 'status-icon-breathe 1.5s ease-in-out infinite' },
-    awaiting_auth: { icon: 'status-icon-breathe 0.45s ease-in-out infinite' },
-    idle: { icon: 'status-icon-breathe 3s ease-in-out infinite' },
+const STATUS_ANIMATIONS: Partial<Record<StatusDotState, string>> = {
+    running: 'status-icon-breathe 1.1s ease-in-out infinite',
+    pending: 'status-icon-breathe 1.5s ease-in-out infinite',
+    awaiting_auth: 'status-icon-breathe 0.45s ease-in-out infinite',
+    idle: 'status-icon-breathe 3s ease-in-out infinite',
 }
 
 /**
  * 状态小圆点：形状承载状态（弧=运行中 / sonar 点=空闲 / 橙点微光=待审批），
- * pending 呼吸、inactive/error/completed 静态纯色。
+ * pending/inactive/error/completed 静态纯色。
  * 颜色与状态映射全 app 统一，由 STATUS_DOT_COLORS + toStatusDotState 承载。
  */
 export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNode {
@@ -208,7 +208,8 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
         background: STATUS_DOT_COLORS[dotState],
         ...base,
     }
-    if (dotState === 'awaiting_auth') dotStyle.boxShadow = '0 0 6px rgba(255, 167, 38, .55)'
+    // 微光 alpha 0.55（hex8 尾字节 8c）从唯一色源派生，改审批橙时辉光自动跟随
+    if (dotState === 'awaiting_auth') dotStyle.boxShadow = `0 0 6px ${STATUS_DOT_COLORS.awaiting_auth}8c`
     return <span style={dotStyle} />
 }
 
@@ -220,8 +221,8 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
  */
 export function statusIconStyle(state: ToolCallState | AgentStatus): CSSProperties {
     const dotState = toStatusDotState(state)
-    if (dotState === 'completed' || dotState === 'running') return { animation: STATUS_ANIMATIONS[dotState]?.icon }
-    return { color: STATUS_DOT_COLORS[dotState], animation: STATUS_ANIMATIONS[dotState]?.icon }
+    if (dotState === 'completed' || dotState === 'running') return { animation: STATUS_ANIMATIONS[dotState] }
+    return { color: STATUS_DOT_COLORS[dotState], animation: STATUS_ANIMATIONS[dotState] }
 }
 
 type StatusIconProps = {

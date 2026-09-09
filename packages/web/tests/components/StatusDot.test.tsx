@@ -72,7 +72,7 @@ describe('StatusStateIcon', () => {
         const dot = container.firstChild as HTMLElement
         expect(dot.style.background).toBe(rgb('#ffa726'))
         expect(dot.style.animation).toBe('')
-        expect(dot.style.boxShadow).toContain('rgba(255, 167, 38')
+        expect(dot.style.boxShadow).toBe(`0 0 6px ${STATUS_DOT_COLORS.awaiting_auth}8c`)
     })
 
     it('idle 渲染 sonar 点（默认色实心 + CSS 类承载扩散环）', () => {
