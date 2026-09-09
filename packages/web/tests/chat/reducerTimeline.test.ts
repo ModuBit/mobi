@@ -494,6 +494,62 @@ describe('reduceTimeline', () => {
         })
     })
 
+    describe('纯信号事件不产出时间线块', () => {
+        // SDK 对所有 Bash/Agent 任务都 emit task_started（前后台都发），live SSE 每个工具轮都会
+        // 夹带一条；若落成 agent-event 块会打断 groupCollapsibleToolCalls 的连续可折叠 zone，
+        // 导致流式期间工具卡片全部散落（历史加载过滤 ephemeral 后又恢复，呈现「刷新就好了」）。
+        // 后台任务 UI 的唯一数据源是 runtimeState.backgroundTasks（hub 从原始流派生），
+        // 与 blocks 时间线无关——bg-task-started / bg-task-updated 与 agent-progress 同类，消费后丢弃。
+        const context = () => ({
+            permissionsById: new Map<string, PermissionEntry>(),
+            groups: new Map<string, TracedMessage[]>(),
+            consumedGroupIds: new Set<string>(),
+            titleChangesByToolUseId: new Map<string, string>(),
+            emittedTitleChangeToolUseIds: new Set<string>(),
+            hiddenToolUseIds: new Map<string, string>(),
+        })
+
+        const bgTaskStarted = (taskId: string, createdAt: number): TracedMessage => ({
+            id: `evt-${taskId}`, localId: null, createdAt, role: 'event', isSidechain: false,
+            content: { type: 'bg-task-started', taskId, toolUseId: null, toolName: 'Bash', description: 'Background task' },
+        })
+
+        it('bg-task-started / bg-task-updated 不产出事件块，不打断工具折叠组', () => {
+            const messages: TracedMessage[] = [
+                createToolCallMessage('tool-1', 'Bash', { command: 'bun test' }, { createdAt: 1000 }),
+                bgTaskStarted('task-1', 1001),
+                {
+                    id: 'evt-updated-1', localId: null, createdAt: 1002, role: 'event', isSidechain: false,
+                    content: { type: 'bg-task-updated', taskId: 'task-1', patch: { status: 'running' } },
+                },
+                createToolCallMessage('tool-2', 'Bash', { command: 'bun lint' }, { createdAt: 1003 }),
+                bgTaskStarted('task-2', 1004),
+                createToolCallMessage('tool-3', 'Bash', { command: 'bun lint:deps' }, { createdAt: 1005 }),
+            ]
+
+            const { blocks } = reduceTimeline(messages, context())
+
+            // 事件块不落时间线：只剩 3 个连续 tool-call 块
+            expect(blocks.map(b => b.kind)).toEqual(['tool-call', 'tool-call', 'tool-call'])
+            expect(blocks.map(b => (b as { id: string }).id)).toEqual(['tool-1', 'tool-2', 'tool-3'])
+        })
+
+        it('对应消息经 groupCollapsibleToolCalls 能成组（回归：流式期间散落）', async () => {
+            const { groupCollapsibleToolCalls } = await import('@/domain/chat/groupToolCalls')
+            const messages: TracedMessage[] = [
+                createToolCallMessage('tool-1', 'Bash', { command: 'a' }, { createdAt: 1000 }),
+                bgTaskStarted('task-1', 1001),
+                createToolCallMessage('tool-2', 'Bash', { command: 'b' }, { createdAt: 1002 }),
+                bgTaskStarted('task-2', 1003),
+                createToolCallMessage('tool-3', 'Bash', { command: 'c' }, { createdAt: 1004 }),
+            ]
+            const { blocks } = reduceTimeline(messages, context())
+            const grouped = groupCollapsibleToolCalls(blocks)
+            expect(grouped).toHaveLength(1)
+            expect(grouped[0].kind).toBe('tool-call-group')
+        })
+    })
+
     describe('错误处理', () => {
         it('应正确标记错误的 tool-result', () => {
             const messages: TracedMessage[] = [

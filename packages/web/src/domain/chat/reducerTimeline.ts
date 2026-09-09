@@ -150,6 +150,14 @@ export function reduceTimeline(
                 }
                 continue
             }
+            // bg-task-started / bg-task-updated：纯状态信号，消费后丢弃、不产出时间线块。
+            // SDK 对所有 Bash/Agent 任务都 emit task_started（前后台都发），live 每个工具轮都夹带
+            // 一条；落成块会打断 groupCollapsibleToolCalls 的连续可折叠 zone（流式期间工具卡片
+            // 全散落、历史加载过滤 ephemeral 后又恢复）。后台任务 UI 的唯一数据源是
+            // runtimeState.backgroundTasks（hub 从原始流派生），与 blocks 时间线无关。
+            if (msg.content.type === 'bg-task-started' || msg.content.type === 'bg-task-updated') {
+                continue
+            }
             // 检测 compact 事件，记录 metadata 用于下一条 user 消息
             if (msg.content.type === 'compact') {
                 // AgentEvent 是联合类型，需要提取 compact 特有字段
