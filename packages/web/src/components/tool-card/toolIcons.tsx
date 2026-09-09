@@ -197,9 +197,11 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
 /**
  * 状态 → icon 强调样式（颜色 + 动画）：由图标本身承载状态时的统一样式来源，
  * 色板沿用 STATUS_DOT_COLORS（全 app 唯一状态色来源），动画用 icon 专用呼吸。
+ * completed 不染色：成功图标继承上下文默认色，不制造视觉噪音（运行蓝呼吸/错误红仍保留）。
  */
 export function statusIconStyle(state: ToolCallState | AgentStatus): CSSProperties {
     const dotState = toStatusDotState(state)
+    if (dotState === 'completed') return {}
     return { color: STATUS_DOT_COLORS[dotState], animation: STATUS_ANIMATIONS[dotState]?.icon }
 }
 

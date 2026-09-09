@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect, memo, useRef } from 'react'
+import { useState, memo, useRef } from 'react'
 import { Think } from '@ant-design/x'
 import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
@@ -31,15 +31,13 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
     durationMs?: number
 }) {
     const { t } = useTranslation()
-    const [expanded, setExpanded] = useState(thinking)
+    // thinking 永远默认收起，展开权完全交给用户（不随 thinking 状态自动开合：
+    // 进行中不自动展开、完成后也不强制收起已手动展开的块）；活跃感由标题「思考中...」+ blink 承载
+    const [expanded, setExpanded] = useState(false)
     const contentRef = useRef<HTMLDivElement>(null)
     // 高度信号源：内容盒被 maxHeight:200 clamp 固定后 border-box 恒定、RO 静默，
     // 流式增长无人跟随——观测不受上限约束的内层元素（思考多了就不贴底的根因）
     const innerRef = useRef<HTMLDivElement>(null)
-
-    useEffect(() => {
-        if (!thinking) setExpanded(false)
-    }, [thinking])
 
     // 流式期间内容盒缓动贴底（替代 scrollTop = scrollHeight 硬跳——换行时
     // 内容瞬跳一行，快输出下「一跳一跳」）；RO 观测内层内容高度，逐字揭示的

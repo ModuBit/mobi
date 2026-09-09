@@ -131,10 +131,10 @@ describe('StatusToolIcon', () => {
         expect(wrapper.querySelector('.anticon')).not.toBeNull()
     })
 
-    it('completed 绿色静态，error 红色静态', () => {
+    it('completed 不染色（继承默认色）+ 静态，error 仍红色静态', () => {
         const completed = render(<StatusToolIcon name="Bash" state="completed" />)
         const completedWrapper = completed.container.firstChild as HTMLElement
-        expect(completedWrapper.style.color).toBe(rgb('#66bb6a'))
+        expect(completedWrapper.style.color).toBe('')
         expect(completedWrapper.style.animation).toBe('')
 
         const error = render(<StatusToolIcon name="Bash" state="error" />)
