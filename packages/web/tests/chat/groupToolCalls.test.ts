@@ -15,7 +15,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { groupCollapsibleToolCalls, formatGroupTitle, countFailedInGroup } from '@/domain/chat/groupToolCalls'
+import { groupCollapsibleToolCalls, formatGroupTitle, formatGroupActiveTitle, countFailedInGroup } from '@/domain/chat/groupToolCalls'
+import zhLocale from '@/core/config/i18n/locales/zh.json'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlock } from '@/domain/chat'
 
@@ -123,58 +124,57 @@ describe('groupCollapsibleToolCalls', () => {
     expect(result[2]).toEqual(tc2)
   })
 
-  it('Zone 内 completed 与 error 归入折叠，running/pending 排在后面', () => {
+  it('Zone 内各状态（completed/error/running/pending）均归入折叠，保持原始顺序', () => {
     const tc1 = makeToolCall({ id: 'tc1', name: 'Read', state: 'completed' })
     const tc2 = makeToolCall({ id: 'tc2', name: 'Read', state: 'running' })
     const tc3 = makeToolCall({ id: 'tc3', name: 'Read', state: 'completed' })
     const tc4 = makeToolCall({ id: 'tc4', name: 'Read', state: 'error' })
     const tc5 = makeToolCall({ id: 'tc5', name: 'Read', state: 'completed' })
     const result = groupCollapsibleToolCalls([tc1, tc2, tc3, tc4, tc5])
-    // completed + error 均归入折叠（失败工具也进组），running/pending 排后
-    expect(result).toHaveLength(2)
+    // 成组只看连续可折叠块数量，与执行状态无关
+    expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
       kind: 'tool-call-group',
-      blocks: [tc1, tc3, tc4, tc5],
+      blocks: [tc1, tc2, tc3, tc4, tc5],
     })
-    expect(result[1]).toEqual(tc2)
   })
 
-  it('group id 锚定 Zone 起始块（即使首个未完成），避免 completed 首成员翻转导致 key 抖动', () => {
-    // zone 首块是 running、completed 在其后 —— 组 id 应锚定 zone[0](tc1)，而非 completed[0](tc2)
+  it('group id 锚定 Zone 起始块（即使首个未完成），避免状态翻转导致 key 抖动', () => {
+    // zone 首块是 running —— 组 id 应锚定 zone[0](tc1)
     const tc1 = makeToolCall({ id: 'tc1', name: 'Read', state: 'running' })
     const tc2 = makeToolCall({ id: 'tc2', name: 'Read', state: 'completed' })
     const tc3 = makeToolCall({ id: 'tc3', name: 'Read', state: 'completed' })
     const result = groupCollapsibleToolCalls([tc1, tc2, tc3])
-    expect(result).toHaveLength(2)
+    expect(result).toHaveLength(1)
     const group = result[0] as Extract<typeof result[0], { kind: 'tool-call-group' }>
-    // tc2/tc3 是 completed 归组；id 锚定 zone 起始 tc1
     expect(group.id).toBe('group-tc1')
-    expect(group.blocks).toEqual([tc2, tc3])
-    expect(result[1]).toEqual(tc1)
+    expect(group.blocks).toEqual([tc1, tc2, tc3])
   })
 
-  it('Zone 内 completed < 2 时全部单独展示，保持原始顺序', () => {
+  it('运行中与已完成混合（≥2）即成组，保持原始顺序', () => {
     const tc1 = makeToolCall({ id: 'tc1', name: 'Read', state: 'running' })
     const tc2 = makeToolCall({ id: 'tc2', name: 'Read', state: 'completed' })
     const tc3 = makeToolCall({ id: 'tc3', name: 'Read', state: 'running' })
     const result = groupCollapsibleToolCalls([tc1, tc2, tc3])
-    expect(result).toHaveLength(3)
-    expect(result[0]).toEqual(tc1)
-    expect(result[1]).toEqual(tc2)
-    expect(result[2]).toEqual(tc3)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      kind: 'tool-call-group',
+      blocks: [tc1, tc2, tc3],
+    })
   })
 
-  it('全部 running 时不分组', () => {
+  it('全部 running 也成组', () => {
     const blocks = [
       makeToolCall({ id: 'tc1', name: 'Bash', state: 'running' }),
       makeToolCall({ id: 'tc2', name: 'Read', state: 'running' }),
       makeToolCall({ id: 'tc3', name: 'Grep', state: 'running' }),
     ]
     const result = groupCollapsibleToolCalls(blocks)
-    expect(result).toHaveLength(3)
-    expect(result[0]).toEqual(blocks[0])
-    expect(result[1]).toEqual(blocks[1])
-    expect(result[2]).toEqual(blocks[2])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      kind: 'tool-call-group',
+      blocks,
+    })
   })
 
   it('多个 Zone 各自独立分组', () => {
@@ -202,18 +202,16 @@ describe('groupCollapsibleToolCalls', () => {
     expect(groupCollapsibleToolCalls([])).toEqual([])
   })
 
-  it('pending 状态等同于 running，不参与折叠', () => {
+  it('pending 状态同样参与折叠', () => {
     const tc1 = makeToolCall({ id: 'tc1', name: 'Bash', state: 'completed' })
     const tc2 = makeToolCall({ id: 'tc2', name: 'Bash', state: 'pending' })
     const tc3 = makeToolCall({ id: 'tc3', name: 'Bash', state: 'completed' })
     const result = groupCollapsibleToolCalls([tc1, tc2, tc3])
-    // completed(tc1, tc3) 归入折叠，pending(tc2) 排在后面
-    expect(result).toHaveLength(2)
+    expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
       kind: 'tool-call-group',
-      blocks: [tc1, tc3],
+      blocks: [tc1, tc2, tc3],
     })
-    expect(result[1]).toEqual(tc2)
   })
 
   it('混合工具名在同一 Zone 内折叠', () => {
@@ -273,37 +271,30 @@ describe('groupCollapsibleToolCalls', () => {
       expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [rs1, rs2] })
     })
 
-    it('活跃 reasoning（isActiveReasoning=true）散落可见、不进组，与 running tool 一致', () => {
+    it('活跃 reasoning（isActiveReasoning 由调用方传入）也进组，与运行中工具一致', () => {
       const rsActive = makeReasoning({ id: 'rs1', done: false })
       const bash = makeToolCall({ id: 'b1', name: 'Bash' })
       const read = makeToolCall({ id: 'r1', name: 'Read' })
-      const result = groupCollapsibleToolCalls([rsActive, bash, read], {
-        isActiveReasoning: b => b.id === 'rs1',
+      const result = groupCollapsibleToolCalls([rsActive, bash, read])
+      // 成组不看执行状态，活跃 reasoning 保持 zone 原序进组
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        kind: 'tool-call-group',
+        blocks: [rsActive, bash, read],
       })
-      // bash/read completed 进组；活跃 rs1 散落在后
-      expect(result).toHaveLength(2)
-      expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [bash, read] })
-      expect(result[1]).toEqual(rsActive)
     })
 
-    it('活跃 reasoning 打断 completed 计数：仅 1 个 completed 时不分组', () => {
+    it('单个活跃 reasoning 不成组，保持散落', () => {
       const rsActive = makeReasoning({ id: 'rs1', done: false })
-      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
-      const result = groupCollapsibleToolCalls([rsActive, bash], {
-        isActiveReasoning: b => b.id === 'rs1',
-      })
-      // completed 只有 bash 一个（<2），整个 zone 散落，保持原始顺序
-      expect(result).toHaveLength(2)
+      const result = groupCollapsibleToolCalls([rsActive])
+      expect(result).toHaveLength(1)
       expect(result[0]).toEqual(rsActive)
-      expect(result[1]).toEqual(bash)
     })
 
     it('非活跃 reasoning（done 或默认）视为已完成，进组归档', () => {
       const rs = makeReasoning({ id: 'rs1', done: true })
       const bash = makeToolCall({ id: 'b1', name: 'Bash' })
-      const result = groupCollapsibleToolCalls([rs, bash], {
-        isActiveReasoning: () => false, // 无活跃
-      })
+      const result = groupCollapsibleToolCalls([rs, bash])
       expect(result).toHaveLength(1)
       expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [rs, bash] })
     })
@@ -363,14 +354,15 @@ describe('groupCollapsibleToolCalls', () => {
       expect(result[2]).toEqual(tc2)
     })
 
-    it('MCP running 状态不参与折叠', () => {
+    it('MCP running 状态同样参与折叠', () => {
       const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__github__search', state: 'completed' })
       const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__github__read', state: 'running' })
       const result = groupCollapsibleToolCalls([tc1, tc2])
-      // completed < 2，不折叠
-      expect(result).toHaveLength(2)
-      expect(result[0]).toEqual(tc1)
-      expect(result[1]).toEqual(tc2)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        kind: 'tool-call-group',
+        blocks: [tc1, tc2],
+      })
     })
 
     it('Plugin MCP 工具名正确识别', () => {
@@ -383,7 +375,25 @@ describe('groupCollapsibleToolCalls', () => {
   })
 })
 
+/** 测试用 t 桩：按 zh.json 解析 key + 插值；count 传参时对齐 i18next 复数后缀（zh 单复数同形，只配 _other） */
+function makeT() {
+  const zh = zhLocale as Record<string, unknown>
+  const resolve = (key: string): unknown =>
+    key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], zh)
+  return (key: string, opts?: Record<string, unknown>): string => {
+    let tpl = resolve(key)
+    if (opts?.count != null) {
+      const plural = resolve(`${key}_other`)
+      if (typeof plural === 'string') tpl = plural
+    }
+    if (typeof tpl !== 'string') return key
+    return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts?.[k] ?? ''))
+  }
+}
+
 describe('formatGroupTitle', () => {
+  const t = makeT()
+
   it('混合工具类别', () => {
     const blocks = [
       makeToolCall({ id: 'b1', name: 'Bash' }),
@@ -392,12 +402,12 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'r2', name: 'Read' }),
       makeToolCall({ id: 'r3', name: 'Read' }),
     ]
-    expect(formatGroupTitle(blocks)).toBe('Run 2 shell commands, read 3 files')
+    expect(formatGroupTitle(blocks, t)).toBe('运行了 2 个命令、读取了 3 个文件')
   })
 
   it('单一工具类别单数', () => {
     const blocks = [makeToolCall({ id: 'r1', name: 'Read' })]
-    expect(formatGroupTitle(blocks)).toBe('Read 1 file')
+    expect(formatGroupTitle(blocks, t)).toBe('读取了 1 个文件')
   })
 
   it('Glob 和 Grep 分开统计', () => {
@@ -405,7 +415,7 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'g1', name: 'Glob' }),
       makeToolCall({ id: 'g2', name: 'Grep' }),
     ]
-    expect(formatGroupTitle(blocks)).toBe('Find 1 pattern, search 1 pattern')
+    expect(formatGroupTitle(blocks, t)).toBe('匹配了 1 个模式、搜索了 1 处内容')
   })
 
   it('全四类混合', () => {
@@ -417,11 +427,11 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'gr1', name: 'Grep' }),
       makeToolCall({ id: 'gr2', name: 'Grep' }),
     ]
-    expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, read 2 files, find 1 pattern, search 2 patterns')
+    expect(formatGroupTitle(blocks, t)).toBe('运行了 1 个命令、读取了 2 个文件、匹配了 1 个模式、搜索了 2 处内容')
   })
 
   it('空数组返回空字符串', () => {
-    expect(formatGroupTitle([])).toBe('')
+    expect(formatGroupTitle([], t)).toBe('')
   })
 
   it('复数形式正确', () => {
@@ -430,7 +440,7 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'b2', name: 'Bash' }),
       makeToolCall({ id: 'b3', name: 'Bash' }),
     ]
-    expect(formatGroupTitle(blocks)).toBe('Run 3 shell commands')
+    expect(formatGroupTitle(blocks, t)).toBe('运行了 3 个命令')
   })
 
   describe('reasoning 标题（thinking 总时长，非次数）', () => {
@@ -441,10 +451,10 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'b1', name: 'Bash' }),
         makeToolCall({ id: 'b2', name: 'Bash' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Thought 11.0s, run 2 shell commands')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 11.0 秒、运行了 2 个命令')
     })
 
-    it('全无 durationMs（local/历史）兜底为 thought，无时长', () => {
+    it('全无 durationMs（local/历史）兜底为思考，无时长', () => {
       const blocks = [
         makeReasoning({ id: 'rs1' }),
         makeReasoning({ id: 'rs2' }),
@@ -452,7 +462,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r2', name: 'Read' }),
         makeToolCall({ id: 'r3', name: 'Read' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Thought, read 3 files')
+      expect(formatGroupTitle(blocks, t)).toBe('思考、读取了 3 个文件')
     })
 
     it('纯 reasoning 有时长', () => {
@@ -461,7 +471,7 @@ describe('formatGroupTitle', () => {
         makeReasoning({ id: 'rs2', durationMs: 6000 }),
         makeReasoning({ id: 'rs3', durationMs: 6000 }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Thought 18.0s')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 18.0 秒')
     })
 
     it('纯 reasoning 无时长兜底', () => {
@@ -469,7 +479,7 @@ describe('formatGroupTitle', () => {
         makeReasoning({ id: 'rs1' }),
         makeReasoning({ id: 'rs2' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Thought')
+      expect(formatGroupTitle(blocks, t)).toBe('思考')
     })
 
     it('部分有 durationMs 部分无（混合）按有值求和', () => {
@@ -477,18 +487,18 @@ describe('formatGroupTitle', () => {
         makeReasoning({ id: 'rs1', durationMs: 4000 }),
         makeReasoning({ id: 'rs2' }), // undefined 按 0
       ]
-      expect(formatGroupTitle(blocks)).toBe('Thought 4.0s')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 4.0 秒')
     })
   })
 
   describe('失败计数', () => {
-    it('含 error 时追加「· N failed」', () => {
+    it('含 error 时追加「· N 个失败」', () => {
       const blocks = [
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
         makeToolCall({ id: 'r3', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Read 3 files · 1 failed')
+      expect(formatGroupTitle(blocks, t)).toBe('读取了 3 个文件 · 1 个失败')
     })
 
     it('全 error 时计数为组大小', () => {
@@ -496,7 +506,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'error' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Read 2 files · 2 failed')
+      expect(formatGroupTitle(blocks, t)).toBe('读取了 2 个文件 · 2 个失败')
     })
 
     it('无 error 时不追加', () => {
@@ -504,7 +514,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'completed' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Read 2 files')
+      expect(formatGroupTitle(blocks, t)).toBe('读取了 2 个文件')
     })
 
     it('含 error 与 reasoning 混合：reasoning 不计入失败', () => {
@@ -513,7 +523,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Thought 1.0s, read 2 files · 1 failed')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 1.0 秒、读取了 2 个文件 · 1 个失败')
     })
   })
 
@@ -548,7 +558,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm2', name: 'mcp__github__read' }),
         makeToolCall({ id: 'm3', name: 'mcp__github__write' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Called github 3 times')
+      expect(formatGroupTitle(blocks, t)).toBe('调用了 github 3 次')
     })
 
     it('多个 MCP server 分别计数', () => {
@@ -557,7 +567,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm2', name: 'mcp__serverA__tool2' }),
         makeToolCall({ id: 'm3', name: 'mcp__serverB__tool1' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Called serverA 2 times, called serverB 1 time')
+      expect(formatGroupTitle(blocks, t)).toBe('调用了 serverA 2 次、调用了 serverB 1 次')
     })
 
     it('Plugin MCP server 显示名用冒号分隔', () => {
@@ -567,7 +577,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm3', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate' }),
         makeToolCall({ id: 'm4', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__type' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Called plugin:chrome-devtools-mcp:chrome-devtools 4 times')
+      expect(formatGroupTitle(blocks, t)).toBe('调用了 plugin:chrome-devtools-mcp:chrome-devtools 4 次')
     })
 
     it('MCP + 内置工具混合计数', () => {
@@ -576,7 +586,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'm1', name: 'mcp__github__search' }),
         makeToolCall({ id: 'm2', name: 'mcp__github__read' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, called github 2 times')
+      expect(formatGroupTitle(blocks, t)).toBe('运行了 1 个命令、调用了 github 2 次')
     })
 
     it('非 MCP 工具不影响现有行为', () => {
@@ -585,7 +595,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r2', name: 'Read' }),
         makeToolCall({ id: 'r3', name: 'Read' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Read 3 files')
+      expect(formatGroupTitle(blocks, t)).toBe('读取了 3 个文件')
     })
   })
 
@@ -620,11 +630,11 @@ describe('formatGroupTitle', () => {
     })
 
     it('WebFetch 计数（单数/复数）', () => {
-      expect(formatGroupTitle([makeToolCall({ id: 'w1', name: 'WebFetch' })])).toBe('Fetch 1 page')
+      expect(formatGroupTitle([makeToolCall({ id: 'w1', name: 'WebFetch' })], t)).toBe('抓取了 1 个网页')
       expect(formatGroupTitle([
         makeToolCall({ id: 'w1', name: 'WebFetch' }),
         makeToolCall({ id: 'w2', name: 'WebFetch' }),
-      ])).toBe('Fetch 2 pages')
+      ], t)).toBe('抓取了 2 个网页')
     })
 
     it('WebSearch 计数', () => {
@@ -632,23 +642,23 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'w1', name: 'WebSearch' }),
         makeToolCall({ id: 'w2', name: 'WebSearch' }),
         makeToolCall({ id: 'w3', name: 'WebSearch' }),
-      ])).toBe('Search the web 3 times')
+      ], t)).toBe('网页搜索 3 次')
     })
 
     it('Write 与 Edit/MultiEdit 分开计数（write=新建 / edit=修改）', () => {
       expect(formatGroupTitle([
         makeToolCall({ id: 'w1', name: 'Write' }),
         makeToolCall({ id: 'w2', name: 'Write' }),
-      ])).toBe('Wrote 2 files')
+      ], t)).toBe('写入了 2 个文件')
       expect(formatGroupTitle([
         makeToolCall({ id: 'e1', name: 'Edit' }),
         makeToolCall({ id: 'e2', name: 'MultiEdit' }),
-      ])).toBe('Edited 2 files')
+      ], t)).toBe('编辑了 2 个文件')
       // 混合：各自计数并列
       expect(formatGroupTitle([
         makeToolCall({ id: 'w1', name: 'Write' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
-      ])).toBe('Wrote 1 file, edited 1 file')
+      ], t)).toBe('写入了 1 个文件、编辑了 1 个文件')
     })
 
     it('read + websearch + edit 混合按固定顺序拼接', () => {
@@ -657,7 +667,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'w1', name: 'WebSearch' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Read 1 file, search the web 1 time, edited 1 file')
+      expect(formatGroupTitle(blocks, t)).toBe('读取了 1 个文件、网页搜索 1 次、编辑了 1 个文件')
     })
 
     it('全类别混合', () => {
@@ -670,7 +680,104 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'ws1', name: 'WebSearch' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, read 1 file, find 1 pattern, search 1 pattern, fetch 1 page, search the web 1 time, edited 1 file')
+      expect(formatGroupTitle(blocks, t)).toBe('运行了 1 个命令、读取了 1 个文件、匹配了 1 个模式、搜索了 1 处内容、抓取了 1 个网页、网页搜索 1 次、编辑了 1 个文件')
     })
+  })
+})
+
+describe('formatGroupActiveTitle', () => {
+  const t = makeT()
+
+  it('无活跃块返回 null', () => {
+    const blocks = [
+      makeReasoning({ id: 'rs1', durationMs: 1000 }),
+      makeToolCall({ id: 'b1', name: 'Bash' }),
+    ]
+    expect(formatGroupActiveTitle(blocks, { t })).toBeNull()
+  })
+
+  it('running 工具：带命令内容（shell）', () => {
+    const block = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
+    block.tool.input = { command: 'bun run test' }
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 bun run test')
+  })
+
+  it('running 工具：带文件路径（write）', () => {
+    const block = makeToolCall({ id: 'w1', name: 'Write', state: 'running' })
+    block.tool.input = { file_path: 'src/a.md' }
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在写入文件 src/a.md')
+  })
+
+  it('pending 状态（等待审批）展示「等待审批」+ 目标内容', () => {
+    const block = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
+    block.tool.input = { file_path: 'src/a.ts' }
+    expect(formatGroupActiveTitle([block], { t })).toBe('等待审批 src/a.ts')
+  })
+
+  it('pending 无目标内容时只展示「等待审批」', () => {
+    const block = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
+    block.tool.input = {}
+    expect(formatGroupActiveTitle([block], { t })).toBe('等待审批')
+  })
+
+  it('input 尚无目标内容时退回类别文案', () => {
+    const block = makeToolCall({ id: 'w1', name: 'Write', state: 'running' })
+    block.tool.input = {}
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在写入文件')
+  })
+
+  it('多行命令取首行', () => {
+    const block = makeToolCall({ id: 'b1', name: 'Bash', state: 'running' })
+    block.tool.input = { command: 'cd /very/long/path/to/somewhere/deeper\necho done' }
+    // 首行 38 字符，截断为前 23 字符 + …
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在执行命令 cd /very/long/path/to/s…')
+  })
+
+  it('超长目标内容截断', () => {
+    const block = makeToolCall({ id: 'r1', name: 'Read', state: 'running' })
+    block.tool.input = { file_path: 'a'.repeat(40) }
+    expect(formatGroupActiveTitle([block], { t })).toBe(`正在读取文件 ${'a'.repeat(23)}…`)
+  })
+
+  it('多个活跃块取时序最新的一个（数组序最后）', () => {
+    const b1 = makeToolCall({ id: 'b1', name: 'Bash', state: 'completed' })
+    b1.tool.input = { command: 'x' }
+    const b2 = makeToolCall({ id: 'b2', name: 'Read', state: 'running' })
+    b2.tool.input = { file_path: 'src/a.ts' }
+    const b3 = makeToolCall({ id: 'b3', name: 'Bash', state: 'running' })
+    b3.tool.input = { command: 'bun run build' }
+    expect(formatGroupActiveTitle([b1, b2, b3], { t })).toBe('正在执行命令 bun run build')
+  })
+
+  it('活跃 reasoning：正在思考（isActiveReasoning 判定）', () => {
+    const rs = makeReasoning({ id: 'rs1', done: false })
+    const b1 = makeToolCall({ id: 'b1', name: 'Bash' })
+    expect(formatGroupActiveTitle([rs, b1], { t, isActiveReasoning: b => b.id === 'rs1' })).toBe('正在思考')
+  })
+
+  it('非活跃 reasoning 不算活跃', () => {
+    const rs = makeReasoning({ id: 'rs1', done: true })
+    const b1 = makeToolCall({ id: 'b1', name: 'Bash', state: 'completed' })
+    expect(formatGroupActiveTitle([rs, b1], { t, isActiveReasoning: () => false })).toBeNull()
+  })
+
+  it('各类别目标内容提取（glob/grep/webfetch/websearch）', () => {
+    const glob = makeToolCall({ id: 'g1', name: 'Glob', state: 'running' })
+    glob.tool.input = { pattern: '**/*.ts' }
+    const grep = makeToolCall({ id: 'g2', name: 'Grep', state: 'running' })
+    grep.tool.input = { pattern: 'useState' }
+    const wf = makeToolCall({ id: 'w1', name: 'WebFetch', state: 'running' })
+    wf.tool.input = { url: 'https://example.com/docs' }
+    const ws = makeToolCall({ id: 'w2', name: 'WebSearch', state: 'running' })
+    ws.tool.input = { query: 'bun test api' }
+    expect(formatGroupActiveTitle([glob], { t })).toBe('正在匹配模式 **/*.ts')
+    expect(formatGroupActiveTitle([grep], { t })).toBe('正在搜索内容 useState')
+    expect(formatGroupActiveTitle([wf], { t })).toBe('正在抓取网页 https://example.com/docs')
+    expect(formatGroupActiveTitle([ws], { t })).toBe('正在搜索网页 bun test api')
+  })
+
+  it('MCP 工具：正在调用 server 显示名', () => {
+    const block = makeToolCall({ id: 'm1', name: 'mcp__github__search', state: 'running' })
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在调用 github')
   })
 })

@@ -17,6 +17,10 @@
 import type { AgentReasoningBlock, ChatBlock, ToolCallBlock } from '@/domain/chat'
 import { capitalize } from '@/core/utils/sessionUtils'
 import { parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
+import { isObject } from '@mobi/shared'
+
+/** 最小翻译函数签名（结构上兼容 i18next 的 t，保持 domain 层纯净可测） */
+export type Translate = (key: string, opts?: Record<string, unknown>) => string
 
 type ToolCategory = 'shell' | 'read' | 'glob' | 'grep' | 'webfetch' | 'websearch' | 'write' | 'edit'
 
@@ -48,8 +52,15 @@ export type ToolCallGroup = {
 /** 分组后的消息块 */
 export type GroupedBlock = ChatBlock | ToolCallGroup
 
-/** 判断 reasoning 是否活跃（正在思考）—— 活跃块散落可见，不进组，与 running tool 一致 */
+/** 判断 reasoning 是否活跃（正在思考）—— 由调用方（buildBubbleItems）构造，供组头动态标题与组内 thinking 展开态使用 */
 type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
+
+export type { IsActiveReasoning }
+
+/** 工具是否活跃（运行中/待审批）—— 组头「正在 xxx」动态标题的判定来源 */
+export function isActiveTool(block: ToolCallBlock): boolean {
+  return block.tool.state === 'running' || block.tool.state === 'pending'
+}
 
 /**
  * 组内失败工具数（state=error 的 tool-call；reasoning 不计）。
@@ -59,17 +70,69 @@ export function countFailedInGroup(blocks: CollapsibleBlock[]): number {
   return blocks.filter(b => b.kind === 'tool-call' && b.tool.state === 'error').length
 }
 
+/** 组头汇总文案的各类别 i18n key（key 本身带 _one/_other 复数后缀，由 i18next count 解析） */
+const TITLE_KEYS: Record<ToolCategory, string> = {
+  shell: 'chat.group.shell',
+  read: 'chat.group.read',
+  glob: 'chat.group.glob',
+  grep: 'chat.group.grep',
+  webfetch: 'chat.group.webfetch',
+  websearch: 'chat.group.websearch',
+  write: 'chat.group.write',
+  edit: 'chat.group.edit',
+}
+
+/** 组头「正在 xxx」动态文案的各类别 i18n key */
+const RUNNING_TITLE_KEYS: Record<ToolCategory, string> = {
+  shell: 'chat.group.running.shell',
+  read: 'chat.group.running.read',
+  glob: 'chat.group.running.glob',
+  grep: 'chat.group.running.grep',
+  webfetch: 'chat.group.running.webfetch',
+  websearch: 'chat.group.running.websearch',
+  write: 'chat.group.running.write',
+  edit: 'chat.group.running.edit',
+}
+
+/** 运行态尾随目标内容的长度上限（超长截断加省略号） */
+const ACTIVE_TARGET_MAX = 24
+
 /**
- * 格式化折叠组标题。
- * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「thought X.Xs」，全无（local/历史）兜底「thought」。
- * tool 部分：按类别计数。
- * 失败计数：组内失败工具数 > 0 时追加「· N failed」。
- *
- * 注：标题主体文案（read N files 等）目前为硬编码英文，与既有动词一致；
- * 失败计数同样硬编码英文以避免中英混排（中文 locale 下出现「Read 3 files · 1 个失败」）。
- * 若后续整体 i18n 化标题动词，失败计数应一并接入。
+ * 提取运行中工具的尾随目标内容（命令/文件路径/模式等），拿不到返回空串（组头退回类别文案）。
+ * 多行命令取首行；超长截断。
  */
-export function formatGroupTitle(blocks: CollapsibleBlock[]): string {
+function extractActiveTarget(name: string, input: unknown): string {
+  const category = TOOL_CATEGORY_MAP[name]
+  // MCP 工具：目标即 server 显示名（从工具名必然可解析，无 input 依赖）
+  if (!category) {
+    const parsed = parseMCPToolName(name)
+    return parsed ? formatMCPServerDisplay(parsed.server) : ''
+  }
+  if (!isObject(input)) return ''
+  const get = (key: string): string =>
+    typeof input[key] === 'string' ? (input[key] as string) : ''
+  let raw = ''
+  switch (category) {
+    case 'shell': raw = get('command').split('\n')[0]; break
+    case 'read':
+    case 'write':
+    case 'edit': raw = get('file_path'); break
+    case 'glob':
+    case 'grep': raw = get('pattern'); break
+    case 'webfetch': raw = get('url'); break
+    case 'websearch': raw = get('query'); break
+  }
+  if (!raw) return ''
+  return raw.length > ACTIVE_TARGET_MAX ? `${raw.slice(0, ACTIVE_TARGET_MAX - 1)}…` : raw
+}
+
+/**
+ * 格式化折叠组标题（汇总形态：全部落定或无活跃内容时）。
+ * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「思考 X.X 秒」，全无（local/历史）兜底「思考」。
+ * tool 部分：按类别计数。失败计数：组内失败工具数 > 0 时追加「· N 个失败」。
+ * 文案经 i18n（t 由组件层传入 useTranslation 的 t）。
+ */
+export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): string {
   // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
   const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
@@ -94,51 +157,56 @@ export function formatGroupTitle(blocks: CollapsibleBlock[]): string {
   const parts: string[] = []
   // thinking 置首（思考在工具之前，符合时序）
   if (reasoningBlocks.length > 0) {
-    parts.push(hasThinkDuration ? `thought ${(totalThinkMs / 1000).toFixed(1)}s` : 'thought')
+    parts.push(hasThinkDuration
+      ? t('chat.group.thoughtDuration', { secs: (totalThinkMs / 1000).toFixed(1) })
+      : t('chat.group.thought'))
   }
-  if (counts.shell) {
-    const n = counts.shell
-    parts.push(`run ${n} shell command${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.read) {
-    const n = counts.read
-    parts.push(`read ${n} file${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.glob) {
-    const n = counts.glob
-    parts.push(`find ${n} pattern${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.grep) {
-    const n = counts.grep
-    parts.push(`search ${n} pattern${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.webfetch) {
-    const n = counts.webfetch
-    parts.push(`fetch ${n} page${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.websearch) {
-    const n = counts.websearch
-    parts.push(`search the web ${n} time${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.write) {
-    const n = counts.write
-    parts.push(`wrote ${n} file${n !== 1 ? 's' : ''}`)
-  }
-  if (counts.edit) {
-    const n = counts.edit
-    parts.push(`edited ${n} file${n !== 1 ? 's' : ''}`)
+  for (const [cat, key] of Object.entries(TITLE_KEYS) as [ToolCategory, string][]) {
+    const n = counts[cat]
+    if (n) parts.push(t(key, { count: n }))
   }
   for (const [server, n] of Object.entries(mcpCounts)) {
-    parts.push(`called ${formatMCPServerDisplay(server)} ${n} time${n !== 1 ? 's' : ''}`)
+    parts.push(t('chat.group.mcp', { server: formatMCPServerDisplay(server), count: n }))
   }
 
-  const base = capitalize(parts.join(', '))
-  // 含失败工具时追加失败计数（与主体同语言，避免中英混排）
+  const base = capitalize(parts.join(String(t('chat.group.separator'))))
+  // 含失败工具时追加失败计数（与主体同语言）
   const failedCount = countFailedInGroup(blocks)
   if (failedCount > 0) {
-    return `${base} · ${failedCount} failed`
+    return `${base} · ${t('chat.group.failed', { count: failedCount })}`
   }
   return base
+}
+
+/**
+ * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待审批」）。
+ * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
+ * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到 file_path → 「正在写入文件」）。
+ */
+export function formatGroupActiveTitle(
+  blocks: CollapsibleBlock[],
+  opts: { t: Translate; isActiveReasoning?: IsActiveReasoning },
+): string | null {
+  const { t, isActiveReasoning } = opts
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
+    if (block.kind === 'agent-reasoning') {
+      if (isActiveReasoning?.(block)) return t('chat.group.running.thinking')
+      continue
+    }
+    if (!isActiveTool(block)) continue
+    const category = TOOL_CATEGORY_MAP[block.tool.name]
+    const target = extractActiveTarget(block.tool.name, block.tool.input)
+    // 等待审批（pending）优先展示「等待审批」；运行中展示「正在 xxx」
+    if (block.tool.state === 'pending') {
+      return target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval')
+    }
+    const key = category ? RUNNING_TITLE_KEYS[category] : 'chat.group.running.mcp'
+    // MCP 的 server 目标走插值；其余类别拼在文案后（拿不到目标则只展示类别文案）
+    if (!category) return t(key, { server: target })
+    return target ? `${t(key)} ${target}` : t(key)
+  }
+  return null
 }
 
 /** 判断是否为可折叠块（可折叠工具 或 reasoning） */
@@ -149,25 +217,10 @@ function isCollapsibleBlock(block: ChatBlock): block is CollapsibleBlock {
   return COLLAPSIBLE_TOOL_NAMES.has(name) || name.startsWith('mcp__')
 }
 
-/** 可折叠块是否「已落定」（可进组归档）—— tool 看 completed/error，reasoning 看是否非活跃 */
-function isCollapsibleSettled(
-  block: CollapsibleBlock,
-  isActiveReasoning?: IsActiveReasoning,
-): boolean {
-  if (block.kind === 'agent-reasoning') {
-    // 活跃（正在思考）→ 未落定，散落；默认无谓词 → 视为已落定（向后兼容）
-    return !(isActiveReasoning?.(block) ?? false)
-  }
-  // completed 成功、error 失败均归档进组；pending/running 仍散落可见
-  return block.tool.state === 'completed' || block.tool.state === 'error'
-}
-
-/** 检测连续可折叠块 Zone 并分组（reasoning + 可折叠工具共享 zone） */
-export function groupCollapsibleToolCalls(
-  blocks: ChatBlock[],
-  opts: { isActiveReasoning?: IsActiveReasoning } = {},
-): GroupedBlock[] {
-  const { isActiveReasoning } = opts
+/** 检测连续可折叠块 Zone 并分组（reasoning + 可折叠工具共享 zone）。
+ * 成组只看「连续可折叠块 ≥ 2」，与执行状态无关——运行中、待审批、已落定均进组；
+ * 单个可折叠块不成组，保持散落。 */
+export function groupCollapsibleToolCalls(blocks: ChatBlock[]): GroupedBlock[] {
   const result: GroupedBlock[] = []
   let i = 0
 
@@ -184,19 +237,14 @@ export function groupCollapsibleToolCalls(
         i++
       }
 
-      // 按落定态拆分，各自保持原始相对顺序
-      const settled = zone.filter(b => isCollapsibleSettled(b, isActiveReasoning))
-      const others = zone.filter(b => !isCollapsibleSettled(b, isActiveReasoning))
-
-      if (settled.length >= 2) {
+      if (zone.length >= 2) {
         result.push({
           kind: 'tool-call-group',
-          // 锚定 zone 起始块（而非 settled 首块）：zone 边界由非可折叠块决定，
-          // 流式中稳定；settled 首块会随工具状态翻转而变，作 key 会导致组重挂载、折叠态丢失
+          // 锚定 zone 起始块：zone 边界由非可折叠块决定，流式中稳定；
+          // 起始块 id 随组员增删不变，作 key 不会导致组重挂载、折叠态丢失
           id: `group-${zone[0].id}`,
-          blocks: settled,
+          blocks: zone,
         })
-        result.push(...others)
       } else {
         result.push(...zone)
       }

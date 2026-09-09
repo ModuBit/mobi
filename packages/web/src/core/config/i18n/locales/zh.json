@@ -178,6 +178,36 @@
         "thinking": "思考中...",
         "thought": "思考完成",
         "thoughtDuration": "思考完成 · {{secs}}秒",
+        "group": {
+            "separator": "、",
+            "thought": "思考",
+            "thoughtDuration": "思考 {{secs}} 秒",
+            "shell_other": "运行了 {{count}} 个命令",
+            "read_other": "读取了 {{count}} 个文件",
+            "glob_other": "匹配了 {{count}} 个模式",
+            "grep_other": "搜索了 {{count}} 处内容",
+            "webfetch_other": "抓取了 {{count}} 个网页",
+            "websearch_other": "网页搜索 {{count}} 次",
+            "write_other": "写入了 {{count}} 个文件",
+            "edit_other": "编辑了 {{count}} 个文件",
+            "mcp_other": "调用了 {{server}} {{count}} 次",
+            "failed_other": "{{count}} 个失败",
+            "running": {
+                "thinking": "正在思考",
+                "shell": "正在执行命令",
+                "read": "正在读取文件",
+                "glob": "正在匹配模式",
+                "grep": "正在搜索内容",
+                "webfetch": "正在抓取网页",
+                "websearch": "正在搜索网页",
+                "write": "正在写入文件",
+                "edit": "正在编辑文件",
+                "mcp": "正在调用 {{server}}"
+            },
+            "waiting": {
+                "approval": "等待审批"
+            }
+        },
         "contextReset": "上下文已重置",
         "contextCompacted": "上下文已压缩",
         "contextMicrocompacted": "上下文已微压缩",

@@ -302,20 +302,19 @@ describe('buildChatBubbleItems', () => {
             expect(items[0].variant).toBe('borderless')
         })
 
-        it('<2 completed → 不分组，各自独立', () => {
+        it('running + completed 混合同样分组（成组不看执行状态）', () => {
             const tc1 = createToolCall({
                 id: 'tc1',
                 tool: { name: 'Bash', state: 'running' } as ChatToolCall,
             })
             const tc2 = createCompletedToolCall('tc2', { tool: { name: 'Read' } as ChatToolCall })
 
-            // 只有 1 个 completed，不满足 ≥2 条件
+            // 连续可折叠块 ≥2 即成组，与执行状态无关
             const blocks = [tc1, tc2]
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
 
-            // 两个单独的 tool-call，无折叠组
-            expect(items).toHaveLength(2)
-            expect(items.every(i => i.role === 'assistant')).toBe(true)
+            expect(items).toHaveLength(1)
+            expect(items[0].key).toBe('group-tc1')
         })
     })
 
