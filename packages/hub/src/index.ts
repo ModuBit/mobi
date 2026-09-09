@@ -41,9 +41,8 @@ import { getOrCreateJwtSecret } from './config/jwtSecret'
 import { startWebApiTokenWatcher } from './config/settingsWatcher'
 import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
-import { SnapshotDeltaForwarder } from './sse/snapshotDeltaForwarder'
-import { SnapshotDeltaAssembler } from './sync/snapshotDeltaAssembler'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
+import { SnapshotSync } from './sync/snapshotSync'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
@@ -167,13 +166,9 @@ async function main() {
     visibilityTracker = new VisibilityTracker()
     // snapshot 流量观测（票 03）：MOBI_SNAPSHOT_STATS=1 开启，默认零开销
     const snapshotStats = new SnapshotDeltaStats(process.env.MOBI_SNAPSHOT_STATS === '1')
-    sseManager = new SSEManager(30_000, visibilityTracker, snapshotStats)
-
-    // snapshot delta 拼接器与 SSE 转发器（delta 协议票 02）：CLI socket handler 写缓存、
-    // SSE 广播按订阅进度路由、resync 端点读——三端共用同一实例，在此组装层创建并注入
-    const snapshotAssembler = new SnapshotDeltaAssembler()
-    const snapshotForwarder = new SnapshotDeltaForwarder(snapshotAssembler)
-    sseManager.setSnapshotForwarder(snapshotForwarder)
+    // Socket 输入、SSE 输出与 HTTP resync 共用同一个快照同步生命周期。
+    const snapshotSync = new SnapshotSync({ stats: snapshotStats })
+    sseManager = new SSEManager(30_000, visibilityTracker, snapshotSync)
 
     // 活跃后台任务集合：CLI socket handler 写（background_tasks_changed replace）、
     // rewind API 路由读（闸门）——两端共用同一实例，在此组装层创建并注入
@@ -188,9 +183,7 @@ async function main() {
         corsOrigins: config.corsOrigins,
         backgroundTaskTracker,
         rewindDeleteBoundTracker,
-        snapshotAssembler,
-        snapshotForwarder,
-        snapshotStats,
+        snapshotSync,
         getSession: (sessionId) => {
             // active 状态只从内存（SyncEngine）获取，不存储在数据库中
             return syncEngine?.getSession(sessionId) ?? null
@@ -223,7 +216,6 @@ async function main() {
         socketEngine: socketServer.engine,
         corsOrigins: config.corsOrigins,
         backgroundTaskTracker,
-        getSnapshotDelta: () => ({ assembler: snapshotAssembler, forwarder: snapshotForwarder })
     })
 
     // 启动 settings.hub.json 监听：webApiToken 轮换时热 reload，无需重启 hub

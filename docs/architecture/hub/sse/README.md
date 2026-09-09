@@ -10,11 +10,13 @@
 flowchart TB
     subgraph SSEManager
         connections[connections Map]
+        snapshotHandles[SnapshotSubscription handles]
         heartbeat[心跳定时器 30s]
     end
 
     web[Web 客户端] -->|subscribe| SSEManager
     SSEManager -->|broadcast/sendToast| web
+    connections --> snapshotHandles
     heartbeat -->|sendHeartbeat| web
 ```
 
@@ -25,6 +27,7 @@ flowchart TB
 | `subscribe()` | 注册 SSE 连接 |
 | `unsubscribe()` | 移除 SSE 连接 |
 | `broadcast()` | 广播事件给所有匹配的连接 |
+| `resyncSnapshots()` | 为指定订阅补发某会话的全部活跃快照基线并重建游标 |
 | `sendToast()` | 发送 toast 事件给该 namespace 所有活跃连接（含后台 hidden） |
 | `hasActiveConnection()` | 查询某 namespace 是否有任何活跃连接（visible 或 hidden） |
 | `hasVisibleConnection()` | 查询某 namespace 是否有可见连接（通知投递决策依据，转发 VisibilityTracker） |
@@ -79,13 +82,15 @@ broadcast(event: SyncEvent): void
 | `connection-changed` | 所有连接 |
 | `message-received` | all=true 或对应 session 的订阅者 |
 | `message-snapshot` | all=true 或对应 session 的订阅者 |
-| `message-snapshot-delta` | 对应 session 的订阅者，经 `SnapshotDeltaForwarder` 按订阅进度路由（衔接且协商 delta → 转发增量帧；否则从拼接器缓存构造全量追赶，见 [snapshot delta 协议](../sync/snapshot-delta.md)） |
+| `message-snapshot-delta` | 对应 session 的订阅者，经连接持有的 `SnapshotSubscription` 按订阅进度路由（衔接且协商 delta → 转发增量帧；否则由 `SnapshotSync` 构造完整追赶，见 [snapshot delta 协议](../sync/snapshot-delta.md)） |
 | `messages-submitted` | all=true 或对应 session 的订阅者 |
 | `idle-timeout-warning` | all=true 或对应 session 的订阅者 |
 | `session-updated` | all=true 或 session 匹配 |
 | `machine-updated` | all=true 或 machine 匹配 |
 
 **使用场景**：SyncEngine 广播事件给所有订阅者
+
+快照事件在 `shouldSend()` 完成 namespace / session 过滤后才进入订阅 handle；`SSEManager` 只负责网络投递，不拥有快照缓存或游标。取消订阅、发送失败和 `stop()` 都会关闭 handle。
 
 ## 订阅过滤逻辑
 

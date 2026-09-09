@@ -18,10 +18,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { buildSnapshotMessage } from '@mobi/shared'
 import type { SSEManager } from '../../sse/sseManager'
-import type { SnapshotDeltaAssembler } from '../../sync/snapshotDeltaAssembler'
-import type { SnapshotDeltaForwarder } from '../../sse/snapshotDeltaForwarder'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { VisibilityState } from '../../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../../visibility/visibilityTracker'
@@ -61,8 +58,6 @@ export function createEventsRoutes(
     getSseManager: () => SSEManager | null,
     getSyncEngine: () => SyncEngine | null,
     getVisibilityTracker: () => VisibilityTracker | null,
-    /** delta 协议票 02：拼接器与转发器（与 socket server / SSEManager 共用实例） */
-    getSnapshotDelta?: () => { assembler: SnapshotDeltaAssembler; forwarder: SnapshotDeltaForwarder } | null
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -179,8 +174,7 @@ export function createEventsRoutes(
      */
     app.post('/snapshot-resync', async (c) => {
         const manager = getSseManager()
-        const snapshotDelta = getSnapshotDelta?.()
-        if (!manager || !snapshotDelta) {
+        if (!manager) {
             return c.json({ error: 'Not connected' }, 503)
         }
 
@@ -200,27 +194,20 @@ export function createEventsRoutes(
             return sessionResult
         }
 
-        // 订阅属主校验（对齐 /visibility 模式）：sendTo 绕过 shouldSend 的 namespace 过滤，
-        // 目标订阅不属调用者 namespace 时必须拒绝——否则跨 namespace 注入流式内容 + 重置受害者游标
+        // 订阅属主校验（对齐 /visibility 模式）：定向 resync 不走 broadcast namespace 过滤，
+        // 目标订阅不属调用者 namespace 时必须拒绝。
         const subscription = manager.getSubscription(parsed.data.subscriptionId)
         if (!subscription || subscription.namespace !== c.get('namespace')) {
             return c.json({ error: 'Subscription not found' }, 404)
         }
 
-        const { assembler, forwarder } = snapshotDelta
-        // 清游标（下一 delta 若先到也会全量追赶）+ 立即补发当前全部活跃流的全量基线
-        forwarder.resetSubscription(parsed.data.subscriptionId)
-        const entries = assembler.getActiveEntries(sessionResult.sessionId)
-        for (const entry of entries) {
-            manager.sendTo(parsed.data.subscriptionId, {
-                type: 'message-snapshot',
-                sessionId: sessionResult.sessionId,
-                namespace: c.get('namespace'),
-                message: buildSnapshotMessage(entry.localId, entry.content, entry.rev),
-            })
-        }
+        const synced = manager.resyncSnapshots(
+            parsed.data.subscriptionId,
+            sessionResult.sessionId,
+            c.get('namespace'),
+        )
 
-        return c.json({ ok: true, synced: entries.length })
+        return c.json({ ok: true, synced })
     })
 
     return app

@@ -237,9 +237,11 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 **流程**：
 
 ```
-SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送 snapshot
+SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全量基线或增量帧
                                                        ↓
-                                               Hub 透传（不落库）
+                                      Hub SnapshotSync 校验并维护完整基线（不落库）
+                                                       ↓
+                                SSE 按订阅游标发送增量，或发送完整基线追赶
                                                        ↓
                                                Web 接收并渲染
 ```
@@ -250,7 +252,7 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送 snap
 |------|------|
 | snapshot id | 使用 SDK `stream_event` 的 uuid，与最终 assistant 消息的 uuid **不同**（它们是两条不同的 JSON 日志行） |
 | snapshot 标识 | `DecryptedMessage.snapshot = true` 区分快照和正式消息 |
-| Hub 处理 | snapshot 不写入 SQLite，直接通过 SSE `message-snapshot` 事件透传给 Web |
+| Hub 处理 | snapshot 不写入 SQLite；`SnapshotSync` 对增量做版本衔接并保留当前完整基线，发布 `message-snapshot` 或 `message-snapshot-delta` |
 | 关联清理 | Web 端通过 **`parentUuid`** 关联同一轮次的 snapshot 和 full message；前提：CLI `AssistantPartialAssembler` 把 SDK 拆分的 full 按 `message.id` 聚合成一条 → snapshot/full 1-vs-1 → parentUuid 不漂移 → 清理可靠（= message queue 之前稳定态）。reducer 的 `(messageId, type)` 过滤兜底 parentUuid 边界（双保险，见 [streaming.md](web/streaming.md) 关键设计 1） |
 
 ### 特殊方法
@@ -686,8 +688,9 @@ type ChatBlock =
 | 阶段 | 事件 | 处理 |
 |------|------|------|
 | SDK stream_event 到达 | CLI `StreamSnapshotSender` 累积 delta | 每 500ms 生成 snapshot |
-| Snapshot 发送 | Hub 收到 `snapshot: true` 的消息 | 不落库，直接 SSE `message-snapshot` 透传 |
-| Web 收到 snapshot | `SSEProvider` → `upsertMessageCache` | 同 id 原地更新，新 id 追加 |
+| Snapshot 发送 | Hub 收到 `snapshot: true` 的全量或增量帧 | 不落库；`SnapshotSync` 校验版本并推进完整基线缓存 |
+| SSE 下发 | `SSEManager` → subscription handle | 游标衔接且已协商 delta 时发增量；否则发当前完整基线追赶 |
+| Web 收到 snapshot | `SSEProvider` → `upsertMessageCache` / `ingestSnapshotDelta` | 全量同 id 原地更新；增量在已有版本基线上应用 |
 | Web 渲染 snapshot | `reducerTimeline` → `isSnapshot` 标记 | `AgentTextBlock` / `AgentReasoningBlock` 带 `isSnapshot` 标记，ChatContainer 对最后一个 running snapshot 启用 typing 光标 |
 | Full message 到达 | `SSEProvider` → `upsertMessageCache` | 通过 `parentUuid` 清除同轮次 snapshot（assembler 聚合后可靠），full message 正常 upsert |
 

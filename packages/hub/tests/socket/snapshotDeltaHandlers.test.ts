@@ -18,7 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHandlers'
 import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
-import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
+import { SnapshotSync } from '../../src/sync/snapshotSync'
 import { textEnvelope, blocksOf as envelopeBlocksOf } from '../helpers/snapshotDelta'
 import type { StoredSession } from '../../src/store/types'
 import type { SyncEvent } from '../../src/sync/syncEngine'
@@ -62,7 +62,7 @@ function makeHarness() {
         resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
         emitAccessError: () => {},
         backgroundTaskTracker: new BackgroundTaskTracker(),
-        snapshotAssembler: new SnapshotDeltaAssembler(),
+        snapshotSync: new SnapshotSync(),
         onWebappEvent: (e: SyncEvent) => { events.push(JSON.parse(JSON.stringify(e))) },
     }
     registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)

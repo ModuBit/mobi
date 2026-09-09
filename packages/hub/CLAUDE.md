@@ -12,6 +12,7 @@
 |------|------|
 | `src/index.ts` | 主入口，组件组装 |
 | `src/sync/syncEngine.ts` | 同步引擎 |
+| `src/sync/snapshotSync.ts` | 流式快照同步（完整基线、版本、订阅游标与连接生命周期） |
 | `src/store/index.ts` | SQLite 存储层（WAL） |
 | `src/store/projects.ts` | 项目实体存储（「项目实体化」，会话按项目 / 「最近」组织） |
 | `src/web/routes/projects.ts` | 项目 Web API（/api/projects） |

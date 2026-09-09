@@ -96,6 +96,7 @@ CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
 | **[SocketServer](./socket)** | Socket.IO 服务器，处理 CLI 连接 |
 | **[WebServer](./web)** | HTTP 服务器，提供 API 和静态资源 |
 | **[SSEManager](./sse)** | 管理 SSE 连接，向 Web 推送实时事件 |
+| **[SnapshotSync](./sync/snapshot-delta.md)** | 管理流式快照基线、版本衔接、订阅游标与连接生命周期 |
 | **[VisibilityTracker](./visibility)** | 页面可见性追踪，通知降级策略 |
 | **[PushService](./push)** | Web Push 通知，离线时推送通知 |
 | **[NotificationHub](./notification)** | 通知调度，监听事件并分发通知 |
@@ -111,11 +112,15 @@ graph LR
     NH[NotificationHub] --> SE & PNC[PushNotificationChannel]
     PNC --> SSE & PS[PushService]
     SE --> SSE
+    Socket --> SS[SnapshotSync]
+    SSE --> SS
+    WS --> SSE
     SE <-->|循环引用| Socket
 ```
 
 - **Store** 被 SyncEngine、PushService、WebServer 共享依赖
 - **VisibilityTracker** 被 SSEManager、PushNotificationChannel、WebServer 共享依赖
+- **SnapshotSync** 被 SocketServer 与 SSEManager 共享；Web resync 通过 SSEManager 的订阅接口进入，不直接读取内部缓存
 - **循环引用**：SocketServer ↔ SyncEngine，通过 lazy getter 解决
 - **通知链路**：SyncEngine → NotificationHub → PushNotificationChannel → SSEManager / PushService
 
@@ -128,9 +133,10 @@ flowchart LR
     C --> D[VapidKeys]
     D --> E[PushService]
     E --> F[VisibilityTracker]
-    F --> G[SSEManager]
-    G --> H[SocketServer]
-    H --> I[SyncEngine]
+    F --> G[SnapshotSync]
+    G --> H[SSEManager]
+    H --> S[SocketServer]
+    S --> I[SyncEngine]
     I --> J[PushNotificationChannel]
     J --> K[NotificationHub]
     K --> L[WebServer]
@@ -148,6 +154,7 @@ packages/hub/src/
 │   └── vapidKeys.ts             # VAPID 密钥
 ├── sync/
 │   ├── syncEngine.ts            # 同步引擎
+│   ├── snapshotSync.ts           # 流式快照同步生命周期
 │   ├── backgroundTasks.ts       # 后台任务增量提取
 │   └── tasks.ts                 # 任务增量提取与合并
 ├── socket/

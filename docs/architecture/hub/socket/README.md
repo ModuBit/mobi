@@ -49,6 +49,8 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为四组：
 | 事件 | 方向 | 说明 |
 |------|------|------|
 | `message` | CLI → Hub | 发送消息，存入数据库并广播给同房间客户端 |
+| `session-message`（snapshot / snapshotDelta） | CLI → Hub | 校验会话后交给 `SnapshotSync.ingest()`，不落库；接受的 publication 转交 SyncEngine |
+| `snapshot-stream-end` | CLI → Hub | 通知 `SnapshotSync` 精确结束指定流，清完整基线和订阅游标 |
 | `session-alive` | CLI → Hub | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
 | `session-end` | CLI → Hub | 会话结束，触发清理 |
 | `context-usage` | CLI → Hub | 每轮 result 上报上下文用量（从 usage 字段本地派生，不调 getContextUsage），落库到 `runtimeState.contextUsage` 并广播给 Web |
@@ -164,6 +166,10 @@ CLI 连接后自动加入房间，用于 Socket.IO 的广播定向：
 
 hub→CLI 推送按域分事件名：session room 走 `session-update`，machine room 走 `machine-update`（body.t 判别不变）。
 
+### 快照连接 lease
+
+合法的 session CLI 连接会从 `SnapshotSync.attachCli()` 取得 lease。断连时只关闭自己的 lease；若同一会话已被新 socket 接管，旧 socket 的迟到 `disconnect` 不会清理新连接重建的快照基线。这个连接所有权与快照缓存由同一 module 维护，Socket 层不再保存独立 epoch 表。
+
 ### 乐观锁
 
 `update-metadata`、`update-state`、`machine-update-metadata`、`machine-update-state` 四个事件使用乐观锁机制：
@@ -219,6 +225,8 @@ flowchart LR
     Socket -->|回调| SE[SyncEngine]
     SE -->|broadcast| SSE[SSEManager]
     SSE -->|SSE| Web[Web 客户端]
+    Socket -->|snapshot ingest| SS[SnapshotSync]
+    SS -->|publication| SE
 ```
 
 CLI → SocketServer（通过回调）→ SyncEngine → SSEManager → Web

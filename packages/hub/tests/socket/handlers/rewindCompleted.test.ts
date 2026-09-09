@@ -18,7 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { registerSessionHandlers } from '../../../src/socket/handlers/cli/sessionHandlers'
 import type { SessionHandlersDeps } from '../../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
-import { SnapshotDeltaAssembler } from '../../../src/sync/snapshotDeltaAssembler'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
 import type { StoredSession } from '../../../src/store/types'
 import type { SyncEvent } from '../../../src/sync/syncEngine'
 
@@ -58,7 +58,7 @@ function makeDeps(): { deps: SessionHandlersDeps; events: SyncEvent[] } {
         resolveSessionAccess: (_sid: string) => ({ ok: true as const, value: makeStoredSession('s1') }),
         emitAccessError: () => {},
         backgroundTaskTracker: new BackgroundTaskTracker(),
-        snapshotAssembler: new SnapshotDeltaAssembler(),
+        snapshotSync: new SnapshotSync(),
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
     return { deps, events }

@@ -16,7 +16,9 @@
 
 import { describe, test, expect, mock } from 'bun:test'
 import { SSEManager } from '../../src/sse/sseManager'
+import { SnapshotSync } from '../../src/sync/snapshotSync'
 import { VisibilityTracker } from '../../src/visibility/visibilityTracker'
+import { blocksOf, textEnvelope } from '../helpers/snapshotDelta'
 
 /** 构造一个 SSE 连接的 send 回调,记录是否被调用 */
 function makeConnection(id: string, namespace: string, opts?: { visible?: boolean }) {
@@ -106,5 +108,65 @@ describe('SSEManager', () => {
         const delivered = await manager.sendToast('ns1', toast as never)
         expect(delivered).toBe(0)
         expect(other.calls).toHaveLength(0)
+    })
+
+    test('快照广播由订阅 handle 决定增量直发或完整追赶', () => {
+        const tracker = new VisibilityTracker()
+        const sync = new SnapshotSync()
+        const manager = new SSEManager(0, tracker, sync)
+        const modern = makeConnection('modern', 'ns1')
+        const legacy = makeConnection('legacy', 'ns1')
+        manager.subscribe({
+            id: modern.id, namespace: 'ns1', sessionId: 's1', snapshotDelta: true,
+            send: modern.send, sendHeartbeat: modern.sendHeartbeat,
+        })
+        manager.subscribe({
+            id: legacy.id, namespace: 'ns1', sessionId: 's1',
+            send: legacy.send, sendHeartbeat: legacy.sendHeartbeat,
+        })
+
+        const full = sync.ingest({
+            kind: 'full', sessionId: 's1', localId: 'u1', content: textEnvelope('hel'), rev: 1,
+        })
+        expect(full.status).toBe('accepted')
+        if (full.status !== 'accepted') return
+        manager.broadcast({ ...full.publication, namespace: 'ns1' })
+
+        const next = sync.ingest({
+            kind: 'delta',
+            sessionId: 's1',
+            frame: {
+                localId: 'u1', rev: 2, baseRev: 1,
+                deltas: [{ op: 'append', index: 0, text: 'lo' }],
+            },
+        })
+        expect(next.status).toBe('accepted')
+        if (next.status !== 'accepted') return
+        manager.broadcast({ ...next.publication, namespace: 'ns1' })
+
+        expect((modern.calls[1] as { type: string }).type).toBe('message-snapshot-delta')
+        const legacyCatchUp = legacy.calls[1] as { type: string; message: { content: unknown } }
+        expect(legacyCatchUp.type).toBe('message-snapshot')
+        expect(blocksOf(legacyCatchUp.message.content)).toEqual([{ type: 'text', text: 'hello' }])
+    })
+
+    test('resyncSnapshots 定向补发当前完整基线', () => {
+        const tracker = new VisibilityTracker()
+        const sync = new SnapshotSync()
+        const manager = new SSEManager(0, tracker, sync)
+        const connection = makeConnection('c1', 'ns1')
+        manager.subscribe({
+            id: connection.id, namespace: 'ns1', sessionId: 's1', snapshotDelta: true,
+            send: connection.send, sendHeartbeat: connection.sendHeartbeat,
+        })
+        sync.ingest({
+            kind: 'full', sessionId: 's1', localId: 'u1', content: textEnvelope('active'), rev: 4,
+        })
+
+        expect(manager.resyncSnapshots('c1', 's1', 'ns1')).toBe(1)
+        expect(connection.calls).toHaveLength(1)
+        expect(connection.calls[0]).toMatchObject({
+            type: 'message-snapshot', namespace: 'ns1', message: { localId: 'u1', snapshotRev: 4 },
+        })
     })
 })

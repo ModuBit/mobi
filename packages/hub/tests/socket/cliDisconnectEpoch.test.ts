@@ -17,8 +17,7 @@
 import { describe, test, expect } from 'bun:test'
 import { registerCliHandlers } from '../../src/socket/handlers/cli'
 import type { CliHandlersDeps } from '../../src/socket/handlers/cli'
-import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
-import { SnapshotDeltaForwarder } from '../../src/sse/snapshotDeltaForwarder'
+import { SnapshotSync } from '../../src/sync/snapshotSync'
 import { textEnvelope } from '../helpers/snapshotDelta'
 import type { StoredSession } from '../../src/store/types'
 
@@ -37,7 +36,7 @@ function makeStoredSession(sid: string): StoredSession {
     }
 }
 
-function makeDeps(assembler: SnapshotDeltaAssembler) {
+function makeDeps(snapshotSync: SnapshotSync) {
     return {
         io: { of: () => ({ sockets: new Map() }) } as unknown as CliHandlersDeps['io'],
         // resolveSessionAccess 在 registerCliHandlers 内部从 store 构建（namespace 过滤），stub store 层
@@ -51,9 +50,7 @@ function makeDeps(assembler: SnapshotDeltaAssembler) {
         rpcRegistry: { unregisterAll: () => {} } as unknown as CliHandlersDeps['rpcRegistry'],
         terminalRegistry: { removeByCliSocket: () => [] } as unknown as CliHandlersDeps['terminalRegistry'],
         backgroundTaskTracker: {} as CliHandlersDeps['backgroundTaskTracker'],
-        snapshotAssembler: assembler,
-        snapshotForwarder: new SnapshotDeltaForwarder(assembler),
-        sessionSocketIds: new Map<string, string>(),
+        snapshotSync,
         onWebappEvent: () => {},
     } as CliHandlersDeps
 }
@@ -71,50 +68,61 @@ function makeFakeSocket(id: string, sessionId: string | null) {
     }
 }
 
-describe('A1：迟到 disconnect 竞态——sessionSocketIds epoch 守卫', () => {
+function ingestFull(sync: SnapshotSync, rev: number, text: string): void {
+    sync.ingest({
+        kind: 'full', sessionId: 's1', localId: 'u1', content: textEnvelope(text), rev,
+    })
+}
+
+function ingestNext(sync: SnapshotSync, rev: number, baseRev: number) {
+    return sync.ingest({
+        kind: 'delta',
+        sessionId: 's1',
+        frame: { localId: 'u1', rev, baseRev, deltas: [{ op: 'append', index: 0, text: '!' }] },
+    })
+}
+
+describe('A1：迟到 disconnect 竞态——SnapshotSync CLI lease', () => {
     test('旧 socket 迟到的 disconnect 不清新连接重建的缓存（delta 链不冻死）', () => {
-        const assembler = new SnapshotDeltaAssembler()
-        const deps = makeDeps(assembler)
+        const sync = new SnapshotSync()
+        const deps = makeDeps(sync)
 
         // 旧连接：建链 rev=1
         const oldSocket = makeFakeSocket('sock-old', 's1')
         registerCliHandlers(oldSocket as never, deps)
-        assembler.applyFull('s1', 'u1', textEnvelope('a'), 1)
+        ingestFull(sync, 1, 'a')
 
-        // 快速重连：新 socket 接管会话（sessionSocketIds 指向新 id），forceFull 重建 rev=2
+        // 快速重连：新 socket 取得当前 lease，forceFull 重建 rev=2
         const newSocket = makeFakeSocket('sock-new', 's1')
         registerCliHandlers(newSocket as never, deps)
-        assembler.applyFull('s1', 'u1', textEnvelope('ab'), 2)
+        ingestFull(sync, 2, 'ab')
 
         // 旧 socket 迟到 disconnect：不得清理（否则后续 delta 全丢、流式冻死）
         oldSocket.emit('disconnect')
 
-        // 缓存仍健在：衔接 rev=2 的增量可被接受（流不冻死）
-        const kept = assembler.getActiveEntries('s1').find(e => e.localId === 'u1')
-        expect(kept).toBeDefined()
-        expect(kept!.rev).toBe(2)
+        expect(ingestNext(sync, 3, 2).status).toBe('accepted')
     })
 
     test('当前持有者的 disconnect 正常清会话缓存（流已断，缓存必过期）', () => {
-        const assembler = new SnapshotDeltaAssembler()
-        const deps = makeDeps(assembler)
+        const sync = new SnapshotSync()
+        const deps = makeDeps(sync)
 
         const socket = makeFakeSocket('sock-1', 's1')
         registerCliHandlers(socket as never, deps)
-        assembler.applyFull('s1', 'u1', textEnvelope('a'), 1)
+        ingestFull(sync, 1, 'a')
 
         socket.emit('disconnect')
-        expect(assembler.getActiveEntries('s1')).toHaveLength(0)
+        expect(ingestNext(sync, 2, 1)).toEqual({ status: 'ignored', reason: 'missing-baseline' })
     })
 
     test('非会话 socket（无 sessionId）disconnect 不影响任何缓存', () => {
-        const assembler = new SnapshotDeltaAssembler()
-        const deps = makeDeps(assembler)
-        assembler.applyFull('s1', 'u1', textEnvelope('a'), 1)
+        const sync = new SnapshotSync()
+        const deps = makeDeps(sync)
+        ingestFull(sync, 1, 'a')
 
         const plain = makeFakeSocket('sock-x', null)
         registerCliHandlers(plain as never, deps)
         plain.emit('disconnect')
-        expect(assembler.getActiveEntries('s1')).toHaveLength(1)
+        expect(ingestNext(sync, 2, 1).status).toBe('accepted')
     })
 })

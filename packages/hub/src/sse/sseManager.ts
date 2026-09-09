@@ -17,8 +17,7 @@
 import type { SyncEvent } from '@mobi/shared/types'
 import type { VisibilityState } from '../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
-import type { SnapshotDeltaForwarder } from './snapshotDeltaForwarder'
-import { SnapshotDeltaStats } from '../sync/snapshotDeltaStats'
+import { SnapshotSync, type SnapshotSubscription } from '../sync/snapshotSync'
 
 export type SSESubscription = {
     id: string
@@ -31,8 +30,7 @@ export type SSESubscription = {
 type SSEConnection = SSESubscription & {
     send: (event: SyncEvent) => void | Promise<void>
     sendHeartbeat: () => void | Promise<void>
-    /** 订阅协商了 snapshot delta（票 02）：跟不上时 forwarder 仍会全量追赶 */
-    wantsDelta: boolean
+    snapshot: SnapshotSubscription
 }
 
 export class SSEManager {
@@ -40,19 +38,12 @@ export class SSEManager {
     private heartbeatTimer: NodeJS.Timeout | null = null
     private readonly heartbeatMs: number
     private readonly visibilityTracker: VisibilityTracker
-    /** snapshot delta 转发器（票 02）：组装层注入；未注入时 delta 事件不下发（防御） */
-    private snapshotForwarder: SnapshotDeltaForwarder | null = null
-    /** 流量观测（票 03）：组装层注入；缺省关闭（零开销） */
-    private readonly stats: SnapshotDeltaStats
+    private readonly snapshotSync: SnapshotSync
 
-    constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker, stats?: SnapshotDeltaStats) {
+    constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker, snapshotSync?: SnapshotSync) {
         this.heartbeatMs = heartbeatMs
         this.visibilityTracker = visibilityTracker
-        this.stats = stats ?? new SnapshotDeltaStats(false)
-    }
-
-    setSnapshotForwarder(forwarder: SnapshotDeltaForwarder | null): void {
-        this.snapshotForwarder = forwarder
+        this.snapshotSync = snapshotSync ?? new SnapshotSync()
     }
 
     subscribe(options: {
@@ -67,6 +58,7 @@ export class SSEManager {
         send: (event: SyncEvent) => void | Promise<void>
         sendHeartbeat: () => void | Promise<void>
     }): SSESubscription {
+        this.connections.get(options.id)?.snapshot.close()
         const subscription: SSEConnection = {
             id: options.id,
             namespace: options.namespace,
@@ -75,7 +67,10 @@ export class SSEManager {
             machineId: options.machineId ?? null,
             send: options.send,
             sendHeartbeat: options.sendHeartbeat,
-            wantsDelta: Boolean(options.snapshotDelta),
+            snapshot: this.snapshotSync.attachSubscription({
+                id: options.id,
+                wantsDelta: Boolean(options.snapshotDelta),
+            }),
         }
 
         this.connections.set(subscription.id, subscription)
@@ -95,9 +90,10 @@ export class SSEManager {
     }
 
     unsubscribe(id: string): void {
+        const connection = this.connections.get(id)
+        connection?.snapshot.close()
         this.connections.delete(id)
         this.visibilityTracker.removeConnection(id)
-        this.snapshotForwarder?.resetSubscription(id)
         if (this.connections.size === 0) {
             this.stopHeartbeat()
         }
@@ -165,35 +161,14 @@ export class SSEManager {
     }
 
     broadcast(event: SyncEvent): void {
-        // 同一事件广播给 N 个订阅只序列化测一次（stats 关闭时零成本）。
-        // delta 原样转发（resolved === event）跨订阅同引用，同样可复用
-        let fullBytes: number | null = null
-        let deltaBytes: number | null = null
         for (const connection of this.connections.values()) {
             if (!this.shouldSend(connection, event)) {
                 continue
             }
 
-            // snapshot delta 帧（票 02）：按订阅进度路由——衔接且协商 delta → 转发增量；
-            // 否则 forwarder 从拼接器缓存构造全量追赶。无 forwarder（组装异常）不下发。
-            if (event.type === 'message-snapshot-delta') {
-                const resolved = this.snapshotForwarder?.resolve(event, connection)
-                if (resolved) {
-                    if (resolved === event) {
-                        deltaBytes ??= this.stats.bytesOf(event)
-                        this.deliverSnapshot(connection, resolved, deltaBytes)
-                    } else {
-                        // 全量追赶内容因含 Date.now() 逐订阅不同，序列化天然逐次
-                        this.deliverSnapshot(connection, resolved)
-                    }
-                }
-                continue
-            }
-
-            // 全量 snapshot：标记游标 + 统计后下发（同 broadcast 内字节只算一次）
-            if (event.type === 'message-snapshot') {
-                fullBytes ??= this.stats.bytesOf(event)
-                this.deliverSnapshot(connection, event, fullBytes)
+            if (event.type === 'message-snapshot' || event.type === 'message-snapshot-delta') {
+                const resolved = connection.snapshot.resolve(event)
+                if (resolved) this.deliver(connection, resolved)
                 continue
             }
 
@@ -201,20 +176,21 @@ export class SSEManager {
         }
     }
 
-    /** 定向发送（票 02：snapshot resync 端点对指定订阅补发全量）。无该订阅静默丢弃 */
-    sendTo(subscriptionId: string, event: SyncEvent): void {
+    /** 为指定订阅补发会话内所有活跃流的完整基线，并重建该订阅的游标。 */
+    resyncSnapshots(subscriptionId: string, sessionId: string, namespace?: string): number {
         const connection = this.connections.get(subscriptionId)
-        if (!connection) return
-        if (event.type === 'message-snapshot') {
-            this.deliverSnapshot(connection, event)
-            return
+        if (!connection) return 0
+        const baselines = connection.snapshot.resync(sessionId, namespace)
+        for (const baseline of baselines) {
+            this.deliver(connection, baseline)
         }
-        this.deliver(connection, event)
+        return baselines.length
     }
 
     stop(): void {
         this.stopHeartbeat()
-        for (const id of this.connections.keys()) {
+        for (const [id, connection] of this.connections) {
+            connection.snapshot.close()
             this.visibilityTracker.removeConnection(id)
         }
         this.connections.clear()
@@ -225,23 +201,6 @@ export class SSEManager {
         void Promise.resolve(connection.send(event)).catch(() => {
             this.unsubscribe(connection.id)
         })
-    }
-
-    /**
-     * snapshot 类事件下发：delta 原样转发或全量追赶共用——全量标记订阅游标
-     * （衔接后续 delta；仅对协商 delta 的连接，老 web 游标无人读徒增泄漏）+ 流量统计后
-     * 投递。precomputedBytes 供广播扇出复用同一事件的序列化长度（同事件 N 订阅只测一次）。
-     */
-    private deliverSnapshot(connection: SSEConnection, event: SyncEvent, precomputedBytes?: number): void {
-        if (event.type === 'message-snapshot') {
-            if (connection.wantsDelta) {
-                this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev ?? null)
-            }
-            this.stats.record('hub-to-web', 'full', event, precomputedBytes)
-        } else {
-            this.stats.record('hub-to-web', 'delta', event, precomputedBytes)
-        }
-        this.deliver(connection, event)
     }
 
     private ensureHeartbeat(): void {
