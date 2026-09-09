@@ -25,6 +25,8 @@ import { configuration } from '../configuration'
 import { PROTOCOL_VERSION, MAX_UPLOAD_BYTES } from '@mobi/shared'
 import type { SyncEngine } from '../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
+import type { SnapshotDeltaAssembler } from '../sync/snapshotDeltaAssembler'
+import type { SnapshotDeltaForwarder } from '../sse/snapshotDeltaForwarder'
 import { createAuthMiddleware, type WebAppEnv } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
 import { createEventsRoutes } from './routes/events'
@@ -92,6 +94,8 @@ export function createWebApp(options: {
     distDirOverride?: string
     /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例，生产组装层必传） */
     backgroundTaskTracker?: BackgroundTaskTracker
+    /** snapshot delta 拼接器+转发器（delta 协议票 02：resync 端点读；与 socket server/SSEManager 共用实例） */
+    getSnapshotDelta?: () => { assembler: SnapshotDeltaAssembler; forwarder: SnapshotDeltaForwarder } | null
 }): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -160,7 +164,7 @@ export function createWebApp(options: {
 
     app.route('/api', createAuthRoutes(options.jwtSecret))
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
-    app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
+    app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker, options.getSnapshotDelta))
     app.route('/api', createSessionsRoutes(
         options.getSyncEngine,
         options.backgroundTaskTracker ? () => options.backgroundTaskTracker : undefined,
@@ -265,6 +269,8 @@ export async function startWebServer(options: {
     corsOrigins?: string[]
     /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例） */
     backgroundTaskTracker?: BackgroundTaskTracker
+    /** snapshot delta 拼接器+转发器（delta 协议票 02：resync 端点读；与 socket server/SSEManager 共用实例） */
+    getSnapshotDelta?: () => { assembler: SnapshotDeltaAssembler; forwarder: SnapshotDeltaForwarder } | null
 }): Promise<BunServer<WebSocketData>> {
     const isCompiled = isBunCompiled()
     const embeddedAssetMap = isCompiled ? await loadEmbeddedAssetMap() : null
@@ -277,7 +283,8 @@ export async function startWebServer(options: {
         vapidPublicKey: options.vapidPublicKey,
         corsOrigins: options.corsOrigins,
         embeddedAssetMap,
-        backgroundTaskTracker: options.backgroundTaskTracker
+        backgroundTaskTracker: options.backgroundTaskTracker,
+        getSnapshotDelta: options.getSnapshotDelta
     })
 
     const socketHandler = options.socketEngine.handler()

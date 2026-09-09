@@ -6,6 +6,7 @@ import {
     fetchLatestMessages,
     fetchOlderMessages,
     ingestIncomingMessages,
+    ingestSnapshotDelta,
     appendOptimisticMessage,
     removeOptimisticMessage,
     markMessagesSubmitted,
@@ -487,5 +488,88 @@ describe('withdrawFrom tombstone（撤回复活防护：迟到广播/snapshot �
         clearMessageWindow('s1')
         ingestIncomingMessages('s1', [msg('a', 1)])
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+})
+
+describe('messageWindowStore - snapshot delta apply（.scratch/snapshot-delta 票 02）', () => {
+    beforeEach(() => _resetForTest())
+
+    /** 与 CLI 真实发送一致的 snapshot 信封 */
+    function snapshotMsg(localId: string, text: string, rev?: number): DecryptedMessage {
+        return {
+            id: localId,
+            seq: null,
+            localId,
+            snapshot: true,
+            snapshotRev: rev,
+            createdAt: 1,
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: { type: 'assistant', message: { role: 'assistant', id: 'm', content: [{ type: 'text', text }], model: 'm' } },
+                },
+            },
+        } as unknown as DecryptedMessage
+    }
+
+    function seed(messages: DecryptedMessage[]): void {
+        _internal.updateState('s1', prev => _internal.buildState(prev, { messages }))
+    }
+
+    function textOf(state = getMessageWindowState('s1')): string {
+        const last = state.messages.at(-1) as unknown as { content: { content: { data: { message: { content: Array<{ type: string; text?: string }> } } } } }
+        return last.content.content.data.message.content[0]?.text ?? ''
+    }
+
+    it('baseRev 衔接 → op 应用到消息内容 + rev 推进 + messages 引用更新（驱动 memo 失效）', () => {
+        seed([snapshotMsg('u1', 'hel', 1)])
+        const before = getMessageWindowState('s1').messages
+
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'lo' }] })
+
+        const after = getMessageWindowState('s1')
+        expect(textOf(after)).toBe('hello')
+        expect((after.messages.at(-1) as unknown as { snapshotRev?: number }).snapshotRev).toBe(2)
+        expect(after.messages).not.toBe(before) // 引用更新驱动下游 memo
+    })
+
+    it('窗口无该消息（中途打开）→ 丢弃 delta（等 resync 全量或终态）', () => {
+        seed([])
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'x' }] })
+        expect(getMessageWindowState('s1').messages).toHaveLength(0)
+    })
+
+    it('baseRev 不衔接（失联/半死窗口丢帧）→ 丢弃且不推进（内容停留在失联点，等终态替换）', () => {
+        seed([snapshotMsg('u1', 'stale', 1)])
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 5, baseRev: 4, deltas: [{ op: 'append', index: 0, text: 'x' }] })
+        expect(textOf()).toBe('stale')
+        expect((getMessageWindowState('s1').messages.at(-1) as unknown as { snapshotRev?: number }).snapshotRev).toBe(1)
+    })
+
+    it('无 snapshotRev 的消息（legacy 全量/落库行）不应用 delta', () => {
+        seed([snapshotMsg('u1', 'legacy', undefined)])
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'x' }] })
+        expect(textOf()).toBe('legacy')
+    })
+
+    it('违规 op（append 到 tool_use）→ no-op（丢弃优于错乱）', () => {
+        const toolMsg = {
+            id: 'u1', seq: null, localId: 'u1', snapshot: true, snapshotRev: 1, createdAt: 1,
+            content: {
+                role: 'agent',
+                content: { type: 'output', data: { type: 'assistant', message: { role: 'assistant', id: 'm', content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }], model: 'm' } } },
+            },
+        } as unknown as DecryptedMessage
+        seed([toolMsg])
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'x' }] })
+        expect(getMessageWindowState('s1').messages.at(-1)).toBe(toolMsg) // 原引用未动
+    })
+
+    it('撤回墓碑命中（localId）→ 丢弃 delta（迟到的增量不复活已撤回行）', () => {
+        seed([snapshotMsg('u1', 'hi', 1)])
+        withdrawFrom('s1', 'u1') // 记录墓碑并移除
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: '!' }] })
+        expect(getMessageWindowState('s1').messages).toHaveLength(0)
     })
 })

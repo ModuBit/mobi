@@ -19,6 +19,8 @@ import { streamSSE } from 'hono/streaming'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { SSEManager } from '../../sse/sseManager'
+import type { SnapshotDeltaAssembler } from '../../sync/snapshotDeltaAssembler'
+import type { SnapshotDeltaForwarder } from '../../sse/snapshotDeltaForwarder'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { VisibilityState } from '../../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../../visibility/visibilityTracker'
@@ -48,10 +50,18 @@ const visibilitySchema = z.object({
     visibility: z.enum(['visible', 'hidden'])
 })
 
+/** snapshot resync（delta 协议票 02）：web 打开会话时主动补发流式中的全量基线 */
+const snapshotResyncSchema = z.object({
+    subscriptionId: z.string().min(1),
+    sessionId: z.string().min(1)
+})
+
 export function createEventsRoutes(
     getSseManager: () => SSEManager | null,
     getSyncEngine: () => SyncEngine | null,
-    getVisibilityTracker: () => VisibilityTracker | null
+    getVisibilityTracker: () => VisibilityTracker | null,
+    /** delta 协议票 02：拼接器与转发器（与 socket server / SSEManager 共用实例） */
+    getSnapshotDelta?: () => { assembler: SnapshotDeltaAssembler; forwarder: SnapshotDeltaForwarder } | null
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -68,6 +78,8 @@ export function createEventsRoutes(
         const machineId = parseOptionalId(query.machineId)
         const subscriptionId = randomUUID()
         const visibility = parseVisibility(query.visibility)
+        // snapshot delta 能力协商（票 02）：老 web 不带参数 → 恒收全量（零破坏升级）
+        const snapshotDelta = parseBoolean(query.snapshotDelta)
         const namespace = c.get('namespace')
         let resolvedSessionId = sessionId
 
@@ -102,6 +114,7 @@ export function createEventsRoutes(
                 sessionId: resolvedSessionId,
                 machineId,
                 visibility,
+                snapshotDelta,
                 send: (event) => stream.writeSSE({ data: JSON.stringify(event) }),
                 sendHeartbeat: async () => {
                     await stream.writeSSE({
@@ -156,6 +169,61 @@ export function createEventsRoutes(
         }
 
         return c.json({ ok: true })
+    })
+
+    /**
+     * snapshot resync（delta 协议票 02）：web 打开会话（或重连）后主动调用。
+     * 对该会话所有流式中的消息（拼接器活跃缓存）定向补发全量基线 + 重建订阅游标，
+     * 此后 delta 帧继续衔接——解决「窗口无记录却收到 delta」的缺口（首拉竞态模式的 SSE 侧补拉）。
+     */
+    app.post('/snapshot-resync', async (c) => {
+        const manager = getSseManager()
+        const snapshotDelta = getSnapshotDelta?.()
+        if (!manager || !snapshotDelta) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const json = await c.req.json().catch(() => null)
+        const parsed = snapshotResyncSchema.safeParse(json)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+        // 会话访问校验（同 events 建连的 requireSession 语义）
+        const sessionResult = requireSession(c, engine, parsed.data.sessionId)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const { assembler, forwarder } = snapshotDelta
+        // 清游标（下一 delta 若先到也会全量追赶）+ 立即补发当前全部活跃流的全量基线
+        forwarder.resetSubscription(parsed.data.subscriptionId)
+        let synced = 0
+        for (const localId of assembler.getActiveLocalIds(sessionResult.sessionId)) {
+            const cached = assembler.getContent(sessionResult.sessionId, localId)
+            if (!cached || cached.rev === null) continue
+            manager.sendTo(parsed.data.subscriptionId, {
+                type: 'message-snapshot',
+                sessionId: sessionResult.sessionId,
+                namespace: c.get('namespace'),
+                message: {
+                    id: localId,
+                    seq: null,
+                    localId,
+                    snapshot: true,
+                    snapshotRev: cached.rev,
+                    content: cached.content,
+                    createdAt: Date.now(),
+                },
+            })
+            synced += 1
+        }
+
+        return c.json({ ok: true, synced })
     })
 
     return app

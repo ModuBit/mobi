@@ -37,6 +37,7 @@ vi.mock('@/core/lib/sessionResources', () => ({
 }))
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => vi.fn(),
+    useLocation: () => ({ pathname: '/' }),
 }))
 
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'

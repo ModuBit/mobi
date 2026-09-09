@@ -15,6 +15,7 @@
  */
 
 export * from './schemas'
+export * from './snapshotDelta'
 export * from './socket'
 export * from './modes'
 export * from './styles'

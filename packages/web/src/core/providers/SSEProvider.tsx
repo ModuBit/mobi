@@ -18,7 +18,7 @@ import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { SSEClient } from '@/core/data/realtime/sseClient'
 import { useAuthStore } from '@/core/data/stores/authStore'
-import { useNavigate } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 import { queryKeys } from '@/core/lib/query-keys'
 import { useTranslation } from 'react-i18next'
 import { useNotify } from '@/core/data/hooks/useNotify'
@@ -36,6 +36,7 @@ import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
 import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import {
     ingestIncomingMessages,
+    ingestSnapshotDelta,
     markMessagesSubmitted as markSubmittedInStore,
     clearMessageWindow,
     fetchLatestMessages,
@@ -211,6 +212,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const navigate = useNavigate()
     const navigateRef = useRef(navigate)
     navigateRef.current = navigate
+    const location = useLocation()
     const notify = useNotify()
     const notifyRef = useRef(notify)
     notifyRef.current = notify
@@ -304,6 +306,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
     }
 
+    // delta 协议：切换进会话页时主动 resync——此刻窗口可能尚无流式消息记录，直接收到的
+    // 增量帧会被丢弃；resync 让 hub 补发全量基线（并重建该订阅游标），此后增量继续衔接。
+    // 首次连接早于进页的场景由 connection-changed 分支的 resync 覆盖
+    useEffect(() => {
+        const sid = parseActiveSessionId(location.pathname)
+        const subId = subscriptionIdRef.current
+        if (!sid || !subId) return
+        apiRef.current.snapshotDelta.resync(subId, sid).catch(() => {})
+    }, [location.pathname])
+
     // 所有依赖通过 ref 访问，确保回调引用稳定
     const handleSyncEvent = useCallback((event: SyncEvent) => {
         const qc = queryClientRef.current
@@ -381,6 +393,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 }
                 break
             }
+            case 'message-snapshot-delta':
+                // snapshot 增量帧（delta 协议）：baseRev 衔接才拼接（store 内校验），
+                // 失联/无记录丢弃等全量基线（resync 补发或终态 full message）
+                if (event.sessionId) {
+                    ingestSnapshotDelta(event.sessionId, {
+                        localId: event.localId, rev: event.rev, baseRev: event.baseRev, deltas: event.deltas,
+                    })
+                }
+                break
             case 'messages-submitted':
                 // 排队消息被 agent 真正消费：把命中 localId 的消息翻为 pushed（lifecycleAt = 事件 submittedAt）
                 if (event.sessionId && event.localIds?.length) {
@@ -428,6 +449,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         event.data.subscriptionId,
                         document.hidden ? 'hidden' : 'visible'
                     ).catch(() => {})
+                    // delta 协议：连接（含重连）建立后，对流式中的当前会话补发全量基线——
+                    // 重连后订阅游标在 hub 侧已重置，但 web 窗口可能还没收到任何全量 snapshot
+                    const activeSid = parseActiveSessionId(window.location.pathname)
+                    if (activeSid) {
+                        apiRef.current.snapshotDelta.resync(event.data.subscriptionId, activeSid).catch(() => {})
+                    }
                 }
                 if (event.connected === false) {
                     subscriptionIdRef.current = null
@@ -574,7 +601,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // all=true 用于接收所有 session 相关事件（如 session-updated）
                 // visibility 传递初始可见性状态；认证走 httpOnly cookie（SSEClient credentials: 'include'）
                 const initialVisibility = document.hidden ? 'hidden' : 'visible'
-                return `${window.location.origin}/api/events?all=true&visibility=${initialVisibility}`
+                // snapshotDelta=1：delta 能力协商（增量帧按订阅进度转发；跟不上时 hub 全量追赶）
+                return `${window.location.origin}/api/events?all=true&visibility=${initialVisibility}&snapshotDelta=1`
             },
             handleUnauthorized
         )

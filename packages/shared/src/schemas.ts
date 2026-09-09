@@ -630,6 +630,8 @@ export const DecryptedMessageSchema = z.object({
     createdAt: z.number(),
     /** 标识流式快照消息（未落库，Hub 直接透传给 Web） */
     snapshot: z.boolean().optional(),
+    /** snapshot 流当前帧序号（delta 协议票 02）：web 据此衔接后续增量帧（baseRev 校验） */
+    snapshotRev: z.number().int().nonnegative().optional(),
 })
 
 export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
@@ -798,6 +800,15 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionChangedSchema.extend({
         type: z.literal('message-snapshot'),
         message: DecryptedMessageSchema
+    }),
+    // snapshot 增量帧（delta 协议票 02）：hub→web 段按订阅进度转发；web 收到后按序拼接，
+    // baseRev 与本地持有 rev 不衔接即丢弃等全量基线（message-snapshot 全量或 full message 终态）
+    SessionChangedSchema.extend({
+        type: z.literal('message-snapshot-delta'),
+        localId: z.string(),
+        rev: z.number().int().nonnegative(),
+        baseRev: z.number().int().nonnegative(),
+        deltas: z.array(SnapshotBlockDeltaSchema),
     }),
     SessionEventBaseSchema.extend({
         type: z.literal('heartbeat'),

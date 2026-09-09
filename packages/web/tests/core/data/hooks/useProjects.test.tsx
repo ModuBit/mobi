@@ -62,6 +62,7 @@ vi.mock('@/core/data/stores/authStore', () => ({
 }))
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => navigateSpy,
+    useLocation: () => ({ pathname: '/' }),
 }))
 vi.mock('@/core/data/hooks/useNotify', () => ({
     useNotify: () => ({ warning: vi.fn(), success: vi.fn(), info: vi.fn(), error: vi.fn(), destroy: vi.fn() }),

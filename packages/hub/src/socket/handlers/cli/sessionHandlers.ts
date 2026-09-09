@@ -124,7 +124,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         const { sid, localId, snapshot } = parsed.data
 
-        // 增量帧（delta 协议）：拼接器 apply 后下发重建的全量；断档返回 null 不下发（等全量基线）
+        // 增量帧（delta 协议）：hub apply 推进缓存后 emit delta 事件，SSE 广播端按订阅
+        // 进度转发（衔接→转发增量；追赶/老 web→全量）。断档 apply 返回 null 不 emit（等全量基线）
         if (parsed.data.snapshotDelta) {
             const frame = parsed.data.snapshotDelta
             const sessionAccess = resolveSessionAccess(sid)
@@ -132,26 +133,21 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 emitAccessError('session', sid, sessionAccess.reason)
                 return
             }
-            const content = snapshotAssembler.applyDelta(sid, frame)
-            if (content !== null) {
+            if (frame.baseRev !== null && snapshotAssembler.applyDelta(sid, frame) !== null) {
                 onWebappEvent?.({
-                    type: 'message-snapshot',
+                    type: 'message-snapshot-delta',
                     sessionId: sid,
-                    message: {
-                        id: frame.localId ?? SNAPSHOT_PENDING_ID,
-                        seq: null,
-                        localId: frame.localId,
-                        snapshot: true,
-                        content,
-                        createdAt: Date.now(),
-                    },
+                    localId: frame.localId,
+                    rev: frame.rev,
+                    baseRev: frame.baseRev,
+                    deltas: frame.deltas ?? [],
                 })
             }
             return
         }
 
-        // 快照消息：不落库，经拼接器重建全量缓存后透传给 Web（delta 协议票 01：
-        // CLI→hub 段已增量化，此处下发的是缓存重建的全量；票 02 再按订阅进度转发增量）
+        // 快照消息：不落库，经拼接器重建全量缓存后透传给 Web（delta 协议：
+        // CLI→hub 段已增量化；SSE 广播端（票 02）按订阅进度转发增量或全量追赶）
         if (snapshot) {
             const sessionAccess = resolveSessionAccess(sid)
             if (!sessionAccess.ok) {
@@ -159,12 +155,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 return
             }
             const content = parsed.data.message
-            const rebuilt = snapshotAssembler.applyFull(
-                sid,
-                localId ?? null,
-                content,
-                parsed.data.frame?.rev ?? null,
-            )
+            const rev = parsed.data.frame?.rev ?? null
+            const rebuilt = snapshotAssembler.applyFull(sid, localId ?? null, content, rev)
             onWebappEvent?.({
                 type: 'message-snapshot',
                 sessionId: sid,
@@ -173,6 +165,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     seq: null,
                     localId: localId ?? null,
                     snapshot: true,
+                    snapshotRev: rev === null ? undefined : rev,
                     content: rebuilt,
                     createdAt: Date.now(),
                 },

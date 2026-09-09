@@ -17,6 +17,7 @@
 import type { SyncEvent } from '@mobi/shared/types'
 import type { VisibilityState } from '../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
+import type { SnapshotDeltaForwarder } from './snapshotDeltaForwarder'
 
 export type SSESubscription = {
     id: string
@@ -29,6 +30,8 @@ export type SSESubscription = {
 type SSEConnection = SSESubscription & {
     send: (event: SyncEvent) => void | Promise<void>
     sendHeartbeat: () => void | Promise<void>
+    /** 订阅协商了 snapshot delta（票 02）：跟不上时 forwarder 仍会全量追赶 */
+    wantsDelta: boolean
 }
 
 export class SSEManager {
@@ -36,10 +39,16 @@ export class SSEManager {
     private heartbeatTimer: NodeJS.Timeout | null = null
     private readonly heartbeatMs: number
     private readonly visibilityTracker: VisibilityTracker
+    /** snapshot delta 转发器（票 02）：组装层注入；未注入时 delta 事件不下发（防御） */
+    private snapshotForwarder: SnapshotDeltaForwarder | null = null
 
     constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker) {
         this.heartbeatMs = heartbeatMs
         this.visibilityTracker = visibilityTracker
+    }
+
+    setSnapshotForwarder(forwarder: SnapshotDeltaForwarder | null): void {
+        this.snapshotForwarder = forwarder
     }
 
     subscribe(options: {
@@ -49,6 +58,8 @@ export class SSEManager {
         sessionId?: string | null
         machineId?: string | null
         visibility?: VisibilityState
+        /** snapshot delta 能力协商（票 02）：老 web 缺省 false，恒收全量 */
+        snapshotDelta?: boolean
         send: (event: SyncEvent) => void | Promise<void>
         sendHeartbeat: () => void | Promise<void>
     }): SSESubscription {
@@ -59,7 +70,8 @@ export class SSEManager {
             sessionId: options.sessionId ?? null,
             machineId: options.machineId ?? null,
             send: options.send,
-            sendHeartbeat: options.sendHeartbeat
+            sendHeartbeat: options.sendHeartbeat,
+            wantsDelta: Boolean(options.snapshotDelta),
         }
 
         this.connections.set(subscription.id, subscription)
@@ -81,6 +93,7 @@ export class SSEManager {
     unsubscribe(id: string): void {
         this.connections.delete(id)
         this.visibilityTracker.removeConnection(id)
+        this.snapshotForwarder?.onUnsubscribe(id)
         if (this.connections.size === 0) {
             this.stopHeartbeat()
         }
@@ -140,10 +153,39 @@ export class SSEManager {
                 continue
             }
 
+            // snapshot delta 帧（票 02）：按订阅进度路由——衔接且协商 delta → 转发增量；
+            // 否则 forwarder 从拼接器缓存构造全量追赶。无 forwarder（组装异常）不下发。
+            if (event.type === 'message-snapshot-delta') {
+                const resolved = this.snapshotForwarder?.resolve(event, connection)
+                if (resolved) {
+                    void Promise.resolve(connection.send(resolved)).catch(() => {
+                        this.unsubscribe(connection.id)
+                    })
+                }
+                continue
+            }
+
+            // 全量 snapshot 下发后标记该订阅游标（衔接后续 delta 帧）
+            if (event.type === 'message-snapshot') {
+                this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev)
+            }
+
             void Promise.resolve(connection.send(event)).catch(() => {
                 this.unsubscribe(connection.id)
             })
         }
+    }
+
+    /** 定向发送（票 02：snapshot resync 端点对指定订阅补发全量）。无该订阅静默丢弃 */
+    sendTo(subscriptionId: string, event: SyncEvent): void {
+        const connection = this.connections.get(subscriptionId)
+        if (!connection) return
+        if (event.type === 'message-snapshot') {
+            this.snapshotForwarder?.markFullSent(subscriptionId, event.message.localId ?? null, event.message.snapshotRev)
+        }
+        void Promise.resolve(connection.send(event)).catch(() => {
+            this.unsubscribe(subscriptionId)
+        })
     }
 
     stop(): void {

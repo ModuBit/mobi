@@ -311,6 +311,11 @@ export function createMobiApi() {
             report: (subscriptionId: string, visibility: 'visible' | 'hidden') =>
                 client.post('/api/visibility', { subscriptionId, visibility }),
         },
+        snapshotDelta: {
+            /** 打开会话/重连后主动补发流式中的全量基线（delta 协议：衔接此后的增量帧） */
+            resync: (subscriptionId: string, sessionId: string) =>
+                client.post<{ ok: boolean; synced: number }>('/api/snapshot-resync', { subscriptionId, sessionId }),
+        },
 
         // Push notifications
         push: {

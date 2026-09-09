@@ -26,6 +26,8 @@
 
 import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
+import type { SnapshotBlockDelta } from '@mobi/shared'
+import { applySnapshotBlockDeltas, locateSnapshotBlocks } from '@mobi/shared'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
 import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMessagesSubmitted'
@@ -334,6 +336,39 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
         // 流式期 prev.oldestSeq 已有，新消息 seq 递增不改变 min，沿用 prev.oldestSeq 避免每条 chunk O(n)
         const oldestSeq = prev.oldestSeq === null ? computeOldestSeq(messages) : prev.oldestSeq
         return _internal.buildState(prev, { messages, oldestSeq })
+    })
+}
+
+/**
+ * SSE snapshot 增量帧入库（message-snapshot-delta，delta 协议票 02）。
+ *
+ * 按 localId 定位窗口内该 snapshot 消息，baseRev 严格衔接才应用 op（与 hub/shared 的
+ * apply 语义同源）；任何不衔接/无记录/违规 op 均 no-op——丢弃优于错乱，等全量基线
+ * （resync 补发或 message-snapshot 全量）或 full message 终态替换。
+ * 应用成功后浅拷贝目标消息行（数组新引用驱动下游 memo；content 内部 blocks 就地变异，
+ * 旧行已被替换丢弃）并推进 snapshotRev 供下一帧衔接校验。
+ */
+export function ingestSnapshotDelta(
+    sessionId: string,
+    frame: { localId: string; rev: number; baseRev: number; deltas: SnapshotBlockDelta[] },
+): void {
+    _internal.updateState(sessionId, prev => {
+        const idx = prev.messages.findIndex(
+            m => !isWithdrawn(sessionId, m) && (m.localId === frame.localId || m.id === frame.localId),
+        )
+        if (idx === -1) return prev
+        const target = prev.messages[idx]
+        // 仅流式 snapshot 行且 rev 严格衔接才应用（legacy 全量无 rev、落库行、失联后均不拼）
+        if (!target.snapshot || target.snapshotRev === undefined || target.snapshotRev !== frame.baseRev) {
+            return prev
+        }
+        const blocks = locateSnapshotBlocks(target.content)
+        if (blocks === null || !applySnapshotBlockDeltas(blocks, frame.deltas)) {
+            return prev
+        }
+        const nextMessages = prev.messages.slice()
+        nextMessages[idx] = { ...target, snapshotRev: frame.rev }
+        return _internal.buildState(prev, { messages: nextMessages })
     })
 }
 

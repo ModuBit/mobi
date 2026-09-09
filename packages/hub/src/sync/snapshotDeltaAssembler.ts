@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import type { SnapshotBlock, SnapshotDeltaFrame } from '@mobi/shared'
+import { applySnapshotBlockDeltas, locateSnapshotBlocks } from '@mobi/shared'
+import type { SnapshotDeltaFrame } from '@mobi/shared'
 
 /**
  * Snapshot delta 拼接器（.scratch/snapshot-delta spec 票 01）。
@@ -58,7 +59,7 @@ export class SnapshotDeltaAssembler {
     applyFull(sessionId: string, localId: string | null, content: unknown, rev: number | null): unknown {
         this.sweep()
 
-        if (localId === null || this.locateBlocks(content) === null) {
+        if (localId === null || locateSnapshotBlocks(content) === null) {
             return content
         }
 
@@ -83,8 +84,8 @@ export class SnapshotDeltaAssembler {
             return null
         }
 
-        const blocks = this.locateBlocks(entry.content)
-        if (blocks === null || !this.applyOps(blocks, frame.deltas ?? [])) {
+        const blocks = locateSnapshotBlocks(entry.content)
+        if (blocks === null || !applySnapshotBlockDeltas(blocks, frame.deltas ?? [])) {
             if (frame.localId !== null) {
                 entryMap.delete(frame.localId)
             }
@@ -108,49 +109,18 @@ export class SnapshotDeltaAssembler {
     }
 
     /**
-     * 定位信封内的 blocks 数组：content.content.data.message.content。
-     * CLI 发送的 snapshot 信封固定此形状（wrapAsDecryptedMessage → convertSnapshot）；
-     * 任何环节形状漂移 → null（调用方按防御路径处理）。
+     * 读该消息当前的全量缓存（票 02：SSE 订阅者追赶/全量 fallback 的内容来源）。
+     * 返回共享引用不拷贝（即时序列化消费）；无缓存（未建链/已清理/信封不可导航）→ null。
      */
-    private locateBlocks(content: unknown): SnapshotBlock[] | null {
-        if (typeof content !== 'object' || content === null) return null
-        const c = content as { content?: unknown }
-        if (typeof c.content !== 'object' || c.content === null) return null
-        const data = (c.content as { data?: unknown }).data
-        if (typeof data !== 'object' || data === null) return null
-        const message = (data as { message?: unknown }).message
-        if (typeof message !== 'object' || message === null) return null
-        const blocks = (message as { content?: unknown }).content
-        return Array.isArray(blocks) ? (blocks as SnapshotBlock[]) : null
+    getContent(sessionId: string, localId: string): { content: unknown; rev: number | null } | null {
+        const entry = this.cache.get(sessionId)?.get(localId)
+        if (!entry) return null
+        return { content: entry.content, rev: entry.rev }
     }
 
-    /**
-     * 逐 op 应用。任何违规（index 越界、类型错配）整体失败（调用方删缓存）。
-     * 直接在缓存 blocks 上变异：失败路径缓存即被删，变异无害；成功路径返回引用。
-     */
-    private applyOps(blocks: SnapshotBlock[], deltas: NonNullable<SnapshotDeltaFrame['deltas']>): boolean {
-        for (const op of deltas) {
-            if (op.op === 'append') {
-                const block = blocks[op.index]
-                if (!block || block.type === 'tool_use') return false
-                if (block.type === 'text') {
-                    block.text += op.text
-                } else {
-                    block.thinking += op.text
-                }
-                continue
-            }
-            if (op.op === 'new-block') {
-                // 新块只能追加到末位（发送方按插入序对齐 index）
-                if (op.index !== blocks.length) return false
-                blocks.push(op.block)
-                continue
-            }
-            // replace-block：仅替换已存在位置
-            if (op.index >= blocks.length) return false
-            blocks[op.index] = op.block
-        }
-        return true
+    /** 列出该会话当前有活跃缓存的消息 localId（票 02：resync 端点定向补发） */
+    getActiveLocalIds(sessionId: string): string[] {
+        return [...(this.cache.get(sessionId)?.keys() ?? [])]
     }
 
     /** 惰性清理超 TTL 条目（流式缓存生命周期兜底：full 丢失/断线残留） */
