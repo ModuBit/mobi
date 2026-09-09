@@ -18,6 +18,7 @@ import type { SyncEvent } from '@mobi/shared/types'
 import type { VisibilityState } from '../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { SnapshotDeltaForwarder } from './snapshotDeltaForwarder'
+import { snapshotDeltaStats } from '../sync/snapshotDeltaStats'
 
 export type SSESubscription = {
     id: string
@@ -158,6 +159,11 @@ export class SSEManager {
             if (event.type === 'message-snapshot-delta') {
                 const resolved = this.snapshotForwarder?.resolve(event, connection)
                 if (resolved) {
+                    snapshotDeltaStats.record(
+                        'hub-to-web',
+                        resolved.type === 'message-snapshot-delta' ? 'delta' : 'full',
+                        resolved,
+                    )
                     void Promise.resolve(connection.send(resolved)).catch(() => {
                         this.unsubscribe(connection.id)
                     })
@@ -167,6 +173,7 @@ export class SSEManager {
 
             // 全量 snapshot 下发后标记该订阅游标（衔接后续 delta 帧）
             if (event.type === 'message-snapshot') {
+                snapshotDeltaStats.record('hub-to-web', 'full', event)
                 this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev)
             }
 
@@ -181,6 +188,7 @@ export class SSEManager {
         const connection = this.connections.get(subscriptionId)
         if (!connection) return
         if (event.type === 'message-snapshot') {
+            snapshotDeltaStats.record('hub-to-web', 'full', event)
             this.snapshotForwarder?.markFullSent(subscriptionId, event.message.localId ?? null, event.message.snapshotRev)
         }
         void Promise.resolve(connection.send(event)).catch(() => {

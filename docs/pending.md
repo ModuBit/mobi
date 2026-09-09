@@ -8,7 +8,7 @@
 
 ## 8. Snapshot 全量推送的带宽优化
 
-> ✅ 2026-09-09 立项实施（两端 delta 方案），spec 见 `.scratch/snapshot-delta/spec.md`。评估结论：仅 hub delta 的 diff 方案因 hub 独立部署为保留形态而否决；断线恢复走事件驱动重基线（流首帧全量/重连重发全量），无需周期 checkpoint。以下为原始记录。
+> ✅ 2026-09-09 已交付（票 01-03 全部完成，fist-milestone 分支）：CLI→hub 与 hub→web 两段 delta 化，链路无 diff（CLI 从 buffer 状态变迁直接产 op）。E2E 实测 cli→hub 增量均 ~176B/帧 vs 全量追赶 ~2.1KB/帧；断线恢复矩阵（SSE 重连/CLI socket 重连 forceFull/legacy 混版本）全过。流量观测常驻 `MOBI_SNAPSHOT_STATS=1`（hub 日志 `[snapshot-stats]`）。spec 见 `.scratch/snapshot-delta/spec.md`。以下为原始记录。
 
 **相关文件**：
 

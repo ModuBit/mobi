@@ -1,9 +1,9 @@
 ---
 name: env-bootstrap
-description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复
+description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / hub 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-08-26
+  last_verified: 2026-09-09
 ---
 
 # 环境启动
@@ -71,6 +71,20 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 改 CLI 源码后，已运行的 runner / 会话 CLI 仍是旧代码。验证 CLI 侧行为变更（RPC handler、
 边界校验等）前必须 cleanup + bootstrap 重启环境；否则表现为「修复无效」，极易误判为代码 bug。
 判别手段：`ps -eo pid,ppid,command | grep "packages/cli/src/index.ts claude"` 看会话 CLI 启动时间。
+
+## hub 单独重启（验证 CLI socket 断线重连，2026-09-09）
+
+不 cleanup 整环境，只重启 hub（触发 CLI socket 断连→重连，snapshot delta 场景实测 forceFull 重发）：
+
+1. 找 PID：`ps -eo pid,ppid,command | grep "hub start-sync"`（e2e hub 带 `--profile e2e --port 2224`；24520/66011 是用户 dev/生产 hub，禁碰）
+2. `kill -TERM <pid>` → `run_in_background` 拉起同命令同 env（日志 `>>` 追加保持 stats 历史）
+3. 轮询 `/health` 就绪
+
+**坑**：Bash 工具里 `nohup ... &` 拉起的进程在**工具调用结束时被沙箱 SIGTERM 回收**（exits.log 见 signal-term、uptime ~5s）——必须用 `run_in_background: true`。
+
+## curl 直调 hub API（不走浏览器）
+
+`POST /api/auth` body 字段是 **`accessToken`**（不是 token）：`curl -c jar -d '{"accessToken":"e2e-test-token-mobi"}'` 换 httpOnly cookie，后续 `-b jar`。SSE 直接 `curl -N -b jar "http://localhost:2224/api/events?all=1[&snapshotDelta=1]"`（后者协商 delta，模拟新 web；缺省模拟老 web）。
 
 ## 坑（误判）
 

@@ -26,6 +26,7 @@ import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { SnapshotDeltaAssembler } from '../../../sync/snapshotDeltaAssembler'
+import { snapshotDeltaStats } from '../../../sync/snapshotDeltaStats'
 import { toDecryptedMessage } from '../../../sync/messageService'
 import { extractWithdrawnContent, isContextBoundaryContent } from '../../../store/messages'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
@@ -128,6 +129,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 进度转发（衔接→转发增量；追赶/老 web→全量）。断档 apply 返回 null 不 emit（等全量基线）
         if (parsed.data.snapshotDelta) {
             const frame = parsed.data.snapshotDelta
+            snapshotDeltaStats.record('cli-to-hub', 'delta', frame)
             const sessionAccess = resolveSessionAccess(sid)
             if (!sessionAccess.ok) {
                 emitAccessError('session', sid, sessionAccess.reason)
@@ -149,6 +151,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 快照消息：不落库，经拼接器重建全量缓存后透传给 Web（delta 协议：
         // CLI→hub 段已增量化；SSE 广播端（票 02）按订阅进度转发增量或全量追赶）
         if (snapshot) {
+            snapshotDeltaStats.record('cli-to-hub', 'full', { message: parsed.data.message, frame: parsed.data.frame })
             const sessionAccess = resolveSessionAccess(sid)
             if (!sessionAccess.ok) {
                 emitAccessError('session', sid, sessionAccess.reason)
