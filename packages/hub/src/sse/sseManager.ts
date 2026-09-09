@@ -179,10 +179,13 @@ export class SSEManager {
     }
 
     /** 为指定订阅补发会话内所有活跃流的完整基线，并重建该订阅的游标。
-     *  namespace 是投递层路由元数据，由本层盖章（module 只决定快照内容）。 */
+     *  namespace 是投递层路由元数据，由本层盖章（module 只决定快照内容）。
+     *  绕过 broadcast 的 shouldSend 直写，须自带同款 session 绑定校验——
+     *  否则未绑定目标会话的连接被注入基线后，永远收不到它的后续 delta。 */
     resyncSnapshots(subscriptionId: string, sessionId: string): number {
         const connection = this.connections.get(subscriptionId)
         if (!connection) return 0
+        if (!connection.all && connection.sessionId !== sessionId) return 0
         const baselines = connection.snapshot.resync(sessionId)
         for (const baseline of baselines) {
             this.deliver(connection, { ...baseline, namespace: connection.namespace })

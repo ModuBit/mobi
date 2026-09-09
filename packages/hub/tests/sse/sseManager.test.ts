@@ -169,4 +169,23 @@ describe('SSEManager', () => {
             type: 'message-snapshot', namespace: 'ns1', message: { localId: 'u1', snapshotRev: 4 },
         })
     })
+
+    test('resyncSnapshots 不向未绑定目标会话的订阅注入基线', () => {
+        const tracker = new VisibilityTracker()
+        const sync = new SnapshotSync()
+        const manager = new SSEManager(0, tracker, sync)
+        // 绑定 s1 的订阅（all=false）：即使调用者通过 namespace 与目标会话双重校验，
+        // 也不能把 s2 的基线写进这条连接——它永远收不到 s2 的后续 delta，基线只会悬空
+        const connection = makeConnection('c1', 'ns1')
+        manager.subscribe({
+            id: connection.id, namespace: 'ns1', sessionId: 's1', snapshotDelta: true,
+            send: connection.send, sendHeartbeat: connection.sendHeartbeat,
+        })
+        sync.ingest({
+            kind: 'full', sessionId: 's2', localId: 'u2', content: textEnvelope('other'), rev: 1,
+        })
+
+        expect(manager.resyncSnapshots('c1', 's2')).toBe(0)
+        expect(connection.calls).toHaveLength(0)
+    })
 })

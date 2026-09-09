@@ -621,12 +621,12 @@ interrupt（用户停止）
 
 **待做项**：
 
-1. **resync 绕过 session 绑定**（`sseManager.resyncSnapshots` 经 `deliver` 直写，不走 `shouldSend`）：同 namespace 下，绑定会话 A 的订阅（`all=false`）可被注入会话 B 的全量基线——客户端若按连接而非事件 sessionId 归属渲染，会话内容串视图；且该订阅永远收不到 B 的 delta，无法自愈。修法：`resyncSnapshots` 内对 `connection.all || connection.sessionId === sessionId` 补一道绑定校验。
-2. **sessionCache miss 时事件无 namespace → 静默黑洞**：hub 重启预热期或会话被 `expireInactive` 收割后，CLI 继续流式——`EventPublisher.resolveNamespace` 查不到会话不补 namespace，`shouldSend` 的 `!eventNamespace` 拒收所有连接，整条流零下发零日志，直到 session-alive 重填缓存。修法：namespace 缺失时至少打一次告警日志（内容下发与否需另行权衡）。
-3. **TTL 与 sweep 节流的竞态窗口**：`resync`/全量追赶可能在「已过期未扫除」（节流窗口 ≤ TTL/10 内）的缓存条目上重建游标，下轮 sweep 删掉后该流静默失联直到下一个全量帧。影响小（旧代码同存在），修法：追赶路径建游标前对 `entry.touchedAt` 做新鲜度检查。
+1. **TTL 与 sweep 节流的竞态窗口**：`resync`/全量追赶可能在「已过期未扫除」（节流窗口 ≤ TTL/10 内）的缓存条目上重建游标，下轮 sweep 删掉后该流静默失联直到下一个全量帧。触发前提是流静默超过 TTL（默认 10 分钟），此时 CLI 恢复通常直接发新全量帧自愈——影响小（旧代码同存在），修法：追赶路径建游标前对 `entry.touchedAt` 做新鲜度检查。
+2. **（低，理论化）namespace 解析失败静默黑洞**：事件无 namespace 且会话在内存与 DB 均不可见时，`shouldSend` 的 `!eventNamespace` 拒收所有连接、零日志。实际上 `getSession` 有 DB 回落（`sessionCache.getSession ?? refreshSession`）+ 构造期 `warmupCache` 预热 + socket 层 `resolveSessionAccess` 前置校验，正常路径构造不出该状态；若做，修法为 namespace 缺失时打一次告警日志。
 
 **已接受、无需动作**（记录以免重复调查）：
 
 - shape-drift 全量帧（信封不可导航但 rev 有值）冻结流式窗口直到下一个全量帧：hub 无内容可兜底，结构性无法自愈；已加「无 hub 基线不武装游标」守卫防止状态钉死（snapshotSync.ts resolveForSubscription）
 - CLI 断连清该会话全部订阅游标：与旧行为等价（重连 forceFull 无条件重建游标），无真实退化
 - `/snapshot-resync` 不再对快照基础设施缺失回 503：`snapshotSync` 已构造器必传，该条件结构性不存在
+- resync 绕过 session 绑定（未绑定目标会话的订阅可被注入基线）：已于 2026-09-10 修复——`resyncSnapshots` 自带 `connection.all || connection.sessionId === sessionId` 校验（同 shouldSend 语义），红→绿测试锁定
