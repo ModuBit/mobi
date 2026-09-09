@@ -614,3 +614,19 @@ interrupt（用户停止）
 4. 远期：PWA 跨端解析（通知点击走同一动作分发）、消息卡片（飞书式 action button 引用同一套 URI）
 
 **依赖**：#70 消息结构治理与本协议正交但共享词汇演进（ref 已退场，动作链接是其唯一后继形态）。
+
+## 72. 快照同步既存问题清单（SnapshotSync 重构 code-review，2026-09-10）
+
+**背景**：SnapshotSync 收敛重构（77d97128 / 601807de）后的 code-review 发现以下**既存问题**（重构前后行为一致，非回归）。已修复项不在此列；此清单防止再次调查。
+
+**待做项**：
+
+1. **resync 绕过 session 绑定**（`sseManager.resyncSnapshots` 经 `deliver` 直写，不走 `shouldSend`）：同 namespace 下，绑定会话 A 的订阅（`all=false`）可被注入会话 B 的全量基线——客户端若按连接而非事件 sessionId 归属渲染，会话内容串视图；且该订阅永远收不到 B 的 delta，无法自愈。修法：`resyncSnapshots` 内对 `connection.all || connection.sessionId === sessionId` 补一道绑定校验。
+2. **sessionCache miss 时事件无 namespace → 静默黑洞**：hub 重启预热期或会话被 `expireInactive` 收割后，CLI 继续流式——`EventPublisher.resolveNamespace` 查不到会话不补 namespace，`shouldSend` 的 `!eventNamespace` 拒收所有连接，整条流零下发零日志，直到 session-alive 重填缓存。修法：namespace 缺失时至少打一次告警日志（内容下发与否需另行权衡）。
+3. **TTL 与 sweep 节流的竞态窗口**：`resync`/全量追赶可能在「已过期未扫除」（节流窗口 ≤ TTL/10 内）的缓存条目上重建游标，下轮 sweep 删掉后该流静默失联直到下一个全量帧。影响小（旧代码同存在），修法：追赶路径建游标前对 `entry.touchedAt` 做新鲜度检查。
+
+**已接受、无需动作**（记录以免重复调查）：
+
+- shape-drift 全量帧（信封不可导航但 rev 有值）冻结流式窗口直到下一个全量帧：hub 无内容可兜底，结构性无法自愈；已加「无 hub 基线不武装游标」守卫防止状态钉死（snapshotSync.ts resolveForSubscription）
+- CLI 断连清该会话全部订阅游标：与旧行为等价（重连 forceFull 无条件重建游标），无真实退化
+- `/snapshot-resync` 不再对快照基础设施缺失回 503：`snapshotSync` 已构造器必传，该条件结构性不存在

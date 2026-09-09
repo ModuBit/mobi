@@ -18,7 +18,7 @@ import { describe, expect, test } from 'bun:test'
 import type { SnapshotDeltaFrame } from '@mobi/shared'
 
 import { SnapshotDeltaStats } from '../../src/sync/snapshotDeltaStats'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
+import { SnapshotSync, type SnapshotPublication } from '../../src/sync/snapshotSync'
 import { blocksOf, envelope, textEnvelope } from '../helpers/snapshotDelta'
 
 const delta = (rev: number, baseRev: number, text: string): SnapshotDeltaFrame => ({
@@ -58,6 +58,47 @@ describe('SnapshotSync', () => {
         expect(catchUp?.type).toBe('message-snapshot')
         if (catchUp?.type !== 'message-snapshot') return
         expect(blocksOf(catchUp.message.content)).toEqual([{ type: 'text', text: 'hello' }])
+    })
+
+    test('namespace 纯透传：入站携带随兜底全量透出，未携带则连键都不出现', () => {
+        const sync = new SnapshotSync()
+        const source = sync.attachSubscription({ id: 'web-src', wantsDelta: true })
+        const full = sync.ingest({
+            kind: 'full', sessionId: 'session-1', localId: 'stream-1', content: textEnvelope('a'), rev: 1,
+        })
+        expect(full.status).toBe('accepted')
+        if (full.status !== 'accepted') return
+        source.resolve(full.publication)
+        const appended = sync.ingest({ kind: 'delta', sessionId: 'session-1', frame: delta(2, 1, 'b') })
+        expect(appended.status).toBe('accepted')
+        if (appended.status !== 'accepted') return
+
+        // 无游标订阅（wantsDelta=false）走兜底全量：投递层盖章的 namespace 原样透出
+        const stamped: SnapshotPublication = { ...appended.publication, namespace: 'ns-1' }
+        const withNs = sync.attachSubscription({ id: 'web-1', wantsDelta: false }).resolve(stamped)
+        expect(withNs?.type).toBe('message-snapshot')
+        if (withNs?.type !== 'message-snapshot') return
+        expect(withNs.namespace).toBe('ns-1')
+
+        // 入站未携带：兜底全量不出现 namespace 键——module 不派生投递元数据（边界测试）
+        const bare = sync.attachSubscription({ id: 'web-2', wantsDelta: false }).resolve(appended.publication)
+        expect(bare?.type).toBe('message-snapshot')
+        if (bare?.type !== 'message-snapshot') return
+        expect('namespace' in bare).toBe(false)
+    })
+
+    test('重同步重建的基线不携带 namespace（module 不派生投递元数据）', () => {
+        const sync = new SnapshotSync()
+        const subscription = sync.attachSubscription({ id: 'web-1', wantsDelta: true })
+        const full = sync.ingest({
+            kind: 'full', sessionId: 'session-1', localId: 'stream-1', content: textEnvelope('a'), rev: 1,
+        })
+        expect(full.status).toBe('accepted')
+        if (full.status !== 'accepted') return
+
+        const baselines = subscription.resync('session-1')
+        expect(baselines).toHaveLength(1)
+        expect('namespace' in baselines[0]).toBe(false)
     })
 
     test('订阅重同步立即取得当前完整基线，并从该版本继续接收增量', () => {
@@ -247,6 +288,80 @@ describe('SnapshotSync', () => {
         })).toEqual({ status: 'ignored', reason: 'missing-baseline' })
     })
 
+    test('结构性违规的 new-block 与越界 replace-block 丢弃基线，后续合法增量同样被拒', () => {
+        const sync = new SnapshotSync()
+        sync.ingest({
+            kind: 'full',
+            sessionId: 'session-1',
+            localId: 'stream-1',
+            content: envelope([
+                { type: 'text', text: 'a' },
+                { type: 'text', text: 'b' },
+            ]),
+            rev: 1,
+        })
+        // new-block 只能追加到末位：index=1 而当前长度 2 → 非末位插入违规
+        expect(sync.ingest({
+            kind: 'delta',
+            sessionId: 'session-1',
+            frame: {
+                localId: 'stream-1', rev: 2, baseRev: 1,
+                deltas: [{ op: 'new-block', index: 1, block: { type: 'text', text: 'mid' } }],
+            },
+        })).toEqual({ status: 'ignored', reason: 'invalid-delta' })
+        // 基线已删：本可合法的追加也被拒，直到下一次完整帧
+        expect(sync.ingest({
+            kind: 'delta',
+            sessionId: 'session-1',
+            frame: { ...delta(3, 2, 'c'), deltas: [{ op: 'append', index: 0, text: 'c' }] },
+        })).toEqual({ status: 'ignored', reason: 'missing-baseline' })
+
+        sync.ingest({
+            kind: 'full',
+            sessionId: 'session-1',
+            localId: 'stream-1',
+            content: envelope([{ type: 'text', text: 'a' }]),
+            rev: 10,
+        })
+        // replace-block 越界（当前长度 1，index=5）→ 同样违规删基线
+        expect(sync.ingest({
+            kind: 'delta',
+            sessionId: 'session-1',
+            frame: {
+                localId: 'stream-1', rev: 11, baseRev: 10,
+                deltas: [{ op: 'replace-block', index: 5, block: { type: 'text', text: 'x' } }],
+            },
+        })).toEqual({ status: 'ignored', reason: 'invalid-delta' })
+        expect(sync.ingest({
+            kind: 'delta',
+            sessionId: 'session-1',
+            frame: { ...delta(12, 11, 'd'), deltas: [{ op: 'append', index: 0, text: 'd' }] },
+        })).toEqual({ status: 'ignored', reason: 'missing-baseline' })
+    })
+
+    test('缓存缺失时衔接 delta 也不下发——丢弃优于错乱', () => {
+        const sync = new SnapshotSync()
+        const subscription = sync.attachSubscription({ id: 'web-1', wantsDelta: true })
+        const full = sync.ingest({
+            kind: 'full', sessionId: 'session-1', localId: 'stream-1', content: textEnvelope('a'), rev: 1,
+        })
+        expect(full.status).toBe('accepted')
+        if (full.status !== 'accepted') return
+        subscription.resolve(full.publication)
+
+        // 基线被终态清理（revision-gap / 落库 / TTL / 断连同构）：订阅游标虽衔接，无内容可发
+        sync.endStream('session-1', 'stream-1')
+        const deltaPublication: SnapshotPublication = {
+            type: 'message-snapshot-delta',
+            sessionId: 'session-1',
+            localId: 'stream-1',
+            rev: 2,
+            baseRev: 1,
+            deltas: [{ op: 'append', index: 0, text: 'b' }],
+        }
+        expect(subscription.resolve(deltaPublication)).toBeNull()
+    })
+
     test('legacy 或不可导航的完整帧原样发布，但不建立增量链', () => {
         const sync = new SnapshotSync()
         const legacyContent = textEnvelope('legacy')
@@ -329,5 +444,55 @@ describe('SnapshotSync', () => {
         current.close()
         expect(current.resolve(full.publication)).toBeNull()
         expect(current.resync('session-1')).toEqual([])
+    })
+
+    test('无 hub 侧基线的全量发布不武装游标——衔接 delta 仍走兜底而非直发', () => {
+        const sync = new SnapshotSync()
+        const subscription = sync.attachSubscription({ id: 'web-1', wantsDelta: true })
+        // 不可导航信封（shape-drift）：ingest 原样发布但缓存未建，事件携带 snapshotRev
+        const weird = { role: 'agent', content: { type: 'text', text: 'not output envelope' } }
+        const weirdFull = sync.ingest({
+            kind: 'full', sessionId: 'session-1', localId: 'stream-1', content: weird, rev: 1,
+        })
+        expect(weirdFull.status).toBe('accepted')
+        if (weirdFull.status !== 'accepted') return
+        expect(subscription.resolve(weirdFull.publication)).toBe(weirdFull.publication)
+
+        // 若游标被错误武装在 rev=1，衔接 delta 会直发；正确行为：无基线兜底 → null 不下发
+        const deltaPublication: SnapshotPublication = {
+            type: 'message-snapshot-delta',
+            sessionId: 'session-1',
+            localId: 'stream-1',
+            rev: 2,
+            baseRev: 1,
+            deltas: [{ op: 'append', index: 0, text: 'x' }],
+        }
+        expect(subscription.resolve(deltaPublication)).toBeNull()
+    })
+
+    test('重同步只重建目标会话的游标，不影响同订阅其他会话的衔接', () => {
+        const sync = new SnapshotSync()
+        const subscription = sync.attachSubscription({ id: 'web-1', wantsDelta: true })
+        const cursors: Array<{ sessionId: string; rev: number }> = []
+        for (const [sessionId, rev] of [['session-1', 1], ['session-2', 5]] as const) {
+            const full = sync.ingest({
+                kind: 'full', sessionId, localId: 'stream-1', content: textEnvelope('a'), rev,
+            })
+            expect(full.status).toBe('accepted')
+            if (full.status !== 'accepted') return
+            subscription.resolve(full.publication)
+            cursors.push({ sessionId, rev })
+        }
+
+        // 打开会话 2 触发重同步：只有 session-2 的游标被清空重建
+        expect(subscription.resync('session-2')).toHaveLength(1)
+
+        // 会话 1 的游标不受牵连：衔接 delta 仍直发而非全量追赶
+        const appended = sync.ingest({
+            kind: 'delta', sessionId: 'session-1', frame: delta(2, 1, 'b'),
+        })
+        expect(appended.status).toBe('accepted')
+        if (appended.status !== 'accepted') return
+        expect(subscription.resolve(appended.publication)).toBe(appended.publication)
     })
 })

@@ -164,10 +164,11 @@ export class SnapshotSync {
         }
     }
 
-    /** 普通终态消息落库后的兼容清理；其 localId 可能不同于流式 snapshot 的 localId。 */
+    /** 普通终态消息落库后的兼容清理；其 localId 可能不同于流式 snapshot 的 localId。
+     *  终态即流死：与 endStream 同构清缓存和全部订阅游标——错过 stream-end 时的游标防泄漏路径。 */
     messagePersisted(sessionId: string, localId: string | null): void {
         if (localId === null) return
-        this.deleteCachedStream(sessionId, localId)
+        this.endStream(sessionId, localId)
     }
 
     /** snapshot-stream-end 是流式生命周期的权威终态，同时清缓存和全部订阅游标。 */
@@ -189,7 +190,8 @@ export class SnapshotSync {
             resync: (sessionId) => {
                 if (!isActive()) return []
                 this.sweepExpiredCache()
-                bySession.clear()
+                // 只重建目标会话的游标：同订阅可能同时在跟其他会话的流，全清会误伤其衔接
+                bySession.delete(sessionId)
                 const entries = this.cache.get(sessionId)
                 if (!entries) return []
                 const baselines: Array<Extract<SnapshotPublication, { type: 'message-snapshot' }>> = []
@@ -218,7 +220,10 @@ export class SnapshotSync {
         if (publication.type === 'message-snapshot') {
             const localId = publication.message.localId
             const rev = publication.message.snapshotRev
-            if (wantsDelta && localId !== null && rev !== undefined) {
+            // 游标武装要求 hub 侧基线在场：legacy（rev 无值）与 shape-drift（信封不可导航、
+            // 缓存未建）全量只透传内容，武装了也永远衔接不上，还钉死订阅等一个不存在的链
+            if (wantsDelta && localId !== null && rev !== undefined
+                && this.cache.get(publication.sessionId)?.get(localId) !== undefined) {
                 this.sessionCursors(bySession, publication.sessionId).set(localId, { rev, touchedAt: this.now() })
             }
             this.recordToWeb('full', publication)
@@ -279,7 +284,8 @@ export class SnapshotSync {
         const publication: Extract<SnapshotPublication, { type: 'message-snapshot' }> = {
             type: 'message-snapshot',
             sessionId,
-            namespace,
+            // 纯透传：入站未携带则连键都不出现——由测试锁定 module 不演化出「自行派生投递元数据」
+            ...(namespace !== undefined && { namespace }),
             message: buildSnapshotMessage(localId, content, rev),
         }
         this.recordToWeb('full', publication)
@@ -323,6 +329,16 @@ export class SnapshotSync {
                 }
             }
             if (entries.size === 0) this.cache.delete(sessionId)
+        }
+        // 游标也有 TTL 惰性清理：终态信号丢失（revision-gap 删缓存后流再无帧）时，
+        // 孤儿游标不会再被 resolve 路径触达，不扫则随订阅生命周期无界滞留
+        for (const bySession of this.cursors.values()) {
+            for (const [sessionId, streams] of bySession) {
+                for (const [localId, cursor] of streams) {
+                    if (now - cursor.touchedAt > this.cursorTtlMs) streams.delete(localId)
+                }
+                if (streams.size === 0) bySession.delete(sessionId)
+            }
         }
     }
 }

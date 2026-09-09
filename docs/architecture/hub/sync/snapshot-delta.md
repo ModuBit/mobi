@@ -39,6 +39,17 @@ flowchart LR
 - **HTTP resync adapter**：校验 session 权限和 subscription 属主后，调用 `SSEManager.resyncSnapshots()`；不读取快照缓存内部结构。
 - **web 段** `messageWindowStore.ingestSnapshotDelta`：定位窗口内 snapshot 行（`snapshot && snapshotRev !== undefined` 且 localId 匹配），克隆 blocks 后应用（shared 的 apply 就地变异；克隆防撕裂读与失败污染）。
 
+## 模块边界（非目标）
+
+`SnapshotSync` 是纯状态机——只决定快照内容（衔接判定 / 游标 / 缓存 / 生命周期），以下边界由依赖巡航规则 `snapshot-sync-boundary` 与测试锁定，越界即腐化起点：
+
+| 边界 | 归属 | 禁止 |
+|------|------|------|
+| 网络发送 | socket / sse adapter | module 不 import `sse/**`、`socket/**`，不直接发送 |
+| 持久化 | adapter 层查 DB 后喂入 | module 不 import `store/**`（历史回放若要做，也不在本 module 内自查） |
+| 投递元数据 | 投递层盖章（如 namespace） | module 纯透传，不派生——入站未携带则产出连键都不出现（测试锁定） |
+| 观测 | `SnapshotDeltaStats`（DI 注入） | 只记录不聚合，导出 / 采样 / 上报格式不进本 module |
+
 ## 重基线规则（何时必须重发全量）
 
 | 场景 | 机制 |

@@ -81,6 +81,21 @@ module.exports = {
         path: '@mobi/.+/src/',
       },
     },
+
+    /* ===== SnapshotSync 模块边界 ===== */
+    // 快照同步 module 只决定快照内容（衔接判定/游标/缓存），历史回放由 adapter 层查 DB 后
+    // 喂进来、网络发送归 socket/sse adapter、观测只记录不聚合——越界即腐化起点，CI 硬卡
+    {
+      name: 'snapshot-sync-boundary',
+      comment: 'SnapshotSync 不触 store（DB）/ sse / socket——投递与持久化归 adapter 层，module 纯状态机',
+      severity: 'error',
+      from: {
+        path: '^packages/hub/src/sync/snapshotSync\\.ts$',
+      },
+      to: {
+        path: '^packages/hub/src/(store|sse|socket)/',
+      },
+    },
   ],
 
   options: {
