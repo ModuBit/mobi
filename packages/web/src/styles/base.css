@@ -113,6 +113,19 @@ pre, code {
     to { opacity: 0; }
 }
 
+/* 运行态标题微光：一道高光周期扫过（折叠组动态标题等强调场景，配 .shimmer-text 类） */
+.shimmer-text {
+    background: linear-gradient(90deg, currentColor 35%, #fff 50%, currentColor 65%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+@keyframes shimmer-sweep {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
 /* ToolCard pending 焦点色带脉动（权限等待时的左侧高亮条） */
 @keyframes tool-card-pulse {
     0%, 100% { opacity: 0.55; }

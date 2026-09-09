@@ -24,11 +24,12 @@ const FADE_MS = 200
  * 旧文案以绝对定位叠底淡出，不占布局（高度由当前文案决定，避免撑动）；
  * wrapper overflow:hidden 裁剪旧层——旧文案比新文案宽时不溢出压到相邻 UI。
  * 内层 span 以文案为 key，文案变化即重挂载重启淡入动画。
+ * shimmer=true 时文案叠加微光扫过（运行态强调，如折叠组动态标题）。
  * 旧层在 paint 前（useLayoutEffect）就位，避免「先消失一帧再闪回淡出」；
  * 定时器清理旧层（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠），
  * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
  */
-export function CrossfadeText({ text, style }: { text: string; style?: CSSProperties }) {
+export function CrossfadeText({ text, style, shimmer }: { text: string; style?: CSSProperties; shimmer?: boolean }) {
     const [leaving, setLeaving] = useState<string | null>(null)
     const prevTextRef = useRef(text)
 
@@ -42,7 +43,13 @@ export function CrossfadeText({ text, style }: { text: string; style?: CSSProper
 
     return (
         <span style={{ position: 'relative', display: 'inline-flex', overflow: 'hidden', ...style }}>
-            <span key={text} style={{ animation: `crossfade-in ${FADE_MS}ms ease` }}>{text}</span>
+            <span
+                key={text}
+                className={shimmer ? 'shimmer-text' : undefined}
+                style={{ animation: shimmer ? `crossfade-in ${FADE_MS}ms ease, shimmer-sweep 1.6s linear infinite` : `crossfade-in ${FADE_MS}ms ease` }}
+            >
+                {text}
+            </span>
             {leaving != null && (
                 <span
                     aria-hidden

@@ -109,9 +109,9 @@ describe('StatusStateIcon', () => {
 })
 
 describe('statusIconStyle', () => {
-    it('返回状态色 + icon 呼吸动画（running）', () => {
+    it('running 去色呼吸：无颜色覆盖，仅 icon 呼吸动画', () => {
         const style = statusIconStyle('running')
-        expect(style.color).toBe('#4dabf7')
+        expect(style.color).toBeUndefined()
         expect(style.animation).toContain('status-icon-breathe')
     })
 
@@ -122,10 +122,10 @@ describe('statusIconStyle', () => {
 })
 
 describe('StatusToolIcon', () => {
-    it('以状态色 + 呼吸动画包裹工具图标（无独立圆点）', () => {
+    it('running 去色呼吸（默认色 + 动画，蓝色退出主题）：无独立圆点', () => {
         const { container } = render(<StatusToolIcon name="Bash" state="running" />)
         const wrapper = container.firstChild as HTMLElement
-        expect(wrapper.style.color).toBe(rgb('#4dabf7'))
+        expect(wrapper.style.color).toBe('')
         expect(wrapper.style.animation).toContain('status-icon-breathe')
         // 内部是工具图标（anticon），不再渲染圆点
         expect(wrapper.querySelector('.anticon')).not.toBeNull()
