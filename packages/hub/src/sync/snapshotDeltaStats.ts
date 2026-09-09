@@ -49,10 +49,13 @@ export class SnapshotDeltaStats {
         private readonly now: () => number = Date.now,
     ) {}
 
-    /** 记录一帧。字节数取 JSON 序列化长度（与实际传输 payload 一致的近似口径） */
-    record(leg: SnapshotStatsLeg, kind: 'full' | 'delta', payload: unknown): void {
+    /**
+     * 记录一帧。字节数取 JSON 序列化长度（与实际传输 payload 一致的近似口径）；
+     * precomputedBytes 供同一事件扇出给多个订阅时复用（只 stringify 一次）。
+     */
+    record(leg: SnapshotStatsLeg, kind: 'full' | 'delta', payload: unknown, precomputedBytes?: number): void {
         if (!this.enabled) return
-        const bytes = JSON.stringify(payload)?.length ?? 0
+        const bytes = precomputedBytes ?? JSON.stringify(payload)?.length ?? 0
         const counters = this.legs[leg]
         if (kind === 'full') {
             counters.fullFrames += 1
@@ -66,6 +69,12 @@ export class SnapshotDeltaStats {
             this.lastLogAt = t
             this.log(this.summary())
         }
+    }
+
+    /** 序列化测长（广播扇出前调用一次，record 复用）。未开启时返回 0 且不序列化 */
+    bytesOf(payload: unknown): number {
+        if (!this.enabled) return 0
+        return JSON.stringify(payload)?.length ?? 0
     }
 
     /** 程序化读取（测试 / 后续观测面板） */

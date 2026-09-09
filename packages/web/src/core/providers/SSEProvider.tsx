@@ -306,14 +306,22 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
     }
 
+    /**
+     * snapshot delta 主动补基线（fire-and-forget）：对当前会话请求 hub 重发流式全量基线。
+     * 两个触发条件共用——路由进会话页（effect）/ 连接建立含重连（connection-changed）。
+     * 会话 id 单一来源 window.location.pathname（不在会话页或未连接时静默跳过）。
+     */
+    function resyncActiveSession(subId: string | null): void {
+        const sid = parseActiveSessionId(window.location.pathname)
+        if (!sid || !subId) return
+        apiRef.current.snapshotDelta.resync(subId, sid).catch(() => {})
+    }
+
     // delta 协议：切换进会话页时主动 resync——此刻窗口可能尚无流式消息记录，直接收到的
     // 增量帧会被丢弃；resync 让 hub 补发全量基线（并重建该订阅游标），此后增量继续衔接。
     // 首次连接早于进页的场景由 connection-changed 分支的 resync 覆盖
     useEffect(() => {
-        const sid = parseActiveSessionId(location.pathname)
-        const subId = subscriptionIdRef.current
-        if (!sid || !subId) return
-        apiRef.current.snapshotDelta.resync(subId, sid).catch(() => {})
+        resyncActiveSession(subscriptionIdRef.current)
     }, [location.pathname])
 
     // 所有依赖通过 ref 访问，确保回调引用稳定
@@ -451,10 +459,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     ).catch(() => {})
                     // delta 协议：连接（含重连）建立后，对流式中的当前会话补发全量基线——
                     // 重连后订阅游标在 hub 侧已重置，但 web 窗口可能还没收到任何全量 snapshot
-                    const activeSid = parseActiveSessionId(window.location.pathname)
-                    if (activeSid) {
-                        apiRef.current.snapshotDelta.resync(event.data.subscriptionId, activeSid).catch(() => {})
-                    }
+                    resyncActiveSession(event.data.subscriptionId)
                 }
                 if (event.connected === false) {
                     subscriptionIdRef.current = null

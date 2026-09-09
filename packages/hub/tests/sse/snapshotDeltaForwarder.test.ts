@@ -19,21 +19,16 @@ import { SnapshotDeltaForwarder } from '../../src/sse/snapshotDeltaForwarder'
 import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 import type { SnapshotBlock } from '@mobi/shared'
+import { textEnvelope, blocksOf as envelopeBlocksOf } from '../helpers/snapshotDelta'
 
 function envelope(text: string) {
-    return {
-        role: 'agent',
-        content: {
-            type: 'output',
-            data: { type: 'assistant', message: { role: 'assistant', id: 'm', content: [{ type: 'text', text }], model: 'm' } },
-        },
-    }
+    return textEnvelope(text)
 }
 
+/** 从 message-snapshot 事件取 blocks（窄化 + 复用信封 helper） */
 function blocksOf(event: SyncEvent): SnapshotBlock[] {
     if (event.type !== 'message-snapshot') throw new Error(`期望 message-snapshot，得到 ${event.type}`)
-    const content = (event.message as { content: { content: { data: { message: { content: SnapshotBlock[] } } } } }).content
-    return content.content.data.message.content
+    return envelopeBlocksOf(event.message.content)
 }
 
 function deltaEvent(rev: number, baseRev: number, text: string): Extract<SyncEvent, { type: 'message-snapshot-delta' }> {
@@ -134,10 +129,10 @@ describe('SnapshotDeltaForwarder - 订阅进度路由', () => {
         expect(out?.type).toBe('message-snapshot')
     })
 
-    test('onUnsubscribe 清游标（重连后必然全量起步）', () => {
+    test('resetSubscription 清游标（断开重连 / resync 共用，重连后必然全量起步）', () => {
         const { assembler, forwarder } = setup()
         forwarder.markFullSent('sub-1', 'u1', 1)
-        forwarder.onUnsubscribe('sub-1')
+        forwarder.resetSubscription('sub-1')
         const out = applyAndResolve(assembler, forwarder, deltaEvent(2, 1, 'lo'), { id: 'sub-1', wantsDelta: true })
         expect(out?.type).toBe('message-snapshot'
         )

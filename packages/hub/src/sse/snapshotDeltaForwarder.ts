@@ -15,6 +15,7 @@
  */
 
 import type { SyncEvent } from '@mobi/shared/types'
+import { buildSnapshotMessage } from '@mobi/shared'
 import type { SnapshotDeltaAssembler } from '../sync/snapshotDeltaAssembler'
 
 type MessageSnapshotDeltaEvent = Extract<SyncEvent, { type: 'message-snapshot-delta' }>
@@ -62,15 +63,7 @@ export class SnapshotDeltaForwarder {
             type: 'message-snapshot',
             sessionId: event.sessionId,
             namespace: event.namespace,
-            message: {
-                id: event.localId,
-                seq: null,
-                localId: event.localId,
-                snapshot: true,
-                snapshotRev: cached.rev,
-                content: cached.content,
-                createdAt: Date.now(),
-            },
+            message: buildSnapshotMessage(event.localId, cached.content, cached.rev),
         }
     }
 
@@ -80,12 +73,10 @@ export class SnapshotDeltaForwarder {
         this.markRev(subscriptionId, localId, rev)
     }
 
-    /** 订阅断开：清游标（重连后必然全量起步，重基线规则） */
-    onUnsubscribe(subscriptionId: string): void {
-        this.sentRev.delete(subscriptionId)
-    }
-
-    /** resync：清该订阅全部游标（web 打开会话时调用，下一 delta 触发全量追赶） */
+    /**
+     * 重置该订阅全部游标。两个触发条件共用同一语义（游标清空 → 下一 delta 触发全量追赶，
+     * 重基线规则）：订阅断开（重连后必然全量起步）/ resync 端点（web 打开会话时主动补基线）。
+     */
     resetSubscription(subscriptionId: string): void {
         this.sentRev.delete(subscriptionId)
     }

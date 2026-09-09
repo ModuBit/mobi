@@ -18,6 +18,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { buildSnapshotMessage } from '@mobi/shared'
 import type { SSEManager } from '../../sse/sseManager'
 import type { SnapshotDeltaAssembler } from '../../sync/snapshotDeltaAssembler'
 import type { SnapshotDeltaForwarder } from '../../sse/snapshotDeltaForwarder'
@@ -203,22 +204,12 @@ export function createEventsRoutes(
         // 清游标（下一 delta 若先到也会全量追赶）+ 立即补发当前全部活跃流的全量基线
         forwarder.resetSubscription(parsed.data.subscriptionId)
         let synced = 0
-        for (const localId of assembler.getActiveLocalIds(sessionResult.sessionId)) {
-            const cached = assembler.getContent(sessionResult.sessionId, localId)
-            if (!cached || cached.rev === null) continue
+        for (const entry of assembler.getActiveEntries(sessionResult.sessionId)) {
             manager.sendTo(parsed.data.subscriptionId, {
                 type: 'message-snapshot',
                 sessionId: sessionResult.sessionId,
                 namespace: c.get('namespace'),
-                message: {
-                    id: localId,
-                    seq: null,
-                    localId,
-                    snapshot: true,
-                    snapshotRev: cached.rev,
-                    content: cached.content,
-                    createdAt: Date.now(),
-                },
+                message: buildSnapshotMessage(entry.localId, entry.content, entry.rev),
             })
             synced += 1
         }

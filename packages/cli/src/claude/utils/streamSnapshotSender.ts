@@ -122,10 +122,8 @@ export class StreamSnapshotSender {
     private fullDelivered = false
     /** delta 流状态：当前消息流内单调递增的帧序号（0=尚未发帧） */
     private streamRev = 0
-    /** 当前流是否已发出首帧（false=下一帧必为全量） */
-    private streamHasSent = false
-    /** 强制下一帧为全量（socket 重连重发，见 forceFullFlush） */
-    private forceFull = false
+    /** 下一帧是否必须为全量（true=流首帧未发或 socket 重连强制重基线） */
+    private needFull = true
 
     constructor(
         private readonly transport: SnapshotTransport,
@@ -140,8 +138,7 @@ export class StreamSnapshotSender {
         this.fullDelivered = false
         // 新消息流：rev 归零、首帧必全量（sent-state 随 clearBuffers 的 buffer 重建自然重置）
         this.streamRev = 0
-        this.streamHasSent = false
-        this.forceFull = false
+        this.needFull = true
     }
 
     /** 清除所有 buffer（新消息开始时调用） */
@@ -231,7 +228,7 @@ export class StreamSnapshotSender {
     flush(): void {
         if (this.destroyed) return
 
-        if (!this.streamHasSent || this.forceFull) {
+        if (this.needFull) {
             this.emitFull()
             return
         }
@@ -261,21 +258,19 @@ export class StreamSnapshotSender {
 
     /**
      * socket 重连后重发全量帧（重基线规则：断线期间的 delta 帧已丢，hub 链必断档，
-     * 全量帧重建基线）。无在途内容或尚未发出过任何帧时为 no-op（无需重基线）。
+     * 全量帧重建基线）。无在途内容时为 no-op（无需重基线）；流首帧未发时 needFull 本已置位。
      */
     forceFullFlush(): void {
-        if (this.destroyed || this.buffers.size === 0 || !this.streamHasSent) return
-        this.forceFull = true
+        if (this.destroyed || this.buffers.size === 0) return
+        this.needFull = true
         this.flush()
     }
 
     /** 发送全量帧并初始化各 buffer 的发送游标（已发送=当前累积全量） */
     private emitFull(): void {
-        // 无任何累积内容时不发空帧（tool_use 占位场景 startBlock 已标脏，正常不会走到）
-        if (this.buffers.size === 0) {
-            this.forceFull = false
-            return
-        }
+        // 无任何累积内容时不发空帧（tool_use 占位场景 startBlock 已标脏，正常不会走到）；
+        // 保持 needFull 置位——下一帧仍需全量（尚无任何已发送状态）
+        if (this.buffers.size === 0) return
 
         const rawLog = this.converter.convertSnapshot(this.buildBlocks(), this.snapshotOpts)
         this.streamRev += 1
@@ -297,8 +292,7 @@ export class StreamSnapshotSender {
             }
             buffer.dirty = false
         }
-        this.streamHasSent = true
-        this.forceFull = false
+        this.needFull = false
     }
 
     /**
@@ -335,19 +329,11 @@ export class StreamSnapshotSender {
             }
             // tool_use
             if (!buffer.placeholderSent) {
-                deltas.push({
-                    op: 'new-block',
-                    index: pos,
-                    block: { type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput },
-                })
+                deltas.push({ op: 'new-block', index: pos, block: this.toolUseBlock(buffer) })
                 buffer.placeholderSent = true
                 buffer.readySent = buffer.ready
             } else if (buffer.ready && !buffer.readySent) {
-                deltas.push({
-                    op: 'replace-block',
-                    index: pos,
-                    block: { type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput },
-                })
+                deltas.push({ op: 'replace-block', index: pos, block: this.toolUseBlock(buffer) })
                 buffer.readySent = true
             }
         }
@@ -361,6 +347,11 @@ export class StreamSnapshotSender {
         return buffer.done
             ? { type: 'thinking', thinking: buffer.content, durationMs: buffer.durationMs, done: true }
             : { type: 'thinking', thinking: buffer.content }
+    }
+
+    /** tool_use 块构造（delta 的 new-block/replace-block 共用）：input 用 ready 时缓存的 parsedInput */
+    private toolUseBlock(buffer: ToolUseBuffer): SnapshotBlock {
+        return { type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput }
     }
 
     private clearDirty(): void {
@@ -385,24 +376,15 @@ export class StreamSnapshotSender {
         const blocks: ContentBlock[] = []
         for (const buffer of this.buffers.values()) {
             if (buffer.kind === 'text-like') {
-                if (buffer.type === 'text') {
-                    blocks.push({ type: 'text', text: buffer.content })
-                } else {
-                    // thinking：done 后带 durationMs/done；流式中不带（done undefined → 前端继续显示思考中）
-                    blocks.push(buffer.done
-                        ? { type: 'thinking', thinking: buffer.content, durationMs: buffer.durationMs, done: true }
-                        : { type: 'thinking', thinking: buffer.content })
-                }
+                // thinking：done 后带 durationMs/done；流式中不带（done undefined → 前端继续显示思考中）
+                blocks.push(this.textLikeBlock(buffer))
             } else {
                 // tool_use：ready 用 ready 时缓存的 parsedInput；未 ready 实时占位也用 parsedInput（初始 {}）
                 //   ——让 content_block_start 立即下发占位，消除大 input 工具（Write/Edit）生成内容期间的盲区
                 // abort 补全（includePartialToolUse）：未 ready 时改用累积 inputJson 兜底 parse，保留半截记录
-                const input = buffer.ready
-                    ? buffer.parsedInput
-                    : includePartialToolUse
-                        ? parseInputJson(buffer.inputJson)
-                        : buffer.parsedInput
-                blocks.push({ type: 'tool_use', id: buffer.id, name: buffer.name, input })
+                blocks.push(!buffer.ready && includePartialToolUse
+                    ? { type: 'tool_use', id: buffer.id, name: buffer.name, input: parseInputJson(buffer.inputJson) }
+                    : this.toolUseBlock(buffer))
             }
         }
         return blocks

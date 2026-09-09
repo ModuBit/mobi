@@ -681,20 +681,17 @@ describe('Snapshot Delta 协议（.scratch/snapshot-delta spec，CLI→hub 与 h
         expect(SnapshotBlockDeltaSchema.safeParse({ op: 'append', index: -1, text: 'x' }).success).toBe(false)
     })
 
-    it('全量帧：baseRev=null 必须携带 blocks；增量帧：baseRev 递增必须携带 deltas', () => {
-        expect(SnapshotDeltaFrameSchema.safeParse({
-            localId: 'uuid-1', rev: 1, baseRev: null, blocks: [{ type: 'text', text: 'hi' }],
-        }).success).toBe(true)
+    it('增量帧：deltas 必填、baseRev 非空（全量帧不走本 schema——CLI→hub 以 frame 标记携带）', () => {
         expect(SnapshotDeltaFrameSchema.safeParse({
             localId: 'uuid-1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: '!' }],
         }).success).toBe(true)
-        // 全量帧缺 blocks → 拒绝
-        expect(SnapshotDeltaFrameSchema.safeParse({
-            localId: 'uuid-1', rev: 1, baseRev: null,
-        }).success).toBe(false)
-        // 增量帧缺 deltas → 拒绝
+        // 缺 deltas → 拒绝
         expect(SnapshotDeltaFrameSchema.safeParse({
             localId: 'uuid-1', rev: 2, baseRev: 1,
+        }).success).toBe(false)
+        // baseRev=null（全量帧形态）→ 拒绝（协议收紧后 delta-only）
+        expect(SnapshotDeltaFrameSchema.safeParse({
+            localId: 'uuid-1', rev: 1, baseRev: null, deltas: [],
         }).success).toBe(false)
     })
 })

@@ -44,10 +44,14 @@ export class SnapshotDeltaAssembler {
     private readonly cache = new Map<string, Map<string, CacheEntry>>()
     private readonly ttlMs: number
     private readonly now: () => number
+    /** sweep 节流间隔（TTL/10）：热路径 apply 每帧触发 sweep，实际扫描最多每间隔一次 */
+    private readonly sweepEveryMs: number
+    private lastSweepAt = Number.NEGATIVE_INFINITY
 
     constructor(options?: { ttlMs?: number; now?: () => number }) {
         this.ttlMs = options?.ttlMs ?? 10 * 60_000
         this.now = options?.now ?? (() => Date.now())
+        this.sweepEveryMs = this.ttlMs / 10
     }
 
     /**
@@ -85,7 +89,7 @@ export class SnapshotDeltaAssembler {
         }
 
         const blocks = locateSnapshotBlocks(entry.content)
-        if (blocks === null || !applySnapshotBlockDeltas(blocks, frame.deltas ?? [])) {
+        if (blocks === null || !applySnapshotBlockDeltas(blocks, frame.deltas)) {
             if (frame.localId !== null) {
                 entryMap.delete(frame.localId)
             }
@@ -118,14 +122,28 @@ export class SnapshotDeltaAssembler {
         return { content: entry.content, rev: entry.rev }
     }
 
-    /** 列出该会话当前有活跃缓存的消息 localId（票 02：resync 端点定向补发） */
-    getActiveLocalIds(sessionId: string): string[] {
-        return [...(this.cache.get(sessionId)?.keys() ?? [])]
+    /**
+     * 列出该会话当前有活跃缓存且已建 delta 链的条目（票 02：resync 端点定向补发全量基线）。
+     * 返回共享引用不拷贝（send 即时序列化消费）；legacy 无链（rev=null）条目不含。
+     */
+    getActiveEntries(sessionId: string): Array<{ localId: string; content: unknown; rev: number }> {
+        const entryMap = this.cache.get(sessionId)
+        if (!entryMap) return []
+        const entries: Array<{ localId: string; content: unknown; rev: number }> = []
+        for (const [localId, entry] of entryMap) {
+            if (entry.rev !== null) entries.push({ localId, content: entry.content, rev: entry.rev })
+        }
+        return entries
     }
 
-    /** 惰性清理超 TTL 条目（流式缓存生命周期兜底：full 丢失/断线残留） */
+    /**
+     * 惰性清理超 TTL 条目（流式缓存生命周期兜底：full 丢失/断线残留）。
+     * 按 TTL/10 节流：apply 是流式热路径（每帧一次），全缓存扫描不必随之逐帧执行。
+     */
     private sweep(): void {
         const now = this.now()
+        if (now - this.lastSweepAt < this.sweepEveryMs) return
+        this.lastSweepAt = now
         for (const [sid, entryMap] of this.cache) {
             for (const [localId, entry] of entryMap) {
                 if (now - entry.touchedAt > this.ttlMs) {

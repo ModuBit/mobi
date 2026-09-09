@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { COMMAND_LIFECYCLE_STATES, SNAPSHOT_PENDING_ID, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type CommandLifecycleState, type MessageFact } from '@mobi/shared'
+import { COMMAND_LIFECYCLE_STATES, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, buildSnapshotMessage, type ClientToServerEvents, type CommandLifecycleState, type MessageFact } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -135,14 +135,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 emitAccessError('session', sid, sessionAccess.reason)
                 return
             }
-            if (frame.baseRev !== null && snapshotAssembler.applyDelta(sid, frame) !== null) {
+            if (snapshotAssembler.applyDelta(sid, frame) !== null) {
                 onWebappEvent?.({
                     type: 'message-snapshot-delta',
                     sessionId: sid,
                     localId: frame.localId,
                     rev: frame.rev,
                     baseRev: frame.baseRev,
-                    deltas: frame.deltas ?? [],
+                    deltas: frame.deltas,
                 })
             }
             return
@@ -163,15 +163,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             onWebappEvent?.({
                 type: 'message-snapshot',
                 sessionId: sid,
-                message: {
-                    id: localId ?? SNAPSHOT_PENDING_ID,
-                    seq: null,
-                    localId: localId ?? null,
-                    snapshot: true,
-                    snapshotRev: rev === null ? undefined : rev,
-                    content: rebuilt,
-                    createdAt: Date.now(),
-                },
+                message: buildSnapshotMessage(localId ?? null, rebuilt, rev),
             })
             return
         }

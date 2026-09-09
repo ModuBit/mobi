@@ -681,20 +681,17 @@ export const SnapshotBlockDeltaSchema = z.discriminatedUnion('op', [
 export type SnapshotBlockDelta = z.infer<typeof SnapshotBlockDeltaSchema>
 
 /**
- * snapshot 增量帧。baseRev=null 为全量帧（绝对真相：整体替换 + rev 重置，携带完整 blocks）；
- * 否则为增量帧（baseRev 必须与接收方已持有的 rev 严格衔接，不连续即丢弃等全量）。
- * rev 由产出方（CLI）按流（每条消息）分配、单调递增。
+ * snapshot 增量帧（delta-only）：baseRev 必须与接收方已持有的 rev 严格衔接，
+ * 不连续即丢弃等全量基线。rev 由产出方（CLI）按流（每条消息）分配、单调递增。
+ * 全量帧不走本 schema——CLI→hub 以 message + frame:{rev, baseRev:null} 标记携带，
+ * hub→web 以 message-snapshot 事件携带（见 buildSnapshotMessage）。
  */
 export const SnapshotDeltaFrameSchema = z.object({
     localId: z.string(),
     rev: z.number().int().nonnegative(),
-    baseRev: z.number().int().nonnegative().nullable(),
-    blocks: z.array(SnapshotBlockSchema).optional(),
-    deltas: z.array(SnapshotBlockDeltaSchema).optional(),
-}).refine(
-    (frame) => (frame.baseRev === null ? Array.isArray(frame.blocks) : Array.isArray(frame.deltas)),
-    { message: '全量帧必须携带 blocks，增量帧必须携带 deltas' },
-)
+    baseRev: z.number().int().nonnegative(),
+    deltas: z.array(SnapshotBlockDeltaSchema),
+})
 
 export type SnapshotDeltaFrame = z.infer<typeof SnapshotDeltaFrameSchema>
 

@@ -14,13 +14,31 @@
  * limitations under the License.
  */
 
-import type { SnapshotBlock, SnapshotDeltaFrame } from './schemas'
+import { SNAPSHOT_PENDING_ID, type DecryptedMessage, type SnapshotBlock, type SnapshotDeltaFrame } from './schemas'
 
 /**
  * Snapshot delta 协议的 apply 端共享逻辑（.scratch/snapshot-delta 票 02）：
  * hub 拼接器与 web 消息窗口 store 共用同一份实现，避免双实现漂移。
  * 语义与发送端（CLI StreamSnapshotSender）的状态变迁一一对应。
  */
+
+/**
+ * 构造 message-snapshot 全量事件的 message 体（唯一形状，票 03 /simplify 收敛）：
+ * hub 三处下发点（sessionHandlers 全量帧 / forwarder 追赶 / resync 端点补发）共用，
+ * 防字段漂移——web 端 locateSnapshotBlocks/snapshotRev 衔接链依赖此形状。
+ * rev=null 为 legacy 无链全量（不建 delta 链，snapshotRev 缺省）。
+ */
+export function buildSnapshotMessage(localId: string | null, content: unknown, rev: number | null): Pick<DecryptedMessage, 'id' | 'seq' | 'localId' | 'snapshot' | 'snapshotRev' | 'content' | 'createdAt'> {
+    return {
+        id: localId ?? SNAPSHOT_PENDING_ID,
+        seq: null,
+        localId,
+        snapshot: true,
+        snapshotRev: rev === null ? undefined : rev,
+        content,
+        createdAt: Date.now(),
+    }
+}
 
 /**
  * 定位 snapshot 信封内的 blocks 数组：content.content.data.message.content。
@@ -46,7 +64,7 @@ export function locateSnapshotBlocks(content: unknown): SnapshotBlock[] | null {
  */
 export function applySnapshotBlockDeltas(
     blocks: SnapshotBlock[],
-    deltas: NonNullable<SnapshotDeltaFrame['deltas']>,
+    deltas: SnapshotDeltaFrame['deltas'],
 ): boolean {
     for (const op of deltas) {
         if (op.op === 'append') {

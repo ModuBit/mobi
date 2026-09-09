@@ -17,27 +17,7 @@
 import { describe, it, expect } from 'bun:test'
 import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
 import type { SnapshotDeltaFrame, SnapshotBlock } from '@mobi/shared'
-
-/** 构造与 CLI 真实发送一致的 content 信封：{role, content:{type:'output', data: rawLog}} */
-function envelope(blocks: SnapshotBlock[]): unknown {
-    return {
-        role: 'agent',
-        content: {
-            type: 'output',
-            data: {
-                type: 'assistant',
-                message: { role: 'assistant', id: 'msg_1', content: blocks, model: 'm-1' },
-            },
-        },
-        meta: { sentFrom: 'cli' },
-    }
-}
-
-/** 从 assembler 返回的信封里取 blocks（断言用） */
-function blocksOf(content: unknown): SnapshotBlock[] {
-    const c = content as { content: { data: { message: { content: SnapshotBlock[] } } } }
-    return c.content.data.message.content
-}
+import { envelope, blocksOf } from '../helpers/snapshotDelta'
 
 function delta(localId: string, rev: number, baseRev: number, deltas: SnapshotDeltaFrame['deltas']): SnapshotDeltaFrame {
     return { localId, rev, baseRev, deltas }

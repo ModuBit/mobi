@@ -19,6 +19,7 @@ import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHa
 import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
 import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
+import { textEnvelope, blocksOf as envelopeBlocksOf } from '../helpers/snapshotDelta'
 import type { StoredSession } from '../../src/store/types'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 
@@ -37,25 +38,15 @@ function makeStoredSession(sid: string): StoredSession {
     }
 }
 
-/** CLI 真实发送的全量信封形状（wrapAsDecryptedMessage → convertSnapshot） */
+/** CLI 真实发送的全量信封形状（wrapAsDecryptedMessage → convertSnapshot），共用 helper */
 function envelope(text: string) {
-    return {
-        role: 'agent',
-        content: {
-            type: 'output',
-            data: {
-                type: 'assistant',
-                message: { role: 'assistant', id: 'msg_1', content: [{ type: 'text', text }], model: 'm' },
-            },
-        },
-    }
+    return textEnvelope(text)
 }
 
-/** 从 message-snapshot 事件中取 blocks（message.content = 信封，信封.content.data 才是 rawLog） */
+/** 从 message-snapshot 事件中取 blocks（窄化 + 复用信封 helper 的生产导航逻辑） */
 function blocksOf(event: SyncEvent): { type: string; text?: string }[] {
     if (event.type !== 'message-snapshot') throw new Error('非 message-snapshot 事件')
-    const env = (event.message as { content: { content: { data: { message: { content: unknown } } } } }).content
-    return env.content.data.message.content as { type: string; text?: string }[]
+    return envelopeBlocksOf(event.message.content)
 }
 
 function makeHarness() {

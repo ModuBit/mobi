@@ -94,7 +94,7 @@ export class SSEManager {
     unsubscribe(id: string): void {
         this.connections.delete(id)
         this.visibilityTracker.removeConnection(id)
-        this.snapshotForwarder?.onUnsubscribe(id)
+        this.snapshotForwarder?.resetSubscription(id)
         if (this.connections.size === 0) {
             this.stopHeartbeat()
         }
@@ -149,6 +149,8 @@ export class SSEManager {
     }
 
     broadcast(event: SyncEvent): void {
+        // 同一事件广播给 N 个订阅只序列化测一次（stats 关闭时零成本）
+        let fullBytes: number | null = null
         for (const connection of this.connections.values()) {
             if (!this.shouldSend(connection, event)) {
                 continue
@@ -159,27 +161,19 @@ export class SSEManager {
             if (event.type === 'message-snapshot-delta') {
                 const resolved = this.snapshotForwarder?.resolve(event, connection)
                 if (resolved) {
-                    snapshotDeltaStats.record(
-                        'hub-to-web',
-                        resolved.type === 'message-snapshot-delta' ? 'delta' : 'full',
-                        resolved,
-                    )
-                    void Promise.resolve(connection.send(resolved)).catch(() => {
-                        this.unsubscribe(connection.id)
-                    })
+                    this.deliverSnapshot(connection, resolved)
                 }
                 continue
             }
 
-            // 全量 snapshot 下发后标记该订阅游标（衔接后续 delta 帧）
+            // 全量 snapshot：标记游标 + 统计后下发（同 broadcast 内字节只算一次）
             if (event.type === 'message-snapshot') {
-                snapshotDeltaStats.record('hub-to-web', 'full', event)
-                this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev)
+                fullBytes ??= snapshotDeltaStats.bytesOf(event)
+                this.deliverSnapshot(connection, event, fullBytes)
+                continue
             }
 
-            void Promise.resolve(connection.send(event)).catch(() => {
-                this.unsubscribe(connection.id)
-            })
+            this.deliver(connection, event)
         }
     }
 
@@ -188,12 +182,10 @@ export class SSEManager {
         const connection = this.connections.get(subscriptionId)
         if (!connection) return
         if (event.type === 'message-snapshot') {
-            snapshotDeltaStats.record('hub-to-web', 'full', event)
-            this.snapshotForwarder?.markFullSent(subscriptionId, event.message.localId ?? null, event.message.snapshotRev)
+            this.deliverSnapshot(connection, event)
+            return
         }
-        void Promise.resolve(connection.send(event)).catch(() => {
-            this.unsubscribe(subscriptionId)
-        })
+        this.deliver(connection, event)
     }
 
     stop(): void {
@@ -202,6 +194,28 @@ export class SSEManager {
             this.visibilityTracker.removeConnection(id)
         }
         this.connections.clear()
+    }
+
+    /** 发送失败（连接已死）即卸载订阅，其余调用方无需各自 catch */
+    private deliver(connection: SSEConnection, event: SyncEvent): void {
+        void Promise.resolve(connection.send(event)).catch(() => {
+            this.unsubscribe(connection.id)
+        })
+    }
+
+    /**
+     * snapshot 类事件下发：delta 原样转发或全量追赶共用——全量标记订阅游标
+     * （衔接后续 delta）+ 流量统计后投递。precomputedBytes 供广播扇出复用同一事件的
+     * 序列化长度（同事件 N 订阅只 stringify 一次）。
+     */
+    private deliverSnapshot(connection: SSEConnection, event: SyncEvent, precomputedBytes?: number): void {
+        if (event.type === 'message-snapshot') {
+            this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev)
+            snapshotDeltaStats.record('hub-to-web', 'full', event, precomputedBytes)
+        } else {
+            snapshotDeltaStats.record('hub-to-web', 'delta', event, precomputedBytes)
+        }
+        this.deliver(connection, event)
     }
 
     private ensureHeartbeat(): void {
