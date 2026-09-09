@@ -136,10 +136,10 @@ export const STATUS_DOT_COLORS: Record<StatusDotState, string> = {
 
 /**
  * 将 session 侧 AgentStatus 或工具侧 ToolCallState 映射到统一 StatusDotState。
- * - outputting / running → running（蓝呼吸）
+ * - outputting / running → running（旋转弧，忙）
  * - pending → pending（橙呼吸，工具排队，沿用原工具行为）
- * - awaiting_auth → awaiting_auth（橙颤动，session 等审批）
- * - idle → idle（绿舒缓呼吸，session 等输入）
+ * - awaiting_auth → awaiting_auth（橙点微光，session 等审批）
+ * - idle → idle（sonar 扩散环，session 等输入）
  * - completed → completed（绿静态，工具执行成功）
  * - inactive → inactive（灰静态，session 未激活）
  * - error → error（红静态）
@@ -167,31 +167,49 @@ type StatusStateIconProps = {
     style?: CSSProperties
 }
 
-/** 各状态动画表：dot=状态点载体、icon=图标本体载体（节奏逐状态单点定义，两载体不漂移）；未列出的状态（completed/inactive/error）为静态 */
+/**
+ * 各状态动画表：dot=状态点载体、icon=图标本体载体（节奏逐状态单点定义，两载体不漂移）。
+ * dot 载体只有 pending 仍呼吸——running（旋转弧）/idle（sonar 扩散环）/awaiting_auth（橙点微光）
+ * 的状态表达已改由形状/CSS 类承载（见 StatusStateIcon）；未列出的状态为静态
+ */
 const STATUS_ANIMATIONS: Partial<Record<StatusDotState, { dot?: string; icon?: string }>> = {
-    running: { dot: 'status-dot-breathe 1.1s ease-in-out infinite', icon: 'status-icon-breathe 1.1s ease-in-out infinite' },
+    running: { icon: 'status-icon-breathe 1.1s ease-in-out infinite' },
     pending: { dot: 'status-dot-breathe 1.5s ease-in-out infinite', icon: 'status-icon-breathe 1.5s ease-in-out infinite' },
-    awaiting_auth: { dot: 'status-dot-shake 0.45s ease-in-out infinite', icon: 'status-icon-breathe 0.45s ease-in-out infinite' },
-    idle: { dot: 'status-dot-breathe-slow 3s ease-in-out infinite', icon: 'status-icon-breathe 3s ease-in-out infinite' },
+    awaiting_auth: { icon: 'status-icon-breathe 0.45s ease-in-out infinite' },
+    idle: { icon: 'status-icon-breathe 3s ease-in-out infinite' },
 }
 
 /**
- * 状态小圆点：running/awaiting_auth/idle 各带对应节奏动画，inactive/error 静态。
+ * 状态小圆点：形状承载状态（弧=运行中 / sonar 点=空闲 / 橙点微光=待审批），
+ * pending 呼吸、inactive/error/completed 静态纯色。
  * 颜色与状态映射全 app 统一，由 STATUS_DOT_COLORS + toStatusDotState 承载。
  */
 export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNode {
     const dotState = toStatusDotState(state)
+    const base: CSSProperties = { display: 'inline-block', flexShrink: 0, ...style }
+    // 形状承载状态（会话列表等仪表盘场景需跨行一眼区分）：
+    // 弧=运行中（忙，不用管）· sonar 点=空闲待命（到你）· 橙点微光=待审批（要行动）· 极淡点=关闭
+    // 颜色只留语义例外（审批橙/错误红/完成绿），运行与空闲均用默认色
+    if (dotState === 'running') {
+        return <span className="status-dot-arc" style={{ width: 10, height: 10, borderRadius: '50%', ...base }} />
+    }
+    if (dotState === 'idle') {
+        return (
+            <span
+                className="status-dot-sonar"
+                style={{ width: 9, height: 9, borderRadius: '50%', background: 'currentColor', ...base }}
+            />
+        )
+    }
     const dotStyle: CSSProperties = {
-        width: 6,
-        height: 6,
+        width: 8,
+        height: 8,
         borderRadius: '50%',
         background: STATUS_DOT_COLORS[dotState],
-        display: 'inline-block',
-        flexShrink: 0,
-        animation: STATUS_ANIMATIONS[dotState]?.dot,
-        ...style,
+        ...base,
     }
-    return <span className="status-state-dot" style={dotStyle} />
+    if (dotState === 'awaiting_auth') dotStyle.boxShadow = '0 0 6px rgba(255, 167, 38, .55)'
+    return <span style={dotStyle} />
 }
 
 /**

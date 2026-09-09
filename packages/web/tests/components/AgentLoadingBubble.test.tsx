@@ -28,11 +28,15 @@ describe('AgentLoadingBubble', () => {
         expect(container.querySelector('.pixel-avatar')).toBeNull()
     })
 
-    it('渲染 StatusDot（outputting → 蓝色 running）', () => {
+    it('运行中渲染像素网格加载器（outputting → PixelLoader 波前）', () => {
         const { container } = render(<AgentLoadingBubble agentId="agent-1" status="outputting" />)
-        const spans = container.querySelectorAll('span')
-        const dot = Array.from(spans).find(s => s.style.background.includes('77, 171, 247'))
-        expect(dot).toBeDefined()
+        expect(container.querySelector('.pixel-loader')).not.toBeNull()
+    })
+
+    it('待审批保留橙点（语义例外色，不与「忙」混同）', () => {
+        const { container } = render(<AgentLoadingBubble agentId="agent-1" status="awaiting_auth" />)
+        expect(container.querySelector('.pixel-loader')).toBeNull()
+        expect(container.querySelector('.status-dot-arc')).toBeNull()
     })
 
     it('保留计时（传入 startedAt 后展示数字）', () => {

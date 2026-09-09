@@ -59,25 +59,28 @@ describe('toStatusDotState', () => {
 })
 
 describe('StatusStateIcon', () => {
-    it('running 渲染蓝色 + 带呼吸动画', () => {
+    it('running 渲染旋转弧（形状承载，无染色），动画由 CSS 类承载', () => {
         const { container } = render(<StatusStateIcon state="running" />)
         const dot = container.firstChild as HTMLElement
-        expect(dot.style.background).toBe(rgb('#4dabf7'))
-        expect(dot.style.animation).toContain('status-dot-breathe')
+        expect(dot.className).toBe('status-dot-arc')
+        expect(dot.style.background).toBe('')
+        expect(dot.style.animation).toBe('')
     })
 
-    it('awaiting_auth 渲染橙色 + 带颤动动画', () => {
+    it('awaiting_auth 渲染橙色 + 微光（无动画，静态橙点醒目即可）', () => {
         const { container } = render(<StatusStateIcon state="awaiting_auth" />)
         const dot = container.firstChild as HTMLElement
         expect(dot.style.background).toBe(rgb('#ffa726'))
-        expect(dot.style.animation).toContain('status-dot-shake')
+        expect(dot.style.animation).toBe('')
+        expect(dot.style.boxShadow).toContain('rgba(255, 167, 38')
     })
 
-    it('idle 渲染绿色 + 带舒缓呼吸', () => {
+    it('idle 渲染 sonar 点（默认色实心 + CSS 类承载扩散环）', () => {
         const { container } = render(<StatusStateIcon state="idle" />)
         const dot = container.firstChild as HTMLElement
-        expect(dot.style.background).toBe(rgb('#66bb6a'))
-        expect(dot.style.animation).toContain('status-dot-breathe-slow')
+        expect(dot.className).toBe('status-dot-sonar')
+        expect(dot.style.background).toBe('currentcolor')
+        expect(dot.style.animation).toBe('')
     })
 
     it('inactive 灰色 + 无动画', () => {
@@ -101,10 +104,11 @@ describe('StatusStateIcon', () => {
         expect(dot.style.animation).toBe('')
     })
 
-    it('接受 AgentStatus（outputting 等同 running）', () => {
+    it('接受 AgentStatus（outputting 等同 running，同样渲染弧）', () => {
         const { container } = render(<StatusStateIcon state="outputting" />)
         const dot = container.firstChild as HTMLElement
-        expect(dot.style.background).toBe(rgb('#4dabf7'))
+        expect(dot.className).toBe('status-dot-arc')
+        expect(dot.style.background).toBe('')
     })
 })
 

@@ -20,6 +20,7 @@ import { useElapsedSeconds } from './useElapsedSeconds'
 import { ScrambleText } from './ScrambleText'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { PixelLoader } from '@/components/ui/PixelLoader'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { VIBING_MESSAGES } from '@/components/pixel-avatar/vibingMessages'
 import { BlinkText } from '@/components/ui/BlinkText'
@@ -108,7 +109,11 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
 
     return (
         <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <StatusStateIcon state={status} style={{ width: 8, height: 8 }} />
+            {/* 运行中用像素网格波前（beautifului Loading State 同款语言：持续推进）；
+                待审批保留橙点微光——审批是需要行动的语义例外，不与「忙」混同 */}
+            {isAwaitingAuth
+                ? <StatusStateIcon state={status} style={{ width: 8, height: 8 }} />
+                : <PixelLoader />}
             <BlinkText blinking color={stalled ? token.colorWarning : CLAUDE_ORANGE} aria-live="polite" style={{ fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
             </BlinkText>

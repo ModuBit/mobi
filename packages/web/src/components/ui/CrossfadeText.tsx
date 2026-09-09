@@ -46,7 +46,7 @@ export function CrossfadeText({ text, style, shimmer }: { text: string; style?: 
             <span
                 key={text}
                 className={shimmer ? 'shimmer-text' : undefined}
-                style={{ animation: shimmer ? `crossfade-in ${FADE_MS}ms ease, shimmer-sweep 1.6s linear infinite` : `crossfade-in ${FADE_MS}ms ease` }}
+                style={{ animation: shimmer ? `crossfade-in ${FADE_MS}ms ease, shimmer-sweep 1.4s linear infinite` : `crossfade-in ${FADE_MS}ms ease` }}
             >
                 {text}
             </span>

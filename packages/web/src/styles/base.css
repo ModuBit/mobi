@@ -78,23 +78,44 @@ pre, code {
     font-family: var(--font-mono);
 }
 
-/* 状态圆点呼吸动画（running/pending，缩放+透明度让小尺寸下可辨） */
+/* 状态点呼吸动画（pending，缩放+透明度让小尺寸下可辨） */
 @keyframes status-dot-breathe {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(1.25); }
 }
 
-/* 状态圆点颤动动画（等待审批） */
-@keyframes status-dot-shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-1.2px); }
-    75% { transform: translateX(1.2px); }
+/* 像素网格加载器单格点亮（PixelLoader chevron 波前）：快速亮起、停留、回落到暗态 */
+@keyframes pixel-on {
+    0%, 100% { opacity: 0.15; }
+    18%, 42% { opacity: 1; }
 }
 
-/* 状态圆点舒缓呼吸动画（空闲/待命） */
-@keyframes status-dot-breathe-slow {
-    0%, 100% { opacity: 0.55; transform: scale(0.85); }
-    50% { opacity: 1; transform: scale(1.1); }
+/* 状态点：运行中 = 旋转弧（忙，不用管）。透明侧朝上、绕圈转，经典 spinner 语言 */
+.status-dot-arc {
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    animation: status-dot-spin 0.9s linear infinite;
+}
+@keyframes status-dot-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 状态点：空闲待命 = 实心点 + 缓慢扩散环（sonar，「它活着，到你了」）。
+   慢周期（3s）+ 低透明度，避免多个空闲会话同屏闪烁躁动 */
+.status-dot-sonar {
+    position: relative;
+}
+.status-dot-sonar::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    animation: status-dot-ping 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes status-dot-ping {
+    0% { transform: scale(1); opacity: 0.55; }
+    75%, 100% { transform: scale(2); opacity: 0; }
 }
 
 /* 状态图标呼吸动画（图标承载状态时用，幅度小于圆点避免晃眼） */
@@ -113,15 +134,17 @@ pre, code {
     to { opacity: 0; }
 }
 
-/* 运行态标题微光：一道高光周期扫过（折叠组动态标题等强调场景，配 .shimmer-text 类）。
+/* 运行态标题微光：一道窄高光周期扫过（折叠组动态标题等强调场景，配 .shimmer-text 类）。
+   参考 beautifului shimmer：高光带只占渐变中段（35%→65%），两侧弱色；
    高光不用固定白色（浅色模式下白高光与浅背景融合、视觉上像文字消失），
-   而是文字自身色的透明度渐变——任意主题下都呈现为「文字提亮扫过」 */
+   而用文字自身色的透明度混合——任意主题下都呈现为「文字提亮扫过」。
+   位移 150% → -50% 对 200% 宽渐变恰好一个无缝循环（无空窗停顿） */
 .shimmer-text {
     background: linear-gradient(
         90deg,
-        color-mix(in srgb, currentColor 35%, transparent) 30%,
+        color-mix(in srgb, currentColor 38%, transparent) 35%,
         currentColor 50%,
-        color-mix(in srgb, currentColor 35%, transparent) 70%
+        color-mix(in srgb, currentColor 38%, transparent) 65%
     );
     background-size: 200% 100%;
     -webkit-background-clip: text;
@@ -129,8 +152,8 @@ pre, code {
     -webkit-text-fill-color: transparent;
 }
 @keyframes shimmer-sweep {
-    from { background-position: 200% 0; }
-    to { background-position: -200% 0; }
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
 }
 
 /* ToolCard pending 焦点色带脉动（权限等待时的左侧高亮条） */
@@ -139,11 +162,17 @@ pre, code {
     50% { opacity: 1; }
 }
 
-/* 无障碍：尊重用户的减少动画偏好（焦点色带脉动 + 状态圆点呼吸/颤动） */
+/* 无障碍：尊重用户的减少动画偏好（焦点色带脉动 + 状态点弧/扩散环 + 像素网格加载器） */
 @media (prefers-reduced-motion: reduce) {
     [data-slot="focus-bar"],
-    .status-state-dot {
+    .status-dot-arc,
+    .status-dot-sonar::after,
+    .pixel-loader-cell {
         animation: none !important;
+    }
+    /* 网格冻结到暗态而非全亮（beautifului 同款处理：静止但可辨认出「非空闲」） */
+    .pixel-loader-cell {
+        opacity: 0.35 !important;
     }
 }
 
