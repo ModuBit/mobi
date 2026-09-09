@@ -20,6 +20,7 @@ import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { SessionFactsSink } from '../../../sync/sessionFacts'
+import type { SnapshotDeltaAssembler } from '../../../sync/snapshotDeltaAssembler'
 import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -40,6 +41,8 @@ export type CliHandlersDeps = {
     terminalRegistry: TerminalRegistry
     /** 活跃后台任务集合（CLI 事件维护，rewind API 闸门读取；与 web 路由层共用同一实例） */
     backgroundTaskTracker: BackgroundTaskTracker
+    /** snapshot delta 拼接器（delta 协议票 01）：全量/增量帧重建全量缓存 */
+    snapshotAssembler: SnapshotDeltaAssembler
     /** rewind 软删除上界（SyncEngine 受理时写；与 SyncEngine 共用同一实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     /** 机器心跳（机器级事实，经 machineHandlers 更新在线状态；不属于会话事实 sink） */
@@ -50,7 +53,7 @@ export type CliHandlersDeps = {
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotAssembler, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -108,6 +111,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         resolveSessionAccess,
         emitAccessError,
         backgroundTaskTracker,
+        snapshotAssembler,
         rewindDeleteBoundTracker,
         factsSink,
         onWebappEvent
@@ -133,5 +137,9 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     socket.on('disconnect', () => {
         rpcRegistry.unregisterAll(socket)
         cleanupTerminalHandlers(socket, { terminalRegistry, terminalNamespace })
+        // 会话连接断开：流已断，snapshot delta 缓存必过期（重连后 CLI 重发全量帧重建）
+        if (sessionId) {
+            snapshotAssembler.cleanupSession(sessionId)
+        }
     })
 }

@@ -38,12 +38,13 @@ function setup() {
     return { sender, transport }
 }
 
-/** 从 transport 第 idx 次收到的 DecryptedMessage 里取出 snapshot 的 blocks */
+/** 从 transport 第 idx 次收到的全量帧 DecryptedMessage 里取出 snapshot 的 blocks */
 function snapshotBlocks(transport: ReturnType<typeof vi.fn>, idx = 0) {
-    const msg = transport.mock.calls[idx]?.[0] as
-        | { content?: { content?: { data?: { blocks?: unknown[] } } } }
+    const out = transport.mock.calls[idx]?.[0] as
+        | { kind: string; message?: { content?: { content?: { data?: { blocks?: unknown[] } } } } }
         | undefined
-    return msg?.content?.content?.data?.blocks
+    if (!out || out.kind !== 'full') return undefined
+    return out.message?.content?.content?.data?.blocks
 }
 
 describe('StreamSnapshotSender — thinking 打点（snapshot 出口）', () => {

@@ -845,7 +845,10 @@ export async function claudeRemote(opts: {
     onSessionFound: (id: string) => void,
     onRunningChange?: (running: boolean) => void,
     onMessage: (message: SDKMessage) => void,
-    onSnapshot: (msg: import('@mobi/shared').DecryptedMessage) => void,
+    /** Snapshot 发送输出（delta 协议）：全量帧携带完整消息，增量帧只携带 op */
+    onSnapshot: (out: import('./utils/streamSnapshotSender').SnapshotOut) => void,
+    /** 注册 snapshot 流重基线回调（socket 重连时触发发送器重发全量帧）；缺省不注册 */
+    registerSnapshotReset?: (fn: () => void) => void,
     /** Snapshot converter，用于生成与最终消息一致的 DecryptedMessage */
     getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter,
     onCompletionEvent?: (message: string) => void,
@@ -1195,6 +1198,8 @@ export async function claudeRemote(opts: {
             opts.getConverter(),
         );
         snapshotSender.start();
+        // socket 重连重基线：断线期间增量帧已丢，重连后立即重发全量帧重建 hub 侧基线
+        opts.registerSnapshotReset?.(() => snapshotSender?.forceFullFlush());
         outputLoopPromise = sdkOutputLoop(q, loopCtx, {
             path: opts.path,
             onMessage: opts.onMessage,

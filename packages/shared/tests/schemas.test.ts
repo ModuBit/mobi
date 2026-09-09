@@ -17,6 +17,9 @@
 import { describe, it, expect } from 'vitest'
 import {
     PermissionModeSchema,
+    SnapshotBlockSchema,
+    SnapshotBlockDeltaSchema,
+    SnapshotDeltaFrameSchema,
     DecryptedMessageSchema,
     MetadataSchema,
     SessionSchema,
@@ -649,5 +652,49 @@ describe('extractLiveBackgroundTaskIds（CLI/Hub 共用规则，批次 B review 
         expect(extractLiveBackgroundTaskIds(undefined).size).toBe(0)
         expect(extractLiveBackgroundTaskIds('x').size).toBe(0)
         expect(extractLiveBackgroundTaskIds(null).size).toBe(0)
+    })
+})
+
+describe('Snapshot Delta 协议（.scratch/snapshot-delta spec，CLI→hub 与 hub→web 共用载荷）', () => {
+    it('SnapshotBlockSchema 三形态：text / thinking（含 done 元数据）/ tool_use', () => {
+        expect(SnapshotBlockSchema.safeParse({ type: 'text', text: 'hi' }).success).toBe(true)
+        expect(SnapshotBlockSchema.safeParse({
+            type: 'thinking', thinking: '...', durationMs: 1200, done: true,
+        }).success).toBe(true)
+        expect(SnapshotBlockSchema.safeParse({
+            type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' },
+        }).success).toBe(true)
+        // 形态错配拒绝
+        expect(SnapshotBlockSchema.safeParse({ type: 'text', thinking: 'hi' }).success).toBe(false)
+        expect(SnapshotBlockSchema.safeParse({ type: 'unknown' }).success).toBe(false)
+    })
+
+    it('SnapshotBlockDeltaSchema 三种 op', () => {
+        expect(SnapshotBlockDeltaSchema.safeParse({ op: 'append', index: 0, text: 'more' }).success).toBe(true)
+        expect(SnapshotBlockDeltaSchema.safeParse({
+            op: 'new-block', index: 1, block: { type: 'tool_use', id: 't', name: 'Bash', input: {} },
+        }).success).toBe(true)
+        expect(SnapshotBlockDeltaSchema.safeParse({
+            op: 'replace-block', index: 1, block: { type: 'thinking', thinking: 'x', done: true },
+        }).success).toBe(true)
+        expect(SnapshotBlockDeltaSchema.safeParse({ op: 'bad' }).success).toBe(false)
+        expect(SnapshotBlockDeltaSchema.safeParse({ op: 'append', index: -1, text: 'x' }).success).toBe(false)
+    })
+
+    it('全量帧：baseRev=null 必须携带 blocks；增量帧：baseRev 递增必须携带 deltas', () => {
+        expect(SnapshotDeltaFrameSchema.safeParse({
+            localId: 'uuid-1', rev: 1, baseRev: null, blocks: [{ type: 'text', text: 'hi' }],
+        }).success).toBe(true)
+        expect(SnapshotDeltaFrameSchema.safeParse({
+            localId: 'uuid-1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: '!' }],
+        }).success).toBe(true)
+        // 全量帧缺 blocks → 拒绝
+        expect(SnapshotDeltaFrameSchema.safeParse({
+            localId: 'uuid-1', rev: 1, baseRev: null,
+        }).success).toBe(false)
+        // 增量帧缺 deltas → 拒绝
+        expect(SnapshotDeltaFrameSchema.safeParse({
+            localId: 'uuid-1', rev: 2, baseRev: 1,
+        }).success).toBe(false)
     })
 })

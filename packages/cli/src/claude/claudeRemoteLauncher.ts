@@ -987,9 +987,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 session.client.sendSessionEvent({ type: 'ready' });
                             }
                         },
-                        onSnapshot: (msg) => {
-                            session.client.sendContentSnapshot(msg);
+                        onSnapshot: (out) => {
+                            // delta 协议双出口：全量帧走 legacy snapshot 通道（带 rev 标记），
+                            // 增量帧走 snapshotDelta 通道；hub 侧拼接器重建全量
+                            if (out.kind === 'full') {
+                                session.client.sendContentSnapshot(out.message, { rev: out.frame.rev });
+                            } else {
+                                session.client.sendSnapshotDelta(out.frame);
+                            }
                         },
+                        registerSnapshotReset: (fn) => session.client.setSnapshotTransportReset(fn),
                         getConverter: () => sdkToLogConverter,
                         // 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库。
                         // 经 messageQueue 入队（非直接 send）：让 messageQueue 统一仲裁顺序——abort 时

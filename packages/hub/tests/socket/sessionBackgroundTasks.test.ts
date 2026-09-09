@@ -27,6 +27,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHandlers'
 import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
+import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
 import type { StoredMessage, StoredSession } from '../../src/store/types'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 import type { RuntimeState } from '@mobi/shared/types'
@@ -100,6 +101,7 @@ function makeEnv() {
         resolveSessionAccess: () => ({ ok: true as const, value: session }),
         emitAccessError: () => {},
         backgroundTaskTracker: new BackgroundTaskTracker(),
+        snapshotAssembler: new SnapshotDeltaAssembler(),
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
 

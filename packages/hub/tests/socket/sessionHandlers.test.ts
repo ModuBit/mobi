@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHandlers'
 import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
+import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
 import { Store } from '../../src/store'
 import type { StoredMessage, StoredSession } from '../../src/store/types'
 import type { SyncEvent } from '../../src/sync/syncEngine'
@@ -91,6 +92,7 @@ function makeDeps(opts: {
         },
         emitAccessError: () => { accessError.called = true },
         backgroundTaskTracker: new BackgroundTaskTracker(),
+        snapshotAssembler: new SnapshotDeltaAssembler(),
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
 
@@ -192,6 +194,7 @@ describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus'
             },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             factsSink: { handleGoalStatus: (payload: { sid: string; goalStatus: unknown }) => { captured.push(payload) } },
         }
         return { deps, captured, accessError }
@@ -267,6 +270,7 @@ describe('context-usage：CLI 上报水位 → 校验 + 委派 onContextUsage', 
             },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             factsSink: { handleContextUsage: (payload: { sid: string; contextUsage: unknown }) => { captured.push(payload) } },
         }
         return { deps, captured, accessError }
@@ -344,6 +348,7 @@ describe('run-started：CLI 轮次起点上报 → 校验 + 委派 onRunStarted'
             },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             factsSink: { handleRunStarted: (payload: { sid: string; runStartedAt: number }) => { captured.push(payload) } },
         }
         return { deps, captured, accessError }
@@ -412,6 +417,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
             resolveSessionAccess: () => ({ ok: true as const, value: { ...session, runtimeState: runtimeStateRef.current } as never }),
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, runtimeStateRef, events }
@@ -519,6 +525,7 @@ describe('messages-facts bound：CLI 上报用户消息 native_id 绑定', () =>
                     : { ok: true as const, value: makeStoredSession(sid) },
             emitAccessError: () => { accessError.called = true },
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, events, bindCalls, accessError }
@@ -639,6 +646,7 @@ describe('messages-facts acked：isReplay 回显确认（双写）', () => {
             resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, nativeAckSpy, advanceSpy, calls, events }
@@ -744,6 +752,7 @@ describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
             resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, events, storeCalls, pushedSpy, lifecycleSpy, terminalReasonSpy }
@@ -967,6 +976,7 @@ describe('messages-facts withdrawn / refused fact（批次 A：撤回 + 拒收�
             resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, events, softDeleteSpy, advanceSpy, queuedAfterSpy }
@@ -1139,6 +1149,7 @@ describe('session-message：边界消息落库推进 contextBoundarySeq', () => 
             },
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotAssembler: new SnapshotDeltaAssembler(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { store, sid, deps, events }

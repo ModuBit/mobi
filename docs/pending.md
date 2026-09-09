@@ -8,6 +8,8 @@
 
 ## 8. Snapshot 全量推送的带宽优化
 
+> ✅ 2026-09-09 立项实施（两端 delta 方案），spec 见 `.scratch/snapshot-delta/spec.md`。评估结论：仅 hub delta 的 diff 方案因 hub 独立部署为保留形态而否决；断线恢复走事件驱动重基线（流首帧全量/重连重发全量），无需周期 checkpoint。以下为原始记录。
+
 **相关文件**：
 
 - `packages/cli/src/claude/utils/streamSnapshotSender.ts` — Snapshot 生成与发送
@@ -477,19 +479,23 @@ interrupt（用户停止）
 
 ---
 
-## 61. SSE 通道拆分评估：全局事件与会话消息分通道，或升级 WebSocket（2026-08-31）
+## 61. SSE 通道拆分评估——已收束：定向「订阅语义升级」，物理拆分/WS 否决（2026-09-09 评估）
 
-**现状**：所有会话消息与全局事件共用一条 SSE 连接。单通道意味着：会话消息流量（尤其子代理批量输出、大 thinking 块）与全局事件互相挤占，任何一端的慢消费都会拖住另一端；多会话打开时全部消息涌进同一连接，移动端弱网下感知最明显。
+**评估结论**（2026-09-09，预防性架构评估，事实均经代码核实）：
 
-**想讨论的方向**：
+- **现状**：web 全局一条 SSE 连接订阅 `all=true`（`SSEProvider.tsx`），所有会话的 `message-received`/`message-snapshot`（含 CLI 每 500ms 全量 snapshot）全部涌入。**单连接本身不是瓶颈，「后台会话内容白传」才是浪费**——web 对未打开会话的消息不建窗、UI 零消费。通知/角标走独立 `toast` 事件，与 message 事件无关，不受 message 类过滤影响。
+- **方向 A（每会话拆一条 SSE）：否决**。HTTP/1.1 每 host 6 连接硬约束（移动 PWA 最先爆，API 请求排队）；多连接各自心跳/重连，网络切换时重连风暴；会话切换建连延迟。（注：hub 启用 h2 后连接数约束解除，见下方 h2 记录，但方向 C 不依赖 h2，仍为首选）
+- **方向 B（升级 WebSocket）：否决**。web 无双向需求（发送全走 HTTP API）；需重做整套已验证的 SSE 健壮机制（90s 半死看门狗/指数退避/静默重连补拉/401 检测/cookie 滑动续期），成本周级收益错配。Socket.IO 留给 hub↔CLI。
+- **方向 C（单连接订阅语义升级）：✅ 既定方向，暂缓实施**。`all=true` 拆为「全局事件照收 + message 类只发 web 上报的关注 sessionId 集合」。设计要点：
+  - hub：`SSEManager` 加 `updateFocus(id, sessionIds)`（复用 `/visibility` 端点模式：subscriptionId 随 connection-changed 下发，web 已有 `subscriptionIdRef`），`shouldSend` 的 message 类判断改查关注集；建连初始关注走 query 参数
+  - web：路由切换时 fire-and-forget 上报（当前 URL 会话即关注集）；focus ACK 后 `fetchLatestMessages` 增量对账（首拉竞态模式）
+  - 多 tab：每 tab 一条连接一个 subscriptionId，关注集各自独立；上报缺失时服务端回退 `all=true` 兼容
+  - 已知小损失：后台会话的 prompt_suggestion 拦截失效（可归入轻量信令解决）
+- **触发条件**：维持——子代理可观测性落地流量上升、或多会话弱网实际卡顿时实施。**与 #8（snapshot delta 化）正交叠加**：#8 先做会缩小 C 的剩余收益，C 先做不影响 #8 收益；顺序建议 C → 观察流量 → 再定 #8。
 
-1. **按会话拆分 SSE**：全局事件（会话列表、通知等）留主通道，每个打开的会话单独一条 SSE——会话间流量隔离，切换/关闭会话即断开对应通道
-2. **升级 WebSocket**：单连接多路复用（channel/room 语义）、双向能力（心跳/背压/即时断开通知）、浏览器连接数限制（HTTP/1.1 每 host 6 条）不再是约束——但引入重连/状态机复杂度
-3. **维持现状 + 优化**：消息帧瘦身、按优先级分帧（灰行/状态先行，大 payload 滞后）
+**hub HTTP/2 能力记录**（2026-09-09 实测）：Bun 1.4.1+ 支持 `Bun.serve({tls, http2: true})`（同端口同 handler，TLS 走 ALPN 按连接协商、cleartext 走 prior-knowledge；1.4.2 实测均生效）。**暂不启用**，原因：① 浏览器仅在 TLS 上协商 h2，远端 hub 无证书无反代，开了对浏览器无效；② Bun h2 上 WebSocket 未实现（RFC 8441 extended CONNECT 待补），CLI Socket.IO 依赖经典 WS upgrade——ALPN 按连接协商 CLI 落 1.1 可避开但需实测；③ 需全量回归验证；④ 无当前痛点驱动。给远端 hub 上 TLS 时顺手开启即可。
 
-**触发时机**：子代理可观测性落地后流量上升，或出现多会话并用的实际卡顿时启动讨论。
-
-**相关**：`packages/hub/src/sse/sseManager.ts`、`packages/web/src/core/providers/SSEProvider.tsx`
+**相关文件**：`packages/hub/src/sse/sseManager.ts`、`packages/hub/src/web/routes/events.ts`、`packages/web/src/core/providers/SSEProvider.tsx`
 
 ---
 

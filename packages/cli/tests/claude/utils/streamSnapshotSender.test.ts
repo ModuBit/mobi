@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { StreamSnapshotSender } from '../../../src/claude/utils/streamSnapshotSender'
+import { StreamSnapshotSender, type SnapshotOut } from '../../../src/claude/utils/streamSnapshotSender'
 import type { RawJSONLines } from '../../../src/claude/types'
 import type { SDKToLogConverter } from '../../../src/claude/utils/sdkToLogConverter'
 
@@ -25,6 +25,11 @@ function createSender() {
     const converter = { convertSnapshot } as unknown as SDKToLogConverter
     const sender = new StreamSnapshotSender(transport, converter)
     return { sender, transport, convertSnapshot }
+}
+
+/** 取 transport 第 idx 帧的输出（类型窄化用） */
+function frameAt(transport: ReturnType<typeof vi.fn>, idx: number): SnapshotOut {
+    return transport.mock.calls[idx][0] as SnapshotOut
 }
 
 describe('StreamSnapshotSender - abort 补全（consumePendingFull）', () => {
@@ -95,107 +100,163 @@ describe('StreamSnapshotSender - abort 补全（consumePendingFull）', () => {
     })
 })
 
-describe('StreamSnapshotSender - tool_use 流式（让前端可见 tool running 中间态）', () => {
-    it('content_block_stop 后 tool_use 下发完整 input，input 由 input_json_delta 拼成', () => {
-        const { sender, convertSnapshot, transport } = createSender()
-        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
-        sender.startBlock(0, 'tool_use', { id: 'toolu_1', name: 'Bash' })
-        // startBlock 已立即下发占位（input={}），手动 flush 不重复触发新内容
-        sender.append(0, '{"comm')
-        sender.append(0, 'and":"ls"}')
-        sender.flush()
-        sender.endBlock(0) // content_block_stop：input 完整、ready，触发 flush
-        expect(convertSnapshot).toHaveBeenCalledWith(
-            expect.arrayContaining([{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }]),
-            expect.anything(),
-        )
-        expect(transport).toHaveBeenCalled()
-    })
-
-    it('ready 时 input JSON 解析失败兜底为 {}（保 running 可见，不丢 tool_use）', () => {
-        const { sender, convertSnapshot } = createSender()
-        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
-        sender.startBlock(0, 'tool_use', { id: 'toolu_2', name: 'Read' })
-        sender.append(0, '{not-json')
-        sender.endBlock(0)
-
-        expect(convertSnapshot).toHaveBeenCalledWith(
-            expect.arrayContaining([{ type: 'tool_use', id: 'toolu_2', name: 'Read', input: {} }]),
-            expect.anything(),
-        )
-    })
-
-    it('text 与 tool_use 混合：text 流式即下发，tool_use start 即占位、stop 后填充完整 input', () => {
-        const { sender, convertSnapshot } = createSender()
-        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
-        sender.startBlock(0, 'text')
-        sender.append(0, 'thinking...')
-        sender.startBlock(1, 'tool_use', { id: 'toolu_3', name: 'Grep' })
-        sender.append(1, '{"pattern":"x"}')
-
-        // start tool_use 立即触发 flush：snapshot 同时含 text 与 tool_use 占位（input={}）
-        const placeholderCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
-        expect(placeholderCall).toEqual([
-            { type: 'text', text: 'thinking...' },
-            { type: 'tool_use', id: 'toolu_3', name: 'Grep', input: {} },
-        ])
-
-        sender.endBlock(1)
-        const fullCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
-        expect(fullCall).toEqual([
-            { type: 'text', text: 'thinking...' },
-            { type: 'tool_use', id: 'toolu_3', name: 'Grep', input: { pattern: 'x' } },
-        ])
-    })
-
-    it('abort 补全（consumePendingFull）保留半截 tool_use，不丢调用记录', () => {
-        // abort 时 tool_use 可能仍在流式 input（未 content_block_stop）。consumePendingFull 用于落库
-        // 补全，此时应保留该 tool_use（input 兜底），避免「该工具被调用过」整条丢失。
-        const { sender } = createSender()
+describe('StreamSnapshotSender - delta 发送（首帧全量 + 此后增量）', () => {
+    it('流首帧为全量帧（baseRev=null，携带完整内容），此后增量帧只带新增后缀', () => {
+        const { sender, transport, convertSnapshot } = createSender()
         sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
-        sender.startBlock(0, 'tool_use', { id: 'toolu_4', name: 'Bash' })
-        sender.append(0, '{"command":"ls"') // 未闭合，未 endBlock（abort 发生在 content_block_stop 前）
+        sender.startBlock(0, 'text')
+        sender.append(0, 'hel')
+        sender.flush()
 
-        const pending = sender.consumePendingFull()
-        expect(pending!.blocks).toEqual([
-            { type: 'tool_use', id: 'toolu_4', name: 'Bash', input: {} }, // parse 失败兜底 {}
+        // 首帧全量：走 converter 携带完整 blocks
+        expect(convertSnapshot).toHaveBeenCalledTimes(1)
+        const first = frameAt(transport, 0)
+        expect(first.kind).toBe('full')
+        expect(first.frame).toEqual({ localId: 'uuid-1', rev: 1, baseRev: null })
+
+        sender.append(0, 'lo')
+        sender.append(0, ' world')
+        sender.flush()
+
+        // 增量帧：只带后缀，不再走 converter
+        expect(convertSnapshot).toHaveBeenCalledTimes(1)
+        const second = frameAt(transport, 1)
+        expect(second.kind).toBe('delta')
+        expect(second.frame).toEqual({
+            localId: 'uuid-1',
+            rev: 2,
+            baseRev: 1,
+            deltas: [{ op: 'append', index: 0, text: 'lo world' }],
+        })
+    })
+
+    it('新消息流重置 rev 与首帧全量（resume/下一条消息都从基线起步）', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'msg1')
+        sender.flush() // full rev=1
+        sender.append(0, '!')
+        sender.flush() // delta rev=2
+
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-2' })
+        sender.clearBuffers()
+        sender.startBlock(0, 'text')
+        sender.append(0, 'msg2')
+        sender.flush()
+
+        const third = frameAt(transport, 2)
+        expect(third.kind).toBe('full')
+        expect(third.frame).toEqual({ localId: 'uuid-2', rev: 1, baseRev: null })
+    })
+
+    it('首帧后新增块以 new-block 入链；tool_use ready 翻转以 replace-block 全块替换', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'hi')
+        sender.flush() // full：含 text
+
+        // 新 tool_use 块（startBlock 触发立即 flush）：new-block 占位
+        sender.startBlock(1, 'tool_use', { id: 'toolu_1', name: 'Bash' })
+        let out = frameAt(transport, 1)
+        expect(out.kind).toBe('delta')
+        expect(out.frame.deltas).toEqual([
+            { op: 'new-block', index: 1, block: { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} } },
+        ])
+
+        // input 累积不产 op（半截 JSON 无意义）
+        sender.append(1, '{"command":"ls"}')
+        sender.flush()
+        expect(transport).toHaveBeenCalledTimes(2)
+
+        // content_block_stop：ready 翻转 → replace-block 完整 input
+        sender.endBlock(1)
+        out = frameAt(transport, 2)
+        expect(out.kind).toBe('delta')
+        expect(out.frame.deltas).toEqual([
+            { op: 'replace-block', index: 1, block: { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } } },
         ])
     })
 
-    it('content_block_start 立即下发 input={} 占位（消除大 input 工具的生成盲区）', () => {
-        const { sender, convertSnapshot, transport } = createSender()
-        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
-        // content_block_start：tool_use 立即下发占位，input={}（parsedInput 初始值）
-        sender.startBlock(0, 'tool_use', { id: 'toolu_placeholder', name: 'Write' })
+    it('thinking done 翻转以 replace-block 携带 durationMs/done', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'thinking')
+        sender.append(0, '思考')
+        sender.flush() // full
 
-        expect(convertSnapshot).toHaveBeenCalledTimes(1)
+        sender.endBlock(0) // done 翻转 + 立即 flush
+        const out = frameAt(transport, 1)
+        expect(out.kind).toBe('delta')
+        expect(out.frame.deltas).toEqual([
+            {
+                op: 'replace-block',
+                index: 0,
+                block: { type: 'thinking', thinking: '思考', durationMs: expect.any(Number), done: true },
+            },
+        ])
+    })
+
+    it('forceFullFlush：重发全量帧重建基线（socket 重连重发）；无在途内容时 no-op', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'partial')
+        sender.flush() // full rev=1
+        sender.append(0, '!')
+        sender.flush() // delta rev=2
+
+        // 断线重连：重发全量（携带当前累积 partial!），rev 继续单调递增
+        sender.forceFullFlush()
+        const out = frameAt(transport, 2)
+        expect(out.kind).toBe('full')
+        expect(out.frame).toEqual({ localId: 'uuid-1', rev: 3, baseRev: null })
+
+        // 重发后的后续增量正常衔接
+        sender.append(0, '?')
+        sender.flush()
+        const after = frameAt(transport, 3)
+        expect(after.kind).toBe('delta')
+        expect(after.frame).toEqual({
+            localId: 'uuid-1', rev: 4, baseRev: 3,
+            deltas: [{ op: 'append', index: 0, text: '?' }],
+        })
+
+        // 无在途内容（流已清）时 forceFullFlush 不发帧
+        sender.clearBuffers()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-9' })
+        sender.forceFullFlush()
+        expect(transport).toHaveBeenCalledTimes(4)
+    })
+
+    it('tool_use 在流首帧前 startBlock：首帧即全量且含占位', () => {
+        const { sender, transport, convertSnapshot } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_1', name: 'Bash' })
+
+        const first = frameAt(transport, 0)
+        expect(first.kind).toBe('full')
         expect(convertSnapshot).toHaveBeenCalledWith(
-            [{ type: 'tool_use', id: 'toolu_placeholder', name: 'Write', input: {} }],
+            [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} }],
             expect.anything(),
         )
-        expect(transport).toHaveBeenCalledTimes(1)
     })
 
-    it('占位后 endBlock 下发完整 input（input 空→满就地更新）', () => {
-        const { sender, convertSnapshot } = createSender()
-        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
-        sender.startBlock(0, 'tool_use', { id: 'toolu_ph2', name: 'Write' })
-        sender.append(0, '{"file_path":"/a.ts","content":"x"}')
-
-        const placeholderCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
-        expect(placeholderCall).toEqual([{ type: 'tool_use', id: 'toolu_ph2', name: 'Write', input: {} }])
-
-        sender.endBlock(0) // content_block_stop：input 完整，再下发一次
-        const fullCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
-        expect(fullCall).toEqual([
-            { type: 'tool_use', id: 'toolu_ph2', name: 'Write', input: { file_path: '/a.ts', content: 'x' } },
-        ])
+    it('无脏内容时增量 flush 不发帧（空帧抑制）', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'a')
+        sender.flush() // full
+        sender.flush() // 无变化
+        expect(transport).toHaveBeenCalledTimes(1)
     })
 })
 
 describe('StreamSnapshotSender - messageId 透传（snapshot↔full 关联键）', () => {
-    it('setSnapshotOpts 的 messageId 透传到 convertSnapshot（flush 发 snapshot 时）', () => {
-        const { sender, convertSnapshot, transport } = createSender()
+    it('setSnapshotOpts 的 messageId 透传到 convertSnapshot（首帧全量）', () => {
+        const { sender, convertSnapshot } = createSender()
         sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_anthropic_abc' })
         sender.startBlock(0, 'thinking')
         sender.append(0, '思考')
@@ -205,7 +266,6 @@ describe('StreamSnapshotSender - messageId 透传（snapshot↔full 关联键）
             expect.anything(),
             expect.objectContaining({ messageId: 'msg_anthropic_abc' }),
         )
-        expect(transport).toHaveBeenCalled()
     })
 
     it('consumePendingFull 透传 messageId（abort 补全 full 也携带 message.id）', () => {

@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
+import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -88,6 +88,12 @@ export class ApiSessionClient extends EventEmitter {
     private lastConnectErrorLogAt = 0
     /** rewind 两段回报的可靠上报队列（ack 确认制，M5） */
     private readonly rewindReportQueue: ReliableRewindReportQueue
+    /**
+     * snapshot 流重基线回调（delta 协议）：socket 重连建立后调用，让进行中消息的
+     * snapshot 发送器立即重发全量帧（断线期间的增量帧已丢，hub 链必断档，全量重建基线）。
+     * 由 claudeRemoteLauncher 在创建发送器时注入。
+     */
+    private onSnapshotTransportReset: (() => void) | null = null
 
     constructor(token: string, session: Session) {
         super()
@@ -166,6 +172,8 @@ export class ApiSessionClient extends EventEmitter {
             this.clearManualReconnect()
             // 补发未确认的 rewind 回报（ack 制：断线期间的回报在此重放，hub 幂等消化）
             this.rewindReportQueue.onConnected()
+            // snapshot delta 流重基线：断线期间的增量帧已丢，重发全量帧重建 hub 侧基线
+            this.onSnapshotTransportReset?.()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -464,13 +472,32 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    /** 发送流式内容快照（不落库，Hub 直接透传给 Web） */
-    sendContentSnapshot(message: DecryptedMessage): void {
+    /** 注册 snapshot 流重基线回调（delta 协议，socket 重连时触发全量重发） */
+    setSnapshotTransportReset(fn: (() => void) | null): void {
+        this.onSnapshotTransportReset = fn
+    }
+
+    /**
+     * 发送流式内容快照——全量帧（delta 协议基线）。frame 携带 rev（baseRev=null）；
+     * 缺省时为 legacy 全量（老协议直通，hub 不建链）。
+     */
+    sendContentSnapshot(message: DecryptedMessage, frame?: { rev: number }): void {
         this.socket.emit('session-message', {
             sid: this.sessionId,
             message: message.content,
             localId: message.localId ?? undefined,
             snapshot: true,
+            frame: frame ? { rev: frame.rev, baseRev: null } : undefined,
+        })
+    }
+
+    /** 发送流式内容快照——增量帧（首帧全量基线之后，仅携带增量 op） */
+    sendSnapshotDelta(frame: SnapshotDeltaFrame): void {
+        this.socket.emit('session-message', {
+            sid: this.sessionId,
+            message: undefined,
+            localId: frame.localId,
+            snapshotDelta: frame,
         })
     }
 

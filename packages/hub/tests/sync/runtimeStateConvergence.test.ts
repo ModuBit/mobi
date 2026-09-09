@@ -20,6 +20,7 @@ import { Store } from '../../src/store'
 import { SessionCache } from '../../src/sync/sessionCache'
 import { registerSessionHandlers, type SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
+import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
 import type { EventPublisher } from '../../src/sync/eventPublisher'
 
 // SessionCache 仅依赖 publisher.emit，用最小 stub
@@ -72,6 +73,7 @@ function makeHandlerDeps(store: Store): SessionHandlersDeps {
         },
         emitAccessError: () => {},
         backgroundTaskTracker: new BackgroundTaskTracker(),
+        snapshotAssembler: new SnapshotDeltaAssembler(),
     }
 }
 

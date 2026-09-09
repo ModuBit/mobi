@@ -19,6 +19,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Store } from '../../src/store'
 import { registerSessionHandlers, type SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
+import { SnapshotDeltaAssembler } from '../../src/sync/snapshotDeltaAssembler'
 import { RewindDeleteBoundTracker } from '../../src/sync/rewindDeleteBoundTracker'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 
@@ -59,6 +60,7 @@ function makeDeps(store: Store, opts: { rewindDeleteBoundTracker?: RewindDeleteB
         },
         emitAccessError: () => { accessError.called = true },
         backgroundTaskTracker: new BackgroundTaskTracker(),
+        snapshotAssembler: new SnapshotDeltaAssembler(),
         rewindDeleteBoundTracker: opts.rewindDeleteBoundTracker,
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }

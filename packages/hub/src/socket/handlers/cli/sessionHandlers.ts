@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { COMMAND_LIFECYCLE_STATES, SNAPSHOT_PENDING_ID, ContextUsageSchema, GoalStatusSchema, type ClientToServerEvents, type CommandLifecycleState, type MessageFact } from '@mobi/shared'
+import { COMMAND_LIFECYCLE_STATES, SNAPSHOT_PENDING_ID, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type CommandLifecycleState, type MessageFact } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -25,6 +25,7 @@ import type { SyncEvent } from '../../../sync/syncEngine'
 import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
+import type { SnapshotDeltaAssembler } from '../../../sync/snapshotDeltaAssembler'
 import { toDecryptedMessage } from '../../../sync/messageService'
 import { extractWithdrawnContent, isContextBoundaryContent } from '../../../store/messages'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
@@ -55,7 +56,8 @@ type UpdateStateHandler = ClientToServerEvents['update-state']
 
 const messageSchema = z.object({
     sid: z.string(),
-    message: z.union([z.string(), z.unknown()]),
+    // message 任意形状（内容信封）；增量帧（snapshotDelta 路径）下可为 undefined
+    message: z.union([z.string(), z.unknown()]).optional(),
     localId: z.string().optional(),
     /** 上游 native 事实（rewind 锚点）：CLI 在 SDK 下发消息时自带，两者无时序问题 */
     metadata: z.object({
@@ -63,6 +65,10 @@ const messageSchema = z.object({
         nativeSessionId: z.string().optional()
     }).optional(),
     snapshot: z.boolean().optional(),
+    /** 全量帧的 rev 标记（delta 协议）：新 CLI 携带，缺省 = legacy 全量（直通不建链） */
+    frame: z.object({ rev: z.number().int().nonnegative(), baseRev: z.null() }).optional(),
+    /** 增量帧（delta 协议）：携带时 message 缺省，走拼接器 apply 路径 */
+    snapshotDelta: SnapshotDeltaFrameSchema.optional(),
     category: z.enum(['discard', 'ephemeral', 'persistent']).optional()
 })
 
@@ -84,6 +90,8 @@ export type SessionHandlersDeps = {
     emitAccessError: EmitAccessError
     /** 活跃后台任务集合（写侧：background_tasks_changed replace；读侧：rewind API 闸门） */
     backgroundTaskTracker: BackgroundTaskTracker
+    /** snapshot delta 拼接器（delta 协议票 01）：全量/增量帧重建全量缓存后下发 web */
+    snapshotAssembler: SnapshotDeltaAssembler
     /** rewind 软删除上界（读侧：rewind-truncated 消费；写侧：SyncEngine 受理时 mark，共用实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     /** 会话事实上报落库入口（深化候选③：单一声明源见 sync/sessionFacts.ts，
@@ -94,7 +102,7 @@ export type SessionHandlersDeps = {
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, factsSink, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, snapshotAssembler, factsSink, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -116,7 +124,34 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         const { sid, localId, snapshot } = parsed.data
 
-        // 快照消息：不落库，直接透传给 Web
+        // 增量帧（delta 协议）：拼接器 apply 后下发重建的全量；断档返回 null 不下发（等全量基线）
+        if (parsed.data.snapshotDelta) {
+            const frame = parsed.data.snapshotDelta
+            const sessionAccess = resolveSessionAccess(sid)
+            if (!sessionAccess.ok) {
+                emitAccessError('session', sid, sessionAccess.reason)
+                return
+            }
+            const content = snapshotAssembler.applyDelta(sid, frame)
+            if (content !== null) {
+                onWebappEvent?.({
+                    type: 'message-snapshot',
+                    sessionId: sid,
+                    message: {
+                        id: frame.localId ?? SNAPSHOT_PENDING_ID,
+                        seq: null,
+                        localId: frame.localId,
+                        snapshot: true,
+                        content,
+                        createdAt: Date.now(),
+                    },
+                })
+            }
+            return
+        }
+
+        // 快照消息：不落库，经拼接器重建全量缓存后透传给 Web（delta 协议票 01：
+        // CLI→hub 段已增量化，此处下发的是缓存重建的全量；票 02 再按订阅进度转发增量）
         if (snapshot) {
             const sessionAccess = resolveSessionAccess(sid)
             if (!sessionAccess.ok) {
@@ -124,6 +159,12 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 return
             }
             const content = parsed.data.message
+            const rebuilt = snapshotAssembler.applyFull(
+                sid,
+                localId ?? null,
+                content,
+                parsed.data.frame?.rev ?? null,
+            )
             onWebappEvent?.({
                 type: 'message-snapshot',
                 sessionId: sid,
@@ -132,7 +173,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     seq: null,
                     localId: localId ?? null,
                     snapshot: true,
-                    content,
+                    content: rebuilt,
                     createdAt: Date.now(),
                 },
             })
@@ -162,6 +203,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const category: MessageCategory = parsed.data.category ?? 'persistent'
 
         const msg = store.messages.addMessage(sid, content, localId, category, parsed.data.metadata ?? null)
+
+        // 终态已持久化：清掉该消息的 snapshot delta 缓存（full message 到达 = 流结束）
+        snapshotAssembler.cleanupMessage(sid, localId ?? null)
 
         // 边界指针推进（fork/rewind 入口判据，fork-session spec §2）。两个写入时机：
         // compact_boundary 落库 → 该行 seq；context-cleared 事件到达 → 当前 MAX(seq)。

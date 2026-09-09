@@ -18,7 +18,7 @@ import { z } from 'zod'
 import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
-import type { ContextUsage, GoalStatus } from './schemas'
+import type { ContextUsage, GoalStatus, SnapshotDeltaFrame } from './schemas'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
 
@@ -166,7 +166,18 @@ export interface NativeMessageMetadata {
 
 export interface ClientToServerEvents {
     /** CLI→Hub 会话消息落库主通道（agent output / agent event / snapshot 透传，按 content 判别） */
-    'session-message': (data: { sid: string; message: unknown; localId?: string; metadata?: NativeMessageMetadata; snapshot?: boolean; category?: MessageCategory }) => void
+    'session-message': (data: {
+        sid: string
+        message: unknown
+        localId?: string
+        metadata?: NativeMessageMetadata
+        snapshot?: boolean
+        /** 全量帧的 rev 标记（delta 协议）：新 CLI 携带，缺省 = legacy 全量（老协议直通） */
+        frame?: { rev: number; baseRev: null }
+        /** 增量帧（delta 协议）：携带时 message 字段缺省，hub 走拼接器路径 */
+        snapshotDelta?: SnapshotDeltaFrame
+        category?: MessageCategory
+    }) => void
     'session-alive': (data: {
         sid: string
         time: number

@@ -14,12 +14,22 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, type DecryptedMessage } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, type DecryptedMessage, type SnapshotBlock, type SnapshotBlockDelta, type SnapshotDeltaFrame } from '@mobi/shared'
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { RawJSONLines } from '@/claude/types'
 import type { SDKToLogConverter } from './sdkToLogConverter'
 
-type SnapshotTransport = (msg: DecryptedMessage) => void
+/**
+ * 发送侧输出帧（delta 协议，.scratch/snapshot-delta spec）：
+ * - full：全量帧（流首帧 / forceFull 重发），携带完整 DecryptedMessage + rev（baseRev=null）
+ * - delta：增量帧（此后每次 flush 的增量 op）
+ * transport 消费方据此映射到 socket 协议（sendContentSnapshot / sendSnapshotDelta）
+ */
+export type SnapshotOut =
+    | { kind: 'full'; frame: { localId: string; rev: number; baseRev: null }; message: DecryptedMessage }
+    | { kind: 'delta'; frame: SnapshotDeltaFrame }
+
+type SnapshotTransport = (out: SnapshotOut) => void
 
 /** 文本类（text/thinking）缓冲区：流式逐字追加，过程中即可输出 */
 interface TextLikeBuffer {
@@ -33,6 +43,13 @@ interface TextLikeBuffer {
     durationMs?: number
     /** thinking 块是否已收到 content_block_stop（思考完成） */
     done?: boolean
+    // —— delta 发送游标（增量协议，下同）：已通过全量/增量帧下发的进度 ——
+    /** 是否已进入增量链（首帧全量或 new-block 初始化后置 true） */
+    sentInit?: boolean
+    /** 已下发的 content 前缀长度（下一帧从此处切后缀） */
+    sentLen?: number
+    /** thinking done 翻转是否已下发（replace-block 一次性） */
+    doneSent?: boolean
 }
 
 /** tool_use 缓冲区：累积 input_json_delta，content_block_stop 后 parse 为完整 input 填充占位 */
@@ -48,6 +65,11 @@ interface ToolUseBuffer {
     dirty: boolean
     /** ready 时一次性 parse 缓存（inputJson 此后不变，避免每次 flush 重复 parse）；初始 {} 作占位 */
     parsedInput: unknown
+    // —— delta 发送游标 ——
+    /** 占位（new-block）是否已下发 */
+    placeholderSent?: boolean
+    /** ready 翻转（replace-block 完整 input）是否已下发 */
+    readySent?: boolean
 }
 
 type ContentBlockBuffer = TextLikeBuffer | ToolUseBuffer
@@ -70,12 +92,13 @@ export type ContentBlock =
     | { type: 'tool_use'; id: string; name: string; input: unknown }
 
 /**
- * 流式 Snapshot 发送器
+ * 流式 Snapshot 发送器（delta 协议，.scratch/snapshot-delta spec）
  *
  * 累积 SDK StreamEvent 中的 text_delta / thinking_delta / input_json_delta(tool_use)，
- * 每 500ms 通过 SDKToLogConverter 转换为 DecryptedMessage 发送。
- * 使用 SDK 的 uuid 作为 snapshot id，与完整消息共享同一 localId，
- * 前端据此实现平滑的 snapshot → full message 过渡。
+ * 每 500ms 发送一次。发送采用「首帧全量 + 此后增量」：流首帧（或 socket 重连重发）
+ * 携带完整累积内容建立基线，之后每帧只发增量 op（append 后缀 / new-block / replace-block），
+ * 传输量 O(N) 而非全量重发的 O(N²)。op 直接从 buffer 状态变迁产出（事件驱动，无 diff 比较）。
+ * rev/baseRev 由本发送器按流分配，接收方（hub）严格衔接校验、断档丢弃等全量重基线。
  *
  * text/thinking 流式逐字追加，过程中即可输出（半截文本有意义）。
  * tool_use 在 content_block_start 即下发 input={} 占位——前端立即建 running 卡片，
@@ -97,6 +120,12 @@ export class StreamSnapshotSender {
      * abort 时若仍 false 且有累积内容，consumePendingFull 返回补全内容落库。
      */
     private fullDelivered = false
+    /** delta 流状态：当前消息流内单调递增的帧序号（0=尚未发帧） */
+    private streamRev = 0
+    /** 当前流是否已发出首帧（false=下一帧必为全量） */
+    private streamHasSent = false
+    /** 强制下一帧为全量（socket 重连重发，见 forceFullFlush） */
+    private forceFull = false
 
     constructor(
         private readonly transport: SnapshotTransport,
@@ -109,6 +138,10 @@ export class StreamSnapshotSender {
         this.snapshotOpts = opts
         if (opts.sdkUuid) this.sdkUuid = opts.sdkUuid
         this.fullDelivered = false
+        // 新消息流：rev 归零、首帧必全量（sent-state 随 clearBuffers 的 buffer 重建自然重置）
+        this.streamRev = 0
+        this.streamHasSent = false
+        this.forceFull = false
     }
 
     /** 清除所有 buffer（新消息开始时调用） */
@@ -191,24 +224,153 @@ export class StreamSnapshotSender {
         this.timer = setInterval(() => this.flush(), this.intervalMs)
     }
 
-    /** 立即刷新所有脏 buffer */
+    /**
+     * 立即刷新：流首帧（或 forceFull）发全量帧，此后发增量帧。
+     * 无未下发内容时不发帧（delta 帧无 op / 全量帧无变化均跳过）。
+     */
     flush(): void {
         if (this.destroyed) return
 
+        if (!this.streamHasSent || this.forceFull) {
+            this.emitFull()
+            return
+        }
+
+        // 增量：无脏 buffer 直接跳过（collectDeltas 结果必空）
         let hasDirty = false
         for (const buffer of this.buffers.values()) {
             if (buffer.dirty) { hasDirty = true; break }
         }
         if (!hasDirty) return
 
-        // 通过 SDKToLogConverter 生成与最终消息一致的 RawJSONLines
-        const rawLog = this.converter.convertSnapshot(this.buildBlocks(), this.snapshotOpts)
-        this.transport(this.wrapAsDecryptedMessage(rawLog))
+        const deltas = this.collectDeltas()
+        this.clearDirty()
+        if (deltas.length === 0) return
 
-        // 标记所有 buffer 为干净
+        this.streamRev += 1
+        this.transport({
+            kind: 'delta',
+            frame: {
+                localId: this.streamLocalId(),
+                rev: this.streamRev,
+                baseRev: this.streamRev - 1,
+                deltas,
+            },
+        })
+    }
+
+    /**
+     * socket 重连后重发全量帧（重基线规则：断线期间的 delta 帧已丢，hub 链必断档，
+     * 全量帧重建基线）。无在途内容或尚未发出过任何帧时为 no-op（无需重基线）。
+     */
+    forceFullFlush(): void {
+        if (this.destroyed || this.buffers.size === 0 || !this.streamHasSent) return
+        this.forceFull = true
+        this.flush()
+    }
+
+    /** 发送全量帧并初始化各 buffer 的发送游标（已发送=当前累积全量） */
+    private emitFull(): void {
+        // 无任何累积内容时不发空帧（tool_use 占位场景 startBlock 已标脏，正常不会走到）
+        if (this.buffers.size === 0) {
+            this.forceFull = false
+            return
+        }
+
+        const rawLog = this.converter.convertSnapshot(this.buildBlocks(), this.snapshotOpts)
+        this.streamRev += 1
+        this.transport({
+            kind: 'full',
+            frame: { localId: this.streamLocalId(), rev: this.streamRev, baseRev: null },
+            message: this.wrapAsDecryptedMessage(rawLog),
+        })
+
+        // 初始化发送游标：全量已含当前全部累积
+        for (const buffer of this.buffers.values()) {
+            if (buffer.kind === 'text-like') {
+                buffer.sentInit = true
+                buffer.sentLen = buffer.content.length
+                buffer.doneSent = Boolean(buffer.done)
+            } else {
+                buffer.placeholderSent = true
+                buffer.readySent = buffer.ready
+            }
+            buffer.dirty = false
+        }
+        this.streamHasSent = true
+        this.forceFull = false
+    }
+
+    /**
+     * 收集自上次下发以来的增量 op（事件驱动，无 diff 比较）：
+     * - 未入链的 buffer → new-block（携带当前累积；tool_use 携带占位/已 ready 的完整 input）
+     * - text/thinking → 超出 sentLen 的后缀 append
+     * - tool_use ready 翻转 / thinking done 翻转 → replace-block（一次性全块替换）
+     * index 为 buffer 在 Map 迭代序（=插入序=blocks 数组序）中的位置。
+     */
+    private collectDeltas(): SnapshotBlockDelta[] {
+        const deltas: SnapshotBlockDelta[] = []
+        let index = 0
+        for (const buffer of this.buffers.values()) {
+            const pos = index
+            index += 1
+            if (buffer.kind === 'text-like') {
+                if (!buffer.sentInit) {
+                    // 首帧后新增的块：整块作为 new-block 入链
+                    deltas.push({ op: 'new-block', index: pos, block: this.textLikeBlock(buffer) })
+                    buffer.sentInit = true
+                    buffer.sentLen = buffer.content.length
+                    buffer.doneSent = Boolean(buffer.done)
+                    continue
+                }
+                if (buffer.content.length > (buffer.sentLen ?? 0)) {
+                    deltas.push({ op: 'append', index: pos, text: buffer.content.slice(buffer.sentLen) })
+                    buffer.sentLen = buffer.content.length
+                }
+                if (buffer.type === 'thinking' && buffer.done && !buffer.doneSent) {
+                    deltas.push({ op: 'replace-block', index: pos, block: this.textLikeBlock(buffer) })
+                    buffer.doneSent = true
+                }
+                continue
+            }
+            // tool_use
+            if (!buffer.placeholderSent) {
+                deltas.push({
+                    op: 'new-block',
+                    index: pos,
+                    block: { type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput },
+                })
+                buffer.placeholderSent = true
+                buffer.readySent = buffer.ready
+            } else if (buffer.ready && !buffer.readySent) {
+                deltas.push({
+                    op: 'replace-block',
+                    index: pos,
+                    block: { type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput },
+                })
+                buffer.readySent = true
+            }
+        }
+        return deltas
+    }
+
+    private textLikeBlock(buffer: TextLikeBuffer): SnapshotBlock {
+        if (buffer.type === 'text') {
+            return { type: 'text', text: buffer.content }
+        }
+        return buffer.done
+            ? { type: 'thinking', thinking: buffer.content, durationMs: buffer.durationMs, done: true }
+            : { type: 'thinking', thinking: buffer.content }
+    }
+
+    private clearDirty(): void {
         for (const buffer of this.buffers.values()) {
             buffer.dirty = false
         }
+    }
+
+    private streamLocalId(): string {
+        return this.sdkUuid ?? SNAPSHOT_PENDING_ID
     }
 
     /**

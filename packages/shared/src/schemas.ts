@@ -634,6 +634,68 @@ export const DecryptedMessageSchema = z.object({
 
 export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
 
+// ============================================================================
+// Snapshot Delta 协议（.scratch/snapshot-delta spec）
+// CLI→hub（session-message）与 hub→web（message-snapshot-delta）共用的增量载荷。
+// 链路无 diff：CLI 从流式 buffer 产出 op，hub/web 只 apply；单连接内 TCP 有序，
+// 唯一风险是断线，恢复靠事件驱动重基线（流首帧全量 / 重连重发全量），无周期 checkpoint。
+// ============================================================================
+
+/** snapshot 消息内的内容块（与 CLI StreamSnapshotSender 的 buildBlocks 输出一致） */
+export const SnapshotBlockSchema = z.discriminatedUnion('type', [
+    z.object({ type: z.literal('text'), text: z.string() }),
+    z.object({
+        type: z.literal('thinking'),
+        thinking: z.string(),
+        /** 思考耗时（content_block_start→stop），done 翻转时携带 */
+        durationMs: z.number().optional(),
+        /** content_block_stop 后置 true（思考完成标记） */
+        done: z.boolean().optional(),
+    }),
+    z.object({
+        type: z.literal('tool_use'),
+        id: z.string(),
+        name: z.string(),
+        /** 半截 JSON 无意义：流式期恒为 {}（占位），content_block_stop 后为完整 input */
+        input: z.unknown(),
+    }),
+])
+
+export type SnapshotBlock = z.infer<typeof SnapshotBlockSchema>
+
+/**
+ * 块级增量 op——三种形态覆盖 snapshot 的全部演化路径（与 CLI buffer 状态变迁一一对应）：
+ * - append：text/thinking 后缀追加（流量大头）
+ * - new-block：新块起始（含 tool_use input={} 占位）
+ * - replace-block：一次性全块替换（tool_use ready 翻转 / thinking done 标记）
+ * index 为块在消息 content 数组中的位置（发送方与 apply 方按同一插入序对齐）。
+ */
+export const SnapshotBlockDeltaSchema = z.discriminatedUnion('op', [
+    z.object({ op: z.literal('append'), index: z.number().int().nonnegative(), text: z.string() }),
+    z.object({ op: z.literal('new-block'), index: z.number().int().nonnegative(), block: SnapshotBlockSchema }),
+    z.object({ op: z.literal('replace-block'), index: z.number().int().nonnegative(), block: SnapshotBlockSchema }),
+])
+
+export type SnapshotBlockDelta = z.infer<typeof SnapshotBlockDeltaSchema>
+
+/**
+ * snapshot 增量帧。baseRev=null 为全量帧（绝对真相：整体替换 + rev 重置，携带完整 blocks）；
+ * 否则为增量帧（baseRev 必须与接收方已持有的 rev 严格衔接，不连续即丢弃等全量）。
+ * rev 由产出方（CLI）按流（每条消息）分配、单调递增。
+ */
+export const SnapshotDeltaFrameSchema = z.object({
+    localId: z.string(),
+    rev: z.number().int().nonnegative(),
+    baseRev: z.number().int().nonnegative().nullable(),
+    blocks: z.array(SnapshotBlockSchema).optional(),
+    deltas: z.array(SnapshotBlockDeltaSchema).optional(),
+}).refine(
+    (frame) => (frame.baseRev === null ? Array.isArray(frame.blocks) : Array.isArray(frame.deltas)),
+    { message: '全量帧必须携带 blocks，增量帧必须携带 deltas' },
+)
+
+export type SnapshotDeltaFrame = z.infer<typeof SnapshotDeltaFrameSchema>
+
 export const SessionSchema = z.object({
     id: z.string(),
     namespace: z.string(),
