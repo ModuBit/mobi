@@ -155,6 +155,7 @@ flowchart LR
 | **ProjectCache** | 项目缓存，管理项目实体 CRUD 并广播 `project-added/updated/removed`；删除项目时逐个广播名下会话的 `session-updated`（解绑进「最近」） |
 | **[MessageService](./message-service)** | 消息服务，处理消息分页和发送 |
 | **[RpcGateway](./rpc-gateway)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
+| **[Snapshot Delta 协议](./snapshot-delta.md)** | 流式消息增量传输：拼接器缓存 + SSE 转发游标 + 重基线/生命周期清理 |
 
 ## 初始化流程
 

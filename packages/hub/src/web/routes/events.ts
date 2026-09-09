@@ -200,21 +200,27 @@ export function createEventsRoutes(
             return sessionResult
         }
 
+        // 订阅属主校验（对齐 /visibility 模式）：sendTo 绕过 shouldSend 的 namespace 过滤，
+        // 目标订阅不属调用者 namespace 时必须拒绝——否则跨 namespace 注入流式内容 + 重置受害者游标
+        const subscription = manager.getSubscription(parsed.data.subscriptionId)
+        if (!subscription || subscription.namespace !== c.get('namespace')) {
+            return c.json({ error: 'Subscription not found' }, 404)
+        }
+
         const { assembler, forwarder } = snapshotDelta
         // 清游标（下一 delta 若先到也会全量追赶）+ 立即补发当前全部活跃流的全量基线
         forwarder.resetSubscription(parsed.data.subscriptionId)
-        let synced = 0
-        for (const entry of assembler.getActiveEntries(sessionResult.sessionId)) {
+        const entries = assembler.getActiveEntries(sessionResult.sessionId)
+        for (const entry of entries) {
             manager.sendTo(parsed.data.subscriptionId, {
                 type: 'message-snapshot',
                 sessionId: sessionResult.sessionId,
                 namespace: c.get('namespace'),
                 message: buildSnapshotMessage(entry.localId, entry.content, entry.rev),
             })
-            synced += 1
         }
 
-        return c.json({ ok: true, synced })
+        return c.json({ ok: true, synced: entries.length })
     })
 
     return app

@@ -572,4 +572,43 @@ describe('messageWindowStore - snapshot delta apply（.scratch/snapshot-delta �
         ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: '!' }] })
         expect(getMessageWindowState('s1').messages).toHaveLength(0)
     })
+
+    it('C1：多 op 帧中途失败 → 整帧 no-op 且旧消息 content 不被半应用污染（克隆后 apply，无回滚需求）', () => {
+        // blocks[0]=text, blocks[1]=tool_use：第一个 append 成功、第二个 append 到 tool_use 失败
+        const mixed = {
+            id: 'u1', seq: null, localId: 'u1', snapshot: true, snapshotRev: 1, createdAt: 1,
+            content: {
+                role: 'agent',
+                content: { type: 'output', data: { type: 'assistant', message: { role: 'assistant', id: 'm', content: [
+                    { type: 'text', text: 'hel' },
+                    { type: 'tool_use', id: 't', name: 'Bash', input: {} },
+                ], model: 'm' } } },
+            },
+        } as unknown as DecryptedMessage
+        seed([mixed])
+        const frozenText = (mixed.content as { content: { data: { message: { content: Array<{ type: string; text?: string }> } } } }).content.data.message.content[0].text
+
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [
+            { op: 'append', index: 0, text: 'lo' },
+            { op: 'append', index: 1, text: 'x' }, // 违规：append 到 tool_use
+        ] })
+
+        // 整帧丢弃：行未换、rev 未推进、旧 content 的 text 未被半应用污染（下游 memo 引用仍看到原值）
+        expect(getMessageWindowState('s1').messages.at(-1)).toBe(mixed)
+        expect((getMessageWindowState('s1').messages.at(-1) as unknown as { snapshotRev?: number }).snapshotRev).toBe(1)
+        expect(frozenText).toBe('hel')
+        const blocks = (mixed.content as { content: { data: { message: { content: Array<{ type: string; text?: string }> } } } }).content.data.message.content
+        expect(blocks[0].text).toBe('hel')
+    })
+
+    it('C3：localId 命中非 snapshot 行（如 full 落库行复用流 uuid）→ 不拼半截内容', () => {
+        const plain = {
+            id: 'row-1', seq: 5, localId: 'u1', snapshot: false, createdAt: 1,
+            content: { role: 'agent', content: { type: 'output', data: { type: 'assistant', message: { role: 'assistant', id: 'm', content: [{ type: 'text', text: 'full' }], model: 'm' } } } },
+        } as unknown as DecryptedMessage
+        seed([plain])
+
+        ingestSnapshotDelta('s1', { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: '!' }] })
+        expect(getMessageWindowState('s1').messages.at(-1)).toBe(plain) // 原引用未动
+    })
 })

@@ -48,6 +48,7 @@ async function drive(ctx: LoopContext): Promise<{ runningChanges: boolean[] }> {
     await sdkOutputLoop(response as never, ctx, {
         path: '/tmp',
         onMessage: vi.fn(),
+        onSnapshot: vi.fn(),
         snapshotSender: stubSnapshotSender(),
         onSessionFound: vi.fn(),
         onReady: vi.fn(),

@@ -458,6 +458,11 @@ export async function sdkOutputLoop(
         path: string
         onMessage: (message: SDKMessage) => void
         snapshotSender: StreamSnapshotSender
+        /**
+         * snapshot 发射口（full/delta/stream-end 三类出口），launcher 映射到 socket 协议。
+         * stream-end 由本循环在 markFullDelivered 后发（见上方 assistant 分支注释）。
+         */
+        onSnapshot: (out: import('./utils/streamSnapshotSender').SnapshotOut) => void
         onSessionFound: (id: string) => void
         onReady: () => void
         onRunningChange: (running: boolean) => void
@@ -532,9 +537,13 @@ export async function sdkOutputLoop(
         // assembler 聚合输出完整 full（同 message.id 的所有 block 拼回一条，带 message.id）→
         // 标记该 message 的 snapshot 已被 full 取代，abort 时 consumePendingFull 不再补全（避免重复）。
         // 守卫 message.id：只对聚合 full（有 id）置位；透传的缺 id assistant（异常路径）不置位，
-        // 让 snapshot 补全仍能处理它，避免误跳过导致内容丢失
+        // 让 snapshot 补全仍能处理它，避免误跳过导致内容丢失。
+        // 同时发 stream-end：full 的 localId（jsonl uuid）≠ 流 sdkUuid，hub 无法自行映射，
+        // 需信号才能精确清缓存与订阅游标（否则缓存滞留 TTL、resync 误补发 → 幽灵重复气泡）
         if (msg.type === 'assistant' && (msg as SDKAssistantMessage).message?.id) {
             opts.snapshotSender.markFullDelivered();
+            const streamLocalId = opts.snapshotSender.currentStreamLocalId();
+            if (streamLocalId) opts.onSnapshot({ kind: 'stream-end', localId: streamLocalId });
         }
     });
 
@@ -1203,6 +1212,7 @@ export async function claudeRemote(opts: {
         outputLoopPromise = sdkOutputLoop(q, loopCtx, {
             path: opts.path,
             onMessage: opts.onMessage,
+            onSnapshot: opts.onSnapshot,
             onAbortFlush: opts.onAbortFlush,
             snapshotSender,
             onSessionFound: opts.onSessionFound,

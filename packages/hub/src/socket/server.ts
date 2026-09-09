@@ -32,6 +32,8 @@ import { registerTerminalHandlers } from './handlers/terminal'
 import { RpcRegistry } from './rpcRegistry'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotDeltaAssembler } from '../sync/snapshotDeltaAssembler'
+import { SnapshotDeltaForwarder } from '../sse/snapshotDeltaForwarder'
+import type { SnapshotDeltaStats } from '../sync/snapshotDeltaStats'
 import type { RewindDeleteBoundTracker } from '../sync/rewindDeleteBoundTracker'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
@@ -82,6 +84,10 @@ export type SocketServerDeps = {
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     /** snapshot delta 拼接器（delta 协议票 01）。缺省自建——仅 CLI 连接内消费，无跨层共享需求 */
     snapshotAssembler?: SnapshotDeltaAssembler
+    /** snapshot delta SSE 转发器（消息终态精确清游标）。缺省自建仅测试用；生产组装层传入共用实例 */
+    snapshotForwarder?: SnapshotDeltaForwarder
+    /** snapshot 流量观测（票 03）。缺省关闭；生产组装层按 MOBI_SNAPSHOT_STATS 创建注入 */
+    snapshotStats?: SnapshotDeltaStats
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
     onWebappEvent?: (event: SyncEvent) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
@@ -150,6 +156,10 @@ export function createSocketServer(deps: SocketServerDeps): {
     const backgroundTaskTracker = deps.backgroundTaskTracker ?? new BackgroundTaskTracker()
     // snapshot delta 拼接器（缺省自建）：CLI→hub 段增量帧的重建端
     const snapshotAssembler = deps.snapshotAssembler ?? new SnapshotDeltaAssembler()
+    // snapshot delta SSE 转发器（缺省自建）：消息终态清游标的对端
+    const snapshotForwarder = deps.snapshotForwarder ?? new SnapshotDeltaForwarder(snapshotAssembler)
+    // session → 当前 socket 持有表（迟到 disconnect 防误清，A1 竞态）
+    const sessionSocketIds = new Map<string, string>()
 
     const rpcRegistry = new RpcRegistry()
     const terminalRegistry = new TerminalRegistry({
@@ -185,6 +195,9 @@ export function createSocketServer(deps: SocketServerDeps): {
         terminalRegistry,
         backgroundTaskTracker,
         snapshotAssembler,
+        snapshotForwarder,
+        sessionSocketIds,
+        snapshotStats: deps.snapshotStats,
         rewindDeleteBoundTracker: deps.rewindDeleteBoundTracker,
         // 会话事实（心跳/水位/目标/轮次/结束）→ sink 落库；机器心跳 → SyncEngine。
         // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪

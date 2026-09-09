@@ -43,6 +43,7 @@ import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaForwarder } from './sse/snapshotDeltaForwarder'
 import { SnapshotDeltaAssembler } from './sync/snapshotDeltaAssembler'
+import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
@@ -164,7 +165,9 @@ async function main() {
     const pushService = new PushService(vapidKeys, vapidSubject, store)
 
     visibilityTracker = new VisibilityTracker()
-    sseManager = new SSEManager(30_000, visibilityTracker)
+    // snapshot 流量观测（票 03）：MOBI_SNAPSHOT_STATS=1 开启，默认零开销
+    const snapshotStats = new SnapshotDeltaStats(process.env.MOBI_SNAPSHOT_STATS === '1')
+    sseManager = new SSEManager(30_000, visibilityTracker, snapshotStats)
 
     // snapshot delta 拼接器与 SSE 转发器（delta 协议票 02）：CLI socket handler 写缓存、
     // SSE 广播按订阅进度路由、resync 端点读——三端共用同一实例，在此组装层创建并注入
@@ -186,6 +189,8 @@ async function main() {
         backgroundTaskTracker,
         rewindDeleteBoundTracker,
         snapshotAssembler,
+        snapshotForwarder,
+        snapshotStats,
         getSession: (sessionId) => {
             // active 状态只从内存（SyncEngine）获取，不存储在数据库中
             return syncEngine?.getSession(sessionId) ?? null

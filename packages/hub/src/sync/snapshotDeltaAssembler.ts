@@ -55,16 +55,23 @@ export class SnapshotDeltaAssembler {
     }
 
     /**
-     * 全量帧入缓存。rev=null 为 legacy 全量（老 CLI 无链）：透传内容但缓存无链，
-     * 后续 delta 因无链被拒（老 CLI 也不会发 delta，此为防御语义）。
+     * 全量帧入缓存。rev=null 为 legacy 全量（老 CLI 无链）：透传内容但不建缓存——
+     * 所有读方（applyDelta/getContent/getActiveEntries）都拒 rev=null，建了也无人能读。
      * 信封形状不可导航（防御）：不建缓存，原样透传返回（回退 legacy 直通路径）。
-     * @returns 下发 web 的全量内容
+     * 单调守卫（socket.io sendBuffer 重放乱序防护）：同 localId 入站 rev 低于缓存 rev
+     * 的陈旧全量（断线期间缓冲、重连时先于 forceFull 新基线到达）→ 忽略返回 null。
+     * @returns 下发 web 的全量内容；null = 陈旧重放，调用方跳过下发
      */
-    applyFull(sessionId: string, localId: string | null, content: unknown, rev: number | null): unknown {
+    applyFull(sessionId: string, localId: string | null, content: unknown, rev: number | null): unknown | null {
         this.sweep()
 
-        if (localId === null || locateSnapshotBlocks(content) === null) {
+        if (localId === null || rev === null || locateSnapshotBlocks(content) === null) {
             return content
+        }
+
+        const existing = this.cache.get(sessionId)?.get(localId)
+        if (existing && existing.rev !== null && rev < existing.rev) {
+            return null
         }
 
         this.entryMap(sessionId).set(localId, { content, rev, touchedAt: this.now() })

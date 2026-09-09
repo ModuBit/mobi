@@ -101,6 +101,3 @@ function fmtBytes(bytes: number): string {
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}KB`
     return `${bytes}B`
 }
-
-/** 进程级实例：MOBI_SNAPSHOT_STATS=1 开启（E2E / 生产观测用） */
-export const snapshotDeltaStats = new SnapshotDeltaStats(process.env.MOBI_SNAPSHOT_STATS === '1')

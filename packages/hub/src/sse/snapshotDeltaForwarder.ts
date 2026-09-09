@@ -26,18 +26,32 @@ export type ForwarderConnection = {
     wantsDelta: boolean
 }
 
+/** 游标条目：已发送 rev + 最后更新时刻（TTL 过期防泄漏） */
+type CursorEntry = { rev: number; at: number }
+
 /**
  * snapshot delta 的 SSE 订阅转发器（.scratch/snapshot-delta 票 02）。
  *
  * hub→web 段按订阅者进度转发：游标衔接且协商了 delta → 原样转发增量帧；
  * 否则（新订阅/重连/追赶/老 web）→ 从拼接器缓存构造全量 message-snapshot 追赶。
  * 全量内容返回缓存共享引用（订阅端 send 即时序列化，无拷贝——与拼接器同款纪律）。
+ *
+ * 游标生命周期（防无界增长）：消息终态（snapshot-stream-end）经 dropMessage 精确清理；
+ * 信号丢失时由 TTL 兜底（条目过期视为无游标 → 全量追赶，语义安全）。
  */
 export class SnapshotDeltaForwarder {
-    /** 订阅 id → localId → 已发送 rev */
-    private readonly sentRev = new Map<string, Map<string, number>>()
+    /** 订阅 id → localId → 游标 */
+    private readonly sentRev = new Map<string, Map<string, CursorEntry>>()
+    private readonly ttlMs: number
+    private readonly now: () => number
 
-    constructor(private readonly assembler: SnapshotDeltaAssembler) {}
+    constructor(
+        private readonly assembler: SnapshotDeltaAssembler,
+        options?: { ttlMs?: number; now?: () => number },
+    ) {
+        this.ttlMs = options?.ttlMs ?? 10 * 60_000
+        this.now = options?.now ?? (() => Date.now())
+    }
 
     /**
      * SSEManager.broadcast 对 message-snapshot-delta 事件逐订阅调用。
@@ -45,7 +59,7 @@ export class SnapshotDeltaForwarder {
      */
     resolve(event: MessageSnapshotDeltaEvent, connection: ForwarderConnection): SyncEvent | null {
         const caughtUp = connection.wantsDelta
-            && this.sentRev.get(connection.id)?.get(event.localId) === event.baseRev
+            && this.lookup(connection.id, event.localId) === event.baseRev
 
         if (caughtUp) {
             this.markRev(connection.id, event.localId, event.rev)
@@ -67,10 +81,20 @@ export class SnapshotDeltaForwarder {
         }
     }
 
-    /** message-snapshot 全量事件下发后标记游标（衔接该订阅后续 delta）。rev=null（legacy）不建链 */
+    /**
+     * message-snapshot 全量事件下发后标记游标（衔接该订阅后续 delta）。
+     * 仅对协商 delta 的连接有意义（老 web 恒收全量，游标无人读，徒增泄漏）。rev 无值不建链。
+     */
     markFullSent(subscriptionId: string, localId: string | null, rev: number | null | undefined): void {
-        if (localId === null || rev === null || rev === undefined) return
+        if (localId === null || rev == null) return
         this.markRev(subscriptionId, localId, rev)
+    }
+
+    /** 消息终态（snapshot-stream-end）：删该 localId 的全部订阅游标（精确防泄漏主路径） */
+    dropMessage(localId: string): void {
+        for (const entryMap of this.sentRev.values()) {
+            entryMap.delete(localId)
+        }
     }
 
     /**
@@ -81,12 +105,24 @@ export class SnapshotDeltaForwarder {
         this.sentRev.delete(subscriptionId)
     }
 
+    /** 读游标（TTL 过期视为无游标并清除——信号丢失的兜底清理） */
+    private lookup(subscriptionId: string, localId: string): number | undefined {
+        const entryMap = this.sentRev.get(subscriptionId)
+        const entry = entryMap?.get(localId)
+        if (!entry) return undefined
+        if (this.now() - entry.at > this.ttlMs) {
+            entryMap!.delete(localId)
+            return undefined
+        }
+        return entry.rev
+    }
+
     private markRev(subscriptionId: string, localId: string, rev: number): void {
         let entryMap = this.sentRev.get(subscriptionId)
         if (!entryMap) {
             entryMap = new Map()
             this.sentRev.set(subscriptionId, entryMap)
         }
-        entryMap.set(localId, rev)
+        entryMap.set(localId, { rev, at: this.now() })
     }
 }

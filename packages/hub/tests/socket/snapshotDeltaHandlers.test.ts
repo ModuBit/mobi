@@ -67,8 +67,9 @@ function makeHarness() {
     }
     registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
     const send = (payload: unknown) => fakeSocket.emit('session-message', payload)
+    const emitRaw = (event: string, payload: unknown) => fakeSocket.emit(event, payload)
     const of = <T extends SyncEvent['type']>(type: T) => events.filter((e): e is Extract<SyncEvent, { type: T }> => e.type === type)
-    return { send, snapshots: () => of('message-snapshot'), deltas: () => of('message-snapshot-delta') }
+    return { send, emitRaw, snapshots: () => of('message-snapshot'), deltas: () => of('message-snapshot-delta') }
 }
 
 describe('snapshot delta：session-message 帧 → SSE 事件', () => {
@@ -122,5 +123,43 @@ describe('snapshot delta：session-message 帧 → SSE 事件', () => {
         send({ sid: 's1', localId: 'u1', message: undefined, snapshotDelta: { localId: 'u1', rev: 2, baseRev: 1, deltas: [] } })
         expect(snapshots()).toHaveLength(1)
         expect(deltas()).toHaveLength(1)
+    })
+
+    test('B1：snapshot-stream-end 清流缓存——结束后同 localId 的新链从全量重启，且游标精确（不误杀其他消息）', () => {
+        const { send, emitRaw, snapshots, deltas } = makeHarness()
+        send({ sid: 's1', localId: 'u1', snapshot: true, message: envelope('a'), frame: { rev: 1, baseRev: null } })
+        send({ sid: 's1', localId: 'u1', snapshotDelta: { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'b' }] } })
+
+        // stream-end：full message 落库后 CLI 发的结束信号（localId = 流 sdkUuid，
+        // 与 full message 的 jsonl uuid 不同——hub 无法自行映射，靠此信号）
+        emitRaw('snapshot-stream-end', { sid: 's1', localId: 'u1' })
+
+        // 清理后：同 localId 衔接旧 rev 的增量不再被接受（链已断，等全量重基线）
+        send({ sid: 's1', localId: 'u1', snapshotDelta: { localId: 'u1', rev: 3, baseRev: 2, deltas: [{ op: 'append', index: 0, text: 'c' }] } })
+        expect(deltas()).toHaveLength(1) // 仅清理前那帧
+
+        // 新链从全量重启（rev 重新计数）
+        send({ sid: 's1', localId: 'u1', snapshot: true, message: envelope('new'), frame: { rev: 1, baseRev: null } })
+        expect(snapshots()).toHaveLength(2)
+    })
+
+    test('A2：迟到的陈旧全量帧（rev 落后于缓存）不下发（socket.io-client 重连 sendBuffer 重放乱序防护）', () => {
+        const { send, snapshots } = makeHarness()
+        send({ sid: 's1', localId: 'u1', snapshot: true, message: envelope('fresh'), frame: { rev: 10, baseRev: null } })
+        // 断线期间缓冲的陈旧全量在 connect 后重放：rev=3 < 缓存 10 → 整帧拒绝
+        send({ sid: 's1', localId: 'u1', snapshot: true, message: envelope('stale'), frame: { rev: 3, baseRev: null } })
+        expect(snapshots()).toHaveLength(1)
+        expect(blocksOf(snapshots()[0])).toEqual([{ type: 'text', text: 'fresh' }])
+    })
+
+    test('snapshot-stream-end 参数非法 / 会话不存在时静默忽略', () => {
+        const { send, emitRaw, snapshots } = makeHarness()
+        send({ sid: 's1', localId: 'u1', snapshot: true, message: envelope('a'), frame: { rev: 1, baseRev: null } })
+        emitRaw('snapshot-stream-end', { sid: 's1' }) // 缺 localId
+        emitRaw('snapshot-stream-end', null)
+        emitRaw('snapshot-stream-end', { sid: 'nope', localId: 'u1' }) // 会话不存在
+        // 缓存未被误清：衔接的增量仍可转发
+        send({ sid: 's1', localId: 'u1', snapshotDelta: { localId: 'u1', rev: 2, baseRev: 1, deltas: [{ op: 'append', index: 0, text: 'b' }] } })
+        expect(snapshots()).toHaveLength(1)
     })
 })

@@ -16,12 +16,15 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { StreamSnapshotSender, type SnapshotOut } from '../../../src/claude/utils/streamSnapshotSender'
+import { SNAPSHOT_PENDING_ID } from '@mobi/shared'
+import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { RawJSONLines } from '../../../src/claude/types'
 import type { SDKToLogConverter } from '../../../src/claude/utils/sdkToLogConverter'
 
 function createSender() {
     const transport = vi.fn()
-    const convertSnapshot = vi.fn((): RawJSONLines => ({} as RawJSONLines))
+    // 透传 blocks：部分用例需从全量帧断言 snapshot blocks 内容
+    const convertSnapshot = vi.fn((blocks: unknown[], opts: unknown) => ({ blocks, opts } as unknown as RawJSONLines))
     const converter = { convertSnapshot } as unknown as SDKToLogConverter
     const sender = new StreamSnapshotSender(transport, converter)
     return { sender, transport, convertSnapshot }
@@ -277,5 +280,198 @@ describe('StreamSnapshotSender - messageId 透传（snapshot↔full 关联键）
         const pending = sender.consumePendingFull()
         expect(pending).not.toBeNull()
         expect(pending!.messageId).toBe('msg_anthropic_abc')
+    })
+})
+
+describe('StreamSnapshotSender - thinking 打点（snapshot 出口）', () => {
+    it('thinking 未 endBlock（流式中）时全量帧的 thinking 不带 done', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'thinking')
+        sender.append(0, '仍在思考')
+        sender.flush()
+
+        const first = frameAt(transport, 0)
+        expect(first.kind).toBe('full')
+        const rawLog = first.message!.content.content.data as { blocks: unknown[] }
+        expect(rawLog.blocks).toEqual([{ type: 'thinking', thinking: '仍在思考' }])
+    })
+
+    it('text block 不打 durationMs/done', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, '正文')
+        sender.endBlock(0)
+        sender.flush()
+
+        const first = frameAt(transport, 0)
+        expect(first.kind).toBe('full')
+        const rawLog = first.message!.content.content.data as { blocks: unknown[] }
+        expect(rawLog.blocks).toEqual([{ type: 'text', text: '正文' }])
+    })
+})
+
+describe('StreamSnapshotSender - injectThinkingMeta（full 出口）', () => {
+    it('把已 done 的 thinking durationMs/done 注入 full message 对应 thinking block', () => {
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'thinking')
+        sender.append(0, '想通了')
+        sender.endBlock(0)
+
+        // full message 的 content 数组下标 = stream event 的 block index（这里 thinking 在 index 0）
+        const full = {
+            message: { content: [{ type: 'thinking', thinking: '想通了' }] },
+        } as unknown as SDKAssistantMessage
+        sender.injectThinkingMeta(full)
+
+        const block = (full.message.content as unknown as Array<Record<string, unknown>>)[0]
+        expect(block.done).toBe(true)
+        expect(typeof block.durationMs).toBe('number')
+    })
+
+    it('未 done 的 thinking 不注入（abort 等场景无 meta，保留 SDK 原样）', () => {
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'thinking')
+        sender.append(0, '还没想完')
+
+        const full = {
+            message: { content: [{ type: 'thinking', thinking: '还没想完' }] },
+        } as unknown as SDKAssistantMessage
+        sender.injectThinkingMeta(full)
+
+        const block = (full.message.content as unknown as Array<Record<string, unknown>>)[0]
+        expect(block.done).toBeUndefined()
+        expect(block.durationMs).toBeUndefined()
+    })
+
+    it('非 thinking block 不被动；按 content 数组下标精确匹配（多 block 场景）', () => {
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        // index 0 是 text，index 1 是 thinking —— 仅 thinking 在 1 打点
+        sender.startBlock(1, 'thinking')
+        sender.append(1, '思考')
+        sender.endBlock(1)
+
+        const full = {
+            message: {
+                content: [
+                    { type: 'text', text: '正文' },
+                    { type: 'thinking', thinking: '思考' },
+                ],
+            },
+        } as unknown as SDKAssistantMessage
+        sender.injectThinkingMeta(full)
+
+        const blocks = full.message.content as unknown as Array<Record<string, unknown>>
+        expect(blocks[0]).toEqual({ type: 'text', text: '正文' }) // text 不被动
+        expect(blocks[1].done).toBe(true) // thinking(index 1) 命中
+        expect(typeof blocks[1].durationMs).toBe('number')
+    })
+
+    it('content 非数组（异常）安全跳过', () => {
+        const { sender } = createSender()
+        const full = { message: { content: 'string-content' } } as unknown as SDKAssistantMessage
+        expect(() => sender.injectThinkingMeta(full)).not.toThrow()
+    })
+})
+
+describe('StreamSnapshotSender - tool_use 半截与 parse 兜底（abort 补全）', () => {
+    it('未 stop 的 tool_use：流式占位 input={}，consumePendingFull 用累积 inputJson 兜底 parse', () => {
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_1', name: 'Bash' })
+        sender.append(0, '{"command":"ls"}') // 累积完整 JSON 但未 content_block_stop
+
+        // 流式出口：占位 input={}（半截 JSON 无意义）
+        sender.flush()
+        expect(sender.consumePendingFull()!.blocks).toEqual([
+            { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } },
+        ])
+    })
+
+    it('parse 失败的半截 JSON 兜底为 {}，保留「该工具被调用过」的记录', () => {
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_1', name: 'Write' })
+        sender.append(0, '{"content":"半截') // JSON.parse 必败
+
+        expect(sender.consumePendingFull()!.blocks).toEqual([
+            { type: 'tool_use', id: 'toolu_1', name: 'Write', input: {} },
+        ])
+    })
+})
+
+describe('StreamSnapshotSender - 修复回归（code-review A3/A4/F9/F12）', () => {
+    it('A3：full 已下发后 forceFullFlush 不重发陈旧全量（防 web 幽灵重复气泡）', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'done')
+        sender.flush() // full rev=1
+        sender.markFullDelivered()
+
+        sender.forceFullFlush()
+        expect(transport).toHaveBeenCalledTimes(1) // 不重发
+    })
+
+    it('A4：连续 CHECKPOINT_EVERY_DELTAS 个增量帧后，下一帧自动发全量（checkpoint 封顶断档窗口）', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'x')
+        sender.flush() // full rev=1
+
+        // 逐字符追加并 flush：每个字符一个增量帧
+        for (let i = 0; i < 20; i++) {
+            sender.append(0, 'y')
+            sender.flush()
+        }
+        // 第 21 次脏 flush 应为 checkpoint 全量帧（而非增量）
+        sender.append(0, 'z')
+        sender.flush()
+
+        const last = frameAt(transport, 21)
+        expect(last.kind).toBe('full')
+        expect(last.frame).toEqual({ localId: 'uuid-1', rev: 22, baseRev: null })
+        // checkpoint 后计数复位：下一帧回到增量
+        sender.append(0, 'w')
+        sender.flush()
+        const after = frameAt(transport, 22)
+        expect(after.kind).toBe('delta')
+        expect(after.frame.baseRev).toBe(22)
+    })
+
+    it('F9：流首帧未发且无脏内容时 flush 不发空块全量（needFull 保持置位）', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text') // text 的 startBlock 不标脏
+        sender.flush()
+        expect(transport).not.toHaveBeenCalled()
+
+        // 有真实内容后首帧照常发出
+        sender.append(0, 'hi')
+        sender.flush()
+        expect(frameAt(transport, 0).kind).toBe('full')
+    })
+
+    it('F12：setSnapshotOpts 缺 sdkUuid 时回退 PENDING_ID，不沿用上一条消息的 uuid（防消息互相吞并）', () => {
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'msg1')
+        sender.flush()
+
+        sender.setSnapshotOpts({}) // 无 sdkUuid
+        sender.clearBuffers()
+        sender.startBlock(0, 'text')
+        sender.append(0, 'msg2')
+        sender.flush()
+
+        const second = frameAt(transport, 1)
+        expect(second.kind).toBe('full')
+        expect(second.frame.localId).toBe(SNAPSHOT_PENDING_ID)
     })
 })

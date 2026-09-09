@@ -26,7 +26,7 @@
 
 import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SnapshotBlockDelta } from '@mobi/shared'
+import type { SnapshotBlock, SnapshotBlockDelta } from '@mobi/shared'
 import { applySnapshotBlockDeltas, locateSnapshotBlocks } from '@mobi/shared'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
@@ -353,23 +353,44 @@ export function ingestSnapshotDelta(
     frame: { localId: string; rev: number; baseRev: number; deltas: SnapshotBlockDelta[] },
 ): void {
     _internal.updateState(sessionId, prev => {
+        // 只匹配流式 snapshot 行（snapshot 标记 + 已入 delta 链有 rev）：localId 命中普通行
+        // （如 full message 落库行复用了流 uuid）时不得拼半截内容
         const idx = prev.messages.findIndex(
-            m => !isWithdrawn(sessionId, m) && (m.localId === frame.localId || m.id === frame.localId),
+            m => m.snapshot && m.snapshotRev !== undefined && !isWithdrawn(sessionId, m)
+                && (m.localId === frame.localId || m.id === frame.localId),
         )
         if (idx === -1) return prev
         const target = prev.messages[idx]
-        // 仅流式 snapshot 行且 rev 严格衔接才应用（legacy 全量无 rev、落库行、失联后均不拼）
-        if (!target.snapshot || target.snapshotRev === undefined || target.snapshotRev !== frame.baseRev) {
+        // rev 严格衔接才应用（legacy 全量无 rev、落库行、失联后均不拼）
+        if (target.snapshotRev !== frame.baseRev) {
             return prev
         }
         const blocks = locateSnapshotBlocks(target.content)
-        if (blocks === null || !applySnapshotBlockDeltas(blocks, frame.deltas)) {
+        if (blocks === null) return prev
+        // 克隆 blocks 后再应用（O(#blocks) 对象浅拷贝，text/thinking 字符串引用共享）：
+        // 旧行的 content 仍被下游 memo/normalize 引用，shared 的 apply 是就地变异，
+        // 直接应用会造成撕裂读（旧引用看到半应用状态）且失败路径污染当前 state 无回滚
+        const cloned = blocks.map(b => ({ ...b }))
+        if (!applySnapshotBlockDeltas(cloned, frame.deltas)) {
             return prev
         }
         const nextMessages = prev.messages.slice()
-        nextMessages[idx] = { ...target, snapshotRev: frame.rev }
+        nextMessages[idx] = { ...target, snapshotRev: frame.rev, content: cloneSnapshotEnvelope(target.content, cloned) }
         return _internal.buildState(prev, { messages: nextMessages })
     })
+}
+
+/** 沿 snapshot 信封固定形状（content.content.data.message.content）克隆并替换 blocks——
+ *  各层浅拷贝，仅 delta 应用涉及的末层换新 */
+function cloneSnapshotEnvelope(content: unknown, blocks: SnapshotBlock[]): unknown {
+    const c = content as { content?: { data?: { message?: { content?: unknown } } } }
+    const envelope = c.content!
+    const data = envelope.data!
+    const message = data.message!
+    return {
+        ...c,
+        content: { ...envelope, data: { ...data, message: { ...message, content: blocks } } },
+    }
 }
 
 /**

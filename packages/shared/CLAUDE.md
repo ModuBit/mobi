@@ -13,7 +13,8 @@
 | `src/schemas.ts` | Schema 定义（Session, AgentState, SyncEvent 等） |
 | `src/types.ts` | 纯 TypeScript 类型重导出 |
 | `src/messages.ts` | 消息辅助函数（unwrapRole / isSkippable / isVisible） |
-| `src/socket.ts` | Socket.IO 事件类型定义 |
+| `src/socket.ts` | Socket.IO 事件类型定义（含 `snapshot-stream-end`） |
+| `src/snapshotDelta.ts` | Snapshot delta 协议 apply 端共享逻辑（buildSnapshotMessage / locateSnapshotBlocks / applySnapshotBlockDeltas） |
 | `src/modes.ts` | 权限模式定义（PermissionMode 等） |
 | `src/utils.ts` | 通用工具函数（isObject 等） |
 | `src/version.ts` | 版本常量 |

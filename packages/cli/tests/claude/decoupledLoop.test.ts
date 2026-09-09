@@ -117,6 +117,7 @@ function createOutputLoopOpts(overrides?: Record<string, unknown>) {
             append: vi.fn(),
             endBlock: vi.fn(),
             markFullDelivered: vi.fn(),
+            currentStreamLocalId: vi.fn().mockReturnValue(null),
             injectThinkingMeta: vi.fn(),
             consumePendingFull: vi.fn().mockReturnValue(null),
         } as any,

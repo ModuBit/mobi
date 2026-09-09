@@ -491,14 +491,22 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    /** 发送流式内容快照——增量帧（首帧全量基线之后，仅携带增量 op） */
+    /** 发送流式内容快照——增量帧（首帧全量基线之后，仅携带增量 op）。
+     *  带 snapshot:true——老 hub（无 delta 分支）按快照透传而非误落库（混版本防 transcript 污染） */
     sendSnapshotDelta(frame: SnapshotDeltaFrame): void {
         this.socket.emit('session-message', {
             sid: this.sessionId,
             message: undefined,
             localId: frame.localId,
+            snapshot: true,
             snapshotDelta: frame,
         })
+    }
+
+    /** snapshot 流结束信号：full message 已持久化，hub 据此精确清该流缓存与订阅游标
+     *  （full 的 localId 与流的 sdkUuid 不同，hub 无法自行映射）。老 hub 无 handler 静默忽略 */
+    sendSnapshotStreamEnd(localId: string): void {
+        this.socket.emit('snapshot-stream-end', { sid: this.sessionId, localId })
     }
 
     sendUserMessage(text: string, meta?: MessageMeta): void {

@@ -79,6 +79,7 @@ broadcast(event: SyncEvent): void
 | `connection-changed` | 所有连接 |
 | `message-received` | all=true 或对应 session 的订阅者 |
 | `message-snapshot` | all=true 或对应 session 的订阅者 |
+| `message-snapshot-delta` | 对应 session 的订阅者，经 `SnapshotDeltaForwarder` 按订阅进度路由（衔接且协商 delta → 转发增量帧；否则从拼接器缓存构造全量追赶，见 [snapshot delta 协议](../sync/snapshot-delta.md)） |
 | `messages-submitted` | all=true 或对应 session 的订阅者 |
 | `idle-timeout-warning` | all=true 或对应 session 的订阅者 |
 | `session-updated` | all=true 或 session 匹配 |

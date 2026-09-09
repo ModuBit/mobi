@@ -21,13 +21,20 @@ import type { SDKToLogConverter } from './sdkToLogConverter'
 
 /**
  * 发送侧输出帧（delta 协议，.scratch/snapshot-delta spec）：
- * - full：全量帧（流首帧 / forceFull 重发），携带完整 DecryptedMessage + rev（baseRev=null）
+ * - full：全量帧（流首帧 / forceFull 重发 / 周期 checkpoint），携带完整 DecryptedMessage + rev（baseRev=null）
  * - delta：增量帧（此后每次 flush 的增量 op）
- * transport 消费方据此映射到 socket 协议（sendContentSnapshot / sendSnapshotDelta）
+ * - stream-end：流结束信号（full message 已持久化，hub 据此清缓存与订阅游标；由 claudeRemote
+ *   在标记 fullDelivered 时发出，不经本发送器的 buffer 状态机）
+ * transport 消费方据此映射到 socket 协议（sendContentSnapshot / sendSnapshotDelta / sendSnapshotStreamEnd）
  */
 export type SnapshotOut =
     | { kind: 'full'; frame: { localId: string; rev: number; baseRev: null }; message: DecryptedMessage }
     | { kind: 'delta'; frame: SnapshotDeltaFrame }
+    | { kind: 'stream-end'; localId: string }
+
+/** 周期 checkpoint：每 N 个增量帧插入一次全量帧。任何一帧丢失（zod 拒/网络）都会让链断档，
+ *  hub 丢弃后续 delta 直到下个全量——checkpoint 把该静默窗口封顶在 N × intervalMs（20 × 500ms = 10s） */
+const CHECKPOINT_EVERY_DELTAS = 20
 
 type SnapshotTransport = (out: SnapshotOut) => void
 
@@ -124,6 +131,8 @@ export class StreamSnapshotSender {
     private streamRev = 0
     /** 下一帧是否必须为全量（true=流首帧未发或 socket 重连强制重基线） */
     private needFull = true
+    /** 自上次全量帧以来的增量帧数（周期 checkpoint 计数，见 CHECKPOINT_EVERY_DELTAS） */
+    private deltasSinceFull = 0
 
     constructor(
         private readonly transport: SnapshotTransport,
@@ -134,11 +143,14 @@ export class StreamSnapshotSender {
     /** 设置消息级别选项（在 message_start 时调用）。每条新 message 开始时 full 未到，重置 fullDelivered。 */
     setSnapshotOpts(opts: { parentToolUseId?: string; model?: string; sdkUuid?: string; messageId?: string }): void {
         this.snapshotOpts = opts
-        if (opts.sdkUuid) this.sdkUuid = opts.sdkUuid
+        // 缺省回退 PENDING_ID 而非沿用上一条消息的 uuid——sdkUuid 是 per-message 的，
+        // 沿用旧值会让新流覆盖旧消息的 hub 缓存 / web 行（消息互相吞并）
+        this.sdkUuid = opts.sdkUuid ?? null
         this.fullDelivered = false
         // 新消息流：rev 归零、首帧必全量（sent-state 随 clearBuffers 的 buffer 重建自然重置）
         this.streamRev = 0
         this.needFull = true
+        this.deltasSinceFull = 0
     }
 
     /** 清除所有 buffer（新消息开始时调用） */
@@ -229,21 +241,27 @@ export class StreamSnapshotSender {
         if (this.destroyed) return
 
         if (this.needFull) {
+            // 首帧等待真实内容：content_block_start 到首个 delta 之间的空窗不发空块全量
+            // （tool_use 占位在 startBlock 已标脏不受影响）；needFull 保持置位
+            if (!this.hasDirty()) return
             this.emitFull()
             return
         }
 
         // 增量：无脏 buffer 直接跳过（collectDeltas 结果必空）
-        let hasDirty = false
-        for (const buffer of this.buffers.values()) {
-            if (buffer.dirty) { hasDirty = true; break }
+        if (!this.hasDirty()) return
+
+        // 周期 checkpoint：封顶任何单帧丢失造成的静默断档窗口（hub 丢弃到下个全量为止）
+        if (this.deltasSinceFull >= CHECKPOINT_EVERY_DELTAS) {
+            this.emitFull()
+            return
         }
-        if (!hasDirty) return
 
         const deltas = this.collectDeltas()
         this.clearDirty()
         if (deltas.length === 0) return
 
+        this.deltasSinceFull += 1
         this.streamRev += 1
         this.transport({
             kind: 'delta',
@@ -258,12 +276,15 @@ export class StreamSnapshotSender {
 
     /**
      * socket 重连后重发全量帧（重基线规则：断线期间的 delta 帧已丢，hub 链必断档，
-     * 全量帧重建基线）。无在途内容时为 no-op（无需重基线）；流首帧未发时 needFull 本已置位。
+     * 全量帧重建基线）。无在途内容或当前消息的 full 已下发时为 no-op——buffers 会保留到
+     * 下条 message_start 才清，不设防会对已落库消息重发陈旧全量（web 端变重复幽灵气泡）。
+     * 直接调 emitFull 绕过 flush 的首帧 dirty 守卫：重基线必须无条件发出（缓存可能已被
+     * hub 侧清掉，即便本地 buffer 全部 clean）。
      */
     forceFullFlush(): void {
-        if (this.destroyed || this.buffers.size === 0) return
+        if (this.destroyed || this.buffers.size === 0 || this.fullDelivered) return
         this.needFull = true
-        this.flush()
+        this.emitFull()
     }
 
     /** 发送全量帧并初始化各 buffer 的发送游标（已发送=当前累积全量） */
@@ -293,6 +314,7 @@ export class StreamSnapshotSender {
             buffer.dirty = false
         }
         this.needFull = false
+        this.deltasSinceFull = 0
     }
 
     /**
@@ -362,6 +384,19 @@ export class StreamSnapshotSender {
 
     private streamLocalId(): string {
         return this.sdkUuid ?? SNAPSHOT_PENDING_ID
+    }
+
+    /** 当前消息流的 localId（message_start 的 sdkUuid；未开始流时 null）——
+     *  claudeRemote 在标记 fullDelivered 时取它发 stream-end 信号 */
+    currentStreamLocalId(): string | null {
+        return this.sdkUuid
+    }
+
+    private hasDirty(): boolean {
+        for (const buffer of this.buffers.values()) {
+            if (buffer.dirty) return true
+        }
+        return false
     }
 
     /**

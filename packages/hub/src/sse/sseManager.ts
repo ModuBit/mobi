@@ -18,7 +18,7 @@ import type { SyncEvent } from '@mobi/shared/types'
 import type { VisibilityState } from '../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { SnapshotDeltaForwarder } from './snapshotDeltaForwarder'
-import { snapshotDeltaStats } from '../sync/snapshotDeltaStats'
+import { SnapshotDeltaStats } from '../sync/snapshotDeltaStats'
 
 export type SSESubscription = {
     id: string
@@ -42,10 +42,13 @@ export class SSEManager {
     private readonly visibilityTracker: VisibilityTracker
     /** snapshot delta 转发器（票 02）：组装层注入；未注入时 delta 事件不下发（防御） */
     private snapshotForwarder: SnapshotDeltaForwarder | null = null
+    /** 流量观测（票 03）：组装层注入；缺省关闭（零开销） */
+    private readonly stats: SnapshotDeltaStats
 
-    constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker) {
+    constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker, stats?: SnapshotDeltaStats) {
         this.heartbeatMs = heartbeatMs
         this.visibilityTracker = visibilityTracker
+        this.stats = stats ?? new SnapshotDeltaStats(false)
     }
 
     setSnapshotForwarder(forwarder: SnapshotDeltaForwarder | null): void {
@@ -133,6 +136,19 @@ export class SSEManager {
         return successCount
     }
 
+    /** 订阅元信息查询（snapshot-resync 端点做属主校验用）；无该订阅 → null */
+    getSubscription(id: string): SSESubscription | null {
+        const connection = this.connections.get(id)
+        if (!connection) return null
+        return {
+            id: connection.id,
+            namespace: connection.namespace,
+            all: connection.all,
+            sessionId: connection.sessionId,
+            machineId: connection.machineId,
+        }
+    }
+
     /** 该 namespace 是否有任何活跃 SSE 连接(无论 visible/hidden) */
     hasActiveConnection(namespace: string): boolean {
         for (const connection of this.connections.values()) {
@@ -149,8 +165,10 @@ export class SSEManager {
     }
 
     broadcast(event: SyncEvent): void {
-        // 同一事件广播给 N 个订阅只序列化测一次（stats 关闭时零成本）
+        // 同一事件广播给 N 个订阅只序列化测一次（stats 关闭时零成本）。
+        // delta 原样转发（resolved === event）跨订阅同引用，同样可复用
         let fullBytes: number | null = null
+        let deltaBytes: number | null = null
         for (const connection of this.connections.values()) {
             if (!this.shouldSend(connection, event)) {
                 continue
@@ -161,14 +179,20 @@ export class SSEManager {
             if (event.type === 'message-snapshot-delta') {
                 const resolved = this.snapshotForwarder?.resolve(event, connection)
                 if (resolved) {
-                    this.deliverSnapshot(connection, resolved)
+                    if (resolved === event) {
+                        deltaBytes ??= this.stats.bytesOf(event)
+                        this.deliverSnapshot(connection, resolved, deltaBytes)
+                    } else {
+                        // 全量追赶内容因含 Date.now() 逐订阅不同，序列化天然逐次
+                        this.deliverSnapshot(connection, resolved)
+                    }
                 }
                 continue
             }
 
             // 全量 snapshot：标记游标 + 统计后下发（同 broadcast 内字节只算一次）
             if (event.type === 'message-snapshot') {
-                fullBytes ??= snapshotDeltaStats.bytesOf(event)
+                fullBytes ??= this.stats.bytesOf(event)
                 this.deliverSnapshot(connection, event, fullBytes)
                 continue
             }
@@ -205,15 +229,17 @@ export class SSEManager {
 
     /**
      * snapshot 类事件下发：delta 原样转发或全量追赶共用——全量标记订阅游标
-     * （衔接后续 delta）+ 流量统计后投递。precomputedBytes 供广播扇出复用同一事件的
-     * 序列化长度（同事件 N 订阅只 stringify 一次）。
+     * （衔接后续 delta；仅对协商 delta 的连接，老 web 游标无人读徒增泄漏）+ 流量统计后
+     * 投递。precomputedBytes 供广播扇出复用同一事件的序列化长度（同事件 N 订阅只测一次）。
      */
     private deliverSnapshot(connection: SSEConnection, event: SyncEvent, precomputedBytes?: number): void {
         if (event.type === 'message-snapshot') {
-            this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev)
-            snapshotDeltaStats.record('hub-to-web', 'full', event, precomputedBytes)
+            if (connection.wantsDelta) {
+                this.snapshotForwarder?.markFullSent(connection.id, event.message.localId ?? null, event.message.snapshotRev ?? null)
+            }
+            this.stats.record('hub-to-web', 'full', event, precomputedBytes)
         } else {
-            snapshotDeltaStats.record('hub-to-web', 'delta', event, precomputedBytes)
+            this.stats.record('hub-to-web', 'delta', event, precomputedBytes)
         }
         this.deliver(connection, event)
     }

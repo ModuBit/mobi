@@ -174,9 +174,18 @@ export interface ClientToServerEvents {
         snapshot?: boolean
         /** 全量帧的 rev 标记（delta 协议）：新 CLI 携带，缺省 = legacy 全量（老协议直通） */
         frame?: { rev: number; baseRev: null }
-        /** 增量帧（delta 协议）：携带时 message 字段缺省，hub 走拼接器路径 */
+        /** 增量帧（delta 协议）：携带时 message 字段缺省，hub 走拼接器路径。
+         *  同时携带 snapshot:true——老 hub（无 delta 分支）至少按快照透传处理而非误落库
+         *  （混版本防 transcript 污染）；新 hub 分支顺序 snapshotDelta 优先，不受影响 */
         snapshotDelta?: SnapshotDeltaFrame
         category?: MessageCategory
+    }) => void
+    /** snapshot 流结束信号（delta 协议）：full message 已持久化，hub 据此精确清理该流缓存
+     *  （full 的 localId 与流的 sdkUuid 不同，hub 无法自行映射）。老 hub 无此 handler，静默忽略 */
+    'snapshot-stream-end': (data: {
+        sid: string
+        /** 流式 snapshot 的 localId（message_start 的 sdkUuid） */
+        localId: string
     }) => void
     'session-alive': (data: {
         sid: string

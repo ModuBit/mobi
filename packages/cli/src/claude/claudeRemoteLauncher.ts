@@ -988,12 +988,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onSnapshot: (out) => {
-                            // delta 协议双出口：全量帧走 legacy snapshot 通道（带 rev 标记），
-                            // 增量帧走 snapshotDelta 通道；hub 侧拼接器重建全量
+                            // delta 协议三出口：全量帧走 legacy snapshot 通道（带 rev 标记），
+                            // 增量帧走 snapshotDelta 通道（hub 侧拼接器重建全量），
+                            // stream-end 信号通知 hub 清缓存与订阅游标（full 落库即流结束）
                             if (out.kind === 'full') {
                                 session.client.sendContentSnapshot(out.message, { rev: out.frame.rev });
-                            } else {
+                            } else if (out.kind === 'delta') {
                                 session.client.sendSnapshotDelta(out.frame);
+                            } else {
+                                session.client.sendSnapshotStreamEnd(out.localId);
                             }
                         },
                         registerSnapshotReset: (fn) => session.client.setSnapshotTransportReset(fn),
