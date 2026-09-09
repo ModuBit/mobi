@@ -527,6 +527,78 @@ describe('formatGroupTitle', () => {
     })
   })
 
+  describe('目标去重计数（文件/模式/命令按真实数量，非调用次数）', () => {
+    it('同一文件 edit 三次计 1 个文件', () => {
+      const blocks = [1, 2, 3].map(i => {
+        const b = makeToolCall({ id: `e${i}`, name: 'Edit' })
+        b.tool.input = { file_path: 'src/a.md' }
+        return b
+      })
+      expect(formatGroupTitle(blocks, t)).toBe('编辑了 1 个文件')
+    })
+
+    it('同一文件多次 write 与另一文件混合计 2 个文件', () => {
+      const w1 = makeToolCall({ id: 'w1', name: 'Write' })
+      w1.tool.input = { file_path: 'src/a.md' }
+      const w2 = makeToolCall({ id: 'w2', name: 'Write' })
+      w2.tool.input = { file_path: 'src/a.md' }
+      const w3 = makeToolCall({ id: 'w3', name: 'Write' })
+      w3.tool.input = { file_path: 'src/b.md' }
+      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 2 个文件')
+    })
+
+    it('read 按文件路径去重，MultiEdit 与 Edit 合并到 edit 类别后再去重', () => {
+      const r1 = makeToolCall({ id: 'r1', name: 'Read' })
+      r1.tool.input = { file_path: 'src/a.md' }
+      const r2 = makeToolCall({ id: 'r2', name: 'Read' })
+      r2.tool.input = { file_path: 'src/a.md' }
+      const e1 = makeToolCall({ id: 'e1', name: 'Edit' })
+      e1.tool.input = { file_path: 'src/a.md' }
+      const e2 = makeToolCall({ id: 'e2', name: 'MultiEdit' })
+      e2.tool.input = { file_path: 'src/a.md' }
+      expect(formatGroupTitle([r1, r2, e1, e2], t)).toBe('读取了 1 个文件、编辑了 1 个文件')
+    })
+
+    it('拿不到目标内容的块各自计 1（无法合并）', () => {
+      const w1 = makeToolCall({ id: 'w1', name: 'Write' })
+      w1.tool.input = {}
+      const w2 = makeToolCall({ id: 'w2', name: 'Write' })
+      w2.tool.input = {}
+      expect(formatGroupTitle([w1, w2], t)).toBe('写入了 2 个文件')
+    })
+
+    it('有路径与无路径混合：去重路径数 + 无路径块数', () => {
+      const w1 = makeToolCall({ id: 'w1', name: 'Write' })
+      w1.tool.input = { file_path: 'src/a.md' }
+      const w2 = makeToolCall({ id: 'w2', name: 'Write' })
+      w2.tool.input = { file_path: 'src/a.md' }
+      const w3 = makeToolCall({ id: 'w3', name: 'Write' })
+      w3.tool.input = {}
+      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 2 个文件')
+    })
+
+    it('shell/glob/grep/webfetch/websearch 保持调用次数计数（不参与文件去重）', () => {
+      const b1 = makeToolCall({ id: 'b1', name: 'Bash' })
+      b1.tool.input = { command: 'bun test' }
+      const b2 = makeToolCall({ id: 'b2', name: 'Bash' })
+      b2.tool.input = { command: 'bun test' }
+      const g1 = makeToolCall({ id: 'g1', name: 'Glob' })
+      g1.tool.input = { pattern: '**/*.ts' }
+      const g2 = makeToolCall({ id: 'g2', name: 'Glob' })
+      g2.tool.input = { pattern: '**/*.ts' }
+      expect(formatGroupTitle([b1, b2], t)).toBe('运行了 2 个命令')
+      expect(formatGroupTitle([g1, g2], t)).toBe('匹配了 2 个模式')
+    })
+
+    it('MCP 仍按调用次数计数', () => {
+      const m1 = makeToolCall({ id: 'm1', name: 'mcp__github__search' })
+      m1.tool.input = { query: 'x' }
+      const m2 = makeToolCall({ id: 'm2', name: 'mcp__github__search' })
+      m2.tool.input = { query: 'y' }
+      expect(formatGroupTitle([m1, m2], t)).toBe('调用了 github 2 次')
+    })
+  })
+
   describe('countFailedInGroup', () => {
     it('统计 error 态 tool-call 数量', () => {
       const blocks = [

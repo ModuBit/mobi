@@ -94,8 +94,27 @@ const RUNNING_TITLE_KEYS: Record<ToolCategory, string> = {
   edit: 'chat.group.running.edit',
 }
 
+/** 各类别的目标内容对应 input 字段（shell=命令 / 文件类=路径 / 检索类=模式等） */
+const TARGET_INPUT_KEY: Record<ToolCategory, string> = {
+  shell: 'command',
+  read: 'file_path',
+  write: 'file_path',
+  edit: 'file_path',
+  glob: 'pattern',
+  grep: 'pattern',
+  webfetch: 'url',
+  websearch: 'query',
+}
+
 /** 运行态尾随目标内容的长度上限（超长截断加省略号） */
 const ACTIVE_TARGET_MAX = 24
+
+/** 提取类别目标内容原始值（不截断/不取首行）；拿不到返回 null */
+function targetOf(category: ToolCategory, input: unknown): string | null {
+  if (!isObject(input)) return null
+  const raw = input[TARGET_INPUT_KEY[category]]
+  return typeof raw === 'string' && raw !== '' ? raw : null
+}
 
 /**
  * 提取运行中工具的尾随目标内容（命令/文件路径/模式等），拿不到返回空串（组头退回类别文案）。
@@ -108,28 +127,17 @@ function extractActiveTarget(name: string, input: unknown): string {
     const parsed = parseMCPToolName(name)
     return parsed ? formatMCPServerDisplay(parsed.server) : ''
   }
-  if (!isObject(input)) return ''
-  const get = (key: string): string =>
-    typeof input[key] === 'string' ? (input[key] as string) : ''
-  let raw = ''
-  switch (category) {
-    case 'shell': raw = get('command').split('\n')[0]; break
-    case 'read':
-    case 'write':
-    case 'edit': raw = get('file_path'); break
-    case 'glob':
-    case 'grep': raw = get('pattern'); break
-    case 'webfetch': raw = get('url'); break
-    case 'websearch': raw = get('query'); break
-  }
-  if (!raw) return ''
-  return raw.length > ACTIVE_TARGET_MAX ? `${raw.slice(0, ACTIVE_TARGET_MAX - 1)}…` : raw
+  const raw = targetOf(category, input)
+  if (raw == null) return ''
+  const display = category === 'shell' ? raw.split('\n')[0] : raw
+  return display.length > ACTIVE_TARGET_MAX ? `${display.slice(0, ACTIVE_TARGET_MAX - 1)}…` : display
 }
 
 /**
  * 格式化折叠组标题（汇总形态：全部落定或无活跃内容时）。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「思考 X.X 秒」，全无（local/历史）兜底「思考」。
- * tool 部分：按类别计数。失败计数：组内失败工具数 > 0 时追加「· N 个失败」。
+ * tool 部分：按类别去重计数——同文件多次读/写/编辑计 1 个文件（数量=真实文件数，非调用次数）。
+ * 失败计数：组内失败工具数 > 0 时追加「· N 个失败」。
  * 文案经 i18n（t 由组件层传入 useTranslation 的 t）。
  */
 export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): string {
@@ -138,14 +146,30 @@ export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): stri
   const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
   const totalThinkMs = reasoningBlocks.reduce((sum, b) => sum + (b.durationMs ?? 0), 0)
 
-  // tool 类别计数
+  // tool 计数：文件操作类（read/write/edit）按文件路径去重——同文件多次读/写/编辑计 1 个文件
+  //（数量=真实文件数，非调用次数），拿不到路径的块无法合并、各自计 1；
+  // 其余类别（shell/glob/grep/webfetch/websearch）语义即「次数」，按调用次数计。MCP 同为次数。
+  const FILE_CATEGORIES = new Set<ToolCategory>(['read', 'write', 'edit'])
   const counts: Partial<Record<ToolCategory, number>> = {}
+  const filePaths = new Map<ToolCategory, Set<string>>()
+  const unknownFilePaths = new Map<ToolCategory, number>()
   const mcpCounts: Record<string, number> = {}
   for (const block of blocks) {
     if (block.kind === 'agent-reasoning') continue
     const cat = TOOL_CATEGORY_MAP[block.tool.name]
     if (cat) {
-      counts[cat] = (counts[cat] ?? 0) + 1
+      if (FILE_CATEGORIES.has(cat)) {
+        const target = targetOf(cat, block.tool.input)
+        if (target == null) {
+          unknownFilePaths.set(cat, (unknownFilePaths.get(cat) ?? 0) + 1)
+        } else {
+          const paths = filePaths.get(cat) ?? new Set<string>()
+          paths.add(target)
+          filePaths.set(cat, paths)
+        }
+      } else {
+        counts[cat] = (counts[cat] ?? 0) + 1
+      }
     } else {
       const parsed = parseMCPToolName(block.tool.name)
       if (parsed) {
@@ -162,7 +186,9 @@ export function formatGroupTitle(blocks: CollapsibleBlock[], t: Translate): stri
       : t('chat.group.thought'))
   }
   for (const [cat, key] of Object.entries(TITLE_KEYS) as [ToolCategory, string][]) {
-    const n = counts[cat]
+    const n = FILE_CATEGORIES.has(cat)
+      ? (filePaths.get(cat)?.size ?? 0) + (unknownFilePaths.get(cat) ?? 0)
+      : counts[cat]
     if (n) parts.push(t(key, { count: n }))
   }
   for (const [server, n] of Object.entries(mcpCounts)) {
