@@ -54,7 +54,10 @@ describe('buildAppendSystemPrompt', () => {
     // scheme/域/动作/参数名经 buildActionUri 从 ACTION_REGISTRY 生成——registry 变更
     // （如参数名 path→file）时本测试以协议语义的方式红，而非等真机链路断才发现
     const [uriPrefix] = buildActionUri('file/open', { path: 'x' }).split('?')
-    expect(systemPrompt).toContain(`[a.ts](${uriPrefix}?path=src/a.ts)`);
+    expect(systemPrompt).toContain(`[a.ts](${uriPrefix}?path=src/a.ts)`)
+    // 反例锁死：真机实证模型会把「clickable links」理解成 md 惯例的相对路径 href
+    // （输出 [t](packages/...) 死链），prompt 必须显式否定该形态
+    expect(systemPrompt).toMatch(/\[a\.ts\]\(src\/a\.ts\) is NOT/);
     // 时机约束：仅在有打开价值时用（防链接噪音）
     expect(systemPrompt).toMatch(/only/i);
     // 编码提醒：非 ASCII 路径需 URL 编码
