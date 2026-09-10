@@ -97,17 +97,14 @@ pre, code {
     opacity: 0.15;
     animation: pixel-on 650ms ease-in-out infinite;
 }
-/* 静止暗态格：orbit 中心格（0.07，藏在网格里的空位）/ ghost 关闭态（0.12，静止但可辨认——
-   未激活减淡不再叠加在 ghost 上，亮度由这里单独表达） */
+/* 静止暗态格：orbit 中心格（0.07，藏在网格里的空位）/ ghost 关闭态（亮度由
+   PixelLoader 的 SLOT_OPACITIES 逐格 inline 表达，这里只停动画） */
 .pixel-loader-cell-idle,
 .pixel-loader-cell-ghost {
     animation: none;
 }
 .pixel-loader-cell-idle {
     opacity: 0.07;
-}
-.pixel-loader-cell-ghost {
-    opacity: 0.12;
 }
 @keyframes pixel-on {
     0%, 100% { opacity: 0.15; }
@@ -209,8 +206,9 @@ pre, code {
         animation: none !important;
     }
     /* 动画格冻结到暗态而非全亮（beautifului 同款：静止但可辨认「非空闲」）；
-       本身就是暗态的 idle 格（orbit 中心 / ghost / twinkle 静止位）不在抬亮之列 */
-    .pixel-loader-cell:not(.pixel-loader-cell-idle) {
+       本身就是暗态的 idle 格（orbit 中心 / twinkle 静止位）与逐格带 inline 亮度的
+       ghost 格不在抬亮之列 */
+    .pixel-loader-cell:not(.pixel-loader-cell-idle):not(.pixel-loader-cell-ghost) {
         opacity: 0.35 !important;
     }
     /* shimmer 停扫时冻结在高光居中位（50%）——回落到默认 0% 会让文字永久半暗 */

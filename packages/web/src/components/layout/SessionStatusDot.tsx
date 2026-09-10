@@ -21,7 +21,7 @@ import { PixelLoader } from '@/components/ui/PixelLoader'
 /**
  * 会话列表状态指示（桌面 SessionRow 与移动端 MobileSessionItem 共用）：
  * 波形映射（getSessionLoader）+ 列表小格（3px）+ 标题减淡的维度由此处与 SessionName 分担。
- * 状态指示亮度不在此叠加——ghost 波形自带 0.12 暗态，再叠透明度会双重减淡埋进背景。
+ * 状态指示亮度不在此叠加——ghost 波形自带逐格暗态（0.16~0.40），再叠透明度会双重减淡埋进背景。
  * 指示器增加任何维度（如 aria 语义、tooltip）只改这里，两处行组件自动同步。
  */
 export function SessionStatusDot({ session }: { session: Session }) {

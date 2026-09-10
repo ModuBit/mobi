@@ -45,62 +45,68 @@ const ORBIT_DELAYS = Array.from({ length: 9 }, (_, i) => {
     return k === -1 ? null : k * 110
 })
 
+/** 相位空间（秒）：既是 twinkle 的动画周期，也是 phase→树索引映射的区间上界——
+ *  两处共用本常量，改周期不会让树分布静默偏斜 */
+const PHASE_PERIOD_S = 5
+const TREE_COUNT = 9
+
+/** twinkle 眨眼 / ghost 残影共用的 6 个活跃槽位（9 格中间隔分布），
+ *  6/9 是随机感与常驻合成器动画数的折中（全 9 格对几十行空闲列表是 3 倍级开销） */
+const ACTIVE_SLOTS = [0, 2, 3, 5, 7, 8]
+
 /**
- * twinkle 眨眼格：9 格中让 6 格带动画（间隔分布 + 5s 内错峰），其余 3 格静止基线。
- * delay 取负值 = 动画在挂载瞬间已进行到各自中段——初始亮度/首眨时间天然随机（正 delay
- * 会在等待期露出满色基线且迟迟不闪）。
- * 眨眼**位置**也按 phase 旋转（9 棵预生成树的掩码轮转）：每行眨眼位置各不相同，
+ * 逐槽位属性，均以槽位序为键（与 ACTIVE_SLOTS 一一对应）：
+ * - SLOT_DELAYS：twinkle 眨眼 delay（秒），负 delay = 挂载即动画中段——初始亮度/首眨
+ *   时间天然随机（正 delay 会在等待期露出满色基线且迟迟不闪）
+ * - SLOT_OPACITIES：ghost 残影不透明度（0.16~0.40，如熄灭屏幕上的暗格）
  * 「随机游走」由位置轮转 + 负 delay 中段起步 + 行间 phase 三层叠加。
- * 6/9 是随机感与常驻合成器动画数的折中（全 9 格对几十行空闲列表是 3 倍级开销）。
  */
-const TWINKLE_ACTIVE_INDEXES = [0, 2, 3, 5, 7, 8]
-const TWINKLE_DELAYS = [0.5, 1.4, 2.3, 2.9, 3.8, 4.6]
+const SLOT_DELAYS = [0.5, 1.4, 2.3, 2.9, 3.8, 4.6]
+const SLOT_OPACITIES = [0.32, 0.16, 0.4, 0.22, 0.36, 0.18]
 
-/** 9 棵 twinkle 树：ACTIVE_INDEXES 掩码按 offset 轮转——phase ∈ [0,5) 线性映射选树，行间位置互异 */
-const TWINKLE_TREES: ReactNode[][] = Array.from({ length: 9 }, (_, offset) => {
-    const delays = TWINKLE_DELAYS.map((d, i) => ({ index: (TWINKLE_ACTIVE_INDEXES[i] + offset) % 9, delay: d }))
-    const byIndex = new Map(delays.map(({ index, delay }) => [index, delay]))
-    return Array.from({ length: 9 }, (_, index) => {
-        const delay = byIndex.get(index)
-        return delay === undefined
-            ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
-            : (
-                <span
-                    key={index}
-                    className="pixel-loader-cell"
-                    style={{
-                        animationName: 'pixel-twinkle',
-                        animationDuration: '5s',
-                        animationDelay: `calc(var(--phase, 0s) - ${delay}s)`,
-                    }}
-                />
-            )
-    })
-})
-
-function twinkleTree(phase: number): ReactNode[] {
-    return TWINKLE_TREES[Math.floor((phase / 5) * 9) % 9]
-}
-
-function ghostTree(phase: number): ReactNode[] {
-    return GHOST_TREES[Math.floor((phase / 5) * 9) % 9]
+/** phase（∈ [0, PHASE_PERIOD_S)）→ 树索引：线性映射到 TREES_COUNT 棵预生成树 */
+function treeIndex(phase: number): number {
+    return Math.floor((phase / PHASE_PERIOD_S) * TREE_COUNT) % TREE_COUNT
 }
 
 /**
- * ghost 树：与 twinkle 同一套 6 格位置轮转，但**静态**——每格一个固定伪随机不透明度
- * （0.16~0.40，如熄灭屏幕上的残影），其余 3 格 idle 暗态；同一 sessionId 恒同一幅。
+ * 9 棵相位树（twinkle/ghost 共用脚手架）：槽位掩码按 offset 轮转，phase 选树——
+ * 行间眨眼/残影位置互异，同一 sessionId 恒同一幅。
+ * renderLit(index, slot) 渲染一个活跃格：index 是 3×3 网格中的位置，slot 是
+ * 槽位序（查 SLOT_DELAYS / SLOT_OPACITIES）；非槽位格为静止暗态。
  */
-const GHOST_OPACITIES = [0.32, 0.16, 0.4, 0.22, 0.36, 0.18]
-const GHOST_TREES: ReactNode[][] = Array.from({ length: 9 }, (_, offset) => {
-    const lit = TWINKLE_DELAYS.map((_, i) => ({ index: (TWINKLE_ACTIVE_INDEXES[i] + offset) % 9, opacity: GHOST_OPACITIES[i] }))
-    const byIndex = new Map(lit.map(({ index, opacity }) => [index, opacity]))
-    return Array.from({ length: 9 }, (_, index) => {
-        const opacity = byIndex.get(index)
-        return opacity === undefined
-            ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
-            : <span key={index} className="pixel-loader-cell pixel-loader-cell-ghost" style={{ opacity }} />
+function buildPhaseTrees(renderLit: (index: number, slot: number) => ReactNode): ReactNode[][] {
+    return Array.from({ length: TREE_COUNT }, (_, offset) => {
+        const slotOf = new Map(ACTIVE_SLOTS.map((slot, i) => [(slot + offset) % TREE_COUNT, i]))
+        return Array.from({ length: TREE_COUNT }, (_, index) => {
+            const slot = slotOf.get(index)
+            return slot === undefined
+                ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
+                : renderLit(index, slot)
+        })
     })
-})
+}
+
+const TWINKLE_TREES = buildPhaseTrees((index, slot) => (
+    <span
+        key={index}
+        className="pixel-loader-cell"
+        style={{
+            animationName: 'pixel-twinkle',
+            animationDuration: `${PHASE_PERIOD_S}s`,
+            animationDelay: `calc(var(--phase, 0s) - ${SLOT_DELAYS[slot]}s)`,
+        }}
+    />
+))
+
+/** ghost 树：与 twinkle 同一套槽位轮转，但**静态**——每格固定伪随机不透明度（残影） */
+const GHOST_TREES = buildPhaseTrees((index, slot) => (
+    <span
+        key={index}
+        className="pixel-loader-cell pixel-loader-cell-ghost"
+        style={{ opacity: SLOT_OPACITIES[slot] }}
+    />
+))
 
 function buildWaveCells(delays: number[], round: boolean): ReactNode[] {
     return delays.map((delay, index) => (
@@ -112,17 +118,24 @@ function buildWaveCells(delays: number[], round: boolean): ReactNode[] {
     ))
 }
 
-const CELLS: Record<Exclude<PixelVariant, 'twinkle'>, ReactNode[]> = {
+// 静态波形预构建（模块级，重渲染复用同一 ReactNode[] 引用）
+const DRIVE_CELLS = buildWaveCells(CHEVRON_DELAYS, false)
+const DOTS_CELLS = buildWaveCells(CHEVRON_DELAYS, true)
+const ORBIT_CELLS = ORBIT_DELAYS.map((delay, index) => (
+    delay === null
+        // 中心格静止暗态（无动画）
+        ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
+        : <span key={index} className="pixel-loader-cell" style={{ animationDelay: `${delay}ms`, animationDuration: '950ms' }} />
+))
+
+/** 取格树协议：静态波形忽略 phase，twinkle/ghost 按相位轮转选树——新增变体只碰本表 */
+const CELLS: Record<PixelVariant, (phase: number) => ReactNode[]> = {
     // drive/dots 不内联时长：650ms 由 .pixel-loader-cell 的 CSS 默认独占
-    drive: buildWaveCells(CHEVRON_DELAYS, false),
-    dots: buildWaveCells(CHEVRON_DELAYS, true),
-    orbit: ORBIT_DELAYS.map((delay, index) => (
-        delay === null
-            // 中心格静止暗态（无动画）
-            ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
-            : <span key={index} className="pixel-loader-cell" style={{ animationDelay: `${delay}ms`, animationDuration: '950ms' }} />
-    )),
-    ghost: GHOST_TREES[0],
+    drive: () => DRIVE_CELLS,
+    dots: () => DOTS_CELLS,
+    orbit: () => ORBIT_CELLS,
+    twinkle: (phase) => TWINKLE_TREES[treeIndex(phase)],
+    ghost: (phase) => GHOST_TREES[treeIndex(phase)],
 }
 
 export function PixelLoader({
@@ -137,7 +150,8 @@ export function PixelLoader({
     size?: number
     /** 覆盖格色（默认继承环境文字色）；语义例外色（如审批橙）由此传入 */
     color?: string
-    /** twinkle 行间错相（秒）——从会话 id 派生，避免多行同 delay 锁步齐闪 */
+    /** 相位（秒）：twinkle 行间错相 + twinkle/ghost 树轮转的种子——从会话 id 派生，
+     *  避免多行同 delay 锁步齐闪；取值域 [0, PHASE_PERIOD_S) */
     phase?: number
     style?: CSSProperties
 }) {
@@ -150,7 +164,7 @@ export function PixelLoader({
             className={`pixel-loader pixel-loader-${variant}`}
             style={{ color, '--phase': `${phase}s`, '--pixel-cell': `${size}px`, ...style } as CSSProperties}
         >
-            {variant === 'twinkle' ? twinkleTree(phase) : variant === 'ghost' ? ghostTree(phase) : CELLS[variant]}
+            {CELLS[variant](phase)}
         </span>
     )
 }

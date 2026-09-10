@@ -49,12 +49,12 @@ export function getSessionAvatarStatus(session: AvatarStatusInput): AgentStatus 
     return 'idle'
 }
 
-/** 会话状态 → 列表状态指示（PixelLoader 波形）的配置；phase 仅 twinkle 需要 */
+/** 会话状态 → 列表状态指示（PixelLoader 波形）的配置；phase 供 twinkle/ghost 相位轮转 */
 export type SessionLoader = {
     variant: PixelVariant
     /** 语义例外色（审批橙）；缺省继承环境文字色 */
     color?: string
-    /** twinkle 行间错相（秒），从会话 id 派生 */
+    /** 相位（秒，[0,5)）：twinkle 行间错相 + twinkle/ghost 树轮转种子，从会话 id 派生 */
     phase?: number
 }
 
