@@ -14,19 +14,17 @@
  * limitations under the License.
  */
 
-import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
-import { createReadStream } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { lookupMime } from './fileMime'
+import { readFileMetaAt, readFileRangeAt, type FileRangeReadResult } from './fileRead'
 
 interface WriteFileRequest {
     path: string
@@ -64,35 +62,7 @@ export interface ReadFileRangeRequest {
     length: number
 }
 
-export interface ReadFileRangeResponse {
-    success: boolean
-    chunk?: Uint8Array
-    error?: string
-}
-
-/** 单段最大 chunk（值在 @mobi/shared RPC_BINARY_CHUNK_SIZE 统一，与 hub 流式转发 / bun-engine 上限协同） */
-const FILE_RANGE_CHUNK = RPC_BINARY_CHUNK_SIZE
-
-/**
- * 无策略读取核心：stat → meta 三元组（mime 按路径推断；etag = size-mtimeMs）。
- * session / machine 两条通道的 readFileMeta handler 共用，此处不做任何路径安全或类型限制。
- */
-export async function fileMetaAt(absPath: string): Promise<{ mime: string; size: number; etag: string }> {
-    const st = await stat(absPath)
-    return { mime: lookupMime(absPath), size: st.size, etag: `${st.size}-${Math.floor(st.mtimeMs)}` }
-}
-
-/**
- * 无策略读取核心：读 [offset, offset+length) 字节段（createReadStream end inclusive）。
- * offset/length 边界合法性由调用方先行校验。
- */
-export async function fileRangeAt(absPath: string, offset: number, length: number): Promise<Uint8Array> {
-    const chunks: Buffer[] = []
-    for await (const c of createReadStream(absPath, { start: offset, end: offset + length - 1 })) {
-        chunks.push(c)
-    }
-    return new Uint8Array(Buffer.concat(chunks))
-}
+export type ReadFileRangeResponse = FileRangeReadResult
 
 export function registerFileHandlers(
     rpcHandlerManager: RpcHandlerManager,
@@ -117,7 +87,7 @@ export function registerFileHandlers(
         }
 
         try {
-            const meta = await fileMetaAt(validation.resolvedPath)
+            const meta = await readFileMetaAt(validation.resolvedPath)
             return { success: true, meta, writable: writable(data.path).valid }
         } catch (error) {
             logger.debug('Failed to stat file:', error)
@@ -139,28 +109,11 @@ export function registerFileHandlers(
             return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }
 
-        try {
-            // 同一请求内复用校验返回的解析结果（stat 与后续读取同路径）
-            const resolvedPath = validation.resolvedPath
-            const st = await stat(resolvedPath)
-            // ?? 0 只挡 null/undefined，挡不住 NaN（Math.floor(NaN)=NaN 会绕过越界检查），需 Number.isFinite 显式校验
-            const rawOffset = Math.floor(data.offset ?? 0)
-            const rawLength = Math.floor(data.length ?? FILE_RANGE_CHUNK)
-            if (!Number.isFinite(rawOffset) || !Number.isFinite(rawLength) || rawOffset < 0 || rawLength < 0) {
-                return rpcError('Invalid offset or length')
-            }
-            const offset = rawOffset
-            const length = Math.min(rawLength, st.size - offset)
-            if (offset >= st.size || length <= 0) {
-                return rpcError('Range out of bounds')
-            }
-
-            // createReadStream 的 end 是 inclusive，区间读取由共享核心处理
-            return { success: true, chunk: await fileRangeAt(resolvedPath, offset, length) }
-        } catch (error) {
-            logger.debug('Failed to read file range:', error)
-            return rpcError(getErrorMessage(error, 'Failed to read file range'))
+        const result = await readFileRangeAt(validation.resolvedPath, data.offset, data.length)
+        if (!result.success) {
+            logger.debug('Failed to read file range:', result.error)
         }
+        return result
     })
 
     rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {

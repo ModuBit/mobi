@@ -114,7 +114,7 @@ export function createSocketServer(deps: SocketServerDeps): {
     const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
         cors: corsOptions,
         // 4MB：允许 readFileRange 单 chunk 二进制响应（socket.io 默认 1MB，超过会断连）。
-        // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一，与 cli FILE_RANGE_CHUNK 协同
+        // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一，与 RPC_BINARY_CHUNK_SIZE 协同
         maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE
     })
 
@@ -126,7 +126,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         // io.bind(外部 engine) 不会把上面 new Server(maxHttpBufferSize) 的同名选项透传过来。
         // bun-engine 默认仅 1MB，超过会判定 "payload too large" 并断开 cli 连接（transport close），
         // 表现为 hub stream 拿不到 chunk、大文件（图片/视频）预览 body 为空。
-        // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一（与 cli FILE_RANGE_CHUNK 协同）。
+        // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一（与 RPC_BINARY_CHUNK_SIZE 协同）。
         maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE,
         allowRequest: async (req) => {
             const origin = req.headers.get('origin')

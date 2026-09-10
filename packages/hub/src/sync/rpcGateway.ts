@@ -58,6 +58,7 @@ export type RpcReadFileRangeResponse = {
     success: boolean
     chunk?: Uint8Array
     error?: string
+    code?: string
 }
 
 // saveFile 响应（覆盖已存在文件 + etag OCC；请求侧 content 为 Uint8Array 二进制附件）

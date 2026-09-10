@@ -17,7 +17,7 @@
 /**
  * RPC 二进制传输相关常量（cli 读文件分片 / hub 流式转发 / bun-engine 传输上限）。
  *
- * 集中在 shared 作为单一事实源，避免 cli 的 FILE_RANGE_CHUNK 与 hub 的 maxHttpBufferSize
+ * 集中在 shared 作为单一事实源，避免 CLI 分片读取与 Hub 的 maxHttpBufferSize
  * 形成跨包隐式契约（之前仅靠注释维系，调一端不报错、首传大文件时 'payload too large' 断连）。
  */
 

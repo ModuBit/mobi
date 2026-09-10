@@ -261,4 +261,4 @@ packages/hub/src/socket/
 
 bun-engine 的 `maxHttpBufferSize` 设为 **4MB**（`packages/hub/src/socket/server.ts`）。注意此选项必须**直接设在 bun-engine 构造参数**上——`io.bind(外部 engine)` 不会把 `new Server({ maxHttpBufferSize })` 透传给外部 engine。
 
-允许 `readFileRange` / `uploadFileRange` 等 RPC 的单个二进制 chunk（当前 2MB）往返；bun-engine 默认仅 1MB，超过会触发 `payload too large` 断连（CLI 大文件预览/上传失败的常见根因）。调整 chunk 大小（cli 的 `FILE_RANGE_CHUNK` / hub 路由的 `CHUNK`）时需同步评估此上限。
+允许 `readFileRange` / `uploadFileRange` 等 RPC 的单个二进制 chunk（当前 2MB）往返；bun-engine 默认仅 1MB，超过会触发 `payload too large` 断连（CLI 大文件预览/上传失败的常见根因）。调整 shared `RPC_BINARY_CHUNK_SIZE` 时需同步评估此上限。

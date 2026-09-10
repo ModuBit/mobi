@@ -1,89 +1,78 @@
-# Files Handler (`handlers/files.ts`)
+# Files RPC (`handlers/files.ts` / `handlers/machineFiles.ts`)
 
-远程文件读写操作，内容以 Base64 编码传输。
+浏览器不直接访问本机文件系统；Hub 通过 RPC 请求 CLI 读写文件。读取有 session 和 machine 两条通道，共用文件 implementation，各自保留寻址与授权策略。
+
+## 两条读取通道
+
+| Adapter | 寻址 | 通道策略 |
+|---|---|---|
+| `files.ts` | session 的 `workingDirectory` | `validateReadPath`；meta 额外返回 `writable` |
+| `machineFiles.ts` | `machineId + cwd` | `validateReadPath` 后再校验扩展名白名单 |
+
+Machine adapter 会覆盖 machine 连接上的默认同名 handler，供跨会话的附件和静态资源读取。它的扩展名限制不影响 session 通道。
+
+## 共享文件读取 module
+
+`handlers/fileRead.ts` 的 interface 只接收已经 adapter 校验过的绝对路径：
+
+```typescript
+readFileMetaAt(absPath)
+readFileRangeAt(absPath, offset?, length?)
+```
+
+该 module 负责：
+
+- `stat` 和 `mime / size / etag` 元数据组装；
+- `offset / length` 取整、默认值与合法性检查；
+- 文件末段截断到 EOF；
+- `[offset, offset + length)` 字节范围读取；
+- 统一失败结果，其中 `ENOENT` 保留结构化错误码。
+
+该 module **不负责**路径权限、Machine 扩展名白名单、Session 可写性和 RPC 注册；这些仍属于两个 adapter。
 
 ## RPC 方法
 
-### `readFile`
+### `readFileMeta`
 
-读取文件内容（Base64 编码返回）。
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `path` | string | 是 | 相对于 workingDirectory 的文件路径 |
-
-**响应**:
+返回文件元数据：
 
 ```typescript
-{ success: true, content: string }   // content = Base64 编码的文件内容
+{ success: true, meta: { mime, size, etag }, writable? }
 // 或
-{ success: false, error: string }
+{ success: false, error: string, code?: string }
 ```
 
-**流程**:
+`etag = size-mtimeMs`。`writable` 仅由 session adapter 返回，并使用与写入相同的 `validateWritePath`。
+
+### `readFileRange`
+
+读取 `[offset, offset + length)` 字节范围，Socket.IO 以原生二进制附件传输 `Uint8Array`：
+
+```typescript
+{ success: true, chunk: Uint8Array }
+// 或
+{ success: false, error: string, code?: string }
 ```
-validatePath(path, workingDirectory)
-    ↓
-resolve(workingDirectory, path)
-    ↓
-readFile → Buffer → toString('base64')
-```
+
+- 缺省 `offset` 为 `0`；
+- 缺省 `length` 为 `RPC_BINARY_CHUNK_SIZE`；
+- 末段超出 EOF 时自动截断；
+- 非有限数、负数、空范围或越界起点返回失败。
 
 ### `writeFile`
 
-写入文件，支持乐观锁（SHA-256 哈希校验）。
+使用 Base64 内容写入文件。`expectedHash` 存在时校验已有文件的 SHA-256；缺省时要求目标尚不存在。写边界严格限定在 session `workingDirectory` 子树。
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `path` | string | 是 | 文件路径 |
-| `content` | string | 是 | Base64 编码的文件内容 |
-| `expectedHash` | string | null | 否 | 已有文件的 SHA-256 哈希（乐观锁） |
+### `saveFile`
 
-**响应**:
+覆盖已有文件，使用 `baseEtag` 做乐观并发控制，通过同目录临时文件加 `rename` 原子替换。空 `baseEtag` 表示用户确认强制覆盖。
 
-```typescript
-{ success: true, hash: string }   // hash = 写入内容的 SHA-256
-// 或
-{ success: false, error: string }
-```
+## 安全与错误
 
-## 写入模式
+- 读边界：`cwd` 子树 ∪（`home` 子树 − 黑名单），见 ADR 0004。
+- 写边界：严格 `cwd` 子树。
+- `ACCESS_DENIED`：路径边界拒绝。
+- `EXT_FORBIDDEN`：Machine 通道扩展名拒绝。
+- `ENOENT`：目标文件不存在。
 
-根据 `expectedHash` 参数分为两种模式：
-
-### 模式一：更新已有文件（expectedHash 有值）
-
-```
-1. 读取已有文件 → 计算 SHA-256
-2. 比对 expectedHash
-   ├── 不匹配 → rpcError('File hash mismatch')
-   └── 匹配 → 继续写入
-3. 写入新内容
-4. 返回新内容的 hash
-```
-
-如果文件不存在但提供了 hash → 报错。
-
-### 模式二：创建新文件（expectedHash 为 null/undefined）
-
-```
-1. stat(path) 检查文件是否存在
-   ├── 存在 → rpcError('File already exists but was expected to be new')
-   └── 不存在 (ENOENT) → 继续写入
-2. 写入新内容
-3. 返回新内容的 hash
-```
-
-## 安全机制
-
-1. **路径校验**: 两个方法都通过 `validatePath` 校验
-2. **哈希校验**: 防止并发写入导致数据丢失
-3. **Base64 传输**: 二进制文件安全传输
-
-## 哈希计算
-
-```typescript
-createHash('sha256').update(buffer).digest('hex')
-```
-
-使用 Node.js 内置 `crypto` 模块，对原始文件内容计算 SHA-256。
+路径策略先于文件读取 module 执行，因此共享范围语义不会扩大任一通道的可访问文件集。

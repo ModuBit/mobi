@@ -230,5 +230,15 @@ describe('file RPC handlers', () => {
 
             expect(r.success).toBe(false)
         })
+
+        it('文件不存在 → 保留 ENOENT 结构化错误码', async () => {
+            const r = (await rpc.handleRequest({
+                method: `${SCOPE}:readFileRange`,
+                params: { path: 'missing.txt', offset: 0, length: 1 },
+            })) as { success: boolean; code?: string }
+
+            expect(r.success).toBe(false)
+            expect(r.code).toBe('ENOENT')
+        })
     })
 })

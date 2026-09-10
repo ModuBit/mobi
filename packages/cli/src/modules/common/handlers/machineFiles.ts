@@ -15,14 +15,12 @@
  */
 
 import { extname, resolve } from 'path'
-import { stat } from 'fs/promises'
 import { homedir } from 'os'
 import { logger } from '@/ui/logger'
-import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { validateReadPath } from '../pathSecurity'
-import { fileMetaAt, fileRangeAt } from './files'
+import { readFileMetaAt, readFileRangeAt } from './fileRead'
 import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse } from './files'
 
 /**
@@ -103,7 +101,7 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
 
         try {
             logger.debug('[MACHINE] Read file meta:', resolved.abs)
-            return { success: true, meta: await fileMetaAt(resolved.abs) }
+            return { success: true, meta: await readFileMetaAt(resolved.abs) }
         } catch (error) {
             logger.debug('[MACHINE] Failed to stat file:', error)
             // 透传 ENOENT 结构化码，hub 基于它精确映射 404
@@ -121,27 +119,11 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
             return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
         }
 
-        try {
-            logger.debug('[MACHINE] Read file range:', resolved.abs, data.offset, data.length)
-            const st = await stat(resolved.abs)
-            const rawOffset = Math.floor(data.offset ?? 0)
-            const rawLength = Math.floor(data.length ?? RPC_BINARY_CHUNK_SIZE)
-            if (!Number.isFinite(rawOffset) || !Number.isFinite(rawLength) || rawOffset < 0 || rawLength < 0) {
-                return rpcError('Invalid offset or length')
-            }
-            const length = Math.min(rawLength, st.size - rawOffset)
-            if (rawOffset >= st.size || length <= 0) {
-                return rpcError('Range out of bounds')
-            }
-            return { success: true, chunk: await fileRangeAt(resolved.abs, rawOffset, length) }
-        } catch (error) {
-            logger.debug('[MACHINE] Failed to read file range:', error)
-            // 与 meta 对齐：ENOENT 结构化码透传（meta 后文件被并发删除等场景 hub 可精确 404）
-            const code = (error as NodeJS.ErrnoException | null | undefined)?.code
-            return rpcError(
-                getErrorMessage(error, 'Failed to read file range'),
-                code === 'ENOENT' ? { code: 'ENOENT' } : undefined,
-            )
+        logger.debug('[MACHINE] Read file range:', resolved.abs, data.offset, data.length)
+        const result = await readFileRangeAt(resolved.abs, data.offset, data.length)
+        if (!result.success) {
+            logger.debug('[MACHINE] Failed to read file range:', result.error)
         }
+        return result
     })
 }

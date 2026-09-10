@@ -25,7 +25,7 @@ import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
  */
 export interface FileContentReader {
     readFileMeta(path: string): Promise<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string; code?: string }>
-    readFileRange(path: string, offset: number, length: number): Promise<{ success: boolean; chunk?: Uint8Array; error?: string }>
+    readFileRange(path: string, offset: number, length: number): Promise<{ success: boolean; chunk?: Uint8Array; error?: string; code?: string }>
 }
 
 interface ServeOptions {

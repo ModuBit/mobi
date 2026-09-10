@@ -24,6 +24,7 @@
 | `src/mcp/sessionTransports.ts` | 会话 MCP / hook settings 按模式装配（remote 内联 settings 零临时文件） |
 | `src/webtools/` | 自定义 Web 工具（in-process MCP `mobi-web` + provider 路由，toolAliases 替换内置 WebSearch/WebFetch；仅 remote 模式） |
 | `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
+| `src/modules/common/handlers/fileRead.ts` | 两通道共享文件读取（meta、范围、EOF、结构化错误） |
 | `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/uploads`） |
 | `src/modules/common/handlers/uploads.ts` | 文件上传/删除 RPC Handler |
 
