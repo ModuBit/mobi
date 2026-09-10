@@ -27,8 +27,9 @@ import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
+import { resumeSession } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
@@ -85,13 +86,9 @@ export function SidebarProjects() {
     const deleteProjectMutation = useDeleteProject()
     const pinMutation = useSetSessionPinned()
 
-    // 使缓存失效（项目维度视图由 invalidateProjectViews 统一收口）
-    const invalidateAll = useCallback(async (sessionId: string) => {
-        await Promise.all([
-            queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-            invalidateProjectViews(queryClient),
-        ])
+    // 使缓存失效（会话详情/列表/项目维度视图由 invalidateSessionViews 统一收口）
+    const invalidateAll = useCallback((sessionId: string) => {
+        return invalidateSessionViews(queryClient, [sessionId])
     }, [queryClient])
 
     // 确认重命名
@@ -124,14 +121,13 @@ export function SidebarProjects() {
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {
         try {
-            const res = await api.sessions.resume(session.id)
+            const resumedSessionId = await resumeSession(api, session.id, queryClient)
             messageApi.success(t('common.success'))
-            await invalidateAll(session.id)
-            navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
+            navigate({ to: '/sessions/$sessionId', params: { sessionId: resumedSessionId } })
         } catch {
             messageApi.error(t('common.error'))
         }
-    }, [api, t, invalidateAll, navigate, messageApi])
+    }, [api, queryClient, t, navigate, messageApi])
 
     // 删除会话
     const handleDelete = useCallback((session: Session) => {

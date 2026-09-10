@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useMobiApi } from '@/core/data/api/client'
+import { resumeSession } from '@/core/data/sessionResume'
 import { queryClient } from '@/core/lib/queryClient'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { Session } from '@/core/data/api/types'
@@ -67,8 +68,8 @@ const ACTION_EXECUTORS: {
 /**
  * 构造动作分发 hook：解析 URI（未注册/畸形统一 toast 降级）后按注册键分发执行。
  *
- * @param opts.sessionId 覆盖路由推断的会话 id——恢复会话后后端可能 mergeSessions
- * 改变 id，恢复成功方用新 id 重放动作（file/open 的 tab 状态按会话隔离）
+ * @param opts.sessionId 覆盖路由推断的会话 id——恢复会话后 Hub 可能返回新的权威
+ * 会话 ID，恢复成功方用新 id 重放动作（file/open 的 tab 状态按会话隔离）
  */
 export function useActionDispatcher() {
     const { t } = useTranslation()
@@ -109,7 +110,7 @@ export interface ActionLinkProps {
  */
 /**
  * 会话恢复守卫 hook：file/open 动作在会话未激活（session.active === false）时读不到文件
- * ——点击先弹 Popconfirm 引导恢复会话，恢复成功（后端可能 mergeSessions 变更 id）
+ * ——点击先弹 Popconfirm 引导恢复会话，恢复成功（Hub 可能返回新的权威会话 ID）
  * 后用新 sessionId 重放原动作；取消则什么都不做。session 数据未加载时不拦截。
  *
  * ActionLink（Markdown 链接）与 FileChip（工具行路径 chip）共用同一守卫链，
@@ -146,17 +147,13 @@ export function useGuardedActionDispatch() {
         dispatch(uri)
     }
 
-    /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭。
-     *  内联轻量 resume（api + invalidate + navigate），语义同 useSessionActions.resumeSession
-     *  ——不引整套 8-mutation hook：每个链接实例一份，长消息里随链接数线性膨胀 */
+    /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭。 */
     const handleResume = async () => {
         if (!sessionId) return
         setResuming(true)
         try {
-            const res = await api.sessions.resume(sessionId)
-            const newSessionId = res.data.sessionId || sessionId
-            // resume 可能 mergeSessions 变更 id：失效会话缓存并替换路由后再重放动作
-            await queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+            const newSessionId = await resumeSession(api, sessionId, queryClient)
+            // resume 可能返回新的权威会话 ID：替换路由后再重放动作
             if (newSessionId !== sessionId) {
                 await navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId }, replace: true })
             }

@@ -18,6 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { isCancelQueued, DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
+import { resumeSession } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/query-keys'
 import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
@@ -105,12 +106,10 @@ export function useSessionActions(sessionId: string | null): {
             if (!sessionId) {
                 throw new Error('Session unavailable')
             }
-            const res = await api.sessions.resume(sessionId)
-            return res.data.sessionId as string
+            return await resumeSession(api, sessionId, queryClient)
         },
         onSuccess: async (newSessionId) => {
-            await invalidateSession()
-            // resume 后后端可能 mergeSessions，新 session ID 会变化
+            // resume 可能返回新的权威会话 ID
             if (newSessionId && newSessionId !== sessionId) {
                 await navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId }, replace: true })
             }

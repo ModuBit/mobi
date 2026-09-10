@@ -13,6 +13,7 @@
 | `src/router.tsx` | 路由配置 |
 | `src/core/providers/SSEProvider.tsx` | SSE 连接管理 |
 | `src/core/data/api/types.ts` | API 类型定义 |
+| `src/core/data/sessionResume.ts` | 会话恢复（请求、权威 ID、查询缓存收敛） |
 | `src/domain/chat/normalize.ts` | 消息标准化（DecryptedMessage → NormalizedMessage） |
 | `src/domain/chat/reducer.ts` | 消息归约（NormalizedMessage[] → ChatBlock[]） |
 | `src/domain/chat/types.ts` | NormalizedMessage / ChatBlock 类型定义 |

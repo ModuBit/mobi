@@ -19,7 +19,7 @@ import type { InfiniteData, QueryKey } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ProjectSessionsPage, Session } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
 
 type GroupPages = InfiniteData<ProjectSessionsPage> | undefined
@@ -42,7 +42,7 @@ function getGroupEntries(
  * - 分组成员同步搬移：pin → 进 ['pinnedSessions']、从「最近」/项目组移除；unpin 反向
  *   （归属未变：projectId 有值回项目组，否则回「最近」；缓存不含该会话、归属未知时
  *   不本地插入，插错分组比晚到更糟，交 invalidate 收敛）
- * 随后 invalidateProjectViews + 会话本体/全局缓存失效做真值补偿；
+ * 随后 invalidateSessionViews 失效（会话本体/全局/项目维度视图）做真值补偿；
  * SSE 事件（现有逻辑不变）负责同步其他端。
  * 失败不做任何本地改动（错误提示由调用方处理）。
  */
@@ -93,12 +93,8 @@ export function useSetSessionPinned() {
                     toggleIdInPages(old, sessionId, true))
             }
 
-            // 真值补偿：invalidate 三键 + 会话本体/全局缓存（SSE 侧逻辑不变，天然去重）
-            void Promise.all([
-                queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
-                queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-                invalidateProjectViews(queryClient),
-            ])
+            // 真值补偿：会话本体/全局/项目维度视图统一收敛（SSE 侧逻辑不变，天然去重）
+            void invalidateSessionViews(queryClient, [sessionId])
         },
     })
 }

@@ -36,3 +36,24 @@ export async function invalidateProjectViews(queryClient: QueryClient): Promise<
         queryClient.invalidateQueries({ queryKey: queryKeys.projectSessionsRoot }),
     ])
 }
+
+/**
+ * 统一失效「会话身份变更」波及的全部缓存：
+ * - ['session', id]：各会话详情（身份变更可能产生新旧两个 ID，全部传入）
+ * - ['sessions']：全局会话列表
+ * - 项目维度视图（委托 invalidateProjectViews）
+ *
+ * 恢复 / 重命名 / 归属变更 / 置顶回补等改变会话身份或成员的操作共用此收口，
+ * 失效规则只维护这一处。
+ */
+export async function invalidateSessionViews(
+    queryClient: QueryClient,
+    sessionIds: Iterable<string>,
+): Promise<void> {
+    await Promise.all([
+        ...Array.from(new Set(sessionIds), sessionId =>
+            queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })),
+        queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
+        invalidateProjectViews(queryClient),
+    ])
+}

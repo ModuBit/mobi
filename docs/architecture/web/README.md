@@ -130,6 +130,7 @@ packages/web/src/
 │   │   ├── cache/              缓存操作工具
 │   │   │   ├── messageCache.ts 消息缓存修补（patch/去重/排序；同 id 广播单调合并 lifecycle——终态实时生效）
 │   │   │   └── sessionCache.ts 会话缓存修补
+│   │   ├── sessionResume.ts     会话恢复 module（请求、权威 ID、查询缓存收敛）
 │   │   └── hooks/              React Hooks
 │   │       ├── queries/        TanStack Query 查询（20 个）
 │   │       │   ├── useSessions.ts        会话列表
@@ -604,6 +605,8 @@ flowchart LR
 
 API client 是一个工厂函数 `createMobiApi()`，返回类型化的 API 方法对象。
 所有请求自动附加 JWT token，401 响应触发登出跳转。
+
+会话恢复通过 `core/data/sessionResume.ts` 的聚焦 interface 进入：module 负责调用恢复端点、返回 Hub 确认的权威会话 ID，并统一失效来源/结果会话详情、全局会话列表和项目视图。`useSessionActions`、动作链接以及桌面/移动侧边栏只保留各自的路由、反馈和动作重放。
 
 ## 状态管理策略
 

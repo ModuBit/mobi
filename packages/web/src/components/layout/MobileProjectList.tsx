@@ -36,9 +36,10 @@ import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinne
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useAssignSessionProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMobiApi } from '@/core/data/api/client'
+import { resumeSession } from '@/core/data/sessionResume'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
@@ -123,13 +124,9 @@ export function MobileProjectList() {
         return allSessions?.find(s => s.id === sessionId)
     }, [allSessions])
 
-    // 使缓存失效（项目维度视图由 invalidateProjectViews 统一收口）
-    const invalidateAll = useCallback(async (sessionId: string) => {
-        await Promise.all([
-            queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-            invalidateProjectViews(queryClient),
-        ])
+    // 使缓存失效（会话详情/列表/项目维度视图由 invalidateSessionViews 统一收口）
+    const invalidateAll = useCallback((sessionId: string) => {
+        return invalidateSessionViews(queryClient, [sessionId])
     }, [queryClient])
 
     // 归属变更：换项目 / 归入项目（选择器）+ 移至最近（直接执行）
@@ -217,16 +214,15 @@ export function MobileProjectList() {
         if (!actionSessionId) return
         setActionLoading('resume')
         try {
-            const res = await api.sessions.resume(actionSessionId)
-            await invalidateAll(actionSessionId)
+            const resumedSessionId = await resumeSession(api, actionSessionId, queryClient)
             setActionSessionId(null)
-            navigateFromMenu(() => navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } }))
+            navigateFromMenu(() => navigate({ to: '/sessions/$sessionId', params: { sessionId: resumedSessionId } }))
         } catch {
             // ignore
         } finally {
             setActionLoading(null)
         }
-    }, [actionSessionId, api, invalidateAll, navigate, navigateFromMenu])
+    }, [actionSessionId, api, queryClient, navigate, navigateFromMenu])
 
     // 删除
     const handleDelete = useCallback(() => {
