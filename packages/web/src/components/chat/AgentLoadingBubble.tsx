@@ -100,9 +100,9 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
     const stalled = !isAwaitingAuth
         && lastActivityAt !== undefined
         && (stallElapsed * 1000) >= STALL_WARN_MS
-    // 像素波前只在「真在推进」时播放（outputting 且未停滞）——失活/停滞期交给状态点与
-    // 警示文本承载，避免波前的「持续推进」与「still waiting for response…」互相矛盾
-    const showWavefront = status === 'outputting' && !stalled
+    // 网格波形按状态分流：正常输出 drive（波前推进）；停滞 orbit（彗星绕圈——有事在转
+    // 但无进展，与「still waiting」文本自洽）；其余状态（待审批/失活）回退状态点
+    const loaderVariant = status === 'outputting' ? (stalled ? 'orbit' : 'drive') : null
     const labelText = isAwaitingAuth
         ? 'awaiting approval…'
         : stalled ? 'still waiting for response…' : vibingMsg
@@ -112,10 +112,10 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
 
     return (
         <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* 运行中用像素网格波前（beautifului Loading State 同款语言：持续推进）；
-                待审批/失活/停滞回退状态点——审批是需要行动的语义例外，不与「忙」混同 */}
-            {showWavefront
-                ? <PixelLoader />
+            {/* 输出中 drive 波前 / 停滞 orbit 绕圈；待审批/失活回退状态点——审批是需要
+                行动的语义例外，不与「忙」混同 */}
+            {loaderVariant
+                ? <PixelLoader variant={loaderVariant} />
                 : <StatusStateIcon state={status} />}
             <BlinkText blinking color={stalled ? token.colorWarning : CLAUDE_ORANGE} aria-live="polite" style={{ fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />

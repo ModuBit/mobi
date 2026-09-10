@@ -53,12 +53,12 @@ describe('AgentLoadingBubble', () => {
         expect(status).not.toBeNull()
     })
 
-    it('失活/停滞不再播放像素波前（波前的「持续推进」不与停滞警告矛盾）', () => {
+    it('波形按状态分流：outputting 用 drive，停滞用 orbit，失活回退状态点', () => {
         // inactive：非运行态直接回退状态点
         const inactive = render(<AgentLoadingBubble agentId="agent-1" status="inactive" />)
         expect(inactive.container.querySelector('.pixel-loader')).toBeNull()
 
-        // outputting 但静默超阈值（stalled）：波前停播，警示文本接管
+        // outputting 但静默超阈值（stalled）：换 orbit 绕圈（有事在转但无进展），不再波前推进
         const stalled = render(
             <AgentLoadingBubble
                 agentId="agent-1"
@@ -66,7 +66,13 @@ describe('AgentLoadingBubble', () => {
                 lastActivityAt={Date.now() - 200_000}
             />,
         )
-        expect(stalled.container.querySelector('.pixel-loader')).toBeNull()
+        expect(stalled.container.querySelector('.pixel-loader-orbit')).not.toBeNull()
+
+        // 正常输出：drive 波前
+        const driving = render(<AgentLoadingBubble agentId="agent-1" status="outputting" />)
+        const grid = driving.container.querySelector('.pixel-loader')
+        expect(grid).not.toBeNull()
+        expect(grid!.className).not.toContain('orbit')
     })
 
     // ============ 静默告警（pending #34：上游挂死可观测）============
