@@ -18,7 +18,7 @@ import { extname, resolve } from 'path'
 import { homedir } from 'os'
 import { logger } from '@/ui/logger'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { getErrorMessage, rpcError } from '../rpcResponses'
+import { rpcError } from '../rpcResponses'
 import { validateReadPath } from '../pathSecurity'
 import { readFileMetaAt, readFileRangeAt } from './fileRead'
 import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse } from './files'
@@ -99,18 +99,12 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
             return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
         }
 
-        try {
-            logger.debug('[MACHINE] Read file meta:', resolved.abs)
-            return { success: true, meta: await readFileMetaAt(resolved.abs) }
-        } catch (error) {
-            logger.debug('[MACHINE] Failed to stat file:', error)
-            // 透传 ENOENT 结构化码，hub 基于它精确映射 404
-            const code = (error as NodeJS.ErrnoException | null | undefined)?.code
-            return rpcError(
-                getErrorMessage(error, 'Failed to read file meta'),
-                code === 'ENOENT' ? { code: 'ENOENT' } : undefined,
-            )
+        logger.debug('[MACHINE] Read file meta:', resolved.abs)
+        const result = await readFileMetaAt(resolved.abs)
+        if (!result.success) {
+            logger.debug('[MACHINE] Failed to stat file:', result.error)
         }
+        return result
     })
 
     rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {

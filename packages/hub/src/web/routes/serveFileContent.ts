@@ -18,14 +18,17 @@ import type { Context } from 'hono'
 import { stream } from 'hono/streaming'
 import { basename } from 'node:path'
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
+import type { ReadFileMetaResponse, RpcReadFileRangeResponse } from '@mobi/shared/fileMeta'
+import { hubLogger } from '../../logger'
 
 /**
  * 文件内容读取器：session 通道（sessionId 寻址）与 machine 通道（machineId+cwd 寻址）的公共面。
  * serveFileContent 只依赖此抽象——meta→304→Range→stream 等机制层逻辑对两种寻址完全复用。
+ * 响应形状单源在 shared（ReadFileMetaResponse / RpcReadFileRangeResponse）。
  */
 export interface FileContentReader {
-    readFileMeta(path: string): Promise<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string; code?: string }>
-    readFileRange(path: string, offset: number, length: number): Promise<{ success: boolean; chunk?: Uint8Array; error?: string; code?: string }>
+    readFileMeta(path: string): Promise<ReadFileMetaResponse>
+    readFileRange(path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse>
 }
 
 interface ServeOptions {
@@ -156,7 +159,10 @@ export async function serveFileContent(
             }
             const len = Math.min(CHUNK, end - offset + 1)
             const r = await reader.readFileRange(absPath, offset, len)
-            if (!r.success || !r.chunk) {
+            if (!r.success) {
+                // 流中失败只能截断（响应头已随 stream 发出，状态码不可再改）；
+                // code（如 meta 读取后文件被并发删除的 ENOENT）落日志供观测
+                hubLogger.warn(`[serveFileContent] readFileRange failed: ${r.error}${r.code ? ` (${r.code})` : ''}`)
                 break
             }
             await s.write(r.chunk)

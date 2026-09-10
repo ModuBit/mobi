@@ -15,7 +15,7 @@
  */
 
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
-import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
+import { fileEtag, type ReadFileMetaResponse, type RpcReadFileRangeResponse } from '@mobi/shared/fileMeta'
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
@@ -24,7 +24,7 @@ import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { readFileMetaAt, readFileRangeAt, type FileRangeReadResult } from './fileRead'
+import { readFileMetaAt, readFileRangeAt } from './fileRead'
 
 interface WriteFileRequest {
     path: string
@@ -62,7 +62,8 @@ export interface ReadFileRangeRequest {
     length: number
 }
 
-export type ReadFileRangeResponse = FileRangeReadResult
+// 响应形状单源在 shared（RpcReadFileRangeResponse），此处别名兼容既有引用
+export type ReadFileRangeResponse = RpcReadFileRangeResponse
 
 export function registerFileHandlers(
     rpcHandlerManager: RpcHandlerManager,
@@ -86,18 +87,12 @@ export function registerFileHandlers(
             return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }
 
-        try {
-            const meta = await readFileMetaAt(validation.resolvedPath)
-            return { success: true, meta, writable: writable(data.path).valid }
-        } catch (error) {
-            logger.debug('Failed to stat file:', error)
-            // 透传 errno code（ENOENT 等）让 hub 基于结构化码判 404，不再依赖文案
-            const code = (error as NodeJS.ErrnoException | null | undefined)?.code
-            return rpcError(
-                getErrorMessage(error, 'Failed to read file meta'),
-                code === 'ENOENT' ? { code: 'ENOENT' } : undefined,
-            )
+        const result = await readFileMetaAt(validation.resolvedPath)
+        if (!result.success) {
+            logger.debug('Failed to stat file:', result.error)
+            return result
         }
+        return { success: true, meta: result.meta, writable: writable(data.path).valid }
     })
 
     // readFileRange：无状态读 [offset, offset+length)，返回 Uint8Array（Socket.IO binary 附件）
@@ -199,7 +194,7 @@ export function registerFileHandlers(
                     code === 'ENOENT' ? { code } : undefined,
                 )
             }
-            const currentEtag = `${st.size}-${Math.floor(st.mtimeMs)}`
+            const currentEtag = fileEtag(st.size, st.mtimeMs)
             // baseEtag='' → force 覆盖（跳过 OCC，用于冲突后用户选「强制覆盖」）；
             // 非空 → OCC 比对，不符则 conflict（正常 baseEtag 来自 readFileMeta，永非空）
             if (data.baseEtag !== '' && data.baseEtag !== currentEtag) {
@@ -220,7 +215,7 @@ export function registerFileHandlers(
             }
 
             const newSt = await stat(resolvedPath)
-            return { success: true, etag: `${newSt.size}-${Math.floor(newSt.mtimeMs)}` }
+            return { success: true, etag: fileEtag(newSt.size, newSt.mtimeMs) }
         } catch (error) {
             logger.debug('Failed to save file:', error)
             return rpcError(getErrorMessage(error, 'Failed to save file'))

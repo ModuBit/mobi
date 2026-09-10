@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-/** 文件 meta 三元组（etag = `${size}-${mtimeMs}`，文件变化 mtime 必变） */
+/** 文件 meta 三元组（文件变化 mtime 必变，etag 随之变化） */
 export interface RpcFileMeta {
     mime: string
     size: number
     etag: string
+}
+
+/** etag 单点公式（跨端契约：CLI 各读写路径统一经此生成，改动只动这里） */
+export function fileEtag(size: number, mtimeMs: number): string {
+    return `${size}-${Math.floor(mtimeMs)}`
 }
 
 /**
@@ -33,3 +38,11 @@ export interface ReadFileMetaResponse {
     error?: string
     code?: string
 }
+
+/**
+ * readFileRange RPC 响应（CLI → hub → web 三端单源形状，加字段只改这里）：
+ * chunk 为单分片二进制（Socket.IO 原生序列化透传）；失败时结构化 code 透传（ENOENT 等）。
+ */
+export type RpcReadFileRangeResponse =
+    | { success: true; chunk: Uint8Array }
+    | { success: false; error: string; code?: string }

@@ -18,7 +18,43 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { readFileRangeAt } from '@/modules/common/handlers/fileRead'
+import { readFileMetaAt, readFileRangeAt } from '@/modules/common/handlers/fileRead'
+
+describe('readFileMetaAt', () => {
+    let rootDir: string
+
+    beforeEach(async () => {
+        rootDir = await mkdtemp(join(tmpdir(), 'mobi-file-meta-'))
+    })
+
+    afterEach(async () => {
+        await rm(rootDir, { recursive: true, force: true })
+    })
+
+    it('返回 mime/size/etag 元数据（etag = size-mtimeMs）', async () => {
+        const path = join(rootDir, 'meta.txt')
+        await writeFile(path, 'abc')
+
+        const result = await readFileMetaAt(path)
+
+        expect(result.success).toBe(true)
+        if (result.success) {
+            expect(result.meta.mime).toBe('text/plain')
+            expect(result.meta.size).toBe(3)
+            expect(result.meta.etag).toMatch(/^\d+-\d+$/)
+        }
+    })
+
+    it('文件不存在 → ENOENT 保留为结构化错误码', async () => {
+        const result = await readFileMetaAt(join(rootDir, 'missing.txt'))
+
+        expect(result.success).toBe(false)
+        if (!result.success) {
+            expect(result.code).toBe('ENOENT')
+            expect(result.error).toContain('missing.txt')
+        }
+    })
+})
 
 describe('readFileRangeAt', () => {
     let rootDir: string

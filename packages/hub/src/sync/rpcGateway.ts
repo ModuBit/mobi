@@ -49,17 +49,13 @@ export type RpcCommandResponse = {
     error?: string
 }
 
-// 文件元数据（流式读取前置查询）——响应形状单源在 shared，此处别名兼容既有引用
-import type { RpcFileMeta, ReadFileMetaResponse as RpcReadFileMetaResponse } from '@mobi/shared/fileMeta'
-export type { RpcFileMeta, RpcReadFileMetaResponse }
-
-// 文件范围读取响应（chunk 为二进制，经 Socket.IO 原生序列化原样透传）
-export type RpcReadFileRangeResponse = {
-    success: boolean
-    chunk?: Uint8Array
-    error?: string
-    code?: string
-}
+// 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared，此处 re-export 兼容既有引用
+import type {
+    RpcFileMeta,
+    ReadFileMetaResponse as RpcReadFileMetaResponse,
+    RpcReadFileRangeResponse
+} from '@mobi/shared/fileMeta'
+export type { RpcFileMeta, RpcReadFileMetaResponse, RpcReadFileRangeResponse }
 
 // saveFile 响应（覆盖已存在文件 + etag OCC；请求侧 content 为 Uint8Array 二进制附件）
 export type RpcSaveFileResponse =
