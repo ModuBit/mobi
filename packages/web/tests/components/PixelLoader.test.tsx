@@ -35,4 +35,64 @@ describe('PixelLoader', () => {
         const cell = container.querySelector('.pixel-loader-cell') as HTMLElement
         expect(cell.style.background).toBe('')
     })
+
+    it('orbit 变体：中心格静止暗态（无动画），外圈 8 格按环绕序错峰', () => {
+        const { container } = render(<PixelLoader variant="orbit" />)
+        const grid = container.firstChild as HTMLElement
+        expect(grid.className).toContain('pixel-loader-orbit')
+
+        const cells = container.querySelectorAll('.pixel-loader-cell')
+        expect(cells).toHaveLength(9)
+        // 中心格：静止暗态（样式由 idle 类承载）
+        const idle = container.querySelector('.pixel-loader-cell-idle') as HTMLElement
+        expect(idle).not.toBeNull()
+        expect(idle.style.animationDelay).toBe('')
+        // 外圈：带 delay、950ms 周期
+        const orbiting = Array.from(cells).filter(c => !(c as HTMLElement).classList.contains('pixel-loader-cell-idle'))
+        expect(orbiting).toHaveLength(8)
+        orbiting.forEach(cell => {
+            expect((cell as HTMLElement).style.animationDelay).toBeTruthy()
+            expect((cell as HTMLElement).style.animationDuration).toBe('950ms')
+        })
+    })
+
+    it('twinkle 变体：仅 3 格眨眼（压常驻合成器动画），错相经容器 --phase 注入', () => {
+        const { container } = render(<PixelLoader variant="twinkle" phase={2.5} />)
+        const grid = container.firstChild as HTMLElement
+        expect(grid.className).toContain('pixel-loader-twinkle')
+        expect(grid.style.getPropertyValue('--phase')).toBe('2.5s')
+
+        const cells = container.querySelectorAll('.pixel-loader-cell')
+        expect(cells).toHaveLength(9)
+        const twinkling = Array.from(cells).filter(c => (c as HTMLElement).style.animationName === 'pixel-twinkle')
+        expect(twinkling).toHaveLength(3)
+        twinkling.forEach(cell => {
+            const style = (cell as HTMLElement).style
+            expect(style.animationDuration).toBe('5s')
+            expect(style.animationDelay).toContain('var(--phase')
+        })
+        // 其余 6 格静止基线（idle 类承载）
+        const idle = Array.from(cells).filter(c => (c as HTMLElement).classList.contains('pixel-loader-cell-idle'))
+        expect(idle).toHaveLength(6)
+    })
+
+    it('ghost 变体：全格静止暗态（无动画）', () => {
+        const { container } = render(<PixelLoader variant="ghost" />)
+        const cells = container.querySelectorAll('.pixel-loader-cell')
+        expect(cells).toHaveLength(9)
+        cells.forEach(cell => {
+            expect((cell as HTMLElement).classList.contains('pixel-loader-cell-idle')).toBe(true)
+        })
+    })
+
+    it('size 数值经 --pixel-cell 注入（CSS 变量驱动格边长），color 走容器继承', () => {
+        const { container } = render(<PixelLoader variant="drive" size={3} color="#ffa726" />)
+        const grid = container.firstChild as HTMLElement
+        expect(grid.style.getPropertyValue('--pixel-cell')).toBe('3px')
+        expect(grid.style.color).toBe('rgb(255, 167, 38)')
+        // 缺省 4px
+        const dflt = render(<PixelLoader />)
+        expect(dflt.container.firstChild as HTMLElement).toBeTruthy()
+        expect((dflt.container.firstChild as HTMLElement).style.getPropertyValue('--pixel-cell')).toBe('4px')
+    })
 })

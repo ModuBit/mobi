@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { getSessionAvatarStatus, compareSessionsForList } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus, getSessionLoader, compareSessionsForList } from '@/core/utils/sessionStatus'
 
 describe('getSessionAvatarStatus', () => {
     it('未激活 → inactive', () => {
@@ -106,5 +106,35 @@ describe('compareSessionsForList', () => {
         const sorted = [outputting, idle, awaiting].sort(compareSessionsForList)
         // 倒序：idle(300) → awaiting(150) → outputting(50)
         expect(sorted).toEqual([idle, awaiting, outputting])
+    })
+})
+
+describe('getSessionLoader', () => {
+    it('运行中 → drive（波前推进），无例外色', () => {
+        expect(getSessionLoader({ id: 's1', active: true, running: true } as never)).toEqual({
+            variant: 'drive',
+        })
+    })
+
+    it('待审批 → orbit 染审批橙（绕圈等你给回合）', () => {
+        const loader = getSessionLoader({ id: 's1', active: true, running: true, pendingRequestsCount: 1 } as never)
+        expect(loader.variant).toBe('orbit')
+        expect(loader.color).toBe('#ffa726')
+    })
+
+    it('空闲 → twinkle，相位从会话 id 派生（同 id 恒同相、不同 id 错开）', () => {
+        const a = getSessionLoader({ id: 'session-a', active: true, running: false } as never)
+        const a2 = getSessionLoader({ id: 'session-a', active: true, running: false } as never)
+        const b = getSessionLoader({ id: 'session-b', active: true, running: false } as never)
+        expect(a.variant).toBe('twinkle')
+        expect(a.phase).toBe(a2.phase)
+        expect(a.phase).toBeGreaterThanOrEqual(0)
+        expect(a.phase).toBeLessThanOrEqual(5)
+        // 不同 id 大概率不同相（1000 桶碰撞率可忽略，双样本断言足够）
+        expect(b.phase).not.toBe(a.phase)
+    })
+
+    it('未激活 → ghost（静止暗格）', () => {
+        expect(getSessionLoader({ id: 's1', active: false, running: false } as never).variant).toBe('ghost')
     })
 })

@@ -15,14 +15,17 @@
  */
 
 import type { AgentStatus } from '@/components/pixel-avatar/types'
+import { statusColorOf } from '@/components/tool-card/toolIcons'
+import type { PixelVariant } from '@/components/ui/PixelLoader'
 import type { Session } from '@/core/data/api/types'
+import { stableHash } from '@/core/utils/hash'
 
 /**
  * getSessionAvatarStatus 的最小输入结构。
  * 列表项（SessionSummary）只带 pendingRequestsCount，详情项（Session）带 agentState.requests，
  * 两者结构不同但都能判断状态，故取交集声明为可选，兼容两类调用方。
  */
-type AvatarStatusInput = Pick<Session, 'active' | 'running'> & {
+type AvatarStatusInput = Pick<Session, 'id' | 'active' | 'running'> & {
     agentState?: { requests?: Record<string, unknown> | null } | null
     pendingRequestsCount?: number
 }
@@ -44,6 +47,37 @@ export function getSessionAvatarStatus(session: AvatarStatusInput): AgentStatus 
     if (pendingFromSummary > 0 || pendingFromDetail > 0) return 'awaiting_auth'
     if (session.running) return 'outputting'
     return 'idle'
+}
+
+/** 会话状态 → 列表状态指示（PixelLoader 波形）的配置；phase 仅 twinkle 需要 */
+export type SessionLoader = {
+    variant: PixelVariant
+    /** 语义例外色（审批橙）；缺省继承环境文字色 */
+    color?: string
+    /** twinkle 行间错相（秒），从会话 id 派生 */
+    phase?: number
+}
+
+/** 会话 id → 稳定伪随机相位（0~5s）：同 id 恒同相，不同 id 错开，避免多行 twinkle 锁步齐闪 */
+function idPhase(id: string): number {
+    return (stableHash(id) % 997) / 997 * 5
+}
+
+/**
+ * 会话列表状态指示的波形映射（与 getSessionAvatarStatus 同源判定）：
+ * - 运行中 → drive（波前推进，「正在干活」）
+ * - 待审批 → orbit 染橙（绕圈等你给回合；橙 = 需要行动的语义例外，列表最高注意力）
+ * - 空闲   → twinkle（星空低频眨眼，「活着但闲置」；相位按行错开）
+ * - 其余   → ghost（静止暗格，「在场但已关闭」）
+ */
+export function getSessionLoader(session: AvatarStatusInput): SessionLoader {
+    switch (getSessionAvatarStatus(session)) {
+        case 'outputting': return { variant: 'drive' }
+        // 审批橙走统一取色口（去色语义单点），不直读色板
+        case 'awaiting_auth': return { variant: 'orbit', color: statusColorOf('awaiting_auth') }
+        case 'idle': return { variant: 'twinkle', phase: idPhase(session.id) }
+        default: return { variant: 'ghost' }
+    }
 }
 
 /**

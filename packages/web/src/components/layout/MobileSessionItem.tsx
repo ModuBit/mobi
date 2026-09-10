@@ -19,14 +19,12 @@ import { MoreOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { resolveForkSessionState } from './forkSessionLabel'
 import { ForkStateBadge } from './ForkStateBadge'
-import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { SessionStatusDot } from './SessionStatusDot'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session } from '@/core/data/api/types'
 import { SessionItem, SessionName, TimeLabel, MoreButton } from './mobileProjectList.styles'
-import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 
 const { useToken } = antTheme
 
@@ -47,7 +45,6 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
     const { t } = useTranslation()
     const longPress = useLongPress(onLongPress)
 
-    const avatarStatus = getSessionAvatarStatus(session)
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt, t)
     // fork 行：hub 建行时标题已落库（metadata.name 含「· 分叉」后缀），
@@ -65,7 +62,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
             onTouchEnd={longPress.onTouchEnd}
             onTouchMove={longPress.onTouchMove}
         >
-            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? INACTIVE_SESSION_DIM.statusDot : undefined }} />
+            <SessionStatusDot session={session} inactive={inactive} />
             <SessionName $token={token} $inactive={inactive}>{displayName}</SessionName>
             {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge

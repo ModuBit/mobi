@@ -78,17 +78,36 @@ pre, code {
     font-family: var(--font-mono);
 }
 
-/* 像素网格加载器（PixelLoader）：格子静态样式 + 点亮波形；chevron 波形 delay 由组件逐格注入 */
+/* 像素网格加载器（PixelLoader）：布局与格子样式。格边长经容器 --pixel-cell 注入（可调尺寸），
+   gap 按格边长等比缩放；格色用 currentColor（容器继承环境文字色，语义例外色由容器 color 覆盖），
+   深浅主题自适应 */
+.pixel-loader {
+    display: inline-grid;
+    grid-template-columns: repeat(3, var(--pixel-cell, 4px));
+    gap: calc(var(--pixel-cell, 4px) * 0.375);
+    flex-shrink: 0;
+}
 .pixel-loader-cell {
-    width: 4px;
-    height: 4px;
+    width: var(--pixel-cell, 4px);
+    height: var(--pixel-cell, 4px);
     border-radius: 1px;
-    background: var(--ant-color-text);
+    background: currentColor;
     animation: pixel-on 650ms ease-in-out infinite;
+}
+/* 静止暗态格（orbit 中心格 / ghost 全格） */
+.pixel-loader-cell-idle {
+    opacity: 0.07;
+    animation: none;
 }
 @keyframes pixel-on {
     0%, 100% { opacity: 0.15; }
     18%, 42% { opacity: 1; }
+}
+/* twinkle 星空眨眼（空闲态）：5s 长周期 + 短点亮窗（4%~10%），任一时刻平均 <1 颗亮；
+   行间错相经容器 --phase 注入到逐格 delay，避免多行锁步齐闪 */
+@keyframes pixel-twinkle {
+    0%, 100% { opacity: 0.15; }
+    4%, 10% { opacity: 0.9; }
 }
 
 /* 状态点：运行中 = 旋转弧（忙，不用管）。透明侧朝上、绕圈转，经典 spinner 语言 */
@@ -179,8 +198,9 @@ pre, code {
     .shimmer-text {
         animation: none !important;
     }
-    /* 网格冻结到暗态而非全亮（beautifului 同款处理：静止但可辨认出「非空闲」） */
-    .pixel-loader-cell {
+    /* 动画格冻结到暗态而非全亮（beautifului 同款：静止但可辨认「非空闲」）；
+       本身就是暗态的 idle 格（orbit 中心 / ghost / twinkle 静止位）不在抬亮之列 */
+    .pixel-loader-cell:not(.pixel-loader-cell-idle) {
         opacity: 0.35 !important;
     }
     /* shimmer 停扫时冻结在高光居中位（50%）——回落到默认 0% 会让文字永久半暗 */

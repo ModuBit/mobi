@@ -23,15 +23,13 @@ import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { resolveForkSessionState } from './forkSessionLabel'
 import { ForkStateBadge } from './ForkStateBadge'
-import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { SessionStatusDot } from './SessionStatusDot'
 import type { Session } from '@/core/data/api/types'
 import {
     SessionItem, SessionName, TimeLabel, SessionActions, ActionButton, RenameRow,
 } from './sidebarProjects.styles'
-import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 
 const { useToken } = antTheme
 
@@ -92,13 +90,12 @@ export function SessionRow({
 
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt, t)
-    const avatarStatus = getSessionAvatarStatus(session)
     // 未激活会话：状态点与标题一同减淡，退到背景层
     const inactive = !session.active
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
-            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? INACTIVE_SESSION_DIM.statusDot : undefined }} />
+            <SessionStatusDot session={session} inactive={inactive} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName $inactive={inactive}>{displayName}</SessionName>
             </AppTooltip>
