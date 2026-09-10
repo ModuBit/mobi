@@ -15,15 +15,15 @@
         "@mobi/shared": "workspace:*",
         "@socket.io/bun-engine": "^0.1.2",
         "cookie": "^2.0.1",
-        "hono": "^4.13.5",
-        "jose": "^6.2.10",
+        "hono": "^4.13.7",
+        "jose": "^6.2.12",
         "socket.io": "^4.8.3",
         "web-push": "^3.6.7",
-        "zod": "^4.5.4"
+        "zod": "^4.6.1"
     },
     "devDependencies": {
         "@types/node": "^26.4.1",
         "@types/web-push": "^3.6.4",
-        "bun-types": "^1.4.0"
+        "bun-types": "^1.4.2"
     }
 }
