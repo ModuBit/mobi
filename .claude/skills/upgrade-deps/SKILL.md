@@ -116,7 +116,13 @@ bun run lint       # ESLint 检查
 | Claude Agent SDK | TS SDK 的 API、query options、hooks、partial、导出接口——**直接影响 cli 代码** | `https://raw.githubusercontent.com/anthropics/claude-agent-sdk-typescript/refs/heads/main/CHANGELOG.md` |
 | Claude Code | SDK 内嵌 claude 二进制的行为——工具协议、plan 模式、工具调度、提示词、MCP——**影响 mobi 运行时行为预期** | `https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md` |
 
-fetch 下来，按**本次升级跨越的版本范围**筛条目。SDK changelog 按 SDK 版本号；Claude Code changelog 按 claude 二进制版本号（从 SDK 平台子包 manifest 或 `claude --version` 取）。fetch 不通就 download 到磁盘看。
+**抓取规则（2026-09-10 教训后强制）**：
+
+1. **必须用 WebFetch 工具**，禁止 webReader 等第三方抓取通道——其缓存曾把 changelog 返回成严重滞后的快照（顶部停在 0.2.119，实际最新 0.3.267）
+2. **URL 必须逐字符照抄上表**（`refs/heads` 全路径），**禁止改写、缩短或"语义等价"重写**——`/main/` 与 `/refs/heads/main/` 在 GitHub 上是同一资源，但字符串不同会命中抓取链路里不同的缓存键，改写曾撞上滞后缓存（0.3.250 ≠ 0.3.267）
+3. **拿到内容先交叉验证再采信**：changelog 顶部版本必须与 `npm view <pkg> version` 的 latest 一致（SDK changelog 顶部 == npm latest；Claude Code changelog 的版本号 <= SDK 包 `claudeCodeVersion` 字段）。不一致即命中陈旧缓存，原样 URL 重试；重试仍不一致则停下来向用户报告，禁止拿陈旧内容做影响评估
+
+验证通过后，按**本次升级跨越的版本范围**筛条目。SDK changelog 按 SDK 版本号；Claude Code changelog 按 claude 二进制版本号（从 SDK 包 `package.json` 的 `claudeCodeVersion` 字段取，如 SDK 0.3.267 ↔ CC 2.1.267）。WebFetch 不通就 download 到磁盘看，仍然遵守上述三条规则。
 
 #### 2. 对照 mobi 的 SDK 使用面，逐条评估影响
 
@@ -206,4 +212,5 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 - **升级后必验证**：typecheck → test → lint 三步缺一不可
 - **patchedDependencies 维护**：每次升级必须执行第七步，按上游新版情况处理补丁（移除/迁移/重做），不只是「移除」——上游没修但改了代码，补丁要跟着重做
 - **anthropic/claude 包强制 changelog 检查**：升任何 `@anthropic-ai/*` 包必须执行第八步——拉 SDK + Claude Code 两个 changelog，对照 mobi SDK 使用面评估影响（防御）+ 挖掘可引入的新功能并产出建议表（进攻），typecheck 拦不住的运行时行为用 E2E 回归
+- **changelog 抓取规范**：必须 WebFetch + URL 逐字符照抄第八步表格（禁止 webReader、禁止改写 URL）+ 拿到后与 npm latest 交叉验证（详见第八步第 1 小节）
 - **提交规范**：commit message 使用 `chore:` 前缀，列出关键变更
