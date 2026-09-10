@@ -19,6 +19,7 @@ import type { ChatBlock } from '@/domain/chat'
 import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
 import type { ChatBlockContext } from './blocks'
+import type { GroupedBlock } from '@/domain/chat/groupToolCalls'
 import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
 import { renderChatBlock } from './blocks'
 import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
@@ -35,6 +36,14 @@ export type BuildBubbleOptions = {
 }
 
 const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
+
+/**
+ * 过程块：工具调用与思考（含折叠组）——它们是「执行过程」，其后的首个 agent-text
+ * 是本轮的「产出正文」，上方插 result 分隔线标记过程结束（无文字的渐隐短线，
+ * 视觉语言同 hairline 分区；线色取 --ant-color-text 14%，dark/light 随主题自适应）。
+ */
+const isProcessBlock = (b: GroupedBlock): boolean =>
+    b.kind === 'tool-call-group' || b.kind === 'tool-call' || b.kind === 'agent-reasoning'
 
 export type BubbleItemBase = {
     key: string
@@ -76,6 +85,10 @@ export function buildChatBubbleItems(
 
     const items: BubbleItemBase[] = []
 
+    // 过程块 → agent-text 交界追踪：只在该交界处插一条 result 分隔线（锚定消费块 id，
+    // 随正文块增删稳定，不会导致流式期间重挂载）
+    let prevIsProcess = false
+
     for (const block of grouped) {
         // 折叠组
         if (block.kind === 'tool-call-group') {
@@ -85,6 +98,7 @@ export function buildChatBubbleItems(
                 content: <ToolCallGroupRenderer blocks={block.blocks} isActiveReasoning={isActiveReasoning} {...ctx} />,
                 variant: 'borderless',
             })
+            prevIsProcess = true
             continue
         }
 
@@ -96,6 +110,8 @@ export function buildChatBubbleItems(
                 content: <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{options.contextResetLabel}</span>,
                 block,
             })
+            // 显式分区已承担「切段」语义，其后的正文不再叠加 result divider
+            prevIsProcess = false
             continue
         }
 
@@ -123,6 +139,7 @@ export function buildChatBubbleItems(
                 ),
                 block,
             })
+            prevIsProcess = false
             continue
         }
 
@@ -169,6 +186,28 @@ export function buildChatBubbleItems(
             blockCtx,
         )
         if (content === null) continue
+
+        // 过程块之后的首个 agent-text：前插 result 分隔线（过程结束、产出开始的静默标记）
+        if (block.kind === 'agent-text' && prevIsProcess) {
+            items.push({
+                key: `result-divider-${block.id}`,
+                role: 'divider',
+                content: (
+                    <div
+                        aria-hidden
+                        style={{
+                            height: 1,
+                            width: 120,
+                            maxWidth: '100%',
+                            margin: '26px 0 20px',
+                            /* antd cssVar：文字色 14% → transparent 渐隐，dark/light 随主题自适应 */
+                            background: 'linear-gradient(90deg, color-mix(in srgb, var(--ant-color-text) 14%, transparent), transparent)',
+                        }}
+                    />
+                ),
+            })
+        }
+        prevIsProcess = isProcessBlock(block)
 
         let role: 'assistant' | 'user' | 'system' = 'user'
         if (ASSISTANT_BLOCK_KINDS.has(block.kind)) {
