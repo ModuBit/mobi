@@ -71,16 +71,17 @@ export function ToolCallGroupRenderer({
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   // 失败数/动态标题/活跃态单处派生（activeTitle 非 null ⟺ 组活跃）。
-  // failedCount 只算一次、传给两种标题形态（动态形态也追加「· N 个失败」，失败不变式两态通用）。
+  // failedCount 只进汇总标题——运行中组内还有活跃块，「失败」尚非最终事实，动态标题不带失败后缀。
   // 注：blocks/isActiveReasoning 每帧都是新引用，此处不做 memo——计算本身即每帧必付的成本
   const failedCount = countFailedInGroup(blocks)
-  const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning, failedCount })
+  const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning })
   const hasActive = activeTitle != null
   const title = activeTitle ?? formatGroupTitle(blocks, t, { failedCount })
 
   return (
     <Think
       className="tool-call-think"
+      styles={{ content: { paddingLeft: 0 } }}
       icon={<ToolCallGroupIcon hasError={failedCount > 0} hasActive={hasActive} />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>

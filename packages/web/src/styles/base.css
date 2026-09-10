@@ -119,10 +119,10 @@ pre, code {
     75%, 100% { transform: scale(2); opacity: 0; }
 }
 
-/* 状态图标呼吸动画（图标承载状态时用，幅度小于圆点避免晃眼） */
+/* 状态图标呼吸动画（图标承载状态时用）：只动透明度——缩放会让图标「晃」，透明度呼吸足够 */
 @keyframes status-icon-breathe {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.45; transform: scale(1.08); }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
 }
 
 /* CrossfadeText 文案切换 crossfade：新文案淡入、旧文案淡出（时长由组件 FADE_MS 单点驱动） */

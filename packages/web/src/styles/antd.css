@@ -52,10 +52,9 @@
     margin-top: 6px !important;
 }
 
-/* 工具卡片 Think 内容区去掉左 padding */
-.tool-call-think .ant-think-content {
-    padding-left: 0 !important;
-}
+/* 注：工具行/折叠组 Think 内容的零缩进由组件经 styles.content 自行声明——
+   不用 .tool-call-think 后代选择器全局覆盖，否则会误伤组内嵌套 Think（如 reasoning）
+   的 antd 默认缩进，展开内容左间距消失 */
 
 /* 工具卡片 Think 标题区截断省略 */
 .tool-call-think {

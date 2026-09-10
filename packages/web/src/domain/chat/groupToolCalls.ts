@@ -185,29 +185,29 @@ export function formatGroupTitle(
  * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待审批」）。
  * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
  * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到 file_path → 「正在写入文件」）。
- * failedCount 传入时（组渲染器已预计算）动态标题同样追加「· N 个失败」，失败不变式两态通用。
+ * 失败后缀只在落定的汇总标题展示——运行中组内还有活跃块，「失败」尚非最终事实，动态标题不追加。
  */
 export function formatGroupActiveTitle(
   blocks: CollapsibleBlock[],
-  opts: { t: Translate; isActiveReasoning?: IsActiveReasoning; failedCount?: number },
+  opts: { t: Translate; isActiveReasoning?: IsActiveReasoning },
 ): string | null {
-  const { t, isActiveReasoning, failedCount } = opts
+  const { t, isActiveReasoning } = opts
   for (let i = blocks.length - 1; i >= 0; i--) {
     const block = blocks[i]
     if (block.kind === 'agent-reasoning') {
-      if (isActiveReasoning?.(block)) return withFailedSuffix(t('chat.group.running.thinking'), failedCount, t)
+      if (isActiveReasoning?.(block)) return t('chat.group.running.thinking')
       continue
     }
     if (!isActiveTool(block)) continue
     const target = extractActiveTarget(block.tool.name, block.tool.input, block.tool.description)
     // 等待审批（pending）优先展示「等待审批」；运行中展示「正在 xxx」
     if (block.tool.state === 'pending') {
-      return withFailedSuffix(target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval'), failedCount, t)
+      return target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval')
     }
     const category = TOOL_CATEGORY_MAP[block.tool.name]
     // MCP 的 server 目标走插值；其余类别拼在文案后（拿不到目标则只展示类别文案）
-    if (!category) return withFailedSuffix(t('chat.group.running.mcp', { server: target }), failedCount, t)
-    return withFailedSuffix(target ? `${t(`chat.group.running.${category}`)} ${target}` : t(`chat.group.running.${category}`), failedCount, t)
+    if (!category) return t('chat.group.running.mcp', { server: target })
+    return target ? `${t(`chat.group.running.${category}`)} ${target}` : t(`chat.group.running.${category}`)
   }
   return null
 }
