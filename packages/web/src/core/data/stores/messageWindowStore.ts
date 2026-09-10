@@ -324,9 +324,16 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
     incoming = filterWithdrawn(sessionId, incoming)
     if (incoming.length === 0) return
     _internal.updateState(sessionId, prev => {
+        // backfill 预过滤（与 filterWithdrawn 同构的前置闸门）：merge 不引入新 id，Set 一次
+        // 建好即可——历史行重播批量到达时避免逐行 O(窗口) 线性扫
+        let effective = incoming
+        if (options?.backfill) {
+            const known = new Set(prev.messages.map(m => m.id))
+            effective = incoming.filter(m => known.has(m.id))
+            if (effective.length === 0) return prev
+        }
         let messages = prev.messages
-        for (const m of incoming) {
-            if (options?.backfill && !messages.some(existing => existing.id === m.id)) continue
+        for (const m of effective) {
             messages = resolveMessageCache(messages, m, options)
         }
         if (messages === prev.messages) return prev

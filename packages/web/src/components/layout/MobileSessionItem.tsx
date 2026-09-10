@@ -26,6 +26,7 @@ import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session } from '@/core/data/api/types'
 import { SessionItem, SessionName, TimeLabel, MoreButton } from './mobileProjectList.styles'
+import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 
 const { useToken } = antTheme
 
@@ -64,8 +65,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
             onTouchEnd={longPress.onTouchEnd}
             onTouchMove={longPress.onTouchMove}
         >
-            {/* 未激活会话：状态点与标题一同减淡，退到背景层 */}
-            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? 0.45 : undefined }} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? INACTIVE_SESSION_DIM.statusDot : undefined }} />
             <SessionName $token={token} $inactive={inactive}>{displayName}</SessionName>
             {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge

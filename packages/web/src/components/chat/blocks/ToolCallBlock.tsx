@@ -42,6 +42,10 @@ const PREVIEW_MAX_HEIGHT = {
     TERMINAL: 160,
 } as const
 
+/** 工具行 Think 内容零缩进（行卡片自带边距）——模块级共享（ToolCallGroupRenderer 同用），
+ *  不用全局后代选择器，避免误伤嵌套 Think（如 reasoning）的 antd 默认缩进 */
+export const TOOL_THINK_CONTENT_STYLES = { content: { paddingLeft: 0 } } as const
+
 /** 转换权限对象格式 */
 function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
     return {
@@ -332,8 +336,7 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
         <>
             <Think
                 className="tool-call-think"
-                /* 内容零缩进由组件声明（行卡片自带边距）——不用全局后代选择器，避免误伤嵌套 Think 缩进 */
-                styles={{ content: { paddingLeft: 0 } }}
+                styles={TOOL_THINK_CONTENT_STYLES}
                 icon={<StatusToolIcon name={tool.name} state={tool.state} />}
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>

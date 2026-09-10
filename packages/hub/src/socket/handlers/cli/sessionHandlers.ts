@@ -563,8 +563,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
      *  backfill（attach 路径）：补写的是历史行，重播必须带「非新消息」标记——web 端只 merge
      *  已在窗口的行，窗口外行不 append（否则长会话 resume 后重播旧行以旧 positionAt 插入出 ghost）。 */
     const broadcastStoredMessages = (sid: string, msgs: StoredMessage[], options?: { backfill?: boolean }) => {
+        const backfillFlag = options?.backfill ? { backfill: true as const } : undefined
         for (const msg of msgs) {
-            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
+            const base = toDecryptedMessage(msg)
+            const message = { ...base, seq: msg.seq }
             socket.to(`session:${sid}`).emit('session-update', {
                 id: randomUUID(),
                 seq: msg.seq,
@@ -573,14 +575,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     t: 'new-message' as const,
                     sid,
                     message,
-                    ...(options?.backfill && { backfill: true })
+                    ...backfillFlag
                 }
             })
             onWebappEvent?.({
                 type: 'message-received',
                 sessionId: sid,
-                message: toDecryptedMessage(msg),
-                ...(options?.backfill && { backfill: true })
+                message: base,
+                ...backfillFlag
             })
         }
     }

@@ -20,7 +20,7 @@ import { Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
-import { ToolCallRenderer } from './ToolCallBlock'
+import { ToolCallRenderer, TOOL_THINK_CONTENT_STYLES } from './ToolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { STATUS_DOT_COLORS, StatusIcon } from '@/components/tool-card/toolIcons'
 import {
@@ -81,7 +81,7 @@ export function ToolCallGroupRenderer({
   return (
     <Think
       className="tool-call-think"
-      styles={{ content: { paddingLeft: 0 } }}
+      styles={TOOL_THINK_CONTENT_STYLES}
       icon={<ToolCallGroupIcon hasError={failedCount > 0} hasActive={hasActive} />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>

@@ -31,6 +31,7 @@ import type { Session } from '@/core/data/api/types'
 import {
     SessionItem, SessionName, TimeLabel, SessionActions, ActionButton, RenameRow,
 } from './sidebarProjects.styles'
+import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 
 const { useToken } = antTheme
 
@@ -97,7 +98,7 @@ export function SessionRow({
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
-            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? 0.45 : undefined }} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? INACTIVE_SESSION_DIM.statusDot : undefined }} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName $inactive={inactive}>{displayName}</SessionName>
             </AppTooltip>

@@ -16,6 +16,7 @@
 
 import styled from '@emotion/styled'
 import { theme as antTheme } from 'antd'
+import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 
 /** antd 主题 token 类型（与各组件 useToken 返回一致） */
 type SidebarToken = ReturnType<typeof antTheme.useToken>['token']
@@ -160,7 +161,7 @@ export const SessionName = styled.span<{ $inactive?: boolean; $token: SidebarTok
     text-overflow: ellipsis;
     white-space: nowrap;
     /* 未激活会话整体减淡（标题），与状态点一同退到背景层——激活会话是列表主角 */
-    opacity: ${props => props.$inactive ? 0.55 : 1};
+    opacity: ${props => props.$inactive ? INACTIVE_SESSION_DIM.title : 1};
 `
 
 // 相对时间
