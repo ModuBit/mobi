@@ -237,6 +237,45 @@ describe('ingestIncomingMessages oldestSeq', () => {
     })
 })
 
+describe('ingestIncomingMessages backfill 语义（attach 重播旧行不出 ghost）', () => {
+    beforeEach(() => _resetForTest())
+
+    /** 带 metadata 的消息（模拟 hub attach 补写后的广播载荷） */
+    function backfillMsg(id: string, seq: number, nsid: string): DecryptedMessage {
+        return {
+            ...msg(id, seq),
+            metadata: { nativeSessionId: nsid },
+        } as DecryptedMessage
+    }
+
+    it('backfill 且 id 不在窗口 → 丢弃不 append（历史行重播不插入）', () => {
+        // 窗口已有 a/b；重播窗口外的旧行 c（长会话裁剪场景）
+        ingestIncomingMessages('s1', [msg('a', 5), msg('b', 10)])
+        ingestIncomingMessages('s1', [backfillMsg('c-old', 1, 'ns-1')], { skipIfNotSnapshot: true, backfill: true })
+        const state = getMessageWindowState('s1')
+        expect(state.messages.map(m => m.id)).toEqual(['a', 'b'])
+    })
+
+    it('backfill 且 id 在窗口 → merge metadata 增量（rewind 锚点补全不受影响）', () => {
+        ingestIncomingMessages('s1', [msg('a', 5)])
+        ingestIncomingMessages('s1', [backfillMsg('a', 5, 'ns-1')], { skipIfNotSnapshot: true, backfill: true })
+        const state = getMessageWindowState('s1')
+        expect(state.messages).toHaveLength(1)
+        expect(state.messages[0].metadata?.nativeSessionId).toBe('ns-1')
+    })
+
+    it('非 backfill 新消息 id 不在窗口 → 照旧 append（正常流式行为锁定）', () => {
+        ingestIncomingMessages('s1', [msg('a', 5)])
+        ingestIncomingMessages('s1', [msg('new-1', 6)], { skipIfNotSnapshot: true })
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'new-1'])
+    })
+
+    it('窗口为空时 backfill 同样丢弃（reload 竞态下不注入乱序旧行，等 fetchLatest 建立窗口）', () => {
+        ingestIncomingMessages('s1', [backfillMsg('x', 3, 'ns-1')], { skipIfNotSnapshot: true, backfill: true })
+        expect(getMessageWindowState('s1').messages).toEqual([])
+    })
+})
+
 describe('queued/optimistic actions', () => {
     beforeEach(() => _resetForTest())
 

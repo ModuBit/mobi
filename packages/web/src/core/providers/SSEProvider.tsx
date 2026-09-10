@@ -384,7 +384,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         usePromptSuggestionStore.getState().setSuggestion(event.sessionId, suggestion)
                         break
                     }
-                    ingestIncomingMessages(event.sessionId, [event.message as DecryptedMessage], { skipIfNotSnapshot: true })
+                    ingestIncomingMessages(event.sessionId, [event.message as DecryptedMessage], { skipIfNotSnapshot: true, backfill: event.backfill })
                 }
                 break
             }

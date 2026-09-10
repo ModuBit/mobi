@@ -316,14 +316,17 @@ export async function fetchOlderMessages(api: MobiApi, sessionId: string): Promi
  * SSE 增量入库（message-received / message-snapshot）。
  * 用 resolveMessageCache 逐条 reduce，保留 snapshot→full 替换清理语义。
  * 不分路径、不 trim——窗口裁剪由上层 effect 负责。
+ * backfill（hub attach 补写路径的重播标记）：只 merge 已在窗口的行——历史行重播以旧
+ * positionAt/乱序 append 会出 ghost 气泡；窗口外行直接丢弃（fetchLatest 自带补写后的 metadata）。
  */
-export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMessage[], options?: { skipIfNotSnapshot?: boolean }): void {
+export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMessage[], options?: { skipIfNotSnapshot?: boolean; backfill?: boolean }): void {
     // 撤回墓碑闸门：迟到的同 id 广播不复活已撤回行（E2E 缺陷）
     incoming = filterWithdrawn(sessionId, incoming)
     if (incoming.length === 0) return
     _internal.updateState(sessionId, prev => {
         let messages = prev.messages
         for (const m of incoming) {
+            if (options?.backfill && !messages.some(existing => existing.id === m.id)) continue
             messages = resolveMessageCache(messages, m, options)
         }
         if (messages === prev.messages) return prev

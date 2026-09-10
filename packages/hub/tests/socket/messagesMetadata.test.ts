@@ -174,6 +174,102 @@ describe('messages-facts attached（native session 补写）', () => {
         fakeSocket.emit('messages-facts', { sid: 'ghost', facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
         expect(accessError.called).toBe(true)
     })
+
+    test('attached 补写广播携带 backfill 标记（web 端据此只 merge 不 append）', () => {
+        store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'u1' })
+
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
+
+        // SSE message-received 带 backfill: true
+        const sse = events.find(e => e.type === 'message-received') as { backfill?: boolean }
+        expect(sse?.backfill).toBe(true)
+        // CLI room new-message 载荷同步携带
+        const update = fakeSocket.updates[0].payload as { body: { backfill?: boolean } }
+        expect(update.body.backfill).toBe(true)
+    })
+
+    test('普通新消息广播不带 backfill 字段（真新消息语义不变）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', {
+            sid,
+            message: WEBAPP_USER,
+            localId: 'local-plain',
+        })
+
+        const sse = events.find(e => e.type === 'message-received') as { backfill?: boolean }
+        expect(sse?.backfill).toBeUndefined()
+    })
+})
+
+describe('落库自动补 nativeSessionId（attach 孤儿池源头收敛）', () => {
+    let store: Store
+    let sid: string
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        sid = store.sessions.getOrCreateSession('nsid-autofill-test', { path: '/tmp/x' }, null, 'default').id
+    })
+
+    /** 给会话 metadata 写入 nativeSessionId（模拟 CLI SDK init 后上报） */
+    function seedSessionNativeSessionId(nsid: string): void {
+        const s = store.sessions.getSession(sid)!
+        store.sessions.updateSessionMetadata(sid, { ...(s.metadata as object), nativeSessionId: nsid }, s.metadataVersion, 'default')
+    }
+
+    test('消息缺 nsid 且 session 已知 → 落库即补（CLI 本地合成行不再进孤儿池）', () => {
+        seedSessionNativeSessionId('ns-current')
+
+        const fakeSocket = makeFakeSocket()
+        const { deps } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        // 模拟 sendSessionEvent 事件行 / !bash 合成对：无 metadata 落库
+        fakeSocket.emit('session-message', {
+            sid,
+            message: { role: 'agent', content: { type: 'event', data: { type: 'ready' } } },
+        })
+
+        expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBe('ns-current')
+    })
+
+    test('消息自带 nsid → 不覆盖（CLI 显式值优先）', () => {
+        seedSessionNativeSessionId('ns-current')
+
+        const fakeSocket = makeFakeSocket()
+        const { deps } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', {
+            sid,
+            message: WEBAPP_USER,
+            localId: 'local-own',
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-native' },
+        })
+
+        expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBe('ns-native')
+    })
+
+    test('session 也未知（首条消息场景）→ 保持 NULL，交由 attach 补写', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', {
+            sid,
+            message: WEBAPP_USER,
+            localId: 'local-first',
+            metadata: { nativeId: 'uu-1' },
+        })
+
+        expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBeUndefined()
+    })
 })
 
 describe('messages-facts acked（isReplay 回显确认）', () => {

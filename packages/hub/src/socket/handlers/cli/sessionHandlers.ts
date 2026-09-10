@@ -78,6 +78,13 @@ const updateMetadataSchema = z.object({
     metadata: z.unknown()
 })
 
+/** 从会话 metadata 提取已知 nativeSessionId（缺失/非法返回 undefined） */
+function readSessionNativeSessionId(metadata: unknown): string | undefined {
+    if (!metadata || typeof metadata !== 'object') return undefined
+    const nsid = (metadata as Record<string, unknown>).nativeSessionId
+    return typeof nsid === 'string' && nsid.length > 0 ? nsid : undefined
+}
+
 const updateStateSchema = z.object({
     sid: z.string(),
     expectedVersion: z.number().int(),
@@ -168,7 +175,17 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 使用 CLI 传来的 category（CLI 已在发送端分类），降级为 persistent
         const category: MessageCategory = parsed.data.category ?? 'persistent'
 
-        const msg = store.messages.addMessage(sid, content, localId, category, parsed.data.metadata ?? null)
+        // 落库自动补 nsid：CLI 本地合成行（!bash 工具对、sendSessionEvent 事件行）不经 SDK、
+        // 无 session_id 可抄，落库后滞留 attach 孤儿池——每次 CLI 进程重启（resume）首条消息
+        // 触发 attach 时整池重播，窗口外旧行被 web 误当新消息 append（ghost 气泡）。
+        // 会话 metadata 已知 nsid 时入口补上；session 未知（首条消息前）保持缺省，仍由 attach 兜底。
+        const sessionNsid = readSessionNativeSessionId(session.metadata)
+        const incomingMetadata = parsed.data.metadata ?? null
+        const metadata = !incomingMetadata?.nativeSessionId && sessionNsid
+            ? { ...incomingMetadata, nativeSessionId: sessionNsid }
+            : incomingMetadata
+
+        const msg = store.messages.addMessage(sid, content, localId, category, metadata)
 
         // 终态已持久化：兼容清理同 localId 的流式快照。
         snapshotSync.messagePersisted(sid, localId ?? null)
@@ -542,8 +559,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     /** 补写/推进行的统一广播：按 message 落库后的广播模式逐行推给 Web（update new-message +
      *  SSE message-received）——Web 端据此刷新 rewind 判据与 lifecycle 展示（P3 消费）。
      *  update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
-     *  行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射 */
-    const broadcastStoredMessages = (sid: string, msgs: StoredMessage[]) => {
+     *  行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射。
+     *  backfill（attach 路径）：补写的是历史行，重播必须带「非新消息」标记——web 端只 merge
+     *  已在窗口的行，窗口外行不 append（否则长会话 resume 后重播旧行以旧 positionAt 插入出 ghost）。 */
+    const broadcastStoredMessages = (sid: string, msgs: StoredMessage[], options?: { backfill?: boolean }) => {
         for (const msg of msgs) {
             const message = { ...toDecryptedMessage(msg), seq: msg.seq }
             socket.to(`session:${sid}`).emit('session-update', {
@@ -553,13 +572,15 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 body: {
                     t: 'new-message' as const,
                     sid,
-                    message
+                    message,
+                    ...(options?.backfill && { backfill: true })
                 }
             })
             onWebappEvent?.({
                 type: 'message-received',
                 sessionId: sid,
-                message: toDecryptedMessage(msg)
+                message: toDecryptedMessage(msg),
+                ...(options?.backfill && { backfill: true })
             })
         }
     }
@@ -616,10 +637,12 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     }
 
     /** attach 补写（原 messages-native-attached 处理体）：该会话所有缺 nativeSessionId 的行
-     *  补上新 session id（幂等），补写行逐行广播（Web 端据此刷新 rewind 判据）。 */
+     *  补上新 session id（幂等），补写行逐行广播（Web 端据此刷新 rewind 判据）。
+     *  backfill 语义：CLI 进程重启（resume）首条消息也会触发 attach，补写集混入上一个进程
+     *  时代的合成行/事件行（落库时无 nsid）——它们是历史行，重播不得被 web 当新消息 append。 */
     const processAttached = (sid: string, nativeSessionId: string) => {
         const attached = store.messages.attachNativeSessionId(sid, nativeSessionId)
-        if (attached.length > 0) broadcastStoredMessages(sid, attached)
+        if (attached.length > 0) broadcastStoredMessages(sid, attached, { backfill: true })
     }
 
     /** command_lifecycle 终态推进（messages-facts 新增 fact）：单调推进（终态不回退/不互覆）→

@@ -23,6 +23,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [output style 验证](output-style-verify.md) — runtimeState 权威 / sdkMetadata init 滞后坑 / availableOutputStyles 大小写基准 / 切换链路断言
 - [native_id 绑定验证](native-id-verify.md) — SQL 断言各 push 路径绑定 / API 暴露；排队消息多走 steer 各自绑定；首回合 Change Title 审批卡输入坑
 - [rewind 全链路验证](rewind-verify.md) — 按钮/ack/dry-run/截断上下文探针/连续 rewind/回填断言/**双 tab 同步**/链首隐藏；进行中窗口 <2s 抓不到的坑
+- [会话 resume 重播验证](resume-replay-verify.md) — attach 重播/backfill 复现脚本（!cmd+/compact 素材→kill→Resume→发首条消息）/ SSE 抓包解析 / 手造存量 NULL 行 / fetch patch 破坏 SSE 的坑
 - [CDP 动效逐帧采样](motion-verify.md) — rAF 探针验证 CSS 动画/选择器命中（jsdom 测不出）；antd v6 rootClassName 层级坑
 - [真实大会话注入](real-session-seed.md) — prod→e2e 拷库（messages 必须显式列 position_at）做消息窗口化/fill 级联验证
 - [上下文水位验证](waterline-verify.md) — assistant usage 落库断言 / contextUsage=四项和瞬时水位 / 圆环 svg[role=button] 双端断言 / 两把尺子别混

@@ -754,7 +754,11 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     }),
     SessionChangedSchema.extend({
         type: z.literal('message-received'),
-        message: DecryptedMessageSchema
+        message: DecryptedMessageSchema,
+        /** 补写回填标记（hub attach 路径）：标识这是 DB metadata 补写后的旧行重播而非新消息，
+         *  web 端据此只 merge 已在窗口的行、不 append——否则 resume 后历史行（!bash 合成对/
+         *  compact 事件行）被误当新消息以旧 positionAt 插入出 ghost 气泡 */
+        backfill: z.boolean().optional()
     }),
     SessionChangedSchema.extend({
         type: z.literal('rewind-truncated'),

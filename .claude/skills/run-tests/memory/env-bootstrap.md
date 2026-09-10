@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / hub 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-09-09
+  last_verified: 2026-09-10
 ---
 
 # 环境启动
@@ -96,5 +96,7 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 - **hub 早期 banner 端口不可信** — banner 可能打默认 2222；以 bootstrap 输出的 `HUB_PORT`=2224 为准
 - **default 共存时登录 REFUSED** — 确认 e2e web 进程 `MOBI_API_URL=2224`；若显 2222（fallback），vite proxy 会连错端口 → 登录 `ERR_CONNECTION_REFUSED`
 - **旧 e2e 残留进程干扰** — cleanup 已有 doctor clean（识别 runner/hub/session/supervisor 四类）+ 端口兜底 + `--profile e2e` pattern 兜底三道；仍异常手动按 PID kill
+- **bootstrap 每次重启清空数据目录（2026-09-10）** — 脚本内 `rm -rf "${E2E_TMPDIR}"` 后重建：旧会话 / 项目 / 机器全丢（token 仍是 e2e-test-token-mobi），浏览器再开旧会话 URL 报 Session not found。重启环境后必须重建素材（建项目 → 建会话）；webApiToken/web 登录 cookie 也随 jwt-secret 重建失效，需重新 `/api/auth`
+- **bun run 包装层 kill 后残留** — bootstrap 的 `bun run` 子进程 TERM 后可能不退出，需二段 `kill -9`（仍按精确 PID，先 grep `profile e2e|e2e-bootstrap`）
 - **必须用脚本管环境** — 禁止手动 `nohup bun run dev` 或 `kill` + 手启；脚本已处理端口冲突 / profile / 进程管理
 - **curl 直调生产 /api 需 JWT** — settings.json 的 webApiToken 不能直接当 Bearer 用；先 `POST /api/auth {token}` 换 cookie（`curl -c jar`）再带 jar 调用
