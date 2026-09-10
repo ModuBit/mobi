@@ -16,7 +16,7 @@
 
 import type { AgentReasoningBlock, ChatBlock, ToolCallBlock } from '@/domain/chat'
 import { capitalize } from '@/core/utils/sessionUtils'
-import { parseMCPToolName, formatMCPServerDisplay, getInputString, truncate } from '@/core/lib/toolInputUtils'
+import { parseMCPToolName, formatMCPServerDisplay, getFileToolTarget, getInputString, truncate } from '@/core/lib/toolInputUtils'
 
 /** 最小翻译函数签名（结构上兼容 i18next 的 t，保持 domain 层纯净可测） */
 export type Translate = (key: string, opts?: Record<string, unknown>) => string
@@ -75,20 +75,24 @@ export function countFailedInGroup(blocks: CollapsibleBlock[]): number {
 }
 
 /**
- * 类别元数据单源：目标 input 字段 + 计数语义。
+ * 类别元数据单源：非文件目标的 input 字段 + 计数语义。
  * 标题 i18n key 由类别名派生（chat.group.<cat> / chat.group.running.<cat>），不另设平行表。
  * countBy：文件操作类按「去重目标数」计数（同文件多次读/写/编辑计 1 个文件），
  * 其余类别语义即次数、按调用次数计。新增类别只改此表一处。
  */
-const CATEGORY_META: Record<ToolCategory, { inputKey: string; countBy: 'unique-target' | 'calls' }> = {
+type CategoryMeta =
+  | { inputKey: null; countBy: 'unique-target' }
+  | { inputKey: string; countBy: 'calls' }
+
+const CATEGORY_META: Record<ToolCategory, CategoryMeta> = {
   shell: { inputKey: 'command', countBy: 'calls' },
-  read: { inputKey: 'file_path', countBy: 'unique-target' },
+  read: { inputKey: null, countBy: 'unique-target' },
   glob: { inputKey: 'pattern', countBy: 'calls' },
   grep: { inputKey: 'pattern', countBy: 'calls' },
   webfetch: { inputKey: 'url', countBy: 'calls' },
   websearch: { inputKey: 'query', countBy: 'calls' },
-  write: { inputKey: 'file_path', countBy: 'unique-target' },
-  edit: { inputKey: 'file_path', countBy: 'unique-target' },
+  write: { inputKey: null, countBy: 'unique-target' },
+  edit: { inputKey: null, countBy: 'unique-target' },
 }
 
 /** 运行态尾随目标内容的长度上限（经 truncate 截断） */
@@ -96,7 +100,10 @@ const ACTIVE_TARGET_MAX = 24
 
 /** 提取类别目标内容原始值（不截断/不取首行）；拿不到（缺失/空串）返回 null */
 function targetOf(category: ToolCategory, input: unknown): string | null {
-  return getInputString(input, CATEGORY_META[category].inputKey) || null
+  const meta = CATEGORY_META[category]
+  return meta.countBy === 'unique-target'
+    ? getFileToolTarget(input)
+    : getInputString(input, meta.inputKey) || null
 }
 
 /**
@@ -184,7 +191,7 @@ export function formatGroupTitle(
 /**
  * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待审批」）。
  * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
- * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到 file_path → 「正在写入文件」）。
+ * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到文件目标 → 「正在写入文件」）。
  * 失败后缀只在落定的汇总标题展示——运行中组内还有活跃块，「失败」尚非最终事实，动态标题不追加。
  */
 export function formatGroupActiveTitle(

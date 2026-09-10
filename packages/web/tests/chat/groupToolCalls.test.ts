@@ -547,6 +547,16 @@ describe('formatGroupTitle', () => {
       expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 2 个文件')
     })
 
+    it('文件目标的兼容字段跨调用按同一路径去重', () => {
+      const w1 = makeToolCall({ id: 'w1', name: 'Write' })
+      w1.tool.input = { file_path: 'src/a.md' }
+      const w2 = makeToolCall({ id: 'w2', name: 'Write' })
+      w2.tool.input = { path: 'src/a.md' }
+      const w3 = makeToolCall({ id: 'w3', name: 'Write' })
+      w3.tool.input = { file: 'src/a.md' }
+      expect(formatGroupTitle([w1, w2, w3], t)).toBe('写入了 1 个文件')
+    })
+
     it('read 按文件路径去重，MultiEdit 与 Edit 合并到 edit 类别后再去重', () => {
       const r1 = makeToolCall({ id: 'r1', name: 'Read' })
       r1.tool.input = { file_path: 'src/a.md' }
@@ -795,6 +805,12 @@ describe('formatGroupActiveTitle', () => {
   it('running 工具：带文件路径（write）', () => {
     const block = makeToolCall({ id: 'w1', name: 'Write', state: 'running' })
     block.tool.input = { file_path: 'src/a.md' }
+    expect(formatGroupActiveTitle([block], { t })).toBe('正在写入文件 src/a.md')
+  })
+
+  it('running 文件工具：兼容 file 字段', () => {
+    const block = makeToolCall({ id: 'w1', name: 'Write', state: 'running' })
+    block.tool.input = { file: 'src/a.md' }
     expect(formatGroupActiveTitle([block], { t })).toBe('正在写入文件 src/a.md')
   })
 

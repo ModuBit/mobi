@@ -24,6 +24,10 @@ _Avoid_: 路径链接、badge
 输入中天然携带文件路径的工具（Read / Edit / MultiEdit / Write）——文件 Chip 可点击的资格集合。样式语言全量统一，点击资格按工具判定。
 _Avoid_: 白名单
 
+**文件工具目标（File Tool Target）**：
+跳转类工具输入中表示目标文件的原始路径。兼容 `file_path` / `path` / `file`，按此顺序取首个非空字符串；兼容解释由 `getFileToolTarget()` 集中负责，工具行、折叠组和旧版工具标题只决定各自的展示与计数规则。
+_Avoid_: 在调用方重复罗列路径字段
+
 **diff 统计（Diff Stat）**：
 编辑类工具行尾随的增删行数（+12 −3），由输入内容静态推算，非服务端权威值。
 _Avoid_: 变更数、diff count

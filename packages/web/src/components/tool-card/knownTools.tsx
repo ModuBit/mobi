@@ -23,7 +23,7 @@ import { LineSquiggle } from 'lucide-react'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
 import { resolveDisplayPath } from '@/core/utils/path'
-import { getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay, countLines } from '@/core/lib/toolInputUtils'
+import { getFileToolTarget, getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay, countLines } from '@/core/lib/toolInputUtils'
 import { inferToolRow, type ToolRow } from '@/core/lib/toolRow'
 import { TOOL_ICON_MAP, LUCIDE_TOOL_NAMES } from './toolIcons'
 
@@ -321,7 +321,7 @@ export const knownTools: Record<string, {
     Read: {
         icon: () => renderToolIcon('Read'),
         title: (opts) => {
-            const file = getInputStringAny(opts.input, ['file_path', 'path', 'file'])
+            const file = getFileToolTarget(opts.input)
             if (!file) return 'Read'
             const basePath = resolveDisplayPath(file, opts.metadata)
 
@@ -349,7 +349,7 @@ export const knownTools: Record<string, {
     Edit: {
         icon: () => renderToolIcon('Edit'),
         title: (opts) => {
-            const file = getInputStringAny(opts.input, ['file_path', 'path'])
+            const file = getFileToolTarget(opts.input)
             return file ? `Edit(${resolveDisplayPath(file, opts.metadata)})` : 'Edit'
         },
         minimal: true,
@@ -359,7 +359,7 @@ export const knownTools: Record<string, {
     MultiEdit: {
         icon: () => renderToolIcon('MultiEdit'),
         title: (opts) => {
-            const file = getInputStringAny(opts.input, ['file_path', 'path'])
+            const file = getFileToolTarget(opts.input)
             if (!file) return 'MultiEdit'
             const edits = isObject(opts.input) && Array.isArray(opts.input.edits) ? opts.input.edits : null
             const count = edits ? edits.length : 0
@@ -373,7 +373,7 @@ export const knownTools: Record<string, {
     Write: {
         icon: () => renderToolIcon('Write'),
         title: (opts) => {
-            const file = getInputStringAny(opts.input, ['file_path', 'path'])
+            const file = getFileToolTarget(opts.input)
             return file ? `Write(${resolveDisplayPath(file, opts.metadata)})` : 'Write'
         },
         subtitle: (opts) => {

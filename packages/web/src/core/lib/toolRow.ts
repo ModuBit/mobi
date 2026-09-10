@@ -15,7 +15,7 @@
  */
 
 import { buildActionUri, isObject } from '@mobi/shared'
-import { getInputStringAny, countLines } from './toolInputUtils'
+import { getFileToolTarget, getInputStringAny, countLines } from './toolInputUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -52,11 +52,6 @@ export type ToolRow = {
     stats: ToolRowStats | null
 }
 
-/** 跳转类工具的 file_path 键（与 knownTools title 的取键保持同源） */
-function filePathOf(input: unknown): string | null {
-    return getInputStringAny(input, ['file_path', 'path', 'file'])
-}
-
 /** 纯展示工具 → chip 文本键的映射（无 URI）。WebFetch 不入此表：其旧形态 title 是
  *  hostname（新形态完整 URL 属信息退化），维持原 title 渲染 */
 const DISPLAY_ONLY_CHIP_KEYS: Record<string, string[]> = {
@@ -83,7 +78,7 @@ function readRowMeta(input: unknown): string | null {
 
 /** 跳转类工具的推导（四件套各自的能力差异在此收口）；路径 chip 即摘要，无 summary */
 function inferFileBearingRow(toolName: string, input: unknown, metadata: SessionMetadataSummary | null): ToolRow | null {
-    const filePath = filePathOf(input)
+    const filePath = getFileToolTarget(input)
     if (!filePath) return null
 
     const chip: ToolRowChip = {
@@ -126,7 +121,7 @@ function inferDisplayOnlyRow(toolName: string, input: unknown, description: stri
     return { verb: toolName, summary: description, chip: { text: display }, rowMeta: null, stats: null }
 }
 
-/** 推导工具行新形态（位置参数，与 getPermissionDescription 同款）。跳转类工具缺 file_path、纯展示工具缺 chip 键、
+/** 推导工具行新形态（位置参数，与 getPermissionDescription 同款）。跳转类工具缺文件目标、纯展示工具缺 chip 键、
  *  以及 Agent/Task 等不参与新形态的工具一律返回 null（渲染层维持现状）。 */
 export function inferToolRow(toolName: string, input: unknown, metadata: SessionMetadataSummary | null, description: string | null = null): ToolRow | null {
     if ((FILE_BEARING_TOOLS as readonly string[]).includes(toolName)) {

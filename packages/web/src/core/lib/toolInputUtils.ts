@@ -28,12 +28,20 @@ export function getInputString(input: unknown, key: string): string | null {
 /**
  * 获取输入对象中任意一个键的字符串值
  */
-export function getInputStringAny(input: unknown, keys: string[]): string | null {
+export function getInputStringAny(input: unknown, keys: readonly string[]): string | null {
     for (const key of keys) {
         const value = getInputString(input, key)
         if (value) return value
     }
     return null
+}
+
+/**
+ * 解释文件工具（Read/Edit/MultiEdit/Write）的目标路径。
+ * 兼容字段及优先级在此集中，调用方只负责展示、去重或交互规则。
+ */
+export function getFileToolTarget(input: unknown): string | null {
+    return getInputStringAny(input, ['file_path', 'path', 'file'])
 }
 
 /** 数一个文本的行数：尾随换行不计、空串为 0（'a\nb\n' = 2 行——行数语义，
