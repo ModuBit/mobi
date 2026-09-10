@@ -127,7 +127,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
     }
 
-    const publishMessageFacts = (publications: MessageFactsPublication[]): void => {
+    // fact module 惰性产出 publication（逐 fact 持久化即发布，批次中途异常不丢先行动作）
+    const publishMessageFacts = (publications: Iterable<MessageFactsPublication>): void => {
         for (const publication of publications) {
             if (publication.type === 'stored-messages') {
                 broadcastStoredMessages(publication.sessionId, publication.messages, {

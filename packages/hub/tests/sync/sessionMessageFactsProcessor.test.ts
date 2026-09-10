@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { Store } from '../../src/store'
-import { SessionMessageFactsProcessor } from '../../src/sync/sessionMessageFactsProcessor'
+import { SessionMessageFactsProcessor, type MessageFactsPublication } from '../../src/sync/sessionMessageFactsProcessor'
 
 const WEBAPP_USER = {
     role: 'user',
@@ -62,10 +62,15 @@ describe('SessionMessageFactsProcessor', () => {
         )
     }
 
+    /** process 是惰性生成器，多数用例只需要快照数组——统一在此消费 */
+    function processAll(input: Parameters<SessionMessageFactsProcessor['process']>[0]) {
+        return [...processor.process(input)]
+    }
+
     test('pushed 事实推进排队消息，并发布存储层实际排序时间', () => {
         addQueued('local-1')
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'pushed', localIds: ['local-1'], at: 1_000 }],
         })
@@ -83,11 +88,11 @@ describe('SessionMessageFactsProcessor', () => {
     test('bound 事实幂等绑定 native id，并返回更新后的消息行', () => {
         addQueued('local-1')
 
-        const first = processor.process({
+        const first = processAll({
             sessionId,
             facts: [{ kind: 'bound', localId: 'local-1', nativeId: 'native-1' }],
         })
-        const duplicate = processor.process({
+        const duplicate = processAll({
             sessionId,
             facts: [{ kind: 'bound', localId: 'local-1', nativeId: 'native-2' }],
         })
@@ -104,7 +109,7 @@ describe('SessionMessageFactsProcessor', () => {
     test('attached 事实补写历史行并以 backfill 发布', () => {
         addQueued('local-1', 'native-1')
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'attached', nativeSessionId: 'native-session-1' }],
         })
@@ -119,7 +124,7 @@ describe('SessionMessageFactsProcessor', () => {
     })
 
     test('attached 建立连接上下文，补齐后续合成消息但不覆盖显式值', () => {
-        processor.process({
+        processAll({
             sessionId,
             facts: [{ kind: 'attached', nativeSessionId: 'native-session-1' }],
         })
@@ -140,7 +145,7 @@ describe('SessionMessageFactsProcessor', () => {
         addQueued('local-1', 'native-1')
         store.messages.markMessagesPushed(sessionId, ['local-1'], 900)
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'acked', nativeId: 'native-1', at: 1_100 }],
         })
@@ -163,7 +168,7 @@ describe('SessionMessageFactsProcessor', () => {
         store.messages.markMessagesAcked(sessionId, 'native-1', 1_000)
         store.messages.markMessagesPushed(sessionId, ['local-1'], 1_100)
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'acked', nativeId: 'native-1', at: 1_200 }],
         })
@@ -184,12 +189,12 @@ describe('SessionMessageFactsProcessor', () => {
     test('acked 两次写入都无增量时不重复发布', () => {
         addQueued('local-1', 'native-1')
         store.messages.markMessagesPushed(sessionId, ['local-1'], 900)
-        processor.process({
+        processAll({
             sessionId,
             facts: [{ kind: 'acked', nativeId: 'native-1', at: 1_100 }],
         })
 
-        expect(processor.process({
+        expect(processAll({
             sessionId,
             facts: [{ kind: 'acked', nativeId: 'native-1', at: 1_200 }],
         })).toEqual([])
@@ -198,7 +203,7 @@ describe('SessionMessageFactsProcessor', () => {
     test('lifecycle 单调推进，processing 不落档临时 reason，终态才落档', () => {
         addQueued('local-1', 'native-1')
 
-        processor.process({
+        processAll({
             sessionId,
             facts: [{
                 kind: 'lifecycle',
@@ -208,7 +213,7 @@ describe('SessionMessageFactsProcessor', () => {
                 at: 1_200,
             }],
         })
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{
                 kind: 'lifecycle',
@@ -246,7 +251,7 @@ describe('SessionMessageFactsProcessor', () => {
             null,
         )
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'withdrawn', nativeId: 'native-1', at: 1_400 }],
         })
@@ -265,7 +270,7 @@ describe('SessionMessageFactsProcessor', () => {
         addQueued('local-1', 'native-1')
         store.messages.advanceMessagesLifecycle(sessionId, 'native-1', 'done', 1_300)
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'withdrawn', nativeId: 'native-1', at: 1_400 }],
         })
@@ -279,7 +284,7 @@ describe('SessionMessageFactsProcessor', () => {
         store.messages.markMessagesPushed(sessionId, ['local-1'], 900)
         addQueued('local-2')
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [{ kind: 'withdrawn', nativeId: 'native-1', at: 1_400 }],
         })
@@ -292,7 +297,7 @@ describe('SessionMessageFactsProcessor', () => {
         addQueued('local-1')
         addQueued('local-2')
 
-        processor.process({
+        processAll({
             sessionId,
             facts: [
                 { kind: 'pushed', localIds: ['local-1'] },
@@ -305,10 +310,55 @@ describe('SessionMessageFactsProcessor', () => {
         expect(nowCalls).toBe(1)
     })
 
+    test('bound 事实 nsid 无效时仅省略 nsid，不弃整条绑定', () => {
+        addQueued('local-1')
+
+        const publications = [...processor.process({
+            sessionId,
+            facts: [{ kind: 'bound', localId: 'local-1', nativeId: 'native-1', nativeSessionId: null }],
+        })]
+
+        expect(publications).toHaveLength(1)
+        expect(publications[0]).toMatchObject({
+            type: 'stored-messages',
+            messages: [{ localId: 'local-1', metadata: { nativeId: 'native-1' } }],
+        })
+        const row = store.messages.getMessages(sessionId, 10)[0]
+        expect((row?.metadata as Record<string, unknown> | undefined)?.nativeSessionId).toBeUndefined()
+    })
+
+    test('批次中途存储异常：先产出已持久化事实的 publication，不被后续异常丢弃', () => {
+        addQueued('local-1', 'native-1')
+        store.messages.markMessagesPushed(sessionId, ['local-1'], 900)
+        addQueued('local-2', 'native-2')
+
+        // 第二条 fact 的 lifecycle 推进抛错，模拟批次中途存储异常
+        store.messages.advanceMessagesLifecycle = () => {
+            throw new Error('boom')
+        }
+
+        const collected: MessageFactsPublication[] = []
+        expect(() => {
+            for (const publication of processor.process({
+                sessionId,
+                facts: [
+                    { kind: 'acked', nativeId: 'native-1', at: 1_100 },
+                    { kind: 'lifecycle', nativeId: 'native-2', state: 'done', at: 1_200 },
+                ],
+            })) {
+                collected.push(publication)
+            }
+        }).toThrow('boom')
+
+        expect(collected).toHaveLength(1)
+        expect(collected[0]).toMatchObject({ type: 'stored-messages' })
+        expect(store.messages.getMessages(sessionId, 10)[0]?.lifecycle).toBe('acked')
+    })
+
     test('非法事实字段被忽略，不写库不发布', () => {
         addQueued('local-1')
 
-        const publications = processor.process({
+        const publications = processAll({
             sessionId,
             facts: [
                 null,

@@ -65,7 +65,7 @@ function observedAt(fact: Record<string, unknown>, fallback: number): number {
  * CLI 消息事实的连接级处理 module。
  *
  * Socket adapter 只校验批次外层和会话访问权；本 module 收窄每种 fact、
- * 执行幂等/单调持久化，并返回按 fact 顺序排列的发布结果。它不依赖
+ * 执行幂等/单调持久化，并惰性产出按 fact 顺序排列的发布结果。它不依赖
  * Socket 或 SSE。
  *
  * 每个 CLI Socket 连接必须持有独立实例：attached fact 建立的 native session
@@ -92,10 +92,13 @@ export class SessionMessageFactsProcessor {
         return { ...(metadata ?? {}), nativeSessionId }
     }
 
-    process(input: MessageFactsInput): MessageFactsPublication[] {
+    /**
+     * 逐 fact 收窄并持久化，惰性产出 publication——消费方边处理边发布，
+     * 批次中途存储异常不丢已持久化事实的发布（保持旧 handler 的交错语义）。
+     */
+    *process(input: MessageFactsInput): Generator<MessageFactsPublication> {
         const { sessionId, facts } = input
         const batchNow = this.now()
-        const publications: MessageFactsPublication[] = []
 
         for (const value of facts) {
             if (!isObject(value)) continue
@@ -104,35 +107,32 @@ export class SessionMessageFactsProcessor {
 
             switch (kind) {
                 case 'pushed':
-                    this.processPushed(sessionId, value, batchNow, publications)
+                    yield* this.processPushed(sessionId, value, batchNow)
                     break
                 case 'bound':
-                    this.processBound(sessionId, value, publications)
+                    yield* this.processBound(sessionId, value)
                     break
                 case 'attached':
-                    this.processAttached(sessionId, value, publications)
+                    yield* this.processAttached(sessionId, value)
                     break
                 case 'acked':
-                    this.processAcked(sessionId, value, batchNow, publications)
+                    yield* this.processAcked(sessionId, value, batchNow)
                     break
                 case 'lifecycle':
-                    this.processLifecycle(sessionId, value, batchNow, publications)
+                    yield* this.processLifecycle(sessionId, value, batchNow)
                     break
                 case 'withdrawn':
-                    this.processWithdrawn(sessionId, value, batchNow, publications)
+                    yield* this.processWithdrawn(sessionId, value, batchNow)
                     break
             }
         }
-
-        return publications
     }
 
-    private processPushed(
+    private *processPushed(
         sessionId: string,
         fact: Record<string, unknown>,
         batchNow: number,
-        publications: MessageFactsPublication[],
-    ): void {
+    ): Generator<MessageFactsPublication> {
         if (!Array.isArray(fact.localIds)) return
         const localIds = fact.localIds
             .map(nonEmptyString)
@@ -146,27 +146,24 @@ export class SessionMessageFactsProcessor {
         )
         if (result.localIds.length === 0) return
 
-        publications.push({
+        yield {
             type: 'messages-submitted',
             sessionId,
             localIds: result.localIds,
             submittedAt: result.positionAt,
-        })
+        }
     }
 
-    private processBound(
+    private *processBound(
         sessionId: string,
         fact: Record<string, unknown>,
-        publications: MessageFactsPublication[],
-    ): void {
+    ): Generator<MessageFactsPublication> {
         const localId = nonEmptyString(fact.localId)
         const nativeId = nonEmptyString(fact.nativeId)
         if (!localId || !nativeId) return
 
-        // 未传（undefined）→ 不补 nsid；显式传了但收窄为无效值 → 整条 fact 拒绝
-        const rawNativeSessionId = fact.nativeSessionId
-        const nativeSessionId = nonEmptyString(rawNativeSessionId)
-        if (rawNativeSessionId !== undefined && nativeSessionId === null) return
+        // nsid 缺省或无效均仅省略不补（CLI 侧旧帧对无效值即省略），不弃整条绑定
+        const nativeSessionId = nonEmptyString(fact.nativeSessionId)
 
         const messages = this.store.messages.bindNativeIds(sessionId, [{
             localId,
@@ -175,28 +172,26 @@ export class SessionMessageFactsProcessor {
                 ...(nativeSessionId ? { nativeSessionId } : {}),
             },
         }])
-        this.publishStoredMessages(sessionId, messages, publications)
+        yield* this.publishStoredMessages(sessionId, messages)
     }
 
-    private processAttached(
+    private *processAttached(
         sessionId: string,
         fact: Record<string, unknown>,
-        publications: MessageFactsPublication[],
-    ): void {
+    ): Generator<MessageFactsPublication> {
         const nativeSessionId = nonEmptyString(fact.nativeSessionId)
         if (!nativeSessionId) return
 
         this.nativeSessionIds.set(sessionId, nativeSessionId)
         const messages = this.store.messages.attachNativeSessionId(sessionId, nativeSessionId)
-        this.publishStoredMessages(sessionId, messages, publications, true)
+        yield* this.publishStoredMessages(sessionId, messages, true)
     }
 
-    private processAcked(
+    private *processAcked(
         sessionId: string,
         fact: Record<string, unknown>,
         batchNow: number,
-        publications: MessageFactsPublication[],
-    ): void {
+    ): Generator<MessageFactsPublication> {
         const nativeId = nonEmptyString(fact.nativeId)
         if (!nativeId) return
 
@@ -208,15 +203,14 @@ export class SessionMessageFactsProcessor {
         if (ids.size === 0) return
 
         const messages = this.store.messages.getMessagesByIds(sessionId, [...ids])
-        this.publishStoredMessages(sessionId, messages, publications)
+        yield* this.publishStoredMessages(sessionId, messages)
     }
 
-    private processLifecycle(
+    private *processLifecycle(
         sessionId: string,
         fact: Record<string, unknown>,
         batchNow: number,
-        publications: MessageFactsPublication[],
-    ): void {
+    ): Generator<MessageFactsPublication> {
         const nativeId = nonEmptyString(fact.nativeId)
         if (
             !nativeId
@@ -238,15 +232,14 @@ export class SessionMessageFactsProcessor {
             this.store.messages.markTerminalReason(sessionId, ids, terminalReason)
         }
         const messages = this.store.messages.getMessagesByIds(sessionId, ids)
-        this.publishStoredMessages(sessionId, messages, publications)
+        yield* this.publishStoredMessages(sessionId, messages)
     }
 
-    private processWithdrawn(
+    private *processWithdrawn(
         sessionId: string,
         fact: Record<string, unknown>,
         batchNow: number,
-        publications: MessageFactsPublication[],
-    ): void {
+    ): Generator<MessageFactsPublication> {
         const nativeId = nonEmptyString(fact.nativeId)
         if (!nativeId) return
 
@@ -269,27 +262,26 @@ export class SessionMessageFactsProcessor {
             observedAt(fact, batchNow),
         )
         const { blocks, originalText } = extractWithdrawnContent(first.content)
-        publications.push({
+        yield {
             type: 'message-withdrawn',
             sessionId,
             localId: first.localId ?? first.id,
             blocks,
             originalText,
-        })
+        }
     }
 
-    private publishStoredMessages(
+    private *publishStoredMessages(
         sessionId: string,
         messages: StoredMessage[],
-        publications: MessageFactsPublication[],
         backfill = false,
-    ): void {
+    ): Generator<StoredMessagesPublication> {
         if (messages.length === 0) return
-        publications.push({
+        yield {
             type: 'stored-messages',
             sessionId,
             messages,
             ...(backfill ? { backfill: true as const } : {}),
-        })
+        }
     }
 }

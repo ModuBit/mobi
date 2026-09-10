@@ -394,7 +394,7 @@ const EditResultBody: ToolViewComponent = (props: ToolViewProps) => {
         return <MutationResultView {...props} />
     }
 
-    const filePath = typeof input.file_path === 'string' ? input.file_path : null
+    const filePath = getFileToolTarget(input)
     const oldString = typeof input.old_string === 'string' ? input.old_string : null
     const newString = typeof input.new_string === 'string' ? input.new_string : null
 
@@ -428,7 +428,7 @@ const WriteResultBody: ToolViewComponent = (props: ToolViewProps) => {
         return <MutationResultView {...props} />
     }
 
-    const filePath = typeof input.file_path === 'string' ? input.file_path : null
+    const filePath = getFileToolTarget(input)
     const content = typeof input.content === 'string' ? input.content : typeof input.text === 'string' ? input.text : null
 
     if (content === null) {
@@ -461,7 +461,7 @@ const MultiEditResultBody: ToolViewComponent = (props: ToolViewProps) => {
         return <MutationResultView {...props} />
     }
 
-    const filePath = typeof input.file_path === 'string' ? input.file_path : null
+    const filePath = getFileToolTarget(input)
     const edits = Array.isArray(input.edits) ? input.edits : null
 
     if (!edits || edits.length === 0) {
