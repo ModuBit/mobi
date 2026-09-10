@@ -30,7 +30,7 @@ const FADE_MS = 200
  * 定时器清理旧层（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠），
  * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
  */
-export function CrossfadeText({ text, style, shimmer }: { text: string; style?: CSSProperties; shimmer?: boolean }) {
+export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string; style?: CSSProperties; shimmer?: boolean; ellipsis?: boolean }) {
     const [leaving, setLeaving] = useState<string | null>(null)
     const prevTextRef = useRef(text)
 
@@ -43,11 +43,24 @@ export function CrossfadeText({ text, style, shimmer }: { text: string; style?: 
     }, [text])
 
     return (
-        <span style={{ position: 'relative', display: 'inline-flex', overflow: 'hidden', ...style }}>
+        <span
+            style={{
+                position: 'relative',
+                display: 'inline-flex',
+                overflow: 'hidden',
+                // ellipsis：允许在 flex/块父级中收缩到可省略，文案层在收缩后的宽度内截断
+                maxWidth: '100%',
+                minWidth: ellipsis ? 0 : undefined,
+                ...style,
+            }}
+        >
             <span
                 key={text}
                 className={shimmer ? 'crossfade-text shimmer-text' : 'crossfade-text'}
-                style={{ '--fade-ms': `${FADE_MS}ms` } as CSSProperties}
+                style={{
+                    '--fade-ms': `${FADE_MS}ms`,
+                    ...(ellipsis && { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }),
+                } as CSSProperties}
             >
                 {text}
             </span>

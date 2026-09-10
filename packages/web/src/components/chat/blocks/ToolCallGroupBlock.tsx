@@ -85,8 +85,9 @@ export function ToolCallGroupRenderer({
       icon={<ToolCallGroupIcon hasError={failedCount > 0} hasActive={hasActive} />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>
-          {/* 组活跃时标题微光扫过（强调「正在推进」），落定回汇总文案自动停止 */}
-          <CrossfadeText text={title} shimmer={hasActive} />
+          {/* 组活跃时标题微光扫过（强调「正在推进」），落定回汇总文案自动停止；
+              单行省略——组头恒一行，长汇总截断（展开后组内可见全量明细） */}
+          <CrossfadeText text={title} shimmer={hasActive} ellipsis />
         </span>
       }
       expanded={expanded}
