@@ -23,6 +23,7 @@ import {
     validateReadPath,
     validateWritePath,
     DEFAULT_BLACKLISTED_DIR_NAMES,
+    EXTRA_READ_ROOTS,
 } from '../src/pathSecurity'
 
 const HOME = '/home/testuser'
@@ -201,6 +202,29 @@ describe('validateReadPath（读边界：cwd 子树 ∪ home−黑名单）', ()
         expect(validateReadPath('/etc/passwd', CWD, '').valid).toBe(false)
         expect(validateReadPath('~/x', CWD, '').valid).toBe(false)
         expect(validateReadPath('~', CWD, '').valid).toBe(false)
+    })
+
+    /* ─── 额外允许读根（cwd/home 之外的补充读域，仅放宽读） ─── */
+
+    describe('额外允许读根 EXTRA_READ_ROOTS', () => {
+        it('额外根下的文件放行（/tmp 是 agent 产物的惯常落点）', () => {
+            const root = EXTRA_READ_ROOTS[0]
+            if (!root) return  // win32 等无额外根平台跳过
+            expect(validateReadPath(`${root}/mockup.html`, CWD, HOME).valid).toBe(true)
+            expect(validateReadPath(`${root}/a/b/c.json`, CWD, HOME).valid).toBe(true)
+        })
+
+        it('额外根内 `..` 逃逸后按折叠结果判定（不得借道越界）', () => {
+            const root = EXTRA_READ_ROOTS[0]
+            if (!root) return
+            expect(validateReadPath(`${root}/../etc/passwd`, CWD, HOME).valid).toBe(false)
+        })
+
+        it('额外根不放宽写边界（写仍严格 cwd 子树）', () => {
+            const root = EXTRA_READ_ROOTS[0]
+            if (!root) return
+            expect(validateWritePath(`${root}/out.txt`, CWD, HOME).valid).toBe(false)
+        })
     })
 })
 

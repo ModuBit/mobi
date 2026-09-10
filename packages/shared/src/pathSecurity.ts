@@ -139,7 +139,20 @@ export function isWithinHomeMobiUploads(targetPath: string, homeDir: string): bo
 }
 
 /**
- * 读边界校验（ADR 0004）：允许集 = cwd 子树 ∪ (home 子树 − 黑名单)，其余一律拒绝。
+ * 读边界额外允许根（cwd 子树 ∪ home−黑名单之外的补充读域）：
+ * /tmp 是 agent 产物的惯常落点（mockup、scratch 文件），web 端文件查看需要可达。
+ * 仅放宽读边界，写边界（严格 cwd 子树）不受影响；win32 无此语义故为空集。
+ * 判定先经 resolve 折叠（`..` 逃逸按折叠结果拒），黑名单仍先于本域生效。
+ */
+export const EXTRA_READ_ROOTS: readonly string[] = process.platform === 'win32' ? [] : ['/tmp']
+
+/** 路径是否落在某个额外允许读根内（resolve 已折叠 `..`，判定与逃逸语义一致） */
+function isWithinExtraReadRoot(resolvedTarget: string): boolean {
+    return EXTRA_READ_ROOTS.some(root => isWithinDir(resolvedTarget, root))
+}
+
+/**
+ * 读边界校验（ADR 0004）：允许集 = cwd 子树 ∪ (home 子树 − 黑名单) ∪ 额外读根，其余一律拒绝。
  *
  * - 黑名单先于一切允许域判定：cwd 恰为 home 时 `.ssh` 等仍受保护；黑名单只匹配
  *   home 直接子级，cwd 内同名目录（如 `src/.config/`、`.mobi/uploads/` 附件）不误伤
@@ -159,6 +172,7 @@ export function validateReadPath(targetPath: string, workingDirectory: string, h
         && !isWithinHomeMobiUploads(resolvedTarget, homeDir)) {
         return { valid: false, error: `Access denied: Path '${targetPath}' is in a protected directory` }
     }
+    if (isWithinExtraReadRoot(resolvedTarget)) return { valid: true, resolvedPath: resolvedTarget }
     if (isWithinDir(resolvedTarget, workingDirectory)) return { valid: true, resolvedPath: resolvedTarget }
     if (homeDir) {
         const homeCheck = validateHomeDirPath(resolvedTarget, homeDir)
