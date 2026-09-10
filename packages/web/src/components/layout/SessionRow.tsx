@@ -95,7 +95,7 @@ export function SessionRow({
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
-            <SessionStatusDot session={session} inactive={inactive} />
+            <SessionStatusDot session={session} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName $inactive={inactive}>{displayName}</SessionName>
             </AppTooltip>

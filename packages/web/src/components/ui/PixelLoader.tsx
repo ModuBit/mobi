@@ -46,13 +46,12 @@ const ORBIT_DELAYS = Array.from({ length: 9 }, (_, i) => {
 })
 
 /**
- * twinkle 眨眼格：9 格中只让 3 格带动画（间隔分布 + 5s 内错峰），
- * 其余 6 格静止基线——「平均 <1 颗亮」的同时把每行常驻合成器动画从 9 个压到 3 个
- * （会话列表几十行空闲时是 3 倍级差距）。
- * delay（秒，固定伪随机）+ 行间 --phase 错相共同构成「随机」观感。
+ * twinkle 眨眼格：9 格中让 6 格带动画（间隔分布 + 5s 内错峰），其余 3 格静止基线。
+ * delay（秒，固定伪随机）+ 行间 --phase 错相共同构成「随机游走」观感；
+ * 6/9 是随机感与常驻合成器动画数的折中（全 9 格对几十行空闲列表是 3 倍级开销）。
  */
-const TWINKLE_ACTIVE_INDEXES = [1, 5, 7]
-const TWINKLE_DELAYS = [0.5, 2.9, 4.6]
+const TWINKLE_ACTIVE_INDEXES = [0, 2, 3, 5, 7, 8]
+const TWINKLE_DELAYS = [0.5, 1.4, 2.3, 2.9, 3.8, 4.6]
 
 function buildWaveCells(delays: number[], round: boolean): ReactNode[] {
     return delays.map((delay, index) => (
@@ -92,7 +91,8 @@ const CELLS: Record<PixelVariant, ReactNode[]> = {
             )
     }),
     ghost: Array.from({ length: 9 }, (_, index) => (
-        <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
+        // 关闭态：静止但可辨认（0.12，独立于 idle 暗态 0.07——ghost 是列表里「还在」的行）
+        <span key={index} className="pixel-loader-cell pixel-loader-cell-ghost" />
     )),
 }
 

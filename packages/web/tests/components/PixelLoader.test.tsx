@@ -56,7 +56,7 @@ describe('PixelLoader', () => {
         })
     })
 
-    it('twinkle 变体：仅 3 格眨眼（压常驻合成器动画），错相经容器 --phase 注入', () => {
+    it('twinkle 变体：6 格错峰眨眼（随机感与动画数的折中），错相经容器 --phase 注入', () => {
         const { container } = render(<PixelLoader variant="twinkle" phase={2.5} />)
         const grid = container.firstChild as HTMLElement
         expect(grid.className).toContain('pixel-loader-twinkle')
@@ -65,23 +65,23 @@ describe('PixelLoader', () => {
         const cells = container.querySelectorAll('.pixel-loader-cell')
         expect(cells).toHaveLength(9)
         const twinkling = Array.from(cells).filter(c => (c as HTMLElement).style.animationName === 'pixel-twinkle')
-        expect(twinkling).toHaveLength(3)
+        expect(twinkling).toHaveLength(6)
         twinkling.forEach(cell => {
             const style = (cell as HTMLElement).style
             expect(style.animationDuration).toBe('5s')
             expect(style.animationDelay).toContain('var(--phase')
         })
-        // 其余 6 格静止基线（idle 类承载）
+        // 其余 3 格静止基线（idle 类承载）
         const idle = Array.from(cells).filter(c => (c as HTMLElement).classList.contains('pixel-loader-cell-idle'))
-        expect(idle).toHaveLength(6)
+        expect(idle).toHaveLength(3)
     })
 
-    it('ghost 变体：全格静止暗态（无动画）', () => {
+    it('ghost 变体：全格静止（0.12 可辨认暗态，独立于 idle 0.07）', () => {
         const { container } = render(<PixelLoader variant="ghost" />)
         const cells = container.querySelectorAll('.pixel-loader-cell')
         expect(cells).toHaveLength(9)
         cells.forEach(cell => {
-            expect((cell as HTMLElement).classList.contains('pixel-loader-cell-idle')).toBe(true)
+            expect((cell as HTMLElement).classList.contains('pixel-loader-cell-ghost')).toBe(true)
         })
     })
 

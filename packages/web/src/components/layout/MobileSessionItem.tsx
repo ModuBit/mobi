@@ -62,7 +62,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
             onTouchEnd={longPress.onTouchEnd}
             onTouchMove={longPress.onTouchMove}
         >
-            <SessionStatusDot session={session} inactive={inactive} />
+            <SessionStatusDot session={session} />
             <SessionName $token={token} $inactive={inactive}>{displayName}</SessionName>
             {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge

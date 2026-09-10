@@ -16,20 +16,14 @@
 
 import { getSessionLoader } from '@/core/utils/sessionStatus'
 import type { Session } from '@/core/data/api/types'
-import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 import { PixelLoader } from '@/components/ui/PixelLoader'
 
 /**
  * 会话列表状态指示（桌面 SessionRow 与移动端 MobileSessionItem 共用）：
- * 波形映射（getSessionLoader）+ 列表小格（3px）+ 未激活减淡的单一组合点。
+ * 波形映射（getSessionLoader）+ 列表小格（3px）+ 标题减淡的维度由此处与 SessionName 分担。
+ * 状态指示亮度不在此叠加——ghost 波形自带 0.12 暗态，再叠透明度会双重减淡埋进背景。
  * 指示器增加任何维度（如 aria 语义、tooltip）只改这里，两处行组件自动同步。
  */
-export function SessionStatusDot({ session, inactive }: { session: Session; inactive: boolean }) {
-    return (
-        <PixelLoader
-            {...getSessionLoader(session)}
-            size={3}
-            style={inactive ? { opacity: INACTIVE_SESSION_DIM.statusDot } : undefined}
-        />
-    )
+export function SessionStatusDot({ session }: { session: Session }) {
+    return <PixelLoader {...getSessionLoader(session)} size={3} />
 }
