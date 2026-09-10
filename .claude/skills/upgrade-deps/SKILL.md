@@ -114,7 +114,7 @@ bun run lint       # ESLint 检查
 | changelog | 反映什么 | 地址 |
 |---|---|---|
 | Claude Agent SDK | TS SDK 的 API、query options、hooks、partial、导出接口——**直接影响 cli 代码** | `https://raw.githubusercontent.com/anthropics/claude-agent-sdk-typescript/refs/heads/main/CHANGELOG.md` |
-| Claude Code | SDK 内嵌 claude 二进制的行为——工具协议、plan 模式、工具调度、提示词、MCP——**影响 mobi 运行时行为预期** | `https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md` |
+| Claude Code | SDK 内嵌 claude 二进制的行为——工具协议、plan 模式、工具调度、提示词、MCP——**影响 mobi 运行时行为预期** | `https://github.com/anthropics/claude-code/releases`（⚠️ 2026-09-10 实测：该仓库 main 分支 CHANGELOG.md **已停更**，顶部停在 2.1.240，release notes 改发 GitHub Releases 页——拉 Releases 页面，不是 raw CHANGELOG.md） |
 
 **抓取规则（2026-09-10 教训后强制）**：
 
