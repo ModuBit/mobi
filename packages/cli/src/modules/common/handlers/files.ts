@@ -24,7 +24,7 @@ import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { readFileMetaAt, readFileRangeAt } from './fileRead'
+import { fsError, readFileMetaAt, readFileRangeAt } from './fileRead'
 
 interface WriteFileRequest {
     path: string
@@ -89,7 +89,8 @@ export function registerFileHandlers(
 
         const result = await readFileMetaAt(validation.resolvedPath)
         if (!result.success) {
-            logger.debug('Failed to stat file:', result.error)
+            // 整 result 落日志：保留 errno code 等结构化信息，非映射码（EACCES 等）排查不丢上下文
+            logger.debug('Failed to read file meta:', result)
             return result
         }
         return { success: true, meta: result.meta, writable: writable(data.path).valid }
@@ -106,7 +107,7 @@ export function registerFileHandlers(
 
         const result = await readFileRangeAt(validation.resolvedPath, data.offset, data.length)
         if (!result.success) {
-            logger.debug('Failed to read file range:', result.error)
+            logger.debug('Failed to read file range:', result)
         }
         return result
     })
@@ -183,16 +184,12 @@ export function registerFileHandlers(
 
         const resolvedPath = validation.resolvedPath
         try {
-            // OCC：stat 算当前 etag，比对 baseEtag
+            // OCC：stat 算当前 etag，比对 baseEtag（失败整形与读取通道同源 fsError）
             let st: Awaited<ReturnType<typeof stat>>
             try {
                 st = await stat(resolvedPath)
             } catch (error) {
-                const code = (error as NodeJS.ErrnoException).code
-                return rpcError(
-                    getErrorMessage(error, 'Failed to stat file'),
-                    code === 'ENOENT' ? { code } : undefined,
-                )
+                return fsError(error, 'Failed to stat file')
             }
             const currentEtag = fileEtag(st.size, st.mtimeMs)
             // baseEtag='' → force 覆盖（跳过 OCC，用于冲突后用户选「强制覆盖」）；

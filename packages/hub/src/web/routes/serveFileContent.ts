@@ -159,10 +159,15 @@ export async function serveFileContent(
             }
             const len = Math.min(CHUNK, end - offset + 1)
             const r = await reader.readFileRange(absPath, offset, len)
-            if (!r.success) {
+            // 运行时守卫兜底：hub↔CLI 响应经 rpcGateway 类型 cast、无运行时校验，
+            // 版本偏斜的 CLI 返回 success 但缺 chunk 时干净截断而非静默 TypeError
+            if (!r.success || !r.chunk) {
                 // 流中失败只能截断（响应头已随 stream 发出，状态码不可再改）；
                 // code（如 meta 读取后文件被并发删除的 ENOENT）落日志供观测
-                hubLogger.warn(`[serveFileContent] readFileRange failed: ${r.error}${r.code ? ` (${r.code})` : ''}`)
+                const detail = r.success
+                    ? 'success response without chunk'
+                    : `${r.error}${r.code ? ` (${r.code})` : ''}`
+                hubLogger.warn(`[serveFileContent] readFileRange failed: ${detail}`)
                 break
             }
             await s.write(r.chunk)

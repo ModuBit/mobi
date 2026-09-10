@@ -44,7 +44,11 @@ const mockSyncEngine = {
         }
         return { success: false, error: 'File extension ".bin" is not allowed over machine channel' }
     },
-    machineReadFileRange: async (_mid: unknown, _cwd: unknown, _p: unknown, offset: number, length: number) => {
+    machineReadFileRange: async (_mid: unknown, _cwd: unknown, p: unknown, offset: number, length: number) => {
+        // 版本偏斜 CLI 模拟：success 但缺 chunk（rpcGateway 类型 cast 无运行时校验），serveFileContent 须干净截断
+        if ((p as string).endsWith('.ghost.png')) {
+            return { success: true }
+        }
         return { success: true, chunk: new TextEncoder().encode(CHUNK.slice(offset, offset + length)) }
     },
 } as unknown as SyncEngine
@@ -100,6 +104,13 @@ describe('GET /api/machines/:id/read-file', () => {
     test('404：meta ENOENT 结构化透传', async () => {
         const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/x.missing.png')
         expect(res.status).toBe(404)
+    })
+
+    test('200：流中 success 缺 chunk（版本偏斜 CLI）→ 干净截断而非 500/崩溃', async () => {
+        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/x.ghost.png')
+        // 响应头已在 stream 开始前发出（200 不可撤回），断言为空体干净终止
+        expect(res.status).toBe(200)
+        expect(await res.text()).toBe('')
     })
 
     test('500：其余失败透传', async () => {

@@ -102,7 +102,7 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
         logger.debug('[MACHINE] Read file meta:', resolved.abs)
         const result = await readFileMetaAt(resolved.abs)
         if (!result.success) {
-            logger.debug('[MACHINE] Failed to stat file:', result.error)
+            logger.debug('[MACHINE] Failed to read file meta:', result)
         }
         return result
     })
@@ -116,7 +116,7 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
         logger.debug('[MACHINE] Read file range:', resolved.abs, data.offset, data.length)
         const result = await readFileRangeAt(resolved.abs, data.offset, data.length)
         if (!result.success) {
-            logger.debug('[MACHINE] Failed to read file range:', result.error)
+            logger.debug('[MACHINE] Failed to read file range:', result)
         }
         return result
     })

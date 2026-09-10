@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { chmod, mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { readFileMetaAt, readFileRangeAt } from '@/modules/common/handlers/fileRead'
@@ -116,6 +116,23 @@ describe('readFileRangeAt', () => {
         if (!result.success) {
             expect(result.code).toBe('ENOENT')
             expect(result.error).toContain('missing.bin')
+        }
+    })
+
+    it('非映射 errno（EACCES）也保留结构化错误码', async () => {
+        const path = join(rootDir, 'secret.bin')
+        await writeFile(path, 'abc')
+        await chmod(path, 0o000)
+
+        try {
+            const result = await readFileRangeAt(path, 0, 1)
+
+            expect(result.success).toBe(false)
+            if (!result.success) {
+                expect(result.code).toBe('EACCES')
+            }
+        } finally {
+            await chmod(path, 0o644)
         }
     })
 

@@ -27,12 +27,13 @@ export type FileMetaReadResult =
     | { success: false; error: string; code?: string }
 
 /**
- * fs 异常 → Result 失败分支的统一整形：errno code（目前 ENOENT）保留为结构化码，
- * hub 据此精确映射 HTTP 状态（ENOENT → 404），不依赖文案。
+ * fs 异常 → Result 失败分支的统一整形：errno code 全量透传为结构化码——
+ * hub 按 ENOENT → 404 / ACCESS_DENIED → 403 / 其余 → 500 映射状态，
+ * 未映射的 code 仍随响应体下发辅助诊断（权限、符号链接循环等），不依赖文案。
  */
-function fsError(error: unknown, fallback: string): { success: false; error: string; code?: string } {
+export function fsError(error: unknown, fallback: string): { success: false; error: string; code?: string } {
     const code = (error as NodeJS.ErrnoException | null | undefined)?.code
-    return rpcError(getErrorMessage(error, fallback), code === 'ENOENT' ? { code: 'ENOENT' } : undefined)
+    return rpcError(getErrorMessage(error, fallback), code ? { code } : undefined)
 }
 
 /** 读取已通过通道策略校验的绝对路径元数据。 */
