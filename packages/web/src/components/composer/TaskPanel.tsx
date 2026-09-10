@@ -20,7 +20,6 @@ import { CheckCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TaskItem } from '@mobi/shared'
-import { BlinkText } from '@/components/ui/BlinkText'
 import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
 
 /** 任务橙色，参考 Claude Code */
@@ -83,9 +82,9 @@ export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <CheckCheck size={14} color={TASK_ORANGE} />
             {activeTask ? (
-                <BlinkText blinking color={TASK_ORANGE}>
+                <span className="shimmer-text" style={{ color: TASK_ORANGE }}>
                     {activeTask.activeForm ?? activeTask.subject}
-                </BlinkText>
+                </span>
             ) : completed === total ? (
                 <span style={{ color: TASK_GREEN, fontWeight: 500 }}>✓ {t('chat.task.allCompleted')}</span>
             ) : (
@@ -160,9 +159,9 @@ function TaskText({ task }: { task: TaskItem }) {
 
     if (task.status === 'in_progress') {
         return (
-            <BlinkText blinking color={TASK_ORANGE} style={{ fontWeight: 600 }}>
+            <span className="shimmer-text" style={{ color: TASK_ORANGE, fontWeight: 600 }}>
                 {label}
-            </BlinkText>
+            </span>
         )
     }
 

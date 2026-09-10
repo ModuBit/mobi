@@ -20,7 +20,6 @@ import { Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem } from '@mobi/shared'
-import { BlinkText } from '@/components/ui/BlinkText'
 import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
 
 /** 任务橙色，参考 Claude Code */
@@ -80,9 +79,9 @@ export function TodoPanel({ todos, sessionId, onClear }: TodoPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <Lightbulb size={14} color={TODO_ORANGE} />
             {activeTodo ? (
-                <BlinkText blinking color={TODO_ORANGE}>
+                <span className="shimmer-text" style={{ color: TODO_ORANGE }}>
                     {activeTodo.activeForm}
-                </BlinkText>
+                </span>
             ) : completed === total ? (
                 <span style={{ color: TODO_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
             ) : null}
@@ -149,13 +148,9 @@ function TodoText({ todo }: { todo: TodoItem }) {
 
     if (todo.status === 'in_progress') {
         return (
-            <BlinkText
-                blinking
-                color={TODO_ORANGE}
-                style={{ fontWeight: 600 }}
-            >
+            <span className="shimmer-text" style={{ color: TODO_ORANGE, fontWeight: 600 }}>
                 {todo.content}
-            </BlinkText>
+            </span>
         )
     }
 

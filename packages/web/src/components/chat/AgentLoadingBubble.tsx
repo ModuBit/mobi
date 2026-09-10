@@ -23,7 +23,6 @@ import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { PixelLoader } from '@/components/ui/PixelLoader'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { VIBING_MESSAGES } from '@/components/pixel-avatar/vibingMessages'
-import { BlinkText } from '@/components/ui/BlinkText'
 
 /** Claude 品牌橙色 */
 const CLAUDE_ORANGE = '#D97757'
@@ -117,9 +116,15 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             {loaderVariant
                 ? <PixelLoader variant={loaderVariant} />
                 : <StatusStateIcon state={status} />}
-            <BlinkText blinking color={stalled ? token.colorWarning : CLAUDE_ORANGE} aria-live="polite" style={{ fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {/* 状态文本扫光（shimmer-text 纯 CSS 类，收敛自 BlinkText）；aria-live 此处真正
+                透传到 DOM（BlinkText 曾吞掉该属性） */}
+            <span
+                className="shimmer-text"
+                aria-live="polite"
+                style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
-            </BlinkText>
+            </span>
             <span aria-hidden="true" style={{ color: token.colorTextTertiary, fontSize: 12, marginLeft: 'auto' }}>
                 {elapsedTime}
             </span>
