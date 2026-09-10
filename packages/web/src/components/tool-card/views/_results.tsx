@@ -374,6 +374,11 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
     const input = props.block.tool.input
     const { state, result } = props.block.tool
 
+    // 失败时优先展示错误原因：result 是错误信息而非编辑产物，渲染 input diff 会误导
+    if (state === 'error') {
+        return <MutationResultView {...props} />
+    }
+
     // 执行中或无结果时显示占位
     if (result === undefined || result === null) {
         return <ResultPlaceholder state={state} />
@@ -409,6 +414,11 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
     const input = props.block.tool.input
     const { state, result } = props.block.tool
 
+    // 失败时优先展示错误原因：result 是错误信息而非写入产物，渲染 input 内容会误导
+    if (state === 'error') {
+        return <MutationResultView {...props} />
+    }
+
     if (result === undefined || result === null) {
         return <ResultPlaceholder state={state} />
     }
@@ -440,6 +450,11 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
 const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
     const input = props.block.tool.input
     const { state, result } = props.block.tool
+
+    // 失败时优先展示错误原因：result 是错误信息而非编辑产物，渲染 input diff 会误导
+    if (state === 'error') {
+        return <MutationResultView {...props} />
+    }
 
     if (result === undefined || result === null) {
         return <ResultPlaceholder state={state} />
