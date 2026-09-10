@@ -76,7 +76,8 @@ export function getSessionLoader(session: AvatarStatusInput): SessionLoader {
         // 审批橙走统一取色口（去色语义单点），不直读色板
         case 'awaiting_auth': return { variant: 'orbit', color: statusColorOf('awaiting_auth') }
         case 'idle': return { variant: 'twinkle', phase: idPhase(session.id) }
-        default: return { variant: 'ghost' }
+        // ghost 的 6 格随机位置/不透明度同样由 phase 轮转，未激活行彼此不重样
+        default: return { variant: 'ghost', phase: idPhase(session.id) }
     }
 }
 

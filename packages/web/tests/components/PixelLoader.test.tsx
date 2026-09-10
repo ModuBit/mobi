@@ -76,13 +76,46 @@ describe('PixelLoader', () => {
         expect(idle).toHaveLength(3)
     })
 
-    it('ghost 变体：全格静止（0.12 可辨认暗态，独立于 idle 0.07）', () => {
-        const { container } = render(<PixelLoader variant="ghost" />)
+    it('twinkle 眨眼位置随 phase 轮转：不同会话（phase 不同）亮的位置不同', () => {
+        const litIndexes = (phase: number) => {
+            const { container, unmount } = render(<PixelLoader variant="twinkle" phase={phase} />)
+            const indexes = Array.from(container.querySelectorAll('.pixel-loader-cell'))
+                .map((cell, i) => (cell as HTMLElement).style.animationName === 'pixel-twinkle' ? i : -1)
+                .filter(i => i >= 0)
+            unmount()
+            return indexes
+        }
+        const seen = new Set(litIndexes(0).join()) // phase 0 → offset 0
+        // phase 3 → offset 5：掩码轮转后位置集与 offset 0 不同
+        expect(seen.has(litIndexes(3).join())).toBe(false)
+        // 同 phase 恒同位置（确定性）
+        expect(litIndexes(3).join()).toBe(litIndexes(3).join())
+    })
+
+    it('ghost 变体：6 格静态随机不透明度 + 3 格 idle 暗态，位置随 phase 轮转', () => {
+        const { container } = render(<PixelLoader variant="ghost" phase={1.5} />)
         const cells = container.querySelectorAll('.pixel-loader-cell')
         expect(cells).toHaveLength(9)
-        cells.forEach(cell => {
-            expect((cell as HTMLElement).classList.contains('pixel-loader-cell-ghost')).toBe(true)
-        })
+
+        const ghosts = Array.from(cells).filter(c => (c as HTMLElement).classList.contains('pixel-loader-cell-ghost'))
+        expect(ghosts).toHaveLength(6)
+        // 每格带各自的静态不透明度（inline 覆盖类默认），且不全相同
+        const opacities = new Set(ghosts.map(c => (c as HTMLElement).style.opacity))
+        expect(opacities.size).toBeGreaterThan(1)
+        // 其余 3 格 idle 暗态
+        const idle = Array.from(cells).filter(c => (c as HTMLElement).classList.contains('pixel-loader-cell-idle'))
+        expect(idle).toHaveLength(3)
+
+        // phase 不同 → 亮格位置不同（与 twinkle 同一套轮转）
+        const litIndexes = (phase: number) => {
+            const r = render(<PixelLoader variant="ghost" phase={phase} />)
+            const indexes = Array.from(r.container.querySelectorAll('.pixel-loader-cell'))
+                .map((cell, i) => (cell as HTMLElement).classList.contains('pixel-loader-cell-ghost') ? i : -1)
+                .filter(i => i >= 0)
+            r.unmount()
+            return indexes
+        }
+        expect(litIndexes(1.5).join()).not.toBe(litIndexes(4).join())
     })
 
     it('size 数值经 --pixel-cell 注入（CSS 变量驱动格边长），color 走容器继承', () => {

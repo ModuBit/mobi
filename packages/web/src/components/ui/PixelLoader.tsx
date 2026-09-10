@@ -47,11 +47,60 @@ const ORBIT_DELAYS = Array.from({ length: 9 }, (_, i) => {
 
 /**
  * twinkle 眨眼格：9 格中让 6 格带动画（间隔分布 + 5s 内错峰），其余 3 格静止基线。
- * delay（秒，固定伪随机）+ 行间 --phase 错相共同构成「随机游走」观感；
+ * delay 取负值 = 动画在挂载瞬间已进行到各自中段——初始亮度/首眨时间天然随机（正 delay
+ * 会在等待期露出满色基线且迟迟不闪）。
+ * 眨眼**位置**也按 phase 旋转（9 棵预生成树的掩码轮转）：每行眨眼位置各不相同，
+ * 「随机游走」由位置轮转 + 负 delay 中段起步 + 行间 phase 三层叠加。
  * 6/9 是随机感与常驻合成器动画数的折中（全 9 格对几十行空闲列表是 3 倍级开销）。
  */
 const TWINKLE_ACTIVE_INDEXES = [0, 2, 3, 5, 7, 8]
 const TWINKLE_DELAYS = [0.5, 1.4, 2.3, 2.9, 3.8, 4.6]
+
+/** 9 棵 twinkle 树：ACTIVE_INDEXES 掩码按 offset 轮转——phase ∈ [0,5) 线性映射选树，行间位置互异 */
+const TWINKLE_TREES: ReactNode[][] = Array.from({ length: 9 }, (_, offset) => {
+    const delays = TWINKLE_DELAYS.map((d, i) => ({ index: (TWINKLE_ACTIVE_INDEXES[i] + offset) % 9, delay: d }))
+    const byIndex = new Map(delays.map(({ index, delay }) => [index, delay]))
+    return Array.from({ length: 9 }, (_, index) => {
+        const delay = byIndex.get(index)
+        return delay === undefined
+            ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
+            : (
+                <span
+                    key={index}
+                    className="pixel-loader-cell"
+                    style={{
+                        animationName: 'pixel-twinkle',
+                        animationDuration: '5s',
+                        animationDelay: `calc(var(--phase, 0s) - ${delay}s)`,
+                    }}
+                />
+            )
+    })
+})
+
+function twinkleTree(phase: number): ReactNode[] {
+    return TWINKLE_TREES[Math.floor((phase / 5) * 9) % 9]
+}
+
+function ghostTree(phase: number): ReactNode[] {
+    return GHOST_TREES[Math.floor((phase / 5) * 9) % 9]
+}
+
+/**
+ * ghost 树：与 twinkle 同一套 6 格位置轮转，但**静态**——每格一个固定伪随机不透明度
+ * （0.16~0.40，如熄灭屏幕上的残影），其余 3 格 idle 暗态；同一 sessionId 恒同一幅。
+ */
+const GHOST_OPACITIES = [0.32, 0.16, 0.4, 0.22, 0.36, 0.18]
+const GHOST_TREES: ReactNode[][] = Array.from({ length: 9 }, (_, offset) => {
+    const lit = TWINKLE_DELAYS.map((_, i) => ({ index: (TWINKLE_ACTIVE_INDEXES[i] + offset) % 9, opacity: GHOST_OPACITIES[i] }))
+    const byIndex = new Map(lit.map(({ index, opacity }) => [index, opacity]))
+    return Array.from({ length: 9 }, (_, index) => {
+        const opacity = byIndex.get(index)
+        return opacity === undefined
+            ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
+            : <span key={index} className="pixel-loader-cell pixel-loader-cell-ghost" style={{ opacity }} />
+    })
+})
 
 function buildWaveCells(delays: number[], round: boolean): ReactNode[] {
     return delays.map((delay, index) => (
@@ -63,7 +112,7 @@ function buildWaveCells(delays: number[], round: boolean): ReactNode[] {
     ))
 }
 
-const CELLS: Record<PixelVariant, ReactNode[]> = {
+const CELLS: Record<Exclude<PixelVariant, 'twinkle'>, ReactNode[]> = {
     // drive/dots 不内联时长：650ms 由 .pixel-loader-cell 的 CSS 默认独占
     drive: buildWaveCells(CHEVRON_DELAYS, false),
     dots: buildWaveCells(CHEVRON_DELAYS, true),
@@ -73,27 +122,7 @@ const CELLS: Record<PixelVariant, ReactNode[]> = {
             ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
             : <span key={index} className="pixel-loader-cell" style={{ animationDelay: `${delay}ms`, animationDuration: '950ms' }} />
     )),
-    // twinkle 错相经容器 --phase 变量注入，格子树保持模块级
-    twinkle: Array.from({ length: 9 }, (_, index) => {
-        const active = TWINKLE_ACTIVE_INDEXES.indexOf(index)
-        return active === -1
-            ? <span key={index} className="pixel-loader-cell pixel-loader-cell-idle" />
-            : (
-                <span
-                    key={index}
-                    className="pixel-loader-cell"
-                    style={{
-                        animationName: 'pixel-twinkle',
-                        animationDuration: '5s',
-                        animationDelay: `calc(var(--phase, 0s) + ${TWINKLE_DELAYS[active]}s)`,
-                    }}
-                />
-            )
-    }),
-    ghost: Array.from({ length: 9 }, (_, index) => (
-        // 关闭态：静止但可辨认（0.12，独立于 idle 暗态 0.07——ghost 是列表里「还在」的行）
-        <span key={index} className="pixel-loader-cell pixel-loader-cell-ghost" />
-    )),
+    ghost: GHOST_TREES[0],
 }
 
 export function PixelLoader({
@@ -115,10 +144,13 @@ export function PixelLoader({
     return (
         <span
             aria-hidden
+            /* variant 作 key：切换波形时强制重挂载格子树。动画属性在复用节点上原地改动
+               会让浏览器把已流逝时间重映射进新周期（表现为「快进」），重挂载则从 delay 0 干净起步 */
+            key={variant}
             className={`pixel-loader pixel-loader-${variant}`}
             style={{ color, '--phase': `${phase}s`, '--pixel-cell': `${size}px`, ...style } as CSSProperties}
         >
-            {CELLS[variant]}
+            {variant === 'twinkle' ? twinkleTree(phase) : variant === 'ghost' ? ghostTree(phase) : CELLS[variant]}
         </span>
     )
 }

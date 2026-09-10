@@ -92,6 +92,9 @@ pre, code {
     height: var(--pixel-cell, 4px);
     border-radius: 1px;
     background: currentColor;
+    /* 暗态基线（= 点亮 keyframes 的 0% 值）：正向 animation-delay 的等待期内元素露出的是
+       这里的无动画样式，不设则满色闪现——这是「初始全亮再暗下来」的根因 */
+    opacity: 0.15;
     animation: pixel-on 650ms ease-in-out infinite;
 }
 /* 静止暗态格：orbit 中心格（0.07，藏在网格里的空位）/ ghost 关闭态（0.12，静止但可辨认——
