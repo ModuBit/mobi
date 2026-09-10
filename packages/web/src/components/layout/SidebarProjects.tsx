@@ -29,7 +29,7 @@ import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
@@ -86,11 +86,6 @@ export function SidebarProjects() {
     const deleteProjectMutation = useDeleteProject()
     const pinMutation = useSetSessionPinned()
 
-    // 使缓存失效（会话详情/列表/项目维度视图由 invalidateSessionViews 统一收口）
-    const invalidateAll = useCallback((sessionId: string) => {
-        return invalidateSessionViews(queryClient, [sessionId])
-    }, [queryClient])
-
     // 确认重命名
     const handleRenameConfirm = useCallback(async () => {
         if (!renameValue.trim() || !renamingSessionId) {
@@ -100,23 +95,23 @@ export function SidebarProjects() {
         try {
             await renameActions.renameSession(renameValue.trim())
             messageApi.success(t('common.success'))
-            await invalidateAll(renamingSessionId)
+            await invalidateSessionViews(queryClient, [renamingSessionId])
             cancelRename()
         } catch {
             messageApi.error(t('common.error'))
         }
-    }, [renameValue, renamingSessionId, renameActions, t, invalidateAll, cancelRename, messageApi])
+    }, [renameValue, renamingSessionId, renameActions, t, queryClient, cancelRename, messageApi])
 
     // 退出会话
     const handleArchive = useCallback(async (session: Session) => {
         try {
             await api.sessions.archive(session.id)
             messageApi.success(t('common.success'))
-            await invalidateAll(session.id)
+            await invalidateSessionViews(queryClient, [session.id])
         } catch {
             messageApi.error(t('common.error'))
         }
-    }, [api, t, invalidateAll, messageApi])
+    }, [api, t, queryClient, messageApi])
 
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {
@@ -143,7 +138,7 @@ export function SidebarProjects() {
                     messageApi.success(t('common.success'))
                     queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
                     clearMessageWindow(session.id)
-                    await invalidateAll(session.id)
+                    await invalidateSessionViews(queryClient, [session.id])
                     // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
                     clearSessionResources(session.id)
                     if (activeSessionId === session.id) {
@@ -154,7 +149,7 @@ export function SidebarProjects() {
                 }
             },
         })
-    }, [api, t, invalidateAll, queryClient, activeSessionId, navigate, messageApi])
+    }, [api, t, queryClient, activeSessionId, navigate, messageApi])
 
     // ===== 项目管理 =====
 

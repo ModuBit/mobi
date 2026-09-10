@@ -17,7 +17,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateProjectViews } from '@/core/lib/invalidateViews'
 import type { Project, ProjectFolder } from '@/core/data/api/types'
 
 /** 创建项目入参（folders 合法性由 hub validateProjectFolders 把关） */

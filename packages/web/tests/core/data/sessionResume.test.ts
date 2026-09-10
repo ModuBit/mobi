@@ -17,7 +17,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { resumeSession } from '@/core/data/sessionResume'
 import type { MobiApi } from '@/core/data/api/client'
 
@@ -85,6 +85,24 @@ describe('resumeSession', () => {
         for (const key of keys) {
             expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
         }
+    })
+
+    it('Hub 未回带 sessionId（pre-SDK 窗口）时回退来源 ID', async () => {
+        const queryClient = createQueryClient()
+        const resume = vi.fn(async () => ({ data: { sessionId: '' } }))
+
+        const result = await resumeSession(createApi(resume), SOURCE_SESSION_ID, queryClient)
+
+        expect(result).toBe(SOURCE_SESSION_ID)
+    })
+
+    it('缓存收敛失败不翻转已成功的恢复结果', async () => {
+        const queryClient = createQueryClient()
+        const resume = vi.fn(async () => ({ data: { sessionId: 'session-new' } }))
+        vi.spyOn(queryClient, 'invalidateQueries').mockRejectedValue(new Error('refetch failed'))
+
+        await expect(resumeSession(createApi(resume), SOURCE_SESSION_ID, queryClient))
+            .resolves.toBe('session-new')
     })
 
     it('恢复请求失败时透传错误，且不提前使缓存失效', async () => {

@@ -18,7 +18,7 @@ import { useCallback, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useMobiApi } from '@/core/data/api/client'
-import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateProjectViews } from '@/core/lib/invalidateViews'
 
 /**
  * fork 会话创建 Hook（fork-session spec §4.3 / §5.1）：

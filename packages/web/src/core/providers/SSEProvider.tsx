@@ -33,7 +33,7 @@ import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeS
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
-import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateProjectViews } from '@/core/lib/invalidateViews'
 import {
     ingestIncomingMessages,
     ingestSnapshotDelta,

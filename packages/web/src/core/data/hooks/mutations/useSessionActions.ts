@@ -18,7 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { isCancelQueued, DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
-import { resumeSession } from '@/core/data/sessionResume'
+import { resumeSession as resumeSessionModule } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/query-keys'
 import { clearMessageWindow, fetchLatestMessages, removeQueuedMessages } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
@@ -106,7 +106,7 @@ export function useSessionActions(sessionId: string | null): {
             if (!sessionId) {
                 throw new Error('Session unavailable')
             }
-            return await resumeSession(api, sessionId, queryClient)
+            return await resumeSessionModule(api, sessionId, queryClient)
         },
         onSuccess: async (newSessionId) => {
             // resume 可能返回新的权威会话 ID

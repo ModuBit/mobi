@@ -16,13 +16,13 @@
 
 import type { QueryClient } from '@tanstack/react-query'
 import type { MobiApi } from '@/core/data/api/client'
-import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 
 /**
- * 恢复会话并收敛所有以会话身份为索引的查询缓存。
+ * 恢复会话并返回 Hub 确认的权威会话 ID。
  *
- * Hub 恢复后可能返回不同的权威会话 ID；调用方只需要消费返回值，
- * 无需分别维护旧详情、新详情、全局列表与项目视图的失效规则。
+ * 调用方只消费返回值（路由替换 / 动作重放 / 反馈都以此为准），
+ * 缓存收敛（旧详情、新详情、全局列表、项目视图）由 module 一并触发。
  */
 export async function resumeSession(
     api: MobiApi,
@@ -30,7 +30,10 @@ export async function resumeSession(
     queryClient: QueryClient,
 ): Promise<string> {
     const response = await api.sessions.resume(sourceSessionId)
-    const resumedSessionId = response.data.sessionId
-    await invalidateSessionViews(queryClient, [sourceSessionId, resumedSessionId])
+    // Hub 未回带 ID（CLI 不预生成 id 的 pre-SDK 窗口）时沿用原 ID——resume 本身已成功
+    const resumedSessionId = response.data.sessionId || sourceSessionId
+    // 收敛不阻塞也不参与结果语义：invalidated 标记在 invalidateQueries 的同步段即已落盘，
+    // 挂载中的查询自会 refetch；refetch 失败不代表 resume 失败，不得翻转已成功的结果
+    void invalidateSessionViews(queryClient, [sourceSessionId, resumedSessionId]).catch(() => undefined)
     return resumedSessionId
 }

@@ -39,7 +39,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
@@ -124,11 +124,6 @@ export function MobileProjectList() {
         return allSessions?.find(s => s.id === sessionId)
     }, [allSessions])
 
-    // 使缓存失效（会话详情/列表/项目维度视图由 invalidateSessionViews 统一收口）
-    const invalidateAll = useCallback((sessionId: string) => {
-        return invalidateSessionViews(queryClient, [sessionId])
-    }, [queryClient])
-
     // 归属变更：换项目 / 归入项目（选择器）+ 移至最近（直接执行）
     const assignMutation = useAssignSessionProject()
     const [assignSession, setAssignSession] = useState<Session | null>(null)
@@ -175,13 +170,13 @@ export function MobileProjectList() {
         if (!renameValue.trim() || !renameSessionId) return
         try {
             await renameActions.renameSession(renameValue.trim())
-            await invalidateAll(renameSessionId)
+            await invalidateSessionViews(queryClient, [renameSessionId])
             setRenameSessionId(null)
             setRenameValue('')
         } catch {
             // 错误由 hook 内部处理
         }
-    }, [renameValue, renameSessionId, renameActions, invalidateAll])
+    }, [renameValue, renameSessionId, renameActions, queryClient])
 
     const handleRenameCancel = useCallback(() => {
         setRenameSessionId(null)
@@ -200,14 +195,14 @@ export function MobileProjectList() {
         setActionLoading('archive')
         try {
             await api.sessions.archive(actionSessionId)
-            await invalidateAll(actionSessionId)
+            await invalidateSessionViews(queryClient, [actionSessionId])
             setActionSessionId(null)
         } catch {
             // ignore
         } finally {
             setActionLoading(null)
         }
-    }, [actionSessionId, api, invalidateAll])
+    }, [actionSessionId, api, queryClient])
 
     // 恢复
     const handleResume = useCallback(async () => {
@@ -243,7 +238,7 @@ export function MobileProjectList() {
                     await api.sessions.delete(sessionId)
                     queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
                     clearMessageWindow(sessionId)
-                    await invalidateAll(sessionId)
+                    await invalidateSessionViews(queryClient, [sessionId])
                     // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
                     clearSessionResources(sessionId)
                     setActionSessionId(null)
@@ -268,7 +263,7 @@ export function MobileProjectList() {
             modal.destroy()
             setActionLoading(null)
         })
-    }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, navigate, navigateFromMenu, t])
+    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, t])
 
 
     // ActionSheet 当前操作的 session

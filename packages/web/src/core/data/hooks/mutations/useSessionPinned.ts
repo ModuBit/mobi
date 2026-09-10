@@ -19,7 +19,7 @@ import type { InfiniteData, QueryKey } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ProjectSessionsPage, Session } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateSessionViews } from '@/core/lib/invalidateProjectViews'
+import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
 
 type GroupPages = InfiniteData<ProjectSessionsPage> | undefined
