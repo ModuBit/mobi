@@ -78,13 +78,6 @@ const updateMetadataSchema = z.object({
     metadata: z.unknown()
 })
 
-/** 从会话 metadata 提取已知 nativeSessionId（缺失/非法返回 undefined） */
-function readSessionNativeSessionId(metadata: unknown): string | undefined {
-    if (!metadata || typeof metadata !== 'object') return undefined
-    const nsid = (metadata as Record<string, unknown>).nativeSessionId
-    return typeof nsid === 'string' && nsid.length > 0 ? nsid : undefined
-}
-
 const updateStateSchema = z.object({
     sid: z.string(),
     expectedVersion: z.number().int(),
@@ -122,6 +115,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     // 传给 deltas 提取作 excludedTaskIds，防被滤任务经 task_updated patch.is_backgrounded
     // 豁免通道补建/直落终态复活（running 幽灵卡 / 空 ghost 终态条目）
     const filteredTaskIds = new Set<string>()
+    // 本连接内 CLI 已上报（messages-facts attached）的会话 nativeSessionId——落库自动补
+    // 的取值来源。不能读 session.metadata：resume 轮 CLI 不预生成 id，SDK init（首条消息）
+    // 前 metadata 残留上一时代旧值，盲信会把 pre-SDK 窗口内的合成行永久错绑旧 id
+    //（attach 只补 NULL、bind first-write-wins，都无法纠正）
+    const sessionNativeIds = new Map<string, string>()
 
     socket.on('session-message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
@@ -178,8 +176,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 落库自动补 nsid：CLI 本地合成行（!bash 工具对、sendSessionEvent 事件行）不经 SDK、
         // 无 session_id 可抄，落库后滞留 attach 孤儿池——每次 CLI 进程重启（resume）首条消息
         // 触发 attach 时整池重播，窗口外旧行被 web 误当新消息 append（ghost 气泡）。
-        // 会话 metadata 已知 nsid 时入口补上；session 未知（首条消息前）保持缺省，仍由 attach 兜底。
-        const sessionNsid = readSessionNativeSessionId(session.metadata)
+        // 取「本连接已上报」的 nsid 补上；本轮未上报（resume 的 pre-SDK 窗口 / 首条消息前）
+        // 保持缺省，仍由 attach 兜底——绝不读 session.metadata（跨时代残留旧值）
+        const sessionNsid = sessionNativeIds.get(sid)
         const incomingMetadata = parsed.data.metadata ?? null
         const metadata = !incomingMetadata?.nativeSessionId && sessionNsid
             ? { ...incomingMetadata, nativeSessionId: sessionNsid }
@@ -641,8 +640,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     /** attach 补写（原 messages-native-attached 处理体）：该会话所有缺 nativeSessionId 的行
      *  补上新 session id（幂等），补写行逐行广播（Web 端据此刷新 rewind 判据）。
      *  backfill 语义：CLI 进程重启（resume）首条消息也会触发 attach，补写集混入上一个进程
-     *  时代的合成行/事件行（落库时无 nsid）——它们是历史行，重播不得被 web 当新消息 append。 */
+     *  时代的合成行/事件行（落库时无 nsid）——它们是历史行，重播不得被 web 当新消息 append。
+     *  无论有无空缺行，都登记本连接已上报的 nsid（落库自动补的取值来源）。 */
     const processAttached = (sid: string, nativeSessionId: string) => {
+        sessionNativeIds.set(sid, nativeSessionId)
         const attached = store.messages.attachNativeSessionId(sid, nativeSessionId)
         if (attached.length > 0) broadcastStoredMessages(sid, attached, { backfill: true })
     }

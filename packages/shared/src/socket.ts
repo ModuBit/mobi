@@ -96,7 +96,10 @@ export const UpdateNewMessageBodySchema = z.object({
         createdAt: z.number(),
         localId: z.string().nullable().optional(),
         content: z.unknown()
-    })
+    }),
+    /** 补写回填标记（hub attach 路径）：与 SSE 侧 SyncEventSchema message-received 的
+     *  backfill 同义——标识历史行重播而非新消息，消费方据此只 merge 不 append */
+    backfill: z.boolean().optional()
 })
 
 export type UpdateNewMessageBody = z.infer<typeof UpdateNewMessageBodySchema>

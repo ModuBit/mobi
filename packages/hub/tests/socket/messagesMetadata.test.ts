@@ -217,18 +217,16 @@ describe('落库自动补 nativeSessionId（attach 孤儿池源头收敛）', ()
         sid = store.sessions.getOrCreateSession('nsid-autofill-test', { path: '/tmp/x' }, null, 'default').id
     })
 
-    /** 给会话 metadata 写入 nativeSessionId（模拟 CLI SDK init 后上报） */
-    function seedSessionNativeSessionId(nsid: string): void {
-        const s = store.sessions.getSession(sid)!
-        store.sessions.updateSessionMetadata(sid, { ...(s.metadata as object), nativeSessionId: nsid }, s.metadataVersion, 'default')
+    /** 模拟 CLI 本轮上报 native-attached（SDK init / 预生成 id 的 onSessionFound 通道） */
+    function reportAttached(fakeSocket: ReturnType<typeof makeFakeSocket>, nsid: string): void {
+        fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: nsid }] })
     }
 
-    test('消息缺 nsid 且 session 已知 → 落库即补（CLI 本地合成行不再进孤儿池）', () => {
-        seedSessionNativeSessionId('ns-current')
-
+    test('CLI 已上报本轮 nsid → 后续合成行落库即补（不再进孤儿池）', () => {
         const fakeSocket = makeFakeSocket()
         const { deps } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        reportAttached(fakeSocket, 'ns-current')
 
         // 模拟 sendSessionEvent 事件行 / !bash 合成对：无 metadata 落库
         fakeSocket.emit('session-message', {
@@ -239,12 +237,34 @@ describe('落库自动补 nativeSessionId（attach 孤儿池源头收敛）', ()
         expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBe('ns-current')
     })
 
-    test('消息自带 nsid → 不覆盖（CLI 显式值优先）', () => {
-        seedSessionNativeSessionId('ns-current')
+    test('resume 的 pre-SDK 窗口：metadata 残留上一时代 nsid 且本轮未上报 → 不得盖旧值（保持 NULL 交由 attach 补写）', () => {
+        // resume 轮不预生成 id（claudeRemote pregeneratedSessionId = !startFrom ? ... : undefined），
+        // session.metadata.nativeSessionId 在 SDK init 前仍是旧时代值——盲信会把 pre-SDK 窗口内
+        // 的合成行永久错绑旧 id，attach（只补 NULL）与 bind（first-write-wins）都无法纠正
+        const s = store.sessions.getSession(sid)!
+        store.sessions.updateSessionMetadata(sid, { ...(s.metadata as object), nativeSessionId: 'ns-old-era' }, s.metadataVersion, 'default')
 
         const fakeSocket = makeFakeSocket()
         const { deps } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('session-message', {
+            sid,
+            message: { role: 'agent', content: { type: 'event', data: { type: 'compact-started' } } },
+        })
+
+        expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBeUndefined()
+
+        // SDK init 上报新 id 后：pre-SDK 窗口的 NULL 行由 attach 补写为真实新 id
+        reportAttached(fakeSocket, 'ns-new-era')
+        expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBe('ns-new-era')
+    })
+
+    test('消息自带 nsid → 不覆盖（CLI 显式值优先）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        reportAttached(fakeSocket, 'ns-current')
 
         fakeSocket.emit('session-message', {
             sid,
@@ -256,7 +276,7 @@ describe('落库自动补 nativeSessionId（attach 孤儿池源头收敛）', ()
         expect(store.messages.getMessages(sid, 10)[0].metadata?.nativeSessionId).toBe('ns-native')
     })
 
-    test('session 也未知（首条消息场景）→ 保持 NULL，交由 attach 补写', () => {
+    test('本轮未上报且消息不自带（首条消息场景）→ 保持 NULL，交由 attach 补写', () => {
         const fakeSocket = makeFakeSocket()
         const { deps } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
