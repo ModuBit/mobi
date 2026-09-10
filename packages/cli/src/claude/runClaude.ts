@@ -512,7 +512,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         await syncAgentRename(claudeLocator(currentSessionRef.current), title);
     });
 
-    // rewind RPC（Web → Hub → CLI）：dry-run 预检与执行闸门。pendingRestart 状态挂在 Session 上——
+    // rewind RPC（Web → Hub → CLI）：dry-run 预检与执行闸门。restart module 挂在 Session 上——
     // launcher while 循环与此处共享同一实例（loop 创建、onSessionReady 回填 currentSessionRef），
     // 文件回滚在受理阶段经 queryControlRef（running query 句柄）先于截断执行
     registerRewindHandlers({
@@ -523,9 +523,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         workingDirectory,
     });
 
-    // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。pendingRestart 挂在
-    // Session 上（launcher while 循环与哨兵配对消费），session 未就绪时拒绝；running 中拒绝
-    // （Web 端已 disable，双保险）。受理细节见 applyOutputStyleSwitch
+    // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。重启状态与哨兵配对由
+    // session.restart module 持有；session 未就绪时拒绝，running 中拒绝（Web 端已 disable，双保险）。
     apiSession.rpcHandlerManager.registerHandler('switch-output-style', (payload: unknown) => {
         // 结构化受理结果（深化候选⑥，rewind 先例）：业务拒绝不 throw——RPC 错误通道
         // 只剩 message 字符串，hub 据 `includes('rejected')` 反解 409/502 分层会因文案
@@ -546,12 +545,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         }
         return applyOutputStyleSwitch({
             running: session.running,
-            restartBusy: session.restartBusy,
+            restart: session.restart,
             setOutputStyle: session.setOutputStyle,
             clearSessionId: session.clearSessionId,
-            markPendingRestart: () => { session.pendingRestart = { kind: 'outputStyle' }; },
-            clearPending: () => messageQueue.clearPending(),
-            pushIsolateAndClear: (msg, mode, localId) => messageQueue.pushIsolateAndClear(msg, mode, localId),
         }, styleParsed.data);
     });
 

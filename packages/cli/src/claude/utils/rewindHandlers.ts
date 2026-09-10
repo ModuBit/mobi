@@ -16,7 +16,7 @@
 
 import { logger } from '@/ui/logger';
 import { findRewindAnchor } from './rewindAnchor';
-import { RESTART_EXIT_SENTINEL, type QueryRestartRequest } from './queryRestart';
+import type { QueryRestartController } from './queryRestart';
 import type { EnhancedMode, QueryControlRef } from '../types';
 import type { MessageQueue } from '@/utils/MessageQueue';
 
@@ -29,17 +29,8 @@ export interface RewindSessionView {
     sessionId: string | null;
     /** 前台 turn 是否运行中（闸门） */
     running: boolean;
-    /** 重启请求单槽（深化候选④：与 output style 切换共用，置位即互斥） */
-    pendingRestart: QueryRestartRequest | null;
-    /** 重启通道忙（槽非空或 rewind 受理中）——受理互斥判据 */
-    restartBusy: boolean;
-    /**
-     * rewind RPC 受理中（多端并发互斥占位）：handler 入口在任何 await 之前同步置位、
-     * finally 释放——文件回滚耗时窗口内并发的第二个请求据此 busy 拒绝，
-     * 避免单槽被覆盖。与 pendingRestart 语义分离：
-     * 本字段 = RPC 受理中（秒级），pendingRestart = 待截断（等 launcher 消费）
-     */
-    rewindInFlight: boolean;
+    /** 重启协调 module：拥有 pending、异步准备占位、队列清理和退出哨兵。 */
+    restart: QueryRestartController;
 }
 
 export interface RewindHandlerDeps {
@@ -76,8 +67,8 @@ function parseNativeId(payload: unknown): string {
  *   + rewindFiles dryRun（file checkpoint 可达性）
  * - `rewind`：执行。闸门复检（队列/running，放行侧唯一权威——Hub 只查了后台任务）→
  *   锚点复检 → 文件回滚（**先于截断**：PoC poc8 实测截断后被截区间的 checkpoint 立即
- *   作废，截断前调用才有效）→ 记录 pendingRestart → clearPending → isolate 哨兵触发
- *   当前 query 循环退出 → 受理即返 `{ accepted: true }`；结果经 socket 两段回报
+ *   作废，截断前调用才有效）→ 向 restart module 提交 rewind 请求 → 退出当前 query；
+ *   受理即返 `{ accepted: true }`，结果经 socket 两段回报
  *   （rewind-truncated / rewind-completed，launcher 截断轮完成后发出）。
  *
  * 失败语义（PoC 定案）：
@@ -98,7 +89,7 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
 
         // 重启通道在途（受理中 / 槽非空——含 output style 请求）→ 直接 busy 拒绝：跳过锚点预检
         // 省一次 transcript 读取，另一端连确认弹窗都不该弹出（Web 按 reason 映射「回退正在进行中」提示）
-        if (session.restartBusy) {
+        if (session.restart.busy) {
             return { canRewind: false, canRestoreFiles: false, reason: REWIND_IN_PROGRESS_REASON };
         }
 
@@ -130,27 +121,23 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
         if (!session.sessionId) {
             return { accepted: false, reason: 'native session id is unknown' };
         }
+        const sessionId = session.sessionId;
 
-        // 并发互斥（多端同时确认）：重启通道忙（受理中 / 槽非空——含 output style 请求）→ busy 拒绝。
-        // check-and-set 必须先于任何 await 同步完成——RPC handler 并发执行，若在 await 文件回滚后才
-        // 置位，耗时窗口内到达的第二个请求会看到空槽位双双通过、单槽被覆盖
-        if (session.restartBusy) {
-            return { accepted: false, reason: REWIND_IN_PROGRESS_REASON };
-        }
-        session.rewindInFlight = true;
-        try {
+        // tryPrepare 在回调执行前同步占位并在所有拒绝/异常路径自动释放；ready 时由 module
+        // 原子完成「pending 置位 → 清排队 → 哨兵入队」，调用方不再接触重启协议状态。
+        const result = await session.restart.tryPrepare(async () => {
             // 闸门复检（Hub 已查后台任务集合）：队列非空 / 前台运行中 → 拒绝
             if (messageQueue.size() > 0) {
-                return { accepted: false, reason: 'message queue is not empty' };
+                return { ready: false, reason: 'message queue is not empty' };
             }
             if (session.running) {
-                return { accepted: false, reason: 'session is running' };
+                return { ready: false, reason: 'session is running' };
             }
 
             // 锚点复检（与 dry-run 同源；受理窗口内 transcript 可能已变）
-            const resumeAt = await findRewindAnchor(session.sessionId, workingDirectory, nativeId);
+            const resumeAt = await findRewindAnchor(sessionId, workingDirectory, nativeId);
             if (!resumeAt) {
-                return { accepted: false, reason: ANCHOR_REJECT_REASON };
+                return { ready: false, reason: ANCHOR_REJECT_REASON };
             }
 
             // 文件回滚先于截断（PoC poc8 实测：截断后被截区间的 file checkpoint 立即作废，
@@ -160,38 +147,32 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             if (restoreFiles) {
                 const query = queryControl.current;
                 if (!query) {
-                    return { accepted: false, reason: 'claude query handle unavailable for file restore' };
+                    return { ready: false, reason: 'claude query handle unavailable for file restore' };
                 }
                 try {
                     const result = await query.rewindFiles(nativeId);
                     if (!result.canRewind) {
                         return {
-                            accepted: false,
+                            ready: false,
                             reason: `file restore unavailable: ${result.error ?? 'file checkpoint missing'}`
                         };
                     }
                     filesRestored = true;
                     skippedLinks = result.skippedLinks;
                 } catch (e) {
-                    return { accepted: false, reason: `file restore failed: ${e instanceof Error ? e.message : String(e)}` };
+                    return { ready: false, reason: `file restore failed: ${e instanceof Error ? e.message : String(e)}` };
                 }
             }
 
-            // 记录待执行 rewind：launcher while 循环读到后按 kind 分派、以 resumeSessionAt 截断重启（不清 sessionId）
-            session.pendingRestart = { kind: 'rewind', nativeId, resumeAt, filesRestored, skippedLinks };
+            return {
+                ready: true,
+                request: { kind: 'rewind', nativeId, resumeAt, filesRestored, skippedLinks },
+            };
+        });
 
-            // 清空未消费排队项：丢弃项经 onBatchConsumed 通知 Hub（防 Web 悬浮条卡死，对齐 /clear 丢弃路径）
-            messageQueue.clearPending();
-
-            // 入队 isolate 哨兵：唤醒阻塞中的 nextMessage 并触发当前 query 循环退出。
-            // launcher 的 nextMessage 识别哨兵后直接丢弃（不暂存 pending、不推送 SDK）。
-            // 队列此刻已空，pushIsolateAndClear 的清队为无操作——清队语义已由 clearPending 显式表达
-            messageQueue.pushIsolateAndClear(RESTART_EXIT_SENTINEL, { permissionMode: 'default' });
-
-            return { accepted: true };
-        } finally {
-            // 统一释放占位：成功路径 pendingRestart 已置位（互斥由它接力），失败路径槽位干净可重试
-            session.rewindInFlight = false;
+        if (result === null) {
+            return { accepted: false, reason: REWIND_IN_PROGRESS_REASON };
         }
+        return result;
     });
 }

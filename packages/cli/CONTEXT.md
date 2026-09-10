@@ -28,6 +28,12 @@ _Avoid_: 直接把用户消息 uuid 当 resumeSessionAt（会保留该条导致�
 fork 的分叉基点——agent 回复消息的 nativeId，激活时直接作截断式 fork 的 resumeSessionAt（含该条），分叉会话的历史锁定在点 fork 时刻的锚点，不受 parent 后续变化影响。
 _Avoid_: 分叉点（口语）、fork 点
 
+### Query 重启
+
+**Restart module**:
+remote 模式中 Query 重启的单一状态所有者。rewind 与 output style 切换只向它提交重启意图；它统一管理异步准备占位、待执行单槽、消息队列清理与退出哨兵配对，launcher 负责消费和完成请求。
+_Avoid_: 让 handler 或 launcher 直接读写 pending / in-flight 标志，或者自行清队列并注入哨兵。
+
 ### 进程角色
 
 **Runner**:

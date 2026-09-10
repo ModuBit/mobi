@@ -253,8 +253,8 @@ export class MessageQueue<T> {
     /**
      * rewind 前清空未消费排队项（不注入新消息）：丢弃项经 onBatchConsumed 通知 Hub 标记，
      * 防 Web 悬浮条永久卡死（对齐 pushAfterClear 的丢弃通知与 markInFlight 模式）。
-     * 与 pushAfterClear 的区别：不压入任何替代消息——rewind 的「重启触发」由调用方
-     * 随后经 pushIsolateAndClear(RESTART_EXIT_SENTINEL) 的 isolate 哨兵承担。
+     * 与 pushAfterClear 的区别：不压入任何替代消息。Query restart module
+     * 负责在调用本方法后配对注入 isolate 退出哨兵。
      */
     clearPending(): void {
         const discardedLocalIds = this.queue

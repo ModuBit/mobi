@@ -22,7 +22,7 @@ import type { McpServerConfig, Settings } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode, PermissionMode } from './types';
-import type { QueryRestartRequest } from './utils/queryRestart';
+import { QueryRestartController } from './utils/queryRestart';
 import type { ForkActivationPlan } from './utils/forkActivation';
 import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
 
@@ -41,27 +41,8 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     readonly startingMode: 'local' | 'remote';
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
-    /**
-     * 重启请求单槽（深化候选④，类型见 utils/queryRestart.ts）：rewind 截断重启与
-     * output style /clear 重启共用——受理侧写（rewindHandlers / applyOutputStyleSwitch）、
-     * launcher 消费：哨兵 RESTART_EXIT_SENTINEL 唤醒 nextMessage，本槽非空则放行退轮，
-     * while 循环顶层按 kind 分派。置位即互斥；置位与哨兵入队必须在同一同步段。
-     */
-    pendingRestart: QueryRestartRequest | null = null;
-    /**
-     * 重启通道忙：槽非空（rewind 待截断 / outputStyle 待重启）或 rewind 受理中
-     * （文件回滚 await 窗口，槽尚未置位）——两个受理侧据此互斥，
-     * 挡住「clearPending 吞掉对方哨兵 / 槽位被覆盖」的竞态。见 rewindHandlers.ts
-     */
-    get restartBusy(): boolean {
-        return this.pendingRestart !== null || this.rewindInFlight;
-    }
-    /**
-     * rewind RPC 受理中占位（多端并发互斥）：rewind handler 入口在任何 await 前同步置位、
-     * finally 释放。与 pendingRestart 语义分离——本字段挡住「文件回滚耗时窗口内并发第二个
-     * rewind 覆盖单槽」的竞态。见 rewindHandlers.ts
-     */
-    rewindInFlight: boolean = false;
+    /** Query 重启状态机：隐藏 pending、异步占位、队列清理和退出哨兵配对。 */
+    readonly restart: QueryRestartController;
     localLaunchFailure: LocalLaunchFailure | null = null;
     /**
      * fork 激活计划（fork-session spec §5.2）：bootstrap 从 fork 行 metadata.forkFrom
@@ -114,6 +95,8 @@ export class Session extends AgentSessionBase<EnhancedMode> {
             effort: opts.effort,
             outputStyle: opts.outputStyle,
         });
+
+        this.restart = new QueryRestartController(opts.messageQueue);
 
         this.claudeEnvVars = opts.claudeEnvVars;
         this.claudeArgs = opts.claudeArgs;

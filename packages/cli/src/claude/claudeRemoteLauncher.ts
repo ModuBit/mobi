@@ -733,12 +733,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 logger.debug('[remote]: launch');
                 messageBuffer.addMessage('═'.repeat(40), 'status');
 
-                // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，pendingRestart{rewind} 已置位。
+                // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，restart 请求已置位。
                 // SDK 的截断由下面 claudeRemote 的 startup 预热承载（resumeSessionAt 加载到
                 // 锚点即截断，不再走空跑轮）。两段回报经 onRewindTruncated 回调移到 startup
                 // 截断后——对齐设计文档「先 CLI 截断成功，再 Hub 软删除（CLI 失败则 Hub 不动）」，
                 // 截断失败由下方 catch 补发 completed { error }。rewind 局部变量保留 resumeAt 供传参。
-                const restart = session.pendingRestart;
+                const restart = session.restart.current();
                 const rewind = restart?.kind === 'rewind' ? restart : undefined;
                 if (rewind) {
                     messageBuffer.addMessage(`Rewinding session to anchor ${rewind.resumeAt.slice(0, 8)}...`, 'status');
@@ -792,22 +792,23 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // 配对护栏（spec E1）：丢弃的 turn prompt UUID（= rewind 目标 user msg nativeId），
                         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal（refusal 处理在 T4）
                         resumeDropsTurn: rewind?.nativeId,
-                        // startup 截断完成后回报（先截断后软删除），并清 pendingRestart 槽位。
+                        // startup 截断完成后回报（先截断后软删除），并完成当前 restart 请求。
                         // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
                         onRewindTruncated: rewind ? async () => {
-                            session.pendingRestart = null;
+                            session.restart.complete(rewind);
                             await reportRewindCompletion(session.client, rewind);
                         } : undefined,
                         onRewindRefusal: rewind ? async (msg: string) => {
+                            const currentRestart = session.restart.current();
                             handleRewindRefusal({
-                                pendingRewind: session.pendingRestart?.kind === 'rewind' ? session.pendingRestart : null,
-                                // 路径 B 回退：onRewindTruncated 已清空 pendingRestart 槽位，
+                                pendingRewind: currentRestart?.kind === 'rewind' ? currentRestart : null,
+                                // 路径 B 回退：onRewindTruncated 已完成 restart 请求，
                                 // 但 rewind 局部变量仍持有受理阶段的真实 filesRestored/skippedLinks
                                 fallbackRewindData: {
                                     filesRestored: rewind.filesRestored,
                                     skippedLinks: rewind.skippedLinks,
                                 },
-                                clearPendingRewind: () => { session.pendingRestart = null },
+                                clearPendingRewind: () => { session.restart.complete(rewind) },
                                 emitRewindCompleted: (filesRestored, error, skippedLinks) =>
                                     session.client.emitRewindCompleted(filesRestored, error, skippedLinks),
                                 sendSessionEvent: (event) =>
@@ -881,8 +882,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                                 // 退出哨兵（rewind / output style 切换共用 RESTART_EXIT_SENTINEL）：
                                 // 识别后不暂存 pending、不推送 SDK（NUL 前缀串作为 prompt 会污染会话）。
-                                // 门控读「实时」session.pendingRestart——局部 rewind 是轮起快照，截断轮
-                                // 中已被 onRewindTruncated 清空，不能作判据：
+                                // 门控由 restart module 消费实时配对状态——局部 rewind 是轮起快照，
+                                // 截断轮中已被 onRewindTruncated 完成，不能作判据：
                                 // - 槽非空：受理后的待执行请求 → return null 结束本轮；rewind 槽位保留，
                                 //   下轮循环顶层读到后以 resumeSessionAt 截断重启；outputStyle 槽位即清，
                                 //   并按 /clear 语义对齐发边界事件 + 清水位 + 归零记忆（重启前），下轮循环
@@ -890,10 +891,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 // - 槽为空：本轮已执行后的残留哨兵（受理侧闸门已放行或槽位已被消费）→
                                 //   丢弃，继续等下一条用户消息，避免误触发本轮早退
                                 if (msg.isolate && msg.message === RESTART_EXIT_SENTINEL) {
-                                    const gate = session.pendingRestart;
+                                    const gate = session.restart.consumeExitSignal();
                                     if (gate) {
                                         if (gate.kind === 'outputStyle') {
-                                            session.pendingRestart = null;
                                             // /clear 语义对齐：切换同为清空上下文重启，重启前发
                                             // 边界事件（web 渲染「已重置」分隔线）+ 清水位 + 归零
                                             // 记忆——此前只有 /clear 路径做，切换后水位残留旧值
@@ -1050,13 +1050,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 截断失败（claudeRemote 抛错）：补发 completed { error } 而不发 truncated——
                     // 对齐设计文档「CLI 失败则 Hub 不动」：Hub 不软删除，Web 收到 error 终态解锁
                     // 并 toast 原因。文件回滚结果 filesRestored 在 RPC 阶段已确定（先于截断），如实携带。
-                    if (rewind && session.pendingRestart === restart) {
+                    if (rewind && session.restart.current() === restart) {
                         session.client.emitRewindCompleted(
                             rewind.filesRestored,
                             `rewind truncation failed: ${e instanceof Error ? e.message : String(e)}`,
                             rewind.skippedLinks,
                         );
-                        session.pendingRestart = null;
+                        session.restart.complete(rewind);
                     }
                     // fork 激活轮异常（resume 失败 / 进程崩溃，fork-session spec §5.3）：forkFrom
                     // 保留待重试（预检已过，重发消息重新 spawn 即重试），上报错误态供用户感知。

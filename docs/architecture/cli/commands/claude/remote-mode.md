@@ -145,6 +145,19 @@ flowchart TB
     CallRemote --> Cleanup2
 ```
 
+### Query 重启单槽
+
+rewind 和 output style 切换都需要结束当前 SDK Query，但后续语义不同：rewind 保留 native sessionId 并在下一轮传入 `resumeSessionAt`，output style 清除 sessionId，以 `/clear` 语义启动新 Query。
+
+`QueryRestartController`（`src/claude/utils/queryRestart.ts`）是这条重启协议的唯一状态所有者：
+
+1. 受理入口先占位，防止 rewind 文件恢复的 `await` 窗口被另一个重启覆盖。
+2. 准备成功后，先公开待执行请求，再清理已排队消息并注入隔离的 `RESTART_EXIT_SENTINEL`，保证哨兵被 launcher 读到时一定有配对状态。
+3. launcher 收到哨兵后，output style 请求立即完成；rewind 请求保留到截断成功、拒绝或失败后再完成。
+4. 完成操作校验请求对象身份，迟到的旧轮回调不会清除后来的新请求。
+
+handler 不再直接维护 pending / in-flight 字段，也不自行编排清队列与哨兵入队顺序。
+
 ### 退出控制
 
 | 操作 | 触发方式 | 效果 |

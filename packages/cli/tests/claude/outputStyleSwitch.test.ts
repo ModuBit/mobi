@@ -16,20 +16,21 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { applyOutputStyleSwitch } from '../../src/claude/utils/outputStyleSwitch'
-import { RESTART_EXIT_SENTINEL } from '../../src/claude/utils/queryRestart'
+import { QueryRestartController } from '../../src/claude/utils/queryRestart'
+import type { EnhancedMode } from '../../src/claude/types'
+import { MessageQueue } from '../../src/utils/MessageQueue'
 
-/** 装配纯函数依赖替身（结构化注入，无需拉起真实 Session / MessageQueue） */
-function setup(running = false, opts: { restartBusy?: boolean } = {}) {
+/** 用真实本地队列装配 restart module，只替换 output style 的领域副作用。 */
+function setup(running = false) {
+    const queue = new MessageQueue<EnhancedMode>(message => JSON.stringify(message))
+    const restart = new QueryRestartController(queue)
     const deps = {
         running,
-        restartBusy: opts.restartBusy ?? false,
+        restart,
         setOutputStyle: vi.fn(),
         clearSessionId: vi.fn(),
-        markPendingRestart: vi.fn(),
-        clearPending: vi.fn(),
-        pushIsolateAndClear: vi.fn(),
     }
-    return deps
+    return { deps, queue, restart }
 }
 
 /**
@@ -38,7 +39,7 @@ function setup(running = false, opts: { restartBusy?: boolean } = {}) {
  */
 describe('applyOutputStyleSwitch', () => {
     it('running 中 → 拒绝，所有副作用均未触发', () => {
-        const deps = setup(true)
+        const { deps, restart } = setup(true)
 
         const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
@@ -46,15 +47,15 @@ describe('applyOutputStyleSwitch', () => {
         expect(result.reason).toContain('running')
         expect(deps.setOutputStyle).not.toHaveBeenCalled()
         expect(deps.clearSessionId).not.toHaveBeenCalled()
-        expect(deps.markPendingRestart).not.toHaveBeenCalled()
-        expect(deps.clearPending).not.toHaveBeenCalled()
-        expect(deps.pushIsolateAndClear).not.toHaveBeenCalled()
+        expect(restart.current()).toBeNull()
     })
 
-    it('重启通道占用中（rewind 待截断 / rewindInFlight）→ 拒绝且五步副作用零调用', () => {
+    it('重启通道占用中 → 拒绝且不执行 output style 副作用', () => {
         // rewind 受理后哨兵消费前的窗口内受理切换会 clearPending 吞掉对方哨兵，
         // 产生「已清 sessionId + 残留对方请求」坏组合——拒绝优于清位
-        const deps = setup(false, { restartBusy: true });
+        const { deps, restart } = setup()
+        const pending = { kind: 'rewind', nativeId: 'u1', resumeAt: 'a1', filesRestored: false } as const
+        expect(restart.trySchedule(pending)).toBe(true)
 
         const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
@@ -62,41 +63,28 @@ describe('applyOutputStyleSwitch', () => {
         expect(result.reason).toContain('rewind')
         expect(deps.setOutputStyle).not.toHaveBeenCalled()
         expect(deps.clearSessionId).not.toHaveBeenCalled()
-        expect(deps.markPendingRestart).not.toHaveBeenCalled()
-        expect(deps.clearPending).not.toHaveBeenCalled()
-        expect(deps.pushIsolateAndClear).not.toHaveBeenCalled()
+        expect(restart.current()).toBe(pending)
     })
 
-    it('idle → 受理，且置位先于哨兵入队', () => {
-        const deps = setup(false)
+    it('idle → 受理，设置 style 并向 restart module 提交请求', () => {
+        const { deps, queue, restart } = setup()
 
         const result = applyOutputStyleSwitch(deps, 'Explanatory')
 
         expect(result.accepted).toBe(true)
         expect(deps.setOutputStyle).toHaveBeenCalledWith('Explanatory')
         expect(deps.clearSessionId).toHaveBeenCalledTimes(1)
-        expect(deps.clearPending).toHaveBeenCalledTimes(1)
-        expect(deps.markPendingRestart).toHaveBeenCalledTimes(1)
-        expect(deps.pushIsolateAndClear).toHaveBeenCalledWith(
-            RESTART_EXIT_SENTINEL,
-            { permissionMode: 'default' },
-        )
-        // 唯一真时序约束：markPendingRestart 置位必须先于哨兵入队（launcher 消费哨兵时读位，
-        // 哨兵先到而标志后置会被判 stale 白耗一次哨兵）。其余三步顺序无语义，不锁定
-        expect(vi.mocked(deps.markPendingRestart).mock.invocationCallOrder[0])
-            .toBeLessThan(vi.mocked(deps.pushIsolateAndClear).mock.invocationCallOrder[0])
+        expect(restart.current()).toEqual({ kind: 'outputStyle' })
+        expect(queue.size()).toBe(1)
     })
 
     it('同值切换也受理（幂等重启是用户明确请求的 /clear 语义）', () => {
-        const deps = setup(false)
+        const { deps, restart } = setup()
 
         const result = applyOutputStyleSwitch(deps, 'default')
 
         expect(result.accepted).toBe(true)
         expect(deps.setOutputStyle).toHaveBeenCalledWith('default')
-        expect(deps.pushIsolateAndClear).toHaveBeenCalledWith(
-            RESTART_EXIT_SENTINEL,
-            { permissionMode: 'default' },
-        )
+        expect(restart.current()).toEqual({ kind: 'outputStyle' })
     })
 })
