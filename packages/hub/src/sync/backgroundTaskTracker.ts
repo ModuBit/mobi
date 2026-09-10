@@ -17,8 +17,8 @@
 /**
  * 活跃后台任务集合——rewind 闸门的权威数据源。
  *
- * 写侧：CLI socket handler 解析 background_tasks_changed 后整体替换（replace 语义，
- * SDK 权威集合，见 sessionHandlers）；读侧：rewind API 路由在受理前查询
+ * 写侧：SessionMessageRuntimeProjector 解析 background_tasks_changed 后整体替换
+ * （replace 语义，SDK 权威集合）；读侧：rewind API 路由在受理前查询
  * 「该会话是否有在途后台任务」（前台 running 由 CLI 侧闸门把守）。
  *
  * 已知限制（设计接受，不设防）：CLI 断线重连窗口内集合可能失真——

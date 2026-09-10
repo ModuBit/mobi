@@ -277,7 +277,7 @@ function queryByPosition(
 
 /** 绑定用户消息的 native 锚点到 metadata（push 时上报）。只补 nativeId 空缺的行——幂等，
  *  重复上报/重发不覆盖；已有 nativeSessionId 保留（message 事件可能先写入）。返回补写后的行
- *  （供 handler 广播消息更新，Web 端据此刷新 rewind 判据——否则补写只落库、Web 端已渲染的行
+ *  （供事实处理 module 发布消息更新，Web 端据此刷新 rewind 判据——否则补写只落库、Web 端已渲染的行
  *  不更新，hover 不显 rewind icon，刷新才见）。 */
 export function bindNativeIds(
     db: Database,
@@ -326,7 +326,7 @@ export function bindNativeIds(
 
 /** 标记 CC 已接收（isReplay 回显）。按 native_id 生成列索引查询，first-write-wins：
  *  重复 ack / 无此 nativeId 行返回空数组。合并批 1:N（多行共享同一 nativeId）全部命中，
- *  返回全部更新后的行（供 handler 逐行广播 Web 刷新 rewind 判据——只广播一行会让批内
+ *  返回全部更新后的行（供事实处理 module 逐行发布，Web 刷新 rewind 判据——只广播一行会让批内
  *  其余行的 nativeAckAt 不实时更新，rewind 入口「刷新才见」）。ackAt 落 metadata.nativeAckAt
  *  （与 nativeId/nativeSessionId 同族 JSON）。 */
 export function markMessagesAcked(
@@ -350,7 +350,7 @@ export function markMessagesAcked(
 
 /** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id。幂等（重复上报无行可补）。
  *  含误补旧行（/clear 前消息）——设计如此：deploy 后存量自愈靠它，误判可 rewind 的行由 CLI 预检拒绝。
- *  返回补写后的行（供 handler 广播消息更新，Web 端刷新 rewind 判据）。 */
+ *  返回补写后的行（供事实处理 module 发布消息更新，Web 端刷新 rewind 判据）。 */
 export function attachNativeSessionId(
     db: Database,
     sessionId: string,
@@ -466,7 +466,7 @@ export function advanceMessagesAcked(
  *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4，含 refused)
  *  可从 queued/pushed/acked/processing 推进（withdrawn 走同档——queued/pushed/acked/processing 可撤回，
  *  已终态行不可），但已处终态(含 withdrawn)不被覆盖、processing 不回退——
- *  乱序帧安全。单语句 UPDATE RETURNING 原子推进，返回实际推进行 id（供 handler 回读行广播）。 */
+ *  乱序帧安全。单语句 UPDATE RETURNING 原子推进，返回实际推进行 id（供事实处理 module 回读并发布）。 */
 export function advanceMessagesLifecycle(
     db: Database,
     sessionId: string,
@@ -502,8 +502,8 @@ export function getMessagesByIds(
 
 /** 按 nativeId 定位未删批首行（LIMIT 1，合并批 1:N——collectBatch 可把多条消息并成一 push
  *  共享 nativeId，批首行 seq 即最小 seq）；软删除行不可见——撤回/rewind 已截断的行查不到，
- *  天然幂等（重复 withdrawn fact 不重复受理）。撤回以此定位目标：唯一调用方
- *  （processWithdrawnFact）只用首行的 seq/localId/content，软删除自最小 seq 起且无上界，
+ *  天然幂等（重复 withdrawn fact 不重复受理）。撤回以此定位目标：事实处理 module
+ *  只用首行的 seq/localId/content，软删除自最小 seq 起且无上界，
  *  单行定位不改变批语义（I4）。 */
 export function getMessagesByNativeId(
     db: Database,

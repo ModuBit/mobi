@@ -13,7 +13,10 @@
 | `src/index.ts` | 主入口，组件组装 |
 | `src/sync/syncEngine.ts` | 同步引擎 |
 | `src/sync/snapshotSync.ts` | 流式快照同步（完整基线、版本、订阅游标与连接生命周期） |
+| `src/sync/sessionMessageRuntimeProjector.ts` | 持久化消息 → runtimeState 投影（todos/tasks/team/background tasks） |
+| `src/sync/sessionMessageFactsProcessor.ts` | CLI 消息事实处理（字段收窄、幂等/单调持久化、领域 publication） |
 | `src/store/index.ts` | SQLite 存储层（WAL） |
+| `src/store/sessionFork.ts` | 分叉创建领域模块（资格、复制范围、native id 与建行事务） |
 | `src/store/projects.ts` | 项目实体存储（「项目实体化」，会话按项目 / 「最近」组织） |
 | `src/web/routes/projects.ts` | 项目 Web API（/api/projects） |
 | `src/socket/server.ts` | Socket.IO 服务器 |

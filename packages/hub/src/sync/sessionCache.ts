@@ -16,112 +16,13 @@
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
 import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
-import type { TaskItem } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { hubLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
 import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
 import { RuntimeStateStore } from './runtimeStateStore'
-import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
-import { extractTodoWriteTodosFromMessageContent } from './todos'
-import {
-    extractTeamStateFromMessageContent,
-    extractTeamMemberCompletionFromMessageContent,
-    applyTeamStateDelta,
-    handleTeamSessionEnd,
-} from './teams'
-
-/**
- * 从消息中回填 runtimeState（todos、teamState 等）
- *
- * 用于历史数据迁移或按需恢复。
- * 注意：当前 runtimeState 已在消息处理时实时持久化，此函数预留用于未来的迁移/恢复场景。
- *
- * @param messages 消息列表
- * @param existingRuntimeState 现有的 runtimeState（用于增量合并）
- * @param sessionId mobi sessionId，用于推导隐式团队名（session-XXXXXXXX），
- *   与 live 路径保持一致；省略时团队名回退为空串
- * @returns 回填后的 runtimeState，如果没有数据则返回 null
- */
-export function backfillRuntimeStateFromMessages(
-    messages: Array<{ content: unknown }>,
-    existingRuntimeState?: RuntimeState,
-    sessionId?: string
-): RuntimeState | null {
-    const runtimeState: RuntimeState = {}
-
-    // 提取 todos（从最新的消息开始，找到第一个有效的）
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-        const message = messages[i]
-        const todos = extractTodoWriteTodosFromMessageContent(message.content)
-        if (todos) {
-            // 全部完成的 todos 自动清除（与实时处理逻辑一致）
-            if (!todos.every(t => t.status === 'completed')) {
-                runtimeState.todos = todos
-            }
-            break
-        }
-    }
-
-    // 交错提取 tasks 和 teamState，以便在创建 task 时打上 team 标签
-    const pendingMap = new PendingTaskMap()
-    let tasks: TaskItem[] | undefined
-    let teamState = existingRuntimeState?.teamState ?? null
-
-    for (const message of messages) {
-        // 先处理 teamState（确认当前是否在 team 上下文中）
-        const teamDelta = extractTeamStateFromMessageContent(message.content)
-        if (teamDelta) {
-            const beforeTeamName = teamState ? (teamState as { teamName: string }).teamName : null
-            teamState = applyTeamStateDelta(teamState, teamDelta, sessionId)
-            // TeamDelete 时，完成该 team 创建的 tasks
-            if (teamDelta._action === 'delete' && beforeTeamName && tasks) {
-                tasks = tasks.map(t =>
-                    t.metadata?._teamName === beforeTeamName
-                        && t.status !== 'completed' && t.status !== 'deleted'
-                        ? { ...t, status: 'completed' as const }
-                        : t
-                )
-            }
-        }
-
-        // tool_result 消费：teammate 完成出口（与 live 路径 sessionHandlers 同款，
-        // 保证清理后重放按序收敛——tool_use 重建、tool_result 再标记完成并自动清空）
-        const teamCompletionDelta = extractTeamMemberCompletionFromMessageContent(message.content, teamState)
-        if (teamCompletionDelta) {
-            teamState = applyTeamStateDelta(teamState, teamCompletionDelta, sessionId)
-        }
-
-        // 再处理 tasks（在已知 team 上下文的情况下）
-        const deltas = extractTaskDeltasFromMessageContent(message.content, pendingMap)
-        for (const delta of deltas) {
-            tasks = applyTaskDelta(tasks, delta)
-            // 为新建的 task 打上当前 team 标签
-            if (delta.type === 'create' && teamState) {
-                const currentTeamName = (teamState as { teamName: string }).teamName
-                tasks = tasks!.map(t =>
-                    t.id === delta.task.id
-                        ? { ...t, metadata: { ...t.metadata, _teamName: currentTeamName } }
-                        : t
-                )
-            }
-        }
-    }
-    // 全部完成的 tasks 自动清除
-    if (tasks?.every(t => t.status === 'completed' || t.status === 'deleted')) {
-        tasks = undefined
-    }
-    if (tasks) {
-        runtimeState.tasks = tasks
-    }
-
-    if (teamState) {
-        runtimeState.teamState = teamState
-    }
-
-    return Object.keys(runtimeState).length > 0 ? runtimeState : null
-}
+import { applyTeamStateDelta, handleTeamSessionEnd } from './teams'
 
 export class SessionCache {
     /** 会话缓存：sessionId -> Session */

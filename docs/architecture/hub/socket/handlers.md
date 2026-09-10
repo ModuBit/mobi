@@ -118,8 +118,8 @@ socket.on('disconnect', () => {
 | `update-metadata` | 请求/响应 | 乐观锁更新 metadata | `session-update` → 同房间 | onWebappEvent |
 | `update-state` | 请求/响应 | 乐观锁更新 agentState | `session-update` → 同房间 | onWebappEvent |
 | `session-alive` | 单向 | — | — | onSessionAlive |
-| `session-end` | 单向 | force-push 排队消息（markMessagesPushed） | — | onSessionEnd + onWebappEvent（messages-submitted SSE） |
-| `messages-facts` | 单向 | 按 fact kind 分发（见下） | 补写/推进行 `session-update` → 同房间 | onWebappEvent |
+| `session-end` | 单向 | 经消息事实 module force-push 排队消息 | — | onSessionEnd + onWebappEvent（messages-submitted SSE） |
+| `messages-facts` | 单向 | 交给消息事实 module（见下） | 存储行 publication → `session-update` | publication → onWebappEvent |
 
 ### session-message：消息接收
 
@@ -132,10 +132,9 @@ flowchart TB
     Auth -->|失败| Error["emitAccessError"]
     Auth -->|通过| Parse["解析 message content<br/>（JSON 字符串 → 对象）"]
     Parse --> Store["store.messages.addMessage<br/>存入数据库"]
-    Store --> Extract["提取 runtimeState<br/>todos / tasks / teamState / backgroundTasks"]
-    Extract -->|有更新| UpdateRS["store.sessions.setRuntimeState"]
-    UpdateRS --> WebEvent1["onWebappEvent<br/>session-updated"]
-    Extract -->|无更新| Broadcast
+    Store --> Project["SessionMessageRuntimeProjector<br/>投影 runtimeState"]
+    Project -->|有发布快照| WebEvent1["onWebappEvent<br/>session-updated"]
+    Project -->|无更新| Broadcast
     WebEvent1 --> Broadcast["socket.to room<br/>emit update"]
     Broadcast --> WebEvent2["onWebappEvent<br/>message-received"]
 ```
@@ -144,7 +143,7 @@ flowchart TB
 1. `socket.to(room).emit('session-update', ...)` — 广播给同房间的其他 CLI 客户端
 2. `onWebappEvent(...)` — 转发给 SyncEngine，由 SyncEngine 通过 SSE 推送给 Web 端
 
-**runtimeState 提取**：从消息内容中自动提取 todos、tasks、teamState 和 backgroundTasks，合并到 session 的 runtimeState 中。
+**runtimeState 投影**：Socket adapter 在消息落库后调用 `SessionMessageRuntimeProjector.project()`。该 module 持有连接级的跨消息配对状态，从消息中提取 todos、tasks、teamState 和 backgroundTasks，按固定顺序合并并持久化。它返回需要发布的状态快照，但不依赖 Socket 或 SSE；后台任务全部终态时，返回顺序为「含终态」→「已清空」的两个快照。
 
 ### update-metadata / update-state：状态更新
 
@@ -173,25 +172,29 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 两者都先做访问控制，不合法则返回错误。
 
-**session-end force-push**：CLI 离线时，把仍排队的本地 user 消息（`lifecycle = 'queued'`）全部 push，防止悬浮条卡死。通过 `getUnsubmittedLocalMessages` + `markMessagesPushed` 实现，成功后转发 `messages-submitted` SSE 事件。
+**session-end force-push**：CLI 离线时，把仍排队的本地 user 消息（`lifecycle = 'queued'`）全部 push，防止悬浮条卡死。handler 查询待提交 localId 后，合成一个 `pushed` fact 交给 `SessionMessageFactsProcessor`，因此正常上报和结束补偿共用同一套幂等落库与 publication 规则。
 
 ### messages-facts：统一消息事实（CLI→Hub 唯一受理通道）
 
-所有消息事实上报收敛为单一事件 `messages-facts`（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型）：批内多 kind fact 一次往返，handler 逐项分发。原 4 个独立 socket 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）已随 #54 收敛下线（Hub 与 shared 协议中均已删除），语义由各 fact kind 承载。
+所有消息事实上报收敛为单一事件 `messages-facts`（协议载荷 `{ sid, facts: MessageFact[] }`）：批内多种 fact 一次往返。原 4 个独立 socket 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）已随 #54 下线，语义由各 fact kind 承载。
 
-**fact 分发的共享处理函数**：
+规则入口是 [`SessionMessageFactsProcessor`](/packages/hub/src/sync/sessionMessageFactsProcessor.ts)。它按 CLI Socket 连接实例化，公开两个操作：
 
-| 函数 | fact kind | 行为 |
-|------|------|------|
-| `broadcastStoredMessages(sid, msgs)` | （公共出口） | 落库行逐行推 Web：`session-update` new-message（seq 显式收窄）+ SSE `message-received`，Web 据此刷新 rewind 判据与 lifecycle 展示 |
-| `processSubmitted(sid, localIds, pushedAt)` | `pushed` | `markMessagesPushed`（queued→pushed，first-write-wins），落盘成功后转发 SSE `messages-submitted`（防 live/refresh 状态分叉） |
-| `processBound(sid, bindings)` | `bound` | 逐项校验（null/缺字段/空串丢弃防空串占坑）→ `bindNativeIds` 幂等落库，补写行广播 |
-| `processAcked(sid, nativeId, ackedAt)` | `acked` | 先 `advanceMessagesAcked` 推进 lifecycle='acked' 再 `markMessagesAcked` 写 nativeAckAt（快照携带推进后值，共一时间戳），推进行逐行广播（合并批 1:N） |
-| `processAttached(sid, nativeSessionId)` | `attached` | `attachNativeSessionId` 补写该会话缺 nativeSessionId 的行（幂等），补写行广播 |
-| `processLifecycleFact(sid, nativeId, state, at)` | `lifecycle` | `advanceMessagesLifecycle` 单调推进（queued<pushed<acked<processing<终态（含 refused），已处终态/withdrawn 不被覆盖、processing 不回退；fact.terminalReason 不落库，web footer 走 CC 侧消息 metadata）→ `getMessagesByIds` 回读推进后的行 → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费）。无命中（乱序/重复帧）静默返回 |
-| `processWithdrawnFact(sid, nativeId, at)` | `withdrawn`（批次 A） | 按 nativeId 定位行 → `softDeleteMessagesFrom(seq)`（无上界，兜住竞态行）→ `advanceMessagesLifecycle` 留档 `'withdrawn'` → SSE `message-withdrawn`（localId/blocks/originalText 供 web 清窗 + 回填 composer）。定位失败（行不存在/已软删）静默忽略：撤回尽力而为，失败=消息残留 |
+- `process({ sessionId, facts })`：将不可信 fact 字段逐项收窄，执行幂等/单调持久化，返回按 fact 顺序排列的领域 publication。
+- `enrichMetadata(sessionId, metadata)`：使用本连接已确认的 `attached.nativeSessionId` 补齐后续合成消息；显式 metadata 优先，且不读取可能属于上一时代的 session metadata。
 
-`fact.at` 缺省取 hub 接收时刻（每批一个 now，批内共时）。终态信号的 CLI 侧来源见 [message-lifecycle.md](../../message-lifecycle.md)「终态接入：command_lifecycle 帧拦截」。
+module 不依赖 Socket 或 SSE。handler 只校验批次外层和会话访问权，再将 publication 翻译到传输层：`stored-messages` 逐行变为 room `session-update` 与 SSE `message-received`，另外两种 publication（`messages-submitted`、`message-withdrawn`）直接进入 `onWebappEvent`。
+
+| fact kind | module 内规则 |
+|------|------|
+| `pushed` | `markMessagesPushed`（queued→pushed，first-write-wins）；发布存储层地板修正后的实际 `positionAt`，避免 live/refresh 排序分叉 |
+| `bound` | 校验 localId/nativeId/nativeSessionId 非空；`bindNativeIds` first-write-wins，发布实际补写行 |
+| `attached` | 保存连接级 native session 上下文；幂等补写历史空缺行，并用 `backfill: true` 发布，消费端不得把窗口外历史行追加成新气泡 |
+| `acked` | 用同一时刻先推进 lifecycle，再写 nativeAckAt；取两次写入命中 id 的并集回读并发布，因此任一写有增量都不会漏通知 |
+| `lifecycle` | 仅接收协议枚举字符串；单调推进，重复/乱序无命中时静默；`processing` 不保存临时 reason，终态才把非空 terminalReason 写入本次命中行 |
+| `withdrawn` | 先定位未删批首行；锚点已终态或其后仍有 queued 消息时拒绝连带删除，否则从锚点起软删除、留档 withdrawn，并发布 composer 回填所需的 localId/blocks/originalText |
+
+`fact.at` 缺省取 Hub 接收时刻，而且同一批只取一次 `now`，所以缺省时间在批内一致。终态信号的 CLI 侧来源见 [message-lifecycle.md](../../message-lifecycle.md)「终态接入：command_lifecycle 帧拦截」。
 
 ---
 

@@ -21,7 +21,7 @@ _Avoid_: message（与 native transcript entry 混用）
 ### 分叉
 
 **分叉会话**:
-从 parent 会话某条 agent 回复（result）分叉出的独立会话行：建行时复制锚点（含）之前的消息行，激活后拥有自己的 native session，与 parent 互相独立。
+从 parent 会话某条 agent 回复分叉出的独立会话行：建行时复制锚点所属 turn（必要时延伸到该 turn 的 result 行），激活后拥有自己的 native session，与 parent 互相独立。
 _Avoid_: fork 会话（口语可，正式文档用「分叉会话」）
 
 **parent 会话**:
@@ -32,8 +32,20 @@ _Avoid_: 源会话
 分叉会话已建行（含复制消息行与预生成 native id）但 CC transcript 尚未物化；用户发出首条消息时激活。放弃 = 删除该会话行。
 _Avoid_: 空会话、pending fork（内部代号可用）
 
+**分叉创建**:
+`SessionForkStore.createFork(parentSessionId, anchorNativeId)` 是创建规则的权威入口：模块自行校验 parent 与锚点资格、解释上下文边界和 turn 范围、生成 native id，并在单事务中建行和复制消息。`SyncEngine` 只负责 namespace 访问协调与成功后的缓存/SSE 衔接。
+_Avoid_: 由调用方传入 parent 行、turnStartSeq 或预生成 native id（会绕开分叉资格与范围规则）
+
 ### 流式消息同步
 
 **快照同步**:
 agent 回复生成期间，CLI、Hub 与 Web 之间传递并衔接当前消息内容的同步过程。完整快照是可独立解释的版本基线，快照增量只描述相对某个基线的后续变化。
 _Avoid_: 消息同步（范围过宽）、流式转发（忽略基线与追赶语义）
+
+**运行状态投影**:
+Hub 将已持久化的消息内容按到达顺序归约为 `runtimeState`（todos、tasks、teamState、backgroundTasks）的过程。`SessionMessageRuntimeProjector` 是规则、跨消息配对状态和持久化顺序的权威入口；Socket handler 对这部分只负责校验、鉴权、调用与发布。
+_Avoid_: 重建完整消息（投影只生成当前摘要）、在 Socket handler 内直接合并 runtimeState
+
+**消息事实处理**:
+Hub 对 CLI 上报的 `pushed`、`bound`、`attached`、`acked`、`lifecycle`、`withdrawn` 事实做字段收窄、幂等或单调落库，并生成领域 publication 的过程。`SessionMessageFactsProcessor` 是这些规则及连接级 native session 上下文的权威入口；Socket handler 只校验批次外层与访问权，并把 publication 翻译成 room / SSE 通知。
+_Avoid_: 在 Socket handler 内按 fact kind 直接写库、把 Socket/SSE 对象传入事实处理模块

@@ -203,22 +203,19 @@ describe('SyncEngine.forkSession', () => {
     test('fork 行不继承 parent 的 contextBoundarySeq（指针按 fork 自身行回填）', () => {
         const h = makeEngine()
         try {
-            const { parent, anchor } = seedParent(h)
+            const { parent } = seedParent(h)
             // parent 有边界指针（数值来自 parent 的 seq 序列，对 fork 会话无意义）
             h.store.messages.addMessage(parent.id, compactBoundary())
             h.store.contextBoundary.advance(parent.id, h.store.messages.getMaxSeq(parent.id))
-            expect(h.store.contextBoundary.resolve(parent.id)).toBeGreaterThan(anchor.seq - 1)
+            h.store.messages.addMessage(parent.id, userMsg('边界后问题'), 'l-after')
+            h.store.messages.addMessage(
+                parent.id, agentResult(), null, 'persistent',
+                { nativeId: 'after-boundary-anchor', nativeSessionId: 'parent-native-1' },
+            )
 
-            // turn 起点即锚点所在 turn 的 user 行（seq2），不受边界行（seq4，在锚点后）影响——
-            // 但锚点 seq3 <= 指针 seq4 会先被拒；直接在 store 层落 fork 后断言指针字段不残留
-            const forkNativeId = 'fork-native-1'
-            const forkResult = h.store.sessionFork.forkSessionAtAnchor({
-                parent: h.store.sessions.getSession(parent.id)!,
-                anchor,
-                turnStartSeq: 2,
-                forkNativeId,
-                parentNativeId: 'parent-native-1',
-            })
+            const forkResult = h.engine.forkSession(parent.id, 'after-boundary-anchor', 'default')
+            expect(forkResult.ok).toBe(true)
+            if (!forkResult.ok) return
             const raw = h.store.sessions.getSession(forkResult.sessionId)!.metadata as Record<string, unknown>
             expect(raw).not.toHaveProperty('contextBoundarySeq')
             // fork 会话自身无边界行 → resolve 回填为 0

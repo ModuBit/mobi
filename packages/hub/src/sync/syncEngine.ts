@@ -15,10 +15,10 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, unwrapRoleWrappedRecordEnvelope, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
-import { randomUUID } from 'node:crypto'
+import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
+import type { ForkCreationFailureReason } from '../store/sessionFork'
 import type { ProjectSessionsResult } from '../store/sessions'
 import { RewindDeleteBoundTracker } from './rewindDeleteBoundTracker'
 import type { SessionFactsSink } from './sessionFacts'
@@ -77,15 +77,8 @@ export type ForkSessionResult =
     | { ok: true; sessionId: string }
     | {
         ok: false
-        reason:
-        | 'session-not-found'        // parent 会话不存在（含删除中/已删）
-        | 'access-denied'            // parent 会话跨 namespace
-        | 'anchor-not-found'         // 锚点行不存在或不属于该会话
-        | 'anchor-not-agent'          // 锚点不是 agent 回复行（直调 API 防线，spec §2）
-        | 'anchor-before-boundary'   // 锚点不在边界后（compact/clear 之前，spec §2）
-        | 'turn-start-not-found'     // 锚点所在 turn 起点找不到（理论不可达，防御）
-        | 'parent-native-missing'    // parent 无 nativeSessionId（激活无 resumeToken）
-        | 'fork-of-fork-forbidden'   // parent 自身是分叉会话（spec §2：分叉会话禁止再 fork，服务端兜底）
+        /** access-denied 属于引擎的 namespace 协调；其余资格失败由 SessionForkStore 定义。 */
+        reason: 'access-denied' | ForkCreationFailureReason
     }
 
 /**
@@ -483,8 +476,8 @@ export class SyncEngine {
 
     /**
      * fork 会话创建（web 点 fork → 建行 + 复制锚点 turn + 溯源消息，fork-session spec §5.1）。
-     * 校验（锚点存在/归属/边界后、turn 起点）与建行事务分离但全同步执行（bun:sqlite 同步 API，
-     * JS 单线程内无交错窗口）。成功后 refreshSession 使 fork 行进缓存并发 session-added SSE，
+     * namespace 访问协调留在引擎；锚点资格、复制范围与原子建行由 sessionFork module 收口。
+     * 成功后 refreshSession 使 fork 行进缓存并发 session-added SSE，
      * web 列表即时出现「待激活」项。CLI 离线时点 fork 允许（复制是 hub 侧动作）。
      */
     forkSession(sessionId: string, anchorNativeId: string, namespace: string): ForkSessionResult {
@@ -493,56 +486,8 @@ export class SyncEngine {
             return { ok: false, reason: access.reason === 'access-denied' ? 'access-denied' : 'session-not-found' }
         }
 
-        // parent 无 nativeSessionId 时激活无 resumeToken 可用，fork 无意义（防患于未然）
-        const parentNativeId = access.session.metadata?.nativeSessionId
-        if (!parentNativeId) {
-            return { ok: false, reason: 'parent-native-missing' }
-        }
-
-        // 分叉会话禁止再 fork（spec §2）：web 入口隐藏之外的服务端兜底（直调 API 防线）
-        if (access.session.metadata?.forkedFrom) {
-            return { ok: false, reason: 'fork-of-fork-forbidden' }
-        }
-
-        // 锚点行存在且属于该会话（getMessagesByNativeId 会话内查询天然限定归属；软删行不可见）
-        const anchorRows = this.store.messages.getMessagesByNativeId(sessionId, anchorNativeId)
-        if (anchorRows.length === 0) {
-            return { ok: false, reason: 'anchor-not-found' }
-        }
-        const anchor = anchorRows[0]
-
-        // 锚点必须是 agent 回复行（spec §2「任意历史轮次的 result」）——web 入口只挂 agent
-        // 回复落点，此处是直调 API 防线：user/事件行的 nativeId（尤其合并批 1:N 共享时取批首行）
-        // 会让 [turnStart..anchor] 切割落在批中间，产出语义不完整的 fork
-        const anchorRecord = unwrapRoleWrappedRecordEnvelope(anchor.content)
-        if (!anchorRecord || anchorRecord.role !== 'agent') {
-            return { ok: false, reason: 'anchor-not-agent' }
-        }
-
-        // 边界判据（fork/rewind 入口共用）：seq <= contextBoundarySeq = 边界之前，不可 fork（spec §2）
-        const boundarySeq = this.store.contextBoundary.resolve(sessionId)
-        if (anchor.seq <= boundarySeq) {
-            return { ok: false, reason: 'anchor-before-boundary' }
-        }
-
-        // 锚点所在 turn 起点（从锚点向 seq 下方找最近 isTurnStart；找不到 = 理论不可达，防御拒绝）
-        const turnStartSeq = this.store.sessionFork.findTurnStartSeq(sessionId, anchor.seq)
-        if (turnStartSeq === null) {
-            return { ok: false, reason: 'turn-start-not-found' }
-        }
-
-        const parent = this.store.sessions.getSession(sessionId)
-        if (!parent) {
-            return { ok: false, reason: 'session-not-found' }
-        }
-
-        const result = this.store.sessionFork.forkSessionAtAnchor({
-            parent,
-            anchor,
-            turnStartSeq,
-            forkNativeId: randomUUID(),
-            parentNativeId,
-        })
+        const result = this.store.sessionFork.createFork(sessionId, anchorNativeId)
+        if (!result.ok) return result
 
         // fork 行进内存缓存（首次新增触发 session-added SSE）
         this.sessionCache.refreshSession(result.sessionId)

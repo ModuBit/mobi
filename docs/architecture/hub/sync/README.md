@@ -156,6 +156,8 @@ flowchart LR
 | **[MessageService](./message-service)** | 消息服务，处理消息分页和发送 |
 | **[RpcGateway](./rpc-gateway)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
 | **[Snapshot Delta 协议](./snapshot-delta.md)** | 流式消息增量传输：拼接器缓存 + SSE 转发游标 + 重基线/生命周期清理 |
+| **SessionMessageRuntimeProjector** | 已持久化消息 → runtimeState 的连接级投影；封装跨消息配对、顺序合并、自动清理与持久化 |
+| **SessionMessageFactsProcessor** | CLI 消息事实处理；封装不可信字段收窄、幂等/单调落库、连接级 native session 上下文并返回领域 publication |
 
 ## 初始化流程
 
@@ -256,6 +258,8 @@ packages/hub/src/sync/
 ├── machineCache.ts     # 机器缓存
 ├── projectCache.ts     # 项目缓存（CRUD + project-* 事件）
 ├── messageService.ts   # 消息服务
+├── sessionMessageRuntimeProjector.ts # 持久化消息 → runtimeState 投影
+├── sessionMessageFactsProcessor.ts # CLI 消息事实 → 持久化 + 领域 publication
 ├── rpcGateway.ts       # RPC 网关
 ├── aliveTime.ts        # 活跃时间计算
 ├── backgroundTasks.ts  # 后台任务增量提取与应用 + background_tasks_changed 活跃集合解析

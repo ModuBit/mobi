@@ -19,10 +19,10 @@ import { randomUUID } from 'node:crypto'
 
 import { MessageContentSchema, MetadataSchema, isObject, sessionOpenLink, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
 
-import { isContextBoundaryContent } from './messages'
-import { CONTEXT_BOUNDARY_SEQ_KEY } from './contextBoundary'
+import { getMessagesByNativeId, isContextBoundaryContent } from './messages'
+import { CONTEXT_BOUNDARY_SEQ_KEY, resolveContextBoundarySeq } from './contextBoundary'
 import { safeJsonParse } from './json'
-import { casUpdateSessionMetadataBestEffort } from './sessions'
+import { casUpdateSessionMetadataBestEffort, getSession } from './sessions'
 import type { StoredMessage, StoredSession } from './types'
 
 /**
@@ -66,7 +66,7 @@ export function isTurnResultContent(content: unknown): boolean {
  *
  * ⚠️ 扫描只看主链 persistent 行（与 findTurnStartSeq 同口径）——sidechain / 非 persistent
  * 行不参与 result 定位判定，但不代表它们不被复制：复制按 [turnStart..终点] 的 seq 范围
- * 整段截取（见 forkSessionAtAnchor），锚点与 result 之间夹带的 sidechain 行照常随行，
+ * 整段截取（见 insertForkAtAnchor），锚点与 result 之间夹带的 sidechain 行照常随行，
  * 侧链嵌套引用随整 turn 切割保持闭合。
  *
  * 向下扫到下一个 turn 起点前（不跨 turn），命中 result 行即返回其 seq；
@@ -91,7 +91,7 @@ function findTurnEndSeq(db: Database, sessionId: string, anchorSeq: number): num
  *  sidechain 行不参与判定——侧链可能嵌 user 信封，但 turn 归组只看主链（与 web trimByTurnBoundary 同前提：
  *  sidechain 全部落在 user turn 之内不跨 turn）。找不到返回 null（理论不可达：任何锚点下方必有 user 或边界）。
  *  iterate 流式逐行判定、命中即止——行 content 可达数十 KB，.all() 会把整段范围物化进内存。 */
-export function findTurnStartSeq(db: Database, sessionId: string, upToSeq: number): number | null {
+function findTurnStartSeq(db: Database, sessionId: string, upToSeq: number): number | null {
     const rows = db.prepare(
         `SELECT seq, content FROM messages
          WHERE session_id = ? AND seq <= ? AND deleted_at IS NULL
@@ -125,24 +125,78 @@ export function resolveSessionTitle(metadata: unknown, sessionId: string): strin
     return sessionId.slice(0, 8)
 }
 
-export interface ForkSessionAtAnchorParams {
+interface InsertForkAtAnchorParams {
     /** parent 会话行（含 metadata / runtimeState，作为配置快照继承源） */
     parent: StoredSession
-    /** 分叉锚点行（agent 回复，engine 层已校验存在 + 在边界后） */
+    /** 分叉锚点行（agent 回复，createFork 已校验存在 + 在边界后） */
     anchor: StoredMessage
-    /** 锚点所在 turn 的起点 seq（engine 层经 findTurnStartSeq 求得） */
+    /** 锚点所在 turn 的起点 seq（createFork 经 findTurnStartSeq 求得） */
     turnStartSeq: number
     /** 预生成的 fork native id（SDK sessionId option 语义保证 CC 采用，spec §3） */
     forkNativeId: string
-    /** parent 当前 native session id（激活时作 resumeToken；engine 层已校验存在） */
+    /** parent 当前 native session id（激活时作 resumeToken；createFork 已校验存在） */
     parentNativeId: string
 }
 
-export interface ForkSessionAtAnchorResult {
+interface InsertForkAtAnchorResult {
     /** 新建的 fork 会话行 id（web 跳转用） */
     sessionId: string
     /** 复制的消息行数（不含溯源消息） */
     copiedCount: number
+}
+
+export type ForkCreationFailureReason =
+    | 'session-not-found'
+    | 'parent-native-missing'
+    | 'fork-of-fork-forbidden'
+    | 'anchor-not-found'
+    | 'anchor-not-agent'
+    | 'anchor-before-boundary'
+    | 'turn-start-not-found'
+
+export type ForkCreationResult =
+    | { ok: true; sessionId: string; copiedCount: number }
+    | { ok: false; reason: ForkCreationFailureReason }
+
+/**
+ * 从父会话与锚点身份创建分叉：module 自行解释全部资格与复制范围，调用方无需组装
+ * parent/anchor/turnStartSeq/native id 等彼此关联的内部事实。
+ * namespace 访问检查仍由 SyncEngine 在进入此 interface 前完成。
+ */
+function createFork(db: Database, parentSessionId: string, anchorNativeId: string): ForkCreationResult {
+    const parent = getSession(db, parentSessionId)
+    if (!parent) return { ok: false, reason: 'session-not-found' }
+
+    const parsedMetadata = MetadataSchema.safeParse(parent.metadata)
+    const parentMetadata = parsedMetadata.success ? parsedMetadata.data : null
+    const parentNativeId = parentMetadata?.nativeSessionId
+    if (!parentNativeId) return { ok: false, reason: 'parent-native-missing' }
+    if (parentMetadata.forkedFrom) return { ok: false, reason: 'fork-of-fork-forbidden' }
+
+    const anchor = getMessagesByNativeId(db, parentSessionId, anchorNativeId)[0]
+    if (!anchor) return { ok: false, reason: 'anchor-not-found' }
+
+    const anchorRecord = unwrapRoleWrappedRecordEnvelope(anchor.content)
+    if (!anchorRecord || anchorRecord.role !== 'agent') {
+        return { ok: false, reason: 'anchor-not-agent' }
+    }
+
+    const boundarySeq = resolveContextBoundarySeq(db, parentSessionId)
+    if (anchor.seq <= boundarySeq) return { ok: false, reason: 'anchor-before-boundary' }
+
+    const turnStartSeq = findTurnStartSeq(db, parentSessionId, anchor.seq)
+    if (turnStartSeq === null) return { ok: false, reason: 'turn-start-not-found' }
+
+    return {
+        ok: true,
+        ...insertForkAtAnchor(db, {
+            parent,
+            anchor,
+            turnStartSeq,
+            forkNativeId: randomUUID(),
+            parentNativeId,
+        }),
+    }
 }
 
 /**
@@ -158,7 +212,7 @@ export interface ForkSessionAtAnchorResult {
  * - local_id 保留（UNIQUE 限 session 内，fork 链上 uuid 依然有效，spec §3）
  * - category / is_sidechain / parent_tool_use_id 原样（侧链嵌套引用随整 turn 切割保持闭合）
  */
-export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorParams): ForkSessionAtAnchorResult {
+function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): InsertForkAtAnchorResult {
     const { parent, anchor, turnStartSeq, forkNativeId, parentNativeId } = params
 
     const forkFrom: ForkFromMetadata = {
@@ -205,7 +259,7 @@ export function forkSessionAtAnchor(db: Database, params: ForkSessionAtAnchorPar
     const provenanceContent = { role: 'custom', content: provenanceParsed.data }
 
     const now = Date.now()
-    const run = db.transaction((): ForkSessionAtAnchorResult => {
+    const run = db.transaction((): InsertForkAtAnchorResult => {
         // 1. 新建 fork 会话行。tag 必须非空：resume spawn 后 CLI bootstrapSession 以
         //    「nativeSessionId 查行 → 复用行 tag」绑定既有行，tag NULL 会让 CLI 判定
         //    「未找到」另建新行 → hub mergeSessions 摧毁 fork 行（E2E P0 实证）。
@@ -334,14 +388,9 @@ export class SessionForkStore {
         this.db = db
     }
 
-    /** 向 seq 下方找锚点所在 turn 的最近起点（见 findTurnStartSeq）；null = 找不到（防御分支） */
-    findTurnStartSeq(sessionId: string, upToSeq: number): number | null {
-        return findTurnStartSeq(this.db, sessionId, upToSeq)
-    }
-
-    /** 单事务建 fork 会话（见 forkSessionAtAnchor） */
-    forkSessionAtAnchor(params: ForkSessionAtAnchorParams): ForkSessionAtAnchorResult {
-        return forkSessionAtAnchor(this.db, params)
+    /** 资格判断、复制范围与原子创建的共同 interface；调用方只提供两个身份。 */
+    createFork(parentSessionId: string, anchorNativeId: string): ForkCreationResult {
+        return createFork(this.db, parentSessionId, anchorNativeId)
     }
 
     /** 激活失败落 forkError（spec §5.3 CLI 离线场景，见 markForkActivationError） */

@@ -86,17 +86,93 @@ function makeParent() {
     return { store, parent }
 }
 
-/** 以标准 transcript + 预置参数执行一次 fork（turn 起点 = seq 3） */
+/** 以标准 transcript 执行一次 fork（turn 起点由 module 从锚点反查） */
 function forkStandard(store: Store, parent: { id: string }, anchorNativeId = 'anchor-native') {
-    const anchor = store.messages.getMessagesByNativeId(parent.id, anchorNativeId)[0]
-    return store.sessionFork.forkSessionAtAnchor({
-        parent: store.sessions.getSession(parent.id)!,
-        anchor,
-        turnStartSeq: 3,
-        forkNativeId: 'fork-native-1',
-        parentNativeId: 'parent-native-1',
-    })
+    const result = store.sessionFork.createFork(parent.id, anchorNativeId)
+    if (!result.ok) throw new Error(`fork failed: ${result.reason}`)
+    return result
 }
+
+// ============ createFork：资格判断 + 复制范围 + 原子创建的共同 interface ============
+
+describe('sessionFork.createFork：只接收父会话与锚点身份', () => {
+    test('由 module 自行解析父会话、锚点、turn 范围和 native id', () => {
+        const { store, parent } = makeParent()
+        seedStandardTranscript(store, parent.id)
+
+        const result = store.sessionFork.createFork(parent.id, 'anchor-native')
+
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        const forkSession = store.sessions.getSession(result.sessionId)!
+        const metadata = forkSession.metadata as Record<string, unknown>
+        expect(metadata.nativeSessionId).toBeTruthy()
+        expect(metadata.nativeSessionId).not.toBe('parent-native-1')
+        expect(metadata.forkFrom).toEqual({
+            parentSessionId: parent.id,
+            parentNativeId: 'parent-native-1',
+            anchorNativeId: 'anchor-native',
+        })
+        expect(result.copiedCount).toBe(3)
+    })
+
+    test('父会话不存在', () => {
+        const store = new Store(':memory:')
+        expect(store.sessionFork.createFork('missing', 'anchor-native'))
+            .toEqual({ ok: false, reason: 'session-not-found' })
+    })
+
+    test('父会话缺 nativeSessionId', () => {
+        const store = new Store(':memory:')
+        const parent = store.sessions.getOrCreateSession(
+            'fork-parent-no-native', { path: '/tmp/proj', host: 'h-1' }, null, 'default',
+        )
+        expect(store.sessionFork.createFork(parent.id, 'anchor-native'))
+            .toEqual({ ok: false, reason: 'parent-native-missing' })
+    })
+
+    test('锚点不存在', () => {
+        const { store, parent } = makeParent()
+        expect(store.sessionFork.createFork(parent.id, 'missing'))
+            .toEqual({ ok: false, reason: 'anchor-not-found' })
+    })
+
+    test('锚点不是 agent 回复', () => {
+        const { store, parent } = makeParent()
+        store.messages.addMessage(
+            parent.id, userMsg('用户行'), 'l-user', 'persistent', { nativeId: 'user-native' },
+        )
+        expect(store.sessionFork.createFork(parent.id, 'user-native'))
+            .toEqual({ ok: false, reason: 'anchor-not-agent' })
+    })
+
+    test('锚点不在最近上下文边界之后', () => {
+        const { store, parent } = makeParent()
+        seedStandardTranscript(store, parent.id)
+        store.messages.addMessage(parent.id, compactBoundary())
+        store.contextBoundary.advance(parent.id, store.messages.getMaxSeq(parent.id))
+        expect(store.sessionFork.createFork(parent.id, 'anchor-native'))
+            .toEqual({ ok: false, reason: 'anchor-before-boundary' })
+    })
+
+    test('找不到锚点所在 turn 的起点', () => {
+        const { store, parent } = makeParent()
+        store.messages.addMessage(
+            parent.id, agentResult(), null, 'persistent',
+            { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
+        )
+        expect(store.sessionFork.createFork(parent.id, 'anchor-native'))
+            .toEqual({ ok: false, reason: 'turn-start-not-found' })
+    })
+
+    test('分叉会话不能再次分叉', () => {
+        const { store, parent } = makeParent()
+        seedStandardTranscript(store, parent.id)
+        const first = forkStandard(store, parent)
+        expect(store.sessionFork.createFork(first.sessionId, 'anchor-native'))
+            .toEqual({ ok: false, reason: 'fork-of-fork-forbidden' })
+    })
+})
 
 // ============ isTurnStartContent：turn 起点判定（与 web turnBoundary.isTurnStart 同语义）============
 
@@ -130,48 +206,9 @@ describe('isTurnStartContent：turn 起点判定', () => {
     })
 })
 
-// ============ findTurnStartSeq：向 seq 下方找最近 turn 起点 ============
+// ============ createFork：建 fork 行 + turn 复制 + 溯源消息 ============
 
-describe('sessionFork.findTurnStartSeq：向 seq 下方找最近 turn 起点', () => {
-    test('命中最近的 user 行（锚点所在 turn 起点）', () => {
-        const { store, parent } = makeParent()
-        seedStandardTranscript(store, parent.id)
-        expect(store.sessionFork.findTurnStartSeq(parent.id, 5)).toBe(3)
-    })
-
-    test('turn 起点是 compact_boundary 的场景：命中边界行', () => {
-        const { store, parent } = makeParent()
-        store.messages.addMessage(parent.id, userMsg('第一轮'), 'l1')                     // seq 1
-        store.messages.addMessage(parent.id, compactBoundary())                          // seq 2
-        store.messages.addMessage(parent.id, assistantMsg())                             // seq 3（非起点）
-        expect(store.sessionFork.findTurnStartSeq(parent.id, 3)).toBe(2)
-    })
-
-    test('主链 user 信封才可作 turn 起点：侧链行不参与判定', () => {
-        const { store, parent } = makeParent()
-        store.messages.addMessage(parent.id, userMsg('主链'), 'l1')                       // seq 1
-        store.messages.addMessage(parent.id, sidechainMsg('tool-1'))                     // seq 2
-        expect(store.sessionFork.findTurnStartSeq(parent.id, 2)).toBe(1)
-    })
-
-    test('软删行不参与判定', () => {
-        const { store, parent } = makeParent()
-        store.messages.addMessage(parent.id, userMsg('将被截断'), 'l1')                   // seq 1
-        store.messages.addMessage(parent.id, userMsg('存活'), 'l2')                       // seq 2
-        store.messages.softDeleteMessagesFrom(parent.id, 1, 1)
-        expect(store.sessionFork.findTurnStartSeq(parent.id, 2)).toBe(2)
-    })
-
-    test('找不到 turn 起点 → null（理论不可达，防御分支）', () => {
-        const { store, parent } = makeParent()
-        store.messages.addMessage(parent.id, assistantMsg())                             // seq 1，非起点
-        expect(store.sessionFork.findTurnStartSeq(parent.id, 1)).toBeNull()
-    })
-})
-
-// ============ forkSessionAtAnchor：建 fork 行 + 复制锚点 turn + 溯源消息 ============
-
-describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息', () => {
+describe('sessionFork.createFork：建行 + turn 复制 + 溯源消息', () => {
     test('复制范围 = [turn起点..锚点] 含侧链行；更早 turn 不复制；溯源消息排复制行之后', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
@@ -221,20 +258,12 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
             { model: 'opus', effort: 'high', outputStyle: 'default', permissionMode: 'default' },
         )
         store.messages.addMessage(parent.id, userMsg('hi'), 'l1')
-        const anchor = store.messages.addMessage(
+        store.messages.addMessage(
             parent.id, agentResult(), null, 'persistent',
             { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
         )
-        const anchorRow = store.messages.getMessagesByNativeId(parent.id, 'anchor-native')[0]
-
-        const result = store.sessionFork.forkSessionAtAnchor({
-            parent: store.sessions.getSession(parent.id)!,
-            anchor: anchorRow,
-            turnStartSeq: 1,
-            forkNativeId: 'fork-native-2',
-            parentNativeId: 'parent-native-1',
-        })
-        void anchor
+        const result = store.sessionFork.createFork(parent.id, 'anchor-native')
+        if (!result.ok) throw new Error(`fork failed: ${result.reason}`)
 
         const content = store.messages.getMessages(result.sessionId, 200)[2].content as { content: Array<{ text: string }> }
         expect(content.content[0].text).toContain('[自定义名](mobi://session/open?id=')
@@ -243,7 +272,7 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         expect(forkRaw.name).toBe('自定义名 · 分叉')
     })
 
-    test('fork 行 metadata：标题落库「〈parent 标题〉 · 分叉」、nativeSessionId=预生成 id、forkFrom 三字段、forkedFrom 溯源', () => {
+    test('fork 行 metadata：标题落库「〈parent 标题〉 · 分叉」、nativeSessionId 由 module 生成、forkFrom 三字段、forkedFrom 溯源', () => {
         const { store, parent } = makeParent()
         seedStandardTranscript(store, parent.id)
 
@@ -252,7 +281,8 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         const raw = store.sessions.getSession(result.sessionId)!.metadata as Record<string, unknown>
         // 标题写入时冻结（resolveSessionTitle：name → path 基名 → id 前 8 位），web 不拼接
         expect(raw.name).toBe('proj · 分叉')
-        expect(raw.nativeSessionId).toBe('fork-native-1')
+        expect(raw.nativeSessionId).toEqual(expect.any(String))
+        expect(raw.nativeSessionId).not.toBe('parent-native-1')
         expect(raw.forkFrom).toEqual({
             parentSessionId: parent.id,
             parentNativeId: 'parent-native-1',
@@ -326,36 +356,27 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
         const { store, parent } = makeParent()
         store.messages.addMessage(parent.id, userMsg('第一轮'), 'l1')                     // seq 1
         store.messages.addMessage(parent.id, compactBoundary())                          // seq 2（turn 起点）
-        store.messages.addMessage(parent.id, userMsg('第二轮'), 'l2')                     // seq 3
-        const anchor = store.messages.addMessage(                                        // seq 4（锚点）
+        store.contextBoundary.advance(parent.id, 2)
+        store.messages.addMessage(parent.id, assistantMsg())                              // seq 3（同一 turn）
+        store.messages.addMessage(                                                        // seq 4（锚点）
             parent.id, agentResult(), null, 'persistent',
             { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
         )
 
-        const result = store.sessionFork.forkSessionAtAnchor({
-            parent: store.sessions.getSession(parent.id)!,
-            anchor,
-            turnStartSeq: 2,
-            forkNativeId: 'fork-native-1',
-            parentNativeId: 'parent-native-1',
-        })
+        const result = store.sessionFork.createFork(parent.id, 'anchor-native')
+        if (!result.ok) throw new Error(`fork failed: ${result.reason}`)
 
         const forkMessages = store.messages.getMessages(result.sessionId, 200)
-        // 溯源 + 边界行 + user + 锚点 = 4 行；seq2 即 compact_boundary 行
+        // 边界行 + assistant + 锚点 + 溯源 = 4 行；父会话 seq2 即 compact_boundary 行
         expect(forkMessages).toHaveLength(4)
         expect(JSON.stringify(forkMessages[0].content)).toContain('compact_boundary')
     })
 
-    /** 以指定锚点 + turn 起点 seq=1 执行 fork（新测试的 transcript turn 起点均在 seq1） */
+    /** 以指定锚点执行 fork（新测试的 transcript turn 起点均在 seq1） */
     function forkAtSeq1(store: Store, parent: { id: string }, anchorNativeId: string) {
-        const anchor = store.messages.getMessagesByNativeId(parent.id, anchorNativeId)[0]
-        return store.sessionFork.forkSessionAtAnchor({
-            parent: store.sessions.getSession(parent.id)!,
-            anchor,
-            turnStartSeq: 1,
-            forkNativeId: 'fork-native-1',
-            parentNativeId: 'parent-native-1',
-        })
+        const result = store.sessionFork.createFork(parent.id, anchorNativeId)
+        if (!result.ok) throw new Error(`fork failed: ${result.reason}`)
+        return result
     }
 
     test('锚点是落点 assistant 行（⑂ 入口语义）→ 复制上界扩展到 turn 的 result 行（含）', () => {
@@ -408,15 +429,8 @@ describe('sessionFork.forkSessionAtAnchor：建行 + turn 复制 + 溯源消息'
             parent.id, agentResult(), null, 'persistent',
             { nativeId: 'anchor-native', nativeSessionId: 'parent-native-1' },
         )
-        const anchorRow = store.messages.getMessagesByNativeId(parent.id, 'anchor-native')[0]
-
-        const result = store.sessionFork.forkSessionAtAnchor({
-            parent: store.sessions.getSession(parent.id)!,
-            anchor: anchorRow,
-            turnStartSeq: 1,
-            forkNativeId: 'fork-native-1',
-            parentNativeId: 'parent-native-1',
-        })
+        const result = store.sessionFork.createFork(parent.id, 'anchor-native')
+        if (!result.ok) throw new Error(`fork failed: ${result.reason}`)
 
         const raw = store.sessions.getSession(result.sessionId)!.metadata as Record<string, unknown>
         expect(raw).not.toHaveProperty('summary')
