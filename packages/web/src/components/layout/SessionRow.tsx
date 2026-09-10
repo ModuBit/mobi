@@ -92,12 +92,14 @@ export function SessionRow({
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt, t)
     const avatarStatus = getSessionAvatarStatus(session)
+    // 未激活会话：状态点与标题一同减淡，退到背景层
+    const inactive = !session.active
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
-            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? 0.45 : undefined }} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
-                <SessionName>{displayName}</SessionName>
+                <SessionName $inactive={inactive}>{displayName}</SessionName>
             </AppTooltip>
             {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge

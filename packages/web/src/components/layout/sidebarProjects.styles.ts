@@ -221,11 +221,13 @@ export const SessionItem = styled.div<{
 `
 
 // 会话名称
-export const SessionName = styled.span`
+export const SessionName = styled.span<{ $inactive?: boolean }>`
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    /* 未激活会话整体减淡（标题），与状态点一同退到背景层——激活会话是列表主角 */
+    opacity: ${props => props.$inactive ? 0.55 : 1};
 `
 
 // 相对时间

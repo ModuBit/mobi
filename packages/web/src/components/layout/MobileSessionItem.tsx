@@ -52,6 +52,8 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
     // fork 行：hub 建行时标题已落库（metadata.name 含「· 分叉」后缀），
     // 待激活/激活失败徽标纯 metadata 可判（spec §4.3）
     const forkState = resolveForkSessionState(session, t)
+    // 未激活会话：状态点与标题一同减淡，退到背景层
+    const inactive = !session.active
 
     return (
         <SessionItem
@@ -62,8 +64,9 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
             onTouchEnd={longPress.onTouchEnd}
             onTouchMove={longPress.onTouchMove}
         >
-            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
-            <SessionName $token={token}>{displayName}</SessionName>
+            {/* 未激活会话：状态点与标题一同减淡，退到背景层 */}
+            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10, opacity: inactive ? 0.45 : undefined }} />
+            <SessionName $token={token} $inactive={inactive}>{displayName}</SessionName>
             {(forkState.isPendingActivation || forkState.isActivationFailed) && (
                 <ForkStateBadge
                     variant={forkState.isActivationFailed ? 'error' : 'pending'}
