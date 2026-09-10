@@ -173,6 +173,10 @@ pre, code {
    位移 150% → -50% 对 200% 宽渐变恰好一个无缝循环（无空窗停顿）。
    动画整体收在本类（组件不拼动画串），reduced-motion 按类停用一次即覆盖 */
 .shimmer-text {
+    /* inline-block：裸 span 消费方（statusbar 任务标签等非 flex 语境）防拆行碎片——
+       拆行会让 background-clip:text 逐碎片独立绘制、扫光失效；flex 语境（组头文案层）被
+       blockify 后此声明无效果 */
+    display: inline-block;
     background: linear-gradient(
         90deg,
         color-mix(in srgb, currentColor 38%, transparent) 35%,

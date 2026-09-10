@@ -321,6 +321,32 @@ describe('messages-facts acked（isReplay 回显确认）', () => {
         expect(events.filter(e => e.type === 'message-received')).toHaveLength(1)
     })
 
+    test('批次中途广播异常 → 跳过该条继续，剩余 fact 不丢', () => {
+        store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })  // acked 目标
+        store.messages.addMessage(sid, WEBAPP_USER, 'local-2', 'persistent', { nativeId: 'u2' })   // attached 目标（缺 nsid）
+
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeDeps(store)
+        // 第一次广播抛错：单条 publication 失败只跳过本条，批次剩余 fact 仍处理
+        let calls = 0
+        deps.onWebappEvent = (e) => {
+            calls += 1
+            if (calls === 1) throw new Error('sse fanout boom')
+            events.push(e)
+        }
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', { sid, facts: [
+            { kind: 'acked', nativeId: 'uu-1' },
+            { kind: 'attached', nativeSessionId: 'ns-1' },
+        ] })
+
+        // acked 的持久化已完成且异常被隔离；attached 的补写不因前条失败而丢失
+        const rows = store.messages.getMessages(sid, 10)
+        expect(rows.find(r => r.localId === 'local-1')?.metadata?.nativeAckAt).toBeTypeOf('number')
+        expect(rows.find(r => r.localId === 'local-2')?.metadata?.nativeSessionId).toBe('ns-1')
+    })
+
     test('重复 ack → first-write-wins 不覆盖、不广播', () => {
         store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
         store.messages.markMessagesAcked(sid, 'uu-1', 111)

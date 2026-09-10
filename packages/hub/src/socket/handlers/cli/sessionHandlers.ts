@@ -127,15 +127,21 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
     }
 
-    // fact module 惰性产出 publication（逐 fact 持久化即发布，批次中途异常不丢先行动作）
+    // fact module 惰性产出 publication（逐 fact 持久化即发布）。逐条 try-catch 隔离：
+    // 单条失败（持久化或广播）只跳过本条并留痕，不中止迭代——迭代一旦中断，生成器剩余
+    // fact 既不落库也不广播，CLI 已上报的事实会静默丢失（日志留痕供对账补齐）
     const publishMessageFacts = (publications: Iterable<MessageFactsPublication>): void => {
         for (const publication of publications) {
-            if (publication.type === 'stored-messages') {
-                broadcastStoredMessages(publication.sessionId, publication.messages, {
-                    backfill: publication.backfill,
-                })
-            } else {
-                onWebappEvent?.(publication)
+            try {
+                if (publication.type === 'stored-messages') {
+                    broadcastStoredMessages(publication.sessionId, publication.messages, {
+                        backfill: publication.backfill,
+                    })
+                } else {
+                    onWebappEvent?.(publication)
+                }
+            } catch (error) {
+                hubLogger.error(`[messages-facts] publication 发布失败（跳过继续）: type=${publication.type} sid=${publication.sessionId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`)
             }
         }
     }

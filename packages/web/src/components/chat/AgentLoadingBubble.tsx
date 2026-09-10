@@ -116,10 +116,18 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             {loaderVariant
                 ? <PixelLoader variant={loaderVariant} />
                 : <StatusStateIcon state={status} />}
-            {/* 状态文本扫光（.shimmer-text 纯 CSS 类）；aria-live 直接透传到 DOM */}
+            {/* 读屏播报区：只给落定文案（labelText）——可见层的 scramble 逐帧改写文字，
+                live 区若跟着变会把随机乱码中间态当更新连续播报；视觉隐藏但读屏可达 */}
+            <span
+                aria-live="polite"
+                style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }}
+            >
+                {labelText}
+            </span>
+            {/* 可见层是装饰性 scramble + 扫光，对读屏隐藏 */}
             <span
                 className="shimmer-text"
-                aria-live="polite"
+                aria-hidden="true"
                 style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />

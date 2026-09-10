@@ -31,6 +31,9 @@ const FADE_MS = 200
  * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
  */
 export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string; style?: CSSProperties; shimmer?: boolean; ellipsis?: boolean }) {
+    // ellipsis 前置条件：父级必须是块级（或有确定宽度）的容器——maxWidth:100% 相对
+    // containing block 解引用，父级是 shrink-to-fit 的 inline/flex 内容时恒不触发，
+    // 长文案会撑破布局而非省略（如 antd.css 中 .tool-call-think 的收缩链）
     const [leaving, setLeaving] = useState<string | null>(null)
     const prevTextRef = useRef(text)
 

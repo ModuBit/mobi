@@ -352,7 +352,8 @@ describe('SessionMessageFactsProcessor', () => {
 
         expect(collected).toHaveLength(1)
         expect(collected[0]).toMatchObject({ type: 'stored-messages' })
-        expect(store.messages.getMessages(sessionId, 10)[0]?.lifecycle).toBe('acked')
+        // getMessages 按 position_at DESC 排序，[0] 是后添加的 local-2——按 localId 定位 acked 行
+        expect(store.messages.getMessages(sessionId, 10).find(r => r.localId === 'local-1')?.lifecycle).toBe('acked')
     })
 
     test('非法事实字段被忽略，不写库不发布', () => {
