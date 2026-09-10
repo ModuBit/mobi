@@ -56,7 +56,10 @@
    不用 .tool-call-think 后代选择器全局覆盖，否则会误伤组内嵌套 Think（如 reasoning）
    的 antd 默认缩进，展开内容左间距消失 */
 
-/* 工具卡片 Think 标题区截断省略 */
+/* 工具卡片 Think 标题区截断省略。
+   所有权边界：本块只做「收缩许可 + 兜底裁剪」（antd Think 内部 flex 链只能从 CSS 够到）；
+   省略号与单行截断的真正归属是 CrossfadeText 的 ellipsis 文案层——两层裁剪勿在本块追加
+   text-overflow（原子 inline 内容截不出省略号，只会造成双重硬裁） */
 .tool-call-think {
     overflow: hidden !important;
     min-width: 0 !important;

@@ -185,9 +185,9 @@ pre, code {
     -webkit-text-fill-color: transparent;
     animation: crossfade-in var(--fade-ms, 200ms) ease, shimmer-sweep 1.4s linear infinite;
 }
-/* hover 暂停在当前帧（收敛自 BlinkText 的鼠标暂停交互） */
+/* hover 暂停扫光（停在当前帧）；逐槽位声明——只停 sweep，不动同槽的淡入 */
 .shimmer-text:hover {
-    animation-play-state: paused;
+    animation-play-state: running, paused;
 }
 @keyframes shimmer-sweep {
     from { background-position: 150% 0; }

@@ -116,8 +116,7 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             {loaderVariant
                 ? <PixelLoader variant={loaderVariant} />
                 : <StatusStateIcon state={status} />}
-            {/* 状态文本扫光（shimmer-text 纯 CSS 类，收敛自 BlinkText）；aria-live 此处真正
-                透传到 DOM（BlinkText 曾吞掉该属性） */}
+            {/* 状态文本扫光（.shimmer-text 纯 CSS 类）；aria-live 直接透传到 DOM */}
             <span
                 className="shimmer-text"
                 aria-live="polite"

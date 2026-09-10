@@ -48,9 +48,6 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
                 position: 'relative',
                 display: 'inline-flex',
                 overflow: 'hidden',
-                // ellipsis：允许在 flex/块父级中收缩到可省略，文案层在收缩后的宽度内截断
-                maxWidth: '100%',
-                minWidth: ellipsis ? 0 : undefined,
                 ...style,
             }}
         >
@@ -59,7 +56,14 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
                 className={shimmer ? 'crossfade-text shimmer-text' : 'crossfade-text'}
                 style={{
                     '--fade-ms': `${FADE_MS}ms`,
-                    ...(ellipsis && { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }),
+                    // 省略四件套整体收在 ellipsis 分支：默认路径保持不受限的 crossfade 形状
+                    ...(ellipsis && {
+                        maxWidth: '100%',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }),
                 } as CSSProperties}
             >
                 {text}
