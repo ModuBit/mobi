@@ -22,7 +22,7 @@ import { TeamCreateView } from '@/components/tool-card/views/TeamCreateView'
 import { TeamDeleteView } from '@/components/tool-card/views/TeamDeleteView'
 import { SendMessageView } from '@/components/tool-card/views/SendMessageView'
 import { isObject, safeStringify } from '@mobi/shared'
-import { getInputStringAny } from '@/core/lib/toolInputUtils'
+import { getFileToolTarget } from '@/core/lib/toolInputUtils'
 import { theme as antTheme } from 'antd'
 import { formatLineRangeStats } from '@/components/tool-card/views/lineNumberUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
@@ -286,7 +286,7 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { input, result } = props.block.tool
 
     const filePath = useMemo(() => {
-        const raw = getInputStringAny(input, ['file_path', 'path', 'file'])
+        const raw = getFileToolTarget(input)
         return raw ? resolveDisplayPath(raw, props.metadata) : null
     }, [input, props.metadata])
 
@@ -369,15 +369,20 @@ const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     )
 }
 
+/**
+ * 文件类 mutation 结果视图的失败回退（视图族层收口）：这类视图的 body 渲染 input 派生
+ * 内容（diff / 写入产物），失败时 result 是错误文本而非产物，直接渲染 body 必然误导——
+ * 统一转交 MutationResultView 展示错误原因，视图本体只写正常态。
+ */
+function withMutationErrorFallback(Body: ToolViewComponent): ToolViewComponent {
+    return (props: ToolViewProps) =>
+        props.block.tool.state === 'error' ? <MutationResultView {...props} /> : <Body {...props} />
+}
+
 /** Edit 工具结果视图 - 显示 diff */
-const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
+const EditResultBody: ToolViewComponent = (props: ToolViewProps) => {
     const input = props.block.tool.input
     const { state, result } = props.block.tool
-
-    // 失败时优先展示错误原因：result 是错误信息而非编辑产物，渲染 input diff 会误导
-    if (state === 'error') {
-        return <MutationResultView {...props} />
-    }
 
     // 执行中或无结果时显示占位
     if (result === undefined || result === null) {
@@ -408,16 +413,12 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
         />
     )
 }
+const EditResultView = withMutationErrorFallback(EditResultBody)
 
 /** Write 工具结果视图 - 显示写入内容 */
-const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
+const WriteResultBody: ToolViewComponent = (props: ToolViewProps) => {
     const input = props.block.tool.input
     const { state, result } = props.block.tool
-
-    // 失败时优先展示错误原因：result 是错误信息而非写入产物，渲染 input 内容会误导
-    if (state === 'error') {
-        return <MutationResultView {...props} />
-    }
 
     if (result === undefined || result === null) {
         return <ResultPlaceholder state={state} />
@@ -445,16 +446,12 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
         />
     )
 }
+const WriteResultView = withMutationErrorFallback(WriteResultBody)
 
 /** MultiEdit 工具结果视图 - 显示多个 diff */
-const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
+const MultiEditResultBody: ToolViewComponent = (props: ToolViewProps) => {
     const input = props.block.tool.input
     const { state, result } = props.block.tool
-
-    // 失败时优先展示错误原因：result 是错误信息而非编辑产物，渲染 input diff 会误导
-    if (state === 'error') {
-        return <MutationResultView {...props} />
-    }
 
     if (result === undefined || result === null) {
         return <ResultPlaceholder state={state} />
@@ -493,6 +490,7 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
         </div>
     )
 }
+const MultiEditResultView = withMutationErrorFallback(MultiEditResultBody)
 const GenericResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
     const result = props.block.tool.result

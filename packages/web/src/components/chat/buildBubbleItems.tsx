@@ -98,7 +98,7 @@ export function buildChatBubbleItems(
                 content: <ToolCallGroupRenderer blocks={block.blocks} isActiveReasoning={isActiveReasoning} {...ctx} />,
                 variant: 'borderless',
             })
-            prevIsProcess = true
+            prevIsProcess = isProcessBlock(block)
             continue
         }
 

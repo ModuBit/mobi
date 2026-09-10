@@ -37,7 +37,7 @@ import { getToolPresentation, isTerminalTool, isAgentTool } from './knownTools'
 import { getToolIcon, StatusIcon as StatusIconShell } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent, type ToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
-import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
+import { getFileToolTarget, getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 import { ToolRowItems } from '@/components/ui/ToolRowItems'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
@@ -179,7 +179,7 @@ function renderToolInput(block: ToolCallBlock, token: GlobalToken): ReactNode {
     }
 
     if (toolName === 'MultiEdit' && isObject(input)) {
-        const filePath = getInputStringAny(input, ['file_path', 'path']) ?? undefined
+        const filePath = getFileToolTarget(input) ?? undefined
         const edits = Array.isArray(input.edits) ? input.edits : null
         if (edits && edits.length > 0) {
             const rendered = edits
@@ -213,7 +213,7 @@ function renderToolInput(block: ToolCallBlock, token: GlobalToken): ReactNode {
     }
 
     if (toolName === 'Write' && isObject(input)) {
-        const filePath = getInputStringAny(input, ['file_path', 'path'])
+        const filePath = getFileToolTarget(input)
         const content = getInputStringAny(input, ['content', 'text'])
         if (filePath && content !== null) {
             return (
@@ -248,7 +248,7 @@ function renderToolInput(block: ToolCallBlock, token: GlobalToken): ReactNode {
 // 渲染 Edit 输入
 function renderEditInput(input: unknown): ReactNode | null {
     if (!isObject(input)) return null
-    const filePath = getInputStringAny(input, ['file_path', 'path']) ?? undefined
+    const filePath = getFileToolTarget(input) ?? undefined
     const oldString = getInputString(input, 'old_string')
     const newString = getInputString(input, 'new_string')
     if (oldString === null || newString === null) return null

@@ -15,7 +15,9 @@
  */
 
 import {
+    asNumber,
     COMMAND_LIFECYCLE_STATES,
+    isObject,
     type CommandLifecycleState,
     type NativeMessageMetadata,
     type SyncEvent,
@@ -51,16 +53,12 @@ const TERMINAL_LIFECYCLES: ReadonlySet<string> = new Set([
     'refused',
 ])
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null
-}
-
 function nonEmptyString(value: unknown): string | null {
     return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function observedAt(fact: Record<string, unknown>, fallback: number): number {
-    return typeof fact.at === 'number' && Number.isFinite(fact.at) ? fact.at : fallback
+    return asNumber(fact.at) ?? fallback
 }
 
 /**
@@ -100,7 +98,7 @@ export class SessionMessageFactsProcessor {
         const publications: MessageFactsPublication[] = []
 
         for (const value of facts) {
-            if (!isRecord(value)) continue
+            if (!isObject(value)) continue
             const kind = nonEmptyString(value.kind)
             if (!kind) continue
 
@@ -165,10 +163,10 @@ export class SessionMessageFactsProcessor {
         const nativeId = nonEmptyString(fact.nativeId)
         if (!localId || !nativeId) return
 
-        const nativeSessionId = fact.nativeSessionId === undefined
-            ? undefined
-            : nonEmptyString(fact.nativeSessionId)
-        if (fact.nativeSessionId !== undefined && !nativeSessionId) return
+        // 未传（undefined）→ 不补 nsid；显式传了但收窄为无效值 → 整条 fact 拒绝
+        const rawNativeSessionId = fact.nativeSessionId
+        const nativeSessionId = nonEmptyString(rawNativeSessionId)
+        if (rawNativeSessionId !== undefined && nativeSessionId === null) return
 
         const messages = this.store.messages.bindNativeIds(sessionId, [{
             localId,

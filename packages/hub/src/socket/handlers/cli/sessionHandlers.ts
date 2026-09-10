@@ -228,25 +228,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
 
         // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
-        // 刚落库的行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
-        const message = { ...toDecryptedMessage(msg), seq: msg.seq }
-        const update = {
-            id: randomUUID(),
-            seq: msg.seq,
-            createdAt: Date.now(),
-            body: {
-                t: 'new-message' as const,
-                sid,
-                message
-            }
-        }
-        socket.to(`session:${sid}`).emit('session-update', update)
-
-        onWebappEvent?.({
-            type: 'message-received',
-            sessionId: sid,
-            message: toDecryptedMessage(msg)
-        })
+        // 刚落库的行 seq 恒为 number，广播复用统一 DTO 映射（同 facts publication 路径）
+        broadcastStoredMessages(sid, [msg])
     })
 
     // snapshot 流结束（delta 协议）：full message 已持久化，精确清理该流的缓存与全部订阅游标。

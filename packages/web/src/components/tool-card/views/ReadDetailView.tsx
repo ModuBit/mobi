@@ -18,7 +18,7 @@ import { useMemo } from 'react'
 import { theme as antTheme } from 'antd'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import { getInputStringAny } from '@/core/lib/toolInputUtils'
+import { getFileToolTarget } from '@/core/lib/toolInputUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
 import { calculateLineNumWidth, getMaxLineNum, formatLineRangeStats } from './lineNumberUtils'
 import { ToolViewPanel } from './ToolViewPanel'
@@ -57,7 +57,7 @@ export function ReadDetailView(props: ToolViewProps) {
     const { input, result } = props.block.tool
 
     const filePath = useMemo(() => {
-        const raw = getInputStringAny(input, ['file_path', 'path', 'file'])
+        const raw = getFileToolTarget(input)
         return raw ? resolveDisplayPath(raw, props.metadata) : null
     }, [input, props.metadata])
 
