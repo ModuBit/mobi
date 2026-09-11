@@ -34,6 +34,7 @@ export type {
     TeamTask,
     TodoItem,
     TaskItem,
+    UiCommandAction,
     WorktreeMetadata
 } from './schemas'
 

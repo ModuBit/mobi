@@ -739,6 +739,20 @@ const ProjectChangedSchema = SessionEventBaseSchema.extend({
     namespace: z.string()
 })
 
+/**
+ * UI 命令动作判别联合（agent → Hub → Web 的 A 类呈现指令）。
+ * 后续 A 类扩展动作（focus_session、highlight 等）在此增量添加成员。
+ */
+export const UiCommandActionSchema = z.discriminatedUnion('action', [
+    z.object({
+        action: z.literal('open_file'),
+        /** 文件绝对路径（agent 本地视角 = CLI 所在机器，与 read-file 边界一致） */
+        path: z.string().min(1),
+    }),
+])
+
+export type UiCommandAction = z.infer<typeof UiCommandActionSchema>
+
 export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionChangedSchema.extend({
         type: z.literal('session-added'),
@@ -846,6 +860,11 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     ProjectChangedSchema.extend({ type: z.literal('project-added') }),
     ProjectChangedSchema.extend({ type: z.literal('project-updated') }),
     ProjectChangedSchema.extend({ type: z.literal('project-removed') }),
+    // agent 触达 mobi 界面的 A 类 UI 命令（瞬态事件：不落库、不进快照、刷新不恢复，见 .scratch/agent-apps/spec.md D9）
+    SessionChangedSchema.extend({
+        type: z.literal('ui-command'),
+        action: UiCommandActionSchema,
+    }),
 ])
 
 export type SyncEvent = z.infer<typeof SyncEventSchema>

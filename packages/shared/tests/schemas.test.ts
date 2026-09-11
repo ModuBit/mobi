@@ -340,6 +340,44 @@ describe('SyncEventSchema', () => {
     })
 })
 
+describe('SyncEventSchema ui-command', () => {
+    it('open_file 动作解析成功', () => {
+        const parsed = SyncEventSchema.parse({
+            type: 'ui-command',
+            sessionId: 'session-1',
+            action: { action: 'open_file', path: '/tmp/a.ts' },
+        })
+        expect(parsed.type).toBe('ui-command')
+        if (parsed.type === 'ui-command') {
+            expect(parsed.sessionId).toBe('session-1')
+            expect(parsed.action.action).toBe('open_file')
+            if (parsed.action.action === 'open_file') {
+                expect(parsed.action.path).toBe('/tmp/a.ts')
+            }
+        }
+    })
+
+    it('缺 path 的 open_file 动作抛错', () => {
+        expect(() =>
+            SyncEventSchema.parse({
+                type: 'ui-command',
+                sessionId: 'session-1',
+                action: { action: 'open_file' },
+            })
+        ).toThrow()
+    })
+
+    it('未知动作类型抛错', () => {
+        expect(() =>
+            SyncEventSchema.parse({
+                type: 'ui-command',
+                sessionId: 'session-1',
+                action: { action: 'unknown-action' },
+            })
+        ).toThrow()
+    })
+})
+
 describe('SyncEventSchema messages-submitted', () => {
     it('parses messages-submitted event', () => {
         const evt = { type: 'messages-submitted', sessionId: 's1', localIds: ['a', 'b'], submittedAt: 999 }
