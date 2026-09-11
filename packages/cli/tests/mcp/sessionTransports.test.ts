@@ -22,7 +22,7 @@ import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 const fakeClient = { sendClaudeSessionMessage: vi.fn() } as unknown as ApiSessionClient
 
 describe('buildSessionMcpServers', () => {
-    it('remote 模式挂载 SDK 进程内 mobi server（工具名前缀 mcp__mobi__ 不变）', () => {
+    it('remote 模式挂载 mobi-apps + mobi-core 两个 SDK 进程内 server（按职责拆分）', () => {
         const servers = buildSessionMcpServers({
             startingMode: 'remote',
             httpMcpUrl: null,
@@ -30,14 +30,16 @@ describe('buildSessionMcpServers', () => {
             getAgentLocator: () => null,
         })
 
-        const mobi = servers.mobi as { type: string; name?: string }
-        expect(mobi.type).toBe('sdk')
-        expect(mobi.name).toBe('mobi')
-        // mobi-web 两种模式都在
-        expect(servers['mobi-web']).toBeDefined()
+        const apps = servers['mobi-apps'] as { type: string; name?: string }
+        const core = servers['mobi-core'] as { type: string; name?: string }
+        expect(apps.type).toBe('sdk')
+        expect(apps.name).toBe('mobi-apps')
+        expect(core.type).toBe('sdk')
+        expect(core.name).toBe('mobi-core')
+        expect(Object.keys(servers).sort()).toEqual(['mobi-apps', 'mobi-core'])
     })
 
-    it('local 模式 mobi 走 HTTP server（url 透传），mobi-web 照常挂载', () => {
+    it('local 模式仅挂 mobi-core（HTTP url 透传）；mobi-apps 不存在（D1），web 工具不挂（local 从未生效）', () => {
         const servers = buildSessionMcpServers({
             startingMode: 'local',
             httpMcpUrl: 'http://127.0.0.1:12345',
@@ -45,8 +47,9 @@ describe('buildSessionMcpServers', () => {
             getAgentLocator: () => null,
         })
 
-        expect(servers.mobi).toEqual({ type: 'http', url: 'http://127.0.0.1:12345' })
-        expect(servers['mobi-web']).toBeDefined()
+        expect(servers['mobi-core']).toEqual({ type: 'http', url: 'http://127.0.0.1:12345' })
+        expect(servers['mobi-apps']).toBeUndefined()
+        expect(Object.keys(servers)).toEqual(['mobi-core'])
     })
 
     it('local 模式缺 httpMcpUrl 属装配 bug，显式报错而非静默空串', () => {

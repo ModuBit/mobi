@@ -15,39 +15,28 @@
  */
 
 /**
- * remote 模式的 in-process mobi MCP server（SDK createSdkMcpServer 壳）。
+ * remote 模式的 mobi-apps MCP server（SDK createSdkMcpServer 壳）。
  *
- * 与 local 模式的 HTTP server（startMobiMcpServer）共享 change_title 核心，
- * 工具按注册名 'mobi' 生成 mcp__mobi__change_title 前缀，与 HTTP 形态一致，
- * allowedTools 预授权零变更（ADR 0001）。
+ * 定位：agent 驱动 mobi 应用界面的工具族（A 类 UI 命令），
+ * 后续 A 类扩展（focus_session、set_theme 等）挂载于此。
+ * 内置基础能力（change_title / web 工具）在 mobi-core（mobiCoreServer）。
+ *
+ * 仅挂 remote 壳（D1）：open_in_mobi 的链路依赖 Hub/Web，local HTTP 壳不挂载。
+ * 不设 alwaysLoad：默认 tool search defer，工具定义不进上下文。
  */
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
-import type { AgentSessionLocator } from '@/agent/agentCapabilities'
-import { createChangeTitleToolForSession } from './changeTitleTool'
 import { createOpenInMobiToolForSession } from './openInMobiTool'
 
-export function createMobiSdkMcpServer(
-    client: ApiSessionClient,
-    /** 取当前 agent 会话定位（flavor + sessionId + path），用于回写 agent 侧标题 */
-    getAgentLocator: () => AgentSessionLocator | null,
-) {
-    const changeTitleTool = createChangeTitleToolForSession(client, getAgentLocator)
+export function createMobiAppsServer(client: ApiSessionClient) {
     // open_in_mobi 仅挂 remote 壳（D1）：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
     const openInMobiTool = createOpenInMobiToolForSession(client)
 
     return createSdkMcpServer({
-        name: 'mobi',
+        name: 'mobi-apps',
         version: '1.0.0',
-        // 不设 alwaysLoad：默认 tool search defer，工具定义不进上下文（与 mobi-web 一致）
         tools: [
-            tool(
-                changeTitleTool.name,
-                changeTitleTool.description,
-                changeTitleTool.inputSchema.shape,
-                async (args: unknown) => changeTitleTool.execute(args),
-            ),
             tool(
                 openInMobiTool.name,
                 openInMobiTool.description,

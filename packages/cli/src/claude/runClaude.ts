@@ -569,13 +569,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             messageQueue,
             api,
             allowedTools: [
-                // change_title 预授权：两种模式的工具前缀一致（mcp__mobi__，SDK 按注册名生成）
-                `mcp__mobi__${CHANGE_TITLE_TOOL_NAME}`,
+                // change_title 预授权：两种模式的工具前缀一致（mcp__mobi-core__，SDK 按注册名 / HTTP 壳按 key 生成）
+                `mcp__mobi-core__${CHANGE_TITLE_TOOL_NAME}`,
                 // open_in_mobi 预授权（D7，A 类 UI 呈现工具；仅 remote 壳注册，local 模式不会出现）
-                `mcp__mobi__${OPEN_IN_MOBI_TOOL_NAME}`,
-                // mobi-web 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
-                'mcp__mobi-web__web_search',
-                'mcp__mobi-web__web_fetch',
+                `mcp__mobi-apps__${OPEN_IN_MOBI_TOOL_NAME}`,
+                // 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
+                'mcp__mobi-core__web_search',
+                'mcp__mobi-core__web_fetch',
             ],
             onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {

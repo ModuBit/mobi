@@ -216,7 +216,9 @@ export function collectToolIdsFromMessages(messages: NormalizedMessage[]): Set<s
  */
 /** 不需要渲染的内部工具 */
 export function isHiddenTool(name: string): boolean {
+    // change_title 历史名保留匹配：工具名已落库，老会话气泡仍按旧全名渲染
     return name === 'ToolSearch'
+        || name === 'mcp__mobi-core__change_title'
         || name === 'mcp__mobi__change_title'
         || name === 'mobi__change_title'
         || name === 'EnterPlanMode'
@@ -248,7 +250,8 @@ export function collectHiddenToolUseIds(messages: NormalizedMessage[]): Map<stri
 
 /** 改标题的工具名（isHiddenTool 的子集，需要额外提取标题） */
 export function isChangeTitleToolName(name: string): boolean {
-    return name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
+    // 历史名 mcp__mobi__change_title 保留：老会话消息已按旧全名落库
+    return name === 'mcp__mobi-core__change_title' || name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
 }
 
 /**

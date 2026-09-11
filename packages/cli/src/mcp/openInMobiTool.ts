@@ -19,7 +19,7 @@
  *
  * 统一的"在 mobi 打开"工具：target 判别联合（file / terminal，后续增量扩展），
  * 经 CLI↔Hub socket 发 ui-command → Hub 按 Web 在线状态广播或静默，
- * 回执 { delivered } 是本工具的核心语义。仅挂 remote 壳（mobiSdkMcpServer，
+ * 回执 { delivered } 是本工具的核心语义。仅挂 remote 壳（mobiAppsServer，
  * D1：local HTTP 壳不挂载——local 模式无 Hub/Web 链路）。
  *
  * 回执三分支（勿混淆）：
@@ -130,7 +130,7 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
 export type OpenInMobiTool = ReturnType<typeof createOpenInMobiTool>
 
 /**
- * 会话场景的组装入口（仅 remote 壳 mobiSdkMcpServer 使用）：
+ * 会话场景的组装入口（仅 remote 壳 mobiAppsServer 使用）：
  * hub 通道 = ApiSessionClient.sendUiCommand（emitWithAck 回执）。
  */
 export function createOpenInMobiToolForSession(client: ApiSessionClient) {

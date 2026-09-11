@@ -24,7 +24,7 @@ function buildDeps(overrides?: Partial<{ sendUiCommand: ReturnType<typeof vi.fn>
 }
 
 describe('createOpenInMobiTool', () => {
-    it('exposes stable tool identity for mcp__mobi__open_in_mobi prefix', () => {
+    it('exposes stable tool identity for mcp__mobi-apps__open_in_mobi prefix', () => {
         const { deps } = buildDeps()
         const tool = createOpenInMobiTool(deps)
 

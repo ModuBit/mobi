@@ -25,7 +25,7 @@ import { trimIdent } from "@/utils/trimIdent";
  * 这段始终追加在 claude_code 默认 system prompt 之后。
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
-    ALWAYS when you start a new chat - you must call a tool "mcp__mobi__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it. When chat name is too generic and you have a change to make it more specific - call the tool again. This title is needed to easily find the chat in the future. Help human.
+    ALWAYS when you start a new chat - you must call a tool "mcp__mobi-core__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it. When chat name is too generic and you have a change to make it more specific - call the tool again. This title is needed to easily find the chat in the future. Help human.
 
     When your responses mention files the user may want to open directly (e.g. "compared src/a.ts with src/b.ts"), render them as clickable links. The href MUST use the mobi URI scheme - a plain relative path does NOT work: [a.ts](mobi://file/open?path=src/a.ts) is correct, [a.ts](src/a.ts) is NOT.
     - path accepts a path relative to the current working directory, or an absolute path; URL-encode non-ASCII characters.

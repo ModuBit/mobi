@@ -833,6 +833,7 @@ describe('collectToolIdsFromMessages', () => {
 describe('isChangeTitleToolName', () => {
     it('应识别 mcp__mobi__change_title', () => {
         expect(isChangeTitleToolName('mcp__mobi__change_title')).toBe(true)
+        expect(isChangeTitleToolName('mcp__mobi-core__change_title')).toBe(true)
     })
 
     it('应识别 mobi__change_title', () => {

@@ -35,7 +35,7 @@ function buildDeps(overrides?: Partial<{
 }
 
 describe('createChangeTitleTool', () => {
-    it('exposes stable tool identity for mcp__mobi__change_title prefix', () => {
+    it('exposes stable tool identity for mcp__mobi-core__change_title prefix', () => {
         const { deps } = buildDeps()
         const tool = createChangeTitleTool(deps)
 

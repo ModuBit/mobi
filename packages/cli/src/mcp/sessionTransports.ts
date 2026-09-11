@@ -17,10 +17,17 @@
 /**
  * 会话 MCP / hook settings 的按模式装配（transport 分流，ADR 0001）。
  *
- * remote 模式（Web 控制，SDK Query 在 mobi 进程内）：mobi MCP 走 SDK 进程内
- * server、hook settings 用内联对象——零端口、零临时文件。
- * local 模式（终端控制，claude 独立子进程）：mobi MCP 走 HTTP server、
- * hook settings 落盘文件——进程内回调对子进程不可达。
+ * server 按职责拆分（命名法：mobi-apps = 驱动应用界面，mobi-core = 内置基础能力）：
+ * - mobi-apps：agent 驱动 mobi 界面的工具族（open_in_mobi，后续 A 类扩展进此）。
+ *   仅 remote——链路依赖 Hub/Web，local 不存在（D1）。
+ * - mobi-core：内置基础能力（change_title / web_search / web_fetch）。
+ *   remote 走 SDK 进程内 server；local 走 HTTP server 壳（仅 change_title，
+ *   open_in_mobi / web 工具不挂——原 mobi-web 在 local 本就被 SDK server 序列化
+ *   过滤，从未实际生效，此处不再挂载）。
+ *
+ * remote 模式（Web 控制，SDK Query 在 mobi 进程内）：hook settings 用内联对象——
+ * 零端口、零临时文件。local 模式（终端控制，claude 独立子进程）：hook settings
+ * 落盘文件——进程内回调对子进程不可达。
  */
 
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
@@ -28,8 +35,8 @@ import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { CROSS_SESSION_INBOUND_ACCEPT } from '@/modules/common/hooks/generateHookSettings'
-import { createMobiWebMcpServer } from '@/webtools/server'
-import { createMobiSdkMcpServer } from './mobiSdkMcpServer'
+import { createMobiAppsServer } from './mobiAppsServer'
+import { createMobiCoreServer } from './mobiCoreServer'
 
 export function buildSessionMcpServers(opts: {
     startingMode: 'local' | 'remote'
@@ -39,19 +46,19 @@ export function buildSessionMcpServers(opts: {
     /** 取当前 agent 会话定位（flavor + sessionId + path），用于 change_title 回写 agent 侧标题 */
     getAgentLocator: () => AgentSessionLocator | null
 }): Record<string, McpServerConfig> {
-    const mobi: McpServerConfig = opts.startingMode === 'remote'
-        ? createMobiSdkMcpServer(opts.client, opts.getAgentLocator)
-        : (() => {
-            // local 模式必须提供 HTTP server url；null 属装配时序 bug，显式失败而非静默空串
-            if (!opts.httpMcpUrl) {
-                throw new Error('local 模式 buildSessionMcpServers 缺少 httpMcpUrl（startMobiMcpServer 未先启动?）')
-            }
-            return { type: 'http' as const, url: opts.httpMcpUrl }
-        })()
+    if (opts.startingMode === 'remote') {
+        return {
+            'mobi-apps': createMobiAppsServer(opts.client),
+            'mobi-core': createMobiCoreServer(opts.client, opts.getAgentLocator),
+        }
+    }
 
+    // local 模式必须提供 HTTP server url；null 属装配时序 bug，显式失败而非静默空串
+    if (!opts.httpMcpUrl) {
+        throw new Error('local 模式 buildSessionMcpServers 缺少 httpMcpUrl（startMobiMcpServer 未先启动?）')
+    }
     return {
-        mobi,
-        'mobi-web': createMobiWebMcpServer(),
+        'mobi-core': { type: 'http' as const, url: opts.httpMcpUrl },
     }
 }
 

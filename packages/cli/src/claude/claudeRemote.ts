@@ -1073,11 +1073,12 @@ export async function claudeRemote(opts: {
         extraArgs: { 'replay-user-messages': null },
         allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: baseConfig.disallowedTools,
-        // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch → 执行层重定向到 mobi-web in-process 工具。
+        // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch → 执行层重定向到
+        // mobi-core in-process 工具（web_search/web_fetch 执行载体）。
         // 无可用 provider 时 handler 返回明确错误（国内环境内置本就不可用，无回退损失）。
         toolAliases: {
-            WebSearch: 'mcp__mobi-web__web_search',
-            WebFetch: 'mcp__mobi-web__web_fetch',
+            WebSearch: 'mcp__mobi-core__web_search',
+            WebFetch: 'mcp__mobi-core__web_fetch',
         },
         canUseTool: async (toolName, input, options) => {
             const result = await opts.canCallTool(toolName, input, options);
