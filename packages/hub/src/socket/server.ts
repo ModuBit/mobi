@@ -88,6 +88,11 @@ export type SocketServerDeps = {
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts）。
      *  支持惰性求值——组装层 socket server 先于 SyncEngine 创建，handler 触发时才取 sink */
     factsSink?: SessionFactsSink | (() => SessionFactsSink | undefined)
+    /** Web SSE 在线检查（ui-command 离线静默判定；hidden 后台 tab 也算在线） */
+    hasActiveSseConnection?: (namespace: string) => boolean
+    /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播）。
+     *  支持惰性求值——SyncEngine 在 socket server 之后创建 */
+    publishUiCommand?: (event: Extract<SyncEvent, { type: 'ui-command' }>) => void
 }
 
 export function createSocketServer(deps: SocketServerDeps): {
@@ -189,7 +194,9 @@ export function createSocketServer(deps: SocketServerDeps): {
         // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪
         onMachineAlive: deps.onMachineAlive,
         factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
-        onWebappEvent: deps.onWebappEvent     // Web端实时事件
+        onWebappEvent: deps.onWebappEvent,    // Web端实时事件
+        hasActiveSseConnection: deps.hasActiveSseConnection,
+        publishUiCommand: deps.publishUiCommand
     }))
 
     terminalNs.use(async (socket, next) => {

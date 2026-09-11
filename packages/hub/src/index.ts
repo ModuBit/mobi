@@ -194,7 +194,10 @@ async function main() {
         // 惰性：socket server 先于 SyncEngine 创建，handler 触发时才取 sink
         factsSink: () => syncEngine?.factsSink,
         // CLI 机器心跳 → 更新机器在线状态
-        onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload)
+        onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload),
+        // ui-command（agent 触达 mobi 界面）：Web SSE 在线检查 + 经 SyncEngine 发布广播
+        hasActiveSseConnection: (namespace) => sseManager?.hasActiveConnection(namespace) ?? false,
+        publishUiCommand: (event) => syncEngine?.publishUiCommand(event)
     })
 
     syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager, rewindDeleteBoundTracker)

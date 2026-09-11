@@ -25,6 +25,7 @@ import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 import { registerMachineHandlers } from './machineHandlers'
+import { registerUiCommandHandlers } from './uiCommandHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
 import { registerSessionHandlers } from './sessionHandlers'
 import { cleanupTerminalHandlers, registerTerminalHandlers } from './terminalHandlers'
@@ -47,13 +48,17 @@ export type CliHandlersDeps = {
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     /** 机器心跳（机器级事实，经 machineHandlers 更新在线状态；不属于会话事实 sink） */
     onMachineAlive?: (payload: MachineAlivePayload) => void
+    /** Web SSE 在线检查（ui-command 离线静默判定；hidden 后台 tab 也算在线） */
+    hasActiveSseConnection?: (namespace: string) => boolean
+    /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播） */
+    publishUiCommand?: (event: Extract<SyncEvent, { type: 'ui-command' }>) => void
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
     factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -130,6 +135,11 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         terminalNamespace,
         resolveSessionAccess,
         emitAccessError
+    })
+    registerUiCommandHandlers(socket, {
+        resolveSessionAccess,
+        hasActiveSseConnection: hasActiveSseConnection ?? (() => false),
+        publishUiCommand
     })
 
     socket.on('ping', (callback: () => void) => {

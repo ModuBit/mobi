@@ -140,6 +140,11 @@ export class SyncEngine {
         return this.eventPublisher.subscribe(listener)
     }
 
+    /** UI 命令发布入口（CLI socket handler 用）：经 EventPublisher 统一盖章 namespace 并 SSE 广播 */
+    publishUiCommand(event: Extract<SyncEvent, { type: 'ui-command' }>): void {
+        this.eventPublisher.emit(event)
+    }
+
     private resolveNamespace(event: SyncEvent): string | undefined {
         if (event.namespace) {
             return event.namespace
