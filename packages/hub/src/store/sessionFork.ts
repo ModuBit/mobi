@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { MessageContentSchema, MetadataSchema, isObject, sessionOpenLink, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
+import { MessageContentSchema, MetadataSchema, isObject, isTurnResultContent, sessionOpenLink, unwrapRoleWrappedRecordEnvelope, type ContentBlock, type ForkFromMetadata, type ForkedFromMetadata } from '@mobi/shared'
 
 import { getMessagesByNativeId, isContextBoundaryContent } from './messages'
 import { CONTEXT_BOUNDARY_SEQ_KEY, resolveContextBoundarySeq } from './contextBoundary'
@@ -46,18 +46,8 @@ export function isTurnStartContent(content: unknown): boolean {
     return isContextBoundaryContent(content)
 }
 
-/**
- * turn 终点判定：agent result 输出行（usage 概要数据源，web turn-result 概要行的落库形态）。
- * 与 isTurnStartContent 同属 fork 复制切割的信封判据。
- */
-export function isTurnResultContent(content: unknown): boolean {
-    const record = unwrapRoleWrappedRecordEnvelope(content)
-    if (!record || record.role !== 'agent') return false
-    const inner = record.content
-    if (!isObject(inner) || inner.type !== 'output') return false
-    const data = inner.data
-    return isObject(data) && data.type === 'result'
-}
+// 判据实现在 shared messages（isTurnResultContent）——信封知识单源，此处仅 re-export 供既有引用
+export { isTurnResultContent } from '@mobi/shared'
 
 /**
  * 锚点所在 turn 的终点 seq（复制上界扩展，问题实证：web ⑂ 挂 turn-result 概要行、

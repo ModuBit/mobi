@@ -268,4 +268,112 @@ describe('SessionMessageRuntimeProjector', () => {
         expect(publications).toEqual([])
         expect(store.sessions.getSession(sessionId)?.runtimeState).toBeNull()
     })
+
+    // ============ foregroundTasks：前台执行中任务清单（foreground-tasks spec） ============
+
+    function makeResultContent(): unknown {
+        return {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: { type: 'result', subtype: 'success' },
+            },
+        }
+    }
+
+    test('前台 Agent tool_use 入清单，tool_result 到达移除并删空字段', () => {
+        const started = project(makeAssistantContent([
+            {
+                type: 'tool_use',
+                id: 'fg-1',
+                name: 'Agent',
+                input: { description: '分析任务', subagent_type: 'Explore' },
+            },
+        ]))
+
+        expect(started).toHaveLength(1)
+        expect(storedRuntimeState()?.foregroundTasks).toEqual([
+            { toolUseId: 'fg-1', description: '分析任务', subagentType: 'Explore', startedAt: 1_750_000_000_000 },
+        ])
+
+        const completed = project(makeUserContent([
+            { type: 'tool_result', tool_use_id: 'fg-1', content: 'done' },
+        ]))
+
+        expect(completed).toHaveLength(1)
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+    })
+
+    test('并行多个前台 Agent 部分完成时保留其余', () => {
+        project(makeAssistantContent([
+            { type: 'tool_use', id: 'fg-1', name: 'Agent', input: { description: '分析' } },
+            { type: 'tool_use', id: 'fg-2', name: 'Agent', input: { description: '编码' } },
+        ]))
+
+        project(makeUserContent([
+            { type: 'tool_result', tool_use_id: 'fg-1', content: 'done' },
+        ]))
+
+        const tasks = storedRuntimeState()?.foregroundTasks
+        expect(tasks).toHaveLength(1)
+        expect(tasks?.[0]?.toolUseId).toBe('fg-2')
+    })
+
+    test('后台 Agent（run_in_background）不入前台清单', () => {
+        const publications = project(makeAssistantContent([
+            {
+                type: 'tool_use',
+                id: 'bg-1',
+                name: 'Agent',
+                input: { description: '后台任务', run_in_background: true },
+            },
+        ]))
+
+        expect(publications).toEqual([])
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+    })
+
+    test('非 Agent 工具不进前台清单', () => {
+        const publications = project(makeAssistantContent([
+            { type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'ls' } },
+        ]))
+
+        expect(publications).toEqual([])
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+    })
+
+    test('轮次 result 到达清扫孤儿：未等结果的条目随 result 移除', () => {
+        project(makeAssistantContent([
+            { type: 'tool_use', id: 'fg-orphan', name: 'Agent', input: { description: '被中断' } },
+        ]))
+        expect(storedRuntimeState()?.foregroundTasks).toHaveLength(1)
+
+        const publications = project(makeResultContent())
+
+        expect(publications).toHaveLength(1)
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+    })
+
+    test('轮次 result 到达但清单本为空时不产生写库', () => {
+        const publications = project(makeResultContent())
+
+        expect(publications).toEqual([])
+    })
+
+    test('正常完成的条目不因后续轮次 result 重复写库', () => {
+        project(makeAssistantContent([
+            { type: 'tool_use', id: 'fg-ok', name: 'Agent', input: { description: '正常' } },
+        ]))
+        project(makeUserContent([
+            { type: 'tool_result', tool_use_id: 'fg-ok', content: 'done' },
+        ]))
+
+        // 条目已清、轮次已结束：下一条无关消息不触发前台清单写库
+        const publications = project(makeUserContent([
+            { type: 'tool_result', tool_use_id: 'unrelated', content: 'x' },
+        ]))
+
+        expect(publications).toEqual([])
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+    })
 })

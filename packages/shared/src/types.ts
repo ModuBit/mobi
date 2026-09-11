@@ -20,6 +20,7 @@ export type {
     AttachmentMetadata,
     ContextUsage,
     DecryptedMessage,
+    ForegroundTaskItem,
     GoalStatus,
     Metadata,
     RuntimeState,

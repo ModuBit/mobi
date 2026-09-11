@@ -43,8 +43,12 @@ agent 回复生成期间，CLI、Hub 与 Web 之间传递并衔接当前消息�
 _Avoid_: 消息同步（范围过宽）、流式转发（忽略基线与追赶语义）
 
 **运行状态投影**:
-Hub 将已持久化的消息内容按到达顺序归约为 `runtimeState`（todos、tasks、teamState、backgroundTasks）的过程。`SessionMessageRuntimeProjector` 是规则、跨消息配对状态和持久化顺序的权威入口；Socket handler 对这部分只负责校验、鉴权、调用与发布。
+Hub 将已持久化的消息内容按到达顺序归约为 `runtimeState`（todos、tasks、teamState、backgroundTasks、foregroundTasks）的过程。`SessionMessageRuntimeProjector` 是规则、跨消息配对状态和持久化顺序的权威入口；Socket handler 对这部分只负责校验、鉴权、调用与发布。
 _Avoid_: 重建完整消息（投影只生成当前摘要）、在 Socket handler 内直接合并 runtimeState
+
+**前台任务**（foregroundTasks）:
+Agent 类工具在前台执行中的清单，由 Hub 从消息投影维护（tool_use 入、tool_result 出、轮次 result 到达清扫孤儿）。与「后台任务」（backgroundTasks，CLI 上报通道）相对；与「任务列表」（tasks，TaskCreate 条目）无关。等待审批与执行中统一视为运行中，无状态字段。
+_Avoid_: 前台 Agent 面板数据（那是消费方视角）、运行中任务（面板标题，涵盖前台 + 后台两类）
 
 **消息事实处理**:
 Hub 对 CLI 上报的 `pushed`、`bound`、`attached`、`acked`、`lifecycle`、`withdrawn` 事实做字段收窄、幂等或单调落库，并生成领域 publication 的过程。`SessionMessageFactsProcessor` 是这些规则及连接级 native session 上下文的权威入口；Socket handler 只校验批次外层与访问权，并把 publication 翻译成 room / SSE 通知。

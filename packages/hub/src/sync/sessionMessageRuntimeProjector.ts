@@ -26,6 +26,11 @@ import {
     extractExcludedTaskStartedIds,
     type BackgroundToolName,
 } from './backgroundTasks'
+import {
+    applyForegroundTaskDeltas,
+    extractForegroundProjection,
+    ForegroundTaskMap,
+} from './foregroundTasks'
 import { applyTaskDelta, extractTaskDeltasFromMessageContent, PendingTaskMap } from './tasks'
 import {
     applyTeamStateDelta,
@@ -55,6 +60,7 @@ export class SessionMessageRuntimeProjector {
     private readonly backgroundToolUseIds = new Map<string, BackgroundToolName>()
     private readonly backgroundTaskIds = new Set<string>()
     private readonly filteredTaskIds = new Set<string>()
+    private readonly foregroundTaskMap = new ForegroundTaskMap()
     private readonly now: () => number
 
     constructor(
@@ -78,6 +84,15 @@ export class SessionMessageRuntimeProjector {
         const todos = extractTodoWriteTodosFromMessageContent(content)
         const taskDeltas = extractTaskDeltasFromMessageContent(content, this.pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
+
+        // 前台任务清单投影（foreground-tasks spec）：Agent tool_use 入 / tool_result 出 /
+        // 轮次 result 孤儿清扫。turnResult 时即使无增量也要写库（清单可能有遗留条目待清）。
+        const foregroundProjection = extractForegroundProjection(content, this.foregroundTaskMap, this.now)
+        const foregroundChanged = applyForegroundTaskDeltas(
+            existingRuntimeState.foregroundTasks,
+            foregroundProjection.deltas,
+            this.now,
+        )
 
         // 必须先收集 tool_use，后到的 task_started 才能根据 run_in_background 判定。
         collectBackgroundToolUseIds(content, this.backgroundToolUseIds)
@@ -130,6 +145,8 @@ export class SessionMessageRuntimeProjector {
             && !backgroundTaskDelta
             && !teamSystemDelta
             && !teamCompletionDelta
+            && foregroundChanged === null
+            && !(foregroundProjection.turnResult && existingRuntimeState.foregroundTasks)
         ) {
             return []
         }
@@ -201,6 +218,17 @@ export class SessionMessageRuntimeProjector {
                 existingRuntimeState.backgroundTasks,
                 backgroundTaskDelta,
             )
+        }
+
+        // 前台清单：增量应用；轮次 result 到达时无条件清（孤儿即清单里全部遗留条目——
+        // 正常完成的条目已在各自 tool_result 时移除）；空清单删字段（与 todos 全完成同语义）
+        if (foregroundChanged !== null) {
+            existingRuntimeState.foregroundTasks = foregroundChanged
+        } else if (foregroundProjection.turnResult) {
+            delete existingRuntimeState.foregroundTasks
+        }
+        if (existingRuntimeState.foregroundTasks?.length === 0) {
+            delete existingRuntimeState.foregroundTasks
         }
 
         const shouldAutoClearBackgroundTasks = existingRuntimeState.backgroundTasks

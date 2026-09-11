@@ -395,6 +395,20 @@ export type BackgroundTaskItem = z.infer<typeof BackgroundTaskItemSchema>
 
 export const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
 
+/** 前台执行中任务条目（foreground-tasks spec D3/D8）：hub 从消息投影维护的「正在跑的前台任务」清单。
+ *  与 backgroundTasks 的区别：前台任务无 CLI 上报通道，纯 hub 消息投影；无状态字段（等待审批与
+ *  执行中统一视为运行中，spec D5）。第一版只收 Agent 类工具，字段名留非 Agent 扩展空间。 */
+export const ForegroundTaskItemSchema = z.object({
+    toolUseId: z.string(),
+    description: z.string().nullable().optional(),
+    subagentType: z.string().nullable().optional(),
+    startedAt: z.number(),
+})
+
+export type ForegroundTaskItem = z.infer<typeof ForegroundTaskItemSchema>
+
+export const ForegroundTasksSchema = z.array(ForegroundTaskItemSchema)
+
 /**
  * 从 background_tasks_changed 的 tasks 数组提取存活后台任务 id 集合（CLI 与 Hub 共用规则）：
  * task_id 为非空字符串才收录；ambient === true 的家务任务（checkpoint/live-update watcher 等）
@@ -565,6 +579,9 @@ export const RuntimeStateSchema = z.object({
     todos: TodosSchema.optional(),
     tasks: TasksSchema.optional(),
     backgroundTasks: BackgroundTasksSchema.optional(),
+    /** 前台执行中任务清单：hub 从消息投影维护（foreground-tasks spec D1/D4），工具出结果或
+     *  轮次 result 到达时移除，空清单删字段。与 backgroundTasks 无交集（后台任务另有上报通道） */
+    foregroundTasks: ForegroundTasksSchema.optional(),
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
