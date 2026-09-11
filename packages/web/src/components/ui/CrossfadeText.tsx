@@ -31,9 +31,12 @@ const FADE_MS = 200
  * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
  */
 export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string; style?: CSSProperties; shimmer?: boolean; ellipsis?: boolean }) {
-    // ellipsis 前置条件：父级必须是块级（或有确定宽度）的容器——maxWidth:100% 相对
-    // containing block 解引用，父级是 shrink-to-fit 的 inline/flex 内容时恒不触发，
-    // 长文案会撑破布局而非省略（如 antd.css 中 .tool-call-think 的收缩链）
+    // ellipsis 前置条件：父级必须是块级（或有确定宽度）的容器。省略截断要在
+    // wrapper（inline-flex，shrink-to-fit）与文案层（nowrap）两层同时设 maxWidth:100%：
+    // 只在内层设不够——nowrap 把 wrapper 的 min-content 抬到全文宽，shrink-to-fit
+    // 公式 min(max(min-content, available), max-content) 恒等于全文宽，wrapper 在
+    // 收缩链（如 .tool-call-think）里永不收缩，截断落在祖先 overflow:hidden 上
+    // 变成无省略号硬裁（移动端组头实测）。wrapper 也设 max-width 才能压住 min-content。
     const [leaving, setLeaving] = useState<string | null>(null)
     const prevTextRef = useRef(text)
 
@@ -51,6 +54,8 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
                 position: 'relative',
                 display: 'inline-flex',
                 overflow: 'hidden',
+                // 省略时 wrapper 收进父级确定宽度（见上方前置条件注释）
+                ...(ellipsis && { maxWidth: '100%' }),
                 ...style,
             }}
         >

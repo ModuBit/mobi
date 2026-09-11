@@ -89,4 +89,21 @@ describe('CrossfadeText', () => {
         expect(screen.queryByText('B')).not.toBeInTheDocument()
         expect(screen.getByText('C')).toBeInTheDocument()
     })
+
+    it('ellipsis 模式：wrapper 与文案层均设 maxWidth:100%（nowrap 抬高 wrapper min-content，只设内层不收缩致无省略号硬裁）', () => {
+        render(<CrossfadeText text="很长的组头汇总文案" ellipsis />)
+        const layer = screen.getByText('很长的组头汇总文案')
+        // 文案层（内层）
+        expect(layer.style.maxWidth).toBe('100%')
+        expect(layer.style.textOverflow).toBe('ellipsis')
+        // wrapper（外层 inline-flex）
+        const wrapper = layer.parentElement as HTMLElement
+        expect(wrapper.style.maxWidth).toBe('100%')
+
+        // 非 ellipsis 模式保持不受限的 crossfade 形状
+        render(<CrossfadeText text="普通文案" />)
+        const plain = screen.getByText('普通文案')
+        expect(plain.style.maxWidth).toBe('')
+        expect((plain.parentElement as HTMLElement).style.maxWidth).toBe('')
+    })
 })
