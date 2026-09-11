@@ -139,7 +139,7 @@ describe('TasksPanel', () => {
 
     it('有前台任务（DB 清单）时渲染卡片', async () => {
         const { useForegroundTasksStore } = await loadStores()
-        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-1')])
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])
 
         const { container } = render(
             <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
@@ -153,7 +153,7 @@ describe('TasksPanel', () => {
     it('前台任务详情 block 未加载（消息空窗）时卡片仍渲染', async () => {
         // 纯 DB 单源的核心价值：展示不依赖消息到达性（foreground-tasks spec D2）
         const { useForegroundTasksStore } = await loadStores()
-        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-missing')])
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-missing')])
 
         const { container } = render(
             <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
@@ -176,7 +176,7 @@ describe('TasksPanel', () => {
 
     it('前台任务与后台任务合并渲染在同一面板', async () => {
         const { useForegroundTasksStore, useBackgroundTasksStore } = await loadStores()
-        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-1')])
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])
         useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-1', { description: '后台研究' })])
 
         const { container } = render(
@@ -192,8 +192,8 @@ describe('TasksPanel', () => {
     it('详情 block 已加载时点击前台任务触发 onAgentClick', async () => {
         const { useForegroundTasksStore, useChatBlocksByIdStore } = await loadStores()
         const block = makeAgentBlock('agent-1')
-        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('agent-1')])
-        useChatBlocksByIdStore.getState().setById('test-session', new Map([['agent-1', block]]))
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('agent-1')])
+        useChatBlocksByIdStore.getState().set('test-session', new Map([['agent-1', block]]))
 
         const onAgentClick = vi.fn()
         render(
@@ -208,7 +208,7 @@ describe('TasksPanel', () => {
 
     it('详情 block 未加载时点击静默降级：不回调（守卫在点击时查询 byId 索引，卡片恒可点）', async () => {
         const { useForegroundTasksStore } = await loadStores()
-        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-missing')])
+        useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-missing')])
 
         const onAgentClick = vi.fn()
         render(

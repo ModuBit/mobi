@@ -174,7 +174,7 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                                 onClick={() => {
                                     // 点击时才解析 block：面板不订阅消息索引，避免随消息流重渲染
                                     const block = useChatBlocksByIdStore.getState()
-                                        .byIdBySession.get(sessionId)?.get(item.task.toolUseId)
+                                        .bySession.get(sessionId)?.get(item.task.toolUseId)
                                     if (block?.kind === 'tool-call') onAgentClick(block)
                                 }}
                             />

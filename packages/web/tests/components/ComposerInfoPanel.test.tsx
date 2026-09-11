@@ -331,7 +331,7 @@ describe('ComposerInfoPanel', () => {
 
     it('有前台任务（runtime_state 清单）时渲染面板', async () => {
         const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
-        useForegroundTasksStore.getState().setTasks('test-session', [
+        useForegroundTasksStore.getState().set('test-session', [
             { toolUseId: 'fg-1', description: '测试', subagentType: 'Explore', startedAt: Date.now() },
         ])
 

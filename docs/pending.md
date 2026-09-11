@@ -637,7 +637,8 @@ interrupt（用户停止）
 
 **方案共识**：`runtime_state.foregroundTasks` 由 hub 从消息投影维护（tool_use 入 / tool_result 出 / 轮次 result 兜底清孤儿），web 面板纯 DB 单源，清理按钮一键清两类。详见 spec：`.scratch/foreground-tasks/spec.md`（ready-for-agent）。
 
-**/simplify 跳过项**（2026-09-11 review 判定超出当次 diff 范围，留作后续重构线索）：
+**/simplify + code-review 跳过项处理**（2026-09-11，code-review 后已解决/收窄）：
 
-1. **Agent 工具判据三份拷贝**：`Task`/`Agent` 工具名集合 + `run_in_background` 后台排除判据目前在 hub（foregroundTasks.ts）与 web（`extractRunningAgents` 已删后的残留引用点，如工具卡片注册）各有一份。下沉到 shared 单源（类似 `CLEARABLE_RUNTIME_STATE_FIELDS` 模式），CLI 侧上报通道若后续接入也复用。
-2. **session-scoped store 工厂**：web 端 foregroundTasksStore / backgroundTasksStore / chatBlocksByIdStore 等手写「Map<sessionId, T> + EMPTY 哨兵 + selector」镜像 store 已有 4+ 份，可抽 `createSessionScopedStore<T>` 工厂统一（含 Map 复制语义），各 store 只声明初始值。
+1. ~~Agent 工具判据多份拷贝~~：已下沉 shared `agentTools.ts`（`isAgentToolName` / `isBackgroundAgentInput`），hub 投影与 web knownTools 共用单源。
+2. **session-scoped store 工厂（部分收口）**：已建 `createSessionScopedStore`，foregroundTasksStore / chatBlocksByIdStore 迁入；backgroundTasksStore（终态通知队列）、teamAgentsStore（三 Map 联动）因额外状态不适用工厂，维持手写——后续新增镜像 store 优先用工厂。
+3. code-review 另修两个投影 bug：sidechain 消息混入前台清单（嵌套 subagent 双条目）、任务中途转后台前后台双渲染（前台条目随后台 started 移除）。均有红→绿测试锁定。

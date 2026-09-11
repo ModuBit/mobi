@@ -18,6 +18,7 @@ import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Agent 卡片组件（foreground-tasks spec D5/D8）
@@ -32,6 +33,7 @@ export function AgentCard({ name, seed, onClick }: {
     seed: string
     onClick?: () => void
 }) {
+    const { t } = useTranslation()
     const { token } = theme.useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
 
@@ -88,7 +90,7 @@ export function AgentCard({ name, seed, onClick }: {
                     textOverflow: 'ellipsis',
                     lineHeight: '1.3',
                 }}>
-                    running
+                    {t('chat.runningTasks.agentRunning', 'running')}
                 </div>
             </div>
         </div>

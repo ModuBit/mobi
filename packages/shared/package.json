@@ -9,6 +9,7 @@
         "./socket": "./src/socket.ts",
         "./modes": "./src/modes.ts",
         "./types": "./src/types.ts",
+        "./agentTools": "./src/agentTools.ts",
         "./messages": "./src/messages.ts",
         "./profile": "./src/profile.ts",
         "./pathSecurity": "./src/pathSecurity.ts",

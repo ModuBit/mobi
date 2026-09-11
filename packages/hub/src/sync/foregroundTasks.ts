@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { asString, getField, isObject } from '@mobi/shared'
+import { asString, getField, isAgentToolName, isBackgroundAgentInput, isObject } from '@mobi/shared'
 import { isTurnResultUnwrapped, unwrapOutputMessage } from '@mobi/shared/messages'
 import { ForegroundTaskItemSchema } from '@mobi/shared/schemas'
 import type { ForegroundTaskItem } from '@mobi/shared/types'
@@ -29,9 +29,6 @@ import type { ForegroundTaskItem } from '@mobi/shared/types'
  * toolUseId 去重、completed 按移除判定无变化），不维护跨消息配对 map——
  * 清单本身（runtimeState.foregroundTasks）就是唯一的配对状态。
  */
-
-/** 前台 Agent 类工具名称集合（Task 为旧名 / Agent 为新名，SDK 双名并存） */
-const FOREGROUND_TOOL_NAMES = new Set(['Task', 'Agent'])
 
 /** 前台任务变更增量 */
 export type ForegroundTaskDelta =
@@ -53,14 +50,14 @@ function collectForegroundToolUses(
     const deltas: ForegroundTaskDelta[] = []
     for (const block of blocks) {
         if (!isObject(block) || block.type !== 'tool_use') continue
-        if (!FOREGROUND_TOOL_NAMES.has(asString(block.name) ?? '')) continue
+        if (!isAgentToolName(asString(block.name) ?? '')) continue
 
         const toolUseId = asString(block.id)
         if (!toolUseId) continue
 
         const input = isObject(block.input) ? block.input : null
         // 显式后台 Agent 归后台任务面板（backgroundTasks），不进前台清单
-        if (input?.run_in_background === true) continue
+        if (isBackgroundAgentInput(input)) continue
 
         const task = ForegroundTaskItemSchema.safeParse({
             toolUseId,
@@ -92,6 +89,10 @@ function collectCompletions(blocks: unknown[]): ForegroundTaskDelta[] {
 export function extractForegroundProjection(content: unknown, now: () => number): ForegroundProjection {
     const unwrapped = unwrapOutputMessage(content)
     if (!unwrapped) return { deltas: [], turnResult: false }
+
+    // sidechain（嵌套 subagent）消息不属前台清单——前台=主链执行态，
+    // 子代理内部再派生的 Agent 工具由其自身生命周期管理
+    if (unwrapped.data.isSidechain === true) return { deltas: [], turnResult: false }
 
     if (isTurnResultUnwrapped(unwrapped)) return { deltas: [], turnResult: true }
 
@@ -136,4 +137,17 @@ export function applyForegroundTaskDeltas(
     }
 
     return changed ? tasks : null
+}
+
+/**
+ * 移除指定 toolUseId 的前台条目（任务中途转后台时由投影器调用）；
+ * 无匹配返回 null（无变化不写库）。
+ */
+export function removeForegroundTask(
+    existing: ForegroundTaskItem[] | undefined,
+    toolUseId: string,
+): ForegroundTaskItem[] | null {
+    const tasks = existing ?? []
+    const next = tasks.filter(task => task.toolUseId !== toolUseId)
+    return next.length === tasks.length ? null : next
 }

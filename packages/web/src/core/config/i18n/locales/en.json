@@ -379,7 +379,8 @@
             "stop": "Stop"
         },
         "runningTasks": {
-            "panelTitle": "Running Tasks"
+            "panelTitle": "Running Tasks",
+            "agentRunning": "running"
         },
         "clearState": {
             "label": "Clear",

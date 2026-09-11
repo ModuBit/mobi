@@ -27,8 +27,8 @@ export type ClearRuntimeStateField = ClearableRuntimeStateField
 
 export type ClearStateButtonProps = {
     sessionId: string
-    /** 本次清理的字段集合（单字段面板传单项，运行中任务面板传前台 + 后台两类） */
-    clearFields: ClearRuntimeStateField[]
+    /** 本次清理的字段集合（至少一项，类型层面禁止空数组——确认文案回退键依赖 clearFields[0]） */
+    clearFields: [ClearRuntimeStateField, ...ClearRuntimeStateField[]]
     /** 组合清理的确认文案 key（多字段时语义不能由字段集合推断，由调用方声明）；缺省按单字段回退 */
     confirmKey?: string
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>

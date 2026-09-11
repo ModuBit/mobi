@@ -369,7 +369,8 @@
             "stop": "停止"
         },
         "runningTasks": {
-            "panelTitle": "运行中任务"
+            "panelTitle": "运行中任务",
+            "agentRunning": "运行中"
         },
         "clearState": {
             "label": "清理",

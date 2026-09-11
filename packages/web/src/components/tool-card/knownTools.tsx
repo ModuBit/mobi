@@ -16,7 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { getField, isObject } from '@mobi/shared'
+import { getField, isAgentToolName, isBackgroundAgentInput, isObject } from '@mobi/shared'
 import { joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { ToolOutlined } from '@ant-design/icons'
 import { LineSquiggle } from 'lucide-react'
@@ -39,14 +39,14 @@ function renderToolIcon(name: string): ReactNode {
 
 const HIDDEN_TOOL_STUB = { icon: () => null, title: () => '', subtitle: () => null, minimal: () => true as const }
 
-/** 判断是否为 Agent/Task 类工具 */
+/** 判断是否为 Agent/Task 类工具（判据单源在 shared agentTools，SDK 改名只改一处） */
 export function isAgentTool(name: string): boolean {
-    return name === 'Task' || name === 'Agent'
+    return isAgentToolName(name)
 }
 
 /** 判断是否为后台 Agent 工具（run_in_background=true） */
 export function isBackgroundAgentTool(name: string, input: unknown): boolean {
-    return isAgentTool(name) && isObject(input) && input.run_in_background === true
+    return isAgentTool(name) && isBackgroundAgentInput(input)
 }
 
 /** 判断是否为 Team Agent 工具（Agent/Task 带 team_name，非后台） */

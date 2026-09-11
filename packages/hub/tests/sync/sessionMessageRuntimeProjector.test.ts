@@ -376,4 +376,45 @@ describe('SessionMessageRuntimeProjector', () => {
         expect(publications).toEqual([])
         expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
     })
+
+    test('sidechain（嵌套 subagent）消息不入前台清单：前台=主链执行态', () => {
+        const content = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    isSidechain: true,
+                    message: { content: [
+                        { type: 'tool_use', id: 'fg-sc', name: 'Agent', input: { description: '嵌套子代理' } },
+                    ] },
+                },
+            },
+        }
+
+        const publications = project(content)
+
+        expect(publications).toEqual([])
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+    })
+
+    test('前台 Agent 中途转后台（task_started is_backgrounded）时移除前台条目，避免双渲染', () => {
+        project(makeAssistantContent([
+            { type: 'tool_use', id: 'fg-move', name: 'Agent', input: { description: '将转后台' } },
+        ]))
+        expect(storedRuntimeState()?.foregroundTasks).toHaveLength(1)
+
+        // 同一 toolUseId 的任务经 task_started（is_backgrounded=true）转后台
+        const publications = project(makeSystemContent('task_started', {
+            task_id: 'bt-move',
+            tool_use_id: 'fg-move',
+            task_type: 'local_agent',
+            is_backgrounded: true,
+            description: '将转后台',
+        }))
+
+        expect(publications).toHaveLength(1)
+        expect(storedRuntimeState()?.foregroundTasks).toBeUndefined()
+        expect(storedRuntimeState()?.backgroundTasks?.[0]?.taskId).toBe('bt-move')
+    })
 })

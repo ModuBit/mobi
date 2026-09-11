@@ -29,6 +29,7 @@ import {
 import {
     applyForegroundTaskDeltas,
     extractForegroundProjection,
+    removeForegroundTask,
 } from './foregroundTasks'
 import { applyTaskDelta, extractTaskDeltasFromMessageContent, PendingTaskMap } from './tasks'
 import {
@@ -86,7 +87,7 @@ export class SessionMessageRuntimeProjector {
         // 前台任务清单投影（foreground-tasks spec）：Agent tool_use 入 / tool_result 出 /
         // 轮次 result 孤儿清扫。增量与清扫语义（含「无变化返回 null」）都在 apply 内收口。
         const foregroundProjection = extractForegroundProjection(content, this.now)
-        const foregroundChanged = applyForegroundTaskDeltas(
+        let foregroundChanged = applyForegroundTaskDeltas(
             existingRuntimeState.foregroundTasks,
             foregroundProjection.deltas,
             foregroundProjection.turnResult,
@@ -125,6 +126,14 @@ export class SessionMessageRuntimeProjector {
             this.backgroundTaskIds.add(backgroundTaskDelta.task.taskId)
         } else if (backgroundTaskDelta?.type === 'completed') {
             this.backgroundTaskIds.delete(backgroundTaskDelta.taskId)
+        }
+
+        // 任务中途转后台（task_started is_backgrounded / task_updated patch 补建通道）：
+        // 后台条目建立的同时移除同源前台条目，避免同一任务在前台/后台面板双渲染
+        if (backgroundTaskDelta?.type === 'started' && backgroundTaskDelta.task.toolUseId) {
+            const base = foregroundChanged ?? existingRuntimeState.foregroundTasks
+            const afterMove = removeForegroundTask(base, backgroundTaskDelta.task.toolUseId)
+            if (afterMove !== null) foregroundChanged = afterMove
         }
 
         const teamSystemDelta = extractTeamSystemDeltasFromMessageContent(

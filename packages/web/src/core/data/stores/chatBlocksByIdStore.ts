@@ -14,35 +14,13 @@
  * limitations under the License.
  */
 
-import { create } from 'zustand'
+import { createSessionScopedStore } from './createSessionScopedStore'
 import type { ChatBlocksById } from '@/domain/chat/reconcile'
 
-interface ChatBlocksByIdState {
-    byIdBySession: Map<string, ChatBlocksById>
-    setById: (sessionId: string, byId: ChatBlocksById) => void
-    clearSession: (sessionId: string) => void
-}
+const store = createSessionScopedStore<ChatBlocksById>(new Map())
 
-export const useChatBlocksByIdStore = create<ChatBlocksByIdState>((set) => ({
-    byIdBySession: new Map(),
-
-    setById: (sessionId, byId) =>
-        set((state) => {
-            const next = new Map(state.byIdBySession)
-            next.set(sessionId, byId)
-            return { byIdBySession: next }
-        }),
-
-    clearSession: (sessionId) =>
-        set((state) => {
-            const next = new Map(state.byIdBySession)
-            next.delete(sessionId)
-            return { byIdBySession: next }
-        }),
-}))
-
-const EMPTY_BY_ID: ChatBlocksById = new Map()
+export const useChatBlocksByIdStore = store.useStore
 
 export function useChatBlocksById(sessionId: string): ChatBlocksById {
-    return useChatBlocksByIdStore((state) => state.byIdBySession.get(sessionId) ?? EMPTY_BY_ID)
+    return store.useSessionScoped(sessionId)
 }

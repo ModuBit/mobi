@@ -247,7 +247,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 同步 chatBlocks byId 到 store，供 ComposerInfoPanel 查找 block
     useEffect(() => {
-        useChatBlocksByIdStore.getState().setById(sessionId, byId)
+        useChatBlocksByIdStore.getState().set(sessionId, byId)
         return () => {
             useChatBlocksByIdStore.getState().clearSession(sessionId)
         }
@@ -277,7 +277,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // store 供「运行中任务」面板订阅，不再从消息 blocks 现算（展示与消息到达性解耦）
     const fgTasks = session?.runtimeState?.foregroundTasks
     useEffect(() => {
-        useForegroundTasksStore.getState().setTasks(sessionId, fgTasks ?? [])
+        useForegroundTasksStore.getState().set(sessionId, fgTasks ?? [])
         return () => {
             useForegroundTasksStore.getState().clearSession(sessionId)
         }
