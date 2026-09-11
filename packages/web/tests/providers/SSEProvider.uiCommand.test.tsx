@@ -94,7 +94,7 @@ describe('SSEProvider ui-command —— open_file 落 inspector 文件 tab（渲
     })
     afterEach(() => cleanup())
 
-    it('open_file 事件 → 发起会话的 inspector 打开文件 tab（fileName=path basename）', async () => {
+    it('open_file 事件 → 发起会话的 inspector 展开并打开文件 tab（fileName=path basename）', async () => {
         await renderProvider()
         sseListener.current!({
             type: 'ui-command',
@@ -103,6 +103,8 @@ describe('SSEProvider ui-command —— open_file 落 inspector 文件 tab（渲
         })
         await vi.waitFor(() => {
             const inspector = useWorkspaceStore.getState().getSession('s1')
+            // agent 意图是"展示给用户"：inspector 须展开（对齐 ActionLink file/open 默认语义）
+            expect(inspector.expanded).toBe(true)
             expect(inspector.tabs).toHaveLength(1)
             expect(inspector.tabs[0].mode).toBe('file')
             expect(inspector.tabs[0].filePath).toBe('/tmp/demo/deep/nested/a.ts')

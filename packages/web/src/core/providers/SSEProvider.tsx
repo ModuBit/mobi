@@ -443,13 +443,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // agent 触达 mobi 界面（A 类 UI 命令）。红线（D10）：openFileTab 只允许出现在
                 // 本 SSE 事件监听路径——禁止进 ToolCallBlock 渲染/effect，否则刷新页面重渲染
                 // 消息气泡时会重复执行。瞬态事件不落库不进快照，刷新后 tab 消失为预期（D9）。
-                // 未知动作类型（未来 A 类扩展）在此静默跳过
+                // 未知动作类型（未来 A 类扩展）在此静默跳过。
+                // 展开语义对齐 ActionLink 的 file/open 默认行为（expand !== false → 展开
+                // inspector）：agent 意图是"展示给用户"，inspector 折叠时只开 tab 等于没做
                 if (event.sessionId && event.action?.action === 'open_file') {
                     useWorkspaceStore.getState().openFileTab(
                         event.sessionId,
                         event.action.path,
                         basename(event.action.path),
                     )
+                    useWorkspaceStore.getState().setExpanded(event.sessionId, true)
                 }
                 break
             }
