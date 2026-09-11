@@ -341,38 +341,74 @@ describe('SyncEventSchema', () => {
 })
 
 describe('SyncEventSchema ui-command', () => {
-    it('open_file 动作解析成功', () => {
+    it('open_in_mobi / file target 解析成功', () => {
         const parsed = SyncEventSchema.parse({
             type: 'ui-command',
             sessionId: 'session-1',
-            action: { action: 'open_file', path: '/tmp/a.ts' },
+            action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/a.ts' } },
         })
         expect(parsed.type).toBe('ui-command')
         if (parsed.type === 'ui-command') {
             expect(parsed.sessionId).toBe('session-1')
-            expect(parsed.action.action).toBe('open_file')
-            if (parsed.action.action === 'open_file') {
-                expect(parsed.action.path).toBe('/tmp/a.ts')
+            expect(parsed.action.action).toBe('open_in_mobi')
+            if (parsed.action.action === 'open_in_mobi' && parsed.action.payload.type === 'file') {
+                expect(parsed.action.payload.path).toBe('/tmp/a.ts')
             }
         }
     })
 
-    it('缺 path 的 open_file 动作抛错', () => {
+    it('file target 带 line 定位行解析成功', () => {
+        const parsed = SyncEventSchema.safeParse({
+            type: 'ui-command',
+            sessionId: 'session-1',
+            action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/a.ts', line: 42 } },
+        })
+        expect(parsed.success).toBe(true)
+    })
+
+    it('terminal target（无参数，sessionId 由信封带）解析成功', () => {
+        const parsed = SyncEventSchema.safeParse({
+            type: 'ui-command',
+            sessionId: 'session-1',
+            action: { action: 'open_in_mobi', payload: { type: 'terminal' } },
+        })
+        expect(parsed.success).toBe(true)
+    })
+
+    it('会话无关动作可缺省 sessionId（信封盖章前 / namespace 全播）', () => {
+        const parsed = SyncEventSchema.safeParse({
+            type: 'ui-command',
+            action: { action: 'open_in_mobi', payload: { type: 'terminal' } },
+        })
+        expect(parsed.success).toBe(true)
+    })
+
+    it('缺 path 的 file target 抛错', () => {
         expect(() =>
             SyncEventSchema.parse({
                 type: 'ui-command',
                 sessionId: 'session-1',
-                action: { action: 'open_file' },
+                action: { action: 'open_in_mobi', payload: { type: 'file' } },
             })
         ).toThrow()
     })
 
-    it('未知动作类型抛错', () => {
+    it('line 非正整数抛错', () => {
         expect(() =>
             SyncEventSchema.parse({
                 type: 'ui-command',
                 sessionId: 'session-1',
-                action: { action: 'unknown-action' },
+                action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/a.ts', line: 0 } },
+            })
+        ).toThrow()
+    })
+
+    it('未知 target 类型抛错', () => {
+        expect(() =>
+            SyncEventSchema.parse({
+                type: 'ui-command',
+                sessionId: 'session-1',
+                action: { action: 'open_in_mobi', payload: { type: 'unknown-target' } },
             })
         ).toThrow()
     })

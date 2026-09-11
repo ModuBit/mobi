@@ -440,19 +440,22 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 scheduleInvalidation('machines')
                 break
             case 'ui-command': {
-                // agent 触达 mobi 界面（A 类 UI 命令）。红线（D10）：openFileTab 只允许出现在
+                // agent 触达 mobi 界面（A 类 UI 命令）。红线（D10）：workspace 打开动作只允许出现在
                 // 本 SSE 事件监听路径——禁止进 ToolCallBlock 渲染/effect，否则刷新页面重渲染
                 // 消息气泡时会重复执行。瞬态事件不落库不进快照，刷新后 tab 消失为预期（D9）。
-                // 未知动作类型（未来 A 类扩展）在此静默跳过。
-                // 展开语义对齐 ActionLink 的 file/open 默认行为（expand !== false → 展开
-                // inspector）：agent 意图是"展示给用户"，inspector 折叠时只开 tab 等于没做
-                if (event.sessionId && event.action?.action === 'open_file') {
-                    useWorkspaceStore.getState().openFileTab(
-                        event.sessionId,
-                        event.action.path,
-                        basename(event.action.path),
-                    )
-                    useWorkspaceStore.getState().setExpanded(event.sessionId, true)
+                // 未知 action / target（未来扩展）在此静默跳过；信封 sessionId 由 Hub 盖章，
+                // 会话无关动作（缺省）不路由 inspector。展开语义对齐 ActionLink file/open
+                // 默认行为（agent 意图是"展示给用户"，inspector 折叠时只开 tab 等于没做）
+                if (event.sessionId && event.action?.action === 'open_in_mobi') {
+                    const workspace = useWorkspaceStore.getState()
+                    const payload = event.action.payload
+                    if (payload.type === 'file') {
+                        workspace.openFileTab(event.sessionId, payload.path, basename(payload.path))
+                        workspace.setExpanded(event.sessionId, true)
+                    } else if (payload.type === 'terminal') {
+                        workspace.openTerminalTab(event.sessionId)
+                        workspace.setExpanded(event.sessionId, true)
+                    }
                 }
                 break
             }

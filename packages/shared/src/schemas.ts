@@ -740,14 +740,32 @@ const ProjectChangedSchema = SessionEventBaseSchema.extend({
 })
 
 /**
+ * open_in_mobi 的载荷：对"打开什么"再判别（codex open_in_codex 同构）。
+ * 后续扩展 target（browser / review 等）在此增量添加成员。
+ */
+export const OpenInMobiTargetSchema = z.discriminatedUnion('type', [
+    z.object({
+        type: z.literal('file'),
+        /** 文件绝对路径（agent 本地视角 = CLI 所在机器，与 read-file 边界一致） */
+        path: z.string().min(1),
+        /** 可选定位行（编辑器跳转；read-file API 已支持行级 range） */
+        line: z.number().int().positive().optional(),
+    }),
+    z.object({
+        type: z.literal('terminal'),
+        // 打开发起会话的终端 tab；会话归属由事件信封 sessionId 承载，payload 不重复携带
+    }),
+])
+
+/**
  * UI 命令动作判别联合（agent → Hub → Web 的 A 类呈现指令）。
- * 后续 A 类扩展动作（focus_session、highlight 等）在此增量添加成员。
+ * 统一信封形状 { action, payload }：payload 按 action 自定义，无统一 target 概念不强加
+ * （会话无关动作如 set_theme 同型扩展）。
  */
 export const UiCommandActionSchema = z.discriminatedUnion('action', [
     z.object({
-        action: z.literal('open_file'),
-        /** 文件绝对路径（agent 本地视角 = CLI 所在机器，与 read-file 边界一致） */
-        path: z.string().min(1),
+        action: z.literal('open_in_mobi'),
+        payload: OpenInMobiTargetSchema,
     }),
 ])
 
@@ -860,9 +878,12 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     ProjectChangedSchema.extend({ type: z.literal('project-added') }),
     ProjectChangedSchema.extend({ type: z.literal('project-updated') }),
     ProjectChangedSchema.extend({ type: z.literal('project-removed') }),
-    // agent 触达 mobi 界面的 A 类 UI 命令（瞬态事件：不落库、不进快照、刷新不恢复，见 .scratch/agent-apps/spec.md D9）
-    SessionChangedSchema.extend({
+    // agent 触达 mobi 界面的 A 类 UI 命令（瞬态事件：不落库、不进快照、刷新不恢复，见 .scratch/agent-apps/spec.md D9）。
+    // sessionId 是可选路由元数据：Hub 从 socket sid 解析后盖章（会话无关动作如 set_theme 缺省 → namespace 全播），
+    // CLI 不填——投递路由属 Hub 职责，payload 只描述"做什么"
+    SessionEventBaseSchema.extend({
         type: z.literal('ui-command'),
+        sessionId: z.string().optional(),
         action: UiCommandActionSchema,
     }),
 ])

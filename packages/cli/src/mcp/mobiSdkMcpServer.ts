@@ -26,7 +26,7 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
 import { createChangeTitleToolForSession } from './changeTitleTool'
-import { createOpenFileToolForSession } from './openFileTool'
+import { createOpenInMobiToolForSession } from './openInMobiTool'
 
 export function createMobiSdkMcpServer(
     client: ApiSessionClient,
@@ -34,8 +34,8 @@ export function createMobiSdkMcpServer(
     getAgentLocator: () => AgentSessionLocator | null,
 ) {
     const changeTitleTool = createChangeTitleToolForSession(client, getAgentLocator)
-    // open_file 仅挂 remote 壳（D1）：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
-    const openFileTool = createOpenFileToolForSession(client)
+    // open_in_mobi 仅挂 remote 壳（D1）：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
+    const openInMobiTool = createOpenInMobiToolForSession(client)
 
     return createSdkMcpServer({
         name: 'mobi',
@@ -49,10 +49,10 @@ export function createMobiSdkMcpServer(
                 async (args: unknown) => changeTitleTool.execute(args),
             ),
             tool(
-                openFileTool.name,
-                openFileTool.description,
-                openFileTool.inputSchema.shape,
-                async (args: unknown) => openFileTool.execute(args),
+                openInMobiTool.name,
+                openInMobiTool.description,
+                openInMobiTool.inputSchema.shape,
+                async (args: unknown) => openInMobiTool.execute(args),
             ),
         ],
     })

@@ -86,7 +86,7 @@ async function renderProvider() {
     )
 }
 
-describe('SSEProvider ui-command —— open_file 落 inspector 文件 tab（渲染集成）', () => {
+describe('SSEProvider ui-command —— open_in_mobi 落 inspector（渲染集成）', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         sseListener.current = null
@@ -94,12 +94,12 @@ describe('SSEProvider ui-command —— open_file 落 inspector 文件 tab（渲
     })
     afterEach(() => cleanup())
 
-    it('open_file 事件 → 发起会话的 inspector 展开并打开文件 tab（fileName=path basename）', async () => {
+    it('file target → 发起会话的 inspector 展开并打开文件 tab（fileName=path basename）', async () => {
         await renderProvider()
         sseListener.current!({
             type: 'ui-command',
             sessionId: 's1',
-            action: { action: 'open_file', path: '/tmp/demo/deep/nested/a.ts' },
+            action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/demo/deep/nested/a.ts' } },
         })
         await vi.waitFor(() => {
             const inspector = useWorkspaceStore.getState().getSession('s1')
@@ -113,29 +113,53 @@ describe('SSEProvider ui-command —— open_file 落 inspector 文件 tab（渲
         })
     })
 
-    it('同 path 重复打开 → 去重切激活（不新建 tab）', async () => {
+    it('terminal target → 打开终端 tab 并展开', async () => {
         await renderProvider()
         sseListener.current!({
             type: 'ui-command',
             sessionId: 's1',
-            action: { action: 'open_file', path: '/tmp/demo/a.ts' },
+            action: { action: 'open_in_mobi', payload: { type: 'terminal' } },
         })
-        sseListener.current!({
+        await vi.waitFor(() => {
+            const inspector = useWorkspaceStore.getState().getSession('s1')
+            expect(inspector.expanded).toBe(true)
+            expect(inspector.tabs).toHaveLength(1)
+            expect(inspector.tabs[0].mode).toBe('terminal')
+            expect(inspector.activeTabId).toBe(inspector.tabs[0].id)
+        })
+    })
+
+    it('同 path 重复打开 → 去重切激活（不新建 tab）', async () => {
+        await renderProvider()
+        const evt = {
             type: 'ui-command',
             sessionId: 's1',
-            action: { action: 'open_file', path: '/tmp/demo/a.ts' },
-        })
+            action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/demo/a.ts' } },
+        }
+        sseListener.current!(evt)
+        sseListener.current!({ ...evt })
         await vi.waitFor(() => {
             expect(useWorkspaceStore.getState().getSession('s1').tabs).toHaveLength(1)
         })
     })
 
-    it('未知动作类型 → 不动 workspaceStore（为 A 类扩展留位的防御）', async () => {
+    it('信封缺 sessionId（会话无关动作）→ 不动 workspaceStore', async () => {
+        await renderProvider()
+        sseListener.current!({
+            type: 'ui-command',
+            action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/demo/a.ts' } },
+        })
+        await vi.waitFor(() => {
+            expect(useWorkspaceStore.getState().getSession('s1').tabs).toHaveLength(0)
+        })
+    })
+
+    it('未知 target 类型 → 不动 workspaceStore（为 A 类扩展留位的防御）', async () => {
         await renderProvider()
         sseListener.current!({
             type: 'ui-command',
             sessionId: 's1',
-            action: { action: 'unknown-action' },
+            action: { action: 'open_in_mobi', payload: { type: 'unknown-target' } },
         } as never)
         await vi.waitFor(() => {
             expect(useWorkspaceStore.getState().getSession('s1').tabs).toHaveLength(0)

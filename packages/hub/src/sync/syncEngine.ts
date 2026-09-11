@@ -149,7 +149,7 @@ export class SyncEngine {
         if (event.namespace) {
             return event.namespace
         }
-        if ('sessionId' in event) {
+        if ('sessionId' in event && event.sessionId) {
             return this.getSession(event.sessionId)?.namespace
         }
         if ('machineId' in event) {

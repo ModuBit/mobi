@@ -730,7 +730,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 发送 UI 命令到 Hub（agent-apps，A 类 UI 呈现）。
-     * emitWithAck 等回执（回执 { delivered } 是 open_file 等工具的核心语义，
+     * emitWithAck 等回执（回执 { delivered } 是 open_in_mobi 等工具的核心语义，
      * 不用 reportContextUsage 的 fire-and-forget 模式）；超时/断连 reject，
      * 由调用方按连接故障处理（与离线 delivered:false 语义区分）。
      */

@@ -65,19 +65,25 @@ function callSendUiCommand(
 }
 
 describe('sendUiCommand handler', () => {
-    test('有 web 连接 → 发布 ui-command 事件且 ack delivered:true', () => {
+    test('有 web 连接 → 发布 ui-command 事件（盖章权威 sessionId）且 ack delivered:true', () => {
         const socket = makeFakeSocket()
         const { deps, published } = makeDeps({ hasWeb: true })
+        // 模拟 namespace 解析：入参 sid 与权威会话 id 不同（resume 换 id 场景）
+        deps.resolveSessionAccess = (sid: string) => ({ ok: true as const, value: makeStoredSession(`authoritative-${sid}`) })
         registerUiCommandHandlers(socket as unknown as Parameters<typeof registerUiCommandHandlers>[0], deps)
 
-        const action: UiCommandAction = { action: 'open_file', path: '/tmp/demo/a.ts' }
+        const action: UiCommandAction = {
+            action: 'open_in_mobi',
+            payload: { type: 'file', path: '/tmp/demo/a.ts' },
+        }
         const answer = callSendUiCommand(socket, { sid: 's1', action })
 
         expect(answer).toEqual({ delivered: true })
         expect(published).toHaveLength(1)
         const event = published[0] as Extract<SyncEvent, { type: 'ui-command' }>
         expect(event.type).toBe('ui-command')
-        expect(event.sessionId).toBe('s1')
+        // 信封盖章：sessionId 由 Hub 从鉴权会话解析（权威 id），非 CLI 入参直传
+        expect(event.sessionId).toBe('authoritative-s1')
         expect(event.action).toEqual(action)
     })
 
@@ -88,7 +94,7 @@ describe('sendUiCommand handler', () => {
 
         const answer = callSendUiCommand(socket, {
             sid: 's1',
-            action: { action: 'open_file', path: '/tmp/demo/a.ts' },
+            action: { action: 'open_in_mobi', payload: { type: 'terminal' } },
         })
 
         expect(answer).toEqual({ delivered: false, reason: 'no-web-online' })
@@ -103,19 +109,19 @@ describe('sendUiCommand handler', () => {
 
         const answer = callSendUiCommand(socket, {
             sid: 's1',
-            action: { action: 'open_file', path: '/tmp/demo/a.ts' },
+            action: { action: 'open_in_mobi', payload: { type: 'file', path: '/tmp/demo/a.ts' } },
         })
 
         expect(answer).toEqual({ delivered: false, reason: 'access-denied' })
         expect(published).toHaveLength(0)
     })
 
-    test('非法 payload（缺 path）→ ack delivered:false 且不发布', () => {
+    test('非法 payload（未知 target）→ ack delivered:false 且不发布', () => {
         const socket = makeFakeSocket()
         const { deps, published } = makeDeps()
         registerUiCommandHandlers(socket as unknown as Parameters<typeof registerUiCommandHandlers>[0], deps)
 
-        const answer = callSendUiCommand(socket, { sid: 's1', action: { action: 'open_file' } })
+        const answer = callSendUiCommand(socket, { sid: 's1', action: { action: 'open_in_mobi', payload: { type: 'nope' } } })
 
         expect(answer!.delivered).toBe(false)
         expect(published).toHaveLength(0)

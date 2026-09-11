@@ -70,7 +70,11 @@ export function registerUiCommandHandlers(socket: CliSocketWithData, deps: UiCom
 
         publishUiCommand?.({
             type: 'ui-command',
-            sessionId: parsed.data.sid,
+            // 信封盖章：投递路由元数据由 Hub 从鉴权过的会话解析填充（权威 id + namespace），
+            // CLI 不填。namespace 必盖——session 无关动作缺省 sessionId 时 resolveNamespace
+            // 无回查依据，靠它保证事件仍路由到本 namespace 全部连接
+            namespace: access.value.namespace,
+            sessionId: access.value.id,
             action: parsed.data.action,
         })
         cb?.({ delivered: true })
