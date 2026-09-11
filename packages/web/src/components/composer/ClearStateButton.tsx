@@ -22,15 +22,16 @@ import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 /** 可清理的运行时状态字段（web 组件层共用，避免字面量联合散落多处） */
-export type ClearRuntimeStateField = 'todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus'
+export type ClearRuntimeStateField = 'todos' | 'tasks' | 'backgroundTasks' | 'foregroundTasks' | 'teamState' | 'goalStatus'
 
 export type ClearStateButtonProps = {
     sessionId: string
-    clearField: ClearRuntimeStateField
+    /** 本次清理的字段集合（单字段面板传单项，运行中任务面板传前台 + 后台两类） */
+    clearFields: ClearRuntimeStateField[]
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }
 
-export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateButtonProps) {
+export function ClearStateButton({ sessionId, clearFields, onClear }: ClearStateButtonProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const isMobile = useIsMobile()
@@ -38,16 +39,19 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
     const [drawerOpen, setDrawerOpen] = useState(false)
     const [hovered, setHovered] = useState(false)
 
-    const confirmText = t(`chat.clearState.${clearField}`)
+    // 组合清理（运行中任务面板）有专用确认文案，避免「清理后台任务？」的单类误导
+    const confirmText = clearFields.length > 1
+        ? t('chat.clearState.runningTasks')
+        : t(`chat.clearState.${clearFields[0]}`)
     const doClear = useCallback(async () => {
         setLoading(true)
         try {
-            await onClear(sessionId, [clearField])
+            await onClear(sessionId, clearFields)
         } finally {
             setLoading(false)
             setDrawerOpen(false)
         }
-    }, [sessionId, clearField, onClear])
+    }, [sessionId, clearFields, onClear])
 
     const triggerStyle: React.CSSProperties = {
         display: 'inline-flex',

@@ -343,7 +343,7 @@ export function mergeRuntimeState(
 }
 
 /** 合法的 runtimeState 可清理字段 */
-const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'teamState', 'goalStatus'])
+const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'foregroundTasks', 'teamState', 'goalStatus'])
 
 /** clearRuntimeStateFields 结果：ok=请求被受理（会话存在且写库未失败）；
  *  changed=是否真的清除了字段（幂等空操作 ok=true changed=false） */

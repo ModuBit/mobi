@@ -40,7 +40,7 @@ import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { inferToolRow } from '@/core/lib/toolRow'
 import { FileChip } from '@/components/ui/FileChip'
 import { queryKeys } from '@/core/lib/query-keys'
-import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
+import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
@@ -391,7 +391,7 @@ export function ComposerInfoPanel({
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
-    const agents = useRunningAgents(sessionId)
+    const agents = useForegroundTasks(sessionId)
     const byIdMap = useChatBlocksById(sessionId)
     const bgTasks = useBackgroundTasks(sessionId)
     const hasBgTasks = bgTasks.length > 0
@@ -406,11 +406,10 @@ export function ComposerInfoPanel({
     // 若流式期 ToolInteractionPanel/TasksPanel 等重型子树 reconcile 开销显著，后续加 selector 缓存优化。
     const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some(isQueuedInMobi))
 
-    // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
+    // 从 store 派生最新 block：byId 索引覆盖全部消息块（前台任务详情在消息空窗时
+    // 查不到 → drawer 不弹，查询即守卫）
     const drawerBlock: ToolCallBlock | null = (() => {
         if (!drawerBlockId) return null
-        const fromAgents = agents.find(a => a.block.id === drawerBlockId)?.block
-        if (fromAgents) return fromAgents
         const fromById = byIdMap.get(drawerBlockId)
         return fromById?.kind === 'tool-call' ? fromById : null
     })()
@@ -474,14 +473,12 @@ export function ComposerInfoPanel({
                         api={api}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
                         onTaskClick={(task) => {
-                            // 先查后设（C1）：点击时先在 agents/byIdMap 里解析 toolUseId 对应的
+                            // 先查后设（C1）：点击时先在 byIdMap 里解析 toolUseId 对应的
                             // tool-call block，查到才设置 drawerBlockId——同时消灭「静默设置后不渲染」
                             // 与「残留 id 之后无操作自动弹开」两个症状。
                             // 窗口外 block 点击无反馈是已知限制（查询即守卫，不残留状态）
                             const blockId = task.toolUseId
-                            const found = blockId != null
-                                ? agents.find(a => a.block.id === blockId)?.block ?? byIdMap.get(blockId)
-                                : undefined
+                            const found = blockId != null ? byIdMap.get(blockId) : undefined
                             if (found?.kind === 'tool-call') setDrawerBlockId(found.id)
                         }}
                         onClear={handleClearState}

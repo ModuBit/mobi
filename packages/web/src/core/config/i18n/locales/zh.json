@@ -376,8 +376,10 @@
             "todos": "清理待办列表？",
             "tasks": "清理任务列表？",
             "backgroundTasks": "清理后台任务？",
+            "foregroundTasks": "清理前台任务？",
             "teamState": "清理团队状态？",
             "goalStatus": "清理目标状态？",
+            "runningTasks": "清理运行中任务？",
             "confirm": "确认清理",
             "cancel": "取消"
         },

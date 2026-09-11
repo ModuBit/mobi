@@ -29,7 +29,7 @@ import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions
 import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments } from '@/domain/chat/composerSegments'
-import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
@@ -50,7 +50,7 @@ import { MessageActionsDrawer, type MessageActionTarget } from './MessageActions
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
-import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
+import { useForegroundTasksStore } from '@/core/data/stores/foregroundTasksStore'
 import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
 import { useComposerBackfillStore, useComposerBackfillRequest } from '@/core/data/stores/composerBackfillStore'
@@ -245,15 +245,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return { ...raw, blocks, byId }
     }, [messages, session?.agentState])
 
-    // 同步 running agents 到 store，供 TasksPanel 订阅
-    useEffect(() => {
-        const agents = extractRunningAgents(rawBlocks)
-        useRunningAgentsStore.getState().setAgents(sessionId, agents)
-        return () => {
-            useRunningAgentsStore.getState().clearSession(sessionId)
-        }
-    }, [rawBlocks, sessionId])
-
     // 同步 chatBlocks byId 到 store，供 ComposerInfoPanel 查找 block
     useEffect(() => {
         useChatBlocksByIdStore.getState().setById(sessionId, byId)
@@ -281,6 +272,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useBackgroundTasksStore.getState().clearSession(sessionId)
         }
     }, [bgTasks, sessionId])
+
+    // 前台任务清单（foreground-tasks spec）：纯 DB 单源——从 session.runtimeState 装配到
+    // store 供「运行中任务」面板订阅，不再从消息 blocks 现算（展示与消息到达性解耦）
+    const fgTasks = session?.runtimeState?.foregroundTasks
+    useEffect(() => {
+        useForegroundTasksStore.getState().setTasks(sessionId, fgTasks ?? [])
+        return () => {
+            useForegroundTasksStore.getState().clearSession(sessionId)
+        }
+    }, [fgTasks, sessionId])
 
     // 同步 teamState 从 session cache 到 Zustand store，供 TeamAgentPanel 订阅
     const teamState = session?.runtimeState?.teamState

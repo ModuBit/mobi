@@ -46,8 +46,8 @@ vi.mock('antd', async orig => {
 
 // ClearStateButton 走 Popconfirm/Drawer + theme token，mock 成占位按钮聚焦 GoalBadge 行为
 vi.mock('@/components/composer/ClearStateButton', () => ({
-    ClearStateButton: ({ sessionId, clearField }: { sessionId: string; clearField: string }) => (
-        <button type="button" data-testid="clear-goal-btn" data-session={sessionId} data-field={clearField} />
+    ClearStateButton: ({ sessionId, clearFields }: { sessionId: string; clearFields: string[] }) => (
+        <button type="button" data-testid="clear-goal-btn" data-session={sessionId} data-fields={clearFields.join(',')} />
     ),
 }))
 
@@ -119,7 +119,7 @@ describe('GoalBadge', () => {
         fireEvent.click(screen.getByTestId('popover-trigger'))
         const clearBtn = screen.getByTestId('clear-goal-btn')
         expect(clearBtn).toHaveAttribute('data-session', 's-xyz')
-        expect(clearBtn).toHaveAttribute('data-field', 'goalStatus')
+        expect(clearBtn).toHaveAttribute('data-fields', 'goalStatus')
     })
 
     it('只传 sessionId 不传 onClear 时不渲染清理按钮', () => {

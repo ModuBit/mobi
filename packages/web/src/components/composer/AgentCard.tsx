@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react'
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
-import type { RunningAgent } from '@/domain/chat/extractRunningAgents'
 import type { AgentMetrics } from '@/domain/chat/types'
 
 /** 格式化指标信息 */
@@ -34,36 +32,29 @@ function formatMetrics(metrics: AgentMetrics | undefined): string {
 }
 
 /**
- * Agent 卡片组件
- * 展示单个 Agent 的状态、头像、描述和指标
+ * Agent 卡片组件（foreground-tasks spec D5/D8）
+ * 展示单个前台 Agent 的头像、名称和指标。数据源是 runtime_state.foregroundTasks——
+ * 等待审批与执行中统一显示运行中（无 pending 视觉分档）；summary/metrics 来自
+ * 消息侧的增强信息，DB 清单未覆盖时缺省。
+ * onClick 缺省 = 详情 block 未加载（消息空窗），点击无响应（守卫由调用方收口）。
  */
-export function AgentCard({ agent, onClick }: {
-    agent: RunningAgent
-    onClick: () => void
+export function AgentCard({ name, seed, summary, metrics, onClick }: {
+    /** 卡片标题：description ?? subagentType ?? 'Agent' 由调用方派生 */
+    name: string
+    /** 头像与 testid 的种子（toolUseId，跨渲染稳定） */
+    seed: string
+    summary?: string | null
+    metrics?: AgentMetrics
+    onClick?: () => void
 }) {
     const { token } = theme.useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
-    const { block } = agent
-    const tool = block.tool
-    const isPending = tool.state === 'pending'
 
-    const status = isPending ? 'idle' : 'outputting'
-    const metricsText = formatMetrics(tool.agentMetrics)
-    const agentName = agent.description ?? agent.subagentType ?? tool.id ?? 'Agent'
-
-    const prevSummaryRef = useRef(agent.summary)
-    const [displaySummary, setDisplaySummary] = useState(agent.summary)
-
-    useEffect(() => {
-        if (agent.summary !== prevSummaryRef.current) {
-            setDisplaySummary(agent.summary)
-            prevSummaryRef.current = agent.summary
-        }
-    }, [agent.summary])
+    const metricsText = formatMetrics(metrics)
 
     return (
         <div
-            data-testid={`agent-card-${tool.id}`}
+            data-testid={`agent-card-${seed}`}
             onClick={onClick}
             style={{
                 display: 'flex',
@@ -73,18 +64,17 @@ export function AgentCard({ agent, onClick }: {
                 height: 40,
                 padding: '4px 8px',
                 borderRadius: 8,
-                cursor: 'pointer',
+                cursor: onClick ? 'pointer' : 'default',
                 border: 'none',
-                opacity: isPending ? 0.7 : 1,
-                background: agentCardBg(agentName, isDark),
+                background: agentCardBg(name, isDark),
                 transition: 'opacity 0.3s',
                 boxSizing: 'border-box',
             }}
         >
             <div style={{ flexShrink: 0, lineHeight: 0 }}>
                 <PixelAvatar
-                    name={tool.id}
-                    status={status}
+                    name={seed}
+                    status="outputting"
                     size={24}
                 />
             </div>
@@ -104,7 +94,7 @@ export function AgentCard({ agent, onClick }: {
                     textOverflow: 'ellipsis',
                     lineHeight: '1.3',
                 }}>
-                    {agent.description ?? agent.subagentType ?? 'Agent'}
+                    {name}
                 </div>
                 <div style={{
                     fontSize: 9,
@@ -115,9 +105,9 @@ export function AgentCard({ agent, onClick }: {
                     textOverflow: 'ellipsis',
                     lineHeight: '1.3',
                 }}>
-                    {displaySummary
-                        ? `${formatDuration(tool.agentMetrics?.durationMs ?? 0)} · ${displaySummary}`
-                        : metricsText}
+                    {summary
+                        ? `${formatDuration(metrics?.durationMs ?? 0)} · ${summary}`
+                        : metricsText || 'running'}
                 </div>
             </div>
         </div>

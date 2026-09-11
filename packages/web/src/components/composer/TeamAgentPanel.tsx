@@ -103,7 +103,7 @@ export function TeamAgentPanel({ sessionId, onClear }: {
                 </span>
                 <ClearStateButton
                     sessionId={sessionId}
-                    clearField="teamState"
+                    clearFields={["teamState"]}
                     onClear={onClear}
                 />
             </div>

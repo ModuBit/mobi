@@ -329,30 +329,11 @@ describe('ComposerInfoPanel', () => {
         unmount()
     })
 
-    it('有 running agents 时渲染面板', async () => {
-        const { useRunningAgentsStore } = await import('@/core/data/stores/runningAgentsStore')
-        const mockBlock = {
-            kind: 'tool-call' as const,
-            id: 'agent-1',
-            localId: null,
-            createdAt: Date.now(),
-            tool: {
-                id: 'agent-1',
-                name: 'Task',
-                state: 'running' as const,
-                input: { subagent_type: 'Explore', description: '测试' },
-                createdAt: Date.now(),
-                startedAt: Date.now(),
-                completedAt: null,
-                description: null,
-            },
-            children: [],
-        }
-        useRunningAgentsStore.getState().setAgents('test-session', [{
-            block: mockBlock,
-            subagentType: 'Explore',
-            description: '测试',
-        }])
+    it('有前台任务（runtime_state 清单）时渲染面板', async () => {
+        const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
+        useForegroundTasksStore.getState().setTasks('test-session', [
+            { toolUseId: 'fg-1', description: '测试', subagentType: 'Explore', startedAt: Date.now() },
+        ])
 
         const { container, unmount } = render(
             <ComposerInfoPanel {...defaultProps} />,
@@ -360,6 +341,6 @@ describe('ComposerInfoPanel', () => {
         )
         expect(container.innerHTML).not.toBe('')
         unmount()
-        useRunningAgentsStore.getState().clearSession('test-session')
+        useForegroundTasksStore.getState().clearSession('test-session')
     })
 })

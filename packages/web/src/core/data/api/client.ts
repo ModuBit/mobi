@@ -157,7 +157,7 @@ export function createMobiApi() {
             fork: (sessionId: string, anchorNativeId: string) =>
                 client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/fork`, { anchorNativeId }),
             // 清理 runtimeState 指定字段
-            clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) =>
+            clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'foregroundTasks' | 'teamState' | 'goalStatus')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
             // 置顶 / 取消置顶（置顶进「置顶」分组，从「项目」「最近」过滤掉；取消反向）

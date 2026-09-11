@@ -16,11 +16,11 @@
 
 /**
  * 执行中任务面板
- * 统一展示前台 Agent 与后台任务（Bash/Agent/Monitor），弱化前后台区分：
- * - 前台 Agent 复用 AgentCard，点击打开 ToolDetailDrawer
+ * 统一展示前台任务（Agent）与后台任务（Bash/Agent/Monitor），弱化前后台区分：
+ * - 前台任务读 runtime_state.foregroundTasks（hub 消息投影落库，纯 DB 单源，
+ *   展示与消息到达性解耦；foreground-tasks spec D2），点击打开 ToolDetailDrawer
  * - 后台任务复用 BackgroundTaskCard，标题旁显示闪电图标、运行中带停止按钮
- * - 合并前是 AgentPanel（前台）+ BackgroundTaskPanel（后台）两个独立面板；
- *   识别修复后同一任务不再双渲染，此处统一为一处
+ * - 合并前是 AgentPanel（前台）+ BackgroundTaskPanel（后台）两个独立面板
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -28,13 +28,13 @@ import { theme } from 'antd'
 import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
+import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
+import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
 import { AgentCard } from './AgentCard'
 import { BackgroundTaskCard } from './BackgroundTaskCard'
-import type { BackgroundTask } from '@/domain/chat/types'
-import type { RunningAgent } from '@/domain/chat/extractRunningAgents'
-import type { ToolCallBlock } from '@/domain/chat/types'
+import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
+import type { ForegroundTaskItem } from '@mobi/shared/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
 
@@ -42,21 +42,19 @@ const spinKeyframes = css`
 @keyframes tasks-panel-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 `
 
-/** 统一面板条目：前台 Agent 或后台任务 */
+/** 统一面板条目：前台任务或后台任务 */
 type TaskListItem =
-    | { kind: 'agent'; agent: RunningAgent }
+    | { kind: 'agent'; task: ForegroundTaskItem; block: ToolCallBlock | null }
     | { kind: 'bg-task'; task: BackgroundTask }
 
-/** 条目排序：running/pending 在前；同状态按启动时间倒序（新的在前） */
+/** 条目排序：前台任务恒 running（spec D5）排前；后台按状态，同状态按启动时间倒序 */
 function sortItems(items: TaskListItem[]): TaskListItem[] {
     const statusRank = (item: TaskListItem): number => {
-        const status = item.kind === 'agent' ? item.agent.block.tool.state : item.task.status
-        return status === 'running' || status === 'pending' ? 0 : 1
+        if (item.kind === 'agent') return 0
+        return item.task.status === 'running' ? 0 : 1
     }
-    const startedAt = (item: TaskListItem): number => {
-        if (item.kind === 'agent') return item.agent.block.tool.startedAt ?? item.agent.block.createdAt
-        return item.task.startedAt
-    }
+    const startedAt = (item: TaskListItem): number =>
+        item.kind === 'agent' ? item.task.startedAt : item.task.startedAt
     return [...items].sort((a, b) => {
         const rankDiff = statusRank(a) - statusRank(b)
         if (rankDiff !== 0) return rankDiff
@@ -77,24 +75,32 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const agents = useRunningAgents(sessionId)
+    const fgTasks = useForegroundTasks(sessionId)
     const bgTasks = useBackgroundTasks(sessionId)
+    const byIdMap = useChatBlocksById(sessionId)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showFade, setShowFade] = useState(false)
     const [narrow, setNarrow] = useState(false)
 
-    // 合并前台 agent + 后台任务
+    // 合并前台任务 + 后台任务；前台详情 block 按 toolUseId 从消息 byId 索引解析，
+    // 消息空窗时为 null（卡片仍展示，点击无响应——查询即守卫，foreground-tasks spec D8）
     const items = useMemo<TaskListItem[]>(() => {
         const list: TaskListItem[] = [
-            ...agents.map(agent => ({ kind: 'agent' as const, agent })),
+            ...fgTasks.map(task => ({
+                kind: 'agent' as const,
+                task,
+                block: byIdMap.get(task.toolUseId)?.kind === 'tool-call'
+                    ? byIdMap.get(task.toolUseId) as ToolCallBlock
+                    : null,
+            })),
             ...bgTasks.map(task => ({ kind: 'bg-task' as const, task })),
         ]
         return sortItems(list)
-    }, [agents, bgTasks])
+    }, [fgTasks, bgTasks, byIdMap])
 
     const hasRunning = items.some(item => {
-        if (item.kind === 'agent') return item.agent.block.tool.state === 'running' || item.agent.block.tool.state === 'pending'
+        if (item.kind === 'agent') return true
         return item.task.status === 'running'
     })
 
@@ -149,9 +155,10 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                 }}>
                     {items.length}
                 </span>
+                {/* 面板级清理：一键清前台 + 后台两类（foreground-tasks spec D6） */}
                 <ClearStateButton
                     sessionId={sessionId}
-                    clearField="backgroundTasks"
+                    clearFields={['foregroundTasks', 'backgroundTasks']}
                     onClear={onClear}
                 />
             </div>
@@ -166,7 +173,14 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                     '--agent-card-width': narrow ? '100%' : '200px',
                 } as React.CSSProperties}>
                     {items.map(item => item.kind === 'agent'
-                        ? <AgentCard key={item.agent.block.id} agent={item.agent} onClick={() => onAgentClick(item.agent.block)} />
+                        ? (
+                            <AgentCard
+                                key={item.task.toolUseId}
+                                name={item.task.description ?? item.task.subagentType ?? 'Agent'}
+                                seed={item.task.toolUseId}
+                                onClick={item.block ? () => onAgentClick(item.block as ToolCallBlock) : undefined}
+                            />
+                        )
                         : <BackgroundTaskCard key={item.task.taskId} task={item.task}
                             // 不可点（toolUseId=null）的守卫由 BackgroundTaskCard 内聚，此处无条件透传
                             onClick={() => onTaskClick(item.task)}

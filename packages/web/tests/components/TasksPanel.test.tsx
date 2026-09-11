@@ -81,9 +81,14 @@ afterEach(() => {
 })
 
 async function loadStores() {
-    const { useRunningAgentsStore } = await import('@/core/data/stores/runningAgentsStore')
+    const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
     const { useBackgroundTasksStore } = await import('@/core/data/stores/backgroundTasksStore')
-    return { useRunningAgentsStore, useBackgroundTasksStore }
+    const { useChatBlocksByIdStore } = await import('@/core/data/stores/chatBlocksByIdStore')
+    return { useForegroundTasksStore, useBackgroundTasksStore, useChatBlocksByIdStore }
+}
+
+function makeFgTask(toolUseId: string, description = '前台研究') {
+    return { toolUseId, description, subagentType: 'Explore', startedAt: Date.now() }
 }
 
 function makeAgentBlock(id: string) {
@@ -120,7 +125,11 @@ function makeBgTask(taskId: string, overrides: Partial<import('@/domain/chat/typ
 }
 
 describe('TasksPanel', () => {
-    it('无前台 agent 和后台任务时返回 null', async () => {
+    afterEach(() => {
+        // zustand store 是模块级单例，跨用例清场防串染
+    })
+
+    it('无前台任务和后台任务时返回 null', async () => {
         const { container } = render(
             <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
             { wrapper }
@@ -128,13 +137,9 @@ describe('TasksPanel', () => {
         expect(container.innerHTML).toBe('')
     })
 
-    it('有前台 agent 时渲染卡片', async () => {
-        const { useRunningAgentsStore } = await loadStores()
-        useRunningAgentsStore.getState().setAgents('test-session', [{
-            block: makeAgentBlock('agent-1'),
-            subagentType: 'Explore',
-            description: '前台研究',
-        }])
+    it('有前台任务（DB 清单）时渲染卡片', async () => {
+        const { useForegroundTasksStore } = await loadStores()
+        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-1')])
 
         const { container } = render(
             <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
@@ -142,6 +147,18 @@ describe('TasksPanel', () => {
         )
         expect(container.innerHTML).not.toBe('')
         expect(container.textContent).toContain('Running Tasks')
+        expect(container.textContent).toContain('前台研究')
+    })
+
+    it('前台任务详情 block 未加载（消息空窗）时卡片仍渲染', async () => {
+        // 纯 DB 单源的核心价值：展示不依赖消息到达性（foreground-tasks spec D2）
+        const { useForegroundTasksStore } = await loadStores()
+        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-missing')])
+
+        const { container } = render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            { wrapper }
+        )
         expect(container.textContent).toContain('前台研究')
     })
 
@@ -157,13 +174,9 @@ describe('TasksPanel', () => {
         expect(container.textContent).toContain('后台研究')
     })
 
-    it('前台 agent 与后台任务合并渲染在同一面板', async () => {
-        const { useRunningAgentsStore, useBackgroundTasksStore } = await loadStores()
-        useRunningAgentsStore.getState().setAgents('test-session', [{
-            block: makeAgentBlock('agent-1'),
-            subagentType: 'Explore',
-            description: '前台研究',
-        }])
+    it('前台任务与后台任务合并渲染在同一面板', async () => {
+        const { useForegroundTasksStore, useBackgroundTasksStore } = await loadStores()
+        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-1')])
         useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-1', { description: '后台研究' })])
 
         const { container } = render(
@@ -176,13 +189,11 @@ describe('TasksPanel', () => {
         expect(container.textContent).toContain('2')
     })
 
-    it('点击前台 agent 触发 onAgentClick', async () => {
-        const { useRunningAgentsStore } = await loadStores()
-        useRunningAgentsStore.getState().setAgents('test-session', [{
-            block: makeAgentBlock('agent-1'),
-            subagentType: 'Explore',
-            description: '前台研究',
-        }])
+    it('详情 block 已加载时点击前台任务触发 onAgentClick', async () => {
+        const { useForegroundTasksStore, useChatBlocksByIdStore } = await loadStores()
+        const block = makeAgentBlock('agent-1')
+        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('agent-1')])
+        useChatBlocksByIdStore.getState().setById('test-session', new Map([['agent-1', block]]))
 
         const onAgentClick = vi.fn()
         render(
@@ -192,7 +203,23 @@ describe('TasksPanel', () => {
         const card = document.querySelector('[data-testid="agent-card-agent-1"]') as HTMLElement
         expect(card).toBeTruthy()
         card.click()
-        expect(onAgentClick).toHaveBeenCalled()
+        expect(onAgentClick).toHaveBeenCalledWith(block)
+    })
+
+    it('详情 block 未加载时点击不回调，卡片 cursor 非 pointer（守卫降级）', async () => {
+        const { useForegroundTasksStore } = await loadStores()
+        useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-missing')])
+
+        const onAgentClick = vi.fn()
+        render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={onAgentClick} onClear={async () => {}} />,
+            { wrapper }
+        )
+        const card = document.querySelector('[data-testid="agent-card-fg-missing"]') as HTMLElement
+        expect(card).toBeTruthy()
+        card.click()
+        expect(onAgentClick).not.toHaveBeenCalled()
+        expect(card.style.cursor).not.toBe('pointer')
     })
 })
 

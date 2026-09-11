@@ -142,7 +142,6 @@ export function extractForegroundProjection(content: unknown, map: ForegroundTas
 export function applyForegroundTaskDeltas(
     existing: ForegroundTaskItem[] | undefined,
     deltas: ForegroundTaskDelta[],
-    now: () => number,
 ): ForegroundTaskItem[] | null {
     let tasks = existing ?? []
     let changed = false

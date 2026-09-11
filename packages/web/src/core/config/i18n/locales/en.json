@@ -386,8 +386,10 @@
             "todos": "Clear stale todos?",
             "tasks": "Clear stale tasks?",
             "backgroundTasks": "Clear stale background tasks?",
+            "foregroundTasks": "Clear foreground tasks?",
             "teamState": "Clear team state?",
             "goalStatus": "Clear stale goal?",
+            "runningTasks": "Clear running tasks?",
             "confirm": "Clear",
             "cancel": "Cancel"
         },

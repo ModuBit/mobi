@@ -78,6 +78,5 @@ export { formatUnixTimestamp, getEventPresentation, renderEventLabel } from './p
 // 模型配置
 export { getContextBudgetTokens } from './modelConfig'
 
-// Agent 提取
-export type { RunningAgent } from './extractRunningAgents'
-export { extractRunningAgents } from './extractRunningAgents'
+// 前台任务展示已切 runtime_state 单源（foreground-tasks spec D2）：extractRunningAgents
+// 消息派生路径随本提交移除，历史实现见 git log

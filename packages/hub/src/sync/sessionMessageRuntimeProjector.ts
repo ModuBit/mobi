@@ -91,7 +91,6 @@ export class SessionMessageRuntimeProjector {
         const foregroundChanged = applyForegroundTaskDeltas(
             existingRuntimeState.foregroundTasks,
             foregroundProjection.deltas,
-            this.now,
         )
 
         // 必须先收集 tool_use，后到的 task_started 才能根据 run_in_background 判定。

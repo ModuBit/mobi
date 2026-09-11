@@ -117,7 +117,7 @@ export function GoalBadge({ goal, sessionId, onClear }: GoalBadgeProps) {
                 <DetailClear>
                     <ClearStateButton
                         sessionId={sessionId!}
-                        clearField="goalStatus"
+                        clearFields={["goalStatus"]}
                         onClear={onClear!}
                     />
                 </DetailClear>
