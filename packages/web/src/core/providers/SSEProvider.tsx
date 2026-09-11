@@ -32,6 +32,8 @@ import { decideToastAction, parseActiveSessionId, showSystemNotification } from 
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { basename } from '@/core/utils/path'
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
 import { invalidateProjectViews } from '@/core/lib/invalidateViews'
 import {
@@ -437,6 +439,20 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'machine-updated':
                 scheduleInvalidation('machines')
                 break
+            case 'ui-command': {
+                // agent 触达 mobi 界面（A 类 UI 命令）。红线（D10）：openFileTab 只允许出现在
+                // 本 SSE 事件监听路径——禁止进 ToolCallBlock 渲染/effect，否则刷新页面重渲染
+                // 消息气泡时会重复执行。瞬态事件不落库不进快照，刷新后 tab 消失为预期（D9）。
+                // 未知动作类型（未来 A 类扩展）在此静默跳过
+                if (event.sessionId && event.action?.action === 'open_file') {
+                    useWorkspaceStore.getState().openFileTab(
+                        event.sessionId,
+                        event.action.path,
+                        basename(event.action.path),
+                    )
+                }
+                break
+            }
             case 'project-added':
             case 'project-updated':
                 // 项目实体变更 → 重新拉取项目列表（数据量小，直接 invalidate）
