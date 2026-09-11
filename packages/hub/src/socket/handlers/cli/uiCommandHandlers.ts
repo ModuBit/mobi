@@ -17,7 +17,7 @@
 import { z } from 'zod'
 import { UiCommandActionSchema, type ClientToServerEvents } from '@mobi/shared'
 import type { CliSocketWithData } from '../../socketTypes'
-import type { AccessErrorReason, AccessResult } from './types'
+import type { AccessResult } from './types'
 import type { StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 
