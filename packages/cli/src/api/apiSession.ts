@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, Update } from '@mobi/shared'
+import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -734,11 +734,11 @@ export class ApiSessionClient extends EventEmitter {
      * 不用 reportContextUsage 的 fire-and-forget 模式）；超时/断连 reject，
      * 由调用方按连接故障处理（与离线 delivered:false 语义区分）。
      */
-    async sendUiCommand(action: UiCommandAction): Promise<{ delivered: boolean; reason?: string }> {
+    async sendUiCommand(action: UiCommandAction): Promise<UiCommandAck> {
         const answer = await this.socket
             .timeout(UI_COMMAND_ACK_TIMEOUT_MS)
             .emitWithAck('sendUiCommand', { sid: this.sessionId, action })
-        return answer as { delivered: boolean; reason?: string }
+        return answer as UiCommandAck
     }
 
     /**

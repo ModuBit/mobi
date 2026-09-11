@@ -747,9 +747,9 @@ export const OpenInMobiTargetSchema = z.discriminatedUnion('type', [
     z.object({
         type: z.literal('file'),
         /** 文件绝对路径（agent 本地视角 = CLI 所在机器，与 read-file 边界一致） */
-        path: z.string().min(1),
+        path: z.string().min(1).describe('Absolute path of the file to open (on the machine where this CLI runs)'),
         /** 可选定位行（编辑器跳转；read-file API 已支持行级 range） */
-        line: z.number().int().positive().optional(),
+        line: z.number().int().positive().optional().describe('Optional line number to scroll to'),
     }),
     z.object({
         type: z.literal('terminal'),

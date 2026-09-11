@@ -51,6 +51,7 @@ import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
+import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
 import type { PushOrigin } from './utils/stopAction'
@@ -1077,8 +1078,8 @@ export async function claudeRemote(opts: {
         // mobi-core in-process 工具（web_search/web_fetch 执行载体）。
         // 无可用 provider 时 handler 返回明确错误（国内环境内置本就不可用，无回退损失）。
         toolAliases: {
-            WebSearch: 'mcp__mobi-core__web_search',
-            WebFetch: 'mcp__mobi-core__web_fetch',
+            WebSearch: `mcp__${MOBI_CORE_SERVER_NAME}__web_search`,
+            WebFetch: `mcp__${MOBI_CORE_SERVER_NAME}__web_fetch`,
         },
         canUseTool: async (toolName, input, options) => {
             const result = await opts.canCallTool(toolName, input, options);

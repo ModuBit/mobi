@@ -22,6 +22,17 @@ import type { ContextUsage, GoalStatus, SnapshotDeltaFrame, UiCommandAction } fr
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
 
+/** mobi 内置 MCP server 名（工具全名 = mcp__<server>__<tool>；server 拆分见 cli sessionTransports，
+ *  web 渲染层匹配当前工具全名时从这里派生，历史落库名除外） */
+export const MOBI_APPS_SERVER_NAME = 'mobi-apps'
+export const MOBI_CORE_SERVER_NAME = 'mobi-core'
+
+/** UI 命令回执（sendUiCommand 的 ack 载荷） */
+export type UiCommandAck = {
+    delivered: boolean
+    reason?: string
+}
+
 export const TerminalOpenPayloadSchema = z.object({
     sessionId: z.string().min(1),
     terminalId: z.string().min(1),
@@ -281,8 +292,5 @@ export interface ClientToServerEvents {
     /** CLI→Hub 的 UI 命令（agent 触达 mobi 界面，A 类）。ack 语义：delivered=true 表示已广播给活跃 Web 连接
      *  （非"用户已看到"，Web 不参与 ack）；无 Web 在线时 delivered=false（调用成功非错误，CLI 转平和反馈）。
      *  socket 断开/ack 超时由 emitWithAck reject 体现，属连接故障，与离线语义区分 */
-    'sendUiCommand': (data: { sid: string; action: UiCommandAction }, cb: (answer: {
-        delivered: boolean
-        reason?: string
-    }) => void) => void
+    'sendUiCommand': (data: { sid: string; action: UiCommandAction }, cb: (answer: UiCommandAck) => void) => void
 }

@@ -30,36 +30,24 @@
 
 import { z } from 'zod'
 import type { ApiSessionClient } from '@/api/apiSession'
-import type { UiCommandAction } from '@mobi/shared'
+import { OpenInMobiTargetSchema, type UiCommandAction, type UiCommandAck } from '@mobi/shared'
+import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 export const OPEN_IN_MOBI_TOOL_NAME = 'open_in_mobi' as const
 
 export interface OpenInMobiToolDeps {
     /** 发送 UI 命令到 Hub（emitWithAck 等回执，见 ApiSessionClient.sendUiCommand） */
-    sendUiCommand: (action: UiCommandAction) => Promise<{ delivered: boolean; reason?: string }>
+    sendUiCommand: (action: UiCommandAction) => Promise<UiCommandAck>
 }
 
-/** MCP CallToolResult 的 text-only 子集（与 changeTitleTool 同型） */
-export interface OpenInMobiToolResult {
-    content: Array<{ type: 'text'; text: string }>
-    isError: boolean
-    [key: string]: unknown
-}
+export type OpenInMobiToolResult = MobiToolTextResult
 
 export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
-    // target 判别联合（协议见 shared OpenInMobiTargetSchema）；path 为绝对路径
-    // （agent 本地视角 = CLI 所在机器，与 read-file 边界一致，受 0004 读边界约束）
+    // target 判别联合直接用 shared 协议 schema（单源；.describe 已在 shared 定义，
+    // 扩展 target 时 CLI 自动跟随）；path 为绝对路径（agent 本地视角 = CLI 所在机器，
+    // 与 read-file 边界一致，受 0004 读边界约束）
     const openInMobiInputSchema = z.object({
-        target: z.discriminatedUnion('type', [
-            z.object({
-                type: z.literal('file'),
-                path: z.string().min(1).describe('Absolute path of the file to open (on the machine where this CLI runs)'),
-                line: z.number().int().positive().optional().describe('Optional line number to scroll to'),
-            }),
-            z.object({
-                type: z.literal('terminal'),
-            }),
-        ]),
+        target: OpenInMobiTargetSchema,
     })
 
     function successText(payload: { type: 'file'; path: string; line?: number } | { type: 'terminal' }): string {
@@ -71,47 +59,23 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
     async function execute(rawArgs: unknown): Promise<OpenInMobiToolResult> {
         const parsed = openInMobiInputSchema.safeParse(rawArgs);
         if (!parsed.success) {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `Failed to open in mobi: invalid arguments (${parsed.error.message})`,
-                    },
-                ],
-                isError: true,
-            };
+            return errorTextResult('Failed to open in mobi: invalid arguments', parsed.error);
         }
         try {
             const answer = await deps.sendUiCommand({ action: 'open_in_mobi', payload: parsed.data.target });
 
             if (answer.delivered) {
-                return {
-                    content: [{ type: 'text', text: successText(parsed.data.target) }],
-                    isError: false,
-                };
+                return textResult(successText(parsed.data.target));
             }
 
             // 离线静默（spec D5）：不报错、不排队，平和告知已忽略
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `No Web client is currently online, so the request was ignored (not queued). Try again when the user is viewing their mobi Web UI.`,
-                    },
-                ],
-                isError: false,
-            };
+            return textResult(
+                'No Web client is currently online, so the request was ignored (not queued). ' +
+                'Try again when the user is viewing their mobi Web UI.',
+            );
         } catch (error) {
             // socket 断开/ack 超时：连接故障，不伪装成"已忽略"
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `Failed to send the UI command to mobi hub: ${error instanceof Error ? error.message : String(error)}`,
-                    },
-                ],
-                isError: true,
-            };
+            return errorTextResult('Failed to send the UI command to mobi hub', error);
         }
     }
 

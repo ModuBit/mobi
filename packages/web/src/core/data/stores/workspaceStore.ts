@@ -16,6 +16,8 @@
 
 import { create } from 'zustand'
 import { uuid } from '@/core/lib/uuid'
+import type { SyncEvent } from '@mobi/shared'
+import { basename } from '@/core/utils/path'
 
 /** 每 session 终端数上限（与后端 DEFAULT_MAX_TERMINALS 对齐） */
 export const MAX_TERMINALS_PER_SESSION = 3
@@ -324,3 +326,29 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     clearAll: () => set({ sessions: new Map() }),
 }))
+
+/** ui-command 事件是否由本 store 消费（SSEProvider 分发用） */
+export function ingestUiCommandEvent(event: SyncEvent): boolean {
+    if (event.type !== 'ui-command') return false
+
+    // 红线（D10）：本函数是 workspace 打开动作的唯一入口，只允许被 SSE 事件监听路径调用——
+    // 禁止进 ToolCallBlock 渲染/effect，否则刷新页面重渲染消息气泡时会重复执行。
+    // 瞬态事件不落库不进快照，刷新后 tab 消失为预期（D9）。
+    // 信封 sessionId 由 Hub 盖章；缺省（会话无关动作）不路由 inspector。
+    // 未知 action / target（未来 A 类扩展）静默跳过。
+    // 展开语义对齐 ActionLink file/open 默认行为：agent 意图是"展示给用户"，
+    // inspector 折叠时只开 tab 等于没做
+    if (!event.sessionId || event.action?.action !== 'open_in_mobi') return true
+
+    const workspace = useWorkspaceStore.getState()
+    const payload = event.action.payload
+    if (payload.type === 'file') {
+        workspace.openFileTab(event.sessionId, payload.path, basename(payload.path))
+    } else if (payload.type === 'terminal') {
+        workspace.openTerminalTab(event.sessionId)
+    } else {
+        return true
+    }
+    workspace.setExpanded(event.sessionId, true)
+    return true
+}

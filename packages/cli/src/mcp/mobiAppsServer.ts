@@ -27,6 +27,7 @@
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
+import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
 import { createOpenInMobiToolForSession } from './openInMobiTool'
 
 export function createMobiAppsServer(client: ApiSessionClient) {
@@ -34,7 +35,7 @@ export function createMobiAppsServer(client: ApiSessionClient) {
     const openInMobiTool = createOpenInMobiToolForSession(client)
 
     return createSdkMcpServer({
-        name: 'mobi-apps',
+        name: MOBI_APPS_SERVER_NAME,
         version: '1.0.0',
         tools: [
             tool(

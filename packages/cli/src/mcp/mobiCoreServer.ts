@@ -27,6 +27,7 @@
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
+import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
 import { createChangeTitleToolForSession } from './changeTitleTool'
 import { webSearchTool, webFetchTool } from '@/webtools/server'
@@ -39,7 +40,7 @@ export function createMobiCoreServer(
     const changeTitleTool = createChangeTitleToolForSession(client, getAgentLocator)
 
     return createSdkMcpServer({
-        name: 'mobi-core',
+        name: MOBI_CORE_SERVER_NAME,
         version: '1.0.0',
         tools: [
             tool(

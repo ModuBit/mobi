@@ -15,6 +15,7 @@
  */
 
 import type { AgentState } from '@/core/data/api/types'
+import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import type { ChatBlock, ChatToolCall, MessageMeta, NormalizedMessage, ToolCallBlock, ToolPermission } from './types'
 import { recordTool } from '@/core/lib/diag'
 import { isElicitationToolName } from '@/domain/tool/elicitation'
@@ -218,7 +219,7 @@ export function collectToolIdsFromMessages(messages: NormalizedMessage[]): Set<s
 export function isHiddenTool(name: string): boolean {
     // change_title 历史名保留匹配：工具名已落库，老会话气泡仍按旧全名渲染
     return name === 'ToolSearch'
-        || name === 'mcp__mobi-core__change_title'
+        || name === `mcp__${MOBI_CORE_SERVER_NAME}__change_title`
         || name === 'mcp__mobi__change_title'
         || name === 'mobi__change_title'
         || name === 'EnterPlanMode'
@@ -251,7 +252,7 @@ export function collectHiddenToolUseIds(messages: NormalizedMessage[]): Map<stri
 /** 改标题的工具名（isHiddenTool 的子集，需要额外提取标题） */
 export function isChangeTitleToolName(name: string): boolean {
     // 历史名 mcp__mobi__change_title 保留：老会话消息已按旧全名落库
-    return name === 'mcp__mobi-core__change_title' || name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
+    return name === `mcp__${MOBI_CORE_SERVER_NAME}__change_title` || name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
 }
 
 /**

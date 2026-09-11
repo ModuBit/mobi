@@ -140,9 +140,10 @@ export class SyncEngine {
         return this.eventPublisher.subscribe(listener)
     }
 
-    /** UI 命令发布入口（CLI socket handler 用）：经 EventPublisher 统一盖章 namespace 并 SSE 广播 */
+    /** UI 命令发布入口（CLI socket handler 用）：统一走 handleRealtimeEvent 发布——
+     *  未来加在它上面的横切关注点（缓存刷新等）不会绕过 ui-command */
     publishUiCommand(event: Extract<SyncEvent, { type: 'ui-command' }>): void {
-        this.eventPublisher.emit(event)
+        this.handleRealtimeEvent(event)
     }
 
     private resolveNamespace(event: SyncEvent): string | undefined {

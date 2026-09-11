@@ -32,8 +32,7 @@ import { decideToastAction, parseActiveSessionId, showSystemNotification } from 
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
-import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { basename } from '@/core/utils/path'
+import { ingestUiCommandEvent } from '@/core/data/stores/workspaceStore'
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
 import { invalidateProjectViews } from '@/core/lib/invalidateViews'
 import {
@@ -336,6 +335,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         // 校验，未知事件天然透传）；已消费则跳过后续 switch
         if (ingestRewindSseEvent(event)) return
 
+        // agent 触达 mobi 界面（A 类 UI 命令）：workspace 域分发收口在 ingestUiCommandEvent
+        // （D10 红线：只允许监听路径调用），已消费则跳过后续 switch
+        if (ingestUiCommandEvent(event)) return
+
         switch (event.type) {
             case 'session-added':
                 scheduleInvalidation('sessions')
@@ -439,26 +442,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'machine-updated':
                 scheduleInvalidation('machines')
                 break
-            case 'ui-command': {
-                // agent 触达 mobi 界面（A 类 UI 命令）。红线（D10）：workspace 打开动作只允许出现在
-                // 本 SSE 事件监听路径——禁止进 ToolCallBlock 渲染/effect，否则刷新页面重渲染
-                // 消息气泡时会重复执行。瞬态事件不落库不进快照，刷新后 tab 消失为预期（D9）。
-                // 未知 action / target（未来扩展）在此静默跳过；信封 sessionId 由 Hub 盖章，
-                // 会话无关动作（缺省）不路由 inspector。展开语义对齐 ActionLink file/open
-                // 默认行为（agent 意图是"展示给用户"，inspector 折叠时只开 tab 等于没做）
-                if (event.sessionId && event.action?.action === 'open_in_mobi') {
-                    const workspace = useWorkspaceStore.getState()
-                    const payload = event.action.payload
-                    if (payload.type === 'file') {
-                        workspace.openFileTab(event.sessionId, payload.path, basename(payload.path))
-                        workspace.setExpanded(event.sessionId, true)
-                    } else if (payload.type === 'terminal') {
-                        workspace.openTerminalTab(event.sessionId)
-                        workspace.setExpanded(event.sessionId, true)
-                    }
-                }
-                break
-            }
             case 'project-added':
             case 'project-updated':
                 // 项目实体变更 → 重新拉取项目列表（数据量小，直接 invalidate）

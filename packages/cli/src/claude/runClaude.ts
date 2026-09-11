@@ -32,6 +32,7 @@ import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/com
 import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
 import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
 import { OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool';
+import { MOBI_APPS_SERVER_NAME, MOBI_CORE_SERVER_NAME } from '@mobi/shared';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
@@ -570,12 +571,12 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             api,
             allowedTools: [
                 // change_title 预授权：两种模式的工具前缀一致（mcp__mobi-core__，SDK 按注册名 / HTTP 壳按 key 生成）
-                `mcp__mobi-core__${CHANGE_TITLE_TOOL_NAME}`,
+                `mcp__${MOBI_CORE_SERVER_NAME}__${CHANGE_TITLE_TOOL_NAME}`,
                 // open_in_mobi 预授权（D7，A 类 UI 呈现工具；仅 remote 壳注册，local 模式不会出现）
-                `mcp__mobi-apps__${OPEN_IN_MOBI_TOOL_NAME}`,
+                `mcp__${MOBI_APPS_SERVER_NAME}__${OPEN_IN_MOBI_TOOL_NAME}`,
                 // 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
-                'mcp__mobi-core__web_search',
-                'mcp__mobi-core__web_fetch',
+                `mcp__${MOBI_CORE_SERVER_NAME}__web_search`,
+                `mcp__${MOBI_CORE_SERVER_NAME}__web_fetch`,
             ],
             onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {
