@@ -31,6 +31,7 @@ import { applySessionIdBinding } from '@/claude/utils/sessionIdBinding';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
 import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
+import { OPEN_FILE_TOOL_NAME } from '@/mcp/openFileTool';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
@@ -570,6 +571,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             allowedTools: [
                 // change_title 预授权：两种模式的工具前缀一致（mcp__mobi__，SDK 按注册名生成）
                 `mcp__mobi__${CHANGE_TITLE_TOOL_NAME}`,
+                // open_file 预授权（D7，A 类 UI 呈现工具；仅 remote 壳注册，local 模式不会出现）
+                `mcp__mobi__${OPEN_FILE_TOOL_NAME}`,
                 // mobi-web 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
                 'mcp__mobi-web__web_search',
                 'mcp__mobi-web__web_fetch',

@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
+import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -60,6 +60,8 @@ const MANUAL_RECONNECT_MAX_DELAY_MS = 30_000
 const CONNECT_ERROR_LOG_WINDOW_MS = 60_000
 /** rewind 回报 ack 等待上限（ms）：超时视为失败进可靠队列重试 */
 const REWIND_REPORT_ACK_TIMEOUT_MS = 5_000
+/** UI 命令 ack 等待上限（ms）：超时按连接故障处理（与离线 delivered:false 语义区分） */
+const UI_COMMAND_ACK_TIMEOUT_MS = 5_000
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string
@@ -724,6 +726,19 @@ export class ApiSessionClient extends EventEmitter {
     /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */
     emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void {
         this.rewindReportQueue.enqueue({ event: 'rewind-completed', body: { sid: this.sessionId, filesRestored, error, skippedLinks } })
+    }
+
+    /**
+     * 发送 UI 命令到 Hub（agent-apps，A 类 UI 呈现）。
+     * emitWithAck 等回执（回执 { delivered } 是 open_file 等工具的核心语义，
+     * 不用 reportContextUsage 的 fire-and-forget 模式）；超时/断连 reject，
+     * 由调用方按连接故障处理（与离线 delivered:false 语义区分）。
+     */
+    async sendUiCommand(action: UiCommandAction): Promise<{ delivered: boolean; reason?: string }> {
+        const answer = await this.socket
+            .timeout(UI_COMMAND_ACK_TIMEOUT_MS)
+            .emitWithAck('sendUiCommand', { sid: this.sessionId, action })
+        return answer as { delivered: boolean; reason?: string }
     }
 
     /**
