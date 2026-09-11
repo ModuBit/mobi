@@ -31,6 +31,17 @@ export const CLAUDE_AGENT_TEAMS_ENV = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS';
 export const CLAUDE_TODO_TOOLS_ENV = 'CLAUDE_CODE_ENABLE_TODO_TOOLS';
 
 /**
+ * 客户端 tool search 开关（由 claude 侧读取）。保底注入使 MCP 工具按需 defer 加载
+ * （agent-apps 路线配套，见 docs/architecture/0005-agent-apps-mcp-route.md）——
+ * 工具定义不全量进上下文，agent 经 ToolSearch 检索后按需加载。
+ * 用户可在 settings.cli.json claudeEnv 显式覆盖（如第三方网关不支持 tool_reference 时的逃生门）。
+ *
+ * 已知限制：CC 侧用户 ~/.claude/settings.json 的 env 键仍可能穿透覆盖本注入
+ * （repo 既有现实，TODO_TOOLS 同样面对），通用治理另行立项。
+ */
+export const ENABLE_TOOL_SEARCH_ENV = 'ENABLE_TOOL_SEARCH';
+
+/**
  * buildClaudeFeatureEnv 的输入。可选——不传时从 configuration 单例读取默认值，
  * 调用点（claudeRemote / runClaude）无需改动；测试可显式传参做纯函数验证。
  */
@@ -60,6 +71,8 @@ export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<st
     const env: Record<string, string> = {
         // 任务工具保底（见 CLAUDE_TODO_TOOLS_ENV 注释）；claudeEnv 层可覆盖为 '0'
         [CLAUDE_TODO_TOOLS_ENV]: '1',
+        // 客户端 tool search 保底（见 ENABLE_TOOL_SEARCH_ENV 注释）；claudeEnv 层可覆盖
+        [ENABLE_TOOL_SEARCH_ENV]: 'true',
     };
 
     if (agentTeams) {

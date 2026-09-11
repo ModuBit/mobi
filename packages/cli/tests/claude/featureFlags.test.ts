@@ -15,12 +15,18 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { buildClaudeFeatureEnv, CLAUDE_AGENT_TEAMS_ENV, CLAUDE_TODO_TOOLS_ENV } from '../../src/claude/featureFlags'
+import {
+    buildClaudeFeatureEnv,
+    CLAUDE_AGENT_TEAMS_ENV,
+    CLAUDE_TODO_TOOLS_ENV,
+    ENABLE_TOOL_SEARCH_ENV,
+} from '../../src/claude/featureFlags'
 
 describe('buildClaudeFeatureEnv', () => {
-    test('全部关闭时仅含 todo tools 保底注入（mobi 恢复保底：任务可见性对远程监控有价值）', () => {
+    test('全部关闭时含 todo tools 与 tool search 保底注入', () => {
         expect(buildClaudeFeatureEnv({ agentTeams: false, claudeEnv: {} })).toEqual({
             [CLAUDE_TODO_TOOLS_ENV]: '1',
+            [ENABLE_TOOL_SEARCH_ENV]: 'true',
         })
     })
 
@@ -35,6 +41,14 @@ describe('buildClaudeFeatureEnv', () => {
             claudeEnv: { [CLAUDE_TODO_TOOLS_ENV]: '0' },
         })
         expect(env[CLAUDE_TODO_TOOLS_ENV]).toBe('0')
+    })
+
+    test('tool search 保底注入可被 claudeEnv 显式关闭（第三方网关不支持 tool_reference 时的逃生门）', () => {
+        const env = buildClaudeFeatureEnv({
+            agentTeams: false,
+            claudeEnv: { [ENABLE_TOOL_SEARCH_ENV]: 'false' },
+        })
+        expect(env[ENABLE_TOOL_SEARCH_ENV]).toBe('false')
     })
 
     test('claudeEnv 的变量被合并进返回', () => {
@@ -61,7 +75,7 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: 'not-an-object' as unknown as Record<string, string>,
         })
-        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1' })
+        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1', [ENABLE_TOOL_SEARCH_ENV]: 'true' })
     })
 
     test('claudeEnv 为数组时防御为仅含内置注入（数组也是 object，须显式排除）', () => {
@@ -72,7 +86,7 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: ['ANTHROPIC_LOG', 'debug'] as unknown as Record<string, string>,
         })
-        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1' })
+        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1', [ENABLE_TOOL_SEARCH_ENV]: 'true' })
     })
 
     test('claudeEnv 值非 string 时跳过该键（保证返回类型 Record<string,string>）', () => {
