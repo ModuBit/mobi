@@ -48,7 +48,14 @@ export const ToolRowItems = memo(function ToolRowItems({ row, dense }: { row: To
                     {row.rowMeta}
                 </span>
             )}
-            {row.chip && <FileChip chip={row.chip} />}
+            {row.chip && (
+                // chip 让位优先：basis 0 + grow 1（上限由 chip 自身 max-width 收口）——
+                // 摘要按自然宽度优先展示，chip 只占剩余空间；空间不足时摘要先收缩，
+                // wrapper 72px 保底保证命令 chip 不被完全挤没（Bash 描述长、命令被盖没的回归）
+                <span style={{ flex: '1 1 0%', minWidth: 72, display: 'flex' }}>
+                    <FileChip chip={row.chip} />
+                </span>
+            )}
             {row.stats && (
                 <span style={{ fontSize: dense ? undefined : 11.5, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     <span style={{ color: token.colorSuccess }}>+{row.stats.add}</span>
