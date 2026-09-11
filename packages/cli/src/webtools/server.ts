@@ -25,9 +25,10 @@ import { z } from 'zod'
 import { readWebToolsConfig } from './config'
 import { resolveSearchProvider, resolveFetchProvider, domainFilter, NO_PROVIDER_MESSAGE } from './registry'
 import { WebToolError } from './provider'
+import { textResult, type MobiToolTextResult } from '@/mcp/toolResult'
 
 /** 统一错误 → isError 工具结果（agent loop 不中断，模型可重试/换思路） */
-function errorResult(error: unknown): { content: Array<{ type: 'text'; text: string }>; isError: boolean } {
+function errorResult(error: unknown): MobiToolTextResult {
     if (error instanceof WebToolError) {
         const hint = error.code === 'auth' ? '（凭据可能失效，请到 mobi 设置页更新 provider 配置）' : ''
         return { content: [{ type: 'text', text: `${error.message}${hint}` }], isError: true }
@@ -50,9 +51,7 @@ export const webSearchTool = tool(
             const results = domainFilter(await provider.search(args), args)
             const lines = results.map((r, i) => `${i + 1}. [${r.title}](${r.url})\n   ${r.snippet}`)
             const sources = results.map((r) => `- ${r.url}`).join('\n')
-            return {
-                content: [{ type: 'text' as const, text: lines.length ? `${lines.join('\n\n')}\n\nSources:\n${sources}` : 'No results found.' }],
-            }
+            return textResult(lines.length ? `${lines.join('\n\n')}\n\nSources:\n${sources}` : 'No results found.')
         } catch (error) {
             return errorResult(error)
         }
@@ -72,7 +71,7 @@ export const webFetchTool = tool(
         try {
             // prompt 不传给 provider 的直连实现：模型自带 prompt 语境，直接返回正文即可
             const result = await provider.fetch(args)
-            return { content: [{ type: 'text' as const, text: result.content }] }
+            return textResult(result.content)
         } catch (error) {
             return errorResult(error)
         }

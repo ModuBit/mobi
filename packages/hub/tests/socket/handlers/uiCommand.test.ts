@@ -116,6 +116,20 @@ describe('sendUiCommand handler', () => {
         expect(published).toHaveLength(0)
     })
 
+    test('publishUiCommand 未装配 → ack delivered:false（handler-misconfigured）且不崩溃', () => {
+        const socket = makeFakeSocket()
+        const { deps } = makeDeps({ hasWeb: true })
+        delete deps.publishUiCommand
+        registerUiCommandHandlers(socket as unknown as Parameters<typeof registerUiCommandHandlers>[0], deps)
+
+        const answer = callSendUiCommand(socket, {
+            sid: 's1',
+            action: { action: 'open_in_mobi', payload: { type: 'terminal' } },
+        })
+
+        expect(answer).toEqual({ delivered: false, reason: 'handler-misconfigured' })
+    })
+
     test('非法 payload（未知 target）→ ack delivered:false 且不发布', () => {
         const socket = makeFakeSocket()
         const { deps, published } = makeDeps()

@@ -212,16 +212,17 @@ export function collectToolIdsFromMessages(messages: NormalizedMessage[]): Set<s
     return ids
 }
 
-/**
- * 检查是否为更改标题的工具名称
- */
+/** change_title 的工具全名（当前名从 shared server 常量派生；历史落库名保留匹配老会话气泡） */
+const CHANGE_TITLE_TOOL_NAMES: readonly string[] = [
+    `mcp__${MOBI_CORE_SERVER_NAME}__change_title`,
+    'mcp__mobi__change_title',
+    'mobi__change_title',
+]
+
 /** 不需要渲染的内部工具 */
 export function isHiddenTool(name: string): boolean {
-    // change_title 历史名保留匹配：工具名已落库，老会话气泡仍按旧全名渲染
     return name === 'ToolSearch'
-        || name === `mcp__${MOBI_CORE_SERVER_NAME}__change_title`
-        || name === 'mcp__mobi__change_title'
-        || name === 'mobi__change_title'
+        || CHANGE_TITLE_TOOL_NAMES.includes(name)
         || name === 'EnterPlanMode'
         || name === 'enter_plan_mode'
         || name === 'TaskCreate'

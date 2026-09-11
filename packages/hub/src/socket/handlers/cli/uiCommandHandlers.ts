@@ -16,6 +16,7 @@
 
 import { z } from 'zod'
 import { UiCommandActionSchema, type ClientToServerEvents } from '@mobi/shared'
+import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessResult } from './types'
 import type { StoredSession } from '../../../store'
@@ -68,7 +69,14 @@ export function registerUiCommandHandlers(socket: CliSocketWithData, deps: UiCom
             return
         }
 
-        publishUiCommand?.({
+        // 装配守卫：发布入口缺失属组装 bug，绝不能静默丢弃后仍回"已广播"
+        if (!publishUiCommand) {
+            hubLogger.error('[UiCommand] publishUiCommand 未装配，ui-command 被丢弃')
+            cb?.({ delivered: false, reason: 'handler-misconfigured' })
+            return
+        }
+
+        publishUiCommand({
             type: 'ui-command',
             // 信封盖章：投递路由元数据由 Hub 从鉴权过的会话解析填充（权威 id + namespace），
             // CLI 不填。namespace 必盖——session 无关动作缺省 sessionId 时 resolveNamespace

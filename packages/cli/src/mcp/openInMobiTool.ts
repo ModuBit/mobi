@@ -50,10 +50,18 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
         target: OpenInMobiTargetSchema,
     })
 
-    function successText(payload: { type: 'file'; path: string; line?: number } | { type: 'terminal' }): string {
-        return payload.type === 'file'
-            ? `Opened ${payload.path}${payload.line != null ? ` (line ${payload.line})` : ''} in the user's mobi Web UI (file tab in the current session's sidebar).`
-            : 'Opened a terminal tab in the user\'s mobi Web UI (current session\'s sidebar).'
+    // 参数类型单源派生自 shared schema；穷尽 switch 保证 shared 增量添加 target 时此处编译期报错
+    function successText(target: z.infer<typeof OpenInMobiTargetSchema>): string {
+        switch (target.type) {
+            case 'file':
+                return `Opened ${target.path}${target.line != null ? ` (line ${target.line})` : ''} in the user's mobi Web UI (file tab in the current session's sidebar).`
+            case 'terminal':
+                return 'Opened a terminal tab in the user\'s mobi Web UI (current session\'s sidebar).'
+            default: {
+                const _exhaustive: never = target
+                return _exhaustive
+            }
+        }
     }
 
     async function execute(rawArgs: unknown): Promise<OpenInMobiToolResult> {
@@ -68,7 +76,16 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
                 return textResult(successText(parsed.data.target));
             }
 
-            // 离线静默（spec D5）：不报错、不排队，平和告知已忽略
+            // 回执 reason 细分（勿混淆）：no-web-online 是离线静默（spec D5，成功非错误，
+            // 平和告知已忽略）；access-denied / not-found / invalid-payload 是永久失败，
+            // isError 并透出真实原因——不伪装成"已忽略"误导 agent 反复重试永不成功的操作
+            if (answer.reason && answer.reason !== 'no-web-online') {
+                return {
+                    content: [{ type: 'text', text: `The UI command was rejected by mobi hub (${answer.reason}).` }],
+                    isError: true,
+                };
+            }
+
             return textResult(
                 'No Web client is currently online, so the request was ignored (not queued). ' +
                 'Try again when the user is viewing their mobi Web UI.',

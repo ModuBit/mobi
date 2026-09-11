@@ -93,6 +93,20 @@ describe('createOpenInMobiTool', () => {
         expect(result.content[0].text.toLowerCase()).toContain('ignored')
     })
 
+    it('treats permanent rejection reasons as errors with the real cause (不伪装成已忽略)', async () => {
+        const { deps } = buildDeps({
+            sendUiCommand: vi.fn().mockResolvedValue({ delivered: false, reason: 'access-denied' }),
+        })
+        const tool = createOpenInMobiTool(deps)
+
+        const result = await tool.execute({ target: { type: 'file', path: '/tmp/demo/a.ts' } })
+
+        // access-denied 不是离线：isError 并透出真实原因，不让 agent 误以为重试有用
+        expect(result.isError).toBe(true)
+        expect(result.content[0].text).toContain('access-denied')
+        expect(result.content[0].text.toLowerCase()).not.toContain('ignored')
+    })
+
     it('returns error result when socket is disconnected or ack times out (连接故障 ≠ 离线)', async () => {
         const { deps } = buildDeps({
             sendUiCommand: vi.fn().mockRejectedValue(new Error('ack timeout')),
