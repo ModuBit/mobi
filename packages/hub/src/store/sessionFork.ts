@@ -46,9 +46,6 @@ export function isTurnStartContent(content: unknown): boolean {
     return isContextBoundaryContent(content)
 }
 
-// 判据实现在 shared messages（isTurnResultContent）——信封知识单源，此处仅 re-export 供既有引用
-export { isTurnResultContent } from '@mobi/shared'
-
 /**
  * 锚点所在 turn 的终点 seq（复制上界扩展，问题实证：web ⑂ 挂 turn-result 概要行、
  * 锚定的是「落点回复」assistant 行——result 行紧随其后，若复制止于锚点，

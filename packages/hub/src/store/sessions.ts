@@ -17,7 +17,8 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isObject } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS as CLEARABLE_FIELDS, isObject } from '@mobi/shared'
+import type { ClearableRuntimeStateField } from '@mobi/shared/types'
 
 import type { StoredSession, VersionedUpdateResult } from './types'
 import { safeJsonParse } from './json'
@@ -342,8 +343,9 @@ export function mergeRuntimeState(
     return { merged, changed: true }
 }
 
-/** 合法的 runtimeState 可清理字段 */
-const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'foregroundTasks', 'teamState', 'goalStatus'])
+/** 合法的 runtimeState 可清理字段——白名单单源在 shared（CLEARABLE_RUNTIME_STATE_FIELDS），
+ *  与路由 z.enum、web 清理按钮类型同源，新增字段不落此处 */
+const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(CLEARABLE_FIELDS)
 
 /** clearRuntimeStateFields 结果：ok=请求被受理（会话存在且写库未失败）；
  *  changed=是否真的清除了字段（幂等空操作 ok=true changed=false） */
@@ -367,7 +369,7 @@ export function clearRuntimeStateFields(
     let changed = false
 
     for (const field of fields) {
-        if (CLEARABLE_RUNTIME_STATE_FIELDS.has(field) && field in runtimeState) {
+        if (CLEARABLE_RUNTIME_STATE_FIELDS.has(field as ClearableRuntimeStateField) && field in runtimeState) {
             delete runtimeState[field]
             changed = true
         }

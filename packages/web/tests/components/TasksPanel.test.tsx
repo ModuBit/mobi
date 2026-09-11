@@ -206,7 +206,7 @@ describe('TasksPanel', () => {
         expect(onAgentClick).toHaveBeenCalledWith(block)
     })
 
-    it('详情 block 未加载时点击不回调，卡片 cursor 非 pointer（守卫降级）', async () => {
+    it('详情 block 未加载时点击静默降级：不回调（守卫在点击时查询 byId 索引，卡片恒可点）', async () => {
         const { useForegroundTasksStore } = await loadStores()
         useForegroundTasksStore.getState().setTasks('test-session', [makeFgTask('fg-missing')])
 
@@ -219,7 +219,6 @@ describe('TasksPanel', () => {
         expect(card).toBeTruthy()
         card.click()
         expect(onAgentClick).not.toHaveBeenCalled()
-        expect(card.style.cursor).not.toBe('pointer')
     })
 })
 

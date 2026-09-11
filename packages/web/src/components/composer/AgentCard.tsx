@@ -18,39 +18,22 @@ import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
-import type { AgentMetrics } from '@/domain/chat/types'
-
-/** 格式化指标信息 */
-function formatMetrics(metrics: AgentMetrics | undefined): string {
-    if (!metrics) return ''
-    const parts: string[] = []
-    if (metrics.durationMs > 0) parts.push(formatDuration(metrics.durationMs))
-    if (metrics.toolUses > 0) parts.push(`${metrics.toolUses} tools`)
-    if (metrics.tokens > 0) parts.push(formatTokens(metrics.tokens))
-    return parts.join(' · ') || 'pending'
-}
 
 /**
  * Agent 卡片组件（foreground-tasks spec D5/D8）
- * 展示单个前台 Agent 的头像、名称和指标。数据源是 runtime_state.foregroundTasks——
- * 等待审批与执行中统一显示运行中（无 pending 视觉分档）；summary/metrics 来自
- * 消息侧的增强信息，DB 清单未覆盖时缺省。
+ * 展示单个前台 Agent 的头像和名称。数据源是 runtime_state.foregroundTasks——
+ * 等待审批与执行中统一显示运行中（无 pending 视觉分档）。
  * onClick 缺省 = 详情 block 未加载（消息空窗），点击无响应（守卫由调用方收口）。
  */
-export function AgentCard({ name, seed, summary, metrics, onClick }: {
+export function AgentCard({ name, seed, onClick }: {
     /** 卡片标题：description ?? subagentType ?? 'Agent' 由调用方派生 */
     name: string
     /** 头像与 testid 的种子（toolUseId，跨渲染稳定） */
     seed: string
-    summary?: string | null
-    metrics?: AgentMetrics
     onClick?: () => void
 }) {
     const { token } = theme.useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
-
-    const metricsText = formatMetrics(metrics)
 
     return (
         <div
@@ -105,9 +88,7 @@ export function AgentCard({ name, seed, summary, metrics, onClick }: {
                     textOverflow: 'ellipsis',
                     lineHeight: '1.3',
                 }}>
-                    {summary
-                        ? `${formatDuration(metrics?.durationMs ?? 0)} · ${summary}`
-                        : metricsText || 'running'}
+                    running
                 </div>
             </div>
         </div>

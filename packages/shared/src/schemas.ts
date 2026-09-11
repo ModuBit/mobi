@@ -395,6 +395,19 @@ export type BackgroundTaskItem = z.infer<typeof BackgroundTaskItemSchema>
 
 export const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
 
+/** 可清理的 runtimeState 字段白名单（清理 API 契约的单源）：
+ *  hub 路由 z.enum / store 可清理集合 / web 清理按钮类型均由此派生，新增字段只改这里 */
+export const CLEARABLE_RUNTIME_STATE_FIELDS = [
+    'todos',
+    'tasks',
+    'backgroundTasks',
+    'foregroundTasks',
+    'teamState',
+    'goalStatus',
+] as const
+
+export type ClearableRuntimeStateField = (typeof CLEARABLE_RUNTIME_STATE_FIELDS)[number]
+
 /** 前台执行中任务条目（foreground-tasks spec D3/D8）：hub 从消息投影维护的「正在跑的前台任务」清单。
  *  与 backgroundTasks 的区别：前台任务无 CLI 上报通道，纯 hub 消息投影；无状态字段（等待审批与
  *  执行中统一视为运行中，spec D5）。第一版只收 Agent 类工具，字段名留非 Agent 扩展空间。 */

@@ -150,15 +150,18 @@ export function isClaudeChatVisibleMessage(message: { type: unknown; subtype?: u
 }
 
 /**
- * turn 终点判定：agent result 输出行（SDK 轮次结束的 usage 概要行）。
- * 信封知识收口于此——fork 复制切割（hub sessionFork）与前台任务孤儿清扫（hub 投影器）
- * 共用同一判据，'result' 类型字面量不再散落多处。
+ * turn 终点判定（已解包产物形态）：agent result 输出行（SDK 轮次结束的 usage 概要行）。
+ * 信封知识收口于此——fork 复制切割（hub sessionFork）与前台任务孤儿清扫（hub 投影器，
+ * 热路径需复用单次解包产物）共用同一判据，'result' 类型字面量不再散落多处。
  */
-export function isTurnResultContent(content: unknown): boolean {
-    const unwrapped = unwrapOutputMessage(content)
+export function isTurnResultUnwrapped(unwrapped: UnwrappedOutputMessage | null): boolean {
     if (!unwrapped) return false
     if (unwrapped.role !== 'agent') return false
     return unwrapped.data.type === 'result'
+}
+
+export function isTurnResultContent(content: unknown): boolean {
+    return isTurnResultUnwrapped(unwrapOutputMessage(content))
 }
 
 export type { RoleWrappedRecord }

@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -156,8 +156,8 @@ export function createMobiApi() {
             // 成功返回新会话 id 供跳转；失败 { error, code } 供归因文案（code 经 forkRejectReasonKey 映射）
             fork: (sessionId: string, anchorNativeId: string) =>
                 client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/fork`, { anchorNativeId }),
-            // 清理 runtimeState 指定字段
-            clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'foregroundTasks' | 'teamState' | 'goalStatus')[]) =>
+            // 清理 runtimeState 指定字段（白名单单源：shared ClearableRuntimeStateField）
+            clearRuntimeStateFields: (sessionId: string, clearFields: ClearableRuntimeStateField[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
             // 置顶 / 取消置顶（置顶进「置顶」分组，从「项目」「最近」过滤掉；取消反向）

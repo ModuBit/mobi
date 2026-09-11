@@ -636,3 +636,8 @@ interrupt（用户停止）
 **背景**：「运行中任务」面板的前台 Agent 条目来自 web 端消息流现算，会话中断后挂僵尸条目、清理按钮无效（清的是 `backgroundTasks`，数据源错位）且空操作返回 `{"ok":false}`。清理 API 语义修复已独立交付（`{ok, changed}` 幂等语义 + `teamState` 白名单补缺）；前台任务收敛进 DB 为后续特性。
 
 **方案共识**：`runtime_state.foregroundTasks` 由 hub 从消息投影维护（tool_use 入 / tool_result 出 / 轮次 result 兜底清孤儿），web 面板纯 DB 单源，清理按钮一键清两类。详见 spec：`.scratch/foreground-tasks/spec.md`（ready-for-agent）。
+
+**/simplify 跳过项**（2026-09-11 review 判定超出当次 diff 范围，留作后续重构线索）：
+
+1. **Agent 工具判据三份拷贝**：`Task`/`Agent` 工具名集合 + `run_in_background` 后台排除判据目前在 hub（foregroundTasks.ts）与 web（`extractRunningAgents` 已删后的残留引用点，如工具卡片注册）各有一份。下沉到 shared 单源（类似 `CLEARABLE_RUNTIME_STATE_FIELDS` 模式），CLI 侧上报通道若后续接入也复用。
+2. **session-scoped store 工厂**：web 端 foregroundTasksStore / backgroundTasksStore / chatBlocksByIdStore 等手写「Map<sessionId, T> + EMPTY 哨兵 + selector」镜像 store 已有 4+ 份，可抽 `createSessionScopedStore<T>` 工厂统一（含 Map 复制语义），各 store 只声明初始值。

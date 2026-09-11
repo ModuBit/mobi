@@ -20,18 +20,21 @@ import { AppTooltip } from '@/components/ui/AppTooltip'
 import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import type { ClearableRuntimeStateField } from '@mobi/shared/types'
 
-/** 可清理的运行时状态字段（web 组件层共用，避免字面量联合散落多处） */
-export type ClearRuntimeStateField = 'todos' | 'tasks' | 'backgroundTasks' | 'foregroundTasks' | 'teamState' | 'goalStatus'
+/** 可清理的运行时状态字段：单源在 shared（CLEARABLE_RUNTIME_STATE_FIELDS），此处别名兼容既有引用 */
+export type ClearRuntimeStateField = ClearableRuntimeStateField
 
 export type ClearStateButtonProps = {
     sessionId: string
     /** 本次清理的字段集合（单字段面板传单项，运行中任务面板传前台 + 后台两类） */
     clearFields: ClearRuntimeStateField[]
+    /** 组合清理的确认文案 key（多字段时语义不能由字段集合推断，由调用方声明）；缺省按单字段回退 */
+    confirmKey?: string
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }
 
-export function ClearStateButton({ sessionId, clearFields, onClear }: ClearStateButtonProps) {
+export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }: ClearStateButtonProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const isMobile = useIsMobile()
@@ -39,10 +42,7 @@ export function ClearStateButton({ sessionId, clearFields, onClear }: ClearState
     const [drawerOpen, setDrawerOpen] = useState(false)
     const [hovered, setHovered] = useState(false)
 
-    // 组合清理（运行中任务面板）有专用确认文案，避免「清理后台任务？」的单类误导
-    const confirmText = clearFields.length > 1
-        ? t('chat.clearState.runningTasks')
-        : t(`chat.clearState.${clearFields[0]}`)
+    const confirmText = t(confirmKey ?? `chat.clearState.${clearFields[0]}`)
     const doClear = useCallback(async () => {
         setLoading(true)
         try {

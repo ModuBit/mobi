@@ -30,7 +30,7 @@ import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
-import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
+import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { AgentCard } from './AgentCard'
 import { BackgroundTaskCard } from './BackgroundTaskCard'
 import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
@@ -44,7 +44,7 @@ const spinKeyframes = css`
 
 /** 统一面板条目：前台任务或后台任务 */
 type TaskListItem =
-    | { kind: 'agent'; task: ForegroundTaskItem; block: ToolCallBlock | null }
+    | { kind: 'agent'; task: ForegroundTaskItem }
     | { kind: 'bg-task'; task: BackgroundTask }
 
 /** 条目排序：前台任务恒 running（spec D5）排前；后台按状态，同状态按启动时间倒序 */
@@ -53,8 +53,7 @@ function sortItems(items: TaskListItem[]): TaskListItem[] {
         if (item.kind === 'agent') return 0
         return item.task.status === 'running' ? 0 : 1
     }
-    const startedAt = (item: TaskListItem): number =>
-        item.kind === 'agent' ? item.task.startedAt : item.task.startedAt
+    const startedAt = (item: TaskListItem): number => item.task.startedAt
     return [...items].sort((a, b) => {
         const rankDiff = statusRank(a) - statusRank(b)
         if (rankDiff !== 0) return rankDiff
@@ -77,27 +76,20 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
     const { token } = theme.useToken()
     const fgTasks = useForegroundTasks(sessionId)
     const bgTasks = useBackgroundTasks(sessionId)
-    const byIdMap = useChatBlocksById(sessionId)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showFade, setShowFade] = useState(false)
     const [narrow, setNarrow] = useState(false)
 
-    // 合并前台任务 + 后台任务；前台详情 block 按 toolUseId 从消息 byId 索引解析，
-    // 消息空窗时为 null（卡片仍展示，点击无响应——查询即守卫，foreground-tasks spec D8）
+    // 合并前台任务 + 后台任务；前台详情 block 不订阅消息索引（避免面板随消息流重渲染），
+    // 点击时从 store 命令式解析，消息空窗时点击无响应（查询即守卫，foreground-tasks spec D8）
     const items = useMemo<TaskListItem[]>(() => {
         const list: TaskListItem[] = [
-            ...fgTasks.map(task => ({
-                kind: 'agent' as const,
-                task,
-                block: byIdMap.get(task.toolUseId)?.kind === 'tool-call'
-                    ? byIdMap.get(task.toolUseId) as ToolCallBlock
-                    : null,
-            })),
+            ...fgTasks.map(task => ({ kind: 'agent' as const, task })),
             ...bgTasks.map(task => ({ kind: 'bg-task' as const, task })),
         ]
         return sortItems(list)
-    }, [fgTasks, bgTasks, byIdMap])
+    }, [fgTasks, bgTasks])
 
     const hasRunning = items.some(item => {
         if (item.kind === 'agent') return true
@@ -155,10 +147,11 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                 }}>
                     {items.length}
                 </span>
-                {/* 面板级清理：一键清前台 + 后台两类（foreground-tasks spec D6） */}
+                {/* 面板级清理：一键清前台 + 后台两类（foreground-tasks spec D6），确认文案由面板声明 */}
                 <ClearStateButton
                     sessionId={sessionId}
                     clearFields={['foregroundTasks', 'backgroundTasks']}
+                    confirmKey="chat.clearState.runningTasks"
                     onClear={onClear}
                 />
             </div>
@@ -178,7 +171,12 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                                 key={item.task.toolUseId}
                                 name={item.task.description ?? item.task.subagentType ?? 'Agent'}
                                 seed={item.task.toolUseId}
-                                onClick={item.block ? () => onAgentClick(item.block as ToolCallBlock) : undefined}
+                                onClick={() => {
+                                    // 点击时才解析 block：面板不订阅消息索引，避免随消息流重渲染
+                                    const block = useChatBlocksByIdStore.getState()
+                                        .byIdBySession.get(sessionId)?.get(item.task.toolUseId)
+                                    if (block?.kind === 'tool-call') onAgentClick(block)
+                                }}
                             />
                         )
                         : <BackgroundTaskCard key={item.task.taskId} task={item.task}

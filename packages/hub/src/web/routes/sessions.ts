@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { isWithinDir } from '@mobi/shared/pathSecurity'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
@@ -631,13 +631,13 @@ export function createSessionsRoutes(
         }
 
         const body = await c.req.json().catch(() => null)
-        const validFields = ['todos', 'tasks', 'backgroundTasks', 'foregroundTasks', 'teamState', 'goalStatus']
+        // 白名单单源：shared CLEARABLE_RUNTIME_STATE_FIELDS（与 store 集合、web 按钮类型同源）
         const schema = z.object({
-            clearFields: z.array(z.enum(validFields as [string, ...string[]])).min(1),
+            clearFields: z.array(z.enum(CLEARABLE_RUNTIME_STATE_FIELDS)).min(1),
         })
         const parsed = schema.safeParse(body)
         if (!parsed.success) {
-            return c.json({ error: 'Invalid body: clearFields must be a non-empty array of valid field names (todos, tasks, backgroundTasks, foregroundTasks, teamState, goalStatus)' }, 400)
+            return c.json({ error: `Invalid body: clearFields must be a non-empty array of valid field names (${CLEARABLE_RUNTIME_STATE_FIELDS.join(', ')})` }, 400)
         }
 
         const namespace = c.get('namespace')
