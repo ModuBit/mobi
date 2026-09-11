@@ -645,14 +645,16 @@ export class SessionCache {
     }
 
     /**
-     * 清除 session runtimeState 中的指定字段并推送 SSE 更新
+     * 清除 session runtimeState 中的指定字段并推送 SSE 更新。
+     * 返回请求是否被受理（会话存在且写库未失败）；字段本来就不存在是幂等成功（受理但无变化不广播）。
      */
     clearRuntimeStateFields(sessionId: string, fields: string[], namespace: string): boolean {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session || session.namespace !== namespace) return false
 
         const result = this.store.sessions.clearRuntimeStateFields(sessionId, fields, namespace)
-        if (result) {
+        if (!result.ok) return false
+        if (result.changed) {
             // 刷新缓存并推送 SSE
             this.refreshSession(sessionId)
             const updated = this.sessions.get(sessionId)
@@ -664,7 +666,7 @@ export class SessionCache {
                 })
             }
         }
-        return result
+        return true
     }
 
     updateSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): void {

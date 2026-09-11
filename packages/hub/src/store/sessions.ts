@@ -343,20 +343,25 @@ export function mergeRuntimeState(
 }
 
 /** 合法的 runtimeState 可清理字段 */
-const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'goalStatus'])
+const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'teamState', 'goalStatus'])
+
+/** clearRuntimeStateFields 结果：ok=请求被受理（会话存在且写库未失败）；
+ *  changed=是否真的清除了字段（幂等空操作 ok=true changed=false） */
+export type ClearRuntimeStateFieldsResult = { ok: boolean; changed: boolean }
 
 /**
  * 清除 runtimeState 中的指定字段
- * 仅允许清除 CLEARABLE_RUNTIME_STATE_FIELDS 中的字段
+ * 仅允许清除 CLEARABLE_RUNTIME_STATE_FIELDS 中的字段；
+ * 请求字段都不存在/不合法是幂等成功（ok=true changed=false），不写库
  */
 export function clearRuntimeStateFields(
     db: Database,
     id: string,
     fields: string[],
     namespace: string
-): boolean {
+): ClearRuntimeStateFieldsResult {
     const row = getSessionByNamespace(db, id, namespace)
-    if (!row || !row.runtimeState) return false
+    if (!row || !row.runtimeState) return { ok: row != null, changed: false }
 
     const runtimeState = row.runtimeState as Record<string, unknown>
     let changed = false
@@ -368,7 +373,8 @@ export function clearRuntimeStateFields(
         }
     }
 
-    if (!changed) return false
+    // 无可清除字段：幂等成功，不写库
+    if (!changed) return { ok: true, changed: false }
 
     const now = Date.now()
     try {
@@ -387,9 +393,9 @@ export function clearRuntimeStateFields(
             runtime_state_updated_at: now,
             updated_at: now,
         })
-        return result.changes === 1
+        return { ok: result.changes === 1, changed: result.changes === 1 }
     } catch {
-        return false
+        return { ok: false, changed: false }
     }
 }
 

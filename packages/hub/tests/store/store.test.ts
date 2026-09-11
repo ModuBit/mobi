@@ -290,7 +290,7 @@ describe('Store', () => {
             ['todos', 'backgroundTasks'],
             'default'
         )
-        expect(result).toBe(true)
+        expect(result).toEqual({ ok: true, changed: true })
 
         // 验证清理后的状态
         const updated = store.sessions.getSession(session.id)!
@@ -301,16 +301,56 @@ describe('Store', () => {
         expect(state.model).toBe('claude-sonnet-4-6')
     })
 
+    test('clearRuntimeStateFields 清除 teamState（路由/web 白名单字段）', () => {
+        const session = store.sessions.getOrCreateSession(
+            'test-tag-clear-team',
+            { name: 'test' },
+            null,
+            'default'
+        )
+        store.sessions.setRuntimeState(
+            session.id,
+            { teamState: { lead: { agentName: 'a', active: true } }, model: 'm' },
+            Date.now() - 1,
+            'default'
+        )
+
+        const result = store.sessions.clearRuntimeStateFields(session.id, ['teamState'], 'default')
+        expect(result).toEqual({ ok: true, changed: true })
+
+        const state = store.sessions.getSession(session.id)!.runtimeState as Record<string, unknown>
+        expect(state.teamState).toBeUndefined()
+        expect(state.model).toBe('m')
+    })
+
+    test('clearRuntimeStateFields 字段不存在是幂等成功（ok=true changed=false）', () => {
+        const session = store.sessions.getOrCreateSession(
+            'test-tag-clear-miss',
+            { name: 'test' },
+            null,
+            'default'
+        )
+        store.sessions.setRuntimeState(session.id, { model: 'm' }, Date.now() - 1, 'default')
+
+        // backgroundTasks 字段本来就不存在：受理但无变化、不写库
+        const result = store.sessions.clearRuntimeStateFields(
+            session.id,
+            ['backgroundTasks'],
+            'default'
+        )
+        expect(result).toEqual({ ok: true, changed: false })
+    })
+
     test('clearRuntimeStateFields 不存在的 session 返回 false', () => {
         const result = store.sessions.clearRuntimeStateFields(
             'non-existent-id',
             ['todos'],
             'default'
         )
-        expect(result).toBe(false)
+        expect(result).toEqual({ ok: false, changed: false })
     })
 
-    test('clearRuntimeStateFields 无 runtimeState 时返回 false', () => {
+    test('clearRuntimeStateFields 无 runtimeState 时是幂等成功', () => {
         const session = store.sessions.getOrCreateSession(
             'test-tag-no-rs',
             { name: 'test' },
@@ -322,6 +362,6 @@ describe('Store', () => {
             ['todos'],
             'default'
         )
-        expect(result).toBe(false)
+        expect(result).toEqual({ ok: true, changed: false })
     })
 })

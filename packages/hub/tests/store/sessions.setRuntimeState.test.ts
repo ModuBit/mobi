@@ -94,7 +94,7 @@ describe('setRuntimeState 时序', () => {
             Date.now(),
             'default'
         )
-        expect(store.sessions.clearRuntimeStateFields(sessionId, ['todos'], 'default')).toBe(true)
+        expect(store.sessions.clearRuntimeStateFields(sessionId, ['todos'], 'default')).toEqual({ ok: true, changed: true })
         expect(readState().todos).toBeUndefined()
         expect(readState().model).toBe('sonnet')
     })

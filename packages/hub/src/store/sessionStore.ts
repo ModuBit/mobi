@@ -33,6 +33,7 @@ import {
     setSessionPinned as setSessionPinnedFromDb,
     setRuntimeState,
     clearRuntimeStateFields,
+    type ClearRuntimeStateFieldsResult,
     mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
@@ -88,7 +89,7 @@ export class SessionStore {
     /**
      * 清除 runtimeState 中的指定字段
      */
-    clearRuntimeStateFields(id: string, fields: string[], namespace: string): boolean {
+    clearRuntimeStateFields(id: string, fields: string[], namespace: string): ClearRuntimeStateFieldsResult {
         return clearRuntimeStateFields(this.db, id, fields, namespace)
     }
 

@@ -630,3 +630,9 @@ interrupt（用户停止）
 - CLI 断连清该会话全部订阅游标：与旧行为等价（重连 forceFull 无条件重建游标），无真实退化
 - `/snapshot-resync` 不再对快照基础设施缺失回 503：`snapshotSync` 已构造器必传，该条件结构性不存在
 - resync 绕过 session 绑定（未绑定目标会话的订阅可被注入基线）：已于 2026-09-10 修复——`resyncSnapshots` 自带 `connection.all || connection.sessionId === sessionId` 校验（同 shouldSend 语义），红→绿测试锁定
+
+## 73. foregroundTasks — 前台任务清单收敛进 DB（2026-09-11）
+
+**背景**：「运行中任务」面板的前台 Agent 条目来自 web 端消息流现算，会话中断后挂僵尸条目、清理按钮无效（清的是 `backgroundTasks`，数据源错位）且空操作返回 `{"ok":false}`。清理 API 语义修复已独立交付（`{ok, changed}` 幂等语义 + `teamState` 白名单补缺）；前台任务收敛进 DB 为后续特性。
+
+**方案共识**：`runtime_state.foregroundTasks` 由 hub 从消息投影维护（tool_use 入 / tool_result 出 / 轮次 result 兜底清孤儿），web 面板纯 DB 单源，清理按钮一键清两类。详见 spec：`.scratch/foreground-tasks/spec.md`（ready-for-agent）。
