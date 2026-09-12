@@ -36,6 +36,7 @@
  */
 
 import type { UserContentBlock } from '@mobi/shared'
+import { SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool'
 
 export interface CrossSessionEnvelope {
     /** 发送方会话名。会话未命名时为空串——身份由 fromSessionId 承担，不拿 id 冒充名字 */
@@ -66,8 +67,8 @@ function escapeMarkup(value: string): string {
         .replace(/>/g, '&gt;')
 }
 
-/** 收件方回信该用的工具名（与 sendMessageTool 的 SEND_MESSAGE_TOOL_NAME 同值，注册在 mobi-apps server 上） */
-const REPLY_TOOL = 'send_message_to_session'
+/** 收件方回信该用的工具名（注册在 mobi-apps server 上，常量归属工具自身，此处只引用） */
+const REPLY_TOOL = SEND_MESSAGE_TOOL_NAME
 
 /**
  * 需要中和的标记名：信封自己，以及 harness 注入上下文用的 `<system-reminder>`。

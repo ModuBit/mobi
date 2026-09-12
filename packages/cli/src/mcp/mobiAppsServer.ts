@@ -30,23 +30,36 @@
  * 不设 alwaysLoad：默认 tool search defer，工具定义不进上下文。
  */
 
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { createSdkMcpServer, tool, type AnyZodRawShape, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
 import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
+import type { MobiToolTextResult } from './toolResult'
 import { createOpenInMobiToolForSession } from './openInMobiTool'
 import { createListMachinesToolForSession } from './listMachinesTool'
 import { createListSessionsToolForSession } from './listSessionsTool'
 import { createCreateSessionToolForSession } from './createSessionTool'
 import { createSendMessageToolForSession } from './sendMessageTool'
 
+/**
+ * 工具体（工具工厂的返回值）→ SDK 的 tool 定义。
+ *
+ * 工厂产出的是 transport 无关的四件套（name / description / inputSchema / execute），
+ * 这里只做形状适配——SDK 要 `inputSchema.shape`，且 handler 收 `unknown` 再交给 execute
+ * （execute 自己会 safeParse，不在这一层替工具做校验）。
+ */
+function toSdkTool<Shape extends AnyZodRawShape>(definition: {
+    name: string
+    description: string
+    inputSchema: { shape: Shape }
+    execute: (args: unknown) => Promise<MobiToolTextResult>
+}): SdkMcpToolDefinition<Shape> {
+    return tool(definition.name, definition.description, definition.inputSchema.shape, async (args: unknown) =>
+        definition.execute(args)
+    )
+}
+
 export function createMobiAppsServer(client: ApiSessionClient) {
     // 本 server 的工具都仅挂 remote 壳：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
-    const openInMobiTool = createOpenInMobiToolForSession(client)
-    const listMachinesTool = createListMachinesToolForSession(client)
-    const listSessionsTool = createListSessionsToolForSession(client)
-    const createSessionTool = createCreateSessionToolForSession(client)
-    const sendMessageTool = createSendMessageToolForSession(client)
-
     return createSdkMcpServer({
         name: MOBI_APPS_SERVER_NAME,
         version: '1.0.0',
@@ -55,36 +68,11 @@ export function createMobiAppsServer(client: ApiSessionClient) {
         // 这里只回答"这个 server 是谁提供的"
         instructions: 'Tools provided by the Mobi app.',
         tools: [
-            tool(
-                openInMobiTool.name,
-                openInMobiTool.description,
-                openInMobiTool.inputSchema.shape,
-                async (args: unknown) => openInMobiTool.execute(args),
-            ),
-            tool(
-                listMachinesTool.name,
-                listMachinesTool.description,
-                listMachinesTool.inputSchema.shape,
-                async (args: unknown) => listMachinesTool.execute(args),
-            ),
-            tool(
-                listSessionsTool.name,
-                listSessionsTool.description,
-                listSessionsTool.inputSchema.shape,
-                async (args: unknown) => listSessionsTool.execute(args),
-            ),
-            tool(
-                createSessionTool.name,
-                createSessionTool.description,
-                createSessionTool.inputSchema.shape,
-                async (args: unknown) => createSessionTool.execute(args),
-            ),
-            tool(
-                sendMessageTool.name,
-                sendMessageTool.description,
-                sendMessageTool.inputSchema.shape,
-                async (args: unknown) => sendMessageTool.execute(args),
-            ),
-        ],
+            createOpenInMobiToolForSession(client),
+            createListMachinesToolForSession(client),
+            createListSessionsToolForSession(client),
+            createCreateSessionToolForSession(client),
+            createSendMessageToolForSession(client),
+        ].map(toSdkTool),
     })
 }

@@ -68,8 +68,8 @@ const AGENT_OP_ACK_TIMEOUT_MS = 5_000
 /** 建会话的 ack 等待上限（ms）：这一步在起真进程（见 createSessionForAgent 注释），
  *  5s 必然不够。取 45s = Hub 侧 RPC 30s 上限 + 余量 */
 const AGENT_CREATE_SESSION_ACK_TIMEOUT_MS = 45_000
-/** 投递消息的 ack 等待上限（ms）：扇出逐目标串行，一个卡住的目标就吃掉 30s（见
- *  sendMessageToSessionsForAgent 注释）。60s 覆盖「一个卡住 + 其余正常」 */
+/** 投递消息的 ack 等待上限（ms）：Hub 侧并发扇出，卡住的目标最多吃掉一次 30s RPC 上限
+ *  （见 sendMessageToSessionsForAgent 注释），60s 留一倍余量 */
 const AGENT_SEND_MESSAGE_ACK_TIMEOUT_MS = 60_000
 
 export class ApiSessionClient extends EventEmitter {
@@ -811,9 +811,8 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 把一条消息投给若干会话（B 类工具族）。
      *
-     * 等待上限比列表类长：扇出是**逐目标串行**的，每个目标一次 RPC 往返，
-     * 目标卡住时单次就吃掉 Hub 侧 30s 上限。60s 足够「一个卡住的目标 + 其余正常」，
-     * 再多就说明不止一个目标出问题了——那时超时本身就是有用的信号。
+     * 等待上限比列表类长：Hub 侧每个目标一次 RPC 往返（单次上限 30s），扇出并发但要等
+     * 最慢的那个回来。60s = 一次卡住的 30s 上限 + 一倍余量。
      *
      * 口径与列表类一致：业务失败（入参非法 / 无权限）走 ack 的 ok:false，
      * 连接故障走 reject。**进了扇出顶层恒 ok:true**，成败逐条看 results。

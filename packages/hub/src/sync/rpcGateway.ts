@@ -410,20 +410,26 @@ export class RpcGateway {
      * 有本地排队态、要绑定 native_id；这条不走队列——消息由别的会话投来，
      * 目标侧从没排过队，`localIds` 也不传（消息身份已由信封携带）。
      *
-     * 目标 CLI 缺该 handler（进程是旧版本或已退）时抛 RPC 错误，由调用方
-     * （AgentSessionService）翻译成人话，不在这层兜。
+     * **调用方（AgentSessionService）明确的拒收走返回值，不走异常**——拒收是确定性的
+     * 业务裁决，而异常通道那边是按**文案**分类的传输故障判定（`classifyRpcFailure`），
+     * 一句恰好含 "timed out" 的拒收理由会被说成「可能已送达、别重发」，把确定的事说成
+     * 不确定。只有真·传输故障（无 handler / socket 断 / 超时）才抛，那才归异常管。
      *
-     * **RPC 正常返回但 status 是 rejected 也算失败**（见 AgentMessagePushResult）：
-     * 那表示 CLI 跑了 handler 却没收下（input stream 已关）。静默当成功会落一条
-     * 永远不会被处理的库行，还告诉 agent「送到了」——比报错坏得多。
+     * **`rejected` 也是失败**（见 AgentMessagePushResult）：那表示 CLI 跑了 handler 却
+     * 没收下（input stream 已关）。静默当成功会落一条永远不会被处理的库行，还告诉 agent
+     * 「送到了」——比报错坏得多。
      */
-    async pushAgentMessage(sessionId: string, delivery: AgentMessageDelivery): Promise<void> {
+    async pushAgentMessage(sessionId: string, delivery: AgentMessageDelivery): Promise<AgentMessagePushResult> {
         const result = await this.sessionRpc(sessionId, 'push-agent-message', delivery) as AgentMessagePushResult | null
         if (result?.status === 'delivered') {
-            return
+            return result
         }
-        // CLI 那边的 reason 本就是给人看的句子（谁收不下、为什么），原样抛给翻译层
-        throw new Error(result?.status === 'rejected' ? result.reason : 'the session did not confirm delivery')
+        // CLI 那边的 reason 本就是给人看的句子（谁收不下、为什么），原样带到调用方；
+        // 返回 null（没确认）也算拒收，只是理由换成我们给的这一句
+        return {
+            status: 'rejected',
+            reason: result?.status === 'rejected' ? result.reason : 'the session did not confirm delivery',
+        }
     }
 
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {

@@ -419,15 +419,24 @@ export class SessionCache {
         this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, running: false, mode: session.mode } })
     }
 
-    expireInactive(now: number = Date.now()): void {
+    /**
+     * 心跳过期的兜底清理。
+     *
+     * 返回**这一轮判定为「它已经不在了」的会话 id**（翻 inactive 或驱逐）——调用方据此
+     * 一并清掉挂在会话生命周期上的进程内状态（如「此刻能不能收消息」）。CLI 被强杀或
+     * 崩溃时不会上报 session-end，这里是唯一能得知它已经不在的地方；否则那些状态只增不减。
+     */
+    expireInactive(now: number = Date.now()): string[] {
         const sessionTimeoutMs = 30_000
         const evictionMs = 3_600_000 // 1 小时
+        const gone = new Set<string>()
 
         for (const session of this.sessions.values()) {
             if (!session.active) continue
             if (now - session.activeAt <= sessionTimeoutMs) continue
             session.active = false
             session.running = false
+            gone.add(session.id)
             this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false } })
         }
 
@@ -436,8 +445,11 @@ export class SessionCache {
             if (!session.active && now - session.activeAt > evictionMs) {
                 this.sessions.delete(id)
                 this.lastBroadcastAtBySessionId.delete(id)
+                gone.add(id)
             }
         }
+
+        return [...gone]
     }
 
     /** live 字段的落库键（深化候选②：新增 live 字段在此追加即获得「落库+内存+广播」，

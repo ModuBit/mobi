@@ -97,8 +97,8 @@ export class SyncEngine {
     private readonly eventPublisher: EventPublisher
     private readonly sessionCache: SessionCache
     private readonly machineCache: MachineCache
-    /** Agent 会话操作（B 类工具族）的业务规则入口；socket handler 只调用它 */
-    private readonly agentSessionService: AgentSessionService
+    /** Agent 会话操作（B 类工具族）的业务规则入口；socket handler 经此取用，不重新实现一遍规则 */
+    readonly agentSessions: AgentSessionService
     private readonly projectCache: ProjectCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
@@ -125,7 +125,7 @@ export class SyncEngine {
         this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.machineCache = new MachineCache(store, this.eventPublisher)
-        this.agentSessionService = new AgentSessionService({
+        this.agentSessions = new AgentSessionService({
             getOnlineMachinesByNamespace: (namespace) => this.machineCache.getOnlineMachinesByNamespace(namespace),
             getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
             getMachineByNamespace: (machineId, namespace) => this.machineCache.getMachineByNamespace(machineId, namespace),
@@ -267,11 +267,7 @@ export class SyncEngine {
     }
 
     // ============ Agent 会话操作（B 类工具族）============
-
-    /** AgentSessionService 实例：socket handler 经此取用业务规则（不重新实现一遍规则） */
-    get agentSessions(): AgentSessionService {
-        return this.agentSessionService
-    }
+    // 实例见 `agentSessions` 字段
 
     // ============ 项目（project entity）============
 
@@ -420,7 +416,11 @@ export class SyncEngine {
     }
 
     private expireInactive(): void {
-        this.sessionCache.expireInactive()
+        // 心跳过期 = 这个会话已经不在了。顺带抹掉挂在它生命周期上的进程内事实——CLI 被强杀
+        // 或崩溃时不会上报 session-end，这里是「它没了」唯一的兜底判据，否则那些事实只增不减
+        for (const sessionId of this.sessionCache.expireInactive()) {
+            this.receiveReadiness.clear(sessionId)
+        }
         this.machineCache.expireInactive()
     }
 

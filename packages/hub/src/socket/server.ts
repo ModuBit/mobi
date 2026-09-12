@@ -186,46 +186,41 @@ export function createSocketServer(deps: SocketServerDeps): {
         socket.data.namespace = parsedToken.namespace
         next()
     })
-    cliNs.on('connection', (socket) => registerCliHandlers(socket as CliSocketWithData, {
-        io,
-        store: deps.store,
-        rpcRegistry,
-        terminalRegistry,
-        backgroundTaskTracker,
-        snapshotSync,
-        rewindDeleteBoundTracker: deps.rewindDeleteBoundTracker,
-        // 会话事实（心跳/水位/目标/轮次/结束）→ sink 落库；机器心跳 → SyncEngine。
-        // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪
-        onMachineAlive: deps.onMachineAlive,
-        factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
-        onWebappEvent: deps.onWebappEvent,    // Web端实时事件
-        hasActiveSseConnection: deps.hasActiveSseConnection,
-        publishUiCommand: deps.publishUiCommand,
-        // 同为惰性：服务在 SyncEngine 里，connection 时解包后只暴露它需要的那一个方法
-        listOnlineMachinesForAgent: (() => {
-            const agentSessions = deps.agentSessions?.()
-            return agentSessions ? (namespace: string) => agentSessions.listMachines(namespace) : undefined
-        })(),
-        listSessionsForAgent: (() => {
-            const agentSessions = deps.agentSessions?.()
-            return agentSessions
+    cliNs.on('connection', (socket) => {
+        // 惰性 getter 在 connection 时解包一次：SyncEngine 在 socket server 之后创建，此时必已就绪。
+        // 解包后每个操作只暴露一个方法，不把整个服务透下去（handler 摸不到无关能力）
+        const agentSessions = deps.agentSessions?.()
+        registerCliHandlers(socket as CliSocketWithData, {
+            io,
+            store: deps.store,
+            rpcRegistry,
+            terminalRegistry,
+            backgroundTaskTracker,
+            snapshotSync,
+            rewindDeleteBoundTracker: deps.rewindDeleteBoundTracker,
+            // 会话事实（心跳/水位/目标/轮次/结束）→ sink 落库；机器心跳 → SyncEngine。
+            // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪
+            onMachineAlive: deps.onMachineAlive,
+            factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
+            onWebappEvent: deps.onWebappEvent,    // Web端实时事件
+            hasActiveSseConnection: deps.hasActiveSseConnection,
+            publishUiCommand: deps.publishUiCommand,
+            // Agent 会话操作（B 类工具族），同一份服务的四个方法
+            listOnlineMachinesForAgent: agentSessions
+                ? (namespace: string) => agentSessions.listMachines(namespace)
+                : undefined,
+            listSessionsForAgent: agentSessions
                 ? (namespace: string, query: AgentSessionQuery) => agentSessions.listSessions(namespace, query)
-                : undefined
-        })(),
-        createSessionForAgent: (() => {
-            const agentSessions = deps.agentSessions?.()
-            return agentSessions
+                : undefined,
+            createSessionForAgent: agentSessions
                 ? (namespace: string, input: AgentCreateSessionInput) => agentSessions.createSession(namespace, input)
-                : undefined
-        })(),
-        sendMessageToSessionsForAgent: (() => {
-            const agentSessions = deps.agentSessions?.()
-            return agentSessions
+                : undefined,
+            sendMessageToSessionsForAgent: agentSessions
                 ? (namespace: string, fromSessionId: string, input: AgentSendMessageInput) =>
                     agentSessions.sendMessageToSessions(namespace, fromSessionId, input)
                 : undefined
-        })()
-    }))
+        })
+    })
 
     terminalNs.use(async (socket, next) => {
         // 双源提取：cookie 优先（同源 httpOnly cookie 浏览器自动携带，刷新不丢），fallback auth.token（过渡兼容）

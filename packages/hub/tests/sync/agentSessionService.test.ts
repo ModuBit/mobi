@@ -19,7 +19,7 @@ import { AgentSessionService } from '../../src/sync/agentSessionService'
 import type { ProjectAssignability } from '../../src/sync/agentSessionService'
 import type { ReceiveReadiness } from '../../src/sync/sessionReceiveReadiness'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
-import type { AgentMessageDelivery, UserContentBlock } from '@mobi/shared'
+import type { AgentMessageDelivery, AgentMessagePushResult, UserContentBlock } from '@mobi/shared'
 import type { Machine } from '../../src/sync/machineCache'
 import type { Session } from '@mobi/shared/types'
 
@@ -69,6 +69,8 @@ function makeService(
         projectAssignability?: ProjectAssignability
         /** 让 pushAgentMessage 抛这个错（模拟三种 RPC 内部错误） */
         pushFailure?: string
+        /** 让 pushAgentMessage 返回这个裁决（模拟 CLI 跑了 handler 却没接住） */
+        pushVerdict?: AgentMessagePushResult
         /** 让 storeAgentMessage 抛这个错（模拟落库故障） */
         storeFailure?: string
         /** renameSession 前 N 次抛这个错（模拟 CAS 版本撞车），之后成功 */
@@ -113,7 +115,11 @@ function makeService(
             if (overrides?.pushFailure) {
                 throw new Error(overrides.pushFailure)
             }
+            if (overrides?.pushVerdict) {
+                return overrides.pushVerdict
+            }
             pushed.push({ sessionId, delivery })
+            return { status: 'delivered' }
         },
         storeAgentMessage: async (sessionId, delivery) => {
             if (overrides?.storeFailure) {
@@ -488,7 +494,7 @@ describe('AgentSessionService.createSession — 前置闸', () => {
                 return 'not_found'
             },
             spawnSession: async () => ({ type: 'success', sessionId: 's-new' }),
-            pushAgentMessage: async () => {},
+            pushAgentMessage: async () => ({ status: 'delivered' }),
             storeAgentMessage: async () => {},
             renameSession: async () => {},
             waitUntilCanReceive: async () => 'ready',
@@ -860,6 +866,16 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
         return results[0].error ?? ''
     }
 
+    /** CLI 明确拒收（跑了 handler，只是这一刻收不下）——走返回值，不走异常通道 */
+    async function rejectionText(reason: string, canReceiveNow?: boolean): Promise<string> {
+        const { service } = makeService([], [sender, targetB], {
+            pushVerdict: { status: 'rejected', reason },
+            canReceiveNow,
+        })
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+        return results[0].error ?? ''
+    }
+
     test('不可达 + 从没上报过 → 说「可能还在启动、稍后再试」，不编一个「已经退出」', async () => {
         const notRegistered = await failureText('RPC handler not registered: B:push-agent-message', undefined)
         const disconnected = await failureText('RPC socket disconnected: B:push-agent-message', undefined)
@@ -895,9 +911,21 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
         expect(text).toContain('do not send it again blindly')
     })
 
-    test('上游自己产出的失败本就是人话 → 原样透出', async () => {
-        const upstream = 'Claude Code rejected the message: input stream is closed.'
-        expect(await failureText(upstream)).toBe(upstream)
+    test('CLI 明确拒收 → 理由原样透出，不套传输故障那一套说法', async () => {
+        const reason =
+            'that session is not accepting input right now (its Claude Code process is restarting or shutting down).'
+
+        expect(await rejectionText(reason)).toBe(reason)
+    })
+
+    test('拒收理由里恰好含 "timed out" 也不能被说成「可能已送达」', async () => {
+        // 拒收是**确定性**的裁决，而超时那套话（「可能已送达、别盲目重发」）说的是不确定。
+        // 两者混起来会把确定的事说成不确定——正是这套翻译要消灭的那类谎
+        const reason = 'the target did not accept it: the wait timed out before its sink was ready.'
+        const text = await rejectionText(reason)
+
+        expect(text).toBe(reason)
+        expect(text).not.toContain('may or may not have been delivered')
     })
 
     test('投递失败的目标不落库（Web 上不该出现永远不会被处理的消息）', async () => {

@@ -35,6 +35,7 @@ import type {
     AgentCreateSessionRequest,
     AgentMachineSummary,
     AgentMessageDelivery,
+    AgentMessagePushResult,
     AgentSendMessageTargetResult,
     AgentSessionStatus,
     AgentSessionSummary,
@@ -110,8 +111,13 @@ export interface AgentSessionServiceDeps {
         permissionMode?: PermissionMode
         projectId?: string
     }) => Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }>
-    /** 把一条跨会话消息推进目标 CLI 的 input stream（RPC 投递，**不经投递队列**） */
-    pushAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<void>
+    /**
+     * 把一条跨会话消息推进目标 CLI 的 input stream（RPC 投递，**不经投递队列**）。
+     *
+     * 抛异常 = 真·传输故障；返回 `rejected` = CLI 明确拒收（确定性的裁决，理由已是人话）。
+     * 两者必须分开——拒收的理由不能进按文案分类的传输故障判定，见 rpcGateway 的注释。
+     */
+    pushAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<AgentMessagePushResult>
     /** 把投递成功的那条消息落到目标会话（落库形态不含信封，meta 带 sentFrom/crossSession/fromSessionId） */
     storeAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<void>
     /**
@@ -150,10 +156,12 @@ export interface AgentSessionQuery {
 
 /** 机器 → agent 视角摘要。展示名取机器自报的 displayName，缺省回退 host。 */
 export function toMachineSummary(machine: Machine): AgentMachineSummary {
+    // 展示名缺省回退到主机名，而主机名自己还可能缺省——两级回退的规则只写这一处
+    const hostname = machine.metadata?.host ?? machine.id
     return {
         machineId: machine.id,
-        name: machine.metadata?.displayName ?? machine.metadata?.host ?? machine.id,
-        hostname: machine.metadata?.host ?? machine.id,
+        name: machine.metadata?.displayName ?? hostname,
+        hostname,
         activeAt: machine.activeAt,
     }
 }
@@ -277,19 +285,20 @@ export class AgentSessionService {
      * metadata——撞版本是时序问题不是规则冲突，刷新缓存后重来一次就能过。
      */
     private async applyInitialTitle(sessionId: string, title: string): Promise<void> {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                await this.deps.renameSession(sessionId, title)
-                return
-            } catch (error) {
-                const reason = error instanceof Error ? error.message : String(error)
-                if (attempt === 2) {
-                    hubLogger.warn(
-                        `[AgentSessions] 会话 ${sessionId} 的初始标题 "${title}" 没设上（会话已可用，仅少个称呼）: ${reason}`
-                    )
-                    return
-                }
-            }
+        try {
+            await this.deps.renameSession(sessionId, title)
+            return
+        } catch {
+            // 撞版本是时序问题不是规则冲突，重来一次即可（deps 的实现在每次调用前都会刷新缓存）
+        }
+
+        try {
+            await this.deps.renameSession(sessionId, title)
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error)
+            hubLogger.warn(
+                `[AgentSessions] 会话 ${sessionId} 的初始标题 "${title}" 没设上（会话已可用，仅少个称呼）: ${reason}`
+            )
         }
     }
 
@@ -297,7 +306,7 @@ export class AgentSessionService {
      * 把一条消息投给若干会话。
      *
      * 逐条独立、不做事务回滚：投递一旦推进对方 input stream 就收不回来，回滚是假的。
-     * 部分成功就是部分成功，逐条如实报。
+     * 部分成功就是部分成功，逐条如实报。目标之间并发投递，互不牵连。
      *
      * 顺序是「内容闸 → 逐目标投递 → 成功才落库」：
      * - 内容类失败对**每个目标**都是同一句话，先在扇出外定下来，免得逐轮重算，
@@ -328,11 +337,11 @@ export class AgentSessionService {
             localFile: findLocalFileBlock(gate.blocks),
         }
 
-        const results: AgentSendMessageTargetResult[] = []
-        for (const sessionId of input.targets) {
-            results.push(await this.deliverToSession(namespace, sessionId, context))
-        }
-        return results
+        // 目标之间互不依赖，并发投递：总耗时是「最慢的那个」而不是「各目标之和」。
+        // Promise.all 保序，results 与 input.targets 逐位对应
+        return await Promise.all(
+            input.targets.map((sessionId) => this.deliverToSession(namespace, sessionId, context))
+        )
     }
 
     /** 单个目标的一次投递：定位 → 活性闸 → 附件闸 → 投递 → 落库 */
@@ -385,9 +394,11 @@ export class AgentSessionService {
         // 所以拼信封不必等落库（信封只进推给 CC 的那一份，不进落库的那一份）
         const message: AgentMessageDelivery = { ...context.delivery, messageId: randomUUID() }
 
+        let verdict: AgentMessagePushResult
         try {
-            await this.deps.pushAgentMessage(targetSessionId, message)
+            verdict = await this.deps.pushAgentMessage(targetSessionId, message)
         } catch (error) {
+            // 走到这里只可能是真·传输故障（无 handler / socket 断 / 超时）
             const reason = error instanceof Error ? error.message : String(error)
             // 事实在**失败之后**读，读的是最新值；且只用来把话说准，不当闸门（D43：先试，再解释）
             return {
@@ -395,6 +406,12 @@ export class AgentSessionService {
                 ok: false,
                 error: translatePushFailure(reason, this.deps.canReceiveNow(targetSessionId)),
             }
+        }
+
+        if (verdict.status === 'rejected') {
+            // CLI 明确拒收：理由已经是给人看的句子，原样转达。**不能**过传输故障分类器——
+            // 那是按文案判的，一句恰好含 "timed out" 的正常拒收会被说成「可能已送达」
+            return { sessionId: targetSessionId, ok: false, error: verdict.reason }
         }
 
         try {

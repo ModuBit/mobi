@@ -75,8 +75,9 @@ export class SessionReceiveReadiness {
      * 结论**；而进程重启后、sink 接通前的真相应是「还没接上、没有定论」。把没定论说成确定
      * 结论，正是这套事实要消灭的那类谎（`unavailable` 与 `timeout` 的差别就在这）。
      *
-     * 遗留：CLI 被强杀时不会走到这里（没有 session-end 上报），旧值会留到下一次上报才被覆盖。
-     * 那个窗口在子秒级，故消费方只该把它当提示，别当闸门（见文件头 ⚠️）。
+     * 清理点有两个：CLI 正常收尾（session-end）与 hub 归档；CLI 被强杀 / 崩溃时两者都不会
+     * 发生，那条路由 SyncEngine 的心跳过期兜底覆盖（`expireInactive` 对判定为「不在了」的
+     * 会话调用本方法）——所以这里不是唯一出口，条目不会只增不减。
      */
     clear(sessionId: string): void {
         this.canReceive.delete(sessionId)

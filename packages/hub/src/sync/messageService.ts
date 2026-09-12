@@ -61,9 +61,12 @@ export type SendMessagePayload = {
      * true = 只落库，**不向 CLI 房间回灌 new-message**。
      *
      * 专供 agent 跨会话投递：那条路径已由 push-agent-message RPC 把消息推进目标 CLI 的
-     * input stream，再回灌一次，目标 CLI 的 handleIncomingMessage 会照着同一行**二次入队**
-     * （它只看内容形状，不看 meta）——同一句话投两遍。Web 用户提交依赖这次回灌把消息送进
+     * input stream，再回灌一次就是同一句话投两遍。Web 用户提交依赖这次回灌把消息送进
      * CLI，缺省 false 是它的正常路径。
+     *
+     * 与 CLI 侧的 `isMobiSentCrossSession` 判据**重叠**——那边收到这一行也会丢掉。两者
+     * 各自独立成立：本开关连 emit 都省掉，而那边是重连 backfill 唯一挡得住的地方
+     *（backfill 不经本开关）。
      */
     skipCliEcho?: boolean
 }
