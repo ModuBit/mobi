@@ -18,6 +18,20 @@ _Avoid_: 原生会话
 归属唯一会话行；metadata.nativeId 是其在 native transcript 上的锚、metadata.nativeSessionId 记录所在链。去重键是会话行 + localId，范围限单会话行。
 _Avoid_: message（与 native transcript entry 混用）
 
+### 消息投递
+
+**投递队列**:
+人（Web 用户）发出的消息在会话内的待泵区——等 agent 空闲才被取走，取走前可取消或回填编辑。**队列是人的排队区**，不是通用投递通道。
+_Avoid_: 消息队列（与 SDK input stream 混称）
+
+**入队**:
+消息落库时被标记为 `queued` 并进入投递队列。**只有人发出的消息入队**；会话之间投递的消息不入队——落库即终态，由 Hub 经 RPC 直推给目标会话，因此不可取消、不可编辑，也不会在 Web 上呈现排队态。
+_Avoid_: 排队、进队列
+
+**跨会话消息**:
+一个会话投到另一个会话的消息。与人发言同形（role=user、正文包 `<cross-session-message from="…">` 信封），收件方据此用同一来源回复；来源另以发件方会话 id 记为一等字段。当前来源有二：Claude Code 原生（走本机 UDS，mobi 只观测）与 mobi 自发（建设中）。
+_Avoid_: thread（orca 式的独立线程实体，本仓库不引入——会话自身即线程）、会话间消息
+
 ### 分叉
 
 **分叉会话**:
