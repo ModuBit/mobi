@@ -256,6 +256,11 @@ export const SDKUIHintsSchema = z.object({
     agentID: z.string().optional(),
     agentDescription: z.string().optional(),
     agentSubagentType: z.string().optional(),
+    /** SDK 0.3.268 审批 hint：不可被单键误批——web 审批默认视觉重心落拒绝项（upstream-suggestions ⑤） */
+    defaultToNo: z.boolean().optional(),
+    /** SDK 0.3.268 审批 hint：不得提供持久「不再询问」档（规则会超出本 ask 的授权范围）——
+     *  web 隐藏全部持久档（含 fallback 字面档与 Edit 全部允许） */
+    suppressAlwaysAllowRule: z.boolean().optional(),
 })
 
 export type SDKUIHints = z.infer<typeof SDKUIHintsSchema>
@@ -404,6 +409,7 @@ export const CLEARABLE_RUNTIME_STATE_FIELDS = [
     'foregroundTasks',
     'teamState',
     'goalStatus',
+    'cacheStatus',
 ] as const
 
 export type ClearableRuntimeStateField = (typeof CLEARABLE_RUNTIME_STATE_FIELDS)[number]
@@ -585,6 +591,26 @@ export const GoalStatusSchema = z.object({
 export type GoalStatus = z.infer<typeof GoalStatusSchema>
 
 /**
+ * 会话恢复时的 prompt cache 状态（SDK 0.3.268 SessionStart hook input，仅 resume/fork 且
+ * prompt_cache_likely_expired=true 时上报）。首 turn result 到达后 CLI 清空——过期提示只在
+ * 「恢复后首轮前」有意义，常驻会误导。
+ */
+export const CacheStatusSchema = z.object({
+    /** 距上次响应超过 prompt-cache TTL，首轮请求将重缓存 */
+    expired: z.boolean(),
+    /** 重缓存规模：恢复 transcript 的最后响应 input + cache_read + cache_creation + output tokens */
+    contextTokens: z.number().optional(),
+    /** 恢复的 transcript 距上次 assistant 响应的秒数（过期归因依据） */
+    secondsSinceLastResponse: z.number().optional(),
+    /** 按会话模型 cache-write 价估算的重缓存成本（美元） */
+    estimatedCacheWriteUsd: z.number().optional(),
+    /** 观测时间（epoch ms） */
+    observedAt: z.number(),
+})
+
+export type CacheStatus = z.infer<typeof CacheStatusSchema>
+
+/**
  * 运行时状态：存储会话的扩展状态（todos、teamState、model 等）
  * 未来新增功能可在此对象中添加字段，无需修改数据库 schema
  */
@@ -611,6 +637,8 @@ export const RuntimeStateSchema = z.object({
      *  来源——消息窗口化后 web 内存窗口可能已不含本轮 user 消息，仅靠消息推导会失真
      *  （docs/pending.md #55 方案 1）。轮次结束后保留旧值（running=false 时 UI 不消费） */
     runStartedAt: z.number().optional(),
+    /** 会话恢复（resume/fork）时的 prompt cache 状态；首 turn result 到达后 CLI 清空（删除字段） */
+    cacheStatus: CacheStatusSchema.optional(),
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>

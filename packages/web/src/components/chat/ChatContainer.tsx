@@ -1159,6 +1159,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 tasks={session?.runtimeState?.tasks}
                 contextUsage={session?.runtimeState?.contextUsage ?? null}
                 goal={session?.runtimeState?.goalStatus ?? null}
+                cacheStatus={session?.runtimeState?.cacheStatus ?? null}
                 onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}

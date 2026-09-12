@@ -28,6 +28,7 @@ import { registerAgentCapabilities, syncAgentRename } from '@/agent/agentCapabil
 import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from '@/claude/agentCapabilities';
 import { startHookServer, type HookServer } from '@/claude/utils/startHookServer';
 import { applySessionIdBinding } from '@/claude/utils/sessionIdBinding';
+import { buildCacheStatusFromSessionStart } from '@/claude/utils/cacheStatus';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
 import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
@@ -192,6 +193,12 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 logger.debug(`[START] Session hook received: ${sessionId}`, data);
                 // sessionId 绑定幂等守卫收口于 applySessionIdBinding（remote 的 SDK 进程内 hook 复用同一核心）
                 applySessionIdBinding(() => currentSessionRef.current, sessionId);
+                // 恢复场景缓存信号上报（与 remote 进程内 hook 共用组装核心）；result 清空在
+                // apiSession.sendClaudeSessionMessage 咽喉点统一处理。探针日志供
+                // cache-miss-after-resume 调查 grep（与 remote 侧同前缀同字段）
+                const cacheStatus = buildCacheStatusFromSessionStart(data);
+                logger.info(`[cache-probe] source=${data.source} likelyExpired=${data.prompt_cache_likely_expired} contextTokens=${data.context_tokens} secondsSinceLastResponse=${data.seconds_since_last_response} reported=${cacheStatus !== null}`);
+                if (cacheStatus) apiSession.reportCacheStatus(cacheStatus);
             }
         }).then((server) => { localServers.hook = server; return server; });
 

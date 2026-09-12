@@ -52,6 +52,7 @@ import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
+import type { CacheStatus } from '@mobi/shared'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
 import type { PushOrigin } from './utils/stopAction'
@@ -59,6 +60,7 @@ import type { PromptPayload } from '@/utils/promptBuilder'
 import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 import { isRewindRefusalError, extractRewindRefusalFromResult } from './utils/rewindRefusal'
+import { buildCacheStatusFromSessionStart } from './utils/cacheStatus'
 import type { ForkActivationPlan } from './utils/forkActivation'
 
 /**
@@ -885,6 +887,9 @@ export async function claudeRemote(opts: {
     /** UserPromptSubmit hook 观测回调：入站 prompt（含跨会话 peer 消息）直达 wrapper，
      * 由 launcher 甄别落库。恒同步调用、不阻塞 SDK 主流程（回调内部自行兜错） */
     onInboundPrompt?: (input: { prompt: string; source?: string }) => void,
+    /** SessionStart(resume/fork) 缓存过期观测回调（null = 无需上报，见 buildCacheStatusFromSessionStart）。
+     * 恒同步调用、不阻塞 SDK 主流程；launcher 转 reportCacheStatus 上报 hub */
+    onCacheStatus?: (status: CacheStatus | null) => void,
 }) {
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
@@ -1133,6 +1138,14 @@ export async function claudeRemote(opts: {
                 hooks: [async (input) => {
                     if (input.hook_event_name === 'SessionStart' && input.session_id) {
                         opts.onSessionFound(input.session_id)
+                    }
+                    // 恢复场景缓存信号观测（upstream-suggestions ①）：SDK 0.3.268 hook input 携带
+                    // prompt_cache_likely_expired 等，组装载荷交 launcher 上报 hub（null 不报）。
+                    // 探针日志供 cache-miss-after-resume 调查 grep（上游 TTL 判定的权威观测点）
+                    if (input.hook_event_name === 'SessionStart') {
+                        const cacheStatus = buildCacheStatusFromSessionStart(input)
+                        logger.info(`[cache-probe] source=${input.source} likelyExpired=${input.prompt_cache_likely_expired} contextTokens=${input.context_tokens} secondsSinceLastResponse=${input.seconds_since_last_response} reported=${cacheStatus !== null}`)
+                        opts.onCacheStatus?.(cacheStatus)
                     }
                     return { continue: true }
                 }],

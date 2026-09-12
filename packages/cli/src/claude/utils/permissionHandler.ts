@@ -492,6 +492,9 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             decisionReason: options.decisionReason,
             blockedPath: options.blockedPath,
             agentID: options.agentID,
+            // SDK 0.3.268 审批 hint 透传（upstream-suggestions ⑤）：web 据此调整弹窗形态
+            defaultToNo: options.defaultToNo,
+            suppressAlwaysAllowRule: options.suppressAlwaysAllowRule,
         }
         if (options.agentID) {
             const agentInfo = this.agentInfoMap.get(options.agentID)

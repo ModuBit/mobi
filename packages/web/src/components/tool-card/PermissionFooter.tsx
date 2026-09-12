@@ -41,11 +41,15 @@ const DESTINATION_LABEL_KEY: Record<PermissionUpdateDestination, string> = {
     cliArg: 'chat.tool.allow',
 }
 
+/** SDK suggestions 为空时的 fallback 档按钮文案 key（与 SDK 档区分：fallback 是命令字面匹配，
+ *  换参数仍会再询问——不能冒充「本次会话允许」的语义，见 pending.md #74） */
+const FALLBACK_LABEL_KEY = 'chat.tool.allowExactCommand'
+
 /** destination 排序：由窄到宽 */
 const DESTINATION_ORDER: PermissionUpdateDestination[] = ['session', 'localSettings', 'projectSettings', 'userSettings']
 
 /** 按 destination 分组排序 SDK suggestions，cliArg 不单独出按钮 */
-function groupSuggestionsByDestination(suggestions: PermissionUpdate[] | undefined): { destination: PermissionUpdateDestination; items: PermissionUpdate[] }[] {
+function groupSuggestionsByDestination(suggestions: PermissionUpdate[] | undefined): { destination: PermissionUpdateDestination; items: PermissionUpdate[]; isFallback?: boolean }[] {
     if (!suggestions || suggestions.length === 0) return []
     const groups = new Map<PermissionUpdateDestination, PermissionUpdate[]>()
     for (const s of suggestions) {
@@ -185,6 +189,12 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     } : null
     const isEditTool = toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit'
     const isExitPlanMode = isExitPlanModeTool(toolName)
+    // SDK 0.3.268 审批 hint（upstream-suggestions ⑤）：
+    // suppressAlwaysAllowRule → 不得提供任何持久「不再询问」档（规则超出本 ask 授权范围），
+    //   隐藏全部 suggestion 档（含 fallback 字面档）与 Edit「全部允许」，只留「允许本次」+ 拒绝
+    // defaultToNo → 不可单键误批：拒绝升主位（danger 实心），approve 降次要行
+    const suppressAlwaysAllow = props.tool.sdkHints?.suppressAlwaysAllowRule === true
+    const defaultToNo = props.tool.sdkHints?.defaultToNo === true
 
     const isPending = permission?.status === 'pending'
     // SDK 无 suggestion 时的 fallback（session 档，命令字面/工具名），用 useMemo 稳定引用
@@ -195,16 +205,21 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     // SDK suggestions 驱动的持久化档位（Edit/ExitPlanMode 不走 suggestion 档，保留各自路径）
     // useMemo 稳定 items 引用：setPendingAction(items) 存引用，loading 用 pendingAction === items 判定，
     // 若每次 render 重建数组会导致引用不等、loading 永不显示
-    // SDK 给 0 suggestion 时，构造 session 档 fallback，让 CLI mobi Set 兜底链路接通（用户选「本次会话允许」→ 回传 → CLI 填 Set）
+    // SDK 给 0 suggestion 时，构造 session 档 fallback，让 CLI mobi Set 兜底链路接通（用户选「允许此命令」→ 回传 → CLI 填 Set）
+    // suppressAlwaysAllowRule 时强制无档（fallback 也是持久规则）
     const suggestionGroups = useMemo(() => {
-        if (!isPending || isEditTool || isExitPlanMode) return []
+        if (!isPending || isEditTool || isExitPlanMode || suppressAlwaysAllow) return []
         const groups = groupSuggestionsByDestination(permission?.suggestions)
         if (groups.length === 0) {
-            return [{ destination: 'session' as const, items: [fallbackUpdate] }]
+            return [{ destination: 'session' as const, items: [fallbackUpdate], isFallback: true }]
         }
         return groups
-    }, [isPending, isEditTool, isExitPlanMode, permission?.suggestions, fallbackUpdate])
-    const canAllowAllEdits = isPending && isEditTool
+    }, [isPending, isEditTool, isExitPlanMode, suppressAlwaysAllow, permission?.suggestions, fallbackUpdate])
+    /** 档位按钮文案：fallback 档（命令字面）用诚实文案，SDK 档按 destination */
+    const suggestionLabel = (g: { destination: PermissionUpdateDestination; isFallback?: boolean }) =>
+        g.isFallback ? t(FALLBACK_LABEL_KEY) : t(DESTINATION_LABEL_KEY[g.destination])
+    // 「全部允许」本质是 session 级持久放宽（切 acceptEdits），suppress hint 下从严一并隐藏
+    const canAllowAllEdits = isPending && isEditTool && !suppressAlwaysAllow
 
     if (!permission) return null
 
@@ -304,7 +319,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     // 主操作：最窄 suggestion 档（primary 满宽）；无 suggestion 档时退化为「允许本次」
     const primaryAction: ActionConfig = suggestionGroups.length > 0
         ? {
-            label: t(DESTINATION_LABEL_KEY[suggestionGroups[0].destination]),
+            label: suggestionLabel(suggestionGroups[0]),
             onClick: () => approveWithPermissions(suggestionGroups[0].items),
             loading: pendingAction === suggestionGroups[0].items,
             disabled: disabledAll,
@@ -314,7 +329,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     // 次操作行：其余 suggestion 档（更宽）+ 「允许本次」（仅当有 suggestion 档时降级）+ Edit 的「全部允许」
     const secondaryActions: ActionConfig[] = [
         ...suggestionGroups.slice(1).map((g) => ({
-            label: t(DESTINATION_LABEL_KEY[g.destination]),
+            label: suggestionLabel(g),
             onClick: () => approveWithPermissions(g.items),
             loading: pendingAction === g.items,
             disabled: disabledAll,
@@ -339,6 +354,15 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         loading: pendingAction === 'deny',
         disabled: disabledAll,
     }
+
+    // defaultToNo（SDK 0.3.268 hint）：拒绝升主位（danger 实心，视觉重心），
+    // approve 降级进次要行——消除「单键误批」的默认引导。mobi web 无数字快捷键，
+    // 等价语义为视觉重心（CLI 形态的「open on decline, no digit shortcut」）
+    const denyFirst = defaultToNo && !isExitPlanMode
+    const mainAction: ActionConfig = denyFirst ? denyConfig : primaryAction
+    const secondaryRowActions: ActionConfig[] = denyFirst
+        ? [...secondaryActions, primaryAction]
+        : secondaryActions
 
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -448,19 +472,21 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                             </>
                         ) : (
                             <>
-                                {/* 主操作行：移动端满宽独占；PC 序列首位 */}
+                                {/* 主操作行：移动端满宽独占；PC 序列首位。
+                                    defaultToNo 时主位是拒绝（danger 实心），approve 降级进次要行 */}
                                 <Button
                                     type="primary"
+                                    danger={denyFirst}
                                     block={isMobile}
-                                    icon={<CheckOutlined />}
-                                    disabled={primaryAction.disabled}
-                                    loading={primaryAction.loading}
-                                    onClick={primaryAction.onClick}
+                                    icon={denyFirst ? <CloseOutlined /> : <CheckOutlined />}
+                                    disabled={mainAction.disabled}
+                                    loading={mainAction.loading}
+                                    onClick={mainAction.onClick}
                                     style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
-                                    {primaryAction.label}
+                                    {mainAction.label}
                                 </Button>
-                                {/* 次要行：其余持久化档 + 允许本次 + 全部允许（default）+ 拒绝（text+danger 警示）
+                                {/* 次要行：其余持久化档 + 允许本次 + 全部允许（default）+ 拒绝（denyFirst 时移除，已在主位）
                                     移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后 */}
                                 <div data-sub-row="secondary" style={{
                                     display: 'flex',
@@ -468,7 +494,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     gap: 8,
                                     alignItems: 'stretch',
                                 }}>
-                                    {secondaryActions.map((action, idx) => (
+                                    {secondaryRowActions.map((action, idx) => (
                                         <Button
                                             key={idx}
                                             icon={<CheckOutlined />}
@@ -480,17 +506,19 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                             {action.label}
                                         </Button>
                                     ))}
-                                    <Button
-                                        type="text"
-                                        danger
-                                        icon={<CloseOutlined />}
-                                        disabled={denyConfig.disabled}
-                                        loading={denyConfig.loading}
-                                        onClick={denyConfig.onClick}
-                                        style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
-                                    >
-                                        {denyConfig.label}
-                                    </Button>
+                                    {!denyFirst && (
+                                        <Button
+                                            type="text"
+                                            danger
+                                            icon={<CloseOutlined />}
+                                            disabled={denyConfig.disabled}
+                                            loading={denyConfig.loading}
+                                            onClick={denyConfig.onClick}
+                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
+                                        >
+                                            {denyConfig.label}
+                                        </Button>
+                                    )}
                                     {/* 「带原因拒绝」：展开 textarea 走 denyWithFeedback（对齐 CLI reject-with-feedback） */}
                                     <Button
                                         type="text"

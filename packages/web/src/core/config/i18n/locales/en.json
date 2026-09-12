@@ -141,6 +141,12 @@
             "remaining": "Remaining",
             "modelLimit": "Model Limit"
         },
+        "cacheStatus": {
+            "badge": "Cache expired",
+            "recache": "First turn will re-cache ~{{tokens}} tokens",
+            "cost": "≈ ${{usd}}",
+            "lastResponse": "Last response ~{{duration}} ago"
+        },
         "fork": {
             "pendingBadge": "Pending",
             "errorBadge": "Activation failed",
@@ -346,6 +352,7 @@
             "requestUserInput.notePlaceholder": "Enter a note...",
             "requestUserInput.textPlaceholder": "Type here...",
             "allowSession": "Allow this session",
+            "allowExactCommand": "Allow this command",
             "allowProjectLocal": "Allow for this project (local)",
             "allowProject": "Allow for this project",
             "allowUser": "Allow for this user"

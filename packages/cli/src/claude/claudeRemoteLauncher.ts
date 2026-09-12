@@ -827,6 +827,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         canCallTool: permissionHandler.handleToolCall,
                         onElicitation: permissionHandler.handleElicitation,
                         onInboundPrompt: handleInboundPrompt,
+                        // SessionStart(resume/fork) 缓存过期上报：null（非恢复/warm）不产生事件
+                        onCacheStatus: (status) => {
+                            if (status) session.client.reportCacheStatus(status);
+                        },
                         onQueryReady: (query, { isResume }) => {
                             this.queryRef = query;
                             // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。

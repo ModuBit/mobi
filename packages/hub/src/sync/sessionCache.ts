@@ -15,7 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { hubLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
@@ -306,6 +306,27 @@ export class SessionCache {
             this.runtimeStateStore.merge(session, { goalStatus: payload.goalStatus ?? undefined })
         } catch {
             // 落库失败不阻塞 CLI 流程（下次 turn 会重试上报）
+            return
+        }
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId: session.id,
+            data: { runtimeState: session.runtimeState },
+        })
+    }
+
+    /**
+     * 处理会话恢复时的 prompt cache 状态上报（SessionStart resume/fork 且过期时 CLI 上报）。
+     * 落库到 runtimeState.cacheStatus（RuntimeStateStore 单一收口）+ SSE 推 runtimeState patch。
+     * cacheStatus 为 null → merge 传 undefined 删字段（首个 result 帧 CLI 已清，此处兜底）。
+     */
+    handleCacheStatus(payload: { sid: string; cacheStatus: CacheStatus | null }): void {
+        const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
+        if (!session) return
+        try {
+            this.runtimeStateStore.merge(session, { cacheStatus: payload.cacheStatus ?? undefined })
+        } catch {
+            // 落库失败不阻塞 CLI 流程（提示缺失只损失 UI 提示，不影响会话）
             return
         }
         this.publisher.emit({

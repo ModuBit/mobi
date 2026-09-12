@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -425,6 +425,13 @@ export class ApiSessionClient extends EventEmitter {
         // 直接调用本方法——发送端唯一咽喉点，保证 discard 消息不进 Hub 不落库
         if (category === 'discard') return
 
+        // 恢复后缓存过期提示的生命周期终点：首个 result 帧（两模式共用咽喉点）即清，
+        // 提示只在「恢复后首轮前」有意义。RawJSONLines 无 'result' discriminant
+        // （见 sdkToLogConverter case 'result'），走开放形状断言（同 claudeRemoteLauncher 先例）
+        if ((body as { type?: string }).type === 'result') {
+            this.clearCacheStatusOnResult()
+        }
+
         let content: MessageContent
 
         if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
@@ -784,6 +791,30 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.emit('goal-status', {
             sid: this.sessionId,
             goalStatus,
+        })
+    }
+
+    /**
+     * 上报会话恢复时的 prompt cache 状态（hub 落库到 runtimeState.cacheStatus + SSE 推 web）。
+     * 仅 SessionStart(resume/fork) 且缓存过期时调用；首个 result 帧到达时由
+     * sendClaudeSessionMessage 统一清空（过期提示只在首轮前有意义）。
+     */
+    reportCacheStatus(cacheStatus: CacheStatus): void {
+        this.socket.emit('cache-status', {
+            sid: this.sessionId,
+            cacheStatus,
+        })
+    }
+
+    /**
+     * 首个 result 帧到达时清空缓存过期提示。无条件 emit（不以本进程是否上报过为前提）：
+     * CLI 重启后 flag 类记忆会丢，而「result = 恢复提示生命周期终点」是会话级语义；
+     * hub 侧 merge 对已空字段 changed=false 不广播，常态 turn 的清空事件零开销。
+     */
+    private clearCacheStatusOnResult(): void {
+        this.socket.emit('cache-status', {
+            sid: this.sessionId,
+            cacheStatus: null,
         })
     }
 

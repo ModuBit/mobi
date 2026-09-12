@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents } from '@mobi/shared'
+import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -357,6 +357,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         'session-alive': z.object({ sid: z.string(), time: z.number() }).passthrough(),
         'context-usage': z.object({ sid: z.string(), contextUsage: ContextUsageSchema.nullable() }),
         'goal-status': z.object({ sid: z.string(), goalStatus: GoalStatusSchema.nullable() }),
+        'cache-status': z.object({ sid: z.string(), cacheStatus: CacheStatusSchema.nullable() }),
         'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
         'session-end': z.object({ sid: z.string(), time: z.number() }).passthrough(),
     } as const
@@ -394,6 +395,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     socket.on('session-alive', (raw) => validateAndForward(factSchemas['session-alive'], raw, (data) => factsSink?.handleSessionAlive?.(data)))
     socket.on('context-usage', (raw) => validateAndForward(factSchemas['context-usage'], raw, (data) => factsSink?.handleContextUsage?.(data)))
     socket.on('goal-status', (raw) => validateAndForward(factSchemas['goal-status'], raw, (data) => factsSink?.handleGoalStatus?.(data)))
+    socket.on('cache-status', (raw) => validateAndForward(factSchemas['cache-status'], raw, (data) => factsSink?.handleCacheStatus?.(data)))
     socket.on('run-started', (raw) => validateAndForward(factSchemas['run-started'], raw, (data) => factsSink?.handleRunStarted?.(data)))
     socket.on('session-end', (raw) => validateAndForward(factSchemas['session-end'], raw, (data) => {
         factsSink?.handleSessionEnd?.(data)

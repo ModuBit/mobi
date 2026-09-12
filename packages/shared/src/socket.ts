@@ -18,7 +18,7 @@ import { z } from 'zod'
 import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
-import type { ContextUsage, GoalStatus, SnapshotDeltaFrame, UiCommandAction } from './schemas'
+import type { CacheStatus, ContextUsage, GoalStatus, SnapshotDeltaFrame, UiCommandAction } from './schemas'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
 
@@ -289,6 +289,9 @@ export interface ClientToServerEvents {
     /** CLI 轮次起点上报（running 翻转 false→true 时，hub 落库到 runtimeState.runStartedAt + SSE 推 web）。
      * StatusBar 计时的权威来源——不随 web 消息窗口化丢失（docs/pending.md #55） */
     'run-started': (data: { sid: string; runStartedAt: number }) => void
+    /** CLI 会话恢复（resume/fork）时上报 prompt cache 状态（hub 落库到 runtimeState.cacheStatus + SSE 推 web）。
+     * cacheStatus 为 null 表示清空（首 turn result 到达后 CLI 清除，过期提示只在首轮前有意义） */
+    'cache-status': (data: { sid: string; cacheStatus: CacheStatus | null }) => void
     /** CLI→Hub 的 UI 命令（agent 触达 mobi 界面，A 类）。ack 语义：delivered=true 表示已广播给活跃 Web 连接
      *  （非"用户已看到"，Web 不参与 ack）；无 Web 在线时 delivered=false（调用成功非错误，CLI 转平和反馈）。
      *  socket 断开/ack 超时由 emitWithAck reject 体现，属连接故障，与离线语义区分 */

@@ -18,6 +18,7 @@ export type {
     AgentState,
     AgentStateRequest,
     AttachmentMetadata,
+    CacheStatus,
     ClearableRuntimeStateField,
     ContextUsage,
     DecryptedMessage,

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode } from '@mobi/shared/types'
+import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode } from '@mobi/shared/types'
 
 /**
  * CLI 会话「事实上报」管线（深化候选③）：CLI 运行时持续上报会话实时状态
@@ -59,6 +59,12 @@ export type RunStartedPayload = {
     runStartedAt: number
 }
 
+export type CacheStatusPayload = {
+    sid: string
+    /** null 表示清空（首个 result 帧到达后 CLI 清除） */
+    cacheStatus: CacheStatus | null
+}
+
 /**
  * 会话事实上报的落库入口（seam）：socket 层完成校验与鉴权后调用，实现方为 SyncEngine /
  * SessionCache。idle-timeout-warning 是纯通知（直转 webappEvent 不落库），不经此接口。
@@ -69,4 +75,5 @@ export type SessionFactsSink = {
     handleContextUsage?: (payload: ContextUsagePayload) => void
     handleGoalStatus?: (payload: GoalStatusPayload) => void
     handleRunStarted?: (payload: RunStartedPayload) => void
+    handleCacheStatus?: (payload: CacheStatusPayload) => void
 }

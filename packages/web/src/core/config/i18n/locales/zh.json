@@ -141,6 +141,12 @@
             "remaining": "剩余",
             "modelLimit": "模型上限"
         },
+        "cacheStatus": {
+            "badge": "缓存已过期",
+            "recache": "首轮将重缓存 ~{{tokens}} tokens",
+            "cost": "约 ${{usd}}",
+            "lastResponse": "距上次响应约 {{duration}}"
+        },
         "fork": {
             "pendingBadge": "待激活",
             "errorBadge": "激活失败",
@@ -336,6 +342,7 @@
             "requestUserInput.notePlaceholder": "输入备注...",
             "requestUserInput.textPlaceholder": "在此输入...",
             "allowSession": "本次会话允许",
+            "allowExactCommand": "允许此命令",
             "allowProjectLocal": "当前项目允许（本地）",
             "allowProject": "当前项目允许",
             "allowUser": "当前用户允许"

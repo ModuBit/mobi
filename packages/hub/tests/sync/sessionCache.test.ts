@@ -272,6 +272,79 @@ describe('SessionCache.handleGoalStatus', () => {
     })
 })
 
+describe('SessionCache.handleCacheStatus', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    const status = { expired: true, contextTokens: 24000, secondsSinceLastResponse: 3720, estimatedCacheWriteUsd: 0.12, observedAt: 1_700_000_000_000 }
+
+    test('落库到 runtimeState.cacheStatus 并 SSE 推送 runtimeState patch', () => {
+        const session = cache.getOrCreateSession('tag-cache-1', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleCacheStatus({ sid: session.id, cacheStatus: status })
+
+        // 内存层
+        expect(cache.getSession(session.id)?.runtimeState?.cacheStatus).toEqual(status)
+        // 落库（直接读 store 绕过内存）
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { cacheStatus?: { expired: boolean } })?.cacheStatus?.expired).toBe(true)
+        // SSE 推送
+        const pushed = emits.find(e => e.type === 'session-updated')
+        expect(pushed).toBeTruthy()
+        expect((pushed!.data as { runtimeState: { cacheStatus: { contextTokens: number } } }).runtimeState.cacheStatus.contextTokens).toBe(24000)
+    })
+
+    test('不影响 runtimeState 其他字段（与 model/goalStatus 共存）', () => {
+        const session = cache.getOrCreateSession(
+            'tag-cache-2', { path: '/tmp/p' }, null, 'default', 'remote', { model: 'opus', effort: 'high' }
+        )
+
+        cache.handleCacheStatus({ sid: session.id, cacheStatus: status })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.model).toBe('opus')
+        expect(rs?.effort).toBe('high')
+        expect(rs?.cacheStatus).toEqual(status)
+    })
+
+    test('未知 sid 静默忽略（不抛错）', () => {
+        expect(() => cache.handleCacheStatus({ sid: 'no-such-session', cacheStatus: status })).not.toThrow()
+        expect(emits).toHaveLength(0)
+    })
+
+    test('cacheStatus 为 null 时清空（首个 result 帧 CLI 清除的 hub 侧落地）', () => {
+        const session = cache.getOrCreateSession('tag-cache-clear', { path: '/tmp/p' }, null, 'default')
+
+        // 先有旧状态
+        cache.handleCacheStatus({ sid: session.id, cacheStatus: status })
+        expect(cache.getSession(session.id)?.runtimeState?.cacheStatus).toEqual(status)
+
+        // 清空
+        cache.handleCacheStatus({ sid: session.id, cacheStatus: null })
+
+        // 内存层清空
+        expect(cache.getSession(session.id)?.runtimeState?.cacheStatus).toBeUndefined()
+        // 落库也清空
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { cacheStatus?: unknown }).cacheStatus).toBeUndefined()
+        // SSE 推送（清空也推，让 web 隐藏提示 chip）
+        const pushed = emits.filter(e => e.type === 'session-updated').pop()
+        expect(pushed).toBeTruthy()
+    })
+})
+
 describe('SessionCache.handleRunStarted（docs/pending.md #55 方案 1）', () => {
     let store: Store
     let emits: { type: string; sessionId: string; data: unknown }[]

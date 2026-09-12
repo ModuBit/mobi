@@ -21,7 +21,10 @@ import {
     type ContextUsageCategoryKey
 } from '@mobi/shared'
 
-/** CC 显示名 → 语义 key（CC 实现序即 CONTEXT_USAGE_CATEGORY_KEYS 序） */
+/** CC 显示名 → 语义 key（CC 实现序即 CONTEXT_USAGE_CATEGORY_KEYS 序）。
+ *  ⚠️ kind 字段（SDK 0.3.268）不携带类目语义——used 类行的具体类目只能靠 name 识别，
+ *  此表是必要映射；free/buffer/deferred 三类一律按 kind 判定（SDK 明确警告勿按英文名分类）。
+ *  未知名忽略（前向兼容，输出端守卫见下） */
 const CATEGORY_KEY_BY_NAME: Record<string, ContextUsageCategoryKey> = {
     'System prompt': 'systemPrompt',
     'System tools': 'systemTools',
@@ -31,7 +34,7 @@ const CATEGORY_KEY_BY_NAME: Record<string, ContextUsageCategoryKey> = {
     'Messages': 'messages',
 }
 
-/** deferred 变体类目 → 合并目标主类目（CC 单列 deferred 占用，契约侧并入主类目） */
+/** deferred 行 name → 合并目标主类目（kind 判定 deferred 后，按 name 剥离变体后缀即主类目名） */
 const DEFERRED_TARGET_BY_NAME: Record<string, ContextUsageCategoryKey> = {
     'MCP tools (deferred)': 'mcpTools',
     'System tools (deferred)': 'systemTools',
@@ -56,20 +59,26 @@ export function extractBreakdown(response: SDKControlGetContextUsageResponse): C
     let autocompactBufferTokens: number | undefined
 
     for (const category of response.categories) {
+        // kind 权威分类（SDK 0.3.268，"Classify on this, never on the English name"）：
+        // free/buffer/deferred 按 kind；used 类行再按 name 查类目表
+        if (category.kind === 'free') {
+            freeTokens = category.tokens
+            continue
+        }
+        if (category.kind === 'buffer') {
+            autocompactBufferTokens = category.tokens
+            continue
+        }
+        if (category.kind === 'deferred') {
+            const deferredKey = DEFERRED_TARGET_BY_NAME[category.name]
+            if (deferredKey) {
+                tokensByKey.set(deferredKey, (tokensByKey.get(deferredKey) ?? 0) + category.tokens)
+            }
+            continue
+        }
         const mainKey = CATEGORY_KEY_BY_NAME[category.name]
         if (mainKey) {
             tokensByKey.set(mainKey, (tokensByKey.get(mainKey) ?? 0) + category.tokens)
-            continue
-        }
-        const deferredKey = DEFERRED_TARGET_BY_NAME[category.name]
-        if (deferredKey) {
-            tokensByKey.set(deferredKey, (tokensByKey.get(deferredKey) ?? 0) + category.tokens)
-            continue
-        }
-        if (category.name === 'Free space') {
-            freeTokens = category.tokens
-        } else if (category.name === 'Autocompact buffer') {
-            autocompactBufferTokens = category.tokens
         }
         // 'Custom agents' 及未知类目名：忽略（前向兼容）
     }

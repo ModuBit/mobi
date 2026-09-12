@@ -37,6 +37,7 @@ vi.mock('react-i18next', async (importOriginal) => {
                     'chat.tool.allow': '允许',
                     'chat.tool.deny': '拒绝',
                     'chat.tool.allowSession': '本次会话允许',
+                    'chat.tool.allowExactCommand': '允许此命令',
                     'chat.tool.allowProjectLocal': '当前项目允许（本地）',
                     'chat.tool.allowProject': '当前项目允许',
                     'chat.tool.allowUser': '当前用户允许',
@@ -239,17 +240,19 @@ describe('PermissionFooter', () => {
         expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
     })
 
-    it('0 suggestion：构造 session fallback 档，渲染「本次会话允许」+「允许」+「拒绝」', () => {
-        // SDK 给 0 suggestion 时，Web 构造 session 档 fallback，让 CLI mobi Set 兜底链路接通
+    it('0 suggestion：构造 session fallback 档，渲染「允许此命令」+「允许」+「拒绝」', () => {
+        // SDK 给 0 suggestion 时，Web 构造 session 档 fallback，让 CLI mobi Set 兜底链路接通。
+        // fallback 是命令字面匹配（换参数仍会再询问），文案必须与「本次会话允许」区分（pending.md #74）
         renderFooter(makeTool()) // makeTool 默认无 suggestion
-        expect(screen.getByText('本次会话允许')).toBeInTheDocument() // fallback session 档
+        expect(screen.getByText('允许此命令')).toBeInTheDocument() // fallback 档（诚实文案）
+        expect(screen.queryByText('本次会话允许')).not.toBeInTheDocument()
         expect(screen.getByText('允许')).toBeInTheDocument() // 允许本次（临时）
         expect(screen.getByText('拒绝')).toBeInTheDocument()
     })
 
-    it('0 suggestion 点「本次会话允许」→ approve 回传 fallback updatedPermissions（Bash command ruleContent）', async () => {
+    it('0 suggestion 点「允许此命令」→ approve 回传 fallback updatedPermissions（Bash command ruleContent）', async () => {
         renderFooter(makeTool())
-        fireEvent.click(screen.getByText('本次会话允许'))
+        fireEvent.click(screen.getByText('允许此命令'))
         await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', {
             updatedPermissions: expect.arrayContaining([
                 expect.objectContaining({
@@ -417,5 +420,59 @@ describe('PermissionFooter', () => {
         })
         const body = mockDeny.mock.calls[0][2]
         expect(body).toBeUndefined() // 纯 deny 无 reason
+    })
+
+    // SDK 0.3.268 审批 hint（upstream-suggestions ⑤）
+    it('suppressAlwaysAllowRule：隐藏全部持久档（含 fallback 与「允许本次」降级），只留「允许」+「拒绝」', () => {
+        const tool = makeTool({
+            name: 'Bash',
+            input: { command: 'rm -rf node_modules' },
+            sdkHints: { suppressAlwaysAllowRule: true },
+        })
+        renderFooter(tool)
+        // fallback 档被隐藏（含诚实文案），approve 退化为「允许本次」
+        expect(screen.queryByText('允许此命令')).not.toBeInTheDocument()
+        expect(screen.queryByText('本次会话允许')).not.toBeInTheDocument()
+        expect(screen.getByText('允许')).toBeInTheDocument()
+        expect(screen.getByText('拒绝')).toBeInTheDocument()
+    })
+
+    it('suppressAlwaysAllowRule + Edit 工具：隐藏「全部允许」', () => {
+        const tool = makeTool({
+            name: 'Write',
+            input: { file_path: '/tmp/x.txt', content: 'hi' },
+            sdkHints: { suppressAlwaysAllowRule: true },
+        })
+        renderFooter(tool)
+        expect(screen.queryByText('全部允许')).not.toBeInTheDocument()
+        expect(screen.getByText('允许')).toBeInTheDocument()
+    })
+
+    it('无 suppressAlwaysAllowRule 的 Edit 工具仍提供「全部允许」', () => {
+        const tool = makeTool({ name: 'Write', input: { file_path: '/tmp/x.txt', content: 'hi' } })
+        renderFooter(tool)
+        expect(screen.getByText('全部允许')).toBeInTheDocument()
+    })
+
+    it('defaultToNo：拒绝升主位（DOM 顺序在 approve 之前），approve 降级次要行', () => {
+        const tool = makeTool({
+            name: 'Bash',
+            input: { command: 'rm -rf node_modules' },
+            sdkHints: { defaultToNo: true },
+        })
+        renderFooter(tool)
+        const deny = screen.getByText('拒绝').closest('button')!
+        const approve = screen.getByText('允许').closest('button')!
+        expect(deny.compareDocumentPosition(approve)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+        // danger 实心主位
+        expect(deny.className).toContain('danger')
+    })
+
+    it('无 defaultToNo：approve 主位、拒绝在次要行（现状不变）', () => {
+        const tool = makeTool({ name: 'Bash', input: { command: 'ls' } })
+        renderFooter(tool)
+        const deny = screen.getByText('拒绝').closest('button')!
+        const approve = screen.getByText('允许').closest('button')!
+        expect(approve.compareDocumentPosition(deny)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     })
 })

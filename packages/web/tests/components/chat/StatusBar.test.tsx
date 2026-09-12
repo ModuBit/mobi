@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import type { GoalStatus } from '@mobi/shared'
+import type { CacheStatus, GoalStatus } from '@mobi/shared'
+import i18n from '@/core/config/i18n'
 
 afterEach(cleanup)
 
-// StatusBar 的职责：「有 goal 或 running（含 status）时渲染对应内容，否则不渲染」。
+// StatusBar 的职责：「有 goal / cacheStatus（expired）/ running（含 status）时渲染对应内容，否则不渲染」。
 // mock 掉 AgentLoadingBubble 与 GoalBadge，隔离各自内部依赖，
 // 让测试聚焦 StatusBar 自身的渲染门控与并列逻辑。
 vi.mock('@/components/chat/AgentLoadingBubble', () => ({
@@ -38,6 +39,17 @@ vi.mock('@/components/chat/GoalBadge', () => ({
 import { StatusBar } from '@/components/chat/StatusBar'
 
 const activeGoal: GoalStatus = { met: false, condition: '所有测试通过' }
+const expiredCache: CacheStatus = {
+    expired: true,
+    contextTokens: 24000,
+    secondsSinceLastResponse: 3720,
+    estimatedCacheWriteUsd: 0.12,
+    observedAt: 1_700_000_000_000,
+}
+
+beforeAll(async () => {
+    await i18n.changeLanguage('zh')
+})
 
 describe('StatusBar', () => {
     it('goal=null 且 running=false 时不渲染任何内容', () => {
@@ -106,5 +118,36 @@ describe('StatusBar', () => {
             />,
         )
         expect(container.firstChild).toBeNull()
+    })
+
+    it('cacheStatus expired 时渲染缓存过期 chip（badge + 重缓存规模 + 成本）', () => {
+        render(
+            <StatusBar agentId="session-1" running={false} cacheStatus={expiredCache} />,
+        )
+        const chip = screen.getByTestId('cache-status-chip')
+        expect(chip.textContent).toContain('缓存已过期')
+        expect(chip.textContent).toContain('24.0k')
+        expect(chip.textContent).toContain('$0.12')
+    })
+
+    it('cacheStatus warm（expired=false）或 null 不渲染 chip', () => {
+        const { container: warm } = render(
+            <StatusBar agentId="session-1" running={false} cacheStatus={{ ...expiredCache, expired: false }} />,
+        )
+        expect(warm.firstChild).toBeNull()
+
+        const { container: empty } = render(
+            <StatusBar agentId="session-1" running={false} cacheStatus={null} />,
+        )
+        expect(empty.firstChild).toBeNull()
+    })
+
+    it('goal 与 cacheStatus 并存时同在右侧（goal 前、chip 后）', () => {
+        render(
+            <StatusBar agentId="session-1" running={false} goal={activeGoal} cacheStatus={expiredCache} />,
+        )
+        const badge = screen.getByTestId('goal-badge')
+        const chip = screen.getByTestId('cache-status-chip')
+        expect(badge.compareDocumentPosition(chip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     })
 })

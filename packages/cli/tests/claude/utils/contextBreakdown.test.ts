@@ -22,17 +22,17 @@ import type { SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-age
 function fixture(overrides: Partial<SDKControlGetContextUsageResponse> = {}): SDKControlGetContextUsageResponse {
     return {
         categories: [
-            { name: 'System prompt', tokens: 18200, color: 'x' },
-            { name: 'System tools', tokens: 8400, color: 'x' },
-            { name: 'System tools (deferred)', tokens: 1200, color: 'x' },
-            { name: 'MCP tools', tokens: 9200, color: 'x' },
-            { name: 'MCP tools (deferred)', tokens: 3200, color: 'x' },
-            { name: 'Custom agents', tokens: 500, color: 'x' },
-            { name: 'Memory files', tokens: 8900, color: 'x' },
-            { name: 'Skills', tokens: 6800, color: 'x' },
-            { name: 'Messages', tokens: 12100, color: 'x' },
-            { name: 'Free space', tokens: 112000, color: 'x' },
-            { name: 'Autocompact buffer', tokens: 20000, color: 'x' },
+            { name: 'System prompt', tokens: 18200, color: 'x', kind: 'used' },
+            { name: 'System tools', tokens: 8400, color: 'x', kind: 'used' },
+            { name: 'System tools (deferred)', tokens: 1200, color: 'x', kind: 'deferred' },
+            { name: 'MCP tools', tokens: 9200, color: 'x', kind: 'used' },
+            { name: 'MCP tools (deferred)', tokens: 3200, color: 'x', kind: 'deferred' },
+            { name: 'Custom agents', tokens: 500, color: 'x', kind: 'used' },
+            { name: 'Memory files', tokens: 8900, color: 'x', kind: 'used' },
+            { name: 'Skills', tokens: 6800, color: 'x', kind: 'used' },
+            { name: 'Messages', tokens: 12100, color: 'x', kind: 'used' },
+            { name: 'Free space', tokens: 112000, color: 'x', kind: 'free' },
+            { name: 'Autocompact buffer', tokens: 20000, color: 'x', kind: 'buffer' },
         ],
         totalTokens: 68300,
         maxTokens: 180000,
@@ -139,5 +139,30 @@ describe('extractBreakdown', () => {
             categories: [...fixture().categories, { name: 'Future thing', tokens: 999, color: 'x' }],
         }))!
         expect(b.categories.some(c => c.tokens === 999)).toBe(false)
+    })
+
+    // SDK 0.3.268 kind 分类加固（upstream-suggestions ⑥）："Classify on this, never on the English name"
+    it('kind 权威：free/buffer 行名字任意（CC 本地化/改名）仍按 kind 正确收集', () => {
+        const localized = fixture({
+            categories: [
+                { name: 'System prompt', tokens: 18200, color: 'x', kind: 'used' },
+                { name: '剩余空间', tokens: 112000, color: 'x', kind: 'free' },
+                { name: '自动压缩缓冲', tokens: 20000, color: 'x', kind: 'buffer' },
+            ],
+        })!
+        const b = extractBreakdown(localized)!
+        expect(b.freeTokens).toBe(112000)
+        expect(b.autocompactBufferTokens).toBe(20000)
+        expect(b.categories).toEqual([{ key: 'systemPrompt', tokens: 18200 }])
+    })
+
+    it('kind 权威：deferred 行按 kind 识别并按 name 表并入主类目', () => {
+        const b = extractBreakdown(fixture({
+            categories: [
+                { name: 'MCP tools', tokens: 9200, color: 'x', kind: 'used' },
+                { name: 'MCP tools (deferred)', tokens: 3200, color: 'x', kind: 'deferred' },
+            ],
+        }))!
+        expect(b.categories).toEqual([{ key: 'mcpTools', tokens: 12400 }])
     })
 })

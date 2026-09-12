@@ -642,3 +642,19 @@ interrupt（用户停止）
 1. ~~Agent 工具判据多份拷贝~~：已下沉 shared `agentTools.ts`（`isAgentToolName` / `isBackgroundAgentInput`），hub 投影与 web knownTools 共用单源。
 2. **session-scoped store 工厂（部分收口）**：已建 `createSessionScopedStore`，foregroundTasksStore / chatBlocksByIdStore 迁入；backgroundTasksStore（终态通知队列）、teamAgentsStore（三 Map 联动）因额外状态不适用工厂，维持手写——后续新增镜像 store 优先用工厂。
 3. code-review 另修两个投影 bug：sidechain 消息混入前台清单（嵌套 subagent 双条目）、任务中途转后台前后台双渲染（前台条目随后台 started 移除）。均有红→绿测试锁定。
+
+## 74. Bash 审批泛化粒度选项(2026-09-12,已评估暂缓)
+
+**背景**:用户报告「选了本次会话允许/总是允许仍重复审批」。E2E 实锤两个根因:① 会话白名单是 cli 进程内存态,进程重启/native session 切换即丢;② SDK suggestions 为空时(实测 curl 场景即空),web fallback 把「本次会话允许」降级为「命令字面允许」,换参数即再弹。已交付②的文案诚实化(fallback 档按钮改「允许此命令」,不再冒充「本次会话允许」)。
+
+**暂缓项**:Bash 审批的泛化粒度选项——弹窗在字面档之外追加用户可选的泛化档:「允许所有 `<prog>` 命令」(prefix rule `prog:*`,走既有 parseBashPermission 链路)、「允许 `<prog>` 访问 `<domain>`」(cli 新增 domain 级白名单 Set,ruleContent 编码约定如 `curl @httpbin.org`,cli 生成/解析单点)。触发条件:仅 Bash 审批 + suggestions 为空 + 单段命令(不含 `&&`/`;`/`|`);sudo/env 前缀不泛化;不自动选择,决定权在用户;与 SDK `suppressAlwaysAllowRule` hint 联动(hint 时隐藏泛化档)。
+
+**已评估不采纳**:白名单持久化到 hub(根因①)——用户裁定不做。
+
+## 75. resume 自动重跑被打断 turn + 「自动恢复」标识（2026-09-12，暂缓）
+
+**背景**：CC 2.1.268 支持 host 在 resume spawn 时设 `CLAUDE_CODE_RESUME_INTERRUPTED_TURN`（+可选 `CLAUDE_CODE_RESUME_REASON`）让 CC 自动重跑上次被打断的 turn，重跑帧带 `resume_reason` 标记（upstream-suggestions ⑦）。mobi 未设该 env——进程崩溃后恢复即停，不会自动续跑；web 也无该字段消费（消息帧整体落库，字段已在 DB）。
+
+**暂缓原因**：台账设想（自动恢复 badge）是重跑特性的附属品；mobi 未启用重跑则标记永不出现。启用与否是产品决策：自动续跑耗 token、工具副作用可能重复执行；且需先设计「上次是否 mid-turn 死亡」的检测（候选：cli exitLogger 的 exit records / hub 侧 running 状态），不能恒设（会改变所有 resume 的默认行为）。
+
+**届时要做**：① mid-turn 死亡检测 + 按需设 env（默认开关策略待定）；② web normalize 读 `resume_reason` → 消息列表「自动恢复」badge（渲染极小）。

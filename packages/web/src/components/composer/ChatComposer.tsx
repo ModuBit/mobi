@@ -21,7 +21,7 @@ import { AppTooltip } from '@/components/ui/AppTooltip'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import {
     isSegmentEmpty,
@@ -113,6 +113,8 @@ interface ChatComposerProps {
     contextUsage?: ContextUsage | null
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
     goal?: GoalStatus | null
+    /** 会话恢复时的 prompt cache 状态（来自 session.runtimeState.cacheStatus；expired 时渲染提示 chip） */
+    cacheStatus?: CacheStatus | null
     /**
      * 外部结构化回填请求（rewind 收尾把锚点批分段灌回 sender 并聚焦；
      * 排队消息编辑经 composerBackfillStore 信箱由 ChatContainer 消费后也走此通道）：
@@ -273,6 +275,7 @@ export function ChatComposer(props: ChatComposerProps) {
         tasks,
         contextUsage,
         goal,
+        cacheStatus,
         draftRequest,
     } = props
 
@@ -783,6 +786,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 lastActivityAt={lastActivityAt}
                 startedAt={runStartedAt}
                 goal={goal}
+                cacheStatus={cacheStatus}
                 sessionId={sessionId}
                 onClearGoal={handleClearGoal}
             />
