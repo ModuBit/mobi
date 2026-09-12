@@ -137,12 +137,14 @@ export class SyncEngine {
                 // 投递已经发生，别再回灌 CLI 房间（否则目标 CLI 会照着这行二次入队）
                 skipCliEcho: true,
             }),
-            // 初始标题（create_session 的 title）走人手动改名那条路，规则只一份。
+            // 初始名字（create_session 的 title）只写 mobi 侧，不走本类的 renameSession。
+            // 那条路要多发一个 rename-session RPC 给会话进程，而此刻新会话的 RPC 还没装好
+            // （它在 spawn 回执之后才注册）——必然撞空，且这里要的本来就是 mobi 侧的名字。
             // 先按 id 刷一次缓存：行是 CLI 连上来时建的，spawn 返回时通常已在缓存里，
             // 但这里不赌时序——刷新是便宜的，且 renameSession 找不到行会直接抛
             renameSession: async (sessionId, name) => {
                 this.sessionCache.refreshSession(sessionId)
-                await this.renameSession(sessionId, name)
+                await this.sessionCache.renameSession(sessionId, name)
             },
         })
         this.projectCache = new ProjectCache(store, this.eventPublisher)

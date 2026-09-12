@@ -103,10 +103,15 @@ export interface AgentSessionServiceDeps {
     /** 把投递成功的那条消息落到目标会话（落库形态不含信封，meta 带 sentFrom/crossSession/fromSessionId） */
     storeAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<void>
     /**
-     * 给会话改标题。**与 Web 侧手动改名同一条路**（`SyncEngine.renameSession`：CAS 写 metadata、
-     * 清自动摘要、best-effort 同步 CC 标题）——不另造一条「agent 专用改名」。
+     * 给会话起个名字（只写 mobi 侧）。
      *
-     * 由 create_session 的初始 title 使用：spawn 成功后再设，见 applyInitialTitle。
+     * **不通知会话进程**：这个调用发生在 spawn 刚回执的时刻，那时新会话的 RPC 还没装好
+     * （它是在回执之后、会话进程自己的运行时初始化里注册的），去发 RPC 必然撞空。而这一
+     * 步要的名字本来就是 **mobi 侧的名字**——Web 列表与 list_sessions 读的都是
+     * `metadata.name`，agent 据此认出这个会话，与 CC 自己的 customTitle 无关。
+     *
+     * CC 侧的名字归它自己：会话被第一条消息 prompt 时它会自己命名（D10 的「自己的名字
+     * 优先」）。所以这里不需要、也不应该去替它设。
      */
     renameSession: (sessionId: string, name: string) => Promise<void>
 }
@@ -202,10 +207,10 @@ export class AgentSessionService {
             return { ok: false, error: translateSpawnFailure(result.message) }
         }
 
-        // 会话标题在建完后单独设（D10 的可选 title）。不把它透传进 spawn 链路，是因为那条路
-        // 要新增一个 CLI 启动参数再跨四层传下来（shared → rpcGateway → runner → CLI args），
-        // 而这里调的是**人手动改名用的同一条路**——同样的规则、同样的清摘要语义、同样的
-        // best-effort 同步 CC 标题，零协议改动。窗口是毫秒级，人眼与 agent 都分辨不出。
+        // 会话名字在建完后单独写（D10 的可选 title）。不把它透传进 spawn 链路，是因为那条路
+        // 要新增一个 CLI 启动参数再跨四层传下来（shared → rpcGateway → runner → CLI args）；
+        // 也不走 Web 手动改名那条路，因为它要往会话进程发 RPC，而此刻新会话的 RPC 还没装好
+        // （见 deps.renameSession 的说明）。就写 mobi 侧的名字，一步到位、没有时序可赌。
         if (input.title !== undefined) {
             await this.applyInitialTitle(result.sessionId, input.title)
         }
@@ -214,13 +219,13 @@ export class AgentSessionService {
     }
 
     /**
-     * 给刚建好的会话设初始标题（best-effort）。
+     * 给刚建好的会话起个名字（best-effort）。
      *
-     * **失败不判决 create_session 失败**：会话已经建起来了、马上就能用，标题只是个称呼；
+     * **失败不判决 create_session 失败**：会话已经建起来了、马上就能用，名字只是个称呼；
      * 为它把整件事判失败，会逼 agent 重来一遍并得到第二个会话。所以只在日志里留证据。
      * 这与「投递成功但落库失败仍算成功」是同一条取舍（见 deliverToSession 的注释）。
      *
-     * 重试一次的理由：改名是 CAS 写（比对 metadata 版本），而 CLI 刚连上来也写过一次
+     * 重试一次的理由：写名字是 CAS 写（比对 metadata 版本），而 CLI 刚连上来也写过一次
      * metadata——撞版本是时序问题不是规则冲突，刷新缓存后重来一次就能过。
      */
     private async applyInitialTitle(sessionId: string, title: string): Promise<void> {
