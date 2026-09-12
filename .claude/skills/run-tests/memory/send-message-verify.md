@@ -1,6 +1,6 @@
 ---
 name: send-message-verify
-description: E2E 验证 send_message_to_session 的投递链路 — 造一对会话 / 探针措辞（必须点名工具）/ DB 断言（meta + lifecycle + 恰好一行）/ 富内容（引用+图片+附件）与跨机器的造法 / 死目标与扇出素材
+description: E2E 验证跨会话消息链路（A↔B 往返 / 扇出含死目标 / 建完即用 / 无幽灵消息）— 造会话、探针措辞（必须点名工具）、DB 与 transcript 断言、富内容与跨机器的造法、Auto 也会卡审批的坑
 metadata:
   type: recipe
   last_verified: 2026-09-12
@@ -144,11 +144,68 @@ cd ~/workspace/demo/e2e-agents && exec python3 -m http.server 8899 --bind 127.0.
 `dangerouslyDisableSandbox` 才通）——**浏览器不受影响**，别据此以为服务没起来；
 用 `lsof -nP -iTCP:8899 -sTCP:LISTEN` 确认真活了，用完 `kill -TERM <pid>`（按 PID，禁全局 pkill）。
 
+## 双会话往返（06 的验收 1）
+
+让 A 求 B 回信，A 侧应出现一条 `meta.fromSessionId` = B 的 user 行。探针措辞要点：
+**替 B 点名工具 + 点名 target**（A 转述给 B 的那句话里也要写清），否则 B 那一侧会去试
+CC 原生 `SendMessage`：
+
+> 请用 mobi 应用提供的 send_message_to_session 工具，给会话 `<B>` 发这句话（targets 传 ["<B>"]）：
+> 「你好，我是会话 A。请用 mobi 的 send_message_to_session 工具回我一句 hello，target 是 `<A>`。」
+
+## 建完即用（06 的验收 7）
+
+同一条探针里让 A 连着做：`create_session`（机器 + 目录）→ 拿到返回的 sessionId →
+**立刻** `send_message_to_session`。期望两次回执分别是
+`Created session <id> (machine …). It starts with no messages — give it work with send_message_to_session.`
+与 `Sent to session: <同一个 id>`；新会话的 seq=1 就是那条 user 行（本会话第一条输入，
+正是 sink 必须早于首条用户消息接通的原因）。整个链路 <2s（实测 create 到投递同一秒）。
+
+## 无幽灵消息（06 的验收 8）
+
+「投出去了但 Web 上看不见」与「看得见但从没投出去」两头都要查，靠**信封 message-id ↔
+落库 local_id**（D24 说两者同值）双向比对：
+
+```python
+# 目标会话 transcript 里所有信封的 message-id  vs  DB 里该会话的 local_id
+# 信封可能在四类 entry 里：user prompt / queue-operation(enqueue|remove) / attachment(queued_command)
+```
+
+两侧集合应**逐个相等**。`queue-operation` 那类是「消息到达时目标正忙」——CC 把它收进
+自己的队列，忙完才消费（实测 12:54 enqueue → 13:00 remove，中间目标卡在审批上）。
+⚠️ 只扫 `type=='user'` 且 `content` 是字符串的 entry 会漏掉这类，也会漏掉带图消息
+（content 是数组）——两种形态都要处理，否则会误判成「幽灵」。
+
+**「恰好一行」+ 集合相等**是回归断言：D34 修复前同一封信封会落两行（投递路径一行 +
+hook 观测路径一行，相隔 15ms）。
+
 ## 死目标 / 扇出素材（免造）
 
 `kill -TERM <该会话 CLI 的 PID>`（`ps -eo pid,lstart,command | grep "index.ts claude"`
-按启动时间认最新两个）→ Hub 行保留、`active=false`。用它的 id 做 targets 之一即可验
-「部分成功 + 逐条人话」（实测文案：`NOT delivered — Session "…" is not running any more…`）。
+按启动时间认最新那个）→ Hub 行保留、`active=false`（`sessions` 表**没有** active 列，
+活性在 sessionCache 内存里，别去查库）。
+
+探针：一次给 `["<活着>", "<已退出>"]`，期望
+
+```
+Sent to 1 of 2 sessions.
+Delivered: <活着>
+Not delivered:
+- <已退出>: NOT delivered — Session "…" is not running any more, so it cannot receive messages.
+  Call list_sessions to find one that is still active.
+Read each reason before retrying — some failures must not be retried blindly.
+```
+
+## 坑：目标卡在审批上会让整条链路停住
+
+实测 06：B 收到网络图那轮自己起了个 `curl http://127.0.0.1:8899` 的 Bash，**Auto 模式下
+照样弹了审批卡**（Auto ≠ 全放行），没人点就卡住 6 分钟；期间 A 发来的消息只能躺在 CC 的
+队列里（见上「无幽灵消息」）。判定手段：目标页 composer 上出现 `awaiting approval…`，
+或 `document.body.innerText` 里有 `Awaiting approval`。
+
+两个应对：① 探针里写「不要用命令行或读文件，只用 mobi 工具」（本来就该写）；
+② 真卡住了就在该会话页点 `Allow`（快照里按钮名叫 `allow`/`close Deny`），别以为是自己
+实现坏了。顺带：给网络图素材用的本地静态服**用完就关**，否则收件方 agent 会去 curl 它。
 
 ## Web 呈现
 

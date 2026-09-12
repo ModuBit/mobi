@@ -1,6 +1,6 @@
 ---
 name: agent-tool-verify
-description: 验证 agent 侧 MCP 工具（B 类系统操作）— 探针 prompt 设计 / tool_use+tool_result DB 断言 / tool search defer 真相 / Auto 模式使审批断言失效
+description: 验证 agent 侧 MCP 工具（B 类系统操作）— 探针 prompt 设计 / tool_use+tool_result DB 断言 / tool search defer 真相 / list_sessions 过滤三档 / Auto 是按命令类别放行（curl 也会弹审批）
 metadata:
   type: recipe
   last_verified: 2026-09-12
@@ -85,6 +85,21 @@ done
 所以只能给出**上界**（「窗口 < X ms」），别把「没观察到」当成「不存在」——要更细的粒度就得
 看日志或加埋点。
 
+## list_sessions 的过滤三档（2026-09-12 实测）
+
+素材天然就够：正常会有几个活会话，再 `kill -TERM` 一个会话 CLI 就有死会话
+（活性**不在库里**——`sessions` 表没有 active 列，别去查 DB 验）。
+
+一条探针让它连查四次并**照念原文**（不写「照念」它会自己总结成一句话，验不到字段）：
+
+1. 不带参数 → 默认 `ACTIVE`：只出活会话（死的不出现），排序 active 优先 → 最近活动
+2. `keyword: "<某标题里独有的词>"` → 按 title / summary / path 命中
+3. `status: "INACTIVE"` → 只出死会话（**从未命名**的会话不渲染 title/summary 行，正常）
+4. `status: "ALL"` → 全部
+
+字段齐全性顺带验：`sessionId / title / summary / machine / directory / active / running / updated`；
+`model` 与 `pinned` 只在有值时渲染（`pinned: false` 不出现是设计，不是缺字段）。
+
 ## 坑
 
 - **Auto 权限模式自动放行一切 → 「没弹审批」不能证明预授权生效（2026-09-12 实测）**
@@ -92,6 +107,11 @@ done
   `allowedTools` 预授权条目是否拼对**无法用 E2E 证伪**。要真验证必须新建会话并选一个会弹审批的
   权限模式；权限模式**只在建会话时可选**（既有会话 composer 只有 Model + Output Style）。
   反过来，读到这条前别拿「没弹审批」当预授权通过的证据。
+  **2026-09-12 补充（结论要收窄）**：Auto 并非「全放行」。同一天实测收件方 agent 的
+  `Bash curl http://127.0.0.1:8899`（访问本地端口）**弹了审批卡**，没人点就卡住 6 分钟。
+  也就是说放行是**按命令类别**判的（`pwd` 放行、网络访问不放行），「Auto 全放行」只在
+  安全命令上成立。做 E2E 时若发现对端「没反应」，先看它是不是卡在审批上（见
+  [[send-message-verify]] 的「目标卡在审批上」一节），别急着怀疑自己的实现。
 - **deferred 工具名在 init 里是可见的，描述不参与「检索」** — `system/init` 的 `tools[]`
   已含 `mcp__xxx__yyy` 全名，只有 schema/描述被 defer。实测模型直接用
   `ToolSearch "select:mcp__mobi-apps__list_machines"` 精确取，而非关键词搜索。写工具描述时
