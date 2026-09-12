@@ -26,6 +26,7 @@ import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { MachineCache, type Machine } from './machineCache'
+import { AgentSessionService } from './agentSessionService'
 import { MessageService } from './messageService'
 import { ProjectCache } from './projectCache'
 import {
@@ -95,6 +96,8 @@ export class SyncEngine {
     private readonly eventPublisher: EventPublisher
     private readonly sessionCache: SessionCache
     private readonly machineCache: MachineCache
+    /** Agent 会话操作（B 类工具族）的业务规则入口；socket handler 只调用它 */
+    private readonly agentSessionService: AgentSessionService
     private readonly projectCache: ProjectCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
@@ -113,6 +116,9 @@ export class SyncEngine {
         this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.machineCache = new MachineCache(store, this.eventPublisher)
+        this.agentSessionService = new AgentSessionService({
+            getOnlineMachinesByNamespace: (namespace) => this.machineCache.getOnlineMachinesByNamespace(namespace),
+        })
         this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
@@ -214,6 +220,13 @@ export class SyncEngine {
 
     getOnlineMachinesByNamespace(namespace: string): Machine[] {
         return this.machineCache.getOnlineMachinesByNamespace(namespace)
+    }
+
+    // ============ Agent 会话操作（B 类工具族）============
+
+    /** AgentSessionService 实例：socket handler 经此取用业务规则（不重新实现一遍规则） */
+    get agentSessions(): AgentSessionService {
+        return this.agentSessionService
     }
 
     // ============ 项目（project entity）============

@@ -33,6 +33,36 @@ export type UiCommandAck = {
     reason?: string
 }
 
+/**
+ * B 类（agent 会话操作）的失败原因。
+ *
+ * 与 SocketErrorReason 同源，另加两类**组装/入参**故障——这两类是编程错误而非
+ * 访问问题，消费方不该把它们与"没权限"混为一谈。
+ */
+export type AgentOpFailureReason =
+    | SocketErrorReason
+    | 'invalid-payload'
+    | 'handler-misconfigured'
+
+/** 在线机器摘要（agent 视角：只给能派活的目标，不含离线候选） */
+export type AgentMachineSummary = {
+    machineId: string
+    /** 展示名：机器自报 displayName，缺省回退 host */
+    name: string
+    hostname: string
+    /** 最近心跳时刻（ms） */
+    activeAt: number
+}
+
+/**
+ * list machines 回执。判别联合而非可选字段：成功分支必带清单，
+ * 消费方无需对 machines 判空（与 UiCommandAck 的 delivered+reason? 形态不同，
+ * 因为这里没有"成功但结果为空"与"失败"的语义混淆空间）。
+ */
+export type AgentMachinesAck =
+    | { ok: true; machines: AgentMachineSummary[] }
+    | { ok: false; reason: AgentOpFailureReason }
+
 export const TerminalOpenPayloadSchema = z.object({
     sessionId: z.string().min(1),
     terminalId: z.string().min(1),
@@ -296,4 +326,7 @@ export interface ClientToServerEvents {
      *  （非"用户已看到"，Web 不参与 ack）；无 Web 在线时 delivered=false（调用成功非错误，CLI 转平和反馈）。
      *  socket 断开/ack 超时由 emitWithAck reject 体现，属连接故障，与离线语义区分 */
     'sendUiCommand': (data: { sid: string; action: UiCommandAction }, cb: (answer: UiCommandAck) => void) => void
+    /** CLI→Hub 的会话操作（agent 触达其他会话，B 类）。与 A 类的区别：不依赖 Web 在线、
+     *  不是瞬态呈现（落库即终态）。namespace 由 Hub 从鉴权过的 sid 解析，CLI 不填。 */
+    'listMachinesForAgent': (data: { sid: string }, cb: (answer: AgentMachinesAck) => void) => void
 }

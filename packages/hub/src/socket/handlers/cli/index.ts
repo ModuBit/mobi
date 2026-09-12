@@ -15,6 +15,7 @@
  */
 
 import type { Store, StoredMachine, StoredSession } from '../../../store'
+import type { AgentMachineSummary } from '@mobi/shared'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
@@ -26,6 +27,7 @@ import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 import { registerMachineHandlers } from './machineHandlers'
 import { registerUiCommandHandlers } from './uiCommandHandlers'
+import { registerAgentSessionHandlers } from './agentSessionHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
 import { registerSessionHandlers } from './sessionHandlers'
 import { cleanupTerminalHandlers, registerTerminalHandlers } from './terminalHandlers'
@@ -52,13 +54,16 @@ export type CliHandlersDeps = {
     hasActiveSseConnection?: (namespace: string) => boolean
     /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播） */
     publishUiCommand?: (event: Extract<SyncEvent, { type: 'ui-command' }>) => void
+    /** Agent 会话操作：列可派活的在线机器（AgentSessionService.listMachines）。
+     *  缺装配时 handler 回 handler-misconfigured，不静默返回空清单 */
+    listOnlineMachinesForAgent?: (namespace: string) => AgentMachineSummary[]
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
     factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, listOnlineMachinesForAgent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -140,6 +145,10 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         resolveSessionAccess,
         hasActiveSseConnection: hasActiveSseConnection ?? (() => false),
         publishUiCommand
+    })
+    registerAgentSessionHandlers(socket, {
+        resolveSessionAccess,
+        listOnlineMachines: listOnlineMachinesForAgent
     })
 
     socket.on('ping', (callback: () => void) => {

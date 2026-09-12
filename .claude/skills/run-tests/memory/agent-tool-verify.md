@@ -1,0 +1,64 @@
+---
+name: agent-tool-verify
+description: 验证 agent 侧 MCP 工具（B 类系统操作）— 探针 prompt 设计 / tool_use+tool_result DB 断言 / tool search defer 真相 / Auto 模式使审批断言失效
+metadata:
+  type: recipe
+  last_verified: 2026-09-12
+---
+
+# Agent 侧 MCP 工具验证（B 类）
+
+验证「给 agent 用的工具」是否真能被检索、调用、拿到正确结果。与 [[web-tools-verify]]
+（设置页 Web Tools 卡片）不同：那条测的是 provider 配置落盘，这条测的是**工具本身在真会话里跑通**。
+
+## 步骤
+
+环境照 [[env-bootstrap]] / [[login]] / [[create-project]] / [[create-session]]。建会话前确认
+权限模式下拉值是 **Auto**（残留坑见 [[create-session]]）。
+
+1. 发探针消息。**不要点工具名**——想验证检索就描述需求，让模型自己找：
+
+   > 现在有哪些 mobi 机器在线？请用 mobi 应用自己提供的工具来查，不要用命令行或读文件。
+
+   后半句「不要用命令行或读文件」是关键——否则模型很可能用 Bash 绕过，验证不到工具链。
+
+2. 等 20-30s（建会话 + spawn CLI + 首轮约 5-10s），`evaluate_script` 读正文确认答对。
+
+3. **DB 断言硬证据链**（`~/.mobi-e2e/mobi.db`，content 结构是
+   `content.data.message.content[]`，注意多一层 `.data`）：
+
+   ```bash
+   # ① init 事件里工具是否注册（schema 被 defer，名字仍列出）
+   sqlite3 ~/.mobi-e2e/mobi.db "SELECT CASE WHEN content LIKE '%mcp__你的server__工具名%' THEN 'HIT' ELSE 'MISS' END FROM messages WHERE session_id='<sid>' AND json_extract(content,'\$.content.data.subtype')='init';"
+
+   # ② tool_use 是否真发生
+   sqlite3 ~/.mobi-e2e/mobi.db "SELECT substr(content,1,900) FROM messages WHERE session_id='<sid>' AND content LIKE '%工具名%' AND content LIKE '%tool_use%' ORDER BY position_at LIMIT 3;"
+
+   # ③ tool_result 原文（拿 tool_use 的 id 回查）
+   sqlite3 ~/.mobi-e2e/mobi.db "SELECT content FROM messages WHERE session_id='<sid>' AND content LIKE '%<tool_use_id>%' AND content LIKE '%tool_result%' LIMIT 1;"
+   ```
+
+   会话 id 从 URL 取（`/sessions/<uuid>`）。③ 的输出用
+   `python3 -c "import sys,json; d=json.load(sys.stdin); ..."` 展开。
+
+4. 交叉验证返回值：拿工具返回的标识（如 machineId）与 Hub 侧权威源（`curl -b jar /api/machines`）
+   比对。**模型编不出 UUID + 当前时刻的心跳**，对上了才算真链路通。
+
+## 坑
+
+- **Auto 权限模式自动放行一切 → 「没弹审批」不能证明预授权生效（2026-09-12 实测）**
+  做了判别实验：让 agent 跑 `Bash pwd`（未预授权），**同样不弹审批**。故 Auto 模式下
+  `allowedTools` 预授权条目是否拼对**无法用 E2E 证伪**。要真验证必须新建会话并选一个会弹审批的
+  权限模式；权限模式**只在建会话时可选**（既有会话 composer 只有 Model + Output Style）。
+  反过来，读到这条前别拿「没弹审批」当预授权通过的证据。
+- **deferred 工具名在 init 里是可见的，描述不参与「检索」** — `system/init` 的 `tools[]`
+  已含 `mcp__xxx__yyy` 全名，只有 schema/描述被 defer。实测模型直接用
+  `ToolSearch "select:mcp__mobi-apps__list_machines"` 精确取，而非关键词搜索。写工具描述时
+  别假设「描述决定能否被发现」——决定的是**名字**；描述影响的是**用不用、怎么用**。
+- **composer 的 more 按钮点击后无菜单**（2026-09-12）— 用
+  `ta.closest('.ant-sender')` 取最后一个 icon 按钮 `.click()` 不弹 Dropdown。需要 composer
+  菜单时改用 a11y snapshot 拿 uid click。
+- **Settings 页只有 Notifications / Web Tools 两项** — 没有「自动审批」开关；[[create-session]]
+  说的「关自动审批」指的是**权限模式**，不是设置项。
+- 回归检查顺带做：同一轮里模型通常还会调 `mobi-core:change_title`，它的 tool_result
+  （`Successfully changed chat title to: "…"`）能同时证明 mobi-core server 未被改坏。

@@ -33,6 +33,7 @@ import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/com
 import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
 import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
 import { OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool';
+import { LIST_MACHINES_TOOL_NAME } from '@/mcp/listMachinesTool';
 import { MOBI_APPS_SERVER_NAME, MOBI_CORE_SERVER_NAME } from '@mobi/shared';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
@@ -581,6 +582,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 `mcp__${MOBI_CORE_SERVER_NAME}__${CHANGE_TITLE_TOOL_NAME}`,
                 // open_in_mobi 预授权（D7，A 类 UI 呈现工具；仅 remote 壳注册，local 模式不会出现）
                 `mcp__${MOBI_APPS_SERVER_NAME}__${OPEN_IN_MOBI_TOOL_NAME}`,
+                // list_machines 预授权（B 类系统操作；仅 remote 壳注册）
+                `mcp__${MOBI_APPS_SERVER_NAME}__${LIST_MACHINES_TOOL_NAME}`,
                 // 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
                 `mcp__${MOBI_CORE_SERVER_NAME}__web_search`,
                 `mcp__${MOBI_CORE_SERVER_NAME}__web_fetch`,

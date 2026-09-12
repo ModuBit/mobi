@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentMachinesAck, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -62,6 +62,8 @@ const CONNECT_ERROR_LOG_WINDOW_MS = 60_000
 const REWIND_REPORT_ACK_TIMEOUT_MS = 5_000
 /** UI 命令 ack 等待上限（ms）：超时按连接故障处理（与离线 delivered:false 语义区分） */
 const UI_COMMAND_ACK_TIMEOUT_MS = 5_000
+/** Agent 会话操作 ack 等待上限（ms）：同 UI 命令口径，超时按连接故障处理 */
+const AGENT_OP_ACK_TIMEOUT_MS = 5_000
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string
@@ -746,6 +748,20 @@ export class ApiSessionClient extends EventEmitter {
             .timeout(UI_COMMAND_ACK_TIMEOUT_MS)
             .emitWithAck('sendUiCommand', { sid: this.sessionId, action })
         return answer as UiCommandAck
+    }
+
+    /**
+     * 列出可派活的在线机器（B 类工具族）。
+     *
+     * 与 sendUiCommand 同型：emitWithAck 等回执，超时/断连 reject 由调用方
+     * 按连接故障处理——业务失败（无权限 / 入参非法）走 ack 的 ok:false，
+     * 两者语义不同，勿混淆。
+     */
+    async listOnlineMachinesForAgent(): Promise<AgentMachinesAck> {
+        const answer = await this.socket
+            .timeout(AGENT_OP_ACK_TIMEOUT_MS)
+            .emitWithAck('listMachinesForAgent', { sid: this.sessionId })
+        return answer as AgentMachinesAck
     }
 
     /**

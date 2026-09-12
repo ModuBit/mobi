@@ -32,3 +32,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [fork 分叉会话验证](fork-verify.md) — fork API 直调 / 复制完整性 SQL 断言 / 激活探针 / 溯源消息动作链接形态（ADR 0003）+ DOMPurify 剥 href P0 与激活补投 P1 / 锚点须选 transcript 内 uuid 的坑
 - [tool 字段渲染适配点](tool-field-render-adapters.md) — 新增 block.tool 字段须适配 ToolInfo/adaptedBlock/chatBlockToToolCardBlock 三处 + structuredPatch diff 行号验证 recipe
 - [缓存过期 chip 验证](cache-status-verify.md) — socket 注入 cache-status 绕过 TTL / chip 渲染清空断言 / 注入须在 turn 运行前的时序坑
+- [agent 侧 MCP 工具验证](agent-tool-verify.md) — 探针 prompt 不点名 / tool_use+tool_result DB 断言 / deferred 工具名 init 里可见（描述不参与检索）/ Auto 模式自动放行致预授权断言失效

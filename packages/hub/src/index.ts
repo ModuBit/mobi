@@ -197,7 +197,9 @@ async function main() {
         onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload),
         // ui-command（agent 触达 mobi 界面）：Web SSE 在线检查 + 经 SyncEngine 发布广播
         hasActiveSseConnection: (namespace) => sseManager?.hasActiveConnection(namespace) ?? false,
-        publishUiCommand: (event) => syncEngine?.publishUiCommand(event)
+        publishUiCommand: (event) => syncEngine?.publishUiCommand(event),
+        // Agent 会话操作（agent 触达其他会话，B 类）：同属 SyncEngine 内部实例，惰性取用
+        agentSessions: () => syncEngine?.agentSessions
     })
 
     syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager, rewindDeleteBoundTracker)

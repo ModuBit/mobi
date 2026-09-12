@@ -29,6 +29,7 @@ import { parseAccessToken } from '../utils/accessToken'
 import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
+import type { AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotSync } from '../sync/snapshotSync'
@@ -93,6 +94,9 @@ export type SocketServerDeps = {
     /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播）。
      *  支持惰性求值——SyncEngine 在 socket server 之后创建 */
     publishUiCommand?: (event: Extract<SyncEvent, { type: 'ui-command' }>) => void
+    /** Agent 会话操作服务（B 类工具族）。支持惰性求值——同为 SyncEngine 内部实例，
+     *  在 socket server 之后创建。取不到时 handler 回 handler-misconfigured */
+    agentSessions?: () => AgentSessionService | undefined
 }
 
 export function createSocketServer(deps: SocketServerDeps): {
@@ -196,7 +200,12 @@ export function createSocketServer(deps: SocketServerDeps): {
         factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
         onWebappEvent: deps.onWebappEvent,    // Web端实时事件
         hasActiveSseConnection: deps.hasActiveSseConnection,
-        publishUiCommand: deps.publishUiCommand
+        publishUiCommand: deps.publishUiCommand,
+        // 同为惰性：服务在 SyncEngine 里，connection 时解包后只暴露它需要的那一个方法
+        listOnlineMachinesForAgent: (() => {
+            const agentSessions = deps.agentSessions?.()
+            return agentSessions ? (namespace: string) => agentSessions.listMachines(namespace) : undefined
+        })()
     }))
 
     terminalNs.use(async (socket, next) => {

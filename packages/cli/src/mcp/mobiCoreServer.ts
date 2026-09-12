@@ -18,7 +18,7 @@
  * remote 模式的 mobi-core MCP server（SDK createSdkMcpServer 壳）。
  *
  * 定位：mobi 内置基础能力（change_title / web_search / web_fetch）。
- * agent 驱动应用界面的工具族在 mobi-apps（mobiAppsServer）。
+ * agent 触达 mobi 应用的工具族在 mobi-apps（mobiAppsServer）。
  *
  * web 工具经 claudeRemote 的 toolAliases 由内置名 WebSearch/WebFetch 重定向调用，
  * 本 server 只是执行载体；change_title 与 local HTTP 壳（startMobiMcpServer）共享核心。
