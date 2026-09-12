@@ -43,12 +43,15 @@ describe('createSendMessageTool', () => {
         expect(desc).toContain('cannot be cancelled')
     })
 
-    it('description says only text blocks work right now', () => {
+    it('description states the same-machine constraint on attachments', () => {
         const { deps } = buildDeps()
         const desc = createSendMessageTool(deps).description
 
-        // schema 收四型 block，但非 text 会被整条拒绝——不写明模型就会照着 schema 发图片
-        expect(desc).toContain('Only text blocks are supported right now')
+        // 附件限同机器是**不可从 schema 看出**的边界（schema 只收路径）；不写明模型就会
+        // 给另一台机器的会话发本机路径，然后收到一个本可以避免的失败
+        expect(desc).toContain('must be on that same machine')
+        // 网络图要写进 block 的 value：previewUrl 只换 Web 的渲染地址，推给 CC 时读的仍是 value
+        expect(desc).toContain('give the block that URL')
     })
 
     it('forwards targets and content to the hub untouched', async () => {

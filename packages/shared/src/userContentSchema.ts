@@ -76,6 +76,23 @@ export const MessageContentSchema = z.union([
     z.array(ContentBlockSchema),
 ])
 
+/**
+ * 自足 URL 判据：blob: / data: / http(s):// 的值自带内容，**不需要从磁盘读**。
+ *
+ * 两个消费方都问这个问题，答案必须一致：
+ * - Web 的 image 渲染据此绕过 read-file 端点（乐观回显的 blob、网络图，D23 旁路）
+ * - Hub 的跨会话投递归据据此判断「这条消息是否依赖目标机器上的文件」（D22 的同机器约束）
+ *
+ * 判据只此一份的理由是**不一致会互相拆台**：Web 认为自足而投递认为需要本地文件，
+ * 就会出现「明明渲染得出来却被拒」的怪事，反之则是渲染成破图而投递报成功。
+ */
+export function isSelfContainedUrl(value: string): boolean {
+    // 收尾的 `)` 不是多余的：正则体以 `\/\/` 结束时，TS 扫描器会提前在第二个 `\/` 的
+    // 斜杠上闭合字面量（`/…https?:\/\//i` 报 TS1005），带一层分组则正常。
+    // 写法与 Web 侧原实现逐字相同——本条只是把判据搬到共享层，语义不变
+    return /^(blob:|data:|https?:\/\/)/i.test(value)
+}
+
 export type UserContentSource = z.infer<typeof UserContentSourceSchema>
 /** 用户消息 content 三形态：裸 string / 单 block / block 数组（发送 wire 形态） */
 export type UserMessageContent = z.infer<typeof UserMessageContentSchema>

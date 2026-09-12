@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     ContentBlockSchema,
+    isSelfContainedUrl,
     MessageContentSchema,
     normalizeContentBlocks,
     UserContentBlockSchema,
@@ -180,6 +181,33 @@ describe('normalizeContentBlocks 跨来源归一（ref 退场后单通道）', (
         expect(normalizeContentBlocks([{ type: 'audio' }, { type: 'text', text: 'b' }]))
             .toEqual([{ type: 'text', text: 'b' }])
         expect(normalizeContentBlocks([{ type: 'audio' }])).toEqual(null)
+    })
+})
+
+describe('isSelfContainedUrl（Web 渲染旁路与 Hub 同机器判据共用的那份判据）', () => {
+    it('自足：blob / data / http(s)（协议大小写不敏感）', () => {
+        for (const value of [
+            'blob:http://localhost:5173/abc',
+            'data:image/png;base64,iVBORw0KGgo=',
+            'http://cdn.example.com/a.png',
+            'https://cdn.example.com/a.png',
+            'HTTPS://cdn.example.com/a.png',
+        ]) {
+            expect(isSelfContainedUrl(value)).toBe(true)
+        }
+    })
+
+    it('不自足：本机路径（绝对 / 相对 / uploads）与其它协议', () => {
+        for (const value of [
+            '/Users/me/pic.png',
+            'pic.png',
+            '.mobi/uploads/ab12cd.png',
+            'file:///Users/me/pic.png',
+            // 前缀像但不完整：https 少了 //
+            'https:cdn.example.com/a.png',
+        ]) {
+            expect(isSelfContainedUrl(value)).toBe(false)
+        }
     })
 })
 

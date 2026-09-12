@@ -18,7 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { AgentSessionService } from '../../src/sync/agentSessionService'
 import type { ProjectAssignability } from '../../src/sync/agentSessionService'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
-import type { AgentMessageDelivery } from '@mobi/shared'
+import type { AgentMessageDelivery, UserContentBlock } from '@mobi/shared'
 import type { Machine } from '../../src/sync/machineCache'
 import type { Session } from '@mobi/shared/types'
 
@@ -746,22 +746,22 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
     const targetB = makeSession({ id: 'B', namespace: 'ns' })
     const targetC = makeSession({ id: 'C', namespace: 'ns' })
 
-    test('非文本 block → 整条拒绝，理由说出是哪个 block', async () => {
+    test('四型 block 原样投递并落库（text / quote / image / document）', async () => {
         const { service, pushed, stored } = makeService([], [sender, targetB])
+        const content: UserContentBlock[] = [
+            { type: 'text', text: 'look at this' },
+            { type: 'quote', messageId: 'm-prev', role: 'user', excerpt: 'earlier question' },
+            { type: 'image', source: { type: 'url', value: '/work/a/pic.png' }, id: 'i1', filename: 'pic.png', size: 10 },
+            { type: 'document', source: { type: 'url', value: '/work/a/doc.pdf' }, id: 'd1', filename: 'doc.pdf', size: 20 },
+        ]
 
-        const results = await service.sendMessageToSessions('ns', 'A', {
-            targets: ['B'],
-            content: [
-                { type: 'text', text: 'look at this' },
-                { type: 'image', source: { type: 'url', value: '/tmp/a.png' }, id: 'i1', filename: 'a.png', size: 10 },
-            ],
-        })
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content })
 
-        expect(results[0].ok).toBe(false)
-        expect(results[0].error).toContain('"image" block')
-        // 不静默降级成纯文本继续发——agent 说「带上这张图」而图没带上，成功会骗了它
-        expect(pushed).toHaveLength(0)
-        expect(stored).toHaveLength(0)
+        expect(results[0].ok).toBe(true)
+        // 原形保留：agent 给的 blocks 就是落库的 blocks（归一只是把三形态收敛成数组，
+        // 不重排、不改写——渲染层读的是这些字段，Hub 不该有第二套理解）
+        expect(pushed[0].delivery.blocks).toEqual(content)
+        expect(stored[0].delivery.blocks).toEqual(content)
     })
 
     test('内容类失败对每个目标都是同一句话（一件事，不是每个目标一件事）', async () => {
@@ -769,7 +769,7 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
 
         const results = await service.sendMessageToSessions('ns', 'A', {
             targets: ['B', 'C'],
-            content: [{ type: 'document', source: { type: 'url', value: '/tmp/a.pdf' }, id: 'd1', filename: 'a.pdf', size: 10 }],
+            content: { text: 'hi' },
         })
 
         expect(results).toHaveLength(2)
@@ -795,3 +795,103 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
         expect(pushed).toHaveLength(0)
     })
 })
+
+describe('AgentSessionService.sendMessageToSessions — 附件闸（同机器）', () => {
+    const image = { type: 'image' as const, source: { type: 'url' as const, value: '/work/a/pic.png' }, id: 'i1', filename: 'pic.png', size: 10 }
+    const document = { type: 'document' as const, source: { type: 'url' as const, value: '/work/a/doc.pdf' }, id: 'd1', filename: 'doc.pdf', size: 20 }
+
+    const onMacA = (id: string) =>
+        makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: 'host-a', machineId: 'm-a' } })
+    const onMacB = (id: string) =>
+        makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: 'host-b', machineId: 'm-b' } })
+
+    test('跨机器带本机文件 → 整条失败，不投不落库，并说清是哪一步做不了', async () => {
+        const { service, pushed, stored } = makeService([], [onMacA('A'), onMacB('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', {
+            targets: ['B'],
+            content: [{ type: 'text', text: 'here you go' }, image],
+        })
+
+        expect(results[0].ok).toBe(false)
+        // 面向 agent 的人话：说清原因（路径只在写出它的机器上有意义）、后果（什么都没发）
+        // 与出路（网络图给 URL / 让人搬文件），不吐内部结构
+        expect(results[0].error).toContain('different machine')
+        expect(results[0].error).toContain('pic.png')
+        expect(results[0].error).toContain('Nothing was sent')
+        // 不做静默降级：剔掉图片继续发文本会让 agent 以为文件带上了
+        expect(pushed).toHaveLength(0)
+        expect(stored).toHaveLength(0)
+    })
+
+    test('跨机器纯文本不受影响', async () => {
+        const { service, pushed } = makeService([], [onMacA('A'), onMacB('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'just words' })
+
+        expect(results[0].ok).toBe(true)
+        expect(pushed).toHaveLength(1)
+    })
+
+    test('跨机器给的是网络图（值自足）→ 不受影响：不依赖任何本机文件', async () => {
+        const { service, pushed } = makeService([], [onMacA('A'), onMacB('B')])
+        const remote = { ...image, source: { type: 'url' as const, value: 'https://cdn.example.com/pic.png' } }
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: remote })
+
+        expect(results[0].ok).toBe(true)
+        expect(pushed).toHaveLength(1)
+    })
+
+    test('previewUrl 换成网络地址救不了本机路径：推给 CC 时读的仍是 value', async () => {
+        const { service, pushed } = makeService([], [onMacA('A'), onMacB('B')])
+        const withPreview = { ...image, previewUrl: 'https://cdn.example.com/pic.png' }
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: withPreview })
+
+        // Web 会拿 previewUrl 渲染得好看，但 CC 手上仍是对方机器上不存在的路径——
+        // 渲染好看而投递报成功，正是「agent 以为文件带上了」的那类欺骗
+        expect(results[0].ok).toBe(false)
+        expect(pushed).toHaveLength(0)
+    })
+
+    test('同机器（machineId 相同）→ 附件照常投递', async () => {
+        const { service, stored } = makeService([], [onMacA('A'), onMacA('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: document })
+
+        expect(results[0].ok).toBe(true)
+        expect(stored).toHaveLength(1)
+    })
+
+    test('machineId 缺失时退回 host 比对（同一 host = 同一文件系统）', async () => {
+        const noId = (id: string) => makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: 'host-a' } })
+        const { service } = makeService([], [noId('A'), noId('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: image })
+
+        expect(results[0].ok).toBe(true)
+    })
+
+    test('两边的机器身份都缺失 → 判为不同机器（无法证明同机器就不放行）', async () => {
+        // host 是 schema 必填字段，用空串表达「这条会话没自报机器身份」
+        const bare = (id: string) => makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: '' } })
+        const { service, pushed } = makeService([], [bare('A'), bare('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: image })
+
+        expect(results[0].ok).toBe(false)
+        expect(pushed).toHaveLength(0)
+    })
+
+    test('扇出逐条判：同机器的收得到，另一台机器的整条失败', async () => {
+        const { service, pushed, stored } = makeService([], [onMacA('A'), onMacA('B'), onMacB('C')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B', 'C'], content: image })
+
+        expect(results.map((r) => r.ok)).toEqual([true, false])
+        expect(pushed.map((p) => p.sessionId)).toEqual(['B'])
+        expect(stored.map((s) => s.sessionId)).toEqual(['B'])
+    })
+})
+

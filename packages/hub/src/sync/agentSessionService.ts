@@ -28,7 +28,7 @@
  * 依赖一律收成窄入参（不直接持 Store / MachineCache），便于单测用内存假件。
  */
 
-import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
+import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, isSelfContainedUrl, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionRequest,
@@ -37,6 +37,9 @@ import type {
     AgentSendMessageTargetResult,
     AgentSessionStatus,
     AgentSessionSummary,
+    UserContentBlock,
+    UserDocumentBlock,
+    UserImageBlock,
 } from '@mobi/shared'
 import type { Session } from '@mobi/shared/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
@@ -56,6 +59,22 @@ export interface AgentSendMessageInput {
     targets: string[]
     /** 与 Web composer 同形的内容三形态，此处未校验，由服务按统一词汇表把关 */
     content: unknown
+}
+
+/** 需要目标机器上真实存在的文件的 block（见 findLocalFileBlock） */
+type LocalFileBlock = UserImageBlock | UserDocumentBlock
+
+/**
+ * 一次扇出的共享上下文：整批相同的判据（发件方身份、内容层的本机文件需求）
+ * 与逐目标才成立的事实（目标会话、活性）分开，免得每个目标重算一遍。
+ */
+interface DeliveryContext {
+    /** 信封字段（messageId 逐目标生成，不在这里） */
+    delivery: Omit<AgentMessageDelivery, 'messageId'>
+    /** 发件方会话（取信封名字与同机器判据；解析不到时缺省，见 isSameMachine） */
+    sender: Session | undefined
+    /** 内容里那个需要本机文件的 block；纯文本全程为 null，不触发任何机器判据 */
+    localFile: LocalFileBlock | null
 }
 
 export interface AgentSessionServiceDeps {
@@ -200,27 +219,31 @@ export class AgentSessionService {
         }
 
         const sender = this.deps.getSessionByNamespace(fromSessionId, namespace)
-        const delivery = {
-            blocks: gate.blocks,
-            // 未命名的会话降级为空串——与 CC 原生 peer 消息「信封缺 from-name」的降级路径同形，
-            // Web 显示「来自 其他会话」。不拿 id 冒充名字：id 由 fromSessionId 承担身份，
-            // 而这个名字是给人看的
-            fromName: sender?.metadata?.name?.trim() ?? '',
-            fromSessionId,
+        const context: DeliveryContext = {
+            delivery: {
+                blocks: gate.blocks,
+                // 未命名的会话降级为空串——与 CC 原生 peer 消息「信封缺 from-name」的降级路径同形，
+                // Web 显示「来自 其他会话」。不拿 id 冒充名字：id 由 fromSessionId 承担身份，
+                // 而这个名字是给人看的
+                fromName: sender?.metadata?.name?.trim() ?? '',
+                fromSessionId,
+            },
+            sender,
+            localFile: findLocalFileBlock(gate.blocks),
         }
 
         const results: AgentSendMessageTargetResult[] = []
         for (const sessionId of input.targets) {
-            results.push(await this.deliverToSession(namespace, sessionId, delivery))
+            results.push(await this.deliverToSession(namespace, sessionId, context))
         }
         return results
     }
 
-    /** 单个目标的一次投递：定位 → 活性闸 → 投递 → 落库 */
+    /** 单个目标的一次投递：定位 → 活性闸 → 附件闸 → 投递 → 落库 */
     private async deliverToSession(
         namespace: string,
         targetSessionId: string,
-        delivery: Omit<AgentMessageDelivery, 'messageId'>
+        context: DeliveryContext
     ): Promise<AgentSendMessageTargetResult> {
         const target = this.deps.getSessionByNamespace(targetSessionId, namespace)
         if (!target) {
@@ -244,9 +267,27 @@ export class AgentSessionService {
             }
         }
 
+        // 附件闸（D22）：带的文件只在发件方与目标同机器时可投。判据是「**目标侧**能不能读到
+        // 那个路径」——推给 CC 时 document 只剩 `@path`、image 要 `readFileSync`，读的都是
+        // **目标机器**的文件系统。整条失败，不做静默降级：剔掉该 block 继续发文本，会让
+        // agent 以为文件带上了，那比失败更坏（与内容闸同一条理由）
+        const { localFile } = context
+        if (localFile && !isSameMachine(context.sender, target)) {
+            return {
+                sessionId: targetSessionId,
+                ok: false,
+                error:
+                    `The message carries a local file ("${localFile.filename}"), and that session is on a different machine. ` +
+                    'A file path only means something on the machine it was written on, so the file could not be read there. ' +
+                    'Nothing was sent — mobi does not drop the file and send the text anyway. ' +
+                    'If the image is reachable online, pass its URL as the block value instead of a local path. ' +
+                    'Moving files between machines is not supported yet.',
+            }
+        }
+
         // 消息标识在投递**前**就确定：它同时是信封的 message-id 与落库行的 localId，
         // 所以拼信封不必等落库（信封只进推给 CC 的那一份，不进落库的那一份）
-        const message: AgentMessageDelivery = { ...delivery, messageId: randomUUID() }
+        const message: AgentMessageDelivery = { ...context.delivery, messageId: randomUUID() }
 
         try {
             await this.deps.pushAgentMessage(targetSessionId, message)
@@ -276,6 +317,9 @@ export class AgentSessionService {
  * 用 shared 的 `UserMessageContentSchema` 而不是宽松的归一：归一会把无法识别的 block
  * **静默剔除**（logDroppedBlock），agent 说了「带上这个视频」而视频没了却收到成功，
  * 是比失败更坏的结果。agent 输入是严格契约，先按词汇表 parse 一遍。
+ *
+ * 判的是**形状**，不是**可达性**：block 词汇表通吃的四型一律放行，至于「这个文件目标
+ * 读得到吗」是逐目标的事实（同机器判据见 deliverToSession），不在这里。
  */
 function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery['blocks'] } | { ok: false; error: string } {
     const parsed = UserMessageContentSchema.safeParse(content)
@@ -293,19 +337,50 @@ function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery
         return { ok: false, error: 'content was empty, so there was nothing to send.' }
     }
 
-    // 一颗一票的事：本期只支持 text（富内容在同批次的下一张票）。
-    // **整条拒绝**，不剔除该 block 继续发文本——静默降级会让 agent 以为文件带上了
-    const unsupported = blocks.find((block) => block.type !== 'text')
-    if (unsupported) {
-        return {
-            ok: false,
-            error:
-                `This version of mobi can only send text messages, and content contained a "${unsupported.type}" block. ` +
-                'Send the text now, and pass the file separately, or ask the user to forward it.',
-        }
-    }
-
     return { ok: true, blocks }
+}
+
+/**
+ * 找出内容里需要**目标机器上真实存在的文件**的 block（没有则 null）。
+ *
+ * 只有 image / document 可能落在这一档，判据落在 `source.value` 上：推给 CC 时
+ * `document` 换算成 `@<source.value>`、`image` 要 `readFileSync(source.value)`，
+ * 两个换算读的都是它。
+ *
+ * `previewUrl` 换一个网络地址**救不了这一档**，所以不参与判据：Web 会用 previewUrl
+ * 把图渲染得很好看，而 CC 手上仍是一个它那台机器上不存在的路径——渲染好看而投递报成功，
+ * 正是「agent 以为文件带上了」的那类欺骗。
+ *
+ * `data` 形态是骨架占位（没有磁盘路径），不参与；值本身就自足的（网络图等）也不参与。
+ * 引用（quote）跨会话时 messageId 在本会话里悬空，但渲染只读 excerpt（D20），无需判据。
+ */
+function findLocalFileBlock(blocks: readonly UserContentBlock[]): LocalFileBlock | null {
+    for (const block of blocks) {
+        if (block.type !== 'image' && block.type !== 'document') continue
+        if (block.source.type !== 'url') continue
+        if (isSelfContainedUrl(block.source.value)) continue
+        return block
+    }
+    return null
+}
+
+/**
+ * 两个会话是否在同一台机器上。
+ *
+ * 判据要回答的是「同一个文件系统」，不是「同一个机器 id」：machineId 优先，缺失时退回
+ * host（与 syncEngine 解析会话所属机器同一次序）。同一 host 上的多个 runner 共享磁盘，
+ * 路径互通，正是本判据要问的。
+ *
+ * **无法证明同机器时判为不同机器**：宁可口头上多解释一次，不可让 agent 以为文件带上了。
+ */
+function isSameMachine(sender: Session | undefined, target: Session): boolean {
+    const senderId = sender?.metadata?.machineId
+    const targetId = target.metadata?.machineId
+    if (senderId && targetId) return senderId === targetId
+
+    const senderHost = sender?.metadata?.host
+    const targetHost = target.metadata?.host
+    return Boolean(senderHost) && senderHost === targetHost
 }
 
 /**

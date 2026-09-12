@@ -25,7 +25,7 @@ import type {
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
-import { buildActionUri } from '@mobi/shared'
+import { buildActionUri, isSelfContainedUrl } from '@mobi/shared'
 import { ActionLink } from '@/components/ui/ActionLink'
 import { TextBlock } from '../blocks/TextBlock'
 
@@ -127,12 +127,14 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
     const [failedFor, setFailedFor] = useState<string | null>(null)
     const raw = block.previewUrl ?? block.source.value
-    // blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览）；服务端路径优先 machine
+    // blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览、网络图）；服务端路径优先 machine
     // 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）。
+    // 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
+    // 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
     // 不带 etag v 参数：.mobi/uploads 为 write-once（上传即 shortId 唯一名，无覆盖路径），
     // 不存在同路径内容变化的陈旧缓存问题——变更语义由「重新上传得新路径」承载。
     const computed =
-        /^(blob:|data:|https?:\/\/)/i.test(raw)
+        isSelfContainedUrl(raw)
             ? raw
             : env.machineId && env.cwd
                 ? buildMachineReadFileUrl(env.machineId, env.cwd, raw)

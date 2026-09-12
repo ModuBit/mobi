@@ -130,23 +130,23 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
     return {
         name: SEND_MESSAGE_TOOL_NAME,
         // 描述照 codex 的写法（散文、无 markdown 结构、第一句直说做什么），重点在
-        // **边界**（只有 active 能收、本期只支持文本、最终不可撤回）与**跨工具协作**
+        // **边界**（只有 active 能收、附件限同机器、最终不可撤回）与**跨工具协作**
         // （id 来自 list_sessions；收件方用同一个工具回信）
         //
-        // 「本期只支持文本」这句是对**实现现状**的如实交代，不是能力自谦：schema 收的是
-        // 与 composer 同形的四型 block（签名一次定死），但非 text 的 block 现在会被整条
-        // 拒绝。不写明的话，模型会照着 schema 发图片，然后收到一个本可以避免的失败。
-        // 富内容落地时这一句随之改掉，其余不动。
+        // 附件段照 spec D3b 的草稿，只把末句改准：网络图要写进 block 的 **value**，
+        // 不是 previewUrl——previewUrl 只换 Web 的渲染地址，推给 CC 时读的仍是 value
+        // （见 hub 的 findLocalFileBlock），跨机器时那样写会被判为「带本机文件」
         description:
             'Send a message to one or more sessions. Each target receives it as a user message tagged with this session, ' +
             'so the receiving agent can see where it came from and reply with this same tool. ' +
             'Pass session ids from list_sessions. Every target must be active — a session whose process has exited cannot ' +
             'receive messages, and failures are reported per target. ' +
             'content takes the same forms as the mobi composer: usually plain text, or blocks of type text, quote, image, ' +
-            'and document. Only text blocks are supported right now — a message carrying any other block type is rejected ' +
-            'whole, with an explanation, rather than sent with the block silently dropped. ' +
-            'Write clear, cohesive, human-readable prose — the receiving agent reads this the way it reads a message from ' +
-            'the user. ' +
+            'and document. Write clear, cohesive, human-readable prose — the receiving agent reads this the way it reads ' +
+            'a message from the user. ' +
+            'image and document blocks must point at files on your own machine, and every target must be on that same ' +
+            'machine; a local file cannot reach a session on another machine, and such a send fails rather than silently ' +
+            'dropping the file. If an image is already reachable online, give the block that URL instead of a local path. ' +
             'Do not wait for a reply. There is no tool that waits — end your turn, and the target\'s response arrives later ' +
             'as a new message. The receiving agent will not stop what it is doing to handle your message; it sees it ' +
             'alongside its next tool result. ' +
