@@ -245,9 +245,35 @@ hook 观测路径一行，相隔 15ms）。
 
 ## 死目标 / 扇出素材（免造）
 
-`kill -TERM <该会话 CLI 的 PID>`（`ps -eo pid,lstart,command | grep "index.ts claude"`
-按启动时间认最新那个）→ Hub 行保留、`active=false`（`sessions` 表**没有** active 列，
-活性在 sessionCache 内存里，别去查库）。
+⚠️ **杀会话 CLI 必须验证归属，别按「最新的那个」猜**（2026-09-12 事故）。旧 recipe 写的是
+「ps 按启动时间认最新那个」，实测会误杀生产会话：e2e 环境跑着时，用户自己的生产会话
+（`/Users/manerfan/.local/bin/mobi claude …`）与 e2e 会话（`bun packages/cli/src/index.ts claude …`）
+同时在跑，按时间排序根本分不出谁是谁。更糟的是按**字段**匹配：会话行落库时
+`metadata.nativeSessionId` 还没回填，用它拼 `grep -- "--session-id=$NATIVE"` 会取到空模式
+→ **匹配所有会话 CLI** → `head -1` 拿到生产会话，SIGKILL 掉用户正在用的对话。
+
+安全做法（三条同时成立才动手，任一不满足就停手报告）：
+
+```bash
+# ① 目标会话的 native id 必须非空（先断言，别在空值上匹配）
+NATIVE=$(sqlite3 ~/.mobi-e2e/mobi.db "SELECT json_extract(metadata,'\$.nativeSessionId') FROM sessions WHERE id='<B>';")
+[ -n "$NATIVE" ] || { echo "native id 还没回填，停手"; exit 1; }
+# ② 只认「本仓库源码入口 + 精确 native id」的进程，并显式排除已安装的 mobi 二进制
+ps -eo pid,command | grep -F "packages/cli/src/index.ts claude" | grep -v grep \
+  | grep -F -- "--session-id=$NATIVE" | grep -v "/.local/bin/mobi"
+# ③ 命中的 PID 人工核对后再 kill；多于一个 / 零个都停手
+kill -TERM <上面核对过的 PID>
+```
+
+判据是「它是 e2e 的」而不是「它看起来是最新的」：e2e 会话的 cmdline 含
+`packages/cli/src/index.ts`，生产会话的是 `~/.local/bin/mobi`。
+
+`kill -TERM` 后 Hub 行保留（`sessions` 表**没有** active 列，活性在 sessionCache 内存里，
+别去查库）。**但 `active` 不是立刻翻假的**——它由心跳过期兜底（`expireInactive`，30s 没收到
+keepAlive 才翻）。实测：杀完约 2 分钟后发消息，agent 拿到的是 `Session "…" is not running
+any more`（`active` 闸门那条既有文案），**不是**投递层的可达性分支；想在 30s 窗口内发，
+才会走到投递层的失败翻译。这条也说明：**「进程没了」这条路会先被 `active` 挡下**，
+投递层那两句只覆盖「还 active 但 RPC 送不到」。
 
 探针：一次给 `["<活着>", "<已退出>"]`，期望
 
