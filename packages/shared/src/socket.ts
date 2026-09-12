@@ -63,6 +63,55 @@ export type AgentMachinesAck =
     | { ok: true; machines: AgentMachineSummary[] }
     | { ok: false; reason: AgentOpFailureReason }
 
+/**
+ * list_sessions 的 status 三档。
+ *
+ * **默认 ACTIVE**：agent 要派活就得找活着的会话——未激活的进程已经不在了，
+ * 发消息必然失败。INACTIVE 存在的意义是让 agent 能区分「没有这个会话」与
+ * 「有，但它没在跑」，而不是拿它当派活目标。
+ */
+export type AgentSessionStatus = 'ACTIVE' | 'INACTIVE' | 'ALL'
+
+/** 会话摘要（agent 视角：够它挑出派活目标，不含 UI 呈现用的进度类字段） */
+export type AgentSessionSummary = {
+    sessionId: string
+    /** 人写的标题。可能缺失、可能重名、**且会变**——只作展示，绝不当 id 用 */
+    name?: string
+    /** 会话摘要（目前主要由 change_title 写入），信息量弱，只作辅助匹配 */
+    summary?: string
+    /** 归属项目（null = 游离） */
+    projectId: string | null
+    /**
+     * 所在机器。metadata 里没有时**缺省**，不拿 host 顶替——host 是主机名不是机器 id，
+     * 顶替出来的值拿去 create_session 只会得到一个必然失败的入参。
+     */
+    machineId?: string
+    /** 工作目录。metadata 解析失败时缺省（不填假值） */
+    path?: string
+    /** 该会话的 CLI 进程是否还活着（Hub 内存态，非落库字段） */
+    active: boolean
+    /** 此刻是否有 turn 在跑 */
+    running: boolean
+    updatedAt: number
+    /** 模型（来自 runtimeState，缺省 = 尚未上报） */
+    model?: string
+    pinned: boolean
+}
+
+/** list sessions 回执。判别联合，理由同 AgentMachinesAck */
+export type AgentSessionsAck =
+    | { ok: true; sessions: AgentSessionSummary[] }
+    | { ok: false; reason: AgentOpFailureReason }
+
+/**
+ * list_sessions 的 limit 默认值与上限。
+ *
+ * 放协议层而不是 Hub 侧：工具 schema（给模型的契约）与 Hub 侧截断规则必须同源，
+ * 各写一份必然漂移——模型看到的上限与真正生效的上限对不上是最难查的那类 bug。
+ */
+export const AGENT_SESSIONS_DEFAULT_LIMIT = 20
+export const AGENT_SESSIONS_MAX_LIMIT = 50
+
 export const TerminalOpenPayloadSchema = z.object({
     sessionId: z.string().min(1),
     terminalId: z.string().min(1),
@@ -329,4 +378,20 @@ export interface ClientToServerEvents {
     /** CLI→Hub 的会话操作（agent 触达其他会话，B 类）。与 A 类的区别：不依赖 Web 在线、
      *  不是瞬态呈现（落库即终态）。namespace 由 Hub 从鉴权过的 sid 解析，CLI 不填。 */
     'listMachinesForAgent': (data: { sid: string }, cb: (answer: AgentMachinesAck) => void) => void
+    /** 同上，列出会话供 agent 挑选派活目标。sid 是发问方自己的会话（Hub 据此定 namespace），
+     *  其余字段是 agent 的查询条件——namespace 不在入参里，也不可信。 */
+    'listSessionsForAgent': (data: AgentSessionsRequest, cb: (answer: AgentSessionsAck) => void) => void
+}
+
+/** listSessionsForAgent 入参 */
+export type AgentSessionsRequest = {
+    sid: string
+    /** 匹配标题 / 摘要 / 工作目录（大小写不敏感的子串匹配） */
+    keyword?: string
+    /** 缺省 ACTIVE */
+    status?: AgentSessionStatus
+    /** 缺省 20，上限 50（超出按上限截断，不报错） */
+    limit?: number
+    /** 只看某个项目下的会话 */
+    projectId?: string
 }

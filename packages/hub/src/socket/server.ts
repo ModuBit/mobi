@@ -29,7 +29,7 @@ import { parseAccessToken } from '../utils/accessToken'
 import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
-import type { AgentSessionService } from '../sync/agentSessionService'
+import type { AgentSessionQuery, AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotSync } from '../sync/snapshotSync'
@@ -205,6 +205,12 @@ export function createSocketServer(deps: SocketServerDeps): {
         listOnlineMachinesForAgent: (() => {
             const agentSessions = deps.agentSessions?.()
             return agentSessions ? (namespace: string) => agentSessions.listMachines(namespace) : undefined
+        })(),
+        listSessionsForAgent: (() => {
+            const agentSessions = deps.agentSessions?.()
+            return agentSessions
+                ? (namespace: string, query: AgentSessionQuery) => agentSessions.listSessions(namespace, query)
+                : undefined
         })()
     }))
 

@@ -44,6 +44,22 @@ metadata:
 4. 交叉验证返回值：拿工具返回的标识（如 machineId）与 Hub 侧权威源（`curl -b jar /api/machines`）
    比对。**模型编不出 UUID + 当前时刻的心跳**，对上了才算真链路通。
 
+## 往同一个 server 加第二个工具（2026-09-12 实测）
+
+改了 Hub 侧（新 socket handler / 新服务方法）后，**运行中的 hub 进程是旧代码**——必须重启
+hub 才验得到（recipe 见 [[env-bootstrap]] 的「hub 单独重启」，数据目录保留，比 cleanup+bootstrap 省一轮重建素材）。
+
+会话 CLI 同理：已 spawn 的会话是旧代码，**必须新建会话**。
+
+一步到位的顺序：改代码 → hub 单独重启 → 新建会话（沿用旧项目，`/sessions/new?projectId=<id>`）→ 发探针。
+
+**回归检查用 init 工具清单**（一次查询覆盖所有 mobi 工具是否都还在）：
+
+```bash
+sqlite3 ~/.mobi-e2e/mobi.db "SELECT content FROM messages WHERE session_id='<sid>' AND json_extract(content,'\$.content.data.subtype')='init' LIMIT 1;" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin)['content']['data']; print([t for t in d['tools'] if t.startswith('mcp__mobi-')])"
+```
+
 ## 坑
 
 - **Auto 权限模式自动放行一切 → 「没弹审批」不能证明预授权生效（2026-09-12 实测）**

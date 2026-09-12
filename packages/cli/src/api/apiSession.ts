@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { AgentMachinesAck, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentMachinesAck, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -762,6 +762,20 @@ export class ApiSessionClient extends EventEmitter {
             .timeout(AGENT_OP_ACK_TIMEOUT_MS)
             .emitWithAck('listMachinesForAgent', { sid: this.sessionId })
         return answer as AgentMachinesAck
+    }
+
+    /**
+     * 列出会话供 agent 挑选派活目标（B 类工具族）。
+     *
+     * 口径同 listOnlineMachinesForAgent：业务失败（入参非法 / 无权限）走 ack 的
+     * ok:false，连接故障走 reject，两者语义不同。
+     * 查询条件从 wire 类型派生（去掉 sid）——CLI 只填 sid，其余原样透传。
+     */
+    async listSessionsForAgent(query: Omit<AgentSessionsRequest, 'sid'>): Promise<AgentSessionsAck> {
+        const answer = await this.socket
+            .timeout(AGENT_OP_ACK_TIMEOUT_MS)
+            .emitWithAck('listSessionsForAgent', { sid: this.sessionId, ...query })
+        return answer as AgentSessionsAck
     }
 
     /**

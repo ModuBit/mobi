@@ -25,22 +25,39 @@
  */
 
 import { z } from 'zod'
-import type { AgentMachineSummary, ClientToServerEvents } from '@mobi/shared'
+import type { AgentMachineSummary, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessResult } from './types'
 import type { StoredSession } from '../../../store'
+import type { AgentSessionQuery } from '../../../sync/agentSessionService'
 
 type ListMachinesForAgentHandler = ClientToServerEvents['listMachinesForAgent']
+type ListSessionsForAgentHandler = ClientToServerEvents['listSessionsForAgent']
 
 const listMachinesPayloadSchema = z.object({
     sid: z.string(),
+})
+
+/**
+ * 入参只校验**形状**，不校验 limit 的取值区间——「上限 50、超出按上限截断」
+ * 是业务规则，只由 AgentSessionService 一处决定（工具 schema 负责在模型侧
+ * 提前给出合法区间，两处职责不同，别把规则也抄一份到这里）。
+ */
+const listSessionsPayloadSchema = z.object({
+    sid: z.string(),
+    keyword: z.string().optional(),
+    status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional(),
+    limit: z.number().int().optional(),
+    projectId: z.string().optional(),
 })
 
 export type AgentSessionHandlersDeps = {
     resolveSessionAccess: (sessionId: string) => AccessResult<StoredSession>
     /** AgentSessionService.listMachines（装配缺失属组装 bug，见下方守卫） */
     listOnlineMachines?: (namespace: string) => AgentMachineSummary[]
+    /** AgentSessionService.listSessions（同上） */
+    listSessions?: (namespace: string, query: AgentSessionQuery) => AgentSessionSummary[]
 }
 
 /**
@@ -50,7 +67,7 @@ export type AgentSessionHandlersDeps = {
  * 留给连接故障，两者语义不同（与 ui-command 同口径）。
  */
 export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: AgentSessionHandlersDeps): void {
-    const { resolveSessionAccess, listOnlineMachines } = deps
+    const { resolveSessionAccess, listOnlineMachines, listSessions } = deps
 
     socket.on('listMachinesForAgent', ((raw: unknown, cb: Parameters<ListMachinesForAgentHandler>[1]) => {
         const parsed = listMachinesPayloadSchema.safeParse(raw)
@@ -75,4 +92,29 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
 
         cb?.({ ok: true, machines: listOnlineMachines(access.value.namespace) })
     }) as ListMachinesForAgentHandler)
+
+    socket.on('listSessionsForAgent', ((raw: unknown, cb: Parameters<ListSessionsForAgentHandler>[1]) => {
+        const parsed = listSessionsPayloadSchema.safeParse(raw)
+        if (!parsed.success) {
+            cb?.({ ok: false, reason: 'invalid-payload' })
+            return
+        }
+
+        const access = resolveSessionAccess(parsed.data.sid)
+        if (!access.ok) {
+            cb?.({ ok: false, reason: access.reason })
+            return
+        }
+
+        // 守卫同 listMachinesForAgent：空清单是"真的没有"，缺装配是"服务没接上"，
+        // 两者绝不能混为一谈
+        if (!listSessions) {
+            hubLogger.error('[AgentSessions] listSessions 未装配，请求被拒')
+            cb?.({ ok: false, reason: 'handler-misconfigured' })
+            return
+        }
+
+        const { sid: _sid, ...query } = parsed.data
+        cb?.({ ok: true, sessions: listSessions(access.value.namespace, query) })
+    }) as ListSessionsForAgentHandler)
 }

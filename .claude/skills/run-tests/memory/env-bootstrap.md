@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / hub 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-09-10
+  last_verified: 2026-09-12
 ---
 
 # 环境启动
@@ -74,13 +74,21 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 
 ## hub 单独重启（验证 CLI socket 断线重连，2026-09-09）
 
-不 cleanup 整环境，只重启 hub（触发 CLI socket 断连→重连，snapshot delta 场景实测 forceFull 重发）：
+不 cleanup 整环境，只重启 hub（触发 CLI socket 断连→重连，snapshot delta 场景实测 forceFull 重发）。
+**改了 hub 源码后验新逻辑走这条**——cleanup+bootstrap 会清空数据目录，项目/会话全丢要重建；
+只重启 hub 则数据目录保留，已有会话的 CLI 重连后依旧 active（2026-09-12 实测）。
 
-1. 找 PID：`ps -eo pid,ppid,command | grep "hub start-sync"`（e2e hub 带 `--profile e2e --port 2224`；24520/66011 是用户 dev/生产 hub，禁碰）
-2. `kill -TERM <pid>` → `run_in_background` 拉起同命令同 env（日志 `>>` 追加保持 stats 历史）
-3. 轮询 `/health` 就绪
+1. 找 PID：`ps -eo pid,ppid,command | grep -E "profile e2e|2224" | grep -v grep`
+   （e2e 三件套各一行：hub / runner / `bun run dev`；生产 hub 是 `~/.local/bin/mobi hub start-sync`，**禁碰**）
+2. `kill -TERM <hub pid>` → 轮询 `lsof -nP -iTCP:2224 -sTCP:LISTEN` 直到端口释放（实测 1s）
+3. `run_in_background` 套 **setsid** 拉起同命令，日志 `>> hub.log` 追加：
+   `perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV' bash -c 'exec bun run <repo>/packages/cli/src/index.ts --profile e2e hub start-sync --host 127.0.0.1 --port 2224 >>"$HOME/.mobi-e2e/logs/hub.log" 2>&1'`
+4. 轮询 `/health` 就绪
 
-**坑**：Bash 工具里 `nohup ... &` 拉起的进程在**工具调用结束时被沙箱 SIGTERM 回收**（exits.log 见 signal-term、uptime ~5s）——必须用 `run_in_background: true`。
+§ 重启后的 hub 父进程不是 bootstrap，`ready.flag` 也早就在——**别拿 ready.flag 判断**，直接 `curl /health`。
+§ cleanup 仍能找到它（pattern 兜底按 `--profile e2e` 匹配），不用手工收尾。
+
+**坑**：Bash 工具里 `nohup ... &` 拉起的进程在**工具调用结束时被沙箱 SIGTERM 回收**（exits.log 见 signal-term、uptime ~5s）——必须用 `run_in_background: true` 且**套 setsid**（与 bootstrap 同理，见下方坑表）。
 
 ## curl 直调 hub API（不走浏览器）
 

@@ -15,12 +15,13 @@
  */
 
 import type { Store, StoredMachine, StoredSession } from '../../../store'
-import type { AgentMachineSummary } from '@mobi/shared'
+import type { AgentMachineSummary, AgentSessionSummary } from '@mobi/shared'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { SessionFactsSink } from '../../../sync/sessionFacts'
+import type { AgentSessionQuery } from '../../../sync/agentSessionService'
 import type { SnapshotCliLease, SnapshotSync } from '../../../sync/snapshotSync'
 import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
@@ -57,13 +58,15 @@ export type CliHandlersDeps = {
     /** Agent 会话操作：列可派活的在线机器（AgentSessionService.listMachines）。
      *  缺装配时 handler 回 handler-misconfigured，不静默返回空清单 */
     listOnlineMachinesForAgent?: (namespace: string) => AgentMachineSummary[]
+    /** Agent 会话操作：列可派活的会话（AgentSessionService.listSessions）。同上守卫 */
+    listSessionsForAgent?: (namespace: string, query: AgentSessionQuery) => AgentSessionSummary[]
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
     factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, listOnlineMachinesForAgent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, listOnlineMachinesForAgent, listSessionsForAgent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -148,7 +151,8 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     })
     registerAgentSessionHandlers(socket, {
         resolveSessionAccess,
-        listOnlineMachines: listOnlineMachinesForAgent
+        listOnlineMachines: listOnlineMachinesForAgent,
+        listSessions: listSessionsForAgent
     })
 
     socket.on('ping', (callback: () => void) => {

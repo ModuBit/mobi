@@ -118,6 +118,7 @@ export class SyncEngine {
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.agentSessionService = new AgentSessionService({
             getOnlineMachinesByNamespace: (namespace) => this.machineCache.getOnlineMachinesByNamespace(namespace),
+            getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
         })
         this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
