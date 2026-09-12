@@ -359,6 +359,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         'goal-status': z.object({ sid: z.string(), goalStatus: GoalStatusSchema.nullable() }),
         'cache-status': z.object({ sid: z.string(), cacheStatus: CacheStatusSchema.nullable() }),
         'run-started': z.object({ sid: z.string(), runStartedAt: z.number().finite().positive() }).passthrough(),
+        // 两个字段都是判据本身，缺一不可（不是「其余字段透传」那一类）
+        'receive-readiness': z.object({ sid: z.string(), canReceive: z.boolean() }),
         'session-end': z.object({ sid: z.string(), time: z.number() }).passthrough(),
     } as const
 
@@ -397,6 +399,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     socket.on('goal-status', (raw) => validateAndForward(factSchemas['goal-status'], raw, (data) => factsSink?.handleGoalStatus?.(data)))
     socket.on('cache-status', (raw) => validateAndForward(factSchemas['cache-status'], raw, (data) => factsSink?.handleCacheStatus?.(data)))
     socket.on('run-started', (raw) => validateAndForward(factSchemas['run-started'], raw, (data) => factsSink?.handleRunStarted?.(data)))
+    socket.on('receive-readiness', (raw) => validateAndForward(factSchemas['receive-readiness'], raw, (data) => factsSink?.handleReceiveReadiness?.(data)))
     socket.on('session-end', (raw) => validateAndForward(factSchemas['session-end'], raw, (data) => {
         factsSink?.handleSessionEnd?.(data)
         forcePushUnsubmittedAfterEnd(data.sid)

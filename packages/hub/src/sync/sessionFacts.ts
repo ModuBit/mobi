@@ -59,6 +59,17 @@ export type RunStartedPayload = {
     runStartedAt: number
 }
 
+export type ReceiveReadinessPayload = {
+    sid: string
+    /**
+     * 本会话此刻能不能收消息（CLI 的 sink 接通 / 断开时各上报一次）。
+     *
+     * 与其它事实不同，这一条**不落库**：它随会话进程生灭，跨进程重启没有意义。它只是
+     * 「此刻」的状态，会被反复翻转（sink 每轮收尾清空、下一轮再接上）。
+     */
+    canReceive: boolean
+}
+
 export type CacheStatusPayload = {
     sid: string
     /** null 表示清空（首个 result 帧到达后 CLI 清除） */
@@ -76,4 +87,6 @@ export type SessionFactsSink = {
     handleGoalStatus?: (payload: GoalStatusPayload) => void
     handleRunStarted?: (payload: RunStartedPayload) => void
     handleCacheStatus?: (payload: CacheStatusPayload) => void
+    /** 不落库的「此刻」事实，只喂 SessionReceiveReadiness（见该模块说明） */
+    handleReceiveReadiness?: (payload: ReceiveReadinessPayload) => void
 }

@@ -1041,7 +1041,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
                         // 跨会话消息 sink 与 steer sink 同生命周期：本轮的 input stream 关了就置空
-                        onAgentMessageSinkReady: (push) => { this.agentMessageSink = push },
+                        onAgentMessageSinkReady: (push) => {
+                            this.agentMessageSink = push
+                            // 本会话从此能收消息了。Hub 拿它等「建完即可用」（见 SessionReceiveReadiness）
+                            session.client.reportReceiveReadiness(true)
+                        },
                         // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
                         // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返。
                         // 同时是 turn 追踪的 push 接线点（批次 A）：更新策略收口在
@@ -1126,6 +1130,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 命中 stale sink 导致 steer push 抛错（虽已 try/catch 回填，但清空让未就绪态更明确）
                     this.steerSink = null;
                     this.agentMessageSink = null;
+                    // 本轮输入通道已关，本会话此刻收不下消息了。**这不是「会话退了」**——
+                    // 下一轮起来会再报 true；Hub 侧据此把「还没接上」与「已经退出」分开说
+                    session.client.reportReceiveReadiness(false)
                     // 轮级状态复位：后台任务集合按「进程重启即清空」语义随轮清空（sdk.d.ts level 信号
                     // 为 per-process）；待注入停止信息与暂存批次标记不跨轮残留
                     this.backgroundTaskIds = new Set<string>();

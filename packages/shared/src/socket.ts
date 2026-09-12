@@ -466,6 +466,10 @@ export interface ClientToServerEvents {
     /** CLI 会话恢复（resume/fork）时上报 prompt cache 状态（hub 落库到 runtimeState.cacheStatus + SSE 推 web）。
      * cacheStatus 为 null 表示清空（首 turn result 到达后 CLI 清除，过期提示只在首轮前有意义） */
     'cache-status': (data: { sid: string; cacheStatus: CacheStatus | null }) => void
+    /** CLI「本会话此刻能不能收消息」的翻转上报（sink 接通 true / 轮次收尾断开 false）。
+     * **不落库**——只喂 hub 的会话内 latch（等「建完即可用」），跨进程重启没有意义；
+     * 且它会反复翻转，不是「会话还在不在」的判据。 */
+    'receive-readiness': (data: { sid: string; canReceive: boolean }) => void
     /** CLI→Hub 的 UI 命令（agent 触达 mobi 界面，A 类）。ack 语义：delivered=true 表示已广播给活跃 Web 连接
      *  （非"用户已看到"，Web 不参与 ack）；无 Web 在线时 delivered=false（调用成功非错误，CLI 转平和反馈）。
      *  socket 断开/ack 超时由 emitWithAck reject 体现，属连接故障，与离线语义区分 */

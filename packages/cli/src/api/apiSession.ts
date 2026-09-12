@@ -861,6 +861,22 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * 上报「本会话此刻能不能收消息」（sink 接通 / 断开时各一次，**状态翻转才报**）。
+     *
+     * Hub 用它等「建完即可用」：从 spawn 回执到 sink 接通隔着 130–550ms，回执那一刻只有
+     * 「进程上线了」。也用它把投递失败说准——「还没接上」和「已经退出」是两回事。
+     *
+     * 它是**此刻**的事实，不是稳定属性：sink 在每轮收尾被清空、下一轮再接上，所以这个值
+     * 会反复翻转（见 Hub 侧 SessionReceiveReadiness 的说明）。
+     */
+    reportReceiveReadiness(canReceive: boolean): void {
+        this.socket.emit('receive-readiness', {
+            sid: this.sessionId,
+            canReceive,
+        })
+    }
+
+    /**
      * 上报 goal 状态（hub 落库到 runtimeState.goalStatus + SSE 推 web）。
      * goalStatus 为 null 表示清空（达成 10s 后自动清空 / 手动清理）。
      */

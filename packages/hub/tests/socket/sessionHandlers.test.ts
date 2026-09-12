@@ -397,6 +397,65 @@ describe('run-started：CLI 轮次起点上报 → 校验 + 委派 onRunStarted'
     })
 })
 
+describe('receive-readiness：CLI 上报「此刻能不能收消息」→ 校验 + 委派 onReceiveReadiness', () => {
+    /** 构造 receive-readiness 专用 deps，捕获 onReceiveReadiness 回调与 accessError。
+     *  与其它事实不同，这条只在 hub 内存里翻转（不落库），故断言只到 sink 入参为止 */
+    function makeReadinessDeps(opts: { sessionOk?: boolean } = {}) {
+        const captured: { sid: string; canReceive: boolean }[] = []
+        const accessError = { called: false }
+        const deps: SessionHandlersDeps = {
+            store: { sessions: {}, messages: {} } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => {
+                if (opts.sessionOk === false) return { ok: false, reason: 'not-found' as const }
+                return { ok: true as const, value: makeStoredSession(sid) }
+            },
+            emitAccessError: () => { accessError.called = true },
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotSync: new SnapshotSync(),
+            factsSink: { handleReceiveReadiness: (payload: { sid: string; canReceive: boolean }) => { captured.push(payload) } },
+        }
+        return { deps, captured, accessError }
+    }
+
+    test('两种翻转都透传（true 接通 / false 断开）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeReadinessDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('receive-readiness', { sid: 's1', canReceive: true })
+        fakeSocket.emit('receive-readiness', { sid: 's1', canReceive: false })
+
+        expect(captured).toEqual([
+            { sid: 's1', canReceive: true },
+            { sid: 's1', canReceive: false },
+        ])
+        expect(accessError.called).toBe(false)
+    })
+
+    test('非法 payload（canReceive 非布尔 / 缺字段 / sid 非字符串）→ 静默丢弃', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeReadinessDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('receive-readiness', { sid: 's1', canReceive: 'true' as unknown })
+        fakeSocket.emit('receive-readiness', { sid: 's1' })
+        fakeSocket.emit('receive-readiness', { sid: 123 as unknown, canReceive: true })
+
+        expect(captured).toHaveLength(0)
+    })
+
+    test('未知 sid → emitAccessError，不转发', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeReadinessDeps({ sessionOk: false })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('receive-readiness', { sid: 'unknown', canReceive: true })
+
+        expect(captured).toHaveLength(0)
+        expect(accessError.called).toBe(true)
+    })
+})
+
 describe('messages-facts：Socket adapter', () => {
     test('把 module 的存储行 publication 翻译为 room update 与 SSE 事件', () => {
         const fakeSocket = makeFakeSocket()

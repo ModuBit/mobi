@@ -45,6 +45,7 @@ import {
     type SpawnSessionOptions
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { SessionReceiveReadiness } from './sessionReceiveReadiness'
 import { hubLogger } from '../logger'
 
 export type { Session, SyncEvent } from '@mobi/shared/types'
@@ -102,6 +103,14 @@ export class SyncEngine {
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
     private readonly store: Store
+    /**
+     * 「这个会话此刻能不能收消息」的事实（不落库——它随会话进程生灭）。
+     *
+     * 与 `active` / `running` 都不同：那两个各自回答「进程在不在」与「这一轮在不在干活」，
+     * 而建完会话到真能收消息之间隔着上百毫秒，正是这个事实要填的缝。为什么必须由 CLI 报
+     * 而不是 Hub 猜，见 SessionReceiveReadiness 的说明。
+     */
+    private readonly receiveReadiness = new SessionReceiveReadiness()
     /** rewind 软删除上界（受理时写 / 截断回报消费；与 CLI socket handler 共用实例，index.ts 注入） */
     private readonly rewindDeleteBounds: RewindDeleteBoundTracker
     private inactivityTimer: NodeJS.Timeout | null = null
@@ -154,11 +163,16 @@ export class SyncEngine {
         this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
         this.factsSink = {
             handleSessionAlive: (payload) => this.handleSessionAlive(payload),
-            handleSessionEnd: (payload) => this.sessionCache.handleSessionEnd(payload),
+            handleSessionEnd: (payload) => {
+                this.sessionCache.handleSessionEnd(payload)
+                // 进程没了，这条「此刻」的事实跟着作废（回到没定论，而不是留个 false，见 clear 说明）
+                this.receiveReadiness.clear(payload.sid)
+            },
             handleContextUsage: (payload) => this.sessionCache.handleContextUsage(payload),
             handleGoalStatus: (payload) => this.sessionCache.handleGoalStatus(payload),
             handleRunStarted: (payload) => this.sessionCache.handleRunStarted(payload),
             handleCacheStatus: (payload) => this.sessionCache.handleCacheStatus(payload),
+            handleReceiveReadiness: (payload) => this.receiveReadiness.set(payload.sid, payload.canReceive),
         }
         this.warmupCache()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
