@@ -63,6 +63,10 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
         permissionMode: PermissionModeSchema.optional().describe(
             'Optional permission mode for the new session. Omit to take the mobi default.',
         ),
+        title: z.string().min(1).max(255).optional().describe(
+            'Optional title for the new session. This is only its initial name — the new session may rename itself later. ' +
+            'Omit to leave it unnamed.',
+        ),
     })
 
     async function execute(rawArgs: unknown): Promise<CreateSessionToolResult> {
@@ -102,7 +106,9 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
             'when the work can go to a session that already exists, use send_message_to_session instead. ' +
             'Call list_machines first and pass one of the returned machineIds; this tool does not accept a machine name. ' +
             'directory is required and is resolved on that machine. ' +
-            'Omit projectId, model, effort, and permissionMode to take mobi\'s defaults. ' +
+            'Omit projectId, model, effort, permissionMode, and title to take mobi\'s defaults. ' +
+            'A title is only the new session\'s initial name — that session may rename itself once it knows what ' +
+            'the work is, and its own name wins. ' +
             'The new session starts with no first message — it is an empty working context. ' +
             'Give it work with send_message_to_session. ' +
             'Creation is not instant: it launches a real Claude Code process on that machine. ' +

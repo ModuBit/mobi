@@ -70,6 +70,8 @@ function makeService(
         pushFailure?: string
         /** 让 storeAgentMessage 抛这个错（模拟落库故障） */
         storeFailure?: string
+        /** renameSession 前 N 次抛这个错（模拟 CAS 版本撞车），之后成功 */
+        renameFailures?: number
     },
 ) {
     const seenNamespaces: string[] = []
@@ -77,6 +79,9 @@ function makeService(
     const spawnCalls: Array<{ machineId: string; directory: string; options: unknown }> = []
     const pushed: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
     const stored: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
+    const renamed: Array<{ sessionId: string; name: string }> = []
+    /** 改名被调用的次数（与成功次数分开：失败也要能数出来，否则重试用例数不出「试了几次」） */
+    let renameAttempts = 0
     const service = new AgentSessionService({
         getOnlineMachinesByNamespace: (namespace) => {
             seenNamespaces.push(namespace)
@@ -107,8 +112,17 @@ function makeService(
             }
             stored.push({ sessionId, delivery })
         },
+        renameSession: async (sessionId, name) => {
+            // 按**调用次数**判失败，不能按成功次数（renamed.length）：失败时不入列表，
+            // 用成功次数判会让「只失败前 N 次」变成「永远失败」，重试用例就假红
+            renameAttempts++
+            if (renameAttempts <= (overrides?.renameFailures ?? 0)) {
+                throw new Error('Session was modified concurrently. Please try again.')
+            }
+            renamed.push({ sessionId, name })
+        },
     })
-    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored }
+    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored, renamed }
 }
 
 describe('AgentSessionService.listMachines', () => {
@@ -459,6 +473,7 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             spawnSession: async () => ({ type: 'success', sessionId: 's-new' }),
             pushAgentMessage: async () => {},
             storeAgentMessage: async () => {},
+            renameSession: async () => {},
         })
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
@@ -517,6 +532,64 @@ describe('AgentSessionService.createSession — 起进程', () => {
         await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
 
         expect((await service.createSession('other-ns', { machineId: 'm1', directory: '/work/app' })).ok).toBe(false)
+    })
+})
+
+describe('AgentSessionService.createSession — 初始标题（D10 的可选 title）', () => {
+    const online = makeMachine({ id: 'm1', namespace: 'ns' })
+
+    test('给了 title → 建完调改名（走人手动改名那条路），且不进 spawn 透传', async () => {
+        const { service, renamed, spawnCalls } = makeService([online], [], { spawnResult: { type: 'success', sessionId: 's-new' } })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: '验收会话' })
+
+        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(renamed).toEqual([{ sessionId: 's-new', name: '验收会话' }])
+        // 标题不走 spawn 链路（那条路要新增 CLI 启动参数）——spawn 的选项里没有它
+        expect(spawnCalls[0].options).not.toHaveProperty('title')
+    })
+
+    test('不给 title → 一次改名都不调（缺省就是没有名字，不编一个）', async () => {
+        const { service, renamed } = makeService([online], [], { spawnResult: { type: 'success', sessionId: 's-new' } })
+
+        await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(renamed).toHaveLength(0)
+    })
+
+    test('改名撞 CAS 版本 → 刷新后重试一次就成（时序问题，不是规则冲突）', async () => {
+        const { service, renamed } = makeService([online], [], {
+            spawnResult: { type: 'success', sessionId: 's-new' },
+            renameFailures: 1,
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: 'T' })
+
+        expect(result.ok).toBe(true)
+        expect(renamed).toEqual([{ sessionId: 's-new', name: 'T' }])
+    })
+
+    test('两次都改名失败 → 仍判成功（会话已建好可用，不为一个称呼把它判失败）', async () => {
+        const { service, renamed } = makeService([online], [], {
+            spawnResult: { type: 'success', sessionId: 's-new' },
+            renameFailures: 2,
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: 'T' })
+
+        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(renamed).toHaveLength(0)
+    })
+
+    test('进程没起来 → 不调改名（没有会话可改名）', async () => {
+        const { service, renamed } = makeService([online], [], {
+            spawnResult: { type: 'error', message: 'directory could not be created' },
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/nope', title: 'T' })
+
+        expect(result.ok).toBe(false)
+        expect(renamed).toHaveLength(0)
     })
 })
 

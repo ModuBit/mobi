@@ -137,6 +137,13 @@ export class SyncEngine {
                 // 投递已经发生，别再回灌 CLI 房间（否则目标 CLI 会照着这行二次入队）
                 skipCliEcho: true,
             }),
+            // 初始标题（create_session 的 title）走人手动改名那条路，规则只一份。
+            // 先按 id 刷一次缓存：行是 CLI 连上来时建的，spawn 返回时通常已在缓存里，
+            // 但这里不赌时序——刷新是便宜的，且 renameSession 找不到行会直接抛
+            renameSession: async (sessionId, name) => {
+                this.sessionCache.refreshSession(sessionId)
+                await this.renameSession(sessionId, name)
+            },
         })
         this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)

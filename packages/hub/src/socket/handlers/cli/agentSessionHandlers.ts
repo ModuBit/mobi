@@ -64,6 +64,8 @@ const createSessionPayloadSchema = z.object({
     model: z.string().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
     permissionMode: PermissionModeSchema.optional(),
+    // 长度上限与 Web 侧改名同一规则（那边是 255）；标题是给人看的短标签，不是正文
+    title: z.string().min(1).max(255).optional(),
 })
 
 /**

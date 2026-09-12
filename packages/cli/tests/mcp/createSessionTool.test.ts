@@ -89,6 +89,7 @@ describe('createCreateSessionTool', () => {
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
+            title: '验收会话',
         })
 
         expect(createSession).toHaveBeenCalledWith({
@@ -98,7 +99,20 @@ describe('createCreateSessionTool', () => {
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
+            title: '验收会话',
         })
+    })
+
+    it('rejects a blank or oversized title without calling the hub', async () => {
+        const { deps, createSession } = buildDeps()
+        const tool = createCreateSessionTool(deps)
+
+        for (const title of ['', 'x'.repeat(256)]) {
+            const result = await tool.execute({ machineId: 'm1', directory: '/work/app', title })
+
+            expect(result.isError).toBe(true)
+        }
+        expect(createSession).not.toHaveBeenCalled()
     })
 
     it('rejects a missing machineId, a blank directory, and an unknown effort without calling the hub', async () => {

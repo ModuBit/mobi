@@ -297,6 +297,7 @@ describe('createSessionForAgent handler', () => {
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
+            title: '验收会话',
         })
 
         // sid 是发给 Hub 的寻址信息，不是建会话的参数——混进去会变成服务看不懂的字段
@@ -307,7 +308,24 @@ describe('createSessionForAgent handler', () => {
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
+            title: '验收会话',
         }])
+    })
+
+    test('title 只校验形状：空串 / 超长拒绝，正常值透传', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenCreateInputs } = makeDeps()
+        register(socket, deps)
+
+        const blank = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app', title: '' })
+        const tooLong = await callCreateSession(socket, {
+            sid: 's1', machineId: 'm1', directory: '/work/app', title: 'x'.repeat(256),
+        })
+
+        // 与 Web 侧改名同一上限（255）——两处规则不一样会让 agent 设得上、人改不上
+        expect(blank.ok).toBe(false)
+        expect(tooLong.ok).toBe(false)
+        expect(seenCreateInputs).toHaveLength(0)
     })
 
     test('namespace 取自鉴权会话而非入参', async () => {

@@ -124,6 +124,14 @@ export type AgentCreateSessionRequest = {
     model?: string
     effort?: EffortLevel
     permissionMode?: PermissionMode
+    /**
+     * 会话标题（可选，与 Web 侧改名的上限同规则）。
+     *
+     * **是初始名字，不是最终名字**：新会话的 agent 一旦自己 `change_title` 就会覆盖它——
+     * 那是更懂上下文的一方在命名，本来就该覆盖。它的价值在于「刚建出来、还没人自我命名」
+     * 的那段时间里认得出这个会话（很多会话永远不会自我命名）。
+     */
+    title?: string
 }
 
 /**

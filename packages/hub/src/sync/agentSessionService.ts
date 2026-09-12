@@ -102,6 +102,13 @@ export interface AgentSessionServiceDeps {
     pushAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<void>
     /** 把投递成功的那条消息落到目标会话（落库形态不含信封，meta 带 sentFrom/crossSession/fromSessionId） */
     storeAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<void>
+    /**
+     * 给会话改标题。**与 Web 侧手动改名同一条路**（`SyncEngine.renameSession`：CAS 写 metadata、
+     * 清自动摘要、best-effort 同步 CC 标题）——不另造一条「agent 专用改名」。
+     *
+     * 由 create_session 的初始 title 使用：spawn 成功后再设，见 applyInitialTitle。
+     */
+    renameSession: (sessionId: string, name: string) => Promise<void>
 }
 
 /** list_sessions 的查询条件（不含 namespace——那是从鉴权会话解析出来的） */
@@ -194,7 +201,43 @@ export class AgentSessionService {
         if (result.type === 'error') {
             return { ok: false, error: translateSpawnFailure(result.message) }
         }
+
+        // 会话标题在建完后单独设（D10 的可选 title）。不把它透传进 spawn 链路，是因为那条路
+        // 要新增一个 CLI 启动参数再跨四层传下来（shared → rpcGateway → runner → CLI args），
+        // 而这里调的是**人手动改名用的同一条路**——同样的规则、同样的清摘要语义、同样的
+        // best-effort 同步 CC 标题，零协议改动。窗口是毫秒级，人眼与 agent 都分辨不出。
+        if (input.title !== undefined) {
+            await this.applyInitialTitle(result.sessionId, input.title)
+        }
+
         return { ok: true, sessionId: result.sessionId }
+    }
+
+    /**
+     * 给刚建好的会话设初始标题（best-effort）。
+     *
+     * **失败不判决 create_session 失败**：会话已经建起来了、马上就能用，标题只是个称呼；
+     * 为它把整件事判失败，会逼 agent 重来一遍并得到第二个会话。所以只在日志里留证据。
+     * 这与「投递成功但落库失败仍算成功」是同一条取舍（见 deliverToSession 的注释）。
+     *
+     * 重试一次的理由：改名是 CAS 写（比对 metadata 版本），而 CLI 刚连上来也写过一次
+     * metadata——撞版本是时序问题不是规则冲突，刷新缓存后重来一次就能过。
+     */
+    private async applyInitialTitle(sessionId: string, title: string): Promise<void> {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                await this.deps.renameSession(sessionId, title)
+                return
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : String(error)
+                if (attempt === 2) {
+                    hubLogger.warn(
+                        `[AgentSessions] 会话 ${sessionId} 的初始标题 "${title}" 没设上（会话已可用，仅少个称呼）: ${reason}`
+                    )
+                    return
+                }
+            }
+        }
     }
 
     /**
