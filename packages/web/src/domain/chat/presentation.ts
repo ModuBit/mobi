@@ -28,6 +28,19 @@ export function getCrossSessionFrom(meta: MessageMeta | undefined): string | nul
     return typeof from === 'string' && from.length > 0 ? from : null
 }
 
+/**
+ * 是否为跨会话入站消息（来源有二：CC 原生 peer 与 mobi 自发投递）。
+ *
+ * 与 `getCrossSessionFrom` 分开的理由：**来源会话没有名字时 from 是空串**（`change_title`
+ * 之前的新会话就是这样），此时 `getCrossSessionFrom` 返回 null，但它依然是跨会话来的。
+ * 拿 `getCrossSessionFrom !== null` 当「要不要显示来源标签」的判据，会让这类消息整条标签
+ * 消失、看起来像用户自己发的——`CrossSessionTag` 的 from=null 分支（通用文案）才是它的归宿。
+ */
+export function isCrossSessionInbound(meta: MessageMeta | undefined): boolean {
+    const crossSession = (meta as { crossSession?: unknown } | undefined)?.crossSession
+    return typeof crossSession === 'object' && crossSession !== null
+}
+
 /** 入站 turn 来源合法值（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒 */
 type TurnOrigin = 'peer' | 'scheduled' | 'loop'
 

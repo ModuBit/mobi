@@ -160,8 +160,11 @@ export const MessageMetaSchema = z.object({
      *  只有名字）与 mobi 自发投递（agent 经 send_message_to_session 发出） */
     crossSession: z.object({ from: z.string() }).optional(),
     /** 来源会话 id（只有 **mobi 自发投递** 的消息带它）。判据用途：有 id = mobi 自发；
-     *  有 from 无 id = CC 原生 peer。**必须在此声明**——zod 默认剥未知键，漏了它
-     *  下游（apiSession 的重投守卫）就永远读不到 */
+     *  有 from 无 id = CC 原生 peer。
+     *
+     *  声明在此是为了 meta 的**形状保真**——zod 默认剥未知键，漏掉它就等于把「这条是谁投的」
+     *  从 meta 里抹掉。注意**重投守卫并不读这里**：`isMobiSentCrossSession`（shared）读的是
+     *  裸 `content.meta`，那条路不经过本 schema */
     fromSessionId: z.string().optional(),
     /** 入站 turn 来源（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒。
      *  仅 hook 观测的入站 turn 落库时携带；普通 webapp user 消息缺省 */

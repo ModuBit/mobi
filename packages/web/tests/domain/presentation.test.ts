@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { isClearInProgress, isCommandInProgress, COMPACT_COMMAND, isCompactCompletion } from '../../src/domain/chat/presentation'
-import type { ChatBlock } from '../../src/domain/chat/types'
+import { isClearInProgress, isCommandInProgress, COMPACT_COMMAND, isCompactCompletion, getCrossSessionFrom, isCrossSessionInbound } from '../../src/domain/chat/presentation'
+import type { ChatBlock, MessageMeta } from '../../src/domain/chat/types'
 
 function userText(text: string): ChatBlock {
     return { kind: 'user-text', id: 'u', localId: null, createdAt: 0, blocks: [{ type: 'text', text }] }
@@ -131,5 +131,27 @@ describe('isCommandInProgress (/compact, started 事件驱动)', () => {
 
     it('旧数据兼容：无 started 时 sentinel 路径不受影响', () => {
         expect(isCompressing([userText('/compact'), compactSummary()])).toBe(false)
+    })
+})
+
+describe('isCrossSessionInbound（来源标签该不该显示）', () => {
+    /** meta 是 wire 形状（后端字段），测试里只造关心的那几个键 */
+    const meta = (over: Record<string, unknown>): MessageMeta => over as MessageMeta
+
+    it('有来源名 → true', () => {
+        expect(isCrossSessionInbound(meta({ crossSession: { from: '另一个会话' } }))).toBe(true)
+    })
+
+    it('来源会话还没名字（from 为空串）→ 仍为 true', () => {
+        // 这正是本次修的场景：拿 getCrossSessionFrom !== null 当判据会让这类消息整条标签消失，
+        // 看起来像用户自己发的；CrossSessionTag 的 from=null 分支（通用文案）才是它的归宿
+        const unnamed = meta({ crossSession: { from: '' } })
+        expect(getCrossSessionFrom(unnamed)).toBeNull()
+        expect(isCrossSessionInbound(unnamed)).toBe(true)
+    })
+
+    it('普通 web 用户消息（无 crossSession）→ false', () => {
+        expect(isCrossSessionInbound(meta({ turnOrigin: 'peer' }))).toBe(false)
+        expect(isCrossSessionInbound(undefined)).toBe(false)
     })
 })

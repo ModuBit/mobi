@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { registerAgentSessionHandlers } from '../../../src/socket/handlers/cli/agentSessionHandlers'
 import type { AgentSessionHandlersDeps } from '../../../src/socket/handlers/cli/agentSessionHandlers'
 import type { StoredSession } from '../../../src/store/types'
+import type { AccessErrorReason } from '../../../src/socket/handlers/cli/types'
 import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */
@@ -52,13 +53,17 @@ function makeDeps(opts?: {
     sessions?: AgentSessionSummary[]
     createResult?: AgentCreateSessionAck
     sendResult?: AgentSendMessageTargetResult[]
+    /** 让 resolveSessionAccess 失败（模拟鉴权 / 存在性判定不通过） */
+    accessReason?: AccessErrorReason
 }) {
     const seenNamespaces: string[] = []
     const seenQueries: unknown[] = []
     const seenCreateInputs: unknown[] = []
     const seenSendCalls: Array<{ namespace: string; fromSessionId: string; input: unknown }> = []
     const deps: AgentSessionHandlersDeps = {
-        resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
+        resolveSessionAccess: (sid: string) => (opts?.accessReason
+            ? { ok: false as const, reason: opts.accessReason }
+            : { ok: true as const, value: makeStoredSession(sid) }),
         listOnlineMachines: (namespace: string) => {
             seenNamespaces.push(namespace)
             return opts?.machines ?? []
@@ -387,6 +392,28 @@ describe('createSessionForAgent handler', () => {
 
         expect((await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })).ok).toBe(false)
         expect(seenCreateInputs).toHaveLength(0)
+    })
+
+    test('访问被拒的文案不能说成「入参非法」，且 not-found 与身份不明分开说', async () => {
+        const rejectedError = async (reason: AccessErrorReason): Promise<string> => {
+            const socket = makeFakeSocket()
+            const { deps } = makeDeps({ accessReason: reason })
+            register(socket, deps)
+            const answer = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })
+            return answer.ok ? '' : answer.error
+        }
+
+        // 「invalid arguments」会把 agent 赶去改 machineId/directory 反复重试一个改不好的东西，
+        // 而问题在 mobi 对「发问的那个会话」的认定上，与入参无关
+        for (const reason of ['namespace-missing', 'access-denied'] as const) {
+            const text = await rejectedError(reason)
+            expect(text).not.toContain('invalid arguments')
+            expect(text).toContain('do not retry')
+        }
+
+        // 它会话已经没了 ≠ mobi 没认出它的身份：前者要重建会话，后者重试也没用
+        expect(await rejectedError('not-found')).toContain('no longer registered')
+        expect(await rejectedError('access-denied')).not.toContain('no longer registered')
     })
 
     test('createSession 未装配 → 拒绝且明说这是 mobi 的问题，别让 agent 反复改入参重试', async () => {

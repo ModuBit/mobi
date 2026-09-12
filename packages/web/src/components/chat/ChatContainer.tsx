@@ -36,7 +36,7 @@ import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleIt
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
-import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom, getTurnOrigin } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom, isCrossSessionInbound, getTurnOrigin } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
@@ -808,10 +808,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // 移动长按菜单的 fork 判据在 actionsInfo 内独立计算（同源同式）
 
             // 跨会话入站来源标签挂气泡 header（填充背景之外、气泡体上方，随 placement: end 右对齐）
-            // turnOrigin=scheduled/loop 时 from 为空串（降级 null），但仍需展示标签，故判据并入 turnOrigin
+            // turnOrigin=scheduled/loop 时 from 为空串（降级 null），但仍需展示标签，故判据并入 turnOrigin；
+            // 同理 from 为空串的跨会话消息（发送方还没名字）也要展示，此时标签走通用文案——判据用
+            // isCrossSessionInbound 而不是「from 非空」，否则这类消息的标签会整条消失
             const crossSessionFrom = isUserText && block ? getCrossSessionFrom(block.meta) : null
+            const crossSessionInbound = isUserText && block ? isCrossSessionInbound(block.meta) : false
             const turnOrigin = isUserText && block ? getTurnOrigin(block.meta) : null
-            const showCrossSessionTag = crossSessionFrom !== null || turnOrigin !== null
+            const showCrossSessionTag = crossSessionInbound || turnOrigin !== null
 
             // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧

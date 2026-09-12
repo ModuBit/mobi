@@ -29,7 +29,7 @@ import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
 import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
-import type { AccessResult } from './types'
+import type { AccessErrorReason, AccessResult } from './types'
 import type { StoredSession } from '../../../store'
 import type { AgentCreateSessionInput, AgentSendMessageInput, AgentSessionQuery } from '../../../sync/agentSessionService'
 
@@ -89,6 +89,24 @@ const INVALID_ARGUMENTS_ERROR = 'The request was rejected by mobi hub: invalid a
 const SERVICE_UNAVAILABLE_ERROR =
     'The request was rejected by mobi hub: the session service is not available. ' +
     'This is a mobi bug, not something you did — do not retry.'
+
+/**
+ * 「发问的会话本身没过鉴权」的文案（create_session 的 `error` 字段）。
+ *
+ * **不能笼统回 invalid arguments**：那会让 agent 去改 machineId / directory / title 反复
+ * 重试一个改不好的东西，而问题在 mobi 对「发问的那个会话」的认定上，与入参无关
+ *（list / send 三分支回的是 access.reason，口径本就不同）。
+ *
+ * 分两句是因为**处置不同**：not-found = 那个会话已经没了；另两种 = mobi 没认出它的身份。
+ * 两者都不是重试能解决的，所以都写明别重试。
+ */
+function callerRejectedError(reason: AccessErrorReason): string {
+    return reason === 'not-found'
+        ? 'The session that asked is no longer registered with mobi, so it cannot start new sessions. ' +
+          'This is about that session, not your arguments — do not retry.'
+        : 'mobi could not identify the session that asked. ' +
+          'This is a mobi problem, not something you did — do not retry.'
+}
 
 export type AgentSessionHandlersDeps = {
     resolveSessionAccess: (sessionId: string) => AccessResult<StoredSession>
@@ -173,7 +191,7 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
 
         const access = resolveSessionAccess(parsed.data.sid)
         if (!access.ok) {
-            cb?.({ ok: false, error: INVALID_ARGUMENTS_ERROR })
+            cb?.({ ok: false, error: callerRejectedError(access.reason) })
             return
         }
 

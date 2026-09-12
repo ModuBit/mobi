@@ -747,3 +747,38 @@ describe('SessionCache.deleteSession fork 守卫（isSessionRowDeletable，fork-
         await expect(cache.deleteSession(session.id)).rejects.toThrow('Cannot delete active session')
     })
 })
+
+describe('SessionCache.getSessionByNamespace 缓存 miss 回落数据库', () => {
+    let store: Store
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        cache = new SessionCache(store, stubPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('被驱逐后仍查得到——「有，但它没在跑」不能说成「没有这个会话」', () => {
+        const session = cache.getOrCreateSession('tag-evicted-1', { path: '/tmp/p', host: 'h1' }, null, 'default')
+
+        // 推进 2 小时：先翻 inactive，再被驱逐（行仍在 DB）
+        cache.expireInactive(Date.now() + 2 * 3_600_000)
+        expect(cache.getSession(session.id)).toBeUndefined()
+
+        // 列表侧（getSessionsByNamespace）按 DB 列得出来，单个查询侧口径必须一致——
+        // 不一致时调用方会同时收到「没有这个会话」和列表里明摆着的那一条，只会加固错误结论
+        const found = cache.getSessionByNamespace(session.id, 'default')
+        expect(found?.id).toBe(session.id)
+        expect(found?.active).toBe(false)
+    })
+
+    test('namespace 不匹配仍然查不到（回落不放松鉴权）', () => {
+        const session = cache.getOrCreateSession('tag-evicted-2', { path: '/tmp/p', host: 'h1' }, null, 'ns-a')
+        cache.expireInactive(Date.now() + 2 * 3_600_000)
+
+        expect(cache.getSessionByNamespace(session.id, 'ns-b')).toBeUndefined()
+    })
+})

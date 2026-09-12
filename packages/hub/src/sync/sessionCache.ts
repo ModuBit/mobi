@@ -71,8 +71,16 @@ export class SessionCache {
         return this.sessions.get(sessionId)
     }
 
+    /**
+     * 按 namespace 取单个会话。
+     *
+     * 缓存 miss 时**回落数据库**，与 `getSessionsByNamespace`（列表侧）口径一致：行可能还在
+     * DB 里、只是 inactive 超 1 小时后被本类的 `expireInactive` 驱逐了。少了这条回落，
+     * 「有这个会话但它早就不在跑了」会被说成「没有这个会话」——而列表侧按 DB 一列就列得出来，
+     * 两边打架只会让调用方（与它背后的 agent）加固错误结论。
+     */
     getSessionByNamespace(sessionId: string, namespace: string): Session | undefined {
-        const session = this.sessions.get(sessionId)
+        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session || session.namespace !== namespace) {
             return undefined
         }
