@@ -35,10 +35,11 @@ metadata:
 
 ## 探针措辞（2026-09-12 实测：这一点决定成败）
 
-**必须点名工具**。只说「用同一个工具回我」时，收件方 agent 会去用 **CC 原生的
-`SendMessage`**（按 agent 名寻址，如 `demo-22`）而不是 mobi 的工具，并按 my envelope
-里的会话标题去寻址 → 连试三次全失败（`No agent named '跨会话 ping 测试' is reachable`）。
-点名后它一次就对（`ToolSearch select:mcp__mobi-apps__send_message_to_session`）。
+**发信方必须点名工具**（收件方的回信侧不必，见下）。只说「用同一个工具回我」时，收件方
+agent 会去用 **CC 原生的 `SendMessage`**（按 agent 名寻址，如 `demo-22`）而不是 mobi 的工具，
+并把信封里的会话标题当 agent 名去寻址 → 连试三次全失败
+（`No agent named '跨会话 ping 测试' is reachable`）。点名后它一次就对
+（`ToolSearch select:mcp__mobi-apps__send_message_to_session`）。
 
 发信方探针（发 + 让它自己不等待）：
 
@@ -46,7 +47,9 @@ metadata:
 > 「你好，我是另一个 mobi 会话。收到请回我一句 pong。」
 > 发完就结束这一轮，不要等待回复。不要用命令行或读文件，只用 mobi 工具。
 
-回信侧不要替它写工具名——那是**验收点**（「收件方能否自己看出该用哪个工具回」）。
+回信侧不要替它写工具名——那是**验收点**（「收件方能否自己看出该用哪个工具回」）；
+2026-09-12 起 mobi 会在投递时追加 `<system-reminder>` 回信提示，所以这一步现在能过，
+见「双会话往返」一节。
 「不要用命令行或读文件」照 [[agent-tool-verify]] 的理由保留。
 
 ## DB 断言（`~/.mobi-e2e/mobi.db`）
@@ -152,6 +155,17 @@ CC 原生 `SendMessage`：
 
 > 请用 mobi 应用提供的 send_message_to_session 工具，给会话 `<B>` 发这句话（targets 传 ["<B>"]）：
 > 「你好，我是会话 A。请用 mobi 的 send_message_to_session 工具回我一句 hello，target 是 `<A>`。」
+
+**回信侧现在可以不再点名工具**（2026-09-12 起）：投递时 mobi 会在信封闭标签后追加一段
+`<system-reminder>`，点名工具 + targets + 说明标题不是 agent 名。实测 B 直接
+`ToolSearch select:mcp__mobi-apps__send_message_to_session` 并用正确的 id 回信，
+不再去试 CC 原生 `SendMessage`。要验这段提示，就把「回信」那句话写成
+**不点名工具**的样子（例如「收到后请回我一句 pong」），并断言：
+
+- A 侧出现 `meta.fromSessionId = B` 的 user 行（B 自己选对了工具）
+- B 的 transcript 里那条 prompt 以 `<system-reminder>…</system-reminder>` 结尾，
+  而**落库行里没有** `system-reminder`（提示只进推给 CC 的那一份）：
+  `sqlite3 … "SELECT COUNT(*) FROM messages WHERE session_id='<B>' AND content LIKE '%system-reminder%';"` → 0
 
 ## 建完即用（06 的验收 7）
 
