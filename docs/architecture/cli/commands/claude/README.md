@@ -33,7 +33,7 @@ CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数
 | Hub 架构 | [docs/architecture/hub/](../../../hub/) | Claude 命令通过 Hub 实现远程控制 |
 | API 通信层 | [docs/architecture/cli/api/](../../api/) | Session 通过 Socket.IO 与 Hub 通信 |
 | Runner 架构 | [docs/architecture/cli/commands/runner/](../runner/) | Runner 负责会话的后台管理和 spawn |
-| MCP 系统 | [docs/architecture/cli/commands/mcp/](../mcp/) | Claude 命令启动 MCP Server 暴露自定义工具 |
+| MCP 工具族 | [docs/architecture/cli/mcp/](../../mcp/) | Claude 命令装配会话内 MCP 工具（remote 进程内 / local HTTP 壳） |
 
 ### 术语表
 
@@ -89,7 +89,7 @@ graph TB
 
     subgraph Support["支撑组件"]
         Session["Session<br/>packages/cli/src/claude/session.ts"]
-        MCP["Mobi MCP Server"]
+        MCP["MCP 工具族<br/>mcp/mobiAppsServer.ts + mobiCoreServer.ts<br/>claude/utils/startMobiMcpServer.ts"]
         HookServer["Hook Server"]
         MessageQ["MessageQueue"]
         OutgoingQ["OutgoingMessageQueue"]
@@ -185,7 +185,7 @@ flowchart TB
 | **ApiClient** | `packages/cli/src/api/api.ts` | HTTP 客户端，与 Hub REST API 通信 |
 | **ApiSessionClient** | `packages/cli/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
 | **Session** | `packages/cli/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
-| **MCP Server** | `packages/cli/src/claude/utils/startMobiMcpServer.ts`（local HTTP）/ `packages/cli/src/mcp/mobiSdkMcpServer.ts`（remote 进程内） | 暴露 `change_title`（核心共享：`packages/cli/src/mcp/changeTitleTool.ts`） |
+| **MCP 工具族** | remote：`packages/cli/src/mcp/mobiAppsServer.ts` + `mobiCoreServer.ts`（进程内）；local：`packages/cli/src/claude/utils/startMobiMcpServer.ts`（HTTP 壳，仅 change_title） | 详见 [MCP 模块](../../mcp/) |
 | **Hook Server** | `packages/cli/src/claude/utils/startHookServer.ts`（local HTTP）；remote 走 SDK `hooks.SessionStart` 进程内回调 | 接收 Claude SessionStart 通知，绑定守卫见 `claude/utils/sessionIdBinding.ts` |
 | **MessageQueue** | `packages/cli/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
 | **RunnerLifecycle** | `packages/cli/src/agent/runnerLifecycle.ts` | 进程信号处理和清理 |

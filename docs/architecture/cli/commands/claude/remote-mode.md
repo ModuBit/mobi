@@ -237,11 +237,11 @@ const sdkOptions: Options = {
     model: mode.model,
     fallbackModel: mode.fallbackModel,
     systemPrompt: ...,           // 自定义系统提示词 + mobi 提示词
-    allowedTools: [...],         // 合并 mode 和 mobi 工具（含 mcp__mobi-web__* 预授权）
+    allowedTools: [...],         // 合并 mode 和 mobi 工具（含 mcp__mobi-core__* / mcp__mobi-apps__* 预授权）
     disallowedTools: mode.disallowedTools,
     toolAliases: {               // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch
-        WebSearch: 'mcp__mobi-web__web_search',   // → 执行层重定向到 mobi-web in-process 工具
-        WebFetch: 'mcp__mobi-web__web_fetch',     // （见 src/webtools/，local 模式不替换）
+        WebSearch: 'mcp__mobi-core__web_search',   // → 执行层重定向到 mobi-core in-process 工具
+        WebFetch: 'mcp__mobi-core__web_fetch',     // （见 src/webtools/，local 模式不替换）
     },
     canUseTool: canCallTool,     // 权限审批回调
     abortController,

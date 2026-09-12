@@ -27,13 +27,13 @@
 | `includePartialMessages` | `true` | 开启 partial 流式拆分（见 §4） |
 | `agentProgressSummaries` | `true` | subagent 每 ~30s 产出 summary，web 已渲染（`normalizeAgent.ts:354` task_progress） |
 | `resume` / `sessionId` | 动态 | `--resume` 复用 / 预生成 UUID 让 metadata 立即可用 |
-| `mcpServers` | `{ mobi: http }` | 注入 mobi 自有 MCP server（`mcp__mobi__*`） |
+| `mcpServers` | remote：`mobi-apps` + `mobi-core` 进程内 server；local：`mobi-core` HTTP 壳 | 注入 mobi 自有 MCP 工具族（`mcp__mobi-core__*` / `mcp__mobi-apps__*`，见 [MCP 模块](../architecture/cli/mcp/README.md)） |
 | `permissionMode` / `model` / `effort` / `fallbackModel` | 动态 | 会话级配置 |
 | `systemPrompt` | `preset: claude_code` + append，或 custom | 默认走 claude_code preset + mobi 追加 prompt；用户设 customSystemPrompt 时改为纯字符串 |
 | `allowedTools` / `disallowedTools` | 动态 | 工具白/黑名单（mobi MCP 工具常驻 allowed） |
 | `canUseTool` | `permissionHandler.handleToolCall` | 权限审批入口（见 §5） |
 | `pathToClaudeCodeExecutable` | dev=undefined / 编译=具体路径 | claude 二进制 resolve（`sdk/claudeExecutable.ts`） |
-| `settings` | hook settings 文件路径 | 注入 SessionStart hook 配置（见 §6） |
+| `settings` | remote：内联对象；local：hook settings 文件路径 | 注入 SessionStart hook 配置（见 §6；remote 内联零临时文件，见 ADR 0001） |
 | `env` | `{ ...process.env, ...featureEnv }` | 整体替换子进程 env（含 `DISABLE_AUTOUPDATER=1`、agent teams 开关等） |
 | `additionalDirectories` | `[cwd/.mobi]` | 额外可访问目录 |
 | `toolConfig` | `{ askUserQuestion: { previewFormat: 'markdown' } }` | askUserQuestion 预览格式 |

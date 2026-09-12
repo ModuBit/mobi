@@ -31,3 +31,13 @@ remote 模式下 Claude 以 SDK Query 形态跑在 mobi 进程内，HTTP server 
 - 多 agent 扩展（非 Claude flavor）时，为该 flavor 增加 HTTP 适配器即可，共享核心不变。
 - `mcp__mobi__change_title` 工具名与 allowedTools 预授权列表保持不变，SDK 按注册名 `mobi` 生成前缀。
 - remote 模式的 `onSessionFound` 仍为双源幂等（SDK hook 回调 + systemInit），绑定逻辑无单点。
+
+## 现状修正（2026-09-12）
+
+后续 [ADR 0005](/docs/architecture/0005-agent-apps-mcp-route.md) 落地时把 server 按职责拆成两个，工具前缀随之改变——上面的工具名已不是现状：
+
+- `mobi` → 拆为 `mobi-core`（内置基础能力：change_title、web 工具）与 `mobi-apps`（应用工具族）。
+- 当前工具名：`mcp__mobi-core__change_title`、`mcp__mobi-core__web_search` / `web_fetch`、`mcp__mobi-apps__*`。
+- 「预授权列表保持不变」不再成立：`allowedTools` 现列 8 个工具，且 A/B 类工具（仅 remote 注册）也在其中。
+
+transport 分流本体的结论未变。现状细节见 [MCP 模块文档](/docs/architecture/cli/mcp/README.md)。

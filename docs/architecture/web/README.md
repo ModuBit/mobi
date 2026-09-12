@@ -539,7 +539,7 @@ Agent 工具（`Task` / `Agent`）是渲染复杂度最高的部分，有内联�
 
 - `ToolSearch`、`EnterPlanMode` / `exit_plan_mode`
 - `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskOutput` / `TaskStop`
-- `mcp__mobi__change_title` / `mobi__change_title`
+- `mcp__mobi-core__change_title`；历史名 `mcp__mobi__change_title` / `mobi__change_title` 一并保留（老会话消息已按旧全名落库）
 
 其中 `change_title` 转为 `title-changed` 事件，`EnterPlanMode` 转为 `plan-mode-entered` 事件，其余静默忽略。
 

@@ -38,3 +38,12 @@ mobi 会话内的 agent 工具目前只能本地执行。期望 agent 能触达 
 - defer 代价：每次检索 +1 round-trip；compact 后已加载定义会被压缩、需重搜；检索命中依赖工具命名与描述质量（动词化命名）。
 - 独立待办：wrapper 不设 `settingSources` 时，用户 `~/.claude/settings.json` 的 env 块会穿透覆盖 wrapper 传入的 env（实测 `ANTHROPIC_BASE_URL` 被劫持）——`ENABLE_TOOL_SEARCH` 同样暴露于此风险，需在实现中验证并考虑治理。
 - 实验脚手架保留在 `.scratch/defer-test/`（bench.ts 选名准确率 / bench2.ts 实际调用 / proxy.ts 请求体抓包），可复测。
+
+## 现状修正（2026-09-12）
+
+实现时「新工具默认进 `mobi` server」被否决——一个 server 装不下两类工具，按「谁提供这个能力」拆成两个：
+
+- **`mobi-core`**：内置基础能力（`change_title` + web 工具）——原 `mobi` 与 `mobi-web` 合并。
+- **`mobi-apps`**：mobi 应用提供的工具族（A 类 UI 呈现 + B 类系统操作），照 `codex_apps` 装全部应用工具。
+
+因此上文的 `mobi` / `mcp__mobi__*` 不再存在，当前前缀为 `mcp__mobi-core__*` / `mcp__mobi-apps__*`，`allowedTools` 预授权也非「零变更」（现列 8 个）。接口形态（host-owned in-process MCP server + 客户端 tool search defer）的结论未变。现状细节见 [MCP 模块文档](/docs/architecture/cli/mcp/README.md)。

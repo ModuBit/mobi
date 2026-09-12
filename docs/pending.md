@@ -503,7 +503,7 @@ interrupt（用户停止）
 
 **范围**：用户级「配置资产」的统一管理面——MCP 服务器、skill、plugin 三类资产的管理 UI 与生命周期控制。分散在三个上游能力上：
 
-1. **MCP 运行时热管理**（台账 U-25 收敛后）：`mcpServerStatus()` 状态查询 + `reconnectMcpServer()` 重连对用户配置层 MCP 有效（连接层操作），价值真实——用户配的 MCP 连接失败（外部服务挂了/token 过期）目前 web 端完全不可见。`toggleMcpServer` 会话级启停不持久化、易困惑，暂缓；`setMcpServers` 只覆盖 dynamic 层（mobi dynamic 层只有 `mobi`/`mobi-web` 基础设施），**无消费场景，明确不做**。
+1. **MCP 运行时热管理**（台账 U-25 收敛后）：`mcpServerStatus()` 状态查询 + `reconnectMcpServer()` 重连对用户配置层 MCP 有效（连接层操作），价值真实——用户配的 MCP 连接失败（外部服务挂了/token 过期）目前 web 端完全不可见。`toggleMcpServer` 会话级启停不持久化、易困惑，暂缓；`setMcpServers` 只覆盖 dynamic 层（mobi dynamic 层只有 `mobi-core`/`mobi-apps` 基础设施），**无消费场景，明确不做**。
 2. **MCP elicitation url 授权模式**（台账 U-26 拆出的另一半）：涉及 web→hub→cli 三端「打开授权页 + elicitationId 完成通知关联」链路，且有远程场景浏览器归属问题（用户在自己设备完成 OAuth，完成通知怎么回流 cli）。
 3. **skill 管理 / plugin 管理**：reloadSkills 等场景（互链 #49 插件化架构观察）。
 
@@ -577,7 +577,7 @@ interrupt（用户停止）
 
 **来源**：upstream-suggestions 台账 #6（SDK 0.3.259）。SDK 契约已核实——`SDKTaskNotificationMessage.resource_links?: SDKMcpResourceLink[]`（sdk.d.ts:5157）：仅 backgrounded mcp_task 完成时填充，CLI 在把最终结果渲染成模型文本前收集其中的 `resource_link` content block（该任务按引用返回的文件），经 `tool_use_id` 关联发起调用；`SDKMcpResourceLink = { uri, name, title?, description?, mimeType?, size? }`（≤50 条 / 64KiB）。后台任务 tool_result 是占位文本，真实结果经 notification 到达——这是 host 得知「那次工具调用产出哪些文件」的唯一位置。
 
-**为何挂起**：mobi 现有 MCP 源（mobi-web fetch）返回 markdown 文本不产 resource_link，全链路无真实数据可验证；且 web 缺「按 uri 打开文件」的通用通道（uri 是任意 scheme 的 MCP resource URI）。
+**为何挂起**：mobi 现有 MCP 源（`mobi-core` 的 web_fetch）返回 markdown 文本不产 resource_link，全链路无真实数据可验证；且 web 缺「按 uri 打开文件」的通用通道（uri 是任意 scheme 的 MCP resource URI）。
 
 **重启时机**：与「聊天页打开文件」特性一并立项。届时应连同前台 `tool_use_result.resourceLinks`（同规格字段，SDK 对普通 MCP 工具结果同样收集，mobi 目前也零消费）做统一的「工具产出文件引用渲染」，而非只做后台任务变体。
 
