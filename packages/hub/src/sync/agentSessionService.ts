@@ -131,6 +131,13 @@ export interface AgentSessionServiceDeps {
      * 是确定的否定，`timeout` 是等满预算仍没定论。三者对调用方是不同的说法。
      */
     waitUntilCanReceive: (sessionId: string, timeoutMs: number) => Promise<ReceiveReadiness>
+    /**
+     * **不等**地读同一个事实（同模块的 `get`）：`undefined` = 从没上报过。
+     *
+     * 只用于**解释**投递为什么失败（D43），**绝不**当投递前的闸门——它是「此刻」的事实，
+     * 轮次之间会短暂翻成假，拿它拦投递会把健康会话挡在门外。
+     */
+    canReceiveNow: (sessionId: string) => boolean | undefined
 }
 
 /** list_sessions 的查询条件（不含 namespace——那是从鉴权会话解析出来的） */
@@ -382,7 +389,12 @@ export class AgentSessionService {
             await this.deps.pushAgentMessage(targetSessionId, message)
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error)
-            return { sessionId: targetSessionId, ok: false, error: translatePushFailure(reason) }
+            // 事实在**失败之后**读，读的是最新值；且只用来把话说准，不当闸门（D43：先试，再解释）
+            return {
+                sessionId: targetSessionId,
+                ok: false,
+                error: translatePushFailure(reason, this.deps.canReceiveNow(targetSessionId)),
+            }
         }
 
         try {
@@ -505,14 +517,14 @@ function translateSpawnFailure(message: string): string {
  * 与 spawn 共用同一套 RPC 故障分类（见 classifyRpcFailure），但表述不同：这条失败
  * 落在**目标会话**身上，不在机器上；而且 RPC 超时**不代表没送到**——emitWithAck
  * 超时只是回执没回来，消息可能已经推进对方输入流，所以说「可能已送达」并明确劝阻重发。
+ *
+ * @param canReceive 目标会话「此刻能不能收消息」（07 的事实）。只喂给「不可达」那一支，
+ *   用来把成因说准；**投递本身不等它、也不看它**（D43）
  */
-function translatePushFailure(message: string): string {
+function translatePushFailure(message: string, canReceive: boolean | undefined): string {
     switch (classifyRpcFailure(message)) {
         case 'unreachable':
-            return (
-                'That session is not reachable right now — its Claude Code process is gone or its mobi client is not connected, ' +
-                'so the message was not delivered.'
-            )
+            return unreachableDeliveryMessage(canReceive)
         case 'timeout':
             return (
                 'That session did not acknowledge the message in time. It may or may not have been delivered — ' +
@@ -521,6 +533,39 @@ function translatePushFailure(message: string): string {
         default:
             return message
     }
+}
+
+/**
+ * 「不可达」的两种说法——靠 07 的事实把原先那一句拆开。
+ *
+ * 判据是**它有没有报到过话**，而不是「上次报的是真还是假」。理由是投递失败这一支的物理解释：
+ * 会话 RPC handler 从连上起一直登记到 socket 断开，轮次之间**不会**注销（`rpc-unregister`
+ * 在会话侧根本没被用过）。所以「RPC 送不到」只有两种可能——**它还没连上**（实测那个窗口
+ * 只有 10 毫秒级）或**它的连接已经没了**。而「上次能不能收」区分不出这两者：一个死在一轮
+ * 中间的会话上次报的是「能收」，死在一轮之间的报的是「不能收」，对 agent 而言**都是没了**。
+ *
+ * 所以：
+ * - **从没上报过** → 可能还没连上（刚建出来的会话就是这样），也可能 hub 刚重启过。
+ *   如实说不确定，并把「可能还在启动」摆在前头——编一个「已经退出」会把 agent 吓走，
+ *   而它只是还没开门。
+ * - **上报过** → 它连上过、也说到过话，现在连 RPC 都送不到，那是连接没了。
+ *   别让人干等：先 list_sessions 确认它还在不在。
+ *
+ * 原先那句话说「进程没了**或**客户端没连上」，把这两种糅在一起，而且**没让 agent 重试**
+ * ——可其中一种是「还没连上」，重试就有用。
+ */
+function unreachableDeliveryMessage(canReceive: boolean | undefined): string {
+    if (canReceive === undefined) {
+        return (
+            'That session cannot be reached right now, and mobi has no recent word from it, so the message was not delivered. ' +
+            'It may still be starting up — a session that was just created takes a moment before it can accept messages — ' +
+            'so trying again shortly is often enough. Call list_sessions if you want to check it is there first.'
+        )
+    }
+    return (
+        'That session has reported to mobi before, but its connection is gone now, so the message was not delivered. ' +
+        'It may have exited — check it with list_sessions and send again only if it is still active.'
+    )
 }
 
 /**

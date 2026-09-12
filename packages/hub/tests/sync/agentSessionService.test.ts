@@ -75,6 +75,8 @@ function makeService(
         renameFailures?: number
         /** waitUntilCanReceive 的返回（缺省 'ready'，即「建完就接上了」） */
         readiness?: ReceiveReadiness
+        /** canReceiveNow 的返回（缺省 undefined = 从没上报过） */
+        canReceiveNow?: boolean
     },
 ) {
     const seenNamespaces: string[] = []
@@ -87,6 +89,8 @@ function makeService(
     let renameAttempts = 0
     /** 就绪等待的入参（秒数也要断言：预算是服务端固定值，不该被调用方改） */
     const readinessWaits: Array<{ sessionId: string; timeoutMs: number }> = []
+    /** 投递失败后读事实的入参（用来证明「先试再解释」：失败前不该有人读它） */
+    const readinessReads: string[] = []
     const service = new AgentSessionService({
         getOnlineMachinesByNamespace: (namespace) => {
             seenNamespaces.push(namespace)
@@ -130,8 +134,12 @@ function makeService(
             readinessWaits.push({ sessionId, timeoutMs })
             return overrides?.readiness ?? 'ready'
         },
+        canReceiveNow: (sessionId) => {
+            readinessReads.push(sessionId)
+            return overrides?.canReceiveNow
+        },
     })
-    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored, renamed, readinessWaits }
+    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored, renamed, readinessWaits, readinessReads }
 }
 
 describe('AgentSessionService.listMachines', () => {
@@ -484,6 +492,7 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             storeAgentMessage: async () => {},
             renameSession: async () => {},
             waitUntilCanReceive: async () => 'ready',
+            canReceiveNow: () => undefined,
         })
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
@@ -845,25 +854,41 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
     const sender = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/work/a', host: 'host-a', name: 'Sender' } })
     const targetB = makeSession({ id: 'B', namespace: 'ns' })
 
-    async function failureText(pushFailure: string): Promise<string> {
-        const { service } = makeService([], [sender, targetB], { pushFailure })
+    async function failureText(pushFailure: string, canReceiveNow?: boolean): Promise<string> {
+        const { service } = makeService([], [sender, targetB], { pushFailure, canReceiveNow })
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
         return results[0].error ?? ''
     }
 
-    test('handler 未注册 / socket 断开 → 「目标会话不可达」，不说内部细节', async () => {
-        const notRegistered = await failureText('RPC handler not registered: B:push-agent-message')
-        const disconnected = await failureText('RPC socket disconnected: B:push-agent-message')
+    test('不可达 + 从没上报过 → 说「可能还在启动、稍后再试」，不编一个「已经退出」', async () => {
+        const notRegistered = await failureText('RPC handler not registered: B:push-agent-message', undefined)
+        const disconnected = await failureText('RPC socket disconnected: B:push-agent-message', undefined)
 
         for (const text of [notRegistered, disconnected]) {
-            expect(text).toContain('not reachable')
-            // 「哪个 handler 没注册」是 mobi 内部结构，agent 无从据此行动
+            // 这正是「刚建好、还没接上」的样子：说成「进程没了」会把 agent 吓走，而它只是还没开门
+            expect(text).toContain('no recent word from it')
+            expect(text).toContain('may still be starting up')
+            expect(text).toContain('trying again shortly is often enough')
             expect(text).not.toContain('RPC handler')
             expect(text).not.toContain('RPC socket')
         }
     })
 
-    test('RPC 超时 → 说清「可能已送达」并劝阻盲目重发', async () => {
+    test('不可达 + 上报过（真或假都一样）→ 说「连接没了，先确认它还在不在」，别干等', async () => {
+        for (const reported of [true, false]) {
+            const text = await failureText('RPC socket disconnected: B:push-agent-message', reported)
+
+            // 上报过 = 它连上过；现在连 RPC 都送不到 = 连接没了。上次报的是真是假区分不出
+            // 死在一轮中间还是一轮之间，而对 agent 而言都是「没了」
+            expect(text).toContain('has reported to mobi before')
+            expect(text).toContain('connection is gone now')
+            expect(text).toContain('may have exited')
+            expect(text).toContain('only if it is still active')
+            expect(text).not.toContain('may still be starting up')
+        }
+    })
+
+    test('RPC 超时 → 说清「可能已送达」并劝阻盲目重发（事实不参与这一支）', async () => {
         const text = await failureText('operation has timed out')
 
         expect(text).toContain('may or may not have been delivered')
@@ -881,6 +906,41 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
         await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
         expect(stored).toHaveLength(0)
+    })
+})
+
+describe('AgentSessionService.sendMessageToSessions — 事实是解释，不是闸门（D43）', () => {
+    const sender = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/work/a', host: 'host-a', name: 'Sender' } })
+    const targetB = makeSession({ id: 'B', namespace: 'ns' })
+
+    test('事实为假时仍然照发：轮次之间的几十毫秒窗口不该把健康会话挡在门外', async () => {
+        const { service, pushed, readinessReads } = makeService([], [sender, targetB], { canReceiveNow: false })
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(results[0].ok).toBe(true)
+        expect(pushed).toHaveLength(1)
+        // 投递成功就不该有人去读事实——它只在失败之后被读来「解释为什么」
+        expect(readinessReads).toHaveLength(0)
+    })
+
+    test('投递失败时才读事实，且读的是失败之后的值', async () => {
+        const { service, readinessReads } = makeService([], [sender, targetB], {
+            pushFailure: 'RPC handler not registered: B:push-agent-message',
+            canReceiveNow: false,
+        })
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(readinessReads).toEqual(['B'])
+    })
+
+    test('投递不等待：事实的「等」只属于 create_session', async () => {
+        const { service, readinessWaits } = makeService([], [sender, targetB])
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(readinessWaits).toHaveLength(0)
     })
 })
 
