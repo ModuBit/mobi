@@ -255,7 +255,7 @@ packages/web/src/
 │   │   ├── AutoComplete.tsx    自动补全容器
 │   │   ├── MentionDropdown.tsx @ 文件引用下拉
 │   │   ├── SlashCommandDropdown.tsx 斜杠命令下拉
-│   │   ├── StatusBar.tsx       状态栏（上下文预算等）
+│   │   ├── StatusBar.tsx       状态栏（goal 徽标 / 缓存过期提示 chip / loading 指示）
 │   │   ├── AgentCard.tsx       Agent 卡片（前台/后台统一渲染，TasksPanel 复用）
 │   │   ├── TasksPanel.tsx      执行中任务面板（合并前台 Agent + 后台任务，后台任务带闪电标签）
 │   │   ├── BackgroundTaskCard.tsx  后台任务卡片

@@ -53,8 +53,9 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为四组：
 | `snapshot-stream-end` | CLI → Hub | 通知 `SnapshotSync` 精确结束指定流，清完整基线和订阅游标 |
 | `session-alive` | CLI → Hub | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
 | `session-end` | CLI → Hub | 会话结束，触发清理 |
-| `context-usage` | CLI → Hub | 每轮 result 上报上下文用量（从 usage 字段本地派生，不调 getContextUsage），落库到 `runtimeState.contextUsage` 并广播给 Web |
+| `context-usage` | CLI → Hub | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
 | `goal-status` | CLI → Hub | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
+| `cache-status` | CLI → Hub | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
 | `update-metadata` | CLI ⇄ Hub | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ Hub | 更新 Agent 状态（requests 等），带乐观锁 |
 | `idle-timeout-warning` | CLI → Hub | 空闲超时预警，广播到 Web 端 |

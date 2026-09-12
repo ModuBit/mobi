@@ -21,6 +21,7 @@
 | `src/utils/httpHealth.ts` | waitForUrlOk HTTP 健康轮询 |
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
 | `src/claude/utils/queryRestart.ts` | Remote Query 重启单槽：统一 rewind / output style 的占位、队列哨兵配对与完成语义 |
+| `src/claude/utils/cacheStatus.ts` | SessionStart 缓存信号组装（`buildCacheStatusFromSessionStart` 两模式共用；resume/fork 且过期才产出，[cache-probe] 探针日志） |
 | `src/mcp/changeTitleTool.ts` | change_title 核心工具工厂（transport 无关；local HTTP / remote SDK 进程内，见 ADR 0001） |
 | `src/mcp/sessionTransports.ts` | 会话 MCP / hook settings 按模式装配（remote 内联 settings 零临时文件） |
 | `src/webtools/` | 自定义 Web 工具（in-process MCP `mobi-web` + provider 路由，toolAliases 替换内置 WebSearch/WebFetch；仅 remote 模式） |

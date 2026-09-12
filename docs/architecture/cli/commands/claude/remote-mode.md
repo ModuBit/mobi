@@ -250,6 +250,7 @@ const sdkOptions: Options = {
     hooks: {                       // SDK 进程内 hook 回调
         UserPromptSubmit: [...],   // 入站跨会话消息观测
         SessionStart: [...],       // sessionId 绑定（守卫收口于 launcher 的 applySessionIdBinding）
+                                   // + 缓存信号观测（resume/fork 时 buildCacheStatusFromSessionStart → onCacheStatus → reportCacheStatus，[cache-probe] 探针日志）
     },
     additionalDirectories: [blobsDir, ...(opts.additionalDirectories ?? [])],
 }

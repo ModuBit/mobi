@@ -169,7 +169,11 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 
 ### 上下文用量上报
 
-`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。每轮 `result` 时由 `claudeRemoteLauncher` 本地组装（**不调** SDK `getContextUsage()`——其在子进程内会触发大量 `count_tokens` 请求撑爆 provider 限流）：`maxTokens` = `result.modelUsage[model].contextWindow`，`costUsd` = `result.total_cost_usd`。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
+`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。来源双路：启动采样/result 采样由 `contextUsageTracker` 调 SDK `getContextUsage({ detail: 'summary' })`（**本地估算，零 API/零 LLM**，`detail:'full'` 才触发 count_tokens——勿用）；`maxTokens` 取 summary 的 `rawMaxTokens`（CC 权威窗口）。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
+
+### 缓存状态上报
+
+`reportCacheStatus(cacheStatus)` 通过 `socket.emit('cache-status', { sid, cacheStatus })` 上报会话恢复时的 prompt cache 状态（SessionStart resume/fork 且 `prompt_cache_likely_expired=true` 时，组装单点在 `claude/utils/cacheStatus.ts`，remote 进程内 hook 与 local HTTP hook 共用）。Hub 落库到 `runtimeState.cacheStatus` + SSE 推 Web；首个 result 帧到达时 `sendClaudeSessionMessage` 咽喉点无条件 emit `null` 清空（hub 侧 merge 幂等，常态零开销）。两侧均有 `[cache-probe]` info 探针日志（cache-miss 调查观测点）。
 
 > ⚠️ **`totalTokens` 现状与目标（2026-08-26 实测钉死）**：当前实现 `calcContextUsageFromResult` 用 `result.usage` 的三项和当"当前占用"——**口径错误**：`result.usage` 是 turn 内主循环所有请求的逐项累计（实测 255232 = 127488+127744），会远超窗口（1M 窗口显示 1.12M）且随 turn 内请求数波动。正确口径 = 主线最后一条 assistant 的瞬时水位（见下），修复方案见 `docs/superpowers/specs/2026-08-25-context-waterline-design.md`（含 assistant usage 在装配层丢失、需从 stream_event 捕获注入的根因）。
 

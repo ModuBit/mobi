@@ -460,6 +460,9 @@ interface SDKUIHints {
     agentID?: string
     agentDescription?: string
     agentSubagentType?: string
+    // SDK 0.3.268 审批 hint（cli 透传，web PermissionFooter 消费）
+    defaultToNo?: boolean        // 不可单键误批：web 拒绝升主位、approve 降次要行
+    suppressAlwaysAllowRule?: boolean // 不得提供持久「不再询问」档：web 隐藏全部持久档
 }
 ```
 
@@ -476,10 +479,16 @@ interface RuntimeState {
     todos?: TodoItem[]
     tasks?: TaskItem[]
     backgroundTasks?: BackgroundTaskItem[]
+    foregroundTasks?: ForegroundTaskItem[] // 前台执行中任务清单（hub 从消息投影维护）
     teamState?: TeamState
     model?: string | null
     effort?: EffortLevel
-    contextUsage?: ContextUsage // 上下文用量快照（每轮 result 由 CLI 从 usage 字段本地派生，见 ContextUsage）
+    permissionMode?: PermissionMode // CLI keep-alive 上报落库，hub 重启后 resume 回放
+    outputStyle?: string
+    contextUsage?: ContextUsage // 上下文用量快照（CLI 事件驱动上报，见 ContextUsage）
+    goalStatus?: GoalStatus | null // 当前/最近一次 /goal 状态；null 表示清空
+    runStartedAt?: number // 当前轮次起点（CLI running 翻转 false→true 时上报，StatusBar 计时权威来源）
+    cacheStatus?: CacheStatus // 会话恢复（resume/fork）时 prompt cache 过期状态；首 turn result 后 CLI 清空
 }
 ```
 

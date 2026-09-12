@@ -26,7 +26,7 @@ AgentState.requests: Record<toolCallId, {
     tool: string
     arguments: unknown
     createdAt: number
-    sdkHints?: SDKUIHints  // SDK 提供的 UI 提示（标题、描述等）
+    sdkHints?: SDKUIHints  // SDK 提供的 UI 提示（标题、描述等，含 0.3.268 审批 hint：defaultToNo / suppressAlwaysAllowRule）
 }>
 ```
 
@@ -141,6 +141,11 @@ sequenceDiagram
 **触发**：SDK 调用 Bash、Edit、Write 等需要授权的工具。
 
 **Web UI**：`PermissionFooter` — 提供 Allow（本次）、Allow for Session（本会话）、Allow All Edits、Deny 按钮，另有「带原因拒绝」入口（展开 textarea 输入原因，走 `denyWithFeedback` 带 reason；对齐 Claude Code CLI 的 reject-with-feedback）。
+
+**SDK 0.3.268 审批 hint**（cli `handleToolCall` 透传到 `sdkHints`，web 据此调整弹窗形态）：
+- `suppressAlwaysAllowRule: true` → 隐藏全部持久档（suggestion 档 / fallback 字面档 / Edit「全部允许」），只留「允许本次」+ 拒绝——该规则会超出本 ask 的授权范围
+- `defaultToNo: true` → 拒绝升主位（danger 实心）、approve 降次要行，消除单键误批的视觉引导
+- SDK suggestions 为空时的 fallback 档（Bash 命令字面 / 工具名进 mobi Set）文案为「允许此命令」而非「本次会话允许」——字面粒度换参数仍会再询问，文案不冒充会话级语义（pending.md #74）
 
 **CLI 处理** — `permissionHandler.ts:handlePermissionResponse`
 
