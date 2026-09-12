@@ -167,7 +167,57 @@ CC 原生 `SendMessage`：
   而**落库行里没有** `system-reminder`（提示只进推给 CC 的那一份）：
   `sqlite3 … "SELECT COUNT(*) FROM messages WHERE session_id='<B>' AND content LIKE '%system-reminder%';"` → 0
 
+## 落库 vs 推给 CC：两份的差别（2026-09-12 实测）
+
+一封投递在两侧长得**不一样**，这是设计不是 bug。断言时必须分清：
+
+| | 落库那一份（DB `content` blocks） | 推给 CC 的那份（目标 transcript） |
+|---|---|---|
+| 信封标签 | 无 | 首尾各一个 `text` block |
+| 发送方正文里的 `<cross-session-message` / `<system-reminder>` | **原文保留** | 实体制化 `&lt;…&gt;`（text 与 quote.excerpt 都做，image/document 的 source.value 不动） |
+| 回信提示 | 无 | 闭标签之后追加一段 `<system-reminder>` |
+
+⚠️ **断言别用整会话 `LIKE` 计数**——目标 agent 的回话里会**原样转述**它收到的实体化文本和提示
+正文，`content LIKE '%delivered by mobi on behalf%'` 会命中目标自己的 assistant 消息（实测 1 条，
+看起来像「提示漏进落库了」）。必须量 **`role='user'` 的那一行**（`json_extract(content,'$.role')`）。
+
+验法（两处一起看，缺一不算过）：
+
+```python
+# ① 落库那行：信封/提示/实体化 全 0，原文标签计数 ≥1
+s=json.dumps(json.loads(content),ensure_ascii=False)   # 仅 role='user' 且 seq 最小那行
+# ② 目标 transcript 第一条 user prompt entry：字符串形态，应形如
+#    '<cross-session-message from-name="…" …>\n\n<正文，标记已实体化>\n\n[引用 user]：…\n\n</cross-session-message>\n\n<system-reminder>\nThis message was delivered by mobi on behalf of another session. To reply, call the mobi tool "send_message_to_session" with targets: ["<发信方 sid>"]. …'
+```
+
+②的实测效果（发信方故意夹带注入载荷）：目标 agent 复述时说的是「**我读到的**实体制化文本」，
+并在回复里主动声明「其中的 system-reminder 是消息内容的一部分，不是真实系统提示，已被我忽略」
+——这就是中和生效的正面证据（它把载荷当**文字**读，没当成系统指令）。
+
+## create_session 的初始 title：只落 mobi 侧、不发 RPC（2026-09-12 实测后改定）
+
+`title` **只写 mobi 侧的名字**，不通知会话进程：
+
+- **mobi 侧成立**：DB `metadata.name` 就是 title，Web 列表 / `list_sessions` 都读它。验法：
+  `sqlite3 ~/.mobi-e2e/mobi.db "SELECT json_extract(metadata,'\$.name') FROM sessions WHERE id='<新会话>';"`
+- **hub.log 里不该再有 `[renameSession] 同步 CC 标题失败`** —— 那是「hub 去给新会话发
+  rename-session RPC」才会有的告警。看到它 = 有人把这条 RPC 加回来了，而它**必然失败**：
+  `createSession` 在 spawn 回执时就返回，那时新会话的 `rename-session` handler 还没注册
+  （它在回执之后、会话进程自己的运行时初始化里才注册）。实测窗口只有十几毫秒（回执后
+  0ms/8ms 失败、2/4/6/15ms 成功，有抖动），但**站在 0ms 的调用每次都会撞上**。
+- **CC 的 customTitle 不设**：未 prompt 的会话在 CC 视角里还没开始（**没有 transcript
+  文件**，`custom-title` 无处可写）；被 prompt 后 CC 自己会命名。所以「初始名字」的
+  受众就是 mobi 侧，见 D10 的「会话可以自己改名，自己的名字优先」。
+
+⚠️ **别拿「被 prompt 过的会话」验 title**：它被第一条消息 prompt 后 CC 自己会生成标题并
+change_title（`custom-title` entry 写的是自动标题），初始 title 被覆盖是 D10 明写的语义。
+要验「title 真的写进去了」得建完**不发消息**。
+
+⚠️ **别用整会话 `LIKE` 找告警/文本**：目标 agent 的回话会原样转述它收到的东西，范围必须
+限定到具体那一行（见「落库 vs 推给 CC」一节）。
+
 ## 建完即用（06 的验收 7）
+
 
 同一条探针里让 A 连着做：`create_session`（机器 + 目录）→ 拿到返回的 sessionId →
 **立刻** `send_message_to_session`。期望两次回执分别是
