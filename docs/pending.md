@@ -658,3 +658,11 @@ interrupt（用户停止）
 **暂缓原因**：台账设想（自动恢复 badge）是重跑特性的附属品；mobi 未启用重跑则标记永不出现。启用与否是产品决策：自动续跑耗 token、工具副作用可能重复执行；且需先设计「上次是否 mid-turn 死亡」的检测（候选：cli exitLogger 的 exit records / hub 侧 running 状态），不能恒设（会改变所有 resume 的默认行为）。
 
 **届时要做**：① mid-turn 死亡检测 + 按需设 env（默认开关策略待定）；② web normalize 读 `resume_reason` → 消息列表「自动恢复」badge（渲染极小）。
+
+## 76. 图片/文档块的在线 URL 支持（跨会话投递目前会降级成文本）（2026-09-13，待做）
+
+**背景**：`send_message_to_session` 的 content 支持 image / document 块，但**块里的 URL 不会被取回**。CLI 的 blocks→prompt 转换（`packages/cli/src/utils/promptBuilder.ts` 的 `buildPromptFromBlocks` → `tryReadImageBase64`）只会 `readFileSync(source.value)`：`http(s)://` 与 `data:` 一律失败，图片降级成 `@值` 文本；document 更是无条件变成 `@值`。更糟的是 `data:` ——整段 base64 会以文本塞进 prompt，白烧 token。hub 侧的自足 URL 判据（`isSelfContainedUrl`）让这类块绕过同机器闸，于是投递报成功、对面拿到的却只是一段文本。判据本身不算错（这类块确实不依赖发件方机器上的文件），错的是「放行」不等于「图送到了」。
+
+**当前处置**（2026-09-13）：工具描述与 hub 附件闸的失败文案都已如实写明「URL 不会被取回——给本机文件，或把 URL 写进正文」，不再推荐这么用；行为未改。同机器与跨机器都一样降级，不是跨会话独有。
+
+**待做**：让 `buildPromptFromBlocks` 真能取回——https 走 fetch、`data:` 就地 base64 解码、`blob:` 视来源而定；取不到仍降级为 `@值`。注意这是 **web 普通用户消息也在跑的同一条路径**，影响面超出跨会话投递，且引入网络 I/O 到 prompt 组装里（需定超时/失败/大图上限），应单独立 spec 与 E2E。

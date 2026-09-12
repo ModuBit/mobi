@@ -133,9 +133,11 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
         // **边界**（只有 active 能收、附件限同机器、最终不可撤回）与**跨工具协作**
         // （id 来自 list_sessions；收件方用同一个工具回信）
         //
-        // 附件段照 spec D3b 的草稿，只把末句改准：网络图要写进 block 的 **value**，
-        // 不是 previewUrl——previewUrl 只换 Web 的渲染地址，推给 CC 时读的仍是 value
-        // （见 hub 的 findLocalFileBlock），跨机器时那样写会被判为「带本机文件」
+        // 附件段的末句是「说实话」的那一句：块里给 URL **不会被取回**——CLI 的
+        // blocks→prompt 转换只会 readFileSync（`buildPromptFromBlocks`），https 与
+        // data: 一律失败并降级成 `@值` 文本。原先那句「网络图就写 URL」推荐了一件
+        // 做不到的事，而 hub 侧的自足 URL 判据又正好放行它，于是「报成功、对面拿到
+        // 一段文本」。这里改成如实描述，让 agent 自己选：给本机文件，或把 URL 写进正文
         description:
             'Send a message to one or more sessions. Each target receives it as a user message tagged with this session, ' +
             'so the receiving agent can see where it came from and reply with this same tool. ' +
@@ -146,7 +148,9 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
             'a message from the user. ' +
             'image and document blocks must point at files on your own machine, and every target must be on that same ' +
             'machine; a local file cannot reach a session on another machine, and such a send fails rather than silently ' +
-            'dropping the file. If an image is already reachable online, give the block that URL instead of a local path. ' +
+            'dropping the file. Nothing fetches URLs: a block whose value is an online URL or a data: URL is not ' +
+            'delivered as an image or a file — the target receives the value as plain text it would have to fetch ' +
+            'itself, and a data: URL only burns context. Either attach a local file, or put the URL in the message text. ' +
             'Do not wait for a reply. There is no tool that waits — end your turn, and the target\'s response arrives later ' +
             'as a new message. The receiving agent will not stop what it is doing to handle your message; it sees it ' +
             'alongside its next tool result. ' +

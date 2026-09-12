@@ -385,8 +385,9 @@ export class AgentSessionService {
                     `The message carries a local file ("${localFile.filename}"), and that session is on a different machine. ` +
                     'A file path only means something on the machine it was written on, so the file could not be read there. ' +
                     'Nothing was sent — mobi does not drop the file and send the text anyway. ' +
-                    'If the image is reachable online, pass its URL as the block value instead of a local path. ' +
-                    'Moving files between machines is not supported yet.',
+                    'Moving files between machines is not supported yet. ' +
+                    'If the content is reachable online, put the URL in the message text instead of attaching it as a block — ' +
+                    'a URL in a block value is not fetched either, it just arrives as text.',
             }
         }
 
@@ -469,7 +470,15 @@ function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery
  * 把图渲染得很好看，而 CC 手上仍是一个它那台机器上不存在的路径——渲染好看而投递报成功，
  * 正是「agent 以为文件带上了」的那类欺骗。
  *
- * `data` 形态是骨架占位（没有磁盘路径），不参与；值本身就自足的（网络图等）也不参与。
+ * `data` 形态是骨架占位（没有磁盘路径），不参与；值本身就自足的（`isSelfContainedUrl`：
+ * blob / data / http(s)）也不参与——它不依赖**任何**机器上的文件，而本闸问的是「目标机器
+ * 读不到发件方那个路径」，对这一档无从谈起。
+ *
+ * 代价要认清：这类块到了对面**不会变成图片**——CLI 的 blocks→prompt 转换只会
+ * `readFileSync(value)`，网络地址与 data: 都会失败并降级成 `@值` 文本（对面得自己去取）。
+ * 也就是说「闸放行」不等于「图送到了」，所以工具描述里如实写明了这一点、不推荐这么用；
+ * 想让它真能送达，得让 CLI 那侧支持取回（见 docs/pending.md）。
+ *
  * 引用（quote）跨会话时 messageId 在本会话里悬空，但渲染只读 excerpt（D20），无需判据。
  */
 function findLocalFileBlock(blocks: readonly UserContentBlock[]): LocalFileBlock | null {

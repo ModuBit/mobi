@@ -3,7 +3,7 @@ name: send-message-verify
 description: E2E 验证跨会话消息链路（A↔B 往返 / 扇出含死目标 / 建完即用 / 无幽灵消息）— 造会话、探针措辞（必须点名工具）、DB 与 transcript 断言、富内容与跨机器的造法、Auto 也会卡审批的坑
 metadata:
   type: recipe
-  last_verified: 2026-09-12
+  last_verified: 2026-09-13
 ---
 
 # 跨会话消息投递验证（send_message_to_session）
@@ -134,9 +134,13 @@ sqlite3 ~/.mobi-e2e/mobi.db "UPDATE sessions SET metadata=json_set(metadata,'\$.
 curl -s -b /tmp/e2e-jar.txt http://localhost:2224/api/sessions >/dev/null
 ```
 
-## 网络图（值自足 → 跨机器也能投）
+## 网络图（值自足 → 跨机器**投得出去**，但对面**拿不到图**）
 
-`source.value` 是 `https?://` 时判为「不依赖本机文件」，跨机器照投，Web 直接用它渲染。
+`source.value` 是 `https?://` 时判为「不依赖本机文件」，跨机器照投（hub 的附件闸放行），
+Web 也直接用它渲染。**但 Web 看到的是图 ≠ 收件方 agent 看到的是图**：CLI 的 blocks→prompt
+转换只会 `readFileSync(value)`，`https` 与 `data:` 一律失败并降级成 `@值` 文本——B 那侧拿到的
+只是一行 URL（实测 06 里 B 自己起了个 `curl` 去取，见下「目标卡在审批上」）。这不是投递坏了，
+是这条管线就不支持取回 URL；工具描述已如实写明、不再推荐这么用（`docs/pending.md` #76）。
 要一个**确定可达**的 URL：本地静态服
 
 ```bash

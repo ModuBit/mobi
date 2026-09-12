@@ -50,8 +50,19 @@ describe('createSendMessageTool', () => {
         // 附件限同机器是**不可从 schema 看出**的边界（schema 只收路径）；不写明模型就会
         // 给另一台机器的会话发本机路径，然后收到一个本可以避免的失败
         expect(desc).toContain('must be on that same machine')
-        // 网络图要写进 block 的 value：previewUrl 只换 Web 的渲染地址，推给 CC 时读的仍是 value
-        expect(desc).toContain('give the block that URL')
+    })
+
+    it('description 不推荐用 URL 当附件——URL 不会被取回，只会变成对面的一段文本', () => {
+        const { deps } = buildDeps()
+        const desc = createSendMessageTool(deps).description
+
+        // 这里曾写着「网络图就写进 block 的 value」，是**推荐了一件做不到的事**：
+        // CLI 的 blocks→prompt 转换只会 readFileSync（buildPromptFromBlocks），https 与
+        // data: 一律失败并降级成 `@值` 文本；而 hub 的自足 URL 判据又正好放行它，
+        // 于是「投递报成功、对面拿到一段文本」。描述必须说实话
+        expect(desc).not.toContain('give the block that URL')
+        expect(desc).toContain('Nothing fetches URLs')
+        expect(desc).toContain('put the URL in the message text')
     })
 
     it('forwards targets and content to the hub untouched', async () => {
