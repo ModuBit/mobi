@@ -77,7 +77,7 @@ resolveCommand(args) → { command, context }
 | [`auth`](./commands/auth) | — | ✅ | 认证管理（login / logout / status） |
 | [`hub`](./commands/hub) | `service hub` | ✅ | 启动/管理 Hub（经 supervisor 托管） |
 | [`runner`](./commands/runner) | `service runner` | ✅ | 后台 Runner 管理（start/stop/status 经 supervisor；list / stop-session / logs 直连） |
-| [`mcp`](./commands/mcp) | — | ❌ | MCP Server，暴露 `change_title` 工具（随 Claude 会话自动启动） |
+| [`mcp`](./commands/mcp) | — | ❌ | MCP stdio bridge，把 `change_title` 调用转发给已有 HTTP MCP（当前无实际场景） |
 | [`doctor`](./commands/doctor) | — | ✅ | 系统诊断与故障排除 |
 | [`service`](./commands/service) | — | ✅ | supervisor 托管 hub+runner（start / stop / restart / status，可按组件） |
 | [`setup`](./commands/setup) | — | ✅ | 交互式配置向导（settings / service / 完整 wizard） |
@@ -154,11 +154,13 @@ Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离�
 
 详见 [Runner 命令](./commands/runner)。
 
-#### [mcp](./mcp) — MCP Server
+#### [mcp](./mcp) — MCP stdio bridge
 
-随 Claude 会话自动启动 HTTP MCP Server，暴露 `change_title` 工具让 Claude Code 修改会话标题，通过 Socket.IO 同步到 Hub。
+启动一个只暴露 `change_title` 的 stdio MCP server，把调用转发给已存在的 mobi HTTP MCP server（`--url` 或 `MOBI_HTTP_MCP_URL`）。当前无实际使用场景。
 
-详见 [MCP 系统](./commands/mcp)。
+会话内的 MCP 工具族（remote 进程内 / local HTTP 壳 / 工具工厂）不在此命令下，见 [MCP 模块](./mcp/)。
+
+详见 [mcp 命令](./commands/mcp)。
 
 #### [doctor](./doctor) — 系统诊断
 
@@ -219,9 +221,12 @@ CLI 通过 `packages/cli/src/api/` 与 Hub 通信，包括 HTTP REST 和 Socket.
 
 ## 代码入口
 
+（只列入口与命令层；`claude/`、`api/`、`mcp/`、`modules/`、`webtools/` 等模块见各自文档）
+
 ```
 packages/cli/src/
 ├── index.ts                     # 主入口，调用 runCli()
+├── mcp/                         # 会话内 MCP 工具族，见 ./mcp/
 ├── commands/
 │   ├── runCli.ts                # CLI 启动流程：版本检查、命令路由、运行时资源
 │   ├── registry.ts              # 命令注册表，resolveCommand()
