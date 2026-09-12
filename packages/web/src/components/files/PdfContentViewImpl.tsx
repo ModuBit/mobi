@@ -333,6 +333,9 @@ export default function PdfContentViewImpl({ sessionId, tabId, filePath, etag }:
                         <Document
                             file={src}
                             options={PDF_OPTIONS}
+                            // react-pdf v11 默认走 Suspense/ErrorBoundary；本组件用
+                            // loadError/Spin 自管加载态（历史行为），显式关掉保持不变
+                            suspense={false}
                             loading={null}
                             onLoadSuccess={handleLoadSuccess}
                             onLoadError={(e) => setLoadError(e)}

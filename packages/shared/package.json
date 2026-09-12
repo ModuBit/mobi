@@ -1,36 +1,36 @@
 {
-    "name": "@mobi/shared",
-    "private": true,
-    "version": "0.0.0",
-    "type": "module",
-    "exports": {
-        ".": "./src/index.ts",
-        "./schemas": "./src/schemas.ts",
-        "./socket": "./src/socket.ts",
-        "./modes": "./src/modes.ts",
-        "./types": "./src/types.ts",
-        "./agentTools": "./src/agentTools.ts",
-        "./messages": "./src/messages.ts",
-        "./profile": "./src/profile.ts",
-        "./pathSecurity": "./src/pathSecurity.ts",
-        "./mention": "./src/mention.ts",
-        "./fileMeta": "./src/fileMeta.ts",
-        "./upload": "./src/upload.ts",
-        "./exitLogger": "./src/exitLogger.ts",
-        "./logger": "./src/logger.ts"
-    },
-    "scripts": {
-        "test": "vitest run",
-        "typecheck": "tsc --noEmit"
-    },
-    "dependencies": {
-        "chalk": "^6.0.0",
-        "zod": "^4.6.1"
-    },
-    "devDependencies": {
-        "@types/node": "^26.4.1",
-        "bun-types": "^1.4.2",
-        "vitest": "^5.0.0"
-    },
-    "sideEffects": false
+  "name": "@mobi/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas": "./src/schemas.ts",
+    "./socket": "./src/socket.ts",
+    "./modes": "./src/modes.ts",
+    "./types": "./src/types.ts",
+    "./agentTools": "./src/agentTools.ts",
+    "./messages": "./src/messages.ts",
+    "./profile": "./src/profile.ts",
+    "./pathSecurity": "./src/pathSecurity.ts",
+    "./mention": "./src/mention.ts",
+    "./fileMeta": "./src/fileMeta.ts",
+    "./upload": "./src/upload.ts",
+    "./exitLogger": "./src/exitLogger.ts",
+    "./logger": "./src/logger.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chalk": "^6.0.0",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "bun-types": "^1.4.2",
+    "vitest": "^5.0.0"
+  },
+  "sideEffects": false
 }
