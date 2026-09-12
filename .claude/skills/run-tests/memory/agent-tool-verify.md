@@ -112,6 +112,15 @@ done
   也就是说放行是**按命令类别**判的（`pwd` 放行、网络访问不放行），「Auto 全放行」只在
   安全命令上成立。做 E2E 时若发现对端「没反应」，先看它是不是卡在审批上（见
   [[send-message-verify]] 的「目标卡在审批上」一节），别急着怀疑自己的实现。
+- ✅ **预授权（allowedTools）的判别 recipe（2026-09-12 验成，推翻上面「无法验证」的结论）**：
+  `POST /api/machines/$M/spawn` 带 `"permissionMode":"default"`（= Request Approval，会问）
+  建一个新会话 → 发探针让它调 mobi 工具 → 在会话页查
+  `document.body.innerText.includes('Awaiting approval')` 为 **false** 即预授权生效。
+  实测 `mcp__mobi-apps__list_machines` 在 default 模式下**不弹审批**、正常返回 → D37 成立。
+  两个坑：① 判据要查**会话自己的** `runtime_state.permissionMode`（`sqlite3 … sessions`），
+  **别信 composer 底部那个模式胶囊**——E 会话库里是 `default`，胶囊仍显示 `Auto`（那是
+  composer 的待选值/localStorage 残留，见 [[create-session]]）；② 探针里别让它顺手跑 Bash，
+  否则先弹的是 Bash 的审批，会把判别信号盖掉。
 - **deferred 工具名在 init 里是可见的，描述不参与「检索」** — `system/init` 的 `tools[]`
   已含 `mcp__xxx__yyy` 全名，只有 schema/描述被 defer。实测模型直接用
   `ToolSearch "select:mcp__mobi-apps__list_machines"` 精确取，而非关键词搜索。写工具描述时
