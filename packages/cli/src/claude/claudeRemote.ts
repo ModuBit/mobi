@@ -884,6 +884,9 @@ export async function claudeRemote(opts: {
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
     // push 携带可选 localId：steal 路径的消息同样预设 uuid 并上报绑定
     onSteerSinkReady?: (push: (payload: PromptPayload, localId?: string) => boolean) => void,
+    /** 跨会话消息 sink 就绪回调：把**别的会话投来**的消息 push 进 SDK input stream。
+     *  与 steer sink 分开是因为入参不同——这条不经投递队列，因此不传 localId、不绑定 native_id */
+    onAgentMessageSinkReady?: (push: (payload: PromptPayload) => boolean) => void,
     /** UserPromptSubmit hook 观测回调：入站 prompt（含跨会话 peer 消息）直达 wrapper，
      * 由 launcher 甄别落库。恒同步调用、不阻塞 SDK 主流程（回调内部自行兜错） */
     onInboundPrompt?: (input: { prompt: string; source?: string }) => void,
@@ -1202,6 +1205,33 @@ export async function claudeRemote(opts: {
             return false;
         }
     };
+
+    // 跨会话消息 sink：与 bashInjectSink 同一时机接通（**早于 query 与首条用户消息**），
+    // 同样靠 PushableAsyncIterable 的缓冲——query attach 那一刻消费，不需要本会话先有过消息。
+    //
+    // 时机为什么要这么早：本 sink 是「别的会话投来的消息」的唯一入口，而**新建的会话
+    // 从没有过消息**（create_session 建出来的就是空会话，D11「建完即可发消息」）。若等到
+    // 首条用户消息之后才接通（steer sink 的位置），那么正是本特性最重要的那条链路
+    // ——A 建出 B、紧接着给 B 发消息——会被判成「目标不收消息」而失败。等价的代价是
+    // 「query 最终没起来时消息只停留在缓冲里」，与 bash 注入共用同一取舍。
+    //
+    // 与 steer sink 的关键差别：**不碰投递队列**，消息从外面来，目标侧从没排过队，
+    // 所以不传 localIds（也就不会绑定 native_id）。markInputPushed 照常调：消息一旦进
+    // input stream 就会驱动处理——会话空闲时立刻起一轮，忙时被当前 turn 在下一个工具
+    // 结果处吸收，两种情况下 running 都该如实置位。
+    if (opts.onAgentMessageSinkReady) {
+        opts.onAgentMessageSinkReady((payload: PromptPayload) => {
+            if (messages.done) return false;
+            try {
+                markInputPushed();
+                pushUserMessage(messages, sanitizePayload(payload));
+                return true;
+            } catch (e) {
+                logger.debug('[claudeRemote] 跨会话消息 push 失败:', e);
+                return false;
+            }
+        });
+    }
 
     // 双循环协调：任一退出时 abort 通知另一个终止（提前激活窗口内输出循环的 signal
     // 已被引用，声明须先于 outputLoopPromise 创建）

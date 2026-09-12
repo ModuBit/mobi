@@ -21,6 +21,7 @@ import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState } from "./claudeRemote";
 import { classifyInboundTurn } from './utils/inboundCrossSession';
+import { createAgentMessagePushHandler } from './utils/agentMessagePushHandler';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
@@ -109,6 +110,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 消息 payload push 进 SDK input stream
     // （payload 可为数组 content block——队列消息可能是带图片的 PromptPayload）
     private steerSink: ((payload: PromptPayload, localId?: string) => boolean) | null = null;
+    // 跨会话消息 sink：同由 claudeRemote 启动循环时注入、轮末清空。
+    // 与 steerSink 分开而不是复用：这条不经投递队列，入参没有 localId（不绑定 native_id）
+    private agentMessageSink: ((payload: PromptPayload) => boolean) | null = null;
     // 上次真实 turn 的窗口/成本/瞬时 usage 记忆、代际守卫、窗口口径——全部内藏在 tracker，
     // launcher 只在 SDK 事件点转发（深化候选①，见 contextUsageTracker.ts 与其编排测试）
     private readonly contextTracker = new ContextUsageTracker({
@@ -468,6 +472,18 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             session.client.emitMessagesSubmitted([localId])
             return { status: 'steered' }
         });
+
+        // 跨会话消息投递（Hub → CLI）：别的会话的 agent 把一条消息投给本会话。
+        //
+        // 与 steer-queued-message 的分界（本特性与既有投递路径的交界，勿混）：
+        // 那条从**本会话自己的投递队列**里 steal 一条排队消息；这条**完全不碰队列**——
+        // 消息由别的会话投来，本会话从没排过队。三步（插信封 → 既有的 blocks→payload
+        // 转换 → 直推 SDK input stream）与载荷校验全在 agentMessagePushHandler 里；
+        // 这里只做接线：把「当前这一轮的 sink」惰性给它。
+        session.client.rpcHandlerManager.registerHandler(
+            'push-agent-message',
+            createAgentMessagePushHandler(() => this.agentMessageSink),
+        );
 
         const permissionHandler = new PermissionHandler(session, {
             // mode 变更时通知运行中 SDK Query 动态切换 permissionMode（见 permissionHandler 说明）
@@ -1024,6 +1040,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
+                        // 跨会话消息 sink 与 steer sink 同生命周期：本轮的 input stream 关了就置空
+                        onAgentMessageSinkReady: (push) => { this.agentMessageSink = push },
                         // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
                         // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返。
                         // 同时是 turn 追踪的 push 接线点（批次 A）：更新策略收口在
@@ -1107,6 +1125,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 清空 steer sink：旧 SDK input stream 已 end，避免下一轮 claudeRemote 注入新 sink 前
                     // 命中 stale sink 导致 steer push 抛错（虽已 try/catch 回填，但清空让未就绪态更明确）
                     this.steerSink = null;
+                    this.agentMessageSink = null;
                     // 轮级状态复位：后台任务集合按「进程重启即清空」语义随轮清空（sdk.d.ts level 信号
                     // 为 per-process）；待注入停止信息与暂存批次标记不跨轮残留
                     this.backgroundTaskIds = new Set<string>();

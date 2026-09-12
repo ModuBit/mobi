@@ -18,7 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { registerAgentSessionHandlers } from '../../../src/socket/handlers/cli/agentSessionHandlers'
 import type { AgentSessionHandlersDeps } from '../../../src/socket/handlers/cli/agentSessionHandlers'
 import type { StoredSession } from '../../../src/store/types'
-import type { AgentCreateSessionAck, AgentMachineSummary, AgentSessionSummary } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */
 function makeStoredSession(sid: string, namespace = 'default'): StoredSession {
@@ -45,15 +45,18 @@ function makeFakeSocket() {
 
 type Ack = { ok: true; machines: AgentMachineSummary[] } | { ok: false; reason: string }
 type SessionsAck = { ok: true; sessions: AgentSessionSummary[] } | { ok: false; reason: string }
+type SendAck = { ok: true; results: AgentSendMessageTargetResult[] } | { ok: false; reason: string }
 
 function makeDeps(opts?: {
     machines?: AgentMachineSummary[]
     sessions?: AgentSessionSummary[]
     createResult?: AgentCreateSessionAck
+    sendResult?: AgentSendMessageTargetResult[]
 }) {
     const seenNamespaces: string[] = []
     const seenQueries: unknown[] = []
     const seenCreateInputs: unknown[] = []
+    const seenSendCalls: Array<{ namespace: string; fromSessionId: string; input: unknown }> = []
     const deps: AgentSessionHandlersDeps = {
         resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
         listOnlineMachines: (namespace: string) => {
@@ -70,8 +73,20 @@ function makeDeps(opts?: {
             seenCreateInputs.push(input)
             return opts?.createResult ?? { ok: true, sessionId: 's-new' }
         },
+        sendMessageToSessions: async (namespace: string, fromSessionId: string, input) => {
+            seenNamespaces.push(namespace)
+            seenSendCalls.push({ namespace, fromSessionId, input })
+            return opts?.sendResult ?? [{ sessionId: 'B', ok: true }]
+        },
     }
-    return { deps, seenNamespaces, seenQueries, seenCreateInputs }
+    return { deps, seenNamespaces, seenQueries, seenCreateInputs, seenSendCalls }
+}
+
+/** 触发 sendMessageToSessionForAgent 并捕获 ack 回执（同 callCreateSession 的 Promise 包裹） */
+function callSend(socket: ReturnType<typeof makeFakeSocket>, payload: unknown): Promise<SendAck> {
+    return new Promise((resolve) => {
+        socket.emit('sendMessageToSessionForAgent', payload, (a: SendAck) => resolve(a))
+    })
 }
 
 /** 触发 listMachinesForAgent 并捕获 ack 回执 */
@@ -354,5 +369,110 @@ describe('createSessionForAgent handler', () => {
 
         expect(await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' }))
             .toEqual({ ok: false, error: 'No online machine with id "m1".' })
+    })
+})
+
+describe('sendMessageToSessionForAgent handler', () => {
+    test('正常请求 → ack ok:true 带回逐目标结果', async () => {
+        const socket = makeFakeSocket()
+        const { deps } = makeDeps()
+        register(socket, deps)
+
+        const answer = await callSend(socket, { sid: 's1', targets: ['B'], content: 'hi' })
+
+        expect(answer).toEqual({ ok: true, results: [{ sessionId: 'B', ok: true }] })
+    })
+
+    test('发信方是鉴权解析出的会话：namespace 与 sid 都取自它', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenSendCalls } = makeDeps()
+        // 入参 sid 与鉴权解析出的会话不同（resume 换 id 场景）
+        deps.resolveSessionAccess = () => ({
+            ok: true as const,
+            value: makeStoredSession('authoritative', 'ns-from-session'),
+        })
+        register(socket, deps)
+
+        await callSend(socket, { sid: 's1', targets: ['B', 'C'], content: 'hi' })
+
+        // namespace 从鉴权会话解析，发信方 id 用入参 sid（信封的 from-session-id 就是它，
+        // 与服务内按 (id, namespace) 解析发送方一致——鉴权已证明它在这个 namespace 里）
+        expect(seenSendCalls).toEqual([
+            { namespace: 'ns-from-session', fromSessionId: 's1', input: { targets: ['B', 'C'], content: 'hi' } },
+        ])
+    })
+
+    test('空 targets 在形状层被拒——「成功但什么都没发」是最没用的一种回执', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenSendCalls } = makeDeps()
+        register(socket, deps)
+
+        expect(await callSend(socket, { sid: 's1', targets: [], content: 'hi' }))
+            .toEqual({ ok: false, reason: 'invalid-payload' })
+        expect(await callSend(socket, { sid: 's1', targets: [''], content: 'hi' }))
+            .toEqual({ ok: false, reason: 'invalid-payload' })
+        expect(seenSendCalls).toHaveLength(0)
+    })
+
+    test('content 整个缺失 → invalid-payload（不是「成功但发了条空消息」）', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenSendCalls } = makeDeps()
+        register(socket, deps)
+
+        // zod 4 的 z.unknown() 要求键**存在**（值可以是 undefined/null）：键缺失在边界就挡下，
+        // 不把「什么都没给」当成一条空消息发出去
+        expect(await callSend(socket, { sid: 's1', targets: ['B'] }))
+            .toEqual({ ok: false, reason: 'invalid-payload' })
+        expect(seenSendCalls).toHaveLength(0)
+    })
+
+    test('content 给的是 null → 进扇出，由服务按「形状不认识」逐条拒绝', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenSendCalls } = makeDeps()
+        register(socket, deps)
+
+        // 形状类判据分两层：**键在不在**属边界（这里），**值认不认识**属业务规则（服务）——
+        // 服务那边的判据要能说出「是哪个形态不认识」，一个 reason 码做不到
+        await callSend(socket, { sid: 's1', targets: ['B'], content: null })
+
+        expect(seenSendCalls).toHaveLength(1)
+        expect(seenSendCalls[0].input).toEqual({ targets: ['B'], content: null })
+    })
+
+    test('会话访问被拒 → ack ok:false 且不调服务', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenSendCalls } = makeDeps()
+        deps.resolveSessionAccess = () => ({ ok: false as const, reason: 'access-denied' })
+        register(socket, deps)
+
+        expect(await callSend(socket, { sid: 's1', targets: ['B'], content: 'hi' }))
+            .toEqual({ ok: false, reason: 'access-denied' })
+        expect(seenSendCalls).toHaveLength(0)
+    })
+
+    test('服务未装配 → handler-misconfigured（不静默当成功）', async () => {
+        const socket = makeFakeSocket()
+        const { deps } = makeDeps()
+        delete deps.sendMessageToSessions
+        register(socket, deps)
+
+        expect(await callSend(socket, { sid: 's1', targets: ['B'], content: 'hi' }))
+            .toEqual({ ok: false, reason: 'handler-misconfigured' })
+    })
+
+    test('部分成功仍走 ok:true——进了扇出就没有「整体失败」这回事', async () => {
+        const socket = makeFakeSocket()
+        const { deps } = makeDeps({
+            sendResult: [
+                { sessionId: 'B', ok: true },
+                { sessionId: 'C', ok: false, error: 'gone' },
+            ],
+        })
+        register(socket, deps)
+
+        const answer = await callSend(socket, { sid: 's1', targets: ['B', 'C'], content: 'hi' })
+
+        expect(answer.ok).toBe(true)
+        expect(answer.ok && answer.results.map((r) => r.ok)).toEqual([true, false])
     })
 })

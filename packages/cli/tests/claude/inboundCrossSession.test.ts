@@ -35,6 +35,14 @@ describe('classifyInboundTurn', () => {
         expect(r).toEqual({ kind: 'loop', text: 'continue the loop', fromName: null })
     })
 
+    it('null: mobi 自发投递的信封（带 from-session-id）→ 不重复落库', () => {
+        // 投递路径自己落库，观测路径再记一次会在目标会话里留两行一模一样的消息
+        // （2026-09-12 E2E 实测两行相隔 15ms）
+        const mobiEnvelope =
+            '<cross-session-message from-name="A" from-session-id="sess-a" message-id="m1">hello</cross-session-message>'
+        expect(classifyInboundTurn({ prompt: mobiEnvelope, source: 'system' })).toBeNull()
+    })
+
     it('null: source=user（交互）→ 不落库', () => {
         expect(classifyInboundTurn({ prompt: 'hi', source: 'user' })).toBeNull()
     })

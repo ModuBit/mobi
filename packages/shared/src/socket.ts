@@ -19,6 +19,7 @@ import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
 import type { CacheStatus, ContextUsage, GoalStatus, SnapshotDeltaFrame, UiCommandAction } from './schemas'
+import type { UserContentBlock, UserMessageContent } from './userContentSchema'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
 
@@ -135,6 +136,68 @@ export type AgentCreateSessionRequest = {
 export type AgentCreateSessionAck =
     | { ok: true; sessionId: string }
     | { ok: false; error: string }
+
+/** send_message_to_session 入参 */
+export type AgentSendMessageRequest = {
+    sid: string
+    /** 目标会话 id（至少 1 个）。扇出逐条独立，不做事务——投递一旦发生就收不回来 */
+    targets: string[]
+    /** 与 Web composer 同形的内容三形态（裸 string / 单 block / block 数组） */
+    content: UserMessageContent
+}
+
+/**
+ * 单个目标的投递结果。
+ *
+ * 失败用**自由文本**而非 AgentOpFailureReason 码，理由与 AgentCreateSessionAck 同：
+ * 失败来自上游且是开放集合，每种都翻译成一句给人看的话，码在这里没有消费方。
+ * 内容类失败（本期只支持文本）对**每个目标**都产出同一条错误——它表达的是
+ * 「这条消息投不出去」，而不是「这个目标有问题」，但结果形状不为它另开分支。
+ */
+export type AgentSendMessageTargetResult = {
+    sessionId: string
+    ok: boolean
+    error?: string
+}
+
+/**
+ * send_message_to_session 回执。
+ *
+ * 顶层 ok:false 只留给「一整个请求都没进入扇出」的情况（入参形状、鉴权、装配），
+ * 与 list/create 同口径；一旦进入扇出，成败一律逐条体现，顶层恒 ok:true。
+ */
+export type AgentSendMessageAck =
+    | { ok: true; results: AgentSendMessageTargetResult[] }
+    | { ok: false; reason: AgentOpFailureReason }
+
+/**
+ * 一条待投递/已投递的跨会话消息（Hub 侧编排的载荷，也是 push-agent-message RPC 的载荷）。
+ *
+ * 传的是**归一后的 blocks**，不是渲染好的文本，也不含信封：信封的插入与
+ * blocks→payload 转换都在**目标 CLI** 侧做（那一步是 Web 用户消息在跑的同一个函数）。
+ * 三个标识由 Hub 解析/预生成后带下去——CLI 没有别的会话的信息，反查不了。
+ */
+export type AgentMessageDelivery = {
+    /** 归一后的内容块（信封不在其中；CLI 在转换前把信封以首尾两个 text block 插在它外面） */
+    blocks: UserContentBlock[]
+    /** 信封的 message-id，兼作落库行的 localId（Hub 预生成，投递前就确定，不必等落库） */
+    messageId: string
+    /** 发送方会话名（信封 from-name；会话未命名时为空串，身份由 fromSessionId 承担） */
+    fromName: string
+    /** 发送方会话 id（信封 from-session-id；收件方据此回信） */
+    fromSessionId: string
+}
+
+/**
+ * push-agent-message RPC 回执（CLI → Hub）。
+ *
+ * 失败**不抛错**：抛错会把这条回执变成连接故障（Hub 只能报「目标会话不可达」），
+ * 而 handler 其实跑了、只是没收下（input stream 已关 / 没接上）。与 spawn 回执的
+ * `{ type: 'error' }` 同一路数——出站 RPC 的失败用返回值表达，异常留给传输层。
+ */
+export type AgentMessagePushResult =
+    | { status: 'delivered' }
+    | { status: 'rejected'; reason: string }
 
 export const TerminalOpenPayloadSchema = z.object({
     sessionId: z.string().min(1),
@@ -408,6 +471,10 @@ export interface ClientToServerEvents {
     /** 同上，在某台机器上起一个新会话进程。语义是「现在就有了这个会话」，
      *  没有「建了行但空着」的中间态——建完即可往里发消息。 */
     'createSessionForAgent': (data: AgentCreateSessionRequest, cb: (answer: AgentCreateSessionAck) => void) => void
+    /** 同上，把一条消息投给别的会话。**不经投递队列**——Hub 落库即终态并经 RPC 直推目标
+     *  CLI 的 input stream，因此不可取消、不可编辑、不在 Web 上呈现排队态。
+     *  成功判据是「已进入对方输入流」，不是「对方已读」。 */
+    'sendMessageToSessionForAgent': (data: AgentSendMessageRequest, cb: (answer: AgentSendMessageAck) => void) => void
 }
 
 /** listSessionsForAgent 入参 */

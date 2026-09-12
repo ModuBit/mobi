@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -401,6 +401,29 @@ export class RpcGateway {
     async steerCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'steered' | 'submitted' }> {
         const res = await this.sessionRpc(sessionId, 'steer-queued-message', { localId })
         return (res ?? { status: 'submitted' }) as { status: 'steered' | 'submitted' }
+    }
+
+    /**
+     * 把一条跨会话消息投给目标会话的 CLI（Hub → CLI）。
+     *
+     * 与 steerCliQueuedMessage 的分界：那条从**目标自己的投递队列**里取出排队消息，
+     * 有本地排队态、要绑定 native_id；这条不走队列——消息由别的会话投来，
+     * 目标侧从没排过队，`localIds` 也不传（消息身份已由信封携带）。
+     *
+     * 目标 CLI 缺该 handler（进程是旧版本或已退）时抛 RPC 错误，由调用方
+     * （AgentSessionService）翻译成人话，不在这层兜。
+     *
+     * **RPC 正常返回但 status 是 rejected 也算失败**（见 AgentMessagePushResult）：
+     * 那表示 CLI 跑了 handler 却没收下（input stream 已关）。静默当成功会落一条
+     * 永远不会被处理的库行，还告诉 agent「送到了」——比报错坏得多。
+     */
+    async pushAgentMessage(sessionId: string, delivery: AgentMessageDelivery): Promise<void> {
+        const result = await this.sessionRpc(sessionId, 'push-agent-message', delivery) as AgentMessagePushResult | null
+        if (result?.status === 'delivered') {
+            return
+        }
+        // CLI 那边的 reason 本就是给人看的句子（谁收不下、为什么），原样抛给翻译层
+        throw new Error(result?.status === 'rejected' ? result.reason : 'the session did not confirm delivery')
     }
 
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {

@@ -29,7 +29,7 @@ _Avoid_: 消息队列（与 SDK input stream 混称）
 _Avoid_: 排队、进队列
 
 **跨会话消息**:
-一个会话投到另一个会话的消息。与人发言同形（role=user、正文包 `<cross-session-message from="…">` 信封），收件方据此用同一来源回复；来源另以发件方会话 id 记为一等字段。当前来源有二：Claude Code 原生（走本机 UDS，mobi 只观测）与 mobi 自发（建设中）。
+一个会话投到另一个会话的消息。与人发言同形（role=user、正文包 `<cross-session-message from-name="…">` 信封），收件方据此用同一来源回复；mobi 自发投递的那一类另把发件方会话 id 记为 meta 一等字段 `fromSessionId`（CC 原生 peer 消息只有名字，反查不到会话、也无消息身份）。当前来源有二：Claude Code 原生（走本机 UDS，mobi 只观测）与 mobi 自发（`send_message_to_session` 投递，落库不含信封）。
 _Avoid_: thread（orca 式的独立线程实体，本仓库不引入——会话自身即线程）、会话间消息
 
 ### 分叉

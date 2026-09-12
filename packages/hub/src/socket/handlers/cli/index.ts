@@ -15,13 +15,13 @@
  */
 
 import type { Store, StoredMachine, StoredSession } from '../../../store'
-import type { AgentCreateSessionAck, AgentMachineSummary, AgentSessionSummary } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { SessionFactsSink } from '../../../sync/sessionFacts'
-import type { AgentCreateSessionInput, AgentSessionQuery } from '../../../sync/agentSessionService'
+import type { AgentCreateSessionInput, AgentSendMessageInput, AgentSessionQuery } from '../../../sync/agentSessionService'
 import type { SnapshotCliLease, SnapshotSync } from '../../../sync/snapshotSync'
 import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
@@ -62,13 +62,19 @@ export type CliHandlersDeps = {
     listSessionsForAgent?: (namespace: string, query: AgentSessionQuery) => AgentSessionSummary[]
     /** Agent 会话操作：在某台机器上起新会话（AgentSessionService.createSession）。同上守卫 */
     createSessionForAgent?: (namespace: string, input: AgentCreateSessionInput) => Promise<AgentCreateSessionAck>
+    /** Agent 会话操作：把消息投给若干会话（AgentSessionService.sendMessageToSessions）。同上守卫 */
+    sendMessageToSessionsForAgent?: (
+        namespace: string,
+        fromSessionId: string,
+        input: AgentSendMessageInput
+    ) => Promise<AgentSendMessageTargetResult[]>
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
     factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, listOnlineMachinesForAgent, listSessionsForAgent, createSessionForAgent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, listOnlineMachinesForAgent, listSessionsForAgent, createSessionForAgent, sendMessageToSessionsForAgent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -155,7 +161,8 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         resolveSessionAccess,
         listOnlineMachines: listOnlineMachinesForAgent,
         listSessions: listSessionsForAgent,
-        createSession: createSessionForAgent
+        createSession: createSessionForAgent,
+        sendMessageToSessions: sendMessageToSessionsForAgent
     })
 
     socket.on('ping', (callback: () => void) => {

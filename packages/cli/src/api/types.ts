@@ -156,8 +156,13 @@ export const MessageMetaSchema = z.object({
     appendSystemPrompt: z.string().nullable().optional(),
     allowedTools: z.array(z.string()).nullable().optional(),
     disallowedTools: z.array(z.string()).nullable().optional(),
-    /** 跨会话入站消息来源标注（UserPromptSubmit hook 观测的 peer 消息，from = 来源会话名） */
+    /** 跨会话入站消息来源标注（from = 来源会话名）。来源有二：CC 原生 peer（hook 观测落库，
+     *  只有名字）与 mobi 自发投递（agent 经 send_message_to_session 发出） */
     crossSession: z.object({ from: z.string() }).optional(),
+    /** 来源会话 id（只有 **mobi 自发投递** 的消息带它）。判据用途：有 id = mobi 自发；
+     *  有 from 无 id = CC 原生 peer。**必须在此声明**——zod 默认剥未知键，漏了它
+     *  下游（apiSession 的重投守卫）就永远读不到 */
+    fromSessionId: z.string().optional(),
     /** 入站 turn 来源（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒。
      *  仅 hook 观测的入站 turn 落库时携带；普通 webapp user 消息缺省 */
     turnOrigin: z.enum(['peer', 'scheduled', 'loop']).optional()

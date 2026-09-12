@@ -41,6 +41,33 @@ export function toDecryptedMessage(message: StoredMessage): DecryptedMessage {
     }
 }
 
+/**
+ * sendMessage 入参（含透传方 SyncEngine 的签名——字段只在这一处声明，
+ * 新增字段不会被透传层漏掉）。
+ */
+export type SendMessagePayload = {
+    /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象），透传给 messageService 归一 */
+    content: unknown
+    localId?: string | null
+    sentFrom?: 'webapp' | 'cli'
+    /**
+     * 跨会话来源标注（agent 经 send_message_to_session 投来的消息）。
+     * 与 sentFrom 一起写进 meta：来源会话名进 `crossSession.from`（Web 的来源标签读它），
+     * 来源会话 id 作一等字段 `fromSessionId`——它既是区分 mobi 自发与 CC 原生 peer 的判据，
+     * 也是收件方 agent 回信的地址。
+     */
+    crossSession?: { from: string; fromSessionId: string }
+    /**
+     * true = 只落库，**不向 CLI 房间回灌 new-message**。
+     *
+     * 专供 agent 跨会话投递：那条路径已由 push-agent-message RPC 把消息推进目标 CLI 的
+     * input stream，再回灌一次，目标 CLI 的 handleIncomingMessage 会照着同一行**二次入队**
+     * （它只看内容形状，不看 meta）——同一句话投两遍。Web 用户提交依赖这次回灌把消息送进
+     * CLI，缺省 false 是它的正常路径。
+     */
+    skipCliEcho?: boolean
+}
+
 export class MessageService {
     private static readonly toDecrypted = toDecryptedMessage
 
@@ -112,12 +139,7 @@ export class MessageService {
 
     async sendMessage(
         sessionId: string,
-        payload: {
-            /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象）。路由层已 Zod 校验，service 再归一保底 */
-            content: unknown
-            localId?: string | null
-            sentFrom?: 'webapp' | 'cli'
-        }
+        payload: SendMessagePayload
     ): Promise<void> {
         const sentFrom = payload.sentFrom ?? 'webapp'
 
@@ -131,14 +153,22 @@ export class MessageService {
             role: 'user',
             content: blocks,
             meta: {
-                sentFrom
+                sentFrom,
+                ...(payload.crossSession
+                    ? {
+                        crossSession: { from: payload.crossSession.from },
+                        fromSessionId: payload.crossSession.fromSessionId,
+                    }
+                    : {})
             }
         }
 
         const msg = this.store.messages.addMessage(sessionId, content, payload.localId ?? undefined)
         const message = toDecryptedMessage(msg)
 
-        this.emitNewMessageToCli(sessionId, msg, message)
+        if (!payload.skipCliEcho) {
+            this.emitNewMessageToCli(sessionId, msg, message)
+        }
 
         this.publisher.emit({
             type: 'message-received',

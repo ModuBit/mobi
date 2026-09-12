@@ -29,7 +29,7 @@ import { parseAccessToken } from '../utils/accessToken'
 import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
-import type { AgentCreateSessionInput, AgentSessionQuery, AgentSessionService } from '../sync/agentSessionService'
+import type { AgentCreateSessionInput, AgentSendMessageInput, AgentSessionQuery, AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotSync } from '../sync/snapshotSync'
@@ -216,6 +216,13 @@ export function createSocketServer(deps: SocketServerDeps): {
             const agentSessions = deps.agentSessions?.()
             return agentSessions
                 ? (namespace: string, input: AgentCreateSessionInput) => agentSessions.createSession(namespace, input)
+                : undefined
+        })(),
+        sendMessageToSessionsForAgent: (() => {
+            const agentSessions = deps.agentSessions?.()
+            return agentSessions
+                ? (namespace: string, fromSessionId: string, input: AgentSendMessageInput) =>
+                    agentSessions.sendMessageToSessions(namespace, fromSessionId, input)
                 : undefined
         })()
     }))

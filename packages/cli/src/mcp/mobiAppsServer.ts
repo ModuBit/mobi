@@ -37,6 +37,7 @@ import { createOpenInMobiToolForSession } from './openInMobiTool'
 import { createListMachinesToolForSession } from './listMachinesTool'
 import { createListSessionsToolForSession } from './listSessionsTool'
 import { createCreateSessionToolForSession } from './createSessionTool'
+import { createSendMessageToolForSession } from './sendMessageTool'
 
 export function createMobiAppsServer(client: ApiSessionClient) {
     // 本 server 的工具都仅挂 remote 壳：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
@@ -44,6 +45,7 @@ export function createMobiAppsServer(client: ApiSessionClient) {
     const listMachinesTool = createListMachinesToolForSession(client)
     const listSessionsTool = createListSessionsToolForSession(client)
     const createSessionTool = createCreateSessionToolForSession(client)
+    const sendMessageTool = createSendMessageToolForSession(client)
 
     return createSdkMcpServer({
         name: MOBI_APPS_SERVER_NAME,
@@ -76,6 +78,12 @@ export function createMobiAppsServer(client: ApiSessionClient) {
                 createSessionTool.description,
                 createSessionTool.inputSchema.shape,
                 async (args: unknown) => createSessionTool.execute(args),
+            ),
+            tool(
+                sendMessageTool.name,
+                sendMessageTool.description,
+                sendMessageTool.inputSchema.shape,
+                async (args: unknown) => sendMessageTool.execute(args),
             ),
         ],
     })

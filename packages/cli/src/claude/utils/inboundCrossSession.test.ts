@@ -23,12 +23,19 @@ const envelope = (fromName: string, body: string) =>
 describe('parseInboundCrossSession', () => {
     it('信封 + source=system → 提取 from 与正文（剥离外壳文案）', () => {
         const r = parseInboundCrossSession({ prompt: envelope('mobi-ad', '晚上好'), source: 'system' })
-        expect(r).toEqual({ text: '晚上好', fromName: 'mobi-ad' })
+        // CC 原生信封没有 from-session-id（那是 mobi 加的），故原生命中为 null
+        expect(r).toEqual({ text: '晚上好', fromName: 'mobi-ad', fromSessionId: null })
     })
 
     it('信封 + source 缺省（字段灰度期）→ 同样提取', () => {
         const r = parseInboundCrossSession({ prompt: envelope('mobi-05', 'ping') })
-        expect(r).toEqual({ text: 'ping', fromName: 'mobi-05' })
+        expect(r).toEqual({ text: 'ping', fromName: 'mobi-05', fromSessionId: null })
+    })
+
+    it('信封带 from-session-id（mobi 自发的信封）→ 一并提取出来', () => {
+        const prompt = '<cross-session-message from-name="A" from-session-id="sess-a" message-id="m1">hi</cross-session-message>'
+        expect(parseInboundCrossSession({ prompt, source: 'system' }))
+            .toEqual({ text: 'hi', fromName: 'A', fromSessionId: 'sess-a' })
     })
 
     it('source 为已知非 system（自己的 stdin push / loop 等）→ 恒忽略', () => {
@@ -45,13 +52,14 @@ describe('parseInboundCrossSession', () => {
 
     it('信封缺 from-name 属性 → 降级：正文落库、from 为 null', () => {
         const prompt = 'prefix <cross-session-message from="uds:/tmp/x.sock">hello</cross-session-message> suffix'
-        expect(parseInboundCrossSession({ prompt, source: 'system' })).toEqual({ text: 'hello', fromName: null })
+        expect(parseInboundCrossSession({ prompt, source: 'system' }))
+            .toEqual({ text: 'hello', fromName: null, fromSessionId: null })
     })
 
     it('开标签缺 from-name、正文引用别处 from-name 文本 → 不误提取，from 为 null', () => {
         const prompt = '<cross-session-message from="uds:/tmp/x.sock">他提到 from-name="evil" 这个名字</cross-session-message>'
         expect(parseInboundCrossSession({ prompt, source: 'system' }))
-            .toEqual({ text: '他提到 from-name="evil" 这个名字', fromName: null })
+            .toEqual({ text: '他提到 from-name="evil" 这个名字', fromName: null, fromSessionId: null })
     })
 
     it('正文多行保留原始换行（仅 trim 首尾）', () => {

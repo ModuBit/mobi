@@ -41,6 +41,14 @@ export interface InboundCrossSession {
     text: string
     /** 发送方 CLI 会话名；信封未携带时 null */
     fromName: string | null
+    /**
+     * 发送方会话 id；CC 原生信封没有这个属性，故原生 peer 消息**恒为 null**。
+     *
+     * 它同时是「这条信封是 mobi 自发投递的」的判据——CC 原生信封只有
+     * `from`（socket 地址）/ `from-name` / `from-mode` 三个属性，`from-session-id`
+     * 是 mobi 加的（见 crossSessionEnvelope.ts）。
+     */
+    fromSessionId: string | null
 }
 
 export type InboundTurnKind = 'peer' | 'scheduled' | 'loop'
@@ -55,7 +63,7 @@ export interface InboundTurn {
 
 /**
  * 按 hook input 的 source + 信封甄别入站 turn（spec 批次 D）。
- * - source='system' + 信封 → peer（跨会话消息，复用 parseInboundCrossSession 的信封解析）
+ * - source='system' + 信封 + **无 from-session-id** → peer（CC 原生跨会话消息）
  * - source='schedule_wakeup' → scheduled（CronCreate/routine 触发）
  * - source='loop_wakeup' → loop（/loop 唤醒）
  * - 其他（user/sdk/poll_event/无信封的 system）→ null，走常规用户消息流，不落库
@@ -74,12 +82,27 @@ export function classifyInboundTurn(input: InboundPromptInput): InboundTurn | nu
     // peer：source=system（或灰度缺省）+ 信封
     if (input.source !== undefined && input.source !== 'system') return null
     const peer = parseInboundCrossSession(input)
-    return peer ? { kind: 'peer', ...peer } : null
+    if (!peer) return null
+
+    // mobi 自发投递的信封带 from-session-id，**不由本观测路径落库**：那条消息的投递路径
+    // 自己负责落库（Hub 在 RPC 投递成功后写行），观测路径再记一次会在目标会话里留下
+    // 两行一模一样的消息。
+    //
+    // 2026-09-12 实测（本特性的 E2E）：CLI 经 stdin 推入一封带信封的消息后，CC 的
+    // UserPromptSubmit hook 以 system 源报了同一个信封，于是目标会话里出现两行——
+    // 一行是投递路径写的（带 crossSession + fromSessionId、数组形态 blocks），
+    // 一行是本路径写的（带 turnOrigin: 'peer'、单对象形态），相隔 15ms。
+    // 这与 spec D34「hook 的 source 是 sdk，天然不会重复落库」的预期不符：source 是 system。
+    if (peer.fromSessionId !== null) return null
+
+    return { kind: 'peer', text: peer.text, fromName: peer.fromName }
 }
 
-// 开标签整体捕获（属性顺序/存在性不假设），from-name 再子提取——属性缺失时正文仍可降级提取
+// 开标签整体捕获（属性顺序/存在性不假设），from-name / from-session-id 再子提取——
+// 属性缺失时正文仍可降级提取
 const ENVELOPE_RE = /<cross-session-message[^>]*>([\s\S]*?)<\/cross-session-message>/
 const FROM_NAME_RE = /\bfrom-name="([^"]*)"/
+const FROM_SESSION_ID_RE = /\bfrom-session-id="([^"]*)"/
 
 export function parseInboundCrossSession(input: InboundPromptInput): InboundCrossSession | null {
     if (input.source !== undefined && input.source !== 'system') return null
@@ -92,8 +115,10 @@ export function parseInboundCrossSession(input: InboundPromptInput): InboundCros
     const openTagEnd = match.input.indexOf('>', match.index)
     const openTag = match.input.slice(match.index, openTagEnd + 1)
     const fromName = FROM_NAME_RE.exec(openTag)
+    const fromSessionId = FROM_SESSION_ID_RE.exec(openTag)
     return {
         text: match[1].trim(),
         fromName: fromName ? fromName[1] : null,
+        fromSessionId: fromSessionId ? fromSessionId[1] : null,
     }
 }

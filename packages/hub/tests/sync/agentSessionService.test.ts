@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { AgentSessionService } from '../../src/sync/agentSessionService'
 import type { ProjectAssignability } from '../../src/sync/agentSessionService'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
+import type { AgentMessageDelivery } from '@mobi/shared'
 import type { Machine } from '../../src/sync/machineCache'
 import type { Session } from '@mobi/shared/types'
 
@@ -65,11 +66,17 @@ function makeService(
     overrides?: {
         spawnResult?: { type: 'success'; sessionId: string } | { type: 'error'; message: string }
         projectAssignability?: ProjectAssignability
+        /** 让 pushAgentMessage 抛这个错（模拟三种 RPC 内部错误） */
+        pushFailure?: string
+        /** 让 storeAgentMessage 抛这个错（模拟落库故障） */
+        storeFailure?: string
     },
 ) {
     const seenNamespaces: string[] = []
     const seenSessionNamespaces: string[] = []
     const spawnCalls: Array<{ machineId: string; directory: string; options: unknown }> = []
+    const pushed: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
+    const stored: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
     const service = new AgentSessionService({
         getOnlineMachinesByNamespace: (namespace) => {
             seenNamespaces.push(namespace)
@@ -81,13 +88,27 @@ function makeService(
         },
         getMachineByNamespace: (machineId, namespace) =>
             machines.find((m) => m.id === machineId && m.namespace === namespace),
+        getSessionByNamespace: (sessionId, namespace) =>
+            sessions.find((s) => s.id === sessionId && s.namespace === namespace),
         checkProjectAssignable: () => overrides?.projectAssignability ?? 'ok',
         spawnSession: async (machineId, directory, options) => {
             spawnCalls.push({ machineId, directory, options })
             return overrides?.spawnResult ?? { type: 'success', sessionId: 'new-session-id' }
         },
+        pushAgentMessage: async (sessionId, delivery) => {
+            if (overrides?.pushFailure) {
+                throw new Error(overrides.pushFailure)
+            }
+            pushed.push({ sessionId, delivery })
+        },
+        storeAgentMessage: async (sessionId, delivery) => {
+            if (overrides?.storeFailure) {
+                throw new Error(overrides.storeFailure)
+            }
+            stored.push({ sessionId, delivery })
+        },
     })
-    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls }
+    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored }
 }
 
 describe('AgentSessionService.listMachines', () => {
@@ -430,11 +451,14 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             getSessionsByNamespace: () => [],
             getMachineByNamespace: (machineId, namespace) =>
                 machineId === online.id && namespace === online.namespace ? online : undefined,
+            getSessionByNamespace: () => undefined,
             checkProjectAssignable: () => {
                 called++
                 return 'not_found'
             },
             spawnSession: async () => ({ type: 'success', sessionId: 's-new' }),
+            pushAgentMessage: async () => {},
+            storeAgentMessage: async () => {},
         })
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
@@ -545,5 +569,229 @@ describe('AgentSessionService.createSession — 失败翻译', () => {
 
         expect(failureText(await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })))
             .toBe(upstream)
+    })
+})
+
+describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
+    const sender = makeSession({
+        id: 'A',
+        namespace: 'ns',
+        metadata: { path: '/work/a', host: 'host-a', name: 'Sender' },
+    })
+    const targetB = makeSession({ id: 'B', namespace: 'ns', metadata: { path: '/work/b', host: 'host-a', name: 'Target B' } })
+    const targetC = makeSession({ id: 'C', namespace: 'ns', metadata: { path: '/work/c', host: 'host-a' } })
+
+    test('每个目标各投一次、各落一次，逐条报成功', async () => {
+        const { service, pushed, stored } = makeService([], [sender, targetB, targetC])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B', 'C'], content: 'hello' })
+
+        expect(results).toEqual([
+            { sessionId: 'B', ok: true },
+            { sessionId: 'C', ok: true },
+        ])
+        expect(pushed.map((entry) => entry.sessionId)).toEqual(['B', 'C'])
+        expect(stored.map((entry) => entry.sessionId)).toEqual(['B', 'C'])
+    })
+
+    test('投递与落库拿到的是同一份 delivery（信封只进投递那一份，落库那份不含信封）', async () => {
+        const { service, pushed, stored } = makeService([], [sender, targetB])
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hello' })
+
+        expect(pushed[0].delivery).toBe(stored[0].delivery)
+        expect(stored[0].delivery.blocks).toEqual([{ type: 'text', text: 'hello' }])
+        // 信封不是 content 的一部分：落库后 Web 的 Markdown 通道会把它原样显示出来
+        expect(JSON.stringify(stored[0].delivery.blocks)).not.toContain('cross-session-message')
+    })
+
+    test('delivery 带发送方名字与 id，且消息标识在投递前就已生成（D24）', async () => {
+        const { service, pushed } = makeService([], [sender, targetB])
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(pushed[0].delivery.fromName).toBe('Sender')
+        expect(pushed[0].delivery.fromSessionId).toBe('A')
+        expect(pushed[0].delivery.messageId.length).toBeGreaterThan(0)
+    })
+
+    test('同一批里不同目标拿到不同的消息标识（各自是各自会话里的一行）', async () => {
+        const { service, pushed } = makeService([], [sender, targetB, targetC])
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B', 'C'], content: 'hi' })
+
+        expect(pushed[0].delivery.messageId).not.toBe(pushed[1].delivery.messageId)
+    })
+
+    test('发送方会话未命名 → fromName 降级为空串，不拿 id 冒充名字', async () => {
+        const unnamed = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/w', host: 'h' } })
+        const { service, pushed } = makeService([], [unnamed, targetB])
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        // 与 CC 原生 peer 消息「信封缺 from-name」的降级同形（Web 显示「来自 其他会话」）；
+        // 身份由 fromSessionId 承担
+        expect(pushed[0].delivery.fromName).toBe('')
+        expect(pushed[0].delivery.fromSessionId).toBe('A')
+    })
+
+    test('内容三形态（裸 string / 单 block / 数组）都归一成同一份 blocks', async () => {
+        const cases: unknown[] = [
+            'hello',
+            { type: 'text', text: 'hello' },
+            [{ type: 'text', text: 'hello' }],
+        ]
+
+        for (const content of cases) {
+            const { service, stored } = makeService([], [sender, targetB])
+            await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content })
+            expect(stored[0].delivery.blocks).toEqual([{ type: 'text', text: 'hello' }])
+        }
+    })
+
+    test('部分成功不整体回滚：B 成功、不存在的目标逐条失败', async () => {
+        const { service, stored } = makeService([], [sender, targetB])
+
+        const results = await service.sendMessageToSessions('ns', 'A', {
+            targets: ['B', 'does-not-exist'],
+            content: 'hi',
+        })
+
+        expect(results[0]).toEqual({ sessionId: 'B', ok: true })
+        expect(results[1].ok).toBe(false)
+        expect(results[1].error).toContain('No session with id "does-not-exist"')
+        // 成功那条确实落了库——同批里有失败不回滚它（投递收不回来，回滚是假的）
+        expect(stored).toHaveLength(1)
+        expect(stored[0].sessionId).toBe('B')
+    })
+
+    test('目标未激活（进程已退）→ 明确失败，不投递也不落库', async () => {
+        const dead = makeSession({ id: 'D', namespace: 'ns', active: false })
+        const { service, pushed, stored } = makeService([], [sender, dead])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['D'], content: 'hi' })
+
+        expect(results[0].ok).toBe(false)
+        expect(results[0].error).toContain('not running any more')
+        // 静默成功会让 agent 以为话带到了，然后一直等一个不会来的回复
+        expect(pushed).toHaveLength(0)
+        expect(stored).toHaveLength(0)
+    })
+
+    test('落库失败仍报成功：投递已经发生，报失败会诱导 agent 重发一遍', async () => {
+        const { service, pushed } = makeService([], [sender, targetB], { storeFailure: 'disk is full' })
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(pushed).toHaveLength(1)
+        expect(results).toEqual([{ sessionId: 'B', ok: true }])
+    })
+
+    test('跨 namespace 的同 id 会话取不到（解析按 id + namespace 成对）', async () => {
+        const otherNamespace = makeSession({ id: 'B', namespace: 'other' })
+        const { service, pushed } = makeService([], [sender, otherNamespace])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(results[0].ok).toBe(false)
+        expect(pushed).toHaveLength(0)
+    })
+})
+
+describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () => {
+    const sender = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/work/a', host: 'host-a', name: 'Sender' } })
+    const targetB = makeSession({ id: 'B', namespace: 'ns' })
+
+    async function failureText(pushFailure: string): Promise<string> {
+        const { service } = makeService([], [sender, targetB], { pushFailure })
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+        return results[0].error ?? ''
+    }
+
+    test('handler 未注册 / socket 断开 → 「目标会话不可达」，不说内部细节', async () => {
+        const notRegistered = await failureText('RPC handler not registered: B:push-agent-message')
+        const disconnected = await failureText('RPC socket disconnected: B:push-agent-message')
+
+        for (const text of [notRegistered, disconnected]) {
+            expect(text).toContain('not reachable')
+            // 「哪个 handler 没注册」是 mobi 内部结构，agent 无从据此行动
+            expect(text).not.toContain('RPC handler')
+            expect(text).not.toContain('RPC socket')
+        }
+    })
+
+    test('RPC 超时 → 说清「可能已送达」并劝阻盲目重发', async () => {
+        const text = await failureText('operation has timed out')
+
+        expect(text).toContain('may or may not have been delivered')
+        expect(text).toContain('do not send it again blindly')
+    })
+
+    test('上游自己产出的失败本就是人话 → 原样透出', async () => {
+        const upstream = 'Claude Code rejected the message: input stream is closed.'
+        expect(await failureText(upstream)).toBe(upstream)
+    })
+
+    test('投递失败的目标不落库（Web 上不该出现永远不会被处理的消息）', async () => {
+        const { service, stored } = makeService([], [sender, targetB], { pushFailure: 'operation has timed out' })
+
+        await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
+
+        expect(stored).toHaveLength(0)
+    })
+})
+
+describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
+    const sender = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/work/a', host: 'host-a', name: 'Sender' } })
+    const targetB = makeSession({ id: 'B', namespace: 'ns' })
+    const targetC = makeSession({ id: 'C', namespace: 'ns' })
+
+    test('非文本 block → 整条拒绝，理由说出是哪个 block', async () => {
+        const { service, pushed, stored } = makeService([], [sender, targetB])
+
+        const results = await service.sendMessageToSessions('ns', 'A', {
+            targets: ['B'],
+            content: [
+                { type: 'text', text: 'look at this' },
+                { type: 'image', source: { type: 'url', value: '/tmp/a.png' }, id: 'i1', filename: 'a.png', size: 10 },
+            ],
+        })
+
+        expect(results[0].ok).toBe(false)
+        expect(results[0].error).toContain('"image" block')
+        // 不静默降级成纯文本继续发——agent 说「带上这张图」而图没带上，成功会骗了它
+        expect(pushed).toHaveLength(0)
+        expect(stored).toHaveLength(0)
+    })
+
+    test('内容类失败对每个目标都是同一句话（一件事，不是每个目标一件事）', async () => {
+        const { service } = makeService([], [sender, targetB, targetC])
+
+        const results = await service.sendMessageToSessions('ns', 'A', {
+            targets: ['B', 'C'],
+            content: [{ type: 'document', source: { type: 'url', value: '/tmp/a.pdf' }, id: 'd1', filename: 'a.pdf', size: 10 }],
+        })
+
+        expect(results).toHaveLength(2)
+        expect(results[0].error).toBe(results[1].error)
+    })
+
+    test('空内容 / 空数组 → 拒绝（nothing to send）', async () => {
+        for (const content of ['', []]) {
+            const { service } = makeService([], [sender, targetB])
+            const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content })
+            expect(results[0].ok).toBe(false)
+            expect(results[0].error).toContain('nothing to send')
+        }
+    })
+
+    test('形状不认识 → 拒绝，并指出该用什么形态', async () => {
+        const { service, pushed } = makeService([], [sender, targetB])
+
+        const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: { text: 'hi' } })
+
+        expect(results[0].ok).toBe(false)
+        expect(results[0].error).toContain('text / quote / image / document')
+        expect(pushed).toHaveLength(0)
     })
 })

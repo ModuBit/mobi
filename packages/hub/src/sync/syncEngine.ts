@@ -27,7 +27,7 @@ import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { MachineCache, type Machine } from './machineCache'
 import { AgentSessionService } from './agentSessionService'
-import { MessageService } from './messageService'
+import { MessageService, type SendMessagePayload } from './messageService'
 import { ProjectCache } from './projectCache'
 import {
     RpcGateway,
@@ -123,6 +123,20 @@ export class SyncEngine {
             // 与 Web 侧 spawn 路由共用同一个实现——项目归属规则只写一份
             checkProjectAssignable: (projectId, namespace, machineId) => checkProjectAssignable(this, projectId, namespace, machineId),
             spawnSession: (machineId, directory, options) => this.rpcGateway.spawnSession(machineId, directory, options),
+            getSessionByNamespace: (sessionId, namespace) => this.sessionCache.getSessionByNamespace(sessionId, namespace),
+            // 投递（RPC）与落库（DB）是两个独立步骤，顺序由服务决定：先投递成功才落库，
+            // 失败不落库——Web 上不该出现一条永远不会被处理的消息
+            pushAgentMessage: (sessionId, delivery) => this.rpcGateway.pushAgentMessage(sessionId, delivery),
+            storeAgentMessage: (sessionId, delivery) => this.messageService.sendMessage(sessionId, {
+                content: delivery.blocks,
+                localId: delivery.messageId,
+                // sentFrom 必须是既有的 'cli'：它是「不入队」的现成判据（isQueueableUserSubmission
+                // 的 denylist 只放行 'cli'），新造任何取值都会让消息进投递队列
+                sentFrom: 'cli',
+                crossSession: { from: delivery.fromName, fromSessionId: delivery.fromSessionId },
+                // 投递已经发生，别再回灌 CLI 房间（否则目标 CLI 会照着这行二次入队）
+                skipCliEcho: true,
+            }),
         })
         this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
@@ -405,12 +419,7 @@ export class SyncEngine {
 
     async sendMessage(
         sessionId: string,
-        payload: {
-            /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象），透传给 messageService 归一 */
-            content: unknown
-            localId?: string | null
-            sentFrom?: 'webapp' | 'cli'
-        }
+        payload: SendMessagePayload
     ): Promise<void> {
         await this.messageService.sendMessage(sessionId, payload)
     }

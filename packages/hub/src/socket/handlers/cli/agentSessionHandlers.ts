@@ -26,16 +26,17 @@
 
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
-import type { AgentCreateSessionAck, AgentMachineSummary, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessResult } from './types'
 import type { StoredSession } from '../../../store'
-import type { AgentCreateSessionInput, AgentSessionQuery } from '../../../sync/agentSessionService'
+import type { AgentCreateSessionInput, AgentSendMessageInput, AgentSessionQuery } from '../../../sync/agentSessionService'
 
 type ListMachinesForAgentHandler = ClientToServerEvents['listMachinesForAgent']
 type ListSessionsForAgentHandler = ClientToServerEvents['listSessionsForAgent']
 type CreateSessionForAgentHandler = ClientToServerEvents['createSessionForAgent']
+type SendMessageForAgentHandler = ClientToServerEvents['sendMessageToSessionForAgent']
 
 const listMachinesPayloadSchema = z.object({
     sid: z.string(),
@@ -65,6 +66,19 @@ const createSessionPayloadSchema = z.object({
     permissionMode: PermissionModeSchema.optional(),
 })
 
+/**
+ * targets 只校验形状（非空数组 + 每项非空）。
+ *
+ * **content 在这里不判**：内容词汇表、以及「本期哪种 block 不受支持」都是业务规则，
+ * 只归 AgentSessionService 一处——那里的判据要能说出**是哪个 block** 不受支持，
+ * 在这里判只剩一个 reason 码，agent 拿不到能据以改的那句话。
+ */
+const sendMessagePayloadSchema = z.object({
+    sid: z.string(),
+    targets: z.array(z.string().min(1)).min(1),
+    content: z.unknown(),
+})
+
 /** 结构性故障的文案：与上游失败共用 `error` 字段（见 AgentCreateSessionAck 注释），
  *  但必须说清「这不是你做错了」——否则 agent 会反复改入参重试一个改不好的东西 */
 const INVALID_ARGUMENTS_ERROR = 'The request was rejected by mobi hub: invalid arguments.'
@@ -80,6 +94,12 @@ export type AgentSessionHandlersDeps = {
     listSessions?: (namespace: string, query: AgentSessionQuery) => AgentSessionSummary[]
     /** AgentSessionService.createSession（同上） */
     createSession?: (namespace: string, input: AgentCreateSessionInput) => Promise<AgentCreateSessionAck>
+    /** AgentSessionService.sendMessageToSessions（同上）。fromSessionId 是发信方，也是信封里的来源 */
+    sendMessageToSessions?: (
+        namespace: string,
+        fromSessionId: string,
+        input: AgentSendMessageInput
+    ) => Promise<AgentSendMessageTargetResult[]>
 }
 
 /**
@@ -89,7 +109,7 @@ export type AgentSessionHandlersDeps = {
  * 留给连接故障，两者语义不同（与 ui-command 同口径）。
  */
 export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: AgentSessionHandlersDeps): void {
-    const { resolveSessionAccess, listOnlineMachines, listSessions, createSession } = deps
+    const { resolveSessionAccess, listOnlineMachines, listSessions, createSession, sendMessageToSessions } = deps
 
     socket.on('listMachinesForAgent', ((raw: unknown, cb: Parameters<ListMachinesForAgentHandler>[1]) => {
         const parsed = listMachinesPayloadSchema.safeParse(raw)
@@ -162,4 +182,29 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
         const { sid: _sid, ...input } = parsed.data
         cb?.(await createSession(access.value.namespace, input))
     }) as CreateSessionForAgentHandler)
+
+    socket.on('sendMessageToSessionForAgent', (async (raw: unknown, cb: Parameters<SendMessageForAgentHandler>[1]) => {
+        const parsed = sendMessagePayloadSchema.safeParse(raw)
+        if (!parsed.success) {
+            cb?.({ ok: false, reason: 'invalid-payload' })
+            return
+        }
+
+        const access = resolveSessionAccess(parsed.data.sid)
+        if (!access.ok) {
+            cb?.({ ok: false, reason: access.reason })
+            return
+        }
+
+        if (!sendMessageToSessions) {
+            hubLogger.error('[AgentSessions] sendMessageToSessions 未装配，请求被拒')
+            cb?.({ ok: false, reason: 'handler-misconfigured' })
+            return
+        }
+
+        // 一次扇出等所有目标各自走完一轮 RPC，慢是正常的（每个目标一次往返，最多 30s 超时）。
+        // 逐条结果由服务给出，顶层恒 ok——进了扇出就没有「整体失败」这回事
+        const { sid, ...input } = parsed.data
+        cb?.({ ok: true, results: await sendMessageToSessions(access.value.namespace, sid, input) })
+    }) as SendMessageForAgentHandler)
 }

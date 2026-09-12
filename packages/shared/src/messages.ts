@@ -278,6 +278,23 @@ export interface CrossSessionOrigin {
     from: string
 }
 
+/**
+ * 是否为 **mobi 自发投递**的跨会话消息（meta.fromSessionId 存在，spec D31）。
+ *
+ * 与 CC 原生 peer 消息的区分点：后者只有 meta.crossSession.from（名字），反查不到会话，
+ * 也无消息身份；mobi 自发的两样都带。
+ *
+ * **消费方必须跳过这类消息的「落库行 → SDK」方向**：mobi 自发消息的投递通道是
+ * push-agent-message RPC，落库行只供 Web 展示与历史回放。重连后的 backfill 会读到
+ * 这一行，不跳过就会被第二次推进 SDK（`handleIncomingMessage` 只看内容形状，
+ * 不看 meta）。
+ */
+export function isMobiSentCrossSession(content: unknown): boolean {
+    if (!isObject(content)) return false
+    const meta = (content as { meta?: { fromSessionId?: unknown } }).meta
+    return typeof meta?.fromSessionId === 'string' && meta.fromSessionId.length > 0
+}
+
 /** 是否为 CLI 来源（Claude Code 输出流回显，永不排队） */
 export function isCliOrigin(content: unknown): boolean {
     return getSentFrom(content) === 'cli'

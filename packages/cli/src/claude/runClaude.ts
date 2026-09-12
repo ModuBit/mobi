@@ -36,6 +36,7 @@ import { OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool';
 import { LIST_MACHINES_TOOL_NAME } from '@/mcp/listMachinesTool';
 import { LIST_SESSIONS_TOOL_NAME } from '@/mcp/listSessionsTool';
 import { CREATE_SESSION_TOOL_NAME } from '@/mcp/createSessionTool';
+import { SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool';
 import { MOBI_APPS_SERVER_NAME, MOBI_CORE_SERVER_NAME } from '@mobi/shared';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
@@ -590,6 +591,10 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 `mcp__${MOBI_APPS_SERVER_NAME}__${LIST_SESSIONS_TOOL_NAME}`,
                 // create_session 预授权（B 类系统操作；仅 remote 壳注册）
                 `mcp__${MOBI_APPS_SERVER_NAME}__${CREATE_SESSION_TOOL_NAME}`,
+                // send_message_to_session 预授权（B 类系统操作；仅 remote 壳注册）。
+                // 逐个审批会让编排完全不可用，而编排正是本特性的价值；调用本身在发件方
+                // 会话里留下工具卡，人可事后审计（收窄手段是权限模式，不是逐次审批）
+                `mcp__${MOBI_APPS_SERVER_NAME}__${SEND_MESSAGE_TOOL_NAME}`,
                 // 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
                 `mcp__${MOBI_CORE_SERVER_NAME}__web_search`,
                 `mcp__${MOBI_CORE_SERVER_NAME}__web_fetch`,
