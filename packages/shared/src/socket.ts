@@ -132,7 +132,31 @@ export type AgentCreateSessionRequest = {
      * 的那段时间里认得出这个会话（很多会话永远不会自我命名）。
      */
     title?: string
+    /**
+     * 是否等新会话**能收消息**再返回（默认 `true`）。
+     *
+     * 默认等，是因为 `create_session` 的语义是「建完即可用」：拿到 id 立刻投递是常规动作，
+     * 不该靠「它想一轮要好几秒」这个巧合兜住——spawn 回执到输入通道接通实测差 134–549ms。
+     *
+     * 传 `false` 就是旧语义（spawn 回执即返回），只在**明确知道接下来不会马上投递**时才用。
+     * 超时预算固定在 Hub 侧、不在这里暴露：签名上多一个旋钮就是多一个会被填错的地方。
+     */
+    waitForReady?: boolean
 }
+
+/**
+ * 建完的那一刻，新会话**能不能收消息**。三种都是「建好了」，差别只在就绪与否与是否查过。
+ *
+ * 它不是成败，所以不叫 ready/failed：等不到**不判失败**——会话确实建好了、进程在跑，
+ * 只是输入通道还没接上。为此判失败会逼 agent 再建一个，正是「一物两建」要避免的。
+ */
+export type AgentCreateSessionReadiness =
+    /** 返回前已确认能收，直接投递是安全的 */
+    | 'ready'
+    /** 等满固定预算仍没等到：会话在，但此刻投递可能落空 */
+    | 'not-ready'
+    /** 没等（`waitForReady: false`）。**不是「不能收」**——Hub 没有这个事实 */
+    | 'not-checked'
 
 /**
  * create_session 回执。
@@ -142,7 +166,7 @@ export type AgentCreateSessionRequest = {
  * 给人看的话。与 D15 的 per-target `error` 同口径——码在这里没有消费方。
  */
 export type AgentCreateSessionAck =
-    | { ok: true; sessionId: string }
+    | { ok: true; sessionId: string; readiness: AgentCreateSessionReadiness }
     | { ok: false; error: string }
 
 /** send_message_to_session 入参 */

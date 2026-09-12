@@ -17,6 +17,7 @@
 import { describe, test, expect } from 'bun:test'
 import { AgentSessionService } from '../../src/sync/agentSessionService'
 import type { ProjectAssignability } from '../../src/sync/agentSessionService'
+import type { ReceiveReadiness } from '../../src/sync/sessionReceiveReadiness'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
 import type { AgentMessageDelivery, UserContentBlock } from '@mobi/shared'
 import type { Machine } from '../../src/sync/machineCache'
@@ -72,6 +73,8 @@ function makeService(
         storeFailure?: string
         /** renameSession 前 N 次抛这个错（模拟 CAS 版本撞车），之后成功 */
         renameFailures?: number
+        /** waitUntilCanReceive 的返回（缺省 'ready'，即「建完就接上了」） */
+        readiness?: ReceiveReadiness
     },
 ) {
     const seenNamespaces: string[] = []
@@ -82,6 +85,8 @@ function makeService(
     const renamed: Array<{ sessionId: string; name: string }> = []
     /** 改名被调用的次数（与成功次数分开：失败也要能数出来，否则重试用例数不出「试了几次」） */
     let renameAttempts = 0
+    /** 就绪等待的入参（秒数也要断言：预算是服务端固定值，不该被调用方改） */
+    const readinessWaits: Array<{ sessionId: string; timeoutMs: number }> = []
     const service = new AgentSessionService({
         getOnlineMachinesByNamespace: (namespace) => {
             seenNamespaces.push(namespace)
@@ -121,8 +126,12 @@ function makeService(
             }
             renamed.push({ sessionId, name })
         },
+        waitUntilCanReceive: async (sessionId, timeoutMs) => {
+            readinessWaits.push({ sessionId, timeoutMs })
+            return overrides?.readiness ?? 'ready'
+        },
     })
-    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored, renamed }
+    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored, renamed, readinessWaits }
 }
 
 describe('AgentSessionService.listMachines', () => {
@@ -474,11 +483,12 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             pushAgentMessage: async () => {},
             storeAgentMessage: async () => {},
             renameSession: async () => {},
+            waitUntilCanReceive: async () => 'ready',
         })
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
 
-        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
         expect(called).toBe(0)
     })
 })
@@ -491,7 +501,7 @@ describe('AgentSessionService.createSession — 起进程', () => {
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
 
-        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
     })
 
     test('machineId / directory 与可选选项原样透传给 spawn（缺省项不编默认值）', async () => {
@@ -543,7 +553,7 @@ describe('AgentSessionService.createSession — 初始标题（D10 的可选 tit
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: '验收会话' })
 
-        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
         expect(renamed).toEqual([{ sessionId: 's-new', name: '验收会话' }])
         // 标题不走 spawn 链路（那条路要新增 CLI 启动参数）——spawn 的选项里没有它
         expect(spawnCalls[0].options).not.toHaveProperty('title')
@@ -577,7 +587,7 @@ describe('AgentSessionService.createSession — 初始标题（D10 的可选 tit
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: 'T' })
 
-        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
         expect(renamed).toHaveLength(0)
     })
 
@@ -590,6 +600,66 @@ describe('AgentSessionService.createSession — 初始标题（D10 的可选 tit
 
         expect(result.ok).toBe(false)
         expect(renamed).toHaveLength(0)
+    })
+})
+
+describe('AgentSessionService.createSession — 建完等就绪（waitForReady，D39/D42）', () => {
+    const online = makeMachine({ id: 'm1', namespace: 'ns' })
+
+    test('默认等：等的是新会话，预算用服务端固定值（不暴露给 agent）', async () => {
+        const { service, readinessWaits } = makeService([online], [], {
+            spawnResult: { type: 'success', sessionId: 's-new' },
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(readinessWaits).toEqual([{ sessionId: 's-new', timeoutMs: 3000 }])
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
+    })
+
+    test('waitForReady:false → 一次都不等，说「没查过」而不是「不能收」', async () => {
+        const { service, readinessWaits } = makeService([online], [], {
+            spawnResult: { type: 'success', sessionId: 's-new' },
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', waitForReady: false })
+
+        expect(readinessWaits).toHaveLength(0)
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'not-checked' })
+    })
+
+    test('等满超时 → 仍算成功（会话确实建好了），只是就绪状态说成 not-ready', async () => {
+        const { service } = makeService([online], [], {
+            spawnResult: { type: 'success', sessionId: 's-new' },
+            readiness: 'timeout',
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        // 不判失败：判失败会逼 agent 再建一个，正是「一物两建」要避免的
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'not-ready' })
+    })
+
+    test('等待期间就翻成「不能收」（确定的否定）→ 与超时同一种说法（都是「现在收不下」）', async () => {
+        const { service } = makeService([online], [], {
+            spawnResult: { type: 'success', sessionId: 's-new' },
+            readiness: 'unavailable',
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'not-ready' })
+    })
+
+    test('进程没起来 → 不等（没有会话可等，也不该多花 3s 去等一个不存在的会话）', async () => {
+        const { service, readinessWaits } = makeService([online], [], {
+            spawnResult: { type: 'error', message: 'boom' },
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(result.ok).toBe(false)
+        expect(readinessWaits).toHaveLength(0)
     })
 })
 

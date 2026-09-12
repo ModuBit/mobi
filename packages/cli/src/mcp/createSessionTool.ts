@@ -25,12 +25,15 @@
  * 错误 → 人话）。本工具只把自己产生的连接故障译出来，其余原样透出——那几句是
  * 写成能独立读懂的一整句的。
  *
+ * 成功文案反过来：Hub 只报事实（`readiness`），措辞由本工具按三种就绪状态给（见
+ * successDetail）——「建好了但输入通道还没接上」既不是失败也不是普通成功，得说出来。
+ *
  * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 Hub，local 模式无此通道。
  */
 
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
-import type { AgentCreateSessionAck, AgentCreateSessionRequest } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentCreateSessionReadiness, AgentCreateSessionRequest } from '@mobi/shared'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
@@ -42,6 +45,32 @@ export interface CreateSessionToolDeps {
 }
 
 export type CreateSessionToolResult = MobiToolTextResult
+
+/**
+ * 建成功后三种就绪状态的措辞。Hub 只报事实（`readiness`），话由这里说——与失败文案
+ * 反过来（那边 Hub 是唯一翻译点）。
+ *
+ * `not-ready` 那句的重点是**拦住「再建一个」**：会话确实建好了，等不到输入通道接通只是慢，
+ * 为此重建会得到两个会话（D42）。所以它既不报错、也不说「请重试」，而是明说「这个会话就是
+ * 你要的那个」。
+ */
+function successDetail(readiness: AgentCreateSessionReadiness): string {
+    switch (readiness) {
+        case 'ready':
+            return 'It is ready for messages now. It starts with no messages — give it work with send_message_to_session.'
+        case 'not-checked':
+            return (
+                'It is still starting up: this call returned as soon as the process was launched, so a message sent ' +
+                'right now may not reach it yet.'
+            )
+        case 'not-ready':
+            return (
+                'It exists and its process is running, but it is not accepting messages yet. Do not create another ' +
+                'session for this work — this is the session you asked for. Wait a moment and send the work with ' +
+                'send_message_to_session; if it is still not reachable, that call will say so.'
+            )
+    }
+}
 
 export function createCreateSessionTool(deps: CreateSessionToolDeps) {
     const createSessionInputSchema = z.object({
@@ -67,6 +96,10 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
             'Optional title for the new session. This is only its initial name — the new session may rename itself later. ' +
             'Omit to leave it unnamed.',
         ),
+        waitForReady: z.boolean().optional().describe(
+            'Defaults to true: the call returns once the new session can accept messages, so sending to it right away is safe. ' +
+            'Pass false only if you will not message it immediately — it returns as soon as the process is launched.',
+        ),
     })
 
     async function execute(rawArgs: unknown): Promise<CreateSessionToolResult> {
@@ -91,7 +124,7 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
 
         return textResult(
             `Created session ${answer.sessionId} (machine ${parsed.data.machineId}, directory ${parsed.data.directory}). ` +
-            'It starts with no messages — give it work with send_message_to_session.',
+            successDetail(answer.readiness)
         )
     }
 
@@ -111,7 +144,8 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
             'the work is, and its own name wins. ' +
             'The new session starts with no first message — it is an empty working context. ' +
             'Give it work with send_message_to_session. ' +
-            'Creation is not instant: it launches a real Claude Code process on that machine. ' +
+            'Creation is not instant: it launches a real Claude Code process on that machine, and by default the call ' +
+            'waits until that session can actually accept messages. ' +
             'Failures are reported in plain language — the machine may be offline, the directory may not be creatable, ' +
             'or setup may have timed out.',
         title: 'Create Session',

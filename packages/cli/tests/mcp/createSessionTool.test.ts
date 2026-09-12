@@ -19,7 +19,7 @@ import { createCreateSessionTool, createCreateSessionToolForSession, CREATE_SESS
 import type { ApiSessionClient } from '@/api/apiSession'
 
 function buildDeps(result?: unknown) {
-    const createSession = vi.fn().mockResolvedValue(result ?? { ok: true, sessionId: 's-new' })
+    const createSession = vi.fn().mockResolvedValue(result ?? { ok: true, sessionId: 's-new', readiness: 'ready' })
     return { deps: { createSession }, createSession }
 }
 
@@ -67,7 +67,7 @@ describe('createCreateSessionTool', () => {
     })
 
     it('returns the new session id and points at the next step', async () => {
-        const { deps } = buildDeps({ ok: true, sessionId: 's-new' })
+        const { deps } = buildDeps({ ok: true, sessionId: 's-new', readiness: 'ready' })
         const tool = createCreateSessionTool(deps)
 
         const result = await tool.execute({ machineId: 'm1', directory: '/work/app' })
@@ -90,6 +90,7 @@ describe('createCreateSessionTool', () => {
             effort: 'high',
             permissionMode: 'plan',
             title: '验收会话',
+            waitForReady: false,
         })
 
         expect(createSession).toHaveBeenCalledWith({
@@ -100,7 +101,25 @@ describe('createCreateSessionTool', () => {
             effort: 'high',
             permissionMode: 'plan',
             title: '验收会话',
+            waitForReady: false,
         })
+    })
+
+    it('omits waitForReady when the model did not pass it (默认由 Hub 决定，不在工具侧编一个)', async () => {
+        const { deps, createSession } = buildDeps()
+        const tool = createCreateSessionTool(deps)
+
+        await tool.execute({ machineId: 'm1', directory: '/work/app' })
+
+        expect(createSession).toHaveBeenCalledWith({ machineId: 'm1', directory: '/work/app' })
+    })
+
+    it('description says the call waits until the new session can accept messages', () => {
+        const { deps } = buildDeps()
+        const desc = createCreateSessionTool(deps).description
+
+        // 默认会等——模型得知道这一步可能要一两秒，不然会把等待当成卡住
+        expect(desc).toContain('waits until that session can actually accept messages')
     })
 
     it('rejects a blank or oversized title without calling the hub', async () => {
@@ -155,12 +174,44 @@ describe('createCreateSessionTool', () => {
     })
 
     it('wires the session client channel', async () => {
-        const client = { createSessionForAgent: vi.fn().mockResolvedValue({ ok: true, sessionId: 's-new' }) }
+        const client = { createSessionForAgent: vi.fn().mockResolvedValue({ ok: true, sessionId: 's-new', readiness: 'ready' }) }
         const tool = createCreateSessionToolForSession(client as unknown as ApiSessionClient)
 
         const result = await tool.execute({ machineId: 'm1', directory: '/work/app' })
 
         expect(client.createSessionForAgent).toHaveBeenCalledWith({ machineId: 'm1', directory: '/work/app' })
         expect(result.isError).toBe(false)
+    })
+})
+
+describe('createCreateSessionTool — 建成功后的三种就绪措辞（D42）', () => {
+    async function textFor(readiness: 'ready' | 'not-ready' | 'not-checked') {
+        const { deps } = buildDeps({ ok: true, sessionId: 's-new', readiness })
+        return (await createCreateSessionTool(deps).execute({ machineId: 'm1', directory: '/work/app' }))
+    }
+
+    it('ready → 明说现在就能收，可以直接派活', async () => {
+        const result = await textFor('ready')
+
+        expect(result.isError).toBe(false)
+        expect(result.content[0].text).toContain('ready for messages now')
+    })
+
+    it('not-ready → 不算失败，但重点是拦住「再建一个」', async () => {
+        const result = await textFor('not-ready')
+
+        // 会话确实建好了，报错会让 agent 白白重来一遍并得到第二个会话
+        expect(result.isError).toBe(false)
+        expect(result.content[0].text).toContain('not accepting messages yet')
+        expect(result.content[0].text).toContain('Do not create another session for this work')
+        expect(result.content[0].text).toContain('s-new')
+    })
+
+    it('not-checked → 说清「这次没等」，因为没查过不等于不能收', async () => {
+        const result = await textFor('not-checked')
+
+        expect(result.isError).toBe(false)
+        expect(result.content[0].text).toContain('still starting up')
+        expect(result.content[0].text).not.toContain('not accepting messages yet')
     })
 })

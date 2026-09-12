@@ -71,7 +71,7 @@ function makeDeps(opts?: {
         createSession: async (namespace: string, input) => {
             seenNamespaces.push(namespace)
             seenCreateInputs.push(input)
-            return opts?.createResult ?? { ok: true, sessionId: 's-new' }
+            return opts?.createResult ?? { ok: true, sessionId: 's-new', readiness: 'ready' }
         },
         sendMessageToSessions: async (namespace: string, fromSessionId: string, input) => {
             seenNamespaces.push(namespace)
@@ -277,11 +277,11 @@ function callCreateSession(socket: ReturnType<typeof makeFakeSocket>, payload: u
 describe('createSessionForAgent handler', () => {
     test('正常请求 → ack ok:true 带回 sessionId', async () => {
         const socket = makeFakeSocket()
-        const { deps } = makeDeps({ createResult: { ok: true, sessionId: 's-new' } })
+        const { deps } = makeDeps({ createResult: { ok: true, sessionId: 's-new', readiness: 'ready' } })
         register(socket, deps)
 
         expect(await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app' }))
-            .toEqual({ ok: true, sessionId: 's-new' })
+            .toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
     })
 
     test('入参逐项透传给服务，且 sid 不混进业务入参', async () => {
@@ -298,6 +298,7 @@ describe('createSessionForAgent handler', () => {
             effort: 'high',
             permissionMode: 'plan',
             title: '验收会话',
+            waitForReady: false,
         })
 
         // sid 是发给 Hub 的寻址信息，不是建会话的参数——混进去会变成服务看不懂的字段
@@ -309,7 +310,27 @@ describe('createSessionForAgent handler', () => {
             effort: 'high',
             permissionMode: 'plan',
             title: '验收会话',
+            waitForReady: false,
         }])
+    })
+
+    test('waitForReady 只校验形状：非布尔拒绝，缺省时不替服务编一个默认值', async () => {
+        const socket = makeFakeSocket()
+        const { deps, seenCreateInputs } = makeDeps()
+        register(socket, deps)
+
+        const bad = await callCreateSession(socket, {
+            sid: 's1',
+            machineId: 'm1',
+            directory: '/work/app',
+            waitForReady: 'yes',
+        })
+        expect(bad.ok).toBe(false)
+        expect(seenCreateInputs).toHaveLength(0)
+
+        // 默认值是业务规则，归 AgentSessionService（同 limit 的取舍）：这里原样透传缺失
+        await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app' })
+        expect(seenCreateInputs).toEqual([{ machineId: 'm1', directory: '/work/app' }])
     })
 
     test('title 只校验形状：空串 / 超长拒绝，正常值透传', async () => {

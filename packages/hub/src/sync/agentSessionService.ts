@@ -31,6 +31,7 @@
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, isSelfContainedUrl, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
 import type {
     AgentCreateSessionAck,
+    AgentCreateSessionReadiness,
     AgentCreateSessionRequest,
     AgentMachineSummary,
     AgentMessageDelivery,
@@ -43,6 +44,7 @@ import type {
 } from '@mobi/shared'
 import type { Session } from '@mobi/shared/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
+import type { ReceiveReadiness } from './sessionReceiveReadiness'
 import { randomUUID } from 'node:crypto'
 import { hubLogger } from '../logger'
 import type { Machine } from './machineCache'
@@ -52,6 +54,16 @@ export type ProjectAssignability = 'ok' | 'not_found' | 'machine_mismatch'
 
 /** 建会话入参（sid 是寻址信息，不属于业务规则，服务不收） */
 export type AgentCreateSessionInput = Omit<AgentCreateSessionRequest, 'sid'>
+
+/**
+ * 「建完即可用」的等待预算（ms）。**固定在服务端，不暴露给 agent**：签名上多一个旋钮
+ * 就是多一个会被填错的地方，而 agent 对这个数字也没有判断依据。
+ *
+ * 为什么是 3s：实测 spawn 回执 → 输入通道接通 134–549ms（6 样本，中位 313ms），3s 有 5 倍
+ * 余量；也远在外层 ack 上限（45s）之内——spawn 最坏 15s + 3s ≪ 45s。
+ * 代价明码标价：create_session 从 ~390ms 变成最长 ~3.4s（正常等到的情形下 ~700ms）。
+ */
+const RECEIVE_READY_BUDGET_MS = 3_000
 
 /** 投递入参（sid / namespace 都是寻址信息，服务不收） */
 export interface AgentSendMessageInput {
@@ -114,6 +126,11 @@ export interface AgentSessionServiceDeps {
      * 优先」）。所以这里不需要、也不应该去替它设。
      */
     renameSession: (sessionId: string, name: string) => Promise<void>
+    /**
+     * 等这个会话能收消息（见 SessionReceiveReadiness）：`ready` 是已能收，`unavailable`
+     * 是确定的否定，`timeout` 是等满预算仍没定论。三者对调用方是不同的说法。
+     */
+    waitUntilCanReceive: (sessionId: string, timeoutMs: number) => Promise<ReceiveReadiness>
 }
 
 /** list_sessions 的查询条件（不含 namespace——那是从鉴权会话解析出来的） */
@@ -169,6 +186,9 @@ export class AgentSessionService {
      *
      * 成功即代表**会话已经存在**：既有 spawn 链路会等 runner 的会话 webhook
      * （最多 15s）才返回，所以拿到 sessionId 时行已落、进程已起。
+     *
+     * 默认还会再等它**能收消息**（`waitForReady`，见 resolveReadiness）——「进程起了」与
+     * 「收得下消息」是两个时刻，中间隔着上百毫秒。
      */
     async createSession(namespace: string, input: AgentCreateSessionInput): Promise<AgentCreateSessionAck> {
         const machine = this.deps.getMachineByNamespace(input.machineId, namespace)
@@ -215,7 +235,28 @@ export class AgentSessionService {
             await this.applyInitialTitle(result.sessionId, input.title)
         }
 
-        return { ok: true, sessionId: result.sessionId }
+        // 走到这里，spawn 链路刚回执——**进程起了，但输入通道通常还没接上**（差 134–549ms）。
+        // 默认等它接上再返回，让「拿到 id 就能立刻投递」成为接口保证而不是运气（见 resolveReadiness）
+        const readiness = await this.resolveReadiness(result.sessionId, input.waitForReady ?? true)
+        return { ok: true, sessionId: result.sessionId, readiness }
+    }
+
+    /**
+     * 等新建的会话「能收消息」，把结果说成三态（见 AgentCreateSessionReadiness）。
+     *
+     * **等不到不判失败**：会话确实建好了、进程在跑，只是输入通道还没接上。为这个判失败会
+     * 逼 agent 再建一个，正是「一物两建」要避免的——所以只把就绪状态如实说出去，让 agent
+     * 自己决定是等等再来还是改派别的会话。
+     *
+     * 等待**不阻塞别的业务**：它是 await 一个 per-session 的 latch，其它 socket 事件照常处理，
+     * 没有全局锁、没有共享队列。
+     */
+    private async resolveReadiness(sessionId: string, waitForReady: boolean): Promise<AgentCreateSessionReadiness> {
+        if (!waitForReady) {
+            return 'not-checked'
+        }
+        const outcome = await this.deps.waitUntilCanReceive(sessionId, RECEIVE_READY_BUDGET_MS)
+        return outcome === 'ready' ? 'ready' : 'not-ready'
     }
 
     /**

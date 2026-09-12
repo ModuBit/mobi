@@ -155,6 +155,7 @@ export class SyncEngine {
                 this.sessionCache.refreshSession(sessionId)
                 await this.sessionCache.renameSession(sessionId, name)
             },
+            waitUntilCanReceive: (sessionId, timeoutMs) => this.receiveReadiness.waitUntilCanReceive(sessionId, timeoutMs),
         })
         this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)

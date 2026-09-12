@@ -66,6 +66,8 @@ const createSessionPayloadSchema = z.object({
     permissionMode: PermissionModeSchema.optional(),
     // 长度上限与 Web 侧改名同一规则（那边是 255）；标题是给人看的短标签，不是正文
     title: z.string().min(1).max(255).optional(),
+    // 只校验形状；默认值与等待预算都是业务规则，归 AgentSessionService 一处（同 limit 的取舍）
+    waitForReady: z.boolean().optional(),
 })
 
 /**
