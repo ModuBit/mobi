@@ -16,6 +16,7 @@
 
 import { describe, test, expect } from 'bun:test'
 import { AgentSessionService } from '../../src/sync/agentSessionService'
+import type { ProjectAssignability } from '../../src/sync/agentSessionService'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
 import type { Machine } from '../../src/sync/machineCache'
 import type { Session } from '@mobi/shared/types'
@@ -58,9 +59,17 @@ function makeSession(overrides: Partial<Session> & { id: string }): Session {
     }
 }
 
-function makeService(machines: Machine[], sessions: Session[] = []) {
+function makeService(
+    machines: Machine[],
+    sessions: Session[] = [],
+    overrides?: {
+        spawnResult?: { type: 'success'; sessionId: string } | { type: 'error'; message: string }
+        projectAssignability?: ProjectAssignability
+    },
+) {
     const seenNamespaces: string[] = []
     const seenSessionNamespaces: string[] = []
+    const spawnCalls: Array<{ machineId: string; directory: string; options: unknown }> = []
     const service = new AgentSessionService({
         getOnlineMachinesByNamespace: (namespace) => {
             seenNamespaces.push(namespace)
@@ -70,8 +79,15 @@ function makeService(machines: Machine[], sessions: Session[] = []) {
             seenSessionNamespaces.push(namespace)
             return sessions
         },
+        getMachineByNamespace: (machineId, namespace) =>
+            machines.find((m) => m.id === machineId && m.namespace === namespace),
+        checkProjectAssignable: () => overrides?.projectAssignability ?? 'ok',
+        spawnSession: async (machineId, directory, options) => {
+            spawnCalls.push({ machineId, directory, options })
+            return overrides?.spawnResult ?? { type: 'success', sessionId: 'new-session-id' }
+        },
     })
-    return { service, seenNamespaces, seenSessionNamespaces }
+    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls }
 }
 
 describe('AgentSessionService.listMachines', () => {
@@ -331,5 +347,203 @@ describe('AgentSessionService.listSessions — projectId 与字段映射', () =>
         const { service } = makeService([], [])
 
         expect(service.listSessions('ns')).toEqual([])
+    })
+})
+
+/** 取失败文案（断言前先确认是失败分支，顺带收窄类型） */
+function failureText(result: { ok: boolean; error?: string }): string {
+    expect(result.ok).toBe(false)
+    return result.error ?? ''
+}
+
+describe('AgentSessionService.createSession — 前置闸', () => {
+    const online = makeMachine({ id: 'm1', namespace: 'ns' })
+
+    test('机器不在清单里 → 人话 + 指路 list_machines，且不碰 spawn', async () => {
+        const { service, spawnCalls } = makeService([])
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(failureText(result)).toContain('No online machine with id "m1"')
+        expect(failureText(result)).toContain('list_machines')
+        // 前置闸的价值就是「不花钱也能确定失败」——碰了 spawn 就白花一次 RPC
+        expect(spawnCalls).toHaveLength(0)
+    })
+
+    test('传机器名（而非 id）落到同一条失败——不做名字模糊匹配', async () => {
+        const { service, spawnCalls } = makeService([online])
+
+        const result = await service.createSession('ns', { machineId: 'Mac Mini', directory: '/work/app' })
+
+        expect(failureText(result)).toContain('No online machine with id "Mac Mini"')
+        expect(spawnCalls).toHaveLength(0)
+    })
+
+    test('机器在本 namespace 但已离线 → 同样拒绝（离线机器起不了会话）', async () => {
+        const { service, spawnCalls } = makeService([makeMachine({ id: 'm1', namespace: 'ns', active: false })])
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(failureText(result)).toContain('No online machine')
+        expect(spawnCalls).toHaveLength(0)
+    })
+
+    test('机器属于别的 namespace → 看不见即拒绝（namespace 是隔离边界）', async () => {
+        const { service, spawnCalls } = makeService([makeMachine({ id: 'm1', namespace: 'other' })])
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(failureText(result)).toContain('No online machine')
+        expect(spawnCalls).toHaveLength(0)
+    })
+
+    test('projectId 不存在 → 拒绝，不碰 spawn', async () => {
+        const { service, spawnCalls } = makeService([online], [], { projectAssignability: 'not_found' })
+
+        const result = await service.createSession('ns', {
+            machineId: 'm1',
+            directory: '/work/app',
+            projectId: 'p-missing',
+        })
+
+        expect(failureText(result)).toContain('No project with id "p-missing"')
+        expect(spawnCalls).toHaveLength(0)
+    })
+
+    test('projectId 归属别的机器 → 拒绝（否则会派生出一个绑错机器的幽灵会话）', async () => {
+        const { service, spawnCalls } = makeService([online], [], { projectAssignability: 'machine_mismatch' })
+
+        const result = await service.createSession('ns', {
+            machineId: 'm1',
+            directory: '/work/app',
+            projectId: 'p1',
+        })
+
+        expect(failureText(result)).toContain('belongs to a different machine')
+        expect(spawnCalls).toHaveLength(0)
+    })
+
+    test('不传 projectId 时跳过归属校验（游离会话是合法默认）', async () => {
+        let called = 0
+        const service = new AgentSessionService({
+            getOnlineMachinesByNamespace: () => [online],
+            getSessionsByNamespace: () => [],
+            getMachineByNamespace: (machineId, namespace) =>
+                machineId === online.id && namespace === online.namespace ? online : undefined,
+            checkProjectAssignable: () => {
+                called++
+                return 'not_found'
+            },
+            spawnSession: async () => ({ type: 'success', sessionId: 's-new' }),
+        })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+        expect(called).toBe(0)
+    })
+})
+
+describe('AgentSessionService.createSession — 起进程', () => {
+    const online = makeMachine({ id: 'm1', namespace: 'ns' })
+
+    test('成功 → ok:true 带 sessionId', async () => {
+        const { service } = makeService([online], [], { spawnResult: { type: 'success', sessionId: 's-new' } })
+
+        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(result).toEqual({ ok: true, sessionId: 's-new' })
+    })
+
+    test('machineId / directory 与可选选项原样透传给 spawn（缺省项不编默认值）', async () => {
+        const { service, spawnCalls } = makeService([online])
+
+        await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect(spawnCalls).toEqual([{
+            machineId: 'm1',
+            directory: '/work/app',
+            options: { model: undefined, effort: undefined, permissionMode: undefined, projectId: undefined },
+        }])
+    })
+
+    test('显式给的选项透传（model / effort / permissionMode / projectId）', async () => {
+        const { service, spawnCalls } = makeService([online])
+
+        await service.createSession('ns', {
+            machineId: 'm1',
+            directory: '/work/app',
+            model: 'opus',
+            effort: 'high',
+            permissionMode: 'plan',
+            projectId: 'p1',
+        })
+
+        expect(spawnCalls[0].options).toEqual({
+            model: 'opus',
+            effort: 'high',
+            permissionMode: 'plan',
+            projectId: 'p1',
+        })
+    })
+
+    test('namespace 透传用于机器解析', async () => {
+        const { service } = makeService([online])
+
+        await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+
+        expect((await service.createSession('other-ns', { machineId: 'm1', directory: '/work/app' })).ok).toBe(false)
+    })
+})
+
+describe('AgentSessionService.createSession — 失败翻译', () => {
+    const online = makeMachine({ id: 'm1', namespace: 'ns' })
+
+    const spawnFailing = (message: string) =>
+        makeService([online], [], { spawnResult: { type: 'error', message } })
+
+    test('RPC handler 未注册 → 「那台机器没在跑 runner」，不暴露 RPC 内部措辞', async () => {
+        const { service } = spawnFailing('RPC handler not registered: m1:spawn-mobi-session')
+
+        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+
+        expect(text).toContain('not running a mobi runner')
+        expect(text).toContain('list_machines')
+        expect(text).not.toContain('RPC')
+    })
+
+    test('RPC socket 断开 → 同一句（对 agent 而言是同一件事）', async () => {
+        const { service } = spawnFailing('RPC socket disconnected: m1:spawn-mobi-session')
+
+        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+
+        expect(text).toContain('not running a mobi runner')
+        expect(text).not.toContain('RPC')
+    })
+
+    test('RPC 层 30s 超时 → 说清「可能已建」，并指路 list_sessions 以避免建重', async () => {
+        const { service } = spawnFailing('operation has timed out')
+
+        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+
+        expect(text).toContain('did not respond in time')
+        expect(text).toContain('may or may not have been created')
+        expect(text).toContain('list_sessions')
+    })
+
+    test('runner 等会话 webhook 超时 → 与 RPC 超时同一句（两种情况进程都可能已经起来）', async () => {
+        const { service } = spawnFailing('Session webhook timeout for PID 4242')
+
+        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+
+        expect(text).toContain('may or may not have been created')
+    })
+
+    test('上游自己产出的失败本就是人话 → 原样透出，不另套一层映射', async () => {
+        const upstream = "Unable to create directory at '/work/app'. A file already exists at this path or in the parent path."
+        const { service } = spawnFailing(upstream)
+
+        expect(failureText(await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })))
+            .toBe(upstream)
     })
 })

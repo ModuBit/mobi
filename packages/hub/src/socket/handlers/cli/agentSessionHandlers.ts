@@ -25,15 +25,17 @@
  */
 
 import { z } from 'zod'
-import type { AgentMachineSummary, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
+import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentMachineSummary, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessResult } from './types'
 import type { StoredSession } from '../../../store'
-import type { AgentSessionQuery } from '../../../sync/agentSessionService'
+import type { AgentCreateSessionInput, AgentSessionQuery } from '../../../sync/agentSessionService'
 
 type ListMachinesForAgentHandler = ClientToServerEvents['listMachinesForAgent']
 type ListSessionsForAgentHandler = ClientToServerEvents['listSessionsForAgent']
+type CreateSessionForAgentHandler = ClientToServerEvents['createSessionForAgent']
 
 const listMachinesPayloadSchema = z.object({
     sid: z.string(),
@@ -52,12 +54,32 @@ const listSessionsPayloadSchema = z.object({
     projectId: z.string().optional(),
 })
 
+/** machineId / directory 非空：空串会一路走到 spawn 才炸，在这里挡下来更清楚 */
+const createSessionPayloadSchema = z.object({
+    sid: z.string(),
+    machineId: z.string().min(1),
+    directory: z.string().min(1),
+    projectId: z.string().optional(),
+    model: z.string().optional(),
+    effort: z.enum(EFFORT_LEVELS).optional(),
+    permissionMode: PermissionModeSchema.optional(),
+})
+
+/** 结构性故障的文案：与上游失败共用 `error` 字段（见 AgentCreateSessionAck 注释），
+ *  但必须说清「这不是你做错了」——否则 agent 会反复改入参重试一个改不好的东西 */
+const INVALID_ARGUMENTS_ERROR = 'The request was rejected by mobi hub: invalid arguments.'
+const SERVICE_UNAVAILABLE_ERROR =
+    'The request was rejected by mobi hub: the session service is not available. ' +
+    'This is a mobi bug, not something you did — do not retry.'
+
 export type AgentSessionHandlersDeps = {
     resolveSessionAccess: (sessionId: string) => AccessResult<StoredSession>
     /** AgentSessionService.listMachines（装配缺失属组装 bug，见下方守卫） */
     listOnlineMachines?: (namespace: string) => AgentMachineSummary[]
     /** AgentSessionService.listSessions（同上） */
     listSessions?: (namespace: string, query: AgentSessionQuery) => AgentSessionSummary[]
+    /** AgentSessionService.createSession（同上） */
+    createSession?: (namespace: string, input: AgentCreateSessionInput) => Promise<AgentCreateSessionAck>
 }
 
 /**
@@ -67,7 +89,7 @@ export type AgentSessionHandlersDeps = {
  * 留给连接故障，两者语义不同（与 ui-command 同口径）。
  */
 export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: AgentSessionHandlersDeps): void {
-    const { resolveSessionAccess, listOnlineMachines, listSessions } = deps
+    const { resolveSessionAccess, listOnlineMachines, listSessions, createSession } = deps
 
     socket.on('listMachinesForAgent', ((raw: unknown, cb: Parameters<ListMachinesForAgentHandler>[1]) => {
         const parsed = listMachinesPayloadSchema.safeParse(raw)
@@ -117,4 +139,27 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
         const { sid: _sid, ...query } = parsed.data
         cb?.({ ok: true, sessions: listSessions(access.value.namespace, query) })
     }) as ListSessionsForAgentHandler)
+
+    socket.on('createSessionForAgent', (async (raw: unknown, cb: Parameters<CreateSessionForAgentHandler>[1]) => {
+        const parsed = createSessionPayloadSchema.safeParse(raw)
+        if (!parsed.success) {
+            cb?.({ ok: false, error: INVALID_ARGUMENTS_ERROR })
+            return
+        }
+
+        const access = resolveSessionAccess(parsed.data.sid)
+        if (!access.ok) {
+            cb?.({ ok: false, error: INVALID_ARGUMENTS_ERROR })
+            return
+        }
+
+        if (!createSession) {
+            hubLogger.error('[AgentSessions] createSession 未装配，请求被拒')
+            cb?.({ ok: false, error: SERVICE_UNAVAILABLE_ERROR })
+            return
+        }
+
+        const { sid: _sid, ...input } = parsed.data
+        cb?.(await createSession(access.value.namespace, input))
+    }) as CreateSessionForAgentHandler)
 }

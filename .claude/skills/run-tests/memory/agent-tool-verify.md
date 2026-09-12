@@ -60,6 +60,31 @@ sqlite3 ~/.mobi-e2e/mobi.db "SELECT content FROM messages WHERE session_id='<sid
   | python3 -c "import sys,json; d=json.load(sys.stdin)['content']['data']; print([t for t in d['tools'] if t.startswith('mcp__mobi-')])"
 ```
 
+## 验证「状态是否瞬时」/「返回时是否已生效」
+
+问「工具返回的那一刻，某个状态是否已经就绪」时，别盯 DOM（轮询粒度不够），用两侧夹逼：
+
+1. **基准侧**：从 DB 取该次 `tool_result` 的 `data.timestamp`（毫秒精度，就是 CLI 写回执的时刻）
+2. **观测侧**：后台跑高频轮询权威源（如 `curl -b jar /api/sessions`），只在**内容变化**时打印
+   `python3 -c 'import time;print(f"{time.time():.3f}")'` + 变化后的快照
+
+两侧一减就是窗口长度。实测（2026-09-12）：`create_session` 的结果时间戳与轮询首次看到
+新会话（且已 `active=1`）相差 **51ms**，据此判定「建完即可发消息」成立、不需要加等待。
+
+```bash
+# 轮询脚本骨架（写 /tmp 后台跑，只在变化时输出）
+prev=""
+for i in $(seq 1 240); do
+  cur=$(curl -s -b /tmp/e2e-jar.txt http://localhost:2224/api/sessions | python3 -c "…一行摘要…")
+  [ "$cur" != "$prev" ] && [ -n "$cur" ] && { echo "$(python3 -c 'import time;print(f"{time.time():.3f}")') $cur"; prev="$cur"; }
+  sleep 0.05
+done
+```
+
+**坑**：轮询间隔受 `curl`+`python` 进程启动开销限制（实测每轮 ~200ms 起，机器压载时更差），
+所以只能给出**上界**（「窗口 < X ms」），别把「没观察到」当成「不存在」——要更细的粒度就得
+看日志或加埋点。
+
 ## 坑
 
 - **Auto 权限模式自动放行一切 → 「没弹审批」不能证明预授权生效（2026-09-12 实测）**

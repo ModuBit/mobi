@@ -112,6 +112,30 @@ export type AgentSessionsAck =
 export const AGENT_SESSIONS_DEFAULT_LIMIT = 20
 export const AGENT_SESSIONS_MAX_LIMIT = 50
 
+/** createSessionForAgent 入参 */
+export type AgentCreateSessionRequest = {
+    sid: string
+    /** **只接受 machineId**（来自 list_machines）；不收机器名——名字会重、会变，id 不会 */
+    machineId: string
+    /** 绝对路径，在目标机器上解析。目录不存在时由那台机器创建（既有 spawn 语义） */
+    directory: string
+    projectId?: string
+    model?: string
+    effort?: EffortLevel
+    permissionMode?: PermissionMode
+}
+
+/**
+ * create_session 回执。
+ *
+ * 失败用**自由文本**而非 AgentOpFailureReason 码：建会话的失败来自上游且是开放集合
+ * （目录建不出来 / 那台机器没在跑 / 超时 / 项目归属不符），每种都会被翻译成一句
+ * 给人看的话。与 D15 的 per-target `error` 同口径——码在这里没有消费方。
+ */
+export type AgentCreateSessionAck =
+    | { ok: true; sessionId: string }
+    | { ok: false; error: string }
+
 export const TerminalOpenPayloadSchema = z.object({
     sessionId: z.string().min(1),
     terminalId: z.string().min(1),
@@ -381,6 +405,9 @@ export interface ClientToServerEvents {
     /** 同上，列出会话供 agent 挑选派活目标。sid 是发问方自己的会话（Hub 据此定 namespace），
      *  其余字段是 agent 的查询条件——namespace 不在入参里，也不可信。 */
     'listSessionsForAgent': (data: AgentSessionsRequest, cb: (answer: AgentSessionsAck) => void) => void
+    /** 同上，在某台机器上起一个新会话进程。语义是「现在就有了这个会话」，
+     *  没有「建了行但空着」的中间态——建完即可往里发消息。 */
+    'createSessionForAgent': (data: AgentCreateSessionRequest, cb: (answer: AgentCreateSessionAck) => void) => void
 }
 
 /** listSessionsForAgent 入参 */

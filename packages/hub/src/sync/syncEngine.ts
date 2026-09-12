@@ -119,6 +119,10 @@ export class SyncEngine {
         this.agentSessionService = new AgentSessionService({
             getOnlineMachinesByNamespace: (namespace) => this.machineCache.getOnlineMachinesByNamespace(namespace),
             getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
+            getMachineByNamespace: (machineId, namespace) => this.machineCache.getMachineByNamespace(machineId, namespace),
+            // 与 Web 侧 spawn 路由共用同一个实现——项目归属规则只写一份
+            checkProjectAssignable: (projectId, namespace, machineId) => checkProjectAssignable(this, projectId, namespace, machineId),
+            spawnSession: (machineId, directory, options) => this.rpcGateway.spawnSession(machineId, directory, options),
         })
         this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)

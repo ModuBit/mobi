@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { AgentMachinesAck, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -64,6 +64,9 @@ const REWIND_REPORT_ACK_TIMEOUT_MS = 5_000
 const UI_COMMAND_ACK_TIMEOUT_MS = 5_000
 /** Agent 会话操作 ack 等待上限（ms）：同 UI 命令口径，超时按连接故障处理 */
 const AGENT_OP_ACK_TIMEOUT_MS = 5_000
+/** 建会话的 ack 等待上限（ms）：这一步在起真进程（见 createSessionForAgent 注释），
+ *  5s 必然不够。取 45s = Hub 侧 RPC 30s 上限 + 余量 */
+const AGENT_CREATE_SESSION_ACK_TIMEOUT_MS = 45_000
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string
@@ -776,6 +779,21 @@ export class ApiSessionClient extends EventEmitter {
             .timeout(AGENT_OP_ACK_TIMEOUT_MS)
             .emitWithAck('listSessionsForAgent', { sid: this.sessionId, ...query })
         return answer as AgentSessionsAck
+    }
+
+    /**
+     * 在某台机器上起一个新会话（B 类工具族）。
+     *
+     * 等待上限比列表类长得多：这一步真的在起进程——runner 要等会话 webhook
+     * （最多 15s），Hub 的 RPC 自身也有 30s 上限，所以 ack 可能几秒后才回。
+     * 口径仍与列表类一致：业务失败走 ack 的 ok:false（文案已由 Hub 翻译好），
+     * 连接故障走 reject。
+     */
+    async createSessionForAgent(input: Omit<AgentCreateSessionRequest, 'sid'>): Promise<AgentCreateSessionAck> {
+        const answer = await this.socket
+            .timeout(AGENT_CREATE_SESSION_ACK_TIMEOUT_MS)
+            .emitWithAck('createSessionForAgent', { sid: this.sessionId, ...input })
+        return answer as AgentCreateSessionAck
     }
 
     /**
