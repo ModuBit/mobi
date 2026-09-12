@@ -59,6 +59,9 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 - **`data` 是 SDK 原始消息的不透明透传**（`type`/`subtype`/`message.usage` 原样保留）——从 DB 取 SDK 字段直接下钻 `data.xxx`，无 mobi 改写（见 pending #56「投影税」）
 - 用户消息**写入侧统一归一**：hub `sendMessage` 经 shared `normalizeUserContent` 把 string / 旧平铺 `{type:'text',text,attachments}` / 新格式三形态归一为 block 数组落库；读取侧 web 端由同一函数归一（存量零迁移）
 - **入站跨会话消息**（2026-08-28；2026-09-01 批次 D 扩展 source 细分）：CLI 经 SDK UserPromptSubmit hook 观测的入站 turn（`claude/utils/inboundCrossSession.ts` 的 `classifyInboundTurn` 按 hook `source`+信封甄别 `peer`/`scheduled`/`loop`），经 `sendInboundCrossSessionMessage` 落库为 `role=user` + `meta.sentFrom='cli'`（永不排队）+ `meta.crossSession = { from: 来源会话名 }`（信封缺 from-name 时省略）+ `meta.turnOrigin`（`peer`/`scheduled`/`loop`）；web 按 turnOrigin 渲染「📨 来自 xxx」/「⏰ 定时任务」/「🔁 /loop」标签。CC 行为坑：turn 卡权限审批窗口内入站的消息会被 CC 丢弃（queued_command remove），hook 不触发
+- **mobi 自发投递的跨会话消息**（`send_message_to_session`，2026-09-12）：走 **Hub RPC 直推**（`push-agent-message`），**不经 hook 观测**。落库同样是 `role=user` + `meta.sentFrom='cli'`（永不排队）+ `meta.crossSession.from`（发件方会话名），另带 **`meta.fromSessionId`**；**不写 `meta.turnOrigin`**（保持「仅 hook 观测携带」的原义）。信封只进推给 CC 的那份，落库不含（同前一条）
+  - 两条路径靠 **`fromSessionId` 的存在性**区分：有 id → mobi 自发；有 from-name 无 id → CC 原生 peer；都没有 → 人
+  - 观测路径**跳过带 `from-session-id` 的信封**（`classifyInboundTurn` 返回 null）：否则同一封信封会落两行（投递路径一行 + 观测路径一行）
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 

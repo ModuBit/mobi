@@ -158,6 +158,8 @@ flowchart LR
 | **[Snapshot Delta 协议](./snapshot-delta.md)** | 流式消息增量传输：拼接器缓存 + SSE 转发游标 + 重基线/生命周期清理 |
 | **SessionMessageRuntimeProjector** | 已持久化消息 → runtimeState 的连接级投影；封装跨消息配对、顺序合并、自动清理与持久化 |
 | **SessionMessageFactsProcessor** | CLI 消息事实处理；封装不可信字段收窄、幂等/单调落库、连接级 native session 上下文并返回领域 publication |
+| **AgentSessionService** | agent 触达其他会话的编排（列机器/列会话/建会话/投消息）；socket handler 只做校验与鉴权，业务规则全在此（见 ADR 0005） |
+| **SessionReceiveReadiness** | 「会话此刻能不能收消息」（CLI 的 sink 接通/断开时翻转上报）的内存 latch + 「等它就绪」原语。**不落库不广播**：它是「此刻」的事实、每轮会翻转，只用于等就绪与把投递失败说准 |
 
 ## 初始化流程
 

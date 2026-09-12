@@ -179,6 +179,17 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 
 > usage 账本语义（2026-08-26 修正）：`message_start` 的 `usage` 输入三项（input/cc/cr）是终值（请求发出时输入已 tokenize 完），`output_tokens` 为占位；`message_delta` 的 `usage.output_tokens` 为累计终值，输入三项亦可回填非空累计值（SDK 类型 `BetaMessageDeltaUsage` 三项为 `number|null`，服务端实践常态为 null）；**无 `message_end`**，`message_stop` 不带 usage。两者都是**单次 API 请求**的账（Messages API 无状态，每个 turn 的工具循环 = 多次独立请求，input 随历史逐次变大），**无会话累计字段**。「上下文占用」语义 = 该条消息完成后的瞬时占用（message_start 三项 + message_delta output 四项和）——`result.usage` **不是**它（是累计），此前"`result` 带来的正是它"的结论错误，已推翻。当前 `handleStreamEvent` 处理 `message_start` 只拿 `model`/`message.id`/`sdkUuid`，usage 未捕获——这正是装配消息 usage 全 0 的根因（修复见上述 spec）。
 
+### 接收就绪上报
+
+`reportReceiveReadiness(canReceive)` 通过 `socket.emit('receive-readiness', { sid, canReceive })` 上报**本会话此刻能不能收消息**。翻转点两处，都在 `claudeRemoteLauncher`：sink 接通（`onAgentMessageSinkReady`，即 query attach 那一刻）报 `true`，轮次收尾清空 sink 时报 `false`——**状态翻转才报**，不是定期汇报。
+
+它是**「此刻」的事实，不是稳定属性**：sink 每轮收尾被清空、下一轮再接上，同一个会话会反复翻转。所以 Hub 侧**不落库、不广播**，只在进程内喂 `SessionReceiveReadiness`（一个 keyed by sessionId 的内存 latch + 「等它就绪」原语），用途只有两个：
+
+- `create_session` 的「建完即可用」——等它变真再返回（spawn 回执与 sink 接通实测差 134–549ms，所以判据只能是 sink，**不能**是 `active` / `running` / RPC handler 登记）
+- 投递失败时区分「还没接上」（该重试）与「连接没了」（该放弃）
+
+**别拿它当投递闸门**：轮次之间那段几十毫秒会翻成假，用它拦投递会把健康会话挡在门外（D43：先试，再解释）。
+
 ## IdleTimer 集成
 
 ApiSessionClient 集成 `IdleTimer` 实现 Session 自动超时关闭：

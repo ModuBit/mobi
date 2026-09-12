@@ -15,6 +15,8 @@
 | `src/sync/snapshotSync.ts` | 流式快照同步（完整基线、版本、订阅游标与连接生命周期） |
 | `src/sync/sessionMessageRuntimeProjector.ts` | 持久化消息 → runtimeState 投影（todos/tasks/team/background tasks） |
 | `src/sync/sessionMessageFactsProcessor.ts` | CLI 消息事实处理（字段收窄、幂等/单调持久化、领域 publication） |
+| `src/sync/agentSessionService.ts` | Agent 会话操作编排（列机器/列会话/建会话/投消息的唯一规则入口，B 类工具族） |
+| `src/sync/sessionReceiveReadiness.ts` | 「会话此刻能不能收消息」的内存 latch + 等就绪原语（CLI 翻转上报，不落库不广播） |
 | `src/store/index.ts` | SQLite 存储层（WAL） |
 | `src/store/sessionFork.ts` | 分叉创建领域模块（资格、复制范围、native id 与建行事务） |
 | `src/store/projects.ts` | 项目实体存储（「项目实体化」，会话按项目 / 「最近」组织） |

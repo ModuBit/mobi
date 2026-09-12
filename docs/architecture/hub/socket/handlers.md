@@ -82,13 +82,15 @@ flowchart TB
 
 ### 2. 处理器注册
 
-初始化后，依次注册 4 组处理器：
+初始化后，依次注册 6 组处理器：
 
 ```
 registerRpcHandlers(socket, rpcRegistry)
 registerSessionHandlers(socket, { store, resolveSessionAccess, emitAccessError, ... })
 registerMachineHandlers(socket, { store, resolveMachineAccess, emitAccessError, ... })
 registerTerminalHandlers(socket, { terminalRegistry, terminalNamespace, resolveSessionAccess, ... })
+registerUiCommandHandlers(socket, { resolveSessionAccess, hasActiveSseConnection, publishUiCommand })
+registerAgentSessionHandlers(socket, { resolveSessionAccess, listOnlineMachines, listSessions, createSession, sendMessageToSessions })
 ```
 
 另外注册 `ping`（心跳）和 `disconnect`（断线清理）。
@@ -120,6 +122,8 @@ socket.on('disconnect', () => {
 | `session-alive` | 单向 | — | — | onSessionAlive |
 | `session-end` | 单向 | 经消息事实 module force-push 排队消息 | — | onSessionEnd + onWebappEvent（messages-submitted SSE） |
 | `messages-facts` | 单向 | 交给消息事实 module（见下） | 存储行 publication → `session-update` | publication → onWebappEvent |
+| `run-started` | 单向 | 落库 `runtimeState.runStartedAt`（含时间倒退保护） | `session-update` → 同房间 | onWebappEvent |
+| `receive-readiness` | 单向 | —（**刻意不落库**：随会话进程生灭的「此刻」事实） | —（不广播：每轮翻转，广播只会刷屏） | factsSink.handleReceiveReadiness |
 
 ### session-message：消息接收
 
@@ -265,6 +269,39 @@ flowchart LR
 `terminal:exit` 和 `terminal:error` 的区别：
 - `exit`：正常退出，先移除 entry 再转发
 - `error`：CLI 报告错误，先移除 entry 再转发，防止无限重连循环
+
+---
+
+## /cli UI 命令处理器（A 类）
+
+**文件**: [`packages/hub/src/socket/handlers/cli/uiCommandHandlers.ts`](/packages/hub/src/socket/handlers/cli/uiCommandHandlers.ts)
+
+agent 让 mobi 界面做点什么（如打开文件）。与 B 类的分界：**依赖 Web 在线、是瞬态呈现（不落库）**。
+
+| 事件 | 模式 | 处理 |
+|------|------|------|
+| `sendUiCommand` | 请求/响应 | 鉴权 → `publishUiCommand`（经 EventPublisher 盖章 namespace 后 SSE 广播）→ ack |
+
+ack 的 `delivered` 是「已广播给活跃 Web 连接」，不是「用户已看到」；无 Web 在线时 `false`（调用成功、非错误），socket 断开 / ack 超时才是 reject。
+
+---
+
+## /cli Agent 会话操作处理器（B 类）
+
+**文件**: [`packages/hub/src/socket/handlers/cli/agentSessionHandlers.ts`](/packages/hub/src/socket/handlers/cli/agentSessionHandlers.ts)
+
+agent 触达**其他会话**（列机器 / 列会话 / 建会话 / 投消息，见 ADR 0005）。与 A 类的分界：**不依赖 Web 在线、落库即终态**。
+
+四个事件形状一致：**入参只校验形状 → `resolveSessionAccess` 鉴权取 namespace → 调 `AgentSessionService` → 把结果转 ack**。业务规则（过滤排序、机器解析、扇出、失败翻译）全在服务里，handler 不重复一份（与 `SessionMessageFactsProcessor` / `SessionForkStore` 同一分工）。
+
+| 事件 | 模式 | 服务方法 |
+|------|------|----------|
+| `listMachinesForAgent` | 请求/响应 | `listMachines` |
+| `listSessionsForAgent` | 请求/响应 | `listSessions` |
+| `createSessionForAgent` | 请求/响应 | `createSession`（`waitForReady` 默认等到新会话能收消息再返回） |
+| `sendMessageToSessionForAgent` | 请求/响应 | `sendMessageToSessions` |
+
+装配缺失属组装 bug，一律明确拒绝而非静默：列类回 `handler-misconfigured`，写类回一句「会话服务不可用」的人话。**不静默返回空清单**——那会让 agent 以为「一台机器/一个会话都没有」。
 
 ---
 

@@ -125,6 +125,9 @@ db.prepare('INSERT INTO sessions (...) VALUES (...)').run({ ... })
 - **命名空间**：`/cli`（CLI 连接）、`/web`（Web 连接）
 - **类型安全**：使用 `ServerToClientEvents` / `ClientToServerEvents` 接口
 - **事件处理**：按功能域组织 handler
+- **「事实」类上报（CLI 持续上报状态/事件）走统一前置**：`validateAndForward`（schema 表 → 鉴权 → sink 分发）。新增一种事实 = schema 表加一项 + `SessionFactsSink` 加一个方法 + 一行转发，不再复制样板（见 `sync/sessionFacts.ts`）
+- **「此刻」的事实不落库、不广播**：随进程生灭且会反复翻转的状态（如「会话此刻能不能收消息」）只放进程内 latch，不进 Session 实体——落库/广播既刷屏、又会让「没定论」冒充「确定结论」。这类事实的正当用途只有两个：**等它成立**与**把失败说准**；**别当闸门**（翻转窗口会把正常对象挡在门外）
+- **失败文案的单一翻译点**：上游/RPC 错误由领域模块译成能独立读懂的人话（agent 不该看到 `RPC handler not registered` 这类内部结构）；成功文案反过来——Hub 只报事实，措辞由 CLI 工具按事实拼
 
 ## 测试
 

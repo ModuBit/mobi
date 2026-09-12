@@ -42,7 +42,7 @@ flowchart TB
 
 ### /cli namespace
 
-CLI 连接后，通过事件与 Hub 交互。事件按职责分为四组：
+CLI 连接后，通过事件与 Hub 交互。事件按职责分为六组：
 
 **会话事件**（`sessionHandlers.ts`）
 
@@ -55,7 +55,9 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为四组：
 | `session-end` | CLI → Hub | 会话结束，触发清理 |
 | `context-usage` | CLI → Hub | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
 | `goal-status` | CLI → Hub | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
+| `run-started` | CLI → Hub | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
 | `cache-status` | CLI → Hub | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
+| `receive-readiness` | CLI → Hub | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / 轮次收尾断开 `false`）。**不落库、不广播**——只在 Hub 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
 | `update-metadata` | CLI ⇄ Hub | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ Hub | 更新 Agent 状态（requests 等），带乐观锁 |
 | `idle-timeout-warning` | CLI → Hub | 空闲超时预警，广播到 Web 端 |
@@ -85,6 +87,23 @@ Hub 通过 `rpc-request` 事件调用 CLI 的 RPC 方法，用于 Web 端发起�
 | `terminal:output` | CLI → Hub | 终端输出 |
 | `terminal:exit` | CLI → Hub | 终端退出 |
 | `terminal:error` | CLI → Hub | 终端错误 |
+
+**UI 命令事件**（`uiCommandHandlers.ts`，agent 触达 mobi 界面，A 类）
+
+| 事件 | 方向 | 说明 |
+|------|------|------|
+| `sendUiCommand` | CLI → Hub | agent 发起的 UI 命令（如打开文件），广播给活跃 Web 连接。ack 的 `delivered=true` 是「已广播给活跃连接」而非「用户已看到」；无 Web 在线时 `false`（调用成功、非错误），连接故障才 reject |
+
+**Agent 会话操作事件**（`agentSessionHandlers.ts`，agent 触达其他会话，B 类；见 ADR 0005）
+
+namespace 由 Hub 从鉴权过的 `sid` 解析，CLI 不填也不可信；四个都是 `emitWithAck` 的请求/响应事件。
+
+| 事件 | 方向 | 说明 |
+|------|------|------|
+| `listMachinesForAgent` | CLI → Hub | 列可派活的**在线**机器（离线机器不出现，列出来只会让 agent 选中注定失败的目标） |
+| `listSessionsForAgent` | CLI → Hub | 列可派活的会话（keyword / status / limit / projectId 过滤；默认 `ACTIVE`、上限 50） |
+| `createSessionForAgent` | CLI → Hub | 在某台机器上起新会话进程。默认 `waitForReady`：返回前**保证新会话能收消息**（服务端固定 3s 预算），ack 带 `readiness: 'ready' \| 'not-ready' \| 'not-checked'`；等不到仍算成功（会话确实建好了）。失败文案由 Hub 译成人话 |
+| `sendMessageToSessionForAgent` | CLI → Hub | 把一条消息投给若干会话。**不经投递队列**（`sentFrom:'cli'` ⇒ `lifecycle=null`）、不可取消/编辑；逐目标独立返回 `{sessionId, ok, error?}`，失败文案里「还没连上」与「连接没了」靠 `receive-readiness` 的事实分开说 |
 
 各事件的详细处理流程见 [事件处理器架构](./handlers.md)。
 
@@ -248,7 +267,9 @@ packages/hub/src/socket/
         ├── sessionHandlers.ts # 会话事件处理器
         ├── machineHandlers.ts # 机器事件处理器
         ├── rpcHandlers.ts     # RPC 注册/注销处理器
-        └── terminalHandlers.ts # 终端事件处理器（CLI 端）
+        ├── terminalHandlers.ts # 终端事件处理器（CLI 端）
+        ├── uiCommandHandlers.ts # UI 命令处理器（A 类：agent 触达 mobi 界面）
+        └── agentSessionHandlers.ts # Agent 会话操作处理器（B 类：agent 触达其他会话）
 ```
 
 ## 配置项
