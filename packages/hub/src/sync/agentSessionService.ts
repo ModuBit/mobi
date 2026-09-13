@@ -75,7 +75,7 @@ export interface AgentSendMessageInput {
     content: unknown
 }
 
-/** 需要目标机器上真实存在的文件的 block（见 findLocalFileBlock） */
+/** 需要目标机器上真实存在的文件的 block（见 findLocalFileBlocks） */
 type LocalFileBlock = UserImageBlock | UserDocumentBlock
 
 /**
@@ -85,10 +85,10 @@ type LocalFileBlock = UserImageBlock | UserDocumentBlock
 interface DeliveryContext {
     /** 信封字段（messageId 逐目标生成，不在这里） */
     delivery: Omit<AgentMessageDelivery, 'messageId'>
-    /** 发件方会话（取信封名字与同机器判据；解析不到时缺省，见 isSameMachine） */
+    /** 发件方会话（取信封名字与同机器判据；解析不到时缺省，见 isSameMachineProven） */
     sender: Session | undefined
-    /** 内容里那个需要本机文件的 block；纯文本全程为 null，不触发任何机器判据 */
-    localFile: LocalFileBlock | null
+    /** 内容里需要本机文件的那些 block（**全部**：话术要说清几张都没发）；纯文本全程为空，不触发任何机器判据 */
+    localFiles: readonly LocalFileBlock[]
 }
 
 export interface AgentSessionServiceDeps {
@@ -342,7 +342,7 @@ export class AgentSessionService {
                 fromSessionId,
             },
             sender,
-            localFile: findLocalFileBlock(gate.blocks),
+            localFiles: findLocalFileBlocks(gate.blocks),
         }
 
         // 目标之间互不依赖，并发投递：总耗时是「最慢的那个」而不是「各目标之和」。
@@ -384,18 +384,12 @@ export class AgentSessionService {
         // 那个路径」——推给 CC 时 document 只剩 `@path`、image 要 `readFileSync`，读的都是
         // **目标机器**的文件系统。整条失败，不做静默降级：剔掉该 block 继续发文本，会让
         // agent 以为文件带上了，那比失败更坏（与内容闸同一条理由）
-        const { localFile } = context
-        if (localFile && !isSameMachine(context.sender, target)) {
+        const { localFiles } = context
+        if (localFiles.length > 0 && !isSameMachineProven(context.sender, target)) {
             return {
                 sessionId: targetSessionId,
                 ok: false,
-                error:
-                    `The message carries a local file ("${localFile.filename}"), and that session is on a different machine. ` +
-                    'A file path only means something on the machine it was written on, so the file could not be read there. ' +
-                    'Nothing was sent — mobi does not drop the file and send the text anyway. ' +
-                    'Moving files between machines is not supported yet. ' +
-                    'If the content is reachable online, put the URL in the message text instead of attaching it as a block — ' +
-                    'a URL in a block value is not fetched either, it just arrives as text.',
+                error: unreadableAttachmentsMessage(localFiles),
             }
         }
 
@@ -480,7 +474,9 @@ function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery
 }
 
 /**
- * 找出内容里需要**目标机器上真实存在的文件**的 block（没有则 null）。
+ * 找出内容里需要**目标机器上真实存在的文件**的 block（没有则空数组）。
+ *
+ * 收**全部**而不是第一个：拒绝话术要把文件名都说出来（见 unreadableAttachmentsMessage）。
  *
  * 只有 image / document 可能落在这一档，判据落在 `source.value` 上：推给 CC 时
  * `document` 换算成 `@<source.value>`、`image` 要 `readFileSync(source.value)`，
@@ -501,26 +497,30 @@ function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery
  *
  * 引用（quote）跨会话时 messageId 在本会话里悬空，但渲染只读 excerpt（D20），无需判据。
  */
-function findLocalFileBlock(blocks: readonly UserContentBlock[]): LocalFileBlock | null {
+function findLocalFileBlocks(blocks: readonly UserContentBlock[]): LocalFileBlock[] {
+    const found: LocalFileBlock[] = []
     for (const block of blocks) {
         if (block.type !== 'image' && block.type !== 'document') continue
         if (block.source.type !== 'url') continue
         if (isSelfContainedUrl(block.source.value)) continue
-        return block
+        found.push(block)
     }
-    return null
+    return found
 }
 
 /**
- * 两个会话是否在同一台机器上。
+ * 能否**证明**发件方与目标在同一台机器上——注意问的是「能否证明」，不是「是否同一台」。
  *
  * 判据要回答的是「同一个文件系统」，不是「同一个机器 id」：machineId 优先，缺失时退回
  * host（与 syncEngine 解析会话所属机器同一次序）。同一 host 上的多个 runner 共享磁盘，
  * 路径互通，正是本判据要问的。
  *
- * **无法证明同机器时判为不同机器**：宁可口头上多解释一次，不可让 agent 以为文件带上了。
+ * **拿不到身份就证明不了**（发件方解析不到、或两边都没自报机器身份），这一支与「确实不在
+ * 同一台机器」共用 false。两者成因不同，但 agent 能做的事完全一样（改网络 URL / 让人搬
+ * 文件），所以拒绝话术也共用一句对两种成因都成立的话（见 unreadableAttachmentsMessage）：
+ * 说的是「无法确认」，不是「它就在另一台机器上」（2026-09-13 架构评审候选 #8）。
  */
-function isSameMachine(sender: Session | undefined, target: Session): boolean {
+function isSameMachineProven(sender: Session | undefined, target: Session): boolean {
     const senderId = sender?.metadata?.machineId
     const targetId = target.metadata?.machineId
     if (senderId && targetId) return senderId === targetId
@@ -528,6 +528,27 @@ function isSameMachine(sender: Session | undefined, target: Session): boolean {
     const senderHost = sender?.metadata?.host
     const targetHost = target.metadata?.host
     return Boolean(senderHost) && senderHost === targetHost
+}
+
+/**
+ * 附件闸的拒绝话术。**说的是「无法确认同机器」，不是「它在另一台机器上」**——两种成因
+ * （确实不是同一台 / 拿不到机器身份）共用这一句，所以这句必须对两者都为真
+ * （见 isSameMachineProven）。
+ *
+ * 文件**全部列出**：一条带两张本机图的消息跨机器时，只报第一个文件名会让 agent 解释不了
+ * 第二张的去向（2026-09-13 架构评审候选 #8 附带项）。
+ */
+function unreadableAttachmentsMessage(files: readonly LocalFileBlock[]): string {
+    const one = files.length === 1
+    const names = files.map((file) => `"${file.filename}"`).join(', ')
+    return (
+        `The message carries ${one ? 'a local file' : 'local files'} (${names}), and mobi could not confirm that session is on the same machine. ` +
+        `A file path only means something on the machine it was written on, so ${one ? 'the file' : 'those files'} could not be read there. ` +
+        `Nothing was sent — mobi does not drop ${one ? 'the file' : 'the files'} and send the text anyway. ` +
+        'Moving files between machines is not supported yet. ' +
+        'If the content is reachable online, put the URL in the message text instead of attaching it as a block — ' +
+        'a URL in a block value is not fetched either, it just arrives as text.'
+    )
 }
 
 /**

@@ -1062,13 +1062,50 @@ describe('AgentSessionService.sendMessageToSessions — 附件闸（同机器）
 
         expect(results[0].ok).toBe(false)
         // 面向 agent 的人话：说清原因（路径只在写出它的机器上有意义）、后果（什么都没发）
-        // 与出路（网络图给 URL / 让人搬文件），不吐内部结构
-        expect(results[0].error).toContain('different machine')
+        // 与出路（网络图给 URL / 让人搬文件），不吐内部结构。
+        // **说的是「无法确认同机器」，不是「它在另一台机器上」**——同一个判据也覆盖
+        // 「拿不到发件方身份」，那句话必须对两种成因都为真（候选 #8）
+        expect(results[0].error).toContain('could not confirm')
         expect(results[0].error).toContain('pic.png')
         expect(results[0].error).toContain('Nothing was sent')
         // 不做静默降级：剔掉图片继续发文本会让 agent 以为文件带上了
         expect(pushed).toHaveLength(0)
         expect(stored).toHaveLength(0)
+    })
+
+    /**
+     * 「解析不出对方是谁」这一支（2026-09-13 架构评审候选 #8）：发件方会话解析不到时
+     * 判据证明不了同机器，闸照常拒绝——但话术不能变成「它在另一台机器上」，那是这条分支
+     * 无从知道的结论。
+     */
+    test('发件方身份解析不到 → 照常拒绝，话术是「无法确认」而不是「在另一台机器」', async () => {
+        const { service, pushed } = makeService([], [onMacB('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'missing', {
+            targets: ['B'],
+            content: image,
+        })
+
+        expect(results[0].ok).toBe(false)
+        expect(results[0].error).toContain('could not confirm')
+        expect(results[0].error).not.toContain('is on a different machine')
+        expect(pushed).toHaveLength(0)
+    })
+
+    test('多个本机文件跨机器 → 话术把文件名都列出来（只报一个会解释不了另一张的去向）', async () => {
+        const second = { ...image, id: 'i2', filename: 'v2.png', source: { type: 'url' as const, value: '/work/a/v2.png' } }
+        const { service, pushed } = makeService([], [onMacA('A'), onMacB('B')])
+
+        const results = await service.sendMessageToSessions('ns', 'A', {
+            targets: ['B'],
+            content: [image, second],
+        })
+
+        expect(results[0].ok).toBe(false)
+        expect(results[0].error).toContain('local files')
+        expect(results[0].error).toContain('pic.png')
+        expect(results[0].error).toContain('v2.png')
+        expect(pushed).toHaveLength(0)
     })
 
     test('跨机器纯文本不受影响', async () => {
@@ -1120,7 +1157,7 @@ describe('AgentSessionService.sendMessageToSessions — 附件闸（同机器）
         expect(results[0].ok).toBe(true)
     })
 
-    test('两边的机器身份都缺失 → 判为不同机器（无法证明同机器就不放行）', async () => {
+    test('两边的机器身份都缺失 → 证明不了同机器就不放行（与「确实不同机器」同一支）', async () => {
         // host 是 schema 必填字段，用空串表达「这条会话没自报机器身份」
         const bare = (id: string) => makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: '' } })
         const { service, pushed } = makeService([], [bare('A'), bare('B')])
