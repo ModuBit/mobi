@@ -657,7 +657,13 @@ export class SyncEngine {
         directory: string,
         options: SpawnSessionOptions = {},
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
-        return await this.rpcGateway.spawnSession(machineId, directory, options)
+        const result = await this.rpcGateway.spawnSession(machineId, directory, options)
+        if (result.type === 'error') {
+            // 传输分类是 hub 内部的说法（给 agent 的失败翻译用，见 rpcFailure），
+            // 不进 HTTP body：Web 只读 message，多带一个字段等于悄悄改了一处对外契约
+            return { type: 'error', message: result.message }
+        }
+        return result
     }
 
     /**

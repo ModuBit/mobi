@@ -115,8 +115,15 @@ socket.timeout(30_000).emitWithAck('rpc-request', {
 
 ## 错误处理
 
-| 错误 | 场景 |
-|------|------|
-| `RPC handler not registered` | 方法未注册（CLI 未连接或已断开） |
-| `RPC socket disconnected` | Socket 已断开 |
-| 超时 | CLI 30 秒内未响应 |
+失败一律以**带分类**的 `RpcFailure` 抛出（`sync/rpcFailure.ts`）：`kind` 是给程序分支的、稳定的三元值，`message` 是给人看的句子。
+
+| 错误 | 场景 | kind |
+|------|------|------|
+| `RPC handler not registered` | 方法未注册（CLI 未连接或已断开） | `unreachable` |
+| `RPC socket disconnected` | Socket 已断开 | `unreachable` |
+| 超时 | CLI 30 秒内未响应（socket.io 文案 `operation has timed out`） | `timeout` |
+| 其他传输异常 | 框架/序列化等 | `other` |
+
+**分类在产生它的这一层定下**——`unreachable` 两句由 `rpcCall` 自己抛出时直接带上，不再靠下游读文案反解。剩下还在读句子的只有**别处产出的散文**（socket.io 的 ack 超时、runner 的 `Session webhook timeout for PID N`），判据集中在文件内的 `classifyTransportFailure`，要彻底拆掉它得让 runner 的回执带结构化字段（见 `docs/pending.md` #78）。
+
+`spawnSession` 把异常收敛成结果值，失败支同样带上分类（`{ type:'error'; message; failure }`）——这条链路里混着 rpcCall 的分类错、runner 的人话与本地合成句，分类在这里一次定完。`SyncEngine.spawnSession`（Web 出口）只透出 `message`，分类是 hub 内部的说法，不进 HTTP body。

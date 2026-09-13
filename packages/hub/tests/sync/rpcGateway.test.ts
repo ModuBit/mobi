@@ -17,6 +17,7 @@
 import { describe, test, expect, mock } from 'bun:test'
 import type { PermissionUpdate } from '@mobi/shared'
 import { RpcGateway } from '../../src/sync/rpcGateway'
+import { RpcFailure } from '../../src/sync/rpcFailure'
 import type { RpcRegistry } from '../../src/socket/rpcRegistry'
 
 // ============ 辅助：构造 fake socket.io Server / Registry / Socket ============
@@ -28,6 +29,8 @@ import type { RpcRegistry } from '../../src/socket/rpcRegistry'
 interface FakeSocketOptions {
     /** emitWithAck 返回的响应 */
     response?: unknown
+    /** emitWithAck **拒绝**时抛出的错（模拟 socket.io 的 ack 超时或别的传输异常） */
+    rejects?: unknown
     /** 用于断言「捕获到什么」的写入槽 */
     payloadCaptor: { value: unknown }
 }
@@ -41,6 +44,7 @@ function makeFakeSocket(opts: FakeSocketOptions) {
         async emitWithAck(_event: string, payload: unknown) {
             // 捕获整个 rpc-request 信封，便于断言 params 是否为对象
             opts.payloadCaptor.value = payload
+            if (opts.rejects !== undefined) throw opts.rejects
             return opts.response
         },
     }
@@ -112,19 +116,22 @@ describe('RpcGateway.rpcCall', () => {
         expect(Array.from(result.chunk)).toEqual([0x00, 0xff, 0x10, 0x20])
     })
 
-    test('method 未注册（registry 返回 null）→ throw', async () => {
+    test('method 未注册（registry 返回 null）→ throw 带 unreachable 分类的 RpcFailure', async () => {
         const payloadCaptor = { value: undefined as unknown }
         const socket = makeFakeSocket({ response: {}, payloadCaptor })
         const io = makeFakeIo('sock-3', socket)
         const registry = makeFakeRegistry(new Map([['session-C:readFileMeta', null]]))
 
         const gateway = new RpcGateway(io, registry)
-        await expect(
-            (gateway as any).rpcCall('session-C:readFileMeta', { path: '/x' })
-        ).rejects.toThrow(/not registered/)
+        const error = await (gateway as any).rpcCall('session-C:readFileMeta', { path: '/x' })
+            .catch((thrown: unknown) => thrown)
+
+        expect(error).toBeInstanceOf(RpcFailure)
+        expect((error as RpcFailure).kind).toBe('unreachable')
+        expect((error as RpcFailure).message).toMatch(/not registered/)
     })
 
-    test('socket 不存在（registry 有 socketId 但 io 查不到）→ throw', async () => {
+    test('socket 不存在（registry 有 socketId 但 io 查不到）→ throw 带 unreachable 分类的 RpcFailure', async () => {
         const payloadCaptor = { value: undefined as unknown }
         const socket = makeFakeSocket({ response: {}, payloadCaptor })
         // io 里注册的是 sock-real，但 registry 返回 sock-missing → 查不到
@@ -132,9 +139,42 @@ describe('RpcGateway.rpcCall', () => {
         const registry = makeFakeRegistry(new Map([['session-D:readFileMeta', 'sock-missing']]))
 
         const gateway = new RpcGateway(io, registry)
-        await expect(
-            (gateway as any).rpcCall('session-D:readFileMeta', { path: '/y' })
-        ).rejects.toThrow(/disconnected/)
+        const error = await (gateway as any).rpcCall('session-D:readFileMeta', { path: '/y' })
+            .catch((thrown: unknown) => thrown)
+
+        expect(error).toBeInstanceOf(RpcFailure)
+        expect((error as RpcFailure).kind).toBe('unreachable')
+        expect((error as RpcFailure).message).toMatch(/disconnected/)
+    })
+
+    test('ack 超时（框架给的句子）→ throw 带 timeout 分类的 RpcFailure，文案原样', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ rejects: new Error('operation has timed out'), payloadCaptor })
+        const io = makeFakeIo('sock-5', socket)
+        const registry = makeFakeRegistry(new Map([['session-E:readFileMeta', 'sock-5']]))
+
+        const gateway = new RpcGateway(io, registry)
+        const error = await (gateway as any).rpcCall('session-E:readFileMeta', { path: '/z' })
+            .catch((thrown: unknown) => thrown)
+
+        expect(error).toBeInstanceOf(RpcFailure)
+        expect((error as RpcFailure).kind).toBe('timeout')
+        expect((error as RpcFailure).message).toBe('operation has timed out')
+    })
+
+    test('别的传输异常 → throw 带 other 分类的 RpcFailure（句子原样带出去）', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ rejects: new Error('parser error'), payloadCaptor })
+        const io = makeFakeIo('sock-6', socket)
+        const registry = makeFakeRegistry(new Map([['session-F:readFileMeta', 'sock-6']]))
+
+        const gateway = new RpcGateway(io, registry)
+        const error = await (gateway as any).rpcCall('session-F:readFileMeta', { path: '/w' })
+            .catch((thrown: unknown) => thrown)
+
+        expect(error).toBeInstanceOf(RpcFailure)
+        expect((error as RpcFailure).kind).toBe('other')
+        expect((error as RpcFailure).message).toBe('parser error')
     })
 })
 
@@ -376,6 +416,62 @@ describe('RpcGateway.approvePermission', () => {
         // updatedPermissions 未传时 payload 中该字段为 undefined（原 allowTools 字段彻底移除）
         expect(envelope.params.updatedPermissions).toBeUndefined()
         expect('allowTools' in envelope.params).toBe(false)
+    })
+})
+
+// ============ spawnSession 的失败分类（分类在产生它的这一层定下） ============
+
+describe('RpcGateway.spawnSession — 失败支带传输分类', () => {
+    /** 让 runner 对这个 spawn RPC 回一个预设响应 */
+    function gatewayReplying(response: unknown): RpcGateway {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response, payloadCaptor })
+        const io = makeFakeIo('sock-spawn', socket)
+        return new RpcGateway(io, makeFakeRegistry(new Map([['M1:spawn-mobi-session', 'sock-spawn']])))
+    }
+
+    test('runner 等会话 webhook 超时 → timeout（这条句子跨进程，只能照文案认）', async () => {
+        const gateway = gatewayReplying({ type: 'error', errorMessage: 'Session webhook timeout for PID 4242' })
+
+        expect(await gateway.spawnSession('M1', '/work/app')).toEqual({
+            type: 'error',
+            message: 'Session webhook timeout for PID 4242',
+            failure: 'timeout',
+        })
+    })
+
+    test('runner 自己的人话（目录建不出来）→ other，句子原样透出', async () => {
+        const upstream = "Unable to create directory at '/work/app'. A file already exists at this path or in the parent path."
+        const gateway = gatewayReplying({ type: 'error', errorMessage: upstream })
+
+        expect(await gateway.spawnSession('M1', '/work/app')).toEqual({
+            type: 'error',
+            message: upstream,
+            failure: 'other',
+        })
+    })
+
+    test('通道不可达（registry 没这个 handler）→ unreachable（分类随异常带到失败支）', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response: {}, payloadCaptor })
+        const io = makeFakeIo('sock-x', socket)
+        const gateway = new RpcGateway(io, makeFakeRegistry(new Map([['M2:spawn-mobi-session', null]])))
+
+        expect(await gateway.spawnSession('M2', '/work/app')).toEqual({
+            type: 'error',
+            message: 'RPC handler not registered: M2:spawn-mobi-session',
+            failure: 'unreachable',
+        })
+    })
+
+    test('认不出的回执 → other + 原样说明（不编分类）', async () => {
+        const gateway = gatewayReplying({ weird: true })
+
+        expect(await gateway.spawnSession('M1', '/work/app')).toEqual({
+            type: 'error',
+            message: 'Unexpected spawn result: {"weird":true}',
+            failure: 'other',
+        })
     })
 })
 

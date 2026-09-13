@@ -683,3 +683,32 @@ interrupt（用户停止）
 看着像 schema 坏了，实际是入参缺字段；**报错不告诉 agent「你少了什么、该怎么补」**。补上三字段（含真实 `size`）后一次通过。工具描述现在只说 "accepts the composer block forms"，没说还要这三个值——agent 想附文件时读完描述照做必然被拒，只能自己退回去 `ls -l` 取 size、再编一个 id。
 
 **待设计**：这一块要重新做，方向是**跨机器附件先走一次上传**——由上传这一步产出 `filename` / `size` 与一个机器无关的引用 id（正是 composer 那份 `BlockFileRef` 的来源），agent 只需给本地路径就能拿到一个可用的块；顺带把 #76 的「对面拿不到图」一并解决（上传后是机器无关的引用，不再依赖发件方磁盘）。注意今天 `/upload` 这条 RPC 只按块写文件、回执里没有这些字段（composer 的 `id` 是 web 侧生成的），所以「上传产出这三个值」是**要新做的能力**而不是现成的。在那之前不放宽 schema（放宽会让「块里的路径」与「真实上传过的文件」两套语义混在一起）。
+
+## 78. 标准化 mobi 的错误范式（2026-09-13，想重构，待设计）
+
+**动机**：架构评审候选 #3 暴露了一个通用病——**跨层要判「故障的性质」时只能解析文案**。同一批里 `classifyRpcFailure`（hub 领域层匹配 `'RPC handler not registered'` / `/timed?\s*out/i`）就是标本：适配器改一个字，分类静默退化成 `other`，把内部措辞透给 agent。候选 #3 只修了传输故障这一个封闭枚举，范式本身没动。
+
+**现状事实**（2026-09-13 核实）：
+
+| 层 | 失败形状 | 位置 |
+|---|---|---|
+| RPC handler 内部 | `{ success: false; error: string }`（`rpcError(message, extras?)`） | `packages/cli/src/modules/common/rpcResponses.ts` |
+| socket `rpc-request` 的 ack | `callback: (response: unknown) => void`——**完全无类型**，形状由各 method 自约 | `packages/shared/src/socket.ts` |
+| 跨进程 spawn 回执 | `{ type: 'error'; errorMessage: string }` | `packages/cli/src/modules/common/rpcTypes.ts` |
+
+即 **mobi 没有通用 error code**。唯一的码化是 `AgentOpFailureReason`（`invalid-payload` / `handler-misconfigured` / `SocketErrorReason`），只覆盖 **mobi 自己产生的封闭失败集合**；上游来的失败一律自由文本，且是**有意**的——`AgentCreateSessionAck` 的注释写着「建会话的失败来自上游且是开放集合」。所以边界不是没划，是划在「自己产生的封闭集合 vs 上游的开放集合」。
+
+**已经长出来的结构化先例**（可复用，别另起炉灶）：
+
+- `AgentOpFailureReason`——自己产生的封闭失败枚举
+- `RpcAcceptResult`（`shared/src/sessionConfig.ts`）——**业务拒绝不走 throw**，语义由结构承载（深化候选⑥）
+- `AgentMessagePushResult`（`delivered` / `rejected` + reason）——逐目标的裁决
+- `RpcFailure` + `RpcFailureKind`（`packages/hub/src/sync/rpcFailure.ts`，2026-09-13 候选 #3 落地）——传输故障分类，**分类在产生它的那一层带上**，消费方只读；`unreachable` / `timeout` / `other` 就是标准化的第一批样本
+
+**待设计要回答的问题**（不是清单，是必须拍板的）：
+
+1. **码归谁**：自己产生的封闭失败可以编码，上游的开放失败一律自由文本——这条边界今天成立，标准化时要不要动？动了会不会逼着给无穷的上游失败编无穷的码？
+2. **码与人话的关系**：一个码配一句？码稳定、文案可改？谁来保证「同一个码在不同出口说的话一致」（今天 `translateSpawnFailure` / `translatePushFailure` 是同一套分类、两套措辞，这是有意的，标准化时要不要保留这个自由度）
+3. **跨进程兼容**：老 CLI/runner 不认新码时怎么降级（今天候选 #3 的答案：降级到「原样透出上游那句」，不损坏）
+4. **谁消费码**：agent 的工具回执要的是**指令**（「别重试」「先 list_sessions」），人看的 UI 要的是文案，程序分支要的是码——三者是不是同一条错误对象上的三个投影？
+5. **传输故障那一档还剩一个洞**：`spawnSession` 里只有 runner 的 `Session webhook timeout for PID N`（`packages/cli/src/runner/run.ts:447`）还必须读文案——它是**跨进程散文**，判据现在收在适配器内的 `classifyTransportFailure`（rpcGateway）。彻底消灭它要给 `SpawnSessionResult` 的 error 支加结构化字段，**这是标准化的第二批样本**

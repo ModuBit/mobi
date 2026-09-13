@@ -46,6 +46,7 @@ import type {
 import type { Session } from '@mobi/shared/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import type { ReceiveReadiness } from './sessionReceiveReadiness'
+import { readRpcFailure, type RpcFailureKind } from './rpcFailure'
 import { randomUUID } from 'node:crypto'
 import { hubLogger } from '../logger'
 import type { Machine } from './machineCache'
@@ -104,18 +105,25 @@ export interface AgentSessionServiceDeps {
     getSessionByNamespace: (sessionId: string, namespace: string) => Session | undefined
     /** 项目归属校验：与 Web 侧 spawn 路由共用同一实现，两处规则不能各写一份 */
     checkProjectAssignable: (projectId: string, namespace: string, machineId: string) => ProjectAssignability
-    /** 起会话进程（既有 spawn 链路：Hub → runner RPC → spawn CLI → 等会话 webhook） */
+    /**
+     * 起会话进程（既有 spawn 链路：Hub → runner RPC → spawn CLI → 等会话 webhook）。
+     *
+     * 失败支的 `failure` 是传输故障分类，**由适配器在产生故障的那一层定下**——本服务
+     * 按分类值分支，不解析文案（见 rpcFailure 模块头）。类型上是必填的：这条分类
+     * 跨的是一段接口，漏掉它编译器拦得住。
+     */
     spawnSession: (machineId: string, directory: string, options: {
         model?: string
         effort?: EffortLevel
         permissionMode?: PermissionMode
         projectId?: string
-    }) => Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }>
+    }) => Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string; failure: RpcFailureKind }>
     /**
      * 把一条跨会话消息推进目标 CLI 的 input stream（RPC 投递，**不经投递队列**）。
      *
-     * 抛异常 = 真·传输故障；返回 `rejected` = CLI 明确拒收（确定性的裁决，理由已是人话）。
-     * 两者必须分开——拒收的理由不能进按文案分类的传输故障判定，见 rpcGateway 的注释。
+     * 抛异常 = 真·传输故障，**分类随异常带上**（`RpcFailure`）；返回 `rejected` = CLI
+     * 明确拒收（确定性的裁决，理由已是人话）。两者必须分开——拒收的理由不能进传输故障
+     * 那一套说法，见 rpcGateway 的注释。
      */
     pushAgentMessage: (sessionId: string, delivery: AgentMessageDelivery) => Promise<AgentMessagePushResult>
     /** 把投递成功的那条消息落到目标会话（落库形态不含信封，meta 带 sentFrom/crossSession/fromSessionId） */
@@ -239,7 +247,7 @@ export class AgentSessionService {
         })
 
         if (result.type === 'error') {
-            return { ok: false, error: translateSpawnFailure(result.message) }
+            return { ok: false, error: translateSpawnFailure(result.failure, result.message) }
         }
 
         // 会话名字在建完后单独写（D10 的可选 title）。不把它透传进 spawn 链路，是因为那条路
@@ -399,19 +407,19 @@ export class AgentSessionService {
         try {
             verdict = await this.deps.pushAgentMessage(targetSessionId, message)
         } catch (error) {
-            // 走到这里只可能是真·传输故障（无 handler / socket 断 / 超时）
-            const reason = error instanceof Error ? error.message : String(error)
-            // 事实在**失败之后**读，读的是最新值；且只用来把话说准，不当闸门（D43：先试，再解释）
+            // 走到这里只可能是真·传输故障（无 handler / socket 断 / 超时），分类随异常带上；
+            // 事实在**失败之后**读，读的是最新值，且只用来把话说准，不当闸门（D43：先试，再解释）
+            const { kind, message } = readRpcFailure(error)
             return {
                 sessionId: targetSessionId,
                 ok: false,
-                error: translatePushFailure(reason, this.deps.canReceiveNow(targetSessionId)),
+                error: translatePushFailure(kind, message, this.deps.canReceiveNow(targetSessionId)),
             }
         }
 
         if (verdict.status === 'rejected') {
-            // CLI 明确拒收：理由已经是给人看的句子，原样转达。**不能**过传输故障分类器——
-            // 那是按文案判的，一句恰好含 "timed out" 的正常拒收会被说成「可能已送达」
+            // CLI 明确拒收：理由已经是给人看的句子，原样转达。**不能**过传输故障那一套说法——
+            // 拒收是确定的裁决，而超时那套话（「可能已送达」）说的是不确定
             return { sessionId: targetSessionId, ok: false, error: verdict.reason }
         }
 
@@ -511,15 +519,16 @@ function isSameMachine(sender: Session | undefined, target: Session): boolean {
 }
 
 /**
- * spawn 失败翻译。
+ * spawn 失败翻译。**只按分类值分支**，不读文案——分类由适配器在产生故障的那一层定下
+ * （见 rpcFailure 模块头），本服务不再解析句子。
  *
- * 只翻译 **RPC 层内部错误**——它们描述的是 mobi 的内部结构（哪个 handler 没注册、
- * 哪个 socket 断了），agent 无从据此行动，还容易把 "RPC handler not registered"
- * 误读成「这个工具坏了」。上游自己产出的失败（目录建不出来 / 进程起来就退出）
- * 本来就是人话，原样透出，不另造一套映射。
+ * 只翻译传输故障两支：它们描述的是 mobi 的内部结构（哪个 handler 没注册、哪个 socket
+ * 断了）或一个不确定的结局，agent 无从据此行动，还容易把 "RPC handler not registered"
+ * 误读成「这个工具坏了」。上游自己产出的失败（目录建不出来 / 进程起来就退出）本来就是
+ * 人话，归 `other` 原样透出，不另造一套映射。
  */
-function translateSpawnFailure(message: string): string {
-    switch (classifyRpcFailure(message)) {
+function translateSpawnFailure(failure: RpcFailureKind, message: string): string {
+    switch (failure) {
         case 'unreachable':
             return (
                 'That machine is not running a mobi runner right now, so no session can be started on it. ' +
@@ -540,15 +549,15 @@ function translateSpawnFailure(message: string): string {
 /**
  * 投递失败翻译。
  *
- * 与 spawn 共用同一套 RPC 故障分类（见 classifyRpcFailure），但表述不同：这条失败
- * 落在**目标会话**身上，不在机器上；而且 RPC 超时**不代表没送到**——emitWithAck
- * 超时只是回执没回来，消息可能已经推进对方输入流，所以说「可能已送达」并明确劝阻重发。
+ * 与 spawn 共用同一组分类值，但表述不同：这条失败落在**目标会话**身上，不在机器上；
+ * 而且 RPC 超时**不代表没送到**——emitWithAck 超时只是回执没回来，消息可能已经推进
+ * 对方输入流，所以说「可能已送达」并明确劝阻重发。
  *
  * @param canReceive 目标会话「此刻能不能收消息」（07 的事实）。只喂给「不可达」那一支，
  *   用来把成因说准；**投递本身不等它、也不看它**（D43）
  */
-function translatePushFailure(message: string, canReceive: boolean | undefined): string {
-    switch (classifyRpcFailure(message)) {
+function translatePushFailure(failure: RpcFailureKind, message: string, canReceive: boolean | undefined): string {
+    switch (failure) {
         case 'unreachable':
             return unreachableDeliveryMessage(canReceive)
         case 'timeout':
@@ -592,25 +601,6 @@ function unreachableDeliveryMessage(canReceive: boolean | undefined): string {
         'That session has reported to mobi before, but its connection is gone now, so the message was not delivered. ' +
         'It may have exited — check it with list_sessions and send again only if it is still active.'
     )
-}
-
-/**
- * RPC 故障分类（Hub → CLI/machine 两个方向共用）。
- *
- * 三种上游错误各有各的人话，但**分类规则**只有一套：翻译函数各写一份 `includes`
- * 迟早会漂移成两套判据，那时候「同一种故障在 A 工具说人话、在 B 工具漏内部错误」
- * 这种最难查的不一致就出现了。分类归此，措辞归各自的翻译函数。
- */
-function classifyRpcFailure(message: string): 'unreachable' | 'timeout' | 'other' {
-    if (message.includes('RPC handler not registered') || message.includes('RPC socket disconnected')) {
-        return 'unreachable'
-    }
-    // socket.io 的 ack 超时文案是 "operation has timed out"，runner 侧自带的是
-    // "... webhook timeout for PID N"——两处都含 timeout/timed out
-    if (/timed?\s*out/i.test(message)) {
-        return 'timeout'
-    }
-    return 'other'
 }
 
 function matchesStatus(session: Session, status: AgentSessionStatus): boolean {

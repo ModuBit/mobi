@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { AgentSessionService } from '../../src/sync/agentSessionService'
 import type { ProjectAssignability } from '../../src/sync/agentSessionService'
 import type { ReceiveReadiness } from '../../src/sync/sessionReceiveReadiness'
+import { RpcFailure, type RpcFailureKind } from '../../src/sync/rpcFailure'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
 import type { AgentMessageDelivery, AgentMessagePushResult, UserContentBlock } from '@mobi/shared'
 import type { Machine } from '../../src/sync/machineCache'
@@ -65,10 +66,11 @@ function makeService(
     machines: Machine[],
     sessions: Session[] = [],
     overrides?: {
-        spawnResult?: { type: 'success'; sessionId: string } | { type: 'error'; message: string }
+        /** spawn 失败支要连分类一起给——分类由适配器产出，服务只读它（见 rpcFailure） */
+        spawnResult?: { type: 'success'; sessionId: string } | { type: 'error'; message: string; failure: RpcFailureKind }
         projectAssignability?: ProjectAssignability
-        /** 让 pushAgentMessage 抛这个错（模拟三种 RPC 内部错误） */
-        pushFailure?: string
+        /** 让 pushAgentMessage 抛一个**带分类**的传输故障（模拟适配器抛出的三种 RPC 故障） */
+        pushFailure?: { kind: RpcFailureKind; message: string }
         /** 让 pushAgentMessage 返回这个裁决（模拟 CLI 跑了 handler 却没接住） */
         pushVerdict?: AgentMessagePushResult
         /** 让 storeAgentMessage 抛这个错（模拟落库故障） */
@@ -113,7 +115,7 @@ function makeService(
         },
         pushAgentMessage: async (sessionId, delivery) => {
             if (overrides?.pushFailure) {
-                throw new Error(overrides.pushFailure)
+                throw new RpcFailure(overrides.pushFailure.kind, overrides.pushFailure.message)
             }
             if (overrides?.pushVerdict) {
                 return overrides.pushVerdict
@@ -608,7 +610,7 @@ describe('AgentSessionService.createSession — 初始标题（D10 的可选 tit
 
     test('进程没起来 → 不调改名（没有会话可改名）', async () => {
         const { service, renamed } = makeService([online], [], {
-            spawnResult: { type: 'error', message: 'directory could not be created' },
+            spawnResult: { type: 'error', message: 'directory could not be created', failure: 'other' },
         })
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/nope', title: 'T' })
@@ -668,7 +670,7 @@ describe('AgentSessionService.createSession — 建完等就绪（waitForReady�
 
     test('进程没起来 → 不等（没有会话可等，也不该多花 3s 去等一个不存在的会话）', async () => {
         const { service, readinessWaits } = makeService([online], [], {
-            spawnResult: { type: 'error', message: 'boom' },
+            spawnResult: { type: 'error', message: 'boom', failure: 'other' },
         })
 
         const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
@@ -681,52 +683,49 @@ describe('AgentSessionService.createSession — 建完等就绪（waitForReady�
 describe('AgentSessionService.createSession — 失败翻译', () => {
     const online = makeMachine({ id: 'm1', namespace: 'ns' })
 
-    const spawnFailing = (message: string) =>
-        makeService([online], [], { spawnResult: { type: 'error', message } })
+    /** 失败支照适配器的形态构造：**分类与文案分开给**——服务只读分类，不读句子 */
+    const spawnFailing = (failure: RpcFailureKind, message: string) =>
+        makeService([online], [], { spawnResult: { type: 'error', message, failure } })
 
-    test('RPC handler 未注册 → 「那台机器没在跑 runner」，不暴露 RPC 内部措辞', async () => {
-        const { service } = spawnFailing('RPC handler not registered: m1:spawn-mobi-session')
+    const spawnFailureText = async (failure: RpcFailureKind, message: string) =>
+        failureText(await spawnFailing(failure, message).service.createSession('ns', { machineId: 'm1', directory: '/d' }))
 
-        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+    test('unreachable 的两种句子（handler 没登记 / socket 断了）→ 同一句，不暴露 RPC 内部措辞', async () => {
+        const sentences = [
+            'RPC handler not registered: m1:spawn-mobi-session',
+            'RPC socket disconnected: m1:spawn-mobi-session',
+        ]
 
-        expect(text).toContain('not running a mobi runner')
-        expect(text).toContain('list_machines')
-        expect(text).not.toContain('RPC')
+        for (const message of sentences) {
+            const text = await spawnFailureText('unreachable', message)
+
+            // 两种句子都是「这条 RPC 通道不存在」，对 agent 而言是同一件事
+            expect(text).toContain('not running a mobi runner')
+            expect(text).toContain('list_machines')
+            expect(text).not.toContain('RPC')
+        }
     })
 
-    test('RPC socket 断开 → 同一句（对 agent 而言是同一件事）', async () => {
-        const { service } = spawnFailing('RPC socket disconnected: m1:spawn-mobi-session')
-
-        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
-
-        expect(text).toContain('not running a mobi runner')
-        expect(text).not.toContain('RPC')
-    })
-
-    test('RPC 层 30s 超时 → 说清「可能已建」，并指路 list_sessions 以避免建重', async () => {
-        const { service } = spawnFailing('operation has timed out')
-
-        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+    test('timeout → 说清「可能已建」，并指路 list_sessions 以避免建重', async () => {
+        const text = await spawnFailureText('timeout', 'operation has timed out')
 
         expect(text).toContain('did not respond in time')
         expect(text).toContain('may or may not have been created')
         expect(text).toContain('list_sessions')
     })
 
-    test('runner 等会话 webhook 超时 → 与 RPC 超时同一句（两种情况进程都可能已经起来）', async () => {
-        const { service } = spawnFailing('Session webhook timeout for PID 4242')
+    test('other → 上游自己产出的失败本就是人话，原样透出，不另套一层映射', async () => {
+        const upstream = "Unable to create directory at '/work/app'. A file already exists at this path or in the parent path."
 
-        const text = failureText(await service.createSession('ns', { machineId: 'm1', directory: '/d' }))
-
-        expect(text).toContain('may or may not have been created')
+        expect(await spawnFailureText('other', upstream)).toBe(upstream)
     })
 
-    test('上游自己产出的失败本就是人话 → 原样透出，不另套一层映射', async () => {
-        const upstream = "Unable to create directory at '/work/app'. A file already exists at this path or in the parent path."
-        const { service } = spawnFailing(upstream)
+    test('分支只认分类、不认文案：含 "timed out" 的句子归 other 就照原样说', async () => {
+        // 此前分类是从这句话里反解的——适配器换一个措辞就静默降级成 other（或反过来
+        // 把别的东西说成超时）。这条用例钉住：文案只是文案
+        const upstream = 'the machine did not answer: its wait timed out.'
 
-        expect(failureText(await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })))
-            .toBe(upstream)
+        expect(await spawnFailureText('other', upstream)).toBe(upstream)
     })
 })
 
@@ -860,8 +859,12 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
     const sender = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/work/a', host: 'host-a', name: 'Sender' } })
     const targetB = makeSession({ id: 'B', namespace: 'ns' })
 
-    async function failureText(pushFailure: string, canReceiveNow?: boolean): Promise<string> {
-        const { service } = makeService([], [sender, targetB], { pushFailure, canReceiveNow })
+    /** 传输故障照适配器的形态构造：**分类与文案分开给**——服务只读分类，不读句子 */
+    async function failureText(failure: RpcFailureKind, message: string, canReceiveNow?: boolean): Promise<string> {
+        const { service } = makeService([], [sender, targetB], {
+            pushFailure: { kind: failure, message },
+            canReceiveNow,
+        })
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
         return results[0].error ?? ''
     }
@@ -877,10 +880,14 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
     }
 
     test('不可达 + 从没上报过 → 说「可能还在启动、稍后再试」，不编一个「已经退出」', async () => {
-        const notRegistered = await failureText('RPC handler not registered: B:push-agent-message', undefined)
-        const disconnected = await failureText('RPC socket disconnected: B:push-agent-message', undefined)
+        const sentences = [
+            'RPC handler not registered: B:push-agent-message',
+            'RPC socket disconnected: B:push-agent-message',
+        ]
 
-        for (const text of [notRegistered, disconnected]) {
+        for (const message of sentences) {
+            const text = await failureText('unreachable', message, undefined)
+
             // 这正是「刚建好、还没接上」的样子：说成「进程没了」会把 agent 吓走，而它只是还没开门
             expect(text).toContain('no recent word from it')
             expect(text).toContain('may still be starting up')
@@ -892,7 +899,7 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
 
     test('不可达 + 上报过（真或假都一样）→ 说「连接没了，先确认它还在不在」，别干等', async () => {
         for (const reported of [true, false]) {
-            const text = await failureText('RPC socket disconnected: B:push-agent-message', reported)
+            const text = await failureText('unreachable', 'RPC socket disconnected: B:push-agent-message', reported)
 
             // 上报过 = 它连上过；现在连 RPC 都送不到 = 连接没了。上次报的是真是假区分不出
             // 死在一轮中间还是一轮之间，而对 agent 而言都是「没了」
@@ -904,11 +911,18 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
         }
     })
 
-    test('RPC 超时 → 说清「可能已送达」并劝阻盲目重发（事实不参与这一支）', async () => {
-        const text = await failureText('operation has timed out')
+    test('超时 → 说清「可能已送达」并劝阻盲目重发（事实不参与这一支）', async () => {
+        const text = await failureText('timeout', 'operation has timed out')
 
         expect(text).toContain('may or may not have been delivered')
         expect(text).toContain('do not send it again blindly')
+    })
+
+    test('other → 上游的句子原样透出；分支只认分类、不认文案', async () => {
+        const upstream = 'push-agent-message failed: the CLI said it timed out internally.'
+
+        expect(await failureText('other', upstream)).toBe(upstream)
+        expect(await failureText('other', upstream)).not.toContain('may or may not have been delivered')
     })
 
     test('CLI 明确拒收 → 理由原样透出，不套传输故障那一套说法', async () => {
@@ -929,7 +943,9 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
     })
 
     test('投递失败的目标不落库（Web 上不该出现永远不会被处理的消息）', async () => {
-        const { service, stored } = makeService([], [sender, targetB], { pushFailure: 'operation has timed out' })
+        const { service, stored } = makeService([], [sender, targetB], {
+            pushFailure: { kind: 'timeout', message: 'operation has timed out' },
+        })
 
         await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -954,7 +970,7 @@ describe('AgentSessionService.sendMessageToSessions — 事实是解释，不是
 
     test('投递失败时才读事实，且读的是失败之后的值', async () => {
         const { service, readinessReads } = makeService([], [sender, targetB], {
-            pushFailure: 'RPC handler not registered: B:push-agent-message',
+            pushFailure: { kind: 'unreachable', message: 'RPC handler not registered: B:push-agent-message' },
             canReceiveNow: false,
         })
 

@@ -18,6 +18,7 @@ import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/type
 import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
+import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
 
 /** spawn 会话选项（深化候选②：位置参数 → 对象——effort/outputStyle 等字段此前靠
  *  第 9/10 位次约定透传，新增字段漏位/错位无法被类型捕获）。
@@ -112,6 +113,24 @@ export type RpcPathExistsResponse = {
     exists: Record<string, boolean>
 }
 
+/**
+ * 把一句**别处产出的传输层散文**读成一类故障——本文件唯一还在读文案的地方。
+ *
+ * 之所以还剩这一处：三类故障里有两类的句子不是 hub 产的——socket.io 的 ack 超时
+ * （`operation has timed out`）由框架给，runner 等会话 webhook 超时
+ * （`Session webhook timeout for PID N`）**由另一个进程**给。要彻底不读文案，得让
+ * runner 的回执带结构化字段，那是 docs/pending.md #78 要回答的事。
+ *
+ * 与之相对，`unreachable` 的两句是本文件自己抛的，**在抛出那一刻就带上了分类**，
+ * 不在这儿再认一遍——给自己产的句子留一条猜测后路，正是这套分类要拆掉的东西。
+ *
+ * 两类超时共用一条规则：socket.io 的 ack 超时与 runner 的 webhook 超时都含
+ * timeout / timed out。
+ */
+function classifyTransportFailure(message: string): RpcFailureKind {
+    return /timed?\s*out/i.test(message) ? 'timeout' : 'other'
+}
+
 export class RpcGateway {
     constructor(
         private readonly io: Server,
@@ -194,11 +213,22 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'killSession', {})
     }
 
+    /**
+     * 在 machine 上起一个会话进程。
+     *
+     * 失败支**带上传输分类**（`failure`）：这条链路里混着三种来路的句子——rpcCall 抛的
+     * 分类错、runner 自己产的人话（目录建不出来 / 进程起来就退出 / 等会话 webhook 超时）、
+     * 以及这里合成的几句话。分类在**产生它的这一层**一次定完，调用方按 kind 分支、
+     * 按 message 说话，不必再读句子（见 rpcFailure 模块头）。
+     */
     async spawnSession(
         machineId: string,
         directory: string,
         options: SpawnSessionOptions = {},
-    ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
+    ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string; failure: RpcFailureKind }> {
+        // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），
+        // 只有 runner 等 webhook 超时那一句会被读成 'timeout'
+        const spawnError = (message: string) => ({ type: 'error' as const, message, failure: classifyTransportFailure(message) })
         const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, projectId } = options
         try {
             const result = await this.machineRpc(
@@ -212,16 +242,16 @@ export class RpcGateway {
                     return { type: 'success', sessionId: obj.sessionId }
                 }
                 if (obj.type === 'error' && typeof obj.errorMessage === 'string') {
-                    return { type: 'error', message: obj.errorMessage }
+                    return spawnError(obj.errorMessage)
                 }
                 if (obj.type === 'requestToApproveDirectoryCreation' && typeof obj.directory === 'string') {
-                    return { type: 'error', message: `Directory creation requires approval: ${obj.directory}` }
+                    return spawnError(`Directory creation requires approval: ${obj.directory}`)
                 }
                 if (typeof obj.error === 'string') {
-                    return { type: 'error', message: obj.error }
+                    return spawnError(obj.error)
                 }
                 if (obj.type !== 'success' && typeof obj.message === 'string') {
-                    return { type: 'error', message: obj.message }
+                    return spawnError(obj.message)
                 }
             }
             const details = typeof result === 'string'
@@ -233,9 +263,12 @@ export class RpcGateway {
                         return String(result)
                     }
                 })()
-            return { type: 'error', message: `Unexpected spawn result: ${details}` }
+            return spawnError(`Unexpected spawn result: ${details}`)
         } catch (error) {
-            return { type: 'error', message: error instanceof Error ? error.message : String(error) }
+            // 走到这里的是 rpcCall 抛的 RpcFailure，分类已经带着（本方法其余部分不抛）。
+            // 万一不是：readRpcFailure 读成 'other'——hub 自己抛的错不该被当跨进程散文猜
+            const { kind, message } = readRpcFailure(error)
+            return { type: 'error', message, failure: kind }
         }
     }
 
@@ -411,9 +444,9 @@ export class RpcGateway {
      * 目标侧从没排过队，`localIds` 也不传（消息身份已由信封携带）。
      *
      * **调用方（AgentSessionService）明确的拒收走返回值，不走异常**——拒收是确定性的
-     * 业务裁决，而异常通道那边是按**文案**分类的传输故障判定（`classifyRpcFailure`），
-     * 一句恰好含 "timed out" 的拒收理由会被说成「可能已送达、别重发」，把确定的事说成
-     * 不确定。只有真·传输故障（无 handler / socket 断 / 超时）才抛，那才归异常管。
+     * 业务裁决，而异常通道那边是**传输故障**（无 handler / socket 断 / 超时），抛出时就
+     * 带上了分类（`RpcFailure`）；要是一条恰好含 "timed out" 的拒收理由走了异常通道，
+     * 会被说成「可能已送达、别重发」，把确定的事说成不确定。只有真·传输故障才抛。
      *
      * **`rejected` 也是失败**（见 AgentMessagePushResult）：那表示 CLI 跑了 handler 却
      * 没收下（input stream 已关）。静默当成功会落一条永远不会被处理的库行，还告诉 agent
@@ -443,20 +476,25 @@ export class RpcGateway {
     private async rpcCall(method: string, params: unknown): Promise<unknown> {
         const socketId = this.rpcRegistry.getSocketIdForMethod(method)
         if (!socketId) {
-            throw new Error(`RPC handler not registered: ${method}`)
+            // 「不可达」这件事这里就知道，不必让下游从句子反解（见 rpcFailure 模块头）
+            throw new RpcFailure('unreachable', `RPC handler not registered: ${method}`)
         }
 
         const socket = this.io.of('/cli').sockets.get(socketId)
         if (!socket) {
-            throw new Error(`RPC socket disconnected: ${method}`)
+            throw new RpcFailure('unreachable', `RPC socket disconnected: ${method}`)
         }
 
-        // Socket.IO 原生序列化：params 对象直传，响应对象直收（含二进制附件）
-        const response = await socket.timeout(30_000).emitWithAck('rpc-request', {
-            method,
-            params
-        }) as unknown
-
-        return response
+        try {
+            // Socket.IO 原生序列化：params 对象直传，响应对象直收（含二进制附件）
+            return await socket.timeout(30_000).emitWithAck('rpc-request', {
+                method,
+                params
+            }) as unknown
+        } catch (error) {
+            // 这里抛出来的句子是**框架给的**（ack 超时），只能按文案读
+            const message = error instanceof Error ? error.message : String(error)
+            throw new RpcFailure(classifyTransportFailure(message), message)
+        }
     }
 }
