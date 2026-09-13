@@ -62,8 +62,8 @@ sqlite3 -newline ' ' ~/.mobi-e2e/mobi.db "SELECT 'seq='||seq||' life='||COALESCE
 
 | 断言 | 期望 |
 |---|---|
-| `lifecycle` | `NULL`（非排队轨道——`sentFrom: 'cli'` 的现成判据） |
-| `meta.sentFrom` | `'cli'` |
+| `lifecycle` | `NULL`（非排队轨道——判据是「这条带跨会话标注」，**不是**某个 `sentFrom` 取值；2026-09-13 候选 #7 起） |
+| `meta.sentFrom` | `'cli'`（存量行形状，不承担语义） |
 | `meta.crossSession.from` | 发信方**会话标题**（agent 自己 change_title 的名字；未命名时为空串） |
 | `meta.fromSessionId` | 发信方 session id |
 | `meta.turnOrigin` | 缺省（不写；带 `peer` 的是 hook 观测写的另一行 = 重复落库 bug） |
@@ -78,6 +78,11 @@ sqlite3 -newline ' ' ~/.mobi-e2e/mobi.db "SELECT 'seq='||seq||' life='||COALESCE
 工具回执在**发信方**会话里：查 `tool_use`/`tool_result`（同 [[agent-tool-verify]] 的
 `content.data.message.content[]` 下钻），文案是 `Sent to session: …` /
 `Sent to 1 of 2 sessions.` / `None of the N targets received the message.`
+
+**正向对照（证明判据没有过度抑制排队）**：同一条链路上 Web 提交**应当**进排队轨道——带 `localId`
+提交一条（`POST /api/sessions/<B>/messages`，body `{"content":"…","localId":"ctrl-1"}`），断言它
+`lifecycle` **非 NULL**（目标空闲时会立刻被消费，实测直接是 `pushed`），而跨会话那条恒为 `NULL`。
+只查跨会话那条只能证明「没有假阳性」，加了对照才是「判据两边都对」（2026-09-13 候选 #7 验法）。
 
 ## 看收件方 CC 到底收到什么（D28 换算表）
 
@@ -137,8 +142,13 @@ curl -s -b /tmp/e2e-jar.txt http://localhost:2224/api/sessions >/dev/null   # �
 
 同一探针里让它**连做两次**（一次纯文本、一次带本机图片）最省一轮：
 期望纯文本 `Sent to session: …`、带图 `is_error: true` +
-`The message carries a local file ("…"), and that session is on a different machine.`（整条失败，目标会话**不落行**）。
-2026-09-13 实测通过，末句现为「…put the URL in the message text instead of attaching it as a block
+`The message carries a local file ("…"), and mobi could not confirm that session is on the same machine.`
+（整条失败，目标会话**不落行**）。
+
+⚠️**这句话 2026-09-13 改过**（架构评审候选 #8）：不再是 `that session is on a different machine.`——
+判据证明不了同一文件系统时（含发件方身份解析不到）也走这一支，说的必须是「**无法确认**」。
+同轮里给**两个本机文件块**最省事：新话术把文件名**全部**列出（`local files ("a.png", "b.png")`），
+只给一个文件就漏验了这条（旧行为只报第一个）。末句恒为「…put the URL in the message text instead of attaching it as a block
 — a URL in a block value is not fetched either, it just arrives as text.」（#76 的诚实措辞）。
 
 ⚠️ **`machineId` 是渲染层构造 read-file URL 的输入**（`ImageView` 用 `env.machineId`）——
@@ -240,9 +250,20 @@ change_title（`custom-title` entry 写的是自动标题），初始 title 被�
 
 同一条探针里让 A 连着做：`create_session`（机器 + 目录）→ 拿到返回的 sessionId →
 **立刻** `send_message_to_session`。期望两次回执分别是
-`Created session <id> (machine …). It starts with no messages — give it work with send_message_to_session.`
-与 `Sent to session: <同一个 id>`；新会话的 seq=1 就是那条 user 行（本会话第一条输入，
-正是 sink 必须早于首条用户消息接通的原因）。整个链路 <2s（实测 create 到投递同一秒）。
+`Created session <id> (machine …). ` **+ 三种就绪措辞之一** 与 `Sent to session: <同一个 id>`；
+新会话的 seq=1 就是那条 user 行（本会话第一条输入，正是 sink 必须早于首条用户消息接通的原因）。
+整个链路 <2s（实测 create 到投递同一秒）。
+
+**三句就绪措辞是「CLI 的 sink 上报有没有活着」的唯一廉价观测点**（`createSessionTool.ts`
+的 `successDetail`，Hub 只报事实 `readiness`）：
+
+| 措辞 | 含义 |
+|---|---|
+| `It is ready for messages now.` | CLI 报了 `canReceive: true`——**sink 接通事实真的送达了 Hub**（改过 CLI 上报链路后必看这句；2026-09-13 候选 #6 的重构就是这么验的） |
+| `It is still starting up: …` | `readiness: 'not-checked'`（`waitForReady:false`） |
+| `It exists and its process is running, but it is not accepting messages yet.` | `not-ready`：sink 还没接上或等超时 |
+
+⚠️ 旧 recipe 里记的「建完回执只有 `It starts with no messages…`」是 08 之前的文案，已过时。
 
 ## 无幽灵消息（06 的验收 8）
 
@@ -332,6 +353,9 @@ Read each reason before retrying — some failures must not be retried blindly.
 期望：
 
 - `From <发信方标题>` 胶囊（与 CC 原生 peer 消息同一个 `CrossSessionTag`），**标签不可点**（组件无链接，与原生路径同形）
+- **页面上没有排队悬浮条**（`Queued (N)`）——跨会话消息恒不进排队轨道，它直接是对话流里的一条 user 气泡。
+  一条 JS 断言即可：`document.body.innerText` 不含 `Queued (`，且没有 `[class*=queued i]` 元素
+  （2026-09-13 候选 #7 的 Web 面验法；落库侧的对应断言是 `lifecycle=NULL`）
 - 本机图片：`src` = `/api/machines/<真机器 id>/read-file?cwd=…&path=…`（无 etag v 参数），`natural > 0` = 真加载了
 - 网络图：`src` **就是那个 URL**（不构造 read-file URL）
 - 引用：`[data-testid^="user-quote-"]` 命中，innerText 是 excerpt
