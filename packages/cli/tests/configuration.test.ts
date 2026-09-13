@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { configuration } from './configuration'
+import { configuration } from '@/configuration'
 
 describe('configuration processType', () => {
     it('processType 返回 runner 或 cli，与 isRunnerProcess 一致', () => {

@@ -15,8 +15,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { sdkOutputLoop, type LoopContext } from './claudeRemote'
-import { StreamSnapshotSender } from './utils/streamSnapshotSender'
+import { sdkOutputLoop, type LoopContext } from '@/claude/claudeRemote'
+import { StreamSnapshotSender } from '@/claude/utils/streamSnapshotSender'
 
 /** 最小可用 snapshotSender 桩：sdkOutputLoop 只调这些方法 */
 function stubSnapshotSender(): StreamSnapshotSender {

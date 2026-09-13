@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { buildCacheStatusFromSessionStart } from './cacheStatus'
+import { buildCacheStatusFromSessionStart } from '@/claude/utils/cacheStatus'
 
 describe('buildCacheStatusFromSessionStart', () => {
     it('resume 且过期 → 产出 CacheStatus（可选字段仅有效数字携带）', () => {
