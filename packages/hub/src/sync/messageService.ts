@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
+import { isMobiDelivered, normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
 import type { CrossSessionOrigin } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
@@ -59,18 +59,6 @@ export type SendMessagePayload = {
      * 一等字段」这套摆位——那正是此前四个包各写一遍的东西。
      */
     origin?: CrossSessionOrigin
-    /**
-     * true = 只落库，**不向 CLI 房间回灌 new-message**。
-     *
-     * 专供 agent 跨会话投递：那条路径已由 push-agent-message RPC 把消息推进目标 CLI 的
-     * input stream，再回灌一次就是同一句话投两遍。Web 用户提交依赖这次回灌把消息送进
-     * CLI，缺省 false 是它的正常路径。
-     *
-     * 与 CLI 侧的 `isMobiSentCrossSession` 判据**重叠**——那边收到这一行也会丢掉。两者
-     * 各自独立成立：本开关连 emit 都省掉，而那边是重连 backfill 唯一挡得住的地方
-     *（backfill 不经本开关）。
-     */
-    skipCliEcho?: boolean
 }
 
 export class MessageService {
@@ -147,6 +135,8 @@ export class MessageService {
         payload: SendMessagePayload
     ): Promise<void> {
         const sentFrom = payload.sentFrom ?? 'webapp'
+        // 「没有来源」在这一层就归一成 null（写入投影与回灌判据都按它分支）
+        const origin = payload.origin ?? null
 
         // 写入侧格式单一化：三形态统一归一为 UserContentBlock[] 再落库（读取侧零分叉）
         const blocks = normalizeUserContent(payload.content)
@@ -159,14 +149,18 @@ export class MessageService {
             content: blocks,
             meta: {
                 sentFrom,
-                ...(payload.origin ? toCrossSessionMeta(payload.origin) : {})
+                ...(origin ? toCrossSessionMeta(origin) : {})
             }
         }
 
         const msg = this.store.messages.addMessage(sessionId, content, payload.localId ?? undefined)
         const message = toDecryptedMessage(msg)
 
-        if (!payload.skipCliEcho) {
+        // 跨会话投递已经由 push-agent-message RPC 把消息推进目标 CLI 的 input stream，
+        // 再回灌一次就是同一句话投两遍。判据与另两处出口同源（shared 的 isMobiDelivered：
+        // 有 fromSessionId 才是 mobi 投递的那条路径），不再由调用方传一个布尔标志——
+        // 那个标志只有一处调用点会传，却让「什么时候该省这次 emit」散成两个事实。
+        if (!isMobiDelivered(origin)) {
             this.emitNewMessageToCli(sessionId, msg, message)
         }
 

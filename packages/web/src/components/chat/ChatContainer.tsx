@@ -815,9 +815,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // scheduled / loop 唤醒不需要单独判：toCrossSessionMeta 对每条入站 turn 都写 crossSession
             // （来源身份即使为空也照写），故来源判据已覆盖它们
             const crossSessionOrigin = isUserText && block ? readCrossSessionOrigin(block.meta) : null
-            // 展示名是 web 自己的翻译：空名字降级为 null，落到 CrossSessionTag 的通用文案分支
-            // （判据与它无关，见上行——所以这里必须独立取，不能从 crossSessionOrigin 推）
-            const crossSessionFrom = isUserText && block ? getCrossSessionFrom(block.meta) : null
+            // 展示名是 web 自己的翻译（空名字降级为 null，落到 CrossSessionTag 的通用文案分支）：
+            // 从上面那个 origin 投影出来，不再拿同一条 meta 解析第二遍
+            const crossSessionFrom = getCrossSessionFrom(crossSessionOrigin)
             const turnOrigin = isUserText && block ? readTurnOrigin(block.meta) : null
             const showCrossSessionTag = crossSessionOrigin !== null
 

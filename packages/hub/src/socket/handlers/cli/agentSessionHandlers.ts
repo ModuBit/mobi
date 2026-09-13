@@ -26,7 +26,7 @@
 
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
-import type { ClientToServerEvents } from '@mobi/shared'
+import type { AgentOpFailureReason, ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -119,8 +119,12 @@ export type AgentSessionHandlersDeps = {
     agentSessions?: AgentSessionOps
 }
 
-/** 服务缺席时四个事件的 ack 形状：与上游失败共用 `error`/`reason` 两个字段（见各自 ack 注释） */
-type UnavailableReply = { ok: false; reason: string } | { ok: false; error: string }
+/**
+ * 服务缺席时四个事件的 ack 形状：与上游失败共用 `error`/`reason` 两个字段（见各自 ack 注释）。
+ * `reason` 收窄到协议里的失败原因枚举（`AgentOpFailureReason`），不写 `string`——表里那个
+ * 字面量于是被编译器检查（拼错立刻报错），与各 handler 回 ack 的取值域也一致。
+ */
+type UnavailableReply = { ok: false; reason: AgentOpFailureReason } | { ok: false; error: string }
 
 type AgentSessionEventName =
     | 'listMachinesForAgent'

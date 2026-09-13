@@ -17,6 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     readCrossSessionOrigin,
+    hasCrossSessionOrigin,
     isMobiDelivered,
     isMobiSentCrossSession,
     readTurnOrigin,
@@ -72,6 +73,23 @@ describe('readCrossSessionOrigin', () => {
         expect(readCrossSessionOrigin(null)).toBeNull()
         expect(readCrossSessionOrigin('crossSession')).toBeNull()
         expect(readCrossSessionOrigin({ crossSession: 'peer' })).toBeNull()
+    })
+})
+
+describe('hasCrossSessionOrigin（只问是非，不要身份）', () => {
+    it('带了 crossSession 键就是 true——名字空串、非字符串都算', () => {
+        // 排队规则（判据②）与 web 的 compact 守卫用的是这一问：它们要的是
+        //「这条是不是入站 turn」，不是「发送方是谁」
+        expect(hasCrossSessionOrigin(toCrossSessionMeta(mobiSent))).toBe(true)
+        expect(hasCrossSessionOrigin(toCrossSessionMeta(nativePeer))).toBe(true)
+        expect(hasCrossSessionOrigin(toCrossSessionMeta(null))).toBe(true)
+        expect(hasCrossSessionOrigin({ crossSession: { from: 42 } })).toBe(true)
+    })
+
+    it('普通 meta / meta 缺失 / crossSession 不是对象 → false', () => {
+        expect(hasCrossSessionOrigin({ sentFrom: 'webapp' })).toBe(false)
+        expect(hasCrossSessionOrigin(undefined)).toBe(false)
+        expect(hasCrossSessionOrigin({ crossSession: 'peer' })).toBe(false)
     })
 })
 
@@ -143,6 +161,14 @@ describe('toCrossSessionMeta', () => {
         expect(toCrossSessionMeta({ fromName: '', fromSessionId: null })).toEqual({
             crossSession: { from: '' },
         })
+    })
+
+    it('没有来源会话（null：scheduled / loop 唤醒）→ 与「未命名」同形，键仍然恒在', () => {
+        const meta = toCrossSessionMeta(null)
+        expect(meta).toEqual({ crossSession: { from: '' } })
+        expect(CrossSessionMetaSchema.safeParse(meta).success).toBe(true)
+        // 读回来仍是「一条入站 turn」（不是「没有来源」）：入站事实由键承载，不靠名字
+        expect(hasCrossSessionOrigin(meta)).toBe(true)
     })
 
     it('产出能被 CrossSessionMetaSchema 接受，也能被读取侧读回', () => {

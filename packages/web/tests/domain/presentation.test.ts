@@ -140,13 +140,14 @@ describe('跨会话来源在 web 层的两个投影（判据本身在 shared）'
     const meta = (over: Record<string, unknown>): MessageMeta => over as MessageMeta
 
     it('来源会话还没名字（from 为空串）：展示名降级为 null，但来源身份仍在', () => {
-        // 这一对差值正是「标签不该消失」的理由：拿 getCrossSessionFrom !== null 当显示判据，
-        // 会让这类消息整条标签消失、看起来像用户自己发的；CrossSessionTag 的 from=null 分支
-        // （通用文案）才是它的归宿。判据本身（readCrossSessionOrigin）的用例在 shared：
+        // 这一对差值正是「标签不该消失」的理由：拿展示名 null 当显示判据，会让这类消息
+        // 整条标签消失、看起来像用户自己发的；CrossSessionTag 的 from=null 分支（通用文案）
+        // 才是它的归宿。判据本身（readCrossSessionOrigin）的用例在 shared：
         // packages/shared/tests/inboundOrigin.test.ts
         const unnamed = meta({ crossSession: { from: '' } })
-        expect(getCrossSessionFrom(unnamed)).toBeNull()
-        expect(readCrossSessionOrigin(unnamed)).not.toBeNull()
+        const origin = readCrossSessionOrigin(unnamed)
+        expect(origin).not.toBeNull()
+        expect(getCrossSessionFrom(origin)).toBeNull()
     })
 
     it('普通 web 用户消息（无 crossSession）→ 没有来源身份', () => {

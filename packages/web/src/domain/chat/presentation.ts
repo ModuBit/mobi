@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { readCrossSessionOrigin } from '@mobi/shared'
-import type { AgentEvent, ChatBlock, MessageMeta } from './types'
+import type { CrossSessionOrigin } from '@mobi/shared'
+import type { AgentEvent, ChatBlock } from './types'
 import { getUserPlainText } from './userContent'
 
 const CLEAR_COMMAND = '/clear'
@@ -23,12 +23,15 @@ const CLEAR_COMMAND = '/clear'
 /**
  * 跨会话入站来源的展示名（user 消息 meta.crossSession.from）。
  *
- * 形状与读取在 shared 的 `CrossSessionOrigin`（inboundOrigin.ts），这里只做一件 web 自己的事：
- * **把空名字翻译成 null**——没名字不是「没有来源」，而是该走 `CrossSessionTag` 的通用文案分支。
- * 判据（这条消息该不该出标签）不在这里，见 `readCrossSessionOrigin`。
+ * 收的已经是读出来的 `CrossSessionOrigin`（读侧唯一入口 `readCrossSessionOrigin`），
+ * 这里只做一件 web 自己的事：**把空名字翻译成 null**——没名字不是「没有来源」，而是该走
+ * `CrossSessionTag` 的通用文案分支。判据（这条消息该不该出标签）不在这里。
+ *
+ * 之所以收 origin 而不是 meta：调用点本来就要读 origin（判据要用它），再拿同一条 meta
+ * 解析第二遍是白读，也让「谁负责解包」多出第二个答案。
  */
-export function getCrossSessionFrom(meta: MessageMeta | undefined): string | null {
-    return readCrossSessionOrigin(meta)?.fromName || null
+export function getCrossSessionFrom(origin: CrossSessionOrigin | null): string | null {
+    return origin?.fromName || null
 }
 
 /** /compact 命令字面量，web 端判定压缩状态用 */

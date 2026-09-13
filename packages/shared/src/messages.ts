@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { isObject } from './utils'
-import { readCrossSessionOrigin } from './inboundOrigin'
+import { getMeta, isObject } from './utils'
+import { hasCrossSessionOrigin } from './inboundOrigin'
 
 type RoleWrappedRecord = {
     role: string
@@ -265,11 +265,6 @@ export type MessageFact =
     | { kind: 'lifecycle'; nativeId: string; state: CommandLifecycleState; terminalReason?: string; at?: number }
     | { kind: 'withdrawn'; nativeId: string; at?: number }
 
-/** 从消息 content 信封取 meta（读取侧一律宽松：不是对象就当没有） */
-function getMeta(content: unknown): unknown {
-    return isObject(content) ? (content as { meta?: unknown }).meta : undefined
-}
-
 /** 从消息 content 信封读取 sentFrom 来源标识 */
 export function getSentFrom(content: unknown): SentFrom | null {
     const meta = getMeta(content)
@@ -306,7 +301,7 @@ export function isCliOrigin(content: unknown): boolean {
  * 消息就静默进队列（Web 上多一条永不会被消费的悬浮消息）。现在读来源标注本身
  * （见 `inboundOrigin.ts`），写什么 `sentFrom` 都弄不坏它。
  *
- * ⚠️ 判据必须用 `readCrossSessionOrigin`（问「crossSession 键在不在」），**不能**用
+ * ⚠️ 判据必须问「crossSession 键在不在」（`hasCrossSessionOrigin`），**不能**问
  * `isMobiDelivered`（那条要求 fromSessionId 非空）：CC 原生 peer 与 scheduled / loop 都没有
  * fromSessionId，而它们有 localId、role 也是 user——漏掉就是真的进队列。
  *
@@ -318,5 +313,5 @@ export function isQueueableUserSubmission(content: unknown, localId: string | nu
     if (!isRoleWrappedRecord(content)) return false
     if (content.role !== 'user') return false
     if (isCliOrigin(content)) return false
-    return readCrossSessionOrigin(getMeta(content)) === null
+    return !hasCrossSessionOrigin(getMeta(content))
 }

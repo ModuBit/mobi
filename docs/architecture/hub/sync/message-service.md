@@ -106,6 +106,8 @@ flowchart TB
 
 入参带 `origin` 时 meta 上会多出跨会话标注（`crossSession` / `fromSessionId`，形状由 shared `inboundOrigin.ts` 单点产出）。**标注本身决定这条消息不进投递队列**（`lifecycle=null`，判据见 shared `isQueueableUserSubmission` 判据②）——`sentFrom` 写什么值都不改变这个结论，它只是存量行形状。
 
+同一个 `origin` 还决定另一件事：来源是 **mobi 自己投递**的（shared `isMobiDelivered`，即带 `fromSessionId`）时**不向 CLI 房间回灌 `new-message`**——那条路径已由 `push-agent-message` RPC 把消息推进目标 CLI 的 input stream，再回灌一次就是同一句话投两遍。判据与 CLI 侧的重连 backfill 守卫同源（先前由调用方传一个 `skipCliEcho` 布尔标志表达，2026-09-13 架构清理时删除：只有一处调用点会传它，却让「什么时候该省这次 emit」多出一个事实）。
+
 ## 分页查询
 
 ### getMessagesPage

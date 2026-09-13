@@ -100,6 +100,7 @@ export function createXxxTool(deps: XxxToolDeps)   // 工厂：依赖注入，�
 | 助手 | 提供什么 |
 |------|---------|
 | [`mcp/toolResult.ts`](/packages/cli/src/mcp/toolResult.ts) | `MobiToolTextResult`（MCP text-only 结果子集）与 `textResult` / `errorTextResult`，消除各工厂的结果样板 |
+| [`mcp/sdkTool.ts`](/packages/cli/src/mcp/sdkTool.ts) | `toSdkTool()`：工具体 → SDK `tool()` 定义的形状适配（两个 SDK server 壳共用，适配知识只有一处） |
 | [`mcp/mcpSchemaCompat.ts`](/packages/cli/src/mcp/mcpSchemaCompat.ts) | `asMcpInputSchema()`：桥接 zod 4.4.3 classic schema 与 MCP SDK 的 `AnySchema` 约束（仅类型断言，runtime 由 SDK 的 zod-compat 解析） |
 | [`mcp/sessionTransports.ts`](/packages/cli/src/mcp/sessionTransports.ts) | 按模式装配（见上） |
 
@@ -154,6 +155,7 @@ packages/cli/src/mcp/
 ├── sessionTransports.ts     # 按模式装配 server + remote 内联 hook settings
 ├── mobiMcpStdioBridge.ts    # stdio MCP server，转发到 HTTP MCP（mobi mcp 命令）
 ├── mcpSchemaCompat.ts       # zod ↔ MCP SDK AnySchema 类型桥
+├── sdkTool.ts               # 工具体 → SDK tool() 定义的形状适配（两个 server 壳共用）
 ├── toolResult.ts            # text-only 结果构造助手
 ├── changeTitleShape.ts      # change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）
 ├── changeTitleTool.ts       # change_title 核心（remote SDK / local HTTP / stdio bridge 共用形状）

@@ -577,10 +577,11 @@ export class ApiSessionClient extends EventEmitter {
             },
             meta: {
                 sentFrom: 'cli',
-                // 跨会话来源形状单源（shared 的 origin concept）：键恒在，名字缺省时为空串，
-                // web 端判空后显示「来自 其他会话」。键缺失会让 web 的 compact 误判守卫
-                // （排除 crossSession 消息）失效，降级消息会被误渲染成 compact-summary
-                ...toCrossSessionMeta(origin ?? { fromName: '', fromSessionId: null }),
+                // 跨会话来源形状单源（shared 的 origin concept）。`origin` 为 null 就是
+                // 「这条 turn 没有来源会话」（scheduled / loop）——投影照写空名字，键仍然恒在，
+                // web 端判空后显示「来自 其他会话」；键缺失会让 web 的 compact 误判守卫失效，
+                // 降级消息会被误渲染成 compact-summary
+                ...toCrossSessionMeta(origin),
                 // turnOrigin 区分入站来源（spec 批次 D）：peer/scheduled/loop
                 turnOrigin: kind
             }

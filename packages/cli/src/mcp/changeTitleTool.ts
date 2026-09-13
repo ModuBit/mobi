@@ -32,6 +32,7 @@ import { logger } from '@/ui/logger'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { syncAgentRename, type AgentSessionLocator } from '@/agent/agentCapabilities'
 import { CHANGE_TITLE_TOOL_NAME, CHANGE_TITLE_TOOL_SHAPE } from './changeTitleShape'
+import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 // 名字是工具身份，收在形状模块（那边的说明也解释了为什么不放这儿）
 export { CHANGE_TITLE_TOOL_NAME }
@@ -45,12 +46,8 @@ export interface ChangeTitleToolDeps {
     getAgentLocator: () => AgentSessionLocator | null
 }
 
-/** MCP CallToolResult 的 text-only 子集（两种 transport 均接受此形态）；索引签名兼容 MCP SDK 的宽泛结果类型 */
-export interface ChangeTitleToolResult {
-    content: Array<{ type: 'text'; text: string }>
-    isError: boolean
-    [key: string]: unknown
-}
+/** 本工具族的返回：与其余工具族同形（别名到 shared 的结果类型，见 toolResult.ts） */
+export type ChangeTitleToolResult = MobiToolTextResult
 
 export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
     // 对外形状（名/说明/标题/入参 schema）取自单源，见 changeTitleShape
@@ -88,25 +85,9 @@ export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
                 logger.debug('[mobiMCP] 回写 agent 标题失败 (best-effort，忽略):', renameError);
             }
 
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `Successfully changed chat title to: "${title}"`,
-                    },
-                ],
-                isError: false,
-            };
+            return textResult(`Successfully changed chat title to: "${title}"`);
         } catch (error) {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}`,
-                    },
-                ],
-                isError: true,
-            };
+            return errorTextResult('Failed to change chat title', error);
         }
     }
 

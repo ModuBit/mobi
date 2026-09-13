@@ -63,7 +63,7 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
   - 两条路径靠 **`fromSessionId` 的存在性**区分：有 id → mobi 自发；有 from-name 无 id → CC 原生 peer；都没有 → 人
   - 两条路径的 meta 形状由 **shared 的 `CrossSessionOrigin`/`toCrossSessionMeta` 单点产出**（`packages/shared/src/inboundOrigin.ts`，2026-09-13 架构评审候选 #1）：此前该身份在 RPC 载荷、信封、落库 meta、Web 四处各描述一遍、且 id 的摆位互不相同
   - 观测路径**跳过带 `from-session-id` 的信封**（`classifyInboundTurn` 返回 null）：否则同一封信封会落两行（投递路径一行 + 观测路径一行）
-  - 这个不变量（mobi 投递过的消息在目标侧只记一次、且不再进 SDK）由**一处判据 `isMobiDelivered` 守三个出口**（2026-09-13 架构评审候选 #2）：Hub 的 CLI 房间回灌（`skipCliEcho`）、CLI 重连 backfill 守卫、本观测路径。信封读侧归一成与 meta 同一个 `CrossSessionOrigin` 形状，所以三条出口问的是同一句话——任一处改了判据而另两处没跟上，2026-09-12 实测的「同一封信封落两行、相隔 15ms」就会重现
+  - 这个不变量（mobi 投递过的消息在目标侧只记一次、且不再进 SDK）由**一处判据 `isMobiDelivered` 守三个出口**（2026-09-13 架构评审候选 #2）：Hub 的 CLI 房间回灌（`hub/sync/messageService.ts` 直接问判据，**不再有 `skipCliEcho` 标志**）、CLI 重连 backfill 守卫、本观测路径。信封读侧归一成与 meta 同一个 `CrossSessionOrigin` 形状，所以三条出口问的是同一句话——任一处改了判据而另两处没跟上，2026-09-12 实测的「同一封信封落两行、相隔 15ms」就会重现
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 
@@ -410,7 +410,7 @@ CLI `handleAbortRequest(stopKind)` 是分派中心（`claudeRemoteLauncher.ts`�
 
 - **写入决策只在 Hub `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli' && 不带跨会话标注`）决定 `lifecycle='queued'`。
   - 两条不排队的理由，说的是同一件事（「不是待消费的用户提交」）：**CLI 来源**（Claude Code 输出流回显，已在对话里）；**带跨会话标注的入站 turn**（agent 投递的跨会话消息、CC 原生 peer、scheduled / loop 唤醒——落库时都已进过 SDK）。webapp 及未来端默认排队。
-  - 判据②读的是 **meta.crossSession 键在不在**（`readCrossSessionOrigin`），不是某个 `sentFrom` 取值：这两个写入方原先都靠把 `sentFrom` 写成 `'cli'` 借「不排队」这个副作用，改一个字符串就会让这三类入站消息静默进队列。**别用 `isMobiDelivered`**（它要求 `fromSessionId` 非空，会漏掉 peer 与 scheduled/loop）。
+  - 判据②读的是 **meta.crossSession 键在不在**（`hasCrossSessionOrigin`，`readCrossSessionOrigin` 的布尔形式），不是某个 `sentFrom` 取值：这两个写入方原先都靠把 `sentFrom` 写成 `'cli'` 借「不排队」这个副作用，改一个字符串就会让这三类入站消息静默进队列。**别用 `isMobiDelivered`**（它要求 `fromSessionId` 非空，会漏掉 peer 与 scheduled/loop）。
 - **读取只看显式状态**：Web `isQueuedInMobi` = `lifecycle==='queued'`，不再反推来源或时间戳。
 
 ### 完整流程

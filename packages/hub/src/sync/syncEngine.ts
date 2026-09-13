@@ -144,10 +144,9 @@ export class SyncEngine {
                 // shared 的 isQueueableUserSubmission 判据②，改这个取值弄不坏它）
                 sentFrom: 'cli',
                 // 来源身份交给 concept 去摊成 meta 形状（哪个键放 name、哪个放 id 不再在此决定）；
-                // 它同时就是「这条不是待消费的用户提交」的判据点
+                // 它同时就是「这条不是待消费的用户提交」的判据点，messageService 也据此
+                // 省掉向 CLI 房间的回灌（投递已经发生，别再回灌一次让目标 CLI 二次入队）
                 origin: { fromName: delivery.fromName, fromSessionId: delivery.fromSessionId },
-                // 投递已经发生，别再回灌 CLI 房间（否则目标 CLI 会照着这行二次入队）
-                skipCliEcho: true,
             }),
             // 初始名字（create_session 的 title）只写 mobi 侧，不走本类的 renameSession。
             // 那条路要多发一个 rename-session RPC 给会话进程，而此刻新会话的 RPC 还没装好

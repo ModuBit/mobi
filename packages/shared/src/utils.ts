@@ -43,6 +43,17 @@ export function isObject(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === 'object'
 }
 
+/**
+ * 从消息 content 信封取 meta（协议里信封的形状是 `content.meta`）。
+ *
+ * 读取侧一律宽松：不是对象就当没有。**单点**——此前 `messages.ts` 与 `inboundOrigin.ts`
+ * 各写了一遍同样的解包（同一个形状两处维护，改一处漏一处就是静默丢字段），
+ * 而 `messages → inboundOrigin` 是单向导入，共享的落点只能是这里。
+ */
+export function getMeta(content: unknown): unknown {
+    return isObject(content) ? getField(content, 'meta') : undefined
+}
+
 export function asString(value: unknown): string | null {
     return typeof value === 'string' ? value : null
 }

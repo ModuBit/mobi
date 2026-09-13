@@ -39,7 +39,7 @@
  */
 
 import { z } from 'zod'
-import { isObject } from './utils'
+import { asString, getMeta, isObject } from './utils'
 
 /**
  * 跨会话消息的发送方身份。两条来源共用一个形状，差别只在 `fromSessionId`。
@@ -101,15 +101,27 @@ export function readCrossSessionOrigin(meta: unknown): CrossSessionOrigin | null
     const crossSession = (meta as { crossSession?: unknown }).crossSession
     if (!isObject(crossSession)) return null
 
-    const from = (crossSession as { from?: unknown }).from
-    const fromSessionId = (meta as { fromSessionId?: unknown }).fromSessionId
-
     return {
-        fromName: typeof from === 'string' ? from : '',
+        fromName: asString((crossSession as { from?: unknown }).from) ?? '',
         // 空串等同「没有」：两条来源的判据是「这个键带身份」，空串带不了
-        fromSessionId:
-            typeof fromSessionId === 'string' && fromSessionId.length > 0 ? fromSessionId : null
+        fromSessionId: asString((meta as { fromSessionId?: unknown }).fromSessionId) || null
     }
+}
+
+/**
+ * 「这条 meta 带跨会话标注」的布尔形式——同一个判据（{@link readCrossSessionOrigin}）的
+ * 另一种问法，给**只要问是非、不要来源身份**的消费方用：
+ *
+ * - 排队规则（`messages.ts` 判据②：带标注的入站 turn 不是待消费的用户提交）
+ * - Web 的 compact 判定（`reducerTimeline.ts`：sentFrom 同为 'cli' 的跨会话行不能被
+ *   误当成 compact 总结）
+ *
+ * 之所以要个名字，是因为这两处问的**不是「谁的什么身份」而是「是不是入站 turn」**：
+ * 判据写成 `readCrossSessionOrigin(...) !== null` 时，读者看到的是一次取身份，
+ * 与实际问的问题差一层（名字改了、判据要动时，不知道该找谁）。
+ */
+export function hasCrossSessionOrigin(meta: unknown): boolean {
+    return readCrossSessionOrigin(meta) !== null
 }
 
 /**
@@ -120,8 +132,8 @@ export function readCrossSessionOrigin(meta: unknown): CrossSessionOrigin | null
  * 展示与历史回放）。三个出口各是一种机制，但问的是同一个问题：
  *
  * ① **落库行 → SDK 的重连回灌**（`cli/api/apiSession.ts` 的 backfill 守卫）
- * ② **Hub 的 CLI 房间回灌**（`hub/sync/messageService.ts` 的 `skipCliEcho`——那一侧连 emit
- *    都省掉，机制不同但理由同一句）
+ * ② **Hub 的 CLI 房间回灌**（`hub/sync/messageService.ts` 的 `sendMessage`——那一侧连 emit
+ *    都省掉，机制不同但理由同一句；2026-09-13 起直接问本判据，不再由调用方传标志）
  * ③ **信封被 CC 的 hook 观测回来时的重复落库**（`cli/claude/utils/inboundCrossSession.ts`——
  *    观测路径读的是**信封**不是 meta，此处由信封读侧归一成同一个 origin 后复用本判据）
  *
@@ -139,8 +151,7 @@ export function isMobiDelivered(origin: CrossSessionOrigin | null): boolean {
  * content，故替调用方把 meta 取出来。语义与 `isMobiDelivered` 同一个。
  */
 export function isMobiSentCrossSession(content: unknown): boolean {
-    const meta = isObject(content) ? (content as { meta?: unknown }).meta : undefined
-    return isMobiDelivered(readCrossSessionOrigin(meta))
+    return isMobiDelivered(readCrossSessionOrigin(getMeta(content)))
 }
 
 /**
@@ -148,22 +159,24 @@ export function isMobiSentCrossSession(content: unknown): boolean {
  */
 export function readTurnOrigin(meta: unknown): TurnOrigin | null {
     if (!isObject(meta)) return null
-    const raw = (meta as { turnOrigin?: unknown }).turnOrigin
-    return typeof raw === 'string' && (TURN_ORIGINS as readonly string[]).includes(raw)
-        ? (raw as TurnOrigin)
-        : null
+    const raw = asString((meta as { turnOrigin?: unknown }).turnOrigin)
+    return raw !== null && (TURN_ORIGINS as readonly string[]).includes(raw) ? (raw as TurnOrigin) : null
 }
 
 /**
  * 落库 meta 的写入投影：把来源身份摊成 meta 上那两个键的**唯一一处**。
  *
  * `fromSessionId` 为 null 时不写这个键——与 CC 原生 peer 行保持同形（那种行本来就没有它）。
- * 反过来，`crossSession` **恒写入**（哪怕名字是空串）：Web 的 compact 判定靠「有没有
+ * 反过来，`crossSession` **恒写入**（哪怕只有一个空名字）：Web 的 compact 判定靠「有没有
  * crossSession」排除跨会话消息，键缺失会让降级消息被误渲染成 compact-summary。
+ *
+ * `origin` 为 null = 「这条入站 turn 没有来源会话」（scheduled / loop 唤醒）——它**照写空名字**，
+ * 所以「没有来源」在调用点就是一个 null，不必伪造一个空身份字面量去凑签名。
  */
-export function toCrossSessionMeta(origin: CrossSessionOrigin): CrossSessionMeta {
+export function toCrossSessionMeta(origin: CrossSessionOrigin | null): CrossSessionMeta {
+    const fromSessionId = origin?.fromSessionId ?? null
     return {
-        crossSession: { from: origin.fromName },
-        ...(origin.fromSessionId !== null ? { fromSessionId: origin.fromSessionId } : {})
+        crossSession: { from: origin?.fromName ?? '' },
+        ...(fromSessionId !== null ? { fromSessionId } : {})
     }
 }

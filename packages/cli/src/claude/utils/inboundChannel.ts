@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { PromptPayload } from '@/utils/promptBuilder'
+import type { AgentMessageSink } from './agentMessagePushHandler'
 
 /**
  * 本会话入站通道的写端——同时管着「本轮 sink 的生死」与「对 Hub 的上报」。
@@ -32,11 +32,12 @@ import type { PromptPayload } from '@/utils/promptBuilder'
  * 事实不落盘、也不跨进程——它随会话进程生灭。
  */
 
-/** 本轮的入站 sink：返回是否被接纳（stream 已关则为 false） */
-export type InboundSink = (payload: PromptPayload) => boolean
+/** 本轮的入站 sink：返回是否被接纳（stream 已关则为 false）。类型就是投递侧的
+ * `AgentMessageSink`——同一个缝，不另立一份同形的定义（别名是为了本模块里读得顺）。 */
+export type InboundSink = AgentMessageSink
 
 export class InboundChannel {
-    private sink: InboundSink | null = null
+    private sink: AgentMessageSink | null = null
     /** 上一次上报出去的值。它是「这个值是否成立」的记忆，也是 down 时该不该开口的判据 */
     private up = false
 

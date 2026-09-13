@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { readCrossSessionOrigin } from '@mobi/shared'
+import { hasCrossSessionOrigin } from '@mobi/shared'
 import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, CustomBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
@@ -205,9 +205,9 @@ export function reduceTimeline(
             const plainText = getUserPlainText(msg.content.blocks)
             // 检测 compact 总结消息：来自 CLI 且之前有 compact 事件。
             // 跨会话入站消息 sentFrom 也是 'cli'，紧随 compact 事件到达时会被误判，需排除。
-            // 判据走 shared 的来源 concept（而不是裸读 meta.crossSession 的真值），
+            // 判据走 shared 的来源 concept（问「这条带不带跨会话标注」，而不是裸读 meta 真值），
             // 与来源标签、重投守卫用的是同一个读取入口
-            if (pendingCompactMetadata && msg.meta?.sentFrom === 'cli' && readCrossSessionOrigin(msg.meta) === null) {
+            if (pendingCompactMetadata && msg.meta?.sentFrom === 'cli' && !hasCrossSessionOrigin(msg.meta)) {
                 const compactBlock: CompactSummaryBlock = {
                     kind: 'compact-summary',
                     id: msg.id,

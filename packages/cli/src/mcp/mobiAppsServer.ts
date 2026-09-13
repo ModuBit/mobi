@@ -30,33 +30,15 @@
  * 不设 alwaysLoad：默认 tool search defer，工具定义不进上下文。
  */
 
-import { createSdkMcpServer, tool, type AnyZodRawShape, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
+import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
 import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
-import type { MobiToolTextResult } from './toolResult'
+import { toSdkTool } from './sdkTool'
 import { OPEN_IN_MOBI_TOOL_NAME, createOpenInMobiTool } from './openInMobiTool'
 import { LIST_MACHINES_TOOL_NAME, createListMachinesTool } from './listMachinesTool'
 import { LIST_SESSIONS_TOOL_NAME, createListSessionsTool } from './listSessionsTool'
 import { CREATE_SESSION_TOOL_NAME, createCreateSessionTool } from './createSessionTool'
 import { SEND_MESSAGE_TOOL_NAME, createSendMessageTool } from './sendMessageTool'
-
-/**
- * 工具体（工具工厂的返回值）→ SDK 的 tool 定义。
- *
- * 工厂产出的是 transport 无关的四件套（name / description / inputSchema / execute），
- * 这里只做形状适配——SDK 要 `inputSchema.shape`，且 handler 收 `unknown` 再交给 execute
- * （execute 自己会 safeParse，不在这一层替工具做校验）。
- */
-function toSdkTool<Shape extends AnyZodRawShape>(definition: {
-    name: string
-    description: string
-    inputSchema: { shape: Shape }
-    execute: (args: unknown) => Promise<MobiToolTextResult>
-}): SdkMcpToolDefinition<Shape> {
-    return tool(definition.name, definition.description, definition.inputSchema.shape, async (args: unknown) =>
-        definition.execute(args)
-    )
-}
 
 /**
  * mobi-apps 工具族：**一行 = 一个工具的名字 + 怎么用会话客户端把它造出来**。

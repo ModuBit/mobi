@@ -37,18 +37,20 @@ vi.mock('react-i18next', () => ({
 
 afterEach(cleanup)
 
-describe('getCrossSessionFrom（跨会话入站来源提取）', () => {
-    it('meta.crossSession.from 为非空 string 时返回它', () => {
-        expect(getCrossSessionFrom({ crossSession: { from: 'mobi-ab' } })).toBe('mobi-ab')
+describe('getCrossSessionFrom（跨会话入站来源 → 展示名）', () => {
+    it('origin 名字非空时返回它', () => {
+        expect(getCrossSessionFrom({ fromName: 'mobi-ab', fromSessionId: 'sess-a' })).toBe('mobi-ab')
     })
 
-    it('from 缺失 / 空 string / 非 string / meta 整体缺失 → 一律 null（降级通用文案）', () => {
-        expect(getCrossSessionFrom({})).toBeNull()
-        expect(getCrossSessionFrom({ crossSession: { from: '' } })).toBeNull()
-        expect(getCrossSessionFrom({ crossSession: { from: 42 } })).toBeNull()
-        expect(getCrossSessionFrom(undefined)).toBeNull()
+    it('名字空串 / origin 为 null（无来源）→ 一律 null（降级通用文案）', () => {
+        expect(getCrossSessionFrom({ fromName: '', fromSessionId: 'sess-a' })).toBeNull()
+        expect(getCrossSessionFrom(null)).toBeNull()
     })
 })
+
+// 「meta → CrossSessionOrigin」的解包与归一（非 string 归空串、空串 id 归 null 等）已收进
+// shared（packages/shared/tests/inboundOrigin.test.ts）：那是协议侧的形状约定，
+// web 只消费读出来的 origin，不再拿畸形 meta 各测一遍
 
 // getTurnOrigin 的用例已随概念收进 shared（packages/shared/tests/inboundOrigin.test.ts）：
 // 合法值判定是协议侧的事，不再由 web 的呈现层各测一遍
