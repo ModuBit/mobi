@@ -29,7 +29,6 @@
  */
 
 import { z } from 'zod'
-import type { ApiSessionClient } from '@/api/apiSession'
 import { OpenInMobiTargetSchema, type UiCommandAction, type UiCommandAck } from '@mobi/shared'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
@@ -109,13 +108,3 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
 }
 
 export type OpenInMobiTool = ReturnType<typeof createOpenInMobiTool>
-
-/**
- * 会话场景的组装入口（仅 remote 壳 mobiAppsServer 使用）：
- * hub 通道 = ApiSessionClient.sendUiCommand（emitWithAck 回执）。
- */
-export function createOpenInMobiToolForSession(client: ApiSessionClient) {
-    return createOpenInMobiTool({
-        sendUiCommand: (action) => client.sendUiCommand(action),
-    })
-}

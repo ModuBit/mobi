@@ -32,7 +32,6 @@
 import { z } from 'zod'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
 import type { AgentSessionStatus, AgentSessionSummary, AgentSessionsRequest } from '@mobi/shared'
-import type { ApiSessionClient } from '@/api/apiSession'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 export const LIST_SESSIONS_TOOL_NAME = 'list_sessions' as const
@@ -165,10 +164,3 @@ export function createListSessionsTool(deps: ListSessionsToolDeps) {
 }
 
 export type ListSessionsTool = ReturnType<typeof createListSessionsTool>
-
-/** 会话场景组装入口（仅 remote 壳 mobiAppsServer 使用） */
-export function createListSessionsToolForSession(client: ApiSessionClient) {
-    return createListSessionsTool({
-        listSessions: (query) => client.listSessionsForAgent(query),
-    })
-}

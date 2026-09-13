@@ -15,8 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { createCreateSessionTool, createCreateSessionToolForSession, CREATE_SESSION_TOOL_NAME } from '@/mcp/createSessionTool'
-import type { ApiSessionClient } from '@/api/apiSession'
+import { createCreateSessionTool, CREATE_SESSION_TOOL_NAME } from '@/mcp/createSessionTool'
 
 function buildDeps(result?: unknown) {
     const createSession = vi.fn().mockResolvedValue(result ?? { ok: true, sessionId: 's-new', readiness: 'ready' })
@@ -171,16 +170,6 @@ describe('createCreateSessionTool', () => {
         expect(result.content[0].text).toContain('timed out')
         // ack 没回来就不知道走到哪一步，不能套用 Hub 那句「可能已建」
         expect(result.content[0].text).not.toContain('may or may not have been created')
-    })
-
-    it('wires the session client channel', async () => {
-        const client = { createSessionForAgent: vi.fn().mockResolvedValue({ ok: true, sessionId: 's-new', readiness: 'ready' }) }
-        const tool = createCreateSessionToolForSession(client as unknown as ApiSessionClient)
-
-        const result = await tool.execute({ machineId: 'm1', directory: '/work/app' })
-
-        expect(client.createSessionForAgent).toHaveBeenCalledWith({ machineId: 'm1', directory: '/work/app' })
-        expect(result.isError).toBe(false)
     })
 })
 

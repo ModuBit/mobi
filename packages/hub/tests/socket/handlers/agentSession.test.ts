@@ -64,24 +64,27 @@ function makeDeps(opts?: {
         resolveSessionAccess: (sid: string) => (opts?.accessReason
             ? { ok: false as const, reason: opts.accessReason }
             : { ok: true as const, value: makeStoredSession(sid) }),
-        listOnlineMachines: (namespace: string) => {
-            seenNamespaces.push(namespace)
-            return opts?.machines ?? []
-        },
-        listSessions: (namespace: string, query) => {
-            seenNamespaces.push(namespace)
-            seenQueries.push(query)
-            return opts?.sessions ?? []
-        },
-        createSession: async (namespace: string, input) => {
-            seenNamespaces.push(namespace)
-            seenCreateInputs.push(input)
-            return opts?.createResult ?? { ok: true, sessionId: 's-new', readiness: 'ready' }
-        },
-        sendMessageToSessions: async (namespace: string, fromSessionId: string, input) => {
-            seenNamespaces.push(namespace)
-            seenSendCalls.push({ namespace, fromSessionId, input })
-            return opts?.sendResult ?? [{ sessionId: 'B', ok: true }]
+        // 能力对象整份交付（与生产同形）：四个方法一次给出，不再逐方法判空
+        agentSessions: {
+            listMachines: (namespace: string) => {
+                seenNamespaces.push(namespace)
+                return opts?.machines ?? []
+            },
+            listSessions: (namespace: string, query) => {
+                seenNamespaces.push(namespace)
+                seenQueries.push(query)
+                return opts?.sessions ?? []
+            },
+            createSession: async (namespace: string, input) => {
+                seenNamespaces.push(namespace)
+                seenCreateInputs.push(input)
+                return opts?.createResult ?? { ok: true, sessionId: 's-new', readiness: 'ready' }
+            },
+            sendMessageToSessions: async (namespace: string, fromSessionId: string, input) => {
+                seenNamespaces.push(namespace)
+                seenSendCalls.push({ namespace, fromSessionId, input })
+                return opts?.sendResult ?? [{ sessionId: 'B', ok: true }]
+            },
         },
     }
     return { deps, seenNamespaces, seenQueries, seenCreateInputs, seenSendCalls }
@@ -152,17 +155,6 @@ describe('listMachinesForAgent handler', () => {
 
         expect(callListMachines(socket, {})).toEqual({ ok: false, reason: 'invalid-payload' })
         expect(seenNamespaces).toHaveLength(0)
-    })
-
-    test('listOnlineMachines 未装配 → ack ok:false（handler-misconfigured），不静默回空清单', () => {
-        const socket = makeFakeSocket()
-        const { deps } = makeDeps()
-        delete deps.listOnlineMachines
-        register(socket, deps)
-
-        // 关键：绝不能返回 { ok: true, machines: [] }——那会把"服务没接上"
-        // 伪装成"一台机器都没有"
-        expect(callListMachines(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'handler-misconfigured' })
     })
 
     test('无在线机器 → ack ok:true 带空数组（真实空态，不是故障）', () => {
@@ -249,17 +241,6 @@ describe('listSessionsForAgent handler', () => {
         expect(callListSessions(socket, { sid: 's1', status: 'active' })).toEqual({ ok: false, reason: 'invalid-payload' })
         expect(callListSessions(socket, { sid: 's1', status: 'BOGUS' })).toEqual({ ok: false, reason: 'invalid-payload' })
         expect(seenQueries).toHaveLength(0)
-    })
-
-    test('listSessions 未装配 → ack ok:false（handler-misconfigured），不静默回空清单', () => {
-        const socket = makeFakeSocket()
-        const { deps } = makeDeps()
-        delete deps.listSessions
-        register(socket, deps)
-
-        // 关键：绝不能返回 { ok: true, sessions: [] }——那会让 agent 以为
-        //「一个会话都没有」，与「服务没接上」混淆
-        expect(callListSessions(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'handler-misconfigured' })
     })
 
     test('无匹配会话 → ack ok:true 带空数组（真实空态，不是故障）', () => {
@@ -416,18 +397,6 @@ describe('createSessionForAgent handler', () => {
         expect(await rejectedError('access-denied')).not.toContain('no longer registered')
     })
 
-    test('createSession 未装配 → 拒绝且明说这是 mobi 的问题，别让 agent 反复改入参重试', async () => {
-        const socket = makeFakeSocket()
-        const { deps } = makeDeps()
-        delete deps.createSession
-        register(socket, deps)
-
-        const answer = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })
-
-        expect(answer.ok).toBe(false)
-        expect(answer.ok ? '' : answer.error).toContain('do not retry')
-    })
-
     test('服务给的失败文案原样回给 CLI（翻译只发生在服务一处）', async () => {
         const socket = makeFakeSocket()
         const { deps } = makeDeps({ createResult: { ok: false, error: 'No online machine with id "m1".' } })
@@ -516,16 +485,6 @@ describe('sendMessageToSessionForAgent handler', () => {
         expect(seenSendCalls).toHaveLength(0)
     })
 
-    test('服务未装配 → handler-misconfigured（不静默当成功）', async () => {
-        const socket = makeFakeSocket()
-        const { deps } = makeDeps()
-        delete deps.sendMessageToSessions
-        register(socket, deps)
-
-        expect(await callSend(socket, { sid: 's1', targets: ['B'], content: 'hi' }))
-            .toEqual({ ok: false, reason: 'handler-misconfigured' })
-    })
-
     test('部分成功仍走 ok:true——进了扇出就没有「整体失败」这回事', async () => {
         const socket = makeFakeSocket()
         const { deps } = makeDeps({
@@ -540,5 +499,30 @@ describe('sendMessageToSessionForAgent handler', () => {
 
         expect(answer.ok).toBe(true)
         expect(answer.ok && answer.results.map((r) => r.ok)).toEqual([true, false])
+    })
+})
+
+/**
+ * 服务缺席是**装配期**的一个事实（组装 bug），不是四个请求各判一遍的运行期状态——
+ * 所以这里也只有一个用例，四个事件一次说清。
+ */
+describe('registerAgentSessionHandlers — 服务未装配', () => {
+    test('四个事件一律拒绝，且写明这是 mobi 的问题（不静默回空清单、也不让 agent 白等超时）', async () => {
+        const socket = makeFakeSocket()
+        // 只给鉴权解析：能力对象整个缺席，正是「组装漏了一环」的样子
+        register(socket, { resolveSessionAccess: () => ({ ok: true as const, value: makeStoredSession('s1') }) })
+
+        // 关键：绝不能回 { ok: true, machines: [] } / { ok: true, sessions: [] }——那会把
+        //「服务没接上」伪装成「一台机器都没有 / 一个会话都没有」
+        expect(callListMachines(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'handler-misconfigured' })
+        expect(callListSessions(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'handler-misconfigured' })
+        expect(await callSend(socket, { sid: 's1', targets: ['B'], content: 'hi' }))
+            .toEqual({ ok: false, reason: 'handler-misconfigured' })
+
+        // 建会话那一支要说清「这是 mobi 的问题，别重试」——笼统回 invalid arguments
+        // 会让 agent 反复改入参，去重试一个改不好的东西
+        const created = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })
+        expect(created.ok).toBe(false)
+        expect(created.ok ? '' : created.error).toContain('do not retry')
     })
 })

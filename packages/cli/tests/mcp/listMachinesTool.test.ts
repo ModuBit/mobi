@@ -15,8 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { createListMachinesTool, createListMachinesToolForSession, LIST_MACHINES_TOOL_NAME } from '@/mcp/listMachinesTool'
-import type { ApiSessionClient } from '@/api/apiSession'
+import { createListMachinesTool, LIST_MACHINES_TOOL_NAME } from '@/mcp/listMachinesTool'
 import type { AgentMachineSummary } from '@mobi/shared'
 
 const MACHINES: AgentMachineSummary[] = [
@@ -115,15 +114,5 @@ describe('createListMachinesTool', () => {
         await tool.execute(undefined)
 
         expect(listMachines).toHaveBeenCalledTimes(1)
-    })
-
-    it('wires the session client channel', async () => {
-        const client = { listOnlineMachinesForAgent: vi.fn().mockResolvedValue({ ok: true, machines: MACHINES }) }
-        const tool = createListMachinesToolForSession(client as unknown as ApiSessionClient)
-
-        const result = await tool.execute({})
-
-        expect(client.listOnlineMachinesForAgent).toHaveBeenCalledTimes(1)
-        expect(result.isError).toBe(false)
     })
 })

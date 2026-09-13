@@ -15,9 +15,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { createListSessionsTool, createListSessionsToolForSession, LIST_SESSIONS_TOOL_NAME } from '@/mcp/listSessionsTool'
+import { createListSessionsTool, LIST_SESSIONS_TOOL_NAME } from '@/mcp/listSessionsTool'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
-import type { ApiSessionClient } from '@/api/apiSession'
 import type { AgentSessionSummary } from '@mobi/shared'
 
 const SESSION: AgentSessionSummary = {
@@ -206,15 +205,5 @@ describe('createListSessionsTool', () => {
         expect(result.isError).toBe(true)
         expect(result.content[0].text).toContain('timed out')
         expect(result.content[0].text).not.toContain('rejected by mobi hub')
-    })
-
-    it('wires the session client channel', async () => {
-        const client = { listSessionsForAgent: vi.fn().mockResolvedValue({ ok: true, sessions: [SESSION] }) }
-        const tool = createListSessionsToolForSession(client as unknown as ApiSessionClient)
-
-        const result = await tool.execute({ status: 'ALL' })
-
-        expect(client.listSessionsForAgent).toHaveBeenCalledWith({ status: 'ALL' })
-        expect(result.isError).toBe(false)
     })
 })

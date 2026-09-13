@@ -33,7 +33,6 @@
 import { z } from 'zod'
 import { UserMessageContentSchema } from '@mobi/shared'
 import type { AgentSendMessageAck, AgentSendMessageRequest, AgentSendMessageTargetResult } from '@mobi/shared'
-import type { ApiSessionClient } from '@/api/apiSession'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 export const SEND_MESSAGE_TOOL_NAME = 'send_message_to_session' as const
@@ -163,10 +162,3 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
 }
 
 export type SendMessageTool = ReturnType<typeof createSendMessageTool>
-
-/** 会话场景组装入口（仅 remote 壳 mobiAppsServer 使用） */
-export function createSendMessageToolForSession(client: ApiSessionClient) {
-    return createSendMessageTool({
-        sendMessage: (input) => client.sendMessageToSessionsForAgent(input),
-    })
-}

@@ -31,7 +31,6 @@
 
 import { z } from 'zod'
 import type { AgentMachineSummary } from '@mobi/shared'
-import type { ApiSessionClient } from '@/api/apiSession'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 export const LIST_MACHINES_TOOL_NAME = 'list_machines' as const
@@ -106,10 +105,3 @@ export function createListMachinesTool(deps: ListMachinesToolDeps) {
 }
 
 export type ListMachinesTool = ReturnType<typeof createListMachinesTool>
-
-/** 会话场景组装入口（仅 remote 壳 mobiAppsServer 使用） */
-export function createListMachinesToolForSession(client: ApiSessionClient) {
-    return createListMachinesTool({
-        listMachines: () => client.listOnlineMachinesForAgent(),
-    })
-}

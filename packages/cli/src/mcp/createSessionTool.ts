@@ -34,7 +34,6 @@
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
 import type { AgentCreateSessionAck, AgentCreateSessionReadiness, AgentCreateSessionRequest } from '@mobi/shared'
-import type { ApiSessionClient } from '@/api/apiSession'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 export const CREATE_SESSION_TOOL_NAME = 'create_session' as const
@@ -155,10 +154,3 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
 }
 
 export type CreateSessionTool = ReturnType<typeof createCreateSessionTool>
-
-/** 会话场景组装入口（仅 remote 壳 mobiAppsServer 使用） */
-export function createCreateSessionToolForSession(client: ApiSessionClient) {
-    return createCreateSessionTool({
-        createSession: (input) => client.createSessionForAgent(input),
-    })
-}

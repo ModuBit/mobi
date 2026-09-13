@@ -15,8 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { createOpenInMobiTool, createOpenInMobiToolForSession, OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool'
-import type { ApiSessionClient } from '@/api/apiSession'
+import { createOpenInMobiTool, OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool'
 
 function buildDeps(overrides?: Partial<{ sendUiCommand: ReturnType<typeof vi.fn> }>) {
     const sendUiCommand = overrides?.sendUiCommand ?? vi.fn().mockResolvedValue({ delivered: true })
@@ -127,21 +126,5 @@ describe('createOpenInMobiTool', () => {
 
         expect(result.isError).toBe(true)
         expect(sendUiCommand).not.toHaveBeenCalled()
-    })
-})
-
-describe('createOpenInMobiToolForSession', () => {
-    it('binds client.sendUiCommand as transport', async () => {
-        const sendUiCommand = vi.fn().mockResolvedValue({ delivered: true })
-        const client = { sendUiCommand } as unknown as ApiSessionClient
-
-        const tool = createOpenInMobiToolForSession(client)
-        const result = await tool.execute({ target: { type: 'file', path: '/tmp/demo/a.ts' } })
-
-        expect(sendUiCommand).toHaveBeenCalledWith({
-            action: 'open_in_mobi',
-            payload: { type: 'file', path: '/tmp/demo/a.ts' },
-        })
-        expect(result.isError).toBe(false)
     })
 })

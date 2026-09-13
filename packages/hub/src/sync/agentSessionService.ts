@@ -439,6 +439,18 @@ export class AgentSessionService {
 }
 
 /**
+ * B 类工具族的能力面：socket 层要用的那四个方法。
+ *
+ * **从服务本身派生**，不手抄一遍签名——手抄的那份迟早与类漂移。四个方法也正是这个类的
+ * 全部公开成员，所以「整份服务一次交付」不会顺带透出别的东西；Pick 只是把这条边界钉住，
+ * 日后给服务加第五个方法时，socket 层不会凭空拿到它。
+ */
+export type AgentSessionOps = Pick<
+    AgentSessionService,
+    'listMachines' | 'listSessions' | 'createSession' | 'sendMessageToSessions'
+>
+
+/**
  * 内容闸：把 agent 给的 content 判成「可以投递的 blocks」或「一句说明为什么不行」。
  *
  * 用 shared 的 `UserMessageContentSchema` 而不是宽松的归一：归一会把无法识别的 block

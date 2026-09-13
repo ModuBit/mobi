@@ -15,9 +15,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { createSendMessageTool, createSendMessageToolForSession, SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool'
+import { createSendMessageTool, SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool'
 import type { AgentSendMessageAck } from '@mobi/shared'
-import type { ApiSessionClient } from '@/api/apiSession'
 
 function buildDeps(result?: AgentSendMessageAck) {
     const sendMessage = vi.fn().mockResolvedValue(
@@ -165,17 +164,5 @@ describe('createSendMessageTool', () => {
         expect(result.content[0].text).toContain('timed out')
         // ack 没回来就不知道 hub 走到哪一步，不能套用「可能已送达」那句话
         expect(result.content[0].text).not.toContain('may or may not have been delivered')
-    })
-
-    it('wires the session client channel', async () => {
-        const client = {
-            sendMessageToSessionsForAgent: vi.fn().mockResolvedValue({ ok: true, results: [{ sessionId: 'B', ok: true }] }),
-        }
-        const tool = createSendMessageToolForSession(client as unknown as ApiSessionClient)
-
-        const result = await tool.execute({ targets: ['B'], content: 'hi' })
-
-        expect(client.sendMessageToSessionsForAgent).toHaveBeenCalledWith({ targets: ['B'], content: 'hi' })
-        expect(result.isError).toBe(false)
     })
 })

@@ -18,7 +18,7 @@
  * Agent 会话操作 handler（B 类工具族，CLI→Hub 入口）。
  *
  * 分工：本文件只做外层校验、鉴权、调用服务、把结果转 ack；业务规则全在
- * AgentSessionService（注入的是它的方法，见 deps）。
+ * AgentSessionService（整个能力对象一次交付，见 deps）。
  *
  * 鉴权模型与 ui-command 一致：namespace 由 Hub 从**鉴权过的 sid** 解析，
  * CLI 不填、也不可信——agent 因此只能看到自己 namespace 内的资源。
@@ -26,12 +26,12 @@
 
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
-import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary, ClientToServerEvents } from '@mobi/shared'
+import type { ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 import type { StoredSession } from '../../../store'
-import type { AgentCreateSessionInput, AgentSendMessageInput, AgentSessionQuery } from '../../../sync/agentSessionService'
+import type { AgentSessionOps } from '../../../sync/agentSessionService'
 
 type ListMachinesForAgentHandler = ClientToServerEvents['listMachinesForAgent']
 type ListSessionsForAgentHandler = ClientToServerEvents['listSessionsForAgent']
@@ -110,28 +110,69 @@ function callerRejectedError(reason: AccessErrorReason): string {
 
 export type AgentSessionHandlersDeps = {
     resolveSessionAccess: (sessionId: string) => AccessResult<StoredSession>
-    /** AgentSessionService.listMachines（装配缺失属组装 bug，见下方守卫） */
-    listOnlineMachines?: (namespace: string) => AgentMachineSummary[]
-    /** AgentSessionService.listSessions（同上） */
-    listSessions?: (namespace: string, query: AgentSessionQuery) => AgentSessionSummary[]
-    /** AgentSessionService.createSession（同上） */
-    createSession?: (namespace: string, input: AgentCreateSessionInput) => Promise<AgentCreateSessionAck>
-    /** AgentSessionService.sendMessageToSessions（同上）。fromSessionId 是发信方，也是信封里的来源 */
-    sendMessageToSessions?: (
-        namespace: string,
-        fromSessionId: string,
-        input: AgentSendMessageInput
-    ) => Promise<AgentSendMessageTargetResult[]>
+    /**
+     * Agent 会话操作能力（AgentSessionService 的四个方法，**整份一次交付**）。
+     *
+     * 缺席是**装配期**的事实（组装 bug），判定只做一次——见 registerAgentSessionHandlers
+     * 顶部。所以每个 handler 各自只有一条代码路径，四个方法名也不再逐层改名。
+     */
+    agentSessions?: AgentSessionOps
+}
+
+/** 服务缺席时四个事件的 ack 形状：与上游失败共用 `error`/`reason` 两个字段（见各自 ack 注释） */
+type UnavailableReply = { ok: false; reason: string } | { ok: false; error: string }
+
+type AgentSessionEventName =
+    | 'listMachinesForAgent'
+    | 'listSessionsForAgent'
+    | 'createSessionForAgent'
+    | 'sendMessageToSessionForAgent'
+
+/**
+ * 服务缺席时四个事件各回什么——一个事实，一张表。
+ *
+ * **不能干脆不注册这几个事件**：CLI 的 emitWithAck 等的是一个永远不来的回执，
+ * agent 那边只剩超时，连线索都没有。
+ *
+ * 回执也必须写明「这是 mobi 的问题、别重试」（同 callerRejectedError 的理由）：
+ * 笼统回 invalid arguments 会让 agent 反复改入参，去重试一个改不好的东西。
+ */
+const UNAVAILABLE_REPLIES: ReadonlyArray<{ event: AgentSessionEventName; reply: UnavailableReply }> = [
+    { event: 'listMachinesForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
+    { event: 'listSessionsForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
+    { event: 'createSessionForAgent', reply: { ok: false, error: SERVICE_UNAVAILABLE_ERROR } },
+    { event: 'sendMessageToSessionForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
+]
+
+/**
+ * 服务缺席时的四个 handler（组装的兜底路径）。
+ *
+ * 注意这**不是**「没装配就静默回空清单」：回的是明确的拒绝，且写明是 mobi 的问题——
+ * 空清单会把「服务没接上」伪装成「一台机器都没有」。
+ */
+function registerUnavailableAgentSessionHandlers(socket: CliSocketWithData): void {
+    hubLogger.error('[AgentSessions] 服务未装配，四个事件一律被拒（组装 bug）')
+    for (const { event, reply } of UNAVAILABLE_REPLIES) {
+        // 四个事件的 ack 签名各不相同，表驱动跨过了事件联合类型——一次显式 cast，
+        // 与文件里逐 handler 的 `as XxxHandler` 同类
+        socket.on(event, ((_raw: unknown, cb?: (answer: UnavailableReply) => void) => cb?.(reply)) as never)
+    }
 }
 
 /**
- * listMachinesForAgent handler。
+ * 注册四个 B 类事件。
  *
  * 失败分支一律走 ack 的 ok:false + reason，不抛异常——emitWithAck 的 reject
  * 留给连接故障，两者语义不同（与 ui-command 同口径）。
  */
 export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: AgentSessionHandlersDeps): void {
-    const { resolveSessionAccess, listOnlineMachines, listSessions, createSession, sendMessageToSessions } = deps
+    const { resolveSessionAccess, agentSessions } = deps
+
+    // 服务在不在是装配期的事实（组装 bug），这里判一次就够——往下走各 handler 都是单一路径
+    if (!agentSessions) {
+        registerUnavailableAgentSessionHandlers(socket)
+        return
+    }
 
     socket.on('listMachinesForAgent', ((raw: unknown, cb: Parameters<ListMachinesForAgentHandler>[1]) => {
         const parsed = listMachinesPayloadSchema.safeParse(raw)
@@ -146,15 +187,7 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
             return
         }
 
-        // 装配守卫：缺装配属组装 bug，绝不能静默返回空清单——那会让 agent
-        // 以为"一台机器都没有"，与"服务没接上"混淆
-        if (!listOnlineMachines) {
-            hubLogger.error('[AgentSessions] listOnlineMachines 未装配，请求被拒')
-            cb?.({ ok: false, reason: 'handler-misconfigured' })
-            return
-        }
-
-        cb?.({ ok: true, machines: listOnlineMachines(access.value.namespace) })
+        cb?.({ ok: true, machines: agentSessions.listMachines(access.value.namespace) })
     }) as ListMachinesForAgentHandler)
 
     socket.on('listSessionsForAgent', ((raw: unknown, cb: Parameters<ListSessionsForAgentHandler>[1]) => {
@@ -170,16 +203,8 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
             return
         }
 
-        // 守卫同 listMachinesForAgent：空清单是"真的没有"，缺装配是"服务没接上"，
-        // 两者绝不能混为一谈
-        if (!listSessions) {
-            hubLogger.error('[AgentSessions] listSessions 未装配，请求被拒')
-            cb?.({ ok: false, reason: 'handler-misconfigured' })
-            return
-        }
-
         const { sid: _sid, ...query } = parsed.data
-        cb?.({ ok: true, sessions: listSessions(access.value.namespace, query) })
+        cb?.({ ok: true, sessions: agentSessions.listSessions(access.value.namespace, query) })
     }) as ListSessionsForAgentHandler)
 
     socket.on('createSessionForAgent', (async (raw: unknown, cb: Parameters<CreateSessionForAgentHandler>[1]) => {
@@ -195,14 +220,8 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
             return
         }
 
-        if (!createSession) {
-            hubLogger.error('[AgentSessions] createSession 未装配，请求被拒')
-            cb?.({ ok: false, error: SERVICE_UNAVAILABLE_ERROR })
-            return
-        }
-
         const { sid: _sid, ...input } = parsed.data
-        cb?.(await createSession(access.value.namespace, input))
+        cb?.(await agentSessions.createSession(access.value.namespace, input))
     }) as CreateSessionForAgentHandler)
 
     socket.on('sendMessageToSessionForAgent', (async (raw: unknown, cb: Parameters<SendMessageForAgentHandler>[1]) => {
@@ -218,15 +237,9 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
             return
         }
 
-        if (!sendMessageToSessions) {
-            hubLogger.error('[AgentSessions] sendMessageToSessions 未装配，请求被拒')
-            cb?.({ ok: false, reason: 'handler-misconfigured' })
-            return
-        }
-
         // 一次扇出等所有目标各自走完一轮 RPC，慢是正常的（每个目标一次往返，最多 30s 超时）。
         // 逐条结果由服务给出，顶层恒 ok——进了扇出就没有「整体失败」这回事
         const { sid, ...input } = parsed.data
-        cb?.({ ok: true, results: await sendMessageToSessions(access.value.namespace, sid, input) })
+        cb?.({ ok: true, results: await agentSessions.sendMessageToSessions(access.value.namespace, sid, input) })
     }) as SendMessageForAgentHandler)
 }

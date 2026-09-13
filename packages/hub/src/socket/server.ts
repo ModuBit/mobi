@@ -29,7 +29,7 @@ import { parseAccessToken } from '../utils/accessToken'
 import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
-import type { AgentCreateSessionInput, AgentSendMessageInput, AgentSessionQuery, AgentSessionService } from '../sync/agentSessionService'
+import type { AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotSync } from '../sync/snapshotSync'
@@ -187,8 +187,8 @@ export function createSocketServer(deps: SocketServerDeps): {
         next()
     })
     cliNs.on('connection', (socket) => {
-        // 惰性 getter 在 connection 时解包一次：SyncEngine 在 socket server 之后创建，此时必已就绪。
-        // 解包后每个操作只暴露一个方法，不把整个服务透下去（handler 摸不到无关能力）
+        // 惰性 getter 在 connection 时解包一次：SyncEngine 在 socket server 之后创建，此时必已就绪
+        // （listen 发生在 SyncEngine 构造之后）。整份能力对象往下交付，不在这里逐方法铺开
         const agentSessions = deps.agentSessions?.()
         registerCliHandlers(socket as CliSocketWithData, {
             io,
@@ -205,20 +205,9 @@ export function createSocketServer(deps: SocketServerDeps): {
             onWebappEvent: deps.onWebappEvent,    // Web端实时事件
             hasActiveSseConnection: deps.hasActiveSseConnection,
             publishUiCommand: deps.publishUiCommand,
-            // Agent 会话操作（B 类工具族），同一份服务的四个方法
-            listOnlineMachinesForAgent: agentSessions
-                ? (namespace: string) => agentSessions.listMachines(namespace)
-                : undefined,
-            listSessionsForAgent: agentSessions
-                ? (namespace: string, query: AgentSessionQuery) => agentSessions.listSessions(namespace, query)
-                : undefined,
-            createSessionForAgent: agentSessions
-                ? (namespace: string, input: AgentCreateSessionInput) => agentSessions.createSession(namespace, input)
-                : undefined,
-            sendMessageToSessionsForAgent: agentSessions
-                ? (namespace: string, fromSessionId: string, input: AgentSendMessageInput) =>
-                    agentSessions.sendMessageToSessions(namespace, fromSessionId, input)
-                : undefined
+            // Agent 会话操作（B 类工具族）：整份服务一次交付——不再逐方法包一层闭包
+            // （四个方法名此前在这条链上被改了三遍名、判了四遍空）
+            agentSessions
         })
     })
 

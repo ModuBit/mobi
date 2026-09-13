@@ -34,11 +34,11 @@ import { createSdkMcpServer, tool, type AnyZodRawShape, type SdkMcpToolDefinitio
 import { ApiSessionClient } from '@/api/apiSession'
 import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
 import type { MobiToolTextResult } from './toolResult'
-import { createOpenInMobiToolForSession } from './openInMobiTool'
-import { createListMachinesToolForSession } from './listMachinesTool'
-import { createListSessionsToolForSession } from './listSessionsTool'
-import { createCreateSessionToolForSession } from './createSessionTool'
-import { createSendMessageToolForSession } from './sendMessageTool'
+import { createOpenInMobiTool } from './openInMobiTool'
+import { createListMachinesTool } from './listMachinesTool'
+import { createListSessionsTool } from './listSessionsTool'
+import { createCreateSessionTool } from './createSessionTool'
+import { createSendMessageTool } from './sendMessageTool'
 
 /**
  * 工具体（工具工厂的返回值）→ SDK 的 tool 定义。
@@ -58,6 +58,24 @@ function toSdkTool<Shape extends AnyZodRawShape>(definition: {
     )
 }
 
+/**
+ * 把本 server 的工具族接上会话客户端——**这一族唯一的装配点**。
+ *
+ * 工具自己只认一个窄的 deps（`SendMessageToolDeps` 等），与「这些 deps 由谁填」解耦；
+ * 而「由谁填」此前是五个 `createXxxToolForSession(client)`，每个三行、只转发一个方法，
+ * 是五个同尺寸的浅模块——删掉后复杂度集中到这里一次，也顺带让本函数可以脱离 SDK 直接测
+ * （SDK 形状适配在 createMobiAppsServer，见下）。
+ */
+export function buildMobiAppsTools(client: ApiSessionClient) {
+    return [
+        createOpenInMobiTool({ sendUiCommand: (action) => client.sendUiCommand(action) }),
+        createListMachinesTool({ listMachines: () => client.listOnlineMachinesForAgent() }),
+        createListSessionsTool({ listSessions: (query) => client.listSessionsForAgent(query) }),
+        createCreateSessionTool({ createSession: (input) => client.createSessionForAgent(input) }),
+        createSendMessageTool({ sendMessage: (input) => client.sendMessageToSessionsForAgent(input) }),
+    ]
+}
+
 export function createMobiAppsServer(client: ApiSessionClient) {
     // 本 server 的工具都仅挂 remote 壳：local HTTP 壳（startMobiMcpServer / stdio bridge）不挂载
     return createSdkMcpServer({
@@ -67,12 +85,6 @@ export function createMobiAppsServer(client: ApiSessionClient) {
         // 一句话就够——检索与使用指导的责任在每个工具自己的 description 上，
         // 这里只回答"这个 server 是谁提供的"
         instructions: 'Tools provided by the Mobi app.',
-        tools: [
-            createOpenInMobiToolForSession(client),
-            createListMachinesToolForSession(client),
-            createListSessionsToolForSession(client),
-            createCreateSessionToolForSession(client),
-            createSendMessageToolForSession(client),
-        ].map(toSdkTool),
+        tools: buildMobiAppsTools(client).map(toSdkTool),
     })
 }

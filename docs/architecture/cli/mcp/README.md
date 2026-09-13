@@ -84,15 +84,16 @@ web 工具由 [`webtools/server.ts`](/packages/cli/src/webtools/server.ts) 提�
 
 ## 工具工厂
 
-每个工具一个文件，导出三样：
+每个工具一个文件，导出两样：
 
 ```typescript
 export const XXX_TOOL_NAME = 'xxx' as const        // 工具名常量（预授权与测试共用）
 export function createXxxTool(deps: XxxToolDeps)   // 工厂：依赖注入，便于单测
-export function createXxxToolForSession(client: ApiSessionClient)  // 便捷包装：注入会话 client
 ```
 
 工厂返回 `{ name, title, description, inputSchema, execute }`。**`description` 是给模型的使用说明**（何时用、何时别用、id 从哪来、要不要等回复），它不是文档——改行为先改它。
+
+「这些窄 deps 由谁填」只在一处回答：`mobiAppsServer.ts` 的 `buildMobiAppsTools(client)`（mobi-apps 一族唯一的装配点，纯函数、可脱离 SDK 直接测）。此前每个工具文件各导出一个 `createXxxToolForSession(client)`，三行、只转发一个方法——五个同尺寸的浅模块，删掉后复杂度集中到装配点一次。
 
 三个助手：
 
