@@ -31,7 +31,7 @@
 
 // turn 来源三态、跨会话来源 concept、以及「这条是不是 mobi 投的」判据，单源都在 shared
 // （与 web 的呈现判据、hub 的落库形状同一份）
-import { isMobiDelivered } from '@mobi/shared'
+import { isMobiDelivered, normalizeFromSessionId } from '@mobi/shared'
 import type { CrossSessionOrigin, TurnOrigin } from '@mobi/shared'
 
 export interface InboundPromptInput {
@@ -129,8 +129,10 @@ export function parseInboundCrossSession(input: InboundPromptInput): InboundCros
         origin: {
             // 缺属性或属性为空串 → 空串（与 meta 侧同一约定：空名字不等于没有来源）
             fromName: fromName ? fromName[1] : '',
-            // CC 原生信封没有这个属性（它是 mobi 加的），故原生 peer 消息恒为 null
-            fromSessionId: fromSessionId ? fromSessionId[1] : null
+            // CC 原生信封没有这个属性（它是 mobi 加的），故原生 peer 消息恒为 null。
+            // 归一走 shared 那条规则：`from-session-id=""` **不是身份**——放行它，
+            // isMobiDelivered 会读成「mobi 投递过」，这条真的 peer turn 就被丢掉
+            fromSessionId: normalizeFromSessionId(fromSessionId?.[1])
         }
     }
 }

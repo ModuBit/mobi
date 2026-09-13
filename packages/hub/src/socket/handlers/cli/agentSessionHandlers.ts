@@ -26,7 +26,7 @@
 
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
-import type { AgentOpFailureReason, ClientToServerEvents } from '@mobi/shared'
+import type { ClientToServerEvents } from '@mobi/shared'
 import { hubLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -119,18 +119,31 @@ export type AgentSessionHandlersDeps = {
     agentSessions?: AgentSessionOps
 }
 
-/**
- * 服务缺席时四个事件的 ack 形状：与上游失败共用 `error`/`reason` 两个字段（见各自 ack 注释）。
- * `reason` 收窄到协议里的失败原因枚举（`AgentOpFailureReason`），不写 `string`——表里那个
- * 字面量于是被编译器检查（拼错立刻报错），与各 handler 回 ack 的取值域也一致。
- */
-type UnavailableReply = { ok: false; reason: AgentOpFailureReason } | { ok: false; error: string }
-
 type AgentSessionEventName =
     | 'listMachinesForAgent'
     | 'listSessionsForAgent'
     | 'createSessionForAgent'
     | 'sendMessageToSessionForAgent'
+
+/** 某个事件 ack 的失败分支（形状从协议那侧取，不在这里再抄一份） */
+type AckFailureOf<E extends AgentSessionEventName> =
+    ClientToServerEvents[E] extends (data: never, cb: (answer: infer Ack) => void) => void
+        ? Extract<Ack, { ok: false }>
+        : never
+
+/**
+ * 表的一行：`event` 与 `reply` **配对**——回答的形状由事件决定。
+ *
+ * 行类型是 mapped type 出来的，所以配对写反了编译器就报错：`listMachinesForAgent` 的 ack
+ * 失败分支是 `{reason}`、`createSessionForAgent` 是 `{error}`（自由文本，见 socket.ts 的说明），
+ * 两者颠倒会让 CLI 的 ack 解析拿不到期望字段、agent 看到的失败原因是 undefined。
+ */
+type UnavailableReplyRow = {
+    [E in AgentSessionEventName]: { event: E; reply: AckFailureOf<E> }
+}[AgentSessionEventName]
+
+/** 服务缺席时回什么（四个失败分支的联合，每个的形状来自它自己那条 ack） */
+type UnavailableReply = UnavailableReplyRow['reply']
 
 /**
  * 服务缺席时四个事件各回什么——一个事实，一张表。
@@ -140,8 +153,13 @@ type AgentSessionEventName =
  *
  * 回执也必须写明「这是 mobi 的问题、别重试」（同 callerRejectedError 的理由）：
  * 笼统回 invalid arguments 会让 agent 反复改入参，去重试一个改不好的东西。
+ *
+ * ⚠️ **新增第五个 B 类事件时要记得在这里加一行**：不打算重开候选 #4 已定的形状（守卫搬出
+ * handler 收成一张表），代价就是「事件名清单」在这份文件里而不是跟着 handler 走——漏加一行
+ * 的症状是服务缺席时那个事件完全没有 handler，CLI 只等到 socket 超时（编译器拦不住，
+ * `AgentSessionEventName` 是手写的联合）。
  */
-const UNAVAILABLE_REPLIES: ReadonlyArray<{ event: AgentSessionEventName; reply: UnavailableReply }> = [
+const UNAVAILABLE_REPLIES: readonly UnavailableReplyRow[] = [
     { event: 'listMachinesForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
     { event: 'listSessionsForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
     { event: 'createSessionForAgent', reply: { ok: false, error: SERVICE_UNAVAILABLE_ERROR } },

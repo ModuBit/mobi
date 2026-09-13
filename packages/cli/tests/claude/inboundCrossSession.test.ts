@@ -25,6 +25,10 @@ const envelope = (fromName: string, body: string) =>
 const mobiEnvelope = (body: string) =>
     `<cross-session-message from-name="A" from-session-id="sess-a" message-id="m1">${body}</cross-session-message>`
 
+/** 带**空** from-session-id 的信封（手打/伪造；CC 与 mobi 都不会产出它） */
+const emptyIdEnvelope = (body: string) =>
+    `<cross-session-message from-name="A" from-session-id="" message-id="m1">${body}</cross-session-message>`
+
 describe('parseInboundCrossSession（信封 → 来源身份）', () => {
     it('信封 + source=system → 剥掉外壳文案，来源归一到 CrossSessionOrigin 的形状', () => {
         expect(parseInboundCrossSession({ prompt: envelope('mobi-ad', '晚上好'), source: 'system' }))
@@ -39,6 +43,13 @@ describe('parseInboundCrossSession（信封 → 来源身份）', () => {
     it('信封带 from-session-id（mobi 自发投递的信封）→ 一并提取出来', () => {
         expect(parseInboundCrossSession({ prompt: mobiEnvelope('hi'), source: 'system' }))
             .toEqual({ text: 'hi', origin: { fromName: 'A', fromSessionId: 'sess-a' } })
+    })
+
+    it('信封带**空**的 from-session-id → 归 null（空串带不了身份）', () => {
+        // 放行空串，isMobiDelivered 会读成「mobi 投递过」，这条真的 peer turn 就被观测路径
+        // 丢掉（既不落库也不上 Web）。规则收在 shared 的 normalizeFromSessionId
+        expect(parseInboundCrossSession({ prompt: emptyIdEnvelope('hi'), source: 'system' }))
+            .toEqual({ text: 'hi', origin: { fromName: 'A', fromSessionId: null } })
     })
 
     it('source 为已知非 system（自己的 stdin push / loop 等）→ 恒忽略', () => {
@@ -89,10 +100,16 @@ describe('classifyInboundTurn（入站 turn 甄别）', () => {
 
     it('null: mobi 自发投递的信封（带 from-session-id）→ 不重复落库', () => {
         // 投递路径自己落库，观测路径再记一次会在目标会话里留两行一模一样的消息
-        // （2026-09-12 E2E 实测两行相隔 15ms）。判据与 backfill 守卫、hub 的 skipCliEcho
-        // 是同一个（shared 的 isMobiDelivered）——信封读侧归一成与 meta 同一形状，故这句
-        // 与那一侧问的正是同一句话
+        // （2026-09-12 E2E 实测两行相隔 15ms）。判据与 backfill 守卫、hub 的 sendMessage
+        // 回灌判据是同一个（shared 的 isMobiDelivered）——信封读侧归一成与 meta 同一形状，
+        // 故这句与那一侧问的正是同一句话
         expect(classifyInboundTurn({ prompt: mobiEnvelope('hello'), source: 'system' })).toBeNull()
+    })
+
+    it('peer: 信封带空的 from-session-id（非规范取值）→ 仍按 peer 落库', () => {
+        // 只有「非空 id」才等于 mobi 投递过；空串按「没有 id」算，这条 turn 该照常落库
+        expect(classifyInboundTurn({ prompt: emptyIdEnvelope('hello'), source: 'system' }))
+            .toEqual({ kind: 'peer', text: 'hello', origin: { fromName: 'A', fromSessionId: null } })
     })
 
     it('null: source=user（交互）→ 不落库', () => {

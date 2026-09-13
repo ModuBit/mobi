@@ -21,6 +21,7 @@ import {
     isMobiDelivered,
     isMobiSentCrossSession,
     readTurnOrigin,
+    normalizeFromSessionId,
     toCrossSessionMeta,
     TURN_ORIGINS,
     CrossSessionMetaSchema,
@@ -126,6 +127,21 @@ describe('isMobiDelivered（一处判据，守三个出口）', () => {
     it('名字空串但有 id → 仍是 mobi 投递（未命名不影响身份）', () => {
         expect(isMobiDelivered({ fromName: '', fromSessionId: 'sess-a' })).toBe(true)
     })
+
+    it('id 是空串（非规范取值）→ false：与读取侧给出同一个答案', () => {
+        // 判 true 的话，观测路径会把一条真的 peer turn 当成「mobi 已落库」丢掉，
+        // 而落库行里并没有 id（2026-09-13 code-review 发现的是这类反例）
+        expect(isMobiDelivered({ fromName: 'x', fromSessionId: '' })).toBe(false)
+    })
+})
+
+describe('normalizeFromSessionId（「有没有来源 id」只能有一个答案）', () => {
+    it('非空字符串原样返回；空串 / 非字符串 → null', () => {
+        expect(normalizeFromSessionId('sess-a')).toBe('sess-a')
+        expect(normalizeFromSessionId('')).toBeNull()
+        expect(normalizeFromSessionId(undefined)).toBeNull()
+        expect(normalizeFromSessionId(42)).toBeNull()
+    })
 })
 
 describe('readTurnOrigin', () => {
@@ -169,6 +185,12 @@ describe('toCrossSessionMeta', () => {
         expect(CrossSessionMetaSchema.safeParse(meta).success).toBe(true)
         // 读回来仍是「一条入站 turn」（不是「没有来源」）：入站事实由键承载，不靠名字
         expect(hasCrossSessionOrigin(meta)).toBe(true)
+    })
+
+    it('id 是空串（非规范取值）→ 与「没有 id」同形：写侧不落一个读侧不认的键', () => {
+        const meta = toCrossSessionMeta({ fromName: 'x', fromSessionId: '' })
+        expect('fromSessionId' in meta).toBe(false)
+        expect(readCrossSessionOrigin(meta)).toEqual({ fromName: 'x', fromSessionId: null })
     })
 
     it('产出能被 CrossSessionMetaSchema 接受，也能被读取侧读回', () => {

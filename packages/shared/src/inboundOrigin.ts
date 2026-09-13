@@ -58,8 +58,27 @@ export interface CrossSessionOrigin {
      * 身份，故此处为 `null`。
      *
      * 这个字段同时就是「这条是 mobi 投递的」的判据（见 `isMobiSentCrossSession`）。
+     *
+     * **合法取值只有两种：非空 id、或 `null`**——空串不是身份（判据是「这个键带身份」，
+     * 空串带不了），构造点一律过 {@link normalizeFromSessionId}。混进一个空串会让
+     * `isMobiDelivered`（只看 `!== null`）与读取侧（归一成 `null`）给出相反答案：
+     * 观测路径据此把一条真的 peer turn 当成「mobi 已落库」丢掉，而落库行又写着「没有 id」。
      */
     fromSessionId: string | null
+}
+
+/**
+ * 来源 id 的归一：非字符串与**空串**都归 `null`。
+ *
+ * 「有没有来源会话」这件事只能有一个答案，而它在四个地方被问到（信封读侧构造、meta 读侧、
+ * meta 写侧、{@link isMobiDelivered} 判据），所以规则收在这里一处。此前信封读侧放行了
+ * `from-session-id=""` 这种取值，于是同一条消息在判据那里是「mobi 投递过」、在落库行里是
+ * 「没有 id」——`isMobiDelivered` 为真会让观测路径把这条 peer turn 静默丢掉（2026-09-13
+ * code-review 发现）。
+ */
+export function normalizeFromSessionId(value: unknown): string | null {
+    const id = asString(value)
+    return id !== null && id.length > 0 ? id : null
 }
 
 /** 入站 turn 来源：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒 */
@@ -103,8 +122,7 @@ export function readCrossSessionOrigin(meta: unknown): CrossSessionOrigin | null
 
     return {
         fromName: asString((crossSession as { from?: unknown }).from) ?? '',
-        // 空串等同「没有」：两条来源的判据是「这个键带身份」，空串带不了
-        fromSessionId: asString((meta as { fromSessionId?: unknown }).fromSessionId) || null
+        fromSessionId: normalizeFromSessionId((meta as { fromSessionId?: unknown }).fromSessionId)
     }
 }
 
@@ -125,7 +143,10 @@ export function hasCrossSessionOrigin(meta: unknown): boolean {
 }
 
 /**
- * 这条来源是不是 **mobi 自己投递**的（有会话 id 即 mobi 投递；CC 原生 peer 只有名字）。
+ * 这条来源是不是 **mobi 自己投递**的（有**非空**会话 id 即 mobi 投递；CC 原生 peer 只有名字）。
+ *
+ * id 过一遍 {@link normalizeFromSessionId} 再判：即便某个构造点漏了归一，本判据与读取侧
+ * （读 meta 的同一件事）也给出同一个答案——两侧答案相反的表现是「判据说投过了、落库行说没有」。
  *
  * **一处判据，三个出口**——它守的是一个不变量：mobi 自发投递的跨会话消息，在目标会话侧
  * 只能被记录一次、且**不得再进 SDK**（投递通道是 push-agent-message RPC，落库行只供 Web
@@ -141,7 +162,7 @@ export function hasCrossSessionOrigin(meta: unknown): boolean {
  * 「同一封信封落两行、相隔 15ms」。所以三处都调这里，不各写一遍。
  */
 export function isMobiDelivered(origin: CrossSessionOrigin | null): boolean {
-    return origin !== null && origin.fromSessionId !== null
+    return origin !== null && normalizeFromSessionId(origin.fromSessionId) !== null
 }
 
 /**
@@ -174,7 +195,7 @@ export function readTurnOrigin(meta: unknown): TurnOrigin | null {
  * 所以「没有来源」在调用点就是一个 null，不必伪造一个空身份字面量去凑签名。
  */
 export function toCrossSessionMeta(origin: CrossSessionOrigin | null): CrossSessionMeta {
-    const fromSessionId = origin?.fromSessionId ?? null
+    const fromSessionId = normalizeFromSessionId(origin?.fromSessionId)
     return {
         crossSession: { from: origin?.fromName ?? '' },
         ...(fromSessionId !== null ? { fromSessionId } : {})
