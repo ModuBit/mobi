@@ -712,3 +712,17 @@ interrupt（用户停止）
 3. **跨进程兼容**：老 CLI/runner 不认新码时怎么降级（今天候选 #3 的答案：降级到「原样透出上游那句」，不损坏）
 4. **谁消费码**：agent 的工具回执要的是**指令**（「别重试」「先 list_sessions」），人看的 UI 要的是文案，程序分支要的是码——三者是不是同一条错误对象上的三个投影？
 5. **传输故障那一档还剩一个洞**：`spawnSession` 里只有 runner 的 `Session webhook timeout for PID N`（`packages/cli/src/runner/run.ts:447`）还必须读文案——它是**跨进程散文**，判据现在收在适配器内的 `classifyTransportFailure`（rpcGateway）。彻底消灭它要给 `SpawnSessionResult` 的 error 支加结构化字段，**这是标准化的第二批样本**
+
+## 79. 会话在「等就绪」期间死掉时，等待者只能等满预算（2026-09-13，待做）
+
+**现象**：`SessionReceiveReadiness.clear()`（会话进程结束、hub 归档时把那条事实抹回「还没上报过」）**不叫醒等待者**——它只删掉自己映射里的条目，`waiters` 一个都不动。于是 `waitUntilCanReceive` 里的等待者会一直挂到超时：`create_session` 的 3s 预算（`RECEIVE_READY_BUDGET_MS`）照满算，可答案在会话退出那一刻就已经定了（这个会话再也不会就绪）。醒来后重读事实仍是 `undefined` → 返回 `timeout` → 映射成 `not-ready`，**结论是对的，只是慢**。
+
+**什么时候撞上**：新建的会话在 spawn 回执之后、输入通道接上之前就死掉（启动失败 / 崩溃）。`clear()` 有两个触发点（session-end、hub 归档），都落在等待窗口内。
+
+**这条今天只是慢，候选 #6 之后更显眼**：写端此前每轮收尾无条件报 `false`，于是「query 都没起来就收尾」的会话能靠那条 `false` 让等待**立刻**得到 `unavailable`（确定否定）。候选 #6 把写端改成「只在真的接通过之后才报 `false`」——这是为了不谎报「它曾经连上过」（见 `unreachableDeliveryMessage` 两分支）——那条捷径也没了，同一场景现在要等满预算。**ack 值不变**（`unavailable` 与 `timeout` 都映射成 `not-ready`），差的只是延迟。
+
+**修法**：给 `clear()` 补上与 `set()` 同款的叫醒（先摘名单，再逐个 wake）。两个细节不能省：
+
+1. **醒来后仍返回 `timeout`，不能返回 `unavailable`**——「抹掉」的语义是「没有定论」，而 `unavailable` 是确定的否定。会话确实退了这件事由别处说（session-end / 归档本身）。
+2. **先摘再叫**，与 `set()` 同款：叫醒是同步调用，摘干净才不会有人被叫两次。
+

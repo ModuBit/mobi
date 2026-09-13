@@ -597,6 +597,9 @@ function translatePushFailure(failure: RpcFailureKind, message: string, canRecei
  *   而它只是还没开门。
  * - **上报过** → 它连上过、也说到过话，现在连 RPC 都送不到，那是连接没了。
  *   别让人干等：先 list_sessions 确认它还在不在。
+ *   （「上报过」= 曾经上报过这个事实由写端保证：CLI 只在真的接通过之后才报 false，
+ *   见 `cli/src/claude/utils/inboundChannel.ts`。缺了这条，query 都没起来就收尾的一轮
+ *   会让这里说出「它曾经连上过」——那句写端无从知道。）
  *
  * 原先那句话说「进程没了**或**客户端没连上」，把这两种糅在一起，而且**没让 agent 重试**
  * ——可其中一种是「还没连上」，重试就有用。

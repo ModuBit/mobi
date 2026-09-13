@@ -871,6 +871,10 @@ export class ApiSessionClient extends EventEmitter {
      *
      * 它是**此刻**的事实，不是稳定属性：sink 在每轮收尾被清空、下一轮再接上，所以这个值
      * 会反复翻转（见 Hub 侧 SessionReceiveReadiness 的说明）。
+     *
+     * 这里是唯一的出口，但**写端不在这里**：谁在什么时候翻，由
+     * [`claude/utils/inboundChannel.ts`](claude/utils/inboundChannel.ts) 的 InboundChannel 决定
+     * （sink 生死与上报必须同步，两者分开在两个文件里就是靠人记着配对）。
      */
     reportReceiveReadiness(canReceive: boolean): void {
         this.socket.emit('receive-readiness', {

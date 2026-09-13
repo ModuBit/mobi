@@ -57,7 +57,7 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为六组：
 | `goal-status` | CLI → Hub | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
 | `run-started` | CLI → Hub | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
 | `cache-status` | CLI → Hub | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
-| `receive-readiness` | CLI → Hub | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / 轮次收尾断开 `false`）。**不落库、不广播**——只在 Hub 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
+| `receive-readiness` | CLI → Hub | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / **接通过之后**收尾断开 `false`；从未接通的一轮不上报，因为 `false` 在 Hub 侧读作「它曾经连上过、连接没了」）。**不落库、不广播**——只在 Hub 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
 | `update-metadata` | CLI ⇄ Hub | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ Hub | 更新 Agent 状态（requests 等），带乐观锁 |
 | `idle-timeout-warning` | CLI → Hub | 空闲超时预警，广播到 Web 端 |

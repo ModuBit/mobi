@@ -34,6 +34,7 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { applyContextReset } from "./utils/contextReset";
 import { applySessionIdBinding } from "./utils/sessionIdBinding";
 import { CompactStartGate } from "./utils/compactLifecycle";
+import { InboundChannel } from "./utils/inboundChannel";
 import { ContextUsageTracker } from "./contextUsageTracker";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -110,9 +111,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 消息 payload push 进 SDK input stream
     // （payload 可为数组 content block——队列消息可能是带图片的 PromptPayload）
     private steerSink: ((payload: PromptPayload, localId?: string) => boolean) | null = null;
-    // 跨会话消息 sink：同由 claudeRemote 启动循环时注入、轮末清空。
-    // 与 steerSink 分开而不是复用：这条不经投递队列，入参没有 localId（不绑定 native_id）
-    private agentMessageSink: ((payload: PromptPayload) => boolean) | null = null;
+    // 跨会话消息 sink + 对 Hub 的「此刻能收消息」上报：两者必须同步翻转，收进
+    // InboundChannel 一处声明（与 steerSink 分开而不是复用：这条不经投递队列，
+    // 入参没有 localId——不绑定 native_id；接通时机也更早，见 claudeRemote 的说明）
+    private readonly inbound = new InboundChannel(
+        (canReceive) => this.session.client.reportReceiveReadiness(canReceive)
+    )
     // 上次真实 turn 的窗口/成本/瞬时 usage 记忆、代际守卫、窗口口径——全部内藏在 tracker，
     // launcher 只在 SDK 事件点转发（深化候选①，见 contextUsageTracker.ts 与其编排测试）
     private readonly contextTracker = new ContextUsageTracker({
@@ -479,10 +483,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 那条从**本会话自己的投递队列**里 steal 一条排队消息；这条**完全不碰队列**——
         // 消息由别的会话投来，本会话从没排过队。三步（插信封 → 既有的 blocks→payload
         // 转换 → 直推 SDK input stream）与载荷校验全在 agentMessagePushHandler 里；
-        // 这里只做接线：把「当前这一轮的 sink」惰性给它。
+        // 这里只做接线：把「本轮入站通道」惰性给它（每轮现取，不缓存 current() 的结果）
         session.client.rpcHandlerManager.registerHandler(
             'push-agent-message',
-            createAgentMessagePushHandler(() => this.agentMessageSink),
+            createAgentMessagePushHandler(() => this.inbound.current()),
         );
 
         const permissionHandler = new PermissionHandler(session, {
@@ -1040,12 +1044,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
-                        // 跨会话消息 sink 与 steer sink 同生命周期：本轮的 input stream 关了就置空
-                        onAgentMessageSinkReady: (push) => {
-                            this.agentMessageSink = push
-                            // 本会话从此能收消息了。Hub 拿它等「建完即可用」（见 SessionReceiveReadiness）
-                            session.client.reportReceiveReadiness(true)
-                        },
+                        // 跨会话消息 sink 与 steer sink 同生命周期：本轮的 input stream 关了就置空。
+                        // 「能收消息」的上报与 sink 同进同出——装上去的同一刻报 true（Hub 拿它等
+                        // 「建完即可用」，见 SessionReceiveReadiness）
+                        onAgentMessageSinkReady: (push) => { this.inbound.ready(push) },
                         // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
                         // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返。
                         // 同时是 turn 追踪的 push 接线点（批次 A）：更新策略收口在
@@ -1129,10 +1131,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 清空 steer sink：旧 SDK input stream 已 end，避免下一轮 claudeRemote 注入新 sink 前
                     // 命中 stale sink 导致 steer push 抛错（虽已 try/catch 回填，但清空让未就绪态更明确）
                     this.steerSink = null;
-                    this.agentMessageSink = null;
-                    // 本轮输入通道已关，本会话此刻收不下消息了。**这不是「会话退了」**——
+                    // 本轮入站通道已关，本会话此刻收不下消息了。**这不是「会话退了」**——
                     // 下一轮起来会再报 true；Hub 侧据此把「还没接上」与「已经退出」分开说
-                    session.client.reportReceiveReadiness(false)
+                    this.inbound.down();
                     // 轮级状态复位：后台任务集合按「进程重启即清空」语义随轮清空（sdk.d.ts level 信号
                     // 为 per-process）；待注入停止信息与暂存批次标记不跨轮残留
                     this.backgroundTaskIds = new Set<string>();

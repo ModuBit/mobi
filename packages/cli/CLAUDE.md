@@ -22,6 +22,7 @@
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
 | `src/claude/utils/queryRestart.ts` | Remote Query 重启单槽：统一 rewind / output style 的占位、队列哨兵配对与完成语义 |
 | `src/claude/utils/cacheStatus.ts` | SessionStart 缓存信号组装（`buildCacheStatusFromSessionStart` 两模式共用；resume/fork 且过期才产出，[cache-probe] 探针日志） |
+| `src/claude/utils/inboundChannel.ts` | 入站通道写端：本轮 sink 的生死与「能收消息」上报同进同出（`reportReceiveReadiness` 的唯一调用方；Hub 侧消费见 [api-session](/docs/architecture/cli/api/api-session.md)） |
 | `src/mcp/changeTitleTool.ts` | change_title 核心工具工厂（transport 无关；local HTTP / remote SDK 进程内，见 ADR 0001） |
 | `src/mcp/changeTitleShape.ts` | change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）：三种壳（SDK / HTTP / stdio bridge）共用，bridge 不 import 整条实现 |
 | `src/mcp/mobiAppsServer.ts` | `mobi-apps` 工具族装配（A 类 UI 命令 + B 类会话操作；仅 remote，B 类依赖 Hub，见 ADR 0005）；注册表兼作预授权清单的单源 |

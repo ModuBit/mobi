@@ -181,7 +181,12 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 
 ### 接收就绪上报
 
-`reportReceiveReadiness(canReceive)` 通过 `socket.emit('receive-readiness', { sid, canReceive })` 上报**本会话此刻能不能收消息**。翻转点两处，都在 `claudeRemoteLauncher`：sink 接通（`onAgentMessageSinkReady`，即 query attach 那一刻）报 `true`，轮次收尾清空 sink 时报 `false`——**状态翻转才报**，不是定期汇报。
+`reportReceiveReadiness(canReceive)` 通过 `socket.emit('receive-readiness', { sid, canReceive })` 上报**本会话此刻能不能收消息**。它是唯一的 socket 出口，但**写端不在这里**——谁在什么时候翻，由 [`claude/utils/inboundChannel.ts`](/packages/cli/src/claude/utils/inboundChannel.ts) 的 `InboundChannel` 决定，因为「sink 装上去」与「上报能收」必须同进同出，而它们的两处触发点（`onAgentMessageSinkReady` 接通 / launch `finally` 断开）在 launcher 里相隔 87 行。
+
+翻转规则两条：
+
+- **翻转才报**：同一状态重复置位不重复 emit（轮次之间是 `true` / `false` 交替）。
+- **从没接通过的一轮不报 `false`**：query 都没起来就进 `finally` 的那种轮次，真相是「还没有过上报」，不是「连接没了」。Hub 把 `false` 读作「它连上过、现在连接没了」（`unreachableDeliveryMessage` 的两个分支就按这个值分），多报一个 `false` 会让 Hub 说出一句写端无从知道的话。
 
 它是**「此刻」的事实，不是稳定属性**：sink 每轮收尾被清空、下一轮再接上，同一个会话会反复翻转。所以 Hub 侧**不落库、不广播**，只在进程内喂 `SessionReceiveReadiness`（一个 keyed by sessionId 的内存 latch + 「等它就绪」原语），用途只有两个：
 
