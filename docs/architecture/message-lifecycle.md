@@ -58,8 +58,8 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 - `content.type`：`output`（CLI 上报 SDK 消息）；webapp 用户输入的 content 是**block 数组**（AG-UI 对齐的 `UserContentBlock[]`，text/image/document/quote 四型，见 shared `userContentSchema.ts`）或兼容旧格式的 `text`
 - **`data` 是 SDK 原始消息的不透明透传**（`type`/`subtype`/`message.usage` 原样保留）——从 DB 取 SDK 字段直接下钻 `data.xxx`，无 mobi 改写（见 pending #56「投影税」）
 - 用户消息**写入侧统一归一**：hub `sendMessage` 经 shared `normalizeUserContent` 把 string / 旧平铺 `{type:'text',text,attachments}` / 新格式三形态归一为 block 数组落库；读取侧 web 端由同一函数归一（存量零迁移）
-- **入站跨会话消息**（2026-08-28；2026-09-01 批次 D 扩展 source 细分）：CLI 经 SDK UserPromptSubmit hook 观测的入站 turn（`claude/utils/inboundCrossSession.ts` 的 `classifyInboundTurn` 按 hook `source`+信封甄别 `peer`/`scheduled`/`loop`），经 `sendInboundCrossSessionMessage` 落库为 `role=user` + `meta.sentFrom='cli'`（永不排队）+ `meta.crossSession = { from: 来源会话名 }`（发送方未命名时 `from` 为空串，**键恒在**——键缺失会让 Web 的 compact 判定把降级消息误渲染成 compact-summary）+ `meta.turnOrigin`（`peer`/`scheduled`/`loop`）；web 按 turnOrigin 渲染「📨 来自 xxx」/「⏰ 定时任务」/「🔁 /loop」标签。CC 行为坑：turn 卡权限审批窗口内入站的消息会被 CC 丢弃（queued_command remove），hook 不触发
-- **mobi 自发投递的跨会话消息**（`send_message_to_session`，2026-09-12）：走 **Hub RPC 直推**（`push-agent-message`），**不经 hook 观测**。落库同样是 `role=user` + `meta.sentFrom='cli'`（永不排队）+ `meta.crossSession.from`（发件方会话名），另带 **`meta.fromSessionId`**；**不写 `meta.turnOrigin`**（保持「仅 hook 观测携带」的原义）。信封只进推给 CC 的那份，落库不含（同前一条）
+- **入站跨会话消息**（2026-08-28；2026-09-01 批次 D 扩展 source 细分）：CLI 经 SDK UserPromptSubmit hook 观测的入站 turn（`claude/utils/inboundCrossSession.ts` 的 `classifyInboundTurn` 按 hook `source`+信封甄别 `peer`/`scheduled`/`loop`），经 `sendInboundCrossSessionMessage` 落库为 `role=user` + `meta.sentFrom='cli'`（存量形状；**不排队由下面的 crossSession 标注决定**）+ `meta.crossSession = { from: 来源会话名 }`（发送方未命名时 `from` 为空串，**键恒在**——键缺失会让 Web 的 compact 判定把降级消息误渲染成 compact-summary）+ `meta.turnOrigin`（`peer`/`scheduled`/`loop`）；web 按 turnOrigin 渲染「📨 来自 xxx」/「⏰ 定时任务」/「🔁 /loop」标签。CC 行为坑：turn 卡权限审批窗口内入站的消息会被 CC 丢弃（queued_command remove），hook 不触发
+- **mobi 自发投递的跨会话消息**（`send_message_to_session`，2026-09-12）：走 **Hub RPC 直推**（`push-agent-message`），**不经 hook 观测**。落库同样是 `role=user` + `meta.sentFrom='cli'`（存量形状；**不排队由 crossSession 标注决定**，见「不变量与单一决策点」）+ `meta.crossSession.from`（发件方会话名），另带 **`meta.fromSessionId`**；**不写 `meta.turnOrigin`**（保持「仅 hook 观测携带」的原义）。信封只进推给 CC 的那份，落库不含（同前一条）
   - 两条路径靠 **`fromSessionId` 的存在性**区分：有 id → mobi 自发；有 from-name 无 id → CC 原生 peer；都没有 → 人
   - 两条路径的 meta 形状由 **shared 的 `CrossSessionOrigin`/`toCrossSessionMeta` 单点产出**（`packages/shared/src/inboundOrigin.ts`，2026-09-13 架构评审候选 #1）：此前该身份在 RPC 载荷、信封、落库 meta、Web 四处各描述一遍、且 id 的摆位互不相同
   - 观测路径**跳过带 `from-session-id` 的信封**（`classifyInboundTurn` 返回 null）：否则同一封信封会落两行（投递路径一行 + 观测路径一行）
@@ -408,8 +408,9 @@ CLI `handleAbortRequest(stopKind)` 是分派中心（`claudeRemoteLauncher.ts`�
 
 ### 不变量与单一决策点
 
-- **写入决策只在 Hub `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli'`）决定 `lifecycle='queued'`。
-  - 只有 CLI 来源一定不排队（CLI 消息是 Claude Code 输出流回显，已在对话里）；webapp 及未来端默认排队。
+- **写入决策只在 Hub `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli' && 不带跨会话标注`）决定 `lifecycle='queued'`。
+  - 两条不排队的理由，说的是同一件事（「不是待消费的用户提交」）：**CLI 来源**（Claude Code 输出流回显，已在对话里）；**带跨会话标注的入站 turn**（agent 投递的跨会话消息、CC 原生 peer、scheduled / loop 唤醒——落库时都已进过 SDK）。webapp 及未来端默认排队。
+  - 判据②读的是 **meta.crossSession 键在不在**（`readCrossSessionOrigin`），不是某个 `sentFrom` 取值：这两个写入方原先都靠把 `sentFrom` 写成 `'cli'` 借「不排队」这个副作用，改一个字符串就会让这三类入站消息静默进队列。**别用 `isMobiDelivered`**（它要求 `fromSessionId` 非空，会漏掉 peer 与 scheduled/loop）。
 - **读取只看显式状态**：Web `isQueuedInMobi` = `lifecycle==='queued'`，不再反推来源或时间戳。
 
 ### 完整流程
@@ -435,7 +436,7 @@ flowchart LR
 
 | 环节 | 位置 | 行为 |
 |------|------|------|
-| **入库决策** | Hub `addMessage` + shared `isQueueableUserSubmission` | denylist：非 CLI 的 user+localId → `lifecycle='queued'`；其余 → `NULL` |
+| **入库决策** | Hub `addMessage` + shared `isQueueableUserSubmission` | denylist：非 CLI 来源、且不带跨会话标注的 user+localId → `lifecycle='queued'`；其余 → `NULL` |
 | **Gated Pump（C-2）** | CLI `userInputLoop` | agent 运行时不 pull，等 result 才拉取，消息始终停留在 MessageQueue |
 | **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts`） | → Hub `messages-facts` handler → `processSubmitted` → `markMessagesPushed`（queued→pushed，first-write-wins）→ SSE `messages-submitted` |
 | **回显确认（acked）** | CLI `onMessage` 检测 isReplay 回显 → `emitMessagesAcked`（`emitFacts`） | → Hub `processAcked`：按 nativeId 双写——先 `advanceMessagesAcked` 推进 `lifecycle='acked'` 再写 `metadata.nativeAckAt`（rewind 判据不动，共一时间戳消除分叉），推进行逐行广播 |

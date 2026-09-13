@@ -103,7 +103,7 @@ namespace 由 Hub 从鉴权过的 `sid` 解析，CLI 不填也不可信；四个
 | `listMachinesForAgent` | CLI → Hub | 列可派活的**在线**机器（离线机器不出现，列出来只会让 agent 选中注定失败的目标） |
 | `listSessionsForAgent` | CLI → Hub | 列可派活的会话（keyword / status / limit / projectId 过滤；默认 `ACTIVE`、上限 50） |
 | `createSessionForAgent` | CLI → Hub | 在某台机器上起新会话进程。默认 `waitForReady`：返回前**保证新会话能收消息**（服务端固定 3s 预算），ack 带 `readiness: 'ready' \| 'not-ready' \| 'not-checked'`；等不到仍算成功（会话确实建好了）。失败文案由 Hub 译成人话 |
-| `sendMessageToSessionForAgent` | CLI → Hub | 把一条消息投给若干会话。**不经投递队列**（`sentFrom:'cli'` ⇒ `lifecycle=null`）、不可取消/编辑；逐目标独立返回 `{sessionId, ok, error?}`，失败文案里「还没连上」与「连接没了」靠 `receive-readiness` 的事实分开说 |
+| `sendMessageToSessionForAgent` | CLI → Hub | 把一条消息投给若干会话。**不经投递队列**（落库时带跨会话标注 ⇒ `lifecycle=null`）、不可取消/编辑；逐目标独立返回 `{sessionId, ok, error?}`，失败文案里「还没连上」与「连接没了」靠 `receive-readiness` 的事实分开说 |
 
 各事件的详细处理流程见 [事件处理器架构](./handlers.md)。
 

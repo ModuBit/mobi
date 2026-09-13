@@ -104,6 +104,8 @@ flowchart TB
 }
 ```
 
+入参带 `origin` 时 meta 上会多出跨会话标注（`crossSession` / `fromSessionId`，形状由 shared `inboundOrigin.ts` 单点产出）。**标注本身决定这条消息不进投递队列**（`lifecycle=null`，判据见 shared `isQueueableUserSubmission` 判据②）——`sentFrom` 写什么值都不改变这个结论，它只是存量行形状。
+
 ## 分页查询
 
 ### getMessagesPage

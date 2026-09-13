@@ -139,10 +139,12 @@ export class SyncEngine {
             storeAgentMessage: (sessionId, delivery) => this.messageService.sendMessage(sessionId, {
                 content: delivery.blocks,
                 localId: delivery.messageId,
-                // sentFrom 必须是既有的 'cli'：它是「不入队」的现成判据（isQueueableUserSubmission
-                // 的 denylist 只放行 'cli'），新造任何取值都会让消息进投递队列
+                // sentFrom 只写存量形状：跨会话行一直是 'cli'，而它**不承担语义**——
+                // 「不进投递队列」现在由下面那行带下去的跨会话标注决定（判据见
+                // shared 的 isQueueableUserSubmission 判据②，改这个取值弄不坏它）
                 sentFrom: 'cli',
-                // 来源身份交给 concept 去摊成 meta 形状（哪个键放 name、哪个放 id 不再在此决定）
+                // 来源身份交给 concept 去摊成 meta 形状（哪个键放 name、哪个放 id 不再在此决定）；
+                // 它同时就是「这条不是待消费的用户提交」的判据点
                 origin: { fromName: delivery.fromName, fromSessionId: delivery.fromSessionId },
                 // 投递已经发生，别再回灌 CLI 房间（否则目标 CLI 会照着这行二次入队）
                 skipCliEcho: true,

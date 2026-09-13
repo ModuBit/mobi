@@ -38,7 +38,7 @@ describe('getSentFrom / isCliOrigin', () => {
 })
 
 describe('isQueueableUserSubmission', () => {
-    // 语义：只有 CLI 一定不排队（CLI 消息是 Claude Code 输出流回显）；
+    // 语义（denylist）：CLI 来源（输出流回显）与带跨会话标注的入站 turn 都不排队；
     // 其余端（webapp 及未来端）默认排队。
     it('webapp 来源的 user 消息 + localId → 可排队', () => {
         expect(isQueueableUserSubmission(
@@ -81,5 +81,62 @@ describe('isQueueableUserSubmission', () => {
             { role: 'agent', content: {}, meta: { sentFrom: 'cli' } },
             'loc-1',
         )).toBe(false)
+    })
+
+    /**
+     * 判据②「带跨会话标注的入站 turn」：三类入站形状都带 crossSession 键、都有 localId、
+     * role 都是 user——**只有来源标注把它们挡在排队轨道外**。
+     *
+     * 三条形状必须分开写，因为它们各自是判据选错的哨兵：CC 原生 peer 与 scheduled/loop
+     * 都**没有 fromSessionId**，拿 `isMobiDelivered` 当判据就会漏掉这两类（它们会真的进队列）。
+     */
+    describe('入站 turn（带跨会话标注）→ 不排队', () => {
+        it('mobi 自发投递（crossSession.from + fromSessionId）', () => {
+            expect(isQueueableUserSubmission(
+                {
+                    role: 'user',
+                    content: { type: 'text', text: 'hi from A' },
+                    meta: { sentFrom: 'cli', crossSession: { from: '会话 A' }, fromSessionId: 'sess-a' },
+                },
+                'loc-1',
+            )).toBe(false)
+        })
+
+        it('CC 原生 peer（有名字、无 fromSessionId）', () => {
+            expect(isQueueableUserSubmission(
+                {
+                    role: 'user',
+                    content: { type: 'text', text: 'hi from peer' },
+                    meta: { sentFrom: 'cli', crossSession: { from: '某个 peer' }, turnOrigin: 'peer' },
+                },
+                'sdk-uuid',
+            )).toBe(false)
+        })
+
+        it('scheduled / loop 唤醒（crossSession.from 为空串、无 fromSessionId）', () => {
+            expect(isQueueableUserSubmission(
+                {
+                    role: 'user',
+                    content: { type: 'text', text: '定时任务' },
+                    meta: { sentFrom: 'cli', crossSession: { from: '' }, turnOrigin: 'scheduled' },
+                },
+                'sdk-uuid-2',
+            )).toBe(false)
+        })
+
+        /**
+         * 本判据读的是**结构**：写入方以后不再把 sentFrom 写成 'cli' 也不该进队列
+         * （此前不变量挂在一个与事实不符的取值上，改一个字符串就静默进队）。
+         */
+        it('不借 sentFrom 取值：没有 CLI 来源标记也照样不排队', () => {
+            expect(isQueueableUserSubmission(
+                {
+                    role: 'user',
+                    content: { type: 'text', text: 'hi' },
+                    meta: { crossSession: { from: '会话 A' }, fromSessionId: 'sess-a' },
+                },
+                'loc-1',
+            )).toBe(false)
+        })
     })
 })

@@ -15,6 +15,7 @@
  */
 
 import { isObject } from './utils'
+import { readCrossSessionOrigin } from './inboundOrigin'
 
 type RoleWrappedRecord = {
     role: string
@@ -264,11 +265,15 @@ export type MessageFact =
     | { kind: 'lifecycle'; nativeId: string; state: CommandLifecycleState; terminalReason?: string; at?: number }
     | { kind: 'withdrawn'; nativeId: string; at?: number }
 
+/** 从消息 content 信封取 meta（读取侧一律宽松：不是对象就当没有） */
+function getMeta(content: unknown): unknown {
+    return isObject(content) ? (content as { meta?: unknown }).meta : undefined
+}
+
 /** 从消息 content 信封读取 sentFrom 来源标识 */
 export function getSentFrom(content: unknown): SentFrom | null {
-    if (!isObject(content)) return null
-    const meta = (content as { meta?: { sentFrom?: unknown } }).meta
-    const sf = meta?.sentFrom
+    const meta = getMeta(content)
+    const sf = isObject(meta) ? (meta as { sentFrom?: unknown }).sentFrom : undefined
     return typeof sf === 'string' ? sf as SentFrom : null
 }
 
@@ -285,9 +290,25 @@ export function isCliOrigin(content: unknown): boolean {
 /**
  * 是否为「可进入排队轨道的用户提交消息」。
  *
- * 语义（denylist）：**只有 CLI 来源一定不排队**——CLI 消息是 Claude Code 输出流的
- * 回显（local-command-stdout、compact continuation summary 等），已在对话里，不是
- * 待消费的用户输入。其余所有来源（webapp 及未来端）默认排队。
+ * 语义（denylist）：两条不排队的理由，说的是同一件事——「这条不是待消费的用户提交」：
+ *
+ * ① **CLI 来源**：Claude Code 输出流的回显（local-command-stdout、compact continuation
+ *    summary、CLI 自己转记的用户文本等），已在对话里。
+ * ② **带跨会话标注的入站 turn**：agent 投递的跨会话消息、CC 原生 peer 消息、scheduled /
+ *    loop 唤醒。这三类落库那一刻**都已经进过 SDK**（投递走 push-agent-message RPC；
+ *    其余由 UserPromptSubmit hook 观测到一条已提交的 prompt），不是「排队等 CLI 来取」的提交。
+ *
+ * 其余所有来源（webapp 及未来端）默认排队。
+ *
+ * **判据②读的是结构，不是某个取值**（2026-09-13）：两个写入方（hub 的 `sendMessage` 带
+ * origin、CLI 的 `sendInboundCrossSessionMessage`）此前都靠把 `sentFrom` 写成 `'cli'` 来借
+ * 「不排队」这个副作用——不变量于是挂在一个与事实不符的取值上，谁改一个字符串，这三类入站
+ * 消息就静默进队列（Web 上多一条永不会被消费的悬浮消息）。现在读来源标注本身
+ * （见 `inboundOrigin.ts`），写什么 `sentFrom` 都弄不坏它。
+ *
+ * ⚠️ 判据必须用 `readCrossSessionOrigin`（问「crossSession 键在不在」），**不能**用
+ * `isMobiDelivered`（那条要求 fromSessionId 非空）：CC 原生 peer 与 scheduled / loop 都没有
+ * fromSessionId，而它们有 localId、role 也是 user——漏掉就是真的进队列。
  *
  * 这是「排队」的**唯一写入决策点**：Hub `addMessage` 据此决定 lifecycle。
  * Web 端只读 lifecycle，不再反推来源。
@@ -296,5 +317,6 @@ export function isQueueableUserSubmission(content: unknown, localId: string | nu
     if (!localId) return false
     if (!isRoleWrappedRecord(content)) return false
     if (content.role !== 'user') return false
-    return !isCliOrigin(content)
+    if (isCliOrigin(content)) return false
+    return readCrossSessionOrigin(getMeta(content)) === null
 }

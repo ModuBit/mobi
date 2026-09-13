@@ -561,7 +561,8 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 落库入站 turn（UserPromptSubmit hook 观测到的 peer / scheduled / loop）。
      * 该消息未经 hub 发送通道，此处是它唯一的持久化入口；
-     * sentFrom 保留 'cli'（永不排队），来源标注放 meta.crossSession。
+     * sentFrom 保留 'cli' 是存量行形状（这条是 CLI 转记的不假），**不入队由下面的
+     * crossSession 标注决定**——见 shared 的 isQueueableUserSubmission 判据②。
      *
      * `origin` 就是信封读侧归一出来的来源身份（与原消息同一 concept）；scheduled / loop
      * 不是别的会话发来的，传 null——**来源身份照样写**（crossSession 键恒在，名字空串），
