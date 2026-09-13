@@ -113,20 +113,34 @@ export function readCrossSessionOrigin(meta: unknown): CrossSessionOrigin | null
 }
 
 /**
- * 这条消息是不是 **mobi 自发投递**的跨会话消息。
+ * 这条来源是不是 **mobi 自己投递**的（有会话 id 即 mobi 投递；CC 原生 peer 只有名字）。
  *
- * 收的是外层 message 的 content 而不是 meta，因为唯一调用点守的就是**落库行**
- * （`cli/api/apiSession.ts` 的 backfill 去重）——那里手上正是 content。语义上它读的仍是
- * 同一个来源标注，只是替调用方把 meta 取出来。
+ * **一处判据，三个出口**——它守的是一个不变量：mobi 自发投递的跨会话消息，在目标会话侧
+ * 只能被记录一次、且**不得再进 SDK**（投递通道是 push-agent-message RPC，落库行只供 Web
+ * 展示与历史回放）。三个出口各是一种机制，但问的是同一个问题：
  *
- * **消费方必须跳过这类消息的「落库行 → SDK」方向**：mobi 自发消息的投递通道是
- * push-agent-message RPC，落库行只供 Web 展示与历史回放。重连后的 backfill 会读到这一行，
- * 不跳过就会被第二次推进 SDK（`handleIncomingMessage` 只看内容形状，不看 meta）。
+ * ① **落库行 → SDK 的重连回灌**（`cli/api/apiSession.ts` 的 backfill 守卫）
+ * ② **Hub 的 CLI 房间回灌**（`hub/sync/messageService.ts` 的 `skipCliEcho`——那一侧连 emit
+ *    都省掉，机制不同但理由同一句）
+ * ③ **信封被 CC 的 hook 观测回来时的重复落库**（`cli/claude/utils/inboundCrossSession.ts`——
+ *    观测路径读的是**信封**不是 meta，此处由信封读侧归一成同一个 origin 后复用本判据）
+ *
+ * 三者必须给出同一结论：任一处改了判据而另两处没跟上，就会重现 2026-09-12 实测到的
+ * 「同一封信封落两行、相隔 15ms」。所以三处都调这里，不各写一遍。
+ */
+export function isMobiDelivered(origin: CrossSessionOrigin | null): boolean {
+    return origin !== null && origin.fromSessionId !== null
+}
+
+/**
+ * `isMobiDelivered` 的 content 形态：收外层 message 的 content 而不是 origin。
+ *
+ * 唯一调用点守的是**落库行**（`cli/api/apiSession.ts` 的 backfill 去重），那里手上正是
+ * content，故替调用方把 meta 取出来。语义与 `isMobiDelivered` 同一个。
  */
 export function isMobiSentCrossSession(content: unknown): boolean {
     const meta = isObject(content) ? (content as { meta?: unknown }).meta : undefined
-    const origin = readCrossSessionOrigin(meta)
-    return origin !== null && origin.fromSessionId !== null
+    return isMobiDelivered(readCrossSessionOrigin(meta))
 }
 
 /**

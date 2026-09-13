@@ -29,8 +29,10 @@
  * - source 缺省 + 信封存在 → 按跨会话处理（灰度期兜底）
  */
 
-// turn 来源三态的单源在 shared（与 web 的呈现判据、hub 的落库形状同一份）
-import type { TurnOrigin } from '@mobi/shared'
+// turn 来源三态、跨会话来源 concept、以及「这条是不是 mobi 投的」判据，单源都在 shared
+// （与 web 的呈现判据、hub 的落库形状同一份）
+import { isMobiDelivered } from '@mobi/shared'
+import type { CrossSessionOrigin, TurnOrigin } from '@mobi/shared'
 
 export interface InboundPromptInput {
     /** hook 收到的完整 prompt 原文（含外壳文案与信封） */
@@ -42,24 +44,26 @@ export interface InboundPromptInput {
 export interface InboundCrossSession {
     /** 信封内正文（trim 后）；信封缺 from-name 时为原文去外壳 */
     text: string
-    /** 发送方 CLI 会话名；信封未携带时 null */
-    fromName: string | null
     /**
-     * 发送方会话 id；CC 原生信封没有这个属性，故原生 peer 消息**恒为 null**。
+     * 发送方身份——与落库 meta 上的 `CrossSessionOrigin` **同一个 concept**。
      *
-     * 它同时是「这条信封是 mobi 自发投递的」的判据——CC 原生信封只有
-     * `from`（socket 地址）/ `from-name` / `from-mode` 三个属性，`from-session-id`
-     * 是 mobi 加的（见 crossSessionEnvelope.ts）。
+     * 信封的介质是文本（属性名 `from-name` / `from-session-id`，由 Claude Code 定义，不是
+     * 我们的协议），读出来归一成同一个形状，这样「是不是 mobi 投递的」在信封与 meta 两条
+     * 介质上是**同一句判据**（`isMobiDelivered`），不必各写一遍。
+     *
+     * 两个字段在信封侧的取值：`fromName` 缺属性时为空串（与 meta 侧同一约定——名字是给人
+     * 看的，空名字不等于没有来源）；`fromSessionId` 对 CC 原生信封**恒为 null**——那是 mobi
+     * 加的属性，原生信封只有 `from`（socket 地址）/ `from-name` / `from-mode` 三个。
      */
-    fromSessionId: string | null
+    origin: CrossSessionOrigin
 }
 
 export interface InboundTurn {
     kind: TurnOrigin
     /** 落库正文：peer=信封内正文；scheduled/loop=hook input.prompt 原文 */
     text: string
-    /** peer 的发送方会话名；scheduled/loop 为 null */
-    fromName: string | null
+    /** peer 的来源身份；scheduled/loop 不是别的会话发来的，故为 null */
+    origin: CrossSessionOrigin | null
 }
 
 /**
@@ -72,12 +76,12 @@ export interface InboundTurn {
  * source 灰度期可能缺省（0.3.250 起）：缺省时仅信封存在按 peer 兜底（与 parseInboundCrossSession 一致）。
  */
 export function classifyInboundTurn(input: InboundPromptInput): InboundTurn | null {
-    // scheduled / loop：source 显式标识，不依赖信封
+    // scheduled / loop：source 显式标识，不依赖信封，也没有来源会话
     if (input.source === 'schedule_wakeup') {
-        return { kind: 'scheduled', text: input.prompt.trim(), fromName: null }
+        return { kind: 'scheduled', text: input.prompt.trim(), origin: null }
     }
     if (input.source === 'loop_wakeup') {
-        return { kind: 'loop', text: input.prompt.trim(), fromName: null }
+        return { kind: 'loop', text: input.prompt.trim(), origin: null }
     }
 
     // peer：source=system（或灰度缺省）+ 信封
@@ -94,9 +98,12 @@ export function classifyInboundTurn(input: InboundPromptInput): InboundTurn | nu
     // 一行是投递路径写的（带 crossSession + fromSessionId、数组形态 blocks），
     // 一行是本路径写的（带 turnOrigin: 'peer'、单对象形态），相隔 15ms。
     // 这与 spec D34「hook 的 source 是 sdk，天然不会重复落库」的预期不符：source 是 system。
-    if (peer.fromSessionId !== null) return null
+    //
+    // 判据与另两个出口共用 `isMobiDelivered`（见该函数的说明）——信封读侧已经归一成
+    // 与 meta 同一形状的 origin，所以这里问的正是与 backfill 守卫同一句话
+    if (isMobiDelivered(peer.origin)) return null
 
-    return { kind: 'peer', text: peer.text, fromName: peer.fromName }
+    return { kind: 'peer', text: peer.text, origin: peer.origin }
 }
 
 // 开标签整体捕获（属性顺序/存在性不假设），from-name / from-session-id 再子提取——
@@ -119,7 +126,11 @@ export function parseInboundCrossSession(input: InboundPromptInput): InboundCros
     const fromSessionId = FROM_SESSION_ID_RE.exec(openTag)
     return {
         text: match[1].trim(),
-        fromName: fromName ? fromName[1] : null,
-        fromSessionId: fromSessionId ? fromSessionId[1] : null,
+        origin: {
+            // 缺属性或属性为空串 → 空串（与 meta 侧同一约定：空名字不等于没有来源）
+            fromName: fromName ? fromName[1] : '',
+            // CC 原生信封没有这个属性（它是 mobi 加的），故原生 peer 消息恒为 null
+            fromSessionId: fromSessionId ? fromSessionId[1] : null
+        }
     }
 }

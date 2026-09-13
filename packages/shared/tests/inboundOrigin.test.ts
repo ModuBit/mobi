@@ -17,6 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     readCrossSessionOrigin,
+    isMobiDelivered,
     isMobiSentCrossSession,
     readTurnOrigin,
     toCrossSessionMeta,
@@ -91,6 +92,21 @@ describe('isMobiSentCrossSession（守落库行 → SDK 的那道闸）', () => 
         expect(isMobiSentCrossSession({})).toBe(false)
         expect(isMobiSentCrossSession(null)).toBe(false)
         expect(isMobiSentCrossSession('plain')).toBe(false)
+    })
+})
+
+describe('isMobiDelivered（一处判据，守三个出口）', () => {
+    it('有 id → true；只有名字（CC 原生 peer）→ false', () => {
+        expect(isMobiDelivered(mobiSent)).toBe(true)
+        expect(isMobiDelivered(nativePeer)).toBe(false)
+    })
+
+    it('没有来源（null）→ false，不能因为「取值不是 null 之外的什么」而误判', () => {
+        expect(isMobiDelivered(null)).toBe(false)
+    })
+
+    it('名字空串但有 id → 仍是 mobi 投递（未命名不影响身份）', () => {
+        expect(isMobiDelivered({ fromName: '', fromSessionId: 'sess-a' })).toBe(true)
     })
 })
 

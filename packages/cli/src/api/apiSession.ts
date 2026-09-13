@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -559,11 +559,15 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * 落库入站跨会话消息（UserPromptSubmit hook 观测的 peer 消息）。
+     * 落库入站 turn（UserPromptSubmit hook 观测到的 peer / scheduled / loop）。
      * 该消息未经 hub 发送通道，此处是它唯一的持久化入口；
      * sentFrom 保留 'cli'（永不排队），来源标注放 meta.crossSession。
+     *
+     * `origin` 就是信封读侧归一出来的来源身份（与原消息同一 concept）；scheduled / loop
+     * 不是别的会话发来的，传 null——**来源身份照样写**（crossSession 键恒在，名字空串），
+     * 只是没有 id。
      */
-    sendInboundCrossSessionMessage(text: string, kind: TurnOrigin, fromName: string | null, nativeId: string): void {
+    sendInboundCrossSessionMessage(text: string, kind: TurnOrigin, origin: CrossSessionOrigin | null, nativeId: string): void {
         const content: MessageContent = {
             role: 'user',
             content: {
@@ -572,11 +576,10 @@ export class ApiSessionClient extends EventEmitter {
             },
             meta: {
                 sentFrom: 'cli',
-                // 跨会话来源形状单源（shared 的 origin concept）：crossSession 恒写入，
-                // fromName 降级（信封缺 from-name）时为空串，web 端判空后显示「来自 其他会话」。
-                // 键缺失会让 web 的 compact 误判守卫（排除 crossSession 消息）失效，
-                // 降级消息会被误渲染成 compact-summary
-                ...toCrossSessionMeta({ fromName: fromName ?? '', fromSessionId: null }),
+                // 跨会话来源形状单源（shared 的 origin concept）：键恒在，名字缺省时为空串，
+                // web 端判空后显示「来自 其他会话」。键缺失会让 web 的 compact 误判守卫
+                // （排除 crossSession 消息）失效，降级消息会被误渲染成 compact-summary
+                ...toCrossSessionMeta(origin ?? { fromName: '', fromSessionId: null }),
                 // turnOrigin 区分入站来源（spec 批次 D）：peer/scheduled/loop
                 turnOrigin: kind
             }

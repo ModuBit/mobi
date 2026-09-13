@@ -159,7 +159,7 @@ describe('withCrossSessionEnvelope', () => {
         // 标签没被提前截断 ⇒ 正文边界正确。from-name 的原文不回填（转义后即最终文本），
         // 名字只给人看，身份由 from-session-id 承担
         expect(parsed?.text).toBe('body')
-        expect(parsed?.fromName).toContain('&quot;hi&quot;')
+        expect(parsed?.origin.fromName).toContain('&quot;hi&quot;')
     })
 
     it('读写两半是同一份格式：既有入站解析器能读回我们写的信封', () => {
@@ -169,7 +169,12 @@ describe('withCrossSessionEnvelope', () => {
         })
 
         // inboundCrossSession.ts 的 ENVELOPE_RE / FROM_NAME_RE 是读侧，本模块是写侧——
-        // 两处漂移时这条会红（这正是把信封写成纯函数并放在解析器旁边的原因）
-        expect(parsed).toEqual({ text: 'hello there', fromName: 'Sender', fromSessionId: 'A' })
+        // 两处漂移时这条会红（这正是把信封写成纯函数并放在解析器旁边的原因）。
+        // 断言的是 **origin 整体**：信封读侧归一成与落库 meta 同一个 CrossSessionOrigin 形状，
+        // 所以「这条是不是 mobi 投的」在两条介质上是同一句判据（isMobiDelivered）
+        expect(parsed).toEqual({
+            text: 'hello there',
+            origin: { fromName: 'Sender', fromSessionId: 'A' },
+        })
     })
 })

@@ -63,6 +63,7 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
   - 两条路径靠 **`fromSessionId` 的存在性**区分：有 id → mobi 自发；有 from-name 无 id → CC 原生 peer；都没有 → 人
   - 两条路径的 meta 形状由 **shared 的 `CrossSessionOrigin`/`toCrossSessionMeta` 单点产出**（`packages/shared/src/inboundOrigin.ts`，2026-09-13 架构评审候选 #1）：此前该身份在 RPC 载荷、信封、落库 meta、Web 四处各描述一遍、且 id 的摆位互不相同
   - 观测路径**跳过带 `from-session-id` 的信封**（`classifyInboundTurn` 返回 null）：否则同一封信封会落两行（投递路径一行 + 观测路径一行）
+  - 这个不变量（mobi 投递过的消息在目标侧只记一次、且不再进 SDK）由**一处判据 `isMobiDelivered` 守三个出口**（2026-09-13 架构评审候选 #2）：Hub 的 CLI 房间回灌（`skipCliEcho`）、CLI 重连 backfill 守卫、本观测路径。信封读侧归一成与 meta 同一个 `CrossSessionOrigin` 形状，所以三条出口问的是同一句话——任一处改了判据而另两处没跟上，2026-09-12 实测的「同一封信封落两行、相隔 15ms」就会重现
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 

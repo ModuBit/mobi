@@ -733,7 +733,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             try {
                 const turn = classifyInboundTurn(input);
                 if (turn) {
-                    session.client.sendInboundCrossSessionMessage(turn.text, turn.kind, turn.fromName, randomUUID());
+                    session.client.sendInboundCrossSessionMessage(turn.text, turn.kind, turn.origin, randomUUID());
                 }
             } catch (e) {
                 logger.debug('[remote]: inbound cross-session prompt handling failed', e);
