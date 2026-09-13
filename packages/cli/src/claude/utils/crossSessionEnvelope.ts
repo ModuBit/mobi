@@ -35,13 +35,15 @@
  * replyReminder）——只进推给 CC 的那一份，落库那一份里没有它。
  */
 
-import type { UserContentBlock } from '@mobi/shared'
+import type { CrossSessionOrigin, UserContentBlock } from '@mobi/shared'
 import { SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool'
 
-export interface CrossSessionEnvelope {
-    /** 发送方会话名。会话未命名时为空串——身份由 fromSessionId 承担，不拿 id 冒充名字 */
-    fromName: string
-    /** 发送方会话 id（mobi 加的：CC 原生信封只有名字，无法反查会话、也无消息身份） */
+export interface CrossSessionEnvelope extends CrossSessionOrigin {
+    /**
+     * 来源会话 id。**信封这一路恒有**——本模块只承载 mobi 自发投递的消息（CC 原生 peer 不经
+     * 此处写），故把 concept 里可空的 `fromSessionId` 收窄为非空。CC 原生信封没有这个属性，
+     * 反查不到会话、也无消息身份（见 `inboundCrossSession.ts` 的甄别规则）。
+     */
     fromSessionId: string
     /** 本条消息的标识（Hub 预生成，与落库行的 localId 同值） */
     messageId: string

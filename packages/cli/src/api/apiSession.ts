@@ -25,14 +25,15 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
     TerminalResizePayloadSchema,
     TerminalWritePayloadSchema,
     classifyMessage,
-    isMobiSentCrossSession
+    isMobiSentCrossSession,
+    toCrossSessionMeta
 } from '@mobi/shared'
 import type {
     AgentState,
@@ -52,7 +53,6 @@ import { TerminalManager } from '@/terminal/TerminalManager'
 import { applyVersionedAck } from './versionedUpdate'
 import { IdleTimer } from '@/modules/common/idleTimer'
 import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
-import type { InboundTurnKind } from '../claude/utils/inboundCrossSession'
 
 /** 兜底重连初始退避（ms），上限 30s */
 const MANUAL_RECONNECT_BASE_DELAY_MS = 1_000
@@ -563,7 +563,7 @@ export class ApiSessionClient extends EventEmitter {
      * 该消息未经 hub 发送通道，此处是它唯一的持久化入口；
      * sentFrom 保留 'cli'（永不排队），来源标注放 meta.crossSession。
      */
-    sendInboundCrossSessionMessage(text: string, kind: InboundTurnKind, fromName: string | null, nativeId: string): void {
+    sendInboundCrossSessionMessage(text: string, kind: TurnOrigin, fromName: string | null, nativeId: string): void {
         const content: MessageContent = {
             role: 'user',
             content: {
@@ -572,10 +572,11 @@ export class ApiSessionClient extends EventEmitter {
             },
             meta: {
                 sentFrom: 'cli',
-                // crossSession 恒写入：fromName 降级（信封缺 from-name）时为空串，
-                // web 端判空后显示「来自 其他会话」。键缺失会让 web 的 compact 误判守卫
-                // （排除 crossSession 消息）失效，降级消息会被误渲染成 compact-summary
-                crossSession: { from: fromName ?? '' },
+                // 跨会话来源形状单源（shared 的 origin concept）：crossSession 恒写入，
+                // fromName 降级（信封缺 from-name）时为空串，web 端判空后显示「来自 其他会话」。
+                // 键缺失会让 web 的 compact 误判守卫（排除 crossSession 消息）失效，
+                // 降级消息会被误渲染成 compact-summary
+                ...toCrossSessionMeta({ fromName: fromName ?? '', fromSessionId: null }),
                 // turnOrigin 区分入站来源（spec 批次 D）：peer/scheduled/loop
                 turnOrigin: kind
             }

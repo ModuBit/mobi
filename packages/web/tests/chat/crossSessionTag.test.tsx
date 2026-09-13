@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { CrossSessionTag } from '@/components/chat/blocks/CrossSessionTag'
-import { getCrossSessionFrom, getTurnOrigin } from '@/domain/chat/presentation'
+import { getCrossSessionFrom } from '@/domain/chat/presentation'
 
 // mock i18next：只提供本组件用到的文案映射
 vi.mock('react-i18next', () => ({
@@ -50,20 +50,8 @@ describe('getCrossSessionFrom（跨会话入站来源提取）', () => {
     })
 })
 
-describe('getTurnOrigin（入站 turn 来源提取）', () => {
-    it('peer / scheduled / loop 三种合法值原样返回', () => {
-        expect(getTurnOrigin({ turnOrigin: 'peer' })).toBe('peer')
-        expect(getTurnOrigin({ turnOrigin: 'scheduled' })).toBe('scheduled')
-        expect(getTurnOrigin({ turnOrigin: 'loop' })).toBe('loop')
-    })
-
-    it('turnOrigin 缺失 / 非合法枚举 / meta 整体缺失 → 一律 null（回退 peer 行为）', () => {
-        expect(getTurnOrigin({})).toBeNull()
-        expect(getTurnOrigin({ turnOrigin: 'unknown' })).toBeNull()
-        expect(getTurnOrigin({ turnOrigin: 42 })).toBeNull()
-        expect(getTurnOrigin(undefined)).toBeNull()
-    })
-})
+// getTurnOrigin 的用例已随概念收进 shared（packages/shared/tests/inboundOrigin.test.ts）：
+// 合法值判定是协议侧的事，不再由 web 的呈现层各测一遍
 
 describe('CrossSessionTag（跨会话入站来源 chip）', () => {
     it('peer + 有来源：显示「来自 {from}」', () => {

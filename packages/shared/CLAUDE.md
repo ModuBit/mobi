@@ -23,6 +23,7 @@
 | `src/sessionSummary.ts` | 会话摘要 Schema 与类型 |
 | `src/upload.ts` | 文件上传 Schema 与类型 |
 | `src/userContentSchema.ts` | 用户消息 content block Schema（AG-UI 对齐四型 union）+ 四形态归一化 normalizeUserContent |
+| `src/inboundOrigin.ts` | 入站消息落在 meta 上的来源标注：跨会话来源 `CrossSessionOrigin` + turn 来源 `TurnOrigin` 的形状与读写单源 |
 | `src/exitLogger.ts` | 进程退出日志（hub/runner/cli 共用基础设施） |
 | `src/index.ts` | Barrel export |
 

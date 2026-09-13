@@ -22,7 +22,7 @@ import {
     ProjectSchema,
     RuntimeStateSchema
 } from '@mobi/shared/schemas'
-import { LegacyFlatObjectSchema, UserMessageContentSchema } from '@mobi/shared'
+import { CrossSessionMetaSchema, LegacyFlatObjectSchema, TurnOriginSchema, UserMessageContentSchema } from '@mobi/shared'
 import type { PermissionMode } from '@mobi/shared/types'
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
@@ -156,19 +156,18 @@ export const MessageMetaSchema = z.object({
     appendSystemPrompt: z.string().nullable().optional(),
     allowedTools: z.array(z.string()).nullable().optional(),
     disallowedTools: z.array(z.string()).nullable().optional(),
-    /** 跨会话入站消息来源标注（from = 来源会话名）。来源有二：CC 原生 peer（hook 观测落库，
-     *  只有名字）与 mobi 自发投递（agent 经 send_message_to_session 发出） */
-    crossSession: z.object({ from: z.string() }).optional(),
-    /** 来源会话 id（只有 **mobi 自发投递** 的消息带它）。判据用途：有 id = mobi 自发；
-     *  有 from 无 id = CC 原生 peer。
+    /** 跨会话来源标注（shared 的 origin concept：来源有二——CC 原生 peer 只有名字，
+     *  mobi 自发投递另有 fromSessionId）。形状从 shared 的单源取，此处只声明「可选」 */
+    crossSession: CrossSessionMetaSchema.shape.crossSession.optional(),
+    /** 来源会话 id（只有 **mobi 自发投递** 的消息带它；有 id = mobi 自发，有 from 无 id = CC 原生 peer）。
      *
      *  声明在此是为了 meta 的**形状保真**——zod 默认剥未知键，漏掉它就等于把「这条是谁投的」
      *  从 meta 里抹掉。注意**重投守卫并不读这里**：`isMobiSentCrossSession`（shared）读的是
      *  裸 `content.meta`，那条路不经过本 schema */
-    fromSessionId: z.string().optional(),
+    fromSessionId: CrossSessionMetaSchema.shape.fromSessionId,
     /** 入站 turn 来源（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒。
      *  仅 hook 观测的入站 turn 落库时携带；普通 webapp user 消息缺省 */
-    turnOrigin: z.enum(['peer', 'scheduled', 'loop']).optional()
+    turnOrigin: TurnOriginSchema.optional()
 })
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>

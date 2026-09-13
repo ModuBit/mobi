@@ -142,7 +142,8 @@ export class SyncEngine {
                 // sentFrom 必须是既有的 'cli'：它是「不入队」的现成判据（isQueueableUserSubmission
                 // 的 denylist 只放行 'cli'），新造任何取值都会让消息进投递队列
                 sentFrom: 'cli',
-                crossSession: { from: delivery.fromName, fromSessionId: delivery.fromSessionId },
+                // 来源身份交给 concept 去摊成 meta 形状（哪个键放 name、哪个放 id 不再在此决定）
+                origin: { fromName: delivery.fromName, fromSessionId: delivery.fromSessionId },
                 // 投递已经发生，别再回灌 CLI 房间（否则目标 CLI 会照着这行二次入队）
                 skipCliEcho: true,
             }),

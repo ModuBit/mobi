@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { normalizeUserContent } from '@mobi/shared'
+import { normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
+import type { CrossSessionOrigin } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
@@ -51,12 +52,13 @@ export type SendMessagePayload = {
     localId?: string | null
     sentFrom?: 'webapp' | 'cli'
     /**
-     * 跨会话来源标注（agent 经 send_message_to_session 投来的消息）。
-     * 与 sentFrom 一起写进 meta：来源会话名进 `crossSession.from`（Web 的来源标签读它），
-     * 来源会话 id 作一等字段 `fromSessionId`——它既是区分 mobi 自发与 CC 原生 peer 的判据，
-     * 也是收件方 agent 回信的地址。
+     * 跨会话来源身份（agent 经 send_message_to_session 投来的消息）。
+     *
+     * 收的是 concept 本身而不是摊开的字段（架构评审候选 #1）：写进 meta 的形状由
+     * `toCrossSessionMeta` 一处决定，此处不再复述「name 进 crossSession.from、id 作顶层
+     * 一等字段」这套摆位——那正是此前四个包各写一遍的东西。
      */
-    crossSession?: { from: string; fromSessionId: string }
+    origin?: CrossSessionOrigin
     /**
      * true = 只落库，**不向 CLI 房间回灌 new-message**。
      *
@@ -157,12 +159,7 @@ export class MessageService {
             content: blocks,
             meta: {
                 sentFrom,
-                ...(payload.crossSession
-                    ? {
-                        crossSession: { from: payload.crossSession.from },
-                        fromSessionId: payload.crossSession.fromSessionId,
-                    }
-                    : {})
+                ...(payload.origin ? toCrossSessionMeta(payload.origin) : {})
             }
         }
 

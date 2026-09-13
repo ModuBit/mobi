@@ -29,6 +29,9 @@
  * - source 缺省 + 信封存在 → 按跨会话处理（灰度期兜底）
  */
 
+// turn 来源三态的单源在 shared（与 web 的呈现判据、hub 的落库形状同一份）
+import type { TurnOrigin } from '@mobi/shared'
+
 export interface InboundPromptInput {
     /** hook 收到的完整 prompt 原文（含外壳文案与信封） */
     prompt: string
@@ -51,10 +54,8 @@ export interface InboundCrossSession {
     fromSessionId: string | null
 }
 
-export type InboundTurnKind = 'peer' | 'scheduled' | 'loop'
-
 export interface InboundTurn {
-    kind: InboundTurnKind
+    kind: TurnOrigin
     /** 落库正文：peer=信封内正文；scheduled/loop=hook input.prompt 原文 */
     text: string
     /** peer 的发送方会话名；scheduled/loop 为 null */

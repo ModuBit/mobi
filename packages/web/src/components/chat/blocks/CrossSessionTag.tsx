@@ -17,12 +17,7 @@
 import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Inbox, Clock, Repeat } from 'lucide-react'
-
-/**
- * 入站 turn 来源（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒。
- * 仅 hook 观测的入站 turn 落库时携带；普通 webapp user 消息缺省，UI 回退 peer 行为。
- */
-type TurnOrigin = 'peer' | 'scheduled' | 'loop'
+import type { TurnOrigin } from '@mobi/shared'
 
 /**
  * 跨会话入站消息来源标签：user 气泡 header 上的胶囊 chip。

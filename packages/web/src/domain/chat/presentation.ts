@@ -14,47 +14,21 @@
  * limitations under the License.
  */
 
+import { readCrossSessionOrigin } from '@mobi/shared'
 import type { AgentEvent, ChatBlock, MessageMeta } from './types'
 import { getUserPlainText } from './userContent'
 
 const CLEAR_COMMAND = '/clear'
 
 /**
- * 跨会话入站来源提取（user 消息 meta.crossSession，CLI 经 UserPromptSubmit hook 观测写入）。
- * from 为非空 string 才认——信封缺 from-name 的降级落库为 null/空，此时 UI 显示通用文案。
+ * 跨会话入站来源的展示名（user 消息 meta.crossSession.from）。
+ *
+ * 形状与读取在 shared 的 `CrossSessionOrigin`（inboundOrigin.ts），这里只做一件 web 自己的事：
+ * **把空名字翻译成 null**——没名字不是「没有来源」，而是该走 `CrossSessionTag` 的通用文案分支。
+ * 判据（这条消息该不该出标签）不在这里，见 `readCrossSessionOrigin`。
  */
 export function getCrossSessionFrom(meta: MessageMeta | undefined): string | null {
-    const from = (meta as { crossSession?: { from?: unknown } } | undefined)?.crossSession?.from
-    return typeof from === 'string' && from.length > 0 ? from : null
-}
-
-/**
- * 是否为跨会话入站消息（来源有二：CC 原生 peer 与 mobi 自发投递）。
- *
- * 与 `getCrossSessionFrom` 分开的理由：**来源会话没有名字时 from 是空串**（`change_title`
- * 之前的新会话就是这样），此时 `getCrossSessionFrom` 返回 null，但它依然是跨会话来的。
- * 拿 `getCrossSessionFrom !== null` 当「要不要显示来源标签」的判据，会让这类消息整条标签
- * 消失、看起来像用户自己发的——`CrossSessionTag` 的 from=null 分支（通用文案）才是它的归宿。
- */
-export function isCrossSessionInbound(meta: MessageMeta | undefined): boolean {
-    const crossSession = (meta as { crossSession?: unknown } | undefined)?.crossSession
-    return typeof crossSession === 'object' && crossSession !== null
-}
-
-/** 入站 turn 来源合法值（spec 批次 D）：peer=跨会话消息 / scheduled=定时任务 / loop=/loop 唤醒 */
-type TurnOrigin = 'peer' | 'scheduled' | 'loop'
-
-const TURN_ORIGIN_VALUES: readonly TurnOrigin[] = ['peer', 'scheduled', 'loop']
-
-/**
- * 入站 turn 来源提取（user 消息 meta.turnOrigin，CLI 落库时写入）。
- * 仅认 peer/scheduled/loop 三个合法值；缺失或非法时返回 null，UI 回退 peer 行为（from 驱动，旧消息兼容）。
- */
-export function getTurnOrigin(meta: MessageMeta | undefined): TurnOrigin | null {
-    const raw = (meta as { turnOrigin?: unknown } | undefined)?.turnOrigin
-    return typeof raw === 'string' && (TURN_ORIGIN_VALUES as readonly string[]).includes(raw)
-        ? (raw as TurnOrigin)
-        : null
+    return readCrossSessionOrigin(meta)?.fromName || null
 }
 
 /** /compact 命令字面量，web 端判定压缩状态用 */

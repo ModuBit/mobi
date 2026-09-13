@@ -15,11 +15,19 @@
  */
 
 import type { MessageStatus } from '@/core/data/api/types'
-import type { PermissionUpdate, StopKind, UserContentBlock, ContentBlock } from '@mobi/shared'
+import type { CrossSessionMeta, TurnOrigin, PermissionUpdate, StopKind, UserContentBlock, ContentBlock } from '@mobi/shared'
 
-/** 消息元数据 */
+/** 消息元数据。
+ *
+ *  **跨会话来源**与**入站 turn 来源**两个维度是有类型的——形状单源在 shared 的
+ *  `inboundOrigin.ts`。此前它们只活在 index signature 里，消费方只能 `as` 强转，连
+ *  「这条是谁投的」都问不出类型。读取仍要走 `readCrossSessionOrigin` / `readTurnOrigin`
+ *  （由它们做形状收窄），这里的字段是给类型检查用的声明，不替代那两个入口。 */
 export type MessageMeta = {
     sentFrom?: string
+    crossSession?: CrossSessionMeta['crossSession']
+    fromSessionId?: CrossSessionMeta['fromSessionId']
+    turnOrigin?: TurnOrigin
     [key: string]: unknown
 }
 

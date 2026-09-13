@@ -18,6 +18,7 @@ import { z } from 'zod'
 import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
 import type { MessageFact } from './messages'
+import type { CrossSessionOrigin } from './inboundOrigin'
 import type { CacheStatus, ContextUsage, GoalStatus, SnapshotDeltaFrame, UiCommandAction } from './schemas'
 import type { UserContentBlock, UserMessageContent } from './userContentSchema'
 
@@ -214,10 +215,16 @@ export type AgentMessageDelivery = {
     blocks: UserContentBlock[]
     /** 信封的 message-id，兼作落库行的 localId（Hub 预生成，投递前就确定，不必等落库） */
     messageId: string
-    /** 发送方会话名（信封 from-name；会话未命名时为空串，身份由 fromSessionId 承担） */
-    fromName: string
-    /** 发送方会话 id（信封 from-session-id；收件方据此回信） */
-    fromSessionId: string
+    /** 信封 from-name。类型取自 `CrossSessionOrigin`——发送方身份的 concept 在
+     *  `inboundOrigin.ts`，此处是它的 RPC 形态 */
+    fromName: CrossSessionOrigin['fromName']
+    /** 信封 from-session-id；收件方据此回信。**mobi 自发投递这一路恒有 id**，故把 concept 里
+     *  可空的取值收窄为非空。
+     *
+     *  字段保持**平铺**而不是嵌成一个 origin 对象：这是 hub↔CLI 的 wire 形状，改布局会让旧 CLI
+     *  的 `parseAgentMessagePush` 解析失败（它判 null 并把消息报成「拒收」），故只收形状的类型来源，
+     *  不动布局 */
+    fromSessionId: NonNullable<CrossSessionOrigin['fromSessionId']>
 }
 
 /**
