@@ -108,7 +108,20 @@ sips -s format pdf ~/workspace/demo/e2e-agents/e2e-pic.png --out ~/workspace/dem
 但别据此判断链路。素材放在**会话 cwd 之内**（`/Users/manerfan/workspace/demo/e2e-agents/…`），
 read-file 的边界是 `cwd ∪ home−黑名单`，`/tmp` 下的文件渲染不出来。
 
-探针把 block 数组**原样贴给它照抄**（agent 不必自己构思 quote 的字段）。
+探针把 block 数组**原样贴给它照抄**（agent 不必自己构思 quote 的字段）。照抄的数组必须**字段齐全**：
+
+```json
+[{"type":"text","text":"…"},
+ {"type":"image","source":{"type":"url","value":"/Users/manerfan/workspace/demo/e2e-agents/e2e-pic.png","mimeType":"image/png"},
+  "id":"img-e2e-1","filename":"e2e-pic.png","size":2763}]
+```
+
+⚠️ **`image`/`document` 除了 `source` 还强制要 `id` / `filename` / `size` 三个字段**
+（`FileRefFields`，都不是 optional）。少了它们，工具报的是 MCP 层的
+`-32602 invalid_union`，报错里只会指出 `[1,"id"]`、`[1,"filename"]`、`[1,"size"]`
+「expected string/number, received undefined」——看着像 schema 坏了，其实是入参缺字段。
+**探针里少写一个字段就白跑一轮**（2026-09-13 实测踩到）。这三个值 agent 自己编不出来
+（`id` 是上传 id、`size` 要真实字节数），所以**必须由探针喂给它**，别写成「自己附一张图」。
 
 ## 跨机器（E2E 只有一台机器，得自己造）
 
@@ -125,6 +138,8 @@ curl -s -b /tmp/e2e-jar.txt http://localhost:2224/api/sessions >/dev/null   # �
 同一探针里让它**连做两次**（一次纯文本、一次带本机图片）最省一轮：
 期望纯文本 `Sent to session: …`、带图 `is_error: true` +
 `The message carries a local file ("…"), and that session is on a different machine.`（整条失败，目标会话**不落行**）。
+2026-09-13 实测通过，末句现为「…put the URL in the message text instead of attaching it as a block
+— a URL in a block value is not fetched either, it just arrives as text.」（#76 的诚实措辞）。
 
 ⚠️ **`machineId` 是渲染层构造 read-file URL 的输入**（`ImageView` 用 `env.machineId`）——
 改完之后 Web 上的图片会变成兜底图（naturalWidth 240 的 data:svg），**这不是 bug**。还原：
