@@ -666,3 +666,20 @@ interrupt（用户停止）
 **当前处置**（2026-09-13）：工具描述与 hub 附件闸的失败文案都已如实写明「URL 不会被取回——给本机文件，或把 URL 写进正文」，不再推荐这么用；行为未改。同机器与跨机器都一样降级，不是跨会话独有。
 
 **待做**：让 `buildPromptFromBlocks` 真能取回——https 走 fetch、`data:` 就地 base64 解码、`blob:` 视来源而定；取不到仍降级为 `@值`。注意这是 **web 普通用户消息也在跑的同一条路径**，影响面超出跨会话投递，且引入网络 I/O 到 prompt 组装里（需定超时/失败/大图上限），应单独立 spec 与 E2E。
+
+## 77. agent 侧构造 image/document block 缺三个字段，报错还认不出来（2026-09-13，待设计）
+
+**背景**：`send_message_to_session` 的 content 走 `UserMessageContentSchema`，而 image / document 块除了 `source` 还强制要 `FileRefFields` 的 **`id` / `filename` / `size`**（`packages/shared/src/userContentSchema.ts`，三个都不是 optional）。这条形状对 composer 是自然的——web 侧 `BlockFileRef` 由上传完成后的 `FileAttachment` 投影而来，浏览器天然知道 `filename`/`size`/`mimeType`，`id` 也在那边生成，`serializeSegments` 直接填齐。但 **agent 没有上传这一步**：`id` 是它编不出来的，`size` 要真实字节数，`filename` 要真名。
+
+**实测现象**（2026-09-13 E2E）：探针只给 `{type:'image', source:{…}}` 时，工具返回 MCP 层的
+
+```
+-32602 Input validation error: … invalid_union
+  [1,"id"]       expected string, received undefined
+  [1,"filename"] expected string, received undefined
+  [1,"size"]     expected number, received undefined
+```
+
+看着像 schema 坏了，实际是入参缺字段；**报错不告诉 agent「你少了什么、该怎么补」**。补上三字段（含真实 `size`）后一次通过。工具描述现在只说 "accepts the composer block forms"，没说还要这三个值——agent 想附文件时读完描述照做必然被拒，只能自己退回去 `ls -l` 取 size、再编一个 id。
+
+**待设计**：这一块要重新做，方向是**跨机器附件先走一次上传**——由上传这一步产出 `filename` / `size` 与一个机器无关的引用 id（正是 composer 那份 `BlockFileRef` 的来源），agent 只需给本地路径就能拿到一个可用的块；顺带把 #76 的「对面拿不到图」一并解决（上传后是机器无关的引用，不再依赖发件方磁盘）。注意今天 `/upload` 这条 RPC 只按块写文件、回执里没有这些字段（composer 的 `id` 是 web 侧生成的），所以「上传产出这三个值」是**要新做的能力**而不是现成的。在那之前不放宽 schema（放宽会让「块里的路径」与「真实上传过的文件」两套语义混在一起）。
