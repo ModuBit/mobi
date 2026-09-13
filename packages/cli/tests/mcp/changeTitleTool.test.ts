@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { createChangeTitleTool, CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool'
+import { CHANGE_TITLE_TOOL_SHAPE } from '@/mcp/changeTitleShape'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
 
 const LOCATOR: AgentSessionLocator = { flavor: 'claude', sessionId: 'native-1', path: '/tmp/demo' }
@@ -96,5 +97,23 @@ describe('createChangeTitleTool', () => {
         expect(sendSummary).not.toHaveBeenCalled()
         expect(syncRename).not.toHaveBeenCalled()
         expect(result.isError).toBe(true)
+    })
+})
+
+/**
+ * 三种壳注册的是**同一个工具**：remote 走 SDK 进程内、local 走 HTTP、`mobi mcp` 走 stdio
+ * bridge 转发。所以对外四件套只能有一份声明——bridge 曾经照抄了一遍
+ * description / title / schema，同一工具两个真相源。
+ */
+describe('CHANGE_TITLE_TOOL_SHAPE', () => {
+    it('工厂的对外四件套原样取自形状单源（不是复制一份）', () => {
+        const { deps } = buildDeps()
+        const tool = createChangeTitleTool(deps)
+
+        expect(tool.name).toBe(CHANGE_TITLE_TOOL_SHAPE.name)
+        expect(tool.description).toBe(CHANGE_TITLE_TOOL_SHAPE.description)
+        expect(tool.title).toBe(CHANGE_TITLE_TOOL_SHAPE.title)
+        // 同一个 schema 对象（toBe 而非 toEqual）：复制一份就会各自漂
+        expect(tool.inputSchema).toBe(CHANGE_TITLE_TOOL_SHAPE.inputSchema)
     })
 })

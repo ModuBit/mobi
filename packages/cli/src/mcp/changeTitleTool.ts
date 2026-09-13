@@ -27,13 +27,14 @@
  * （ApiSessionClient + syncAgentRename），两个 transport 壳都从它取工具实例。
  */
 
-import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { logger } from '@/ui/logger'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { syncAgentRename, type AgentSessionLocator } from '@/agent/agentCapabilities'
+import { CHANGE_TITLE_TOOL_NAME, CHANGE_TITLE_TOOL_SHAPE } from './changeTitleShape'
 
-export const CHANGE_TITLE_TOOL_NAME = 'change_title' as const
+// 名字是工具身份，收在形状模块（那边的说明也解释了为什么不放这儿）
+export { CHANGE_TITLE_TOOL_NAME }
 
 export interface ChangeTitleToolDeps {
     /** 发送 summary 消息到 Hub（更新 mobi 侧标题 + Web 显示） */
@@ -52,9 +53,8 @@ export interface ChangeTitleToolResult {
 }
 
 export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
-    const changeTitleInputSchema = z.object({
-        title: z.string().describe('The new title for the chat session'),
-    })
+    // 对外形状（名/说明/标题/入参 schema）取自单源，见 changeTitleShape
+    const changeTitleInputSchema = CHANGE_TITLE_TOOL_SHAPE.inputSchema
 
     async function execute(rawArgs: unknown): Promise<ChangeTitleToolResult> {
         // transport 入参统一在此校验：HTTP registerTool（AnySchema 下回调入参 unknown）与
@@ -111,10 +111,7 @@ export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
     }
 
     return {
-        name: CHANGE_TITLE_TOOL_NAME,
-        description: 'Change the title of the current chat session',
-        title: 'Change Chat Title',
-        inputSchema: changeTitleInputSchema,
+        ...CHANGE_TITLE_TOOL_SHAPE,
         execute,
     }
 }

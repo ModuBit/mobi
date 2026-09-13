@@ -33,7 +33,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { asMcpInputSchema } from './mcpSchemaCompat';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { z } from 'zod';
+import { CHANGE_TITLE_TOOL_SHAPE } from './changeTitleShape';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -82,24 +82,25 @@ export async function runMobiMcpStdioBridge(argv: string[]): Promise<void> {
       version: '1.0.0',
     });
 
-    // Register the single tool and forward to HTTP MCP
-    const changeTitleInputSchema = asMcpInputSchema(z.object({
-      title: z.string().describe('The new title for the chat session'),
-    }));
+    // Register the single tool and forward to HTTP MCP.
+    // 名字 / 说明 / 标题 / schema 全部取自工具形状单源（changeTitleShape）：本桥只转发不执行，
+    // 所以它要的是形状，而不是 createChangeTitleTool 那套依赖（连带 logger / config / Hub 客户端）。
+    // 此前这里自己抄了一份，同一工具两个真相源。
+    const changeTitleTool = CHANGE_TITLE_TOOL_SHAPE;
 
     server.registerTool(
-      'change_title',
+      changeTitleTool.name,
       {
-        description: 'Change the title of the current chat session',
-        title: 'Change Chat Title',
-        inputSchema: changeTitleInputSchema,
+        description: changeTitleTool.description,
+        title: changeTitleTool.title,
+        inputSchema: asMcpInputSchema(changeTitleTool.inputSchema),
       },
       async (args: Record<string, unknown>) => {
         try {
           const client = await ensureHttpClient();
           // 直接透传 HTTP MCP 服务端返回的 CallToolResult
           // client.callTool 的返回联合包含无 content 的边界分支，强转为 CallToolResult
-          return (await client.callTool({ name: 'change_title', arguments: args })) as CallToolResult;
+          return (await client.callTool({ name: changeTitleTool.name, arguments: args })) as CallToolResult;
         } catch (error) {
           return {
             content: [

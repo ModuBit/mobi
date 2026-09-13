@@ -29,29 +29,53 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { ApiSessionClient } from '@/api/apiSession'
 import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
-import { createChangeTitleToolForSession } from './changeTitleTool'
+import { CHANGE_TITLE_TOOL_NAME, createChangeTitleToolForSession } from './changeTitleTool'
 import { webSearchTool, webFetchTool } from '@/webtools/server'
+
+/** change_title 的 SDK 形状适配（核心逻辑与 local HTTP 壳共用，见 changeTitleTool） */
+function buildChangeTitleSdkTool(
+    client: ApiSessionClient,
+    getAgentLocator: () => AgentSessionLocator | null,
+) {
+    const changeTitle = createChangeTitleToolForSession(client, getAgentLocator)
+    return tool(
+        changeTitle.name,
+        changeTitle.description,
+        changeTitle.inputSchema.shape,
+        async (args: unknown) => changeTitle.execute(args),
+    )
+}
+
+/**
+ * mobi-core 工具族：**一行 = 一个名字 + 怎么造**（与 mobi-apps 同形，见那边的说明）。
+ *
+ * 名字清单从这张表派生（{@link MOBI_CORE_TOOL_NAMES}），所以「挂了工具却没加进预授权」
+ * 不会再发生。两个 web 工具是成品、不吃入参，但仍照统一签名收下（不用的参数加 `_` 前缀），
+ * 好让这张表能被同一行代码遍历。
+ */
+const MOBI_CORE_TOOLS = [
+    { name: CHANGE_TITLE_TOOL_NAME, build: buildChangeTitleSdkTool },
+    {
+        name: webSearchTool.name,
+        build: (_client: ApiSessionClient, _getAgentLocator: () => AgentSessionLocator | null) => webSearchTool,
+    },
+    {
+        name: webFetchTool.name,
+        build: (_client: ApiSessionClient, _getAgentLocator: () => AgentSessionLocator | null) => webFetchTool,
+    },
+]
+
+/** 本 server 的工具名（预授权清单的派生源，顺序即注册顺序） */
+export const MOBI_CORE_TOOL_NAMES: readonly string[] = MOBI_CORE_TOOLS.map((row) => row.name)
 
 export function createMobiCoreServer(
     client: ApiSessionClient,
     /** 取当前 agent 会话定位（flavor + sessionId + path），用于 change_title 回写 agent 侧标题 */
     getAgentLocator: () => AgentSessionLocator | null,
 ) {
-    const changeTitleTool = createChangeTitleToolForSession(client, getAgentLocator)
-
     return createSdkMcpServer({
         name: MOBI_CORE_SERVER_NAME,
         version: '1.0.0',
-        tools: [
-            tool(
-                changeTitleTool.name,
-                changeTitleTool.description,
-                changeTitleTool.inputSchema.shape,
-                async (args: unknown) => changeTitleTool.execute(args),
-            ),
-            // webSearchTool / webFetchTool 已是 SDK tool() 形态，直接挂载
-            webSearchTool,
-            webFetchTool,
-        ],
+        tools: MOBI_CORE_TOOLS.map((row) => row.build(client, getAgentLocator)),
     })
 }

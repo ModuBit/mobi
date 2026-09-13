@@ -23,8 +23,9 @@
 | `src/claude/utils/queryRestart.ts` | Remote Query 重启单槽：统一 rewind / output style 的占位、队列哨兵配对与完成语义 |
 | `src/claude/utils/cacheStatus.ts` | SessionStart 缓存信号组装（`buildCacheStatusFromSessionStart` 两模式共用；resume/fork 且过期才产出，[cache-probe] 探针日志） |
 | `src/mcp/changeTitleTool.ts` | change_title 核心工具工厂（transport 无关；local HTTP / remote SDK 进程内，见 ADR 0001） |
-| `src/mcp/sessionTransports.ts` | 会话 MCP / hook settings 按模式装配（remote 内联 settings 零临时文件） |
-| `src/mcp/mobiAppsServer.ts` | `mobi-apps` 工具族装配（A 类 UI 命令 + B 类会话操作；仅 remote，B 类依赖 Hub，见 ADR 0005） |
+| `src/mcp/changeTitleShape.ts` | change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）：三种壳（SDK / HTTP / stdio bridge）共用，bridge 不 import 整条实现 |
+| `src/mcp/mobiAppsServer.ts` | `mobi-apps` 工具族装配（A 类 UI 命令 + B 类会话操作；仅 remote，B 类依赖 Hub，见 ADR 0005）；注册表兼作预授权清单的单源 |
+| `src/mcp/sessionTransports.ts` | 会话 MCP / hook settings 按模式装配（remote 内联 settings 零临时文件）；派生 `MOBI_PREAUTHORIZED_TOOLS` |
 | `src/webtools/` | 自定义 Web 工具（挂进 `mobi-core` server，toolAliases 替换内置 WebSearch/WebFetch；仅 remote 模式） |
 | `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
 | `src/modules/common/handlers/fileRead.ts` | 两通道共享文件读取（meta、范围、EOF、结构化错误） |

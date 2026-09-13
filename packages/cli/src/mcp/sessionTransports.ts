@@ -33,11 +33,12 @@
 
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
+import { MOBI_APPS_SERVER_NAME, MOBI_CORE_SERVER_NAME } from '@mobi/shared'
 import type { AgentSessionLocator } from '@/agent/agentCapabilities'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { CROSS_SESSION_INBOUND_ACCEPT } from '@/modules/common/hooks/generateHookSettings'
-import { createMobiAppsServer } from './mobiAppsServer'
-import { createMobiCoreServer } from './mobiCoreServer'
+import { MOBI_APPS_TOOL_NAMES, createMobiAppsServer } from './mobiAppsServer'
+import { MOBI_CORE_TOOL_NAMES, createMobiCoreServer } from './mobiCoreServer'
 
 export function buildSessionMcpServers(opts: {
     startingMode: 'local' | 'remote'
@@ -62,6 +63,21 @@ export function buildSessionMcpServers(opts: {
         'mobi-core': { type: 'http' as const, url: opts.httpMcpUrl },
     }
 }
+
+/**
+ * mobi 工具族的预授权清单（`mcp__<server>__<tool>`，SDK 的命名法）。
+ *
+ * **从各 server 的工具表派生**，不手抄：漏掉一条的症状是编译过得去、行为退化成
+ * 「每次调用弹审批」——B 类工具那样等于编排不可用（理由见 docs/architecture/cli/mcp/README.md）。
+ * 加一个工具只改它所在 server 的那张表一行。
+ *
+ * 两个 server 的名字都列上：local 模式不挂 mobi-apps，多出来的授权串不匹配任何工具、
+ * 无害；反过来按模式裁剪会把「当前是哪个模式」混进这份纯派生里，得不偿失。
+ */
+export const MOBI_PREAUTHORIZED_TOOLS: readonly string[] = [
+    ...MOBI_APPS_TOOL_NAMES.map((name) => `mcp__${MOBI_APPS_SERVER_NAME}__${name}`),
+    ...MOBI_CORE_TOOL_NAMES.map((name) => `mcp__${MOBI_CORE_SERVER_NAME}__${name}`),
+]
 
 /**
  * remote 模式的内联 hook settings：仅承载官方 settings 键 crossSessionInbound

@@ -30,14 +30,7 @@ import { startHookServer, type HookServer } from '@/claude/utils/startHookServer
 import { applySessionIdBinding } from '@/claude/utils/sessionIdBinding';
 import { buildCacheStatusFromSessionStart } from '@/claude/utils/cacheStatus';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
-import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
-import { CHANGE_TITLE_TOOL_NAME } from '@/mcp/changeTitleTool';
-import { OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool';
-import { LIST_MACHINES_TOOL_NAME } from '@/mcp/listMachinesTool';
-import { LIST_SESSIONS_TOOL_NAME } from '@/mcp/listSessionsTool';
-import { CREATE_SESSION_TOOL_NAME } from '@/mcp/createSessionTool';
-import { SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool';
-import { MOBI_APPS_SERVER_NAME, MOBI_CORE_SERVER_NAME } from '@mobi/shared';
+import { buildSessionMcpServers, MOBI_PREAUTHORIZED_TOOLS, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports';
 import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
@@ -580,25 +573,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             additionalDirectories,
             messageQueue,
             api,
-            allowedTools: [
-                // change_title 预授权：两种模式的工具前缀一致（mcp__mobi-core__，SDK 按注册名 / HTTP 壳按 key 生成）
-                `mcp__${MOBI_CORE_SERVER_NAME}__${CHANGE_TITLE_TOOL_NAME}`,
-                // open_in_mobi 预授权（D7，A 类 UI 呈现工具；仅 remote 壳注册，local 模式不会出现）
-                `mcp__${MOBI_APPS_SERVER_NAME}__${OPEN_IN_MOBI_TOOL_NAME}`,
-                // list_machines 预授权（B 类系统操作；仅 remote 壳注册）
-                `mcp__${MOBI_APPS_SERVER_NAME}__${LIST_MACHINES_TOOL_NAME}`,
-                // list_sessions 预授权（B 类系统操作；仅 remote 壳注册）
-                `mcp__${MOBI_APPS_SERVER_NAME}__${LIST_SESSIONS_TOOL_NAME}`,
-                // create_session 预授权（B 类系统操作；仅 remote 壳注册）
-                `mcp__${MOBI_APPS_SERVER_NAME}__${CREATE_SESSION_TOOL_NAME}`,
-                // send_message_to_session 预授权（B 类系统操作；仅 remote 壳注册）。
-                // 逐个审批会让编排完全不可用，而编排正是本特性的价值；调用本身在发件方
-                // 会话里留下工具卡，人可事后审计（收窄手段是权限模式，不是逐次审批）
-                `mcp__${MOBI_APPS_SERVER_NAME}__${SEND_MESSAGE_TOOL_NAME}`,
-                // 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
-                `mcp__${MOBI_CORE_SERVER_NAME}__web_search`,
-                `mcp__${MOBI_CORE_SERVER_NAME}__web_fetch`,
-            ],
+            // mobi 工具族一律预授权。清单**从各 server 的工具表派生**（MOBI_PREAUTHORIZED_TOOLS），
+            // 加一个工具只改它所在的表——此前这里手抄八条，漏一条的症状是编译过、行为退化成
+            // 逐次弹审批。
+            // 为什么整族预授权：逐次审批会让 B 类编排完全不可用，而编排正是它的价值；调用本身
+            // 在发件方会话里留下工具卡，人可事后审计（收窄手段是权限模式，不是逐次审批）。
+            // web 工具是 toolAliases 的重定向目标，不预授权则 default 模式每次弹审批。
+            allowedTools: [...MOBI_PREAUTHORIZED_TOOLS],
             onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {
                 currentSessionRef.current = sessionInstance;

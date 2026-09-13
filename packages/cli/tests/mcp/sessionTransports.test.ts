@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports'
+import { MOBI_PREAUTHORIZED_TOOLS, buildSessionMcpServers, REMOTE_INLINE_HOOK_SETTINGS } from '@/mcp/sessionTransports'
 import type { ApiSessionClient } from '@/api/apiSession'
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 
@@ -68,5 +68,25 @@ describe('REMOTE_INLINE_HOOK_SETTINGS', () => {
 
         expect(settings).toEqual({ crossSessionInbound: 'accept' })
         expect(Object.keys(settings)).toEqual(['crossSessionInbound'])
+    })
+})
+
+/**
+ * 这份清单由各 server 的工具表**派生**（不是手抄），所以这里钉的不是「有哪些工具」，
+ * 而是**派生出来的格式**：`mcp__<server>__<tool>` 是 SDK 的命名法，不是 mobi 的——
+ * 写错不会报错，只会静默失效，症状是该工具每次调用弹审批（B 类那样等于编排不可用）。
+ */
+describe('MOBI_PREAUTHORIZED_TOOLS', () => {
+    it('是 SDK 认的那八个前缀', () => {
+        expect([...MOBI_PREAUTHORIZED_TOOLS].sort()).toEqual([
+            'mcp__mobi-apps__create_session',
+            'mcp__mobi-apps__list_machines',
+            'mcp__mobi-apps__list_sessions',
+            'mcp__mobi-apps__open_in_mobi',
+            'mcp__mobi-apps__send_message_to_session',
+            'mcp__mobi-core__change_title',
+            'mcp__mobi-core__web_fetch',
+            'mcp__mobi-core__web_search',
+        ])
     })
 })

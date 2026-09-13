@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { buildMobiAppsTools } from '@/mcp/mobiAppsServer'
+import { MOBI_APPS_TOOL_NAMES, buildMobiAppsTools } from '@/mcp/mobiAppsServer'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { OPEN_IN_MOBI_TOOL_NAME } from '@/mcp/openInMobiTool'
 import { LIST_MACHINES_TOOL_NAME } from '@/mcp/listMachinesTool'
@@ -74,5 +74,12 @@ describe('buildMobiAppsTools', () => {
         expect(client.listSessionsForAgent).toHaveBeenCalledTimes(1)
         expect(client.createSessionForAgent).toHaveBeenCalledTimes(1)
         expect(client.sendMessageToSessionsForAgent).toHaveBeenCalledTimes(1)
+    })
+
+    it('表里写的名字与它造出来的工具名一致（预授权清单从这张表派生）', () => {
+        // 一行 = 名字 + 怎么造：两者可以各写各的，配错（把 A 的名字安在 B 的工位上）会让
+        // 派生出去的预授权串指向一个不存在的工具——症状同上，静默失效
+        expect(buildMobiAppsTools(makeClient() as unknown as ApiSessionClient).map((tool) => tool.name))
+            .toEqual([...MOBI_APPS_TOOL_NAMES])
     })
 })

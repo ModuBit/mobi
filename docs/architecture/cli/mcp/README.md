@@ -76,11 +76,11 @@ web 工具由 [`webtools/server.ts`](/packages/cli/src/webtools/server.ts) 提�
 
 ### 预授权（allowedTools）
 
-[`claude/runClaude.ts`](/packages/cli/src/claude/runClaude.ts) 把这 8 个工具全部列入 `allowedTools` 预授权。
+这张清单**不是手写的**：每个 server 模块（`mobiAppsServer` / `mobiCoreServer`）的注册表是「一行 = 一个工具的名字 + 怎么造」，`sessionTransports.ts` 从两张表派生 `MOBI_PREAUTHORIZED_TOOLS`（`mcp__<server>__<tool>`），[`claude/runClaude.ts`](/packages/cli/src/claude/runClaude.ts) 直接用它。**加一个工具只改它所在 server 的那张表一行**——此前两处各抄一份，漏掉后者的症状是编译过得去、行为退化成逐次弹审批。
 
 - change_title 与 web 工具：避免 default 模式每次弹审批。工具前缀两种模式一致（SDK 按注册名、HTTP 壳按 key 生成），一条预授权覆盖两种 transport。
 - B 类工具：逐个审批会让编排完全不可用，而编排正是本特性的价值。收窄手段是权限模式，不是逐次审批——调用本身在发件方会话里留下工具卡，人可事后审计。
-- local 模式下 mobi-apps 前缀的预授权不会命中（工具根本没注册），无害。
+- local 模式下 mobi-apps 前缀的预授权不会命中（工具根本没注册），无害；清单不按模式裁剪，免得把「当前是哪个模式」混进这份纯派生里。
 
 ## 工具工厂
 
@@ -155,7 +155,8 @@ packages/cli/src/mcp/
 ├── mobiMcpStdioBridge.ts    # stdio MCP server，转发到 HTTP MCP（mobi mcp 命令）
 ├── mcpSchemaCompat.ts       # zod ↔ MCP SDK AnySchema 类型桥
 ├── toolResult.ts            # text-only 结果构造助手
-├── changeTitleTool.ts       # change_title（两种 transport 共用核心）
+├── changeTitleShape.ts      # change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）
+├── changeTitleTool.ts       # change_title 核心（remote SDK / local HTTP / stdio bridge 共用形状）
 ├── openInMobiTool.ts        # open_in_mobi（A 类）
 ├── listMachinesTool.ts      # list_machines（B 类）
 ├── listSessionsTool.ts      # list_sessions（B 类）

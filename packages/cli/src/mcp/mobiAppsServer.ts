@@ -34,11 +34,11 @@ import { createSdkMcpServer, tool, type AnyZodRawShape, type SdkMcpToolDefinitio
 import { ApiSessionClient } from '@/api/apiSession'
 import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
 import type { MobiToolTextResult } from './toolResult'
-import { createOpenInMobiTool } from './openInMobiTool'
-import { createListMachinesTool } from './listMachinesTool'
-import { createListSessionsTool } from './listSessionsTool'
-import { createCreateSessionTool } from './createSessionTool'
-import { createSendMessageTool } from './sendMessageTool'
+import { OPEN_IN_MOBI_TOOL_NAME, createOpenInMobiTool } from './openInMobiTool'
+import { LIST_MACHINES_TOOL_NAME, createListMachinesTool } from './listMachinesTool'
+import { LIST_SESSIONS_TOOL_NAME, createListSessionsTool } from './listSessionsTool'
+import { CREATE_SESSION_TOOL_NAME, createCreateSessionTool } from './createSessionTool'
+import { SEND_MESSAGE_TOOL_NAME, createSendMessageTool } from './sendMessageTool'
 
 /**
  * 工具体（工具工厂的返回值）→ SDK 的 tool 定义。
@@ -59,21 +59,55 @@ function toSdkTool<Shape extends AnyZodRawShape>(definition: {
 }
 
 /**
- * 把本 server 的工具族接上会话客户端——**这一族唯一的装配点**。
+ * mobi-apps 工具族：**一行 = 一个工具的名字 + 怎么用会话客户端把它造出来**。
  *
- * 工具自己只认一个窄的 deps（`SendMessageToolDeps` 等），与「这些 deps 由谁填」解耦；
- * 而「由谁填」此前是五个 `createXxxToolForSession(client)`，每个三行、只转发一个方法，
- * 是五个同尺寸的浅模块——删掉后复杂度集中到这里一次，也顺带让本函数可以脱离 SDK 直接测
- * （SDK 形状适配在 createMobiAppsServer，见下）。
+ * 名字与装配写在同一行，是为了让 {@link MOBI_APPS_TOOL_NAMES} 从这张表派生出去——
+ * 加一个工具只加一行。此前「工具挂了」与「工具被预授权」是两处手抄的清单，漏掉后者的
+ * 症状是编译过、行为退化成逐次弹审批（B 类工具那样等于编排不可用），编译器一处都不拦。
+ *
+ * 这一行也是**这一族唯一的装配点**：工具各自只认一个窄 deps（`SendMessageToolDeps` 等），
+ * 与「这些 deps 由谁填」解耦；而「由谁填」此前散在五个 `createXxxToolForSession(client)` 里，
+ * 每个三行、只转发一个方法，是五个同尺寸的浅模块（架构评审候选 #4 已收拢于此）。
  */
+const MOBI_APPS_TOOLS = [
+    {
+        name: OPEN_IN_MOBI_TOOL_NAME,
+        build: (client: ApiSessionClient) => createOpenInMobiTool({
+            sendUiCommand: (action) => client.sendUiCommand(action),
+        }),
+    },
+    {
+        name: LIST_MACHINES_TOOL_NAME,
+        build: (client: ApiSessionClient) => createListMachinesTool({
+            listMachines: () => client.listOnlineMachinesForAgent(),
+        }),
+    },
+    {
+        name: LIST_SESSIONS_TOOL_NAME,
+        build: (client: ApiSessionClient) => createListSessionsTool({
+            listSessions: (query) => client.listSessionsForAgent(query),
+        }),
+    },
+    {
+        name: CREATE_SESSION_TOOL_NAME,
+        build: (client: ApiSessionClient) => createCreateSessionTool({
+            createSession: (input) => client.createSessionForAgent(input),
+        }),
+    },
+    {
+        name: SEND_MESSAGE_TOOL_NAME,
+        build: (client: ApiSessionClient) => createSendMessageTool({
+            sendMessage: (input) => client.sendMessageToSessionsForAgent(input),
+        }),
+    },
+]
+
+/** 本 server 的工具名（预授权清单的派生源，顺序即注册顺序） */
+export const MOBI_APPS_TOOL_NAMES: readonly string[] = MOBI_APPS_TOOLS.map((row) => row.name)
+
+/** 把本 server 的工具族造出来（transport 无关的工具体，SDK 形状适配在 createMobiAppsServer） */
 export function buildMobiAppsTools(client: ApiSessionClient) {
-    return [
-        createOpenInMobiTool({ sendUiCommand: (action) => client.sendUiCommand(action) }),
-        createListMachinesTool({ listMachines: () => client.listOnlineMachinesForAgent() }),
-        createListSessionsTool({ listSessions: (query) => client.listSessionsForAgent(query) }),
-        createCreateSessionTool({ createSession: (input) => client.createSessionForAgent(input) }),
-        createSendMessageTool({ sendMessage: (input) => client.sendMessageToSessionsForAgent(input) }),
-    ]
+    return MOBI_APPS_TOOLS.map((row) => row.build(client))
 }
 
 export function createMobiAppsServer(client: ApiSessionClient) {
