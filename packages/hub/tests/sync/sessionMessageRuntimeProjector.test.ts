@@ -171,6 +171,36 @@ describe('SessionMessageRuntimeProjector', () => {
         expect(storedRuntimeState()?.backgroundTasks).toBeUndefined()
     })
 
+    test('前台 Bash 超时转后台：补建条目回填 description/toolName/toolUseId', () => {
+        // 真实时序：task_started 时 is_backgrounded=false 判前台 → 120s 超时转后台
+        // → background_tasks_changed + task_updated（patch 只有 is_backgrounded，无 description）
+        project(makeSystemContent('task_started', {
+            task_id: 'bt-timeout',
+            task_type: 'local_bash',
+            description: 'Clone openclaw',
+            tool_use_id: 'toolu-clone',
+            is_backgrounded: false,
+        }))
+        expect(storedRuntimeState()?.backgroundTasks).toBeUndefined()
+
+        project(makeSystemContent('background_tasks_changed', {
+            tasks: [{ task_id: 'bt-timeout', task_type: 'local_bash', description: 'Clone openclaw' }],
+        }))
+
+        const publications = project(makeSystemContent('task_updated', {
+            task_id: 'bt-timeout',
+            patch: { is_backgrounded: true },
+        }))
+
+        expect(publications[0]?.backgroundTasks?.[0]).toMatchObject({
+            taskId: 'bt-timeout',
+            description: 'Clone openclaw',
+            toolName: 'Bash',
+            toolUseId: 'toolu-clone',
+            status: 'running',
+        })
+    })
+
     test('run_in_background 可在缺少 background_tasks_changed 时识别后台任务', () => {
         project(makeAssistantContent([
             {

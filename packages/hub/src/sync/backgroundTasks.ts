@@ -47,6 +47,15 @@ const TOOL_NAME_MAP: Record<string, BackgroundToolName | undefined> = {
 }
 
 /**
+ * SDK task_type → 后台工具名映射。仅收录可确证的取值（local_bash 实证于真实会话消息，
+ * local_agent 对应 Task tool subagent）；未知 task_type 回落 'unknown' 诚实降级，不冒充。
+ */
+const TASK_TYPE_TOOL_NAME_MAP: Record<string, BackgroundToolName | undefined> = {
+    local_bash: 'Bash',
+    local_agent: 'Agent',
+}
+
+/**
  * 从 assistant 消息中收集后台工具的 toolUseId。
  * 判定条件：
  *   - Bash: input.run_in_background === true
@@ -104,10 +113,52 @@ export function collectBackgroundToolUseIds(
  * - ids：活跃后台任务 id 集合（REPLACE 语义整体替换）
  * - filteredIds：本条消息中被过滤（ambient 家务）的 taskId——调用方据此维护被滤集合，
  *   防被滤任务经 task_updated patch.is_backgrounded 豁免通道复活
+ * - taskInfo：活跃任务携带的元信息（description/task_type），供调用方喂给补建回填缓存
  */
 export type BackgroundTaskIdsExtraction = {
     ids: Set<string>
     filteredIds: Set<string>
+    taskInfo: Map<string, BackgroundTaskInfo>
+}
+
+/**
+ * 后台任务元信息：task_started / background_tasks_changed 携带的 SDK 权威字段，
+ * 供 task_updated 中途后台化补建时回填（patch 本身不带这些字段）。
+ */
+export type BackgroundTaskInfo = {
+    description?: string
+    taskType?: string
+    toolUseId?: string | null
+}
+
+/**
+ * 从 task_started 消息中提取任务元信息（**无论前后台**）。
+ * 前台任务可能中途转后台（如 Bash 120s 超时自动后台化），届时不会再有 task_started，
+ * 调用方须在此刻缓存元信息备用。非 task_started 消息返回 null。
+ * 注意：缓存信息本身不构成复活通道——ambient / in_process_teammate 仍由 deltas 提取的
+ * excludedTaskIds 守卫拦截。
+ */
+export function extractTaskStartedInfo(
+    content: unknown,
+): BackgroundTaskInfo & { taskId: string } | null {
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record || record.role !== 'agent') return null
+
+    const msgContent = record.content
+    if (!isObject(msgContent) || msgContent.type !== 'output') return null
+
+    const data = isObject(msgContent.data) ? msgContent.data : null
+    if (!data || data.type !== 'system' || asString(data.subtype) !== 'task_started') return null
+
+    const taskId = asString(data.task_id)
+    if (!taskId) return null
+
+    return {
+        taskId,
+        description: asString(data.description) ?? undefined,
+        taskType: asString(data.task_type) ?? undefined,
+        toolUseId: asString(data.tool_use_id) ?? null,
+    }
 }
 
 /**
@@ -138,15 +189,25 @@ export function extractBackgroundTaskIdsFromMessageContent(
 
     // 存活集合规则（task_id 非空字符串 + 跳过 ambient）单源于 shared 的 extractLiveBackgroundTaskIds
     const ids = extractLiveBackgroundTaskIds(data.tasks)
-    // 被滤条目单独收集：ambient 家务任务对下游 deltas 是「不得复活」的黑名单而非不存在
+    // 被滤条目单独收集：ambient 家务任务对下游 deltas 是「不得复活」的黑名单而非不存在；
+    // 非被滤条目顺路收集元信息（description/task_type），供补建回填缓存使用
     const filteredIds = new Set<string>()
+    const taskInfo = new Map<string, BackgroundTaskInfo>()
     const tasks = Array.isArray(data.tasks) ? data.tasks : []
     for (const item of tasks) {
-        if (!isObject(item) || item.ambient !== true) continue
+        if (!isObject(item)) continue
         const taskId = asString(item.task_id)
-        if (taskId) filteredIds.add(taskId)
+        if (!taskId) continue
+        if (item.ambient === true) {
+            filteredIds.add(taskId)
+            continue
+        }
+        taskInfo.set(taskId, {
+            description: asString(item.description) ?? undefined,
+            taskType: asString(item.task_type) ?? undefined,
+        })
     }
-    return { ids, filteredIds }
+    return { ids, filteredIds, taskInfo }
 }
 
 /**
@@ -199,6 +260,9 @@ export function extractExcludedTaskStartedIds(content: unknown): Set<string> {
  *   清空且不从 DB 回种），补建守卫同 knownTaskIds 一起挡住持久化的真实条目被降级覆盖
  * - excludedTaskIds：被 hub 过滤丢弃的任务（ambient 家务 / in_process_teammate）——
  *   is_backgrounded 豁免通道（补建 + 终态直落）命中即 return null，防 running 幽灵卡复活
+ * - taskInfoCache：task 元信息缓存（task_started / background_tasks_changed 喂入），
+ *   补建条目据此回填 description / toolName / toolUseId——超时转后台场景 patch 不带这些字段，
+ *   缓存未命中（hub/CLI 重启且 bg_changed 未再携带）时维持 'unknown' / 空描述的诚实降级
  */
 export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
@@ -207,6 +271,7 @@ export function extractBackgroundTaskDeltasFromMessageContent(
     activeBackgroundTaskIds?: ReadonlySet<string>,
     persistedTaskIds?: ReadonlySet<string>,
     excludedTaskIds?: ReadonlySet<string>,
+    taskInfoCache?: ReadonlyMap<string, BackgroundTaskInfo>,
 ): BackgroundTaskDelta | null {
     const record = unwrapRoleWrappedRecordEnvelope(content)
     if (!record) return null
@@ -339,8 +404,20 @@ export function extractBackgroundTaskDeltasFromMessageContent(
             if (patchExplicitBg
                 && knownTaskIds?.has(taskId) !== true
                 && persistedTaskIds?.has(taskId) !== true) {
-                // patch 不携带 tool_use_id/subagent_type（sdk.d.ts SDKTaskUpdatedMessage），
-                // 补建条目无法确证工具类型 → toolName 诚实降级为 'unknown'（不冒充 Bash）；
+                // 回填：task_started / background_tasks_changed 曾携带的 SDK 权威元信息。
+                // 超时转后台场景 task_started 先于转后台到达且已被判前台丢弃，patch 只带
+                // is_backgrounded——无缓存回填时 toolName 诚实降级为 'unknown'（不冒充 Bash）、
+                // description 空串（Web 端有兜底文案）、toolUseId null（卡片不可点）
+                const info = taskInfoCache?.get(taskId)
+                const cachedToolUseId = info?.toolUseId ?? null
+                // 'unknown'：缓存未命中时无法确证工具类型的诚实降级
+                let toolName: BackgroundToolName | 'unknown'
+                if (cachedToolUseId && backgroundToolUseIds?.has(cachedToolUseId)) {
+                    toolName = backgroundToolUseIds.get(cachedToolUseId)!
+                } else {
+                    const mapped = info?.taskType ? TASK_TYPE_TOOL_NAME_MAP[info.taskType] : undefined
+                    toolName = mapped ?? 'unknown'
+                }
                 // status 从 patch.status 诚实映射（枚举无 pending，paused 是最近的诚实表达）
                 const patchStatus = asString(patch?.status)
                 const rebuiltStatus: BackgroundTaskItem['status']
@@ -349,9 +426,9 @@ export function extractBackgroundTaskDeltasFromMessageContent(
                     type: 'started',
                     task: {
                         taskId,
-                        toolUseId: null,
-                        toolName: 'unknown',
-                        description: asString(patch.description) ?? '',
+                        toolUseId: cachedToolUseId,
+                        toolName,
+                        description: info?.description || asString(patch.description) || '',
                         status: rebuiltStatus,
                         isBackground: true,
                         startedAt: Date.now(),

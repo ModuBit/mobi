@@ -174,6 +174,17 @@ describe('TasksPanel', () => {
         expect(container.textContent).toContain('后台研究')
     })
 
+    it('后台任务 description 为空串时显示兜底文案（超时转后台补建条目）', async () => {
+        const { useBackgroundTasksStore } = await loadStores()
+        useBackgroundTasksStore.getState().setTasks('test-session', [makeBgTask('bt-empty', { description: '' })])
+
+        const { container } = render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onClear={async () => {}} />,
+            { wrapper }
+        )
+        expect(container.textContent).toContain('Background task')
+    })
+
     it('前台任务与后台任务合并渲染在同一面板', async () => {
         const { useForegroundTasksStore, useBackgroundTasksStore } = await loadStores()
         useForegroundTasksStore.getState().set('test-session', [makeFgTask('fg-1')])

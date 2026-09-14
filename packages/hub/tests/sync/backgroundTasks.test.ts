@@ -20,6 +20,7 @@ import {
     extractBackgroundTaskDeltasFromMessageContent,
     extractBackgroundTaskIdsFromMessageContent,
     extractExcludedTaskStartedIds,
+    extractTaskStartedInfo,
     applyBackgroundTaskDelta,
 } from '../../src/sync/backgroundTasks'
 import type { BackgroundTaskDelta, BackgroundTaskItem } from '../../src/sync/backgroundTasks'
@@ -1059,5 +1060,106 @@ describe('A4: extractExcludedTaskStartedIds（review fix2）', () => {
         })
         expect(extractExcludedTaskStartedIds(normal).size).toBe(0)
         expect(extractExcludedTaskStartedIds(makeSystemMessage('task_progress', { task_id: 'x' })).size).toBe(0)
+    })
+})
+
+// ============ 中途后台化补建回填（超时转后台空卡片 bug）============
+
+describe('task 元信息缓存与补建回填', () => {
+    test('extractTaskStartedInfo 提取 task_started 元信息（含显式前台任务）', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-1', task_type: 'local_bash',
+            description: 'Clone openclaw', tool_use_id: 'toolu-1', is_backgrounded: false,
+        })
+        expect(extractTaskStartedInfo(msg)).toEqual({
+            taskId: 'bt-1',
+            description: 'Clone openclaw',
+            taskType: 'local_bash',
+            toolUseId: 'toolu-1',
+        })
+    })
+
+    test('非 task_started 消息 extractTaskStartedInfo 返回 null', () => {
+        expect(extractTaskStartedInfo(makeSystemMessage('task_progress', { task_id: 'x' }))).toBeNull()
+        expect(extractTaskStartedInfo(makeSystemMessage('task_updated', { task_id: 'x' }))).toBeNull()
+        expect(extractTaskStartedInfo(null)).toBeNull()
+    })
+
+    test('background_tasks_changed 提取携带 taskInfo（description/task_type）', () => {
+        const msg = makeSystemMessage('background_tasks_changed', {
+            tasks: [
+                { task_id: 'bt-1', task_type: 'local_bash', description: '构建' },
+                { task_id: 'bt-2', task_type: 'local_agent', description: '研究' },
+            ],
+        })
+        const result = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(result!.taskInfo.get('bt-1')).toEqual({ description: '构建', taskType: 'local_bash' })
+        expect(result!.taskInfo.get('bt-2')).toEqual({ description: '研究', taskType: 'local_agent' })
+    })
+
+    test('task_updated 补建时用缓存回填 description/toolName/toolUseId（超时转后台场景）', () => {
+        // 真实时序（会话 6391）：task_started 判前台被丢（信息仅入缓存）→ 超时转后台
+        // → background_tasks_changed / task_updated（patch 只有 is_backgrounded）
+        const started = makeSystemMessage('task_started', {
+            task_id: 'bt-1', task_type: 'local_bash', description: 'Clone openclaw',
+            tool_use_id: 'toolu-1', is_backgrounded: false,
+        })
+        // 缓存由调用方（projector）经 extractTaskStartedInfo 维护
+        const info = extractTaskStartedInfo(started)!
+        const cache = new Map([[info.taskId, info]])
+
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            makeSystemMessage('task_updated', { task_id: 'bt-1', patch: { is_backgrounded: true } }),
+            new Map(), new Set(), new Set(), new Set(), new Set(), cache,
+        )
+        expect(delta?.type).toBe('started')
+        if (delta?.type === 'started') {
+            expect(delta.task).toMatchObject({
+                taskId: 'bt-1',
+                description: 'Clone openclaw',
+                toolName: 'Bash',
+                toolUseId: 'toolu-1',
+            })
+        }
+    })
+
+    test('缓存 taskType=local_agent → 补建 toolName Agent', () => {
+        const cache = new Map([['bt-2', {
+            taskId: 'bt-2', description: '研究', taskType: 'local_agent', toolUseId: null,
+        }]])
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            makeSystemMessage('task_updated', { task_id: 'bt-2', patch: { is_backgrounded: true } }),
+            new Map(), new Set(), new Set(), new Set(), new Set(), cache,
+        )
+        if (delta?.type === 'started') {
+            expect(delta.task.toolName).toBe('Agent')
+            expect(delta.task.description).toBe('研究')
+        }
+    })
+
+    test('无缓存时补建维持诚实降级（unknown / 空描述 / 不可点）', () => {
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            makeSystemMessage('task_updated', { task_id: 'bt-3', patch: { is_backgrounded: true } }),
+            new Map(), new Set(), new Set(), new Set(), new Set(),
+        )
+        expect(delta?.type).toBe('started')
+        if (delta?.type === 'started') {
+            expect(delta.task.toolName).toBe('unknown')
+            expect(delta.task.description).toBe('')
+            expect(delta.task.toolUseId).toBeNull()
+        }
+    })
+
+    test('缓存 description 为空时回落 patch.description', () => {
+        const cache = new Map([['bt-4', { taskId: 'bt-4', description: '', taskType: 'local_bash' }]])
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            makeSystemMessage('task_updated', {
+                task_id: 'bt-4', patch: { is_backgrounded: true, description: 'patch 描述' },
+            }),
+            new Map(), new Set(), new Set(), new Set(), new Set(), cache,
+        )
+        if (delta?.type === 'started') {
+            expect(delta.task.description).toBe('patch 描述')
+        }
     })
 })

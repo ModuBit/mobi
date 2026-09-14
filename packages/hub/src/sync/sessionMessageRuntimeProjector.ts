@@ -24,6 +24,8 @@ import {
     extractBackgroundTaskDeltasFromMessageContent,
     extractBackgroundTaskIdsFromMessageContent,
     extractExcludedTaskStartedIds,
+    extractTaskStartedInfo,
+    type BackgroundTaskInfo,
     type BackgroundToolName,
 } from './backgroundTasks'
 import {
@@ -60,6 +62,10 @@ export class SessionMessageRuntimeProjector {
     private readonly backgroundToolUseIds = new Map<string, BackgroundToolName>()
     private readonly backgroundTaskIds = new Set<string>()
     private readonly filteredTaskIds = new Set<string>()
+    /** task 元信息缓存（task_started / background_tasks_changed 喂入）：前台任务可能中途
+     * 转后台（Bash 120s 超时自动后台化），届时仅 task_updated patch 可依赖，补建条目
+     * 据此回填 description/toolName/toolUseId。与连接生命周期一致 */
+    private readonly taskInfoCache = new Map<string, BackgroundTaskInfo>()
     private readonly now: () => number
 
     constructor(
@@ -68,6 +74,15 @@ export class SessionMessageRuntimeProjector {
         options?: { now?: () => number },
     ) {
         this.now = options?.now ?? Date.now
+    }
+
+    /** 喂入任务元信息：合并而非整体覆盖——background_tasks_changed 不携带 tool_use_id，
+     *  整体覆盖会把 task_started 曾提供的 toolUseId 抹成缺失，补建条目退化为不可点 */
+    private feedTaskInfo(taskId: string, info: BackgroundTaskInfo): void {
+        const prev = this.taskInfoCache.get(taskId)
+        this.taskInfoCache.set(taskId, prev
+            ? { ...prev, ...info, toolUseId: info.toolUseId ?? prev.toolUseId }
+            : { ...info, toolUseId: info.toolUseId ?? null })
     }
 
     project(input: SessionMessageRuntimeProjectionInput): RuntimeState[] {
@@ -107,7 +122,12 @@ export class SessionMessageRuntimeProjector {
             this.backgroundTaskTracker.replace(sessionId, activeBackgroundIds.ids)
             this.filteredTaskIds.clear()
             for (const id of activeBackgroundIds.filteredIds) this.filteredTaskIds.add(id)
+            for (const [id, info] of activeBackgroundIds.taskInfo) this.feedTaskInfo(id, info)
         }
+        // task_started 元信息无条件入缓存（无论前后台判定结果）：前台任务可能中途转后台，
+        // 届时不会再有 task_started，缓存是补建回填的唯一信息源
+        const startedTaskInfo = extractTaskStartedInfo(content)
+        if (startedTaskInfo) this.feedTaskInfo(startedTaskInfo.taskId, startedTaskInfo)
         for (const id of extractExcludedTaskStartedIds(content)) this.filteredTaskIds.add(id)
 
         const backgroundTaskDelta = extractBackgroundTaskDeltasFromMessageContent(
@@ -117,6 +137,7 @@ export class SessionMessageRuntimeProjector {
             this.backgroundTaskTracker.getActive(sessionId),
             persistedTaskIds,
             this.filteredTaskIds,
+            this.taskInfoCache,
         )
 
         if (backgroundTaskDelta?.type === 'started') {
