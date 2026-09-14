@@ -48,6 +48,15 @@ import { isBunCompiled } from '../utils/bunCompiled'
 import { assertCorsOriginsForCredentials } from '../utils/cors'
 import { staticCacheControl } from './utils/staticCacheControl'
 import type { Store } from '../store'
+import { createDesktopRoutes } from '../desktop/routes'
+import type { DesktopBroker } from '../desktop/broker'
+import {
+    composeWebsocketHandlers,
+    createDesktopWebsocketHandlers,
+    handleDesktopFetch,
+    isDesktopPathname,
+} from '../desktop/transport'
+import { MAX_RELAY_FRAME_BYTES } from '../desktop/broker'
 
 function findWebappDistDir(override?: string): { distDir: string; indexHtmlPath: string } {
     // 测试可注入临时 dist 目录，避免依赖真实 web/dist 构建产物
@@ -84,6 +93,7 @@ export function createWebApp(options: {
     getSyncEngine: () => SyncEngine | null
     getSseManager: () => SSEManager | null
     getVisibilityTracker: () => VisibilityTracker | null
+    getDesktopBroker?: () => DesktopBroker | null
     jwtSecret: Uint8Array
     store: Store
     vapidPublicKey: string
@@ -172,6 +182,12 @@ export function createWebApp(options: {
     app.route('/api', createWebToolsRoutes(options.getSyncEngine))
     app.route('/api', createGitRoutes(options.getSyncEngine))
     app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))
+    if (options.getDesktopBroker) {
+        app.route('/api', createDesktopRoutes({
+            getSyncEngine: options.getSyncEngine,
+            getDesktopBroker: options.getDesktopBroker,
+        }))
+    }
 
     // PWA Manifest（不需要认证）
     app.route('/', createManifestRoutes())
@@ -258,6 +274,7 @@ export async function startWebServer(options: {
     getSyncEngine: () => SyncEngine | null
     getSseManager: () => SSEManager | null
     getVisibilityTracker: () => VisibilityTracker | null
+    getDesktopBroker?: () => DesktopBroker | null
     jwtSecret: Uint8Array
     store: Store
     vapidPublicKey: string
@@ -281,6 +298,12 @@ export async function startWebServer(options: {
     })
 
     const socketHandler = options.socketEngine.handler()
+    // desktop raw WS（远程桌面）与 engine 共存：fetch 内先按路径分流（desktop 不走 engine），
+    // websocket handler 按 ws.data 标记分派（engine 的 data 形状是 { transport }，desktop 用专属 key）
+    const desktopBroker = options.getDesktopBroker?.() ?? null
+    const websocketHandlers = desktopBroker
+        ? composeWebsocketHandlers(socketHandler.websocket, createDesktopWebsocketHandlers(desktopBroker), MAX_RELAY_FRAME_BYTES)
+        : socketHandler.websocket
 
     const server = Bun.serve({
         hostname: configuration.listenHost,
@@ -288,11 +311,15 @@ export async function startWebServer(options: {
         idleTimeout: Math.max(30, socketHandler.idleTimeout),
         // 使用应用层上传限制（50MB），而非 Socket.IO 引擎的默认值
         maxRequestBodySize: Math.max(MAX_UPLOAD_BYTES, socketHandler.maxRequestBodySize ?? 0),
-        websocket: socketHandler.websocket,
+        websocket: websocketHandlers,
         fetch: (req, server) => {
             const url = new URL(req.url)
             if (url.pathname.startsWith('/socket.io/')) {
                 return socketHandler.fetch(req, server)
+            }
+            if (desktopBroker && isDesktopPathname(url.pathname)) {
+                // undefined = upgrade 已受理（Bun 要求此时不返回 Response）
+                return handleDesktopFetch(req, server, desktopBroker) ?? undefined
             }
             return app.fetch(req)
         }

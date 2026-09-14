@@ -707,5 +707,16 @@
         "folderOutsideHome": "文件夹路径必须位于机器主目录（{{homeDir}}）内",
         "foldersInvalid": "至少一个文件夹，且恰好一个主目录",
         "nameRequired": "项目名称不能为空"
+    },
+    "desktop": {
+        "title": "远程桌面",
+        "connecting": "正在连接桌面画面…",
+        "connected": "已连接",
+        "disconnected": "连接已断开",
+        "reconnect": "重新连接",
+        "noMachine": "没有在线的机器",
+        "viewOnlyHint": "迭代 1 为纯观看模式",
+        "connectFailed": "连接失败",
+        "start": "开始观看"
     }
 }

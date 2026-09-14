@@ -323,6 +323,11 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'readFileRange', { cwd, path, offset, length }) as RpcReadFileRangeResponse
     }
 
+    // machine 通道 desktop 流：触发 CLI 反连 hub attach 路径（远程桌面，见 desktop/broker）
+    async machineDesktopStream(machineId: string, ticket: string, attachPath: string): Promise<void> {
+        await this.machineRpc(machineId, 'desktop-stream', { ticket, attachPath })
+    }
+
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse

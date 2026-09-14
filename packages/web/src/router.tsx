@@ -33,6 +33,7 @@ const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
+const DesktopPage = lazyRoute(routeChunkLoaders.DesktopPage)
 
 // Root route - wraps all routes with App component
 const rootRoute = createRootRoute({
@@ -126,6 +127,13 @@ const settingsDebugRoute = createRoute({
     component: DebugSectionRoute,
 })
 
+// 远程桌面观看页（迭代 1 只读；/desktop/:machineId 的多机器路由在后续 ticket）
+const desktopRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
+    path: 'desktop',
+    component: DesktopPage,
+})
+
 // Create router
 export const router = createRouter({
     routeTree: rootRoute.addChildren([
@@ -137,6 +145,7 @@ export const router = createRouter({
                 sessionDetailRoute,
             ]),
             newSessionRoute,
+            desktopRoute,
             settingsRoute.addChildren([
                 settingsIndexRoute,
                 settingsNotificationsRoute,

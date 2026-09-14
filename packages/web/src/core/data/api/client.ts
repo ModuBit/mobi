@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -363,8 +363,7 @@ export function createMobiApi() {
         },
 
         // Machines
-        machines: {
-            list: () => client.get<{ machines: Machine[] }>('/api/machines'),
+        machines: {            list: () => client.get<{ machines: Machine[] }>('/api/machines'),
             spawn: (machineId: string, directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string, outputStyle?: string, projectId?: string) =>
                 client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, projectId }),
             checkPathsExist: (machineId: string, paths: string[]) =>
@@ -417,6 +416,12 @@ export function createMobiApi() {
                         { providerId, credentials },
                     ),
             },
+        },
+
+        // Desktop（远程桌面观看；observe token 走响应体、组件内存持有，不进 URL）
+        desktop: {
+            watch: (machineId: string) =>
+                client.post<DesktopWatchResponse>('/api/desktop/watch', { machineId }),
         },
     }
 }

@@ -17,6 +17,7 @@
 import { Store } from '../../src/store'
 import { createWebApp } from '../../src/web/server'
 import { createConfiguration, resetConfiguration } from '../../src/configuration'
+import type { DesktopBroker } from '../../src/desktop/broker'
 import type { SSEManager } from '../../src/sse/sseManager'
 import type { VisibilityTracker } from '../../src/visibility/visibilityTracker'
 import type { SyncEngine } from '../../src/sync/syncEngine'
@@ -42,7 +43,7 @@ function ensureIsolatedMobiHome(): string {
 
 export async function setupTestApp(
     syncEngine: SyncEngine | null = null,
-    opts: { distDirOverride?: string } = {},
+    opts: { distDirOverride?: string; getDesktopBroker?: () => DesktopBroker | null } = {},
 ) {
     const store = new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
@@ -68,6 +69,8 @@ export async function setupTestApp(
         embeddedAssetMap: null,
         // 注入临时 dist 目录（静态资源 Cache-Control 等测试用），不依赖真实 web/dist 构建
         distDirOverride: opts.distDirOverride,
+        // desktop 流 broker（远程桌面 watch API 测试用）；缺省不挂载 desktop 路由
+        getDesktopBroker: opts.getDesktopBroker ?? undefined,
     })
 
     const cleanup = () => {

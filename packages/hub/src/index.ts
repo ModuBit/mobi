@@ -47,6 +47,7 @@ import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
 import { VisibilityTracker } from './visibility/visibilityTracker'
+import { createDesktopBroker } from './desktop/broker'
 import type { Server as BunServer } from 'bun'
 import type { WebSocketData } from '@socket.io/bun-engine'
 
@@ -204,6 +205,9 @@ async function main() {
 
     syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager, rewindDeleteBoundTracker)
 
+    // 远程桌面流 broker（raw WS 票据配对与透传，desktop/ 模块）
+    const desktopBroker = createDesktopBroker()
+
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)
         new PushNotificationChannel(pushService, sseManager, config.publicUrl)
@@ -215,6 +219,7 @@ async function main() {
         getSyncEngine: () => syncEngine,
         getSseManager: () => sseManager,
         getVisibilityTracker: () => visibilityTracker,
+        getDesktopBroker: () => desktopBroker,
         jwtSecret,
         store,
         vapidPublicKey: vapidKeys.publicKey,

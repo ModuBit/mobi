@@ -847,6 +847,11 @@ export class SyncEngine {
         return await this.rpcGateway.machineReadFileRange(machineId, cwd, path, offset, length)
     }
 
+    /** machine 通道 desktop 流：触发 CLI 反连 hub attach 路径（远程桌面，见 desktop/broker） */
+    async machineDesktopStream(machineId: string, ticket: string, attachPath: string): Promise<void> {
+        return await this.rpcGateway.machineDesktopStream(machineId, ticket, attachPath)
+    }
+
     async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
         return await this.rpcGateway.machineSearchFiles(machineId, cwd, query)
     }

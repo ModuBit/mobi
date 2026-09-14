@@ -717,5 +717,16 @@
         "folderOutsideHome": "Folder path must be within the machine home directory ({{homeDir}})",
         "foldersInvalid": "At least one folder with exactly one primary",
         "nameRequired": "Project name is required"
+    },
+    "desktop": {
+        "title": "Remote Desktop",
+        "connecting": "Connecting to desktop…",
+        "connected": "Connected",
+        "disconnected": "Disconnected",
+        "reconnect": "Reconnect",
+        "noMachine": "No machine online",
+        "viewOnlyHint": "View-only in this iteration",
+        "connectFailed": "Connection failed",
+        "start": "Watch"
     }
 }
