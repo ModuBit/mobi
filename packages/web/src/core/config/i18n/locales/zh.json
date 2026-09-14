@@ -114,6 +114,7 @@
             "restore": "恢复",
             "openFile": "打开文件",
             "terminal": "终端",
+            "desktop": "远程桌面",
             "review": "审查",
             "addTab": "新建",
             "terminalLimitReached": "已达上限（{{max}}）",
@@ -706,6 +707,9 @@
         "noMachine": "没有在线的机器",
         "viewOnlyHint": "迭代 1 为纯观看模式",
         "connectFailed": "连接失败",
+        "surface": {
+            "retryHint": "画面断开后会自动重连；展示面全部关闭约 {{seconds}} 秒后停止观看"
+        },
         "failure": {
             "vncAuthFailed": "认证失败：VNC 密码不正确或已更改，请在被控 Mac 的设置里核对后重试",
             "vncPasswordMissing": "被控 Mac 尚未配置 VNC 密码，请先在系统设置中开启并到远程桌面设置里录入"

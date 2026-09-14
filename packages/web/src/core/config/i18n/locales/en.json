@@ -114,6 +114,7 @@
             "restore": "Restore",
             "openFile": "Open File",
             "terminal": "Terminal",
+            "desktop": "Remote Desktop",
             "review": "Review",
             "addTab": "Add",
             "terminalLimitReached": "Limit reached ({{max}})",
@@ -716,6 +717,9 @@
         "noMachine": "No machine online",
         "viewOnlyHint": "View-only in this iteration",
         "connectFailed": "Connection failed",
+        "surface": {
+            "retryHint": "Reconnects automatically; streaming stops about {{seconds}}s after the last surface closes"
+        },
         "failure": {
             "vncAuthFailed": "Authentication failed: the VNC password is incorrect or has changed. Check it on the controlled Mac and try again",
             "vncPasswordMissing": "The controlled Mac has no VNC password configured yet. Enable it in System Settings and save it in Desktop settings first"

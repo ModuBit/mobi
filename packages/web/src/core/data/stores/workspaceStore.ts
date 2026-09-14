@@ -22,10 +22,10 @@ import { basename } from '@/core/utils/path'
 /** 每 session 终端数上限（与后端 DEFAULT_MAX_TERMINALS 对齐） */
 export const MAX_TERMINALS_PER_SESSION = 3
 
-/** 单个 tab：文件树视图、已打开的文件或终端 */
+/** 单个 tab：文件树视图、已打开的文件、终端或远程桌面 */
 export interface InspectorTabEntry {
     id: string
-    mode: 'tree' | 'file' | 'terminal'
+    mode: 'tree' | 'file' | 'terminal' | 'desktop'
     /** mode='file'：相对路径（去重 key + tooltip） */
     filePath?: string
     /** mode='file'：tab 显示名 */
@@ -36,6 +36,8 @@ export interface InspectorTabEntry {
     terminalSeq?: number
     /** mode='terminal'：自定义名（双击重命名）；空则显示"终端 N" */
     title?: string
+    /** mode='desktop'：观看的机器（跟随会话所在机器） */
+    machineId?: string
     /**
      * 该 tab 的视图状态（切走再切回恢复）。挂 tab 上：closeTab 自动清；新类型只需扩字段。
      * 通用 scrollRatio（所有可滚动类型共用）+ 按需扩展（scale 仅可缩放类型如 PDF）。
@@ -126,6 +128,8 @@ interface WorkspaceState {
     renameTerminalTab: (sessionId: string, tabId: string, title: string) => void
     /** 关闭 tab；归空则收起 inspector；关的是 active 则激活相邻 */
     closeTab: (sessionId: string, tabId: string) => void
+    /** 打开远程桌面 tab（跟随会话机器）：同 machineId 已开则切激活，不重复创建 */
+    openDesktopTab: (sessionId: string, machineId: string) => void
     setActiveTab: (sessionId: string, tabId: string) => void
     /** 记住某 tab 的视图状态（滚动比例/缩放等）；patch 与现有值逐字段合并，同值短路 */
     setTabViewState: (sessionId: string, tabId: string, patch: Partial<TabViewState>) => void
@@ -268,6 +272,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             tabs[idx] = { ...tabs[idx], title: nextTitle }
             const next = new Map(state.sessions)
             next.set(sessionId, { ...cur, tabs })
+            return { sessions: next }
+        }),
+
+    /** 打开远程桌面 tab：同 machineId 已开则切激活（每机器一个 tab，画面经 portal 跟随激活面） */
+    openDesktopTab: (sessionId, machineId) =>
+        set((state) => {
+            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+            const existed = cur.tabs.find((t) => t.mode === 'desktop' && t.machineId === machineId)
+            if (existed) {
+                if (cur.activeTabId === existed.id) return state
+                const next = new Map(state.sessions)
+                next.set(sessionId, { ...cur, activeTabId: existed.id })
+                return { sessions: next }
+            }
+            const entry: InspectorTabEntry = { id: uuid(), mode: 'desktop', machineId }
+            const tabs = [...cur.tabs, entry]
+            const next = new Map(state.sessions)
+            next.set(sessionId, { ...cur, tabs, activeTabId: entry.id })
             return { sessions: next }
         }),
 

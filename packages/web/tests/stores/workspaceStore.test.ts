@@ -316,4 +316,32 @@ describe('workspaceStore', () => {
             expect(() => useWorkspaceStore.getState().renameTerminalTab('s1', 'nope', 'x')).not.toThrow()
         })
     })
+
+    describe('openDesktopTab', () => {
+        it('新增 desktop tab（携带 machineId）并激活', () => {
+            useWorkspaceStore.getState().openDesktopTab('s1', 'm1')
+            const st = useWorkspaceStore.getState().getSession('s1')
+            expect(st.tabs).toHaveLength(1)
+            expect(st.tabs[0].mode).toBe('desktop')
+            expect(st.tabs[0].machineId).toBe('m1')
+            expect(st.activeTabId).toBe(st.tabs[0].id)
+        })
+
+        it('同 machineId 已开 → 切激活，不重复创建', () => {
+            useWorkspaceStore.getState().openDesktopTab('s1', 'm1')
+            useWorkspaceStore.getState().openFileTreeTab('s1')
+            useWorkspaceStore.getState().openDesktopTab('s1', 'm1')
+            const st = useWorkspaceStore.getState().getSession('s1')
+            const desktopTabs = st.tabs.filter((t) => t.mode === 'desktop')
+            expect(desktopTabs).toHaveLength(1)
+            expect(st.activeTabId).toBe(desktopTabs[0].id)
+        })
+
+        it('不同 machineId 各开一个 tab', () => {
+            useWorkspaceStore.getState().openDesktopTab('s1', 'm1')
+            useWorkspaceStore.getState().openDesktopTab('s1', 'm2')
+            const st = useWorkspaceStore.getState().getSession('s1')
+            expect(st.tabs.filter((t) => t.mode === 'desktop')).toHaveLength(2)
+        })
+    })
 })

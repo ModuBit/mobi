@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-import { Folder, Terminal, FileSearch, type LucideIcon } from 'lucide-react'
+import { Folder, Terminal, FileSearch, Monitor, type LucideIcon } from 'lucide-react'
 
 /** 检视面板可用动作的唯一真相源：空态卡片列表与「+」下拉菜单共同消费。 */
 export interface InspectorActionDescriptor {
-    key: 'file' | 'terminal' | 'review'
+    key: 'file' | 'terminal' | 'desktop' | 'review'
     /** lucide 图标组件（调用方按需传 size） */
     Icon: LucideIcon
     /** 文案 i18n key */
@@ -34,5 +34,6 @@ export interface InspectorActionDescriptor {
 export const INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = [
     { key: 'file', Icon: Folder, labelKey: 'session.inspector.openFile', disabled: false },
     { key: 'terminal', Icon: Terminal, labelKey: 'session.inspector.terminal', disabled: false },
+    { key: 'desktop', Icon: Monitor, labelKey: 'session.inspector.desktop', disabled: false },
     { key: 'review', Icon: FileSearch, labelKey: 'session.inspector.review', disabled: true },
 ]
