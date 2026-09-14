@@ -23,7 +23,12 @@
  */
 
 import { Hono } from 'hono'
-import { desktopWatchRequestSchema, DESKTOP_ATTACH_PATH, type DesktopWatchResponse } from '@mobi/shared'
+import {
+    desktopWatchRequestSchema,
+    desktopVncPasswordSubmissionSchema,
+    DESKTOP_ATTACH_PATH,
+    type DesktopWatchResponse,
+} from '@mobi/shared'
 import type { SyncEngine } from '../sync/syncEngine'
 import type { WebAppEnv } from '../web/middleware/auth'
 import { requireMachine, requireSyncEngine } from '../web/routes/guards'
@@ -71,6 +76,55 @@ export function createDesktopRoutes(deps: {
             expiresAtMs: session.expiresAtMs,
         }
         return c.json(response)
+    })
+
+    // VNC 密码写入：hub 纯中转（machine RPC），不落盘副本；校验在 cli 侧 schema 兜底
+    app.post('/desktop/vnc-password', async (c) => {
+        const engine = requireSyncEngine(c, deps.getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = desktopVncPasswordSubmissionSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'VNC 密码须为 1-8 个字符' }, 400)
+        }
+
+        const machine = requireMachine(c, engine, (body as { machineId?: string }).machineId ?? '')
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        try {
+            await engine.machineDesktopSetVncPassword(machine.id, parsed.data.vncPassword)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to reach cli'
+            return c.json({ error: `Failed to save VNC password: ${message}` }, 502)
+        }
+        return c.json({ success: true })
+    })
+
+    // VNC 密码配置状态（只回是否已配置，密码不回读）
+    app.get('/desktop/vnc-status', async (c) => {
+        const engine = requireSyncEngine(c, deps.getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const machineId = c.req.query('machineId') ?? ''
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        try {
+            const status = await engine.machineDesktopVncStatus(machine.id)
+            return c.json(status)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to reach cli'
+            return c.json({ error: `Failed to read VNC status: ${message}` }, 502)
+        }
     })
 
     return app

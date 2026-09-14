@@ -54,6 +54,11 @@ export interface Settings {
   bashInjectContext?: boolean
   // web 工具配置（provider 启停/凭据/当前选择），由 runner RPC 读写；会话进程 mtime 惰性读
   webTools?: WebToolsConfig
+  // 远程桌面配置（desktop/ 模块）：VNC 密码与 macOS「VNC 观看者可以用密码控制屏幕」
+  // 所设密码一致；由 hub RPC 写入，只在被控机本地留存（web/hub 均不落盘副本）
+  desktop?: {
+    vncPassword?: string
+  }
 }
 
 /** hub 设置文件受限写形状：cli 只允许写 listen*（hub 监听配置），其余字段归 hub 所有 */

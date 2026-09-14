@@ -422,6 +422,10 @@ export function createMobiApi() {
         desktop: {
             watch: (machineId: string) =>
                 client.post<DesktopWatchResponse>('/api/desktop/watch', { machineId }),
+            setVncPassword: (machineId: string, vncPassword: string) =>
+                client.post<{ success: true }>('/api/desktop/vnc-password', { machineId, vncPassword }),
+            vncStatus: (machineId: string, opts?: { signal?: AbortSignal }) =>
+                client.get<{ configured: boolean }>('/api/desktop/vnc-status', { params: { machineId }, signal: opts?.signal }),
         },
     }
 }

@@ -852,6 +852,16 @@ export class SyncEngine {
         return await this.rpcGateway.machineDesktopStream(machineId, ticket, attachPath)
     }
 
+    /** machine 通道 desktop 配置：VNC 密码写入（hub 纯中转，不落盘副本） */
+    async machineDesktopSetVncPassword(machineId: string, vncPassword: string): Promise<void> {
+        return await this.rpcGateway.machineDesktopSetVncPassword(machineId, vncPassword)
+    }
+
+    /** machine 通道 desktop 配置：VNC 密码配置状态 */
+    async machineDesktopVncStatus(machineId: string): Promise<{ configured: boolean }> {
+        return await this.rpcGateway.machineDesktopVncStatus(machineId)
+    }
+
     async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
         return await this.rpcGateway.machineSearchFiles(machineId, cwd, query)
     }

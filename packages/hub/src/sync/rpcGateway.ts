@@ -328,6 +328,16 @@ export class RpcGateway {
         await this.machineRpc(machineId, 'desktop-stream', { ticket, attachPath })
     }
 
+    // machine 通道 desktop 配置：VNC 密码写入（hub 纯中转，不落盘副本）
+    async machineDesktopSetVncPassword(machineId: string, vncPassword: string): Promise<void> {
+        await this.machineRpc(machineId, 'set-desktop-vnc-password', { vncPassword })
+    }
+
+    // machine 通道 desktop 配置：VNC 密码配置状态（只回是否已配置）
+    async machineDesktopVncStatus(machineId: string): Promise<{ configured: boolean }> {
+        return await this.machineRpc(machineId, 'get-desktop-vnc-status', {}) as { configured: boolean }
+    }
+
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse

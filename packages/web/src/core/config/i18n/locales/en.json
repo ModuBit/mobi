@@ -518,20 +518,9 @@
     "settings": {
         "title": "Settings",
         "sections": {
-            "notifications": {
-                "title": "Notifications",
-                "desc": "Push channels · Install to home screen"
-            },
-            "webTools": {
-                "title": "Web Tools",
-                "desc": "Search & fetch provider configuration",
-                "statusEnabled": "Enabled",
-                "statusUnconfigured": "Not configured",
-                "statusOffline": "Machine offline"
-            },
-            "debug": {
-                "title": "Debug",
-                "desc": "Diagnostics · Data export"
+            "desktop": {
+                "title": "Remote Desktop",
+                "desc": "VNC password and viewing guide"
             }
         },
         "webTools": {
@@ -727,6 +716,18 @@
         "noMachine": "No machine online",
         "viewOnlyHint": "View-only in this iteration",
         "connectFailed": "Connection failed",
-        "start": "Watch"
+        "start": "Watch",
+        "settings": {
+            "title": "Remote Desktop",
+            "guideTitle": "Complete two steps before first use",
+            "guideStep1": "On your Mac, open System Settings → General → Sharing → Screen Sharing, click the ⓘ button, enable \"VNC viewers may control screen with password\" and set a password (max 8 chars)",
+            "guideStep2": "Enter the same password below (it is stored only on the controlled machine; neither the web app nor the server keeps a copy)",
+            "configured": "✓ VNC password configured",
+            "notConfigured": "VNC password not configured",
+            "passwordPlaceholder": "VNC password (max 8 chars)",
+            "save": "Save",
+            "saved": "VNC password saved",
+            "privacyNote": "The password is stored only in the mobi config file on the controlled machine; viewing connections use one-time short-lived tokens."
+        }
     }
 }

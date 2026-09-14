@@ -65,6 +65,23 @@ export const desktopStreamRequestSchema = z.object({
 export type DesktopStreamRequest = z.infer<typeof desktopStreamRequestSchema>
 
 /**
+ * VNC 密码提交（web → hub → cli 落 settings.cli.json）。
+ * macOS「VNC 观看者密码」上限 8 字符，超长必然与系统配置不一致，schema 层直接拒。
+ */
+export const desktopVncPasswordSubmissionSchema = z.object({
+    vncPassword: z.string().min(1).max(8),
+})
+
+export type DesktopVncPasswordSubmission = z.infer<typeof desktopVncPasswordSubmissionSchema>
+
+/** VNC 密码配置状态（只回「是否已配置」，密码本身永不回读） */
+export const desktopVncStatusSchema = z.object({
+    configured: z.boolean(),
+})
+
+export type DesktopVncStatus = z.infer<typeof desktopVncStatusSchema>
+
+/**
  * observe WS 的 data 标记（hub Bun.serve websocket handler 分流依据）。
  * engine 的 data 形状是 { transport }，desktop 用专属 key 避免歧义。
  */

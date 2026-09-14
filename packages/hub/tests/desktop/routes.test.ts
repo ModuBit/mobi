@@ -42,11 +42,17 @@ const mockMachine: Machine = {
 /** 捕获 desktop-stream RPC 下发参数（断言票据与路径到达 cli 侧） */
 const desktopStreamCalls: Array<{ machineId: string; ticket: string; attachPath: string }> = []
 
+const vncPasswordCalls: Array<{ machineId: string; vncPassword: string }> = []
+
 const mockSyncEngine = {
     getMachine: (id: string) => (id === 'test-machine-1' ? mockMachine : null),
     machineDesktopStream: async (machineId: string, ticket: string, attachPath: string) => {
         desktopStreamCalls.push({ machineId, ticket, attachPath })
     },
+    machineDesktopSetVncPassword: async (machineId: string, vncPassword: string) => {
+        vncPasswordCalls.push({ machineId, vncPassword })
+    },
+    machineDesktopVncStatus: async () => ({ configured: true }),
 } as unknown as SyncEngine
 
 describe('Desktop watch API', () => {
@@ -66,6 +72,7 @@ describe('Desktop watch API', () => {
 
     afterEach(() => {
         desktopStreamCalls.length = 0
+        vncPasswordCalls.length = 0
         cleanup()
     })
 
@@ -163,5 +170,44 @@ describe('Desktop watch API', () => {
             body: JSON.stringify({}),
         })
         expect(res.status).toBe(400)
+    })
+
+    test('vnc-password 经 RPC 中转到 cli（1-8 字符）', async () => {
+        const token = await getAuthToken(app)
+        const res = await app.request('/api/desktop/vnc-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ machineId: 'test-machine-1', vncPassword: 'ab12cd34' }),
+        })
+        expect(res.status).toBe(200)
+        expect(vncPasswordCalls).toEqual([{ machineId: 'test-machine-1', vncPassword: 'ab12cd34' }])
+    })
+
+    test('vnc-password 超长被 schema 拒绝（400，不下发 RPC）', async () => {
+        const token = await getAuthToken(app)
+        const res = await app.request('/api/desktop/vnc-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ machineId: 'test-machine-1', vncPassword: '123456789' }),
+        })
+        expect(res.status).toBe(400)
+        expect(vncPasswordCalls).toHaveLength(0)
+    })
+
+    test('vnc-status 回 cli 侧配置状态', async () => {
+        const token = await getAuthToken(app)
+        const res = await app.request('/api/desktop/vnc-status?machineId=test-machine-1', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ configured: true })
+    })
+
+    test('vnc-status 未知 machineId → 404', async () => {
+        const token = await getAuthToken(app)
+        const res = await app.request('/api/desktop/vnc-status?machineId=no-such', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(res.status).toBe(404)
     })
 })

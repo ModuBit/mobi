@@ -33,6 +33,7 @@ const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
+const DesktopSection = lazyRoute(routeChunkLoaders.DesktopSection)
 const DesktopPage = lazyRoute(routeChunkLoaders.DesktopPage)
 
 // Root route - wraps all routes with App component
@@ -120,6 +121,12 @@ const settingsWebToolsRoute = createRoute({
     path: 'web-tools',
     component: WebToolsSection,
 })
+// 远程桌面分区（VNC 密码向导）
+const settingsDesktopRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'desktop',
+    component: DesktopSection,
+})
 // 调试分区（未解锁渲染空分区）
 const settingsDebugRoute = createRoute({
     getParentRoute: () => settingsRoute,
@@ -150,6 +157,7 @@ export const router = createRouter({
                 settingsIndexRoute,
                 settingsNotificationsRoute,
                 settingsWebToolsRoute,
+                settingsDesktopRoute,
                 settingsDebugRoute,
             ]),
         ]),
