@@ -33,6 +33,9 @@ import { createMobiApi } from '@/core/data/api/client'
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
 
+/** 观看侧不自动重连的服务端关闭码：被抢占（4000）/ 被主动关闭（4002） */
+const NON_RECONNECT_CLOSE_CODES = new Set([4000, 4002])
+
 /** watch/连接失败的退避重试节奏 */
 const RETRY_BASE_MS = 1_000
 const RETRY_MAX_MS = 30_000
@@ -161,11 +164,16 @@ export class DesktopStreamProvider {
                         entry.retryAttempt = 0
                         this.setState(machineId, { phase: 'connected' })
                     },
-                    onDisconnect: ({ clean }) => {
+                    onDisconnect: ({ clean, close }) => {
                         if (generation !== this.streams.get(machineId)?.generation) return
                         entry.connection = null
-                        // 仍有引用的异常断开（锁屏/网络/会话被抢占）→ 自动重走 watch；
-                        // clean 断开来自主动 disconnect（宽限 GC），不重连
+                        // 被抢占/被主动关闭：归因展示，绝不自动重连（重连即抢占回旋镖/
+                        // 无视用户的关闭操作）；仅网络类断开（锁屏/掉线）在仍有引用时恢复
+                        if (close && NON_RECONNECT_CLOSE_CODES.has(close.code)) {
+                            const reason = close.code === 4000 ? 'superseded' : 'stream closed'
+                            this.setState(machineId, { phase: 'error', message: reason })
+                            return
+                        }
                         if (!clean && entry.refs > 0) {
                             void this.connect(machineId)
                         }

@@ -58,6 +58,19 @@ export const desktopWatchResponseSchema = z.object({
 
 export type DesktopWatchResponse = z.infer<typeof desktopWatchResponseSchema>
 
+/** GET /api/desktop/streams 响应体：hub 上的活跃观看流（侧边栏列表数据源） */
+export const desktopStreamsResponseSchema = z.object({
+    streams: z.array(
+        z.object({
+            sessionId: z.string().min(1),
+            machineId: z.string().min(1),
+            startedAtMs: z.number().int().positive(),
+        }),
+    ),
+})
+
+export type DesktopStreamsResponse = z.infer<typeof desktopStreamsResponseSchema>
+
 /** hub → cli 的 desktop-stream RPC 请求参数 */
 export const desktopStreamRequestSchema = z.object({
     ticket: z.string().min(1),

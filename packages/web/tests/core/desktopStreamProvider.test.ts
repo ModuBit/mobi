@@ -16,63 +16,48 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { DesktopStreamProvider, DESKTOP_STREAM_GRACE_MS } from '@/core/desktop/desktopStreamProvider'
-import type { RfbConstructor } from '@/core/desktop/desktopStreamClient'
+import type { DesktopViewCallbacks } from '@/core/desktop/desktopStreamClient'
 
 /**
- * fake noVNC 构造器：addEventListener 收集事件监听，手动触发。
- * 模块级单例（稳定引用，避免 hook 循环陷阱——项目已知问题）。
+ * mock connectDesktopView：捕获每次连接的 callbacks（手动触发事件）与 disconnect spy。
+ * 走 desktopStreamClient 的回调面（含 close code 语义），比 fake Rfb 更贴近真实链路。
+ * 模块级稳定 mock 引用（避免 effect 循环陷阱——项目已知问题）。
  */
-const rfbListeners = new Map<string, Array<(event: unknown) => void>>()
+const rfbCallbacksPerConnection: DesktopViewCallbacks[][] = [[]]
 const disconnectSpies: Array<ReturnType<typeof vi.fn>> = []
 
-function makeRfbLoader(): { loader: () => Promise<RfbConstructor>; emit: (type: string, detail?: unknown) => void } {
-    const RfbCtor = function (this: unknown, _target: HTMLElement) {
-        const listeners: Record<string, Array<(event: unknown) => void>> = {}
-        rfbListeners.clear()
-        Object.defineProperty(this, 'scaleViewport', { value: true, writable: true })
-        Object.defineProperty(this, 'viewOnly', { value: true, writable: true })
-        Object.defineProperty(this, 'background', { value: 'transparent', writable: true })
-        ;(this as { addEventListener: (type: string, fn: (e: unknown) => void) => void }).addEventListener = (
-            type,
-            fn,
-        ) => {
-            listeners[type] = listeners[type] ?? []
-            listeners[type].push(fn)
-            rfbListeners.set(type, listeners[type])
-        }
-        const disconnect = vi.fn(() => {
-            rfbListeners.get('disconnect')?.forEach((fn) => fn({ detail: { clean: true } }))
-        })
+vi.mock('@/core/desktop/desktopStreamClient', () => ({
+    connectDesktopView: vi.fn(async ({ callbacks }: { callbacks: DesktopViewCallbacks }) => {
+        rfbCallbacksPerConnection[rfbCallbacksPerConnection.length - 1].push(callbacks)
+        const disconnect = vi.fn()
         disconnectSpies.push(disconnect)
-        ;(this as { disconnect: () => void }).disconnect = disconnect
-    } as unknown as RfbConstructor
-    return {
-        loader: () => Promise.resolve(RfbCtor),
-        emit: (type, detail) => {
-            rfbListeners.get(type)?.forEach((fn) => fn({ detail }))
-        },
-    }
+        return { disconnect }
+    }),
+    defaultRfbLoader: vi.fn(),
+}))
+
+/** 触发最新连接的 noVNC 事件 */
+function emit(type: keyof DesktopViewCallbacks, detail?: unknown): void {
+    const callbacks = rfbCallbacksPerConnection.at(-1)!.at(-1)!
+    if (type === 'onConnect') callbacks.onConnect?.()
+    else if (type === 'onDisconnect') callbacks.onDisconnect?.(detail as { clean: boolean })
+    else if (type === 'onFailure') callbacks.onFailure?.(detail as string)
 }
 
 /** 稳定的 watch mock（引用稳定，避免 effect 循环陷阱） */
 const watchMock = vi.fn<(machineId: string) => Promise<string>>()
 
 function makeProvider() {
-    return new DesktopStreamProvider({ watch: watchMock, loader: makeRfbLoader().loader })
-}
-
-// 测试用的稳定 watch/loader（供直接构造 provider 的场景）
-const { loader: stableLoader, emit } = makeRfbLoader()
-
-function makeStableProvider() {
-    return new DesktopStreamProvider({ watch: watchMock, loader: stableLoader })
+    return new DesktopStreamProvider({ watch: watchMock })
 }
 
 describe('DesktopStreamProvider 引用计数', () => {
     beforeEach(() => {
         vi.useFakeTimers()
-        watchMock.mockReset()
+        rfbCallbacksPerConnection.length = 0
+        rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
+        watchMock.mockReset()
         watchMock.mockResolvedValue('token-1')
     })
     afterEach(() => {
@@ -132,21 +117,23 @@ describe('DesktopStreamProvider 引用计数', () => {
 describe('DesktopStreamProvider 断线恢复', () => {
     beforeEach(() => {
         vi.useFakeTimers()
-        watchMock.mockReset()
+        rfbCallbacksPerConnection.length = 0
+        rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
+        watchMock.mockReset()
         watchMock.mockResolvedValue('token-1')
     })
     afterEach(() => {
         vi.useRealTimers()
     })
 
-    it('有引用时异常断开 → 自动重走 watch（幂等恢复）', async () => {
-        const provider = makeStableProvider()
+    it('有引用时网络类异常断开（1006）→ 自动重走 watch（幂等恢复）', async () => {
+        const provider = makeProvider()
         const lease = provider.acquire('m1')
         await vi.advanceTimersByTimeAsync(0)
         expect(watchMock).toHaveBeenCalledTimes(1)
 
-        emit('disconnect', { clean: false })
+        emit('onDisconnect', { clean: false, close: { code: 1006, reason: '' } })
         await vi.advanceTimersByTimeAsync(0)
 
         expect(watchMock).toHaveBeenCalledTimes(2)
@@ -154,22 +141,25 @@ describe('DesktopStreamProvider 断线恢复', () => {
         provider.dispose()
     })
 
-    it('无引用时断开不重连（宽限语义之外的 clean 断开）', async () => {
-        const provider = makeStableProvider()
+    it.each([4000, 4002])('服务端主动关闭（code=%i）→ 归因展示不自动重连', async (code) => {
+        const provider = makeProvider()
         const lease = provider.acquire('m1')
         await vi.advanceTimersByTimeAsync(0)
-        lease.release()
-        vi.advanceTimersByTime(DESKTOP_STREAM_GRACE_MS)
-
-        emit('disconnect', { clean: false })
-        await vi.advanceTimersByTimeAsync(0)
         expect(watchMock).toHaveBeenCalledTimes(1)
+
+        emit('onDisconnect', { clean: false, close: { code, reason: '' } })
+        // 退避窗口走完也不重连
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(watchMock).toHaveBeenCalledTimes(1)
+        expect(provider.getState('m1').phase).toBe('error')
+
+        lease.release()
         provider.dispose()
     })
 
-    it('watch 失败 → error 态 + 退避重试，重试成功翻回 connecting/connected', async () => {
+    it('watch 失败 → error 态 + 退避重试，重试成功翻回非 error', async () => {
         watchMock.mockRejectedValueOnce(new Error('cli offline')).mockResolvedValue('token-2')
-        const provider = makeStableProvider()
+        const provider = makeProvider()
         const lease = provider.acquire('m1')
 
         await vi.advanceTimersByTimeAsync(0)
@@ -188,8 +178,10 @@ describe('DesktopStreamProvider 断线恢复', () => {
 describe('DesktopStreamProvider DOM 搬迁', () => {
     beforeEach(() => {
         vi.useFakeTimers()
-        watchMock.mockReset()
+        rfbCallbacksPerConnection.length = 0
+        rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
+        watchMock.mockReset()
         watchMock.mockResolvedValue('token-1')
     })
     afterEach(() => {
@@ -197,7 +189,7 @@ describe('DesktopStreamProvider DOM 搬迁', () => {
     })
 
     it('attachTo 把容器搬进 host；二次 attach 天然移动到新 host；release 时脱离', async () => {
-        const provider = makeStableProvider()
+        const provider = makeProvider()
         const lease = provider.acquire('m1')
         await vi.advanceTimersByTimeAsync(0)
 

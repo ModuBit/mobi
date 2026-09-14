@@ -29,8 +29,12 @@ export interface DesktopViewConnection {
 
 export interface DesktopViewCallbacks {
     onConnect?: () => void
-    /** clean=false 表示异常断开（网络/协议），调用方决定是否重走 watch */
-    onDisconnect?: (detail: { clean: boolean }) => void
+    /**
+     * clean=false 表示异常断开（网络/协议），调用方决定是否重走 watch；
+     * close 携带底层 WS 关闭码（noVNC 不透传，由本封装在自建 WS 上捕获）：
+     * 4000=被抢占、4002=被主动关闭——这类归因不该自动重连。
+     */
+    onDisconnect?: (detail: { clean: boolean; close?: { code: number; reason: string } }) => void
     onFailure?: (message: string) => void
 }
 
@@ -67,6 +71,10 @@ export function describeDesktopFailure(reason: string): string | null {
             return 'desktop.failure.vncAuthFailed'
         case 'vnc password not configured':
             return 'desktop.failure.vncPasswordMissing'
+        case 'stream closed':
+            return 'desktop.failure.streamClosed'
+        case 'superseded':
+            return 'desktop.failure.superseded'
         default:
             return null
     }
@@ -82,7 +90,14 @@ export async function connectDesktopView(options: {
     const Rfb = await loader()
 
     let retired = false
-    const rfb = new Rfb(container, url, {
+    // noVNC 收到的是自建 WS 实例：close 事件在此捕获（code/reason noVNC 不透传）
+    let closeInfo: { code: number; reason: string } | undefined
+    const ws = new WebSocket(url)
+    ws.binaryType = 'arraybuffer'
+    ws.addEventListener('close', (event) => {
+        closeInfo = { code: (event as CloseEvent).code, reason: (event as CloseEvent).reason }
+    })
+    const rfb = new Rfb(container, ws, {
         shared: false,
     })
     rfb.scaleViewport = true
@@ -96,7 +111,7 @@ export async function connectDesktopView(options: {
         // noVNC 终态永久：断开后连接对象不再可用
         retired = true
         const clean = Boolean((event as CustomEvent<{ clean?: boolean }>).detail?.clean)
-        callbacks.onDisconnect?.({ clean })
+        callbacks.onDisconnect?.({ clean, close: closeInfo })
     })
     rfb.addEventListener('securityfailure', (event) => {
         const detail = (event as CustomEvent<{ reason?: string }>).detail

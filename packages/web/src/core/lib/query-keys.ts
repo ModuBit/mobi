@@ -27,6 +27,8 @@ const projectSessionsRoot = ['projectSessions'] as const
 export const queryKeys = {
     /** 所有会话列表 */
     sessions: ['sessions'] as const,
+    /** hub 活跃桌面观看流（侧边栏「远程桌面」分区数据源） */
+    desktopStreams: ['desktop-streams'] as const,
     /** 单个会话 */
     session: (sessionId: string) => ['session', sessionId] as const,
     /** Sidechain 消息 */

@@ -35,7 +35,10 @@ type DesktopViewState =
 export function DesktopPage() {
     const { t } = useTranslation()
     const api = useMobiApi()
-    const [machineId, setMachineId] = useState<string | null>(null)
+    // 侧边栏点击流进入时经 ?machine= 直达该机器；无参数走在线机器兜底
+    const [machineId, setMachineId] = useState<string | null>(() => {
+        return new URLSearchParams(window.location.search).get('machine')
+    })
     const [machines, setMachines] = useState<Array<{ id: string; label: string }>>([])
     const [viewState, setViewState] = useState<DesktopViewState>({ phase: 'idle' })
 

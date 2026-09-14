@@ -117,6 +117,8 @@ function frameBytes(data: unknown): number {
 
 export const DESKTOP_CLOSE_CODE_SUPERSEDED = 4000
 export const DESKTOP_CLOSE_CODE_PEER_GONE = 4001
+/** 主动/管理关闭（用户从列表关流、cli 不可达回滚）：观看侧应归因展示而非自动重连 */
+export const DESKTOP_CLOSE_CODE_CLOSED = 4002
 export const DESKTOP_CLOSE_CODE_PROTOCOL = 1008
 
 export function createDesktopBroker(options: { ttlMs?: number; now?: () => number } = {}): DesktopBroker {

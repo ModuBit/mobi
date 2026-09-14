@@ -211,3 +211,71 @@ describe('Desktop watch API', () => {
         expect(res.status).toBe(404)
     })
 })
+
+describe('Desktop streams 管理 API', () => {
+    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let cleanup: () => void
+    let broker: ReturnType<typeof createDesktopBroker>
+
+    beforeEach(async () => {
+        broker = createDesktopBroker()
+        const result = await setupTestApp(mockSyncEngine, { getDesktopBroker: () => broker })
+        app = result.app
+        cleanup = result.cleanup
+    })
+
+    afterEach(() => {
+        desktopStreamCalls.length = 0
+        cleanup()
+    })
+
+    test('streams 列表返回活跃流（machineId + 开始时间）', async () => {
+        broker.watchSession('test-machine-1')
+        broker.watchSession('another-machine')
+
+        const token = await getAuthToken(app)
+        const res = await app.request('/api/desktop/streams', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json() as { streams: Array<{ sessionId: string; machineId: string; startedAtMs: number }> }
+        expect(body.streams).toHaveLength(2)
+        expect(body.streams.map((s) => s.machineId).sort()).toEqual(['another-machine', 'test-machine-1'])
+        for (const s of body.streams) {
+            expect(s.startedAtMs).toBeGreaterThan(0)
+        }
+    })
+
+    test('关闭流：拆会话 + 作废票据，重新观看可正常建立', async () => {
+        const session = broker.watchSession('test-machine-1')
+
+        const token = await getAuthToken(app)
+        const res = await app.request(`/api/desktop/streams/${session.sessionId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(res.status).toBe(200)
+
+        // 注册表清空 + 票据作废
+        expect(broker.listSessions()).toHaveLength(0)
+        expect(broker.consumeAttachTicket(session.attachTicket)).toBeNull()
+        expect(broker.consumeObserveToken(session.observeToken)).toBeNull()
+
+        // 关闭后重新观看可正常建立
+        const rewatch = await app.request('/api/desktop/watch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ machineId: 'test-machine-1' }),
+        })
+        expect(rewatch.status).toBe(200)
+    })
+
+    test('关闭不存在的流 → 404', async () => {
+        const token = await getAuthToken(app)
+        const res = await app.request('/api/desktop/streams/no-such-session', {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(res.status).toBe(404)
+    })
+})

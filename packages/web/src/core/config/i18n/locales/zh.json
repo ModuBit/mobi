@@ -46,6 +46,10 @@
         "newSession": "新对话",
         "search": "搜索",
         "automation": "自动化",
+        "desktopStreams": "远程桌面",
+        "desktopStreamsClose": "关闭观看流",
+        "desktopStreamsCloseConfirm": "关闭这条观看流？",
+        "desktopStreamsCloseHint": "将断开 {{machineId}} 的桌面画面与所有观看者",
         "installApp": "安装到本地",
         "skills": "技能",
         "plugins": "插件",
@@ -712,7 +716,9 @@
         },
         "failure": {
             "vncAuthFailed": "认证失败：VNC 密码不正确或已更改，请在被控 Mac 的设置里核对后重试",
-            "vncPasswordMissing": "被控 Mac 尚未配置 VNC 密码，请先在系统设置中开启并到远程桌面设置里录入"
+            "vncPasswordMissing": "被控 Mac 尚未配置 VNC 密码，请先在系统设置中开启并到远程桌面设置里录入",
+            "streamClosed": "观看流已被关闭（可能从其他设备操作）",
+            "superseded": "该机器已在其他设备开始新的观看"
         },
         "start": "开始观看",
         "settings": {

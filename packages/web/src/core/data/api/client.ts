@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -422,6 +422,10 @@ export function createMobiApi() {
         desktop: {
             watch: (machineId: string) =>
                 client.post<DesktopWatchResponse>('/api/desktop/watch', { machineId }),
+            streams: (opts?: { signal?: AbortSignal }) =>
+                client.get<DesktopStreamsResponse>('/api/desktop/streams', { signal: opts?.signal }),
+            closeStream: (sessionId: string) =>
+                client.delete<{ success: true }>(`/api/desktop/streams/${sessionId}`),
             setVncPassword: (machineId: string, vncPassword: string) =>
                 client.post<{ success: true }>('/api/desktop/vnc-password', { machineId, vncPassword }),
             vncStatus: (machineId: string, opts?: { signal?: AbortSignal }) =>

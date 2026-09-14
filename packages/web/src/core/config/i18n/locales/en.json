@@ -46,6 +46,10 @@
         "newSession": "New Chat",
         "search": "Search",
         "automation": "Automation",
+        "desktopStreams": "Remote Desktop",
+        "desktopStreamsClose": "Close viewing stream",
+        "desktopStreamsCloseConfirm": "Close this viewing stream?",
+        "desktopStreamsCloseHint": "This disconnects {{machineId}}'s desktop from all viewers",
         "installApp": "Install App",
         "skills": "Skills",
         "plugins": "Plugins",
@@ -722,7 +726,9 @@
         },
         "failure": {
             "vncAuthFailed": "Authentication failed: the VNC password is incorrect or has changed. Check it on the controlled Mac and try again",
-            "vncPasswordMissing": "The controlled Mac has no VNC password configured yet. Enable it in System Settings and save it in Desktop settings first"
+            "vncPasswordMissing": "The controlled Mac has no VNC password configured yet. Enable it in System Settings and save it in Desktop settings first",
+            "streamClosed": "The viewing stream was closed (possibly from another device)",
+            "superseded": "A new viewing session started on another device for this machine"
         },
         "start": "Watch",
         "settings": {

@@ -134,10 +134,13 @@ const settingsDebugRoute = createRoute({
     component: DebugSectionRoute,
 })
 
-// 远程桌面观看页（迭代 1 只读；/desktop/:machineId 的多机器路由在后续 ticket）
+// 远程桌面观看页（迭代 1 只读）：?machine= 支持侧边栏点击流直达该机器
 const desktopRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'desktop',
+    validateSearch: (search: Record<string, unknown>): { machine?: string } => ({
+        machine: typeof search.machine === 'string' && search.machine.length > 0 ? search.machine : undefined,
+    }),
     component: DesktopPage,
 })
 

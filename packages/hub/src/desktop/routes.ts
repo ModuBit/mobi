@@ -28,11 +28,12 @@ import {
     desktopVncPasswordSubmissionSchema,
     DESKTOP_ATTACH_PATH,
     type DesktopWatchResponse,
+    type DesktopStreamsResponse,
 } from '@mobi/shared'
 import type { SyncEngine } from '../sync/syncEngine'
 import type { WebAppEnv } from '../web/middleware/auth'
 import { requireMachine, requireSyncEngine } from '../web/routes/guards'
-import type { DesktopBroker } from './broker'
+import { DESKTOP_CLOSE_CODE_CLOSED, type DesktopBroker } from './broker'
 
 export function createDesktopRoutes(deps: {
     getSyncEngine: () => SyncEngine | null
@@ -66,7 +67,7 @@ export function createDesktopRoutes(deps: {
         try {
             await engine.machineDesktopStream(session.machineId, session.attachTicket, DESKTOP_ATTACH_PATH)
         } catch (error) {
-            broker.teardownSession(session.sessionId, 4002, 'cli unreachable')
+            broker.teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_CLOSED, 'cli unreachable')
             const message = error instanceof Error ? error.message : 'Failed to reach cli'
             return c.json({ error: `Desktop stream unavailable: ${message}` }, 502)
         }
@@ -76,6 +77,32 @@ export function createDesktopRoutes(deps: {
             expiresAtMs: session.expiresAtMs,
         }
         return c.json(response)
+    })
+
+    // 活跃流列表（侧边栏「远程桌面」分区数据源；跨设备一致）
+    app.get('/desktop/streams', (c) => {
+        const broker = deps.getDesktopBroker()
+        if (!broker) {
+            return c.json({ error: 'Desktop not available' }, 503)
+        }
+        const response: DesktopStreamsResponse = { streams: broker.listSessions() }
+        return c.json(response)
+    })
+
+    // 主动关闭流（显式权限操作，与 web GC 正交）：拆上游 + 作废本会话全部票据。
+    // 同 machineId 同一时刻只有一条会话（抢占语义），拆会话即该 machine 全部票据作废
+    app.delete('/desktop/streams/:sessionId', (c) => {
+        const broker = deps.getDesktopBroker()
+        if (!broker) {
+            return c.json({ error: 'Desktop not available' }, 503)
+        }
+        const sessionId = c.req.param('sessionId')
+        const exists = broker.listSessions().some((s) => s.sessionId === sessionId)
+        if (!exists) {
+            return c.json({ error: 'Stream not found' }, 404)
+        }
+        broker.teardownSession(sessionId, DESKTOP_CLOSE_CODE_CLOSED, 'stream closed by user')
+        return c.json({ success: true })
     })
 
     // VNC 密码写入：hub 纯中转（machine RPC），不落盘副本；校验在 cli 侧 schema 兜底
