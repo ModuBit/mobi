@@ -27,7 +27,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Spin, Button, Typography } from 'antd'
 import { useMobiApi, extractApiError } from '@/core/data/api/client'
-import { connectDesktopView, type DesktopViewConnection } from '@/core/desktop/desktopStreamClient'
+import { connectDesktopView, describeDesktopFailure, type DesktopViewConnection } from '@/core/desktop/desktopStreamClient'
 
 type DesktopViewState =
     | { phase: 'idle' }
@@ -74,7 +74,14 @@ export function DesktopPage() {
                             setViewState({ phase: 'error', message: t('desktop.disconnected') })
                         }
                     },
-                    onFailure: (message) => setViewState({ phase: 'error', message: `${t('desktop.connectFailed')}: ${message}` }),
+                    // 认证失败走 securityfailure：已知归因映射为可理解文案，未知归因展示原始 reason
+                    onFailure: (message) => {
+                        const key = describeDesktopFailure(message)
+                        setViewState({
+                            phase: 'error',
+                            message: key ? t(key) : `${t('desktop.connectFailed')}: ${message}`,
+                        })
+                    },
                 },
             })
             connectionRef.current = connection

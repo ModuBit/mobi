@@ -34,6 +34,7 @@ import { registerMachineDirectoryHandler } from '../modules/common/handlers/mach
 import { registerWebToolsConfigHandler } from '../modules/common/handlers/webToolsConfig'
 import { registerMachineFileHandlers } from '../modules/common/handlers/machineFiles'
 import { registerDesktopConfigHandler } from '../modules/common/handlers/desktopConfig'
+import { readSettings } from '@/persistence'
 import { runDesktopStreamTransport } from '../desktop/streamTransport'
 import { desktopStreamRequestSchema, DESKTOP_ATTACH_PATH } from '@mobi/shared'
 
@@ -138,17 +139,21 @@ export class ApiMachineClient {
         // 远程桌面流：hub watch 触发，反连 hub attach 路径并桥接本机 VNC（desktop/ 模块）。
         // 流在后台跑、立即 ack——hub 侧 RPC 有 30s 超时，不能被流的生命周期拖住；
         // 流的收束由两侧连接关闭完成（迭代 1 无主动取消通道）
-        this.rpcHandlerManager.registerHandler<unknown, { started: boolean }>('desktop-stream', (params) => {
+        this.rpcHandlerManager.registerHandler<unknown, { started: boolean }>('desktop-stream', async (params) => {
             const parsed = desktopStreamRequestSchema.safeParse(params)
             if (!parsed.success || parsed.data.attachPath !== DESKTOP_ATTACH_PATH) {
                 return { started: false }
             }
+            // VNC 密码读自身 settings（set-desktop-vnc-password 落盘的那份），
+            // 随 metadata 上行供 hub 代认证；未配置则 undefined（上游 None 时可看）
+            const settings = await readSettings()
             const handle = runDesktopStreamTransport({
                 gatewayUrl: configuration.apiUrl,
                 machineId: this.machine.id,
                 ticket: parsed.data.ticket,
                 attachPath: parsed.data.attachPath,
                 target: { host: '127.0.0.1', port: DESKTOP_VNC_PORT },
+                vncPassword: settings.desktop?.vncPassword,
                 signal: new AbortController().signal,
                 log: (message) => logger.debug(`[desktop] ${message}`),
             })

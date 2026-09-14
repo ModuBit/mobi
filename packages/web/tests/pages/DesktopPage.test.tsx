@@ -25,6 +25,8 @@ import type { MobiApi } from '@/core/data/api/client'
 // —— mock desktopStreamClient：捕获 connectDesktopView 参数，测试内手动触发回调 ——
 vi.mock('@/core/desktop/desktopStreamClient', () => ({
     connectDesktopView: vi.fn(),
+    describeDesktopFailure: vi.fn((reason: string) =>
+        reason === 'vnc auth failed' ? 'desktop.failure.vncAuthFailed' : null),
 }))
 const connectMock = vi.mocked(connectDesktopView)
 const disconnectSpy = vi.fn()
@@ -154,5 +156,29 @@ describe('DesktopPage', () => {
 
         capturedCallbacks[0]!.onDisconnect?.({ clean: false })
         await waitFor(() => expect(screen.getByText('desktop.disconnected')).toBeInTheDocument())
+    })
+
+    it('认证失败（securityfailure 已知归因）→ 展示映射后的可理解文案', async () => {
+        watchMock.mockResolvedValue({ data: { observeToken: 'token-abc', expiresAtMs: Date.now() + 60_000 } })
+
+        renderPage()
+        fireEvent.click(await screen.findByRole('button', { name: 'desktop.start' }))
+        await waitFor(() => expect(connectMock).toHaveBeenCalledTimes(1))
+
+        capturedCallbacks[0]!.onFailure?.('vnc auth failed')
+        await waitFor(() => expect(screen.getByText('desktop.failure.vncAuthFailed')).toBeInTheDocument())
+        expect(screen.getByRole('button', { name: 'desktop.reconnect' })).toBeInTheDocument()
+    })
+
+    it('未知归因 → 回退展示原始 reason', async () => {
+        watchMock.mockResolvedValue({ data: { observeToken: 'token-abc', expiresAtMs: Date.now() + 60_000 } })
+
+        renderPage()
+        fireEvent.click(await screen.findByRole('button', { name: 'desktop.start' }))
+        await waitFor(() => expect(connectMock).toHaveBeenCalledTimes(1))
+
+        capturedCallbacks[0]!.onFailure?.('no supported security type')
+        await waitFor(() =>
+            expect(screen.getByText(/no supported security type/)).toBeInTheDocument())
     })
 })

@@ -56,6 +56,22 @@ export const defaultRfbLoader: RfbLoader = async () => {
     return module.default
 }
 
+/**
+ * hub 关闭归因（英文协议文案）→ 观看页 i18n 键。
+ * 未知归因返回 null，调用方回退展示原始 reason（hub 归因是协议单源，
+ * 见 hub 侧 RfbHandshakeProxy；此处只做已知归因的可理解翻译）。
+ */
+export function describeDesktopFailure(reason: string): string | null {
+    switch (reason) {
+        case 'vnc auth failed':
+            return 'desktop.failure.vncAuthFailed'
+        case 'vnc password not configured':
+            return 'desktop.failure.vncPasswordMissing'
+        default:
+            return null
+    }
+}
+
 export async function connectDesktopView(options: {
     url: string
     container: HTMLElement

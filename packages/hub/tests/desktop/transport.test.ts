@@ -17,6 +17,7 @@
 import { describe, expect, test } from 'bun:test'
 import { createDesktopBroker } from '../../src/desktop/broker'
 import { createDesktopWebsocketHandlers, handleDesktopFetch, isDesktopPathname } from '../../src/desktop/transport'
+import { vncAuthResponse, encodeAuthFailure } from '../../src/desktop/rfbPreauth'
 import {
     DESKTOP_ATTACH_PATH,
     DESKTOP_OBSERVE_PATH,
@@ -93,6 +94,49 @@ async function makeActivePair(url: string, broker: ReturnType<typeof createDeskt
     return { session, attach, observe }
 }
 
+/**
+ * 走一遍 RFB 3.8 None 认证握手（attach 侧扮演 VNC server，observe 侧扮演 noVNC）。
+ * 两侧就绪后 hub 会建立握手代理，握手完成前字节不透传——此 helper 把会话推进到 live。
+ */
+async function performRfbNoneHandshake(attach: WebSocket, observe: WebSocket): Promise<void> {
+    const rfb38 = new TextEncoder().encode('RFB 003.008\n')
+    attach.send(rfb38) // server version → 浏览器
+    expect(await nextMessage(observe)).toEqual(rfb38)
+    observe.send(rfb38) // client version → 上游
+    expect(await nextMessage(attach)).toEqual(rfb38)
+    attach.send(new Uint8Array([1, 1])) // None-only offer
+    expect(await nextMessage(observe)).toEqual(new Uint8Array([1, 1]))
+    observe.send(new Uint8Array([1])) // 浏览器选 None
+    expect(await nextMessage(attach)).toEqual(new Uint8Array([1]))
+    attach.send(new Uint8Array([0, 0, 0, 0])) // SecurityResult OK
+    expect(await nextMessage(observe)).toEqual(new Uint8Array([0, 0, 0, 0]))
+}
+
+/**
+ * 走一遍上游 VNC-auth 的握手：浏览器全程只看到 None-only，挑战由 hub 代答。
+ * metadata 须携带 vncPassword。返回 hub 代答的 8 字节应答供断言。
+ */
+async function performRfbVncHandshake(attach: WebSocket, observe: WebSocket): Promise<Uint8Array> {
+    const rfb38 = new TextEncoder().encode('RFB 003.008\n')
+    attach.send(rfb38)
+    expect(await nextMessage(observe)).toEqual(rfb38)
+    observe.send(rfb38)
+    expect(await nextMessage(attach)).toEqual(rfb38)
+
+    attach.send(new Uint8Array([1, 2])) // 上游仅提供 VNC-auth
+    // 浏览器看到的仍是重写后的 None-only offer
+    expect(await nextMessage(observe)).toEqual(new Uint8Array([1, 1]))
+
+    observe.send(new Uint8Array([1])) // 浏览器选 None → hub 对上游发 VNC-auth
+    expect(await nextMessage(attach)).toEqual(new Uint8Array([2]))
+
+    const challenge = new Uint8Array(16).fill(0x5a)
+    attach.send(challenge)
+    const response = await nextMessage(attach)
+    expect(response).toHaveLength(8)
+    return response
+}
+
 describe('desktop transport: path 分流', () => {
     test('desktop 路径识别', () => {
         expect(isDesktopPathname(DESKTOP_ATTACH_PATH)).toBe(true)
@@ -112,6 +156,9 @@ describe('desktop transport: 双向字节透传', () => {
         const attach = await connectAttach(url, session.attachTicket)
         const observe = await connectObserve(url, session.observeToken)
 
+        // RFB 握手完成后进入纯透传
+        await performRfbNoneHandshake(attach, observe)
+
         const received = nextMessage(observe)
         attach.send(new Uint8Array([0x52, 0x46, 0x42])) // "RFB"
         expect(await received).toEqual(new Uint8Array([0x52, 0x46, 0x42]))
@@ -124,6 +171,7 @@ describe('desktop transport: 双向字节透传', () => {
         const broker = makeBroker()
         const { url } = startTestServer(broker)
         const { attach, observe } = await makeActivePair(url, broker)
+        await performRfbNoneHandshake(attach, observe)
 
         const received = nextMessage(attach)
         observe.send(new Uint8Array([0x01, 0x02, 0x03]))
@@ -141,12 +189,89 @@ describe('desktop transport: 双向字节透传', () => {
         const observe = await connectObserve(url, session.observeToken)
         const attach = await connectAttach(url, session.attachTicket)
 
+        await performRfbNoneHandshake(attach, observe)
+
         const received = nextMessage(observe)
         attach.send(new Uint8Array([0x09]))
         expect(await received).toEqual(new Uint8Array([0x09]))
 
         attach.close()
         observe.close()
+    })
+})
+
+describe('desktop transport: hub 代认证（上游 VNC-auth）', () => {
+    test('metadata 携带密码：hub 代答 DES 挑战，浏览器全程只见 None', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket, {
+            protocol: 'mobi-desktop-1',
+            machineId: 'm1',
+            vncPassword: 'secret1',
+        })
+        const observe = await connectObserve(url, session.observeToken)
+
+        const response = await performRfbVncHandshake(attach, observe)
+        // 代答与参考实现一致（密码不出 hub：挑战发给 attach 侧，应答由 hub 算出）
+        expect(response).toEqual(vncAuthResponse(new Uint8Array(16).fill(0x5a), 'secret1'))
+
+        // SecurityResult OK → 进入纯透传
+        attach.send(new Uint8Array([0, 0, 0, 0]))
+        expect(await nextMessage(observe)).toEqual(new Uint8Array([0, 0, 0, 0]))
+        const received = nextMessage(observe)
+        attach.send(new Uint8Array([0xaa]))
+        expect(await received).toEqual(new Uint8Array([0xaa]))
+
+        attach.close()
+        observe.close()
+    })
+
+    test('密码错误：浏览器收到标准失败序列（含 reason），两侧随后关闭', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket, {
+            protocol: 'mobi-desktop-1',
+            machineId: 'm1',
+            vncPassword: 'wrongpwd',
+        })
+        const observe = await connectObserve(url, session.observeToken)
+
+        await performRfbVncHandshake(attach, observe)
+
+        // 上游判定应答错误 → hub 向浏览器发 RFB 3.8 失败序列后拆会话
+        attach.send(new Uint8Array([0, 0, 0, 1]))
+        expect(await nextMessage(observe)).toEqual(encodeAuthFailure('vnc auth failed'))
+        const closed = await Promise.all([nextClose(attach), nextClose(observe)])
+        for (const { code, reason } of closed) {
+            expect(code).toBe(1008)
+            expect(reason).toBe('vnc auth failed')
+        }
+    })
+
+    test('上游 VNC-auth 但密码未配置：握手失败拆会话', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+        const observe = await connectObserve(url, session.observeToken)
+
+        const rfb38 = new TextEncoder().encode('RFB 003.008\n')
+        attach.send(rfb38)
+        expect(await nextMessage(observe)).toEqual(rfb38)
+        observe.send(rfb38)
+        expect(await nextMessage(attach)).toEqual(rfb38)
+        attach.send(new Uint8Array([1, 2])) // 上游仅提供 VNC-auth
+
+        const closed = await Promise.all([nextClose(attach), nextClose(observe)])
+        for (const { code, reason } of closed) {
+            expect(code).toBe(1008)
+            expect(reason).toBe('vnc password not configured')
+        }
     })
 })
 

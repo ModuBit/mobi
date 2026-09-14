@@ -716,6 +716,10 @@
         "noMachine": "No machine online",
         "viewOnlyHint": "View-only in this iteration",
         "connectFailed": "Connection failed",
+        "failure": {
+            "vncAuthFailed": "Authentication failed: the VNC password is incorrect or has changed. Check it on the controlled Mac and try again",
+            "vncPasswordMissing": "The controlled Mac has no VNC password configured yet. Enable it in System Settings and save it in Desktop settings first"
+        },
         "start": "Watch",
         "settings": {
             "title": "Remote Desktop",

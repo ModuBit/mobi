@@ -113,6 +113,8 @@ export function runDesktopStreamTransport(params: {
     ticket: string
     attachPath: string
     target: { host: string; port: number }
+    /** VNC 密码（读自身 settings；随 metadata 上行供 hub 代认证，可选） */
+    vncPassword?: string
     signal: AbortSignal
     log?: (message: string, data?: unknown) => void
 }): DesktopStreamHandle {
@@ -155,8 +157,13 @@ export function runDesktopStreamTransport(params: {
             return
         }
 
-        // 3. metadata 首帧（二进制 JSON）：hub 校验通过前不会向浏览器透传
-        const metadata: DesktopAttachMetadata = { protocol: 'mobi-desktop-1', machineId: params.machineId }
+        // 3. metadata 首帧（二进制 JSON）：hub 校验通过前不会向浏览器透传。
+        // vncPassword 供 hub 代答 VNC 挑战（openclaw 同款），仅内存持有不落日志
+        const metadata: DesktopAttachMetadata = {
+            protocol: 'mobi-desktop-1',
+            machineId: params.machineId,
+            ...(params.vncPassword ? { vncPassword: params.vncPassword } : {}),
+        }
         ws.send(new TextEncoder().encode(JSON.stringify(metadata)))
 
         // 4. 开泵：两侧数据事件接入泵（a=ws，b=TCP）

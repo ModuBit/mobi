@@ -32,11 +32,13 @@ export const DESKTOP_OBSERVE_PATH = '/desktop/observe'
 
 /**
  * attach metadata（cli 反连后 raw WS 首帧，二进制 JSON）。
- * 迭代 1 只带协议版本；VNC 密码（hub 代认证）在迭代 2 加入。
+ * vncPassword 可选（hub 代认证用）：hub 内存持有替浏览器应答 VNC 挑战，
+ * 不落盘不日志；密码真身在被控机，hub/web 均无副本。
  */
 export const desktopAttachMetadataSchema = z.object({
     protocol: z.literal('mobi-desktop-1'),
     machineId: z.string().min(1),
+    vncPassword: z.string().min(1).max(8).optional(),
 })
 
 export type DesktopAttachMetadata = z.infer<typeof desktopAttachMetadataSchema>

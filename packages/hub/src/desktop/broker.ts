@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto'
 import type { ServerWebSocket } from 'bun'
 import { desktopAttachMetadataSchema, DESKTOP_WS_DATA_KEY } from '@mobi/shared'
 import { createOneTimeTicketStore } from './tickets'
+import { RfbHandshakeProxy } from './rfbPreauth'
 
 export interface DesktopSessionInfo {
     sessionId: string
@@ -53,6 +54,11 @@ interface DesktopSession extends DesktopSessionInfo {
     observe?: ServerWebSocket<DesktopWsData>
     /** attach 侧首帧 metadata 是否已通过校验 */
     attachMetadataAccepted: boolean
+    /** VNC 密码（来自 attach metadata；仅内存持有，供握手代理使用） */
+    vncPassword?: string
+    /** RFB 握手代理（metadata 通过后创建；phase=live 起透传不再经过它） */
+    handshake?: RfbHandshakeProxy
+    handshakeLive: boolean
     /** attach 未到达时的过期定时器（防浏览器悬挂占位） */
     pendingAttachTimer?: ReturnType<typeof setTimeout>
     /** 拆除中标记：防 close 事件与 teardown 互相递归 */
@@ -204,10 +210,36 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
     }
 
     function tryStartRelay(session: DesktopSession): void {
-        // 两侧就绪且 metadata 已过校验：排空早期缓冲，进入稳态透传
-        if (session.attach && session.observe && session.attachMetadataAccepted) {
-            startDrainPoll(session, session.observe, session.toObserve)
-            startDrainPoll(session, session.attach, session.toAttach)
+        // 两侧就绪且 metadata 已过校验：建立 RFB 握手代理（代认证），结束后进入纯透传
+        if (session.attach && session.observe && session.attachMetadataAccepted && !session.handshake) {
+            const handshake = new RfbHandshakeProxy(session.vncPassword, {
+                onToBrowser: (data) => {
+                    if (session.observe) relay(session, session.observe, session.toObserve, data)
+                },
+                onToServer: (data) => {
+                    if (session.attach) relay(session, session.attach, session.toAttach, data)
+                },
+                onDone: (ok, reason) => {
+                    if (ok) {
+                        session.handshakeLive = true
+                        // 握手期间如有背压积压，排空后进入稳态
+                        startDrainPoll(session, session.observe!, session.toObserve)
+                        startDrainPoll(session, session.attach!, session.toAttach)
+                    } else {
+                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, reason ?? 'handshake failed')
+                    }
+                },
+            })
+            session.handshake = handshake
+            // 握手建立前缓冲的早期字节（如 macOS 立即发出的版本串）先喂给代理
+            for (const frame of session.toObserve.frames.splice(0)) {
+                handshake.feedServer(frame as Uint8Array)
+            }
+            for (const frame of session.toAttach.frames.splice(0)) {
+                handshake.feedBrowser(frame as Uint8Array)
+            }
+            session.toObserve.bytes = 0
+            session.toAttach.bytes = 0
         }
     }
 
@@ -240,6 +272,7 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         // 读取侧不可暂停（Bun ServerWebSocket 无 pause）：metadata 之后、observe 加入
         // 之前到达的上游早期字节由 toObserve 队列缓冲，observe 加入后排空，无丢失
         session.attachMetadataAccepted = true
+        session.vncPassword = parsed.data.vncPassword
         tryStartRelay(session)
     }
 
@@ -261,10 +294,12 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 attachTicket: attachGrant.token,
                 observeToken: observeGrant.token,
                 attachMetadataAccepted: false,
+                handshakeLive: false,
                 tearingDown: false,
-                // 队列初始为暂停态：observe 未加入前上游早期字节先入队，tryStartRelay 排空
-                toAttach: { frames: [], bytes: 0, paused: true },
-                toObserve: { frames: [], bytes: 0, paused: true },
+                // 背压缓冲仅在 send 返回 -1 时启用；上游早期字节（observe 未到）的
+                // 缓冲由 onSocketMessage 显式入队，握手建立时移交给代理
+                toAttach: { frames: [], bytes: 0, paused: false },
+                toObserve: { frames: [], bytes: 0, paused: false },
             }
             sessions.set(sessionId, session)
             sessionIdByMachine.set(machineId, sessionId)
@@ -336,9 +371,19 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 return
             }
 
-            // 每帧大小守卫（防恶意大帧），随后按方向入队/直发
+            // 每帧大小守卫（防恶意大帧）
             if (frameBytes(data) > MAX_RELAY_FRAME_BYTES) {
                 teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'frame too large')
+                return
+            }
+
+            // 握手相位：字节交给 RFB 代理（代认证），完成（live）后不再经过它
+            if (session.handshake && !session.handshakeLive) {
+                if (meta.role === 'attach') {
+                    session.handshake.feedServer(data as Uint8Array)
+                } else {
+                    session.handshake.feedBrowser(data as Uint8Array)
+                }
                 return
             }
 

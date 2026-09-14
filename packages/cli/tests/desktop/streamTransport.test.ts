@@ -130,6 +130,32 @@ describe('runDesktopStreamTransport', () => {
         hub.stop()
     })
 
+    test('params 带 vncPassword 时随 metadata 上行，供 hub 代认证', async () => {
+        const vnc = startFakeVncTarget()
+        const vncPort = await vnc.listen()
+        const hub = startFakeHub()
+
+        const abortController = new AbortController()
+        const handle = runDesktopStreamTransport({
+            gatewayUrl: `http://127.0.0.1:${hub.port}`,
+            machineId: 'test-machine-1',
+            ticket: 'a'.repeat(48),
+            attachPath: '/desktop/attach',
+            target: { host: '127.0.0.1', port: vncPort },
+            vncPassword: 'secret1',
+            signal: abortController.signal,
+        })
+
+        await hub.waitForMessages(1)
+        const metadata = JSON.parse(new TextDecoder().decode(hub.messages[0] as Uint8Array))
+        expect(metadata).toEqual({ protocol: 'mobi-desktop-1', machineId: 'test-machine-1', vncPassword: 'secret1' })
+
+        abortController.abort()
+        await handle.done
+        vnc.stop()
+        hub.stop()
+    })
+
     test('本机 VNC 拒连 → 流结束且归因 target-connect-failed，ws 关闭', async () => {
         const hub = startFakeHub()
 

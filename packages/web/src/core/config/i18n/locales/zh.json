@@ -706,6 +706,10 @@
         "noMachine": "没有在线的机器",
         "viewOnlyHint": "迭代 1 为纯观看模式",
         "connectFailed": "连接失败",
+        "failure": {
+            "vncAuthFailed": "认证失败：VNC 密码不正确或已更改，请在被控 Mac 的设置里核对后重试",
+            "vncPasswordMissing": "被控 Mac 尚未配置 VNC 密码，请先在系统设置中开启并到远程桌面设置里录入"
+        },
         "start": "开始观看",
         "settings": {
             "title": "远程桌面",
