@@ -389,6 +389,65 @@ describe('desktop transport: 会话生命周期', () => {
         await expect(connectObserve(url, session.observeToken)).rejects.toThrow('observe connect failed')
     })
 
+    test('upstream 异常断开 → downstream 被通知关闭（与 downstream 断开对称）', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+        const observe = await connectObserve(url, session.observeToken)
+
+        const observeClosed = nextClose(observe)
+        attach.close()
+        const closed = await observeClosed
+        expect(closed.code).toBe(4001)
+        expect(closed.reason).toBe('peer gone')
+    })
+
+    test('upstream 断开 → attach ticket 同样作废（票据全路径清理）', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+        const observe = await connectObserve(url, session.observeToken)
+        attach.close()
+        await nextClose(observe)
+
+        // 未兑换的 attach ticket 已随会话作废（重放被拒）
+        await expect(connectAttach(url, session.attachTicket)).rejects.toThrow('attach connect failed')
+    })
+
+    test('attach 开链后 observe 超时未到 → 拆会话，cli 侧被关（防泵空跑）', async () => {
+        const broker = makeBroker({ ttlMs: 50 })
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+
+        const attachClosed = nextClose(attach)
+        await Bun.sleep(120) // observe 一直不来，超过兜底时效
+        const closed = await attachClosed
+        expect(closed.code).toBe(4001)
+        expect(closed.reason).toBe('observe timeout')
+    })
+
+    test('observe 到达后不起 observe 超时（正常会话不被误拆）', async () => {
+        const broker = makeBroker({ ttlMs: 50 })
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+        const observe = await connectObserve(url, session.observeToken)
+
+        await Bun.sleep(120) // 远超兜底时效：两侧仍 OPEN
+        expect(attach.readyState).toBe(WebSocket.OPEN)
+        expect(observe.readyState).toBe(WebSocket.OPEN)
+
+        attach.close()
+        observe.close()
+    })
+
     test('watch 后 attach 超时未到 → 会话过期，observe token 不可用', async () => {
         const broker = makeBroker({ ttlMs: 50 })
         const { url } = startTestServer(broker)

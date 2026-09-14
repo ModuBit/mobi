@@ -61,6 +61,8 @@ interface DesktopSession extends DesktopSessionInfo {
     handshakeLive: boolean
     /** attach 未到达时的过期定时器（防浏览器悬挂占位） */
     pendingAttachTimer?: ReturnType<typeof setTimeout>
+    /** observe 未到达时的过期定时器（attach 开链后起，防 cli 泵空跑占用 upstream） */
+    pendingObserveTimer?: ReturnType<typeof setTimeout>
     /** 拆除中标记：防 close 事件与 teardown 互相递归 */
     tearingDown: boolean
     /** 两个方向各自的背压缓冲队列 */
@@ -135,6 +137,10 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         if (session.pendingAttachTimer) {
             clearTimeout(session.pendingAttachTimer)
             session.pendingAttachTimer = undefined
+        }
+        if (session.pendingObserveTimer) {
+            clearTimeout(session.pendingObserveTimer)
+            session.pendingObserveTimer = undefined
         }
         if (session.toAttach.drainTimer) {
             clearInterval(session.toAttach.drainTimer)
@@ -353,7 +359,22 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                     session.pendingAttachTimer = undefined
                 }
                 session.attach = ws
+                // observe 一直不来（token 过期/页面被杀）会话即悬挂：cli 泵空跑、
+                // upstream VNC 连接被无谓占用——attach 开链后起同等时效的兜底定时器
+                if (!session.pendingObserveTimer) {
+                    const timer = setTimeout(() => {
+                        if (!session.observe) {
+                            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PEER_GONE, 'observe timeout')
+                        }
+                    }, ttlMs)
+                    timer.unref?.()
+                    session.pendingObserveTimer = timer
+                }
             } else {
+                if (session.pendingObserveTimer) {
+                    clearTimeout(session.pendingObserveTimer)
+                    session.pendingObserveTimer = undefined
+                }
                 session.observe = ws
             }
             tryStartRelay(session)
