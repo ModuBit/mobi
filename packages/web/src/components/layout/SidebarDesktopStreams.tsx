@@ -31,7 +31,7 @@ import { Monitor, X } from 'lucide-react'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 
-const REFRESH_INTERVAL_MS = 5_000
+const REFRESH_INTERVAL_MS = 15_000
 
 export function SidebarDesktopStreams() {
     const { t } = useTranslation()
@@ -45,6 +45,8 @@ export function SidebarDesktopStreams() {
         queryKey: queryKeys.desktopStreams,
         queryFn: () => api.desktop.streams(),
         refetchInterval: REFRESH_INTERVAL_MS,
+        // hub 旧版本无此 API（404）：静默隐藏分区，不重试轰炸
+        retry: false,
     })
     const streams = data?.data.streams ?? []
 
