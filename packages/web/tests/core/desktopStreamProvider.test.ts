@@ -131,21 +131,7 @@ describe('DesktopStreamProvider 断线恢复', () => {
         vi.useRealTimers()
     })
 
-    it('有引用时网络类异常断开（1006）→ 自动重走 watch（幂等恢复）', async () => {
-        const provider = makeProvider()
-        const lease = provider.acquire('m1')
-        await vi.advanceTimersByTimeAsync(0)
-        expect(watchMock).toHaveBeenCalledTimes(1)
-
-        emit('onDisconnect', { clean: false, close: { code: 1006, reason: '' } })
-        await vi.advanceTimersByTimeAsync(0)
-
-        expect(watchMock).toHaveBeenCalledTimes(2)
-        lease.release()
-        provider.dispose()
-    })
-
-    it.each([4000, 4002])('服务端主动关闭（code=%i）→ 归因展示不自动重连', async (code) => {
+    it.each([4000, 4002, 4003])('服务端归因关闭（code=%i）→ 归因展示不自动重连', async (code) => {
         const provider = makeProvider()
         const lease = provider.acquire('m1')
         await vi.advanceTimersByTimeAsync(0)
@@ -156,6 +142,23 @@ describe('DesktopStreamProvider 断线恢复', () => {
         await vi.advanceTimersByTimeAsync(60_000)
         expect(watchMock).toHaveBeenCalledTimes(1)
         expect(provider.getState('m1').phase).toBe('error')
+
+        lease.release()
+        provider.dispose()
+    })
+
+    it('网络类断开的自动重连走退避（1s 后才重试，不立即打 watch）', async () => {
+        const provider = makeProvider()
+        const lease = provider.acquire('m1')
+        await vi.advanceTimersByTimeAsync(0)
+        expect(watchMock).toHaveBeenCalledTimes(1)
+
+        emit('onDisconnect', { clean: false, close: { code: 1006, reason: '' } })
+        // 立即不重连
+        expect(watchMock).toHaveBeenCalledTimes(1)
+        // 退避 1s 后重试
+        await vi.advanceTimersByTimeAsync(1_000)
+        expect(watchMock).toHaveBeenCalledTimes(2)
 
         lease.release()
         provider.dispose()

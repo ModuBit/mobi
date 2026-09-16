@@ -91,8 +91,8 @@ export function createDesktopWebsocketHandlers(
         message(ws, message) {
             broker.onSocketMessage(ws as never, message)
         },
-        close(ws) {
-            broker.onSocketClose(ws as never)
+        close(ws, code, reason) {
+            broker.onSocketClose(ws as never, code, reason)
         },
     }
 }

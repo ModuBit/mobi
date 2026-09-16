@@ -404,6 +404,21 @@ describe('desktop transport: 会话生命周期', () => {
         expect(closed.reason).toBe('peer gone')
     })
 
+    test('cli 侧 4003 上游不可用 → 观看侧收到 4003 与归因（供 Provider 不重连）', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+        const observe = await connectObserve(url, session.observeToken)
+
+        const observeClosed = nextClose(observe)
+        attach.close(4003, 'upstream unavailable')
+        const closed = await observeClosed
+        expect(closed.code).toBe(4003)
+        expect(closed.reason).toBe('upstream unavailable')
+    })
+
     test('upstream 断开 → attach ticket 同样作废（票据全路径清理）', async () => {
         const broker = makeBroker()
         const { url } = startTestServer(broker)

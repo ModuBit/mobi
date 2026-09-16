@@ -153,7 +153,9 @@ export function runDesktopStreamTransport(params: {
         })
         if (!socket) {
             teardownTrigger = 'target-connect-failed'
-            ws.close()
+            // 4003 上游不可用：hub 透传给观看侧，Provider 归因展示且不自动重连
+            // （否则「屏幕共享没开」会诱发观看端 watch/反连的快速循环）
+            ws.close(4003, 'upstream unavailable')
             return
         }
 

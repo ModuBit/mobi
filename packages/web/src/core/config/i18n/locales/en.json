@@ -741,7 +741,8 @@
             "vncAuthFailed": "Authentication failed: the VNC password is incorrect or has changed. Check it on the controlled Mac and try again",
             "vncPasswordMissing": "The controlled Mac has no VNC password configured yet. Enable it in System Settings and save it in Desktop settings first",
             "streamClosed": "The viewing stream was closed (possibly from another device)",
-            "superseded": "A new viewing session started on another device for this machine"
+            "superseded": "A new viewing session started on another device for this machine",
+            "upstreamUnavailable": "Screen sharing on the controlled machine is unavailable: make sure it is enabled in System Settings"
         },
         "start": "Watch",
         "settings": {

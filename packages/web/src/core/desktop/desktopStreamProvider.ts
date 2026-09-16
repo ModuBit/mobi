@@ -33,8 +33,12 @@ import { createMobiApi } from '@/core/data/api/client'
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
 
-/** 观看侧不自动重连的服务端关闭码：被抢占（4000）/ 被主动关闭（4002） */
-const NON_RECONNECT_CLOSE_CODES = new Set([4000, 4002])
+/** 服务端关闭码 → 观看侧归因文案（协议单源与 hub/cli 侧对齐）；这些码都不自动重连 */
+const CLOSE_CODE_REASONS: Record<number, string> = {
+    4000: 'superseded',
+    4002: 'stream closed',
+    4003: 'upstream unavailable',
+}
 
 /** watch/连接失败的退避重试节奏 */
 const RETRY_BASE_MS = 1_000
@@ -169,15 +173,17 @@ export class DesktopStreamProvider {
                     onDisconnect: ({ clean, close }) => {
                         if (generation !== this.streams.get(machineId)?.generation) return
                         entry.connection = null
-                        // 被抢占/被主动关闭：归因展示，绝不自动重连（重连即抢占回旋镖/
-                        // 无视用户的关闭操作）；仅网络类断开（锁屏/掉线）在仍有引用时恢复
-                        if (close && NON_RECONNECT_CLOSE_CODES.has(close.code)) {
-                            const reason = close.code === 4000 ? 'superseded' : 'stream closed'
+                        // 归因明确的关闭（被抢占/被关流/上游不可用）：展示归因，绝不自动重连
+                        // （重连即抢占回旋镖、无视用户关流、或对「屏幕共享没开」无限循环）
+                        const reason = close ? CLOSE_CODE_REASONS[close.code] : undefined
+                        if (reason) {
                             this.setState(machineId, { phase: 'error', message: reason })
                             return
                         }
+                        // 网络类断开（锁屏/掉线）且仍有引用 → 退避重连（不走立即重连，
+                        // 防上游侧持续失败时的快速 watch/反连循环）
                         if (!clean && entry.refs > 0) {
-                            void this.connect(machineId)
+                            this.scheduleRetry(machineId)
                         }
                     },
                     onFailure: (message) => {

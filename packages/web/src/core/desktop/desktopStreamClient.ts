@@ -75,6 +75,8 @@ export function describeDesktopFailure(reason: string): string | null {
             return 'desktop.failure.streamClosed'
         case 'superseded':
             return 'desktop.failure.superseded'
+        case 'upstream unavailable':
+            return 'desktop.failure.upstreamUnavailable'
         default:
             return null
     }

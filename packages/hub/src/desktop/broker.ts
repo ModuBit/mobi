@@ -84,7 +84,8 @@ export interface DesktopBroker {
     /** websocket open/message/close 的领域处理（transport.ts 调用） */
     onSocketOpen(ws: ServerWebSocket<DesktopWsData>): void
     onSocketMessage(ws: ServerWebSocket<DesktopWsData>, data: unknown): void
-    onSocketClose(ws: ServerWebSocket<DesktopWsData>): void
+    /** closeCode/reason 为 attach 侧主动关闭的归因（如 4003 上游不可用），透传给观看侧 */
+    onSocketClose(ws: ServerWebSocket<DesktopWsData>, closeCode?: number, closeReason?: string): void
 }
 
 /** RFB 中继帧上限：RFB 消息单元远小于此；超限即协议错误（防恶意大帧） */
@@ -428,14 +429,17 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
             relay(session, session.attach, session.toAttach, data)
         },
 
-        onSocketClose(ws) {
+        onSocketClose(ws, closeCode, closeReason) {
             const meta = ws.data[DESKTOP_WS_DATA_KEY]
             const session = sessions.get(meta.sessionId)
             if (!session || session.tearingDown) {
                 return
             }
-            // 迭代 1 语义：任一侧离开即会话终止（断线自动恢复由 web 侧重走 watch）
-            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PEER_GONE, 'peer gone')
+            // 迭代 1 语义：任一侧离开即会话终止。attach 侧若带 4xxx 归因码
+            // （如 4003 上游不可用）则原样透传给观看侧，Provider 可归因不重连；
+            // 普通断开（页面关闭/网络）归一为 4001 peer gone
+            const code = closeCode && closeCode >= 4000 ? closeCode : DESKTOP_CLOSE_CODE_PEER_GONE
+            teardownSession(session.sessionId, code, closeReason || 'peer gone')
         },
     }
 }
