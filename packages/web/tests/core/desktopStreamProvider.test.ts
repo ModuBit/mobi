@@ -54,6 +54,8 @@ function makeProvider() {
 describe('DesktopStreamProvider 引用计数', () => {
     beforeEach(() => {
         vi.useFakeTimers()
+        // provider 直连 URL 依赖 vite define 注入的全局；测试环境 stub 为 undefined（落回 jsdom origin）
+        vi.stubGlobal('__MOBI_HUB_URL__', undefined)
         rfbCallbacksPerConnection.length = 0
         rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
@@ -117,6 +119,8 @@ describe('DesktopStreamProvider 引用计数', () => {
 describe('DesktopStreamProvider 断线恢复', () => {
     beforeEach(() => {
         vi.useFakeTimers()
+        // provider 直连 URL 依赖 vite define 注入的全局；测试环境 stub 为 undefined（落回 jsdom origin）
+        vi.stubGlobal('__MOBI_HUB_URL__', undefined)
         rfbCallbacksPerConnection.length = 0
         rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
@@ -178,6 +182,8 @@ describe('DesktopStreamProvider 断线恢复', () => {
 describe('DesktopStreamProvider DOM 搬迁', () => {
     beforeEach(() => {
         vi.useFakeTimers()
+        // provider 直连 URL 依赖 vite define 注入的全局；测试环境 stub 为 undefined（落回 jsdom origin）
+        vi.stubGlobal('__MOBI_HUB_URL__', undefined)
         rfbCallbacksPerConnection.length = 0
         rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0

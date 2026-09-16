@@ -152,8 +152,10 @@ export class DesktopStreamProvider {
             const token = await this.deps.watch(machineId)
             if (generation !== this.streams.get(machineId)?.generation) return
 
-            const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-            const url = `${proto}://${window.location.host}/desktop/observe?token=${encodeURIComponent(token)}`
+            // 与 terminal 同模式：dev/e2e 直连 hub（__MOBI_HUB_URL__），生产 undefined 落回同源
+            // （raw WS 不过 Vite 代理；代理转发会带来升级/缓冲的额外变量）
+            const hubOrigin = (__MOBI_HUB_URL__ ?? window.location.origin).replace(/^http/, 'ws')
+            const url = `${hubOrigin}/desktop/observe?token=${encodeURIComponent(token)}`
             const connection = await connectDesktopView({
                 url,
                 container: entry.container,

@@ -98,9 +98,6 @@ export default defineConfig({
         proxy: {
             '/api': hubUrl,
             '/manifest.webmanifest': hubUrl,
-            // desktop raw WS（observe 观看连接）：WS 升级须经代理转发到 hub（ws:true）；
-            // 漏配时观看页会卡在「正在连接」（连不上→断开→Provider 自动重连循环）
-            '/desktop': { target: hubUrl, ws: true },
         }
     }
 })
