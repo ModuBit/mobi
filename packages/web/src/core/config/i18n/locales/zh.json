@@ -737,14 +737,14 @@
         "settings": {
             "title": "远程桌面",
             "guideTitle": "首次使用请完成两步配置",
-            "guideStep1": "在 Mac 上打开 系统设置 → 通用 → 共享 → 屏幕共享，开启后点右侧 ⓘ，勾选「VNC 观看者可以用密码控制屏幕」并设置一个密码（最多 8 位）",
+            "guideStep1": "在 Mac 上打开 系统设置 → 通用 → 共享 → 屏幕共享，开启后点右侧 ⓘ，勾选「VNC 观看者可以用密码控制屏幕」并设置一个密码（最长 16 位）",
             "guideStep2": "在下方输入同一个密码保存（密码只保存在这台电脑上，网页与服务器不留副本）",
             "configured": "✓ 已配置 VNC 密码",
             "notConfigured": "尚未配置 VNC 密码",
-            "passwordPlaceholder": "VNC 密码（最多 8 位）",
+            "passwordPlaceholder": "VNC 密码（最长 16 位）",
             "save": "保存",
             "saved": "VNC 密码已保存",
-            "privacyNote": "密码仅保存在被控电脑的 mobi 配置文件中；观看连接使用一次性短时效票据。"
+            "privacyNote": "密码仅保存在被控电脑的 mobi 配置文件中；观看连接使用一次性短时效票据。VNC 协议仅使用前 8 位参与认证，超长部分与 Mac 系统行为一致被截断。"
         }
     }
 }

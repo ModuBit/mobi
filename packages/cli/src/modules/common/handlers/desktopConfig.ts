@@ -32,7 +32,7 @@ export function registerDesktopConfigHandler(manager: RpcHandlerManager): void {
         async (params) => {
             const parsed = desktopVncPasswordSubmissionSchema.safeParse(params)
             if (!parsed.success) {
-                return { result: 'error', reason: 'VNC 密码须为 1-8 个字符（与 macOS 屏幕共享设置一致）' }
+                return { result: 'error', reason: 'VNC 密码须为 1-16 个字符（与 macOS 屏幕共享设置一致）' }
             }
             await updateSettings((current) => ({
                 ...current,

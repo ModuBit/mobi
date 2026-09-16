@@ -111,7 +111,7 @@ export function DesktopSection() {
                 <Input.Password
                     data-testid="desktop-vnc-password"
                     value={password}
-                    maxLength={8}
+                    maxLength={16}
                     placeholder={t('desktop.settings.passwordPlaceholder')}
                     onChange={(e) => setPassword(e.target.value)}
                     onPressEnter={() => void submit()}

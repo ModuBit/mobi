@@ -115,7 +115,7 @@ export function createDesktopRoutes(deps: {
         const body = await c.req.json().catch(() => null)
         const parsed = desktopVncPasswordSubmissionSchema.safeParse(body)
         if (!parsed.success) {
-            return c.json({ error: 'VNC 密码须为 1-8 个字符' }, 400)
+            return c.json({ error: 'VNC 密码须为 1-16 个字符' }, 400)
         }
 
         const machine = requireMachine(c, engine, (body as { machineId?: string }).machineId ?? '')

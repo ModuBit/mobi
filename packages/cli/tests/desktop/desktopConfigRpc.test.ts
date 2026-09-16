@@ -61,12 +61,12 @@ describe('registerDesktopConfigHandler', () => {
         expect((next as { desktop?: { vncPassword?: string } }).desktop?.vncPassword).toBe('ab12cd34')
     })
 
-    it('set-desktop-vnc-password：空串/超 8 字符被 schema 拒绝', async () => {
+    it('set-desktop-vnc-password：空串/超 16 字符被 schema 拒绝', async () => {
         const manager = makeManager()
         registerDesktopConfigHandler(manager)
 
         const empty = await callRpc(manager, 'set-desktop-vnc-password', { vncPassword: '' })
-        const long = await callRpc(manager, 'set-desktop-vnc-password', { vncPassword: '123456789' })
+        const long = await callRpc(manager, 'set-desktop-vnc-password', { vncPassword: '12345678901234567' })
         const missing = await callRpc(manager, 'set-desktop-vnc-password', {})
 
         expect(empty).toMatchObject({ result: 'error' })

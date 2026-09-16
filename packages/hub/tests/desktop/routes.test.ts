@@ -172,15 +172,15 @@ describe('Desktop watch API', () => {
         expect(res.status).toBe(400)
     })
 
-    test('vnc-password 经 RPC 中转到 cli（1-8 字符）', async () => {
+    test('vnc-password 经 RPC 中转到 cli（1-16 字符）', async () => {
         const token = await getAuthToken(app)
         const res = await app.request('/api/desktop/vnc-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ machineId: 'test-machine-1', vncPassword: 'ab12cd34' }),
+            body: JSON.stringify({ machineId: 'test-machine-1', vncPassword: 'ab12cd34ef56gh78' }),
         })
         expect(res.status).toBe(200)
-        expect(vncPasswordCalls).toEqual([{ machineId: 'test-machine-1', vncPassword: 'ab12cd34' }])
+        expect(vncPasswordCalls).toEqual([{ machineId: 'test-machine-1', vncPassword: 'ab12cd34ef56gh78' }])
     })
 
     test('vnc-password 超长被 schema 拒绝（400，不下发 RPC）', async () => {
@@ -188,7 +188,7 @@ describe('Desktop watch API', () => {
         const res = await app.request('/api/desktop/vnc-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ machineId: 'test-machine-1', vncPassword: '123456789' }),
+            body: JSON.stringify({ machineId: 'test-machine-1', vncPassword: '12345678901234567' }),
         })
         expect(res.status).toBe(400)
         expect(vncPasswordCalls).toHaveLength(0)

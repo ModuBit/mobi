@@ -34,11 +34,13 @@ export const DESKTOP_OBSERVE_PATH = '/desktop/observe'
  * attach metadata（cli 反连后 raw WS 首帧，二进制 JSON）。
  * vncPassword 可选（hub 代认证用）：hub 内存持有替浏览器应答 VNC 挑战，
  * 不落盘不日志；密码真身在被控机，hub/web 均无副本。
+ * 上限 16 与 macOS 屏幕共享输入框对齐；RFB DES 密钥只有 8 字节，
+ * 超长部分两端同样截断（仅前 8 位参与认证）。
  */
 export const desktopAttachMetadataSchema = z.object({
     protocol: z.literal('mobi-desktop-1'),
     machineId: z.string().min(1),
-    vncPassword: z.string().min(1).max(8).optional(),
+    vncPassword: z.string().min(1).max(16).optional(),
 })
 
 export type DesktopAttachMetadata = z.infer<typeof desktopAttachMetadataSchema>
@@ -81,10 +83,11 @@ export type DesktopStreamRequest = z.infer<typeof desktopStreamRequestSchema>
 
 /**
  * VNC 密码提交（web → hub → cli 落 settings.cli.json）。
- * macOS「VNC 观看者密码」上限 8 字符，超长必然与系统配置不一致，schema 层直接拒。
+ * 上限 16 与 macOS 屏幕共享输入框对齐；RFB 协议密钥只有 8 字节，
+ * 超长部分截断——仅前 8 位参与认证（与 macOS 内部行为一致）。
  */
 export const desktopVncPasswordSubmissionSchema = z.object({
-    vncPassword: z.string().min(1).max(8),
+    vncPassword: z.string().min(1).max(16),
 })
 
 export type DesktopVncPasswordSubmission = z.infer<typeof desktopVncPasswordSubmissionSchema>

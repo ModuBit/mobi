@@ -747,14 +747,14 @@
         "settings": {
             "title": "Remote Desktop",
             "guideTitle": "Complete two steps before first use",
-            "guideStep1": "On your Mac, open System Settings → General → Sharing → Screen Sharing, click the ⓘ button, enable \"VNC viewers may control screen with password\" and set a password (max 8 chars)",
+            "guideStep1": "On your Mac, open System Settings → General → Sharing → Screen Sharing, click the ⓘ button, enable \"VNC viewers may control screen with password\" and set a password (up to 16 chars)",
             "guideStep2": "Enter the same password below (it is stored only on the controlled machine; neither the web app nor the server keeps a copy)",
             "configured": "✓ VNC password configured",
             "notConfigured": "VNC password not configured",
-            "passwordPlaceholder": "VNC password (max 8 chars)",
+            "passwordPlaceholder": "VNC password (up to 16 chars)",
             "save": "Save",
             "saved": "VNC password saved",
-            "privacyNote": "The password is stored only in the mobi config file on the controlled machine; viewing connections use one-time short-lived tokens."
+            "privacyNote": "The password is stored only in the mobi config file on the controlled machine; viewing connections use one-time short-lived tokens. The VNC protocol only uses the first 8 characters for authentication — longer input is truncated, matching macOS behavior."
         }
     }
 }
