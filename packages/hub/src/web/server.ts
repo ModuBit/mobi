@@ -289,6 +289,7 @@ export async function startWebServer(options: {
         getSyncEngine: options.getSyncEngine,
         getSseManager: options.getSseManager,
         getVisibilityTracker: options.getVisibilityTracker,
+        getDesktopBroker: options.getDesktopBroker,
         jwtSecret: options.jwtSecret,
         store: options.store,
         vapidPublicKey: options.vapidPublicKey,
