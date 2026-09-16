@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { PassThrough } from 'node:stream'
 import { createStreamPump, duplexEndpoint, type PumpEndpoint } from '../../src/desktop/pump'
+
+/** 测试用 sleep（bun:test 移植 vitest 后替代 Bun.sleep） */
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /** 内存 Duplex 端点适配器的测试镜像（换实现方式后仍应成立的端点契约） */
 function makeMemoryEndpoint() {
@@ -165,7 +168,7 @@ describe('duplexEndpoint（内存 Duplex 适配器）', () => {
 
         expect(endpoint.isOpen()).toBe(true)
         expect(endpoint.send(bytes(7, 8))).toBe(true)
-        await Bun.sleep(5)
+        await sleep(5)
         expect(received).toEqual([bytes(7, 8)])
 
         endpoint.close()
@@ -187,7 +190,7 @@ describe('duplexEndpoint（内存 Duplex 适配器）', () => {
         pump.feed('a', bytes(1))
         pump.feed('b', bytes(2))
 
-        await Bun.sleep(10)
+        await sleep(10)
         expect(fromRight).toEqual([bytes(1)])
         expect(fromLeft).toEqual([bytes(2)])
         pump.teardown()

@@ -26,8 +26,8 @@
 import net from 'node:net'
 
 const port = Number(process.argv[2] ?? 15900)
-const width = 800
-const height = 600
+const width = 400
+const height = 300
 
 const RFB_VERSION = Buffer.from('RFB 003.008\n', 'ascii')
 
@@ -58,13 +58,14 @@ function serverInit(): Buffer {
 let frameSeq = 0
 function framebufferUpdate(): Buffer {
     const seq = frameSeq++
-    const rects = Buffer.alloc(16 + width * height * 4)
+    // rect 头 12 字节（x/y/w/h/encoding），多 1 字节都会让 noVNC 字节流错位
+    const rects = Buffer.alloc(12 + width * height * 4)
     rects.writeUInt16BE(0, 0) // x
     rects.writeUInt16BE(0, 2) // y
     rects.writeUInt16BE(width, 4)
     rects.writeUInt16BE(height, 6)
     rects.writeUInt32BE(0, 8) // encoding: raw
-    const pixels = rects.subarray(16)
+    const pixels = rects.subarray(12)
     for (let y = 0; y < height; y++) {
         const band = Math.floor((y + seq * 8) / 40) % 3
         const g = band === 0 ? 220 : 40
@@ -93,8 +94,20 @@ net.createServer((sock) => {
 
     write(RFB_VERSION)
 
+    // 帧率节流：noVNC 收到 update 会立即请求下一帧，无节流时全帧刷屏打满浏览器主线程。
+    // 间隔内的请求不丢弃（noVNC 等 update 才会发下一个 request，丢弃即死锁），延迟到点发送
+    const FRAME_INTERVAL_MS = 500
+    let lastFrameAt = 0
+    let frameTimer: ReturnType<typeof setTimeout> | undefined
     const sendUpdate = () => {
-        write(framebufferUpdate())
+        if (frameTimer) return
+        const delay = Math.max(0, FRAME_INTERVAL_MS - (Date.now() - lastFrameAt))
+        frameTimer = setTimeout(() => {
+            frameTimer = undefined
+            lastFrameAt = Date.now()
+            write(framebufferUpdate())
+        }, delay)
+        frameTimer.unref?.()
     }
 
     sock.on('data', (chunk: Buffer) => {
