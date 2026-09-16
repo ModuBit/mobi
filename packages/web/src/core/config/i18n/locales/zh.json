@@ -513,9 +513,22 @@
     "settings": {
         "title": "设置",
         "sections": {
+            "notifications": {
+                "title": "通知与推送",
+                "desc": "系统通知与 PWA 订阅"
+            },
+            "webTools": {
+                "title": "Web 工具",
+                "desc": "搜索与网页抓取的凭据与路由",
+                "statusEnabled": "已启用"
+            },
             "desktop": {
                 "title": "远程桌面",
                 "desc": "VNC 密码与观看引导"
+            },
+            "debug": {
+                "title": "调试",
+                "desc": "诊断信息与实验开关"
             }
         },
         "webTools": {

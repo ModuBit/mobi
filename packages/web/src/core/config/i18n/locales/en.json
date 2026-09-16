@@ -523,9 +523,22 @@
     "settings": {
         "title": "Settings",
         "sections": {
+            "notifications": {
+                "title": "Notifications",
+                "desc": "System notifications and PWA subscription"
+            },
+            "webTools": {
+                "title": "Web Tools",
+                "desc": "Credentials and routing for search and fetch",
+                "statusEnabled": "Enabled"
+            },
             "desktop": {
                 "title": "Remote Desktop",
                 "desc": "VNC password and viewing guide"
+            },
+            "debug": {
+                "title": "Debug",
+                "desc": "Diagnostics and feature flags"
             }
         },
         "webTools": {
