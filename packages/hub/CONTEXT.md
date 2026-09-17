@@ -67,3 +67,25 @@ _Avoid_: 前台 Agent 面板数据（那是消费方视角）、运行中任务�
 **消息事实处理**:
 Hub 对 CLI 上报的 `pushed`、`bound`、`attached`、`acked`、`lifecycle`、`withdrawn` 事实做字段收窄、幂等或单调落库，并生成领域 publication 的过程。`SessionMessageFactsProcessor` 是这些规则及连接级 native session 上下文的权威入口；Socket handler 只校验批次外层与访问权，并把 publication 翻译成 room / SSE 通知。
 _Avoid_: 在 Socket handler 内按 fact kind 直接写库、把 Socket/SSE 对象传入事实处理模块
+
+### 桌面观看（desktop）
+
+**观看流**:
+一个 machine 的一条桌面画面链路：cli 侧连被控端 VNC server（attach），观看端经 hub 观察（observe）。同 machine 同时只有一条，新观看抢占旧观看。
+_Avoid_: 桌面会话（与 Claude 会话行混用）、直播流
+
+**抢占**:
+同 machine 的新观看使旧观看被拆除的机制。旧的观看端收到归因关闭（superseded）且不自动重连。
+_Avoid_: 顶掉、踢下线
+
+**view-only**:
+观看流的服务端强制模式：hub 在 RFB 消息边界剥除一切输入事件（键盘/指针/剪贴板/分辨率变更），UI 上的只读状态只是体验呈现，权限边界在 hub。
+_Avoid_: 只读模式（UI 语感，弱化了服务端强制语义）
+
+**控制权**:
+观看端经显式动作（「接管控制」）从 view-only 获得的输入注入许可。hub 侧放行输入消息；回落时机三重：观看会话结束、不操作超时（10 分钟）、用户主动退出。
+_Avoid_: 接管（那是用户动作的名字，不是状态）、控制模式
+
+**代认证**:
+hub 替观看端应答被控端 VNC 认证挑战（RFB VNC-auth）的机制——密码只存在于 cli 与 hub 的内存中，不落浏览器、不落盘。
+_Avoid_: 密码代理、认证转发
