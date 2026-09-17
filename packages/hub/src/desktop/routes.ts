@@ -29,6 +29,7 @@ import {
     DESKTOP_ATTACH_PATH,
     type DesktopWatchResponse,
     type DesktopStreamsResponse,
+    type DesktopControlResponse,
 } from '@mobi/shared'
 import type { SyncEngine } from '../sync/syncEngine'
 import type { WebAppEnv } from '../web/middleware/auth'
@@ -103,6 +104,34 @@ export function createDesktopRoutes(deps: {
         }
         broker.teardownSession(sessionId, DESKTOP_CLOSE_CODE_CLOSED, 'stream closed by user')
         return c.json({ success: true })
+    })
+
+    // 控制权授予（迭代 2）：按钮直授，幂等；hub 翻转过滤器状态并广播
+    app.post('/desktop/streams/:sessionId/control', (c) => {
+        const broker = deps.getDesktopBroker()
+        if (!broker) {
+            return c.json({ error: 'Desktop not available' }, 503)
+        }
+        const change = broker.grantControl(c.req.param('sessionId'))
+        if (!change) {
+            return c.json({ error: 'Stream not found' }, 404)
+        }
+        const response: DesktopControlResponse = change
+        return c.json(response)
+    })
+
+    // 控制权退出（幂等；回落不拆流）
+    app.delete('/desktop/streams/:sessionId/control', (c) => {
+        const broker = deps.getDesktopBroker()
+        if (!broker) {
+            return c.json({ error: 'Desktop not available' }, 503)
+        }
+        const change = broker.releaseControl(c.req.param('sessionId'), 'released by user')
+        if (!change) {
+            return c.json({ error: 'Stream not found' }, 404)
+        }
+        const response: DesktopControlResponse = change
+        return c.json(response)
     })
 
     // VNC 密码写入：hub 纯中转（machine RPC），不落盘副本；校验在 cli 侧 schema 兜底

@@ -199,6 +199,11 @@ export class SyncEngine {
         this.handleRealtimeEvent(event)
     }
 
+    /** 桌面控制权状态变化发布入口（desktop broker 回调用）：同走 handleRealtimeEvent */
+    publishDesktopControlChanged(event: Extract<SyncEvent, { type: 'desktop-control-changed' }>): void {
+        this.handleRealtimeEvent(event)
+    }
+
     private resolveNamespace(event: SyncEvent): string | undefined {
         if (event.namespace) {
             return event.namespace

@@ -173,9 +173,11 @@ describe('desktop transport: 双向字节透传', () => {
         const { attach, observe } = await makeActivePair(url, broker)
         await performRfbNoneHandshake(attach, observe)
 
+        // 观察侧上行已过输入过滤器（迭代 2）：须为合法 RFB 消息才放行，
+        // 这里用 SetEncodings 承载任意载荷断言字节完整性
         const received = nextMessage(attach)
-        observe.send(new Uint8Array([0x01, 0x02, 0x03]))
-        expect(await received).toEqual(new Uint8Array([0x01, 0x02, 0x03]))
+        observe.send(new Uint8Array([2, 0, 0, 1, 0xff, 0xff, 0xff, 0xff]))
+        expect(await received).toEqual(new Uint8Array([2, 0, 0, 1, 0xff, 0xff, 0xff, 0xff]))
 
         attach.close()
         observe.close()
@@ -548,5 +550,166 @@ describe('desktop transport: 会话生命周期', () => {
 describe('desktop transport: data 标记隔离', () => {
     test('DESKTOP_WS_DATA_KEY 存在于 shared（与 engine data 形状不冲突）', () => {
         expect(DESKTOP_WS_DATA_KEY).toBe('__mobiDesktop')
+    })
+})
+
+// —— 控制权（迭代 2）：过滤器 + 状态机的外部行为 ——
+
+/** 构造标准 RFB client 消息（与 rfbInputFilter.test 的形状表一致） */
+function clientMsg(type: number, body: number[] = []): Uint8Array {
+    return new Uint8Array([type, ...body])
+}
+function keyEvent(key = 0x41): Uint8Array {
+    return clientMsg(4, [1, 0, 0, 0, 0, 0, key])
+}
+function pointerEvent(): Uint8Array {
+    return clientMsg(5, [1, 0, 1, 0, 2])
+}
+function fbUpdateReq(): Uint8Array {
+    return clientMsg(3, [1, 0, 0, 0, 0, 0, 0, 0, 0])
+}
+function setDesktopSize(): Uint8Array {
+    return clientMsg(251, [0, 7, 128, 0, 1, 0, ...new Uint8Array(4)])
+}
+
+/** 断言 attach 侧在 ms 内收不到任何字节（view-only 剥除的观测方式） */
+async function expectSilence(ws: WebSocket, ms = 80): Promise<void> {
+    const received = nextMessage(ws).then(() => 'received' as const)
+    const silent = Bun.sleep(ms).then(() => 'silent' as const)
+    expect(await Promise.race([received, silent])).toBe('silent')
+}
+
+describe('desktop transport: 控制权过滤与状态机', () => {
+    async function makeLivePair(url: string, broker: ReturnType<typeof createDesktopBroker>) {
+        const { session, attach, observe } = await makeActivePair(url, broker)
+        await performRfbNoneHandshake(attach, observe)
+        return { session, attach, observe }
+    }
+
+    test('view-only：输入类消息到不了上游，观看必需消息照常通过', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+        const { attach, observe } = await makeLivePair(url, broker)
+
+        observe.send(keyEvent())
+        observe.send(pointerEvent())
+        await expectSilence(attach)
+
+        const received = nextMessage(attach)
+        observe.send(fbUpdateReq())
+        expect(await received).toEqual(fbUpdateReq())
+
+        attach.close()
+        observe.close()
+    })
+
+    test('授予后输入类放行（SetDesktopSize 恒剥），退出后恢复剥除', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+        const { session, attach, observe } = await makeLivePair(url, broker)
+
+        expect(broker.grantControl(session.sessionId)).toMatchObject({ control: 'controlled' })
+        const key = nextMessage(attach)
+        observe.send(keyEvent())
+        expect(await key).toEqual(keyEvent())
+
+        observe.send(setDesktopSize())
+        await expectSilence(attach)
+
+        broker.releaseControl(session.sessionId, 'test release')
+        observe.send(keyEvent(0x42))
+        await expectSilence(attach)
+
+        attach.close()
+        observe.close()
+    })
+
+    test('授予幂等；无会话/已拆除返回 null', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+        const { session } = await makeLivePair(url, broker)
+
+        expect(broker.grantControl(session.sessionId)?.control).toBe('controlled')
+        expect(broker.grantControl(session.sessionId)?.control).toBe('controlled')
+        expect(broker.grantControl('no-such-session')).toBeNull()
+        expect(broker.releaseControl('no-such-session', 'x')).toBeNull()
+
+        broker.teardownSession(session.sessionId, 4002, 'test')
+        expect(broker.grantControl(session.sessionId)).toBeNull()
+
+        url // 服务器随测试进程退出
+    })
+
+    test('控制权空闲超时自动回落：流保持存活，仅恢复剥除', async () => {
+        const changes: Array<{ control: string }> = []
+        const broker = makeBroker({ controlIdleMs: 60, onControlChange: (c) => changes.push(c) })
+        const { url } = startTestServer(broker)
+        const { session, attach, observe } = await makeLivePair(url, broker)
+
+        broker.grantControl(session.sessionId)
+        await Bun.sleep(120) // 超过空闲时效
+
+        observe.send(keyEvent())
+        await expectSilence(attach)
+
+        // 回落不拆流：观看必需消息照常
+        const received = nextMessage(attach)
+        observe.send(fbUpdateReq())
+        expect(await received).toEqual(fbUpdateReq())
+
+        expect(changes).toMatchObject([
+            { control: 'controlled' },
+            { control: 'view-only' },
+        ])
+
+        attach.close()
+        observe.close()
+    })
+
+    test('放行的输入消息重置空闲计时（持续操作不掉控制权）', async () => {
+        const changes: string[] = []
+        const broker = makeBroker({ controlIdleMs: 80, onControlChange: (c) => changes.push(c.control) })
+        const { url } = startTestServer(broker)
+        const { session, attach, observe } = await makeLivePair(url, broker)
+
+        broker.grantControl(session.sessionId)
+        // 以 40ms 间隔持续输入，总时长超过 80ms 时效
+        for (let i = 0; i < 4; i++) {
+            await Bun.sleep(40)
+            observe.send(keyEvent(0x30 + i))
+        }
+        await Bun.sleep(40)
+        expect(changes).toEqual(['controlled'])
+        expect(broker.listSessions()[0].control).toBe('controlled')
+
+        broker.releaseControl(session.sessionId, 'end of test')
+        attach.close()
+        observe.close()
+    })
+
+    test('上行字节解析错位（未知消息类型）→ 协议错误拆会话', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+        const { attach, observe } = await makeLivePair(url, broker)
+
+        const closed = Promise.all([nextClose(attach), nextClose(observe)])
+        observe.send(clientMsg(0x7f))
+        const results = await closed
+        for (const { code, reason } of results) {
+            expect(code).toBe(1008)
+            expect(reason).toBe('rfb input parse failed')
+        }
+    })
+
+    test('streams 列表携带控制权状态（初次对齐数据源）', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+        const { session } = await makeLivePair(url, broker)
+
+        expect(broker.listSessions()[0]).toMatchObject({ sessionId: session.sessionId, control: 'view-only' })
+        broker.grantControl(session.sessionId)
+        expect(broker.listSessions()[0].control).toBe('controlled')
+
+        url // 服务器随测试进程退出
     })
 })

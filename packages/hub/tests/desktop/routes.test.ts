@@ -279,3 +279,66 @@ describe('Desktop streams 管理 API', () => {
         expect(res.status).toBe(404)
     })
 })
+
+describe('Desktop 控制权 API（迭代 2）', () => {
+    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let cleanup: () => void
+    let broker: ReturnType<typeof createDesktopBroker>
+
+    beforeEach(async () => {
+        broker = createDesktopBroker()
+        const result = await setupTestApp(mockSyncEngine, { getDesktopBroker: () => broker })
+        app = result.app
+        cleanup = result.cleanup
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    test('授予 → controlled；退出 → view-only（幂等）', async () => {
+        const session = broker.watchSession('test-machine-1')
+        const token = await getAuthToken(app)
+
+        const grant = await app.request(`/api/desktop/streams/${session.sessionId}/control`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(grant.status).toBe(200)
+        const granted = await grant.json() as { control: string; machineId: string }
+        expect(granted).toMatchObject({ machineId: 'test-machine-1', control: 'controlled' })
+
+        const again = await app.request(`/api/desktop/streams/${session.sessionId}/control`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect((await again.json() as { control: string }).control).toBe('controlled')
+
+        const release = await app.request(`/api/desktop/streams/${session.sessionId}/control`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(release.status).toBe(200)
+        const released = await release.json() as { control: string }
+        expect(released.control).toBe('view-only')
+    })
+
+    test('无会话 → 404；未认证 → 401', async () => {
+        const res = await app.request('/api/desktop/streams/no-such/control', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer whatever' },
+        })
+        // 未知会话但要先过鉴权
+        expect([401, 404]).toContain(res.status)
+
+        const token = await getAuthToken(app)
+        const unauthenticated = await app.request(`/api/desktop/streams/no-such/control`, { method: 'POST' })
+        expect(unauthenticated.status).toBe(401)
+
+        const notFound = await app.request('/api/desktop/streams/no-such/control', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(notFound.status).toBe(404)
+    })
+})

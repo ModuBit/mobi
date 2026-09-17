@@ -60,6 +60,11 @@ export const desktopWatchResponseSchema = z.object({
 
 export type DesktopWatchResponse = z.infer<typeof desktopWatchResponseSchema>
 
+/** 控制权状态：view-only（服务端剥输入）/ controlled（输入放行，SetDesktopSize 仍恒剥） */
+export const desktopControlStateSchema = z.enum(['view-only', 'controlled'])
+
+export type DesktopControlState = z.infer<typeof desktopControlStateSchema>
+
 /** GET /api/desktop/streams 响应体：hub 上的活跃观看流（侧边栏列表数据源） */
 export const desktopStreamsResponseSchema = z.object({
     streams: z.array(
@@ -67,11 +72,22 @@ export const desktopStreamsResponseSchema = z.object({
             sessionId: z.string().min(1),
             machineId: z.string().min(1),
             startedAtMs: z.number().int().positive(),
+            /** 控制权状态（迭代 2）：web 初次加载时以此对齐，后续经 desktop-control-changed 事件同步 */
+            control: desktopControlStateSchema,
         }),
     ),
 })
 
 export type DesktopStreamsResponse = z.infer<typeof desktopStreamsResponseSchema>
+
+/** 控制权授予/退出响应体 */
+export const desktopControlResponseSchema = z.object({
+    sessionId: z.string().min(1),
+    machineId: z.string().min(1),
+    control: desktopControlStateSchema,
+})
+
+export type DesktopControlResponse = z.infer<typeof desktopControlResponseSchema>
 
 /** hub → cli 的 desktop-stream RPC 请求参数 */
 export const desktopStreamRequestSchema = z.object({

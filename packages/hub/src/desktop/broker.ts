@@ -25,15 +25,24 @@
 
 import { randomUUID } from 'node:crypto'
 import type { ServerWebSocket } from 'bun'
-import { desktopAttachMetadataSchema, DESKTOP_WS_DATA_KEY } from '@mobi/shared'
+import { desktopAttachMetadataSchema, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
 import { createOneTimeTicketStore } from './tickets'
 import { RfbHandshakeProxy } from './rfbPreauth'
+import { createRfbInputFilter, RfbProtocolError, type RfbInputFilter } from './rfbInputFilter'
 import { hubLogger } from '../logger'
 
 export interface DesktopSessionInfo {
     sessionId: string
     machineId: string
     startedAtMs: number
+    /** 控制权状态（迭代 2）：streams 列表与 watch 响应携带，供 web 初次对齐 */
+    control: DesktopControlState
+}
+
+export interface DesktopControlChange {
+    sessionId: string
+    machineId: string
+    control: DesktopControlState
 }
 
 export interface WatchedSession extends DesktopSessionInfo {
@@ -72,6 +81,12 @@ interface DesktopSession extends DesktopSessionInfo {
     /** 透传统计（每方向收发字节；周期性落日志供诊断） */
     stats: { attachIn: number; observeOut: number }
     statsTimer?: ReturnType<typeof setInterval>
+    /** 控制权状态（迭代 2）：view-only 时 observe 上行输入被 inputFilter 剥除 */
+    controlled: boolean
+    /** 控制权不操作超时定时器（授予后起，放行输入即重置；回落/拆除时清） */
+    controlIdleTimer?: ReturnType<typeof setTimeout>
+    /** RFB 输入过滤器（握手 live 时创建；view-only 剥输入类，controlled 放行） */
+    inputFilter?: RfbInputFilter
 }
 
 export interface DesktopBroker {
@@ -85,6 +100,10 @@ export interface DesktopBroker {
     listSessions(): DesktopSessionInfo[]
     /** 显式拆除（抢占/关闭 API/协议错误统一入口） */
     teardownSession(sessionId: string, code: number, reason: string): void
+    /** 授予控制权（幂等）；无会话返回 null */
+    grantControl(sessionId: string): DesktopControlChange | null
+    /** 退出控制权（幂等，回落原因供日志/归因）；无会话返回 null */
+    releaseControl(sessionId: string, reason: string): DesktopControlChange | null
     /** websocket open/message/close 的领域处理（transport.ts 调用） */
     onSocketOpen(ws: ServerWebSocket<DesktopWsData>): void
     onSocketMessage(ws: ServerWebSocket<DesktopWsData>, data: unknown): void
@@ -126,8 +145,17 @@ export const DESKTOP_CLOSE_CODE_PEER_GONE = 4001
 export const DESKTOP_CLOSE_CODE_CLOSED = 4002
 export const DESKTOP_CLOSE_CODE_PROTOCOL = 1008
 
-export function createDesktopBroker(options: { ttlMs?: number; now?: () => number } = {}): DesktopBroker {
+export function createDesktopBroker(options: {
+    ttlMs?: number
+    /** 控制权不操作超时：超过即回落 view-only（spec 三重回落之一）；测试/E2E 可注入缩短 */
+    controlIdleMs?: number
+    /** 控制权状态变化回调（授予/退出/空闲超时回落）：装配层接 SSE 广播 */
+    onControlChange?: (change: DesktopControlChange) => void
+    now?: () => number
+} = {}): DesktopBroker {
     const ttlMs = options.ttlMs ?? 60_000
+    const controlIdleMs = options.controlIdleMs ?? 600_000
+    const onControlChange = options.onControlChange
     const now = options.now ?? Date.now
 
     const attachTickets = createOneTimeTicketStore<string>()
@@ -154,6 +182,10 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
             clearTimeout(session.pendingObserveTimer)
             session.pendingObserveTimer = undefined
         }
+        if (session.controlIdleTimer) {
+            clearTimeout(session.controlIdleTimer)
+            session.controlIdleTimer = undefined
+        }
         attachTickets.cancel(session.attachTicket)
         observeTokens.cancel(session.observeToken)
         sessions.delete(sessionId)
@@ -162,6 +194,38 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         }
         session.attach?.close(code, reason)
         session.observe?.close(code, reason)
+    }
+
+    function controlInfo(session: DesktopSession): DesktopControlChange {
+        return { sessionId: session.sessionId, machineId: session.machineId, control: session.controlled ? 'controlled' : 'view-only' }
+    }
+
+    /** 控制权空闲计时：授予后起、放行输入即重置；到点回落（不拆流） */
+    function armControlIdleTimer(session: DesktopSession): void {
+        if (session.controlIdleTimer) {
+            clearTimeout(session.controlIdleTimer)
+        }
+        const timer = setTimeout(() => {
+            applyControlState(session, false, 'control idle timeout')
+        }, controlIdleMs)
+        timer.unref?.()
+        session.controlIdleTimer = timer
+    }
+
+    function applyControlState(session: DesktopSession, controlled: boolean, reason: string): void {
+        if (session.controlled === controlled) {
+            return
+        }
+        session.controlled = controlled
+        session.inputFilter?.setControlled(controlled)
+        if (controlled) {
+            armControlIdleTimer(session)
+        } else if (session.controlIdleTimer) {
+            clearTimeout(session.controlIdleTimer)
+            session.controlIdleTimer = undefined
+        }
+        hubLogger.info(`[desktop] control session=${session.sessionId} machine=${session.machineId} state=${controlled ? 'controlled' : 'view-only'} reason=${reason}`)
+        onControlChange?.(controlInfo(session))
     }
 
     /**
@@ -208,6 +272,11 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 },
             })
             session.handshake = handshake
+            // 握手 live 后 observe 上行要过输入过滤器（迭代 2 控制边界），随代理一并建立
+            session.inputFilter = createRfbInputFilter()
+            if (session.controlled) {
+                session.inputFilter.setControlled(true)
+            }
             // 握手建立前缓冲的早期字节（如 macOS 立即发出的版本串）先喂给代理
             for (const frame of session.toObserve.frames.splice(0)) {
                 handshake.feedServer(frame as Uint8Array)
@@ -276,6 +345,8 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 toAttach: { frames: [] },
                 toObserve: { frames: [] },
                 stats: { attachIn: 0, observeOut: 0 },
+                control: 'view-only',
+                controlled: false,
             }
             sessions.set(sessionId, session)
             sessionIdByMachine.set(machineId, sessionId)
@@ -307,6 +378,7 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 attachTicket: attachGrant.token,
                 observeToken: observeGrant.token,
                 expiresAtMs: observeGrant.expiresAtMs,
+                control: 'view-only' as const,
             }
         },
 
@@ -319,11 +391,30 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         },
 
         listSessions() {
-            return Array.from(sessions.values()).map(({ sessionId, machineId, startedAtMs }) => ({
-                sessionId,
-                machineId,
-                startedAtMs,
+            return Array.from(sessions.values()).map((session) => ({
+                sessionId: session.sessionId,
+                machineId: session.machineId,
+                startedAtMs: session.startedAtMs,
+                control: session.controlled ? ('controlled' as const) : ('view-only' as const),
             }))
+        },
+
+        grantControl(sessionId) {
+            const session = sessions.get(sessionId)
+            if (!session || session.tearingDown) {
+                return null
+            }
+            applyControlState(session, true, 'granted by user')
+            return controlInfo(session)
+        },
+
+        releaseControl(sessionId, reason) {
+            const session = sessions.get(sessionId)
+            if (!session || session.tearingDown) {
+                return null
+            }
+            applyControlState(session, false, reason)
+            return controlInfo(session)
         },
 
         teardownSession,
@@ -401,8 +492,31 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 return
             }
 
+            // observe → attach：握手 live 后过输入过滤器（控制权强制边界）。
+            // view-only 剥输入类消息；controlled 放行（SetDesktopSize 恒剥），
+            // 放行的输入重置控制权空闲计时。解析错位即协议错误拆会话。
             if (!session.attach) {
                 session.toAttach.frames.push(data)
+                return
+            }
+            if (session.inputFilter && session.handshakeLive) {
+                let filtered
+                try {
+                    filtered = session.inputFilter.feed(data as Uint8Array)
+                } catch (error) {
+                    if (error instanceof RfbProtocolError) {
+                        session.inputFilter.reset()
+                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'rfb input parse failed')
+                        return
+                    }
+                    throw error
+                }
+                if (filtered.sawInput && session.controlled) {
+                    armControlIdleTimer(session)
+                }
+                if (filtered.passthrough.byteLength > 0) {
+                    relay(session, session.attach, filtered.passthrough)
+                }
                 return
             }
             relay(session, session.attach, data)
