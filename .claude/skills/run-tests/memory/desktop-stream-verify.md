@@ -30,6 +30,17 @@ metadata:
 - 5K 屏首帧洪峰大（hextile ~17MB/帧）：hub relay 必须无排空轮询（见 [[bun-ws-bufferedamount-trap]]），慢消费者用字节差值 64MB 护栏
 - 诊断路径：hub `[desktop] handshake/stats/teardown` 日志 + runner `DEBUG=1` 的 `[desktop] stream ended` + 直连 5900 探针（`Bun.connect` 走握手看安全类型/挑战应答）
 
+## 控制权全链路（迭代 2）
+
+- 前置：profile 加 `MOBI_DESKTOP_CONTROL_IDLE_MS=15000`（E2E 短空闲时效，hub 启动读 env）+ fake-rfb 起 `FAKE_RFB_INPUT_LOG=/tmp/fake-rfb-inputs.jsonl`（上游收到的输入按行追加 JSONL，断言剥除/放行就靠它）
+- 断言序列（idle 时效内要一气呵成，跨工具调用会先撞 15s 超时回落）：
+  1. view-only 下 canvas 聚焦后 CDP `press_key` / 合成 KeyboardEvent → input log 零新增
+  2. 点「接管控制」→ 等「控制中」Tag → 再按键 → log 出现 `{"kind":"key",...}`（down+up 两行）
+  3. 等 15s → UI 自动翻回「观看中」（**验证 SSE desktop-control-changed 同步，不用刷新**）→ 再按键零新增
+  4. 接管 → 点「退出控制」→ 再按键零新增
+- 坑：**hub 重启后旧观看流全灭**，授予 API 404「Stream not found」——先 reload 页面重建流
+- 坑：live 相位首个字节是 ClientInit（裸 shared-flag，非类型化消息），过滤器按消息表解析会吞掉它（shared=0 进 carry 永久等待）→ 全链路挂起无任何报错；filter 内已特殊处理，新增解析逻辑别动这段
+
 ## 坑
 
 - fake-rfb rect 头必须 12 字节、须 500ms 帧率节流（修在脚本里）；noVNC 报 `Unexpected server message` 即字节流错位
