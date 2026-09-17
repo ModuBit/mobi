@@ -23,6 +23,13 @@ metadata:
 - **侧边栏关流**：点条目 ✕ → modal.confirm「关闭这条观看流？」→ 确定后观看页显示「观看流已被关闭（可能从其他设备操作）」、分区消失
 - **断开清理**：关页面 → `/tmp/fake-rfb.log` 出现 `client disconnected`、浏览器查 `/api/desktop/streams` 为 `{"streams":[]}`
 
+## 真实场景（e2e 直连本机屏幕共享）
+
+- `~/.mobi/profiles/e2e.env` 设 `MOBI_DESKTOP_VNC_PORT=5900`，`~/.mobi-e2e/settings.cli.json` 写真实 VNC 密码（屏幕共享设置的 VNC 观看者密码）
+- macOS 回版本串 `RFB 003.889`（Apple 私有）：hub 按 3.8 时序协商（min 规则），且 **889 的 VNC-auth 应答须为 16 字节**（整个 challenge DES 加密；标准 8 字节会让 macOS 挂起等剩余 8 字节——曾致认证挂死）
+- 5K 屏首帧洪峰大（hextile ~17MB/帧）：hub relay 必须无排空轮询（见 [[bun-ws-bufferedamount-trap]]），慢消费者用字节差值 64MB 护栏
+- 诊断路径：hub `[desktop] handshake/stats/teardown` 日志 + runner `DEBUG=1` 的 `[desktop] stream ended` + 直连 5900 探针（`Bun.connect` 走握手看安全类型/挑战应答）
+
 ## 坑
 
 - fake-rfb rect 头必须 12 字节、须 500ms 帧率节流（修在脚本里）；noVNC 报 `Unexpected server message` 即字节流错位
