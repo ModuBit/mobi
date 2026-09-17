@@ -27,6 +27,10 @@ export interface DesktopViewConnection {
     disconnect(): void
     /** 翻转只读（控制权授予/回落）：noVNC 运行时属性，键盘/指针处理器实时读取 */
     setViewOnly(viewOnly: boolean): void
+    /** 发送一次远端按键：down 缺省 = 敲击（按下并释放）；修饰键组合须显式 down/up */
+    sendKey(keysym: number, down?: boolean): void
+    /** 发送文本（移动端软键盘桥）：换行归一为 Enter；非 BMP 字符直接走 Unicode keysym */
+    sendText(text: string): void
 }
 
 export interface DesktopViewCallbacks {
@@ -53,6 +57,8 @@ export interface RfbConstructor {
         viewOnly: boolean
         background: string
         disconnect(): void
+        /** keysym 敲击/按下释放；code 缺省时 noVNC 不做物理键映射（移动端桥路径） */
+        sendKey(keysym: number, code?: string | null, down?: boolean): void
         addEventListener(type: string, listener: (event: CustomEvent) => void): void
     }
 }
@@ -122,6 +128,11 @@ export async function connectDesktopView(options: {
         callbacks.onFailure?.(detail?.reason ?? 'authentication failed')
     })
 
+    // noVNC 的键盘翻译器挂在容器的 canvas 上：合成键盘事件派发给它即等价远端注入
+    const dispatchKeyboardEvent = (event: KeyboardEvent) => {
+        container.querySelector('canvas')?.dispatchEvent(event)
+    }
+
     return {
         disconnect() {
             if (retired) {
@@ -135,6 +146,36 @@ export async function connectDesktopView(options: {
                 return
             }
             rfb.viewOnly = viewOnly
+        },
+        sendKey(keysym: number, down?: boolean) {
+            if (retired) {
+                return
+            }
+            rfb.sendKey(keysym, null, down)
+        },
+        sendText(text: string) {
+            if (retired) {
+                return
+            }
+            // 移动端 IME 常不发 keydown/keyup：code=Unidentified 让 noVNC 的键盘翻译器
+            // 对每个插入字符给出成对的按下/释放（openclaw 同款）。换行走 Enter 而非
+            // Unicode LF；增补字符（length===2）超出 DOM 翻译器范围，直接发完整
+            // Unicode scalar keysym（0x01000000 | codepoint）
+            const normalized = text.replace(/\r\n?/g, '\n')
+            for (const character of normalized) {
+                if (character.length === 2) {
+                    rfb.sendKey(0x01000000 | (character.codePointAt(0) as number), null)
+                    continue
+                }
+                dispatchKeyboardEvent(
+                    new KeyboardEvent('keydown', {
+                        key: character === '\n' ? 'Enter' : character,
+                        code: 'Unidentified',
+                        bubbles: true,
+                        cancelable: true,
+                    }),
+                )
+            }
         },
     }
 }

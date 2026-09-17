@@ -30,6 +30,7 @@
 import { connectDesktopView, defaultRfbLoader, type DesktopViewConnection, type RfbLoader } from './desktopStreamClient'
 import { createMobiApi } from '@/core/data/api/client'
 import type { DesktopControlResponse, DesktopControlState } from '@mobi/shared'
+import { KEYSYM } from '@/domain/desktop/touchInput'
 
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
@@ -275,6 +276,34 @@ export class DesktopStreamProvider {
     /** SSE 事件接入（SSEProvider 分发；空闲超时回落等 hub 侧变化） */
     ingestControlEvent(machineId: string, control: DesktopControlState): void {
         this.applyControl(machineId, control)
+    }
+
+    // —— 移动端触摸输入桥（迭代 2；仅 controlled 下由 UI 调用，hub 侧仍是权威边界） ——
+
+    /** 敲一个键（可带挂起修饰键组合：mods 按下 → 敲键 → mods 释放） */
+    tapKey(machineId: string, keysym: number, mods: number[] = []): void {
+        const entry = this.streams.get(machineId)
+        if (!entry?.connection) return
+        for (const keysymOfMod of mods) entry.connection.sendKey(keysymOfMod, true)
+        entry.connection.sendKey(keysym)
+        for (const keysymOfMod of [...mods].reverse()) entry.connection.sendKey(keysymOfMod, false)
+    }
+
+    /** 连续退格（哨兵 diff 出的删除动作，逐个敲） */
+    sendBackspaces(machineId: string, count: number, mods: number[] = []): void {
+        for (let i = 0; i < count; i++) {
+            this.tapKey(machineId, KEYSYM.BACKSPACE, mods)
+        }
+    }
+
+    /** 发送文本（软键盘桥：哨兵 diff 出的插入内容） */
+    sendText(machineId: string, text: string, mods: number[] = []): void {
+        if (!text) return
+        const entry = this.streams.get(machineId)
+        if (!entry?.connection) return
+        for (const keysymOfMod of mods) entry.connection.sendKey(keysymOfMod, true)
+        entry.connection.sendText(text)
+        for (const keysymOfMod of [...mods].reverse()) entry.connection.sendKey(keysymOfMod, false)
     }
 
     private notify(): void {

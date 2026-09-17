@@ -23,12 +23,13 @@
  * connecting/error 覆盖层仅在本面持有 lease 时展示（画面在哪个面，状态在哪个面）。
  */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { App as AntdApp, Button, Spin, Tag, Typography } from 'antd'
 import { desktopStreamProvider, DESKTOP_STREAM_GRACE_MS, type DesktopStreamState } from '@/core/desktop/desktopStreamProvider'
 import { describeDesktopFailure } from '@/core/desktop/desktopStreamClient'
 import { extractApiError } from '@/core/data/api/client'
+import { MobileTouchControls } from '@/components/desktop/MobileTouchControls'
 
 interface DesktopStreamSurfaceProps {
     machineId: string
@@ -50,6 +51,8 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
     const hostRef = useRef<HTMLDivElement | null>(null)
     const [controlPending, setControlPending] = useState(false)
     const state = useSyncExternalStore(subscribeStreamState, () => desktopStreamProvider.getState(machineId))
+    // 触摸设备才渲染移动端控制条（桌面端原生键鼠走 noVNC 自身路径）
+    const isTouchDevice = useMemo(() => window.matchMedia('(pointer: coarse)').matches, [])
 
     /** 控制权动作（按钮直授）；失败提示后保持 hub 侧权威状态（SSE 会再对齐） */
     const toggleControl = async () => {
@@ -91,6 +94,11 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
         <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: 'var(--mobi-color-bg-layout, #141414)' }}>
             {/* 画面容器：Provider 的 canvas 容器被搬迁进此节点（连接不动，只搬家） */}
             <div ref={hostRef} style={{ width: '100%', height: '100%' }} />
+
+            {/* 移动端触摸控制条：仅触屏 + 控制权挂起时（软键盘桥 / 修饰键 / 常用键） */}
+            {isTouchDevice && state.phase === 'connected' && state.control === 'controlled' && (
+                <MobileTouchControls machineId={machineId} />
+            )}
 
             {/* 控制权栏：仅在画面连接后展示；hub 侧权威状态经 SSE 对齐（超时回落等） */}
             {state.phase === 'connected' && (

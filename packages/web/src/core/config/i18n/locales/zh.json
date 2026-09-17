@@ -723,6 +723,9 @@
         "reconnect": "重新连接",
         "noMachine": "没有在线的机器",
         "viewOnlyHint": "未接管控制时，此页面上的键鼠操作不会生效",
+            "touch": {
+                "keyboard": "('键盘',)"
+            },
         "control": {
             "stateViewOnly": "观看中",
             "stateControlled": "控制中",
