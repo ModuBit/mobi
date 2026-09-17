@@ -171,10 +171,10 @@ describe('desktop transport: 双向字节透传', () => {
         const broker = makeBroker()
         const { url } = startTestServer(broker)
         const { attach, observe } = await makeActivePair(url, broker)
-        await performRfbNoneHandshake(attach, observe)
+        // 真实 noVNC 时序（含 ClientInit/ServerInit）：观察侧上行已过输入过滤器
+        await performRealClientFlow(attach, observe)
 
-        // 观察侧上行已过输入过滤器（迭代 2）：须为合法 RFB 消息才放行，
-        // 这里用 SetEncodings 承载任意载荷断言字节完整性
+        // SetEncodings 承载任意载荷断言字节完整性
         const received = nextMessage(attach)
         observe.send(new Uint8Array([2, 0, 0, 1, 0xff, 0xff, 0xff, 0xff]))
         expect(await received).toEqual(new Uint8Array([2, 0, 0, 1, 0xff, 0xff, 0xff, 0xff]))
@@ -579,10 +579,27 @@ async function expectSilence(ws: WebSocket, ms = 80): Promise<void> {
     expect(await Promise.race([received, silent])).toBe('silent')
 }
 
+/**
+ * 走一遍完整的真实 noVNC 时序：握手 + ClientInit + ServerInit 交换（历史教训：
+ * 早期测试跳过 ClientInit，过滤器把 ClientInit 当消息类型解析曾挂死全链路）。
+ * attach 侧在收到 ClientInit 后回 ServerInit（24 字节假体），resolve 于浏览器收到它。
+ */
+async function performRealClientFlow(attach: WebSocket, observe: WebSocket): Promise<void> {
+    await performRfbNoneHandshake(attach, observe)
+    const serverInit = new Uint8Array(24).fill(0xab)
+    const received = nextMessage(attach)
+    observe.send(new Uint8Array([0])) // ClientInit（shared=false）
+    expect(await received).toEqual(new Uint8Array([0]))
+    const initForBrowser = nextMessage(observe)
+    attach.send(serverInit)
+    expect(await initForBrowser).toEqual(serverInit)
+}
+
 describe('desktop transport: 控制权过滤与状态机', () => {
     async function makeLivePair(url: string, broker: ReturnType<typeof createDesktopBroker>) {
         const { session, attach, observe } = await makeActivePair(url, broker)
-        await performRfbNoneHandshake(attach, observe)
+        // 真实 noVNC 时序（含 ClientInit/ServerInit），过滤器必须放行首个 ClientInit
+        await performRealClientFlow(attach, observe)
         return { session, attach, observe }
     }
 

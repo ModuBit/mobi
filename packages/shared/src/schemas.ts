@@ -938,11 +938,12 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     ProjectChangedSchema.extend({ type: z.literal('project-updated') }),
     ProjectChangedSchema.extend({ type: z.literal('project-removed') }),
     // 桌面观看流控制权状态变化（迭代 2）：授予/退出/空闲超时回落都广播，
-    // web 据此同步 UI 与 noVNC viewOnly——权威状态在 hub，RFB 字节流内不夹带信令
+    // web 据此同步 UI 与 noVNC viewOnly——权威状态在 hub，RFB 字节流内不夹带信令。
+    // 不带 desktop 会话 id：SyncEvent 的 sessionId 语义是 mobi 会话行，混入会误导
+    // resolveNamespace 去查会话缓存（查不到 → namespace 解析失败 → 事件被丢）
     SessionEventBaseSchema.extend({
         type: z.literal('desktop-control-changed'),
         machineId: z.string(),
-        sessionId: z.string(),
         control: desktopControlStateSchema,
     }),
     // agent 触达 mobi 界面的 A 类 UI 命令（瞬态事件：不落库、不进快照、刷新不恢复，见 .scratch/agent-apps/spec.md D9）。

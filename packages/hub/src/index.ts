@@ -207,12 +207,15 @@ async function main() {
 
     // 远程桌面流 broker（raw WS 票据配对与透传，desktop/ 模块）
     const desktopBroker = createDesktopBroker({
+        // 控制权空闲回落时效可注入（E2E 用短时效验证回落路径；缺省 10 分钟）
+        controlIdleMs: process.env.MOBI_DESKTOP_CONTROL_IDLE_MS
+            ? Number(process.env.MOBI_DESKTOP_CONTROL_IDLE_MS)
+            : undefined,
         // 控制权状态变化 → SSE 广播（web 同步 UI 与 noVNC viewOnly）
         onControlChange: (change) => {
             syncEngine?.publishDesktopControlChanged({
                 type: 'desktop-control-changed',
                 machineId: change.machineId,
-                sessionId: change.sessionId,
                 control: change.control,
             })
         },

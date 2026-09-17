@@ -119,6 +119,8 @@ const MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 export function createRfbInputFilter(): RfbInputFilter {
     let controlled = false
     let carry: Uint8Array | null = null
+    /** live 相位的第一个字节是 ClientInit（裸 1 字节 shared-flag，非类型化消息），直通后才开始消息解析 */
+    let clientInitSeen = false
 
     function feed(data: Uint8Array): RfbInputFilterResult {
         const buffer = carry ? concat(carry, data) : data
@@ -127,6 +129,16 @@ export function createRfbInputFilter(): RfbInputFilter {
         const passthrough: number[][] = []
         let sawInput = false
         let offset = 0
+
+        if (!clientInitSeen) {
+            if (buffer.byteLength < 1) {
+                carry = buffer
+                return { passthrough: new Uint8Array(0), sawInput: false }
+            }
+            passthrough.push(Array.from(buffer.subarray(0, 1)))
+            clientInitSeen = true
+            offset = 1
+        }
 
         while (offset < buffer.byteLength) {
             const type = buffer[offset]
@@ -166,6 +178,7 @@ export function createRfbInputFilter(): RfbInputFilter {
         },
         reset() {
             carry = null
+            clientInitSeen = false
         },
     }
 }

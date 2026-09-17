@@ -86,21 +86,21 @@ function u32be(v: number): number[] {
 
 describe('rfb input filter: view-only 剥除', () => {
     test('输入类消息（KeyEvent/PointerEvent/ClientCutText）被剥除', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const result = filter.feed(concat(keyEvent(), pointerEvent(), cutText()))
         expect(result.passthrough).toHaveLength(0)
         expect(result.sawInput).toBe(true)
     })
 
     test('SetDesktopSize 在 view-only 下同样被剥除', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const result = filter.feed(setDesktopSize())
         expect(result.passthrough).toHaveLength(0)
         expect(result.sawInput).toBe(true)
     })
 
     test('非输入类消息原样放行（观看必需）', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const input = concat(setPixelFormat(), fbUpdateReq(), setEncodings(), clientFence(), continuousUpdates(), xvp())
         const result = filter.feed(input)
         expect(result.passthrough).toEqual(input)
@@ -108,7 +108,7 @@ describe('rfb input filter: view-only 剥除', () => {
     })
 
     test('混合流：只剥输入类，其余保持边界完整', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const result = filter.feed(concat(fbUpdateReq(), keyEvent(), fbUpdateReq(0)))
         expect(result.passthrough).toEqual(concat(fbUpdateReq(), fbUpdateReq(0)))
     })
@@ -116,7 +116,7 @@ describe('rfb input filter: view-only 剥除', () => {
 
 describe('rfb input filter: controlled 放行', () => {
     test('输入类消息放行', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         filter.setControlled(true)
         const input = concat(keyEvent(), pointerEvent(), cutText())
         const result = filter.feed(input)
@@ -125,14 +125,14 @@ describe('rfb input filter: controlled 放行', () => {
     })
 
     test('SetDesktopSize 恒剥除（即使 controlled）', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         filter.setControlled(true)
         const result = filter.feed(setDesktopSize())
         expect(result.passthrough).toHaveLength(0)
     })
 
     test('回落 view-only 后恢复剥除', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         filter.setControlled(true)
         filter.setControlled(false)
         const result = filter.feed(keyEvent())
@@ -142,7 +142,7 @@ describe('rfb input filter: controlled 放行', () => {
 
 describe('rfb input filter: 跨帧消息边界', () => {
     test('半截消息跨 feed 到达：剥除决策等到消息完整', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const key = keyEvent()
         const first = filter.feed(key.slice(0, 3))
         expect(first.passthrough).toHaveLength(0)
@@ -152,7 +152,7 @@ describe('rfb input filter: 跨帧消息边界', () => {
     })
 
     test('半截非输入消息跨 feed 完整重组后放行', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const upd = fbUpdateReq()
         const first = filter.feed(upd.slice(0, 4))
         expect(first.passthrough).toHaveLength(0)
@@ -161,7 +161,7 @@ describe('rfb input filter: 跨帧消息边界', () => {
     })
 
     test('多条消息挤在同一帧内（含剥除）', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const input = concat(fbUpdateReq(), keyEvent(), pointerEvent(), fbUpdateReq(0), cutText('abc'))
         const result = filter.feed(input)
         expect(result.passthrough).toEqual(concat(fbUpdateReq(), fbUpdateReq(0)))
@@ -169,7 +169,7 @@ describe('rfb input filter: 跨帧消息边界', () => {
     })
 
     test('变长消息（ClientCutText/SetEncodings/Fence）载荷跨帧', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         const cut = cutText('long payload text')
         const enc = setEncodings(3)
         const fence = clientFence(8)
@@ -180,26 +180,66 @@ describe('rfb input filter: 跨帧消息边界', () => {
     })
 
     test('reset 清空跨帧残留', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         filter.feed(keyEvent().slice(0, 2))
         filter.reset()
+        // reset 回到 live 起点：先重新过 ClientInit，残留被丢弃后按消息边界解析
+        filter.feed(new Uint8Array([0]))
         const result = filter.feed(fbUpdateReq())
-        // 残留被丢弃后重新按消息边界解析
         expect(result.passthrough).toEqual(fbUpdateReq())
     })
 })
 
 describe('rfb input filter: 协议错误', () => {
     test('未知消息类型抛 RfbProtocolError', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         expect(() => filter.feed(msg(0x7f))).toThrow(RfbProtocolError)
     })
 
     test('未知类型的字节不会污染后续解析（错误即终止，剩余交还调用方处置）', () => {
-        const filter = createRfbInputFilter()
+        const filter = seededFilter()
         expect(() => filter.feed(concat(fbUpdateReq(), msg(0x7f)))).toThrow(RfbProtocolError)
     })
 })
+
+describe('rfb input filter: ClientInit（live 相位首字节）', () => {
+    test('首个字节按 ClientInit 直通（裸 shared-flag，非类型化消息）', () => {
+        const filter = createRfbInputFilter()
+        const result = filter.feed(new Uint8Array([0]))
+        expect(new Uint8Array(result.passthrough)).toEqual(new Uint8Array([0]))
+        expect(result.sawInput).toBe(false)
+    })
+
+    test('ClientInit 与后续消息同帧到达：直通 1 字节后正常解析（shared=0 不能被当 SetPixelFormat 吞进 carry）', () => {
+        const filter = createRfbInputFilter()
+        const result = filter.feed(concat(new Uint8Array([0]), fbUpdateReq()))
+        expect(result.passthrough).toEqual(concat(new Uint8Array([0]), fbUpdateReq()))
+    })
+
+    test('ClientInit 后的输入类消息照常剥除', () => {
+        const filter = createRfbInputFilter()
+        const result = filter.feed(concat(new Uint8Array([1]), keyEvent()))
+        expect(new Uint8Array(result.passthrough)).toEqual(new Uint8Array([1]))
+        expect(result.sawInput).toBe(true)
+    })
+
+    test('ClientInit 跨帧：半截首字节等待，不提前解析', () => {
+        const filter = createRfbInputFilter()
+        // 空 feed：无字节可消费
+        const first = filter.feed(new Uint8Array(0))
+        expect(first.passthrough).toHaveLength(0)
+        const second = filter.feed(concat(new Uint8Array([0]), keyEvent()))
+        expect(new Uint8Array(second.passthrough)).toEqual(new Uint8Array([0]))
+        expect(second.sawInput).toBe(true)
+    })
+})
+
+/** 已过 ClientInit 的过滤器：非 ClientInit 语义的用例统一从这里拿实例 */
+function seededFilter() {
+    const filter = createRfbInputFilter()
+    filter.feed(new Uint8Array([0])) // ClientInit
+    return filter
+}
 
 function concat(...parts: Uint8Array<ArrayBufferLike>[]): Uint8Array {
     const total = parts.reduce((sum, a) => sum + a.byteLength, 0)

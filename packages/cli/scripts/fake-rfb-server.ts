@@ -19,15 +19,39 @@
  *
  * 说话 RFB 3.8 + None 认证 + raw 编码：握手后把每个FramebufferUpdateRequest
  * 回以一帧渐变测试画面（按请求序号变色，便于肉眼确认「画面在动」）。
+ * 收到的输入类消息（KeyEvent/PointerEvent/ClientCutText）记录到内存并按行追加到
+ * FAKE_RFB_INPUT_LOG 指定的 JSONL 文件（E2E 断言「输入是否穿过 hub 过滤器到达上游」用）。
  * 运行：bun packages/cli/scripts/fake-rfb-server.ts [port]（默认 15900）
  * 配合 mobi：MOBI_DESKTOP_VNC_PORT=15900 启动 cli 后在 web 观看页看到测试画面。
  */
 
 import net from 'node:net'
+import { appendFileSync } from 'node:fs'
 
 const port = Number(process.argv[2] ?? 15900)
 const width = 400
 const height = 300
+const inputLogPath = process.env.FAKE_RFB_INPUT_LOG ?? ''
+
+interface FakeRfbInput {
+    at: number
+    kind: 'key' | 'pointer' | 'cut'
+    key?: number
+    down?: number
+    mask?: number
+    x?: number
+    y?: number
+    text?: string
+}
+
+function recordInput(input: Omit<FakeRfbInput, 'at'>): void {
+    const entry: FakeRfbInput = { at: Date.now(), ...input }
+    const line = JSON.stringify(entry)
+    console.log(`[fake-rfb] input ${line}`)
+    if (inputLogPath) {
+        appendFileSync(inputLogPath, `${line}\n`)
+    }
+}
 
 const RFB_VERSION = Buffer.from('RFB 003.008\n', 'ascii')
 
@@ -131,25 +155,44 @@ net.createServer((sock) => {
                 write(serverInit())
                 stage = 'live'
             } else {
-                // live：逐条吃 client message；只处理 FramebufferUpdateRequest
+                // live：按 RFB 3.8 client 消息表逐条吃（与 hub rfbInputFilter 同一张表）
                 if (buffer.length < 1) return
                 const type = buffer[0]
-                if (type === 0) {
+                if (type === 3) {
                     // FramebufferUpdateRequest: type(1) incremental(1) x(2) y(2) w(2) h(2)
                     if (buffer.length < 10) return
                     buffer = buffer.subarray(10)
                     sendUpdate()
-                } else if (type === 2) {
-                    if (buffer.length < 4) return // SetPixelFormat: type(1) padding(3) + 16
+                } else if (type === 0) {
+                    // SetPixelFormat: 恒 20 字节
+                    if (buffer.length < 20) return
                     buffer = buffer.subarray(20)
-                } else if (type === 4) {
-                    // SetEncodings: type(1) padding(1) count(2) + count*4
+                } else if (type === 2) {
+                    // SetEncodings: type(1) pad(1) count(2) + count*4
                     if (buffer.length < 4) return
                     const count = buffer.readUInt16BE(2)
                     const total = 4 + count * 4
                     if (buffer.length < total) return
                     buffer = buffer.subarray(total)
+                } else if (type === 4) {
+                    // KeyEvent: type(1) down-flag(1) pad(2) key(4)
+                    if (buffer.length < 8) return
+                    recordInput({ kind: 'key', key: buffer.readUInt32BE(4), down: buffer[1] })
+                    buffer = buffer.subarray(8)
+                } else if (type === 5) {
+                    // PointerEvent: type(1) mask(1) x(2) y(2)
+                    if (buffer.length < 6) return
+                    recordInput({ kind: 'pointer', mask: buffer[1], x: buffer.readUInt16BE(2), y: buffer.readUInt16BE(4) })
+                    buffer = buffer.subarray(6)
+                } else if (type === 6) {
+                    // ClientCutText: type(1) pad(3) length(4) + text
+                    if (buffer.length < 8) return
+                    const length = buffer.readUInt32BE(4)
+                    if (buffer.length < 8 + length) return
+                    recordInput({ kind: 'cut', text: buffer.subarray(8, 8 + length).toString('utf8') })
+                    buffer = buffer.subarray(8 + length)
                 } else {
+                    // 未知类型（248/249/251/252 等扩展）不解析，按不可知丢弃缓冲
                     buffer = Buffer.alloc(0)
                 }
             }
