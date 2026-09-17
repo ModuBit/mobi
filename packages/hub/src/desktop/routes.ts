@@ -106,13 +106,23 @@ export function createDesktopRoutes(deps: {
         return c.json({ success: true })
     })
 
-    // 控制权授予（迭代 2）：按钮直授，幂等；hub 翻转过滤器状态并广播
-    app.post('/desktop/streams/:sessionId/control', (c) => {
+    // 控制权授予（迭代 2）：按钮直授，幂等；按 machineId 定位（同 machine 只有一条流），
+    // hub 翻转过滤器状态并广播
+    app.post('/desktop/machines/:machineId/control', (c) => {
+        const engine = requireSyncEngine(c, deps.getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
         const broker = deps.getDesktopBroker()
         if (!broker) {
             return c.json({ error: 'Desktop not available' }, 503)
         }
-        const change = broker.grantControl(c.req.param('sessionId'))
+        const machineId = c.req.param('machineId')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+        const change = broker.grantControl(machineId)
         if (!change) {
             return c.json({ error: 'Stream not found' }, 404)
         }
@@ -121,12 +131,21 @@ export function createDesktopRoutes(deps: {
     })
 
     // 控制权退出（幂等；回落不拆流）
-    app.delete('/desktop/streams/:sessionId/control', (c) => {
+    app.delete('/desktop/machines/:machineId/control', (c) => {
+        const engine = requireSyncEngine(c, deps.getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
         const broker = deps.getDesktopBroker()
         if (!broker) {
             return c.json({ error: 'Desktop not available' }, 503)
         }
-        const change = broker.releaseControl(c.req.param('sessionId'), 'released by user')
+        const machineId = c.req.param('machineId')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+        const change = broker.releaseControl(machineId, 'released by user')
         if (!change) {
             return c.json({ error: 'Stream not found' }, 404)
         }

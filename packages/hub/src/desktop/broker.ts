@@ -100,10 +100,10 @@ export interface DesktopBroker {
     listSessions(): DesktopSessionInfo[]
     /** 显式拆除（抢占/关闭 API/协议错误统一入口） */
     teardownSession(sessionId: string, code: number, reason: string): void
-    /** 授予控制权（幂等）；无会话返回 null */
-    grantControl(sessionId: string): DesktopControlChange | null
+    /** 授予控制权（幂等；按 machineId 定位——同 machine 同时只有一条观看流）；无会话返回 null */
+    grantControl(machineId: string): DesktopControlChange | null
     /** 退出控制权（幂等，回落原因供日志/归因）；无会话返回 null */
-    releaseControl(sessionId: string, reason: string): DesktopControlChange | null
+    releaseControl(machineId: string, reason: string): DesktopControlChange | null
     /** websocket open/message/close 的领域处理（transport.ts 调用） */
     onSocketOpen(ws: ServerWebSocket<DesktopWsData>): void
     onSocketMessage(ws: ServerWebSocket<DesktopWsData>, data: unknown): void
@@ -399,7 +399,11 @@ export function createDesktopBroker(options: {
             }))
         },
 
-        grantControl(sessionId) {
+        grantControl(machineId) {
+            const sessionId = sessionIdByMachine.get(machineId)
+            if (!sessionId) {
+                return null
+            }
             const session = sessions.get(sessionId)
             if (!session || session.tearingDown) {
                 return null
@@ -408,7 +412,11 @@ export function createDesktopBroker(options: {
             return controlInfo(session)
         },
 
-        releaseControl(sessionId, reason) {
+        releaseControl(machineId, reason) {
+            const sessionId = sessionIdByMachine.get(machineId)
+            if (!sessionId) {
+                return null
+            }
             const session = sessions.get(sessionId)
             if (!session || session.tearingDown) {
                 return null

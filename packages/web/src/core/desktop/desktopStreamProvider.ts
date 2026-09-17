@@ -29,6 +29,7 @@
 
 import { connectDesktopView, defaultRfbLoader, type DesktopViewConnection, type RfbLoader } from './desktopStreamClient'
 import { createMobiApi } from '@/core/data/api/client'
+import type { DesktopControlResponse, DesktopControlState } from '@mobi/shared'
 
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
@@ -46,12 +47,14 @@ const RETRY_MAX_MS = 30_000
 
 export interface DesktopStreamState {
     phase: 'connecting' | 'connected' | 'error'
+    /** 控制权状态（迭代 2）：hub 权威，经授予/退出 API 与 SSE desktop-control-changed 对齐 */
+    control: DesktopControlState
     /** phase='error'：面向用户的归因文案（原始 reason） */
     message?: string
 }
 
 /** getState 的稳定空态引用（phase 不变不得换引用，否则 useSyncExternalStore 死循环） */
-const IDLE_STATE: DesktopStreamState = { phase: 'connecting' }
+const IDLE_STATE: DesktopStreamState = { phase: 'connecting', control: 'view-only' }
 
 export interface DesktopStreamLease {
     /** 把观看画面容器搬迁进 host（切换展示面时连接不动；后 attach 者持有画面） */
@@ -77,6 +80,9 @@ interface StreamEntry {
 interface ProviderDeps {
     /** watch 凭据获取（React 层注入 useMobiApi 的 desktop.watch） */
     watch: (machineId: string) => Promise<string>
+    /** 控制权授予/退出（迭代 2）；测试可不注入 */
+    grantControl?: (machineId: string) => Promise<DesktopControlResponse>
+    releaseControl?: (machineId: string) => Promise<DesktopControlResponse>
     loader?: RfbLoader
 }
 
@@ -168,6 +174,8 @@ export class DesktopStreamProvider {
                     onConnect: () => {
                         if (generation !== this.streams.get(machineId)?.generation) return
                         entry.retryAttempt = 0
+                        // 重连后按当前控制权状态恢复 noVNC 只读（新连接恒从 view-only 起）
+                        this.applyControl(machineId, entry.state.control)
                         this.setState(machineId, { phase: 'connected' })
                     },
                     onDisconnect: ({ clean, close }) => {
@@ -231,13 +239,42 @@ export class DesktopStreamProvider {
         this.notify()
     }
 
-    private setState(machineId: string, next: DesktopStreamState): void {
+    private setState(machineId: string, next: Partial<DesktopStreamState>): void {
         const entry = this.streams.get(machineId)
         if (!entry) return
+        const merged: DesktopStreamState = { ...entry.state, ...next }
         // 只在内容变化时换引用（保持 snapshot 稳定）
-        if (entry.state.phase === next.phase && entry.state.message === next.message) return
-        entry.state = next
+        if (entry.state.phase === merged.phase && entry.state.message === merged.message && entry.state.control === merged.control) return
+        entry.state = merged
         this.notify()
+    }
+
+    /**
+     * 控制权状态对齐（hub 权威）：授予/退出动作的响应与 SSE desktop-control-changed
+     * 事件（超时回落等）同走此入口——UI 不自持权威状态。
+     */
+    private applyControl(machineId: string, control: DesktopControlState): void {
+        const entry = this.streams.get(machineId)
+        if (!entry) return
+        entry.connection?.setViewOnly(control !== 'controlled')
+        this.setState(machineId, { control })
+    }
+
+    /** 「接管控制」按钮直授：调授予 API 后按 hub 返回对齐 */
+    async grantControl(machineId: string): Promise<void> {
+        const response = await this.deps.grantControl?.(machineId)
+        if (response) this.applyControl(machineId, response.control)
+    }
+
+    /** 「退出控制」；错误向上抛给调用方展示 */
+    async releaseControl(machineId: string): Promise<void> {
+        const response = await this.deps.releaseControl?.(machineId)
+        if (response) this.applyControl(machineId, response.control)
+    }
+
+    /** SSE 事件接入（SSEProvider 分发；空闲超时回落等 hub 侧变化） */
+    ingestControlEvent(machineId: string, control: DesktopControlState): void {
+        this.applyControl(machineId, control)
     }
 
     private notify(): void {
@@ -253,7 +290,9 @@ export class DesktopStreamProvider {
     }
 }
 
-/** app 级单例：watch 走全局 api client（cookie 链路无 token 依赖，实例全局单例） */
+/** app 级单例：watch/控制走全局 api client（cookie 链路无 token 依赖，实例全局单例） */
 export const desktopStreamProvider = new DesktopStreamProvider({
     watch: (machineId) => createMobiApi().desktop.watch(machineId).then(({ data }) => data.observeToken),
+    grantControl: (machineId) => createMobiApi().desktop.grantControl(machineId).then(({ data }) => data),
+    releaseControl: (machineId) => createMobiApi().desktop.releaseControl(machineId).then(({ data }) => data),
 })

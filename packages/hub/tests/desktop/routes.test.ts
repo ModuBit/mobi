@@ -300,7 +300,7 @@ describe('Desktop 控制权 API（迭代 2）', () => {
         const session = broker.watchSession('test-machine-1')
         const token = await getAuthToken(app)
 
-        const grant = await app.request(`/api/desktop/streams/${session.sessionId}/control`, {
+        const grant = await app.request('/api/desktop/machines/test-machine-1/control', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
         })
@@ -308,13 +308,13 @@ describe('Desktop 控制权 API（迭代 2）', () => {
         const granted = await grant.json() as { control: string; machineId: string }
         expect(granted).toMatchObject({ machineId: 'test-machine-1', control: 'controlled' })
 
-        const again = await app.request(`/api/desktop/streams/${session.sessionId}/control`, {
+        const again = await app.request('/api/desktop/machines/test-machine-1/control', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
         })
         expect((await again.json() as { control: string }).control).toBe('controlled')
 
-        const release = await app.request(`/api/desktop/streams/${session.sessionId}/control`, {
+        const release = await app.request('/api/desktop/machines/test-machine-1/control', {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
         })
@@ -324,21 +324,22 @@ describe('Desktop 控制权 API（迭代 2）', () => {
     })
 
     test('无会话 → 404；未认证 → 401', async () => {
-        const res = await app.request('/api/desktop/streams/no-such/control', {
-            method: 'POST',
-            headers: { Authorization: 'Bearer whatever' },
-        })
-        // 未知会话但要先过鉴权
-        expect([401, 404]).toContain(res.status)
-
         const token = await getAuthToken(app)
-        const unauthenticated = await app.request(`/api/desktop/streams/no-such/control`, { method: 'POST' })
+        const unauthenticated = await app.request('/api/desktop/machines/unknown-machine/control', { method: 'POST' })
         expect(unauthenticated.status).toBe(401)
 
-        const notFound = await app.request('/api/desktop/streams/no-such/control', {
+        // 未知 machineId → 404（machine 守卫）
+        const notFoundMachine = await app.request('/api/desktop/machines/unknown-machine/control', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
         })
-        expect(notFound.status).toBe(404)
+        expect(notFoundMachine.status).toBe(404)
+
+        // 已知 machine 但无活跃流 → 404
+        const notFoundStream = await app.request('/api/desktop/machines/test-machine-1/control', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        expect(notFoundStream.status).toBe(404)
     })
 })

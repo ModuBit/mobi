@@ -44,6 +44,7 @@ import {
     withdrawFrom,
 } from '@/core/data/stores/messageWindowStore'
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
+import { desktopStreamProvider } from '@/core/desktop/desktopStreamProvider'
 import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 
@@ -334,6 +335,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         // 由 hub 线并行扩展中，web 侧按 type 字段先行接入（SSEClient 只 JSON.parse 不做 zod
         // 校验，未知事件天然透传）；已消费则跳过后续 switch
         if (ingestRewindSseEvent(event)) return
+
+        // 桌面控制权状态变化（迭代 2）：hub 权威（超时回落等），对齐 Provider 后继续走 switch
+        if (event.type === 'desktop-control-changed') {
+            desktopStreamProvider.ingestControlEvent(event.machineId, event.control)
+        }
 
         // agent 触达 mobi 界面（A 类 UI 命令）：workspace 域分发收口在 ingestUiCommandEvent
         // （D10 红线：只允许监听路径调用），已消费则跳过后续 switch

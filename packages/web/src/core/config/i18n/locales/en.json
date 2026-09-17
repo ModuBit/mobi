@@ -732,7 +732,13 @@
         "disconnected": "Disconnected",
         "reconnect": "Reconnect",
         "noMachine": "No machine online",
-        "viewOnlyHint": "View-only in this iteration",
+        "viewOnlyHint": "Keyboard and pointer input has no effect until you take control",
+        "control": {
+            "stateViewOnly": "Viewing",
+            "stateControlled": "Controlling",
+            "take": "Take control",
+            "release": "Release control"
+        },
         "connectFailed": "Connection failed",
         "surface": {
             "retryHint": "Reconnects automatically; streaming stops about {{seconds}}s after the last surface closes"

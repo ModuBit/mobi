@@ -25,13 +25,16 @@ import type { DesktopViewCallbacks } from '@/core/desktop/desktopStreamClient'
  */
 const rfbCallbacksPerConnection: DesktopViewCallbacks[][] = [[]]
 const disconnectSpies: Array<ReturnType<typeof vi.fn>> = []
+const setViewOnlySpies: Array<ReturnType<typeof vi.fn>> = []
 
 vi.mock('@/core/desktop/desktopStreamClient', () => ({
     connectDesktopView: vi.fn(async ({ callbacks }: { callbacks: DesktopViewCallbacks }) => {
         rfbCallbacksPerConnection[rfbCallbacksPerConnection.length - 1].push(callbacks)
         const disconnect = vi.fn()
+        const setViewOnly = vi.fn()
         disconnectSpies.push(disconnect)
-        return { disconnect }
+        setViewOnlySpies.push(setViewOnly)
+        return { disconnect, setViewOnly }
     }),
     defaultRfbLoader: vi.fn(),
 }))
@@ -47,8 +50,17 @@ function emit(type: keyof DesktopViewCallbacks, detail?: unknown): void {
 /** 稳定的 watch mock（引用稳定，避免 effect 循环陷阱） */
 const watchMock = vi.fn<(machineId: string) => Promise<string>>()
 
-function makeProvider() {
-    return new DesktopStreamProvider({ watch: watchMock })
+function makeProvider(deps: Partial<ConstructorParameters<typeof DesktopStreamProvider>[0]> = {}) {
+    return new DesktopStreamProvider({ watch: watchMock, ...deps })
+}
+
+/** 控制权 API mock（返回 hub 权威状态） */
+function makeControlDeps() {
+    const grantControl = vi.fn<(machineId: string) => Promise<{ sessionId: string; machineId: string; control: 'view-only' | 'controlled' }>>()
+    const releaseControl = vi.fn<(machineId: string) => Promise<{ sessionId: string; machineId: string; control: 'view-only' | 'controlled' }>>()
+    grantControl.mockResolvedValue({ sessionId: 's1', machineId: 'm1', control: 'controlled' })
+    releaseControl.mockResolvedValue({ sessionId: 's1', machineId: 'm1', control: 'view-only' })
+    return { grantControl, releaseControl }
 }
 
 describe('DesktopStreamProvider 引用计数', () => {
@@ -59,6 +71,7 @@ describe('DesktopStreamProvider 引用计数', () => {
         rfbCallbacksPerConnection.length = 0
         rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
+        setViewOnlySpies.length = 0
         watchMock.mockReset()
         watchMock.mockResolvedValue('token-1')
     })
@@ -124,6 +137,7 @@ describe('DesktopStreamProvider 断线恢复', () => {
         rfbCallbacksPerConnection.length = 0
         rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
+        setViewOnlySpies.length = 0
         watchMock.mockReset()
         watchMock.mockResolvedValue('token-1')
     })
@@ -190,6 +204,7 @@ describe('DesktopStreamProvider DOM 搬迁', () => {
         rfbCallbacksPerConnection.length = 0
         rfbCallbacksPerConnection.push([])
         disconnectSpies.length = 0
+        setViewOnlySpies.length = 0
         watchMock.mockReset()
         watchMock.mockResolvedValue('token-1')
     })
@@ -216,6 +231,107 @@ describe('DesktopStreamProvider DOM 搬迁', () => {
 
         lease.release()
         expect(host2.firstElementChild).toBeNull()
+        provider.dispose()
+    })
+})
+
+describe('DesktopStreamProvider 控制权（迭代 2）', () => {
+    let grantControl: ReturnType<typeof makeControlDeps>['grantControl']
+    let releaseControl: ReturnType<typeof makeControlDeps>['releaseControl']
+
+    beforeEach(() => {
+        vi.useFakeTimers()
+        vi.stubGlobal('__MOBI_HUB_URL__', undefined)
+        rfbCallbacksPerConnection.length = 0
+        rfbCallbacksPerConnection.push([])
+        disconnectSpies.length = 0
+        setViewOnlySpies.length = 0
+        watchMock.mockReset()
+        watchMock.mockResolvedValue('token-1')
+        const deps = makeControlDeps()
+        grantControl = deps.grantControl
+        releaseControl = deps.releaseControl
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    async function acquireConnected(provider: DesktopStreamProvider) {
+        const lease = provider.acquire('m1')
+        await vi.advanceTimersByTimeAsync(0)
+        emit('onConnect')
+        return lease
+    }
+
+    it('初始状态 view-only；接管后翻 controlled 并解除 noVNC 只读', async () => {
+        const provider = makeProvider({ grantControl, releaseControl })
+        const lease = await acquireConnected(provider)
+
+        expect(provider.getState('m1').control).toBe('view-only')
+        await provider.grantControl('m1')
+
+        expect(grantControl).toHaveBeenCalledWith('m1')
+        expect(provider.getState('m1').control).toBe('controlled')
+        expect(setViewOnlySpies[0]).toHaveBeenLastCalledWith(false)
+
+        lease.release()
+        provider.dispose()
+    })
+
+    it('退出控制回落 view-only 并恢复只读', async () => {
+        const provider = makeProvider({ grantControl, releaseControl })
+        const lease = await acquireConnected(provider)
+        await provider.grantControl('m1')
+
+        await provider.releaseControl('m1')
+
+        expect(provider.getState('m1').control).toBe('view-only')
+        expect(setViewOnlySpies[0]).toHaveBeenLastCalledWith(true)
+
+        lease.release()
+        provider.dispose()
+    })
+
+    it('hub 侧变化经 SSE 事件对齐（超时回落等），不自持权威状态', async () => {
+        const provider = makeProvider({ grantControl, releaseControl })
+        const lease = await acquireConnected(provider)
+        await provider.grantControl('m1')
+        expect(provider.getState('m1').control).toBe('controlled')
+
+        provider.ingestControlEvent('m1', 'view-only')
+
+        expect(provider.getState('m1').control).toBe('view-only')
+        expect(setViewOnlySpies[0]).toHaveBeenLastCalledWith(true)
+
+        lease.release()
+        provider.dispose()
+    })
+
+    it('控制状态跨重连保持：重连后的新连接仍按当前状态设置 viewOnly', async () => {
+        const provider = makeProvider({ grantControl, releaseControl })
+        const lease = await acquireConnected(provider)
+        await provider.grantControl('m1')
+
+        emit('onDisconnect', { clean: false, close: { code: 1006, reason: '' } })
+        await vi.advanceTimersByTimeAsync(1_000)
+        emit('onConnect')
+
+        expect(setViewOnlySpies[1]).toHaveBeenCalledWith(false)
+        expect(provider.getState('m1')).toMatchObject({ phase: 'connected', control: 'controlled' })
+
+        lease.release()
+        provider.dispose()
+    })
+
+    it('授予 API 失败：状态保持 view-only（hub 权威），错误向上抛给调用方', async () => {
+        grantControl.mockRejectedValueOnce(new Error('Stream not found'))
+        const provider = makeProvider({ grantControl, releaseControl })
+        const lease = await acquireConnected(provider)
+
+        await expect(provider.grantControl('m1')).rejects.toThrow('Stream not found')
+        expect(provider.getState('m1').control).toBe('view-only')
+
+        lease.release()
         provider.dispose()
     })
 })

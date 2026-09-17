@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -426,6 +426,10 @@ export function createMobiApi() {
                 client.get<DesktopStreamsResponse>('/api/desktop/streams', { signal: opts?.signal }),
             closeStream: (sessionId: string) =>
                 client.delete<{ success: true }>(`/api/desktop/streams/${sessionId}`),
+            grantControl: (machineId: string) =>
+                client.post<DesktopControlResponse>(`/api/desktop/machines/${machineId}/control`),
+            releaseControl: (machineId: string) =>
+                client.delete<DesktopControlResponse>(`/api/desktop/machines/${machineId}/control`),
             setVncPassword: (machineId: string, vncPassword: string) =>
                 client.post<{ success: true }>('/api/desktop/vnc-password', { machineId, vncPassword }),
             vncStatus: (machineId: string, opts?: { signal?: AbortSignal }) =>

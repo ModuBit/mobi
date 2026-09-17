@@ -25,6 +25,8 @@
 export interface DesktopViewConnection {
     /** 幂等断开（含卸载清理与重连前的回收） */
     disconnect(): void
+    /** 翻转只读（控制权授予/回落）：noVNC 运行时属性，键盘/指针处理器实时读取 */
+    setViewOnly(viewOnly: boolean): void
 }
 
 export interface DesktopViewCallbacks {
@@ -127,6 +129,12 @@ export async function connectDesktopView(options: {
             }
             retired = true
             rfb.disconnect()
+        },
+        setViewOnly(viewOnly: boolean) {
+            if (retired) {
+                return
+            }
+            rfb.viewOnly = viewOnly
         },
     }
 }

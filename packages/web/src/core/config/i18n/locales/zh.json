@@ -722,7 +722,13 @@
         "disconnected": "连接已断开",
         "reconnect": "重新连接",
         "noMachine": "没有在线的机器",
-        "viewOnlyHint": "迭代 1 为纯观看模式",
+        "viewOnlyHint": "未接管控制时，此页面上的键鼠操作不会生效",
+        "control": {
+            "stateViewOnly": "观看中",
+            "stateControlled": "控制中",
+            "take": "接管控制",
+            "release": "退出控制"
+        },
         "connectFailed": "连接失败",
         "surface": {
             "retryHint": "画面断开后会自动重连；展示面全部关闭约 {{seconds}} 秒后停止观看"

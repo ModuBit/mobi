@@ -608,7 +608,7 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         const { url } = startTestServer(broker)
         const { session, attach, observe } = await makeLivePair(url, broker)
 
-        expect(broker.grantControl(session.sessionId)).toMatchObject({ control: 'controlled' })
+        expect(broker.grantControl('m1')).toMatchObject({ control: 'controlled' })
         const key = nextMessage(attach)
         observe.send(keyEvent())
         expect(await key).toEqual(keyEvent())
@@ -616,7 +616,7 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         observe.send(setDesktopSize())
         await expectSilence(attach)
 
-        broker.releaseControl(session.sessionId, 'test release')
+        broker.releaseControl('m1', 'test release')
         observe.send(keyEvent(0x42))
         await expectSilence(attach)
 
@@ -629,13 +629,13 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         const { url } = startTestServer(broker)
         const { session } = await makeLivePair(url, broker)
 
-        expect(broker.grantControl(session.sessionId)?.control).toBe('controlled')
-        expect(broker.grantControl(session.sessionId)?.control).toBe('controlled')
-        expect(broker.grantControl('no-such-session')).toBeNull()
-        expect(broker.releaseControl('no-such-session', 'x')).toBeNull()
+        expect(broker.grantControl('m1')?.control).toBe('controlled')
+        expect(broker.grantControl('m1')?.control).toBe('controlled')
+        expect(broker.grantControl('no-such-machine')).toBeNull()
+        expect(broker.releaseControl('no-such-machine', 'x')).toBeNull()
 
         broker.teardownSession(session.sessionId, 4002, 'test')
-        expect(broker.grantControl(session.sessionId)).toBeNull()
+        expect(broker.grantControl('m1')).toBeNull()
 
         url // 服务器随测试进程退出
     })
@@ -646,7 +646,7 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         const { url } = startTestServer(broker)
         const { session, attach, observe } = await makeLivePair(url, broker)
 
-        broker.grantControl(session.sessionId)
+        broker.grantControl('m1')
         await Bun.sleep(120) // 超过空闲时效
 
         observe.send(keyEvent())
@@ -672,7 +672,7 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         const { url } = startTestServer(broker)
         const { session, attach, observe } = await makeLivePair(url, broker)
 
-        broker.grantControl(session.sessionId)
+        broker.grantControl('m1')
         // 以 40ms 间隔持续输入，总时长超过 80ms 时效
         for (let i = 0; i < 4; i++) {
             await Bun.sleep(40)
@@ -682,7 +682,7 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         expect(changes).toEqual(['controlled'])
         expect(broker.listSessions()[0].control).toBe('controlled')
 
-        broker.releaseControl(session.sessionId, 'end of test')
+        broker.releaseControl('m1', 'end of test')
         attach.close()
         observe.close()
     })
@@ -707,7 +707,7 @@ describe('desktop transport: 控制权过滤与状态机', () => {
         const { session } = await makeLivePair(url, broker)
 
         expect(broker.listSessions()[0]).toMatchObject({ sessionId: session.sessionId, control: 'view-only' })
-        broker.grantControl(session.sessionId)
+        broker.grantControl('m1')
         expect(broker.listSessions()[0].control).toBe('controlled')
 
         url // 服务器随测试进程退出
