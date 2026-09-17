@@ -27,44 +27,23 @@ import net from 'node:net'
 import { duplexEndpoint, createStreamPump, type PumpEndpoint } from './pump'
 import type { DesktopAttachMetadata } from '@mobi/shared'
 
-/** ws 侧背压水位：hub 缓冲超过此值则暂停读取本机 VNC */
-const WS_HIGH_WATER_BYTES = 4 * 1024 * 1024
-const WS_LOW_WATER_BYTES = 1 * 1024 * 1024
-/** 背压恢复轮询间隔 */
-const DRAIN_CHECK_INTERVAL_MS = 25
-
-/** Bun 客户端 WebSocket → PumpEndpoint（背压以 bufferedAmount 水位近似） */
+/**
+ * Bun 客户端 WebSocket → PumpEndpoint。
+ *
+ * 背压说明（重要）：Bun 客户端 WebSocket 的 bufferedAmount 只在 send 调用时增长、
+ * 从不随后台 flush 衰减（探针实测恒定卡死），因此无法用它做可靠的背压水位——
+ * 这里不做暂停判定、send 恒成功，洪峰由 Bun 内部缓冲吸收（首帧全屏 raw 约 20-60MB、
+ * 本机回环一次性），终局背压由 hub 侧的 64MB 中继缓冲兜底（超限拆会话）。
+ * onDrain 保留空实现以维持 PumpEndpoint 形状（pump 的恢复回调不会触发）。
+ */
 export function bunWsClientEndpoint(ws: WebSocket): PumpEndpoint {
-    let drainCallbacks: Array<() => void> = []
-    let drainTimer: ReturnType<typeof setInterval> | undefined
-
-    const ensureDrainPoll = (): void => {
-        if (drainTimer) {
-            return
-        }
-        drainTimer = setInterval(() => {
-            if (ws.readyState !== WebSocket.OPEN) {
-                return
-            }
-            if (ws.bufferedAmount > WS_LOW_WATER_BYTES) {
-                return
-            }
-            const callbacks = drainCallbacks
-            drainCallbacks = []
-            for (const callback of callbacks) {
-                callback()
-            }
-        }, DRAIN_CHECK_INTERVAL_MS)
-        drainTimer.unref?.()
-    }
-
     return {
         send(data) {
             if (ws.readyState !== WebSocket.OPEN) {
                 return false
             }
             ws.send(data)
-            return ws.bufferedAmount < WS_HIGH_WATER_BYTES
+            return true
         },
         pause() {
             if (typeof ws.pause === 'function') {
@@ -76,10 +55,7 @@ export function bunWsClientEndpoint(ws: WebSocket): PumpEndpoint {
                 ws.resume()
             }
         },
-        onDrain(callback) {
-            drainCallbacks.push(callback)
-            ensureDrainPoll()
-        },
+        onDrain() {},
         close: () => ws.close(1000, 'cli teardown'),
         isOpen: () => ws.readyState === WebSocket.OPEN,
     }

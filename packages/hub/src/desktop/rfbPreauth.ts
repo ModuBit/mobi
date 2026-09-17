@@ -52,6 +52,20 @@ const RFB_3_8 = 'RFB 003.008\n'
 const SECURITY_NONE = 1
 const SECURITY_VNC_AUTH = 2
 
+/**
+ * 上游版本串是否可按 RFB 3.8 时序代认证，返回解析出的次版本（不可协商返回 null）。
+ * RFB 版本协商取 min(server, client)：客户端（noVNC）恒发 3.8，故上游次版本 ≥ 8
+ * 即协商为 3.8。macOS 屏幕共享实际回 `RFB 003.889`（Apple 私有扩展，3.8 时序超集）。
+ */
+function parseUpstreamMinor(version: string): number | null {
+    const match = /^RFB 003\.(\d{3})\n$/.exec(version)
+    if (match === null) {
+        return null
+    }
+    const minor = Number(match[1])
+    return minor >= 8 ? minor : null
+}
+
 /** VNC 认证密钥派生：密码截断/补零到 8 字节，每字节位序反转（VNC 规范的特有处理） */
 function deriveVncKey(password: string): Buffer {
     const raw = Buffer.from(password, 'latin1').subarray(0, 8)
@@ -69,11 +83,15 @@ function deriveVncKey(password: string): Buffer {
     return key
 }
 
-/** VNC 认证应答：DES-ECB 加密 challenge 前 8 字节，取密文前 8 字节 */
+/**
+ * VNC 认证应答：DES-ECB 加密传入的 challenge（标准 RFB 为前 8 字节 → 8 字节应答；
+ * Apple 003.889 的屏幕共享要求整个 16 字节 challenge 加密 → 16 字节应答，实测 8 字节
+ * 应答会让 macOS 挂起等待而不回 SecurityResult）。
+ */
 export function vncAuthResponse(challenge: Uint8Array, password: string): Uint8Array {
     const cipher = createCipheriv('des-ecb', deriveVncKey(password), null)
     cipher.setAutoPadding(false)
-    return new Uint8Array(Buffer.concat([cipher.update(challenge.subarray(0, 8)), cipher.final()]))
+    return new Uint8Array(Buffer.concat([cipher.update(challenge), cipher.final()]))
 }
 
 /**
@@ -92,6 +110,8 @@ export function encodeAuthFailure(reason: string): Uint8Array {
 interface RfbProxyDeps extends RfbProxyCallbacks {
     /** 测试注入口：替代 node:crypto DES */
     encrypt?: (block: Uint8Array, key: Buffer) => Uint8Array
+    /** 相位轨迹回调（hub 侧接日志；握手是黑盒协议，出问题时没有轨迹无从诊断） */
+    onTrace?: (message: string) => void
 }
 
 export class RfbHandshakeProxy {
@@ -99,12 +119,17 @@ export class RfbHandshakeProxy {
     private serverBuf = Buffer.alloc(0)
     private browserBuf = Buffer.alloc(0)
     private upstreamHasNone = false
+    private upstreamMinor = 8
     private finished = false
 
     constructor(
         private readonly vncPassword: string | undefined,
         private readonly deps: RfbProxyDeps,
     ) {}
+
+    private trace(message: string): void {
+        this.deps.onTrace?.(`phase=${this.phase} ${message}`)
+    }
 
     /** 上游（attach 侧）来的字节 */
     feedServer(data: Uint8Array): void {
@@ -130,10 +155,16 @@ export class RfbHandshakeProxy {
                 if (this.serverBuf.length < 12) return
                 const version = this.serverBuf.subarray(0, 12).toString('latin1')
                 this.serverBuf = this.serverBuf.subarray(12)
-                if (version !== RFB_3_8) {
+                const minor = parseUpstreamMinor(version)
+                if (minor === null) {
+                    this.trace(`server version rejected: ${JSON.stringify(version)}`)
                     this.finish(false, 'unsupported rfb version')
                     return
                 }
+                this.upstreamMinor = minor
+                // 浏览器侧统一按 3.8 协商（代认证时序固定），上游侧由 client-version
+                // 相位透传浏览器的 3.8 版本串——RFB 版本协商取 min，Apple 的 003.889
+                // 收到 3.8 客户端后按 3.8 时序走（含 SecurityResult）
                 this.deps.onToBrowser(new Uint8Array(Buffer.from(RFB_3_8, 'latin1')))
                 this.phase = 'client-version'
                 this.processBrowser()
@@ -145,6 +176,7 @@ export class RfbHandshakeProxy {
                 if (count === 0 || this.serverBuf.length < 1 + count) return
                 const types = Array.from(this.serverBuf.subarray(1, 1 + count))
                 this.serverBuf = this.serverBuf.subarray(1 + count)
+                this.trace(`upstream security types: [${types.join(',')}]`)
 
                 this.upstreamHasNone = types.includes(SECURITY_NONE)
                 const canAuth = this.upstreamHasNone || (types.includes(SECURITY_VNC_AUTH) && this.vncPassword !== undefined)
@@ -162,13 +194,17 @@ export class RfbHandshakeProxy {
                 if (this.serverBuf.length < 16) return
                 const challenge = new Uint8Array(this.serverBuf.subarray(0, 16))
                 this.serverBuf = this.serverBuf.subarray(16)
+                this.trace('upstream challenge received, answering on behalf of browser')
                 if (this.vncPassword === undefined) {
                     this.finish(false, 'vnc password not configured')
                     return
                 }
+                // Apple 003.889 要求对整个 16 字节 challenge 加密应答（16 字节）；
+                // 标准 RFB 只加密前 8 字节（8 字节应答）——见 vncAuthResponse 注释
+                const responseBytes = this.upstreamMinor === 889 ? 16 : 8
                 const response = this.deps.encrypt
-                    ? this.deps.encrypt(challenge.subarray(0, 8), deriveVncKey(this.vncPassword))
-                    : vncAuthResponse(challenge, this.vncPassword)
+                    ? this.deps.encrypt(challenge.subarray(0, responseBytes), deriveVncKey(this.vncPassword))
+                    : vncAuthResponse(challenge.subarray(0, responseBytes), this.vncPassword)
                 this.deps.onToServer(response)
                 this.phase = 'security-result'
                 return
@@ -178,6 +214,7 @@ export class RfbHandshakeProxy {
                 const result = new Uint8Array(this.serverBuf.subarray(0, 4))
                 this.serverBuf = this.serverBuf.subarray(4)
                 const ok = (result[0] | (result[1]! << 8) | (result[2]! << 16) | (result[3]! << 24)) === 0
+                this.trace(`upstream security result: ${ok ? 'ok' : 'failed'}`)
                 if (ok) {
                     this.deps.onToBrowser(result)
                     this.finish(true)
@@ -210,9 +247,11 @@ export class RfbHandshakeProxy {
                 this.browserBuf = this.browserBuf.subarray(1)
                 // 浏览器只会看到 None-only，理论上必选 1；防御非 1 选择按 None 处理
                 if (this.upstreamHasNone) {
+                    this.trace('browser chose None → pass through to upstream')
                     this.deps.onToServer(new Uint8Array([SECURITY_NONE]))
                     this.phase = 'security-result'
                 } else {
+                    this.trace('browser chose None →代答上游 VNC-auth')
                     this.deps.onToServer(new Uint8Array([SECURITY_VNC_AUTH]))
                     this.phase = 'challenge'
                 }
@@ -228,6 +267,7 @@ export class RfbHandshakeProxy {
         if (this.finished) {
             return
         }
+        this.trace(ok ? 'handshake complete → live passthrough' : `handshake failed: ${reason}`)
         this.finished = true
         this.phase = ok ? 'live' : 'failed'
         this.deps.onDone(ok, reason)

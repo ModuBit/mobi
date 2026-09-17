@@ -34,17 +34,17 @@ function makeCollector() {
 }
 
 describe('vncAuthResponse（VNC DES 挑战应答）', () => {
-    test('已知向量：密码 00000000 + 全零挑战 = 88f8569b4502edfa', () => {
+    test('已知向量：密码 00000000 + 前 8 字节全零挑战 = 88f8569b4502edfa', () => {
         // 向量出处：与 noVNC genDES（真机验证的参考实现）交叉验证一致
         //（曾误记 2ee3b59d... 为该输入的结果——错误锚点，已用 noVNC 权威值替换）
-        const challenge = new Uint8Array(16)
+        const challenge = new Uint8Array(8)
         expect([...vncAuthResponse(challenge, '00000000')].map((b) => b.toString(16).padStart(2, '0')).join(''))
             .toBe('88f8569b4502edfa')
     })
 
-    test('返回 8 字节', () => {
-        const response = vncAuthResponse(new Uint8Array(16).fill(0xab), 'abcdefgh')
-        expect(response).toHaveLength(8)
+    test('应答长度与传入 challenge 等长（标准 8 字节 / Apple 889 传 16 字节）', () => {
+        expect(vncAuthResponse(new Uint8Array(8).fill(0xab), 'abcdefgh')).toHaveLength(8)
+        expect(vncAuthResponse(new Uint8Array(16).fill(0xab), 'abcdefgh')).toHaveLength(16)
     })
 })
 

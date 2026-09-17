@@ -201,6 +201,57 @@ describe('desktop transport: 双向字节透传', () => {
 })
 
 describe('desktop transport: hub 代认证（上游 VNC-auth）', () => {
+    test('上游为 Apple 魔改版本 003.889（macOS 屏幕共享实况）：按 3.8 时序正常代认证', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket, {
+            protocol: 'mobi-desktop-1',
+            machineId: 'm1',
+            vncPassword: 'secret1',
+        })
+        const observe = await connectObserve(url, session.observeToken)
+
+        // macOS 实况：服务器回 003.889，浏览器收到的仍是 3.8、回复 3.8
+        const apple389 = new TextEncoder().encode('RFB 003.889\n')
+        attach.send(apple389)
+        expect(await nextMessage(observe)).toEqual(new TextEncoder().encode('RFB 003.008\n'))
+        observe.send(new TextEncoder().encode('RFB 003.008\n'))
+        expect(await nextMessage(attach)).toEqual(new TextEncoder().encode('RFB 003.008\n'))
+
+        attach.send(new Uint8Array([4, 0x1e, 0x21, 0x24, 0x02])) // Apple 实测的类型表（含 VNC-auth）
+        expect(await nextMessage(observe)).toEqual(new Uint8Array([1, 1]))
+        observe.send(new Uint8Array([1]))
+        expect(await nextMessage(attach)).toEqual(new Uint8Array([2]))
+
+        attach.send(new Uint8Array(16).fill(0x5a))
+        // Apple 889 的 VNC-auth：应答是整个 16 字节 challenge 的 DES 密文
+        const response = await nextMessage(attach)
+        expect(response).toEqual(vncAuthResponse(new Uint8Array(16).fill(0x5a), 'secret1'))
+        expect(response).toHaveLength(16)
+
+        attach.send(new Uint8Array([0, 0, 0, 0]))
+        expect(await nextMessage(observe)).toEqual(new Uint8Array([0, 0, 0, 0]))
+        attach.close()
+        observe.close()
+    })
+
+    test('上游版本低于 3.8 → 拒绝', async () => {
+        const broker = makeBroker()
+        const { url } = startTestServer(broker)
+
+        const session = broker.watchSession('m1')
+        const attach = await connectAttach(url, session.attachTicket)
+        const observe = await connectObserve(url, session.observeToken)
+
+        const observeClosed = nextClose(observe)
+        attach.send(new TextEncoder().encode('RFB 003.007\n'))
+        const closed = await observeClosed
+        expect(closed.code).toBe(1008)
+        expect(closed.reason).toBe('unsupported rfb version')
+    })
+
     test('metadata 携带密码：hub 代答 DES 挑战，浏览器全程只见 None', async () => {
         const broker = makeBroker()
         const { url } = startTestServer(broker)
@@ -214,8 +265,10 @@ describe('desktop transport: hub 代认证（上游 VNC-auth）', () => {
         const observe = await connectObserve(url, session.observeToken)
 
         const response = await performRfbVncHandshake(attach, observe)
-        // 代答与参考实现一致（密码不出 hub：挑战发给 attach 侧，应答由 hub 算出）
-        expect(response).toEqual(vncAuthResponse(new Uint8Array(16).fill(0x5a), 'secret1'))
+        // 代答与参考实现一致（密码不出 hub：挑战发给 attach 侧，应答由 hub 算出）；
+        // 标准 RFB 3.8 上游只加密前 8 字节挑战
+        expect(response).toEqual(vncAuthResponse(new Uint8Array(8).fill(0x5a), 'secret1'))
+        expect(response).toHaveLength(8)
 
         // SecurityResult OK → 进入纯透传
         attach.send(new Uint8Array([0, 0, 0, 0]))

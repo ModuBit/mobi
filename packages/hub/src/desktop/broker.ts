@@ -28,6 +28,7 @@ import type { ServerWebSocket } from 'bun'
 import { desktopAttachMetadataSchema, DESKTOP_WS_DATA_KEY } from '@mobi/shared'
 import { createOneTimeTicketStore } from './tickets'
 import { RfbHandshakeProxy } from './rfbPreauth'
+import { hubLogger } from '../logger'
 
 export interface DesktopSessionInfo {
     sessionId: string
@@ -65,9 +66,12 @@ interface DesktopSession extends DesktopSessionInfo {
     pendingObserveTimer?: ReturnType<typeof setTimeout>
     /** 拆除中标记：防 close 事件与 teardown 互相递归 */
     tearingDown: boolean
-    /** 两个方向各自的背压缓冲队列 */
-    toAttach: RelayQueue
-    toObserve: RelayQueue
+    /** observe/attach 未就绪时的早期字节缓冲（非背压队列，见 EarlyFrameBuffer） */
+    toAttach: EarlyFrameBuffer
+    toObserve: EarlyFrameBuffer
+    /** 透传统计（每方向收发字节；周期性落日志供诊断） */
+    stats: { attachIn: number; observeOut: number }
+    statsTimer?: ReturnType<typeof setInterval>
 }
 
 export interface DesktopBroker {
@@ -91,22 +95,22 @@ export interface DesktopBroker {
 /** RFB 中继帧上限：RFB 消息单元远小于此；超限即协议错误（防恶意大帧） */
 export const MAX_RELAY_FRAME_BYTES = 4 * 1024 * 1024
 
-/** 背压缓冲上限：单方向积压超过即视为慢消费者，拆会话（防无界内存） */
-const MAX_BUFFERED_BYTES = 4 * 1024 * 1024
-
-/** 背压轮询间隔：下游缓冲排空检查（openclaw 同款节奏） */
-const DRAIN_CHECK_INTERVAL_MS = 25
+/**
+ * 慢消费者护栏：目标方向未送达积压（cli 上行字节 - 观看侧下行字节）超过阈值
+ * 即拆会话，防 Bun 内部缓冲无界增长。须容得下真实桌面的单帧洪峰：retina 全屏
+ * raw 一帧约 20MB（3008×1692×4），noVNC 的 request-response 节奏下初始 full
+ * update 会瞬时打进缓冲。
+ */
+const MAX_BUFFERED_BYTES = 64 * 1024 * 1024
 
 /**
- * 单方向的中继队列。Bun 1.4.x 的 ServerWebSocket 无 pause/resume（客户端 WebSocket
- * 才有），读取侧不可暂停，因此背压以应用层缓冲实现：send 返回 -1 即进入缓冲 +
- * 轮询 getBufferedAmount 排空，积压超限拆会话。
+ * 早期字节缓冲：observe 未加入（或握手代理未建立）前上游/浏览器先到的字节。
+ * 注意这不是背压队列——Bun 的 ws.send 返回 -1 时数据已入其内部缓冲并自动
+ * flush，无需应用层排队（曾误实现 bufferedAmount 排空轮询，因 Bun 的
+ * bufferedAmount 只在 send 时增长、从不衰减而永久死锁）。
  */
-interface RelayQueue {
+interface EarlyFrameBuffer {
     frames: unknown[]
-    bytes: number
-    paused: boolean
-    drainTimer?: ReturnType<typeof setInterval>
 }
 
 function frameBytes(data: unknown): number {
@@ -136,7 +140,12 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         if (!session || session.tearingDown) {
             return
         }
+        hubLogger.warn(`[desktop] teardown session=${sessionId} machine=${session.machineId} code=${code} reason=${reason}`)
         session.tearingDown = true
+        if (session.statsTimer) {
+            clearInterval(session.statsTimer)
+            session.statsTimer = undefined
+        }
         if (session.pendingAttachTimer) {
             clearTimeout(session.pendingAttachTimer)
             session.pendingAttachTimer = undefined
@@ -144,12 +153,6 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         if (session.pendingObserveTimer) {
             clearTimeout(session.pendingObserveTimer)
             session.pendingObserveTimer = undefined
-        }
-        if (session.toAttach.drainTimer) {
-            clearInterval(session.toAttach.drainTimer)
-        }
-        if (session.toObserve.drainTimer) {
-            clearInterval(session.toObserve.drainTimer)
         }
         attachTickets.cancel(session.attachTicket)
         observeTokens.cancel(session.observeToken)
@@ -161,79 +164,44 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
         session.observe?.close(code, reason)
     }
 
-    /** 排空轮询：目标缓冲清零后把积压帧续发出去；目标关闭则交给 teardown 收尾 */
-    function startDrainPoll(
-        session: DesktopSession,
-        to: ServerWebSocket<DesktopWsData>,
-        queue: RelayQueue,
-    ): void {
-        if (queue.drainTimer) {
-            return
-        }
-        const timer = setInterval(() => {
-            if (session.tearingDown || to.readyState !== 1 /* OPEN */) {
-                clearInterval(timer)
-                queue.drainTimer = undefined
-                return
-            }
-            if (typeof to.getBufferedAmount === 'function' && to.getBufferedAmount() > 0) {
-                return
-            }
-            while (queue.frames.length > 0) {
-                const frame = queue.frames.shift()
-                if (to.send(frame as never) === -1) {
-                    return // 仍背压，等下一轮
-                }
-            }
-            queue.paused = false
-            queue.bytes = 0
-            clearInterval(timer)
-            queue.drainTimer = undefined
-        }, DRAIN_CHECK_INTERVAL_MS)
-        timer.unref?.()
-        queue.drainTimer = timer
-    }
-
+    /**
+     * 中继一帧到目标 ws。
+     *
+     * Bun 的 ServerWebSocket.send 返回 -1 只表示「已入内部缓冲、未上 wire」，
+     * 数据不丢且由 Bun 自行 flush——无需也无法用 getBufferedAmount 做排空轮询
+     * （实测 bufferedAmount 只在 send 时增长、从不随后台 flush 衰减，等它清零
+     * 是永久死锁，曾导致真实桌面流卡死）。慢消费者护栏改为字节差值：目标方向
+     * 的未送达积压超过阈值即拆会话，防无界内存。
+     */
     function relay(
         session: DesktopSession,
         to: ServerWebSocket<DesktopWsData>,
-        queue: RelayQueue,
         data: unknown,
     ): void {
-        const bytes = frameBytes(data)
-        if (queue.paused) {
-            queue.frames.push(data)
-            queue.bytes += bytes
-            if (queue.bytes > MAX_BUFFERED_BYTES) {
-                // 慢消费者：积压超限，放弃会话而非无界缓冲
+        if (to === session.observe) {
+            session.stats.observeOut += frameBytes(data)
+            if (session.stats.attachIn - session.stats.observeOut > MAX_BUFFERED_BYTES) {
                 teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'slow consumer')
             }
-            return
         }
-        if (to.send(data as never) === -1) {
-            queue.paused = true
-            queue.frames.push(data)
-            queue.bytes += bytes
-            startDrainPoll(session, to, queue)
-        }
+        to.send(data as never)
     }
 
     function tryStartRelay(session: DesktopSession): void {
         // 两侧就绪且 metadata 已过校验：建立 RFB 握手代理（代认证），结束后进入纯透传
         if (session.attach && session.observe && session.attachMetadataAccepted && !session.handshake) {
             const handshake = new RfbHandshakeProxy(session.vncPassword, {
+                onTrace: (message) => hubLogger.info(`[desktop] handshake session=${session.sessionId} machine=${session.machineId} ${message}`),
                 onToBrowser: (data) => {
-                    if (session.observe) relay(session, session.observe, session.toObserve, data)
+                    if (session.observe) relay(session, session.observe, data)
                 },
                 onToServer: (data) => {
-                    if (session.attach) relay(session, session.attach, session.toAttach, data)
+                    if (session.attach) relay(session, session.attach, data)
                 },
                 onDone: (ok, reason) => {
                     if (ok) {
                         session.handshakeLive = true
                         // 握手期间如有背压积压，排空后进入稳态
-                        startDrainPoll(session, session.observe!, session.toObserve)
-                        startDrainPoll(session, session.attach!, session.toAttach)
                     } else {
                         teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, reason ?? 'handshake failed')
                     }
@@ -247,8 +215,6 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
             for (const frame of session.toAttach.frames.splice(0)) {
                 handshake.feedBrowser(frame as Uint8Array)
             }
-            session.toObserve.bytes = 0
-            session.toAttach.bytes = 0
         }
     }
 
@@ -307,11 +273,24 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
                 tearingDown: false,
                 // 背压缓冲仅在 send 返回 -1 时启用；上游早期字节（observe 未到）的
                 // 缓冲由 onSocketMessage 显式入队，握手建立时移交给代理
-                toAttach: { frames: [], bytes: 0, paused: false },
-                toObserve: { frames: [], bytes: 0, paused: false },
+                toAttach: { frames: [] },
+                toObserve: { frames: [] },
+                stats: { attachIn: 0, observeOut: 0 },
             }
             sessions.set(sessionId, session)
             sessionIdByMachine.set(machineId, sessionId)
+
+            // 透传吞吐统计（2s 一次）：桌面流是黑盒字节管道，无统计无法诊断停滞
+            session.statsTimer = setInterval(() => {
+                if (session.tearingDown) {
+                    return
+                }
+                const s = session.stats
+                hubLogger.info(
+                    `[desktop] stats session=${sessionId} attachIn=${s.attachIn} observeOut=${s.observeOut}`,
+                )
+            }, 2_000)
+            session.statsTimer.unref?.()
 
             // attach 超时未到：会话过期（浏览器悬挂占位防泄漏）；attach 到达后清定时器
             session.pendingAttachTimer = setTimeout(() => {
@@ -404,6 +383,7 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
             // 握手相位：字节交给 RFB 代理（代认证），完成（live）后不再经过它
             if (session.handshake && !session.handshakeLive) {
                 if (meta.role === 'attach') {
+                    session.stats.attachIn += frameBytes(data)
                     session.handshake.feedServer(data as Uint8Array)
                 } else {
                     session.handshake.feedBrowser(data as Uint8Array)
@@ -412,21 +392,20 @@ export function createDesktopBroker(options: { ttlMs?: number; now?: () => numbe
             }
 
             if (meta.role === 'attach') {
+                session.stats.attachIn += frameBytes(data)
                 if (!session.observe) {
                     session.toObserve.frames.push(data)
-                    session.toObserve.bytes += frameBytes(data)
                     return
                 }
-                relay(session, session.observe, session.toObserve, data)
+                relay(session, session.observe, data)
                 return
             }
 
             if (!session.attach) {
                 session.toAttach.frames.push(data)
-                session.toAttach.bytes += frameBytes(data)
                 return
             }
-            relay(session, session.attach, session.toAttach, data)
+            relay(session, session.attach, data)
         },
 
         onSocketClose(ws, closeCode, closeReason) {
