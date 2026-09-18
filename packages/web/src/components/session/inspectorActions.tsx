@@ -15,6 +15,7 @@
  */
 
 import { Folder, Terminal, FileSearch, Monitor, type LucideIcon } from 'lucide-react'
+import { DESKTOP_ENTRY_ENABLED } from '@/domain/desktop/featureGate'
 
 /** 检视面板可用动作的唯一真相源：空态卡片列表与「+」下拉菜单共同消费。 */
 export interface InspectorActionDescriptor {
@@ -30,10 +31,15 @@ export interface InspectorActionDescriptor {
 /**
  * 检视面板动作清单。新增/启用某项能力时只改这里，
  * 空态卡片与「+」下拉菜单自动一致，避免两处能力漂移。
+ * desktop 项受入口闸控制：闸关时整个动作不出现（而非置灰）。
  */
-export const INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = [
+const ALL_INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = [
     { key: 'file', Icon: Folder, labelKey: 'session.inspector.openFile', disabled: false },
     { key: 'terminal', Icon: Terminal, labelKey: 'session.inspector.terminal', disabled: false },
     { key: 'desktop', Icon: Monitor, labelKey: 'session.inspector.desktop', disabled: false },
     { key: 'review', Icon: FileSearch, labelKey: 'session.inspector.review', disabled: true },
 ]
+
+export const INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = DESKTOP_ENTRY_ENABLED
+    ? ALL_INSPECTOR_ACTIONS
+    : ALL_INSPECTOR_ACTIONS.filter((action) => action.key !== 'desktop')

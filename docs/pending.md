@@ -777,3 +777,24 @@ interrupt（用户停止）
 
 **优先级**：低。功能不缺档位只是缺「回默认」，实施前需拍板第 4 点。
 
+
+---
+
+## 82. 桌面观看 UI 入口下线，待稳定后恢复（2026-09-18，迭代 3 起点）
+
+**现状**：
+
+- 桌面观看/控制权功能本体已实现并 E2E 验证（迭代 1+2，commit `6a0f2a4`→`5178a06b` + `52ad0e9b`），但真机链路尚不稳定，用户决定先下线入口（`52ad0e9b` 之后一笔）
+- 入口闸：`packages/web/src/domain/desktop/featureGate.ts` 的 `DESKTOP_ENTRY_ENABLED = false`——检视面板「+」菜单/空态卡片（`INSPECTOR_ACTIONS` 过滤）与侧边栏「远程桌面」分区均已隐藏；`/desktop` 与 `/settings/desktop` 直链仍可达（恢复验收用）
+
+**真机暴露的稳定性问题**：
+
+- macOS 屏幕共享服务会僵死（launchd 接受 TCP 但永不发 RFB 版本串），全链路静默挂起无任何报错——观看页永远「正在连接」，用户无从归因（本次靠 hub stats `attachIn=0` + 5900 探针定位，重启屏幕共享恢复）
+- 5K 分辨率首帧洪峰大（raw/hextile 数十 MB）：黑屏窗口数秒（已有 firstFrame loading 缓解体感），公网/弱网不可用——根治靠迭代 3 tile 图像协议（cli 抓屏 ScreenCaptureKit + JPEG tile + 三档画质，见 `.scratch/desktop/spec-iteration-2.md` Further Notes 与 memory）
+- 上游僵死类故障缺可观测归因：hub 对「attach 已连但上游不吐字节」无超时无提示，应加握手超时（如 preauth 等版本串 N 秒未到 → 4004 归因「上游无响应」）
+
+**恢复条件**：
+
+- 迭代 3 tile 带宽方案落地 + 握手超时归因 + 锁屏取舍决策后，`DESKTOP_ENTRY_ENABLED` 翻 true 重新放出
+
+**优先级**：中。入口隐藏期间不影响既有代码质量，恢复时按上面三步走。
