@@ -520,7 +520,9 @@
             "webTools": {
                 "title": "Web 工具",
                 "desc": "搜索与网页抓取的凭据与路由",
-                "statusEnabled": "已启用"
+                "statusEnabled": "已启用",
+                "statusUnconfigured": "未配置",
+                "statusOffline": "不在线"
             },
             "desktop": {
                 "title": "远程桌面",

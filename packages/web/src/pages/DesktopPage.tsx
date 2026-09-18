@@ -25,25 +25,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Select, Typography } from 'antd'
-import { useSearch } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { DesktopStreamSurface } from '@/components/desktop/DesktopStreamSurface'
 
 export function DesktopPage() {
     const { t } = useTranslation()
     const { machines, error: machinesError } = useMachines()
-    // 侧边栏点击流进入时经 ?machine= 直达该机器（router validateSearch 已归一化）；无参数走在线机器兜底
+    // 单一事实源是 URL：侧边栏点击流直达 ?machine=A 始终生效（曾用 state 固化
+    // `cur ?? route` 导致手选一次后所有直达失效）；Select 选择写回 URL，两种
+    // 入口不再互相覆盖
     const routeMachineId = useSearch({ from: '/mainLayout/desktop' }).machine
-    const [machineId, setMachineId] = useState<string | null>(routeMachineId ?? null)
-
+    const navigate = useNavigate()
+    // 无 URL 参数时的兜底（第一台在线机器）：落 state 钉住一次，防 machines
+    // 列表重排让观看流在机器间跳变（切换即抢占旧流）
+    const [fallbackMachineId, setFallbackMachineId] = useState<string | null>(null)
     useEffect(() => {
-        setMachineId((cur) => cur ?? routeMachineId ?? null)
-    }, [routeMachineId])
-
-    // 无 URL 参数时兜底选第一台在线机器
-    useEffect(() => {
-        setMachineId((cur) => cur ?? machines.find((m) => m.active)?.id ?? machines[0]?.id ?? null)
+        setFallbackMachineId((cur) => cur ?? machines.find((m) => m.active)?.id ?? machines[0]?.id ?? null)
     }, [machines])
+
+    const machineId = routeMachineId ?? fallbackMachineId
 
     const options = useMemo(
         () => machines.map((m) => ({ value: m.id, label: m.id })),
@@ -63,7 +64,7 @@ export function DesktopPage() {
                     style={{ minWidth: 180 }}
                     value={machineId ?? undefined}
                     placeholder={t('desktop.noMachine')}
-                    onChange={(id) => setMachineId(id)}
+                    onChange={(id) => void navigate({ to: '/desktop', search: { machine: id } })}
                     options={options}
                 />
             </div>

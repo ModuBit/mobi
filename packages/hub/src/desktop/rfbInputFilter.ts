@@ -55,7 +55,7 @@ const INPUT_MESSAGE_TYPES = new Set<number>([
 ])
 
 /** 恒放行的非输入类消息（协议协商与观看必需） */
-const KNOWN_MESSAGE_TYPES = new Set<number>([...INPUT_MESSAGE_TYPES, 0, 2, 3, 248, 249, 252])
+const KNOWN_MESSAGE_TYPES = new Set<number>([...INPUT_MESSAGE_TYPES, 0, 2, 3, 248, 249, 250])
 
 /**
  * client→server 消息形状表（RFB 3.8 + TigerVNC 扩展，与 RFC 6143 对照）：
@@ -67,7 +67,8 @@ const KNOWN_MESSAGE_TYPES = new Set<number>([...INPUT_MESSAGE_TYPES, 0, 2, 3, 24
  * - 6 ClientCutText：8 + 4 字节 length
  * - 248 ClientFence：8 + 4 字节 length
  * - 249 EnableContinuousUpdates：定长 10
- * - 251 SetDesktopSize：8 + 4×numberOfScreens；252 xvp：定长 4
+ * - 250 xvp：定长 4（type+pad+2 字节消息码，RFC 6143 注册的 250 而非 252）
+ * - 251 SetDesktopSize：8 + 4×numberOfScreens
  */
 function messageLength(type: number, buffer: Uint8Array): number | null {
     switch (type) {
@@ -80,7 +81,7 @@ function messageLength(type: number, buffer: Uint8Array): number | null {
             return 8
         case 5:
             return 6
-        case 252:
+        case 250:
             return 4
         case 2: {
             if (buffer.byteLength < 4) return null

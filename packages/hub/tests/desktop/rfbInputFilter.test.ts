@@ -71,9 +71,9 @@ function setDesktopSize(n = 1): Uint8Array {
     return msg(251, [0, ...u16be(1920), ...u16be(1080), n, 0, ...new Array<number>(4 * n).fill(0)])
 }
 
-/** xvp client message（type 252，恒 4 字节） */
+/** xvp client message（RFC 6143 type 250，恒 4 字节：type+pad+2 字节消息码） */
 function xvp(): Uint8Array {
-    return msg(252, [0, 1, 2])
+    return msg(250, [0, 1, 2])
 }
 
 function u16be(v: number): number[] {
@@ -111,6 +111,11 @@ describe('rfb input filter: view-only 剥除', () => {
         const filter = seededFilter()
         const result = filter.feed(concat(fbUpdateReq(), keyEvent(), fbUpdateReq(0)))
         expect(result.passthrough).toEqual(concat(fbUpdateReq(), fbUpdateReq(0)))
+    })
+
+    test('表外类型（如 252）按未知抛 RfbProtocolError（安全边界）', () => {
+        const filter = seededFilter()
+        expect(() => filter.feed(msg(252, [0, 1, 2]))).toThrow()
     })
 })
 

@@ -193,6 +193,57 @@ describe('DesktopStreamProvider 断线恢复', () => {
         provider.dispose()
     })
 
+    it('error 终态（如 VNC 认证失败）后的 1008 协议关闭不再重连', async () => {
+        // 认证失败链路：securityfailure 先置 error（归因展示），hub 随后以
+        // 1008 关闭（协议码查不到归因条目）——若照网络类处理会形成
+        // watch→认证失败→重连 的无限循环，违背注册表 retryable:false 契约
+        const provider = makeProvider()
+        const lease = provider.acquire('m1')
+        await vi.advanceTimersByTimeAsync(0)
+        expect(watchMock).toHaveBeenCalledTimes(1)
+
+        emit('onFailure', 'authentication failed')
+        emit('onDisconnect', { clean: false, close: { code: 1008, reason: 'vnc auth failed' } })
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(watchMock).toHaveBeenCalledTimes(1)
+        expect(provider.getState('m1').phase).toBe('error')
+
+        lease.release()
+        provider.dispose()
+    })
+
+    it('destroy 后重建的 entry 不被旧 in-flight connect 污染（连接代际竞态）', async () => {
+        // connect#1 悬在 watch 上时 entry 被销毁重建：新 entry 的代际计数从
+        // 零重置会与旧 connect 的编号撞车（1===1）——旧 connect 恢复后不得
+        // 再建第二条连接（否则双流并存 + hub 抢占互踩）
+        let resolveWatch1: (value: DesktopWatchResponse) => void = () => undefined
+        watchMock.mockImplementationOnce(
+            () =>
+                new Promise<DesktopWatchResponse>((resolve) => {
+                    resolveWatch1 = resolve
+                }),
+        )
+        const provider = makeProvider()
+        const lease1 = provider.acquire('m1')
+        await vi.advanceTimersByTimeAsync(0)
+
+        // 引用归零走完宽限：entry 销毁，connect#1 仍悬在 watch#1
+        lease1.release()
+        await vi.advanceTimersByTimeAsync(DESKTOP_STREAM_GRACE_MS)
+
+        // 重新 acquire → 新 entry + connect#2（走默认 watch mock）
+        const lease2 = provider.acquire('m1')
+        await vi.advanceTimersByTimeAsync(0)
+        const connectionsBefore = disconnectSpies.length
+
+        resolveWatch1({ observeToken: 'late-token', expiresAtMs: Date.now() + 60_000, control: 'view-only' })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(disconnectSpies.length).toBe(connectionsBefore)
+
+        lease2.release()
+        provider.dispose()
+    })
+
     it('watch 失败 → error 态 + 退避重试，重试成功翻回非 error', async () => {
         watchMock.mockRejectedValueOnce(new Error('cli offline')).mockResolvedValue('token-2')
         const provider = makeProvider()

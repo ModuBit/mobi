@@ -57,16 +57,17 @@ export function handleDesktopFetch(
     }
 
     const isAttach = url.pathname === DESKTOP_ATTACH_PATH
+    // Upgrade 校验先于凭据消费：一次性 ticket/token 是消耗品，普通 GET（健康探测/
+    // 链接预览/误开 URL）不得烧掉它——否则后续真正的 upgrade 请求只能 401
+    if (!req.headers.get('upgrade')) {
+        return new Response('expected websocket upgrade', { status: 426 })
+    }
     const credential = url.searchParams.get(isAttach ? 'ticket' : 'token') ?? ''
     const sessionId = isAttach
         ? broker.consumeAttachTicket(credential)
         : broker.consumeObserveToken(credential)
     if (!sessionId) {
         return new Response('invalid desktop credential', { status: 401 })
-    }
-
-    if (!req.headers.get('upgrade')) {
-        return new Response('expected websocket upgrade', { status: 426 })
     }
 
     const upgraded = server.upgrade(req, {

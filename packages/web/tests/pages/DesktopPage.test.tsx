@@ -68,6 +68,7 @@ vi.mock('@/core/data/hooks/queries/useMachines', () => ({
 }))
 vi.mock('@tanstack/react-router', () => ({
     useSearch: () => ({ machine: undefined as string | undefined }),
+    useNavigate: () => () => undefined,
 }))
 
 const wrapper = ({ children }: { children: React.ReactNode }) => <ConfigProvider>{children}</ConfigProvider>

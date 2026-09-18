@@ -331,6 +331,20 @@ describe('desktop transport: hub 代认证（上游 VNC-auth）', () => {
 })
 
 describe('desktop transport: attach 票据校验', () => {
+    test('非 upgrade 请求返回 426 且不消耗凭据（同 ticket 随后仍可升级）', async () => {
+        const broker = makeBroker()
+        const { url, server } = startTestServer(broker)
+        const session = broker.watchSession('m1')
+
+        const plain = await fetch(`${url.replace('ws://', 'http://')}${DESKTOP_OBSERVE_PATH}?token=${session.observeToken}`)
+        expect(plain.status).toBe(426)
+
+        // 凭据未被烧掉：真正的 upgrade 仍可用
+        const observe = await connectObserve(url, session.observeToken)
+        expect(observe.readyState).toBe(WebSocket.OPEN)
+        server.stop(true)
+    })
+
     test('无效 ticket 被拒绝升级', async () => {
         const broker = makeBroker()
         const { url } = startTestServer(broker)

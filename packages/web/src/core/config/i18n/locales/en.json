@@ -530,7 +530,9 @@
             "webTools": {
                 "title": "Web Tools",
                 "desc": "Credentials and routing for search and fetch",
-                "statusEnabled": "Enabled"
+                "statusEnabled": "Enabled",
+                "statusUnconfigured": "Not configured",
+                "statusOffline": "Offline"
             },
             "desktop": {
                 "title": "Remote Desktop",

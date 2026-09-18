@@ -55,9 +55,13 @@ export function SidebarDesktopStreams() {
     }
 
     const closeStream = (sessionId: string) => {
-        void api.desktop.closeStream(sessionId).then(() => {
-            void queryClient.invalidateQueries({ queryKey: queryKeys.desktopStreams })
-        })
+        // 404（已被他端抢占拆除）等失败静默——列表仍要刷新，确认框不悬挂
+        api.desktop
+            .closeStream(sessionId)
+            .catch(() => undefined)
+            .finally(() => {
+                void queryClient.invalidateQueries({ queryKey: queryKeys.desktopStreams })
+            })
     }
 
     const confirmClose = (sessionId: string, machineId: string) => {

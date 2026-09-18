@@ -66,8 +66,8 @@ interface StreamEntry {
     graceTimer?: ReturnType<typeof setTimeout>
     retryTimer?: ReturnType<typeof setTimeout>
     retryAttempt: number
-    /** 连接代际：重连后旧连接的异步回调不得污染新连接状态 */
-    generation: number
+    /** 当前在途连接的唯一编号：destroy 重建后旧 connect 的编号失配，防双流竞态 */
+    connectId?: number
     /** 稳定引用的快照（useSyncExternalStore 依赖） */
     state: DesktopStreamState
 }
@@ -84,6 +84,8 @@ interface ProviderDeps {
 export class DesktopStreamProvider {
     private streams = new Map<string, StreamEntry>()
     private listeners = new Set<() => void>()
+    /** 连接编号发号器（跨 entry 全局唯一，防销毁重建后的代际撞车） */
+    private nextConnectId = 0
 
     constructor(private readonly deps: ProviderDeps) {}
 
@@ -113,7 +115,6 @@ export class DesktopStreamProvider {
                 connection: null,
                 refs: 1,
                 retryAttempt: 0,
-                generation: 0,
                 state: IDLE_STATE,
             }
             entry.container.style.width = '100%'
@@ -149,14 +150,15 @@ export class DesktopStreamProvider {
     private async connect(machineId: string): Promise<void> {
         const entry = this.streams.get(machineId)
         if (!entry) return
-        entry.generation += 1
-        const generation = entry.generation
+        // 唯一编号而非自增计数：entry 销毁重建后计数会撞车，唯一编号永不失配
+        const connectId = (this.nextConnectId += 1)
+        entry.connectId = connectId
         // 首帧信号随连接代际重置：重连后黑屏窗口重新存在
         this.setState(machineId, { phase: 'connecting', firstFrame: false })
 
         try {
             const watch = await this.deps.watch(machineId)
-            if (generation !== this.streams.get(machineId)?.generation) return
+            if (!this.isCurrentConnect(machineId, connectId)) return
 
             // 控制权权威初值随 watch 响应交付：每个连接代际以服务端值重置本地状态，
             // 禁止重放上一条流的快照（控制权随观看流生命周期存亡，权限边界在 hub）。
@@ -173,18 +175,18 @@ export class DesktopStreamProvider {
                 loader: this.deps.loader ?? defaultRfbLoader,
                 callbacks: {
                     onConnect: () => {
-                        if (generation !== this.streams.get(machineId)?.generation) return
+                        if (!this.isCurrentConnect(machineId, connectId)) return
                         entry.retryAttempt = 0
                         // 按本代际 watch 交付的权威值恢复 noVNC 只读
                         this.applyControl(machineId, entry.state.control)
                         this.setState(machineId, { phase: 'connected' })
                     },
                     onFirstFrame: () => {
-                        if (generation !== this.streams.get(machineId)?.generation) return
+                        if (!this.isCurrentConnect(machineId, connectId)) return
                         this.setState(machineId, { firstFrame: true })
                     },
                     onDisconnect: ({ clean, close }) => {
-                        if (generation !== this.streams.get(machineId)?.generation) return
+                        if (!this.isCurrentConnect(machineId, connectId)) return
                         entry.connection = null
                         // 归因明确的关闭（查到注册表条目且不可重连：抢占/关流/上游不可用）：
                         // 展示归因，绝不自动重连（重连即抢占回旋镖、无视用户关流、
@@ -194,6 +196,12 @@ export class DesktopStreamProvider {
                             this.setState(machineId, { phase: 'error', message: attribution.prose })
                             return
                         }
+                        // error 终态（如 VNC 认证失败：onFailure 已归因展示）后的 1008
+                        // 协议关闭查不到条目——照网络类重连会形成 watch→认证失败循环，
+                        // 终态即用户可见的归因，恢复交给重新 acquire
+                        if (entry.state.phase === 'error') {
+                            return
+                        }
                         // 网络类断开（锁屏/掉线）且仍有引用 → 退避重连（不走立即重连，
                         // 防上游侧持续失败时的快速 watch/反连循环）
                         if (!clean && entry.refs > 0) {
@@ -201,25 +209,30 @@ export class DesktopStreamProvider {
                         }
                     },
                     onFailure: (message) => {
-                        if (generation !== this.streams.get(machineId)?.generation) return
+                        if (!this.isCurrentConnect(machineId, connectId)) return
                         // 认证失败等协议失败：展示归因，不自动重试（重试无意义）
                         this.setState(machineId, { phase: 'error', message })
                     },
                 },
             })
-            if (generation !== this.streams.get(machineId)?.generation) {
+            if (!this.isCurrentConnect(machineId, connectId)) {
                 connection.disconnect()
                 return
             }
             entry.connection = connection
         } catch (error) {
-            if (generation !== this.streams.get(machineId)?.generation) return
+            if (!this.isCurrentConnect(machineId, connectId)) return
             this.setState(machineId, {
                 phase: 'error',
                 message: error instanceof Error ? error.message : String(error),
             })
             this.scheduleRetry(machineId)
         }
+    }
+
+    /** 编号是否仍是该 machine 当前在途/在线的连接（entry 销毁重建后旧编号失配） */
+    private isCurrentConnect(machineId: string, connectId: number): boolean {
+        return this.streams.get(machineId)?.connectId === connectId
     }
 
     /** watch 失败的退避重试：tab 存活期间（refs>0）持续恢复 */
