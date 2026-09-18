@@ -21,6 +21,26 @@
  * - watch API（web → hub，HTTP）：请求/响应
  * - attach metadata（cli → hub，raw WS 首帧，二进制 JSON）：流绑定与身份声明
  * - raw WS 路径常量（hub Bun.serve 分流依据）
+ *
+ * ── 跨包不变量：RFB 首字节不丢（prose 协议，三端合谋维持）──────────
+ *
+ * 真实 VNC server（macOS 屏幕共享）在 TCP 连接建立后立即发出版本串，
+ * 不等任何协商。此时 observe 侧可能尚未加入、hub 的握手代理尚未建立，
+ * 任何一端丢弃这段字节，RFB 握手即死锁。时序与职责：
+ *
+ *   VNC ──版本串──▶ cli ──[TCP pause]──▶ (缓冲) ──▶ hub metadata 门
+ *     cli 连接本机 VNC 后先暂停读取，metadata 首帧送达 hub 才开泵；
+ *     hub 校验 metadata 前不向浏览器透传任何字节，通过后早期帧入
+ *     RelayPath 缓冲，observe 加入/代理建立时移交。
+ *
+ * 各端职责（破坏该不变量的症状是真机握手挂起，单端 mock 测试可能全绿）：
+ * - cli（streamTransport）：连接后 sock.pause()，metadata 上行后 resume()——
+ *   删除暂停点 = 版本串在 hub 校验前丢失
+ * - hub（RelayPath）：metadata 门之前缓冲、代理建立时移交——改丢弃 = 同上
+ * - 联合契约测试：cli 侧 packages/cli/tests/desktop/streamTransport.test.ts
+ *   （fake VNC 立即发版本串，断言 metadata 先行）；hub 侧
+ *   packages/hub/tests/desktop/relayPath.test.ts「首字节不丢」用例。
+ *   两端任一破坏该时序，对应用例红。
  */
 
 import { z } from 'zod'

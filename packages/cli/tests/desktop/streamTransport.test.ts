@@ -22,6 +22,8 @@ import { runDesktopStreamTransport } from '../../src/desktop/streamTransport'
  * cli 侧 transport 测试：WS 协议语义（upgrade/透传/票据）由 hub 包 transport.test
  * （bun 运行器 + Bun.serve）覆盖；这里 stub 全局 WebSocket，专测 cli 侧自身行为——
  * metadata 先行时序、vncPassword 上行、target 拒连的 4003 归因。
+ * 首个用例是「RFB 首字节不丢」跨包不变量的 cli 端契约测试（协议陈述见
+ * shared/desktopProtocol.ts 顶部）。
  */
 
 /** 可操纵的假 WebSocket：记录 send/close，手动派发 open */

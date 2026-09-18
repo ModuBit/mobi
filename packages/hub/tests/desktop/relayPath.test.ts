@@ -18,6 +18,8 @@
  * RelayPath 相位机的表驱动测试：接口是纯字节进出（feed / peerJoined → RelayAction），
  * 不持有任何 socket——相位转移（metadata 门、早期缓冲、握手代认证、输入过滤、
  * 控制权追平）全部在这里验证，broker 的 WS 胶水由 transport.test 兜底。
+ * 「metadata 门后缓冲、加入时移交」用例是「RFB 首字节不丢」跨包不变量的
+ * hub 端契约测试（协议陈述见 shared/desktopProtocol.ts 顶部）。
  */
 
 import { describe, expect, test } from 'bun:test'
