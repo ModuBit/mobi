@@ -389,7 +389,7 @@ export function createDesktopBroker(options: {
                 attachTicket: attachGrant.token,
                 observeToken: observeGrant.token,
                 expiresAtMs: observeGrant.expiresAtMs,
-                control: 'view-only' as const,
+                control: controlInfo(session).control,
             }
         },
 

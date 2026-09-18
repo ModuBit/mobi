@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { DesktopStreamProvider, DESKTOP_STREAM_GRACE_MS } from '@/core/desktop/desktopStreamProvider'
 import type { DesktopViewCallbacks } from '@/core/desktop/desktopStreamClient'
+import type { DesktopWatchResponse } from '@mobi/shared'
 
 /**
  * mock connectDesktopView：捕获每次连接的 callbacks（手动触发事件）与 disconnect spy。
@@ -48,7 +49,7 @@ function emit(type: keyof DesktopViewCallbacks, detail?: unknown): void {
 }
 
 /** 稳定的 watch mock（引用稳定，避免 effect 循环陷阱） */
-const watchMock = vi.fn<(machineId: string) => Promise<string>>()
+const watchMock = vi.fn<(machineId: string) => Promise<DesktopWatchResponse>>()
 
 function makeProvider(deps: Partial<ConstructorParameters<typeof DesktopStreamProvider>[0]> = {}) {
     return new DesktopStreamProvider({ watch: watchMock, ...deps })
@@ -73,7 +74,7 @@ describe('DesktopStreamProvider 引用计数', () => {
         disconnectSpies.length = 0
         setViewOnlySpies.length = 0
         watchMock.mockReset()
-        watchMock.mockResolvedValue('token-1')
+        watchMock.mockResolvedValue({ observeToken: 'token-1', expiresAtMs: Date.now() + 60_000, control: 'view-only' })
     })
     afterEach(() => {
         vi.useRealTimers()
@@ -139,7 +140,7 @@ describe('DesktopStreamProvider 断线恢复', () => {
         disconnectSpies.length = 0
         setViewOnlySpies.length = 0
         watchMock.mockReset()
-        watchMock.mockResolvedValue('token-1')
+        watchMock.mockResolvedValue({ observeToken: 'token-1', expiresAtMs: Date.now() + 60_000, control: 'view-only' })
     })
     afterEach(() => {
         vi.useRealTimers()
@@ -206,7 +207,7 @@ describe('DesktopStreamProvider DOM 搬迁', () => {
         disconnectSpies.length = 0
         setViewOnlySpies.length = 0
         watchMock.mockReset()
-        watchMock.mockResolvedValue('token-1')
+        watchMock.mockResolvedValue({ observeToken: 'token-1', expiresAtMs: Date.now() + 60_000, control: 'view-only' })
     })
     afterEach(() => {
         vi.useRealTimers()
@@ -247,7 +248,7 @@ describe('DesktopStreamProvider 控制权（迭代 2）', () => {
         disconnectSpies.length = 0
         setViewOnlySpies.length = 0
         watchMock.mockReset()
-        watchMock.mockResolvedValue('token-1')
+        watchMock.mockResolvedValue({ observeToken: 'token-1', expiresAtMs: Date.now() + 60_000, control: 'view-only' })
         const deps = makeControlDeps()
         grantControl = deps.grantControl
         releaseControl = deps.releaseControl
@@ -307,17 +308,20 @@ describe('DesktopStreamProvider 控制权（迭代 2）', () => {
         provider.dispose()
     })
 
-    it('控制状态跨重连保持：重连后的新连接仍按当前状态设置 viewOnly', async () => {
+    it('重连到新观看流必回 view-only（watch 权威初值，不重放旧流快照）', async () => {
         const provider = makeProvider({ grantControl, releaseControl })
         const lease = await acquireConnected(provider)
         await provider.grantControl('m1')
+        expect(provider.getState('m1')).toMatchObject({ control: 'controlled' })
 
+        // 断线：hub 拆旧流（控制权随流消亡），重连 watch 建新流——权威初值 view-only
+        watchMock.mockResolvedValue({ observeToken: 'token-2', expiresAtMs: Date.now() + 60_000, control: 'view-only' })
         emit('onDisconnect', { clean: false, close: { code: 1006, reason: '' } })
         await vi.advanceTimersByTimeAsync(1_000)
         emit('onConnect')
 
-        expect(setViewOnlySpies[1]).toHaveBeenCalledWith(false)
-        expect(provider.getState('m1')).toMatchObject({ phase: 'connected', control: 'controlled' })
+        expect(setViewOnlySpies[1]).toHaveBeenCalledWith(true)
+        expect(provider.getState('m1')).toMatchObject({ phase: 'connected', control: 'view-only' })
 
         lease.release()
         provider.dispose()

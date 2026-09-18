@@ -52,18 +52,24 @@ export const desktopWatchRequestSchema = z.object({
 
 export type DesktopWatchRequest = z.infer<typeof desktopWatchRequestSchema>
 
-/** POST /api/desktop/watch 响应体：observe 凭据（一次性，短时效） */
-export const desktopWatchResponseSchema = z.object({
-    observeToken: z.string().min(1),
-    expiresAtMs: z.number().int().positive(),
-})
-
-export type DesktopWatchResponse = z.infer<typeof desktopWatchResponseSchema>
-
 /** 控制权状态：view-only（服务端剥输入）/ controlled（输入放行，SetDesktopSize 仍恒剥） */
 export const desktopControlStateSchema = z.enum(['view-only', 'controlled'])
 
 export type DesktopControlState = z.infer<typeof desktopControlStateSchema>
+
+/** POST /api/desktop/watch 响应体：observe 凭据（一次性，短时效）+ 控制权权威初值 */
+export const desktopWatchResponseSchema = z.object({
+    observeToken: z.string().min(1),
+    expiresAtMs: z.number().int().positive(),
+    /**
+     * 控制权权威初值：新观看流恒从 view-only 起（控制权随观看流生命周期存亡）。
+     * web 以此初始化每个连接代际的状态，本地快照只作同会话内的乐观显示——
+     * 重连到新流必须回到服务端值，禁止重放旧流快照（权限边界在 hub）。
+     */
+    control: desktopControlStateSchema,
+})
+
+export type DesktopWatchResponse = z.infer<typeof desktopWatchResponseSchema>
 
 /** GET /api/desktop/streams 响应体：hub 上的活跃观看流（侧边栏列表数据源） */
 export const desktopStreamsResponseSchema = z.object({

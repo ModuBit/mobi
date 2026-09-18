@@ -87,6 +87,8 @@ export function createDesktopRoutes(deps: {
         const response: DesktopWatchResponse = {
             observeToken: session.observeToken,
             expiresAtMs: session.expiresAtMs,
+            // 权威初值：新观看流恒 view-only（控制权随流存亡），web 以此初始化连接代际
+            control: session.control,
         }
         return c.json(response)
     })

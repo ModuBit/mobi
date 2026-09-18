@@ -29,7 +29,7 @@
 
 import { connectDesktopView, defaultRfbLoader, type DesktopViewConnection, type RfbLoader } from './desktopStreamClient'
 import { createMobiApi } from '@/core/data/api/client'
-import { DESKTOP_CLOSE_CODE, DESKTOP_CLOSE_REASONS, desktopWsOrigin, type DesktopControlResponse, type DesktopControlState } from '@mobi/shared'
+import { DESKTOP_CLOSE_CODE, DESKTOP_CLOSE_REASONS, desktopWsOrigin, type DesktopControlResponse, type DesktopControlState, type DesktopWatchResponse } from '@mobi/shared'
 import { KEYSYM } from '@/domain/desktop/touchInput'
 
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
@@ -81,8 +81,8 @@ interface StreamEntry {
 }
 
 interface ProviderDeps {
-    /** watch 凭据获取（React 层注入 useMobiApi 的 desktop.watch） */
-    watch: (machineId: string) => Promise<string>
+    /** watch 凭据获取（React 层注入 useMobiApi 的 desktop.watch）；响应含控制权权威初值 */
+    watch: (machineId: string) => Promise<DesktopWatchResponse>
     /** 控制权授予/退出（迭代 2）；测试可不注入 */
     grantControl?: (machineId: string) => Promise<DesktopControlResponse>
     releaseControl?: (machineId: string) => Promise<DesktopControlResponse>
@@ -163,13 +163,18 @@ export class DesktopStreamProvider {
         this.setState(machineId, { phase: 'connecting', firstFrame: false })
 
         try {
-            const token = await this.deps.watch(machineId)
+            const watch = await this.deps.watch(machineId)
             if (generation !== this.streams.get(machineId)?.generation) return
+
+            // 控制权权威初值随 watch 响应交付：每个连接代际以服务端值重置本地状态，
+            // 禁止重放上一条流的快照（控制权随观看流生命周期存亡，权限边界在 hub）。
+            // 同一流内的后续变化仍由授予/退出 API 与 SSE 事件对齐
+            this.setState(machineId, { control: watch.control })
 
             // 与 terminal 同模式：dev/e2e 直连 hub（__MOBI_HUB_URL__），生产 undefined 落回同源
             // （raw WS 不过 Vite 代理；代理转发会带来升级/缓冲的额外变量）
             const hubOrigin = desktopWsOrigin(__MOBI_HUB_URL__ ?? window.location.origin)
-            const url = `${hubOrigin}/desktop/observe?token=${encodeURIComponent(token)}`
+            const url = `${hubOrigin}/desktop/observe?token=${encodeURIComponent(watch.observeToken)}`
             const connection = await connectDesktopView({
                 url,
                 container: entry.container,
@@ -178,7 +183,7 @@ export class DesktopStreamProvider {
                     onConnect: () => {
                         if (generation !== this.streams.get(machineId)?.generation) return
                         entry.retryAttempt = 0
-                        // 重连后按当前控制权状态恢复 noVNC 只读（新连接恒从 view-only 起）
+                        // 按本代际 watch 交付的权威值恢复 noVNC 只读
                         this.applyControl(machineId, entry.state.control)
                         this.setState(machineId, { phase: 'connected' })
                     },
@@ -338,7 +343,7 @@ export class DesktopStreamProvider {
 let apiClient: ReturnType<typeof createMobiApi> | null = null
 const getApiClient = (): ReturnType<typeof createMobiApi> => (apiClient ??= createMobiApi())
 export const desktopStreamProvider = new DesktopStreamProvider({
-    watch: (machineId) => getApiClient().desktop.watch(machineId).then(({ data }) => data.observeToken),
+    watch: (machineId) => getApiClient().desktop.watch(machineId).then(({ data }) => data),
     grantControl: (machineId) => getApiClient().desktop.grantControl(machineId).then(({ data }) => data),
     releaseControl: (machineId) => getApiClient().desktop.releaseControl(machineId).then(({ data }) => data),
 })
