@@ -65,7 +65,7 @@ export function DesktopPage() {
     const surface = useMemo(() => (machineId ? <DesktopStreamSurface machineId={machineId} /> : null), [machineId])
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8, padding: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', gap: 8, padding: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <Typography.Title level={4} style={{ margin: 0 }}>
                     {t('desktop.title')}

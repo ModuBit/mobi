@@ -36,6 +36,11 @@ export interface DesktopViewConnection {
 export interface DesktopViewCallbacks {
     onConnect?: () => void
     /**
+     * 首条服务端数据到达（≈首帧渲染）：RFB connect 事件只代表协商开始，
+     * 5K 大分辨率首帧洪峰传输可达数秒——此信号供 UI 收起 loading 覆盖层。
+     */
+    onFirstFrame?: () => void
+    /**
      * clean=false 表示异常断开（网络/协议），调用方决定是否重走 watch；
      * close 携带底层 WS 关闭码（noVNC 不透传，由本封装在自建 WS 上捕获）：
      * 4000=被抢占、4002=被主动关闭——这类归因不该自动重连。
@@ -107,6 +112,10 @@ export async function connectDesktopView(options: {
     ws.addEventListener('close', (event) => {
         closeInfo = { code: (event as CloseEvent).code, reason: (event as CloseEvent).reason }
     })
+    // 首条服务端数据（RFB 版本串起）即触发：noVNC 收帧到 blit canvas 是同步的
+    ws.addEventListener('message', () => {
+        if (!retired) callbacks.onFirstFrame?.()
+    }, { once: true })
     const rfb = new Rfb(container, ws, {
         shared: false,
     })

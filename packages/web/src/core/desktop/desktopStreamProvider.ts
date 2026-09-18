@@ -50,12 +50,14 @@ export interface DesktopStreamState {
     phase: 'connecting' | 'connected' | 'error'
     /** 控制权状态（迭代 2）：hub 权威，经授予/退出 API 与 SSE desktop-control-changed 对齐 */
     control: DesktopControlState
+    /** 首帧是否已到达：RFB 连接建立到首帧渲染间有黑屏窗口（大分辨率首帧洪峰） */
+    firstFrame: boolean
     /** phase='error'：面向用户的归因文案（原始 reason） */
     message?: string
 }
 
 /** getState 的稳定空态引用（phase 不变不得换引用，否则 useSyncExternalStore 死循环） */
-const IDLE_STATE: DesktopStreamState = { phase: 'connecting', control: 'view-only' }
+const IDLE_STATE: DesktopStreamState = { phase: 'connecting', control: 'view-only', firstFrame: false }
 
 export interface DesktopStreamLease {
     /** 把观看画面容器搬迁进 host（切换展示面时连接不动；后 attach 者持有画面） */
@@ -157,7 +159,8 @@ export class DesktopStreamProvider {
         if (!entry) return
         entry.generation += 1
         const generation = entry.generation
-        this.setState(machineId, { phase: 'connecting' })
+        // 首帧信号随连接代际重置：重连后黑屏窗口重新存在
+        this.setState(machineId, { phase: 'connecting', firstFrame: false })
 
         try {
             const token = await this.deps.watch(machineId)
@@ -178,6 +181,10 @@ export class DesktopStreamProvider {
                         // 重连后按当前控制权状态恢复 noVNC 只读（新连接恒从 view-only 起）
                         this.applyControl(machineId, entry.state.control)
                         this.setState(machineId, { phase: 'connected' })
+                    },
+                    onFirstFrame: () => {
+                        if (generation !== this.streams.get(machineId)?.generation) return
+                        this.setState(machineId, { firstFrame: true })
                     },
                     onDisconnect: ({ clean, close }) => {
                         if (generation !== this.streams.get(machineId)?.generation) return
@@ -245,7 +252,7 @@ export class DesktopStreamProvider {
         if (!entry) return
         const merged: DesktopStreamState = { ...entry.state, ...next }
         // 只在内容变化时换引用（保持 snapshot 稳定）
-        if (entry.state.phase === merged.phase && entry.state.message === merged.message && entry.state.control === merged.control) return
+        if (entry.state.phase === merged.phase && entry.state.message === merged.message && entry.state.control === merged.control && entry.state.firstFrame === merged.firstFrame) return
         entry.state = merged
         this.notify()
     }

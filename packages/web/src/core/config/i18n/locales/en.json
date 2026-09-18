@@ -734,8 +734,12 @@
         "noMachine": "No machine online",
         "viewOnlyHint": "Keyboard and pointer input has no effect until you take control",
             "touch": {
-                "keyboard": "('Keyboard',)"
+                "keyboard": "Keyboard"
             },
+        "firstFramePending": "Receiving video…",
+        "landscape": "Landscape",
+        "landscapeExit": "Exit landscape",
+        "landscapeUnsupported": "Auto-rotate is not supported here; please rotate your device",
         "control": {
             "stateViewOnly": "Viewing",
             "stateControlled": "Controlling",

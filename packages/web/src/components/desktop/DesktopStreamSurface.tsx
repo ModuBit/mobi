@@ -49,7 +49,10 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
     const { t } = useTranslation()
     const { message } = AntdApp.useApp()
     const hostRef = useRef<HTMLDivElement | null>(null)
+    const rootRef = useRef<HTMLDivElement | null>(null)
     const [controlPending, setControlPending] = useState(false)
+    // 横屏模式中（全屏 + orientation lock 成功才置位；失败即降级提示横握手机）
+    const [landscape, setLandscape] = useState(false)
     const state = useSyncExternalStore(subscribeStreamState, () => desktopStreamProvider.getState(machineId))
     // 触摸设备才渲染移动端控制条（桌面端原生键鼠走 noVNC 自身路径）
     const isTouchDevice = useMemo(() => window.matchMedia('(pointer: coarse)').matches, [])
@@ -68,6 +71,28 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
             message.error(extractApiError(error))
         } finally {
             setControlPending(false)
+        }
+    }
+
+    /** 横屏切换（移动端）：全屏 + orientation lock——浏览器仅在全屏下允许锁横向 */
+    const toggleLandscape = async () => {
+        const root = rootRef.current
+        if (!root) return
+        try {
+            if (landscape) {
+                screen.orientation?.unlock?.()
+                if (document.fullscreenElement) await document.exitFullscreen()
+                setLandscape(false)
+                return
+            }
+            await root.requestFullscreen()
+            await screen.orientation?.lock?.('landscape')
+            setLandscape(true)
+        } catch {
+            // iOS Safari 等不支持 orientation lock：不误报失败，降级提示手动旋转
+            message.info(t('desktop.landscapeUnsupported'))
+            if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined)
+            setLandscape(false)
         }
     }
 
@@ -91,7 +116,7 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
     }, [machineId])
 
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: 'var(--mobi-color-bg-layout, #141414)' }}>
+        <div ref={rootRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: 'var(--mobi-color-bg-layout, #141414)' }}>
             {/* 画面容器：Provider 的 canvas 容器被搬迁进此节点（连接不动，只搬家） */}
             <div ref={hostRef} style={{ width: '100%', height: '100%' }} />
 
@@ -118,6 +143,11 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
                     <Tag color={state.control === 'controlled' ? 'orange' : 'default'} style={{ margin: 0 }}>
                         {state.control === 'controlled' ? t('desktop.control.stateControlled') : t('desktop.control.stateViewOnly')}
                     </Tag>
+                    {isTouchDevice && (
+                        <Button size="small" onClick={() => void toggleLandscape()}>
+                            {landscape ? t('desktop.landscapeExit') : t('desktop.landscape')}
+                        </Button>
+                    )}
                     <Button size="small" type={state.control === 'controlled' ? 'default' : 'primary'} loading={controlPending} onClick={() => void toggleControl()}>
                         {state.control === 'controlled' ? t('desktop.control.release') : t('desktop.control.take')}
                     </Button>
@@ -128,6 +158,13 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
                 <Overlay>
                     <Spin size="small" />
                     <Typography.Text type="secondary">{t('desktop.connecting')}</Typography.Text>
+                </Overlay>
+            )}
+            {/* RFB 连接已建立但首帧未到：黑屏窗口（大分辨率首帧洪峰可达数秒）给 loading */}
+            {state.phase === 'connected' && !state.firstFrame && (
+                <Overlay>
+                    <Spin size="small" />
+                    <Typography.Text type="secondary">{t('desktop.firstFramePending')}</Typography.Text>
                 </Overlay>
             )}
             {state.phase === 'error' && (
