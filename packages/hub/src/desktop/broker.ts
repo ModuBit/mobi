@@ -25,10 +25,9 @@
 
 import { randomUUID } from 'node:crypto'
 import type { ServerWebSocket } from 'bun'
-import { desktopAttachMetadataSchema, DESKTOP_CLOSE_ATTRIBUTIONS, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
+import { DESKTOP_CLOSE_ATTRIBUTIONS, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
 import { createOneTimeTicketStore } from './tickets'
-import { RfbHandshakeProxy } from './rfbPreauth'
-import { createRfbInputFilter, RfbProtocolError, type RfbInputFilter } from './rfbInputFilter'
+import { RelayPath, frameBytes, type RelayAction } from './relayPath'
 import { hubLogger } from '../logger'
 
 /** 对外形状：streams 列表与 watch 响应条目 */
@@ -60,7 +59,9 @@ interface DesktopWsData {
 
 /**
  * 会话内部状态：控制权唯一事实源是 `controlled` 布尔，对外形状（含 control 枚举）
- * 由 controlInfo 统一派生——不在内部状态上冗余存枚举。
+ * 由 controlInfo 统一派生——不在内部状态上冗余存枚举。字节相位（metadata 门/
+ * 早期缓冲/握手代答/输入过滤）全部在 relayPath（RelayPath 相位机）里，本会话
+ * 只持会话生命周期与 WS 胶水。
  */
 interface DesktopSession {
     sessionId: string
@@ -70,22 +71,14 @@ interface DesktopSession {
     observeToken: string
     attach?: ServerWebSocket<DesktopWsData>
     observe?: ServerWebSocket<DesktopWsData>
-    /** attach 侧首帧 metadata 是否已通过校验 */
-    attachMetadataAccepted: boolean
-    /** VNC 密码（来自 attach metadata；仅内存持有，供握手代理使用） */
-    vncPassword?: string
-    /** RFB 握手代理（metadata 通过后创建；phase=live 起透传不再经过它） */
-    handshake?: RfbHandshakeProxy
-    handshakeLive: boolean
     /** attach 未到达时的过期定时器（防浏览器悬挂占位） */
     pendingAttachTimer?: ReturnType<typeof setTimeout>
     /** observe 未到达时的过期定时器（attach 开链后起，防 cli 泵空跑占用 upstream） */
     pendingObserveTimer?: ReturnType<typeof setTimeout>
     /** 拆除中标记：防 close 事件与 teardown 互相递归 */
     tearingDown: boolean
-    /** observe/attach 未就绪时的早期字节缓冲（非背压队列，见 EarlyFrameBuffer） */
-    toAttach: EarlyFrameBuffer
-    toObserve: EarlyFrameBuffer
+    /** 中继相位机：feed/peerJoined 返回待执行动作，由本 broker 落到 WS 上 */
+    relayPath: RelayPath
     /** 透传统计（每方向收发字节；周期性落日志供诊断） */
     stats: { attachIn: number; observeOut: number }
     statsTimer?: ReturnType<typeof setInterval>
@@ -93,8 +86,6 @@ interface DesktopSession {
     controlled: boolean
     /** 控制权不操作超时定时器（授予后起，放行输入即重置；回落/拆除时清） */
     controlIdleTimer?: ReturnType<typeof setTimeout>
-    /** RFB 输入过滤器（握手 live 时创建；view-only 剥输入类，controlled 放行） */
-    inputFilter?: RfbInputFilter
 }
 
 export interface DesktopBroker {
@@ -129,23 +120,6 @@ export const MAX_RELAY_FRAME_BYTES = 4 * 1024 * 1024
  * update 会瞬时打进缓冲。
  */
 const MAX_BUFFERED_BYTES = 64 * 1024 * 1024
-
-/**
- * 早期字节缓冲：observe 未加入（或握手代理未建立）前上游/浏览器先到的字节。
- * 注意这不是背压队列——Bun 的 ws.send 返回 -1 时数据已入其内部缓冲并自动
- * flush，无需应用层排队（曾误实现 bufferedAmount 排空轮询，因 Bun 的
- * bufferedAmount 只在 send 时增长、从不衰减而永久死锁）。
- */
-interface EarlyFrameBuffer {
-    frames: unknown[]
-}
-
-function frameBytes(data: unknown): number {
-    if (data instanceof Uint8Array) return data.byteLength
-    if (data instanceof ArrayBuffer) return data.byteLength
-    if (typeof data === 'string') return data.length
-    return 64
-}
 
 /**
  * 协议错误关闭码（帧超限/元数据非法/解析失败等）：reason 随场景变化、不进归因
@@ -223,7 +197,7 @@ export function createDesktopBroker(options: {
             return
         }
         session.controlled = controlled
-        session.inputFilter?.setControlled(controlled)
+        session.relayPath.setControlled(controlled)
         if (controlled) {
             armControlIdleTimer(session)
         } else {
@@ -267,73 +241,23 @@ export function createDesktopBroker(options: {
         to.send(data as never)
     }
 
-    function tryStartRelay(session: DesktopSession): void {
-        // 两侧就绪且 metadata 已过校验：建立 RFB 握手代理（代认证），结束后进入纯透传
-        if (session.attach && session.observe && session.attachMetadataAccepted && !session.handshake) {
-            const handshake = new RfbHandshakeProxy(session.vncPassword, {
-                onTrace: (message) => hubLogger.info(`[desktop] handshake session=${session.sessionId} machine=${session.machineId} ${message}`),
-                onToBrowser: (data) => {
-                    if (session.observe) relay(session, session.observe, data)
-                },
-                onToServer: (data) => {
-                    if (session.attach) relay(session, session.attach, data)
-                },
-                onDone: (ok, reason) => {
-                    if (ok) {
-                        session.handshakeLive = true
-                        // 握手期间如有背压积压，排空后进入稳态
-                    } else {
-                        teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, reason ?? 'handshake failed')
-                    }
-                },
-            })
-            session.handshake = handshake
-            // 握手 live 后 observe 上行要过输入过滤器（迭代 2 控制边界），随代理一并建立
-            session.inputFilter = createRfbInputFilter()
-            if (session.controlled) {
-                session.inputFilter.setControlled(true)
-            }
-            // 握手建立前缓冲的早期字节（如 macOS 立即发出的版本串）先喂给代理
-            for (const frame of session.toObserve.frames.splice(0)) {
-                handshake.feedServer(frame as Uint8Array)
-            }
-            for (const frame of session.toAttach.frames.splice(0)) {
-                handshake.feedBrowser(frame as Uint8Array)
+    /**
+     * 执行相位机产出的动作：forward 落到目标方向的 WS，fail 按协议错误拆会话。
+     * fail 恒为末位动作（握手失败前可能已有下行字节，如认证失败的 reason string——
+     * 先送达浏览器再拆除，noVNC 才能在 securityfailure 里给出可理解文案）。
+     */
+    function runRelayActions(session: DesktopSession, actions: RelayAction[]): void {
+        for (const action of actions) {
+            if (action.kind === 'forward') {
+                const to = action.target === 'attach' ? session.attach : session.observe
+                if (to) {
+                    relay(session, to, action.data)
+                }
+            } else {
+                teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, action.reason)
+                return
             }
         }
-    }
-
-    function handleAttachFirstFrame(
-        session: DesktopSession,
-        data: unknown,
-    ): void {
-        // 首帧必须是二进制 JSON 且 machineId 与会话一致，否则协议错误拆会话（票据随之作废）
-        let metadata: unknown
-        try {
-            if (!(data instanceof Uint8Array) && !Buffer.isBuffer(data) && !(data instanceof ArrayBuffer)) {
-                throw new Error('metadata must be binary')
-            }
-            const bytes = data instanceof Uint8Array ? data : Buffer.from(data as ArrayBuffer)
-            if (bytes.byteLength === 0 || bytes.byteLength > MAX_RELAY_FRAME_BYTES) {
-                throw new Error('metadata size out of range')
-            }
-            metadata = JSON.parse(new TextDecoder().decode(bytes))
-        } catch {
-            teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'invalid attach metadata')
-            return
-        }
-
-        const parsed = desktopAttachMetadataSchema.safeParse(metadata)
-        if (!parsed.success || parsed.data.machineId !== session.machineId) {
-            teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'attach metadata mismatch')
-            return
-        }
-
-        // 读取侧不可暂停（Bun ServerWebSocket 无 pause）：metadata 之后、observe 加入
-        // 之前到达的上游早期字节由 toObserve 队列缓冲，observe 加入后排空，无丢失
-        session.attachMetadataAccepted = true
-        session.vncPassword = parsed.data.vncPassword
-        tryStartRelay(session)
     }
 
     return {
@@ -353,13 +277,18 @@ export function createDesktopBroker(options: {
                 startedAtMs: nowMs,
                 attachTicket: attachGrant.token,
                 observeToken: observeGrant.token,
-                attachMetadataAccepted: false,
-                handshakeLive: false,
                 tearingDown: false,
-                // 背压缓冲仅在 send 返回 -1 时启用；上游早期字节（observe 未到）的
-                // 缓冲由 onSocketMessage 显式入队，握手建立时移交给代理
-                toAttach: { frames: [] },
-                toObserve: { frames: [] },
+                // 相位机先行装配：控制权输入观测经闭包回到本会话的空闲计时
+                relayPath: new RelayPath({
+                    machineId,
+                    maxFrameBytes: MAX_RELAY_FRAME_BYTES,
+                    onTrace: (message) => hubLogger.info(`[desktop] relay session=${sessionId} machine=${machineId} ${message}`),
+                    onInputObserved: () => {
+                        if (session.controlled) {
+                            armControlIdleTimer(session)
+                        }
+                    },
+                }),
                 stats: { attachIn: 0, observeOut: 0 },
                 controlled: false,
             }
@@ -449,7 +378,7 @@ export function createDesktopBroker(options: {
                 session.pendingObserveTimer = clearTimer(session.pendingObserveTimer)
                 session.observe = ws
             }
-            tryStartRelay(session)
+            runRelayActions(session, session.relayPath.peerJoined(meta.role))
         },
 
         onSocketMessage(ws, data) {
@@ -458,67 +387,11 @@ export function createDesktopBroker(options: {
             if (!session || session.tearingDown) {
                 return
             }
-
-            if (meta.role === 'attach' && !session.attachMetadataAccepted) {
-                handleAttachFirstFrame(session, data)
-                return
-            }
-
-            // 每帧大小守卫（防恶意大帧）
-            if (frameBytes(data) > MAX_RELAY_FRAME_BYTES) {
-                teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'frame too large')
-                return
-            }
-
-            // 握手相位：字节交给 RFB 代理（代认证），完成（live）后不再经过它
-            if (session.handshake && !session.handshakeLive) {
-                if (meta.role === 'attach') {
-                    session.stats.attachIn += frameBytes(data)
-                    session.handshake.feedServer(data as Uint8Array)
-                } else {
-                    session.handshake.feedBrowser(data as Uint8Array)
-                }
-                return
-            }
-
+            // attach 侧入口字节统计（含 metadata 门/守卫拦截的帧——诊断口径：socket 收到多少）
             if (meta.role === 'attach') {
                 session.stats.attachIn += frameBytes(data)
-                if (!session.observe) {
-                    session.toObserve.frames.push(data)
-                    return
-                }
-                relay(session, session.observe, data)
-                return
             }
-
-            // observe → attach：握手 live 后过输入过滤器（控制权强制边界）。
-            // view-only 剥输入类消息；controlled 放行（SetDesktopSize 恒剥），
-            // 放行的输入重置控制权空闲计时。解析错位即协议错误拆会话。
-            if (!session.attach) {
-                session.toAttach.frames.push(data)
-                return
-            }
-            if (session.inputFilter && session.handshakeLive) {
-                let filtered
-                try {
-                    filtered = session.inputFilter.feed(data as Uint8Array)
-                } catch (error) {
-                    if (error instanceof RfbProtocolError) {
-                        session.inputFilter.reset()
-                        teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'rfb input parse failed')
-                        return
-                    }
-                    throw error
-                }
-                if (filtered.sawInput && session.controlled) {
-                    armControlIdleTimer(session)
-                }
-                if (filtered.passthrough.byteLength > 0) {
-                    relay(session, session.attach, filtered.passthrough)
-                }
-                return
-            }
-            relay(session, session.attach, data)
+            runRelayActions(session, session.relayPath.feed(meta.role, data))
         },
 
         onSocketClose(ws, closeCode, closeReason) {
