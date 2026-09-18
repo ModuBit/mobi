@@ -27,8 +27,7 @@ import {
     desktopWatchRequestSchema,
     desktopVncPasswordSubmissionSchema,
     DESKTOP_ATTACH_PATH,
-    DESKTOP_CLOSE_CODE,
-    DESKTOP_CLOSE_REASONS,
+    DESKTOP_CLOSE_ATTRIBUTIONS,
     type DesktopWatchResponse,
     type DesktopStreamsResponse,
     type DesktopControlResponse,
@@ -79,7 +78,7 @@ export function createDesktopRoutes(deps: {
         try {
             await engine.machineDesktopStream(session.machineId, session.attachTicket, DESKTOP_ATTACH_PATH)
         } catch (error) {
-            broker.teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.CLOSED, 'cli unreachable')
+            broker.teardownSession(session.sessionId, DESKTOP_CLOSE_ATTRIBUTIONS.streamClosed.code, 'cli unreachable')
             const message = error instanceof Error ? error.message : 'Failed to reach cli'
             return c.json({ error: `Desktop stream unavailable: ${message}` }, 502)
         }
@@ -110,7 +109,8 @@ export function createDesktopRoutes(deps: {
         if (broker instanceof Response) {
             return broker
         }
-        const tornDown = broker.teardownSession(c.req.param('sessionId'), DESKTOP_CLOSE_CODE.CLOSED, DESKTOP_CLOSE_REASONS.STREAM_CLOSED)
+        const closed = DESKTOP_CLOSE_ATTRIBUTIONS.streamClosed
+        const tornDown = broker.teardownSession(c.req.param('sessionId'), closed.code, closed.prose)
         if (!tornDown) {
             return c.json({ error: 'Stream not found' }, 404)
         }

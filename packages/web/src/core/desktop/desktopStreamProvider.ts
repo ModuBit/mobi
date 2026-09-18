@@ -29,18 +29,11 @@
 
 import { connectDesktopView, defaultRfbLoader, type DesktopViewConnection, type RfbLoader } from './desktopStreamClient'
 import { createMobiApi } from '@/core/data/api/client'
-import { DESKTOP_CLOSE_CODE, DESKTOP_CLOSE_REASONS, desktopWsOrigin, type DesktopControlResponse, type DesktopControlState, type DesktopWatchResponse } from '@mobi/shared'
+import { desktopCloseAttributionByCode, desktopWsOrigin, type DesktopControlResponse, type DesktopControlState, type DesktopWatchResponse } from '@mobi/shared'
 import { KEYSYM } from '@/domain/desktop/touchInput'
 
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
-
-/** 服务端关闭码 → 观看侧归因文案（码与文案单源在 shared，与 hub/cli 对齐）；这些码都不自动重连 */
-const CLOSE_CODE_REASONS: Record<number, string> = {
-    [DESKTOP_CLOSE_CODE.SUPERSEDED]: DESKTOP_CLOSE_REASONS.SUPERSEDED,
-    [DESKTOP_CLOSE_CODE.CLOSED]: DESKTOP_CLOSE_REASONS.STREAM_CLOSED,
-    [DESKTOP_CLOSE_CODE.UPSTREAM_UNAVAILABLE]: DESKTOP_CLOSE_REASONS.UPSTREAM_UNAVAILABLE,
-}
 
 /** watch/连接失败的退避重试节奏 */
 const RETRY_BASE_MS = 1_000
@@ -194,11 +187,12 @@ export class DesktopStreamProvider {
                     onDisconnect: ({ clean, close }) => {
                         if (generation !== this.streams.get(machineId)?.generation) return
                         entry.connection = null
-                        // 归因明确的关闭（被抢占/被关流/上游不可用）：展示归因，绝不自动重连
-                        // （重连即抢占回旋镖、无视用户关流、或对「屏幕共享没开」无限循环）
-                        const reason = close ? CLOSE_CODE_REASONS[close.code] : undefined
-                        if (reason) {
-                            this.setState(machineId, { phase: 'error', message: reason })
+                        // 归因明确的关闭（查到注册表条目且不可重连：抢占/关流/上游不可用）：
+                        // 展示归因，绝不自动重连（重连即抢占回旋镖、无视用户关流、
+                        // 或对「屏幕共享没开」无限循环）。查不到条目（peer gone/协议错）＝网络类
+                        const attribution = close ? desktopCloseAttributionByCode(close.code) : null
+                        if (attribution && !attribution.retryable) {
+                            this.setState(machineId, { phase: 'error', message: attribution.prose })
                             return
                         }
                         // 网络类断开（锁屏/掉线）且仍有引用 → 退避重连（不走立即重连，

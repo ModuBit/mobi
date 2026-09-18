@@ -25,7 +25,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { ServerWebSocket } from 'bun'
-import { desktopAttachMetadataSchema, DESKTOP_CLOSE_CODE, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
+import { desktopAttachMetadataSchema, DESKTOP_CLOSE_ATTRIBUTIONS, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
 import { createOneTimeTicketStore } from './tickets'
 import { RfbHandshakeProxy } from './rfbPreauth'
 import { createRfbInputFilter, RfbProtocolError, type RfbInputFilter } from './rfbInputFilter'
@@ -147,7 +147,11 @@ function frameBytes(data: unknown): number {
     return 64
 }
 
-/** 观看流 WS 关闭码见 shared DESKTOP_CLOSE_CODE（跨端协议唯一真相源） */
+/**
+ * 协议错误关闭码（帧超限/元数据非法/解析失败等）：reason 随场景变化、不进归因
+ * 注册表（非跨端归因概念成员）——观看端按「查不到条目 → 网络类」处理。
+ */
+const DESKTOP_CLOSE_PROTOCOL = 1008
 
 /** 会话级定时器清理：teardown 与 open 各点共用，防新增定时器漏清 */
 function clearTimer(timer?: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>): undefined {
@@ -257,7 +261,7 @@ export function createDesktopBroker(options: {
         if (to === session.observe) {
             session.stats.observeOut += frameBytes(data)
             if (session.stats.attachIn - session.stats.observeOut > MAX_BUFFERED_BYTES) {
-                teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'slow consumer')
+                teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'slow consumer')
             }
         }
         to.send(data as never)
@@ -279,7 +283,7 @@ export function createDesktopBroker(options: {
                         session.handshakeLive = true
                         // 握手期间如有背压积压，排空后进入稳态
                     } else {
-                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, reason ?? 'handshake failed')
+                        teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, reason ?? 'handshake failed')
                     }
                 },
             })
@@ -315,13 +319,13 @@ export function createDesktopBroker(options: {
             }
             metadata = JSON.parse(new TextDecoder().decode(bytes))
         } catch {
-            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'invalid attach metadata')
+            teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'invalid attach metadata')
             return
         }
 
         const parsed = desktopAttachMetadataSchema.safeParse(metadata)
         if (!parsed.success || parsed.data.machineId !== session.machineId) {
-            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'attach metadata mismatch')
+            teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'attach metadata mismatch')
             return
         }
 
@@ -337,7 +341,7 @@ export function createDesktopBroker(options: {
             // 抢占：同 machineId 旧会话拆除（旧两侧收到 superseded）
             const existingId = sessionIdByMachine.get(machineId)
             if (existingId) {
-                teardownSession(existingId, DESKTOP_CLOSE_CODE.SUPERSEDED, 'superseded')
+                teardownSession(existingId, DESKTOP_CLOSE_ATTRIBUTIONS.superseded.code, DESKTOP_CLOSE_ATTRIBUTIONS.superseded.prose)
             }
 
             const sessionId = randomUUID()
@@ -377,7 +381,7 @@ export function createDesktopBroker(options: {
             // attach 超时未到：会话过期（浏览器悬挂占位防泄漏）；attach 到达后清定时器
             session.pendingAttachTimer = setTimeout(() => {
                 if (!session.attach) {
-                    teardownSession(sessionId, DESKTOP_CLOSE_CODE.PEER_GONE, 'attach timeout')
+                    teardownSession(sessionId, DESKTOP_CLOSE_ATTRIBUTIONS.peerGone.code, 'attach timeout')
                 }
             }, ttlMs)
             session.pendingAttachTimer.unref?.()
@@ -424,7 +428,7 @@ export function createDesktopBroker(options: {
             const meta = ws.data[DESKTOP_WS_DATA_KEY]
             const session = sessions.get(meta.sessionId)
             if (!session) {
-                ws.close(DESKTOP_CLOSE_CODE.PROTOCOL, 'session gone')
+                ws.close(DESKTOP_CLOSE_PROTOCOL, 'session gone')
                 return
             }
             if (meta.role === 'attach') {
@@ -435,7 +439,7 @@ export function createDesktopBroker(options: {
                 if (!session.pendingObserveTimer) {
                     const timer = setTimeout(() => {
                         if (!session.observe) {
-                            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PEER_GONE, 'observe timeout')
+                            teardownSession(session.sessionId, DESKTOP_CLOSE_ATTRIBUTIONS.peerGone.code, 'observe timeout')
                         }
                     }, ttlMs)
                     timer.unref?.()
@@ -462,7 +466,7 @@ export function createDesktopBroker(options: {
 
             // 每帧大小守卫（防恶意大帧）
             if (frameBytes(data) > MAX_RELAY_FRAME_BYTES) {
-                teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'frame too large')
+                teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'frame too large')
                 return
             }
 
@@ -501,7 +505,7 @@ export function createDesktopBroker(options: {
                 } catch (error) {
                     if (error instanceof RfbProtocolError) {
                         session.inputFilter.reset()
-                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'rfb input parse failed')
+                        teardownSession(session.sessionId, DESKTOP_CLOSE_PROTOCOL, 'rfb input parse failed')
                         return
                     }
                     throw error
@@ -526,7 +530,7 @@ export function createDesktopBroker(options: {
             // 迭代 1 语义：任一侧离开即会话终止。attach 侧若带 4xxx 归因码
             // （如 4003 上游不可用）则原样透传给观看侧，Provider 可归因不重连；
             // 普通断开（页面关闭/网络）归一为 4001 peer gone
-            const code = closeCode && closeCode >= 4000 ? closeCode : DESKTOP_CLOSE_CODE.PEER_GONE
+            const code = closeCode && closeCode >= 4000 ? closeCode : DESKTOP_CLOSE_ATTRIBUTIONS.peerGone.code
             teardownSession(session.sessionId, code, closeReason || 'peer gone')
         },
     }

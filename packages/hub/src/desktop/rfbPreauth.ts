@@ -47,7 +47,7 @@ export type RfbPhase =
     | 'failed'
 
 import { createCipheriv } from 'node:crypto'
-import { DESKTOP_CLOSE_REASONS } from '@mobi/shared'
+import { DESKTOP_CLOSE_ATTRIBUTIONS } from '@mobi/shared'
 
 const RFB_3_8 = 'RFB 003.008\n'
 const SECURITY_NONE = 1
@@ -182,7 +182,7 @@ export class RfbHandshakeProxy {
                 this.upstreamHasNone = types.includes(SECURITY_NONE)
                 const canAuth = this.upstreamHasNone || (types.includes(SECURITY_VNC_AUTH) && this.vncPassword !== undefined)
                 if (!canAuth) {
-                    this.finish(false, types.includes(SECURITY_VNC_AUTH) ? DESKTOP_CLOSE_REASONS.VNC_PASSWORD_MISSING : 'no supported security type')
+                    this.finish(false, types.includes(SECURITY_VNC_AUTH) ? DESKTOP_CLOSE_ATTRIBUTIONS.vncPasswordMissing.prose : 'no supported security type')
                     return
                 }
                 // 浏览器只看到 None-only offer：不需要密码，也不弹密码框
@@ -197,7 +197,7 @@ export class RfbHandshakeProxy {
                 this.serverBuf = this.serverBuf.subarray(16)
                 this.trace('upstream challenge received, answering on behalf of browser')
                 if (this.vncPassword === undefined) {
-                    this.finish(false, DESKTOP_CLOSE_REASONS.VNC_PASSWORD_MISSING)
+                    this.finish(false, DESKTOP_CLOSE_ATTRIBUTIONS.vncPasswordMissing.prose)
                     return
                 }
                 // Apple 003.889 要求对整个 16 字节 challenge 加密应答（16 字节）；
@@ -223,8 +223,8 @@ export class RfbHandshakeProxy {
                 }
                 // RFB 3.8 标准失败序列：result=1 之后跟 reason string，noVNC 据此在
                 // securityfailure 事件里给出可理解文案（随后 hub 拆会话关闭连接）
-                this.deps.onToBrowser(encodeAuthFailure(DESKTOP_CLOSE_REASONS.VNC_AUTH_FAILED))
-                this.finish(false, DESKTOP_CLOSE_REASONS.VNC_AUTH_FAILED)
+                this.deps.onToBrowser(encodeAuthFailure(DESKTOP_CLOSE_ATTRIBUTIONS.vncAuthFailed.prose))
+                this.finish(false, DESKTOP_CLOSE_ATTRIBUTIONS.vncAuthFailed.prose)
                 return
             }
             default:

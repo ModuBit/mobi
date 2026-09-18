@@ -24,7 +24,7 @@
  */
 
 import net from 'node:net'
-import { DESKTOP_CLOSE_CODE, DESKTOP_CLOSE_REASONS, desktopWsOrigin, type DesktopAttachMetadata } from '@mobi/shared'
+import { DESKTOP_CLOSE_ATTRIBUTIONS, desktopWsOrigin, type DesktopAttachMetadata } from '@mobi/shared'
 import { duplexEndpoint, createStreamPump, type PumpEndpoint } from './pump'
 
 /**
@@ -127,7 +127,7 @@ export function runDesktopStreamTransport(params: {
             teardownTrigger = 'target-connect-failed'
             // 4003 上游不可用：hub 透传给观看侧，Provider 归因展示且不自动重连
             // （否则「屏幕共享没开」会诱发观看端 watch/反连的快速循环）
-            ws.close(DESKTOP_CLOSE_CODE.UPSTREAM_UNAVAILABLE, DESKTOP_CLOSE_REASONS.UPSTREAM_UNAVAILABLE)
+            ws.close(DESKTOP_CLOSE_ATTRIBUTIONS.upstreamUnavailable.code, DESKTOP_CLOSE_ATTRIBUTIONS.upstreamUnavailable.prose)
             return
         }
 

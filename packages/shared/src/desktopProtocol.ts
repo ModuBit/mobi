@@ -95,6 +95,46 @@ export const desktopControlResponseSchema = z.object({
 
 export type DesktopControlResponse = z.infer<typeof desktopControlResponseSchema>
 
+/**
+ * 观看流「归因」注册表（单源）：一次观看流为何结束，决定观看端显示什么文案、
+ * 以及要不要自动重连。三端（hub teardown / cli 关闭 / web 决策与文案）一律引用
+ * 此表条目，禁止另写 code/prose 字面量——新增归因只改这里。
+ *
+ * 两条到达路径：带 code 的随 WS close 事件（hub teardown / cli 关闭）；
+ * 无 code 的（VNC 认证类）随 noVNC securityfailure 事件的 prose。
+ */
+export interface DesktopCloseAttribution {
+    /** WS close code；VNC 认证类归因不走 close 通道，为 null */
+    readonly code: number | null
+    /** 协议 prose（即协议：措辞改动等于改协议） */
+    readonly prose: string
+    /** 观看端文案键；null = 无专属文案（回退通用断开文案），仅可重连归因允许 */
+    readonly i18nKey: string | null
+    /** 是否可自动重连：归因明确的关闭（抢占/关流/上游不可用/认证失败）一律 false */
+    readonly retryable: boolean
+}
+
+export const DESKTOP_CLOSE_ATTRIBUTIONS = {
+    superseded: { code: 4000, prose: 'superseded', i18nKey: 'desktop.failure.superseded', retryable: false },
+    peerGone: { code: 4001, prose: 'peer gone', i18nKey: null, retryable: true },
+    streamClosed: { code: 4002, prose: 'stream closed by user', i18nKey: 'desktop.failure.streamClosed', retryable: false },
+    upstreamUnavailable: { code: 4003, prose: 'upstream unavailable', i18nKey: 'desktop.failure.upstreamUnavailable', retryable: false },
+    vncAuthFailed: { code: null, prose: 'vnc auth failed', i18nKey: 'desktop.failure.vncAuthFailed', retryable: false },
+    vncPasswordMissing: { code: null, prose: 'vnc password not configured', i18nKey: 'desktop.failure.vncPasswordMissing', retryable: false },
+} as const satisfies Record<string, DesktopCloseAttribution>
+
+export type DesktopCloseAttributionId = keyof typeof DESKTOP_CLOSE_ATTRIBUTIONS
+
+/** 按 WS close code 查归因（无条目 = 网络类/协议类，走重连与通用文案） */
+export function desktopCloseAttributionByCode(code: number): DesktopCloseAttribution | null {
+    return Object.values(DESKTOP_CLOSE_ATTRIBUTIONS).find((a) => a.code === code) ?? null
+}
+
+/** 按 prose 查归因（securityfailure 通道；prose 即协议） */
+export function desktopCloseAttributionByProse(prose: string): DesktopCloseAttribution | null {
+    return Object.values(DESKTOP_CLOSE_ATTRIBUTIONS).find((a) => a.prose === prose) ?? null
+}
+
 /** hub → cli 的 desktop-stream RPC 请求参数 */
 export const desktopStreamRequestSchema = z.object({
     ticket: z.string().min(1),
@@ -107,31 +147,6 @@ export type DesktopStreamRequest = z.infer<typeof desktopStreamRequestSchema>
  * 观看流 WS 关闭码（hub 发、web/cli 读写）：跨端协议契约的唯一真相源。
  * hub 定义 teardown 发码，web 按码判定「归因明确、不自动重连」。
  */
-export const DESKTOP_CLOSE_CODE = {
-    /** 被抢占（同机新观看） */
-    SUPERSEDED: 4000,
-    /** 对端消失（观看页关闭/超时） */
-    PEER_GONE: 4001,
-    /** 被主动关闭（侧边栏关流 / cli 不可达回滚） */
-    CLOSED: 4002,
-    /** 上游不可用（本机 VNC 拒连，cli 发起） */
-    UPSTREAM_UNAVAILABLE: 4003,
-    /** 协议错误（帧超限/元数据非法/解析失败） */
-    PROTOCOL: 1008,
-} as const
-
-/**
- * 观看流关闭归因 reason 字符串（hub teardown/cli 关闭时写，web 匹配后翻译成
- * 用户文案）：prose 即协议，改动措辞须三端同步——一律引用此常量。
- */
-export const DESKTOP_CLOSE_REASONS = {
-    VNC_AUTH_FAILED: 'vnc auth failed',
-    VNC_PASSWORD_MISSING: 'vnc password not configured',
-    STREAM_CLOSED: 'stream closed by user',
-    SUPERSEDED: 'superseded',
-    UPSTREAM_UNAVAILABLE: 'upstream unavailable',
-} as const
-
 /** http(s) hub 地址 → ws(s)：desktop 流两端的 WS 地址统一由它派生 */
 export function desktopWsOrigin(hubUrl: string): string {
     return hubUrl.replace(/^http/i, 'ws')

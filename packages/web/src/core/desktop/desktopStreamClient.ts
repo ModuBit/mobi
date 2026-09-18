@@ -22,7 +22,7 @@
  * 移动端键盘桥/控制权等重语义在后续迭代引入（参照 openclaw desktop-client）。
  */
 
-import { DESKTOP_CLOSE_REASONS } from '@mobi/shared'
+import { desktopCloseAttributionByProse } from '@mobi/shared'
 
 export interface DesktopViewConnection {
     /** 幂等断开（含卸载清理与重连前的回收） */
@@ -78,24 +78,11 @@ export const defaultRfbLoader: RfbLoader = async () => {
 }
 
 /**
- * hub 关闭归因（英文协议文案，常量单源在 shared DESKTOP_CLOSE_REASONS）→ 观看页 i18n 键。
+ * hub 关闭归因（英文协议 prose）→ 观看页 i18n 键：查 shared 归因注册表（单源）。
  * 未知归因返回 null，调用方回退展示原始 reason；此处只做已知归因的可理解翻译。
  */
 export function describeDesktopFailure(reason: string): string | null {
-    switch (reason) {
-        case DESKTOP_CLOSE_REASONS.VNC_AUTH_FAILED:
-            return 'desktop.failure.vncAuthFailed'
-        case DESKTOP_CLOSE_REASONS.VNC_PASSWORD_MISSING:
-            return 'desktop.failure.vncPasswordMissing'
-        case DESKTOP_CLOSE_REASONS.STREAM_CLOSED:
-            return 'desktop.failure.streamClosed'
-        case DESKTOP_CLOSE_REASONS.SUPERSEDED:
-            return 'desktop.failure.superseded'
-        case DESKTOP_CLOSE_REASONS.UPSTREAM_UNAVAILABLE:
-            return 'desktop.failure.upstreamUnavailable'
-        default:
-            return null
-    }
+    return desktopCloseAttributionByProse(reason)?.i18nKey ?? null
 }
 
 export async function connectDesktopView(options: {
