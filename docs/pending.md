@@ -726,3 +726,54 @@ interrupt（用户停止）
 1. **醒来后仍返回 `timeout`，不能返回 `unavailable`**——「抹掉」的语义是「没有定论」，而 `unavailable` 是确定的否定。会话确实退了这件事由别处说（session-end / 归档本身）。
 2. **先摘再叫**，与 `set()` 同款：叫醒是同步调用，摘干净才不会有人被叫两次。
 
+## 80. mobi 调度外部 agent（ACP）——目标已定向，审批归属未决（2026-09-13，待用户再想）
+
+**目标（已定）**：让 mobi 里的 **Claude 会话能调度外部编码 agent**（Codex / Qoder）干活，即既有「多 agent 对话」的跨引擎延伸。用户已确认「在 mobi 里能用 Codex」是**手段**不是目的——所以不是「多一个引擎可选」，而是「Claude 能派活给别的引擎」。
+
+**为什么是 ACP**：把 N 个适配器变成 1 个——适配 ACP 这份 spec，不是各家接口，复杂度不随 agent 数量增长。生态已到位（官方 agents 列表含 Codex / Qoder / Gemini / Cursor 等；`codex-acp` 已迁入 `agentclientprotocol` 组织共管；官方有 TS SDK `@agentclientprotocol/sdk`，不必手写 JSON-RPC）。OpenClaw 已用同一路线实现（`/acp spawn codex --bind here` + steer/cancel/resume，外部 agent 作一等会话、每个 spawn 作后台任务跟踪），用户记忆属实。
+
+**被排除的路径**：`codex exec --json` headless（非交互、无中途审批，与需求冲突）；PTY 驱动 TUI；MCP 方向反了；Claude 也走 `claude-code-acp`（有损适配器，会丢掉 mobi 已有特性依赖的 SDK 能力——outputStyle / hooks / subagent / compact 生命周期 / 跨会话可见性）。
+
+**已收敛的设计骨架**：
+- 外部 agent 作 **sessions 表里的一行**（被工具族逼出来的结论，非选项——`list_sessions` 只读那张表）
+- 接入点**只有一个**：runner 里按 `metadata.agentKind` 选 driver 的那行分支。Hub / Web / 消息管道 / 审批弹窗全复用
+- **收割不需要反向通道**：mobi 从 ACP `session/prompt` 应答拿得到 `stopReason`，知道对方何时跑完 → 由 mobi 自己投递完成通知。指挥是拉不是推
+- **client 侧比预想小得多**：`session/request_permission` 是唯一 baseline 方法，`fs/*` 与 `terminal/*` 全是**可选**（不声明即 UNSUPPORTED）——最初估的「8 个方法」把可选项当成了必选项。v0 client 可能只要 1 个方法 + 收 `session/update`
+- 恢复照抄现有模式（`lifecycleState` + `nativeSessionId`→`--resume`）；mobi 握有消息历史，「replay 兜底」是现在就在跑的形态，不是要另建的
+
+**未决（卡在这里）**：
+1. **派活同步还是异步**（用户倾向异步/混合，未定）
+2. **审批归属**——用户原意是「让 Claude 完全管理小弟们」，但自己提出了尖锐反问：*「如果是用户批，那不就是把完成的 ACP 当成 session 一等公民进入进来么？」* 用户批 = Codex 是一等公民；Claude 代批 = Codex 是下属（升级上报给上级）。**这个选择同时定义了 Codex 会话的产品身份**，是核心未决项
+3. 服务谁（只有用户自己 / 所有 mobi 使用者）→ 决定要不要建通用能力声明机制
+4. 试点哪个 agent（Codex / Qoder）
+5. 收割原语的具体形状
+
+**待验假设**：声明不支持 `fs/*` / `terminal/*` 时 Codex 还能不能干活（判断是能——它自己是独立进程，fs 那套是给编辑器用的；但得跑一次才知道。假设塌了 v0 大小要重算）。
+
+**完整笔记**（事实 + 来源 + 骨架）：`.scratch/acp-external-agents/NOTES.md`
+
+**优先级**：中高。**不着急写 spec**——用户要先想清楚上面的未决项。重启时机：用户想清楚审批归属与同步/异步两条。
+
+---
+
+## 81. effort 档位透出「auto」（2026-09-15，调研完成暂缓实施）
+
+**背景**：CC 有 `/effort auto`（清除显式 effort、回到模型默认）。mobi 的 effort 选择（模型选项 Popover 内，`EffortPopoverContent`）只有 low/medium/high/xhigh 四档，没有 auto。本条是已核实完的事实与方案，重启时不必重新调研。
+
+**已核实事实**（SDK 0.3.268 sdk.d.ts + 官方文档）：
+
+- `auto` **不是模型/wire 值**——API 合法 effort 只有 `low/medium/high/xhigh/max`；「auto」的本质 = 不传 effort 参数（SDK 注释原话 `null when no effort parameter will be sent`），由 CC/模型默认兜底（CC v2.1.68 起 Max/Team 订阅默认 medium）
+- **`ModelInfo.supportsAutoMode` 与 effort 无关**：SDK 里所有 "auto mode" 都指权限 auto 模式（auto-mode permission classifier，即 `CLAUDE_PERMISSION_MODES` 里的 `'auto'`），不要误用作 effort auto 门控。effort 能力字段是 `supportsEffort` + `supportedEffortLevels`
+- **运行时清除是原生支持的**：切换走 `applyFlagSettings({ effortLevel })`（`runClaude.ts` LIVE_CONFIG_APPLIERS.effort），SDK 签名 `effortLevel: EffortLevel | null`，`null` = 清除回默认（`max` 也仅此通道会话级可用）
+- **mobi 现状堵死了「默认」态**：`runClaude.ts` `currentEffort = options.effort ?? 'medium'` 把 undefined 强制成 medium，从未让「不传」发生——这是唯一真正的行为改动点
+- `Settings.effortLevel`（持久化 settings）不含 max；启动 `Options.effort` optional，undefined = 不传
+
+**方案**（定稿，待确认行为变化后实施）：
+
+1. shared：UI 档位与 wire 档位分开——`EffortLevel`（wire 四档）不动，UI 选项加 `auto` 置顶；内部表示 `effort === undefined/null` = auto，不引入新 wire 枚举值
+2. CLI：去掉 `?? 'medium'` 强制；`setEffort`/`applyLive` 支持 null → `applyFlagSettings({ effortLevel: null })`；spawn/RPC 类型 `effort?: EffortLevel | null`，`SESSION_CONFIG_FIELDS` 校验同步放宽
+3. Web：`EffortPopoverContent` 加 Auto 档并按 `supportedEffortLevels` 过滤实体档位；先把 ChatComposer / NewSessionPage 两份重复的 `EffortDot`/`EffortPopoverContent`/`EFFORT_COLORS` 抽成共享组件
+4. **待用户拍板的行为变化**：新会话默认从「强制 medium」改为「auto（不传，由 CC 默认兜底）」
+
+**优先级**：低。功能不缺档位只是缺「回默认」，实施前需拍板第 4 点。
+
