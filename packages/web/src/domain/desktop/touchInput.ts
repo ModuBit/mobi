@@ -124,3 +124,44 @@ export class TouchModifierState {
 
 /** 哨兵 textarea 的固定填充：保证字段里永远有可删除的内容（软键盘删除才表现为 value 变化） */
 export const SENTINEL_VALUE = '________________'
+
+/** 远端键盘输入的最小结构面（DesktopViewConnection 满足之）：domain 不依赖 core */
+export interface RemoteKeyboard {
+    sendKey(keysym: number, down?: boolean): void
+    sendText(text: string): void
+}
+
+/**
+ * 修饰键组合的统一括号：mods 按下 → 动作 → mods 反序释放。
+ * 远端注入顺序的约定只此一处——移动端软键盘没有真正的按住状态，
+ * 组合键必须整段合成（按下/动作/释放），反序释放与物理键盘一致。
+ */
+export function withModifiers(connection: RemoteKeyboard, mods: number[], action: () => void): void {
+    for (const keysymOfMod of mods) {
+        connection.sendKey(keysymOfMod, true)
+    }
+    action()
+    for (const keysymOfMod of [...mods].reverse()) {
+        connection.sendKey(keysymOfMod, false)
+    }
+}
+
+/** 敲一个键（可带挂起修饰键组合） */
+export function tapKey(connection: RemoteKeyboard, keysym: number, mods: number[] = []): void {
+    withModifiers(connection, mods, () => connection.sendKey(keysym))
+}
+
+/** 连续退格（哨兵 diff 出的删除动作）：修饰键整段只按/放一次，N 个退格共用 */
+export function sendBackspaces(connection: RemoteKeyboard, count: number, mods: number[] = []): void {
+    withModifiers(connection, mods, () => {
+        for (let i = 0; i < count; i++) {
+            connection.sendKey(KEYSYM.BACKSPACE)
+        }
+    })
+}
+
+/** 发送文本（软键盘桥：哨兵 diff 出的插入内容）；空文本零动作 */
+export function sendText(connection: RemoteKeyboard, text: string, mods: number[] = []): void {
+    if (!text) return
+    withModifiers(connection, mods, () => connection.sendText(text))
+}

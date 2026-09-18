@@ -93,6 +93,20 @@ describe('DesktopStreamProvider 引用计数', () => {
         provider.dispose()
     })
 
+    it('getConnection：connected 期间暴露输入句柄，销毁后收回', async () => {
+        const provider = makeProvider()
+        expect(provider.getConnection('m1')).toBeUndefined()
+
+        const lease = provider.acquire('m1')
+        await vi.advanceTimersByTimeAsync(0)
+        expect(provider.getConnection('m1')).toBeDefined()
+
+        lease.release()
+        vi.advanceTimersByTime(DESKTOP_STREAM_GRACE_MS)
+        expect(provider.getConnection('m1')).toBeUndefined()
+        provider.dispose()
+    })
+
     it('引用归零起 30s 宽限，宽限满才断开', async () => {
         const provider = makeProvider()
         const lease = provider.acquire('m1')

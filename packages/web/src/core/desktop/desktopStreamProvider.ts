@@ -30,7 +30,6 @@
 import { connectDesktopView, defaultRfbLoader, type DesktopViewConnection, type RfbLoader } from './desktopStreamClient'
 import { createMobiApi } from '@/core/data/api/client'
 import { desktopCloseAttributionByCode, desktopWsOrigin, type DesktopControlResponse, type DesktopControlState, type DesktopWatchResponse } from '@mobi/shared'
-import { KEYSYM } from '@/domain/desktop/touchInput'
 
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
@@ -289,35 +288,13 @@ export class DesktopStreamProvider {
         this.streams.get(machineId)?.connection?.requestResize()
     }
 
-    // —— 移动端触摸输入桥（迭代 2；仅 controlled 下由 UI 调用，hub 侧仍是权威边界） ——
-
-    /** 敲一个键（可带挂起修饰键组合：mods 按下 → 敲键 → mods 释放） */
-    tapKey(machineId: string, keysym: number, mods: number[] = []): void {
-        this.withMods(machineId, mods, (connection) => connection.sendKey(keysym))
-    }
-
-    /** 连续退格（哨兵 diff 出的删除动作）：修饰键整段只按/放一次，N 个退格共用 */
-    sendBackspaces(machineId: string, count: number, mods: number[] = []): void {
-        this.withMods(machineId, mods, (connection) => {
-            for (let i = 0; i < count; i++) {
-                connection.sendKey(KEYSYM.BACKSPACE)
-            }
-        })
-    }
-
-    /** 发送文本（软键盘桥：哨兵 diff 出的插入内容） */
-    sendText(machineId: string, text: string, mods: number[] = []): void {
-        if (!text) return
-        this.withMods(machineId, mods, (connection) => connection.sendText(text))
-    }
-
-    /** 修饰键组合的统一括号：mods 按下 → 动作 → mods 反序释放（顺序约定只此一处） */
-    private withMods(machineId: string, mods: number[], action: (connection: DesktopViewConnection) => void): void {
-        const connection = this.streams.get(machineId)?.connection
-        if (!connection) return
-        for (const keysymOfMod of mods) connection.sendKey(keysymOfMod, true)
-        action(connection)
-        for (const keysymOfMod of [...mods].reverse()) connection.sendKey(keysymOfMod, false)
+    /**
+     * 输入句柄查询：移动端触摸桥经此拿到连接直接组合输入动作（组合器在
+     * domain/desktop/touchInput）。仅 connected 期间非空；事件时点查询即可，
+     * 与 provider 内部对 connection 的取用同一时序。
+     */
+    getConnection(machineId: string): DesktopViewConnection | undefined {
+        return this.streams.get(machineId)?.connection ?? undefined
     }
 
     private notify(): void {

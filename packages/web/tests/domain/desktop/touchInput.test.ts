@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
     KEYSYM,
     SENTINEL_VALUE,
@@ -22,6 +22,9 @@ import {
     TOUCH_MODIFIERS,
     TouchModifierState,
     diffSentinelValue,
+    sendBackspaces,
+    sendText,
+    tapKey,
 } from '@/domain/desktop/touchInput'
 
 describe('diffSentinelValue（哨兵值 diff）', () => {
@@ -101,5 +104,75 @@ describe('TOOLBAR_KEYS', () => {
         expect(byCode.get('Enter')).toBe(0xff0d)
         expect(byCode.get('ArrowUp')).toBe(0xff52)
         expect(byCode.get('Backspace')).toBe(0xff08)
+    })
+})
+
+/** 记录 sendKey/sendText 调用序列的假键盘（远端注入顺序在这里断言） */
+function fakeKeyboard() {
+    const calls: string[] = []
+    return {
+        calls,
+        connection: {
+            sendKey(keysym: number, down?: boolean) {
+                calls.push(`${down === false ? 'up' : 'down'}:${keysym.toString(16)}`)
+            },
+            sendText(text: string) {
+                calls.push(`text:${text}`)
+            },
+        },
+    }
+}
+
+describe('输入组合器（修饰键括号）', () => {
+    it('tapKey：mods 按下 → 敲键 → mods 反序释放', () => {
+        const { connection, calls } = fakeKeyboard()
+        tapKey(connection, KEYSYM.ENTER, [KEYSYM.CONTROL, KEYSYM.SHIFT])
+        expect(calls).toEqual([
+            `down:${KEYSYM.CONTROL.toString(16)}`,
+            `down:${KEYSYM.SHIFT.toString(16)}`,
+            `down:${KEYSYM.ENTER.toString(16)}`,
+            `up:${KEYSYM.SHIFT.toString(16)}`,
+            `up:${KEYSYM.CONTROL.toString(16)}`,
+        ])
+    })
+
+    it('tapKey 无修饰键：只敲一次键，无括号', () => {
+        const { connection, calls } = fakeKeyboard()
+        tapKey(connection, KEYSYM.ESCAPE)
+        expect(calls).toEqual([`down:${KEYSYM.ESCAPE.toString(16)}`])
+    })
+
+    it('sendBackspaces：N 个退格共用一次修饰键括号', () => {
+        const { connection, calls } = fakeKeyboard()
+        sendBackspaces(connection, 3, [KEYSYM.ALT])
+        expect(calls).toEqual([
+            `down:${KEYSYM.ALT.toString(16)}`,
+            `down:${KEYSYM.BACKSPACE.toString(16)}`,
+            `down:${KEYSYM.BACKSPACE.toString(16)}`,
+            `down:${KEYSYM.BACKSPACE.toString(16)}`,
+            `up:${KEYSYM.ALT.toString(16)}`,
+        ])
+    })
+
+    it('sendText：空文本零动作（含不发修饰键）', () => {
+        const { connection, calls } = fakeKeyboard()
+        sendText(connection, '', [KEYSYM.SHIFT])
+        expect(calls).toEqual([])
+        sendText(connection, 'ab', [])
+        expect(calls).toEqual(['text:ab'])
+    })
+
+    it('组合器接受 DesktopViewConnection 形状（结构最小面）', () => {
+        const connection = {
+            sendKey: vi.fn(),
+            sendText: vi.fn(),
+            disconnect: vi.fn(),
+            setViewOnly: vi.fn(),
+            requestResize: vi.fn(),
+        }
+        tapKey(connection, KEYSYM.TAB, [KEYSYM.META])
+        expect(connection.sendKey).toHaveBeenNthCalledWith(1, KEYSYM.META, true)
+        expect(connection.sendKey).toHaveBeenNthCalledWith(2, KEYSYM.TAB)
+        expect(connection.sendKey).toHaveBeenNthCalledWith(3, KEYSYM.META, false)
     })
 })

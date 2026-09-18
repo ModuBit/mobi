@@ -34,6 +34,9 @@ import {
     TOUCH_MODIFIERS,
     TouchModifierState,
     diffSentinelValue,
+    sendBackspaces,
+    sendText,
+    tapKey,
 } from '@/domain/desktop/touchInput'
 
 export function MobileTouchControls({ machineId }: { machineId: string }) {
@@ -67,8 +70,11 @@ export function MobileTouchControls({ machineId }: { machineId: string }) {
         const { backspaces, inserted } = diffSentinelValue(sentinelRef.current, input.value)
         const mods = modsRef.current.consume()
         syncActiveMods()
-        desktopStreamProvider.sendBackspaces(machineId, backspaces, mods)
-        desktopStreamProvider.sendText(machineId, inserted, mods)
+        // 事件时点查询连接（未连接即静默丢弃，与 provider 原行为一致）
+        const connection = desktopStreamProvider.getConnection(machineId)
+        if (!connection) return
+        sendBackspaces(connection, backspaces, mods)
+        sendText(connection, inserted, mods)
         // 哨兵漂移出可报告删除的范围（清空/超长）即重灌
         if (input.value.length < 1 || input.value.length > SENTINEL_VALUE.length * 2) {
             input.value = SENTINEL_VALUE
@@ -136,7 +142,9 @@ export function MobileTouchControls({ machineId }: { machineId: string }) {
                         onClick={() => {
                             const mods = modsRef.current.consume()
                             syncActiveMods()
-                            desktopStreamProvider.tapKey(machineId, key.keysym, mods)
+                            const connection = desktopStreamProvider.getConnection(machineId)
+                            if (!connection) return
+                            tapKey(connection, key.keysym, mods)
                         }}
                         style={touchButtonStyle}
                     >
