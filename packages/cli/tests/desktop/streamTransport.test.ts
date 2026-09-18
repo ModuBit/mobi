@@ -16,7 +16,7 @@
 
 import { describe, expect, test, afterEach, beforeEach, vi } from 'vitest'
 import net from 'node:net'
-import { runDesktopStreamTransport, hubWsUrl } from '../../src/desktop/streamTransport'
+import { runDesktopStreamTransport } from '../../src/desktop/streamTransport'
 
 /**
  * cli 侧 transport 测试：WS 协议语义（upgrade/透传/票据）由 hub 包 transport.test
@@ -194,10 +194,5 @@ describe('runDesktopStreamTransport', () => {
         expect(handle.trigger).toBe('target-connect-failed')
         expect(ws.closeCall?.code).toBe(4003)
         expect(ws.closeCall?.reason).toBe('upstream unavailable')
-    })
-
-    test('hub 地址转换：http → ws', () => {
-        expect(hubWsUrl('http://localhost:2222')).toBe('ws://localhost:2222')
-        expect(hubWsUrl('https://hub.example.com')).toBe('wss://hub.example.com')
     })
 })

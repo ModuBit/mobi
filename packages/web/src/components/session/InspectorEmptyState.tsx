@@ -17,24 +17,18 @@
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { theme as antTheme } from 'antd'
-import { INSPECTOR_ACTIONS } from './inspectorActions'
+import { INSPECTOR_ACTIONS, type InspectorActionContext } from './inspectorActions'
 
 interface InspectorEmptyStateProps {
-    /** 点「文件」 */
-    onOpenFile: () => void
-    /** 点「终端」（未传或达上限时该卡片置灰） */
-    onOpenTerminal?: () => void
-    /** 终端已达上限：terminal 卡片叠加上限 disable（与「+」菜单一致） */
-    terminalDisabled?: boolean
-    /** 点「远程桌面」（跟随会话机器；未传时该卡片置灰） */
-    onOpenDesktop?: () => void
+    /** 动作上下文（打开各 tab 的入口绑定；optional 项即对应动作不可用） */
+    actionsContext: InspectorActionContext
 }
 
 /**
  * 空态：居中的卡片行列表（参考 macOS 菜单风格——图标 + 标签，浅灰圆角卡）。
- * 动作清单与「+」下拉菜单共用 INSPECTOR_ACTIONS，避免两处能力漂移。
+ * 动作清单与「+」下拉菜单共用 INSPECTOR_ACTIONS（可用性与执行都在清单上），避免两处能力漂移。
  */
-export function InspectorEmptyState({ onOpenFile, onOpenTerminal, onOpenDesktop, terminalDisabled }: InspectorEmptyStateProps) {
+export function InspectorEmptyState({ actionsContext }: InspectorEmptyStateProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
 
@@ -43,26 +37,13 @@ export function InspectorEmptyState({ onOpenFile, onOpenTerminal, onOpenDesktop,
             <List role="list">
                 {INSPECTOR_ACTIONS.map((item) => {
                     const { Icon } = item
-                    // 终端卡片：达上限时叠加 disable（与「+」菜单一致）；
-                    // desktop 卡片：机器未知时置灰（与「+」菜单一致）
-                    const disabled =
-                        item.disabled
-                        || (item.key === 'terminal' && (terminalDisabled ?? false))
-                        || (item.key === 'desktop' && !onOpenDesktop)
-                    // onClick 按 key 分发：terminal → onOpenTerminal、desktop → onOpenDesktop，其余 → onOpenFile
-                    const onClick = disabled
-                        ? undefined
-                        : item.key === 'terminal'
-                            ? onOpenTerminal
-                            : item.key === 'desktop'
-                                ? onOpenDesktop
-                                : onOpenFile
+                    const disabled = item.disabled || item.enabled?.(actionsContext) === false
                     return (
                         <Row
                             key={item.key}
                             type="button"
                             disabled={disabled}
-                            onClick={onClick}
+                            onClick={disabled ? undefined : () => item.run(actionsContext)}
                             $token={token}
                         >
                             <span className="icon"><Icon size={18} /></span>

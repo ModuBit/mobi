@@ -22,11 +22,15 @@
  * 移动端键盘桥/控制权等重语义在后续迭代引入（参照 openclaw desktop-client）。
  */
 
+import { DESKTOP_CLOSE_REASONS } from '@mobi/shared'
+
 export interface DesktopViewConnection {
     /** 幂等断开（含卸载清理与重连前的回收） */
     disconnect(): void
     /** 翻转只读（控制权授予/回落）：noVNC 运行时属性，键盘/指针处理器实时读取 */
     setViewOnly(viewOnly: boolean): void
+    /** 展示面容器尺寸变化后重算 scaleViewport（noVNC 自身只监听 window resize） */
+    requestResize(): void
     /** 发送一次远端按键：down 缺省 = 敲击（按下并释放）；修饰键组合须显式 down/up */
     sendKey(keysym: number, down?: boolean): void
     /** 发送文本（移动端软键盘桥）：换行归一为 Enter；非 BMP 字符直接走 Unicode keysym */
@@ -74,21 +78,20 @@ export const defaultRfbLoader: RfbLoader = async () => {
 }
 
 /**
- * hub 关闭归因（英文协议文案）→ 观看页 i18n 键。
- * 未知归因返回 null，调用方回退展示原始 reason（hub 归因是协议单源，
- * 见 hub 侧 RfbHandshakeProxy；此处只做已知归因的可理解翻译）。
+ * hub 关闭归因（英文协议文案，常量单源在 shared DESKTOP_CLOSE_REASONS）→ 观看页 i18n 键。
+ * 未知归因返回 null，调用方回退展示原始 reason；此处只做已知归因的可理解翻译。
  */
 export function describeDesktopFailure(reason: string): string | null {
     switch (reason) {
-        case 'vnc auth failed':
+        case DESKTOP_CLOSE_REASONS.VNC_AUTH_FAILED:
             return 'desktop.failure.vncAuthFailed'
-        case 'vnc password not configured':
+        case DESKTOP_CLOSE_REASONS.VNC_PASSWORD_MISSING:
             return 'desktop.failure.vncPasswordMissing'
-        case 'stream closed':
+        case DESKTOP_CLOSE_REASONS.STREAM_CLOSED:
             return 'desktop.failure.streamClosed'
-        case 'superseded':
+        case DESKTOP_CLOSE_REASONS.SUPERSEDED:
             return 'desktop.failure.superseded'
-        case 'upstream unavailable':
+        case DESKTOP_CLOSE_REASONS.UPSTREAM_UNAVAILABLE:
             return 'desktop.failure.upstreamUnavailable'
         default:
             return null
@@ -155,6 +158,13 @@ export async function connectDesktopView(options: {
                 return
             }
             rfb.viewOnly = viewOnly
+        },
+        requestResize() {
+            if (retired) {
+                return
+            }
+            // 触发 noVNC 的 scaleViewport setter（内部重算 clip/scale）
+            rfb.scaleViewport = true
         },
         sendKey(keysym: number, down?: boolean) {
             if (retired) {

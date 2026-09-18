@@ -718,14 +718,12 @@
     "desktop": {
         "title": "远程桌面",
         "connecting": "正在连接桌面画面…",
-        "connected": "已连接",
         "disconnected": "连接已断开",
-        "reconnect": "重新连接",
         "noMachine": "没有在线的机器",
         "viewOnlyHint": "未接管控制时，此页面上的键鼠操作不会生效",
-            "touch": {
-                "keyboard": "键盘"
-            },
+        "touch": {
+            "keyboard": "键盘"
+        },
         "firstFramePending": "正在接收画面…",
         "landscape": "横屏",
         "landscapeExit": "退出横屏",
@@ -747,7 +745,6 @@
             "superseded": "该机器已在其他设备开始新的观看",
             "upstreamUnavailable": "被控电脑的屏幕共享暂不可用：请确认已在系统设置开启屏幕共享"
         },
-        "start": "开始观看",
         "settings": {
             "title": "远程桌面",
             "guideTitle": "首次使用请完成两步配置",

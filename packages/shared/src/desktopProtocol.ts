@@ -98,12 +98,52 @@ export const desktopStreamRequestSchema = z.object({
 export type DesktopStreamRequest = z.infer<typeof desktopStreamRequestSchema>
 
 /**
- * VNC 密码提交（web → hub → cli 落 settings.cli.json）。
- * 上限 16 与 macOS 屏幕共享输入框对齐；RFB 协议密钥只有 8 字节，
- * 超长部分截断——仅前 8 位参与认证（与 macOS 内部行为一致）。
+ * 观看流 WS 关闭码（hub 发、web/cli 读写）：跨端协议契约的唯一真相源。
+ * hub 定义 teardown 发码，web 按码判定「归因明确、不自动重连」。
  */
-export const desktopVncPasswordSubmissionSchema = z.object({
+export const DESKTOP_CLOSE_CODE = {
+    /** 被抢占（同机新观看） */
+    SUPERSEDED: 4000,
+    /** 对端消失（观看页关闭/超时） */
+    PEER_GONE: 4001,
+    /** 被主动关闭（侧边栏关流 / cli 不可达回滚） */
+    CLOSED: 4002,
+    /** 上游不可用（本机 VNC 拒连，cli 发起） */
+    UPSTREAM_UNAVAILABLE: 4003,
+    /** 协议错误（帧超限/元数据非法/解析失败） */
+    PROTOCOL: 1008,
+} as const
+
+/**
+ * 观看流关闭归因 reason 字符串（hub teardown/cli 关闭时写，web 匹配后翻译成
+ * 用户文案）：prose 即协议，改动措辞须三端同步——一律引用此常量。
+ */
+export const DESKTOP_CLOSE_REASONS = {
+    VNC_AUTH_FAILED: 'vnc auth failed',
+    VNC_PASSWORD_MISSING: 'vnc password not configured',
+    STREAM_CLOSED: 'stream closed by user',
+    SUPERSEDED: 'superseded',
+    UPSTREAM_UNAVAILABLE: 'upstream unavailable',
+} as const
+
+/** http(s) hub 地址 → ws(s)：desktop 流两端的 WS 地址统一由它派生 */
+export function desktopWsOrigin(hubUrl: string): string {
+    return hubUrl.replace(/^http/i, 'ws')
+}
+
+/**
+ * VNC 密码（web → hub 提交段，含 machineId 路由；hub → cli 落盘段只传密码，
+ * 用 desktopVncPasswordSchema）。上限 16 与 macOS 屏幕共享输入框对齐；
+ * RFB 协议密钥只有 8 字节，超长部分截断——仅前 8 位参与认证（与 macOS 内部行为一致）。
+ */
+export const desktopVncPasswordSchema = z.object({
     vncPassword: z.string().min(1).max(16),
+})
+
+export type DesktopVncPassword = z.infer<typeof desktopVncPasswordSchema>
+
+export const desktopVncPasswordSubmissionSchema = desktopVncPasswordSchema.extend({
+    machineId: z.string().min(1),
 })
 
 export type DesktopVncPasswordSubmission = z.infer<typeof desktopVncPasswordSubmissionSchema>

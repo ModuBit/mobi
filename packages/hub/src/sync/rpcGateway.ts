@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
@@ -334,8 +334,8 @@ export class RpcGateway {
     }
 
     // machine 通道 desktop 配置：VNC 密码配置状态（只回是否已配置）
-    async machineDesktopVncStatus(machineId: string): Promise<{ configured: boolean }> {
-        return await this.machineRpc(machineId, 'get-desktop-vnc-status', {}) as { configured: boolean }
+    async machineDesktopVncStatus(machineId: string): Promise<DesktopVncStatus> {
+        return await this.machineRpc(machineId, 'get-desktop-vnc-status', {}) as DesktopVncStatus
     }
 
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）

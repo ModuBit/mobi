@@ -91,11 +91,11 @@ describe('createOneTimeTicketStore', () => {
     })
 
     describe('token 形状', () => {
-        test('token 为不可预测的十六进制串（≥48 位）', () => {
+        test('token 为 URL 安全的高熵串（与 hub 统一 token 生成同格式，≥40 位）', () => {
             const store = createOneTimeTicketStore<string>()
             const { token } = store.mint('p', { nowMs: 0 })
 
-            expect(token).toMatch(/^[0-9a-f]{48,}$/)
+            expect(token).toMatch(/^[A-Za-z0-9_-]{40,}$/)
         })
     })
 })

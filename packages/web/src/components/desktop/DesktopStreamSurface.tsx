@@ -102,9 +102,9 @@ export function DesktopStreamSurface({ machineId }: DesktopStreamSurfaceProps) {
             lease.attachTo(hostRef.current)
         }
 
-        // 展示面尺寸变化（搬迁/分栏拖动/窗口缩放）通知 noVNC 重算 scaleViewport
+        // 展示面尺寸变化（搬迁/分栏拖动/窗口缩放）单播给该连接重算 scaleViewport
         const observer = new ResizeObserver(() => {
-            window.dispatchEvent(new Event('resize'))
+            desktopStreamProvider.resize(machineId)
         })
         if (hostRef.current) {
             observer.observe(hostRef.current)

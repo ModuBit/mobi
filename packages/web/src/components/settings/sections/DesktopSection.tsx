@@ -26,32 +26,19 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button, Input, Typography, App as AntdApp } from 'antd'
 import { useMobiApi, extractApiError } from '@/core/data/api/client'
+import { useMachines } from '@/core/data/hooks/queries/useMachines'
 
 export function DesktopSection() {
     const { t } = useTranslation()
     const { message } = AntdApp.useApp()
     const api = useMobiApi()
-    const [machineId, setMachineId] = useState<string | null>(null)
+    const { machines } = useMachines()
+    // tracer：取第一台在线机器（多机器选择随侧边栏列表 ticket）
+    const machineId = machines.find((m) => m.active)?.id ?? null
     const [configured, setConfigured] = useState<boolean | null>(null)
     const [password, setPassword] = useState('')
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
-
-    // tracer：取第一台在线机器（多机器选择随侧边栏列表 ticket）
-    useEffect(() => {
-        let cancelled = false
-        api.machines
-            .list()
-            .then(({ data }) => {
-                if (cancelled) return
-                const online = data.machines.find((m) => m.active) ?? null
-                setMachineId(online?.id ?? null)
-            })
-            .catch(() => undefined)
-        return () => {
-            cancelled = true
-        }
-    }, [api])
 
     const refreshStatus = useCallback(async () => {
         if (!machineId) return

@@ -44,6 +44,12 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
 
+// —— mock useMachines（分区改走共享 query hook）——
+const mockMachines: Array<{ id: string; active: boolean }> = []
+vi.mock('@/core/data/hooks/queries/useMachines', () => ({
+    useMachines: () => ({ machines: mockMachines, isLoading: false, error: null, refetch: async () => undefined }),
+}))
+
 const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ConfigProvider>
         <AntdApp>{children}</AntdApp>
@@ -54,7 +60,8 @@ beforeEach(() => {
     setVncPasswordMock.mockReset()
     vncStatusMock.mockReset()
     listMock.mockReset()
-    listMock.mockResolvedValue({ data: { machines: [{ id: 'machine-1', active: true, metadata: {} }] } })
+    mockMachines.splice(0)
+    mockMachines.push({ id: 'machine-1', active: true })
     vncStatusMock.mockResolvedValue({ data: { configured: false } })
 })
 
@@ -93,10 +100,10 @@ describe('DesktopSection', () => {
     })
 
     it('无在线机器 → 不查询状态也不可提交', async () => {
-        listMock.mockResolvedValue({ data: { machines: [] } })
+        mockMachines.splice(0)
 
         render(<DesktopSection />, { wrapper })
-        await waitFor(() => expect(listMock).toHaveBeenCalled())
+        await waitFor(() => expect(screen.getByRole('button', { name: 'desktop.settings.save' })).toBeDisabled())
 
         // vncStatus 未被调用（无 machineId）
         expect(vncStatusMock).not.toHaveBeenCalled()

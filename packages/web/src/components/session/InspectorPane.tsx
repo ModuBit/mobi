@@ -32,7 +32,7 @@ import { ActivateCover } from '@/components/ui/ActivateCover'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
 import { InspectorEmptyState } from './InspectorEmptyState'
 import { TerminalTabLabel } from './TerminalTabLabel'
-import { INSPECTOR_ACTIONS } from './inspectorActions'
+import { INSPECTOR_ACTIONS, type InspectorActionContext } from './inspectorActions'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import {
@@ -213,24 +213,22 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
         [isMobile, chatHidden, setChatHidden, setExpanded, sessionId, t],
     )
 
-    // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS，terminal 项达上限时叠加 disable
+    // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS（可用性与执行都在清单上）
+    const actionsContext: InspectorActionContext = {
+        terminalLimitReached,
+        openFile: () => openFileTreeTab(sessionId),
+        openTerminal: () => openTerminalTab(sessionId),
+        openDesktop: machineId ? () => openDesktopTab(sessionId, machineId) : undefined,
+    }
     const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
         const { Icon } = action
-        const isTerminal = action.key === 'terminal'
-        const isDesktop = action.key === 'desktop'
-        // 终端达上限：叠加 disable（即便 Task 9 启用 terminal，达上限仍不可新建）；
-        // desktop 跟随会话机器，机器未知（旧数据）时不可用
-        const disabled = action.disabled || (isTerminal && terminalLimitReached) || (isDesktop && !machineId)
+        const disabled = action.disabled || action.enabled?.(actionsContext) === false
         return {
             key: action.key,
             icon: <Icon size={14} />,
             label: t(action.labelKey),
             disabled,
-            onClick: disabled ? undefined : () => {
-                if (isTerminal) openTerminalTab(sessionId)
-                else if (isDesktop) openDesktopTab(sessionId, machineId!)
-                else openFileTreeTab(sessionId)
-            },
+            onClick: disabled ? undefined : () => action.run(actionsContext),
         }
     })
 
@@ -343,10 +341,12 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
             )}
             {everExpanded && showEmpty && (
                 <InspectorEmptyState
-                    onOpenFile={() => openFileTreeTab(sessionId)}
-                    onOpenTerminal={() => openTerminalTab(sessionId)}
-                    onOpenDesktop={machineId ? () => openDesktopTab(sessionId, machineId) : undefined}
-                    terminalDisabled={terminalLimitReached}
+                    actionsContext={{
+                        terminalLimitReached,
+                        openFile: () => openFileTreeTab(sessionId),
+                        openTerminal: () => openTerminalTab(sessionId),
+                        openDesktop: machineId ? () => openDesktopTab(sessionId, machineId) : undefined,
+                    }}
                 />
             )}
             {/* 空态/离线态的浮动 rightChrome（tab 态的在 tabBarExtraContent）。

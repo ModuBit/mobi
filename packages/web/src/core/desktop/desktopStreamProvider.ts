@@ -29,17 +29,17 @@
 
 import { connectDesktopView, defaultRfbLoader, type DesktopViewConnection, type RfbLoader } from './desktopStreamClient'
 import { createMobiApi } from '@/core/data/api/client'
-import type { DesktopControlResponse, DesktopControlState } from '@mobi/shared'
+import { DESKTOP_CLOSE_CODE, DESKTOP_CLOSE_REASONS, desktopWsOrigin, type DesktopControlResponse, type DesktopControlState } from '@mobi/shared'
 import { KEYSYM } from '@/domain/desktop/touchInput'
 
 /** 引用归零后的宽限期：期内重新 acquire 复用连接，期满断开（GC 兜底） */
 export const DESKTOP_STREAM_GRACE_MS = 30_000
 
-/** 服务端关闭码 → 观看侧归因文案（协议单源与 hub/cli 侧对齐）；这些码都不自动重连 */
+/** 服务端关闭码 → 观看侧归因文案（码与文案单源在 shared，与 hub/cli 对齐）；这些码都不自动重连 */
 const CLOSE_CODE_REASONS: Record<number, string> = {
-    4000: 'superseded',
-    4002: 'stream closed',
-    4003: 'upstream unavailable',
+    [DESKTOP_CLOSE_CODE.SUPERSEDED]: DESKTOP_CLOSE_REASONS.SUPERSEDED,
+    [DESKTOP_CLOSE_CODE.CLOSED]: DESKTOP_CLOSE_REASONS.STREAM_CLOSED,
+    [DESKTOP_CLOSE_CODE.UPSTREAM_UNAVAILABLE]: DESKTOP_CLOSE_REASONS.UPSTREAM_UNAVAILABLE,
 }
 
 /** watch/连接失败的退避重试节奏 */
@@ -138,8 +138,8 @@ export class DesktopStreamProvider {
                 const entry = this.streams.get(machineId)
                 if (!entry) return
                 host.appendChild(entry.container)
-                // DOM 搬迁后容器尺寸可能变化，通知 noVNC 重算 scaleViewport
-                window.dispatchEvent(new Event('resize'))
+                // 尺寸重算由挂载方的 ResizeObserver 经 resize() 精确通知
+                // （ResizeObserver 初次 observe 即回调，无需额外派发）
             },
             release: () => {
                 const entry = this.streams.get(machineId)
@@ -168,7 +168,7 @@ export class DesktopStreamProvider {
 
             // 与 terminal 同模式：dev/e2e 直连 hub（__MOBI_HUB_URL__），生产 undefined 落回同源
             // （raw WS 不过 Vite 代理；代理转发会带来升级/缓冲的额外变量）
-            const hubOrigin = (__MOBI_HUB_URL__ ?? window.location.origin).replace(/^http/, 'ws')
+            const hubOrigin = desktopWsOrigin(__MOBI_HUB_URL__ ?? window.location.origin)
             const url = `${hubOrigin}/desktop/observe?token=${encodeURIComponent(token)}`
             const connection = await connectDesktopView({
                 url,
@@ -285,32 +285,40 @@ export class DesktopStreamProvider {
         this.applyControl(machineId, control)
     }
 
+    /** 展示面容器尺寸变化：通知该 machine 的连接重算 scaleViewport（精确单播，不广播 window resize） */
+    resize(machineId: string): void {
+        this.streams.get(machineId)?.connection?.requestResize()
+    }
+
     // —— 移动端触摸输入桥（迭代 2；仅 controlled 下由 UI 调用，hub 侧仍是权威边界） ——
 
     /** 敲一个键（可带挂起修饰键组合：mods 按下 → 敲键 → mods 释放） */
     tapKey(machineId: string, keysym: number, mods: number[] = []): void {
-        const entry = this.streams.get(machineId)
-        if (!entry?.connection) return
-        for (const keysymOfMod of mods) entry.connection.sendKey(keysymOfMod, true)
-        entry.connection.sendKey(keysym)
-        for (const keysymOfMod of [...mods].reverse()) entry.connection.sendKey(keysymOfMod, false)
+        this.withMods(machineId, mods, (connection) => connection.sendKey(keysym))
     }
 
-    /** 连续退格（哨兵 diff 出的删除动作，逐个敲） */
+    /** 连续退格（哨兵 diff 出的删除动作）：修饰键整段只按/放一次，N 个退格共用 */
     sendBackspaces(machineId: string, count: number, mods: number[] = []): void {
-        for (let i = 0; i < count; i++) {
-            this.tapKey(machineId, KEYSYM.BACKSPACE, mods)
-        }
+        this.withMods(machineId, mods, (connection) => {
+            for (let i = 0; i < count; i++) {
+                connection.sendKey(KEYSYM.BACKSPACE)
+            }
+        })
     }
 
     /** 发送文本（软键盘桥：哨兵 diff 出的插入内容） */
     sendText(machineId: string, text: string, mods: number[] = []): void {
         if (!text) return
-        const entry = this.streams.get(machineId)
-        if (!entry?.connection) return
-        for (const keysymOfMod of mods) entry.connection.sendKey(keysymOfMod, true)
-        entry.connection.sendText(text)
-        for (const keysymOfMod of [...mods].reverse()) entry.connection.sendKey(keysymOfMod, false)
+        this.withMods(machineId, mods, (connection) => connection.sendText(text))
+    }
+
+    /** 修饰键组合的统一括号：mods 按下 → 动作 → mods 反序释放（顺序约定只此一处） */
+    private withMods(machineId: string, mods: number[], action: (connection: DesktopViewConnection) => void): void {
+        const connection = this.streams.get(machineId)?.connection
+        if (!connection) return
+        for (const keysymOfMod of mods) connection.sendKey(keysymOfMod, true)
+        action(connection)
+        for (const keysymOfMod of [...mods].reverse()) connection.sendKey(keysymOfMod, false)
     }
 
     private notify(): void {
@@ -326,9 +334,11 @@ export class DesktopStreamProvider {
     }
 }
 
-/** app 级单例：watch/控制走全局 api client（cookie 链路无 token 依赖，实例全局单例） */
+/** app 级单例：api client 惰性建一次（含 axios 实例装配），重连路径不重复构造 */
+let apiClient: ReturnType<typeof createMobiApi> | null = null
+const getApiClient = (): ReturnType<typeof createMobiApi> => (apiClient ??= createMobiApi())
 export const desktopStreamProvider = new DesktopStreamProvider({
-    watch: (machineId) => createMobiApi().desktop.watch(machineId).then(({ data }) => data.observeToken),
-    grantControl: (machineId) => createMobiApi().desktop.grantControl(machineId).then(({ data }) => data),
-    releaseControl: (machineId) => createMobiApi().desktop.releaseControl(machineId).then(({ data }) => data),
+    watch: (machineId) => getApiClient().desktop.watch(machineId).then(({ data }) => data.observeToken),
+    grantControl: (machineId) => getApiClient().desktop.grantControl(machineId).then(({ data }) => data),
+    releaseControl: (machineId) => getApiClient().desktop.releaseControl(machineId).then(({ data }) => data),
 })

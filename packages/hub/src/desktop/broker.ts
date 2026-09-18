@@ -25,17 +25,18 @@
 
 import { randomUUID } from 'node:crypto'
 import type { ServerWebSocket } from 'bun'
-import { desktopAttachMetadataSchema, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
+import { desktopAttachMetadataSchema, DESKTOP_CLOSE_CODE, DESKTOP_WS_DATA_KEY, type DesktopControlState } from '@mobi/shared'
 import { createOneTimeTicketStore } from './tickets'
 import { RfbHandshakeProxy } from './rfbPreauth'
 import { createRfbInputFilter, RfbProtocolError, type RfbInputFilter } from './rfbInputFilter'
 import { hubLogger } from '../logger'
 
+/** 对外形状：streams 列表与 watch 响应条目 */
 export interface DesktopSessionInfo {
     sessionId: string
     machineId: string
     startedAtMs: number
-    /** 控制权状态（迭代 2）：streams 列表与 watch 响应携带，供 web 初次对齐 */
+    /** 控制权状态（迭代 2）：供 web 初次对齐，由 controlled 布尔派生 */
     control: DesktopControlState
 }
 
@@ -57,7 +58,14 @@ interface DesktopWsData {
     [DESKTOP_WS_DATA_KEY]: { role: SideRole; sessionId: string }
 }
 
-interface DesktopSession extends DesktopSessionInfo {
+/**
+ * 会话内部状态：控制权唯一事实源是 `controlled` 布尔，对外形状（含 control 枚举）
+ * 由 controlInfo 统一派生——不在内部状态上冗余存枚举。
+ */
+interface DesktopSession {
+    sessionId: string
+    machineId: string
+    startedAtMs: number
     attachTicket: string
     observeToken: string
     attach?: ServerWebSocket<DesktopWsData>
@@ -98,8 +106,8 @@ export interface DesktopBroker {
     consumeObserveToken(token: string, nowMs?: number): string | null
     /** 活跃会话列表（侧边栏列表 API 的数据源） */
     listSessions(): DesktopSessionInfo[]
-    /** 显式拆除（抢占/关闭 API/协议错误统一入口） */
-    teardownSession(sessionId: string, code: number, reason: string): void
+    /** 显式拆除（抢占/关闭 API/协议错误统一入口）；返回是否真的拆了一个活跃会话 */
+    teardownSession(sessionId: string, code: number, reason: string): boolean
     /** 授予控制权（幂等；按 machineId 定位——同 machine 同时只有一条观看流）；无会话返回 null */
     grantControl(machineId: string): DesktopControlChange | null
     /** 退出控制权（幂等，回落原因供日志/归因）；无会话返回 null */
@@ -139,11 +147,16 @@ function frameBytes(data: unknown): number {
     return 64
 }
 
-export const DESKTOP_CLOSE_CODE_SUPERSEDED = 4000
-export const DESKTOP_CLOSE_CODE_PEER_GONE = 4001
-/** 主动/管理关闭（用户从列表关流、cli 不可达回滚）：观看侧应归因展示而非自动重连 */
-export const DESKTOP_CLOSE_CODE_CLOSED = 4002
-export const DESKTOP_CLOSE_CODE_PROTOCOL = 1008
+/** 观看流 WS 关闭码见 shared DESKTOP_CLOSE_CODE（跨端协议唯一真相源） */
+
+/** 会话级定时器清理：teardown 与 open 各点共用，防新增定时器漏清 */
+function clearTimer(timer?: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>): undefined {
+    if (timer) {
+        clearTimeout(timer)
+        clearInterval(timer)
+    }
+    return undefined
+}
 
 export function createDesktopBroker(options: {
     ttlMs?: number
@@ -163,29 +176,17 @@ export function createDesktopBroker(options: {
     const sessions = new Map<string, DesktopSession>()
     const sessionIdByMachine = new Map<string, string>()
 
-    function teardownSession(sessionId: string, code: number, reason: string): void {
+    function teardownSession(sessionId: string, code: number, reason: string): boolean {
         const session = sessions.get(sessionId)
         if (!session || session.tearingDown) {
-            return
+            return false
         }
         hubLogger.warn(`[desktop] teardown session=${sessionId} machine=${session.machineId} code=${code} reason=${reason}`)
         session.tearingDown = true
-        if (session.statsTimer) {
-            clearInterval(session.statsTimer)
-            session.statsTimer = undefined
-        }
-        if (session.pendingAttachTimer) {
-            clearTimeout(session.pendingAttachTimer)
-            session.pendingAttachTimer = undefined
-        }
-        if (session.pendingObserveTimer) {
-            clearTimeout(session.pendingObserveTimer)
-            session.pendingObserveTimer = undefined
-        }
-        if (session.controlIdleTimer) {
-            clearTimeout(session.controlIdleTimer)
-            session.controlIdleTimer = undefined
-        }
+        session.statsTimer = clearTimer(session.statsTimer)
+        session.pendingAttachTimer = clearTimer(session.pendingAttachTimer)
+        session.pendingObserveTimer = clearTimer(session.pendingObserveTimer)
+        session.controlIdleTimer = clearTimer(session.controlIdleTimer)
         attachTickets.cancel(session.attachTicket)
         observeTokens.cancel(session.observeToken)
         sessions.delete(sessionId)
@@ -194,6 +195,7 @@ export function createDesktopBroker(options: {
         }
         session.attach?.close(code, reason)
         session.observe?.close(code, reason)
+        return true
     }
 
     function controlInfo(session: DesktopSession): DesktopControlChange {
@@ -220,12 +222,22 @@ export function createDesktopBroker(options: {
         session.inputFilter?.setControlled(controlled)
         if (controlled) {
             armControlIdleTimer(session)
-        } else if (session.controlIdleTimer) {
-            clearTimeout(session.controlIdleTimer)
-            session.controlIdleTimer = undefined
+        } else {
+            session.controlIdleTimer = clearTimer(session.controlIdleTimer)
         }
         hubLogger.info(`[desktop] control session=${session.sessionId} machine=${session.machineId} state=${controlled ? 'controlled' : 'view-only'} reason=${reason}`)
         onControlChange?.(controlInfo(session))
+    }
+
+    /** 控制权变迁的唯一路径：按 machineId 定位会话（幂等；无活跃会话返回 null） */
+    function changeControl(machineId: string, controlled: boolean, reason: string): DesktopControlChange | null {
+        const sessionId = sessionIdByMachine.get(machineId)
+        const session = sessionId ? sessions.get(sessionId) : undefined
+        if (!session || session.tearingDown) {
+            return null
+        }
+        applyControlState(session, controlled, reason)
+        return controlInfo(session)
     }
 
     /**
@@ -245,7 +257,7 @@ export function createDesktopBroker(options: {
         if (to === session.observe) {
             session.stats.observeOut += frameBytes(data)
             if (session.stats.attachIn - session.stats.observeOut > MAX_BUFFERED_BYTES) {
-                teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'slow consumer')
+                teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'slow consumer')
             }
         }
         to.send(data as never)
@@ -267,7 +279,7 @@ export function createDesktopBroker(options: {
                         session.handshakeLive = true
                         // 握手期间如有背压积压，排空后进入稳态
                     } else {
-                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, reason ?? 'handshake failed')
+                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, reason ?? 'handshake failed')
                     }
                 },
             })
@@ -303,13 +315,13 @@ export function createDesktopBroker(options: {
             }
             metadata = JSON.parse(new TextDecoder().decode(bytes))
         } catch {
-            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'invalid attach metadata')
+            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'invalid attach metadata')
             return
         }
 
         const parsed = desktopAttachMetadataSchema.safeParse(metadata)
         if (!parsed.success || parsed.data.machineId !== session.machineId) {
-            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'attach metadata mismatch')
+            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'attach metadata mismatch')
             return
         }
 
@@ -325,7 +337,7 @@ export function createDesktopBroker(options: {
             // 抢占：同 machineId 旧会话拆除（旧两侧收到 superseded）
             const existingId = sessionIdByMachine.get(machineId)
             if (existingId) {
-                teardownSession(existingId, DESKTOP_CLOSE_CODE_SUPERSEDED, 'superseded')
+                teardownSession(existingId, DESKTOP_CLOSE_CODE.SUPERSEDED, 'superseded')
             }
 
             const sessionId = randomUUID()
@@ -345,7 +357,6 @@ export function createDesktopBroker(options: {
                 toAttach: { frames: [] },
                 toObserve: { frames: [] },
                 stats: { attachIn: 0, observeOut: 0 },
-                control: 'view-only',
                 controlled: false,
             }
             sessions.set(sessionId, session)
@@ -366,7 +377,7 @@ export function createDesktopBroker(options: {
             // attach 超时未到：会话过期（浏览器悬挂占位防泄漏）；attach 到达后清定时器
             session.pendingAttachTimer = setTimeout(() => {
                 if (!session.attach) {
-                    teardownSession(sessionId, DESKTOP_CLOSE_CODE_PEER_GONE, 'attach timeout')
+                    teardownSession(sessionId, DESKTOP_CLOSE_CODE.PEER_GONE, 'attach timeout')
                 }
             }, ttlMs)
             session.pendingAttachTimer.unref?.()
@@ -400,29 +411,11 @@ export function createDesktopBroker(options: {
         },
 
         grantControl(machineId) {
-            const sessionId = sessionIdByMachine.get(machineId)
-            if (!sessionId) {
-                return null
-            }
-            const session = sessions.get(sessionId)
-            if (!session || session.tearingDown) {
-                return null
-            }
-            applyControlState(session, true, 'granted by user')
-            return controlInfo(session)
+            return changeControl(machineId, true, 'granted by user')
         },
 
         releaseControl(machineId, reason) {
-            const sessionId = sessionIdByMachine.get(machineId)
-            if (!sessionId) {
-                return null
-            }
-            const session = sessions.get(sessionId)
-            if (!session || session.tearingDown) {
-                return null
-            }
-            applyControlState(session, false, reason)
-            return controlInfo(session)
+            return changeControl(machineId, false, reason)
         },
 
         teardownSession,
@@ -431,31 +424,25 @@ export function createDesktopBroker(options: {
             const meta = ws.data[DESKTOP_WS_DATA_KEY]
             const session = sessions.get(meta.sessionId)
             if (!session) {
-                ws.close(DESKTOP_CLOSE_CODE_PROTOCOL, 'session gone')
+                ws.close(DESKTOP_CLOSE_CODE.PROTOCOL, 'session gone')
                 return
             }
             if (meta.role === 'attach') {
-                if (session.pendingAttachTimer) {
-                    clearTimeout(session.pendingAttachTimer)
-                    session.pendingAttachTimer = undefined
-                }
+                session.pendingAttachTimer = clearTimer(session.pendingAttachTimer)
                 session.attach = ws
                 // observe 一直不来（token 过期/页面被杀）会话即悬挂：cli 泵空跑、
                 // upstream VNC 连接被无谓占用——attach 开链后起同等时效的兜底定时器
                 if (!session.pendingObserveTimer) {
                     const timer = setTimeout(() => {
                         if (!session.observe) {
-                            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PEER_GONE, 'observe timeout')
+                            teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PEER_GONE, 'observe timeout')
                         }
                     }, ttlMs)
                     timer.unref?.()
                     session.pendingObserveTimer = timer
                 }
             } else {
-                if (session.pendingObserveTimer) {
-                    clearTimeout(session.pendingObserveTimer)
-                    session.pendingObserveTimer = undefined
-                }
+                session.pendingObserveTimer = clearTimer(session.pendingObserveTimer)
                 session.observe = ws
             }
             tryStartRelay(session)
@@ -475,7 +462,7 @@ export function createDesktopBroker(options: {
 
             // 每帧大小守卫（防恶意大帧）
             if (frameBytes(data) > MAX_RELAY_FRAME_BYTES) {
-                teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'frame too large')
+                teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'frame too large')
                 return
             }
 
@@ -514,7 +501,7 @@ export function createDesktopBroker(options: {
                 } catch (error) {
                     if (error instanceof RfbProtocolError) {
                         session.inputFilter.reset()
-                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE_PROTOCOL, 'rfb input parse failed')
+                        teardownSession(session.sessionId, DESKTOP_CLOSE_CODE.PROTOCOL, 'rfb input parse failed')
                         return
                     }
                     throw error
@@ -539,7 +526,7 @@ export function createDesktopBroker(options: {
             // 迭代 1 语义：任一侧离开即会话终止。attach 侧若带 4xxx 归因码
             // （如 4003 上游不可用）则原样透传给观看侧，Provider 可归因不重连；
             // 普通断开（页面关闭/网络）归一为 4001 peer gone
-            const code = closeCode && closeCode >= 4000 ? closeCode : DESKTOP_CLOSE_CODE_PEER_GONE
+            const code = closeCode && closeCode >= 4000 ? closeCode : DESKTOP_CLOSE_CODE.PEER_GONE
             teardownSession(session.sessionId, code, closeReason || 'peer gone')
         },
     }

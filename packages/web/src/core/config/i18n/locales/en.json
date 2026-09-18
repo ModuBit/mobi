@@ -728,14 +728,12 @@
     "desktop": {
         "title": "Remote Desktop",
         "connecting": "Connecting to desktop…",
-        "connected": "Connected",
         "disconnected": "Disconnected",
-        "reconnect": "Reconnect",
         "noMachine": "No machine online",
         "viewOnlyHint": "Keyboard and pointer input has no effect until you take control",
-            "touch": {
-                "keyboard": "Keyboard"
-            },
+        "touch": {
+            "keyboard": "Keyboard"
+        },
         "firstFramePending": "Receiving video…",
         "landscape": "Landscape",
         "landscapeExit": "Exit landscape",
@@ -757,7 +755,6 @@
             "superseded": "A new viewing session started on another device for this machine",
             "upstreamUnavailable": "Screen sharing on the controlled machine is unavailable: make sure it is enabled in System Settings"
         },
-        "start": "Watch",
         "settings": {
             "title": "Remote Desktop",
             "guideTitle": "Complete two steps before first use",

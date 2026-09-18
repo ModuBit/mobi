@@ -24,8 +24,8 @@
  */
 
 import net from 'node:net'
+import { DESKTOP_CLOSE_CODE, DESKTOP_CLOSE_REASONS, desktopWsOrigin, type DesktopAttachMetadata } from '@mobi/shared'
 import { duplexEndpoint, createStreamPump, type PumpEndpoint } from './pump'
-import type { DesktopAttachMetadata } from '@mobi/shared'
 
 /**
  * Bun 客户端 WebSocket → PumpEndpoint。
@@ -74,14 +74,10 @@ export interface DesktopStreamHandle {
     readonly trigger: DesktopStreamTeardownTrigger | undefined
 }
 
-/** http(s) hub 地址 → ws(s) 地址 */
-export function hubWsUrl(gatewayUrl: string): string {
-    return gatewayUrl.replace(/^http/i, 'ws')
-}
-
 /**
  * 建立并运行一条 desktop 流直到任一侧关闭或 abort。
  * resolve 于流结束（含 abort/错误路径——失败原因看 trigger 与日志），不 reject。
+ * signal 可选：当前调用方（desktop-stream RPC）无主动取消通道，缺省即不挂 abort。
  */
 export function runDesktopStreamTransport(params: {
     gatewayUrl: string
@@ -91,7 +87,7 @@ export function runDesktopStreamTransport(params: {
     target: { host: string; port: number }
     /** VNC 密码（读自身 settings；随 metadata 上行供 hub 代认证，可选） */
     vncPassword?: string
-    signal: AbortSignal
+    signal?: AbortSignal
     log?: (message: string, data?: unknown) => void
 }): DesktopStreamHandle {
     const { log = () => undefined } = params
@@ -99,7 +95,7 @@ export function runDesktopStreamTransport(params: {
 
     const done = (async (): Promise<void> => {
         // 1. attach WS：票据在 upgrade 时被 hub 兑换
-        const wsUrl = `${hubWsUrl(params.gatewayUrl)}${params.attachPath}?ticket=${encodeURIComponent(params.ticket)}`
+        const wsUrl = `${desktopWsOrigin(params.gatewayUrl)}${params.attachPath}?ticket=${encodeURIComponent(params.ticket)}`
         const ws = new WebSocket(wsUrl)
         ws.binaryType = 'arraybuffer'
 
@@ -131,7 +127,7 @@ export function runDesktopStreamTransport(params: {
             teardownTrigger = 'target-connect-failed'
             // 4003 上游不可用：hub 透传给观看侧，Provider 归因展示且不自动重连
             // （否则「屏幕共享没开」会诱发观看端 watch/反连的快速循环）
-            ws.close(4003, 'upstream unavailable')
+            ws.close(DESKTOP_CLOSE_CODE.UPSTREAM_UNAVAILABLE, DESKTOP_CLOSE_REASONS.UPSTREAM_UNAVAILABLE)
             return
         }
 
@@ -144,9 +140,9 @@ export function runDesktopStreamTransport(params: {
         }
         ws.send(new TextEncoder().encode(JSON.stringify(metadata)))
 
-        // 4. 开泵：两侧数据事件接入泵（a=ws，b=TCP）
+        // 4. 开泵：两侧数据事件接入泵（a=ws，b=TCP）。Buffer 本身是 Uint8Array，直接入泵免拷贝
         const pump = createStreamPump(bunWsClientEndpoint(ws), duplexEndpoint(socket))
-        socket.on('data', (chunk: Buffer) => pump.feed('b', new Uint8Array(chunk)))
+        socket.on('data', (chunk: Buffer) => pump.feed('b', chunk))
         ws.addEventListener('message', (event) => {
             const data = (event as MessageEvent).data
             const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data)
@@ -166,11 +162,11 @@ export function runDesktopStreamTransport(params: {
         socket.on('error', () => teardown('target-closed'))
 
         const onAbort = (): void => teardown('aborted')
-        if (params.signal.aborted) {
+        if (params.signal?.aborted) {
             onAbort()
-        } else {
+        } else if (params.signal) {
             params.signal.addEventListener('abort', onAbort, { once: true })
-            pump.onTeardown(() => params.signal.removeEventListener('abort', onAbort))
+            pump.onTeardown(() => params.signal?.removeEventListener('abort', onAbort))
         }
 
         // metadata 已送达，开泵（TCP 侧仍在 pause，泵恢复数据通路）

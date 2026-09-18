@@ -154,7 +154,6 @@ export class ApiMachineClient {
                 attachPath: parsed.data.attachPath,
                 target: { host: '127.0.0.1', port: DESKTOP_VNC_PORT },
                 vncPassword: settings.desktop?.vncPassword,
-                signal: new AbortController().signal,
                 log: (message) => logger.debug(`[desktop] ${message}`),
             })
             handle.done.catch((error) => logger.debug('[desktop] stream transport error', error))

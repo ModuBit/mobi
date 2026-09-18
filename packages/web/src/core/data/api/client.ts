@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -433,7 +433,7 @@ export function createMobiApi() {
             setVncPassword: (machineId: string, vncPassword: string) =>
                 client.post<{ success: true }>('/api/desktop/vnc-password', { machineId, vncPassword }),
             vncStatus: (machineId: string, opts?: { signal?: AbortSignal }) =>
-                client.get<{ configured: boolean }>('/api/desktop/vnc-status', { params: { machineId }, signal: opts?.signal }),
+                client.get<DesktopVncStatus>('/api/desktop/vnc-status', { params: { machineId }, signal: opts?.signal }),
         },
     }
 }

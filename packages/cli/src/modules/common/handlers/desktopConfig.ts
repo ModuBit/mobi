@@ -22,7 +22,7 @@
  * 不落盘副本；状态查询只回「是否已配置」，密码本身永不回读。
  */
 
-import { desktopVncPasswordSubmissionSchema } from '@mobi/shared'
+import { desktopVncPasswordSchema } from '@mobi/shared'
 import { updateSettings, readSettings } from '@/persistence'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 
@@ -30,7 +30,7 @@ export function registerDesktopConfigHandler(manager: RpcHandlerManager): void {
     manager.registerHandler<unknown, { result: 'success' } | { result: 'error'; reason: string }>(
         'set-desktop-vnc-password',
         async (params) => {
-            const parsed = desktopVncPasswordSubmissionSchema.safeParse(params)
+            const parsed = desktopVncPasswordSchema.safeParse(params)
             if (!parsed.success) {
                 return { result: 'error', reason: 'VNC 密码须为 1-16 个字符（与 macOS 屏幕共享设置一致）' }
             }

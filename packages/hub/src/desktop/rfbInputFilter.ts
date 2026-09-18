@@ -126,7 +126,7 @@ export function createRfbInputFilter(): RfbInputFilter {
         const buffer = carry ? concat(carry, data) : data
         carry = null
 
-        const passthrough: number[][] = []
+        const passthrough: Uint8Array[] = []
         let sawInput = false
         let offset = 0
 
@@ -135,7 +135,7 @@ export function createRfbInputFilter(): RfbInputFilter {
                 carry = buffer
                 return { passthrough: new Uint8Array(0), sawInput: false }
             }
-            passthrough.push(Array.from(buffer.subarray(0, 1)))
+            passthrough.push(buffer.subarray(0, 1))
             clientInitSeen = true
             offset = 1
         }
@@ -163,12 +163,27 @@ export function createRfbInputFilter(): RfbInputFilter {
             }
             // SetDesktopSize 恒剥；其余输入类仅 view-only 剥；非输入恒放行
             if (!isInput || (type !== 251 && controlled)) {
-                passthrough.push(Array.from(message))
+                passthrough.push(message)
             }
             offset += length
         }
 
-        return { passthrough: new Uint8Array(passthrough.flat()), sawInput }
+        // 常见路径（单条完整消息/直通）零拷贝返回视图；调用方 send 后不保留引用。
+        // 仅多片段（一帧含多条消息 + 直通首字节）才归并复制
+        if (passthrough.length === 1) {
+            return { passthrough: passthrough[0], sawInput }
+        }
+        if (passthrough.length === 0) {
+            return { passthrough: new Uint8Array(0), sawInput }
+        }
+        const total = passthrough.reduce((sum, piece) => sum + piece.byteLength, 0)
+        const merged = new Uint8Array(total)
+        let cursor = 0
+        for (const piece of passthrough) {
+            merged.set(piece, cursor)
+            cursor += piece.byteLength
+        }
+        return { passthrough: merged, sawInput }
     }
 
     return {

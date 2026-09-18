@@ -61,6 +61,15 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
 
+// —— mock useMachines（页面改走共享 query hook）/ useSearch（TanStack Router）——
+const mockMachines: Array<{ id: string; active: boolean }> = []
+vi.mock('@/core/data/hooks/queries/useMachines', () => ({
+    useMachines: () => ({ machines: mockMachines, isLoading: false, error: null, refetch: async () => undefined }),
+}))
+vi.mock('@tanstack/react-router', () => ({
+    useSearch: () => ({ machine: undefined as string | undefined }),
+}))
+
 const wrapper = ({ children }: { children: React.ReactNode }) => <ConfigProvider>{children}</ConfigProvider>
 
 // jsdom 无 ResizeObserver：stub 为空实现（surface 用它观察展示面尺寸）
@@ -77,10 +86,8 @@ beforeEach(() => {
     fakeLease.attachTo.mockClear()
     fakeLease.release.mockClear()
     watchMock.mockReset()
-    listMock.mockReset()
-    listMock.mockResolvedValue({
-        data: { machines: [{ id: 'machine-idle', active: false }, { id: 'machine-active', active: true }] },
-    })
+    mockMachines.splice(0)
+    mockMachines.push({ id: 'machine-idle', active: false }, { id: 'machine-active', active: true })
 })
 
 afterEach(() => {
@@ -91,7 +98,6 @@ describe('DesktopPage', () => {
     it('挂载即取在线机器列表并默认选中在线机器，acquire 展示面', async () => {
         render(<DesktopPage />, { wrapper })
 
-        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1))
         await waitFor(() => expect(acquireCalls).toHaveLength(1))
         expect(acquireCalls[0]!.machineId).toBe('machine-active')
         expect(fakeLease.attachTo).toHaveBeenCalledTimes(1)

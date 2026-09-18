@@ -21,7 +21,7 @@
  * 时钟由调用方注入（nowMs），测试与过期判定不依赖真实时间。
  */
 
-import { randomBytes } from 'node:crypto'
+import { generateSecureToken } from '../utils/crypto'
 
 export interface TicketGrant {
     token: string
@@ -45,9 +45,6 @@ interface TicketEntry<T> {
 /** 默认 TTL：desktop 凭据的短时效基线（spec：60s 一次性票据） */
 const DEFAULT_TICKET_TTL_MS = 60_000
 
-/** token 字节数：48 hex 字符，与 openclaw 同量级（不可预测 + URL 安全） */
-const TICKET_BYTES = 24
-
 export function createOneTimeTicketStore<T>(options: {
     defaultTtlMs?: number
 } = {}): OneTimeTicketStore<T> {
@@ -56,7 +53,8 @@ export function createOneTimeTicketStore<T>(options: {
 
     return {
         mint(payload, { nowMs, ttlMs }) {
-            const token = randomBytes(TICKET_BYTES).toString('hex')
+            // 复用 hub 统一 token 生成（base64url，URL 安全）：避免出现第二套 token 格式
+            const token = generateSecureToken()
             const expiresAtMs = nowMs + (ttlMs ?? defaultTtlMs)
             entries.set(token, { payload, expiresAtMs })
             return { token, expiresAtMs }

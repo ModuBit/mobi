@@ -86,7 +86,7 @@ describe('Desktop watch API', () => {
         })
         expect(res.status).toBe(200)
         const body = await res.json() as { observeToken: string; expiresAtMs: number }
-        expect(body.observeToken).toMatch(/^[0-9a-f]{48}$/)
+        expect(body.observeToken).toMatch(/^[A-Za-z0-9_-]{40,}$/)
         expect(body.expiresAtMs).toBeGreaterThan(Date.now())
 
         expect(desktopStreamCalls).toHaveLength(1)
@@ -94,7 +94,7 @@ describe('Desktop watch API', () => {
             machineId: 'test-machine-1',
             attachPath: '/desktop/attach',
         })
-        expect(desktopStreamCalls[0].ticket).toMatch(/^[0-9a-f]{48}$/)
+        expect(desktopStreamCalls[0].ticket).toMatch(/^[A-Za-z0-9_-]{40,}$/)
     })
 
     test('watch 无会话占用残留：同 machineId 重复 watch 签发新凭据', async () => {

@@ -25,42 +25,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Select, Typography } from 'antd'
-import { useMobiApi, extractApiError } from '@/core/data/api/client'
+import { useSearch } from '@tanstack/react-router'
+import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { DesktopStreamSurface } from '@/components/desktop/DesktopStreamSurface'
-
-type DesktopViewState =
-    | { phase: 'idle' }
-    | { phase: 'error'; message: string }
 
 export function DesktopPage() {
     const { t } = useTranslation()
-    const api = useMobiApi()
-    // 侧边栏点击流进入时经 ?machine= 直达该机器；无参数走在线机器兜底
-    const [machineId, setMachineId] = useState<string | null>(() => {
-        return new URLSearchParams(window.location.search).get('machine')
-    })
-    const [machines, setMachines] = useState<Array<{ id: string; label: string }>>([])
-    const [viewState, setViewState] = useState<DesktopViewState>({ phase: 'idle' })
+    const { machines, error: machinesError } = useMachines()
+    // 侧边栏点击流进入时经 ?machine= 直达该机器（router validateSearch 已归一化）；无参数走在线机器兜底
+    const routeMachineId = useSearch({ from: '/mainLayout/desktop' }).machine
+    const [machineId, setMachineId] = useState<string | null>(routeMachineId ?? null)
 
-    // tracer 简化：拉一次在线机器列表（侧边栏列表与多机器管理在 ticket 06）
     useEffect(() => {
-        let cancelled = false
-        api.machines
-            .list()
-            .then(({ data }) => {
-                if (cancelled) return
-                const options = data.machines.map((m) => ({ id: m.id, label: m.id }))
-                setMachines(options)
-                const active = data.machines.find((m) => m.active)
-                setMachineId((cur) => cur ?? active?.id ?? options[0]?.id ?? null)
-            })
-            .catch((error) => {
-                if (!cancelled) setViewState({ phase: 'error', message: extractApiError(error) })
-            })
-        return () => {
-            cancelled = true
-        }
-    }, [api])
+        setMachineId((cur) => cur ?? routeMachineId ?? null)
+    }, [routeMachineId])
+
+    // 无 URL 参数时兜底选第一台在线机器
+    useEffect(() => {
+        setMachineId((cur) => cur ?? machines.find((m) => m.active)?.id ?? machines[0]?.id ?? null)
+    }, [machines])
+
+    const options = useMemo(
+        () => machines.map((m) => ({ value: m.id, label: m.id })),
+        [machines],
+    )
 
     const surface = useMemo(() => (machineId ? <DesktopStreamSurface machineId={machineId} /> : null), [machineId])
 
@@ -76,13 +64,13 @@ export function DesktopPage() {
                     value={machineId ?? undefined}
                     placeholder={t('desktop.noMachine')}
                     onChange={(id) => setMachineId(id)}
-                    options={machines.map((m) => ({ value: m.id, label: m.label }))}
+                    options={options}
                 />
             </div>
             <Typography.Text type="secondary">{t('desktop.viewOnlyHint')}</Typography.Text>
 
-            {viewState.phase === 'error' && (
-                <Typography.Text type="danger">{viewState.message}</Typography.Text>
+            {machinesError && (
+                <Typography.Text type="danger">{machinesError}</Typography.Text>
             )}
 
             {/* 画面容器：DesktopStreamSurface 挂载即 acquire（连接与 inspector tab 共享） */}

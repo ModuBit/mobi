@@ -15,7 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
@@ -863,7 +863,7 @@ export class SyncEngine {
     }
 
     /** machine 通道 desktop 配置：VNC 密码配置状态 */
-    async machineDesktopVncStatus(machineId: string): Promise<{ configured: boolean }> {
+    async machineDesktopVncStatus(machineId: string): Promise<DesktopVncStatus> {
         return await this.rpcGateway.machineDesktopVncStatus(machineId)
     }
 

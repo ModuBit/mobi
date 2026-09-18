@@ -16,6 +16,7 @@
 
 import { Bell, Globe, Bug, Monitor, type LucideIcon } from 'lucide-react'
 import { isDebugUnlocked } from '@/core/lib/debug'
+import { DESKTOP_ENTRY_ENABLED } from '@/domain/desktop/featureGate'
 
 /**
  * 设置分区导航断点：≥992px 显示左侧分区导航（主侧栏240+分区导航200+内容720 的宽度预算）。
@@ -44,7 +45,7 @@ export interface SettingsSection {
 export const SETTINGS_SECTIONS: SettingsSection[] = [
     { id: 'notifications', titleKey: 'settings.sections.notifications.title', descKey: 'settings.sections.notifications.desc', icon: Bell, visible: () => true },
     { id: 'web-tools', titleKey: 'settings.sections.webTools.title', descKey: 'settings.sections.webTools.desc', icon: Globe, visible: () => true, badge: 'web-tools-status' },
-    { id: 'desktop', titleKey: 'settings.sections.desktop.title', descKey: 'settings.sections.desktop.desc', icon: Monitor, visible: () => true },
+    { id: 'desktop', titleKey: 'settings.sections.desktop.title', descKey: 'settings.sections.desktop.desc', icon: Monitor, visible: () => DESKTOP_ENTRY_ENABLED },
     { id: 'debug', titleKey: 'settings.sections.debug.title', descKey: 'settings.sections.debug.desc', icon: Bug, visible: () => isDebugUnlocked() },
 ]
 

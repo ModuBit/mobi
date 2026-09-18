@@ -33,7 +33,6 @@ import {
     DESKTOP_ATTACH_PATH,
     DESKTOP_OBSERVE_PATH,
     DESKTOP_WS_DATA_KEY,
-    desktopStreamRequestSchema,
 } from '@mobi/shared'
 import type { DesktopBroker } from './broker'
 
@@ -135,9 +134,4 @@ export function composeWebsocketHandlers<TData>(
 function isDesktopSocket(ws: ServerWebSocket<unknown>): boolean {
     const data = ws.data as Record<string, unknown> | undefined
     return Boolean(data && DESKTOP_WS_DATA_KEY in data && data[DESKTOP_WS_DATA_KEY])
-}
-
-/** attach metadata 的 RPC 参数校验（hub 路由下发与 cli 侧共用形状，运行时守卫在 cli） */
-export function parseDesktopStreamRequest(params: unknown) {
-    return desktopStreamRequestSchema.safeParse(params)
 }
