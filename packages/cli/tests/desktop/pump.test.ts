@@ -154,6 +154,46 @@ describe('createStreamPump（内存端点）', () => {
         pump.onTeardown((reason) => reasons.push(reason))
         expect(reasons).toEqual(['early'])
     })
+
+    test('无背压能力的端点：恒开泵照常透传', () => {
+        // Bun 客户端 WS 的真实形状：只声明 send/close/isOpen
+        const written: Uint8Array[] = []
+        let open = true
+        const minimal = {
+            send: (data: Uint8Array) => {
+                written.push(data)
+                return true
+            },
+            close() {
+                open = false
+            },
+            isOpen: () => open,
+        }
+        const full = makeMemoryEndpoint()
+        const pump = createStreamPump(minimal, full.endpoint)
+
+        pump.feed('a', bytes(1, 2))
+        expect(full.written).toEqual([bytes(1, 2)])
+        pump.teardown()
+        expect(minimal.isOpen()).toBe(false)
+    })
+
+    test('来源无 pause：目标恒背压也不炸（背压是端点的可选能力）', () => {
+        const noBackpressureOrigin = {
+            send: () => true,
+            close() {},
+            isOpen: () => true,
+        }
+        const alwaysBackpressured = {
+            send: () => false,
+            close() {},
+            isOpen: () => true,
+            onDrain() {},
+        }
+        const pump = createStreamPump(noBackpressureOrigin, alwaysBackpressured)
+        expect(() => pump.feed('a', bytes(1))).not.toThrow()
+        pump.teardown()
+    })
 })
 
 describe('duplexEndpoint（内存 Duplex 适配器）', () => {

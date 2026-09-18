@@ -30,11 +30,12 @@ import { duplexEndpoint, createStreamPump, type PumpEndpoint } from './pump'
 /**
  * Bun 客户端 WebSocket → PumpEndpoint。
  *
- * 背压说明（重要）：Bun 客户端 WebSocket 的 bufferedAmount 只在 send 调用时增长、
- * 从不随后台 flush 衰减（探针实测恒定卡死），因此无法用它做可靠的背压水位——
- * 这里不做暂停判定、send 恒成功，洪峰由 Bun 内部缓冲吸收（首帧全屏 raw 约 20-60MB、
- * 本机回环一次性），终局背压由 hub 侧的 64MB 中继缓冲兜底（超限拆会话）。
- * onDrain 保留空实现以维持 PumpEndpoint 形状（pump 的恢复回调不会触发）。
+ * 背压说明（诚实化）：Bun 客户端 WS 的 bufferedAmount 只在 send 调用时增长、
+ * 从不随后台 flush 衰减（探针实测恒定卡死）——排空回调永远不会触发，因此
+ * 不声明 onDrain（接口可选能力），泵侧也不会注册恢复路径。pause/resume 保留：
+ * 目标方向（TCP）写不动时暂停 WS 读取仍有意义。send 恒成功，洪峰由 Bun 内部
+ * 缓冲吸收（首帧全屏 raw 约 20-60MB、本机回环一次性），终局背压由 hub 侧的
+ * 64MB 中继缓冲兜底（超限拆会话）。
  */
 export function bunWsClientEndpoint(ws: WebSocket): PumpEndpoint {
     return {
@@ -55,7 +56,6 @@ export function bunWsClientEndpoint(ws: WebSocket): PumpEndpoint {
                 ws.resume()
             }
         },
-        onDrain() {},
         close: () => ws.close(1000, 'cli teardown'),
         isOpen: () => ws.readyState === WebSocket.OPEN,
     }

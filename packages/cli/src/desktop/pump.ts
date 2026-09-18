@@ -17,21 +17,26 @@
 /**
  * 双向字节流泵（desktop 流的核心，transport 无关）。
  *
- * 两个 PumpEndpoint 之间的对称中继：A 的帧送 B、B 的帧送 A；
- * 目标写不动（send 返回 false）即暂停来源读取，目标缓冲排空（onDrain）后恢复。
+ * 两个 PumpEndpoint 之间的对称中继：A 的帧送 B、B 的帧送 A。
  * 端点形状由适配器提供（内存 Duplex / Bun WebSocket / net.Socket），
  * 泵本体不感知传输——这是它可以用两根内存 Duplex 做单元测试的原因。
+ *
+ * 背压是端点的可选能力，不是接口的强制承诺：目标写不动（send 返回 false）
+ * 时只对声明了 pause 的来源侧暂停、目标声明了 onDrain 才注册恢复回调。
+ * 有的方向天生没有背压（如 Bun 客户端 WS 的 bufferedAmount 从不衰减，
+ * 排空回调永远不会触发）——这类端点只声明 send/close/isOpen，泵恒开泵，
+ * 洪峰由该端内部缓冲吸收，终局护栏在消费方（如 hub 侧字节差护栏）。
  */
 
 export interface PumpEndpoint {
-    /** 发送一帧；返回 false 表示目标背压（来源侧应暂停读取） */
+    /** 发送一帧；返回 false 表示目标背压（来源侧若声明 pause 则暂停读取） */
     send(data: Uint8Array): boolean
-    /** 暂停本端读取（把背压传导给对本端说话的人） */
-    pause(): void
+    /** 暂停本端读取（把背压传导给对本端说话的人）；无暂停能力的端点省略 */
+    pause?(): void
     /** 恢复本端读取 */
-    resume(): void
-    /** 注册缓冲排空回调（send 返回 false 后保证触发一次） */
-    onDrain(callback: () => void): void
+    resume?(): void
+    /** 注册缓冲排空回调（send 返回 false 后保证触发一次）；永不背压的端点省略 */
+    onDrain?(callback: () => void): void
     /** 关闭本端 */
     close(): void
     isOpen(): boolean
@@ -87,15 +92,15 @@ export function createStreamPump(a: PumpEndpoint, b: PumpEndpoint): StreamPump {
         }
     }
 
-    // 背压传导：目标排空 → 恢复来源读取（setup 时各注册一次）
-    b.onDrain(() => {
+    // 背压传导（仅对声明了能力的端点生效）：目标排空 → 恢复来源读取
+    b.onDrain?.(() => {
         if (!tornDown && a.isOpen()) {
-            a.resume()
+            a.resume?.()
         }
     })
-    a.onDrain(() => {
+    a.onDrain?.(() => {
         if (!tornDown && b.isOpen()) {
-            b.resume()
+            b.resume?.()
         }
     })
 
@@ -111,7 +116,7 @@ export function createStreamPump(a: PumpEndpoint, b: PumpEndpoint): StreamPump {
         }
         const ok = target.send(data)
         if (!ok && origin.isOpen()) {
-            origin.pause()
+            origin.pause?.()
         }
     }
 
