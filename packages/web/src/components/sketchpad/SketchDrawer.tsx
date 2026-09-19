@@ -21,16 +21,18 @@
  *   （底边 = composer 顶边），高度固定比例、最高到消息区顶（吊顶），composer 保持可用
  * - PC 全屏：撑满整个聊天列（含 composer）
  *
- * 防误关不变量（画到一半丢失不可接受）：禁 mask 点击关闭、禁 ESC 关闭、无右上角 X，
- * 唯一出口是画布内显式「完成/取消」（取消的非空二次确认在 SketchCanvas 内）。
+ * 防误关不变量（画到一半丢失不可接受）：禁 mask 点击关闭、禁 ESC 关闭、无 antd 自带 X，
+ * 唯一出口是 header 的「取消/完成」（取消的非空二次确认在 SketchCanvas 内）。
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Drawer, Space, Switch, Tooltip } from 'antd'
+import { Button, Drawer, Space, Tooltip } from 'antd'
+import { Check, Maximize2, Minimize2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
 import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 
 export interface SketchDrawerProps {
@@ -63,12 +65,11 @@ export function SketchDrawer({
     const { t } = useTranslation()
     const isMobile = useIsMobile()
 
-    // 压感模式：速度模拟为默认（全设备手感一致，PoC 真机验证）；关闭后触控笔走真实压力。
-    // 会话级 UI 偏好，不持久化（触控笔人群可后续入用户偏好存储）。
-    const [simulatePressure, setSimulatePressure] = useState(true)
     const [fullscreen, setFullscreen] = useState(false)
     // 重挂前从画布抢救出的内容，重挂后经 initialSketch 通道恢复（undo 历史不保留，可接受）
     const [remountSketch, setRemountSketch] = useState<Blob | null>(null)
+    // 完成/取消导出在途：header 出口按钮统一禁用，防连点重复导出
+    const [exporting, setExporting] = useState(false)
     const canvasRef = useRef<SketchCanvasHandle>(null)
 
     // 关闭即重置：下次打开回到默认停靠 + 不带回上次切换现场
@@ -76,6 +77,7 @@ export function SketchDrawer({
         if (!open) {
             setRemountSketch(null)
             setFullscreen(false)
+            setExporting(false)
         }
     }, [open])
 
@@ -90,6 +92,19 @@ export function SketchDrawer({
             // 导出失败不切换：宁可留在原容器也不能丢画布内容
         }
     }, [])
+
+    // 完成：经 canvas 手柄导出（未就绪返回 null 则留在画布），文件名/标记在此装配
+    const handleComplete = useCallback(async () => {
+        setExporting(true)
+        try {
+            const png = await canvasRef.current?.complete()
+            if (png) onComplete(png, sketchFilename(), SKETCH_MARK)
+        } catch {
+            // 导出失败留在画布，用户可重试
+        } finally {
+            setExporting(false)
+        }
+    }, [onComplete])
 
     // 挂载容器与形态（自上而下）：移动端 → body 全屏；PC 全屏 → 聊天列根；PC 停靠 → 消息列表；兜底 → body 全屏
     const drawerContainer = isMobile
@@ -119,8 +134,10 @@ export function SketchDrawer({
         }
         : undefined
 
-    // 顶部圆角：停靠/移动端 sheet 观感；PC 全屏撑满聊天列时收平（圆角会在列顶两角露出背后内容）
+    // 圆角：停靠/移动端 sheet 观感（四角）；PC 全屏撑满聊天列时收平（圆角会在列角露出背后内容）
     const rounded = !fullscreen || !fullscreenContainer
+
+    const fullscreenLabel = t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')
     return (
         <Drawer
             /* 容器/尺寸模式切换（PC 停靠 ↔ 全屏）强制重挂，excalidraw 画布随之重建。
@@ -135,26 +152,38 @@ export function SketchDrawer({
             destroyOnHidden
             title={t('sketch.open')}
             extra={
-                <Space size={12}>
+                <Space size={4}>
                     {/* 仅 PC 可切全屏：移动端已全屏 */}
                     {!isMobile && (
-                        <Button
-                            size="small"
-                            onClick={() => void handleToggleFullscreen()}
-                        >
-                            {t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')}
-                        </Button>
-                    )}
-                    <Tooltip title={t(simulatePressure ? 'sketch.pressureSimulated' : 'sketch.pressureReal')}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <span style={{ fontSize: 12 }}>{t(simulatePressure ? 'sketch.pressureSimulated' : 'sketch.pressureReal')}</span>
-                            <Switch
+                        <Tooltip title={fullscreenLabel}>
+                            <Button
+                                type="text"
                                 size="small"
-                                checked={simulatePressure}
-                                onChange={setSimulatePressure}
-                                aria-label={t('sketch.pressureSimulated')}
+                                aria-label={fullscreenLabel}
+                                icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                                onClick={() => void handleToggleFullscreen()}
                             />
-                        </label>
+                        </Tooltip>
+                    )}
+                    <Tooltip title={t('common.cancel')}>
+                        <Button
+                            type="text"
+                            size="small"
+                            aria-label={t('common.cancel')}
+                            icon={<X size={16} />}
+                            disabled={exporting}
+                            onClick={() => canvasRef.current?.requestCancel()}
+                        />
+                    </Tooltip>
+                    <Tooltip title={t('sketch.complete')}>
+                        <Button
+                            type="text"
+                            size="small"
+                            aria-label={t('sketch.complete')}
+                            icon={<Check size={16} />}
+                            disabled={exporting}
+                            onClick={() => void handleComplete()}
+                        />
                     </Tooltip>
                 </Space>
             }
@@ -168,18 +197,17 @@ export function SketchDrawer({
                 // 圆角经 section + overflow hidden 裁切（wrapper 有过渡动画，圆角放这层会被拉伸）。
                 // root 去掉 focus ring：rc-drawer 打开时会 focus 面板，浏览器默认 outline
                 // 会在整个停靠区域四周画一圈蓝框
-                ...(rounded ? { section: { borderTopLeftRadius: 12, borderTopRightRadius: 12, overflow: 'hidden' as const } } : {}),
+                ...(rounded ? { section: { borderRadius: 12, overflow: 'hidden' as const } } : {}),
                 root: { outline: 'none', ...(dockedStyles?.root ?? {}) },
             }}
             {...drawerProps}
             {...(drawerContainer ? { getContainer: () => drawerContainer } : {})}
         >
             <div style={{ flex: 1, minHeight: 0 }}>
+                {/* 压感默认恒为速度模拟（全设备手感一致）；触控笔真实压力通道留待用户偏好 */}
                 <SketchCanvas
                     ref={canvasRef}
                     initialSketch={remountSketch ?? initialSketch}
-                    simulatePressure={simulatePressure}
-                    onComplete={onComplete}
                     onCancel={onClose}
                 />
             </div>

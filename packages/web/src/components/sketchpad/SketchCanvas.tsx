@@ -35,7 +35,7 @@ import '@excalidraw/excalidraw/index.css'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
-import { SKETCH_MARK, exportSketch, loadSketch, sketchFilename } from '@/domain/sketch/sketchFile'
+import { exportSketch, loadSketch } from '@/domain/sketch/sketchFile'
 import { useIsDark } from '@/core/data/hooks/useIsDark'
 
 export interface SketchCanvasProps {
@@ -43,21 +43,28 @@ export interface SketchCanvasProps {
     initialSketch?: Blob | null
     /** 速度模拟压感（默认开，全设备手感一致）；关闭后触控笔走真实压力通道 */
     simulatePressure?: boolean
-    /** 完成：产物为内嵌 scene 的单文件 PNG（调用方负责上传） */
-    onComplete: (png: Blob, filename: string, sketchMark: typeof SKETCH_MARK) => void
     onCancel: () => void
-    /** React 19：载体（Drawer）在重挂前抢救当前画布内容用 */
+    /** React 19：载体（Drawer）在重挂前抢救当前画布内容等命令式调用用 */
     ref?: Ref<SketchCanvasHandle>
 }
 
-/** 载体可命令式调用的画布手柄（React 19 ref-as-prop） */
+/** 载体可命令式调用的画布手柄（React 19 ref-as-prop）：
+ *  header 的取消/完成出口与画布内语义共用同一实现（取消的非空二次确认在这里） */
 export interface SketchCanvasHandle {
     /** 导出当前画布为内嵌 scene 的 PNG；编辑器未就绪时返回 null，导出失败时 reject */
     exportCurrent: () => Promise<Blob | null>
+    /** 取消：画布非空（有未发送内容）时二次确认，防空手误触丢作品 */
+    requestCancel: () => void
+    /** 完成导出：编辑器未就绪时返回 null，导出失败时 reject */
+    complete: () => Promise<Blob | null>
 }
 
 /** 防抖兜底间隔：笔画进行中 onChange 逐点连发，落笔停顿后再做形状等价改写 */
 const PRESSURE_FIX_DEBOUNCE_MS = 400
+
+/** 画布底色固定白（不随主题）：dark 模式下深色画布会融进页面看不出画板边界，
+ *  白底让画板区域始终清晰；导出 PNG 同样白底，明暗主题产物一致 */
+const SKETCH_CANVAS_BG = '#ffffff'
 
 const Root = styled.div`
     position: relative;
@@ -78,53 +85,49 @@ const Root = styled.div`
     .dropdown-menu a[href*='discord.gg'] {
         display: none !important;
     }
-`
 
-const ActionBar = styled.div`
-    position: absolute;
-    right: 16px;
-    bottom: 16px;
-    z-index: 100;
-    display: flex;
-    gap: 8px;
-`
-
-const ActionButton = styled.button<{ $primary?: boolean }>`
-    padding: 6px 18px;
-    font-size: 13px;
-    border-radius: 8px;
-    border: 1px solid var(--ant-color-border-secondary, rgba(0, 0, 0, 0.12));
-    background: var(--ant-color-bg-container, #ffffff);
-    color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-
-    &:disabled {
-        opacity: 0.55;
-        cursor: default;
+    /* dark 模式下取消画布反显：excalidraw 的 dark 主题是显示层 hack（所有颜色按 light
+     * 存储，靠 --theme-filter: invert(93%) 反转画布+色板的显示），反转后白底变深色，
+     * 画板会融进 dark 页面看不出边界。置 none 后画布按存储真色显示（白底深笔），
+     * 色板/取色器同样回归真色（与导出一致）；UI 面板仍走 dark 调色板 */
+    .excalidraw.theme--dark {
+        --theme-filter: none;
     }
-
-    ${({ $primary }) => $primary
-        ? 'background: var(--ant-color-primary, #8b7d6b); border-color: transparent; color: var(--ant-color-white, #fff);'
-        : ''}
 `
 
-export function SketchCanvas({ initialSketch = null, simulatePressure = true, onComplete, onCancel, ref }: SketchCanvasProps) {
+export function SketchCanvas({ initialSketch = null, simulatePressure = true, onCancel, ref }: SketchCanvasProps) {
     const { t } = useTranslation()
     const isDark = useIsDark()
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
-    const [completing, setCompleting] = useState(false)
     const fixTimerRef = useRef<number | null>(null)
     const cancelledRef = useRef(false)
-
-    // 载体重挂（PC 停靠 ↔ 全屏切换）前经此抢救当前画布，重挂后经 initialSketch 恢复
-    useImperativeHandle(ref, () => ({
-        exportCurrent: () => (editor ? exportSketch(editor) : Promise.resolve(null)),
-    }), [editor])
 
     const setEditor = useCallback((api: ExcalidrawImperativeAPI) => {
         setEditorState(api)
     }, [])
+
+    /** 取消：画布非空（有未发送内容）时二次确认，防空手误触丢作品 */
+    const handleCancel = useCallback(() => {
+        const hasContent = !!editor && editor.getSceneElements().length > 0
+        if (!hasContent) {
+            onCancel()
+            return
+        }
+        Modal.confirm({
+            title: t('sketch.discardConfirm'),
+            okText: t('common.confirm'),
+            cancelText: t('common.cancel'),
+            onOk: onCancel,
+        })
+    }, [editor, onCancel, t])
+
+    // 载体重挂（PC 停靠 ↔ 全屏切换）前经此抢救当前画布；header 的取消/完成
+    // 出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
+    useImperativeHandle(ref, () => ({
+        exportCurrent: () => (editor ? exportSketch(editor) : Promise.resolve(null)),
+        requestCancel: handleCancel,
+        complete: () => (editor ? exportSketch(editor) : Promise.resolve(null)),
+    }), [editor, handleCancel])
 
     // 卸载后不再回写（载入是异步的，Drawer 关闭后完成会 setState 在卸载组件上）
     useEffect(() => () => { cancelledRef.current = true }, [])
@@ -225,32 +228,6 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
         return () => { cancelled = true }
     }, [editor, initialSketch])
 
-    const handleComplete = useCallback(async () => {
-        if (!editor) return
-        setCompleting(true)
-        try {
-            const png = await exportSketch(editor)
-            onComplete(png, sketchFilename(), SKETCH_MARK)
-        } finally {
-            setCompleting(false)
-        }
-    }, [editor, onComplete])
-
-    /** 取消：画布非空（有未发送内容）时二次确认，防空手误触丢作品 */
-    const handleCancel = useCallback(() => {
-        const hasContent = !!editor && editor.getSceneElements().length > 0
-        if (!hasContent) {
-            onCancel()
-            return
-        }
-        Modal.confirm({
-            title: t('sketch.discardConfirm'),
-            okText: t('common.confirm'),
-            cancelText: t('common.cancel'),
-            onOk: onCancel,
-        })
-    }, [editor, onCancel, t])
-
     return (
         <Root>
             <Excalidraw
@@ -259,6 +236,8 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
                 // 跟随应用明暗主题（UI 面板 + 画布底色）；导出背景走 viewBackgroundColor，
                 // 与用户所见一致（暗色下画的导出即暗底，忠实还原）
                 theme={isDark ? 'dark' : 'light'}
+                // 画布底色固定白（见 SKETCH_CANVAS_BG）：dark 模式下深色画布融进页面看不出边界
+                initialData={{ appState: { viewBackgroundColor: SKETCH_CANVAS_BG } }}
                 UIOptions={{
                     canvasActions: {
                         // 导出/另存为/打开/存入当前文件由 mobi 上传管线接管，画板只保留「完成」一个出口
@@ -272,14 +251,6 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
                     },
                 }}
             />
-            <ActionBar>
-                <ActionButton type="button" disabled={completing} onClick={handleCancel}>
-                    {t('common.cancel')}
-                </ActionButton>
-                <ActionButton type="button" $primary disabled={completing} onClick={() => void handleComplete()}>
-                    {completing ? t('sketch.exporting') : t('sketch.complete')}
-                </ActionButton>
-            </ActionBar>
         </Root>
     )
 }

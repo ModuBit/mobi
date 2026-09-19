@@ -135,8 +135,12 @@ describe('SketchDrawer 端形态分流', () => {
     })
 })
 
-/** 全屏切换按钮（测试环境 i18n 未初始化时 t() 回退 key，key 与译文一并匹配） */
+/** 全屏切换按钮（header 为 lucide icon 按钮，靠 aria-label 定位；
+ *  测试环境 i18n 未初始化时 t() 回退 key，key 与译文一并匹配） */
 function findFullscreenButton(): HTMLElement | null {
     return Array.from(document.querySelectorAll('button'))
-        .find((b) => /fullscreen/i.test(b.textContent ?? '') || (b.textContent ?? '').includes('全屏')) ?? null
+        .find((b) => {
+            const label = `${b.getAttribute('aria-label') ?? ''}${b.textContent ?? ''}`
+            return /fullscreen/i.test(label) || label.includes('全屏')
+        }) ?? null
 }
