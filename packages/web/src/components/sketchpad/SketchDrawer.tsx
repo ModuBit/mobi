@@ -71,10 +71,14 @@ const DOCK_FALLBACK = { top: '30%', right: 0, bottom: 0, left: 0 } as const
 /** 全屏浮层四边留白（用户指定：圆角浮层与内容区边缘的间隙） */
 const FULLSCREEN_INSET = 8
 
+/** 移动画纸卡片的缝隙：顶部露出一截聊天上下文（safe-area 优先），营造「聊天之上
+ * 浮起一张纸」的层次，而非硬切盖板 */
+const MOBILE_SHEET_INSET = 8
+
 /** 停靠 ↔ 全屏几何过渡：四边 inset 均为像素值，全程可连续插值（像调整窗口大小） */
 const MORPH_TRANSITION_CSS = 'top 280ms cubic-bezier(0.2, 0.8, 0.2, 1), right 280ms cubic-bezier(0.2, 0.8, 0.2, 1), bottom 280ms cubic-bezier(0.2, 0.8, 0.2, 1), left 280ms cubic-bezier(0.2, 0.8, 0.2, 1)'
 
-/** 开合动画：浮层从 composer 附近浮起/沉回（层不裁剪，位移过大会滑出层外穿帮） */
+/** PC 开合：浮层从 composer 附近浮起/沉回（层不裁剪，位移过大会滑出层外穿帮） */
 const SHEET_IN_KEYFRAMES = keyframes`
     from { transform: translateY(48px); opacity: 0 }
     to { transform: translateY(0); opacity: 1 }
@@ -82,6 +86,24 @@ const SHEET_IN_KEYFRAMES = keyframes`
 const SHEET_OUT_KEYFRAMES = keyframes`
     from { transform: translateY(0); opacity: 1 }
     to { transform: translateY(48px); opacity: 0 }
+`
+/** 移动端开合：整张画纸从视口底部滑入/沉回（fixed 盖满自身，不会穿帮） */
+const SHEET_IN_FULL_KEYFRAMES = keyframes`
+    from { transform: translateY(100%) }
+    to { transform: translateY(0) }
+`
+const SHEET_OUT_FULL_KEYFRAMES = keyframes`
+    from { transform: translateY(0) }
+    to { transform: translateY(100%) }
+`
+/** 移动端背景暗化的淡入/淡出 */
+const MASK_IN_KEYFRAMES = keyframes`
+    from { opacity: 0 }
+    to { opacity: 1 }
+`
+const MASK_OUT_KEYFRAMES = keyframes`
+    from { opacity: 1 }
+    to { opacity: 0 }
 `
 
 /** 开合相位：enter 滑入中 / open 常驻 / exit 滑出中（结束后卸载） */
@@ -92,16 +114,33 @@ type SheetPhase = 'enter' | 'open' | 'exit'
 const SHEET_IN_MS = 260
 const SHEET_OUT_MS = 220
 
-const Mask = styled.div<{ $zIndex: number }>`
-    position: absolute;
+const Mask = styled.div<{ $zIndex: number; $dim: boolean; $phase: SheetPhase; $fixed: boolean }>`
+    position: ${(p) => (p.$fixed ? 'fixed' : 'absolute')};
     inset: 0;
-    /* 遮罩只挡交互不改视觉：画板打开时背后的消息列表保持原样可读（用户指定纯透明），
-     * 且不绑定 click——防误关不变量 */
-    background: transparent;
+    /* PC：遮罩只挡交互不改视觉，背后消息保持原样可读（用户指定纯透明）；
+     * 移动端：暗化背景，强化「浮起一张纸」的层次。均不绑定 click——防误关不变量 */
+    background: ${(p) => (p.$dim ? 'rgba(0, 0, 0, 0.45)' : 'transparent')};
     z-index: ${(p) => p.$zIndex};
+    ${(p) =>
+        p.$dim && p.$phase === 'enter'
+            ? css`
+                  animation: ${MASK_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1);
+              `
+            : ''}
+    ${(p) =>
+        p.$dim && p.$phase === 'exit'
+            ? css`
+                  animation: ${MASK_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
+              `
+            : ''}
 `
 
-const Sheet = styled.div<{ $zIndex: number; $phase: SheetPhase; $morphing: boolean }>`
+const Sheet = styled.div<{
+    $zIndex: number
+    $phase: SheetPhase
+    $morphing: boolean
+    $fullSheet: boolean
+}>`
     position: absolute;
     z-index: ${(p) => p.$zIndex};
     display: flex;
@@ -110,13 +149,13 @@ const Sheet = styled.div<{ $zIndex: number; $phase: SheetPhase; $morphing: boole
     ${(p) =>
         p.$phase === 'enter'
             ? css`
-                  animation: ${SHEET_IN_KEYFRAMES} 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+                  animation: ${p.$fullSheet ? SHEET_IN_FULL_KEYFRAMES : SHEET_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1);
               `
             : ''}
     ${(p) =>
         p.$phase === 'exit'
             ? css`
-                  animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
+                  animation: ${p.$fullSheet ? SHEET_OUT_FULL_KEYFRAMES : SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
               `
             : ''}
     ${(p) => (p.$morphing ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
@@ -218,26 +257,35 @@ export function SketchDrawer({
 
     if (!mounted) return null
 
-    // 几何（自上而下）：移动端恒全屏（fixed，盖满视口含浏览器栏语义 100dvh 等价）；
-    // PC 停靠 → 层内聊天列区域（贴 composer 顶、70% 吊顶、宽对齐聊天列）；
-    // PC 全屏 → 层内四边留白撑满；未挂层 → fixed 全屏兜底。
-    // 停靠↔全屏四边均为像素/比例值，全部可连续插值
+    // 几何（自上而下）：移动端 = 「浮起画纸」卡片（fixed，safe-area 缝隙 + 圆角，
+    // 背景暗化）——全屏画布空间与聊天上下文锚点兼得；PC 停靠 → 层内聊天列区域
+    // （贴 composer 顶、70% 吊顶、宽对齐聊天列）；PC 全屏 → 层内四边留白撑满；
+    // 未挂层 → fixed 全屏兜底。停靠↔全屏四边均为像素/比例值，全部可连续插值
     const sheetStyle: CSSProperties = layerEl && !isMobile
         ? fullscreen
             ? { top: FULLSCREEN_INSET, right: FULLSCREEN_INSET, bottom: FULLSCREEN_INSET, left: FULLSCREEN_INSET }
             : (dockMetrics ?? DOCK_FALLBACK)
-        : { position: 'fixed', inset: 0 }
+        : isMobile
+            ? {
+                position: 'fixed',
+                top: `max(${MOBILE_SHEET_INSET}px, env(safe-area-inset-top))`,
+                left: `${MOBILE_SHEET_INSET}px`,
+                right: `${MOBILE_SHEET_INSET}px`,
+                bottom: `max(${MOBILE_SHEET_INSET}px, env(safe-area-inset-bottom))`,
+            }
+            : { position: 'fixed', inset: 0 }
 
     const fullscreenLabel = t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')
 
     return createPortal(
         <>
-            <Mask $zIndex={1000} data-testid="sketch-mask" />
+            <Mask $zIndex={1000} $dim={isMobile} $phase={phase} $fixed={isMobile} data-testid="sketch-mask" />
             <Sheet
                 data-testid="sketch-sheet"
                 $zIndex={1001}
                 $phase={phase}
                 $morphing={morphing}
+                $fullSheet={isMobile}
                 style={sheetStyle}
             >
                 <Section>

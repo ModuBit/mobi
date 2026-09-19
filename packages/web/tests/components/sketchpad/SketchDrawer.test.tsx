@@ -180,7 +180,7 @@ describe('SketchDrawer 端形态与几何分流', () => {
         expect(findFullscreenButton()).toBeNull()
     })
 
-    it('移动端即使传入挂载层与停靠几何：仍 fixed 全屏（停靠/全屏切换是 PC 专属）', () => {
+    it('移动端即使传入挂载层与停靠几何：仍 fixed 浮起画纸（safe-area 缝隙），无全屏切换', () => {
         isMobileRef.value = true
         const layer = document.createElement('div')
         document.body.appendChild(layer)
@@ -195,7 +195,12 @@ describe('SketchDrawer 端形态与几何分流', () => {
         )
         const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
         expect(sheet.style.position).toBe('fixed')
-        expect(sheet.style.inset).toBe('0px')
+        // safe-area 优先的四边缝隙（浮起画纸卡片，非硬切盖板）
+        expect(sheet.style.top).toBe('max(8px, env(safe-area-inset-top))')
+        expect(sheet.style.bottom).toBe('max(8px, env(safe-area-inset-bottom))')
+        // 背景暗化遮罩
+        const mask = document.querySelector('[data-testid="sketch-mask"]') as HTMLElement
+        expect(getComputedStyle(mask).backgroundColor).toBe('rgba(0, 0, 0, 0.45)')
         expect(findFullscreenButton()).toBeNull()
         layer.remove()
     })
