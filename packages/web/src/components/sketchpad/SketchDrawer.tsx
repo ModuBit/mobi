@@ -32,7 +32,7 @@
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Space, Tooltip } from 'antd'
 import { Check, Maximize2, Minimize2, X } from 'lucide-react'
@@ -87,8 +87,9 @@ const SHEET_OUT_KEYFRAMES = keyframes`
 /** 开合相位：enter 滑入中 / open 常驻 / exit 滑出中（结束后卸载） */
 type SheetPhase = 'enter' | 'open' | 'exit'
 
-/** 滑出动画时长：卸载定时器按此兜底（不用 animationend——portal 内动画事件经
- * React 委托在部分环境收不到） */
+/** 滑入/滑出动画时长：相位切换用定时驱动（不用 portal 内动画事件——经 React
+ * 委托在部分环境收不到），卸载/复位定时按此兜底 */
+const SHEET_IN_MS = 260
 const SHEET_OUT_MS = 220
 
 const Mask = styled.div<{ $zIndex: number }>`
@@ -118,7 +119,7 @@ const Sheet = styled.div<{ $zIndex: number; $phase: SheetPhase; $morphing: boole
                   animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
               `
             : ''}
-    ${(p) => (p.$morphing && p.$phase === 'open' ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
+    ${(p) => (p.$morphing ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
 `
 
 /* 圆角经 section + overflow hidden 裁切（sheet 层有过渡动画，圆角放这层会被拉伸）。
@@ -165,10 +166,6 @@ export function SketchDrawer({
     // onClose 消费者同步决定），动画结束才卸载——mounted 动画优先于卸载
     const [phase, setPhase] = useState<SheetPhase>(open ? 'enter' : 'exit')
     const [mounted, setMounted] = useState(open)
-    // 几何过渡窗口期：停靠↔全屏切换后短暂开启 inset 过渡，避免窗口尺寸等
-    // 环境变化重测几何时意外触发动画
-    const [morphing, setMorphing] = useState(false)
-    const morphTimerRef = useRef<number | null>(null)
     // 完成/取消导出在途：header 出口按钮统一禁用，防连点重复导出
     const [exporting, setExporting] = useState(false)
     const canvasRef = useRef<SketchCanvasHandle>(null)
@@ -176,34 +173,33 @@ export function SketchDrawer({
     // 移动端恒全屏（最大手指操作空间）；全屏切换仅 PC 提供
     const canFullscreen = !isMobile && !!layerEl
 
-    // 开合相位机（见上）；open 关闭即重置全屏形态：下次打开回到默认停靠
+    // 开合相位机（见上）。全屏形态的复位放在卸载定时器里：关闭动画期间必须保持
+    // 当前几何（先复位会让浮层跳回停靠位再淡出）
     const unmountTimerRef = useRef<number | null>(null)
     useEffect(() => {
         if (open) {
             if (unmountTimerRef.current !== null) window.clearTimeout(unmountTimerRef.current)
             setMounted(true)
             setPhase('enter')
-            const raf = requestAnimationFrame(() => setPhase('open'))
-            return () => cancelAnimationFrame(raf)
+            unmountTimerRef.current = window.setTimeout(() => setPhase('open'), SHEET_IN_MS + 40)
+            return undefined
         }
         setPhase((p) => (p === 'exit' ? p : 'exit'))
-        setFullscreen(false)
-        // 滑出动画结束后卸载（定时兜底，不依赖动画事件）
-        unmountTimerRef.current = window.setTimeout(() => setMounted(false), SHEET_OUT_MS + 40)
+        unmountTimerRef.current = window.setTimeout(() => {
+            setMounted(false)
+            setFullscreen(false)
+        }, SHEET_OUT_MS + 40)
         return undefined
     }, [open])
 
-    // 几何过渡窗口期管理：fullscreen 变化后短暂开启 inset 过渡
+    // 几何过渡窗口期：render 期从「fullscreen 与上次渲染不同」派生——transition
+    // 必须与目标几何在同一次渲染中就位才能产生过渡（commit 后再置标记会先以无
+    // transition 状态跳到新几何，动画丢失）。layout effect 在渲染完成后退出窗口期，
+    // 此后环境重测（resize 等）带来的几何微调不会触发动画
     const prevFullscreenRef = useRef(fullscreen)
-    useEffect(() => {
-        if (prevFullscreenRef.current === fullscreen) return
+    const morphing = prevFullscreenRef.current !== fullscreen
+    useLayoutEffect(() => {
         prevFullscreenRef.current = fullscreen
-        if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current)
-        setMorphing(true)
-        morphTimerRef.current = window.setTimeout(() => setMorphing(false), 340)
-        return () => {
-            if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current)
-        }
     }, [fullscreen])
 
     // 完成：经 canvas 手柄导出（未就绪返回 null 则留在画布），文件名/标记在此装配
