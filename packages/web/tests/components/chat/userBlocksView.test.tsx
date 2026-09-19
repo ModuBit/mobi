@@ -38,6 +38,12 @@ vi.mock('@tanstack/react-router', () => ({
     useParams: () => ({ sessionId: 'sess-1' }),
 }))
 
+// 端形态可控（画板交互按移动/桌面分流：角标入口 vs 预览工具栏入口）
+const isMobileRef = vi.hoisted(() => ({ value: false }))
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => isMobileRef.value,
+}))
+
 const { UserBlocksView, USER_BLOCK_RENDERERS } = await import('@/components/chat/userBlocks/UserBlocksView')
 
 afterEach(cleanup)
@@ -194,6 +200,45 @@ describe('UserBlocksView 按 block 分发渲染', () => {
         })
         // 失败态预览关闭：外层不再有 role=button（点卡片不弹兜底图放大）
         expect(fallbackImg.closest('[role="button"]')).toBeNull()
+    })
+
+    it('草图缩略图（PC）：编辑角标点击只进编辑器，不穿透触发预览', () => {
+        const onEditSketch = vi.fn()
+        render(
+            <UserBlocksView
+                blocks={[{
+                    type: 'image',
+                    source: { type: 'url', value: '/u/s.png', mimeType: 'image/png' },
+                    id: 'sk1', filename: 's.png', size: 1,
+                    sketch: { format: 'excalidraw.png' },
+                }]}
+                env={{ sessionId: 's1', onEditSketch }}
+            />,
+        )
+        // PC 有 hover 编辑角标
+        const badge = screen.getByRole('generic', { name: /编辑草图|edit/i })
+        fireEvent.click(badge)
+        expect(onEditSketch).toHaveBeenCalledTimes(1)
+    })
+
+    it('草图缩略图（移动端）：不渲染编辑角标（编辑走预览工具栏，避开 rewind 长按手势域）', () => {
+        isMobileRef.value = true
+        try {
+            render(
+                <UserBlocksView
+                    blocks={[{
+                        type: 'image',
+                        source: { type: 'url', value: '/u/s.png', mimeType: 'image/png' },
+                        id: 'sk2', filename: 's.png', size: 1,
+                        sketch: { format: 'excalidraw.png' },
+                    }]}
+                    env={{ sessionId: 's1', onEditSketch: vi.fn() }}
+                />,
+            )
+            expect(screen.queryByRole('generic', { name: /编辑草图|edit/i })).toBeNull()
+        } finally {
+            isMobileRef.value = false
+        }
     })
 })
 

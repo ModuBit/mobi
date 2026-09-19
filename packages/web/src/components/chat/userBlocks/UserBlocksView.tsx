@@ -16,7 +16,7 @@
 
 import type React from 'react'
 import { useState } from 'react'
-import { theme, Space } from 'antd'
+import { Button, theme, Space } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileCard } from '@ant-design/x'
 import { Bot, Pencil, User } from 'lucide-react'
@@ -28,6 +28,7 @@ import { groupUserBlocks } from '@/domain/chat/userContent'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { buildActionUri, isSelfContainedUrl } from '@mobi/shared'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { ActionLink } from '@/components/ui/ActionLink'
 import { TextBlock } from '../blocks/TextBlock'
 
@@ -162,7 +163,10 @@ export function resolveUserImageUrl(block: Pick<UserImageBlock, 'previewUrl' | '
 function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
+    const isMobile = useIsMobile()
     const [failedFor, setFailedFor] = useState<string | null>(null)
+    // 受控预览开关：预览是草图图片交互的枢纽——移动端的编辑入口就放在预览工具栏里
+    const [previewOpen, setPreviewOpen] = useState(false)
     // 不带 etag v 参数：.mobi/uploads 为 write-once（上传即 shortId 唯一名，无覆盖路径），
     // 不存在同路径内容变化的陈旧缓存问题——变更语义由「重新上传得新路径」承载。
     const computed = resolveUserImageUrl(block, env)
@@ -170,8 +174,16 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     // 兜底图无放大价值，preview 一并关闭（点击不再弹出兜底图预览）
     const failed = failedFor === computed
     const src = failed ? FALLBACK_IMAGE : computed
-    // 画板重编辑入口（spec D3/D4）：仅内嵌 scene 的草图 + 调用方提供回调时渲染 hover 角标
+    // 画板重编辑入口（spec D3/D4）：仅内嵌 scene 的草图 + 调用方提供回调时渲染
     const sketchEditable = !!block.sketch && block.source.type === 'url' && !!env.onEditSketch
+    // PC：hover 浮现编辑角标（快捷入口）；移动端角标不渲染——编辑走预览工具栏，
+    // 避免与气泡的 rewind 长按手势在同一缩略图上竞争、也免去触屏无 hover 的常显干扰
+    const showBadge = sketchEditable && !isMobile
+    // 进编辑器前先收起预览（预览是全屏层，叠加在画板之上会互相遮挡）
+    const openEditor = () => {
+        setPreviewOpen(false)
+        env.onEditSketch?.(block)
+    }
     const card = (
         <FileCard
             type="image"
@@ -184,7 +196,29 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
                 overflow: 'hidden',
             } }}
             imageProps={{
-                preview: !failed,
+                // 受控预览（点击缩略图放大看原图）；草图在预览工具栏追加编辑入口
+                //（保留原图缩放/旋转等默认操作，originalNode 原样渲染）
+                preview: !failed && {
+                    open: previewOpen,
+                    onOpenChange: setPreviewOpen,
+                    ...(sketchEditable
+                        ? {
+                            actionsRender: (originalNode) => (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+                                    {originalNode}
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<Pencil size={14} />}
+                                        onClick={openEditor}
+                                    >
+                                        {t('sketch.editSketch')}
+                                    </Button>
+                                </div>
+                            ),
+                        }
+                        : {}),
+                },
                 fallback: FALLBACK_IMAGE,
                 // 原生懒加载：rc-image COMMON_PROPS 白名单把 loading/decoding 透传到真实 <img>，
                 // 视口外的历史图片不再随恢复/流式渲染一拥而上抢请求；已在视口内则立即加载，首屏无损。
@@ -199,32 +233,33 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     )
     if (!sketchEditable) return card
     return (
-        <SketchEditableWrapper
-            onClick={(e) => {
-                // 角标点击只开画板，不让点击穿透到 FileCard 的原图预览
-                e.stopPropagation()
-                env.onEditSketch!(block)
-            }}
-        >
+        <SketchEditableWrapper>
             {card}
-            <span
-                className="sketch-edit-badge"
-                title={t('sketch.editSketch')}
-                aria-label={t('sketch.editSketch')}
-                style={{
-                    position: 'absolute',
-                    right: 4,
-                    bottom: 4,
-                    display: 'inline-flex',
-                    padding: 3,
-                    borderRadius: token.borderRadiusSM,
-                    background: 'rgba(255, 255, 255, 0.88)',
-                    color: token.colorTextSecondary,
-                    cursor: 'pointer',
-                }}
-            >
-                <Pencil size={12} />
-            </span>
+            {showBadge && (
+                <span
+                    className="sketch-edit-badge"
+                    title={t('sketch.editSketch')}
+                    aria-label={t('sketch.editSketch')}
+                    style={{
+                        position: 'absolute',
+                        right: 4,
+                        bottom: 4,
+                        display: 'inline-flex',
+                        padding: 3,
+                        borderRadius: token.borderRadiusSM,
+                        background: 'rgba(255, 255, 255, 0.88)',
+                        color: token.colorTextSecondary,
+                        cursor: 'pointer',
+                    }}
+                    onClick={(e) => {
+                        // 角标只开编辑器，不穿透到缩略图的原图预览
+                        e.stopPropagation()
+                        env.onEditSketch?.(block)
+                    }}
+                >
+                    <Pencil size={12} />
+                </span>
+            )}
         </SketchEditableWrapper>
     )
 }
