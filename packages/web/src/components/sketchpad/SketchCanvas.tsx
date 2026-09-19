@@ -60,8 +60,19 @@ export interface SketchCanvasHandle {
 /** 防抖兜底间隔：笔画进行中 onChange 逐点连发，落笔停顿后再做形状等价改写 */
 const PRESSURE_FIX_DEBOUNCE_MS = 400
 
-/** 画布几何重算延迟：需盖过 Drawer 弹入动画时长（antd motion ~300ms） */
+/** 画布几何重算延迟：需盖过载体开合动画时长（动画 transform 中间态会被缓存） */
 const CANVAS_SETTLE_REFRESH_MS = 450
+
+/**
+ * 场景指纹：取消确认的「有无修改」检测基准。剔除 version/versionNonce/updated 等
+ * 每次提交都会变的簿记字段，只留内容语义（元素几何/样式/背景色）——undo 撤回初始
+ * 状态后指纹相等，正确地视为「无修改」；viewBackgroundColor 纳入（背景色可改且属
+ * 用户内容）。导出仅供测试。
+ */
+export function sceneFingerprint(api: Pick<ExcalidrawImperativeAPI, 'getSceneElements' | 'getAppState'>): string {
+    const elements = api.getSceneElements().map(({ version: _v, versionNonce: _n, updated: _u, ...rest }) => rest)
+    return JSON.stringify([elements, api.getAppState().viewBackgroundColor])
+}
 
 const Root = styled.div`
     position: relative;
@@ -93,19 +104,24 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
     const fixTimerRef = useRef<number | null>(null)
     const cancelledRef = useRef(false)
+    // 打开时的场景指纹（变更检测基准）：null = 未捕获（捕获前不弹确认，宁多勿丢）
+    const initialFingerprintRef = useRef<string | null>(null)
 
     const setEditor = useCallback((api: ExcalidrawImperativeAPI) => {
         setEditorState(api)
     }, [])
 
-    /** 取消：画布非空（有未发送内容）时二次确认，防空手误触丢作品 */
+    /** 取消：场景相对打开时有变化才二次确认（空画布直接开、重编辑未动笔直接关），防误触丢作品 */
     const handleCancel = useCallback(() => {
-        const hasContent = !!editor && editor.getSceneElements().length > 0
-        if (!hasContent) {
+        // 变化检测：与打开时的场景指纹比对。editor 未就绪/指纹未捕获（异常时序）按
+        // 有变化处理——宁可多弹一次确认也不静默丢作品
+        const changed = !!editor && !!initialFingerprintRef.current
+            && sceneFingerprint(editor) !== initialFingerprintRef.current
+        if (!changed) {
             onCancel()
             return
         }
-        // 放弃作品是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）
+        // 放弃修改是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）
         modal.confirm({
             title: t('sketch.discardConfirm'),
             okText: t('common.confirm'),
@@ -233,12 +249,23 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
                 } as unknown as Parameters<typeof editor.updateScene>[0])
                 const files = Object.values(scene.files) as Parameters<typeof editor.addFiles>[0]
                 if (files.length > 0) editor.addFiles(files)
+                // 场景提交后捕获「打开时」指纹（重编辑未动笔 = 取消时无变化，免确认）
+                window.setTimeout(() => {
+                    if (!cancelled) initialFingerprintRef.current = sceneFingerprint(editor)
+                }, 0)
             } catch (e) {
                 // 载入失败按空画布继续（源文件损坏/外部改写）：不打断用户
                 console.warn('[SketchCanvas] 草图载入失败，按空画布继续', e)
             }
         })()
         return () => { cancelled = true }
+    }, [editor, initialSketch])
+
+    // 空白画布（无重编辑内容）的场景指纹：editor 就绪后捕获
+    useEffect(() => {
+        if (!editor || initialSketch) return
+        const t = window.setTimeout(() => { initialFingerprintRef.current = sceneFingerprint(editor) }, 0)
+        return () => window.clearTimeout(t)
     }, [editor, initialSketch])
 
     return (
