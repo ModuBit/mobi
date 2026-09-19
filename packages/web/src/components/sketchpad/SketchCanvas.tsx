@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import styled from '@emotion/styled'
-import { Modal } from 'antd'
+import { App } from 'antd'
 import { useTranslation } from 'react-i18next'
 // 0.18 起 CSS 不再随 JS 注入，必须显式引入（漏掉则工具条图标无样式巨型裸奔）
 // 本组件（连带 excalidraw 重依赖）由入口处 React.lazy 拆进画板异步 chunk，不进主 bundle
@@ -87,6 +87,9 @@ const Root = styled.div`
 export function SketchCanvas({ initialSketch = null, simulatePressure = true, onCancel, ref }: SketchCanvasProps) {
     const { t } = useTranslation()
     const isDark = useIsDark()
+    // modal 实例经 AntApp 上下文获取：静态 Modal.confirm 渲染在独立 root，
+    // 不消费 ConfigProvider 主题（dark 下白底蓝按钮，与暖调设计系统脱节）
+    const { modal } = App.useApp()
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
     const fixTimerRef = useRef<number | null>(null)
     const cancelledRef = useRef(false)
@@ -102,13 +105,15 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             onCancel()
             return
         }
-        Modal.confirm({
+        // 放弃作品是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）
+        modal.confirm({
             title: t('sketch.discardConfirm'),
             okText: t('common.confirm'),
             cancelText: t('common.cancel'),
+            okButtonProps: { danger: true },
             onOk: onCancel,
         })
-    }, [editor, onCancel, t])
+    }, [editor, modal, onCancel, t])
 
     // 载体 header 的取消/完成出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
     useImperativeHandle(ref, () => ({

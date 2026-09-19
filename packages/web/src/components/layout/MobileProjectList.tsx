@@ -69,7 +69,7 @@ const { useToken } = antTheme
 export function MobileProjectList() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { message: messageApi } = AntdApp.useApp()
+    const { message: messageApi, modal } = AntdApp.useApp()
     const navigate = useNavigate()
     const navigateFromMenu = useMenuNavigate()
     const queryClient = useQueryClient()
@@ -226,7 +226,7 @@ export function MobileProjectList() {
         setActionLoading('delete')
         // 删除确认是命令式 Modal（无受控 open state），手动推哨兵：
         // 手势返回销毁 Modal（等同取消），onOk/onCancel 各自 dispose 弹掉哨兵
-        const modal = Modal.confirm({
+        const modalInstance = modal.confirm({
             title: t('session.actions.deleteConfirmTitle'),
             content: t('session.actions.deleteConfirmContent'),
             okText: t('common.confirm'),
@@ -260,10 +260,10 @@ export function MobileProjectList() {
             // 手势返回等同取消：destroy() 不触发 onCancel/onOk，loading 态须在此
             // 显式复位——否则 ActionSheet 会被 closeActionSheet 的 loading 守卫
             // 永久冻结（收不起也操作不了）
-            modal.destroy()
+            modalInstance.destroy()
             setActionLoading(null)
         })
-    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, t])
+    }, [actionSessionId, api, queryClient, activeSessionId, navigate, navigateFromMenu, modal, t])
 
 
     // ActionSheet 当前操作的 session

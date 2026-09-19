@@ -16,7 +16,7 @@
 
 import type React from 'react'
 import { useCallback, useState } from 'react'
-import { App, Modal, theme as antTheme } from 'antd'
+import { App, theme as antTheme } from 'antd'
 import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
@@ -57,7 +57,7 @@ export function SidebarProjects() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { message: messageApi } = App.useApp()
+    const { message: messageApi, modal } = App.useApp()
     const queryClient = useQueryClient()
     const api = useMobiApi()
     const params = useParams({ strict: false })
@@ -126,7 +126,7 @@ export function SidebarProjects() {
 
     // 删除会话
     const handleDelete = useCallback((session: Session) => {
-        Modal.confirm({
+        modal.confirm({
             title: t('session.actions.deleteConfirmTitle'),
             content: t('session.actions.deleteConfirmContent'),
             okText: t('common.confirm'),
@@ -168,7 +168,7 @@ export function SidebarProjects() {
 
     // 删除项目：名下会话解绑进「最近」（total 未就绪时用不含数字的退化文案，不编造 0）
     const handleDeleteProject = useCallback((project: Project, total: number | undefined) => {
-        Modal.confirm({
+        modal.confirm({
             title: t('project.deleteConfirmTitle', { name: project.name }),
             content: total === undefined
                 ? t('project.deleteConfirmContentFallback')

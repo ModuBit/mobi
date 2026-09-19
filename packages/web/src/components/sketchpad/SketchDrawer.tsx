@@ -123,25 +123,26 @@ const Sheet = styled.div<{ $zIndex: number; $phase: SheetPhase; $morphing: boole
 `
 
 /* 圆角经 section + overflow hidden 裁切（sheet 层有过渡动画，圆角放这层会被拉伸）。
- * 细边框画边界：dark 下深色画布与页面底色接近，靠它确认画板范围 */
+ * 圆角落 rounded.lg=14（卡片/Modal 档）；细边框画边界：dark 下深色画布与页面底色
+ * 接近，靠它确认画板范围；抬升层底色用 paper-elevated（DESIGN.md 唯一允许净白的层） */
 const Section = styled.div`
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: 14px;
     border: 1px solid var(--ant-color-border);
-    background: var(--ant-color-bg-container);
+    background: var(--ant-color-bg-elevated);
 `
 
-/* header 视觉对齐原 antd Drawer header（标题 16 + 分隔线 + 右侧操作区） */
+/* header 视觉对齐 drawer 惯例（标题 16/600 + hairline 分隔线），间距落 8 倍数刻度 */
 const Header = styled.div`
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 12px 20px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--ant-color-split);
 
     .title {
