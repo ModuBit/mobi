@@ -26,7 +26,7 @@
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button, Drawer, Space, Tooltip } from 'antd'
 import { Check, Maximize2, Minimize2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -69,6 +69,14 @@ export function SketchDrawer({
     const isMobile = useIsMobile()
 
     const [fullscreen, setFullscreen] = useState(false)
+    // 本次渲染是否为切换重挂：render 期从「fullscreen 与上次渲染不同」派生（不能用
+    // setState 标记——它与 fullscreen 的批处理时序不可靠，切换帧会以 switching=false
+    // 先渲染一轮，appear 动画照播）。切换渲染的 motion 立即禁用，FLIP 全程接管；
+    // 非切换渲染自动恢复 antd 默认动画，不影响正常的打开/关闭
+    const prevFullscreenRef = useRef(fullscreen)
+    const switching = open && prevFullscreenRef.current !== fullscreen
+    // 待反演的旧浮层矩形：切换回调里记录，新实例挂载后（layout effect，paint 前）消费
+    const pendingFlipRef = useRef<DOMRect | null>(null)
     // 重挂前从画布抢救出的内容，重挂后经 initialSketch 通道恢复（undo 历史不保留，可接受）
     const [remountSketch, setRemountSketch] = useState<Blob | null>(null)
     // 完成/取消导出在途：header 出口按钮统一禁用，防连点重复导出
@@ -81,37 +89,51 @@ export function SketchDrawer({
             setRemountSketch(null)
             setFullscreen(false)
             setExporting(false)
+            pendingFlipRef.current = null
+            prevFullscreenRef.current = false
         }
     }, [open])
 
     // PC 停靠/全屏切换换挂载点：key 强制重挂（antd Drawer 的 getContainer 不支持热切换）。
     // 重挂会重建 excalidraw 实例，先经 canvas 手柄导出内嵌 scene 的 PNG 再切换，恢复内容。
     // 重挂无法保留 antd 的连续动画，改用 FLIP 缩放过渡（像调整窗口大小）：记录旧浮层矩形
-    // → 重挂后把新浮层变换回旧矩形（inline 样式同时压掉 antd「从底部弹出」的 appear 动画）
-    // → 过渡到新矩形，替代「一个收起、一个又弹出」
+    // → 新实例挂载后把它变换回旧矩形 → 过渡到新矩形，替代「一个收起、一个又弹出」
     const handleToggleFullscreen = useCallback(async () => {
         const goingFullscreen = !fullscreen
-        // 起点/目标查询范围：挂了自定义容器 portal 进容器，否则兜底挂 body。
-        // 目标须按切换后的形态计算——rAF 回调执行时闭包里的 fullscreen 还是旧值
+        // 起点查询范围按当前形态：挂了自定义容器 portal 进容器，否则兜底挂 body。
+        // rect 含切换在途的 inline transform（getBoundingClientRect 取视觉矩形），连点可无缝衔接
         const fromWrapper = (fullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document))
             .querySelector<HTMLElement>('.ant-drawer-content-wrapper')
-        const toScope = goingFullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document)
         const fromRect = fromWrapper?.getBoundingClientRect() ?? null
         try {
             const png = (await canvasRef.current?.exportCurrent()) ?? null
             setRemountSketch(png)
-            setFullscreen((v) => !v)
         } catch {
             // 导出失败不切换：宁可留在原容器也不能丢画布内容
             return
         }
-        if (!fromRect || fromRect.width === 0 || fromRect.height === 0) return
-        // 两帧后浏览器完成新容器下的布局，此时反演起始态
-        requestAnimationFrame(() => requestAnimationFrame(() => {
+        pendingFlipRef.current = fromRect
+        setFullscreen(goingFullscreen)
+    }, [fullscreen, dockContainer, fullscreenContainer])
+
+    // FLIP 反演：新浮层挂载后（layout effect 在 paint 前同步执行，避免先闪现终态一帧）
+    // 先变换回旧矩形，再放开过渡到原位；开头更新 prevFullscreenRef 退出切换态
+    // 新浮层的 portal wrapper 晚于本组件的 layout effect 插入 DOM（Drawer 骨架两段式
+    // 挂载，实测 layout effect 里查不到），故排到 rAF 执行——仍在 paint 前，不会闪现终态帧
+    useLayoutEffect(() => {
+        prevFullscreenRef.current = fullscreen
+        const fromRect = pendingFlipRef.current
+        if (!fromRect) return
+        pendingFlipRef.current = null
+        const raf = requestAnimationFrame(() => {
+            // 目标查询范围按切换后的形态（fullscreen 已是新值）
+            const toScope = fullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document)
             const wrapper = toScope.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
-            if (!wrapper) return
-            const toRect = wrapper.getBoundingClientRect()
-            if (toRect.width === 0 || toRect.height === 0) return
+            const toRect = wrapper?.getBoundingClientRect() ?? null
+            if (!wrapper || !toRect || toRect.width === 0 || toRect.height === 0
+                || fromRect.width === 0 || fromRect.height === 0) {
+                return
+            }
             wrapper.style.transition = 'none'
             wrapper.style.transformOrigin = 'top left'
             wrapper.style.transform =
@@ -131,7 +153,8 @@ export function SketchDrawer({
             }, { once: true })
             // transitionend 可能被下一次快速切换中断，定时兜底清理
             window.setTimeout(settle, FLIP_TRANSITION_MS + 60)
-        }))
+        })
+        return () => cancelAnimationFrame(raf)
     }, [fullscreen, dockContainer, fullscreenContainer])
 
     // 完成：经 canvas 手柄导出（未就绪返回 null 则留在画布），文件名/标记在此装配
@@ -185,6 +208,9 @@ export function SketchDrawer({
              * key 只含模式不含 open——带上 open 会让关闭时整个 Drawer 换 key 重挂，
              * leave 动画直接跳过（表现为「突然消失」，2026-09-19 实踩） */
             key={isMobile ? 'mobile' : fullscreen ? 'fullscreen' : 'docked'}
+            /* 切换重挂期间禁用 antd motion（rest 透传覆盖内置 panelMotion）：appear 动画
+             * 会让新浮层从视口外闪现、transform 污染 FLIP 反演测量，动画由 FLIP 接管 */
+            {...(switching ? { motion: { motionAppear: false, motionEnter: false, motionLeave: false } } : {})}
             open={open}
             onClose={onClose}
             maskClosable={false}
