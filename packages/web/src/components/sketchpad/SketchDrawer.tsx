@@ -35,7 +35,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Space, Tooltip } from 'antd'
-import { Check, Maximize2, Minimize2, X } from 'lucide-react'
+import { Check, Maximize, Minimize, X } from 'lucide-react'
 import { css, keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
@@ -304,7 +304,7 @@ export function SketchDrawer({
                                         type="text"
                                         size="small"
                                         aria-label={fullscreenLabel}
-                                        icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                                        icon={fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
                                         onClick={() => setFullscreen((v) => !v)}
                                     />
                                 </Tooltip>
