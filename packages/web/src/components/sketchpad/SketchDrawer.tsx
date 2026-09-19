@@ -134,8 +134,8 @@ export function SketchDrawer({
         }
         : undefined
 
-    // 圆角：停靠/移动端 sheet 观感（四角）；PC 全屏撑满聊天列时收平（圆角会在列角露出背后内容）
-    const rounded = !fullscreen || !fullscreenContainer
+    // PC 全屏 = 「聊天列内浮层」形态：撑满聊天列但四边留 padding、四角圆角（用户指定）
+    const floatingFullscreen = fullscreen && !!fullscreenContainer
 
     const fullscreenLabel = t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')
     return (
@@ -193,20 +193,21 @@ export function SketchDrawer({
                 // mask 与停靠 absolute 显式合并——...dockedStyles 浅展开会整体覆盖同 key。
                 // wrapper 去掉 antd bottom 抽屉自带的向上投影——遮罩透明后它会显成一条阴影带
                 mask: { background: 'transparent', ...(dockedStyles?.mask ?? {}) },
-                wrapper: { boxShadow: 'none', ...(dockedStyles?.wrapper ?? {}) },
+                // 全屏浮层四边留 padding（wrapper 背景透明，缩进即浮层与聊天列边缘的间隙）
+                wrapper: {
+                    boxShadow: 'none',
+                    ...(floatingFullscreen ? { padding: 8 } : {}),
+                    ...(dockedStyles?.wrapper ?? {}),
+                },
                 // 圆角经 section + overflow hidden 裁切（wrapper 有过渡动画，圆角放这层会被拉伸）。
                 // 细边框画边界：dark 下深色画布与页面底色接近，靠它确认画板范围。
                 // root 去掉 focus ring：rc-drawer 打开时会 focus 面板，浏览器默认 outline
                 // 会在整个停靠区域四周画一圈蓝框
-                ...(rounded
-                    ? {
-                        section: {
-                            borderRadius: 12,
-                            overflow: 'hidden' as const,
-                            border: '1px solid var(--ant-color-border)',
-                        },
-                    }
-                    : {}),
+                section: {
+                    borderRadius: 12,
+                    overflow: 'hidden' as const,
+                    border: '1px solid var(--ant-color-border)',
+                },
                 root: { outline: 'none', ...(dockedStyles?.root ?? {}) },
             }}
             {...drawerProps}
