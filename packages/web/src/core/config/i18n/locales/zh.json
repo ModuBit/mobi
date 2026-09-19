@@ -630,7 +630,8 @@
         },
         "attachPanelTitle": "添加",
         "attachFile": "文件",
-        "attachCamera": "拍照/录像"
+        "attachPhoto": "拍照",
+        "attachRecord": "录像"
     },
     "status": {
         "percentLeft": "{{percent}}% 剩余"

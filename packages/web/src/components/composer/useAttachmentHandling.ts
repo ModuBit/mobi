@@ -173,16 +173,21 @@ export function useAttachmentHandling(
      * 打开系统选择器（+ 面板分项入口）。
      * - file：文件选择器。PC 带 accept 白名单（桌面对话框类型过滤是便利）；移动端不带——
      *   iOS 见媒体 accept 会弹「拍照/录像/照片和视频」三选且无法进文件 App，不带 accept
-     *   则两端统一落系统文件选择器（iOS=文件 App，Android=Files），照片/云盘/本地全能选，
-     *   白名单校验仍由 processFiles 在代码层兜底（两端同一逻辑）
-     * - camera：移动端专属，accept 媒体类型 + capture 直开摄像头拍照/录像
+     *   则 iOS 落文件 App（照片/云盘/本地全能选）；Android 对空/含媒体 accept 都会先弹
+     *   系统 chooser（多来源选择是系统级 UX，无法绕过），chooser 内选「文件」即完整文件
+     *   管理器。白名单校验仍由 processFiles 在代码层兜底（各端同一逻辑）
+     * - photo/video：移动端专属。accept 必须单一类型，Android Chrome 才尊重 capture
+     *   直开相机/摄像机（混合类型如 image/*,video/* 会忽略 capture 落到媒体选择器）
      */
-    const handleAttach = useCallback((source: 'file' | 'camera' = 'file') => {
+    const handleAttach = useCallback((source: 'file' | 'photo' | 'video' = 'file') => {
         const input = document.createElement('input')
         input.type = 'file'
         input.multiple = source === 'file'
-        if (source === 'camera') {
-            input.accept = 'image/*,video/*'
+        if (source === 'photo') {
+            input.accept = 'image/*'
+            input.capture = 'environment'
+        } else if (source === 'video') {
+            input.accept = 'video/*'
             input.capture = 'environment'
         } else if (!isMobile) {
             input.accept = getAcceptExtensions()

@@ -15,24 +15,24 @@
  */
 
 /**
- * 附加面板（composer「+」按钮的弹出菜单，Codex 风格富面板）：
- * 分组标题 + 图标 + 主文字 + 灰色说明文字的菜单项列表。聚合消息附件的所有入口——
- * 文件（PC）/ 文件或相册（移动端）/ 拍照录像（仅移动端）/ 画板，后续新增入口在此扩展。
- * 弹层经 antd Popover 承载（定位/外点关闭托管的都是它），菜单项为受控受样式的自绘内容。
+ * 附加面板（composer「+」按钮的弹出菜单）：
+ * 分组标题 + 菜单项（图标 + 主文字）；移动端相机入口拆「拍照/录像」两项并排一行
+ * （各自单类型 accept + capture，Android Chrome 才会直开相机，见 handleAttach 注释）。
+ * 弹层经 antd Dropdown 承载（popupRender 自绘面板，定位/外点关闭托管的都是它）。
  */
 
 import { useState, type ReactNode } from 'react'
 import { Button, Dropdown } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
-import { Camera, Paperclip, PenLine } from 'lucide-react'
+import { Camera, Paperclip, PenLine, Video } from 'lucide-react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export interface AttachPanelProps {
     disabled?: boolean
-    /** 打开系统选择器（file=文件；camera=移动端直开相机），由调用方 handleAttach 承接 */
-    onAttach: (source: 'file' | 'camera') => void
+    /** 打开系统选择器（file=文件；photo/video=移动端直开相机/摄像机），由调用方 handleAttach 承接 */
+    onAttach: (source: 'file' | 'photo' | 'video') => void
     /** 打开画板；缺省不渲染画板项（新建页无画板入口） */
     onSketch?: () => void
 }
@@ -76,7 +76,7 @@ const Item = styled.button`
     .title { font-size: 14px; color: var(--ant-color-text); }
 `
 
-/** 面板单项（纯展示组装，供文件/拍照/画板共用） */
+/** 面板单项（纯展示组装，供文件/画板共用） */
 function PanelItem({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
     return (
         <Item type="button" onClick={onClick}>
@@ -85,6 +85,16 @@ function PanelItem({ icon, title, onClick }: { icon: ReactNode; title: string; o
         </Item>
     )
 }
+
+/* 相机行：拍照/录像并排（用户指定两项同行、内容左对齐，与文件/画板项一致） */
+const CameraRow = styled.div`
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 2px 0;
+`
+
+const CameraButton = styled(Item)``
 
 /**
  * 「+」按钮 + 附加面板：面板内容自绘（分组标题 + 富菜单项），承载用 antd Dropdown
@@ -110,11 +120,22 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
                 onClick={pick(() => onAttach('file'))}
             />
             {isMobile && (
-                <PanelItem
-                    icon={<Camera size={16} />}
-                    title={t('composer.attachCamera')}
-                    onClick={pick(() => onAttach('camera'))}
-                />
+                <CameraRow>
+                    <CameraButton
+                        type="button"
+                        onClick={pick(() => onAttach('photo'))}
+                    >
+                        <span className="icon"><Camera size={16} /></span>
+                        <span className="title">{t('composer.attachPhoto')}</span>
+                    </CameraButton>
+                    <CameraButton
+                        type="button"
+                        onClick={pick(() => onAttach('video'))}
+                    >
+                        <span className="icon"><Video size={16} /></span>
+                        <span className="title">{t('composer.attachRecord')}</span>
+                    </CameraButton>
+                </CameraRow>
             )}
             {onSketch && (
                 <PanelItem

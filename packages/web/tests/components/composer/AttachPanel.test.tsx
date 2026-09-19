@@ -37,7 +37,8 @@ vi.mock('react-i18next', () => ({
 
 /** 断言用的 i18n key（面板项标题） */
 const FILE_ITEM = 'composer.attachFile'
-const CAMERA_ITEM = 'composer.attachCamera'
+const PHOTO_ITEM = 'composer.attachPhoto'
+const RECORD_ITEM = 'composer.attachRecord'
 const SKETCH_ITEM = 'sketch.open'
 
 function renderPanel(overrides: Partial<Parameters<typeof AttachPanel>[0]> = {}) {
@@ -64,11 +65,12 @@ describe('AttachPanel', () => {
         mocks.isMobile = false
     })
 
-    it('PC：文件 + 画板两项（无拍照项），点击触发对应回调', async () => {
+    it('PC：文件 + 画板两项（无相机行），点击触发对应回调', async () => {
         const { onAttach, onSketch } = renderPanel()
         await openPanel()
 
-        expect(screen.queryByText(CAMERA_ITEM)).toBeNull()
+        expect(screen.queryByText(PHOTO_ITEM)).toBeNull()
+        expect(screen.queryByText(RECORD_ITEM)).toBeNull()
 
         fireEvent.click(screen.getByText(FILE_ITEM))
         expect(onAttach).toHaveBeenCalledWith('file')
@@ -79,13 +81,16 @@ describe('AttachPanel', () => {
         expect(onAttach).toHaveBeenCalledTimes(1)
     })
 
-    it('移动端：文件 + 拍照/录像 + 画板三项，拍照回调 source=camera', async () => {
+    it('移动端：相机行并排拍照/录像两项，回调 source 分别为 photo/video', async () => {
         mocks.isMobile = true
         const { onAttach } = renderPanel()
         await openPanel()
 
-        fireEvent.click(screen.getByText(CAMERA_ITEM))
-        expect(onAttach).toHaveBeenCalledWith('camera')
+        fireEvent.click(screen.getByText(PHOTO_ITEM))
+        expect(onAttach).toHaveBeenCalledWith('photo')
+
+        fireEvent.click(screen.getByText(RECORD_ITEM))
+        expect(onAttach).toHaveBeenCalledWith('video')
     })
 
     it('未提供 onSketch：不渲染画板项（新建页面板形态）', async () => {

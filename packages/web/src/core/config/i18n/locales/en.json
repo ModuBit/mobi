@@ -640,7 +640,8 @@
         },
         "attachPanelTitle": "Add",
         "attachFile": "File",
-        "attachCamera": "Camera"
+        "attachPhoto": "Photo",
+        "attachRecord": "Video"
     },
     "status": {
         "percentLeft": "{{percent}}% left"
