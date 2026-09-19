@@ -53,6 +53,12 @@ const createSyntheticCloseEvent = () =>
 /** 挂在 drawer root 上的标记 class，用于把「禁用 wrapper 动画」精确圈定到本 drawer */
 const WRAPPER_MOTION_OFF_CLASS = 'mobile-drawer-motion-off'
 
+/** 移动 sheet 标记 class：antd.css 里「高度自适应 + 85dvh 上限 + body safe-area」全局规则
+ *  只命中此类的 bottom drawer——避免误伤同样 placement=bottom 的非 sheet 抽屉
+ *  （如 PC 画板停靠抽屉的固定高度会被 height:auto !important 压塌）。
+ *  MobileDrawer 恒挂此标记；原生 Drawer 的移动 sheet（见 CLAUDE.md 规范）也挂它复用规则 */
+const MOBILE_SHEET_DRAWER_CLASS = 'mobile-sheet-drawer'
+
 /** 否决检测第二拍宽限：首拍后 open 仍 true 时再等这一窗口，覆盖 startTransition /
  *  短异步消费者；仍 true 才判定否决（真正长异步才决定关闭属契约外，见 closeWithAnimation） */
 const VETO_GRACE_MS = 100
@@ -431,7 +437,7 @@ export function MobileDrawer({
         },
     } as DrawerProps['styles']
 
-    const finalRootClassName = [rootClassName, WRAPPER_MOTION_OFF_CLASS]
+    const finalRootClassName = [MOBILE_SHEET_DRAWER_CLASS, rootClassName, WRAPPER_MOTION_OFF_CLASS]
         .filter(Boolean).join(' ') || undefined
 
     return (

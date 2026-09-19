@@ -112,6 +112,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     const stopDrawer = isMobile && showStop ? (
         <Drawer
             placement="bottom"
+            rootClassName="mobile-sheet-drawer"
             open={drawerOpen}
             onClose={() => { if (!stopping) setDrawerOpen(false) }}
             closable={false}

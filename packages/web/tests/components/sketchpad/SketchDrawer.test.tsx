@@ -80,10 +80,40 @@ describe('SketchDrawer 端形态分流', () => {
 
     afterEach(() => cleanup())
 
-    it('PC 停靠：right placement 全宽覆盖容器，提供全屏切换', () => {
+    it('PC 传停靠容器：从 composer 上方抽出的底部抽屉（height 70% + wrapper/mask absolute），提供全屏切换', () => {
+        // antd Drawer portal 到容器，容器须在 document 中（getContainer 函数返回它）
+        const dock = document.createElement('div')
+        document.body.appendChild(dock)
+        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} dockContainer={dock} />)
+        const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
+        // bottom 抽屉：底边贴容器底（= composer 顶边），高度为吊顶比例
+        expect(wrapper.style.height).toBe('70%')
+        // fixed 相对视口，挂进聊天列也全屏盖页——absolute 相对容器才是停靠语义
+        expect(wrapper.style.position).toBe('absolute')
+        const mask = document.querySelector('.ant-drawer-mask') as HTMLElement
+        expect(mask.style.position).toBe('absolute')
+        expect(findFullscreenButton()).toBeTruthy()
+        dock.remove()
+    })
+
+    it('PC 全屏容器：撑满整个聊天列（height 100%）', () => {
+        const root = document.createElement('div')
+        const dock = document.createElement('div')
+        root.appendChild(dock)
+        document.body.appendChild(root)
+        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} dockContainer={dock} fullscreenContainer={root} />)
+        // 切到全屏后：挂聊天列根、高度 100%
+        fireEvent.click(findFullscreenButton() as HTMLElement)
+        return waitFor(() => {
+            const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
+            expect(wrapper.style.height).toBe('100%')
+        })
+    })
+
+    it('PC 未传停靠容器：全屏兜底（fixed + 100dvh），不注入 absolute', () => {
         render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
         const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
-        expect(wrapper.style.width).toBe('100%')
+        expect(wrapper.style.position).not.toBe('absolute')
         expect(findFullscreenButton()).toBeTruthy()
     })
 

@@ -330,10 +330,12 @@ export function MobileProjectList() {
             {/* ActionSheet：会话操作菜单（重命名 / 归档·恢复 / 删除 / 取消）
                 ⚠️ 故意使用 antd 原生 Drawer，**不要改成 MobileDrawer**。
                 这是轻量操作菜单：内容固定（几个按钮）、高度低、用完即关，
-                不需要 MobileDrawer 的下拉关闭手势、拖拽指示条、85dvh maxHeight。
+                不需要 MobileDrawer 的下拉关闭手势、拖拽指示条；
+                挂 mobile-sheet-drawer 标记复用高度自适应 + 85dvh 上限的全局样式约定。
                 title 显示当前操作的 session 名称（fork 行标题已落库，displayName 自然区分） */}
             <Drawer
                 placement="bottom"
+                rootClassName="mobile-sheet-drawer"
                 open={!!actionSessionId}
                 onClose={closeActionSheet}
                 title={actionSessionDisplayTitle || undefined}

@@ -95,14 +95,16 @@
     overflow: auto;
 }
 
-/* 移动端底部 Drawer：高度自适应，上限 85dvh（不加 !important，让 MobileDrawer 的 inline maxHeight 可覆盖） */
-.ant-drawer-bottom .ant-drawer-content-wrapper {
+/* 移动端底部 sheet Drawer（挂 mobile-sheet-drawer 标记：MobileDrawer 恒挂，原生 Drawer 的移动 sheet 也挂）：
+   高度自适应，上限 85dvh（不加 !important，让 MobileDrawer 的 inline maxHeight 可覆盖）。
+   只命中标记类——不误伤 placement=bottom 的其他抽屉（如 PC 画板停靠抽屉的固定高度） */
+.mobile-sheet-drawer.ant-drawer-bottom .ant-drawer-content-wrapper {
     height: auto !important;
     max-height: 85dvh;
 }
 
-/* 移动端底部 Drawer 安全区 */
-.ant-drawer-bottom .ant-drawer-body {
+/* 移动端底部 sheet Drawer 安全区 */
+.mobile-sheet-drawer.ant-drawer-bottom .ant-drawer-body {
     padding-bottom: max(24px, env(safe-area-inset-bottom));
 }
 

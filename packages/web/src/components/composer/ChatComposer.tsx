@@ -145,8 +145,10 @@ interface ChatComposerProps {
     draftRequest?: { segments: ComposerSegments; nonce: number }
     /** React 19：气泡编辑入口经此打开画板（重编辑路径），见 ChatComposerHandle */
     ref?: Ref<ChatComposerHandle>
-    /** PC 端画板停靠容器（聊天列 DOM 节点）；缺省挂 body 全屏兜底 */
+    /** PC 端画板停靠容器（消息列表 DOM 节点）：Drawer 从 composer 上方抽出；缺省挂 body 全屏兜底 */
     sketchDockContainer?: HTMLElement | null
+    /** PC 端画板全屏容器（聊天列根节点）：全屏时撑满它 */
+    sketchFullscreenContainer?: HTMLElement | null
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -305,6 +307,7 @@ export function ChatComposer(props: ChatComposerProps) {
         draftRequest,
         ref,
         sketchDockContainer = null,
+        sketchFullscreenContainer = null,
     } = props
 
     const [text, setText] = useState('')
@@ -1168,6 +1171,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     onComplete={handleSketchComplete}
                     initialSketch={sketch.initialSketch}
                     dockContainer={sketchDockContainer}
+                    fullscreenContainer={sketchFullscreenContainer}
                 />
             </Suspense>
         </div>

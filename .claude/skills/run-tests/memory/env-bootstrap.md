@@ -65,6 +65,11 @@ store.close()
 就绪后从 /api/machines 读）——虚构 id（如 `m-e2e`）建出的项目在发消息建会话时报 404
 `Machine not found`（spawn 按 machineId 找机器）。事后可 `UPDATE projects SET machine_id=...` 补救。
 
+⚠️ **seed 项目的 folder 路径必须在机器 homeDir 之内**（如 `~/workspace/demo`）——machine 通道
+上传端点有 `validateHomeDirPath` 安全校验（`/api/machines/:id/upload`，X-Mobi-Cwd 头），
+home 外路径（如 `/tmp/x`）返回 403 `outside the home directory`（2026-09-19 画板 E2E 实测，
+根因是 seed 数据而非代码）。session 内上传不受此限（走 session 通道）。
+
 ## 会话 CLI 代码新鲜度（2026-09-08）
 
 runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，但**进程启动即固化代码**——

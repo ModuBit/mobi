@@ -35,6 +35,8 @@
 - `styles.wrapper: { height: 'auto', maxHeight: '85dvh' }`
 - `styles.body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`
 
+**必须同时传 `rootClassName="mobile-sheet-drawer"`**：`src/styles/antd.css` 的「height auto + 85dvh 上限 + body safe-area」全局规则只命中该标记类（MobileDrawer 恒挂它）。规则不命中 `.ant-drawer-bottom` 泛选——否则会误伤同样 bottom placement 的非 sheet 抽屉（如 PC 画板停靠抽屉的固定高度被 `height: auto !important` 压塌，2026-09-19 实踩）。
+
 注意：这套手动配置**仅对原生 antd Drawer 生效**；同一 prop 传给 MobileDrawer 会被组件不变量覆盖（见上）。
 
 ## 跨格式字段访问

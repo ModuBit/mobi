@@ -36,6 +36,7 @@ export function SaveConflictDialog({ open, onReload, onForceOverwrite }: Props) 
         <Drawer
             open={open}
             placement="bottom"
+            rootClassName="mobile-sheet-drawer"
             closable={false}
             maskClosable={false}
             styles={{

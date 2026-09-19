@@ -17,14 +17,16 @@
 /**
  * 画板载体（Drawer 容器）：
  * - 移动端：全屏 Drawer（最大手指操作空间）
- * - PC：默认停靠聊天列容器（覆盖消息列表与输入区），可一键切全屏
+ * - PC 停靠：从 composer 上方向上抽出的底部抽屉——挂在消息列表节点上
+ *   （底边 = composer 顶边），高度固定比例、最高到消息区顶（吊顶），composer 保持可用
+ * - PC 全屏：撑满整个聊天列（含 composer）
  *
  * 防误关不变量（画到一半丢失不可接受）：禁 mask 点击关闭、禁 ESC 关闭、无右上角 X，
  * 唯一出口是画布内显式「完成/取消」（取消的非空二次确认在 SketchCanvas 内）。
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Drawer, Space, Switch, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
@@ -38,11 +40,26 @@ export interface SketchDrawerProps {
     onComplete: (png: Blob, filename: string, sketchMark: SketchMark) => void
     /** 重编辑载入的草图 PNG；缺省 = 空白画布 */
     initialSketch?: Blob | null
-    /** PC 端停靠容器（聊天列 DOM 节点）；缺省挂 body（全屏兜底） */
+    /**
+     * PC 停靠容器 = 消息列表节点：Drawer 从其底部向上弹出（底边紧贴 composer 顶边），
+     * 高度 {@link DOCK_HEIGHT}、最高到容器顶（吊顶）。缺省挂 body 全屏兜底。
+     */
     dockContainer?: HTMLElement | null
+    /** PC 全屏容器 = 整个聊天列节点：全屏时撑满它（含 composer）。缺省挂 body。 */
+    fullscreenContainer?: HTMLElement | null
 }
 
-export function SketchDrawer({ open, onClose, onComplete, initialSketch = null, dockContainer = null }: SketchDrawerProps) {
+/** PC 停靠高度（占消息列表容器比例）：从 composer 上方抽出，拉满即吊顶（容器顶 = 100%） */
+const DOCK_HEIGHT = '70%'
+
+export function SketchDrawer({
+    open,
+    onClose,
+    onComplete,
+    initialSketch = null,
+    dockContainer = null,
+    fullscreenContainer = null,
+}: SketchDrawerProps) {
     const { t } = useTranslation()
     const isMobile = useIsMobile()
 
@@ -74,14 +91,33 @@ export function SketchDrawer({ open, onClose, onComplete, initialSketch = null, 
         }
     }, [])
 
-    const drawerContainer = useMemo(() => {
-        if (isMobile || fullscreen) return undefined // undefined = body
-        return dockContainer ?? undefined
-    }, [isMobile, fullscreen, dockContainer])
+    // 挂载容器与形态（自上而下）：移动端 → body 全屏；PC 全屏 → 聊天列根；PC 停靠 → 消息列表；兜底 → body 全屏
+    const drawerContainer = isMobile
+        ? undefined
+        : fullscreen
+            ? (fullscreenContainer ?? undefined)
+            : (dockContainer ?? undefined)
 
-    const drawerProps = isMobile || fullscreen
-        ? { placement: 'bottom' as const, height: '100dvh' }
-        : { placement: 'right' as const, width: '100%', height: '100%' }
+    // antd v6：width/height 已废弃（被忽略致面板塌缩），尺寸统一走 size（bottom drawer = 高度）
+    const drawerProps = isMobile
+        ? { placement: 'bottom' as const, size: '100dvh' as const }
+        : fullscreen
+            ? (fullscreenContainer
+                ? { placement: 'bottom' as const, size: '100%' as const }
+                : { placement: 'bottom' as const, size: '100dvh' as const })
+            : dockContainer
+                ? { placement: 'bottom' as const, size: DOCK_HEIGHT }
+                : { placement: 'bottom' as const, size: '100dvh' as const }
+
+    // 挂进自定义容器时 root/wrapper/mask 覆盖为 absolute——antd 默认 fixed 相对视口，
+    // 挂进聊天列也会全屏盖页；absolute 相对容器（须 position:relative）才是停靠语义
+    const dockedStyles = drawerContainer
+        ? {
+            root: { position: 'absolute' as const },
+            wrapper: { position: 'absolute' as const },
+            mask: { position: 'absolute' as const },
+        }
+        : undefined
 
     return (
         <Drawer
@@ -96,7 +132,7 @@ export function SketchDrawer({ open, onClose, onComplete, initialSketch = null, 
             title={t('sketch.open')}
             extra={
                 <Space size={12}>
-                    {/* 仅 PC 停靠模式可切全屏：移动端已全屏，全屏模式供退出 */}
+                    {/* 仅 PC 可切全屏：移动端已全屏 */}
                     {!isMobile && (
                         <Button
                             size="small"
@@ -118,7 +154,10 @@ export function SketchDrawer({ open, onClose, onComplete, initialSketch = null, 
                     </Tooltip>
                 </Space>
             }
-            styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column' } }}
+            styles={{
+                body: { padding: 0, display: 'flex', flexDirection: 'column' },
+                ...(dockedStyles ?? {}),
+            }}
             {...drawerProps}
             {...(drawerContainer ? { getContainer: () => drawerContainer } : {})}
         >

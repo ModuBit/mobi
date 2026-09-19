@@ -87,6 +87,7 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
                 {trigger}
                 <Drawer
                     placement="bottom"
+                    rootClassName="mobile-sheet-drawer"
                     open={drawerOpen}
                     onClose={() => { if (!loading) setDrawerOpen(false) }}
                     closable={false}
