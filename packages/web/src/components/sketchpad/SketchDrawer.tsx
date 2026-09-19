@@ -189,8 +189,10 @@ const Header = styled.div<{ $mobile: boolean }>`
     padding: ${(p) => (p.$mobile ? '8px 12px' : '6px 12px')};
     border-bottom: 1px solid var(--ant-color-split);
 
-    /* 移动端触达目标 ≥40px（按钮 size small 本体 24px 太小） */
+    /* 移动端图标按钮触达目标 ≥40px（size small 本体 24px 太小）；完成 CTA 带文字本就
+     * 易点，40px 视觉过重（用户反馈），移动端 34px 适度放大即可 */
     .exit-btn { min-width: ${(p) => (p.$mobile ? '40px' : '28px')}; min-height: ${(p) => (p.$mobile ? '40px' : '28px')}; }
+    .complete-btn { min-height: ${(p) => (p.$mobile ? '34px' : '24px')}; }
 `
 
 export function SketchDrawer({
@@ -320,7 +322,7 @@ export function SketchDrawer({
                                 </Tooltip>
                             )}
                             <Button
-                                className="exit-btn"
+                                className="complete-btn"
                                 type="primary"
                                 size="small"
                                 icon={<Check size={14} />}
