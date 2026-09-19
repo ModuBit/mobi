@@ -9,8 +9,14 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { attachmentMimeType, isImageFileAttachment } from '../../../src/core/lib/fileAttachments'
+import {
+    attachmentMimeType,
+    bucketCompletedAttachments,
+    fileRefToPlaceholderAttachment,
+    isImageFileAttachment,
+} from '../../../src/core/lib/fileAttachments'
 import type { FileAttachment } from '../../../src/core/lib/fileAttachments'
+import type { BlockFileRef } from '@/domain/chat/composerSegments'
 import { cleanup } from '@testing-library/react'
 
 afterEach(cleanup)
@@ -72,5 +78,39 @@ describe('attachmentMimeType', () => {
     it('恢复态未知扩展回退 application/octet-stream', () => {
         expect(attachmentMimeType(makeAttachment({ name: 'mystery.xyz' }))).toBe('application/octet-stream')
         expect(attachmentMimeType(makeAttachment({ name: 'noext' }))).toBe('application/octet-stream')
+    })
+})
+
+describe('sketch 标记投影（画板产物 → composer 分段 → 草稿恢复 全链路透传）', () => {
+    const SKETCH = { format: 'excalidraw' }
+
+    it('bucketCompletedAttachments：携带 sketch 的图片附件投影进 images 桶并透传标记', () => {
+        const a = makeAttachment({ name: '草图-1.excalidraw.png', fileType: 'image/png' })
+        a.status = 'complete'
+        a.path = '/u/草图-1.excalidraw.png'
+        a.sketch = SKETCH
+        const { images } = bucketCompletedAttachments([a])
+        expect(images).toHaveLength(1)
+        expect(images[0]!.sketch).toEqual(SKETCH)
+    })
+
+    it('bucketCompletedAttachments：普通图片附件无 sketch 字段', () => {
+        const a = makeAttachment({ name: 'photo.png', fileType: 'image/png' })
+        a.status = 'complete'
+        a.path = '/u/photo.png'
+        const { images } = bucketCompletedAttachments([a])
+        expect(images[0]).not.toHaveProperty('sketch')
+    })
+
+    it('fileRefToPlaceholderAttachment：sketch 标记随引用还原为占位附件（重编辑入口判据不丢）', () => {
+        const ref = {
+            id: 'g1', filename: '草图-1.excalidraw.png', path: '/u/s.png',
+            mimeType: 'image/png', size: 8, sketch: SKETCH,
+        } satisfies BlockFileRef
+        const restored = fileRefToPlaceholderAttachment(ref)
+        expect(restored.sketch).toEqual(SKETCH)
+
+        // 无标记引用不产出 sketch 字段
+        expect(fileRefToPlaceholderAttachment({ ...ref, sketch: undefined })).not.toHaveProperty('sketch')
     })
 })

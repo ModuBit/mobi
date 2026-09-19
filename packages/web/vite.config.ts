@@ -19,6 +19,7 @@ import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { cpSync, existsSync, readFileSync, statSync } from 'fs'
 import { VitePWA } from 'vite-plugin-pwa'
 import mkcert from 'vite-plugin-mkcert'
 import { visualizer } from 'rollup-plugin-visualizer'
@@ -39,10 +40,45 @@ const useHttpsDev = process.env.MOBI_DEV_HTTPS === '1' || process.env.MOBI_DEV_H
 // MOBI_BUNDLE_ANALYZE=1 时生成 dist/stats.html（bundle 体积 treemap），供体积分析；日常构建不跑
 const enableBundleAnalyze = process.env.MOBI_BUNDLE_ANALYZE === '1'
 
+/** 画板字体的静态服务前缀（dev middleware 与构建产物同路径，见 excalidrawAssetsPlugin） */
+const EXCALIDRAW_ASSETS_PREFIX = '/excalidraw-assets/'
+/** 包内 excalidraw 产物根（fonts 的父目录）：EXCALIDRAW_ASSET_PATH 前缀与磁盘的映射基准。
+ *  excalidraw 自行拼接 fonts/ 前缀，故 URL /excalidraw-assets/fonts/X ↔ 磁盘 prod/fonts/X */
+const EXCALIDRAW_ASSETS_ROOT = resolve(__dirname, 'node_modules/@excalidraw/excalidraw/dist/prod')
+
+/**
+ * excalidraw 字体自托管（离线/内网无 CDN，spec 05）：
+ * - 构建：closeBundle 把包内 fonts 复制进 dist/excalidraw-assets/fonts（产物 ~13MB，
+ *   woff2 按 unicode-range 分片、浏览器按需拉取，不进主 bundle）
+ * - dev：middleware 把同前缀请求直接 serve 包内目录，无需复制
+ * 运行时入口（main.tsx）设置 window.EXCALIDRAW_ASSET_PATH 指向该前缀。
+ */
+const excalidrawAssetsPlugin = (): PluginOption => ({
+    name: 'mobi-excalidraw-assets',
+    configureServer(server) {
+        // 不用 connect 的 path 前缀参数（其 strip 行为随版本有差），自判前缀最稳
+        server.middlewares.use((req, res, next) => {
+            const url = (req.url ?? '').split('?')[0]!
+            if (!url.startsWith(EXCALIDRAW_ASSETS_PREFIX)) return next()
+            const rel = url.slice(EXCALIDRAW_ASSETS_PREFIX.length)
+            const file = resolve(EXCALIDRAW_ASSETS_ROOT, rel)
+            if (!file.startsWith(EXCALIDRAW_ASSETS_ROOT) || !existsSync(file) || !statSync(file).isFile()) return next()
+            res.setHeader('Content-Type', rel.endsWith('.woff2') ? 'font/woff2' : 'application/octet-stream')
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+            res.end(readFileSync(file))
+        })
+    },
+    closeBundle() {
+        cpSync(resolve(EXCALIDRAW_ASSETS_ROOT, 'fonts'), resolve(__dirname, 'dist/excalidraw-assets/fonts'), { recursive: true })
+    },
+})
+
 export default defineConfig({
     plugins: [
         react(),
         tailwindcss(),
+        // 画板字体自托管（spec 05）：离线/内网无 CDN
+        excalidrawAssetsPlugin(),
         VitePWA({
             registerType: 'prompt',
             // 使用自定义 SW 注册逻辑，禁用插件自动注入
@@ -57,6 +93,9 @@ export default defineConfig({
                 // 允许预缓存较大的 JS chunk（默认 2 MiB 不够）
                 maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
                 globPatterns: ['**/*.{js,css,woff2,png,svg,ico,gif}'],
+                // 画板字体（~13MB，unicode-range 分片按需加载）不进预缓存：安装下载量失控，
+                // 运行时复用浏览器 HTTP 缓存即可
+                globIgnores: ['excalidraw-assets/**'],
             },
             // type:'module' 让 dev SW 走 esbuild 打包 sw.ts（含 push/notificationclick handler），
             // 与生产 injectManifest 一致；缺省时插件用 generateSW 合成无 push handler 的占位 SW

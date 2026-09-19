@@ -769,5 +769,18 @@
             "saved": "VNC password saved",
             "privacyNote": "The password is stored only in the mobi config file on the controlled machine; viewing connections use one-time short-lived tokens. The VNC protocol only uses the first 8 characters for authentication — longer input is truncated, matching macOS behavior."
         }
+    },
+    "sketch": {
+        "open": "Sketchpad",
+        "complete": "Done",
+        "exporting": "Exporting…",
+        "pressureSimulated": "Simulated pressure",
+        "pressureReal": "Real pressure",
+        "fullscreen": "Fullscreen",
+        "exitFullscreen": "Exit fullscreen",
+        "discardConfirm": "The canvas has unsent content and will be lost. Discard this edit?",
+        "editSketch": "Edit sketch",
+        "uploadFailed": "Failed to upload sketch",
+        "loadFailed": "Failed to load sketch; opened as a blank canvas"
     }
 }

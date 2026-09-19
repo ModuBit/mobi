@@ -112,6 +112,33 @@ describe('normalizeUserContent 四形态归一', () => {
         expect(UserContentBlockSchema.safeParse(overMax).success).toBe(false)
     })
 
+    it('image block 带可选 sketch 标记（内嵌可编辑场景）通过解析并保留', () => {
+        const withSketch = {
+            type: 'image',
+            source: { type: 'url', value: '/uploads/s.excalidraw.png', mimeType: 'image/png' },
+            id: '3', filename: 's.excalidraw.png', size: 30,
+            sketch: { format: 'excalidraw' },
+        }
+        expect(ContentBlockSchema.safeParse(withSketch).success).toBe(true)
+        // 归一往返保留（旧消息无此字段不受影响）
+        expect(normalizeContentBlocks(withSketch)).toEqual([withSketch])
+        expect(normalizeContentBlocks({ ...withSketch, sketch: undefined })).toEqual([{
+            type: 'image',
+            source: { type: 'url', value: '/uploads/s.excalidraw.png', mimeType: 'image/png' },
+            id: '3', filename: 's.excalidraw.png', size: 30,
+        }])
+    })
+
+    it('sketch 标记畸形（format 缺失/非字符串）整块拒绝', () => {
+        const base = {
+            type: 'image',
+            source: { type: 'url', value: '/uploads/s.png', mimeType: 'image/png' },
+            id: '4', filename: 's.png', size: 30,
+        }
+        expect(ContentBlockSchema.safeParse({ ...base, sketch: {} }).success).toBe(false)
+        expect(ContentBlockSchema.safeParse({ ...base, sketch: { format: 123 } }).success).toBe(false)
+    })
+
     it('QUOTE_EXCERPT_MAX 为 200', () => {
         expect(QUOTE_EXCERPT_MAX).toBe(200)
     })

@@ -16,9 +16,10 @@
 
 import { memo, useState, useEffect, type FC } from 'react'
 import { theme, Spin, Progress, Image } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
-import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
+import { CloseOutlined, EditOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
     File, FileText, FileSpreadsheet, FileImage, FileVideo,
     FileAudio, FileArchive, FileType, FileCode, FileCode2,
@@ -167,21 +168,27 @@ const THUMB_SIZE = 36
 const AttachmentCard = memo(function AttachmentCard({
     attachment,
     onRemove,
+    onEditSketch,
     sessionId,
     machineId,
     cwd,
 }: {
     attachment: FileAttachment
     onRemove: (id: string) => void
+    /** 画板重编辑入口：仅带 sketch 标记的图片附件可点击重开画板 */
+    onEditSketch?: (attachment: FileAttachment) => void
     /** 透传 ImageThumb：恢复态附件预览取数通道 */
     sessionId?: string
     machineId?: string
     cwd?: string
 }) {
     const { token } = theme.useToken()
+    const { t } = useTranslation()
     const isImage = isImageAttachment(attachment)
     const isUploading = attachment.status === 'uploading'
     const isError = attachment.status === 'error'
+    // 画板产物：缩略图点击 = 重开画板（替代原图放大预览；原图可经消息气泡预览）
+    const isSketchEditable = !!attachment.sketch && !isUploading && !isError && !!onEditSketch
     const displayName = getDisplayName(attachment)
     const fileSize = formatFileSize(attachment.size ?? attachment.file.size)
     const accentColor = getCategoryColor(displayName)
@@ -201,25 +208,54 @@ const AttachmentCard = memo(function AttachmentCard({
             ...(isError ? { borderLeft: `3px solid ${token.colorError}` } : {}),
         }}>
             {/* 左侧：预览图或文件图标 */}
-            <div style={{
-                width: THUMB_SIZE,
-                height: THUMB_SIZE,
-                borderRadius: token.borderRadiusSM,
-                overflow: 'hidden',
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-                background: isImage ? token.colorFillQuaternary : `${accentColor}10`,
-            }}>
+            <div
+                style={{
+                    width: THUMB_SIZE,
+                    height: THUMB_SIZE,
+                    borderRadius: token.borderRadiusSM,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    background: isImage ? token.colorFillQuaternary : `${accentColor}10`,
+                    ...(isSketchEditable ? { cursor: 'pointer' } : {}),
+                }}
+                onClick={isSketchEditable ? () => onEditSketch!(attachment) : undefined}
+            >
                 {isImage ? (
-                    <ImageThumb attachment={attachment} sessionId={sessionId} machineId={machineId} cwd={cwd} />
+                    <ImageThumb
+                        attachment={attachment}
+                        sessionId={sessionId}
+                        machineId={machineId}
+                        cwd={cwd}
+                        // 画板产物点击走重编辑，不再弹出原图预览
+                        preview={!isSketchEditable}
+                    />
                 ) : (
                     <FileIconSlot
                         attachment={attachment}
                         displayName={displayName}
                         accentColor={accentColor}
+                    />
+                )}
+
+                {/* 画板重编辑角标：一眼可辨「这个图能再画」 */}
+                {isSketchEditable && (
+                    <EditOutlined
+                        aria-label={t('sketch.editSketch')}
+                        title={t('sketch.editSketch')}
+                        style={{
+                            position: 'absolute',
+                            right: 2,
+                            bottom: 2,
+                            fontSize: 10,
+                            padding: 2,
+                            borderRadius: 4,
+                            background: 'rgba(255, 255, 255, 0.85)',
+                            color: token.colorTextSecondary,
+                        }}
                     />
                 )}
 
@@ -306,6 +342,7 @@ const ImageThumb = memo(function ImageThumb({
     sessionId,
     machineId,
     cwd,
+    preview = true,
 }: {
     attachment: FileAttachment
     /** 会话 ID：machineId/cwd 缺失时的 session read-file 回退通道 */
@@ -314,6 +351,8 @@ const ImageThumb = memo(function ImageThumb({
     machineId?: string
     /** 会话工作目录（machine 端点 cwd 参数） */
     cwd?: string
+    /** false 时点击不弹原图预览（画板产物缩略图点击已被重编辑入口占用） */
+    preview?: boolean
 }) {
     const { token } = theme.useToken()
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -354,6 +393,7 @@ const ImageThumb = memo(function ImageThumb({
                 alt=""
                 width={THUMB_SIZE}
                 height={THUMB_SIZE}
+                preview={preview}
                 styles={{ image: { objectFit: 'cover', display: 'block' } }}
                 onError={() => setImgError(true)}
             />
@@ -388,6 +428,8 @@ interface AttachmentListProps {
     attachments: FileAttachment[]
     /** 移除回调 */
     onRemove: (id: string) => void
+    /** 画板重编辑入口回调（sketch 附件点击缩略图触发）；缺省无编辑入口 */
+    onEditSketch?: (attachment: FileAttachment) => void
     /** 会话 ID：图片附件缩略图预览的 session 回退通道（新建会话页无会话，不传） */
     sessionId?: string
     /** 归属机器 ID：恢复态附件优先 machine 端点预览 */
@@ -403,7 +445,7 @@ interface AttachmentListProps {
  * 右侧统一显示文件名 + 人性化大小。
  */
 export const AttachmentList = memo(function AttachmentList(props: AttachmentListProps) {
-    const { attachments, onRemove, sessionId, machineId, cwd } = props
+    const { attachments, onRemove, onEditSketch, sessionId, machineId, cwd } = props
 
     if (attachments.length === 0) {
         return null
@@ -416,6 +458,7 @@ export const AttachmentList = memo(function AttachmentList(props: AttachmentList
                     key={attachment.id}
                     attachment={attachment}
                     onRemove={onRemove}
+                    onEditSketch={onEditSketch}
                     sessionId={sessionId}
                     machineId={machineId}
                     cwd={cwd}

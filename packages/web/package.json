@@ -26,6 +26,7 @@
     "@codemirror/view": "^6.43.11",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@excalidraw/excalidraw": "^0.18.1",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@mobi/shared": "workspace:*",
     "@novnc/novnc": "^1.7.0",

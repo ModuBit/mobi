@@ -16,6 +16,7 @@
 
 import type { UploadFileResponse } from '@/core/data/api/types'
 import { ALLOWED_EXTENSIONS_SET, ALLOWED_EXTENSIONS, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+import type { SketchMark } from '@mobi/shared'
 import type { BlockFileRef } from '@/domain/chat/composerSegments'
 import { uuid } from './uuid'
 
@@ -52,6 +53,11 @@ export type FileAttachment = {
      * 正常上传态不填。
      */
     mimeType?: string
+    /**
+     * 草图标记（仅画板产物）：该 PNG 内嵌可编辑场景，composer 附件卡重编辑入口的判据。
+     * 投影语义与 mimeType 同源（bucketCompletedAttachments 建模、fileRefToPlaceholderAttachment 还原）。
+     */
+    sketch?: SketchMark
 }
 
 /**
@@ -163,6 +169,7 @@ export function bucketCompletedAttachments(attachments: readonly FileAttachment[
             path: a.path,
             mimeType: attachmentMimeType(a),
             size: a.size ?? a.file.size,
+            ...(a.sketch !== undefined ? { sketch: a.sketch } : {}),
         }
         ;(isImageFileAttachment(a) ? images : files).push(ref)
     }
@@ -184,6 +191,7 @@ export function fileRefToPlaceholderAttachment(ref: BlockFileRef): FileAttachmen
         name: ref.filename,
         size: ref.size,
         ...(ref.mimeType ? { mimeType: ref.mimeType } : {}),
+        ...(ref.sketch !== undefined ? { sketch: ref.sketch } : {}),
     }
 }
 

@@ -36,6 +36,7 @@ const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
 const DesktopSection = lazyRoute(routeChunkLoaders.DesktopSection)
 const DesktopPage = lazyRoute(routeChunkLoaders.DesktopPage)
 
+
 // Root route - wraps all routes with App component
 const rootRoute = createRootRoute({
     component: App,

@@ -50,6 +50,10 @@ vi.mock('@/core/data/hooks/mutations/useSpawnSession', () => ({
     }),
 }))
 
+// —— mock 画板载体：React.lazy 仍会在挂载时触发 excalidraw 模块图加载（open-color.json
+//    在 vitest 下无 JSON import attribute 而炸），本规格与其无关，桩掉 ——
+vi.mock('@/components/sketchpad/SketchDrawer', () => ({ SketchDrawer: () => null }))
+
 // —— mock 数据 hooks：单机器单项目，项目经 localStorage 恢复路径自动选中 ——
 vi.mock('@/core/data/hooks/queries/useMachines', () => ({
     useMachines: () => ({ machines: [], isLoading: false }),

@@ -759,5 +759,18 @@
             "saved": "VNC 密码已保存",
             "privacyNote": "密码仅保存在被控电脑的 mobi 配置文件中；观看连接使用一次性短时效票据。VNC 协议仅使用前 8 位参与认证，超长部分与 Mac 系统行为一致被截断。"
         }
+    },
+    "sketch": {
+        "open": "画板",
+        "complete": "完成",
+        "exporting": "导出中…",
+        "pressureSimulated": "模拟压感",
+        "pressureReal": "真实压感",
+        "fullscreen": "全屏",
+        "exitFullscreen": "退出全屏",
+        "discardConfirm": "画布上有内容，放弃后将无法恢复。确定放弃本次编辑？",
+        "editSketch": "编辑草图",
+        "uploadFailed": "草图上传失败",
+        "loadFailed": "草图载入失败，已按空白画布打开"
     }
 }

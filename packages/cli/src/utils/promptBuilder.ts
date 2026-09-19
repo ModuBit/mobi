@@ -31,6 +31,41 @@ export type PromptPayload = string | PromptContentBlock[]
 const SUPPORTED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const
 type SupportedImageMime = (typeof SUPPORTED_IMAGE_MIME)[number]
 
+/** 发 SDK 单图原始字节上限：Anthropic API 单图 base64 编码后上限 5MB（4/3 膨胀 → 原始 ~3.66MB），
+ *  超限图片降级 @path 引用（上传白名单 50MB 远大于此，防线必要而非可选） */
+const MAX_SDK_IMAGE_BYTES = 3.5 * 1024 * 1024
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/**
+ * 剥离 PNG 的 tEXt chunk（画板产物的内嵌 scene 就藏在这里，对模型无意义、白占 payload）。
+ * 纯字节遍历：PNG chunk = length(4BE) + type(4) + data + crc(4)，保留非 tEXt、丢弃 tEXt，
+ * 保留 chunk 的 CRC 原样有效（删除不影响其余 chunk 的 CRC 校验）。
+ * 非 PNG / 截断畸形输入原样返回，不抛异常——本函数是发送链路的保洁，不是校验器。
+ */
+export function stripPngTextChunks(input: Buffer): Buffer {
+    if (input.length < PNG_SIGNATURE.length || !input.subarray(0, 8).equals(PNG_SIGNATURE)) {
+        return input
+    }
+    const chunks: Buffer[] = []
+    let offset = 8
+    while (offset + 12 <= input.length) {
+        const length = input.readUInt32BE(offset)
+        // 长度越界 = 截断/畸形：把剩余字节整体保留收尾，不丢弃用户数据
+        if (offset + 12 + length > input.length) {
+            chunks.push(input.subarray(offset))
+            break
+        }
+        const type = input.subarray(offset + 4, offset + 8).toString('ascii')
+        const end = offset + 12 + length
+        if (type !== 'tEXt') {
+            chunks.push(input.subarray(offset, end))
+        }
+        offset = end
+    }
+    return Buffer.concat([PNG_SIGNATURE, ...chunks])
+}
+
 /**
  * 用户 blocks → SDK prompt 的位置性转换（spec：docs/superpowers/specs/2026-08-27-user-message-content-blocks-design.md）。
  * 顺序 = composer 序列化顺序 files(document) → images → quote → text，
@@ -105,6 +140,9 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
  * - data source 暂未启用（落库恒用 url source）
  * - MIME 不在 Anthropic 支持列表（如 svg）
  * - 文件读取失败（已被移动/删除）
+ * - 原始字节超单图上限（base64 后必超 API 5MB 硬限，降级由 CC 自读）
+ *
+ * PNG 发送前剥离 tEXt chunk（画板产物的内嵌 scene，对模型无意义）——像素零影响、payload 最小化。
  *
  * 返回校验后的 mediaType（字面量联合）与 data 一次算出——调用方 push image 元素时
  * 无需重复推断 mime，类型与 Anthropic ContentBlockParam 直接对齐。
@@ -116,7 +154,13 @@ function tryReadImageBase64(source: UserImageBlock['source']): { data: string; m
     const mediaType = SUPPORTED_IMAGE_MIME.find(m => m === mime)
     if (!mediaType) return null
     try {
-        return { data: readFileSync(source.value, { encoding: 'base64' }), mediaType }
+        const raw = readFileSync(source.value)
+        if (raw.length > MAX_SDK_IMAGE_BYTES) {
+            logger.warn(`[promptBuilder] 图片 ${source.value} 超过单图上限（${raw.length} 字节），降级 @path 引用`)
+            return null
+        }
+        const bytes = mediaType === 'image/png' ? stripPngTextChunks(raw) : raw
+        return { data: bytes.toString('base64'), mediaType }
     } catch (e) {
         logger.warn(`[promptBuilder] 图片读取失败，降级 @path 引用: ${source.value}`, e)
         return null

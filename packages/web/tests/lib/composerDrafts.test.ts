@@ -50,6 +50,21 @@ describe('composerDrafts', () => {
         expect(getDraft('s1')!.files[0]).not.toHaveProperty('previewUrl')
     })
 
+    it('sketch 标记随图片分段往返持久化（恢复态可继续画板重编辑）', () => {
+        const draft = seg('t', {
+            images: [{ id: 'g1', filename: '草图-1.excalidraw.png', path: '/u/s.png', mimeType: 'image/png', size: 8, sketch: { format: 'excalidraw' } }],
+        })
+        saveDraft('s1', draft)
+        expect(getDraft('s1')!.images[0]!.sketch).toEqual({ format: 'excalidraw' })
+
+        // 畸形 sketch（format 非字符串）剔除标记但保留引用本身
+        sessionStorage.setItem('mobi:composer-drafts', JSON.stringify({
+            s2: { text: 't', files: [], images: [{ id: 'g2', filename: 'x.png', path: '/x', mimeType: 'image/png', size: 1, sketch: { format: 42 } }], quotes: [] },
+        }))
+        __resetDraftCacheForTesting()
+        expect(getDraft('s2')!.images[0]).not.toHaveProperty('sketch')
+    })
+
     it('旧版 {text, attachments:[{id,name,path,size}]} 草稿加载为 files 桶（mimeType 空串、images/quotes 补空）', () => {
         sessionStorage.setItem('mobi:composer-drafts', JSON.stringify({
             s1: { text: 'legacy', attachments: [{ id: 'a1', name: 'f.png', path: '/p/f.png', size: 2048 }] },

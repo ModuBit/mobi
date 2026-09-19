@@ -35,7 +35,8 @@ import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { filterBlocksForPagination } from './filterBlocksForPagination'
-import { ChatComposer } from '@/components/composer/ChatComposer'
+import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
+import { resolveUserImageUrl } from './userBlocks/UserBlocksView'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
@@ -211,6 +212,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const sessionActions = useSessionActions(sessionId)
     const chatListRef = useRef<BubbleListChatHandle>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
+    // ── 画板（气泡 sketch 图重编辑入口，spec D3/D4）──
+    // composer 手柄：重编辑完成后产物落回 composer 附件（历史不可变）
+    const composerHandleRef = useRef<ChatComposerHandle>(null)
+    // PC 停靠容器（聊天列根节点）：ref 回调入 state 驱动 SketchDrawer 挂载
+    const [chatColumnEl, setChatColumnEl] = useState<HTMLElement | null>(null)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
     const prevByIdRef = useRef<ChatBlocksById>(new Map())
@@ -403,6 +409,24 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // /clear 进行中：禁用输入，防止 clear 期间提交新消息（与 isCompressing 共用 isCommandInProgress）
     const isClearing = useMemo(() => isClearInProgress(chatBlocks), [chatBlocks])
+
+    /** 气泡 sketch 图编辑：read-file 端点取 PNG → 画板载入（产物经 composer 手柄落回附件） */
+    const handleEditSketchFromBubble = useCallback(async (block: { previewUrl?: string; source: { type: string; value: string } }) => {
+        const url = resolveUserImageUrl(block as never, {
+            sessionId,
+            machineId: metadata?.machineId,
+            cwd: metadata?.path,
+        })
+        try {
+            const res = await fetch(url)
+            if (!res.ok) throw new Error(`read-file ${res.status}`)
+            const blob = await res.blob()
+            composerHandleRef.current?.openSketch(blob)
+        } catch (err) {
+            console.warn('[sketch] 气泡草图取数失败', err)
+            messageApi.error(t('sketch.loadFailed'))
+        }
+    }, [sessionId, metadata?.machineId, metadata?.path, messageApi, t])
 
     // ──────────────────────────────────────────────────────────────
     // rewind 生命周期（spec §4.1 / §4.5）
@@ -777,6 +801,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             {
                 metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
                 turnResultActions: (block) => turnResultActionsByKey.get(block.id),
+                onEditSketchBlock: (block) => { void handleEditSketchFromBubble(block) },
             },
             !!session?.running,
             { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
@@ -954,7 +979,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile])
+    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile, handleEditSketchFromBubble])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
@@ -1038,7 +1063,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}>
+        <div
+            ref={setChatColumnEl}
+            style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}
+        >
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
@@ -1138,6 +1166,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             )}
 
             <ChatComposer
+                ref={composerHandleRef}
+                sketchDockContainer={chatColumnEl}
                 sessionId={sessionId}
                 draftRequest={draftRequest}
                 disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}

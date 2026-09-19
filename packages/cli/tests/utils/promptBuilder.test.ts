@@ -27,7 +27,7 @@ vi.mock('@/ui/logger', () => ({
 }))
 
 // vi.mock 之上再导入被测模块（vitest 会把 vi.mock 提升到文件顶部）
-import { buildPromptFromBlocks } from '@/utils/promptBuilder'
+import { buildPromptFromBlocks, stripPngTextChunks } from '@/utils/promptBuilder'
 
 let dir: string
 beforeAll(() => {
@@ -36,6 +36,51 @@ beforeAll(() => {
     writeFileSync(join(dir, 'pic.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
 })
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/** 构造 PNG chunk（length + type + data + crc；crc 填 0——剥离函数不校验 CRC） */
+function pngChunk(type: string, data: Buffer): Buffer {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    return Buffer.concat([len, Buffer.from(type, 'ascii'), data, Buffer.alloc(4)])
+}
+
+/** 组装 PNG：签名 + chunks；tEXt 的 data 为「keyword\0text」形态 */
+function pngWith(chunks: Buffer[]): Buffer {
+    return Buffer.concat([PNG_SIGNATURE, ...chunks])
+}
+
+describe('stripPngTextChunks', () => {
+    it('剥离全部 tEXt chunk，其余 chunk 逐字节保留', () => {
+        const ihdr = pngChunk('IHDR', Buffer.alloc(13))
+        const idat = pngChunk('IDAT', Buffer.from([1, 2, 3]))
+        const text1 = pngChunk('tEXt', Buffer.from('application/x.excalidraw\0{"type":"excalidraw"}'))
+        const text2 = pngChunk('tEXt', Buffer.from('Software\0excalidraw'))
+        const iend = pngChunk('IEND', Buffer.alloc(0))
+
+        const out = stripPngTextChunks(pngWith([ihdr, text1, idat, text2, iend]))
+
+        expect(out.equals(pngWith([ihdr, idat, iend]))).toBe(true)
+    })
+
+    it('无 tEXt 的 PNG 原样返回（等值但允许新 Buffer）', () => {
+        const ihdr = pngChunk('IHDR', Buffer.alloc(13))
+        const idat = pngChunk('IDAT', Buffer.from([9]))
+        const input = pngWith([ihdr, idat])
+        expect(stripPngTextChunks(input).equals(input)).toBe(true)
+    })
+
+    it('非 PNG 输入原样返回（不解析不改动）', () => {
+        const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+        expect(stripPngTextChunks(jpeg).equals(jpeg)).toBe(true)
+    })
+
+    it('截断/畸形输入不抛异常，原样或安全产出返回', () => {
+        const truncated = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+        expect(() => stripPngTextChunks(truncated)).not.toThrow()
+    })
+})
 
 const img = (path: string, mime = 'image/png'): UserContentBlock => ({
     type: 'image', source: { type: 'url', value: path, mimeType: mime }, id: 'i1', filename: 'pic.png', size: 4,
@@ -114,5 +159,28 @@ describe('buildPromptFromBlocks', () => {
 
     it('空数组退化为空串', () => {
         expect(buildPromptFromBlocks([])).toBe('')
+    })
+
+    it('带内嵌 scene 的 PNG：发送的 base64 是剥离 tEXt 后的字节', () => {
+        // 画板产物：scene 内嵌在 tEXt chunk，发 SDK 前剥离（对模型无意义，白占 payload）
+        const text = pngChunk('tEXt', Buffer.from('application/x.excalidraw\0{"type":"excalidraw","version":2}'))
+        const imgData = pngChunk('IDAT', Buffer.from([7, 7, 7]))
+        const png = pngWith([text, imgData])
+        const pngPath = join(dir, 'sketch.excalidraw.png')
+        writeFileSync(pngPath, png)
+
+        const r = buildPromptFromBlocks([img(pngPath)])
+        expect(Array.isArray(r)).toBe(true)
+        const image = (r as Extract<typeof r, Array<object>>).find(el => el.type === 'image') as { source: { data: string } }
+        const decoded = Buffer.from(image.source.data, 'base64')
+        expect(decoded.equals(pngWith([imgData]))).toBe(true)
+        // 保险：原始字节确实含 tEXt（证明剥离真的发生了）
+        expect(png.includes('tEXt')).toBe(true)
+    })
+
+    it('超过单图字节上限的图片降级 @path（API base64 5MB 上限防线）', () => {
+        const bigPath = join(dir, 'big.png')
+        writeFileSync(bigPath, Buffer.concat([PNG_SIGNATURE, Buffer.alloc(4 * 1024 * 1024, 1)]))
+        expect(buildPromptFromBlocks([img(bigPath)])).toBe(`@${bigPath}`)
     })
 })

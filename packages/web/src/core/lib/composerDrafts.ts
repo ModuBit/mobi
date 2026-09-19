@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import type { SketchMark } from '@mobi/shared'
 import type { BlockFileRef, ComposerSegments, PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { QUOTE_MAX_COUNT } from '@/domain/chat/composerSegments'
 
@@ -27,6 +28,8 @@ export interface PersistedFileRef {
     path: string
     mimeType: string
     size: number
+    /** 草图标记（仅 image）：恢复态画板重编辑入口的判据 */
+    sketch?: SketchMark
 }
 
 /**
@@ -53,6 +56,13 @@ function safeParseJson(value: string): unknown {
     }
 }
 
+/** 校验 sketch 标记（format 字符串）；非法返回 null 由上层剔除该标记（保留引用本身） */
+function coerceSketch(value: unknown): SketchMark | null {
+    if (!value || typeof value !== 'object') return null
+    const o = value as Record<string, unknown>
+    return typeof o.format === 'string' ? { format: o.format } : null
+}
+
 /** 校验单个文件引用项（新格式）；非法返回 null 由上层逐条剔除 */
 function coerceFileRef(value: unknown): PersistedFileRef | null {
     if (!value || typeof value !== 'object') return null
@@ -66,7 +76,11 @@ function coerceFileRef(value: unknown): PersistedFileRef | null {
     ) {
         return null
     }
-    return { id: o.id, filename: o.filename, path: o.path, mimeType: o.mimeType, size: o.size }
+    const sketch = coerceSketch(o.sketch)
+    return {
+        id: o.id, filename: o.filename, path: o.path, mimeType: o.mimeType, size: o.size,
+        ...(sketch ? { sketch } : {}),
+    }
 }
 
 /** 校验单条引用分段；非法返回 null 由上层逐条剔除 */
@@ -198,7 +212,10 @@ function persist(next: DraftsMap): void {
  */
 function toPersisted(segments: ComposerSegments): PersistedSegments {
     const project = (f: BlockFileRef): PersistedFileRef =>
-        ({ id: f.id, filename: f.filename, path: f.path, mimeType: f.mimeType, size: f.size })
+        ({
+            id: f.id, filename: f.filename, path: f.path, mimeType: f.mimeType, size: f.size,
+            ...(f.sketch !== undefined ? { sketch: f.sketch } : {}),
+        })
     return {
         text: segments.text,
         files: segments.files.map(project),

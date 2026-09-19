@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
@@ -155,5 +155,52 @@ describe('ImageThumb 图片缩略图', () => {
         expect(src).toContain('/api/machines/m-9/read-file')
         expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/shot-abc123.png'))
         expect(src).not.toContain('/api/sessions/')
+    })
+})
+
+describe('AttachmentList 画板重编辑入口（sketch 附件缩略图点击 = 重开画板）', () => {
+    const sketchAttachment = (): FileAttachment => ({
+        id: 'sk-1',
+        file: new File([new Uint8Array([1, 2, 3])], '草图-1.excalidraw.png', { type: 'image/png' }),
+        status: 'complete',
+        path: '/uploads/2026-09/草图-1-xxxx.excalidraw.png',
+        sketch: { format: 'excalidraw' },
+    })
+
+    it('带 sketch 标记：点击缩略图触发重编辑回调，不弹原图预览浮层', async () => {
+        const onEditSketch = vi.fn()
+        const { container } = render(
+            <AttachmentList attachments={[sketchAttachment()]} onRemove={() => {}} onEditSketch={onEditSketch} />,
+        )
+        fireEvent.click(container.querySelector('img')!)
+        expect(onEditSketch).toHaveBeenCalledWith(expect.objectContaining({ id: 'sk-1' }))
+        // preview 关闭：Portal 不挂预览浮层
+        await waitFor(() => {
+            expect(document.body.querySelector('.ant-image-preview')).toBeNull()
+        })
+    })
+
+    it('无 sketch 标记：点击保持原放大预览行为，不触发重编辑', async () => {
+        const onEditSketch = vi.fn()
+        const a = sketchAttachment()
+        delete a.sketch
+        const { container } = render(
+            <AttachmentList attachments={[a]} onRemove={() => {}} onEditSketch={onEditSketch} />,
+        )
+        fireEvent.click(container.querySelector('img')!)
+        expect(onEditSketch).not.toHaveBeenCalled()
+        await waitFor(() => {
+            expect(document.body.querySelector('.ant-image-preview')).not.toBeNull()
+        })
+    })
+
+    it('上传中/错误态不触发重编辑（产物未就绪/不可用）', () => {
+        const onEditSketch = vi.fn()
+        const a = { ...sketchAttachment(), status: 'uploading' as const }
+        const { container } = render(
+            <AttachmentList attachments={[a]} onRemove={() => {}} onEditSketch={onEditSketch} />,
+        )
+        fireEvent.click(container.querySelector('img') ?? container.querySelector('[aria-label="sketch.editSketch"]') ?? container)
+        expect(onEditSketch).not.toHaveBeenCalled()
     })
 })

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect, createElement } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, lazy, Suspense, createElement, type Ref } from 'react'
 import styled from '@emotion/styled'
 import { Button, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, SketchMark, StopKind, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import {
     isSegmentEmpty,
@@ -29,7 +29,7 @@ import {
     type ComposerSegments,
     type PendingQuoteRef,
 } from '@/domain/chat/composerSegments'
-import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
+import { bucketCompletedAttachments, fileRefToPlaceholderAttachment, type FileAttachment } from '@/core/lib/fileAttachments'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
@@ -64,6 +64,28 @@ import { useHasFinePointer, useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { usePromptSuggestion, usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 import { SuggestionChip } from './SuggestionChip'
+
+// 画板载体懒加载：excalidraw 重依赖只进画板异步 chunk，不进主 bundle
+const SketchDrawer = lazy(() => import('@/components/sketchpad/SketchDrawer').then(m => ({ default: m.SketchDrawer })))
+
+/** 画板会话状态：open + 重编辑载入源 + 重编辑目标附件（null = 新建路径） */
+interface SketchSession {
+    open: boolean
+    initialSketch: Blob | null
+    /** 重编辑的附件 id；null = 新建（产物作为新附件） */
+    editingId: string | null
+}
+
+const SKETCH_SESSION_CLOSED: SketchSession = { open: false, initialSketch: null, editingId: null }
+
+/** 载体（气泡编辑入口等父组件）可命令式调用的 composer 手柄（React 19 ref-as-prop） */
+export interface ChatComposerHandle {
+    /**
+     * 打开画板：缺省空白画布（新建路径）；传入草图 PNG（内嵌 scene）为重编辑路径，
+     * 完成后产物落回 composer 附件（历史不可变，spec D4）
+     */
+    openSketch: (initialSketch?: Blob | null) => void
+}
 
 
 interface ChatComposerProps {
@@ -121,6 +143,10 @@ interface ChatComposerProps {
      * nonce 单调递增触发应用，同 nonce 不重复；segments 全空时忽略
      */
     draftRequest?: { segments: ComposerSegments; nonce: number }
+    /** React 19：气泡编辑入口经此打开画板（重编辑路径），见 ChatComposerHandle */
+    ref?: Ref<ChatComposerHandle>
+    /** PC 端画板停靠容器（聊天列 DOM 节点）；缺省挂 body 全屏兜底 */
+    sketchDockContainer?: HTMLElement | null
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -277,6 +303,8 @@ export function ChatComposer(props: ChatComposerProps) {
         goal,
         cacheStatus,
         draftRequest,
+        ref,
+        sketchDockContainer = null,
     } = props
 
     const [text, setText] = useState('')
@@ -326,9 +354,35 @@ export function ChatComposer(props: ChatComposerProps) {
         setAttachments,
         isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
+        addSketchFile, replaceSketchFile,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,
     } = useAttachmentHandling(sessionId, capabilities, controlsDisabled)
+
+    // ── 画板（入口按钮 / 附件卡重编辑 / 气泡重编辑落回，spec D3/D4/D5）──
+    const [sketch, setSketch] = useState<SketchSession>(SKETCH_SESSION_CLOSED)
+
+    const handleOpenSketch = useCallback((initialSketch: Blob | null = null) => {
+        setSketch({ open: true, initialSketch, editingId: null })
+    }, [])
+
+    // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）
+    useImperativeHandle(ref, () => ({ openSketch: handleOpenSketch }), [handleOpenSketch])
+
+    /** 完成：产物装 File 直传上传通道（新建=addSketchFile；附件卡重编辑=replaceSketchFile） */
+    const handleSketchComplete = useCallback((png: Blob, filename: string, sketchMark: SketchMark) => {
+        const file = new File([png], filename, { type: 'image/png' })
+        if (sketch.editingId) {
+            replaceSketchFile(sketch.editingId, file, sketchMark)
+        } else {
+            addSketchFile(file, sketchMark)
+        }
+        setSketch(SKETCH_SESSION_CLOSED)
+    }, [sketch.editingId, addSketchFile, replaceSketchFile])
+
+    const handleSketchEditAttachment = useCallback((attachment: FileAttachment) => {
+        setSketch({ open: true, initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
+    }, [])
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
     // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
@@ -755,6 +809,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 key="attachments"
                 attachments={attachments}
                 onRemove={handleRemoveAttachment}
+                onEditSketch={handleSketchEditAttachment}
                 sessionId={sessionId}
                 machineId={metadata?.machineId}
                 cwd={metadata?.path}
@@ -839,6 +894,23 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 size="small"
                                                 icon={<PlusOutlined />}
                                                 onClick={handleAttach}
+                                                disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
+                                                style={ACTION_BUTTON_STYLE}
+                                            />
+                                        </AppTooltip>
+                                    ),
+                                },
+                                // 画板：手绘草图随消息发送（产物 = 内嵌 scene 的 PNG）
+                                {
+                                    key: 'sketch',
+                                    label: t('sketch.open'),
+                                    render: () => (
+                                        <AppTooltip title={t('sketch.open')}>
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                icon={<EditOutlined />}
+                                                onClick={() => handleOpenSketch()}
                                                 disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
                                                 style={ACTION_BUTTON_STYLE}
                                             />
@@ -1087,6 +1159,17 @@ export function ChatComposer(props: ChatComposerProps) {
                 )}
             </div>
             </ComposerDock>
+
+            {/* 画板载体：停靠聊天列（PC）/全屏（移动）；excalidraw 懒加载不进主 bundle */}
+            <Suspense fallback={null}>
+                <SketchDrawer
+                    open={sketch.open}
+                    onClose={() => setSketch(SKETCH_SESSION_CLOSED)}
+                    onComplete={handleSketchComplete}
+                    initialSketch={sketch.initialSketch}
+                    dockContainer={sketchDockContainer}
+                />
+            </Suspense>
         </div>
     )
 }

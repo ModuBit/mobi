@@ -17,8 +17,10 @@
 import type React from 'react'
 import { useState } from 'react'
 import { theme, Space } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { FileCard } from '@ant-design/x'
-import { Bot, User } from 'lucide-react'
+import { Bot, Pencil, User } from 'lucide-react'
+import styled from '@emotion/styled'
 import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
@@ -39,6 +41,11 @@ export interface UserBlockRenderEnv {
     machineId?: string
     /** 会话工作目录（machine 端点 cwd 参数） */
     cwd?: string
+    /**
+     * 画板重编辑入口（仅 sketch 标记的 image block 渲染编辑角标）：
+     * 回调收到的 block 交由调用方取 PNG → 重开画板（历史不可变，产物落回 composer）
+     */
+    onEditSketch?: (block: UserImageBlock) => void
 }
 
 /** 各类型视图的统一 props 形态（block 字段按注册键收窄） */
@@ -46,6 +53,20 @@ interface UserBlockViewProps<B extends UserContentBlock> {
     block: B
     env: UserBlockRenderEnv
 }
+
+/** sketch 缩略图容器：hover 时浮现编辑角标（对齐 bubbleCopyStyles 的 hover 显现模式） */
+const SketchEditableWrapper = styled.span`
+    position: relative;
+    display: inline-flex;
+
+    .sketch-edit-badge {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    &:hover .sketch-edit-badge {
+        opacity: 1;
+    }
+`
 
 /**
  * text 视图：完全复用 agent 消息同款 Markdown 渲染通道（斜杠命令 / @ 引用徽章启用）。
@@ -115,6 +136,21 @@ function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
 const IMAGE_THUMB_SIZE = 80
 
 /**
+ * image block → 可取数 URL（ImageView 渲染与画板重编辑取 PNG 共用）：
+ * blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览、网络图）；
+ * 否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造（etag v 参数机制由该函数统管）。
+ * 服务端路径优先 machine 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）。
+ * 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
+ * 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
+ */
+export function resolveUserImageUrl(block: Pick<UserImageBlock, 'previewUrl' | 'source'>, env: UserBlockRenderEnv): string {
+    const raw = block.previewUrl ?? block.source.value
+    if (isSelfContainedUrl(raw)) return raw
+    if (env.machineId && env.cwd) return buildMachineReadFileUrl(env.machineId, env.cwd, raw)
+    return buildReadFileUrl(env.sessionId ?? '', raw)
+}
+
+/**
  * image 视图：FileCard 纯图卡压成 80×80 cover 小缩略图，点击 Image 自带 preview 放大看原图。
  * blob:/data:/http(s):// 等自足 URL 直接用（乐观回显的本地预览）；
  * 否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造（etag v 参数机制由该函数统管）。
@@ -125,25 +161,18 @@ const IMAGE_THUMB_SIZE = 80
  */
 function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
+    const { t } = useTranslation()
     const [failedFor, setFailedFor] = useState<string | null>(null)
-    const raw = block.previewUrl ?? block.source.value
-    // blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览、网络图）；服务端路径优先 machine
-    // 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）。
-    // 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
-    // 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
     // 不带 etag v 参数：.mobi/uploads 为 write-once（上传即 shortId 唯一名，无覆盖路径），
     // 不存在同路径内容变化的陈旧缓存问题——变更语义由「重新上传得新路径」承载。
-    const computed =
-        isSelfContainedUrl(raw)
-            ? raw
-            : env.machineId && env.cwd
-                ? buildMachineReadFileUrl(env.machineId, env.cwd, raw)
-                : buildReadFileUrl(env.sessionId ?? '', raw)
+    const computed = resolveUserImageUrl(block, env)
     // 失败态钉死在触发它的具体 src 上：src 变化（重试/网络恢复后重新渲染）自动重试。
     // 兜底图无放大价值，preview 一并关闭（点击不再弹出兜底图预览）
     const failed = failedFor === computed
     const src = failed ? FALLBACK_IMAGE : computed
-    return (
+    // 画板重编辑入口（spec D3/D4）：仅内嵌 scene 的草图 + 调用方提供回调时渲染 hover 角标
+    const sketchEditable = !!block.sketch && block.source.type === 'url' && !!env.onEditSketch
+    const card = (
         <FileCard
             type="image"
             name={block.filename}
@@ -167,6 +196,36 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
                 onError: () => setFailedFor(computed),
             }}
         />
+    )
+    if (!sketchEditable) return card
+    return (
+        <SketchEditableWrapper
+            onClick={(e) => {
+                // 角标点击只开画板，不让点击穿透到 FileCard 的原图预览
+                e.stopPropagation()
+                env.onEditSketch!(block)
+            }}
+        >
+            {card}
+            <span
+                className="sketch-edit-badge"
+                title={t('sketch.editSketch')}
+                aria-label={t('sketch.editSketch')}
+                style={{
+                    position: 'absolute',
+                    right: 4,
+                    bottom: 4,
+                    display: 'inline-flex',
+                    padding: 3,
+                    borderRadius: token.borderRadiusSM,
+                    background: 'rgba(255, 255, 255, 0.88)',
+                    color: token.colorTextSecondary,
+                    cursor: 'pointer',
+                }}
+            >
+                <Pencil size={12} />
+            </span>
+        </SketchEditableWrapper>
     )
 }
 

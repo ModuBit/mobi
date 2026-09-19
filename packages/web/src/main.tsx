@@ -28,6 +28,10 @@ import './index.css'
 // 渲染链路诊断埋点：默认关，?diag=1 或 localStorage 开启；窗口挂 window.__mobiDiag
 initDiag()
 
+// excalidraw 字体自托管（vite 插件 excalidrawAssetsPlugin 提供 dev/产物同路径静态服务）：
+// 内网/离线环境画板字体不依赖 CDN。需在 excalidraw 首次加载前设置（本入口先于懒加载画板 chunk）
+;(window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/'
+
 // 移动端调试面板（vConsole）：通过连点 NewSessionPage 品牌 Icon ≥5 次开启
 // 见 core/lib/vconsole.ts，桌面端不启用，未开启时不进 bundle
 

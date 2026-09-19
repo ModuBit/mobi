@@ -15,6 +15,7 @@
  */
 
 import type React from 'react'
+import type { UserImageBlock } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
@@ -45,6 +46,8 @@ export type ChatBlockContext = {
     /** turn-result 概要行尾的操作组工厂（复制/fork，PC only；按 block.id 命中才返回节点，
      *  其余事件/未命中返回 undefined） */
     turnResultActions?: (block: ChatBlock) => React.ReactNode
+    /** 画板重编辑入口（仅 sketch 标记的 image block 渲染 hover 角标；spec D3/D4） */
+    onEditSketchBlock?: (block: UserImageBlock) => void
 }
 
 /** 根据 block 类型渲染对应组件 */
@@ -60,6 +63,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                             sessionId: ctx.sessionId,
                             machineId: ctx.metadata?.machineId,
                             cwd: ctx.metadata?.path,
+                            onEditSketch: ctx.onEditSketchBlock,
                         }}
                     />
                 </CollapsibleUserMessage>

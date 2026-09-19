@@ -37,8 +37,21 @@ const FileRefFields = {
     previewUrl: z.string().optional(),
 }
 
+/**
+ * 草图标记（画板特性）：语义是「这张 PNG 经 tEXt chunk 内嵌可编辑场景，格式为 X」。
+ * format 取画板引擎标识（如 'excalidraw'），为将来更换/新增画板 SDK 留识别空间；
+ * 无标记 = 普通图片（无重编辑入口）。
+ */
+export const SketchMarkSchema = z.object({ format: z.string() })
+export type SketchMark = z.infer<typeof SketchMarkSchema>
+
 const TextBlockSchema = z.object({ type: z.literal('text'), text: z.string() })
-const ImageBlockSchema = z.object({ type: z.literal('image'), source: UserContentSourceSchema, ...FileRefFields })
+const ImageBlockSchema = z.object({
+    type: z.literal('image'),
+    source: UserContentSourceSchema,
+    ...FileRefFields,
+    sketch: SketchMarkSchema.optional(),
+})
 const DocumentBlockSchema = z.object({ type: z.literal('document'), source: UserContentSourceSchema, ...FileRefFields })
 const QuoteBlockSchema = z.object({
     type: z.literal('quote'),

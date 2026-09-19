@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { UserContentBlock } from '@mobi/shared'
+import type { SketchMark, UserContentBlock } from '@mobi/shared'
 import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 
 /**
@@ -34,6 +34,8 @@ export interface BlockFileRef {
     mimeType: string
     size: number
     previewUrl?: string
+    /** 草图标记（仅 image）：该 PNG 内嵌可编辑场景，画板重编辑入口的判据 */
+    sketch?: SketchMark
 }
 
 /** 待发送的引用分段：指向已落库的历史消息 */
@@ -84,6 +86,7 @@ export function serializeSegments(segments: ComposerSegments): UserContentBlock[
             filename: img.filename,
             size: img.size,
             ...(img.previewUrl !== undefined ? { previewUrl: img.previewUrl } : {}),
+            ...(img.sketch !== undefined ? { sketch: img.sketch } : {}),
         })
     }
 
@@ -144,6 +147,7 @@ export function deserializeSegments(blocks: readonly UserContentBlock[]): Compos
                     mimeType: b.source.mimeType ?? '',
                     size: b.size,
                     ...(b.previewUrl !== undefined ? { previewUrl: b.previewUrl } : {}),
+                    ...(b.sketch !== undefined ? { sketch: b.sketch } : {}),
                 })
                 break
             case 'quote':

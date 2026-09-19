@@ -81,6 +81,22 @@ describe('composerSegments', () => {
         expect('previewUrl' in doc).toBe(false)
     })
 
+    it('sketch 标记存在时透传并随往返还原，不存在时不产生多余字段', () => {
+        const withSketch = serializeSegments({
+            ...seg,
+            images: [{ ...seg.images[0]!, sketch: { format: 'excalidraw' } }],
+        })
+        const img = withSketch.find(b => b.type === 'image') as Record<string, unknown>
+        expect(img.sketch).toEqual({ format: 'excalidraw' })
+
+        const round = deserializeSegments(withSketch)
+        expect(round.images[0]!.sketch).toEqual({ format: 'excalidraw' })
+
+        const noSketch = serializeSegments(seg)
+        const plain = noSketch.find(b => b.type === 'image') as Record<string, unknown>
+        expect('sketch' in plain).toBe(false)
+    })
+
     it('text 仅 trim 后非空才入列；deserialize 多 text block join(\'\\n\') 合并', () => {
         expect(serializeSegments({ text: '   ', files: [], images: [], quotes: [] })).toEqual([])
 
