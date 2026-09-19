@@ -95,6 +95,17 @@ describe('writeFileRange handler', () => {
         expect(Array.from(buf)).toEqual([1, 2, 3, 4])
     })
 
+    it('多段扩展名：防碰撞随机段插在扩展簇之前，.excalidraw.png 保持完整', async () => {
+        const content = new Uint8Array([1, 2, 3])
+        const res = await mockRpc.call('writeFileRange', {
+            filename: 'sketch-20260920-001516.excalidraw.png', offset: 0, content, totalSize: 3,
+        })
+
+        expect(res.success).toBe(true)
+        // 不是 sketch-....excalidraw-<id>.png（extname 只认最后一段的旧行为）
+        expect(res.path).toMatch(/sketch-\d{8}-\d{6}-[0-9a-z]+\.excalidraw\.png$/)
+    })
+
     it('offset>0 后续块：按 offset 追加写，内容拼接正确', async () => {
         const first = await mockRpc.call('writeFileRange', {
             filename: 'a.zip', offset: 0, content: new Uint8Array([1, 2]), totalSize: 4,

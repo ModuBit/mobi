@@ -250,11 +250,13 @@ export function registerUploadHandlers(
 
                     const uploadDir = await ensureUploadDir(effectiveCwd)
                     const sanitizedFilename = sanitizeFilename(data.filename)
-                    // 时间戳 + 随机段，避免同毫秒同名并发上传碰撞（open('w') 覆盖丢数据）
+                    // 时间戳 + 随机段，避免同毫秒同名并发上传碰撞（open('w') 覆盖丢数据）。
+                    // 随机段插在「扩展簇」（尾部连续 .ext，如 .excalidraw.png / .tar.gz）之前，
+                    // 保持多段扩展名完整——extname 只认最后一段会把双扩展拆成 .excalidraw-<id>.png
                     const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-                    const ext = extname(sanitizedFilename)
-                    const base = ext ? sanitizedFilename.slice(0, sanitizedFilename.length - ext.length) : sanitizedFilename
-                    const uniqueFilename = ext ? `${base}-${shortId}${ext}` : `${sanitizedFilename}-${shortId}`
+                    const extCluster = sanitizedFilename.match(/(?:\.[A-Za-z0-9]+)+$/)?.[0] ?? ''
+                    const base = extCluster ? sanitizedFilename.slice(0, sanitizedFilename.length - extCluster.length) : sanitizedFilename
+                    const uniqueFilename = extCluster ? `${base}-${shortId}${extCluster}` : `${sanitizedFilename}-${shortId}`
                     const filePath = join(uploadDir, uniqueFilename)
 
                     // 单块大小校验（第三道闸）
