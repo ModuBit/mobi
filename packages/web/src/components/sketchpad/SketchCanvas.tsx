@@ -51,8 +51,6 @@ export interface SketchCanvasProps {
 /** 载体可命令式调用的画布手柄（React 19 ref-as-prop）：
  *  header 的取消/完成出口与画布内语义共用同一实现（取消的非空二次确认在这里） */
 export interface SketchCanvasHandle {
-    /** 导出当前画布为内嵌 scene 的 PNG；编辑器未就绪时返回 null，导出失败时 reject */
-    exportCurrent: () => Promise<Blob | null>
     /** 取消：画布非空（有未发送内容）时二次确认，防空手误触丢作品 */
     requestCancel: () => void
     /** 完成导出：编辑器未就绪时返回 null，导出失败时 reject */
@@ -112,10 +110,8 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
         })
     }, [editor, onCancel, t])
 
-    // 载体重挂（PC 停靠 ↔ 全屏切换）前经此抢救当前画布；header 的取消/完成
-    // 出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
+    // 载体 header 的取消/完成出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
     useImperativeHandle(ref, () => ({
-        exportCurrent: () => (editor ? exportSketch(editor) : Promise.resolve(null)),
         requestCancel: handleCancel,
         complete: () => (editor ? exportSketch(editor) : Promise.resolve(null)),
     }), [editor, handleCancel])
@@ -124,10 +120,9 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     useEffect(() => () => { cancelledRef.current = true }, [])
 
     // 进入动画落定后广播 resize：excalidraw 挂载时缓存的画布 getBoundingClientRect
-    // 是 Drawer 过渡动画的 transform 中间态，动画结束不触发 resize/ResizeObserver，
-    // 缓存不失效——坐标换算整体偏移，画哪儿图形落到哪（实测偏移约一个 header 高度，
-    // 甚至落到视口外）。editor.refresh() 只重渲染不重建 rect 缓存（实测无效），
-    // 广播 window resize 才会走 excalidraw 自己的重测管线
+    // 若落在载体开合动画（transform）中间态，动画结束不触发 resize/ResizeObserver
+    // （transform 不改变布局），缓存不失效——坐标换算整体偏移。editor.refresh() 只重
+    // 渲染不重建 rect 缓存（实测无效），广播 window resize 才会走 excalidraw 自己的重测管线
     useEffect(() => {
         if (!editor) return
         const t = window.setTimeout(() => window.dispatchEvent(new Event('resize')), CANVAS_SETTLE_REFRESH_MS)

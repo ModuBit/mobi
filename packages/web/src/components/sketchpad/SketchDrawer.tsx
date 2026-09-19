@@ -15,20 +15,29 @@
  */
 
 /**
- * 画板载体（Drawer 容器）：
- * - 移动端：全屏 Drawer（最大手指操作空间）
- * - PC 停靠：从 composer 上方向上抽出的底部抽屉——挂在消息列表节点上
- *   （底边 = composer 顶边），高度固定比例、最高到消息区顶（吊顶），composer 保持可用
- * - PC 全屏：撑满整个聊天列（含 composer）
+ * 画板载体（浮层）：
+ * - 移动端 / PC 兜底：全屏（fixed inset 0）
+ * - PC 停靠：composer 上方、宽对齐聊天列、高为消息列表的 70%（吊顶）
+ * - PC 全屏：撑满整个内容区（全宽层），四边留 padding
  *
- * 防误关不变量（画到一半丢失不可接受）：禁 mask 点击关闭、禁 ESC 关闭、无 antd 自带 X，
- * 唯一出口是 header 的「取消/完成」（取消的非空二次确认在 SketchCanvas 内）。
+ * 单实例设计（2026-09-19 从 antd Drawer 迁出）：open 期间 DOM 子树常驻，
+ * 停靠↔全屏只是几何（top/bottom/left/right）过渡，excalidraw 实例不销毁、
+ * 由 ResizeObserver 连续跟随——真正的「调整窗口大小」式缩放。此前经 key
+ * 重挂换容器（getContainer 不支持热切换）方案的三处硬伤：画布重建 + scene
+ * 重载（闪 excalidraw 的 Loading scene）、初始测量被动画 transform 污染
+ * （canvas 尺寸滞后追赶）、过渡只能缩放空壳（FLIP）。
+ *
+ * 防误关不变量（画到一半丢失不可接受）：mask 不绑定关闭、不监听 ESC、无 X
+ * 关闭键，唯一出口是 header 的「取消/完成」（取消的非空二次确认在 SketchCanvas 内）。
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Button, Drawer, Space, Tooltip } from 'antd'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
+import { Button, Space, Tooltip } from 'antd'
 import { Check, Maximize2, Minimize2, X } from 'lucide-react'
+import { css, keyframes } from '@emotion/react'
+import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -43,119 +52,159 @@ export interface SketchDrawerProps {
     /** 重编辑载入的草图 PNG；缺省 = 空白画布 */
     initialSketch?: Blob | null
     /**
-     * PC 停靠容器 = 消息列表节点：Drawer 从其底部向上弹出（底边紧贴 composer 顶边），
-     * 高度 {@link DOCK_HEIGHT}、最高到容器顶（吊顶）。缺省挂 body 全屏兜底。
+     * 浮层挂载层 = 聊天内容区的全宽节点（position: relative）：停靠与全屏共用
+     * 这一挂载点，浮层 absolute 定位相对它。缺省挂 body（fixed 全屏兜底）。
      */
-    dockContainer?: HTMLElement | null
-    /** PC 全屏容器 = 整个聊天列节点：全屏时撑满它（含 composer）。缺省挂 body。 */
-    fullscreenContainer?: HTMLElement | null
+    layerEl?: HTMLElement | null
+    /**
+     * PC 停靠几何（px，相对挂载层，由调用方测量维护）：底边贴 composer 顶边
+     * （bottom），顶部为消息列表高度 × SKETCH_DOCK_HEIGHT_RATIO 的吊顶位（top，
+     * 比例定义在 domain/sketch/sketchLayout），水平对齐聊天列（left/right）。
+     * 缺省时停靠形态退化为层内全宽下半区。
+     */
+    dockMetrics?: { top: number; bottom: number; left: number; right: number } | null
 }
 
-/** PC 停靠高度（占消息列表容器比例）：从 composer 上方抽出，拉满即吊顶（容器顶 = 100%） */
-const DOCK_HEIGHT = '70%'
+/** PC 停靠形态兜底几何（无 dockMetrics 时）：层内全宽下半区 */
+const DOCK_FALLBACK = { top: '30%', right: 0, bottom: 0, left: 0 } as const
 
-/** 停靠 ↔ 全屏 FLIP 缩放过渡时长 */
-const FLIP_TRANSITION_MS = 280
+/** 全屏浮层四边留白（用户指定：圆角浮层与内容区边缘的间隙） */
+const FULLSCREEN_INSET = 8
+
+/** 停靠 ↔ 全屏几何过渡：四边 inset 均为像素值，全程可连续插值（像调整窗口大小） */
+const MORPH_TRANSITION_CSS = 'top 280ms cubic-bezier(0.2, 0.8, 0.2, 1), right 280ms cubic-bezier(0.2, 0.8, 0.2, 1), bottom 280ms cubic-bezier(0.2, 0.8, 0.2, 1), left 280ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+
+/** 开合动画：浮层从 composer 附近浮起/沉回（层不裁剪，位移过大会滑出层外穿帮） */
+const SHEET_IN_KEYFRAMES = keyframes`
+    from { transform: translateY(48px); opacity: 0 }
+    to { transform: translateY(0); opacity: 1 }
+`
+const SHEET_OUT_KEYFRAMES = keyframes`
+    from { transform: translateY(0); opacity: 1 }
+    to { transform: translateY(48px); opacity: 0 }
+`
+
+/** 开合相位：enter 滑入中 / open 常驻 / exit 滑出中（结束后卸载） */
+type SheetPhase = 'enter' | 'open' | 'exit'
+
+/** 滑出动画时长：卸载定时器按此兜底（不用 animationend——portal 内动画事件经
+ * React 委托在部分环境收不到） */
+const SHEET_OUT_MS = 220
+
+const Mask = styled.div<{ $zIndex: number }>`
+    position: absolute;
+    inset: 0;
+    /* 遮罩只挡交互不改视觉：画板打开时背后的消息列表保持原样可读（用户指定纯透明），
+     * 且不绑定 click——防误关不变量 */
+    background: transparent;
+    z-index: ${(p) => p.$zIndex};
+`
+
+const Sheet = styled.div<{ $zIndex: number; $phase: SheetPhase; $morphing: boolean }>`
+    position: absolute;
+    z-index: ${(p) => p.$zIndex};
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    ${(p) =>
+        p.$phase === 'enter'
+            ? css`
+                  animation: ${SHEET_IN_KEYFRAMES} 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+              `
+            : ''}
+    ${(p) =>
+        p.$phase === 'exit'
+            ? css`
+                  animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
+              `
+            : ''}
+    ${(p) => (p.$morphing && p.$phase === 'open' ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
+`
+
+/* 圆角经 section + overflow hidden 裁切（sheet 层有过渡动画，圆角放这层会被拉伸）。
+ * 细边框画边界：dark 下深色画布与页面底色接近，靠它确认画板范围 */
+const Section = styled.div`
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid var(--ant-color-border);
+    background: var(--ant-color-bg-container);
+`
+
+/* header 视觉对齐原 antd Drawer header（标题 16 + 分隔线 + 右侧操作区） */
+const Header = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--ant-color-split);
+
+    .title {
+        font-size: 16px;
+        font-weight: 600;
+    }
+`
 
 export function SketchDrawer({
     open,
     onClose,
     onComplete,
     initialSketch = null,
-    dockContainer = null,
-    fullscreenContainer = null,
+    layerEl = null,
+    dockMetrics = null,
 }: SketchDrawerProps) {
     const { t } = useTranslation()
     const isMobile = useIsMobile()
 
     const [fullscreen, setFullscreen] = useState(false)
-    // 本次渲染是否为切换重挂：render 期从「fullscreen 与上次渲染不同」派生（不能用
-    // setState 标记——它与 fullscreen 的批处理时序不可靠，切换帧会以 switching=false
-    // 先渲染一轮，appear 动画照播）。切换渲染的 motion 立即禁用，FLIP 全程接管；
-    // 非切换渲染自动恢复 antd 默认动画，不影响正常的打开/关闭
-    const prevFullscreenRef = useRef(fullscreen)
-    const switching = open && prevFullscreenRef.current !== fullscreen
-    // 待反演的旧浮层矩形：切换回调里记录，新实例挂载后（layout effect，paint 前）消费
-    const pendingFlipRef = useRef<DOMRect | null>(null)
-    // 重挂前从画布抢救出的内容，重挂后经 initialSketch 通道恢复（undo 历史不保留，可接受）
-    const [remountSketch, setRemountSketch] = useState<Blob | null>(null)
+    // 开合相位机：open 挂载 enter → open；关闭先进入 exit 动画（「先通知后动画」，
+    // onClose 消费者同步决定），动画结束才卸载——mounted 动画优先于卸载
+    const [phase, setPhase] = useState<SheetPhase>(open ? 'enter' : 'exit')
+    const [mounted, setMounted] = useState(open)
+    // 几何过渡窗口期：停靠↔全屏切换后短暂开启 inset 过渡，避免窗口尺寸等
+    // 环境变化重测几何时意外触发动画
+    const [morphing, setMorphing] = useState(false)
+    const morphTimerRef = useRef<number | null>(null)
     // 完成/取消导出在途：header 出口按钮统一禁用，防连点重复导出
     const [exporting, setExporting] = useState(false)
     const canvasRef = useRef<SketchCanvasHandle>(null)
 
-    // 关闭即重置：下次打开回到默认停靠 + 不带回上次切换现场
+    // 移动端恒全屏（最大手指操作空间）；全屏切换仅 PC 提供
+    const canFullscreen = !isMobile && !!layerEl
+
+    // 开合相位机（见上）；open 关闭即重置全屏形态：下次打开回到默认停靠
+    const unmountTimerRef = useRef<number | null>(null)
     useEffect(() => {
-        if (!open) {
-            setRemountSketch(null)
-            setFullscreen(false)
-            setExporting(false)
-            pendingFlipRef.current = null
-            prevFullscreenRef.current = false
+        if (open) {
+            if (unmountTimerRef.current !== null) window.clearTimeout(unmountTimerRef.current)
+            setMounted(true)
+            setPhase('enter')
+            const raf = requestAnimationFrame(() => setPhase('open'))
+            return () => cancelAnimationFrame(raf)
         }
+        setPhase((p) => (p === 'exit' ? p : 'exit'))
+        setFullscreen(false)
+        // 滑出动画结束后卸载（定时兜底，不依赖动画事件）
+        unmountTimerRef.current = window.setTimeout(() => setMounted(false), SHEET_OUT_MS + 40)
+        return undefined
     }, [open])
 
-    // PC 停靠/全屏切换换挂载点：key 强制重挂（antd Drawer 的 getContainer 不支持热切换）。
-    // 重挂会重建 excalidraw 实例，先经 canvas 手柄导出内嵌 scene 的 PNG 再切换，恢复内容。
-    // 重挂无法保留 antd 的连续动画，改用 FLIP 缩放过渡（像调整窗口大小）：记录旧浮层矩形
-    // → 新实例挂载后把它变换回旧矩形 → 过渡到新矩形，替代「一个收起、一个又弹出」
-    const handleToggleFullscreen = useCallback(async () => {
-        const goingFullscreen = !fullscreen
-        // 起点查询范围按当前形态：挂了自定义容器 portal 进容器，否则兜底挂 body。
-        // rect 含切换在途的 inline transform（getBoundingClientRect 取视觉矩形），连点可无缝衔接
-        const fromWrapper = (fullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document))
-            .querySelector<HTMLElement>('.ant-drawer-content-wrapper')
-        const fromRect = fromWrapper?.getBoundingClientRect() ?? null
-        try {
-            const png = (await canvasRef.current?.exportCurrent()) ?? null
-            setRemountSketch(png)
-        } catch {
-            // 导出失败不切换：宁可留在原容器也不能丢画布内容
-            return
-        }
-        pendingFlipRef.current = fromRect
-        setFullscreen(goingFullscreen)
-    }, [fullscreen, dockContainer, fullscreenContainer])
-
-    // FLIP 反演：新浮层挂载后（layout effect 在 paint 前同步执行，避免先闪现终态一帧）
-    // 先变换回旧矩形，再放开过渡到原位；开头更新 prevFullscreenRef 退出切换态
-    // 新浮层的 portal wrapper 晚于本组件的 layout effect 插入 DOM（Drawer 骨架两段式
-    // 挂载，实测 layout effect 里查不到），故排到 rAF 执行——仍在 paint 前，不会闪现终态帧
-    useLayoutEffect(() => {
+    // 几何过渡窗口期管理：fullscreen 变化后短暂开启 inset 过渡
+    const prevFullscreenRef = useRef(fullscreen)
+    useEffect(() => {
+        if (prevFullscreenRef.current === fullscreen) return
         prevFullscreenRef.current = fullscreen
-        const fromRect = pendingFlipRef.current
-        if (!fromRect) return
-        pendingFlipRef.current = null
-        const raf = requestAnimationFrame(() => {
-            // 目标查询范围按切换后的形态（fullscreen 已是新值）
-            const toScope = fullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document)
-            const wrapper = toScope.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
-            const toRect = wrapper?.getBoundingClientRect() ?? null
-            if (!wrapper || !toRect || toRect.width === 0 || toRect.height === 0
-                || fromRect.width === 0 || fromRect.height === 0) {
-                return
-            }
-            wrapper.style.transition = 'none'
-            wrapper.style.transformOrigin = 'top left'
-            wrapper.style.transform =
-                `translate(${fromRect.left - toRect.left}px, ${fromRect.top - toRect.top}px)` +
-                ` scale(${fromRect.width / toRect.width}, ${fromRect.height / toRect.height})`
-            // 强制 reflow 让起始态生效，再放开过渡到原位
-            void wrapper.offsetWidth
-            wrapper.style.transition = `transform ${FLIP_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
-            wrapper.style.transform = 'none'
-            const settle = () => {
-                wrapper.style.transition = ''
-                wrapper.style.transform = ''
-                wrapper.style.transformOrigin = ''
-            }
-            wrapper.addEventListener('transitionend', (e) => {
-                if (e.target === wrapper && e.propertyName === 'transform') settle()
-            }, { once: true })
-            // transitionend 可能被下一次快速切换中断，定时兜底清理
-            window.setTimeout(settle, FLIP_TRANSITION_MS + 60)
-        })
-        return () => cancelAnimationFrame(raf)
-    }, [fullscreen, dockContainer, fullscreenContainer])
+        if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current)
+        setMorphing(true)
+        morphTimerRef.current = window.setTimeout(() => setMorphing(false), 340)
+        return () => {
+            if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current)
+        }
+    }, [fullscreen])
 
     // 完成：经 canvas 手柄导出（未就绪返回 null 则留在画布），文件名/标记在此装配
     const handleComplete = useCallback(async () => {
@@ -170,124 +219,78 @@ export function SketchDrawer({
         }
     }, [onComplete])
 
-    // 挂载容器与形态（自上而下）：移动端 → body 全屏；PC 全屏 → 聊天列根；PC 停靠 → 消息列表；兜底 → body 全屏
-    const drawerContainer = isMobile
-        ? undefined
-        : fullscreen
-            ? (fullscreenContainer ?? undefined)
-            : (dockContainer ?? undefined)
+    if (!mounted) return null
 
-    // antd v6：width/height 已废弃（被忽略致面板塌缩），尺寸统一走 size（bottom drawer = 高度）
-    const drawerProps = isMobile
-        ? { placement: 'bottom' as const, size: '100dvh' as const }
-        : fullscreen
-            ? (fullscreenContainer
-                ? { placement: 'bottom' as const, size: '100%' as const }
-                : { placement: 'bottom' as const, size: '100dvh' as const })
-            : dockContainer
-                ? { placement: 'bottom' as const, size: DOCK_HEIGHT }
-                : { placement: 'bottom' as const, size: '100dvh' as const }
-
-    // 挂进自定义容器时 root/wrapper/mask 覆盖为 absolute——antd 默认 fixed 相对视口，
-    // 挂进聊天列也会全屏盖页；absolute 相对容器（须 position:relative）才是停靠语义
-    const dockedStyles = drawerContainer
-        ? {
-            root: { position: 'absolute' as const },
-            wrapper: { position: 'absolute' as const },
-            mask: { position: 'absolute' as const },
-        }
-        : undefined
-
-    // PC 全屏 = 「聊天列内浮层」形态：撑满聊天列但四边留 padding、四角圆角（用户指定）
-    const floatingFullscreen = fullscreen && !!fullscreenContainer
+    // 几何（自上而下）：PC 停靠 → 层内聊天列区域（贴 composer 顶、70% 吊顶、宽对齐
+    // 聊天列）；PC 全屏 → 层内四边留白撑满；兜底（移动端/未挂层）→ fixed 全屏。
+    // 四边均为像素/比例值，停靠↔全屏全部可连续插值
+    const sheetStyle: CSSProperties = layerEl
+        ? fullscreen
+            ? { top: FULLSCREEN_INSET, right: FULLSCREEN_INSET, bottom: FULLSCREEN_INSET, left: FULLSCREEN_INSET }
+            : (dockMetrics ?? DOCK_FALLBACK)
+        : { position: 'fixed', inset: 0 }
 
     const fullscreenLabel = t(fullscreen ? 'sketch.exitFullscreen' : 'sketch.fullscreen')
-    return (
-        <Drawer
-            /* 容器/尺寸模式切换（PC 停靠 ↔ 全屏）强制重挂，excalidraw 画布随之重建。
-             * key 只含模式不含 open——带上 open 会让关闭时整个 Drawer 换 key 重挂，
-             * leave 动画直接跳过（表现为「突然消失」，2026-09-19 实踩） */
-            key={isMobile ? 'mobile' : fullscreen ? 'fullscreen' : 'docked'}
-            /* 切换重挂期间禁用 antd motion（rest 透传覆盖内置 panelMotion）：appear 动画
-             * 会让新浮层从视口外闪现、transform 污染 FLIP 反演测量，动画由 FLIP 接管 */
-            {...(switching ? { motion: { motionAppear: false, motionEnter: false, motionLeave: false } } : {})}
-            open={open}
-            onClose={onClose}
-            maskClosable={false}
-            keyboard={false}
-            closable={false}
-            destroyOnHidden
-            title={t('sketch.open')}
-            extra={
-                <Space size={4}>
-                    {/* 仅 PC 可切全屏：移动端已全屏 */}
-                    {!isMobile && (
-                        <Tooltip title={fullscreenLabel}>
-                            <Button
-                                type="text"
-                                size="small"
-                                aria-label={fullscreenLabel}
-                                icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                                onClick={() => void handleToggleFullscreen()}
-                            />
-                        </Tooltip>
-                    )}
-                    <Tooltip title={t('common.cancel')}>
-                        <Button
-                            type="text"
-                            size="small"
-                            aria-label={t('common.cancel')}
-                            icon={<X size={16} />}
-                            disabled={exporting}
-                            onClick={() => canvasRef.current?.requestCancel()}
+
+    return createPortal(
+        <>
+            <Mask $zIndex={1000} data-testid="sketch-mask" />
+            <Sheet
+                data-testid="sketch-sheet"
+                $zIndex={1001}
+                $phase={phase}
+                $morphing={morphing}
+                style={sheetStyle}
+            >
+                <Section>
+                    <Header data-testid="sketch-header">
+                        <span className="title">{t('sketch.open')}</span>
+                        <Space size={4}>
+                            {/* 仅 PC 且挂层可切全屏：移动端已全屏 */}
+                            {canFullscreen && (
+                                <Tooltip title={fullscreenLabel}>
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        aria-label={fullscreenLabel}
+                                        icon={fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                                        onClick={() => setFullscreen((v) => !v)}
+                                    />
+                                </Tooltip>
+                            )}
+                            <Tooltip title={t('common.cancel')}>
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    aria-label={t('common.cancel')}
+                                    icon={<X size={16} />}
+                                    disabled={exporting}
+                                    onClick={() => canvasRef.current?.requestCancel()}
+                                />
+                            </Tooltip>
+                            <Tooltip title={t('sketch.complete')}>
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    aria-label={t('sketch.complete')}
+                                    icon={<Check size={16} />}
+                                    disabled={exporting}
+                                    onClick={() => void handleComplete()}
+                                />
+                            </Tooltip>
+                        </Space>
+                    </Header>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                        {/* 压感默认恒为速度模拟（全设备手感一致）；触控笔真实压力通道留待用户偏好 */}
+                        <SketchCanvas
+                            ref={canvasRef}
+                            initialSketch={initialSketch}
+                            onCancel={onClose}
                         />
-                    </Tooltip>
-                    <Tooltip title={t('sketch.complete')}>
-                        <Button
-                            type="text"
-                            size="small"
-                            aria-label={t('sketch.complete')}
-                            icon={<Check size={16} />}
-                            disabled={exporting}
-                            onClick={() => void handleComplete()}
-                        />
-                    </Tooltip>
-                </Space>
-            }
-            styles={{
-                body: { padding: 0, display: 'flex', flexDirection: 'column' },
-                // 遮罩只挡交互不改视觉：画板打开时背后的消息列表保持原样可读（用户指定纯透明）。
-                // mask 与停靠 absolute 显式合并——...dockedStyles 浅展开会整体覆盖同 key。
-                // wrapper 去掉 antd bottom 抽屉自带的向上投影——遮罩透明后它会显成一条阴影带
-                mask: { background: 'transparent', ...(dockedStyles?.mask ?? {}) },
-                // 全屏浮层四边留 padding（wrapper 背景透明，缩进即浮层与聊天列边缘的间隙）
-                wrapper: {
-                    boxShadow: 'none',
-                    ...(floatingFullscreen ? { padding: 8 } : {}),
-                    ...(dockedStyles?.wrapper ?? {}),
-                },
-                // 圆角经 section + overflow hidden 裁切（wrapper 有过渡动画，圆角放这层会被拉伸）。
-                // 细边框画边界：dark 下深色画布与页面底色接近，靠它确认画板范围。
-                // root 去掉 focus ring：rc-drawer 打开时会 focus 面板，浏览器默认 outline
-                // 会在整个停靠区域四周画一圈蓝框
-                section: {
-                    borderRadius: 12,
-                    overflow: 'hidden' as const,
-                    border: '1px solid var(--ant-color-border)',
-                },
-                root: { outline: 'none', ...(dockedStyles?.root ?? {}) },
-            }}
-            {...drawerProps}
-            {...(drawerContainer ? { getContainer: () => drawerContainer } : {})}
-        >
-            <div style={{ flex: 1, minHeight: 0 }}>
-                {/* 压感默认恒为速度模拟（全设备手感一致）；触控笔真实压力通道留待用户偏好 */}
-                <SketchCanvas
-                    ref={canvasRef}
-                    initialSketch={remountSketch ?? initialSketch}
-                    onCancel={onClose}
-                />
-            </div>
-        </Drawer>
+                    </div>
+                </Section>
+            </Sheet>
+        </>,
+        layerEl ?? document.body,
     )
 }

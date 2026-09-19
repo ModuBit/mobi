@@ -145,10 +145,10 @@ interface ChatComposerProps {
     draftRequest?: { segments: ComposerSegments; nonce: number }
     /** React 19：气泡编辑入口经此打开画板（重编辑路径），见 ChatComposerHandle */
     ref?: Ref<ChatComposerHandle>
-    /** PC 端画板停靠容器（消息列表 DOM 节点）：Drawer 从 composer 上方抽出；缺省挂 body 全屏兜底 */
-    sketchDockContainer?: HTMLElement | null
-    /** PC 端画板全屏容器（聊天列根节点）：全屏时撑满它 */
-    sketchFullscreenContainer?: HTMLElement | null
+    /** PC 端画板浮层挂载层（聊天内容区全宽节点）：停靠/全屏共用，浮层 absolute 定位相对它；缺省挂 body 全屏兜底 */
+    sketchLayerEl?: HTMLElement | null
+    /** PC 端画板停靠几何（px，相对挂载层，见 SketchDrawerProps.dockMetrics） */
+    sketchDockMetrics?: { top: number; bottom: number; left: number; right: number } | null
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -306,8 +306,8 @@ export function ChatComposer(props: ChatComposerProps) {
         cacheStatus,
         draftRequest,
         ref,
-        sketchDockContainer = null,
-        sketchFullscreenContainer = null,
+        sketchLayerEl = null,
+        sketchDockMetrics = null,
     } = props
 
     const [text, setText] = useState('')
@@ -1163,15 +1163,15 @@ export function ChatComposer(props: ChatComposerProps) {
             </div>
             </ComposerDock>
 
-            {/* 画板载体：停靠聊天列（PC）/全屏（移动）；excalidraw 懒加载不进主 bundle */}
+            {/* 画板载体：停靠/全屏共用单实例浮层（挂内容区全宽层）；excalidraw 懒加载不进主 bundle */}
             <Suspense fallback={null}>
                 <SketchDrawer
                     open={sketch.open}
                     onClose={() => setSketch(SKETCH_SESSION_CLOSED)}
                     onComplete={handleSketchComplete}
                     initialSketch={sketch.initialSketch}
-                    dockContainer={sketchDockContainer}
-                    fullscreenContainer={sketchFullscreenContainer}
+                    layerEl={sketchLayerEl}
+                    dockMetrics={sketchDockMetrics}
                 />
             </Suspense>
         </div>

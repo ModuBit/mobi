@@ -90,3 +90,19 @@ Object.defineProperty(window, 'Notification', {
         constructor(_title: string, _options?: NotificationOptions) {}
     },
 })
+
+// jsdom 不实现 ResizeObserver，为布局测量类组件（如 ChatContainer 停靠几何测量）
+// 提供最小 stub：回调不触发、observe/unobserve/disconnect 空实现（configurable:true
+// 让个别测试可覆盖为可触发的实现）
+class ResizeObserverStub {
+    observe = vi.fn()
+    unobserve = vi.fn()
+    disconnect = vi.fn()
+    // eslint-disable-next-line @typescript-eslint/no-useless-constructor, @typescript-eslint/no-empty-object-type
+    constructor(_callback: ResizeObserverCallback) {}
+}
+Object.defineProperty(window, 'ResizeObserver', {
+    writable: true,
+    configurable: true,
+    value: ResizeObserverStub,
+})

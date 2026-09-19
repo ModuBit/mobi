@@ -15,12 +15,12 @@
  */
 
 /**
- * SketchDrawer 载体测试：防误关不变量与端形态分流可在 jsdom 断言的部分。
- * SketchCanvas（excalidraw）以桩替换；停靠几何/重挂恢复由 E2E 兜底。
+ * SketchDrawer 载体测试：防误关不变量、开合相位机与端形态/几何分流可在 jsdom
+ * 断言的部分。SketchCanvas（excalidraw）以桩替换；几何过渡与停靠测量由 E2E 兜底。
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, cleanup, fireEvent, act } from '@testing-library/react'
 
 const isMobileRef = vi.hoisted(() => ({ value: false }))
 
@@ -29,13 +29,11 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => isMobileRef.value,
 }))
 
-// excalidraw 不可在 jsdom 渲染：SketchCanvas 桩只保留载体契约面——
-// onCancel 出口 + exportCurrent 手柄（全屏切换的抢救通道）
+// excalidraw 不可在 jsdom 渲染：SketchCanvas 桩只保留载体契约面——onCancel 出口
 vi.mock('@/components/sketchpad/SketchCanvas', () => ({
-    SketchCanvas: ({ onCancel, ref }: { onCancel: () => void; ref?: { current: unknown } | null }) => {
-        if (ref) ref.current = { exportCurrent: () => Promise.resolve(null) }
-        return <button type="button" data-testid="sketch-canvas-stub" onClick={onCancel}>画布桩</button>
-    },
+    SketchCanvas: ({ onCancel }: { onCancel: () => void }) => (
+        <button type="button" data-testid="sketch-canvas-stub" onClick={onCancel}>画布桩</button>
+    ),
 }))
 
 import { SketchDrawer } from '@/components/sketchpad/SketchDrawer'
@@ -47,90 +45,138 @@ describe('SketchDrawer 防误关不变量', () => {
 
     afterEach(() => cleanup())
 
-    it('mask 点击不关闭（maskClosable=false）', () => {
+    it('mask 不绑定关闭：点击不触发 onClose', () => {
         const onClose = vi.fn()
         render(<SketchDrawer open onClose={onClose} onComplete={vi.fn()} />)
-        const mask = document.querySelector('.ant-drawer-mask') as HTMLElement
+        const mask = document.querySelector('[data-testid="sketch-mask"]') as HTMLElement
         expect(mask).toBeTruthy()
         fireEvent.click(mask)
         expect(onClose).not.toHaveBeenCalled()
     })
 
-    it('ESC 不关闭（keyboard=false）', () => {
+    it('唯一出口是画布内取消：点击画布桩 → onClose', () => {
         const onClose = vi.fn()
         render(<SketchDrawer open onClose={onClose} onComplete={vi.fn()} />)
-        fireEvent.keyDown(document.querySelector('.ant-drawer') as HTMLElement, { key: 'Escape' })
-        expect(onClose).not.toHaveBeenCalled()
+        fireEvent.click(document.querySelector('[data-testid="sketch-canvas-stub"]') as HTMLElement)
+        expect(onClose).toHaveBeenCalledTimes(1)
     })
 
-    it('无右上角 X（closable=false），唯一出口是画布内取消', async () => {
-        const onClose = vi.fn()
-        render(<SketchDrawer open onClose={onClose} onComplete={vi.fn()} />)
-        expect(document.querySelector('.ant-drawer-close')).toBeNull()
-        // 画布内取消 → onClose
-        fireEvent.click(document.querySelector('[data-testid="sketch-canvas-stub"]') as HTMLElement)
-        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    it('无独立关闭键（X 是取消语义，走二次确认通道而非直接 onClose）', () => {
+        const layer = document.createElement('div')
+        document.body.appendChild(layer)
+        render(
+            <SketchDrawer
+                open
+                onClose={vi.fn()}
+                onComplete={vi.fn()}
+                layerEl={layer}
+                dockMetrics={{ top: 100, bottom: 40, left: 30, right: 30 }}
+            />,
+        )
+        // header 只应存在全屏/取消/完成三个图标按钮（无 antd 自带关闭 X）
+        const header = document.querySelector('[data-testid="sketch-header"]') as HTMLElement
+        expect(header.querySelectorAll('button')).toHaveLength(3)
+        layer.remove()
     })
 })
 
-describe('SketchDrawer 端形态分流', () => {
+describe('SketchDrawer 开合相位机', () => {
     beforeEach(() => {
         isMobileRef.value = false
     })
 
     afterEach(() => cleanup())
 
-    it('PC 传停靠容器：从 composer 上方抽出的底部抽屉（height 70% + wrapper/mask absolute），提供全屏切换', () => {
-        // antd Drawer portal 到容器，容器须在 document 中（getContainer 函数返回它）
-        const dock = document.createElement('div')
-        document.body.appendChild(dock)
-        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} dockContainer={dock} />)
-        const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
-        // bottom 抽屉：底边贴容器底（= composer 顶边），高度为吊顶比例
-        expect(wrapper.style.height).toBe('70%')
-        // fixed 相对视口，挂进聊天列也全屏盖页——absolute 相对容器才是停靠语义
-        expect(wrapper.style.position).toBe('absolute')
-        const mask = document.querySelector('.ant-drawer-mask') as HTMLElement
-        expect(mask.style.position).toBe('absolute')
-        expect(findFullscreenButton()).toBeTruthy()
-        dock.remove()
+    it('open=false 时不渲染', () => {
+        render(<SketchDrawer open={false} onClose={vi.fn()} onComplete={vi.fn()} />)
+        expect(document.querySelector('[data-testid="sketch-sheet"]')).toBeNull()
     })
 
-    it('PC 全屏容器：撑满整个聊天列（height 100%）', () => {
-        const root = document.createElement('div')
-        const dock = document.createElement('div')
-        root.appendChild(dock)
-        document.body.appendChild(root)
-        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} dockContainer={dock} fullscreenContainer={root} />)
-        // 切到全屏后：挂聊天列根、高度 100%
-        fireEvent.click(findFullscreenButton() as HTMLElement)
-        return waitFor(() => {
-            const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
-            expect(wrapper.style.height).toBe('100%')
-        })
-    })
-
-    it('PC 未传停靠容器：全屏兜底（fixed + 100dvh），不注入 absolute', () => {
+    it('打开后 enter → open：画布挂载', async () => {
         render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
-        const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
-        expect(wrapper.style.position).not.toBe('absolute')
+        expect(document.querySelector('[data-testid="sketch-canvas-stub"]')).toBeTruthy()
+    })
+
+    it('关闭走 exit 动画，动画结束才卸载（先通知后动画）', () => {
+        vi.useFakeTimers()
+        try {
+            const { rerender } = render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+            rerender(<SketchDrawer open={false} onClose={vi.fn()} onComplete={vi.fn()} />)
+            // 动画中仍渲染
+            expect(document.querySelector('[data-testid="sketch-sheet"]')).toBeTruthy()
+            // 滑出动画时长结束后 → 卸载
+            act(() => {
+                vi.advanceTimersByTime(300)
+            })
+            expect(document.querySelector('[data-testid="sketch-sheet"]')).toBeNull()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+})
+
+describe('SketchDrawer 端形态与几何分流', () => {
+    beforeEach(() => {
+        isMobileRef.value = false
+    })
+
+    afterEach(() => cleanup())
+
+    it('PC 停靠：portal 进挂载层、几何取 dockMetrics（四边像素），提供全屏切换', () => {
+        const layer = document.createElement('div')
+        document.body.appendChild(layer)
+        render(
+            <SketchDrawer
+                open
+                onClose={vi.fn()}
+                onComplete={vi.fn()}
+                layerEl={layer}
+                dockMetrics={{ top: 100, bottom: 40, left: 30, right: 30 }}
+            />,
+        )
+        const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
+        // position 由 styled 类提供（absolute 相对挂载层），几何为 inline
+        expect(layer.contains(sheet)).toBe(true)
+        expect(sheet.style.top).toBe('100px')
+        expect(sheet.style.bottom).toBe('40px')
+        expect(sheet.style.left).toBe('30px')
+        expect(sheet.style.right).toBe('30px')
         expect(findFullscreenButton()).toBeTruthy()
+        layer.remove()
     })
 
-    it('PC 全屏切换：切到全屏后 placement 转底部全高', async () => {
-        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+    it('PC 全屏切换：撑满挂载层四边留白', async () => {
+        const layer = document.createElement('div')
+        document.body.appendChild(layer)
+        render(
+            <SketchDrawer
+                open
+                onClose={vi.fn()}
+                onComplete={vi.fn()}
+                layerEl={layer}
+                dockMetrics={{ top: 100, bottom: 40, left: 30, right: 30 }}
+            />,
+        )
         fireEvent.click(findFullscreenButton() as HTMLElement)
-        await waitFor(() => {
-            const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
-            expect(wrapper.style.height).toBe('100dvh')
-        })
+        await act(async () => {})
+        const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
+        expect(sheet.style.top).toBe('8px')
+        expect(sheet.style.bottom).toBe('8px')
+        layer.remove()
     })
 
-    it('移动端：底部全屏（100dvh），不提供全屏切换按钮', () => {
+    it('PC 未传挂载层：fixed 全屏兜底，不注入停靠几何', () => {
+        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+        const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
+        expect(sheet.style.position).toBe('fixed')
+        expect(findFullscreenButton()).toBeNull()
+    })
+
+    it('移动端：fixed 全屏，不提供全屏切换按钮', () => {
         isMobileRef.value = true
         render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
-        const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
-        expect(wrapper.style.height).toBe('100dvh')
+        const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
+        expect(sheet.style.position).toBe('fixed')
         expect(findFullscreenButton()).toBeNull()
     })
 })
