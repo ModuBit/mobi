@@ -372,8 +372,16 @@ export function ChatComposer(props: ChatComposerProps) {
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）
     useImperativeHandle(ref, () => ({ openSketch: handleOpenSketch }), [handleOpenSketch])
 
-    /** 完成：产物装 File 直传上传通道（新建=addSketchFile；附件卡重编辑=replaceSketchFile） */
-    const handleSketchComplete = useCallback((png: Blob, filename: string, sketchMark: SketchMark) => {
+    /**
+     * 完成：产物装 File 直传上传通道（新建=addSketchFile；附件卡重编辑=replaceSketchFile）。
+     * png null = 无内容完成：重编辑语义等同删除旧附件（用户指定），新建仅关闭画板。
+     */
+    const handleSketchComplete = useCallback((png: Blob | null, filename: string, sketchMark: SketchMark) => {
+        if (!png) {
+            if (sketch.editingId) handleRemoveAttachment(sketch.editingId)
+            setSketch(SKETCH_SESSION_CLOSED)
+            return
+        }
         const file = new File([png], filename, { type: 'image/png' })
         if (sketch.editingId) {
             replaceSketchFile(sketch.editingId, file, sketchMark)
@@ -381,7 +389,7 @@ export function ChatComposer(props: ChatComposerProps) {
             addSketchFile(file, sketchMark)
         }
         setSketch(SKETCH_SESSION_CLOSED)
-    }, [sketch.editingId, addSketchFile, replaceSketchFile])
+    }, [sketch.editingId, addSketchFile, replaceSketchFile, handleRemoveAttachment])
 
     const handleSketchEditAttachment = useCallback((attachment: FileAttachment) => {
         setSketch({ open: true, initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })

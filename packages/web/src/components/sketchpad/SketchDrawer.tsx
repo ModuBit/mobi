@@ -47,8 +47,12 @@ import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 export interface SketchDrawerProps {
     open: boolean
     onClose: () => void
-    /** 完成：产物为内嵌 scene 的单文件 PNG（调用方负责上传与附件装配） */
-    onComplete: (png: Blob, filename: string, sketchMark: SketchMark) => void
+    /**
+     * 完成：产物为内嵌 scene 的单文件 PNG（调用方负责上传与附件装配）。
+     * png 为 null = 场景无内容完成（空画布 / 重编辑后删光）：调用方按「无产物完成」
+     * 处理——重编辑语义下等同删除旧附件，绝不上传空白图。
+     */
+    onComplete: (png: Blob | null, filename: string, sketchMark: SketchMark) => void
     /** 重编辑载入的草图 PNG；缺省 = 空白画布 */
     initialSketch?: Blob | null
     /**
@@ -242,12 +246,13 @@ export function SketchDrawer({
         prevFullscreenRef.current = fullscreen
     }, [fullscreen])
 
-    // 完成：经 canvas 手柄导出（未就绪返回 null 则留在画布），文件名/标记在此装配
+    // 完成：经 canvas 手柄导出（null = 无内容完成，透传给调用方语义化处理），
+    // 文件名/标记在此装配
     const handleComplete = useCallback(async () => {
         setExporting(true)
         try {
             const png = await canvasRef.current?.complete()
-            if (png) onComplete(png, sketchFilename(), SKETCH_MARK)
+            onComplete(png ?? null, sketchFilename(), SKETCH_MARK)
         } catch {
             // 导出失败留在画布，用户可重试
         } finally {

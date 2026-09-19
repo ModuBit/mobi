@@ -362,7 +362,16 @@ export function NewSessionPage() {
     const handleSketchEditAttachment = useCallback((attachment: FileAttachment) => {
         setSketch({ open: true, initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
     }, [])
-    const handleSketchComplete = useCallback((png: Blob, filename: string, sketchMark: SketchMark) => {
+    /**
+     * 完成：产物装 File 直传上传通道（新建=addSketchFile；附件卡重编辑=replaceSketchFile）。
+     * png null = 无内容完成：重编辑语义等同删除旧附件，新建仅关闭画板。
+     */
+    const handleSketchComplete = useCallback((png: Blob | null, filename: string, sketchMark: SketchMark) => {
+        if (!png) {
+            if (sketch.editingId) handleRemoveAttachment(sketch.editingId)
+            setSketch({ open: false, initialSketch: null, editingId: null })
+            return
+        }
         const file = new File([png], filename, { type: 'image/png' })
         if (sketch.editingId) {
             replaceSketchFile(sketch.editingId, file, sketchMark)
@@ -370,7 +379,7 @@ export function NewSessionPage() {
             addSketchFile(file, sketchMark)
         }
         setSketch({ open: false, initialSketch: null, editingId: null })
-    }, [sketch.editingId, addSketchFile, replaceSketchFile])
+    }, [sketch.editingId, addSketchFile, replaceSketchFile, handleRemoveAttachment])
 
     // @ 文件引用交互
     const mention = useMentionInteraction({

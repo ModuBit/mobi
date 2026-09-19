@@ -51,9 +51,9 @@ export interface SketchCanvasProps {
 /** 载体可命令式调用的画布手柄（React 19 ref-as-prop）：
  *  header 的取消/完成出口与画布内语义共用同一实现（取消的非空二次确认在这里） */
 export interface SketchCanvasHandle {
-    /** 取消：画布非空（有未发送内容）时二次确认，防空手误触丢作品 */
+    /** 取消：场景相对打开时有变化才二次确认，防空手误触丢作品 */
     requestCancel: () => void
-    /** 完成导出：编辑器未就绪时返回 null，导出失败时 reject */
+    /** 完成导出：编辑器未就绪或场景无内容时返回 null（调用方按「无产物完成」处理） */
     complete: () => Promise<Blob | null>
 }
 
@@ -134,7 +134,11 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     // 载体 header 的取消/完成出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
     useImperativeHandle(ref, () => ({
         requestCancel: handleCancel,
-        complete: () => (editor ? exportSketch(editor) : Promise.resolve(null)),
+        // 场景无内容（空画布 / 重编辑后删光）→ null：调用方按「无产物完成」处理
+        //（重编辑 = 删除附件；新建 = 仅关闭），绝不上传一张空白图
+        complete: () => (editor && editor.getSceneElements().length > 0
+            ? exportSketch(editor)
+            : Promise.resolve(null)),
     }), [editor, handleCancel])
 
     // 卸载后不再回写（载入是异步的，Drawer 关闭后完成会 setState 在卸载组件上）
