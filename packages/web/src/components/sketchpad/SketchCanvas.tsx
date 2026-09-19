@@ -221,13 +221,9 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             <Excalidraw
                 excalidrawAPI={setEditor}
                 onChange={handleChange}
-                // 跟随应用明暗主题（UI 面板 + 画布底色）。dark 走 excalidraw 原生观感：
-                // 颜色按 light 存储、显示层反转（导出两主题一致为白底深笔）
+                // 跟随应用明暗主题（excalidraw 原生适配：dark 为显示层反显观感，
+                // 存储色与导出两主题一致）；画布底色用包默认值，不做定制
                 theme={isDark ? 'dark' : 'light'}
-                // 画布底色：dark 的存储值经原生反显后呈比页面底色略亮的深灰——
-                // 画板在 dark 页面上既能看清边界又不刺眼（纯白太跳，原生白底反转
-                // 后又和页面融成一片）
-                initialData={{ appState: { viewBackgroundColor: isDark ? '#e8e8e8' : '#ffffff' } }}
                 UIOptions={{
                     canvasActions: {
                         // 导出/另存为/打开/存入当前文件由 mobi 上传管线接管，画板只保留「完成」一个出口
