@@ -156,9 +156,11 @@ export function SketchDrawer({
             styles={{
                 body: { padding: 0, display: 'flex', flexDirection: 'column' },
                 // 遮罩只挡交互不改视觉：画板打开时背后的消息列表保持原样可读（用户指定纯透明）。
-                // mask 与停靠 absolute 显式合并——...dockedStyles 浅展开会整体覆盖同 key
+                // mask 与停靠 absolute 显式合并——...dockedStyles 浅展开会整体覆盖同 key。
+                // wrapper 去掉 antd bottom 抽屉自带的向上投影——遮罩透明后它会显成一条阴影带
                 mask: { background: 'transparent', ...(dockedStyles?.mask ?? {}) },
-                ...(dockedStyles ? { root: dockedStyles.root, wrapper: dockedStyles.wrapper } : {}),
+                wrapper: { boxShadow: 'none', ...(dockedStyles?.wrapper ?? {}) },
+                ...(dockedStyles ? { root: dockedStyles.root } : {}),
             }}
             {...drawerProps}
             {...(drawerContainer ? { getContainer: () => drawerContainer } : {})}
