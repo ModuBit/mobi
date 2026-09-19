@@ -118,7 +118,6 @@ export function SketchDrawer({
             mask: { position: 'absolute' as const },
         }
         : undefined
-
     return (
         <Drawer
             /* 容器/尺寸模式切换（PC 停靠 ↔ 全屏）强制重挂，excalidraw 画布随之重建 */
@@ -156,7 +155,10 @@ export function SketchDrawer({
             }
             styles={{
                 body: { padding: 0, display: 'flex', flexDirection: 'column' },
-                ...(dockedStyles ?? {}),
+                // 遮罩只挡交互不改视觉：画板打开时背后的消息列表保持原样可读（用户指定纯透明）。
+                // mask 与停靠 absolute 显式合并——...dockedStyles 浅展开会整体覆盖同 key
+                mask: { background: 'transparent', ...(dockedStyles?.mask ?? {}) },
+                ...(dockedStyles ? { root: dockedStyles.root, wrapper: dockedStyles.wrapper } : {}),
             }}
             {...drawerProps}
             {...(drawerContainer ? { getContainer: () => drawerContainer } : {})}
