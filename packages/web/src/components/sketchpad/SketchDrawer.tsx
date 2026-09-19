@@ -195,9 +195,18 @@ export function SketchDrawer({
                 mask: { background: 'transparent', ...(dockedStyles?.mask ?? {}) },
                 wrapper: { boxShadow: 'none', ...(dockedStyles?.wrapper ?? {}) },
                 // 圆角经 section + overflow hidden 裁切（wrapper 有过渡动画，圆角放这层会被拉伸）。
+                // 细边框画边界：dark 下深色画布与页面底色接近，靠它确认画板范围。
                 // root 去掉 focus ring：rc-drawer 打开时会 focus 面板，浏览器默认 outline
                 // 会在整个停靠区域四周画一圈蓝框
-                ...(rounded ? { section: { borderRadius: 12, overflow: 'hidden' as const } } : {}),
+                ...(rounded
+                    ? {
+                        section: {
+                            borderRadius: 12,
+                            overflow: 'hidden' as const,
+                            border: '1px solid var(--ant-color-border)',
+                        },
+                    }
+                    : {}),
                 root: { outline: 'none', ...(dockedStyles?.root ?? {}) },
             }}
             {...drawerProps}

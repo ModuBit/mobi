@@ -62,10 +62,6 @@ export interface SketchCanvasHandle {
 /** 防抖兜底间隔：笔画进行中 onChange 逐点连发，落笔停顿后再做形状等价改写 */
 const PRESSURE_FIX_DEBOUNCE_MS = 400
 
-/** 画布底色固定白（不随主题）：dark 模式下深色画布会融进页面看不出画板边界，
- *  白底让画板区域始终清晰；导出 PNG 同样白底，明暗主题产物一致 */
-const SKETCH_CANVAS_BG = '#ffffff'
-
 const Root = styled.div`
     position: relative;
     width: 100%;
@@ -84,14 +80,6 @@ const Root = styled.div`
     .dropdown-menu a[href*='x.com/excalidraw'],
     .dropdown-menu a[href*='discord.gg'] {
         display: none !important;
-    }
-
-    /* dark 模式下取消画布反显：excalidraw 的 dark 主题是显示层 hack（所有颜色按 light
-     * 存储，靠 --theme-filter: invert(93%) 反转画布+色板的显示），反转后白底变深色，
-     * 画板会融进 dark 页面看不出边界。置 none 后画布按存储真色显示（白底深笔），
-     * 色板/取色器同样回归真色（与导出一致）；UI 面板仍走 dark 调色板 */
-    .excalidraw.theme--dark {
-        --theme-filter: none;
     }
 `
 
@@ -233,11 +221,13 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             <Excalidraw
                 excalidrawAPI={setEditor}
                 onChange={handleChange}
-                // 跟随应用明暗主题（UI 面板 + 画布底色）；导出背景走 viewBackgroundColor，
-                // 与用户所见一致（暗色下画的导出即暗底，忠实还原）
+                // 跟随应用明暗主题（UI 面板 + 画布底色）。dark 走 excalidraw 原生观感：
+                // 颜色按 light 存储、显示层反转（导出两主题一致为白底深笔）
                 theme={isDark ? 'dark' : 'light'}
-                // 画布底色固定白（见 SKETCH_CANVAS_BG）：dark 模式下深色画布融进页面看不出边界
-                initialData={{ appState: { viewBackgroundColor: SKETCH_CANVAS_BG } }}
+                // 画布底色：dark 的存储值经原生反显后呈比页面底色略亮的深灰——
+                // 画板在 dark 页面上既能看清边界又不刺眼（纯白太跳，原生白底反转
+                // 后又和页面融成一片）
+                initialData={{ appState: { viewBackgroundColor: isDark ? '#e8e8e8' : '#ffffff' } }}
                 UIOptions={{
                     canvasActions: {
                         // 导出/另存为/打开/存入当前文件由 mobi 上传管线接管，画板只保留「完成」一个出口
