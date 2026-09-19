@@ -218,10 +218,11 @@ export function SketchDrawer({
 
     if (!mounted) return null
 
-    // 几何（自上而下）：PC 停靠 → 层内聊天列区域（贴 composer 顶、70% 吊顶、宽对齐
-    // 聊天列）；PC 全屏 → 层内四边留白撑满；兜底（移动端/未挂层）→ fixed 全屏。
-    // 四边均为像素/比例值，停靠↔全屏全部可连续插值
-    const sheetStyle: CSSProperties = layerEl
+    // 几何（自上而下）：移动端恒全屏（fixed，盖满视口含浏览器栏语义 100dvh 等价）；
+    // PC 停靠 → 层内聊天列区域（贴 composer 顶、70% 吊顶、宽对齐聊天列）；
+    // PC 全屏 → 层内四边留白撑满；未挂层 → fixed 全屏兜底。
+    // 停靠↔全屏四边均为像素/比例值，全部可连续插值
+    const sheetStyle: CSSProperties = layerEl && !isMobile
         ? fullscreen
             ? { top: FULLSCREEN_INSET, right: FULLSCREEN_INSET, bottom: FULLSCREEN_INSET, left: FULLSCREEN_INSET }
             : (dockMetrics ?? DOCK_FALLBACK)

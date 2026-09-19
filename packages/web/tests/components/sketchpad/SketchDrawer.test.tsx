@@ -179,6 +179,26 @@ describe('SketchDrawer 端形态与几何分流', () => {
         expect(sheet.style.position).toBe('fixed')
         expect(findFullscreenButton()).toBeNull()
     })
+
+    it('移动端即使传入挂载层与停靠几何：仍 fixed 全屏（停靠/全屏切换是 PC 专属）', () => {
+        isMobileRef.value = true
+        const layer = document.createElement('div')
+        document.body.appendChild(layer)
+        render(
+            <SketchDrawer
+                open
+                onClose={vi.fn()}
+                onComplete={vi.fn()}
+                layerEl={layer}
+                dockMetrics={{ top: 100, bottom: 40, left: 30, right: 30 }}
+            />,
+        )
+        const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
+        expect(sheet.style.position).toBe('fixed')
+        expect(sheet.style.inset).toBe('0px')
+        expect(findFullscreenButton()).toBeNull()
+        layer.remove()
+    })
 })
 
 /** 全屏切换按钮（header 为 lucide icon 按钮，靠 aria-label 定位；
