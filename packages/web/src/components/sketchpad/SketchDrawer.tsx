@@ -118,10 +118,15 @@ export function SketchDrawer({
             mask: { position: 'absolute' as const },
         }
         : undefined
+
+    // 顶部圆角：停靠/移动端 sheet 观感；PC 全屏撑满聊天列时收平（圆角会在列顶两角露出背后内容）
+    const rounded = !fullscreen || !fullscreenContainer
     return (
         <Drawer
-            /* 容器/尺寸模式切换（PC 停靠 ↔ 全屏）强制重挂，excalidraw 画布随之重建 */
-            key={`${isMobile ? 'mobile' : fullscreen ? 'fullscreen' : 'docked'}-${open}`}
+            /* 容器/尺寸模式切换（PC 停靠 ↔ 全屏）强制重挂，excalidraw 画布随之重建。
+             * key 只含模式不含 open——带上 open 会让关闭时整个 Drawer 换 key 重挂，
+             * leave 动画直接跳过（表现为「突然消失」，2026-09-19 实踩） */
+            key={isMobile ? 'mobile' : fullscreen ? 'fullscreen' : 'docked'}
             open={open}
             onClose={onClose}
             maskClosable={false}
@@ -160,7 +165,11 @@ export function SketchDrawer({
                 // wrapper 去掉 antd bottom 抽屉自带的向上投影——遮罩透明后它会显成一条阴影带
                 mask: { background: 'transparent', ...(dockedStyles?.mask ?? {}) },
                 wrapper: { boxShadow: 'none', ...(dockedStyles?.wrapper ?? {}) },
-                ...(dockedStyles ? { root: dockedStyles.root } : {}),
+                // 圆角经 section + overflow hidden 裁切（wrapper 有过渡动画，圆角放这层会被拉伸）。
+                // root 去掉 focus ring：rc-drawer 打开时会 focus 面板，浏览器默认 outline
+                // 会在整个停靠区域四周画一圈蓝框
+                ...(rounded ? { section: { borderTopLeftRadius: 12, borderTopRightRadius: 12, overflow: 'hidden' as const } } : {}),
+                root: { outline: 'none', ...(dockedStyles?.root ?? {}) },
             }}
             {...drawerProps}
             {...(drawerContainer ? { getContainer: () => drawerContainer } : {})}

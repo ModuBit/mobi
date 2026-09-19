@@ -36,6 +36,7 @@ import { Excalidraw } from '@excalidraw/excalidraw'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import { SKETCH_MARK, exportSketch, loadSketch, sketchFilename } from '@/domain/sketch/sketchFile'
+import { useIsDark } from '@/core/data/hooks/useIsDark'
 
 export interface SketchCanvasProps {
     /** 重编辑载入的草图 PNG（内嵌 scene）；缺省 = 空白画布 */
@@ -110,6 +111,7 @@ const ActionButton = styled.button<{ $primary?: boolean }>`
 
 export function SketchCanvas({ initialSketch = null, simulatePressure = true, onComplete, onCancel, ref }: SketchCanvasProps) {
     const { t } = useTranslation()
+    const isDark = useIsDark()
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
     const [completing, setCompleting] = useState(false)
     const fixTimerRef = useRef<number | null>(null)
@@ -254,6 +256,9 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             <Excalidraw
                 excalidrawAPI={setEditor}
                 onChange={handleChange}
+                // 跟随应用明暗主题（UI 面板 + 画布底色）；导出背景走 viewBackgroundColor，
+                // 与用户所见一致（暗色下画的导出即暗底，忠实还原）
+                theme={isDark ? 'dark' : 'light'}
                 UIOptions={{
                     canvasActions: {
                         // 导出/另存为/打开/存入当前文件由 mobi 上传管线接管，画板只保留「完成」一个出口
