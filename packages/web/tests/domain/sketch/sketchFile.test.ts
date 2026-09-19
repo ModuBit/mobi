@@ -30,14 +30,14 @@ import {
 } from '@/domain/sketch/sketchFile'
 
 describe('sketchFilename', () => {
-    it('草图-<本地时间戳>.excalidraw.png，两位补零', () => {
+    it('sketch-<本地时间戳>.excalidraw.png，两位补零，纯 ASCII（过 CLI sanitize 不被改写）', () => {
         // 本地时区 2026-09-19 09:05:03
         const date = new Date(2026, 8, 19, 9, 5, 3)
-        expect(sketchFilename(date)).toBe('草图-20260919-090503.excalidraw.png')
+        expect(sketchFilename(date)).toBe('sketch-20260919-090503.excalidraw.png')
     })
 
     it('默认参数取当前时间（只验证形状）', () => {
-        expect(sketchFilename()).toMatch(/^草图-\d{8}-\d{6}\.excalidraw\.png$/)
+        expect(sketchFilename()).toMatch(/^sketch-\d{8}-\d{6}\.excalidraw\.png$/)
     })
 })
 

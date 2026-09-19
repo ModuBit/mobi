@@ -45,9 +45,11 @@ function sketchStamp(date: Date): string {
     return `${date.getFullYear()}${pad2(date.getMonth() + 1)}${pad2(date.getDate())}-${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}`
 }
 
-/** 草图文件名：`草图-<本地时间戳>.excalidraw.png`（官方约定双扩展名，格式可从扩展名与 chunk key 双重识别） */
+/** 草图文件名：`sketch-<本地时间戳>.excalidraw.png`（官方约定双扩展名，格式可从扩展名与 chunk key
+ * 双重识别）。ASCII 前缀：CLI 落盘 sanitize（`[^\w\-.]→_`）会把中文逐字蹂成 `_`，产物名走通用
+ * 上传管线，前缀须在其字符集内 */
 export function sketchFilename(date: Date = new Date()): string {
-    return `草图-${sketchStamp(date)}.excalidraw.png`
+    return `sketch-${sketchStamp(date)}.excalidraw.png`
 }
 
 /**
