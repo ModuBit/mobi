@@ -217,8 +217,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const composerHandleRef = useRef<ChatComposerHandle>(null)
     // PC 停靠容器（消息列表节点）：画板从 composer 上方向上抽出；ref 回调入 state 驱动挂载
     const [chatScrollEl, setChatScrollEl] = useState<HTMLElement | null>(null)
-    // PC 全屏容器（聊天列根节点，含 composer）
+    // 画板停靠容器 = 消息列表节点
+    // PC 全屏容器：聊天列受 CHAT_MAX_WIDTH 限宽居中，全屏浮层要撑满整个内容区，
+    // 故挂载层是外层全宽节点（chatFullscreenEl），聊天列根只承载停靠形态
     const [chatColumnEl, setChatColumnEl] = useState<HTMLElement | null>(null)
+    const [chatFullscreenEl, setChatFullscreenEl] = useState<HTMLElement | null>(null)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
     const prevByIdRef = useRef<ChatBlocksById>(new Map())
@@ -1065,10 +1068,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }
 
     return (
-        <div
-            ref={setChatColumnEl}
-            style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto', position: 'relative' }}
-        >
+        // 全屏浮层挂载层：全宽（不受 CHAT_MAX_WIDTH 限宽），画板全屏时撑满整个内容区
+        // （红框区域）；内层聊天列保持 1200 居中不受影响
+        <div ref={setChatFullscreenEl} style={{ position: 'relative', height: '100%', width: '100%' }}>
+            <div
+                ref={setChatColumnEl}
+                style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto', position: 'relative' }}
+            >
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
@@ -1171,7 +1177,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <ChatComposer
                 ref={composerHandleRef}
                 sketchDockContainer={chatScrollEl}
-                sketchFullscreenContainer={chatColumnEl}
+                sketchFullscreenContainer={chatFullscreenEl}
                 sessionId={sessionId}
                 draftRequest={draftRequest}
                 disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
@@ -1215,6 +1221,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 extraLeftButtons={extraComposerButtons}
                 extraItems={extraComposerItems}
                 />
+            </div>
         </div>
     )
 }
