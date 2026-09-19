@@ -62,6 +62,9 @@ export interface SketchCanvasHandle {
 /** 防抖兜底间隔：笔画进行中 onChange 逐点连发，落笔停顿后再做形状等价改写 */
 const PRESSURE_FIX_DEBOUNCE_MS = 400
 
+/** 画布几何重算延迟：需盖过 Drawer 弹入动画时长（antd motion ~300ms） */
+const CANVAS_SETTLE_REFRESH_MS = 450
+
 const Root = styled.div`
     position: relative;
     width: 100%;
@@ -119,6 +122,17 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
 
     // 卸载后不再回写（载入是异步的，Drawer 关闭后完成会 setState 在卸载组件上）
     useEffect(() => () => { cancelledRef.current = true }, [])
+
+    // 进入动画落定后广播 resize：excalidraw 挂载时缓存的画布 getBoundingClientRect
+    // 是 Drawer 过渡动画的 transform 中间态，动画结束不触发 resize/ResizeObserver，
+    // 缓存不失效——坐标换算整体偏移，画哪儿图形落到哪（实测偏移约一个 header 高度，
+    // 甚至落到视口外）。editor.refresh() 只重渲染不重建 rect 缓存（实测无效），
+    // 广播 window resize 才会走 excalidraw 自己的重测管线
+    useEffect(() => {
+        if (!editor) return
+        const t = window.setTimeout(() => window.dispatchEvent(new Event('resize')), CANVAS_SETTLE_REFRESH_MS)
+        return () => window.clearTimeout(t)
+    }, [editor])
 
     /**
      * 压感事件层修正（治本，PoC 真机验证）：excalidraw 以「pointer 事件 pressure === 0.5」
