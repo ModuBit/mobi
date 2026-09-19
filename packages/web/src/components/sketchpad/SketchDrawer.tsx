@@ -54,6 +54,9 @@ export interface SketchDrawerProps {
 /** PC 停靠高度（占消息列表容器比例）：从 composer 上方抽出，拉满即吊顶（容器顶 = 100%） */
 const DOCK_HEIGHT = '70%'
 
+/** 停靠 ↔ 全屏 FLIP 缩放过渡时长 */
+const FLIP_TRANSITION_MS = 280
+
 export function SketchDrawer({
     open,
     onClose,
@@ -83,15 +86,53 @@ export function SketchDrawer({
 
     // PC 停靠/全屏切换换挂载点：key 强制重挂（antd Drawer 的 getContainer 不支持热切换）。
     // 重挂会重建 excalidraw 实例，先经 canvas 手柄导出内嵌 scene 的 PNG 再切换，恢复内容。
+    // 重挂无法保留 antd 的连续动画，改用 FLIP 缩放过渡（像调整窗口大小）：记录旧浮层矩形
+    // → 重挂后把新浮层变换回旧矩形（inline 样式同时压掉 antd「从底部弹出」的 appear 动画）
+    // → 过渡到新矩形，替代「一个收起、一个又弹出」
     const handleToggleFullscreen = useCallback(async () => {
+        const goingFullscreen = !fullscreen
+        // 起点/目标查询范围：挂了自定义容器 portal 进容器，否则兜底挂 body。
+        // 目标须按切换后的形态计算——rAF 回调执行时闭包里的 fullscreen 还是旧值
+        const fromWrapper = (fullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document))
+            .querySelector<HTMLElement>('.ant-drawer-content-wrapper')
+        const toScope = goingFullscreen ? (fullscreenContainer ?? document) : (dockContainer ?? document)
+        const fromRect = fromWrapper?.getBoundingClientRect() ?? null
         try {
             const png = (await canvasRef.current?.exportCurrent()) ?? null
             setRemountSketch(png)
             setFullscreen((v) => !v)
         } catch {
             // 导出失败不切换：宁可留在原容器也不能丢画布内容
+            return
         }
-    }, [])
+        if (!fromRect || fromRect.width === 0 || fromRect.height === 0) return
+        // 两帧后浏览器完成新容器下的布局，此时反演起始态
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const wrapper = toScope.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
+            if (!wrapper) return
+            const toRect = wrapper.getBoundingClientRect()
+            if (toRect.width === 0 || toRect.height === 0) return
+            wrapper.style.transition = 'none'
+            wrapper.style.transformOrigin = 'top left'
+            wrapper.style.transform =
+                `translate(${fromRect.left - toRect.left}px, ${fromRect.top - toRect.top}px)` +
+                ` scale(${fromRect.width / toRect.width}, ${fromRect.height / toRect.height})`
+            // 强制 reflow 让起始态生效，再放开过渡到原位
+            void wrapper.offsetWidth
+            wrapper.style.transition = `transform ${FLIP_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
+            wrapper.style.transform = 'none'
+            const settle = () => {
+                wrapper.style.transition = ''
+                wrapper.style.transform = ''
+                wrapper.style.transformOrigin = ''
+            }
+            wrapper.addEventListener('transitionend', (e) => {
+                if (e.target === wrapper && e.propertyName === 'transform') settle()
+            }, { once: true })
+            // transitionend 可能被下一次快速切换中断，定时兜底清理
+            window.setTimeout(settle, FLIP_TRANSITION_MS + 60)
+        }))
+    }, [fullscreen, dockContainer, fullscreenContainer])
 
     // 完成：经 canvas 手柄导出（未就绪返回 null 则留在画布），文件名/标记在此装配
     const handleComplete = useCallback(async () => {
