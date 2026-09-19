@@ -19,6 +19,7 @@ import { message } from 'antd'
 import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment, validateFile, getAcceptExtensions } from '@/core/lib/fileAttachments'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { UploadFileResponse } from '@/core/data/api/types'
 import type { SketchMark } from '@mobi/shared'
 
@@ -73,6 +74,7 @@ export function useAttachmentHandling(
     capabilities: DirectoryCapabilities,
     controlsDisabled = false,
 ) {
+    const isMobile = useIsMobile()
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
     const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
 
@@ -167,11 +169,24 @@ export function useAttachmentHandling(
         }
     }, [uploadAttachment])
 
-    const handleAttach = useCallback(() => {
+    /**
+     * 打开系统选择器（+ 面板分项入口）。
+     * - file：文件选择器。PC 带 accept 白名单（桌面对话框类型过滤是便利）；移动端不带——
+     *   iOS 见媒体 accept 会弹「拍照/录像/照片和视频」三选且无法进文件 App，不带 accept
+     *   则两端统一落系统文件选择器（iOS=文件 App，Android=Files），照片/云盘/本地全能选，
+     *   白名单校验仍由 processFiles 在代码层兜底（两端同一逻辑）
+     * - camera：移动端专属，accept 媒体类型 + capture 直开摄像头拍照/录像
+     */
+    const handleAttach = useCallback((source: 'file' | 'camera' = 'file') => {
         const input = document.createElement('input')
         input.type = 'file'
-        input.multiple = true
-        input.accept = getAcceptExtensions()
+        input.multiple = source === 'file'
+        if (source === 'camera') {
+            input.accept = 'image/*,video/*'
+            input.capture = 'environment'
+        } else if (!isMobile) {
+            input.accept = getAcceptExtensions()
+        }
         input.onchange = (e) => {
             const files = (e.target as HTMLInputElement).files
             if (import.meta.env.DEV) console.log('[Upload] input.onchange 触发, files=', files?.length ?? 0)
@@ -180,7 +195,7 @@ export function useAttachmentHandling(
         }
         if (import.meta.env.DEV) console.log('[Upload] handleAttach → input.click()')
         input.click()
-    }, [processFiles])
+    }, [processFiles, isMobile])
 
     /**
      * 画板产物进附件：完成导出的内嵌 scene PNG 直接上传（不经文件选择器），

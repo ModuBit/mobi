@@ -110,6 +110,7 @@ vi.mock('@/core/data/api/client', () => ({
 // —— mock 指针媒体查询：桌面形态（Sender submitType=enter，子项不折叠）——
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useHasFinePointer: () => true,
+    useIsMobile: () => false,
 }))
 
 // —— 静态化布局组件：避免 router/动画上下文干扰 ——

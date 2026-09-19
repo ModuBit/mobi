@@ -18,7 +18,7 @@ import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle,
 import styled from '@emotion/styled'
 import { Button, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { PlusOutlined, EditOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
+import { SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, SketchMark, StopKind, TodoItem, TaskItem } from '@mobi/shared'
@@ -32,6 +32,7 @@ import {
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment, type FileAttachment } from '@/core/lib/fileAttachments'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
+import { AttachPanel } from './AttachPanel'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
 import { resolveCopyShortcut } from './copyShortcut'
 import { StatusBar } from '@/components/chat/StatusBar'
@@ -184,12 +185,6 @@ const ComposerDock = styled.div`
 `
 
 // 紧凑 Select 与 dropdown 样式注入统一在 CompactHoverSelect.tsx（composer / output style 切换器共用）
-
-// Footer Bar / Sub Bar 中 icon 按钮的统一样式
-const ACTION_BUTTON_STYLE: React.CSSProperties = {
-    borderRadius: 'var(--ant-border-radius-sm, 6px)',
-    background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
-} as const
 
 // 预配置的紧凑 Select 已抽出为共享的 CompactHoverSelect.tsx（composer / output style 切换器共用）
 
@@ -894,38 +889,16 @@ export function ChatComposer(props: ChatComposerProps) {
                             <div style={{ display: 'none' }} aria-hidden>{oriNode}</div>
                             <ResponsiveActionBar
                                 items={[
-                                // 附件
+                                // 附件面板：文件/拍照（移动端）/画板聚合入口（Codex 风格富面板）
                                 {
                                     key: 'attach',
                                     label: t('composer.attach'),
                                     render: () => (
-                                        <AppTooltip title={t('composer.attach')}>
-                                            <Button
-                                                type="text"
-                                                size="small"
-                                                icon={<PlusOutlined />}
-                                                onClick={handleAttach}
-                                                disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
-                                                style={ACTION_BUTTON_STYLE}
-                                            />
-                                        </AppTooltip>
-                                    ),
-                                },
-                                // 画板：手绘草图随消息发送（产物 = 内嵌 scene 的 PNG）
-                                {
-                                    key: 'sketch',
-                                    label: t('sketch.open'),
-                                    render: () => (
-                                        <AppTooltip title={t('sketch.open')}>
-                                            <Button
-                                                type="text"
-                                                size="small"
-                                                icon={<EditOutlined />}
-                                                onClick={() => handleOpenSketch()}
-                                                disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
-                                                style={ACTION_BUTTON_STYLE}
-                                            />
-                                        </AppTooltip>
+                                        <AttachPanel
+                                            disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
+                                            onAttach={handleAttach}
+                                            onSketch={() => handleOpenSketch()}
+                                        />
                                     ),
                                 },
                                 // permissionmode

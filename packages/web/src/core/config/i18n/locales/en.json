@@ -637,7 +637,10 @@
             "Concise": "Claude responds tersely, leading with results and skipping preamble and narration",
             "Explanatory": "Claude explains its implementation choices and codebase patterns",
             "Learning": "Claude pauses and asks you to write small pieces of code for hands-on practice"
-        }
+        },
+        "attachPanelTitle": "Add",
+        "attachFile": "File",
+        "attachCamera": "Camera"
     },
     "status": {
         "percentLeft": "{{percent}}% left"

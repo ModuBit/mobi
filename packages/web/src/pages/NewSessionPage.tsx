@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspense, type ReactNode } from 'react'
-import { App, Button, Input, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
+import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
+import { App, Input, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
 import styled from '@emotion/styled'
-import { AppTooltip } from '@/components/ui/AppTooltip'
+import { AttachPanel } from '@/components/composer/AttachPanel'
 import { Sender } from '@ant-design/x'
-import { PlusOutlined, EditOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
+import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import type { EffortLevel, PermissionMode, SketchMark } from '@mobi/shared'
+import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
@@ -33,7 +33,6 @@ import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
 import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
-import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { useMentionInteraction } from '@/components/composer/useMentionInteraction'
 import { useSlashCommandInteraction } from '@/components/composer/useSlashCommandInteraction'
 import { MentionDropdown } from '@/components/composer/MentionDropdown'
@@ -69,8 +68,6 @@ import { normalizeDirectoryPath } from '@/core/utils/path'
 import { makeClientSideId } from '@/core/lib/messages'
 import { saveDraftText } from '@/core/lib/draftText'
 
-// 画板载体懒加载：excalidraw 重依赖只进画板异步 chunk，不进主 bundle
-const SketchDrawer = lazy(() => import('@/components/sketchpad/SketchDrawer').then(m => ({ default: m.SketchDrawer })))
 import { bucketCompletedAttachments } from '@/core/lib/fileAttachments'
 import { isSegmentEmpty, serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
@@ -88,11 +85,6 @@ const SESSION_TYPE_OPTIONS: { value: SessionType; label: string }[] = [
     { value: 'simple', label: '普通' },
     { value: 'worktree', label: 'Worktree' },
 ]
-
-const ACTION_BUTTON_STYLE: React.CSSProperties = {
-    borderRadius: 'var(--ant-border-radius-sm, 6px)',
-    background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
-} as const
 
 // Effort 级别颜色
 const EFFORT_COLORS: Record<EffortLevel, string> = {
@@ -350,36 +342,8 @@ export function NewSessionPage() {
     const {
         attachments, isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
-        addSketchFile, replaceSketchFile,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
     } = useAttachmentHandling(undefined, capabilities)
-
-    // ── 画板（入口按钮 / 附件卡重编辑，spec D5）：新建页无聊天列布局，Drawer 全屏兜底 ──
-    const [sketch, setSketch] = useState<{ open: boolean; initialSketch: Blob | null; editingId: string | null }>({ open: false, initialSketch: null, editingId: null })
-    const handleOpenSketch = useCallback(() => {
-        setSketch({ open: true, initialSketch: null, editingId: null })
-    }, [])
-    const handleSketchEditAttachment = useCallback((attachment: FileAttachment) => {
-        setSketch({ open: true, initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
-    }, [])
-    /**
-     * 完成：产物装 File 直传上传通道（新建=addSketchFile；附件卡重编辑=replaceSketchFile）。
-     * png null = 无内容完成：重编辑语义等同删除旧附件，新建仅关闭画板。
-     */
-    const handleSketchComplete = useCallback((png: Blob | null, filename: string, sketchMark: SketchMark) => {
-        if (!png) {
-            if (sketch.editingId) handleRemoveAttachment(sketch.editingId)
-            setSketch({ open: false, initialSketch: null, editingId: null })
-            return
-        }
-        const file = new File([png], filename, { type: 'image/png' })
-        if (sketch.editingId) {
-            replaceSketchFile(sketch.editingId, file, sketchMark)
-        } else {
-            addSketchFile(file, sketchMark)
-        }
-        setSketch({ open: false, initialSketch: null, editingId: null })
-    }, [sketch.editingId, addSketchFile, replaceSketchFile, handleRemoveAttachment])
 
     // @ 文件引用交互
     const mention = useMentionInteraction({
@@ -735,33 +699,10 @@ export function NewSessionPage() {
             key: 'attach',
             label: t('composer.attach'),
             render: () => (
-                <AppTooltip title={t('composer.attach')}>
-                    <Button
-                        type="text"
-                        size="small"
-                        icon={<PlusOutlined />}
-                        onClick={handleAttach}
-                        disabled={inputDisabled}
-                        style={ACTION_BUTTON_STYLE}
-                    />
-                </AppTooltip>
-            ),
-        },
-        // 画板：手绘草图随首条消息发送（产物 = 内嵌 scene 的 PNG）
-        {
-            key: 'sketch',
-            label: t('sketch.open'),
-            render: () => (
-                <AppTooltip title={t('sketch.open')}>
-                    <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={handleOpenSketch}
-                        disabled={inputDisabled}
-                        style={ACTION_BUTTON_STYLE}
-                    />
-                </AppTooltip>
+                <AttachPanel
+                    disabled={inputDisabled}
+                    onAttach={handleAttach}
+                />
             ),
         },
         // 权限模式
@@ -870,7 +811,7 @@ export function NewSessionPage() {
         t, token, inputDisabled, effort, model, permissionMode,
         permissionModeColor, permissionSelectOptions, modelSelectOptions,
         outputStyle, outputStyleOptions,
-        handleAttach, handleModelSelect, handleModelEffortSelect, hasFinePointer, handleOpenSketch,
+        handleAttach, handleModelSelect, handleModelEffortSelect, hasFinePointer,
         effortPopoverModel,
     ])
 
@@ -920,7 +861,6 @@ export function NewSessionPage() {
                 key="attachments"
                 attachments={attachments}
                 onRemove={handleRemoveAttachment}
-                onEditSketch={handleSketchEditAttachment}
             />
         ),
     ].filter(Boolean)
@@ -1118,16 +1058,6 @@ export function NewSessionPage() {
                     onClose={() => setProjectModalOpen(false)}
                     onCreated={handleProjectCreated}
                 />
-
-                {/* 画板载体（dockContainer 缺省 → 全屏兜底）；excalidraw 懒加载不进主 bundle */}
-                <Suspense fallback={null}>
-                    <SketchDrawer
-                        open={sketch.open}
-                        onClose={() => setSketch({ open: false, initialSketch: null, editingId: null })}
-                        onComplete={handleSketchComplete}
-                        initialSketch={sketch.initialSketch}
-                    />
-                </Suspense>
             </ContentWrapper>
         </PageContainer>
     )
