@@ -179,19 +179,18 @@ const Section = styled.div`
     background: var(--ant-color-bg-elevated);
 `
 
-/* header 视觉对齐 drawer 惯例（标题 16/600 + hairline 分隔线），间距落 8 倍数刻度 */
-const Header = styled.div`
+/* header 出口栏：取消居左、完成实心 CTA 居右（左右分离防误触），全屏切换（仅 PC）
+ * 与完成同侧——非破坏动作误触无害。无标题：打开上下文已说明是什么，高度还给画布 */
+const Header = styled.div<{ $mobile: boolean }>`
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 12px 16px;
+    padding: ${(p) => (p.$mobile ? '8px 12px' : '6px 12px')};
     border-bottom: 1px solid var(--ant-color-split);
 
-    .title {
-        font-size: 16px;
-        font-weight: 600;
-    }
+    /* 移动端触达目标 ≥40px（按钮 size small 本体 24px 太小） */
+    .exit-btn { min-width: ${(p) => (p.$mobile ? '40px' : '28px')}; min-height: ${(p) => (p.$mobile ? '40px' : '28px')}; }
 `
 
 export function SketchDrawer({
@@ -294,13 +293,24 @@ export function SketchDrawer({
                 style={sheetStyle}
             >
                 <Section>
-                    <Header data-testid="sketch-header">
-                        <span className="title">{t('sketch.open')}</span>
-                        <Space size={4}>
-                            {/* 仅 PC 且挂层可切全屏：移动端已全屏 */}
+                    <Header data-testid="sketch-header" $mobile={isMobile}>
+                        <Tooltip title={t('common.cancel')}>
+                            <Button
+                                className="exit-btn"
+                                type="text"
+                                size="small"
+                                aria-label={t('common.cancel')}
+                                icon={<X size={16} />}
+                                disabled={exporting}
+                                onClick={() => canvasRef.current?.requestCancel()}
+                            />
+                        </Tooltip>
+                        <Space size={8}>
+                            {/* 仅 PC 且挂层可切全屏：移动端已全屏；与完成同侧但非破坏动作，误触无害 */}
                             {canFullscreen && (
                                 <Tooltip title={fullscreenLabel}>
                                     <Button
+                                        className="exit-btn"
                                         type="text"
                                         size="small"
                                         aria-label={fullscreenLabel}
@@ -309,26 +319,16 @@ export function SketchDrawer({
                                     />
                                 </Tooltip>
                             )}
-                            <Tooltip title={t('common.cancel')}>
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    aria-label={t('common.cancel')}
-                                    icon={<X size={16} />}
-                                    disabled={exporting}
-                                    onClick={() => canvasRef.current?.requestCancel()}
-                                />
-                            </Tooltip>
-                            <Tooltip title={t('sketch.complete')}>
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    aria-label={t('sketch.complete')}
-                                    icon={<Check size={16} />}
-                                    disabled={exporting}
-                                    onClick={() => void handleComplete()}
-                                />
-                            </Tooltip>
+                            <Button
+                                className="exit-btn"
+                                type="primary"
+                                size="small"
+                                icon={<Check size={14} />}
+                                loading={exporting}
+                                onClick={() => void handleComplete()}
+                            >
+                                {t('sketch.complete')}
+                            </Button>
                         </Space>
                     </Header>
                     <div style={{ flex: 1, minHeight: 0 }}>
