@@ -821,7 +821,7 @@ export function ChatComposer(props: ChatComposerProps) {
     ].filter(Boolean)
 
     return (
-        <div style={{ padding: '0 12px max(12px, env(safe-area-inset-bottom))' }}>
+        <div style={{ padding: '0 0 max(12px, env(safe-area-inset-bottom))' }}>
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
