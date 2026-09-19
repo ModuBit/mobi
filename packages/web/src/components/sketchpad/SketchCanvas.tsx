@@ -211,6 +211,10 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     }, [editor, simulatePressure])
 
     // 重编辑载入：initialSketch（内嵌 scene 的 PNG）→ 画板场景
+    // 主题经 ref 读取：isDark 变化时 theme prop 已由 excalidraw 自行同步，
+    // 载入 effect 不需要（也不应该）随之重跑重放 scene
+    const isDarkRef = useRef(isDark)
+    isDarkRef.current = isDark
     useEffect(() => {
         if (!editor || !initialSketch) return
         let cancelled = false
@@ -218,8 +222,15 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             try {
                 const scene = await loadSketch(initialSketch)
                 if (cancelled) return
-                // restore 产物与 updateScene 参数形状兼容，仅 TS 宽 Record 不匹配——unknown 中转
-                editor.updateScene(scene as unknown as Parameters<typeof editor.updateScene>[0])
+                // restore 产物与 updateScene 参数形状兼容，仅 TS 宽 Record 不匹配——unknown 中转。
+                // appState.theme 必须剥离：内嵌 scene 的 theme 经导出 sanitize 后缺省 light，
+                // updateScene 会覆盖受控主题且 props 不再变化无法同步回——表现为重编辑
+                // 不跟随应用主题（dark 下开成 light）
+                const { theme: _embeddedTheme, ...restAppState } = scene.appState
+                editor.updateScene({
+                    ...scene,
+                    appState: { ...restAppState, theme: isDarkRef.current ? 'dark' : 'light' },
+                } as unknown as Parameters<typeof editor.updateScene>[0])
                 const files = Object.values(scene.files) as Parameters<typeof editor.addFiles>[0]
                 if (files.length > 0) editor.addFiles(files)
             } catch (e) {
