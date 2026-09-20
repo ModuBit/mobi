@@ -26,6 +26,10 @@ export const SKETCH_DOCK_HEIGHT_RATIO = 0.7
 /** PC 停靠底边与 composer 顶边的间距（px）：贴着会显得粘连成一体，留一缝保持「浮层」层次 */
 export const SKETCH_DOCK_GAP = 8
 
+/** PC 停靠浮层单侧水平留白（px）：浮层永远不贴左右边缘。不依赖 CHAT_MAX_WIDTH 居中兜底——
+ *  视口减去侧栏/面板不足 1200 时按层宽渲染，无留白即贴边（与 composer 侧边距同一规则） */
+export const SKETCH_DOCK_SIDE_INSET = 8
+
 /** 载体开合动画时长（ms）：滑沉消隐——原地微沉/升起一段小距离 + 淡出/淡入（对称往返），
  *  不经过 composer（穿过其周边透明缝隙会「穿帮」）。时长单源 sketchLayout
  *  （画布 settle 定时从它派生，改这里自动跟随） */

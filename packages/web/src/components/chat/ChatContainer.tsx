@@ -62,7 +62,7 @@ import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 import { spring } from '@/components/motion/presets'
-import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP, SKETCH_Z_COMPOSER } from '@/domain/sketch/sketchLayout'
+import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP, SKETCH_DOCK_SIDE_INSET, SKETCH_Z_COMPOSER } from '@/domain/sketch/sketchLayout'
 
 import { MobiLogo } from '@/components/ui/MobiLogo'
 // BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
@@ -237,7 +237,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // 停靠底边 = composer 顶边 + 一缝间距（SKETCH_DOCK_GAP，贴着会粘连成一体）
             const dockBottom = layer.bottom - scroll.bottom + SKETCH_DOCK_GAP
             const dockHeight = scroll.height * SKETCH_DOCK_HEIGHT_RATIO
-            const dockWidth = Math.min(CHAT_MAX_WIDTH, layer.width)
+            // 宽度限宽居中，且两侧保底 SKETCH_DOCK_SIDE_INSET（浮层不贴左右边缘）
+            const dockWidth = Math.min(CHAT_MAX_WIDTH, layer.width - SKETCH_DOCK_SIDE_INSET * 2)
             const dockLeft = (layer.width - dockWidth) / 2
             const next = {
                 top: layer.height - dockBottom - dockHeight,

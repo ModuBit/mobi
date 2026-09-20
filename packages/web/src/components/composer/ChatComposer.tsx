@@ -800,8 +800,9 @@ export function ChatComposer(props: ChatComposerProps) {
     ].filter(Boolean)
 
     return (
-        // 小屏左右留 8px，composer 不贴屏幕边缘；大屏聊天列已限宽居中（CHAT_MAX_WIDTH），保持无侧边距
-        <div style={{ padding: isMobile ? '0 8px max(12px, env(safe-area-inset-bottom))' : '0 0 max(12px, env(safe-area-inset-bottom))' }}>
+        // composer 永远不贴左右边缘：统一 8px 侧边距。不依赖 CHAT_MAX_WIDTH 居中兜底——
+        // 视口减去侧栏/面板不足 1200 时聊天列按 100% 宽渲染，无侧边距即贴边
+        <div style={{ padding: '0 8px max(12px, env(safe-area-inset-bottom))' }}>
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
