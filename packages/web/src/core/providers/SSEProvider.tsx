@@ -47,7 +47,7 @@ import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
 import { desktopStreamProvider } from '@/core/desktop/desktopStreamProvider'
 import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
-import type { Machine, MachinesResponse } from '@/core/data/api/types'
+import type { Machine, MachinesResponse, RunnerState } from '@/core/data/api/types'
 
 /**
  * blocks → composer 分段还原（撤回回填，spec §7.5）。
@@ -202,15 +202,28 @@ let toastSeq = 0
  *
  * 负载四种形状（hub machineCache / machineHandlers）：
  * - null：机器删除 → 按 machineId 移除
- * - 全量 machine（带 metadata 字段）：upsert 为 web 投影（hub 行含 namespace/seq 等字段，不整行塞入；
- *   metadata 的归一化 hub machineCache 已做——host/platform 必为 string、displayName/homeDir
- *   非字符串即缺省，这里只做字段挑选，不复制第二份归一化表）
- * - { active: false }：过期下线 → 仅合并 active 标记（保留本地已有 metadata/runnerState）
+ * - 全量 machine（带 metadata 字段）：合并进已有缓存行（只覆写投影字段，保留 fetch 缓存的
+ *   hub 专有字段，避免同一缓存混入两种形状）；缓存无此行时 upsert 投影。metadata 的归一化
+ *   hub machineCache 已做——host/platform 必为 string、displayName/homeDir 非字符串即缺省，
+ *   这里只做字段挑选，不复制第二份归一化表
+ * - { active: false }：过期下线 → 从缓存移除。GET /api/machines 只返回 active 机器
+ *   （getOnlineMachinesByNamespace），保留 active:false 行会让 patch 与 refetch 语义分叉
+ *   （死机器在被兜底 refetch 清走前仍出现在机器选择列表）
  * - { id }：仅 id 占位——hub 侧同步跟随一条全量事件，此处 no-op
  *
  * 缓存不存在时不创建（避免把单机 patch 写成"完整列表"）；无实质变化返回 undefined
  * 让 react-query 跳过换代（throttle 心跳每 ~10s 重复广播同值全量，稳态热路径）。
  */
+/** runnerState 同值判定：SSE 每帧重解析出全新对象，引用比较恒 false；顶层字段均为
+ *  原始类型（status/pid/httpPort…），浅比较即等值。均空也算同值 */
+function sameRunnerState(a: Machine['runnerState'], b: Machine['runnerState']): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    const ka = Object.keys(a) as Array<keyof RunnerState>
+    if (ka.length !== Object.keys(b).length) return false
+    return ka.every(k => a[k] === b[k])
+}
+
 function patchMachinesCache(qc: QueryClient, machineId: string, data: unknown): void {
     if (!qc.getQueryData(queryKeys.machines)) return
     qc.setQueryData<MachinesResponse>(queryKeys.machines, (prev) => {
@@ -231,21 +244,21 @@ function patchMachinesCache(qc: QueryClient, machineId: string, data: unknown): 
                 ...(meta.displayName !== undefined && { displayName: meta.displayName }),
                 ...(meta.homeDir !== undefined && { homeDir: meta.homeDir }),
             } : null) as Machine['metadata']
-            const next: Machine = {
-                id: machineId,
-                active: data.active === true,
-                metadata,
-                runnerState: (data.runnerState ?? null) as Machine['runnerState'],
-            }
-            // 同值跳过：全量广播高频且多数无变化，避免每次都造新引用逼 react-query 深比较
+            const runnerState = (data.runnerState ?? null) as Machine['runnerState']
             const old = prev.machines.find(m => m.id === machineId)
+            // 合并而非替换：fetch 缓存的是 hub 全行，patch 只覆写投影字段，专有字段原地保留
+            const next: Machine = old
+                ? { ...old, active: data.active === true, metadata, runnerState }
+                : { id: machineId, active: data.active === true, metadata, runnerState }
+            // 同值跳过：全量广播高频且多数无变化，避免每次都造新引用逼 react-query 深比较。
+            // runnerState 经 SSE 每帧新解析、引用必不同，按顶层字段浅比较（值均为原始类型）
             if (old
                 && old.active === next.active
                 && old.metadata?.host === next.metadata?.host
                 && old.metadata?.platform === next.metadata?.platform
                 && old.metadata?.displayName === next.metadata?.displayName
                 && old.metadata?.homeDir === next.metadata?.homeDir
-                && old.runnerState === next.runnerState) {
+                && sameRunnerState(old.runnerState, next.runnerState)) {
                 return undefined
             }
             const machines = old
@@ -255,6 +268,12 @@ function patchMachinesCache(qc: QueryClient, machineId: string, data: unknown): 
         }
         if ('active' in data) {
             const active = data.active === true
+            // 下线（active:false）即移除——GET /api/machines 只返回 active 机器，
+            // 保留下线行会让 patch 与 refetch 语义分叉（死机器滞留选择列表）
+            if (!active) {
+                if (!prev.machines.some(m => m.id === machineId)) return undefined
+                return { ...prev, machines: prev.machines.filter(m => m.id !== machineId) }
+            }
             let changed = false
             const machines = prev.machines.map(m => {
                 if (m.id !== machineId || m.active === active) return m

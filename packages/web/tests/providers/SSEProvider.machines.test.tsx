@@ -9,7 +9,7 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
@@ -130,18 +130,19 @@ describe('SSEProvider machine-updated —— 缓存 patch 替代 refetch（渲�
         expect(cached.machines.find((m: any) => m.id === 'm1').active).toBe(true)
     })
 
-    it('{ active: false } 负载 → 仅合并下线标记，保留本地 metadata/runnerState', async () => {
+    it('{ active: false } 负载 → 下线机器从缓存移除（与 refetch 的 active-only 语义一致）', async () => {
         const { queryClient } = await renderProvider()
         seedMachines(queryClient, [
-            { id: 'm1', active: true, metadata: { host: 'h1', platform: 'darwin' }, runnerState: { version: 1, value: {} } },
+            { id: 'm1', active: true, metadata: { host: 'h1', platform: 'darwin' }, runnerState: null },
+            { id: 'm2', active: true, metadata: { host: 'h2', platform: 'linux' }, runnerState: null },
         ])
 
         sseListener.current!({ type: 'machine-updated', machineId: 'm1', data: { active: false } })
 
         const cached = queryClient.getQueryData<any>(['machines'])
-        expect(cached.machines[0].active).toBe(false)
-        expect(cached.machines[0].metadata).toEqual({ host: 'h1', platform: 'darwin' })
-        expect(cached.machines[0].runnerState).toEqual({ version: 1, value: {} })
+        // GET /api/machines 只返回 active 机器——patch 若保留 active:false 行，
+        // 死机器会一直出现在机器选择列表，直到 5min 兜底 refetch 才被清走
+        expect(cached.machines.map((m: any) => m.id)).toEqual(['m2'])
     })
 
     it('null 负载 → 移除该机器', async () => {
@@ -155,6 +156,25 @@ describe('SSEProvider machine-updated —— 缓存 patch 替代 refetch（渲�
 
         const cached = queryClient.getQueryData<any>(['machines'])
         expect(cached.machines.map((m: any) => m.id)).toEqual(['m2'])
+    })
+
+    it('全量负载命中已有缓存行 → 合并覆写投影字段，保留 fetch 缓存的 hub 专有字段', async () => {
+        const { queryClient } = await renderProvider()
+        seedMachines(queryClient, [
+            // 模拟 refetch 缓存的 hub 全行（含 namespace/activeAt 等 web Machine 类型之外的字段）
+            { id: 'm1', active: true, metadata: { host: 'h1', platform: 'darwin' }, runnerState: null, namespace: 'ns', activeAt: 42 },
+        ])
+
+        sseListener.current!({
+            type: 'machine-updated',
+            machineId: 'm1',
+            data: { id: 'm1', active: true, metadata: { host: 'h1', platform: 'darwin' } },
+        })
+
+        const cached = queryClient.getQueryData<any>(['machines'])
+        const m1 = cached.machines.find((m: any) => m.id === 'm1')
+        expect(m1.namespace).toBe('ns')
+        expect(m1.activeAt).toBe(42)
     })
 
     it('{ id } 占位负载 → 不动缓存（hub 同步跟随全量事件）', async () => {

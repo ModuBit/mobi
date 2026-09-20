@@ -831,7 +831,10 @@ export function createSessionsRoutes(
     })
 
     // 静态资源服务（HTML 预览用）：相对 cwd 的 path 段形式（splat），相对路径基准交给浏览器原生解析。
-    // 安全边界=严格 cwd 内（与 read-file 的 homeDir 边界不同），nosniff 防 MIME 嗅探。
+    // 安全边界=CLI 读边界（cwd ∪ home−黑名单 ∪ extra read roots，由 readFileMeta/readFileRange
+    // RPC 端的 validateReadPath 单源强制，本端不做第二份判定），nosniff 防 MIME 嗅探。
+    // 注意边界比旧版「严格 cwd」宽：home 下可读文件均可被内联渲染，残留外带通道
+    // （script src 拼数据）的作用面随之扩大——这是与「/tmp 可预览」一起接受的取舍。
     // download=1 强制 attachment——供「下载」入口，避免 HTML 在 top-level 打开时脱离 sandbox 同源执行。
     // 与 read-file 共享 serveFileContent 的 meta/304/Range/stream 逻辑，仅 path 来源与安全策略不同。
     app.get('/sessions/:id/serve-file/:path{.*}', async (c) => {
