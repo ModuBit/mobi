@@ -52,6 +52,9 @@ export const ACTION_REGISTRY = {
      * - path：相对会话 cwd 的路径，或 `/` 开头的绝对路径（POSIX 惯例，透传给
      *   read-file 读取链，`resolve(cwd, path)` 天然双支持）。实际可达范围由服务端
      *   读边界约束（cwd 子树 ∪ home−黑名单，ADR 0004）——协议只承诺透传，边界演进不动参数。
+     *   容忍 `path:line` 行号后缀（写作习惯），解析时剥离进 line 字段（见 splitPathLineSuffix）。
+     * - line：path 尾部剥离出的行号（无后缀时缺省）。web 消费方暂不消费（无行跳转），
+     *   仅保证剥离后的纯路径可打开。
      * - name：tab 显示名，缺省取 path 基名。
      * - expand：是否检测并展开 inspector（false = 只更新 tab 不抢屏），缺省 true。
      */
@@ -64,6 +67,10 @@ export const ACTION_REGISTRY = {
             expand: z.union([z.boolean(), z.enum(['true', 'false'])])
                 .optional()
                 .transform((v) => v !== 'false' && v !== false),
+            // 行号是 path 的派生字段（非 query 键），输入侧不存在——由对象级 transform 补出
+        }).transform(({ path, ...rest }) => {
+            const { path: cleanPath, line } = splitPathLineSuffix(path)
+            return line === null ? { path: cleanPath, ...rest } : { path: cleanPath, line, ...rest }
         }),
         risk: 'navigate',
     },
@@ -86,6 +93,18 @@ const DOMAIN_RE = /^[a-z0-9-]+$/
 
 /** 动作名合法字符：同资源域（小写单词，不加连字符以外符号） */
 const ACTION_RE = /^[a-z0-9-]+$/
+
+/**
+ * `path:line` 行号后缀的单点解析（file/open 参数）：
+ * 模型/人类写作链接常有 `src/a.ts:72` 形态，行号若混在 path 里会让读链 stat ENOENT、
+ * 文件打不开。这里剥离尾部 `:数字` 为独立 line 字段——消费方暂不消费（无行跳转），
+ * 但纯路径保证可打开。仅匹配**尾部**冒号数字：Windows 盘符（C:/…）等中段冒号不受影响；
+ * 真实文件名恰以 `:数字` 结尾属可接受取舍（罕见且行号形态无法与后缀区分）。
+ */
+export function splitPathLineSuffix(raw: string): { path: string; line: number | null } {
+    const match = raw.match(/^(.+):(\d{1,7})$/)
+    return match ? { path: match[1]!, line: Number(match[2]) } : { path: raw, line: null }
+}
 
 /**
  * 解析 mobi URI 为动作，返回三态：RegisteredAction（已注册且参数过校验）/

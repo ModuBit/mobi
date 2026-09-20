@@ -102,6 +102,19 @@ describe('file/open：解析与构造（ADR 0003 二期）', () => {
     it('path 缺失 → 畸形 null（统一降级文案）', () => {
         expect(parseActionUri('mobi://file/open?name=a.md')).toBeNull()
     })
+
+    it('path 带 :line 行号后缀：剥离进 line 字段（容忍 path:line 写作习惯，保证文件可打开）', () => {
+        const parsed = parseActionUri('mobi://file/open?path=packages%2Fweb%2Fsrc%2Fa.ts%3A72')
+        expect(parsed).toMatchObject({
+            key: 'file/open',
+            params: { path: 'packages/web/src/a.ts', line: 72, expand: true },
+        })
+    })
+
+    it('path 无行号后缀：line 为 undefined（不污染既有消费方）', () => {
+        const parsed = parseActionUri('mobi://file/open?path=src%2Fa.ts')
+        expect((parsed as { params: { line?: number } }).params.line).toBeUndefined()
+    })
 })
 
 describe('refBlockToActionText：存量 ref 迁移（ADR 0003）', () => {
