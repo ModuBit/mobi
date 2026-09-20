@@ -22,25 +22,18 @@
  * 只负责取数与抛错；失败提示（toast）是 UI 语义，留给调用方。
  */
 
-import { resolveUserImageUrl } from '@/core/utils/fileUrl'
+import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 
 /** 草图引用：服务端路径（.mobi/uploads 下，重编辑产物均有 path） */
 export interface SketchRef {
     path: string
 }
 
-/** 解析上下文：read-file 端点寻址所需（machine 优先，缺 machine 回退 session） */
-export interface SketchResolveContext {
-    sessionId?: string
-    machineId?: string
-    cwd?: string
-}
-
 /**
  * 取回草图 PNG。ref 无 path（理论上不可达：重编辑入口均以 path 存在为前提）或
  * 端点寻址信息不足 / 响应非 ok 时抛错，错误信息含原因。
  */
-export async function loadSketchSource(ref: SketchRef, ctx: SketchResolveContext): Promise<Blob> {
+export async function loadSketchSource(ref: SketchRef, ctx: FileRefContext): Promise<Blob> {
     if (!ref.path) throw new Error('草图引用缺少 path')
     const url = resolveUserImageUrl({ source: { type: 'url', value: ref.path } }, ctx)
     if (!url) throw new Error('无法构造草图取数地址（machine/session 信息缺失）')

@@ -76,6 +76,29 @@ export function buildMachineReadFileUrl(
 }
 
 /**
+ * 会话文件寻址上下文（read-file 端点寻址所需字段的单源类型）：
+ * machine 显式二元组优先（会话关闭后仍可达），缺 machine 回退 session（兼容老入口），
+ * 双缺 = 无法构造任何端点（如新建会话页的恢复态）。
+ */
+export interface FileRefContext {
+    sessionId?: string
+    machineId?: string
+    cwd?: string
+}
+
+/**
+ * 从 (sessionId, 会话元数据) 投影寻址上下文——「挑哪些字段、怎么映射」的唯一出处
+ * （元数据 path 即 cwd）。此前 ChatComposer / 气泡渲染各自手写同一投影，字段改名时
+ * 必然漏改；所有消费方（画板回源、气泡图、附件缩略图）统一经此构造。
+ */
+export function fileRefContext(
+    sessionId: string | undefined,
+    metadata: { machineId?: string; path?: string } | null | undefined,
+): FileRefContext {
+    return { sessionId, machineId: metadata?.machineId, cwd: metadata?.path }
+}
+
+/**
  * 用户消息 image block → 可取数 URL（气泡 ImageView 渲染、composer 附件缩略图、
  * 画板重编辑取 PNG 共用）：blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地
  * 预览、网络图）；否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造。
@@ -86,7 +109,7 @@ export function buildMachineReadFileUrl(
  */
 export function resolveUserImageUrl(
     block: Pick<UserImageBlock, 'previewUrl' | 'source'>,
-    env: { sessionId?: string; machineId?: string; cwd?: string },
+    env: FileRefContext,
 ): string | null {
     const raw = block.previewUrl ?? block.source.value
     if (isSelfContainedUrl(raw)) return raw

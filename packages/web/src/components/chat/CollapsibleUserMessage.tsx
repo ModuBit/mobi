@@ -220,9 +220,9 @@ export const CollapsibleUserMessage = memo(
         )
     },
     // 自定义比较：user-text 的 children 由 (blocks, isSynthetic) 唯一决定（renderChatBlock 固定传
-    // <UserBlocksView blocks={block.blocks} env={{isSynthetic, sessionId}}/>），故 blocks 结构相等
+    // <UserBlocksView blocks={block.blocks} env={{isSynthetic, refCtx}}/>），故 blocks 结构相等
     // 且 isSynthetic 相同即内容实质相同。忽略 children 元素引用变化（renderChatBlock 每次都新建
-    // JSX 元素）与 sessionId 变化（切换会话必然整体重建消息列表，无需靠比较器兜底），
+    // JSX 元素）与 refCtx 变化（切换会话必然整体重建消息列表，无需靠比较器兜底），
     // 让流式期间未变化的用户消息气泡跳过重渲。
     // ⚠️ 前提：children 不含这些字段以外的动态字段；当前唯一调用点满足。
     // 若未来 children 引入更多动态 prop，必须把它提到这里纳入比较，否则会静默漏更新。

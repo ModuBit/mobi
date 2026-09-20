@@ -28,7 +28,8 @@
 import { useCallback, useState } from 'react'
 import type { SketchMark } from '@mobi/shared'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
-import { loadSketchSource, type SketchResolveContext } from '@/domain/sketch/sketchSource'
+import type { FileRefContext } from '@/core/utils/fileUrl'
+import { loadSketchSource } from '@/domain/sketch/sketchSource'
 
 /** 会话：null = 关闭。initialSketch = 重编辑载入源（null = 空白画布）；
  *  editingId = 重编辑目标附件（null = 新建路径，产物作为新附件） */
@@ -46,7 +47,7 @@ export interface UseSketchSessionDeps {
     /** 取数失败提示（toast 等渠道由调用方决定） */
     notifyLoadFailed: () => void
     /** 解析上下文：气泡/附件回源 fetch 的 read-file 寻址 */
-    resolveContext: SketchResolveContext
+    resolveContext: FileRefContext
 }
 
 export function useSketchSession(deps: UseSketchSessionDeps) {

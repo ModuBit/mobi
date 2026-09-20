@@ -30,6 +30,7 @@ import {
     type PendingQuoteRef,
 } from '@/domain/chat/composerSegments'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
+import { fileRefContext } from '@/core/utils/fileUrl'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { AttachPanel } from './AttachPanel'
@@ -350,7 +351,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // ── 画板（入口按钮 / 附件卡重编辑 / 气泡重编辑落回，spec D3/D4/D5）──
     // 会话状态机（everOpened 门控 / 完成语义 / 回源守卫）收在 useSketchSession
     const resolveContext = useMemo(
-        () => ({ sessionId, machineId: metadata?.machineId, cwd: metadata?.path }),
+        () => fileRefContext(sessionId, metadata),
         [sessionId, metadata?.machineId, metadata?.path],
     )
     const sketchSession = useSketchSession({
@@ -793,9 +794,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 attachments={attachments}
                 onRemove={handleRemoveAttachment}
                 onEditSketch={handleSketchEditAttachment}
-                sessionId={sessionId}
-                machineId={metadata?.machineId}
-                cwd={metadata?.path}
+                refCtx={resolveContext}
             />
         ),
     ].filter(Boolean)

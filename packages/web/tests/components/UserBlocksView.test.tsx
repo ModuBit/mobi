@@ -37,7 +37,7 @@ function serverImageBlock(): UserImageBlock {
 describe('UserBlocksView ImageView', () => {
     it('缩略图固定 80×80、objectFit cover 裁切', () => {
         const { container } = render(
-            <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         // antd Image：width/height 落外层容器 div，objectFit 经 styles.image 落 <img>
         const holder = container.querySelector('.ant-image') as HTMLElement
@@ -50,7 +50,7 @@ describe('UserBlocksView ImageView', () => {
 
     it('服务端路径经 read-file 端点构造 src', () => {
         const { container } = render(
-            <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         const img = container.querySelector('img')
         expect(img!.getAttribute('src')).toContain('/api/sessions/sess-1/read-file')
@@ -63,14 +63,14 @@ describe('UserBlocksView ImageView', () => {
             source: { type: 'url', value: 'blob:http://localhost/abc' },
         }
         const { container } = render(
-            <UserBlocksView blocks={[block]} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={[block]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         expect(container.querySelector('img')!.getAttribute('src')).toBe('blob:http://localhost/abc')
     })
 
     it('文件名承载于 img alt（无障碍），不挂 tooltip', () => {
         const { container } = render(
-            <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         const img = container.querySelector('img')
         expect(img!.getAttribute('alt')).toBe('photo.png')
@@ -79,7 +79,7 @@ describe('UserBlocksView ImageView', () => {
     it('加载失败 → 切换兜底图（svg data URI），不再请求原 src', () => {
         // 失败态由组件自管：onError 置 failed 换 src，不依赖 rc-image 内部异步校验
         const { container } = render(
-            <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         const img = container.querySelector('img')!
         expect(img.getAttribute('src')).not.toMatch(/^data:/)
@@ -89,7 +89,7 @@ describe('UserBlocksView ImageView', () => {
 
     it('失败态钉死于触发它的 src：src 变化（如环境恢复）后自动重试正常 src', () => {
         const { container, rerender } = render(
-            <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         fireEvent.error(container.querySelector('img')!)
         expect(container.querySelector('img')!.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
@@ -98,7 +98,7 @@ describe('UserBlocksView ImageView', () => {
         rerender(
             <UserBlocksView
                 blocks={[serverImageBlock()]}
-                env={{ sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' }}
+                env={{ refCtx: { sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' } }}
             />,
         )
         const src = container.querySelector('img')!.getAttribute('src')!
@@ -112,7 +112,7 @@ describe('UserBlocksView ImageView', () => {
             { ...serverImageBlock(), id: 'img-3', filename: 'photo3.png' },
         ]
         const { container } = render(
-            <UserBlocksView blocks={blocks} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={blocks} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         // 三张图共享同一个横向 wrap Space（顶层还有垂直 Space 包段落，此处取横向组）
         // antd v6 的 wrap 不再加 class，而是 inline flex-wrap
@@ -125,7 +125,7 @@ describe('UserBlocksView ImageView', () => {
     it('非连续多图不被归并：text 打断后各自成段', () => {
         const blocks = [serverImageBlock(), { type: 'text', text: '说明' }, serverImageBlock()]
         const { container } = render(
-            <UserBlocksView blocks={blocks} env={{ sessionId: 'sess-1' }} />,
+            <UserBlocksView blocks={blocks} env={{ refCtx: { sessionId: 'sess-1' } }} />,
         )
         // 两张图各自成横向段（顶层垂直 Space 不计入）
         expect(container.querySelectorAll('.ant-space-horizontal')).toHaveLength(2)
@@ -136,7 +136,7 @@ describe('UserBlocksView ImageView', () => {
         const { container } = render(
             <UserBlocksView
                 blocks={[serverImageBlock()]}
-                env={{ sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' }}
+                env={{ refCtx: { sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' } }}
             />,
         )
         const src = container.querySelector('img')!.getAttribute('src')!

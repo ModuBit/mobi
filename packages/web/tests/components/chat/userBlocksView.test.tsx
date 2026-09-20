@@ -68,7 +68,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
             },
             { type: 'text', text: '帮我看看' },
         ]
-        render(<UserBlocksView blocks={blocks} env={{ sessionId: 's1' }} />)
+        render(<UserBlocksView blocks={blocks} env={{ refCtx: { sessionId: 's1' } }} />)
 
         // quote：data-testid 定位 + excerpt 全文 + hover title 兜底展示全文
         expect(screen.getByTestId('user-quote-m1')).toHaveTextContent('CCR backend…')
@@ -101,7 +101,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
             { type: 'quote', messageId: 'm1', role: 'agent', excerpt: '引用' },
             { type: 'text', text: '正文' },
         ]
-        const { container } = render(<UserBlocksView blocks={blocks} env={{ sessionId: 's1' }} />)
+        const { container } = render(<UserBlocksView blocks={blocks} env={{ refCtx: { sessionId: 's1' } }} />)
         // 顶层垂直 Space：段间距由 Space 收口，不靠 FileCard 自带 padding
         expect(container.querySelector('.ant-space-vertical')).not.toBeNull()
     })
@@ -154,7 +154,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
                     id: 'g1', filename: 'p.png', size: 1,
                     previewUrl: 'blob:http://localhost/abc',
                 }]}
-                env={{ sessionId: 's1' }}
+                env={{ refCtx: { sessionId: 's1' } }}
             />,
         )
         expect(screen.getByRole('img', { name: /p\.png|p/ })).toHaveAttribute('src', 'blob:http://localhost/abc')
@@ -169,7 +169,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
                     source: { type: 'url', value: '/u/p.png', mimeType: 'image/png' },
                     id: 'g1', filename: 'p.png', size: 1,
                 }]}
-                env={{ sessionId: 's1' }}
+                env={{ refCtx: { sessionId: 's1' } }}
             />,
         )
         const img = screen.getByRole('img', { name: /p\.png|p/ })
@@ -185,7 +185,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
                     source: { type: 'url', value: '/u/p.png', mimeType: 'image/png' },
                     id: 'g1', filename: 'p.png', size: 1,
                 }]}
-                env={{ sessionId: 's1' }}
+                env={{ refCtx: { sessionId: 's1' } }}
             />,
         )
         // 初始态可预览：rc-image 在 preview 开启时给外层容器 role=button
@@ -212,7 +212,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
                     id: 'sk1', filename: 's.png', size: 1,
                     sketch: { format: 'excalidraw.png' },
                 }]}
-                env={{ sessionId: 's1', onEditSketch }}
+                env={{ refCtx: { sessionId: 's1' }, onEditSketch }}
             />,
         )
         // PC 有 hover 编辑角标
@@ -232,7 +232,7 @@ describe('UserBlocksView 按 block 分发渲染', () => {
                         id: 'sk2', filename: 's.png', size: 1,
                         sketch: { format: 'excalidraw.png' },
                     }]}
-                    env={{ sessionId: 's1', onEditSketch: vi.fn() }}
+                    env={{ refCtx: { sessionId: 's1' }, onEditSketch: vi.fn() }}
                 />,
             )
             expect(screen.queryByRole('generic', { name: /编辑草图|edit/i })).toBeNull()
@@ -252,7 +252,7 @@ describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
                     source: { type: 'url', value: '.mobi/uploads/report.pdf', mimeType: 'application/pdf' },
                     id: 'd1', filename: 'report.pdf', size: 12345,
                 }]}
-                env={{ sessionId: 'sess-1' }}
+                env={{ refCtx: { sessionId: 'sess-1' } }}
             />,
         )
 
@@ -277,7 +277,7 @@ describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
                     source: { type: 'data', value: 'base64xxx', mimeType: 'application/pdf' },
                     id: 'd2', filename: 'inline.pdf', size: 1,
                 }]}
-                env={{ sessionId: 'sess-1' }}
+                env={{ refCtx: { sessionId: 'sess-1' } }}
             />,
         )
         expect(screen.queryByRole('link')).toBeNull()

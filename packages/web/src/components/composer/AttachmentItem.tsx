@@ -19,7 +19,7 @@ import { theme, Spin, Progress, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { SketchEditBadge } from '@/components/ui/SketchEditBadge'
-import { resolveUserImageUrl } from '@/core/utils/fileUrl'
+import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
     File, FileText, FileSpreadsheet, FileImage, FileVideo,
@@ -170,18 +170,14 @@ const AttachmentCard = memo(function AttachmentCard({
     attachment,
     onRemove,
     onEditSketch,
-    sessionId,
-    machineId,
-    cwd,
+    refCtx,
 }: {
     attachment: FileAttachment
     onRemove: (id: string) => void
     /** 画板重编辑入口：仅带 sketch 标记的图片附件可点击重开画板 */
     onEditSketch?: (attachment: FileAttachment) => void
     /** 透传 ImageThumb：恢复态附件预览取数通道 */
-    sessionId?: string
-    machineId?: string
-    cwd?: string
+    refCtx?: FileRefContext
 }) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
@@ -228,9 +224,7 @@ const AttachmentCard = memo(function AttachmentCard({
                 {isImage ? (
                     <ImageThumb
                         attachment={attachment}
-                        sessionId={sessionId}
-                        machineId={machineId}
-                        cwd={cwd}
+                        refCtx={refCtx}
                         // 画板产物点击走重编辑，不再弹出原图预览
                         preview={!isSketchEditable}
                     />
@@ -325,18 +319,12 @@ const AttachmentCard = memo(function AttachmentCard({
 /** 图片缩略图子组件：管理 objectURL 生命周期；空 file（恢复态）直接回退图标 */
 const ImageThumb = memo(function ImageThumb({
     attachment,
-    sessionId,
-    machineId,
-    cwd,
+    refCtx,
     preview = true,
 }: {
     attachment: FileAttachment
-    /** 会话 ID：machineId/cwd 缺失时的 session read-file 回退通道 */
-    sessionId?: string
-    /** 归属机器 ID：服务端路径优先经 machine 端点预览（会话关闭后仍可达） */
-    machineId?: string
-    /** 会话工作目录（machine 端点 cwd 参数） */
-    cwd?: string
+    /** 服务端路径附件的预览取数通道（machine 优先，session 回退；双缺回退图标） */
+    refCtx?: FileRefContext
     /** false 时点击不弹原图预览（画板产物缩略图点击已被重编辑入口占用） */
     preview?: boolean
 }) {
@@ -365,7 +353,7 @@ const ImageThumb = memo(function ImageThumb({
         ?? (attachment.path
             ? resolveUserImageUrl(
                 { source: { type: 'url', value: attachment.path } },
-                { machineId, cwd, sessionId },
+                refCtx ?? {},
             )
             : null)
 
@@ -415,12 +403,8 @@ interface AttachmentListProps {
     onRemove: (id: string) => void
     /** 画板重编辑入口回调（sketch 附件点击缩略图触发）；缺省无编辑入口 */
     onEditSketch?: (attachment: FileAttachment) => void
-    /** 会话 ID：图片附件缩略图预览的 session 回退通道（新建会话页无会话，不传） */
-    sessionId?: string
-    /** 归属机器 ID：恢复态附件优先 machine 端点预览 */
-    machineId?: string
-    /** 会话工作目录（machine 端点 cwd 参数） */
-    cwd?: string
+    /** 服务端路径附件的取数上下文（恢复态预览/重编辑回源；新建会话页无会话，不传） */
+    refCtx?: FileRefContext
 }
 
 /**
@@ -430,7 +414,7 @@ interface AttachmentListProps {
  * 右侧统一显示文件名 + 人性化大小。
  */
 export const AttachmentList = memo(function AttachmentList(props: AttachmentListProps) {
-    const { attachments, onRemove, onEditSketch, sessionId, machineId, cwd } = props
+    const { attachments, onRemove, onEditSketch, refCtx } = props
 
     if (attachments.length === 0) {
         return null
@@ -444,9 +428,7 @@ export const AttachmentList = memo(function AttachmentList(props: AttachmentList
                     attachment={attachment}
                     onRemove={onRemove}
                     onEditSketch={onEditSketch}
-                    sessionId={sessionId}
-                    machineId={machineId}
-                    cwd={cwd}
+                    refCtx={refCtx}
                 />
             ))}
         </div>

@@ -117,7 +117,7 @@ describe('ImageThumb 图片缩略图', () => {
             mimeType: 'image/png',
         }
         const { container } = render(
-            <AttachmentList attachments={[a]} onRemove={() => {}} sessionId="sess-rw" />,
+            <AttachmentList attachments={[a]} onRemove={() => {}} refCtx={{ sessionId: 'sess-rw' }} />,
         )
         const holder = container.querySelector('.ant-image') as HTMLElement
         expect(holder).not.toBeNull()
@@ -145,9 +145,7 @@ describe('ImageThumb 图片缩略图', () => {
             <AttachmentList
                 attachments={[a]}
                 onRemove={() => {}}
-                sessionId="sess-rw"
-                machineId="m-9"
-                cwd="/Users/t/demo"
+                refCtx={{ sessionId: 'sess-rw', machineId: 'm-9', cwd: '/Users/t/demo' }}
             />,
         )
         const img = container.querySelector('img')!

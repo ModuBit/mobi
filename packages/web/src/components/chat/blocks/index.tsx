@@ -19,6 +19,7 @@ import type { UserImageBlock } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
+import { fileRefContext } from '@/core/utils/fileUrl'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
@@ -60,9 +61,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                         blocks={block.blocks}
                         env={{
                             isSynthetic: block.isSynthetic,
-                            sessionId: ctx.sessionId,
-                            machineId: ctx.metadata?.machineId,
-                            cwd: ctx.metadata?.path,
+                            refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
                             onEditSketch: ctx.onEditSketchBlock,
                         }}
                     />

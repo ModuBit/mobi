@@ -25,7 +25,7 @@ import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
-import { resolveUserImageUrl } from '@/core/utils/fileUrl'
+import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { buildActionUri } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -37,12 +37,8 @@ import { TextBlock } from '../blocks/TextBlock'
 export interface UserBlockRenderEnv {
     /** 合成消息：text 视图走弱化 span（原 TextBlock isSynthetic 语义，如 rewind 命令标记行） */
     isSynthetic?: boolean
-    /** 会话 ID：machineId/cwd 缺失时附件回退 session read-file 取数（兼容老入口） */
-    sessionId?: string
-    /** 归属机器 ID：消息附件静态资源经 machine 端点读取，与会话进程存活解耦 */
-    machineId?: string
-    /** 会话工作目录（machine 端点 cwd 参数） */
-    cwd?: string
+    /** 附件取数上下文（machine 优先，session 回退；字段投影单源 fileRefContext） */
+    refCtx?: FileRefContext
     /**
      * 画板重编辑入口（仅 sketch 标记的 image block 渲染编辑角标）：
      * 回调收到的 block 交由调用方取 PNG → 重开画板（历史不可变，产物落回 composer）
@@ -154,7 +150,7 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const [previewOpen, setPreviewOpen] = useState(false)
     // 不带 etag v 参数：.mobi/uploads 为 write-once（上传即 shortId 唯一名，无覆盖路径），
     // 不存在同路径内容变化的陈旧缓存问题——变更语义由「重新上传得新路径」承载。
-    const computed = resolveUserImageUrl(block, env)
+    const computed = resolveUserImageUrl(block, env.refCtx ?? {})
     // 失败态钉死在触发它的具体 src 上：src 变化（重试/网络恢复后重新渲染）自动重试。
     // 兜底图无放大价值，preview 一并关闭（点击不再弹出兜底图预览）
     const failed = failedFor === computed
