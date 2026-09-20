@@ -801,16 +801,8 @@ interrupt（用户停止）
 
 ---
 
-## 83. jsdom 精确 pin 30.0.1（jsdom 30.1.0 × Bun 兼容回归，2026-09-20）
+## 83. ✅ 已解决：jsdom 30.1.0 × Bun 的 URL.createObjectURL 失配（2026-09-20 当日解决）
 
-**现状**：
+**根因**：jsdom 从未实现 `URL.createObjectURL`，vitest jsdom 环境里该 API 实际来自 Bun 宿主；Bun 的实现靠鸭子类型读 blob 内部槽（`_buffer`），jsdom 30.1.0 改 Blob 内部布局后对 jsdom File 抛 `Cannot read properties of undefined (reading '_buffer')`。曾波及 `AttachmentItem.test.tsx` 等 5 个用例。
 
-- `packages/web/package.json` 的 `jsdom` 精确 pin `30.0.1`（无 `^`），其余依赖升级均已放开 caret
-- jsdom 30.1.0（2026-09-17 发布）改了 Blob/File 内部布局；测试跑在 Bun 上，vitest jsdom 环境里 `URL` 全局来自 Bun 宿主，其 `URL.createObjectURL` 靠鸭子类型读 blob 内部槽（`_buffer`），对 jsdom 30.1.0 的 File 抛 `Cannot read properties of undefined (reading '_buffer')`
-- 波及 `tests/components/AttachmentItem.test.tsx` 等 5 个用例（凡 `new File` 非空内容走 ImageThumb objectURL 分支即炸）；jsdom 30.0.1 下 Bun 的鸭子类型仍命中，全部通过
-
-**恢复条件**：
-
-- jsdom 或 Bun 任一侧修复该交互（升级 jsdom 后跑 web 全量单测验证 AttachmentItem 用例即可），放开为 `^` 最新
-
-**优先级**：低。仅测试环境受影响，不影响构建与运行时。
+**解法**：`tests/setup.ts` 显式桩化 `URL.createObjectURL`/`revokeObjectURL`（返回 `blob:mock-N` 伪 URL，与既有 localStorage/matchMedia/ResizeObserver 补桩同一惯例），与宿主运行时内部解耦；`jsdom` 恢复 `^30.1.0`。此后 jsdom/Bun 各自升级不再受此交互影响。

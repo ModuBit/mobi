@@ -91,6 +91,14 @@ Object.defineProperty(window, 'Notification', {
     },
 })
 
+// jsdom 不实现 URL.createObjectURL / revokeObjectURL。此前测试实际落在 Bun 宿主的
+// 实现上——它靠鸭子类型读 blob 内部槽（_buffer），jsdom 30.1.0 改 Blob 内部布局后
+// 对 jsdom File 抛 TypeError（见 docs/pending.md #83）。显式桩化返回符合 blob: 协议
+// 的伪 URL，与宿主运行时内部解耦；被测组件只用 src 字符串（从不真正 fetch），桩即可
+let objectUrlSeq = 0
+URL.createObjectURL = () => `blob:mock-${++objectUrlSeq}`
+URL.revokeObjectURL = () => {}
+
 // jsdom 不实现 ResizeObserver，为布局测量类组件（如 ChatContainer 停靠几何测量）
 // 提供最小 stub：回调不触发、observe/unobserve/disconnect 空实现（configurable:true
 // 让个别测试可覆盖为可触发的实现）
