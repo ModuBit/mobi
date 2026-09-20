@@ -29,6 +29,7 @@ import { getToolResultViewComponent } from '@/components/tool-card/views/_result
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
+import { CrossfadeText } from '@/components/ui/CrossfadeText'
 import { ToolRowItems } from '@/components/ui/ToolRowItems'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
@@ -345,9 +346,14 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                             // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起
                             <ToolRowItems row={toolPresentation.row} />
                         ) : (
-                            <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
-                                {toolPresentation.title}
-                            </span>
+                            // 运行态扫光走自家 shimmer（CrossfadeText），不用 antdx Think 的 blink——
+                            // 与组头动态标题同一动画体系（base.css .shimmer-text），基线为文字本色
+                            <CrossfadeText
+                                text={toolPresentation.title}
+                                shimmer={isLoading}
+                                ellipsis
+                                style={{ fontWeight: 500, fontSize: 13, flex: '1 1 0', minWidth: 0 }}
+                            />
                         )}
                         {isBgAgent && (
                             <Zap size={12} style={{ flexShrink: 0, color: '#f5b800' }} />
@@ -366,7 +372,6 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                         )}
                     </div>
                 }
-                blink={isLoading}
                 expanded={expanded}
                 onExpand={setExpanded}
             >
