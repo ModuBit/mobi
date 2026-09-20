@@ -36,7 +36,7 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-// 测试用占位图标已随 icon prop 移除：进度 bubble 的左侧视觉统一为 MobiLogo 品牌动画
+// 形态已从贴片卡改为「系统动作行」（PixelLoader orbit + shimmer 文字 + 计时）
 
 const wrapper = ({ children }: { children: ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
@@ -46,13 +46,13 @@ describe('CommandProgressBubble', () => {
     // vitest 未开 globals，需显式 cleanup（见 project_web-test-cleanup-explicit）
     afterEach(cleanup)
 
-    it('渲染 MobiLogo 品牌动画与文案', () => {
+    it('渲染 PixelLoader orbit 波形与文案', () => {
         const { container } = render(<CommandProgressBubble titleKey="chat.compacting" />, { wrapper })
         expect(screen.getByText('正在压缩对话…')).toBeInTheDocument()
-        // MobiLogo：250×250 viewBox 品牌动画 svg
-        //（不用 svg[viewBox=...] 选择器——jsdom 选择器引擎对 camelCase attribute 名匹配不可靠）
-        const svg = container.querySelector('svg')
-        expect(svg).toHaveAttribute('viewBox', '0 0 250 250')
+        // 命令进行中无事件推进，orbit（有事在转）比 drive（波前推进）更诚实
+        expect(container.querySelector('.pixel-loader-orbit')).not.toBeNull()
+        // 文案层挂 shimmer 扫光（与组头/状态栏同一动画体系）
+        expect(container.querySelector('.shimmer-text')).not.toBeNull()
     })
 
     it('titleKey 切换驱动文案（compact vs clear）', () => {

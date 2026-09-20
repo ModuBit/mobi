@@ -9,120 +9,52 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { keyframes } from '@emotion/react'
-import { MobiLogo } from '@/components/ui/MobiLogo'
+import { PixelLoader } from '@/components/ui/PixelLoader'
+import { useElapsedSeconds } from './useElapsedSeconds'
+import { formatElapsedTime } from '@/core/utils/timeFormat'
 
 /**
  * 命令执行中进度 bubble（compact / clear 等共用）
  *
- * 聊天流里的进行中反馈。后端命令（/compact、/clear）无真实进度，这里不编造百分比、
- * 不计时——用 MobiLogo 小跳动画 + 固定文案 + 暖橙闪烁光标 + indeterminate 流动进度条，
- * 诚实传递"命令在跑"。与 SessionCreating 共用同一套视觉语言（MobiLogo + 流动条）。
+ * 聊天流里的进行中反馈。后端命令（/compact、/clear）无真实进度，这里不编造百分比。
+ *
+ * 形态是「系统动作行」——与组头/状态栏同一视觉词汇（PixelLoader 波形 + mono 小字 +
+ * shimmer 扫光），无边框/阴影/大 Logo 的贴片卡已废弃：聊天流的语言是无边框轻行，
+ * 卡片形态视觉重量是周围行的数倍，像 toast 长在了消息流里（2026-09-20 mockup 评审）。
+ * 波形用 orbit（彗星绕圈）：命令进行中无事件推进，「有事在转」的语义比 drive 的
+ * 「波前推进」更诚实。
  *
  * 主题：全部 antd cssVar + 项目 var(--font-mono)，light/dark 自动，零硬编码。
- * 动画：尊重 prefers-reduced-motion。
+ * 动画：shimmer/PixelLoader 均自带 prefers-reduced-motion 处理（base.css）。
  */
-
-const reducedMotion = '@media (prefers-reduced-motion: reduce)'
-
-/* ───────────────── keyframes ───────────────── */
-
-const cardInKf = keyframes`
-    from { opacity: 0; transform: translateY(6px) scale(.98); }
-    to   { opacity: 1; transform: none; }
-`
-
-const blinkKf = keyframes`
-    0%, 50%      { opacity: 1; }
-    50.01%, 100% { opacity: 0; }
-`
-
-const flowKf = keyframes`
-    0%   { background-position: 100% 0; }
-    100% { background-position: -100% 0; }
-`
-
-/* ───────────────── styled ───────────────── */
-
-/** 卡片容器：浅底圆角，min-width 保证进度条可见 */
-const Card = styled.div`
-    background: var(--ant-color-bg-elevated);
-    border: 1px solid var(--ant-color-border-secondary);
-    border-radius: var(--ant-border-radius-lg, 14px);
-    padding: 14px 16px;
-    min-width: 240px;
-    box-shadow: var(--ant-box-shadow-secondary, none);
-    animation: ${cardInKf} 360ms cubic-bezier(.22, 1, .36, 1) both;
-
-    ${reducedMotion} { animation: none; }
-`
 
 const Row = styled.div`
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-`
-
-/** MobiLogo 容器：与右侧文案垂直对齐的固定宽槽 */
-const LogoSlot = styled.span`
-    width: 32px;
-    height: 32px;
-    flex-shrink: 0;
-    display: grid;
-    place-items: center;
+    gap: 9px;
+    padding: 6px 0;
 `
 
 const Title = styled.span`
     font-family: var(--font-mono);
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--ant-color-text);
     letter-spacing: .01em;
-    display: inline-flex;
-    align-items: center;
-
-    .cursor {
-        display: inline-block;
-        width: .5em;
-        margin-left: 3px;
-        color: var(--ant-color-warning);
-        animation: ${blinkKf} 1000ms steps(2, start) infinite;
-        ${reducedMotion} { animation: none; opacity: .6; }
-    }
 `
 
-/** indeterminate 流动进度条：不假装有真实进度 */
-const Progress = styled.div`
-    width: 100%;
-    height: 3px;
-    border-radius: 999px;
-    background: var(--ant-color-border);
-    overflow: hidden;
-    position: relative;
-
-    &::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg,
-            transparent 0%,
-            var(--ant-color-text-tertiary) 30%,
-            var(--ant-color-warning) 50%,
-            var(--ant-color-text-tertiary) 70%,
-            transparent 100%);
-        background-size: 200% 100%;
-        animation: ${flowKf} 1500ms cubic-bezier(.4, 0, .2, 1) infinite;
-        opacity: .85;
-        ${reducedMotion} { animation: none; opacity: .45; }
-    }
+const Elapsed = styled.span`
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ant-color-text-tertiary);
 `
 
 export interface CommandProgressBubbleProps {
@@ -134,24 +66,25 @@ export interface CommandProgressBubbleProps {
  * 命令执行中进度 bubble
  *
  * 由 ChatContainer 在 /compact、/clear 等命令进行中 push 到聊天流末尾。
- * 纯展示组件，无时间状态——MobiLogo 小跳与进度条、光标是 CSS 动画循环。
+ * 计时以组件 mount 时刻为起点——bubble 在命令开始时入列，mount ≈ 命令起点
+ * （刷新后重挂重新计时，与 AgentLoadingBubble 的 mount 兜底同款取舍）。
  */
 export function CommandProgressBubble({ titleKey }: CommandProgressBubbleProps) {
     const { t } = useTranslation()
+    // mount ≈ 命令起点（见上）；秒级 tick 驱动计时刷新
+    const startedAtRef = useRef(Date.now())
+    const elapsed = useElapsedSeconds(startedAtRef.current)
+    const elapsedTime = formatElapsedTime(startedAtRef.current, startedAtRef.current + elapsed * 1000)
 
     return (
-        <Card>
-            <Row>
-                <LogoSlot>
-                    <MobiLogo size={28} />
-                </LogoSlot>
-                {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰元素 aria-hidden */}
-                <Title role="status" aria-live="polite">
-                    {t(titleKey)}
-                    <span className="cursor" aria-hidden="true">▍</span>
-                </Title>
-            </Row>
-            <Progress aria-hidden="true" />
-        </Card>
+        <Row>
+            {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰元素 aria-hidden */}
+            <Title as="span" role="status" aria-live="polite" className="shimmer-text">
+                {t(titleKey)}
+            </Title>
+            <Elapsed>{elapsedTime}</Elapsed>
+            {/* PixelLoader 自带 aria-hidden */}
+            <PixelLoader variant="orbit" />
+        </Row>
     )
 }
