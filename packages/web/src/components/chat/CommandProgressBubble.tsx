@@ -79,13 +79,13 @@ export function CommandProgressBubble({ titleKey }: CommandProgressBubbleProps) 
 
     return (
         <Row>
+            {/* PixelLoader 自带 aria-hidden */}
+            <PixelLoader variant="orbit" />
             {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰元素 aria-hidden */}
             <Title role="status" aria-live="polite" className="shimmer-text">
                 {t(titleKey)}
             </Title>
             <Elapsed>{elapsedTime}</Elapsed>
-            {/* PixelLoader 自带 aria-hidden */}
-            <PixelLoader variant="orbit" />
         </Row>
     )
 }
