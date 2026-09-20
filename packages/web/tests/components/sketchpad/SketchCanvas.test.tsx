@@ -25,7 +25,8 @@ import { App as AntApp } from 'antd'
 import { sceneFingerprint, type SketchCanvasHandle } from '@/components/sketchpad/SketchCanvas'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 
-/** fake imperative API：可变的场景内容（供「先捕获、后修改」的时序模拟） */
+/** fake imperative API：可变的场景内容（供「先捕获、后修改」的时序模拟）；
+ *  updateScene 真实生效（载入的 elements 写回 state），支撑重编辑未动笔场景 */
 function makeFakeApi() {
     const state = {
         elements: [] as Record<string, unknown>[],
@@ -34,7 +35,9 @@ function makeFakeApi() {
     const api = {
         getSceneElements: () => state.elements,
         getAppState: () => ({ viewBackgroundColor: state.viewBackgroundColor }),
-        updateScene: vi.fn(),
+        updateScene: vi.fn((update: { elements?: readonly unknown[] }) => {
+            if (update?.elements) state.elements = [...update.elements] as Record<string, unknown>[]
+        }),
         addFiles: vi.fn(),
     }
     return { api, state }
@@ -77,17 +80,18 @@ vi.mock('@/domain/sketch/sketchFile', () => ({
 
 import { SketchCanvas } from '@/components/sketchpad/SketchCanvas'
 
-function renderCanvas(onCancel: () => void) {
+function renderCanvas(onCancel: () => void, opts: { initialSketch?: Blob | null } = {}) {
     let handle: SketchCanvasHandle | null = null
     const view = render(
         <AntApp>
             <SketchCanvas
                 ref={(h: SketchCanvasHandle | null) => { handle = h }}
+                initialSketch={opts.initialSketch ?? null}
                 onCancel={onCancel}
             />
         </AntApp>,
     )
-    return { view, requestCancel: () => handle?.requestCancel() }
+    return { view, requestCancel: () => handle?.requestCancel(), complete: () => handle?.complete() }
 }
 
 describe('SketchCanvas 取消确认的变更检测', () => {
@@ -126,5 +130,46 @@ describe('SketchCanvas 取消确认的变更检测', () => {
         await waitFor(() => {
             expect(document.querySelector('.ant-modal-confirm')).toBeTruthy()
         })
+    })
+})
+
+describe('SketchCanvas 完成语义的 unchanged 分流', () => {
+    afterEach(cleanup)
+
+    it('重编辑未动笔（载入后指纹未变）→ complete 返回 unchanged，不触发导出', async () => {
+        const { loadSketch } = await import('@/domain/sketch/sketchFile')
+        vi.mocked(loadSketch).mockResolvedValue({
+            elements: [{ id: 'e0', type: 'rectangle', x: 0, y: 0 }],
+            appState: {},
+            files: {},
+        })
+        fakeApiHost = makeFakeApi()
+        const { complete } = renderCanvas(vi.fn(), { initialSketch: new Blob(['png']) })
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 10))
+        })
+        // 场景已载入内容（1 个元素）且动过笔检测基准已捕获，但用户未再修改
+        expect(fakeApiHost!.state.elements).toHaveLength(1)
+        await act(async () => {
+            await expect(complete()).resolves.toBe('unchanged')
+        })
+        const { exportSketch } = await import('@/domain/sketch/sketchFile')
+        expect(exportSketch).not.toHaveBeenCalled()
+    })
+
+    it('动笔后完成 → 走导出（免上传判据与取消确认同源）', async () => {
+        fakeApiHost = makeFakeApi()
+        const { complete } = renderCanvas(vi.fn())
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 10))
+        })
+        act(() => {
+            fakeApiHost!.state.elements.push({ id: 'e1', type: 'freedraw', x: 1, y: 1 })
+        })
+        await act(async () => {
+            await complete()
+        })
+        const { exportSketch } = await import('@/domain/sketch/sketchFile')
+        expect(exportSketch).toHaveBeenCalledTimes(1)
     })
 })

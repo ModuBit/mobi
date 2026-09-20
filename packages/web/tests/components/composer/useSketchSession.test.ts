@@ -77,7 +77,7 @@ describe('useSketchSession', () => {
         expect(deps.removeAttachment).toHaveBeenCalledTimes(1) // 新建不删附件
     })
 
-    it('完成语义：png 非空 + 重编辑 → addSketchFile 带 replaceId 换旧附件', () => {
+    it('完成语义：png 非空 + 重编辑（有 path）→ addSketchFile 带 replaceId + replacePath 同 path 替换', () => {
         const deps = makeDeps()
         const { result } = renderHook(() => useSketchSession(deps))
         act(() => result.current.openForAttachment(makePlaceholder('a2')))
@@ -85,8 +85,32 @@ describe('useSketchSession', () => {
             result.current.complete(new Blob(['png']), 'sketch.excalidraw.png', { format: 'excalidraw' })
         })
         expect(deps.addSketchFile).toHaveBeenCalledWith(
-            expect.any(File), { format: 'excalidraw' }, 'a2',
+            expect.any(File), { format: 'excalidraw' }, 'a2', '/uploads/2026-09/sketch-1-x.excalidraw.png',
         )
+    })
+
+    it('完成语义：png 非空 + 重编辑（无 path）→ 仅 replaceId，退化为换新附件', () => {
+        const deps = makeDeps()
+        const { result } = renderHook(() => useSketchSession(deps))
+        act(() => result.current.openForAttachment({ ...makePlaceholder('a4'), path: undefined }))
+        act(() => {
+            result.current.complete(new Blob(['png']), 'sketch.excalidraw.png', { format: 'excalidraw' })
+        })
+        expect(deps.addSketchFile).toHaveBeenCalledWith(
+            expect.any(File), { format: 'excalidraw' }, 'a4', undefined,
+        )
+    })
+
+    it('完成语义：png=unchanged（重编辑未动笔）→ 仅关闭，原附件原样保留', () => {
+        const deps = makeDeps()
+        const { result } = renderHook(() => useSketchSession(deps))
+        act(() => result.current.openForAttachment(makePlaceholder('a3')))
+        act(() => {
+            result.current.complete('unchanged', 'sketch.excalidraw.png', { format: 'excalidraw' })
+        })
+        expect(deps.addSketchFile).not.toHaveBeenCalled()
+        expect(deps.removeAttachment).not.toHaveBeenCalled()
+        expect(result.current.session).toBeNull()
     })
 
     it('附件回源：先开画板再异步回填', async () => {

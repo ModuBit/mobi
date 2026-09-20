@@ -55,10 +55,12 @@ export interface SketchDrawerProps {
     onClose: () => void
     /**
      * 完成：产物为内嵌 scene 的单文件 PNG（调用方负责上传与附件装配）。
-     * png 为 null = 场景无内容完成（空画布 / 重编辑后删光）：调用方按「无产物完成」
-     * 处理——重编辑语义下等同删除旧附件，绝不上传空白图。
+     * - png 为 null = 场景无内容完成（空画布 / 重编辑后删光）：调用方按「无产物完成」
+     *   处理——重编辑语义下等同删除旧附件，绝不上传空白图。
+     * - png 为 'unchanged' = 内容相对打开时无修改（重编辑未动笔）：调用方直接关闭，
+     *   保留原附件，无需导出上传。
      */
-    onComplete: (png: Blob | null, filename: string, sketchMark: SketchMark) => void
+    onComplete: (png: Blob | null | 'unchanged', filename: string, sketchMark: SketchMark) => void
     /** 重编辑载入的草图 PNG；缺省 = 空白画布 */
     initialSketch?: Blob | null
     /**
@@ -259,7 +261,7 @@ export function SketchDrawer({
 
     // 完成：经 canvas 手柄导出。undefined = 画布未就绪（编辑器初始化/场景载入中）——
     // 忽略本次完成，绝不能与 null（场景就绪且无内容）混同：重编辑语义下 null = 删除
-    // 附件，会把有内容的附件静默删掉
+    // 附件，会把有内容的附件静默删掉；'unchanged' = 未动笔，原样透传给调用方（免上传）
     const handleComplete = useCallback(async () => {
         setExporting(true)
         try {

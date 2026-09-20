@@ -15,9 +15,9 @@
  */
 
 import { logger } from '@/ui/logger'
-import { mkdir, writeFile, rm, readFile, open, stat } from 'fs/promises'
+import { mkdir, writeFile, rm, readFile, open, stat, rename } from 'fs/promises'
 import { existsSync } from 'fs'
-import { join, resolve, relative, extname, sep } from 'path'
+import { join, resolve, relative, extname, sep, dirname, basename } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
@@ -67,6 +67,22 @@ interface DeleteUploadRequest {
 }
 
 interface DeleteUploadResponse {
+    success: boolean
+    error?: string
+}
+
+interface ReplaceUploadRequest {
+    /** 目标路径（项目相对，须在 uploads 目录内）：文件名原样保留不进唯一名生成——
+     *  替换语义要求 path 恒定，附件 id / 草稿引用 / 扩展名全部不动 */
+    path: string
+    /** 全量内容（单发整文件）：分块协议下「旧文件何时删」需要 commit 信号，很别扭；
+     *  替换场景产物小（≤50MB 上限内），单发让「新文件完整落盘后才生效」天然成立 */
+    content: Uint8Array
+    /** 覆盖工作目录（machine channel 传入） */
+    cwd?: string
+}
+
+interface ReplaceUploadResponse {
     success: boolean
     error?: string
 }
@@ -365,6 +381,56 @@ export function registerUploadHandlers(
             } catch (error) {
                 logger.debug('删除上传文件失败:', error)
                 return rpcError(getErrorMessage(error, 'Failed to delete upload file'))
+            }
+        },
+    )
+
+    // 同 path 原子替换上传（「编辑已有上传」场景，如画板重编辑换图）
+    rpcHandlerManager.registerHandler<ReplaceUploadRequest, ReplaceUploadResponse>(
+        'replaceUpload',
+        async (data) => {
+            // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+            const effectiveCwd = data.cwd || workingDirectory
+            if (data.cwd && !validateRpcCwd(data.cwd)) {
+                return rpcError('Invalid cwd: path is outside home directory')
+            }
+
+            const path = data?.path?.trim()
+            if (!path) {
+                return rpcError('Path is required')
+            }
+            if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
+                return rpcError('Content is required')
+            }
+            if (data.content.length > MAX_UPLOAD_BYTES) {
+                return rpcError('File too large (max 50MB)')
+            }
+
+            // 校验路径在 uploads 目录内 + 扩展名白名单（文件名不变 ⇒ 扩展簇不变，
+            // 但 path 是客户端自报的，首发伪造仍要拦）
+            if (!isPathWithinUploads(effectiveCwd, path)) {
+                return rpcError('Invalid upload path')
+            }
+            const extError = validateFileExtension(basename(path))
+            if (extError) return rpcError(extError)
+
+            const fullPath = resolve(effectiveCwd, path)
+            // 临时文件落目标同目录：同文件系统 rename 原子生效——任一时刻 path 要么完整
+            // 旧内容要么完整新内容，写坏只伤临时文件（直接 open('w') 截断会把半截新内容
+            // 留在被引用的正式 path 上，无法恢复）。源文件已不存在时 rename 照常创建，
+            // 语义为幂等写入（replace 的目标 = 「该 path 持有新内容」）
+            const tmpPath = `${fullPath}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.tmp`
+            try {
+                await mkdir(dirname(fullPath), { recursive: true })
+                await writeFile(tmpPath, data.content)
+                await rename(tmpPath, fullPath)
+                // 内容已换血，累计追踪 entry 失效
+                writtenTracker.delete(fullPath)
+                return { success: true }
+            } catch (error) {
+                await rm(tmpPath, { force: true }).catch(() => {})
+                logger.debug('替换上传文件失败:', error)
+                return rpcError(getErrorMessage(error, 'Failed to replace upload file'))
             }
         },
     )

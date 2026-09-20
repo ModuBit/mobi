@@ -38,6 +38,7 @@ import {
     type RpcReadFileMetaResponse,
     type RpcReadFileRangeResponse,
     type RpcRefreshMetadataResponse,
+    type RpcReplaceUploadResponse,
     type RpcSaveFileResponse,
     type RpcSetWebToolsConfigResponse,
     type RpcVerifyWebToolsProviderResponse,
@@ -60,6 +61,7 @@ export type {
     RpcReadFileMetaResponse,
     RpcReadFileRangeResponse,
     RpcRefreshMetadataResponse,
+    RpcReplaceUploadResponse,
     RpcSaveFileResponse,
     RpcSetWebToolsConfigResponse,
     RpcVerifyWebToolsProviderResponse,
@@ -842,6 +844,11 @@ export class SyncEngine {
         return await this.rpcGateway.machineDeleteUpload(machineId, cwd, path)
     }
 
+    /** 同 path 原子替换 machine 上的已上传文件 */
+    async machineReplaceUpload(machineId: string, cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
+        return await this.rpcGateway.machineReplaceUpload(machineId, cwd, path, content)
+    }
+
     /** machine 通道读文件元信息（跨会话存活的静态资源读取，见 rpcGateway.machineReadFileMeta） */
     async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
         return await this.rpcGateway.machineReadFileMeta(machineId, cwd, path)
@@ -910,6 +917,11 @@ export class SyncEngine {
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
         return await this.rpcGateway.deleteUploadFile(sessionId, path)
+    }
+
+    /** 同 path 原子替换会话 machine 上的已上传文件（「编辑已有上传」场景） */
+    async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
+        return await this.rpcGateway.replaceUploadFile(sessionId, path, content)
     }
 
     async runRipgrep(sessionId: string, args: string[], cwd?: string): Promise<RpcCommandResponse> {

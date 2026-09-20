@@ -18,7 +18,8 @@
  * 草图会话状态机（composer 画板的 module 层）：三入口（面板按钮 / 附件卡重编辑 /
  * 气泡重编辑）汇聚到一台小状态机，持有三条注释背书的不变量——
  * 1. everOpened 门控：React.lazy 首 render 即拉 excalidraw chunk，未开过不挂载载体
- * 2. 完成语义：png=null（场景无内容）时重编辑=删除旧附件、新建=仅关闭，绝不上传空图
+ * 2. 完成语义：png=null（场景无内容）时重编辑=删除旧附件、新建=仅关闭，绝不上传空图；
+ *    png='unchanged'（未动笔）时仅关闭，原附件原样保留，绝不上传重复内容
  * 3. 异步回填守卫：重编辑回源返回时若会话已切换（editingId 不匹配）丢弃，不污染新会话
  *
  * ChatComposer 退为「按状态渲染 Drawer」；依赖经参数注入（附件装配 / 删除 / 失败提示），
@@ -35,17 +36,20 @@ import { loadSketchSource } from '@/domain/sketch/sketchSource'
  *  editingId/initialSketch 无法区分「同形」的先后会话：新建与气泡重编辑都是
  *  {initialSketch: null, editingId: null}，慢 fetch 迟到会污染后开的画布）；
  *  initialSketch = 重编辑载入源（null = 空白画布）；
- *  editingId = 重编辑目标附件（null = 新建路径，产物作为新附件） */
+ *  editingId = 重编辑目标附件（null = 新建路径，产物作为新附件）；
+ *  editingPath = 目标附件的服务端 path（同 path 原子替换用；null = 无 path，退化为换新附件） */
 export interface SketchSession {
     token: number
     initialSketch: Blob | null
     /** 重编辑的附件 id；null = 新建（产物作为新附件） */
     editingId: string | null
+    /** 重编辑附件的服务端 path（同 path replaceUpload 用）；null = 无（见上） */
+    editingPath: string | null
 }
 
 export interface UseSketchSessionDeps {
-    /** 画板产物进附件（replaceId 非空 = 重编辑换旧附件），由 useAttachmentHandling 提供 */
-    addSketchFile: (file: File, sketch: SketchMark, replaceId?: string) => void
+    /** 画板产物进附件（replaceId/replacePath 非空 = 同 path 原子替换旧附件），由 useAttachmentHandling 提供 */
+    addSketchFile: (file: File, sketch: SketchMark, replaceId?: string, replacePath?: string) => void
     /** 删除附件（png=null 完成语义：重编辑删光 = 删除旧附件） */
     removeAttachment: (id: string) => void
     /** 取数失败提示（toast 等渠道由调用方决定） */
@@ -71,7 +75,7 @@ export function useSketchSession(deps: UseSketchSessionDeps) {
 
     /** 面板按钮：空白画布新建 */
     const openNew = useCallback(() => {
-        open({ initialSketch: null, editingId: null })
+        open({ initialSketch: null, editingId: null, editingPath: null })
     }, [open])
 
     /**
@@ -80,7 +84,11 @@ export function useSketchSession(deps: UseSketchSessionDeps) {
      * 匹配）写入，失败 toast 留空画布可继续画。
      */
     const openForAttachment = useCallback((attachment: FileAttachment) => {
-        const token = open({ initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
+        const token = open({
+            initialSketch: attachment.file.size > 0 ? attachment.file : null,
+            editingId: attachment.id,
+            editingPath: attachment.path ?? null,
+        })
         const path = attachment.path
         if (attachment.file.size > 0 || !path) return
         loadSketchSource({ path }, resolveContext)
@@ -90,26 +98,32 @@ export function useSketchSession(deps: UseSketchSessionDeps) {
 
     /** 气泡重编辑：历史消息附件无本地字节，先开画板再异步回源（与附件卡同一时序） */
     const openFromBubble = useCallback((path: string) => {
-        const token = open({ initialSketch: null, editingId: null })
+        const token = open({ initialSketch: null, editingId: null, editingPath: null })
         loadSketchSource({ path }, resolveContext)
             .then(blob => setSession(prev => (prev && prev.token === token ? { ...prev, initialSketch: blob } : prev)))
             .catch(() => notifyLoadFailed())
     }, [open, resolveContext, notifyLoadFailed])
 
     /**
-     * 完成：产物装 File 走附件装配（editingId 非空 = 重编辑换旧附件）。
+     * 完成：产物装 File 走附件装配（editingId 非空 = 重编辑换旧附件；editingPath
+     * 非空 = 同 path 原子替换，附件身份不变）。
      * png null = 无内容完成：重编辑语义等同删除旧附件（用户指定），新建仅关闭画板。
+     * png 'unchanged' = 重编辑未动笔：仅关闭，原附件原样保留（免重新上传）。
      */
-    const complete = useCallback((png: Blob | null, filename: string, sketchMark: SketchMark) => {
+    const complete = useCallback((png: Blob | null | 'unchanged', filename: string, sketchMark: SketchMark) => {
+        if (png === 'unchanged') {
+            setSession(null)
+            return
+        }
         if (!png) {
             if (session?.editingId) removeAttachment(session.editingId)
             setSession(null)
             return
         }
         const file = new File([png], filename, { type: 'image/png' })
-        addSketchFile(file, sketchMark, session?.editingId ?? undefined)
+        addSketchFile(file, sketchMark, session?.editingId ?? undefined, session?.editingPath ?? undefined)
         setSession(null)
-    }, [session?.editingId, addSketchFile, removeAttachment])
+    }, [session?.editingId, session?.editingPath, addSketchFile, removeAttachment])
 
     /** 取消（含取消确认后的放弃）：直接关闭 */
     const cancel = useCallback(() => setSession(null), [])

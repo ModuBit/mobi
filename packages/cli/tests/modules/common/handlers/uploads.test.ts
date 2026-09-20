@@ -289,3 +289,75 @@ describe('deleteUpload handler', () => {
         expect(result.success).toBe(false)
     })
 })
+
+describe('replaceUpload handler', () => {
+    let mockRpc: MockRpcHandlerManager
+    let tempDir: string
+
+    beforeEach(() => {
+        mockRpc = new MockRpcHandlerManager()
+        tempDir = join(tmpdir(), `mobi-test-rep-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+        mkdirSync(tempDir, { recursive: true })
+        registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
+    })
+
+    afterEach(() => {
+        if (existsSync(tempDir)) {
+            rmSync(tempDir, { recursive: true, force: true })
+        }
+    })
+
+    it('覆盖已存在文件：path 不变、内容换血、无临时文件残留', async () => {
+        const uploadResult = await mockRpc.call('writeFileRange', {
+            filename: 'sketch-1.excalidraw.png',
+            offset: 0,
+            content: new Uint8Array([1, 2, 3]),
+            totalSize: 3,
+        })
+        const relPath = uploadResult.path!
+
+        const replaceResult = await mockRpc.call('replaceUpload', {
+            path: relPath,
+            content: new Uint8Array([9, 8, 7, 6]),
+        })
+        expect(replaceResult.success).toBe(true)
+
+        const fullPath = resolve(tempDir, relPath)
+        expect(new Uint8Array(await readFile(fullPath))).toEqual(new Uint8Array([9, 8, 7, 6]))
+        // 同目录不留 .tmp 残留
+        const files = await (await import('fs/promises')).readdir(resolve(fullPath, '..'))
+        expect(files.every((f) => !f.endsWith('.tmp'))).toBe(true)
+    })
+
+    it('源文件已不存在：幂等写入（目标目录缺位也自动创建）', async () => {
+        const result = await mockRpc.call('replaceUpload', {
+            path: '.mobi/uploads/2026-01/sketch-old-abc.excalidraw.png',
+            content: new Uint8Array([4, 5]),
+        })
+        expect(result.success).toBe(true)
+        expect(new Uint8Array(await readFile(resolve(tempDir, '.mobi/uploads/2026-01/sketch-old-abc.excalidraw.png'))))
+            .toEqual(new Uint8Array([4, 5]))
+    })
+
+    it('应拒绝不在 uploads 目录内的路径', async () => {
+        const result = await mockRpc.call('replaceUpload', {
+            path: '../../../etc/passwd',
+            content: new Uint8Array([1]),
+        })
+        expect(result.success).toBe(false)
+        expect(result.error).toContain('Invalid')
+    })
+
+    it('应拒绝黑名单扩展名的 path', async () => {
+        const result = await mockRpc.call('replaceUpload', {
+            path: '.mobi/uploads/evil.exe',
+            content: new Uint8Array([1]),
+        })
+        expect(result.success).toBe(false)
+    })
+
+    it('应拒绝空内容与空路径', async () => {
+        expect((await mockRpc.call('replaceUpload', { path: '.mobi/uploads/a.png', content: new Uint8Array() })).success).toBe(false)
+        expect((await mockRpc.call('replaceUpload', { path: '', content: new Uint8Array([1]) })).success).toBe(false)
+    })
+})

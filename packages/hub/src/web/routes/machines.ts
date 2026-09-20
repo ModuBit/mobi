@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { PermissionModeSchema, EFFORT_LEVELS } from '@mobi/shared'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
-import { streamUpload } from '../utils/uploadStream'
+import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
 import { checkProjectAssignable, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
@@ -378,6 +378,67 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json(result)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to delete upload' }, 500)
+        }
+    })
+
+    // upload/replace：同 path 原子替换已上传文件（对称 session 通道；octet-stream 全量
+    // 内容，cwd/path 走 header），闸门组对齐 session upload/replace
+    app.post('/machines/:id/upload/replace', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const cwd = safeDecodeHeader(c.req.header('X-Mobi-Cwd'))
+        if (!cwd) {
+            return c.json({ success: false, error: 'cwd required (X-Mobi-Cwd header)' }, 400)
+        }
+        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
+        if (cwdError) return cwdError
+
+        const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))
+        if (!path) {
+            return c.json({ success: false, error: 'Path required (X-Mobi-Path header)' }, 400)
+        }
+
+        const totalSize = Number(c.req.header('Content-Length') ?? 0)
+        if (!Number.isFinite(totalSize) || totalSize < 0) {
+            return c.json({ success: false, error: 'Invalid Content-Length' }, 400)
+        }
+        if (totalSize > MAX_UPLOAD_BYTES) {
+            return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+        }
+
+        const reader = c.req.raw.body?.getReader()
+        if (!reader) {
+            return c.json({ success: false, error: 'No request body' }, 400)
+        }
+
+        const parts: Uint8Array[] = []
+        let received = 0
+        for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value) {
+                received += value.byteLength
+                if (received > MAX_UPLOAD_BYTES) {
+                    return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+                }
+                parts.push(value)
+            }
+        }
+
+        try {
+            const result = await engine.machineReplaceUpload(machineId, cwd, path, concatBytes(parts))
+            return c.json(result)
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : 'Failed to replace upload' }, 500)
         }
     })
 

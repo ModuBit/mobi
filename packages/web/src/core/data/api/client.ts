@@ -188,6 +188,23 @@ export function createMobiApi() {
             }),
             deleteUpload: (sessionId: string, path: string) =>
                 client.post(`/api/sessions/${sessionId}/upload/delete`, { path }),
+            // 同 path 原子替换已上传文件（画板重编辑等「编辑已有上传」场景）：
+            // 全量 octet-stream，path 走 header，文件名/引用保持不变
+            replaceUpload: (
+                sessionId: string,
+                path: string,
+                file: Blob,
+                opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void },
+            ) => client.post(`/api/sessions/${sessionId}/upload/replace`, file, {
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Mobi-Path': encodeURIComponent(path),
+                },
+                onUploadProgress: opts?.onProgress
+                    ? (e) => opts.onProgress!(e.total ? Math.round((e.loaded / e.total) * 100) : 0)
+                    : undefined,
+                signal: opts?.signal,
+            }),
             // SDK 元数据（commands, models, agents, account 等）
             metadata: (sessionId: string) => client.get(`/api/sessions/${sessionId}/metadata`),
             // 文件搜索和目录列表（@ 引用）
@@ -394,6 +411,24 @@ export function createMobiApi() {
             // 文件上传删除
             deleteUpload: (machineId: string, cwd: string, path: string) =>
                 client.post(`/api/machines/${machineId}/upload/delete`, { cwd, path }),
+            // 同 path 原子替换已上传文件（对称 session 通道）
+            replaceUpload: (
+                machineId: string,
+                cwd: string,
+                path: string,
+                file: Blob,
+                opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void },
+            ) => client.post(`/api/machines/${machineId}/upload/replace`, file, {
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Mobi-Cwd': encodeURIComponent(cwd),
+                    'X-Mobi-Path': encodeURIComponent(path),
+                },
+                onUploadProgress: opts?.onProgress
+                    ? (e) => opts.onProgress!(e.total ? Math.round((e.loaded / e.total) * 100) : 0)
+                    : undefined,
+                signal: opts?.signal,
+            }),
             // 文件搜索（@ 引用）
             searchFiles: (machineId: string, cwd: string, query: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>(`/api/machines/${machineId}/search-files`, { params: { cwd, query }, signal: opts?.signal }),

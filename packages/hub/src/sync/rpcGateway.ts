@@ -77,6 +77,12 @@ export type RpcDeleteUploadResponse = {
     error?: string
 }
 
+// 同 path 原子替换上传响应（「编辑已有上传」场景；content 为 Uint8Array 二进制附件）
+export type RpcReplaceUploadResponse = {
+    success: boolean
+    error?: string
+}
+
 // web 工具配置读取响应（runner 侧凭据已脱敏）
 export type RpcGetWebToolsConfigResponse = {
     config: RedactedWebToolsConfig
@@ -377,6 +383,11 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'deleteUpload', { cwd, path }) as RpcDeleteUploadResponse
     }
 
+    // 同 path 原子替换 machine 上的已上传文件
+    async machineReplaceUpload(machineId: string, cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
+        return await this.machineRpc(machineId, 'replaceUpload', { cwd, path, content }) as RpcReplaceUploadResponse
+    }
+
     // web 工具配置读写（runner 落盘，会话进程惰性读生效）
     async getWebToolsConfig(machineId: string): Promise<RpcGetWebToolsConfigResponse> {
         return await this.machineRpc(machineId, 'get-web-tools-config', {}) as RpcGetWebToolsConfigResponse
@@ -424,6 +435,11 @@ export class RpcGateway {
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
         return await this.sessionRpc(sessionId, 'deleteUpload', { sessionId, path }) as RpcDeleteUploadResponse
+    }
+
+    // 同 path 原子替换会话 machine 上的已上传文件
+    async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
+        return await this.sessionRpc(sessionId, 'replaceUpload', { sessionId, path, content }) as RpcReplaceUploadResponse
     }
 
     async runRipgrep(sessionId: string, args: string[], cwd?: string): Promise<RpcCommandResponse> {

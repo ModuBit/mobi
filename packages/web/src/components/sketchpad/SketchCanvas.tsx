@@ -56,13 +56,15 @@ export interface SketchCanvasHandle {
     /** 取消：场景相对打开时有变化才二次确认，防空手误触丢作品 */
     requestCancel: () => void
     /**
-     * 完成导出。三态：
-     * - Blob：场景有内容，导出的内嵌 scene PNG
+     * 完成导出。四态：
+     * - Blob：场景有内容且相对打开时有修改，导出的内嵌 scene PNG
+     * - 'unchanged'：场景就绪且内容相对打开时无修改（重编辑未动笔）——调用方
+     *   直接关闭即可，无需导出上传（保留原附件）
      * - null：场景就绪且无内容（空画布 / 重编辑后删光）——调用方按「无产物完成」处理
      * - undefined：画布未就绪（编辑器未初始化 / 场景尚未载入）——调用方必须忽略本次
      *   完成，绝不能与 null 混同：重编辑语义下 null = 删除附件，会把有内容的附件静默删掉
      */
-    complete: () => Promise<Blob | null | undefined>
+    complete: () => Promise<Blob | null | 'unchanged' | undefined>
 }
 
 /** 画布几何重算延迟：单源 sketchLayout 从载体动画时长派生（settle 必须盖过全部动画，
@@ -146,12 +148,14 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
         // 指纹未捕获 = 场景尚未就绪（编辑器初始化中 / 重编辑内容载入中）→ undefined：
         // 调用方必须忽略，绝不能落进「null = 删光」语义（会把有内容的附件静默删除）。
         // 场景就绪后：无内容（空画布 / 重编辑后删光）→ null（重编辑 = 删除附件，新建 = 仅关闭），
-        // 绝不上传一张空白图
-        complete: () => (editor && initialFingerprintRef.current !== null
-            ? (editor.getSceneElements().length > 0
-                ? exportSketch(editor)
-                : Promise.resolve(null))
-            : Promise.resolve(undefined)),
+        // 绝不上传一张空白图；内容与打开时指纹相同（重编辑未动笔）→ 'unchanged'（免导出上传，
+        // 与取消确认共用同一指纹判据——undo 回初始状态同样视为无修改）
+        complete: () => {
+            if (!editor || initialFingerprintRef.current === null) return Promise.resolve(undefined)
+            if (editor.getSceneElements().length === 0) return Promise.resolve(null)
+            if (sceneFingerprint(editor) === initialFingerprintRef.current) return Promise.resolve('unchanged')
+            return exportSketch(editor)
+        },
     }), [editor, handleCancel])
 
     // 卸载后不再回写（载入是异步的，Drawer 关闭后完成会 setState 在卸载组件上）

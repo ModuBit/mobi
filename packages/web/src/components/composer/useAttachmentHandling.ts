@@ -104,8 +104,8 @@ export function useAttachmentHandling(
         }
     }, [controlsDisabled])
 
-    // 上传附件到服务器
-    const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
+    // 上传附件到服务器（replacePath 非空 = 同 path 原子替换，附件 id/path/文件名不变）
+    const uploadAttachment = useCallback(async (attachmentId: string, file: File, replacePath?: string) => {
         const controller = new AbortController()
         abortControllersRef.current.set(attachmentId, controller)
         try {
@@ -113,25 +113,32 @@ export function useAttachmentHandling(
             // 仅每 5% 或每 100ms 或完成（p>=100）时更新，re-render 次数降 ~10-20x
             let lastPercent = 0
             let lastTime = 0
-            const response = await capabilities.uploadFile(file, {
-                signal: controller.signal,
-                onProgress: (p) => {
-                    const now = Date.now()
-                    if (p - lastPercent >= 5 || now - lastTime >= 100 || p >= 100) {
-                        lastPercent = p
-                        lastTime = now
-                        setAttachments(prev => prev.map(a =>
-                            a.id === attachmentId ? { ...a, progress: p } : a
-                        ))
-                    }
-                },
-            })
+            const onProgress = (p: number) => {
+                const now = Date.now()
+                if (p - lastPercent >= 5 || now - lastTime >= 100 || p >= 100) {
+                    lastPercent = p
+                    lastTime = now
+                    setAttachments(prev => prev.map(a =>
+                        a.id === attachmentId ? { ...a, progress: p } : a
+                    ))
+                }
+            }
+            const response = replacePath !== undefined
+                ? await capabilities.replaceUpload(replacePath, file, {
+                    signal: controller.signal,
+                    onProgress,
+                })
+                : await capabilities.uploadFile(file, {
+                    signal: controller.signal,
+                    onProgress,
+                })
             const data = response.data as UploadFileResponse
             if (import.meta.env.DEV) console.log('[Upload] 响应', attachmentId, data)
-            if (data.success && data.path) {
+            // 替换成功 path 不变（即 replacePath）；常规上传取服务端返回的新 path
+            if (data.success && (replacePath !== undefined || data.path)) {
                 setAttachments(prev => prev.map(a =>
                     a.id === attachmentId
-                        ? { ...a, status: 'complete' as const, path: data.path }
+                        ? { ...a, status: 'complete' as const, path: replacePath ?? data.path }
                         : a
                 ))
             } else {
@@ -204,16 +211,28 @@ export function useAttachmentHandling(
 
     /**
      * 画板产物进附件（新建与重编辑共用的装配内核）：完成导出的内嵌 scene PNG 直接
-     * 上传（不经文件选择器），携带 sketch 标记（重编辑入口判据）。replaceId 非空时
-     * 先移除旧附件（重编辑：产物换旧附件）；旧文件不删服务器（幂等新传，历史消息的
-     * path 引用仍有效），故不走 handleRemoveAttachment（其会 deleteUpload）。
+     * 上传（不经文件选择器），携带 sketch 标记（重编辑入口判据）。
+     * - 新建（replaceId 空）：新附件 + 常规上传。
+     * - 重编辑（replaceId + replacePath 非空）：同 path 原子替换（服务端 replaceUpload），
+     *   附件 id / path / 文件名全部不变，草稿与既有引用零改动，不产生孤儿文件。
+     *   replacePath 缺失（旧附件未上传完成 / 上传失败 / 恢复态占位无 path）退化为
+     *   移除旧 + 新传新文件——旧文件服务端不存在或无引用，无孤儿可言。
      * 上传失败 toast + 附件卡错误态，画板内容已由调用方保留（Drawer 未关闭路径）/
      * 可重新导出，无静默丢失。
      */
-    const addSketchFile = useCallback((file: File, sketch: SketchMark, replaceId?: string) => {
+    const addSketchFile = useCallback((file: File, sketch: SketchMark, replaceId?: string, replacePath?: string) => {
         const error = validateFile(file)
         if (error) {
             message.warning(error)
+            return
+        }
+        if (replaceId && replacePath) {
+            setAttachments(prev => prev.map(a =>
+                a.id === replaceId
+                    ? { ...a, file, status: 'uploading' as const, progress: 0, sketch }
+                    : a
+            ))
+            void uploadAttachment(replaceId, file, replacePath)
             return
         }
         const attachment: FileAttachment = { ...createFileAttachment(file), sketch }

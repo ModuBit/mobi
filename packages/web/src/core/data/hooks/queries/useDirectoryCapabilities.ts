@@ -39,6 +39,8 @@ export type SearchFilesFn = (query: string, opts?: { signal?: AbortSignal }) => 
 export type ListDirectoryFn = (path: string, prefix: string | undefined, opts?: { signal?: AbortSignal }) => Promise<FileSearchResult>
 export type UploadFileFn = (file: File, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) => Promise<UploadResult>
 export type DeleteUploadFn = (path: string) => Promise<DeleteUploadResult>
+/** 同 path 原子替换已上传文件（「编辑已有上传」场景） */
+export type ReplaceUploadFn = (path: string, file: Blob, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) => Promise<UploadResult>
 
 /**
  * 目录级能力的统一接口
@@ -52,6 +54,7 @@ export interface DirectoryCapabilities {
     listDirectory: ListDirectoryFn
     uploadFile: UploadFileFn
     deleteUpload: DeleteUploadFn
+    replaceUpload: ReplaceUploadFn
 }
 
 /**
@@ -133,8 +136,18 @@ export function useDirectoryCapabilities(
         return (path: string) => api.machines.deleteUpload(target.machineId, target.cwd, path)
     }, [target, api])
 
+    const replaceUpload = useMemo(() => {
+        if (!target) return async () => ({ data: { success: false } })
+        if (target.kind === 'session') {
+            return (path: string, file: Blob, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) =>
+                api.sessions.replaceUpload(target.sessionId, path, file, opts)
+        }
+        return (path: string, file: Blob, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) =>
+            api.machines.replaceUpload(target.machineId, target.cwd, path, file, opts)
+    }, [target, api])
+
     return useMemo(() => ({
         metadata, metadataLoading, commands,
-        searchFiles, listDirectory, uploadFile, deleteUpload,
-    }), [metadata, metadataLoading, commands, searchFiles, listDirectory, uploadFile, deleteUpload])
+        searchFiles, listDirectory, uploadFile, deleteUpload, replaceUpload,
+    }), [metadata, metadataLoading, commands, searchFiles, listDirectory, uploadFile, deleteUpload, replaceUpload])
 }

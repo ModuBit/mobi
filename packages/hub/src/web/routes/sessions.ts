@@ -428,6 +428,66 @@ export function createSessionsRoutes(
         }
     })
 
+    // upload/replace：同 path 原子替换已上传文件（画板重编辑等「编辑已有上传」场景）。
+    // body 为 octet-stream 全量内容（替换产物小，不分片），path 走 header；
+    // 闸门组对齐 save-file（Content-Length 预校验 + 累积字节兜底）
+    app.post('/sessions/:id/upload/replace', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))
+        if (!path) {
+            return c.json({ success: false, error: 'Path required (X-Mobi-Path header)' }, 400)
+        }
+
+        const totalSize = Number(c.req.header('Content-Length') ?? 0)
+        if (!Number.isFinite(totalSize) || totalSize < 0) {
+            return c.json({ success: false, error: 'Invalid Content-Length' }, 400)
+        }
+        if (totalSize > MAX_UPLOAD_BYTES) {
+            return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+        }
+
+        const reader = c.req.raw.body?.getReader()
+        if (!reader) {
+            return c.json({ success: false, error: 'No request body' }, 400)
+        }
+
+        const parts: Uint8Array[] = []
+        let received = 0
+        for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value) {
+                received += value.byteLength
+                if (received > MAX_UPLOAD_BYTES) {
+                    return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+                }
+                parts.push(value)
+            }
+        }
+
+        try {
+            const result = await engine.replaceUploadFile(sessionResult.sessionId, path, concatBytes(parts))
+            if (!result.success) {
+                return c.json(result, 400)
+            }
+            return c.json(result)
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to replace upload'
+            }, 500)
+        }
+    })
+
     app.post('/sessions/:id/abort', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
