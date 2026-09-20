@@ -25,7 +25,7 @@
     "@anthropic-ai/sdk": "^0.125.0",
     "@mobi/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@tavily/core": "^0.7.10",
+    "@tavily/core": "^0.7.13",
     "axios": "^1.20.0",
     "chalk": "^6.0.0",
     "cross-spawn": "^7.0.6",
@@ -37,13 +37,13 @@
     "react-devtools-core": "file:./stubs/react-devtools-core",
     "socket.io-client": "^4.8.3",
     "tar": "^7.5.22",
-    "zod": "^4.6.2"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "bun-types": "^1.4.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.1"
   }
 }
