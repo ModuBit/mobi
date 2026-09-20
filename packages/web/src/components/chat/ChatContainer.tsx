@@ -1195,8 +1195,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             )}
 
-        {/* composer stacking（z 1002）高于画板浮层（z 1001）：停靠开合动画期间浮层
-            从 composer 背后经过（antd Drawer bottom 式「从下面抽出」），不遮挡 composer */}
+        {/* composer stacking（z 1002）高于画板浮层（z 1001）：开合为滑沉消隐（不发生
+            穿越位移），z 序只为维持 stacking 阶梯（见 sketchLayout）；全屏形态浮层升 1003 */}
         <div style={{ position: 'relative', zIndex: SKETCH_Z_COMPOSER }}>
             <ChatComposer
                 ref={composerHandleRef}

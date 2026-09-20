@@ -26,10 +26,11 @@ export const SKETCH_DOCK_HEIGHT_RATIO = 0.7
 /** PC 停靠底边与 composer 顶边的间距（px）：贴着会显得粘连成一体，留一缝保持「浮层」层次 */
 export const SKETCH_DOCK_GAP = 8
 
-/** 载体开合动画时长（ms）：对齐 antd Drawer 的 300ms（运动曲线同在 SketchDrawer）；
- *  入场/出场同长——底部抽屉的滑入滑出本就是同一动画的往返 */
-export const SKETCH_SHEET_IN_MS = 300
-export const SKETCH_SHEET_OUT_MS = 300
+/** 载体开合动画时长（ms）：滑沉消隐——原地微沉/升起一段小距离 + 淡出/淡入（对称往返），
+ *  不经过 composer（穿过其周边透明缝隙会「穿帮」）。时长单源 sketchLayout
+ *  （画布 settle 定时从它派生，改这里自动跟随） */
+export const SKETCH_SHEET_IN_MS = 240
+export const SKETCH_SHEET_OUT_MS = 240
 
 /** 停靠↔全屏几何过渡时长（ms）：四边 inset 的 CSS transition */
 export const SKETCH_MORPH_MS = 280
@@ -37,7 +38,7 @@ export const SKETCH_MORPH_MS = 280
 /**
  * 画板浮层 stacking 阶梯（跨文件契约，单一来源在此）：
  * mask(1000) < 停靠浮层(1001) < composer(1002，ChatContainer) < 全屏浮层(1003)。
- * 停靠低于 composer 是「从背后抽出」动效的前提；全屏高于 composer 是画布不悬浮
+ * 停靠低于 composer 维持既有 stacking 阶梯（浮层是临时层）；全屏高于 composer 是画布不悬浮
  * 输入框的前提——四处魔数若靠注释互指，拼写错误会静默破坏动画，勿内联回去。
  */
 export const SKETCH_Z_MASK = 1000

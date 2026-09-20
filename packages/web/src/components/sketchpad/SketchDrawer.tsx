@@ -31,9 +31,9 @@
  * 关闭键，唯一出口是 header 的「取消/完成」（取消的非空二次确认在 SketchCanvas 内）。
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
  *
- * 开合动画与 stacking 约定（对齐 antd Drawer bottom）：浮层自视口底部垂直滑入/出
- * （keyframes 见下），PC 停靠形态全程从 composer「背后」经过——composer 根节点
- * 停靠形态 z 1001 < composer z 1002（ChatContainer），动画期间 composer 不被遮挡；
+ * 开合动画与 stacking 约定：滑沉消隐——出场原地微沉一小段距离 + 淡出，入场反向
+ * （升起归位 + 淡入），整层不发生穿越位移（早先的整片下滑会从 composer 周边透明
+ * 缝隙中穿出，视觉穿帮）。停靠形态 z 1001 < composer z 1002（ChatContainer），
  * 全屏形态升到 z 1003 盖过 composer（画布上不悬浮 composer）。
  */
 
@@ -91,19 +91,18 @@ const MORPH_TRANSITION_CSS = (['top', 'right', 'bottom', 'left'] as const)
     .map(prop => `${prop} ${SKETCH_MORPH_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`)
     .join(', ')
 
-/** 开合动画：对齐 antd Drawer（bottom）——整层从视口底部垂直滑入/滑出，同一
- *  运动曲线（antd motion 的 cubic-bezier(0.23,1,0.32,1)），时长单源 sketchLayout。
- *  PC 停靠形态的 resting 位在 composer 上方，但滑入/收回全程走 composer 的
- *  「背后」（停靠形态 composer z 1002 > 浮层 z 1001，见 ChatContainer）：视觉上
- *  浮层是从 composer 下面抽出来的抽屉，动画期间不会盖住 composer。移动端恒
- *  全屏（fixed 盖满自身，滑出不会穿帮），与 PC 共用同一对 keyframes */
+/** 开合动画：滑沉消隐——出场原地微沉一段小距离 + 淡出（纸片「沉降归于页面」），
+ *  入场为其时间反演（自下方升起归位 + 淡入）。位移量小（8%），全程不接触 composer，
+ *  不存在穿过其透明缝隙的穿帮；移动端全屏形态同一对 keyframes。时长单源 sketchLayout
+ *  （同一段曲线正放/倒放，出入场天然对称） */
+const SHEET_SINK_OFFSET = '8%'
 const SHEET_IN_KEYFRAMES = keyframes`
-    from { transform: translateY(100%) }
-    to { transform: translateY(0) }
+    from { transform: translateY(${SHEET_SINK_OFFSET}); opacity: 0 }
+    to { transform: translateY(0); opacity: 1 }
 `
 const SHEET_OUT_KEYFRAMES = keyframes`
-    from { transform: translateY(0) }
-    to { transform: translateY(100%) }
+    from { transform: translateY(0); opacity: 1 }
+    to { transform: translateY(${SHEET_SINK_OFFSET}); opacity: 0 }
 `
 /** 移动端背景暗化的淡入/淡出 */
 const MASK_IN_KEYFRAMES = keyframes`
@@ -157,13 +156,13 @@ const Sheet = styled.div<{
     ${(p) =>
         p.$phase === 'enter'
             ? css`
-                  animation: ${SHEET_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.23, 1, 0.32, 1);
+                  animation: ${SHEET_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.4, 0, 0.2, 1);
               `
             : ''}
     ${(p) =>
         p.$phase === 'exit'
             ? css`
-                  animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+                  animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
               `
             : ''}
     ${(p) => (p.$morphing ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
@@ -302,8 +301,9 @@ export function SketchDrawer({
             <Sheet
                 data-testid="sketch-sheet"
                 /* z 序随形态切换：全屏（含进入动画期，state 已先行置位）盖过 composer（z 1002）——
-                   画布上不该悬浮 composer；停靠形态保持 1001，开合动画从 composer「背后」抽出。
-                   退全屏 state 立即复位 → 收回过程回到 composer 背后，符合「塞回抽屉」方向感 */
+                   画布上不该悬浮 composer；停靠形态保持 1001（滑沉消隐不发生穿越位移，
+                   z 序只为保持既有 stacking 阶梯）。退全屏 state 立即复位 → 收回过程
+                   回到 composer 之下，符合「浮层归位」方向感 */
                 $zIndex={fullscreen ? SKETCH_Z_FULLSCREEN : SKETCH_Z_DOCK}
                 $phase={phase}
                 $morphing={morphing}
