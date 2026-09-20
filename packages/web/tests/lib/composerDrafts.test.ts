@@ -38,10 +38,15 @@ describe('composerDrafts', () => {
         const draft = seg('hello', {
             files: [fileRef('f1', 'r.pdf', '/u/r.pdf')],
             images: [{ id: 'g1', filename: 'p.png', path: '/u/p.png', mimeType: 'image/png', size: 7 }],
-            quotes: [{ messageId: 'm1', role: 'agent', excerpt: '引用正文' }],
+            quotes: [{ messageId: 'm1', role: 'agent', excerpt: '引用正文', comment: '为什么？' }],
         })
         saveDraft('s1', draft)
         expect(getDraft('s1')).toEqual(draft)
+
+        // 无 comment 引用不产生多余字段
+        const plain = seg('t', { quotes: [{ messageId: 'm', role: 'user', excerpt: 'q' }] })
+        saveDraft('s1', plain)
+        expect(getDraft('s1')!.quotes[0]).not.toHaveProperty('comment')
     })
 
     it('previewUrl 不落盘（blob URL 跨会话失效）；恢复侧仅保留可持久化字段', () => {

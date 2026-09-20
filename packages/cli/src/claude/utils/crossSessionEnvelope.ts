@@ -108,7 +108,7 @@ function neutralizeMarkup(text: string): string {
 }
 
 /**
- * 中和发送方**可控的自由文本**：`text` 正文与 `quote` 摘录（两者都会原样进 prompt）。
+ * 中和发送方**可控的自由文本**：`text` 正文与 `quote` 摘录/评论（三者都会原样进 prompt）。
  *
  * 刻意**不动** `image` / `document`：它们的 `source.value` 是目标侧真要拿去读盘的路径，
  * 改了就读不到文件了（那才是把功能弄坏）。路径里塞标记也走不远——同一台机器上得真有
@@ -122,7 +122,11 @@ function neutralizeBlocks(blocks: readonly UserContentBlock[]): UserContentBlock
             case 'text':
                 return { ...block, text: neutralizeMarkup(block.text) }
             case 'quote':
-                return { ...block, excerpt: neutralizeMarkup(block.excerpt) }
+                return {
+                    ...block,
+                    excerpt: neutralizeMarkup(block.excerpt),
+                    ...(block.comment !== undefined ? { comment: neutralizeMarkup(block.comment) } : {}),
+                }
             default:
                 return block
         }

@@ -297,9 +297,8 @@ export function ChatComposer(props: ChatComposerProps) {
     } = props
 
     const [text, setText] = useState('')
-    // 待发送引用：极简 chip 展示。约束：持有条数恒 ≤ QUOTE_MAX_COUNT（=1，不允许多条堆叠）——
-    // 当前 UI 无「新增第二条引用」入口（本 state 仅经回填/草稿恢复整段写入），上限为未来引入
-    // 引用入口时的前置契约：置入超出时应替换最早一条；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
+    // 待发送引用：极简 chip 列表展示。约束：持有条数恒 ≤ QUOTE_MAX_COUNT（3）——
+    // 上限为引用入口时的前置契约：置入超出时应替换最早一条；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
     const [quotes, setQuotes] = useState<PendingQuoteRef[]>([])
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 

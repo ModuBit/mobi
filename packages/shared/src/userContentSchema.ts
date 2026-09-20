@@ -17,8 +17,8 @@
 import { z } from 'zod'
 import { isObject } from './utils'
 
-/** quote excerpt 存储截断上限 */
-export const QUOTE_EXCERPT_MAX = 200
+/** quote excerpt / comment 存储截断上限：覆盖「引用一段论述」的选区长度 */
+export const QUOTE_EXCERPT_MAX = 500
 
 /**
  * AG-UI InputContentSource 对齐：
@@ -60,6 +60,8 @@ const QuoteBlockSchema = z.object({
     // 引用由 mobi URI 动作链接（ADR 0003）承担，此处刻意不扩 'custom'——避免迫使消费方窄化类型同步放宽
     role: z.enum(['user', 'agent']),
     excerpt: z.string().max(QUOTE_EXCERPT_MAX),
+    // 用户对引用内容的疑问/澄清（可选）：引用的价值主体，CLI 拼装 prompt 时以 <user-comment> 子标签紧随所属引用
+    comment: z.string().max(QUOTE_EXCERPT_MAX).optional(),
 })
 
 /**

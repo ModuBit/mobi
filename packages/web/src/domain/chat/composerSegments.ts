@@ -38,11 +38,19 @@ export interface BlockFileRef {
     sketch?: SketchMark
 }
 
-/** 待发送的引用分段：指向已落库的历史消息 */
+/**
+ * 待发送的引用分段：指向已落库历史消息的选中文本片段。
+ *
+ * 按引用目标演进（本期仅 message；未来 block/external），不按内容形态（文本/图片）分——
+ * 内容形态是目标的派生属性，按目标判别不产生「引用一张图的消息算什么类型」的歧义。
+ * 演进时在判别字段上扩 union（向后兼容 optional），改动收口于本文件 + wire QuoteBlockSchema。
+ */
 export interface PendingQuoteRef {
     messageId: string
     role: 'user' | 'agent'
     excerpt: string
+    /** 用户对引用内容的疑问/澄清（可选，进 prompt 的 <user-comment>）；引用的价值主体 */
+    comment?: string
 }
 
 /** Composer 当前完整分段状态 */
@@ -53,8 +61,8 @@ export interface ComposerSegments {
     quotes: PendingQuoteRef[]
 }
 
-/** 单条引用上限：本期引用即整段引用一条消息，不允许多条堆叠 */
-export const QUOTE_MAX_COUNT = 1
+/** 单条消息可携带的引用上限：注释工作流允许多条片段引用堆叠，3 条防刷屏 */
+export const QUOTE_MAX_COUNT = 3
 
 /** 空分段工厂：初始态与清空后的统一空值 */
 export const emptySegments = (): ComposerSegments => ({ text: '', files: [], images: [], quotes: [] })
@@ -107,6 +115,7 @@ export function serializeSegments(segments: ComposerSegments): UserContentBlock[
             messageId: q.messageId,
             role: q.role,
             excerpt: q.excerpt.slice(0, QUOTE_EXCERPT_MAX),
+            ...(q.comment !== undefined ? { comment: q.comment.slice(0, QUOTE_EXCERPT_MAX) } : {}),
         })
     }
 
@@ -121,7 +130,7 @@ export function serializeSegments(segments: ComposerSegments): UserContentBlock[
  *
  * - 多个 text block 以 '\n' 连接为单段——行内连接语义由此统一收口
  *   （review 记账确认点：结构化发送落地后，多正文段的合并规则只在本函数定义）
- * - 无 MIME 的 block 回退空串；quote 仅取首条
+ * - 无 MIME 的 block 回退空串；quote 取前 QUOTE_MAX_COUNT 条（与序列化上限对称）
  */
 export function deserializeSegments(blocks: readonly UserContentBlock[]): ComposerSegments {
     const seg = emptySegments()
@@ -151,8 +160,13 @@ export function deserializeSegments(blocks: readonly UserContentBlock[]): Compos
                 })
                 break
             case 'quote':
-                if (seg.quotes.length === 0) {
-                    seg.quotes.push({ messageId: b.messageId, role: b.role, excerpt: b.excerpt })
+                if (seg.quotes.length < QUOTE_MAX_COUNT) {
+                    seg.quotes.push({
+                        messageId: b.messageId,
+                        role: b.role,
+                        excerpt: b.excerpt,
+                        ...(b.comment !== undefined ? { comment: b.comment } : {}),
+                    })
                 }
                 break
             case 'text':

@@ -83,13 +83,18 @@ function coerceFileRef(value: unknown): PersistedFileRef | null {
     }
 }
 
-/** 校验单条引用分段；非法返回 null 由上层逐条剔除 */
+/** 校验单条引用分段；非法返回 null 由上层逐条剔除。comment 可选，非字符串不收 */
 function coerceQuote(value: unknown): PendingQuoteRef | null {
     if (!value || typeof value !== 'object') return null
     const o = value as Record<string, unknown>
     if (typeof o.messageId !== 'string' || typeof o.excerpt !== 'string') return null
     if (o.role !== 'user' && o.role !== 'agent') return null
-    return { messageId: o.messageId, role: o.role, excerpt: o.excerpt }
+    return {
+        messageId: o.messageId,
+        role: o.role,
+        excerpt: o.excerpt,
+        ...(typeof o.comment === 'string' ? { comment: o.comment } : {}),
+    }
 }
 
 /** 旧版附件项（{id,name,path,size}）→ 文件引用投影：MIME 未持久化，容错空串（恢复侧由扩展名兜底重 derive） */

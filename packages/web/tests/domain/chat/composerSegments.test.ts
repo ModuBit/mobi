@@ -53,19 +53,37 @@ describe('composerSegments', () => {
         expect(serializeSegments({ text: '', files: [], images: [], quotes: [] })).toEqual([])
     })
 
-    it('excerpt 超 QUOTE_EXCERPT_MAX(200) 序列化时截断；仅取首条 quote', () => {
+    it('excerpt 超 QUOTE_EXCERPT_MAX(500) 序列化时截断；超出 QUOTE_MAX_COUNT(3) 仅取前 3 条', () => {
         const s = {
             ...seg,
             quotes: [
-                { messageId: 'm1', role: 'user' as const, excerpt: 'x'.repeat(300) },
+                { messageId: 'm1', role: 'user' as const, excerpt: 'x'.repeat(600) },
                 { messageId: 'm2', role: 'user' as const, excerpt: 'y'.repeat(10) },
+                { messageId: 'm3', role: 'agent' as const, excerpt: 'z' },
+                { messageId: 'm4', role: 'user' as const, excerpt: 'w' },
             ],
         }
-        const out = serializeSegments(s)
-        const quotes = out.filter(b => b.type === 'quote')
-        // 仅首条参与发送
-        expect(quotes).toHaveLength(1)
-        expect(out.find(b => b.type === 'quote')).toMatchObject({ excerpt: 'x'.repeat(200), messageId: 'm1' })
+        const quotes = serializeSegments(s).filter(b => b.type === 'quote')
+        // 仅前 3 条参与发送
+        expect(quotes).toHaveLength(3)
+        expect(quotes[0]).toMatchObject({ excerpt: 'x'.repeat(500), messageId: 'm1' })
+        expect(quotes[2]).toMatchObject({ messageId: 'm3' })
+    })
+
+    it('comment 存在时透传并随往返还原，不存在时不产生多余字段', () => {
+        const withComment = serializeSegments({
+            ...seg,
+            quotes: [{ messageId: 'm1', role: 'agent' as const, excerpt: 'E', comment: '为什么？' }],
+        })
+        expect(withComment.find(b => b.type === 'quote')).toMatchObject({ comment: '为什么？' })
+        expect(deserializeSegments(withComment).quotes[0]).toEqual({
+            messageId: 'm1', role: 'agent', excerpt: 'E', comment: '为什么？',
+        })
+
+        const noComment = serializeSegments(seg)
+        const plain = noComment.find(b => b.type === 'quote') as Record<string, unknown>
+        expect('comment' in plain).toBe(false)
+        expect(deserializeSegments(noComment).quotes[0]).toEqual({ messageId: 'm1', role: 'agent', excerpt: 'E' })
     })
 
     it('previewUrl 存在时透传，不存在时不产生多余字段', () => {
