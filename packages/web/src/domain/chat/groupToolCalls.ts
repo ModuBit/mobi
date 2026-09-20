@@ -128,10 +128,11 @@ export function formatGroupTitle(
   blocks: CollapsibleBlock[],
   t: Translate,
 ): string {
-  // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）
+  // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）。
+  // 时长不足 50ms（toFixed(1) 会归到「0.0 秒」）视同无时长，兜底「思考」——0 秒思考展示时长没有信息量
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
-  const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
   const totalThinkMs = reasoningBlocks.reduce((sum, b) => sum + (b.durationMs ?? 0), 0)
+  const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null) && totalThinkMs >= 50
 
   // tool 计数：单次遍历同时累计调用次数、去重目标集合、无目标块数，读取端按计数语义取值
   const buckets = new Map<ToolCategory, { targets: Set<string>; unknown: number; calls: number }>()

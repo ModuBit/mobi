@@ -482,6 +482,14 @@ describe('formatGroupTitle', () => {
       expect(formatGroupTitle(blocks, t)).toBe('思考')
     })
 
+    it('有时长但近零（<50ms 会归到 0.0 秒）→ 兜底「思考」，不展示 0.0 秒', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1', durationMs: 20 }),
+        makeReasoning({ id: 'rs2', durationMs: 0 }),
+      ]
+      expect(formatGroupTitle(blocks, t)).toBe('思考')
+    })
+
     it('部分有 durationMs 部分无（混合）按有值求和', () => {
       const blocks = [
         makeReasoning({ id: 'rs1', durationMs: 4000 }),
