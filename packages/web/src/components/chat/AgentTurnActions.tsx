@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { GitFork } from 'lucide-react'
+import { ForkIcon } from '@/components/ui/ForkIcon'
 import { Popover } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from './CopyButton'
@@ -85,7 +85,7 @@ export function AgentTurnActions({
                         }
                     >
                         <IconButton
-                            icon={<GitFork size={14} />}
+                            icon={<ForkIcon size={14} />}
                             size={14}
                             aria-label={t('chat.fork.title')}
                             tooltip={forkActive ? undefined : t('chat.fork.title')}

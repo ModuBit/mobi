@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Copy, GitFork, Undo2 } from 'lucide-react'
+import { Copy, Undo2 } from 'lucide-react'
+import { ForkIcon } from '@/components/ui/ForkIcon'
 import { useTranslation } from 'react-i18next'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
@@ -120,7 +121,7 @@ export function MessageActionsDrawer({
                     />
                     {target?.canFork && target.forkAnchorId && !forkActive && (
                         <MenuRow
-                            icon={<GitFork size={16} />}
+                            icon={<ForkIcon size={16} />}
                             label={t('chat.fork.title')}
                             onClick={() => onFork(target.forkAnchorId!)}
                         />

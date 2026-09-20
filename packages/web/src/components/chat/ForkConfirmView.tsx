@@ -17,7 +17,8 @@
 import { useEffect, useState } from 'react'
 import { Button, Spin } from 'antd'
 import styled from '@emotion/styled'
-import { GitFork, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
+import { ForkIcon } from '@/components/ui/ForkIcon'
 import { useTranslation } from 'react-i18next'
 import { truncateRewindPreview } from '@/domain/chat/rewind'
 
@@ -161,7 +162,7 @@ export function ForkConfirmView({ targetText, loading, onConfirm, onCancel }: Fo
     const [chosen, setChosen] = useState(false)
 
     // loading 收尾即复位：失败后 Popover/Drawer 关闭重开时组件不卸载，chosen 残留会让
-    // 重试首帧直接渲染 Spin 而非 GitFork 图标（视觉跳变）
+    // 重试首帧直接渲染 Spin 而非分叉图标（视觉跳变）
     useEffect(() => {
         if (!loading) setChosen(false)
     }, [loading])
@@ -190,7 +191,7 @@ export function ForkConfirmView({ targetText, loading, onConfirm, onCancel }: Fo
                 }}
             >
                 <OptionIcon>
-                    {loading && chosen ? <Spin size="small" /> : <GitFork size={17} />}
+                    {loading && chosen ? <Spin size="small" /> : <ForkIcon size={17} />}
                 </OptionIcon>
                 <OptionText>
                     <OptionTitle>{t('chat.fork.create')}</OptionTitle>
