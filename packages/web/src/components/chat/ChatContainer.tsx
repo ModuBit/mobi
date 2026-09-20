@@ -1194,6 +1194,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             )}
 
+        {/* composer stacking（z 1002）高于画板浮层（z 1001）：停靠开合动画期间浮层
+            从 composer 背后经过（antd Drawer bottom 式「从下面抽出」），不遮挡 composer */}
+        <div style={{ position: 'relative', zIndex: 1002 }}>
             <ChatComposer
                 ref={composerHandleRef}
                 sketchLayerEl={chatFullscreenEl}
@@ -1240,7 +1243,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 switchPending={sessionActions.isSwitchPending}
                 extraLeftButtons={extraComposerButtons}
                 extraItems={extraComposerItems}
-                />
+            />
+        </div>
             </div>
         </div>
     )

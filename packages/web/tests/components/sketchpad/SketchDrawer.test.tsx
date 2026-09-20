@@ -104,9 +104,9 @@ describe('SketchDrawer 开合相位机', () => {
             rerender(<SketchDrawer open={false} onClose={vi.fn()} onComplete={vi.fn()} />)
             // 动画中仍渲染
             expect(document.querySelector('[data-testid="sketch-sheet"]')).toBeTruthy()
-            // 滑出动画时长结束后 → 卸载
+            // 滑出动画时长（300ms）+ 卸载定时余量 40ms 结束后 → 卸载
             act(() => {
-                vi.advanceTimersByTime(300)
+                vi.advanceTimersByTime(340)
             })
             expect(document.querySelector('[data-testid="sketch-sheet"]')).toBeNull()
         } finally {

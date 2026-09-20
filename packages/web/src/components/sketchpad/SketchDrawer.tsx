@@ -30,6 +30,10 @@
  * 防误关不变量（画到一半丢失不可接受）：mask 不绑定关闭、不监听 ESC、无 X
  * 关闭键，唯一出口是 header 的「取消/完成」（取消的非空二次确认在 SketchCanvas 内）。
  * 注意：刻意不用 MobileDrawer——它的下拉关闭手势与防误关不变量冲突。
+ *
+ * 开合动画与 stacking 约定（对齐 antd Drawer bottom）：浮层自视口底部垂直滑入/出
+ * （keyframes 见下），PC 停靠形态全程从 composer「背后」经过——composer 根节点
+ * stacking z 1002 > 本浮层 z 1001（ChatContainer），动画期间 composer 不被遮挡。
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
@@ -86,21 +90,17 @@ const MORPH_TRANSITION_CSS = (['top', 'right', 'bottom', 'left'] as const)
     .map(prop => `${prop} ${SKETCH_MORPH_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`)
     .join(', ')
 
-/** PC 开合：浮层从 composer 附近浮起/沉回（层不裁剪，位移过大会滑出层外穿帮） */
+/** 开合动画：对齐 antd Drawer（bottom）——整层从视口底部垂直滑入/滑出，同一
+ *  运动曲线（antd motion 的 cubic-bezier(0.23,1,0.32,1)），时长单源 sketchLayout。
+ *  PC 停靠形态的 resting 位在 composer 上方，但滑入/收回全程走 composer 的
+ *  「背后」（composer stacking z 1002 > 浮层 z 1001，见 ChatContainer）：视觉上
+ *  浮层是从 composer 下面抽出来的抽屉，动画期间不会盖住 composer。移动端恒
+ *  全屏（fixed 盖满自身，滑出不会穿帮），与 PC 共用同一对 keyframes */
 const SHEET_IN_KEYFRAMES = keyframes`
-    from { transform: translateY(48px); opacity: 0 }
-    to { transform: translateY(0); opacity: 1 }
-`
-const SHEET_OUT_KEYFRAMES = keyframes`
-    from { transform: translateY(0); opacity: 1 }
-    to { transform: translateY(48px); opacity: 0 }
-`
-/** 移动端开合：整张画纸从视口底部滑入/沉回（fixed 盖满自身，不会穿帮） */
-const SHEET_IN_FULL_KEYFRAMES = keyframes`
     from { transform: translateY(100%) }
     to { transform: translateY(0) }
 `
-const SHEET_OUT_FULL_KEYFRAMES = keyframes`
+const SHEET_OUT_KEYFRAMES = keyframes`
     from { transform: translateY(0) }
     to { transform: translateY(100%) }
 `
@@ -132,13 +132,13 @@ const Mask = styled.div<{ $zIndex: number; $dim: boolean; $phase: SheetPhase; $f
     ${(p) =>
         p.$dim && p.$phase === 'enter'
             ? css`
-                  animation: ${MASK_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1);
+                  animation: ${MASK_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.23, 1, 0.32, 1);
               `
             : ''}
     ${(p) =>
         p.$dim && p.$phase === 'exit'
             ? css`
-                  animation: ${MASK_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
+                  animation: ${MASK_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
               `
             : ''}
 `
@@ -147,7 +147,6 @@ const Sheet = styled.div<{
     $zIndex: number
     $phase: SheetPhase
     $morphing: boolean
-    $fullSheet: boolean
 }>`
     position: absolute;
     z-index: ${(p) => p.$zIndex};
@@ -157,13 +156,13 @@ const Sheet = styled.div<{
     ${(p) =>
         p.$phase === 'enter'
             ? css`
-                  animation: ${p.$fullSheet ? SHEET_IN_FULL_KEYFRAMES : SHEET_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1);
+                  animation: ${SHEET_IN_KEYFRAMES} ${SHEET_IN_MS}ms cubic-bezier(0.23, 1, 0.32, 1);
               `
             : ''}
     ${(p) =>
         p.$phase === 'exit'
             ? css`
-                  animation: ${p.$fullSheet ? SHEET_OUT_FULL_KEYFRAMES : SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.4, 0, 1, 1) forwards;
+                  animation: ${SHEET_OUT_KEYFRAMES} ${SHEET_OUT_MS}ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
               `
             : ''}
     ${(p) => (p.$morphing ? `transition: ${MORPH_TRANSITION_CSS};` : '')}
@@ -304,7 +303,6 @@ export function SketchDrawer({
                 $zIndex={1001}
                 $phase={phase}
                 $morphing={morphing}
-                $fullSheet={isMobile}
                 style={sheetStyle}
             >
                 <Section>

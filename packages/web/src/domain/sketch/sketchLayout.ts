@@ -23,9 +23,10 @@
 /** PC 停靠高度（占消息列表高度比例）：从 composer 上方抽出，拉满即吊顶（消息区顶） */
 export const SKETCH_DOCK_HEIGHT_RATIO = 0.7
 
-/** 载体开合动画时长（ms）：入场滑入 / 出场滑出（cubic-bezier 时长见 SketchDrawer） */
-export const SKETCH_SHEET_IN_MS = 260
-export const SKETCH_SHEET_OUT_MS = 220
+/** 载体开合动画时长（ms）：对齐 antd Drawer 的 300ms（运动曲线同在 SketchDrawer）；
+ *  入场/出场同长——底部抽屉的滑入滑出本就是同一动画的往返 */
+export const SKETCH_SHEET_IN_MS = 300
+export const SKETCH_SHEET_OUT_MS = 300
 
 /** 停靠↔全屏几何过渡时长（ms）：四边 inset 的 CSS transition */
 export const SKETCH_MORPH_MS = 280
