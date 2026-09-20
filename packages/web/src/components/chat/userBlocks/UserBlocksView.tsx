@@ -25,11 +25,12 @@ import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
-import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
+import { resolveUserImageUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
-import { buildActionUri, isSelfContainedUrl } from '@mobi/shared'
+import { buildActionUri } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { ActionLink } from '@/components/ui/ActionLink'
+import { SketchEditBadge } from '@/components/ui/SketchEditBadge'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */
@@ -137,24 +138,8 @@ function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
 const IMAGE_THUMB_SIZE = 80
 
 /**
- * image block → 可取数 URL（ImageView 渲染与画板重编辑取 PNG 共用）：
- * blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览、网络图）；
- * 否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造（etag v 参数机制由该函数统管）。
- * 服务端路径优先 machine 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）。
- * 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
- * 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
- */
-export function resolveUserImageUrl(block: Pick<UserImageBlock, 'previewUrl' | 'source'>, env: UserBlockRenderEnv): string {
-    const raw = block.previewUrl ?? block.source.value
-    if (isSelfContainedUrl(raw)) return raw
-    if (env.machineId && env.cwd) return buildMachineReadFileUrl(env.machineId, env.cwd, raw)
-    return buildReadFileUrl(env.sessionId ?? '', raw)
-}
-
-/**
  * image 视图：FileCard 纯图卡压成 80×80 cover 小缩略图，点击 Image 自带 preview 放大看原图。
- * blob:/data:/http(s):// 等自足 URL 直接用（乐观回显的本地预览）；
- * 否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造（etag v 参数机制由该函数统管）。
+ * 取数 URL 经 resolveUserImageUrl（core/utils/fileUrl）统一构造。
  *
  * 失败兜底由组件自管 failed 态（对齐 ImageContentView 的做法）：新版 @rc-component/image
  * 的 fallback 依赖内部 isImageValid 异步真加载，机制不透明且版本间易变——显式 onError 置
@@ -173,7 +158,7 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     // 失败态钉死在触发它的具体 src 上：src 变化（重试/网络恢复后重新渲染）自动重试。
     // 兜底图无放大价值，preview 一并关闭（点击不再弹出兜底图预览）
     const failed = failedFor === computed
-    const src = failed ? FALLBACK_IMAGE : computed
+    const src = failed || computed === null ? FALLBACK_IMAGE : computed
     // 画板重编辑入口（spec D3/D4）：仅内嵌 scene 的草图 + 调用方提供回调时渲染
     const sketchEditable = !!block.sketch && block.source.type === 'url' && !!env.onEditSketch
     // PC：hover 浮现编辑角标（快捷入口）；移动端角标不渲染——编辑走预览工具栏，
@@ -236,29 +221,15 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
         <SketchEditableWrapper>
             {card}
             {showBadge && (
-                <span
-                    className="sketch-edit-badge"
-                    title={t('sketch.editSketch')}
-                    aria-label={t('sketch.editSketch')}
-                    style={{
-                        position: 'absolute',
-                        right: 4,
-                        bottom: 4,
-                        display: 'inline-flex',
-                        padding: 3,
-                        borderRadius: token.borderRadiusSM,
-                        background: 'rgba(255, 255, 255, 0.88)',
-                        color: token.colorTextSecondary,
-                        cursor: 'pointer',
-                    }}
+                <SketchEditBadge
+                    showOnHover
+                    label={t('sketch.editSketch')}
                     onClick={(e) => {
                         // 角标只开编辑器，不穿透到缩略图的原图预览
                         e.stopPropagation()
                         env.onEditSketch?.(block)
                     }}
-                >
-                    <Pencil size={12} />
-                </span>
+                />
             )}
         </SketchEditableWrapper>
     )

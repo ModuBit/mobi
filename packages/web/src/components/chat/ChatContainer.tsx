@@ -36,7 +36,7 @@ import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from '
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
-import { resolveUserImageUrl } from './userBlocks/UserBlocksView'
+import { resolveUserImageUrl } from '@/core/utils/fileUrl'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
@@ -223,12 +223,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const [chatFullscreenEl, setChatFullscreenEl] = useState<HTMLElement | null>(null)
     // 画板停靠几何（px，相对全宽层，浮层定位用）：bottom = composer 区高度
     // （消息列表底边即 composer 顶边），top = 消息列表 70% 高度吊顶位，水平按
-    // CHAT_MAX_WIDTH 居中。消息列表/composer 高度随内容与视口变化，
-    // RO + resize 双通道测量维护
+    // CHAT_MAX_WIDTH 居中。消息列表/composer 高度随内容与视口变化，RO 测量维护
     const [sketchDockMetrics, setSketchDockMetrics] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null)
 
     // 画板停靠几何测量（见上）：RO 覆盖消息列表/层自身的尺寸变化（含 composer
-    // 增高挤压列表、侧边栏开合改变层宽），resize 兜底视口级变化
+    // 增高挤压列表、侧边栏开合改变层宽、窗口 resize 改变两者尺寸）。
+    // 同值 bail：高频回调（拖拽输入框、气泡增删）下避免相同几何反复触发
+    // ChatContainer 整体重渲染
     useEffect(() => {
         if (!chatFullscreenEl || !chatScrollEl) return
         const measure = () => {
@@ -238,22 +239,23 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const dockHeight = scroll.height * SKETCH_DOCK_HEIGHT_RATIO
             const dockWidth = Math.min(CHAT_MAX_WIDTH, layer.width)
             const dockLeft = (layer.width - dockWidth) / 2
-            setSketchDockMetrics({
+            const next = {
                 top: layer.height - dockBottom - dockHeight,
                 bottom: dockBottom,
                 left: dockLeft,
                 right: layer.width - dockLeft - dockWidth,
-            })
+            }
+            setSketchDockMetrics(prev => (prev
+                && prev.top === next.top && prev.bottom === next.bottom
+                && prev.left === next.left && prev.right === next.right
+                ? prev
+                : next))
         }
         measure()
         const ro = new ResizeObserver(measure)
         ro.observe(chatScrollEl)
         ro.observe(chatFullscreenEl)
-        window.addEventListener('resize', measure)
-        return () => {
-            ro.disconnect()
-            window.removeEventListener('resize', measure)
-        }
+        return () => ro.disconnect()
     }, [chatFullscreenEl, chatScrollEl])
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
@@ -456,6 +458,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             cwd: metadata?.path,
         })
         try {
+            if (!url) throw new Error('无法构造草图取数地址（machine/session 信息缺失）')
             const res = await fetch(url)
             if (!res.ok) throw new Error(`read-file ${res.status}`)
             const blob = await res.blob()

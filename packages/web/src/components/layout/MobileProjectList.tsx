@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/components/ui/MobileDrawer'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
@@ -335,7 +336,7 @@ export function MobileProjectList() {
                 title 显示当前操作的 session 名称（fork 行标题已落库，displayName 自然区分） */}
             <Drawer
                 placement="bottom"
-                rootClassName="mobile-sheet-drawer"
+                rootClassName={MOBILE_SHEET_DRAWER_CLASS}
                 open={!!actionSessionId}
                 onClose={closeActionSheet}
                 title={actionSessionDisplayTitle || undefined}

@@ -17,6 +17,7 @@
 import { useState, useCallback } from 'react'
 import { Popconfirm, Drawer, Button, theme } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/components/ui/MobileDrawer'
 import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -87,7 +88,7 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
                 {trigger}
                 <Drawer
                     placement="bottom"
-                    rootClassName="mobile-sheet-drawer"
+                    rootClassName={MOBILE_SHEET_DRAWER_CLASS}
                     open={drawerOpen}
                     onClose={() => { if (!loading) setDrawerOpen(false) }}
                     closable={false}

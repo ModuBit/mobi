@@ -19,7 +19,7 @@ import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
-import { cpSync, existsSync, readFileSync, statSync } from 'fs'
+import { cpSync, createReadStream, existsSync, statSync } from 'fs'
 import { VitePWA } from 'vite-plugin-pwa'
 import mkcert from 'vite-plugin-mkcert'
 import { visualizer } from 'rollup-plugin-visualizer'
@@ -65,7 +65,9 @@ const excalidrawAssetsPlugin = (): PluginOption => ({
             if (!file.startsWith(EXCALIDRAW_ASSETS_ROOT) || !existsSync(file) || !statSync(file).isFile()) return next()
             res.setHeader('Content-Type', rel.endsWith('.woff2') ? 'font/woff2' : 'application/octet-stream')
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
-            res.end(readFileSync(file))
+            // 流式响应：首载按 unicode-range 并发拉几十个 woff2 分片，同步 readFileSync
+            // 会逐请求阻塞 dev server 事件循环
+            createReadStream(file).pipe(res)
         })
     },
     closeBundle() {

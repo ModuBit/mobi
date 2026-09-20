@@ -86,15 +86,14 @@ function PanelItem({ icon, title, onClick }: { icon: ReactNode; title: string; o
     )
 }
 
-/* 相机行：拍照/录像并排（用户指定两项同行、内容左对齐，与文件/画板项一致） */
+/* 相机行：拍照/录像并排（用户指定两项同行、内容左对齐，与文件/画板项一致）。
+ * 复用 PanelItem（Item 本身 width:100%，grid 两列已约束布局） */
 const CameraRow = styled.div`
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 2px 0;
 `
-
-const CameraButton = styled(Item)``
 
 /**
  * 「+」按钮 + 附加面板：面板内容自绘（分组标题 + 富菜单项），承载用 antd Dropdown
@@ -121,20 +120,16 @@ export function AttachPanel({ disabled, onAttach, onSketch }: AttachPanelProps) 
             />
             {isMobile && (
                 <CameraRow>
-                    <CameraButton
-                        type="button"
+                    <PanelItem
+                        icon={<Camera size={16} />}
+                        title={t('composer.attachPhoto')}
                         onClick={pick(() => onAttach('photo'))}
-                    >
-                        <span className="icon"><Camera size={16} /></span>
-                        <span className="title">{t('composer.attachPhoto')}</span>
-                    </CameraButton>
-                    <CameraButton
-                        type="button"
+                    />
+                    <PanelItem
+                        icon={<Video size={16} />}
+                        title={t('composer.attachRecord')}
                         onClick={pick(() => onAttach('video'))}
-                    >
-                        <span className="icon"><Video size={16} /></span>
-                        <span className="title">{t('composer.attachRecord')}</span>
-                    </CameraButton>
+                    />
                 </CameraRow>
             )}
             {onSketch && (

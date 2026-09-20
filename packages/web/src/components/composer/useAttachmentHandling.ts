@@ -203,34 +203,21 @@ export function useAttachmentHandling(
     }, [processFiles, isMobile])
 
     /**
-     * 画板产物进附件：完成导出的内嵌 scene PNG 直接上传（不经文件选择器），
-     * 携带 sketch 标记（重编辑入口判据）。上传失败 toast + 附件卡错误态，画板内容已由
-     * 调用方保留（Drawer 未关闭路径）/ 可重新导出，无静默丢失。
+     * 画板产物进附件（新建与重编辑共用的装配内核）：完成导出的内嵌 scene PNG 直接
+     * 上传（不经文件选择器），携带 sketch 标记（重编辑入口判据）。replaceId 非空时
+     * 先移除旧附件（重编辑：产物换旧附件）；旧文件不删服务器（幂等新传，历史消息的
+     * path 引用仍有效），故不走 handleRemoveAttachment（其会 deleteUpload）。
+     * 上传失败 toast + 附件卡错误态，画板内容已由调用方保留（Drawer 未关闭路径）/
+     * 可重新导出，无静默丢失。
      */
-    const addSketchFile = useCallback((file: File, sketch: SketchMark) => {
+    const addSketchFile = useCallback((file: File, sketch: SketchMark, replaceId?: string) => {
         const error = validateFile(file)
         if (error) {
             message.warning(error)
             return
         }
         const attachment: FileAttachment = { ...createFileAttachment(file), sketch }
-        setAttachments(prev => [...prev, attachment])
-        void uploadAttachment(attachment.id, file)
-    }, [uploadAttachment])
-
-    /**
-     * 画板重编辑完成：产物作为新附件上传并移除旧附件。
-     * 旧文件不删服务器（幂等新传，历史消息的 path 引用仍有效），
-     * 故不复用 handleRemoveAttachment（其会 deleteUpload）。
-     */
-    const replaceSketchFile = useCallback((oldId: string, file: File, sketch: SketchMark) => {
-        const error = validateFile(file)
-        if (error) {
-            message.warning(error)
-            return
-        }
-        const attachment: FileAttachment = { ...createFileAttachment(file), sketch }
-        setAttachments(prev => [...prev.filter(a => a.id !== oldId), attachment])
+        setAttachments(prev => [...prev.filter(a => a.id !== replaceId), attachment])
         void uploadAttachment(attachment.id, file)
     }, [uploadAttachment])
 
@@ -356,7 +343,6 @@ export function useAttachmentHandling(
         isDragOver,
         handleAttach,
         addSketchFile,
-        replaceSketchFile,
         handleRemoveAttachment,
         handlePaste,
         handleDragEnter,

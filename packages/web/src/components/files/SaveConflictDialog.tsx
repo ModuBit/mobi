@@ -15,6 +15,7 @@
  */
 
 import { Drawer, Button } from 'antd'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/components/ui/MobileDrawer'
 import { useTranslation } from 'react-i18next'
 
 interface Props {
@@ -36,7 +37,7 @@ export function SaveConflictDialog({ open, onReload, onForceOverwrite }: Props) 
         <Drawer
             open={open}
             placement="bottom"
-            rootClassName="mobile-sheet-drawer"
+            rootClassName={MOBILE_SHEET_DRAWER_CLASS}
             closable={false}
             maskClosable={false}
             styles={{

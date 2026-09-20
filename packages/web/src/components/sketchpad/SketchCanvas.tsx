@@ -107,10 +107,6 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     // 打开时的场景指纹（变更检测基准）：null = 未捕获（捕获前不弹确认，宁多勿丢）
     const initialFingerprintRef = useRef<string | null>(null)
 
-    const setEditor = useCallback((api: ExcalidrawImperativeAPI) => {
-        setEditorState(api)
-    }, [])
-
     /** 取消：场景相对打开时有变化才二次确认（空画布直接开、重编辑未动笔直接关），防误触丢作品 */
     const handleCancel = useCallback(() => {
         // 变化检测：与打开时的场景指纹比对。editor 未就绪/指纹未捕获（异常时序）按
@@ -275,7 +271,7 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     return (
         <Root>
             <Excalidraw
-                excalidrawAPI={setEditor}
+                excalidrawAPI={setEditorState}
                 onChange={handleChange}
                 // 跟随应用明暗主题（excalidraw 原生适配：dark 为显示层反显观感，
                 // 存储色与导出两主题一致）；画布底色用包默认值，不做定制

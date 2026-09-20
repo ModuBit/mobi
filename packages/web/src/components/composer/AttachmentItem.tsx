@@ -18,8 +18,9 @@ import { memo, useState, useEffect, type FC } from 'react'
 import { theme, Spin, Progress, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
-import { CloseOutlined, EditOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
+import { SketchEditBadge } from '@/components/ui/SketchEditBadge'
+import { resolveUserImageUrl } from '@/core/utils/fileUrl'
+import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
     File, FileText, FileSpreadsheet, FileImage, FileVideo,
     FileAudio, FileArchive, FileType, FileCode, FileCode2,
@@ -242,22 +243,7 @@ const AttachmentCard = memo(function AttachmentCard({
                 )}
 
                 {/* 画板重编辑角标：一眼可辨「这个图能再画」 */}
-                {isSketchEditable && (
-                    <EditOutlined
-                        aria-label={t('sketch.editSketch')}
-                        title={t('sketch.editSketch')}
-                        style={{
-                            position: 'absolute',
-                            right: 2,
-                            bottom: 2,
-                            fontSize: 10,
-                            padding: 2,
-                            borderRadius: 4,
-                            background: 'rgba(255, 255, 255, 0.85)',
-                            color: token.colorTextSecondary,
-                        }}
-                    />
-                )}
+                {isSketchEditable && <SketchEditBadge label={t('sketch.editSketch')} />}
 
                 {/* 上传中覆盖：有进度显示进度条，无进度（极小文件瞬间完成）回退 Spin */}
                 {isUploading && (
@@ -370,18 +356,17 @@ const ImageThumb = memo(function ImageThumb({
         return () => URL.revokeObjectURL(url)
     }, [attachment.file])
 
-    // 预览 src 三级分流（与消息气泡 ImageView 同思路）：
+    // 预览 src 三级分流（与消息气泡 ImageView 同思路，判据统一走 resolveUserImageUrl）：
     // 1) 有本地 file → objectURL（上传中 / 正常态）
     // 2) 恢复态空 file 且有 path：machineId+cwd 可得 → machine 端点；否则回退 session read-file
     // 3) 都没有（如新建会话页的恢复态）→ 回退图标
     const thumbSrc =
         previewUrl
         ?? (attachment.path
-            ? machineId && cwd
-                ? buildMachineReadFileUrl(machineId, cwd, attachment.path)
-                : sessionId
-                    ? buildReadFileUrl(sessionId, attachment.path)
-                    : null
+            ? resolveUserImageUrl(
+                { source: { type: 'url', value: attachment.path } },
+                { machineId, cwd, sessionId },
+            )
             : null)
 
     if (thumbSrc && !imgError) {

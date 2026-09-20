@@ -777,14 +777,10 @@
     "sketch": {
         "open": "Sketchpad",
         "complete": "Done",
-        "exporting": "Exporting…",
-        "pressureSimulated": "Simulated pressure",
-        "pressureReal": "Real pressure",
         "fullscreen": "Fullscreen",
         "exitFullscreen": "Exit fullscreen",
         "discardConfirm": "The canvas has unsent content and will be lost. Discard this edit?",
         "editSketch": "Edit sketch",
-        "uploadFailed": "Failed to upload sketch",
         "loadFailed": "Failed to load sketch; opened as a blank canvas"
     }
 }

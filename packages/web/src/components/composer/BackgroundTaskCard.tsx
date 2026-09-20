@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react'
 import { theme, Popconfirm, Drawer, Button } from 'antd'
 import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { MOBILE_SHEET_DRAWER_CLASS } from '@/components/ui/MobileDrawer'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { Terminal, CircleStop, Eye, Zap, CircleDashed } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -112,7 +113,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     const stopDrawer = isMobile && showStop ? (
         <Drawer
             placement="bottom"
-            rootClassName="mobile-sheet-drawer"
+            rootClassName={MOBILE_SHEET_DRAWER_CLASS}
             open={drawerOpen}
             onClose={() => { if (!stopping) setDrawerOpen(false) }}
             closable={false}

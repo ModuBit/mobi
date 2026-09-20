@@ -229,7 +229,7 @@ export function SketchDrawer({
             unmountTimerRef.current = window.setTimeout(() => setPhase('open'), SHEET_IN_MS + 40)
             return undefined
         }
-        setPhase((p) => (p === 'exit' ? p : 'exit'))
+        setPhase('exit')
         unmountTimerRef.current = window.setTimeout(() => {
             setMounted(false)
             setFullscreen(false)

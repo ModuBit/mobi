@@ -65,19 +65,18 @@ import { useHasFinePointer, useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { usePromptSuggestion, usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 import { SuggestionChip } from './SuggestionChip'
+import { resolveUserImageUrl } from '@/core/utils/fileUrl'
 
 // 画板载体懒加载：excalidraw 重依赖只进画板异步 chunk，不进主 bundle
 const SketchDrawer = lazy(() => import('@/components/sketchpad/SketchDrawer').then(m => ({ default: m.SketchDrawer })))
 
-/** 画板会话状态：open + 重编辑载入源 + 重编辑目标附件（null = 新建路径） */
+/** 画板会话：null = 关闭。initialSketch = 重编辑载入源（null = 空白画布）；
+ *  editingId = 重编辑目标附件（null = 新建路径，产物作为新附件） */
 interface SketchSession {
-    open: boolean
     initialSketch: Blob | null
     /** 重编辑的附件 id；null = 新建（产物作为新附件） */
     editingId: string | null
 }
-
-const SKETCH_SESSION_CLOSED: SketchSession = { open: false, initialSketch: null, editingId: null }
 
 /** 载体（气泡编辑入口等父组件）可命令式调用的 composer 手柄（React 19 ref-as-prop） */
 export interface ChatComposerHandle {
@@ -352,43 +351,67 @@ export function ChatComposer(props: ChatComposerProps) {
         setAttachments,
         isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
-        addSketchFile, replaceSketchFile,
+        addSketchFile,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,
     } = useAttachmentHandling(sessionId, capabilities, controlsDisabled)
 
     // ── 画板（入口按钮 / 附件卡重编辑 / 气泡重编辑落回，spec D3/D4/D5）──
-    const [sketch, setSketch] = useState<SketchSession>(SKETCH_SESSION_CLOSED)
+    const [sketch, setSketch] = useState<SketchSession | null>(null)
+    // 画板是否开过：门控 SketchDrawer 挂载——React.lazy 在首次 render 即拉取 excalidraw
+    // 异步 chunk（MB 级），无条件渲染会把加载时机从「首次打开画板」提前到「进入聊天页」。
+    // 首开后不再复位：exit 动画需要载体保持挂载
+    const [sketchEverOpened, setSketchEverOpened] = useState(false)
 
     const handleOpenSketch = useCallback((initialSketch: Blob | null = null) => {
-        setSketch({ open: true, initialSketch, editingId: null })
+        setSketchEverOpened(true)
+        setSketch({ initialSketch, editingId: null })
     }, [])
 
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）
     useImperativeHandle(ref, () => ({ openSketch: handleOpenSketch }), [handleOpenSketch])
 
     /**
-     * 完成：产物装 File 直传上传通道（新建=addSketchFile；附件卡重编辑=replaceSketchFile）。
+     * 完成：产物装 File 直传上传通道（重编辑传 replaceId=addSketchFile 换旧附件）。
      * png null = 无内容完成：重编辑语义等同删除旧附件（用户指定），新建仅关闭画板。
      */
     const handleSketchComplete = useCallback((png: Blob | null, filename: string, sketchMark: SketchMark) => {
         if (!png) {
-            if (sketch.editingId) handleRemoveAttachment(sketch.editingId)
-            setSketch(SKETCH_SESSION_CLOSED)
+            if (sketch?.editingId) handleRemoveAttachment(sketch.editingId)
+            setSketch(null)
             return
         }
         const file = new File([png], filename, { type: 'image/png' })
-        if (sketch.editingId) {
-            replaceSketchFile(sketch.editingId, file, sketchMark)
-        } else {
-            addSketchFile(file, sketchMark)
-        }
-        setSketch(SKETCH_SESSION_CLOSED)
-    }, [sketch.editingId, addSketchFile, replaceSketchFile, handleRemoveAttachment])
+        addSketchFile(file, sketchMark, sketch?.editingId ?? undefined)
+        setSketch(null)
+    }, [sketch?.editingId, addSketchFile, handleRemoveAttachment])
 
+    // 附件卡重编辑：本地字节可用（上传中/正常态）直接载入；恢复态占位附件 file 是空壳
+    // （fileRefToPlaceholderAttachment 产 new File([], ...)，size 恒 0），经附件 path 回源
+    // fetch（与气泡重编辑同一判据 resolveUserImageUrl）——否则会静默打开空白画布丢场景。
+    // 先开画板后异步回源（载入由 SketchCanvas 的 initialSketch 变化驱动），失败留空画布可继续画
     const handleSketchEditAttachment = useCallback((attachment: FileAttachment) => {
-        setSketch({ open: true, initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
-    }, [])
+        setSketchEverOpened(true)
+        setSketch({ initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
+        const path = attachment.path
+        if (attachment.file.size > 0 || !path) return
+        void (async () => {
+            try {
+                const url = resolveUserImageUrl(
+                    { source: { type: 'url', value: path } },
+                    { sessionId, machineId: metadata?.machineId, cwd: metadata?.path },
+                )
+                if (!url) throw new Error('无法构造草图取数地址（machine/session 信息缺失）')
+                const res = await fetch(url)
+                if (!res.ok) throw new Error(`read-file ${res.status}`)
+                const blob = await res.blob()
+                setSketch(prev => (prev?.editingId === attachment.id ? { ...prev, initialSketch: blob } : prev))
+            } catch (err) {
+                console.warn('[sketch] 附件草图取数失败', err)
+                message.warning(t('sketch.loadFailed'))
+            }
+        })()
+    }, [sessionId, metadata?.machineId, metadata?.path, t])
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
     // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
@@ -1144,17 +1167,20 @@ export function ChatComposer(props: ChatComposerProps) {
             </div>
             </ComposerDock>
 
-            {/* 画板载体：停靠/全屏共用单实例浮层（挂内容区全宽层）；excalidraw 懒加载不进主 bundle */}
-            <Suspense fallback={null}>
-                <SketchDrawer
-                    open={sketch.open}
-                    onClose={() => setSketch(SKETCH_SESSION_CLOSED)}
-                    onComplete={handleSketchComplete}
-                    initialSketch={sketch.initialSketch}
-                    layerEl={sketchLayerEl}
-                    dockMetrics={sketchDockMetrics}
-                />
-            </Suspense>
+            {/* 画板载体：停靠/全屏共用单实例浮层（挂内容区全宽层）；sketchEverOpened 门控——
+                React.lazy 首 render 即拉 excalidraw chunk，未开过画板不挂载 */}
+            {sketchEverOpened && (
+                <Suspense fallback={null}>
+                    <SketchDrawer
+                        open={sketch !== null}
+                        onClose={() => setSketch(null)}
+                        onComplete={handleSketchComplete}
+                        initialSketch={sketch?.initialSketch ?? null}
+                        layerEl={sketchLayerEl}
+                        dockMetrics={sketchDockMetrics}
+                    />
+                </Suspense>
+            )}
         </div>
     )
 }

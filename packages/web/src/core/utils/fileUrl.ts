@@ -28,6 +28,8 @@
  *
  * etag 稳定时 URL 也稳定，浏览器与 HTTP 协商缓存照常复用，不会白下载。
  */
+import { isSelfContainedUrl, type UserImageBlock } from '@mobi/shared'
+
 export function buildReadFileUrl(
     sessionId: string,
     filePath: string,
@@ -71,4 +73,23 @@ export function buildMachineReadFileUrl(
     if (opts.download) params.set('download', '1')
     if (opts.etag) params.set('v', opts.etag)
     return `/api/machines/${machineId}/read-file?${params.toString()}`
+}
+
+/**
+ * 用户消息 image block → 可取数 URL（气泡 ImageView 渲染、composer 附件缩略图、
+ * 画板重编辑取 PNG 共用）：blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地
+ * 预览、网络图）；否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造。
+ * 服务端路径优先 machine 端点（会话关闭后仍可达），回退 session read-file（兼容老入口）；
+ * env 不足以构造任何端点（machineId/cwd 与 sessionId 双缺，如新建会话页的恢复态）返回 null。
+ * 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
+ * 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
+ */
+export function resolveUserImageUrl(
+    block: Pick<UserImageBlock, 'previewUrl' | 'source'>,
+    env: { sessionId?: string; machineId?: string; cwd?: string },
+): string | null {
+    const raw = block.previewUrl ?? block.source.value
+    if (isSelfContainedUrl(raw)) return raw
+    if (env.machineId && env.cwd) return buildMachineReadFileUrl(env.machineId, env.cwd, raw)
+    return env.sessionId ? buildReadFileUrl(env.sessionId, raw) : null
 }
