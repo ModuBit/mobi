@@ -238,7 +238,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const dockBottom = layer.bottom - scroll.bottom + SKETCH_DOCK_GAP
             const dockHeight = scroll.height * SKETCH_DOCK_HEIGHT_RATIO
             // 宽度限宽居中，且两侧保底 SKETCH_DOCK_SIDE_INSET（浮层不贴左右边缘）
-            const dockWidth = Math.min(CHAT_MAX_WIDTH, layer.width - SKETCH_DOCK_SIDE_INSET * 2)
+            const dockWidth = Math.max(0, Math.min(CHAT_MAX_WIDTH, layer.width - SKETCH_DOCK_SIDE_INSET * 2))
             const dockLeft = (layer.width - dockWidth) / 2
             const next = {
                 top: layer.height - dockBottom - dockHeight,
@@ -338,7 +338,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useTeamAgentsStore.getState().setTeamState(
                 sessionId,
                 teamState.members ?? [],
-                teamState.tasks ?? [],
                 teamState.teamName ?? null,
             )
         } else {

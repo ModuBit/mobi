@@ -25,7 +25,7 @@ export type { SDKMetadata, ModelOption, Command, AgentInfo, AccountInfo } from '
  * 获取会话的 SDK 元数据（commands, models, agents 等）
  *
  * 打开 session detail 后请求一次，缓存在 TanStack Query 中，
- * 其他 hook（useCommands）通过 select 派生。
+ * 消费方按需通过 select 派生所需字段。
  */
 export function useSDKMetadata(sessionId: string | null, enabled: boolean = true) {
     const api = useMobiApi()

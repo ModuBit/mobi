@@ -86,6 +86,12 @@ describe('queryKeys', () => {
 
         it('同一工厂函数不同参数应产生不同 key', () => {
             const keys = [
+                queryKeys.session('a'),
+                queryKeys.session('b'),
+                queryKeys.sessionDirectory('a', '/x'),
+                queryKeys.sessionDirectory('b', '/x'),
+                queryKeys.sessionFile('a', '/f.ts'),
+                queryKeys.sdkMetadata('a'),
             ]
 
             // 所有 key 都应互不相同

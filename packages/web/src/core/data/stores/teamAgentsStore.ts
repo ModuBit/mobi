@@ -15,53 +15,43 @@
  */
 
 import { create } from 'zustand'
-import type { TeamMember, TeamTask } from '@mobi/shared'
+import type { TeamMember } from '@mobi/shared'
 
 interface TeamAgentsState {
     membersBySession: Map<string, TeamMember[]>
-    tasksBySession: Map<string, TeamTask[]>
     teamNameBySession: Map<string, string>
-    setTeamState: (sessionId: string, members: TeamMember[], tasks: TeamTask[], teamName: string | null) => void
+    setTeamState: (sessionId: string, members: TeamMember[], teamName: string | null) => void
     clearSession: (sessionId: string) => void
 }
 
 export const useTeamAgentsStore = create<TeamAgentsState>((set) => ({
     membersBySession: new Map(),
-    tasksBySession: new Map(),
     teamNameBySession: new Map(),
 
-    setTeamState: (sessionId, members, tasks, teamName) =>
+    setTeamState: (sessionId, members, teamName) =>
         set((state) => {
             const nextMembers = new Map(state.membersBySession)
-            const nextTasks = new Map(state.tasksBySession)
             const nextNames = new Map(state.teamNameBySession)
             if (members.length > 0) {
                 nextMembers.set(sessionId, members)
             } else {
                 nextMembers.delete(sessionId)
             }
-            if (tasks.length > 0) {
-                nextTasks.set(sessionId, tasks)
-            } else {
-                nextTasks.delete(sessionId)
-            }
             if (teamName) {
                 nextNames.set(sessionId, teamName)
             } else {
                 nextNames.delete(sessionId)
             }
-            return { membersBySession: nextMembers, tasksBySession: nextTasks, teamNameBySession: nextNames }
+            return { membersBySession: nextMembers, teamNameBySession: nextNames }
         }),
 
     clearSession: (sessionId) =>
         set((state) => {
             const nextMembers = new Map(state.membersBySession)
-            const nextTasks = new Map(state.tasksBySession)
             const nextNames = new Map(state.teamNameBySession)
             nextMembers.delete(sessionId)
-            nextTasks.delete(sessionId)
             nextNames.delete(sessionId)
-            return { membersBySession: nextMembers, tasksBySession: nextTasks, teamNameBySession: nextNames }
+            return { membersBySession: nextMembers, teamNameBySession: nextNames }
         }),
 }))
 

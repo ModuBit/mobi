@@ -16,7 +16,7 @@
 
 /**
  * Mobi Logo 组件 — 内联裸 "m" 标记（透明底），颜色跟随 app 主题（uiStore.theme）。
- * 装饰性标记：组合处由字标（MobiWordmark/MobiLockup）承载可访问名，此处 aria-hidden。
+ * 装饰性标记：组合处由字标（MobiWordmark）承载可访问名，此处 aria-hidden。
  * 尺寸由父元素通过 width/height 控制。
  */
 

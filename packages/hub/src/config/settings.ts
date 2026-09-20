@@ -130,6 +130,10 @@ export async function readSettings(settingsFile: string): Promise<Settings | nul
     }
 }
 
+/**
+ * 原子写 temp + rename；调用方须自行持锁（经 withSettingsLock），
+ * 或直接用 updateSettingsFile（锁内的读-改-写）——否则会与 cli 受限写互踩（lost update）。
+ */
 export async function writeSettings(settingsFile: string, settings: Settings): Promise<void> {
     const dir = dirname(settingsFile)
     if (!existsSync(dir)) {
