@@ -132,7 +132,7 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             <span
                 className="shimmer-text shimmer-text-solid"
                 aria-hidden="true"
-                style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
             </span>
