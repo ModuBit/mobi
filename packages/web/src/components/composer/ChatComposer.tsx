@@ -800,7 +800,8 @@ export function ChatComposer(props: ChatComposerProps) {
     ].filter(Boolean)
 
     return (
-        <div style={{ padding: '0 0 max(12px, env(safe-area-inset-bottom))' }}>
+        // 小屏左右留 8px，composer 不贴屏幕边缘；大屏聊天列已限宽居中（CHAT_MAX_WIDTH），保持无侧边距
+        <div style={{ padding: isMobile ? '0 8px max(12px, env(safe-area-inset-bottom))' : '0 0 max(12px, env(safe-area-inset-bottom))' }}>
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
