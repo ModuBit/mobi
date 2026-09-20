@@ -254,9 +254,13 @@ export function registerUploadHandlers(
                     // 随机段插在「扩展簇」（尾部连续 .ext，如 .excalidraw.png / .tar.gz）之前，
                     // 保持多段扩展名完整——extname 只认最后一段会把双扩展拆成 .excalidraw-<id>.png
                     const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-                    const extCluster = sanitizedFilename.match(/(?:\.[A-Za-z0-9]+)+$/)?.[0] ?? ''
-                    const base = extCluster ? sanitizedFilename.slice(0, sanitizedFilename.length - extCluster.length) : sanitizedFilename
-                    const uniqueFilename = extCluster ? `${base}-${shortId}${extCluster}` : `${sanitizedFilename}-${shortId}`
+                    // 前导点（.gitignore / .env 等隐藏文件）属文件名而非扩展名：先剥离再匹配
+                    // 扩展簇，否则 base 为空 → 唯一名变成以连字符开头的 '-<id>.gitignore'
+                    const leadingDot = sanitizedFilename.startsWith('.') ? '.' : ''
+                    const stem = leadingDot ? sanitizedFilename.slice(1) : sanitizedFilename
+                    const extCluster = stem.match(/(?:\.[A-Za-z0-9]+)+$/)?.[0] ?? ''
+                    const base = extCluster ? stem.slice(0, stem.length - extCluster.length) : stem
+                    const uniqueFilename = `${leadingDot}${base}-${shortId}${extCluster}`
                     const filePath = join(uploadDir, uniqueFilename)
 
                     // 单块大小校验（第三道闸）

@@ -106,6 +106,18 @@ describe('writeFileRange handler', () => {
         expect(res.path).toMatch(/sketch-\d{8}-\d{6}-[0-9a-z]+\.excalidraw\.png$/)
     })
 
+    it('隐藏文件：前导点属文件名而非扩展名，唯一名不以连字符开头', async () => {
+        // 可触达场景：前导点 + 白名单后缀（纯 .gitignore 无扩展名，validateFileExtension 已拒）
+        const content = new Uint8Array([1])
+        const res = await mockRpc.call('writeFileRange', {
+            filename: '.secret.txt', offset: 0, content, totalSize: 1,
+        })
+
+        expect(res.success).toBe(true)
+        // 前导点被误当扩展簇时 base 为空 → 产生 '-<id>.txt'（连字符开头）
+        expect(res.path).toMatch(/\.secret-[0-9a-z]+\.txt$/)
+    })
+
     it('offset>0 后续块：按 offset 追加写，内容拼接正确', async () => {
         const first = await mockRpc.call('writeFileRange', {
             filename: 'a.zip', offset: 0, content: new Uint8Array([1, 2]), totalSize: 4,

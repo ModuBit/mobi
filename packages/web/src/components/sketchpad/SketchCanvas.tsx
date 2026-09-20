@@ -55,8 +55,14 @@ export interface SketchCanvasProps {
 export interface SketchCanvasHandle {
     /** 取消：场景相对打开时有变化才二次确认，防空手误触丢作品 */
     requestCancel: () => void
-    /** 完成导出：编辑器未就绪或场景无内容时返回 null（调用方按「无产物完成」处理） */
-    complete: () => Promise<Blob | null>
+    /**
+     * 完成导出。三态：
+     * - Blob：场景有内容，导出的内嵌 scene PNG
+     * - null：场景就绪且无内容（空画布 / 重编辑后删光）——调用方按「无产物完成」处理
+     * - undefined：画布未就绪（编辑器未初始化 / 场景尚未载入）——调用方必须忽略本次
+     *   完成，绝不能与 null 混同：重编辑语义下 null = 删除附件，会把有内容的附件静默删掉
+     */
+    complete: () => Promise<Blob | null | undefined>
 }
 
 /** 画布几何重算延迟：单源 sketchLayout 从载体动画时长派生（settle 必须盖过全部动画，
@@ -64,13 +70,19 @@ export interface SketchCanvasHandle {
 const CANVAS_SETTLE_REFRESH_MS = SKETCH_CANVAS_SETTLE_MS
 
 /**
- * 场景指纹：取消确认的「有无修改」检测基准。剔除 version/versionNonce/updated 等
- * 每次提交都会变的簿记字段，只留内容语义（元素几何/样式/背景色）——undo 撤回初始
- * 状态后指纹相等，正确地视为「无修改」；viewBackgroundColor 纳入（背景色可改且属
- * 用户内容）。导出仅供测试。
+ * 场景指纹：取消确认的「有无修改」检测基准。剔除每次提交都会变的簿记字段
+ * （version/versionNonce/updated）与压感簿记字段（simulatePressure/pressures——
+ * 压感兜底会对历史笔画做数据等价改写，属同一内容，计入会让未动笔的取消误弹确认），
+ * 只留内容语义（元素几何/样式/背景色）——undo 撤回初始状态后指纹相等，正确地视为
+ * 「无修改」；viewBackgroundColor 纳入（背景色可改且属用户内容）。导出仅供测试。
  */
 export function sceneFingerprint(api: Pick<ExcalidrawImperativeAPI, 'getSceneElements' | 'getAppState'>): string {
-    const elements = api.getSceneElements().map(({ version: _v, versionNonce: _n, updated: _u, ...rest }) => rest)
+    const elements = api.getSceneElements().map(({ version: _v, versionNonce: _n, updated: _u, ...rest }) => {
+        // 压感簿记字段仅 freedraw 元素具有：运行时 delete 归一化，绕开联合类型的收窄麻烦
+        delete (rest as Record<string, unknown>).simulatePressure
+        delete (rest as Record<string, unknown>).pressures
+        return rest
+    })
     return JSON.stringify([elements, api.getAppState().viewBackgroundColor])
 }
 
@@ -116,8 +128,10 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             onCancel()
             return
         }
-        // 放弃修改是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）
+        // 放弃修改是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）。
+        // zIndex 抬过画板浮层（1001）——antd Modal 默认 1000 会被浮层盖住
         modal.confirm({
+            zIndex: 1100,
             title: t('sketch.discardConfirm'),
             okText: t('common.confirm'),
             cancelText: t('common.cancel'),
@@ -129,11 +143,15 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     // 载体 header 的取消/完成出口与画布内语义共用同一实现（React 19 ref-as-prop 手柄）
     useImperativeHandle(ref, () => ({
         requestCancel: handleCancel,
-        // 场景无内容（空画布 / 重编辑后删光）→ null：调用方按「无产物完成」处理
-        //（重编辑 = 删除附件；新建 = 仅关闭），绝不上传一张空白图
-        complete: () => (editor && editor.getSceneElements().length > 0
-            ? exportSketch(editor)
-            : Promise.resolve(null)),
+        // 指纹未捕获 = 场景尚未就绪（编辑器初始化中 / 重编辑内容载入中）→ undefined：
+        // 调用方必须忽略，绝不能落进「null = 删光」语义（会把有内容的附件静默删除）。
+        // 场景就绪后：无内容（空画布 / 重编辑后删光）→ null（重编辑 = 删除附件，新建 = 仅关闭），
+        // 绝不上传一张空白图
+        complete: () => (editor && initialFingerprintRef.current !== null
+            ? (editor.getSceneElements().length > 0
+                ? exportSketch(editor)
+                : Promise.resolve(null))
+            : Promise.resolve(undefined)),
     }), [editor, handleCancel])
 
     // 卸载后不再回写（载入是异步的，Drawer 关闭后完成会 setState 在卸载组件上）
@@ -196,8 +214,11 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
                     if (!cancelled) initialFingerprintRef.current = sceneFingerprint(editor)
                 }, 0)
             } catch (e) {
-                // 载入失败按空画布继续（源文件损坏/外部改写）：不打断用户
+                // 载入失败按空画布继续（源文件损坏/外部改写）：不打断用户。但必须把指纹
+                // 基准补成空场景——否则基准缺失会让取消确认把「画了内容」误判为无变化，
+                // 绕过确认静默丢失作品
                 console.warn('[SketchCanvas] 草图载入失败，按空画布继续', e)
+                if (!cancelled) initialFingerprintRef.current = sceneFingerprint(editor)
             }
         })()
         return () => { cancelled = true }

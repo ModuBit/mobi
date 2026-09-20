@@ -58,7 +58,7 @@ describe('useSketchSession', () => {
         expect(result.current.everOpened).toBe(false)
         act(() => result.current.openNew())
         expect(result.current.everOpened).toBe(true)
-        expect(result.current.session).toEqual({ initialSketch: null, editingId: null })
+        expect(result.current.session).toMatchObject({ initialSketch: null, editingId: null })
         act(() => result.current.cancel())
         expect(result.current.session).toBeNull()
         expect(result.current.everOpened).toBe(true)
@@ -93,7 +93,7 @@ describe('useSketchSession', () => {
         const { result } = renderHook(() => useSketchSession(makeDeps()))
         act(() => result.current.openForAttachment(makePlaceholder()))
         // 回填前 session 已打开（本地字节为空 → initialSketch null）
-        expect(result.current.session).toEqual({ initialSketch: null, editingId: 'a1' })
+        expect(result.current.session).toMatchObject({ initialSketch: null, editingId: 'a1' })
         await act(async () => { await Promise.resolve() }) // flush fetch promise
         expect(result.current.session?.initialSketch).toBeInstanceOf(Blob)
     })
@@ -109,7 +109,23 @@ describe('useSketchSession', () => {
             await Promise.resolve()
         })
         // 迟到回填不污染当前（新建）会话
-        expect(result.current.session).toEqual({ initialSketch: null, editingId: null })
+        expect(result.current.session).toMatchObject({ initialSketch: null, editingId: null })
+    })
+
+    it('token 守卫：同形会话（气泡重编辑 → 新建）的迟到回填也被丢弃', async () => {
+        // editingId 守卫覆盖不了这条路径：气泡重编辑与新建都是 {initialSketch: null,
+        // editingId: null}，守卫必须依赖每次 open 递增的 token
+        let resolveFetch!: (v: { ok: boolean; blob: () => Promise<Blob> }) => void
+        vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(r => { resolveFetch = r })))
+        const { result } = renderHook(() => useSketchSession(makeDeps()))
+        act(() => result.current.openFromBubble('/uploads/a.png')) // 慢 fetch 在途
+        act(() => result.current.openNew()) // 用户改点「新建」空白画布
+        await act(async () => {
+            resolveFetch({ ok: true, blob: () => Promise.resolve(new Blob(['png'])) })
+            await Promise.resolve()
+        })
+        // A 草图的迟到回填不得写入新建的空白画布
+        expect(result.current.session).toMatchObject({ initialSketch: null, editingId: null })
     })
 
     it('回源失败：notifyLoadFailed，会话保持打开（留空画布可继续画）', async () => {

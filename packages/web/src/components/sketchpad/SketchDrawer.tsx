@@ -222,14 +222,21 @@ export function SketchDrawer({
     // 移动端恒全屏（最大手指操作空间）；全屏切换仅 PC 提供
     const canFullscreen = !isMobile && !!layerEl
 
-    // 开合相位机（见上）。全屏形态的复位放在卸载定时器里：关闭动画期间必须保持
-    // 当前几何（先复位会让浮层跳回停靠位再淡出）
+    // 开合相位机（见上）。enter/exit 定时器共用一个 ref 槽位——开合切换时必须清掉
+    // 未触发的旧定时器（close 不清 enter 定时器会在 exit 动画中途把 phase 打回 open，
+    // 中断退出动画导致浮层停滞后跳变消失）。全屏形态的复位放在卸载定时器里：关闭动画
+    // 期间必须保持当前几何（先复位会让浮层跳回停靠位再淡出）；动画期内重开则按停靠
+    // 形态打开（open 分支主动复位 fullscreen）
     const unmountTimerRef = useRef<number | null>(null)
     useEffect(() => {
+        if (unmountTimerRef.current !== null) {
+            window.clearTimeout(unmountTimerRef.current)
+            unmountTimerRef.current = null
+        }
         if (open) {
-            if (unmountTimerRef.current !== null) window.clearTimeout(unmountTimerRef.current)
             setMounted(true)
             setPhase('enter')
+            setFullscreen(false)
             unmountTimerRef.current = window.setTimeout(() => setPhase('open'), SHEET_IN_MS + 40)
             return undefined
         }
@@ -251,13 +258,15 @@ export function SketchDrawer({
         prevFullscreenRef.current = fullscreen
     }, [fullscreen])
 
-    // 完成：经 canvas 手柄导出（null = 无内容完成，透传给调用方语义化处理），
-    // 文件名/标记在此装配
+    // 完成：经 canvas 手柄导出。undefined = 画布未就绪（编辑器初始化/场景载入中）——
+    // 忽略本次完成，绝不能与 null（场景就绪且无内容）混同：重编辑语义下 null = 删除
+    // 附件，会把有内容的附件静默删掉
     const handleComplete = useCallback(async () => {
         setExporting(true)
         try {
             const png = await canvasRef.current?.complete()
-            onComplete(png ?? null, sketchFilename(), SKETCH_MARK)
+            if (png === undefined) return
+            onComplete(png, sketchFilename(), SKETCH_MARK)
         } catch {
             // 导出失败留在画布，用户可重试
         } finally {

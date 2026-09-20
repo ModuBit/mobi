@@ -25,15 +25,19 @@
  * 完成/回填语义可经 renderHook 直接测试——interface 即测试面。
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { SketchMark } from '@mobi/shared'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import type { FileRefContext } from '@/core/utils/fileUrl'
 import { loadSketchSource } from '@/domain/sketch/sketchSource'
 
-/** 会话：null = 关闭。initialSketch = 重编辑载入源（null = 空白画布）；
+/** 会话：null = 关闭。token = 每次 open 递增的令牌（异步回填守卫的唯一依据——
+ *  editingId/initialSketch 无法区分「同形」的先后会话：新建与气泡重编辑都是
+ *  {initialSketch: null, editingId: null}，慢 fetch 迟到会污染后开的画布）；
+ *  initialSketch = 重编辑载入源（null = 空白画布）；
  *  editingId = 重编辑目标附件（null = 新建路径，产物作为新附件） */
 export interface SketchSession {
+    token: number
     initialSketch: Blob | null
     /** 重编辑的附件 id；null = 新建（产物作为新附件） */
     editingId: string | null
@@ -55,10 +59,14 @@ export function useSketchSession(deps: UseSketchSessionDeps) {
     const [session, setSession] = useState<SketchSession | null>(null)
     // 首开后不复位：exit 动画需要载体保持挂载，且避免重复触发 chunk 加载
     const [everOpened, setEverOpened] = useState(false)
+    // 会话令牌发生器：每次 open 递增
+    const tokenRef = useRef(0)
 
-    const open = useCallback((next: SketchSession) => {
+    const open = useCallback((next: Omit<SketchSession, 'token'>) => {
         setEverOpened(true)
-        setSession(next)
+        const token = ++tokenRef.current
+        setSession({ ...next, token })
+        return token
     }, [])
 
     /** 面板按钮：空白画布新建 */
@@ -72,19 +80,19 @@ export function useSketchSession(deps: UseSketchSessionDeps) {
      * 匹配）写入，失败 toast 留空画布可继续画。
      */
     const openForAttachment = useCallback((attachment: FileAttachment) => {
-        open({ initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
+        const token = open({ initialSketch: attachment.file.size > 0 ? attachment.file : null, editingId: attachment.id })
         const path = attachment.path
         if (attachment.file.size > 0 || !path) return
         loadSketchSource({ path }, resolveContext)
-            .then(blob => setSession(prev => (prev?.editingId === attachment.id ? { ...prev, initialSketch: blob } : prev)))
+            .then(blob => setSession(prev => (prev && prev.token === token ? { ...prev, initialSketch: blob } : prev)))
             .catch(() => notifyLoadFailed())
     }, [open, resolveContext, notifyLoadFailed])
 
     /** 气泡重编辑：历史消息附件无本地字节，先开画板再异步回源（与附件卡同一时序） */
     const openFromBubble = useCallback((path: string) => {
-        open({ initialSketch: null, editingId: null })
+        const token = open({ initialSketch: null, editingId: null })
         loadSketchSource({ path }, resolveContext)
-            .then(blob => setSession(prev => (prev && prev.editingId === null ? { ...prev, initialSketch: blob } : prev)))
+            .then(blob => setSession(prev => (prev && prev.token === token ? { ...prev, initialSketch: blob } : prev)))
             .catch(() => notifyLoadFailed())
     }, [open, resolveContext, notifyLoadFailed])
 
