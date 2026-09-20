@@ -47,6 +47,9 @@ html {
 html[data-theme='dark'] {
     /* Dark 模式背景 */
     background: #141414;
+
+    /* 斜杠下拉：CC 内置命令名字色（antd gold；light 默认 #f97316 见 variables.css） */
+    --mobi-command-builtin: #faad14;
 }
 
 body {

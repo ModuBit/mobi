@@ -144,6 +144,22 @@ describe('toCommandSuggestions', () => {
         expect(result).toHaveLength(2)
     })
 
+    it('builtin 标记透传到建议项', () => {
+        const commands: Command[] = [
+            { name: 'compact', description: '压缩', argumentHint: '', builtin: true },
+        ]
+        const result = toCommandSuggestions(commands)
+        expect(result[0]?.builtin).toBe(true)
+    })
+
+    it('无 builtin 字段（旧快照/用户 skill）不产生标记', () => {
+        const commands: Command[] = [
+            { name: 'deploy-binary', description: '部署', argumentHint: '' },
+        ]
+        const result = toCommandSuggestions(commands)
+        expect(result[0]?.builtin).toBeUndefined()
+    })
+
     it('同名去重（不区分大小写）', () => {
         const commands: Command[] = [
             { name: 'Help', description: '帮助1', argumentHint: '' },

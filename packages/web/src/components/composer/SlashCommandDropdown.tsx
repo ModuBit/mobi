@@ -26,6 +26,12 @@ interface SlashCommandDropdownProps {
     onHover: (index: number) => void
 }
 
+/**
+ * CC 内置命令的名字色：light 陶土暖橙、dark antd gold，经 CSS 变量随主题切换
+ * （variables.css 定义 + base.css dark 覆盖，色值经用户确认）。
+ */
+const BUILTIN_COMMAND_COLOR = 'var(--mobi-command-builtin)'
+
 /** 斜杠命令下拉列表 */
 export function SlashCommandDropdown({
     items,
@@ -57,7 +63,16 @@ export function SlashCommandDropdown({
                     }}
                     onMouseEnter={() => onHover(index)}
                 >
-                    <span style={{ fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.label}</span>
+                    <span
+                        style={{
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            color: item.builtin ? BUILTIN_COMMAND_COLOR : undefined,
+                        }}
+                    >
+                        {item.label}
+                    </span>
                     {item.description && (
                         <span style={{
                             color: 'var(--ant-color-text-tertiary)',

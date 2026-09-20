@@ -30,6 +30,8 @@ export interface SlashCommandSuggestionItem {
     description?: string
     /** 参数提示（如 <message>） */
     argumentHint?: string
+    /** CC 内置命令（SDK `SlashCommand.builtin`）；用户/项目/plugin skill 无此字段 */
+    builtin?: boolean
 }
 
 /** 命令名合法字符（字母、数字、下划线、连字符）；用于过滤路径/括号等误触发 */
@@ -80,6 +82,7 @@ export function toCommandSuggestions(commands: Command[], workingDir?: string): 
                 value: name,
                 description: cmd.description,
                 argumentHint: cmd.argumentHint || undefined,
+                builtin: cmd.builtin || undefined,
             })
         }
     }

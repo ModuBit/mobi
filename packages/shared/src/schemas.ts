@@ -94,7 +94,9 @@ export type Project = z.infer<typeof ProjectSchema>
 export const SlashCommandSchema = z.object({
     name: z.string(),
     description: z.string(),
-    argumentHint: z.string()
+    argumentHint: z.string(),
+    /** CC 内置命令标记（SDK 0.3.277+）；user/project/plugin/MCP 定义的命令无此字段，旧快照兼容缺省 */
+    builtin: z.boolean().optional()
 })
 
 export type SlashCommand = z.infer<typeof SlashCommandSchema>
