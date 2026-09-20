@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-export const DEFAULT_NAMESPACE = 'default'
+const DEFAULT_NAMESPACE = 'default'
 
 export type ParsedAccessToken = {
     baseToken: string

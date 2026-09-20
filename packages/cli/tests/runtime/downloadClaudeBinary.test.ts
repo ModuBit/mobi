@@ -50,7 +50,7 @@ describe('downloadClaudeBinary', () => {
         const archive = join(tmpRoot, 'claude-darwin-arm64.bin');
         writeFileSync(archive, data);
 
-        const { downloadClaudeBinary } = await import('../../../scripts/downloadClaudeBinary');
+        const { downloadClaudeBinary } = await import('../../scripts/downloadClaudeBinary');
         const result = await downloadClaudeBinary('bun-darwin-arm64', {
             archivesDir: tmpRoot,
             fetchImpl: fetchSpy,
@@ -68,7 +68,7 @@ describe('downloadClaudeBinary', () => {
         });
         writeFileSync(join(tmpRoot, 'claude-darwin-arm64.bin'), 'stale');
 
-        const { downloadClaudeBinary } = await import('../../../scripts/downloadClaudeBinary');
+        const { downloadClaudeBinary } = await import('../../scripts/downloadClaudeBinary');
         // tar.extract 在 tmpTar 内容非合法 tarball 时同步抛错（此用例的稳定失败点），在 sha256 校验之前
         // 注意：用 mockImplementation 每次返回新 Response（body 只能消费一次，重试场景需新实例）
         fetchSpy.mockImplementation(() => Promise.resolve(new Response('not a tarball', { status: 200 })));
@@ -100,7 +100,7 @@ describe('downloadClaudeBinary', () => {
             headers: { 'Content-Type': 'application/octet-stream' },
         }));
 
-        const { downloadClaudeBinary } = await import('../../../scripts/downloadClaudeBinary');
+        const { downloadClaudeBinary } = await import('../../scripts/downloadClaudeBinary');
         const archivePath = join(tmpRoot, 'claude-darwin-arm64.bin');
         await expect(downloadClaudeBinary('bun-darwin-arm64', {
             archivesDir: tmpRoot,
@@ -137,7 +137,7 @@ describe('downloadClaudeBinary', () => {
             return Promise.resolve(new Response(stream, { status: 200 }));
         });
 
-        const { downloadClaudeBinary } = await import('../../../scripts/downloadClaudeBinary');
+        const { downloadClaudeBinary } = await import('../../scripts/downloadClaudeBinary');
         const start = Date.now();
         await expect(downloadClaudeBinary('bun-darwin-arm64', {
             archivesDir: tmpRoot,
@@ -180,7 +180,7 @@ describe('downloadClaudeBinary', () => {
             return Promise.resolve(new Response(fixture, { status: 200 }));
         });
 
-        const { downloadClaudeBinary } = await import('../../../scripts/downloadClaudeBinary');
+        const { downloadClaudeBinary } = await import('../../scripts/downloadClaudeBinary');
         const result = await downloadClaudeBinary('bun-darwin-arm64', {
             archivesDir: tmpRoot,
             fetchImpl: retryFetch,

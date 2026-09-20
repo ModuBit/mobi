@@ -346,7 +346,7 @@ const UpdateMachineBodySchema = z.object({
 
 export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>
 
-const UpdateSchema = z.object({
+export const UpdateSchema = z.object({
     id: z.string(),
     seq: z.number(),
     body: z.union([UpdateNewMessageBodySchema, UpdateSessionBodySchema, UpdateMachineBodySchema]),

@@ -1,0 +1,42 @@
+{
+    "$schema": "https://unpkg.com/knip@5/schema.json",
+    "ignore": [
+        ".scratch/**",
+        "scripts/**",
+        "packages/*/scripts/**",
+        "packages/cli/stubs/**",
+        "packages/cli/tests/fixtures/**"
+    ],
+    "ignoreBinaries": [
+        "sha256sum"
+    ],
+    "rules": {
+        "files": "error",
+        "dependencies": "error",
+        "unlisted": "error",
+        "binaries": "warn",
+        "unresolved": "error",
+        "exports": "off",
+        "types": "off",
+        "nsExports": "off",
+        "nsTypes": "off",
+        "duplicates": "off",
+        "enumMembers": "off",
+        "classMembers": "off",
+        "optionalPeerDependencies": "off",
+        "catalog": "off"
+    },
+    "workspaces": {
+        ".": {},
+        "packages/cli": {
+            "entry": [
+                "src/bootstrap.ts"
+            ]
+        },
+        "packages/web": {
+            "entry": [
+                "src/core/pwa/sw.ts"
+            ]
+        }
+    }
+}

@@ -40,3 +40,5 @@ jobs:
       - run: bun install
       # 循环依赖硬卡：P3 已清零（hub/sync 5 + cli/claude 7），no-circular severity=error，回潮即 CI 失败
       - run: bun run lint:deps
+      # 死码防线：零引用文件/依赖/坏 import 回潮即 CI 失败（export 面暂 off，清单见 .knip.json）
+      - run: bun run lint:knip

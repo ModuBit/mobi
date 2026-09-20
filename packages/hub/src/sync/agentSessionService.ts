@@ -163,7 +163,7 @@ export interface AgentSessionQuery {
 }
 
 /** 机器 → agent 视角摘要。展示名取机器自报的 displayName，缺省回退 host。 */
-export function toMachineSummary(machine: Machine): AgentMachineSummary {
+function toMachineSummary(machine: Machine): AgentMachineSummary {
     // 展示名缺省回退到主机名，而主机名自己还可能缺省——两级回退的规则只写这一处
     const hostname = machine.metadata?.host ?? machine.id
     return {
@@ -684,7 +684,7 @@ function resolveLimit(limit: number | undefined): number {
 }
 
 /** 会话 → agent 视角摘要。metadata 解析失败时相关字段缺省，不填假值。 */
-export function toAgentSessionSummary(session: Session): AgentSessionSummary {
+function toAgentSessionSummary(session: Session): AgentSessionSummary {
     const summary: AgentSessionSummary = {
         sessionId: session.id,
         projectId: session.projectId ?? null,

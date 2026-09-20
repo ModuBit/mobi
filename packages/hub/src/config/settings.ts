@@ -130,20 +130,6 @@ export async function readSettings(settingsFile: string): Promise<Settings | nul
     }
 }
 
-export async function readSettingsOrThrow(settingsFile: string): Promise<Settings> {
-    const settings = await readSettings(settingsFile)
-    if (settings === null) {
-        throw new Error(
-            `Cannot read ${settingsFile}. Please fix or remove the file and restart.`
-        )
-    }
-    return settings
-}
-
-/**
- * Write settings to file atomically (temp file + rename).
- * 调用方须自行持锁（经 withSettingsLock），或直接用 updateSettingsFile。
- */
 export async function writeSettings(settingsFile: string, settings: Settings): Promise<void> {
     const dir = dirname(settingsFile)
     if (!existsSync(dir)) {

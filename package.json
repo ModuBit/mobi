@@ -26,6 +26,7 @@
         "test:web": "cd packages/web && bun run test",
         "lint": "eslint packages/shared/src packages/hub/src packages/cli/src packages/web/src",
         "lint:deps": "depcruise packages/shared/src packages/hub/src packages/cli/src packages/web/src",
+        "lint:knip": "knip",
         "prepare": "husky"
     },
     "devDependencies": {
@@ -33,11 +34,12 @@
         "dependency-cruiser": "^18.3.1",
         "eslint": "^10.11.0",
         "husky": "^9.1.7",
+        "knip": "^5",
         "lint-staged": "^17.5.1",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.70.0"
     },
-"lint-staged": {
+    "lint-staged": {
         "packages/*/src/**/*.{ts,tsx}": "eslint --fix"
     }
 }

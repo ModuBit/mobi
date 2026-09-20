@@ -106,10 +106,6 @@
     "session": {
         "loadFailed": "加载会话失败",
         "notFound": "会话不存在或已被删除",
-        "tabs": {
-            "files": "文件",
-            "terminal": "终端"
-        },
         "inspector": {
             "expand": "打开检视面板",
             "collapse": "收起检视面板",

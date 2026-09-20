@@ -106,10 +106,6 @@
     "session": {
         "loadFailed": "Failed to load session",
         "notFound": "Session not found or has been deleted",
-        "tabs": {
-            "files": "Files",
-            "terminal": "Terminal"
-        },
         "inspector": {
             "expand": "Open inspector",
             "collapse": "Close inspector",
