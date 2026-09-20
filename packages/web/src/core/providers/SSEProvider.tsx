@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { SSEClient } from '@/core/data/realtime/sseClient'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useLocation, useNavigate } from '@tanstack/react-router'
@@ -47,6 +47,7 @@ import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
 import { desktopStreamProvider } from '@/core/desktop/desktopStreamProvider'
 import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
+import type { Machine, MachinesResponse } from '@/core/data/api/types'
 
 /**
  * blocks → composer 分段还原（撤回回填，spec §7.5）。
@@ -192,6 +193,62 @@ function patchSessionCache(
 const INVALIDATION_BATCH_MS = 16
 
 // toast 通知 key/tag 自增序号:同 session 连发同类通知时,每条用独立 key/tag,
+/**
+ * machine-updated 事件负载 → ['machines'] 缓存 patch：数据已随事件推送，不再 refetch
+ * （事件是机器列表变化的唯一来源，refetch 是把推到门口的数据回店里重查一遍）。
+ *
+ * 负载四种形状（hub machineCache / machineHandlers）：
+ * - null：机器删除 → 按 machineId 移除
+ * - 全量 machine（带 metadata 字段）：upsert 为 web 投影（hub 行含 namespace/seq 等字段，不整行塞入）
+ * - { active: false }：过期下线 → 仅合并 active 标记（保留本地已有 metadata/runnerState）
+ * - { id }：仅 id 占位——hub 侧同步跟随一条全量事件，此处 no-op
+ *
+ * 缓存不存在时不创建（避免把单机 patch 写成"完整列表"）；无实质变化返回 undefined
+ * 让 react-query 跳过换代（throttle 心跳重复广播同值）。
+ */
+function patchMachinesCache(qc: QueryClient, machineId: string, data: unknown): void {
+    if (!qc.getQueryData(queryKeys.machines)) return
+    qc.setQueryData<MachinesResponse>(queryKeys.machines, (prev) => {
+        if (!prev) return undefined
+        if (data === null) {
+            if (!prev.machines.some(m => m.id === machineId)) return undefined
+            return { ...prev, machines: prev.machines.filter(m => m.id !== machineId) }
+        }
+        if (!isObject(data)) return undefined
+        if ('metadata' in data) {
+            // 全量 machine → web 投影
+            const meta = isObject(data.metadata) ? data.metadata as Record<string, unknown> : null
+            const next: Machine = {
+                id: machineId,
+                active: data.active === true,
+                metadata: meta ? {
+                    host: typeof meta.host === 'string' ? meta.host : 'unknown',
+                    platform: typeof meta.platform === 'string' ? meta.platform : 'unknown',
+                    ...(typeof meta.displayName === 'string' ? { displayName: meta.displayName } : {}),
+                    ...(typeof meta.homeDir === 'string' ? { homeDir: meta.homeDir } : {}),
+                } : null,
+                runnerState: (data.runnerState ?? null) as Machine['runnerState'],
+            }
+            const machines = prev.machines.some(m => m.id === machineId)
+                ? prev.machines.map(m => (m.id === machineId ? next : m))
+                : [...prev.machines, next]
+            return { ...prev, machines }
+        }
+        if ('active' in data) {
+            const active = data.active === true
+            let changed = false
+            const machines = prev.machines.map(m => {
+                if (m.id !== machineId || m.active === active) return m
+                changed = true
+                return { ...m, active }
+            })
+            return changed ? { ...prev, machines } : undefined
+        }
+        // { id } 占位形状：全量事件随后即到，此处不动缓存
+        return undefined
+    })
+}
+
 // 避免 SW replaceNotification / antd 同 key 更新吞掉前一条(角标 markUnread 幂等,不受影响)
 let toastSeq = 0
 
@@ -305,6 +362,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         // sid 为 null（不在会话页）时仍失效列表与项目视图——侧边栏状态也需对账
         scheduleInvalidation('sessions', sid ?? undefined)
         scheduleInvalidation('projectViews')
+        // 断连窗口内的 machine-updated 不会被重放，patch 模式的确定性对账点
+        scheduleInvalidation('machines')
         if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
     }
 
@@ -446,7 +505,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 break
             }
             case 'machine-updated':
-                scheduleInvalidation('machines')
+                patchMachinesCache(queryClientRef.current, event.machineId, event.data)
                 break
             case 'project-added':
             case 'project-updated':

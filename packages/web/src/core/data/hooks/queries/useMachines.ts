@@ -37,6 +37,9 @@ export function useMachines(enabled: boolean = true): {
             return res.data
         },
         enabled: enabled,
+        // 稳态更新走 machine-updated 事件 patch（SSEProvider），不再随 CLI 心跳 refetch；
+        // 低频兜底覆盖未知的漏事件场景（确定性对账在 SSE 重连的 resyncAfterGap）
+        refetchInterval: 5 * 60_000,
     })
 
     return {
