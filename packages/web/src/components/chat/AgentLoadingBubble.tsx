@@ -124,9 +124,10 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             >
                 {labelText}
             </span>
-            {/* 可见层是装饰性 scramble + 扫光，对读屏隐藏 */}
+            {/* 可见层是装饰性 scramble + 扫光，对读屏隐藏。
+                亮面扫光变体：小字号状态文字用暗基线会不可读（见 base.css .shimmer-text-solid） */}
             <span
-                className="shimmer-text"
+                className="shimmer-text shimmer-text-solid"
                 aria-hidden="true"
                 style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >

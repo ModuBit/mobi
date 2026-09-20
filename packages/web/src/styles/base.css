@@ -201,6 +201,19 @@ pre, code {
     to { background-position: -50% 0; }
 }
 
+/* 亮面变体：文字本色为基线（不再默认调暗），扫光是「白色混入的 glint 掠过」——
+   任意时刻文字全色可读。适合小字号/低对比语境（statusbar 状态文字等），
+   暗基线变体在这些场景会让文字不可读。其余机制（keyframes/hover/reduced-motion）
+   复用 .shimmer-text，本类只换 gradient——声明必须排在其后（同优先级后者胜） */
+.shimmer-text-solid {
+    background: linear-gradient(
+        90deg,
+        currentColor 35%,
+        color-mix(in srgb, currentColor 55%, white) 50%,
+        currentColor 65%
+    );
+}
+
 /* ToolCard pending 焦点色带脉动（权限等待时的左侧高亮条） */
 @keyframes tool-card-pulse {
     0%, 100% { opacity: 0.55; }
