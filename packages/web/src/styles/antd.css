@@ -34,6 +34,15 @@
     padding-block: 6px !important;
 }
 
+/* assistant 气泡贯穿整列：清掉 antdx Bubble 内置的 15% 对侧留白（start 行
+   padding-inline-end），否则行内容右侧始终空出一条（d09f87ed 只删了本项目
+   自加的 5%，内置 15% 仍在——2026-09-20 实测 computed padding-right 169px）。
+   user 气泡（end 行）的对侧留白保持 antdx 默认，维持右对齐视觉。
+   守卫测试：tests/assistant-bubble-fullwidth.test.ts */
+.ant-bubble-start {
+    padding-inline-end: 0 !important;
+}
+
 /* Duration 气泡去除内边距 */
 .ant-bubble-content-borderless {
     padding-inline: 0 !important;
