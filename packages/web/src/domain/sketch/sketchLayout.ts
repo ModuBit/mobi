@@ -37,14 +37,18 @@ export const SKETCH_MORPH_MS = 280
 
 /**
  * 画板浮层 stacking 阶梯（跨文件契约，单一来源在此）：
- * mask(1000) < 停靠浮层(1001) < composer(1002，ChatContainer) < 全屏浮层(1003)。
+ * mask(100) < 停靠浮层(101) < composer(102，ChatContainer) < 全屏浮层(103)。
  * 停靠低于 composer 维持既有 stacking 阶梯（浮层是临时层）；全屏高于 composer 是画布不悬浮
  * 输入框的前提——四处魔数若靠注释互指，拼写错误会静默破坏动画，勿内联回去。
+ *
+ * 阶梯整体压在 antd 弹层 z 区间（默认 1000：Drawer/Modal）之下：画板浮层是页内临时层，
+ * 不得盖过抽屉/对话框；曾用 1000–1003 与 antd 区间重叠，导致 composer(z 1002) 压住
+ * agent 抽屉（z 1000），已降档修复。
  */
-export const SKETCH_Z_MASK = 1000
-export const SKETCH_Z_DOCK = 1001
-export const SKETCH_Z_COMPOSER = 1002
-export const SKETCH_Z_FULLSCREEN = 1003
+export const SKETCH_Z_MASK = 100
+export const SKETCH_Z_DOCK = 101
+export const SKETCH_Z_COMPOSER = 102
+export const SKETCH_Z_FULLSCREEN = 103
 
 /** 画布几何重算延迟：需盖过载体全部动画（开合/形变）——动画 transform 中间态会被
  *  excalidraw 缓存为画布 rect，动画结束不触发 resize/ResizeObserver，缓存不失效即整体

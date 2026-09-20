@@ -131,7 +131,7 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             return
         }
         // 放弃修改是危险操作：确认按钮走 danger 语义（土地砖红，非 primary 灰）。
-        // zIndex 抬过画板浮层（1001）——antd Modal 默认 1000 会被浮层盖住
+        // zIndex 抬过 antd 弹层默认区间（1000）——确认框必须压过一切页内浮层
         modal.confirm({
             zIndex: 1100,
             title: t('sketch.discardConfirm'),
