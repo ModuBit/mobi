@@ -86,10 +86,6 @@ export type SessionMetadataSummary = {
     gitBranch?: string
 }
 
-// 会话列表响应
-export type SessionsResponse = { sessions: SessionSummary[] }
-export type SessionResponse = { session: Session }
-
 // 消息分页响应
 export type MessagesResponse = {
     messages: DecryptedMessage[]
@@ -134,24 +130,8 @@ export type Machine = {
 }
 
 export type MachinesResponse = { machines: Machine[] }
-export type MachinePathsExistsResponse = { exists: Record<string, boolean> }
 
 // ============ 认证类型 ============
-
-export type AuthResponse = {
-    token: string
-    user: {
-        id: number
-        username?: string
-        firstName?: string
-        lastName?: string
-    }
-}
-
-export type ApiConfig = {
-    baseUrl: string
-    token: string | null
-}
 
 // ============ 启动/操作类型 ============
 

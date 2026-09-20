@@ -39,26 +39,6 @@ export function getSessionDisplayName(session: Session): string {
 }
 
 /**
- * 获取模型显示名称
- */
-export function getModelDisplayName(modelMode?: string): string {
-    if (!modelMode || modelMode === 'default') {
-        return 'Default'
-    }
-    return capitalize(modelMode)
-}
-
-/**
- * 获取 CLI 显示名称
- */
-export function getCliDisplayName(flavor?: string): string {
-    if (!flavor || flavor === 'claude') {
-        return 'Claude'
-    }
-    return capitalize(flavor)
-}
-
-/**
  * 首字母大写
  */
 export function capitalize(str: string): string {

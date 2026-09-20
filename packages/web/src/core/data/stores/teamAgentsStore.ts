@@ -67,14 +67,9 @@ export const useTeamAgentsStore = create<TeamAgentsState>((set) => ({
 
 // 空数组常量，避免每次 selector 返回新引用导致 React 19 无限渲染
 const EMPTY_MEMBERS: TeamMember[] = []
-const EMPTY_TASKS: TeamTask[] = []
 
 export function useTeamMembers(sessionId: string): TeamMember[] {
     return useTeamAgentsStore((state) => state.membersBySession.get(sessionId) ?? EMPTY_MEMBERS)
-}
-
-export function useTeamTasks(sessionId: string): TeamTask[] {
-    return useTeamAgentsStore((state) => state.tasksBySession.get(sessionId) ?? EMPTY_TASKS)
 }
 
 export function useTeamName(sessionId: string): string | null {

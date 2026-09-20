@@ -36,13 +36,3 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     logout: () => set({ authenticated: false }),
     getBaseUrl: () => window.location.origin,
 }))
-
-// 便捷函数：直接返回 baseUrl（非 hook，可在任意位置调用）
-export function getBaseUrl() {
-    return window.location.origin
-}
-
-// 向后兼容：保留 hook 形式导出
-export function useBaseUrl() {
-    return getBaseUrl()
-}

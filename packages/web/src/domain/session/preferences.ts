@@ -20,7 +20,6 @@ import { EFFORT_LEVELS, OUTPUT_STYLE_FOLLOW_SETTING, PERMISSION_MODES, type Effo
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
 const MODEL_STORAGE_KEY = 'mobi:newSession:model'
-const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
 const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 const PERMISSION_MODE_STORAGE_KEY = 'mobi:newSession:permissionMode'
 const OUTPUT_STYLE_STORAGE_KEY = 'mobi:newSession:outputStyle'
@@ -76,24 +75,6 @@ export function loadPreferredModel(): string {
  */
 export function savePreferredModel(model: string): void {
     savePreference(MODEL_STORAGE_KEY, model)
-}
-
-/**
- * 加载 YOLO 模式偏好
- */
-export function loadPreferredYoloMode(): boolean {
-    try {
-        return localStorage.getItem(YOLO_STORAGE_KEY) === 'true'
-    } catch {
-        return false
-    }
-}
-
-/**
- * 保存 YOLO 模式偏好
- */
-export function savePreferredYoloMode(enabled: boolean): void {
-    savePreference(YOLO_STORAGE_KEY, enabled ? 'true' : 'false')
 }
 
 /**

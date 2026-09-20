@@ -27,11 +27,6 @@ export type RequestUserInputQuestion = {
     options: RequestUserInputOption[]
 }
 
-export type RequestUserInputQuestionInfo = {
-    id: string
-    question: string | null
-}
-
 // Nested answer format: { answers: { [id]: { answers: string[] } } }
 export type RequestUserInputAnswers = Record<string, { answers: string[] }>
 
@@ -73,25 +68,6 @@ export function parseRequestUserInputInput(input: unknown): { questions: Request
     }
 
     return { questions }
-}
-
-export function extractRequestUserInputQuestionsInfo(input: unknown): RequestUserInputQuestionInfo[] | null {
-    if (!isObject(input)) return null
-    const raw = input.questions
-    if (!Array.isArray(raw)) return null
-
-    const questions: RequestUserInputQuestionInfo[] = []
-    for (const q of raw) {
-        if (!isObject(q)) continue
-        const id = typeof q.id === 'string' ? q.id.trim() : ''
-        const question = typeof q.question === 'string' ? q.question.trim() : null
-        if (!id) continue
-        questions.push({
-            id,
-            question: question && question.length > 0 ? question : null
-        })
-    }
-    return questions
 }
 
 /**
