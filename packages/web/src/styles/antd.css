@@ -29,10 +29,7 @@
     outline: none;
 }
 
-/* assistant 气泡右侧空间压缩到 5% */
-.ant-bubble-list .ant-bubble-start:not(.ant-bubble-divider):not(.ant-bubble-system) {
-    padding-inline-end: 5% !important;
-}
+/* 气泡统一上下间距（贴边排布，不做对侧留白） */
 .ant-bubble {
     padding-block: 6px !important;
 }
