@@ -39,9 +39,6 @@ const drawerBubbleStyles = css`
     .drawer-chat-bubbles .ant-bubble-end .ant-bubble-content-borderless {
         padding: 6px 10px !important;
     }
-    .drawer-chat-bubbles .ant-bubble-start:not(.ant-bubble-divider):not(.ant-bubble-system) {
-        padding-inline-end: 0 !important;
-    }
 `
 
 /** Drawer 场景下的 Bubble.List role 配置 */

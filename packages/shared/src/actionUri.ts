@@ -70,7 +70,7 @@ export const ACTION_REGISTRY = {
             // 行号是 path 的派生字段（非 query 键），输入侧不存在——由对象级 transform 补出
         }).transform(({ path, ...rest }) => {
             const { path: cleanPath, line } = splitPathLineSuffix(path)
-            return line === null ? { path: cleanPath, ...rest } : { path: cleanPath, line, ...rest }
+            return { path: cleanPath, ...(line !== null && { line }), ...rest }
         }),
         risk: 'navigate',
     },
@@ -94,6 +94,9 @@ const DOMAIN_RE = /^[a-z0-9-]+$/
 /** 动作名合法字符：同资源域（小写单词，不加连字符以外符号） */
 const ACTION_RE = /^[a-z0-9-]+$/
 
+/** `path:line` 行号后缀（仅匹配尾部冒号数字，见 splitPathLineSuffix） */
+const PATH_LINE_SUFFIX_RE = /^(.+):(\d{1,7})$/
+
 /**
  * `path:line` 行号后缀的单点解析（file/open 参数）：
  * 模型/人类写作链接常有 `src/a.ts:72` 形态，行号若混在 path 里会让读链 stat ENOENT、
@@ -101,8 +104,8 @@ const ACTION_RE = /^[a-z0-9-]+$/
  * 但纯路径保证可打开。仅匹配**尾部**冒号数字：Windows 盘符（C:/…）等中段冒号不受影响；
  * 真实文件名恰以 `:数字` 结尾属可接受取舍（罕见且行号形态无法与后缀区分）。
  */
-export function splitPathLineSuffix(raw: string): { path: string; line: number | null } {
-    const match = raw.match(/^(.+):(\d{1,7})$/)
+function splitPathLineSuffix(raw: string): { path: string; line: number | null } {
+    const match = raw.match(PATH_LINE_SUFFIX_RE)
     return match ? { path: match[1]!, line: Number(match[2]) } : { path: raw, line: null }
 }
 

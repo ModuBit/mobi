@@ -14,32 +14,27 @@
  * limitations under the License.
  */
 
-import fs from 'node:fs'
-import path from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { BUBBLE_ROLES } from '@/components/chat/bubbleRoles'
 
 /**
  * 回归守卫：assistant 气泡贯穿整列（清 antdx Bubble 内置 15% 对侧留白）
  *
- * 背景：antdx Bubble 对 start/end 行内置 padding-inline-end/start: 15%（对侧留白），
- * assistant（start 行）内容右侧因此始终空出 ~15% 宽的一条，气泡看起来「不贯穿」。
- * d09f87ed 只删了本项目自加的 5% 对侧留白，antdx 内置 15% 仍在——2026-09-20 实测
+ * 背景：antdx Bubble 对 start 行内置 padding-inline-end: 15%（对侧留白），
+ * assistant 气泡内容右侧因此始终空出 ~15% 宽的一条，看起来「不贯穿」。
+ * d09f87ed 只删了本项目自加的 5%，antdx 内置 15% 仍在——2026-09-20 实测
  * computed padding-right 169px 才定位到真根因。
  *
- * 修复在 src/styles/antd.css：.ant-bubble-start 清零 padding-inline-end；
- * user 气泡（end 行）保持 antdx 默认不动。此测试防止规则被重构/升级时误删。
+ * 修复在 BUBBLE_ROLES.assistant 的 styles.root（antdx 语义槽位，内联样式
+ * 胜过库规则且作用域精确到角色；Drawer 经展开自动一致，无全局 CSS 泄漏）。
+ * 此测试防止该配置被重构时误删——断言配置行为，不匹配 CSS 文本。
  */
 describe('assistant 气泡贯穿守卫', () => {
-    it('antd.css 清零了 .ant-bubble-start 的对侧留白（padding-inline-end）', () => {
-        const css = fs.readFileSync(
-            path.resolve(__dirname, '../src/styles/antd.css'),
-            'utf8',
-        )
+    it('assistant 角色 root 清零对侧留白（paddingInlineEnd = 0）', () => {
+        expect(BUBBLE_ROLES.assistant.styles?.root?.paddingInlineEnd).toBe(0)
+    })
 
-        const ruleMatch = css.match(
-            /\.ant-bubble-start[^{]*\{[^}]*padding-inline-end:\s*0[^}]*\}/,
-        )
-        expect(ruleMatch).not.toBeNull()
-        expect(ruleMatch![0]).toMatch(/!important/)
+    it('user 角色保持库默认（不动对侧留白，维持右对齐视觉）', () => {
+        expect(BUBBLE_ROLES.user.styles).toBeUndefined()
     })
 })

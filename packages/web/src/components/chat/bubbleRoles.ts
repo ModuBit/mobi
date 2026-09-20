@@ -19,6 +19,11 @@ export const BUBBLE_ROLES = {
     assistant: {
         placement: 'start' as const,
         variant: 'borderless' as const,
+        // assistant 气泡贯穿整列：清掉 antdx Bubble 对 start 行内置的 15% 对侧
+        // 留白（库规则非 !important，root 语义槽位内联样式直接胜出，作用域精确到
+        // 角色——不用全局 CSS !important，Drawer 经展开自动一致）。
+        // 守卫测试：tests/assistant-bubble-fullwidth.test.ts
+        styles: { root: { paddingInlineEnd: 0 } },
     },
     user: {
         placement: 'end' as const,
