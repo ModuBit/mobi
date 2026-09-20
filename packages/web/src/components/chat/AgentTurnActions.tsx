@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ForkIcon } from '@/components/ui/ForkIcon'
+import { Split } from 'lucide-react'
 import { Popover } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from './CopyButton'
@@ -85,7 +85,7 @@ export function AgentTurnActions({
                         }
                     >
                         <IconButton
-                            icon={<ForkIcon size={14} />}
+                            icon={<Split size={14} />}
                             size={14}
                             aria-label={t('chat.fork.title')}
                             tooltip={forkActive ? undefined : t('chat.fork.title')}

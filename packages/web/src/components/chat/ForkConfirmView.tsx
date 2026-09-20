@@ -17,8 +17,7 @@
 import { useEffect, useState } from 'react'
 import { Button, Spin } from 'antd'
 import styled from '@emotion/styled'
-import { TriangleAlert } from 'lucide-react'
-import { ForkIcon } from '@/components/ui/ForkIcon'
+import { Split, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { truncateRewindPreview } from '@/domain/chat/rewind'
 
@@ -191,7 +190,7 @@ export function ForkConfirmView({ targetText, loading, onConfirm, onCancel }: Fo
                 }}
             >
                 <OptionIcon>
-                    {loading && chosen ? <Spin size="small" /> : <ForkIcon size={17} />}
+                    {loading && chosen ? <Spin size="small" /> : <Split size={17} />}
                 </OptionIcon>
                 <OptionText>
                     <OptionTitle>{t('chat.fork.create')}</OptionTitle>
