@@ -82,7 +82,7 @@ export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <CheckCheck size={14} color={TASK_ORANGE} />
             {activeTask ? (
-                <span className="shimmer-text" style={{ color: TASK_ORANGE }}>
+                <span className="shimmer-text shimmer-text-solid" style={{ color: TASK_ORANGE }}>
                     {activeTask.activeForm ?? activeTask.subject}
                 </span>
             ) : completed === total ? (
@@ -159,7 +159,7 @@ function TaskText({ task }: { task: TaskItem }) {
 
     if (task.status === 'in_progress') {
         return (
-            <span className="shimmer-text" style={{ color: TASK_ORANGE, fontWeight: 600 }}>
+            <span className="shimmer-text shimmer-text-solid" style={{ color: TASK_ORANGE, fontWeight: 600 }}>
                 {label}
             </span>
         )

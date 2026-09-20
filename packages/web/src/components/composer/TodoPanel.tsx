@@ -79,7 +79,7 @@ export function TodoPanel({ todos, sessionId, onClear }: TodoPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <Lightbulb size={14} color={TODO_ORANGE} />
             {activeTodo ? (
-                <span className="shimmer-text" style={{ color: TODO_ORANGE }}>
+                <span className="shimmer-text shimmer-text-solid" style={{ color: TODO_ORANGE }}>
                     {activeTodo.activeForm}
                 </span>
             ) : completed === total ? (
@@ -148,7 +148,7 @@ function TodoText({ todo }: { todo: TodoItem }) {
 
     if (todo.status === 'in_progress') {
         return (
-            <span className="shimmer-text" style={{ color: TODO_ORANGE, fontWeight: 600 }}>
+            <span className="shimmer-text shimmer-text-solid" style={{ color: TODO_ORANGE, fontWeight: 600 }}>
                 {todo.content}
             </span>
         )
