@@ -19,7 +19,7 @@ import { theme } from 'antd'
 import { useElapsedSeconds } from './useElapsedSeconds'
 import { ScrambleText } from './ScrambleText'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
-import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { StatusStateIcon, statusColorOf } from '@/components/tool-card/toolIcons'
 import { PixelLoader } from '@/components/ui/PixelLoader'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { VIBING_MESSAGES } from '@/components/pixel-avatar/vibingMessages'
@@ -100,8 +100,11 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
         && lastActivityAt !== undefined
         && (stallElapsed * 1000) >= STALL_WARN_MS
     // 网格波形按状态分流：正常输出 drive（波前推进）；停滞 orbit（彗星绕圈——有事在转
-    // 但无进展，与「still waiting」文本自洽）；其余状态（待审批/失活）回退状态点
-    const loaderVariant = status === 'outputting' ? (stalled ? 'orbit' : 'drive') : null
+    // 但无进展，与「still waiting」文本自洽）；待审批 orbit 染橙（与会话列表同款波形，
+    // 绕圈等你给回合——不是「忙」而是「需要行动」的语义例外）；其余状态回退状态点
+    const loaderVariant = status === 'outputting' ? (stalled ? 'orbit' : 'drive')
+        : isAwaitingAuth ? 'orbit'
+        : null
     const labelText = isAwaitingAuth
         ? 'awaiting approval…'
         : stalled ? 'still waiting for response…' : vibingMsg
@@ -111,10 +114,10 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
 
     return (
         <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* 输出中 drive 波前 / 停滞 orbit 绕圈；待审批/失活回退状态点——审批是需要
-                行动的语义例外，不与「忙」混同 */}
+            {/* 输出中 drive 波前 / 停滞 orbit 绕圈；待审批 orbit 染橙（审批橙语义色，
+                与会话列表同源取色）——审批是需要行动的语义例外，不与「忙」混同 */}
             {loaderVariant
-                ? <PixelLoader variant={loaderVariant} />
+                ? <PixelLoader variant={loaderVariant} color={isAwaitingAuth ? statusColorOf('awaiting_auth') : undefined} />
                 : <StatusStateIcon state={status} />}
             {/* 读屏播报区：只给落定文案（labelText）——可见层的 scramble 逐帧改写文字，
                 live 区若跟着变会把随机乱码中间态当更新连续播报；视觉隐藏但读屏可达 */}

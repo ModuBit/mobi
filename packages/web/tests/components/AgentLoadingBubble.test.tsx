@@ -33,10 +33,12 @@ describe('AgentLoadingBubble', () => {
         expect(container.querySelector('.pixel-loader')).not.toBeNull()
     })
 
-    it('待审批保留橙点（语义例外色，不与「忙」混同）', () => {
+    it('待审批用 orbit 染橙波形（与会话列表同款，语义例外不与「忙」混同）', () => {
         const { container } = render(<AgentLoadingBubble agentId="agent-1" status="awaiting_auth" />)
-        expect(container.querySelector('.pixel-loader')).toBeNull()
-        expect(container.querySelector('.status-dot-arc')).toBeNull()
+        expect(container.querySelector('.pixel-loader-orbit')).not.toBeNull()
+        // 审批橙走 statusColorOf 单点取色（inline color 注入）
+        const grid = container.querySelector('.pixel-loader') as HTMLElement | null
+        expect(grid?.style.color).toBeTruthy()
     })
 
     it('保留计时（传入 startedAt 后展示数字）', () => {
