@@ -108,7 +108,6 @@
         "notFound": "会话不存在或已被删除",
         "tabs": {
             "files": "文件",
-            "git": "Git",
             "terminal": "终端"
         },
         "inspector": {
@@ -468,19 +467,6 @@
         "searchFailed": "搜索失败，请重试",
         "searchFailedStale": "搜索失败，以下为上次结果",
         "refreshFailedStale": "刷新失败，以下可能不是最新内容"
-    },
-    "git": {
-        "filesChanged": "{{count}} 个文件变更",
-        "empty": "没有待提交的更改",
-        "selectToView": "选择文件查看 Diff",
-        "loadFailed": "无法加载 Diff",
-        "status": {
-            "added": "新增",
-            "modified": "修改",
-            "deleted": "删除",
-            "renamed": "重命名",
-            "untracked": "未跟踪"
-        }
     },
     "terminal": {
         "title": "终端",

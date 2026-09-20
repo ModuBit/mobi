@@ -848,3 +848,16 @@ interrupt（用户停止）
 - 诊断兜底已存在：原始 task_notification 完整落库，`reason` 查库即得
 
 **重估条件**：用户实际反馈「后台任务自己停了」且归因困难时，透传 reason 到任务卡片做归因标注。
+
+## 87. code review 特性候选：会话级 git 变更面板（2026-09-20 死码清理时记录）
+
+**来源**：清理「Git 查询链」死码时的保留讨论。用户提出未来做 code review 时可能需要 git 能力。
+
+**已删除的实现**（可从 git 历史找回，删除前最后完整形态在 2026-06-20 之前）：
+
+- hub：`web/routes/git.ts`（git-status / git-diff-numstat / git-diff-file / files / directory 五条路由）+ SyncEngine/rpcGateway 对应方法 + cli `handlers/git.ts`、`ripgrep.ts`、`directories.ts`
+- web：`components/git/`（GitStatus + DiffView 面板）+ `useGitStatus/useGitDiff/useCommands` hooks
+
+**为何不保留代码**：web client 调用路径与 hub 注册路径错位（`/git/status` vs `/git-status`），链路在接口层已经断裂——留存的是接错的骨架而非可恢复的功能；且旧形态是「文件树旁的 git Tab 轮询」，与 code review 所需的「围绕某轮会话改动的 diff」seam 位置不同。
+
+**重估条件**：code review 特性立项时，按真实需求重建 git 数据链（候选形态：从消息流 Edit/Write 块聚合变更，或 hub 直调 git），不参考旧实现。

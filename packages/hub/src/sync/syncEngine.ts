@@ -31,7 +31,6 @@ import { MessageService, type SendMessagePayload } from './messageService'
 import { ProjectCache } from './projectCache'
 import {
     RpcGateway,
-    type RpcCommandResponse,
     type RpcDeleteUploadResponse,
     type RpcGetWebToolsConfigResponse,
     type RpcListDirectoryResponse,
@@ -53,7 +52,6 @@ export type { Session, SyncEvent } from '@mobi/shared/types'
 export type { Machine } from './machineCache'
 export type { SyncEventListener } from './eventPublisher'
 export type {
-    RpcCommandResponse,
     RpcDeleteUploadResponse,
     RpcGetWebToolsConfigResponse,
     RpcListDirectoryResponse,
@@ -788,18 +786,6 @@ export class SyncEngine {
         return await this.rpcGateway.checkPathsExist(machineId, paths)
     }
 
-    async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {
-        return await this.rpcGateway.getGitStatus(sessionId, cwd)
-    }
-
-    async getGitDiffNumstat(sessionId: string, options: { cwd?: string; staged?: boolean }): Promise<RpcCommandResponse> {
-        return await this.rpcGateway.getGitDiffNumstat(sessionId, options)
-    }
-
-    async getGitDiffFile(sessionId: string, options: { cwd?: string; filePath: string; staged?: boolean }): Promise<RpcCommandResponse> {
-        return await this.rpcGateway.getGitDiffFile(sessionId, options)
-    }
-
     async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
         return await this.rpcGateway.readFileMeta(sessionId, path)
     }
@@ -810,10 +796,6 @@ export class SyncEngine {
 
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         return await this.rpcGateway.saveFile(sessionId, path, content, baseEtag)
-    }
-
-    async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
-        return await this.rpcGateway.listDirectory(sessionId, path)
     }
 
     async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
@@ -922,10 +904,6 @@ export class SyncEngine {
     /** 同 path 原子替换会话 machine 上的已上传文件（「编辑已有上传」场景） */
     async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
         return await this.rpcGateway.replaceUploadFile(sessionId, path, content)
-    }
-
-    async runRipgrep(sessionId: string, args: string[], cwd?: string): Promise<RpcCommandResponse> {
-        return await this.rpcGateway.runRipgrep(sessionId, args, cwd)
     }
 
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {

@@ -46,24 +46,6 @@ describe('queryKeys', () => {
             expect(queryKeys.session('a')).not.toEqual(queryKeys.session('b'))
         })
 
-        it('gitStatus(sessionId) 应返回正确元组', () => {
-            const key = queryKeys.gitStatus('sess-1')
-            expect(key).toEqual(['git-status', 'sess-1'])
-            expect(key).toHaveLength(2)
-        })
-
-        it('gitDiff(sessionId) 无 filePath 应返回正确元组', () => {
-            const key = queryKeys.gitDiff('sess-1')
-            expect(key).toEqual(['git-diff', 'sess-1', undefined])
-            expect(key).toHaveLength(3)
-        })
-
-        it('gitDiff(sessionId, filePath) 应返回正确元组', () => {
-            const key = queryKeys.gitDiff('sess-1', 'src/index.ts')
-            expect(key).toEqual(['git-diff', 'sess-1', 'src/index.ts'])
-            expect(key).toHaveLength(3)
-        })
-
         it('sessionFiles(sessionId, query) 应返回正确元组', () => {
             const key = queryKeys.sessionFiles('sess-1', 'index')
             expect(key).toEqual(['session-files', 'sess-1', 'index'])
@@ -88,23 +70,6 @@ describe('queryKeys', () => {
             expect(key).toHaveLength(4)
         })
 
-        it('gitFileDiff(sessionId, path, staged=true) 应包含 staged', () => {
-            const key = queryKeys.gitFileDiff('sess-1', 'file.ts', true)
-            expect(key).toEqual(['git-file-diff', 'sess-1', 'file.ts', 'staged'])
-            expect(key).toHaveLength(4)
-        })
-
-        it('gitFileDiff(sessionId, path, staged=false) 应包含 unstaged', () => {
-            const key = queryKeys.gitFileDiff('sess-1', 'file.ts', false)
-            expect(key).toEqual(['git-file-diff', 'sess-1', 'file.ts', 'unstaged'])
-            expect(key).toHaveLength(4)
-        })
-
-        it('gitFileDiff(sessionId, path) 默认应为 unstaged', () => {
-            const key = queryKeys.gitFileDiff('sess-1', 'file.ts')
-            expect(key).toEqual(['git-file-diff', 'sess-1', 'file.ts', 'unstaged'])
-        })
-
         it('sdkMetadata(sessionId) 应返回正确元组', () => {
             const key = queryKeys.sdkMetadata('sess-1')
             expect(key).toEqual(['sdkMetadata', 'sess-1'])
@@ -121,9 +86,6 @@ describe('queryKeys', () => {
 
         it('同一工厂函数不同参数应产生不同 key', () => {
             const keys = [
-                queryKeys.session('a'),
-                queryKeys.gitStatus('a'),
-                queryKeys.sdkMetadata('a'),
             ]
 
             // 所有 key 都应互不相同

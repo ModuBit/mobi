@@ -47,10 +47,6 @@ export const queryKeys = {
     machines: ['machines'] as const,
     /** 机器 SDK 元数据 */
     machineMetadata: (machineId: string, cwd: string) => ['machineMetadata', machineId, cwd] as const,
-    /** Git 状态 */
-    gitStatus: (sessionId: string) => ['git-status', sessionId] as const,
-    /** Git 差异 */
-    gitDiff: (sessionId: string, filePath?: string) => ['git-diff', sessionId, filePath] as const,
     /** 会话文件搜索 */
     sessionFiles: (sessionId: string, query: string) => ['session-files', sessionId, query] as const,
     /** 会话目录 */
@@ -61,13 +57,6 @@ export const queryKeys = {
     sessionFile: (sessionId: string, path: string, etag?: string) => ['session-file', sessionId, path, etag] as const,
     /** 会话文件元数据（mime/size/etag） */
     sessionFileMeta: (sessionId: string, path: string) => ['session-file-meta', sessionId, path] as const,
-    /** Git 文件差异 */
-    gitFileDiff: (sessionId: string, path: string, staged?: boolean) => [
-        'git-file-diff',
-        sessionId,
-        path,
-        staged ? 'staged' : 'unstaged'
-    ] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
     /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */

@@ -17,22 +17,16 @@
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { registerBashHandlers } from './handlers/bash'
 import { registerCommandHandlers } from './handlers/commands'
-import { registerDirectoryHandlers } from './handlers/directories'
 import { registerDifftasticHandlers } from './handlers/difftastic'
 import { registerFileHandlers } from './handlers/files'
-import { registerGitHandlers } from './handlers/git'
-import { registerRipgrepHandlers } from './handlers/ripgrep'
 import { registerSessionFilesHandler } from './handlers/sessionFiles'
 import { registerUploadHandlers } from './handlers/uploads'
 
 export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     registerBashHandlers(rpcHandlerManager, workingDirectory)
     registerFileHandlers(rpcHandlerManager, workingDirectory)
-    registerDirectoryHandlers(rpcHandlerManager, workingDirectory)
-    registerRipgrepHandlers(rpcHandlerManager, workingDirectory)
     registerDifftasticHandlers(rpcHandlerManager, workingDirectory)
     registerCommandHandlers(rpcHandlerManager, workingDirectory)
-    registerGitHandlers(rpcHandlerManager, workingDirectory)
     registerUploadHandlers(rpcHandlerManager, workingDirectory)
     registerSessionFilesHandler(rpcHandlerManager, workingDirectory)
 }

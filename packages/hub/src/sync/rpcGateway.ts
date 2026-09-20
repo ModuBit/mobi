@@ -42,14 +42,6 @@ export type RpcRefreshMetadataResponse = {
     error?: string
 }
 
-export type RpcCommandResponse = {
-    success: boolean
-    stdout?: string
-    stderr?: string
-    exitCode?: number
-    error?: string
-}
-
 // 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared，此处 re-export 兼容既有引用
 import type {
     RpcFileMeta,
@@ -296,18 +288,6 @@ export class RpcGateway {
         return exists
     }
 
-    async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {
-        return await this.sessionRpc(sessionId, 'git-status', { cwd }) as RpcCommandResponse
-    }
-
-    async getGitDiffNumstat(sessionId: string, options: { cwd?: string; staged?: boolean }): Promise<RpcCommandResponse> {
-        return await this.sessionRpc(sessionId, 'git-diff-numstat', options) as RpcCommandResponse
-    }
-
-    async getGitDiffFile(sessionId: string, options: { cwd?: string; filePath: string; staged?: boolean }): Promise<RpcCommandResponse> {
-        return await this.sessionRpc(sessionId, 'git-diff-file', options) as RpcCommandResponse
-    }
-
     // 查询文件元数据（mime/size/etag），用于流式读取前置判断
     async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
         return await this.sessionRpc(sessionId, 'readFileMeta', { path }) as RpcReadFileMetaResponse
@@ -347,10 +327,6 @@ export class RpcGateway {
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse
-    }
-
-    async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
-        return await this.sessionRpc(sessionId, 'listDirectory', { path }) as RpcListDirectoryResponse
     }
 
     async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
@@ -440,10 +416,6 @@ export class RpcGateway {
     // 同 path 原子替换会话 machine 上的已上传文件
     async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
         return await this.sessionRpc(sessionId, 'replaceUpload', { sessionId, path, content }) as RpcReplaceUploadResponse
-    }
-
-    async runRipgrep(sessionId: string, args: string[], cwd?: string): Promise<RpcCommandResponse> {
-        return await this.sessionRpc(sessionId, 'ripgrep', { args, cwd }) as RpcCommandResponse
     }
 
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {

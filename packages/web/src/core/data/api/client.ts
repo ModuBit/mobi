@@ -239,14 +239,6 @@ export function createMobiApi() {
                 client.post<{ status: 'steered' | 'submitted' }>(`/api/sessions/${sessionId}/messages/${messageId}/steer`),
         },
 
-        // Git
-        git: {
-            status: (sessionId: string) =>
-                client.get(`/api/sessions/${sessionId}/git/status`),
-            diff: (sessionId: string, filePath?: string) =>
-                client.get(`/api/sessions/${sessionId}/git/diff`, { params: { path: filePath } }),
-        },
-
         // Files (via RPC)
         files: {
             list: (sessionId: string, path: string) =>
