@@ -36,7 +36,6 @@ import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from '
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
-import { resolveUserImageUrl } from '@/core/utils/fileUrl'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
@@ -450,24 +449,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // /clear 进行中：禁用输入，防止 clear 期间提交新消息（与 isCompressing 共用 isCommandInProgress）
     const isClearing = useMemo(() => isClearInProgress(chatBlocks), [chatBlocks])
 
-    /** 气泡 sketch 图编辑：read-file 端点取 PNG → 画板载入（产物经 composer 手柄落回附件） */
-    const handleEditSketchFromBubble = useCallback(async (block: { previewUrl?: string; source: { type: string; value: string } }) => {
-        const url = resolveUserImageUrl(block as never, {
-            sessionId,
-            machineId: metadata?.machineId,
-            cwd: metadata?.path,
-        })
-        try {
-            if (!url) throw new Error('无法构造草图取数地址（machine/session 信息缺失）')
-            const res = await fetch(url)
-            if (!res.ok) throw new Error(`read-file ${res.status}`)
-            const blob = await res.blob()
-            composerHandleRef.current?.openSketch(blob)
-        } catch (err) {
-            console.warn('[sketch] 气泡草图取数失败', err)
-            messageApi.error(t('sketch.loadFailed'))
-        }
-    }, [sessionId, metadata?.machineId, metadata?.path, messageApi, t])
+    /** 气泡 sketch 图编辑：取数/回填/失败语义都在 useSketchSession，这里只转发 path */
+    const handleEditSketchFromBubble = useCallback((block: { source: { type: string; value: string } }) => {
+        composerHandleRef.current?.openBubbleSketch(block.source.value)
+    }, [])
 
     // ──────────────────────────────────────────────────────────────
     // rewind 生命周期（spec §4.1 / §4.5）
