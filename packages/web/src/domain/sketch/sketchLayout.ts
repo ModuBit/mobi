@@ -23,6 +23,9 @@
 /** PC 停靠高度（占消息列表高度比例）：从 composer 上方抽出，拉满即吊顶（消息区顶） */
 export const SKETCH_DOCK_HEIGHT_RATIO = 0.7
 
+/** PC 停靠底边与 composer 顶边的间距（px）：贴着会显得粘连成一体，留一缝保持「浮层」层次 */
+export const SKETCH_DOCK_GAP = 8
+
 /** 载体开合动画时长（ms）：对齐 antd Drawer 的 300ms（运动曲线同在 SketchDrawer）；
  *  入场/出场同长——底部抽屉的滑入滑出本就是同一动画的往返 */
 export const SKETCH_SHEET_IN_MS = 300

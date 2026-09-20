@@ -33,7 +33,8 @@
  *
  * 开合动画与 stacking 约定（对齐 antd Drawer bottom）：浮层自视口底部垂直滑入/出
  * （keyframes 见下），PC 停靠形态全程从 composer「背后」经过——composer 根节点
- * stacking z 1002 > 本浮层 z 1001（ChatContainer），动画期间 composer 不被遮挡。
+ * 停靠形态 z 1001 < composer z 1002（ChatContainer），动画期间 composer 不被遮挡；
+ * 全屏形态升到 z 1003 盖过 composer（画布上不悬浮 composer）。
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
@@ -46,7 +47,7 @@ import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
-import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS } from '@/domain/sketch/sketchLayout'
+import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP } from '@/domain/sketch/sketchLayout'
 import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 
 export interface SketchDrawerProps {
@@ -66,7 +67,7 @@ export interface SketchDrawerProps {
      */
     layerEl?: HTMLElement | null
     /**
-     * PC 停靠几何（px，相对挂载层，由调用方测量维护）：底边贴 composer 顶边
+     * PC 停靠几何（px，相对挂载层，由调用方测量维护）：底边距 composer 顶边 SKETCH_DOCK_GAP
      * （bottom），顶部为消息列表高度 × SKETCH_DOCK_HEIGHT_RATIO 的吊顶位（top，
      * 比例定义在 domain/sketch/sketchLayout），水平对齐聊天列（left/right）。
      * 缺省时停靠形态退化为层内全宽下半区。
@@ -74,8 +75,8 @@ export interface SketchDrawerProps {
     dockMetrics?: { top: number; bottom: number; left: number; right: number } | null
 }
 
-/** PC 停靠形态兜底几何（无 dockMetrics 时）：层内全宽下半区 */
-const DOCK_FALLBACK = { top: '30%', right: 0, bottom: 0, left: 0 } as const
+/** PC 停靠形态兜底几何（无 dockMetrics 时）：层内全宽下半区（底边同样留 SKETCH_DOCK_GAP 一缝） */
+const DOCK_FALLBACK = { top: '30%', right: 0, bottom: SKETCH_DOCK_GAP, left: 0 } as const
 
 /** 全屏浮层四边留白（用户指定：圆角浮层与内容区边缘的间隙） */
 const FULLSCREEN_INSET = 8
@@ -93,7 +94,7 @@ const MORPH_TRANSITION_CSS = (['top', 'right', 'bottom', 'left'] as const)
 /** 开合动画：对齐 antd Drawer（bottom）——整层从视口底部垂直滑入/滑出，同一
  *  运动曲线（antd motion 的 cubic-bezier(0.23,1,0.32,1)），时长单源 sketchLayout。
  *  PC 停靠形态的 resting 位在 composer 上方，但滑入/收回全程走 composer 的
- *  「背后」（composer stacking z 1002 > 浮层 z 1001，见 ChatContainer）：视觉上
+ *  「背后」（停靠形态 composer z 1002 > 浮层 z 1001，见 ChatContainer）：视觉上
  *  浮层是从 composer 下面抽出来的抽屉，动画期间不会盖住 composer。移动端恒
  *  全屏（fixed 盖满自身，滑出不会穿帮），与 PC 共用同一对 keyframes */
 const SHEET_IN_KEYFRAMES = keyframes`
@@ -300,7 +301,10 @@ export function SketchDrawer({
             <Mask $zIndex={1000} $dim={isMobile} $phase={phase} $fixed={isMobile} data-testid="sketch-mask" />
             <Sheet
                 data-testid="sketch-sheet"
-                $zIndex={1001}
+                /* z 序随形态切换：全屏（含进入动画期，state 已先行置位）盖过 composer（z 1002）——
+                   画布上不该悬浮 composer；停靠形态保持 1001，开合动画从 composer「背后」抽出。
+                   退全屏 state 立即复位 → 收回过程回到 composer 背后，符合「塞回抽屉」方向感 */
+                $zIndex={fullscreen ? 1003 : 1001}
                 $phase={phase}
                 $morphing={morphing}
                 style={sheetStyle}
