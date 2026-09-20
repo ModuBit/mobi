@@ -20,6 +20,7 @@ import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { fileRefContext } from '@/core/utils/fileUrl'
+import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
@@ -55,20 +56,37 @@ export type ChatBlockContext = {
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {
     switch (block.kind) {
         case 'user-text':
+            // 选区引用锚点：消息容器锚（messageId+role）罩整条气泡；block 容器锚由
+            // UserBlocksView 的 text 视图自带（documents/images 无 block 锚 → 天然不可引用）
             return (
-                <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
-                    <UserBlocksView
-                        blocks={block.blocks}
-                        env={{
-                            isSynthetic: block.isSynthetic,
-                            refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
-                            onEditSketch: ctx.onEditSketchBlock,
-                        }}
-                    />
-                </CollapsibleUserMessage>
+                <div {...quoteAnchorProps({ messageId: block.localId, role: 'user' })}>
+                    <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
+                        <UserBlocksView
+                            blocks={block.blocks}
+                            env={{
+                                isSynthetic: block.isSynthetic,
+                                refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
+                                onEditSketch: ctx.onEditSketchBlock,
+                                quoteBlockAnchor: true,
+                            }}
+                        />
+                    </CollapsibleUserMessage>
+                </div>
             )
         case 'agent-text':
-            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+            // 选区引用锚点：气泡即 text block 容器（message+block 锚同元素）；流式/snapshot 不可引用
+            return (
+                <div
+                    {...quoteAnchorProps({
+                        messageId: block.localId,
+                        role: 'agent',
+                        block: true,
+                        allowed: !(block.isSnapshot || block.isStreaming),
+                    })}
+                >
+                    <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                </div>
+            )
         case 'agent-reasoning':
             return <ReasoningBlock text={block.text} thinking={ctx.isThinking} isStreaming={block.isStreaming} durationMs={block.durationMs} />
         case 'cli-output':

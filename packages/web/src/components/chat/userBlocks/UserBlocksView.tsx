@@ -25,6 +25,7 @@ import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
+import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { buildActionUri } from '@mobi/shared'
@@ -44,6 +45,8 @@ export interface UserBlockRenderEnv {
      * 回调收到的 block 交由调用方取 PNG → 重开画板（历史不可变，产物落回 composer）
      */
     onEditSketch?: (block: UserImageBlock) => void
+    /** 选区引用：text 视图落 data-quote-block 容器锚（聊天列表接线；其它使用方缺省不落） */
+    quoteBlockAnchor?: boolean
 }
 
 /** 各类型视图的统一 props 形态（block 字段按注册键收窄） */
@@ -71,7 +74,10 @@ const SketchEditableWrapper = styled.span`
  * 合成消息保持 TextBlock 的弱化样式语义。
  */
 function TextView({ block, env }: UserBlockViewProps<UserTextBlock>) {
-    return <TextBlock text={block.text} isSynthetic={env.isSynthetic} enableSlashCommand enableMention />
+    const textNode = <TextBlock text={block.text} isSynthetic={env.isSynthetic} enableSlashCommand enableMention />
+    // 选区引用 block 容器锚：仅聊天列表接线时落地（判定器要求选区端点落在 block 锚内）
+    if (!env.quoteBlockAnchor) return textNode
+    return <div {...quoteAnchorProps({ block: true })}>{textNode}</div>
 }
 
 /**

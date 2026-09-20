@@ -29,7 +29,8 @@ import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
-import { isSegmentEmpty, emptySegments, type ComposerSegments } from '@/domain/chat/composerSegments'
+import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -48,6 +49,7 @@ import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
+import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
@@ -661,6 +663,58 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 长按手势起始气泡 DOM（touchstart 记录，openActionsMenu 消费做缩放反馈）
     const pressTargetRef = useRef<HTMLElement | null>(null)
 
+    // ──────────────────────────────────────────────────────────────
+    // 选区引用入口（PC；移动端 selectionchange 路径由移动端票接线）：
+    // mouseup 薄壳拿选区交给选区判定器（唯一裁决点），本层只管浮层开合与手柄灌入
+    // ──────────────────────────────────────────────────────────────
+    const [quotePopover, setQuotePopover] = useState<QuoteSelectionPopoverState | null>(null)
+
+    const handleSelectionMouseUp = useCallback(() => {
+        const sel = window.getSelection()
+        const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+        if (!range) {
+            setQuotePopover(null)
+            return
+        }
+        const count = composerHandleRef.current?.getQuoteCount() ?? 0
+        const result = resolveQuoteSelection(range, { currentQuoteCount: count })
+        if (result.ok) {
+            setQuotePopover({ kind: 'add', quote: result.quote, rect: range.getBoundingClientRect() })
+        } else if (result.reason === 'tooLong' || result.reason === 'limitReached') {
+            // 禁用态也要弹（spec：静默失败体验差）；来源/归属类拒绝不弹不打扰
+            setQuotePopover({ kind: result.reason, rect: range.getBoundingClientRect() })
+        } else {
+            setQuotePopover(null)
+        }
+    }, [])
+
+    const handleQuoteAdd = useCallback((quote: PendingQuoteRef) => {
+        composerHandleRef.current?.addQuote(quote)
+        window.getSelection()?.removeAllRanges()
+    }, [])
+
+    // 浮层开着时选区被清（点击它处）或滚动即关闭（选区几何已失效，浮层不跟随）；
+    // Esc 同样收起。scroll 不冒泡，capture 监听才能截获内层滚动容器的滚动
+    useEffect(() => {
+        if (!quotePopover) return
+        const close = () => setQuotePopover(null)
+        const onSelectionChange = () => {
+            const sel = window.getSelection()
+            if (!sel || sel.isCollapsed) close()
+        }
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') close()
+        }
+        document.addEventListener('selectionchange', onSelectionChange)
+        document.addEventListener('keydown', onKeyDown)
+        window.addEventListener('scroll', close, true)
+        return () => {
+            document.removeEventListener('selectionchange', onSelectionChange)
+            document.removeEventListener('keydown', onKeyDown)
+            window.removeEventListener('scroll', close, true)
+        }
+    }, [quotePopover])
+
     const openActionsMenu = useCallback(() => {
         const key = longPressKeyRef.current
         longPressKeyRef.current = null
@@ -1109,6 +1163,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 onTouchEnd={isMobile ? handleBubbleTouchEnd : undefined}
                 onTouchMove={isMobile ? handleBubbleTouchMove : undefined}
                 onContextMenu={isMobile ? handleContextMenu : undefined}
+                onMouseUp={isMobile ? undefined : handleSelectionMouseUp}
             >
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
@@ -1161,6 +1216,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* 选区引用浮层：fixed 定位锚定选区几何（放滚动容器外——它随滚动关闭而非跟随） */}
+            {quotePopover && (
+                <QuoteSelectionPopover
+                    state={quotePopover}
+                    onAdd={handleQuoteAdd}
+                    onClose={() => setQuotePopover(null)}
+                />
+            )}
 
             {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组）：
                 用户消息 → 复制/回退并编辑；agent 回复落点 → 复制/从此分叉（fork-session spec §4.2） */}

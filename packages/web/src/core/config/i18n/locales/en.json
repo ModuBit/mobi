@@ -9,7 +9,8 @@
         "backHome": "Back to Home",
         "error": "Error",
         "success": "Success",
-        "more": "More"
+        "more": "More",
+        "close": "Close"
     },
     "time": {
         "justNow": "just now",
@@ -604,6 +605,11 @@
         "dropToUpload": "Drop files here to upload",
         "uploadPendingWarning": "Please wait for file uploads to complete",
         "removeQuote": "Remove quote",
+        "quoteCount": "{{count}} quote(s)",
+        "quoteListTitle": "Quotes",
+        "quoteAdd": "Add to chat",
+        "quoteTooLong": "Selection too long to quote",
+        "quoteLimitReached": "Quote limit reached",
         "outputStyle": "Output Style",
         "outputStyleFollowSetting": "Follow CC settings",
         "outputStyleFollowSettingDesc": "Use the default output style from Claude Code settings",

@@ -9,7 +9,8 @@
         "backHome": "返回首页",
         "error": "错误",
         "success": "成功",
-        "more": "更多"
+        "more": "更多",
+        "close": "关闭"
     },
     "time": {
         "justNow": "刚刚",
@@ -595,6 +596,11 @@
         "dropToUpload": "松开以上传文件",
         "uploadPendingWarning": "请等待文件上传完成",
         "removeQuote": "移除引用",
+        "quoteCount": "{{count}} 条引用",
+        "quoteListTitle": "引用列表",
+        "quoteAdd": "添加到对话",
+        "quoteTooLong": "选区过长，无法引用",
+        "quoteLimitReached": "引用数量已达上限",
         "outputStyle": "Output Style",
         "outputStyleFollowSetting": "跟随 CC 设置",
         "outputStyleFollowSettingDesc": "不指定，使用 Claude Code 设置中的默认 style",

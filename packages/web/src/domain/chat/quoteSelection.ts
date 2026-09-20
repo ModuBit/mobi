@@ -49,6 +49,7 @@
  * 接受时 excerpt = range.toString()（window 原文，不做任何清洗——引用忠实于所选）。
  */
 
+import type { HTMLAttributes } from 'react'
 import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 import { QUOTE_MAX_COUNT, type PendingQuoteRef } from './composerSegments'
 
@@ -77,6 +78,35 @@ const ROLE_ATTR = 'data-quote-role'
 const ALLOWED_ATTR = 'data-quote-allowed'
 const BLOCK_ATTR = 'data-quote-block'
 const FORBIDDEN_ATTR = 'data-quote-forbidden'
+
+/** 渲染层锚点入参：字段缺省即不落对应属性（allowed 仅在显式 false 时落 "false"） */
+export interface QuoteAnchorInput {
+    /** 落库消息 localId（null/缺省 = 无消息锚点，端点爬到它即来源不合格） */
+    messageId?: string | null
+    role?: 'user' | 'agent'
+    /** 传 false 落 data-quote-allowed="false"（流式生成中）；缺省/true = 允许 */
+    allowed?: boolean
+    /** 标记为 text block 容器 */
+    block?: boolean
+    /** 标记为禁区（工具卡/thinking/引用组等第二道防御） */
+    forbidden?: boolean
+}
+
+/**
+ * 渲染层锚点属性（React 形态，与上方判定常量同一词汇——两处拼写漂移会被测试抓出）。
+ * 载体 div 一律 `display: contents`：锚点只做 DOM 爬取标记，不参与布局零样式影响
+ * （不做几何定位，无「display:contents 零矩形」坑）。
+ */
+export function quoteAnchorProps(input: QuoteAnchorInput): HTMLAttributes<HTMLDivElement> {
+    return {
+        style: { display: 'contents' },
+        ...(input.messageId ? { [MESSAGE_ID_ATTR]: input.messageId } : {}),
+        ...(input.role ? { [ROLE_ATTR]: input.role } : {}),
+        ...(input.allowed === false ? { [ALLOWED_ATTR]: 'false' } : {}),
+        ...(input.block ? { [BLOCK_ATTR]: '' } : {}),
+        ...(input.forbidden ? { [FORBIDDEN_ATTR]: '' } : {}),
+    }
+}
 
 /** 单个选区端点的锚点解析结果 */
 interface EndpointContext {

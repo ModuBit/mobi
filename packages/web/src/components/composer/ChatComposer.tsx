@@ -17,8 +17,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, lazy, Suspense, createElement, type Ref } from 'react'
 import styled from '@emotion/styled'
 import { Button, theme, Typography, Popover, message } from 'antd'
-import { AppTooltip } from '@/components/ui/AppTooltip'
-import { SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
+import { SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, StopKind, TodoItem, TaskItem } from '@mobi/shared'
@@ -34,6 +33,7 @@ import { fileRefContext } from '@/core/utils/fileUrl'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { AttachPanel } from './AttachPanel'
+import { QuoteChipBar } from './QuoteChipBar'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
 import { resolveCopyShortcut } from './copyShortcut'
 import { StatusBar } from '@/components/chat/StatusBar'
@@ -77,6 +77,10 @@ export interface ChatComposerHandle {
     openSketch: () => void
     /** 气泡草图重编辑：经服务端 path 异步取数回填画板（取数/失败语义在 useSketchSession） */
     openBubbleSketch: (path: string) => void
+    /** composer 当前引用条数（选区判定器的环境状态；事件时读，无需响应式） */
+    getQuoteCount: () => number
+    /** 灌入一条引用（消息列表选区动作 → composer；达上限防御性丢弃，serialize 侧 slice 为底线） */
+    addQuote: (quote: PendingQuoteRef) => void
 }
 
 
@@ -146,9 +150,6 @@ interface ChatComposerProps {
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
     return wrapper?.querySelector('textarea') ?? null
 }
-
-// 引用 chip 的正文预览截断长度（全文悬浮可见）
-const QUOTE_CHIP_PREVIEW_MAX = 40
 
 // Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔
 const ComposerDock = styled.div`
@@ -361,11 +362,17 @@ export function ChatComposer(props: ChatComposerProps) {
     })
     const { session: sketch, everOpened: sketchEverOpened, openNew: handleOpenSketch, openForAttachment: handleSketchEditAttachment, complete: handleSketchComplete, cancel: handleSketchCancel } = sketchSession
 
-    // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）
+    // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）。
+    // getQuoteCount/addQuote：消息列表选区引用动作的手柄通道（引用是即时动作，无需信箱防重放）
+    const addQuote = useCallback((quote: PendingQuoteRef) => {
+        setQuotes(prev => (prev.length >= QUOTE_MAX_COUNT ? prev : [...prev, quote]))
+    }, [])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
         openBubbleSketch: sketchSession.openFromBubble,
-    }), [handleOpenSketch, sketchSession.openFromBubble])
+        getQuoteCount: () => quotes.length,
+        addQuote,
+    }), [handleOpenSketch, sketchSession.openFromBubble, quotes.length, addQuote])
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
     // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
@@ -740,51 +747,8 @@ export function ChatComposer(props: ChatComposerProps) {
             />
         ),
         hasQuotes && (
-            <div
-                key="quotes"
-                style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0', alignItems: 'center' }}
-            >
-                {quotes.map(q => (
-                    <span
-                        key={q.messageId}
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '4px 8px',
-                            borderRadius: 'var(--ant-border-radius-sm, 6px)',
-                            border: '1px solid var(--ant-color-border-secondary)',
-                            background: 'var(--ant-color-fill-quaternary)',
-                            maxWidth: 260,
-                        }}
-                    >
-                        <AppTooltip title={q.excerpt}>
-                            <span style={{
-                                fontSize: 12,
-                                lineHeight: '16px',
-                                color: 'var(--ant-color-text-secondary)',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                            }}>
-                                {q.excerpt.length > QUOTE_CHIP_PREVIEW_MAX
-                                    ? `${q.excerpt.slice(0, QUOTE_CHIP_PREVIEW_MAX)}…`
-                                    : q.excerpt}
-                            </span>
-                        </AppTooltip>
-                        <CloseOutlined
-                            aria-label={t('composer.removeQuote')}
-                            onClick={() => removeQuote(q.messageId)}
-                            style={{
-                                fontSize: 10,
-                                color: 'var(--ant-color-text-quaternary)',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                                transition: 'color 0.15s',
-                            }}
-                        />
-                    </span>
-                ))}
+            <div key="quotes" style={{ padding: '8px 16px 0' }}>
+                <QuoteChipBar quotes={quotes} onRemove={removeQuote} />
             </div>
         ),
         hasAttachments && (
