@@ -627,7 +627,9 @@
         "attachPanelTitle": "Add",
         "attachFile": "File",
         "attachPhoto": "Photo",
-        "attachRecord": "Video"
+        "attachRecord": "Video",
+        "quoteCommentPlaceholder": "Add an optional comment to the quote",
+        "quoteEditComment": "Edit comment"
     },
     "status": {
         "percentLeft": "{{percent}}% left"

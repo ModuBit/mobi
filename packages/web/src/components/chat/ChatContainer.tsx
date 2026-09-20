@@ -50,6 +50,7 @@ import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
+import { QuoteCommentInput } from './QuoteCommentInput'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
@@ -668,6 +669,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // mouseup 薄壳拿选区交给选区判定器（唯一裁决点），本层只管浮层开合与手柄灌入
     // ──────────────────────────────────────────────────────────────
     const [quotePopover, setQuotePopover] = useState<QuoteSelectionPopoverState | null>(null)
+    // 评论输入浮层（添加到对话后的第二步）：评论可选，确认/取消都关闭
+    const [quoteCommentDraft, setQuoteCommentDraft] = useState<{ quote: PendingQuoteRef; rect: DOMRect } | null>(null)
 
     const handleSelectionMouseUp = useCallback(() => {
         const sel = window.getSelection()
@@ -688,16 +691,33 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [])
 
+    // 「添加到对话」→ 弹评论输入（可选，确认才落引用）；rect 从当前浮层状态透传
     const handleQuoteAdd = useCallback((quote: PendingQuoteRef) => {
+        setQuoteCommentDraft(quotePopover ? { quote, rect: quotePopover.rect } : null)
+        setQuotePopover(null)
+    }, [quotePopover])
+
+    // 评论确认/取消统一收口：灌入手柄 + 清选区（确认路径）或直接放弃（取消路径）
+    const handleQuoteConfirm = useCallback((quote: PendingQuoteRef) => {
         composerHandleRef.current?.addQuote(quote)
+        setQuoteCommentDraft(null)
+        window.getSelection()?.removeAllRanges()
+    }, [])
+
+    const handleQuoteCancel = useCallback(() => {
+        setQuoteCommentDraft(null)
         window.getSelection()?.removeAllRanges()
     }, [])
 
     // 浮层开着时选区被清（点击它处）或滚动即关闭（选区几何已失效，浮层不跟随）；
-    // Esc 同样收起。scroll 不冒泡，capture 监听才能截获内层滚动容器的滚动
+    // 评论输入同族：点击它处/滚动按取消处理，Esc 由输入框自身消费。scroll 不冒泡，
+    // capture 监听才能截获内层滚动容器的滚动
     useEffect(() => {
-        if (!quotePopover) return
-        const close = () => setQuotePopover(null)
+        if (!quotePopover && !quoteCommentDraft) return
+        const close = () => {
+            setQuotePopover(null)
+            setQuoteCommentDraft(null)
+        }
         const onSelectionChange = () => {
             const sel = window.getSelection()
             if (!sel || sel.isCollapsed) close()
@@ -713,7 +733,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             document.removeEventListener('keydown', onKeyDown)
             window.removeEventListener('scroll', close, true)
         }
-    }, [quotePopover])
+    }, [quotePopover, quoteCommentDraft])
 
     const openActionsMenu = useCallback(() => {
         const key = longPressKeyRef.current
@@ -1217,12 +1237,21 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 </AnimatePresence>
             </div>
 
-            {/* 选区引用浮层：fixed 定位锚定选区几何（放滚动容器外——它随滚动关闭而非跟随） */}
+            {/* 选区引用浮层：fixed 定位锚定选区几何（放滚动容器外——它随滚动关闭而非跟随）；
+                评论输入是「添加到对话」的第二步，同族同定位 */}
             {quotePopover && (
                 <QuoteSelectionPopover
                     state={quotePopover}
                     onAdd={handleQuoteAdd}
                     onClose={() => setQuotePopover(null)}
+                />
+            )}
+            {quoteCommentDraft && (
+                <QuoteCommentInput
+                    quote={quoteCommentDraft.quote}
+                    rect={quoteCommentDraft.rect}
+                    onConfirm={handleQuoteConfirm}
+                    onCancel={handleQuoteCancel}
                 />
             )}
 

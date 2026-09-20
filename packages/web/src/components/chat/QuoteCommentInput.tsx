@@ -1,0 +1,136 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { memo, useRef, useState } from 'react'
+import { Button } from 'antd'
+import styled from '@emotion/styled'
+import { useTranslation } from 'react-i18next'
+import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
+
+/** 浮层与选区的间距（px），与 QuoteSelectionPopover 同一节奏 */
+const POPOVER_GAP = 8
+/** 浮层宽度：容纳两行评论输入 */
+const POPOVER_WIDTH = 260
+
+const Layer = styled.div`
+    position: fixed;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: ${POPOVER_WIDTH}px;
+    padding: 8px;
+    background: var(--ant-color-bg-elevated);
+    border: 1px solid var(--ant-color-border);
+    border-radius: 10px;
+    box-shadow: var(--ant-box-shadow-secondary);
+`
+
+const Input = styled.textarea`
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 8px;
+    border: 1px solid var(--ant-color-border);
+    border-radius: 6px;
+    background: var(--ant-color-bg-container);
+    color: var(--ant-color-text);
+    font-size: 12px;
+    line-height: 18px;
+    resize: none;
+    outline: none;
+    &:focus {
+        border-color: var(--ant-color-primary);
+    }
+`
+
+const ActionBar = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+`
+
+interface QuoteCommentInputProps {
+    /** 已捕获的引用提案与选区几何（评论是「添加到对话」后的第二步） */
+    quote: PendingQuoteRef
+    rect: DOMRect
+    /** 确认：comment 为空串时作为「无评论」落引用 */
+    onConfirm: (quote: PendingQuoteRef) => void
+    onCancel: () => void
+}
+
+/**
+ * 引用评论输入浮层（spec「评论流」）：「添加到对话」确认后的第二步——
+ * 评论可选（空 = 无评论引用）；Enter 保存、Shift+Enter 换行、Esc/取消不创建。
+ * fixed 定位锚定选区几何，与 QuoteSelectionPopover 同族同生命周期（调用方管理开合）。
+ */
+export const QuoteCommentInput = memo(function QuoteCommentInput({
+    quote,
+    rect,
+    onConfirm,
+    onCancel,
+}: QuoteCommentInputProps) {
+    const { t } = useTranslation()
+    const [comment, setComment] = useState('')
+    const inputRef = useRef<HTMLTextAreaElement>(null)
+
+    const confirm = () => {
+        const trimmed = comment.trim()
+        onConfirm(trimmed.length > 0 ? { ...quote, comment: trimmed } : quote)
+    }
+
+    const above = rect.top > 140
+    const top = above ? rect.top - POPOVER_GAP : rect.bottom + POPOVER_GAP
+    const left = rect.left + rect.width / 2 - POPOVER_WIDTH / 2
+
+    return (
+        <Layer
+            data-testid="quote-comment-input"
+            style={{ top, left, transform: above ? 'translateY(-100%)' : undefined }}
+            onMouseDown={(e) => {
+                // 阻止浮层内按下夺焦清选区（确认前选区保持高亮）
+                e.preventDefault()
+            }}
+        >
+            <Input
+                ref={inputRef}
+                autoFocus
+                placeholder={t('composer.quoteCommentPlaceholder')}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        confirm()
+                    } else if (e.key === 'Escape') {
+                        e.stopPropagation()
+                        onCancel()
+                    }
+                }}
+            />
+            <ActionBar>
+                <Button size="small" onClick={onCancel}>{t('common.cancel')}</Button>
+                <Button
+                    type="primary"
+                    size="small"
+                    data-testid="quote-comment-save"
+                    onClick={confirm}
+                >
+                    {t('common.save')}
+                </Button>
+            </ActionBar>
+        </Layer>
+    )
+})

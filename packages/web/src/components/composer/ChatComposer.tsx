@@ -705,9 +705,15 @@ export function ChatComposer(props: ChatComposerProps) {
         usePromptSuggestionStore.getState().clearSession(sessionId)
     }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId])
 
-    // 引用 chip：excerpt 悬浮展示全文，chip 可单独移除（本期极简样式，后续迭代）
+    // 引用动作：删除 / 评论编辑（excerpt 只读——引用忠实于源消息，评论才是用户的话）
     const removeQuote = useCallback((messageId: string) => {
         setQuotes(prev => prev.filter(q => q.messageId !== messageId))
+    }, [])
+
+    const updateQuoteComment = useCallback((messageId: string, comment: string | undefined) => {
+        setQuotes(prev => prev.map(q => (q.messageId === messageId
+            ? (comment !== undefined ? { ...q, comment } : { messageId: q.messageId, role: q.role, excerpt: q.excerpt })
+            : q)))
     }, [])
 
     const showInactiveCover = !active && !allowSendWhenInactive
@@ -748,7 +754,7 @@ export function ChatComposer(props: ChatComposerProps) {
         ),
         hasQuotes && (
             <div key="quotes" style={{ padding: '8px 16px 0' }}>
-                <QuoteChipBar quotes={quotes} onRemove={removeQuote} />
+                <QuoteChipBar quotes={quotes} onRemove={removeQuote} onUpdateComment={updateQuoteComment} />
             </div>
         ),
         hasAttachments && (

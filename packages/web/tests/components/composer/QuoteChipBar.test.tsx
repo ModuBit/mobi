@@ -58,4 +58,36 @@ describe('QuoteChipBar', () => {
         fireEvent.click(screen.getByTestId('quote-remove-1'))
         expect(onRemove).toHaveBeenCalledWith('m2')
     })
+
+    it('有 onUpdateComment 时评论可见、可编辑保存；清空评论保存后删除该字段', () => {
+        const onUpdateComment = vi.fn()
+        const withComment: PendingQuoteRef[] = [
+            { messageId: 'm1', role: 'agent', excerpt: '引用内容', comment: '为什么要这样？' },
+        ]
+        const { rerender } = render(
+            <QuoteChipBar quotes={withComment} onRemove={vi.fn()} onUpdateComment={onUpdateComment} />,
+        )
+        fireEvent.click(screen.getByTestId('quote-chip'))
+        expect(screen.getByTestId('quote-comment-0')).toHaveTextContent('为什么要这样？')
+
+        // 编辑保存：非空 → 传新值
+        fireEvent.click(screen.getByTestId('quote-edit-comment-0'))
+        const input = screen.getByDisplayValue('为什么要这样？')
+        fireEvent.change(input, { target: { value: '改成新的疑问' } })
+        fireEvent.click(screen.getByRole('button', { name: 'common.save' }))
+        expect(onUpdateComment).toHaveBeenCalledWith('m1', '改成新的疑问')
+
+        // 清空保存 → 传 undefined（删除评论）
+        rerender(<QuoteChipBar quotes={withComment} onRemove={vi.fn()} onUpdateComment={onUpdateComment} />)
+        fireEvent.click(screen.getByTestId('quote-edit-comment-0'))
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
+        fireEvent.click(screen.getByRole('button', { name: 'common.save' }))
+        expect(onUpdateComment).toHaveBeenCalledWith('m1', undefined)
+    })
+
+    it('无 onUpdateComment 时不渲染评论编辑入口', () => {
+        render(<QuoteChipBar quotes={quotes} onRemove={vi.fn()} />)
+        fireEvent.click(screen.getByTestId('quote-chip'))
+        expect(screen.queryByTestId('quote-edit-comment-0')).not.toBeInTheDocument()
+    })
 })

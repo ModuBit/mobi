@@ -618,7 +618,9 @@
         "attachPanelTitle": "添加",
         "attachFile": "文件",
         "attachPhoto": "拍照",
-        "attachRecord": "录像"
+        "attachRecord": "录像",
+        "quoteCommentPlaceholder": "对引用内容添加评论（可选）",
+        "quoteEditComment": "编辑评论"
     },
     "status": {
         "percentLeft": "{{percent}}% 剩余"
