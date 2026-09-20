@@ -34,9 +34,10 @@ import { useTranslation } from 'react-i18next'
 import '@excalidraw/excalidraw/index.css'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
-import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import { exportSketch, loadSketch } from '@/domain/sketch/sketchFile'
+import { prepareSceneUpdate } from '@/domain/sketch/sceneAssembly'
 import { SKETCH_CANVAS_SETTLE_MS } from '@/domain/sketch/sketchLayout'
+import { attachPressureRewrite, createPressureFixer } from './pressureFix'
 import { useIsDark } from '@/core/data/hooks/useIsDark'
 
 export interface SketchCanvasProps {
@@ -57,9 +58,6 @@ export interface SketchCanvasHandle {
     /** 完成导出：编辑器未就绪或场景无内容时返回 null（调用方按「无产物完成」处理） */
     complete: () => Promise<Blob | null>
 }
-
-/** 防抖兜底间隔：笔画进行中 onChange 逐点连发，落笔停顿后再做形状等价改写 */
-const PRESSURE_FIX_DEBOUNCE_MS = 400
 
 /** 画布几何重算延迟：单源 sketchLayout 从载体动画时长派生（settle 必须盖过全部动画，
  *  否则动画 transform 中间态被缓存为画布 rect → 绘制坐标整体偏移） */
@@ -104,7 +102,6 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
     // 不消费 ConfigProvider 主题（dark 下白底蓝按钮，与暖调设计系统脱节）
     const { modal } = App.useApp()
     const [editor, setEditorState] = useState<ExcalidrawImperativeAPI | null>(null)
-    const fixTimerRef = useRef<number | null>(null)
     const cancelledRef = useRef(false)
     // 打开时的场景指纹（变更检测基准）：null = 未捕获（捕获前不弹确认，宁多勿丢）
     const initialFingerprintRef = useRef<string | null>(null)
@@ -152,81 +149,30 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
         return () => window.clearTimeout(t)
     }, [editor])
 
-    /**
-     * 压感事件层修正（治本，PoC 真机验证）：excalidraw 以「pointer 事件 pressure === 0.5」
-     * 判定压感来源，Android 手指/触控笔上报非 0.5 的接触面积压力会被误入恒定压力分支
-     * （均匀笔画）。在 window 捕获阶段把指针事件 pressure 改写为 0.5 后向原目标重派发——
-     * 全设备统一速度模拟、绘制全程实时锥形，落笔无突变。
-     * 合成事件（isTrusted=false）直接放行，避免重派发自拦截死循环。
-     */
+    // 压感事件层修正（见 pressureFix 模块文档）：window 捕获层改写 + 落笔停顿后的
+    // 防抖兜底，组合逻辑同在 pressureFix；本组件只负责按 simulatePressure 开关装配
     useEffect(() => {
-        if (!simulatePressure) return
-        const rewrite = (e: PointerEvent) => {
-            if (!e.isTrusted || e.pressure === 0.5) return
-            e.stopPropagation()
-            ;(e.target as EventTarget).dispatchEvent(new PointerEvent(e.type, {
-                pointerId: e.pointerId,
-                pointerType: e.pointerType,
-                isPrimary: e.isPrimary,
-                clientX: e.clientX,
-                clientY: e.clientY,
-                screenX: e.screenX,
-                screenY: e.screenY,
-                pressure: 0.5,
-                tiltX: e.tiltX,
-                tiltY: e.tiltY,
-                twist: e.twist,
-                width: e.width,
-                height: e.height,
-                buttons: e.buttons,
-                button: e.button,
-                bubbles: true,
-                cancelable: true,
-                composed: true,
-            }))
-        }
-        // 捕获阶段挂 window：先于 excalidraw（canvas/容器/React 委托）收到任何指针事件
-        window.addEventListener('pointerdown', rewrite, true)
-        window.addEventListener('pointermove', rewrite, true)
-        window.addEventListener('pointerup', rewrite, true)
-        window.addEventListener('pointercancel', rewrite, true)
-        return () => {
-            window.removeEventListener('pointerdown', rewrite, true)
-            window.removeEventListener('pointermove', rewrite, true)
-            window.removeEventListener('pointerup', rewrite, true)
-            window.removeEventListener('pointercancel', rewrite, true)
-        }
+        if (!simulatePressure) return undefined
+        return attachPressureRewrite()
     }, [simulatePressure])
 
     // 事件层修正关闭（真实压力模式）时，把历史笔画翻回真实压力语义的兜底不存在——
     // 模式切换只影响新笔画；已按速度模拟渲染的旧笔画保持不变（数据等价，无需回滚）。
 
-    /**
-     * 兜底修复（防抖）：仍走真实压力分支的笔画（如修正挂载前画的），落笔停顿后
-     * 把「压力非 0.5 分支」翻回速度模拟。captureUpdate: NEVER——形状数据等价改写不进 undo 栈。
-     */
-    const handleChange = useCallback((_elements: readonly ExcalidrawElement[]) => {
-        if (!editor || !simulatePressure) return
-        const hasCandidate = editor.getSceneElements().some((el) => el.type === 'freedraw' && !el.simulatePressure)
-        if (!hasCandidate) return
-
-        if (fixTimerRef.current !== null) {
-            window.clearTimeout(fixTimerRef.current)
+    // 防抖兜底 fixer：editor 就绪时创建（dispose 丢弃未触发的兜底），onChange 转发
+    const fixerRef = useRef<ReturnType<typeof createPressureFixer> | null>(null)
+    useEffect(() => {
+        if (!editor) return undefined
+        const fixer = createPressureFixer(editor)
+        fixerRef.current = fixer
+        return () => {
+            fixerRef.current = null
+            fixer.dispose()
         }
-        fixTimerRef.current = window.setTimeout(() => {
-            fixTimerRef.current = null
-            if (cancelledRef.current) return
-            let changed = false
-            const next = editor.getSceneElements().map((el) => {
-                if (el.type !== 'freedraw' || el.simulatePressure) return el
-                changed = true
-                return { ...el, simulatePressure: true, pressures: [] }
-            })
-            if (changed) {
-                editor.updateScene({ elements: next, captureUpdate: 'NEVER' })
-            }
-        }, PRESSURE_FIX_DEBOUNCE_MS)
-    }, [editor, simulatePressure])
+    }, [editor])
+    const handleChange = useCallback(() => {
+        if (simulatePressure) fixerRef.current?.onChange()
+    }, [simulatePressure])
 
     // 重编辑载入：initialSketch（内嵌 scene 的 PNG）→ 画板场景
     // 主题经 ref 读取：isDark 变化时 theme prop 已由 excalidraw 自行同步，
@@ -240,17 +186,11 @@ export function SketchCanvas({ initialSketch = null, simulatePressure = true, on
             try {
                 const scene = await loadSketch(initialSketch)
                 if (cancelled) return
-                // restore 产物与 updateScene 参数形状兼容，仅 TS 宽 Record 不匹配——unknown 中转。
-                // appState.theme 必须剥离：内嵌 scene 的 theme 经导出 sanitize 后缺省 light，
-                // updateScene 会覆盖受控主题且 props 不再变化无法同步回——表现为重编辑
-                // 不跟随应用主题（dark 下开成 light）
-                const { theme: _embeddedTheme, ...restAppState } = scene.appState
-                editor.updateScene({
-                    ...scene,
-                    appState: { ...restAppState, theme: isDarkRef.current ? 'dark' : 'light' },
-                } as unknown as Parameters<typeof editor.updateScene>[0])
-                const files = Object.values(scene.files) as Parameters<typeof editor.addFiles>[0]
-                if (files.length > 0) editor.addFiles(files)
+                // 主题剥离/重灌等装配知识在 sceneAssembly.prepareSceneUpdate（见其文档）；
+                // update 参数原样传 updateScene，TS 宽 Record 不匹配由一行 cast 中转
+                const { update, files } = prepareSceneUpdate(scene, isDarkRef.current ? 'dark' : 'light')
+                editor.updateScene(update as unknown as Parameters<typeof editor.updateScene>[0])
+                if (files.length > 0) editor.addFiles(files as Parameters<typeof editor.addFiles>[0])
                 // 场景提交后捕获「打开时」指纹（重编辑未动笔 = 取消时无变化，免确认）
                 window.setTimeout(() => {
                     if (!cancelled) initialFingerprintRef.current = sceneFingerprint(editor)
