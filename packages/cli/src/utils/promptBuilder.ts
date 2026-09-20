@@ -38,6 +38,35 @@ const MAX_SDK_IMAGE_BYTES = 3.5 * 1024 * 1024
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /**
+ * 转义 XML 特殊字符（& < > "）。`&` 必须先替换，否则会把刚生成的实体再转义一遍
+ * （如 &quot; → &amp;quot;）。与 crossSessionEnvelope 的 escapeMarkup 同序同集——
+ * 不复用是因为它模块私有且属跨会话信封场景，此处为 prompt 拼装，各持一份保持依赖方向干净。
+ */
+function escapeQuoteText(s: string): string {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+}
+
+/**
+ * quote block → 结构化 XML 片段（对齐项目内 bash 注入惯例，见 buildBashInjectionText）：
+ * `<quote index="1" role="agent">被选文本<user-comment>评论</user-comment></quote>`，
+ * 无评论省略子标签。excerpt 与 comment 是用户可控的自由文本，经 XML 实体转义防止
+ * `</quote>` 逃逸破坏结构（引用代码片段等含尖括号内容同样安全）。index 从 1 起、
+ * 按 quote block 出现顺序编号，与 composer 引用编号一致。
+ */
+function buildQuoteText(block: Extract<UserContentBlock, { type: 'quote' }>, index: number): string {
+    // excerpt 沿用既有的换行压缩（选区可能含软换行），comment 保留原样（多行评论是合法输入）
+    const excerpt = escapeQuoteText(block.excerpt.replace(/\s*\n\s*/g, ' '))
+    const inner = block.comment !== undefined
+        ? `${excerpt}<user-comment>${escapeQuoteText(block.comment)}</user-comment>`
+        : excerpt
+    return `<quote index="${index}" role="${block.role}">${inner}</quote>`
+}
+
+/**
  * 剥离 PNG 的 tEXt chunk（画板产物的内嵌 scene 就藏在这里，对模型无意义、白占 payload）。
  * 纯字节遍历：PNG chunk = length(4BE) + type(4) + data + crc(4)，保留非 tEXt、丢弃 tEXt，
  * 保留 chunk 的 CRC 原样有效（删除不影响其余 chunk 的 CRC 校验）。
@@ -73,7 +102,8 @@ export function stripPngTextChunks(input: Buffer): Buffer {
  *
  * 缓冲规则：
  * - @path 引用（document / 图片降级）同批单行空格合并；文本段以 \n\n 合并；两者间以 \n\n 分隔
- * - quote 视为独立引用边界：先冲刷缓冲，再单独成段（与后续正文成为相邻 text 元素，Anthropic 拼接语义下等价换段）
+ * - quote 视为独立引用边界：先冲刷缓冲，再单独成段（结构化 XML 片段，见 buildQuoteText；
+ *   与后续正文成为相邻 text 元素，Anthropic 拼接语义下等价换段）
  * - 成功读取的图片冲刷缓冲后原位插入 base64 image 元素
  *
  * 全程无成功图片时退化为 string（与现状 prompt 形态零差异），否则返回 content 数组。
@@ -82,6 +112,7 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
     const out: PromptContentBlock[] = []
     let refs: string[] = []
     let texts: string[] = []
+    let quoteSeq = 0
 
     /** 冲刷缓冲为一个 text 元素（@path 单行 + 正文换段，空则不产出） */
     const flush = (): void => {
@@ -118,10 +149,7 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
             }
             case 'quote': {
                 flush()
-                out.push({
-                    type: 'text',
-                    text: `[引用 ${block.role}]：${block.excerpt.replace(/\s*\n\s*/g, ' ')}`,
-                })
+                out.push({ type: 'text', text: buildQuoteText(block, ++quoteSeq) })
                 break
             }
         }

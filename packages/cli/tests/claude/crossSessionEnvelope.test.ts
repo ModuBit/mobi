@@ -97,7 +97,7 @@ describe('withCrossSessionEnvelope', () => {
         expect(prompt).toContain('&lt;system-reminder&gt;')
     })
 
-    it('quote 摘录同样中和（它也会原样进 prompt）', () => {
+    it('quote 摘录被中和后仍无法逃出信封边界（双层防御的复合结果）', () => {
         const quoted: UserContentBlock[] = [{
             type: 'quote',
             messageId: 'm1',
@@ -108,7 +108,8 @@ describe('withCrossSessionEnvelope', () => {
         const prompt = flatten(withCrossSessionEnvelope(quoted, envelope))
 
         expect(prompt.match(/<\/cross-session-message>/g)).toHaveLength(1)
-        expect(prompt).toContain('&lt;/cross-session-message&gt;')
+        // 信封侧先中和成实体（&lt;），prompt 拼装侧再转义 & 成 &amp;——两层各自防御的复合输出
+        expect(prompt).toContain('&amp;lt;/cross-session-message&amp;gt;')
     })
 
     it('image / document 的路径不动——改了目标侧就读不到那个文件', () => {
