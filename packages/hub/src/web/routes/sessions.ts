@@ -15,7 +15,6 @@
  */
 
 import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
-import { isWithinDir } from '@mobi/shared/pathSecurity'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
@@ -857,11 +856,12 @@ export function createSessionsRoutes(
             return c.json({ success: false, error: 'Session working directory unknown' }, 500)
         }
 
-        // resolve 已规范化 ..（含 ../etc 形式），越界（逃出 cwd）直接 403
+        // resolve 已规范化 ..（含 ../etc 形式）；POSIX 语义下绝对路径（如 /tmp 下的
+        // extra read root）直接采用。边界权威单源在 CLI validateReadPath（读边界 =
+        // cwd ∪ home−黑名单 ∪ extra read roots，经 readFileMeta/readFileRange RPC
+        // 强制）——本端不再复制一份更严的 cwd 策略：双头策略曾把「read-file 能读、
+        // 预览 403」的不一致暴露给用户（/tmp HTML 无法预览，2026-09-20）。
         const absPath = resolve(cwd, relPath)
-        if (!isWithinDir(absPath, cwd)) {
-            return c.json({ success: false, error: 'Access denied: path outside project directory' }, 403)
-        }
 
         // download=1：top-level 打开会脱离 sandbox（同源执行），强制 attachment 触发下载而非渲染
         const download = c.req.query('download') === '1'

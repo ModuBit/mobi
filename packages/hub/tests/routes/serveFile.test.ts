@@ -165,18 +165,46 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         expect(res.headers.get('content-disposition')).toContain('attachment')
     })
 
-    test('越界（前导 / 绝对路径注入逃出 cwd）→ 403', async () => {
+    test('边界权威在 CLI：绝对路径（含前导 / 注入）透传 RPC，越界由 validateReadPath 拒绝映射 403', async () => {
+        // hub 不再自带 cwd 守卫（双头策略曾把「read-file 能读、预览 403」的不一致
+        // 暴露给用户：/tmp 在 CLI 读边界内却被 hub 拦死）。本端只做 relPath→absPath
+        // 归一，越界判定单源 CLI validateReadPath；本测试用 mock 模拟 CLI 的
+        // ACCESS_DENIED 拒绝，锁定「拒绝结果经 fileMetaHttpStatus 映射 403」的契约。
+        const rejectingEngine = {
+            ...mockSyncEngine,
+            readFileMeta: async (_sessionId: string, path: string) => {
+                metaCalls.push(path)
+                return { success: false, error: `Access denied: Path '${path}' is outside the working directory`, code: 'ACCESS_DENIED' }
+            },
+        } as unknown as SyncEngine
+        const setup = await setupTestApp(rejectingEngine)
+        try {
+            const token = await getAuthToken(setup.app)
+
+            // 双斜杠使 path 段以 / 开头，resolve 遇绝对路径会重置 → /etc/passwd
+            // （.. 向量在 URL 层就被浏览器/hono 规范化，到不了端点；前导/是真实可达的越界路径）
+            const res = await setup.app.request('/api/sessions/s1/serve-file//etc/passwd', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+
+            expect(res.status).toBe(403)
+            // 请求已透传到 RPC 层（拒绝判定发生在那里）
+            expect(metaCalls).toContain('/etc/passwd')
+        } finally {
+            setup.cleanup()
+        }
+    })
+
+    test('extra read root（/tmp）在 CLI 读边界内：绝对路径透传后正常预览', async () => {
+        // 回归：/tmp 下的 HTML 此前被 hub cwd 守卫 403（read-file 能读、预览不能），现与读边界对齐
         const token = await getAuthToken(app)
 
-        // 双斜杠使 path 段以 / 开头，resolve 遇绝对路径会重置 → /etc/passwd 越出 cwd
-        // （.. 向量在 URL 层就被浏览器/hono 规范化，到不了端点；前导/是真实可达的越界路径）
-        const res = await app.request('/api/sessions/s1/serve-file//etc/passwd', {
+        const res = await app.request('/api/sessions/s1/serve-file//tmp/scratch/mockup.html', {
             headers: { Authorization: `Bearer ${token}` },
         })
 
-        expect(res.status).toBe(403)
-        // 越界不应读文件
-        expect(metaCalls.length).toBe(0)
+        expect(res.status).toBe(200)
+        expect(metaCalls).toContain('/tmp/scratch/mockup.html')
     })
 
     test('cwd 子路径正常放行（/tmp/test/a/b.css 在 cwd 内）', async () => {
