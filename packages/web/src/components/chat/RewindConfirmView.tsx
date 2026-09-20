@@ -191,7 +191,7 @@ function OptionCard({ primary, icon, title, desc, loading, disabled, onClick }: 
 
 /**
  * rewind 确认视图（共用组件，spec §5.5）：
- * PC 锚定 Popover（UserMessageFooter）与移动端长按 Drawer（MessageActionsDrawer）两个薄入口共用。
+ * PC 锚定 Popover（UserMessageFooter）与移动端「⋯」入口 Drawer（MessageActionsDrawer）两个薄入口共用。
  * 三形态（spec §5.3）：双 true 两选项 / canRestoreFiles false 单选项 + 说明 / canRewind false 不弹窗（入口层拦截）。
  */
 export function RewindConfirmView({ targetText, dryRun, loading, onConfirm, onCancel }: RewindConfirmViewProps) {

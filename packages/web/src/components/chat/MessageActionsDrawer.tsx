@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Copy, Split, Undo2 } from 'lucide-react'
+import { Copy, MoreHorizontal, Split, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
@@ -85,7 +85,8 @@ function MenuRow({ icon, label, onClick }: { icon: React.ReactNode; label: strin
 }
 
 /**
- * 移动端消息长按操作菜单（spec §5.2）：底部 Drawer，可扩展（fork 等操作加行即可）。
+ * 移动端消息操作菜单（原长按入口，spec 移动端手势仲裁后迁到 footer「⋯」）：
+ * 底部 Drawer，可扩展（fork 等操作加行即可）。
  * 复制始终可用；「回退并编辑」（用户消息）与「从此分叉」（agent 回复，fork-session spec §4.2）
  * 按判据显隐；点击后同一 Drawer 内容切换为确认视图（确认视图组件与 PC 弹窗共用）。
  */
@@ -145,5 +146,33 @@ export function MessageActionsDrawer({
                 )}
             </div>
         </MobileDrawer>
+    )
+}
+
+/**
+ * 移动端气泡 footer 常驻「⋯」菜单入口（spec 移动端手势仲裁：长按让位给系统文本选择，
+ * 原长按菜单整体迁到这里，点击等价原长按打开 Drawer）。低强调小按钮，复用 Drawer 本体。
+ */
+export function MessageActionsTrigger({ onClick }: { onClick: () => void }) {
+    const { t } = useTranslation()
+    return (
+        <button
+            type="button"
+            data-testid="msg-actions-trigger"
+            aria-label={t('chat.messageActions')}
+            onClick={onClick}
+            style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '2px 6px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--ant-color-text-tertiary)',
+            }}
+        >
+            <MoreHorizontal size={14} />
+        </button>
     )
 }

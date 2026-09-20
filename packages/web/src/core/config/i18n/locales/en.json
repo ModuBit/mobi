@@ -265,6 +265,7 @@
         },
         "copy": "Copy",
         "copied": "Copied",
+        "messageActions": "More actions",
         "rewind": {
             "title": "Rewind & edit",
             "restoreAndRewind": "Restore code and rewind",

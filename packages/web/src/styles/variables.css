@@ -18,16 +18,3 @@
         --agent-card-width: 130px;
     }
 }
-
-/* 长按气泡确认反馈：scale 0.97 过冲回弹（cubic-bezier 近似 spring.momentum） */
-.bubble-press-pop {
-    animation: bubble-press-pop 350ms cubic-bezier(0.3, 1.5, 0.5, 1);
-}
-@keyframes bubble-press-pop {
-    0% { transform: scale(1); }
-    40% { transform: scale(0.97); }
-    100% { transform: scale(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-    .bubble-press-pop { animation: none; }
-}

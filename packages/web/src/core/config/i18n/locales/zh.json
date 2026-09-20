@@ -256,6 +256,7 @@
         },
         "copy": "复制",
         "copied": "已复制",
+        "messageActions": "更多操作",
         "rewind": {
             "title": "回退并编辑",
             "restoreAndRewind": "恢复代码并回退",

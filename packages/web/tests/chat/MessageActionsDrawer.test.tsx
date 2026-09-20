@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { MessageActionsDrawer } from '@/components/chat/MessageActionsDrawer'
+import { MessageActionsDrawer, MessageActionsTrigger } from '@/components/chat/MessageActionsDrawer'
 
 // mock i18next：提供菜单与确认视图文案（initReactI18next 必须 noop 导出，避免 i18n 顶层 init 报错）
 vi.mock('react-i18next', () => ({
@@ -129,5 +129,14 @@ describe('MessageActionsDrawer（移动端长按操作菜单）', () => {
     it('open=false → 不渲染菜单', () => {
         renderDrawer({ open: false })
         expect(screen.queryByText('复制')).toBeNull()
+    })
+})
+
+describe('MessageActionsTrigger（移动端气泡 footer「⋯」入口，原长按迁移）', () => {
+    it('点击触发 onClick（等价原长按打开 Drawer）', () => {
+        const onClick = vi.fn()
+        render(<MessageActionsTrigger onClick={onClick} />)
+        fireEvent.click(screen.getByTestId('msg-actions-trigger'))
+        expect(onClick).toHaveBeenCalledTimes(1)
     })
 })

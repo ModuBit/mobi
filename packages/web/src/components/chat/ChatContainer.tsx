@@ -48,9 +48,10 @@ import { UserMessageFooter } from './UserMessageFooter'
 import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { type RewindDryRunResult } from './RewindConfirmView'
-import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
+import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
 import { QuoteCommentInput } from './QuoteCommentInput'
+import { useMobileQuoteSelection } from './useMobileQuoteSelection'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
@@ -59,7 +60,6 @@ import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
 import { useComposerBackfillStore, useComposerBackfillRequest } from '@/core/data/stores/composerBackfillStore'
 import { reconcileLatestMessages } from '@/core/data/stores/messageWindowStore'
-import { useLongPress } from '@/core/data/hooks/useLongPress'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
@@ -141,14 +141,6 @@ const bubbleCopyStyles = css`
     .agent-msg-bubble:hover .msg-copy-btn,
     .turn-result-bubble:hover .msg-copy-btn {
         opacity: 1;
-    }
-`
-
-/** 移动端长按期间抑制系统选区/长按菜单（AppTooltip 先例：callout + user-select） */
-const longPressSuppressStyles = css`
-    .chat-longpress-suppress [data-bubble-key] {
-        -webkit-touch-callout: none;
-        user-select: none;
     }
 `
 
@@ -651,34 +643,25 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [forkDraft, forkSession, messageApi, t])
 
     // ──────────────────────────────────────────────────────────────
-    // 移动端长按操作菜单（spec §5.2）：事件委托到滚动容器
-    //（antdx Bubble item 不透传 touch handlers，靠 data-bubble-key 定位目标行）
+    // 移动端消息操作菜单（原长按入口，spec 移动端手势仲裁后迁到气泡 footer「⋯」）：
+    // actionsTarget 只由 MessageActionsTrigger 点击置位（见 decoratedItems footer）
     // ──────────────────────────────────────────────────────────────
     const isMobile = useIsMobile()
     const [actionsTarget, setActionsTarget] = useState<MessageActionTarget | null>(null)
-    // 长按期间抑制系统选区（touchstart 置位、touchend/move 复位）
-    const [longPressActive, setLongPressActive] = useState(false)
     // key → 消息操作信息索引（decoratedItems 内重建，判据与 footer 同源）
     const actionsInfoByRef = useRef<Map<string, MessageActionTarget>>(new Map())
-    const longPressKeyRef = useRef<string | null>(null)
-    // 长按手势起始气泡 DOM（touchstart 记录，openActionsMenu 消费做缩放反馈）
-    const pressTargetRef = useRef<HTMLElement | null>(null)
 
     // ──────────────────────────────────────────────────────────────
-    // 选区引用入口（PC；移动端 selectionchange 路径由移动端票接线）：
-    // mouseup 薄壳拿选区交给选区判定器（唯一裁决点），本层只管浮层开合与手柄灌入
+    // 选区引用入口（spec「入口」）：PC mouseup / 移动端 selectionchange 两条薄壳
+    // 拿选区交给选区判定器（唯一裁决点），本层只管浮层开合与手柄灌入
     // ──────────────────────────────────────────────────────────────
     const [quotePopover, setQuotePopover] = useState<QuoteSelectionPopoverState | null>(null)
     // 评论输入浮层（添加到对话后的第二步）：评论可选，确认/取消都关闭
     const [quoteCommentDraft, setQuoteCommentDraft] = useState<{ quote: PendingQuoteRef; rect: DOMRect } | null>(null)
 
-    const handleSelectionMouseUp = useCallback(() => {
-        const sel = window.getSelection()
-        const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
-        if (!range) {
-            setQuotePopover(null)
-            return
-        }
+    // 判定收口：非空选区 → 判定器裁决 → 浮层三态（可添加 / 超长禁用 / 达上限禁用）。
+    // 来源/归属类拒绝不弹不打扰（spec：静默失败体验差仅对可解释的原因豁免）
+    const openQuotePopoverForRange = useCallback((range: Range) => {
         const count = composerHandleRef.current?.getQuoteCount() ?? 0
         const result = resolveQuoteSelection(range, { currentQuoteCount: count })
         if (result.ok) {
@@ -690,6 +673,20 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             setQuotePopover(null)
         }
     }, [])
+
+    // PC 薄壳：mouseup 即判定（桌面端选区在 mouseup 时已稳定）
+    const handleSelectionMouseUp = useCallback(() => {
+        const sel = window.getSelection()
+        const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+        if (range) {
+            openQuotePopoverForRange(range)
+        } else {
+            setQuotePopover(null)
+        }
+    }, [openQuotePopoverForRange])
+
+    // 移动端薄壳：selectionchange 防抖落定的非空选区走同一判定收口
+    useMobileQuoteSelection({ enabled: isMobile, onSelectionSettled: openQuotePopoverForRange })
 
     // 「添加到对话」→ 弹评论输入（可选，确认才落引用）；rect 从当前浮层状态透传
     const handleQuoteAdd = useCallback((quote: PendingQuoteRef) => {
@@ -735,49 +732,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [quotePopover, quoteCommentDraft])
 
-    const openActionsMenu = useCallback(() => {
-        const key = longPressKeyRef.current
-        longPressKeyRef.current = null
-        if (!key) return
-        const info = actionsInfoByRef.current.get(key)
-        if (!info) return
-        setActionsTarget(info)
-        // 多模态反馈：视觉（缩放过冲）+ 触觉（Android PWA）同帧触发，因果明确
-        const el = pressTargetRef.current
-        if (el) {
-            el.classList.remove('bubble-press-pop') // 连续长按同一气泡可重放
-            void el.offsetWidth // 强制 reflow 重启动画
-            el.classList.add('bubble-press-pop')
-            el.addEventListener('animationend', () => el.classList.remove('bubble-press-pop'), { once: true })
-        }
-        // iOS Safari 不支持 vibrate 则静默跳过
-        if ('vibrate' in navigator) navigator.vibrate(10)
-    }, [])
-    const longPress = useLongPress(openActionsMenu)
-
-    const handleBubbleTouchStart = useCallback((e: React.TouchEvent) => {
-        const el = (e.target as HTMLElement).closest?.('[data-bubble-key]')
-        const key = el?.getAttribute('data-bubble-key') ?? null
-        longPressKeyRef.current = key
-        // 记录手势起始气泡 DOM，供 openActionsMenu 做长按确认的缩放反馈
-        pressTargetRef.current = (e.target as HTMLElement).closest?.('.ant-bubble') as HTMLElement | null
-        if (key) {
-            setLongPressActive(true)
-            longPress.onTouchStart()
-        }
-    }, [longPress])
-    const handleBubbleTouchEnd = useCallback(() => {
-        setLongPressActive(false)
-        longPressKeyRef.current = null
-        longPress.onTouchEnd()
-    }, [longPress])
-    const handleBubbleTouchMove = useCallback(() => {
-        setLongPressActive(false)
-        longPress.onTouchMove()
-    }, [longPress])
-    // 气泡上长按会触发系统 contextmenu（选区/呼出菜单），长按手势期间拦截
-    const handleContextMenu = useCallback((e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest?.('[data-bubble-key]')) e.preventDefault()
+    // 「⋯」入口：footer 触发按钮按 bubble item key 从索引取目标（点击等价原长按打开 Drawer）
+    const openActionsByItemKey = useCallback((key: string) => {
+        setActionsTarget(actionsInfoByRef.current.get(key) ?? null)
     }, [])
 
     // clear 完成事件（context-cleared）丢失兜底：发送完成 10s 后若仍卡在 clear，强制解禁，
@@ -833,7 +790,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const forkRowByKey = new Map<string, { metadata: NativeMessageMetadata | null; seq: number | null }>(
             messages.map(m => [m.localId || m.id, { metadata: m.metadata ?? null, seq: m.seq ?? null }]),
         )
-        // canForkMessage 的会话状态入参一次构造（PC 概要行操作组与移动长按菜单共用，
+        // canForkMessage 的会话状态入参一次构造（PC 概要行操作组与移动「⋯」菜单共用，
         // 判据字段增删只改这一处）；canForkMessage 调用同样收口为 forkableOfRow
         const forkSessionState = {
             running: !!session?.running,
@@ -908,6 +865,45 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
         )
 
+        // 移动端「⋯」菜单目标索引（key → 操作信息；判据与 footer 同源同帧计算）。
+        // 迭代 baseItems 即可（decorated 只追加装饰字段，key/block 同源）；先于 decorated
+        // 构建，让下方 footer 组装能按 key 判断「⋯」入口是否挂载
+        const actionsInfo = new Map<string, MessageActionTarget>()
+        for (const item of baseItems) {
+            const block = item.block
+            if (block?.kind === 'user-text') {
+                const meta = metaById.get(block.id)
+                actionsInfo.set(item.key, {
+                    key: item.key,
+                    text: collectUserText(block.blocks),
+                    nativeId: meta?.nativeId ?? null,
+                    canRewind: canRewindMessage(
+                        { metadata: meta, seq: seqById.get(block.id) },
+                        sessionNativeSessionId,
+                        { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
+                        chainHeadIds?.has(block.id),
+                    ),
+                    forkAnchorId: null,
+                    canFork: false,
+                })
+                continue
+            }
+            // agent 回复落点：可 fork 时进菜单（复制 + 从此分叉）；不可 fork 不进（与既有入口范围一致）
+            if (block?.kind === 'agent-text' && forkTargetBlockIds.has(block.id)) {
+                const row = forkRowByKey.get(agentBlockMessageKey(block))
+                if (!row || !forkableOfRow(row)) continue
+                actionsInfo.set(item.key, {
+                    key: item.key,
+                    text: block.text,
+                    nativeId: null,
+                    canRewind: false,
+                    forkAnchorId: row?.metadata?.nativeId ?? null,
+                    canFork: true,
+                })
+            }
+        }
+        actionsInfoByRef.current = actionsInfo
+
         const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
@@ -921,7 +917,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 ? terminalReasonLabelKey(metaById.get(block.id)?.terminalReason)
                 : null
 
-            // rewind 判据（footer 操作组与移动长按菜单同源，spec §5.5）
+            // rewind 判据（footer 操作组与移动端「⋯」菜单同源，spec §5.5）
             const rewindable = isUserText && block
                 ? canRewindMessage(
                     { metadata: metaById.get(block.id), seq: seqById.get(block.id) },
@@ -932,7 +928,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 : false
 
             // fork 判据已移入 turn-result 操作组配对扫描（见 turnResultActionsByKey 构建）；
-            // 移动长按菜单的 fork 判据在 actionsInfo 内独立计算（同源同式）
+            // 移动端「⋯」菜单的 fork 判据在 actionsInfo 内独立计算（同源同式）
 
             // 跨会话入站来源标签挂气泡 header（填充背景之外、气泡体上方，随 placement: end 右对齐）
             // 判据是「来源身份存在」（readCrossSessionOrigin 非 null），不是「from 非空」——
@@ -970,6 +966,37 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // agent 回复 footer 已移除：复制/fork 操作组移入 turn-result 概要行尾（AgentTurnActions，
             // position A）——时间以概要行为唯一来源，原 footer 悬浮时间戳是重复展示
 
+            // 移动端「⋯」菜单入口（spec 移动端手势仲裁：长按让位给系统文本选择，
+            // 原长按菜单整体迁到气泡 footer 常驻小按钮，点击等价原长按打开 Drawer）。
+            // 挂载范围 = actionsInfo 的 key 集合（用户消息全量；agent 回复仅 fork 落点），
+            // 与原长按手势的可作用范围一致；PC 不挂（走 footer hover 操作组）
+            const actionsTrigger = isMobile && actionsInfo.has(item.key) ? (
+                <MessageActionsTrigger onClick={() => openActionsByItemKey(item.key)} />
+            ) : null
+
+            // footer 组装：终态标注（左侧灰字）→「⋯」入口 → 既有 footer 内容。
+            // 「⋯」外层包 flex:1 容器，保住 UserMessageFooter 时间戳（marginLeft:auto）贴最右
+            const footerContent = terminalLabelKey !== null ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span
+                        data-testid="user-msg-terminal"
+                        // 弱化呈现：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
+                    >
+                        <StopOutlined style={{ fontSize: 11 }} />
+                        {t(terminalLabelKey)}
+                        {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
+                </div>
+            ) : baseFooter
+            const footer = actionsTrigger ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {actionsTrigger}
+                    <div style={{ flex: 1, minWidth: 0 }}>{footerContent}</div>
+                </div>
+            ) : footerContent
+
             return {
                 ...item,
                 header: showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : undefined,
@@ -978,60 +1005,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     : block?.kind === 'agent-event' && turnResultActionsByKey.has(block.id)
                         ? { root: 'turn-result-bubble' }
                         : undefined,
-                footer: terminalLabelKey !== null ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span
-                            data-testid="user-msg-terminal"
-                            // 弱化呈现：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
-                        >
-                            <StopOutlined style={{ fontSize: 11 }} />
-                            {t(terminalLabelKey)}
-                            {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
-                    </div>
-                ) : baseFooter,
+                footer,
                 footerPlacement: 'outer-end' as const,
             }
         })
-
-        // 移动端长按菜单目标索引（key → 操作信息；判据与 footer 同源同帧计算）
-        const actionsInfo = new Map<string, MessageActionTarget>()
-        for (const item of decorated) {
-            const block = item.block
-            if (block?.kind === 'user-text') {
-                const meta = metaById.get(block.id)
-                actionsInfo.set(item.key, {
-                    key: item.key,
-                    text: collectUserText(block.blocks),
-                    nativeId: meta?.nativeId ?? null,
-                    canRewind: canRewindMessage(
-                        { metadata: meta, seq: seqById.get(block.id) },
-                        sessionNativeSessionId,
-                        { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active, contextBoundarySeq: metadata?.contextBoundarySeq },
-                        chainHeadIds?.has(block.id),
-                    ),
-                    forkAnchorId: null,
-                    canFork: false,
-                })
-                continue
-            }
-            // agent 回复落点：可 fork 时进长按菜单（复制 + 从此分叉）；不可 fork 不进（长按行为与既有一致）
-            if (block?.kind === 'agent-text' && forkTargetBlockIds.has(block.id)) {
-                const row = forkRowByKey.get(agentBlockMessageKey(block))
-                if (!row || !forkableOfRow(row)) continue
-                actionsInfo.set(item.key, {
-                    key: item.key,
-                    text: block.text,
-                    nativeId: null,
-                    canRewind: false,
-                    forkAnchorId: row?.metadata?.nativeId ?? null,
-                    canFork: true,
-                })
-            }
-        }
-        actionsInfoByRef.current = actionsInfo
 
         // 结构化共享：block 未变的 item 复用上一帧对象（连同其 content 元素），
         // 让 BubbleItem 的 memo 真正生效。
@@ -1060,7 +1037,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // 会话激活态入签名：CLI 上/下线翻 canRewind（离线时 rewind RPC 无法送达），入口须随帧刷新
             + `|${session?.active ?? ''}`
             // rewind 状态入签名：dry-run 完成 / executing 翻转时 footer 的 Popover 内容须重建；
-            // rewindBusy 翻转（受理/终态）翻 canRewind，footer/长按菜单入口须随帧刷新
+            // rewindBusy 翻转（受理/终态）翻 canRewind，footer/「⋯」菜单入口须随帧刷新
             + `|${rewindDraft?.messageId ?? ''}|${rewindDraft?.source ?? ''}|${rewindDryRun?.canRewind ?? ''}-${rewindDryRun?.canRestoreFiles ?? ''}|${rewindExecuting}`
             + `|${rewindBusy}`
             // 链首骨架翻转（窗口到头 / 历史补齐）翻 canRewind，入口须随帧刷新；unk = 不可判定
@@ -1174,15 +1151,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
-            <Global styles={longPressSuppressStyles} />
             <div
                 ref={setChatScrollEl}
-                className={`chat-scroll-container${longPressActive ? ' chat-longpress-suppress' : ''}`}
+                className="chat-scroll-container"
                 style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}
-                onTouchStart={isMobile ? handleBubbleTouchStart : undefined}
-                onTouchEnd={isMobile ? handleBubbleTouchEnd : undefined}
-                onTouchMove={isMobile ? handleBubbleTouchMove : undefined}
-                onContextMenu={isMobile ? handleContextMenu : undefined}
                 onMouseUp={isMobile ? undefined : handleSelectionMouseUp}
             >
                 {chatBlocks.length === 0 ? (
@@ -1255,7 +1227,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             )}
 
-            {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组）：
+            {/* 移动端消息操作菜单（气泡 footer「⋯」入口打开，原长按入口已迁移）：
                 用户消息 → 复制/回退并编辑；agent 回复落点 → 复制/从此分叉（fork-session spec §4.2） */}
             {isMobile && (
                 <MessageActionsDrawer
@@ -1278,7 +1250,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         setRewindDryRun(null)
                     }}
                     onFork={(anchorNativeId) => {
-                        // 移动端入口：锚点来自长按目标，预览文本取 Drawer 选中消息原文
+                        // 移动端入口：锚点来自「⋯」目标，预览文本取 Drawer 选中消息原文
                         setForkDraft({ anchorNativeId, source: 'drawer', targetText: actionsTarget?.text ?? null })
                     }}
                     onConfirmFork={() => { void confirmFork() }}

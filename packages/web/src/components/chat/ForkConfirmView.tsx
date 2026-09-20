@@ -151,7 +151,7 @@ const OptionDesc = styled.span`
 
 /**
  * fork 确认视图（共用组件，fork-session spec §4.2）：
- * PC 锚定 Popover（AgentMessageFooter）与移动端长按 Drawer（MessageActionsDrawer）两个薄入口共用。
+ * PC 锚定 Popover（AgentMessageFooter）与移动端「⋯」入口 Drawer（MessageActionsDrawer）两个薄入口共用。
  * 无 dry-run 预检（fork 是 hub 侧纯动作，失败在确认后 toast 归因），
  * 形态恒为：提示条 + 目标预览卡 + 单一创建选项 + 取消。
  */
