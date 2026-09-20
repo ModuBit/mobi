@@ -35,8 +35,6 @@ type RoleWrappedRecord = {
  */
 export const MESSAGE_ROLES = ['user', 'agent', 'custom'] as const
 
-export type MessageRole = (typeof MESSAGE_ROLES)[number]
-
 // Claude 系统消息中可见的子类型
 const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'api_error',

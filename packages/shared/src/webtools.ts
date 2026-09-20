@@ -88,7 +88,6 @@ export const VerifyWebToolsProviderSchema = z.object({
     providerId: z.enum(WEB_TOOL_PROVIDER_IDS),
     credentials: z.record(z.string(), z.string()).optional(),
 })
-export type VerifyWebToolsProviderParams = z.infer<typeof VerifyWebToolsProviderSchema>
 
 /** 凭据脱敏回显结构：只告诉前端"设没设"（preview 为 maskCredential 掩码产物），不回传值 */
 export type RedactedCredentials = Record<string, { set: boolean; preview?: string }>

@@ -318,8 +318,6 @@ export const UpdateNewMessageBodySchema = z.object({
     backfill: z.boolean().optional()
 })
 
-export type UpdateNewMessageBody = z.infer<typeof UpdateNewMessageBodySchema>
-
 export const UpdateSessionBodySchema = z.object({
     t: z.literal('update-session'),
     sid: z.string(),
@@ -332,8 +330,6 @@ export const UpdateSessionBodySchema = z.object({
         value: z.unknown().nullable()
     }).nullable()
 })
-
-export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>
 
 export const UpdateMachineBodySchema = z.object({
     t: z.literal('update-machine'),
@@ -474,7 +470,6 @@ export interface ClientToServerEvents {
     'terminal:exit': (data: TerminalExitPayload) => void
     'terminal:error': (data: TerminalErrorPayload) => void
     ping: (callback: () => void) => void
-    'usage-report': (data: unknown) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
     // ===== 消息事实协议 =====
     /** CLI→Hub 统一消息事实事件：批内合并多 kind fact 一次往返（MessageFact 联合见 messages.ts）。
@@ -484,7 +479,6 @@ export interface ClientToServerEvents {
     'rewind-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
     /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因；skippedLinks>0 时部分路径被安全护栏跳过 */
     'rewind-completed': (data: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number }) => void
-    'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void
     /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */
     'context-usage': (data: { sid: string; contextUsage: ContextUsage | null }) => void

@@ -40,13 +40,6 @@ export const OUTPUT_STYLE_LABELS: Record<OutputStyle, string> = {
  */
 export const OUTPUT_STYLE_FOLLOW_SETTING = ''
 
-/** 下拉选项：内置项 description 走 i18n（web 侧按 key 取），custom 形态本期预留不产出 */
-export type OutputStyleOption = {
-    style: string
-    label: string
-    /** i18n key 后缀（web: `composer.outputStyleDescriptions.<key>`）；自定义 style 无 */
-    descriptionKey?: OutputStyle
-}
 
 export function isBuiltinOutputStyle(style: string): style is OutputStyle {
     return (OUTPUT_STYLES as readonly string[]).includes(style)

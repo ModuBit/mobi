@@ -26,13 +26,6 @@ export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
 export const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
 export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
 
-export const CLAUDE_MODEL_LABELS: Record<ClaudeModelPreset, string> = {
-    sonnet: 'Sonnet',
-    'sonnet[1m]': 'Sonnet 1M',
-    opus: 'Opus',
-    'opus[1m]': 'Opus 1M'
-}
-
 // 顺序与 CLAUDE_PERMISSION_MODES 一致（自由度递增，auto 置顶）
 export const PERMISSION_MODES = [
     'auto',
@@ -107,15 +100,6 @@ export function isClaudeModelPreset(model: string | null | undefined): model is 
     return typeof model === 'string' && CLAUDE_MODEL_PRESETS.includes(model as ClaudeModelPreset)
 }
 
-export function getClaudeModelLabel(model: string): string | null {
-    const trimmedModel = model.trim()
-    if (!trimmedModel) {
-        return null
-    }
-
-    return CLAUDE_MODEL_LABELS[trimmedModel as ClaudeModelPreset] ?? null
-}
-
 // ============ Effort 级别 ============
 
 // 注意：不包含 'max' 级别
@@ -130,8 +114,4 @@ export const EFFORT_LABELS: Record<EffortLevel, string> = {
     medium: 'Medium',
     high: 'High',
     xhigh: 'X-High',
-}
-
-export function getEffortOptions(): Array<{ value: EffortLevel; label: string }> {
-    return EFFORT_LEVELS.map(e => ({ value: e, label: EFFORT_LABELS[e] }))
 }

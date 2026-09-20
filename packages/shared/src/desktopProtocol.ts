@@ -70,8 +70,6 @@ export const desktopWatchRequestSchema = z.object({
     machineId: z.string().min(1),
 })
 
-export type DesktopWatchRequest = z.infer<typeof desktopWatchRequestSchema>
-
 /** 控制权状态：view-only（服务端剥输入）/ controlled（输入放行，SetDesktopSize 仍恒剥） */
 export const desktopControlStateSchema = z.enum(['view-only', 'controlled'])
 
@@ -161,8 +159,6 @@ export const desktopStreamRequestSchema = z.object({
     attachPath: z.string().min(1),
 })
 
-export type DesktopStreamRequest = z.infer<typeof desktopStreamRequestSchema>
-
 /**
  * 观看流 WS 关闭码（hub 发、web/cli 读写）：跨端协议契约的唯一真相源。
  * hub 定义 teardown 发码，web 按码判定「归因明确、不自动重连」。
@@ -181,13 +177,9 @@ export const desktopVncPasswordSchema = z.object({
     vncPassword: z.string().min(1).max(16),
 })
 
-export type DesktopVncPassword = z.infer<typeof desktopVncPasswordSchema>
-
 export const desktopVncPasswordSubmissionSchema = desktopVncPasswordSchema.extend({
     machineId: z.string().min(1),
 })
-
-export type DesktopVncPasswordSubmission = z.infer<typeof desktopVncPasswordSubmissionSchema>
 
 /** VNC 密码配置状态（只回「是否已配置」，密码本身永不回读） */
 export const desktopVncStatusSchema = z.object({
