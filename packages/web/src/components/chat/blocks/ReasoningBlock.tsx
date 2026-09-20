@@ -19,6 +19,7 @@ import { Think } from '@ant-design/x'
 import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
+import { CrossfadeText } from '@/components/ui/CrossfadeText'
 import { StatusIcon } from '@/components/tool-card/toolIcons'
 import { useSmoothStickBottom } from '@/components/chat/useSmoothStickBottom'
 
@@ -64,8 +65,10 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
                     <ThinkIcon />
                 </StatusIcon>
             }
-            title={thinking ? t('chat.thinking') : thoughtTitle}
-            blink={thinking}
+            title={
+                // 「思考中」扫光走自家 shimmer（CrossfadeText），不用 antdx Think 的 blink
+                <CrossfadeText text={thinking ? t('chat.thinking') : thoughtTitle} shimmer={thinking} />
+            }
             expanded={expanded}
             onExpand={setExpanded}
         >
