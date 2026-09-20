@@ -26,20 +26,31 @@ import type { ToolRow } from '@/core/lib/toolRow'
  *
  * dense 模式：嵌在小字号语境（Task 卡摘要 11px）时不设 fontSize，继承外层。
  * chip 的点击语义（打开文件）与行本体（展开详情）的分离由 FileChip 内部收口。
+ *
+ * shimmer：运行态扫光（工具 running 时由调用方传入）——动词与摘要挂 .shimmer-text
+ * （与组头 CrossfadeText / 非 row 形态标题同一动画体系，base.css 单点）；chip /
+ * rowMeta / stats 是徽章/元数据，保持静态不扫光。行形态此前没接 shimmer，运行中
+ * 工具行无任何 blink 反馈（2026-09-20 回归）。
  */
-export const ToolRowItems = memo(function ToolRowItems({ row, dense }: { row: ToolRow; dense?: boolean }) {
+export const ToolRowItems = memo(function ToolRowItems({ row, dense, shimmer }: { row: ToolRow; dense?: boolean; shimmer?: boolean }) {
     const { token } = antTheme.useToken()
     return (
         <>
-            <span style={{ fontWeight: 600, fontSize: dense ? undefined : 13, flexShrink: 0 }}>
+            <span
+                className={shimmer ? 'shimmer-text' : undefined}
+                style={{ fontWeight: 600, fontSize: dense ? undefined : 13, flexShrink: 0 }}
+            >
                 {row.verb}
             </span>
             {row.summary && (
                 // 纯展示工具的 description（Bash 的 title 语义）：优先于人读摘要，允许收缩截断
-                <span style={{
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    flex: '0 1 auto', minWidth: 0,
-                }}>
+                <span
+                    className={shimmer ? 'shimmer-text' : undefined}
+                    style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        flex: '0 1 auto', minWidth: 0,
+                    }}
+                >
                     {row.summary}
                 </span>
             )}

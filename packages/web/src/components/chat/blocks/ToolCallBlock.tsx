@@ -343,8 +343,9 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {toolPresentation.row ? (
                             // 工具行新形态（动词 + chip + diff 统计，mockup 变体 A）：
-                            // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起
-                            <ToolRowItems row={toolPresentation.row} />
+                            // chip 点击止于打开文件（内部 stopPropagation），行本体点击仍是展开/收起。
+                            // 运行态扫光与下方非 row 形态同一体系（shimmer 由行内动词/摘要承担）
+                            <ToolRowItems row={toolPresentation.row} shimmer={isLoading} />
                         ) : (
                             // 运行态扫光走自家 shimmer（CrossfadeText），不用 antdx Think 的 blink——
                             // 与组头动态标题同一动画体系（base.css .shimmer-text），基线为文字本色
