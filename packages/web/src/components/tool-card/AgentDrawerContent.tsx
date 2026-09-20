@@ -44,6 +44,16 @@ const drawerBubbleStyles = css`
 /** Drawer 场景下的 Bubble.List role 配置 */
 const DRAWER_BUBBLE_ROLES = {
     ...BUBBLE_ROLES,
+    // antdx 的 item 级 styles 会整体替换 list 级 styles prop（对象替换，非按 slot
+    // 深合并）——BUBBLE_ROLES.assistant 带 styles 后，list 下发的 bubble slot
+    // （2px 上下间距，见下方 styles prop）对 assistant 失效，此处补回
+    assistant: {
+        ...BUBBLE_ROLES.assistant,
+        styles: {
+            ...BUBBLE_ROLES.assistant.styles,
+            bubble: { paddingBlock: '2px' },
+        },
+    },
     user: {
         placement: 'end' as const,
         variant: 'borderless' as const,

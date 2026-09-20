@@ -129,9 +129,10 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
                                 </span>
                                 {row && row.chip ? (
                                     // 工具行新形态（与消息列表同一共享渲染段）：subagent 的
-                                    // Edit/Write 等子调用同样动词+chip+统计，chip 点击打开文件
+                                    // Edit/Write 等子调用同样动词+chip+统计，chip 点击打开文件。
+                                    // 运行态扫光与消息列表同语义（running 子行动词/摘要扫光）
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, verticalAlign: 'middle', minWidth: 0 }}>
-                                        <ToolRowItems row={row} dense />
+                                        <ToolRowItems row={row} dense shimmer={child.tool.state === 'running'} />
                                     </span>
                                 ) : (
                                     // 非 row 工具维持旧摘要语义：title + subtitle + 140 截断
