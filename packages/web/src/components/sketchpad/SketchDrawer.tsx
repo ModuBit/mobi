@@ -47,7 +47,7 @@ import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
-import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP } from '@/domain/sketch/sketchLayout'
+import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP, SKETCH_Z_MASK, SKETCH_Z_DOCK, SKETCH_Z_FULLSCREEN } from '@/domain/sketch/sketchLayout'
 import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 
 export interface SketchDrawerProps {
@@ -298,13 +298,13 @@ export function SketchDrawer({
 
     return createPortal(
         <>
-            <Mask $zIndex={1000} $dim={isMobile} $phase={phase} $fixed={isMobile} data-testid="sketch-mask" />
+            <Mask $zIndex={SKETCH_Z_MASK} $dim={isMobile} $phase={phase} $fixed={isMobile} data-testid="sketch-mask" />
             <Sheet
                 data-testid="sketch-sheet"
                 /* z 序随形态切换：全屏（含进入动画期，state 已先行置位）盖过 composer（z 1002）——
                    画布上不该悬浮 composer；停靠形态保持 1001，开合动画从 composer「背后」抽出。
                    退全屏 state 立即复位 → 收回过程回到 composer 背后，符合「塞回抽屉」方向感 */
-                $zIndex={fullscreen ? 1003 : 1001}
+                $zIndex={fullscreen ? SKETCH_Z_FULLSCREEN : SKETCH_Z_DOCK}
                 $phase={phase}
                 $morphing={morphing}
                 style={sheetStyle}

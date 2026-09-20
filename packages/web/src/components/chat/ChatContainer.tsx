@@ -62,7 +62,7 @@ import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 import { spring } from '@/components/motion/presets'
-import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP } from '@/domain/sketch/sketchLayout'
+import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP, SKETCH_Z_COMPOSER } from '@/domain/sketch/sketchLayout'
 
 import { MobiLogo } from '@/components/ui/MobiLogo'
 // BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
@@ -1197,7 +1197,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         {/* composer stacking（z 1002）高于画板浮层（z 1001）：停靠开合动画期间浮层
             从 composer 背后经过（antd Drawer bottom 式「从下面抽出」），不遮挡 composer */}
-        <div style={{ position: 'relative', zIndex: 1002 }}>
+        <div style={{ position: 'relative', zIndex: SKETCH_Z_COMPOSER }}>
             <ChatComposer
                 ref={composerHandleRef}
                 sketchLayerEl={chatFullscreenEl}

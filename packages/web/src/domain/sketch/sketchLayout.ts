@@ -34,6 +34,17 @@ export const SKETCH_SHEET_OUT_MS = 300
 /** 停靠↔全屏几何过渡时长（ms）：四边 inset 的 CSS transition */
 export const SKETCH_MORPH_MS = 280
 
+/**
+ * 画板浮层 stacking 阶梯（跨文件契约，单一来源在此）：
+ * mask(1000) < 停靠浮层(1001) < composer(1002，ChatContainer) < 全屏浮层(1003)。
+ * 停靠低于 composer 是「从背后抽出」动效的前提；全屏高于 composer 是画布不悬浮
+ * 输入框的前提——四处魔数若靠注释互指，拼写错误会静默破坏动画，勿内联回去。
+ */
+export const SKETCH_Z_MASK = 1000
+export const SKETCH_Z_DOCK = 1001
+export const SKETCH_Z_COMPOSER = 1002
+export const SKETCH_Z_FULLSCREEN = 1003
+
 /** 画布几何重算延迟：需盖过载体全部动画（开合/形变）——动画 transform 中间态会被
  *  excalidraw 缓存为画布 rect，动画结束不触发 resize/ResizeObserver，缓存不失效即整体
  *  偏移。从动画时长派生（最长动画 + 一拍余量），时长调整自动跟随，不再靠注释对齐 */

@@ -19,8 +19,9 @@ import { theme } from 'antd'
 import { useElapsedSeconds } from './useElapsedSeconds'
 import { ScrambleText } from './ScrambleText'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
-import { StatusStateIcon, statusColorOf } from '@/components/tool-card/toolIcons'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { PixelLoader } from '@/components/ui/PixelLoader'
+import { AWAITING_AUTH_LOADER } from '@/core/utils/sessionStatus'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { VIBING_MESSAGES } from '@/components/pixel-avatar/vibingMessages'
 
@@ -117,7 +118,7 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             {/* 输出中 drive 波前 / 停滞 orbit 绕圈；待审批 orbit 染橙（审批橙语义色，
                 与会话列表同源取色）——审批是需要行动的语义例外，不与「忙」混同 */}
             {loaderVariant
-                ? <PixelLoader variant={loaderVariant} color={isAwaitingAuth ? statusColorOf('awaiting_auth') : undefined} />
+                ? <PixelLoader variant={loaderVariant} color={isAwaitingAuth ? AWAITING_AUTH_LOADER.color : undefined} />
                 : <StatusStateIcon state={status} />}
             {/* 读屏播报区：只给落定文案（labelText）——可见层的 scramble 逐帧改写文字，
                 live 区若跟着变会把随机乱码中间态当更新连续播报；视觉隐藏但读屏可达 */}

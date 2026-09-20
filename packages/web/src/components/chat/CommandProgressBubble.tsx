@@ -73,13 +73,14 @@ export function CommandProgressBubble({ titleKey }: CommandProgressBubbleProps) 
     const { t } = useTranslation()
     // mount ≈ 命令起点（见上）；秒级 tick 驱动计时刷新
     const startedAtRef = useRef(Date.now())
-    const elapsed = useElapsedSeconds(startedAtRef.current)
-    const elapsedTime = formatElapsedTime(startedAtRef.current, startedAtRef.current + elapsed * 1000)
+    // hook 调用承载秒级 tick；formatElapsedTime 缺省 now 即可，不必从秒回合成 ms 时间戳
+    useElapsedSeconds(startedAtRef.current)
+    const elapsedTime = formatElapsedTime(startedAtRef.current)
 
     return (
         <Row>
             {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰元素 aria-hidden */}
-            <Title as="span" role="status" aria-live="polite" className="shimmer-text">
+            <Title role="status" aria-live="polite" className="shimmer-text">
                 {t(titleKey)}
             </Title>
             <Elapsed>{elapsedTime}</Elapsed>

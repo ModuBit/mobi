@@ -118,6 +118,10 @@ function extractActiveTarget(name: string, input: unknown, description: string |
   return truncate(display, ACTIVE_TARGET_MAX)
 }
 
+/** 思考时长的最小可展示值（ms）：低于它 toFixed(1) 归到「0.0 秒」，视同无时长兜底「思考」。
+ *  数值与 ReasoningBlock 的 (durationMs/1000).toFixed(1) 显示精度耦合，改精度须同步 */
+const THINK_MIN_DISPLAY_MS = 50
+
 /**
  * 格式化折叠组标题（汇总形态：全部落定或无活跃内容时）。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「思考 X.X 秒」，全无（local/历史）兜底「思考」。
@@ -129,10 +133,9 @@ export function formatGroupTitle(
   t: Translate,
 ): string {
   // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）。
-  // 时长不足 50ms（toFixed(1) 会归到「0.0 秒」）视同无时长，兜底「思考」——0 秒思考展示时长没有信息量
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
   const totalThinkMs = reasoningBlocks.reduce((sum, b) => sum + (b.durationMs ?? 0), 0)
-  const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null) && totalThinkMs >= 50
+  const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null) && totalThinkMs >= THINK_MIN_DISPLAY_MS
 
   // tool 计数：单次遍历同时累计调用次数、去重目标集合、无目标块数，读取端按计数语义取值
   const buckets = new Map<ToolCategory, { targets: Set<string>; unknown: number; calls: number }>()
