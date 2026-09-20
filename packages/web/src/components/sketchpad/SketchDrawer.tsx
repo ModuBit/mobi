@@ -42,6 +42,7 @@ import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
+import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS } from '@/domain/sketch/sketchLayout'
 import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 
 export interface SketchDrawerProps {
@@ -79,8 +80,11 @@ const FULLSCREEN_INSET = 8
  * 浮起一张纸」的层次，而非硬切盖板 */
 const MOBILE_SHEET_INSET = 8
 
-/** 停靠 ↔ 全屏几何过渡：四边 inset 均为像素值，全程可连续插值（像调整窗口大小） */
-const MORPH_TRANSITION_CSS = 'top 280ms cubic-bezier(0.2, 0.8, 0.2, 1), right 280ms cubic-bezier(0.2, 0.8, 0.2, 1), bottom 280ms cubic-bezier(0.2, 0.8, 0.2, 1), left 280ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+/** 停靠 ↔ 全屏几何过渡：四边 inset 均为像素值，全程可连续插值（像调整窗口大小）。
+ *  时长单源 sketchLayout（画布 settle 定时从它派生，改这里自动跟随） */
+const MORPH_TRANSITION_CSS = (['top', 'right', 'bottom', 'left'] as const)
+    .map(prop => `${prop} ${SKETCH_MORPH_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`)
+    .join(', ')
 
 /** PC 开合：浮层从 composer 附近浮起/沉回（层不裁剪，位移过大会滑出层外穿帮） */
 const SHEET_IN_KEYFRAMES = keyframes`
@@ -113,10 +117,10 @@ const MASK_OUT_KEYFRAMES = keyframes`
 /** 开合相位：enter 滑入中 / open 常驻 / exit 滑出中（结束后卸载） */
 type SheetPhase = 'enter' | 'open' | 'exit'
 
-/** 滑入/滑出动画时长：相位切换用定时驱动（不用 portal 内动画事件——经 React
- * 委托在部分环境收不到），卸载/复位定时按此兜底 */
-const SHEET_IN_MS = 260
-const SHEET_OUT_MS = 220
+/** 滑入/滑出动画时长：单源在 domain/sketch/sketchLayout（与画布 settle 定时、测量方共享），
+ *  相位切换用定时驱动（不用 portal 内动画事件——经 React 委托在部分环境收不到） */
+const SHEET_IN_MS = SKETCH_SHEET_IN_MS
+const SHEET_OUT_MS = SKETCH_SHEET_OUT_MS
 
 const Mask = styled.div<{ $zIndex: number; $dim: boolean; $phase: SheetPhase; $fixed: boolean }>`
     position: ${(p) => (p.$fixed ? 'fixed' : 'absolute')};

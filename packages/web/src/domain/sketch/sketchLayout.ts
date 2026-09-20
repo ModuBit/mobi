@@ -22,3 +22,15 @@
 
 /** PC 停靠高度（占消息列表高度比例）：从 composer 上方抽出，拉满即吊顶（消息区顶） */
 export const SKETCH_DOCK_HEIGHT_RATIO = 0.7
+
+/** 载体开合动画时长（ms）：入场滑入 / 出场滑出（cubic-bezier 时长见 SketchDrawer） */
+export const SKETCH_SHEET_IN_MS = 260
+export const SKETCH_SHEET_OUT_MS = 220
+
+/** 停靠↔全屏几何过渡时长（ms）：四边 inset 的 CSS transition */
+export const SKETCH_MORPH_MS = 280
+
+/** 画布几何重算延迟：需盖过载体全部动画（开合/形变）——动画 transform 中间态会被
+ *  excalidraw 缓存为画布 rect，动画结束不触发 resize/ResizeObserver，缓存不失效即整体
+ *  偏移。从动画时长派生（最长动画 + 一拍余量），时长调整自动跟随，不再靠注释对齐 */
+export const SKETCH_CANVAS_SETTLE_MS = Math.max(SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_MORPH_MS) + 190

@@ -36,6 +36,7 @@ import { Excalidraw } from '@excalidraw/excalidraw'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import { exportSketch, loadSketch } from '@/domain/sketch/sketchFile'
+import { SKETCH_CANVAS_SETTLE_MS } from '@/domain/sketch/sketchLayout'
 import { useIsDark } from '@/core/data/hooks/useIsDark'
 
 export interface SketchCanvasProps {
@@ -60,8 +61,9 @@ export interface SketchCanvasHandle {
 /** 防抖兜底间隔：笔画进行中 onChange 逐点连发，落笔停顿后再做形状等价改写 */
 const PRESSURE_FIX_DEBOUNCE_MS = 400
 
-/** 画布几何重算延迟：需盖过载体开合动画时长（动画 transform 中间态会被缓存） */
-const CANVAS_SETTLE_REFRESH_MS = 450
+/** 画布几何重算延迟：单源 sketchLayout 从载体动画时长派生（settle 必须盖过全部动画，
+ *  否则动画 transform 中间态被缓存为画布 rect → 绘制坐标整体偏移） */
+const CANVAS_SETTLE_REFRESH_MS = SKETCH_CANVAS_SETTLE_MS
 
 /**
  * 场景指纹：取消确认的「有无修改」检测基准。剔除 version/versionNonce/updated 等
