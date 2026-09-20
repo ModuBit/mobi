@@ -491,39 +491,31 @@ describe('formatGroupTitle', () => {
     })
   })
 
-  describe('失败计数', () => {
-    it('含 error 时追加「· N 个失败」', () => {
+  describe('失败工具不影响标题（失败提示只走组头红角标）', () => {
+    it('含 error 时不追加失败后缀', () => {
       const blocks = [
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
         makeToolCall({ id: 'r3', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('读取了 3 个文件 · 1 个失败')
+      expect(formatGroupTitle(blocks, t)).toBe('读取了 3 个文件')
     })
 
-    it('全 error 时计数为组大小', () => {
+    it('全 error 时同样不带失败后缀', () => {
       const blocks = [
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'error' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('读取了 2 个文件 · 2 个失败')
-    })
-
-    it('无 error 时不追加', () => {
-      const blocks = [
-        makeToolCall({ id: 'r1', name: 'Read', state: 'completed' }),
-        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
-      ]
       expect(formatGroupTitle(blocks, t)).toBe('读取了 2 个文件')
     })
 
-    it('含 error 与 reasoning 混合：reasoning 不计入失败', () => {
+    it('含 error 与 reasoning 混合：标题只含正常计数', () => {
       const blocks = [
         makeReasoning({ id: 'rs1', durationMs: 1000 }),
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks, t)).toBe('思考 1.0 秒、读取了 2 个文件 · 1 个失败')
+      expect(formatGroupTitle(blocks, t)).toBe('思考 1.0 秒、读取了 2 个文件')
     })
   })
 

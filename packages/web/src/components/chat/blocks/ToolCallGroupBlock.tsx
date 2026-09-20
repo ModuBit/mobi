@@ -33,8 +33,8 @@ import { CrossfadeText } from '@/components/ui/CrossfadeText'
 
 /**
  * 组头状态 icon：Layers 图标承载组状态——组活跃（运行/审批中）蓝呼吸，落定绿静态；
- * 含失败工具时右上角叠小红角标提示。主体不染红（避免一个失败染红整组），
- * 失败计数由标题「· N 个失败」后缀承载（汇总/动态两种形态均追加，withFailedSuffix 单点实现）。
+ * 含失败工具时右上角叠小红角标提示（失败提示的唯一载体，标题不带失败计数文案）。
+ * 主体不染红（避免一个失败染红整组）。
  */
 function ToolCallGroupIcon({ hasError, hasActive }: { hasError: boolean; hasActive: boolean }) {
   return (
@@ -71,12 +71,12 @@ export function ToolCallGroupRenderer({
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   // 失败数/动态标题/活跃态单处派生（activeTitle 非 null ⟺ 组活跃）。
-  // failedCount 只进汇总标题——运行中组内还有活跃块，「失败」尚非最终事实，动态标题不带失败后缀。
+  // failedCount 只驱动组头红角标——标题不带失败计数文案
   // 注：blocks/isActiveReasoning 每帧都是新引用，此处不做 memo——计算本身即每帧必付的成本
   const failedCount = countFailedInGroup(blocks)
   const activeTitle = formatGroupActiveTitle(blocks, { t, isActiveReasoning })
   const hasActive = activeTitle != null
-  const title = activeTitle ?? formatGroupTitle(blocks, t, { failedCount })
+  const title = activeTitle ?? formatGroupTitle(blocks, t)
 
   return (
     <Think

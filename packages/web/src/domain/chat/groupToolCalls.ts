@@ -59,16 +59,9 @@ function isActiveTool(block: ToolCallBlock): boolean {
   return block.tool.state === 'running' || block.tool.state === 'pending'
 }
 
-/** 追加失败计数后缀（>0 时）——汇总/动态两种标题形态共用，保证失败计数不变式单一实现 */
-function withFailedSuffix(text: string, failedCount: number | undefined, t: Translate): string {
-  return failedCount != null && failedCount > 0
-    ? `${text} · ${t('chat.group.failed', { count: failedCount })}`
-    : text
-}
-
 /**
  * 组内失败工具数（state=error 的 tool-call；reasoning 不计）。
- * 组头红角标（hasError）与标题「· N 个失败」共用此函数，避免两处独立判定漂移。
+ * 组头红角标（hasError）的判定来源——失败提示只走图标小红点，标题不带失败计数后缀。
  */
 export function countFailedInGroup(blocks: CollapsibleBlock[]): number {
   return blocks.filter(b => b.kind === 'tool-call' && b.tool.state === 'error').length
@@ -129,13 +122,11 @@ function extractActiveTarget(name: string, input: unknown, description: string |
  * 格式化折叠组标题（汇总形态：全部落定或无活跃内容时）。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「思考 X.X 秒」，全无（local/历史）兜底「思考」。
  * tool 部分：按类别计数——文件操作类按去重文件数（同文件多次编辑计 1 个文件，数量=真实文件数），其余按调用次数。
- * 失败计数：组内失败工具数 > 0 时追加「· N 个失败」；调用方可传预计算的 failedCount 免去内部重复遍历。
  * 文案经 i18n（t 由组件层传入 useTranslation 的 t）。
  */
 export function formatGroupTitle(
   blocks: CollapsibleBlock[],
   t: Translate,
-  opts: { failedCount?: number } = {},
 ): string {
   // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
@@ -182,17 +173,13 @@ export function formatGroupTitle(
     parts.push(t('chat.group.mcp', { server: formatMCPServerDisplay(server), count: n }))
   }
 
-  const base = capitalize(parts.join(t('chat.group.separator')))
-  // 含失败工具时追加失败计数（与主体同语言）
-  const failedCount = opts.failedCount ?? countFailedInGroup(blocks)
-  return withFailedSuffix(base, failedCount, t)
+  return capitalize(parts.join(t('chat.group.separator')))
 }
 
 /**
  * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待审批」）。
  * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
  * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到文件目标 → 「正在写入文件」）。
- * 失败后缀只在落定的汇总标题展示——运行中组内还有活跃块，「失败」尚非最终事实，动态标题不追加。
  */
 export function formatGroupActiveTitle(
   blocks: CollapsibleBlock[],

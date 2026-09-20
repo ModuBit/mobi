@@ -211,8 +211,6 @@
             "edit_other": "Edited {{count}} files",
             "mcp_one": "Called {{server}} {{count}} time",
             "mcp_other": "Called {{server}} {{count}} times",
-            "failed_one": "{{count}} failed",
-            "failed_other": "{{count}} failed",
             "running": {
                 "thinking": "Thinking",
                 "shell": "Running command",

@@ -202,7 +202,6 @@
             "write_other": "写入了 {{count}} 个文件",
             "edit_other": "编辑了 {{count}} 个文件",
             "mcp_other": "调用了 {{server}} {{count}} 次",
-            "failed_other": "{{count}} 个失败",
             "running": {
                 "thinking": "正在思考",
                 "shell": "正在执行命令",
