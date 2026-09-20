@@ -37,11 +37,7 @@
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.70.0"
     },
-    "dependencies": {
-        "@tiptap/extension-task-item": "^3.31.3",
-        "@tiptap/extension-task-list": "^3.31.3"
-    },
-    "lint-staged": {
+"lint-staged": {
         "packages/*/src/**/*.{ts,tsx}": "eslint --fix"
     }
 }

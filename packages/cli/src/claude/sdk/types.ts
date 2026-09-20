@@ -30,20 +30,3 @@ export type {
     PermissionBehavior,
     PermissionUpdateDestination,
 } from '@anthropic-ai/claude-agent-sdk'
-
-/**
- * 工具权限检查回调函数类型
- *
- * 与官方 SDK 的 CanUseTool 对齐，包含 suggestions、toolUseID 等参数
- */
-export interface CanCallToolCallback {
-    (
-        toolName: string,
-        input: unknown,
-        options: {
-            signal: AbortSignal
-            suggestions?: import('@anthropic-ai/claude-agent-sdk').PermissionUpdate[]
-            toolUseID?: string
-        }
-    ): Promise<import('@anthropic-ai/claude-agent-sdk').PermissionResult>
-}

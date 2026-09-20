@@ -176,26 +176,6 @@ export function hashObject(
 }
 
 /**
- * Compare two objects for deep equality using deterministic stringification
- * 
- * @param a First object
- * @param b Second object
- * @param options Stringification options
- * @returns True if objects are deeply equal
- */
-export function deepEqual(
-    a: unknown,
-    b: unknown,
-    options?: DeterministicJsonOptions
-): boolean {
-    try {
-        return deterministicStringify(a, options) === deterministicStringify(b, options);
-    } catch {
-        return false;
-    }
-}
-
-/**
  * Create a stable hash key for an object suitable for use as a Map key
  * 
  * @param obj Object to create key for
