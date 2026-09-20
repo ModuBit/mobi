@@ -25,7 +25,7 @@ const MetadataSummarySchema = z.object({
     updatedAt: z.number()
 })
 
-export const WorktreeMetadataSchema = z.object({
+const WorktreeMetadataSchema = z.object({
     basePath: z.string(),
     branch: z.string(),
     name: z.string(),
@@ -91,7 +91,7 @@ export type Project = z.infer<typeof ProjectSchema>
 // ============ SDK 相关 Schema ============
 
 /** SDK 斜杠命令信息 */
-export const SlashCommandSchema = z.object({
+const SlashCommandSchema = z.object({
     name: z.string(),
     description: z.string(),
     argumentHint: z.string(),
@@ -102,7 +102,7 @@ export const SlashCommandSchema = z.object({
 export type SlashCommand = z.infer<typeof SlashCommandSchema>
 
 /** SDK 子代理信息 */
-export const AgentInfoSchema = z.object({
+const AgentInfoSchema = z.object({
     name: z.string(),
     description: z.string(),
     model: z.string().optional()
@@ -111,7 +111,7 @@ export const AgentInfoSchema = z.object({
 export type AgentInfo = z.infer<typeof AgentInfoSchema>
 
 /** SDK 模型信息 */
-export const ModelInfoSchema = z.object({
+const ModelInfoSchema = z.object({
     value: z.string(),
     resolvedModel: z.string().optional(),
     displayName: z.string(),
@@ -126,7 +126,7 @@ export const ModelInfoSchema = z.object({
 export type ModelInfo = z.infer<typeof ModelInfoSchema>
 
 /** SDK 账户信息 */
-export const AccountInfoSchema = z.object({
+const AccountInfoSchema = z.object({
     email: z.string().optional(),
     organization: z.string().optional(),
     subscriptionType: z.string().optional(),
@@ -138,12 +138,12 @@ export const AccountInfoSchema = z.object({
 export type AccountInfo = z.infer<typeof AccountInfoSchema>
 
 /** SDK 快速模式状态 */
-export const FastModeStateSchema = z.enum(['off', 'cooldown', 'on'])
+const FastModeStateSchema = z.enum(['off', 'cooldown', 'on'])
 
 export type FastModeState = z.infer<typeof FastModeStateSchema>
 
 /** SDK 元数据（来自 initializationResult） */
-export const SDKMetadataSchema = z.object({
+const SDKMetadataSchema = z.object({
     commands: z.array(SlashCommandSchema).optional(),
     agents: z.array(AgentInfoSchema).optional(),
     outputStyle: z.string().optional(),
@@ -161,7 +161,7 @@ export type SDKMetadata = z.infer<typeof SDKMetadataSchema>
  * fork 激活簿记（点 fork 时写入，激活成功后清除，fork-session spec §5.1）。
  * CLI 激活时据此组装 forkSession/resumeSessionAt/sessionId 三个 SDK option。
  */
-export const ForkFromMetadataSchema = z.object({
+const ForkFromMetadataSchema = z.object({
     /** parent 的 mobi 会话行 id（溯源消息 ref / 激活预检的目标会话） */
     parentSessionId: z.string(),
     /** parent 当前 native session id（激活时作 resumeToken） */
@@ -173,7 +173,7 @@ export const ForkFromMetadataSchema = z.object({
 export type ForkFromMetadata = z.infer<typeof ForkFromMetadataSchema>
 
 /** fork 持久溯源（终身保留；存在即禁止再次 fork，fork 入口判据与「fork 自」系统消息消费） */
-export const ForkedFromMetadataSchema = z.object({
+const ForkedFromMetadataSchema = z.object({
     /** parent 的 mobi 会话行 id */
     sessionId: z.string(),
 })
@@ -187,7 +187,7 @@ export type ForkedFromMetadata = z.infer<typeof ForkedFromMetadataSchema>
  * ⚠️ 失败时必须保留 forkFrom（不清除）——web 的待激活判定与 hub 的删除守卫都以 forkFrom
  * 在场为「未激活」依据；forkError 只是叠加的失败标记，不是替代。
  */
-export const ForkErrorMetadataSchema = z.object({
+const ForkErrorMetadataSchema = z.object({
     /** 失败原因码（稳定契约，web 按码映射文案；未知码回退通用文案）。已知码见 FORK_ERROR_CODES */
     code: z.string(),
     /** 失败时刻（epoch ms） */
@@ -250,7 +250,7 @@ export const MetadataSchema = z.object({
 
 export type Metadata = z.infer<typeof MetadataSchema>
 
-export const SDKUIHintsSchema = z.object({
+const SDKUIHintsSchema = z.object({
     title: z.string().optional(),
     displayName: z.string().optional(),
     description: z.string().optional(),
@@ -269,13 +269,13 @@ export const SDKUIHintsSchema = z.object({
 export type SDKUIHints = z.infer<typeof SDKUIHintsSchema>
 
 /** SDK 权限更新建议（与 @anthropic-ai/claude-agent-sdk 的 PermissionUpdate 结构对齐） */
-export const PermissionBehaviorSchema = z.enum(['allow', 'deny', 'ask'])
+const PermissionBehaviorSchema = z.enum(['allow', 'deny', 'ask'])
 
-export const PermissionUpdateDestinationSchema = z.enum([
+const PermissionUpdateDestinationSchema = z.enum([
     'userSettings', 'projectSettings', 'localSettings', 'session', 'cliArg'
 ])
 
-export const PermissionRuleValueSchema = z.object({
+const PermissionRuleValueSchema = z.object({
     toolName: z.string(),
     ruleContent: z.string().optional(),
 })
@@ -401,7 +401,7 @@ export const BackgroundTaskItemSchema = z.object({
 
 export type BackgroundTaskItem = z.infer<typeof BackgroundTaskItemSchema>
 
-export const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
+const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
 
 /** 可清理的 runtimeState 字段白名单（清理 API 契约的单源）：
  *  hub 路由 z.enum / store 可清理集合 / web 清理按钮类型均由此派生，新增字段只改这里 */
@@ -429,7 +429,7 @@ export const ForegroundTaskItemSchema = z.object({
 
 export type ForegroundTaskItem = z.infer<typeof ForegroundTaskItemSchema>
 
-export const ForegroundTasksSchema = z.array(ForegroundTaskItemSchema)
+const ForegroundTasksSchema = z.array(ForegroundTaskItemSchema)
 
 /**
  * 从 background_tasks_changed 的 tasks 数组提取存活后台任务 id 集合（CLI 与 Hub 共用规则）：
@@ -449,7 +449,7 @@ export function extractLiveBackgroundTaskIds(tasks: unknown): Set<string> {
     return ids
 }
 
-export const TeamMemberSchema = z.object({
+const TeamMemberSchema = z.object({
     name: z.string(),
     agentId: z.string().optional(),
     agentType: z.string().optional(),
@@ -464,7 +464,7 @@ export const TeamMemberSchema = z.object({
 
 export type TeamMember = z.infer<typeof TeamMemberSchema>
 
-export const TeamTaskSchema = z.object({
+const TeamTaskSchema = z.object({
     id: z.string(),
     title: z.string().optional(),
     subject: z.string().optional(),
@@ -476,7 +476,7 @@ export const TeamTaskSchema = z.object({
 
 export type TeamTask = z.infer<typeof TeamTaskSchema>
 
-export const TeamMessageSchema = z.object({
+const TeamMessageSchema = z.object({
     from: z.string(),
     to: z.string(),
     summary: z.string(),
@@ -486,7 +486,7 @@ export const TeamMessageSchema = z.object({
 
 export type TeamMessage = z.infer<typeof TeamMessageSchema>
 
-export const TeamStateSchema = z.object({
+const TeamStateSchema = z.object({
     teamName: z.string(),
     description: z.string().optional(),
     members: z.array(TeamMemberSchema).optional(),
@@ -507,7 +507,7 @@ export const CONTEXT_USAGE_CATEGORY_KEYS = [
     'messages',
 ] as const
 
-export const ContextUsageCategoryKeySchema = z.enum(CONTEXT_USAGE_CATEGORY_KEYS)
+const ContextUsageCategoryKeySchema = z.enum(CONTEXT_USAGE_CATEGORY_KEYS)
 
 export type ContextUsageCategoryKey = z.infer<typeof ContextUsageCategoryKeySchema>
 
@@ -515,7 +515,7 @@ export type ContextUsageCategoryKey = z.infer<typeof ContextUsageCategoryKeySche
  * 上下文类目细分（SDK getContextUsage({detail:'summary'}) 口径：总量锚定最近 response usage，
  * 类目数字为本地估算）。可选字段——缺省 = 该轮无细分（旧 CLI / local 模式 / 采集失败）。
  */
-export const ContextUsageBreakdownSchema = z.object({
+const ContextUsageBreakdownSchema = z.object({
     /** 按 CC 顺序排列的类目占用（不含 free / autocompact buffer，二者单独成字段） */
     categories: z.array(z.object({
         key: ContextUsageCategoryKeySchema,

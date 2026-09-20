@@ -318,7 +318,7 @@ export const UpdateNewMessageBodySchema = z.object({
     backfill: z.boolean().optional()
 })
 
-export const UpdateSessionBodySchema = z.object({
+const UpdateSessionBodySchema = z.object({
     t: z.literal('update-session'),
     sid: z.string(),
     metadata: z.object({
@@ -331,7 +331,7 @@ export const UpdateSessionBodySchema = z.object({
     }).nullable()
 })
 
-export const UpdateMachineBodySchema = z.object({
+const UpdateMachineBodySchema = z.object({
     t: z.literal('update-machine'),
     machineId: z.string(),
     metadata: z.object({
@@ -346,7 +346,7 @@ export const UpdateMachineBodySchema = z.object({
 
 export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>
 
-export const UpdateSchema = z.object({
+const UpdateSchema = z.object({
     id: z.string(),
     seq: z.number(),
     body: z.union([UpdateNewMessageBodySchema, UpdateSessionBodySchema, UpdateMachineBodySchema]),

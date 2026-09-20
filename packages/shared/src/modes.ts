@@ -23,7 +23,7 @@
 export const CLAUDE_PERMISSION_MODES = ['auto', 'default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'] as const
 export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
 
-export const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
+const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
 export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
 
 // 顺序与 CLAUDE_PERMISSION_MODES 一致（自由度递增，auto 置顶）
