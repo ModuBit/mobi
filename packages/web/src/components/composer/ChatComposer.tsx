@@ -365,7 +365,11 @@ export function ChatComposer(props: ChatComposerProps) {
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）。
     // getQuoteCount/addQuote：消息列表选区引用动作的手柄通道（引用是即时动作，无需信箱防重放）
     const addQuote = useCallback((quote: PendingQuoteRef) => {
-        setQuotes(prev => (prev.length >= QUOTE_MAX_COUNT ? prev : [...prev, quote]))
+        setQuotes(prev => {
+            // 同一消息去重：重复引用无增量语义，且 chip/删除都按 messageId 寻址，重条目会撞 key、删一条删全部
+            if (prev.some(q => q.messageId === quote.messageId)) return prev
+            return prev.length >= QUOTE_MAX_COUNT ? prev : [...prev, quote]
+        })
     }, [])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,

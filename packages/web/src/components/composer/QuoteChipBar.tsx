@@ -170,7 +170,8 @@ function QuoteItem({
                             placeholder={t('composer.quoteCommentPlaceholder')}
                             onChange={(e) => setDraft(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
+                                // IME 组合中的 Enter 是确认候选词，不是提交（中文输入法必踩）
+                                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                                     e.preventDefault()
                                     saveComment()
                                 } else if (e.key === 'Escape') {

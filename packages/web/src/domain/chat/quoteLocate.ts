@@ -33,6 +33,9 @@ export const QUOTE_FLASH_CLASS = 'quote-locate-flash'
 /** 闪烁时长（ms）：到期由定时器摘类（不用 animationend——jsdom 不跑动画，永不触发） */
 export const QUOTE_FLASH_MS = 1200
 
+/** 在飞的摘类定时器与目标：连续点击时先摘旧类/清旧定时器，防「新闪烁被上一次的到期提前掐灭」与定时器堆积 */
+let activeFlash: { el: HTMLElement; timer: ReturnType<typeof setTimeout> } | null = null
+
 /**
  * 定位执行：查锚 → 解析高亮目标 → scrollIntoView + 挂高亮类，定时器到期摘除。
  */
@@ -50,10 +53,22 @@ export function locateQuotedMessage(messageId: string): void {
         ? anchor.firstElementChild ?? anchor
         : anchor
 
+    // 上一次闪烁还挂着：先摘掉再重放，且清掉旧定时器（否则旧定时器会把新闪烁提前掐灭）
+    if (activeFlash) {
+        clearTimeout(activeFlash.timer)
+        activeFlash.el.classList.remove(QUOTE_FLASH_CLASS)
+    }
+
     target.scrollIntoView({ behavior: 'smooth', block: 'center' })
     // 先摘类再强制重排后重挂：连续点击同一目标时闪烁动画从头重放
     target.classList.remove(QUOTE_FLASH_CLASS)
     void (target as HTMLElement).offsetWidth
     target.classList.add(QUOTE_FLASH_CLASS)
-    window.setTimeout(() => target.classList.remove(QUOTE_FLASH_CLASS), QUOTE_FLASH_MS)
+    activeFlash = {
+        el: target as HTMLElement,
+        timer: setTimeout(() => {
+            target.classList.remove(QUOTE_FLASH_CLASS)
+            activeFlash = null
+        }, QUOTE_FLASH_MS),
+    }
 }

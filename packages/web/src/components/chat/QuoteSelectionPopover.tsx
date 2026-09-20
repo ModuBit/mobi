@@ -25,6 +25,8 @@ import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 const POPOVER_GAP = 8
 /** 浮层宽度：紧凑动作条，不随选区长度变化 */
 const POPOVER_WIDTH = 220
+/** 距视口左右边缘的最小间距（fixed 定位无滚动兜底，窄屏必须钳制） */
+const VIEWPORT_MARGIN = 8
 
 const Layer = styled.div`
     position: fixed;
@@ -73,13 +75,18 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
     const { t } = useTranslation()
     const { token } = theme.useToken()
 
-    // 默认在选区上方（底边贴选区顶边）；选区太靠顶时翻到下方（不做逐边翻转的兜底）
+    // 默认在选区上方（底边贴选区顶边）；选区太靠顶时翻到下方（不做逐边翻转的兜底）。
+    // 选区中心优先，越出视口边缘时钳回（移动端窄屏/选区贴近边缘的兜底）
     const above = state.rect.top > 120
     const top = above ? state.rect.top - POPOVER_GAP : state.rect.bottom + POPOVER_GAP
-    const left = state.rect.left + state.rect.width / 2 - POPOVER_WIDTH / 2
+    const left = Math.min(
+        Math.max(state.rect.left + state.rect.width / 2 - POPOVER_WIDTH / 2, VIEWPORT_MARGIN),
+        Math.max(window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN, VIEWPORT_MARGIN),
+    )
 
     return (
         <Layer
+            data-quote-layer="popover"
             data-testid="quote-selection-popover"
             data-popover-kind={state.kind}
             style={{ top, left, transform: above ? 'translateY(-100%)' : undefined }}

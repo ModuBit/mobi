@@ -21,7 +21,6 @@ import { useTranslation } from 'react-i18next'
 import { FileCard } from '@ant-design/x'
 import { Bot, Pencil, User } from 'lucide-react'
 import styled from '@emotion/styled'
-import { Global } from '@emotion/react'
 import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
@@ -34,7 +33,6 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { ActionLink } from '@/components/ui/ActionLink'
 import { SketchEditBadge } from '@/components/ui/SketchEditBadge'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS } from '@/domain/chat/quoteLocate'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */
@@ -158,21 +156,9 @@ function QuoteGroupView({ blocks, env }: { blocks: UserQuoteBlock[]; env: UserBl
     const { token } = theme.useToken()
     const anchorProps = quoteAnchorProps({ forbidden: true })
     return (
+        // 闪烁动画样式不在此注入——每实例 Global 会在长会话重复挂载同名规则，
+        // 单份注入在 ChatContainer（quoteFlashStyles，随聊天列表生灭）
         <div {...anchorProps} style={{ ...anchorProps.style, userSelect: 'none' }}>
-            {/* 定位高亮闪烁样式（quoteLocate 挂类，此处注入——样式随组件树生灭） */}
-            <Global styles={{
-                [`.${QUOTE_FLASH_CLASS}`]: {
-                    animation: `quote-locate-flash-kf ${QUOTE_FLASH_MS}ms ease-out`,
-                    borderRadius: token.borderRadiusLG,
-                },
-                '@keyframes quote-locate-flash-kf': {
-                    '0%': {
-                        backgroundColor: token.colorWarningBg,
-                        boxShadow: `0 0 0 2px ${token.colorWarningBorder}`,
-                    },
-                    '100%': { backgroundColor: 'transparent', boxShadow: '0 0 0 2px transparent' },
-                },
-            }} />
             <div style={{
                 display: 'flex',
                 flexDirection: 'column',

@@ -31,6 +31,7 @@ import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
+import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS } from '@/domain/chat/quoteLocate'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -706,15 +707,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         window.getSelection()?.removeAllRanges()
     }, [])
 
-    // 浮层开着时选区被清（点击它处）或滚动即关闭（选区几何已失效，浮层不跟随）；
-    // 评论输入同族：点击它处/滚动按取消处理，Esc 由输入框自身消费。scroll 不冒泡，
-    // capture 监听才能截获内层滚动容器的滚动
+    // 引用浮层（add 态）开着时选区被清（点击它处）或滚动即关闭（选区几何已失效，浮层不跟随）；
+    // Esc 同样收起。scroll 不冒泡，capture 监听才能截获内层滚动容器的滚动。
+    // 评论输入浮层**不走** selectionchange 关闭——autoFocus 会把选区收进输入框（collapsed），
+    // 依赖它会刚打开即被误关；其取消路径 = mousedown 落在 data-quote-layer 外 / 滚动 / 取消按钮
     useEffect(() => {
-        if (!quotePopover && !quoteCommentDraft) return
-        const close = () => {
-            setQuotePopover(null)
-            setQuoteCommentDraft(null)
-        }
+        if (!quotePopover) return
+        const close = () => setQuotePopover(null)
         const onSelectionChange = () => {
             const sel = window.getSelection()
             if (!sel || sel.isCollapsed) close()
@@ -730,7 +729,27 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             document.removeEventListener('keydown', onKeyDown)
             window.removeEventListener('scroll', close, true)
         }
-    }, [quotePopover, quoteCommentDraft])
+    }, [quotePopover])
+
+    // 评论输入：点击浮层外按取消处理（确认前清掉已捕获草稿与选区）；滚动即取消（几何失效）
+    useEffect(() => {
+        if (!quoteCommentDraft) return
+        const close = () => {
+            setQuoteCommentDraft(null)
+            window.getSelection()?.removeAllRanges()
+        }
+        const onMouseDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null
+            if (!target?.closest('[data-quote-layer]')) close()
+        }
+        const onScroll = () => close()
+        document.addEventListener('mousedown', onMouseDown)
+        window.addEventListener('scroll', onScroll, true)
+        return () => {
+            document.removeEventListener('mousedown', onMouseDown)
+            window.removeEventListener('scroll', onScroll, true)
+        }
+    }, [quoteCommentDraft])
 
     // 「⋯」入口：footer 触发按钮按 bubble item key 从索引取目标（点击等价原长按打开 Drawer）
     const openActionsByItemKey = useCallback((key: string) => {
@@ -780,6 +799,19 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         chainHeadsCacheRef.current = { key: structureKey, set }
         return set
     }, [messages, hasNextPage])
+
+    // 引用定位高亮闪烁样式（quote-locate-flash）：单份注入在聊天列表层（随本组件生灭），
+    // 不落 QuoteGroupView——每实例 Global 会在长会话重复挂载同名规则
+    const quoteFlashStyles = useMemo(() => css`
+        .${QUOTE_FLASH_CLASS} {
+            animation: quote-locate-flash-kf ${QUOTE_FLASH_MS}ms ease-out;
+            border-radius: ${token.borderRadiusLG}px;
+        }
+        @keyframes quote-locate-flash-kf {
+            0% { box-shadow: 0 0 0 3px ${token.colorWarningBorder}; background: ${token.colorWarningBg}; }
+            100% { box-shadow: 0 0 0 3px transparent; background: transparent; }
+        }
+    `, [token])
 
     const decoratedItems = useMemo(() => {
         // ── fork 判据数据（fork-session spec §4.1/§4.2）──
@@ -1151,6 +1183,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
+            <Global styles={quoteFlashStyles} />
             <div
                 ref={setChatScrollEl}
                 className="chat-scroll-container"
