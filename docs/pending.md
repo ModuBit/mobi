@@ -806,3 +806,45 @@ interrupt（用户停止）
 **根因**：jsdom 从未实现 `URL.createObjectURL`，vitest jsdom 环境里该 API 实际来自 Bun 宿主；Bun 的实现靠鸭子类型读 blob 内部槽（`_buffer`），jsdom 30.1.0 改 Blob 内部布局后对 jsdom File 抛 `Cannot read properties of undefined (reading '_buffer')`。曾波及 `AttachmentItem.test.tsx` 等 5 个用例。
 
 **解法**：`tests/setup.ts` 显式桩化 `URL.createObjectURL`/`revokeObjectURL`（返回 `blob:mock-N` 伪 URL，与既有 localStorage/matchMedia/ResizeObserver 补桩同一惯例），与宿主运行时内部解耦；`jsdom` 恢复 `^30.1.0`。此后 jsdom/Bun 各自升级不再受此交互影响。
+
+---
+
+## 84. mcpServer.source 审批徽标——前提不成立，留重估条件（2026-09-20 评估不采纳）
+
+**背景**：SDK 0.3.274 给 `canUseTool` options 加 `mcpServer: {name, source}`（`source === "sdk"` = host 自己注入的 server），MCP server 状态行同带 `source`。原始设想：审批面板给 mobi 自有工具加「Mobi 内置」徽标。
+
+**不采纳理由**：
+
+- mobi 自有工具（mobi-apps 全族 + mobi-core）经 `sessionTransports.ts` 的 `MOBI_PREAUTHORIZED_TOOLS` 全量预授权（ADR 0005 设计决策），**根本不出现在审批面板**——徽标无处可挂
+- 外部工具的 server 身份已可从工具名 `mcp__<server>__<tool>` 前缀静态判别（自有 server 名是编译期常量），不依赖 SDK 新字段
+- 收益≈零但跨 cli/shared/web 三包改动 + 测试
+
+**重估条件**：将来若把某些 mobi 工具**移出预授权**（如 B 类高危操作要用户确认），`source` 字段即有真实用途，届时重评。
+
+---
+
+## 85. pasted_content 粘贴标注——收益在 CC 侧 transcript，mobi 用户不可见（2026-09-20 评估不采纳）
+
+**背景**：SDK 0.3.277 给 `SDKUserMessage` 加 `pasted_content` 字段（用户粘贴而非键入的文本，附在键入 prompt 后），对应 CC TUI 粘贴折叠成 `[Pasted text #N]` 占位块的既有行为。
+
+**不采纳理由**：
+
+- 现状无痛点：粘贴文本作为普通文本完整传输/渲染/入上下文
+- 收益不可见：字段只影响 CC 内部 transcript 的标注方式，mobi 用户看的是自己渲染的气泡（已完整展示）；上下文/token 计费不受影响
+- 成本中等：composer 粘贴检测 + 键入/粘贴分段 + 消息构造改造 + 跨端渲染适配
+
+**重估条件**：长粘贴文本出现上下文层面处理需求（CC 对 pasted 块有特殊压缩/缓存策略）时重评。
+
+---
+
+## 86. task_notification.reason="worker_restart" 归因标注——罕见路径，查库兜底已通（2026-09-20 评估不采纳）
+
+**背景**：SDK 0.3.273 起 `task_notification` 可携带 `reason: "worker_restart"`（后台任务因 CC worker 进程重启被停，非正常完成/失败）。mobi 的 `backgroundTasks.ts` 终态映射忽略该字段，此类任务按 status（failed）落终态。
+
+**不采纳理由**：
+
+- worker 重启是 CC 异常恢复路径，常态运行几乎碰不到——为罕见路径在后台任务链路加字段不值
+- 改动点敏感：终态分流（补建/豁免/knownTaskIds 三股交织）+ shared 类型 + web TaskPanel 三层
+- 诊断兜底已存在：原始 task_notification 完整落库，`reason` 查库即得
+
+**重估条件**：用户实际反馈「后台任务自己停了」且归因困难时，透传 reason 到任务卡片做归因标注。

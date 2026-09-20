@@ -2,18 +2,9 @@
 
 SDK / Claude Code 升级附带的新能力挖掘记录（`/upgrade-deps` 第八步产出）。
 
-## 2026-09-20 · SDK 0.3.268→0.3.278 / CC 2.1.268→2.1.278
 
-
-| 功能名                                                                                                                               | 出处          | 对 mobi 的价值                                                                                                                            | 建议落地位置                                                                                     | 优先级 | 状态           |
-| --------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --- | ------------ |
-| `CLAUDE_CODE_MCP_STARTUP_WAIT_MS`（首回合 MCP 连接等待上限，`0` 禁用；`options.mcpServers` 的 server 仍被等待）                                       | SDK 0.3.274 | 填补已知短板：会话首 token 延迟（E2E 实测 ttft 8.2s）中 MCP 等待是可控成分——旧版首回合硬等最长 2s。mobi 的 host-owned server 走 options.mcpServers 不受影响，但外部/慢 MCP 不再拖累首回合 | settings claudeEnv 注入（零开发）；如需按 machine 配置再立 ticket                                         | 高   | 待采纳          |
-| `canUseTool` options 新增 `mcpServer: {name, source}` + MCP status `source`（host 可凭 `source === "sdk"` 识别自己注入的 server）              | SDK 0.3.274 | 增强现有功能：审批面板可对 host-owned MCP（mobi-core / mobi-apps，ADR 0005）标注「Mobi 内置」徽标，与外部 MCP 视觉区分，降低误批焦虑；agent-apps 红线（防刷新重放）链路可加权威判定            | cli permissionHandler 读 options.mcpServer → shared SDKUIHints 透传 → web PermissionFooter 徽标 | 中   | 待采纳          |
-| resume/fork 会话 `total_cost_usd` / `modelUsage` / `get_usage` 延续历史 turns（不再从零，`maxBudgetUsd` 不变）                                   | SDK 0.3.277 | 直接受益零改动：fork-on-result 与 resume 场景的 turn 统计卡成本/缓存数字恢复连续性（此前每次激活从 0 起算，用户会看到成本「清零」）                                                    | —                                                                                          | 高   | 已随升级自动获得     |
-| `getSessionMessages` / `forkSession` 五项修复（turn 首条 assistant 消息不丢、queued 消息按读取位置回放、`upToMessageId` uuid 校验、fork 重跑 prompt 不再显示两次等） | SDK 0.3.275 | 直接受益零改动：fork-on-result 特性（.scratch 分叉 spec）的消息复制完整性由上游加固                                                                              | —                                                                                          | 高   | 已随升级自动获得     |
-| `SlashCommand.builtin`（标记内置命令）                                                                                                    | SDK 0.3.277 | ✅ 已落地（2026-09-20）：schema 加 optional 字段透传，web 斜杠下拉内置命令名固定暖橙 `#f97316`（用户确认两主题可读），skill 保持中性色；过滤/分组待真实需求 | cli 零改动（对象透传）→ shared SlashCommandSchema + builtin → web 下拉着色            | 低   | 已落地           |
-| `SDKUserMessage.pasted_content`（用户粘贴而非键入的文本，附在 prompt 后）                                                                          | SDK 0.3.277 | 全新能力：移动端「粘贴长文本到会话」场景可标注来源，或折叠展示粘贴块；需产品决策是否值得 UI 呈现                                                                                    | web composer / 消息渲染                                                                        | 低   | 需决策          |
-| `task_notification.reason: "worker_restart"`（后台任务因 worker 进程重启被停）                                                                 | SDK 0.3.273 | 增强现有功能：任务面板可把「意外终止」与「正常完成/用户停止」区分展示                                                                                                   | hub sessionMessageRuntimeProjector 消费 → web TaskPanel 状态标注                                 | 低   | 待采纳          |
-| 远端会话延迟字段 `first_text_post_ms` / `first_stream_post_queue_wait_ms` 等（success result）                                               | SDK 0.3.277 | 核实：与上次台账 0.3.260 结论同理——ttft\_ms 已权威覆盖「首 token」，新增字段拆的是 remote 中继段的细粒度成分，受众窄；字段已随 result 帧落库可查                                         | —                                                                                          | 低   | 不采纳（有诊断需求查库） |
+|     |     |              |
+| --- | --- | ------------ |
+|     | 低   | 不采纳（有诊断需求查库） |
 
 
