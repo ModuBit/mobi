@@ -80,7 +80,8 @@ export function isSegmentEmpty(segments: ComposerSegments): boolean {
  *
  * - 固定顺序 image → document → quote → text：图片在前（视觉卡片更易扫读，用户预期），
  *   正文恒收尾；CLI 侧按 block 顺序遍历、两类间无顺序依赖
- * - quote 仅取首条 + excerpt 截断至 QUOTE_EXCERPT_MAX（与 schema 约束对齐）
+ * - quote 取前 QUOTE_MAX_COUNT 条（多条连续成 wire 段，引用组编号按此顺序）+ excerpt/
+ *   comment 截断至 QUOTE_EXCERPT_MAX（与 schema 约束对齐）
  * - text trim 后非空才入列；纯文本退化为单 text block，全空返回 []（调用方据此拦截）
  */
 export function serializeSegments(segments: ComposerSegments): UserContentBlock[] {

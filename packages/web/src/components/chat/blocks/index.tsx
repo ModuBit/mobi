@@ -21,6 +21,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
+import { locateQuotedMessage } from '@/domain/chat/quoteLocate'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
@@ -57,7 +58,8 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
     switch (block.kind) {
         case 'user-text':
             // 选区引用锚点：消息容器锚（messageId+role）罩整条气泡；block 容器锚由
-            // UserBlocksView 的 text 视图自带（documents/images 无 block 锚 → 天然不可引用）
+            // UserBlocksView 的 text 视图自带（documents/images 无 block 锚 → 天然不可引用）。
+            // 引用组是禁区（QuoteGroupView 自落 data-quote-forbidden）
             return (
                 <div {...quoteAnchorProps({ messageId: block.localId, role: 'user' })}>
                     <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
@@ -68,6 +70,8 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                                 refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
                                 onEditSketch: ctx.onEditSketchBlock,
                                 quoteBlockAnchor: true,
+                                // 引用条目点击 → 消息级定位（滚动 + 高亮；窗口外静默）
+                                onQuoteLocate: locateQuotedMessage,
                             }}
                         />
                     </CollapsibleUserMessage>

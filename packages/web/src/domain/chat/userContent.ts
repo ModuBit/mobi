@@ -30,11 +30,13 @@ export function collectUserText(blocks: readonly UserContentBlock[]): string {
     return blocks.filter((b): b is UserTextBlock => b.type === 'text').map(b => b.text).join('\n')
 }
 
-/** 渲染分段：连续 document / 连续 image 各归并为一段（气泡内分别以横向容器合并展示），其余 block 各占一段 */
+/** 渲染分段：连续 document / 连续 image / 连续 quote 各归并为一段（气泡内分别以合并容器展示），其余 block 各占一段。
+ * quote 恒连续——serializeSegments 固定顺序 image → document → quote → text（引用组连续编号的 wire 保证） */
 export type UserBlockGroup =
     | { kind: 'block'; block: UserContentBlock }
     | { kind: 'documents'; blocks: UserDocumentBlock[] }
     | { kind: 'images'; blocks: UserImageBlock[] }
+    | { kind: 'quotes'; blocks: UserQuoteBlock[] }
 
 export function groupUserBlocks(blocks: readonly UserContentBlock[]): UserBlockGroup[] {
     const out: UserBlockGroup[] = []
@@ -46,6 +48,9 @@ export function groupUserBlocks(blocks: readonly UserContentBlock[]): UserBlockG
         } else if (b.type === 'image') {
             if (last?.kind === 'images') last.blocks.push(b)
             else out.push({ kind: 'images', blocks: [b] })
+        } else if (b.type === 'quote') {
+            if (last?.kind === 'quotes') last.blocks.push(b)
+            else out.push({ kind: 'quotes', blocks: [b] })
         } else {
             out.push({ kind: 'block', block: b })
         }

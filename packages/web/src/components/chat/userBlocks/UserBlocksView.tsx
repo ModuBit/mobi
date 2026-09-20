@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { FileCard } from '@ant-design/x'
 import { Bot, Pencil, User } from 'lucide-react'
 import styled from '@emotion/styled'
+import { Global } from '@emotion/react'
 import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
@@ -32,6 +33,8 @@ import { buildActionUri } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { ActionLink } from '@/components/ui/ActionLink'
 import { SketchEditBadge } from '@/components/ui/SketchEditBadge'
+import { AppTooltip } from '@/components/ui/AppTooltip'
+import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS } from '@/domain/chat/quoteLocate'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */
@@ -47,6 +50,12 @@ export interface UserBlockRenderEnv {
     onEditSketch?: (block: UserImageBlock) => void
     /** 选区引用：text 视图落 data-quote-block 容器锚（聊天列表接线；其它使用方缺省不落） */
     quoteBlockAnchor?: boolean
+    /**
+     * 引用条目点击定位入口（消息级：滚动到源消息 + 高亮，见 domain/chat/quoteLocate）。
+     * 交互只在聊天列表接线处有意义——非聊天上下文缺省不传，引用组退化为纯展示
+     * （对齐 onEditSketch 的可选能力位模式）
+     */
+    onQuoteLocate?: (messageId: string) => void
 }
 
 /** 各类型视图的统一 props 形态（block 字段按注册键收窄） */
@@ -80,34 +89,102 @@ function TextView({ block, env }: UserBlockViewProps<UserTextBlock>) {
     return <div {...quoteAnchorProps({ block: true })}>{textNode}</div>
 }
 
+/** 引用条目预览截断宽度：超出省略号截断，全文由 AppTooltip 承载（截断不阻碍阅读全文） */
+const QUOTE_PREVIEW_MAX = 120
+
+/** 预览文本截断：超长补省略号 */
+function truncateQuotePreview(text: string): string {
+    return text.length > QUOTE_PREVIEW_MAX ? `${text.slice(0, QUOTE_PREVIEW_MAX)}…` : text
+}
+
 /**
- * quote 视图（自研轻量）：左边框灰底小条 + 角色 icon + excerpt。
- * hover title 展示全文；不承接点击定位原文——引用追溯走 RewindConfirmView 等既有入口（YAGNI）。
+ * quote 行视图（引用组内单条渲染）：编号 + 角色 icon + excerpt 预览（超 {@link QUOTE_PREVIEW_MAX}
+ * 截断，全文走 AppTooltip 的 PC hover / 移动端长按）+ 可选评论全显异色——excerpt 是别人的话
+ * （静音灰三级），comment 是用户自己的话（提一级次级灰），同为灰系 token 不引入主题外颜色。
+ * 点击 = 消息级定位（env.onQuoteLocate 提供时）；缺省退化为纯展示（无 pointer 光标）。
  */
-function QuoteView({ block }: UserBlockViewProps<UserQuoteBlock>) {
+function QuoteView({ block, env, index = 0, divided = false }:
+    UserBlockViewProps<UserQuoteBlock> & { index?: number; divided?: boolean }) {
     const { token } = theme.useToken()
-    // 角色一眼可辨即可，配色取主题灰系 token，不引入主题外颜色
+    // 角色一眼可辨即可，配色取主题灰系 token
     const RoleIcon = block.role === 'user' ? User : Bot
+    const clickable = !!env.onQuoteLocate
     return (
-        <div
-            data-testid={`user-quote-${block.messageId}`}
-            title={block.excerpt}
-            style={{
+        <AppTooltip title={block.excerpt} mouseEnterDelay={0.4}>
+            <div
+                data-testid={`user-quote-${block.messageId}`}
+                onClick={clickable ? () => env.onQuoteLocate?.(block.messageId) : undefined}
+                style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    padding: divided ? '5px 8px' : '4px 8px',
+                    // 条间细分隔线（首条无线）
+                    ...(divided ? { borderTop: `1px solid ${token.colorBorderSecondary}` } : {}),
+                    cursor: clickable ? 'pointer' : undefined,
+                    fontSize: 12,
+                    lineHeight: '18px',
+                    maxWidth: '100%',
+                }}
+            >
+                <span style={{ flexShrink: 0, color: token.colorTextTertiary }}>{index + 1}.</span>
+                <RoleIcon size={12} style={{ flexShrink: 0, marginTop: 3, color: token.colorTextTertiary }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ color: token.colorTextTertiary, wordBreak: 'break-word' }}>
+                        {truncateQuotePreview(block.excerpt)}
+                    </div>
+                    {block.comment && (
+                        <div style={{ color: token.colorTextSecondary, wordBreak: 'break-word' }}>
+                            {block.comment}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </AppTooltip>
+    )
+}
+
+/**
+ * 引用组视图：发送后气泡内全部引用的合并呈现容器（对齐 CONTEXT「引用组」词条与 composer
+ * 引用胶囊的编号词汇）——一个组件内编号连续、条间细分隔线，替代散落独立引用块。
+ *
+ * 编号恒显示（单条也编）：编号是 chip（「N 条引用」列表）/ prompt（<quote index>）/ 气泡
+ * 三处一致的跨端锚点（spec 用户故事 26），单条省略编号会让「关于 #1」在气泡侧失去对应。
+ *
+ * 组是引用禁区：data-quote-forbidden（判定器的第二道防御）+ user-select:none——
+ * 引用组内文本不可被选中引用，「引用的引用」语义混乱。
+ */
+function QuoteGroupView({ blocks, env }: { blocks: UserQuoteBlock[]; env: UserBlockRenderEnv }) {
+    const { token } = theme.useToken()
+    const anchorProps = quoteAnchorProps({ forbidden: true })
+    return (
+        <div {...anchorProps} style={{ ...anchorProps.style, userSelect: 'none' }}>
+            {/* 定位高亮闪烁样式（quoteLocate 挂类，此处注入——样式随组件树生灭） */}
+            <Global styles={{
+                [`.${QUOTE_FLASH_CLASS}`]: {
+                    animation: `quote-locate-flash-kf ${QUOTE_FLASH_MS}ms ease-out`,
+                    borderRadius: token.borderRadiusLG,
+                },
+                '@keyframes quote-locate-flash-kf': {
+                    '0%': {
+                        backgroundColor: token.colorWarningBg,
+                        boxShadow: `0 0 0 2px ${token.colorWarningBorder}`,
+                    },
+                    '100%': { backgroundColor: 'transparent', boxShadow: '0 0 0 2px transparent' },
+                },
+            }} />
+            <div style={{
                 display: 'flex',
-                alignItems: 'flex-start',
-                gap: 6,
-                padding: '4px 8px',
+                flexDirection: 'column',
                 borderLeft: `3px solid ${token.colorBorderSecondary}`,
                 background: token.colorFillQuaternary,
                 borderRadius: token.borderRadiusSM,
-                color: token.colorTextSecondary,
-                fontSize: 12,
-                lineHeight: '18px',
                 maxWidth: '100%',
-            }}
-        >
-            <RoleIcon size={12} style={{ flexShrink: 0, marginTop: 3, color: token.colorTextTertiary }} />
-            <span style={{ wordBreak: 'break-word' }}>{block.excerpt}</span>
+            }}>
+                {blocks.map((b, i) => (
+                    <QuoteView key={`${i}-${b.messageId}`} block={b} index={i} divided={i > 0} env={env} />
+                ))}
+            </div>
         </div>
     )
 }
@@ -240,12 +317,16 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
 /**
  * 用户消息 content block → 视图注册表（对齐 knownTools 工具卡注册惯例）：
  * shared 新增 block 类型时在此加一行即可接入渲染。
+ *
+ * 注意 document / image / quote 的渲染实际走 UserBlocksView 的分段合并分支
+ * （{@link groupUserBlocks} 组段优先于注册表分发）——注册项保持类型全量并为
+ * 非分组路径兜底（对齐组段 + 注册表双轨模式）。quote 项为单条也走组容器的适配。
  */
 export const USER_BLOCK_RENDERERS: {
     [K in UserContentBlock['type']]: React.FC<UserBlockViewProps<Extract<UserContentBlock, { type: K }>>>
 } = {
     text: TextView,
-    quote: QuoteView,
+    quote: ({ block, env }) => <QuoteGroupView blocks={[block]} env={env} />,
     document: DocumentView,
     image: ImageView,
 }
@@ -253,10 +334,11 @@ export const USER_BLOCK_RENDERERS: {
 /**
  * 用户消息气泡内容视图：按 blocks 顺序分发到各类型视图。
  *
- * - 顶层段落间用垂直 Space 统一分隔（文本/引用/图片段/附件段）；
+ * - 顶层段落间用垂直 Space 统一分隔（文本/引用组/图片段/附件段）；
  * - 连续 document 由 {@link groupUserBlocks} 归并后以横向 wrap Space 装单卡合并展示
  *   （不用 FileCard.List——其 list-content 自带 12px 16px padding，气泡内过肥）；
- * - 连续 image 归并到横向 wrap Space，多图不一张一行。
+ * - 连续 image 归并到横向 wrap Space，多图不一张一行；
+ * - 连续 quote 归并为引用组合并容器（{@link QuoteGroupView}：编号连续 + 条间分隔线）。
  */
 export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBlock[]; env?: UserBlockRenderEnv }) {
     const renderEnv: UserBlockRenderEnv = env ?? {}
@@ -277,6 +359,10 @@ export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBl
                             {seg.blocks.map(b => <ImageView key={b.id} block={b} env={renderEnv} />)}
                         </Space>
                     )
+                }
+                // 连续 quote 归并为引用组合并容器（单条也同容器，形态一致）
+                if (seg.kind === 'quotes') {
+                    return <QuoteGroupView key={`quotes-${seg.blocks[0].messageId}`} blocks={seg.blocks} env={renderEnv} />
                 }
                 const b = seg.block
                 // key：业务 id 优先；text 块无 id，用序号兜底（blocks 与分段一一对应，同内容下稳定）

@@ -51,9 +51,22 @@ describe('groupUserBlocks', () => {
         expect(groups).toEqual([{ kind: 'documents', blocks: [doc, doc] }])
     })
 
-    it('quote 等其余 block 不受影响（各占一段）', () => {
+    it('连续 quote 归并为一段 quotes（引用组合并容器的分段保证）', () => {
+        const quote: UserQuoteBlock = { type: 'quote', messageId: 'm1', role: 'agent', excerpt: 'e1' }
+        const quote2: UserQuoteBlock = { type: 'quote', messageId: 'm2', role: 'user', excerpt: 'e2' }
+        const groups = groupUserBlocks([quote, quote2, image('a')])
+        expect(groups).toEqual([
+            { kind: 'quotes', blocks: [quote, quote2] },
+            { kind: 'images', blocks: [image('a')] },
+        ])
+    })
+
+    it('quote 被 text 打断则不跨段归并（保持分段顺序；wire 侧 quote 恒连续）', () => {
         const quote: UserQuoteBlock = { type: 'quote', messageId: 'm1', role: 'agent', excerpt: 'e' }
-        const groups = groupUserBlocks([quote, image('a'), quote])
-        expect(groups.map(g => g.kind)).toEqual(['block', 'images', 'block'])
+        const groups = groupUserBlocks([quote, text('说明'), quote])
+        expect(groups).toHaveLength(3)
+        expect(groups[0]).toMatchObject({ kind: 'quotes' })
+        expect(groups[1]).toMatchObject({ kind: 'block', block: text('说明') })
+        expect(groups[2]).toMatchObject({ kind: 'quotes' })
     })
 })

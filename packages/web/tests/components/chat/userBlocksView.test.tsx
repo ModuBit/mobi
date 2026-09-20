@@ -70,9 +70,9 @@ describe('UserBlocksView 按 block 分发渲染', () => {
         ]
         render(<UserBlocksView blocks={blocks} env={{ refCtx: { sessionId: 's1' } }} />)
 
-        // quote：data-testid 定位 + excerpt 全文 + hover title 兜底展示全文
+        // quote：引用组容器内 data-testid 定位 + excerpt 全文（短文本不截断）+ 编号恒显示
         expect(screen.getByTestId('user-quote-m1')).toHaveTextContent('CCR backend…')
-        expect(screen.getByTestId('user-quote-m1')).toHaveAttribute('title', 'CCR backend…')
+        expect(screen.getByTestId('user-quote-m1')).toHaveTextContent('1.')
 
         // document 卡：文件名渲染（FileCard 把 name 拆成 prefix/suffix 两个 span，
         // 单元素 getByText 拿不到完整名，用卡片级 textContent 断言）
@@ -300,5 +300,80 @@ describe('合成消息文本样式', () => {
         )
         expect(document.querySelector('[data-testid=md]')).toBeNull()
         expect(screen.getByText('/rewind 标记').tagName).toBe('SPAN')
+    })
+})
+
+describe('引用组合并容器（票 06）', () => {
+    /** 构造 quote block 的便捷工厂 */
+    const quote = (messageId: string, excerpt: string, comment?: string): UserContentBlock => ({
+        type: 'quote', messageId, role: 'agent', excerpt,
+        ...(comment !== undefined ? { comment } : {}),
+    })
+
+    it('多 quote 归并单容器：编号连续 + 条间分隔线 + comment 全显异色', () => {
+        render(
+            <UserBlocksView
+                blocks={[
+                    quote('q1', '第一条引用'),
+                    quote('q2', '第二条引用', '这里为什么成立？'),
+                ]}
+            />,
+        )
+
+        // 编号 1./2. 与条目同容器（对齐 chip/prompt 的跨端编号词汇）
+        expect(screen.getByTestId('user-quote-q1')).toHaveTextContent('1.第一条引用')
+        expect(screen.getByTestId('user-quote-q2')).toHaveTextContent('2.第二条引用')
+        // comment 全显（不截断）
+        expect(screen.getByText('这里为什么成立？')).toBeInTheDocument()
+
+        // 条间细分隔线：第二条（divided）落 border-top，首条无
+        expect(screen.getByTestId('user-quote-q2').style.borderTopWidth).toBe('1px')
+        expect(screen.getByTestId('user-quote-q1').style.borderTopWidth).toBe('')
+
+        // 色调区分：excerpt 静音灰 vs comment 提一级（同为灰系 token，色值不同）
+        const excerptColor = screen.getByText('第二条引用').style.color
+        const commentColor = screen.getByText('这里为什么成立？').style.color
+        expect(excerptColor).not.toBe('')
+        expect(commentColor).not.toBe('')
+        expect(commentColor).not.toBe(excerptColor)
+    })
+
+    it('单条 quote 也走组容器：编号保留（chip/prompt/气泡三处一致的跨端锚点）', () => {
+        render(<UserBlocksView blocks={[quote('q1', '单条引用')]} />)
+        expect(screen.getByTestId('user-quote-q1')).toHaveTextContent('1.单条引用')
+    })
+
+    it('excerpt 超 120 字截断补省略号；hover 展示全文（全文 = excerpt 存档）', async () => {
+        const full = `${'x'.repeat(150)}结尾标记`
+        render(<UserBlocksView blocks={[quote('q1', full)]} />)
+
+        const row = screen.getByTestId('user-quote-q1')
+        expect(row.textContent).toContain('…')
+        expect(row.textContent).not.toContain('结尾标记')
+
+        // PC hover（pointerType=mouse）→ AppTooltip 弹出全文（截断不阻碍阅读）
+        fireEvent.pointerOver(row, { pointerType: 'mouse', relatedTarget: document.body })
+        expect(await screen.findByText(full)).toBeInTheDocument()
+    })
+
+    it('引用组落 forbidden 锚点 + user-select:none（「引用的引用」禁区双防御）', () => {
+        const { container } = render(<UserBlocksView blocks={[quote('q1', '不可再被引用')]} />)
+        const forbidden = container.querySelector('[data-quote-forbidden]')
+        expect(forbidden).not.toBeNull()
+        expect(forbidden).toHaveStyle({ userSelect: 'none' })
+    })
+
+    it('点击条目 → env.onQuoteLocate（消息级定位能力位；未提供则无点击 handler）', () => {
+        const onQuoteLocate = vi.fn()
+        const { rerender } = render(
+            <UserBlocksView blocks={[quote('q1', '可定位'), quote('q2', '第二条')]} env={{ onQuoteLocate }} />,
+        )
+        fireEvent.click(screen.getByTestId('user-quote-q2'))
+        expect(onQuoteLocate).toHaveBeenCalledTimes(1)
+        expect(onQuoteLocate).toHaveBeenCalledWith('q2')
+
+        // 能力位缺省（非聊天上下文）：点击无 handler，纯展示不报错
+        rerender(<UserBlocksView blocks={[quote('q1', '纯展示')]} />)
+        expect(() => fireEvent.click(screen.getByTestId('user-quote-q1'))).not.toThrow()
     })
 })
