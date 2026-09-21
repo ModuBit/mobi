@@ -161,6 +161,25 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
     // LaTeX 特征探测双栈共用：决定 katex/math 按需加载（target 超集探测，不随揭示进度重扫）
     const needsLatex = useMemo(() => containsLatex(content ?? ''), [content])
 
+    // 脚注提取双栈共用（ticket 05）：定义清洗移除 + 尾部 FootnoteSources；
+    // 仅在脚注数据实质变化时重建 Map，流式渲染期间保持稳定引用
+    const { cleanContent, footnotes } = useMemo(
+        () => extractFootnotes(displayContent),
+        [displayContent],
+    )
+    const footnotesRef = useRef(footnotes)
+    const footnotesMapRef = useRef(new Map<number, FootnoteItem>())
+    if (
+        footnotes.length !== footnotesRef.current.length
+        || footnotes.some((fn, i) =>
+            fn.num !== footnotesRef.current[i]?.num
+            || fn.title !== footnotesRef.current[i]?.title
+            || fn.url !== footnotesRef.current[i]?.url)
+    ) {
+        footnotesMapRef.current = new Map(footnotes.map(fn => [fn.num, fn]))
+        footnotesRef.current = footnotes
+    }
+
     // flag 重载生效：mount 读一次，会话内不随 localStorage 变化翻转（避免双栈热切换的结构跳变）
     const [renderer] = useState(getMarkdownRenderer)
 
@@ -168,21 +187,24 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
         // 揭示进行中：drip 未收敛；typing=false（无平滑层）时直接跟随流式状态
         const revealing = useDrip ? displayContent.length < (content ?? '').length : !!streaming
         return (
-            <Suspense fallback={null}>
-                <StreamdownView
-                    content={displayContent}
-                    isAnimating={revealing}
-                    mathEnabled={needsLatex}
-                    enableSlashCommand={enableSlashCommand}
-                    enableMention={enableMention}
-                    className={className}
-                    style={style}
-                />
-            </Suspense>
+            <FootnoteContext.Provider value={footnotesMapRef.current}>
+                <Suspense fallback={null}>
+                    <StreamdownView
+                        content={cleanContent}
+                        isAnimating={revealing}
+                        mathEnabled={needsLatex}
+                        enableSlashCommand={enableSlashCommand}
+                        enableMention={enableMention}
+                        className={className}
+                        style={style}
+                    />
+                </Suspense>
+                {footnotes.length > 0 && <FootnoteSources footnotes={footnotes} />}
+            </FootnoteContext.Provider>
         )
     }
 
-    return <XMarkdownView {...props} displayContent={displayContent} needsLatex={needsLatex} />
+    return <XMarkdownView {...props} displayContent={displayContent} needsLatex={needsLatex} cleanContent={cleanContent} footnotes={footnotes} footnotesMap={footnotesMapRef.current} />
 })
 
 /** 旧栈渲染视图（x-markdown 全量管线：扩展/脚注/katex/代码块），由 Markdown 按 flag 分发 */
@@ -190,6 +212,9 @@ function XMarkdownView({
     content,
     displayContent,
     needsLatex,
+    cleanContent,
+    footnotes,
+    footnotesMap,
     streaming,
     typing,
     components,
@@ -200,9 +225,15 @@ function XMarkdownView({
     enableSlashCommand = false,
     enableMention = false,
     ...rest
-}: MarkdownProps & { displayContent: string; needsLatex: boolean }) {
+}: MarkdownProps & {
+    displayContent: string
+    needsLatex: boolean
+    cleanContent: string
+    footnotes: FootnoteItem[]
+    footnotesMap: Map<number, FootnoteItem>
+}) {
     // displayContent 由 Markdown 统一经平滑层（useStreamingContent）算好传入（双栈共用）；
-    // needsLatex 同样由分发层探测传入（双栈共用）
+    // needsLatex / cleanContent / footnotes / footnotesMap 同样由分发层算好传入（双栈共用，ticket 05 起脚注提取提升到分发层）
 
     // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
     // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
@@ -239,30 +270,6 @@ function XMarkdownView({
         [className],
     )
 
-    // 始终用 hook 输出：hook 内部区分历史全显 / 流式逐字 / 流式结束后继续逐字到收敛，
-    // 避免 streaming 结束（full message 替换 snapshot）时直接跳到 content 全显覆盖逐字
-    const finalContent = displayContent
-
-    // 提取脚注定义，清洗正文（脚注定义从正文移除、集中到尾部 FootnoteSources 渲染）
-    const { cleanContent, footnotes } = useMemo(
-        () => extractFootnotes(finalContent),
-        [finalContent],
-    )
-
-    // 仅在脚注数据实质变化时重建 Map，流式渲染期间保持稳定引用
-    const footnotesRef = useRef(footnotes)
-    const footnotesMapRef = useRef(new Map<number, FootnoteItem>())
-    if (
-        footnotes.length !== footnotesRef.current.length
-        || footnotes.some((fn, i) =>
-            fn.num !== footnotesRef.current[i]?.num
-            || fn.title !== footnotesRef.current[i]?.title
-            || fn.url !== footnotesRef.current[i]?.url)
-    ) {
-        footnotesMapRef.current = new Map(footnotes.map(fn => [fn.num, fn]))
-        footnotesRef.current = footnotes
-    }
-
     const mergedConfig = useMemo(() => {
         const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
         const mentionExts = enableMention ? MENTION_EXTENSIONS : []
@@ -281,7 +288,7 @@ function XMarkdownView({
     }, [config, enableSlashCommand, enableMention, katexReady])
 
     return (
-        <FootnoteContext.Provider value={footnotesMapRef.current}>
+        <FootnoteContext.Provider value={footnotesMap}>
             {/* 单段渲染：XMarkdown 的流式管线（AnimationText 增量淡入 / 位置 key /
                 useStreaming 前缀 cache）整套假设 content append-only，单容器是其
                 原生形态——结构在流式全程恒定，不存在双段拆分/归一时的结构翻转

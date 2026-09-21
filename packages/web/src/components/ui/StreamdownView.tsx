@@ -34,8 +34,10 @@ import { memo, useEffect, useMemo, useState, type CSSProperties, type FC } from 
 import { Streamdown, type Components, type PluginConfig } from 'streamdown'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { ActionLink } from './ActionLink'
+import { FootnoteRef } from './FootnoteComponents'
 import { normalizeLatexSyntax } from './latexSyntax'
 import { ensureKatexLoaded } from './latexPlugin'
+import { wrapFootnoteRefs } from './footnotePlugin'
 import {
     preprocessUserSyntax,
     USER_SYNTAX_ALLOWED_TAGS,
@@ -83,6 +85,11 @@ const COMPONENTS: Components = {
     'slash-command': ({ children }: UserSyntaxTagProps) => (
         <span className="slash-command-badge">{children as React.ReactNode}</span>
     ),
+    // 脚注引用（ticket 05）：hast data-* 属性名可能以驼峰或原样抵达，两种形态都接
+    'footnote-ref': (props: UserSyntaxTagProps) => {
+        const num = (props['data-num'] ?? props.dataNum) as string | undefined
+        return <FootnoteRef data-num={num}>{num}</FootnoteRef>
+    },
 }
 
 /**
@@ -147,10 +154,13 @@ export const StreamdownView = memo(function StreamdownView({
     const normalizedContent = mathPlugins ? normalizeLatexSyntax(content) : content
 
     // 用户消息专属语法（slash/mention）预处理：parse 前包进 literal 自定义标签
-    const displayContent = useMemo(
+    const userSyntaxContent = useMemo(
         () => preprocessUserSyntax(normalizedContent, { enableSlashCommand, enableMention }),
         [normalizedContent, enableSlashCommand, enableMention],
     )
+
+    // 脚注引用预处理：parse 前包进 literal 自定义标签（防 remark-gfm 内置脚注解析双重消费）
+    const displayContent = useMemo(() => wrapFootnoteRefs(userSyntaxContent), [userSyntaxContent])
 
     return (
         <div

@@ -107,7 +107,9 @@ export function preprocessUserSyntax(content: string, options: UserSyntaxOptions
 export const USER_SYNTAX_ALLOWED_TAGS: Record<string, string[]> = {
     mention: ['uri'],
     'slash-command': [],
+    // 脚注引用（footnotePlugin.wrapFootnoteRefs 产出，ticket 05）
+    'footnote-ref': ['data-num'],
 }
 
 /** literalTagContent：子内容视为纯文本，不再二次 parse（保护路径中的 `~`/`_`） */
-export const USER_SYNTAX_LITERAL_TAGS: string[] = ['mention', 'slash-command']
+export const USER_SYNTAX_LITERAL_TAGS: string[] = ['mention', 'slash-command', 'footnote-ref']
