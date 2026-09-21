@@ -861,3 +861,20 @@ interrupt（用户停止）
 **为何不保留代码**：web client 调用路径与 hub 注册路径错位（`/git/status` vs `/git-status`），链路在接口层已经断裂——留存的是接错的骨架而非可恢复的功能；且旧形态是「文件树旁的 git Tab 轮询」，与 code review 所需的「围绕某轮会话改动的 diff」seam 位置不同。
 
 **重估条件**：code review 特性立项时，按真实需求重建 git 数据链（候选形态：从消息流 Edit/Write 块聚合变更，或 hub 直调 git），不参考旧实现。
+
+---
+
+## 88. x-markdown 块级 memo——流式全量 re-render 的根治候选（2026-09-21 profile 实测后记录）
+
+**来源**：Streamdown 迁移回滚（`d4d11cc3`）后的 x-markdown 性能治理线。prod profile（6x CPU 节流、2500 字长文流式）实测：每次揭示 XMarkdown 全量重建 React 元素树（createElement + diff）是长任务主要构成，2500 字时每步 ~50-100ms（真机折算 ~10-20ms，暂无感）。合批优化（`f0f5f580`，onScroll 冗余判定 + scrollTop 多读收敛）已交付，但树重建这一结构性成本仍在。
+
+**目标**：已完成 markdown 块的 React 子树 memo 短路（props 不变即跳过 createElement/diff），每次揭示只重渲染尾部活动块——即 Streamdown 内建、ZCode 生产在用的形态。
+
+**两条路径**：
+
+1. **推上游（优先）**：给 `@ant-design/x-markdown`（当前 2.9.0，mobi 被 pin，见依赖间接 pin 约束）提块级 memo issue/PR。其单容器 append-only 架构 + AnimationText 位置 key/前缀 cache 与块级 memo 同方向，落地即根治且零维护负担。可附 mobi 的 dev/prod profile 数据（`.mobi/uploads/2026-09/stream-trace*.json.gz`）。
+2. **mobi 侧双容器重试（慎重）**：`8182bf10` 做过 stable+tail 双段拆分，性能目标达成（stable 段零 re-parse）但死于三观感问题：拆分判据随快照间歇振荡 → AnimationText 整文重淡入（整块闪烁）、fence/列表跨块延续判定、跨容器间距断裂。回滚记录见 `5bd93406`。重试前提：拆分点只进不退（单调化根治振荡）+ 延续语法状态机复用 + 间距 CSS 兜底——修完三问题还可能出第四类，XMarkdown 双容器始终逆着其 append-only 假设走。
+
+**参照系**：ZCode（~/workspace/github/study/ZCode）用 streamdown 2.5 内建块级 memo + 无动画 + 无逐字揭示，生产顺畅；但其为「无打字机」观感，与 mobi 逐字揭示卖点不同，不可直接照搬结论。
+
+**触发条件**：真机（不节流）长文流式可感知周期性顿挫时立项；当前 prod 数据（每步 ~10-20ms 真机折算）暂不构成立项理由。
