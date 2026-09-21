@@ -17,32 +17,56 @@
 /**
  * Streamdown 渲染视图（新栈，flag 开启时由 Markdown 分发挂载）
  *
- * ticket 01 为最小接入：无插件（LaTeX/slash/mention/脚注等在后续 ticket 逐项补齐）、
- * 无动画定制（ticket 08）、代码块走 Streamdown 默认 controls/主题（ticket 07 收口）。
+ * ticket 01 最小接入 + ticket 02 对齐旧行为：
+ * - 链接：覆盖 components.a——Streamdown 默认把链接渲染成 button（配合 linkSafety），
+ *   与现状（真 <a>，mobi:// 走 ActionLink 拦截，外链新标签页）不符，此处复位
+ * - controls：表格无控件、代码块仅 copy（download 关）、图片无 overlay——对齐现状观感
+ *   （代码块完整行为——语言检测/shiki 双主题——在 ticket 07 收口）
+ * - lineNumbers 关：现状无行号
+ * - LaTeX/slash/mention/脚注插件在后续 ticket 逐项补齐；动画在 ticket 08
+ *
  * 输入内容已由 Markdown 统一经 useStreamingContent 平滑层揭示（双栈共用），此处
  * 只负责把「揭示进行中」绑定到 isAnimating（后续动画插件依赖该信号进出管线）。
- *
  * linkSafety 关闭：与现状对齐（外链直接新标签页打开，不做拦截确认），决策见 spec。
  */
 
-import { memo, type CSSProperties } from 'react'
-import { Streamdown } from 'streamdown'
+import { memo, type CSSProperties, type FC } from 'react'
+import { Streamdown, type Components } from 'streamdown'
+import { MOBI_URI_SCHEME } from '@mobi/shared'
+import { ActionLink } from './ActionLink'
 
-/** linkSafety 配置（模块级常量保持稳定引用，不因每帧重建打破 Streamdown 内部 memo） */
+/** linkSafety 关闭（模块级常量保持稳定引用，不因每帧重建打破 Streamdown 内部 memo） */
 const LINK_SAFETY_OFF = { enabled: false } as const
 
-export interface StreamdownViewProps {
-    /** Markdown 文本内容（已过平滑层） */
-    content: string
-    /** 揭示进行中（平滑层缓冲未收敛 / 流式未结束），驱动 Streamdown 流式语义 */
-    isAnimating?: boolean
-    /** 追加到容器的外部类名（透传自 Markdown.className） */
-    className?: string
-    /** 容器内联样式（透传自 Markdown.style） */
-    style?: CSSProperties
+/** 控件可见性：表格无控件 / 代码块仅 copy / 图片无 overlay（对齐旧栈观感） */
+const CONTROLS = {
+    table: false,
+    code: { copy: true, download: false },
+    image: false,
+} as const
+
+/** mobi URI scheme 前缀（同 Markdown.tsx 旧栈，scheme 大小写不敏感按 URI 惯例归一后识别） */
+const MOBI_URI_PREFIX = `${MOBI_URI_SCHEME}://`
+
+/**
+ * 链接渲染（components.a 覆盖）：mobi:// 内部动作链接交 ActionLink 拦截分发
+ * （ADR 0003），其余统一新标签页打开——与旧栈 ExternalLink 语义一致
+ */
+const MdLink: FC<React.ComponentPropsWithoutRef<'a'> & { node?: unknown }> = ({ href, children, ...rest }) => {
+    if (href?.toLowerCase().startsWith(MOBI_URI_PREFIX)) {
+        return <ActionLink uri={href}>{children}</ActionLink>
+    }
+    return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+            {children}
+        </a>
+    )
 }
 
-/** 新栈容器类：streamdown.css 的设计令牌作用域 + 后续排版映射的挂点（ticket 02） */
+/** 组件覆盖表（模块级常量保持稳定引用） */
+const COMPONENTS: Components = { a: MdLink }
+
+/** 新栈容器类：streamdown.css 的设计令牌作用域 + 排版映射的挂点 */
 export const STREAMDOWN_CONTAINER_CLASS = 'streamdown-md'
 
 export const StreamdownView = memo(function StreamdownView({
@@ -50,13 +74,28 @@ export const StreamdownView = memo(function StreamdownView({
     isAnimating,
     className,
     style,
-}: StreamdownViewProps) {
+}: {
+    content: string
+    /** 揭示进行中（平滑层缓冲未收敛 / 流式未结束），驱动 Streamdown 流式语义 */
+    isAnimating?: boolean
+    /** 追加到容器的外部类名（透传自 Markdown.className） */
+    className?: string
+    /** 容器内联样式（透传自 Markdown.style） */
+    style?: CSSProperties
+}) {
     return (
         <div
             className={[STREAMDOWN_CONTAINER_CLASS, className].filter(Boolean).join(' ')}
             style={{ maxWidth: '100%', ...style }}
         >
-            <Streamdown mode="streaming" isAnimating={isAnimating} linkSafety={LINK_SAFETY_OFF}>
+            <Streamdown
+                mode="streaming"
+                isAnimating={isAnimating}
+                linkSafety={LINK_SAFETY_OFF}
+                controls={CONTROLS}
+                lineNumbers={false}
+                components={COMPONENTS}
+            >
                 {content}
             </Streamdown>
         </div>

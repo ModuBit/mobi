@@ -17,23 +17,11 @@
 /** Streamdown 体验页（spike，临时）：A/B 对比 Streamdown 与现行 XMarkdown 的流式渲染 */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Streamdown } from 'streamdown'
-import { code } from '@streamdown/code'
-import { mermaid } from '@streamdown/mermaid'
-import { createMathPlugin } from '@streamdown/math'
-import { cjk } from '@streamdown/cjk'
-import 'streamdown/styles.css'
-import 'katex/dist/katex.min.css'
 import '@/styles/streamdown-spike.css'
 import { Markdown } from '@/components/ui/Markdown'
+import { StreamdownView } from '@/components/ui/StreamdownView'
 import { useStreamingContent } from '@/components/ui/useStreamingContent'
 import { useIsDark } from '@/core/data/hooks/useIsDark'
-
-type AnimName = 'fadeIn' | 'blurIn' | 'slideUp'
-
-/** 插件实例（模块级稳定引用，避免每帧重建传入 Streamdown 触发重渲染） */
-const math = createMathPlugin({ singleDollarTextMath: true })
-const PLUGINS = { code, mermaid, math, cjk }
 
 /** 演示样本：覆盖中文强调/autolink、未闭合粗体、代码、表格、公式、mermaid、任务列表 */
 const SAMPLE = [
@@ -84,9 +72,6 @@ const CHUNK_JITTER_MS = 200
 export function StreamdownSpikePage() {
     const isDark = useIsDark()
     const [visibleLen, setVisibleLen] = useState(0)
-    const [anim, setAnim] = useState<AnimName>('blurIn')
-    const [sep, setSep] = useState<'word' | 'char'>('char')
-    const [caretOn, setCaretOn] = useState(true)
 
     // setTimeout 链逐帧推进揭示长度（随机步长模拟 token 抖动），到尾自然停止
     useEffect(() => {
@@ -107,61 +92,17 @@ export function StreamdownSpikePage() {
     const sdDisplay = useStreamingContent(raw, streaming)
     const sdStreaming = sdDisplay.length < SAMPLE.length
     const display = sdDisplay
-    // 稳定引用：内联对象每帧变化会不断重建 animate 插件的 timeline，
-    // 所有 span 被判「过期」→ duration 压成 0ms，动画整体失效。
-    // maxBacklogMs/stagger 放宽调度窗口，避免高速流下 duration 被追赶逻辑压成 0
-    const animated = useMemo(
-        () => ({
-            animation: anim,
-            sep,
-            easing: 'ease-in-out',
-            duration: 400,
-            // stagger 须大于字符到达间隔（~30ms/char），调度领先墙钟才会产生非零 duration；
-            // 落后时追赶逻辑会把 duration 压成 0（动画消失）
-            stagger: sep === 'char' ? 35 : 100,
-            maxBacklogMs: 1500,
-        }),
-        [anim, sep],
-    )
-    const plugins = useMemo(() => ({ ...PLUGINS }), [])
 
     return (
         <div className={`streamdown-spike${isDark ? ' dark' : ''}`} style={{ padding: 16 }}>
             <div className="sd-controls">
                 <button type="button" onClick={restart}>{streaming ? '⟳ 重播' : '▶ 播放'}</button>
-                <label>
-                    动画
-                    <select value={anim} onChange={(e) => setAnim(e.target.value as AnimName)}>
-                        <option value="fadeIn">fadeIn</option>
-                        <option value="blurIn">blurIn</option>
-                        <option value="slideUp">slideUp</option>
-                    </select>
-                </label>
-                <label>
-                    粒度
-                    <select value={sep} onChange={(e) => setSep(e.target.value as 'word' | 'char')}>
-                        <option value="word">逐词</option>
-                        <option value="char">逐字</option>
-                    </select>
-                </label>
-                <label>
-                    <input type="checkbox" checked={caretOn} onChange={(e) => setCaretOn(e.target.checked)} />
-                    流式光标
-                </label>
                 <span style={{ opacity: 0.5 }}>{streaming || sdStreaming ? 'streaming…' : 'done'}</span>
             </div>
             <div className="sd-ab">
                 <section className="sd-panel">
-                    <h3>Streamdown（animated + caret + remend + 块级 memo）</h3>
-                    <Streamdown
-                        animated={animated}
-                        isAnimating={sdStreaming}
-                        caret={caretOn ? 'block' : undefined}
-                        mode="streaming"
-                        plugins={plugins}
-                    >
-                        {display}
-                    </Streamdown>
+                    <h3>StreamdownView（正式新栈 + 排版映射）</h3>
+                    <StreamdownView content={display} isAnimating={sdStreaming} />
                 </section>
                 <section className="sd-panel">
                     <h3>mobi 现行（XMarkdown + 逐字揭示）</h3>
