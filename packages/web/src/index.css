@@ -31,6 +31,11 @@
 @source '../node_modules/@streamdown/mermaid/dist/*.js';
 @source '../node_modules/@streamdown/cjk/dist/*.js';
 
+/* Streamdown 内部用 dark: 变体做双主题切换（shiki 代码着色 --shiki-dark 等），
+   mobi 主题锚点是 html[data-theme='dark'] 而非 .dark 类——重定义 dark 变体指向它。
+   仅 Streamdown 产物消费 dark: 类，对工程内既有样式无影响 */
+@custom-variant dark (&:where(html[data-theme='dark'], html[data-theme='dark'] *));
+
 /* shadcn 设计令牌 → Tailwind 颜色类映射（streamdown 组件内部用 bg-background /
    text-muted-foreground 等类；令牌的具体取值在 streamdown-spike.css 按 spike 容器作用域定义） */
 @theme inline {

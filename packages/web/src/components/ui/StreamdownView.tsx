@@ -123,6 +123,21 @@ function loadMermaidPlugin(isDark: boolean): Promise<PluginConfig> {
     }))
 }
 
+/**
+ * 代码高亮插件按需加载（ticket 07）：shiki 核心（语言/主题注册表）体积可观，
+ * 与 math/mermaid 同策略——探测到 ``` 围栏才动态 import。语言检测与 shiki
+ * 双主题映射在适配器内收口（streamdownCodePlugin），主题深浅由 shikiTheme prop
+ * 的双主题 + CSS dark: 变体在纯 CSS 层完成，插件无需随主题重建。
+ */
+function loadCodePlugin(): Promise<PluginConfig> {
+    return import('./streamdownCodePlugin').then((mod) => ({
+        code: mod.createMobiCodePlugin(),
+    }))
+}
+
+/** shiki 双主题：映射旧栈 react-syntax-highlighter 的 one-light/one-dark-pro 观感 */
+const SHIKI_THEMES: ['one-light', 'one-dark-pro'] = ['one-light', 'one-dark-pro']
+
 /** 新栈容器类：streamdown.css 的设计令牌作用域 + 排版映射的挂点 */
 export const STREAMDOWN_CONTAINER_CLASS = 'streamdown-md'
 
@@ -190,10 +205,27 @@ export const StreamdownView = memo(function StreamdownView({
     // 脚注引用预处理：parse 前包进 literal 自定义标签（防 remark-gfm 内置脚注解析双重消费）
     const displayContent = useMemo(() => wrapFootnoteRefs(userSyntaxContent), [userSyntaxContent])
 
+    // 代码高亮插件懒加载：探测到 ``` 围栏才加载（语言检测 + shiki 着色在适配器内）
+    const needsCode = useMemo(() => content.includes('```'), [content])
+    const [codePlugins, setCodePlugins] = useState<PluginConfig | null>(null)
+    useEffect(() => {
+        if (!needsCode || codePlugins) return
+        let cancelled = false
+        loadCodePlugin().then((plugins) => {
+            if (!cancelled) setCodePlugins(plugins)
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [needsCode, codePlugins])
+
     // 插件表合并（稳定引用：重建仅发生在任一插件装载/主题切换时，不随每帧 render）
     const plugins: PluginConfig | undefined = useMemo(
-        () => (mathPlugins || mermaidPlugins ? { ...(mathPlugins ?? {}), ...(mermaidPlugins ?? {}) } : undefined),
-        [mathPlugins, mermaidPlugins],
+        () =>
+            mathPlugins || mermaidPlugins || codePlugins
+                ? { ...(mathPlugins ?? {}), ...(mermaidPlugins ?? {}), ...(codePlugins ?? {}) }
+                : undefined,
+        [mathPlugins, mermaidPlugins, codePlugins],
     )
 
     return (
@@ -204,6 +236,7 @@ export const StreamdownView = memo(function StreamdownView({
             <Streamdown
                 mode="streaming"
                 isAnimating={isAnimating}
+                shikiTheme={SHIKI_THEMES}
                 linkSafety={LINK_SAFETY_OFF}
                 controls={CONTROLS}
                 lineNumbers={false}
