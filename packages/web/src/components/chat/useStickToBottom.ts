@@ -309,6 +309,14 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         // 几何信号只用于「恢复跟随」（滚回底部附近），后者不存在误判问题。
         const onScroll = () => {
             if (smoothScrollingRef.current) return
+            // 追赶在飞时跳过 re-follow 几何判定：chase 只在跟随中起飞，此刻 followRef
+            // 必已为 true，isNearBottom 的布局读取与 re-follow 定时器 set/clear 是每个
+            // scroll 事件（流式追赶下即每帧）上的纯冗余。指针拖拽让位路径保留——
+            // 追赶在飞时用户拖拽滚动条仍须停跟随（chaseFrame 下一帧据此急停）。
+            if (chaseRafRef.current !== 0) {
+                if (pointerDownRef.current) setFollow(false)
+                return
+            }
             // onScroll 只管「恢复跟随」的 re-entry；钉底由 RO / totalListHeightChanged 独占。
             // 不在 scroll 里 pin：Virtuoso 初始定位（initialTopMostItemIndex 把末项顶到视口顶）
             // 会持续派发 scroll，跟随时若每次 pin 到底会与 Virtuoso 打架 → 初始落点错乱。

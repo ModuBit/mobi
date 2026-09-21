@@ -52,15 +52,19 @@ export interface ChaseStepResult {
  * （DPR 2 时 0.5px 粒度），存浮点计算值会下一帧误判「外部干预」而中止。
  */
 export function chaseStep(el: HTMLElement, expectedTop: number | null): ChaseStepResult {
-    if (expectedTop !== null && el.scrollTop !== expectedTop) {
+    // scrollTop 收敛为单次读取（期望比对与 dist 计算共用；帧内无布局失效写，重复读不免费）。
+    // 末尾的写后读回除外——那是为了拿浏览器 snap 到物理像素网格后的真实值，且 scrollTop
+    // 写不失效布局，该读不触发 reflow。
+    const scrollTop = el.scrollTop
+    if (expectedTop !== null && scrollTop !== expectedTop) {
         return { done: true, aborted: true, expectedTop: null }
     }
     const bottom = el.scrollHeight - el.clientHeight
-    const dist = bottom - el.scrollTop
+    const dist = bottom - scrollTop
     if (dist <= CHASE_SNAP_PX) {
         el.scrollTop = bottom
         return { done: true, aborted: false, expectedTop: null }
     }
-    el.scrollTop += dist * CHASE_EASE
+    el.scrollTop = scrollTop + dist * CHASE_EASE
     return { done: false, aborted: false, expectedTop: el.scrollTop }
 }
