@@ -38,6 +38,7 @@ import { FootnoteRef } from './FootnoteComponents'
 import { normalizeLatexSyntax } from './latexSyntax'
 import { ensureKatexLoaded } from './latexPlugin'
 import { wrapFootnoteRefs } from './footnotePlugin'
+import { useIsDark } from '@/core/data/hooks/useIsDark'
 import {
     preprocessUserSyntax,
     USER_SYNTAX_ALLOWED_TAGS,
@@ -110,6 +111,18 @@ function loadMathPlugin(): Promise<PluginConfig> {
     return mathPluginPromise
 }
 
+/**
+ * mermaid 插件按需加载（ticket 06）：mermaid 库体积大且消息含图比例低，
+ * 与 math 同策略——探测到 ```mermaid 围栏才动态 import。主题跟随应用深浅
+ * （default/dark，偿还旧栈 theme 写死 default 的欠账），theme 变化时重建插件
+ * 实例触发图表重渲染。
+ */
+function loadMermaidPlugin(isDark: boolean): Promise<PluginConfig> {
+    return import('@streamdown/mermaid').then((mod) => ({
+        mermaid: mod.createMermaidPlugin({ config: { theme: isDark ? 'dark' : 'default' } }),
+    }))
+}
+
 /** 新栈容器类：streamdown.css 的设计令牌作用域 + 排版映射的挂点 */
 export const STREAMDOWN_CONTAINER_CLASS = 'streamdown-md'
 
@@ -149,6 +162,21 @@ export const StreamdownView = memo(function StreamdownView({
         }
     }, [mathEnabled, mathPlugins])
 
+    // mermaid 插件懒加载 + 主题跟随：探测到围栏才加载；主题切换重建插件实例触发重渲染
+    const isDark = useIsDark()
+    const needsMermaid = useMemo(() => content.includes('```mermaid'), [content])
+    const [mermaidPlugins, setMermaidPlugins] = useState<PluginConfig | null>(null)
+    useEffect(() => {
+        if (!needsMermaid) return
+        let cancelled = false
+        loadMermaidPlugin(isDark).then((plugins) => {
+            if (!cancelled) setMermaidPlugins(plugins)
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [needsMermaid, isDark])
+
     // 自研定界归一只在 math 插件就绪后做：未就绪时转换会把原文变成裸 $$（更糟），
     // 就绪后转换 + 渲染同步生效。已配对 $...$ 等合法语法归一为零改动
     const normalizedContent = mathPlugins ? normalizeLatexSyntax(content) : content
@@ -162,6 +190,12 @@ export const StreamdownView = memo(function StreamdownView({
     // 脚注引用预处理：parse 前包进 literal 自定义标签（防 remark-gfm 内置脚注解析双重消费）
     const displayContent = useMemo(() => wrapFootnoteRefs(userSyntaxContent), [userSyntaxContent])
 
+    // 插件表合并（稳定引用：重建仅发生在任一插件装载/主题切换时，不随每帧 render）
+    const plugins: PluginConfig | undefined = useMemo(
+        () => (mathPlugins || mermaidPlugins ? { ...(mathPlugins ?? {}), ...(mermaidPlugins ?? {}) } : undefined),
+        [mathPlugins, mermaidPlugins],
+    )
+
     return (
         <div
             className={[STREAMDOWN_CONTAINER_CLASS, className].filter(Boolean).join(' ')}
@@ -174,7 +208,7 @@ export const StreamdownView = memo(function StreamdownView({
                 controls={CONTROLS}
                 lineNumbers={false}
                 components={COMPONENTS}
-                plugins={mathPlugins ?? undefined}
+                plugins={plugins}
                 allowedTags={USER_SYNTAX_ALLOWED_TAGS}
                 literalTagContent={USER_SYNTAX_LITERAL_TAGS}
             >
