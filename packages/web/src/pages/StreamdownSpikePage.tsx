@@ -102,7 +102,7 @@ export function StreamdownSpikePage() {
             <div className="sd-ab">
                 <section className="sd-panel">
                     <h3>StreamdownView（正式新栈 + 排版映射）</h3>
-                    <StreamdownView content={display} isAnimating={sdStreaming} />
+                    <StreamdownView content={display} isAnimating={sdStreaming} mathEnabled />
                 </section>
                 <section className="sd-panel">
                     <h3>mobi 现行（XMarkdown + 逐字揭示）</h3>

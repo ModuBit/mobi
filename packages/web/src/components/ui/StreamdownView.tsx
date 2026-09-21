@@ -30,10 +30,12 @@
  * linkSafety 关闭：与现状对齐（外链直接新标签页打开，不做拦截确认），决策见 spec。
  */
 
-import { memo, type CSSProperties, type FC } from 'react'
-import { Streamdown, type Components } from 'streamdown'
+import { memo, useEffect, useState, type CSSProperties, type FC } from 'react'
+import { Streamdown, type Components, type PluginConfig } from 'streamdown'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { ActionLink } from './ActionLink'
+import { normalizeLatexSyntax } from './latexSyntax'
+import { ensureKatexLoaded } from './latexPlugin'
 
 /** linkSafety 关闭（模块级常量保持稳定引用，不因每帧重建打破 Streamdown 内部 memo） */
 const LINK_SAFETY_OFF = { enabled: false } as const
@@ -66,23 +68,61 @@ const MdLink: FC<React.ComponentPropsWithoutRef<'a'> & { node?: unknown }> = ({ 
 /** 组件覆盖表（模块级常量保持稳定引用） */
 const COMPONENTS: Components = { a: MdLink }
 
+/**
+ * math 插件懒加载（ticket 03）：@streamdown/math = remark-math + rehype-katex，
+ * 后者静态依赖 katex——若模块顶层的 import 会让 katex 进入 StreamdownView chunk
+ * 依赖图，任何消息（含无公式）都拉 katex chunk，违反「不含公式不加载」的按需约定。
+ * 故只在探测到公式特征（mathEnabled）后动态 import 插件模块；katex 本体与样式
+ * 复用 latexPlugin 的 ensureKatexLoaded（同一 npm 包实例 + CSS chunk，无双份）。
+ */
+let mathPluginPromise: Promise<PluginConfig> | null = null
+function loadMathPlugin(): Promise<PluginConfig> {
+    if (!mathPluginPromise) {
+        mathPluginPromise = Promise.all([
+            import('@streamdown/math'),
+            ensureKatexLoaded(),
+        ]).then(([mod]) => ({ math: mod.createMathPlugin({ singleDollarTextMath: true }) }))
+    }
+    return mathPluginPromise
+}
+
 /** 新栈容器类：streamdown.css 的设计令牌作用域 + 排版映射的挂点 */
 export const STREAMDOWN_CONTAINER_CLASS = 'streamdown-md'
 
 export const StreamdownView = memo(function StreamdownView({
     content,
     isAnimating,
+    mathEnabled = false,
     className,
     style,
 }: {
     content: string
     /** 揭示进行中（平滑层缓冲未收敛 / 流式未结束），驱动 Streamdown 流式语义 */
     isAnimating?: boolean
+    /** 内容探测到 LaTeX 特征（containsLatex），按需加载 math 插件 */
+    mathEnabled?: boolean
     /** 追加到容器的外部类名（透传自 Markdown.className） */
     className?: string
     /** 容器内联样式（透传自 Markdown.style） */
     style?: CSSProperties
 }) {
+    // math 插件懒加载：未就绪时公式以原文展示（与旧栈 katexReady 门控同一 UX），加载完成即渲染
+    const [mathPlugins, setMathPlugins] = useState<PluginConfig | null>(null)
+    useEffect(() => {
+        if (!mathEnabled || mathPlugins) return
+        let cancelled = false
+        loadMathPlugin().then((plugins) => {
+            if (!cancelled) setMathPlugins(plugins)
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [mathEnabled, mathPlugins])
+
+    // 自研定界归一只在 math 插件就绪后做：未就绪时转换会把原文变成裸 $$（更糟），
+    // 就绪后转换 + 渲染同步生效。已配对 $...$ 等合法语法归一为零改动
+    const displayContent = mathPlugins ? normalizeLatexSyntax(content) : content
+
     return (
         <div
             className={[STREAMDOWN_CONTAINER_CLASS, className].filter(Boolean).join(' ')}
@@ -95,8 +135,9 @@ export const StreamdownView = memo(function StreamdownView({
                 controls={CONTROLS}
                 lineNumbers={false}
                 components={COMPONENTS}
+                plugins={mathPlugins ?? undefined}
             >
-                {content}
+                {displayContent}
             </Streamdown>
         </div>
     )

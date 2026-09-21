@@ -158,6 +158,9 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
     const useDrip = !!streaming && typing !== false
     const displayContent = useStreamingContent(content ?? '', useDrip)
 
+    // LaTeX 特征探测双栈共用：决定 katex/math 按需加载（target 超集探测，不随揭示进度重扫）
+    const needsLatex = useMemo(() => containsLatex(content ?? ''), [content])
+
     // flag 重载生效：mount 读一次，会话内不随 localStorage 变化翻转（避免双栈热切换的结构跳变）
     const [renderer] = useState(getMarkdownRenderer)
 
@@ -169,6 +172,7 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
                 <StreamdownView
                     content={displayContent}
                     isAnimating={revealing}
+                    mathEnabled={needsLatex}
                     className={className}
                     style={style}
                 />
@@ -176,13 +180,14 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
         )
     }
 
-    return <XMarkdownView {...props} displayContent={displayContent} />
+    return <XMarkdownView {...props} displayContent={displayContent} needsLatex={needsLatex} />
 })
 
 /** 旧栈渲染视图（x-markdown 全量管线：扩展/脚注/katex/代码块），由 Markdown 按 flag 分发 */
 function XMarkdownView({
     content,
     displayContent,
+    needsLatex,
     streaming,
     typing,
     components,
@@ -193,18 +198,16 @@ function XMarkdownView({
     enableSlashCommand = false,
     enableMention = false,
     ...rest
-}: MarkdownProps & { displayContent: string }) {
-    // displayContent 由 Markdown 统一经平滑层（useStreamingContent）算好传入（双栈共用）
+}: MarkdownProps & { displayContent: string; needsLatex: boolean }) {
+    // displayContent 由 Markdown 统一经平滑层（useStreamingContent）算好传入（双栈共用）；
+    // needsLatex 同样由分发层探测传入（双栈共用）
 
     // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
     // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
     // （ensureKatexLoaded 缓存 promise），加载过后所有渲染一直带 Latex 扩展。
-    // 探测用 target（content）而非逐字中的 display——超集探测，公式特征的
-    // 判定结果与揭示进度无关，只算一次不随每帧 display 变化重扫
     const [katexReady, setKatexReady] = useState(false)
-    const needsKatex = useMemo(() => containsLatex(content ?? ''), [content])
     useEffect(() => {
-        if (!needsKatex || katexReady) return
+        if (!needsLatex || katexReady) return
         let cancelled = false
         ensureKatexLoaded().then(() => {
             if (!cancelled) setKatexReady(true)
@@ -212,7 +215,7 @@ function XMarkdownView({
         return () => {
             cancelled = true
         }
-    }, [needsKatex, katexReady])
+    }, [needsLatex, katexReady])
 
     const streamingOption: StreamingOption | undefined = useMemo(() => {
         if (streaming === true) return MARKDOWN_STREAMING_CONFIG
