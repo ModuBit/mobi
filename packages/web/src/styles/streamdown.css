@@ -1,0 +1,67 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* ==================== Streamdown 设计令牌（flag 侧新栈） ==================== */
+
+/* Streamdown 内部用 shadcn 语义类（bg-background / text-foreground / border-border 等），
+   颜色类经 index.css 的 @theme inline 映射到这些 HSL 三元组变量。
+   这里把令牌钉到 mobi 的 antd 主题观感（light #ffffff / #141413，dark #141414 / #faf9f5），
+   容器作用域（.streamdown-md）定义避免污染全局；暗色跟随 html[data-theme='dark']。
+   ticket 02 做十类排版元素的全量对照，此处为最小可用集（普通文本/链接/表格可读）。 */
+.streamdown-md {
+    --background: 0 0% 100%;
+    --foreground: 60 3% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 60 3% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 60 3% 8%;
+    --primary: 60 3% 8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 60 3% 8%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 60 3% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 63%;
+    --radius: 8px;
+}
+
+html[data-theme='dark'] .streamdown-md {
+    --background: 0 0% 8%;
+    --foreground: 45 33% 97%;
+    --card: 0 0% 12%;
+    --card-foreground: 45 33% 97%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 45 33% 97%;
+    --primary: 45 33% 97%;
+    --primary-foreground: 60 3% 8%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 45 33% 97%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 16%;
+    --accent-foreground: 45 33% 97%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 26%;
+    --input: 0 0% 26%;
+    --ring: 0 0% 60%;
+}

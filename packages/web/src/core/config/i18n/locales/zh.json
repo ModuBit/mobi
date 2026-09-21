@@ -562,7 +562,10 @@
         "diagNotEnabled": "埋点未开启，数据为空",
         "downloaded": "诊断数据已下载",
         "downloadFailed": "诊断数据下载失败",
-        "unlocked": "调试模式已解锁，可到设置页使用调试功能"
+        "unlocked": "调试模式已解锁，可到设置页使用调试功能",
+        "rendererLabel": "Markdown 渲染器（Streamdown 实验）",
+        "rendererOn": "已切换 Streamdown，重载页面后生效",
+        "rendererOff": "已切回旧渲染器，重载页面后生效"
     },
     "composer": {
         "placeholders": [

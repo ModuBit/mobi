@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
 import type { Config as DOMPurifyConfig } from 'dompurify'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
+import { getMarkdownRenderer } from '@/core/lib/markdownRenderer'
 import Latex, { containsLatex, ensureKatexLoaded } from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
@@ -27,6 +28,9 @@ import { ActionLink } from './ActionLink'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
+
+/** Streamdown 新栈视图：lazy 加载——flag 关闭（默认）时 chunk 不进首屏，无 bundle 负担 */
+const StreamdownView = lazy(() => import('./StreamdownView'))
 
 /** 流式渲染选项类型（从 XMarkdownProps 推断，因 x-markdown 未顶层导出） */
 type StreamingOption = NonNullable<XMarkdownProps['streaming']>
@@ -141,11 +145,46 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
  * - 流式渲染开箱即用
  *
  * 后续主题、扩展（数学公式、Mermaid 等）统一在这里增加配置。
+ *
+ * 迁移期双栈分发（ticket 01）：对外 API 完全不变，内部按渲染器 flag 分发——
+ * - 旧栈（默认）：下方 XMarkdownView，行为与本注释描述一致
+ * - 新栈：StreamdownView（lazy），吃同一个 useStreamingContent 平滑层输出
+ * flag 为 localStorage 运行时开关（设置页调试区块），重载生效，ticket 10 随旧栈一起移除
  */
-export const Markdown = memo(function Markdown({
+export const Markdown = memo(function Markdown(props: MarkdownProps) {
+    const { content, streaming, typing = true, className, style } = props
+
+    // 平滑层双栈共用：drip 逐字揭示（含流式结束后收敛到全显）是渲染器无关的输入层
+    const useDrip = !!streaming && typing !== false
+    const displayContent = useStreamingContent(content ?? '', useDrip)
+
+    // flag 重载生效：mount 读一次，会话内不随 localStorage 变化翻转（避免双栈热切换的结构跳变）
+    const [renderer] = useState(getMarkdownRenderer)
+
+    if (renderer === 'streamdown') {
+        // 揭示进行中：drip 未收敛；typing=false（无平滑层）时直接跟随流式状态
+        const revealing = useDrip ? displayContent.length < (content ?? '').length : !!streaming
+        return (
+            <Suspense fallback={null}>
+                <StreamdownView
+                    content={displayContent}
+                    isAnimating={revealing}
+                    className={className}
+                    style={style}
+                />
+            </Suspense>
+        )
+    }
+
+    return <XMarkdownView {...props} displayContent={displayContent} />
+})
+
+/** 旧栈渲染视图（x-markdown 全量管线：扩展/脚注/katex/代码块），由 Markdown 按 flag 分发 */
+function XMarkdownView({
     content,
+    displayContent,
     streaming,
-    typing = true,
+    typing,
     components,
     paragraphTag,
     className,
@@ -154,9 +193,8 @@ export const Markdown = memo(function Markdown({
     enableSlashCommand = false,
     enableMention = false,
     ...rest
-}: MarkdownProps) {
-    const useDrip = !!streaming && typing !== false
-    const displayContent = useStreamingContent(content ?? '', useDrip)
+}: MarkdownProps & { displayContent: string }) {
+    // displayContent 由 Markdown 统一经平滑层（useStreamingContent）算好传入（双栈共用）
 
     // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
     // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
@@ -258,4 +296,4 @@ export const Markdown = memo(function Markdown({
             </div>
         </FootnoteContext.Provider>
     )
-})
+}

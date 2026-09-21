@@ -22,11 +22,48 @@
 
 @layer theme, base, components, properties, antd, utilities;
 
+/* ==================== Streamdown 渲染栈 Tailwind 接入（ticket 01 起正式） ==================== */
+/* @source 让 Tailwind 扫描 streamdown 产物里的 utility classes（bun 安装在包内
+   packages/web/node_modules，路径相对本文件 src/index.css 上跳一级） */
+@source '../node_modules/streamdown/dist/*.js';
+@source '../node_modules/@streamdown/code/dist/*.js';
+@source '../node_modules/@streamdown/math/dist/*.js';
+@source '../node_modules/@streamdown/mermaid/dist/*.js';
+@source '../node_modules/@streamdown/cjk/dist/*.js';
+
+/* shadcn 设计令牌 → Tailwind 颜色类映射（streamdown 组件内部用 bg-background /
+   text-muted-foreground 等类；令牌的具体取值在 streamdown-spike.css 按 spike 容器作用域定义） */
+@theme inline {
+    --color-background: hsl(var(--background));
+    --color-foreground: hsl(var(--foreground));
+    --color-card: hsl(var(--card));
+    --color-card-foreground: hsl(var(--card-foreground));
+    --color-popover: hsl(var(--popover));
+    --color-popover-foreground: hsl(var(--popover-foreground));
+    --color-primary: hsl(var(--primary));
+    --color-primary-foreground: hsl(var(--primary-foreground));
+    --color-secondary: hsl(var(--secondary));
+    --color-secondary-foreground: hsl(var(--secondary-foreground));
+    --color-muted: hsl(var(--muted));
+    --color-muted-foreground: hsl(var(--muted-foreground));
+    --color-accent: hsl(var(--accent));
+    --color-accent-foreground: hsl(var(--accent-foreground));
+    --color-destructive: hsl(var(--destructive));
+    --color-destructive-foreground: hsl(var(--destructive-foreground));
+    --color-border: hsl(var(--border));
+    --color-input: hsl(var(--input));
+    --color-ring: hsl(var(--ring));
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+}
+
 /* 样式模块导入 */
 @import './styles/fonts.css';
 @import './styles/variables.css';
 @import './styles/base.css';
 @import './styles/markdown.css';
+@import './styles/streamdown.css';
 @import './styles/antd.css';
 @import './styles/scrollbar.css';
 @import './styles/modes.css';
