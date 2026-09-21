@@ -68,6 +68,12 @@
 @import './styles/variables.css';
 @import './styles/base.css';
 @import './styles/markdown.css';
+/* Streamdown 官方样式表（ticket 08 实锤缺失会无动画）：只含动画执行规则——
+   [data-sd-animate] 把节点上的 --sd-animation/--sd-duration/--sd-easing/--sd-delay
+   自定义属性映射为真实 animation（插件只注入变量，不设 animation），以及列表
+   ::marker 渐入；keyframes sd-fadeIn/sd-blurIn/sd-slideUp 定义（sd-blurIn 的加强
+   版覆盖在下方 streamdown.css，靠导入顺序后定义者胜） */
+@import 'streamdown/styles.css';
 @import './styles/streamdown.css';
 @import './styles/antd.css';
 @import './styles/scrollbar.css';
