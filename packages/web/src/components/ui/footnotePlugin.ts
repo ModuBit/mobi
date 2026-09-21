@@ -116,32 +116,6 @@ export function extractFootnotes(content: string): {
 }
 
 /**
- * Streamdown 新栈用：把正文中的 `[^n]` 引用预处理为 `<footnote-ref>` raw HTML 标签，
- * 经 allowedTags 放行 + components 映射为现有 FootnoteRef 组件（与旧栈 marked
- * renderer 的输出形态一致）。
- *
- * 为什么是 parse 前预处理（同 ticket 04 的删除线问题）：remark-gfm 内置脚注解析
- * 会在 parse 期把 `[^n]` 消费成 footnoteReference 节点（定义已被 extractFootnotes
- * 清洗移除，gfm 引用会渲染成指向空定义的坏链接），任何解析后的切分都拿不到原文。
- * code 区段掩码保护（伪脚注不算引用）。
- */
-export function wrapFootnoteRefs(content: string): string {
-    if (!content.includes('[^')) return content
-
-    const segments: string[] = []
-    const mask = (m: string) => `${segments.push(m) - 1}`
-    const masked = content
-        .replace(/```[\s\S]*?```/g, mask)
-        .replace(/~~~[\s\S]*?~~~/g, mask)
-        .replace(/`[^`\n]*`/g, mask)
-
-    const converted = masked.replace(/\[\^(\d+)\]/g, (_m, num: string) =>
-        `<footnote-ref data-num="${num}">${num}</footnote-ref>`)
-
-    return converted.replace(/(\d+)/g, (_m, i: string) => segments[Number(i)])
-}
-
-/**
  * marked 内联扩展：将 `[^n]` 渲染为自定义 `<footnote-ref>` 标签，
  * 由 XMarkdown 的 components 映射为 React 组件（tag 样式 + Popover）。
  *

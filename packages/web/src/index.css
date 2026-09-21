@@ -22,59 +22,11 @@
 
 @layer theme, base, components, properties, antd, utilities;
 
-/* ==================== Streamdown 渲染栈 Tailwind 接入（ticket 01 起正式） ==================== */
-/* @source 让 Tailwind 扫描 streamdown 产物里的 utility classes（bun 安装在包内
-   packages/web/node_modules，路径相对本文件 src/index.css 上跳一级） */
-@source '../node_modules/streamdown/dist/*.js';
-@source '../node_modules/@streamdown/code/dist/*.js';
-@source '../node_modules/@streamdown/math/dist/*.js';
-@source '../node_modules/@streamdown/mermaid/dist/*.js';
-@source '../node_modules/@streamdown/cjk/dist/*.js';
-
-/* Streamdown 内部用 dark: 变体做双主题切换（shiki 代码着色 --shiki-dark 等），
-   mobi 主题锚点是 html[data-theme='dark'] 而非 .dark 类——重定义 dark 变体指向它。
-   仅 Streamdown 产物消费 dark: 类，对工程内既有样式无影响 */
-@custom-variant dark (&:where(html[data-theme='dark'], html[data-theme='dark'] *));
-
-/* shadcn 设计令牌 → Tailwind 颜色类映射（streamdown 组件内部用 bg-background /
-   text-muted-foreground 等类；令牌的具体取值在 streamdown-spike.css 按 spike 容器作用域定义） */
-@theme inline {
-    --color-background: hsl(var(--background));
-    --color-foreground: hsl(var(--foreground));
-    --color-card: hsl(var(--card));
-    --color-card-foreground: hsl(var(--card-foreground));
-    --color-popover: hsl(var(--popover));
-    --color-popover-foreground: hsl(var(--popover-foreground));
-    --color-primary: hsl(var(--primary));
-    --color-primary-foreground: hsl(var(--primary-foreground));
-    --color-secondary: hsl(var(--secondary));
-    --color-secondary-foreground: hsl(var(--secondary-foreground));
-    --color-muted: hsl(var(--muted));
-    --color-muted-foreground: hsl(var(--muted-foreground));
-    --color-accent: hsl(var(--accent));
-    --color-accent-foreground: hsl(var(--accent-foreground));
-    --color-destructive: hsl(var(--destructive));
-    --color-destructive-foreground: hsl(var(--destructive-foreground));
-    --color-border: hsl(var(--border));
-    --color-input: hsl(var(--input));
-    --color-ring: hsl(var(--ring));
-    --radius-lg: var(--radius);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-sm: calc(var(--radius) - 4px);
-}
-
 /* 样式模块导入 */
 @import './styles/fonts.css';
 @import './styles/variables.css';
 @import './styles/base.css';
 @import './styles/markdown.css';
-/* Streamdown 官方样式表（ticket 08 实锤缺失会无动画）：只含动画执行规则——
-   [data-sd-animate] 把节点上的 --sd-animation/--sd-duration/--sd-easing/--sd-delay
-   自定义属性映射为真实 animation（插件只注入变量，不设 animation），以及列表
-   ::marker 渐入；keyframes sd-fadeIn/sd-blurIn/sd-slideUp 定义（sd-blurIn 的加强
-   版覆盖在下方 streamdown.css，靠导入顺序后定义者胜） */
-@import 'streamdown/styles.css';
-@import './styles/streamdown.css';
 @import './styles/antd.css';
 @import './styles/scrollbar.css';
 @import './styles/modes.css';

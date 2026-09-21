@@ -20,8 +20,6 @@ import {
     computeRevealRate,
     STREAM_BASE_RATE,
     revealIntervalFor,
-    staggerBucketFor,
-    DEFAULT_REVEAL_INTERVAL_MS,
     useStreamingContent,
     sampleArrivalRate,
 } from '@/components/ui/useStreamingContent'
@@ -105,25 +103,6 @@ describe('sampleArrivalRate（EMA 采样基准）', () => {
     })
 })
 
-describe('staggerBucketFor（动画 stagger 重分桶）', () => {
-    it('观测值落在档位内取「不小于观测值」的最小档（stagger ≥ 到达间隔）', () => {
-        expect(staggerBucketFor(1)).toBe(10)
-        expect(staggerBucketFor(10)).toBe(10)
-        expect(staggerBucketFor(11)).toBe(16)
-        expect(staggerBucketFor(30)).toBe(40)
-        expect(staggerBucketFor(70)).toBe(96)
-    })
-
-    it('超过最大档时钳到最大档（不塌零/不无限放大）', () => {
-        expect(staggerBucketFor(500)).toBe(96)
-    })
-
-    it('默认档为基础速率的倒数（稳态兜底）', () => {
-        expect(DEFAULT_REVEAL_INTERVAL_MS).toBe(10)
-        expect(1 / STREAM_BASE_RATE).toBe(10)
-    })
-})
-
 describe('useStreamingContent', () => {
     // rAF / performance.now mock：手动推进帧，逐字 drip 在测试中可控
     let rafMap: Map<number, FrameRequestCallback>
@@ -169,14 +148,14 @@ describe('useStreamingContent', () => {
 
     it('非流式（历史消息）mount 立即全显', () => {
         const { result } = renderHook(() => useStreamingContent('hello world', false))
-        expect(result.current.display).toBe('hello world')
+        expect(result.current).toBe('hello world')
     })
 
     it('流式 remount 时 target 已有长内容 → 立即全显，不逐字重放（修复折叠重展/切 session 卡死）', () => {
         const long = 'a'.repeat(1000)
         const { result } = renderHook(() => useStreamingContent(long, true))
         // 改前：display='' 然后从 0 drip 整段（O(n²) 重放）。改后：mount 即全显
-        expect(result.current.display).toBe(long)
+        expect(result.current).toBe(long)
         // 且不启动 drip（无 pending rAF）
         expect(rafMap.size).toBe(0)
     })
@@ -185,18 +164,18 @@ describe('useStreamingContent', () => {
         const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
             initialProps: { t: '' },
         })
-        expect(result.current.display).toBe('')
+        expect(result.current).toBe('')
 
         // 第一个 snapshot 到达
         rerender({ t: 'a'.repeat(100) })
         expect(rafMap.size).toBeGreaterThan(0)
         // 一帧后逐字揭示一部分（非瞬间全显）
         step(60)
-        expect(result.current.display.length).toBeGreaterThan(0)
-        expect(result.current.display.length).toBeLessThan(100)
+        expect(result.current.length).toBeGreaterThan(0)
+        expect(result.current.length).toBeLessThan(100)
         // 持续推进直到揭示完成
         flush(60)
-        expect(result.current.display).toBe('a'.repeat(100))
+        expect(result.current).toBe('a'.repeat(100))
     })
 
     it('流式 remount 全显后，新到增量仍逐字揭示（不重放已有部分）', () => {
@@ -204,16 +183,16 @@ describe('useStreamingContent', () => {
         const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
             initialProps: { t: base },
         })
-        expect(result.current.display).toBe(base) // mount 全显
+        expect(result.current).toBe(base) // mount 全显
 
         // 增量到达：揭示应从 1000 起步，不回退
         rerender({ t: base + 'b'.repeat(50) })
         expect(rafMap.size).toBeGreaterThan(0)
         step(60)
-        expect(result.current.display.length).toBeGreaterThanOrEqual(1000)
-        expect(result.current.display.length).toBeLessThanOrEqual(1050)
+        expect(result.current.length).toBeGreaterThanOrEqual(1000)
+        expect(result.current.length).toBeLessThanOrEqual(1050)
         flush(60)
-        expect(result.current.display).toBe(base + 'b'.repeat(50))
+        expect(result.current).toBe(base + 'b'.repeat(50))
     })
 
     it('每帧连续更新：连续两帧 display 都增长（无 20fps 节流的跳帧阶梯）', () => {
@@ -228,7 +207,7 @@ describe('useStreamingContent', () => {
         const lens: number[] = []
         for (let i = 0; i < 5; i++) {
             step(16)
-            lens.push(result.current.display.length)
+            lens.push(result.current.length)
         }
         // 每帧后长度都应大于前一帧（连续增长，无一帧跳空）
         for (let i = 1; i < lens.length; i++) {
@@ -249,8 +228,8 @@ describe('useStreamingContent', () => {
         step(16)
         step(16)
         // 基础速率 × 48ms ≈ 4-5 字符；bug 态（EMA=0 → 20 chars/s）48ms 仅 ~1 字符
-        expect(result.current.display.length).toBeGreaterThanOrEqual(4)
-        expect(result.current.display.length).toBeLessThan(40)
+        expect(result.current.length).toBeGreaterThanOrEqual(4)
+        expect(result.current.length).toBeLessThan(40)
     })
 
     it('慢速到达期间揭示流连续：无 ≥4 帧连续停滞（gap>0 时，jitter buffer）', () => {
@@ -269,7 +248,7 @@ describe('useStreamingContent', () => {
             act(() => { rerender({ t: target }) })
             for (let f = 0; f < 12; f++) {
                 step(16)
-                lens.push(result.current.display.length)
+                lens.push(result.current.length)
             }
         }
         // gap>0 期间的连续停滞帧数。跳过冷启动前两轮（EMA 未热按基础速率揭示有一轮旧节奏；
@@ -282,23 +261,7 @@ describe('useStreamingContent', () => {
         }
         expect(maxDry).toBeLessThanOrEqual(3)
         flush(60)
-        expect(result.current.display).toBe(target)
-    })
-
-    it('慢流下 revealIntervalMs 升档（stagger 随揭示节奏联动），快流下保持最低档', () => {
-        // 慢流：每 200ms 到达 10 字符，速率匹配后 ~1 字符/1-2 帧 → 每字符间隔 ≥16ms → 档位脱离最低档
-        const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
-            initialProps: { t: '' },
-        })
-        expect(result.current.revealIntervalMs).toBe(DEFAULT_REVEAL_INTERVAL_MS)
-        let target = ''
-        for (let round = 0; round < 8; round++) {
-            target += 'a'.repeat(10)
-            act(() => { rerender({ t: target }) })
-            for (let f = 0; f < 12; f++) step(16)
-        }
-        expect(result.current.revealIntervalMs).toBeGreaterThanOrEqual(16)
-        flush(60)
+        expect(result.current).toBe(target)
     })
 
     it('超长内容自适应节流：每帧到达但隔档揭示（48ms 档，非每帧），节奏仍连续', () => {
@@ -311,10 +274,10 @@ describe('useStreamingContent', () => {
         rerender({ t: target })
         expect(rafMap.size).toBeGreaterThan(0)
 
-        const lens: number[] = [result.current.display.length]
+        const lens: number[] = [result.current.length]
         for (let i = 0; i < 6; i++) {
             step(16)
-            lens.push(result.current.display.length)
+            lens.push(result.current.length)
         }
         // 16ms × 3 = 48ms 才揭示一次：6 帧中恰 2 次揭示（第 3、6 帧）
         const reveals = lens.slice(1).filter((l, i) => l > lens[i])
@@ -325,6 +288,6 @@ describe('useStreamingContent', () => {
         expect(Math.max(...steps)).toBeLessThanOrEqual(1000)
         // 持续推进到收敛
         flush(60)
-        expect(result.current.display).toBe(target)
+        expect(result.current).toBe(target)
     })
 })

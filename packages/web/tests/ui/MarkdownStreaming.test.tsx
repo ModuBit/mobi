@@ -31,7 +31,7 @@ import '@testing-library/jest-dom/vitest'
 // 受控 display：测试直接驱动「揭示进度」（display 恒为 content 的前缀）
 const displayState = vi.hoisted(() => ({ current: '' }))
 vi.mock('@/components/ui/useStreamingContent', () => ({
-    useStreamingContent: () => ({ display: displayState.current, revealIntervalMs: 10 }),
+    useStreamingContent: () => displayState.current,
     STREAM_BASE_RATE: 0.1,
     computeRevealRate: vi.fn(() => 0.1),
     revealIntervalFor: vi.fn(() => 0),

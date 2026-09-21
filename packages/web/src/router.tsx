@@ -35,8 +35,6 @@ const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
 const DesktopSection = lazyRoute(routeChunkLoaders.DesktopSection)
 const DesktopPage = lazyRoute(routeChunkLoaders.DesktopPage)
-// Streamdown 体验页（spike，临时）：静态 import 不进 routeChunks，验证后连同路由一起删
-import { StreamdownSpikePage } from './pages/StreamdownSpikePage'
 
 
 // Root route - wraps all routes with App component
@@ -151,12 +149,6 @@ const desktopRoute = createRoute({
 export const router = createRouter({
     routeTree: rootRoute.addChildren([
         loginRoute,
-        // Streamdown 体验页（spike，临时）：根级免鉴权，纯前端不依赖 hub
-        createRoute({
-            getParentRoute: () => rootRoute,
-            path: 'spike/streamdown',
-            component: StreamdownSpikePage,
-        }),
         mainLayoutRoute.addChildren([
             indexRoute,
             sessionsLayoutRoute.addChildren([

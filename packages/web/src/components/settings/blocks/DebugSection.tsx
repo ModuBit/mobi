@@ -33,7 +33,6 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { enter, IconBox } from './shared'
 import { isDebugUnlocked } from '@/core/lib/debug'
-import { getMarkdownRenderer, setMarkdownRenderer } from '@/core/lib/markdownRenderer'
 import { isDiagEnabled, enableDiag, disableDiag, dumpDiag } from '@/core/lib/diag'
 
 const { useToken } = antTheme
@@ -117,8 +116,6 @@ export function DebugSection() {
     const { message } = App.useApp()
     // diag 模块级 enabled 非响应式，本地镜像状态驱动 Switch 渲染
     const [diagOn, setDiagOn] = useState(isDiagEnabled())
-    // Markdown 渲染器 flag 同为非响应式（重载生效），本地镜像驱动 Switch
-    const [streamdownOn, setStreamdownOn] = useState(getMarkdownRenderer() === 'streamdown')
 
     // 未解锁（默认）：整个区块不渲染
     if (!isDebugUnlocked()) return null
@@ -143,13 +140,6 @@ export function DebugSection() {
         // 未开启时 dump 为空（enabled:false），提示后仍下载，便于查看数据格式
         if (!isDiagEnabled()) message.warning(t('debug.diagNotEnabled'))
         downloadDiagData(message, t)
-    }
-
-    const toggleRenderer = () => {
-        const next = !streamdownOn
-        setMarkdownRenderer(next ? 'streamdown' : 'x-markdown')
-        setStreamdownOn(next)
-        message.success(t(next ? 'debug.rendererOn' : 'debug.rendererOff'))
     }
 
     return (
@@ -179,19 +169,6 @@ export function DebugSection() {
                 <Button size="small" icon={<DownloadOutlined />} onClick={handleDownload}>
                     {t('debug.download')}
                 </Button>
-            </SubRow>
-
-            {/* Markdown 渲染器切换（Streamdown 迁移期实验入口，ticket 10 随双栈分发移除） */}
-            <SubRow $token={token}>
-                <span style={{ fontSize: 12.5, color: token.colorTextTertiary, flex: 1 }}>
-                    {t('debug.rendererLabel')}
-                </span>
-                <Switch
-                    size="small"
-                    checked={streamdownOn}
-                    onChange={toggleRenderer}
-                    aria-label={t('debug.rendererLabel')}
-                />
             </SubRow>
         </Card>
     )

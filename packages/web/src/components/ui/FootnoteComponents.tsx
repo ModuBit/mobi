@@ -18,16 +18,15 @@ import { createContext, useContext, useMemo, type FC } from 'react'
 import { Sources } from '@ant-design/x'
 import { Popover, Tag } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { type ComponentProps } from '@ant-design/x-markdown'
 import { getSourceIcon } from './sourceIcon'
 import { type FootnoteItem } from './footnotePlugin'
 
 /** 脚注数据 Context，Markdown 组件注入，FootnoteRef 消费 */
 export const FootnoteContext = createContext<Map<number, FootnoteItem>>(new Map())
 
-/** 脚注引用组件：tag 样式 + hover 展示 title + 点击打开链接
- *  （双栈共用：旧栈经 XMarkdown components 传 x-markdown 扩展 props，
- *  新栈经 Streamdown components.footnote-ref 直传 data-num，两者都满足此纯 React 签名） */
-export const FootnoteRef: FC<{ 'data-num'?: string; children?: React.ReactNode }> = ({ 'data-num': dataNum, children }) => {
+/** 脚注引用组件：tag 样式 + hover 展示 title + 点击打开链接 */
+export const FootnoteRef: FC<ComponentProps<{ 'data-num'?: string }>> = ({ 'data-num': dataNum, children }) => {
     const footnotesMap = useContext(FootnoteContext)
     const num = parseInt(dataNum ?? '0', 10)
     const fn = footnotesMap.get(num)

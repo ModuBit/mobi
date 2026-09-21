@@ -571,10 +571,7 @@
         "diagNotEnabled": "Hooks off — data is empty",
         "downloaded": "Diagnostics downloaded",
         "downloadFailed": "Failed to download diagnostics",
-        "unlocked": "Debug unlocked — debug tools now available in Settings",
-        "rendererLabel": "Markdown renderer (Streamdown experiment)",
-        "rendererOn": "Switched to Streamdown — reload to apply",
-        "rendererOff": "Switched back to legacy renderer — reload to apply"
+        "unlocked": "Debug unlocked — debug tools now available in Settings"
     },
     "composer": {
         "placeholders": [

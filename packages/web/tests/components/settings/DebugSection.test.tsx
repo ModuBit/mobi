@@ -25,7 +25,6 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider, App as AntdApp } from 'antd'
 import { DebugSection } from '@/components/settings/blocks/DebugSection'
 import { unlockDebug, lockDebug } from '@/core/lib/debug'
-import { getMarkdownRenderer, setMarkdownRenderer } from '@/core/lib/markdownRenderer'
 import { enableDiag, disableDiag, dumpDiag } from '@/core/lib/diag'
 
 const messageSpy = vi.hoisted(() => ({
@@ -88,7 +87,7 @@ describe('DebugSection', () => {
     it('diag 关闭时点击开关调用 enableDiag 并提示开启', () => {
         unlockDebug()
         renderUi()
-        fireEvent.click(screen.getByRole('switch', { name: 'debug.diagLabel' }))
+        fireEvent.click(screen.getByRole('switch'))
         expect(dumpDiag().enabled).toBe(true)
         expect(messageSpy.success).toHaveBeenCalledWith('debug.diagOn')
     })
@@ -97,7 +96,7 @@ describe('DebugSection', () => {
         enableDiag()
         unlockDebug()
         renderUi()
-        fireEvent.click(screen.getByRole('switch', { name: 'debug.diagLabel' }))
+        fireEvent.click(screen.getByRole('switch'))
         expect(dumpDiag().enabled).toBe(false)
         expect(messageSpy.success).toHaveBeenCalledWith('debug.diagOff')
     })
@@ -117,7 +116,7 @@ describe('DebugSection', () => {
         // 开关处于关闭态（内存未 enable）
         expect(dumpDiag().enabled).toBe(false)
         // 手动开启：应从空开始，而非 restore 残留镜像（restore 会重建 seenToolIds/recordedCreatedIds，重放刷屏）
-        fireEvent.click(screen.getByRole('switch', { name: 'debug.diagLabel' }))
+        fireEvent.click(screen.getByRole('switch'))
         expect(dumpDiag().enabled).toBe(true)
         expect(dumpDiag().events).toHaveLength(0)
         expect(dumpDiag().tools).toHaveLength(0)
@@ -167,28 +166,5 @@ describe('DebugSection', () => {
         HTMLAnchorElement.prototype.click = origClick
         createURLSpy.mockRestore()
         revokeURLSpy.mockRestore()
-    })
-
-    it('渲染器开关默认关闭（旧栈），点击后持久化 streamdown 并提示重载生效', () => {
-        unlockDebug()
-        renderUi()
-        const rendererSwitch = screen.getByRole('switch', { name: 'debug.rendererLabel' })
-        expect(rendererSwitch).not.toBeChecked()
-        fireEvent.click(rendererSwitch)
-        expect(getMarkdownRenderer()).toBe('streamdown')
-        expect(localStorage.getItem('mobi-md-renderer')).toBe('streamdown')
-        expect(messageSpy.success).toHaveBeenCalledWith('debug.rendererOn')
-    })
-
-    it('渲染器开关处于 streamdown 时点击切回旧栈并清 key', () => {
-        setMarkdownRenderer('streamdown')
-        unlockDebug()
-        renderUi()
-        const rendererSwitch = screen.getByRole('switch', { name: 'debug.rendererLabel' })
-        expect(rendererSwitch).toBeChecked()
-        fireEvent.click(rendererSwitch)
-        expect(getMarkdownRenderer()).toBe('x-markdown')
-        expect(localStorage.getItem('mobi-md-renderer')).toBeNull()
-        expect(messageSpy.success).toHaveBeenCalledWith('debug.rendererOff')
     })
 })
