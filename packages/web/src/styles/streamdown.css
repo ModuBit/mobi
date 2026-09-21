@@ -254,3 +254,21 @@ html[data-theme='dark'] .streamdown-md [data-streamdown='table-body'] tr:hover {
 .streamdown-md.x-markdown-inline a {
     color: inherit;
 }
+
+/* ==================== 流式动画（ticket 08） ==================== */
+
+/* 定义 Streamdown 动画引用的 sd-blurIn keyframes（Streamdown 不内置，消费方定义）：
+   单字符 + 逐字揭示下 4px/150ms 级的模糊不可感知，加大半径并带一点缩放让
+   「模糊→清晰」可感（spike 验收形态） */
+@keyframes sd-blurIn {
+    from {
+        opacity: 0;
+        filter: blur(8px);
+        transform: scale(1.15);
+    }
+    to {
+        opacity: 1;
+        filter: blur(0);
+        transform: scale(1);
+    }
+}

@@ -89,6 +89,22 @@ export function revealIntervalFor(len: number): number {
 }
 
 /**
+ * stagger 重分桶档位（ms）：近期「每字符揭示间隔」观测值 → 动画 stagger 档位。
+ * 档位取「不小于观测值」的最小档，保证 stagger ≥ 到达间隔（动画波前不被压扁），
+ * 同时重分桶让取值离散化——Streamdown 以 JSON(animated) 为键缓存 timeline，
+ * stagger 值变化会重建 timeline，离散桶把重建频率压到速率档位切换时才发生
+ */
+const STAGGER_TIERS = [10, 16, 24, 40, 64, 96] as const
+
+/** 近期每字符揭示间隔（ms）→ stagger 档位 */
+export function staggerBucketFor(perCharIntervalMs: number): number {
+    return STAGGER_TIERS.find(tier => perCharIntervalMs <= tier) ?? STAGGER_TIERS[STAGGER_TIERS.length - 1]
+}
+
+/** 流式动画默认 stagger（ms）：基础速率 0.1 char/ms 的倒数，稳态兜底 */
+export const DEFAULT_REVEAL_INTERVAL_MS = 10
+
+/**
  * 计算逐字揭示速率（字符/毫秒）。
  *
  * - 积压超过阈值：加速追赶（gap / 500ms），使批量快照在 ~一个间隔内匀速追完
@@ -107,8 +123,16 @@ export function computeRevealRate(gap: number, arrivalRate: number): number {
  * 流式内容逐字揭示 hook。
  * 将批量到达的 snapshot 内容拆分为逐字显示，模拟打字机效果。
  * 自适应速率：积压时自动加速追平，追上后回落到基础速率。
+ *
+ * 返回近期「每字符揭示间隔」的重分桶值（revealIntervalMs，ms）供流式动画
+ * stagger 联动——stagger ≥ 到达间隔是动画连续性的硬约束，桶值由实际揭示
+ * 节奏（含长度自适应节流的拉长）EMA 而来，天然满足；仅档位切换时才变，
+ * 避免下游以它为依赖的对象频繁重建。
  */
-export function useStreamingContent(target: string, streaming?: boolean): string {
+export function useStreamingContent(target: string, streaming?: boolean): {
+    display: string
+    revealIntervalMs: number
+} {
     // mount 时对齐到当前 target 长度：drip 只揭示「mount 之后到达的增量」，
     // 不重放已有内容。这样折叠重展 / 切走 session 再切回（组件 remount）时，
     // 长内容立即全显而非从 0 逐字重放——后者会让 XMarkdown 对越来越长的串反复
@@ -132,6 +156,10 @@ export function useStreamingContent(target: string, streaming?: boolean): string
     // 揭示量浮点累积：慢速率（<1 字符/帧）跨帧凑整提交，避免「每帧强制 ≥1 字符」
     // 把缓冲瞬间榨干又停滞（这正是「一断一断」的成因之一）
     const revealProgressRef = useRef(0)
+    // 近期每字符揭示间隔 EMA（ms）：供动画 stagger 档位联动（见返回值注释）
+    const revealIntervalRef = useRef(DEFAULT_REVEAL_INTERVAL_MS)
+    // EMA 的重分桶快照（state）：仅档位变化时更新，保证返回值引用低频变化
+    const [revealIntervalMs, setRevealIntervalMs] = useState(DEFAULT_REVEAL_INTERVAL_MS)
     const rafRef = useRef(0)
 
     useEffect(() => {
@@ -210,6 +238,10 @@ export function useStreamingContent(target: string, streaming?: boolean): string
                     // 正常长度（≤4k）每帧提交 1-3 字符的连续流动感（120Hz 屏同样平滑）；
                     // 超长内容由 interval 档位拉长节奏，替代旧 50ms 节流的 20fps 阶梯跳变
                     setDisplay(targetRef.current.slice(0, revealedRef.current))
+                    // 揭示间隔 EMA 采样 → 重分桶（仅档位切换触发 setState，见返回值注释）
+                    revealIntervalRef.current = revealIntervalRef.current * 0.3 + (dt / commit) * 0.7
+                    const bucket = staggerBucketFor(revealIntervalRef.current)
+                    setRevealIntervalMs((prev) => (prev === bucket ? prev : bucket))
                 }
 
                 if (revealedRef.current < targetRef.current.length) {
@@ -228,5 +260,5 @@ export function useStreamingContent(target: string, streaming?: boolean): string
         rafRef.current = 0
     }, [])
 
-    return display
+    return { display, revealIntervalMs }
 }

@@ -154,9 +154,10 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
 export const Markdown = memo(function Markdown(props: MarkdownProps) {
     const { content, streaming, typing = true, className, style, enableSlashCommand, enableMention } = props
 
-    // 平滑层双栈共用：drip 逐字揭示（含流式结束后收敛到全显）是渲染器无关的输入层
+    // 平滑层双栈共用：drip 逐字揭示（含流式结束后收敛到全显）是渲染器无关的输入层；
+    // revealIntervalMs 为近期每字符揭示间隔的档位值，供新栈动画 stagger 联动（旧栈不用）
     const useDrip = !!streaming && typing !== false
-    const displayContent = useStreamingContent(content ?? '', useDrip)
+    const { display: displayContent, revealIntervalMs } = useStreamingContent(content ?? '', useDrip)
 
     // LaTeX 特征探测双栈共用：决定 katex/math 按需加载（target 超集探测，不随揭示进度重扫）
     const needsLatex = useMemo(() => containsLatex(content ?? ''), [content])
@@ -192,6 +193,7 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
                     <StreamdownView
                         content={cleanContent}
                         isAnimating={revealing}
+                        staggerMs={revealIntervalMs}
                         mathEnabled={needsLatex}
                         enableSlashCommand={enableSlashCommand}
                         enableMention={enableMention}

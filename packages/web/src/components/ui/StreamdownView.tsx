@@ -31,7 +31,7 @@
  */
 
 import { memo, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react'
-import { Streamdown, type Components, type PluginConfig } from 'streamdown'
+import { Streamdown, type AnimateOptions, type Components, type PluginConfig } from 'streamdown'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { ActionLink } from './ActionLink'
 import { FootnoteRef } from './FootnoteComponents'
@@ -138,12 +138,26 @@ function loadCodePlugin(): Promise<PluginConfig> {
 /** shiki 双主题：映射旧栈 react-syntax-highlighter 的 one-light/one-dark-pro 观感 */
 const SHIKI_THEMES: ['one-light', 'one-dark-pro'] = ['one-light', 'one-dark-pro']
 
+/** 流式动画基础参数（ticket 08）：spike 验收形态——blurIn 逐字 + ease-in-out，
+ *  duration/maxBacklogMs 以原型值为起点；keyframes 覆盖见 streamdown.css 的 sd-blurIn */
+function buildAnimatedOptions(staggerMs: number): AnimateOptions {
+    return {
+        animation: 'blurIn',
+        sep: 'char',
+        easing: 'ease-in-out',
+        duration: 400,
+        maxBacklogMs: 1500,
+        stagger: staggerMs,
+    }
+}
+
 /** 新栈容器类：streamdown.css 的设计令牌作用域 + 排版映射的挂点 */
 export const STREAMDOWN_CONTAINER_CLASS = 'streamdown-md'
 
 export const StreamdownView = memo(function StreamdownView({
     content,
     isAnimating,
+    staggerMs = 10,
     mathEnabled = false,
     enableSlashCommand = false,
     enableMention = false,
@@ -153,6 +167,8 @@ export const StreamdownView = memo(function StreamdownView({
     content: string
     /** 揭示进行中（平滑层缓冲未收敛 / 流式未结束），驱动 Streamdown 流式语义 */
     isAnimating?: boolean
+    /** 动画 stagger（ms）：平滑层近期揭示间隔档位（staggerBucketFor），缺省稳态 10ms */
+    staggerMs?: number
     /** 内容探测到 LaTeX 特征（containsLatex），按需加载 math 插件 */
     mathEnabled?: boolean
     /** 用户消息 `/命令` badge（TextBlock 路径启用，语义同旧栈 Markdown props） */
@@ -228,6 +244,10 @@ export const StreamdownView = memo(function StreamdownView({
         [mathPlugins, mermaidPlugins, codePlugins],
     )
 
+    // 流式动画配置（稳定引用：Streamdown 的 Block memo 按引用比较 animated，
+    // 每帧内联重建会击穿 memo；staggerMs 已是低频档位值，仅档位切换时换引用）
+    const animated = useMemo(() => buildAnimatedOptions(staggerMs), [staggerMs])
+
     return (
         <div
             className={[STREAMDOWN_CONTAINER_CLASS, className].filter(Boolean).join(' ')}
@@ -236,6 +256,7 @@ export const StreamdownView = memo(function StreamdownView({
             <Streamdown
                 mode="streaming"
                 isAnimating={isAnimating}
+                animated={animated}
                 shikiTheme={SHIKI_THEMES}
                 linkSafety={LINK_SAFETY_OFF}
                 controls={CONTROLS}

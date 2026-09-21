@@ -89,9 +89,8 @@ export function StreamdownSpikePage() {
     // Streamdown 面板同样吃抖动缓冲平滑后的流：它只对「新挂载的 span」做动画，
     // 突发直出时文本一坨一坨地跳（一顿一顿）；mobi 的 drip 匀速追赶揭示
     // 正是补这个的平滑层——平滑层保留、动画层换 Streamdown
-    const sdDisplay = useStreamingContent(raw, streaming)
+    const { display: sdDisplay, revealIntervalMs } = useStreamingContent(raw, streaming)
     const sdStreaming = sdDisplay.length < SAMPLE.length
-    const display = sdDisplay
 
     return (
         <div className={`streamdown-spike${isDark ? ' dark' : ''}`} style={{ padding: 16 }}>
@@ -102,7 +101,7 @@ export function StreamdownSpikePage() {
             <div className="sd-ab">
                 <section className="sd-panel">
                     <h3>StreamdownView（正式新栈 + 排版映射）</h3>
-                    <StreamdownView content={display} isAnimating={sdStreaming} mathEnabled />
+                    <StreamdownView content={sdDisplay} isAnimating={sdStreaming} staggerMs={revealIntervalMs} mathEnabled />
                 </section>
                 <section className="sd-panel">
                     <h3>mobi 现行（XMarkdown + 逐字揭示）</h3>
