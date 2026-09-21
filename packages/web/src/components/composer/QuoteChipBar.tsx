@@ -21,6 +21,7 @@ import { CloseOutlined, EditOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 
 /** 引用列表卡单条目间距（条间分隔线的统一节奏） */
 const ITEM_GAP = 10
@@ -148,6 +149,12 @@ function QuoteItem({
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(quote.comment ?? '')
 
+    // 取消语义单点：退出编辑 + 恢复草稿为已保存评论（Esc 与取消按钮共用）
+    const cancel = () => {
+        setEditing(false)
+        setDraft(quote.comment ?? '')
+    }
+
     const saveComment = () => {
         const trimmed = draft.trim()
         onUpdateComment?.(quote.messageId, trimmed.length > 0 ? trimmed : undefined)
@@ -170,23 +177,20 @@ function QuoteItem({
                             placeholder={t('composer.quoteCommentPlaceholder')}
                             onChange={(e) => setDraft(e.target.value)}
                             onKeyDown={(e) => {
-                                // IME 组合中的 Enter 是确认候选词，不是提交（中文输入法必踩）
-                                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                                // 键位判定（含 IME 组合中 Enter 不提交）由 commentTextareaAction 单处承载
+                                const action = commentTextareaAction(e)
+                                if (action === 'submit') {
                                     e.preventDefault()
                                     saveComment()
-                                } else if (e.key === 'Escape') {
-                                    setEditing(false)
-                                    setDraft(quote.comment ?? '')
+                                } else if (action === 'cancel') {
+                                    cancel()
                                 }
                             }}
                         />
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                             <Button
                                 size="small"
-                                onClick={() => {
-                                    setEditing(false)
-                                    setDraft(quote.comment ?? '')
-                                }}
+                                onClick={cancel}
                             >
                                 {t('common.cancel')}
                             </Button>

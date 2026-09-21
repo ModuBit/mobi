@@ -19,13 +19,13 @@ import { Button } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
+import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 
-/** 浮层与选区的间距（px），与 QuoteSelectionPopover 同一节奏 */
-const POPOVER_GAP = 8
 /** 浮层宽度：容纳两行评论输入 */
 const POPOVER_WIDTH = 260
-/** 距视口左右边缘的最小间距（fixed 定位无滚动兜底，窄屏必须钳制） */
-const VIEWPORT_MARGIN = 8
+/** 翻转阈值：选区顶边高于此值才放上方（评论浮层高，阈值比动作条大） */
+const FLIP_THRESHOLD_PX = 140
 
 const Layer = styled.div`
     position: fixed;
@@ -95,13 +95,8 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
         onConfirm(trimmed.length > 0 ? { ...quote, comment: trimmed } : quote)
     }
 
-    const above = rect.top > 140
-    const top = above ? rect.top - POPOVER_GAP : rect.bottom + POPOVER_GAP
-    // 选区中心优先，越出视口边缘时钳回（移动端窄屏/选区贴近边缘的兜底）
-    const left = Math.min(
-        Math.max(rect.left + rect.width / 2 - POPOVER_WIDTH / 2, VIEWPORT_MARGIN),
-        Math.max(window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN, VIEWPORT_MARGIN),
-    )
+    // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值
+    const { top, left, above } = computeQuoteLayerPlacement(rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX)
 
     return (
         <Layer
@@ -116,11 +111,11 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 onKeyDown={(e) => {
-                    // IME 组合中的 Enter 是确认候选词，不是提交（中文输入法必踩）
-                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    const action = commentTextareaAction(e)
+                    if (action === 'submit') {
                         e.preventDefault()
                         confirm()
-                    } else if (e.key === 'Escape') {
+                    } else if (action === 'cancel') {
                         e.stopPropagation()
                         onCancel()
                     }

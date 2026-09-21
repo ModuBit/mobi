@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { locateQuotedMessage, QUOTE_FLASH_CLASS } from '@/domain/chat/quoteLocate'
+import { locateQuotedMessage, QUOTE_FLASH_CLASS } from '@/core/lib/quoteLocate'
 
 const FLASH_MS = 1200
 

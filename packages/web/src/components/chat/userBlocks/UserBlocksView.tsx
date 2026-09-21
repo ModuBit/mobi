@@ -26,6 +26,7 @@ import type {
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
+import { truncatePreview } from '@/core/lib/truncatePreview'
 import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { buildActionUri } from '@mobi/shared'
@@ -49,7 +50,7 @@ export interface UserBlockRenderEnv {
     /** 选区引用：text 视图落 data-quote-block 容器锚（聊天列表接线；其它使用方缺省不落） */
     quoteBlockAnchor?: boolean
     /**
-     * 引用条目点击定位入口（消息级：滚动到源消息 + 高亮，见 domain/chat/quoteLocate）。
+     * 引用条目点击定位入口（消息级：滚动到源消息 + 高亮，见 core/lib/quoteLocate）。
      * 交互只在聊天列表接线处有意义——非聊天上下文缺省不传，引用组退化为纯展示
      * （对齐 onEditSketch 的可选能力位模式）
      */
@@ -90,11 +91,6 @@ function TextView({ block, env }: UserBlockViewProps<UserTextBlock>) {
 /** 引用条目预览截断宽度：超出省略号截断，全文由 AppTooltip 承载（截断不阻碍阅读全文） */
 const QUOTE_PREVIEW_MAX = 120
 
-/** 预览文本截断：超长补省略号 */
-function truncateQuotePreview(text: string): string {
-    return text.length > QUOTE_PREVIEW_MAX ? `${text.slice(0, QUOTE_PREVIEW_MAX)}…` : text
-}
-
 /**
  * quote 行视图（引用组内单条渲染）：编号 + 角色 icon + excerpt 预览（超 {@link QUOTE_PREVIEW_MAX}
  * 截断，全文走 AppTooltip 的 PC hover / 移动端长按）+ 可选评论全显异色——excerpt 是别人的话
@@ -129,7 +125,7 @@ function QuoteView({ block, env, index = 0, divided = false }:
                 <RoleIcon size={12} style={{ flexShrink: 0, marginTop: 3, color: token.colorTextTertiary }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ color: token.colorTextTertiary, wordBreak: 'break-word' }}>
-                        {truncateQuotePreview(block.excerpt)}
+                        {truncatePreview(block.excerpt, QUOTE_PREVIEW_MAX)}
                     </div>
                     {block.comment && (
                         <div style={{ color: token.colorTextSecondary, wordBreak: 'break-word' }}>

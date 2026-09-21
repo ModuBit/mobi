@@ -715,9 +715,14 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [])
 
     const updateQuoteComment = useCallback((messageId: string, comment: string | undefined) => {
-        setQuotes(prev => prev.map(q => (q.messageId === messageId
-            ? (comment !== undefined ? { ...q, comment } : { messageId: q.messageId, role: q.role, excerpt: q.excerpt })
-            : q)))
+        setQuotes(prev => prev.map(q => {
+            if (q.messageId !== messageId) return q
+            if (comment !== undefined) return { ...q, comment }
+            // 清评论 = 剔除 comment 字段本身（wire 契约：无评论不落键）；rest 解构避免
+            // 手写 PendingQuoteRef 字段白名单——新增字段时这里不会悄悄剥掉
+            const { comment: _dropped, ...base } = q
+            return base
+        }))
     }, [])
 
     const showInactiveCover = !active && !allowSendWhenInactive

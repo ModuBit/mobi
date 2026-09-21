@@ -157,9 +157,10 @@ function isQuotable(ctx: EndpointContext): ctx is EndpointContext & QuotableEndp
  * 纯函数，DOM 类型（Range/Node）由 jsdom 或真实浏览器提供，不发起任何 IO。
  */
 export function resolveQuoteSelection(range: Range, env: QuoteSelectionEnv): QuoteSelectionResult {
-    const text = range.toString()
-    // 空选区（collapsed）或未覆盖任何文本：无可引用内容，按来源不合格拒绝
-    if (range.collapsed || text.length === 0) {
+    // 空选区（collapsed）：无可引用内容，按来源不合格拒绝。
+    // 注意文本序列化（range.toString()）刻意推迟到全部结构检查之后——本函数挂在聊天区
+    // 每次 mouseup 上，用户残留的大选区（如 Ctrl+A 全页）不该在每次点击时都被反复序列化
+    if (range.collapsed) {
         return { ok: false, reason: 'disallowedSource' }
     }
 
@@ -189,6 +190,12 @@ export function resolveQuoteSelection(range: Range, env: QuoteSelectionEnv): Quo
     // ④ 条数上限（结构性不可满足，先于长度）
     if (env.currentQuoteCount >= QUOTE_MAX_COUNT) {
         return { ok: false, reason: 'limitReached' }
+    }
+
+    // 结构检查全部通过才序列化选区文本（选区可能只覆盖图片等非文本节点）
+    const text = range.toString()
+    if (text.length === 0) {
+        return { ok: false, reason: 'disallowedSource' }
     }
 
     // ⑤ 长度上限

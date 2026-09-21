@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs'
 import type { UserContentBlock, UserImageBlock } from '@mobi/shared'
 import { logger } from '@/ui/logger'
+import { escapeXmlText } from '@/utils/xmlEscape'
 
 /** 单个 Anthropic content 元素（mobi prompt 场景子集） */
 export type PromptContentBlock =
@@ -38,19 +39,6 @@ const MAX_SDK_IMAGE_BYTES = 3.5 * 1024 * 1024
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /**
- * 转义 XML 特殊字符（& < > "）。`&` 必须先替换，否则会把刚生成的实体再转义一遍
- * （如 &quot; → &amp;quot;）。与 crossSessionEnvelope 的 escapeMarkup 同序同集——
- * 不复用是因为它模块私有且属跨会话信封场景，此处为 prompt 拼装，各持一份保持依赖方向干净。
- */
-function escapeQuoteText(s: string): string {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-}
-
-/**
  * quote block → 结构化 XML 片段（对齐项目内 bash 注入惯例，见 buildBashInjectionText）：
  * `<quote index="1" role="agent">被选文本<user-comment>评论</user-comment></quote>`，
  * 无评论省略子标签。excerpt 与 comment 是用户可控的自由文本，经 XML 实体转义防止
@@ -59,9 +47,9 @@ function escapeQuoteText(s: string): string {
  */
 function buildQuoteText(block: Extract<UserContentBlock, { type: 'quote' }>, index: number): string {
     // excerpt 沿用既有的换行压缩（选区可能含软换行），comment 保留原样（多行评论是合法输入）
-    const excerpt = escapeQuoteText(block.excerpt.replace(/\s*\n\s*/g, ' '))
+    const excerpt = escapeXmlText(block.excerpt.replace(/\s*\n\s*/g, ' '))
     const inner = block.comment !== undefined
-        ? `${excerpt}<user-comment>${escapeQuoteText(block.comment)}</user-comment>`
+        ? `${excerpt}<user-comment>${escapeXmlText(block.comment)}</user-comment>`
         : excerpt
     return `<quote index="${index}" role="${block.role}">${inner}</quote>`
 }

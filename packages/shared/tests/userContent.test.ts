@@ -139,8 +139,8 @@ describe('normalizeUserContent 四形态归一', () => {
         expect(ContentBlockSchema.safeParse({ ...base, sketch: { format: 123 } }).success).toBe(false)
     })
 
-    it('QUOTE_EXCERPT_MAX 为 200', () => {
-        expect(QUOTE_EXCERPT_MAX).toBe(200)
+    it('QUOTE_EXCERPT_MAX 为 500（引用特性调整：选中文本片段常超旧上限，见 message-quote spec）', () => {
+        expect(QUOTE_EXCERPT_MAX).toBe(500)
     })
 })
 

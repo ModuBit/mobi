@@ -37,6 +37,7 @@
 
 import type { CrossSessionOrigin, UserContentBlock } from '@mobi/shared'
 import { SEND_MESSAGE_TOOL_NAME } from '@/mcp/sendMessageTool'
+import { escapeXmlText } from '@/utils/xmlEscape'
 
 export interface CrossSessionEnvelope extends CrossSessionOrigin {
     /**
@@ -52,22 +53,11 @@ export interface CrossSessionEnvelope extends CrossSessionOrigin {
 const ENVELOPE_TAG = 'cross-session-message'
 
 /**
- * 标记与文本转义。
- *
- * 信封的读侧（`FROM_NAME_RE`）到第一个 `"` 就收尾、开标签到第一个 `>` 就结束，
- * 所以**会话名里出现这两个字符就会破坏标签本身**——后面两个属性跟着一起错位。
- * 会话名是人写的，不能假设它干净。插进提醒块的名字同理：不转义的话，名字里写
- * `</system-reminder>` 就能从提醒块里「逃出来」，后面的内容成了块外文本。
- *
- * `&` 必须**先**替换：放后面会把刚生成的 `&quot;` 里的 `&` 再转义一遍，变成 `&amp;quot;`。
+ * 标记与文本转义统一走 {@link escapeXmlText}（& " < >，`&` 先行）——信封的读侧
+ * （`FROM_NAME_RE`）到第一个 `"` 就收尾、开标签到第一个 `>` 就结束，会话名里出现
+ * 这两个字符就会破坏标签本身，所以插进信封的每个自由文本字段都必须转义。
  */
-function escapeMarkup(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-}
+const escapeMarkup = escapeXmlText
 
 /** 收件方回信该用的工具名（注册在 mobi-apps server 上，常量归属工具自身，此处只引用） */
 const REPLY_TOOL = SEND_MESSAGE_TOOL_NAME

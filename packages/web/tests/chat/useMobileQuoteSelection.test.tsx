@@ -52,10 +52,10 @@ afterEach(() => {
 })
 
 describe('useMobileQuoteSelection（移动端 selectionchange 入口）', () => {
-    it('选区变化后等 debounceMs 落定才回调非空选区 range（等系统选择手柄稳定）', () => {
+    it('选区变化后等默认防抖（300ms）落定才回调非空选区 range（等系统选择手柄稳定）', () => {
         const onSelectionSettled = vi.fn()
         stubSelection(fakeRange)
-        renderHook(() => useMobileQuoteSelection({ enabled: true, debounceMs: 300, onSelectionSettled }))
+        renderHook(() => useMobileQuoteSelection({ enabled: true, onSelectionSettled }))
 
         fireSelectionChange()
         expect(onSelectionSettled).not.toHaveBeenCalled()
@@ -69,7 +69,7 @@ describe('useMobileQuoteSelection（移动端 selectionchange 入口）', () => 
     it('debounce 窗口内连续变化只按最后一次落定回调一次（防「先清后选」抖动）', () => {
         const onSelectionSettled = vi.fn()
         stubSelection(fakeRange)
-        renderHook(() => useMobileQuoteSelection({ enabled: true, debounceMs: 300, onSelectionSettled }))
+        renderHook(() => useMobileQuoteSelection({ enabled: true, onSelectionSettled }))
 
         fireSelectionChange()
         vi.advanceTimersByTime(200)
@@ -83,7 +83,7 @@ describe('useMobileQuoteSelection（移动端 selectionchange 入口）', () => 
     it('落定时选区已清空或 collapsed → 不回调（关闭语义归容器既有「选区清空即关浮层」effect）', () => {
         const onSelectionSettled = vi.fn()
         stubSelection(null)
-        renderHook(() => useMobileQuoteSelection({ enabled: true, debounceMs: 300, onSelectionSettled }))
+        renderHook(() => useMobileQuoteSelection({ enabled: true, onSelectionSettled }))
 
         fireSelectionChange()
         vi.advanceTimersByTime(300)
@@ -109,7 +109,7 @@ describe('useMobileQuoteSelection（移动端 selectionchange 入口）', () => 
         const onSelectionSettled = vi.fn()
         stubSelection(fakeRange)
         const { unmount } = renderHook(() =>
-            useMobileQuoteSelection({ enabled: true, debounceMs: 300, onSelectionSettled }),
+            useMobileQuoteSelection({ enabled: true, onSelectionSettled }),
         )
 
         fireSelectionChange()

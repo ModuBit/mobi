@@ -598,7 +598,6 @@
         "uploadPendingWarning": "请等待文件上传完成",
         "removeQuote": "移除引用",
         "quoteCount": "{{count}} 条引用",
-        "quoteListTitle": "引用列表",
         "quoteAdd": "添加到对话",
         "quoteTooLong": "选区过长，无法引用",
         "quoteLimitReached": "引用数量已达上限",

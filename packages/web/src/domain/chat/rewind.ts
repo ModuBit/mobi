@@ -26,6 +26,7 @@ import { deserializeSegments, type ComposerSegments } from './composerSegments'
 import { isAfterContextBoundary } from './contextBoundary'
 import { summarizeBlocks, joinSummaries, EMPTY_SUMMARY_LABELS } from './userContentSummary'
 import { extractApiError } from '@/core/data/api/client'
+import { truncatePreview } from '@/core/lib/truncatePreview'
 
 export type { NativeMessageMetadata }
 
@@ -215,10 +216,10 @@ const REWIND_PREVIEW_MAX_CHARS = 80
 
 /**
  * 回退目标预览截断：超长原文只展示前 maxChars 个字符 + 省略号。
- * 按码点切（Array.from），避免 emoji 等代理对被从中间截成乱码。
+ * 码点安全的通用实现见 {@link truncatePreview}（core/lib，web 内唯一截断口径），
+ * 此处只是带上回退预览默认长度的薄委托。
  * 仅用于确认视图预览；回填编辑器的原文走完整 targetText，不受此影响。
  */
 export function truncateRewindPreview(text: string, maxChars: number = REWIND_PREVIEW_MAX_CHARS): string {
-    const chars = Array.from(text)
-    return chars.length <= maxChars ? text : `${chars.slice(0, maxChars).join('')}…`
+    return truncatePreview(text, maxChars)
 }

@@ -31,7 +31,7 @@ import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
-import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS } from '@/domain/chat/quoteLocate'
+import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS } from '@/core/lib/quoteLocate'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -1006,28 +1006,26 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 <MessageActionsTrigger onClick={() => openActionsByItemKey(item.key)} />
             ) : null
 
-            // footer 组装：终态标注（左侧灰字）→「⋯」入口 → 既有 footer 内容。
-            // 「⋯」外层包 flex:1 容器，保住 UserMessageFooter 时间戳（marginLeft:auto）贴最右
-            const footerContent = terminalLabelKey !== null ? (
+            // footer 组装：单层 flex 壳（「⋯」入口、终态标注各自可空）→ 既有 footer 内容。
+            // 内容槽包 flex:1 容器，保住 UserMessageFooter 时间戳（marginLeft:auto）贴最右
+            const terminalLabel = terminalLabelKey !== null ? (
+                <span
+                    data-testid="user-msg-terminal"
+                    // 弱化呈现：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
+                >
+                    <StopOutlined style={{ fontSize: 11 }} />
+                    {t(terminalLabelKey)}
+                    {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
+                </span>
+            ) : null
+            const footer = (actionsTrigger || terminalLabel) ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span
-                        data-testid="user-msg-terminal"
-                        // 弱化呈现：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
-                    >
-                        <StopOutlined style={{ fontSize: 11 }} />
-                        {t(terminalLabelKey)}
-                        {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
-                    </span>
+                    {actionsTrigger}
+                    {terminalLabel}
                     <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
                 </div>
             ) : baseFooter
-            const footer = actionsTrigger ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {actionsTrigger}
-                    <div style={{ flex: 1, minWidth: 0 }}>{footerContent}</div>
-                </div>
-            ) : footerContent
 
             return {
                 ...item,
