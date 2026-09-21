@@ -103,6 +103,12 @@ bun run lint       # ESLint 检查
 
 **示例**（本项目）：`patches/@socket.io%2Fbun-engine@0.1.1.patch` 修复 bun-engine 发送二进制附件 bug（`Buffer.isBuffer`→`ArrayBuffer.isView`）。每次升级时若发现 `@socket.io/bun-engine` 有 0.1.2+，查其是否已修该 bug → 修复则移除补丁并升级。
 
+#### 机器本地覆盖型 patch（不走 `patches/`）
+
+有的 patch 不由 `patchedDependencies` 管理，而是直接覆盖 bun store 里的包产物（机器本地，`bun install` 会还原）。这类 patch 同样必须在升级该包时检查：新版已含等价能力则撤 patch（删代码 flag + 正常升级），未含则按 reference 里的命令重做覆盖。
+
+**当前清单**：`@ant-design/x-markdown` 的 `streaming.incremental` 块级 memo（等上游发版，撤除条件与重做命令见 [references/x-markdown-patch.md](references/x-markdown-patch.md)）。升级该包时必查。
+
 ### 第八步：anthropic/claude 包 changelog 检查、回归与机会挖掘
 
 **触发条件**：本次升级涉及任何 `@anthropic-ai/*` 包（cli 当前依赖 `@anthropic-ai/claude-agent-sdk`、`@anthropic-ai/sandbox-runtime`、`@anthropic-ai/sdk`，**均 0.x，semver 上 minor 即 breaking**）。这类包是 mobi 的协议层核心，第三步的风险分级不足以反映真实风险——**版本号无论几级，只要动了 anthropic 包就必须做这一步**。

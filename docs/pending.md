@@ -873,7 +873,7 @@ interrupt（用户停止）
 **两条路径**：
 
 1. **✅ 2026-09-21 源码实锤：上游已实现，等发版（最优解）**。ant x main 已合入 `streaming.incremental`（commit `313d3016`，2026-09-19；源码 `packages/x-markdown/src/XMarkdown/Section.tsx`——按源字符串 memo 的分段组件，streaming 时只有最后一段重 parse/sanitize/render，正是本条目标形态）。**尚未发版**：mobi 装的 2.9.0 dist 中 `incremental`/`typewriter` 零命中，`git tag --contains 313d3016` 为空。做法：盯 ant x releases，出 2.10.0 即升级 + `MARKDOWN_STREAMING_CONFIG` 加 `incremental: true`。利好：① mobi 脚注定义在渲染前已被 extractFootnotes 抽走，不会触发「链接引用/脚注定义停切」；② drip 在外层喂前缀，与 incremental 透明叠加，揭示层无需重写。同批还合入了 `streaming.typewriter`（官方 CPS 速率匹配逐字揭示，EMA chunk 间隔），未来可评估替换自研 useStreamingContent。升级注意 marked 被 x-markdown pin 需同动。
-2. **急用 backport（备选）**：把 Section.tsx + sections 切分 backport 进 2.9.0 dist（bun patches）。diff 面积可控，但有维护负担，发版后须撤。
+2. **✅ 2026-09-21 已落地：机器本地 backport patch（先行生效）**。antx 源码（HEAD，含 incremental）经 utoo/father 正式构建，覆盖 bun store 的 npm 包产物 + `MARKDOWN_STREAMING_CONFIG` 加 `incremental: true`。**E2E 实测（6x CPU 节流、fresh session、3000 字长文流式）**：>100ms 长任务 304 个（原版 2.9.0）→ 4~7 个，长任务 p50 118ms → 54ms，~30 倍改善；渲染结构无回归。patch 是机器本地的，`bun install` 会还原——升级 x-markdown 时的检查/撤除/重做命令见 `.claude/skills/upgrade-deps/references/x-markdown-patch.md`（已记入 upgrade-deps skill），出 2.10.0 正式升级后撤除。
 3. ~~推上游~~：已被 1 取代——不需要推，已经合了。
 4. **mobi 侧双容器重试（放弃）**：`8182bf10` 做过 stable+tail 双段拆分，死于三观感问题（振荡闪烁/延续判定/间距断裂，回滚 `5bd93406`）。官方 incremental 在单容器内做，无这些先天缺陷，此路线彻底作废。
 
