@@ -255,7 +255,8 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                         >
                             {t('settings.webTools.verify')}
                         </Button>
-                        <Button size="small" type="primary" onClick={startEditing}>
+                        {/* 替换是进入编辑的旁路动作（预览态的主要场景是验证已存凭据），按 Buttons 规范不占 primary */}
+                        <Button size="small" onClick={startEditing}>
                             {t('settings.webTools.replace')}
                         </Button>
                     </>

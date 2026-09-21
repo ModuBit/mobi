@@ -69,19 +69,20 @@ export default function PdfToolbar({
                 borderBottom: '1px solid var(--ant-color-border-secondary)',
             }}
         >
-            <Button size="small" disabled={scale <= MIN_SCALE} onClick={zoomOut}>
+            {/* 工具栏行内轻操作统一 text 档（对齐 MarkdownToolbar 的 Buttons 规范） */}
+            <Button size="small" type="text" disabled={scale <= MIN_SCALE} onClick={zoomOut}>
                 -
             </Button>
             <span style={{ fontSize: 12, minWidth: 48, textAlign: 'center' }}>
                 {Math.round(scale * 100)}%
             </span>
-            <Button size="small" disabled={scale >= MAX_SCALE} onClick={zoomIn}>
+            <Button size="small" type="text" disabled={scale >= MAX_SCALE} onClick={zoomIn}>
                 +
             </Button>
-            <Button size="small" onClick={onFitWidth}>
+            <Button size="small" type="text" onClick={onFitWidth}>
                 {t('files.fitWidth')}
             </Button>
-            <Button size="small" onClick={onReset}>
+            <Button size="small" type="text" onClick={onReset}>
                 {t('files.actualSize')}
             </Button>
         </div>

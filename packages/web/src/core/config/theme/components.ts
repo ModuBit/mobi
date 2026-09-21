@@ -28,18 +28,26 @@ export const shadcnLightComponents = {
         defaultHoverColor: '#141413',
         defaultActiveBg: '#b0aea5',
         defaultActiveBorderColor: '#b0aea5',
+        // text 档按钮 hover 底色（DESIGN.md Buttons 章：hairline）
+        textHoverBg: '#f0eee6',
         borderRadius: 8,
     },
     Input: {
         activeShadow: 'none',
         hoverBorderColor: '#b0aea5',
-        activeBorderColor: '#3d3d3a',
+        // focus 边框用中灰（ink-tertiary）而非最深的暖墨——墨色描边过刺眼（DESIGN.md Buttons/Inputs 章）
+        activeBorderColor: '#87867f',
         borderRadius: 8,
     },
     Select: {
         optionSelectedBg: '#e8e6dc',
         optionActiveBg: '#f0eee6',
         optionSelectedFontWeight: 500,
+        // focus 边框与 Input 同阶梯（hairline → quaternary → tertiary），不用 colorPrimary 两极色；
+        // activeOutlineColor 置 transparent 对齐「无 focus 光晕」规范
+        hoverBorderColor: '#b0aea5',
+        activeBorderColor: '#87867f',
+        activeOutlineColor: 'transparent',
         borderRadius: 8,
     },
     Alert: {
@@ -99,19 +107,27 @@ export const shadcnDarkComponents = {
         defaultHoverColor: '#faf9f5',
         defaultActiveBg: '#4d4c48',
         defaultActiveBorderColor: '#4d4c48',
+        // text 档按钮 hover 底色（DESIGN.md Buttons 章：dark 提亮一档）
+        textHoverBg: '#30302e',
         borderRadius: 8,
         primaryColor: '#141413',
     },
     Input: {
         activeShadow: 'none',
         hoverBorderColor: '#5e5d59',
-        activeBorderColor: '#faf9f5',
+        // focus 边框用中灰（ink-tertiary）而非最亮的纸白——白框在暗底上过刺眼（DESIGN.md Buttons/Inputs 章）
+        activeBorderColor: '#87867f',
         borderRadius: 8,
     },
     Select: {
         optionSelectedBg: '#3d3d3a',
         optionActiveBg: '#30302e',
         optionSelectedFontWeight: 500,
+        // focus 边框与 Input 同阶梯（dark 提亮方向），不用 colorPrimary 两极色；
+        // activeOutlineColor 置 transparent 对齐「无 focus 光晕」规范
+        hoverBorderColor: '#5e5d59',
+        activeBorderColor: '#87867f',
+        activeOutlineColor: 'transparent',
         borderRadius: 8,
     },
     Alert: {

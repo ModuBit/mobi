@@ -65,8 +65,10 @@ export default function ImageContentView({ sessionId, filePath, etag }: ImageCon
         return (
             <div className="image-content-view image-content-view--error">
                 <img src={FALLBACK_IMAGE} alt={filePath} className="image-content-view__fallback" />
+                {/* 失败态唯一推进动作 = primary（与 MediaContentView 的加载失败重试同规） */}
                 <Button
                     size="small"
+                    type="primary"
                     onClick={() => setState((s) => ({ ...s, failed: false, retry: s.retry + 1 }))}
                 >
                     {t('files.retry')}

@@ -29,6 +29,16 @@
     outline: none;
 }
 
+/* Select 打开面板时不弱化选中文本
+   antd 对所有 Select 类组件（Select/Cascader/TreeSelect）硬编码：
+   面板打开时 .ant-select-content-has-value 降到 opacity 0.25（select-input.js，
+   非 token，theme 覆盖不了）——选中值几乎消失，读作「文本变暗」。
+   下拉面板内已有高亮选中项承担「当前是谁」的表达，selector 保持原样即可；
+   硬覆盖回 opacity 1，antd 升级若换实现此测试会提醒。 */
+.ant-select-open .ant-select-content-has-value {
+    opacity: 1 !important;
+}
+
 /* 气泡统一上下间距（贴边排布，不做对侧留白） */
 .ant-bubble {
     padding-block: 6px !important;

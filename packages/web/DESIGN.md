@@ -21,7 +21,7 @@ colors:
   # 边框 —— 极淡，几乎只剩温度
   hairline: "#f0eee6"
   hairline-strong: "#e8e6dc"
-  hairline-active: "#3d3d3a"
+  hairline-active: "#87867f"
 # 暗色模式（自定义扩展键，spec 静默接受）。Light 为规范值，Dark 见正文说明
 colors-dark:
   ink: "#faf9f5"
@@ -118,6 +118,14 @@ components:
     backgroundColor: "{colors.danger}"
     textColor: "{colors.paper-elevated}"
     rounded: "{rounded.sm}"
+  button-danger-hover:
+    backgroundColor: "#a02c2c"   # danger 深一档；dark 模式见正文
+  button-text:
+    backgroundColor: "transparent"
+    textColor: "{colors.ink-secondary}"
+    rounded: "{rounded.sm}"
+  button-text-hover:
+    backgroundColor: "{colors.hairline}"
   input:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
@@ -175,6 +183,58 @@ Mobi 是 Claude Code 的远程驾驶舱。它的视觉是 **Claude 自身的暖�
 
 Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸互换（ink → `#faf9f5`，paper → `#1a1a18`），暖度保留（`#141413` 而非 `#000`），语义色提亮以在暗底上可读（success → `#4ade80`）。见 frontmatter 的 `colors-dark` 扩展键。切换通过 `html[data-theme='dark']`，CSS 变量与 antd token 同步驱动。
 
+## Buttons
+
+按钮的视觉重量就是语义权重。墨色深浅不是装饰——它是在回答「用户在这里最想完成的下一件事是什么」。**选型先于调色**：先判定动作属于哪一级，颜色是判定的结果。
+
+### 语义分级（四级，没有 warning 按钮）
+
+| 形态 | 语义 | 判定问题 | 典型例子 |
+|------|------|----------|----------|
+| **primary**（实心墨） | 当前视图唯一的主推进动作 | 去掉它这个界面就「走不下去」了吗？ | 发送消息、表单提交、对话框确认、权限批准、恢复会话 |
+| **default**（灰底） | 其余一切常规动作 | 独立存在、不推进主流程的动作 | 发送测试通知、验证连接、取消、替换、刷新 |
+| **text**（无底） | 行内轻操作 | 去掉底色后这个动作仍可被理解吗？ | 复制、重试、展开、行内链接式动作 |
+| **danger** | 破坏性动作 | 误按的代价是什么？ | 删除会话、清空数据 |
+
+分级规则：
+
+- **一屏只允许一个 primary**（Modal 内单独算一屏）。两个实心墨块并排 = 层级失败，必有一方降为 default。
+- primary 给「推进任务」的动作，不给「出现频率高」的动作——发送是 primary，不是因为点得多，而是因为它推进对话。
+- **没有真正的默认动作时，全部用 default，不硬造 primary**。设置页卡片里的独立动作（发送测试通知）没有「走下去」的方向，人人平等。
+- 同一组内的旁路动作（取消之于确认、替换之于验证）永远不给 primary，哪怕它看起来更常用。
+- **warning 色不做按钮**。antd 没有这个形态，语义上也不需要——警告是状态提示（Alert/状态点）的职责，不是动作的职责。按钮只有上面四级。
+- 破坏性动作常态用 text 或 default + danger 字色，**solid danger 只出现在两类场景**：用户已明确表达意图的确认步骤（确认对话框的确认键），以及**视图的主推进本身就是破坏性动作**（如权限的 defaultToNo 模式主位拒绝，`PermissionFooter` 的 `denyFirst`）——让红色出现在「最后一声警告」或「唯一的危险出路」上，而不是入口上。
+- **选择态例外**：picker / toggle 里的 primary（VirtualKeyPicker 的修饰键选中、DesktopStreamSurface 的控制权获取）表达「已选中 / 可进入」的**状态指示**，不是动作推荐，不受「一屏一个」约束。但同一组内其他普通动作按钮仍按四级判定，不借选择态抬升。
+
+### 颜色与交互态
+
+交互反馈只有一条规则：**hover 背景加深一档（dark 模式提亮一档），active 再一档**。不浮起、不加边框粗细、不变字号、零阴影（见 Elevation）。
+
+颜色配置的唯一来源是 `src/core/config/theme/tokens.ts` + `components.ts`，下表与其数值一一对应：
+
+**Light**
+
+| 形态 | rest | hover | active |
+|------|------|-------|--------|
+| primary | 底 {colors.primary} `#3d3d3a` / 字 on-primary `#fff` | 底 `#4d4c48` | 底 `#141413` |
+| default | 底/边 {colors.hairline-strong} `#e8e6dc` / 字 ink-secondary `#4d4c48` | 底/边 `#d1cfc5` / 字 ink `#141413` | 底/边 `#b0aea5` |
+| text | 无底 / 字 ink-secondary | 底 {colors.hairline} `#f0eee6` | 底 `#e8e6dc` |
+| danger（solid） | 底 {colors.danger} `#b53333` / 字 `#fff` | 底 `#a02c2c` | 底 `#882424` |
+
+**Dark（对称反转，不是新调色板）**
+
+| 形态 | rest | hover | active |
+|------|------|-------|--------|
+| primary | 底 paper `#faf9f5` / 字 ink `#141413` | 底 `#e4e2d8` | 底 `#faf9f5` |
+| default | 底/边 `#30302e` / 字 `#d1cfc5` | 底/边 `#3d3d3a` / 字 paper | 底/边 `#4d4c48` |
+| text | 无底 / 字 `#d1cfc5` | 底 `#30302e` | 底 `#3d3d3a` |
+| danger（solid） | 底 `#ef4444` / 字 ink | 底 `#dc3636` | 底 `#ef4444` |
+
+- **disabled**：字 `colorTextDisabled`（light `#b0aea5` / dark `#5e5d59`），背景不动——disabled 是「失去资格」，不是「换一种颜色的重要」。
+- **danger 字色形态**（text/default + danger 字）：字走 `colorErrorText` 系（light `#b53333` / dark `#ef4444`），hover 字不变、出淡红底（`colorErrorBg` 系）。红色只出现在字与淡底上。
+- 实心 primary 的文字颜色由主题对称决定：**Light 白字、Dark 墨字**——都是「纸色压在墨上 / 墨色压在纸上」的同一逻辑，不是两套规则。
+- 图标按钮（IconButton）走 text 档词汇：透明底、ink-secondary 字，hover 出 primaryBg 淡底。
+
 ## Typography
 
 两族字体、严格分工：**阿里巴巴普惠体 3.0** 承担一切正文与界面文字，**JetBrains Mono** 承担一切代码、时间戳、CLI 输出与——**聊天气泡**。
@@ -219,8 +279,8 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Components
 
-- **按钮**：primary = 暖墨灰底 {colors.accent} + 墨字（注意不是白字）；default = 淡边框灰底 {colors.hairline-strong}。无阴影。hover 仅加深背景，不浮起。
-- **输入框**：圆角 8px，边框淡到 {colors.hairline}，focus 时边框转 {colors.hairline-active}（暖墨灰），**无 focus 光晕**（`activeShadow: 'none'`）。
+- **按钮**：语义分级（primary / default / text / danger）、判定规则与全量交互态见 **[Buttons](#buttons)** 章。零阴影，hover 仅背景一档变化。
+- **输入框 / 下拉框**：圆角 8px，边框淡到 {colors.hairline}，hover 转 {colors.ink-quaternary}，focus 转 {colors.hairline-active}（中灰 ink-tertiary，双主题同值）——focus 边框**不做两极色**（最深暖墨/最亮纸白），1px 实线在纸面上会读成「刺眼描边」而非焦点信号；**无 focus 光晕**（Input `activeShadow: 'none'`、Select `activeOutlineColor: 'transparent'`）。强度阶梯：hairline → ink-quaternary → ink-tertiary，逐级半档，无突变。**下拉面板打开时不弱化 selector 里的选中文本**（antd 默认降到 opacity 0.25，读作「文本消失」，已在 antd.css 硬覆盖回 1——面板内的高亮选中项已承担「当前是谁」的表达）。
 - **卡片**：圆角 14px，容器底色，无阴影无粗边。
 - **聊天气泡**：等宽优先字体，assistant 左对齐右侧留 5%，工具卡片气泡最小宽 80%。
 - **PixelCard**（签名组件）：鼠标悬停时 canvas 像素粒子从中心向外扩散，基于 React Bits 改造。用于需要「活」感的入口卡片。
@@ -265,6 +325,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 ## Do's and Don'ts
 
 - **Do** 用暖墨灰 {colors.primary} 表达「最重要的那个操作」——一屏只允许一个 primary。
+- **Do** 按钮先判语义等级再取色（见 Buttons 章）：主推进 primary、常规动作 default、行内轻操作 text、破坏性 danger。
 - **Do** 用温度差（paper-warm vs paper）做层次，而非阴影。
 - **Do** 在聊天气泡里用 `var(--font-chat)` 等宽优先字体。
 - **Do** 落在 8 的倍数间距刻度上。
@@ -273,6 +334,8 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Do** 手势释放用速度符号判定——快甩即关、快反向推即回位。
 - **Don't** 用纯黑 `#000` 或纯白 `#fff` 做大面积底色（净白仅限抬升层）。
 - **Don't** 给按钮、输入加阴影或 focus 光晕——这是本项目的核心克制。
+- **Don't** 给旁路动作（取消/替换/次要设置项）用 solid primary——一屏两个实心墨块即层级失败。
+- **Don't** 用 warning 色做按钮——警告是状态的职责（Alert/状态点），不是动作的职责。
 - **Don't** 用饱和原色（`#f00`/`#0f0`）——语义色必须走土地色谱的低饱和值。
 - **Don't** 用粗实线分隔——边框最淡 {colors.hairline}，分隔首选留白。
 - **Don't** 在聊天气泡里用正文体替代等宽体。
