@@ -221,7 +221,8 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
                         display: 'flex', alignItems: 'center', gap: 6,
                         padding: '4px 8px', margin: '0 4px', borderRadius: token.borderRadiusSM,
                         cursor: 'pointer',
-                        background: e === effort ? token.colorBgTextHover
+                        // 选中 = colorPrimaryBg（selected 档，比 hover 深），hover = colorBgTextHover（hover 档）
+                        background: e === effort ? token.colorPrimaryBg
                             : hovered === e ? token.colorBgTextHover : undefined,
                         transition: 'background 0.2s',
                     }}

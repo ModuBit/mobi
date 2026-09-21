@@ -235,6 +235,24 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - 实心 primary 的文字颜色由主题对称决定：**Light 白字、Dark 墨字**——都是「纸色压在墨上 / 墨色压在纸上」的同一逻辑，不是两套规则。
 - 图标按钮（IconButton）走 text 档词汇：透明底、ink-secondary 字，hover 出 primaryBg 淡底。
 
+## Hover & Selected
+
+悬浮与选中的高亮是全站同一套三档阶梯，**唯一来源是 `tokens.ts` 的 fill 系 token**（antd 内部组件与业务组件全部走它，双主题对称）：
+
+| 档 | token | Light | Dark | 语义 |
+|----|-------|-------|------|------|
+| **hover** | `colorBgTextHover` = `colorFillQuaternary` | `#f0eee6` | `#262622` | 指点过但未确认——最淡的一层 |
+| **selected** | `colorPrimaryBg`（= `colorFillTertiary`） | `#e8e6dc` | `#30302e` | 当前选中/激活——比 hover 深一档，「更鲜艳」 |
+| **pressed / 按住** | `colorFillSecondary` / `colorPrimaryBgHover` | `#d1cfc5` | `#3d3d3a` | 按压瞬时态或强调过渡 |
+
+规则：
+
+- **hover 与 selected 必须是不同的两档**——同一元素两个状态同色，用户无法分辨「停在上面」和「已选中」（实锤过：effort 菜单曾把 selected 写成 hover 同色同值）。
+- **selected 永远比 hover 深半档**（light 加深 / dark 提亮），这是「鲜艳」在纸感体系里的表达——不靠饱和度靠明度差。
+- 任何列表行、菜单项、下拉选项、卡片可点区都落在这套阶梯上，**禁止自造 hover 色**：不直接写 rgba 黑白 alpha（antd 默认冷灰）、不硬编码 hex、不把 `colorPrimaryBg` 借作 hover（它会与选中撞色）。要走 token：hover 用 `colorBgTextHover`，选中用 `colorPrimaryBg`。
+- antd 内部组件的高亮由全局 token 自动统一（`colorFill*` 已暖调化覆盖默认冷灰）；自定义 CSS 变量引用 `var(--ant-color-bg-text-hover)` / `var(--ant-color-fill-*)` 同样自动跟随。
+- 选中态的入口若同时可 hover（如侧栏选中行），hover 不得把选中底色洗掉——写条件保持 `selected` 档（参照 `sidebarProjects.styles` / `mobileMenu.styles` 的模式）。
+
 ## Typography
 
 两族字体、严格分工：**阿里巴巴普惠体 3.0** 承担一切正文与界面文字，**JetBrains Mono** 承担一切代码、时间戳、CLI 输出与——**聊天气泡**。
@@ -334,6 +352,9 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Do** 手势释放用速度符号判定——快甩即关、快反向推即回位。
 - **Don't** 用纯黑 `#000` 或纯白 `#fff` 做大面积底色（净白仅限抬升层）。
 - **Don't** 给按钮、输入加阴影或 focus 光晕——这是本项目的核心克制。
+- **Do** 悬浮/选中高亮走三档阶梯 token（hover=`colorBgTextHover`、selected=`colorPrimaryBg`，见 Hover & Selected 章）。
+- **Don't** 自造 hover 色——不写 rgba 黑白 alpha、不硬编码 hex、不把 `colorPrimaryBg` 借作 hover。
+- **Don't** 让 hover 与 selected 同色——selected 永远比 hover 深半档。
 - **Don't** 给旁路动作（取消/替换/次要设置项）用 solid primary——一屏两个实心墨块即层级失败。
 - **Don't** 用 warning 色做按钮——警告是状态的职责（Alert/状态点），不是动作的职责。
 - **Don't** 用饱和原色（`#f00`/`#0f0`）——语义色必须走土地色谱的低饱和值。

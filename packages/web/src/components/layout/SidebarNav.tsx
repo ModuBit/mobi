@@ -52,7 +52,8 @@ const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: R
 
     &:hover {
         ${props => !props.$disabled && `
-            background: ${props.$token.colorPrimaryBg};
+            // hover 淡档；$active 选中态在下方另有 colorPrimaryBg，不与 hover 撞色
+            background: ${props.$token.colorBgTextHover};
             color: ${props.$token.colorPrimary};
         `}
     }

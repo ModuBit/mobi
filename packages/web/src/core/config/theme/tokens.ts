@@ -75,6 +75,12 @@ export const shadcnLightToken = {
     colorTextTertiary: '#87867f',
     colorTextQuaternary: '#b0aea5',
     colorTextDisabled: '#b0aea5',
+    // 悬浮高亮体系（暖调化覆盖 antd 默认冷灰 rgba）：hover 半档/按下再半档，
+    // 与 hairline 三档同源——唯一来源，见 DESIGN.md「Hover 高亮」章
+    colorFillQuaternary: '#f0eee6',
+    colorFillTertiary: '#e8e6dc',
+    colorFillSecondary: '#d1cfc5',
+    colorBgTextHover: '#f0eee6',
     colorBgContainer: '#faf9f5',
     colorBgElevated: '#ffffff',
     colorBgLayout: '#f5f4ed',
@@ -157,6 +163,11 @@ export const shadcnDarkToken = {
     colorTextTertiary: '#87867f',
     colorTextQuaternary: '#5e5d59',
     colorTextDisabled: '#5e5d59',
+    // 悬浮高亮体系（dark 提亮方向）：与 light 对称的三档暖灰，见 DESIGN.md「Hover 高亮」章
+    colorFillQuaternary: '#262622',
+    colorFillTertiary: '#30302e',
+    colorFillSecondary: '#3d3d3a',
+    colorBgTextHover: '#262622',
     colorBgContainer: '#1a1a18',
     colorBgElevated: '#232320',
     colorBgLayout: '#141413',

@@ -38,7 +38,8 @@ const NavItem = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     transition: all 0.2s;
 
     &:hover {
-        background: ${props => props.$token.colorPrimaryBg};
+        // hover 淡档，与全站悬浮高亮统一（DESIGN.md Hover 高亮章）
+        background: ${props => props.$token.colorBgTextHover};
         color: ${props => props.$token.colorPrimary};
     }
 `

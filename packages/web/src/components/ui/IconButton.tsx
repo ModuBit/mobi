@@ -40,7 +40,8 @@ const StyledButton = styled.button<{
     transition: all 0.2s;
 
     &:hover:not(:disabled) {
-        background: ${props => props.$token.colorPrimaryBg};
+        // hover 用悬浮高亮淡档，active（$active）保留 colorPrimaryBg——hover ≠ 选中（DESIGN.md Hover 高亮章）
+        background: ${props => props.$token.colorBgTextHover};
         color: ${props => props.$token.colorPrimary};
     }
 `

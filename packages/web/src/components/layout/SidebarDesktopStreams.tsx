@@ -127,7 +127,8 @@ const Row = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }
     cursor: pointer;
 
     &:hover {
-        background: ${({ $token }) => $token.colorPrimaryBg};
+        // hover 淡档，与全站悬浮高亮统一（DESIGN.md Hover 高亮章）
+        background: ${({ $token }) => $token.colorBgTextHover};
         color: ${({ $token }) => $token.colorPrimary};
 
         .machine-id {

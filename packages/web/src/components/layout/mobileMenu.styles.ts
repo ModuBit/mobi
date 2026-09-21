@@ -51,7 +51,8 @@ export const MobileMenuItem = styled.div<{
 
     @media (hover: hover) {
         &:hover {
-            background: ${props => props.$token.colorPrimaryBg};
+            // $active 项 hover 保持选中底色不降档（对齐 sidebarProjects 的模式）
+            background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
         }
     }
 

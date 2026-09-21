@@ -40,6 +40,7 @@ export const shadcnLightComponents = {
         borderRadius: 8,
     },
     Select: {
+        // 选项 hover = 悬浮高亮 hover 档、选中 = colorPrimaryBg 档，与全站阶梯一致（DESIGN.md Hover 高亮章）
         optionSelectedBg: '#e8e6dc',
         optionActiveBg: '#f0eee6',
         optionSelectedFontWeight: 500,
@@ -120,8 +121,9 @@ export const shadcnDarkComponents = {
         borderRadius: 8,
     },
     Select: {
-        optionSelectedBg: '#3d3d3a',
-        optionActiveBg: '#30302e',
+        // 选项 hover = 悬浮高亮 hover 档（#262622）、选中 = colorPrimaryBg 档（#30302e），与全站阶梯一致
+        optionSelectedBg: '#30302e',
+        optionActiveBg: '#262622',
         optionSelectedFontWeight: 500,
         // focus 边框与 Input 同阶梯（dark 提亮方向），不用 colorPrimary 两极色；
         // activeOutlineColor 置 transparent 对齐「无 focus 光晕」规范

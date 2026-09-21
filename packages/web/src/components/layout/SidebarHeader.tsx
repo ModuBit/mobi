@@ -71,7 +71,8 @@ const CollapseButton = styled.button<{ $token: ReturnType<typeof useToken>['toke
     transition: all 0.2s;
 
     &:hover {
-        background: ${props => props.$token.colorPrimaryBg};
+        // hover 淡档、选中（如展开中的菜单入口）才用 colorPrimaryBg 深半档
+        background: ${props => props.$token.colorBgTextHover};
         color: ${props => props.$token.colorPrimary};
     }
 `
