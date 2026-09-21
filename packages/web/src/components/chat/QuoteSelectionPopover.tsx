@@ -15,39 +15,63 @@
  */
 
 import { memo } from 'react'
-import { Button, theme } from 'antd'
-import { MessageSquarePlus } from 'lucide-react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 
-/** 浮层宽度：紧凑动作条，不随选区长度变化 */
+/** 浮层宽度：动作按钮组，不随选区长度变化 */
 const POPOVER_WIDTH = 220
 /** 翻转阈值：选区顶边高于此值才放上方（动作条矮，阈值比评论浮层小） */
 const FLIP_THRESHOLD_PX = 120
-/** 估算高度（下缘钳制兜底）：按钮行 + padding */
+/** 估算高度（下缘钳制兜底）：单行按钮组 */
 const ESTIMATED_HEIGHT_PX = 44
 
+/**
+ * 按钮组容器（对齐 ChatGPT 选区菜单形态）：白底胶囊，纯文本动作项以细分隔线相连——
+ * 不用实心主按钮、不设独立关闭钮（点浮层外即关，调用方 mousedown-outside 已收口）。
+ */
 const Layer = styled.div`
     position: fixed;
     z-index: 1050;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
     width: ${POPOVER_WIDTH}px;
-    padding: 6px;
+    padding: 2px;
     background: var(--ant-color-bg-elevated);
-    border: 1px solid var(--ant-color-border);
+    border: 1px solid var(--ant-color-border-secondary);
     border-radius: 10px;
     box-shadow: var(--ant-box-shadow-secondary);
 `
 
-/** 禁用态提示条（超长 / 达上限）：灰字说明原因，不可点击 */
+/** 按钮组动作项：纯文本 + hover 弱化底（分组的段感由容器与分隔线承载） */
+const ActionItem = styled.button`
+    flex: 1;
+    padding: 7px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--ant-color-text);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+
+    &:hover {
+        background: var(--ant-color-fill-tertiary);
+    }
+`
+
+/** 禁用态提示项（超长 / 达上限）：灰字说明原因，占据按钮组槽位但不可点击 */
 const DisabledHint = styled.span`
-    font-size: 12px;
-    line-height: 18px;
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 13px;
+    line-height: 20px;
     color: var(--ant-color-text-tertiary);
+    text-align: center;
+    white-space: nowrap;
 `
 
 /** 选区浮层的定位与内容形态（三态） */
@@ -74,7 +98,6 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
     onClose,
 }: QuoteSelectionPopoverProps) {
     const { t } = useTranslation()
-    const { token } = theme.useToken()
 
     // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值
     const { top, left, above } = computeQuoteLayerPlacement(state.rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
@@ -91,10 +114,8 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
             }}
         >
             {state.kind === 'add' ? (
-                <Button
-                    type="primary"
-                    size="small"
-                    icon={<MessageSquarePlus size={14} />}
+                <ActionItem
+                    type="button"
                     data-testid="quote-add-button"
                     onClick={() => {
                         onAdd(state.quote)
@@ -102,22 +123,12 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
                     }}
                 >
                     {t('composer.quoteAdd')}
-                </Button>
+                </ActionItem>
             ) : (
                 <DisabledHint data-testid="quote-disabled-hint">
                     {state.kind === 'tooLong' ? t('composer.quoteTooLong') : t('composer.quoteLimitReached')}
                 </DisabledHint>
             )}
-            {/* 可见关闭入口：浮层无遮罩，点其它处由调用方关闭，此处给明确退出路径 */}
-            <Button
-                type="text"
-                size="small"
-                aria-label={t('common.close')}
-                onClick={onClose}
-                style={{ marginLeft: 4, color: token.colorTextTertiary }}
-            >
-                ✕
-            </Button>
         </Layer>
     )
 })

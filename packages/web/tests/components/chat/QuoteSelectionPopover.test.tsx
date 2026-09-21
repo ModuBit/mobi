@@ -55,10 +55,11 @@ describe('QuoteSelectionPopover', () => {
         expect(screen.queryByTestId('quote-add-button')).not.toBeInTheDocument()
     })
 
-    it('关闭按钮触发 onClose', () => {
+    it('禁用态为纯提示条（无动作按钮），点浮层外关闭归调用方——不设独立关闭钮', () => {
         const onClose = vi.fn()
         render(<QuoteSelectionPopover state={{ kind: 'tooLong', rect }} onAdd={vi.fn()} onClose={onClose} />)
-        fireEvent.click(screen.getByRole('button', { name: 'common.close' }))
-        expect(onClose).toHaveBeenCalledTimes(1)
+        // 提示条不可点击，浮层内没有任何会触发 onClose 的入口
+        fireEvent.click(screen.getByTestId('quote-disabled-hint'))
+        expect(onClose).not.toHaveBeenCalled()
     })
 })
