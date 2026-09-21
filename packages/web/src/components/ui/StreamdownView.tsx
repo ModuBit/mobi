@@ -30,12 +30,17 @@
  * linkSafety 关闭：与现状对齐（外链直接新标签页打开，不做拦截确认），决策见 spec。
  */
 
-import { memo, useEffect, useState, type CSSProperties, type FC } from 'react'
+import { memo, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react'
 import { Streamdown, type Components, type PluginConfig } from 'streamdown'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { ActionLink } from './ActionLink'
 import { normalizeLatexSyntax } from './latexSyntax'
 import { ensureKatexLoaded } from './latexPlugin'
+import {
+    preprocessUserSyntax,
+    USER_SYNTAX_ALLOWED_TAGS,
+    USER_SYNTAX_LITERAL_TAGS,
+} from './streamdownUserSyntax'
 
 /** linkSafety 关闭（模块级常量保持稳定引用，不因每帧重建打破 Streamdown 内部 memo） */
 const LINK_SAFETY_OFF = { enabled: false } as const
@@ -66,7 +71,19 @@ const MdLink: FC<React.ComponentPropsWithoutRef<'a'> & { node?: unknown }> = ({ 
 }
 
 /** 组件覆盖表（模块级常量保持稳定引用） */
-const COMPONENTS: Components = { a: MdLink }
+/** 自定义标签组件的 props（hast 属性经 sanitize 后为 unknown，渲染处收窄；须兼容 Components 的 Record 约束） */
+type UserSyntaxTagProps = { uri?: unknown; children?: unknown } & Record<string, unknown>
+
+const COMPONENTS: Components = {
+    a: MdLink,
+    // 用户消息 badge（ticket 04，TextBlock 路径启用；tag 由 streamdownUserSyntax 预处理产出）
+    mention: ({ uri, children }: UserSyntaxTagProps) => (
+        <ActionLink uri={String(uri ?? '')} className="mention-badge">{children as React.ReactNode}</ActionLink>
+    ),
+    'slash-command': ({ children }: UserSyntaxTagProps) => (
+        <span className="slash-command-badge">{children as React.ReactNode}</span>
+    ),
+}
 
 /**
  * math 插件懒加载（ticket 03）：@streamdown/math = remark-math + rehype-katex，
@@ -93,6 +110,8 @@ export const StreamdownView = memo(function StreamdownView({
     content,
     isAnimating,
     mathEnabled = false,
+    enableSlashCommand = false,
+    enableMention = false,
     className,
     style,
 }: {
@@ -101,6 +120,10 @@ export const StreamdownView = memo(function StreamdownView({
     isAnimating?: boolean
     /** 内容探测到 LaTeX 特征（containsLatex），按需加载 math 插件 */
     mathEnabled?: boolean
+    /** 用户消息 `/命令` badge（TextBlock 路径启用，语义同旧栈 Markdown props） */
+    enableSlashCommand?: boolean
+    /** 用户消息 `@路径` mention badge（TextBlock 路径启用） */
+    enableMention?: boolean
     /** 追加到容器的外部类名（透传自 Markdown.className） */
     className?: string
     /** 容器内联样式（透传自 Markdown.style） */
@@ -121,7 +144,13 @@ export const StreamdownView = memo(function StreamdownView({
 
     // 自研定界归一只在 math 插件就绪后做：未就绪时转换会把原文变成裸 $$（更糟），
     // 就绪后转换 + 渲染同步生效。已配对 $...$ 等合法语法归一为零改动
-    const displayContent = mathPlugins ? normalizeLatexSyntax(content) : content
+    const normalizedContent = mathPlugins ? normalizeLatexSyntax(content) : content
+
+    // 用户消息专属语法（slash/mention）预处理：parse 前包进 literal 自定义标签
+    const displayContent = useMemo(
+        () => preprocessUserSyntax(normalizedContent, { enableSlashCommand, enableMention }),
+        [normalizedContent, enableSlashCommand, enableMention],
+    )
 
     return (
         <div
@@ -136,6 +165,8 @@ export const StreamdownView = memo(function StreamdownView({
                 lineNumbers={false}
                 components={COMPONENTS}
                 plugins={mathPlugins ?? undefined}
+                allowedTags={USER_SYNTAX_ALLOWED_TAGS}
+                literalTagContent={USER_SYNTAX_LITERAL_TAGS}
             >
                 {displayContent}
             </Streamdown>

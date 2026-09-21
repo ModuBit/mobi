@@ -152,7 +152,7 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
  * flag 为 localStorage 运行时开关（设置页调试区块），重载生效，ticket 10 随旧栈一起移除
  */
 export const Markdown = memo(function Markdown(props: MarkdownProps) {
-    const { content, streaming, typing = true, className, style } = props
+    const { content, streaming, typing = true, className, style, enableSlashCommand, enableMention } = props
 
     // 平滑层双栈共用：drip 逐字揭示（含流式结束后收敛到全显）是渲染器无关的输入层
     const useDrip = !!streaming && typing !== false
@@ -173,6 +173,8 @@ export const Markdown = memo(function Markdown(props: MarkdownProps) {
                     content={displayContent}
                     isAnimating={revealing}
                     mathEnabled={needsLatex}
+                    enableSlashCommand={enableSlashCommand}
+                    enableMention={enableMention}
                     className={className}
                     style={style}
                 />
