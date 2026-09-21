@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-import { memo } from 'react'
+import { memo, useLayoutEffect, useRef, useState } from 'react'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 
-/** 浮层宽度：动作按钮组，不随选区长度变化 */
-const POPOVER_WIDTH = 220
+/** 浮层宽度：内容自适应（max-content），仅以估算值兜底钳制与首帧定位 */
+const ESTIMATED_WIDTH = 120
+/** 自适应上限：禁用态提示较长时收进此宽内换行不起（nowrap + 椭圆省略由 hint 自理） */
+const MAX_LAYER_WIDTH = 280
 /** 翻转阈值：选区顶边高于此值才放上方（动作条矮，阈值比评论浮层小） */
 const FLIP_THRESHOLD_PX = 120
 /** 估算高度（下缘钳制兜底）：单行按钮组 */
@@ -36,7 +38,8 @@ const Layer = styled.div`
     z-index: 1050;
     display: flex;
     align-items: stretch;
-    width: ${POPOVER_WIDTH}px;
+    width: max-content;
+    max-width: ${MAX_LAYER_WIDTH}px;
     padding: 2px;
     background: var(--ant-color-bg-elevated);
     border: 1px solid var(--ant-color-border-secondary);
@@ -72,6 +75,8 @@ const DisabledHint = styled.span`
     color: var(--ant-color-text-tertiary);
     text-align: center;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 `
 
 /** 选区浮层的定位与内容形态（三态） */
@@ -99,11 +104,18 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
 }: QuoteSelectionPopoverProps) {
     const { t } = useTranslation()
 
-    // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值
-    const { top, left, above } = computeQuoteLayerPlacement(state.rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
+    // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载。宽度自适应后钳制
+    // 需要实测宽：首帧按估算值定位，挂载后测量修正（同帧内完成，无可见跳动）
+    const layerRef = useRef<HTMLDivElement>(null)
+    const [width, setWidth] = useState(ESTIMATED_WIDTH)
+    useLayoutEffect(() => {
+        if (layerRef.current) setWidth(layerRef.current.offsetWidth)
+    }, [state.kind])
+    const { top, left, above } = computeQuoteLayerPlacement(state.rect, width, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
 
     return (
         <Layer
+            ref={layerRef}
             data-quote-layer="popover"
             data-testid="quote-selection-popover"
             data-popover-kind={state.kind}
