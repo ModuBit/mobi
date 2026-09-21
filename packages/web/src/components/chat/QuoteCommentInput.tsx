@@ -18,6 +18,7 @@ import { memo, useRef, useState } from 'react'
 import { Button } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
+import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
@@ -26,6 +27,8 @@ import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 const POPOVER_WIDTH = 260
 /** 翻转阈值：选区顶边高于此值才放上方（评论浮层高，阈值比动作条大） */
 const FLIP_THRESHOLD_PX = 140
+/** 估算高度（下缘钳制兜底）：textarea 44 + 动作行 + padding */
+const ESTIMATED_HEIGHT_PX = 120
 
 const Layer = styled.div`
     position: fixed;
@@ -96,7 +99,7 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
     }
 
     // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值
-    const { top, left, above } = computeQuoteLayerPlacement(rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX)
+    const { top, left, above } = computeQuoteLayerPlacement(rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
 
     return (
         <Layer
@@ -107,6 +110,7 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
             <Input
                 ref={inputRef}
                 autoFocus
+                maxLength={QUOTE_EXCERPT_MAX}
                 placeholder={t('composer.quoteCommentPlaceholder')}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}

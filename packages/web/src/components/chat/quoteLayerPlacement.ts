@@ -36,19 +36,31 @@ export interface QuoteLayerPlacement {
 }
 
 /**
- * 计算浮层相对选区矩形的定位（纯函数，window.innerWidth 只读视口宽）。
+ * 计算浮层相对选区矩形的定位（纯函数，window.innerWidth/innerHeight 只读视口尺寸）。
  *
  * @param rect           选区几何（getBoundingClientRect 产物，viewport 坐标）
  * @param width          浮层宽度（各浮层自声明）
  * @param flipThreshold  选区顶边高于此值（px）才放上方，否则翻到下方（各浮层自声明：
  *                       评论浮层更高，阈值相应更大）
+ * @param estimatedHeight 浮层估算高度：下方放置时据此钳回视口下缘——顶部起选、拖到
+ *                        接近视口底的大选区不钳的话，确认/取消按钮落进视口外不可点。
+ *                        估算值只用于钳制兜底，不必精确
  */
-export function computeQuoteLayerPlacement(rect: DOMRect, width: number, flipThreshold: number): QuoteLayerPlacement {
+export function computeQuoteLayerPlacement(
+    rect: DOMRect,
+    width: number,
+    flipThreshold: number,
+    estimatedHeight: number,
+): QuoteLayerPlacement {
     const above = rect.top > flipThreshold
-    const top = above ? rect.top - QUOTE_LAYER_GAP : rect.bottom + QUOTE_LAYER_GAP
+    let top = above ? rect.top - QUOTE_LAYER_GAP : rect.bottom + QUOTE_LAYER_GAP
     const left = Math.min(
         Math.max(rect.left + rect.width / 2 - width / 2, QUOTE_LAYER_VIEWPORT_MARGIN),
         Math.max(window.innerWidth - width - QUOTE_LAYER_VIEWPORT_MARGIN, QUOTE_LAYER_VIEWPORT_MARGIN),
     )
+    if (!above) {
+        top = Math.min(top, window.innerHeight - estimatedHeight - QUOTE_LAYER_VIEWPORT_MARGIN)
+        top = Math.max(top, QUOTE_LAYER_VIEWPORT_MARGIN)
+    }
     return { top, left, above }
 }

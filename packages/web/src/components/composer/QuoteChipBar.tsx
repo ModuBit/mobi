@@ -20,7 +20,8 @@ import { Quote } from 'lucide-react'
 import { CloseOutlined, EditOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
-import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
+import type { ComposerQuoteRef } from '@/domain/chat/composerSegments'
+import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 
 /** 引用列表卡单条目间距（条间分隔线的统一节奏） */
@@ -125,10 +126,11 @@ const CommentInput = styled.textarea`
 `
 
 interface QuoteChipBarProps {
-    quotes: PendingQuoteRef[]
-    onRemove: (messageId: string) => void
+    quotes: ComposerQuoteRef[]
+    /** 删除按条目级 uid 寻址（同消息可挂多个不同片段，messageId 不唯一） */
+    onRemove: (uid: string) => void
     /** 评论编辑保存（undefined = 清空评论）；缺省不渲染编辑入口 */
-    onUpdateComment?: (messageId: string, comment: string | undefined) => void
+    onUpdateComment?: (uid: string, comment: string | undefined) => void
 }
 
 /** 列表卡单条目：excerpt 全文 + 评论行 + 删除/评论编辑动作 */
@@ -139,11 +141,11 @@ function QuoteItem({
     onRemove,
     onUpdateComment,
 }: {
-    quote: PendingQuoteRef
+    quote: ComposerQuoteRef
     index: number
     canEditComment: boolean
-    onRemove: (messageId: string) => void
-    onUpdateComment?: (messageId: string, comment: string | undefined) => void
+    onRemove: (uid: string) => void
+    onUpdateComment?: (uid: string, comment: string | undefined) => void
 }) {
     const { t } = useTranslation()
     const [editing, setEditing] = useState(false)
@@ -157,7 +159,7 @@ function QuoteItem({
 
     const saveComment = () => {
         const trimmed = draft.trim()
-        onUpdateComment?.(quote.messageId, trimmed.length > 0 ? trimmed : undefined)
+        onUpdateComment?.(quote.uid, trimmed.length > 0 ? trimmed : undefined)
         setEditing(false)
     }
 
@@ -173,6 +175,7 @@ function QuoteItem({
                     <>
                         <CommentInput
                             autoFocus
+                            maxLength={QUOTE_EXCERPT_MAX}
                             value={draft}
                             placeholder={t('composer.quoteCommentPlaceholder')}
                             onChange={(e) => setDraft(e.target.value)}
@@ -219,7 +222,7 @@ function QuoteItem({
                     role="button"
                     aria-label={t('composer.removeQuote')}
                     data-testid={`quote-remove-${index}`}
-                    onClick={() => onRemove(quote.messageId)}
+                    onClick={() => onRemove(quote.uid)}
                 >
                     <CloseOutlined />
                 </ItemAction>
@@ -242,7 +245,7 @@ export const QuoteChipBar = memo(function QuoteChipBar({ quotes, onRemove, onUpd
         <ListCard data-testid="quote-list">
             {quotes.map((q, i) => (
                 <QuoteItem
-                    key={q.messageId}
+                    key={q.uid}
                     quote={q}
                     index={i}
                     canEditComment={!!onUpdateComment}

@@ -26,7 +26,8 @@ import type { KeyboardEvent } from 'react'
  * @returns 'submit' | 'cancel' | null（其它按键不关心）
  */
 export function commentTextareaAction(e: KeyboardEvent<HTMLTextAreaElement>): 'submit' | 'cancel' | null {
+    // Escape 同样豁免组合态：IME 组合中按 Esc 是「取消本次候选词」，不是取消评论编辑
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) return 'submit'
-    if (e.key === 'Escape') return 'cancel'
+    if (e.key === 'Escape' && !e.nativeEvent.isComposing) return 'cancel'
     return null
 }

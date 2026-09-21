@@ -26,6 +26,8 @@ import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 const POPOVER_WIDTH = 220
 /** 翻转阈值：选区顶边高于此值才放上方（动作条矮，阈值比评论浮层小） */
 const FLIP_THRESHOLD_PX = 120
+/** 估算高度（下缘钳制兜底）：按钮行 + padding */
+const ESTIMATED_HEIGHT_PX = 44
 
 const Layer = styled.div`
     position: fixed;
@@ -75,7 +77,7 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
     const { token } = theme.useToken()
 
     // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值
-    const { top, left, above } = computeQuoteLayerPlacement(state.rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX)
+    const { top, left, above } = computeQuoteLayerPlacement(state.rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
 
     return (
         <Layer

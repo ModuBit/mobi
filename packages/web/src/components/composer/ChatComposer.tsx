@@ -25,8 +25,10 @@ import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS
 import {
     isSegmentEmpty,
     QUOTE_MAX_COUNT,
+    type ComposerQuoteRef,
     type ComposerSegments,
     type PendingQuoteRef,
+    withQuoteUids,
 } from '@/domain/chat/composerSegments'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
@@ -300,7 +302,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const [text, setText] = useState('')
     // 待发送引用：极简 chip 列表展示。约束：持有条数恒 ≤ QUOTE_MAX_COUNT（3）——
     // 上限为引用入口时的前置契约：置入超出时应替换最早一条；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
-    const [quotes, setQuotes] = useState<PendingQuoteRef[]>([])
+    const [quotes, setQuotes] = useState<ComposerQuoteRef[]>([])
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 设置草稿并聚焦：suggestion 采纳共用此实现
@@ -366,17 +368,23 @@ export function ChatComposer(props: ChatComposerProps) {
     // getQuoteCount/addQuote：消息列表选区引用动作的手柄通道（引用是即时动作，无需信箱防重放）
     const addQuote = useCallback((quote: PendingQuoteRef) => {
         setQuotes(prev => {
-            // 同一消息去重：重复引用无增量语义，且 chip/删除都按 messageId 寻址，重条目会撞 key、删一条删全部
-            if (prev.some(q => q.messageId === quote.messageId)) return prev
-            return prev.length >= QUOTE_MAX_COUNT ? prev : [...prev, quote]
+            // 同一片段（同消息同文本）去重：连点/重复确认无增量语义。
+            // 同消息的**不同**片段允许多条并存（QUOTE_MAX_COUNT 的本意）；
+            // uid 条目级身份在置入时生成（chip key/删除/评论编辑都以 uid 寻址）
+            if (prev.some(q => q.messageId === quote.messageId && q.excerpt === quote.excerpt)) return prev
+            return prev.length >= QUOTE_MAX_COUNT ? prev : [...prev, { ...quote, uid: crypto.randomUUID() }]
         })
     }, [])
+    // getQuoteCount 经 ref 读最新条数：deps 不含 quotes，引用增删不再重建整个 handle
+    //（含 openSketch/openBubbleSketch 闭包的对象身份稳定）
+    const quotesRef = useRef(quotes)
+    quotesRef.current = quotes
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
         openBubbleSketch: sketchSession.openFromBubble,
-        getQuoteCount: () => quotes.length,
+        getQuoteCount: () => quotesRef.current.length,
         addQuote,
-    }), [handleOpenSketch, sketchSession.openFromBubble, quotes.length, addQuote])
+    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote])
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
     // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
@@ -394,7 +402,7 @@ export function ChatComposer(props: ChatComposerProps) {
         const refs = [...segments.files, ...segments.images]
         setText(segments.text)
         setAttachments(refs.map(fileRefToPlaceholderAttachment))
-        setQuotes(segments.quotes.slice(0, QUOTE_MAX_COUNT))
+        setQuotes(withQuoteUids(segments.quotes.slice(0, QUOTE_MAX_COUNT)))
         requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
     }, [setAttachments])
 
@@ -408,10 +416,13 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [draftNonce, applySegments])
 
     // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
+    // 草稿读回的 quotes 无 uid（持久化不存条目身份）→ 经包装统一补；保存侧 ComposerQuoteRef
+    // 结构兼容 PendingQuoteRef，直传即可
+    const setQuotesWithUids = useCallback((qs: PendingQuoteRef[]) => setQuotes(withQuoteUids(qs)), [])
     useComposerDraft(
         sessionId,
         { text, attachments, quotes },
-        { setText, setAttachments, setQuotes },
+        { setText, setAttachments, setQuotes: setQuotesWithUids },
     )
 
     // SDK 元数据（模型列表等）
@@ -710,13 +721,13 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId])
 
     // 引用动作：删除 / 评论编辑（excerpt 只读——引用忠实于源消息，评论才是用户的话）
-    const removeQuote = useCallback((messageId: string) => {
-        setQuotes(prev => prev.filter(q => q.messageId !== messageId))
+    const removeQuote = useCallback((uid: string) => {
+        setQuotes(prev => prev.filter(q => q.uid !== uid))
     }, [])
 
-    const updateQuoteComment = useCallback((messageId: string, comment: string | undefined) => {
+    const updateQuoteComment = useCallback((uid: string, comment: string | undefined) => {
         setQuotes(prev => prev.map(q => {
-            if (q.messageId !== messageId) return q
+            if (q.uid !== uid) return q
             if (comment !== undefined) return { ...q, comment }
             // 清评论 = 剔除 comment 字段本身（wire 契约：无评论不落键）；rest 解构避免
             // 手写 PendingQuoteRef 字段白名单——新增字段时这里不会悄悄剥掉

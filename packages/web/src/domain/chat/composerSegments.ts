@@ -53,6 +53,23 @@ export interface PendingQuoteRef {
     comment?: string
 }
 
+/**
+ * Composer 引用列表条目：PendingQuoteRef + 条目级身份 {@link uid}。
+ *
+ * uid 是必要的——同一条消息可以挂多个不同片段的引用（QUOTE_MAX_COUNT 的本意），
+ * messageId 不唯一；chip 列表的 key/删除/评论编辑都以 uid 寻址，按 messageId 会
+ * 撞 key、删一条删全部。uid 只活在 composer 状态内，不落 wire（QuoteBlockSchema
+ * 无此字段，serializeSegments 按字段挑选）。
+ */
+export interface ComposerQuoteRef extends PendingQuoteRef {
+    uid: string
+}
+
+/** 判定器/回填产出的 PendingQuoteRef → composer 列表条目（补条目级 uid） */
+export function withQuoteUids(quotes: readonly PendingQuoteRef[]): ComposerQuoteRef[] {
+    return quotes.map(q => ({ ...q, uid: crypto.randomUUID() }))
+}
+
 /** Composer 当前完整分段状态 */
 export interface ComposerSegments {
     text: string

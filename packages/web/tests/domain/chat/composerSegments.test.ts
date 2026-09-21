@@ -25,6 +25,7 @@ import {
     deserializeSegments,
     isSegmentEmpty,
     emptySegments,
+    withQuoteUids,
 } from '@/domain/chat/composerSegments'
 
 const seg = {
@@ -84,6 +85,14 @@ describe('composerSegments', () => {
         const plain = noComment.find(b => b.type === 'quote') as Record<string, unknown>
         expect('comment' in plain).toBe(false)
         expect(deserializeSegments(noComment).quotes[0]).toEqual({ messageId: 'm1', role: 'agent', excerpt: 'E' })
+    })
+
+    it('withQuoteUids 补条目级 uid；serialize 按 wire 字段挑选，uid 不落 wire（QuoteBlockSchema 无此字段）', () => {
+        const [entry] = withQuoteUids([{ messageId: 'm1', role: 'agent' as const, excerpt: 'E' }])
+        expect(entry.uid).toEqual(expect.any(String))
+        const wire = serializeSegments({ ...seg, quotes: [entry] })
+        const plain = wire.find(b => b.type === 'quote') as Record<string, unknown>
+        expect('uid' in plain).toBe(false)
     })
 
     it('previewUrl 存在时透传，不存在时不产生多余字段', () => {
