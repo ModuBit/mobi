@@ -23,6 +23,7 @@ import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import { useStreamingContent } from './useStreamingContent'
+import { INCOMPLETE_COMPONENTS } from './MarkdownIncomplete'
 import { ActionLink } from './ActionLink'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
@@ -186,6 +187,9 @@ export const Markdown = memo(function Markdown({
             code: DefaultCode,
             a: ExternalLink,
             'footnote-ref': FootnoteRef,
+            // 流式未完成语法占位（渐进可见，见 MarkdownIncomplete 注释）：
+            // 注册用默认名，仅在 hasNextChunk 缓存扣住 pending 时被触发，常驻注册无害
+            ...INCOMPLETE_COMPONENTS,
             ...(components ?? {}),
         }),
         [components],
@@ -253,6 +257,7 @@ export const Markdown = memo(function Markdown({
                     paragraphTag={paragraphTag}
                     config={mergedConfig}
                     dompurifyConfig={DOMPURIFY_CONFIG}
+                    debug={import.meta.env.DEV}
                 />
                 {footnotes.length > 0 && <FootnoteSources footnotes={footnotes} />}
             </div>
