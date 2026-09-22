@@ -150,7 +150,7 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
 
     return (
         <AppTooltip title={t('notification.pwa.installPrompt')} placement="right">
-            <NavItem $token={token} onClick={handleInstall}>
+            <NavItem $token={token} onClick={handleInstall} aria-label={t('notification.pwa.install')}>
                 <Download size={20} />
             </NavItem>
         </AppTooltip>

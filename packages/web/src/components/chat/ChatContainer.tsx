@@ -1227,6 +1227,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                                 size="middle"
                                 // running 时换用 loading 图标：用户滚离底部时仍能感知「正在生成」，点击回到底部查看
                                 icon={session?.running ? <LoadingOutlined /> : <DownOutlined />}
+                                aria-label={t('common.scrollBottom')}
                                 onClick={handleScrollToBottom}
                                 style={{
                                     pointerEvents: 'auto',

@@ -60,6 +60,7 @@ export function IconButton({
     size = 36,
     tooltip,
     tooltipPlacement = 'top',
+    'aria-label': ariaLabel,
     ...props
 }: IconButtonProps) {
     const { token } = useToken()
@@ -69,6 +70,9 @@ export function IconButton({
             $active={active}
             $token={token}
             $size={size}
+            // 图标按钮无可访问名称（SVG 不贡献名称）；tooltip 与视觉语义同源，
+            // 未显式传 aria-label 时以它兜底，保证读屏可辨识
+            aria-label={ariaLabel ?? tooltip}
             {...props}
         >
             {icon}

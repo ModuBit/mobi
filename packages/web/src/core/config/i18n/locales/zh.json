@@ -10,7 +10,9 @@
         "error": "错误",
         "success": "成功",
         "more": "更多",
-        "close": "关闭"
+        "close": "关闭",
+        "scrollBottom": "回到底部",
+        "toggleTheme": "切换主题"
     },
     "time": {
         "justNow": "刚刚",

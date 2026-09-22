@@ -381,16 +381,16 @@ function RightChrome({
             {!isMobile && (
                 chatHidden ? (
                     <AppTooltip title={t('session.inspector.restore')}>
-                        <Button type="text" size="small" icon={<Minimize size={16} />} onClick={() => onToggleChat(false)} />
+                        <Button type="text" size="small" icon={<Minimize size={16} />} aria-label={t('session.inspector.restore')} onClick={() => onToggleChat(false)} />
                     </AppTooltip>
                 ) : (
                     <AppTooltip title={t('session.inspector.maximize')}>
-                        <Button type="text" size="small" icon={<Maximize size={16} />} onClick={() => onToggleChat(true)} />
+                        <Button type="text" size="small" icon={<Maximize size={16} />} aria-label={t('session.inspector.maximize')} onClick={() => onToggleChat(true)} />
                     </AppTooltip>
                 )
             )}
             <AppTooltip title={t('session.inspector.collapse')}>
-                <Button type="text" size="small" icon={<PanelRightClose size={16} />} onClick={onCollapse} />
+                <Button type="text" size="small" icon={<PanelRightClose size={16} />} aria-label={t('session.inspector.collapse')} onClick={onCollapse} />
             </AppTooltip>
         </div>
     )

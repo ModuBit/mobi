@@ -324,6 +324,7 @@ export function LoginPage() {
                         shape="circle"
                         type="text"
                         icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                        aria-label={t('common.toggleTheme')}
                         onClick={toggleTheme}
                     />
                 </TopActions>

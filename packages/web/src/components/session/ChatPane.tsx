@@ -97,6 +97,7 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
                         type="text"
                         size="small"
                         icon={<PanelRight size={16} />}
+                        aria-label={t('session.inspector.expand')}
                         onClick={() => setExpanded(sessionId, true)}
                     />
                 </AppTooltip>

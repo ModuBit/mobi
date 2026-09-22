@@ -77,6 +77,7 @@ export function ClearStateButton({ sessionId, clearFields, confirmKey, onClear }
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             type="button"
+            aria-label={t('chat.clearState.label')}
         >
             <BrushCleaning size={11} />
         </button>

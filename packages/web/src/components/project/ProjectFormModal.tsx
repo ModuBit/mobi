@@ -110,6 +110,7 @@ function FolderRow({
                     disabled={disabled || !canRemove}
                     onClick={onRemove}
                     title={t('project.removeFolder')}
+                    aria-label={t('project.removeFolder')}
                     style={{ color: canRemove ? token.colorError : undefined }}
                 />
             </div>

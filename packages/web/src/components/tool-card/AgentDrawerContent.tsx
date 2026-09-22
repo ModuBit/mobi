@@ -189,6 +189,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
                     shape="circle"
                     size="middle"
                     icon={<DownOutlined />}
+                    aria-label={t('common.scrollBottom')}
                     onClick={handleScrollToBottom}
                     style={{
                         position: 'absolute',

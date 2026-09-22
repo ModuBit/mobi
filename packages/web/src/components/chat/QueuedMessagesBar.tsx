@@ -219,6 +219,7 @@ function QueuedItem(props: {
                         type="text"
                         size="small"
                         icon={<ThunderboltOutlined />}
+                        aria-label={steerLabel}
                         onClick={onSteer}
                         loading={steerPending}
                         disabled={cancelPending}
@@ -229,6 +230,7 @@ function QueuedItem(props: {
                         type="text"
                         size="small"
                         icon={<EditOutlined />}
+                        aria-label={editLabel}
                         onClick={onEdit}
                         disabled={cancelPending || steerPending}
                     />
@@ -239,6 +241,7 @@ function QueuedItem(props: {
                         size="small"
                         danger
                         icon={<DeleteOutlined />}
+                        aria-label={cancelLabel}
                         onClick={onCancel}
                         loading={cancelPending}
                         disabled={steerPending}

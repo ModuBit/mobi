@@ -10,7 +10,9 @@
         "error": "Error",
         "success": "Success",
         "more": "More",
-        "close": "Close"
+        "close": "Close",
+        "scrollBottom": "Back to bottom",
+        "toggleTheme": "Toggle theme"
     },
     "time": {
         "justNow": "just now",

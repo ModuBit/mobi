@@ -17,6 +17,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { Button, Dropdown, Divider, theme as antTheme } from 'antd'
 import { MoreOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import styled from '@emotion/styled'
 
@@ -134,15 +135,17 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
   const hiddenItems = items.slice(visibleCount)
 
   const { token } = antTheme.useToken()
+  const { t } = useTranslation()
 
   const moreButton = useCallback(() => (
     <Button
       type="text"
       size="small"
       icon={<MoreOutlined />}
+      aria-label={t('common.more')}
       style={{ borderRadius: '50%' }}
     />
-  ), [])
+  ), [t])
 
   const dropdownContent = useMemo(() => {
     if (hiddenItems.length === 0) return null

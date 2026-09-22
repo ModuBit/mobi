@@ -125,6 +125,7 @@ export interface SubmitButtonProps {
  */
 export function SubmitButton(props: SubmitButtonProps) {
     const { state, onSubmit, onAbort } = props
+    const { t } = useTranslation()
 
     const stopState = state.kind === 'stop' ? state : null
     return (
@@ -134,6 +135,7 @@ export function SubmitButton(props: SubmitButtonProps) {
                     type="primary"
                     shape="circle"
                     icon={<ArrowUpOutlined />}
+                    aria-label={t('composer.send')}
                     disabled={state.disabled}
                     onClick={onSubmit}
                 />
