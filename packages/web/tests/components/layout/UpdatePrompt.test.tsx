@@ -36,7 +36,7 @@ describe('UpdatePrompt（移动端顶栏悬浮胶囊）', () => {
 
     it('渲染刷新主操作与关闭按钮', () => {
         render(<UpdatePrompt onUpdate={() => {}} onClose={() => {}} />)
-        expect(screen.getByRole('button', { name: 'notification.pwa.updateAvailable' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'notification.pwa.updateAction' })).toBeInTheDocument()
         expect(screen.getByText('notification.pwa.updateAction')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'common.close' })).toBeInTheDocument()
     })
@@ -45,7 +45,7 @@ describe('UpdatePrompt（移动端顶栏悬浮胶囊）', () => {
         const onUpdate = vi.fn()
         const onClose = vi.fn()
         render(<UpdatePrompt onUpdate={onUpdate} onClose={onClose} />)
-        fireEvent.click(screen.getByRole('button', { name: 'notification.pwa.updateAvailable' }))
+        fireEvent.click(screen.getByRole('button', { name: 'notification.pwa.updateAction' }))
         expect(onUpdate).toHaveBeenCalledTimes(1)
         fireEvent.click(screen.getByRole('button', { name: 'common.close' }))
         expect(onClose).toHaveBeenCalledTimes(1)
@@ -58,8 +58,8 @@ describe('UpdateIconButton（PC 侧栏/WCO 图标+文案按钮）', () => {
     it('渲染带文案与 aria-label 的按钮，点击调用 onUpdate', () => {
         const onUpdate = vi.fn()
         render(<UpdateIconButton onUpdate={onUpdate} />)
-        const button = screen.getByRole('button', { name: 'notification.pwa.updateAvailable' })
-        expect(button).toHaveTextContent('notification.pwa.updateAvailable')
+        const button = screen.getByRole('button', { name: 'notification.pwa.updateAction' })
+        expect(button).toHaveTextContent('notification.pwa.updateAction')
         fireEvent.click(button)
         expect(onUpdate).toHaveBeenCalledTimes(1)
     })

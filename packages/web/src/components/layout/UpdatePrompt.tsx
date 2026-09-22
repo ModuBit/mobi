@@ -31,15 +31,16 @@ const { useToken } = antTheme
  * 更新可用状态经 useUpdateAvailable 订阅；无新版本时入口不渲染。
  */
 
-/** PC：logo 旁的「图标+文案」低调按钮（CollapseButton 同款交互词汇：淡底 hover、无阴影） */
+/** PC：logo 旁的「图标+文案」低调按钮（CollapseButton 同款交互词汇：淡底 hover、无阴影）。
+ *  文案与移动端胶囊统一为「刷新」 */
 export function UpdateIconButton({ onUpdate }: { onUpdate: () => void }) {
     const { token } = useToken()
     const { t } = useTranslation()
 
     return (
-        <StyledIconButton $token={token} onClick={onUpdate} aria-label={t('notification.pwa.updateAvailable')}>
+        <StyledIconButton $token={token} onClick={onUpdate} aria-label={t('notification.pwa.updateAction')}>
             <Download size={14} />
-            <span>{t('notification.pwa.updateAvailable')}</span>
+            <span>{t('notification.pwa.updateAction')}</span>
         </StyledIconButton>
     )
 }
@@ -129,7 +130,7 @@ export function UpdatePrompt({ onUpdate, onClose }: { onUpdate: (() => void) | n
 
     return (
         <FloatingBar $token={token}>
-            <RefreshArea onClick={onUpdate} aria-label={t('notification.pwa.updateAvailable')}>
+            <RefreshArea onClick={onUpdate} aria-label={t('notification.pwa.updateAction')}>
                 <Download size={15} />
                 <span>{t('notification.pwa.updateAction')}</span>
             </RefreshArea>
