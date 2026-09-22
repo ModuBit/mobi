@@ -19,24 +19,31 @@ import { render, screen } from '@testing-library/react'
 import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 import { QuoteCommentInput } from '@/components/chat/QuoteCommentInput'
 
-/** 构造带 IME 组合标志的键盘事件 */
-function keyEvent(key: string, isComposing: boolean): React.KeyboardEvent<HTMLTextAreaElement> {
+/** 构造带 IME 组合标志与修饰键的键盘事件 */
+function keyEvent(key: string, isComposing: boolean, mods: { ctrlKey?: boolean; metaKey?: boolean } = {}): React.KeyboardEvent<HTMLInputElement> {
     return {
         key,
         shiftKey: false,
+        ctrlKey: mods.ctrlKey ?? false,
+        metaKey: mods.metaKey ?? false,
         preventDefault: vi.fn(),
         stopPropagation: vi.fn(),
         nativeEvent: { isComposing },
-    } as unknown as React.KeyboardEvent<HTMLTextAreaElement>
+    } as unknown as React.KeyboardEvent<HTMLInputElement>
 }
 
-describe('commentTextareaAction（评论 textarea 键位判定）', () => {
-    it('Enter 且非组合 → submit', () => {
-        expect(commentTextareaAction(keyEvent('Enter', false))).toBe('submit')
+describe('commentTextareaAction（评论输入框键位判定）', () => {
+    it('裸 Enter → null（换行是输入框默认行为，多行评论合法）', () => {
+        expect(commentTextareaAction(keyEvent('Enter', false))).toBeNull()
     })
 
-    it('IME 组合中的 Enter 是确认候选词 → null（中文输入法必踩）', () => {
-        expect(commentTextareaAction(keyEvent('Enter', true))).toBeNull()
+    it('Ctrl/Cmd+Enter 且非组合 → submit', () => {
+        expect(commentTextareaAction(keyEvent('Enter', false, { ctrlKey: true }))).toBe('submit')
+        expect(commentTextareaAction(keyEvent('Enter', false, { metaKey: true }))).toBe('submit')
+    })
+
+    it('IME 组合中的 Ctrl+Enter 是确认候选词 → null（中文输入法必踩）', () => {
+        expect(commentTextareaAction(keyEvent('Enter', true, { ctrlKey: true }))).toBeNull()
     })
 
     it('IME 组合中的 Esc 是取消本次候选词 → null，不得连带取消整个评论编辑', () => {
@@ -44,7 +51,7 @@ describe('commentTextareaAction（评论 textarea 键位判定）', () => {
         expect(commentTextareaAction(keyEvent('Escape', true))).toBeNull()
     })
 
-    it('非组合 Esc → cancel；Shift+Enter / 其它键 → null', () => {
+    it('非组合 Esc → cancel；无修饰键按键 → null', () => {
         expect(commentTextareaAction(keyEvent('Escape', false))).toBe('cancel')
         expect(commentTextareaAction(keyEvent('a', false))).toBeNull()
     })

@@ -52,24 +52,28 @@ describe('QuoteCommentInput', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
-    it('Enter 保存；空评论保存 = onSave(undefined)（无评论引用）', () => {
+    it('Enter 换行不提交（多行评论合法输入）；Ctrl/Cmd+Enter 保存', () => {
         const onSave = vi.fn()
         render(<QuoteCommentInput rect={rect} onSave={onSave} onClose={vi.fn()} />)
 
         const input = screen.getByRole('textbox')
-        fireEvent.change(input, { target: { value: '  ' } })
+        fireEvent.change(input, { target: { value: '  为什么这样？  ' } })
+        // 裸 Enter：不提交（换行是 textarea 默认行为）
         fireEvent.keyDown(input, { key: 'Enter' })
-        expect(onSave).toHaveBeenCalledWith(undefined)
+        expect(onSave).not.toHaveBeenCalled()
+        // Ctrl/Cmd+Enter：提交（trim 后）
+        fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+        expect(onSave).toHaveBeenCalledWith('为什么这样？')
     })
 
-    it('续编辑回填：initialComment 进输入框，清空保存 = 清除评论（onSave(undefined)）', () => {
+    it('续编辑回填：initialComment 进输入框，Ctrl+Enter 清空保存 = 清除评论（onSave(undefined)）', () => {
         const onSave = vi.fn()
         render(<QuoteCommentInput rect={rect} initialComment='旧评论' onSave={onSave} onClose={vi.fn()} />)
 
-        const input = screen.getByRole('textbox') as HTMLInputElement
+        const input = screen.getByRole('textbox') as HTMLTextAreaElement
         expect(input.value).toBe('旧评论')
         fireEvent.change(input, { target: { value: '' } })
-        fireEvent.keyDown(input, { key: 'Enter' })
+        fireEvent.keyDown(input, { key: 'Enter', metaKey: true })
         expect(onSave).toHaveBeenCalledWith(undefined)
     })
 

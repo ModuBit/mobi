@@ -74,9 +74,9 @@ interface QuoteCommentInputProps {
 
 /**
  * 引用评论输入浮层（spec「评论流」）：引用已在 composer（「添加到对话」即落条目），
- * 此浮层只负责补充评论——可选（空保存 = 无评论引用）、多行自适应（autoSize ≤5 行）、
- * Enter/✓ 保存（IME 组合中的回车不提交）、×/Esc/点浮层外关闭（选区保留，
- * 见 ChatContainer handleQuoteCancel）。fixed 定位锚定选区几何并钳制在视口内，
+ * 此浮层只负责补充评论——可选（空保存 = 无评论引用）、多行自适应（autoSize ≤5 行，
+ * **Enter 换行**、Ctrl/Cmd+Enter 或 ✓ 提交）、×/Esc/点浮层外关闭（选区保留，
+ * 见 ChatContainer handleQuoteCommentClose）。fixed 定位锚定选区几何并钳制在视口内，
  * 与 QuoteSelectionPopover 同族同生命周期。
  */
 export const QuoteCommentInput = memo(function QuoteCommentInput({
