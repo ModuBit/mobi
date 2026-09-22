@@ -804,7 +804,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 try {
                     await claudeRemote({
                         sessionId: session.sessionId,
-                        // rewind 截断轮携带保留锚（其前最近一条 assistant entry uuid）：
+                        // rewind 截断轮携带保留锚（其前最近一条 user/assistant entry uuid，见 rewindAnchor）：
                         // 语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃
                         resumeSessionAt: rewind?.resumeAt,
                         // output style：session 当前值，每轮循环读取（切换 RPC 更新后经哨兵重启生效）

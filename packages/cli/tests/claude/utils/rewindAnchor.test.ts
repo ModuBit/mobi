@@ -63,11 +63,26 @@ describe('findRewindAnchor', () => {
         expect(mocked).toHaveBeenNthCalledWith(2, 'sess', { dir: '/dir', limit: 50, offset: 50 })
     })
 
-    it('锚点前紧邻的是 tool_result 载体（user 类型）→ 跳过继续向前取 assistant', async () => {
+    it('上一 turn 被打断（尾随 tool_result / 中断标记）→ 锚取目标前最近一条 user/assistant entry', async () => {
+        // 真实事故（2026-09-21）：旧算法取「最近 assistant」（中断 turn 中途的 tool_use），
+        // 截断区间以尾随 tool_result 开头 → SDK resume-drops-turn 校验以
+        // 「区间未以声明 turn prompt 开头」拒绝。新不变量：锚取目标前最近一条
+        // user/assistant entry，使截断区间第一条恰为声明的 turn prompt。
         mocked.mockResolvedValueOnce([
             msg('user', 'u0'),
+            msg('assistant', 'a-mid'),       // 中断 turn 的最后一条 assistant（中途 tool_use）
+            msg('user', 'tool-result'),      // 上一 turn 尾随 tool_result（须保留）
+            msg('user', 'interrupted'),      // [Request interrupted by user]（须保留）
+            msg('user', 'u1'),               // rewind 目标
+        ] as never)
+
+        await expect(findRewindAnchor('sess', '/dir', 'u1')).resolves.toBe('interrupted')
+    })
+
+    it('非 user/assistant entry（system 等）不作锚，继续向前', async () => {
+        mocked.mockResolvedValueOnce([
             msg('assistant', 'a0'),
-            msg('user', 'tool-result-carrier'),  // user 类型但非用户输入
+            msg('system', 'sys-1'),
             msg('user', 'u1'),
         ] as never)
 
@@ -96,14 +111,14 @@ describe('findRewindAnchor', () => {
         await expect(findRewindAnchor('sess', '/dir', 'u1')).resolves.toBeNull()
     })
 
-    it('uuid 精确匹配：同页其它 user 条目不干扰定位', async () => {
+    it('目标紧邻前驱是上一 turn 的 user prompt → 直接作锚（截断区间以目标开头）', async () => {
         mocked.mockResolvedValueOnce([
             msg('assistant', 'a-pre'),
             msg('user', 'other-user'),
             msg('user', 'target'),
         ] as never)
 
-        // target 的紧邻前驱是 other-user（user 类型），须跳过取 a-pre
-        await expect(findRewindAnchor('sess', '/dir', 'target')).resolves.toBe('a-pre')
+        // other-user 保留在历史中，截断区间 [target ...] 第一条即声明的 turn prompt
+        await expect(findRewindAnchor('sess', '/dir', 'target')).resolves.toBe('other-user')
     })
 })

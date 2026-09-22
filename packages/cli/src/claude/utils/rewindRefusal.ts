@@ -29,13 +29,28 @@ import type { PendingRewind } from '../types'
 export const REWIND_REFUSAL_PREFIX = 'Resume rejected by --resume-drops-turn:'
 
 /**
+ * SDK 进程退出错误替换前缀：CLI 进程带 error result 退出时，Query.readMessages 的
+ * catch 把原始错误替换为 `Claude Code returned an error result: <原文>`（sdk.mjs）。
+ * 截断轮 refusal 若经此路径浮出（startup reject），不剥壳会让前缀判别失配，
+ * 走崩溃处理杀掉整个会话（2026-09-21 真实事故）。
+ */
+const SDK_ERROR_RESULT_WRAPPER = 'Claude Code returned an error result: '
+
+/** 剥掉 SDK 包装取原始错误文本，供前缀判别 */
+function unwrapSdkErrorResult(message: string): string {
+    return message.startsWith(SDK_ERROR_RESULT_WRAPPER)
+        ? message.slice(SDK_ERROR_RESULT_WRAPPER.length)
+        : message
+}
+
+/**
  * 判别 SDK resume-drops-turn refusal（startup 抛错或 result is_error message）。
- * 用 startsWith 而非全等——SDK 可能在前缀后附加具体原因。
+ * 用 startsWith 而非全等——SDK 可能在前缀后附加具体原因；SDK 进程退出包装先剥壳。
  */
 export function isRewindRefusalError(error: unknown): boolean {
     if (!error) return false
     const msg = error instanceof Error ? error.message : String(error)
-    return msg.startsWith(REWIND_REFUSAL_PREFIX)
+    return unwrapSdkErrorResult(msg).startsWith(REWIND_REFUSAL_PREFIX)
 }
 
 /**

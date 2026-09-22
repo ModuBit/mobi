@@ -86,6 +86,17 @@ describe('isRewindRefusalError', () => {
     it('Error 对象的 message 匹配前缀', () => {
         expect(isRewindRefusalError(new Error(`${PREFIX} something`))).toBe(true)
     })
+    it('SDK 包装的 refusal（进程退出错误替换文本）剥壳后匹配', () => {
+        // SDK Query 在 CLI 进程带 error result 退出时，把错误替换为
+        // `Claude Code returned an error result: <原文>`（sdk.mjs readMessages catch）——
+        // 截断轮 refusal 若经此路径浮出，须剥壳后仍能识别，否则走崩溃处理杀会话
+        const wrapped = `Claude Code returned an error result: ${PREFIX} range does not start with the declared turn prompt`
+        expect(isRewindRefusalError(new Error(wrapped))).toBe(true)
+        expect(isRewindRefusalError(wrapped)).toBe(true)
+    })
+    it('SDK 包装的非 refusal 错误不匹配', () => {
+        expect(isRewindRefusalError(new Error('Claude Code returned an error result: OOM'))).toBe(false)
+    })
     it('非 refusal error 不匹配', () => {
         expect(isRewindRefusalError('some other error')).toBe(false)
         expect(isRewindRefusalError(new Error('spawn failed'))).toBe(false)
@@ -152,6 +163,26 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
         expect(onRewindTruncated).not.toHaveBeenCalled()
         // nextMessage 不应被调用（refusal 后直接 return）
         expect(opts.nextMessage).not.toHaveBeenCalled()
+    })
+
+    it('startup 抛 SDK 包装的 refusal → 同样走 recovery（不向上抛杀会话）', async () => {
+        // 真实事故（2026-09-21）：截断 refusal 经 SDK readMessages 包装为
+        // "Claude Code returned an error result: Resume rejected by ..."，前缀判别
+        // 失配 → launcher 按崩溃处理 exitReason='exit'，会话退出
+        const wrappedMsg = `Claude Code returned an error result: ${REWIND_REFUSAL_PREFIX} range does not start with the declared turn prompt`
+        mockedStartup.mockRejectedValue(new Error(wrappedMsg))
+
+        const onRewindRefusal = vi.fn()
+        const opts = {
+            ...truncationOpts(),
+            onRewindTruncated: vi.fn().mockResolvedValue(undefined),
+            onRewindRefusal,
+        }
+
+        await claudeRemote(opts)
+
+        expect(onRewindRefusal).toHaveBeenCalledTimes(1)
+        expect(onRewindRefusal).toHaveBeenCalledWith(wrappedMsg)
     })
 
     it('startup 抛非 refusal 错误 → 不调 onRewindRefusal，向上抛', async () => {

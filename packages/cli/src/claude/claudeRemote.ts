@@ -799,7 +799,7 @@ export async function claudeRemote(opts: {
     sessionId: string | null,
     path: string,
     /**
-     * rewind 截断轮保留锚（锚点用户消息前最近一条 assistant entry uuid）：
+     * rewind 截断轮保留锚（锚点用户消息前最近一条 user/assistant entry uuid，见 rewindAnchor）：
      * 携带时本轮为截断轮——startup 预热 boot 时按 resume 加载历史到锚点即截断，
      * 截断确认后经 onRewindTruncated 回报（先截断后软删除），再等用户消息
      */
