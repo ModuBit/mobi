@@ -20,7 +20,9 @@ import styled from '@emotion/styled'
 import { useNavigate } from '@tanstack/react-router'
 import { Logo } from './Logo'
 import { MobiWordmark } from './MobiWordmark'
+import { UpdateIconButton } from './UpdatePrompt'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 
 const { useToken } = antTheme
 
@@ -143,6 +145,8 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
     const theme = useUiStore((s) => s.theme)
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
     const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+    // PWA 新版本可用 → logo 旁出现低调更新入口（WCO 模式下 SidebarHeader 不渲染，此处是 PC 唯一入口）
+    const updateReload = useUpdateAvailable()
     const resolvedTheme = resolveTheme(theme)
 
     const resolvedSide = side ?? detectSide()
@@ -170,6 +174,8 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
                     <Logo style={{ width: 18, height: 18 }} />
                     <MobiWordmark size={14} />
                 </LogoArea>
+                {/* 发现新版本 - 点击刷新生效 */}
+                {updateReload && <UpdateIconButton onUpdate={updateReload} />}
                 <CollapseButton
                     $token={token}
                     onClick={toggleSidebar}

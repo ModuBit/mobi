@@ -20,7 +20,9 @@ import { PanelLeftClose } from 'lucide-react'
 import styled from '@emotion/styled'
 import { Logo } from './Logo'
 import { MobiWordmark } from './MobiWordmark'
+import { UpdateIconButton } from './UpdatePrompt'
 import { useUiStore } from '@/core/data/stores/uiStore'
+import { useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 
 const { useToken } = antTheme
 
@@ -85,6 +87,8 @@ export function SidebarHeader() {
     const { token } = useToken()
     const navigate = useNavigate()
     const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+    // PWA 新版本可用 → logo 旁出现低调更新入口（移动端不渲染本组件，走 UpdatePrompt 悬浮钮）
+    const updateReload = useUpdateAvailable()
 
     return (
         <HeaderContainer $token={token}>
@@ -97,8 +101,11 @@ export function SidebarHeader() {
                 <BrandName $token={token}><MobiWordmark size={15} /></BrandName>
             </LogoArea>
 
-            {/* 收起侧边栏 */}
-            <CollapseButton $token={token} onClick={toggleSidebar}>
+            {/* 发现新版本 - 点击刷新生效 */}
+            {updateReload && <UpdateIconButton onUpdate={updateReload} />}
+
+            {/* 收起侧边栏（aria-label 与 WcoTitleBar 同功能按钮一致） */}
+            <CollapseButton $token={token} onClick={toggleSidebar} aria-label="收起侧边栏">
                 <PanelLeftClose size={18} />
             </CollapseButton>
         </HeaderContainer>

@@ -23,11 +23,12 @@ import { MobileMenuDrawer } from './MobileMenu'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
 import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'
-import { useEffect, useMemo, useState, Suspense } from 'react'
+import { useEffect, useMemo, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
 import { UpdatePrompt } from './UpdatePrompt'
 import { registerServiceWorker } from '@/core/pwa/registerSW'
+import { setUpdateReload, useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
 
 const { useToken } = antTheme
 
@@ -43,8 +44,8 @@ export function MainLayout() {
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
     const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
 
-    // PWA 更新回调
-    const [updateReload, setUpdateReload] = useState<(() => void) | null>(null)
+    // PWA 更新：回调广播到 useUpdateAvailable 的订阅方（PC 侧栏图标 / 移动端悬浮钮各自消费）
+    const updateReload = useUpdateAvailable()
 
     // WCO 标题栏：桌面 PWA 启用时替代系统标题栏；PC Web / 移动端 / standalone 返回 false 不受影响
     const isWco = useWindowControlsOverlay()
@@ -61,7 +62,7 @@ export function MainLayout() {
     // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
     useEffect(() => {
         const unregister = registerServiceWorker((reload) => {
-            setUpdateReload(() => reload)
+            setUpdateReload(reload)
         })
         return unregister
     }, [])
@@ -76,7 +77,8 @@ export function MainLayout() {
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
-            <UpdatePrompt onUpdate={updateReload} />
+            {/* 移动端顶栏悬浮更新钮；PC 端入口在 SidebarHeader / WcoTitleBar */}
+            {isMobile && <UpdatePrompt onUpdate={updateReload} />}
             {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪 */}
             <div style={{
                 height: '100dvh',
