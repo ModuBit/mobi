@@ -99,9 +99,11 @@ const Root = styled.div`
         height: 100%;
     }
 
-    /* UI 裁剪：画板的导出/打开由 mobi 上传管线接管，无素材库/帮助/社区外链语义 */
+    /* UI 裁剪：画板的导出/打开由 mobi 上传管线接管，无素材库/帮助/社区外链语义；
+       HintViewer（画布操作英文提示）未本地化且对草图输入场景价值有限，一并裁剪 */
     .default-sidebar-trigger,
     .help-icon,
+    .HintViewer,
     .dropdown-menu a[href*='github.com'],
     .dropdown-menu a[href*='x.com/excalidraw'],
     .dropdown-menu a[href*='discord.gg'] {
