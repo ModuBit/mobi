@@ -313,9 +313,7 @@
     font-family: var(--font-mono);
 }
 
-.code-editor-view .cm-gutters {
-    border-right: 1px solid rgba(127, 127, 127, 0.25);
-}
+/* gutters 底色/行号色/边框由 CodeEditorView 的 systemChrome 主题承载（--ant-* 变量） */
 
 /* ============ mermaid 块（编辑器内：decoration widget + 原生 codeBlock）============ */
 /* 图 widget：contenteditable=false 装饰节点，ProseMirror 忽略其内部突变 */

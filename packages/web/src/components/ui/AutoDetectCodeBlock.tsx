@@ -21,20 +21,29 @@ import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 
-/** 修正 prism 主题中 pre 默认 margin（与 CodeHighlighter 内部 customOneLight 一致） */
+/** 修正 prism 主题中 pre 默认 margin，并把容器底色归入暖纸体系（语法高亮色板保留）：
+ * 代码块与周围内容靠明度差区分——dark 用 colorBgElevated（比背景亮半档的抬升层），
+ * light 用 colorFillQuaternary（比纸面深半档的 hairline 档）；直接用底色同 token
+ * 会让代码块融进背景（走查报告 A6） */
 type PrismTheme = Record<string, CSSProperties>
-function withZeroMargin(base: PrismTheme): PrismTheme {
-    const preKey = 'pre[class*="language-"]'
+const PRE_KEY = 'pre[class*="language-"]'
+const CODE_KEY = 'code[class*="language-"]'
+function withSystemChrome(base: PrismTheme, background: string): PrismTheme {
     return {
         ...base,
-        [preKey]: {
-            ...base[preKey],
+        [PRE_KEY]: {
+            ...base[PRE_KEY],
             margin: 0,
+            background,
+        },
+        [CODE_KEY]: {
+            ...base[CODE_KEY],
+            background,
         },
     }
 }
-const ONE_DARK_THEME = withZeroMargin(oneDark as PrismTheme)
-const ONE_LIGHT_THEME = withZeroMargin(oneLight as PrismTheme)
+const ONE_DARK_THEME = withSystemChrome(oneDark as PrismTheme, 'var(--ant-color-bg-elevated)')
+const ONE_LIGHT_THEME = withSystemChrome(oneLight as PrismTheme, 'var(--ant-color-fill-quaternary)')
 
 /**
  * 块级代码自动检测语言渲染：

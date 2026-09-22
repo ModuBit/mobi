@@ -19,7 +19,7 @@ import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { EditorView, lineNumbers, highlightActiveLine, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
-import { oneDark } from '@codemirror/theme-one-dark'
+import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import './editor.css'
 /** 按扩展名异步加载 CodeMirror 语言包（未匹配则返回 null，纯文本无高亮） */
@@ -84,10 +84,10 @@ export function CodeEditorView({ text, filePath, wrap, readOnly = false, onChang
             highlightActiveLine(),
             history(),
             keymap.of([...defaultKeymap, ...historyKeymap]),
-            syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+            systemChrome,
             langComp.current.of([]),
             wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
-            themeComp.current.of(isDark ? oneDark : []),
+            themeComp.current.of(highlightFor(isDark)),
             readComp.current.of(readOnlyExtensions(readOnly)),
             EditorView.updateListener.of((u) => {
                 if (u.docChanged && !syncingRef.current) onChangeRef.current(u.state.doc.toString())
@@ -129,10 +129,10 @@ export function CodeEditorView({ text, filePath, wrap, readOnly = false, onChang
         })
     }, [wrap])
 
-    // 主题切换
+    // 语法高亮切换（容器 chrome 走 --ant-* 变量自动跟随主题，无需 reconfigure）
     useEffect(() => {
         view.current?.dispatch({
-            effects: themeComp.current.reconfigure(isDark ? oneDark : []),
+            effects: themeComp.current.reconfigure(highlightFor(isDark)),
         })
     }, [isDark])
 
@@ -149,4 +149,45 @@ export function CodeEditorView({ text, filePath, wrap, readOnly = false, onChang
 /** CodeMirror 只读双 extension：readOnly 挡命令，editable=false 移除可编辑光标 */
 function readOnlyExtensions(readOnly: boolean): Extension[] {
     return readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []
+}
+
+/**
+ * 容器 chrome 主题：底色/行号/当前行/选区/光标走 --ant-* 变量归入暖纸体系
+ * （此前直接用 oneDark 整包，其蓝灰底 #282c34 与全站色温割裂，见走查报告 A6）。
+ * 变量随主题切换自动生效，无需 reconfigure；语法高亮不在此——见下方 highlightFor。
+ */
+const systemChrome = EditorView.theme({
+    '&': {
+        backgroundColor: 'var(--ant-color-bg-container, #faf9f5)',
+        color: 'var(--ant-color-text)',
+    },
+    '.cm-gutters': {
+        backgroundColor: 'var(--ant-color-bg-layout, #f0eee6)',
+        color: 'var(--ant-color-text-quaternary)',
+        borderRight: '1px solid var(--ant-color-border-secondary, rgba(0, 0, 0, 0.06))',
+    },
+    '.cm-activeLine': {
+        backgroundColor: 'var(--ant-color-fill-quaternary)',
+    },
+    '.cm-activeLineGutter': {
+        backgroundColor: 'var(--ant-color-fill-quaternary)',
+        color: 'var(--ant-color-text-secondary)',
+    },
+    // CodeMirror 官方约定：selection 类样式需 !important 才能盖过内置 selection 高亮
+    '.cm-selectionBackground': {
+        backgroundColor: 'var(--ant-color-fill-secondary) !important',
+    },
+    '&.cm-focused .cm-selectionBackground': {
+        backgroundColor: 'var(--ant-color-fill-secondary) !important',
+    },
+    '.cm-cursor': {
+        borderLeftColor: 'var(--ant-color-text)',
+    },
+})
+
+/** 语法高亮（与容器 chrome 拆开）：dark 沿用 One Dark 色板，light 用默认高亮（与现状一致） */
+function highlightFor(isDark: boolean): Extension {
+    return isDark
+        ? syntaxHighlighting(oneDarkHighlightStyle)
+        : syntaxHighlighting(defaultHighlightStyle, { fallback: true })
 }
