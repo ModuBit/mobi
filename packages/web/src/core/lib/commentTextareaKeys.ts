@@ -16,6 +16,8 @@
 
 import type { KeyboardEvent } from 'react'
 
+type InputLike = HTMLInputElement | HTMLTextAreaElement
+
 /**
  * 引用评论 textarea 的键位判定（QuoteCommentInput 浮层 / QuoteChipBar 列表卡编辑共用）：
  * Enter 提交（Shift+Enter 换行）、Escape 取消。
@@ -25,7 +27,7 @@ import type { KeyboardEvent } from 'react'
  *
  * @returns 'submit' | 'cancel' | null（其它按键不关心）
  */
-export function commentTextareaAction(e: KeyboardEvent<HTMLTextAreaElement>): 'submit' | 'cancel' | null {
+export function commentTextareaAction(e: KeyboardEvent<InputLike>): 'submit' | 'cancel' | null {
     // Escape 同样豁免组合态：IME 组合中按 Esc 是「取消本次候选词」，不是取消评论编辑
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) return 'submit'
     if (e.key === 'Escape' && !e.nativeEvent.isComposing) return 'cancel'

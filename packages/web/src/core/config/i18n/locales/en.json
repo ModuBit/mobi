@@ -630,7 +630,7 @@
         "attachFile": "File",
         "attachPhoto": "Photo",
         "attachRecord": "Video",
-        "quoteCommentPlaceholder": "Add an optional comment to the quote",
+        "quoteCommentPlaceholder": "Add an optional comment...",
         "quoteEditComment": "Edit comment"
     },
     "status": {

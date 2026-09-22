@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 import { QuoteCommentInput } from '@/components/chat/QuoteCommentInput'
 
@@ -62,7 +62,7 @@ describe('QuoteCommentInput IME 组合中 Esc 不关闭浮层', () => {
             />,
         )
         // i18n 未在测试环境初始化，placeholder 渲染为 key 原样——直接取浮层内 textarea
-        const ta = screen.getByTestId('quote-comment-input').querySelector('textarea')!
+        const ta = screen.getByTestId('quote-comment-input').querySelector('input')!
         // isComposing 必须落在真实事件对象上（React synthetic e.nativeEvent 读的是它），
         // fireEvent 的 extra props 不会透传
         ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }))

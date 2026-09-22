@@ -58,14 +58,16 @@ describe('QuoteCommentInput', () => {
         expect(onConfirm).not.toHaveBeenCalled()
     })
 
-    it('取消回调（按钮与 Esc）', () => {
+    it('只有确定按钮（无取消钮）；取消仅经 Esc 触发——点浮层外取消归调用方', () => {
         const onCancel = vi.fn()
         render(<QuoteCommentInput quote={quote} rect={rect} onConfirm={vi.fn()} onCancel={onCancel} />)
 
-        fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }))
-        expect(onCancel).toHaveBeenCalledTimes(1)
+        // 浮层内只有 确定 一个按钮（antd Space.Compact 输入框+按钮一体形态）
+        const buttons = screen.getByTestId('quote-comment-input').querySelectorAll('button')
+        expect(buttons).toHaveLength(1)
+        expect(buttons[0].className).toContain('ant-btn-primary')
 
         fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
-        expect(onCancel).toHaveBeenCalledTimes(2)
+        expect(onCancel).toHaveBeenCalledTimes(1)
     })
 })

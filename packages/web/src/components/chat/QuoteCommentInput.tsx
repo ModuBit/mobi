@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { memo, useRef, useState } from 'react'
-import { Button } from 'antd'
+import { memo, useState } from 'react'
+import { Button, Input, Space } from 'antd'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
@@ -23,48 +23,27 @@ import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 
-/** 浮层宽度：容纳两行评论输入 */
-const POPOVER_WIDTH = 260
+/** 浮层宽度：单行评论输入条 + 确定按钮 */
+const POPOVER_WIDTH = 280
 /** 翻转阈值：选区顶边高于此值才放上方（评论浮层高，阈值比动作条大） */
 const FLIP_THRESHOLD_PX = 140
-/** 估算高度（下缘钳制兜底）：textarea 44 + 动作行 + padding */
-const ESTIMATED_HEIGHT_PX = 120
+/** 估算高度（下缘钳制兜底）：单行输入条 + 浮层 padding */
+const ESTIMATED_HEIGHT_PX = 56
 
+/**
+ * 单行输入条容器（对齐 antd Space.Compact「输入框 + 主按钮」一体形态）：
+ * 评论可选——只有一个确定按钮，取消语义 = 点击浮层其它任意处（调用方 mousedown-outside
+ * 已收口）或 Esc。
+ */
 const Layer = styled.div`
     position: fixed;
     z-index: 1050;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
     width: ${POPOVER_WIDTH}px;
-    padding: 8px;
+    padding: 4px;
     background: var(--ant-color-bg-elevated);
     border: 1px solid var(--ant-color-border);
     border-radius: 10px;
     box-shadow: var(--ant-box-shadow-secondary);
-`
-
-const Input = styled.textarea`
-    width: 100%;
-    min-height: 44px;
-    padding: 6px 8px;
-    border: 1px solid var(--ant-color-border);
-    border-radius: 6px;
-    background: var(--ant-color-bg-container);
-    color: var(--ant-color-text);
-    font-size: 12px;
-    line-height: 18px;
-    resize: none;
-    outline: none;
-    &:focus {
-        border-color: var(--ant-color-primary);
-    }
-`
-
-const ActionBar = styled.div`
-    display: flex;
-    justify-content: flex-end;
-    gap: 6px;
 `
 
 interface QuoteCommentInputProps {
@@ -77,10 +56,11 @@ interface QuoteCommentInputProps {
 }
 
 /**
- * 引用评论输入浮层（spec「评论流」）：「添加到对话」确认后的第二步——
- * 评论可选（空 = 无评论引用）；Enter 保存（IME 组合中的回车不提交）、Shift+Enter 换行、
- * Esc/取消不创建。不做 mousedown 拦截——输入框内点击定位光标是正常编辑行为，
- * 点浮层外的取消语义由调用方的 mousedown-outside 监听（data-quote-layer 判定）承担。
+ * 引用评论输入浮层（spec「评论流」）：「添加到对话」确认后的第二步——评论可选
+ * （空 = 无评论引用）；Enter/确定按钮提交（IME 组合中的回车不提交）、
+ * Esc / 点浮层外取消（选区保留，见 ChatContainer handleQuoteCancel）。
+ * 浮层内非输入区的 mousedown 不拦截——点浮层内空白不取消（在 data-quote-layer 内），
+ * 点浮层外的取消语义由调用方的 mousedown-outside 监听承担。
  * fixed 定位锚定选区几何并钳制在视口内，与 QuoteSelectionPopover 同族同生命周期。
  */
 export const QuoteCommentInput = memo(function QuoteCommentInput({
@@ -91,7 +71,6 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
 }: QuoteCommentInputProps) {
     const { t } = useTranslation()
     const [comment, setComment] = useState('')
-    const inputRef = useRef<HTMLTextAreaElement>(null)
 
     const confirm = () => {
         const trimmed = comment.trim()
@@ -107,35 +86,32 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
             data-testid="quote-comment-input"
             style={{ top, left, transform: above ? 'translateY(-100%)' : undefined }}
         >
-            <Input
-                ref={inputRef}
-                autoFocus
-                maxLength={QUOTE_EXCERPT_MAX}
-                placeholder={t('composer.quoteCommentPlaceholder')}
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                onKeyDown={(e) => {
-                    const action = commentTextareaAction(e)
-                    if (action === 'submit') {
-                        e.preventDefault()
-                        confirm()
-                    } else if (action === 'cancel') {
-                        e.stopPropagation()
-                        onCancel()
-                    }
-                }}
-            />
-            <ActionBar>
-                <Button size="small" onClick={onCancel}>{t('common.cancel')}</Button>
+            <Space.Compact style={{ width: '100%' }}>
+                <Input
+                    autoFocus
+                    maxLength={QUOTE_EXCERPT_MAX}
+                    placeholder={t('composer.quoteCommentPlaceholder')}
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    onKeyDown={(e) => {
+                        const action = commentTextareaAction(e)
+                        if (action === 'submit') {
+                            e.preventDefault()
+                            confirm()
+                        } else if (action === 'cancel') {
+                            e.stopPropagation()
+                            onCancel()
+                        }
+                    }}
+                />
                 <Button
                     type="primary"
-                    size="small"
                     data-testid="quote-comment-save"
                     onClick={confirm}
                 >
                     {t('common.save')}
                 </Button>
-            </ActionBar>
+            </Space.Compact>
         </Layer>
     )
 })

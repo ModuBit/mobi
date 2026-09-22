@@ -695,7 +695,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         setQuotePopover(null)
     }, [quotePopover])
 
-    // 评论确认/取消统一收口：灌入手柄 + 清选区（确认路径）或直接放弃（取消路径）
+    // 评论确认/取消统一收口：确认 = 灌入手柄 + 清选区（引用已捕获，选区使命完成）；
+    // 取消 = 只关浮层，**选区保留**（用户可重新划选或再次添加，摘高亮是打断感的主要来源）
     const handleQuoteConfirm = useCallback((quote: PendingQuoteRef) => {
         composerHandleRef.current?.addQuote(quote)
         setQuoteCommentDraft(null)
@@ -704,7 +705,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const handleQuoteCancel = useCallback(() => {
         setQuoteCommentDraft(null)
-        window.getSelection()?.removeAllRanges()
     }, [])
 
     // 引用浮层（add 态）开着时选区被清（点击它处）或滚动即关闭（选区几何已失效，浮层不跟随）；
@@ -731,13 +731,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [quotePopover])
 
-    // 评论输入：点击浮层外按取消处理（确认前清掉已捕获草稿与选区）；滚动即取消（几何失效）
+    // 评论输入：点击浮层外按取消处理（只关浮层不清选区，同 handleQuoteCancel 的取舍）；
+    // 滚动即取消（几何失效）
     useEffect(() => {
         if (!quoteCommentDraft) return
-        const close = () => {
-            setQuoteCommentDraft(null)
-            window.getSelection()?.removeAllRanges()
-        }
+        const close = () => setQuoteCommentDraft(null)
         const onMouseDown = (e: MouseEvent) => {
             const target = e.target as HTMLElement | null
             if (!target?.closest('[data-quote-layer]')) close()
