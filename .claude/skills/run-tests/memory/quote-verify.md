@@ -1,0 +1,29 @@
+---
+name: quote-verify
+description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 边界拒绝的 recipe 与合成事件坑
+metadata:
+  type: recipe
+  last_verified: 2026-09-21
+---
+
+# 引用特性验证
+
+## 链路 recipe（PC，全部可 CDP 自主完成）
+
+1. **划选**：`evaluate_script` 内 Range 选区（`data-quote-block` 锚内找 Text 节点起止）+ 对 `.chat-scroll-container` dispatch `mouseup({bubbles:true})` → `[data-quote-layer="popover"]` 出现「添加到对话」。注意 popover 挂载是异步的——**同一次 evaluate 里造选区后立刻查 DOM 会查空**，分开两次调用（或 Promise+setTimeout）再断言
+2. **添加到对话**：popover 内找文本 `添加到对话` 的叶子 span，mousedown/mouseup/click 三连 → `[data-quote-layer="comment"]` 出现，textarea 自动聚焦 → `type_text + Enter` 保存；空评论直接点「保 存」按钮
+3. **chip**：`[data-testid="quote-chip"]` 文案 `N 条引用`；click 打开 `[data-testid="quote-list"]`（编号+excerpt+评论），Escape 关闭
+4. **发送后**：用户气泡内 `[data-quote-forbidden]` 引用组（编号连续+评论异色）；落库断言 `sqlite3 ~/.mobi-e2e/mobi.db`：user 消息 `$.role='user'`，`content[0].type='quote'` 含 messageId/role/excerpt/comment
+5. **模型收到引用的硬证据**：下一条 assistant 消息的 `thinking` 会复述引用与评论内容（XML prompt 被 SDK 正常解析；落库的是结构化 blocks，XML 原文不落库）
+6. **点击定位**：引用条目 `.click()` → 源消息 `[data-quote-message-id]` 锚 → `.quote-locate-flash` 挂上（1200ms 后摘除，**断言要在点击后 1.2s 内**）；源消息在视口顶时 scrollTop 保持 0 是正常的
+
+## 边界拒绝（同为 happy path 一部分）
+
+- 跨 `[data-quote-block]` 锚选区 → popover 不弹
+- 引用组禁区：`getComputedStyle(group).userSelect === 'none'`，Range 造选区得空文本，popover 不弹
+
+## 坑
+
+- **antd Tooltip 的 hover 合成事件不触发**（rc-trigger 过滤）——tooltip 验证必须用 CDP `hover` 工具（真实鼠标事件）对 snapshot uid，约 0.9s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`
+- **>500 字符 tooLong 拒绝**：普通问答回复单块仅 ~300 字符，跨块又被拒——UI 内难自然构造，留单测覆盖即可
+- quote E2E 用的模型下拉显示 glm-5.2 但 turn 实际 claude-sonnet-4-6（模型下拉与 turn 无关，别被迷惑）

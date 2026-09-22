@@ -140,5 +140,14 @@ export default defineConfig({
             '/api': hubUrl,
             '/manifest.webmanifest': hubUrl,
         }
+    },
+    // prod 产物本地预览（vite preview）：与 server 同源代理，供性能基线等场景
+    // 用真实 prod 构建对接 hub（如 MOBI_API_URL=http://localhost:2224 vite preview --port 5176）
+    preview: {
+        host: true,
+        proxy: {
+            '/api': hubUrl,
+            '/manifest.webmanifest': hubUrl,
+        }
     }
 })

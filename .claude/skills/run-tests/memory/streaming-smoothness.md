@@ -58,3 +58,10 @@ requestAnimationFrame(tick);
 3. 多步工具轮结束可能弹 change_title 审批卡住 turn——先 Allow this session 再继续
 4. 贴底跟随会拉回程序性滚动（scrollTop/scrollIntoView 测中间内容会被钉回底部）——视觉验证收尾态即可；结构完整性用 DOM 查询（pre/table/ol/h2 计数）代替滚动截图
 5. `.x-markdown` 是嵌套结构（Markdown 外壳 div + XMarkdown 内部 div 各一层）——querySelectorAll 会抓到两层同 textContent，**不是重复渲染**；按 parentElement 链判别
+
+## 扫光归因修正（2026-09-21，受控实验）
+
+- **帧间隔分桶坑**：17ms 正常帧会落进「17-34」桶——按桶占比判断掉帧会把 60fps 误读成掉帧，判读必须看 p50/p95 数值而非桶名
+- **受控交错实验**（on/off/mask/pulse 交替 3.5s 窗、同文本量对比）：桌面端 background-clip 扫光与无扫光帧率**无差异**（p95 均 18-19ms）——「扫光导致流式掉帧」的早期归因**不成立**（分桶误读 + 阶段混杂）
+- **6x CPU throttle 关键发现**：流式期间帧间隔 300-800ms，**与扫光开无关**——瓶颈是 XMarkdown 长文整段重解析本身，不是扫光。移动端流式卡顿的正解是降解析成本（拆段/增量/缓存），换扫光实现救不了
+- 探针采样窗口必须覆盖目标负载期：节流下流式全程变长，sleep 后再采样常采到流结束后的空闲期（n=174/3.5s=17ms 间隔即空闲特征）

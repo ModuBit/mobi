@@ -3,7 +3,7 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style、claude 进程数观测归因）
 metadata:
   type: pitfall
-  last_verified: 2026-09-02
+  last_verified: 2026-09-20
 ---
 
 # 通用误判
@@ -141,3 +141,13 @@ return { defaultPrevented: ev.defaultPrevented };
 - **不用 `analyze_image` 等工具访问 localhost** — 不支持 localhost URL
 - **不用 `evaluate_script` 改前端状态 / localStorage** — 违反 E2E 模拟真实用户原则（只读诊断 OK：ref callback dump、`document.body.contains`、`getBoundingClientRect` 等读 DOM 状态不改）
 - **不用 curl / 脚本直接调 Hub API 造数据** — 必须走浏览器 UI
+
+## 图标选择器必须 scoped 到容器——全页 `.anticon-delete` 会误中「删除会话」按钮（2026-09-20）
+
+验证「排队消息取消」时用 `evaluate_script` 全页找 `.anticon-delete` 按钮点击，结果点中的是
+会话 hover 菜单里的「删除会话」（弹 confirm，未确认无实害，但差点真删）——同一图标在页面多处复用。
+
+**正确做法**：
+1. 先 `closest('[class*="queued"]')` 之类把目标按钮 scope 到功能容器内，找不到就报 found:false 而不是全页兜底
+2. 点击后**立即检查副作用是否是预期的**（排队条消失 + 无意外 modal）——本次误点后出现两个「删除会话」confirm，及时取淌才没出事
+3. 排队条按钮实测 `take_snapshot` 拿 uid 后 `click`（真实 CDP 点击）一次成功，比直调 React onClick 更可靠（后者找错按钮时同样「执行成功」，误导排查）
