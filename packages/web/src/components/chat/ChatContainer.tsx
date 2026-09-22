@@ -751,7 +751,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [quotePopover])
 
     // 评论输入：点击浮层外按取消处理（只关浮层不清选区，同 handleQuoteCancel 的取舍）；
-    // 滚动即取消（几何失效）
+    // 滚动即取消（几何失效）——但排除浮层**内部**元素的滚动：多行评论插入换行后光标
+    // 下移会让 textarea 自身内部滚动（scrollTop 变化），capture 监听会捕到，若不排除
+    // 则「按 Enter 换行」被误判为页面滚动直接关浮层（2026-09-22 实测，现象恰似确认）
     useEffect(() => {
         if (!quoteCommentDraft) return
         const close = () => setQuoteCommentDraft(null)
@@ -759,7 +761,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const target = e.target as HTMLElement | null
             if (!target?.closest('[data-quote-layer]')) close()
         }
-        const onScroll = () => close()
+        const onScroll = (e: Event) => {
+            const target = e.target as HTMLElement | null
+            if (target?.closest?.('[data-quote-layer="comment"]')) return
+            close()
+        }
         document.addEventListener('mousedown', onMouseDown)
         window.addEventListener('scroll', onScroll, true)
         return () => {
