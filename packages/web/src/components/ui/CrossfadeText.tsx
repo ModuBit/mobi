@@ -15,6 +15,7 @@
  */
 
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { ShinyText } from '@/components/ui/ShinyText'
 
 /** 淡入/淡出时长（单点来源：动画字符串与旧层清理定时器均由此派生） */
 const FADE_MS = 200
@@ -24,8 +25,8 @@ const FADE_MS = 200
  * 旧文案以绝对定位叠底淡出，不占布局（高度由当前文案决定，避免撑动）；
  * wrapper overflow:hidden 裁剪旧层——旧文案比新文案宽时不溢出压到相邻 UI。
  * 内层 span 以文案为 key，文案变化即重挂载重启淡入动画。
- * shimmer=true 时叠加微光扫过（运行态强调，如折叠组动态标题）——动画整体由
- * base.css 的 .crossfade-text / .shimmer-text 类承载，--fade-ms 注入淡入时长。
+ * shimmer=true 时叠加微光扫过（运行态强调，如折叠组动态标题）——扫光类挂载经 ShinyText
+ * 收口（动画实现单点在 base.css），--fade-ms 注入淡入时长。
  * 旧层在 paint 前（useLayoutEffect）就位，避免「先消失一帧再闪回淡出」；
  * 定时器清理旧层（jsdom 无 AnimationEvent，onAnimationEnd 不可测/不可靠），
  * effect cleanup 负责清 timer——连续快速变化时旧层被最新一次替换、定时器自动重置。
@@ -59,9 +60,12 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
                 ...style,
             }}
         >
-            <span
+            {/* 扫光层经 ShinyText 收口；active 时同一元素兼挂 .crossfade-text（base.css 中
+                .shimmer-text 声明在后，animation 简写整组覆盖为「淡入 + 扫光」双槽——与旧拼类等价） */}
+            <ShinyText
                 key={text}
-                className={shimmer ? 'crossfade-text shimmer-text' : 'crossfade-text'}
+                active={Boolean(shimmer)}
+                className="crossfade-text"
                 style={{
                     '--fade-ms': `${FADE_MS}ms`,
                     // 省略四件套整体收在 ellipsis 分支：默认路径保持不受限的 crossfade 形状
@@ -75,7 +79,7 @@ export function CrossfadeText({ text, style, shimmer, ellipsis }: { text: string
                 } as CSSProperties}
             >
                 {text}
-            </span>
+            </ShinyText>
             {leaving != null && (
                 <span
                     aria-hidden

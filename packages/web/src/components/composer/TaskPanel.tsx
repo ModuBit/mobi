@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TaskItem } from '@mobi/shared'
 import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
+import { ShinyText } from '@/components/ui/ShinyText'
 
 /** 任务橙色，参考 Claude Code */
 const TASK_ORANGE = '#e8825c'
@@ -82,9 +83,9 @@ export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <CheckCheck size={14} color={TASK_ORANGE} />
             {activeTask ? (
-                <span className="shimmer-text shimmer-text-solid" style={{ color: TASK_ORANGE }}>
+                <ShinyText solid style={{ color: TASK_ORANGE }}>
                     {activeTask.activeForm ?? activeTask.subject}
-                </span>
+                </ShinyText>
             ) : completed === total ? (
                 <span style={{ color: TASK_GREEN, fontWeight: 500 }}>✓ {t('chat.task.allCompleted')}</span>
             ) : (
@@ -159,9 +160,9 @@ function TaskText({ task }: { task: TaskItem }) {
 
     if (task.status === 'in_progress') {
         return (
-            <span className="shimmer-text shimmer-text-solid" style={{ color: TASK_ORANGE, fontWeight: 600 }}>
+            <ShinyText solid style={{ color: TASK_ORANGE, fontWeight: 600 }}>
                 {label}
-            </span>
+            </ShinyText>
         )
     }
 

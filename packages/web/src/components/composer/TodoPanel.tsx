@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem } from '@mobi/shared'
 import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
+import { ShinyText } from '@/components/ui/ShinyText'
 
 /** 任务橙色，参考 Claude Code */
 const TODO_ORANGE = '#e8825c'
@@ -79,9 +80,9 @@ export function TodoPanel({ todos, sessionId, onClear }: TodoPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <Lightbulb size={14} color={TODO_ORANGE} />
             {activeTodo ? (
-                <span className="shimmer-text shimmer-text-solid" style={{ color: TODO_ORANGE }}>
+                <ShinyText solid style={{ color: TODO_ORANGE }}>
                     {activeTodo.activeForm}
-                </span>
+                </ShinyText>
             ) : completed === total ? (
                 <span style={{ color: TODO_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
             ) : null}
@@ -148,9 +149,9 @@ function TodoText({ todo }: { todo: TodoItem }) {
 
     if (todo.status === 'in_progress') {
         return (
-            <span className="shimmer-text shimmer-text-solid" style={{ color: TODO_ORANGE, fontWeight: 600 }}>
+            <ShinyText solid style={{ color: TODO_ORANGE, fontWeight: 600 }}>
                 {todo.content}
-            </span>
+            </ShinyText>
         )
     }
 

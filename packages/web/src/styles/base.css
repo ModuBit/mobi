@@ -196,6 +196,12 @@ pre, code {
 .shimmer-text:hover {
     animation-play-state: running, paused;
 }
+/* 视口外暂停（ShinyText 经单例 IntersectionObserver 标记）：sweep 逐帧主线程重绘，
+   屏外实例的绘制纯浪费——移动端长会话滚出屏幕的运行态行不少，全停是抗卡顿第一杠杆。
+   声明排在 hover 之后（同优先级后者胜）：屏外一律暂停，hover 不唤醒屏外元素 */
+.shimmer-text[data-shimmer-off] {
+    animation-play-state: paused;
+}
 @keyframes shimmer-sweep {
     from { background-position: 150% 0; }
     to { background-position: -50% 0; }

@@ -18,6 +18,7 @@ import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { PixelLoader } from '@/components/ui/PixelLoader'
+import { ShinyText } from '@/components/ui/ShinyText'
 import { useElapsedSeconds } from './useElapsedSeconds'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
 
@@ -81,9 +82,9 @@ export function CommandProgressBubble({ titleKey }: CommandProgressBubbleProps) 
         <Row>
             {/* PixelLoader 自带 aria-hidden */}
             <PixelLoader variant="orbit" />
-            {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰元素 aria-hidden */}
-            <Title role="status" aria-live="polite" className="shimmer-text">
-                {t(titleKey)}
+            {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰性扫光层对读屏中性（文本原样可达） */}
+            <Title role="status" aria-live="polite">
+                <ShinyText>{t(titleKey)}</ShinyText>
             </Title>
             <Elapsed>{elapsedTime}</Elapsed>
         </Row>

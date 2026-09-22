@@ -21,6 +21,7 @@ import { ScrambleText } from './ScrambleText'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { PixelLoader } from '@/components/ui/PixelLoader'
+import { ShinyText } from '@/components/ui/ShinyText'
 import { AWAITING_AUTH_LOADER } from '@/core/utils/sessionStatus'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { VIBING_MESSAGES } from '@/components/pixel-avatar/vibingMessages'
@@ -130,13 +131,13 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             </span>
             {/* 可见层是装饰性 scramble + 扫光，对读屏隐藏。
                 亮面扫光变体：小字号状态文字用暗基线会不可读（见 base.css .shimmer-text-solid） */}
-            <span
-                className="shimmer-text shimmer-text-solid"
+            <ShinyText
+                solid
                 aria-hidden="true"
                 style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
-            </span>
+            </ShinyText>
             <span aria-hidden="true" style={{ color: token.colorTextTertiary, fontSize: 12, marginLeft: 'auto' }}>
                 {elapsedTime}
             </span>

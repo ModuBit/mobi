@@ -17,6 +17,7 @@
 import { memo } from 'react'
 import { theme as antTheme } from 'antd'
 import { FileChip } from './FileChip'
+import { ShinyText } from './ShinyText'
 import type { ToolRow } from '@/core/lib/toolRow'
 
 /**
@@ -27,32 +28,32 @@ import type { ToolRow } from '@/core/lib/toolRow'
  * dense 模式：嵌在小字号语境（Task 卡摘要 11px）时不设 fontSize，继承外层。
  * chip 的点击语义（打开文件）与行本体（展开详情）的分离由 FileChip 内部收口。
  *
- * shimmer：运行态扫光（工具 running 时由调用方传入）——动词与摘要挂 .shimmer-text
- * （与组头 CrossfadeText / 非 row 形态标题同一动画体系，base.css 单点）；chip /
- * rowMeta / stats 是徽章/元数据，保持静态不扫光。行形态此前没接 shimmer，运行中
+ * shimmer：运行态扫光（工具 running 时由调用方传入）——动词与摘要经 ShinyText
+ * 收口（与组头 CrossfadeText / 非 row 形态标题同一组件入口，动画单点在 base.css）；
+ * chip / rowMeta / stats 是徽章/元数据，保持静态不扫光。行形态此前没接 shimmer，运行中
  * 工具行无任何 blink 反馈（2026-09-20 回归）。
  */
 export const ToolRowItems = memo(function ToolRowItems({ row, dense, shimmer }: { row: ToolRow; dense?: boolean; shimmer?: boolean }) {
     const { token } = antTheme.useToken()
     return (
         <>
-            <span
-                className={shimmer ? 'shimmer-text' : undefined}
+            <ShinyText
+                active={Boolean(shimmer)}
                 style={{ fontWeight: 600, fontSize: dense ? undefined : 13, flexShrink: 0 }}
             >
                 {row.verb}
-            </span>
+            </ShinyText>
             {row.summary && (
                 // 纯展示工具的 description（Bash 的 title 语义）：优先于人读摘要，允许收缩截断
-                <span
-                    className={shimmer ? 'shimmer-text' : undefined}
+                <ShinyText
+                    active={Boolean(shimmer)}
                     style={{
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         flex: '0 1 auto', minWidth: 0,
                     }}
                 >
                     {row.summary}
-                </span>
+                </ShinyText>
             )}
             {row.rowMeta && (
                 <span style={{ fontSize: dense ? undefined : 12, color: token.colorTextTertiary, flexShrink: 0 }}>
