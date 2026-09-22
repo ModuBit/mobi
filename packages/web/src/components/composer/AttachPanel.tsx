@@ -68,7 +68,8 @@ const Item = styled.button`
     cursor: pointer;
     transition: background 0.2s;
 
-    &:hover { background: var(--ant-color-fill-tertiary); }
+    /* hover 用全站列表项 hover 档（fill-tertiary 是 selected 档，重半档） */
+    &:hover { background: var(--ant-color-bg-text-hover); }
     &:active { background: var(--ant-color-fill-secondary); }
 
     .icon { color: var(--ant-color-text-secondary); flex-shrink: 0; }

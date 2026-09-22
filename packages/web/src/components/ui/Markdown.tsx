@@ -22,6 +22,7 @@ import Latex, { containsLatex, ensureKatexLoaded } from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
+import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from './useStreamingContent'
 import { INCOMPLETE_COMPONENTS } from './MarkdownIncomplete'
 import { ActionLink } from './ActionLink'
@@ -261,7 +262,7 @@ export const Markdown = memo(function Markdown({
                     paragraphTag={paragraphTag}
                     config={mergedConfig}
                     dompurifyConfig={DOMPURIFY_CONFIG}
-                    debug={import.meta.env.DEV}
+                    debug={isXMarkdownDebugEnabled()}
                 />
                 {footnotes.length > 0 && <FootnoteSources footnotes={footnotes} />}
             </div>

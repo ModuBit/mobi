@@ -234,6 +234,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **danger 字色形态**（text/default + danger 字）：字走 `colorErrorText` 系（light `#b53333` / dark `#ef4444`），hover 字不变、出淡红底（`colorErrorBg` 系）。红色只出现在字与淡底上。
 - 实心 primary 的文字颜色由主题对称决定：**Light 白字、Dark 墨字**——都是「纸色压在墨上 / 墨色压在纸上」的同一逻辑，不是两套规则。
 - 图标按钮（IconButton）走 text 档词汇：透明底、ink-secondary 字，hover 出 primaryBg 淡底。
+- **两字按钮不加空格**：antd `autoInsertSpace` 已全局关闭（`ThemeProvider` ConfigProvider `button={{ autoInsertSpace: false }}`）。antd 的「连 接」式排版惯例与全站三字以上按钮（无空格）字距节奏不一致，统一取无空格的紧凑节奏。
 
 ## Hover & Selected
 

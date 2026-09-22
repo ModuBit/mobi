@@ -46,6 +46,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return (
         <ConfigProvider
             locale={antdLocale}
+            // 两字按钮自动插空格（「连 接」）与三字以上按钮字距节奏不一致，全局关闭
+            button={{ autoInsertSpace: false }}
             theme={{
                 token,
                 components,

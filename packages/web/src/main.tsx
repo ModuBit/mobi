@@ -22,11 +22,15 @@ import { HelmetProvider } from 'react-helmet-async'
 import { router } from './router'
 import { ThemeProvider } from './core/config/theme/ThemeProvider'
 import { initDiag } from './core/lib/diag'
+import { initXMarkdownDebugFromQuery } from './core/lib/xMarkdownDebug'
 import { queryClient } from './core/lib/queryClient'
 import './index.css'
 
 // 渲染链路诊断埋点：默认关，?diag=1 或 localStorage 开启；窗口挂 window.__mobiDiag
 initDiag()
+
+// XMarkdown 调试面板开关：?xmd-debug=1 一次性入口 → localStorage 常驻（默认关，见 core/lib/xMarkdownDebug.ts）
+initXMarkdownDebugFromQuery()
 
 // excalidraw 字体自托管（vite 插件 excalidrawAssetsPlugin 提供 dev/产物同路径静态服务）：
 // 内网/离线环境画板字体不依赖 CDN。需在 excalidraw 首次加载前设置（本入口先于懒加载画板 chunk）
