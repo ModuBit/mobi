@@ -206,6 +206,67 @@ describe('SketchDrawer 端形态与几何分流', () => {
     })
 })
 
+describe('SketchDrawer 形态 → z 档矩阵（跨文件契约，回归锁）', () => {
+    beforeEach(() => {
+        isMobileRef.value = false
+    })
+
+    afterEach(() => cleanup())
+
+    /** stacking 阶梯（sketchLayout）：mask(100) < 停靠(101) < composer(102) < 全屏(103)。
+     *  「盖过 composer」= 全屏档——包括移动端恒全屏（fullscreen state 只有 PC 能置位，
+     *  漏掉 isMobile 会让移动端画纸被 composer 压住，2026-09-21 实踩） */
+    function sheetZIndex(): number {
+        const sheet = document.querySelector('[data-testid="sketch-sheet"]') as HTMLElement
+        return Number(getComputedStyle(sheet).zIndex)
+    }
+
+    it('PC 停靠：z 101（composer 之下，浮层是临时层）', () => {
+        const layer = document.createElement('div')
+        document.body.appendChild(layer)
+        render(
+            <SketchDrawer
+                open
+                onClose={vi.fn()}
+                onComplete={vi.fn()}
+                layerEl={layer}
+                dockMetrics={{ top: 100, bottom: 40, left: 30, right: 30 }}
+            />,
+        )
+        expect(sheetZIndex()).toBe(101)
+        layer.remove()
+    })
+
+    it('PC 全屏：z 103（盖过 composer 102）', async () => {
+        const layer = document.createElement('div')
+        document.body.appendChild(layer)
+        render(
+            <SketchDrawer
+                open
+                onClose={vi.fn()}
+                onComplete={vi.fn()}
+                layerEl={layer}
+                dockMetrics={{ top: 100, bottom: 40, left: 30, right: 30 }}
+            />,
+        )
+        fireEvent.click(findFullscreenButton() as HTMLElement)
+        await act(async () => {})
+        expect(sheetZIndex()).toBe(103)
+        layer.remove()
+    })
+
+    it('移动端恒全屏：z 103（盖过 composer，修复回归）', () => {
+        isMobileRef.value = true
+        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+        expect(sheetZIndex()).toBe(103)
+    })
+
+    it('PC 未挂层 fixed 兜底：几何即全屏，z 103（盖过 composer）', () => {
+        render(<SketchDrawer open onClose={vi.fn()} onComplete={vi.fn()} />)
+        expect(sheetZIndex()).toBe(103)
+    })
+})
+
 /** 全屏切换按钮（header 为 lucide icon 按钮，靠 aria-label 定位；
  *  测试环境 i18n 未初始化时 t() 回退 key，key 与译文一并匹配） */
 function findFullscreenButton(): HTMLElement | null {

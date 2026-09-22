@@ -45,6 +45,9 @@ export const SKETCH_MORPH_MS = 280
  * 停靠低于 composer 维持既有 stacking 阶梯（浮层是临时层）；全屏高于 composer 是画布不悬浮
  * 输入框的前提——四处魔数若靠注释互指，拼写错误会静默破坏动画，勿内联回去。
  *
+ * 「全屏档」按形态判定而非 fullscreen state（见 sketchSheetZIndex）——state 只有 PC 能置位，
+ * 按 state 判定会让移动端恒全屏/未挂层兜底停在 101 被 composer 压住（2026-09-21 实踩）。
+ *
  * 阶梯整体压在 antd 弹层 z 区间（默认 1000：Drawer/Modal）之下：画板浮层是页内临时层，
  * 不得盖过抽屉/对话框；曾用 1000–1003 与 antd 区间重叠，导致 composer(z 1002) 压住
  * agent 抽屉（z 1000），已降档修复。
@@ -53,6 +56,15 @@ export const SKETCH_Z_MASK = 100
 export const SKETCH_Z_DOCK = 101
 export const SKETCH_Z_COMPOSER = 102
 export const SKETCH_Z_FULLSCREEN = 103
+
+/** 画板载体形态 → z 档（阶梯契约的判定逻辑，调用方只此一处取 z）：
+ *  盖过 composer（全屏档 103）= 几何上已是全屏的三种形态——PC 全屏切换、移动端恒全屏、
+ *  未挂层 fixed 兜底；仅 PC 停靠（层内局部浮层）保持 101。
+ *  以「形态」为判据：fullscreen state 只有 PC 能置位，直接用它判档会漏掉其余两种全屏形态 */
+export function sketchSheetZIndex(form: { mobile: boolean; fullscreen: boolean; hasLayer: boolean }): number {
+    const fullscreenForm = form.mobile || form.fullscreen || !form.hasLayer
+    return fullscreenForm ? SKETCH_Z_FULLSCREEN : SKETCH_Z_DOCK
+}
 
 /** 画布几何重算延迟：需盖过载体全部动画（开合/形变）——动画 transform 中间态会被
  *  excalidraw 缓存为画布 rect，动画结束不触发 resize/ResizeObserver，缓存不失效即整体

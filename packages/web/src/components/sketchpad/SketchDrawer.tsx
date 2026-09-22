@@ -47,7 +47,7 @@ import { useTranslation } from 'react-i18next'
 import type { SketchMark } from '@mobi/shared'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { SKETCH_MARK, sketchFilename } from '@/domain/sketch/sketchFile'
-import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP, SKETCH_Z_MASK, SKETCH_Z_DOCK, SKETCH_Z_FULLSCREEN } from '@/domain/sketch/sketchLayout'
+import { SKETCH_MORPH_MS, SKETCH_SHEET_IN_MS, SKETCH_SHEET_OUT_MS, SKETCH_DOCK_GAP, SKETCH_Z_MASK, sketchSheetZIndex } from '@/domain/sketch/sketchLayout'
 import { SketchCanvas, type SketchCanvasHandle } from './SketchCanvas'
 
 export interface SketchDrawerProps {
@@ -302,11 +302,11 @@ export function SketchDrawer({
             <Mask $zIndex={SKETCH_Z_MASK} $dim={isMobile} $phase={phase} $fixed={isMobile} data-testid="sketch-mask" />
             <Sheet
                 data-testid="sketch-sheet"
-                /* z 序随形态切换：全屏（含进入动画期，state 已先行置位）盖过 composer（z 102）——
-                   画布上不该悬浮 composer；停靠形态保持 101（滑沉消隐不发生穿越位移，
-                   z 序只为保持既有 stacking 阶梯）。退全屏 state 立即复位 → 收回过程
-                   回到 composer 之下，符合「浮层归位」方向感 */
-                $zIndex={fullscreen ? SKETCH_Z_FULLSCREEN : SKETCH_Z_DOCK}
+                /* z 序按形态取档（sketchSheetZIndex）：全屏三种形态（PC 全屏/移动端恒全屏/
+                   未挂层兜底）盖过 composer（z 102）——画布上不该悬浮 composer；停靠形态
+                   保持 101（滑沉消隐不发生穿越位移，z 序只为保持既有 stacking 阶梯）。
+                   退全屏 state 立即复位 → 收回过程回到 composer 之下，符合「浮层归位」方向感 */
+                $zIndex={sketchSheetZIndex({ mobile: isMobile, fullscreen, hasLayer: !!layerEl })}
                 $phase={phase}
                 $morphing={morphing}
                 style={sheetStyle}
