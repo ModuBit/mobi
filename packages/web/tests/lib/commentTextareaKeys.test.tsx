@@ -52,22 +52,21 @@ describe('commentTextareaAction（评论 textarea 键位判定）', () => {
 
 describe('QuoteCommentInput IME 组合中 Esc 不关闭浮层', () => {
     it('组合态按 Esc 仅取消候选词，浮层保持打开', () => {
-        const onCancel = vi.fn()
+        const onClose = vi.fn()
         render(
             <QuoteCommentInput
-                quote={{ messageId: 'm1', role: 'agent', excerpt: 'E' }}
                 rect={new DOMRect(100, 300, 200, 20)}
-                onConfirm={vi.fn()}
-                onCancel={onCancel}
+                onSave={vi.fn()}
+                onClose={onClose}
             />,
         )
-        // i18n 未在测试环境初始化，placeholder 渲染为 key 原样——直接取浮层内 textarea
-        const ta = screen.getByTestId('quote-comment-input').querySelector('input')!
+        // i18n 未在测试环境初始化，placeholder 渲染为 key 原样——直接取浮层内输入框
+        const ta = screen.getByRole('textbox')
         // isComposing 必须落在真实事件对象上（React synthetic e.nativeEvent 读的是它），
         // fireEvent 的 extra props 不会透传
         ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }))
-        expect(onCancel).not.toHaveBeenCalled()
+        expect(onClose).not.toHaveBeenCalled()
         ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: false, bubbles: true }))
-        expect(onCancel).toHaveBeenCalled()
+        expect(onClose).toHaveBeenCalled()
     })
 })

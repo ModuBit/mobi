@@ -79,9 +79,10 @@ const DisabledHint = styled.span`
     text-overflow: ellipsis;
 `
 
-/** 选区浮层的定位与内容形态（三态） */
+/** 选区浮层的定位与内容形态（三态）。add 态携带原始 Range——「添加到对话」后
+ *  评论期间用它渲染选区 ghost 高亮（原生选区视觉会被输入框夺焦清掉） */
 export type QuoteSelectionPopoverState =
-    | { rect: DOMRect; kind: 'add'; quote: PendingQuoteRef }
+    | { rect: DOMRect; kind: 'add'; quote: PendingQuoteRef; range: Range }
     | { rect: DOMRect; kind: 'tooLong' }
     | { rect: DOMRect; kind: 'limitReached' }
 

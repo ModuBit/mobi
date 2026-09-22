@@ -15,59 +15,70 @@
  */
 
 /**
- * QuoteCommentInput 组件测试：评论可选（空 = 无评论引用）、Enter 保存、
- * Shift+Enter 换行不提交、取消不创建。
+ * QuoteCommentInput 组件测试：引用已在 composer，浮层只补充评论——
+ * 空 = 无评论（onSave(undefined)）、Enter/✓ 保存（trim）、多行自适应、
+ * 空态按钮 = 关闭（×）、Esc 关闭。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { QuoteCommentInput } from '@/components/chat/QuoteCommentInput'
-import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 
 afterEach(cleanup)
 
-const quote: PendingQuoteRef = { messageId: 'm1', role: 'agent', excerpt: '被选文本' }
 const rect = new DOMRect(10, 100, 200, 20)
 
 describe('QuoteCommentInput', () => {
-    it('空评论直接保存：回调原 quote（无 comment 字段）', () => {
-        const onConfirm = vi.fn()
-        render(<QuoteCommentInput quote={quote} rect={rect} onConfirm={onConfirm} onCancel={vi.fn()} />)
+    it('未填写时显示关闭钮（×）：点击触发 onClose 而非 onSave', () => {
+        const onSave = vi.fn()
+        const onClose = vi.fn()
+        render(<QuoteCommentInput rect={rect} onSave={onSave} onClose={onClose} />)
 
-        fireEvent.click(screen.getByTestId('quote-comment-save'))
-        expect(onConfirm).toHaveBeenCalledWith({ messageId: 'm1', role: 'agent', excerpt: '被选文本' })
+        fireEvent.click(screen.getByTestId('quote-comment-close'))
+        expect(onClose).toHaveBeenCalledTimes(1)
+        expect(onSave).not.toHaveBeenCalled()
     })
 
-    it('输入评论后 Enter 保存：回调带 comment（trim 后）', () => {
-        const onConfirm = vi.fn()
-        render(<QuoteCommentInput quote={quote} rect={rect} onConfirm={onConfirm} onCancel={vi.fn()} />)
+    it('输入评论后出现保存钮（✓）：点击回调 trim 后的评论', () => {
+        const onSave = vi.fn()
+        const onClose = vi.fn()
+        render(<QuoteCommentInput rect={rect} onSave={onSave} onClose={onClose} />)
 
         const input = screen.getByRole('textbox')
         fireEvent.change(input, { target: { value: '  为什么这样？  ' } })
-        fireEvent.keyDown(input, { key: 'Enter', shiftKey: false })
-        expect(onConfirm).toHaveBeenCalledWith({ ...quote, comment: '为什么这样？' })
+        fireEvent.click(screen.getByTestId('quote-comment-save'))
+        expect(onSave).toHaveBeenCalledWith('为什么这样？')
+        expect(onClose).not.toHaveBeenCalled()
     })
 
-    it('Shift+Enter 换行不提交', () => {
-        const onConfirm = vi.fn()
-        render(<QuoteCommentInput quote={quote} rect={rect} onConfirm={onConfirm} onCancel={vi.fn()} />)
+    it('Enter 保存；空评论保存 = onSave(undefined)（无评论引用）', () => {
+        const onSave = vi.fn()
+        render(<QuoteCommentInput rect={rect} onSave={onSave} onClose={vi.fn()} />)
 
         const input = screen.getByRole('textbox')
-        fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
-        expect(onConfirm).not.toHaveBeenCalled()
+        fireEvent.change(input, { target: { value: '  ' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onSave).toHaveBeenCalledWith(undefined)
     })
 
-    it('只有确定按钮（无取消钮）；取消仅经 Esc 触发——点浮层外取消归调用方', () => {
-        const onCancel = vi.fn()
-        render(<QuoteCommentInput quote={quote} rect={rect} onConfirm={vi.fn()} onCancel={onCancel} />)
+    it('续编辑回填：initialComment 进输入框，清空保存 = 清除评论（onSave(undefined)）', () => {
+        const onSave = vi.fn()
+        render(<QuoteCommentInput rect={rect} initialComment='旧评论' onSave={onSave} onClose={vi.fn()} />)
 
-        // 浮层内只有 确定 一个按钮（antd Space.Compact 输入框+按钮一体形态）
-        const buttons = screen.getByTestId('quote-comment-input').querySelectorAll('button')
-        expect(buttons).toHaveLength(1)
-        expect(buttons[0].className).toContain('ant-btn-primary')
+        const input = screen.getByRole('textbox') as HTMLInputElement
+        expect(input.value).toBe('旧评论')
+        fireEvent.change(input, { target: { value: '' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onSave).toHaveBeenCalledWith(undefined)
+    })
 
-        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })
-        expect(onCancel).toHaveBeenCalledTimes(1)
+    it('Esc 关闭；多行输入（autoSize 属性挂载）', () => {
+        const onClose = vi.fn()
+        render(<QuoteCommentInput rect={rect} onSave={vi.fn()} onClose={onClose} />)
+
+        const input = screen.getByRole('textbox') as HTMLTextAreaElement
+        fireEvent.keyDown(input, { key: 'Escape' })
+        expect(onClose).toHaveBeenCalledTimes(1)
     })
 })

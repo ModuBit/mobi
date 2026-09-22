@@ -52,6 +52,7 @@ import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
 import { QuoteCommentInput } from './QuoteCommentInput'
+import { SelectionGhost } from './SelectionGhost'
 import { useMobileQuoteSelection } from './useMobileQuoteSelection'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
@@ -657,8 +658,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 拿选区交给选区判定器（唯一裁决点），本层只管浮层开合与手柄灌入
     // ──────────────────────────────────────────────────────────────
     const [quotePopover, setQuotePopover] = useState<QuoteSelectionPopoverState | null>(null)
-    // 评论输入浮层（添加到对话后的第二步）：评论可选，确认/取消都关闭
-    const [quoteCommentDraft, setQuoteCommentDraft] = useState<{ quote: PendingQuoteRef; rect: DOMRect } | null>(null)
+    // 评论输入浮层：「添加到对话」**即落引用**（composer 已有条目），此浮层只补充评论——
+    // uid 寻址 composer 条目，rects = 捕获时冻结的选区行盒（SelectionGhost 保持选中观感）
+    const [quoteCommentDraft, setQuoteCommentDraft] = useState<{
+        uid: string
+        initialComment?: string
+        rect: DOMRect
+        rects: DOMRect[]
+    } | null>(null)
 
     // 判定收口：非空选区 → 判定器裁决 → 浮层三态（可添加 / 超长禁用 / 达上限禁用）。
     // 来源/归属类拒绝不弹不打扰（spec：静默失败体验差仅对可解释的原因豁免）
@@ -666,7 +673,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const count = composerHandleRef.current?.getQuoteCount() ?? 0
         const result = resolveQuoteSelection(range, { currentQuoteCount: count })
         if (result.ok) {
-            setQuotePopover({ kind: 'add', quote: result.quote, rect: range.getBoundingClientRect() })
+            setQuotePopover({ kind: 'add', quote: result.quote, range, rect: range.getBoundingClientRect() })
         } else if (result.reason === 'tooLong' || result.reason === 'limitReached') {
             // 禁用态也要弹（spec：静默失败体验差）；来源/归属类拒绝不弹不打扰
             setQuotePopover({ kind: result.reason, rect: range.getBoundingClientRect() })
@@ -689,21 +696,33 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 移动端薄壳：selectionchange 防抖落定的非空选区走同一判定收口
     useMobileQuoteSelection({ enabled: isMobile, onSelectionSettled: openQuotePopoverForRange })
 
-    // 「添加到对话」→ 弹评论输入（可选，确认才落引用）；rect 从当前浮层状态透传
+    // 「添加到对话」**即落引用**（composer 已有条目，条目级信息带出供续编辑），
+    // 评论浮层只补充评论；选区原生高亮随即让位给 SelectionGhost（输入框夺焦必清原生选区）
     const handleQuoteAdd = useCallback((quote: PendingQuoteRef) => {
-        setQuoteCommentDraft(quotePopover ? { quote, rect: quotePopover.rect } : null)
+        const entry = composerHandleRef.current?.addQuote(quote) ?? null
+        // onAdd 仅在 add 态触发，range 必在（union 收窄）
+        const addState = quotePopover?.kind === 'add' ? quotePopover : null
+        if (entry && addState) {
+            setQuoteCommentDraft({
+                uid: entry.uid,
+                initialComment: entry.comment,
+                rect: addState.rect,
+                rects: Array.from(addState.range.getClientRects()),
+            })
+        }
         setQuotePopover(null)
     }, [quotePopover])
 
-    // 评论确认/取消统一收口：确认 = 灌入手柄 + 清选区（引用已捕获，选区使命完成）；
-    // 取消 = 只关浮层，**选区保留**（用户可重新划选或再次添加，摘高亮是打断感的主要来源）
-    const handleQuoteConfirm = useCallback((quote: PendingQuoteRef) => {
-        composerHandleRef.current?.addQuote(quote)
+    // 评论保存 = 补写 composer 条目（trim 空串 = 维持无评论）+ 清选区（引用已确认，使命完成）
+    const handleQuoteCommentSave = useCallback((comment: string | undefined) => {
+        if (quoteCommentDraft) composerHandleRef.current?.updateQuoteComment(quoteCommentDraft.uid, comment)
         setQuoteCommentDraft(null)
         window.getSelection()?.removeAllRanges()
-    }, [])
+    }, [quoteCommentDraft])
 
-    const handleQuoteCancel = useCallback(() => {
+    // 评论关闭（× / Esc / 点浮层外 / 滚动）= 只关浮层：**引用保留（无评论态）+ 选区保留**
+    //（用户可重新划选或再次点开同片段补评论，摘高亮是打断感的主要来源）
+    const handleQuoteCommentClose = useCallback(() => {
         setQuoteCommentDraft(null)
     }, [])
 
@@ -1249,12 +1268,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             )}
             {quoteCommentDraft && (
-                <QuoteCommentInput
-                    quote={quoteCommentDraft.quote}
-                    rect={quoteCommentDraft.rect}
-                    onConfirm={handleQuoteConfirm}
-                    onCancel={handleQuoteCancel}
-                />
+                <>
+                    {/* 选区 ghost：原生选区已被输入框夺焦清掉，用冻结 rects 保持选中观感 */}
+                    <SelectionGhost rects={quoteCommentDraft.rects} />
+                    <QuoteCommentInput
+                        initialComment={quoteCommentDraft.initialComment}
+                        rect={quoteCommentDraft.rect}
+                        onSave={handleQuoteCommentSave}
+                        onClose={handleQuoteCommentClose}
+                    />
+                </>
             )}
 
             {/* 移动端消息操作菜单（气泡 footer「⋯」入口打开，原长按入口已迁移）：

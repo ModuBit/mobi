@@ -81,8 +81,14 @@ export interface ChatComposerHandle {
     openBubbleSketch: (path: string) => void
     /** composer 当前引用条数（选区判定器的环境状态；事件时读，无需响应式） */
     getQuoteCount: () => number
-    /** 灌入一条引用（消息列表选区动作 → composer；达上限防御性丢弃，serialize 侧 slice 为底线） */
-    addQuote: (quote: PendingQuoteRef) => void
+    /**
+     * 灌入一条引用（消息列表选区动作 → composer），返回落位的条目（uid 供评论浮层寻址、
+     * comment 供续编辑回填）；同片段重复添加返回已有条目；达上限返回 null（防御，
+     * 判定器 limitReached 一般先拦）
+     */
+    addQuote: (quote: PendingQuoteRef) => ComposerQuoteRef | null
+    /** 补充/清空某条引用的评论（「添加到对话」即落条目，评论只是后续补充） */
+    updateQuoteComment: (uid: string, comment: string | undefined) => void
 }
 
 
@@ -366,26 +372,44 @@ export function ChatComposer(props: ChatComposerProps) {
     const { session: sketch, everOpened: sketchEverOpened, openNew: handleOpenSketch, openForAttachment: handleSketchEditAttachment, complete: handleSketchComplete, cancel: handleSketchCancel } = sketchSession
 
     // 气泡重编辑入口：完成后产物同样落回 composer 附件（历史不可变）。
-    // getQuoteCount/addQuote：消息列表选区引用动作的手柄通道（引用是即时动作，无需信箱防重放）
-    const addQuote = useCallback((quote: PendingQuoteRef) => {
-        setQuotes(prev => {
-            // 同一片段（同消息同文本）去重：连点/重复确认无增量语义。
-            // 同消息的**不同**片段允许多条并存（QUOTE_MAX_COUNT 的本意）；
-            // uid 条目级身份在置入时生成（chip key/删除/评论编辑都以 uid 寻址）
-            if (prev.some(q => q.messageId === quote.messageId && q.excerpt === quote.excerpt)) return prev
-            return prev.length >= QUOTE_MAX_COUNT ? prev : [...prev, { ...quote, uid: crypto.randomUUID() }]
-        })
+    // getQuoteCount/addQuote/updateQuoteComment：消息列表选区引用动作的手柄通道
+    //（引用是即时动作，「添加到对话」即落条目，后续评论只是补充，无需信箱防重放）
+    // 同步判定走 quotesRef（事件内 setState updater 到 render 才执行，返回值取不到）：
+    // 读 ref 判重/算 uid 后同步推进 ref 再 setQuotes，连续调用不丢序
+    const addQuote = useCallback((quote: PendingQuoteRef): ComposerQuoteRef | null => {
+        // 同一片段（同消息同文本）去重：返回已有条目（评论浮层续编辑）。
+        // 同消息的**不同**片段允许多条并存（QUOTE_MAX_COUNT 的本意）；
+        // uid 条目级身份在置入时生成（chip key/删除/评论编辑都以 uid 寻址）
+        const existing = quotesRef.current.find(q => q.messageId === quote.messageId && q.excerpt === quote.excerpt)
+        if (existing) return existing
+        if (quotesRef.current.length >= QUOTE_MAX_COUNT) return null
+        const entry: ComposerQuoteRef = { ...quote, uid: crypto.randomUUID() }
+        quotesRef.current = [...quotesRef.current, entry]
+        setQuotes(quotesRef.current)
+        return entry
     }, [])
     // getQuoteCount 经 ref 读最新条数：deps 不含 quotes，引用增删不再重建整个 handle
     //（含 openSketch/openBubbleSketch 闭包的对象身份稳定）
     const quotesRef = useRef(quotes)
     quotesRef.current = quotes
+    // 评论补充入口（「添加到对话」即落条目，评论浮层保存/清空都走这里）
+    const updateQuoteComment = useCallback((uid: string, comment: string | undefined) => {
+        setQuotes(prev => prev.map(q => {
+            if (q.uid !== uid) return q
+            if (comment !== undefined) return { ...q, comment }
+            // 清评论 = 剔除 comment 字段本身（wire 契约：无评论不落键）；rest 解构避免
+            // 手写 PendingQuoteRef 字段白名单——新增字段时这里不会悄悄剥掉
+            const { comment: _dropped, ...base } = q
+            return base
+        }))
+    }, [])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
         openBubbleSketch: sketchSession.openFromBubble,
         getQuoteCount: () => quotesRef.current.length,
         addQuote,
-    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote])
+        updateQuoteComment,
+    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote, updateQuoteComment])
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
     // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
@@ -724,17 +748,6 @@ export function ChatComposer(props: ChatComposerProps) {
     // 引用动作：删除 / 评论编辑（excerpt 只读——引用忠实于源消息，评论才是用户的话）
     const removeQuote = useCallback((uid: string) => {
         setQuotes(prev => prev.filter(q => q.uid !== uid))
-    }, [])
-
-    const updateQuoteComment = useCallback((uid: string, comment: string | undefined) => {
-        setQuotes(prev => prev.map(q => {
-            if (q.uid !== uid) return q
-            if (comment !== undefined) return { ...q, comment }
-            // 清评论 = 剔除 comment 字段本身（wire 契约：无评论不落键）；rest 解构避免
-            // 手写 PendingQuoteRef 字段白名单——新增字段时这里不会悄悄剥掉
-            const { comment: _dropped, ...base } = q
-            return base
-        }))
     }, [])
 
     const showInactiveCover = !active && !allowSendWhenInactive
