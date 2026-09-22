@@ -77,8 +77,9 @@ export function MainLayout() {
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
-            {/* 移动端顶栏悬浮更新钮；PC 端入口在 SidebarHeader / WcoTitleBar */}
-            {isMobile && <UpdatePrompt onUpdate={updateReload} />}
+            {/* 移动端顶栏悬浮更新胶囊（MainLayout 挂载即全局）；PC 端入口在 SidebarHeader / WcoTitleBar。
+                关闭 = 清空 reload 状态，SW 下次更新才再提示 */}
+            {isMobile && <UpdatePrompt onUpdate={updateReload} onClose={() => setUpdateReload(null)} />}
             {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪 */}
             <div style={{
                 height: '100dvh',

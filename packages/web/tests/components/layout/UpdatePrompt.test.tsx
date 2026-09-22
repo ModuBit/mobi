@@ -26,35 +26,40 @@ vi.mock('react-i18next', () => ({
 import { UpdatePrompt, UpdateIconButton } from '@/components/layout/UpdatePrompt'
 import { useUpdateAvailable, setUpdateReload } from '@/core/pwa/useUpdateAvailable'
 
-describe('UpdatePrompt（移动端顶栏悬浮钮）', () => {
+describe('UpdatePrompt（移动端顶栏悬浮胶囊）', () => {
     afterEach(cleanup)
 
     it('onUpdate=null → 不渲染', () => {
-        const { container } = render(<UpdatePrompt onUpdate={null} />)
+        const { container } = render(<UpdatePrompt onUpdate={null} onClose={() => {}} />)
         expect(container).toBeEmptyDOMElement()
     })
 
-    it('onUpdate 非 null → 渲染悬浮钮（aria-label + 刷新文案）', () => {
-        render(<UpdatePrompt onUpdate={() => {}} />)
+    it('渲染刷新主操作与关闭按钮', () => {
+        render(<UpdatePrompt onUpdate={() => {}} onClose={() => {}} />)
         expect(screen.getByRole('button', { name: 'notification.pwa.updateAvailable' })).toBeInTheDocument()
         expect(screen.getByText('notification.pwa.updateAction')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'common.close' })).toBeInTheDocument()
     })
 
-    it('点击 → 调用 onUpdate', () => {
+    it('点击主操作 → 调用 onUpdate；点击关闭 → 调用 onClose', () => {
         const onUpdate = vi.fn()
-        render(<UpdatePrompt onUpdate={onUpdate} />)
-        fireEvent.click(screen.getByRole('button'))
+        const onClose = vi.fn()
+        render(<UpdatePrompt onUpdate={onUpdate} onClose={onClose} />)
+        fireEvent.click(screen.getByRole('button', { name: 'notification.pwa.updateAvailable' }))
         expect(onUpdate).toHaveBeenCalledTimes(1)
+        fireEvent.click(screen.getByRole('button', { name: 'common.close' }))
+        expect(onClose).toHaveBeenCalledTimes(1)
     })
 })
 
-describe('UpdateIconButton（PC 侧栏/WCO 图标钮）', () => {
+describe('UpdateIconButton（PC 侧栏/WCO 图标+文案按钮）', () => {
     afterEach(cleanup)
 
-    it('渲染带 aria-label 的图标钮，点击调用 onUpdate', () => {
+    it('渲染带文案与 aria-label 的按钮，点击调用 onUpdate', () => {
         const onUpdate = vi.fn()
         render(<UpdateIconButton onUpdate={onUpdate} />)
         const button = screen.getByRole('button', { name: 'notification.pwa.updateAvailable' })
+        expect(button).toHaveTextContent('notification.pwa.updateAvailable')
         fireEvent.click(button)
         expect(onUpdate).toHaveBeenCalledTimes(1)
     })
