@@ -19,8 +19,10 @@ import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type S
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
-// 中断消息的正则匹配
-const INTERRUPTED_PATTERN = /\[Request interrupted by user\]/
+// 中断消息的正则匹配：整条内容就是 CC 中断标记才算合成消息。必须锚定全串——
+// 正文**引用**该标记的正常消息（如根因分析引用日志原文）不得命中，
+// 否则被误标 isSynthetic 走弱化纯文本渲染（2026-09-21 事故，同 TextBlock INTERRUPTED_RE）
+const INTERRUPTED_PATTERN = /^\[Request interrupted by user\]$/
 
 // ============================================================================
 // 工具函数
@@ -243,7 +245,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
 
     // 简单字符串内容
     if (typeof messageContent === 'string') {
-        const isSynthetic = INTERRUPTED_PATTERN.test(messageContent)
+        const isSynthetic = INTERRUPTED_PATTERN.test(messageContent.trim())
         return {
             id: ctx.messageId,
             localId: ctx.localId,
@@ -264,7 +266,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
         for (const block of messageContent) {
             if (!isObject(block) || typeof block.type !== 'string') continue
             if (block.type === 'text' && typeof block.text === 'string') {
-                if (INTERRUPTED_PATTERN.test(block.text)) {
+                if (INTERRUPTED_PATTERN.test(block.text.trim())) {
                     hasInterruptedText = true
                 }
                 blocks.push({ type: 'text', text: block.text, uuid, parentUUID })
