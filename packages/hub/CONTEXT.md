@@ -68,6 +68,12 @@ _Avoid_: 前台 Agent 面板数据（那是消费方视角）、运行中任务�
 Hub 对 CLI 上报的 `pushed`、`bound`、`attached`、`acked`、`lifecycle`、`withdrawn` 事实做字段收窄、幂等或单调落库，并生成领域 publication 的过程。`SessionMessageFactsProcessor` 是这些规则及连接级 native session 上下文的权威入口；Socket handler 只校验批次外层与访问权，并把 publication 翻译成 room / SSE 通知。
 _Avoid_: 在 Socket handler 内按 fact kind 直接写库、把 Socket/SSE 对象传入事实处理模块
 
+### 消息出口
+
+**出口剥离**:
+消息行离开 hub 供 web 消费时，按工具策略对 tool_result 重内容做的展示层瘦身——文件类工具结果替换为占位、其余工具截断，Task 族与失败结果豁免。消息行在存储中始终是完整事实层；剥离只作用于消费边界、不可变命中才拷贝，不改存储事实，可随时调整或回退。
+_Avoid_: 数据删除（存储未动）、脱敏（目的不是安全）、内容裁剪（不指明发生在消费边界）
+
 ### 桌面观看（desktop）
 
 **观看流**:

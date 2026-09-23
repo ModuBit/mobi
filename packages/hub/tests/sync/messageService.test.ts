@@ -188,3 +188,90 @@ describe('MessageService 出口剥离死重 base64 图片数据', () => {
         expect(JSON.stringify(result.messages)).not.toContain(MARKER)
     })
 })
+
+describe('MessageService 出口剥离 tool_result 重内容', () => {
+    /** 构造 assistant tool_use + user tool_result 帧对（注册表靠 assistant 帧喂饱） */
+    const assistantFrame = (toolUseId: string, toolName: string): unknown => ({
+        role: 'agent',
+        content: {
+            type: 'text',
+            data: {
+                uuid: `ua-${toolUseId}`,
+                message: { role: 'assistant', content: [{ type: 'tool_use', id: toolUseId, name: toolName, input: {} }] },
+            },
+        },
+    })
+    const resultFrame = (seq: number, toolUseId: string, blockContent: unknown, opts: { isError?: boolean } = {}): StoredMessage => ({
+        ...msg(seq, { lifecycle: null, localId: null }),
+        content: {
+            role: 'agent',
+            content: {
+                type: 'text',
+                data: {
+                    uuid: `ur-${seq}`,
+                    message: {
+                        role: 'user',
+                        content: [{ type: 'tool_result', tool_use_id: toolUseId, is_error: opts.isError, content: blockContent }],
+                    },
+                },
+            },
+        },
+    } as unknown as StoredMessage)
+
+    const BIG = 'x'.repeat(100_000)
+
+    test('Read 大结果经出口替换为占位；Edit 的 tool_use_result.structuredPatch 原样保留', () => {
+        const tur = { type: 'edit', structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['+n'] }] }
+        const editResultFrame = {
+            ...resultFrame(2, 'tu-e', [{ type: 'text', text: BIG }]),
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'text',
+                    data: {
+                        uuid: 'ur-2',
+                        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu-e', content: [{ type: 'text', text: BIG }] }] },
+                        tool_use_result: tur,
+                    },
+                },
+            },
+        } as unknown as StoredMessage
+        const { service } = makeService({
+            page: [
+                { ...msg(1, { lifecycle: null, localId: null }), content: assistantFrame('tu-e', 'Edit') } as StoredMessage,
+                editResultFrame,
+            ],
+        })
+
+        const result = service.getMessagesPage('s', { limit: 10, beforeSeq: null })
+        const raw = JSON.stringify(result.messages)
+
+        expect(raw).not.toContain(BIG)
+        expect(raw).toContain('[file content omitted — open via file chip]')
+        expect(raw).toContain('"structuredPatch"')
+    })
+
+    test('Task 族与 is_error 结果不剥离', () => {
+        const { service } = makeService({
+            page: [
+                { ...msg(1, { lifecycle: null, localId: null }), content: assistantFrame('tu-t', 'TaskList') } as StoredMessage,
+                resultFrame(2, 'tu-t', [{ type: 'text', text: BIG }]),
+                resultFrame(3, 'tu-unknown', [{ type: 'text', text: BIG }], { isError: true }),
+            ],
+        })
+
+        const raw = JSON.stringify(service.getMessagesPage('s', { limit: 10, beforeSeq: null }))
+
+        // TaskList 结果全量保留；未注册工具的失败结果也全量保留
+        expect(raw).toContain(BIG)
+    })
+
+    test('出口剥离不落库：原始 StoredMessage.content 仍是全量', () => {
+        const original = resultFrame(1, 'tu-cold', [{ type: 'text', text: BIG }])
+        const { service } = makeService({ page: [original] })
+
+        service.getMessagesPage('s', { limit: 10, beforeSeq: null })
+
+        expect(JSON.stringify(original)).toContain(BIG)
+    })
+})

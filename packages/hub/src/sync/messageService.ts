@@ -14,85 +14,21 @@
  * limitations under the License.
  */
 
-import { isMobiDelivered, isObject, normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
+import { isMobiDelivered, normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
 import type { CrossSessionOrigin } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
 import type { MarkPushedResult } from '../store/messages'
+import { stripEgressContent } from './egressStrip'
 import { EventPublisher } from './eventPublisher'
-
-/**
- * base64 图片数据剥离后的占位符：保留「此处曾有数据」的可追溯性（排查"图片为何不显示"
- * 时能定位到是 hub 出口剥离而非数据丢失），代价 22 字节。
- */
-export const STRIPPED_BASE64_MARKER = '[mobi:base64-stripped]'
-
-/**
- * Read 工具读图时，CC transcript 帧把同一张 PNG 存两份：
- * - `data.tool_use_result.file.base64`（工具结果载荷）
- * - `data.message.content[].content[]` 里 tool_result 的 image block `source.data`（SDK 消息载荷）
- * 单张可达数百 KB～MB 级，是 /messages 页与 new-message 广播的体积大头
- * （生产实测单页 3.8MB 中 4 张图占 92%——2026-09-23 走查）。
- *
- * web/CLI 均无这两处的消费方（web 图片渲染全走 read-file URL；CLI 发 SDK 的图从本地
- * transcript 读），DTO 出口剥离为占位符，入库原文不动（可逆，无需迁移）。
- *
- * 返回新对象（沿访问路径浅拷贝），绝不原地改写——StoredMessage 虽然当前每次查询都
- * 重新 parse，但出口函数不得依赖该实现细节。
- */
-function stripHeavyImagePayload<T>(content: T): T {
-    // 信封形态守卫：只处理 agent transcript 帧（{role, content:{type,data}} 包裹）
-    const envelope = content as { content?: { data?: Record<string, unknown> } } | null
-    const data = envelope?.content?.data
-    if (!isObject(data)) return content
-
-    let mutated = false
-    // 惰性拷贝：绝大多数消息两条剥离路径都不命中，命中前不复制 data（/messages 页数百条/页的白重 spread）
-    let patch: Record<string, unknown> | null = null
-    const ensurePatch = (): Record<string, unknown> => (patch ??= { ...data })
-
-    // 1) tool_use_result.file.base64
-    const tur = data.tool_use_result
-    if (isObject(tur) && isObject(tur.file) && typeof tur.file.base64 === 'string') {
-        ensurePatch().tool_use_result = { ...tur, file: { ...tur.file, base64: STRIPPED_BASE64_MARKER } }
-        mutated = true
-    }
-
-    // 2) tool_result → image block → source.data（message.content 为块数组）
-    const message = data.message
-    if (isObject(message) && Array.isArray(message.content)) {
-        let messageContentMutated = false
-        const messageContent = message.content.map((block: unknown) => {
-            if (!isObject(block) || block.type !== 'tool_result' || !Array.isArray(block.content)) return block
-            let blockContentMutated = false
-            const blockContent = block.content.map((inner: unknown) => {
-                if (!isObject(inner) || inner.type !== 'image') return inner
-                const source = inner.source
-                if (!isObject(source) || source.type !== 'base64' || typeof source.data !== 'string') return inner
-                blockContentMutated = true
-                return { ...inner, source: { ...source, data: STRIPPED_BASE64_MARKER } }
-            })
-            if (!blockContentMutated) return block
-            messageContentMutated = true
-            return { ...block, content: blockContent }
-        })
-        if (messageContentMutated) {
-            ensurePatch().message = { ...message, content: messageContent }
-            mutated = true
-        }
-    }
-
-    if (!mutated) return content
-    return { ...(content as object), content: { ...envelope!.content, data: patch } } as T
-}
 
 /**
  * StoredMessage → 对外 DTO 的唯一映射。所有向 web/CLI 下发消息的出口
  * （历史查询、new-message update、message-received 事件）必须复用此处，
  * 新增消息字段时只改这一处，避免多处内联展开形状静默分叉。
  * metadata（nativeId / nativeSessionId）从 StoredMessage 直出，供 Web 端 rewind 判据；
- * 出口统一剥离死重 base64 图片数据（见 stripHeavyImagePayload）
+ * 出口统一做展示层剥离（base64 图片死重 + tool_result 重内容，见 egressStrip）
  */
 export function toDecryptedMessage(message: StoredMessage): DecryptedMessage {
     return {
@@ -103,7 +39,7 @@ export function toDecryptedMessage(message: StoredMessage): DecryptedMessage {
         lifecycle: message.lifecycle,
         lifecycleAt: message.lifecycleAt,
         positionAt: message.positionAt,
-        content: stripHeavyImagePayload(message.content),
+        content: stripEgressContent(message.content),
         createdAt: message.createdAt,
     }
 }
