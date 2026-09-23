@@ -52,6 +52,9 @@ export interface PendingQuoteRef {
     excerpt: string
     /** 用户对引用内容的疑问/澄清（可选，进 prompt 的 <user-comment>）；引用的价值主体 */
     comment?: string
+    /** 选区在源 text block 容器内的位置（UTF-16，只记录不使用——不进 prompt、不用于定位） */
+    startOffset?: number
+    endOffset?: number
 }
 
 /**
@@ -137,6 +140,9 @@ export function serializeSegments(segments: ComposerSegments): UserContentBlock[
             role: q.role,
             excerpt: q.excerpt.slice(0, QUOTE_EXCERPT_MAX),
             ...(q.comment !== undefined ? { comment: q.comment.slice(0, QUOTE_EXCERPT_MAX) } : {}),
+            // offsets 不截断：excerpt 截断时 offsets 仍指原始选区（「记录事实」语义）
+            ...(q.startOffset !== undefined ? { startOffset: q.startOffset } : {}),
+            ...(q.endOffset !== undefined ? { endOffset: q.endOffset } : {}),
         })
     }
 
@@ -187,6 +193,8 @@ export function deserializeSegments(blocks: readonly UserContentBlock[]): Compos
                         role: b.role,
                         excerpt: b.excerpt,
                         ...(b.comment !== undefined ? { comment: b.comment } : {}),
+                        ...(b.startOffset !== undefined ? { startOffset: b.startOffset } : {}),
+                        ...(b.endOffset !== undefined ? { endOffset: b.endOffset } : {}),
                     })
                 }
                 break

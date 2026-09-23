@@ -16,6 +16,7 @@
 
 import { readFileSync } from 'node:fs'
 import type { UserContentBlock, UserImageBlock } from '@mobi/shared'
+import { QUOTE_DIRECTIVE } from '@mobi/shared'
 import { logger } from '@/ui/logger'
 import { escapeXmlText } from '@/utils/xmlEscape'
 
@@ -52,6 +53,33 @@ function buildQuoteText(block: Extract<UserContentBlock, { type: 'quote' }>, ind
         ? `${excerpt}<user-comment>${escapeXmlText(block.comment)}</user-comment>`
         : excerpt
     return `<quote index="${index}" role="${block.role}">${inner}</quote>`
+}
+
+/**
+ * 回应批注协议指令（spec .scratch/response-annotations）：当本次消息含 agent 角色引用时，
+ * 在首个 `<quote>` 前注入一段 `<system-reminder>` 指令（Claude 系模型对该标记有专门的
+ * 注意力权重），要求模型在回应引用的位置输出 `:mobi-quote{index="N"}` 内联 directive。
+ * directive 字面量取 shared 的 QUOTE_DIRECTIVE——与 web 渲染解析共用同一常量。
+ * 全部引用统一编号（与 `<quote index>` 同源一基），user 角色引用占号但不输出 directive。
+ */
+function buildAnnotationProtocol(): string {
+    return [
+        '<system-reminder>',
+        'Some `<quote>` elements in this message (role="agent") are response annotations:',
+        'excerpts the user selected from your earlier replies, optionally followed by a',
+        '<user-comment> with the user\'s question or clarification. Address every annotation',
+        'and every user comment.',
+        '',
+        `When you address an annotation, emit exactly one inline directive \`${QUOTE_DIRECTIVE}{index="N"}\``,
+        'at the single most relevant point in your reply, where N is that quote\'s one-based',
+        '`index` in this message. Rules:',
+        '- Emit directives only for quotes with role="agent"; never for role="user" quotes.',
+        '- Emit each directive at most once, in your final answer; do not repeat it in',
+        '  intermediate progress messages.',
+        '- Never invent indices, and never replace the directive with a prose label',
+        '  (such as writing "Note 1" as ordinary text).',
+        '</system-reminder>',
+    ].join('\n')
 }
 
 /**
@@ -101,6 +129,8 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
     let refs: string[] = []
     let texts: string[] = []
     let quoteSeq = 0
+    // 批注协议注入条件：存在 agent 角色引用（引用 user 消息 / 无引用 = 零注入，prompt 与现状一致）
+    const hasAgentQuote = blocks.some(b => b.type === 'quote' && b.role === 'agent')
 
     /** 冲刷缓冲为一个 text 元素（@path 单行 + 正文换段，空则不产出） */
     const flush = (): void => {
@@ -137,6 +167,10 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
             }
             case 'quote': {
                 flush()
+                // 批注协议段只在首个 quote 前注入一次（全部引用共享一段指令，不逐条重复）
+                if (quoteSeq === 0 && hasAgentQuote) {
+                    out.push({ type: 'text', text: buildAnnotationProtocol() })
+                }
                 out.push({ type: 'text', text: buildQuoteText(block, ++quoteSeq) })
                 break
             }

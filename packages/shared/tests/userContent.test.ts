@@ -44,6 +44,16 @@ describe('UserContentBlockSchema', () => {
         }).success).toBe(true)
     })
 
+    it('quote offsets（选区位置，只记录不使用）：optional 透传，旧消息无字段不受影响', () => {
+        expect(UserContentBlockSchema.safeParse({
+            type: 'quote', messageId: 'm', role: 'agent', excerpt: '…', startOffset: 5, endOffset: 12,
+        }).success).toBe(true)
+        // 非法值（负数/非整数）拒绝
+        expect(UserContentBlockSchema.safeParse({
+            type: 'quote', messageId: 'm', role: 'agent', excerpt: '…', startOffset: -1,
+        }).success).toBe(false)
+    })
+
     it('拒绝未知 block 类型', () => {
         expect(UserContentBlockSchema.safeParse({ type: 'audio' }).success).toBe(false)
     })

@@ -96,7 +96,7 @@ describe('resolveQuoteSelection', () => {
 
         const result = resolveQuoteSelection(makeRange(textNode, 0, textNode, 3), { currentQuoteCount: 0 })
 
-        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: '前半段' } })
+        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: '前半段', startOffset: 0, endOffset: 3 } })
     })
 
     it('接受路径：user 消息正文选区 → role=user', () => {
@@ -106,7 +106,7 @@ describe('resolveQuoteSelection', () => {
 
         const result = resolveQuoteSelection(makeRange(textNode, 0, textNode, 4), { currentQuoteCount: 0 })
 
-        expect(result).toEqual({ ok: true, quote: { messageId: 'm2', role: 'user', excerpt: '帮我看看' } })
+        expect(result).toEqual({ ok: true, quote: { messageId: 'm2', role: 'user', excerpt: '帮我看看', startOffset: 0, endOffset: 4 } })
     })
 
     it('接受路径：block 内跨子元素选区（嵌套标签间）仍属单 block', () => {
@@ -124,7 +124,7 @@ describe('resolveQuoteSelection', () => {
         // 选区从普通文本跨入 <strong> 内部——两端最近的 block 容器是同一个
         const result = resolveQuoteSelection(makeRange(first, 0, second, 2), { currentQuoteCount: 0 })
 
-        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: '加粗内容' } })
+        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: '加粗内容', startOffset: 0, endOffset: 4 } })
     })
 
     it(`接受路径（边界）：恰好 ${QUOTE_EXCERPT_MAX} 字 → 接受`, () => {
@@ -135,7 +135,7 @@ describe('resolveQuoteSelection', () => {
 
         const result = resolveQuoteSelection(makeRange(textNode, 0, textNode, QUOTE_EXCERPT_MAX), { currentQuoteCount: 0 })
 
-        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: fullText } })
+        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: fullText, startOffset: 0, endOffset: QUOTE_EXCERPT_MAX } })
     })
 
     it(`接受路径（边界）：已挂 ${QUOTE_MAX_COUNT - 1} 条引用时的第 ${QUOTE_MAX_COUNT} 条 → 接受`, () => {
@@ -145,7 +145,26 @@ describe('resolveQuoteSelection', () => {
 
         const result = resolveQuoteSelection(makeRange(textNode, 0, textNode, 5), { currentQuoteCount: QUOTE_MAX_COUNT - 1 })
 
-        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: '第三条引用' } })
+        expect(result).toEqual({ ok: true, quote: { messageId: 'm1', role: 'agent', excerpt: '第三条引用', startOffset: 0, endOffset: 5 } })
+    })
+
+    it('offsets 记录：相对 block 容器文本序列（跨子元素端点，UTF-16 code unit）', () => {
+        const parent = mount()
+        const msg = appendMessage(parent, { id: 'm9', role: 'agent' })
+        const block = document.createElement('div')
+        block.setAttribute('data-quote-block', '')
+        const lead = document.createTextNode('前言，')
+        const em = document.createElement('em')
+        const emph = document.createTextNode('强调文本')
+        em.appendChild(emph)
+        block.append(lead, em)
+        msg.appendChild(block)
+
+        // 选区从 em 文本节点 offset 2 到 offset 4（「文本」）：容器序列「前言，强调文本」
+        // 中位于 5..7——offset 相对 block.textContent，非端点所在子节点
+        const result = resolveQuoteSelection(makeRange(emph, 2, emph, 4), { currentQuoteCount: 0 })
+
+        expect(result.ok && result.quote).toMatchObject({ excerpt: '文本', startOffset: 5, endOffset: 7 })
     })
 
     it('拒绝 crossBlock：同一消息内跨两个 text block 的选区（text→tool→text 场景的两端正文）', () => {

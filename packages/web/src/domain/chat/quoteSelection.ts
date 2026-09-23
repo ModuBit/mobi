@@ -66,6 +66,19 @@ export type QuoteSelectionResult =
     | { ok: true; quote: PendingQuoteRef }
     | { ok: false; reason: QuoteRejectionReason }
 
+/**
+ * 端点在容器文本序列中的 UTF-16 offset（相对 container.textContent）。
+ * 用折叠 Range 计量：容器起点 → 端点 的 toString().length——Range 序列化与
+ * textContent 同源（文本节点串接），元素端点（offset=子节点序号）也天然正确。
+ * 端点必然在容器内（resolveEndpointContext 沿父链找到 blockEl），无需越界处理。
+ */
+function textOffsetIn(container: HTMLElement, node: Node, offset: number): number {
+    const probe = document.createRange()
+    probe.setStart(container, 0)
+    probe.setEnd(node, offset)
+    return probe.toString().length
+}
+
 /** 判定环境：与 DOM 无关的调用方状态 */
 export interface QuoteSelectionEnv {
     /** composer 当前已挂引用条数（达 QUOTE_MAX_COUNT 即拒绝） */
@@ -204,5 +217,16 @@ export function resolveQuoteSelection(range: Range, env: QuoteSelectionEnv): Quo
     }
 
     const messageId = start.messageEl.getAttribute(MESSAGE_ID_ATTR) ?? ''
-    return { ok: true, quote: { messageId, role, excerpt: text } }
+    // offsets 只记录不使用（spec .scratch/response-annotations）：相对 block 容器文本序列的
+    // 选区位置，为未来「精确高亮源片段」预留事实；本期不进 prompt、不用于定位
+    return {
+        ok: true,
+        quote: {
+            messageId,
+            role,
+            excerpt: text,
+            startOffset: textOffsetIn(start.blockEl, range.startContainer, range.startOffset),
+            endOffset: textOffsetIn(start.blockEl, range.endContainer, range.endOffset),
+        },
+    }
 }

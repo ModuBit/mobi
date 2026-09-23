@@ -28,6 +28,13 @@ export const QUOTE_EXCERPT_MAX = 500
 export const QUOTE_COMMENT_MAX = 300
 
 /**
+ * 回应批注 directive 字面量（spec .scratch/response-annotations）：模型在回复中回应
+ * agent 引用的位置输出 `:mobi-quote{index="N"}`（index 与 `<quote index>` 同源一基）。
+ * CLI 协议文案与 web 渲染解析共用此常量，字面量两处漂移会被对方解析不了。
+ */
+export const QUOTE_DIRECTIVE = ':mobi-quote'
+
+/**
  * AG-UI InputContentSource 对齐：
  * mobi 落库恒用 url source（value=.mobi/uploads 路径）；data 形态仅留骨架占位。
  */
@@ -69,6 +76,11 @@ const QuoteBlockSchema = z.object({
     excerpt: z.string().max(QUOTE_EXCERPT_MAX),
     // 用户对引用内容的疑问/澄清（可选）：引用的价值主体，CLI 拼装 prompt 时以 <user-comment> 子标签紧随所属引用
     comment: z.string().max(QUOTE_EXCERPT_MAX).optional(),
+    // 选区在源消息 text block 容器内的位置（UTF-16 code unit，相对 blockEl.textContent）。
+    // 只记录不使用（为「精确高亮源片段」预留的事实记录）：不进 prompt、不用于定位；
+    // 旧消息无字段照常解析（optional 向后兼容）
+    startOffset: z.number().int().nonnegative().optional(),
+    endOffset: z.number().int().nonnegative().optional(),
 })
 
 /**

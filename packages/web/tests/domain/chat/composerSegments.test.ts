@@ -95,6 +95,23 @@ describe('composerSegments', () => {
         expect('uid' in plain).toBe(false)
     })
 
+    it('offsets 存在时透传并随往返还原，不存在时不产生多余字段（只记录不使用）', () => {
+        const withOffsets = serializeSegments({
+            ...seg,
+            quotes: [{ messageId: 'm1', role: 'agent' as const, excerpt: 'E', startOffset: 5, endOffset: 12 }],
+        })
+        expect(withOffsets.find(b => b.type === 'quote')).toMatchObject({ startOffset: 5, endOffset: 12 })
+        expect(deserializeSegments(withOffsets).quotes[0]).toEqual({
+            messageId: 'm1', role: 'agent', excerpt: 'E', startOffset: 5, endOffset: 12,
+        })
+
+        // 旧消息/未捕获场景：无 offsets 字段照常解析
+        const noOffsets = serializeSegments(seg)
+        const plain = noOffsets.find(b => b.type === 'quote') as Record<string, unknown>
+        expect('startOffset' in plain).toBe(false)
+        expect(deserializeSegments(noOffsets).quotes[0]).toEqual({ messageId: 'm1', role: 'agent', excerpt: 'E' })
+    })
+
     it('previewUrl 存在时透传，不存在时不产生多余字段', () => {
         const withPreview = serializeSegments({
             ...seg,
