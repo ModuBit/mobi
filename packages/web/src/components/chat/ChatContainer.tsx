@@ -864,13 +864,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         .${QUOTE_FLASH_CLASS} {
             animation: quote-locate-flash-kf ${QUOTE_FLASH_MS}ms ease-out;
             border-radius: ${token.borderRadiusLG}px;
-            /* padding + 等量负 margin：高亮底色/描边外扩不贴内容，占位不变（摘类时零布局跳动） */
-            padding: 10px 12px;
-            margin: -10px -12px;
         }
         @keyframes quote-locate-flash-kf {
-            0% { box-shadow: 0 0 0 3px ${token.colorWarningBorder}; background: ${token.colorWarningBg}; }
-            100% { box-shadow: 0 0 0 3px transparent; background: transparent; }
+            /* 高亮外扩不贴内容：第二层 box-shadow 用大 spread 画外圈底色带——
+               纯视觉层不占布局（padding 方案会挤占内容宽度引发重排，摘类后排布变化） */
+            0% { box-shadow: 0 0 0 3px ${token.colorWarningBorder}, 0 0 0 14px ${token.colorWarningBg}; background: ${token.colorWarningBg}; }
+            100% { box-shadow: 0 0 0 3px transparent, 0 0 0 14px transparent; background: transparent; }
         }
     `, [token])
 
