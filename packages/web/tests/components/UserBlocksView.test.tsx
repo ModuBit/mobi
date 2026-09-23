@@ -132,6 +132,33 @@ describe('UserBlocksView ImageView', () => {
         expect(container.querySelectorAll('.ant-image')).toHaveLength(2)
     })
 
+    it('多图段共享组预览：点击第二张直接打开组预览，计数从命中张开始', () => {
+        const blocks = [
+            serverImageBlock(),
+            // source 与第一张不同（uploads shortId 唯一）：组预览按 src 命中下标
+            { ...serverImageBlock(), id: 'img-2', filename: 'photo2.png', source: { type: 'url' as const, value: '.mobi/uploads/2026-08/photo2.png' } },
+        ]
+        const { container } = render(
+            <UserBlocksView blocks={blocks} env={{ refCtx: { sessionId: 'sess-1' } }} />,
+        )
+        // 点击第二张缩略图 → 组预览打开（不需要关闭再点下一张）
+        fireEvent.click(container.querySelectorAll('.ant-image img')[1])
+        const preview = document.querySelector('.ant-image-preview')
+        expect(preview).not.toBeNull()
+        // 1/N 进度可见（count>1 才渲染），且 current 命中点击的那张（2/2 而非 1/2）
+        expect(preview!.textContent).toMatch(/2\s*\/\s*2/)
+    })
+
+    it('单张图片也在组内：打开预览无 1/N 计数（无切换语义）', () => {
+        const { container } = render(
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ refCtx: { sessionId: 'sess-1' } }} />,
+        )
+        fireEvent.click(container.querySelector('.ant-image img')!)
+        const preview = document.querySelector('.ant-image-preview')
+        expect(preview).not.toBeNull()
+        expect(preview!.textContent).not.toMatch(/1\s*\/\s*1/)
+    })
+
     it('env 带 machineId+cwd 时 src 走 machine 端点（会话关闭仍可达）', () => {
         const { container } = render(
             <UserBlocksView

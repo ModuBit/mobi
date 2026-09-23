@@ -15,8 +15,8 @@
  */
 
 import type React from 'react'
-import { useState } from 'react'
-import { Button, theme, Space } from 'antd'
+import { useMemo, useState } from 'react'
+import { Button, theme, Space, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileCard } from '@ant-design/x'
 import { Bot, Pencil, User } from 'lucide-react'
@@ -297,6 +297,77 @@ export function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
 }
 
 /**
+ * 多图段视图：段内所有图共享一条组预览时间线（Image.PreviewGroup）——点击任一张放大后
+ * 可直接上一张/下一张（含键盘 ←/→ 与 1/N 进度），不必关闭再点下一张。
+ *
+ * - items 显式下发而非依赖子 Image 注册：组预览的 current 与 blocks 顺序一一对应，
+ *   不受「加载失败缩略图退出注册（canPreview=false）」造成的序号漂移影响；src 与
+ *   ImageView 内部同源（resolveUserImageUrl），点击缩略图按 src 命中下标。
+ * - 单图也走组（形态一致）；组内只有一张时无切换箭头与 1/N 计数，行为不变。
+ * - 草图编辑入口从「单图预览工具栏」平移到「组预览工具栏」：按 current 反查 src 对应
+ *   的 sketch 可编辑块（上传 shortId 路径唯一，src 即身份），仅草图块渲染编辑按钮，
+ *   点击先收组预览再进编辑器（预览是全屏层，与画板互相遮挡）。
+ */
+export function UserImageGroupView({ blocks, env }: { blocks: readonly UserImageBlock[]; env: UserBlockRenderEnv }) {
+    const { t } = useTranslation()
+    // 组预览受控开关：关闭的唯一受控路径（草图编辑前先收起）；点击缩略图打开也经它
+    const [previewOpen, setPreviewOpen] = useState(false)
+
+    const items = useMemo(
+        () => blocks
+            .map(b => resolveUserImageUrl(b, env.refCtx ?? {}))
+            .filter((src): src is string => src !== null)
+            .map(src => ({ src })),
+        [blocks, env.refCtx],
+    )
+    // src → sketch 可编辑块（仅 url 形态 + 调用方提供回调时进入映射）
+    const sketchEditableBySrc = useMemo(() => new Map(
+        blocks
+            .filter(b => !!b.sketch && b.source.type === 'url' && !!env.onEditSketch)
+            .map(b => [resolveUserImageUrl(b, env.refCtx ?? {}), b]),
+    ), [blocks, env.onEditSketch])
+
+    return (
+        <Image.PreviewGroup
+            items={items}
+            preview={{
+                open: previewOpen,
+                onOpenChange: setPreviewOpen,
+                // 单图无切换语义：隐藏 1/N 进度（rc-image 对组预览恒渲染计数）
+                ...(items.length > 1 ? {} : { countRender: () => '' }),
+                ...(env.onEditSketch && {
+                    actionsRender: (originalNode, info) => {
+                        const sketchBlock = items[info.current] && sketchEditableBySrc.get(items[info.current].src)
+                        return (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+                                {originalNode}
+                                {sketchBlock && (
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<Pencil size={14} />}
+                                        onClick={() => {
+                                            setPreviewOpen(false)
+                                            env.onEditSketch?.(sketchBlock)
+                                        }}
+                                    >
+                                        {t('sketch.editSketch')}
+                                    </Button>
+                                )}
+                            </div>
+                        )
+                    },
+                }),
+            }}
+        >
+            <Space size={8} wrap style={{ maxWidth: '100%' }}>
+                {blocks.map(b => <ImageView key={b.id} block={b} env={env} />)}
+            </Space>
+        </Image.PreviewGroup>
+    )
+}
+
+/**
  * 用户消息 content block → 视图注册表（对齐 knownTools 工具卡注册惯例）：
  * shared 新增 block 类型时在此加一行即可接入渲染。
  *
@@ -334,13 +405,9 @@ export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBl
                         </Space>
                     )
                 }
-                // 连续 image 归并到横向 Space（可换行），多图不一张一行
+                // 连续 image 归并到组预览容器（内部横向 Space 可换行），多图预览可连续切换
                 if (seg.kind === 'images') {
-                    return (
-                        <Space key={`imgs-${seg.blocks[0].id}`} size={8} wrap style={{ maxWidth: '100%' }}>
-                            {seg.blocks.map(b => <ImageView key={b.id} block={b} env={renderEnv} />)}
-                        </Space>
-                    )
+                    return <UserImageGroupView key={`imgs-${seg.blocks[0].id}`} blocks={seg.blocks} env={renderEnv} />
                 }
                 // 连续 quote 归并为引用组合并容器（单条也同容器，形态一致）
                 if (seg.kind === 'quotes') {

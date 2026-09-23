@@ -20,12 +20,12 @@ import { useTranslation } from 'react-i18next'
 import { Quote } from 'lucide-react'
 import { Bot, User } from 'lucide-react'
 import styled from '@emotion/styled'
-import type { UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock } from '@mobi/shared'
+import type { UserContentBlock, UserDocumentBlock, UserQuoteBlock } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { truncatePreview } from '@/core/lib/truncatePreview'
 import type { UserBlockRenderEnv } from './UserBlocksView'
-import { DocumentView, ImageView } from './UserBlocksView'
+import { DocumentView, UserImageGroupView } from './UserBlocksView'
 
 /**
  * 用户气泡 header 的「附件层」：图片 / 文档 / 引用不再占气泡正文，统一收进 bubble
@@ -183,11 +183,8 @@ export function UserBubbleHeader({ blocks, env }: { blocks: readonly UserContent
                     )
                 }
                 if (seg.kind === 'images') {
-                    return (
-                        <Space key={`imgs-${seg.blocks[0].id}`} size={8} wrap style={{ maxWidth: '100%' }}>
-                            {seg.blocks.map((b: UserImageBlock) => <ImageView key={b.id} block={b} env={env} />)}
-                        </Space>
-                    )
+                    // 组预览：多图放大后可直接上一张/下一张（含草图编辑入口平移）
+                    return <UserImageGroupView key={`imgs-${seg.blocks[0].id}`} blocks={seg.blocks} env={env} />
                 }
                 return <UserQuoteChip key={`quotes-${seg.blocks[0].messageId}`} blocks={seg.blocks} onLocate={env.onQuoteLocate} />
             })}
