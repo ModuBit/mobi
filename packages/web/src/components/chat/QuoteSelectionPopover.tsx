@@ -19,6 +19,7 @@ import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 /** 浮层宽度：内容自适应（max-content），仅以估算值兜底钳制与首帧定位 */
 const ESTIMATED_WIDTH = 120
@@ -104,6 +105,8 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
     onClose,
 }: QuoteSelectionPopoverProps) {
     const { t } = useTranslation()
+    // 移动端优先放选区下方：系统文本选择菜单覆盖在选区上方，同侧会被盖住
+    const isMobile = useIsMobile()
 
     // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载。宽度自适应后钳制
     // 需要实测宽：首帧按估算值定位，挂载后测量修正（同帧内完成，无可见跳动）
@@ -112,7 +115,13 @@ export const QuoteSelectionPopover = memo(function QuoteSelectionPopover({
     useLayoutEffect(() => {
         if (layerRef.current) setWidth(layerRef.current.offsetWidth)
     }, [state.kind])
-    const { top, left, above } = computeQuoteLayerPlacement(state.rect, width, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
+    const { top, left, above } = computeQuoteLayerPlacement(
+        state.rect,
+        width,
+        FLIP_THRESHOLD_PX,
+        ESTIMATED_HEIGHT_PX,
+        isMobile,
+    )
 
     return (
         <Layer

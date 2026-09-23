@@ -47,6 +47,23 @@ describe('computeQuoteLayerPlacement（浮层定位）', () => {
         })
     })
 
+    it('preferBelow（移动端）：默认翻到选区下方（躲开系统选择菜单），即使上方空间充足', () => {
+        withViewport(800, 600, () => {
+            const p = computeQuoteLayerPlacement(new DOMRect(100, 300, 200, 20), 260, 140, 44, true)
+            expect(p.above).toBe(false)
+            expect(p.top).toBe(320 + QUOTE_LAYER_GAP)
+        })
+    })
+
+    it('preferBelow 但下方放不下（选区贴近视口底）→ 翻回上方（可见性优先）', () => {
+        withViewport(800, 600, () => {
+            // rect.bottom = 560，下缘仅剩 40px，容不下 GAP + 44 高 + margin
+            const p = computeQuoteLayerPlacement(new DOMRect(100, 540, 200, 20), 260, 140, 44, true)
+            expect(p.above).toBe(true)
+            expect(p.top).toBe(540 - QUOTE_LAYER_GAP)
+        })
+    })
+
     it('下方放置但浮层会溢出视口下缘 → top 钳回下缘内（确认/取消按钮保持可点）', () => {
         withViewport(800, 600, () => {
             // 顶部起选的大选区：top=100 ≤ 阈值 → 下方放置；rect.bottom=580，+GAP=588，

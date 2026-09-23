@@ -45,14 +45,20 @@ export interface QuoteLayerPlacement {
  * @param estimatedHeight 浮层估算高度：下方放置时据此钳回视口下缘——顶部起选、拖到
  *                        接近视口底的大选区不钳的话，确认/取消按钮落进视口外不可点。
  *                        估算值只用于钳制兜底，不必精确
+ * @param preferBelow    优先放选区下方（移动端）：系统文本选择菜单（复制/全选…）
+ *                       覆盖在选区上方，同侧弹出会被盖住（2026-09-23 真机实测）；
+ *                       下方放不下（距视口下缘不足）时仍翻回上方
  */
 export function computeQuoteLayerPlacement(
     rect: DOMRect,
     width: number,
     flipThreshold: number,
     estimatedHeight: number,
+    preferBelow = false,
 ): QuoteLayerPlacement {
-    const above = rect.top > flipThreshold
+    const belowFits = rect.bottom + QUOTE_LAYER_GAP + estimatedHeight + QUOTE_LAYER_VIEWPORT_MARGIN
+        <= window.innerHeight
+    const above = preferBelow ? !belowFits : rect.top > flipThreshold
     let top = above ? rect.top - QUOTE_LAYER_GAP : rect.bottom + QUOTE_LAYER_GAP
     const left = Math.min(
         Math.max(rect.left + rect.width / 2 - width / 2, QUOTE_LAYER_VIEWPORT_MARGIN),
