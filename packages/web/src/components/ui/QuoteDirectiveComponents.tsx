@@ -24,8 +24,9 @@
  */
 
 import { createContext, useContext, type FC, type ReactNode } from 'react'
-import { theme } from 'antd'
+import { Tag, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
 import { AppTooltip } from './AppTooltip'
@@ -38,21 +39,23 @@ interface QuoteAnnotations {
 
 export const QuoteAnnotationsContext = createContext<QuoteAnnotations | undefined>(undefined)
 
-/** tooltip 内容：引用原文 + 用户评论（有则显示），评论是用户自己的话提一级灰 */
+/** tooltip 内容：引用原文 + 用户评论（有则显示）。antd Tooltip 恒深色浮层，评论
+ *  色不能取主题 text token（light 主题下深灰落在深色浮层上不可读，2026-09-23 验收），
+ *  用浮层前景的固定透明度分层 */
 function AnnotationTooltipContent({ quote }: { quote: UserQuoteBlock }) {
-    const { token } = theme.useToken()
     return (
         <div style={{ maxWidth: 320, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             <div>{quote.excerpt}</div>
             {quote.comment && (
-                <div style={{ marginTop: 4, color: token.colorTextSecondary }}>{quote.comment}</div>
+                <div style={{ marginTop: 4, color: 'rgba(255, 255, 255, 0.65)' }}>{quote.comment}</div>
             )}
         </div>
     )
 }
 
-/** 「引用 N」上标标记（脚注锚点，ChatGPT 式纯文字）：line-height:0 + 小字号使其
- *  不参与行高计算——带框 Tag 会撑高所在行的 line box，首行与后续行基线错位（2026-09-23 验收） */
+/** 「引用 N」上标 tag 标记（蓝色 tag，与 FootnoteRef 的 tag 语言一致）：baseline 显式
+ *  对齐 + line-height:0 + 外层 0.72em 使 tag 高度小于正文 ascent——首行行盒不被撑高
+ *  （带框 Tag 撑高 line box 致首行基线错位，2026-09-23 验收） */
 export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>> = ({ 'data-index': dataIndex, children }) => {
     const { token } = theme.useToken()
     const { t } = useTranslation()
@@ -74,17 +77,27 @@ export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>>
                 annotations.onLocate(quote.messageId)
             }}
             style={{
-                // sup 默认 vertical-align:super；line-height 归零是不撑行高的关键
+                // 显式 baseline 对齐（sup 的 UA super 会让标记悬空显「没对齐」，2026-09-23 验收）；
+                // line-height 归零使 sup 的文字盒不参与行高计算——Tag 高度 ≈1.2×0.72em 小于
+                // 正文 ascent，不会再撑高首行
+                verticalAlign: 'baseline',
                 lineHeight: 0,
                 fontSize: '0.72em',
-                color: token.colorLink,
-                cursor: 'pointer',
-                userSelect: 'none',
-                whiteSpace: 'nowrap',
                 margin: '0 2px',
             }}
         >
-            {t('chat.annotationMarker', { count: index })}
+            {/* 引用 icon 与用户消息侧「N 条引用」chip 同款（lucide Quote） */}
+            <Tag color="blue" style={{
+                padding: '0 0.4em',
+                // 1.2em（相对 0.72em 外层）≈ 0.86 正文 em：控制在正文 ascent 之内，行盒不被撑高
+                lineHeight: '1.2em',
+                cursor: 'pointer',
+                textDecoration: 'none',
+                userSelect: 'none',
+            }}>
+                <Quote size={10} style={{ verticalAlign: '-0.1em', marginRight: 2 }} />
+                {t('chat.annotationMarker', { count: index })}
+            </Tag>
         </sup>
     )
 
