@@ -24,7 +24,7 @@
  */
 
 import { createContext, useContext, type FC, type ReactNode } from 'react'
-import { Tag, theme } from 'antd'
+import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
@@ -53,9 +53,8 @@ function AnnotationTooltipContent({ quote }: { quote: UserQuoteBlock }) {
     )
 }
 
-/** 「引用 N」上标 tag 标记（蓝色 tag，与 FootnoteRef 的 tag 语言一致）：baseline 显式
- *  对齐 + line-height:0 + 外层 0.72em 使 tag 高度小于正文 ascent——首行行盒不被撑高
- *  （带框 Tag 撑高 line box 致首行基线错位，2026-09-23 验收） */
+/** 「引用 N」上标标记（默认色 tag + 引用 icon）：外层 inline-block 盒高锁死 1em 且基线
+ *  对齐——tag 视觉溢出不参与行高，首行与其余行基线严格一致 */
 export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>> = ({ 'data-index': dataIndex, children }) => {
     const { token } = theme.useToken()
     const { t } = useTranslation()
@@ -77,27 +76,32 @@ export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>>
                 annotations.onLocate(quote.messageId)
             }}
             style={{
-                // 显式 baseline 对齐（sup 的 UA super 会让标记悬空显「没对齐」，2026-09-23 验收）；
-                // line-height 归零使 sup 的文字盒不参与行高计算——Tag 高度 ≈1.2×0.72em 小于
-                // 正文 ascent，不会再撑高首行
-                verticalAlign: 'baseline',
+                // 零行盒影响方案（2026-09-23 三轮验收收敛）：整体纯 inline + line-height:0——
+                // inline 非替换元素的行盒贡献只由 line-height 决定；仿 tag 的 border/background
+                // 是纯视觉溢出、icon 绝对定位脱流，首行与其余行基线严格一致
+                position: 'relative',
                 lineHeight: 0,
                 fontSize: '0.72em',
                 margin: '0 2px',
+                cursor: 'pointer',
+                userSelect: 'none',
+                whiteSpace: 'nowrap',
             }}
         >
-            {/* 引用 icon 与用户消息侧「N 条引用」chip 同款（lucide Quote） */}
-            <Tag color="blue" style={{
-                padding: '0 0.4em',
-                // 1.2em（相对 0.72em 外层）≈ 0.86 正文 em：控制在正文 ascent 之内，行盒不被撑高
-                lineHeight: '1.2em',
-                cursor: 'pointer',
-                textDecoration: 'none',
-                userSelect: 'none',
+            {/* 引用 icon 与用户消息侧「N 条引用」chip 同款（lucide Quote）；svg 是替换元素
+                （高度参与行盒），必须绝对定位脱流 */}
+            <Quote size={10} style={{ position: 'absolute', left: 3, top: 0 }} />
+            <span style={{
+                display: 'inline',
+                // 仿 antd 默认 Tag（border + 弱填充背景）；inline 元素的垂直 border/padding
+                // 是纯视觉，不参与行盒
+                border: '1px solid var(--ant-color-border)',
+                borderRadius: 8,
+                padding: '1px 6px 1px 15px',
+                background: 'var(--ant-color-fill-quaternary)',
             }}>
-                <Quote size={10} style={{ verticalAlign: '-0.1em', marginRight: 2 }} />
                 {t('chat.annotationMarker', { count: index })}
-            </Tag>
+            </span>
         </sup>
     )
 
