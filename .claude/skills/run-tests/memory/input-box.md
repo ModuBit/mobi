@@ -21,4 +21,5 @@ mobi 的输入框（登录 token、聊天框）多为自定义组件，标准三
 - **不用 `fill`** — 对自定义输入框常超时失败
 - **不直接 `type_text` 不全选** — 会追加而非替换，内容重复
 - **提交差异** — 聊天框可 `type_text` 带 `submitKey: Enter` 提交；登录框 Enter 无效，见 [[login]]
+- **多行文本的 `\n` 会立即触发提交（2026-09-23）** — 聊天 composer 把文本中的换行当 Enter 语义：`type_text` 带 `\n` 的多行探针只有**第一行**被发出（DB 用户消息原文可证），后续行全部丢失，表现为「模型说消息被截断」。**探针必须写成单行**（分号连接步骤），长 prompt 也一样
 - **Ctrl+A 对 combobox 型输入框可能不生效**（2026-08-24 踩过：项目 Modal 的 folder 路径 combobox，`press_key Control+A` 后 type 变追加）— 兜底：`evaluate_script` 找到该 input，`focus()` + `setSelectionRange(0, value.length)` 全选后再 `type_text`，即替换成功
