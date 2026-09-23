@@ -95,11 +95,12 @@ describe('QuoteChipBar', () => {
         fireEvent.click(screen.getByRole('button', { name: 'common.save' }))
         expect(onUpdateComment).toHaveBeenCalledWith('u1', '改成新的疑问')
 
-        // 清空保存 → 传 undefined（删除评论）
+        // 清空保存 → 传 undefined（删除评论）：空态按钮是关闭不是保存，清空走 Ctrl/Cmd+Enter 键位
         rerender(<QuoteChipBar quotes={withComment} onRemove={vi.fn()} onUpdateComment={onUpdateComment} />)
         fireEvent.click(screen.getByTestId('quote-edit-comment-0'))
-        fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
-        fireEvent.click(screen.getByRole('button', { name: 'common.save' }))
+        const editInput = screen.getByRole('textbox') as HTMLTextAreaElement
+        fireEvent.change(editInput, { target: { value: '   ' } })
+        fireEvent.keyDown(editInput, { key: 'Enter', metaKey: true })
         expect(onUpdateComment).toHaveBeenCalledWith('u1', undefined)
     })
 

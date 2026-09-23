@@ -15,14 +15,14 @@
  */
 
 import { memo, useState } from 'react'
-import { Button, Popover } from 'antd'
+import { Popover } from 'antd'
 import { Quote } from 'lucide-react'
 import { CloseOutlined, EditOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { ComposerQuoteRef } from '@/domain/chat/composerSegments'
 import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
-import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
+import { CommentField } from '@/components/ui/CommentField'
 
 /** 引用列表卡单条目间距（条间分隔线的统一节奏） */
 const ITEM_GAP = 10
@@ -111,98 +111,67 @@ const ItemAction = styled.span`
     }
 `
 
-const CommentInput = styled.textarea`
-    width: 100%;
-    min-height: 36px;
-    padding: 4px 6px;
-    border: 1px solid var(--ant-color-border);
-    border-radius: 6px;
-    background: var(--ant-color-bg-container);
-    color: var(--ant-color-text);
-    font-size: 12px;
-    line-height: 18px;
-    resize: none;
-    outline: none;
-`
-
 interface QuoteChipBarProps {
     quotes: ComposerQuoteRef[]
     /** 删除按条目级 uid 寻址（同消息可挂多个不同片段，messageId 不唯一） */
     onRemove: (uid: string) => void
     /** 评论编辑保存（undefined = 清空评论）；缺省不渲染编辑入口 */
     onUpdateComment?: (uid: string, comment: string | undefined) => void
+    /** 一键清空全部引用（胶囊旁 ×） */
+    onClearAll?: () => void
+    /** 条目点击定位源消息（滚动 + 高亮）；缺省纯展示 */
+    onLocate?: (messageId: string) => void
 }
 
-/** 列表卡单条目：excerpt 全文 + 评论行 + 删除/评论编辑动作 */
+/** 列表卡单条目：excerpt 全文 + 评论行 + 删除/评论编辑动作；点 excerpt 定位源消息 */
 function QuoteItem({
     quote,
     index,
     canEditComment,
+    canLocate,
     onRemove,
     onUpdateComment,
+    onLocate,
 }: {
     quote: ComposerQuoteRef
     index: number
     canEditComment: boolean
+    canLocate: boolean
     onRemove: (uid: string) => void
     onUpdateComment?: (uid: string, comment: string | undefined) => void
+    onLocate?: (messageId: string) => void
 }) {
     const { t } = useTranslation()
     const [editing, setEditing] = useState(false)
-    const [draft, setDraft] = useState(quote.comment ?? '')
-
-    // 取消语义单点：退出编辑 + 恢复草稿为已保存评论（Esc 与取消按钮共用）
-    const cancel = () => {
-        setEditing(false)
-        setDraft(quote.comment ?? '')
-    }
-
-    const saveComment = () => {
-        const trimmed = draft.trim()
-        onUpdateComment?.(quote.uid, trimmed.length > 0 ? trimmed : undefined)
-        setEditing(false)
-    }
 
     return (
         <Item data-testid={`quote-item-${index}`}>
             <ItemIndex>{index + 1}.</ItemIndex>
             <ItemBody>
-                <ItemText>{quote.excerpt}</ItemText>
+                <ItemText
+                    // 点 excerpt 定位源消息（编辑态 textarea 同在 ItemBody，但不落此 onClick，互不干扰）
+                    onClick={canLocate ? () => onLocate?.(quote.messageId) : undefined}
+                    style={canLocate ? { cursor: 'pointer' } : undefined}
+                >
+                    {quote.excerpt}
+                </ItemText>
                 {!editing && quote.comment !== undefined && (
                     <ItemComment data-testid={`quote-comment-${index}`}>{quote.comment}</ItemComment>
                 )}
-                {editing ? (
-                    <>
-                        <CommentInput
-                            autoFocus
-                            maxLength={QUOTE_EXCERPT_MAX}
-                            value={draft}
-                            placeholder={t('composer.quoteCommentPlaceholder')}
-                            onChange={(e) => setDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                                // 键位判定（含 IME 组合中 Enter 不提交）由 commentTextareaAction 单处承载
-                                const action = commentTextareaAction(e)
-                                if (action === 'submit') {
-                                    e.preventDefault()
-                                    saveComment()
-                                } else if (action === 'cancel') {
-                                    cancel()
-                                }
-                            }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                            <Button
-                                size="small"
-                                onClick={cancel}
-                            >
-                                {t('common.cancel')}
-                            </Button>
-                            <Button type="primary" size="small" onClick={saveComment}>
-                                {t('common.save')}
-                            </Button>
-                        </div>
-                    </>
-                ) : null}
+                {editing && (
+                    <CommentField
+                        testIdPrefix={`quote-item-${index}`}
+                        initialComment={quote.comment}
+                        maxLength={QUOTE_EXCERPT_MAX}
+                        autoFocus
+                        placeholder={t('composer.quoteCommentPlaceholder')}
+                        onSave={(comment) => {
+                            onUpdateComment?.(quote.uid, comment)
+                            setEditing(false)
+                        }}
+                        onClose={() => setEditing(false)}
+                    />
+                )}
             </ItemBody>
             <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 {canEditComment && !editing && (
@@ -210,10 +179,7 @@ function QuoteItem({
                         role="button"
                         aria-label={t('composer.quoteEditComment')}
                         data-testid={`quote-edit-comment-${index}`}
-                        onClick={() => {
-                            setDraft(quote.comment ?? '')
-                            setEditing(true)
-                        }}
+                        onClick={() => setEditing(true)}
                     >
                         <EditOutlined />
                     </ItemAction>
@@ -237,7 +203,13 @@ function QuoteItem({
  * 编号与 prompt 的 quote index、气泡引用组编号同源（数组序）；评论在列表卡内可见、可编辑
  * （excerpt 只读：引用忠实于源消息，评论才是用户的话）。
  */
-export const QuoteChipBar = memo(function QuoteChipBar({ quotes, onRemove, onUpdateComment }: QuoteChipBarProps) {
+export const QuoteChipBar = memo(function QuoteChipBar({
+    quotes,
+    onRemove,
+    onUpdateComment,
+    onClearAll,
+    onLocate,
+}: QuoteChipBarProps) {
     const { t } = useTranslation()
     if (quotes.length === 0) return null
 
@@ -249,19 +221,33 @@ export const QuoteChipBar = memo(function QuoteChipBar({ quotes, onRemove, onUpd
                     quote={q}
                     index={i}
                     canEditComment={!!onUpdateComment}
+                    canLocate={!!onLocate}
                     onRemove={onRemove}
                     onUpdateComment={onUpdateComment}
+                    onLocate={onLocate}
                 />
             ))}
         </ListCard>
     )
 
     return (
-        <Popover content={list} trigger="click" placement="topLeft">
-            <Chip type="button" data-testid="quote-chip">
-                <Quote size={12} />
-                {t('composer.quoteCount', { count: quotes.length })}
-            </Chip>
-        </Popover>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Popover content={list} trigger="click" placement="topLeft">
+                <Chip type="button" data-testid="quote-chip">
+                    <Quote size={12} />
+                    {t('composer.quoteCount', { count: quotes.length })}
+                </Chip>
+            </Popover>
+            {onClearAll && (
+                <ItemAction
+                    role="button"
+                    aria-label={t('composer.clearQuotes')}
+                    data-testid="quote-clear-all"
+                    onClick={onClearAll}
+                >
+                    <CloseOutlined />
+                </ItemAction>
+            )}
+        </span>
     )
 })

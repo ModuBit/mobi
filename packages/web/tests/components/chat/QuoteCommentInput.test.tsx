@@ -47,6 +47,8 @@ describe('QuoteCommentInput', () => {
 
         const input = screen.getByRole('textbox')
         fireEvent.change(input, { target: { value: '  为什么这样？  ' } })
+        // 字数上限计数（JSX 插值拆成相邻文本节点，断言用 span 整体 textContent）
+        expect(screen.getByTestId('quote-comment-count')).toHaveTextContent('10/500')
         fireEvent.click(screen.getByTestId('quote-comment-save'))
         expect(onSave).toHaveBeenCalledWith('为什么这样？')
         expect(onClose).not.toHaveBeenCalled()
