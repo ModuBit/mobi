@@ -48,11 +48,11 @@ const Chip = styled.button`
 `
 
 const ListCard = styled.div`
-    /* 恒定宽度：编辑态条目只剩窄的 CommentField 时 shrink-to-fit 会整卡收窄，
-       展示/编辑宽度跳变（2026-09-23 验收反馈）；与 excerpt 撑满态取同一量级 */
-    width: 420px;
-    max-width: 100%;
-    max-height: 320px;
+    /* 恒定宽度 + 视口钳制：编辑态条目只剩窄的 CommentField 时 shrink-to-fit 会整卡收窄，
+       展示/编辑宽度跳变（2026-09-23 验收反馈）；min() 保证窄屏（移动端 ~390px）不溢出——
+       写死 px 的话 max-width:100% 相对 shrink-to-fit 父容器不构成约束 */
+    width: min(420px, calc(100vw - 32px));
+    max-height: min(320px, 60dvh);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
