@@ -118,10 +118,12 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
             <div style={{
                 background: token.colorFillQuaternary,
                 borderRadius: token.borderRadiusLG,
-                padding: `${token.paddingXS}px ${token.paddingSM}px`,
+                // 收紧套娃 padding（2026-09-23 验收）：bar 4px + 消息条 6/10px，
+                // 文字距 bar 缘从 20px 收到 16px，标题-条 gap 8→6
+                padding: '4px 8px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: token.paddingXS,
+                gap: 6,
             }}>
                 {/* 排队分区（有排队消息时才展示标题行与列表） */}
                 {queued.length > 0 && (
@@ -189,8 +191,8 @@ function QueuedItem(props: {
                 gap: token.paddingXS,
                 background: token.colorBgContainer,
                 borderRadius: token.borderRadius,
-                padding: `${token.paddingXS}px ${token.paddingSM}px`,
-                minHeight: 36,
+                padding: '6px 10px',
+                minHeight: 34,
             }}
         >
             {/* 文本预览：最多 3 行截断 */}
