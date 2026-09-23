@@ -8,6 +8,7 @@
     "./schemas": "./src/schemas.ts",
     "./types": "./src/types.ts",
     "./messages": "./src/messages.ts",
+    "./messageClassification": "./src/messageClassification.ts",
     "./profile": "./src/profile.ts",
     "./pathSecurity": "./src/pathSecurity.ts",
     "./fileMeta": "./src/fileMeta.ts",

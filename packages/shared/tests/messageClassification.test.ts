@@ -15,7 +15,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { classifyMessage } from '../src/messageClassification'
+import {
+    classifyMessage,
+    isClaudeChatVisibleSystemSubtype,
+    isClaudeChatVisibleMessage,
+} from '../src/messageClassification'
 
 describe('classifyMessage', () => {
     describe('discard 规则', () => {
@@ -156,5 +160,82 @@ describe('classifyMessage', () => {
         it('discard 优先于 ephemeral', () => {
             expect(classifyMessage('system', 'hook_started')).toBe('discard')
         })
+    })
+})
+
+// ========== 读路径：web 聊天流可见性 ==========
+
+describe('isClaudeChatVisibleSystemSubtype', () => {
+    it('api_error 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('api_error')).toBe(true)
+    })
+
+    it('api_retry 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('api_retry')).toBe(true)
+    })
+
+    it('compact_boundary 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('compact_boundary')).toBe(true)
+    })
+
+    it('turn_duration 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('turn_duration')).toBe(true)
+    })
+
+    it('microcompact_boundary 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('microcompact_boundary')).toBe(true)
+    })
+
+    it('task_started 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('task_started')).toBe(true)
+    })
+
+    it('task_updated 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('task_updated')).toBe(true)
+    })
+
+    it('init 返回 false', () => {
+        expect(isClaudeChatVisibleSystemSubtype('init')).toBe(false)
+    })
+
+    it('非字符串返回 false', () => {
+        expect(isClaudeChatVisibleSystemSubtype(123)).toBe(false)
+        expect(isClaudeChatVisibleSystemSubtype(null)).toBe(false)
+        expect(isClaudeChatVisibleSystemSubtype(undefined)).toBe(false)
+    })
+})
+
+describe('isClaudeChatVisibleMessage', () => {
+    it('非 system 且非 ephemeral 顶层类型返回 true', () => {
+        expect(isClaudeChatVisibleMessage({ type: 'user' })).toBe(true)
+        expect(isClaudeChatVisibleMessage({ type: 'assistant' })).toBe(true)
+        expect(isClaudeChatVisibleMessage({ type: 'tool_result' })).toBe(true)
+    })
+
+    it('tool_progress / tool_use_summary 已接入 handler，视为可见', () => {
+        // 这两类 ephemeral 消息由 web normalize 产出 tool-progress / tool-use-summary 事件，
+        // 挂到对应工具卡片（耗时显示 / 摘要），不再被 JSON dump 当文本渲染
+        expect(isClaudeChatVisibleMessage({ type: 'tool_progress' })).toBe(true)
+        expect(isClaudeChatVisibleMessage({ type: 'tool_use_summary' })).toBe(true)
+    })
+
+    it('system + 可见子类型返回 true', () => {
+        expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'api_error' })).toBe(true)
+        expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'compact_boundary' })).toBe(true)
+    })
+
+    it('system + 不可见子类型返回 false', () => {
+        expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'init' })).toBe(false)
+        expect(isClaudeChatVisibleMessage({ type: 'system', subtype: 'other' })).toBe(false)
+    })
+
+    it('system 无 subtype 返回 false', () => {
+        expect(isClaudeChatVisibleMessage({ type: 'system' })).toBe(false)
+    })
+
+    it('command_lifecycle 返回 false（控制帧，历史落库行静默跳过）', () => {
+        // SDK 0.3.206 新增的排队生命周期回执，早期版本曾被当 persistent 落库；
+        // 现由 classifyMessage discard 拦截新消息，此处兜底过滤历史行（web 端不再 console.warn）
+        expect(isClaudeChatVisibleMessage({ type: 'command_lifecycle' })).toBe(false)
     })
 })

@@ -16,7 +16,7 @@
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, ToolResult, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type StopKind } from '@mobi/shared'
-import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
+import { isClaudeChatVisibleMessage } from '@mobi/shared/messageClassification'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
 // 中断合成消息判定的唯一定义（/simplify 收口：此前 domain 与 TextBlock 各持一份
@@ -618,11 +618,21 @@ const outputHandlers = new Map<string, OutputHandler>([
 // 导出函数
 // ============================================================================
 
+/**
+ * SDK 打在 output 消息上的「非对话内容」合成标记：isMeta（meta 帧）与
+ * isCompactSummary（compact 摘要帧）。过滤判据必须单点收口——
+ * isSkippableAgentContent（预检）与 normalizeAgentRecord（normalize 主路径）
+ * 都依赖它，各自手写一份会出现口径漂移。
+ */
+function hasSyntheticMarker(data: Record<string, unknown>): boolean {
+    return Boolean(data.isMeta) || Boolean(data.isCompactSummary)
+}
+
 export function isSkippableAgentContent(content: unknown): boolean {
     if (!isObject(content) || content.type !== 'output') return false
     const data = isObject(content.data) ? content.data : null
     if (!data) return false
-    if (Boolean(data.isMeta) || Boolean(data.isCompactSummary)) return true
+    if (hasSyntheticMarker(data)) return true
     return !isClaudeChatVisibleMessage({ type: data.type, subtype: data.subtype })
 }
 
@@ -642,8 +652,8 @@ export function normalizeAgentRecord(
         const data = isObject(content.data) ? content.data : null
         if (!data || typeof data.type !== 'string') return null
 
-        // 跳过 meta/compact-summary 消息
-        if (data.isMeta || data.isCompactSummary) return null
+        // 跳过 meta/compact-summary 消息（判据单点见 hasSyntheticMarker）
+        if (hasSyntheticMarker(data)) return null
         if (!isClaudeChatVisibleMessage({ type: data.type, subtype: data.subtype })) return null
 
         // 构建注册表 key，优先精确匹配 type:subtype，回退到 type
