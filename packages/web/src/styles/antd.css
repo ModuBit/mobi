@@ -379,3 +379,14 @@ html[data-theme='dark'] .ant-btn-variant-solid:active {
 html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     color: var(--ant-color-text-tertiary) !important;
 }
+
+/* 引用列表卡浮层（composer QuoteChipBar / 气泡 UserBubbleHeader 共用 overlayClassName）：
+   移动端窄屏下 topLeft 放置 + 卡宽接近视口时 popper 右缘会恰好压住屏幕边（2026-09-23 验收），
+   与 ListCard 的 min(420px, 100vw-48px) 联动整体钳进视口、两侧留边 */
+.quote-list-popover {
+    max-width: calc(100vw - 24px);
+}
+
+.quote-list-popover .ant-popover-inner {
+    max-width: calc(100vw - 24px);
+}

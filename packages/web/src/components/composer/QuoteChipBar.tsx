@@ -49,9 +49,9 @@ const Chip = styled.button`
 
 const ListCard = styled.div`
     /* 恒定宽度 + 视口钳制：编辑态条目只剩窄的 CommentField 时 shrink-to-fit 会整卡收窄，
-       展示/编辑宽度跳变（2026-09-23 验收反馈）；min() 保证窄屏（移动端 ~390px）不溢出——
-       写死 px 的话 max-width:100% 相对 shrink-to-fit 父容器不构成约束 */
-    width: min(420px, calc(100vw - 32px));
+       展示/编辑宽度跳变（2026-09-23 验收反馈）。-48 保证加上 popover 自身 padding 后
+       整体两侧仍有余量（只减 32 时 popper 右缘恰好压住屏幕边，观感即溢出） */
+    width: min(420px, calc(100vw - 48px));
     max-height: min(320px, 60dvh);
     overflow-y: auto;
     display: flex;
@@ -235,7 +235,7 @@ export const QuoteChipBar = memo(function QuoteChipBar({
 
     return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Popover content={list} trigger="click" placement="topLeft">
+            <Popover content={list} trigger="click" placement="topLeft" overlayClassName="quote-list-popover">
                 <Chip type="button" data-testid="quote-chip">
                     <Quote size={12} />
                     {t('composer.quoteCount', { count: quotes.length })}

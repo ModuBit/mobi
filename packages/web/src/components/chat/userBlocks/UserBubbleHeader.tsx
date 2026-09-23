@@ -63,8 +63,8 @@ const Chip = styled.button`
 
 const ListCard = styled.div`
     /* 恒定宽度（与 composer 引用列表卡同一量级）：短 excerpt 时 shrink-to-fit 卡片过窄；
-       min() 视口钳制保证移动端窄屏不溢出 */
-    width: min(420px, calc(100vw - 32px));
+       -48 与 popover padding 合计后整体两侧留边（见 styles/antd.css 的 quote-list-popover） */
+    width: min(420px, calc(100vw - 48px));
     max-height: min(320px, 60dvh);
     overflow-y: auto;
     display: flex;
@@ -153,7 +153,7 @@ function UserQuoteChip({ blocks, onLocate }: { blocks: UserQuoteBlock[]; onLocat
     )
 
     return (
-        <Popover content={list} trigger="click" placement="topLeft" open={open} onOpenChange={setOpen}>
+        <Popover content={list} trigger="click" placement="topLeft" overlayClassName="quote-list-popover" open={open} onOpenChange={setOpen}>
             <Chip type="button" data-testid="user-quote-chip">
                 <Quote size={12} />
                 {t('composer.quoteCount', { count: blocks.length })}
