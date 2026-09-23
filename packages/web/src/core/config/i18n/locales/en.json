@@ -12,7 +12,9 @@
         "more": "More",
         "close": "Close",
         "scrollBottom": "Back to bottom",
-        "toggleTheme": "Toggle theme"
+        "toggleTheme": "Toggle theme",
+        "collapseSidebar": "Collapse sidebar",
+        "expandSidebar": "Expand sidebar"
     },
     "time": {
         "justNow": "just now",

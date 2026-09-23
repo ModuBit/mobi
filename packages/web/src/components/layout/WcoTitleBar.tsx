@@ -18,6 +18,7 @@ import { theme as antTheme } from 'antd'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import styled from '@emotion/styled'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { Logo } from './Logo'
 import { MobiWordmark } from './MobiWordmark'
 import { UpdateIconButton } from './UpdatePrompt'
@@ -140,6 +141,7 @@ function detectSide(): TitleBarSide {
 }
 
 export function WcoTitleBar({ side }: WcoTitleBarProps) {
+    const { t } = useTranslation()
     const { token } = useToken()
     const navigate = useNavigate()
     const theme = useUiStore((s) => s.theme)
@@ -179,7 +181,7 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
                 <CollapseButton
                     $token={token}
                     onClick={toggleSidebar}
-                    aria-label={sidebarExpanded ? '收起侧边栏' : '展开侧边栏'}
+                    aria-label={sidebarExpanded ? t('common.collapseSidebar') : t('common.expandSidebar')}
                 >
                     {sidebarExpanded
                         ? <PanelLeftClose size={16} />

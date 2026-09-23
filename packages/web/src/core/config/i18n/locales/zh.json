@@ -12,7 +12,9 @@
         "more": "更多",
         "close": "关闭",
         "scrollBottom": "回到底部",
-        "toggleTheme": "切换主题"
+        "toggleTheme": "切换主题",
+        "collapseSidebar": "收起侧边栏",
+        "expandSidebar": "展开侧边栏"
     },
     "time": {
         "justNow": "刚刚",

@@ -211,6 +211,8 @@ packages/web/src/
 │   │   ├── composerSegments.ts composer 分段状态 ⇄ UserContentBlock[] 序列化/反序列化
 │   │   ├── reconcile.ts        消息对账（去重/排序/合并）
 │   │   ├── groupToolCalls.ts   工具调用折叠分组算法
+│   │   ├── quoteDirectives.ts  回应批注 directive 解析（:mobi-quote 命中/去重/批注↔回复 turn 配对）
+│   │   ├── quoteSelection.ts   选区判定器（引用资格纯函数：锚点属性契约 + 拒绝原因决策）
 │   │   ├── presentation.ts     展示层格式化（时间戳、时长等）
 │   │   ├── extractRunningAgents.ts 提取运行中 Agent
 │   │   ├── cliParser.ts        CLI 输出文本解析
@@ -250,6 +252,10 @@ packages/web/src/
 │   │       ├── CompactSummaryBlock.tsx 紧凑摘要块
 │   │       ├── ToolCallBlock.tsx     工具调用块
 │   │       └── ToolCallGroupBlock.tsx 工具调用折叠组
+│   │   ├── userBlocks/         用户气泡 blocks 渲染
+│   │   │   ├── UserBlocksView.tsx    block 分发视图（text/image/document/quote）
+│   │   │   ├── UserBubbleHeader.tsx  气泡 header 附件层（图片/文档/引用 chip + popover 定位）
+│   │   │   └── QuoteListCard.tsx     引用列表卡共享视觉词汇（composer 胶囊与气泡 header 同源）
 │   ├── composer/               消息输入（28 文件）
 │   │   ├── ChatComposer.tsx    输入框 + 自动补全 + 布局编排
 │   │   ├── AutoComplete.tsx    自动补全容器

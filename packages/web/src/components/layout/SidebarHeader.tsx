@@ -15,6 +15,7 @@
  */
 
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { theme as antTheme } from 'antd'
 import { PanelLeftClose } from 'lucide-react'
 import styled from '@emotion/styled'
@@ -84,6 +85,8 @@ const CollapseButton = styled.button<{ $token: ReturnType<typeof useToken>['toke
  * 左侧 Logo + 右侧收起按钮
  */
 export function SidebarHeader() {
+    const { t } = useTranslation()
+    const collapseLabel = t('common.collapseSidebar')
     const { token } = useToken()
     const navigate = useNavigate()
     const toggleSidebar = useUiStore((s) => s.toggleSidebar)
@@ -105,7 +108,7 @@ export function SidebarHeader() {
             {updateReload && <UpdateIconButton onUpdate={updateReload} />}
 
             {/* 收起侧边栏（aria-label 与 WcoTitleBar 同功能按钮一致） */}
-            <CollapseButton $token={token} onClick={toggleSidebar} aria-label="收起侧边栏">
+            <CollapseButton $token={token} onClick={toggleSidebar} aria-label={collapseLabel}>
                 <PanelLeftClose size={18} />
             </CollapseButton>
         </HeaderContainer>

@@ -82,9 +82,11 @@ export function dedupeQuoteDirectiveText(text: string): string {
 
 /**
  * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations，领域规则单源）：
- * user-text 更新「最近一轮的引用集」，其后同轮的 agent-text 共享该引用（一轮可有多条
- * agent 消息），直到下一条 user 消息换血。会话完全无引用时返回共享空 Map（零分配
- * 早退——渲染热路径每帧调用，无批注会话不付全量构建成本）。
+ * 与 CLI 协议注入同语义——每条 agent 回复配「触发它的那条 user 消息」的引用。
+ * user-text 入队（FIFO），agent-text 出队消费：steer 场景（回复落库前用户连发多条，
+ * 块序 u1/u2/r1/r2）线性覆盖会让 r1 错配 u2，FIFO 保证 r1 配 u1、r2 配 u2；队列
+ * 空则沿用最近一次消费值（一轮可有多条 agent 消息共享同一引用）。会话完全无引用
+ * 时返回共享空 Map（零分配早退——渲染热路径每帧调用，无批注会话不付全量构建成本）。
  */
 const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
 
@@ -97,13 +99,14 @@ export function collectQuoteAnnotationsByAgentId(
     if (!hasAnyQuote) return EMPTY_ANNOTATIONS
 
     const byId = new Map<string, UserQuoteBlock[]>()
-    let pending: UserQuoteBlock[] | undefined
+    const queue: UserQuoteBlock[][] = []
+    let last: UserQuoteBlock[] | undefined
     for (const block of chatBlocks) {
         if (block.kind === 'user-text') {
-            const quotes = block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote')
-            pending = quotes.length > 0 ? quotes : undefined
-        } else if (block.kind === 'agent-text' && pending) {
-            byId.set(block.id, pending)
+            queue.push(block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote'))
+        } else if (block.kind === 'agent-text') {
+            if (queue.length > 0) last = queue.shift()
+            if (last && last.length > 0) byId.set(block.id, last)
         }
     }
     return byId

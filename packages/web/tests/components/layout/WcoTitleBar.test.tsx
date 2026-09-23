@@ -18,6 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+import i18n from '@/core/config/i18n'
 
 // 可控 uiStore mock state —— 直接修改对象即可驱动组件重渲（配合 key 强制 remount）
 const mockState = {
@@ -59,25 +60,25 @@ describe('WcoTitleBar', () => {
     it('渲染 Logo + 收起按钮', () => {
         renderFresh('mac')
         expect(screen.getByRole('button', { name: 'Mobi' })).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: '收起侧边栏' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: i18n.t('common.collapseSidebar') })).toBeInTheDocument()
     })
 
-    it('展开态 → 收起按钮 aria-label 为"收起侧边栏"', () => {
+    it('展开态 → 收起按钮 aria-label 为「收起侧边栏」(i18n)', () => {
         mockState.sidebarExpanded = true
         renderFresh('mac')
-        expect(screen.getByRole('button', { name: '收起侧边栏' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: i18n.t('common.collapseSidebar') })).toBeInTheDocument()
     })
 
-    it('收起态 → 按钮切换为"展开侧边栏"', () => {
+    it('收起态 → 按钮切换为「展开侧边栏」(i18n)', () => {
         mockState.sidebarExpanded = false
         renderFresh('mac')
-        expect(screen.getByRole('button', { name: '展开侧边栏' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: i18n.t('common.expandSidebar') })).toBeInTheDocument()
     })
 
     it('点击收起按钮 → 调用 toggleSidebar', () => {
         mockState.sidebarExpanded = true
         renderFresh('mac')
-        fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }))
+        fireEvent.click(screen.getByRole('button', { name: i18n.t('common.collapseSidebar') }))
         expect(mockState.toggleSidebar).toHaveBeenCalledOnce()
     })
 

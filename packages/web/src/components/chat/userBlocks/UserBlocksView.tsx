@@ -325,7 +325,7 @@ export function UserImageGroupView({ blocks, env }: { blocks: readonly UserImage
         blocks
             .filter(b => !!b.sketch && b.source.type === 'url' && !!env.onEditSketch)
             .map(b => [resolveUserImageUrl(b, env.refCtx ?? {}), b]),
-    ), [blocks, env.onEditSketch])
+    ), [blocks, env.onEditSketch, env.refCtx])
 
     return (
         <Image.PreviewGroup

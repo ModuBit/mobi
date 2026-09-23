@@ -17,7 +17,9 @@
 // quoteDirectives 行为锁定：directive 解析 / 重复剔除（spec .scratch/response-annotations 票 03）
 import { describe, expect, it } from 'vitest'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import { dedupeQuoteDirectiveText, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
+import { collectQuoteAnnotationsByAgentId, dedupeQuoteDirectiveText, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
+import type { UserContentBlock } from '@mobi/shared'
+import type { ChatBlock } from '@/domain/chat/types'
 
 const d = (n: number) => `${QUOTE_DIRECTIVE}{index="${n}"}`
 
@@ -61,5 +63,41 @@ describe('dedupeQuoteDirectiveText', () => {
     it('不同 index 互不影响', () => {
         const text = `${d(1)}${d(2)}${d(1)}`
         expect(dedupeQuoteDirectiveText(text)).toBe(`${d(1)}${d(2)}`)
+    })
+})
+
+describe('collectQuoteAnnotationsByAgentId（批注↔回复 turn 配对）', () => {
+    const quote = (messageId: string, excerpt = `摘录-${messageId}`) =>
+        ({ type: 'quote', messageId, role: 'agent', excerpt }) as UserContentBlock
+    const user = (id: string, ...quotes: UserContentBlock[]): ChatBlock =>
+        ({ kind: 'user-text', id, localId: id, createdAt: 0, blocks: quotes })
+    const agent = (id: string): ChatBlock =>
+        ({ kind: 'agent-text', id, localId: id, createdAt: 0, text: `回复-${id}` })
+
+    it('常规一轮：同轮多条 agent 消息共享该轮引用；下一轮 user 换血', () => {
+        const blocks = [user('u1', quote('m1')), agent('r1'), agent('r2'), user('u2', quote('m2')), agent('r3')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.get('r2')?.[0].messageId).toBe('m1')
+        expect(map.get('r3')?.[0].messageId).toBe('m2')
+    })
+
+    it('steer 场景：回复落库前用户连发多条，回复按 FIFO 消费最早未配对的 user 引用', () => {
+        // 块序 u1, u2, r1, r2（r1 是对 u1 的回复，r2 才处理 u2 的 steer）——线性覆盖会让 r1 错配 u2
+        const blocks = [user('u1', quote('m1')), user('u2', quote('m2')), agent('r1'), agent('r2')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.get('r2')?.[0].messageId).toBe('m2')
+    })
+
+    it('无引用 user 是边界：其后的回复不沿用上一轮引用', () => {
+        const blocks = [user('u1', quote('m1')), agent('r1'), user('u2'), agent('r2')]
+        const map = collectQuoteAnnotationsByAgentId(blocks)
+        expect(map.get('r1')?.[0].messageId).toBe('m1')
+        expect(map.has('r2')).toBe(false)
+    })
+
+    it('会话无任何引用返回共享空 Map', () => {
+        expect(collectQuoteAnnotationsByAgentId([user('u1'), agent('r1')])).toBe(collectQuoteAnnotationsByAgentId([]))
     })
 })
