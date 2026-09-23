@@ -165,6 +165,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                 onCancel={(e) => e?.stopPropagation()}
             >
                 <div
+                    onClick={(e) => e.stopPropagation()}
                     onMouseEnter={() => setStopHovered(true)}
                     onMouseLeave={() => setStopHovered(false)}
                     style={{

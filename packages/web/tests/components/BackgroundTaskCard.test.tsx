@@ -98,4 +98,16 @@ describe('BackgroundTaskCard 点击守卫内聚（review fix2 C2）', () => {
         expect(onClick).toHaveBeenCalled()
         expect(card.style.cursor).toBe('pointer')
     })
+
+    it('点击停止按钮不触发卡片 onClick（桌面端 Popconfirm 分支，冒泡拦截）', () => {
+        const onClick = vi.fn()
+        const onStop = vi.fn()
+        const { container } = render(
+            <BackgroundTaskCard task={makeTask({ toolUseId: 'tu-1' })} onClick={onClick} onStop={onStop} />,
+        )
+        const stopButton = container.querySelector('svg.lucide-circle-stop')?.closest('div') as HTMLElement
+        expect(stopButton).toBeTruthy()
+        fireEvent.click(stopButton)
+        expect(onClick).not.toHaveBeenCalled()
+    })
 })
