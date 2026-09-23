@@ -1077,12 +1077,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // 原长按菜单整体迁到常驻小按钮，点击等价原长按打开 Drawer）。
             // 挂载范围 = actionsInfo 的 key 集合（用户消息全量；agent 回复仅 fork 落点），
             // 与原长按手势的可作用范围一致；PC 不挂（走 footer hover 操作组）。
-            // 位置分两路（2026-09-23 验收反馈）：用户消息挂气泡左侧（right:100% 出血），
-            // agent 回复挂 turn-result 概要行尾（见 turnResultActionsByKey）——都不进 footer
+            // 移动端「⋯」菜单入口（spec 移动端手势仲裁：长按让位给系统文本选择，
+            // 原长按菜单整体迁到常驻小按钮，点击等价原长按打开 Drawer）。
+            // 挂载范围 = actionsInfo 的 key 集合（用户消息全量；agent 回复仅 fork 落点），
+            // 与原长按手势的可作用范围一致；PC 不挂（走 footer hover 操作组）。
+            // 位置（2026-09-23 验收定稿）：用户消息进 footer（时间左侧；气泡左侧出血版
+            // 验收不过）；agent 回复挂 turn-result 概要行尾（见 turnResultActionsByKey），
+            // 不再悬独立行
             const actionsTrigger = isMobile && actionsInfo.has(item.key) && isUserText
                 ? <MessageActionsTrigger onClick={() => openActionsByItemKey(item.key)} />
                 : null
-            const userAsideTrigger = actionsTrigger
 
             // footer 组装：单层 flex 壳（「⋯」入口、终态标注各自可空）→ 既有 footer 内容。
             // 内容槽包 flex:1 容器，保住 UserMessageFooter 时间戳（marginLeft:auto）贴最右
@@ -1097,9 +1101,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
                 </span>
             ) : null
-            // footer 只承载终态标注与时间戳；「⋯」两路挂点都在气泡侧（见 actionsTrigger 注释）
-            const footer = (terminalLabel) ? (
+            // footer：「⋯」（用户消息）+ 终态标注 + 时间戳同排；agent 回复的「⋯」在概要行尾
+            const footer = (actionsTrigger || terminalLabel) ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {actionsTrigger}
                     {terminalLabel}
                     <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
                 </div>
@@ -1107,19 +1112,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
-                // 用户消息移动端：「⋯」挂气泡左侧（absolute 出血到气泡外）——不占 footer、
-                // 不依赖消息长度（列表 overflow-x hidden 会裁掉溢出，但用户气泡右对齐、
-                // ⋯ 只在短消息时可见即可用；长消息收进 Drawer 的其他入口仍在）
-                content: userAsideTrigger ? (
-                    <div style={{ position: 'relative' }}>
-                        <span
-                            style={{ position: 'absolute', right: 'calc(100% + 6px)', top: '50%', transform: 'translateY(-50%)', display: 'inline-flex' }}
-                        >
-                            {userAsideTrigger}
-                        </span>
-                        {item.content}
-                    </div>
-                ) : item.content,
                 // header 槽两段堆叠：附件层（图片/文档/引用 chip）在上，跨会话来源标签保序其后
                 //（各自可空，全空则 header 保持 undefined 零改动）
                 header: (userExtras || showCrossSessionTag) ? (
