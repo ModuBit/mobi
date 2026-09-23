@@ -15,14 +15,17 @@
  */
 
 import type React from 'react'
-import type { UserImageBlock } from '@mobi/shared'
+import type { UserImageBlock, UserQuoteBlock } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
+import { dedupeQuoteDirectiveText } from '@/domain/chat/quoteDirectives'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
+import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
 import { TextBlock } from './TextBlock'
+import { AgentAnnotationChip } from './AgentAnnotationChip'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
@@ -54,6 +57,10 @@ export type ChatBlockContext = {
     onEditSketchBlock?: (block: UserImageBlock) => void
     /** 引用条目点击定位入口（跳转前停贴底跟随的收口在 ChatContainer；缺省直连 locateQuotedMessage） */
     onQuoteLocate?: (messageId: string) => void
+    /** 回应批注数据源：agent 消息 id → 触发本轮回复的 user 消息 quote blocks（按 directive
+     *  index 对齐，位置 i = 注释 i+1；spec .scratch/response-annotations）。缺省 = 无批注数据，
+     *  directive 按原文降级呈现 */
+    resolveQuoteAnnotations?: (agentMessageId: string) => UserQuoteBlock[] | undefined
 }
 
 /** 根据 block 类型渲染对应组件 */
@@ -92,7 +99,13 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                         allowed: !(block.isSnapshot || block.isStreaming),
                     })}
                 >
-                    <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                    <QuoteAnnotationsProvider
+                        quotes={ctx.resolveQuoteAnnotations?.(block.id)}
+                        onLocate={ctx.onQuoteLocate ?? locateQuotedMessage}
+                    >
+                        {/* 重复 directive 剔除（同 index 只留首个，handoff 失败模式）；输出前缀稳定，兼容流式 */}
+                        <TextBlock text={dedupeQuoteDirectiveText(block.text)} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                    </QuoteAnnotationsProvider>
                 </div>
             )
         case 'agent-reasoning':
@@ -127,6 +140,23 @@ export function renderUserBubbleHeader(block: Extract<ChatBlock, { kind: 'user-t
                 onEditSketch: ctx.onEditSketchBlock,
                 onQuoteLocate: ctx.onQuoteLocate ?? locateQuotedMessage,
             }}
+        />
+    )
+}
+
+/**
+ * agent 气泡 header 的「N 条注释」聚合 chip（spec .scratch/response-annotations 票 04）：
+ * 与用户消息引用 chip 对称的聚合入口。无 directive / 无批注数据时返回 undefined
+ * （header 槽零改动，历史消息不受影响）。
+ */
+export function renderAgentBubbleHeader(block: Extract<ChatBlock, { kind: 'agent-text' }>, ctx: ChatBlockContext): React.ReactNode {
+    const quotes = ctx.resolveQuoteAnnotations?.(block.id)
+    if (!quotes || quotes.length === 0) return undefined
+    return (
+        <AgentAnnotationChip
+            text={dedupeQuoteDirectiveText(block.text)}
+            quotes={quotes}
+            onLocate={ctx.onQuoteLocate ?? locateQuotedMessage}
         />
     )
 }

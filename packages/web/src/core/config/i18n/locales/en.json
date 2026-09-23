@@ -242,6 +242,8 @@
         "abortedQueueCleared": "Session aborted, queue cleared",
         "abortedAllStopped": "Session aborted, queue and background tasks stopped",
         "abortedTruncated": "Truncated",
+        "annotationMarker": "Note {{count}}",
+        "annotationCount": "{{count}} annotation(s)",
         "elicitation": {
             "submit": "Submit",
             "decline": "Decline"

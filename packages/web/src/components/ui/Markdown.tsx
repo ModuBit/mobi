@@ -22,6 +22,8 @@ import Latex, { containsLatex, ensureKatexLoaded } from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
+import { quoteDirectiveExtension } from './quoteDirectivePlugin'
+import { QuoteDirectiveMarker } from './QuoteDirectiveComponents'
 import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from './useStreamingContent'
 import { INCOMPLETE_COMPONENTS } from './MarkdownIncomplete'
@@ -57,6 +59,9 @@ const MENTION_EXTENSIONS = [mention()]
 
 /** 脚注引用扩展（稳定引用，不依赖运行时数据） */
 const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
+
+/** 回应批注 directive 扩展（`:mobi-quote{index="N"}` → 注释按钮；数据经 Context 注入，无数据时原样降级） */
+const QUOTE_DIRECTIVE_EXTENSIONS = [quoteDirectiveExtension()]
 
 /** mobi URI scheme 前缀（scheme 大小写不敏感，按 URI 惯例归一后识别；scheme 权威声明在 shared actionUri） */
 const MOBI_URI_PREFIX = `${MOBI_URI_SCHEME}://`
@@ -192,6 +197,7 @@ export const Markdown = memo(function Markdown({
             code: DefaultCode,
             a: ExternalLink,
             'footnote-ref': FootnoteRef,
+            'quote-directive': QuoteDirectiveMarker,
             // 流式未完成语法占位（渐进可见，见 MarkdownIncomplete 注释）：
             // 注册用默认名，仅在 hasNextChunk 缓存扣住 pending 时被触发，常驻注册无害
             ...INCOMPLETE_COMPONENTS,
@@ -234,7 +240,7 @@ export const Markdown = memo(function Markdown({
         const mentionExts = enableMention ? MENTION_EXTENSIONS : []
         // Latex 扩展仅在 katex 就绪后加入（未就绪时公式暂以原文展示，加载完成即渲染）
         const latexExts = katexReady ? LATEX_EXTENSIONS : []
-        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...mentionExts, ...latexExts]
+        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...QUOTE_DIRECTIVE_EXTENSIONS, ...slashExts, ...mentionExts, ...latexExts]
         if (!config) return { breaks: true, extensions: baseExts }
         return {
             breaks: true,

@@ -21,7 +21,7 @@ import { DownOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
 
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
-import type { StopKind } from '@mobi/shared'
+import type { StopKind, UserQuoteBlock } from '@mobi/shared'
 import { readCrossSessionOrigin, readTurnOrigin } from '@mobi/shared'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
@@ -48,7 +48,7 @@ import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
-import { renderUserBubbleHeader, type ChatBlockContext } from './blocks'
+import { renderUserBubbleHeader, renderAgentBubbleHeader, type ChatBlockContext } from './blocks'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
@@ -831,6 +831,23 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         locateQuotedMessage(messageId)
     }, [])
 
+    // 回应批注数据源（spec .scratch/response-annotations）：agent 消息 id → 触发本轮回复的
+    // user 消息 quote blocks。一次遍历 chatBlocks：user-text 更新「最近引用」，其后同轮的
+    // agent-text 共享该引用（一轮可有多条 agent 消息），直到下一条 user 消息换血
+    const quoteAnnotationsByAgentId = useMemo(() => {
+        const byId = new Map<string, UserQuoteBlock[]>()
+        let pending: UserQuoteBlock[] | undefined
+        for (const block of chatBlocks) {
+            if (block.kind === 'user-text') {
+                const quotes = block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote')
+                pending = quotes.length > 0 ? quotes : undefined
+            } else if (block.kind === 'agent-text' && pending) {
+                byId.set(block.id, pending)
+            }
+        }
+        return byId
+    }, [chatBlocks])
+
     // 传给 BubbleListChat 的稳定回调：内联箭头每次渲染换引用，会让其内部
     // 上抛 following 的 effect 每帧重跑
     const handleFollowingChange = useCallback((following: boolean) => {
@@ -960,6 +977,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             turnResultActions: (block) => turnResultActionsByKey.get(block.id),
             onEditSketchBlock: (block) => { void handleEditSketchFromBubble(block) },
             onQuoteLocate: handleQuoteLocate,
+            resolveQuoteAnnotations: (agentMessageId) => quoteAnnotationsByAgentId.get(agentMessageId),
         }
         const baseItems = buildChatBubbleItems(
             chatBlocks,
@@ -1047,6 +1065,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const showCrossSessionTag = crossSessionOrigin !== null
             // 附件层（图片/文档/引用 chip）：与正文同源 block，挂 bubble header（正文只剩 text）
             const userExtras = isUserText && block ? renderUserBubbleHeader(block, renderCtx) : undefined
+            // 「N 条注释」聚合 chip（回应批注，spec .scratch/response-annotations 票 04）：
+            // agent 回复含 directive 时挂 header，与用户消息引用 chip 对称
+            const agentExtras = block?.kind === 'agent-text' ? renderAgentBubbleHeader(block, renderCtx) : undefined
 
             // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
@@ -1112,11 +1133,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
-                // header 槽两段堆叠：附件层（图片/文档/引用 chip）在上，跨会话来源标签保序其后
-                //（各自可空，全空则 header 保持 undefined 零改动）
-                header: (userExtras || showCrossSessionTag) ? (
+                // header 槽两段堆叠：附件层（用户消息图片/文档/引用 chip、agent 回复注释 chip）
+                // 在上，跨会话来源标签保序其后（各自可空，全空则 header 保持 undefined 零改动）
+                header: (userExtras || agentExtras || showCrossSessionTag) ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {userExtras}
+                        {agentExtras}
                         {showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : null}
                     </div>
                 ) : undefined,

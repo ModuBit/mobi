@@ -1,0 +1,81 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * 回应批注 directive 解析（spec .scratch/response-annotations 票 03/04）
+ *
+ * 模型在回复正文输出的内联 directive `:mobi-quote{index="N"}`（字面量单源 shared
+ * QUOTE_DIRECTIVE，CLI 协议文案共用）由本模块与 markdown 扩展（quoteDirectivePlugin）
+ * 消费：解析命中位置供渲染插桩、剔除重复出现（handoff 记录的失败模式：同一 directive
+ * 被模型输出多次）、统计去重后数量供 header 聚合 chip。
+ *
+ * 全部纯函数、单 pass 正则；流式半截 directive（未闭合）不命中——x-markdown 的
+ * 不完整语法占位负责流式期间的视觉过渡，闭合后自然成钮。
+ */
+
+import { QUOTE_DIRECTIVE } from '@mobi/shared'
+
+/** 单个 directive 命中：一基索引 + 在原文中的 UTF-16 位置 */
+export interface QuoteDirectiveHit {
+    index: number
+    start: number
+    end: number
+}
+
+/** directive 完整形态：`:mobi-quote{index="N"}`（N 为非空数字串） */
+const DIRECTIVE_RE = new RegExp(`${QUOTE_DIRECTIVE}\\{index="(\\d+)"\\}`, 'g')
+
+/** 解析全部命中（不去重、按出现顺序；index 超出引用数量的越界由渲染层兜底为纯展示） */
+export function parseQuoteDirectives(text: string): QuoteDirectiveHit[] {
+    const hits: QuoteDirectiveHit[] = []
+    DIRECTIVE_RE.lastIndex = 0
+    for (let m = DIRECTIVE_RE.exec(text); m; m = DIRECTIVE_RE.exec(text)) {
+        hits.push({ index: Number(m[1]), start: m.index, end: m.index + m[0].length })
+    }
+    return hits
+}
+
+/**
+ * 剔除重复 directive：同 index 只保留首次出现，其余从文本移除（替换为空串）。
+ * 输入变化时输出保持前缀稳定（后来的重复只会让尾部更短）——与流式渲染的
+ * append-only 假设兼容，不会引发已揭示内容的重淡入。
+ */
+export function dedupeQuoteDirectiveText(text: string): string {
+    if (!text.includes(QUOTE_DIRECTIVE)) return text
+    const seen = new Set<number>()
+    let out = ''
+    let cursor = 0
+    let removedAny = false
+    for (const hit of parseQuoteDirectives(text)) {
+        if (seen.has(hit.index)) {
+            out += text.slice(cursor, hit.start)
+            cursor = hit.end
+            removedAny = true
+        } else {
+            seen.add(hit.index)
+        }
+    }
+    // 无重复则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）
+    if (!removedAny) return text
+    return out + text.slice(cursor)
+}
+
+/** 去重后的命中索引（升序）：header 聚合 chip 的计数与列表口径 */
+export function collectQuoteDirectiveIndexes(text: string): number[] {
+    const seen = new Set<number>()
+    for (const hit of parseQuoteDirectives(text)) seen.add(hit.index)
+    return [...seen].sort((a, b) => a - b)
+}
