@@ -73,7 +73,12 @@ export interface ComposerQuoteRef extends PendingQuoteRef {
  *  uid 用 core/lib 的 uuid()（secure-context 兜底）——裸 crypto.randomUUID 在
  *  远程 http 访问（非安全上下文）下不存在，会直接抛错中断添加流程 */
 export function withQuoteUids(quotes: readonly PendingQuoteRef[]): ComposerQuoteRef[] {
-    return quotes.map(q => ({ ...q, uid: uuid() }))
+    return quotes.map(q => withQuoteUid(q))
+}
+
+/** 单条形态（与 {@link withQuoteUids} 同一 uid 生成规则，单条添加路径的收口） */
+export function withQuoteUid(quote: PendingQuoteRef): ComposerQuoteRef {
+    return { ...quote, uid: uuid() }
 }
 
 /** Composer 当前完整分段状态 */

@@ -22,6 +22,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { dedupeQuoteDirectiveText } from '@/domain/chat/quoteDirectives'
+import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
 import { TextBlock } from './TextBlock'
@@ -65,16 +66,17 @@ export type ChatBlockContext = {
 /** 根据 block 类型渲染对应组件 */
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {
     switch (block.kind) {
-        case 'user-text':
+        case 'user-text': {
             // 选区引用锚点：消息容器锚（messageId+role）罩整条气泡；block 容器锚由
             // UserBlocksView 的 text 视图自带（documents/images 无 block 锚 → 天然不可引用）。
-            // 正文只渲染 text：图片/文档/引用收进 bubble header 附件层（renderUserBubbleHeader，
-            // 引用收起为 chip，展开才占空间）
+            // 正文只渲染 text（拆分单源 splitUserBodyAndAttachments）：图片/文档/引用收进
+            // bubble header 附件层（renderUserBubbleHeader，引用收起为 chip，展开才占空间）
+            const { body } = splitUserBodyAndAttachments(block.blocks)
             return (
                 <div {...quoteAnchorProps({ messageId: block.localId, role: 'user' })}>
-                    <CollapsibleUserMessage blocks={block.blocks.filter(b => b.type === 'text')} isSynthetic={block.isSynthetic}>
+                    <CollapsibleUserMessage blocks={body} isSynthetic={block.isSynthetic}>
                         <UserBlocksView
-                            blocks={block.blocks.filter(b => b.type === 'text')}
+                            blocks={body}
                             env={{
                                 isSynthetic: block.isSynthetic,
                                 refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
@@ -87,6 +89,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                     </CollapsibleUserMessage>
                 </div>
             )
+        }
         case 'agent-text':
             // 选区引用锚点：气泡即 text block 容器（message+block 锚同元素）；流式/snapshot 不可引用
             return (
@@ -130,6 +133,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
  * 引用收起为「N 条引用」chip，条目点击定位源消息（滚动 + 高亮）。
  */
 export function renderUserBubbleHeader(block: Extract<ChatBlock, { kind: 'user-text' }>, ctx: ChatBlockContext): React.ReactNode {
+    if (!splitUserBodyAndAttachments(block.blocks).hasAttachments) return undefined
     return (
         <UserBubbleHeader
             blocks={block.blocks}

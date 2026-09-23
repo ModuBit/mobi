@@ -29,6 +29,8 @@
  * 本模块无渲染上下文，且 @emotion/react 不含 injectGlobal）。
  */
 
+import { resolveQuoteAnchorTarget } from '@/domain/chat/quoteSelection'
+
 /** 高亮类名（ChatContainer 的 Global 样式按此名定义闪烁动画；导出供测试断言） */
 export const QUOTE_FLASH_CLASS = 'quote-locate-flash'
 
@@ -49,11 +51,8 @@ export function locateQuotedMessage(messageId: string): void {
     const anchor = document.querySelector(`[data-quote-message-id="${escaped}"]`)
     if (!anchor) return
 
-    // 锚点载体一律 display:contents（无盒——scrollIntoView 无从定位、背景/描边无处附着，
-    // 即「display:contents 零矩形」已知坑），定位与高亮落到锚内首个真实盒后代
-    const target = anchor instanceof HTMLElement && anchor.style.display === 'contents'
-        ? anchor.firstElementChild ?? anchor
-        : anchor
+    // 锚点→可定位目标的解析属锚点契约，收口在 quoteSelection（/simplify）
+    const target = resolveQuoteAnchorTarget(anchor)
 
     // 上一次闪烁还挂着：先摘掉再重放，且清掉旧定时器（否则旧定时器会把新闪烁提前掐灭）
     if (activeFlash) {

@@ -25,6 +25,8 @@
  */
 
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
+import type { UserQuoteBlock } from '@mobi/shared'
+import type { ChatBlock } from './types'
 
 /** 单个 directive 命中：一基索引 + 在原文中的 UTF-16 位置 */
 export interface QuoteDirectiveHit {
@@ -35,6 +37,13 @@ export interface QuoteDirectiveHit {
 
 /** directive 完整形态：`:mobi-quote{index="N"}`（N 为非空数字串） */
 const DIRECTIVE_RE = new RegExp(`${QUOTE_DIRECTIVE}\\{index="(\\d+)"\\}`, 'g')
+
+/**
+ * directive 完整形态的正则源（非全局、无锚定）：markdown 扩展（quoteDirectivePlugin）
+ * 的 tokenizer 由它派生锚定版——解析剔除与 markdown 渲染对同一 directive 的判定同源，
+ * 语法变更只改这一处。
+ */
+export const QUOTE_DIRECTIVE_SHAPE = `${QUOTE_DIRECTIVE}\\{index="(\\d+)"\\}`
 
 /** 解析全部命中（不去重、按出现顺序；index 超出引用数量的越界由渲染层兜底为纯展示） */
 export function parseQuoteDirectives(text: string): QuoteDirectiveHit[] {
@@ -69,4 +78,33 @@ export function dedupeQuoteDirectiveText(text: string): string {
     // 无重复则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）
     if (!removedAny) return text
     return out + text.slice(cursor)
+}
+
+/**
+ * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations，领域规则单源）：
+ * user-text 更新「最近一轮的引用集」，其后同轮的 agent-text 共享该引用（一轮可有多条
+ * agent 消息），直到下一条 user 消息换血。会话完全无引用时返回共享空 Map（零分配
+ * 早退——渲染热路径每帧调用，无批注会话不付全量构建成本）。
+ */
+const EMPTY_ANNOTATIONS: ReadonlyMap<string, UserQuoteBlock[]> = new Map()
+
+export function collectQuoteAnnotationsByAgentId(
+    chatBlocks: readonly ChatBlock[],
+): ReadonlyMap<string, UserQuoteBlock[]> {
+    const hasAnyQuote = chatBlocks.some(
+        b => b.kind === 'user-text' && b.blocks.some(x => x.type === 'quote'),
+    )
+    if (!hasAnyQuote) return EMPTY_ANNOTATIONS
+
+    const byId = new Map<string, UserQuoteBlock[]>()
+    let pending: UserQuoteBlock[] | undefined
+    for (const block of chatBlocks) {
+        if (block.kind === 'user-text') {
+            const quotes = block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote')
+            pending = quotes.length > 0 ? quotes : undefined
+        } else if (block.kind === 'agent-text' && pending) {
+            byId.set(block.id, pending)
+        }
+    }
+    return byId
 }

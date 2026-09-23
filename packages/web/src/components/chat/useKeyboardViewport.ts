@@ -10,7 +10,7 @@
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the specific language governing permissions and
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 
@@ -19,14 +19,6 @@ import { useEffect, useRef, useState } from 'react'
 /** 键盘视为弹出的最小 inset（px）：真机键盘高度 ≥150，URL 栏伸缩的抖动远小于此 */
 const KEYBOARD_INSET_THRESHOLD = 80
 
-/**
- * 虚拟键盘占据底部的高度（0 = 键盘未弹出/无 visualViewport）。
- *
- * 关键陷阱（2026-09-23 真机实测）：Android resize 模式下 **layout viewport 本身缩到
- * 键盘上方**，innerHeight 已变小且 ≈ vv.height，`innerHeight − vv` 恒为 0——键盘
- * 测不出来。基线必须用**历史最大可视高度**（ref 跟踪，旋转/URL 栏收起时上调，
- * 键盘弹出这类「变小」不下调）：inset = 基线 − 当前可视高度。
- */
 export interface KeyboardViewport {
     /** 相对完整视口的键盘高度（基线 − 可视高）：「键盘是否弹出」的判定与 ghost 隐藏判据 */
     keyboardInset: number
@@ -43,6 +35,10 @@ export interface KeyboardViewport {
  * 键盘上方**，innerHeight 已变小且 ≈ vv.height，`innerHeight − vv` 恒为 0——键盘
  * 测不出来。基线必须用**历史最大可视高度**（ref 跟踪，旋转/URL 栏收起时上调，
  * 键盘弹出这类「变小」不下调）：inset = 基线 − 当前可视高度。
+ *
+ * visualViewport 的 scroll/resize 在移动端滚动、地址栏伸缩、捏合缩放期间连发，
+ * 而键盘值只在跨越阈值时才变——setState 前做值比对，值未变复用旧对象（React
+ * 按 Object.is 判等跳过重渲染），避免每次事件都全量重渲染挂载方（ChatContainer）。
  */
 export function useKeyboardViewport(): KeyboardViewport {
     const [state, setState] = useState<KeyboardViewport>({ keyboardInset: 0, layoutInset: 0 })
@@ -56,11 +52,10 @@ export function useKeyboardViewport(): KeyboardViewport {
             const visible = Math.min(window.innerHeight, vv.offsetTop + vv.height)
             const inset = Math.max(0, Math.round(baselineRef.current - visible))
             const keyboardInset = inset >= KEYBOARD_INSET_THRESHOLD ? inset : 0
-            setState({
-                keyboardInset,
-                // 键盘未弹出时恒 0，弹出时才做 bottom 补偿（避免 URL 栏抖动带来的漂移）
-                layoutInset: keyboardInset > 0 ? Math.max(0, Math.round(window.innerHeight - visible)) : 0,
-            })
+            const layoutInset = keyboardInset > 0 ? Math.max(0, Math.round(window.innerHeight - visible)) : 0
+            setState(prev => prev.keyboardInset === keyboardInset && prev.layoutInset === layoutInset
+                ? prev
+                : { keyboardInset, layoutInset })
         }
         update()
         vv.addEventListener('resize', update)

@@ -17,13 +17,20 @@
 import { useState } from 'react'
 import { Popover, Space, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { Quote } from 'lucide-react'
-import { Bot, User } from 'lucide-react'
+import { Bot, Quote, User } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { UserContentBlock, UserDocumentBlock, UserQuoteBlock } from '@mobi/shared'
-import { groupUserBlocks } from '@/domain/chat/userContent'
+import { groupUserBlocks, splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { truncatePreview } from '@/core/lib/truncatePreview'
+import {
+    QuoteChip,
+    QuoteItemComment,
+    QuoteItemIndex,
+    QuoteItemText,
+    QuoteListBox,
+    QUOTE_ITEM_PREVIEW_MAX,
+} from './QuoteListCard'
 import type { UserBlockRenderEnv } from './UserBlocksView'
 import { DocumentView, UserImageGroupView } from './UserBlocksView'
 
@@ -36,84 +43,44 @@ import { DocumentView, UserImageGroupView } from './UserBlocksView'
  * 引用是特例：不展开为引用组大块，收起为「N 条引用」chip（与 composer 引用胶囊同
  * 形态同词汇），点击展开 popover 列表卡核对，条目点击定位源消息——展开态只在用户
  * 主动核对时占用空间，正文/引用的价值分离一眼可读。
+ * 视觉词汇共享自 QuoteListCard（/simplify 收口：与 composer 列表卡同一规则）。
  */
 
-/** 列表卡单条目 excerpt 预览截断宽度（全文语义由定位跳转承载，不再靠 tooltip） */
-const ITEM_PREVIEW_MAX = 120
-
-const Chip = styled.button`
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--ant-color-border-secondary);
-    background: var(--ant-color-bg-container);
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--ant-color-text-secondary);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-
-    &:hover {
-        border-color: var(--ant-color-border);
-        color: var(--ant-color-text);
-    }
-`
-
-const ListCard = styled.div`
-    /* 恒定宽度（与 composer 引用列表卡同一量级）：短 excerpt 时 shrink-to-fit 卡片过窄；
-       窄屏由 quote-list-popover 锁死几何接管（styles/antd.css），卡片满内容宽 */
-    width: min(420px, calc(100vw - 48px));
-
-    @media (max-width: 640px) {
-        width: 100%;
-    }
-
-    max-height: min(320px, 60dvh);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-`
-
-const Item = styled.div<{ $divided: boolean }>`
+/** 只读条目行：编号 + 角色 icon + excerpt 预览（截断共享常量）+ 可选评论行 */
+const Row = styled.div<{ $clickable: boolean; $divided: boolean }>`
     display: flex;
     gap: 8px;
     align-items: flex-start;
-    padding: 5px 4px;
-    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: ${({ $clickable }) => ($clickable ? 'pointer' : undefined)};
     transition: background 0.15s;
     &:hover {
-        background: var(--ant-color-fill-quaternary);
+        background: ${({ $clickable }) => ($clickable ? 'var(--ant-color-fill-quaternary)' : undefined)};
     }
     ${({ $divided }) => ($divided ? 'border-top: 1px solid var(--ant-color-border-quaternary);' : '')}
 `
 
-const ItemIndex = styled.span`
-    flex-shrink: 0;
-    min-width: 18px;
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--ant-color-text-tertiary);
-    font-variant-numeric: tabular-nums;
-`
-
-const ItemText = styled.span`
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--ant-color-text-secondary);
-    word-break: break-word;
-    white-space: pre-wrap;
-`
-
-/** 评论行：与所选文本区分的更弱色调（评论是用户的话，附在引用内容之下） */
-const ItemComment = styled.span`
-    font-size: 12px;
-    line-height: 18px;
-    color: var(--ant-color-text-tertiary);
-    word-break: break-word;
-    white-space: pre-wrap;
-`
+function ReadonlyQuoteItem({ quote, index, divided, onClick, testId }: {
+    quote: UserQuoteBlock
+    index: number
+    divided: boolean
+    onClick?: () => void
+    testId: string
+}) {
+    const { token } = theme.useToken()
+    const RoleIcon = quote.role === 'user' ? User : Bot
+    return (
+        <Row $clickable={!!onClick} $divided={divided} data-testid={testId} onClick={onClick}>
+            <QuoteItemIndex>{index + 1}.</QuoteItemIndex>
+            <RoleIcon size={12} style={{ flexShrink: 0, marginTop: 3, color: token.colorTextTertiary }} />
+            <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <QuoteItemText>{truncatePreview(quote.excerpt, QUOTE_ITEM_PREVIEW_MAX)}</QuoteItemText>
+                {quote.comment && <QuoteItemComment>{quote.comment}</QuoteItemComment>}
+            </span>
+        </Row>
+    )
+}
 
 /**
  * 引用 chip（气泡内收起形态）：点击展开只读列表卡，条目点击定位源消息。
@@ -122,55 +89,48 @@ const ItemComment = styled.span`
  */
 function UserQuoteChip({ blocks, onLocate }: { blocks: UserQuoteBlock[]; onLocate?: (messageId: string) => void }) {
     const { t } = useTranslation()
-    const { token } = theme.useToken()
     const [open, setOpen] = useState(false)
     const anchorProps = quoteAnchorProps({ forbidden: true })
 
     const list = (
-        // 禁区锚点载体 display:contents（零盒标记层），真实滚动盒在 ListCard——
+        // 禁区锚点载体 display:contents（零盒标记层），真实滚动盒在 QuoteListBox——
         // 锚点只做 DOM 爬取标记，不参与布局
-        <div {...anchorProps} style={{ ...anchorProps.style, userSelect: 'none' }}>
-            <ListCard data-testid="user-quote-list">
-                {blocks.map((b, i) => {
-                    const RoleIcon = b.role === 'user' ? User : Bot
-                    return (
-                        <Item
-                            key={`${i}-${b.messageId}`}
-                            $divided={i > 0}
-                            data-testid={`user-quote-item-${i}`}
-                            onClick={() => {
+        <div {...anchorProps}>
+            <QuoteListBox data-testid="user-quote-list">
+                {blocks.map((b, i) => (
+                    <ReadonlyQuoteItem
+                        key={`${i}-${b.messageId}`}
+                        quote={b}
+                        index={i}
+                        divided={i > 0}
+                        testId={`user-quote-item-${i}`}
+                        onClick={onLocate
+                            ? () => {
                                 setOpen(false)
                                 onLocate?.(b.messageId)
-                            }}
-                            style={{ cursor: onLocate ? 'pointer' : undefined }}
-                        >
-                            <ItemIndex>{i + 1}.</ItemIndex>
-                            <RoleIcon size={12} style={{ flexShrink: 0, marginTop: 3, color: token.colorTextTertiary }} />
-                            <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <ItemText>{truncatePreview(b.excerpt, ITEM_PREVIEW_MAX)}</ItemText>
-                                {b.comment && <ItemComment>{b.comment}</ItemComment>}
-                            </span>
-                        </Item>
-                    )
-                })}
-            </ListCard>
+                            }
+                            : undefined}
+                    />
+                ))}
+            </QuoteListBox>
         </div>
     )
 
     return (
         <Popover content={list} trigger="click" placement="topLeft" overlayClassName="quote-list-popover" open={open} onOpenChange={setOpen}>
-            <Chip type="button" data-testid="user-quote-chip">
+            <QuoteChip type="button" data-testid="user-quote-chip">
                 <Quote size={12} />
                 {t('composer.quoteCount', { count: blocks.length })}
-            </Chip>
+            </QuoteChip>
         </Popover>
     )
 }
 
 /** 附件层容器：段间垂直间距对齐正文 UserBlocksView 的顶层 Space size */
 export function UserBubbleHeader({ blocks, env }: { blocks: readonly UserContentBlock[]; env: UserBlockRenderEnv }) {
+    // 拆分单源：先确认存在附件层内容再跑分段（纯 text 消息零开销早退）
+    if (!splitUserBodyAndAttachments(blocks).hasAttachments) return null
     const segs = groupUserBlocks(blocks).filter(seg => seg.kind !== 'block')
-    if (segs.length === 0) return null
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>

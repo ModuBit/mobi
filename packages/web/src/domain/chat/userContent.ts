@@ -38,6 +38,26 @@ export type UserBlockGroup =
     | { kind: 'images'; blocks: UserImageBlock[] }
     | { kind: 'quotes'; blocks: UserQuoteBlock[] }
 
+/**
+ * 用户消息「正文 vs 附件层」的唯一拆分：text 归正文渲染，其余（image/document/quote）
+ * 归气泡 header 附件层。两个渲染壳（blocks/index 的 user-text 分支与 UserBubbleHeader）
+ * 消费同一份拆分——各写各的过滤谓词会在新增 block 类型时静默丢内容。
+ */
+export function splitUserBodyAndAttachments(blocks: readonly UserContentBlock[]): {
+    /** 归正文的 text blocks（保序，CollapsibleUserMessage/UserBlocksView 直出） */
+    body: UserTextBlock[]
+    /** 是否存在归附件层的 block（无附件时 header 槽零改动） */
+    hasAttachments: boolean
+} {
+    const body: UserTextBlock[] = []
+    let hasAttachments = false
+    for (const b of blocks) {
+        if (b.type === 'text') body.push(b)
+        else hasAttachments = true
+    }
+    return { body, hasAttachments }
+}
+
 export function groupUserBlocks(blocks: readonly UserContentBlock[]): UserBlockGroup[] {
     const out: UserBlockGroup[] = []
     for (const b of blocks) {

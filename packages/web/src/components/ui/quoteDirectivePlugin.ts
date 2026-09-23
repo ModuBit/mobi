@@ -25,9 +25,10 @@
 
 import type { Tokens, TokenizerAndRendererExtension } from 'marked'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
+import { QUOTE_DIRECTIVE_SHAPE } from '@/domain/chat/quoteDirectives'
 
-/** directive 完整形态（与 domain/quoteDirectives 的判定同源同形） */
-const DIRECTIVE_TOKEN_RE = new RegExp(`^${QUOTE_DIRECTIVE}\\{index="(\\d+)"\\}`)
+/** directive 完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
+const DIRECTIVE_TOKEN_RE = new RegExp(`^${QUOTE_DIRECTIVE_SHAPE}`)
 
 export function quoteDirectiveExtension(): TokenizerAndRendererExtension {
     return {

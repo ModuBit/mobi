@@ -19,10 +19,15 @@ import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type S
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
-// 中断消息的正则匹配：整条内容就是 CC 中断标记才算合成消息。必须锚定全串——
-// 正文**引用**该标记的正常消息（如根因分析引用日志原文）不得命中，
-// 否则被误标 isSynthetic 走弱化纯文本渲染（2026-09-21 事故，同 TextBlock INTERRUPTED_RE）
-const INTERRUPTED_PATTERN = /^\[Request interrupted by user\]$/
+// 中断合成消息判定的唯一定义（/simplify 收口：此前 domain 与 TextBlock 各持一份
+// 正则且已漂移出语义差）。必须锚定全串——正文**引用**该标记的正常消息（如根因分析
+// 引用日志原文）不得命中，否则被误判走弱化纯文本渲染（2026-09-21 事故）
+const INTERRUPTED_PATTERN = /^\[Request interrupted by user.*\]$/
+
+/** 整条文本就是 CC 中断标记（含 for-tool-use 变体）才算中断合成消息；渲染兜底共用此判定 */
+export function isInterruptedSyntheticText(text: string): boolean {
+    return INTERRUPTED_PATTERN.test(text.trim())
+}
 
 // ============================================================================
 // 工具函数
@@ -245,7 +250,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
 
     // 简单字符串内容
     if (typeof messageContent === 'string') {
-        const isSynthetic = INTERRUPTED_PATTERN.test(messageContent.trim())
+        const isSynthetic = isInterruptedSyntheticText(messageContent)
         return {
             id: ctx.messageId,
             localId: ctx.localId,
@@ -266,7 +271,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
         for (const block of messageContent) {
             if (!isObject(block) || typeof block.type !== 'string') continue
             if (block.type === 'text' && typeof block.text === 'string') {
-                if (INTERRUPTED_PATTERN.test(block.text.trim())) {
+                if (isInterruptedSyntheticText(block.text)) {
                     hasInterruptedText = true
                 }
                 blocks.push({ type: 'text', text: block.text, uuid, parentUUID })

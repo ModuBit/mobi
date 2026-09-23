@@ -16,6 +16,7 @@
 
 import { memo } from 'react'
 import styled from '@emotion/styled'
+import { useTranslation } from 'react-i18next'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { CommentField } from '@/components/ui/CommentField'
@@ -69,6 +70,7 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
     // layoutInset = 当前 layout viewport 内被键盘占据的高度（resize 模式 ≈0，bottom 基准已
     // 是键盘上方；iOS 模型 = 键盘高），直接用键盘全高会在 Android 上抬出屏幕
     const { keyboardInset, layoutInset } = useKeyboardViewport()
+    const { t } = useTranslation()
 
     return (
         <Layer
@@ -86,7 +88,7 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
                 autoFocus
                 onSave={onSave}
                 onClose={onClose}
-                placeholder='添加可选评论...'
+                placeholder={t('composer.quoteCommentPlaceholder')}
             />
         </Layer>
     )

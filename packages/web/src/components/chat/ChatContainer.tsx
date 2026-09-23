@@ -21,7 +21,7 @@ import { DownOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
 
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
-import type { StopKind, UserQuoteBlock } from '@mobi/shared'
+import type { StopKind } from '@mobi/shared'
 import { readCrossSessionOrigin, readTurnOrigin } from '@mobi/shared'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
@@ -31,6 +31,7 @@ import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
+import { collectQuoteAnnotationsByAgentId } from '@/domain/chat/quoteDirectives'
 import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS, locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
@@ -831,22 +832,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         locateQuotedMessage(messageId)
     }, [])
 
-    // 回应批注数据源（spec .scratch/response-annotations）：agent 消息 id → 触发本轮回复的
-    // user 消息 quote blocks。一次遍历 chatBlocks：user-text 更新「最近引用」，其后同轮的
-    // agent-text 共享该引用（一轮可有多条 agent 消息），直到下一条 user 消息换血
-    const quoteAnnotationsByAgentId = useMemo(() => {
-        const byId = new Map<string, UserQuoteBlock[]>()
-        let pending: UserQuoteBlock[] | undefined
-        for (const block of chatBlocks) {
-            if (block.kind === 'user-text') {
-                const quotes = block.blocks.filter((b): b is UserQuoteBlock => b.type === 'quote')
-                pending = quotes.length > 0 ? quotes : undefined
-            } else if (block.kind === 'agent-text' && pending) {
-                byId.set(block.id, pending)
-            }
-        }
-        return byId
-    }, [chatBlocks])
+    // 回应批注数据源：agent 消息 id → 触发本轮回复的 user 消息 quote blocks。
+    // turn 配对规则收口在 domain（collectQuoteAnnotationsByAgentId，/simplify）；
+    // 无批注会话返回共享空 Map，流式每帧调用零分配
+    const quoteAnnotationsByAgentId = useMemo(
+        () => collectQuoteAnnotationsByAgentId(chatBlocks),
+        [chatBlocks],
+    )
 
     // 传给 BubbleListChat 的稳定回调：内联箭头每次渲染换引用，会让其内部
     // 上抛 following 的 effect 每帧重跑
@@ -1091,10 +1083,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // agent 回复 footer 已移除：复制/fork 操作组移入 turn-result 概要行尾（AgentTurnActions，
             // position A）——时间以概要行为唯一来源，原 footer 悬浮时间戳是重复展示
 
-            // 移动端「⋯」菜单入口（spec 移动端手势仲裁：长按让位给系统文本选择，
-            // 原长按菜单整体迁到常驻小按钮，点击等价原长按打开 Drawer）。
-            // 挂载范围 = actionsInfo 的 key 集合（用户消息全量；agent 回复仅 fork 落点），
-            // 与原长按手势的可作用范围一致；PC 不挂（走 footer hover 操作组）。
             // 移动端「⋯」菜单入口（spec 移动端手势仲裁：长按让位给系统文本选择，
             // 原长按菜单整体迁到常驻小按钮，点击等价原长按打开 Drawer）。
             // 挂载范围 = actionsInfo 的 key 集合（用户消息全量；agent 回复仅 fork 落点），

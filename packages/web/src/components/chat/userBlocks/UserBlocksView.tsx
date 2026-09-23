@@ -154,7 +154,7 @@ function QuoteGroupView({ blocks, env }: { blocks: UserQuoteBlock[]; env: UserBl
     return (
         // 闪烁动画样式不在此注入——每实例 Global 会在长会话重复挂载同名规则，
         // 单份注入在 ChatContainer（quoteFlashStyles，随聊天列表生灭）
-        <div {...anchorProps} style={{ ...anchorProps.style, userSelect: 'none' }}>
+        <div {...anchorProps}>
             <div style={{
                 display: 'flex',
                 flexDirection: 'column',

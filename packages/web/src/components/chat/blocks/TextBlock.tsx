@@ -17,14 +17,7 @@
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
-
-/**
- * 匹配中断消息：整条消息就是 CC 中断标记（[Request interrupted by user] /
- * [Request interrupted by user for tool use]）。必须锚定全串——正文**引用**该标记的
- * 正常回复（如根因分析引用日志原文）不得命中，否则整条被打成纯文本小字、
- * markdown 不渲染（2026-09-21 事故）。
- */
-const INTERRUPTED_RE = /^\[Request interrupted by user.*\]$/
+import { isInterruptedSyntheticText } from '@/domain/chat/normalizeAgent'
 
 /**
  * 「已截断」中性标注（spec D6）：assistant 正文被 interrupt/abort 截断时的诚实呈现。
@@ -62,7 +55,7 @@ export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreamin
     enableSlashCommand?: boolean
     enableMention?: boolean
 }) {
-    if (isSynthetic || INTERRUPTED_RE.test(text.trim())) {
+    if (isSynthetic || isInterruptedSyntheticText(text.trim())) {
         return (
             <span style={{ fontSize: 12, opacity: 0.5 }}>
                 {text}

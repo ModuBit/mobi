@@ -109,16 +109,32 @@ export interface QuoteAnchorInput {
  * 渲染层锚点属性（React 形态，与上方判定常量同一词汇——两处拼写漂移会被测试抓出）。
  * 载体 div 一律 `display: contents`：锚点只做 DOM 爬取标记，不参与布局零样式影响
  * （不做几何定位，无「display:contents 零矩形」坑）。
+ * forbidden（禁区）完整语义在此单点承载：第二道防御标记 + user-select:none——
+ * 消费方不得只落标记不带禁选。
  */
 export function quoteAnchorProps(input: QuoteAnchorInput): HTMLAttributes<HTMLDivElement> {
     return {
-        style: { display: 'contents' },
+        style: {
+            display: 'contents',
+            ...(input.forbidden ? { userSelect: 'none' as const } : {}),
+        },
         ...(input.messageId ? { [MESSAGE_ID_ATTR]: input.messageId } : {}),
         ...(input.role ? { [ROLE_ATTR]: input.role } : {}),
         ...(input.allowed === false ? { [ALLOWED_ATTR]: 'false' } : {}),
         ...(input.block ? { [BLOCK_ATTR]: '' } : {}),
         ...(input.forbidden ? { [FORBIDDEN_ATTR]: '' } : {}),
     }
+}
+
+/**
+ * 锚点 → 可定位目标的读侧解析（锚点契约的另一半，locateQuotedMessage 消费）：
+ * display:contents 载体无盒（scrollIntoView 无从定位、背景/描边无处附着），定位与
+ * 高亮落到锚内首个真实盒后代。
+ */
+export function resolveQuoteAnchorTarget(anchor: Element): Element {
+    return anchor instanceof HTMLElement && anchor.style.display === 'contents'
+        ? anchor.firstElementChild ?? anchor
+        : anchor
 }
 
 /** 单个选区端点的锚点解析结果 */

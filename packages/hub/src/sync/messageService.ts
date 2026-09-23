@@ -48,12 +48,14 @@ function stripHeavyImagePayload<T>(content: T): T {
     if (!isObject(data)) return content
 
     let mutated = false
-    const patch: Record<string, unknown> = { ...data }
+    // 惰性拷贝：绝大多数消息两条剥离路径都不命中，命中前不复制 data（/messages 页数百条/页的白重 spread）
+    let patch: Record<string, unknown> | null = null
+    const ensurePatch = (): Record<string, unknown> => (patch ??= { ...data })
 
     // 1) tool_use_result.file.base64
     const tur = data.tool_use_result
     if (isObject(tur) && isObject(tur.file) && typeof tur.file.base64 === 'string') {
-        patch.tool_use_result = { ...tur, file: { ...tur.file, base64: STRIPPED_BASE64_MARKER } }
+        ensurePatch().tool_use_result = { ...tur, file: { ...tur.file, base64: STRIPPED_BASE64_MARKER } }
         mutated = true
     }
 
@@ -76,7 +78,7 @@ function stripHeavyImagePayload<T>(content: T): T {
             return { ...block, content: blockContent }
         })
         if (messageContentMutated) {
-            patch.message = { ...message, content: messageContent }
+            ensurePatch().message = { ...message, content: messageContent }
             mutated = true
         }
     }

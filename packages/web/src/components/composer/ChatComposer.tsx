@@ -28,10 +28,10 @@ import {
     type ComposerQuoteRef,
     type ComposerSegments,
     type PendingQuoteRef,
+    withQuoteUid,
     withQuoteUids,
 } from '@/domain/chat/composerSegments'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
-import { uuid } from '@/core/lib/uuid'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
@@ -390,7 +390,7 @@ export function ChatComposer(props: ChatComposerProps) {
         const existing = quotesRef.current.find(q => q.messageId === quote.messageId && q.excerpt === quote.excerpt)
         if (existing) return existing
         if (quotesRef.current.length >= QUOTE_MAX_COUNT) return null
-        const entry: ComposerQuoteRef = { ...quote, uid: uuid() }
+        const entry = withQuoteUid(quote)
         quotesRef.current = [...quotesRef.current, entry]
         setQuotes(quotesRef.current)
         return entry
