@@ -19,6 +19,7 @@ import styled from '@emotion/styled'
 import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { CommentField } from '@/components/ui/CommentField'
+import { useKeyboardInset } from './useKeyboardInset'
 
 /** 浮层宽度：多行评论输入条 */
 const POPOVER_WIDTH = 280
@@ -61,14 +62,21 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
     onSave,
     onClose,
 }: QuoteCommentInputProps) {
-    // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值
+    // 定位规则（上翻 + 视口钳制）由 quoteLayerPlacement 单处承载，本组件只声明宽度与阈值。
+    // 键盘弹出（inset > 0）时改挂键盘上缘、全宽减边距：虚拟键盘压缩视口后原选区几何失效，
+    // 浮层继续锚选区会脱离视线/被键盘遮挡（2026-09-23 真机：ghost 糊在 composer 上）
     const { top, left, above } = computeQuoteLayerPlacement(rect, POPOVER_WIDTH, FLIP_THRESHOLD_PX, ESTIMATED_HEIGHT_PX)
+    const kbInset = useKeyboardInset()
 
     return (
         <Layer
             data-quote-layer="comment"
             data-testid="quote-comment-layer"
-            style={{ top, left, transform: above ? 'translateY(-100%)' : undefined }}
+            style={
+                kbInset > 0
+                    ? { bottom: kbInset + 8, left: 16, right: 16, width: 'auto', transform: undefined }
+                    : { top, left, transform: above ? 'translateY(-100%)' : undefined }
+            }
         >
             <CommentField
                 initialComment={initialComment}

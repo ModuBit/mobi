@@ -55,6 +55,7 @@ import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteS
 import { QuoteCommentInput } from './QuoteCommentInput'
 import { SelectionGhost } from './SelectionGhost'
 import { useMobileQuoteSelection } from './useMobileQuoteSelection'
+import { useKeyboardInset } from './useKeyboardInset'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
@@ -654,6 +655,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // actionsTarget 只由 MessageActionsTrigger 点击置位（见 decoratedItems footer）
     // ──────────────────────────────────────────────────────────────
     const isMobile = useIsMobile()
+    // 虚拟键盘占据高度（0 = 未弹出）：ghost 隐藏判据（QuoteCommentInput 内部同源做键盘跟随）
+    const kbInset = useKeyboardInset()
     const [actionsTarget, setActionsTarget] = useState<MessageActionTarget | null>(null)
     // key → 消息操作信息索引（decoratedItems 内重建，判据与 footer 同源）
     const actionsInfoByRef = useRef<Map<string, MessageActionTarget>>(new Map())
@@ -1323,8 +1326,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             )}
             {quoteCommentDraft && (
                 <>
-                    {/* 选区 ghost：原生选区已被输入框夺焦清掉，用冻结 rects 保持选中观感 */}
-                    <SelectionGhost rects={quoteCommentDraft.rects} />
+                    {/* 选区 ghost：原生选区已被输入框夺焦清掉，用冻结 rects 保持选中观感。
+                        键盘弹出后视口被压缩、冻结坐标全部失效（会糊到 composer 上），隐藏 */}
+                    {!kbInset && <SelectionGhost rects={quoteCommentDraft.rects} />}
                     <QuoteCommentInput
                         initialComment={quoteCommentDraft.initialComment}
                         rect={quoteCommentDraft.rect}
