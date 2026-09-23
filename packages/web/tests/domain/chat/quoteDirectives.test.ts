@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-// quoteDirectives 行为锁定：directive 解析 / 重复剔除 / 计数（spec .scratch/response-annotations 票 03/04）
+// quoteDirectives 行为锁定：directive 解析 / 重复剔除（spec .scratch/response-annotations 票 03）
 import { describe, expect, it } from 'vitest'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import { collectQuoteDirectiveIndexes, dedupeQuoteDirectiveText, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
+import { dedupeQuoteDirectiveText, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
 
 const d = (n: number) => `${QUOTE_DIRECTIVE}{index="${n}"}`
 
@@ -61,12 +61,5 @@ describe('dedupeQuoteDirectiveText', () => {
     it('不同 index 互不影响', () => {
         const text = `${d(1)}${d(2)}${d(1)}`
         expect(dedupeQuoteDirectiveText(text)).toBe(`${d(1)}${d(2)}`)
-    })
-})
-
-describe('collectQuoteDirectiveIndexes', () => {
-    it('去重 + 升序（header chip 计数口径）', () => {
-        expect(collectQuoteDirectiveIndexes(`${d(2)} ${d(1)} ${d(2)} ${d(3)}`)).toEqual([1, 2, 3])
-        expect(collectQuoteDirectiveIndexes('无标记')).toEqual([])
     })
 })

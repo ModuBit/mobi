@@ -16,8 +16,9 @@
 
 /**
  * 回应批注 directive 的 React 侧（模式同 FootnoteComponents）：Context 携带批注数据
- * （触发本轮回复的 user 消息 quote blocks，按 index 对齐），Marker 组件渲染「注释 N」
- * 上标按钮——hover 看引用原文与评论、点击定位跳转源消息。
+ * （触发本轮回复的 user 消息 quote blocks，按 index 对齐），Marker 组件渲染「引用 N」
+ * 上标按钮（与用户消息侧「N 条引用」同一词汇，编号与 <quote index> 同源）——
+ * hover 看引用原文与评论、点击定位跳转源消息。
  *
  * 无批注数据可解析（伪造/越界索引、非批注场景的字面量）时按 directive 原文降级呈现。
  */
@@ -50,7 +51,7 @@ function AnnotationTooltipContent({ quote }: { quote: UserQuoteBlock }) {
     )
 }
 
-/** 「注释 N」上标按钮（脚注锚点样式，对齐 FootnoteRef 的 tag 语言） */
+/** 「引用 N」上标按钮（脚注锚点样式，对齐 FootnoteRef 的 tag 语言） */
 export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>> = ({ 'data-index': dataIndex, children }) => {
     const { token } = theme.useToken()
     const { t } = useTranslation()

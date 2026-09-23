@@ -233,8 +233,7 @@
         "abortedQueueCleared": "会话已中断，队列已清空",
         "abortedAllStopped": "会话已中断，队列与后台任务已停止",
         "abortedTruncated": "已截断",
-        "annotationMarker": "注释 {{count}}",
-        "annotationCount": "{{count}} 条注释",
+        "annotationMarker": "引用 {{count}}",
         "elicitation": {
             "submit": "提交",
             "decline": "拒绝"

@@ -25,7 +25,6 @@ import { dedupeQuoteDirectiveText } from '@/domain/chat/quoteDirectives'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
 import { TextBlock } from './TextBlock'
-import { AgentAnnotationChip } from './AgentAnnotationChip'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
@@ -140,23 +139,6 @@ export function renderUserBubbleHeader(block: Extract<ChatBlock, { kind: 'user-t
                 onEditSketch: ctx.onEditSketchBlock,
                 onQuoteLocate: ctx.onQuoteLocate ?? locateQuotedMessage,
             }}
-        />
-    )
-}
-
-/**
- * agent 气泡 header 的「N 条注释」聚合 chip（spec .scratch/response-annotations 票 04）：
- * 与用户消息引用 chip 对称的聚合入口。无 directive / 无批注数据时返回 undefined
- * （header 槽零改动，历史消息不受影响）。
- */
-export function renderAgentBubbleHeader(block: Extract<ChatBlock, { kind: 'agent-text' }>, ctx: ChatBlockContext): React.ReactNode {
-    const quotes = ctx.resolveQuoteAnnotations?.(block.id)
-    if (!quotes || quotes.length === 0) return undefined
-    return (
-        <AgentAnnotationChip
-            text={dedupeQuoteDirectiveText(block.text)}
-            quotes={quotes}
-            onLocate={ctx.onQuoteLocate ?? locateQuotedMessage}
         />
     )
 }

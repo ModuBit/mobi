@@ -48,7 +48,7 @@ import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
-import { renderUserBubbleHeader, renderAgentBubbleHeader, type ChatBlockContext } from './blocks'
+import { renderUserBubbleHeader, type ChatBlockContext } from './blocks'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
@@ -1065,9 +1065,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const showCrossSessionTag = crossSessionOrigin !== null
             // 附件层（图片/文档/引用 chip）：与正文同源 block，挂 bubble header（正文只剩 text）
             const userExtras = isUserText && block ? renderUserBubbleHeader(block, renderCtx) : undefined
-            // 「N 条注释」聚合 chip（回应批注，spec .scratch/response-annotations 票 04）：
-            // agent 回复含 directive 时挂 header，与用户消息引用 chip 对称
-            const agentExtras = block?.kind === 'agent-text' ? renderAgentBubbleHeader(block, renderCtx) : undefined
 
             // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
@@ -1133,12 +1130,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
-                // header 槽两段堆叠：附件层（用户消息图片/文档/引用 chip、agent 回复注释 chip）
-                // 在上，跨会话来源标签保序其后（各自可空，全空则 header 保持 undefined 零改动）
-                header: (userExtras || agentExtras || showCrossSessionTag) ? (
+                // header 槽两段堆叠：附件层（图片/文档/引用 chip）在上，跨会话来源标签保序其后
+                //（各自可空，全空则 header 保持 undefined 零改动）
+                header: (userExtras || showCrossSessionTag) ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {userExtras}
-                        {agentExtras}
                         {showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : null}
                     </div>
                 ) : undefined,

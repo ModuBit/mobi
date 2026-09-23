@@ -20,10 +20,8 @@
  * 模型在回复正文输出的内联 directive `:mobi-quote{index="N"}`（字面量单源 shared
  * QUOTE_DIRECTIVE，CLI 协议文案共用）由本模块与 markdown 扩展（quoteDirectivePlugin）
  * 消费：解析命中位置供渲染插桩、剔除重复出现（handoff 记录的失败模式：同一 directive
- * 被模型输出多次）、统计去重后数量供 header 聚合 chip。
- *
- * 全部纯函数、单 pass 正则；流式半截 directive（未闭合）不命中——x-markdown 的
- * 不完整语法占位负责流式期间的视觉过渡，闭合后自然成钮。
+ * 被模型输出多次）。全部纯函数、单 pass 正则；流式半截 directive（未闭合）不命中——
+ * x-markdown 的不完整语法占位负责流式期间的视觉过渡，闭合后自然成钮。
  */
 
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
@@ -71,11 +69,4 @@ export function dedupeQuoteDirectiveText(text: string): string {
     // 无重复则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）
     if (!removedAny) return text
     return out + text.slice(cursor)
-}
-
-/** 去重后的命中索引（升序）：header 聚合 chip 的计数与列表口径 */
-export function collectQuoteDirectiveIndexes(text: string): number[] {
-    const seen = new Set<number>()
-    for (const hit of parseQuoteDirectives(text)) seen.add(hit.index)
-    return [...seen].sort((a, b) => a - b)
 }
