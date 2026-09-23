@@ -52,6 +52,25 @@ html[data-theme='dark'] {
     --mobi-command-builtin: #faad14;
 }
 
+/* 选区配色：暖纸体系的「荧光笔」（2026-09-23 走查）——弃浏览器默认蓝（全站唯一的
+   非体系色），沿用两主题既有强调色做低透明度底染，文字保持原色不重设（重设会让
+   链接/代码高亮等彩色文字在选区内失真）：
+   - light：陶土橙 20% → 白纸上淡桃染，墨字对比无损
+   - dark：gold 30% → 暗底上暖金微光，与灰白字对比舒适
+   ::selection 对 input/textarea 原生生效，引用评论框等输入场景自动覆盖；
+   SelectionGhost（评论期间冻结的选区观感）共用同一变量保持同色 */
+html {
+    --mobi-selection-bg: rgb(249 115 22 / 0.2);
+}
+
+html[data-theme='dark'] {
+    --mobi-selection-bg: rgb(250 173 20 / 0.3);
+}
+
+::selection {
+    background: var(--mobi-selection-bg);
+}
+
 body {
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;

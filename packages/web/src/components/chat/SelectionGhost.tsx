@@ -21,8 +21,9 @@
  * 开启期间滚动即取消（几何失效），与浮层同一生命周期。
  */
 
-/** ghost 色近似原生 ::selection 蓝（主题 primary 是米白，这里刻意跟随浏览器选区观感） */
-const GHOST_BG = 'rgba(86, 144, 255, 0.32)'
+/** ghost 色与原生 ::selection 同源（--mobi-selection-bg，见 styles/base.css）：
+ *  荧光笔暖染随主题切换，评论期间与「刚才划选」的观感连续 */
+const GHOST_BG = 'var(--mobi-selection-bg)'
 
 export function SelectionGhost({ rects }: { rects: DOMRect[] }) {
     return (
