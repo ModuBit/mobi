@@ -130,6 +130,8 @@ interface ChatComposerProps {
     onModelChange?: (model: string | null) => void
     /** 发送回调：入参为当前输入的完整分段（文本 + 附件双桶 + 引用），wire 格式由 useSendMessage 序列化 */
     onSend: (segments: ComposerSegments) => void
+    /** 引用条目点击定位（跳转前停贴底跟随的收口在 ChatContainer；缺省直连 locateQuotedMessage） */
+    onQuoteLocate?: (messageId: string) => void
     /** 中止会话：入参为停止档位（键盘快捷键路径固定 'turn'；按钮长短按见 SubmitButton） */
     onAbort?: (stopKind: StopKind) => void
     abortPending?: boolean
@@ -293,6 +295,7 @@ export function ChatComposer(props: ChatComposerProps) {
         onPermissionModeChange,
         onModelChange,
         onSend,
+        onQuoteLocate,
         onAbort,
         abortPending = false,
         onActivate,
@@ -803,7 +806,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     onRemove={removeQuote}
                     onUpdateComment={updateQuoteComment}
                     onClearAll={clearQuotes}
-                    onLocate={locateQuotedMessage}
+                    onLocate={onQuoteLocate ?? locateQuotedMessage}
                 />
             </div>
         ),

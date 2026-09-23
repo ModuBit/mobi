@@ -33,6 +33,8 @@ export type ChatBubbleItem = BubbleItemBase & {
 /** 对外暴露的命令式 handle（与 VirtuosoChatList 同接口，ChatContainer 无感切换） */
 export interface BubbleListChatHandle {
     scrollToBottom: (behavior?: 'auto' | 'smooth') => void
+    /** 停止贴底跟随（引用定位跳转前调用，防流式钉底与跳转争抢 scrollTop） */
+    stopFollow: () => void
 }
 
 interface BubbleListChatProps {
@@ -130,7 +132,7 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     // 同步 renderItems 信息到 ref（handleScroll useCallback([]) 闭包读不到 renderItems）
     const firstRenderItemKeyRef = useRef<string | number | null | undefined>(undefined)
 
-    const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
+    const { handleScrollerRef, following, stickToBottom, stopFollow } = useStickToBottom(items.length > 0)
     // following 同步到 ref：fill 块/effect 闭包读最新值（防 fill 级联钉底瞬移上滚看历史的用户）
     const followingRef = useRef(following)
     followingRef.current = following
@@ -321,7 +323,8 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
 
     useImperativeHandle(ref, (): BubbleListChatHandle => ({
         scrollToBottom: stickToBottom,
-    }), [stickToBottom])
+        stopFollow,
+    }), [stickToBottom, stopFollow])
 
     // renderItems：window slice + 顶部 loading。
     //

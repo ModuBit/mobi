@@ -80,6 +80,11 @@ export interface StickToBottomController {
     /** 恢复跟随并滚到底部（供「滚到底」按钮调用） */
     stickToBottom: (behavior?: 'auto' | 'smooth') => void
     /**
+     * 停止跟随（不动 scrollTop）。程序化跳转（引用定位 scrollIntoView）前调用：
+     * 跳转 = 用户intent看历史，不停跟随则流式 RO 追赶把列表钉回底部，与跳转争抢 scrollTop。
+     */
+    stopFollow: () => void
+    /**
      * 内容高度变化回调，接 Virtuoso 的 `totalListHeightChanged`。
      * Virtuoso 测量系统在内部布局 settle 后才触发，此时读 scrollHeight 是最终值——
      * 补 RO 观测 DOM 层的时序差（RO 回调触发时 scrollHeight 可能尚未反映最终布局，
@@ -421,5 +426,16 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         if (reFollowTimerRef.current !== null) clearTimeout(reFollowTimerRef.current)
     }, [])
 
-    return { handleScrollerRef, following, stickToBottom, onContentHeightChange: pinIfFollowing }
+    // 停跟随：停掉在飞追赶（否则 chaseFrame 会继续追底）+ 清 re-follow 定时器（防 settle 判定翻转）；
+    // 不动 scrollTop——随后的程序跳转自己接管滚动位置
+    const stopFollow = useCallback(() => {
+        stopChase()
+        if (reFollowTimerRef.current !== null) {
+            clearTimeout(reFollowTimerRef.current)
+            reFollowTimerRef.current = null
+        }
+        setFollow(false)
+    }, [setFollow, stopChase])
+
+    return { handleScrollerRef, following, stickToBottom, stopFollow, onContentHeightChange: pinIfFollowing }
 }

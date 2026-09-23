@@ -31,7 +31,7 @@ import { useForkSession } from '@/core/data/hooks/mutations/useForkSession'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
-import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS } from '@/core/lib/quoteLocate'
+import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS, locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -821,6 +821,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         chatListRef.current?.scrollToBottom('smooth')
     }, [])
 
+    // 引用定位入口的统一收口：跳转 = 用户intent看历史 → 先停贴底跟随再滚动，
+    // 否则流式期间 RO 追赶钉底与 scrollIntoView 争抢 scrollTop（跳过去立刻被拉回底部）
+    const handleQuoteLocate = useCallback((messageId: string) => {
+        chatListRef.current?.stopFollow()
+        locateQuotedMessage(messageId)
+    }, [])
+
     // 传给 BubbleListChat 的稳定回调：内联箭头每次渲染换引用，会让其内部
     // 上抛 following 的 effect 每帧重跑
     const handleFollowingChange = useCallback((following: boolean) => {
@@ -944,6 +951,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
             turnResultActions: (block) => turnResultActionsByKey.get(block.id),
             onEditSketchBlock: (block) => { void handleEditSketchFromBubble(block) },
+            onQuoteLocate: handleQuoteLocate,
         }
         const baseItems = buildChatBubbleItems(
             chatBlocks,
@@ -1365,6 +1373,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         <div style={{ position: 'relative', zIndex: SKETCH_Z_COMPOSER }}>
             <ChatComposer
                 ref={composerHandleRef}
+                onQuoteLocate={handleQuoteLocate}
                 sketchLayerEl={chatFullscreenEl}
                 sketchDockMetrics={sketchDockMetrics}
                 sessionId={sessionId}

@@ -52,6 +52,8 @@ export type ChatBlockContext = {
     turnResultActions?: (block: ChatBlock) => React.ReactNode
     /** 画板重编辑入口（仅 sketch 标记的 image block 渲染 hover 角标；spec D3/D4） */
     onEditSketchBlock?: (block: UserImageBlock) => void
+    /** 引用条目点击定位入口（跳转前停贴底跟随的收口在 ChatContainer；缺省直连 locateQuotedMessage） */
+    onQuoteLocate?: (messageId: string) => void
 }
 
 /** 根据 block 类型渲染对应组件 */
@@ -73,7 +75,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                                 onEditSketch: ctx.onEditSketchBlock,
                                 quoteBlockAnchor: true,
                                 // 引用条目点击 → 消息级定位（滚动 + 高亮；窗口外静默）
-                                onQuoteLocate: locateQuotedMessage,
+                                onQuoteLocate: ctx.onQuoteLocate ?? locateQuotedMessage,
                             }}
                         />
                     </CollapsibleUserMessage>
@@ -123,7 +125,7 @@ export function renderUserBubbleHeader(block: Extract<ChatBlock, { kind: 'user-t
                 isSynthetic: block.isSynthetic,
                 refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
                 onEditSketch: ctx.onEditSketchBlock,
-                onQuoteLocate: locateQuotedMessage,
+                onQuoteLocate: ctx.onQuoteLocate ?? locateQuotedMessage,
             }}
         />
     )
