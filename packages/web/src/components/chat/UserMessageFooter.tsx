@@ -42,6 +42,8 @@ export interface UserMessageFooterProps {
     rewindLoading?: boolean
     onRewindConfirm?: (restoreFiles: boolean) => void
     onRewindCancel?: () => void
+    /** 只留时间戳（移动端：复制/rewind 收进「⋯」菜单，footer 不再重复常驻按钮） */
+    hideActions?: boolean
 }
 
 /**
@@ -56,9 +58,18 @@ export interface UserMessageFooterProps {
 export function UserMessageFooter({
     text, createdAt, canRewind, onRewind,
     rewindOpen, rewindTargetText, rewindDryRun, rewindLoading, onRewindConfirm, onRewindCancel,
+    hideActions = false,
 }: UserMessageFooterProps) {
     const { t } = useTranslation()
     const rewindActive = canRewind && !!rewindOpen
+
+    if (hideActions) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ marginLeft: 'auto', paddingLeft: 8, fontSize: 11, opacity: 0.6 }}>{formatMessageTime(createdAt)}</span>
+            </div>
+        )
+    }
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

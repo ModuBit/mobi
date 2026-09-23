@@ -915,7 +915,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     current = row ? { key: block.id, text: block.text, row, forkable: forkableOfRow(row) } : null
                 } else if (block.kind === 'agent-event' && block.event.type === 'turn-result' && current) {
                     const matched = current
-                    turnResultActionsByKey.set(block.id, isMobile ? undefined : (
+                    turnResultActionsByKey.set(block.id, isMobile ? (
+                        // 移动端「⋯」与 PC 操作组同位（概要行尾，紧贴 usage meta）——
+                        // 不再悬在气泡下方 footer。判据与 actionsInfo agent 分支同源（可 fork 才挂）
+                        matched.forkable
+                            ? <MessageActionsTrigger onClick={() => openActionsByItemKey(matched.key)} />
+                            : undefined
+                    ) : (
                         <AgentTurnActions
                             text={matched.text}
                             showFork={matched.forkable}
@@ -1049,6 +1055,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     text={collectUserText(block.blocks)}
                     createdAt={block.createdAt}
                     canRewind={rewindable}
+                    // 移动端：复制/rewind 收进「⋯」菜单，footer 不再重复常驻按钮
+                    hideActions={isMobile}
                     onRewind={() => {
                         const nativeId = metaById.get(block.id)?.nativeId
                         if (nativeId) handleOpenRewind(block.id, nativeId)
@@ -1066,12 +1074,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // position A）——时间以概要行为唯一来源，原 footer 悬浮时间戳是重复展示
 
             // 移动端「⋯」菜单入口（spec 移动端手势仲裁：长按让位给系统文本选择，
-            // 原长按菜单整体迁到气泡 footer 常驻小按钮，点击等价原长按打开 Drawer）。
+            // 原长按菜单整体迁到常驻小按钮，点击等价原长按打开 Drawer）。
             // 挂载范围 = actionsInfo 的 key 集合（用户消息全量；agent 回复仅 fork 落点），
-            // 与原长按手势的可作用范围一致；PC 不挂（走 footer hover 操作组）
-            const actionsTrigger = isMobile && actionsInfo.has(item.key) ? (
-                <MessageActionsTrigger onClick={() => openActionsByItemKey(item.key)} />
-            ) : null
+            // 与原长按手势的可作用范围一致；PC 不挂（走 footer hover 操作组）。
+            // 位置分两路（2026-09-23 验收反馈）：用户消息挂气泡左侧（right:100% 出血），
+            // agent 回复挂 turn-result 概要行尾（见 turnResultActionsByKey）——都不进 footer
+            const actionsTrigger = isMobile && actionsInfo.has(item.key) && isUserText
+                ? <MessageActionsTrigger onClick={() => openActionsByItemKey(item.key)} />
+                : null
+            const userAsideTrigger = actionsTrigger
 
             // footer 组装：单层 flex 壳（「⋯」入口、终态标注各自可空）→ 既有 footer 内容。
             // 内容槽包 flex:1 容器，保住 UserMessageFooter 时间戳（marginLeft:auto）贴最右
@@ -1086,9 +1097,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     {terminalReasonKey && <> · {t(terminalReasonKey)}</>}
                 </span>
             ) : null
-            const footer = (actionsTrigger || terminalLabel) ? (
+            // footer 只承载终态标注与时间戳；「⋯」两路挂点都在气泡侧（见 actionsTrigger 注释）
+            const footer = (terminalLabel) ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {actionsTrigger}
                     {terminalLabel}
                     <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
                 </div>
@@ -1096,6 +1107,19 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
+                // 用户消息移动端：「⋯」挂气泡左侧（absolute 出血到气泡外）——不占 footer、
+                // 不依赖消息长度（列表 overflow-x hidden 会裁掉溢出，但用户气泡右对齐、
+                // ⋯ 只在短消息时可见即可用；长消息收进 Drawer 的其他入口仍在）
+                content: userAsideTrigger ? (
+                    <div style={{ position: 'relative' }}>
+                        <span
+                            style={{ position: 'absolute', right: 'calc(100% + 6px)', top: '50%', transform: 'translateY(-50%)', display: 'inline-flex' }}
+                        >
+                            {userAsideTrigger}
+                        </span>
+                        {item.content}
+                    </div>
+                ) : item.content,
                 // header 槽两段堆叠：附件层（图片/文档/引用 chip）在上，跨会话来源标签保序其后
                 //（各自可空，全空则 header 保持 undefined 零改动）
                 header: (userExtras || showCrossSessionTag) ? (
