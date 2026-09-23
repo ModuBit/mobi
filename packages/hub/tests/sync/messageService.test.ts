@@ -116,3 +116,75 @@ describe('MessageService.redeliverQueued（fork 激活翻转补投）', () => {
         expect(emits).toHaveLength(0)
     })
 })
+
+describe('MessageService 出口剥离死重 base64 图片数据', () => {
+    /** 构造 Read 工具读图的 transcript 帧：同一张图在 tool_use_result 与 tool_result image 各存一份 */
+    function imageReadFrame(seq: number, base64: string): StoredMessage {
+        return {
+            ...msg(seq, { lifecycle: null, localId: null }),
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'text',
+                    data: {
+                        uuid: `u-${seq}`,
+                        message: {
+                            role: 'user',
+                            content: [{
+                                type: 'tool_result',
+                                tool_use_id: `tu-${seq}`,
+                                content: [{
+                                    type: 'image',
+                                    source: { type: 'base64', media_type: 'image/png', data: base64 },
+                                }],
+                            }],
+                        },
+                        tool_use_result: {
+                            type: 'image',
+                            file: { base64, type: 'image/png', originalSize: 100, dimensions: {} },
+                        },
+                    },
+                },
+            },
+        } as unknown as StoredMessage
+    }
+
+    const BIG = 'iVBORw0KGgo' + 'A'.repeat(200_000)
+    const MARKER = '[mobi:base64-stripped]'
+
+    test('getMessagesPage：tool_use_result.file.base64 与 tool_result image source.data 均被剥离为占位符', () => {
+        const { service } = makeService({ page: [imageReadFrame(1, BIG)] })
+
+        const result = service.getMessagesPage('s', { limit: 10, beforeSeq: null })
+        const raw = JSON.stringify(result.messages)
+
+        expect(raw).not.toContain(BIG)
+        expect(raw).toContain(MARKER)
+        // 非大字段原样保留（dimensions 等 meta 不受影响）
+        const frame = result.messages[0].content as { content: { data: { tool_use_result: { file: { dimensions: unknown; originalSize: number } } } } }
+        expect(frame.content.data.tool_use_result.file.dimensions).toBeDefined()
+        expect(frame.content.data.tool_use_result.file.originalSize).toBe(100)
+    })
+
+    test('剥离只发生在出口：入库原对象不被原地修改', () => {
+        const original = imageReadFrame(1, BIG)
+        const { service } = makeService({ page: [original] })
+
+        service.getMessagesPage('s', { limit: 10, beforeSeq: null })
+
+        const frame = original.content as { content: { data: { tool_use_result: { file: { base64: string } } } } }
+        expect(frame.content.data.tool_use_result.file.base64).toBe(BIG)
+    })
+
+    test('无 base64 的普通消息原样透传，不被剥离逻辑触碰', () => {
+        const plain = msg(1, {
+            lifecycle: null,
+            content: { role: 'agent', content: { type: 'text', message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] } } },
+        })
+        const { service } = makeService({ page: [plain] })
+
+        const result = service.getMessagesPage('s', { limit: 10, beforeSeq: null })
+        expect(JSON.stringify(result.messages)).toContain('hello')
+        expect(JSON.stringify(result.messages)).not.toContain(MARKER)
+    })
+})

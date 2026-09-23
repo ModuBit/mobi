@@ -18,6 +18,7 @@ import { hubLogger } from '../logger'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { compress } from 'hono/compress'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { serveStatic } from 'hono/bun'
@@ -105,6 +106,11 @@ export function createWebApp(options: {
     const app = new Hono<WebAppEnv>()
 
     app.use('*', logger())
+
+    // 响应压缩：消息页等 JSON 端点可达 MB 级，公网链路传输时间被 payload 主导
+    // （走查实测 3.8MB / 12s）。gzip 兜底所有大 JSON；text/event-stream 被内置
+    // 可压缩类型正则显式排除，SSE 流不受影响
+    app.use('*', compress())
 
     // 未捕获异常兜底：打出真实堆栈再回 500。Hono 默认 onError 静默返回纯文本
     // "Internal Server Error"，路由内任何 throw 在 hub 日志里零痕迹，无法定位故障
