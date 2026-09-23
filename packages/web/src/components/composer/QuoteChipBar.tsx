@@ -21,7 +21,7 @@ import { CloseOutlined, EditOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import type { ComposerQuoteRef } from '@/domain/chat/composerSegments'
-import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
+import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { CommentField } from '@/components/ui/CommentField'
 
 /** 引用列表卡单条目间距（条间分隔线的统一节奏） */
@@ -48,7 +48,10 @@ const Chip = styled.button`
 `
 
 const ListCard = styled.div`
-    max-width: 420px;
+    /* 恒定宽度：编辑态条目只剩窄的 CommentField 时 shrink-to-fit 会整卡收窄，
+       展示/编辑宽度跳变（2026-09-23 验收反馈）；与 excerpt 撑满态取同一量级 */
+    width: 420px;
+    max-width: 100%;
     max-height: 320px;
     overflow-y: auto;
     display: flex;
@@ -162,7 +165,7 @@ function QuoteItem({
                     <CommentField
                         testIdPrefix={`quote-item-${index}`}
                         initialComment={quote.comment}
-                        maxLength={QUOTE_EXCERPT_MAX}
+                        maxLength={QUOTE_COMMENT_MAX}
                         autoFocus
                         placeholder={t('composer.quoteCommentPlaceholder')}
                         onSave={(comment) => {

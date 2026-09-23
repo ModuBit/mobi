@@ -16,7 +16,7 @@
 
 import { memo } from 'react'
 import styled from '@emotion/styled'
-import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
+import { QUOTE_COMMENT_MAX } from '@mobi/shared'
 import { computeQuoteLayerPlacement } from './quoteLayerPlacement'
 import { CommentField } from '@/components/ui/CommentField'
 
@@ -72,7 +72,7 @@ export const QuoteCommentInput = memo(function QuoteCommentInput({
         >
             <CommentField
                 initialComment={initialComment}
-                maxLength={QUOTE_EXCERPT_MAX}
+                maxLength={QUOTE_COMMENT_MAX}
                 autoFocus
                 onSave={onSave}
                 onClose={onClose}

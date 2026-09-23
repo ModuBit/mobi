@@ -21,6 +21,13 @@ import { isObject } from './utils'
 export const QUOTE_EXCERPT_MAX = 500
 
 /**
+ * 评论 UI 输入上限：评论是用户的一句话注解，500 的 excerpt 量级没必要（2026-09-23 验收定稿）。
+ * 仅约束输入侧（maxLength）；schema 校验保持 QUOTE_EXCERPT_MAX 宽松——收窄会让超限的
+ * 存量评论在读取侧被静默丢弃。
+ */
+export const QUOTE_COMMENT_MAX = 300
+
+/**
  * AG-UI InputContentSource 对齐：
  * mobi 落库恒用 url source（value=.mobi/uploads 路径）；data 形态仅留骨架占位。
  */

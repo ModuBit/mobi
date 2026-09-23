@@ -32,6 +32,8 @@ import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
 const COUNT_WARN_RATIO = 0.9
 
 const Wrap = styled.div`
+    /* 撑满宿主容器：列表卡行内编辑时与展示态 excerpt 同宽（收缩会整卡变窄，观感突兀） */
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 2px;

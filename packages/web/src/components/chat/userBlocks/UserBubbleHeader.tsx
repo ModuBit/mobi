@@ -62,7 +62,9 @@ const Chip = styled.button`
 `
 
 const ListCard = styled.div`
-    max-width: 420px;
+    /* 恒定宽度（与 composer 引用列表卡同一量级）：短 excerpt 时 shrink-to-fit 卡片过窄 */
+    width: 420px;
+    max-width: 100%;
     max-height: 320px;
     overflow-y: auto;
     display: flex;
