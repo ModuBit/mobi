@@ -177,6 +177,10 @@ const chatScrollStyles = css`
 /** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */
 export const CHAT_MAX_WIDTH = 1200
 
+/** 用户滚动手势窗口（ms）：手势后此窗口内的 scroll 才视为用户滚动（关引用浮层）；
+ *  流式 stick-to-bottom 的程序滚动无手势先行，不关 */
+const USER_SCROLL_GESTURE_WINDOW_MS = 250
+
 interface ChatContainerProps {
     sessionId: string
     /** 传递给 ChatComposer 的额外按钮（已废弃，请使用 extraComposerItems） */
@@ -726,10 +730,30 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         setQuoteCommentDraft(null)
     }, [])
 
-    // 引用浮层（add 态）开着时选区被清（点击它处）或滚动即关闭（选区几何已失效，浮层不跟随）；
+    // 引用浮层（add 态）开着时选区被清（点击它处）或用户滚动即关闭（选区几何已失效，浮层不跟随）；
     // Esc 同样收起。scroll 不冒泡，capture 监听才能截获内层滚动容器的滚动。
     // 评论输入浮层**不走** selectionchange 关闭——autoFocus 会把选区收进输入框（collapsed），
     // 依赖它会刚打开即被误关；其取消路径 = mousedown 落在 data-quote-layer 外 / 滚动 / 取消按钮
+    //
+    // 「滚动」只认**用户滚动手势**（wheel / touchmove）后短窗口内的 scroll：会话 running 时
+    // stick-to-bottom 的程序滚动随每个流式 chunk 触发，若照单全收，浮层刚弹开即被关掉
+    // （2026-09-23 实测「running 时 popover 闪一下立刻消失」）；几何漂移在流式期间可容忍，
+    // 用户真滚动（浮层该关）必有手势先行。
+    const lastUserScrollGestureAtRef = useRef(0)
+    useEffect(() => {
+        const mark = () => { lastUserScrollGestureAtRef.current = performance.now() }
+        window.addEventListener('wheel', mark, { passive: true })
+        window.addEventListener('touchmove', mark, { passive: true })
+        return () => {
+            window.removeEventListener('wheel', mark)
+            window.removeEventListener('touchmove', mark)
+        }
+    }, [])
+    const wasUserScroll = useCallback(
+        () => performance.now() - lastUserScrollGestureAtRef.current < USER_SCROLL_GESTURE_WINDOW_MS,
+        [],
+    )
+
     useEffect(() => {
         if (!quotePopover) return
         const close = () => setQuotePopover(null)
@@ -740,15 +764,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') close()
         }
+        const onScroll = () => {
+            if (wasUserScroll()) close()
+        }
         document.addEventListener('selectionchange', onSelectionChange)
         document.addEventListener('keydown', onKeyDown)
-        window.addEventListener('scroll', close, true)
+        window.addEventListener('scroll', onScroll, true)
         return () => {
             document.removeEventListener('selectionchange', onSelectionChange)
             document.removeEventListener('keydown', onKeyDown)
-            window.removeEventListener('scroll', close, true)
+            window.removeEventListener('scroll', onScroll, true)
         }
-    }, [quotePopover])
+    }, [quotePopover, wasUserScroll])
 
     // 评论输入：点击浮层外按取消处理（只关浮层不清选区，同 handleQuoteCancel 的取舍）；
     // 滚动即取消（几何失效）——但排除浮层**内部**元素的滚动：多行评论插入换行后光标
@@ -764,7 +791,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const onScroll = (e: Event) => {
             const target = e.target as HTMLElement | null
             if (target?.closest?.('[data-quote-layer="comment"]')) return
-            close()
+            if (wasUserScroll()) close()
         }
         document.addEventListener('mousedown', onMouseDown)
         window.addEventListener('scroll', onScroll, true)
@@ -772,7 +799,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             document.removeEventListener('mousedown', onMouseDown)
             window.removeEventListener('scroll', onScroll, true)
         }
-    }, [quoteCommentDraft])
+    }, [quoteCommentDraft, wasUserScroll])
 
     // 「⋯」入口：footer 触发按钮按 bubble item key 从索引取目标（点击等价原长按打开 Drawer）
     const openActionsByItemKey = useCallback((key: string) => {
