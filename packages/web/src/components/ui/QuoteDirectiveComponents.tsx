@@ -24,7 +24,7 @@
  */
 
 import { createContext, useContext, type FC, type ReactNode } from 'react'
-import { Tag, theme } from 'antd'
+import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
@@ -51,7 +51,8 @@ function AnnotationTooltipContent({ quote }: { quote: UserQuoteBlock }) {
     )
 }
 
-/** 「引用 N」上标按钮（脚注锚点样式，对齐 FootnoteRef 的 tag 语言） */
+/** 「引用 N」上标标记（脚注锚点，ChatGPT 式纯文字）：line-height:0 + 小字号使其
+ *  不参与行高计算——带框 Tag 会撑高所在行的 line box，首行与后续行基线错位（2026-09-23 验收） */
 export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>> = ({ 'data-index': dataIndex, children }) => {
     const { token } = theme.useToken()
     const { t } = useTranslation()
@@ -64,7 +65,7 @@ export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>>
         return <span style={{ fontSize: '0.85em', color: token.colorTextTertiary }}>{children}</span>
     }
 
-    const button = (
+    const marker = (
         <sup
             className="quote-directive"
             data-testid={`quote-annotation-${index}`}
@@ -72,23 +73,24 @@ export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>>
                 e.stopPropagation()
                 annotations.onLocate(quote.messageId)
             }}
-        >
-            <Tag color="blue" style={{
-                padding: '0 0.3em',
-                marginLeft: '0.15em',
-                lineHeight: '1.2em',
+            style={{
+                // sup 默认 vertical-align:super；line-height 归零是不撑行高的关键
+                lineHeight: 0,
+                fontSize: '0.72em',
+                color: token.colorLink,
                 cursor: 'pointer',
-                textDecoration: 'none',
                 userSelect: 'none',
-            }}>
-                {t('chat.annotationMarker', { count: index })}
-            </Tag>
+                whiteSpace: 'nowrap',
+                margin: '0 2px',
+            }}
+        >
+            {t('chat.annotationMarker', { count: index })}
         </sup>
     )
 
     return (
         <AppTooltip title={<AnnotationTooltipContent quote={quote} />} mouseEnterDelay={0.4}>
-            {button}
+            {marker}
         </AppTooltip>
     )
 }
