@@ -113,13 +113,10 @@ function truncateToolResultContent(content: unknown): unknown {
 
 /** 单个 tool_result block 的出口形态：返回 null = 不需要改 */
 function stripToolResultBlock(block: Record<string, unknown>): Record<string, unknown> | null {
-    if (block.is_error === true) return null
     if (!('content' in block)) return null
 
-    const toolName = typeof block.tool_use_id === 'string' ? lookupEgressToolName(block.tool_use_id) : null
-    if (toolName !== null && TASK_TOOL_NAMES.has(toolName)) return null
-
     // 先剥 image base64（Read 读图时同张图存两份之二），截断的字符预算只数文本。
+    // 无条件执行——is_error 豁免保的是排障文本，失败帧附带的错误截图同样是死重。
     // COW：无 image 时不分配新数组
     let next = block
     let content: unknown[] | null = Array.isArray(block.content) ? block.content : null
@@ -134,6 +131,12 @@ function stripToolResultBlock(block: Record<string, unknown>): Record<string, un
         }
         if (content !== block.content) next = { ...block, content }
     }
+
+    // is_error 豁免（排障关键）：只豁免占位/截断策略，base64 死重已在上方剥离
+    if (block.is_error === true) return next !== block ? next : null
+
+    const toolName = typeof block.tool_use_id === 'string' ? lookupEgressToolName(block.tool_use_id) : null
+    if (toolName !== null && TASK_TOOL_NAMES.has(toolName)) return next !== block ? next : null
 
     if (toolName !== null && FILE_TOOL_NAMES.has(toolName)) {
         return { ...next, content: [{ type: 'text', text: EGRESS_PLACEHOLDER }] }

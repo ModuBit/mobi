@@ -149,6 +149,42 @@ describe('stripEgressContent 策略表', () => {
         }
     })
 
+    test('is_error 豁免只保排障文本：失败结果内的 image base64 仍被剥离', () => {
+        const BIG = 'iVBORw0KGgo' + 'A'.repeat(200_000)
+        const frame = {
+            role: 'agent',
+            content: {
+                type: 'text',
+                data: {
+                    uuid: 'u-err-img',
+                    message: {
+                        role: 'user',
+                        content: [{
+                            type: 'tool_result',
+                            tool_use_id: 'tu-err-img',
+                            is_error: true,
+                            content: [
+                                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: BIG } },
+                                { type: 'text', text: '截图失败：工具返回了错误截图' },
+                            ],
+                        }],
+                    },
+                },
+            },
+        }
+
+        const raw = JSON.stringify(stripEgressContent(frame))
+        const block = resultBlock(stripEgressContent(frame))
+
+        // base64 死重剥离，排障文本原样保留
+        expect(raw).not.toContain(BIG)
+        expect(raw).toContain(STRIPPED_BASE64_MARKER)
+        expect(block.content).toEqual([
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: STRIPPED_BASE64_MARKER } },
+            { type: 'text', text: '截图失败：工具返回了错误截图' },
+        ])
+    })
+
     test('is_error 豁免：失败结果全量保留（即使超长）', () => {
         const frame = frameWithTool('tu-err', 'Bash', textBlock(longText(50_000)), { isError: true })
 
