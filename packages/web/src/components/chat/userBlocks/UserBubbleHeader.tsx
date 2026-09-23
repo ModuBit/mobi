@@ -173,7 +173,7 @@ export function UserBubbleHeader({ blocks, env }: { blocks: readonly UserContent
     if (segs.length === 0) return null
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
             {segs.map(seg => {
                 if (seg.kind === 'documents') {
                     return (
