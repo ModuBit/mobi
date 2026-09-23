@@ -165,6 +165,49 @@ describe('buildChatBubbleItems', () => {
             expect(items[0].key).toBe('u1')
         })
 
+        it('纯附件无正文（quote-only）→ variant: borderless（空气泡壳不渲染）', () => {
+            const blocks = [createUserText({
+                id: 'u-quote',
+                blocks: [{ type: 'quote', messageId: 'm-1', role: 'agent', excerpt: '被引用的话' }],
+            })]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items).toHaveLength(1)
+            expect(items[0].variant).toBe('borderless')
+        })
+
+        it('纯图片附件无正文 → variant: borderless', () => {
+            const blocks = [createUserText({
+                id: 'u-img',
+                blocks: [{ type: 'image', id: 'img-1', filename: 'a.png', size: 10, source: { type: 'ref', value: 'ref-1', mimeType: 'image/png' } }],
+            })]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].variant).toBe('borderless')
+        })
+
+        it('有正文文本（含引用/附件）→ 有气泡背景（variant 缺省）', () => {
+            const blocks = [createUserText({
+                id: 'u-mixed',
+                blocks: [
+                    { type: 'quote', messageId: 'm-1', role: 'agent', excerpt: '被引用的话' },
+                    { type: 'text', text: '请看这条引用' },
+                ],
+            })]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].variant).toBeUndefined()
+        })
+
+        it('正文全空白字符 + 有附件 → variant: borderless', () => {
+            const blocks = [createUserText({
+                id: 'u-blank',
+                blocks: [
+                    { type: 'quote', messageId: 'm-1', role: 'agent', excerpt: '被引用的话' },
+                    { type: 'text', text: '   ' },
+                ],
+            })]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items[0].variant).toBe('borderless')
+        })
+
         it('agent-text → role: assistant', () => {
             const blocks = [createAgentText({ id: 'a1' })]
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)

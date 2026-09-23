@@ -20,6 +20,7 @@ import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
 import type { ChatBlockContext } from './blocks'
 import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
+import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { renderChatBlock } from './blocks'
 import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
 
@@ -193,10 +194,24 @@ export function buildChatBubbleItems(
             role,
             content,
             typing: isTyping,
-            variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
+            variant: bubbleVariant(role, block),
             block,
         })
     }
 
     return items
+}
+
+/**
+ * 气泡壳形态：system/assistant 恒无边框；user 消息在「正文无文本、只有附件」时也走
+ * borderless——附件（图片/引用 chip）挂在 header 槽，正文 content 为空壳，带背景的
+ * 空气泡只会把附件包成一个空盒子。有正文文本（非全空白）时保持常规气泡背景。
+ */
+function bubbleVariant(role: 'assistant' | 'user' | 'system', block: ChatBlock): 'borderless' | undefined {
+    if (role !== 'user') return 'borderless'
+    if (block.kind !== 'user-text') return undefined
+    const { body, hasAttachments } = splitUserBodyAndAttachments(block.blocks)
+    const hasBodyText = body.some(b => b.text.trim().length > 0)
+    if (!hasBodyText && hasAttachments) return 'borderless'
+    return undefined
 }
