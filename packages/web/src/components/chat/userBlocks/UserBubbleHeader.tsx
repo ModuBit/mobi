@@ -63,8 +63,13 @@ const Chip = styled.button`
 
 const ListCard = styled.div`
     /* 恒定宽度（与 composer 引用列表卡同一量级）：短 excerpt 时 shrink-to-fit 卡片过窄；
-       -48 与 popover padding 合计后整体两侧留边（见 styles/antd.css 的 quote-list-popover） */
+       窄屏由 quote-list-popover 锁死几何接管（styles/antd.css），卡片满内容宽 */
     width: min(420px, calc(100vw - 48px));
+
+    @media (max-width: 640px) {
+        width: 100%;
+    }
+
     max-height: min(320px, 60dvh);
     overflow-y: auto;
     display: flex;

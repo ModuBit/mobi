@@ -48,10 +48,15 @@ const Chip = styled.button`
 `
 
 const ListCard = styled.div`
-    /* 恒定宽度 + 视口钳制：编辑态条目只剩窄的 CommentField 时 shrink-to-fit 会整卡收窄，
-       展示/编辑宽度跳变（2026-09-23 验收反馈）。-48 保证加上 popover 自身 padding 后
-       整体两侧仍有余量（只减 32 时 popper 右缘恰好压住屏幕边，观感即溢出） */
+    /* 恒定宽度：编辑态条目只剩窄的 CommentField 时 shrink-to-fit 会整卡收窄，
+       展示/编辑宽度跳变（2026-09-23 验收反馈）；窄屏（≤640px）由 quote-list-popover
+       的锁死几何接管（见 styles/antd.css），卡片满内容宽即可 */
     width: min(420px, calc(100vw - 48px));
+
+    @media (max-width: 640px) {
+        width: 100%;
+    }
+
     max-height: min(320px, 60dvh);
     overflow-y: auto;
     display: flex;

@@ -381,12 +381,15 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 }
 
 /* 引用列表卡浮层（composer QuoteChipBar / 气泡 UserBubbleHeader 共用 overlayClassName）：
-   移动端窄屏下 topLeft 放置 + 卡宽接近视口时 popper 右缘会恰好压住屏幕边（2026-09-23 验收），
-   与 ListCard 的 min(420px, 100vw-48px) 联动整体钳进视口、两侧留边 */
-.quote-list-popover {
-    max-width: calc(100vw - 24px);
-}
-
-.quote-list-popover .ant-popover-inner {
-    max-width: calc(100vw - 24px);
+   窄屏下 topLeft 的 anchor 对齐放置 + 卡宽接近视口，右缘必然贴屏/溢出（2026-09-23 验收，
+   anchor 左缘随内容浮动，纯宽度钳制算不死）——干脆窄屏锁死水平几何：两侧各留 16px */
+@media (max-width: 640px) {
+    .quote-list-popover {
+        left: 16px !important;
+        width: calc(100vw - 32px) !important;
+        max-width: none;
+    }
+    .quote-list-popover .ant-popover-inner {
+        max-width: none;
+    }
 }
