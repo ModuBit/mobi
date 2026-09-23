@@ -609,6 +609,7 @@
         "uploadPendingWarning": "Please wait for file uploads to complete",
         "removeQuote": "Remove quote",
         "quoteCount": "{{count}} quote(s)",
+        "clearQuotes": "Clear all quotes",
         "quoteAdd": "Add to chat",
         "quoteTooLong": "Selection too long to quote",
         "quoteLimitReached": "Quote limit reached",

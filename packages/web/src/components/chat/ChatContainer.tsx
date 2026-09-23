@@ -48,6 +48,7 @@ import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
+import { renderUserBubbleHeader, type ChatBlockContext } from './blocks'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
@@ -936,13 +937,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             messages.map(m => [m.id, m.lifecycle ?? null]),
         )
 
+        const renderCtx: ChatBlockContext = {
+            metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
+            turnResultActions: (block) => turnResultActionsByKey.get(block.id),
+            onEditSketchBlock: (block) => { void handleEditSketchFromBubble(block) },
+        }
         const baseItems = buildChatBubbleItems(
             chatBlocks,
-            {
-                metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending,
-                turnResultActions: (block) => turnResultActionsByKey.get(block.id),
-                onEditSketchBlock: (block) => { void handleEditSketchFromBubble(block) },
-            },
+            renderCtx,
             !!session?.running,
             { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
         )
@@ -1024,6 +1026,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const crossSessionFrom = getCrossSessionFrom(crossSessionOrigin)
             const turnOrigin = isUserText && block ? readTurnOrigin(block.meta) : null
             const showCrossSessionTag = crossSessionOrigin !== null
+            // 附件层（图片/文档/引用 chip）：与正文同源 block，挂 bubble header（正文只剩 text）
+            const userExtras = isUserText && block ? renderUserBubbleHeader(block, renderCtx) : undefined
 
             // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
@@ -1079,7 +1083,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
-                header: showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : undefined,
+                // header 槽两段堆叠：附件层（图片/文档/引用 chip）在上，跨会话来源标签保序其后
+                //（各自可空，全空则 header 保持 undefined 零改动）
+                header: (userExtras || showCrossSessionTag) ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {userExtras}
+                        {showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : null}
+                    </div>
+                ) : undefined,
                 classNames: isUserText
                     ? { root: 'user-msg-bubble' }
                     : block?.kind === 'agent-event' && turnResultActionsByKey.has(block.id)

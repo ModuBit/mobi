@@ -181,7 +181,7 @@ function QuoteGroupView({ blocks, env }: { blocks: UserQuoteBlock[]; env: UserBl
  * 本身就是冻结快照（消息即快照，Q3 裁决），不改落库内容。
  * 点击入口复用 ActionLink（preventDefault/键盘分发已收口），不用手搓可点击 span。
  */
-function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
+export function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
     const card = <FileCard size="small" type="file" name={block.filename} byte={block.size} />
     // data source 是骨架占位（无磁盘路径），没有可打开目标 → 不绑定点击
     if (block.source.type !== 'url') return card
@@ -206,7 +206,7 @@ const IMAGE_THUMB_SIZE = 80
  * 的 fallback 依赖内部 isImageValid 异步真加载，机制不透明且版本间易变——显式 onError 置
  * failed 换 src 到兜底图，行为可预期也可直接单测。文件名承载于 img alt（无障碍），不挂 tooltip。
  */
-function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
+export function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
     const isMobile = useIsMobile()

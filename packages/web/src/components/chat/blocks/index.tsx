@@ -31,6 +31,7 @@ import { CompactSummaryBlockComponent } from './CompactSummaryBlock'
 import { CustomBlockView } from './CustomBlock'
 import { CollapsibleUserMessage } from '../CollapsibleUserMessage'
 import { UserBlocksView } from '../userBlocks/UserBlocksView'
+import { UserBubbleHeader } from '../userBlocks/UserBubbleHeader'
 
 /** 渲染 chat block 的上下文 */
 export type ChatBlockContext = {
@@ -59,12 +60,13 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         case 'user-text':
             // 选区引用锚点：消息容器锚（messageId+role）罩整条气泡；block 容器锚由
             // UserBlocksView 的 text 视图自带（documents/images 无 block 锚 → 天然不可引用）。
-            // 引用组是禁区（QuoteGroupView 自落 data-quote-forbidden）
+            // 正文只渲染 text：图片/文档/引用收进 bubble header 附件层（renderUserBubbleHeader，
+            // 引用收起为 chip，展开才占空间）
             return (
                 <div {...quoteAnchorProps({ messageId: block.localId, role: 'user' })}>
-                    <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
+                    <CollapsibleUserMessage blocks={block.blocks.filter(b => b.type === 'text')} isSynthetic={block.isSynthetic}>
                         <UserBlocksView
-                            blocks={block.blocks}
+                            blocks={block.blocks.filter(b => b.type === 'text')}
                             env={{
                                 isSynthetic: block.isSynthetic,
                                 refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
@@ -106,4 +108,23 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         default:
             return null
     }
+}
+
+/**
+ * 用户气泡 header 的附件层（图片 / 文档 / 引用 chip）：与正文渲染（user-text 分支）共用
+ * block 数据与取数上下文，无非 text block 时返回 undefined（header 槽保持零改动）。
+ * 引用收起为「N 条引用」chip，条目点击定位源消息（滚动 + 高亮）。
+ */
+export function renderUserBubbleHeader(block: Extract<ChatBlock, { kind: 'user-text' }>, ctx: ChatBlockContext): React.ReactNode {
+    return (
+        <UserBubbleHeader
+            blocks={block.blocks}
+            env={{
+                isSynthetic: block.isSynthetic,
+                refCtx: fileRefContext(ctx.sessionId, ctx.metadata),
+                onEditSketch: ctx.onEditSketchBlock,
+                onQuoteLocate: locateQuotedMessage,
+            }}
+        />
+    )
 }

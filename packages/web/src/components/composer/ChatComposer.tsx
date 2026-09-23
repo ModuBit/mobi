@@ -44,6 +44,7 @@ import { getAgentStatus } from '@/components/pixel-avatar/types'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
+import { locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { mergeDraftText } from '@/core/lib/composerDrafts'
 import { useComposerDraft } from './useComposerDraft'
 import { useMentionInteraction } from './useMentionInteraction'
@@ -90,6 +91,8 @@ export interface ChatComposerHandle {
     addQuote: (quote: PendingQuoteRef) => ComposerQuoteRef | null
     /** 补充/清空某条引用的评论（「添加到对话」即落条目，评论只是后续补充） */
     updateQuoteComment: (uid: string, comment: string | undefined) => void
+    /** 一键清空全部引用（引用胶囊旁 ×） */
+    clearQuotes: () => void
 }
 
 
@@ -404,13 +407,19 @@ export function ChatComposer(props: ChatComposerProps) {
             return base
         }))
     }, [])
+    // 一键清空全部引用（引用胶囊旁 ×）：ref 同步推进，与 addQuote 的同步判定约定一致
+    const clearQuotes = useCallback(() => {
+        quotesRef.current = []
+        setQuotes([])
+    }, [])
     useImperativeHandle(ref, () => ({
         openSketch: handleOpenSketch,
         openBubbleSketch: sketchSession.openFromBubble,
         getQuoteCount: () => quotesRef.current.length,
         addQuote,
         updateQuoteComment,
-    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote, updateQuoteComment])
+        clearQuotes,
+    }), [handleOpenSketch, sketchSession.openFromBubble, addQuote, updateQuoteComment, clearQuotes])
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
     // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
@@ -789,7 +798,13 @@ export function ChatComposer(props: ChatComposerProps) {
         ),
         hasQuotes && (
             <div key="quotes" style={{ padding: '8px 16px 0' }}>
-                <QuoteChipBar quotes={quotes} onRemove={removeQuote} onUpdateComment={updateQuoteComment} />
+                <QuoteChipBar
+                    quotes={quotes}
+                    onRemove={removeQuote}
+                    onUpdateComment={updateQuoteComment}
+                    onClearAll={clearQuotes}
+                    onLocate={locateQuotedMessage}
+                />
             </div>
         ),
         hasAttachments && (
