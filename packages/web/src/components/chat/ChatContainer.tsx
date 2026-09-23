@@ -55,7 +55,7 @@ import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteS
 import { QuoteCommentInput } from './QuoteCommentInput'
 import { SelectionGhost } from './SelectionGhost'
 import { useMobileQuoteSelection } from './useMobileQuoteSelection'
-import { useKeyboardInset } from './useKeyboardInset'
+import { useKeyboardViewport } from './useKeyboardViewport'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
@@ -655,8 +655,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // actionsTarget 只由 MessageActionsTrigger 点击置位（见 decoratedItems footer）
     // ──────────────────────────────────────────────────────────────
     const isMobile = useIsMobile()
-    // 虚拟键盘占据高度（0 = 未弹出）：ghost 隐藏判据（QuoteCommentInput 内部同源做键盘跟随）
-    const kbInset = useKeyboardInset()
+    // 虚拟键盘是否弹出（keyboardInset>0）：ghost 隐藏判据（QuoteCommentInput 同源做键盘跟随）
+    const { keyboardInset: kbInset } = useKeyboardViewport()
     const [actionsTarget, setActionsTarget] = useState<MessageActionTarget | null>(null)
     // key → 消息操作信息索引（decoratedItems 内重建，判据与 footer 同源）
     const actionsInfoByRef = useRef<Map<string, MessageActionTarget>>(new Map())
