@@ -3,7 +3,7 @@ name: quote-verify
 description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 边界拒绝的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-09-21
+  last_verified: 2026-09-23
 ---
 
 # 引用特性验证
@@ -37,3 +37,20 @@ metadata:
 - **远程验收环境必踩：裸 `crypto.randomUUID` 在 http+IP 访问（非安全上下文）不存在**——新建 uid 时抛错、流程静默中断，localhost 测不出；新代码一律走 `core/lib/uuid.ts` 的 `uuid()`（getRandomValues 兜底），见引用特性首条添加中断事故（2026-09-22）
 - 评论键位（2026-09-22 定稿）：Enter 换行、Ctrl/Cmd+Enter 提交、Esc/点外关闭——「Enter 提交」让多行无法输入，用户验收否决过
 - **running 时 popover 不闪**（2026-09-23 修）：流式 stick-to-bottom 程序滚动不再关引用浮层，关闭只认 wheel/touchmove 手势后 250ms 内的 scroll——CDP 自测时别用程序 scrollTo 复现「滚动关浮层」，要先 dispatch wheel 事件
+
+## 回应批注（response annotations，2026-09-23 全链路验证）
+
+前置：协议在 CLI（含 agent 引用时注入 `<system-reminder>` + `:mobi-quote{index="N"}` directive），
+**bootstrap 重启后新会话才带新协议代码**（会话 CLI 启动即固化代码）。
+
+链路：划选 agent 回复 → 添加到对话 → 评论 → 发「请围绕引用深入讲解」类探针 → 回复中断言：
+
+1. `[data-testid="quote-annotation-1"]`「注释 1」上标按钮渲染；正文无 `:mobi-quote` 原文残留
+2. `[data-testid="agent-annotation-chip"]`「N 条注释」聚合 chip 在 agent 气泡 header
+3. tooltip 必须 CDP hover（合成事件不触发，同引用 tooltip 坑）~1.2s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`，内容 = excerpt + 评论
+4. 点击按钮 → `.quote-locate-flash` 挂上（1.2s 内断言）
+5. chip 点击 → `[data-testid="agent-annotation-list"]` 列表卡，条目 = 编号+excerpt+评论
+6. DB 断言 offsets：`messages` user 消息 `content[0].startOffset/endOffset`（json_extract 数组路径写 `'$[0].x'`，bash 双引号下 `$[0]` 会被算术展开——用 heredoc 或单引号 SQL）
+7. 移动端 390：chip 列表卡 popper `left=16, right=innerWidth-16, width=100vw-32`（quote-list-popover 全局钳制复用）
+
+探针 prompt 要求「直接回答不要用工具」，否则首轮会触发 Change Title 等工具流干扰选区。
