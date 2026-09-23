@@ -22,6 +22,13 @@ metadata:
 - 跨 `[data-quote-block]` 锚选区 → popover 不弹
 - 引用组禁区：`getComputedStyle(group).userSelect === 'none'`，Range 造选区得空文本，popover 不弹
 
+## 移动端视口验证（2026-09-23）
+
+- **`resize_page` 有窗口最小宽限制（390 请求 → innerWidth 500）**，测移动端溢出必须用 `emulate` 的 viewport（`390x844x3,mobile,touch`）；innerWidth 会读到 414 左右属正常
+- **emulate 切视口会整页重渲染丢 composer 引用状态**——先切视口再走划选→添加流程
+- 列表卡宽度断言：`document.querySelector('[data-testid="quote-list"]')` 的 `getComputedStyle().width` 应等于 `min(420, 100vw-32)`（390 视口 ≈358px），popper（`.ant-popover`）`right ≤ innerWidth`
+- 产物验证注意：emotion 是**运行时注入**，样式在 JS chunk（SessionDetailPage-*.js）不在 CSS 文件——grep 产物 CSS 验证样式会假阴性
+
 ## 坑
 
 - **antd Tooltip 的 hover 合成事件不触发**（rc-trigger 过滤）——tooltip 验证必须用 CDP `hover` 工具（真实鼠标事件）对 snapshot uid，约 0.9s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`
