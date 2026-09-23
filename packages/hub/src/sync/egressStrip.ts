@@ -164,11 +164,48 @@ export function stripEgressContent<T>(content: T): T {
     let patch: Record<string, unknown> | null = null
     const ensurePatch = (): Record<string, unknown> => (patch ??= { ...data })
 
-    // 1) tool_use_result.file.base64（Read 读图时同张图存两份之一）
+    // 1) tool_use_result 重内容：web 无消费方的死重字段（结构化字段 structuredPatch /
+    //    agentMetrics / filePath 等全部不动）
     const tur = data.tool_use_result
-    if (isObject(tur) && isObject(tur.file) && typeof tur.file.base64 === 'string') {
-        ensurePatch().tool_use_result = { ...tur, file: { ...tur.file, base64: STRIPPED_BASE64_MARKER } }
-        mutated = true
+    if (isObject(tur)) {
+        let turMutated = false
+        let turPatch: Record<string, unknown> | null = null
+        const ensureTurPatch = (): Record<string, unknown> => (turPatch ??= { ...tur })
+
+        // stdout/stderr：Bash 输出在 tool_use_result 里存有一份全量拷贝（web 的 Bash
+        // 视图吃的是 tool_result block，不吃这里），超阈值截断保留头部
+        for (const key of ['stdout', 'stderr'] as const) {
+            const value = tur[key]
+            if (typeof value === 'string' && value.length > EGRESS_TRUNCATE_CHARS) {
+                ensureTurPatch()[key] = value.slice(0, EGRESS_TRUNCATE_CHARS)
+                turMutated = true
+            }
+        }
+
+        // file 字段：content（Read 读文本文件时同份内容存两份之一，另一份在 tool_result
+        // block 已按策略剥离，文件类可从磁盘重建 → 占位）与 base64（读图载荷）剥离
+        if (isObject(tur.file)) {
+            const file = tur.file as Record<string, unknown>
+            let fileMutated = false
+            const filePatch: Record<string, unknown> = { ...file }
+            if (typeof file.content === 'string') {
+                filePatch.content = EGRESS_PLACEHOLDER
+                fileMutated = true
+            }
+            if (typeof file.base64 === 'string') {
+                filePatch.base64 = STRIPPED_BASE64_MARKER
+                fileMutated = true
+            }
+            if (fileMutated) {
+                ensureTurPatch().file = filePatch
+                turMutated = true
+            }
+        }
+
+        if (turMutated) {
+            ensurePatch().tool_use_result = turPatch
+            mutated = true
+        }
     }
 
     // 2) message.content 块数组：assistant tool_use 登记 + tool_result 策略剥离（含 image base64）

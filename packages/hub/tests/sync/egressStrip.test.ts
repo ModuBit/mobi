@@ -230,6 +230,87 @@ describe('stripEgressContent base64 剥离', () => {
         expect(raw).not.toContain(BIG)
         expect(raw).toContain(STRIPPED_BASE64_MARKER)
     })
+
+    test('tool_use_result.stdout / stderr 超阈值截断（web 无消费方，纯死重）', () => {
+        const frame = {
+            role: 'agent',
+            content: {
+                type: 'text',
+                data: {
+                    uuid: 'u-stdout',
+                    message: {
+                        role: 'user',
+                        content: [{ type: 'tool_result', tool_use_id: 'tu-so', content: 'ok' }],
+                    },
+                    tool_use_result: {
+                        stdout: 'o'.repeat(10_000),
+                        stderr: 'e'.repeat(10_000),
+                        interrupted: false,
+                        isImage: false,
+                    },
+                },
+            },
+        }
+
+        const stripped = stripEgressContent(frame) as { content: { data: { tool_use_result: { stdout: string; stderr: string; interrupted: boolean } } } }
+        const tur = stripped.content.data.tool_use_result
+
+        expect(tur.stdout).toBe('o'.repeat(EGRESS_TRUNCATE_CHARS))
+        expect(tur.stderr).toBe('e'.repeat(EGRESS_TRUNCATE_CHARS))
+        expect(tur.interrupted).toBe(false)
+    })
+
+    test('tool_use_result.file.content 替换为占位（文件类，磁盘可重建）；filePath 等保留', () => {
+        const frame = {
+            role: 'agent',
+            content: {
+                type: 'text',
+                data: {
+                    uuid: 'u-fc',
+                    message: {
+                        role: 'user',
+                        content: [{ type: 'tool_result', tool_use_id: 'tu-fc', content: 'ok' }],
+                    },
+                    tool_use_result: {
+                        type: 'text',
+                        file: { filePath: '/a.txt', content: 'c'.repeat(50_000), numLines: 10 },
+                    },
+                },
+            },
+        }
+
+        const stripped = stripEgressContent(frame) as { content: { data: { tool_use_result: { file: { filePath: string; content: string; numLines: number } } } } }
+        const file = stripped.content.data.tool_use_result.file
+
+        expect(file.content).toBe(EGRESS_PLACEHOLDER)
+        expect(file.filePath).toBe('/a.txt')
+        expect(file.numLines).toBe(10)
+    })
+
+    test('tool_use_result.structuredPatch 不受重字段处理影响', () => {
+        const frame = {
+            role: 'agent',
+            content: {
+                type: 'text',
+                data: {
+                    uuid: 'u-sp',
+                    message: {
+                        role: 'user',
+                        content: [{ type: 'tool_result', tool_use_id: 'tu-sp', content: 'ok' }],
+                    },
+                    tool_use_result: {
+                        type: 'edit',
+                        filePath: '/a.ts',
+                        structuredPatch: [{ oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: ['-old', '+new'] }],
+                    },
+                },
+            },
+        }
+
+        const stripped = stripEgressContent(frame) as { content: { data: { tool_use_result: unknown } } }
+
+        expect(stripped.content.data.tool_use_result).toEqual((frame as typeof stripped).content.data.tool_use_result)
+    })
 })
 
 // ============ 工具名登记（assistant 消息过出口顺带喂饱注册表）============
