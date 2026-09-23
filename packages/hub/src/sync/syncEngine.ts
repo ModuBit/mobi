@@ -508,9 +508,12 @@ export class SyncEngine {
         }
     }
 
-    // 停止后台任务
+    // 停止后台任务：转发 CLI 执行 + 受理成功即落 stopped 终态（跨重启后 CLI 侧任务已不存在、
+    // SDK stopTask 静默 no-op，终态事件不会再有——不等事件，见 sessionCache.markBackgroundTaskStopped）
     async stopTask(sessionId: string, taskId: string): Promise<void> {
         await this.rpcGateway.stopTask(sessionId, taskId)
+        const namespace = this.getSession(sessionId)?.namespace
+        if (namespace) this.sessionCache.markBackgroundTaskStopped(sessionId, taskId, namespace)
     }
 
     // rewind 预检（Web → Hub → CLI RPC 转发）：锚点存在性 + rewindFiles(dryRun)，结果原样透传给 Web

@@ -710,6 +710,36 @@ export class SessionCache {
         return true
     }
 
+    /**
+     * 手动停止后台任务受理成功后落终态（status=running 才动作，幂等）。
+     *
+     * 为什么不等 CLI 的事件：跨重启后 CLI resume 的新 query 里旧 taskId 已不存在，
+     * SDK stopTask 静默 no-op 且终态事件早已错过（2026-09-23 实测幽灵 running 卡死）——
+     * RPC ok 即终局的权威信号。任务若真在跑，SDK 后续 task_updated(killed→stopped)
+     * 与此收敛一致（applyBackgroundTaskDelta 终态 upsert 幂等）。
+     */
+    markBackgroundTaskStopped(sessionId: string, taskId: string, namespace: string): boolean {
+        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+        if (!session || session.namespace !== namespace) return false
+
+        const tasks = session.runtimeState?.backgroundTasks ?? []
+        const idx = tasks.findIndex(task => task.taskId === taskId)
+        // 条目不存在 / 已终态：幂等成功（与 clearRuntimeStateFields 同语义）
+        if (idx < 0 || tasks[idx].status !== 'running') return true
+
+        const next = [...tasks]
+        next[idx] = { ...next[idx], status: 'stopped' as const, completedAt: Date.now() }
+        const { changed } = this.runtimeStateStore.merge(session, { backgroundTasks: next }, Date.now())
+        if (changed) {
+            this.publisher.emit({
+                type: 'session-updated',
+                sessionId,
+                data: { sid: sessionId, runtimeState: session.runtimeState },
+            })
+        }
+        return true
+    }
+
     updateSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): void {
         // 通用写路径（CLI socket 推送的 outputStyle/fastMode 等、阻塞首次加载等）。
         // 不在此发 SSE——SWR 的 web refetch 通知只属于后台刷新路径（见 applyRefreshedSDKMetadata），

@@ -442,8 +442,15 @@ export function extractBackgroundTaskDeltasFromMessageContent(
 
         // 终态直落 completed。
         // patchExplicitBg 时跳过 knownTaskIds 过滤：SDK 已显式标注后台，且该任务可能本就不在
-        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书
-        if (!patchExplicitBg && knownTaskIds !== undefined && !knownTaskIds.has(taskId)) {
+        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书。
+        // persistedTaskIds 同样放行：hub/CLI 换血重启后连接级 knownTaskIds 清空，但终态消息
+        // （Bash 任务典型路径 task_updated.patch.status）仍会晚到——不认持久化条目的话，
+        // 跨重启完成的任务永卡 running（2026-09-23 实测：部署换血后完成的两个后台任务幽灵卡死）。
+        // knownTaskIds 未传（undefined）= 旧调用方契约不过滤，保持不变
+        const taskTracked = knownTaskIds === undefined
+            || knownTaskIds.has(taskId)
+            || persistedTaskIds?.has(taskId) === true
+        if (!patchExplicitBg && !taskTracked) {
             return null
         }
 

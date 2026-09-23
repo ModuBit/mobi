@@ -490,6 +490,26 @@ describe('extractBackgroundTaskDeltasFromMessageContent', () => {
             expect(delta.summary).toBe('构建成功完成')
         })
 
+        test('跨重启：knownTaskIds 无此任务但 persistedTaskIds 有时仍生成 delta（幽灵 running 根修）', () => {
+            const msg = makeSystemMessage('task_updated', {
+                task_id: 'bt-old',
+                patch: { status: 'completed', end_time: 1234567890 },
+            })
+            // hub/CLI 换血重启后连接级集合清空，但 DB 已持久化该任务
+            const result = extractBackgroundTaskDeltasFromMessageContent(
+                msg,
+                undefined,
+                new Set(['bt-other']),
+                undefined,
+                new Set(['bt-old']),
+            )
+            expect(result).not.toBeNull()
+
+            const delta = result as Extract<BackgroundTaskDelta, { type: 'completed' }>
+            expect(delta.taskId).toBe('bt-old')
+            expect(delta.status).toBe('completed')
+        })
+
         test('status 为 failed 时正确返回', () => {
             const msg = makeSystemMessage('task_notification', {
                 task_id: 'bt-002',
