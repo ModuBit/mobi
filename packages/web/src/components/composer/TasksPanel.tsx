@@ -118,8 +118,7 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
         return () => observer.disconnect()
     }, [items.length])
 
-    const handleStop = async (e: React.MouseEvent, task: BackgroundTask) => {
-        e.stopPropagation()
+    const handleStop = async (task: BackgroundTask) => {
         try {
             await api.sessions.stopTask(sessionId, task.taskId)
         } catch { /* 静默忽略 */ }
@@ -182,7 +181,7 @@ export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear 
                         : <BackgroundTaskCard key={item.task.taskId} task={item.task}
                             // 不可点（toolUseId=null）的守卫由 BackgroundTaskCard 内聚，此处无条件透传
                             onClick={() => onTaskClick(item.task)}
-                            onStop={item.task.status === 'running' ? (e) => handleStop(e, item.task) : undefined} />)}
+                            onStop={item.task.status === 'running' ? () => handleStop(item.task) : undefined} />)}
                 </div>
             </div>
             {showFade && (

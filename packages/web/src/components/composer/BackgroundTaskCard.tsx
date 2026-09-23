@@ -59,7 +59,8 @@ function terminalStatusPalette(status: BackgroundTask['status'], token: GlobalTo
 export function BackgroundTaskCard({ task, onClick, onStop }: {
     task: BackgroundTask
     onClick: () => void
-    onStop?: (e: React.MouseEvent) => void
+    /** 停止动作：点击冒泡的拦截由本组件内聚（守卫语义同 onClick），回调不携带事件 */
+    onStop?: () => void | Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
@@ -86,20 +87,16 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
         }
     }, [task.summary])
 
-    const handleStop = (e: React.MouseEvent) => {
+    const openMobileStopSheet = (e: React.MouseEvent) => {
         e.stopPropagation()
-        if (!onStop) return
-        if (isMobile) {
-            setDrawerOpen(true)
-        }
+        setDrawerOpen(true)
     }
 
     const doStop = async () => {
         if (!onStop) return
         setStopping(true)
         try {
-            // 构造一个模拟事件给外部 handler
-            await onStop({ stopPropagation: () => {} } as React.MouseEvent)
+            await onStop()
         } finally {
             setStopping(false)
             setDrawerOpen(false)
@@ -145,7 +142,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     // stop 按钮区域：桌面端用 Popconfirm 包裹，移动端直接渲染按钮
     const stopElement = !showStop ? null : isMobile ? (
         <div
-            onClick={handleStop}
+            onClick={openMobileStopSheet}
             style={{
                 flexShrink: 0, width: 22, height: 22,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -162,7 +159,6 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                 okText={t('chat.backgroundTask.stop')}
                 cancelText={t('chat.clearState.cancel')}
                 okButtonProps={{ danger: true, loading: stopping }}
-                onCancel={(e) => e?.stopPropagation()}
             >
                 <div
                     onClick={(e) => e.stopPropagation()}

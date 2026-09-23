@@ -201,7 +201,7 @@ describe('MessageService 出口剥离 tool_result 重内容', () => {
             },
         },
     })
-    const resultFrame = (seq: number, toolUseId: string, blockContent: unknown, opts: { isError?: boolean } = {}): StoredMessage => ({
+    const resultFrame = (seq: number, toolUseId: string, blockContent: unknown, opts: { isError?: boolean; toolUseResult?: unknown } = {}): StoredMessage => ({
         ...msg(seq, { lifecycle: null, localId: null }),
         content: {
             role: 'agent',
@@ -213,6 +213,7 @@ describe('MessageService 出口剥离 tool_result 重内容', () => {
                         role: 'user',
                         content: [{ type: 'tool_result', tool_use_id: toolUseId, is_error: opts.isError, content: blockContent }],
                     },
+                    ...(opts.toolUseResult !== undefined ? { tool_use_result: opts.toolUseResult } : {}),
                 },
             },
         },
@@ -222,24 +223,10 @@ describe('MessageService 出口剥离 tool_result 重内容', () => {
 
     test('Read 大结果经出口替换为占位；Edit 的 tool_use_result.structuredPatch 原样保留', () => {
         const tur = { type: 'edit', structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['+n'] }] }
-        const editResultFrame = {
-            ...resultFrame(2, 'tu-e', [{ type: 'text', text: BIG }]),
-            content: {
-                role: 'agent',
-                content: {
-                    type: 'text',
-                    data: {
-                        uuid: 'ur-2',
-                        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu-e', content: [{ type: 'text', text: BIG }] }] },
-                        tool_use_result: tur,
-                    },
-                },
-            },
-        } as unknown as StoredMessage
         const { service } = makeService({
             page: [
                 { ...msg(1, { lifecycle: null, localId: null }), content: assistantFrame('tu-e', 'Edit') } as StoredMessage,
-                editResultFrame,
+                resultFrame(2, 'tu-e', [{ type: 'text', text: BIG }], { toolUseResult: tur }),
             ],
         })
 

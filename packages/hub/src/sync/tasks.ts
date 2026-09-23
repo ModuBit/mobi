@@ -22,8 +22,8 @@ import type { TaskItem } from '@mobi/shared/types'
 export { TaskItemSchema, TasksSchema }
 export type { TaskItem }
 
-/** Task 工具名称集合 */
-const TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskStop', 'TaskOutput'])
+/** Task 工具名称集合（单源：出口剥离的 Task 族豁免判定也消费此集合） */
+export const TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskStop', 'TaskOutput'])
 
 /** 只读工具名称集合（tool_result 中包含完整数据，不改变 task 状态） */
 const READONLY_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput'])

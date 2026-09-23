@@ -211,7 +211,7 @@ function bubbleVariant(role: 'assistant' | 'user' | 'system', block: ChatBlock):
     if (role !== 'user') return 'borderless'
     if (block.kind !== 'user-text') return undefined
     const { body, hasAttachments } = splitUserBodyAndAttachments(block.blocks)
-    const hasBodyText = body.some(b => b.text.trim().length > 0)
+    const hasBodyText = getUserPlainText(body) !== ''
     if (!hasBodyText && hasAttachments) return 'borderless'
     return undefined
 }
