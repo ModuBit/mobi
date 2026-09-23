@@ -857,6 +857,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         .${QUOTE_FLASH_CLASS} {
             animation: quote-locate-flash-kf ${QUOTE_FLASH_MS}ms ease-out;
             border-radius: ${token.borderRadiusLG}px;
+            /* padding + 等量负 margin：高亮底色/描边外扩不贴内容，占位不变（摘类时零布局跳动） */
+            padding: 10px 12px;
+            margin: -10px -12px;
         }
         @keyframes quote-locate-flash-kf {
             0% { box-shadow: 0 0 0 3px ${token.colorWarningBorder}; background: ${token.colorWarningBg}; }
