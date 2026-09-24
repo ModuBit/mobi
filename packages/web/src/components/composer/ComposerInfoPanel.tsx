@@ -19,7 +19,7 @@
  * 在输入区上方展示各种状态信息：工具交互请求、任务列表、文件修改等
  */
 
-import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, useSyncExternalStore, type ReactNode } from 'react'
 import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
@@ -42,7 +42,7 @@ import { FileChip } from '@/components/ui/FileChip'
 import { AwaitingConfirmBadge } from '@/components/ui/AwaitingConfirmBadge'
 import { queryKeys } from '@/core/lib/query-keys'
 import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
-import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
+import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { TodoPanel } from './TodoPanel'
@@ -51,9 +51,9 @@ import { TaskPanel } from './TaskPanel'
 import { TasksPanel } from './TasksPanel'
 import { TeamAgentPanel } from './TeamAgentPanel'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
-import type { ToolCallBlock } from '@/domain/chat/types'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { isQueuedInMobi } from '@/core/lib/messages'
+import { getMessageWindowState, subscribeMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
 const { Text } = Typography
@@ -395,7 +395,6 @@ export function ComposerInfoPanel({
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
     const agents = useForegroundTasks(sessionId)
-    const byIdMap = useChatBlocksById(sessionId)
     const bgTasks = useBackgroundTasks(sessionId)
     const hasBgTasks = bgTasks.length > 0
     const teamAgents = useTeamMembers(sessionId)
@@ -404,18 +403,24 @@ export function ComposerInfoPanel({
     const hasAgents = agents.length > 0
 
     // 只订阅「是否存在排队消息」布尔（hasContent 门禁信号，无第二个消费者）。
-    // useSyncExternalStore 下 store 每次 SSE 写入都 notify，
-    // 本面板会随消息变动重渲染——已知 trade-off（不无限循环；getSnapshot 返回稳定 state 引用）。
-    // 若流式期 ToolInteractionPanel/TasksPanel 等重型子树 reconcile 开销显著，后续加 selector 缓存优化。
-    const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some(isQueuedInMobi))
+    // 不走 useMessages：它的 getSnapshot 返回 state 对象，messageWindowStore 每次 SSE
+    // 写入都换引用 → 订阅方逐次重渲染。此处 getSnapshot 直接返回原始值（稳定），
+    // 只有布尔翻转才重渲染；select 在 getSnapshot 里算原始值不会触发无限循环。
+    const hasQueued = useSyncExternalStore(
+        useCallback(listener => sessionId ? subscribeMessageWindow(sessionId, listener) : () => {}, [sessionId]),
+        useCallback(() => sessionId ? getMessageWindowState(sessionId).messages.some(isQueuedInMobi) : false, [sessionId]),
+        () => false,
+    )
 
-    // 从 store 派生最新 block：byId 索引覆盖全部消息块（前台任务详情在消息空窗时
-    // 查不到 → drawer 不弹，查询即守卫）
-    const drawerBlock: ToolCallBlock | null = (() => {
+    // 窄订阅派生最新 block（byId 索引覆盖全部消息块：前台任务详情在消息空窗时查不到
+    // → drawer 不弹，查询即守卫）。抽屉关闭时恒返回 null（稳定引用），流式期索引整表
+    // 重建不再触发本面板重渲染；打开时仅随目标 block 引用变化——reconcile 对未变化
+    // block 保引用（areToolCallsEqual → 返回 prev），故只有该 block 真变化才重渲染。
+    const drawerBlock = useChatBlocksByIdStore((state) => {
         if (!drawerBlockId) return null
-        const fromById = byIdMap.get(drawerBlockId)
+        const fromById = state.bySession.get(sessionId)?.get(drawerBlockId)
         return fromById?.kind === 'tool-call' ? fromById : null
-    })()
+    })
     const { token } = useToken()
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -476,12 +481,15 @@ export function ComposerInfoPanel({
                         api={api}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
                         onTaskClick={(task) => {
-                            // 先查后设（C1）：点击时先在 byIdMap 里解析 toolUseId 对应的
+                            // 先查后设（C1）：点击时在 byId 索引里解析 toolUseId 对应的
                             // tool-call block，查到才设置 drawerBlockId——同时消灭「静默设置后不渲染」
-                            // 与「残留 id 之后无操作自动弹开」两个症状。
+                            // 与「残留 id 之后无操作自动弹开」两个症状。命令式 getState 只在读点击
+                            // 现场这一刻查询，不建立订阅（订阅收窄见上方 drawerBlock）。
                             // 窗口外 block 点击无反馈是已知限制（查询即守卫，不残留状态）
                             const blockId = task.toolUseId
-                            const found = blockId != null ? byIdMap.get(blockId) : undefined
+                            const found = blockId != null
+                                ? useChatBlocksByIdStore.getState().bySession.get(sessionId)?.get(blockId)
+                                : undefined
                             if (found?.kind === 'tool-call') setDrawerBlockId(found.id)
                         }}
                         onClear={handleClearState}

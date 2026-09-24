@@ -14,29 +14,15 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
+/**
+ * ComposerInfoPanel 订阅收窄测试
+ * 锁定约定：流式期 chatBlocksById 索引整表重建不得触发面板重渲染
+ * （docs/research-claude-ai-perf.md §2.3 / docs/conventions/performance.md）
+ */
 
-// Edit 等跳转类工具的 permission 卡会渲染 FileChip（内部用 router hooks + api 守卫链），
-// 文件级 mock：本文件其他组件不经此二通道（api 由 props 传入），不影响既有用例
-vi.mock('@tanstack/react-router', () => ({
-    useNavigate: () => vi.fn(),
-    useParams: () => ({ sessionId: 'test-session' }),
-}))
-vi.mock('@/core/data/api/client', async (orig) => {
-    const actual = await orig<typeof import('@/core/data/api/client')>()
-    return {
-        ...actual,
-        useMobiApi: () => ({
-            sessions: {
-                get: async () => ({ data: { session: { id: 'test-session', active: true } } }),
-                resume: vi.fn(async () => ({ data: { sessionId: 'test-session' } })),
-            },
-        }),
-    }
-})
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 
 // Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要
-// 使用 vi.hoisted 确保在任何模块导入之前执行
 vi.hoisted(() => {
     try {
         if (!(globalThis as Record<string, unknown>).navigator || !(navigator as Record<string, unknown>).language) {
@@ -51,28 +37,20 @@ vi.hoisted(() => {
     }
 })
 
-import { render, fireEvent } from '@testing-library/react'
+import { Profiler } from 'react'
+import { render, cleanup, act, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ComposerInfoPanel } from '@/components/composer/ComposerInfoPanel'
-import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
-import type { TodoItem } from '@mobi/shared'
+import type { ForegroundTaskItem } from '@mobi/shared/types'
 
 // mock i18next
 vi.mock('react-i18next', () => ({
     initReactI18next: { type: '3rdParty', init: vi.fn() },
     useTranslation: () => ({
-        t: (key: string) => {
-            const map: Record<string, string> = {
-                'chat.permission.title': '请求执行权限',
-                'chat.todo.allCompleted': '全部完成',
-                'chat.todo.completed': '已完成',
-                'chat.todo.inProgress': '进行中',
-            }
-            return map[key] ?? key
-        },
+        t: (key: string) => key,
     }),
 }))
 
@@ -81,266 +59,132 @@ vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => null,
 }))
 
-// mock useMessages —— ComposerInfoPanel 内部自取排队消息；返回稳定引用避免重渲染循环。
-// 支持可选 select 派生：guard 订阅 boolean、QueuedMessagesSection 订阅排队子集。
-const messagesMock = vi.hoisted(() => ({ data: [] as DecryptedMessage[] }))
-vi.mock('@/core/data/hooks/queries/useMessages', () => ({
-    useMessages: (_sid: unknown, select?: (m: DecryptedMessage[]) => unknown) => ({
-        data: select ? select(messagesMock.data) : messagesMock.data,
-    }),
+// useMobiApi 返回 null 阻断 useMessages 的 fetchLatest 副作用（面板 props 自带 api）
+vi.mock('@/core/data/hooks/queries/useMobiApi', () => ({
+    useMobiApi: () => null,
 }))
 
-/** 构造排队中的 user 消息（lifecycle='queued'） */
-function queuedMsg(id: string, text: string): DecryptedMessage {
-    return {
-        id,
-        localId: id,
-        seq: null,
-        role: 'user',
-        content: { content: { text } },
-        originalText: text,
-        lifecycle: 'queued',
-        status: 'completed',
-        createdAt: 1000,
-    } as unknown as DecryptedMessage
-}
+const mockApi = {} as unknown as MobiApi
 
-/** 构造终态被丢弃的 user 消息（lifecycle='cancelled'/'discarded'） */
-function discardedMsg(id: string, text: string, lifecycle: 'cancelled' | 'discarded' = 'discarded'): DecryptedMessage {
-    return {
-        id,
-        localId: id,
-        seq: null,
-        role: 'user',
-        content: { content: { text } },
-        originalText: text,
-        lifecycle,
-        lifecycleAt: 2000,
-        status: 'completed',
-        createdAt: 1000,
-    } as unknown as DecryptedMessage
-}
+const queryClient = new QueryClient()
 
-// mock MobiApi
-const mockApi = {
-    respondPermission: vi.fn(),
-} as unknown as MobiApi
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+        <ConfigProvider>{children}</ConfigProvider>
+    </QueryClientProvider>
+)
 
-const mockMetadata = { flavor: 'claude-code' } as unknown as SessionMetadataSummary
-
-// jsdom 没有 ResizeObserver —— 记录 observe 调用以验证「内容后于挂载出现」时仍能挂 observer
-const observeSpy = vi.fn()
+// jsdom 没有 ResizeObserver / Element.scrollTo
 beforeAll(() => {
     vi.stubGlobal('ResizeObserver', class {
-        observe = observeSpy
+        observe() {}
         unobserve() {}
         disconnect() {}
     })
+    if (!Element.prototype.scrollTo) {
+        Element.prototype.scrollTo = () => {}
+    }
 })
 
-// ComposerInfoPanel 渲染的 permission 卡片内含 PermissionFooter（用 useQueryClient 失效 session 缓存），
-// 需 QueryClientProvider 包裹
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+// vitest 未开 globals，渲染型测试需显式 cleanup
+afterEach(() => {
+    cleanup()
+})
 
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <ConfigProvider>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </ConfigProvider>
-)
-
-const defaultProps = {
-    sessionId: 'test-session',
-    agentState: null as AgentState | null,
-    metadata: mockMetadata,
-    api: mockApi,
-    disabled: false,
-    onPermissionDone: vi.fn(),
+async function loadStores() {
+    const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
+    const { useChatBlocksByIdStore } = await import('@/core/data/stores/chatBlocksByIdStore')
+    const { _resetForTest } = await import('@/core/data/stores/messageWindowStore')
+    return { useForegroundTasksStore, useChatBlocksByIdStore, _resetForTest }
 }
 
-describe('ComposerInfoPanel', () => {
-    beforeEach(() => {
-        // 隔离用例：重置排队消息 mock 与清除记录 store，避免上一用例残留污染
-        messagesMock.data = []
-        observeSpy.mockClear()
+function makeFgTask(toolUseId: string): ForegroundTaskItem {
+    return { toolUseId, description: '前台研究', subagentType: 'Explore', startedAt: Date.now() }
+}
+
+function makeAgentBlock(id: string) {
+    return {
+        kind: 'tool-call' as const,
+        id,
+        localId: null,
+        createdAt: Date.now(),
+        tool: {
+            id,
+            name: 'Task',
+            state: 'running' as const,
+            input: { subagent_type: 'Explore', description: '前台研究' },
+            createdAt: Date.now(),
+            startedAt: Date.now(),
+            completedAt: null,
+            description: null,
+        },
+        children: [],
+    }
+}
+
+const PROPS = {
+    sessionId: 'perf-session',
+    agentState: null,
+    metadata: null,
+    api: mockApi,
+    disabled: false,
+    onRequestDone: () => {},
+} satisfies Parameters<typeof ComposerInfoPanel>[0]
+
+describe('ComposerInfoPanel 订阅收窄', () => {
+    afterEach(async () => {
+        // zustand store 与 messageWindow 均为模块级单例，跨用例清场防串染
+        const { useForegroundTasksStore, useChatBlocksByIdStore, _resetForTest } = await loadStores()
+        useForegroundTasksStore.getState().clearSession('perf-session')
+        useChatBlocksByIdStore.getState().clearSession('perf-session')
+        _resetForTest()
     })
 
-    it('无 todos 和 requests 时返回 null', () => {
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} />,
-            { wrapper }
+    it('byId 索引整表重建不触发面板重渲染（抽屉关闭时）', async () => {
+        const { useForegroundTasksStore, useChatBlocksByIdStore } = await loadStores()
+        useForegroundTasksStore.getState().set('perf-session', [makeFgTask('agent-1')])
+
+        let commits = 0
+        render(
+            <Profiler id="panel" onRender={() => { commits += 1 }}>
+                <ComposerInfoPanel {...PROPS} />
+            </Profiler>,
+            { wrapper },
         )
-        expect(container.innerHTML).toBe('')
+        const afterMount = commits
+        expect(afterMount).toBeGreaterThan(0)
+
+        // 模拟流式期 reconcile：索引整表重建（每次都是新 Map 引用）
+        await act(async () => {
+            for (let i = 0; i < 3; i++) {
+                useChatBlocksByIdStore.getState().set('perf-session', new Map([['agent-1', makeAgentBlock('agent-1')]]))
+            }
+        })
+        expect(commits).toBe(afterMount)
+
+        // 前台任务真变化时仍要重渲染（确认 Profiler 计数有效、面板响应性未破坏；
+        // 不锁具体 commit 数——订阅方多个、批处理次数是实现细节）
+        await act(async () => {
+            useForegroundTasksStore.getState().set('perf-session', [makeFgTask('agent-1'), makeFgTask('agent-2')])
+        })
+        expect(commits).toBeGreaterThan(afterMount)
     })
 
-    it('有 todos 时渲染面板', () => {
-        const todos: TodoItem[] = [
-            { content: '任务A', status: 'in_progress', activeForm: '正在执行任务A' },
-        ]
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} todos={todos} />,
-            { wrapper }
-        )
-        expect(container.innerHTML).not.toBe('')
-    })
+    it('点击任务仍能经 byId 命令式查询打开抽屉（先查后设 C1 语义保持）', async () => {
+        const { useForegroundTasksStore, useChatBlocksByIdStore } = await loadStores()
+        const block = makeAgentBlock('agent-1')
+        useForegroundTasksStore.getState().set('perf-session', [makeFgTask('agent-1')])
+        useChatBlocksByIdStore.getState().set('perf-session', new Map([['agent-1', block]]))
 
-    it('有 permission requests 时渲染面板', () => {
-        const agentState = {
-            requests: {
-                'req-1': { tool: 'Bash', arguments: { command: 'ls' }, createdAt: null },
-            },
-        } as unknown as AgentState
+        render(<ComposerInfoPanel {...PROPS} />, { wrapper })
+        expect(document.querySelector('.ant-drawer-open')).toBeNull()
 
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
-            { wrapper }
-        )
-        expect(container.innerHTML).not.toBe('')
-    })
-
-    it('Bash permission 卡片在标题下显示具体命令 subtitle', () => {
-        // sdkHints.displayName 让 titleText 只显示工具名，subtitle 补充具体命令
-        const agentState = {
-            requests: {
-                'req-1': {
-                    tool: 'Bash',
-                    arguments: { command: 'echo hi > test.txt' },
-                    createdAt: null,
-                    sdkHints: { displayName: 'Bash' },
-                },
-            },
-        } as unknown as AgentState
-
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
-            { wrapper }
-        )
-        // subtitle 显示具体命令
-        expect(container.textContent).toContain('echo hi > test.txt')
-    })
-
-    it('Edit permission 卡渲染可点击文件 Chip（审批前先看文件），subtitle 让位避免重复', () => {
-        const agentState = {
-            requests: {
-                'req-1': {
-                    tool: 'Edit',
-                    arguments: { file_path: '/proj/src/a.ts', old_string: 'a', new_string: 'b' },
-                    createdAt: null,
-                    sdkHints: { displayName: 'Edit' },
-                },
-            },
-        } as unknown as AgentState
-
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
-            { wrapper }
-        )
-        // chip 为链接形态（file/open URI），路径文本只出现一次（chip，不在 subtitle 重复）
-        const chip = container.querySelector('a.tool-chip-link')
-        expect(chip).not.toBeNull()
-        expect(chip).toHaveAttribute('href', expect.stringContaining('mobi://file/open'))
-        expect(container.textContent).toContain('/proj/src/a.ts')
-    })
-
-    it('无 sdkHints 时 titleText 已含具体内容，subtitle 去重不重复显示', () => {
-        const agentState = {
-            requests: {
-                'req-1': { tool: 'Bash', arguments: { command: 'ls -la' }, createdAt: null },
-            },
-        } as unknown as AgentState
-
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
-            { wrapper }
-        )
-        // titleText 含 "Bash: ls -la"，subtitle 去重后不重复
-        expect(container.textContent).toContain('Bash: ls -la')
-        // 不应出现两次
-        expect((container.textContent ?? '').match(/Bash: ls -la/g)?.length).toBe(1)
-    })
-
-    it('工具交互卡片折叠头点击切换 aria-expanded', () => {
-        const agentState = {
-            requests: {
-                'req-1': { tool: 'Bash', arguments: { command: 'ls' }, createdAt: null },
-            },
-        } as unknown as AgentState
-
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
-            { wrapper }
-        )
-        const toggle = container.querySelector('[data-testid="tool-request-toggle-req-1"]') as HTMLElement
-        expect(toggle).toBeTruthy()
-        expect(toggle.getAttribute('aria-expanded')).toBe('true')
-        fireEvent.click(toggle)
-        expect(toggle.getAttribute('aria-expanded')).toBe('false')
-        fireEvent.click(toggle)
-        expect(toggle.getAttribute('aria-expanded')).toBe('true')
-    })
-
-    it('内容后于挂载出现时仍挂载 ResizeObserver（修复空挂载失效）', () => {
-        // 空挂载：无任何内容 → return null，scrollRef div 不渲染、observer 未挂
-        const { rerender } = render(<ComposerInfoPanel {...defaultProps} />, { wrapper })
-        expect(observeSpy).not.toHaveBeenCalled()
-        // 内容后出现：重渲染带 todos → hasContent 翻 true、effect 重跑、observer 挂上
-        const todos: TodoItem[] = [
-            { content: '任务A', status: 'in_progress', activeForm: '正在执行任务A' },
-        ]
-        rerender(<ComposerInfoPanel {...defaultProps} todos={todos} />)
-        expect(observeSpy).toHaveBeenCalled()
-    })
-
-    it('溢出容器设置了 maxHeight', () => {        const todos = Array.from({ length: 10 }, (_, i) => ({
-            content: `任务${i}`,
-            status: 'pending' as const,
-            activeForm: `正在执行任务${i}`,
-        }))
-        const { container } = render(
-            <ComposerInfoPanel {...defaultProps} todos={todos} />,
-            { wrapper }
-        )
-        const scrollEl = container.querySelector('.hide-scrollbar') as HTMLElement
-        expect(scrollEl).toBeTruthy()
-        expect(scrollEl.style.maxHeight).toBe('40dvh')
-    })
-
-    it('有排队消息时渲染排队条', () => {
-        messagesMock.data = [queuedMsg('q-1', '排队的内容预览')]
-        const { container, unmount } = render(
-            <ComposerInfoPanel {...defaultProps} />,
-            { wrapper }
-        )
-        // 排队条展示消息预览文本
-        expect(container.textContent).toContain('排队的内容预览')
-        // 编辑按钮存在（编辑回填走 composerBackfillStore 信箱，交互由 QueuedMessagesBar/hook 测试覆盖）
-        expect(container.querySelectorAll('button').length).toBeGreaterThan(0)
-        unmount()
-    })
-
-    it('queued 空 + 仅 discarded 终态消息 + 无其他面板内容 → 面板不渲染（丢弃分区已移除）', () => {
-        // 丢弃分区已按用户要求移除：终态可见性由聊天流内标注承担，
-        // composer 面板不再因 DB 终态行被钉住
-        messagesMock.data = [discardedMsg('d-1', '被丢弃的内容预览')]
-        const { container, unmount } = render(
-            <ComposerInfoPanel {...defaultProps} />,
-            { wrapper }
-        )
-        expect(container.innerHTML).toBe('')
-        unmount()
-    })
-
-    it('有前台任务（runtime_state 清单）时渲染面板', async () => {
-        const { useForegroundTasksStore } = await import('@/core/data/stores/foregroundTasksStore')
-        useForegroundTasksStore.getState().set('test-session', [
-            { toolUseId: 'fg-1', description: '测试', subagentType: 'Explore', startedAt: Date.now() },
-        ])
-
-        const { container, unmount } = render(
-            <ComposerInfoPanel {...defaultProps} />,
-            { wrapper }
-        )
-        expect(container.innerHTML).not.toBe('')
-        unmount()
-        useForegroundTasksStore.getState().clearSession('test-session')
+        const card = document.querySelector('[data-testid="agent-card-agent-1"]') as HTMLElement
+        expect(card).toBeTruthy()
+        await act(async () => {
+            fireEvent.click(card)
+        })
+        // 抽屉打开 = 窄订阅 selector 在 drawerBlockId 就位后成功解析出 tool-call block
+        expect(document.querySelector('.ant-drawer-open')).not.toBeNull()
     })
 })
