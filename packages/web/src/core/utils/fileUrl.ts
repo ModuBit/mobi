@@ -77,8 +77,8 @@ export function buildMachineReadFileUrl(
 
 /**
  * 会话文件寻址上下文（read-file 端点寻址所需字段的单源类型）：
- * machine 显式二元组优先（会话关闭后仍可达），缺 machine 回退 session（兼容老入口），
- * 双缺 = 无法构造任何端点（如新建会话页的恢复态）。
+ * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达）；
+ * 无会话行（spawn 前的草稿/画板）回退 machine 显式二元组；双缺 = 无法构造任何端点。
  */
 export interface FileRefContext {
     sessionId?: string
@@ -102,8 +102,9 @@ export function fileRefContext(
  * 用户消息 image block → 可取数 URL（气泡 ImageView 渲染、composer 附件缩略图、
  * 画板重编辑取 PNG 共用）：blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地
  * 预览、网络图）；否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造。
- * 服务端路径优先 machine 端点（会话关闭后仍可达），回退 session read-file（兼容老入口）；
- * env 不足以构造任何端点（machineId/cwd 与 sessionId 双缺，如新建会话页的恢复态）返回 null。
+ * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达；跨机器
+ * 场景也由 hub 按会话行解析 machineId，比本端 machineId 更权威）；无会话行（spawn
+ * 前的草稿/画板）回退 machine 端点。双缺（如新建会话页的恢复态）返回 null。
  * 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
  * 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
  */
@@ -113,6 +114,7 @@ export function resolveUserImageUrl(
 ): string | null {
     const raw = block.previewUrl ?? block.source.value
     if (isSelfContainedUrl(raw)) return raw
+    if (env.sessionId) return buildReadFileUrl(env.sessionId, raw)
     if (env.machineId && env.cwd) return buildMachineReadFileUrl(env.machineId, env.cwd, raw)
-    return env.sessionId ? buildReadFileUrl(env.sessionId, raw) : null
+    return null
 }

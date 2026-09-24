@@ -40,7 +40,7 @@ import { TextBlock } from '../blocks/TextBlock'
 export interface UserBlockRenderEnv {
     /** 合成消息：text 视图走弱化 span（原 TextBlock isSynthetic 语义，如 rewind 命令标记行） */
     isSynthetic?: boolean
-    /** 附件取数上下文（machine 优先，session 回退；字段投影单源 fileRefContext） */
+    /** 附件取数上下文（session 优先，无会话行回退 machine；字段投影单源 fileRefContext） */
     refCtx?: FileRefContext
     /**
      * 画板重编辑入口（仅 sketch 标记的 image block 渲染编辑角标）：

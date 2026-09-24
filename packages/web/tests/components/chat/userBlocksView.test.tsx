@@ -449,14 +449,14 @@ describe('UserBlocksView ImageView（图片视图细部）', () => {
         fireEvent.error(container.querySelector('img')!)
         expect(container.querySelector('img')!.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
 
-        // 环境恢复（env 补上 machineId/cwd → src 切换为 machine 端点）：不再显示兜底图
+        // 环境恢复（env 补上 sessionId → src 切换为 session 端点）：不再显示兜底图
         rerender(
             <UserBlocksView
                 blocks={[serverImageBlock()]}
-                env={{ refCtx: { sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' } }}
+                env={{ refCtx: { sessionId: 'sess-2', machineId: 'm-1', cwd: '/Users/t/demo' } }}
             />,
         )
-        expect(container.querySelector('img')!.getAttribute('src')).toContain('/api/machines/m-1/read-file')
+        expect(container.querySelector('img')!.getAttribute('src')).toContain('/api/sessions/sess-2/read-file')
     })
 
     it('连续多图归并到同一横向容器：flex wrap + 间距，不一张一行', () => {
@@ -513,7 +513,21 @@ describe('UserBlocksView ImageView（图片视图细部）', () => {
         expect(preview!.textContent).not.toMatch(/1\s*\/\s*1/)
     })
 
-    it('env 带 machineId+cwd 时 src 走 machine 端点（会话关闭仍可达）', () => {
+    it('无 sessionId（spawn 前草稿）时 src 回退 machine 端点', () => {
+        const { container } = render(
+            <UserBlocksView
+                blocks={[serverImageBlock()]}
+                env={{ refCtx: { machineId: 'm-1', cwd: '/Users/t/demo' } }}
+            />,
+        )
+        const src = container.querySelector('img')!.getAttribute('src')!
+        expect(src).toContain('/api/machines/m-1/read-file')
+        expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/photo.png'))
+        // 无会话行：不会打 sessions read-file
+        expect(src).not.toContain('/api/sessions/')
+    })
+
+    it('env 带 sessionId 时 src 走 session 端点（ADR 0006：执行层在 runner，优先于 machine）', () => {
         const { container } = render(
             <UserBlocksView
                 blocks={[serverImageBlock()]}
@@ -521,10 +535,9 @@ describe('UserBlocksView ImageView（图片视图细部）', () => {
             />,
         )
         const src = container.querySelector('img')!.getAttribute('src')!
-        expect(src).toContain('/api/machines/m-1/read-file')
+        expect(src).toContain('/api/sessions/sess-1/read-file')
         expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/photo.png'))
-        // 与 session 端点互斥：不再打 sessions read-file
-        expect(src).not.toContain('/api/sessions/')
+        expect(src).not.toContain('/api/machines/')
     })
 })
 

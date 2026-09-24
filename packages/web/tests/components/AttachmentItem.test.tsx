@@ -131,7 +131,7 @@ describe('ImageThumb 图片缩略图', () => {
         })
     })
 
-    it('恢复态附件 machineId+cwd 可得：优先 machine 端点（会话关闭后仍可达）', () => {
+    it('恢复态附件有 sessionId：优先 session 端点（ADR 0006，会话关闭后仍可达）', () => {
         const a: FileAttachment = {
             id: 'restored-m',
             file: new File([], 'shot.png'),
@@ -150,9 +150,10 @@ describe('ImageThumb 图片缩略图', () => {
         )
         const img = container.querySelector('img')!
         const src = img.getAttribute('src')!
-        expect(src).toContain('/api/machines/m-9/read-file')
+        // ADR 0006：session 寻址执行层在 runner，会话退出仍可达——session 端点优先
+        expect(src).toContain('/api/sessions/sess-rw/read-file')
         expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/shot-abc123.png'))
-        expect(src).not.toContain('/api/sessions/')
+        expect(src).not.toContain('/api/machines/')
     })
 })
 
