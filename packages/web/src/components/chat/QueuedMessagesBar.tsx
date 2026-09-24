@@ -118,9 +118,10 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
             <div style={{
                 background: token.colorFillQuaternary,
                 borderRadius: token.borderRadiusLG,
-                // 收紧套娃 padding（2026-09-23 验收）：bar 4px + 消息条 6/10px，
-                // 文字距 bar 缘从 20px 收到 16px，标题-条 gap 8→6
-                padding: '4px 8px',
+                // 横向 padding 归零：外层 wrapper 的 12px 已承担与兄弟信息卡的对齐，
+                // bar 再留横向缝只会叠加（文字距容器缘 12+8+10=30px 过宽，2026-09-24 验收）。
+                // 卡片与背景条之间的层次缝由 QueuedItem 自身 padding 承担，不再两层重复
+                padding: '4px 0',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 6,
@@ -128,11 +129,12 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                 {/* 排队分区（有排队消息时才展示标题行与列表） */}
                 {queued.length > 0 && (
                     <>
-                        {/* 标题行 */}
+                        {/* 标题行（补一点横向缩进，避免贴背景条圆角边缘） */}
                         <div style={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: 6,
+                            padding: '0 6px',
                             color: token.colorTextSecondary,
                             fontSize: 12,
                         }}>
