@@ -15,12 +15,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { theme, Popconfirm, Drawer, Button } from 'antd'
+import { theme, Drawer, Button } from 'antd'
 import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { TwoStepConfirmButton } from '@/components/ui/TwoStepConfirmButton'
 import { MOBILE_SHEET_DRAWER_CLASS } from '@/components/ui/MobileDrawer'
 import type { GlobalToken } from 'antd/es/theme/interface'
-import { Terminal, CircleStop, Eye, Zap, CircleDashed } from 'lucide-react'
+import { Terminal, CircleStop, Eye, Zap, CircleDashed, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
@@ -73,7 +74,6 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     // || 而非 ??：超时转后台等补建条目 description 可能是空串（hub 侧缓存未命中时诚实降级），同样走兜底
     const name = task.description || 'Background task'
 
-    const [stopHovered, setStopHovered] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(false)
     const [stopping, setStopping] = useState(false)
 
@@ -139,7 +139,8 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
         </Drawer>
     ) : null
 
-    // stop 按钮区域：桌面端用 Popconfirm 包裹，移动端直接渲染按钮
+    // stop 按钮区域：桌面端行内两击确认（TwoStepConfirmButton，ZCode 调研落地项，
+    // 替代 Popconfirm 浮层——触屏/鼠标都「再点一下原按钮」），移动端保留 Drawer sheet
     const stopElement = !showStop ? null : isMobile ? (
         <div
             onClick={openMobileStopSheet}
@@ -152,32 +153,23 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             <CircleStop size={14} style={{ color: token.colorTextQuaternary }} />
         </div>
     ) : (
-        <AppTooltip title={t('chat.backgroundTask.stop')} mouseEnterDelay={0.5}>
-            <Popconfirm
-                title={t('chat.backgroundTask.stopConfirm')}
+        <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}
+        >
+            <TwoStepConfirmButton
+                icon={<CircleStop size={14} />}
+                confirmedIcon={
+                    stopping
+                        ? <LoadingOutlined style={{ fontSize: 12 }} />
+                        : <Check size={14} />
+                }
+                ariaActionLabel={t('chat.backgroundTask.stop')}
+                timeoutMs={3000}
+                disabled={stopping}
                 onConfirm={doStop}
-                okText={t('chat.backgroundTask.stop')}
-                cancelText={t('chat.clearState.cancel')}
-                okButtonProps={{ danger: true, loading: stopping }}
-            >
-                <div
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseEnter={() => setStopHovered(true)}
-                    onMouseLeave={() => setStopHovered(false)}
-                    style={{
-                        flexShrink: 0, width: 22, height: 22,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        borderRadius: 4, cursor: 'pointer', transition: 'background 0.2s',
-                        background: stopHovered ? token.colorErrorBg : 'transparent',
-                    }}
-                >
-                    <CircleStop size={14} style={{
-                        color: stopHovered ? token.colorError : token.colorTextQuaternary,
-                        transition: 'color 0.2s',
-                    }} />
-                </div>
-            </Popconfirm>
-        </AppTooltip>
+            />
+        </div>
     )
 
     return (

@@ -21,6 +21,12 @@ import type { BackgroundTask } from '@/domain/chat/types'
 
 const { BackgroundTaskCard } = await import('@/components/composer/BackgroundTaskCard')
 
+// jsdom 的 matchMedia stub恒 matches:false → useIsMobile 恒 true（移动端分支）。
+// 桌面端两击确认按钮（TwoStepConfirmButton）只在桌面分支渲染，这里固定 mock 桌面端
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => false,
+}))
+
 afterEach(cleanup)
 
 function makeTask(overrides: Partial<BackgroundTask>): BackgroundTask {
@@ -99,7 +105,7 @@ describe('BackgroundTaskCard 点击守卫内聚（review fix2 C2）', () => {
         expect(card.style.cursor).toBe('pointer')
     })
 
-    it('点击停止按钮不触发卡片 onClick（桌面端 Popconfirm 分支，冒泡拦截）', () => {
+    it('点击停止按钮不触发卡片 onClick（桌面端两击确认分支，冒泡拦截）', () => {
         const onClick = vi.fn()
         const onStop = vi.fn()
         const { container } = render(
@@ -109,5 +115,18 @@ describe('BackgroundTaskCard 点击守卫内聚（review fix2 C2）', () => {
         expect(stopButton).toBeTruthy()
         fireEvent.click(stopButton)
         expect(onClick).not.toHaveBeenCalled()
+    })
+
+    it('两击确认停止：展开面板点 ✓ 后调用 onStop', () => {
+        const onStop = vi.fn()
+        const { container, getByRole } = render(
+            <BackgroundTaskCard task={makeTask({ toolUseId: 'tu-1' })} onClick={() => {}} onStop={onStop} />,
+        )
+        const trigger = container.querySelector('button[aria-label]') as HTMLElement
+        fireEvent.click(trigger)
+        const confirmButton = container.querySelector('.lucide-check')?.closest('button') as HTMLElement
+        expect(confirmButton).toBeTruthy()
+        fireEvent.click(confirmButton)
+        expect(onStop).toHaveBeenCalledTimes(1)
     })
 })
