@@ -47,6 +47,92 @@ const mockSyncEngine = {
     clearRuntimeStateFields: (_sessionId: string, _fields: string[], _namespace: string) => true,
 } as unknown as SyncEngine
 
+describe('Sessions API（dormancy：休眠会话配置暂存与手动休眠）', () => {
+    const dormantSession: Session = { ...mockSession, active: false }
+
+    test('休眠会话切配置 → 只暂存 DB（applyDormantSessionConfig），无 CLI 受理直接 ok', async () => {
+        const dormantCalls: unknown[] = []
+        const engineDormant = {
+            resolveSessionAccess: (_id: string, _ns: string) => ({
+                ok: true as const,
+                sessionId: 'test-session-1',
+                session: dormantSession,
+            }),
+            applyDormantSessionConfig: (_id: string, config: unknown) => {
+                dormantCalls.push(config)
+            },
+        } as unknown as SyncEngine
+
+        const setup = await setupTestApp(engineDormant)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/test-session-1/output-style', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ style: 'Concise' }),
+            })
+            expect(res.status).toBe(200)
+            expect(dormantCalls).toEqual([{ outputStyle: 'Concise' }])
+        } finally {
+            setup.cleanup()
+        }
+    })
+
+    test('手动休眠：gate 通过 → 执行 dormantSession 且返回 ok', async () => {
+        let dormantCalled = false
+        const engineDormant = {
+            resolveSessionAccess: (_id: string, _ns: string) => ({
+                ok: true as const,
+                sessionId: 'test-session-1',
+                session: mockSession,
+            }),
+            dormantSession: async () => {
+                dormantCalled = true
+                return { ok: true as const }
+            },
+        } as unknown as SyncEngine
+
+        const setup = await setupTestApp(engineDormant)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/test-session-1/dormant', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.status).toBe(200)
+            expect(await res.json()).toEqual({ ok: true })
+            expect(dormantCalled).toBe(true)
+        } finally {
+            setup.cleanup()
+        }
+    })
+
+    test('手动休眠：gate 阻塞 → 409 带逐项 blocker', async () => {
+        const engineDormant = {
+            resolveSessionAccess: (_id: string, _ns: string) => ({
+                ok: true as const,
+                sessionId: 'test-session-1',
+                session: mockSession,
+            }),
+            dormantSession: async () => ({ ok: false as const, blockers: ['pending_permissions', 'turn_running'] }),
+        } as unknown as SyncEngine
+
+        const setup = await setupTestApp(engineDormant)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/test-session-1/dormant', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.status).toBe(409)
+            const body = await res.json() as { blockers: string[] }
+            expect(body.blockers).toEqual(['pending_permissions', 'turn_running'])
+        } finally {
+            setup.cleanup()
+        }
+    })
+})
+
 describe('Sessions API', () => {
     let app: ReturnType<typeof import('../../src/web/server').createWebApp>
     let cleanup: () => void

@@ -1416,8 +1416,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}
-                // 待激活分叉会话放行 composer（首条消息即激活）；其余 inactive 会话维持 Resume 门控
-                allowSendWhenInactive={isPendingFork}
+                // 休眠/待激活会话放行 composer（dormancy spec §B：发消息即唤醒，hub 入队后
+                // 服务端触发 spawn，web 无需先做「恢复」动作）；唤醒首响应慢几秒是唯一感知
+                allowSendWhenInactive
                 running={session?.running ?? false}
                 lastActivityAt={lastActivityAt}
                 runStartedAt={runStartedAt}

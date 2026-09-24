@@ -212,6 +212,7 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
         socket.on('terminal:ready', (d: { sessionId: string; terminalId: string }) => {
             if (d.sessionId === sessionId && d.terminalId === terminalId) {
                 isOpen = true
+                wakeRetryCount = 0 // 唤醒重试成功：复位计数，下次休眠重新计
                 setStatus('connected')
             }
         })
@@ -222,16 +223,39 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
         // terminal:error：hub 内部 emit（emitTerminalError/onIdle/cleanup）普遍只带
         // { terminalId, message }，不带 sessionId（仅 CLI 转发路径带）；每个实例独占
         // socket，socketId 天然隔离事件，故只按 terminalId 过滤，sessionId 标可选如实反映 hub 违约
-        socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string }) => {
+        socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string; code?: 'session_waking' }) => {
             if (d.terminalId === terminalId) {
                 setStatus('error')
                 isOpen = false // 复位：create 被拒/CLI 断开时不再发 terminal:write，避免击键静默丢弃
                 terminal.write(`\r\n\x1b[31m[${d.message}]\x1b[0m\r\n`)
+                // 休眠会话唤醒中（dormancy）：hub 已触发后台拉起，定时重发 create 直至进程上线
+                if (d.code === 'session_waking') {
+                    scheduleWakeRetry()
+                }
             }
         })
     }
 
     wireSocket()
+
+    // 唤醒重试：create 被拒（session_waking）后周期重发，进程上线即成功（terminal:ready 翻转状态）；
+    // 有界重试（30 次 ≈ 45s）防机器离线时无限循环，超时后停在 error 态由用户手动重连
+    let wakeRetryCount = 0
+    let wakeRetryTimer: ReturnType<typeof setTimeout> | null = null
+    const WAKE_RETRY_LIMIT = 30
+    const WAKE_RETRY_INTERVAL_MS = 1500
+    const scheduleWakeRetry = () => {
+        if (wakeRetryCount >= WAKE_RETRY_LIMIT) return
+        if (wakeRetryTimer) return
+        wakeRetryCount += 1
+        wakeRetryTimer = setTimeout(() => {
+            wakeRetryTimer = null
+            if (socket?.connected && !isOpen) {
+                const { cols, rows } = terminal
+                socket.emit('terminal:create', { sessionId, terminalId, cols, rows })
+            }
+        }, WAKE_RETRY_INTERVAL_MS)
+    }
 
     const reconnect = () => {
         // 不 clear：保留历史；写分隔横幅

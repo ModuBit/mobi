@@ -42,6 +42,8 @@ interface SaveFileRequest {
     path: string
     content: Uint8Array
     baseEtag: string
+    /** 显式项目根目录（machine 通道注入；缺省回退注册时的 workingDirectory，对齐 uploads.ts 惯例） */
+    cwd?: string
 }
 
 type SaveFileResponse =
@@ -177,7 +179,10 @@ export function registerFileHandlers(
             return rpcError('File too large (max 50MB)')
         }
 
-        const validation = writable(data.path)
+        // 写边界按 effectiveCwd 计算：machine 通道注入 cwd 时锚定注入值（与读边界同模式），
+        // 缺省回退注册时的 workingDirectory（session 通道行为不变）
+        const effectiveCwd = typeof data.cwd === 'string' && data.cwd.trim() !== '' ? data.cwd : workingDirectory
+        const validation = validateWritePath(data.path, effectiveCwd, homeDir)
         if (!validation.valid) {
             return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
         }

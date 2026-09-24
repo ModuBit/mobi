@@ -14,17 +14,12 @@
  * limitations under the License.
  */
 
-import { memo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { message, Popconfirm } from 'antd'
+import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { message } from 'antd'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { useMobiApi } from '@/core/data/api/client'
-import { resumeSession } from '@/core/data/sessionResume'
-import { queryClient } from '@/core/lib/queryClient'
-import { queryKeys } from '@/core/lib/query-keys'
-import type { Session } from '@/core/data/api/types'
 
 /**
  * mobi:// 动作链接的 web 执行面（ADR 0003）：
@@ -106,112 +101,31 @@ export interface ActionLinkProps {
  * 未注册 / 畸形 URI 统一 toast「不支持的操作」降级（不做静态置灰、不做渲染时目标校验）。
  * 渲染为原生 <a>：复用 `.x-markdown a` 的链接样式与键盘语义，所有 mobi 链接都是
  * 正常链接样式；href 仅作语义与降级展示，点击被 preventDefault 拦截。
- * 会话恢复守卫（未激活 → Popconfirm 引导恢复）在 useGuardedActionDispatch，与此组件共用。
+ * 休眠会话不设恢复守卫——文件 RPC 已 machine 化（ADR 0006），冷会话 file/open
+ * 照常可用（dormancy spec 用户故事 2：感知不到睡没睡）。
  */
-/**
- * 会话恢复守卫 hook：file/open 动作在会话未激活（session.active === false）时读不到文件
- * ——点击先弹 Popconfirm 引导恢复会话，恢复成功（Hub 可能返回新的权威会话 ID）
- * 后用新 sessionId 重放原动作；取消则什么都不做。session 数据未加载时不拦截。
- *
- * ActionLink（Markdown 链接）与 FileChip（工具行路径 chip）共用同一守卫链，
- * Popconfirm props 由调用方包在自己的触发元素外。
- */
-export function useGuardedActionDispatch() {
-    const { t } = useTranslation()
-    const dispatch = useActionDispatcher()
-    const api = useMobiApi()
-    const navigate = useNavigate()
-    const { sessionId } = useParams({ strict: false }) as { sessionId?: string }
-
-    // confirmOpen 与待重放动作同生共死，单状态表达；null=未弹出
-    const [pendingUri, setPendingUri] = useState<string | null>(null)
-    const [resuming, setResuming] = useState(false)
-
-    // 未激活会话：file/open 读不到文件，先引导恢复（session/open 跨会话跳转不拦）。
-    // 守卫按 registry key 结构化判定；激活态走 fetchQuery——staleTime 内用缓存快路径，
-    // 过期/被 SSE 失效则取最新（getQueryData 会拿 stale 缓存误放行刚离线的会话）
-    const requestDispatch = async (uri: string) => {
-        if (!sessionId) return dispatch(uri)
-        if (parseActionUri(uri)?.key !== 'file/open') return dispatch(uri)
-        const session = await queryClient.fetchQuery({
-            queryKey: queryKeys.session(sessionId),
-            queryFn: async () => {
-                const res = await api.sessions.get(sessionId)
-                return res.data.session as Session
-            },
-        })
-        if (session && session.active === false) {
-            setPendingUri(uri)
-            return
-        }
-        dispatch(uri)
-    }
-
-    /** 确认恢复：成功后用（可能变更的）会话 id 重放原动作；失败 toast 并关闭。 */
-    const handleResume = async () => {
-        if (!sessionId) return
-        setResuming(true)
-        try {
-            const newSessionId = await resumeSession(api, sessionId, queryClient)
-            // resume 可能返回新的权威会话 ID：替换路由后再重放动作
-            if (newSessionId !== sessionId) {
-                await navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId }, replace: true })
-            }
-            if (pendingUri) dispatch(pendingUri, { sessionId: newSessionId })
-        } catch {
-            message.error(t('chat.action.resumeFailed'))
-        } finally {
-            setResuming(false)
-            setPendingUri(null)
-        }
-    }
-
-    const handleCancel = () => {
-        setPendingUri(null)
-    }
-
-    const popconfirmProps = {
-        title: t('chat.action.sessionInactive'),
-        description: t('chat.action.sessionInactiveHint'),
-        open: pendingUri !== null,
-        okText: t('chat.action.resume'),
-        cancelText: t('common.cancel'),
-        okButtonProps: { loading: resuming },
-        onConfirm: handleResume,
-        onCancel: handleCancel,
-        onOpenChange: (open: boolean) => {
-            // 受控模式下点击气泡外区域（rc-trigger outside click）也走关闭清理
-            if (!open) handleCancel()
-        },
-    }
-
-    return { requestDispatch, popconfirmProps }
-}
 
 export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
-    const { requestDispatch, popconfirmProps } = useGuardedActionDispatch()
+    const dispatch = useActionDispatcher()
 
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
     // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault()
         e.stopPropagation()
-        void requestDispatch(uri)
+        dispatch(uri)
     }
 
     const handleKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
         if (e.key !== 'Enter') return
         e.preventDefault()
         e.stopPropagation()
-        void requestDispatch(uri)
+        dispatch(uri)
     }
 
     return (
-        <Popconfirm {...popconfirmProps}>
-            {/* Popconfirm 需要 anchor；链接本体语义不变（键盘 Enter 走同一守卫） */}
-            <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
-                {children}
-            </a>
-        </Popconfirm>
+        <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
+            {children}
+        </a>
     )
 })

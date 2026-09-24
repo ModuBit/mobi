@@ -139,3 +139,67 @@ describe('IdleTimer', () => {
         expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
     })
 })
+
+// ============ 休眠 gate 阻塞复查（dormancy spec） ============
+
+describe('IdleTimer 阻塞复查', () => {
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    function makeBlockedTimer(decide: () => boolean) {
+        return makeTimer({
+            onIdleTimeoutBlockedRecheck: decide,
+            recheckIntervalMs: 30_000,
+        })
+    }
+
+    it('到点 gate 阻塞 → 不退出，进入复查；复查通过即退出', () => {
+        let allow = false
+        const { timer, callbacks } = makeBlockedTimer(() => allow)
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()   // 阻塞：不退出
+
+        allow = true
+        vi.advanceTimersByTime(30_000)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1) // 解除后复查通过 → 退出
+    })
+
+    it('阻塞期间持续阻塞 → 每 30s 复查一次直到通过', () => {
+        const decide = vi.fn(() => false)
+        const { timer, callbacks } = makeBlockedTimer(decide)
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(decide).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(30_000)
+        expect(decide).toHaveBeenCalledTimes(2)
+        vi.advanceTimersByTime(30_000)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+    })
+
+    it('阻塞期间用户活动（reset）→ 解除复查状态，重新等完整空闲期', () => {
+        let allow = false
+        const { timer, callbacks } = makeBlockedTimer(() => allow)
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+
+        timer.reset()                                            // 用户活动：重置计时
+        allow = true
+        vi.advanceTimersByTime(30_000 + 60_000)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()   // 复查定时器已清，不再退出
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)                  // 新的完整空闲期满
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
+    it('未提供复查判定时行为不变：到点直接退出', () => {
+        const { timer, callbacks } = makeTimer()
+        timer.start()
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+})

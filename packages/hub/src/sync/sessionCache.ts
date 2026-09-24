@@ -464,6 +464,30 @@ export class SessionCache {
      *  restart 语义字段如 outputStyle 不在此列——不写缓存，权威值由重启后 init/keep-alive 回流） */
     static readonly LIVE_CONFIG_KEYS = ['permissionMode', 'model', 'effort'] as const
 
+    /**
+     * 休眠会话配置暂存（dormancy spec §C）：进程不在无从推送，只落 DB runtimeState；
+     * 唤醒 spawn 时经 spawn 选项带回（resumeSession 已从 runtimeState 组装 spawn 选项）。
+     * outputStyle 也在此落库——活跃路径「重启后 init 上报权威值」在休眠下不存在，
+     * 暂存值即唯一事实；活跃路径不经过本方法，outputStyle 的 restart 语义不变。
+     */
+    applyDormantConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel; outputStyle?: string }): void {
+        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+        if (!session) {
+            return
+        }
+        const patch: Record<string, unknown> = {}
+        for (const [key, value] of Object.entries(config)) {
+            if (value !== undefined) {
+                patch[key] = value
+            }
+        }
+        if (Object.keys(patch).length > 0) {
+            // 落库 + 内存回填经 RuntimeStateStore 单一收口（undefined 已过滤：merge 以 undefined 表示清除）
+            this.runtimeStateStore.merge(session, patch)
+        }
+        this.publisher.emit({ type: 'session-updated', sessionId, data: session })
+    }
+
     applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel }): void {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session) {

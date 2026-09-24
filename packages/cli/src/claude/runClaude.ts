@@ -16,6 +16,7 @@
 
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
+import { evaluateDormancyGate } from '@/claude/utils/dormancyGate';
 import { AgentState, SessionModel } from '@/api/types';
 import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
 import { MessageQueue } from '@/utils/MessageQueue';
@@ -250,6 +251,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     lifecycle.registerProcessHandlers();
     registerKillSessionHandler(apiSession.rpcHandlerManager, lifecycle.cleanupAndExit);
 
+    // 休眠 gate 的 launcher 侧事实回传 holder（dormancy spec）：launcher 就绪前按 0 处理
+    let launcherDormancyFacts: (() => { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number }) | null = null;
+
     // 监听超时事件
     const handleTimeout = (reason: string) => {
         logger.debug(`[Session] ${reason}, archiving and exiting`);
@@ -257,7 +261,30 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         void lifecycle.cleanupAndExit();
     };
 
-    apiSession.on('disconnect-timeout', () => handleTimeout('Disconnect timeout'));
+    // 休眠 gate（dormancy spec）：空闲/断连到点先过 gate，有阻塞事务（审批/排队/turn/
+    // 终端/后台任务）则不退出——空闲路径进 IdleTimer 阻塞复查；断连路径保持进程等重连后
+    // 由空闲流程再查（断连期间无事可做，不另设定时器）
+    const readDormancyFacts = () => ({
+        pendingPermissions: launcherDormancyFacts?.().pendingPermissions ?? 0,
+        queuedMessages: messageQueue.pendingCount,
+        turnRunning: currentSessionRef.current?.running ?? false,
+        liveTerminals: apiSession.activeTerminalCount,
+        backgroundTasks: launcherDormancyFacts?.().backgroundTasks ?? 0,
+    });
+    apiSession.installDormancyDecide(() => evaluateDormancyGate(readDormancyFacts()).ok);
+
+    // 手动休眠预检（dormancy spec §D.11）：hub 路由经此 RPC 问 gate，阻塞时逐项原因返回 web
+    apiSession.rpcHandlerManager.registerHandler<Record<string, never>, ReturnType<typeof evaluateDormancyGate>>('dormancyCheck', async () =>
+        evaluateDormancyGate(readDormancyFacts())
+    );
+
+    apiSession.on('disconnect-timeout', () => {
+        if (!evaluateDormancyGate(readDormancyFacts()).ok) {
+            logger.debug('[Session] Disconnect timeout blocked by dormancy gate, staying alive');
+            return;
+        }
+        handleTimeout('Disconnect timeout');
+    });
     apiSession.on('idle-timeout', () => handleTimeout('Idle timeout'));
 
     // Set initial agent state
@@ -585,6 +612,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 currentSessionRef.current = sessionInstance;
                 syncSessionModes();
             },
+            // 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填，组装 gate 快照用
+            onDormancyFacts: (provider) => { launcherDormancyFacts = provider },
             mcpServers: buildSessionMcpServers({
                 startingMode,
                 httpMcpUrl: mobiMcpServer?.url ?? null,

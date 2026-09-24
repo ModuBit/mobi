@@ -84,6 +84,8 @@ export type SocketServerDeps = {
     /** 快照同步 module。必传：CLI ingest 与 SSEManager 的订阅必须共享同一实例，漏传会静默脑裂 */
     snapshotSync: SnapshotSync
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
+    /** 休眠会话唤醒（dormancy）：惰性取 SyncEngine（socket server 先于其创建） */
+    wakeSession?: (sessionId: string) => void
     onWebappEvent?: (event: SyncEvent) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts）。
@@ -238,7 +240,8 @@ export function createSocketServer(deps: SocketServerDeps): {
         getSession: (sessionId) => deps.getSession?.(sessionId) ?? null,
         terminalRegistry,
         maxTerminalsPerSocket,
-        maxTerminalsPerSession
+        maxTerminalsPerSession,
+        wakeSession: (sessionId) => deps.wakeSession?.(sessionId)
     }))
 
     return { io, engine, rpcRegistry }

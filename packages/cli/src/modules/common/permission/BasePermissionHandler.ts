@@ -107,6 +107,10 @@ export type CancelPendingRequestOptions = {
 
 export abstract class BasePermissionHandler<TResponse extends { id: string }, TResult> {
     protected readonly pendingRequests = new Map<string, PendingPermissionRequest<TResult>>();
+    /** 休眠 gate 事实：待处理审批数（dormancy spec） */
+    get pendingCount(): number {
+        return this.pendingRequests.size;
+    }
     protected readonly client: PermissionHandlerClient;
 
     protected constructor(client: PermissionHandlerClient) {

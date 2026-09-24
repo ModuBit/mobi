@@ -64,9 +64,10 @@ function makeMockEngine(opts: {
     return engine as unknown as SyncEngine & { deleteCalled: boolean }
 }
 
-/** mock engine 捕获 POST /messages 透传给 sendMessage 的 payload */
+/** mock engine 捕获 POST /messages 透传给 sendMessage 的 payload 与 wakeSession 触发 */
 function makeSendEngine(opts: { active?: boolean; forkFrom?: unknown } = {}) {
     const sent: { sessionId: string; payload: unknown }[] = []
+    const woken: string[] = []
     const engine = {
         resolveSessionAccess: (_id: string, _ns: string) => ({
             ok: true as const,
@@ -79,8 +80,11 @@ function makeSendEngine(opts: { active?: boolean; forkFrom?: unknown } = {}) {
         sendMessage: async (sessionId: string, payload: unknown) => {
             sent.push({ sessionId, payload })
         },
+        wakeSession: (sessionId: string) => {
+            woken.push(sessionId)
+        },
     }
-    return { engine: engine as unknown as SyncEngine, sent }
+    return { engine: engine as unknown as SyncEngine, sent, woken }
 }
 
 describe('POST /api/sessions/:id/messages（双发送格式）', () => {
@@ -115,21 +119,30 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         }])
     })
 
-    test('inactive 非 fork 会话 → 409 门控保持', async () => {
-        const { engine, sent } = makeSendEngine({ active: false })
+    test('inactive（休眠）会话 → 放行入队并触发唤醒（dormancy spec §B：409 门控已废）', async () => {
+        const { engine, sent, woken } = makeSendEngine({ active: false })
         const res = await postMessage(engine, { content: 'hi' })
-        expect(res.status).toBe(409)
-        expect(sent).toEqual([])
+        expect(res.status).toBe(200)
+        expect(sent).toHaveLength(1)
+        expect(woken).toEqual(['test-session-1'])
     })
 
-    test('inactive 待激活 fork 会话 → 放行入队（激活窗口首条消息，spec §4.3/§5.3）', async () => {
-        const { engine, sent } = makeSendEngine({
+    test('inactive 待激活 fork 会话 → 放行入队并触发唤醒（fork 与休眠同管线）', async () => {
+        const { engine, sent, woken } = makeSendEngine({
             active: false,
             forkFrom: { parentSessionId: 'p1', parentNativeId: 'pn-1', anchorNativeId: 'an-1' },
         })
         const res = await postMessage(engine, { content: 'hi' })
         expect(res.status).toBe(200)
         expect(sent).toHaveLength(1)
+        expect(woken).toEqual(['test-session-1'])
+    })
+
+    test('active 会话 → 入队但不触发唤醒（唤醒只针对非活跃）', async () => {
+        const { engine, woken } = makeSendEngine({ active: true })
+        const res = await postMessage(engine, { content: 'hi' })
+        expect(res.status).toBe(200)
+        expect(woken).toEqual([])
     })
 
     test('新格式：block 数组直传', async () => {

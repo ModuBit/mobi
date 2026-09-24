@@ -298,7 +298,9 @@ export type TerminalExitPayload = z.infer<typeof TerminalExitPayloadSchema>
 export const TerminalErrorPayloadSchema = z.object({
     sessionId: z.string().min(1),
     terminalId: z.string().min(1),
-    message: z.string()
+    message: z.string(),
+    /** 结构化错误码（dormancy：session_waking = 会话休眠唤醒中，web 据此自动重试 create） */
+    code: z.literal('session_waking').optional()
 })
 
 export type TerminalErrorPayload = z.infer<typeof TerminalErrorPayloadSchema>

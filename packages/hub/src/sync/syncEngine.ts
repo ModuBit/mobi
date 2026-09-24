@@ -114,6 +114,8 @@ export class SyncEngine {
     /** rewind 软删除上界（受理时写 / 截断回报消费；与 CLI socket handler 共用实例，index.ts 注入） */
     private readonly rewindDeleteBounds: RewindDeleteBoundTracker
     private inactivityTimer: NodeJS.Timeout | null = null
+    /** 唤醒防重入：在途 resume spawn 的会话集合（wakeSession 单源读写） */
+    private readonly wakeInFlight = new Set<string>()
 
     constructor(
         store: Store,
@@ -564,6 +566,23 @@ export class SyncEngine {
         return { ok: true, sessionId: result.sessionId }
     }
 
+    /**
+     * 手动休眠（dormancy spec §D.11）：CLI gate 自查 → 通过即走既有退出路径
+     * （killSession = cleanupAndExit，与空闲超时退出同款）；阻塞则原样返回逐项
+     * blocker 给 web toast。RPC 失败（超时/断连）按阻塞处理——不确定状态下宁可不休眠
+     */
+    async dormantSession(sessionId: string): Promise<{ ok: boolean; blockers?: string[] }> {
+        let check: { ok: boolean; blockers: string[] }
+        try {
+            check = await this.rpcGateway.dormancyCheck(sessionId)
+        } catch (error) {
+            return { ok: false, blockers: [error instanceof Error ? error.message : 'Session is not reachable'] }
+        }
+        if (!check.ok) return check
+        await this.archiveSession(sessionId)
+        return { ok: true }
+    }
+
     async archiveSession(sessionId: string): Promise<void> {
         await this.rpcGateway.killSession(sessionId)
         this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now() })
@@ -612,6 +631,20 @@ export class SyncEngine {
         }
 
         this.sessionCache.applySessionConfig(sessionId, applied)
+    }
+
+    /** 休眠会话配置暂存（dormancy spec §C.9）：只落 DB runtimeState，不做进程推送（无从推起）；
+     *  唤醒 resume 时经 spawn 选项带回（resumeSession 组装处已读 runtimeState） */
+    applyDormantSessionConfig(
+        sessionId: string,
+        config: {
+            permissionMode?: PermissionMode
+            model?: string | null
+            effort?: EffortLevel
+            outputStyle?: string
+        }
+    ): void {
+        this.sessionCache.applyDormantConfig(sessionId, config)
     }
 
     /**
@@ -687,6 +720,23 @@ export class SyncEngine {
         if (!ok) {
             hubLogger.warn(`[forkSession] forkError 落档放弃（并发竞争或会话消失）: ${sessionId}`)
         }
+    }
+
+    /**
+     * 休眠会话唤醒（dormancy spec §B）：非活跃会话入队消息后 fire-and-forget 触发
+     * resume spawn（与 fork 激活同管线）。防重入：同一会话只允许一个在途 spawn——
+     * 短窗口多条消息只触发一次，唤醒失败（无机器在线/spawn 失败）时在途即释放，
+     * 后续消息或手动唤醒可重试；消息不因唤醒失败丢失（queued 已落库，上线后
+     * handleSessionAlive → redeliverQueued 补投）。
+     */
+    wakeSession(sessionId: string): void {
+        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
+        if (!session || session.active) return
+        if (this.wakeInFlight.has(sessionId)) return
+        this.wakeInFlight.add(sessionId)
+        void this.resumeSession(sessionId, session.namespace).finally(() => {
+            this.wakeInFlight.delete(sessionId)
+        })
     }
 
     async resumeSession(sessionId: string, namespace: string): Promise<ResumeSessionResult> {
@@ -794,8 +844,8 @@ export class SyncEngine {
      * 文件/路径类 RPC 不再经会话进程——会话进程活不活不影响可达性（休眠特性的
      * 「冷可读」地基）。cwd 取会话工作目录、machineId 取会话元数据；任一缺失显式
      * 报错，**不回退 session socket**——双执行路径正是本决策要消灭的东西，存量
-     * machineId 缺失由一次性回填兜底。save-file 是唯一例外（写边界锚定会话 cwd，
-     * runner 侧 saveFile 会写错位置），仍走 session socket。
+     * machineId 缺失由一次性回填兜底。save-file 亦 machine 化（dormancy：冷编辑器
+     * 自动保存不唤醒；写边界由 hub 注入 cwd 锚定，不再依赖 runner 进程自身 cwd）。
      */
     private resolveSessionFileExecution(sessionId: string): { machineId: string; cwd: string } {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
@@ -823,7 +873,8 @@ export class SyncEngine {
     }
 
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
-        return await this.rpcGateway.saveFile(sessionId, path, content, baseEtag)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineSaveFile(machineId, cwd, path, content, baseEtag)
     }
 
     async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {

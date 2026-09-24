@@ -555,7 +555,7 @@ describe('SyncEngine.switchOutputStyle 结构化分层（深化候选⑥）', ()
 /**
  * session 寻址、machine 执行，无条件单路径：文件/路径类 RPC 不再经会话进程，
  * 一律按会话行解析 machineId+cwd 后落 runner。machineId/cwd 缺失显式报错
- * （不回退 session socket——双执行路径正是要消灭的东西）；save-file 是唯一例外。
+ * （不回退 session socket——双执行路径正是要消灭的东西）；saveFile 同样 machine 化（cwd 注入，写边界仍锚定会话 cwd 子树）。
  */
 describe('SyncEngine 会话文件 RPC 执行层 machine 化', () => {
     const TICK = () => new Promise(r => setTimeout(r, 0))
@@ -665,13 +665,14 @@ describe('SyncEngine 会话文件 RPC 执行层 machine 化', () => {
         }
     })
 
-    test('saveFile 是唯一例外：仍走 session socket', async () => {
+    test('saveFile 同样 machine 化（冷编辑器：改文件不唤醒会话）', async () => {
         const h = makeFileEngine(['saveFile'])
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
             await h.engine.saveFile(session.id, 'a.txt', new Uint8Array([1]), '1-1')
             await TICK()
-            expect(h.emitCalls[0].method).toBe(`${session.id}:saveFile`)
+            expect(h.emitCalls[0].method).toBe('M1:saveFile')
+            expect(h.emitCalls[0].params).toEqual({ cwd: '/tmp/proj', path: 'a.txt', content: new Uint8Array([1]), baseEtag: '1-1' })
         } finally {
             h.cleanup()
         }

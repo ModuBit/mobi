@@ -20,7 +20,7 @@ import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
-import { isSessionEnqueueable, requireSessionFromParam, requireSyncEngine } from './guards'
+import { requireSessionFromParam, requireSyncEngine } from './guards'
 
 const querySchema = z.object({
     limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -95,15 +95,13 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        // 待激活分叉会话放行入队（语义见 isSessionEnqueueable）；其余 inactive 会话维持门控
+        // 休眠/待激活会话放行入队（dormancy spec §B：会话行存在即可入队，409 门控已废）；
+        // 不存在的会话由 requireSessionFromParam 兜底 404
         const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
         const { sessionId, session } = sessionResult
-        if (!isSessionEnqueueable(session)) {
-            return c.json({ error: 'Session is inactive' }, 409)
-        }
 
         const body = await c.req.json().catch(() => null)
         const parsed = sendMessageBodySchema.safeParse(body)
@@ -122,6 +120,11 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         await engine.sendMessage(sessionId, { content: rawContent, localId: parsed.data.localId, sentFrom: 'webapp' })
+        // 休眠/待激活会话唤醒（fire-and-forget，活跃会话跳过）：入队已持久化，spawn 失败
+        // 消息仍留 queued，下次发送或手动唤醒重试；进程上线后 handleSessionAlive → redeliverQueued 补投
+        if (!session.active) {
+            engine.wakeSession(sessionId)
+        }
         return c.json({ ok: true })
     })
 

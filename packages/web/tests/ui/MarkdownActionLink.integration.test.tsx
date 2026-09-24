@@ -153,35 +153,18 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
         expect(messageInfoSpy).not.toHaveBeenCalled()
     })
 
-    it('会话未激活点击 file/open：弹确认气泡，恢复成功后用（可能变更的）新 id 执行动作', async () => {
+    it('休眠会话点击 file/open：不弹恢复守卫，直接执行动作（文件 RPC 已 machine 化，dormancy）', async () => {
         sessionState.active = false
-        resumeSpy.mockResolvedValue({ data: { sessionId: 'sess-new' } })
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         const link = await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' }))
         fireEvent.click(link)
 
-        // 气泡出现，未直接执行动作
-        expect(await screen.findByText('chat.action.sessionInactiveHint')).toBeInTheDocument()
-        expect(useWorkspaceStore.getState().getSession('sess-1').tabs).toHaveLength(0)
-        expect(resumeSpy).not.toHaveBeenCalled()
-
-        fireEvent.click(await screen.findByRole('button', { name: 'chat.action.resume' }))
-        await waitFor(() => expect(resumeSpy).toHaveBeenCalledTimes(1))
-        // 动作重放挂在恢复后的新会话 id 下（resume 可能 mergeSessions 变更 id）
+        // 冷会话 file/open 照常打开 tab，不触发 resume、不弹确认气泡
         await waitFor(() => {
-            const ns = useWorkspaceStore.getState().getSession('sess-new')
-            expect(ns.tabs[0]).toMatchObject({ mode: 'file', filePath: 'src/main.ts' })
+            const s = useWorkspaceStore.getState().getSession('sess-1')
+            expect(s.tabs[0]).toMatchObject({ mode: 'file', filePath: 'src/main.ts' })
         })
-    })
-
-    it('会话未激活点击 file/open：取消则什么都不做', async () => {
-        sessionState.active = false
-        render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
-        fireEvent.click(await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' })))
-        // 气泡出现后点取消
-        fireEvent.click(await screen.findByRole('button', { name: 'common.cancel' }))
-        // 行为断言：不恢复、不打开 tab（气泡关闭由 antd 受控 open 驱动，动画时序不在此锁）
         expect(resumeSpy).not.toHaveBeenCalled()
-        expect(useWorkspaceStore.getState().getSession('sess-1').tabs).toHaveLength(0)
+        expect(messageInfoSpy).not.toHaveBeenCalled()
     })
 })

@@ -131,6 +131,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      *  系统消息（sdk.d.ts 明确 REPLACE 语义——每次整体换掉集合，勿增量合并；query 轮结束清空）。
      *  SDK 未提供任务列表查询 API（backgroundTasks() 是「后台化前台任务」开关，返回 boolean），只能自维护 */
     private backgroundTaskIds: ReadonlySet<string> = new Set<string>()
+
+    /** 休眠 gate 事实（dormancy spec）：审批待处理数 / turn 运行 / 后台任务数 */
+    getDormancyFacts(): { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number } {
+        return {
+            pendingPermissions: this.permissionHandler?.pendingCount ?? 0,
+            turnRunning: this.session.running,
+            backgroundTasks: this.backgroundTaskIds.size,
+        }
+    }
     /** 待注入到下一条中断 result 的停止信息（emitAbortedEvent 的落点，见该方法的注释） */
     private pendingAbortInfo: { stopKind: StopKind; stillQueuedCount: number } | null = null
     /** compact started 幂等闸门：手动 specialCommand 与 system:status{compacting} 双源同汇，
@@ -1206,6 +1215,8 @@ export async function claudeRemoteLauncher(
     queryControlRef?: QueryControlRef,
     getSessionConfig?: () => EnhancedMode,
     flushConfig?: () => void,
+    /** 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填，供 runClaude 组装 gate 快照 */
+    onDormancyFacts?: (provider: () => { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number }) => void,
 ): Promise<'switch' | 'exit'> {
     const launcher = new ClaudeRemoteLauncher(
         session,
@@ -1214,5 +1225,6 @@ export async function claudeRemoteLauncher(
         getSessionConfig ?? (() => ({ permissionMode: 'default' as const })),
         flushConfig ?? (() => {}),
     );
+    onDormancyFacts?.(() => launcher.getDormancyFacts());
     return launcher.launch();
 }

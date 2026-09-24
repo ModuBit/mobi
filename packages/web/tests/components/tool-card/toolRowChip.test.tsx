@@ -145,15 +145,16 @@ describe('工具行新形态：跳转类工具（Edit）', () => {
             .toMatchObject({ mode: 'file', filePath: '/proj/src/a.ts' })
     })
 
-    it('未激活会话点击 chip → 弹恢复引导 Popconfirm，确认后恢复并重放', async () => {
+    it('休眠会话点击 chip → 直接打开文件 tab（文件 RPC 已 machine 化，无恢复守卫）', async () => {
         sessionState.active = false
         renderCard(makeBlock('Edit', { file_path: '/proj/src/a.ts', old_string: 'a', new_string: 'b' }))
         fireEvent.click(screen.getByRole('link', { name: '/proj/src/a.ts' }))
-        // 守卫拦截：inspector 未被打开，Popconfirm 弹出
         await waitFor(() => {
-            expect(screen.getByText('chat.action.sessionInactive')).toBeInTheDocument()
+            const s = useWorkspaceStore.getState().getSession('sess-1')
+            expect(s.tabs).toHaveLength(1)
         })
-        expect(useWorkspaceStore.getState().getSession('sess-1')?.tabs ?? []).toHaveLength(0)
+        expect(useWorkspaceStore.getState().getSession('sess-1').tabs[0])
+            .toMatchObject({ mode: 'file', filePath: '/proj/src/a.ts' })
     })
 })
 

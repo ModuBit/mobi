@@ -25,6 +25,9 @@
 
 import { logger } from '@/ui/logger';
 
+/** 阻塞复查默认周期 */
+const DEFAULT_RECHECK_MS = 30_000;
+
 export interface IdleTimerOptions {
     /** 连接断开超时（毫秒），默认 10 分钟 */
     disconnectTimeoutMs: number;
@@ -34,13 +37,20 @@ export interface IdleTimerOptions {
     warningMs: number;
     /** 预警回调 */
     onWarning: () => void;
+    /**
+     * 空闲到点被休眠 gate 阻塞后的复查判定（dormancy spec）：true = 阻塞事务已清、
+     * 触发 onIdleTimeout 退出；false = 继续阻塞。缺省（未提供）= 到点直接退出，行为同旧版。
+     */
+    onIdleTimeoutBlockedRecheck?: () => boolean;
+    /** 阻塞复查周期（毫秒），默认 30 秒 */
+    recheckIntervalMs?: number;
     /** 连接断开超时回调 */
     onDisconnectTimeout: () => void;
     /** 交互不活跃超时回调 */
     onIdleTimeout: () => void;
 }
 
-type TimerState = 'stopped' | 'running' | 'warning-sent';
+type TimerState = 'stopped' | 'running' | 'warning-sent' | 'blocked';
 
 export class IdleTimer {
     private readonly disconnectTimeoutMs: number;
@@ -52,6 +62,9 @@ export class IdleTimer {
 
     private state: TimerState = 'stopped';
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
+    private blockedRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+    private readonly onIdleTimeoutBlockedRecheck?: () => boolean;
+    private readonly recheckIntervalMs: number;
     private warningTimer: ReturnType<typeof setTimeout> | null = null;
     private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private isDisconnected = false;
@@ -60,6 +73,8 @@ export class IdleTimer {
         this.disconnectTimeoutMs = options.disconnectTimeoutMs;
         this.idleTimeoutMs = options.idleTimeoutMs;
         this.warningMs = options.warningMs;
+        this.onIdleTimeoutBlockedRecheck = options.onIdleTimeoutBlockedRecheck;
+        this.recheckIntervalMs = options.recheckIntervalMs ?? DEFAULT_RECHECK_MS;
         this.onWarning = options.onWarning;
         this.onDisconnectTimeout = options.onDisconnectTimeout;
         this.onIdleTimeout = options.onIdleTimeout;
@@ -98,6 +113,15 @@ export class IdleTimer {
 
         // 如果已断开连接，不重置（断开有独立计时）
         if (this.isDisconnected) {
+            return;
+        }
+
+        // 阻塞复查状态：用户活动 = 重新等一个完整空闲期（清复查定时器、回到正常计时）
+        if (this.state === 'blocked') {
+            this.clearBlockedRecheck();
+            this.state = 'running';
+            this.scheduleIdleTimers();
+            logger.debug('[IdleTimer] Reset from blocked, restarted idle timers');
             return;
         }
 
@@ -198,10 +222,15 @@ export class IdleTimer {
 
         // 超时计时器
         this.idleTimer = setTimeout(() => {
-            if (!this.isDisconnected) {
-                logger.debug('[IdleTimer] Idle timeout reached');
-                this.onIdleTimeout();
+            if (this.isDisconnected) return;
+            // 休眠 gate：阻塞则进入复查状态，等阻塞事务解除（周期复查通过）再退出
+            if (this.onIdleTimeoutBlockedRecheck && !this.onIdleTimeoutBlockedRecheck()) {
+                logger.debug('[IdleTimer] Idle timeout blocked by dormancy gate, entering recheck');
+                this.enterBlocked();
+                return;
             }
+            logger.debug('[IdleTimer] Idle timeout reached');
+            this.onIdleTimeout();
         }, this.idleTimeoutMs);
     }
 
@@ -213,6 +242,40 @@ export class IdleTimer {
         if (this.idleTimer) {
             clearTimeout(this.idleTimer);
             this.idleTimer = null;
+        }
+        this.clearBlockedRecheck();
+    }
+
+    /**
+     * 空闲到点被 gate 阻塞后进入复查状态：每 recheckIntervalMs 重问一次判定，
+     * 通过即触发 onIdleTimeout 退出。复查期间用户活动（reset）会解除该状态。
+     */
+    enterBlocked(): void {
+        if (this.state === 'stopped') {
+            return;
+        }
+        this.state = 'blocked';
+        this.scheduleBlockedRecheck();
+    }
+
+    private scheduleBlockedRecheck(): void {
+        this.clearBlockedRecheck();
+        this.blockedRecheckTimer = setTimeout(() => {
+            this.blockedRecheckTimer = null;
+            if (this.state !== 'blocked' || this.isDisconnected) return;
+            if (this.onIdleTimeoutBlockedRecheck && !this.onIdleTimeoutBlockedRecheck()) {
+                this.scheduleBlockedRecheck();
+                return;
+            }
+            logger.debug('[IdleTimer] Blocked recheck passed, exiting');
+            this.onIdleTimeout();
+        }, this.recheckIntervalMs);
+    }
+
+    private clearBlockedRecheck(): void {
+        if (this.blockedRecheckTimer) {
+            clearTimeout(this.blockedRecheckTimer);
+            this.blockedRecheckTimer = null;
         }
     }
 

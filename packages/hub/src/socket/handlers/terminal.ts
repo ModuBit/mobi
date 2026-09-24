@@ -42,6 +42,8 @@ export type TerminalHandlersDeps = {
     terminalRegistry: TerminalRegistry
     maxTerminalsPerSocket: number
     maxTerminalsPerSession: number
+    /** 休眠会话唤醒（dormancy spec §B.6）：terminal:create 命中非活跃会话时触发后台拉起 */
+    wakeSession?: (sessionId: string) => void
 }
 
 export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalHandlersDeps): void {
@@ -49,8 +51,8 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
     const cliNamespace = io.of('/cli')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
-    const emitTerminalError = (terminalId: string, message: string) => {
-        socket.emit('terminal:error', { terminalId, message })
+    const emitTerminalError = (terminalId: string, message: string, code?: 'session_waking') => {
+        socket.emit('terminal:error', code ? { terminalId, message, code } : { terminalId, message })
     }
 
     const resolveEntryForSocket = (terminalId: string): TerminalRegistryEntry | null => {
@@ -106,8 +108,15 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
 
         const { sessionId, terminalId, cols, rows } = parsed.data
         const session = getSession(sessionId)
-        if (!namespace || !session || session.namespace !== namespace || !session.active) {
-            emitTerminalError(terminalId, 'Session is inactive or unavailable.')
+        if (!namespace || !session || session.namespace !== namespace) {
+            emitTerminalError(terminalId, 'Session is unavailable.')
+            return
+        }
+        if (!session.active) {
+            // 休眠会话打开终端即唤醒（dormancy spec §B.6）：hub 触发后台拉起，
+            // 结构化 code 让 web 自动重试 create（进程上线后 create 必达）
+            deps.wakeSession?.(sessionId)
+            emitTerminalError(terminalId, 'Session is dormant — waking up…', 'session_waking')
             return
         }
 

@@ -109,6 +109,11 @@ export class TerminalManager {
     private readonly idleTimeoutMs: number
     private readonly maxTerminals: number
     private readonly terminals: Map<string, TerminalRuntime> = new Map()
+
+    /** 休眠 gate 事实：存活终端（PTY）数（dormancy spec） */
+    get activeCount(): number {
+        return this.terminals.size;
+    }
     private readonly filteredEnv: NodeJS.ProcessEnv
     private readonly onTerminalInput?: () => void
 

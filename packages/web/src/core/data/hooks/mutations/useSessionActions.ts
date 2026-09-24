@@ -17,6 +17,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { isCancelQueued, DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared'
+import { message } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { dormancyErrorText } from '@/core/data/sessionDormancy'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession as resumeSessionModule } from '@/core/data/sessionResume'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -30,6 +33,7 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 export function useSessionActions(sessionId: string | null): {
     abortSession: (stopKind?: StopKind) => Promise<void>
     archiveSession: () => Promise<void>
+    dormantSession: () => Promise<void>
     switchSession: () => Promise<void>
     resumeSession: () => Promise<string>
     setPermissionMode: (mode: string) => Promise<void>
@@ -40,12 +44,14 @@ export function useSessionActions(sessionId: string | null): {
     isPending: boolean
     isAbortPending: boolean
     isArchivePending: boolean
+    isDormantPending: boolean
     isResumePending: boolean
     isSwitchPending: boolean
 } {
     const api = useMobiApi()
     const queryClient = useQueryClient()
     const navigate = useNavigate()
+    const { t } = useTranslation()
 
     const invalidateSession = async () => {
         if (!sessionId) return
@@ -87,6 +93,20 @@ export function useSessionActions(sessionId: string | null): {
             await api.sessions.archive(sessionId)
         },
         onSuccess: () => void invalidateSession(),
+    })
+
+    // 手动休眠（dormancy spec §D.11）：CLI gate 阻塞时 409 带逐项 blocker，toast 明确反馈不静默
+    const dormantMutation = useMutation({
+        mutationFn: async () => {
+            if (!sessionId) {
+                throw new Error('Session unavailable')
+            }
+            await api.sessions.dormant(sessionId)
+        },
+        onSuccess: () => void invalidateSession(),
+        onError: (error) => {
+            void message.warning(dormancyErrorText(error, t))
+        },
     })
 
     // 切换会话（remote/local 模式切换）
@@ -182,6 +202,7 @@ export function useSessionActions(sessionId: string | null): {
     return {
         abortSession: (stopKind?: StopKind) => abortMutation.mutateAsync(stopKind),
         archiveSession: archiveMutation.mutateAsync,
+        dormantSession: () => dormantMutation.mutateAsync(),
         switchSession: switchMutation.mutateAsync,
         resumeSession: resumeMutation.mutateAsync,
         setPermissionMode: permissionMutation.mutateAsync,
@@ -192,6 +213,7 @@ export function useSessionActions(sessionId: string | null): {
         isPending:
             abortMutation.isPending ||
             archiveMutation.isPending ||
+            dormantMutation.isPending ||
             switchMutation.isPending ||
             resumeMutation.isPending ||
             permissionMutation.isPending ||
@@ -201,6 +223,7 @@ export function useSessionActions(sessionId: string | null): {
             deleteMutation.isPending,
         isAbortPending: abortMutation.isPending,
         isArchivePending: archiveMutation.isPending,
+        isDormantPending: dormantMutation.isPending,
         isResumePending: resumeMutation.isPending,
         isSwitchPending: switchMutation.isPending,
     }

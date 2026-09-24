@@ -89,6 +89,11 @@ export class ApiSessionClient extends EventEmitter {
     readonly rpcHandlerManager: RpcHandlerManager
     private readonly terminalManager: TerminalManager
     private idleTimer: IdleTimer | null = null
+    /**
+     * 休眠 gate 判定（dormancy spec）：false = 有阻塞事务（审批/排队/turn/终端/后台任务），
+     * 空闲到点不退出、进入 IdleTimer 阻塞复查。由 runClaude 装配完成后安装。
+     */
+    private dormancyDecide: (() => boolean) | null = null
     private agentStateLock = new AsyncLock()
     private metadataLock = new AsyncLock()
     /** 服务端主动断开的兜底重连定时器（socket.io v4 对 'io server disconnect' 不自动重连） */
@@ -1114,6 +1119,19 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.disconnect()
     }
 
+    /** 休眠 gate 事实：存活终端（PTY）数（dormancy spec） */
+    get activeTerminalCount(): number {
+        return this.terminalManager.activeCount
+    }
+
+    /**
+     * 安装休眠 gate 判定（dormancy spec）：由 runClaude 在装配完成后调用。
+     * false = 有阻塞事务，空闲到点不退出、进入 IdleTimer 阻塞复查。
+     */
+    installDormancyDecide(decide: () => boolean): void {
+        this.dormancyDecide = decide
+    }
+
     /**
      * 启动空闲计时器（Remote 模式）
      */
@@ -1182,6 +1200,12 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private handleIdleTimeout(): void {
+        // 休眠 gate（dormancy spec）：有阻塞事务则不退出，进入 IdleTimer 阻塞复查
+        if (this.dormancyDecide && !this.dormancyDecide()) {
+            logger.debug('[API] Idle timeout blocked by dormancy gate, entering recheck')
+            this.idleTimer?.enterBlocked()
+            return
+        }
         logger.debug('[API] Idle timeout, exiting')
         this.emit('idle-timeout')
     }

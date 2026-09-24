@@ -55,6 +55,8 @@ interface LoopOptions {
     flushConfig?: () => void
     /** fork 激活计划（runClaude 从 bootstrap metadata 解析后传入，fork-session spec §5.2） */
     forkActivation?: ForkActivationPlan | null
+    /** 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填 provider，供 runClaude 组装 gate 快照 */
+    onDormancyFacts?: (provider: () => { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number }) => void
 }
 
 export async function loop(opts: LoopOptions) {
@@ -95,7 +97,7 @@ export async function loop(opts: LoopOptions) {
         startingMode: opts.startingMode,
         logTag: 'loop',
         runLocal: (s) => claudeLocalLauncher(s, cleanup, opts.getSessionConfig),
-        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig),
+        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig, opts.onDormancyFacts),
         onSessionReady: opts.onSessionReady
     });
 }

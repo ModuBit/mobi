@@ -19,6 +19,7 @@ import { App as AntdApp, Button, Drawer, Input, Modal, theme as antTheme } from 
 import {
     EditOutlined,
     InboxOutlined,
+    MoonOutlined,
     DeleteOutlined,
     PlayCircleOutlined,
     PushpinOutlined,
@@ -27,6 +28,7 @@ import {
     ImportOutlined,
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
+import { dormancyErrorText } from '@/core/data/sessionDormancy'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -204,6 +206,22 @@ export function MobileProjectList() {
             setActionLoading(null)
         }
     }, [actionSessionId, api, queryClient])
+
+    // 手动休眠（dormancy spec §D.11）：gate 阻塞时 toast 逐项原因
+    const handleDormant = useCallback(async () => {
+        if (!actionSessionId) return
+        setActionLoading('dormant')
+        try {
+            await api.sessions.dormant(actionSessionId)
+            messageApi.success(t('common.success'))
+            await invalidateSessionViews(queryClient, [actionSessionId])
+            setActionSessionId(null)
+        } catch (error) {
+            messageApi.warning(dormancyErrorText(error, t))
+        } finally {
+            setActionLoading(null)
+        }
+    }, [actionSessionId, api, queryClient, messageApi, t])
 
     // 恢复
     const handleResume = useCallback(async () => {
@@ -408,19 +426,32 @@ export function MobileProjectList() {
                             </Button>
                         )}
 
-                        {/* 归档 / 恢复 */}
+                        {/* 休眠 / 归档 / 恢复 */}
                         {actionSession.active ? (
-                            <Button
-                                type="text"
-                                block
-                                icon={<InboxOutlined />}
-                                disabled={!!actionLoading}
-                                loading={actionLoading === 'archive'}
-                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
-                                onClick={handleArchive}
-                            >
-                                {t('session.actions.archive')}
-                            </Button>
+                            <>
+                                <Button
+                                    type="text"
+                                    block
+                                    icon={<MoonOutlined />}
+                                    disabled={!!actionLoading}
+                                    loading={actionLoading === 'dormant'}
+                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    onClick={handleDormant}
+                                >
+                                    {t('session.actions.dormant')}
+                                </Button>
+                                <Button
+                                    type="text"
+                                    block
+                                    icon={<InboxOutlined />}
+                                    disabled={!!actionLoading}
+                                    loading={actionLoading === 'archive'}
+                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                    onClick={handleArchive}
+                                >
+                                    {t('session.actions.archive')}
+                                </Button>
+                            </>
                         ) : (
                             <Button
                                 type="text"

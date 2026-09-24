@@ -134,6 +134,8 @@ export function createMobiApi() {
                 client.post(`/api/sessions/${sessionId}/output-style`, { style }),
             // 会话操作
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
+            // 手动休眠（dormancy）：gate 阻塞时 409 携带逐项 blocker
+            dormant: (sessionId: string) => client.post(`/api/sessions/${sessionId}/dormant`),
             // 中断会话：stopKind 三档停止（缺省 'turn' 只停本轮，hub 侧同款缺省语义）
             abort: (sessionId: string, stopKind?: StopKind) =>
                 client.post(`/api/sessions/${sessionId}/abort`, { stopKind }),

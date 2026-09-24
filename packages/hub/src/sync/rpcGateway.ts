@@ -207,6 +207,11 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'rewind', { nativeId, restoreFiles })
     }
 
+    /** 手动休眠预检（dormancy spec §D.11）：CLI 本地 gate 自查，阻塞时逐项 blocker 返回 */
+    async dormancyCheck(sessionId: string): Promise<{ ok: boolean; blockers: string[] }> {
+        return await this.sessionRpc(sessionId, 'dormancyCheck', {}) as { ok: boolean; blockers: string[] }
+    }
+
     async killSession(sessionId: string): Promise<void> {
         await this.sessionRpc(sessionId, 'killSession', {})
     }
@@ -315,9 +320,11 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'get-desktop-vnc-status', {}) as DesktopVncStatus
     }
 
-    // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
-    async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
-        return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse
+    // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）。
+    // ADR 0006 + dormancy spec §E：写边界锚定由 hub 注入 cwd 保证（runner 侧 validateWritePath
+    // 以 cwd 为根），会话进程不在也可写（冷编辑器自动保存不唤醒）
+    async machineSaveFile(machineId: string, cwd: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
+        return await this.machineRpc(machineId, 'saveFile', { cwd, path, content, baseEtag }) as RpcSaveFileResponse
     }
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {

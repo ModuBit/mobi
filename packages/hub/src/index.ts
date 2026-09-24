@@ -189,6 +189,8 @@ async function main() {
             // active 状态只从内存（SyncEngine）获取，不存储在数据库中
             return syncEngine?.getSession(sessionId) ?? null
         },
+        // 休眠会话唤醒（dormancy）：终端打开触发后台拉起，惰性取 SyncEngine
+        wakeSession: (sessionId) => syncEngine?.wakeSession(sessionId),
         // Web 端实时事件（如文件变更、终端输出）→ 转发给 SyncEngine 处理
         onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
         // 会话事实上报（心跳/水位/目标/轮次/结束）→ sink 落库 + SSE 推（深化候选③）；

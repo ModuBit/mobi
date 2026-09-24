@@ -16,7 +16,7 @@
 
 import type React from 'react'
 import { Badge, Input, theme as antTheme } from 'antd'
-import { EditOutlined, InboxOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { EditOutlined, InboxOutlined, DeleteOutlined, MoonOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { Pin, PinOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AppTooltip } from '@/components/ui/AppTooltip'
@@ -45,6 +45,9 @@ interface SessionRowProps {
     onClick: () => void
     onRename: () => void
     onArchive: () => void
+    /** 手动休眠（dormancy spec §D.11）：活跃会话的兜底入口 */
+    onDormant: () => void
+    dormantLoading?: boolean
     onResume: () => void
     onDelete: () => void
     /** 置顶 / 取消置顶（所有分组通用的行内操作） */
@@ -59,7 +62,7 @@ interface SessionRowProps {
 export function SessionRow({
     session, active, isRenaming,
     renameValue, onRenameValueChange, onRenameConfirm, onRenameCancel, onRenameLoading,
-    onClick, onRename, onArchive, onResume, onDelete, onTogglePin, pinLoading, extraAction,
+    onClick, onRename, onArchive, onDormant, dormantLoading, onResume, onDelete, onTogglePin, pinLoading, extraAction,
 }: SessionRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -120,9 +123,19 @@ export function SessionRow({
                     {session.pinned ? <PinOff size={11} /> : <Pin size={11} />}
                 </ActionButton>
                 {session.active ? (
-                    <ActionButton $token={token} title={t('session.actions.archive')} onClick={(e) => { e.stopPropagation(); onArchive() }}>
-                        <InboxOutlined style={{ fontSize: 11 }} />
-                    </ActionButton>
+                    <>
+                        <ActionButton
+                            $token={token}
+                            disabled={dormantLoading}
+                            title={t('session.actions.dormant')}
+                            onClick={(e) => { e.stopPropagation(); onDormant() }}
+                        >
+                            <MoonOutlined style={{ fontSize: 11 }} />
+                        </ActionButton>
+                        <ActionButton $token={token} title={t('session.actions.archive')} onClick={(e) => { e.stopPropagation(); onArchive() }}>
+                            <InboxOutlined style={{ fontSize: 11 }} />
+                        </ActionButton>
+                    </>
                 ) : (
                     <ActionButton $token={token} title={t('session.actions.resume')} onClick={(e) => { e.stopPropagation(); onResume() }}>
                         <PlayCircleOutlined style={{ fontSize: 11 }} />

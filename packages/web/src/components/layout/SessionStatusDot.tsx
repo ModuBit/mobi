@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useTranslation } from 'react-i18next'
 import { getSessionLoader } from '@/core/utils/sessionStatus'
 import type { Session } from '@/core/data/api/types'
 import { PixelLoader } from '@/components/ui/PixelLoader'
@@ -25,5 +26,14 @@ import { PixelLoader } from '@/components/ui/PixelLoader'
  * 指示器增加任何维度（如 aria 语义、tooltip）只改这里，两处行组件自动同步。
  */
 export function SessionStatusDot({ session }: { session: Session }) {
+    const { t } = useTranslation()
+    // 休眠（dormancy）会话：状态点带文字注解——列表里唯一的显式状态文案
+    if (!session.active) {
+        return (
+            <span title={t('session.state.dormant')}>
+                <PixelLoader {...getSessionLoader(session)} size={3} />
+            </span>
+        )
+    }
     return <PixelLoader {...getSessionLoader(session)} size={3} />
 }

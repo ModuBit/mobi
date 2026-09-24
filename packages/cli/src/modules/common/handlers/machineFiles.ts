@@ -19,7 +19,7 @@ import { homedir } from 'os'
 import { logger } from '@/ui/logger'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { rpcError } from '../rpcResponses'
-import { validateReadPath } from '../pathSecurity'
+import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { readFileMetaAt, readFileRangeAt } from './fileRead'
 import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse } from './files'
 
@@ -32,7 +32,7 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
  * - 安全边界 = 读边界（ADR 0004：cwd 子树 ∪ home−黑名单 ∪ /tmp，与 session 通道同源
  *   validateReadPath）。曾有的扩展名白名单已废除（ADR 0006）：session 文件 RPC 的执行层
  *   无条件落在本通道，两链读边界必须完全同一函数同一参数形态，否则冷会话与活跃会话
- *   的文件读行为分叉；黑名单仍是唯一闸门
+ *   的文件读行为分叉；闸门 = 目录黑名单 + 敏感文件名单（凭证/历史/密钥，validateReadPath 单源）
  */
 
 interface MachineReadFileMetaRequest {
@@ -46,6 +46,11 @@ interface MachineReadFileRangeRequest extends ReadFileRangeRequest {
     cwd?: string
 }
 
+/** cwd 参数归一：缺省/空白回退 process.cwd()（对齐 uploads.ts 惯例），meta 可写判定与读/写校验同参 */
+function normalizeCwd(cwd: string | undefined): string {
+    return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
+}
+
 /**
  * machine 通道读取的统一入口策略：读边界（cwd ∪ home−黑名单 ∪ /tmp）。
  * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
@@ -57,7 +62,7 @@ function resolveAllowedMachinePath(
 ): { abs: string } | { error: string; code?: string } {
     // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，hub 据此映射 403）
     if (!relPath) return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
-    const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
+    const effectiveCwd = normalizeCwd(cwd)
     // 解析与校验同源：validateReadPath 的 valid 结果自带 resolvedPath，无手抄二次解析
     const validation = validateReadPath(relPath, effectiveCwd, homeDir)
     if (!validation.valid) {
@@ -85,8 +90,11 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
         const result = await readFileMetaAt(resolved.abs)
         if (!result.success) {
             logger.debug('[MACHINE] Failed to read file meta:', result)
+            return result
         }
-        return result
+        // writable 与 machine saveFile 的写边界同源同参（validateWritePath 严格 cwd 子树）：
+        // 判定与真实写校验漂移会让 web 显示可写但保存被拒（dormancy：冷编辑器经此通道读 meta）
+        return { success: true, meta: result.meta, writable: validateWritePath(data.path, normalizeCwd(data.cwd), homeDir).valid }
     })
 
     rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {

@@ -138,7 +138,22 @@
             "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
             "nameRequired": "请输入会话名称",
             "pin": "置顶",
-            "unpin": "取消置顶"
+            "unpin": "取消置顶",
+            "dormant": "休眠"
+        },
+        "state": {
+            "dormant": "休眠"
+        },
+        "dormancy": {
+            "blocked": "无法休眠：{{reasons}}",
+            "failed": "休眠失败，请重试",
+            "blocker": {
+                "pending_permissions": "有等待处理的审批",
+                "queued_messages": "有排队消息",
+                "turn_running": "正在回复中",
+                "live_terminals": "有打开的终端",
+                "background_tasks": "有后台任务在运行"
+            }
         },
         "contextUsage": {
             "title": "上下文水位",

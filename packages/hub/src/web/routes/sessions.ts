@@ -145,7 +145,8 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        // 休眠会话放行（dormancy spec §C.9）：配置切换在休眠下只暂存 DB，活跃才推进程
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -162,6 +163,13 @@ function registerSessionConfigRoute<K extends SessionConfigFieldKey>(
             if (invalid) {
                 return c.json({ error: invalid }, 400)
             }
+        }
+
+        // 休眠会话：只暂存 DB runtimeState（字段 key 与 runtimeState 同名），唤醒 spawn 时经
+        // spawn 选项带回；session-updated SSE 让 web 乐观显示。无 CLI 受理环节，直接 ok
+        if (!sessionResult.session.active) {
+            engine.applyDormantSessionConfig(sessionResult.sessionId, { [opts.field]: value } as Parameters<SyncEngine['applyDormantSessionConfig']>[1])
+            return c.json({ ok: true })
         }
 
         try {
@@ -283,6 +291,31 @@ export function createSessionsRoutes(
         }
 
         return c.json({ type: 'success', sessionId: result.sessionId })
+    })
+
+    // 手动休眠（dormancy spec §D.11）：CLI gate 自查 → 通过即退出进程释放资源；
+    // 阻塞（审批待处理/turn 运行中等）返回逐项 blocker，web toast 明确反馈不静默
+    app.post('/sessions/:id/dormant', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        try {
+            const result = await engine.dormantSession(sessionResult.sessionId)
+            if (!result.ok) {
+                return c.json({ error: 'Session has work in progress', blockers: result.blockers ?? [] }, 409)
+            }
+            return c.json({ ok: true })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to dorm the session'
+            return c.json({ error: message }, 409)
+        }
     })
 
     app.post('/sessions/:id/upload', async (c) => {
