@@ -171,6 +171,28 @@ describe('validateReadPath（读边界：cwd 子树 ∪ home−黑名单）', ()
         expect(validateReadPath(`${CWD}/.mobi/uploads/a.pdf`, CWD, HOME).valid).toBe(true)
     })
 
+    it('敏感文件名黑名单：home 散落凭证/历史/密钥文件 → 拒绝', () => {
+        expect(validateReadPath(`${HOME}/.env`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath(`${HOME}/.env.local`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath(`${HOME}/.netrc`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath(`${HOME}/.npmrc`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath(`${HOME}/.bash_history`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath(`${HOME}/server.pem`, CWD, HOME).valid).toBe(false)
+    })
+
+    it('敏感文件名黑名单全域生效：cwd 子树内同样拒绝（私钥复制进项目不因位置变得可读）', () => {
+        expect(validateReadPath(`${CWD}/.env`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath(`${CWD}/keys/id_rsa_backup`, CWD, HOME).valid).toBe(false)
+        expect(validateReadPath('deploy/tls.key', CWD, HOME).valid).toBe(false)
+    })
+
+    it('敏感文件名黑名单不误伤普通文件，.mobi/uploads 豁免（写读对称）', () => {
+        expect(validateReadPath(`${CWD}/src/environment.ts`, CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${CWD}/src/env.ts`, CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${HOME}/.mobi/uploads/.env`, HOME, HOME).valid).toBe(true)
+        expect(validateReadPath(`${HOME}/.mobi/uploads/id_rsa`, HOME, HOME).valid).toBe(true)
+    })
+
     it('home 外路径 → 拒绝', () => {
         const r = validateReadPath('/etc/passwd', CWD, HOME)
         expect(r.valid).toBe(false)

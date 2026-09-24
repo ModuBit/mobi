@@ -33,3 +33,14 @@ metadata:
 - **permission 弹窗会挡** — 会话发首条消息后 SDK 可能弹 tool permission，先 `Allow this session` 放行再操作文件树。
 - 截断提示节点（`truncated:true` 时目录末尾挂）只在 >2000 条目目录才出现，单测已锁，E2E 一般不造这种目录。
 - **搜索模式收起/展开验证**（2026-08-28）— 文件树搜索框输入关键词 → 虚拟目录 switcher 点击收起/展开。jsdom 组件测不了（合成点击不触发 rc-tree 内部 switcher 处理，真浏览器正常），只能 E2E 验证：断言用 switcher class `_open`/`_close` + title 列表增减，别用 treenode 数量/文本消失（收起 motion 在真浏览器也有短暂滞留）。目录点击用 mousedown+mouseup+click 三连（React 受控组件不认单 click 的场景）。
+
+## 冷会话文件读验证（ADR 0006，2026-09-24）
+
+会话文件 RPC 执行层在 runner（machine 化），验证「会话退出后文件仍可读」：
+
+1. bootstrap → curl 换 cookie（`POST /api/auth {accessToken}`）→ `POST /api/machines/:id/spawn {directory, permissionMode}`（sessionType 枚举是 simple|worktree，传 chat 会 400 Invalid body）
+2. 活跃基线：`GET /api/sessions/:id/list-directory|search-files` 应成功
+3. 归属确认后杀会话 CLI（`ps -eo pid,lstart,command | grep "packages/cli/src/index.ts claude"`——按启动时间/无 --resume 认定，**禁全局匹配**）；等 4s socket 断开
+4. 冷读矩阵：list-directory / search-files?type= / read-file（全量内容断言）/ file-meta / serve-file（先在 cwd 放 html）；upload 三件套（X-Mobi-Filename 头 + octet-stream，`.bin` 会被上传扩展名白名单拒，用 .png）
+5. save-file 冷会话 = 409（requireActive 保留，唤醒门例外——这是预期不是 bug）
+6. 删除会话 → 文件路由 404（会话行不存在不碰文件）

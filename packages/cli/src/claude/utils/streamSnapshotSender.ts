@@ -245,7 +245,16 @@ export class StreamSnapshotSender {
         const interval = !eager && now - (buffer.lastPreviewAt as number) >= PREVIEW_MIN_INTERVAL_MS
         if (!eager && !growth && !interval) return false
 
-        buffer.previewInput = buildStreamingToolInputPreview(buffer.inputJson).input
+        const preview = buildStreamingToolInputPreview(buffer.inputJson)
+        // 内容未变不标脏：大 payload 工具（闭合引号在窗口外）每次重算的提取结果完全相同，
+        // 不设防则每 8KB 增长 / 750ms 间隔都发一帧内容相同的 replace-block（纯协议流量）。
+        // 节流游标照常推进（否则 interval 每次周期 flush 都白白重算）
+        if (JSON.stringify(preview.input) === JSON.stringify(buffer.previewInput)) {
+            buffer.lastPreviewAt = now
+            buffer.lastPreviewLen = buffer.inputJson.length
+            return false
+        }
+        buffer.previewInput = preview.input
         buffer.inputStreaming = true
         buffer.lastPreviewAt = now
         buffer.lastPreviewLen = buffer.inputJson.length

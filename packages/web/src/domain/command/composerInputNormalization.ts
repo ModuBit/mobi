@@ -29,6 +29,10 @@
  * 只拦截「本次变更恰好是在开头插入一个顿号」的手输场景——粘贴以顿号开头的整段文本、
  * 正文中间的顿号、前值本就以顿号开头的连续输入，都不动。
  *
+ * 已知边界：往空 composer 粘贴**单个**顿号字符时与手输在值层面不可区分（都是
+ * `'' → '、'`），按手输处理被归一为「/」。多字符粘贴不受影响；单字符误归一可撤销，
+ * 代价可忽略。要区分需挂原生 beforeinput/inputType 事件，为此边界不值得。
+ *
  * @returns 归一后的新值；非手输顿号场景返回 null（调用方保持原值）
  */
 export function normalizeLeadingChineseSlash(value: string, previousValue: string): string | null {

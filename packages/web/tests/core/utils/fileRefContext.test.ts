@@ -28,12 +28,14 @@ describe('fileRefContext 字段投影', () => {
             sessionId: 's-1',
             machineId: 'm-1',
             cwd: '/home/u/proj',
+            sessionAddressingBroken: false,
         })
     })
 
     it('元数据缺省（新建会话等）时 machine/cwd 为 undefined，仅留 session 回退通道', () => {
-        expect(fileRefContext('s-1', null)).toEqual({ sessionId: 's-1', machineId: undefined, cwd: undefined })
-        expect(fileRefContext('s-1', undefined)).toEqual({ sessionId: 's-1', machineId: undefined, cwd: undefined })
+        // null/undefined = 元数据未知（可能尚未加载）：不置 broken，乐观走 session 端点
+        expect(fileRefContext('s-1', null)).toEqual({ sessionId: 's-1', machineId: undefined, cwd: undefined, sessionAddressingBroken: false })
+        expect(fileRefContext('s-1', undefined)).toEqual({ sessionId: 's-1', machineId: undefined, cwd: undefined, sessionAddressingBroken: false })
     })
 
     it('sessionId 缺省（恢复态老入口）时不阻塞 machine 寻址', () => {
@@ -41,7 +43,16 @@ describe('fileRefContext 字段投影', () => {
             sessionId: undefined,
             machineId: 'm-1',
             cwd: '/w',
+            sessionAddressingBroken: false,
         })
+    })
+
+    it('元数据在手却缺 machineId/cwd：置 sessionAddressingBroken（hub 侧寻址必然失败）', () => {
+        expect(fileRefContext('s-1', { path: '/w' }).sessionAddressingBroken).toBe(true)
+        expect(fileRefContext('s-1', { machineId: 'm-1' }).sessionAddressingBroken).toBe(true)
+        expect(fileRefContext('s-1', {}).sessionAddressingBroken).toBe(true)
+        expect(fileRefContext('s-1', { machineId: 'm-1', path: '/w' }).sessionAddressingBroken).toBe(false)
+        expect(fileRefContext(undefined, {}).sessionAddressingBroken).toBe(false)
     })
 })
 
@@ -64,6 +75,10 @@ describe('resolveUserImageUrl 寻址优先级', () => {
 
     it('双缺：返回 null', () => {
         expect(resolveUserImageUrl(block, {})).toBeNull()
+    })
+
+    it('寻址已损坏（元数据缺 machineId/cwd）：session 端点必然失败 → null 走占位而非破图', () => {
+        expect(resolveUserImageUrl(block, { sessionId: 's-1', sessionAddressingBroken: true })).toBeNull()
     })
 
     it('自足 URL（blob/data/http）直接用，不构造端点', () => {

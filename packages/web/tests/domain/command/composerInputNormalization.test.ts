@@ -46,6 +46,10 @@ describe('normalizeLeadingChineseSlash', () => {
     it('删除字符（长度未增）不归一', () => {
         expect(normalizeLeadingChineseSlash('、', '、h')).toBeNull()
     })
+
+    it('空值时粘贴单个顿号与手输不可区分，按手输归一（已知边界，见函数注释）', () => {
+        expect(normalizeLeadingChineseSlash('、', '')).toBe('/')
+    })
 })
 
 describe('normalizeLeadingChineseExclamation', () => {

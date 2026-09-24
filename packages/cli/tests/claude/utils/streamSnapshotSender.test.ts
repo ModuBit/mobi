@@ -566,6 +566,31 @@ describe('StreamSnapshotSender - 流式工具入参预览', () => {
         expect(latest.inputStreaming).toBe(true)
     })
 
+    it('大 payload 增长但提取结果未变：不重复发 replace-block（内容未变不标脏）', () => {
+        const { sender, transport } = setup()
+        sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Write' })
+        sender.append(0, `{"file_path":"/a.ts","content":"${'y'.repeat(8 * 1024)}`)
+        sender.flush()
+        const afterFirst = toolUseBlocks(transport).length
+        expect(afterFirst).toBeGreaterThan(0)
+
+        // content 持续增长：每次 8KB 增长都触发豁免重算，但闭合引号始终在扫描窗口外
+        // → 提取结果恒为 {file_path}，内容未变不产生新帧（此前每次增长都发一帧相同块）
+        for (let t = 100; t <= 1600; t += 100) {
+            vi.setSystemTime(t)
+            sender.append(0, 'y'.repeat(8 * 1024))
+            sender.flush()
+        }
+        expect(toolUseBlocks(transport).length).toBe(afterFirst)
+
+        // endBlock 照常下发完整 input（收窄不影响 ready 路径）
+        sender.append(0, '"}')
+        sender.endBlock(0)
+        const latest = toolUseBlocks(transport)[toolUseBlocks(transport).length - 1]
+        expect(latest.inputStreaming).toBeUndefined()
+        expect((latest.input as Record<string, unknown>).file_path).toBe('/a.ts')
+    })
+
     it('endBlock 翻转 ready：完整 input、无 inputStreaming 标记（审批红线）', () => {
         const { sender, transport } = setup()
         sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Bash' })

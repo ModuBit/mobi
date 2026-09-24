@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { resolve, sep } from 'path'
+import { basename, extname, resolve, sep } from 'path'
 
 export interface PathValidationResult {
     valid: boolean
@@ -60,7 +60,45 @@ export function validateHomeDirPath(targetPath: string, homeDir: string): PathVa
  */
 export const DEFAULT_BLACKLISTED_DIR_NAMES = [
     '.ssh', '.aws', '.gnupg', '.config', '.claude', '.agents', '.mobi',
+    '.docker', '.kube', '.azure',
 ] as const
+
+// —— 敏感文件名黑名单（文件级第二道收窄，validateReadPath 同位生效）——
+// 目录黑名单只能列目录名，home 下散落的凭证/历史/密钥文件（~/.env、~/.netrc、
+// 误拷出 ~/.ssh 的私钥等）此前可被读通道直接读取。web token 等于会话控制权
+// （可经对话让 CC 执行任意命令），但那要过对话与审批的可视路径；read-file 端点
+// 是可脚本化的静默直连（XSS 场景），敏感文件在此单点收窄。
+
+/** 精确文件名：凭证 / shell 历史 / rc 泄 token 类 */
+const SENSITIVE_FILE_NAMES: ReadonlySet<string> = new Set([
+    '.env', '.envrc', '.netrc', '.git-credentials', '.gitconfig', '.npmrc', '.yarnrc', '.yarnrc.yml',
+    '.pypirc', '.pgpass', '.my.cnf', '.wgetrc', '.curlrc', '.htpasswd',
+    '.bash_history', '.zsh_history', '.sh_history', '.mysql_history', '.psql_history',
+    '.lesshst', '.viminfo',
+])
+
+/** 前缀规则：dotenv 变体（.env.local / .env.production …；.env 本名在精确名单） */
+const SENSITIVE_FILE_NAME_PREFIXES = ['.env.'] as const
+
+/** 扩展名：密钥/证书材料 */
+const SENSITIVE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+    '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.kdbx',
+])
+
+/** 私钥惯用名（常无扩展名，误拷出 ~/.ssh 后散落在 home 各处） */
+const SENSITIVE_FILE_BASE_PATTERNS = [/^id_rsa/, /^id_ed25519/, /^id_ecdsa/] as const
+
+/**
+ * 路径是否命中敏感文件名黑名单（basename 级判定，与目录位置无关——
+ * 私钥/凭证被复制到项目目录里同样不该被静默读取）。
+ */
+export function isSensitiveFilePath(resolvedTarget: string): boolean {
+    const base = basename(resolvedTarget)
+    if (SENSITIVE_FILE_NAMES.has(base)) return true
+    if (SENSITIVE_FILE_NAME_PREFIXES.some(p => base.startsWith(p))) return true
+    if (SENSITIVE_FILE_EXTENSIONS.has(extname(base).toLowerCase())) return true
+    return SENSITIVE_FILE_BASE_PATTERNS.some(re => re.test(base))
+}
 
 /**
  * 解析黑名单目录绝对路径（默认 + 环境变量扩展）
@@ -171,6 +209,12 @@ export function validateReadPath(targetPath: string, workingDirectory: string, h
         && isWithinBlacklistedDir(resolvedTarget, homeDir)
         && !isWithinHomeMobiUploads(resolvedTarget, homeDir)) {
         return { valid: false, error: `Access denied: Path '${targetPath}' is in a protected directory` }
+    }
+    // 敏感文件名单（凭证/历史/密钥材料）全域拒绝——含 cwd 子树（私钥复制进项目不因
+    // 位置变得可读）；唯一豁免 .mobi/uploads：写读对称（上传通道写入的内容读回不拦，
+    // uploads 内容只能经上传写入，不构成既有敏感文件的泄露面）
+    if (isSensitiveFilePath(resolvedTarget) && !isWithinHomeMobiUploads(resolvedTarget, homeDir)) {
+        return { valid: false, error: `Access denied: Path '${targetPath}' is a protected file (credentials/history/key material)` }
     }
     if (isWithinExtraReadRoot(resolvedTarget)) return { valid: true, resolvedPath: resolvedTarget }
     if (isWithinDir(resolvedTarget, workingDirectory)) return { valid: true, resolvedPath: resolvedTarget }

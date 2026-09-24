@@ -84,6 +84,12 @@ export interface FileRefContext {
     sessionId?: string
     machineId?: string
     cwd?: string
+    /**
+     * 会话行元数据在手（非 null）却缺 machineId/cwd——ADR 0006 后 hub 的 session 寻址
+     * 必然失败且无回退，此时构造 session URL 只会把「优雅无图」劣化成 hub 报错破图。
+     * 元数据为 null（尚未加载）不置位：乐观走 session 端点，不因加载时序降级。
+     */
+    sessionAddressingBroken?: boolean
 }
 
 /**
@@ -95,7 +101,13 @@ export function fileRefContext(
     sessionId: string | undefined,
     metadata: { machineId?: string; path?: string } | null | undefined,
 ): FileRefContext {
-    return { sessionId, machineId: metadata?.machineId, cwd: metadata?.path }
+    return {
+        sessionId,
+        machineId: metadata?.machineId,
+        cwd: metadata?.path,
+        sessionAddressingBroken: sessionId != null && metadata != null
+            && (!metadata.machineId || !metadata.path),
+    }
 }
 
 /**
@@ -114,7 +126,11 @@ export function resolveUserImageUrl(
 ): string | null {
     const raw = block.previewUrl ?? block.source.value
     if (isSelfContainedUrl(raw)) return raw
-    if (env.sessionId) return buildReadFileUrl(env.sessionId, raw)
+    if (env.sessionId) {
+        // 寻址已确认损坏（元数据缺 machineId/cwd）：session 端点必然失败，走占位而非破图
+        if (env.sessionAddressingBroken) return null
+        return buildReadFileUrl(env.sessionId, raw)
+    }
     if (env.machineId && env.cwd) return buildMachineReadFileUrl(env.machineId, env.cwd, raw)
     return null
 }
