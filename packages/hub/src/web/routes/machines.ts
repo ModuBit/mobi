@@ -463,12 +463,14 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!query) {
             return c.json({ error: 'query parameter is required' }, 400)
         }
+        // 与 session 路由同参：缺省曾致 machine 通道永远走「目录+文件合并」，type 过滤失效
+        const type = c.req.query('type') as 'file' | 'directory' | undefined
 
         const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
         if (cwdError) return cwdError
 
         try {
-            const result = await engine.machineSearchFiles(machineId, cwd, query)
+            const result = await engine.machineSearchFiles(machineId, cwd, query, type)
             return c.json(result)
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to search files' }, 500)

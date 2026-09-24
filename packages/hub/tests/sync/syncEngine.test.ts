@@ -549,3 +549,131 @@ describe('SyncEngine.switchOutputStyle 结构化分层（深化候选⑥）', ()
         }
     })
 })
+
+// ============ 会话文件 RPC 执行层 machine 化（ADR 0006） ============
+
+/**
+ * session 寻址、machine 执行，无条件单路径：文件/路径类 RPC 不再经会话进程，
+ * 一律按会话行解析 machineId+cwd 后落 runner。machineId/cwd 缺失显式报错
+ * （不回退 session socket——双执行路径正是要消灭的东西）；save-file 是唯一例外。
+ */
+describe('SyncEngine 会话文件 RPC 执行层 machine 化', () => {
+    const TICK = () => new Promise(r => setTimeout(r, 0))
+
+    function makeFileEngine(methods: string[]) {
+        return makeEngine({ renameOnline: false, onlineMethods: methods })
+    }
+
+    function seedSession(h: EngineHandle, metadata: Record<string, unknown>) {
+        return h.engine.getOrCreateSession(`tag-file-exec-${Math.random().toString(36).slice(2)}`, metadata, null, 'default')
+    }
+
+    test('readFileMeta 落 machine socket 并注入 cwd', async () => {
+        const h = makeFileEngine(['readFileMeta'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            await h.engine.readFileMeta(session.id, 'a.txt')
+            await TICK()
+            expect(h.emitCalls).toHaveLength(1)
+            expect(h.emitCalls[0].method).toBe('M1:readFileMeta')
+            expect(h.emitCalls[0].params).toEqual({ cwd: '/tmp/proj', path: 'a.txt' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('readFileRange 透传 offset/length', async () => {
+        const h = makeFileEngine(['readFileRange'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            await h.engine.readFileRange(session.id, 'a.txt', 5, 100)
+            await TICK()
+            expect(h.emitCalls[0].method).toBe('M1:readFileRange')
+            expect(h.emitCalls[0].params).toEqual({ cwd: '/tmp/proj', path: 'a.txt', offset: 5, length: 100 })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('searchSessionFiles 透传 type', async () => {
+        const h = makeFileEngine(['searchSessionFiles'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            await h.engine.searchSessionFiles(session.id, 'hub', 'file')
+            await TICK()
+            expect(h.emitCalls[0].method).toBe('M1:searchSessionFiles')
+            expect(h.emitCalls[0].params).toEqual({ cwd: '/tmp/proj', query: 'hub', type: 'file' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('listSessionDirectory 透传 prefix', async () => {
+        const h = makeFileEngine(['listSessionDirectory'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            await h.engine.listSessionDirectory(session.id, 'docs', 'hu')
+            await TICK()
+            expect(h.emitCalls[0].method).toBe('M1:listSessionDirectory')
+            expect(h.emitCalls[0].params).toEqual({ cwd: '/tmp/proj', path: 'docs', prefix: 'hu' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('uploadFileRange 落 machine writeFileRange 并注入 cwd', async () => {
+        const h = makeFileEngine(['writeFileRange'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            const chunk = new Uint8Array([1, 2, 3])
+            await h.engine.uploadFileRange(session.id, 'f.png', undefined, 0, chunk, 3)
+            await TICK()
+            expect(h.emitCalls[0].method).toBe('M1:writeFileRange')
+            const params = h.emitCalls[0].params as Record<string, unknown>
+            expect(params.cwd).toBe('/tmp/proj')
+            expect(params.filename).toBe('f.png')
+            expect(params.content).toBe(chunk)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('deleteUploadFile / replaceUploadFile 注入 cwd', async () => {
+        const h = makeFileEngine(['deleteUpload', 'replaceUpload'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            await h.engine.deleteUploadFile(session.id, '.mobi/uploads/a.png')
+            await h.engine.replaceUploadFile(session.id, '.mobi/uploads/a.png', new Uint8Array([9]))
+            await TICK()
+            expect(h.emitCalls[0].method).toBe('M1:deleteUpload')
+            expect(h.emitCalls[0].params).toEqual({ cwd: '/tmp/proj', path: '.mobi/uploads/a.png' })
+            expect(h.emitCalls[1].method).toBe('M1:replaceUpload')
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('machineId 缺失显式报错，不回退 session socket', async () => {
+        const h = makeFileEngine(['readFileMeta'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
+            await expect(h.engine.readFileMeta(session.id, 'a.txt')).rejects.toThrow(/machineId/i)
+            await TICK()
+            expect(h.emitCalls).toHaveLength(0)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('saveFile 是唯一例外：仍走 session socket', async () => {
+        const h = makeFileEngine(['saveFile'])
+        try {
+            const session = seedSession(h, { path: '/tmp/proj', host: 'h', machineId: 'M1' })
+            await h.engine.saveFile(session.id, 'a.txt', new Uint8Array([1]), '1-1')
+            await TICK()
+            expect(h.emitCalls[0].method).toBe(`${session.id}:saveFile`)
+        } finally {
+            h.cleanup()
+        }
+    })
+})

@@ -789,12 +789,36 @@ export class SyncEngine {
         return await this.rpcGateway.checkPathsExist(machineId, paths)
     }
 
+    /**
+     * 会话文件 RPC 的执行定位（ADR 0006）：session 寻址、machine 执行，无条件单路径。
+     * 文件/路径类 RPC 不再经会话进程——会话进程活不活不影响可达性（休眠特性的
+     * 「冷可读」地基）。cwd 取会话工作目录、machineId 取会话元数据；任一缺失显式
+     * 报错，**不回退 session socket**——双执行路径正是本决策要消灭的东西，存量
+     * machineId 缺失由一次性回填兜底。save-file 是唯一例外（写边界锚定会话 cwd，
+     * runner 侧 saveFile 会写错位置），仍走 session socket。
+     */
+    private resolveSessionFileExecution(sessionId: string): { machineId: string; cwd: string } {
+        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
+        if (!session) {
+            throw new Error(`Session not found: ${sessionId}`)
+        }
+        const metadata = session.metadata as { machineId?: unknown; path?: unknown } | null | undefined
+        const machineId = typeof metadata?.machineId === 'string' && metadata.machineId ? metadata.machineId : undefined
+        const cwd = typeof metadata?.path === 'string' && metadata.path ? metadata.path : undefined
+        if (!machineId || !cwd) {
+            throw new Error(`Session ${sessionId} metadata is missing machineId/cwd — file RPC cannot be routed to machine (see ADR 0006)`)
+        }
+        return { machineId, cwd }
+    }
+
     async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
-        return await this.rpcGateway.readFileMeta(sessionId, path)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineReadFileMeta(machineId, cwd, path)
     }
 
     async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
-        return await this.rpcGateway.readFileRange(sessionId, path, offset, length)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineReadFileRange(machineId, cwd, path, offset, length)
     }
 
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
@@ -802,11 +826,13 @@ export class SyncEngine {
     }
 
     async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
-        return await this.rpcGateway.searchSessionFiles(sessionId, query, type)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineSearchFiles(machineId, cwd, query, type)
     }
 
     async listSessionDirectory(sessionId: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
-        return await this.rpcGateway.listSessionDirectory(sessionId, path, prefix)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineListSessionDirectory(machineId, cwd, path, prefix)
     }
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
@@ -859,8 +885,8 @@ export class SyncEngine {
         return await this.rpcGateway.machineDesktopVncStatus(machineId)
     }
 
-    async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
-        return await this.rpcGateway.machineSearchFiles(machineId, cwd, query)
+    async machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
+        return await this.rpcGateway.machineSearchFiles(machineId, cwd, query, type)
     }
 
     async machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
@@ -897,16 +923,19 @@ export class SyncEngine {
         content: Uint8Array,
         totalSize?: number,
     ): Promise<RpcWriteFileRangeResponse> {
-        return await this.rpcGateway.uploadFileRange(sessionId, filename, path, offset, content, totalSize)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineUploadFileRange(machineId, cwd, filename, path, offset, content, totalSize)
     }
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
-        return await this.rpcGateway.deleteUploadFile(sessionId, path)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineDeleteUpload(machineId, cwd, path)
     }
 
     /** 同 path 原子替换会话 machine 上的已上传文件（「编辑已有上传」场景） */
     async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
-        return await this.rpcGateway.replaceUploadFile(sessionId, path, content)
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineReplaceUpload(machineId, cwd, path, content)
     }
 
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {

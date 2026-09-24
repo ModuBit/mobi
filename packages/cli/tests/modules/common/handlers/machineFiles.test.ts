@@ -101,25 +101,11 @@ describe('machine file RPC handlers', () => {
         })
     })
 
-    describe('扩展名白名单', () => {
-        it.each(['a.html', 'b.js', 'c.css', 'd.webp', 'e.svg'])('%s 放行', async (name) => {
+    describe('扩展名（ADR 0006：白名单已废，读边界统一 validateReadPath）', () => {
+        it.each(['a.html', 'b.js', 'c.css', 'd.webp', 'e.svg', 'note.txt', 'app.py', 'data.json', 'noext'])('%s 放行', async (name) => {
             await writeFile(join(rootDir, name), 'x')
             const r = await handleMeta({ path: name, cwd: rootDir })
             expect(r.success).toBe(true)
-        })
-
-        it.each(['note.txt', 'app.py', 'data.json'])('%s 拒绝且带 EXT_FORBIDDEN 码', async (name) => {
-            await writeFile(join(rootDir, name), 'x')
-            const r = await handleMeta({ path: name, cwd: rootDir })
-            expect(r.success).toBe(false)
-            expect(r.code).toBe('EXT_FORBIDDEN')
-        })
-
-        it('无扩展名拒绝', async () => {
-            await writeFile(join(rootDir, 'noext'), 'x')
-            const r = await handleMeta({ path: 'noext', cwd: rootDir })
-            expect(r.success).toBe(false)
-            expect(r.code).toBe('EXT_FORBIDDEN')
         })
     })
 
@@ -143,13 +129,13 @@ describe('machine file RPC handlers', () => {
             expect(Buffer.from(r.chunk!).toString()).toBe('console.log(1)')
         })
 
-        it('非白名单不读字节', async () => {
+        it('txt 文件读字节（白名单废除后任意文本可读）', async () => {
             await writeFile(join(rootDir, 'n.txt'), 'x')
             const r = (await rpc.handleRequest({
                 method: `${SCOPE}:readFileRange`,
                 params: { path: 'n.txt', cwd: rootDir, offset: 0, length: 1 },
             })) as { success: boolean }
-            expect(r.success).toBe(false)
+            expect(r.success).toBe(true)
         })
 
         it('meta 后文件被删除：ENOENT 结构化码透传（与 meta 对齐）', async () => {

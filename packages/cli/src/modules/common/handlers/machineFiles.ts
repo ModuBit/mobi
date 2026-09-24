@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { extname, resolve } from 'path'
+import { resolve } from 'path'
 import { homedir } from 'os'
 import { logger } from '@/ui/logger'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -29,17 +29,11 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
  * - 同名覆盖 common handlers 在 machine 连接上的默认注册——registerHandler 是 Map.set，
  *   apiMachine 装配顺序里本模块后注册即生效。默认版 workingDirectory 固定为 runner 启动目录，
  *   无法按项目寻址；本版以显式 cwd 参数化（缺省回退 process.cwd()，对齐 uploads.ts 惯例）
- * - 安全边界 = 读边界（ADR 0004：cwd 子树 ∪ home−黑名单，与 session 通道同源 validateReadPath）；
- *   扩展名白名单是本通道独有的第二道收窄（附件/内嵌页场景不需要任意文本读取）
- * - 类型白名单收窄攻击面：图片全家桶（附件预览）+ html/js/css（聊天内嵌页面渲染预留）。
- *   扩名单只动这一个集合，敏感类扩展名永不入列
+ * - 安全边界 = 读边界（ADR 0004：cwd 子树 ∪ home−黑名单 ∪ /tmp，与 session 通道同源
+ *   validateReadPath）。曾有的扩展名白名单已废除（ADR 0006）：session 文件 RPC 的执行层
+ *   无条件落在本通道，两链读边界必须完全同一函数同一参数形态，否则冷会话与活跃会话
+ *   的文件读行为分叉；黑名单仍是唯一闸门
  */
-
-/** 面向消息附件 / 内嵌页面的可读扩展名（小写含点） */
-const MACHINE_READ_ALLOWED_EXT = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico',
-    '.html', '.js', '.css',
-])
 
 interface MachineReadFileMetaRequest {
     path: string
@@ -53,7 +47,7 @@ interface MachineReadFileRangeRequest extends ReadFileRangeRequest {
 }
 
 /**
- * machine 通道读取的统一入口策略：读边界（cwd ∪ home−黑名单）→ 扩展名白名单。
+ * machine 通道读取的统一入口策略：读边界（cwd ∪ home−黑名单 ∪ /tmp）。
  * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
  */
 function resolveAllowedMachinePath(
@@ -61,7 +55,7 @@ function resolveAllowedMachinePath(
     relPath: string | undefined,
     homeDir: string,
 ): { abs: string } | { error: string; code?: string } {
-    // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，hub 据此映射 403；EXT_FORBIDDEN 除外）
+    // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，hub 据此映射 403）
     if (!relPath) return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
     const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
     // 解析与校验同源：validateReadPath 的 valid 结果自带 resolvedPath，无手抄二次解析
@@ -73,23 +67,11 @@ function resolveAllowedMachinePath(
     if (validation.resolvedPath === resolve(effectiveCwd)) {
         return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
     }
-    const denied = assertAllowedExt(validation.resolvedPath)
-    if (denied) {
-        return { error: denied, code: 'EXT_FORBIDDEN' }
-    }
     return { abs: validation.resolvedPath }
 }
 
-function assertAllowedExt(absPath: string): string | null {
-    const ext = extname(absPath).toLowerCase()
-    if (!MACHINE_READ_ALLOWED_EXT.has(ext)) {
-        return `File extension "${ext || '(none)'}" is not allowed over machine channel`
-    }
-    return null
-}
-
 /**
- * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界 → 扩展名白名单）。
+ * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界单闸门）。
  */
 export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
     const resolveAllowed = (cwd: string, relPath: string | undefined) => resolveAllowedMachinePath(cwd, relPath, homeDir)

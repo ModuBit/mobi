@@ -289,15 +289,6 @@ export class RpcGateway {
     }
 
     // 查询文件元数据（mime/size/etag），用于流式读取前置判断
-    async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
-        return await this.sessionRpc(sessionId, 'readFileMeta', { path }) as RpcReadFileMetaResponse
-    }
-
-    // 范围读取文件二进制 chunk
-    async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
-        return await this.sessionRpc(sessionId, 'readFileRange', { path, offset, length }) as RpcReadFileRangeResponse
-    }
-
     // machine 通道读文件 meta（cwd 显式参数化；runner 侧策略=严格 cwd+扩展名白名单）。
     // 服务跨会话存活的静态资源读取（消息附件预览），与会话进程存活解耦
     async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
@@ -327,14 +318,6 @@ export class RpcGateway {
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse
-    }
-
-    async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
-        return await this.sessionRpc(sessionId, 'searchSessionFiles', { query, type }) as RpcListDirectoryResponse
-    }
-
-    async listSessionDirectory(sessionId: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
-        return await this.sessionRpc(sessionId, 'listSessionDirectory', { path, prefix }) as RpcListDirectoryResponse
     }
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
@@ -382,9 +365,9 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'verify-web-tools-provider', { providerId, credentials }) as RpcVerifyWebToolsProviderResponse
     }
 
-    // 在 machine 上搜索文件
-    async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
-        return await this.machineRpc(machineId, 'searchSessionFiles', { cwd, query }) as RpcListDirectoryResponse
+    // 在 machine 上搜索文件（type 与 session 路由同参：'file' | 'directory' 过滤，缺省=目录+文件合并）
+    async machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
+        return await this.machineRpc(machineId, 'searchSessionFiles', { cwd, query, type }) as RpcListDirectoryResponse
     }
 
     // 列出 machine 会话目录
@@ -397,26 +380,6 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'refreshMetadata', { cwd }) as RpcRefreshMetadataResponse
     }
 
-    // 文件流式上传（Uint8Array 二进制附件，非 base64）
-    async uploadFileRange(
-        sessionId: string,
-        filename: string,
-        path: string | undefined,
-        offset: number,
-        content: Uint8Array,
-        totalSize?: number,
-    ): Promise<RpcWriteFileRangeResponse> {
-        return await this.sessionRpc(sessionId, 'writeFileRange', { sessionId, filename, path, offset, content, totalSize }) as RpcWriteFileRangeResponse
-    }
-
-    async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
-        return await this.sessionRpc(sessionId, 'deleteUpload', { sessionId, path }) as RpcDeleteUploadResponse
-    }
-
-    // 同 path 原子替换会话 machine 上的已上传文件
-    async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
-        return await this.sessionRpc(sessionId, 'replaceUpload', { sessionId, path, content }) as RpcReplaceUploadResponse
-    }
 
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {
         return await this.sessionRpc(sessionId, 'refreshMetadata', {}) as RpcRefreshMetadataResponse
