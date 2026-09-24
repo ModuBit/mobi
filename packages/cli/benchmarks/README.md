@@ -44,6 +44,12 @@ valgrind --tool=callgrind --callgrind-out-file=/tmp/cg.out \
 callgrind_annotate /tmp/cg.out | head -30   # Ir 总数 + 热点函数
 ```
 
+## 棘轮（CI 门禁）
+
+- **`bench-ratchet`**（ci.yml job）：每次 PR 测 Ir，超过 `ir-baseline.txt` 的 2% 即失败（回潮绊网）；同时打印墙钟数字积累相关性证据。**起步时容差 2% 是临时的**——Ir↔墙钟相关性验证完成后收紧。
+- **`bench-baseline`** 工作流：手动触发 + 每周一调度。Ir 改进时自动下调基线并提交（棘轮的「只降不升」半边）；基线缺失时首次创建。
+- Ir 对 node 版本敏感：两个工作流均精确 pin `node@22.11.0`，升级 node 必须同步 pin 并重录基线（删除基线文件 → 跑 bench-baseline 重建）。
+
 ## 相关性验证流程（挂 CI 棘轮的前置条件）
 
 1. 记录基线：同一提交下取 Ir（callgrind）与墙钟（bun，多次取中位）。

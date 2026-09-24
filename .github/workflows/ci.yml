@@ -42,3 +42,45 @@ jobs:
       - run: bun run lint:deps
       # 死码防线：零引用文件/依赖/坏 import 回潮即 CI 失败（export 面暂 off，清单见 .knip.json）
       - run: bun run lint:knip
+
+  # Ir 指令数棘轮（docs/conventions/performance.md）。诚实边界：Ir↔墙钟相关性验证
+  # 尚未完成，本门禁以 2% 容差作「回潮绊网」起步；墙钟数字同步打印积累相关性证据，
+  # 验证成立后收紧容差。基线文件缺失时本 job 失败并提示运行 bench-baseline 工作流。
+  bench-ratchet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          # Ir 对 node 版本敏感，精确 pin 防镜像漂移造成假回潮
+          node-version: 22.11.0
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
+      - run: bun install
+      - name: 测量 Ir
+        id: ir
+        run: |
+          IR=$(bash .github/scripts/measure-ir.sh)
+          echo "ir=$IR" >> "$GITHUB_OUTPUT"
+          echo "Ir=$IR"
+      # 墙钟参考：与 Ir 同 PR 打印，为相关性验证积累数据（只打印不判门）
+      - name: 墙钟参考
+        run: bun packages/cli/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000
+      - name: 棘轮比对
+        run: |
+          IR=${{ steps.ir.outputs.ir }}
+          BASE_FILE=packages/cli/benchmarks/ir-baseline.txt
+          if [ ! -f "$BASE_FILE" ]; then
+            echo "::error::缺少 Ir 基线。到 Actions 手动运行 'bench-baseline' 工作流生成基线并合入 main。当前 Ir=$IR"
+            exit 1
+          fi
+          BASE=$(cat "$BASE_FILE")
+          LIMIT=$(awk -v b="$BASE" 'BEGIN{printf "%d", b * 1.02}')
+          echo "Ir=$IR baseline=$BASE limit(±2%)=$LIMIT"
+          if [ "$IR" -gt "$LIMIT" ]; then
+            echo "::error::Ir 指令数回潮：$IR > 基线 $BASE（上限 $LIMIT）。性能回潮必须优化；确需放宽基线请在 PR 说明中讨论。"
+            exit 1
+          fi
+          if [ "$IR" -lt "$BASE" ]; then
+            echo "::notice::Ir 优于基线（$IR < $BASE）。收益请锁定：到 Actions 手动运行 'bench-baseline' 下调基线。"
+          fi

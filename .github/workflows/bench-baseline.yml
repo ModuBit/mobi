@@ -1,0 +1,51 @@
+# Ir 基线下调（棘轮的「只降不升」半边，模拟 claude.ai 性能冲刺的日任务压上限）
+# 手动触发：优化落地后运行，Ir 改进时自动下调基线并提交；无改进则空转。
+# 周调度兜底：捡拾 PR 里打印了 notice 但没人手动下调的收益。
+# 基线缺失（首次）时直接创建。
+name: bench-baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  update-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          # 与 ci.yml bench-ratchet 保持一致：Ir 对 node 版本敏感
+          node-version: 22.11.0
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
+      - run: bun install
+      - name: 测量 Ir
+        id: ir
+        run: |
+          IR=$(bash .github/scripts/measure-ir.sh)
+          echo "ir=$IR" >> "$GITHUB_OUTPUT"
+          echo "Ir=$IR"
+      - name: 基线缺失则创建；有改进则下调并提交
+        run: |
+          FILE=packages/cli/benchmarks/ir-baseline.txt
+          NEW=${{ steps.ir.outputs.ir }}
+          OLD=$(cat "$FILE" 2>/dev/null || echo "")
+          if [ -n "$OLD" ] && [ "$NEW" -ge "$OLD" ]; then
+            echo "Ir=$NEW，基线=${OLD:-无}，无改进，不更新"
+            exit 0
+          fi
+          echo "$NEW" > "$FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          if [ -n "$OLD" ]; then
+            git commit -m "chore(bench): Ir 基线下调 $OLD → $NEW"
+          else
+            git commit -m "chore(bench): 建立 Ir 基线 $NEW"
+          fi
+          git push
