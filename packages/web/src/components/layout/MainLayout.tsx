@@ -29,6 +29,7 @@ import { Helmet } from 'react-helmet-async'
 import { UpdatePrompt } from './UpdatePrompt'
 import { registerServiceWorker } from '@/core/pwa/registerSW'
 import { setUpdateReload, useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
+import { startLayoutShiftObserver } from '@/core/lib/layoutShiftObserver'
 
 const { useToken } = antTheme
 
@@ -66,6 +67,10 @@ export function MainLayout() {
         })
         return unregister
     }, [])
+
+    // dev-only layout-shift 源归因观测器（docs/research-claude-ai-perf.md §2.5）：
+    // 位移源按 data-perf-region 归因输出到 console 与 window.__mobiPerf，生产空转
+    useEffect(() => startLayoutShiftObserver(), [])
 
     return (
         <ConfigProvider

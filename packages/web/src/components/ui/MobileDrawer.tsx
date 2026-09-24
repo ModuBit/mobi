@@ -456,6 +456,9 @@ export function MobileDrawer({
                 closable={false}
                 styles={mergedStyles}
                 rootClassName={finalRootClassName}
+                // 区域标注：dev-only layout-shift 归因观测器（core/lib/layoutShiftObserver）
+                // 消费；antd Drawer 的 rest props 落在根元素上，若不透传则位移源落 unknown（无害降级）
+                data-perf-region="drawer"
                 {...rest}
             >
                 {/* 视觉 sheet 主体：背景 + 圆角 + 全部位移动效都在这里，

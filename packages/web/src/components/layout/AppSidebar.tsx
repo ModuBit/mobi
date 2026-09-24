@@ -74,7 +74,8 @@ export function AppSidebar() {
     }
 
     return (
-        <SidebarContainer $token={token} $expanded={sidebarExpanded}>
+        // 区域标注：dev-only layout-shift 归因观测器（core/lib/layoutShiftObserver）消费
+        <SidebarContainer $token={token} $expanded={sidebarExpanded} data-perf-region="sidebar">
             <SidebarInner $token={token} $expanded={sidebarExpanded}>
                 {!isWco && <SidebarHeader />}
                 <SidebarNav />

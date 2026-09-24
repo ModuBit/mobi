@@ -835,7 +835,9 @@ export function ChatComposer(props: ChatComposerProps) {
     return (
         // composer 永远不贴左右边缘：统一 8px 侧边距。不依赖 CHAT_MAX_WIDTH 居中兜底——
         // 视口减去侧栏/面板不足 1200 时聊天列按 100% 宽渲染，无侧边距即贴边
-        <div style={{ padding: '0 8px max(12px, env(safe-area-inset-bottom))' }}>
+        // data-perf-region：dev-only layout-shift 归因观测器；位于 chat 区域内部，
+        // 归因时内层标注优先（composer 内位移源归 composer 不归 chat）
+        <div style={{ padding: '0 8px max(12px, env(safe-area-inset-bottom))' }} data-perf-region="composer">
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel

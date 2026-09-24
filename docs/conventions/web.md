@@ -279,6 +279,10 @@ t('tool.other')
 
 遵循 [docs/conventions/debugging.md](../../docs/conventions/debugging.md) 的通用方法论。
 
+### 布局位移归因标注
+
+主要布局根元素标注 `data-perf-region`（如 `sidebar` / `chat` / `composer` / `drawer`），供 dev-only layout-shift 归因观测器（`src/core/lib/layoutShiftObserver.ts`，`window.__mobiPerf` 回读）消费。标注是渐进约定：未标注区域的位移源落 `unknown`，不报错。
+
 ## 移动端适配
 
 ### 视口高度

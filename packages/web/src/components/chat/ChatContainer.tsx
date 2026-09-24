@@ -1269,7 +1269,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     return (
         // 全屏浮层挂载层：全宽（不受 CHAT_MAX_WIDTH 限宽），画板全屏时撑满整个内容区
         // （红框区域）；内层聊天列保持 1200 居中不受影响
-        <div ref={setChatFullscreenEl} style={{ position: 'relative', height: '100%', width: '100%' }}>
+        // data-perf-region：dev-only layout-shift 归因观测器（core/lib/layoutShiftObserver）消费
+        <div ref={setChatFullscreenEl} style={{ position: 'relative', height: '100%', width: '100%' }} data-perf-region="chat">
             <div
                 style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto', position: 'relative' }}
             >
