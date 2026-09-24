@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { StreamSnapshotSender, type SnapshotOut } from '../../../src/claude/utils/streamSnapshotSender'
 import { SNAPSHOT_PENDING_ID } from '@mobi/shared'
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
@@ -168,14 +168,16 @@ describe('StreamSnapshotSender - delta 发送（首帧全量 + 此后增量）',
             { op: 'new-block', index: 1, block: { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} } },
         ])
 
-        // input 累积不产 op（半截 JSON 无意义）
+        // input 累积即出流式预览（eager，首个 delta 立即 replace-block 预览）
         sender.append(1, '{"command":"ls"}')
-        sender.flush()
-        expect(transport).toHaveBeenCalledTimes(2)
-
-        // content_block_stop：ready 翻转 → replace-block 完整 input
-        sender.endBlock(1)
         out = frameAt(transport, 2)
+        expect(out.frame.deltas).toEqual([
+            { op: 'replace-block', index: 1, block: { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' }, inputStreaming: true } },
+        ])
+
+        // content_block_stop：ready 翻转 → replace-block 完整 input（标记移除）
+        sender.endBlock(1)
+        out = frameAt(transport, 3)
         expect(out.kind).toBe('delta')
         expect(out.frame.deltas).toEqual([
             { op: 'replace-block', index: 1, block: { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } } },
@@ -473,5 +475,121 @@ describe('StreamSnapshotSender - 修复回归（code-review A3/A4/F9/F12）', ()
         const second = frameAt(transport, 1)
         expect(second.kind).toBe('full')
         expect(second.frame.localId).toBe(SNAPSHOT_PENDING_ID)
+    })
+})
+
+// ============================================================================
+// 流式工具入参预览（.scratch/streaming-tool-input-preview）
+// ============================================================================
+
+describe('StreamSnapshotSender - 流式工具入参预览', () => {
+    /** 从全部帧中按序收集 tool_use 块（full 帧 data.blocks + delta 帧 op.block） */
+    function toolUseBlocks(transport: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
+        const blocks: Array<Record<string, unknown>> = []
+        for (const call of transport.mock.calls) {
+            const out = call[0] as SnapshotOut
+            if (out.kind === 'full') {
+                for (const b of (out.message.content.content as { data: { blocks: unknown[] } }).data.blocks) {
+                    if ((b as Record<string, unknown>).type === 'tool_use') blocks.push(b as Record<string, unknown>)
+                }
+            } else if (out.kind === 'delta') {
+                for (const d of out.frame.deltas) {
+                    if ('block' in d && (d.block as Record<string, unknown>).type === 'tool_use') {
+                        blocks.push(d.block as Record<string, unknown>)
+                    }
+                }
+            }
+        }
+        return blocks
+    }
+
+    function setup() {
+        vi.useFakeTimers()
+        vi.setSystemTime(0)
+        const { sender, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        return { sender, transport }
+    }
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    it('首个 delta 即出预览（eager）：卡片 input 立即有内容并带 inputStreaming 标记', () => {
+        const { sender, transport } = setup()
+        sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Bash' })
+        sender.append(0, '{"command":"bun test","timeout": 120')
+
+        sender.flush()
+        const blocks = toolUseBlocks(transport)
+        const latest = blocks[blocks.length - 1]
+        expect(latest.input).toEqual({ command: 'bun test' })
+        expect(latest.inputStreaming).toBe(true)
+    })
+
+    it('750ms 节流：间隔内的新 delta 不产出新预览帧，过间隔后才更新', () => {
+        const { sender, transport } = setup()
+        sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Bash' })
+        sender.append(0, '{"command":"bun test"')
+        sender.flush()
+        const afterFirst = toolUseBlocks(transport).length
+
+        // 间隔内：新字段闭合但不产出预览（无新 tool_use 块）
+        vi.setSystemTime(400)
+        sender.append(0, ',"description":"run tests"')
+        sender.flush()
+        expect(toolUseBlocks(transport).length).toBe(afterFirst)
+
+        // 过 750ms：新预览随 flush 下发
+        vi.setSystemTime(800)
+        sender.flush()
+        const blocks = toolUseBlocks(transport)
+        const latest = blocks[blocks.length - 1]
+        expect(latest.input).toEqual({ command: 'bun test', description: 'run tests' })
+        expect(blocks.length).toBe(afterFirst + 1)
+    })
+
+    it('8KB 增长豁免节流：间隔内大增长也立即出预览', () => {
+        const { sender, transport } = setup()
+        sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Write' })
+        sender.append(0, '{"file_path":"/a.ts"')
+        sender.flush()
+
+        // 间隔内（<750ms）但 rawInput 增长 ≥8KB：立即出预览
+        vi.setSystemTime(100)
+        sender.append(0, `,"script":"${'x'.repeat(8 * 1024)}"`)
+        sender.flush()
+        const blocks = toolUseBlocks(transport)
+        const latest = blocks[blocks.length - 1]
+        // script 已闭合但在 8KB 扫描窗口外→只有 file_path；标记仍在
+        expect(latest.input).toEqual({ file_path: '/a.ts' })
+        expect(latest.inputStreaming).toBe(true)
+    })
+
+    it('endBlock 翻转 ready：完整 input、无 inputStreaming 标记（审批红线）', () => {
+        const { sender, transport } = setup()
+        sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Bash' })
+        sender.append(0, '{"command":"bun test"}')
+        sender.flush()
+        sender.endBlock(0)
+
+        const blocks = toolUseBlocks(transport)
+        const latest = blocks[blocks.length - 1]
+        expect(latest.input).toEqual({ command: 'bun test' })
+        // ready 后的块永不携带流式标记（审批路径只消费 complete input）
+        expect(latest.inputStreaming).toBeUndefined()
+    })
+
+    it('ready 后不再产出流式预览（append 不改变已完整 input）', () => {
+        const { sender, transport } = setup()
+        sender.startBlock(0, 'tool_use', { id: 'tu-1', name: 'Bash' })
+        sender.append(0, '{"command":"bun test"}')
+        sender.endBlock(0)
+        const before = toolUseBlocks(transport).length
+
+        vi.setSystemTime(5000)
+        sender.append(0, '{"command":"bun test"}') // 迟到的重复 delta 不应扰动
+        sender.flush()
+        expect(toolUseBlocks(transport).length).toBe(before)
     })
 })

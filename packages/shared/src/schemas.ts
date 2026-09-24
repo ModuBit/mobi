@@ -719,8 +719,10 @@ export const SnapshotBlockSchema = z.discriminatedUnion('type', [
         type: z.literal('tool_use'),
         id: z.string(),
         name: z.string(),
-        /** 半截 JSON 无意义：流式期恒为 {}（占位），content_block_stop 后为完整 input */
+        /** 流式期为节流的部分解析预览（buildStreamingToolInputPreview）；content_block_stop 后为完整 input */
         input: z.unknown(),
+        /** true = input 是流式预览（未完整）；complete（ready 翻转）后不携带。老 web 忽略 */
+        inputStreaming: z.boolean().optional(),
     }),
 ])
 

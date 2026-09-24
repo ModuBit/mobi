@@ -14,6 +14,7 @@
 | `src/types.ts` | 纯 TypeScript 类型重导出 |
 | `src/messages.ts` | 消息辅助函数（unwrapRole / unwrapOutput / lifecycle） |
 | `src/messageClassification.ts` | 消息投影单一来源：写路径分类 classifyMessage + 读路径可见性 isClaudeChatVisibleMessage |
+| `src/streamingToolInputPreview.ts` | 流式工具入参预览单一来源：半截 JSON 尽力解析 + 白名单字段抓取 + 8KB 扫描窗口 |
 | `src/socket.ts` | Socket.IO 事件类型定义（含 `snapshot-stream-end`） |
 | `src/snapshotDelta.ts` | Snapshot delta 协议 apply 端共享逻辑（buildSnapshotMessage / locateSnapshotBlocks / applySnapshotBlockDeltas） |
 | `src/modes.ts` | 权限模式定义（PermissionMode 等） |

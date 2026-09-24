@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, type DecryptedMessage, type SnapshotBlock, type SnapshotBlockDelta, type SnapshotDeltaFrame } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, buildStreamingToolInputPreview, type DecryptedMessage, type SnapshotBlock, type SnapshotBlockDelta, type SnapshotDeltaFrame } from '@mobi/shared'
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { RawJSONLines } from '@/claude/types'
 import type { SDKToLogConverter } from './sdkToLogConverter'
@@ -35,6 +35,12 @@ export type SnapshotOut =
 /** 周期 checkpoint：每 N 个增量帧插入一次全量帧。任何一帧丢失（zod 拒/网络）都会让链断档，
  *  hub 丢弃后续 delta 直到下个全量——checkpoint 把该静默窗口封顶在 N × intervalMs（20 × 500ms = 10s） */
 const CHECKPOINT_EVERY_DELTAS = 20
+
+// —— 流式入参预览节流（.scratch/streaming-tool-input-preview，常量采纳 ZCode 同款）——
+/** 两个预览帧的最小间隔 */
+const PREVIEW_MIN_INTERVAL_MS = 750
+/** 间隔内 rawInput 增长超过此值则无视间隔立即出预览 */
+const PREVIEW_MIN_RAW_GROWTH = 8 * 1024
 
 type SnapshotTransport = (out: SnapshotOut) => void
 
@@ -72,11 +78,22 @@ interface ToolUseBuffer {
     dirty: boolean
     /** ready 时一次性 parse 缓存（inputJson 此后不变，避免每次 flush 重复 parse）；初始 {} 作占位 */
     parsedInput: unknown
+    // —— 流式入参预览（.scratch/streaming-tool-input-preview）——
+    /** 部分解析预览（节流更新；ready 前替代 parsedInput 进块） */
+    previewInput: unknown
+    /** 是否已产出过预览（块上 inputStreaming 标记的依据；ready 时归 false） */
+    inputStreaming: boolean
+    /** 上次预览计算时刻（null=尚未计算过，首个 delta eager 计算） */
+    lastPreviewAt: number | null
+    /** 上次预览计算时的 inputJson 长度（8KB 增长豁免的判据） */
+    lastPreviewLen: number
     // —— delta 发送游标 ——
     /** 占位（new-block）是否已下发 */
     placeholderSent?: boolean
     /** ready 翻转（replace-block 完整 input）是否已下发 */
     readySent?: boolean
+    /** 最新预览是否已随帧下发（预览计算后置 false，replace-block 后置回 true） */
+    previewSent?: boolean
 }
 
 type ContentBlockBuffer = TextLikeBuffer | ToolUseBuffer
@@ -178,6 +195,11 @@ export class StreamSnapshotSender {
                 ready: false,
                 dirty: true, // 立即标脏，触发占位下发
                 parsedInput: {},
+                previewInput: {},
+                inputStreaming: false,
+                lastPreviewAt: null,
+                lastPreviewLen: 0,
+                previewSent: true, // 尚无预览待发
             })
             this.flush() // content_block_start 即下发 input={} 占位（不等 content_block_stop）
             return
@@ -199,10 +221,37 @@ export class StreamSnapshotSender {
         if (!buffer) return
         if (buffer.kind === 'tool_use') {
             buffer.inputJson += delta
+            const due = this.refreshToolPreview(buffer)
+            // eager / 大增长：立即 flush 让预览马上可见（间隔到期路径由周期 flush 补算）
+            if (due === 'eager' || due === 'growth') this.flush()
         } else {
             buffer.content += delta
             buffer.dirty = true
         }
+    }
+
+    /**
+     * 按 eargerness 判据更新 tool_use 缓冲的流式预览（节流三常量：eager 首算 /
+     * 750ms 最小间隔 / 8KB 增长豁免）。到期则重算预览、翻转 inputStreaming 并标脏。
+     * @returns 本次实际到期的方式（未到期返回 null）
+     */
+    private refreshToolPreview(buffer: ToolUseBuffer): 'eager' | 'growth' | 'interval' | null {
+        // ready 后不再预览；空串不算首个 delta（startBlock 的占位 flush 会走到这里，
+        // 此时把 eager 名额烧掉会让首个真实 delta 落进 750ms 节流窗——预览白白延迟）
+        if (buffer.ready || buffer.inputJson === '') return null
+        const now = Date.now()
+        const eager = buffer.lastPreviewAt === null
+        const growth = !eager && buffer.inputJson.length - buffer.lastPreviewLen >= PREVIEW_MIN_RAW_GROWTH
+        const interval = !eager && now - (buffer.lastPreviewAt as number) >= PREVIEW_MIN_INTERVAL_MS
+        if (!eager && !growth && !interval) return null
+
+        buffer.previewInput = buildStreamingToolInputPreview(buffer.inputJson).input
+        buffer.inputStreaming = true
+        buffer.lastPreviewAt = now
+        buffer.lastPreviewLen = buffer.inputJson.length
+        buffer.previewSent = false
+        buffer.dirty = true
+        return eager ? 'eager' : growth ? 'growth' : 'interval'
     }
 
     /**
@@ -217,6 +266,9 @@ export class StreamSnapshotSender {
         if (buffer?.kind === 'tool_use' && !buffer.ready) {
             buffer.ready = true
             buffer.parsedInput = parseInputJson(buffer.inputJson)
+            // 完整 input 取代流式预览：标记移除，待发预览作废
+            buffer.inputStreaming = false
+            buffer.previewSent = true
             buffer.dirty = true
         } else if (buffer?.kind === 'text-like' && buffer.type === 'thinking' && buffer.startTs != null) {
             // thinking 收到 content_block_stop：算最终耗时、置完成标记，标脏立即下发（消除「思考完成→text 开头」误判窗口）
@@ -239,6 +291,11 @@ export class StreamSnapshotSender {
      */
     flush(): void {
         if (this.destroyed) return
+
+        // 间隔到期的工具预览在此补算（eager/增长路径已在 append 内即时处理）
+        for (const buffer of this.buffers.values()) {
+            if (buffer.kind === 'tool_use') this.refreshToolPreview(buffer)
+        }
 
         if (this.needFull) {
             // 首帧等待真实内容：content_block_start 到首个 delta 之间的空窗不发空块全量
@@ -310,6 +367,7 @@ export class StreamSnapshotSender {
             } else {
                 buffer.placeholderSent = true
                 buffer.readySent = buffer.ready
+                buffer.previewSent = true // 全量帧已携带当前状态
             }
             buffer.dirty = false
         }
@@ -354,9 +412,15 @@ export class StreamSnapshotSender {
                 deltas.push({ op: 'new-block', index: pos, block: this.toolUseBlock(buffer) })
                 buffer.placeholderSent = true
                 buffer.readySent = buffer.ready
+                buffer.previewSent = true // new-block 已携带当前状态
             } else if (buffer.ready && !buffer.readySent) {
                 deltas.push({ op: 'replace-block', index: pos, block: this.toolUseBlock(buffer) })
                 buffer.readySent = true
+                buffer.previewSent = true
+            } else if (!buffer.ready && buffer.inputStreaming && !buffer.previewSent) {
+                // 流式预览更新：全块替换（预览是低频小流量，不做字段级 diff）
+                deltas.push({ op: 'replace-block', index: pos, block: this.toolUseBlock(buffer) })
+                buffer.previewSent = true
             }
         }
         return deltas
@@ -371,9 +435,15 @@ export class StreamSnapshotSender {
             : { type: 'thinking', thinking: buffer.content }
     }
 
-    /** tool_use 块构造（delta 的 new-block/replace-block 共用）：input 用 ready 时缓存的 parsedInput */
+    /** tool_use 块构造（delta 的 new-block/replace-block 共用）：ready 前用流式预览并带 inputStreaming 标记 */
     private toolUseBlock(buffer: ToolUseBuffer): SnapshotBlock {
-        return { type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput }
+        return {
+            type: 'tool_use',
+            id: buffer.id,
+            name: buffer.name,
+            input: buffer.ready ? buffer.parsedInput : buffer.previewInput,
+            ...(buffer.ready || !buffer.inputStreaming ? {} : { inputStreaming: true }),
+        }
     }
 
     private clearDirty(): void {
