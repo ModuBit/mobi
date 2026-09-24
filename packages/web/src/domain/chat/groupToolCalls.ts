@@ -181,7 +181,7 @@ export function formatGroupTitle(
 }
 
 /**
- * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待审批」）。
+ * 格式化折叠组标题（动态形态：有活跃块时展示「正在 xxx」/「等待确认」）。
  * 多个活跃块取时序最新的一个（数组序最后）；无活跃块返回 null（调用方回退汇总形态）。
  * 尾随目标内容拿不到时退回类别文案（如 Write 运行中尚未拿到文件目标 → 「正在写入文件」）。
  */
@@ -198,7 +198,7 @@ export function formatGroupActiveTitle(
     }
     if (!isActiveTool(block)) continue
     const target = extractActiveTarget(block.tool.name, block.tool.input, block.tool.description)
-    // 等待审批（pending）优先展示「等待审批」；运行中展示「正在 xxx」
+    // 等待确认（pending）优先展示「等待确认」；运行中展示「正在 xxx」
     if (block.tool.state === 'pending') {
       return target ? `${t('chat.group.waiting.approval')} ${target}` : t('chat.group.waiting.approval')
     }

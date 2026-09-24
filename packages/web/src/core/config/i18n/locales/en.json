@@ -2,6 +2,7 @@
     "siteTitle": "MOBI | Vibe Coding Anywhere",
     "common": {
         "loading": "Loading...",
+        "awaitingConfirm": "Waiting for confirmation",
         "confirm": "Confirm",
         "save": "Save",
         "cancel": "Cancel",
@@ -224,7 +225,7 @@
                 "mcp": "Calling {{server}}"
             },
             "waiting": {
-                "approval": "Awaiting approval"
+                "approval": "Awaiting confirmation"
             }
         },
         "contextReset": "Context was reset",
@@ -314,7 +315,7 @@
             "statusDone": "Done",
             "statusError": "Error",
             "statusRunning": "Running",
-            "waitingForApproval": "Waiting for approval...",
+            "waitingForApproval": "Waiting for confirmation...",
             "canceled": "Canceled",
             "approved": "Approved",
             "approvedAllowAllEdits": "Approved all edits",

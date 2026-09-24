@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next'
 /**
  * Agent 卡片组件（foreground-tasks spec D5/D8）
  * 展示单个前台 Agent 的头像和名称。数据源是 runtime_state.foregroundTasks——
- * 等待审批与执行中统一显示运行中（无 pending 视觉分档）。
+ * 等待确认与执行中统一显示运行中（无 pending 视觉分档）。
  * onClick 缺省 = 详情 block 未加载（消息空窗），点击无响应（守卫由调用方收口）。
  */
 export function AgentCard({ name, seed, onClick }: {

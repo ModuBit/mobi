@@ -19,6 +19,7 @@ import { Button, Form, Input, InputNumber, Select, Switch, theme as antTheme } f
 import { useTranslation } from 'react-i18next'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'
 import type { ElicitationFieldSchema, ElicitationRequestedSchema } from '@/domain/tool/elicitation'
+import { AwaitingConfirmBadge } from '@/components/ui/AwaitingConfirmBadge'
 
 const { useToken } = antTheme
 
@@ -136,7 +137,13 @@ export function ElicitationFormCard({
             }}
         >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{serverName}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, flex: 1, minWidth: 0 }}>
+                        {serverName}
+                    </span>
+                    {/* 统一等待确认徽章（此前本卡无状态表达，与审批/Plan 面板收敛同款） */}
+                    <AwaitingConfirmBadge />
+                </div>
                 <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{message}</span>
                 {sdkHints?.displayName && sdkHints.displayName !== serverName ? (
                     <span style={{ fontSize: 12, color: token.colorTextTertiary }}>{sdkHints.displayName}</span>

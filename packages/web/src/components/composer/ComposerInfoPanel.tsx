@@ -39,6 +39,7 @@ import { ElicitationFormCard } from '@/components/chat/ElicitationFormCard'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { inferToolRow } from '@/core/lib/toolRow'
 import { FileChip } from '@/components/ui/FileChip'
+import { AwaitingConfirmBadge } from '@/components/ui/AwaitingConfirmBadge'
 import { queryKeys } from '@/core/lib/query-keys'
 import { useForegroundTasks } from '@/core/data/stores/foregroundTasksStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
@@ -323,6 +324,8 @@ function ToolRequestCard({ titleText, subtitle, chipNode, footerNode, testId }: 
                         </Text>
                     ) : null}
                 </div>
+                {/* 统一等待确认徽章：审批/问答/Plan 三种阻塞共用同一状态表达 */}
+                <AwaitingConfirmBadge />
                 <ChevronDown
                     size={14}
                     style={{

@@ -98,12 +98,12 @@ type SessionSortInput = Pick<Session, 'active' | 'updatedAt'>
  * 复用于：SidebarProjects、MobileProjectList。
  *
  * 排序规则：
- *   1. 活跃会话（active=true，含执行中/等待输入/等待审批）永远排在已退出会话（active=false）之前
+ *   1. 活跃会话（active=true，含执行中/等待输入/等待确认）永远排在已退出会话（active=false）之前
  *   2. 同 active 组内按 updatedAt 倒序（最近更新在前）
  *
  * 不变性：只要 a 活跃而 b 不活跃，无论 updatedAt 如何，a 必排在 b 前。
  * 这保证「退出的会话永远不会压在活跃会话之上」——刚退出的会话即便 updatedAt 较新，
- * 也不能盖住仍在执行/等待输入/等待审批的会话。
+ * 也不能盖住仍在执行/等待输入/等待确认的会话。
  */
 export function compareSessionsForList(a: SessionSortInput, b: SessionSortInput): number {
     if (a.active !== b.active) return a.active ? -1 : 1

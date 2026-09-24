@@ -2,6 +2,7 @@
     "siteTitle": "MOBI | 随时随地 Vibe Coding",
     "common": {
         "loading": "加载中...",
+        "awaitingConfirm": "等待确认",
         "confirm": "确认",
         "save": "保存",
         "cancel": "取消",
@@ -215,7 +216,7 @@
                 "mcp": "正在调用 {{server}}"
             },
             "waiting": {
-                "approval": "等待审批"
+                "approval": "等待确认"
             }
         },
         "contextReset": "上下文已重置",
@@ -305,7 +306,7 @@
             "statusDone": "完成",
             "statusError": "出错",
             "statusRunning": "运行中",
-            "waitingForApproval": "等待审批...",
+            "waitingForApproval": "等待确认...",
             "canceled": "已取消",
             "approved": "已批准",
             "approvedAllowAllEdits": "已批准所有编辑",

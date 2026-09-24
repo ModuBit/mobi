@@ -814,16 +814,16 @@ describe('formatGroupActiveTitle', () => {
     expect(formatGroupActiveTitle([block], { t })).toBe('正在写入文件 src/a.md')
   })
 
-  it('pending 状态（等待审批）展示「等待审批」+ 目标内容', () => {
+  it('pending 状态（等待确认）展示「等待确认」+ 目标内容', () => {
     const block = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
     block.tool.input = { file_path: 'src/a.ts' }
-    expect(formatGroupActiveTitle([block], { t })).toBe('等待审批 src/a.ts')
+    expect(formatGroupActiveTitle([block], { t })).toBe('等待确认 src/a.ts')
   })
 
-  it('pending 无目标内容时只展示「等待审批」', () => {
+  it('pending 无目标内容时只展示「等待确认」', () => {
     const block = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
     block.tool.input = {}
-    expect(formatGroupActiveTitle([block], { t })).toBe('等待审批')
+    expect(formatGroupActiveTitle([block], { t })).toBe('等待确认')
   })
 
   it('input 尚无目标内容时退回类别文案', () => {
@@ -894,6 +894,6 @@ describe('formatGroupActiveTitle', () => {
 
     const pending = makeToolCall({ id: 'e1', name: 'Edit', state: 'pending' })
     pending.tool.input = { file_path: 'src/a.ts' }
-    expect(formatGroupActiveTitle([pending], { t })).toBe('等待审批 src/a.ts')
+    expect(formatGroupActiveTitle([pending], { t })).toBe('等待确认 src/a.ts')
   })
 })

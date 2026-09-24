@@ -95,7 +95,7 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
 
     const elapsedTime = formatElapsedTime(effectiveStartedAt, effectiveStartedAt + elapsed * 1000)
 
-    // awaiting_auth：等待用户审批，文本/aria-label 切到「等待审批」，不轮换 vibing 动词
+    // awaiting_auth：等待用户确认，文本/aria-label 切到「等待确认」，不轮换 vibing 动词
     const isAwaitingAuth = status === 'awaiting_auth'
     // 静默告警：距最近消息活动超阈值（挂死可观测）。审批等待优先——那不是模型无响应
     const stalled = !isAwaitingAuth
@@ -108,10 +108,10 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
         : isAwaitingAuth ? 'orbit'
         : null
     const labelText = isAwaitingAuth
-        ? 'awaiting approval…'
+        ? 'awaiting confirmation…'
         : stalled ? 'still waiting for response…' : vibingMsg
     const ariaLabel = isAwaitingAuth
-        ? `${agentId} 等待审批`
+        ? `${agentId} 等待确认`
         : stalled ? `${agentId} 长时间无响应` : `${agentId} 正在运行`
 
     return (

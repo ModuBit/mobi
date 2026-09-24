@@ -125,7 +125,7 @@ function formatPermissionSummary(
 
 /**
  * 工具交互面板标题文本：基于权限状态 + SDK 提示 + 工具输入推断摘要，
- * 去掉「等待审批」前缀（标题区已有图标表意）。供 ToolInteractionPanel 标题区使用。
+ * 去掉「等待确认」前缀（标题区已有图标表意）。供 ToolInteractionPanel 标题区使用。
  */
 export function getPermissionDisplayText(
     permission: ToolPermission | null | undefined,

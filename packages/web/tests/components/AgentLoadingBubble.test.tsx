@@ -133,7 +133,7 @@ describe('AgentLoadingBubble', () => {
         expect(container.textContent).not.toContain('still waiting for response')
     })
 
-    it('awaiting_auth 优先于静默告警（等待审批有自己的文案）', async () => {
+    it('awaiting_auth 优先于静默告警（等待确认有自己的文案）', async () => {
         const { container } = render(
             <AgentLoadingBubble
                 agentId="agent-1"
@@ -142,7 +142,7 @@ describe('AgentLoadingBubble', () => {
             />,
         )
         await waitFor(() => {
-            expect(container.textContent).toContain('awaiting approval')
+            expect(container.textContent).toContain('awaiting confirmation')
         }, { timeout: 3000 })
         expect(container.textContent).not.toContain('still waiting for response')
     })
