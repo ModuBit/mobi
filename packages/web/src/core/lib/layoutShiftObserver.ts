@@ -31,12 +31,22 @@
 /** 区域标注属性名，布局根元素加 `data-perf-region="sidebar|chat|composer|drawer"` */
 export const PERF_REGION_ATTR = 'data-perf-region'
 
-/** 观测器可消费的最小 entry 形状（与 DOM LayoutShift 结构对齐，便于测试注入） */
+/** LayoutShift entry 的最小公共形状（与 DOM 定义对齐，便于测试注入） */
 export interface LayoutShiftEntryLike {
+    entryType?: 'layout-shift'
     startTime: number
     value: number
     sources: { node: Node | null }[]
 }
+
+/** LongTask entry 的最小公共形状（与 DOM 定义对齐，便于测试注入） */
+export interface LongTaskEntryLike {
+    entryType: 'longtask'
+    startTime: number
+    duration: number
+}
+
+export type PerfEntryLike = LayoutShiftEntryLike | LongTaskEntryLike
 
 /** 归因结果 */
 export interface ShiftRecord {
@@ -46,9 +56,16 @@ export interface ShiftRecord {
     regions: string[]
 }
 
-/** 真机排查通道：环形缓冲最近 N 条位移记录 */
+/** 长任务记录（start + duration，time origin 起算） */
+export interface LongTaskRecord {
+    startTime: number
+    duration: number
+}
+
+/** 真机排查通道：环形缓冲最近 N 条位移/长任务记录 */
 export interface MobiPerf {
     getShifts: () => ShiftRecord[]
+    getLongtasks: () => LongTaskRecord[]
 }
 
 declare global {
@@ -58,6 +75,7 @@ declare global {
 }
 
 const SHIFT_BUFFER_SIZE = 50
+const LONGTASK_BUFFER_SIZE = 50
 
 /**
  * 从 source 节点向上找最近的 data-perf-region 祖先（内层优先：composer 标注在
@@ -83,7 +101,7 @@ export interface StartLayoutShiftObserverOptions {
 }
 
 /** 观测器注入的最小构造器形状（与 DOM PerformanceObserver 对齐子集） */
-type LayoutShiftObserverCtor = new (callback: (list: { getEntries: () => LayoutShiftEntryLike[] }) => void) => {
+type LayoutShiftObserverCtor = new (callback: (list: { getEntries: () => PerfEntryLike[] }) => void) => {
     observe: (options: { type: string; buffered?: boolean }) => void
     disconnect: () => void
 }
@@ -101,12 +119,21 @@ export function startLayoutShiftObserver(options: StartLayoutShiftObserverOption
     const log = options.log ?? ((message: string) => console.warn(message))
 
     const buffer: ShiftRecord[] = []
+    const longtaskBuffer: LongTaskRecord[] = []
     window.__mobiPerf = {
         getShifts: () => [...buffer],
+        getLongtasks: () => [...longtaskBuffer],
     }
 
     const observer = new PerformanceObserverCtor((list) => {
         for (const entry of list.getEntries()) {
+            if (entry.entryType === 'longtask') {
+                // 长任务只进缓冲不出 console：零星长任务常见，噪声大于信号；
+                // 真机排查时经 __mobiPerf.getLongtasks() 回读
+                longtaskBuffer.push({ startTime: entry.startTime, duration: entry.duration })
+                if (longtaskBuffer.length > LONGTASK_BUFFER_SIZE) longtaskBuffer.shift()
+                continue
+            }
             // unknown 保留：它说明出现了未标注区域的位移源，本身就是待标注的线索
             const regions = [...new Set(entry.sources.map(source => resolveRegionName(source.node)))]
             const record: ShiftRecord = { startTime: entry.startTime, value: entry.value, regions }
@@ -115,8 +142,10 @@ export function startLayoutShiftObserver(options: StartLayoutShiftObserverOption
             log(`[mobi-perf] layout shift ${entry.value.toFixed(4)} @ ${Math.round(entry.startTime)}ms → ${regions.join(', ')}`)
         }
     })
-    // buffered: true 补读观测器挂载前（首绘附近）的位移——那正是静态内容回填的高发段
+    // buffered: true 补读观测器挂载前（首绘附近）的位移——那正是静态内容回填的高发段；
+    // 长任务同读，覆盖 dev 会话前半段的不可见任务
     observer.observe({ type: 'layout-shift', buffered: true })
+    observer.observe({ type: 'longtask', buffered: true })
 
     return () => observer.disconnect()
 }

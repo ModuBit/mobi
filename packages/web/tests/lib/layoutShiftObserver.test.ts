@@ -25,6 +25,7 @@ import {
     resolveRegionName,
     startLayoutShiftObserver,
     type LayoutShiftEntryLike,
+    type LongTaskEntryLike,
 } from '@/core/lib/layoutShiftObserver'
 
 function buildDom() {
@@ -68,17 +69,17 @@ describe('resolveRegionName', () => {
 describe('startLayoutShiftObserver', () => {
     class FakePerformanceObserver {
         static instances: FakePerformanceObserver[] = []
-        callback: (list: { getEntries: () => LayoutShiftEntryLike[] }) => void
-        observed: { type: string; buffered?: boolean } | null = null
+        callback: (list: { getEntries: () => PerfEntryLike[] }) => void
+        observedTypes: string[] = []
         disconnected = false
 
-        constructor(callback: (list: { getEntries: () => LayoutShiftEntryLike[] }) => void) {
+        constructor(callback: (list: { getEntries: () => PerfEntryLike[] }) => void) {
             this.callback = callback
             FakePerformanceObserver.instances.push(this)
         }
 
         observe(options: { type: string; buffered?: boolean }) {
-            this.observed = options
+            this.observedTypes.push(options.type)
         }
 
         disconnect() {
@@ -98,14 +99,28 @@ describe('startLayoutShiftObserver', () => {
         }
     }
 
-    it('以 buffered layout-shift 类型启动观测', () => {
+    it('以 buffered 同时观测 layout-shift 与 longtask', () => {
         FakePerformanceObserver.instances = []
         const stop = startLayoutShiftObserver({ PerformanceObserver: FakePerformanceObserver })
         const observer = FakePerformanceObserver.instances[0]
-        expect(observer.observed?.type).toBe('layout-shift')
-        expect(observer.observed?.buffered).toBe(true)
+        expect(observer.observedTypes).toContain('layout-shift')
+        expect(observer.observedTypes).toContain('longtask')
         stop()
         expect(observer.disconnected).toBe(true)
+    })
+
+    it('longtask entry 进环形缓冲且不触发 console 输出', () => {
+        FakePerformanceObserver.instances = []
+        const log = vi.fn()
+        const stop = startLayoutShiftObserver({ PerformanceObserver: FakePerformanceObserver, log })
+        const longtask: LongTaskEntryLike = { entryType: 'longtask', startTime: 5000, duration: 87 }
+        FakePerformanceObserver.instances[0].callback({ getEntries: () => [longtask] })
+
+        expect(log).not.toHaveBeenCalled()
+        const tasks = window.__mobiPerf?.getLongtasks() ?? []
+        expect(tasks).toHaveLength(1)
+        expect(tasks[0]).toEqual({ startTime: 5000, duration: 87 })
+        stop()
     })
 
     it('entry sources 归因到命名区域并输出日志', () => {
