@@ -150,6 +150,27 @@
 
 ---
 
+## 四、流式取证（2026-09-24 E2E 实测）
+
+用 §2.5 的观测器 + longtask PerformanceObserver 在真实流式会话（e2e 环境，glm-5.2，2500 字长文压测 prompt）量化 fence 高亮成本：
+
+| 场景 | 长任务数 | 阻塞总时长 | 占空比 | p50 | p95 | 最差 |
+|---|---|---|---|---|---|---|
+| 含 4 代码块，无 throttle（桌面） | ~3-5 | ~0.3s | <1% | — | — | ~190ms |
+| 含 4 代码块，6x CPU throttle | 133 | 21.9s | 21% | 144ms | 319ms | **1081ms** |
+| 无代码块同长文，6x throttle | 77 | 11.4s | 13% | 149ms | 192ms | 346ms |
+
+**结论**：
+
+1. **桌面端流式健康**：无 throttle 下整轮流式仅 3-5 个长任务，帧 p95=19ms——§2.1 的「fence worker 化」对桌面无立项依据。
+2. **移动端（throttle 模拟）代码块是主要增量**：同为 2500 字，代码块使长任务 +73%（133 vs 77）、阻塞时长 +92%、最差停顿 3.1 倍（1081ms vs 346ms）——增长中 fence 的 Prism 全量重高亮是主因，与 memory `streaming-smoothness` 的 6x throttle 结论互相印证。
+3. **layout-shift 零位移**：两轮流式全程 `__mobiPerf` 零新增位移（chat/composer 区域标注生效）——流式追加不产生布局位移，§2.5 的 E2E 位移断言对聊天流是恒真命题，断言价值在登录页等无标注区域（实测登录页存在每 ~2.6s 一次的周期性微位移，量级 ~0.0001-0.003，待归因，属低优先级）。
+4. **新发现**：会话页空闲态存在每 ~10s 一次的 ~50ms 周期性长任务（无 throttle 即可见），来源未定位（疑似轮询/refetch），量级无害但值得一次 idle 归因排查。
+
+**§2.1 建议修订**：fence 高亮优化立项（中期），但方案优先**流式期间对增长中 fence 降频高亮/防抖**（完成后终态高亮一次），复杂度远低于 worker 化；worker 化仅在降频后仍不达标时升级。依据 `docs/conventions/performance.md`：桌面收益不成立，移动端收益成立但先取低复杂度方案。
+
+---
+
 ## 附：来源与回查
 
 - 一级来源：How we made claude.ai 3x faster in two weeks，claude.dev/blog，2026-09-23。文中每条文章侧 claim 标注的章节名：THE BRIEF / ANYTHING CAN BE HILL CLIMBED / THE LOOP, THREAD BY THREAD / SCALING HORIZONTALLY / GUARDRAILS / STEERING / AN 8-MILLISECOND BUDGET。
