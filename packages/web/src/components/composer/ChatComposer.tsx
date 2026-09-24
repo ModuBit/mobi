@@ -31,6 +31,7 @@ import {
     withQuoteUid,
     withQuoteUids,
 } from '@/domain/chat/composerSegments'
+import { normalizeLeadingChineseSlash } from '@/domain/command/slashCommandHelper'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
@@ -586,12 +587,25 @@ export function ChatComposer(props: ChatComposerProps) {
         }
     })
 
+    // 当前输入值快照（handleChange 闭包需要前值做归一判定，state 直读会 stale）
+    const textRef = useRef(text)
+    textRef.current = text
+
     const handleChange = useCallback((value: string) => {
         // 中文「！」后紧跟空格自动转英文「!」
         if (value.startsWith('！ ')) {
             const textarea = getTextarea(wrapperRef.current)
             pendingCursorRef.current = textarea?.selectionStart ?? value.length
             value = '! ' + value.slice(2)
+        }
+
+        // 行首手输顿号归一为「/」（中文输入法按 / 输出顿号，斜杠面板唤不起来）——
+        // 归一后走下方 slash 检测，面板正常打开
+        const normalized = normalizeLeadingChineseSlash(value, textRef.current)
+        if (normalized !== null) {
+            const textarea = getTextarea(wrapperRef.current)
+            pendingCursorRef.current = textarea?.selectionStart ?? normalized.length
+            value = normalized
         }
 
         setText(value)
@@ -613,9 +627,6 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [mention, slash])
 
     // Tab 键选中（需用 native listener 因为 Sender 的 onKeyDown 会先消费 Tab）
-    const textRef = useRef(text)
-    textRef.current = text
-
     useEffect(() => {
         const wrapper = wrapperRef.current
         if (!wrapper) return
