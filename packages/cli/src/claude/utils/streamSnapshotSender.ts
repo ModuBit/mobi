@@ -221,9 +221,8 @@ export class StreamSnapshotSender {
         if (!buffer) return
         if (buffer.kind === 'tool_use') {
             buffer.inputJson += delta
-            const due = this.refreshToolPreview(buffer)
             // eager / 大增长：立即 flush 让预览马上可见（间隔到期路径由周期 flush 补算）
-            if (due === 'eager' || due === 'growth') this.flush()
+            if (this.refreshToolPreview(buffer)) this.flush()
         } else {
             buffer.content += delta
             buffer.dirty = true
@@ -233,17 +232,18 @@ export class StreamSnapshotSender {
     /**
      * 按 eargerness 判据更新 tool_use 缓冲的流式预览（节流三常量：eager 首算 /
      * 750ms 最小间隔 / 8KB 增长豁免）。到期则重算预览、翻转 inputStreaming 并标脏。
-     * @returns 本次实际到期的方式（未到期返回 null）
+     * @returns 是否需要立即 flush（eager 首算 / 8KB 大增长；间隔到期由周期 flush 补算，
+     *          调用方不区分到期方式，无需为 interval 单独编码）
      */
-    private refreshToolPreview(buffer: ToolUseBuffer): 'eager' | 'growth' | 'interval' | null {
+    private refreshToolPreview(buffer: ToolUseBuffer): boolean {
         // ready 后不再预览；空串不算首个 delta（startBlock 的占位 flush 会走到这里，
         // 此时把 eager 名额烧掉会让首个真实 delta 落进 750ms 节流窗——预览白白延迟）
-        if (buffer.ready || buffer.inputJson === '') return null
+        if (buffer.ready || buffer.inputJson === '') return false
         const now = Date.now()
         const eager = buffer.lastPreviewAt === null
         const growth = !eager && buffer.inputJson.length - buffer.lastPreviewLen >= PREVIEW_MIN_RAW_GROWTH
         const interval = !eager && now - (buffer.lastPreviewAt as number) >= PREVIEW_MIN_INTERVAL_MS
-        if (!eager && !growth && !interval) return null
+        if (!eager && !growth && !interval) return false
 
         buffer.previewInput = buildStreamingToolInputPreview(buffer.inputJson).input
         buffer.inputStreaming = true
@@ -251,7 +251,7 @@ export class StreamSnapshotSender {
         buffer.lastPreviewLen = buffer.inputJson.length
         buffer.previewSent = false
         buffer.dirty = true
-        return eager ? 'eager' : growth ? 'growth' : 'interval'
+        return eager || growth
     }
 
     /**

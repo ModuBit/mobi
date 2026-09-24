@@ -1,0 +1,28 @@
+# Ir 测量环境（ci.yml bench-ratchet 与 bench-baseline.yml 共用的唯一声明处）。
+# Ir 对 node 版本逐位敏感、对依赖树敏感——node pin / valgrind / 依赖安装只改这里，
+# 两个 workflow 结构上不可能漂移（漂移会让棘轮与基线基于不同环境的读数互相比较）。
+# 使用方需先 checkout；输出 ir 供后续步骤比对/落基线。
+name: 'Ir 测量'
+description: '安装 Ir 测量环境（node pin + valgrind + 依赖）并测量指令数'
+outputs:
+  ir:
+    description: 'valgrind 测得的指令数（Ir）'
+    value: ${{ steps.ir.outputs.ir }}
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+    - uses: actions/setup-node@v4
+      with:
+        # Ir 对 node 版本敏感，精确 pin 防镜像漂移造成假回潮；升级必须重录基线
+        node-version: 22.11.0
+    - run: sudo apt-get update && sudo apt-get install -y valgrind
+      shell: bash
+    - run: bun install
+      shell: bash
+    - id: ir
+      run: |
+        IR=$(bash .github/scripts/measure-ir.sh)
+        echo "ir=$IR" >> "$GITHUB_OUTPUT"
+        echo "Ir=$IR"
+      shell: bash

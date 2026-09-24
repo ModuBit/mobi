@@ -109,19 +109,3 @@ export function filterCommands(
     const lower = filter.toLowerCase()
     return items.filter(item => item.label.toLowerCase().includes(lower))
 }
-
-/**
- * 行首顿号归一为「/」（composer 中文适配，docs/research-zcode-interactions.md §三）。
- *
- * 中文标点状态下按 / 键输出的是「、」，斜杠命令面板永远唤不起来。只拦截
- * 「本次变更恰好是在开头插入一个顿号」的手输场景——粘贴以顿号开头的整段文本、
- * 正文中间的顿号、前值本就以顿号开头的连续输入，都不动。
- *
- * @returns 归一后的新值；非手输顿号场景返回 null（调用方保持原值）
- */
-export function normalizeLeadingChineseSlash(value: string, previousValue: string): string | null {
-    if (!value.startsWith('、')) return null
-    if (previousValue.startsWith('、')) return null
-    if (value !== '、' + previousValue) return null
-    return '/' + previousValue
-}

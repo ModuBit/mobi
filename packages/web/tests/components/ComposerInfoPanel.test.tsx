@@ -74,13 +74,8 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
     </QueryClientProvider>
 )
 
-// jsdom 没有 ResizeObserver / Element.scrollTo
+// jsdom 没有 Element.scrollTo（ResizeObserver 由 tests/setup.ts 全局桩提供）
 beforeAll(() => {
-    vi.stubGlobal('ResizeObserver', class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-    })
     if (!Element.prototype.scrollTo) {
         Element.prototype.scrollTo = () => {}
     }

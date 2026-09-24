@@ -50,19 +50,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
-        with:
-          # Ir 对 node 版本敏感，精确 pin 防镜像漂移造成假回潮
-          node-version: 22.11.0
-      - run: sudo apt-get update && sudo apt-get install -y valgrind
-      - run: bun install
-      - name: 测量 Ir
+      # 测量环境（node pin/valgrind/依赖/测量）收口在 composite action，与 bench-baseline 共用
+      - uses: ./.github/actions/ir-measure
         id: ir
-        run: |
-          IR=$(bash .github/scripts/measure-ir.sh)
-          echo "ir=$IR" >> "$GITHUB_OUTPUT"
-          echo "Ir=$IR"
       # 墙钟参考：与 Ir 同 PR 打印，为相关性验证积累数据（只打印不判门）
       - name: 墙钟参考
         run: bun packages/cli/benchmarks/assistantPartialAssembler.bench.ts --iterations 3000

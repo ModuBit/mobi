@@ -99,6 +99,15 @@ describe('buildStreamingToolInputPreview', () => {
         expect(result.input).toEqual({})
     })
 
+    it(`完整但超过 ${STREAMING_PREVIEW_MAX_RAW_LENGTH} 字节的 JSON 也不做完整解析（封顶抛弃型扫描）`, () => {
+        // JSON 已闭合可 parse，但超窗：完整解析被跳过（半截流式期每次重算都全量 parse
+        // 是 O(n²)），窗口内的白名单字段提取照常工作；完整 input 由 ready 路径补齐
+        const raw = `{"file_path":"/a.ts","content":"${'y'.repeat(STREAMING_PREVIEW_MAX_RAW_LENGTH + 10)}"}`
+        const result = buildStreamingToolInputPreview(raw)
+        expect(result.complete).toBe(false)
+        expect(result.input).toEqual({ file_path: '/a.ts' })
+    })
+
     it('非 JSON 垃圾前缀返回空预览', () => {
         const result = buildStreamingToolInputPreview('garbage input')
         expect(result.complete).toBe(false)

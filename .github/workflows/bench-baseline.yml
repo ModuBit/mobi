@@ -17,19 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
-        with:
-          # 与 ci.yml bench-ratchet 保持一致：Ir 对 node 版本敏感
-          node-version: 22.11.0
-      - run: sudo apt-get update && sudo apt-get install -y valgrind
-      - run: bun install
-      - name: 测量 Ir
+      # 测量环境（node pin/valgrind/依赖/测量）收口在 composite action，与 ci.yml bench-ratchet 共用
+      - uses: ./.github/actions/ir-measure
         id: ir
-        run: |
-          IR=$(bash .github/scripts/measure-ir.sh)
-          echo "ir=$IR" >> "$GITHUB_OUTPUT"
-          echo "Ir=$IR"
       - name: 基线缺失则创建；有改进则下调并提交
         run: |
           FILE=packages/cli/benchmarks/ir-baseline.txt

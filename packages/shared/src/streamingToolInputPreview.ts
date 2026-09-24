@@ -82,9 +82,15 @@ export type StreamingToolInputPreview = {
  * 未闭合的字段跳过（下次 delta 到达后重算）。
  */
 export function buildStreamingToolInputPreview(raw: string): StreamingToolInputPreview {
-    const complete = parseCompleteJson(raw)
-    if (complete.ok) {
-        return { input: complete.value, complete: true }
+    // 完整 JSON 尝试同样封顶在扫描窗口内：超窗的半截 JSON parse 必然失败，却要先扫到
+    // 串尾才 throw——CLI 侧 8KB 增长豁免恰让大 payload 触发最频繁的重算，不设上限即
+    // O(n²) 抛弃型扫描。超窗后完整性与预览一并由窗口路径承担；完整 input 不受影响，
+    // 由 ready 路径（StreamSnapshotSender.endBlock 的 parseInputJson）下发。
+    if (raw.length <= STREAMING_PREVIEW_MAX_RAW_LENGTH) {
+        const complete = parseCompleteJson(raw)
+        if (complete.ok) {
+            return { input: complete.value, complete: true }
+        }
     }
 
     // 只扫前 8KB：大 payload 工具（content 巨大）在 content 开始流之后预览自动让位

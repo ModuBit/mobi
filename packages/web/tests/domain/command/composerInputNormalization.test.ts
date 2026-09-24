@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { normalizeLeadingChineseSlash } from '@/domain/command/slashCommandHelper'
+import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 
 describe('normalizeLeadingChineseSlash', () => {
     it('空输入后手输顿号：归一为 /', () => {
@@ -45,5 +45,25 @@ describe('normalizeLeadingChineseSlash', () => {
 
     it('删除字符（长度未增）不归一', () => {
         expect(normalizeLeadingChineseSlash('、', '、h')).toBeNull()
+    })
+})
+
+describe('normalizeLeadingChineseExclamation', () => {
+    it('行首「！ 」归一为「! 」', () => {
+        expect(normalizeLeadingChineseExclamation('！ ', '')).toBe('! ')
+        expect(normalizeLeadingChineseExclamation('！ ls -la', '')).toBe('! ls -la')
+    })
+
+    it('正文中间的全角叹号不动（只处理行首）', () => {
+        expect(normalizeLeadingChineseExclamation('好的！ 太棒了', '')).toBeNull()
+    })
+
+    it('非全角叹号开头不动', () => {
+        expect(normalizeLeadingChineseExclamation('! ls', '')).toBeNull()
+        expect(normalizeLeadingChineseExclamation('你好', '')).toBeNull()
+    })
+
+    it('全角叹号后无空格不动（普通中文感叹）', () => {
+        expect(normalizeLeadingChineseExclamation('！真的吗', '')).toBeNull()
     })
 })

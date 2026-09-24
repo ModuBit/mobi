@@ -288,9 +288,9 @@ export class RpcGateway {
         return exists
     }
 
-    // 查询文件元数据（mime/size/etag），用于流式读取前置判断
-    // machine 通道读文件 meta（cwd 显式参数化；runner 侧策略=严格 cwd+扩展名白名单）。
-    // 服务跨会话存活的静态资源读取（消息附件预览），与会话进程存活解耦
+    // machine 通道读文件 meta（cwd 显式参数化，读边界同 validateReadPath，ADR 0006）。
+    // 服务跨会话存活的静态资源读取（消息附件预览），与会话进程存活解耦；
+    // 返回的 mime/size/etag 用于流式读取前置判断
     async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
         return await this.machineRpc(machineId, 'readFileMeta', { cwd, path }) as RpcReadFileMetaResponse
     }

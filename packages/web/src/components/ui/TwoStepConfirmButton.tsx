@@ -27,7 +27,8 @@
  *   不绑定 delete 场景；取消态无插槽（原 icon 微弹归位，语义是「没动」）
  * - 主题：颜色全部走 antd token（light/dark 自动双档），非 tailwind 硬编码
  *
- * 状态机：idle → expanded →（confirmed | cancelled）→ idle。
+ * 状态机：idle → open →（confirmed | cancelled）→ idle。展开态即 `open` 状态，
+ * 不另设 boolean——双状态源会要求每个转换点同步改两个 setState。
  * onConfirm 在点 ✓ 时立即触发，confirmed 停留只是视觉反馈。
  */
 
@@ -52,7 +53,7 @@ const DEFAULT_TIMEOUT_MS = 3000
 const TILE_SIZE = 22
 const PANEL_WIDTH = 56
 
-type TwoStepStatus = 'idle' | 'expanded' | 'confirmed' | 'cancelled'
+type TwoStepStatus = 'idle' | 'open' | 'confirmed' | 'cancelled'
 
 export interface TwoStepConfirmButtonProps {
     /** 空闲态图标（取消回落也用它） */
@@ -181,26 +182,27 @@ export function TwoStepConfirmButton({
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
     const reduced = useReducedMotion() ?? false
-    const [open, setOpen] = useState(false)
     const [status, setStatus] = useState<TwoStepStatus>('idle')
     const rootRef = useRef<HTMLDivElement>(null)
+    /** 展开中（≈ status === 'open'，语义别名让 effect/JSX 判据自解释） */
+    const open = status === 'open'
 
-    // 展开态超时复原：触屏误触展开后忘记收起的兜底
+    // 展开态超时复原：触屏误触展开后忘记收起的兜底（直接回 idle，无取消微弹/播报）
     useEffect(() => {
         if (!open) return
         const timer = setTimeout(() => {
-            setOpen(false)
+            setStatus('idle')
             onCancel?.()
         }, timeoutMs)
         return () => clearTimeout(timer)
     }, [open, timeoutMs, onCancel])
 
-    // 点击组件外部收起（面板展开期间才监听）
+    // 点击组件外部收起（面板展开期间才监听；直接回 idle，同超时复原）
     useEffect(() => {
         if (!open) return
         const handlePointerDown = (e: PointerEvent) => {
             if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-                setOpen(false)
+                setStatus('idle')
                 onCancel?.()
             }
         }
@@ -217,7 +219,6 @@ export function TwoStepConfirmButton({
     }, [status])
 
     const resolve = (next: 'confirmed' | 'cancelled') => {
-        setOpen(false)
         setStatus(next)
         if (next === 'confirmed') onConfirm()
         else onCancel?.()
@@ -252,8 +253,7 @@ export function TwoStepConfirmButton({
                 onClick={() => {
                     if (disabled) return
                     if (open) return resolve('cancelled')
-                    setStatus('idle')
-                    setOpen(true)
+                    setStatus('open')
                 }}
             >
                 <IconSlot stateKey={status === 'cancelled' ? 'icon-settle' : status === 'confirmed' ? 'confirmed' : open ? 'expanded' : 'idle'}>

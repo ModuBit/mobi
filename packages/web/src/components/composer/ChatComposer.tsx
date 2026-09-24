@@ -31,7 +31,7 @@ import {
     withQuoteUid,
     withQuoteUids,
 } from '@/domain/chat/composerSegments'
-import { normalizeLeadingChineseSlash } from '@/domain/command/slashCommandHelper'
+import { normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash } from '@/domain/command/composerInputNormalization'
 import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
@@ -592,20 +592,15 @@ export function ChatComposer(props: ChatComposerProps) {
     textRef.current = text
 
     const handleChange = useCallback((value: string) => {
-        // 中文「！」后紧跟空格自动转英文「!」
-        if (value.startsWith('！ ')) {
-            const textarea = getTextarea(wrapperRef.current)
-            pendingCursorRef.current = textarea?.selectionStart ?? value.length
-            value = '! ' + value.slice(2)
-        }
-
-        // 行首手输顿号归一为「/」（中文输入法按 / 输出顿号，斜杠面板唤不起来）——
-        // 归一后走下方 slash 检测，面板正常打开
-        const normalized = normalizeLeadingChineseSlash(value, textRef.current)
-        if (normalized !== null) {
-            const textarea = getTextarea(wrapperRef.current)
-            pendingCursorRef.current = textarea?.selectionStart ?? normalized.length
-            value = normalized
+        // 中文 IME 输入归一管线（归一器单一来源见 composerInputNormalization）：
+        // 命中的归一器返回新值，需要时记下光标待归一后的 DOM 稳定再恢复
+        for (const normalize of [normalizeLeadingChineseExclamation, normalizeLeadingChineseSlash]) {
+            const normalized = normalize(value, textRef.current)
+            if (normalized !== null) {
+                const textarea = getTextarea(wrapperRef.current)
+                pendingCursorRef.current = textarea?.selectionStart ?? normalized.length
+                value = normalized
+            }
         }
 
         setText(value)

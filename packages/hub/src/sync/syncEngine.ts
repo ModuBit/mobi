@@ -802,9 +802,10 @@ export class SyncEngine {
         if (!session) {
             throw new Error(`Session not found: ${sessionId}`)
         }
-        const metadata = session.metadata as { machineId?: unknown; path?: unknown } | null | undefined
-        const machineId = typeof metadata?.machineId === 'string' && metadata.machineId ? metadata.machineId : undefined
-        const cwd = typeof metadata?.path === 'string' && metadata.path ? metadata.path : undefined
+        // metadata 已是 MetadataSchema 的解析产物（sessionCache safeParse），
+        // machineId/path 类型由 schema 保证，无需再 cast + typeof 校验
+        const machineId = session.metadata?.machineId
+        const cwd = session.metadata?.path
         if (!machineId || !cwd) {
             throw new Error(`Session ${sessionId} metadata is missing machineId/cwd — file RPC cannot be routed to machine (see ADR 0006)`)
         }
