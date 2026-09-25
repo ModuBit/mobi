@@ -183,7 +183,8 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
                             loading={reconnecting}
                             onClick={handleReconnect}
                         >
-                            {t('terminal.reconnect')}
+                            {/* inactive（会话休眠）态按钮语义是唤醒兜底入口——术语见 CONTEXT.md「唤醒」 */}
+                            {status === 'inactive' ? t('terminal.wake') : t('terminal.reconnect')}
                         </Button>
                     </div>
                 )}

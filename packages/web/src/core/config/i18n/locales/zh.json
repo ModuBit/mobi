@@ -492,6 +492,7 @@
     "terminal": {
         "title": "终端",
         "reconnect": "重连",
+        "wake": "唤醒",
         "disconnectedHint": "连接已断开，断开期间的输出已丢失",
         "status": {
             "connecting": "连接中",
