@@ -27,8 +27,9 @@ import type { ToolRow } from '@/core/lib/toolRow'
  * Bash/Edit 等走 ToolRowItems 行形态的工具改版时没接 shimmer——运行中的行
  * 没有任何 blink 反馈（2026-09-20 用户实测截图）。
  *
- * 约定：shimmer=true 时动词与摘要挂 .shimmer-text（与组头 CrossfadeText 同一
- * 动画体系，base.css）；chip / stats / rowMeta 保持静态（徽章不扫光）。
+ * 约定：shimmer=true 时动词与摘要合并在**同一个** .shimmer-text 里（gradient 跨
+ * 组合宽度连成一道波——分属两个元素时流式期相位错开、各眨各的，2026-09-25 验收）；
+ * chip / stats / rowMeta 保持静态（徽章不扫光）。
  */
 
 const row: ToolRow = {
@@ -44,14 +45,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <ConfigProvider
 describe('ToolRowItems 运行态 shimmer', () => {
     afterEach(cleanup)
 
-    it('shimmer=true：动词与摘要挂 shimmer-text，chip 不挂', () => {
+    it('shimmer=true：动词与摘要同属一个 shimmer-text（一道波），chip 不挂', () => {
         const { container } = render(<ToolRowItems row={row} shimmer />, { wrapper })
         const shimmered = container.querySelectorAll('.shimmer-text')
-        // 动词 + 摘要两处；chip（FileChip）不在扫光范围
-        expect(shimmered.length).toBe(2)
-        const texts = [...shimmered].map(el => el.textContent)
-        expect(texts).toContain('Bash')
-        expect(texts).toContain('bun run test:web')
+        // 动词 + 摘要合并单元素（扫光跨两者连成一道）；chip（FileChip）不在扫光范围
+        expect(shimmered.length).toBe(1)
+        expect(shimmered[0].textContent).toBe('Bashbun run test:web')
         expect(container.textContent).toContain('packages/web')
     })
 

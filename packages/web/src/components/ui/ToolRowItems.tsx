@@ -28,10 +28,11 @@ import type { ToolRow } from '@/core/lib/toolRow'
  * dense 模式：嵌在小字号语境（Task 卡摘要 11px）时不设 fontSize，继承外层。
  * chip 的点击语义（打开文件）与行本体（展开详情）的分离由 FileChip 内部收口。
  *
- * shimmer：运行态扫光（工具 running 时由调用方传入）——动词与摘要经 ShinyText
- * 收口（与组头 CrossfadeText / 非 row 形态标题同一组件入口，动画单点在 base.css）；
- * chip / rowMeta / stats 是徽章/元数据，保持静态不扫光。行形态此前没接 shimmer，运行中
- * 工具行无任何 blink 反馈（2026-09-20 回归）。
+ * shimmer：运行态扫光（工具 running 时由调用方传入）——动词与摘要合并在**同一个
+ * ShinyText** 里：gradient 跨组合宽度连成一道波。分属两个 ShinyText 时各自独立
+ * sweep，流式期摘要晚于动词挂载、动画相位错开，视觉上是两处各眨各的（2026-09-25
+ * 验收）。chip / rowMeta / stats 是徽章/元数据，保持静态不扫光。行形态此前没接
+ * shimmer，运行中工具行无任何 blink 反馈（2026-09-20 回归）。
  */
 export const ToolRowItems = memo(function ToolRowItems({ row, dense, shimmer }: { row: ToolRow; dense?: boolean; shimmer?: boolean }) {
     const { token } = antTheme.useToken()
@@ -39,22 +40,18 @@ export const ToolRowItems = memo(function ToolRowItems({ row, dense, shimmer }: 
         <>
             <ShinyText
                 active={Boolean(shimmer)}
-                style={{ fontWeight: 600, fontSize: dense ? undefined : 13, flexShrink: 0 }}
+                style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0, flex: '0 1 auto' }}
             >
-                {row.verb}
+                <span style={{ fontWeight: 600, fontSize: dense ? undefined : 13, flexShrink: 0 }}>
+                    {row.verb}
+                </span>
+                {row.summary && (
+                    // 纯展示工具的 description（Bash 的 title 语义）：优先于人读摘要，允许收缩截断
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                        {row.summary}
+                    </span>
+                )}
             </ShinyText>
-            {row.summary && (
-                // 纯展示工具的 description（Bash 的 title 语义）：优先于人读摘要，允许收缩截断
-                <ShinyText
-                    active={Boolean(shimmer)}
-                    style={{
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        flex: '0 1 auto', minWidth: 0,
-                    }}
-                >
-                    {row.summary}
-                </ShinyText>
-            )}
             {row.rowMeta && (
                 <span style={{ fontSize: dense ? undefined : 12, color: token.colorTextTertiary, flexShrink: 0 }}>
                     {row.rowMeta}
