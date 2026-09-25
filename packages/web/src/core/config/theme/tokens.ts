@@ -85,7 +85,9 @@ export const shadcnLightToken = {
     colorBgElevated: '#ffffff',
     colorBgLayout: '#f5f4ed',
     colorBgSpotlight: '#3d3d3a',
-    colorBgMask: 'rgba(20, 20, 19, 0.25)',
+    // light 档遮罩 = 米白磨砂（与 colorBgContainer 同色系）：深色 alpha 再浅叠在内容上也只会
+    // 「加灰」出不了亮色遮罩；dark 档维持深色 alpha。双档方向相反是有意为之
+    colorBgMask: 'rgba(250, 249, 245, 0.65)',
     colorBorder: '#f0eee6',
     colorBorderSecondary: '#f0eee6',
     borderRadius: 10,
