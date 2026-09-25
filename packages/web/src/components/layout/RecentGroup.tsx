@@ -16,6 +16,7 @@
 
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
+import type { MenuProps } from 'antd'
 import { FolderAddOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
@@ -23,7 +24,7 @@ import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import type { Session } from '@/core/data/api/types'
 import {
     GroupContainer, SectionTitleRow, SectionTitle, SectionChevron,
-    SessionListWrapper, SessionListInner, ActionButton,
+    SessionListWrapper, SessionListInner,
 } from './sidebarProjects.styles'
 import { SessionRowsList } from './SessionRowsList'
 import type { SessionListSharedProps } from './SessionRowsList'
@@ -57,17 +58,18 @@ export function RecentGroup({
         showMore, collapse,
     } = useRecentSessions(activeSessionId, true)
 
-    // 行内追加操作：归入项目…
-    const renderExtraAction = useCallback((session: Session) => (
-        <ActionButton
-            $token={token}
-            title={t('project.assignTo')}
-            disabled={session.id === assignPendingSessionId}
-            onClick={(e) => { e.stopPropagation(); onAssign(session) }}
-        >
-            <FolderAddOutlined style={{ fontSize: 11 }} />
-        </ActionButton>
-    ), [t, token, onAssign, assignPendingSessionId])
+    // dropdown 附加项：归入项目…
+    const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
+        {
+            key: 'assign',
+            icon: <FolderAddOutlined />,
+            label: t('project.assignTo'),
+            disabled: session.id === assignPendingSessionId,
+        },
+    ]), [t, assignPendingSessionId])
+    const handleExtraMenuClick = useCallback((session: Session, key: string) => {
+        if (key === 'assign') onAssign(session)
+    }, [onAssign])
 
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded
@@ -99,7 +101,8 @@ export function RecentGroup({
                         showMore={showMore}
                         collapse={collapse}
                         onSessionClick={handleSessionClick}
-                        renderExtraAction={renderExtraAction}
+                        renderExtraMenuItems={renderExtraMenuItems}
+                        onExtraMenuClick={handleExtraMenuClick}
                     />
                 </SessionListInner>
             </SessionListWrapper>

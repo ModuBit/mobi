@@ -268,10 +268,11 @@ describe('SidebarProjects 项目实体化', () => {
         setup({ recent: [r1] })
         await screen.findByText('游离会话')
 
-        // 「最近」行的「归入项目」按钮（title = project.assignTo）
-        const assignBtn = document.querySelector('.session-actions button[title="project.assignTo"]') as HTMLButtonElement
-        expect(assignBtn).toBeTruthy()
-        fireEvent.click(assignBtn)
+        // 「归入项目」已收进行内「更多」dropdown：打开菜单 → 点归入项目项
+        const rowMore = document.querySelector('.session-actions button[title="common.more"]') as HTMLButtonElement
+        expect(rowMore).toBeTruthy()
+        fireEvent.click(rowMore)
+        fireEvent.click(await screen.findByText('project.assignTo'))
 
         // 弹窗打开：同机器项目可选，跨机器项目不出现（查询限定在弹窗内，排除侧边栏同名分组；
         // Modal.confirm 静态弹窗跨测试残留，须从 assignTitle 反查所属弹窗）

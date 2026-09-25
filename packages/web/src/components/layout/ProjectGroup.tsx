@@ -26,7 +26,7 @@ import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions
 import type { Session, Project } from '@/core/data/api/types'
 import {
     GroupContainer, GroupHeader, HeaderActionButton, FolderIcon, GroupName,
-    SessionListWrapper, SessionListInner, ActionButton,
+    SessionListWrapper, SessionListInner,
 } from './sidebarProjects.styles'
 import { SessionRowsList } from './SessionRowsList'
 import type { SessionListSharedProps } from './SessionRowsList'
@@ -89,32 +89,20 @@ export function ProjectGroup({
         },
     }
 
-    // 行内追加操作：移至最近 / 换项目
-    const renderExtraAction = useCallback((session: Session) => (
-        <Dropdown
-            menu={{
-                items: [
-                    { key: 'recent', icon: <ImportOutlined />, label: t('project.toRecent') },
-                    { key: 'change', icon: <SwapOutlined />, label: t('project.changeProject') },
-                ],
-                onClick: ({ key, domEvent }: Parameters<NonNullable<MenuProps['onClick']>>[0]) => {
-                    domEvent.stopPropagation()
-                    if (key === 'recent') onMoveToRecent(session)
-                    if (key === 'change') onChangeProject(session)
-                },
-            }}
-            trigger={['click']}
-        >
-            <ActionButton
-                $token={token}
-                title={t('common.more')}
-                disabled={session.id === assignPendingSessionId}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <MoreOutlined style={{ fontSize: 11 }} />
-            </ActionButton>
-        </Dropdown>
-    ), [t, token, onMoveToRecent, onChangeProject, assignPendingSessionId])
+    // dropdown 附加项：移至最近 / 换项目
+    const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
+        { key: 'recent', icon: <ImportOutlined />, label: t('project.toRecent') },
+        {
+            key: 'change',
+            icon: <SwapOutlined />,
+            label: t('project.changeProject'),
+            disabled: session.id === assignPendingSessionId,
+        },
+    ]), [t, assignPendingSessionId])
+    const handleExtraMenuClick = useCallback((session: Session, key: string) => {
+        if (key === 'recent') onMoveToRecent(session)
+        if (key === 'change') onChangeProject(session)
+    }, [onMoveToRecent, onChangeProject])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
@@ -157,7 +145,8 @@ export function ProjectGroup({
                         showMore={showMore}
                         collapse={collapse}
                         onSessionClick={handleSessionClick}
-                        renderExtraAction={renderExtraAction}
+                        renderExtraMenuItems={renderExtraMenuItems}
+                        onExtraMenuClick={handleExtraMenuClick}
                     />
                 </SessionListInner>
             </SessionListWrapper>

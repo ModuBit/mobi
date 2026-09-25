@@ -166,10 +166,12 @@ describe('SessionRow fork 行', () => {
         expect(screen.getByTestId('fork-state-badge-pending')).toBeInTheDocument()
         expect(screen.queryByTestId('fork-state-badge-error')).toBeNull()
 
-        // 删除守卫的 web 侧呈现：待激活 fork 行删除按钮不 disabled，点击触发 onDelete
-        const deleteBtn = screen.getByTitle('session.actions.delete')
-        expect(deleteBtn).not.toBeDisabled()
-        fireEvent.click(deleteBtn)
+        // 删除守卫的 web 侧呈现：待激活 fork 行删除入口可用——删除已收进行内「更多」dropdown，
+        // 打开菜单后删除项不 disabled、点击触发 onDelete
+        fireEvent.click(screen.getByTitle('common.more'))
+        const deleteItem = await screen.findByText('session.actions.delete')
+        expect(deleteItem.closest('li')).not.toHaveClass('ant-dropdown-menu-item-disabled')
+        fireEvent.click(deleteItem)
         expect(onDelete).toHaveBeenCalledTimes(1)
 
         // 标题纯 metadata 落库，无 parent 查询开销

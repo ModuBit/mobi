@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import type React from 'react'
 import { theme as antTheme } from 'antd'
+import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import { SessionListContainer, EmptyRow } from './sidebarProjects.styles'
@@ -67,8 +67,10 @@ interface SessionRowsListProps extends SessionListSharedProps {
     showMore: () => void
     collapse: () => void
     onSessionClick: (sessionId: string) => void
-    /** 每行的追加操作（「移至最近」/「归入项目」） */
-    renderExtraAction?: (session: Session) => React.ReactNode
+    /** 每行 dropdown 的分组附加项（「移至最近」/「归入项目」等），渲染在休眠/删除之前 */
+    renderExtraMenuItems?: (session: Session) => MenuProps['items']
+    /** 每行 dropdown 附加项点击（key 为分组定义的 item key） */
+    onExtraMenuClick?: (session: Session, key: string) => void
 }
 
 /** 分组内会话列表：骨架 / 空态 / 会话行 / 底部展开收起链接 */
@@ -78,7 +80,7 @@ export function SessionRowsList({
     onTogglePin, pinPendingSessionId,
     sessions, visibleSessions, isLoadingInitial, isLoadingMore,
     showCollapse, canShowMore, remainingCount, showMore, collapse,
-    onSessionClick, renderExtraAction,
+    onSessionClick, renderExtraMenuItems, onExtraMenuClick,
 }: SessionRowsListProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -112,7 +114,8 @@ export function SessionRowsList({
                     onDelete={() => onDelete(session)}
                     onTogglePin={() => onTogglePin(session)}
                     pinLoading={session.id === pinPendingSessionId}
-                    extraAction={renderExtraAction?.(session)}
+                    extraMenuItems={renderExtraMenuItems?.(session)}
+                    onExtraMenuClick={onExtraMenuClick ? (key) => onExtraMenuClick(session, key) : undefined}
                 />
             ))}
             {showFooter && (
