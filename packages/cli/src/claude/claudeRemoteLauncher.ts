@@ -64,6 +64,9 @@ import {
     type RemoteLauncherExitReason
 } from "@/modules/common/remote/RemoteLauncherBase";
 
+/** commands_changed 触发能力发现的最小间隔 */
+const COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS = 10_000;
+
 interface PermissionsField {
     date: number;
     result: 'approved' | 'denied';
@@ -155,6 +158,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      *  onQueryReady 每轮触发，per-session 去重防重复拉取与乱序覆写（批次 G F3/New-1）。
      *  语义对齐 launch 循环的 isNewSession 检测：resume 出新 native session（compact 切换等）会变，rewind 截断轮不变 */
     private capabilityDiscoveredForSession: string | null = null;
+    /** commands_changed 触发的能力发现节流游标（目录扫描期连发，10s 一次足够） */
+    private lastCommandsChangedDiscoveryAt = 0;
 
     constructor(
         session: Session,
@@ -543,8 +548,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 主线 assistant 到达即实时上报水位（turn 内逐步上涨），编排收口在 contextTracker.onAssistantUsage。
 
         const onMessage = (message: SDKMessage): void => {
-            // 重置空闲计时器（Agent 输出）
-            session.client.resetIdleTimer();
+            // 注意：此处不做 resetIdleTimer——SDK 消息不等于用户活动。CC 会偶发推送
+            // commands_changed 等内部帧（会话空闲数小时后仍会到达），若据此重排空闲
+            // 计时，自动休眠永远到不了点（生产实锤：休眠特性上线前一个会话 34h 不退）。
+            // 「turn 正在跑」的休眠保护由 dormancy gate 的 turn_running 事实承担（见
+            // runClaude.readDormancyFacts），活动判定只认用户意图：消息出队 / RPC / 终端输入。
 
             // 拦截 isReplay 回显：CC 接收确认信号，不 convert、不落库，转 ack 上报
             // （nativeAckAt 数据源）。回显 uuid = 当初 push 时预设的 nativeId，故按 uuid 回填。
@@ -572,6 +580,25 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // SDKSystemMessage 联合尚未收录该 subtype（SDK 0.3.251），走开放形状断言
             if (message.type === 'system' && (message as unknown as { subtype?: string }).subtype === 'background_tasks_changed') {
                 this.backgroundTaskIds = collectLiveTaskIds((message as unknown as { tasks?: unknown }).tasks)
+            }
+
+            // 命令列表变化（SDKCommandsChangedMessage，sdk.d.ts REPLACE 语义）：CC 在技能/
+            // 命令目录变化时推送（与用户交互无关，会话空闲期也会到达）。supportedCommands()
+            // 已跟踪最新推送，此处只需重跑能力发现刷新 sdkMetadata.commands → hub SSE →
+            // web 命令面板 refetch；消息本体由 classifyMessage discard（不进消息流）。
+            // 节流：目录扫描期可能连发，10s 内只发现一次
+            if (message.type === 'system' && (message as { subtype?: string }).subtype === 'commands_changed') {
+                const now = Date.now();
+                if (now - this.lastCommandsChangedDiscoveryAt > COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS && this.queryRef) {
+                    this.lastCommandsChangedDiscoveryAt = now;
+                    const query = this.queryRef;
+                    void discoverCapabilities(query, (caps) => {
+                        session.client.updateMetadata((metadata) => ({
+                            ...metadata,
+                            sdkMetadata: caps,
+                        }));
+                    });
+                }
             }
 
             formatClaudeMessageForInk(message, messageBuffer);

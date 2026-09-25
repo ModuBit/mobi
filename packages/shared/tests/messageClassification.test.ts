@@ -47,6 +47,10 @@ describe('classifyMessage', () => {
             expect(classifyMessage('system', 'files_persisted')).toBe('discard')
         })
 
+        it('commands_changed → discard（能力数据走 sdkMetadata 通道，不进消息流）', () => {
+            expect(classifyMessage('system', 'commands_changed')).toBe('discard')
+        })
+
         it('auth_status → discard', () => {
             expect(classifyMessage('auth_status')).toBe('discard')
         })

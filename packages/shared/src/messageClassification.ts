@@ -47,6 +47,10 @@ const DISCARD_RULES: readonly ClassificationRule[] = [
     { type: 'system', subtype: 'hook_response' },
     { type: 'system', subtype: 'plugin_install' }, // 插件安装回执
     { type: 'system', subtype: 'files_persisted' }, // 文件持久化回执
+    // 命令列表变化推送（SDKCommandsChangedMessage，REPLACE 语义）：能力数据不进消息流——
+    // CLI 侧转能力发现重跑刷新 sdkMetadata.commands（见 claudeRemoteLauncher onMessage），
+    // 消息本体落库只会污染时间线（会话空闲期 CC 也会推，非用户可感知事件）
+    { type: 'system', subtype: 'commands_changed' },
     { type: 'auth_status' }, // 认证状态帧
     { type: 'rate_limit_event' }, // 限流事件帧
     // SDK 0.3.206 新增：排队消息生命周期回执（queued/started/completed/cancelled/discarded），

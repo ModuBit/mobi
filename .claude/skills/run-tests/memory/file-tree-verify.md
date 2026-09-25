@@ -55,3 +55,4 @@ metadata:
 4. 发消息唤醒：休眠态 `POST /messages` → 200；8s 内新 CLI 进程（ps 断言 `--resume <原nativeId> --model <暂存model> --output-style <暂存style>`——spawn 选项带回的硬证据）；会话 active:true；DB 消息 lifecycle done + agent result 落库
 5. gate 阻塞：让 turn 跑长任务（Bash sleep 90）→ dormant → 409 `{"error":"Session has work in progress","blockers":["turn_running"]}`，会话保持 active。注意探针任务要够长（数 15 个数 sonnet 5s 就跑完了）
 6. 手动唤醒：`POST /api/sessions/:id/resume`（休眠会话兜底按钮同路由）
+7. commands_changed 治理（2026-09-25）：cwd 建 `.claude/commands/x.md` → CC 在 turn 期间感知推送 → sdkMetadata.commands 刷新（比对条数/含新命令名）+ messages 表无 commands_changed 落库（discard）。注意：外部改文件 CC 不立即推送，下一个 turn 才感知——探针要发一条消息促成扫描
