@@ -28,11 +28,6 @@ import { DIRECTIVE_PREFIX, DIRECTIVE_SHAPE } from '@/domain/chat/directives'
 /** directive 完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
 const DIRECTIVE_TOKEN_RE = new RegExp(`^${DIRECTIVE_SHAPE}`)
 
-/** 指令原文 → HTML 安全文本（children 兜底展示用；data-raw 走 URI 编码无此需要） */
-function escapeHtmlText(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 export function directiveExtension(): TokenizerAndRendererExtension {
     return {
         name: 'mobiDirective',
@@ -52,9 +47,9 @@ export function directiveExtension(): TokenizerAndRendererExtension {
         },
         renderer(token: Tokens.Generic) {
             const raw = typeof token.raw === 'string' ? token.raw : ''
-            // 原文双通道传递：data-raw（URI 编码，HTML 属性安全）是权威源；children 放
-            // 转义原文兜底——组件路由缺失（未映射）时浏览器按原文呈现，不吞模型输出
-            return `<mobi-directive data-raw="${encodeURIComponent(raw)}">${escapeHtmlText(raw)}</mobi-directive>`
+            // 原文经 URI 编码进 data-raw（HTML 属性安全），MobiDirective 解码后
+            // 解析路由；未注册指令由其按原文诚实降级，不吞模型输出
+            return `<mobi-directive data-raw="${encodeURIComponent(raw)}"></mobi-directive>`
         },
     }
 }

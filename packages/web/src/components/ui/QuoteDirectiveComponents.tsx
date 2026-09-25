@@ -135,14 +135,12 @@ const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { childre
 }
 
 /**
- * 内联指令路由（XMarkdown components 映射 `mobi-directive`）：从原文解析指令名与
- * attrs，分发到注册的渲染组件；未注册指令按原文诚实降级，不吞模型输出。
+ * 内联指令路由（XMarkdown components 映射 `mobi-directive`，该标签唯一生产方是
+ * directivePlugin 且恒带 data-raw）：解码原文 → 解析指令名与 attrs → 分发到注册的
+ * 渲染组件；未注册指令按原文诚实降级，不吞模型输出。
  */
-export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw, children }) => {
-    // 原文双通道（directivePlugin renderer）：data-raw（URI 编码）权威；children 兜底
-    const raw = dataRaw !== undefined
-        ? decodeURIComponent(dataRaw)
-        : (typeof children === 'string' ? children : '')
+export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw }) => {
+    const raw = decodeURIComponent(dataRaw ?? '')
     const hit = parseDirectiveHits(raw)[0]
     const Component = hit ? DIRECTIVE_COMPONENTS[hit.name] : undefined
     if (!Component) return <span>{raw}</span>

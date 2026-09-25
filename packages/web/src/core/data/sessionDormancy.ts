@@ -72,7 +72,8 @@ export async function dormantSessionWithFeedback(
     } catch (error) {
         const blockers = extractBlockers(error)
         if (blockers.length === 0) {
-            void message.warning(dormancyErrorText(error, t))
+            // 无 blocker 的失败（RPC 断连等）：通用失败文案（阻塞文案由下方确认弹窗承载）
+            void message.warning(t('session.dormancy.failed'))
             return
         }
         const forceExit = await new Promise<boolean>((resolve) => {
@@ -96,17 +97,4 @@ export async function dormantSessionWithFeedback(
     } finally {
         onDone()
     }
-}
-
-/**
- * 手动休眠的错误转述（dormancy spec §D.11）：409 携带的逐项 blocker code →
- * i18n 文案；无 blocker 的失败（RPC 断连等）走通用失败文案。休眠入口的
- * 反馈文案单源——不各写一份映射。
- */
-export function dormancyErrorText(error: unknown, t: TFunction): string {
-    const blockers = extractBlockers(error)
-    if (blockers.length > 0) {
-        return dormancyBlockedText(blockers, t)
-    }
-    return t('session.dormancy.failed')
 }

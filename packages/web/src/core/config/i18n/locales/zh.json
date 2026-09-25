@@ -131,7 +131,6 @@
         "selectToView": "选择会话查看详情",
         "actions": {
             "rename": "重命名",
-            "archive": "退出",
             "delete": "删除",
             "resume": "恢复",
             "deleteConfirmTitle": "删除会话",

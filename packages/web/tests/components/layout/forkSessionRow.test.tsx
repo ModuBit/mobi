@@ -167,7 +167,8 @@ describe('SessionRow fork 行', () => {
         expect(screen.getByText('父会话 · 分叉')).toBeInTheDocument()
     })
 
-    it('待激活行：显示落库标题「〈parent 标题〉 · 分叉」+ 待激活徽标，删除按钮可用，不发 parent 查询', async () => {        const onDelete = vi.fn()
+    it('待激活行：显示落库标题「〈parent 标题〉 · 分叉」+ 待激活徽标，删除按钮可用，不发 parent 查询', async () => {
+        const onDelete = vi.fn()
         renderRow(
             <SessionRow {...baseProps} session={makeSession()} onDelete={onDelete} />,
         )

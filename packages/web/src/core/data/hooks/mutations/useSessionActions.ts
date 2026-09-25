@@ -29,7 +29,6 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
  */
 export function useSessionActions(sessionId: string | null): {
     abortSession: (stopKind?: StopKind) => Promise<void>
-    archiveSession: () => Promise<void>
     switchSession: () => Promise<void>
     resumeSession: () => Promise<string>
     setPermissionMode: (mode: string) => Promise<void>
@@ -39,7 +38,6 @@ export function useSessionActions(sessionId: string | null): {
     deleteSession: () => Promise<void>
     isPending: boolean
     isAbortPending: boolean
-    isArchivePending: boolean
     isResumePending: boolean
     isSwitchPending: boolean
 } {
@@ -76,17 +74,6 @@ export function useSessionActions(sessionId: string | null): {
             if (!isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) return
             void fetchLatestMessages(api, sessionId)
         },
-    })
-
-    // 归档会话
-    const archiveMutation = useMutation({
-        mutationFn: async () => {
-            if (!sessionId) {
-                throw new Error('Session unavailable')
-            }
-            await api.sessions.archive(sessionId)
-        },
-        onSuccess: () => void invalidateSession(),
     })
 
     // 切换会话（remote/local 模式切换）
@@ -181,7 +168,6 @@ export function useSessionActions(sessionId: string | null): {
 
     return {
         abortSession: (stopKind?: StopKind) => abortMutation.mutateAsync(stopKind),
-        archiveSession: archiveMutation.mutateAsync,
         switchSession: switchMutation.mutateAsync,
         resumeSession: resumeMutation.mutateAsync,
         setPermissionMode: permissionMutation.mutateAsync,
@@ -191,7 +177,6 @@ export function useSessionActions(sessionId: string | null): {
         deleteSession: deleteMutation.mutateAsync,
         isPending:
             abortMutation.isPending ||
-            archiveMutation.isPending ||
             switchMutation.isPending ||
             resumeMutation.isPending ||
             permissionMutation.isPending ||
@@ -200,7 +185,6 @@ export function useSessionActions(sessionId: string | null): {
             renameMutation.isPending ||
             deleteMutation.isPending,
         isAbortPending: abortMutation.isPending,
-        isArchivePending: archiveMutation.isPending,
         isResumePending: resumeMutation.isPending,
         isSwitchPending: switchMutation.isPending,
     }

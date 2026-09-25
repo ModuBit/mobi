@@ -131,7 +131,6 @@
         "selectToView": "Select a session to view details",
         "actions": {
             "rename": "Rename",
-            "archive": "Exit",
             "delete": "Delete",
             "resume": "Resume",
             "deleteConfirmTitle": "Delete Session",

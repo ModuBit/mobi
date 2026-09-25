@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useState } from 'react'
 import { Badge, Dropdown, Input, theme as antTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import { EditOutlined, DeleteOutlined, MoonOutlined, MoreOutlined, PlayCircleOutlined } from '@ant-design/icons'
@@ -83,24 +83,24 @@ export function SessionRow({
     // dropdown 打开时鼠标移向 portal 菜单会离开行 → hover CSS 隐藏按钮组 → 触发器卸载导致菜单关闭。
     // 受控 open，打开期间强制显示按钮组
     const [menuOpen, setMenuOpen] = useState(false)
-    // 稳定引用：本行处于重命名键击/徽标变化驱动的全列表重渲染热路径，
-    // menu/handler 每渲染重建会让 Dropdown prop 恒新。
-    // ⚠️ 必须位于 isRenaming 早退之前——条件后的 hooks 会因分支切换改变数量而崩溃
-    const menuItems: MenuProps['items'] = useMemo(() => [
+    // menu 构建轻量（几个数组项），每渲染重建无成本：上游 SessionRowsList 对
+    // extraMenuItems/onClick 每渲染传新引用，memo 永不命中；本组件未做 React.memo，
+    // Dropdown 的 menu prop 也是内联字面量——引用稳定性在此层不成立也不需要
+    const menuItems: MenuProps['items'] = [
         ...(extraMenuItems ?? []),
         ...(extraMenuItems?.length ? [{ type: 'divider' as const }] : []),
         session.active
             ? { key: DORMANT_KEY, icon: <MoonOutlined />, label: t('session.actions.dormant'), disabled: dormantLoading }
             : { key: RESUME_KEY, icon: <PlayCircleOutlined />, label: t('session.actions.resume') },
         { key: DELETE_KEY, icon: <DeleteOutlined />, danger: true, label: t('session.actions.delete') },
-    ], [extraMenuItems, session.active, dormantLoading, t])
-    const handleMenuClick: MenuProps['onClick'] = useMemo(() => ({ key, domEvent }) => {
+    ]
+    const handleMenuClick: MenuProps['onClick'] = ({ key, domEvent }) => {
         domEvent.stopPropagation()
         if (key === DORMANT_KEY) onDormant()
         else if (key === RESUME_KEY) onResume()
         else if (key === DELETE_KEY) onDelete()
         else onExtraMenuClick?.(key)
-    }, [onDormant, onResume, onDelete, onExtraMenuClick])
+    }
 
     if (isRenaming) {
         return (
@@ -115,7 +115,7 @@ export function SessionRow({
                     autoFocus
                     disabled={onRenameLoading}
                     placeholder={t('session.actions.rename')}
-                    onClick={(e: MouseEvent) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                 />
             </RenameRow>
         )
