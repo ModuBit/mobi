@@ -116,7 +116,7 @@ describe('InspectorPane', () => {
         expect(s.activeTabId).toBe(s.tabs[0].id)
     })
 
-    it('休眠（active=false）空态：空态按钮照常显示，无恢复 mask（文件树 machine 化冷可用）', () => {
+    it('休眠空态：空态按钮照常显示，无恢复 mask（文件树 machine 化冷可用）', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         renderWithClient(<InspectorPane sessionId="s1" active={false} />)
         expect(screen.getByRole('button', { name: 'session.inspector.openFile' })).toBeInTheDocument()

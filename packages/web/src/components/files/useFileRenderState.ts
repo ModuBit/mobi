@@ -76,7 +76,7 @@ function needsContent(kind: FileKind): boolean {
  * 封装「meta 先行 + size 阈值 + 是否拉 content + 文本 blob→text + markdown view」全部决策。
  * 所有 hooks 无条件调用（rules-of-hooks），决策在 return 阶段做。
  */
-export function useFileRenderState(sessionId: string, filePath: string, active = true): RenderState {
+export function useFileRenderState(sessionId: string, filePath: string): RenderState {
     const { data: meta, isLoading: metaLoading, error: metaError } = useFileMeta(sessionId, filePath)
 
     const kind = meta ? resolveFileKind(meta, filePath) : null
@@ -119,12 +119,14 @@ export function useFileRenderState(sessionId: string, filePath: string, active =
     if (metaLoading) return { status: 'meta-loading' }
     if (metaError) return { status: 'meta-error', error: metaError }
     if (!meta || !kind) return { status: 'meta-loading' }
-    // editable：当前就能改 = mime 可编辑（text/markdown）且在写边界内且在线（active）。
-    // writable 取自 CLI 下发，缺省（旧版 CLI 未带字段）视为可写保持兼容。
+    // editable：当前就能改 = mime 可编辑（text/markdown）且在写边界内。
+    // writable 取自 CLI 下发（写边界 validateWritePath 同源判定），缺省（旧版 CLI 未带
+    // 字段）视为可写保持兼容。不再以会话在线（active）作前置——saveFile 已 machine 化
+    // （ADR 0006 dormancy：冷编辑器保存不唤醒会话进程），休眠态 cwd 内文件可编辑；
     // too-large 已在上方拦截不会到 ready。只读（!editable）的 text/markdown 仍挂编辑器
     // （readOnly 态），渲染效果与编辑态一致——见 FileContentView
     const writable = meta.writable !== false
-    const editable = active && writable && (kind.kind === 'text' || kind.kind === 'markdown')
+    const editable = writable && (kind.kind === 'text' || kind.kind === 'markdown')
     if (tooLarge) return { status: 'too-large' }
     if (!needsContent(kind)) {
         // pdf / image / media：src 直连端点，不依赖 content；etag 并入 URL 以感知内容变化

@@ -42,15 +42,13 @@ interface FileContentViewProps {
     /** 当前 tab id：Folders 选文件后调 openFileInTab 用 */
     tabId: string
     filePath: string
-    /** session 是否在线（CLI 已连接）；离线时不可编辑（save-file 路由 requireActive） */
-    active?: boolean
 }
 
-export default function FileContentView({ sessionId, tabId, filePath, active = true }: FileContentViewProps) {
+export default function FileContentView({ sessionId, tabId, filePath }: FileContentViewProps) {
     const { t } = useTranslation()
     const { message } = App.useApp()
     const queryClient = useQueryClient()
-    const state = useFileRenderState(sessionId, filePath, active)
+    const state = useFileRenderState(sessionId, filePath)
 
     // 编辑器状态机：ready+editable 时启用；非 ready 传占位（hooks 无条件调用，内部 draft=null 短路）
     const isReady = state.status === 'ready'

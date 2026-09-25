@@ -123,7 +123,7 @@ const StyledTabs = styled(Tabs)`
 
 export interface InspectorPaneProps {
     sessionId: string
-    /** session 是否在线（CLI runner 已连接）。离线时覆盖「恢复会话」层，不渲染文件树（避免无谓 RPC） */
+    /** session 是否在线（CLI runner 已连接）；离线时 rightChrome 改浮动定位（不进 tabBar） */
     active?: boolean
     /** 会话所在机器（远程桌面 tab 观看目标）；缺失时 desktop 动作置灰 */
     machineId?: string
@@ -231,7 +231,7 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
 
     const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
         if (tab.mode === 'file' && tab.filePath) {
-            return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} active={active} />
+            return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} />
         }
         if (tab.mode === 'terminal' && tab.terminalId) {
             return (
