@@ -85,7 +85,7 @@ export const shadcnLightToken = {
     colorBgElevated: '#ffffff',
     colorBgLayout: '#f5f4ed',
     colorBgSpotlight: '#3d3d3a',
-    colorBgMask: 'rgba(20, 20, 19, 0.45)',
+    colorBgMask: 'rgba(20, 20, 19, 0.25)',
     colorBorder: '#f0eee6',
     colorBorderSecondary: '#f0eee6',
     borderRadius: 10,
