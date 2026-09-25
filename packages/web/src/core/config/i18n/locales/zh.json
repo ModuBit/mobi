@@ -146,6 +146,8 @@
         },
         "dormancy": {
             "blocked": "无法休眠：{{reasons}}",
+            "forceExitTitle": "无法休眠",
+            "forceExitOk": "仍要退出",
             "failed": "休眠失败，请重试",
             "blocker": {
                 "pending_permissions": "有等待处理的审批",
@@ -696,7 +698,7 @@
         },
         "pwa": {
             "updateAvailable": "发现新版本",
-            "updateAction": "刷新",
+            "updateAction": "新版本",
             "forceRefreshTitle": "重启",
             "forceRefreshContent": "将清除缓存并重新加载页面，未发送的内容可能丢失。",
             "forceRefreshOk": "确定重启",

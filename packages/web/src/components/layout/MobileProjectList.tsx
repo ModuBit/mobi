@@ -18,7 +18,6 @@ import { useState, useCallback } from 'react'
 import { App as AntdApp, Button, Drawer, Input, Modal, theme as antTheme } from 'antd'
 import {
     EditOutlined,
-    InboxOutlined,
     MoonOutlined,
     DeleteOutlined,
     PlayCircleOutlined,
@@ -192,31 +191,17 @@ export function MobileProjectList() {
     useHistoryGuard(actionSessionId != null, closeActionSheet)
     useHistoryGuard(renameSessionId != null, handleRenameCancel)
 
-    // 归档
-    const handleArchive = useCallback(async () => {
-        if (!actionSessionId) return
-        setActionLoading('archive')
-        try {
-            await api.sessions.archive(actionSessionId)
-            await invalidateSessionViews(queryClient, [actionSessionId])
-            setActionSessionId(null)
-        } catch {
-            // ignore
-        } finally {
-            setActionLoading(null)
-        }
-    }, [actionSessionId, api, queryClient])
-
-    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy，这里只管 pending 态
+    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时弹
+    // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态
     const handleDormant = useCallback(async () => {
         if (!actionSessionId) return
         setActionLoading('dormant')
         const target = actionSessionId
-        await dormantSessionWithFeedback({ api, queryClient, t }, target, () => {
+        await dormantSessionWithFeedback({ api, queryClient, t, modal }, target, () => {
             setActionLoading(null)
             setActionSessionId(null)
         })
-    }, [actionSessionId, api, queryClient, t])
+    }, [actionSessionId, api, queryClient, t, modal])
 
     // 恢复
     const handleResume = useCallback(async () => {
@@ -423,30 +408,17 @@ export function MobileProjectList() {
 
                         {/* 休眠 / 归档 / 恢复 */}
                         {actionSession.active ? (
-                            <>
-                                <Button
-                                    type="text"
-                                    block
-                                    icon={<MoonOutlined />}
-                                    disabled={!!actionLoading}
-                                    loading={actionLoading === 'dormant'}
-                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
-                                    onClick={handleDormant}
-                                >
-                                    {t('session.actions.dormant')}
-                                </Button>
-                                <Button
-                                    type="text"
-                                    block
-                                    icon={<InboxOutlined />}
-                                    disabled={!!actionLoading}
-                                    loading={actionLoading === 'archive'}
-                                    style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
-                                    onClick={handleArchive}
-                                >
-                                    {t('session.actions.archive')}
-                                </Button>
-                            </>
+                            <Button
+                                type="text"
+                                block
+                                icon={<MoonOutlined />}
+                                disabled={!!actionLoading}
+                                loading={actionLoading === 'dormant'}
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                onClick={handleDormant}
+                            >
+                                {t('session.actions.dormant')}
+                            </Button>
                         ) : (
                             <Button
                                 type="text"

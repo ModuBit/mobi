@@ -146,6 +146,8 @@
         },
         "dormancy": {
             "blocked": "Cannot dorm: {{reasons}}",
+            "forceExitTitle": "Cannot dorm",
+            "forceExitOk": "Exit anyway",
             "failed": "Failed to dorm the session. Please retry",
             "blocker": {
                 "pending_permissions": "Permission requests awaiting your review",
@@ -705,7 +707,7 @@
         },
         "pwa": {
             "updateAvailable": "Update available",
-            "updateAction": "Refresh",
+            "updateAction": "New version",
             "forceRefreshTitle": "Restart",
             "forceRefreshContent": "Will clear the cache and reload the page. Unsent content may be lost.",
             "forceRefreshOk": "Restart now",

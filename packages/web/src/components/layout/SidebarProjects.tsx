@@ -103,23 +103,13 @@ export function SidebarProjects() {
         }
     }, [renameValue, renamingSessionId, renameActions, t, queryClient, cancelRename, messageApi])
 
-    // 退出会话
-    const handleArchive = useCallback(async (session: Session) => {
-        try {
-            await api.sessions.archive(session.id)
-            messageApi.success(t('common.success'))
-            await invalidateSessionViews(queryClient, [session.id])
-        } catch {
-            messageApi.error(t('common.error'))
-        }
-    }, [api, t, queryClient, messageApi])
-
-    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy，这里只管 pending 态
+    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy（gate 阻塞时弹
+    // 「仍要退出」确认，archive 作为强制兜底），这里只管 pending 态
     const [dormantPendingId, setDormantPendingId] = useState<string | null>(null)
     const handleDormant = useCallback((session: Session) => {
         setDormantPendingId(session.id)
-        void dormantSessionWithFeedback({ api, queryClient, t }, session.id, () => setDormantPendingId(null))
-    }, [api, t, queryClient])
+        void dormantSessionWithFeedback({ api, queryClient, t, modal }, session.id, () => setDormantPendingId(null))
+    }, [api, t, queryClient, modal])
 
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {
@@ -236,7 +226,6 @@ export function SidebarProjects() {
         setRenameValue,
         onRenameConfirm: handleRenameConfirm,
         onRenameCancel: cancelRename,
-        onArchive: handleArchive,
         onDormant: handleDormant,
         dormantPendingSessionId: dormantPendingId,
         onResume: handleResume,

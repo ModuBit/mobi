@@ -25,14 +25,14 @@ const { useToken } = antTheme
  * 「发现新版本」的两个入口形态（2026-09-22 替代原 fixed 横幅——横幅硬编码不随
  * 主题且视觉等级超出「可忽略通知」的语义，见 .scratch/design-walkthrough/REPORT.md A1）：
  * - PC：侧栏 / WCO 标题栏 logo 旁的低调「图标+文案」按钮（UpdateIconButton）
- * - 移动端：顶栏居中悬浮胶囊（UpdatePrompt，会短暂遮住标题）——「刷新」为主操作，
+ * - 移动端：顶栏居中悬浮胶囊（UpdatePrompt，会短暂遮住标题）——「新版本」为主操作，
  *   「×」关闭本次提示（关闭后 SW 下次更新才再提示）
  *
  * 更新可用状态经 useUpdateAvailable 订阅；无新版本时入口不渲染。
  */
 
 /** PC：logo 旁的「图标+文案」低调按钮（CollapseButton 同款交互词汇：淡底 hover、无阴影）。
- *  文案与移动端胶囊统一为「刷新」 */
+ *  文案与移动端胶囊统一（notification.pwa.updateAction） */
 export function UpdateIconButton({ onUpdate }: { onUpdate: () => void }) {
     const { token } = useToken()
     const { t } = useTranslation()
