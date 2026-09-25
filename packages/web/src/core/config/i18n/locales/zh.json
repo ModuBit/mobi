@@ -148,6 +148,7 @@
             "forceExitTitle": "无法休眠",
             "forceExitOk": "仍要退出",
             "failed": "休眠失败，请重试",
+            "blockerSeparator": "、",
             "blocker": {
                 "pending_permissions": "有等待处理的审批",
                 "queued_messages": "有排队消息",

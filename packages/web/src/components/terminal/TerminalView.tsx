@@ -54,14 +54,17 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
     // session metadata：取版本（= mobi --version）、项目目录、git 分支用于 banner
     const { data: session } = useSession(sessionId)
     const metadata = session?.metadata
-    // session 是否在线（CLI runner 已连接）；离线时不建终端 socket，避免被 hub 以 inactive 拒绝
-    const active = session?.active === true
+    // session 是否在线（CLI runner 已连接）。三态：metadata 未就绪 = 未知，不驱动
+    // socket（未知 ≠ 离线——否则在线会话首帧会被误置 inactive，闪现休眠遮罩）；
+    // 就绪后离线不建终端 socket，避免被 hub 以 inactive 拒绝
+    const active: boolean | null = session ? session.active === true : null
     // 终端主题跟随 web（亮/暗，system 模式实时响应 OS）
     const isDark = useIsDark()
 
     const { instance } = useCachedInstance<CachedTerminal>(
+        // 仅已知在线才自动建连；未知（metadata 未就绪）不建连，等就绪由 setActive 驱动
         `terminal:${sessionId}:${terminalId}`,
-        () => createCachedTerminal({ sessionId, terminalId, initialActive: active }),
+        () => createCachedTerminal({ sessionId, terminalId, initialActive: active === true }),
         disposeCachedTerminal,
     )
 
@@ -97,9 +100,9 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         instance.setTheme(isDark ? 'dark' : 'light')
     }, [instance, isDark])
 
-    // 在线/离线控制 socket：离线断开（不 emit create），在线连
+    // 在线/离线控制 socket：metadata 未就绪（null）不驱动；离线断开（不 emit create），在线连
     useEffect(() => {
-        if (!instance) return
+        if (!instance || active === null) return
         instance.setActive(active)
     }, [instance, active])
 

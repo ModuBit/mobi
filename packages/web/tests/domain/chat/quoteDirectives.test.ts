@@ -14,47 +14,12 @@
  * limitations under the License.
  */
 
-// quoteDirectives 行为锁定：quote 指令解析 / 批注↔回复配对（spec .scratch/response-annotations 票 03）
-// 通用指令语法与去重管线的行为锁定在 directives.test.ts
+// quoteDirectives 行为锁定：quote 指令注册语义 + 批注↔回复配对（spec .scratch/response-annotations 票 03）
+// 通用指令语法/扫描/去重管线的行为锁定在 directives.test.ts
 import { describe, expect, it } from 'vitest'
-import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import { collectQuoteAnnotationsByAgentId, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
+import { collectQuoteAnnotationsByAgentId } from '@/domain/chat/quoteDirectives'
 import type { UserContentBlock } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat/types'
-
-const d = (n: number) => `${QUOTE_DIRECTIVE}{index="${n}"}`
-
-describe('parseQuoteDirectives', () => {
-    it('无 directive 返回空数组（含形近文本）', () => {
-        expect(parseQuoteDirectives('普通正文')).toEqual([])
-        expect(parseQuoteDirectives(`注释 1 与 ${QUOTE_DIRECTIVE}{idx="1"}`)).toEqual([])
-        // 半截 directive（流式中）：不完整不命中
-        expect(parseQuoteDirectives(`前文 ${QUOTE_DIRECTIVE}{index="`)).toEqual([])
-    })
-
-    it('伪造参数（"0"/非数字/缺字段）不命中', () => {
-        expect(parseQuoteDirectives(`${QUOTE_DIRECTIVE}{index="0"}`)).toEqual([])
-        expect(parseQuoteDirectives(`${QUOTE_DIRECTIVE}{index="abc"}`)).toEqual([])
-        expect(parseQuoteDirectives(`${QUOTE_DIRECTIVE}{foo="1"}`)).toEqual([])
-    })
-
-    it('单条命中：index 与位置', () => {
-        const text = `前文 ${d(2)} 后文`
-        expect(parseQuoteDirectives(text)).toEqual([
-            { index: 2, start: 3, end: 3 + d(2).length },
-        ])
-    })
-
-    it('多条命中按出现顺序', () => {
-        const text = `${d(1)} 中 ${d(3)} 尾`
-        const hits = parseQuoteDirectives(text)
-        expect(hits.map(h => h.index)).toEqual([1, 3])
-        // 位置互指原文切片
-        for (const h of hits) {
-            expect(text.slice(h.start, h.end)).toBe(d(h.index))
-        }
-    })
-})
 
 describe('collectQuoteAnnotationsByAgentId（批注↔回复 turn 配对）', () => {
     const quote = (messageId: string, excerpt = `摘录-${messageId}`) =>

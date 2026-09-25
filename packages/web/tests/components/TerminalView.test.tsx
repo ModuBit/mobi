@@ -225,4 +225,14 @@ describe('TerminalView', () => {
         expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ initialActive: true }))
         expect(inst.setActive).toHaveBeenCalledWith(true)
     })
+
+    it('metadata 未就绪（data undefined）→ 不驱动 setActive（未知 ≠ 离线，不误置 inactive）', () => {
+        const inst = makeInstance()
+        mockCreate.mockReturnValueOnce(inst)
+        useSessionMock.mockReturnValue({ data: undefined })
+        render(<TerminalView sessionId="s1" terminalId="t1" />)
+        // factory 不自动建连（等 metadata 就绪由 effect 驱动），也绝不误标 inactive
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ initialActive: false }))
+        expect(inst.setActive).not.toHaveBeenCalled()
+    })
 })

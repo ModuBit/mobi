@@ -41,9 +41,12 @@ function extractBlockers(error: unknown): string[] {
         : []
 }
 
-/** blocker code 列表 → 「无法休眠：…」完整文案（i18n 单源，成功路径与错误转述共用） */
+/** blocker code 列表 → 「无法休眠：…」完整文案。分隔符走 i18n——中文顿号、
+ *  英文逗号是各 locale 自己的排版约定，不硬编码（2026-09-25 review） */
 function dormancyBlockedText(blockers: string[], t: TFunction): string {
-    const reasons = blockers.map((b) => t(`session.dormancy.blocker.${b}`, b)).join('、')
+    const reasons = blockers
+        .map((b) => t(`session.dormancy.blocker.${b}`, b))
+        .join(t('session.dormancy.blockerSeparator'))
     return t('session.dormancy.blocked', { reasons })
 }
 

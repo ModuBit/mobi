@@ -148,6 +148,7 @@
             "forceExitTitle": "Cannot dorm",
             "forceExitOk": "Exit anyway",
             "failed": "Failed to dorm the session. Please retry",
+            "blockerSeparator": ", ",
             "blocker": {
                 "pending_permissions": "Permission requests awaiting your review",
                 "queued_messages": "Queued messages",

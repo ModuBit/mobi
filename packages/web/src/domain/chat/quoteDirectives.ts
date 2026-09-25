@@ -26,7 +26,7 @@
 
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
 import type { UserQuoteBlock } from '@mobi/shared'
-import { DIRECTIVE_PREFIX, registerDirective, parseDirectiveHits } from './directives'
+import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
 import type { ChatBlock } from './types'
 
@@ -48,26 +48,6 @@ const QUOTE_DEFINITION: DirectiveDefinition<string> = {
 }
 
 registerDirective(QUOTE_DEFINITION)
-
-/** 单个 directive 命中：一基索引 + 在原文中的 UTF-16 位置 */
-export interface QuoteDirectiveHit {
-    index: number
-    start: number
-    end: number
-}
-
-/** 解析全部命中（不去重——剔除由通用 dedupeDirectiveText 负责；按出现顺序） */
-export function parseQuoteDirectives(text: string): QuoteDirectiveHit[] {
-    const hits: QuoteDirectiveHit[] = []
-    for (const hit of parseDirectiveHits(text)) {
-        if (hit.name !== QUOTE_DIRECTIVE_NAME) continue
-        const index = QUOTE_DEFINITION.parse(hit.attrs)
-        if (index !== null) {
-            hits.push({ index: Number(index), start: hit.start, end: hit.end })
-        }
-    }
-    return hits
-}
 
 /**
  * 回应批注↔回复的 turn 配对（spec .scratch/response-annotations，领域规则单源）：
