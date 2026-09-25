@@ -373,7 +373,8 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        // 休眠会话放行（dormancy：冷编辑器自动保存不唤醒；engine 已 machine 化，写边界由 hub 注入 cwd）
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) return sessionResult
 
         const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))

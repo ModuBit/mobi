@@ -39,10 +39,10 @@ const mockSession: Session = {
 
 type SaveArgs = { sid: string; path: string; content: Uint8Array; baseEtag: string }
 
-function makeEngine(saveImpl: (a: SaveArgs) => unknown): { engine: SyncEngine; calls: SaveArgs[] } {
+function makeEngine(saveImpl: (a: SaveArgs) => unknown, session: Session = mockSession): { engine: SyncEngine; calls: SaveArgs[] } {
     const calls: SaveArgs[] = []
     const engine = {
-        resolveSessionAccess: () => ({ ok: true as const, sessionId: 'test-session-1', session: mockSession }),
+        resolveSessionAccess: () => ({ ok: true as const, sessionId: 'test-session-1', session }),
         saveFile: async (sid: string, path: string, content: Uint8Array, baseEtag: string) => {
             const args = { sid, path, content, baseEtag }
             calls.push(args)
@@ -79,6 +79,18 @@ describe('POST /api/sessions/:id/save-file', () => {
             body,
         })
     }
+
+    test('休眠会话保存 → 放行（dormancy：冷编辑器自动保存不唤醒，engine machine 化可达）', async () => {
+        const { engine, calls } = makeEngine(() => ({ success: true, etag: 'cold-etag' }), { ...mockSession, active: false })
+        const res = await postSave(
+            engine,
+            new TextEncoder().encode('cold save'),
+            { 'X-Mobi-Path': 'a.md', 'X-Mobi-Base-Etag': 'old' },
+        )
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ success: true, etag: 'cold-etag' })
+        expect(calls).toHaveLength(1)
+    })
 
     test('成功 → 200 + etag，透传 path/content/baseEtag', async () => {
         const { engine, calls } = makeEngine(() => ({ success: true, etag: 'new-etag' }))
