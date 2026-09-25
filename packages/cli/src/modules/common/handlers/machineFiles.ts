@@ -20,7 +20,7 @@ import { logger } from '@/ui/logger'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { rpcError } from '../rpcResponses'
 import { validateReadPath, validateWritePath } from '../pathSecurity'
-import { readFileMetaAt, readFileRangeAt } from './fileRead'
+import { normalizeCwdParam, readFileMetaAt, readFileRangeAt } from './fileRead'
 import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse } from './files'
 
 /**
@@ -46,11 +46,6 @@ interface MachineReadFileRangeRequest extends ReadFileRangeRequest {
     cwd?: string
 }
 
-/** cwd 参数归一：缺省/空白回退 process.cwd()（对齐 uploads.ts 惯例），meta 可写判定与读/写校验同参 */
-function normalizeCwd(cwd: string | undefined): string {
-    return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
-}
-
 /**
  * machine 通道读取的统一入口策略：读边界（cwd ∪ home−黑名单 ∪ /tmp）。
  * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
@@ -62,7 +57,7 @@ function resolveAllowedMachinePath(
 ): { abs: string } | { error: string; code?: string } {
     // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，hub 据此映射 403）
     if (!relPath) return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
-    const effectiveCwd = normalizeCwd(cwd)
+    const effectiveCwd = normalizeCwdParam(cwd, process.cwd())
     // 解析与校验同源：validateReadPath 的 valid 结果自带 resolvedPath，无手抄二次解析
     const validation = validateReadPath(relPath, effectiveCwd, homeDir)
     if (!validation.valid) {
@@ -94,7 +89,7 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
         }
         // writable 与 machine saveFile 的写边界同源同参（validateWritePath 严格 cwd 子树）：
         // 判定与真实写校验漂移会让 web 显示可写但保存被拒（dormancy：冷编辑器经此通道读 meta）
-        return { success: true, meta: result.meta, writable: validateWritePath(data.path, normalizeCwd(data.cwd), homeDir).valid }
+        return { success: true, meta: result.meta, writable: validateWritePath(data.path, normalizeCwdParam(data.cwd, process.cwd()), homeDir).valid }
     })
 
     rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {

@@ -40,6 +40,9 @@ export interface DormancyFacts {
     backgroundTasks: number
 }
 
+/** launcher 能回传的事实子集（turnRunning 的权威在 runClaude 的 currentSessionRef，launcher 不重复上报） */
+export type LauncherDormancyFacts = Pick<DormancyFacts, 'pendingPermissions' | 'backgroundTasks'>
+
 export type DormancyBlocker =
     | 'pending_permissions'
     | 'queued_messages'

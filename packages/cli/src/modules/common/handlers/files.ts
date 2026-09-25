@@ -24,7 +24,7 @@ import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { fsError, readFileMetaAt, readFileRangeAt } from './fileRead'
+import { fsError, normalizeCwdParam, readFileMetaAt, readFileRangeAt } from './fileRead'
 
 interface WriteFileRequest {
     path: string
@@ -181,7 +181,7 @@ export function registerFileHandlers(
 
         // 写边界按 effectiveCwd 计算：machine 通道注入 cwd 时锚定注入值（与读边界同模式），
         // 缺省回退注册时的 workingDirectory（session 通道行为不变）
-        const effectiveCwd = typeof data.cwd === 'string' && data.cwd.trim() !== '' ? data.cwd : workingDirectory
+        const effectiveCwd = normalizeCwdParam(data.cwd, workingDirectory)
         const validation = validateWritePath(data.path, effectiveCwd, homeDir)
         if (!validation.valid) {
             return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })

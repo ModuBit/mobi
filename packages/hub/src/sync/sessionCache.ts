@@ -471,44 +471,35 @@ export class SessionCache {
      * 暂存值即唯一事实；活跃路径不经过本方法，outputStyle 的 restart 语义不变。
      */
     applyDormantConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel; outputStyle?: string }): void {
+        this.applyRuntimeStatePatch(sessionId, config, null)
+    }
+
+    /**
+     * runtimeState 配置落库的单一管线（get/refresh → 过滤 → merge → 广播），
+     * applySessionConfig / applyDormantConfig 共用；allowedKeys=null = 透传全部字段。
+     * 落库 + 内存回填经 RuntimeStateStore 单一收口（undefined 过滤：merge 以 undefined
+     * 表示清除）；web 切换后 CLI keep-alive 会再带回同值，先落库消除「CLI 掉线期间
+     * 重启丢切换」窗口
+     */
+    private applyRuntimeStatePatch(sessionId: string, config: Record<string, unknown>, allowedKeys: ReadonlySet<string> | null): void {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session) {
             return
         }
         const patch: Record<string, unknown> = {}
         for (const [key, value] of Object.entries(config)) {
-            if (value !== undefined) {
+            if (value !== undefined && (allowedKeys === null || allowedKeys.has(key))) {
                 patch[key] = value
             }
         }
         if (Object.keys(patch).length > 0) {
-            // 落库 + 内存回填经 RuntimeStateStore 单一收口（undefined 已过滤：merge 以 undefined 表示清除）
             this.runtimeStateStore.merge(session, patch)
         }
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
     }
 
     applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel }): void {
-        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
-        if (!session) {
-            return
-        }
-
-        const patch: Record<string, unknown> = {}
-        for (const key of SessionCache.LIVE_CONFIG_KEYS) {
-            const value = config[key]
-            if (value !== undefined) {
-                patch[key] = value
-            }
-        }
-        if (Object.keys(patch).length > 0) {
-            // 落库 + 内存回填经 RuntimeStateStore 单一收口（permissionMode 顶层读点是投影
-            // getter，无需再写快照）；web 切换后 CLI keep-alive 会再带回同值，此处先落库
-            // 消除「CLI 掉线期间重启丢切换」窗口
-            this.runtimeStateStore.merge(session, patch)
-        }
-
-        this.publisher.emit({ type: 'session-updated', sessionId, data: session })
+        this.applyRuntimeStatePatch(sessionId, config, new Set(SessionCache.LIVE_CONFIG_KEYS))
     }
 
     async renameSession(sessionId: string, name: string): Promise<void> {

@@ -101,7 +101,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (sessionResult instanceof Response) {
             return sessionResult
         }
-        const { sessionId, session } = sessionResult
+        const { sessionId } = sessionResult
 
         const body = await c.req.json().catch(() => null)
         const parsed = sendMessageBodySchema.safeParse(body)
@@ -120,11 +120,10 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         await engine.sendMessage(sessionId, { content: rawContent, localId: parsed.data.localId, sentFrom: 'webapp' })
-        // 休眠/待激活会话唤醒（fire-and-forget，活跃会话跳过）：入队已持久化，spawn 失败
-        // 消息仍留 queued，下次发送或手动唤醒重试；进程上线后 handleSessionAlive → redeliverQueued 补投
-        if (!session.active) {
-            engine.wakeSession(sessionId)
-        }
+        // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的
+        // 会话行，活跃 no-op）。入队已持久化，spawn 失败消息仍留 queued，下次发送或手动
+        // 唤醒重试；进程上线后 handleSessionAlive → redeliverQueued 补投
+        engine.wakeSession(sessionId)
         return c.json({ ok: true })
     })
 

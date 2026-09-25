@@ -116,13 +116,9 @@ export class IdleTimer {
             return;
         }
 
-        // 阻塞复查状态：用户活动 = 重新等一个完整空闲期（清复查定时器、回到正常计时）
+        // 阻塞复查状态被用户活动打断 = 重新等一个完整空闲期（清复查定时器后走公共路径）
         if (this.state === 'blocked') {
             this.clearBlockedRecheck();
-            this.state = 'running';
-            this.scheduleIdleTimers();
-            logger.debug('[IdleTimer] Reset from blocked, restarted idle timers');
-            return;
         }
 
         this.state = 'running';

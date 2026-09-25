@@ -15,6 +15,7 @@
  */
 
 import { ApiSessionClient } from "@/api/apiSession"
+import type { LauncherDormancyFacts } from "@/claude/utils/dormancyGate";
 import { MessageQueue } from "@/utils/MessageQueue"
 import { logger } from "@/ui/logger"
 import { runLocalRemoteSession } from "@/agent/loopBase"
@@ -56,7 +57,7 @@ interface LoopOptions {
     /** fork 激活计划（runClaude 从 bootstrap metadata 解析后传入，fork-session spec §5.2） */
     forkActivation?: ForkActivationPlan | null
     /** 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填 provider，供 runClaude 组装 gate 快照 */
-    onDormancyFacts?: (provider: () => { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number }) => void
+    onDormancyFacts?: (provider: () => LauncherDormancyFacts) => void
 }
 
 export async function loop(opts: LoopOptions) {

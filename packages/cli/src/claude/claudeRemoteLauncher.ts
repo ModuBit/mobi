@@ -50,6 +50,7 @@ import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
+import type { LauncherDormancyFacts } from "./utils/dormancyGate";
 import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
@@ -135,11 +136,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      *  SDK 未提供任务列表查询 API（backgroundTasks() 是「后台化前台任务」开关，返回 boolean），只能自维护 */
     private backgroundTaskIds: ReadonlySet<string> = new Set<string>()
 
-    /** 休眠 gate 事实（dormancy spec）：审批待处理数 / turn 运行 / 后台任务数 */
-    getDormancyFacts(): { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number } {
+    /** 休眠 gate 事实（dormancy spec）：审批待处理数 / 后台任务数（turnRunning 权威在 runClaude） */
+    getDormancyFacts(): LauncherDormancyFacts {
         return {
             pendingPermissions: this.permissionHandler?.pendingCount ?? 0,
-            turnRunning: this.session.running,
             backgroundTasks: this.backgroundTaskIds.size,
         }
     }
@@ -160,6 +160,23 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private capabilityDiscoveredForSession: string | null = null;
     /** commands_changed 触发的能力发现节流游标（目录扫描期连发，10s 一次足够） */
     private lastCommandsChangedDiscoveryAt = 0;
+
+    /**
+     * 能力发现重跑并回写 sdkMetadata（discover+updateMetadata 的单一形态）。
+     * 两个触发点共用：onQueryReady 的 per-session 首次发现、commands_changed 的
+     * 节流刷新（supportedCommands 已跟踪最新推送，语义见 sdk.d.ts）。
+     * 失败静默保旧值（capabilityDiscovery 内部约定）。
+     */
+    private runCapabilityDiscovery(): void {
+        const query = this.queryRef;
+        if (!query) return;
+        void discoverCapabilities(query, (caps) => {
+            this.session.client.updateMetadata((metadata) => ({
+                ...metadata,
+                sdkMetadata: caps,
+            }));
+        });
+    }
 
     constructor(
         session: Session,
@@ -591,13 +608,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 const now = Date.now();
                 if (now - this.lastCommandsChangedDiscoveryAt > COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS && this.queryRef) {
                     this.lastCommandsChangedDiscoveryAt = now;
-                    const query = this.queryRef;
-                    void discoverCapabilities(query, (caps) => {
-                        session.client.updateMetadata((metadata) => ({
-                            ...metadata,
-                            sdkMetadata: caps,
-                        }));
-                    });
+                    this.runCapabilityDiscovery();
                 }
             }
 
@@ -917,12 +928,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             const discoveryKey = session.sessionId ?? '__pending__';
                             if (discoveryKey !== this.capabilityDiscoveredForSession) {
                                 this.capabilityDiscoveredForSession = discoveryKey;
-                                void discoverCapabilities(query, (caps) => {
-                                    session.client.updateMetadata((metadata) => ({
-                                        ...metadata,
-                                        sdkMetadata: caps,
-                                    }));
-                                });
+                                this.runCapabilityDiscovery();
                             }
                         },
                         nextMessage: async () => {
@@ -1243,7 +1249,7 @@ export async function claudeRemoteLauncher(
     getSessionConfig?: () => EnhancedMode,
     flushConfig?: () => void,
     /** 休眠 gate 事实回传（dormancy spec）：launcher 就绪后回填，供 runClaude 组装 gate 快照 */
-    onDormancyFacts?: (provider: () => { pendingPermissions: number; turnRunning: boolean; backgroundTasks: number }) => void,
+    onDormancyFacts?: (provider: () => LauncherDormancyFacts) => void,
 ): Promise<'switch' | 'exit'> {
     const launcher = new ClaudeRemoteLauncher(
         session,

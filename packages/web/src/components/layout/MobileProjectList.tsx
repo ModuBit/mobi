@@ -28,7 +28,7 @@ import {
     ImportOutlined,
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
-import { dormancyErrorText } from '@/core/data/sessionDormancy'
+import { dormantSessionWithFeedback } from '@/core/data/sessionDormancy'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -207,21 +207,16 @@ export function MobileProjectList() {
         }
     }, [actionSessionId, api, queryClient])
 
-    // 手动休眠（dormancy spec §D.11）：gate 阻塞时 toast 逐项原因
+    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy，这里只管 pending 态
     const handleDormant = useCallback(async () => {
         if (!actionSessionId) return
         setActionLoading('dormant')
-        try {
-            await api.sessions.dormant(actionSessionId)
-            messageApi.success(t('common.success'))
-            await invalidateSessionViews(queryClient, [actionSessionId])
-            setActionSessionId(null)
-        } catch (error) {
-            messageApi.warning(dormancyErrorText(error, t))
-        } finally {
+        const target = actionSessionId
+        await dormantSessionWithFeedback({ api, queryClient, t }, target, () => {
             setActionLoading(null)
-        }
-    }, [actionSessionId, api, queryClient, messageApi, t])
+            setActionSessionId(null)
+        })
+    }, [actionSessionId, api, queryClient, t])
 
     // 恢复
     const handleResume = useCallback(async () => {

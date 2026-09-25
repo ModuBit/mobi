@@ -31,6 +31,15 @@ export type FileMetaReadResult =
  * hub 按 ENOENT → 404 / ACCESS_DENIED → 403 / 其余 → 500 映射状态，
  * 未映射的 code 仍随响应体下发辅助诊断（权限、符号链接循环等），不依赖文案。
  */
+/**
+ * cwd 参数归一：缺省/空白串回退 fallback（machine 通道用 process.cwd()，session 通道用
+ * 会话 workingDirectory）。ADR 0006「cwd 注入锚定边界」的入口约定，读/写/meta 三处同参，
+ * 归一口径调整只改这里。
+ */
+export function normalizeCwdParam(cwd: string | undefined, fallback: string): string {
+    return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : fallback
+}
+
 export function fsError(error: unknown, fallback: string): { success: false; error: string; code?: string } {
     const code = (error as NodeJS.ErrnoException | null | undefined)?.code
     return rpcError(getErrorMessage(error, fallback), code ? { code } : undefined)

@@ -14,13 +14,44 @@
  * limitations under the License.
  */
 
+import { message } from 'antd'
 import axios from 'axios'
+import type { QueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
+import type { MobiApi } from '@/core/data/api/client'
+import { invalidateSessionViews } from '@/core/lib/invalidateViews'
+
+export interface DormancyActionDeps {
+    api: MobiApi
+    queryClient: QueryClient
+    t: TFunction
+}
+
+/**
+ * 手动休眠动作流（dormancy spec §D.11）：调 API → 成功 toast + 失效会话视图 →
+ * 失败 toast（blocker 逐项文案）。侧边栏 / 移动端列表共用，调用方只管 pending 态。
+ */
+export async function dormantSessionWithFeedback(
+    deps: DormancyActionDeps,
+    sessionId: string,
+    onDone: () => void,
+): Promise<void> {
+    const { api, queryClient, t } = deps
+    try {
+        await api.sessions.dormant(sessionId)
+        void message.success(t('common.success'))
+        await invalidateSessionViews(queryClient, [sessionId])
+    } catch (error) {
+        void message.warning(dormancyErrorText(error, t))
+    } finally {
+        onDone()
+    }
+}
 
 /**
  * 手动休眠的错误转述（dormancy spec §D.11）：409 携带的逐项 blocker code →
  * i18n 文案；无 blocker 的失败（RPC 断连等）走通用失败文案。休眠入口的
- * 反馈文案单源——侧边栏行内按钮与会话页 hook 共用，不各写一份映射。
+ * 反馈文案单源——不各写一份映射。
  */
 export function dormancyErrorText(error: unknown, t: TFunction): string {
     const blockers = axios.isAxiosError(error)

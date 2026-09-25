@@ -93,11 +93,6 @@ export class MessageQueue<T> {
         logger.debug(`[MessageQueue] Initialized`);
     }
 
-    /** 休眠 gate 事实：排队未发消息数（dormancy spec） */
-    get pendingCount(): number {
-        return this.queue.length;
-    }
-
     /**
      * Set a handler that will be called when a message arrives
      */

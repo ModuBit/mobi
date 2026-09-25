@@ -138,11 +138,11 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         expect(woken).toEqual(['test-session-1'])
     })
 
-    test('active 会话 → 入队但不触发唤醒（唤醒只针对非活跃）', async () => {
+    test('active 会话 → 路由无条件委托 wakeSession（活跃 no-op 由 engine 内部判定）', async () => {
         const { engine, woken } = makeSendEngine({ active: true })
         const res = await postMessage(engine, { content: 'hi' })
         expect(res.status).toBe(200)
-        expect(woken).toEqual([])
+        expect(woken).toEqual(['test-session-1'])
     })
 
     test('新格式：block 数组直传', async () => {

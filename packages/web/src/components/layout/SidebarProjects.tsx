@@ -28,7 +28,7 @@ import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinne
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
-import { dormancyErrorText } from '@/core/data/sessionDormancy'
+import { dormantSessionWithFeedback } from '@/core/data/sessionDormancy'
 import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
@@ -114,20 +114,12 @@ export function SidebarProjects() {
         }
     }, [api, t, queryClient, messageApi])
 
-    // 手动休眠（dormancy spec §D.11）：gate 阻塞时 toast 逐项原因
+    // 手动休眠（dormancy spec §D.11）：动作流收口在 sessionDormancy，这里只管 pending 态
     const [dormantPendingId, setDormantPendingId] = useState<string | null>(null)
-    const handleDormant = useCallback(async (session: Session) => {
+    const handleDormant = useCallback((session: Session) => {
         setDormantPendingId(session.id)
-        try {
-            await api.sessions.dormant(session.id)
-            messageApi.success(t('common.success'))
-            await invalidateSessionViews(queryClient, [session.id])
-        } catch (error) {
-            messageApi.warning(dormancyErrorText(error, t))
-        } finally {
-            setDormantPendingId(null)
-        }
-    }, [api, t, queryClient, messageApi])
+        void dormantSessionWithFeedback({ api, queryClient, t }, session.id, () => setDormantPendingId(null))
+    }, [api, t, queryClient])
 
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {

@@ -154,14 +154,17 @@ export class ApiSessionClient extends EventEmitter {
             onTerminalInput: () => this.idleTimer?.reset()
         })
 
-        // 初始化 IdleTimer
+        // 初始化 IdleTimer。休眠 gate 的复查判定经 onIdleTimeoutBlockedRecheck 注入
+        // （单一接线：到点查 gate → 阻塞则 IdleTimer 自主进入复查节奏），provider 在
+        // 构造后才由 runClaude 安装（installDormancyDecide），未安装时放行（同旧版语义）
         this.idleTimer = new IdleTimer({
             disconnectTimeoutMs: configuration.disconnectTimeoutMs,
             idleTimeoutMs: configuration.idleTimeoutMs,
             warningMs: configuration.timeoutWarningMs,
             onWarning: () => this.handleIdleWarning(),
             onDisconnectTimeout: () => this.handleDisconnectTimeout(),
-            onIdleTimeout: () => this.handleIdleTimeout()
+            onIdleTimeout: () => this.handleIdleTimeout(),
+            onIdleTimeoutBlockedRecheck: () => this.dormancyDecide?.() ?? true
         })
 
         // 设置 RPC 调用回调
@@ -1128,6 +1131,7 @@ export class ApiSessionClient extends EventEmitter {
      * 安装休眠 gate 判定（dormancy spec）：由 runClaude 在装配完成后调用。
      * false = 有阻塞事务，空闲到点不退出、进入 IdleTimer 阻塞复查。
      */
+    /** 安装休眠 gate 判定（IdleTimer 阻塞复查的数据源；构造后装配，见构造处注释） */
     installDormancyDecide(decide: () => boolean): void {
         this.dormancyDecide = decide
     }
@@ -1200,12 +1204,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private handleIdleTimeout(): void {
-        // 休眠 gate（dormancy spec）：有阻塞事务则不退出，进入 IdleTimer 阻塞复查
-        if (this.dormancyDecide && !this.dormancyDecide()) {
-            logger.debug('[API] Idle timeout blocked by dormancy gate, entering recheck')
-            this.idleTimer?.enterBlocked()
-            return
-        }
+        // 阻塞判定已内聚在 IdleTimer（onIdleTimeoutBlockedRecheck）：到达此回调即 gate 放行
         logger.debug('[API] Idle timeout, exiting')
         this.emit('idle-timeout')
     }

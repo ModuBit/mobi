@@ -52,7 +52,8 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
     const emitTerminalError = (terminalId: string, message: string, code?: 'session_waking') => {
-        socket.emit('terminal:error', code ? { terminalId, message, code } : { terminalId, message })
+        // code 为 undefined 时 socket.io 序列化自动丢弃该字段，payload 与旧三元写法等价
+        socket.emit('terminal:error', { terminalId, message, code })
     }
 
     const resolveEntryForSocket = (terminalId: string): TerminalRegistryEntry | null => {
