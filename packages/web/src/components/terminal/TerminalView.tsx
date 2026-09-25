@@ -73,6 +73,24 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         return instance.subscribe(setStatus)
     }, [instance])
 
+    // 重连 pending：点击「重连」后按钮转圈，直到状态离开点击时的值（如 ready 翻转 connected）
+    // 才复位。唤醒场景 create 被拒（session_waking）会周期重试且同值不触发订阅回调——
+    // pending 恰好覆盖整个唤醒窗口，失败重试期间不会闪回可点状态。
+    const [reconnectPending, setReconnectPending] = useState(false)
+    const statusAtReconnect = useRef<TerminalStatus | null>(null)
+    useEffect(() => {
+        if (statusAtReconnect.current !== null && status !== statusAtReconnect.current) {
+            statusAtReconnect.current = null
+            setReconnectPending(false)
+        }
+    }, [status])
+    const handleReconnect = () => {
+        if (!instance || reconnectPending) return
+        statusAtReconnect.current = instance.status
+        setReconnectPending(true)
+        instance.reconnect()
+    }
+
     // 欢迎横幅：metadata 就绪后写一次（showBanner 内部 once；cwd 未就绪跳过，等就绪再写）
     useEffect(() => {
         if (!instance) return
@@ -172,7 +190,8 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
                         <Button
                             type="primary"
                             icon={<ReloadOutlined />}
-                            onClick={() => instance?.reconnect()}
+                            loading={reconnectPending}
+                            onClick={handleReconnect}
                         >
                             {t('terminal.reconnect')}
                         </Button>
