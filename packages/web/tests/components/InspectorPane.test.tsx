@@ -116,15 +116,11 @@ describe('InspectorPane', () => {
         expect(s.activeTabId).toBe(s.tabs[0].id)
     })
 
-    it('session 离线（active=false）：覆盖恢复层，点按钮调 resumeSession', () => {
+    it('休眠（active=false）空态：空态按钮照常显示，无恢复 mask（文件树 machine 化冷可用）', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         renderWithClient(<InspectorPane sessionId="s1" active={false} />)
-        // 不渲染空态文件按钮
-        expect(screen.queryByRole('button', { name: 'session.inspector.openFile' })).toBeNull()
-        // 渲染恢复按钮
-        const resumeBtn = screen.getByRole('button', { name: 'composer.activate' })
-        fireEvent.click(resumeBtn)
-        expect(resumeSessionMock).toHaveBeenCalled()
+        expect(screen.getByRole('button', { name: 'session.inspector.openFile' })).toBeInTheDocument()
+        expect(document.querySelector('.activate-cover-mask')).toBeNull()
     })
 
     it('离线 + 有 tab：保留 tab 内容作毛玻璃背景，叠加恢复层', async () => {
