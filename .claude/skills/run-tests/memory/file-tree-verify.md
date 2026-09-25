@@ -3,7 +3,7 @@ name: file-tree-verify
 description: 文件树 E2E — 打开 inspector 文件树 + 验证目录条目数/截断
 metadata:
   type: recipe
-  last_verified: 2026-08-05
+  last_verified: 2026-09-25
 ---
 
 # 打开 inspector 文件树 + 验证条目数
@@ -42,5 +42,16 @@ metadata:
 2. 活跃基线：`GET /api/sessions/:id/list-directory|search-files` 应成功
 3. 归属确认后杀会话 CLI（`ps -eo pid,lstart,command | grep "packages/cli/src/index.ts claude"`——按启动时间/无 --resume 认定，**禁全局匹配**）；等 4s socket 断开
 4. 冷读矩阵：list-directory / search-files?type= / read-file（全量内容断言）/ file-meta / serve-file（先在 cwd 放 html）；upload 三件套（X-Mobi-Filename 头 + octet-stream，`.bin` 会被上传扩展名白名单拒，用 .png）
-5. save-file 冷会话 = 409（requireActive 保留，唤醒门例外——这是预期不是 bug）
+5. save-file 冷会话 = 成功且不唤醒（dormancy：路由 requireActive 已删，hub 注入 cwd 锚定写边界；断言磁盘内容变化 + session 仍 active:false）
 6. 删除会话 → 文件路由 404（会话行不存在不碰文件）
+
+## 休眠/唤醒验证（dormancy，2026-09-25）
+
+全 curl 直调，免浏览器：
+
+1. 手动休眠：`POST /api/sessions/:id/dormant` → `{"ok":true}`；进程退出（ps 按 native id/启动时间归属确认，孤儿残留进程不碰）；session `active:false`
+2. 冷读矩阵：list-directory / search-files / file-meta（含 writable）/ read-file 全成功
+3. 配置暂存：休眠态 `POST /model|output-style` → 200 只落 DB
+4. 发消息唤醒：休眠态 `POST /messages` → 200；8s 内新 CLI 进程（ps 断言 `--resume <原nativeId> --model <暂存model> --output-style <暂存style>`——spawn 选项带回的硬证据）；会话 active:true；DB 消息 lifecycle done + agent result 落库
+5. gate 阻塞：让 turn 跑长任务（Bash sleep 90）→ dormant → 409 `{"error":"Session has work in progress","blockers":["turn_running"]}`，会话保持 active。注意探针任务要够长（数 15 个数 sonnet 5s 就跑完了）
+6. 手动唤醒：`POST /api/sessions/:id/resume`（休眠会话兜底按钮同路由）
