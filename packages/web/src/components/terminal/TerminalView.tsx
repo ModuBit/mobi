@@ -154,6 +154,7 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
             >
                 {showMask && (
                     <div
+                        className="terminal-reconnect-mask"
                         style={{
                             position: 'absolute',
                             inset: 0,
@@ -163,13 +164,9 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 12,
-                            // 玻璃磨砂：半透明深色底 + backdrop blur，与终端深色背景协调
-                            background: 'rgba(30, 30, 30, 0.45)',
-                            backdropFilter: 'blur(8px)',
-                            WebkitBackdropFilter: 'blur(8px)',
                         }}
                     >
-                        <Text style={{ color: '#d4d4d4', fontSize: 13 }}>
+                        <Text style={{ fontSize: 13 }}>
                             {t(`terminal.status.${status}`)}
                         </Text>
                         <Button

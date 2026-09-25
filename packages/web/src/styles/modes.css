@@ -5,12 +5,27 @@
    不至于完全实色。light 0.4 / dark 0.55。
    ChatComposer 的 Sender 实色白底与 InspectorPane 的彩色 tab 内容共用此样式——
    深色遮罩在白底上呈灰雾、在彩色内容上呈压暗，都是「未激活」视觉。 */
+/* 遮罩双档：light 亮色磨砂、dark 暗色磨砂（主题改动双档约束，各自验证方向） */
 .activate-cover-mask {
+    background: rgba(255, 255, 255, 0.55);
     backdrop-filter: blur(2px) saturate(1.0);
 }
 
 html[data-theme='dark'] .activate-cover-mask {
     background: rgba(0, 0, 0, 0.55);
+}
+
+/* 终端重连遮罩：light 亮色磨砂+深色文字，dark 暗色磨砂+浅色文字 */
+.terminal-reconnect-mask {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--ant-color-text);
+}
+
+html[data-theme='dark'] .terminal-reconnect-mask {
+    background: rgba(30, 30, 30, 0.55);
+    color: #d4d4d4;
 }
 
 /* Bash 模式：Sender 发光边框已迁移到 ChatComposer.tsx 的 inline style。
