@@ -26,7 +26,7 @@
 import { logger } from '@/ui/logger';
 
 /** 阻塞复查默认周期 */
-const DEFAULT_RECHECK_MS = 30_000;
+export const DEFAULT_RECHECK_MS = 30_000;
 
 export interface IdleTimerOptions {
     /** 连接断开超时（毫秒），默认 10 分钟 */

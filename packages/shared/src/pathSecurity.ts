@@ -80,6 +80,9 @@ const SENSITIVE_FILE_NAMES: ReadonlySet<string> = new Set([
 /** 前缀规则：dotenv 变体（.env.local / .env.production …；.env 本名在精确名单） */
 const SENSITIVE_FILE_NAME_PREFIXES = ['.env.'] as const
 
+/** dotenv 变体的非敏感模板后缀（.env.example 等是项目内的引导文件，拦截属误伤） */
+const SENSITIVE_TEMPLATE_SUFFIXES = ['.example', '.sample', '.template', '.dist'] as const
+
 /** 扩展名：密钥/证书材料 */
 const SENSITIVE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
     '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.kdbx',
@@ -95,7 +98,10 @@ const SENSITIVE_FILE_BASE_PATTERNS = [/^id_rsa/, /^id_ed25519/, /^id_ecdsa/] as 
 export function isSensitiveFilePath(resolvedTarget: string): boolean {
     const base = basename(resolvedTarget)
     if (SENSITIVE_FILE_NAMES.has(base)) return true
-    if (SENSITIVE_FILE_NAME_PREFIXES.some(p => base.startsWith(p))) return true
+    if (SENSITIVE_FILE_NAME_PREFIXES.some(p => base.startsWith(p))) {
+        const lower = base.toLowerCase()
+        if (!SENSITIVE_TEMPLATE_SUFFIXES.some(s => lower.endsWith(s))) return true
+    }
     if (SENSITIVE_FILE_EXTENSIONS.has(extname(base).toLowerCase())) return true
     return SENSITIVE_FILE_BASE_PATTERNS.some(re => re.test(base))
 }

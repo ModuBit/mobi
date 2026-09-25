@@ -17,6 +17,7 @@
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { evaluateDormancyGate, type DormancyFacts, type LauncherDormancyFacts } from '@/claude/utils/dormancyGate';
+import { DEFAULT_RECHECK_MS } from '@/modules/common/idleTimer';
 import { AgentState, SessionModel } from '@/api/types';
 import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
 import { MessageQueue } from '@/utils/MessageQueue';
@@ -282,9 +283,30 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         evaluateDormancyGate(readDormancyFacts())
     );
 
+    // 断连超时被 gate 阻塞后的复查：无定时器补位则进程在 hub 不可达时永久驻留成僵尸
+    // （阻塞事实解除也没人再问）。周期复查通过即退出；重连后 IdleTimer 已重排空闲计时，
+    // 该复查随之取消（hub 在场由空闲流程接管，见 idleTimer disconnect 语义）
+    const DISCONNECT_RECHECK_INTERVAL_MS = DEFAULT_RECHECK_MS;
+    let disconnectRecheckTimer: ReturnType<typeof setInterval> | null = null;
+    const stopDisconnectRecheck = () => {
+        if (disconnectRecheckTimer) {
+            clearInterval(disconnectRecheckTimer);
+            disconnectRecheckTimer = null;
+        }
+    };
+    apiSession.on('reconnected', stopDisconnectRecheck);
     apiSession.on('disconnect-timeout', () => {
         if (!evaluateDormancyGate(readDormancyFacts()).ok) {
-            logger.debug('[Session] Disconnect timeout blocked by dormancy gate, staying alive');
+            logger.debug('[Session] Disconnect timeout blocked by dormancy gate, scheduling recheck');
+            if (!disconnectRecheckTimer) {
+                disconnectRecheckTimer = setInterval(() => {
+                    if (evaluateDormancyGate(readDormancyFacts()).ok) {
+                        logger.debug('[Session] Disconnect recheck passed, exiting');
+                        stopDisconnectRecheck();
+                        handleTimeout('Disconnect timeout');
+                    }
+                }, DISCONNECT_RECHECK_INTERVAL_MS);
+            }
             return;
         }
         handleTimeout('Disconnect timeout');

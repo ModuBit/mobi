@@ -186,6 +186,7 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully')
+            this.emit('reconnected')
             this.rpcHandlerManager.onSocketConnect(this.socket)
             this.idleTimer?.onReconnect()
             this.clearManualReconnect()

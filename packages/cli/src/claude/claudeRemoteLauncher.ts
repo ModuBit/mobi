@@ -160,6 +160,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private capabilityDiscoveredForSession: string | null = null;
     /** commands_changed 触发的能力发现节流游标（目录扫描期连发，10s 一次足够） */
     private lastCommandsChangedDiscoveryAt = 0;
+    /** 节流窗口内的 trailing 补发定时器（窗口末尾的变更不丢） */
+    private commandsChangedTrailingTimer: ReturnType<typeof setTimeout> | null = null;
 
     /**
      * 能力发现重跑并回写 sdkMetadata（discover+updateMetadata 的单一形态）。
@@ -609,6 +611,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 if (now - this.lastCommandsChangedDiscoveryAt > COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS && this.queryRef) {
                     this.lastCommandsChangedDiscoveryAt = now;
                     this.runCapabilityDiscovery();
+                } else if (!this.commandsChangedTrailingTimer) {
+                    // 节流窗口内的后续帧不丢：trailing 补发一次，窗口末尾的变更不致悬空
+                    this.commandsChangedTrailingTimer = setTimeout(() => {
+                        this.commandsChangedTrailingTimer = null;
+                        this.runCapabilityDiscovery();
+                    }, COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS);
                 }
             }
 

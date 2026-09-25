@@ -174,6 +174,9 @@ describe('validateReadPath（读边界：cwd 子树 ∪ home−黑名单）', ()
     it('敏感文件名黑名单：home 散落凭证/历史/密钥文件 → 拒绝', () => {
         expect(validateReadPath(`${HOME}/.env`, CWD, HOME).valid).toBe(false)
         expect(validateReadPath(`${HOME}/.env.local`, CWD, HOME).valid).toBe(false)
+        // dotenv 模板是非敏感引导文件（code-review：拦截会 403 冷编辑器打开项目 .env.example）
+        expect(validateReadPath(`${CWD}/.env.example`, CWD, HOME).valid).toBe(true)
+        expect(validateReadPath(`${HOME}/.env.sample`, CWD, HOME).valid).toBe(true)
         expect(validateReadPath(`${HOME}/.netrc`, CWD, HOME).valid).toBe(false)
         expect(validateReadPath(`${HOME}/.npmrc`, CWD, HOME).valid).toBe(false)
         expect(validateReadPath(`${HOME}/.bash_history`, CWD, HOME).valid).toBe(false)

@@ -294,14 +294,15 @@ export function createSessionsRoutes(
     })
 
     // 手动休眠（dormancy spec §D.11）：CLI gate 自查 → 通过即退出进程释放资源；
-    // 阻塞（审批待处理/turn 运行中等）返回逐项 blocker，web toast 明确反馈不静默
+    // 阻塞（审批待处理/turn 运行中等）返回逐项 blocker，web toast 明确反馈不静默。
+    // requireActive:false：对已休眠会话重复休眠 = 幂等成功（engine 侧判定）
     app.post('/sessions/:id/dormant', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) {
             return sessionResult
         }

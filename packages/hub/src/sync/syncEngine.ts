@@ -572,6 +572,10 @@ export class SyncEngine {
      * blocker 给 web toast。RPC 失败（超时/断连）按阻塞处理——不确定状态下宁可不休眠
      */
     async dormantSession(sessionId: string): Promise<{ ok: boolean; blockers?: string[] }> {
+        // 幂等：会话已休眠（web 点击与 CLI 退出竞态窗口）直接成功，不问 gate 也
+        // 不报「RPC handler not registered」这类与语义无关的错
+        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
+        if (!session || !session.active) return { ok: true }
         let check: { ok: boolean; blockers: string[] }
         try {
             check = await this.rpcGateway.dormancyCheck(sessionId)
@@ -734,9 +738,16 @@ export class SyncEngine {
         if (!session || session.active) return
         if (this.wakeInFlight.has(sessionId)) return
         this.wakeInFlight.add(sessionId)
-        void this.resumeSession(sessionId, session.namespace).finally(() => {
-            this.wakeInFlight.delete(sessionId)
-        })
+        void this.resumeSession(sessionId, session.namespace)
+            // resumeSession 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result；
+            // 唤醒是 fire-and-forget，异常必须就地消化——unhandled rejection 在 Bun 下
+            // 默认终止进程（= 整个 hub 下线），且对休眠会话发消息即可触发
+            .catch((error) => {
+                hubLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)
+            })
+            .finally(() => {
+                this.wakeInFlight.delete(sessionId)
+            })
     }
 
     async resumeSession(sessionId: string, namespace: string): Promise<ResumeSessionResult> {

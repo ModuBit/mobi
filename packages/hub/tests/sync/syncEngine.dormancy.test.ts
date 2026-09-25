@@ -165,6 +165,52 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         }
     })
 
+    test('spawn RPC throw（机器掉线/ack 超时）→ 异常就地消化，不构成 unhandled rejection', async () => {
+        const store = new Store(':memory:')
+        const engineRef: { engine?: SyncEngine } = {}
+        const throwingSocket = {
+            timeout() { return this },
+            async emitWithAck() {
+                throw new Error('rpc timeout')
+            },
+        }
+        const io = {
+            of() { return { sockets: new Map([['sock-1', throwingSocket]]) } },
+        } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod() { return 'sock-1' },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const engine = new SyncEngine(store, io, registry, sseManager)
+        engineRef.engine = engine
+        try {
+            engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
+            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            const session = engine.getOrCreateSession(
+                'wake-throw', { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' }, null, 'default',
+            )
+            // fire-and-forget 内部必须自吞异常：Bun 下 unhandled rejection 默认终止进程
+            engine.wakeSession(session.id)
+            await new Promise((resolve) => setTimeout(resolve, 50))
+            expect(engine.getSession(session.id)!.active).toBe(false)
+        } finally {
+            engine.stop()
+            store.close()
+        }
+    })
+
+    test('已休眠会话 dormantSession → 幂等 ok（web 点击与 CLI 退出的竞态窗口）', async () => {
+        const h = makeWakeEngine()
+        try {
+            const session = seedDormantSession(h)
+            const result = await h.engine.dormantSession(session.id)
+            expect(result).toEqual({ ok: true })
+            expect(h.spawnCalls()).toEqual([])
+        } finally {
+            h.cleanup()
+        }
+    })
+
     test('无机器在线 → 唤醒静默失败，入队消息保留在 queued', async () => {
         const h = makeWakeEngine()
         try {
