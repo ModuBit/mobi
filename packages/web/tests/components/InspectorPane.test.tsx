@@ -123,16 +123,13 @@ describe('InspectorPane', () => {
         expect(document.querySelector('.activate-cover-mask')).toBeNull()
     })
 
-    it('离线 + 有 tab：保留 tab 内容作毛玻璃背景，叠加恢复层', async () => {
+    it('休眠 + 终端 tab：不叠恢复层（TerminalView 自带重连遮罩 + session_waking 自动唤醒）', async () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
-        useWorkspaceStore.getState().openTerminalTab('s1') // 关闭前已开 terminal tab
+        useWorkspaceStore.getState().openTerminalTab('s1')
         renderWithClient(<InspectorPane sessionId="s1" active={false} />)
-        // tab 内容（mock TerminalView）仍渲染 —— 作为毛玻璃背景，模糊可见关闭前的内容
-        // TerminalView 已懒加载（React.lazy），断言需异步等待 chunk resolve
         expect(await screen.findByTestId('mock-terminal-view')).toBeInTheDocument()
-        // 恢复层（activate-cover-mask 毛玻璃）覆盖其上
-        expect(screen.getByRole('button', { name: 'composer.activate' })).toBeInTheDocument()
-        expect(document.querySelector('.activate-cover-mask')).toBeInTheDocument()
+        // ActivateCover 已从 inspector 移除——恢复引导由 TerminalView 的重连遮罩承担
+        expect(document.querySelector('.activate-cover-mask')).toBeNull()
     })
 
     it('关闭 terminal tab：清理缓存终端实例（发 terminal:close 杀 PTY + 断 socket）', () => {

@@ -28,13 +28,11 @@ import { getEditorApi } from '@/components/files/EditorRegistry'
 // TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，
 // 不进会话页首载关键路径（终端为低频功能）。default export，React.lazy 直接可用
 const TerminalView = lazy(() => import('@/components/terminal/TerminalView'))
-import { ActivateCover } from '@/components/ui/ActivateCover'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
 import { InspectorEmptyState } from './InspectorEmptyState'
 import { TerminalTabLabel } from './TerminalTabLabel'
 import { INSPECTOR_ACTIONS, type InspectorActionContext } from './inspectorActions'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import {
     useWorkspaceStore,
     type InspectorTabEntry,
@@ -138,7 +136,6 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
     const { t } = useTranslation()
     const { modal, message } = App.useApp()
     const isMobile = useIsMobile()
-    const { resumeSession, isResumePending } = useSessionActions(sessionId)
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
     const tabs = useWorkspaceStore((s) => s.getSession(sessionId).tabs)
     const activeTabId = useWorkspaceStore((s) => s.getSession(sessionId).activeTabId)
@@ -306,10 +303,6 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
     // 空态：居中 3 按钮。休眠也显示——openFile/桌面 machine 化照常可用，终端创建后
     // hub 自动唤醒 + session_waking 重试兜底（dormancy：首动作自然变慢，无独立门控）
     const showEmpty = expanded && !hasTabs
-    // 当前 tab 是否依赖会话进程：终端是进程内资源，休眠下不可用；文件/文件树/桌面
-    // 的执行层已 machine 化（ADR 0006），休眠照常可用（dormancy 用户故事 2）
-    const activeTabMode = tabs.find((tab) => tab.id === activeTabId)?.mode
-    const currentTabNeedsProcess = activeTabMode === 'terminal'
 
     return (
         <Layout style={{ height: '100%', position: 'relative', paddingBottom: 'max(0px, env(safe-area-inset-bottom))' }}>
@@ -359,13 +352,9 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
             {(showEmpty || !active) && (
                 <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>{rightChrome}</div>
             )}
-            {/* 休眠/离线毛玻璃覆盖：只盖依赖会话进程的终端 tab——文件/文件树/桌面
-                machine 化后休眠照常可用，不该被恢复引导挡住（dormancy 用户故事 2）。
-                终端 tab 上「恢复会话」= 手动唤醒兜底（自动唤醒已由 terminal:create
-                触发 + session_waking 重试承担） */}
-            {!active && currentTabNeedsProcess && (
-                <ActivateCover className="activate-cover-mask" loading={isResumePending} onActivate={() => resumeSession()} />
-            )}
+            {/* 终端 tab 休眠/离线时不叠 ActivateCover：TerminalView 自带重连遮罩
+                （create 被拒 → session_waking 提示 + 自动重试 + 手动「重连」按钮，
+                重发 create 即触发 hub 唤醒），再盖一层恢复引导是重复门控 */}
         </Layout>
     )
 }
