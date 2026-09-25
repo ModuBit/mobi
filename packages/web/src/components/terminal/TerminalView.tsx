@@ -39,9 +39,9 @@ interface TerminalViewProps {
     terminalId: string
 }
 
-/** 断开态：需要展示重连遮罩的连接状态 */
+/** 断开态：需要展示重连遮罩的连接状态（inactive = 会话休眠的有意断开，同样遮罩承载） */
 function isDisconnected(status: TerminalStatus): boolean {
-    return status === 'reconnecting' || status === 'error'
+    return status === 'reconnecting' || status === 'error' || status === 'inactive'
 }
 
 export default function TerminalView({ sessionId, terminalId }: TerminalViewProps) {
@@ -73,22 +73,12 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         return instance.subscribe(setStatus)
     }, [instance])
 
-    // 重连 pending：点击「重连」后按钮转圈，直到状态离开点击时的值（如 ready 翻转 connected）
-    // 才复位。唤醒场景 create 被拒（session_waking）会周期重试且同值不触发订阅回调——
-    // pending 恰好覆盖整个唤醒窗口，失败重试期间不会闪回可点状态。
-    const [reconnectPending, setReconnectPending] = useState(false)
-    const statusAtReconnect = useRef<TerminalStatus | null>(null)
-    useEffect(() => {
-        if (statusAtReconnect.current !== null && status !== statusAtReconnect.current) {
-            statusAtReconnect.current = null
-            setReconnectPending(false)
-        }
-    }, [status])
+    // 重连按钮 loading 直接绑 reconnecting 态：唤醒重试（session_waking 显式翻
+    // reconnecting）与 socket.io 自动重连期间转圈；connected/error/inactive 终态
+    // 自动停转、按钮恢复可点（重试耗尽状态机会落回 error，不会永久转圈）
+    const reconnecting = status === 'reconnecting'
     const handleReconnect = () => {
-        if (!instance || reconnectPending) return
-        statusAtReconnect.current = instance.status
-        setReconnectPending(true)
-        instance.reconnect()
+        instance?.reconnect()
     }
 
     // 欢迎横幅：metadata 就绪后写一次（showBanner 内部 once；cwd 未就绪跳过，等就绪再写）
@@ -190,7 +180,7 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
                         <Button
                             type="primary"
                             icon={<ReloadOutlined />}
-                            loading={reconnectPending}
+                            loading={reconnecting}
                             onClick={handleReconnect}
                         >
                             {t('terminal.reconnect')}

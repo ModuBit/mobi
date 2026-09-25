@@ -245,12 +245,12 @@
                 "approval": "Awaiting confirmation"
             }
         },
-        "contextReset": "Context was reset",
-        "contextCompacted": "Context compacted",
-        "contextMicrocompacted": "Context microcompacted",
-        "compactSummary": "Conversation compressed",
-        "compacting": "Compressing conversation...",
-        "clearing": "Clearing context...",
+        "contextReset": "Conversation reset",
+        "contextCompacted": "Conversation optimized",
+        "contextMicrocompacted": "Conversation trimmed",
+        "compactSummary": "Conversation optimized",
+        "compacting": "Optimizing conversation...",
+        "clearing": "Clearing conversation...",
         "apiError": "API Error",
         "apiRateLimit": "API Rate Limited",
         "retryDelay": "Retrying in {{seconds}}s",
@@ -506,7 +506,8 @@
             "connecting": "Connecting",
             "connected": "Connected",
             "reconnecting": "Reconnecting",
-            "error": "Disconnected"
+            "error": "Disconnected",
+            "inactive": "Session dormant"
         },
         "virtualKeys": {
             "aria": "Terminal virtual keys",

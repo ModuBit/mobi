@@ -154,6 +154,86 @@ describe('连接状态', () => {
     })
 })
 
+describe('有意断开（inactive）与唤醒重试状态机', () => {
+    beforeEach(() => {
+        vi.stubGlobal('__MOBI_HUB_URL__', 'http://localhost:2222')
+        ioMock.mockClear()
+        mockSocket._handlers.clear()
+        mockSocket.emit.mockClear()
+        mockSocket.on.mockClear()
+        mockSocket.connected = false
+    })
+
+    it('setActive(false) → status=inactive；随后的 disconnect 事件不翻 reconnecting', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('connect')
+        expect(inst.status).toBe('connected')
+        inst.setActive(false)
+        expect(inst.status).toBe('inactive')
+        expect(mockSocket.disconnect).toHaveBeenCalled()
+        // 主动 disconnect 触发的 socket 'disconnect' 事件不得误报「重连中」
+        fire('disconnect', 'io client disconnect')
+        expect(inst.status).toBe('inactive')
+    })
+
+    it('setActive(true) 清除有意断开标记，意外 disconnect 恢复 reconnecting 语义', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        inst.setActive(false)
+        expect(inst.status).toBe('inactive')
+        inst.setActive(true)
+        expect(mockSocket.connect).toHaveBeenCalled()
+        fire('disconnect', 'transport')
+        expect(inst.status).toBe('reconnecting')
+    })
+
+    it('terminal:error(code=session_waking) → status=reconnecting（唤醒重试中非终态错误）', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('terminal:error', { terminalId: 't1', message: 'Session is dormant — waking up…', code: 'session_waking' })
+        expect(inst.status).toBe('reconnecting')
+    })
+
+    it('唤醒重试耗尽（30 次）后再次被拒 → status=error（终态，停转可手点）', () => {
+        vi.useFakeTimers()
+        try {
+            const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+            // 每轮：被拒排程重试 → 推进 1.5s 让 timer 触发、单飞守卫复位（socket 未连不 emit）
+            for (let i = 0; i < 30; i++) {
+                fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+                expect(inst.status).toBe('reconnecting')
+                vi.advanceTimersByTime(1500)
+            }
+            // 重试配额用尽，第 31 次被拒 → 终态 error
+            fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+            expect(inst.status).toBe('error')
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('唤醒成功（terminal:ready）→ status=connected，重试计数复位', () => {
+        vi.useFakeTimers()
+        try {
+            const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+            fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+            expect(inst.status).toBe('reconnecting')
+            // 先推进让挂着的重试 timer 触发（单飞守卫复位），再 ready：确保后续循环每轮独立计数
+            vi.advanceTimersByTime(1500)
+            fire('terminal:ready', { sessionId: 's1', terminalId: 't1' })
+            expect(inst.status).toBe('connected')
+            // 计数已复位：再次休眠唤醒重新计满 30 次才耗尽
+            for (let i = 0; i < 30; i++) {
+                fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+                expect(inst.status).toBe('reconnecting')
+                vi.advanceTimersByTime(1500)
+            }
+            fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+            expect(inst.status).toBe('error')
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+})
+
 describe('reconnect 不 clear', () => {
     beforeEach(() => {
         vi.stubGlobal('__MOBI_HUB_URL__', 'http://localhost:2222')

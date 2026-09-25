@@ -236,12 +236,12 @@
                 "approval": "等待确认"
             }
         },
-        "contextReset": "上下文已重置",
-        "contextCompacted": "上下文已压缩",
-        "contextMicrocompacted": "上下文已微压缩",
-        "compactSummary": "对话已压缩",
-        "compacting": "正在压缩对话...",
-        "clearing": "正在清空上下文...",
+        "contextReset": "对话已重置",
+        "contextCompacted": "对话已优化",
+        "contextMicrocompacted": "对话已精简",
+        "compactSummary": "对话已优化",
+        "compacting": "正在优化对话...",
+        "clearing": "正在清空对话...",
         "apiError": "API 错误",
         "apiRateLimit": "API 限流",
         "retryDelay": "{{seconds}} 秒后重试",
@@ -497,7 +497,8 @@
             "connecting": "连接中",
             "connected": "已连接",
             "reconnecting": "重连中",
-            "error": "已断开"
+            "error": "已断开",
+            "inactive": "会话休眠中"
         },
         "virtualKeys": {
             "aria": "终端虚拟按键",

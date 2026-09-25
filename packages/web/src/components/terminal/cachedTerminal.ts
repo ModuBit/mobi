@@ -19,8 +19,8 @@ import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 
-/** 终端连接状态机 */
-export type TerminalStatus = 'connecting' | 'connected' | 'reconnecting' | 'error'
+/** 终端连接状态机（inactive = 会话休眠/离线的有意断开，区别于意外的 reconnecting） */
+export type TerminalStatus = 'connecting' | 'connected' | 'reconnecting' | 'error' | 'inactive'
 
 /** 终端主题模式（跟随 web 主题） */
 export type TerminalThemeMode = 'dark' | 'light'
@@ -151,8 +151,11 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
 
     let socket: Socket | null = null
     let isOpen = false
+    // 有意断开标记：休眠/离线走 setActive(false) 主动 disconnect，不等于意外掉线——
+    // disconnect 事件据此不再置 reconnecting（否则休眠终端会谎报「重连中」）
+    let intentionalClose = false
 
-    // 连接状态机：connecting(初始) → connected | reconnecting | error
+    // 连接状态机：connecting(初始) → connected | reconnecting | error | inactive
     let status: TerminalStatus = 'connecting'
     const listeners = new Set<(s: TerminalStatus) => void>()
     const setStatus = (next: TerminalStatus) => {
@@ -216,8 +219,11 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
                 setStatus('connected')
             }
         })
-        // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）
-        socket.on('disconnect', () => setStatus('reconnecting'))
+        // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）。
+        // 有意断开（setActive(false) 已置 inactive）不覆盖
+        socket.on('disconnect', () => {
+            if (!intentionalClose) setStatus('reconnecting')
+        })
         socket.on('reconnect_attempt', () => setStatus('reconnecting'))
         socket.on('connect_error', () => setStatus('error'))
         // terminal:error：hub 内部 emit（emitTerminalError/onIdle/cleanup）普遍只带
@@ -225,7 +231,9 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
         // socket，socketId 天然隔离事件，故只按 terminalId 过滤，sessionId 标可选如实反映 hub 违约
         socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string; code?: 'session_waking' }) => {
             if (d.terminalId === terminalId) {
-                setStatus('error')
+                // 唤醒重试中不是终态错误：显式 reconnecting 态（UI 转圈），耗尽后由
+                // scheduleWakeRetry 翻 error；其余 create 被拒/CLI 断开才是真 error
+                setStatus(d.code === 'session_waking' ? 'reconnecting' : 'error')
                 isOpen = false // 复位：create 被拒/CLI 断开时不再发 terminal:write，避免击键静默丢弃
                 terminal.write(`\r\n\x1b[31m[${d.message}]\x1b[0m\r\n`)
                 // 休眠会话唤醒中（dormancy）：hub 已触发后台拉起，定时重发 create 直至进程上线
@@ -239,13 +247,17 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
     wireSocket()
 
     // 唤醒重试：create 被拒（session_waking）后周期重发，进程上线即成功（terminal:ready 翻转状态）；
-    // 有界重试（30 次 ≈ 45s）防机器离线时无限循环，超时后停在 error 态由用户手动重连
+    // 有界重试（30 次 ≈ 45s）防机器离线时无限循环，耗尽后翻 error 由用户手动重连
     let wakeRetryCount = 0
     let wakeRetryTimer: ReturnType<typeof setTimeout> | null = null
     const WAKE_RETRY_LIMIT = 30
     const WAKE_RETRY_INTERVAL_MS = 1500
     const scheduleWakeRetry = () => {
-        if (wakeRetryCount >= WAKE_RETRY_LIMIT) return
+        if (wakeRetryCount >= WAKE_RETRY_LIMIT) {
+            // 重试用尽：把「唤醒中」的 reconnecting 态落回真错误（否则 loading 永转）
+            setStatus('error')
+            return
+        }
         if (wakeRetryTimer) return
         wakeRetryCount += 1
         wakeRetryTimer = setTimeout(() => {
@@ -301,9 +313,13 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
     // 控制 socket 连接：离线 session 断开（不 emit create，避免被 hub 以 inactive 拒绝），在线连
     const setActive = (active: boolean) => {
         if (!socket) return
-        if (active) socket.connect()
-        else {
+        if (active) {
+            intentionalClose = false
+            socket.connect()
+        } else {
+            intentionalClose = true
             isOpen = false
+            setStatus('inactive')
             socket.disconnect()
         }
     }
