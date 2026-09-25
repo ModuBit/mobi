@@ -40,7 +40,7 @@ const d = (n: number) => `${QUOTE_DIRECTIVE}{index="${n}"}`
 function renderMarker(index: number, ctxQuotes?: readonly UserQuoteBlock[], onLocate?: (id: string) => void) {
     return render(
         <QuoteAnnotationsProvider quotes={ctxQuotes} onLocate={onLocate ?? (() => {})}>
-            <QuoteDirectiveMarker data-index={String(index)}>{d(index)}</QuoteDirectiveMarker>
+            <QuoteDirectiveMarker index={String(index)}>{d(index)}</QuoteDirectiveMarker>
         </QuoteAnnotationsProvider>,
     )
 }
@@ -62,7 +62,7 @@ describe('QuoteDirectiveMarker', () => {
         expect(screen.getByText(d(9))).toBeInTheDocument()
 
         const { container } = render(
-            <QuoteDirectiveMarker data-index="1">{d(1)}</QuoteDirectiveMarker>,
+            <QuoteDirectiveMarker index="1">{d(1)}</QuoteDirectiveMarker>,
         )
         expect(container.querySelector('[data-testid="quote-annotation-1"]')).toBeNull()
     })

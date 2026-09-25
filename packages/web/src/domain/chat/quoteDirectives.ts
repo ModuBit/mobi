@@ -15,18 +15,39 @@
  */
 
 /**
- * 回应批注 directive 解析（spec .scratch/response-annotations 票 03/04）
+ * 回应批注 directive 语义层（spec .scratch/response-annotations 票 03/04）
  *
  * 模型在回复正文输出的内联 directive `:mobi-quote{index="N"}`（字面量单源 shared
- * QUOTE_DIRECTIVE，CLI 协议文案共用）由本模块与 markdown 扩展（quoteDirectivePlugin）
- * 消费：解析命中位置供渲染插桩、剔除重复出现（handoff 记录的失败模式：同一 directive
- * 被模型输出多次）。全部纯函数、单 pass 正则；流式半截 directive（未闭合）不命中——
- * x-markdown 的不完整语法占位负责流式期间的视觉过渡，闭合后自然成钮。
+ * QUOTE_DIRECTIVE，CLI 协议文案共用）。语法/扫描/去重管线单源 domain/chat/directives，
+ * 本模块注册 quote 的参数语义与去重键，并导出渲染插桩用的解析、批注↔回复的 turn 配对
+ * （handoff 记录的失败模式：同一 directive 被模型输出多次——由注册的去重键处理）。
+ * 全部纯函数、单 pass 正则。
  */
 
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
 import type { UserQuoteBlock } from '@mobi/shared'
+import { DIRECTIVE_PREFIX, registerDirective, parseDirectiveHits } from './directives'
+import type { DirectiveDefinition } from './directives'
 import type { ChatBlock } from './types'
+
+/** quote 指令在注册表中的名字（由 shared 字面量派生，ui 路由表按此寻址） */
+export const QUOTE_DIRECTIVE_NAME = QUOTE_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
+
+/**
+ * quote 指令语义：唯一参数 index（一基正整数串）。非法（伪造/缺字段/"0"）返回 null，
+ * 消费方按原文诚实降级；index 超出引用数量的越界由渲染层兜底为纯展示。
+ * 去重键 = index：同 index 只保留首次出现。
+ */
+const QUOTE_DEFINITION: DirectiveDefinition<string> = {
+    directive: QUOTE_DIRECTIVE,
+    parse: (attrs) => {
+        const { index } = attrs
+        return index !== undefined && /^\d+$/.test(index) && Number(index) > 0 ? index : null
+    },
+    dedupeKey: (index) => index,
+}
+
+registerDirective(QUOTE_DEFINITION)
 
 /** 单个 directive 命中：一基索引 + 在原文中的 UTF-16 位置 */
 export interface QuoteDirectiveHit {
@@ -35,49 +56,17 @@ export interface QuoteDirectiveHit {
     end: number
 }
 
-/** directive 完整形态：`:mobi-quote{index="N"}`（N 为非空数字串） */
-const DIRECTIVE_RE = new RegExp(`${QUOTE_DIRECTIVE}\\{index="(\\d+)"\\}`, 'g')
-
-/**
- * directive 完整形态的正则源（非全局、无锚定）：markdown 扩展（quoteDirectivePlugin）
- * 的 tokenizer 由它派生锚定版——解析剔除与 markdown 渲染对同一 directive 的判定同源，
- * 语法变更只改这一处。
- */
-export const QUOTE_DIRECTIVE_SHAPE = `${QUOTE_DIRECTIVE}\\{index="(\\d+)"\\}`
-
-/** 解析全部命中（不去重、按出现顺序；index 超出引用数量的越界由渲染层兜底为纯展示） */
+/** 解析全部命中（不去重——剔除由通用 dedupeDirectiveText 负责；按出现顺序） */
 export function parseQuoteDirectives(text: string): QuoteDirectiveHit[] {
     const hits: QuoteDirectiveHit[] = []
-    DIRECTIVE_RE.lastIndex = 0
-    for (let m = DIRECTIVE_RE.exec(text); m; m = DIRECTIVE_RE.exec(text)) {
-        hits.push({ index: Number(m[1]), start: m.index, end: m.index + m[0].length })
-    }
-    return hits
-}
-
-/**
- * 剔除重复 directive：同 index 只保留首次出现，其余从文本移除（替换为空串）。
- * 输入变化时输出保持前缀稳定（后来的重复只会让尾部更短）——与流式渲染的
- * append-only 假设兼容，不会引发已揭示内容的重淡入。
- */
-export function dedupeQuoteDirectiveText(text: string): string {
-    if (!text.includes(QUOTE_DIRECTIVE)) return text
-    const seen = new Set<number>()
-    let out = ''
-    let cursor = 0
-    let removedAny = false
-    for (const hit of parseQuoteDirectives(text)) {
-        if (seen.has(hit.index)) {
-            out += text.slice(cursor, hit.start)
-            cursor = hit.end
-            removedAny = true
-        } else {
-            seen.add(hit.index)
+    for (const hit of parseDirectiveHits(text)) {
+        if (hit.name !== QUOTE_DIRECTIVE_NAME) continue
+        const index = QUOTE_DEFINITION.parse(hit.attrs)
+        if (index !== null) {
+            hits.push({ index: Number(index), start: hit.start, end: hit.end })
         }
     }
-    // 无重复则原样返回（避免无谓的字符串重建，历史消息每帧渲染都走这里）
-    if (!removedAny) return text
-    return out + text.slice(cursor)
+    return hits
 }
 
 /**

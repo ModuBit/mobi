@@ -15,10 +15,11 @@
  */
 
 /**
- * 回应批注 directive 的 React 侧（模式同 FootnoteComponents）：Context 携带批注数据
- * （触发本轮回复的 user 消息 quote blocks，按 index 对齐），Marker 组件渲染「引用 N」
- * 上标按钮（与用户消息侧「N 条引用」同一词汇，编号与 <quote index> 同源）——
- * hover 看引用原文与评论、点击定位跳转源消息。
+ * 内联指令的 React 侧（模式同 FootnoteComponents）：MobiDirective 按指令名路由到
+ * 注册的渲染组件（quote → QuoteDirectiveMarker）；Marker 组件渲染「引用 N」上标按钮
+ * （与用户消息侧「N 条引用」同一词汇，编号与 <quote index> 同源）——Context 携带批注
+ * 数据（触发本轮回复的 user 消息 quote blocks，按 index 对齐），hover 看引用原文与
+ * 评论、点击定位跳转源消息。
  *
  * 无批注数据可解析（伪造/越界索引、非批注场景的字面量）时按 directive 原文降级呈现。
  */
@@ -29,6 +30,8 @@ import { useTranslation } from 'react-i18next'
 import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
+import { parseDirectiveHits } from '@/domain/chat/directives'
+import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
 import { AppTooltip } from './AppTooltip'
 
 /** 批注数据 Context：quotes 按 directive index 对齐（位置 i = 注释 i+1），由 agent-text 渲染分支注入 */
@@ -54,15 +57,16 @@ function AnnotationTooltipContent({ quote }: { quote: UserQuoteBlock }) {
 }
 
 /** 「引用 N」上标标记（默认色 tag + 引用 icon）：外层 inline-block 盒高锁死 1em 且基线
- *  对齐——tag 视觉溢出不参与行高，首行与其余行基线严格一致 */
-export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>> = ({ 'data-index': dataIndex, children }) => {
+ *  对齐——tag 视觉溢出不参与行高，首行与其余行基线严格一致。参数由 MobiDirective
+ *  从指令 attrs 解析后注入（index 缺省/非法按原文降级——伪造索引/越界/用户手打字面量） */
+export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> = ({ index, children }) => {
     const { token } = theme.useToken()
     const { t } = useTranslation()
     const annotations = useContext(QuoteAnnotationsContext)
-    const index = parseInt(dataIndex ?? '0', 10)
-    const quote = annotations?.quotes[index - 1]
+    const idx = parseInt(index ?? '0', 10)
+    const quote = annotations?.quotes[idx - 1]
 
-    // 无批注数据：诚实降级为 directive 原文（renderer 塞进 children 的原始字面量）
+    // 无批注数据：诚实降级为 directive 原文（MobiDirective 塞进 children 的原始字面量）
     if (!annotations || !quote) {
         return <span style={{ fontSize: '0.85em', color: token.colorTextTertiary }}>{children}</span>
     }
@@ -70,7 +74,7 @@ export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>>
     const marker = (
         <sup
             className="quote-directive"
-            data-testid={`quote-annotation-${index}`}
+            data-testid={`quote-annotation-${idx}`}
             onClick={(e) => {
                 e.stopPropagation()
                 annotations.onLocate(quote.messageId)
@@ -100,7 +104,7 @@ export const QuoteDirectiveMarker: FC<ComponentProps<{ 'data-index'?: string }>>
                 padding: '1px 6px 1px 15px',
                 background: 'var(--ant-color-fill-quaternary)',
             }}>
-                {t('chat.annotationMarker', { count: index })}
+                {t('chat.annotationMarker', { count: idx })}
             </span>
         </sup>
     )
@@ -123,4 +127,24 @@ export function QuoteAnnotationsProvider({ quotes, onLocate, children }: {
             {children}
         </QuoteAnnotationsContext.Provider>
     )
+}
+
+/** 指令名 → 渲染组件路由表：新内联指令在此加一行（语法/去重管线单源 domain/chat/directives） */
+const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { children?: ReactNode }>> = {
+    [QUOTE_DIRECTIVE_NAME]: QuoteDirectiveMarker,
+}
+
+/**
+ * 内联指令路由（XMarkdown components 映射 `mobi-directive`）：从原文解析指令名与
+ * attrs，分发到注册的渲染组件；未注册指令按原文诚实降级，不吞模型输出。
+ */
+export const MobiDirective: FC<ComponentProps<{ 'data-raw'?: string }>> = ({ 'data-raw': dataRaw, children }) => {
+    // 原文双通道（directivePlugin renderer）：data-raw（URI 编码）权威；children 兜底
+    const raw = dataRaw !== undefined
+        ? decodeURIComponent(dataRaw)
+        : (typeof children === 'string' ? children : '')
+    const hit = parseDirectiveHits(raw)[0]
+    const Component = hit ? DIRECTIVE_COMPONENTS[hit.name] : undefined
+    if (!Component) return <span>{raw}</span>
+    return <Component {...hit.attrs}>{raw}</Component>
 }

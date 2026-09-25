@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-// quoteDirectives 行为锁定：directive 解析 / 重复剔除（spec .scratch/response-annotations 票 03）
+// quoteDirectives 行为锁定：quote 指令解析 / 批注↔回复配对（spec .scratch/response-annotations 票 03）
+// 通用指令语法与去重管线的行为锁定在 directives.test.ts
 import { describe, expect, it } from 'vitest'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import { collectQuoteAnnotationsByAgentId, dedupeQuoteDirectiveText, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
+import { collectQuoteAnnotationsByAgentId, parseQuoteDirectives } from '@/domain/chat/quoteDirectives'
 import type { UserContentBlock } from '@mobi/shared'
 import type { ChatBlock } from '@/domain/chat/types'
 
@@ -29,6 +30,12 @@ describe('parseQuoteDirectives', () => {
         expect(parseQuoteDirectives(`注释 1 与 ${QUOTE_DIRECTIVE}{idx="1"}`)).toEqual([])
         // 半截 directive（流式中）：不完整不命中
         expect(parseQuoteDirectives(`前文 ${QUOTE_DIRECTIVE}{index="`)).toEqual([])
+    })
+
+    it('伪造参数（"0"/非数字/缺字段）不命中', () => {
+        expect(parseQuoteDirectives(`${QUOTE_DIRECTIVE}{index="0"}`)).toEqual([])
+        expect(parseQuoteDirectives(`${QUOTE_DIRECTIVE}{index="abc"}`)).toEqual([])
+        expect(parseQuoteDirectives(`${QUOTE_DIRECTIVE}{foo="1"}`)).toEqual([])
     })
 
     it('单条命中：index 与位置', () => {
@@ -46,23 +53,6 @@ describe('parseQuoteDirectives', () => {
         for (const h of hits) {
             expect(text.slice(h.start, h.end)).toBe(d(h.index))
         }
-    })
-})
-
-describe('dedupeQuoteDirectiveText', () => {
-    it('无 directive 原样返回', () => {
-        const text = '普通正文 with :mobi-quote{foo}'
-        expect(dedupeQuoteDirectiveText(text)).toBe(text)
-    })
-
-    it('同 index 重复只保留首个（渲染层去重，handoff 失败模式）', () => {
-        const text = `A ${d(1)} B ${d(1)} C ${d(2)} D ${d(2)} E`
-        expect(dedupeQuoteDirectiveText(text)).toBe(`A ${d(1)} B  C ${d(2)} D  E`)
-    })
-
-    it('不同 index 互不影响', () => {
-        const text = `${d(1)}${d(2)}${d(1)}`
-        expect(dedupeQuoteDirectiveText(text)).toBe(`${d(1)}${d(2)}`)
     })
 })
 
