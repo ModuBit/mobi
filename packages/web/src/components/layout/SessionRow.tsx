@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, type MouseEvent } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { Badge, Dropdown, Input, theme as antTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import { EditOutlined, DeleteOutlined, MoonOutlined, MoreOutlined, PlayCircleOutlined } from '@ant-design/icons'
@@ -108,24 +108,26 @@ export function SessionRow({
     // 未激活会话：状态点与标题一同减淡，退到背景层
     const inactive = !session.active
 
-    const menuItems: MenuProps['items'] = [
+    // 稳定引用：本行处于重命名键击/徽标变化驱动的全列表重渲染热路径，
+    // menu/handler 每渲染重建会让 Dropdown prop 恒新
+    const menuItems: MenuProps['items'] = useMemo(() => [
         ...(extraMenuItems ?? []),
         ...(extraMenuItems?.length ? [{ type: 'divider' as const }] : []),
         session.active
             ? { key: DORMANT_KEY, icon: <MoonOutlined />, label: t('session.actions.dormant'), disabled: dormantLoading }
             : { key: RESUME_KEY, icon: <PlayCircleOutlined />, label: t('session.actions.resume') },
         { key: DELETE_KEY, icon: <DeleteOutlined />, danger: true, label: t('session.actions.delete') },
-    ]
-    const handleMenuClick: MenuProps['onClick'] = ({ key, domEvent }) => {
+    ], [extraMenuItems, session.active, dormantLoading, t])
+    const handleMenuClick: MenuProps['onClick'] = useMemo(() => ({ key, domEvent }) => {
         domEvent.stopPropagation()
         if (key === DORMANT_KEY) onDormant()
         else if (key === RESUME_KEY) onResume()
         else if (key === DELETE_KEY) onDelete()
         else onExtraMenuClick?.(key)
-    }
+    }, [onDormant, onResume, onDelete, onExtraMenuClick])
 
     return (
-        <SessionItem $active={active} $token={token} onClick={onClick}>
+        <SessionItem $active={active} $token={token} onClick={onClick} data-menu-open={menuOpen || undefined}>
             <SessionStatusDot session={session} />
             <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName $inactive={inactive}>{displayName}</SessionName>
@@ -138,10 +140,7 @@ export function SessionRow({
             )}
             {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
             <TimeLabel $token={token} className="session-time">{relativeTime}</TimeLabel>
-            <SessionActions
-                className="session-actions"
-                style={menuOpen ? { display: 'inline-flex' } : undefined}
-            >
+            <SessionActions className="session-actions">
                 <ActionButton $token={token} title={t('session.actions.rename')} onClick={(e) => { e.stopPropagation(); onRename() }}>
                     <EditOutlined style={{ fontSize: 11 }} />
                 </ActionButton>

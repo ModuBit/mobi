@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { message } from 'antd'
 import type { App } from 'antd'
 import axios from 'axios'
 import type { QueryClient } from '@tanstack/react-query'
@@ -23,6 +22,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 
 type AppModal = ReturnType<typeof App.useApp>['modal']
+type AppMessage = ReturnType<typeof App.useApp>['message']
 
 export interface DormancyActionDeps {
     api: MobiApi
@@ -30,12 +30,21 @@ export interface DormancyActionDeps {
     t: TFunction
     /** App.useApp() 的 modal 实例：gate 阻塞时承载「仍要退出」确认弹窗（受主题上下文） */
     modal: AppModal
+    /** App.useApp() 的 message 实例：反馈 toast 与 modal 同走主题上下文，不用静态方法 */
+    message: AppMessage
 }
 
+/** 从 axios 错误中提取 409 携带的逐项 blocker code（非 axios / 无字段返回空） */
 function extractBlockers(error: unknown): string[] {
     return axios.isAxiosError(error)
         ? (error.response?.data as { blockers?: string[] } | undefined)?.blockers ?? []
         : []
+}
+
+/** blocker code 列表 → 「无法休眠：…」完整文案（i18n 单源，成功路径与错误转述共用） */
+function dormancyBlockedText(blockers: string[], t: TFunction): string {
+    const reasons = blockers.map((b) => t(`session.dormancy.blocker.${b}`, b)).join('、')
+    return t('session.dormancy.blocked', { reasons })
 }
 
 /**
@@ -49,23 +58,30 @@ export async function dormantSessionWithFeedback(
     sessionId: string,
     onDone: () => void,
 ): Promise<void> {
-    const { api, queryClient, t, modal } = deps
+    const { api, queryClient, t, modal, message } = deps
     const invalidate = () => invalidateSessionViews(queryClient, [sessionId])
+    // 成功仪式两路共用（休眠 / 强制退出 archive）：成功 toast + 失效视图，失败 error toast
+    const finish = async (action: () => Promise<unknown>) => {
+        try {
+            await action()
+            void message.success(t('common.success'))
+            await invalidate()
+        } catch {
+            void message.error(t('common.error'))
+        }
+    }
     try {
-        await api.sessions.dormant(sessionId)
-        void message.success(t('common.success'))
-        await invalidate()
+        await finish(() => api.sessions.dormant(sessionId))
     } catch (error) {
         const blockers = extractBlockers(error)
         if (blockers.length === 0) {
             void message.warning(dormancyErrorText(error, t))
             return
         }
-        const reasons = blockers.map((b) => t(`session.dormancy.blocker.${b}`, b)).join('、')
         const forceExit = await new Promise<boolean>((resolve) => {
             modal.confirm({
                 title: t('session.dormancy.forceExitTitle'),
-                content: t('session.dormancy.blocked', { reasons }),
+                content: dormancyBlockedText(blockers, t),
                 okText: t('session.dormancy.forceExitOk'),
                 okButtonProps: { danger: true },
                 cancelText: t('common.cancel'),
@@ -74,13 +90,7 @@ export async function dormantSessionWithFeedback(
             })
         })
         if (!forceExit) return
-        try {
-            await api.sessions.archive(sessionId)
-            void message.success(t('common.success'))
-            await invalidate()
-        } catch {
-            void message.error(t('common.error'))
-        }
+        await finish(() => api.sessions.archive(sessionId))
     } finally {
         onDone()
     }
@@ -92,13 +102,9 @@ export async function dormantSessionWithFeedback(
  * 反馈文案单源——不各写一份映射。
  */
 export function dormancyErrorText(error: unknown, t: TFunction): string {
-    const blockers = axios.isAxiosError(error)
-        ? (error.response?.data as { blockers?: string[] } | undefined)?.blockers
-        : undefined
-    if (blockers && blockers.length > 0) {
-        // blocker code → 文案（CLI DormancyBlocker 五值；未知 code 原样兜底）
-        const reasons = blockers.map((b) => t(`session.dormancy.blocker.${b}`, b)).join('、')
-        return t('session.dormancy.blocked', { reasons })
+    const blockers = extractBlockers(error)
+    if (blockers.length > 0) {
+        return dormancyBlockedText(blockers, t)
     }
     return t('session.dormancy.failed')
 }

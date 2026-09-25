@@ -215,6 +215,11 @@ export const SessionItem = styled.div<{
     &:hover .session-actions {
         display: inline-flex;
     }
+    /* 行 dropdown 打开期间强制显示：鼠标移向 portal 菜单会离开行、触发 hover 规则
+       把按钮组藏掉，触发器卸载会导致菜单闪关（SessionRow 挂 data-menu-open） */
+    &[data-menu-open] .session-actions {
+        display: inline-flex;
+    }
     /* hover 时隐藏时间 */
     &:hover .session-time {
         display: none;

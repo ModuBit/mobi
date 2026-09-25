@@ -108,8 +108,8 @@ export function SidebarProjects() {
     const [dormantPendingId, setDormantPendingId] = useState<string | null>(null)
     const handleDormant = useCallback((session: Session) => {
         setDormantPendingId(session.id)
-        void dormantSessionWithFeedback({ api, queryClient, t, modal }, session.id, () => setDormantPendingId(null))
-    }, [api, t, queryClient, modal])
+        void dormantSessionWithFeedback({ api, queryClient, t, modal, message: messageApi }, session.id, () => setDormantPendingId(null))
+    }, [api, t, queryClient, modal, messageApi])
 
     // 恢复会话（未活跃时），成功后跳转详情页
     const handleResume = useCallback(async (session: Session) => {

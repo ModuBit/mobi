@@ -151,9 +151,6 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
 
     let socket: Socket | null = null
     let isOpen = false
-    // 有意断开标记：休眠/离线走 setActive(false) 主动 disconnect，不等于意外掉线——
-    // disconnect 事件据此不再置 reconnecting（否则休眠终端会谎报「重连中」）
-    let intentionalClose = false
 
     // 连接状态机：connecting(初始) → connected | reconnecting | error | inactive
     let status: TerminalStatus = 'connecting'
@@ -220,9 +217,10 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
             }
         })
         // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）。
-        // 有意断开（setActive(false) 已置 inactive）不覆盖
+        // 有意断开（setActive(false) 已置 inactive）不覆盖——inactive 即该语义的单一事实源，
+        // 不另设影子标记（任何重连入口都无需记得清标记）
         socket.on('disconnect', () => {
-            if (!intentionalClose) setStatus('reconnecting')
+            if (status !== 'inactive') setStatus('reconnecting')
         })
         socket.on('reconnect_attempt', () => setStatus('reconnecting'))
         socket.on('connect_error', () => setStatus('error'))
@@ -313,11 +311,8 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
     // 控制 socket 连接：离线 session 断开（不 emit create，避免被 hub 以 inactive 拒绝），在线连
     const setActive = (active: boolean) => {
         if (!socket) return
-        if (active) {
-            intentionalClose = false
-            socket.connect()
-        } else {
-            intentionalClose = true
+        if (active) socket.connect()
+        else {
             isOpen = false
             setStatus('inactive')
             socket.disconnect()

@@ -176,12 +176,15 @@ describe('有意断开（inactive）与唤醒重试状态机', () => {
         expect(inst.status).toBe('inactive')
     })
 
-    it('setActive(true) 清除有意断开标记，意外 disconnect 恢复 reconnecting 语义', () => {
+    it('setActive(true) 恢复连接后，意外 disconnect 回到 reconnecting 语义', () => {
         const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
         inst.setActive(false)
         expect(inst.status).toBe('inactive')
         inst.setActive(true)
         expect(mockSocket.connect).toHaveBeenCalled()
+        // 连接恢复（connect 翻转状态机）后，意外断线不再被 inactive 态吞掉
+        fire('connect')
+        expect(inst.status).toBe('connected')
         fire('disconnect', 'transport')
         expect(inst.status).toBe('reconnecting')
     })

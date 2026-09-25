@@ -197,11 +197,11 @@ export function MobileProjectList() {
         if (!actionSessionId) return
         setActionLoading('dormant')
         const target = actionSessionId
-        await dormantSessionWithFeedback({ api, queryClient, t, modal }, target, () => {
+        await dormantSessionWithFeedback({ api, queryClient, t, modal, message: messageApi }, target, () => {
             setActionLoading(null)
             setActionSessionId(null)
         })
-    }, [actionSessionId, api, queryClient, t, modal])
+    }, [actionSessionId, api, queryClient, t, modal, messageApi])
 
     // 恢复
     const handleResume = useCallback(async () => {
