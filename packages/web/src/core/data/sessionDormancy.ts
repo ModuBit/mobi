@@ -60,18 +60,15 @@ export async function dormantSessionWithFeedback(
 ): Promise<void> {
     const { api, queryClient, t, modal, message } = deps
     const invalidate = () => invalidateSessionViews(queryClient, [sessionId])
-    // 成功仪式两路共用（休眠 / 强制退出 archive）：成功 toast + 失效视图，失败 error toast
-    const finish = async (action: () => Promise<unknown>) => {
-        try {
-            await action()
-            void message.success(t('common.success'))
-            await invalidate()
-        } catch {
-            void message.error(t('common.error'))
-        }
+    // 成功仪式两路共用（休眠 / 强制退出 archive）。⚠️ 只包成功后的反馈——不能包住
+    // API 调用本身，否则 409 blockers 被这里吞掉，gate 阻塞的强制退出弹窗成死代码
+    const reportSuccess = async () => {
+        void message.success(t('common.success'))
+        await invalidate()
     }
     try {
-        await finish(() => api.sessions.dormant(sessionId))
+        await api.sessions.dormant(sessionId)
+        await reportSuccess()
     } catch (error) {
         const blockers = extractBlockers(error)
         if (blockers.length === 0) {
@@ -90,7 +87,12 @@ export async function dormantSessionWithFeedback(
             })
         })
         if (!forceExit) return
-        await finish(() => api.sessions.archive(sessionId))
+        try {
+            await api.sessions.archive(sessionId)
+            await reportSuccess()
+        } catch {
+            void message.error(t('common.error'))
+        }
     } finally {
         onDone()
     }

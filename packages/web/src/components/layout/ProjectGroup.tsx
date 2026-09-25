@@ -89,9 +89,15 @@ export function ProjectGroup({
         },
     }
 
-    // dropdown 附加项：移至最近 / 换项目
+    // dropdown 附加项：移至最近 / 换项目（pending 时整组禁用——两项是互斥的分组变更，
+    // 只禁其一仍可并发触发另一项）
     const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
-        { key: 'recent', icon: <ImportOutlined />, label: t('project.toRecent') },
+        {
+            key: 'recent',
+            icon: <ImportOutlined />,
+            label: t('project.toRecent'),
+            disabled: session.id === assignPendingSessionId,
+        },
         {
             key: 'change',
             icon: <SwapOutlined />,

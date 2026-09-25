@@ -213,6 +213,30 @@ describe('有意断开（inactive）与唤醒重试状态机', () => {
         }
     })
 
+    it('唤醒重试耗尽后 reconnect() 复位计数——手动重连可再走完整唤醒重试', () => {
+        vi.useFakeTimers()
+        try {
+            const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+            // 耗尽 30 次配额 → error
+            for (let i = 0; i < 30; i++) {
+                fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+                vi.advanceTimersByTime(1500)
+            }
+            fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+            expect(inst.status).toBe('error')
+            // 手动重连：复位计数，重新被拒进入唤醒重试（reconnecting），不会立刻再次耗尽
+            mockSocket.connected = true
+            inst.reconnect()
+            fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+            expect(inst.status).toBe('reconnecting')
+            vi.advanceTimersByTime(1500)
+            fire('terminal:error', { terminalId: 't1', message: 'waking', code: 'session_waking' })
+            expect(inst.status).toBe('reconnecting')
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
     it('唤醒成功（terminal:ready）→ status=connected，重试计数复位', () => {
         vi.useFakeTimers()
         try {

@@ -156,8 +156,18 @@ describe('SessionRow fork 行', () => {
         pinLoading: false,
     }
 
-    it('待激活行：显示落库标题「〈parent 标题〉 · 分叉」+ 待激活徽标，删除按钮可用，不发 parent 查询', async () => {
-        const onDelete = vi.fn()
+    it('重命名态 ↔ 正常态切换不因 hooks 数量变化崩溃（hooks 必须全部位于早退之前）', () => {
+        const { rerender } = renderRow(
+            <SessionRow {...baseProps} isRenaming session={makeSession()} onDelete={vi.fn()} />,
+        )
+        // 进入重命名输入框
+        expect(screen.getByPlaceholderText('session.actions.rename')).toBeInTheDocument()
+        // 切回正常态：若 hooks 在条件早退之后，分支切换会改变 hooks 数量、React invariant 崩溃
+        rerender(<SessionRow {...baseProps} session={makeSession()} onDelete={vi.fn()} />)
+        expect(screen.getByText('父会话 · 分叉')).toBeInTheDocument()
+    })
+
+    it('待激活行：显示落库标题「〈parent 标题〉 · 分叉」+ 待激活徽标，删除按钮可用，不发 parent 查询', async () => {        const onDelete = vi.fn()
         renderRow(
             <SessionRow {...baseProps} session={makeSession()} onDelete={onDelete} />,
         )

@@ -268,6 +268,9 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
     }
 
     const reconnect = () => {
+        // 手动重连是新的唤醒机会：复位耗尽的上次计数，否则重试配额用尽后手动兜底
+        // 只发一次 create 就被 scheduleWakeRetry 的上限检查翻回 error
+        wakeRetryCount = 0
         // 不 clear：保留历史；写分隔横幅
         terminal.write('\r\n\x1b[90m--- reconnected ---\x1b[0m\r\n')
         if (!socket) return

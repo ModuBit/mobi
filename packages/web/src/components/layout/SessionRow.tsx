@@ -83,6 +83,24 @@ export function SessionRow({
     // dropdown 打开时鼠标移向 portal 菜单会离开行 → hover CSS 隐藏按钮组 → 触发器卸载导致菜单关闭。
     // 受控 open，打开期间强制显示按钮组
     const [menuOpen, setMenuOpen] = useState(false)
+    // 稳定引用：本行处于重命名键击/徽标变化驱动的全列表重渲染热路径，
+    // menu/handler 每渲染重建会让 Dropdown prop 恒新。
+    // ⚠️ 必须位于 isRenaming 早退之前——条件后的 hooks 会因分支切换改变数量而崩溃
+    const menuItems: MenuProps['items'] = useMemo(() => [
+        ...(extraMenuItems ?? []),
+        ...(extraMenuItems?.length ? [{ type: 'divider' as const }] : []),
+        session.active
+            ? { key: DORMANT_KEY, icon: <MoonOutlined />, label: t('session.actions.dormant'), disabled: dormantLoading }
+            : { key: RESUME_KEY, icon: <PlayCircleOutlined />, label: t('session.actions.resume') },
+        { key: DELETE_KEY, icon: <DeleteOutlined />, danger: true, label: t('session.actions.delete') },
+    ], [extraMenuItems, session.active, dormantLoading, t])
+    const handleMenuClick: MenuProps['onClick'] = useMemo(() => ({ key, domEvent }) => {
+        domEvent.stopPropagation()
+        if (key === DORMANT_KEY) onDormant()
+        else if (key === RESUME_KEY) onResume()
+        else if (key === DELETE_KEY) onDelete()
+        else onExtraMenuClick?.(key)
+    }, [onDormant, onResume, onDelete, onExtraMenuClick])
 
     if (isRenaming) {
         return (
@@ -107,24 +125,6 @@ export function SessionRow({
     const relativeTime = formatRelativeTime(session.updatedAt, t)
     // 未激活会话：状态点与标题一同减淡，退到背景层
     const inactive = !session.active
-
-    // 稳定引用：本行处于重命名键击/徽标变化驱动的全列表重渲染热路径，
-    // menu/handler 每渲染重建会让 Dropdown prop 恒新
-    const menuItems: MenuProps['items'] = useMemo(() => [
-        ...(extraMenuItems ?? []),
-        ...(extraMenuItems?.length ? [{ type: 'divider' as const }] : []),
-        session.active
-            ? { key: DORMANT_KEY, icon: <MoonOutlined />, label: t('session.actions.dormant'), disabled: dormantLoading }
-            : { key: RESUME_KEY, icon: <PlayCircleOutlined />, label: t('session.actions.resume') },
-        { key: DELETE_KEY, icon: <DeleteOutlined />, danger: true, label: t('session.actions.delete') },
-    ], [extraMenuItems, session.active, dormantLoading, t])
-    const handleMenuClick: MenuProps['onClick'] = useMemo(() => ({ key, domEvent }) => {
-        domEvent.stopPropagation()
-        if (key === DORMANT_KEY) onDormant()
-        else if (key === RESUME_KEY) onResume()
-        else if (key === DELETE_KEY) onDelete()
-        else onExtraMenuClick?.(key)
-    }, [onDormant, onResume, onDelete, onExtraMenuClick])
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick} data-menu-open={menuOpen || undefined}>
