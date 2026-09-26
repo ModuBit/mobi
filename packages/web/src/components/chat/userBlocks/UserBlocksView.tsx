@@ -242,9 +242,11 @@ export function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
                 overflow: 'hidden',
             } }}
             imageProps={{
+                // preview.cover=false 去 hover 遮罩（点击开预览在根 div 上，不受影响）；其余见下
                 // 受控预览（点击缩略图放大看原图）；草图在预览工具栏追加编辑入口
                 //（保留原图缩放/旋转等默认操作，originalNode 原样渲染）
                 preview: !failed && {
+                    cover: false,
                     open: previewOpen,
                     onOpenChange: setPreviewOpen,
                     ...(sketchEditable

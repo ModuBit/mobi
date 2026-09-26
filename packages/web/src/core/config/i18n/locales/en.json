@@ -113,8 +113,8 @@
         "loadFailed": "Failed to load session",
         "notFound": "Session not found or has been deleted",
         "inspector": {
-            "expand": "Open inspector",
-            "collapse": "Close inspector",
+            "expand": "Open file panel",
+            "collapse": "Close file panel",
             "maximize": "Maximize",
             "restore": "Restore",
             "openFile": "Open File",
@@ -445,8 +445,11 @@
             "resumeFailed": "Failed to resume session, please try again"
         },
         "artifact": {
-            "open": "Open in inspector",
+            "open": "View file",
+            "openWith": "Open with",
             "browser": "Open in browser",
+            "copyLink": "Copy link",
+            "widthFit": "Fluid",
             "reason.missing": "File not found or unreadable",
             "reason.tooLarge": "Exceeds the inline size limit ({{limit}})",
             "reason.unsupported": "This type can't be inlined",

@@ -113,8 +113,8 @@
         "loadFailed": "加载会话失败",
         "notFound": "会话不存在或已被删除",
         "inspector": {
-            "expand": "打开检视面板",
-            "collapse": "收起检视面板",
+            "expand": "打开文件面板",
+            "collapse": "收起文件面板",
             "maximize": "最大化",
             "restore": "恢复",
             "openFile": "打开文件",
@@ -436,8 +436,11 @@
             "resumeFailed": "恢复会话失败，请重试"
         },
         "artifact": {
-            "open": "在检查器打开",
+            "open": "查看文件",
+            "openWith": "打开方式",
             "browser": "浏览器打开",
+            "copyLink": "复制链接",
+            "widthFit": "自适应",
             "reason.missing": "文件不存在或不可读",
             "reason.tooLarge": "超过 inline 大小上限（{{limit}}）",
             "reason.unsupported": "该类型不支持 inline 展示",

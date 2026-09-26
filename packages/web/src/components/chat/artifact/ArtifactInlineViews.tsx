@@ -24,8 +24,8 @@
  * 每个视图都自带「inspector 打开」逃生口——inline 是快看，不是替代品。
  */
 
-import { useMemo } from 'react'
-import { Image, theme } from 'antd'
+import { useMemo, useState } from 'react'
+import { Image, Segmented, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileSearch } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
@@ -63,7 +63,7 @@ function InspectorEntry({ path }: { path: string }) {
     )
 }
 
-/** 图片 inline：缩略图 + antd lightbox（点击看大图），宽度收敛 480 */
+/** 图片 inline：缩略图 + antd lightbox（点击看大图），宽度收敛 480；cover=false 去 hover 遮罩（antd v6 mask 配置不再控制 cover 层） */
 export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
     const src = buildReadFileUrl(sessionId, path, { etag })
     return (
@@ -73,6 +73,8 @@ export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
                 alt={path.split('/').pop() ?? path}
                 style={{ maxWidth: '100%', borderRadius: 8 }}
                 referrerPolicy="no-referrer"
+                // cover=false 去 hover 遮罩（v6 把 cover 层挂在 preview 配置内；点击预览不受影响）
+                preview={{ cover: false }}
             />
             <div><InspectorEntry path={path} /></div>
         </div>
@@ -112,9 +114,44 @@ export function MediaInline({ sessionId, path, etag, kind }: ArtifactInlineProps
 }
 
 /**
- * HTML inline：serve-file 沙箱 iframe（ADR 0007），宽度三档（wide 1024 / 默认 736 /
- * 移动端 100%——maxWidth 兜底）。iframe 高度定档（HTML 产物无内在高度语义，与
- * 「宿主不感知产物布局」的产品边界一致）。
+ * 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
+ * 产物页面多未设 color-scheme，原生浅色滚动条压在深色页面上很突兀；iframe 与宿主
+ * 同源（serve-file + allow-same-origin，ADR 0007），load 后注入这段样式即可覆盖。
+ */
+export const ARTIFACT_SCROLLBAR_STYLE = [
+    '::-webkit-scrollbar { width: 8px; height: 8px; }',
+    '::-webkit-scrollbar-track { background: transparent; }',
+    '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: 4px; }',
+    '::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.65); }',
+    '* { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 128, 0.45) transparent; }',
+].join('\n')
+
+/** 向产物文档注入滚动条样式（幂等；跨域/未就绪静默跳过，保留浏览器默认） */
+export function injectArtifactScrollbarStyle(doc: Document | null | undefined): void {
+    try {
+        if (!doc?.head || doc.getElementById('mobi-artifact-scrollbar')) return
+        const style = doc.createElement('style')
+        style.id = 'mobi-artifact-scrollbar'
+        style.textContent = ARTIFACT_SCROLLBAR_STYLE
+        doc.head.appendChild(style)
+    } catch {
+        // contentDocument 不可达（理论不可达：同源沙箱）——保留默认滚动条
+    }
+}
+
+/** 宽度档位：自适应（撑满聊天列）或固定像素档 */
+type WidthMode = 'auto' | '736' | '1024'
+
+const WIDTH_MODE_VALUE: Record<WidthMode, string> = {
+    auto: '100%',
+    '736': '736px',
+    '1024': '1024px',
+}
+
+/**
+ * HTML inline：serve-file 沙箱 iframe（ADR 0007）。宽度默认自适应（撑满聊天列），
+ * 用户可在右上角选 736/1024 固定档；高度定档（wide 640 / 默认 480——HTML 产物无内在
+ * 高度语义，与「宿主不感知产物布局」的产品边界一致）。
  */
 export function HtmlInline({ sessionId, path, etag, wide }: ArtifactInlineProps & { wide?: boolean }) {
     const { t } = useTranslation()
@@ -128,18 +165,21 @@ export function HtmlInline({ sessionId, path, etag, wide }: ArtifactInlineProps 
         () => `/api/sessions/${sessionId}/serve-file/${encodePathSegments(path)}`,
         [sessionId, path],
     )
-    const boxStyle = {
-        width: wide ? 'min(100%, 1024px)' : 'min(100%, 736px)',
-        maxWidth: '100%',
-    } as const
+    const [widthMode, setWidthMode] = useState<WidthMode>('auto')
+    const frameHeight = wide ? 640 : 480
     return (
-        <div data-testid="artifact-inline-html" className="artifact-inline" style={boxStyle}>
+        <div
+            data-testid="artifact-inline-html"
+            className="artifact-inline"
+            // 宽度档位切换走主题 motion 曲线平滑过渡（初挂载 width 不变不触发）
+            style={{ width: WIDTH_MODE_VALUE[widthMode], transition: `width ${token.motionDurationMid} ${token.motionEaseInOut}` }}
+        >
             {streaming
                 ? (
                     <div
                         data-artifact-html-placeholder="true"
                         style={{
-                            height: wide ? 560 : 400,
+                            height: frameHeight,
                             border: `1px dashed ${token.colorBorderSecondary}`,
                             borderRadius: token.borderRadiusLG,
                             background: token.colorFillQuaternary,
@@ -155,14 +195,28 @@ export function HtmlInline({ sessionId, path, etag, wide }: ArtifactInlineProps 
                         sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
                         referrerPolicy="no-referrer"
                         title={t('chat.artifact.htmlTitle', { defaultValue: path.split('/').pop() ?? path })}
+                        onLoad={(e) => injectArtifactScrollbarStyle(e.currentTarget.contentDocument)}
                         style={{
-                            width: '100%', height: wide ? 560 : 400,
+                            width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,
                             borderRadius: token.borderRadiusLG, display: 'block',
                         }}
                     />
                 )}
-            <InspectorEntry path={path} />
+            {/* 底部动作行：查看文件（inspector 逃生口）+ 宽度档位（右对齐） */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: token.marginSM, marginTop: 4 }}>
+                <InspectorEntry path={path} />
+                <Segmented
+                    size="small"
+                    value={widthMode}
+                    onChange={(v) => setWidthMode(v as WidthMode)}
+                    options={[
+                        { label: t('chat.artifact.widthFit'), value: 'auto' },
+                        { label: '736', value: '736' },
+                        { label: '1024', value: '1024' },
+                    ]}
+                />
+            </div>
         </div>
     )
 }

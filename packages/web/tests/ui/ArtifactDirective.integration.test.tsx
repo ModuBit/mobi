@@ -21,10 +21,11 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { Markdown } from '@/components/ui/Markdown'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
+import { injectArtifactScrollbarStyle } from '@/components/chat/artifact/ArtifactInlineViews'
 import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { dedupeDirectiveText } from '@/domain/chat/directives'
@@ -33,7 +34,16 @@ vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
     useFileMeta: vi.fn(),
 }))
 
-// 产物卡「打开」动作是 ActionLink（mobi://file/open），依赖路由与会话 api 上下文
+// 产物卡动作走 useActionDispatcher → workspaceStore.openFileTab（检查器），
+// spy 掉 store 断言分发，避免真实 store 的 inspector 状态副作用
+const openFileTabSpy = vi.hoisted(() => vi.fn())
+vi.mock('@/core/data/stores/workspaceStore', () => ({
+    useWorkspaceStore: Object.assign(vi.fn(() => ({})), {
+        getState: () => ({ openFileTab: openFileTabSpy, setExpanded: vi.fn() }),
+    }),
+}))
+
+// 产物卡「打开方式」动作分发依赖路由与会话 api 上下文
 // （模式同 MarkdownActionLink.integration：只 mock 到能渲染，动作分发契约由其专测把守）
 const navigateSpy = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({
@@ -78,8 +88,42 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         renderDirective(':mobi-artifact{path="/tmp/demo.png" mode="card"}')
         const card = await screen.findByTestId('artifact-card')
         expect(card.textContent).toContain('demo.png')
-        expect(card.textContent).toMatch(/在检查器打开|Open in inspector/)
+        expect(card.textContent).toMatch(/打开方式|Open with/)
         expect(document.body.textContent).not.toContain(':mobi-artifact{path="/tmp/demo.png"}')
+    })
+
+    it('产物卡交互：整卡/「打开方式」标签 → 检查器分发；箭头下拉含浏览器打开与复制链接', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
+        renderDirective(':mobi-artifact{path="/tmp/page.html" mode="card"}')
+        const card = await screen.findByTestId('artifact-card')
+
+        // 整卡点击 → 检查器（openFileTab），非路由跳转
+        fireEvent.click(card)
+        expect(openFileTabSpy).toHaveBeenCalledWith('s-1', '/tmp/page.html', 'page.html')
+        openFileTabSpy.mockClear()
+
+        // 「打开方式」标签点击 → 同一默认动作，且不冒泡整卡造成双触发
+        fireEvent.click(screen.getByText(/打开方式|Open with/))
+        expect(openFileTabSpy).toHaveBeenCalledTimes(1)
+        openFileTabSpy.mockClear()
+
+        // 箭头 → 下拉菜单（浏览器打开 / 复制链接），菜单点击不触发整卡
+        fireEvent.click(screen.getByTestId('artifact-card-menu-trigger'))
+        expect(await screen.findByText(/浏览器打开|Open in browser/)).toBeInTheDocument()
+        expect(screen.getByText(/复制链接|Copy link/)).toBeInTheDocument()
+        expect(openFileTabSpy).not.toHaveBeenCalled()
+
+        const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+        fireEvent.click(screen.getByText(/浏览器打开|Open in browser/))
+        expect(windowOpenSpy).toHaveBeenCalledWith(expect.stringContaining('/api/sessions/s-1/read-file'), '_blank', 'noopener')
+        windowOpenSpy.mockRestore()
+    })
+
+    it('产物卡菜单可用性收敛：文件不存在 → 无下拉触发（复制/浏览器不可用）', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: true, data: undefined } as never)
+        renderDirective(':mobi-artifact{path="/tmp/gone.html"}')
+        await screen.findByTestId('artifact-card')
+        expect(screen.queryByTestId('artifact-card-menu-trigger')).not.toBeInTheDocument()
     })
 
     it('fileMeta 失败（不存在/越界）→ 产物卡标注原因', async () => {
@@ -196,8 +240,7 @@ describe('产物 inline 渲染（票 02/03）', () => {
         expect(iframe!.getAttribute('sandbox')).toContain('allow-scripts')
     })
 
-    it('mode="wide" → iframe 容器走宽档；mode="card" → 产物卡', async () => {
-        mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
+    it('mode="wide" → iframe 容器走宽档；mode="card" → 产物卡', async () => {        mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
         const { container } = render(
             <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
                 <Markdown content={':mobi-artifact{path="/tmp/page.html" mode="wide"}'} />
@@ -210,5 +253,35 @@ describe('产物 inline 渲染（票 02/03）', () => {
 
         renderDirective(':mobi-artifact{path="/tmp/page.html" mode="card"}')
         await screen.findByTestId('artifact-card')
+    })
+
+    it('滚动条样式注入：load 后进产物文档且幂等（重复调用不重复追加）', () => {
+        const doc = document.implementation.createHTMLDocument('artifact')
+        injectArtifactScrollbarStyle(doc)
+        const styles = doc.querySelectorAll('#mobi-artifact-scrollbar')
+        expect(styles).toHaveLength(1)
+        expect(styles[0]!.textContent).toContain('::-webkit-scrollbar-thumb')
+
+        injectArtifactScrollbarStyle(doc)
+        expect(doc.querySelectorAll('#mobi-artifact-scrollbar')).toHaveLength(1)
+
+        // 空文档（contentDocument 未就绪）不抛错
+        expect(() => injectArtifactScrollbarStyle(null)).not.toThrow()
+    })
+
+    it('宽度选择器：默认自适应（撑满聊天列），点 736/1024 切固定档', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
+        renderDirective(':mobi-artifact{path="/tmp/page.html"}')
+        const wrap = await screen.findByTestId('artifact-inline-html')
+        expect(wrap.style.width).toBe('100%')
+
+        fireEvent.click(within(wrap).getByText('736'))
+        expect(wrap.style.width).toBe('736px')
+
+        fireEvent.click(within(wrap).getByText('1024'))
+        expect(wrap.style.width).toBe('1024px')
+
+        fireEvent.click(within(wrap).getByText(/自适应|Fluid/))
+        expect(wrap.style.width).toBe('100%')
     })
 })

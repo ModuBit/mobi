@@ -26,12 +26,14 @@
  * 仅「打开」动作不可用。
  */
 
-import { createContext, useContext, type FC, type ReactNode } from 'react'
-import { theme } from 'antd'
+import { createContext, useCallback, useContext, type FC, type ReactNode } from 'react'
+import { Dropdown, message, theme } from 'antd'
+import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { File, FileText, Globe, Image as ImageIcon, Music, Video } from 'lucide-react'
+import { ChevronDown, File, FileText, Globe, Image as ImageIcon, Link2, Music, Video } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
-import { ActionLink } from './ActionLink'
+import { copyTextToClipboard } from '@/components/chat/CopyButton'
+import { useActionDispatcher } from './ActionLink'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { buildReadFileUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { HtmlInline, ImageInline, MediaInline } from '@/components/chat/artifact/ArtifactInlineViews'
@@ -82,31 +84,88 @@ function baseName(path: string): string {
 }
 
 /**
- * 产物卡：图标 + 文件名 + 降级原因（有则展示）+ 「打开」动作（inspector）。
- * HTML 文件附「浏览器打开」次动作——hub 服务的 read-file URL 新标签直开（带 CSP）。
+ * 产物卡（交互参照「打开方式」分体式按钮）：
+ * - 整卡可点 + 「打开方式」标签点击 → app 内查看文件（默认动作，mobi://file/open）
+ * - 「打开方式」右侧箭头 → 下拉菜单：浏览器打开（仅 HTML 且有会话寻址）、
+ *   复制链接（read-file URL，文件不存在时不提供）
+ * 降级原因卡复用同一交互——原因只是副标题标注，动作能力按可用性收敛。
  */
 const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: string | null }> = ({ path, reason, sessionId }) => {
     const { t } = useTranslation()
     const { token } = theme.useToken()
+    const dispatch = useActionDispatcher()
     const kind = resolveArtifactKind(path)
     const Icon = KIND_ICONS[kind]
     const openUri = buildActionUri('file/open', { path })
-    const openInBrowser = kind === 'html' && sessionId
+
+    const openInInspector = useCallback(() => {
+        dispatch(openUri, sessionId ? { sessionId } : undefined)
+    }, [dispatch, openUri, sessionId])
+
+    // 菜单可用性收敛：文件不存在时浏览器/复制都无意义，整个下拉不出现
+    const openInBrowser = reason !== 'missing' && kind === 'html' && sessionId
         ? () => window.open(buildReadFileUrl(sessionId, path), '_blank', 'noopener')
         : undefined
+    const copyLink = sessionId && reason !== 'missing'
+        ? () => {
+            void copyTextToClipboard(buildReadFileUrl(sessionId, path))
+            message.success(t('chat.copied'))
+        }
+        : undefined
+
+    // 图标统一 26px 底色块（.artifact-menu-icon，样式在 styles/antd.css）——对齐
+    // 原生 App 菜单的观感；次级动作（复制链接）前加分隔线
+    const menuItems: MenuProps['items'] = [
+        openInBrowser && {
+            key: 'browser',
+            icon: <span className="artifact-menu-icon"><Globe size={15} /></span>,
+            label: t('chat.artifact.browser'),
+        },
+        copyLink && { type: 'divider' as const },
+        copyLink && {
+            key: 'copy',
+            icon: <span className="artifact-menu-icon"><Link2 size={15} /></span>,
+            label: t('chat.artifact.copyLink'),
+        },
+    ].filter((item): item is NonNullable<typeof item> => Boolean(item))
+
+    const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
+        if (key === 'browser') openInBrowser?.()
+        if (key === 'copy') copyLink?.()
+    }
+
+    const subtitle = reason
+        ? t(REASON_KEYS[reason], kind === 'unknown' || kind === 'pdf' ? {} : { limit: formatLimit(kind) })
+        : kind === 'html'
+            ? t('chat.artifact.htmlTitle')
+            : null
 
     return (
         <div
             data-testid="artifact-card"
-            className="artifact-card"
+            role="button"
+            tabIndex={0}
+            aria-label={t('chat.artifact.open')}
+            onClick={openInInspector}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault()
+                    openInInspector()
+                }
+            }}
             style={{
                 display: 'flex', alignItems: 'center', gap: token.marginSM,
                 padding: `${token.paddingSM}px ${token.marginSM}px`,
                 border: `1px solid ${token.colorBorderSecondary}`, borderRadius: token.borderRadiusLG,
-                background: token.colorFillQuaternary, maxWidth: 560,
+                background: token.colorFillQuaternary, maxWidth: 560, cursor: 'pointer',
             }}
         >
-            <Icon size={20} style={{ flexShrink: 0, color: token.colorTextSecondary }} />
+            <div style={{
+                width: 36, height: 36, flexShrink: 0, borderRadius: token.borderRadiusLG,
+                background: token.colorFillTertiary, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+                <Icon size={18} style={{ color: token.colorTextSecondary }} />
+            </div>
             <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{
                     fontSize: token.fontSize, color: token.colorText,
@@ -114,27 +173,53 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
                 }}>
                     {baseName(path)}
                 </div>
-                {reason && (
+                {subtitle && (
                     <div style={{ fontSize: token.fontSizeSM, color: token.colorTextTertiary }}>
-                        {t(REASON_KEYS[reason], kind === 'unknown' || kind === 'pdf' ? {} : { limit: formatLimit(kind) })}
+                        {subtitle}
                     </div>
                 )}
             </div>
-            <ActionLink uri={openUri} style={{ flexShrink: 0 }}>
-                {t('chat.artifact.open')}
-            </ActionLink>
-            {openInBrowser && (
+            {/* 「打开方式」分体式按钮：标签=默认动作（app 内查看），箭头=下拉；点击止于自身，
+                不冒泡到整卡 onClick 造成双触发 */}
+            <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    flexShrink: 0, display: 'inline-flex', alignItems: 'center',
+                    border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 999,
+                    background: token.colorBgContainer, overflow: 'hidden',
+                }}
+            >
                 <button
                     type="button"
-                    onClick={openInBrowser}
+                    onClick={openInInspector}
                     style={{
-                        flexShrink: 0, border: 'none', background: 'none', cursor: 'pointer',
-                        color: token.colorLink, fontSize: token.fontSize, padding: 0,
+                        border: 'none', background: 'none', cursor: 'pointer', padding: `4px 6px 4px ${token.paddingXS}px`,
+                        color: token.colorText, fontSize: token.fontSizeSM, lineHeight: 1.5,
                     }}
                 >
-                    {t('chat.artifact.browser')}
+                    {t('chat.artifact.openWith')}
                 </button>
-            )}
+                {menuItems.length > 0 && (
+                    <Dropdown
+                        menu={{ items: menuItems, onClick: handleMenuClick }}
+                        trigger={['click']}
+                        overlayClassName="artifact-card-menu"
+                    >
+                        <button
+                            type="button"
+                            data-testid="artifact-card-menu-trigger"
+                            aria-label={t('chat.artifact.openWith')}
+                            style={{
+                                border: 'none', borderLeft: `1px solid ${token.colorBorderSecondary}`,
+                                background: 'none', cursor: 'pointer', padding: '4px 6px',
+                                color: token.colorTextSecondary, display: 'inline-flex', alignItems: 'center',
+                            }}
+                        >
+                            <ChevronDown size={14} />
+                        </button>
+                    </Dropdown>
+                )}
+            </div>
         </div>
     )
 }

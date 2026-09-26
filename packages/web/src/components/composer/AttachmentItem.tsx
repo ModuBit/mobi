@@ -366,7 +366,7 @@ const ImageThumb = memo(function ImageThumb({
                 alt=""
                 width={THUMB_SIZE}
                 height={THUMB_SIZE}
-                preview={preview}
+                preview={preview ? { cover: false } : false}
                 styles={{ image: { objectFit: 'cover', display: 'block' } }}
                 onError={() => setImgError(true)}
             />

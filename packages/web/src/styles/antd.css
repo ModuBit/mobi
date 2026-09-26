@@ -394,6 +394,38 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     }
 }
 
+/* 产物卡「打开方式」下拉（ArtifactDirectiveComponents 分体式按钮）：antd 原生菜单
+   密度太紧凑（14px/5px padding/8px radius），对齐原生 App 菜单的呼吸感——大圆角、
+   宽行高、图标 26px 底色块；仅作用于本组件浮层（popupClassName 作用域收口） */
+.artifact-card-menu .ant-dropdown-menu {
+    padding: 6px;
+    border-radius: 12px;
+}
+
+.artifact-card-menu .ant-dropdown-menu .ant-dropdown-menu-item {
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 22px;
+}
+
+.artifact-card-menu .ant-dropdown-menu-title-content {
+    display: flex;
+    align-items: center;
+}
+
+.artifact-card-menu .artifact-menu-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-inline-end: 10px;
+    border-radius: 6px;
+    background: var(--ant-color-fill-secondary);
+    color: var(--ant-color-text-secondary);
+}
+
 /* antd Image hover 遮罩（cover 层）已全局去除（preview.cover=false），小手光标原本
    挂在 cover 上随之丢失——补回到可预览的 Image 根元素（rc-image 仅在可预览时置 role=button） */
 .ant-image[role='button'] {
@@ -412,4 +444,13 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 
 .ant-image-preview .ant-image-preview-switch.ant-image-preview-switch-disabled {
     color: var(--ant-image-preview-operation-color-disabled);
+}
+
+/* 产物 iframe 自适应宽度需要真实容器宽：borderless 气泡内容默认 shrink-to-fit，
+   会把子级 width:100% 解析成「内容历史宽度」（实测锁死 922px）。含产物 iframe 的
+   气泡内容链强制撑满（:has 现代浏览器全支持；移动端 PWA 同为现代内核）。
+   选择器挂 data-testid 钩子（不挂会漂移的类名）——wrap 的类名随交互改版被挪掉过一次 */
+.chat-scroll-container .ant-bubble:has([data-testid='artifact-inline-html']) .ant-bubble-body,
+.chat-scroll-container .ant-bubble:has([data-testid='artifact-inline-html']) .ant-bubble-content {
+    width: 100%;
 }

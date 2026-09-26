@@ -83,7 +83,7 @@ export default function ImageContentView({ sessionId, filePath, etag }: ImageCon
                 src={src}
                 alt={filePath}
                 placeholder
-                preview
+                preview={{ cover: false }}
                 fallback={FALLBACK_IMAGE}
                 onError={() => setState((s) => ({ ...s, failed: true }))}
             />
