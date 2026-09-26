@@ -64,3 +64,35 @@ describe('buildAppendSystemPrompt', () => {
     expect(systemPrompt).toMatch(/URL-encode/i);
   });
 });
+
+describe('产物声明契约（inline-artifacts ticket 04）', () => {
+  // remote（preset+append+snapshot）与 local（--append-system-prompt）都经 buildAppendSystemPrompt
+  // 构建，同一断言覆盖两模式——契约加在源头常量 BASE_SYSTEM_PROMPT，双模式天然同源
+  const prompt = buildAppendSystemPrompt({});
+
+  it('含 :mobi-artifact 声明指令的 wire 格式（逐字锁死，模型照抄输出）', () => {
+    expect(prompt).toContain(':mobi-artifact{path="/absolute/path"}');
+    // mode 枚举：card（复杂 HTML/应用/dev server）与 wide（全宽 mockup）
+    expect(prompt).toContain('mode="card"');
+    expect(prompt).toContain('mode="wide"');
+  });
+
+  it('含产物目录约定：非项目交付物落 <cwd>/.mobi/artifacts/<YYYY-MM>/', () => {
+    expect(prompt).toContain('.mobi/artifacts/');
+    expect(prompt).toMatch(/YYYY-MM/);
+    // ascii 短文件名 + .gitignore 自隔离两要素
+    expect(prompt).toMatch(/ASCII filename/i);
+    expect(prompt).toMatch(/gitignore/i);
+  });
+
+  it('含边界约束：静态图走 mermaid、仅下载文件不声明、不向用户提及协议', () => {
+    expect(prompt).toMatch(/mermaid/i);
+    expect(prompt).toMatch(/do not declare/i);
+    expect(prompt).toMatch(/Never mention this directive to the user/i);
+  });
+
+  it('既有 base 内容不受契约追加影响', () => {
+    expect(prompt).toContain('change_title');
+    expect(prompt).toContain('[a.ts](mobi://file/open?path=src/a.ts)');
+  });
+});

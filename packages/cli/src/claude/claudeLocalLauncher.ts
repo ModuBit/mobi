@@ -19,6 +19,7 @@ import { GoalStatusHandler } from "./goalStatusHandler";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
+import { buildBundledPluginOptions } from "@/runtime/bundledPlugins";
 import { BaseLocalLauncher } from "@/modules/common/launcher/BaseLocalLauncher";
 import { logger } from "@/ui/logger";
 import type { EnhancedMode } from "./types";
@@ -102,6 +103,8 @@ export async function claudeLocalLauncher(
                 hookSettings: session.hookSettings,
                 systemPromptAppend,
                 additionalDirectories: session.additionalDirectories,
+                // 内置插件（visualize 等）：与 remote 模式 sdkOptions.plugins 同源
+                pluginDirs: buildBundledPluginOptions().map((plugin) => plugin.path),
             });
         },
         onLaunchSuccess: () => {

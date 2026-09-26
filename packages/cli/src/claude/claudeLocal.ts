@@ -40,6 +40,10 @@ export async function claudeLocal(opts: {
     systemPromptAppend: string
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
+    /** 内置插件目录（inline-artifacts ticket 05）：local 模式不走 SDK query（直接 spawn claude
+     *  子进程），SDK Options.plugins 的自动 --plugin-dir 转换帮不上忙，只能按 SDK 'argv'
+     *  交付语义（每插件一个 --plugin-dir <path>）在此拼接同义 flag */
+    pluginDirs?: string[]
 }) {
 
     // Ensure project directory exists
@@ -99,6 +103,12 @@ export async function claudeLocal(opts: {
     const mobiDir = join(opts.path, '.mobi')
     args.push('--add-dir', mobiDir)
     logger.debug(`[ClaudeLocal] Adding mobi directory: ${mobiDir}`)
+
+    // 内置插件（与 remote 模式 SDK Options.plugins 同源，spec 要求双模式同参）
+    for (const dir of opts.pluginDirs ?? []) {
+        args.push('--plugin-dir', dir)
+        logger.debug(`[ClaudeLocal] Adding plugin directory: ${dir}`)
+    }
 
     // 项目额外工作目录（创建时冻结 / resume 回放）
     for (const dir of opts.additionalDirectories ?? []) {

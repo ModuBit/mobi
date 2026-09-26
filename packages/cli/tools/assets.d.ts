@@ -17,3 +17,8 @@ declare module '../../tools/licenses/*' {
     const path: string;
     export default path;
 }
+
+declare module '../../plugins/*' {
+    const path: string;
+    export default path;
+}

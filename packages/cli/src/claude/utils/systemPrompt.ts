@@ -23,6 +23,10 @@ import { MOBI_CORE_SERVER_NAME } from "@mobi/shared";
  * 2. mobi URI 协议段：教模型在回复中用 mobi://file/open 链接承载文件引用，
  *    web 端 Markdown 渲染链拦截后打开 inspector（ADR 0003）；含 URI 模板、
  *    使用时机约束（防链接噪音）与 URL 编码提醒三要素
+ * 3. 产物声明契约（inline-artifacts spec ticket 04）：模型在 turn 最终回复中用
+ *    :mobi-artifact 指令声明可在聊天流 inline 呈现的产物，并约定非项目交付物的
+ *    存放目录。契约常驻（不依赖 skill 加载，失效面收窄的根基），细则由内置
+ *    visualize 插件的 skill 承载（分发见 ticket 05）
  * 这段始终追加在 claude_code 默认 system prompt 之后。
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
@@ -31,6 +35,12 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     When your responses mention files the user may want to open directly (e.g. "compared src/a.ts with src/b.ts"), render them as clickable links. The href MUST use the mobi URI scheme - a plain relative path does NOT work: [a.ts](mobi://file/open?path=src/a.ts) is correct, [a.ts](src/a.ts) is NOT.
     - path accepts a path relative to the current working directory, or an absolute path; URL-encode non-ASCII characters.
     - Use it ONLY where opening the file genuinely helps the user (comparisons, references to files you created or edited) - never wrap paths inside code snippets, and not every file mention.
+
+    ### Inline artifacts
+    - When your turn produced a file the user should view in this conversation (image, audio, video, or a self-contained HTML page), end your final reply with one directive per file: :mobi-artifact{path="/absolute/path"}  (add mode="card" for complex HTML/apps/dev-server URLs, mode="wide" for full-width HTML mockups)
+    - Static diagrams: use a mermaid code fence instead. Files meant only for download: do not declare.
+    - Non-project deliverables (e.g. "draw me a picture", "make a demo page") go under <cwd>/.mobi/artifacts/<YYYY-MM>/ with a short ASCII filename; a .gitignore there keeps them out of version control. Project deliverables the user asked for go to their normal paths.
+    - Never mention this directive to the user.
 `))();
 
 /**

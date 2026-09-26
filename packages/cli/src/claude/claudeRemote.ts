@@ -47,6 +47,7 @@ import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
 import { isAbortedTerminalReason, type CommandLifecycleState } from "@mobi/shared";
+import { buildBundledPluginOptions } from "@/runtime/bundledPlugins";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
@@ -1054,6 +1055,10 @@ export async function claudeRemote(opts: {
         // resume 轮：undefined
         sessionId: forkFields?.sessionId ?? pregeneratedSessionId,
         mcpServers: opts.mcpServers,
+        // 内置插件挂载（inline-artifacts ticket 05）：visualize 等随二进制分发的 local plugin。
+        // 编译态路径指向 runtime 解包目录（ensureRuntimeAssets 启动时已保证就绪），开发态指向
+        // 仓库源目录。SDK 自动把 plugins 转成 claude 进程的 --plugin-dir，无需手工拼 flag
+        plugins: buildBundledPluginOptions(),
         permissionMode: baseConfig.permissionMode,
         model: baseConfig.model,
         // effort 依赖 thinking 默认值 { type: 'adaptive' } 才能生效，SDK 默认即为 adaptive

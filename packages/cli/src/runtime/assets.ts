@@ -21,6 +21,7 @@ import * as tar from 'tar';
 import packageJson from '../../package.json';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { isBunCompiled, runtimePath } from '@/projectPath';
+import { PLUGIN_ASSET_PREFIX, VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
 import { UNPACKED_PLATFORM_MARKER } from '@/utils/resolveBinaryPath';
 
 const RUNTIME_MARKER = '.runtime-version';
@@ -131,7 +132,36 @@ function unpackTools(runtimeRoot: string): void {
 }
 
 function runtimeAssetsReady(runtimeRoot: string): boolean {
-    return areToolsUnpacked(join(runtimeRoot, 'tools', 'unpacked'));
+    return areToolsUnpacked(join(runtimeRoot, 'tools', 'unpacked'))
+        && arePluginsUnpacked(runtimeRoot);
+}
+
+/** 插件资源是否带 plugins/ 前缀（工具段归 unpackTools，插件段归 syncPluginAssets） */
+function isPluginAsset(asset: EmbeddedAsset): boolean {
+    return asset.relativePath.startsWith(PLUGIN_ASSET_PREFIX);
+}
+
+/**
+ * 插件段解包完整性探针：以 SKILL.md 的存在与否近似「插件已就绪」——
+ * 探针缺失（版本变/文件被清）即触发全量重释放。与 areToolsUnpacked 同款语义。
+ */
+function arePluginsUnpacked(runtimeRoot: string): boolean {
+    return existsSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH));
+}
+
+/**
+ * 释放内置插件资源到 runtime root（embedded assets 中带 plugins/ 前缀的部分）。
+ * 幂等：探针文件存在即跳过，不重写；缺失才按 relativePath 全量重释放。
+ * 独立导出供测试直接驱动（vitest 非 compiled，走不进 ensureRuntimeAssets 的编译态入口）。
+ */
+export async function syncPluginAssets(runtimeRoot: string, embeddedAssets: EmbeddedAsset[]): Promise<void> {
+    if (arePluginsUnpacked(runtimeRoot)) {
+        return;
+    }
+
+    for (const asset of embeddedAssets.filter(isPluginAsset)) {
+        await copyAssetFile(asset, join(runtimeRoot, asset.relativePath));
+    }
 }
 
 export async function ensureRuntimeAssets(): Promise<void> {
@@ -154,11 +184,16 @@ export async function ensureRuntimeAssets(): Promise<void> {
     const embeddedAssets = await loadEmbeddedAssets();
 
     for (const asset of embeddedAssets) {
+        // 插件段走 syncPluginAssets（自探针幂等），避免与工具段的无条件复制混流
+        if (isPluginAsset(asset)) {
+            continue;
+        }
         const targetPath = join(runtimeRoot, asset.relativePath);
         await copyAssetFile(asset, targetPath);
     }
 
     unpackTools(runtimeRoot);
+    await syncPluginAssets(runtimeRoot, embeddedAssets);
     writeFileSync(join(runtimeRoot, 'tools', 'unpacked', UNPACKED_PLATFORM_MARKER), getPlatformDir(), 'utf-8');
     writeFileSync(markerPath, packageJson.version, 'utf-8');
 }
