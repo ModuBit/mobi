@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { Markdown } from '@/components/ui/Markdown'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
@@ -284,5 +284,42 @@ describe('产物 inline 渲染（票 02/03）', () => {
 
         fireEvent.click(within(wrap).getByText(/自适应|Fluid/))
         expect(wrap.style.width).toBe('100%')
+    })
+
+    it('图片 inline 加载失败（401/损坏）→ 紧凑失败态可重试，重试造 _retry 新 URL（不再静默破图）', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
+        renderDirective(':mobi-artifact{path="/tmp/demo.png"}')
+        const inline = await screen.findByTestId('artifact-inline-image')
+        expect(inline.querySelector('img')!.src).not.toContain('_retry')
+
+        // 原生 onError（axios interceptor 够不到的通道）→ 失败态
+        fireEvent.error(inline.querySelector('img')!)
+        const err = await screen.findByTestId('artifact-inline-media-error')
+        expect(err.textContent).toMatch(/加载失败|Failed to load/)
+
+        // 重试 → 失败态清除，src 带 _retry=1（绕缓存重新认证）
+        fireEvent.click(within(err).getByRole('button'))
+        await waitFor(() => {
+            const img = inline.querySelector('img')
+            expect(img).not.toBeNull()
+            expect(img!.src).toContain('_retry=1')
+        })
+    })
+
+    it('视频 inline 加载失败同样可重试（etag 未变，纯 retry 计数造新 URL）', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
+        renderDirective(':mobi-artifact{path="/tmp/v.mp4"}')
+        const inline = await screen.findByTestId('artifact-inline-video')
+        const video = inline.querySelector('video')!
+        expect(video.src).toContain('v=1-1')
+
+        fireEvent.error(video)
+        const err = await screen.findByTestId('artifact-inline-media-error')
+        fireEvent.click(within(err).getByRole('button'))
+        await waitFor(() => {
+            const v = inline.querySelector('video')!
+            expect(v.src).toContain('_retry=1')
+            expect(v.src).toContain('v=1-1')
+        })
     })
 })

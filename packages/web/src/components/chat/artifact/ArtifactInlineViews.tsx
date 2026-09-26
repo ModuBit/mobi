@@ -25,14 +25,14 @@
  */
 
 import { useState } from 'react'
-import { Image, Segmented, theme } from 'antd'
+import { Button, Image, Segmented, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileSearch } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
 import { ActionLink } from '@/components/ui/ActionLink'
 import { SandboxHtmlFrame } from '@/components/files/SandboxHtmlFrame'
+import { useFileMediaSrc } from '@/components/files/useFileMediaSrc'
 import { useDirectiveStreaming } from '@/components/ui/directiveStreamGate'
-import { buildReadFileUrl } from '@/core/utils/fileUrl'
 
 /** inline 视图公共 props：寻址与校验产物（ArtifactDirectiveView 已把关） */
 export interface ArtifactInlineProps {
@@ -62,9 +62,43 @@ function InspectorEntry({ path }: { path: string }) {
     )
 }
 
-/** 图片 inline：缩略图 + antd lightbox（点击看大图），宽度收敛 480；cover=false 去 hover 遮罩（antd v6 mask 配置不再控制 cover 层） */
+/** inline 媒体失败态：紧凑一行（与聊天流体量相称，区别于 inspector 的整屏兜底）。
+ * 401 cookie 过期等失败此前在 inline 是静默破框——聊天流恰恰驻留最久、最容易撞会话
+ * 休眠后的认证失效；闭锁机制单源在 useFileMediaSrc。 */
+function InlineMediaError({ onRetry }: { onRetry: () => void }) {
+    const { t } = useTranslation()
+    const { token } = theme.useToken()
+    return (
+        <div
+            data-testid="artifact-inline-media-error"
+            className="artifact-inline-media-error"
+            style={{
+                display: 'flex', alignItems: 'center', gap: token.marginSM,
+                padding: '12px 14px',
+                border: `1px dashed ${token.colorBorderSecondary}`,
+                borderRadius: token.borderRadiusLG,
+                background: token.colorFillQuaternary,
+            }}
+        >
+            <span style={{ flex: 1, fontSize: token.fontSizeSM, color: token.colorTextTertiary }}>
+                {t('files.loadFailed')}
+            </span>
+            <Button size="small" onClick={onRetry}>{t('files.retry')}</Button>
+        </div>
+    )
+}
+
+/** 图片 inline：缩略图 + antd lightbox（点击看大图），宽度收敛 480；cover=false 去 hover 遮罩（antd v6 mask 配置不再控制 cover 层）；失败/重试闭锁与 inspector 同源（useFileMediaSrc） */
 export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
-    const src = buildReadFileUrl(sessionId, path, { etag })
+    const { src, failed, onError, retry } = useFileMediaSrc(sessionId, path, etag)
+    if (failed) {
+        return (
+            <div data-testid="artifact-inline-image" className="artifact-inline" style={{ maxWidth: 480 }}>
+                <InlineMediaError onRetry={retry} />
+                <div><InspectorEntry path={path} /></div>
+            </div>
+        )
+    }
     return (
         <div data-testid="artifact-inline-image" className="artifact-inline" style={{ maxWidth: 480 }}>
             <Image
@@ -74,15 +108,16 @@ export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
                 referrerPolicy="no-referrer"
                 // cover=false 去 hover 遮罩（v6 把 cover 层挂在 preview 配置内；点击预览不受影响）
                 preview={{ cover: false }}
+                onError={onError}
             />
             <div><InspectorEntry path={path} /></div>
         </div>
     )
 }
 
-/** 音视频 inline：原生控件，不自动播放，只预载元数据（移动端流量友好） */
+/** 音视频 inline：原生控件，不自动播放，只预载元数据（移动端流量友好）；播放锁 + 失败重试与 inspector 同源 */
 export function MediaInline({ sessionId, path, etag, kind }: ArtifactInlineProps & { kind: 'audio' | 'video' }) {
-    const src = buildReadFileUrl(sessionId, path, { etag })
+    const { src, failed, onError, reportPlaying, retry } = useFileMediaSrc(sessionId, path, etag)
     const { token } = theme.useToken()
     return (
         <div
@@ -90,23 +125,33 @@ export function MediaInline({ sessionId, path, etag, kind }: ArtifactInlineProps
             className="artifact-inline"
             style={{ maxWidth: kind === 'audio' ? 480 : 640 }}
         >
-            {kind === 'video'
-                ? (
-                    <video
-                        controls
-                        preload="metadata"
-                        src={src}
-                        style={{ width: '100%', borderRadius: token.borderRadiusLG, display: 'block' }}
-                    />
-                )
-                : (
-                    <audio
-                        controls
-                        preload="metadata"
-                        src={src}
-                        style={{ width: '100%', display: 'block' }}
-                    />
-                )}
+            {failed
+                ? <InlineMediaError onRetry={retry} />
+                : kind === 'video'
+                    ? (
+                        <video
+                            controls
+                            preload="metadata"
+                            src={src}
+                            onError={onError}
+                            onPlay={() => reportPlaying(true)}
+                            onPause={() => reportPlaying(false)}
+                            onEnded={() => reportPlaying(false)}
+                            style={{ width: '100%', borderRadius: token.borderRadiusLG, display: 'block' }}
+                        />
+                    )
+                    : (
+                        <audio
+                            controls
+                            preload="metadata"
+                            src={src}
+                            onError={onError}
+                            onPlay={() => reportPlaying(true)}
+                            onPause={() => reportPlaying(false)}
+                            onEnded={() => reportPlaying(false)}
+                            style={{ width: '100%', display: 'block' }}
+                        />
+                    )}
             <InspectorEntry path={path} />
         </div>
     )

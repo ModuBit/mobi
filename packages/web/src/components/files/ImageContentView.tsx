@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
 import { Button, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { buildReadFileUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
+import { useFileMediaSrc } from './useFileMediaSrc'
 
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
@@ -36,41 +35,18 @@ interface ImageContentViewProps {
  * - antd Image：preview 默认开启（点击放大）、placeholder 渐进式加载（大图/弱网友好）、fallback 加载失败兜底
  * - src 直连 read-file 端点（cookie 改造后 httpOnly mobi_token 自动带 → 认证通过；浏览器原生协商缓存）
  * - 尺寸约束见 styles/antd.css 的 .image-content-view：图片永远 contain 在容器内，不超出、不变形
- * - 加载失败（401 cookie 过期/损坏等）显示「重试」按钮：点击变更 src query 强制重新请求（触发 cookie 重新认证）
+ * - 失败/重试闭锁单源在 useFileMediaSrc（401 cookie 过期等不经 axios 的失败唯一捕获点是元素
+ *   onError），本组件只负责 chrome：失败态 = 兜底图 + 「重试」primary（与 MediaContentView 同规）
  */
 export default function ImageContentView({ sessionId, filePath, etag }: ImageContentViewProps) {
     const { t } = useTranslation()
-    /**
-     * 加载失败态 + 重试计数，绑定到具体的「文件版本」。
-     *
-     * 两者都只对某一个文件的某一个版本有意义：
-     * - 内容已变（etag 变）→ 上次的失败判定过期，清掉兜底图让新内容有机会加载。
-     *   否则一次加载失败会把 tab 永久钉在「重试」界面，即便文件本身已经修好
-     * - 同一 tab 内换文件（组件实例被复用，见 openFileInTab）→ 上一个文件的失败态
-     *   与重试计数都不该跟过来
-     * 合成一个 state 并在渲染期比对 stamp，是为了让「作废」这件事只有一条路径。
-     */
-    // NUL 分隔：POSIX 文件名可含空格等任意字符，唯独不含 NUL，拼不出歧义
-    const stamp = `${sessionId}\u0000${filePath}\u0000${etag}`
-    const [state, setState] = useState({ stamp, failed: false, retry: 0 })
-    // 渲染期同步（而非 effect）：effect 会多提交一帧带旧 retry 的 src
-    let active = state
-    if (state.stamp !== stamp) {
-        active = { stamp, failed: false, retry: 0 }
-        setState(active)
-    }
-    const src = buildReadFileUrl(sessionId, filePath, { etag, retry: active.retry })
+    const { src, failed, onError, retry } = useFileMediaSrc(sessionId, filePath, etag)
 
-    if (active.failed) {
+    if (failed) {
         return (
             <div className="image-content-view image-content-view--error">
                 <img src={FALLBACK_IMAGE} alt={filePath} className="image-content-view__fallback" />
-                {/* 失败态唯一推进动作 = primary（与 MediaContentView 的加载失败重试同规） */}
-                <Button
-                    size="small"
-                    type="primary"
-                    onClick={() => setState((s) => ({ ...s, failed: false, retry: s.retry + 1 }))}
-                >
+                <Button size="small" type="primary" onClick={retry}>
                     {t('files.retry')}
                 </Button>
             </div>
@@ -85,7 +61,7 @@ export default function ImageContentView({ sessionId, filePath, etag }: ImageCon
                 placeholder
                 preview={{ cover: false }}
                 fallback={FALLBACK_IMAGE}
-                onError={() => setState((s) => ({ ...s, failed: true }))}
+                onError={onError}
             />
         </div>
     )
