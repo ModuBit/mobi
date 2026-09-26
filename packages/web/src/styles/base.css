@@ -211,13 +211,10 @@ pre, code {
     -webkit-text-fill-color: transparent;
     animation: crossfade-in var(--fade-ms, 200ms) ease, shimmer-sweep 1.4s linear infinite;
 }
-/* hover 暂停扫光（停在当前帧）；逐槽位声明——只停 sweep，不动同槽的淡入 */
-.shimmer-text:hover {
-    animation-play-state: running, paused;
-}
-/* 视口外暂停（ShinyText 经单例 IntersectionObserver 标记）：sweep 逐帧主线程重绘，
-   屏外实例的绘制纯浪费——移动端长会话滚出屏幕的运行态行不少，全停是抗卡顿第一杠杆。
-   声明排在 hover 之后（同优先级后者胜）：屏外一律暂停，hover 不唤醒屏外元素 */
+/* hover 不暂停扫光（2026-09-26 产品定稿：hover 停扫反而像卡住）；
+   视口外暂停仍走 [data-shimmer-off]（ShinyText 经单例 IntersectionObserver 标记）：
+   sweep 逐帧主线程重绘，屏外实例的绘制纯浪费——移动端长会话滚出屏幕的运行态行
+   不少，全停是抗卡顿第一杠杆 */
 .shimmer-text[data-shimmer-off] {
     animation-play-state: paused;
 }
