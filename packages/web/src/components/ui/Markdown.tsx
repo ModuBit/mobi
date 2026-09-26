@@ -28,6 +28,7 @@ import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from './useStreamingContent'
 import { INCOMPLETE_COMPONENTS } from './MarkdownIncomplete'
 import { ActionLink } from './ActionLink'
+import { Favicon } from './Favicon'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
@@ -87,9 +88,27 @@ const ExternalLink: FC<ComponentProps<{ href?: string }>> = (
         // className 透传：raw HTML 形态的 mobi 链接（如 mention badge）带原样式 class
         return <ActionLink uri={href} className={className}>{children}</ActionLink>
     }
+    const isHttp = !!href && /^https?:\/\//i.test(href)
+    // favicon 与链接首字符绑进同一 nowrap span：链接文本的断行规则（overflow-wrap
+    // anywhere，长 URL 任意字符间可折）会把行内的 icon 单独甩到第一行（2026-09-26
+    // 真机），绑定首字符后 icon 恒与文本同行，折行只发生在其后的字符间
+    const text = typeof children === 'string' && children.length > 0 ? children : null
     return (
         <a href={href} target="_blank" rel="noopener noreferrer" className={className} {...rest}>
-            {children}
+            {isHttp && text !== null ? (
+                <>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                        <Favicon href={href} />
+                        {text.slice(0, 1)}
+                    </span>
+                    {text.slice(1)}
+                </>
+            ) : (
+                <>
+                    {isHttp ? <Favicon href={href} /> : null}
+                    {children}
+                </>
+            )}
         </a>
     )
 }
