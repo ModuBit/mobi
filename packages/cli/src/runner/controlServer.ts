@@ -182,7 +182,6 @@ export function startRunnerControlServer({
           // 本入口不透传 resume 目标（仅 hub 唤醒路径会有），防御性按成功透出
           return {
             success: true,
-            sessionId: result.sessionId ?? '',
             approvedNewDirectoryCreation: true
           };
 

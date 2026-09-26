@@ -31,6 +31,8 @@ import { MessageService, type SendMessagePayload } from './messageService'
 import { ProjectCache } from './projectCache'
 import {
     RpcGateway,
+    isUnexpectedAlreadyRunning,
+    UNEXPECTED_ALREADY_RUNNING,
     type RpcDeleteUploadResponse,
     type RpcGetWebToolsConfigResponse,
     type RpcListDirectoryResponse,
@@ -136,8 +138,8 @@ export class SyncEngine {
             spawnSession: async (machineId, directory, options) => {
                 // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约
                 const result = await this.rpcGateway.spawnSession(machineId, directory, options)
-                return result.type === 'already-running'
-                    ? { type: 'error', message: 'Unexpected already-running for non-resume spawn', failure: 'other' }
+                return isUnexpectedAlreadyRunning(result)
+                    ? { type: 'error', message: UNEXPECTED_ALREADY_RUNNING, failure: 'other' }
                     : result
             },
             getSessionByNamespace: (sessionId, namespace) => this.sessionCache.getSessionByNamespace(sessionId, namespace),
@@ -711,8 +713,8 @@ export class SyncEngine {
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         const result = await this.rpcGateway.spawnSession(machineId, directory, options)
         // Web 新会话路径无 resume 目标，already-running 不可达；防御性按错误处理
-        if (result.type === 'already-running') {
-            return { type: 'error', message: 'Unexpected already-running for non-resume spawn' }
+        if (isUnexpectedAlreadyRunning(result)) {
+            return { type: 'error', message: UNEXPECTED_ALREADY_RUNNING }
         }
         if (result.type === 'error') {
             // 传输分类是 hub 内部的说法（给 agent 的失败翻译用，见 rpcFailure），

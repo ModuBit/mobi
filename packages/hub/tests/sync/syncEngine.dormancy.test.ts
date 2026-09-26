@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, test, expect } from 'bun:test'
+import { describe, test, expect, spyOn } from 'bun:test'
 
 import { SyncEngine } from '../../src/sync/syncEngine'
 import { Store } from '../../src/store'
@@ -238,21 +238,22 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         }
     })
 
-    test('already-running（runner 报活 child 在 resume）→ 立即 success，零等待不等待就绪', async () => {
+    test('already-running（runner 报活 child 在 resume）→ 立即 success，不进入就绪等待', async () => {
         const h = makeWakeEngine({ spawnReply: { type: 'already-running' } })
         try {
             const session = seedDormantSession(h)
 
-            const t0 = Date.now()
+            // 绊线：already-running 分支不得落 waitForSessionActive（会话 active=false
+            // 时误入会干等满 15s）——以调用断言替代墙钟计时，规避压载 flaky
+            const waitSpy = spyOn(h.engine, 'waitForSessionActive')
             const result = await h.engine.resumeSession(session.id, 'default')
 
-            // 直接 success（用当前会话 id），且零等待——若误落 waitForSessionActive，
-            // 会话 active=false 会让本用例干等满 15s 超时
             expect(result).toEqual({ type: 'success', sessionId: session.id })
-            expect(Date.now() - t0).toBeLessThan(3000)
+            expect(waitSpy).not.toHaveBeenCalled()
             // 只问了一次 runner，会话未被伪造为活跃（恢复由旧进程重连收敛）
             expect(h.spawnCalls().length).toBe(1)
             expect(h.engine.getSession(session.id)!.active).toBe(false)
+            waitSpy.mockRestore()
         } finally {
             h.cleanup()
         }

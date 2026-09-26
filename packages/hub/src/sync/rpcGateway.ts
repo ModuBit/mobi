@@ -36,6 +36,21 @@ export type SpawnSessionOptions = {
     projectId?: string
 }
 
+export type SpawnGatewayResult =
+    | { type: 'success'; sessionId: string }
+    | { type: 'already-running' }
+    | { type: 'error'; message: string; failure: RpcFailureKind }
+
+/** 新会话 spawn 路径（agent 会话通道 / web 新建路由）无 resume 目标，already-running
+ *  不可达——两处防御收窄共用此谓词与文案，防止字面量漂移（.scratch/wake-dedup） */
+export const UNEXPECTED_ALREADY_RUNNING = 'Unexpected already-running for non-resume spawn'
+
+export function isUnexpectedAlreadyRunning(
+    result: SpawnGatewayResult,
+): result is Extract<SpawnGatewayResult, { type: 'already-running' }> {
+    return result.type === 'already-running'
+}
+
 export type RpcRefreshMetadataResponse = {
     success: boolean
     metadata?: SDKMetadata
@@ -228,13 +243,7 @@ export class RpcGateway {
         machineId: string,
         directory: string,
         options: SpawnSessionOptions = {},
-    ): Promise<
-        | { type: 'success'; sessionId: string }
-        /** 唤醒去重（.scratch/wake-dedup）：runner 报告已有活 child 在 resume 该目标，
-         *  未 spawn 新进程。sessionId 为 runner 侧记录（可能缺省），消费方用自己的会话 id */
-        | { type: 'already-running' }
-        | { type: 'error'; message: string; failure: RpcFailureKind }
-    > {
+    ): Promise<SpawnGatewayResult> {
         // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），
         // 只有 runner 等 webhook 超时那一句会被读成 'timeout'
         const spawnError = (message: string) => ({ type: 'error' as const, message, failure: classifyTransportFailure(message) })

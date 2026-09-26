@@ -38,4 +38,4 @@ export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string }
-    | { type: 'already-running'; sessionId?: string }
+    | { type: 'already-running' }

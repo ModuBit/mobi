@@ -25,6 +25,7 @@
  */
 
 import type { TrackedSession } from './types'
+import type { SpawnSessionResult } from '@/modules/common/rpcTypes'
 
 /**
  * 在在册 child 中查「resume 目标相同」的活表项。无 resume 目标的表项（手动 /
@@ -42,4 +43,17 @@ export function findRunningResumeDuplicate(
         }
     }
     return null
+}
+
+/**
+ * spawn 入口的去重闸（查重 + 结果构造收口于此，run.ts 只做早退）：命中返回
+ * already-running 结果（不携带 spawn 产物字段——本分支没有新进程），未命中返回
+ * null 放行。引用在册表 live Map：表项被 exit 清理删掉后同一请求自然放行。
+ */
+export function createResumeDedupGuard(children: Map<number, TrackedSession>) {
+    return (resumeSessionId: string | undefined): SpawnSessionResult | null => {
+        return findRunningResumeDuplicate(children.values(), resumeSessionId)
+            ? { type: 'already-running' }
+            : null
+    }
 }
