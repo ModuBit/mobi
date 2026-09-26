@@ -21,7 +21,7 @@ import * as tar from 'tar';
 import packageJson from '../../package.json';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { isBunCompiled, runtimePath } from '@/projectPath';
-import { MOBI_PLUGIN_MANIFEST, MOBI_PLUGIN_MANIFEST_REL_PATH, PLUGIN_ASSET_PREFIX, VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
+import { MOBI_PLUGIN_MANIFEST, MOBI_PLUGIN_MANIFEST_REL_PATH, PLUGIN_ASSET_PREFIX } from '@/runtime/bundledPlugins';
 import { UNPACKED_PLATFORM_MARKER } from '@/utils/resolveBinaryPath';
 
 const RUNTIME_MARKER = '.runtime-version';
@@ -142,11 +142,12 @@ function isPluginAsset(asset: EmbeddedAsset): boolean {
 }
 
 /**
- * 插件段解包完整性探针：以 SKILL.md 的存在与否近似「插件已就绪」——
- * 探针缺失（版本变/文件被清）即触发全量重释放。与 areToolsUnpacked 同款语义。
+ * 插件段解包完整性探针：锚定插件 manifest——syncPluginAssets 把它放在全部资源
+ * 释放完之后写，存在即「上一轮全量释放完成」，与具体 skill 命名解耦（skill 改名/
+ * 增删不再使探针失效而触发无谓全量重释放）。与 areToolsUnpacked 同款语义。
  */
 function arePluginsUnpacked(runtimeRoot: string): boolean {
-    return existsSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH));
+    return existsSync(join(runtimeRoot, MOBI_PLUGIN_MANIFEST_REL_PATH));
 }
 
 /**

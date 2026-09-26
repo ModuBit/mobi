@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, utimesSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
-import { VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
+import { MOBI_PLUGIN_MANIFEST_REL_PATH, VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { projectPath } from '@/projectPath';
 
@@ -61,9 +61,10 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     expect(statSync(target).mtimeMs).toBe(before);
   });
 
-  it('探针文件缺失（版本重置/不完整）时重新释放', async () => {
+  it('探针（manifest）缺失时重新释放——skill 文件缺失不触发（探针与 skill 命名解耦）', async () => {
+    // 探针 = manifest（释放末尾才写，存在即全量完成）；删 skill 不重释放，删 manifest 才触发
+    rmSync(join(runtimeRoot, MOBI_PLUGIN_MANIFEST_REL_PATH));
     const target = join(runtimeRoot, VISUALIZE_SKILL_REL_PATH);
-    rmSync(target);
 
     await syncPluginAssets(runtimeRoot, [skillAsset()]);
 

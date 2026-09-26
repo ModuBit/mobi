@@ -24,11 +24,11 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { Markdown } from '@/components/ui/Markdown'
+import { TextBlock } from '@/components/chat/blocks/TextBlock'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
 import { injectArtifactScrollbarStyle } from '@/components/files/SandboxHtmlFrame'
 import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
-import { dedupeDirectiveText } from '@/domain/chat/directives'
 
 vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
     useFileMeta: vi.fn(),
@@ -157,11 +157,15 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         expect(document.body.textContent).toContain(':mobi-artifact{}')
     })
 
-    it('同一路径声明两次只渲染一个 inline（blocks 层 dedupeDirectiveText 组合路径）', async () => {
+    it('同一路径声明两次只渲染一个 inline（去重是 TextBlock 管线固有步骤，调用方无从跳过）', async () => {
         mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
         const text = ':mobi-artifact{path="/tmp/demo.png"} 后 :mobi-artifact{path="/tmp/demo.png"}'
-        // blocks 层 agent-text 渲染入口先去重再交 Markdown（本测试复现该组合）
-        renderDirective(dedupeDirectiveText(text))
+        // 经 TextBlock 渲染（聊天流 agent-text 的真实入口）：去重内建在管线内
+        render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
+                <TextBlock text={text} />
+            </ArtifactEnvProvider>,
+        )
         await screen.findByTestId('artifact-inline-image')
         expect(screen.getAllByTestId('artifact-inline-image')).toHaveLength(1)
     })

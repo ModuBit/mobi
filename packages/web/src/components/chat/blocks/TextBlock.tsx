@@ -18,6 +18,7 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
 import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
+import { dedupeDirectiveText } from '@/domain/chat/directives'
 import { isInterruptedSyntheticText } from '@/domain/chat/normalizeAgent'
 
 /**
@@ -76,7 +77,9 @@ export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreamin
 })
 
 /** Markdown + 流式闸：agent 正文是内联指令的唯一生产场景，闸的取值（流式揭示中？）
- *  在 TextBlock 这层就有——从这里下发，重型 inline 指令产物（iframe 等）据此延后挂载 */
+ *  在 TextBlock 这层就有——从这里下发，重型 inline 指令产物（iframe 等）据此延后挂载。
+ *  重复 directive 剔除是管线固有步骤（注册了去重键的指令同键只留首个，handoff 失败
+ *  模式；输出前缀稳定兼容流式）——在管线内做而非要求每个调用方记得先去重 */
 function StreamingGatedMarkdown({ text, isStreaming, enableSlashCommand, enableMention }: {
     text: string
     isStreaming?: boolean
@@ -85,7 +88,7 @@ function StreamingGatedMarkdown({ text, isStreaming, enableSlashCommand, enableM
 }) {
     return (
         <DirectiveStreamGate.Provider value={!!isStreaming}>
-            <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
+            <Markdown content={dedupeDirectiveText(text)} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
         </DirectiveStreamGate.Provider>
     )
 }
