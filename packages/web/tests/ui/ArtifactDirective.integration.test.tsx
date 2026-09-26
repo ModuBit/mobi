@@ -166,11 +166,34 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         expect(screen.getAllByTestId('artifact-inline-image')).toHaveLength(1)
     })
 
-    it('寻址上下文缺失 → 仍渲染卡片（无原因标注，不发无效请求）', async () => {
+    it('寻址上下文缺失 → 仍渲染卡片（无原因标注），且不发任何 meta 请求', async () => {
         renderDirective(':mobi-artifact{path="/tmp/demo.png"}', false)
         const card = await screen.findByTestId('artifact-card')
         expect(card.textContent).toContain('demo.png')
-        expect(mockMeta).toHaveBeenCalledWith(null, '/tmp/demo.png')
+        // 寻址缺失在进端口前就短路（不打无效请求）——mockMeta 未被触达
+        expect(mockMeta).not.toHaveBeenCalled()
+    })
+
+    it('fileMeta 端口注入：数据经 interface 驱动裁决，不穿 query cache 层', async () => {
+        // 端口是 ArtifactEnv interface 的一部分：注入假端口即可驱动校验降级链，
+        // 无需 mock useFileMeta 模块（端口未注入时才走 react-query adapter）
+        const ready = { status: 'ready' as const, size: 1024, etag: 'p1' }
+        render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }} fileMeta={(_sid, path) => (path === '/tmp/demo.png' ? ready : { status: 'missing' as const })}>
+                <Markdown content={':mobi-artifact{path="/tmp/demo.png"}'} />
+            </ArtifactEnvProvider>,
+        )
+        expect(await screen.findByTestId('artifact-inline-image')).toBeInTheDocument()
+        expect(mockMeta).not.toHaveBeenCalled()
+
+        // 同一管线换 error 端口 → missing 卡（裁决对端口三态一致）
+        cleanup()
+        render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }} fileMeta={() => ({ status: 'missing' })}>
+                <Markdown content={':mobi-artifact{path="/tmp/demo.png"}'} />
+            </ArtifactEnvProvider>,
+        )
+        expect(await screen.findByTestId('artifact-card')).toBeInTheDocument()
     })
 
     it('mode 非法值容错为 auto（按类型 inline，不炸不降级原文）', async () => {

@@ -102,3 +102,30 @@ export function isInlineCapableKind(kind: ArtifactKind): kind is Exclude<Artifac
 
 /** 产物卡降级原因（渲染层据此标注；与 i18n key 一一对应） */
 export type ArtifactCardReason = 'missing' | 'too-large' | 'unsupported'
+
+/** fileMeta 校验输入的三态（react-query 无关的纯数据；ready 缺 size/etag 之外的字段） */
+export type ArtifactMetaState =
+    | { status: 'pending' }
+    | { status: 'missing' }
+    | { status: 'ready'; size: number; etag: string }
+
+/** 渲染裁决：产物卡（可带降级原因）或 inline（分型所需字段已齐备，视图层零再判定） */
+export type ArtifactVerdict =
+    | { action: 'card'; reason?: ArtifactCardReason }
+    | { action: 'inline'; kind: Exclude<ArtifactKind, 'pdf' | 'unknown'>; etag: string; wide: boolean }
+
+/**
+ * 渲染裁决纯函数：「给定 (path, meta, mode) → 渲染形态」的唯一出处。
+ * 此前裁决顺序（pending → missing → unsupported → too-large → mode 覆盖 → 分型）
+ * 由渲染组件的 6 个 JSX 早退分支承载，无法脱离 React 测试；收进 domain 后组件
+ * 退化为 Verdict → 视图映射。
+ */
+export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: string): ArtifactVerdict {
+    const kind = resolveArtifactKind(path)
+    if (meta.status === 'pending') return { action: 'card' }
+    if (meta.status === 'missing') return { action: 'card', reason: 'missing' }
+    if (!isInlineCapableKind(kind)) return { action: 'card', reason: 'unsupported' }
+    if (meta.size > ARTIFACT_INLINE_LIMIT_BYTES[kind]) return { action: 'card', reason: 'too-large' }
+    if (mode === 'card') return { action: 'card' }
+    return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' }
+}

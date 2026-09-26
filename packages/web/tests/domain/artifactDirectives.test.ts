@@ -22,6 +22,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     ARTIFACT_INLINE_LIMIT_BYTES,
+    classifyArtifact,
     isInlineCapableKind,
     parseArtifactParams,
     resolveArtifactKind,
@@ -82,5 +83,41 @@ describe('inline 大小上限（spec Q10）', () => {
         expect(isInlineCapableKind('unknown')).toBe(false)
         expect(isInlineCapableKind('image')).toBe(true)
         expect(isInlineCapableKind('html')).toBe(true)
+    })
+})
+
+describe('classifyArtifact（渲染裁决纯函数，裁决顺序收口）', () => {
+    const READY = { status: 'ready' as const, size: 1024, etag: 'e1' }
+
+    it('pending → 无原因卡（校验未决不预判）', () => {
+        expect(classifyArtifact('/a.png', { status: 'pending' })).toEqual({ action: 'card' })
+    })
+
+    it('missing → missing 卡（不存在/越界），且优先于 unsupported（缺失的 pdf 标缺失不标不支持）', () => {
+        expect(classifyArtifact('/a.png', { status: 'missing' })).toEqual({ action: 'card', reason: 'missing' })
+        expect(classifyArtifact('/a.pdf', { status: 'missing' })).toEqual({ action: 'card', reason: 'missing' })
+    })
+
+    it('pdf/unknown → unsupported 卡（meta ready 才谈得上类型裁决）', () => {
+        expect(classifyArtifact('/a.pdf', READY)).toEqual({ action: 'card', reason: 'unsupported' })
+        expect(classifyArtifact('/a.bin', READY)).toEqual({ action: 'card', reason: 'unsupported' })
+    })
+
+    it('超限 → too-large 卡（kind 决定上限）', () => {
+        const oversize = { status: 'ready' as const, size: 9 * 1024 * 1024, etag: 'e1' }
+        expect(classifyArtifact('/big.png', oversize)).toEqual({ action: 'card', reason: 'too-large' })
+        // mode="card" 不豁免超限判定（超限先于 mode 覆盖）
+        expect(classifyArtifact('/big.html', oversize, 'card')).toEqual({ action: 'card', reason: 'too-large' })
+    })
+
+    it('mode="card" → 无原因卡（用户/模型意愿覆盖 inline 能力）', () => {
+        expect(classifyArtifact('/a.png', READY, 'card')).toEqual({ action: 'card' })
+    })
+
+    it('校验全过 → inline verdict：kind/etag/wide 齐备（wide 仅 html 语义成立，统一带出）', () => {
+        expect(classifyArtifact('/a.png', READY)).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false })
+        expect(classifyArtifact('/a.mp4', READY)).toEqual({ action: 'inline', kind: 'video', etag: 'e1', wide: false })
+        expect(classifyArtifact('/a.html', READY, 'wide')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true })
+        expect(classifyArtifact('/a.html', READY)).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: false })
     })
 })

@@ -39,22 +39,29 @@ import { buildReadFileUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { HtmlInline, ImageInline, MediaInline } from '@/components/chat/artifact/ArtifactInlineViews'
 import {
     ARTIFACT_INLINE_LIMIT_BYTES,
-    isInlineCapableKind,
+    classifyArtifact,
     parseArtifactParams,
     resolveArtifactKind,
     type ArtifactCardReason,
     type ArtifactKind,
+    type ArtifactMetaState,
 } from '@/domain/chat/artifactDirectives'
 
-/** 产物渲染寻址上下文：read-file / mobi://file/open 构造所需的会话寻址字段 */
+/** 产物渲染环境：寻址上下文 + fileMeta 数据端口 */
 interface ArtifactEnv {
     refCtx: FileRefContext
+    /**
+     * fileMeta 数据端口（accept 进 interface 而非组件直连 react-query）：
+     * 缺省走 useFileMeta（生产 adapter）；测试/嵌入环境注入假端口即可驱动
+     * 校验降级链，不必穿到 query cache 层 mock。
+     */
+    fileMeta?: (sessionId: string, path: string) => ArtifactMetaState
 }
 
 export const ArtifactEnvContext = createContext<ArtifactEnv | undefined>(undefined)
 
-export function ArtifactEnvProvider({ refCtx, children }: { refCtx: FileRefContext, children: ReactNode }) {
-    return <ArtifactEnvContext.Provider value={{ refCtx }}>{children}</ArtifactEnvContext.Provider>
+export function ArtifactEnvProvider({ refCtx, fileMeta, children }: { refCtx: FileRefContext, fileMeta?: (sessionId: string, path: string) => ArtifactMetaState, children: ReactNode }) {
+    return <ArtifactEnvContext.Provider value={{ refCtx, fileMeta }}>{children}</ArtifactEnvContext.Provider>
 }
 
 const KIND_ICONS: Record<ArtifactKind, typeof File> = {
@@ -226,36 +233,52 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
 
 /**
  * :mobi-artifact 渲染入口（MobiDirective 路由表项）：attrs → 类型化参数，非法降级原文；
- * fileMeta 校验三分支——查询失败（不存在/越界）→ missing 卡，超限/不可 inline → 原因卡，
- * 其余 → 卡片（票 02/03 在此分支接管 inline）。
+ * 渲染形态由 classifyArtifact（domain 裁决纯函数）唯一确定，本层只做端口装配：
+ * 无寻址 → 卡（不打无效请求）；有端口 → 直接裁决；缺省 → react-query adapter。
  */
 export const ArtifactDirectiveView: FC<{ path?: string, mode?: string, children?: ReactNode }> = ({ path, mode, children }) => {
     const env = useContext(ArtifactEnvContext)
     const params = path !== undefined ? parseArtifactParams({ path, mode: mode ?? '' }) : null
-    const sessionId = env?.refCtx.sessionId ?? null
-    // hooks 先于条件返回（规则序）；path 非法时 enabled=false 不发请求
-    const metaQuery = useFileMeta(sessionId, params?.path ?? null)
 
     if (!params) return <span>{children}</span>
 
-    const kind = resolveArtifactKind(params.path)
-
+    const sessionId = env?.refCtx.sessionId ?? null
     // 寻址上下文缺失（非聊天场景/测试）：直接卡，不打无效请求
     if (!sessionId) return <ArtifactCard path={params.path} />
 
-    if (metaQuery.isPending) return <ArtifactCard path={params.path} sessionId={sessionId} />
-    if (metaQuery.isError || !metaQuery.data) return <ArtifactCard path={params.path} reason="missing" sessionId={sessionId} />
-
-    if (kind === 'unknown' || kind === 'pdf') return <ArtifactCard path={params.path} reason="unsupported" sessionId={sessionId} />
-    const limit = ARTIFACT_INLINE_LIMIT_BYTES[kind]
-    if (metaQuery.data.size > limit) return <ArtifactCard path={params.path} reason="too-large" sessionId={sessionId} />
-    if (params.mode === 'card' || !isInlineCapableKind(kind)) {
-        return <ArtifactCard path={params.path} sessionId={sessionId} />
+    if (env?.fileMeta) {
+        return (
+            <ArtifactVerdictView
+                path={params.path}
+                mode={params.mode}
+                sessionId={sessionId}
+                meta={env.fileMeta(sessionId, params.path)}
+            />
+        )
     }
+    return <ArtifactQueryView path={params.path} mode={params.mode} sessionId={sessionId} />
+}
 
-    // inline 渲染：校验全部通过且类型可 inline。etag 并入 URL 作内容版本（fileUrl 模块头）
-    const etag = metaQuery.data.etag
-    if (kind === 'image') return <ImageInline sessionId={sessionId} path={params.path} etag={etag} />
-    if (kind === 'audio' || kind === 'video') return <MediaInline sessionId={sessionId} path={params.path} etag={etag} kind={kind} />
-    return <HtmlInline sessionId={sessionId} path={params.path} etag={etag} wide={params.mode === 'wide'} />
+/** 缺省 fileMeta 端口：react-query → 三态映射（hooks 只活在这一层） */
+const ArtifactQueryView: FC<{ path: string, mode?: string, sessionId: string }> = ({ path, mode, sessionId }) => {
+    const metaQuery = useFileMeta(sessionId, path)
+    const meta: ArtifactMetaState = metaQuery.isPending
+        ? { status: 'pending' }
+        : metaQuery.isError || !metaQuery.data
+            ? { status: 'missing' }
+            : { status: 'ready', size: metaQuery.data.size, etag: metaQuery.data.etag }
+    return <ArtifactVerdictView path={path} mode={mode} sessionId={sessionId} meta={meta} />
+}
+
+/** Verdict → 视图映射（无数据 hook；inline 所需 kind/etag/wide 已在 verdict 齐备） */
+const ArtifactVerdictView: FC<{ path: string, mode?: string, sessionId: string, meta: ArtifactMetaState }> = ({ path, mode, sessionId, meta }) => {
+    const verdict = classifyArtifact(path, meta, mode)
+    if (verdict.action === 'card') {
+        return <ArtifactCard path={path} reason={verdict.reason} sessionId={sessionId} />
+    }
+    if (verdict.kind === 'image') return <ImageInline sessionId={sessionId} path={path} etag={verdict.etag} />
+    if (verdict.kind === 'audio' || verdict.kind === 'video') {
+        return <MediaInline sessionId={sessionId} path={path} etag={verdict.etag} kind={verdict.kind} />
+    }
+    return <HtmlInline sessionId={sessionId} path={path} etag={verdict.etag} wide={verdict.wide} />
 }
