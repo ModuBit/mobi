@@ -20,6 +20,7 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { parseActionUri, type ActionKey, type RegisteredAction } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { FileTypeBadge } from './FileTypeBadge'
 
 /**
  * mobi:// 动作链接的 web 执行面（ADR 0003）：
@@ -108,6 +109,12 @@ export interface ActionLinkProps {
 export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
     const dispatch = useActionDispatcher()
 
+    // file/open 动作前置文件类型徽章（扩展名色块/目录 glyph）：markdown mobi:// 链接与
+    // @mention 徽章两个来源在此汇合，一处接入双端生效。其余动作不画（非文件语义）
+    // （RegisteredAction 非分配联合，key 与 params 不联动收窄，故用 `in` 判参数形态）
+    const parsed = parseActionUri(uri)
+    const filePath = parsed?.key === 'file/open' && 'path' in parsed.params ? parsed.params.path : null
+
     // 拦截原生导航与外层冒泡：动作链接的点击语义止于分发（消息行/气泡容器
     // 的祖先 onClick 不得被连带触发，旧 SessionRefLink 的守卫在此重建）
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
@@ -125,6 +132,7 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
 
     return (
         <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
+            {filePath ? <FileTypeBadge path={filePath} /> : null}
             {children}
         </a>
     )

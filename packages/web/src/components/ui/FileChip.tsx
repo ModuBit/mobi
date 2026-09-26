@@ -16,7 +16,9 @@
 
 import { memo } from 'react'
 import type { MouseEvent } from 'react'
+import { parseActionUri } from '@mobi/shared'
 import { useActionDispatcher } from './ActionLink'
+import { FileTypeBadge } from './FileTypeBadge'
 import type { ToolRowChip } from '@/core/lib/toolRow'
 
 /**
@@ -40,6 +42,10 @@ export const FileChip = memo(function FileChip({ chip }: { chip: ToolRowChip }) 
 const FileChipLink = memo(function FileChipLink({ chip }: { chip: ToolRowChip }) {
     const dispatch = useActionDispatcher()
 
+    // file/open URI 前置类型徽章；纯展示 chip（Bash 命令等）不画——命令文本不是路径，
+    // 画了必误标（Edit/Write 四件套的路径 chip 才有 file/open 语义）
+    const isFileOpen = parseActionUri(chip.uri!)?.key === 'file/open'
+
     const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault()
         e.stopPropagation()
@@ -48,6 +54,7 @@ const FileChipLink = memo(function FileChipLink({ chip }: { chip: ToolRowChip })
 
     return (
         <a href={chip.uri} className="tool-chip tool-chip-link" onClick={handleClick}>
+            {isFileOpen && <FileTypeBadge path={chip.text} />}
             {chip.text}
         </a>
     )
