@@ -36,12 +36,10 @@ import type { CSSProperties } from 'react'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { buildServeFileUrl } from '@/core/utils/fileUrl'
 
-/**
- * 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
+/** 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
  * 产物页面多未设 color-scheme，原生浅色滚动条压在深色页面上很突兀；iframe 与宿主
- * 同源（serve-file + allow-same-origin，ADR 0007），load 后注入这段样式即可覆盖。
- */
-export const ARTIFACT_SCROLLBAR_STYLE = [
+ * 同源（serve-file + allow-same-origin，ADR 0007），load 后注入这段样式即可覆盖。 */
+const ARTIFACT_SCROLLBAR_STYLE = [
     '::-webkit-scrollbar { width: 8px; height: 8px; }',
     '::-webkit-scrollbar-track { background: transparent; }',
     '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: 4px; }',

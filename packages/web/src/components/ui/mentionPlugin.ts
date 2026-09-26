@@ -61,9 +61,10 @@ function escapeHtml(text: string): string {
  * text 吃掉前缀后游标落在 @ 上二次触发，裸名会被当段首独立词误识别（email 防线洞）。
  */
 
-/** lucide Folder glyph 内联 SVG（目录 mention 用）：与 FileTypeBadge 同源路径数据，
- *  琥珀同色系；DOMPurify 默认放行 svg profile，经清洗后保留 */
-const FOLDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#E8A33D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>'
+/** lucide Folder glyph 不再内联 SVG：raw HTML 形态的 svg 会被 sanitize 剥 <path d>
+ *  致空白（slash-command 同坑），目录 mention 输出自定义标签、由 Markdown 组件映射
+ *  表渲染真 lucide Folder（DIRECTORY_TINT 同源 FileTypeBadge） */
+
 function mention(): TokenizerAndRendererExtension {
     return {
         name: 'mention',
@@ -97,18 +98,17 @@ function mention(): TokenizerAndRendererExtension {
             return token
         },
         renderer(token) {
-            const text = token as unknown as { type: string; raw: string }
-            // 消费式拒绝的纯文本 token：走不到本扩展 renderer（marked 按类型分发到内置
-            // text renderer），此分支仅防御性兜底
-            if (text.type !== 'mention') return escapeHtml(text.raw)
+            // 本扩展 renderer 只收 mention token（marked 按类型分发；消费式拒绝的纯文本
+            // token 走内置 text renderer，不会到达这里）
             const { mention, path } = token as unknown as { mention: string; path: string }
 
             // raw 里的引导字符（空白或 mid-word 前字符）原样还回，否则与前文之间的空格被吞
             const lead = mention.slice(0, mention.length - path.length - 1)
             const label = `@${path}`
-            // 目录（resolveFileType 判定单源，无 `.` basename / 尾 `/`）：纯展示不可点
+            // 目录（resolveFileType 判定单源，无 `.` basename / 尾 `/`）：纯展示不可点，
+            // glyph 走 <mention-directory> 标签由 Markdown 组件层渲染（见上注）
             if (resolveFileType(path)?.kind === 'directory') {
-                return `${escapeHtml(lead)}<span class="mention-directory">${FOLDER_SVG}${escapeHtml(label)}</span>`
+                return `${escapeHtml(lead)}<mention-directory data-label="${escapeHtml(label)}"></mention-directory>`
             }
             // 点击 = mobi://file/open（ADR 0003）：渲染时构造 URI 走统一执行链（消息即快照，
             // 落库不动）。裸 <a> 由 ExternalLink 拦截为 ActionLink——类型徽章/链接样式/点击

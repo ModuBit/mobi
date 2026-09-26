@@ -476,8 +476,9 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 /* 产物 iframe 自适应宽度需要真实容器宽：borderless 气泡内容默认 shrink-to-fit，
    会把子级 width:100% 解析成「内容历史宽度」（实测锁死 922px）。含产物 iframe 的
    气泡内容链强制撑满（:has 现代浏览器全支持；移动端 PWA 同为现代内核）。
-   选择器挂 data-testid 钩子（不挂会漂移的类名）——wrap 的类名随交互改版被挪掉过一次 */
-.chat-scroll-container .ant-bubble:has([data-testid='artifact-inline-html']) .ant-bubble-body,
-.chat-scroll-container .ant-bubble:has([data-testid='artifact-inline-html']) .ant-bubble-content {
+   选择器认 artifact-inline-fullwidth 语义布局钩子（HtmlInline 声明）——布局依赖
+   不挂 data-testid（那是测试钩子，被布局依赖属隐式升格，改名即静默塌布局） */
+.chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-body,
+.chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-content {
     width: 100%;
 }

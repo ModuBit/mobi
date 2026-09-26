@@ -35,20 +35,22 @@ import { Globe } from 'lucide-react'
 /** host → favicon 探测结果（模块级，会话生命周期内复用；'fail' 不重试防离线死循环） */
 const FAVICON_STATE = new Map<string, string | 'fail'>()
 
+/** 行内徽章共用的强制 inline 样式：svg/img 被某层规则打成 block 时独占一行、把链接文本
+ *  甩到下一行（2026-09-26 dev CDP 实测 34px→19px），内联样式稳压任何规则 */
+const INLINE_BADGE_STYLE = {
+    display: 'inline',
+    verticalAlign: 'middle',
+    margin: '0 4px 0 1px',
+    flexShrink: 0,
+} as const
+
 function FallbackGlobe({ size }: { size: number }) {
     return (
         <Globe
             aria-hidden="true"
             size={size - 2}
             strokeWidth={2}
-            style={{
-                // 与 img 同理：svg 被某层规则打成 block 时独占一行，内联 inline 稳压
-                display: 'inline',
-                verticalAlign: 'middle',
-                margin: '0 4px 0 1px',
-                opacity: 0.55,
-                flexShrink: 0,
-            }}
+            style={{ ...INLINE_BADGE_STYLE, opacity: 0.55 }}
         />
     )
 }
@@ -111,13 +113,8 @@ export const Favicon = memo(function Favicon({ href, size = 14 }: { href: string
             referrerPolicy="no-referrer"
             loading="lazy"
             style={{
-                // 强制 inline：行内 img 被某层规则打成 block 时会独占一行、把链接文本甩到
-                // 下一行（2026-09-26 dev CDP 实测 34px→19px），内联样式稳压任何规则
-                display: 'inline',
-                verticalAlign: 'middle',
-                margin: '0 4px 0 1px',
+                ...INLINE_BADGE_STYLE,
                 borderRadius: 3,
-                flexShrink: 0,
             }}
         />
     )

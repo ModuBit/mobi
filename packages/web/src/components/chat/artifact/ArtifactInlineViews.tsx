@@ -25,14 +25,16 @@
  */
 
 import { useState } from 'react'
-import { Button, Image, Segmented, theme } from 'antd'
+import { Button, Segmented, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileSearch } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
 import { ActionLink } from '@/components/ui/ActionLink'
+import { AppImage } from '@/components/ui/AppImage'
 import { SandboxHtmlFrame } from '@/components/files/SandboxHtmlFrame'
 import { useFileMediaSrc } from '@/components/files/useFileMediaSrc'
 import { useDirectiveStreaming } from '@/components/ui/directiveStreamGate'
+import { basename } from '@/core/utils/path'
 
 /** inline 视图公共 props：寻址与校验产物（ArtifactDirectiveView 已把关） */
 export interface ArtifactInlineProps {
@@ -91,25 +93,19 @@ function InlineMediaError({ onRetry }: { onRetry: () => void }) {
 /** 图片 inline：缩略图 + antd lightbox（点击看大图），宽度收敛 480；cover=false 去 hover 遮罩（antd v6 mask 配置不再控制 cover 层）；失败/重试闭锁与 inspector 同源（useFileMediaSrc） */
 export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
     const { src, failed, onError, retry } = useFileMediaSrc(sessionId, path, etag)
-    if (failed) {
-        return (
-            <div data-testid="artifact-inline-image" className="artifact-inline" style={{ maxWidth: 480 }}>
-                <InlineMediaError onRetry={retry} />
-                <div><InspectorEntry path={path} /></div>
-            </div>
-        )
-    }
     return (
         <div data-testid="artifact-inline-image" className="artifact-inline" style={{ maxWidth: 480 }}>
-            <Image
-                src={src}
-                alt={path.split('/').pop() ?? path}
-                style={{ maxWidth: '100%', borderRadius: 8 }}
-                referrerPolicy="no-referrer"
-                // cover=false 去 hover 遮罩（v6 把 cover 层挂在 preview 配置内；点击预览不受影响）
-                preview={{ cover: false }}
-                onError={onError}
-            />
+            {failed
+                ? <InlineMediaError onRetry={retry} />
+                : (
+                    <AppImage
+                        src={src}
+                        alt={basename(path)}
+                        style={{ maxWidth: '100%', borderRadius: 8 }}
+                        referrerPolicy="no-referrer"
+                        onError={onError}
+                    />
+                )}
             <div><InspectorEntry path={path} /></div>
         </div>
     )
@@ -119,52 +115,36 @@ export function ImageInline({ sessionId, path, etag }: ArtifactInlineProps) {
 export function MediaInline({ sessionId, path, etag, kind }: ArtifactInlineProps & { kind: 'audio' | 'video' }) {
     const { src, failed, onError, reportPlaying, retry } = useFileMediaSrc(sessionId, path, etag)
     const { token } = theme.useToken()
+    // 两个原生标签的媒体 props 完全一致（闭锁事件全量接线），只有 video 多圆角——
+    // 动态标签展开，新增媒体事件只改一处
+    const Tag = (kind === 'video' ? 'video' : 'audio') as 'video' | 'audio'
+    const mediaProps = {
+        controls: true,
+        preload: 'metadata' as const,
+        src,
+        onError,
+        onPlay: () => reportPlaying(true),
+        onPause: () => reportPlaying(false),
+        onEnded: () => reportPlaying(false),
+        style: {
+            width: '100%', display: 'block' as const,
+            ...(kind === 'video' ? { borderRadius: token.borderRadiusLG } : {}),
+        },
+    }
     return (
         <div
             data-testid={`artifact-inline-${kind}`}
             className="artifact-inline"
             style={{ maxWidth: kind === 'audio' ? 480 : 640 }}
         >
-            {failed
-                ? <InlineMediaError onRetry={retry} />
-                : kind === 'video'
-                    ? (
-                        <video
-                            controls
-                            preload="metadata"
-                            src={src}
-                            onError={onError}
-                            onPlay={() => reportPlaying(true)}
-                            onPause={() => reportPlaying(false)}
-                            onEnded={() => reportPlaying(false)}
-                            style={{ width: '100%', borderRadius: token.borderRadiusLG, display: 'block' }}
-                        />
-                    )
-                    : (
-                        <audio
-                            controls
-                            preload="metadata"
-                            src={src}
-                            onError={onError}
-                            onPlay={() => reportPlaying(true)}
-                            onPause={() => reportPlaying(false)}
-                            onEnded={() => reportPlaying(false)}
-                            style={{ width: '100%', display: 'block' }}
-                        />
-                    )}
+            {failed ? <InlineMediaError onRetry={retry} /> : <Tag {...mediaProps} />}
             <InspectorEntry path={path} />
         </div>
     )
 }
 
-/** 宽度档位：自适应（撑满聊天列）或固定像素档 */
+/** 宽度档位：自适应（撑满聊天列）或固定像素档（档位值即像素数） */
 type WidthMode = 'auto' | '736' | '1024'
-
-const WIDTH_MODE_VALUE: Record<WidthMode, string> = {
-    auto: '100%',
-    '736': '736px',
-    '1024': '1024px',
-}
 
 /**
  * HTML inline：SandboxHtmlFrame 的聊天流 chrome（定高 480/640 + 宽度三档）。
@@ -180,9 +160,11 @@ export function HtmlInline({ sessionId, path, wide }: ArtifactInlineProps & { wi
     return (
         <div
             data-testid="artifact-inline-html"
-            className="artifact-inline"
+            // artifact-inline-fullwidth：布局钩子（antd.css 的气泡撑满规则以 :has 认它）——
+            // 布局依赖挂语义类而非 data-testid（testid 是测试钩子，被布局依赖是隐式升格）
+            className="artifact-inline artifact-inline-fullwidth"
             // 宽度档位切换走主题 motion 曲线平滑过渡（初挂载 width 不变不触发）
-            style={{ width: WIDTH_MODE_VALUE[widthMode], transition: `width ${token.motionDurationMid} ${token.motionEaseInOut}` }}
+            style={{ width: widthMode === 'auto' ? '100%' : `${widthMode}px`, transition: `width ${token.motionDurationMid} ${token.motionEaseInOut}` }}
         >
             {streaming
                 ? (
@@ -200,7 +182,7 @@ export function HtmlInline({ sessionId, path, wide }: ArtifactInlineProps & { wi
                     <SandboxHtmlFrame
                         sessionId={sessionId}
                         path={path}
-                        title={t('chat.artifact.htmlTitle', { defaultValue: path.split('/').pop() ?? path })}
+                        title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
                         style={{
                             width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,

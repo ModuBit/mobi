@@ -15,10 +15,7 @@
  */
 
 import { memo } from 'react'
-import type { MouseEvent } from 'react'
-import { parseActionUri } from '@mobi/shared'
-import { useActionDispatcher } from './ActionLink'
-import { FileTypeBadge } from './FileTypeBadge'
+import { ActionLink } from './ActionLink'
 import type { ToolRowChip } from '@/core/lib/toolRow'
 
 /**
@@ -38,24 +35,11 @@ export const FileChip = memo(function FileChip({ chip }: { chip: ToolRowChip }) 
     return <FileChipLink chip={chip} />
 })
 
-/** 可点击变体：直接分发（与 ActionLink 同一执行链） */
+/**
+ * 可点击变体：复用 ActionLink 的完整执行链（URI 解析分发 / preventDefault+stopPropagation /
+ * Enter 键盘语义 / file/open 前置 FileTypeBadge——徽章判定单源在 ActionLink，一处接入双端生效），
+ * 本组件只负责 chip 形态 class。
+ */
 const FileChipLink = memo(function FileChipLink({ chip }: { chip: ToolRowChip }) {
-    const dispatch = useActionDispatcher()
-
-    // file/open URI 前置类型徽章；纯展示 chip（Bash 命令等）不画——命令文本不是路径，
-    // 画了必误标（Edit/Write 四件套的路径 chip 才有 file/open 语义）
-    const isFileOpen = parseActionUri(chip.uri!)?.key === 'file/open'
-
-    const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
-        e.preventDefault()
-        e.stopPropagation()
-        dispatch(chip.uri!)
-    }
-
-    return (
-        <a href={chip.uri} className="tool-chip tool-chip-link" onClick={handleClick}>
-            {isFileOpen && <FileTypeBadge path={chip.text} />}
-            {chip.text}
-        </a>
-    )
+    return <ActionLink uri={chip.uri!} className="tool-chip tool-chip-link">{chip.text}</ActionLink>
 })

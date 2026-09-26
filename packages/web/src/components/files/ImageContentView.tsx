@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import { Button, Image } from 'antd'
+import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
+import { AppImage } from '@/components/ui/AppImage'
 import { useFileMediaSrc } from './useFileMediaSrc'
 
 interface ImageContentViewProps {
@@ -55,11 +56,10 @@ export default function ImageContentView({ sessionId, filePath, etag }: ImageCon
 
     return (
         <div className="image-content-view">
-            <Image
+            <AppImage
                 src={src}
                 alt={filePath}
                 placeholder
-                preview={{ cover: false }}
                 fallback={FALLBACK_IMAGE}
                 onError={onError}
             />

@@ -171,10 +171,9 @@ describe('mentionPlugin', () => {
 
     // ============ 目录 mention：纯展示不可点 ============
 
-    it('目录 mention（@src/components）渲染为不可点 span', () => {
+    it('目录 mention（@src/components）渲染为自定义标签（glyph 由 Markdown 组件层渲染）', () => {
         const html = render('看 @src/components end')
-        expect(html).toContain('class="mention-directory"')
-        expect(html).toContain('svg')
+        expect(html).toContain('<mention-directory data-label="@src/components">')
         expect(html).not.toContain('mobi://file/open')
     })
 

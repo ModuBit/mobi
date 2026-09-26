@@ -15,7 +15,8 @@
  */
 
 import { memo, useState, useEffect, type FC } from 'react'
-import { theme, Spin, Progress, Image } from 'antd'
+import { theme, Spin, Progress } from 'antd'
+import { AppImage } from '@/components/ui/AppImage'
 import { useTranslation } from 'react-i18next'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { SketchEditBadge } from '@/components/ui/SketchEditBadge'
@@ -361,12 +362,13 @@ const ImageThumb = memo(function ImageThumb({
         // antd Image：36×36 缩略显示（width/height 定外层容器，cover 裁切经 styles.image 落 <img>），
         // preview 开启 → 点击放大看原图。onError 置 imgError 回退图标。
         return (
-            <Image
+            <AppImage
                 src={thumbSrc}
                 alt=""
                 width={THUMB_SIZE}
                 height={THUMB_SIZE}
-                preview={preview ? { cover: false } : false}
+                // 无遮罩由 AppImage 默认收口（全站决策）；此处只表达「开/关预览」
+                preview={preview ? {} : false}
                 styles={{ image: { objectFit: 'cover', display: 'block' } }}
                 onError={() => setImgError(true)}
             />

@@ -26,7 +26,7 @@
  * 仅「打开」动作不可用。
  */
 
-import { createContext, useCallback, useContext, type FC, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, type FC, type ReactNode } from 'react'
 import { Dropdown, message, theme } from 'antd'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -35,6 +35,7 @@ import { buildActionUri } from '@mobi/shared'
 import { copyTextToClipboard } from '@/components/chat/CopyButton'
 import { useActionDispatcher } from './ActionLink'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
+import { basename } from '@/core/utils/path'
 import { buildReadFileUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { HtmlInline, ImageInline, MediaInline } from '@/components/chat/artifact/ArtifactInlineViews'
 import {
@@ -58,10 +59,17 @@ interface ArtifactEnv {
     fileMeta?: (sessionId: string, path: string) => ArtifactMetaState
 }
 
-export const ArtifactEnvContext = createContext<ArtifactEnv | undefined>(undefined)
+const ArtifactEnvContext = createContext<ArtifactEnv | undefined>(undefined)
 
 export function ArtifactEnvProvider({ refCtx, fileMeta, children }: { refCtx: FileRefContext, fileMeta?: (sessionId: string, path: string) => ArtifactMetaState, children: ReactNode }) {
-    return <ArtifactEnvContext.Provider value={{ refCtx, fileMeta }}>{children}</ArtifactEnvContext.Provider>
+    // value 按 refCtx 的原始字段 memo：调用点每渲染重建 refCtx 对象（消息列表流式期间
+    // 每 chunk 重跑），不 memo 会换新引用把树里全部产物消费者强拉重渲染
+    const { sessionId, machineId, cwd, sessionAddressingBroken } = refCtx
+    const value = useMemo(
+        () => ({ refCtx: { sessionId, machineId, cwd, sessionAddressingBroken } as FileRefContext, fileMeta }),
+        [sessionId, machineId, cwd, sessionAddressingBroken, fileMeta],
+    )
+    return <ArtifactEnvContext.Provider value={value}>{children}</ArtifactEnvContext.Provider>
 }
 
 const KIND_ICONS: Record<ArtifactKind, typeof File> = {
@@ -85,10 +93,7 @@ function formatLimit(kind: ArtifactKind): string {
     return `${Math.round(bytes / 1024 / 1024)}MB`
 }
 
-/** 路径基名（卡片标题；声明恒为文件路径，无目录语义） */
-function baseName(path: string): string {
-    return path.split('/').pop() ?? path
-}
+/** 路径基名（卡片标题；声明恒为文件路径，无目录语义）——basename 单源在 core/utils/path */
 
 /**
  * 产物卡（交互参照「打开方式」分体式按钮）：
@@ -178,7 +183,7 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
                     fontSize: token.fontSize, color: token.colorText,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                    {baseName(path)}
+                    {basename(path)}
                 </div>
                 {subtitle && (
                     <div style={{ fontSize: token.fontSizeSM, color: token.colorTextTertiary }}>

@@ -15,7 +15,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
-import { Box } from 'lucide-react'
+import { Box, Folder } from 'lucide-react'
 import type { Config as DOMPurifyConfig } from 'dompurify'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
@@ -29,6 +29,7 @@ import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from './useStreamingContent'
 import { INCOMPLETE_COMPONENTS } from './MarkdownIncomplete'
 import { ActionLink } from './ActionLink'
+import { DIRECTORY_TINT } from './FileTypeBadge'
 import { Favicon } from './Favicon'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
@@ -91,6 +92,19 @@ const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'd
     <span className="slash-command-badge">
         <Box size={12} strokeWidth={2.4} aria-hidden="true" />
         {command}
+    </span>
+)
+
+/**
+ * 目录 mention 徽章（mentionPlugin 的自定义标签映射）：lucide Folder 组件化渲染，
+ * 琥珀色同源 FileTypeBadge 的 DIRECTORY_TINT——raw HTML svg 会被 sanitize 剥
+ * <path d>（同 slash-command 的坑），组件路由是唯一可靠路径。文本基调
+ * （mono 弱于正文、无链接语义）见 markdown.css .mention-directory。
+ */
+const MentionDirectoryBadge: FC<ComponentProps<{ 'data-label'?: string }>> = ({ 'data-label': label }) => (
+    <span className="mention-directory">
+        <Folder size={13} strokeWidth={2.4} color={DIRECTORY_TINT} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
+        {label}
     </span>
 )
 
@@ -233,6 +247,7 @@ export const Markdown = memo(function Markdown({
             'footnote-ref': FootnoteRef,
             'mobi-directive': MobiDirective,
             'slash-command': SlashCommandBadge,
+            'mention-directory': MentionDirectoryBadge,
             // 流式未完成语法占位（渐进可见，见 MarkdownIncomplete 注释）：
             // 注册用默认名，仅在 hasNextChunk 缓存扣住 pending 时被触发，常驻注册无害
             ...INCOMPLETE_COMPONENTS,
