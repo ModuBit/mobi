@@ -451,7 +451,8 @@
             "reason.tooLarge": "Exceeds the inline size limit ({{limit}})",
             "reason.unsupported": "This type can't be inlined",
             "htmlTitle": "HTML preview"
-        }
+        },
+        "codeBlockPlain": "Plain text"
     },
     "files": {
         "saveStatus": {

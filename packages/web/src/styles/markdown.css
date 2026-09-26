@@ -211,6 +211,35 @@ html[data-theme='dark'] .x-markdown .slash-command-badge {
     display: none;
 }
 
+/* 代码块（自定义 header，见 AutoDetectCodeBlock）：常驻紧凑一条——左 </> glyph +
+   语言展示名，右复制按钮；root 按主题双档给底色（与 prism pre 同 token），header
+   与代码区融为一体。attribute selector 规避 antd X 的 prefixCls 差异（ant- / ant-x-）。 */
+.x-markdown [class*="codeHighlighter"]:not([class*="header"]) {
+    background: var(--ant-color-fill-quaternary);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+html[data-theme='dark'] .x-markdown [class*="codeHighlighter"]:not([class*="header"]) {
+    background: var(--ant-color-bg-elevated);
+}
+
+.x-markdown .code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px 4px;
+}
+
+.x-markdown .code-block-header-lang {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ant-color-text-secondary);
+}
+
 /* custom 消息系统行（ADR 0003，12px 灰调）内的 Markdown 变体：
    收起块级 p 边距（系统行是无边框紧凑行），链接色继承行内灰调而非全局固定色
    （.x-markdown a 的 #3d3d3a 与暗色主题覆盖都不适用于灰调系统行） */

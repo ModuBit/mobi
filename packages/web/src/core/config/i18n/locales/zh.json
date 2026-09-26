@@ -442,7 +442,8 @@
             "reason.tooLarge": "超过 inline 大小上限（{{limit}}）",
             "reason.unsupported": "该类型不支持 inline 展示",
             "htmlTitle": "网页预览"
-        }
+        },
+        "codeBlockPlain": "纯文本"
     },
     "files": {
         "saveStatus": {

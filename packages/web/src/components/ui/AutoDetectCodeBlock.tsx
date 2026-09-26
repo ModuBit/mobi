@@ -16,10 +16,13 @@
 
 import { useEffect, useState, type CSSProperties, type FC } from 'react'
 import { CodeHighlighter } from '@ant-design/x'
+import { CodeXml } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark'
 import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { CopyButton } from '@/components/chat/CopyButton'
 
 /** 修正 prism 主题中 pre 默认 margin，并把容器底色归入暖纸体系（语法高亮色板保留）：
  * 代码块与周围内容靠明度差区分——dark 用 colorBgElevated（比背景亮半档的抬升层），
@@ -45,6 +48,21 @@ function withSystemChrome(base: PrismTheme, background: string): PrismTheme {
 const ONE_DARK_THEME = withSystemChrome(oneDark as PrismTheme, 'var(--ant-color-bg-elevated)')
 const ONE_LIGHT_THEME = withSystemChrome(oneLight as PrismTheme, 'var(--ant-color-fill-quaternary)')
 
+/** 语言 → header 展示名：常见特例表 + 首字母大写兜底；clike 是检测兜底语言
+ *  （检测失败/非代码文本），按纯文本展示更诚实 */
+const LANG_SPECIAL: Record<string, string> = {
+    javascript: 'JavaScript', typescript: 'TypeScript', jsx: 'JSX', tsx: 'TSX',
+    cpp: 'C++', csharp: 'C#', markup: 'HTML', html: 'HTML', css: 'CSS',
+    json: 'JSON', bash: 'Bash', shell: 'Shell', powershell: 'PowerShell',
+    docker: 'Dockerfile', dockerfile: 'Dockerfile', makefile: 'Makefile',
+    objectivec: 'Objective-C', kotlin: 'Kotlin', rust: 'Rust', go: 'Go',
+    yaml: 'YAML', ini: 'INI', sql: 'SQL', php: 'PHP', ruby: 'Ruby', perl: 'Perl', lua: 'Lua',
+}
+function langLabel(lang: string, t: (key: string) => string): string {
+    if (lang === 'clike' || lang === 'plaintext' || lang === 'text') return t('chat.codeBlockPlain')
+    return LANG_SPECIAL[lang] ?? lang.charAt(0).toUpperCase() + lang.slice(1)
+}
+
 /**
  * 块级代码自动检测语言渲染：
  * - 显式 lang 优先
@@ -53,6 +71,7 @@ const ONE_LIGHT_THEME = withSystemChrome(oneLight as PrismTheme, 'var(--ant-colo
  */
 const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code, explicitLang }) => {
     const isDark = useUiStore((state) => resolveTheme(state.theme) === 'dark')
+    const { t } = useTranslation()
     const [resolvedLang, setResolvedLang] = useState<string>(explicitLang ?? FALLBACK_LANGUAGE)
 
     useEffect(() => {
@@ -78,11 +97,24 @@ const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code
     // prismLightMode={false}：避开 CodeHighlighter 的按需 lazy import
     // （`react-syntax-highlighter/dist/esm/languages/prism/${lang}` 模板路径在 Vite 下解析失败），
     // 改为一次性 import 主包获取全量 Prism。
+    //
+    // header 自定义（视觉 mockup 2026-09-26 定稿）：常驻紧凑一条——左 </> glyph +
+    // 语言展示名，右气泡消息同款 CopyButton（Copy/CheckCheck 交互全站统一）。
+    // class 走 markdown.css 的 code-block-header 规则（与代码区同底色融为一体）
     return (
         <CodeHighlighter
             lang={resolvedLang}
             prismLightMode={false}
             highlightProps={{ style: isDark ? ONE_DARK_THEME : ONE_LIGHT_THEME }}
+            header={(
+                <div className="code-block-header">
+                    <span className="code-block-header-lang">
+                        <CodeXml size={14} aria-hidden="true" />
+                        {langLabel(resolvedLang, t)}
+                    </span>
+                    <CopyButton text={code} size={18} />
+                </div>
+            )}
         >
             {code}
         </CodeHighlighter>
