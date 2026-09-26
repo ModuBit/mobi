@@ -3,7 +3,7 @@ name: quote-verify
 description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 边界拒绝的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-09-23
+  last_verified: 2026-09-25
 ---
 
 # 引用特性验证
@@ -31,6 +31,7 @@ metadata:
 
 ## 坑
 
+- **锚点结构探针**（2026-09-25）：单段 agent 消息的 `data-quote-block` 就落在消息容器自身（与 `data-quote-message-id`/`data-quote-role` 同元素），`agentEl.querySelector('[data-quote-block]')` 会查空——取 block 用 `closest('[data-quote-block]')` 或直接对锚内 `p` 的 text node 造 Range
 - **antd Tooltip 的 hover 合成事件不触发**（rc-trigger 过滤）——tooltip 验证必须用 CDP `hover` 工具（真实鼠标事件）对 snapshot uid，约 0.9s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`
 - **>500 字符 tooLong 拒绝**：普通问答回复单块仅 ~300 字符，跨块又被拒——UI 内难自然构造，留单测覆盖即可
 - quote E2E 用的模型下拉显示 glm-5.2 但 turn 实际 claude-sonnet-4-6（模型下拉与 turn 无关，别被迷惑）
@@ -45,12 +46,11 @@ metadata:
 
 链路：划选 agent 回复 → 添加到对话 → 评论 → 发「请围绕引用深入讲解」类探针 → 回复中断言：
 
-1. `[data-testid="quote-annotation-1"]`「注释 1」上标按钮渲染；正文无 `:mobi-quote` 原文残留
-2. `[data-testid="agent-annotation-chip"]`「N 条注释」聚合 chip 在 agent 气泡 header
-3. tooltip 必须 CDP hover（合成事件不触发，同引用 tooltip 坑）~1.2s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`，内容 = excerpt + 评论
-4. 点击按钮 → `.quote-locate-flash` 挂上（1.2s 内断言）
-5. chip 点击 → `[data-testid="agent-annotation-list"]` 列表卡，条目 = 编号+excerpt+评论
-6. DB 断言 offsets：`messages` user 消息 `content[0].startOffset/endOffset`（json_extract 数组路径写 `'$[0].x'`，bash 双引号下 `$[0]` 会被算术展开——用 heredoc 或单引号 SQL）
-7. 移动端 390：chip 列表卡 popper `left=16, right=innerWidth-16, width=100vw-32`（quote-list-popover 全局钳制复用）
+1. `[data-testid="quote-annotation-1"]`「引用 1」上标按钮渲染（标记 2026-09-25 起走通用指令路由 MobiDirective）；正文无 `:mobi-quote` 原文残留
+2. ~~聚合 chip~~ 已移除（d133b33e，「N 条注释」chip 删除、标记改名「引用 N」）——marker 即唯一锚
+3. tooltip 必须 CDP hover（合成事件不触发，同引用 tooltip 坑）~2s 后查 `.ant-tooltip:not(.ant-tooltip-hidden)`，内容 = excerpt + 评论
+4. 点击按钮 → `.quote-locate-flash` 挂上（1.2s 内断言；flash 类挂在锚内首个真实盒上，锚本身 display:contents 无该 id，别按 messageId 查 flash 元素）
+5. DB 断言 offsets：`messages` user 消息 `content[0].startOffset/endOffset`（json_extract 数组路径写 `'$[0].x'`，bash 双引号下 `$[0]` 会被算术展开——用 heredoc 或单引号 SQL；messages 表无 role 列，role 在 content JSON 内）
+6. 移动端 390：chip 列表卡 popper `left=16, right=innerWidth-16, width=100vw-32`（quote-list-popover 全局钳制复用）
 
 探针 prompt 要求「直接回答不要用工具」，否则首轮会触发 Change Title 等工具流干扰选区。

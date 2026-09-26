@@ -20,7 +20,7 @@ metadata:
 - **B HTML iframe**：断言 iframe src 含 `/serve-file/`、sandbox 含 allow-scripts、`data-wide` 属性随 mode。模型对「多面板对比」自主选 mode="wide"（skill §4 判据生效的行为证据）
 - **C 悬空降级**：直接 `rm` 已声明的产物文件 → 刷新页面 → 原 inline 变产物卡且文案「文件不存在或不可读」。比 DB 造消息简单且确定性等价
 - **D 窄屏**：`resize_page 375` → 断言 wrap/iframe clientWidth ≤ 视口且 `getBoundingClientRect().right <= viewport+1`（无横向溢出）。注意 Chrome 最小窗宽限制，viewport 可能 >375，断言以实际 clientWidth 为准
-- **挂载验证**：找 e2e 会话 CLI（`--started-by runner` 且启动时间在 bootstrap 之后）的**内层 claude 子进程**（`pgrep -P <cli-pid>`），arg 里应有 `--plugin-dir <repo>/packages/cli/plugins/visualize`。`~/.mobi-e2e/runtime/*/plugins/` 不存在是**正常的**——开发态走源目录直连不落 runtime
+- **挂载验证**：找 e2e 会话 CLI（`--started-by runner` 且启动时间在 bootstrap 之后）的**内层 claude 子进程**（`pgrep -P <cli-pid>`），arg 里应有 `--plugin-dir <repo>/packages/cli/plugins/mobi`。`~/.mobi-e2e/runtime/*/plugins/` 不存在是**正常的**——开发态走源目录直连不落 runtime
 
 ## 坑
 
