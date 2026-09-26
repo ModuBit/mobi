@@ -115,11 +115,12 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
         : stalled ? `${agentId} 长时间无响应` : `${agentId} 正在运行`
 
     return (
-        <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {/* 输出中 drive 波前 / 停滞 orbit 绕圈；待审批 orbit 染橙（审批橙语义色，
-                与会话列表同源取色）——审批是需要行动的语义例外，不与「忙」混同 */}
+                与会话列表同源取色）——审批是需要行动的语义例外，不与「忙」混同。
+                size 3：会话列表同款小格，状态栏走低调尺寸（2026-09-26 验收） */}
             {loaderVariant
-                ? <PixelLoader variant={loaderVariant} color={isAwaitingAuth ? AWAITING_AUTH_LOADER.color : undefined} />
+                ? <PixelLoader variant={loaderVariant} size={3} color={isAwaitingAuth ? AWAITING_AUTH_LOADER.color : undefined} />
                 : <StatusStateIcon state={status} />}
             {/* 读屏播报区：只给落定文案（labelText）——可见层的 scramble 逐帧改写文字，
                 live 区若跟着变会把随机乱码中间态当更新连续播报；视觉隐藏但读屏可达 */}
@@ -134,11 +135,11 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
             <ShinyText
                 solid
                 aria-hidden="true"
-                style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 13, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                style={{ color: stalled ? token.colorWarning : CLAUDE_ORANGE, fontSize: 12, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >
                 <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
             </ShinyText>
-            <span aria-hidden="true" style={{ color: token.colorTextTertiary, fontSize: 12, marginLeft: 'auto' }}>
+            <span aria-hidden="true" style={{ color: token.colorTextTertiary, fontSize: 11, marginLeft: 'auto' }}>
                 {elapsedTime}
             </span>
         </div>
