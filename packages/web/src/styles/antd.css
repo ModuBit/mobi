@@ -44,6 +44,33 @@
     padding-block: 6px !important;
 }
 
+/* light 主题用户气泡反色（2026-09-26 定稿）：深色底 + 浅字。
+   用户消息与米色页面底同系（浅底叠浅底分层弱），反色后对话归属一眼可辨，
+   slash 徽章等彩色元素也有了稳定的深色舞台。dark 档用户气泡本就是深底，无需处理。
+   内部元素逐一反色：markdown 链接 / 行内代码底 / 目录 mention / slash 徽章——
+   这些各有自己的主题档规则，米色档的取值在深底上不可读，必须在作用域内覆盖 */
+html:not([data-theme='dark']) .user-msg-bubble .ant-bubble-content {
+    background: #3d3d3a;
+    color: #faf9f5;
+}
+
+html:not([data-theme='dark']) .user-msg-bubble .x-markdown a {
+    color: #d1cfc5;
+    text-decoration-color: rgba(209, 207, 197, 0.35);
+}
+
+html:not([data-theme='dark']) .user-msg-bubble .x-markdown code {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+html:not([data-theme='dark']) .user-msg-bubble .x-markdown .mention-directory {
+    color: #a8a69e;
+}
+
+html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge {
+    color: #74c0fc;
+}
+
 /* assistant 气泡的对侧留白清零收口在 BUBBLE_ROLES.assistant 的 styles.root
    （antdx 语义槽位），不用全局 CSS 覆写——见 bubbleRoles.ts 与守卫测试
    tests/assistant-bubble-fullwidth.test.ts */

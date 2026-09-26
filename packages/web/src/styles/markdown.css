@@ -176,23 +176,25 @@ html[data-theme='dark'] .x-markdown tbody tr:hover {
     background: #2a2a28;
 }
 
-/* Slash Command Badge */
+/* Slash Command Badge（2026-09-26 定稿）：lucide Box icon + 命令名，无底无框。
+   蓝字双档：light 用明亮天蓝（暖纸底上深海军蓝发闷费劲，2026-09-26 真机），
+   dark 提亮一档天蓝；同色相家族。mono 600 强调「这是一条命令」。
+   icon 由 React 组件渲染（Markdown.tsx SlashCommandBadge），色随 currentColor */
 .x-markdown .slash-command-badge {
-    display: inline-block;
-    background: #e8e6dc;
-    color: #4d4c48;
-    border-radius: 4px;
-    padding: 1px 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #228be6;
     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
-    font-size: 0.85em;
-    font-weight: 500;
+    font-size: 0.8em;
+    font-weight: 600;
+    line-height: 1.5;
     vertical-align: baseline;
     white-space: nowrap;
 }
 
 html[data-theme='dark'] .x-markdown .slash-command-badge {
-    background: #30302e;
-    color: #d1cfc5;
+    color: #74c0fc;
 }
 
 /* 目录 mention（@src/ 等）：folder glyph 内联在 renderer 输出里，此处只管文本基调——

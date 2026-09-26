@@ -79,11 +79,15 @@ function slashCommand(): TokenizerAndRendererExtension {
                 command: string
                 tokens: Token[]
             }
-            const badge = `<span class="slash-command-badge">/${escapeHtml(command)}</span>`
+            // 自定义标签由 XMarkdown components 映射为 React 组件（SlashCommandBadge，
+            // 见 Markdown.tsx）——icon 走 lucide-react 真 SVG，不经 sanitize；
+            // 模式同 directivePlugin 的 mobi-directive。
+            // 参数（rest）继续走 inline 解析，支持 markdown 格式
+            const tag = `<slash-command data-command="${escapeHtml(command)}"></slash-command>`
             const restHtml = tokens.length > 0
                 ? this.parser.parseInline(tokens)
                 : ''
-            return restHtml ? `${badge} ${restHtml}` : badge
+            return restHtml ? `${tag} ${restHtml}` : tag
         },
     }
 }

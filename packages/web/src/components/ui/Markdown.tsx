@@ -15,6 +15,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
+import { Box } from 'lucide-react'
 import type { Config as DOMPurifyConfig } from 'dompurify'
 import { MOBI_URI_SCHEME } from '@mobi/shared'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
@@ -80,9 +81,21 @@ const DOMPURIFY_CONFIG: DOMPurifyConfig = {
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|mobi):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
 }
 
+/**
+ * slash command 徽章（slashCommandPlugin 的自定义标签映射）：
+ * lucide Box icon + 命令名。icon 在 React 层渲染为真 SVG——raw HTML 形态的
+ * svg 会被 sanitize 剥掉 <path d> 属性致空白，组件化是唯一可靠路径。
+ * 样式（mono 蓝字、无底无框）见 markdown.css .slash-command-badge。
+ */
+const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'data-command': command }) => (
+    <span className="slash-command-badge">
+        <Box size={12} strokeWidth={2.4} aria-hidden="true" />
+        {command}
+    </span>
+)
+
 /** 链接渲染：mobi:// 内部动作链接交 ActionLink 拦截分发（ADR 0003），其余统一新标签页打开 */
-const ExternalLink: FC<ComponentProps<{ href?: string }>> = (
-    { href, children, domNode, streamStatus, lang, block, className, ...rest },
+const ExternalLink: FC<ComponentProps<{ href?: string }>> = (    { href, children, domNode, streamStatus, lang, block, className, ...rest },
 ) => {
     if (href?.toLowerCase().startsWith(MOBI_URI_PREFIX)) {
         // className 透传：raw HTML 形态的 mobi 链接（如 mention badge）带原样式 class
@@ -219,6 +232,7 @@ export const Markdown = memo(function Markdown({
             a: ExternalLink,
             'footnote-ref': FootnoteRef,
             'mobi-directive': MobiDirective,
+            'slash-command': SlashCommandBadge,
             // 流式未完成语法占位（渐进可见，见 MarkdownIncomplete 注释）：
             // 注册用默认名，仅在 hasNextChunk 缓存扣住 pending 时被触发，常驻注册无害
             ...INCOMPLETE_COMPONENTS,

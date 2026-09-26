@@ -28,27 +28,27 @@ function render(text: string): string {
 describe('slashCommandPlugin', () => {
     it('段首 /command 渲染为 badge，参数保留', () => {
         const html = render('/compact 总结一下')
-        expect(html).toContain('class="slash-command-badge"')
-        expect(html).toContain('/compact')
+        expect(html).toContain('<slash-command data-command=')
+        expect(html).toContain('data-command="compact"')
         expect(html).toContain('总结一下')
     })
 
     it('段落中间的 /command 也渲染为 badge（不限首行首字符，与 sender 对齐）', () => {
         const html = render('你好 /compact 总结')
-        expect(html).toContain('class="slash-command-badge"')
-        expect(html).toContain('/compact')
+        expect(html).toContain('<slash-command data-command=')
+        expect(html).toContain('data-command="compact"')
         expect(html).toContain('你好')
     })
 
     it('无参数的 /command 渲染为 badge', () => {
         const html = render('看 /init 这条')
-        expect(html).toContain('class="slash-command-badge"')
-        expect(html).toContain('/init')
+        expect(html).toContain('<slash-command data-command=')
+        expect(html).toContain('data-command="init"')
     })
 
     it('/command 参数中的 markdown 仍生效', () => {
         const html = render('/compact **粗体**')
-        expect(html).toContain('class="slash-command-badge"')
+        expect(html).toContain('<slash-command data-command=')
         expect(html).toContain('<strong>粗体</strong>')
     })
 
@@ -70,7 +70,7 @@ describe('slashCommandPlugin', () => {
 
     it('命令名仅允许 [a-zA-Z0-9_-]', () => {
         const html = render('/board-2 详情')
-        expect(html).toContain('class="slash-command-badge"')
-        expect(html).toContain('/board-2')
+        expect(html).toContain('<slash-command data-command=')
+        expect(html).toContain('data-command="board-2"')
     })
 })
