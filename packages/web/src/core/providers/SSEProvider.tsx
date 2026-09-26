@@ -29,6 +29,12 @@ import { useNotificationStore } from '@/core/data/stores/notificationStore'
 import type { Session, SyncEvent, DecryptedMessage, UserContentBlock } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
+import {
+    notifyAttention,
+    trackAttentionTransition,
+    clearAttentionState,
+    clearAllAttentionStates,
+} from '@/core/notifications/attentionFeedback'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
@@ -455,6 +461,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     qc.invalidateQueries({ queryKey: queryKeys.session(event.sessionId) })
                 }
                 patchSessionCache(qc, event.sessionId, event.data)
+                // 需要用户介入的状态转换（输出完成等待输入 / 审批·提问到达）→ 声音+震动。
+                // 独立于 toast 三分支：正盯着的会话（toast 会 ignore）也要响，且不经过
+                // hub Ready 通知的 60s 冷却（每轮转换都反馈）。首次见到只记基线不响。
+                const attentionKind = trackAttentionTransition(event.sessionId, event.data)
+                if (attentionKind) notifyAttention(attentionKind)
                 // 只有改变分组成员资格的载荷才失效项目视图：
                 // - 完整 session 载荷（delta.id === sessionId，如 setSessionProject 归属变更）
                 // - 无 data 载荷（projectCache 删除项目后逐会话解绑广播）
@@ -473,6 +484,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'session-removed':
                 qc.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
                 clearMessageWindow(event.sessionId)
+                clearAttentionState(event.sessionId)
                 // 清理该 session 的瞬时建议, 避免删除会话后 bySession Map 残留
                 usePromptSuggestionStore.getState().clearSession(event.sessionId)
                 scheduleInvalidation('sessions')
@@ -690,6 +702,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 不重置则新用户继承上一用户状态/不再获得首次引导
             useNotificationStore.getState().reset()
             resetPermissionPrompt()
+            // 清空状态反馈基线，避免换号继承上一用户会话快照造成误响/漏响
+            clearAllAttentionStates()
             // 清空所有会话的检视面板状态 + 缓存终端（顺带关闭后端 PTY），避免换号残留
             clearAllSessionResources()
         }
