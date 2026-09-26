@@ -17,6 +17,7 @@
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
+import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
 import { isInterruptedSyntheticText } from '@/domain/chat/normalizeAgent'
 
 /**
@@ -66,10 +67,25 @@ export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreamin
     if (aborted) {
         return (
             <div>
-                <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
+                <StreamingGatedMarkdown text={text} isStreaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
                 <TruncatedTag />
             </div>
         )
     }
-    return <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
+    return <StreamingGatedMarkdown text={text} isStreaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
 })
+
+/** Markdown + 流式闸：agent 正文是内联指令的唯一生产场景，闸的取值（流式揭示中？）
+ *  在 TextBlock 这层就有——从这里下发，重型 inline 指令产物（iframe 等）据此延后挂载 */
+function StreamingGatedMarkdown({ text, isStreaming, enableSlashCommand, enableMention }: {
+    text: string
+    isStreaming?: boolean
+    enableSlashCommand?: boolean
+    enableMention?: boolean
+}) {
+    return (
+        <DirectiveStreamGate.Provider value={!!isStreaming}>
+            <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
+        </DirectiveStreamGate.Provider>
+    )
+}

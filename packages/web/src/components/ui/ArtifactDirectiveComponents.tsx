@@ -34,6 +34,7 @@ import { buildActionUri } from '@mobi/shared'
 import { ActionLink } from './ActionLink'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { buildReadFileUrl, type FileRefContext } from '@/core/utils/fileUrl'
+import { HtmlInline, ImageInline, MediaInline } from '@/components/chat/artifact/ArtifactInlineViews'
 import {
     ARTIFACT_INLINE_LIMIT_BYTES,
     isInlineCapableKind,
@@ -167,6 +168,9 @@ export const ArtifactDirectiveView: FC<{ path?: string, mode?: string, children?
         return <ArtifactCard path={params.path} sessionId={sessionId} />
     }
 
-    // 票 02/03 接管：image/audio/video/html 的 inline 渲染分支。交付前 inline 意愿也呈卡。
-    return <ArtifactCard path={params.path} sessionId={sessionId} />
+    // inline 渲染：校验全部通过且类型可 inline。etag 并入 URL 作内容版本（fileUrl 模块头）
+    const etag = metaQuery.data.etag
+    if (kind === 'image') return <ImageInline sessionId={sessionId} path={params.path} etag={etag} />
+    if (kind === 'audio' || kind === 'video') return <MediaInline sessionId={sessionId} path={params.path} etag={etag} kind={kind} />
+    return <HtmlInline sessionId={sessionId} path={params.path} etag={etag} wide={params.mode === 'wide'} />
 }

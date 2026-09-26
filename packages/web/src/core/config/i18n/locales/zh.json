@@ -440,7 +440,8 @@
             "browser": "浏览器打开",
             "reason.missing": "文件不存在或不可读",
             "reason.tooLarge": "超过 inline 大小上限（{{limit}}）",
-            "reason.unsupported": "该类型不支持 inline 展示"
+            "reason.unsupported": "该类型不支持 inline 展示",
+            "htmlTitle": "网页预览"
         }
     },
     "files": {

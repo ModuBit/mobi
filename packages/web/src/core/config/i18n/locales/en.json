@@ -449,7 +449,8 @@
             "browser": "Open in browser",
             "reason.missing": "File not found or unreadable",
             "reason.tooLarge": "Exceeds the inline size limit ({{limit}})",
-            "reason.unsupported": "This type can't be inlined"
+            "reason.unsupported": "This type can't be inlined",
+            "htmlTitle": "HTML preview"
         }
     },
     "files": {

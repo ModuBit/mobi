@@ -25,6 +25,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { Markdown } from '@/components/ui/Markdown'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
+import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { dedupeDirectiveText } from '@/domain/chat/directives'
 
@@ -68,9 +69,13 @@ function renderDirective(text: string, withEnv = true) {
 const META_OK = { mime: 'image/png', size: 1024, etag: '1-1', writable: true }
 
 describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
-    it('文件存在 → 产物卡（文件名 + 打开动作），directive 原文不残留', async () => {
+    it('图片有效 → inline（票 02 后行为）；mode="card" → 产物卡（文件名 + 打开动作），原文不残留', async () => {
         mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
         renderDirective('看这个 :mobi-artifact{path="/tmp/demo.png"} 好了')
+        expect(await screen.findByTestId('artifact-inline-image')).toBeInTheDocument()
+        cleanup()
+
+        renderDirective(':mobi-artifact{path="/tmp/demo.png" mode="card"}')
         const card = await screen.findByTestId('artifact-card')
         expect(card.textContent).toContain('demo.png')
         expect(card.textContent).toMatch(/在检查器打开|Open in inspector/)
@@ -108,13 +113,13 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         expect(document.body.textContent).toContain(':mobi-artifact{}')
     })
 
-    it('同一路径声明两次只渲染一张卡（blocks 层 dedupeDirectiveText 组合路径）', async () => {
+    it('同一路径声明两次只渲染一个 inline（blocks 层 dedupeDirectiveText 组合路径）', async () => {
         mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
         const text = ':mobi-artifact{path="/tmp/demo.png"} 后 :mobi-artifact{path="/tmp/demo.png"}'
         // blocks 层 agent-text 渲染入口先去重再交 Markdown（本测试复现该组合）
         renderDirective(dedupeDirectiveText(text))
-        await screen.findByTestId('artifact-card')
-        expect(screen.getAllByTestId('artifact-card')).toHaveLength(1)
+        await screen.findByTestId('artifact-inline-image')
+        expect(screen.getAllByTestId('artifact-inline-image')).toHaveLength(1)
     })
 
     it('寻址上下文缺失 → 仍渲染卡片（无原因标注，不发无效请求）', async () => {
@@ -124,10 +129,86 @@ describe('产物声明渲染（:mobi-artifact 管线集成）', () => {
         expect(mockMeta).toHaveBeenCalledWith(null, '/tmp/demo.png')
     })
 
-    it('mode="wide" 非法值容错为 auto（不炸不降级原文）', async () => {
+    it('mode 非法值容错为 auto（按类型 inline，不炸不降级原文）', async () => {
         mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
         renderDirective(':mobi-artifact{path="/tmp/demo.png" mode="fullscreen"}')
-        const card = await screen.findByTestId('artifact-card')
-        expect(card.textContent).toContain('demo.png')
+        expect(await screen.findByTestId('artifact-inline-image')).toBeInTheDocument()
+    })
+})
+
+describe('产物 inline 渲染（票 02/03）', () => {
+    it('图片 → inline 缩略图（read-file URL 带 etag 版本参数），非卡片', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
+        renderDirective(':mobi-artifact{path="/tmp/demo.png"}')
+        const inline = await screen.findByTestId('artifact-inline-image')
+        const img = inline.querySelector('img')
+        expect(img).not.toBeNull()
+        expect(img!.getAttribute('src')).toContain('/api/sessions/s-1/read-file')
+        expect(img!.getAttribute('src')).toContain('v=1-1')
+        expect(screen.queryByTestId('artifact-card')).not.toBeInTheDocument()
+    })
+
+    it('音频/视频 → 对应标签播放器，preload=metadata 不自动播放', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: META_OK } as never)
+        const { container: c1 } = render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
+                <Markdown content={':mobi-artifact{path="/tmp/a.mp3"}'} />
+            </ArtifactEnvProvider>,
+        )
+        await screen.findByTestId('artifact-inline-audio')
+        expect(c1.querySelector('audio[controls][preload="metadata"]')).not.toBeNull()
+        cleanup()
+
+        const { container: c2 } = render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
+                <Markdown content={':mobi-artifact{path="/tmp/v.mp4"}'} />
+            </ArtifactEnvProvider>,
+        )
+        await screen.findByTestId('artifact-inline-video')
+        const video = c2.querySelector('video')
+        expect(video).not.toBeNull()
+        expect(video!.getAttribute('preload')).toBe('metadata')
+        expect(video!.getAttribute('autoplay')).toBeNull()
+    })
+
+    it('HTML → serve-file 沙箱 iframe（非流式态）；流式揭示期间为占位不挂 iframe', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
+        const ui = <Markdown content={':mobi-artifact{path="/tmp/page.html"}'} />
+        const { container } = render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
+                <DirectiveStreamGate.Provider value={true}>{ui}</DirectiveStreamGate.Provider>
+            </ArtifactEnvProvider>,
+        )
+        const wrap = await screen.findByTestId('artifact-inline-html')
+        expect(wrap.querySelector('[data-artifact-html-placeholder]')).not.toBeNull()
+        expect(wrap.querySelector('iframe')).toBeNull()
+        cleanup()
+
+        const { container: c2 } = render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
+                <DirectiveStreamGate.Provider value={false}>{ui}</DirectiveStreamGate.Provider>
+            </ArtifactEnvProvider>,
+        )
+        await screen.findByTestId('artifact-inline-html')
+        const iframe = c2.querySelector('iframe')
+        expect(iframe).not.toBeNull()
+        expect(iframe!.getAttribute('src')).toContain('/api/sessions/s-1/serve-file/')
+        expect(iframe!.getAttribute('sandbox')).toContain('allow-scripts')
+    })
+
+    it('mode="wide" → iframe 容器走宽档；mode="card" → 产物卡', async () => {
+        mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
+        const { container } = render(
+            <ArtifactEnvProvider refCtx={{ sessionId: 's-1' }}>
+                <Markdown content={':mobi-artifact{path="/tmp/page.html" mode="wide"}'} />
+            </ArtifactEnvProvider>,
+        )
+        const wrap = await screen.findByTestId('artifact-inline-html')
+        expect(wrap.querySelector('iframe')!.getAttribute('data-wide')).toBe('true')
+        expect(container.querySelector('[data-testid="artifact-card"]')).toBeNull()
+        cleanup()
+
+        renderDirective(':mobi-artifact{path="/tmp/page.html" mode="card"}')
+        await screen.findByTestId('artifact-card')
     })
 })
