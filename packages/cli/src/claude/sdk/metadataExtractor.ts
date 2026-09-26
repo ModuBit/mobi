@@ -25,6 +25,7 @@ import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
+import { buildBundledPluginOptions } from '@/runtime/bundledPlugins'
 import type { SDKMetadata } from '@mobi/shared'
 
 // 重新导出类型供其他模块使用
@@ -80,6 +81,10 @@ export async function extractSDKMetadata(cwd?: string): Promise<SDKMetadata> {
             logger.debug('[metadataExtractor] cwd does not exist, falling back to mobiHomeDir:', cwd)
             options.cwd = configuration.mobiHomeDir
         }
+
+        // 内置插件与真实会话同源挂载（local 模式的 `/` 面板命令以此探针为唯一来源，
+        // 不带 plugins 会让插件 skill 从命令面板消失——2026-09-26 visualize 实测缺失）
+        options.plugins = buildBundledPluginOptions()
 
         const sdkQuery = query({
             prompt: emptyPrompt,

@@ -30,7 +30,7 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 - **No network calls**: `fetch`, `XMLHttpRequest`, `WebSocket`, and form submissions to servers are cut off by CSP (`connect-src 'none'`) and will fail silently. All data goes inline in the file.
 - **Size target: under 2 MB.** Aggregate, bin, downsample, or round precision for large datasets. Over the limit the visual degrades to a file card.
 - **Both themes.** The iframe does not inherit Mobi's theme. Use `prefers-color-scheme` with `light-dark()` (or a media-query pair) for every color; never hardcode a light-only or dark-only palette. Verify both directions read clearly.
-- **No fixed outer width.** The container is 736px by default, up to 1024px in wide mode, and full-width on phones; design for 736 and stack gracefully below it.
+- **Full-width container.** The preview fills the chat column (desktop can reach ~1200px, phones full-width); design fluidly — columns stack gracefully on narrow viewports, no fixed pixel assumptions.
 - Interactive controls use native elements (`button`, `input`, `select`); keep essential content available without hover (touch users).
 
 ## 3. Where files go

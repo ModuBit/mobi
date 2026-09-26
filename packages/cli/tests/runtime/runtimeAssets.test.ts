@@ -38,7 +38,7 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
   // 用仓库源 SKILL.md 充当 embedded asset（vitest 非 compiled，走 stub 无真实嵌入资源）
   const skillAsset = (): EmbeddedAsset => ({
     relativePath: VISUALIZE_SKILL_REL_PATH,
-    sourcePath: join(projectPath(), 'plugins', 'visualize', 'skills', 'visualize', 'SKILL.md'),
+    sourcePath: join(projectPath(), 'plugins', 'mobi', 'skills', 'visualize', 'SKILL.md'),
   });
 
   it('首次释放：SKILL.md 落到 runtime root 的同名相对路径，内容一致', async () => {

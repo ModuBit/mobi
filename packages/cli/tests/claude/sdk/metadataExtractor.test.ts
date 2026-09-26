@@ -46,6 +46,14 @@ vi.mock('@/ui/logger', () => ({
 // mock @mobi/shared 中的类型（只需要 re-export，不需要实际实现）
 vi.mock('@mobi/shared', () => ({}))
 
+// mock 内置插件清单（提取探针必须与真实会话同源挂载，否则 `/` 面板丢插件命令）
+const mockBuildBundledPluginOptions = vi.fn(() => [
+    { type: 'local' as const, path: '/mock/plugins/mobi' },
+])
+vi.mock('@/runtime/bundledPlugins', () => ({
+    buildBundledPluginOptions: () => mockBuildBundledPluginOptions(),
+}))
+
 // 在 mock 设置之后 import
 import { extractSDKMetadata, extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor'
 
@@ -113,6 +121,15 @@ describe('extractSDKMetadata', () => {
         const callArgs = mockQuery.mock.calls[0][0]
         expect(callArgs.options.maxTurns).toBeUndefined()
         expect(callArgs.options.allowedTools).toBeUndefined()
+    })
+
+    it('挂载内置插件（与真实会话同源，否则 `/` 面板丢插件命令——2026-09-26 实测 visualize 缺失）', async () => {
+        await extractSDKMetadata()
+
+        const callArgs = mockQuery.mock.calls[0][0]
+        expect(callArgs.options.plugins).toEqual([
+            { type: 'local', path: '/mock/plugins/mobi' },
+        ])
     })
 
     it('正确映射 initializationResult 到 SDKMetadata', async () => {

@@ -21,10 +21,11 @@ import ripgrepArchiveLicense from '../../tools/archives/ripgrep-LICENSE' with { 
 import difftasticLicense from '../../tools/licenses/difftastic-LICENSE' with { type: 'file' };
 import ripgrepLicense from '../../tools/licenses/ripgrep-LICENSE' with { type: 'file' };
 
-// 内置插件（每特性一个 plugin，清单见 @/runtime/bundledPlugins）：
-// 逐文件 import 纳入资源清单，relativePath 保持 `plugins/<name>/...` 布局，
-// ensureRuntimeAssets 按同名相对路径释放到 runtime 目录
-import visualizeSkillMd from '../../plugins/visualize/skills/visualize/SKILL.md' with { type: 'file' };
+// 内置插件（单插件 `mobi` 聚合全部内置 skill，清单见 @/runtime/bundledPlugins）：
+// 逐文件 import 纳入资源清单，relativePath 保持 `plugins/mobi/...` 布局，
+// ensureRuntimeAssets 按同名相对路径释放到 runtime 目录；plugin.json 不走嵌入
+// （.json 被 resolveJsonModule 解析为对象），由 syncPluginAssets 从常量写盘
+import visualizeSkillMd from '../../plugins/mobi/skills/visualize/SKILL.md' with { type: 'file' };
 
 export interface EmbeddedAsset {
     relativePath: string;
@@ -43,8 +44,8 @@ const COMMON_ASSETS: EmbeddedAsset[] = [
     asset('tools/archives/ripgrep-LICENSE', ripgrepArchiveLicense),
     asset('tools/licenses/difftastic-LICENSE', difftasticLicense),
     asset('tools/licenses/ripgrep-LICENSE', ripgrepLicense),
-    // 内置插件（各平台共用，故放 COMMON）
-    asset('plugins/visualize/skills/visualize/SKILL.md', visualizeSkillMd)
+    // 内置插件（各平台共用，故放 COMMON）；清单文件由 syncPluginAssets 从常量写盘
+    asset('plugins/mobi/skills/visualize/SKILL.md', visualizeSkillMd)
 ];
 
 async function selectEmbeddedAssets(): Promise<EmbeddedAsset[]> {

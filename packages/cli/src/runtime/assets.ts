@@ -21,7 +21,7 @@ import * as tar from 'tar';
 import packageJson from '../../package.json';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { isBunCompiled, runtimePath } from '@/projectPath';
-import { PLUGIN_ASSET_PREFIX, VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
+import { MOBI_PLUGIN_MANIFEST, MOBI_PLUGIN_MANIFEST_REL_PATH, PLUGIN_ASSET_PREFIX, VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
 import { UNPACKED_PLATFORM_MARKER } from '@/utils/resolveBinaryPath';
 
 const RUNTIME_MARKER = '.runtime-version';
@@ -162,6 +162,11 @@ export async function syncPluginAssets(runtimeRoot: string, embeddedAssets: Embe
     for (const asset of embeddedAssets.filter(isPluginAsset)) {
         await copyAssetFile(asset, join(runtimeRoot, asset.relativePath));
     }
+
+    // 插件清单不走 embedded asset（.json 被 resolveJsonModule 解析为对象），从常量写盘
+    const manifestTarget = join(runtimeRoot, MOBI_PLUGIN_MANIFEST_REL_PATH);
+    mkdirSync(dirname(manifestTarget), { recursive: true });
+    writeFileSync(manifestTarget, MOBI_PLUGIN_MANIFEST);
 }
 
 export async function ensureRuntimeAssets(): Promise<void> {
