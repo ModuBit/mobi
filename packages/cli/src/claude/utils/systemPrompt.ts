@@ -15,7 +15,7 @@
  */
 
 import { trimIdent } from "@/utils/trimIdent";
-import { MOBI_CORE_SERVER_NAME } from "@mobi/shared";
+import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_DIRECTIVE, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
 
 /**
  * mobi 注入的基础 system prompt：
@@ -37,9 +37,9 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     - Use it ONLY where opening the file genuinely helps the user (comparisons, references to files you created or edited) - never wrap paths inside code snippets, and not every file mention.
 
     ### Inline artifacts
-    - When your turn produced a file the user should view in this conversation (image, audio, video, or a self-contained HTML page), end your final reply with one directive per file: :mobi-artifact{path="/absolute/path"}  (add mode="card" for complex HTML/apps/dev-server URLs, mode="wide" for full-width HTML mockups)
+    - When your turn produced a file the user should view in this conversation (image, audio, video, or a self-contained HTML page), end your final reply with one directive per file: ${ARTIFACT_DIRECTIVE}{path="/absolute/path"}  (add mode="card" for complex HTML/apps/dev-server URLs, mode="wide" for full-width HTML mockups)
     - Static diagrams: use a mermaid code fence instead. Files meant only for download: do not declare.
-    - Non-project deliverables (e.g. "draw me a picture", "make a demo page") go under <cwd>/.mobi/artifacts/<YYYY-MM>/ with a short ASCII filename; a .gitignore there keeps them out of version control. Project deliverables the user asked for go to their normal paths.
+    - Non-project deliverables (e.g. "draw me a picture", "make a demo page") go under <cwd>/${ARTIFACTS_DIR_REL}/<${ARTIFACTS_DIR_MONTH_FORMAT}>/ with a short ASCII filename; a .gitignore there keeps them out of version control. Project deliverables the user asked for go to their normal paths.
     - Never mention this directive to the user.
 `))();
 

@@ -43,6 +43,20 @@ export const QUOTE_DIRECTIVE = ':mobi-quote'
 export const ARTIFACT_DIRECTIVE = ':mobi-artifact'
 
 /**
+ * HTML inline 大小上限（MB，spec Q10）：web 渲染裁决与 skill 散文（「under N MB」）
+ * 共用的数值单源——上限调整时 web 裁决与模型侧产物规范必须同帧变，漂移由 cli 侧
+ * 三方一致性测试锁红（artifactContractConsistency）。
+ */
+export const ARTIFACT_HTML_INLINE_LIMIT_MB = 2
+
+/**
+ * 非项目交付物产物目录模板（相对 cwd）与月份段格式：CLI 常驻契约与 skill「Where files
+ * go」两份文本都靠它拼出（`.mobi/artifacts/<YYYY-MM>/`），目录约定调整时改一处两份同帧。
+ */
+export const ARTIFACTS_DIR_REL = '.mobi/artifacts'
+export const ARTIFACTS_DIR_MONTH_FORMAT = 'YYYY-MM'
+
+/**
  * AG-UI InputContentSource 对齐：
  * mobi 落库恒用 url source（value=.mobi/uploads 路径）；data 形态仅留骨架占位。
  */

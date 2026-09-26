@@ -25,7 +25,7 @@
  * 全部纯函数、单 pass。
  */
 
-import { ARTIFACT_DIRECTIVE } from '@mobi/shared'
+import { ARTIFACT_DIRECTIVE, ARTIFACT_HTML_INLINE_LIMIT_MB } from '@mobi/shared'
 import { DIRECTIVE_PREFIX, registerDirective } from './directives'
 import type { DirectiveDefinition } from './directives'
 
@@ -76,14 +76,15 @@ const EXTENSION_KINDS: Readonly<Record<string, ArtifactKind>> = {
     pdf: 'pdf',
 }
 
-/** inline 大小上限（字节）——spec Q10 定稿：图 8MB / 音视频 50MB / HTML 2MB，pdf/unknown 不 inline */
+/** inline 大小上限（字节）——spec Q10 定稿：图 8MB / 音视频 50MB / HTML 2MB，pdf/unknown 不 inline。
+ *  HTML 的数值单源在 shared（ARTIFACT_HTML_INLINE_LIMIT_MB，skill 散文同源），其余仅 web 裁决使用 */
 const MB = 1024 * 1024
 
 export const ARTIFACT_INLINE_LIMIT_BYTES: Readonly<Record<Exclude<ArtifactKind, 'pdf' | 'unknown'>, number>> = {
     image: 8 * MB,
     audio: 50 * MB,
     video: 50 * MB,
-    html: 2 * MB,
+    html: ARTIFACT_HTML_INLINE_LIMIT_MB * MB,
 }
 
 /** 路径扩展名 → 产物类型；无扩展名/未登记 → unknown（产物卡 + 「类型不支持」） */
