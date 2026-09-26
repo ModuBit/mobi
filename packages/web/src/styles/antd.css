@@ -393,3 +393,23 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
         max-width: none;
     }
 }
+
+/* antd Image hover 遮罩（cover 层）已全局去除（preview.cover=false），小手光标原本
+   挂在 cover 上随之丢失——补回到可预览的 Image 根元素（rc-image 仅在可预览时置 role=button） */
+.ant-image[role='button'] {
+    cursor: pointer;
+}
+
+/* 图片预览的关闭按钮与左右切换箭头：antd 写死 colorTextLightSolid，而该全局 token 在
+   mobi 双主题里一档白一档深墨，叠在跟随主题的预览遮罩上必有一档隐形（2026-09-26 真机）。
+   并入 previewOperationColor 双档 token（light=墨 / dark=白，components.ts Image 段），
+   让关闭/切换/底部工具栏同源同色。antd 原规则用 :where() 前缀（零特异性），普通类
+   选择器即可稳赢；disabled 箭头的淡态单独保回。 */
+.ant-image-preview .ant-image-preview-close,
+.ant-image-preview .ant-image-preview-switch {
+    color: var(--ant-image-preview-operation-color);
+}
+
+.ant-image-preview .ant-image-preview-switch.ant-image-preview-switch-disabled {
+    color: var(--ant-image-preview-operation-color-disabled);
+}

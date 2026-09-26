@@ -16,6 +16,12 @@
 
 // Claude 暖调组件配置 - Light 模式
 export const shadcnLightComponents = {
+    // 图片预览工具栏：图标色必须跟随遮罩（--ant-color-bg-mask light=米白纸色/dark=深色），
+    // 同一色两档必有一档隐形（2026-09-26 真机：白图标在 light 纸色遮罩上不可见）
+    Image: {
+        previewOperationColor: 'rgba(61, 61, 58, 0.88)',
+        previewOperationHoverColor: '#141413',
+    },
     Button: {
         primaryShadow: 'none',
         defaultShadow: 'none',
@@ -90,6 +96,12 @@ export const shadcnLightComponents = {
 
 // Claude 暖调组件配置 - Dark 模式
 export const shadcnDarkComponents = {
+    // 图片预览工具栏：默认图标透明度过低，dark 遮罩下几乎不可见（2026-09-26 真机），
+    // 提到接近不透明；hover 全白
+    Image: {
+        previewOperationColor: 'rgba(255, 255, 255, 0.92)',
+        previewOperationHoverColor: '#ffffff',
+    },
     // Tooltip 背景走 colorBgSpotlight（全局 dark token 是米白，服务于浅底场景）——
     // 组件级覆写为深底浅字，与 dark 面板视觉一致
     Tooltip: {
