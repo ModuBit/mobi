@@ -27,6 +27,7 @@ accepted（2026-09-26）。产物声明特性（`:mobi-artifact`）的渲染安�
 
 ## Consequences
 
-- `PREVIEW_CSP` 成为 inline 产物渲染的唯一安全权威；skill（visualize）按它反推产物规范：禁 fetch/XHR/WebSocket、图片媒体必须 data: 内嵌或同源、脚本样式可引 https CDN
+- `PREVIEW_CSP` 是 mobi 所服务的**一切** text/html 的安全权威——2026-09-26 起下沉到 `serveFileContent` 层按 mime 恒注，与通道无关（serve-file 预览 / read-file 浏览器打开·复制链接 / machine 通道全覆盖）；早期只挂 serve-file 通道时，产物卡浏览器打开走 read-file 曾绕过 CSP（顶层同源脚本可带 httpOnly cookie 调 mobi API），已堵。skill（visualize）按它反推产物规范：禁 fetch/XHR/WebSocket、图片媒体必须 data: 内嵌或同源、脚本样式可引 https CDN
+- top-level 打开（浏览器打开通道）没有 iframe sandbox（sandbox 是 iframe 标签属性不随 URL 走），防线只剩 CSP 单道——已接受取舍，不做 sandbox 中间页
 - 双主题由产物自身负责（skill 教 `prefers-color-scheme` / `light-dark()`），iframe 内容不继承 mobi 主题
 - 已知边界：用户项目恰为 home 时，读取黑名单（ADR 0004）会拦 `.mobi`——产物目录（`.mobi/artifacts/`）与附件（`.mobi/uploads/`）在该场景同样不可读，为既有语义的自然延伸，不单独豁免

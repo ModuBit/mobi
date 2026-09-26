@@ -125,6 +125,22 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         expect(csp).toContain("style-src 'self' https:")
     })
 
+    test('HTML 经 read-file 同样注入 CSP——CSP 是「mobi 服务 HTML」的属性而非 serve-file 通道的属性', async () => {
+        // 回归：产物卡「浏览器打开/复制链接」走 read-file 通道，此前无任何 CSP，
+        // 模型产出的 HTML 在 hub 同源顶层执行脚本可带 httpOnly cookie 调 mobi API。
+        // 修复后 CSP 在 serveFileContent 层按 mime 恒注，通道无关。
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/read-file?path=/tmp/test/index.html', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+
+        expect(res.status).toBe(200)
+        const csp = res.headers.get('content-security-policy') ?? ''
+        expect(csp).toContain("connect-src 'none'")
+        expect(csp).toContain("script-src 'self' https:")
+    })
+
     test('非 HTML 子资源（text/css）不注入 CSP——CSP 只作用于预览文档本身', async () => {
         const engine = {
             resolveSessionAccess: (_id: string, _ns: string) => ({

