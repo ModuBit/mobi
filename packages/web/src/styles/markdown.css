@@ -195,26 +195,13 @@ html[data-theme='dark'] .x-markdown .slash-command-badge {
     color: #d1cfc5;
 }
 
-/* Mention Badge（@path 文件引用）：渲染为 mobi://file/open 动作链接（a 元素，点击在
-   inspector pane 打开文件），链接语义样式在此复位为纯 badge 外观 */
-.x-markdown .mention-badge {
-    display: inline-block;
-    background: #e8e6dc;
-    color: #3a5a7c;
-    border-radius: 4px;
-    padding: 1px 6px;
+/* 目录 mention（@src/ 等）：folder glyph 内联在 renderer 输出里，此处只管文本基调——
+   mono 稍弱于正文、不吃链接语义（无下划线不可点） */
+.x-markdown .mention-directory {
     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
-    font-size: 0.85em;
-    font-weight: 500;
-    vertical-align: baseline;
+    font-size: 0.9em;
+    color: var(--ant-color-text-secondary);
     white-space: nowrap;
-    cursor: pointer;
-    text-decoration: none;
-}
-
-html[data-theme='dark'] .x-markdown .mention-badge {
-    background: #30302e;
-    color: #a9c4e0;
 }
 
 /* 代码块语言标签：自动检测不准时会显示错误语言（如 fallback 的 clike），

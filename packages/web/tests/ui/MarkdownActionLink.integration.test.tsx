@@ -134,14 +134,13 @@ describe('Markdown mobi:// 链接拦截（真实渲染管线）', () => {
         expect(messageInfoSpy).not.toHaveBeenCalled()
     })
 
-    it('mention badge（raw HTML 形态 mobi 链接）同样被拦截为 ActionLink，点击打开 inspector tab', async () => {
+    it('mention（raw HTML 形态 mobi 链接）同样被拦截为 ActionLink，点击打开 inspector tab', async () => {
         const { useWorkspaceStore } = await import('@/core/data/stores/workspaceStore')
-        // @mention 经 mentionPlugin 输出 raw HTML <a href="mobi://file/open?...">——
+        // @mention 经 mentionPlugin 输出裸 raw HTML <a href="mobi://file/open?...">——
         // 锁定 raw HTML 锚点也过 DOMPurify（mobi scheme 白名单）并被 components.a 拦截
         render(<Markdown content={'看下 @src/main.ts 谢谢'} enableMention />)
         const link = await waitFor(() => screen.getByRole('link', { name: '@src/main.ts' }))
         expect(link.getAttribute('href')).toBe('mobi://file/open?path=src%2Fmain.ts')
-        expect(link.className).toContain('mention-badge')
 
         fireEvent.click(link)
         // 守卫判定走 async fetchQuery，动作在微任务后分发
