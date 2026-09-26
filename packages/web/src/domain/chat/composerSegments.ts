@@ -89,8 +89,8 @@ export interface ComposerSegments {
     quotes: PendingQuoteRef[]
 }
 
-/** 单条消息可携带的引用上限：注释工作流允许多条片段引用堆叠，3 条防刷屏 */
-export const QUOTE_MAX_COUNT = 3
+/** 单条消息可携带的引用上限：注释工作流允许多条片段引用堆叠，5 条防刷屏（2026-09-26 由 3 调至 5） */
+export const QUOTE_MAX_COUNT = 5
 
 /** 空分段工厂：初始态与清空后的统一空值 */
 export const emptySegments = (): ComposerSegments => ({ text: '', files: [], images: [], quotes: [] })

@@ -17,8 +17,9 @@
 import { z } from 'zod'
 import { isObject } from './utils'
 
-/** quote excerpt / comment 存储截断上限：覆盖「引用一段论述」的选区长度 */
-export const QUOTE_EXCERPT_MAX = 500
+/** quote excerpt / comment 存储截断上限：覆盖「引用一段论述」的选区长度
+ * （2026-09-26 调至 1000：500 截不住完整论述段） */
+export const QUOTE_EXCERPT_MAX = 1000
 
 /**
  * 评论 UI 输入上限：评论是用户的一句话注解，500 的 excerpt 量级没必要（2026-09-23 验收定稿）。

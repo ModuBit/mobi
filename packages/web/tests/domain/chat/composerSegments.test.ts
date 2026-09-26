@@ -21,12 +21,14 @@
 
 import { describe, it, expect } from 'vitest'
 import {
+    QUOTE_MAX_COUNT,
     serializeSegments,
     deserializeSegments,
     isSegmentEmpty,
     emptySegments,
     withQuoteUids,
 } from '@/domain/chat/composerSegments'
+import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 
 const seg = {
     text: '帮我看看',
@@ -54,21 +56,21 @@ describe('composerSegments', () => {
         expect(serializeSegments({ text: '', files: [], images: [], quotes: [] })).toEqual([])
     })
 
-    it('excerpt 超 QUOTE_EXCERPT_MAX(500) 序列化时截断；超出 QUOTE_MAX_COUNT(3) 仅取前 3 条', () => {
+    it('excerpt 超 QUOTE_EXCERPT_MAX 序列化时截断；超出 QUOTE_MAX_COUNT 仅取前 QUOTE_MAX_COUNT 条', () => {
         const s = {
             ...seg,
-            quotes: [
-                { messageId: 'm1', role: 'user' as const, excerpt: 'x'.repeat(600) },
-                { messageId: 'm2', role: 'user' as const, excerpt: 'y'.repeat(10) },
-                { messageId: 'm3', role: 'agent' as const, excerpt: 'z' },
-                { messageId: 'm4', role: 'user' as const, excerpt: 'w' },
-            ],
+            quotes: Array.from({ length: QUOTE_MAX_COUNT + 1 }, (_, i) => ({
+                messageId: `m${i}`,
+                role: 'user' as const,
+                // 首条带超限 excerpt 验证截断，其余短文本
+                excerpt: i === 0 ? 'x'.repeat(QUOTE_EXCERPT_MAX + 100) : `t${i}`,
+            })),
         }
         const quotes = serializeSegments(s).filter(b => b.type === 'quote')
-        // 仅前 3 条参与发送
-        expect(quotes).toHaveLength(3)
-        expect(quotes[0]).toMatchObject({ excerpt: 'x'.repeat(500), messageId: 'm1' })
-        expect(quotes[2]).toMatchObject({ messageId: 'm3' })
+        // 仅前 QUOTE_MAX_COUNT 条参与发送
+        expect(quotes).toHaveLength(QUOTE_MAX_COUNT)
+        expect(quotes[0]).toMatchObject({ excerpt: 'x'.repeat(QUOTE_EXCERPT_MAX), messageId: 'm0' })
+        expect(quotes[QUOTE_MAX_COUNT - 1]).toMatchObject({ messageId: `m${QUOTE_MAX_COUNT - 1}` })
     })
 
     it('comment 存在时透传并随往返还原，不存在时不产生多余字段', () => {
