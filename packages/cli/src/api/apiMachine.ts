@@ -206,6 +206,11 @@ export class ApiMachineClient {
                 switch (result.type) {
                     case 'success':
                         return { type: 'success', sessionId: result.sessionId }
+                    case 'already-running':
+                        // 唤醒去重（.scratch/wake-dedup）：同机活 child 已在 resume 该目标。
+                        // sessionId 为该 child 的 mobi 会话 id（runner-spawn 时点尚缺省），
+                        // hub 侧用自己的会话 id，不依赖此值
+                        return { type: 'already-running', sessionId: result.sessionId }
                     case 'requestToApproveDirectoryCreation':
                         return { type: 'requestToApproveDirectoryCreation', directory: result.directory }
                     case 'error':

@@ -133,7 +133,13 @@ export class SyncEngine {
             getMachineByNamespace: (machineId, namespace) => this.machineCache.getMachineByNamespace(machineId, namespace),
             // 与 Web 侧 spawn 路由共用同一个实现——项目归属规则只写一份
             checkProjectAssignable: (projectId, namespace, machineId) => checkProjectAssignable(this, projectId, namespace, machineId),
-            spawnSession: (machineId, directory, options) => this.rpcGateway.spawnSession(machineId, directory, options),
+            spawnSession: async (machineId, directory, options) => {
+                // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约
+                const result = await this.rpcGateway.spawnSession(machineId, directory, options)
+                return result.type === 'already-running'
+                    ? { type: 'error', message: 'Unexpected already-running for non-resume spawn', failure: 'other' }
+                    : result
+            },
             getSessionByNamespace: (sessionId, namespace) => this.sessionCache.getSessionByNamespace(sessionId, namespace),
             // 投递（RPC）与落库（DB）是两个独立步骤，顺序由服务决定：先投递成功才落库，
             // 失败不落库——Web 上不该出现一条永远不会被处理的消息
@@ -704,6 +710,10 @@ export class SyncEngine {
         options: SpawnSessionOptions = {},
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         const result = await this.rpcGateway.spawnSession(machineId, directory, options)
+        // Web 新会话路径无 resume 目标，already-running 不可达；防御性按错误处理
+        if (result.type === 'already-running') {
+            return { type: 'error', message: 'Unexpected already-running for non-resume spawn' }
+        }
         if (result.type === 'error') {
             // 传输分类是 hub 内部的说法（给 agent 的失败翻译用，见 rpcFailure），
             // 不进 HTTP body：Web 只读 message，多带一个字段等于悄悄改了一处对外契约
@@ -810,6 +820,14 @@ export class SyncEngine {
                 outputStyle: session.runtimeState?.outputStyle ?? undefined,
             }
         )
+
+        if (spawnResult.type === 'already-running') {
+            // 唤醒去重（.scratch/wake-dedup）：runner 报告已有活 child 在 resume 该目标，
+            // 未 spawn 新进程。旧进程断连中正无限重连（≤5s 间隔），恢复交给其重连 +
+            // web 终端 create 重试 / handleSessionAlive 补投收敛——hub 零等待：不得落到
+            // waitForSessionActive，否则断连场景（重连遥遥无期）会干等满 15s
+            return { type: 'success', sessionId: access.sessionId }
+        }
 
         if (spawnResult.type !== 'success') {
             this.markForkActivationErrorIfPending(sessionId, 'activation-failed', spawnResult.message)

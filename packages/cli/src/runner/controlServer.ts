@@ -178,9 +178,17 @@ export function startRunnerControlServer({
             directory: result.directory
           };
         
+        case 'already-running':
+          // 本入口不透传 resume 目标（仅 hub 唤醒路径会有），防御性按成功透出
+          return {
+            success: true,
+            sessionId: result.sessionId ?? '',
+            approvedNewDirectoryCreation: true
+          };
+
         case 'error':
           reply.code(500);
-          return { 
+          return {
             success: false,
             error: result.errorMessage
           };

@@ -34,6 +34,7 @@ import { isRetryableConnectionError } from '@/utils/errorUtils';
 import { cleanupRunnerState, getInstalledCliMtimeMs, isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient';
 import { startRunnerControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
+import { findRunningResumeDuplicate } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
 import { buildMachineMetadata } from '@/agent/sessionFactory';
 
@@ -233,6 +234,17 @@ export async function startRunner(): Promise<void> {
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[RUNNER RUN] Spawning session', options);
+
+      // 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时
+      // 不再 spawn 第二个进程。「表项存在 = 进程存活」由 exit 既有清理保证；查重
+      // 决策单源见 spawnDedup。hub 侧对 already-running 零等待幂等消费（票 02）
+      if (options.resumeSessionId) {
+        const duplicate = findRunningResumeDuplicate(pidToTrackedSession.values(), options.resumeSessionId)
+        if (duplicate) {
+          logger.debug(`[RUNNER RUN] Spawn deduped: pid=${duplicate.pid} already resuming ${options.resumeSessionId}`);
+          return { type: 'already-running', sessionId: duplicate.MobiSessionId };
+        }
+      }
 
       const { directory, approvedNewDirectoryCreation = true } = options;
       const sessionType = options.sessionType ?? 'simple';
@@ -469,6 +481,7 @@ export async function startRunner(): Promise<void> {
           startedBy: 'runner',
           pid,
           childProcess: MobiProcess,
+          resumeSessionId: options.resumeSessionId,
           directoryCreated,
           message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
         };

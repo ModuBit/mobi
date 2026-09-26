@@ -27,8 +27,9 @@ import type { RpcRegistry } from '../../src/socket/rpcRegistry'
  * 失败不丢消息。
  */
 
-/** 构造带 spawn 计数的 SyncEngine（spawn fake 同步创建新会话并上报 alive） */
-function makeWakeEngine(): {
+/** 构造带 spawn 计数的 SyncEngine（spawn fake 同步创建新会话并上报 alive；
+ *  spawnReply 提供时 fake 原样返回该结果、不造会话——already-running 场景用） */
+function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
     engine: SyncEngine
     store: Store
     spawnCalls: () => Record<string, unknown>[]
@@ -43,6 +44,7 @@ function makeWakeEngine(): {
         async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
             if (payload.method.endsWith(':spawn-mobi-session')) {
                 calls.push(payload.params as Record<string, unknown>)
+                if (opts.spawnReply) return opts.spawnReply
                 const engine = engineRef.engine!
                 const spawned = engine.getOrCreateSession(
                     `tag-wake-${calls.length}`, { path: '/tmp/proj', host: 'h-1' }, null, 'default'
@@ -231,6 +233,26 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
             expect(h.spawnCalls()).toEqual([])
             const queued = h.store.messages.getMessages(session.id).filter((m) => m.lifecycle === 'queued')
             expect(queued).toHaveLength(1)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('already-running（runner 报活 child 在 resume）→ 立即 success，零等待不等待就绪', async () => {
+        const h = makeWakeEngine({ spawnReply: { type: 'already-running' } })
+        try {
+            const session = seedDormantSession(h)
+
+            const t0 = Date.now()
+            const result = await h.engine.resumeSession(session.id, 'default')
+
+            // 直接 success（用当前会话 id），且零等待——若误落 waitForSessionActive，
+            // 会话 active=false 会让本用例干等满 15s 超时
+            expect(result).toEqual({ type: 'success', sessionId: session.id })
+            expect(Date.now() - t0).toBeLessThan(3000)
+            // 只问了一次 runner，会话未被伪造为活跃（恢复由旧进程重连收敛）
+            expect(h.spawnCalls().length).toBe(1)
+            expect(h.engine.getSession(session.id)!.active).toBe(false)
         } finally {
             h.cleanup()
         }

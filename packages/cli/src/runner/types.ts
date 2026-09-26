@@ -30,6 +30,9 @@ export interface TrackedSession {
   MobiSessionMetadataFromLocalWebhook?: Metadata;
   pid: number;
   childProcess?: ChildProcess;
+  /** 本 child 的 resume 目标（native session id）。唤醒去重的比对键（.scratch/wake-dedup）：
+   *  手动 / webhook 注册的表项拿不到该信息，字段缺省 = 不参与查重 */
+  resumeSessionId?: string;
   error?: string;
   directoryCreated?: boolean;
   message?: string;
