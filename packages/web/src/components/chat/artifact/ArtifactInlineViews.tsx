@@ -24,16 +24,15 @@
  * 每个视图都自带「inspector 打开」逃生口——inline 是快看，不是替代品。
  */
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Image, Segmented, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileSearch } from 'lucide-react'
 import { buildActionUri } from '@mobi/shared'
 import { ActionLink } from '@/components/ui/ActionLink'
+import { SandboxHtmlFrame } from '@/components/files/SandboxHtmlFrame'
 import { useDirectiveStreaming } from '@/components/ui/directiveStreamGate'
-import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { buildReadFileUrl } from '@/core/utils/fileUrl'
-import { encodePathSegments } from '@/core/utils/path'
 
 /** inline 视图公共 props：寻址与校验产物（ArtifactDirectiveView 已把关） */
 export interface ArtifactInlineProps {
@@ -113,32 +112,6 @@ export function MediaInline({ sessionId, path, etag, kind }: ArtifactInlineProps
     )
 }
 
-/**
- * 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
- * 产物页面多未设 color-scheme，原生浅色滚动条压在深色页面上很突兀；iframe 与宿主
- * 同源（serve-file + allow-same-origin，ADR 0007），load 后注入这段样式即可覆盖。
- */
-export const ARTIFACT_SCROLLBAR_STYLE = [
-    '::-webkit-scrollbar { width: 8px; height: 8px; }',
-    '::-webkit-scrollbar-track { background: transparent; }',
-    '::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.45); border-radius: 4px; }',
-    '::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.65); }',
-    '* { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 128, 0.45) transparent; }',
-].join('\n')
-
-/** 向产物文档注入滚动条样式（幂等；跨域/未就绪静默跳过，保留浏览器默认） */
-export function injectArtifactScrollbarStyle(doc: Document | null | undefined): void {
-    try {
-        if (!doc?.head || doc.getElementById('mobi-artifact-scrollbar')) return
-        const style = doc.createElement('style')
-        style.id = 'mobi-artifact-scrollbar'
-        style.textContent = ARTIFACT_SCROLLBAR_STYLE
-        doc.head.appendChild(style)
-    } catch {
-        // contentDocument 不可达（理论不可达：同源沙箱）——保留默认滚动条
-    }
-}
-
 /** 宽度档位：自适应（撑满聊天列）或固定像素档 */
 type WidthMode = 'auto' | '736' | '1024'
 
@@ -149,22 +122,14 @@ const WIDTH_MODE_VALUE: Record<WidthMode, string> = {
 }
 
 /**
- * HTML inline：serve-file 沙箱 iframe（ADR 0007）。宽度默认自适应（撑满聊天列），
- * 用户可在右上角选 736/1024 固定档；高度定档（wide 640 / 默认 480——HTML 产物无内在
- * 高度语义，与「宿主不感知产物布局」的产品边界一致）。
+ * HTML inline：SandboxHtmlFrame 的聊天流 chrome（定高 480/640 + 宽度三档）。
+ * iframe 机制（serve-file URL/sandbox/meta 驱动重建/滚动条主题）单源在 frame。
  */
-export function HtmlInline({ sessionId, path, etag, wide }: ArtifactInlineProps & { wide?: boolean }) {
+export function HtmlInline({ sessionId, path, wide }: ArtifactInlineProps & { wide?: boolean }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     // 流式闸：流式揭示期间不挂 iframe（加载竞速逐字揭示 = 布局抖动），同尺寸占位顶住
     const streaming = useDirectiveStreaming()
-    // 订阅同一 fileMeta query（react-query 按 queryKey 去重，零额外请求），拿 dataUpdatedAt
-    // 驱动 iframe 重建：引用资源变化不动 HTML etag，重建才是可靠刷新（语义同 HtmlPreviewView）
-    const { dataUpdatedAt } = useFileMeta(sessionId, path)
-    const src = useMemo(
-        () => `/api/sessions/${sessionId}/serve-file/${encodePathSegments(path)}`,
-        [sessionId, path],
-    )
     const [widthMode, setWidthMode] = useState<WidthMode>('auto')
     const frameHeight = wide ? 640 : 480
     return (
@@ -187,15 +152,10 @@ export function HtmlInline({ sessionId, path, etag, wide }: ArtifactInlineProps 
                     />
                 )
                 : (
-                    <iframe
-                        key={dataUpdatedAt}
-                        src={src}
-                        data-etag={etag}
-                        data-wide={wide ? 'true' : undefined}
-                        sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-                        referrerPolicy="no-referrer"
+                    <SandboxHtmlFrame
+                        sessionId={sessionId}
+                        path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: path.split('/').pop() ?? path })}
-                        onLoad={(e) => injectArtifactScrollbarStyle(e.currentTarget.contentDocument)}
                         style={{
                             width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,

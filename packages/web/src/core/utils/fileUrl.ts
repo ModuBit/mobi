@@ -29,6 +29,7 @@
  * etag 稳定时 URL 也稳定，浏览器与 HTTP 协商缓存照常复用，不会白下载。
  */
 import { isSelfContainedUrl, type UserImageBlock } from '@mobi/shared'
+import { encodePathSegments } from '@/core/utils/path'
 
 export function buildReadFileUrl(
     sessionId: string,
@@ -73,6 +74,17 @@ export function buildMachineReadFileUrl(
     if (opts.download) params.set('download', '1')
     if (opts.etag) params.set('v', opts.etag)
     return `/api/machines/${machineId}/read-file?${params.toString()}`
+}
+
+/**
+ * serve-file 端点 URL 构造（HTML 预览静态资源）：relPath 作 path 段、相对路径基准交给
+ * 浏览器原生解析（HTML 里的相对引用以其为基准），与 query 形态的 read-file 是兄弟端点。
+ * 不带内容版本参数：内容新鲜度由「meta refetch → dataUpdatedAt 变化 → 重建 iframe」保证
+ * （改引用的 CSS/JS 不变 HTML etag，v 参数本就不够用），且 serve-file 已设 no-cache，
+ * 重建时连带引用资源回源验证。
+ */
+export function buildServeFileUrl(sessionId: string, relPath: string): string {
+    return `/api/sessions/${sessionId}/serve-file/${encodePathSegments(relPath)}`
 }
 
 /**

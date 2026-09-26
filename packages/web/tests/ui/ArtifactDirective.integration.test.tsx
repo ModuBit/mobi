@@ -25,7 +25,7 @@ import { render, screen, cleanup, fireEvent, within } from '@testing-library/rea
 import '@testing-library/jest-dom/vitest'
 import { Markdown } from '@/components/ui/Markdown'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
-import { injectArtifactScrollbarStyle } from '@/components/chat/artifact/ArtifactInlineViews'
+import { injectArtifactScrollbarStyle } from '@/components/files/SandboxHtmlFrame'
 import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { dedupeDirectiveText } from '@/domain/chat/directives'
@@ -247,7 +247,8 @@ describe('产物 inline 渲染（票 02/03）', () => {
             </ArtifactEnvProvider>,
         )
         const wrap = await screen.findByTestId('artifact-inline-html')
-        expect(wrap.querySelector('iframe')!.getAttribute('data-wide')).toBe('true')
+        // wide 档的可见差异 = 定高 640（默认 480）；iframe 机制单源在 SandboxHtmlFrame
+        expect(wrap.querySelector('iframe')!.style.height).toBe('640px')
         expect(container.querySelector('[data-testid="artifact-card"]')).toBeNull()
         cleanup()
 

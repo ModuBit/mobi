@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildReadFileUrl } from '@/core/utils/fileUrl'
+import { buildReadFileUrl, buildServeFileUrl } from '@/core/utils/fileUrl'
 
 /** 从生成的 URL 里取回 query，避免断言依赖参数顺序 */
 function q(url: string) {
@@ -66,5 +66,21 @@ describe('buildReadFileUrl', () => {
         const messy = 'dir with space/中文 & 符号#1.png'
         const p = q(buildReadFileUrl('s1', messy))
         expect(p.get('path')).toBe(messy)
+    })
+})
+
+describe('buildServeFileUrl', () => {
+    it('relPath 按段编码后拼进 path 段（相对路径基准交给浏览器原生解析）', () => {
+        expect(buildServeFileUrl('s1', 'site/ind ex.html')).toBe('/api/sessions/s1/serve-file/site/ind%20ex.html')
+    })
+
+    it('子目录与中文段落逐段编码，分隔符保留', () => {
+        const url = buildServeFileUrl('s1', '输出/页面.html')
+        expect(url).toBe('/api/sessions/s1/serve-file/%E8%BE%93%E5%87%BA/%E9%A1%B5%E9%9D%A2.html')
+        expect(url.split('/').length).toBe(7)
+    })
+
+    it('同一输入 URL 稳定（iframe src 可比较）', () => {
+        expect(buildServeFileUrl('s1', 'a/b.html')).toBe(buildServeFileUrl('s1', 'a/b.html'))
     })
 })
