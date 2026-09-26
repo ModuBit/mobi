@@ -1,0 +1,39 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * x-markdown 流式淡入起点覆盖（包默认 from opacity:0）。
+ *
+ * 为什么改：占位组件（incomplete-emphasis/link/inline-code，见 MarkdownIncomplete）
+ * 渲染的 <strong>/<code>/<a> 与闭合后正式渲染的宿主元素在 React 树形态上不同
+ * （FC 包装 vs host 直挂），闭合瞬间必然卸载重建；section 封口（如双标题边界）时
+ * 已完成块也会因 Renderer key 平移而 remount。重挂的 AnimationText 从头重播本
+ * 动画——from 0 即肉眼「闪一下」（内容瞬间消失再淡入），这是流式渲染「部分内容
+ * 闪烁」的来源。抬到 0.35：重挂基本不可感知，新增文本的淡入依然可见。
+ *
+ * 为什么放这里而不是 base.css：同名 keyframes 后定义者胜，但 x-markdown 的 css
+ * 随 lazy 路由 chunk 加载，晚于入口的 base.css（实测覆盖被顶掉）。本文件由
+ * Markdown.tsx 在包导入之后静态导入，两者同 chunk、相对顺序恒定。
+ */
+@keyframes x-markdown-fade-in {
+    from {
+        opacity: 0.35;
+    }
+
+    to {
+        opacity: 1;
+    }
+}

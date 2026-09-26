@@ -31,6 +31,8 @@ import { ActionLink } from './ActionLink'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
+// 必须排在 '@ant-design/x-markdown' 导入之后（同名 keyframes 后定义者胜，见文件内注释）
+import './markdownOverride.css'
 
 /** 流式渲染选项类型（从 XMarkdownProps 推断，因 x-markdown 未顶层导出） */
 type StreamingOption = NonNullable<XMarkdownProps['streaming']>
