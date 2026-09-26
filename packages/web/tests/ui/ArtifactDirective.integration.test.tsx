@@ -297,17 +297,17 @@ describe('产物 inline 渲染（票 02/03）', () => {
         expect(() => injectArtifactScrollbarStyle(null)).not.toThrow()
     })
 
-    it('宽度选择器：默认自适应（撑满聊天列），点 736/1024 切固定档', async () => {
+    it('宽度选择器：默认自适应（撑满聊天列），点 736/1024 切固定档（min 钳制窄屏不溢出）', async () => {
         mockMeta.mockReturnValue({ isPending: false, isError: false, data: { ...META_OK, mime: 'text/html' } } as never)
         renderDirective(':mobi-artifact{path="/tmp/page.html"}')
         const wrap = await screen.findByTestId('artifact-inline-html')
         expect(wrap.style.width).toBe('100%')
 
         fireEvent.click(within(wrap).getByText('736'))
-        expect(wrap.style.width).toBe('736px')
+        expect(wrap.style.width).toBe('min(100%, 736px)')
 
         fireEvent.click(within(wrap).getByText('1024'))
-        expect(wrap.style.width).toBe('1024px')
+        expect(wrap.style.width).toBe('min(100%, 1024px)')
 
         fireEvent.click(within(wrap).getByText(/自适应|Fluid/))
         expect(wrap.style.width).toBe('100%')

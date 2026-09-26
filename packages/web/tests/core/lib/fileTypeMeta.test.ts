@@ -48,8 +48,10 @@ describe('resolveFileType', () => {
         expect(resolveFileType('.gitignore')).toEqual({ kind: 'file', label: null, color: '#7A7A7A' })
     })
 
-    it('无扩展名文件名（Dockerfile）按启发式判为目录——纯路径无 fs 能力的已知权衡', () => {
-        expect(resolveFileType('Dockerfile')).toEqual({ kind: 'directory' })
+    it('无扩展名的惯例文件名（Dockerfile/Makefile）判为文件而非目录（KNOWN_EXTENSIONLESS_FILES 单源）', () => {
+        expect(resolveFileType('Dockerfile')).toEqual({ kind: 'file', label: null, color: '#7A7A7A' })
+        expect(resolveFileType('scripts/Makefile').kind).toBe('file')
+        expect(resolveFileType('x/Makefile').kind).toBe('file')
     })
 
     it('多点文件取最后一个 `.`（app.test.ts → TS）', () => {

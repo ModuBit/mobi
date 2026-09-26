@@ -32,8 +32,9 @@ export interface FileContentReader {
 }
 
 /**
- * mobi 服务的一切 text/html 文档统一注入的 CSP（与通道无关：serve-file 预览 / read-file
- * 浏览器打开 / machine 通道，全部经 serveFileContent 恒注）。
+ * mobi 服务的一切可执行文档（text/html 与 image/svg+xml——svg 可内嵌脚本）统一注入的
+ * CSP（与通道无关：serve-file 预览 / read-file 浏览器打开 / machine 通道，全部经
+ * serveFileContent 恒注）。
  *
  * 威胁模型：模型/机器侧产出的 HTML 若在 hub 同源顶层执行（产物卡「浏览器打开」「复制链接」、
  * 预览），脚本将自带 httpOnly cookie 可自由调 mobi API。CSP 把能力面收窄：
@@ -154,9 +155,10 @@ export async function serveFileContent(
     c.header('etag', etag)
     c.header('accept-ranges', 'bytes')
     c.header('cache-control', 'private, no-cache')
-    // text/html 文档恒注 CSP（通道无关的不变量，capability face 见 PREVIEW_CSP 注释）。
-    // 仅作用于 html 文档本身，CSS/JS 子资源照常服务。
-    if (mime.startsWith('text/html')) {
+    // 可执行文档恒注 CSP（通道无关的不变量，capability face 见 PREVIEW_CSP 注释）：
+    // text/html 之外 image/svg+xml 同样可内嵌 <script>，顶层打开（复制链接/浏览器打开）
+    // 与 HTML 同威胁模型；其余 mime（png/mp4/css 子资源等）不注入。
+    if (mime === 'text/html' || mime === 'image/svg+xml') {
         c.header('content-security-policy', PREVIEW_CSP)
     }
     if (opts.extraHeaders) {

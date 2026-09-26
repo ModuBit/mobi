@@ -80,6 +80,10 @@ function mention(): TokenizerAndRendererExtension {
             const lead = match[1] ?? ''
             const path = match[2]
             const standalone = lead === '' || /[ \t\n]/.test(lead)
+            // mid-word 前字符是标点/符号（markdown 语法字符为主）时不消费：吞掉 `*`/`~`
+            // 会吃掉 em/del 的开定界符（*@src/a.ts* 斜体失效、字面泄漏）——返回 undefined
+            // 交还 marked 处理前字符，游标推进到 @ 后按独立词档重新识别
+            if (!standalone && /[^\p{L}\p{N}\s]/u.test(lead)) return undefined
             const strongPath = path.includes('/') || path.startsWith('~')
             if (!(standalone ? strongPath || path.includes('.') : strongPath)) {
                 // 消费式拒绝：整串作为纯文本 token 吃掉（marked 内置 text renderer 按

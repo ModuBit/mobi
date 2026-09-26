@@ -163,6 +163,19 @@ describe('mentionPlugin', () => {
         expect(html).toContain('abc@b.com')
     })
 
+    it('mid-word 前字符是 markdown 语法字符时不吞它——em/del 配对不被破坏', () => {
+        // 吞掉 `*`/`~` 会吃掉 em/del 的开定界符：斜体/删除线失效、字面字符泄漏。
+        // 不消费时 marked 先处理语法字符，游标到 @ 按独立词档识别 mention。
+        const em = render('*@src/a.ts*')
+        expect(em).toContain('<em>')
+        expect(em).toContain('href="mobi://file/open?path=src%2Fa.ts"')
+        expect(em).not.toMatch(/>\*</)
+
+        const del = render('~@src/a.ts~')
+        expect(del).toContain('<del>')
+        expect(del).toContain('href="mobi://file/open?path=src%2Fa.ts"')
+    })
+
     it('独立词纯单词提及（@john）不识别', () => {
         const html = render('hi @john 看')
         expect(html).not.toContain('mobi://file/open')

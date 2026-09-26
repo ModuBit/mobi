@@ -73,6 +73,17 @@ const EXT_BADGES: Record<string, { label: string; color: string }> = {
 /** 未知扩展名的中性徽章色（白字可读） */
 const FALLBACK_COLOR = '#7A7A7A'
 
+/**
+ * 无扩展名的惯例文件名（大小写不敏感）：构建脚本/元数据文件按约定不带扩展名，
+ * 「basename 无 `.`」的目录启发式对它们误判——纯路径无 fs 能力，用清单兜底
+ * （badge 不再画成目录色块，mention 不再静默降级为不可点）。
+ */
+const KNOWN_EXTENSIONLESS_FILES = new Set([
+    'makefile', 'dockerfile', 'license', 'licence', 'readme', 'changelog',
+    'contributing', 'codeowners', 'notice', 'jenkinsfile', 'procfile',
+    'rakefile', 'gemfile', 'vagrantfile', 'justfile', 'snakefile',
+])
+
 /** basename 提取（容忍尾部 `/`；空路径返回 null） */
 function basenameOf(path: string): string | null {
     const trimmed = path.replace(/\/+$/, '')
@@ -89,8 +100,14 @@ export function resolveFileType(path: string): FileTargetType | null {
     const base = basenameOf(path)
     if (!base) return null
 
-    // 目录：basename 无 `.`（`src`、`~`）；隐藏 dotfile（`.env`）有 `.`，落到文件分支
-    if (!base.includes('.')) return { kind: 'directory' }
+    // 目录：basename 无 `.`（`src`、`~`）；无扩展名的惯例文件名（Makefile 等）优先按文件；
+    // 隐藏 dotfile（`.env`）有 `.`，落到文件分支
+    if (!base.includes('.')) {
+        if (KNOWN_EXTENSIONLESS_FILES.has(base.toLowerCase())) {
+            return { kind: 'file', label: null, color: FALLBACK_COLOR }
+        }
+        return { kind: 'directory' }
+    }
 
     const lastDot = base.lastIndexOf('.')
     // 裸 dotfile（`.env` / `.gitignore`）：唯一 `.` 在开头 → 无扩展名，通用文件 glyph

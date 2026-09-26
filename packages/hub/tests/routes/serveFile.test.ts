@@ -141,6 +141,29 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         expect(csp).toContain("script-src 'self' https:")
     })
 
+    test('SVG 文档同样注入 CSP——svg 可携带脚本，顶层打开与 HTML 同威胁模型', async () => {
+        // 回归：产物白名单里 svg 是 image 分型，但 image/svg+xml 文档可内嵌 <script>，
+        // 「复制链接」顶层打开时此前无 CSP——与 HTML 同一漏网。普通位图（png）不注入。
+        const svgEngine = {
+            ...mockSyncEngine,
+            readFileMeta: async () => ({
+                success: true,
+                meta: { mime: 'image/svg+xml', size: FILE_CONTENT.byteLength, etag: '5-1' },
+            }),
+        } as unknown as SyncEngine
+        const setup = await setupTestApp(svgEngine)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/s1/read-file?path=/tmp/test/icon.svg', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            const csp = res.headers.get('content-security-policy') ?? ''
+            expect(csp).toContain("connect-src 'none'")
+        } finally {
+            setup.cleanup()
+        }
+    })
+
     test('非 HTML 子资源（text/css）不注入 CSP——CSP 只作用于预览文档本身', async () => {
         const engine = {
             resolveSessionAccess: (_id: string, _ns: string) => ({

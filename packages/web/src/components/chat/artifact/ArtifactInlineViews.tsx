@@ -143,8 +143,11 @@ export function MediaInline({ sessionId, path, etag, kind }: ArtifactInlineProps
     )
 }
 
-/** 宽度档位：自适应（撑满聊天列）或固定像素档（档位值即像素数） */
+/** 宽度档位：自适应（撑满聊天列）或固定像素档（min(100%, N)：桌面档位生效、窄屏/手机
+ *  钳回容器宽不横向溢出） */
 type WidthMode = 'auto' | '736' | '1024'
+
+const widthModeValue = (mode: WidthMode): string => (mode === 'auto' ? '100%' : `min(100%, ${mode}px)`)
 
 /**
  * HTML inline：SandboxHtmlFrame 的聊天流 chrome（定高 480/640 + 宽度三档）。
@@ -164,7 +167,7 @@ export function HtmlInline({ sessionId, path, wide }: ArtifactInlineProps & { wi
             // 布局依赖挂语义类而非 data-testid（testid 是测试钩子，被布局依赖是隐式升格）
             className="artifact-inline artifact-inline-fullwidth"
             // 宽度档位切换走主题 motion 曲线平滑过渡（初挂载 width 不变不触发）
-            style={{ width: widthMode === 'auto' ? '100%' : `${widthMode}px`, transition: `width ${token.motionDurationMid} ${token.motionEaseInOut}` }}
+            style={{ width: widthModeValue(widthMode), transition: `width ${token.motionDurationMid} ${token.motionEaseInOut}` }}
         >
             {streaming
                 ? (
