@@ -25,6 +25,7 @@ import { dedupeDirectiveText } from '@/domain/chat/directives'
 import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { locateQuotedMessage } from '@/core/lib/quoteLocate'
 import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
+import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
@@ -105,8 +106,11 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                         quotes={ctx.resolveQuoteAnnotations?.(block.id)}
                         onLocate={ctx.onQuoteLocate ?? locateQuotedMessage}
                     >
-                        {/* 重复 directive 剔除（注册了去重键的指令同键只留首个，handoff 失败模式）；输出前缀稳定，兼容流式 */}
-                        <TextBlock text={dedupeDirectiveText(block.text)} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                        {/* 产物声明寻址上下文（read-file / file/open 构造所需），与引用批注同点注入 */}
+                        <ArtifactEnvProvider refCtx={fileRefContext(ctx.sessionId, ctx.metadata)}>
+                            {/* 重复 directive 剔除（注册了去重键的指令同键只留首个，handoff 失败模式）；输出前缀稳定，兼容流式 */}
+                            <TextBlock text={dedupeDirectiveText(block.text)} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                        </ArtifactEnvProvider>
                     </QuoteAnnotationsProvider>
                 </div>
             )

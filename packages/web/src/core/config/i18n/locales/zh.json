@@ -434,6 +434,13 @@
             "sessionInactiveHint": "需要先恢复会话才能打开文件，是否恢复？",
             "resume": "恢复",
             "resumeFailed": "恢复会话失败，请重试"
+        },
+        "artifact": {
+            "open": "在检查器打开",
+            "browser": "浏览器打开",
+            "reason.missing": "文件不存在或不可读",
+            "reason.tooLarge": "超过 inline 大小上限（{{limit}}）",
+            "reason.unsupported": "该类型不支持 inline 展示"
         }
     },
     "files": {

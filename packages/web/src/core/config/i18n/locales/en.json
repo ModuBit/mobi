@@ -443,6 +443,13 @@
             "sessionInactiveHint": "The session needs to be resumed before opening files. Resume now?",
             "resume": "Resume",
             "resumeFailed": "Failed to resume session, please try again"
+        },
+        "artifact": {
+            "open": "Open in inspector",
+            "browser": "Open in browser",
+            "reason.missing": "File not found or unreadable",
+            "reason.tooLarge": "Exceeds the inline size limit ({{limit}})",
+            "reason.unsupported": "This type can't be inlined"
         }
     },
     "files": {

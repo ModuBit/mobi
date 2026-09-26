@@ -32,6 +32,8 @@ import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
 import { parseDirectiveHits } from '@/domain/chat/directives'
 import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
+import { ARTIFACT_DIRECTIVE_NAME } from '@/domain/chat/artifactDirectives'
+import { ArtifactDirectiveView } from './ArtifactDirectiveComponents'
 import { AppTooltip } from './AppTooltip'
 
 /** 批注数据 Context：quotes 按 directive index 对齐（位置 i = 注释 i+1），由 agent-text 渲染分支注入 */
@@ -132,6 +134,7 @@ export function QuoteAnnotationsProvider({ quotes, onLocate, children }: {
 /** 指令名 → 渲染组件路由表：新内联指令在此加一行（语法/去重管线单源 domain/chat/directives） */
 const DIRECTIVE_COMPONENTS: Record<string, FC<Record<string, string> & { children?: ReactNode }>> = {
     [QUOTE_DIRECTIVE_NAME]: QuoteDirectiveMarker,
+    [ARTIFACT_DIRECTIVE_NAME]: ArtifactDirectiveView,
 }
 
 /**

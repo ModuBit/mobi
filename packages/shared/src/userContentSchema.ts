@@ -35,6 +35,14 @@ export const QUOTE_COMMENT_MAX = 300
 export const QUOTE_DIRECTIVE = ':mobi-quote'
 
 /**
+ * 产物声明 directive 字面量（spec .scratch/inline-artifacts）：模型在 turn 最终回复中
+ * 对「本轮产出的可视产物」输出 `:mobi-artifact{path="/abs/path" mode="card|wide"}`——
+ * mode 可选，缺省 auto（web 按类型定渲染形态）。类型判定权在 web（模型不写类型），
+ * CLI 常驻契约文案与 web 渲染解析共用此常量防漂移（同 QUOTE_DIRECTIVE 机制）。
+ */
+export const ARTIFACT_DIRECTIVE = ':mobi-artifact'
+
+/**
  * AG-UI InputContentSource 对齐：
  * mobi 落库恒用 url source（value=.mobi/uploads 路径）；data 形态仅留骨架占位。
  */
