@@ -32,7 +32,7 @@ import { resolveFileType } from '@/core/lib/fileTypeMeta'
 /** 类型色淡底的 alpha 后缀（15%，hex 拼接——表内色值均为 6 位 hex） */
 const TINT_ALPHA = '26'
 
-/** 目录琥珀色单源：FileTypeBadge 色块与目录 mention 徽章（Markdown 组件映射）共用 */
+/** 目录琥珀色：FileTypeBadge 目录色块单源（mention 徽章 icon 已改随文本色 currentColor，不再共用） */
 export const DIRECTORY_TINT = '#E8A33D'
 
 export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14 }: { path: string; size?: number }) {

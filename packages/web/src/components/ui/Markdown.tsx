@@ -29,7 +29,6 @@ import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from './useStreamingContent'
 import { INCOMPLETE_COMPONENTS } from './MarkdownIncomplete'
 import { ActionLink } from './ActionLink'
-import { DIRECTORY_TINT } from './FileTypeBadge'
 import { Favicon } from './Favicon'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
@@ -103,7 +102,7 @@ const SlashCommandBadge: FC<ComponentProps<{ 'data-command'?: string }>> = ({ 'd
  */
 const MentionDirectoryBadge: FC<ComponentProps<{ 'data-label'?: string }>> = ({ 'data-label': label }) => (
     <span className="mention-directory">
-        <Folder size={13} strokeWidth={2.4} color={DIRECTORY_TINT} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
+        <Folder size={13} strokeWidth={2.4} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />
         {label}
     </span>
 )
