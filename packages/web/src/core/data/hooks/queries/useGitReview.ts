@@ -62,11 +62,13 @@ export interface ReviewFileDiffResult {
     isLoading: boolean
 }
 
-/** 单文件 diff 三件套；query 为 null 时不拉（未选文件 / 无两树指针） */
+/** 单文件 diff 三件套；query 为 null 时不拉（未选文件 / 无两树指针）。
+ *  last-turn 档两树指针并入缓存 key——新一轮后指针变了旧 diff 自动失效 */
 export function useGitReviewFileDiff(sessionId: string, query: GitReviewFileQuery | null): ReviewFileDiffResult {
     const api = useMobiApi()
+    const trees = query?.scope === 'last-turn' ? `${query.baseTree}:${query.headTree}` : ''
     const q = useQuery({
-        queryKey: queryKeys.gitReviewFile(sessionId, query?.scope ?? '', query?.path ?? ''),
+        queryKey: queryKeys.gitReviewFile(sessionId, query?.scope ?? '', query?.path ?? '', trees),
         queryFn: async () => {
             if (!query) return null
             const res = await api.sessions.gitReviewFile(sessionId, query)

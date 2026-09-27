@@ -21,12 +21,13 @@
  * （数据经 deps 注入的 hooks 拉取，测试注入假数据不碰网络）。
  */
 
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Segmented } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, FileQuestion } from 'lucide-react'
 import { GIT_REVIEW_SCOPES, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type GitReviewScope, type GitReviewScopeData, type TurnDiffFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { useSession } from '@/core/data/hooks/queries/useSession'
 import { basename } from '@/core/utils/path'
 import { DiffViewer } from './DiffViewer'
 import { useGitReviewData, useGitReviewFileDiff, type ReviewDataResult, type ReviewFileDiffResult } from '@/core/data/hooks/queries/useGitReview'
@@ -38,11 +39,14 @@ const BIG_DIFF_LINES = 5000
 export interface GitReviewDeps {
     useReviewData: (sessionId: string) => ReviewDataResult
     useFileDiff: (sessionId: string, query: GitReviewFileQuery | null) => ReviewFileDiffResult
+    /** 会话是否 running（E2E/测试注入；生产走 useSession） */
+    useSessionRunning: (sessionId: string) => boolean | undefined
 }
 
 const defaultDeps: GitReviewDeps = {
     useReviewData: useGitReviewData,
     useFileDiff: useGitReviewFileDiff,
+    useSessionRunning: (sessionId) => useSession(sessionId).data?.running,
 }
 
 /** kind 徽标（同 TurnDiffCard 配色纪律：固定色不随主题） */
@@ -269,7 +273,17 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
     const changeScope = onScopeChange ?? setScopeState
 
     const review = deps.useReviewData(sessionId)
+    const running = deps.useSessionRunning(sessionId)
     const [selectedPath, setSelectedPath] = useState<string | null>(null)
+
+    // 审查数据是易变工作区事实：tab 常挂不卸载，靠「running→idle 翻转」驱动 refetch——
+    // 开着审查 tab 跑新轮次，turn 结束后上一轮档自动刷新（E2E 实证缺失此刷新的坑）
+    const wasRunningRef = useRef(false)
+    useEffect(() => {
+        const isRunning = running ?? false
+        if (wasRunningRef.current && !isRunning) review.refetch()
+        wasRunningRef.current = isRunning
+    }, [running, review])
 
     const scopeData = review.data?.scopes[scope] ?? null
     // 数据到位后默认选中首个文件；切档位重置选择（各档文件集不同，跨档残留无意义）

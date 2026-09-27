@@ -95,6 +95,19 @@ describe('openTurnSnapshotStore（真 git 集成）', () => {
         await store.clearSession('s-excl')
     })
 
+    it('回归（E2E 实证 2026-09-27）：.gitignore 忽略 .mobi/artifacts 时 capture 不因 exclude pathspec 命中忽略路径而炸', async () => {
+        const store = (await openTurnSnapshotStore(repoDir))!
+        // demo 仓库形态：.mobi/.gitignore 忽略 artifacts——旧实现 pathspec 显式命中
+        // 被忽略路径 → git add 整体报错 → capture 抛异常 → 轮次卡静默消失
+        await write('.mobi/.gitignore', 'artifacts\n')
+        await write('after-fix.txt', 'visible\n')
+        const { tree } = await store.capture('s-ignore-exclude')
+        const lsTree = await git('ls-tree', '-r', '--name-only', tree)
+        expect(lsTree).toContain('after-fix.txt')
+        expect(lsTree).not.toContain('.mobi/artifacts')
+        await store.clearSession('s-ignore-exclude')
+    })
+
     it('diffTrees：add/modify/delete/rename/binary 五类判定与计数正确', async () => {
         const store = (await openTurnSnapshotStore(repoDir))!
         await write('a.txt', 'one\n')

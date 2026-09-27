@@ -68,9 +68,11 @@ function makeDeps(overrides: {
     isLoading?: boolean
     fileDiff?: { before: string | null; after: string | null; patch: string }
     onQuery?: (query: GitReviewFileQuery | null) => void
+    running?: boolean | undefined
+    refetch?: ReturnType<typeof vi.fn>
 }): GitReviewDeps {
     return {
-        useReviewData: () => ({ data: overrides.data, error: overrides.error ?? null, isLoading: overrides.isLoading ?? false, refetch: () => {} }),
+        useReviewData: () => ({ data: overrides.data, error: overrides.error ?? null, isLoading: overrides.isLoading ?? false, refetch: overrides.refetch ?? (() => {}) }),
         useFileDiff: (_sessionId: string, query: GitReviewFileQuery | null) => {
             overrides.onQuery?.(query)
             return {
@@ -81,6 +83,7 @@ function makeDeps(overrides: {
                 isLoading: false,
             }
         },
+        useSessionRunning: () => overrides.running,
     }
 }
 
@@ -201,5 +204,18 @@ describe('GitReviewView（hook 注入）', () => {
         fireEvent.click(screen.getByTestId('review-too-big-open').querySelector('button') ?? screen.getByTestId('review-too-big-open'))
         const s = useWorkspaceStore.getState().getSession('s1')
         expect(s.tabs.some((t) => t.mode === 'file' && t.filePath === 'huge.ts')).toBe(true)
+    })
+
+    it('turn 结束驱动刷新：running true→false 触发 refetch（tab 常挂数据不陈旧）', () => {
+        const refetch = vi.fn()
+        const { rerender } = render(
+            <GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, running: false, refetch })} />,
+        )
+        // idle→running：不刷
+        rerender(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, running: true, refetch })} />)
+        expect(refetch).not.toHaveBeenCalled()
+        // running→idle（turn 结束）：刷
+        rerender(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, running: false, refetch })} />)
+        expect(refetch).toHaveBeenCalledTimes(1)
     })
 })

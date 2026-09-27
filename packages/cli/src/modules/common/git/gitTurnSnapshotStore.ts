@@ -17,7 +17,8 @@
 /**
  * 轮次快照存储的 git 适配器（ADR 0008）——CLI 内 git 执行的唯一收口。
  *
- * 快照动作：临时 GIT_INDEX_FILE 上 `git add -A`（pathspec 排除产物目录）
+ * 快照动作：临时 GIT_INDEX_FILE 上 `git add -A` 全量收集 + `git rm --cached` 摘除
+ * 产物目录（exclude pathspec 会因显式命中被 .gitignore 忽略的路径而整体报错，禁用）
  * + `write-tree` + `update-ref refs/mobi/turn-diffs/<sessionId>/<n>`。
  * 三不碰：不产生 commit、不进分支历史、不动用户 index/工作区；引用不进任何
  * push refspec，永不出本机。
@@ -41,7 +42,7 @@ import type { TurnSnapshotRef, TurnSnapshotStore, TurnTreeDiffEntry, TurnTreeDif
 const execFileAsync = promisify(execFile)
 
 /** 产物目录不入快照（产物有自己的展示通道，混进变更归因是噪音） */
-const EXCLUDE_PATHSPEC = ':(exclude).mobi/artifacts'
+const EXCLUDE_PATH = '.mobi/artifacts'
 
 const REF_NAMESPACE = 'refs/mobi/turn-diffs'
 
@@ -81,7 +82,11 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
         const tmpIndex = join(tmpdir(), `mobi-turn-idx-${randomUUID()}`)
         const env = { ...process.env, GIT_INDEX_FILE: tmpIndex }
         try {
-            await git(this.cwd, ['add', '-A', '--', '.', EXCLUDE_PATHSPEC], env)
+            // 全量 add（-A 只收未忽略文件）后把产物目录从临时 index 摘除——
+            // 不用 exclude pathspec：pathspec 显式命中「已被 .gitignore 忽略」的路径
+            // 会让整个 add 以「Use -f」报错退出（真仓库实证 2026-09-27），绝对不能容忍
+            await git(this.cwd, ['add', '-A'], env)
+            await git(this.cwd, ['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', EXCLUDE_PATH], env)
             const tree = (await git(this.cwd, ['write-tree'], env)).trim()
             const chain = await this.listChain(sessionId)
             const ref: TurnSnapshotRef = { index: (chain.at(-1)?.index ?? 0) + 1, tree }
