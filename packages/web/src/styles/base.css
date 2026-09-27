@@ -4,6 +4,17 @@
     box-sizing: border-box;
 }
 
+/* Tailwind Preflight 反制（根修，2026-09-27 定位）：preflight 把 img/svg/video 等
+   置 display:block（@layer base 内），行内 svg 图标（lucide：mention 目录 Folder、
+   slash 命令 Box 等）被顶成独占一行——favicon、mention、slash 三处「icon 独占一行」
+   同此根因。mobi 自有样式 unlayered 天然压过 layer 内样式（见 index.css 分层注释），
+   此处一条恢复 UA 默认 inline 即全站根治；flex/grid 语境子项 blockify 不受影响。
+   img 不反制：内容图（文档/产物预览）依赖 preflight 的 block 布局，favicon 已有
+   内联样式自保 */
+svg {
+    display: inline;
+}
+
 /* 移动端：移除点击元素默认高亮块
    触屏设备点击链接/按钮/可点击区域时，浏览器默认绘制半透明高亮（tap-highlight，
    Android 常为蓝色/灰色），点击瞬间闪烁，体感粗糙。统一关闭；
