@@ -22,13 +22,17 @@
  */
 
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Segmented } from 'antd'
+import { Button, Segmented } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, FileQuestion } from 'lucide-react'
 import { GIT_REVIEW_SCOPES, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type GitReviewScope, type GitReviewScopeData, type TurnDiffFileEntry } from '@mobi/shared'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { basename } from '@/core/utils/path'
 import { DiffViewer } from './DiffViewer'
 import { useGitReviewData, useGitReviewFileDiff, type ReviewDataResult, type ReviewFileDiffResult } from '@/core/data/hooks/queries/useGitReview'
+
+/** 大 diff 阈值（行数）：超过降级为「文件过大」+ 跳转文件查看器（票07，约 5k 行） */
+const BIG_DIFF_LINES = 5000
 
 /** 依赖注入点：测试换假数据源，生产走 react-query 实现 */
 export interface GitReviewDeps {
@@ -97,9 +101,13 @@ function FileRow({ file, selected, onSelect }: { file: TurnDiffFileEntry; select
                     {badge.label}
                 </span>
             )}
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.path}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}>
                 <span style={{ color: 'var(--ant-color-text-tertiary)' }}>{dir}</span>
                 <span style={{ color: 'var(--ant-color-text)' }}>{base || file.path}</span>
+                {/* 重命名成对呈现：旧名弱化跟在新名后（票07） */}
+                {file.previousPath && (
+                    <span style={{ color: 'var(--ant-color-text-tertiary)', marginLeft: 4 }}>← {basename(file.previousPath)}</span>
+                )}
             </span>
             {!file.binary && (
                 <span style={{ fontSize: 11, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>
@@ -126,7 +134,7 @@ function FileList({ scope, scopes, onScopeChange, selectedPath, onSelect }: {
     const lastTurnMissing = scopes['last-turn'] === null
 
     return (
-        <div style={{ width: 264, flexShrink: 0, borderRight: '1px solid var(--ant-color-border-secondary)', overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ width: 'min(264px, 42%)', flexShrink: 0, borderRight: '1px solid var(--ant-color-border-secondary)', overflowY: 'auto', minHeight: 0 }}>
             <div style={{ padding: '10px 8px 4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--ant-color-text)' }}>
                     <FileDiff size={14} aria-hidden />
@@ -187,18 +195,37 @@ function DiffPane({ sessionId, scope, scopeData, selectedPath, deps }: {
     deps: GitReviewDeps
 }) {
     const { t } = useTranslation()
+    const openFileTab = useWorkspaceStore((s) => s.openFileTab)
     const entry = scopeData.files.find((f) => f.path === selectedPath) ?? null
 
-    // last-turn 档带两树指针（无服务器状态）；其他档按 scope 现查；指针缺失（非 git）不发起
+    // last-turn 档带两树指针（无服务器状态；rename 条目带旧路径供基线侧取 before）；
+    // 其他档按 scope 现查；指针缺失（非 git）不发起
     const query: GitReviewFileQuery | null = !entry
         ? null
         : scope === 'last-turn'
-            ? (scopeData.git ? { scope, path: entry.path, baseTree: scopeData.git.baseTree, headTree: scopeData.git.headTree } : null)
+            ? (scopeData.git
+                ? { scope, path: entry.path, ...(entry.previousPath && { previousPath: entry.previousPath }), baseTree: scopeData.git.baseTree, headTree: scopeData.git.headTree }
+                : null)
             : { scope, path: entry.path }
     const diff = deps.useFileDiff(sessionId, query)
 
     if (!entry) {
         return <div style={{ flex: 1, display: 'grid', placeItems: 'center', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.selectFile')}</div>
+    }
+    // 大 diff 降级（票07）：渲染引擎吃全文，超大文件卡真机——跳转文件查看器
+    if (!entry.binary && entry.additions + entry.deletions > BIG_DIFF_LINES) {
+        return (
+            <div data-testid="review-too-big" style={{ flex: 1, display: 'grid', placeItems: 'center', gap: 10, alignContent: 'center', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                {t('review.tooBig')}
+                <Button
+                    size="small"
+                    data-testid="review-too-big-open"
+                    onClick={() => openFileTab(sessionId, entry.path, basename(entry.path))}
+                >
+                    {t('review.openInViewer')}
+                </Button>
+            </div>
+        )
     }
     if (diff.error) {
         return <div style={{ flex: 1, display: 'grid', placeItems: 'center', fontSize: 12, color: 'var(--ant-color-error)' }}>{diff.error}</div>

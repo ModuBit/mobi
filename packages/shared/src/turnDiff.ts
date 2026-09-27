@@ -106,9 +106,10 @@ export const GitReviewDataSchema = z.object({
 })
 export type GitReviewData = z.infer<typeof GitReviewDataSchema>
 
-/** 单文件 diff 查询：工作区三档按 scope 算基线；last-turn 用两树指针（无服务器状态） */
+/** 单文件 diff 查询：工作区三档按 scope 算基线；last-turn 用两树指针（无服务器状态）。
+ *  previousPath：rename 条目的旧路径——基线侧取旧路径读 before（新路径在基线树不存在） */
 export const GitReviewFileQuerySchema = z.discriminatedUnion('scope', [
-    z.object({ scope: z.literal('last-turn'), path: z.string().min(1), baseTree: z.string().min(1), headTree: z.string().min(1) }),
+    z.object({ scope: z.literal('last-turn'), path: z.string().min(1), previousPath: z.string().min(1).optional(), baseTree: z.string().min(1), headTree: z.string().min(1) }),
     z.object({ scope: z.enum(['uncommitted', 'unstaged', 'staged']), path: z.string().min(1) }),
 ])
 export type GitReviewFileQuery = z.infer<typeof GitReviewFileQuerySchema>

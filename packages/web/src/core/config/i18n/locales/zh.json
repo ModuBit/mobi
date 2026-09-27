@@ -826,6 +826,8 @@
         "title": "审查",
         "noSnapshot": "此会话还没有轮次快照，对话产生文件变更后会出现",
         "noSnapshotChanges": "本轮没有文件变更",
-        "truncated": "untracked 文件过多，部分未逐一计数"
+        "truncated": "untracked 文件过多，部分未逐一计数",
+        "tooBig": "文件过大，差异渲染已降级",
+        "openInViewer": "在文件查看器中打开"
     }
 }

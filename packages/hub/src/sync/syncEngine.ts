@@ -621,7 +621,22 @@ export class SyncEngine {
     }
 
     async deleteSession(sessionId: string): Promise<void> {
+        // 删除前读执行定位（删后 sessionCache 无行可查）；metadata 缺失不阻塞删除
+        const located = (() => {
+            try {
+                return this.resolveSessionFileExecution(sessionId)
+            } catch {
+                return null
+            }
+        })()
         await this.sessionCache.deleteSession(sessionId)
+        // best-effort 清理轮次快照引用（ADR 0008 refs 治理 / pending #87）：CLI 离线时
+        // 引用暂留——不消费不转发，仅占本机 .git 空间，不影响正确性
+        if (located) {
+            void this.rpcGateway.clearTurnSnapshots(located.machineId, located.cwd, sessionId).catch((error) => {
+                hubLogger.warn(`[deleteSession] 清理轮次快照引用失败 (best-effort，忽略): ${(error as Error).message}`)
+            })
+        }
     }
 
     async applySessionConfig(

@@ -835,6 +835,8 @@
         "title": "Review",
         "noSnapshot": "No turn snapshots yet for this session; they appear once turns change files",
         "noSnapshotChanges": "No file changes in this turn",
-        "truncated": "Too many untracked files; some were not counted"
+        "truncated": "Too many untracked files; some were not counted",
+        "tooBig": "File too large; diff rendering degraded",
+        "openInViewer": "Open in file viewer"
     }
 }

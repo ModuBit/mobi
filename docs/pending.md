@@ -862,6 +862,8 @@ interrupt（用户停止）
 
 **重估条件**：code review 特性立项时，按真实需求重建 git 数据链（候选形态：从消息流 Edit/Write 块聚合变更，或 hub 直调 git），不参考旧实现。
 
+**✅ 关闭（2026-09-27）**：turn-diff 特性（ADR 0008 + `.scratch/turn-diff/` 票 01-07）已按真实需求重建 git 数据链——审查数据走 CLI machine 通道只读 git 查询（`GitReviewReader`），统计口径 = 快照 diff numstat；未参考旧实现，旧路由/面板形态未复活。
+
 ---
 
 ## 88. x-markdown 块级 memo——流式全量 re-render 的根治候选（2026-09-21 profile 实测后记录）

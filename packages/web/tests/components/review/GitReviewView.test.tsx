@@ -38,6 +38,7 @@ vi.mock('@/components/review/DiffViewer', () => ({
 }))
 
 import { GitReviewView, type GitReviewDeps } from '@/components/review/GitReviewView'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import type { GitReviewData, GitReviewFileQuery } from '@mobi/shared'
 
 afterEach(cleanup)
@@ -155,5 +156,50 @@ describe('GitReviewView（hook 注入）', () => {
         const disabled = screen.getAllByTestId('review-scope-switch')[0]!.querySelector('.ant-segmented-item-disabled')
         expect(disabled).not.toBeNull()
         expect(disabled!.textContent).toContain('review.scope.lastTurn')
+    })
+
+    it('重命名（票07）：清单行成对呈现旧名；查询携带 previousPath', () => {
+        const renames: GitReviewData = {
+            ...DATA,
+            scopes: {
+                ...DATA.scopes,
+                'last-turn': {
+                    files: [{ path: 'after.txt', kind: 'rename', additions: 0, deletions: 0, previousPath: 'before.txt' }],
+                    stats: { files: 1, additions: 0, deletions: 0 },
+                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+                },
+            },
+        }
+        const queries: (GitReviewFileQuery | null)[] = []
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: renames, fileDiff: { before: 'r', after: 'r', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+
+        const row = screen.getByTestId('review-file-row')
+        expect(row.textContent).toContain('after.txt')
+        expect(row.textContent).toContain('before.txt')
+        expect(queries.filter((q) => q !== null)[0]).toEqual({
+            scope: 'last-turn', path: 'after.txt', previousPath: 'before.txt',
+            baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40),
+        })
+    })
+
+    it('大 diff（票07）：超阈值降级为「文件过大」+ 跳转文件查看器入口', () => {
+        const big: GitReviewData = {
+            ...DATA,
+            scopes: {
+                ...DATA.scopes,
+                'last-turn': {
+                    files: [{ path: 'huge.ts', kind: 'modify', additions: 4000, deletions: 2000 }],
+                    stats: { files: 1, additions: 4000, deletions: 2000 },
+                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+                },
+            },
+        }
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: big, fileDiff: { before: '', after: '', patch: '' } })} />)
+        expect(screen.getByTestId('review-too-big')).toBeDefined()
+        expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
+        // 点击入口 → 调 workspaceStore.openFileTab（新 file tab 激活）
+        fireEvent.click(screen.getByTestId('review-too-big-open').querySelector('button') ?? screen.getByTestId('review-too-big-open'))
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs.some((t) => t.mode === 'file' && t.filePath === 'huge.ts')).toBe(true)
     })
 })

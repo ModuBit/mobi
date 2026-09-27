@@ -246,8 +246,10 @@ export class GitReviewReader {
         let after: string | null
 
         if (query.scope === 'last-turn') {
-            patch = await this.gitAtRoot(['diff', '--find-renames', query.baseTree, query.headTree, '--', query.path])
-            before = await this.show(query.baseTree, query.path)
+            // rename：基线侧取旧路径（新路径在基线树不存在），patch 双路径让 -M 识别 rename 对
+            const beforePath = query.previousPath ?? query.path
+            patch = await this.gitAtRoot(['diff', '--find-renames', query.baseTree, query.headTree, '--', beforePath, query.path])
+            before = await this.show(query.baseTree, beforePath)
             after = await this.show(query.headTree, query.path)
         } else if (query.scope === 'unstaged') {
             patch = await this.gitAtRoot(['diff', '--', query.path])
@@ -297,6 +299,18 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
         } catch (e) {
             logger.debug('[GitReview] fileDiff failed', e)
             return rpcError('Failed to read git diff')
+        }
+    })
+    // 会话删除清引用（ADR 0008 refs 治理，hub best-effort 调用）：git mv 不适用——
+    // 快照引用本就不进 index，直接逐个删 ref
+    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>('clearTurnSnapshots', async (data) => {
+        try {
+            const store = await openTurnSnapshotStore(data.cwd)
+            const cleared = store ? await store.clearSession(data.sessionId) : 0
+            return { success: true, cleared }
+        } catch (e) {
+            logger.debug('[GitReview] clearTurnSnapshots failed', e)
+            return rpcError('Failed to clear turn snapshots')
         }
     })
 }

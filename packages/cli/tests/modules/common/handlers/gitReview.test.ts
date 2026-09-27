@@ -179,4 +179,42 @@ describe('GitReviewReader（真 git 集成）', () => {
         expect(err.success).toBe(false)
         expect(err.error).toBeTruthy()
     })
+
+    it('重命名（票07）：上一轮档 rename 条目带旧路径，diff before 取基线旧路径内容', async () => {
+        const reader = new GitReviewReader(repoDir)
+        // 快照不进 index（临时 index），git mv 需要文件被跟踪——先 commit 再改名
+        await write('before-rename.txt', 'rename me\n')
+        await git('add', 'before-rename.txt')
+        await git('commit', '-qm', 'add before-rename')
+        const base = await store.capture(SESSION_ID)
+        await git('mv', 'before-rename.txt', 'after-rename.txt')
+        const head = await store.capture(SESSION_ID)
+
+        const data = GitReviewDataSchema.parse(await reader.reviewData(SESSION_ID, store))
+        const entry = data.scopes['last-turn']!.files.find((f) => f.path === 'after-rename.txt')
+        expect(entry).toMatchObject({ kind: 'rename', previousPath: 'before-rename.txt' })
+
+        const diff = GitReviewFileDiffSchema.parse(await reader.fileDiff({
+            scope: 'last-turn', path: 'after-rename.txt', previousPath: 'before-rename.txt',
+            baseTree: base.tree, headTree: head.tree,
+        }))
+        expect(diff.before).toBe('rename me\n')
+        expect(diff.after).toBe('rename me\n')
+        expect(diff.patch).toContain('rename from before-rename.txt')
+    })
+
+    it('clearTurnSnapshots handler：清空该会话的快照引用（for-each-ref 为空）', async () => {
+        const handlers = new Map<string, (params: never) => Promise<unknown>>()
+        registerGitReviewHandlers({
+            registerHandler: (method, handler) => handlers.set(method, handler as never),
+        } as never)
+
+        // 会话已有快照（前面用例捕获过）→ 清理 → 链为空
+        await store.capture(SESSION_ID)
+        const result = await handlers.get('clearTurnSnapshots')!({ cwd: repoDir, sessionId: SESSION_ID } as never) as { success: boolean; cleared: number }
+        expect(result.success).toBe(true)
+        expect(result.cleared).toBeGreaterThan(0)
+        const chain = await store.listChain(SESSION_ID)
+        expect(chain).toHaveLength(0)
+    })
 })
