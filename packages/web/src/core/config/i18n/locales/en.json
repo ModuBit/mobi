@@ -460,7 +460,8 @@
             "fileEdited": "Edited 1 file",
             "noChanges": "No file changes in this turn",
             "approximate": "Approximate (non-git directory)",
-            "binary": "binary"
+            "binary": "binary",
+            "review": "Review"
         },
         "codeBlockPlain": "Plain text"
     },
@@ -815,5 +816,18 @@
         "discardConfirm": "The canvas has unsent content and will be lost. Discard this edit?",
         "editSketch": "Edit sketch",
         "loadFailed": "Failed to load sketch; opened as a blank canvas"
+    },
+    "review": {
+        "scope": {
+            "lastTurn": "Last turn"
+        },
+        "fileCount": "{{count}} files",
+        "rootDir": "(root)",
+        "empty": "No changes",
+        "selectFile": "Select a file on the left to view its diff",
+        "loading": "Loading…",
+        "unavailable": "This session's directory is not a git repository, or no snapshot to review",
+        "noDiff": "Diff unavailable (binary or missing content)",
+        "diffAria": "File diff view"
     }
 }

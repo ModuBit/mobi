@@ -57,6 +57,10 @@ export const queryKeys = {
     sessionFile: (sessionId: string, path: string, etag?: string) => ['session-file', sessionId, path, etag] as const,
     /** 会话文件元数据（mime/size/etag） */
     sessionFileMeta: (sessionId: string, path: string) => ['session-file-meta', sessionId, path] as const,
+    /** git 审查总览（四档范围数据） */
+    gitReview: (sessionId: string) => ['git-review', sessionId] as const,
+    /** git 审查单文件 diff（scope + path + last-turn 两树指针全进 key：指针变了旧 diff 不复用） */
+    gitReviewFile: (sessionId: string, scope: string, path: string) => ['git-review-file', sessionId, scope, path] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
     /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */

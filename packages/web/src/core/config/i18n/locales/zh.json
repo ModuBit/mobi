@@ -451,7 +451,8 @@
             "fileEdited": "已编辑 1 个文件",
             "noChanges": "本轮没有文件变更",
             "approximate": "近似统计（非 git 目录）",
-            "binary": "二进制"
+            "binary": "二进制",
+            "review": "审核"
         },
         "codeBlockPlain": "纯文本"
     },
@@ -806,5 +807,18 @@
         "discardConfirm": "画布上有内容，放弃后将无法恢复。确定放弃本次编辑？",
         "editSketch": "编辑草图",
         "loadFailed": "草图载入失败，已按空白画布打开"
+    },
+    "review": {
+        "scope": {
+            "lastTurn": "上一轮"
+        },
+        "fileCount": "{{count}} 个文件",
+        "rootDir": "（根目录）",
+        "empty": "暂无变更",
+        "selectFile": "选择左侧文件查看差异",
+        "loading": "加载中…",
+        "unavailable": "当前会话目录不是 git 仓库，或没有可审查的快照",
+        "noDiff": "无法呈现差异（二进制或内容缺失）",
+        "diffAria": "文件差异视图"
     }
 }

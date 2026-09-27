@@ -87,6 +87,22 @@ describe('workspaceStore', () => {
         expect(s.activeTabId).toBe(treeId)
     })
 
+    it('openReviewTab 新增 review tab 并激活；已开则切激活不重复创建', () => {
+        useWorkspaceStore.getState().openReviewTab('s1')
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0].mode).toBe('review')
+        expect(s.activeTabId).toBe(s.tabs[0].id)
+
+        // 切走（再开 tree tab 激活）后再开审查：切激活回 review，不新增
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        expect(useWorkspaceStore.getState().getSession('s1').activeTabId).not.toBe(s.tabs[0].id)
+        useWorkspaceStore.getState().openReviewTab('s1')
+        const after = useWorkspaceStore.getState().getSession('s1')
+        expect(after.tabs).toHaveLength(2)
+        expect(after.activeTabId).toBe(s.tabs[0].id)
+    })
+
     it('openFileInTab 未命中：当前 tree tab 转为 file tab，保留 id', () => {
         useWorkspaceStore.getState().openFileTreeTab('s1')
         const treeId = useWorkspaceStore.getState().getSession('s1').tabs[0].id

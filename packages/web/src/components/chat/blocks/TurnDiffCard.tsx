@@ -17,7 +17,8 @@
 /**
  * 轮次变更卡（Turn Diff Card）：渲染 CLI 合成的 turn-diff 自定义事件（ADR 0008）。
  * 卡片是已落库事实的呈现，自身不做任何统计——数字即载荷（唯一权威口径，ADR 0008）。
- * 审查入口（「审核」按钮）随审查视图特性接线（spec .scratch/turn-diff 票 05），本卡不含。
+ * git 模式（payload.git）带「审核」按钮：打开 inspector 审查 tab 落「上一轮」档；
+ * 近似口径（git: null）无两树指针，不出按钮。
  */
 
 import { memo, useState } from 'react'
@@ -63,7 +64,7 @@ function DiffStat({ additions, deletions, binary }: { additions: number; deletio
     )
 }
 
-export const TurnDiffCard = memo(function TurnDiffCard({ payload }: { payload: TurnDiffPayload }) {
+export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { payload: TurnDiffPayload; onReview?: () => void }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const [expanded, setExpanded] = useState(false)
@@ -96,6 +97,26 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload }: { payload: T
                     )}
                 </span>
                 <DiffStat additions={payload.stats.additions} deletions={payload.stats.deletions} binary={false} />
+                {onReview && payload.git && (
+                    <button
+                        type="button"
+                        data-testid="turn-diff-review"
+                        onClick={(e) => {
+                            // 摘要行整体是展开开关，按钮须阻断冒泡避免顺手折叠
+                            e.stopPropagation()
+                            onReview()
+                        }}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            border: 'none', cursor: 'pointer', borderRadius: token.borderRadiusSM,
+                            padding: '2px 8px', fontSize: token.fontSizeSM,
+                            color: token.colorText, background: token.colorFillTertiary,
+                        }}
+                    >
+                        <FileDiff size={12} aria-hidden />
+                        {t('chat.turnDiff.review')}
+                    </button>
+                )}
                 {expanded ? <ChevronDown size={14} color={token.colorTextTertiary} /> : <ChevronsUpDown size={14} color={token.colorTextTertiary} />}
             </div>
 

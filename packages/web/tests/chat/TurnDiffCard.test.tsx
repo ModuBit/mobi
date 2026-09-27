@@ -33,6 +33,7 @@ vi.mock('react-i18next', async (orig) => {
 })
 
 import { CustomBlockView, CUSTOM_EVENT_VIEWS } from '@/components/chat/blocks/CustomBlock'
+import { TurnDiffCard } from '@/components/chat/blocks/TurnDiffCard'
 import type { CustomBlock } from '@/domain/chat/types'
 import { TURN_DIFF_EVENT, type TurnDiffPayload } from '@mobi/shared'
 
@@ -91,5 +92,24 @@ describe('turn-diff 渲染链', () => {
             { type: 'custom-event', name: 'future-event', value: { any: true } },
         ])} />)
         expect(container.querySelector('[data-testid="turn-diff-card"]')).toBeNull()
+    })
+
+    it('「审核」按钮：git 模式且传入 onReview 才出现；点击触发且不触发折叠', () => {
+        const onReview = vi.fn()
+        // 无 sessionId → 无 onReview → 不出按钮
+        const { rerender } = render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: PAYLOAD }])} />)
+        expect(screen.queryByTestId('turn-diff-review')).toBeNull()
+
+        // 卡片级按钮语义直测（CustomBlockView→onReview 的接线单测在 workspaceStore 侧覆盖动作本身）
+        rerender(<TurnDiffCard payload={PAYLOAD} onReview={onReview} />)
+        fireEvent.click(screen.getByTestId('turn-diff-review'))
+        expect(onReview).toHaveBeenCalledTimes(1)
+        // 点击不触发展开（阻断冒泡）
+        expect(screen.queryByTestId('turn-diff-file')).toBeNull()
+    })
+
+    it('近似口径（git: null）不出「审核」按钮（无两树指针可查）', () => {
+        render(<TurnDiffCard payload={{ ...PAYLOAD, git: null }} onReview={() => {}} />)
+        expect(screen.queryByTestId('turn-diff-review')).toBeNull()
     })
 })

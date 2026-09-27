@@ -123,7 +123,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         case 'agent-event':
             return <AgentEventBlock block={block} actions={ctx.turnResultActions?.(block)} />
         case 'custom':
-            return <CustomBlockView block={block} />
+            return <CustomBlockView block={block} sessionId={ctx.sessionId} />
         default:
             return null
     }
