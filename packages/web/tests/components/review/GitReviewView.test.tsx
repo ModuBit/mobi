@@ -42,7 +42,7 @@ import type { GitReviewData, GitReviewFileQuery } from '@mobi/shared'
 
 afterEach(cleanup)
 
-const SCOPE: GitReviewData['scopes']['last-turn'] = {
+const LAST_TURN: GitReviewData['scopes']['last-turn'] = {
     // 真实不变量：CLI 侧按 path localeCompare 排序——b.ts（根目录）在 src/deep/a.ts 前
     files: [
         { path: 'b.ts', kind: 'add', additions: 4, deletions: 0 },
@@ -51,9 +51,14 @@ const SCOPE: GitReviewData['scopes']['last-turn'] = {
     stats: { files: 2, additions: 9, deletions: 3 },
     git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
 }
+const STAGED: NonNullable<GitReviewData['scopes']['last-turn']> = {
+    files: [{ path: 'staged-only.txt', kind: 'modify', additions: 1, deletions: 1 }],
+    stats: { files: 1, additions: 1, deletions: 1 },
+    git: null,
+}
 const DATA: GitReviewData = {
     unavailable: false,
-    scopes: { 'last-turn': SCOPE, uncommitted: null as never, unstaged: null as never, staged: null as never },
+    scopes: { 'last-turn': LAST_TURN, uncommitted: STAGED, unstaged: STAGED, staged: STAGED },
 }
 
 function makeDeps(overrides: {
@@ -109,10 +114,11 @@ describe('GitReviewView（hook 注入）', () => {
     })
 
     it('空清单：提示空态且无文件行', () => {
-        const empty: GitReviewData = { ...DATA, scopes: { ...DATA.scopes, 'last-turn': { ...SCOPE!, files: [], stats: { files: 0, additions: 0, deletions: 0 } } } }
+        const empty: GitReviewData = { ...DATA, scopes: { ...DATA.scopes, 'last-turn': { ...LAST_TURN!, files: [], stats: { files: 0, additions: 0, deletions: 0 } } } }
         render(<GitReviewView sessionId="s1" deps={makeDeps({ data: empty })} />)
         expect(screen.queryByTestId('review-file-row')).toBeNull()
-        expect(screen.getByText('review.empty')).toBeDefined()
+        // 上一轮档空清单：文案区分「无快照变化」与其他档「暂无变更」
+        expect(screen.getByText('review.noSnapshotChanges')).toBeDefined()
     })
 
     it('非 git 目录：unavailable 诚实空态，不渲染清单', () => {
@@ -124,5 +130,30 @@ describe('GitReviewView（hook 注入）', () => {
     it('拉数失败：错误文案替代清单', () => {
         render(<GitReviewView sessionId="s1" deps={makeDeps({ error: 'boom' })} />)
         expect(screen.getByText('boom')).toBeDefined()
+    })
+
+    it('档位切换（受控）：其他档查询不带两树指针，文件列表随档刷新', () => {
+        const queries: (GitReviewFileQuery | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                scope="staged"
+                deps={makeDeps({ data: DATA, fileDiff: { before: 'x', after: 'y', patch: '' }, onQuery: (q) => queries.push(q) })}
+            />,
+        )
+        // staged 档文件清单
+        expect(screen.getAllByTestId('review-file-row')).toHaveLength(1)
+        expect(queries.filter((q) => q !== null)).toEqual([{ scope: 'staged', path: 'staged-only.txt' }])
+    })
+
+    it('无快照链：上一轮档禁用；兜底空态诚实（不装数据）', () => {
+        const noChain: GitReviewData = { ...DATA, scopes: { ...DATA.scopes, 'last-turn': null } }
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: noChain })} />)
+        // 上档空态文案 + 右栏诚实空态
+        expect(screen.getAllByText('review.noSnapshot').length).toBeGreaterThanOrEqual(1)
+        // 上一轮 Segmented 选项禁用
+        const disabled = screen.getAllByTestId('review-scope-switch')[0]!.querySelector('.ant-segmented-item-disabled')
+        expect(disabled).not.toBeNull()
+        expect(disabled!.textContent).toContain('review.scope.lastTurn')
     })
 })

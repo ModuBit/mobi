@@ -25,6 +25,7 @@ import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
 import { GitReviewView } from '@/components/review/GitReviewView'
 import { DesktopStreamSurface } from '@/components/desktop/DesktopStreamSurface'
+import type { GitReviewScope } from '@mobi/shared'
 import { getEditorApi } from '@/components/files/EditorRegistry'
 // TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，
 // 不进会话页首载关键路径（终端为低频功能）。default export，React.lazy 直接可用
@@ -132,6 +133,25 @@ export interface InspectorPaneProps {
 
 /** 尾部「+」tab 的 key（仅作菜单触发，不进 store） */
 const ADD_TAB_KEY = '__inspector_add'
+
+/**
+ * 审查 tab 表面（turn-diff 票06）：档位持久化挂 tab viewState——切走再切回保持
+ * 上次档位；hook 须在稳定组件里调（renderTabContent 在 items map 里跑，不能内联）
+ */
+function ReviewTab({ sessionId, tabId }: { sessionId: string; tabId: string }) {
+    const scope = useWorkspaceStore((s) => {
+        const tab = s.getSession(sessionId).tabs.find((t) => t.id === tabId)
+        return (tab?.viewState?.reviewScope ?? 'last-turn') as GitReviewScope
+    })
+    const setTabViewState = useWorkspaceStore((s) => s.setTabViewState)
+    return (
+        <GitReviewView
+            sessionId={sessionId}
+            scope={scope}
+            onScopeChange={(s) => setTabViewState(sessionId, tabId, { reviewScope: s })}
+        />
+    )
+}
 
 export function InspectorPane({ sessionId, active = true, machineId }: InspectorPaneProps) {
     const { t } = useTranslation()
@@ -246,8 +266,8 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
             return <DesktopStreamSurface machineId={tab.machineId} />
         }
         if (tab.mode === 'review') {
-            // git 审查视图（turn-diff 票05）：数据 machine 通道现查，休眠可开
-            return <GitReviewView sessionId={sessionId} />
+            // git 审查视图（turn-diff）：数据 machine 通道现查，休眠可开；档位挂 viewState 持久化
+            return <ReviewTab sessionId={sessionId} tabId={tab.id} />
         }
         return (
             <FileTreeView

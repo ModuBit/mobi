@@ -15,16 +15,17 @@
  */
 
 /**
- * 审查视图（inspector「审查」tab，turn-diff 票05）：左文件清单 + 右 diff。
- * 本票交付「上一轮」档完整体验（scope 切换与四档补全在票06）；数据经 deps 注入
- * 的 hooks 拉取——组件可测（测试注入假数据，不碰网络）。
+ * 审查视图（inspector「审查」tab，turn-diff 票05/06）：左文件清单 + 右 diff，
+ * 四档范围切换（上一轮/未提交/未暂存/已暂存；shared GIT_REVIEW_SCOPES 单源）。
+ * 档位受控——inspector 侧挂 tab viewState 持久化（票06），组件自身保持可测
+ * （数据经 deps 注入的 hooks 拉取，测试注入假数据不碰网络）。
  */
 
 import { memo, useEffect, useMemo, useState } from 'react'
-import { theme } from 'antd'
+import { Segmented } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, FileQuestion } from 'lucide-react'
-import type { GitReviewFileDiff, GitReviewFileQuery, GitReviewScopeData, TurnDiffFileEntry } from '@mobi/shared'
+import { GIT_REVIEW_SCOPES, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type GitReviewScope, type GitReviewScopeData, type TurnDiffFileEntry } from '@mobi/shared'
 import { basename } from '@/core/utils/path'
 import { DiffViewer } from './DiffViewer'
 import { useGitReviewData, useGitReviewFileDiff, type ReviewDataResult, type ReviewFileDiffResult } from '@/core/data/hooks/queries/useGitReview'
@@ -46,6 +47,14 @@ const KIND_BADGES: Record<TurnDiffFileEntry['kind'], { label: string; color: str
     delete: { label: 'D', color: '#C2544D' },
     rename: { label: 'R', color: '#8A6FC9' },
     modify: null,
+}
+
+/** 档位 → i18n key（shared GIT_REVIEW_SCOPES 单源遍历，新档位漏文案会在 UI 直接露 key） */
+const SCOPE_LABEL_KEYS: Record<GitReviewScope, string> = {
+    'last-turn': 'review.scope.lastTurn',
+    uncommitted: 'review.scope.uncommitted',
+    unstaged: 'review.scope.unstaged',
+    staged: 'review.scope.staged',
 }
 
 /** 按目录分组（同目录聚一块，根目录文件排最前；保持输入的 path 排序稳定） */
@@ -102,25 +111,52 @@ function FileRow({ file, selected, onSelect }: { file: TurnDiffFileEntry; select
     )
 }
 
-/** 左栏：scope 标题 + 统计 + 目录分组文件清单 */
-function FileList({ scopeData, selectedPath, onSelect }: { scopeData: GitReviewScopeData; selectedPath: string | null; onSelect: (path: string) => void }) {
+/** 左栏：统计 + 范围切换 + 目录分组文件清单 */
+function FileList({ scope, scopes, onScopeChange, selectedPath, onSelect }: {
+    scope: GitReviewScope
+    scopes: GitReviewData['scopes']
+    onScopeChange: (s: GitReviewScope) => void
+    selectedPath: string | null
+    onSelect: (path: string) => void
+}) {
     const { t } = useTranslation()
-    const groups = useMemo(() => groupByDirectory(scopeData.files), [scopeData.files])
+    const scopeData = scopes[scope] as GitReviewScopeData | null
+    const groups = useMemo(() => groupByDirectory(scopeData?.files ?? []), [scopeData])
+    // 「上一轮」无快照链（会话无轮次变更消息）→ 禁用该档（空态文案诚实，不装死数据）
+    const lastTurnMissing = scopes['last-turn'] === null
 
     return (
         <div style={{ width: 264, flexShrink: 0, borderRight: '1px solid var(--ant-color-border-secondary)', overflowY: 'auto', minHeight: 0 }}>
             <div style={{ padding: '10px 8px 4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--ant-color-text)' }}>
                     <FileDiff size={14} aria-hidden />
-                    {t('review.scope.lastTurn')}
+                    {t('review.title')}
                 </div>
-                <div style={{ marginTop: 2, fontSize: 12, fontFamily: 'var(--font-mono, monospace)' }}>
+                <Segmented
+                    size="small"
+                    block
+                    value={scope}
+                    onChange={(v) => onScopeChange(v as GitReviewScope)}
+                    options={GIT_REVIEW_SCOPES.map((s) => ({
+                        value: s,
+                        label: t(SCOPE_LABEL_KEYS[s]),
+                        disabled: s === 'last-turn' && lastTurnMissing,
+                    }))}
+                    style={{ marginTop: 6 }}
+                    data-testid="review-scope-switch"
+                />
+            </div>
+            {scopeData && (
+                <div style={{ padding: '0 8px', fontSize: 12, fontFamily: 'var(--font-mono, monospace)' }}>
                     <span style={{ color: 'var(--ant-color-text-secondary)' }}>{t('review.fileCount', { count: scopeData.stats.files })}</span>{' '}
                     <span style={{ color: '#4E9A51' }}>+{scopeData.stats.additions}</span>{' '}
                     <span style={{ color: '#C2544D' }}>-{scopeData.stats.deletions}</span>
+                    {scopeData.truncated && (
+                        <span style={{ marginLeft: 6, fontFamily: 'inherit', color: 'var(--ant-color-text-tertiary)' }} title={t('review.truncated')}>…</span>
+                    )}
                 </div>
-            </div>
-            <div style={{ padding: '0 4px 8px' }}>
+            )}
+            <div style={{ padding: '4px 4px 8px' }}>
                 {groups.map(({ dir, files }) => (
                     <div key={dir}>
                         <DirLabel dir={dir} />
@@ -129,24 +165,36 @@ function FileList({ scopeData, selectedPath, onSelect }: { scopeData: GitReviewS
                         ))}
                     </div>
                 ))}
-                {scopeData.files.length === 0 && (
-                    <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.empty')}</div>
+                {scopeData && scopeData.files.length === 0 && (
+                    <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                        {scope === 'last-turn' ? t('review.noSnapshotChanges') : t('review.empty')}
+                    </div>
+                )}
+                {!scopeData && (
+                    <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.noSnapshot')}</div>
                 )}
             </div>
         </div>
     )
 }
 
-/** 右栏 diff：吃 RPC 三件套（before/after 全文渲染；patch 仅降级） */
-function DiffPane({ sessionId, scopeData, selectedPath, deps }: { sessionId: string; scopeData: GitReviewScopeData; selectedPath: string | null; deps: GitReviewDeps }) {
+/** 右栏 diff：吃 RPC 三件套（before/after 全文渲染；patch 仅降级）。查询按档位组装 */
+function DiffPane({ sessionId, scope, scopeData, selectedPath, deps }: {
+    sessionId: string
+    scope: GitReviewScope
+    scopeData: GitReviewScopeData
+    selectedPath: string | null
+    deps: GitReviewDeps
+}) {
     const { t } = useTranslation()
     const entry = scopeData.files.find((f) => f.path === selectedPath) ?? null
 
-    // last-turn 档带两树指针（无服务器状态）；缺失（非 git / 档位空）则不发起查询
-    const query: GitReviewFileQuery | null =
-        entry && scopeData.git
-            ? { scope: 'last-turn', path: entry.path, baseTree: scopeData.git.baseTree, headTree: scopeData.git.headTree }
-            : null
+    // last-turn 档带两树指针（无服务器状态）；其他档按 scope 现查；指针缺失（非 git）不发起
+    const query: GitReviewFileQuery | null = !entry
+        ? null
+        : scope === 'last-turn'
+            ? (scopeData.git ? { scope, path: entry.path, baseTree: scopeData.git.baseTree, headTree: scopeData.git.headTree } : null)
+            : { scope, path: entry.path }
     const diff = deps.useFileDiff(sessionId, query)
 
     if (!entry) {
@@ -181,40 +229,59 @@ function DiffBody({ fileDiff }: { fileDiff: GitReviewFileDiff }) {
     return <DiffViewer before={fileDiff.before ?? ''} after={fileDiff.after ?? ''} />
 }
 
-export const GitReviewView = memo(function GitReviewView({ sessionId, deps = defaultDeps }: { sessionId: string; deps?: GitReviewDeps }) {
+export const GitReviewView = memo(function GitReviewView({ sessionId, scope: scopeProp, onScopeChange, deps = defaultDeps }: {
+    sessionId: string
+    /** 受控档位（inspector 经 tab viewState 持久化）；缺省「上一轮」 */
+    scope?: GitReviewScope
+    onScopeChange?: (s: GitReviewScope) => void
+    deps?: GitReviewDeps
+}) {
     const { t } = useTranslation()
-    const { token } = theme.useToken()
+    const [scopeState, setScopeState] = useState<GitReviewScope>('last-turn')
+    const scope = scopeProp ?? scopeState
+    const changeScope = onScopeChange ?? setScopeState
+
     const review = deps.useReviewData(sessionId)
     const [selectedPath, setSelectedPath] = useState<string | null>(null)
 
-    // 数据到位后默认选中第一个文件（无人工选择时）
-    const scopeData = review.data?.scopes['last-turn'] ?? null
+    const scopeData = review.data?.scopes[scope] ?? null
+    // 数据到位后默认选中首个文件；切档位重置选择（各档文件集不同，跨档残留无意义）
     useEffect(() => {
-        if (scopeData && selectedPath === null) {
+        setSelectedPath(null)
+    }, [scope])
+    useEffect(() => {
+        if (scopeData && selectedPath === null && !review.isLoading) {
             setSelectedPath(scopeData.files[0]?.path ?? null)
         }
-    }, [scopeData, selectedPath])
+    }, [scopeData, selectedPath, review.isLoading])
 
     if (review.isLoading) {
-        return <div style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12, color: token.colorTextTertiary }}>{t('review.loading')}</div>
+        return <div data-testid="git-review-view" style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.loading')}</div>
     }
     if (review.error) {
-        return <div style={{ display: 'grid', placeItems: 'center', height: '100%', gap: 8, fontSize: 12, color: token.colorTextTertiary }}>
+        return <div data-testid="git-review-view" style={{ display: 'grid', placeItems: 'center', height: '100%', gap: 8, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
             <FileQuestion size={28} aria-hidden />
             {review.error}
         </div>
     }
-    if (!review.data || review.data.unavailable || !scopeData) {
-        return <div style={{ display: 'grid', placeItems: 'center', height: '100%', gap: 8, padding: 24, fontSize: 12, color: token.colorTextTertiary, textAlign: 'center' }}>
+    if (!review.data || review.data.unavailable) {
+        return <div data-testid="git-review-view" style={{ display: 'grid', placeItems: 'center', height: '100%', gap: 8, padding: 24, fontSize: 12, color: 'var(--ant-color-text-tertiary)', textAlign: 'center' }}>
             <FileQuestion size={28} aria-hidden />
             {t('review.unavailable')}
+        </div>
+    }
+    // 「上一轮」无快照链：档位已禁用，这里兜底诚实空态（直开 tab 等边界路径）
+    if (!scopeData) {
+        return <div data-testid="git-review-view" style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+            <FileList scope={scope} scopes={review.data.scopes} onScopeChange={changeScope} selectedPath={null} onSelect={setSelectedPath} />
+            <div style={{ flex: 1, display: 'grid', placeItems: 'center', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.noSnapshot')}</div>
         </div>
     }
 
     return (
         <div data-testid="git-review-view" style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-            <FileList scopeData={scopeData} selectedPath={selectedPath} onSelect={setSelectedPath} />
-            <DiffPane sessionId={sessionId} scopeData={scopeData} selectedPath={selectedPath} deps={deps} />
+            <FileList scope={scope} scopes={review.data.scopes} onScopeChange={changeScope} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            <DiffPane sessionId={sessionId} scope={scope} scopeData={scopeData} selectedPath={selectedPath} deps={deps} />
         </div>
     )
 })

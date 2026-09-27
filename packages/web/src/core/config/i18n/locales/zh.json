@@ -810,7 +810,10 @@
     },
     "review": {
         "scope": {
-            "lastTurn": "上一轮"
+            "lastTurn": "上一轮",
+            "uncommitted": "未提交",
+            "unstaged": "未暂存",
+            "staged": "已暂存"
         },
         "fileCount": "{{count}} 个文件",
         "rootDir": "（根目录）",
@@ -819,6 +822,10 @@
         "loading": "加载中…",
         "unavailable": "当前会话目录不是 git 仓库，或没有可审查的快照",
         "noDiff": "无法呈现差异（二进制或内容缺失）",
-        "diffAria": "文件差异视图"
+        "diffAria": "文件差异视图",
+        "title": "审查",
+        "noSnapshot": "此会话还没有轮次快照，对话产生文件变更后会出现",
+        "noSnapshotChanges": "本轮没有文件变更",
+        "truncated": "untracked 文件过多，部分未逐一计数"
     }
 }
