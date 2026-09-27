@@ -110,6 +110,15 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
         return refs.sort((a, b) => a.index - b.index)
     }
 
+    async headTree(): Promise<string | null> {
+        try {
+            return (await git(this.cwd, ['rev-parse', 'HEAD^{tree}'])).trim() || null
+        } catch {
+            // 空仓库（无 commit）无 HEAD 树——显式 null，调用方走降级
+            return null
+        }
+    }
+
     async diffTrees(baseTree: string, headTree: string): Promise<TurnTreeDiffEntry[]> {
         if (baseTree === headTree) return []
         // name-status 定 kind（含 rename 旧路径），numstat 定计数，按路径对齐组装

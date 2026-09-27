@@ -16,6 +16,8 @@
 
 import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
+import { TurnDiffReporter } from "./turnDiffReporter";
+import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
@@ -60,6 +62,14 @@ export async function claudeLocalLauncher(
     // goal 状态处理器:双发 reportGoalStatus RPC + goal_progress 聊天消息
     const goalHandler = new GoalStatusHandler(session.client, (m) => session.client.sendClaudeSessionMessage(m));
 
+    // 轮次变更合成器（ADR 0008）：非 git 目录时 reporter 内部降级投影口径；顺序流直发
+    const turnDiffStore = await openTurnSnapshotStore(session.path);
+    const turnDiffReporter = new TurnDiffReporter(
+        session.client.sessionId,
+        turnDiffStore,
+        (m) => session.client.sendClaudeSessionMessage(m),
+    );
+
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: scannerSessionId,
@@ -68,7 +78,15 @@ export async function claudeLocalLauncher(
             // Block SDK summary messages - we generate our own
             // summary 是session title，自己生成，参见 @cli/src/claude/utils/startMobiMcpServer.ts
             if (message.type !== 'summary') {
-                session.client.sendClaudeSessionMessage(message)
+                // 轮次变更：非 result 消息先观测再发送；result 先发送再触发合成——
+                // 卡片必须排在 result 之后（时间线顺序）。观测/合成失败不影响主流程
+                if ((message as { type?: string }).type === 'result') {
+                    session.client.sendClaudeSessionMessage(message)
+                    void turnDiffReporter.onTurnEnd()
+                } else {
+                    turnDiffReporter.observe(message)
+                    session.client.sendClaudeSessionMessage(message)
+                }
             }
         },
         onAttachmentStatus: (status) => goalHandler.handle(status),

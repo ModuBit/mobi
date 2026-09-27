@@ -55,6 +55,8 @@ export interface TurnSnapshotStore {
     capture(sessionId: string): Promise<TurnSnapshotRef>
     /** 读会话快照链，按 index 升序；无链返回空数组 */
     listChain(sessionId: string): Promise<TurnSnapshotRef[]>
+    /** 当前 HEAD 树——首轮快照（链空）的 diff 兜底基线；空仓库（无 commit）返回 null */
+    headTree(): Promise<string | null>
     /** 两棵树之间的 per-file diff；无差异返回空数组 */
     diffTrees(baseTree: string, headTree: string): Promise<TurnTreeDiffEntry[]>
     /** 清除会话全部快照引用，返回清除数（幂等：无链返回 0） */
@@ -77,6 +79,8 @@ export function createInMemoryTurnSnapshotStore(options?: {
     chains?: Record<string, TurnSnapshotRef[]>
     /** 预置树内容：tree id → 文件映射，供 diffTrees 计算 */
     trees?: InMemoryTrees
+    /** headTree() 返回值（缺省固定值；null 模拟空仓库） */
+    headTree?: string | null
 }): TurnSnapshotStore & {
     /** 测试辅助：直接注册一棵树的内容（供 capture 后改写 diff 预期） */
     registerTree(tree: string, files: TreeFiles): void
@@ -85,6 +89,8 @@ export function createInMemoryTurnSnapshotStore(options?: {
         Object.entries(options?.chains ?? {}).map(([sid, refs]) => [sid, [...refs]]),
     )
     const trees = new Map<string, TreeFiles>(Object.entries(options?.trees ?? {}))
+    // null 是合法值（模拟空仓库），不能用 ?? 吞掉
+    const headTree = options && 'headTree' in options ? options.headTree! : 'fake-head-tree'
 
     const diffFiles = (base: TreeFiles, head: TreeFiles): TurnTreeDiffEntry[] => {
         const paths = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort()
@@ -117,6 +123,9 @@ export function createInMemoryTurnSnapshotStore(options?: {
         },
         async listChain(sessionId) {
             return (chains.get(sessionId) ?? []).map((r) => ({ ...r }))
+        },
+        async headTree() {
+            return headTree
         },
         async diffTrees(baseTree, headTree) {
             return diffFiles(trees.get(baseTree) ?? {}, trees.get(headTree) ?? {})

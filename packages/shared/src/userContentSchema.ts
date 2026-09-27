@@ -107,17 +107,38 @@ const QuoteBlockSchema = z.object({
 })
 
 /**
- * 统一 content block 词汇表（ADR 0002/0003）：text / image / document / quote 四种，
- * 跨来源（user / custom 消息）共享。新渲染需求先问「现有 block 能否组合」，
- * 不能才在此加 block 类型——加的是词汇，不是业务类型分支。
- * 内部动作（跳转/打开/发送）不走 block，由 mobi URI 动作链接承担（ADR 0003，actionUri.ts）。
+ * 自定义事件（受控注册的 wire 形态，AG-UI 1.0 CUSTOM 扩展点语义对齐）：custom 消息
+ * 承载**结构化应用事件**的统一形态——`name` 路由渲染器、`value` 为该事件正式定义的
+ * zod 载荷（如 turn-diff → shared/turnDiff.ts）。与渲染四型的分界：text/image/document/
+ * quote 是「内容组合」词汇，custom-event 是「应用事实」通道——新结构化消息一律走这里
+ * （加 name 注册 + 载荷 schema），禁止另起消息形态或挤进渲染词汇表。
  */
-export const ContentBlockSchema = z.discriminatedUnion('type', [
+const CustomEventBlockSchema = z.object({
+    type: z.literal('custom-event'),
+    name: z.string().min(1),
+    value: z.unknown(),
+})
+
+/**
+ * 统一 content block 词汇表（ADR 0002/0003）：渲染四型 text / image / document / quote
+ * 是用户与 custom 两通道共享的**内容组合**词汇；custom-event 是 custom 通道独有的
+ * **应用事实**形态（见上）。内部动作（跳转/打开/发送）不走 block，由 mobi URI 动作
+ * 链接承担（ADR 0003，actionUri.ts）。
+ */
+
+/** 渲染四型 union：用户通道（UserContentBlock）与全词汇表的公共子集 */
+const RenderBlockSchema = z.discriminatedUnion('type', [
     TextBlockSchema, ImageBlockSchema, DocumentBlockSchema, QuoteBlockSchema,
 ])
 
-/** 用户消息通道词汇别名：ref 退场（ADR 0003）后与统一词汇表重合，名称保留给写入侧（hub/CLI）语义 */
-export const UserContentBlockSchema = ContentBlockSchema
+/** 全词汇表（custom 通道 wire 形态）：渲染四型 + 自定义事件 */
+export const ContentBlockSchema = z.discriminatedUnion('type', [
+    TextBlockSchema, ImageBlockSchema, DocumentBlockSchema, QuoteBlockSchema, CustomEventBlockSchema,
+])
+
+/** 用户消息通道词汇（渲染四型，刻意不含 custom-event）：用户输入禁伪造应用事件，
+ *  hub 入参校验（UserMessageContentSchema）据此拒绝 */
+export const UserContentBlockSchema = RenderBlockSchema
 
 /** 用户消息 content 三形态：裸 string / 单 block / block 数组 */
 export const UserMessageContentSchema = z.union([
@@ -157,9 +178,10 @@ export type UserTextBlock = z.infer<typeof TextBlockSchema>
 export type UserImageBlock = z.infer<typeof ImageBlockSchema>
 export type UserDocumentBlock = z.infer<typeof DocumentBlockSchema>
 export type UserQuoteBlock = z.infer<typeof QuoteBlockSchema>
+export type UserCustomEventBlock = z.infer<typeof CustomEventBlockSchema>
 export type UserContentBlock = z.infer<typeof UserContentBlockSchema>
-/** 统一词汇表类型（= UserContentBlock，ref 退场后两通道重合） */
-export type ContentBlock = UserContentBlock
+/** 全词汇表类型（渲染四型 + custom-event；渲染四型子集见 UserContentBlock） */
+export type ContentBlock = z.infer<typeof ContentBlockSchema>
 /** 全词汇消息 content 三形态（custom 通道 wire 形态） */
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
@@ -245,7 +267,11 @@ export function normalizeContentBlocks(raw: unknown): ContentBlock[] | null {
  * 名称保留给存量调用方（hub/CLI/web）语义清晰：返回类型收窄为 UserContentBlock[]。
  */
 export function normalizeUserContent(raw: unknown): UserContentBlock[] | null {
-    return normalizeContentBlocks(raw) as UserContentBlock[] | null
+    const blocks = normalizeContentBlocks(raw)
+    if (!blocks) return null
+    // 用户通道不产 custom-event（写入侧校验已拒）；读取侧过滤兜底，收窄回渲染四型
+    const filtered = blocks.filter((b): b is UserContentBlock => b.type !== 'custom-event')
+    return filtered.length > 0 ? filtered : null
 }
 
 function normalizeBlockList(items: readonly unknown[]): ContentBlock[] | null {

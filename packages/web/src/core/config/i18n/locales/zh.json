@@ -446,6 +446,13 @@
             "reason.unsupported": "该类型不支持 inline 展示",
             "htmlTitle": "网页预览"
         },
+        "turnDiff": {
+            "filesEdited": "已编辑 {{count}} 个文件",
+            "fileEdited": "已编辑 1 个文件",
+            "noChanges": "本轮没有文件变更",
+            "approximate": "近似统计（非 git 目录）",
+            "binary": "二进制"
+        },
         "codeBlockPlain": "纯文本"
     },
     "files": {

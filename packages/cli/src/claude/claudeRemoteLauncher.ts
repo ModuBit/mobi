@@ -48,6 +48,8 @@ import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFail
 import type { ApiSessionClient } from "@/api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
+import { TurnDiffReporter } from "./turnDiffReporter";
+import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
@@ -416,6 +418,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             session.client,
             (m) => session.client.sendClaudeSessionMessage(m),
         );
+        // 轮次变更合成器（ADR 0008）：快照存储打开失败(非 git 目录)时 reporter 内部降级投影口径；
+        // 合成消息经 messageQueue 入列(FIFO，排在 result 与延迟中的 assistant 消息之后)
+        const turnDiffStore = await openTurnSnapshotStore(session.path);
+        const turnDiffReporter = new TurnDiffReporter(
+            session.client.sessionId,
+            turnDiffStore,
+            (m) => messageQueue.enqueue(m),
+        );
         // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 Hub
         // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
         const reportNativeAttach = createNativeAttachReporter(
@@ -692,6 +702,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
             const logMessage = sdkToLogConverter.convert(msg);
             if (logMessage) {
+                // 轮次变更观测（投影口径数据源），失败不影响主流程
+                turnDiffReporter.observe(logMessage);
+
                 // 过滤 discard 类消息，不发送到 Hub
                 if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
                     return
@@ -781,6 +794,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     }
                 }
 
+                // result 先入列再触发合成：卡片必须排在 result 之后（FIFO 时间线顺序）。
+                // 合成异步执行，完成后经同一队列入列；撤回路径（上方提前 return）不触发——
+                // 被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
+                if ((logMessage as { type?: string }).type === 'result') {
+                    void turnDiffReporter.onTurnEnd();
+                }
                 messageQueue.enqueue(logMessage);
             }
         };

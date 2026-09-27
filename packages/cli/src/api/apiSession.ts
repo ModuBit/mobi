@@ -442,6 +442,19 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     sendClaudeSessionMessage(body: RawJSONLines): void {
+        // mobi 合成事件信封（turnDiffReporter 等非 SDK 消息，mobiCustomEvent 标记）：
+        // custom role 原样落库（ADR 0002 自定义事件形态），不经 agent output 包装。
+        // localId 无 native 语义（随机生成仅供 hub 去重）；结构性合成消息不携带 native 锚点
+        if ((body as { mobiCustomEvent?: unknown }).mobiCustomEvent === true) {
+            this.socket.emit('session-message', {
+                sid: this.sessionId,
+                message: body,
+                localId: randomUUID(),
+                category: 'persistent',
+            })
+            return
+        }
+
         // 在发送端分类，避免 Hub 重复分类
         const subtype = body.type === 'system' ? body.subtype : undefined
         const category = classifyMessage(body.type, subtype)
