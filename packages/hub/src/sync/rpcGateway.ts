@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
@@ -321,6 +321,16 @@ export class RpcGateway {
     // machine 通道分片读文件（同上）
     async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
         return await this.machineRpc(machineId, 'readFileRange', { cwd, path, offset, length }) as RpcReadFileRangeResponse
+    }
+
+    // machine 通道 git 审查数据链（turn-diff 审查视图）：cwd 由 hub 从会话 metadata 注入，
+    // 纯转发——git 事实全部在 CLI 侧现查，hub 无 git 相关逻辑
+    async machineGitReviewData(machineId: string, cwd: string, sessionId: string): Promise<GitReviewData | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.data, { cwd, sessionId }) as GitReviewData | { success: false; error: string }
+    }
+
+    async machineGitReviewFile(machineId: string, cwd: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.file, { cwd, query }) as GitReviewFileDiff | { success: false; error: string }
     }
 
     // machine 通道 desktop 流：触发 CLI 反连 hub attach 路径（远程桌面，见 desktop/broker）

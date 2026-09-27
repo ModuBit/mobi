@@ -15,7 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
@@ -946,6 +946,18 @@ export class SyncEngine {
     /** machine 通道读文件元信息（跨会话存活的静态资源读取，见 rpcGateway.machineReadFileMeta） */
     async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
         return await this.rpcGateway.machineReadFileMeta(machineId, cwd, path)
+    }
+
+    /** git 审查总览：四档一次拉（session 寻址 / machine 执行，同 resolveSessionFileExecution） */
+    async gitReviewData(sessionId: string): Promise<GitReviewData | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewData(machineId, cwd, sessionId)
+    }
+
+    /** git 审查单文件 diff 三件套 */
+    async gitReviewFile(sessionId: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewFile(machineId, cwd, query)
     }
 
     /** machine 通道分片读文件（同上） */

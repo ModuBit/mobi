@@ -162,7 +162,7 @@ async function fsRemove(path: string): Promise<void> {
 type StatusRecord = { kind: TurnTreeDiffKind; previousPath?: string }
 
 /** `--name-status -z -M` 解析：`状态\0path\0` / `R100\0old\0new\0`，键为变更后路径 */
-function parseNameStatus(out: string): Map<string, StatusRecord> {
+export function parseNameStatus(out: string): Map<string, StatusRecord> {
     const tokens = out.split('\0')
     const records = new Map<string, StatusRecord>()
     let i = 0
@@ -191,7 +191,7 @@ type CountRecord = { additions: number; deletions: number; binary: boolean }
  * （`1\t0\ta.txt`、`-\t-\td.bin`）；rename 记录计数 token 以 tab 结尾
  * （`0\t0\t`），old/new 各自成后续 token。键为变更后路径。
  */
-function parseNumstat(out: string): Map<string, CountRecord> {
+export function parseNumstat(out: string): Map<string, CountRecord> {
     const tokens = out.split('\0')
     const records = new Map<string, CountRecord>()
     let i = 0

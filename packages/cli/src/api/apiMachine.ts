@@ -33,6 +33,7 @@ import { applyVersionedAck } from './versionedUpdate'
 import { registerMachineDirectoryHandler } from '../modules/common/handlers/machineDirectory'
 import { registerWebToolsConfigHandler } from '../modules/common/handlers/webToolsConfig'
 import { registerMachineFileHandlers } from '../modules/common/handlers/machineFiles'
+import { registerGitReviewHandlers } from '../modules/common/handlers/gitReview'
 import { registerDesktopConfigHandler } from '../modules/common/handlers/desktopConfig'
 import { readSettings } from '@/persistence'
 import { runDesktopStreamTransport } from '../desktop/streamTransport'
@@ -132,6 +133,10 @@ export class ApiMachineClient {
         // 后注册生效）——升级为 cwd 参数化 + 扩展名白名单版本，支撑会话关闭后的静态资源读取。
         // 覆盖前 machine 侧同名 handler 无任何 hub 调用方（common 全家桶注册的副作用），无行为破坏
         registerMachineFileHandlers(this.rpcHandlerManager)
+
+        // git 审查数据链（turn-diff 审查视图，ADR 0006 machine 通道）：cwd 由 hub 从会话
+        // metadata 注入，会话休眠可查（与机器生命周期绑定、不随会话进程生灭）
+        registerGitReviewHandlers(this.rpcHandlerManager)
 
         // 远程桌面配置（VNC 密码写入/状态查询，machine 级）
         registerDesktopConfigHandler(this.rpcHandlerManager)
