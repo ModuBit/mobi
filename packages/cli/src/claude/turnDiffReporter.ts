@@ -37,6 +37,22 @@ import { TURN_DIFF_EVENT, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type Tu
 import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 import { logger } from '@/ui/logger'
 
+/**
+ * 会话启动基线快照（口径修正，dev 实证 2026-09-27）：链空时打一颗 baseline——
+ * 否则首卡基线是 HEAD 树，会把目录里历史未提交改动全部算进首卡（demo 实证：
+ * 只改 1 个文件出卡 52 个）。baseline 后首卡基线 = 会话起点，「上一轮」语义
+ * 收窄为「本会话造成的变更」；空仓库也照打（空树），顺带让空仓库首轮即走 git 口径。
+ * 失败吞错：回退旧的 HEAD 树语义，不阻塞会话启动。
+ */
+export async function ensureBaselineSnapshot(store: TurnSnapshotStore, sessionId: string): Promise<void> {
+    try {
+        const chain = await store.listChain(sessionId)
+        if (chain.length === 0) await store.capture(sessionId)
+    } catch (e) {
+        logger.debug('[TurnDiffReporter] baseline capture failed, fallback to HEAD tree', e)
+    }
+}
+
 /** 记变更的编辑族工具（工具名 → 是否取 input.file_path；名单即投影口径边界） */
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 

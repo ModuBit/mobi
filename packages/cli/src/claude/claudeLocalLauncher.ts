@@ -16,7 +16,7 @@
 
 import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
-import { TurnDiffReporter } from "./turnDiffReporter";
+import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
 import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
@@ -64,6 +64,8 @@ export async function claudeLocalLauncher(
 
     // 轮次变更合成器（ADR 0008）：非 git 目录时 reporter 内部降级投影口径；顺序流直发
     const turnDiffStore = await openTurnSnapshotStore(session.path);
+    // 会话启动基线（口径修正）：链空先打 baseline，首卡只反映本会话变更而非全部历史未提交
+    if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
     const turnDiffReporter = new TurnDiffReporter(
         session.client.sessionId,
         turnDiffStore,

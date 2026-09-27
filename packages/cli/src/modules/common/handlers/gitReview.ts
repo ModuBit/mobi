@@ -186,15 +186,16 @@ export class GitReviewReader {
             })
         }
 
-        // last-turn：链尾两树（单快照以 HEAD 树为基线——首个有快照的 turn 仍有归因价值）
+        // last-turn：链尾两树。链只有 baseline（会话启动基线，尚无完成轮次）时视为
+        // 无上一轮——回落 HEAD 会把历史未提交改动塞进「上一轮」，违背档位语义
         let lastTurn: LastTurnScope = null
         const chain = await store.listChain(sessionId)
-        const head = chain.at(-1) ?? null
-        if (head) {
-            const baseTree = chain.at(-2)?.tree ?? await store.headTree()
-            if (baseTree && baseTree !== head.tree) {
-                const files = await store.diffTrees(baseTree, head.tree)
-                lastTurn = { files, stats: summarizeTurnDiffFiles(files), git: { baseTree, headTree: head.tree } }
+        if (chain.length >= 2) {
+            const baseTree = chain.at(-2)!.tree
+            const headTree = chain.at(-1)!.tree
+            if (baseTree !== headTree) {
+                const files = await store.diffTrees(baseTree, headTree)
+                lastTurn = { files, stats: summarizeTurnDiffFiles(files), git: { baseTree, headTree } }
             }
         }
 

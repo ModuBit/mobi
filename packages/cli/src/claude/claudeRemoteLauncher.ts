@@ -48,7 +48,7 @@ import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFail
 import type { ApiSessionClient } from "@/api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
-import { TurnDiffReporter } from "./turnDiffReporter";
+import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
 import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
@@ -421,6 +421,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 轮次变更合成器（ADR 0008）：快照存储打开失败(非 git 目录)时 reporter 内部降级投影口径；
         // 合成消息经 messageQueue 入列(FIFO，排在 result 与延迟中的 assistant 消息之后)
         const turnDiffStore = await openTurnSnapshotStore(session.path);
+        // 会话启动基线（口径修正）：链空先打 baseline，首卡只反映本会话变更而非全部历史未提交
+        if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
         const turnDiffReporter = new TurnDiffReporter(
             session.client.sessionId,
             turnDiffStore,

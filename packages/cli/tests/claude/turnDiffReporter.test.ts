@@ -22,7 +22,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, TurnDiffPayloadSchema, type TurnDiffPayload } from '@mobi/shared'
-import { TurnDiffReporter } from '@/claude/turnDiffReporter'
+import { TurnDiffReporter, ensureBaselineSnapshot } from '@/claude/turnDiffReporter'
 import { createInMemoryTurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 
 const SID = 's-1'
@@ -144,8 +144,35 @@ describe('TurnDiffReporter（git 快照口径）', () => {
     })
 })
 
-describe('TurnDiffReporter（非 git 投影降级口径）', () => {
-    it('store 为 null：structuredPatch 行数累加，同文件合并，git: null', async () => {
+describe('ensureBaselineSnapshot（会话启动基线）', () => {
+    it('链空：打一颗基线快照——首卡基线从 HEAD 树收窄为会话起点，历史未提交变更不入首卡', async () => {
+        const store = createInMemoryTurnSnapshotStore()
+        let captures = 0
+        const orig = store.capture.bind(store)
+        store.capture = async (id: string) => { captures += 1; return orig(id) }
+
+        await ensureBaselineSnapshot(store, SID)
+        expect(captures).toBe(1)
+        expect(await store.listChain(SID)).toHaveLength(1)
+
+        // 已有链（重启 resume）：不补打
+        await ensureBaselineSnapshot(store, SID)
+        expect(captures).toBe(1)
+    })
+
+    it('baseline 失败吞错不抛（回退 HEAD 树语义，不阻塞会话启动）', async () => {
+        const broken = {
+            capture: async () => { throw new Error('baseline exploded') },
+            listChain: async () => [],
+            headTree: async () => null,
+            diffTrees: async () => [],
+            clearSession: async () => 0,
+        }
+        await expect(ensureBaselineSnapshot(broken as never, SID)).resolves.toBeUndefined()
+    })
+})
+
+describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('store 为 null：structuredPatch 行数累加，同文件合并，git: null', async () => {
         const send = vi.fn()
         const reporter = new TurnDiffReporter(SID, null, send)
         reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
