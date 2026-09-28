@@ -199,6 +199,35 @@ describe('GitReviewReader（真 git 集成）', () => {
         expect(diff.patch).toContain('rename from before-rename.txt')
     })
 
+    it('空轮（链足两颗但零差异）：last-turn 照实返回空清单——不折叠为 null（「无快照链」是另一种空态）', async () => {
+        // 与前序快照零差异的两颗新快照：tail 两树相同 → files []
+        const emptyBase = await store.capture(SESSION_ID)
+        const emptyHead = await store.capture(SESSION_ID)
+        expect(emptyHead.index).toBe(emptyBase.index + 1)
+
+        const data = GitReviewDataSchema.parse(await new GitReviewReader(repoDir).reviewData(SESSION_ID, store))
+        const lastTurn = data.scopes['last-turn']!
+        expect(lastTurn).not.toBeNull()
+        expect(lastTurn.files).toEqual([])
+        expect(lastTurn.git!.turnIndex).toBe(emptyHead.index)
+    })
+
+    it('last-turn 单文件 diff 带 turnIndex：按链上该序号钉树，后续快照不入 before/after', async () => {
+        // 链尾已远超 snap2（后续测试又捕获过），但 turnIndex=2 钉住「a.txt 改动那轮」
+        const reader = new GitReviewReader(repoDir)
+        const pinned = GitReviewFileDiffSchema.parse(
+            await reader.fileDiff({ scope: 'last-turn', path: 'a.txt', turnIndex: 2 }, store, SESSION_ID),
+        )
+        expect(pinned.before).toBe('one\ntwo\n')
+        expect(pinned.after).toBe('one\ntwo\nthree\n')
+
+        // 缺省（不传 turnIndex）保持链尾语义：a.txt 在后续快照中无变化 → before = after
+        const tail = GitReviewFileDiffSchema.parse(
+            await reader.fileDiff({ scope: 'last-turn', path: 'a.txt' }, store, SESSION_ID),
+        )
+        expect(tail.before).toBe(tail.after)
+    })
+
     it('clearTurnSnapshots handler：清空该会话的快照引用（for-each-ref 为空）', async () => {
         const handlers = new Map<string, (params: never) => Promise<unknown>>()
         registerGitReviewHandlers({

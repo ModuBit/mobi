@@ -797,12 +797,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 }
 
                 // result 先入列再触发合成：卡片必须排在 result 之后（FIFO 时间线顺序）。
-                // 合成异步执行，完成后经同一队列入列；撤回路径（上方提前 return）不触发——
-                // 被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
+                // 合成完成后经同一队列入列。两行顺序不可换——非 git 投影口径的合成是
+                // 同步快路径（无 await），先触发会让卡片抢先注册进队列；撤回路径（上方
+                // 提前 return）不触发——被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
+                messageQueue.enqueue(logMessage);
                 if ((logMessage as { type?: string }).type === 'result') {
                     void turnDiffReporter.onTurnEnd();
                 }
-                messageQueue.enqueue(logMessage);
             }
         };
 

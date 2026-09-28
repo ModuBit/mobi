@@ -54,6 +54,7 @@ afterEach(cleanup)
 
 import { ActionLink } from '@/components/ui/ActionLink'
 import { FileChip } from '@/components/ui/FileChip'
+import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
 
 describe('ActionLink 文件类型徽章', () => {
     it('file/open：前置扩展名徽章（aria-hidden，不在 accessible name 内）', () => {
@@ -90,5 +91,20 @@ describe('FileChip 文件类型徽章', () => {
         render(<FileChip chip={{ text: 'bun run test' }} />)
         expect(screen.queryByText('TS')).not.toBeInTheDocument()
         expect(screen.getByText('bun run test')).toBeInTheDocument()
+    })
+})
+
+describe('FileTypeBadge knownFile（fs 事实覆盖启发式误判）', () => {
+    it('无扩展名文件：缺省按启发式画目录琥珀色块', () => {
+        const { container } = render(<FileTypeBadge path="Caddyfile" />)
+        const box = container.firstElementChild as HTMLElement
+        expect(box.style.background).toContain('rgba(232, 163, 61, 0.15)')  // #E8A33D + 26 (jsdom 归一化为 rgba)
+    })
+
+    it('knownFile：同一路径按无扩展名文件呈现（中性底，不画目录色块）', () => {
+        const { container } = render(<FileTypeBadge path="Caddyfile" knownFile />)
+        const box = container.firstElementChild as HTMLElement
+        expect(box.style.background).toContain('rgba(122, 122, 122, 0.15)')  // #7A7A7A + 26
+        expect(box.style.background).not.toContain('232, 163, 61')
     })
 })

@@ -77,8 +77,8 @@ const EXT_BADGES: Record<string, { label: string; color: string }> = {
     lock: { label: 'LCK', color: '#5C6B6F' },
 }
 
-/** 未知扩展名的中性徽章色（白字可读） */
-const FALLBACK_COLOR = '#7A7A7A'
+/** 未知扩展名的中性徽章色（白字可读）；调用方持 fs 事实覆盖启发式误判时也用它 */
+export const FALLBACK_COLOR = '#7A7A7A'
 
 /**
  * 无扩展名的惯例文件名（大小写不敏感）：构建脚本/元数据文件按约定不带扩展名，

@@ -258,7 +258,15 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
                             // 只有文本类条目才有 children（不可展开项永远不会出现在 activeKey）
                             children: scopeData && isDiffable(file) && (
                                 <div data-testid="review-file-diff" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-                                    <RowDiff sessionId={sessionId} scope={scope} entry={file} version={review.updatedAt} deps={deps} />
+                                    <RowDiff
+                                        sessionId={sessionId}
+                                        scope={scope}
+                                        entry={file}
+                                        version={review.updatedAt}
+                                        deps={deps}
+                                        // last-turn 档带总览的 head 序号：CLI 钉树防「点击前新轮完成串树」
+                                        turnIndex={scope === 'last-turn' ? scopeData?.git?.turnIndex : undefined}
+                                    />
                                 </div>
                             ),
                             styles: {

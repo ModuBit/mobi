@@ -89,7 +89,7 @@ export function FilePathLabel({ path }: { path: string }) {
                 flex: 1, minWidth: 0,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 direction: 'rtl', textAlign: 'left',
-                fontSize: token.fontSizeSM, fontFamily: 'mono',
+                fontSize: token.fontSizeSM, fontFamily: 'var(--font-mono, monospace)',
             }}
         >
             <span style={{ direction: 'ltr', unicodeBidi: 'isolate' }}>

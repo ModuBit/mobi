@@ -428,8 +428,9 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                                 </>
                             )
                         }
-                        // 文件：扩展名类型徽章（TS 色块/通用 glyph），与工具行/检视 tab 同源
-                        return <FileTypeBadge path={f.path} size={14} />
+                        // 文件：扩展名类型徽章（TS 色块/通用 glyph），与工具行/检视 tab 同源。
+                        // knownFile：树节点有 fs 事实，无扩展名文件不被启发式误判成目录色块
+                        return <FileTypeBadge path={f.path} size={14} knownFile />
                     },
                     isLeaf: f.type === 'file',
                 }

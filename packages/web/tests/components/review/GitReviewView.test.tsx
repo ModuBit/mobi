@@ -51,7 +51,7 @@ const LAST_TURN: GitReviewData['scopes']['last-turn'] = {
         { path: 'src/deep/a.ts', kind: 'modify', additions: 5, deletions: 3 },
     ],
     stats: { files: 2, additions: 9, deletions: 3 },
-    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
 }
 const STAGED: NonNullable<GitReviewData['scopes']['last-turn']> = {
     files: [{ path: 'staged-only.txt', kind: 'modify', additions: 1, deletions: 1 }],
@@ -121,7 +121,7 @@ describe('GitReviewView（hook 注入）', () => {
         fireEvent.click(rows[0]!)
         const issued = queries.filter((q) => q !== null)
         expect(issued).toHaveLength(1)
-        expect(issued[0]).toEqual({ scope: 'last-turn', path: 'b.ts' })
+        expect(issued[0]).toEqual({ scope: 'last-turn', path: 'b.ts', turnIndex: 2 })
         expect(expandedOf(rows[0]!)).toBe('true')
         expect(screen.getByTestId('diff-viewer-stub').getAttribute('data-before')).toBe('old')
     })
@@ -136,13 +136,13 @@ describe('GitReviewView（hook 注入）', () => {
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[0]!)).toBe('true')
         expect(expandedOf(rows[1]!)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts' })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', turnIndex: 2 })
 
         // 再点同一行收起，另一行保持展开
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[1]!)).toBe('false')
         expect(expandedOf(rows[0]!)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts' })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', turnIndex: 2 })
     })
 
     it('行操作「在标签页中打开」：调 workspaceStore.openFileTab，不冒泡切换展开', () => {
@@ -210,7 +210,7 @@ describe('GitReviewView（hook 注入）', () => {
                 'last-turn': {
                     files: [{ path: 'after.txt', kind: 'rename', additions: 0, deletions: 0, previousPath: 'before.txt' }],
                     stats: { files: 1, additions: 0, deletions: 0 },
-                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
                 },
             },
         }
@@ -221,7 +221,7 @@ describe('GitReviewView（hook 注入）', () => {
         expect(row.textContent).toContain('after.txt')
         expect(row.textContent).toContain('before.txt')
         fireEvent.click(row)
-        expect(queries.filter((q) => q !== null)[0]).toEqual({ scope: 'last-turn', path: 'after.txt' })
+        expect(queries.filter((q) => q !== null)[0]).toEqual({ scope: 'last-turn', path: 'after.txt', turnIndex: 2 })
     })
 
     it('大 diff（oversize 由 CLI 打标）：降级为「文件过大」+ 跳转文件查看器入口，且不发 diff 查询', () => {
@@ -232,7 +232,7 @@ describe('GitReviewView（hook 注入）', () => {
                 'last-turn': {
                     files: [{ path: 'huge.ts', kind: 'modify', additions: 6000, deletions: 0, oversize: true }],
                     stats: { files: 1, additions: 6000, deletions: 0 },
-                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
                 },
             },
         }
@@ -259,7 +259,7 @@ describe('GitReviewView（hook 注入）', () => {
                         { path: 'text.ts', kind: 'modify', additions: 2, deletions: 0 },
                     ],
                     stats: { files: 2, additions: 2, deletions: 0 },
-                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
                 },
             },
         }
@@ -276,7 +276,7 @@ describe('GitReviewView（hook 注入）', () => {
 
         // 文本行照常发查询
         fireEvent.click(rows[1]!)
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'text.ts' })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'text.ts', turnIndex: 2 })
     })
 
     it('diff 文件树面板：开合按钮显隐；点叶节点联动主列表展开对应行', () => {
@@ -296,6 +296,6 @@ describe('GitReviewView（hook 注入）', () => {
         const rows = screen.getAllByTestId('review-file-row')
         const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
         expect(expandedOf(target)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts' })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', turnIndex: 2 })
     })
 })

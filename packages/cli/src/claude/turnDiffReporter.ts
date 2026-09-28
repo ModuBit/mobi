@@ -101,25 +101,39 @@ export class TurnDiffReporter {
         }
 
         if (message.type === 'user') {
-            // toolUseResult.structuredPatch：Edit/MultiEdit/Write 的原生 unified diff hunk
-            const toolUseId = (msg.content as Array<{ type?: string; tool_use_id?: string }>)
-                .find((c) => c?.type === 'tool_result')?.tool_use_id
-            const filePath = toolUseId ? this.toolFilePaths.get(toolUseId) : undefined
-            if (!filePath) return
-            const structuredPatch = (message as { toolUseResult?: { structuredPatch?: unknown } }).toolUseResult
-                ?.structuredPatch
-            if (!Array.isArray(structuredPatch)) return
-            const agg = this.projected.get(filePath) ?? { additions: 0, deletions: 0 }
-            for (const hunk of structuredPatch as Array<{ lines?: unknown }>) {
-                if (!Array.isArray(hunk?.lines)) continue
-                for (const line of hunk.lines) {
-                    if (typeof line !== 'string') continue
-                    if (line.startsWith('+')) agg.additions += 1
-                    else if (line.startsWith('-')) agg.deletions += 1
-                }
+            // toolUseResult.structuredPatch：Edit/MultiEdit/Write 的原生 unified diff hunk。
+            // 并行工具调用的多条 tool_result 会合并进一条 user 消息——逐条归位（toolUseResult
+            // 为数组时按 tool_result 顺序一一对应），只取首条会漏计其余补丁
+            const results = (msg.content as Array<{ type?: string; tool_use_id?: string }>)
+                .filter((c): c is { type: 'tool_result'; tool_use_id: string } => c?.type === 'tool_result' && !!c.tool_use_id)
+            if (results.length === 0) return
+            const raw = (message as { toolUseResult?: unknown }).toolUseResult
+            if (raw === undefined || raw === null) return
+            const patches: unknown[] = Array.isArray(raw) ? raw : [raw]
+            for (const [i, result] of results.entries()) {
+                const filePath = this.toolFilePaths.get(result.tool_use_id)
+                if (!filePath) continue
+                // 单结果形态 toolUseResult 就是对象本身；合并数组形态按序对应（缺位跳过）
+                const patchSource = Array.isArray(raw) ? patches[i] : patches[0]
+                this.applyStructuredPatch(filePath, patchSource)
             }
-            this.projected.set(filePath, agg)
         }
+    }
+
+    /** structuredPatch（unified diff hunk 数组）行数累加进投影（容错：形状不符不计） */
+    private applyStructuredPatch(filePath: string, patchSource: unknown): void {
+        const structuredPatch = (patchSource as { structuredPatch?: unknown } | undefined)?.structuredPatch
+        if (!Array.isArray(structuredPatch)) return
+        const agg = this.projected.get(filePath) ?? { additions: 0, deletions: 0 }
+        for (const hunk of structuredPatch as Array<{ lines?: unknown }>) {
+            if (!Array.isArray(hunk?.lines)) continue
+            for (const line of hunk.lines) {
+                if (typeof line !== 'string') continue
+                if (line.startsWith('+')) agg.additions += 1
+                else if (line.startsWith('-')) agg.deletions += 1
+            }
+        }
+        this.projected.set(filePath, agg)
     }
 
     /** result 消息到达时调用：合成并投递本轮变更消息；失败只记日志，不阻塞 turn 完成 */

@@ -52,7 +52,12 @@ describe('fileQueryFor（单文件查询组装）', () => {
         expect(fileQueryFor('staged', entry())).toEqual({ scope: 'staged', path: 'a.ts' })
     })
 
+    it('last-turn 带 turnIndex（总览 head 序号）原样带回；其他档不带', () => {
+        expect(fileQueryFor('last-turn', entry(), 7)).toEqual({ scope: 'last-turn', path: 'a.ts', turnIndex: 7 })
+        expect(fileQueryFor('uncommitted', entry(), 7)).toEqual({ scope: 'uncommitted', path: 'a.ts' })
+    })
+
     it('oversize：null（hook disabled，不发拉取，落「文件过大」降级 UI）', () => {
-        expect(fileQueryFor('last-turn', entry({ oversize: true }))).toBeNull()
+        expect(fileQueryFor('last-turn', entry({ oversize: true }), 7)).toBeNull()
     })
 })

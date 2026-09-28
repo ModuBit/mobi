@@ -99,9 +99,22 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
             await git(this.cwd, ['add', '-A'], env)
             await git(this.cwd, ['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', EXCLUDE_PATH], env)
             const tree = (await git(this.cwd, ['write-tree'], env)).trim()
-            const chain = await this.listChain(sessionId)
-            const ref: TurnSnapshotRef = { index: (chain.at(-1)?.index ?? 0) + 1, tree }
-            await git(this.cwd, ['update-ref', `${REF_NAMESPACE}/${safeId}/${ref.index}`, tree])
+            // index 分配 CAS：update-ref 带全零 oldvalue 断言「引用尚不存在」，并发
+            // capture（fork 场景同仓库同 sessionId）输家重读链重试，不会互相覆盖引用
+            const zero = '0'.repeat(40)
+            let ref: TurnSnapshotRef | undefined
+            for (let attempt = 0; attempt < 5; attempt++) {
+                const chain = await this.listChain(sessionId)
+                const candidate: TurnSnapshotRef = { index: (chain.at(-1)?.index ?? 0) + 1, tree }
+                try {
+                    await git(this.cwd, ['update-ref', `${REF_NAMESPACE}/${safeId}/${candidate.index}`, tree, zero])
+                    ref = candidate
+                    break
+                } catch {
+                    logger.debug(`[TurnSnapshotStore] capture index ${candidate.index} contended, retrying`)
+                }
+            }
+            if (!ref) throw new Error('capture failed: index allocation contended 5 times')
             return ref
         } finally {
             await fsRemove(tmpIndex)

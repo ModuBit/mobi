@@ -188,6 +188,35 @@ describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('stor
         expect(payload!.stats).toEqual({ files: 1, additions: 2, deletions: 1 })
     })
 
+    it('并行工具调用合并消息：多条 tool_result 与 toolUseResult 数组按序归位，不漏计', async () => {
+        const send = vi.fn()
+        const reporter = new TurnDiffReporter(SID, null, send)
+        reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
+        reporter.observe(assistantToolUse('t2', 'Edit', '/proj/b.ts'))
+        reporter.observe({
+            type: 'user',
+            message: {
+                role: 'user',
+                content: [
+                    { type: 'tool_result', tool_use_id: 't1' },
+                    { type: 'tool_result', tool_use_id: 't2' },
+                ],
+            },
+            // 合并消息形态：toolUseResult 为数组，与 tool_result 顺序一一对应
+            toolUseResult: [
+                { structuredPatch: [{ lines: ['+a1', '-a2'] }] },
+                { structuredPatch: [{ lines: ['+b1', '+b2'] }] },
+            ],
+        } as unknown as RawJSONLines)
+        await reporter.onTurnEnd()
+
+        const [payload] = sentPayloads(send)
+        expect(payload!.files).toEqual([
+            { path: '/proj/a.ts', kind: 'modify', additions: 1, deletions: 1 },
+            { path: '/proj/b.ts', kind: 'modify', additions: 2, deletions: 0 },
+        ])
+    })
+
     it('本轮无编辑观测：不出卡；下一轮计数接续', async () => {
         const send = vi.fn()
         const reporter = new TurnDiffReporter(SID, null, send)

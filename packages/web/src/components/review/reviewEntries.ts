@@ -32,9 +32,20 @@ export function isDiffable(entry: TurnDiffFileEntry): boolean {
 }
 
 /**
- * 行内展开的 diff 查询组装：统一 {scope, path}（last-turn 两树由 CLI 从快照链解析，
- * 指针不进协议）；oversize 条目返回 null（hook disabled，不发拉取，直接落降级 UI）
+ * 行内展开的 diff 查询组装：统一 {scope, path}（两树指针不进协议）；oversize 条目
+ * 返回 null（hook disabled，不发拉取，直接落降级 UI）。last-turn 档附 turnIndex
+ * （总览的 head 快照序号）——CLI 按链上该序号取树，总览展示与点击之间有新轮完成
+ * 也不会串树
  */
-export function fileQueryFor(scope: GitReviewScope, entry: TurnDiffFileEntry): GitReviewFileQuery | null {
-    return entry.oversize ? null : { scope, path: entry.path }
+export function fileQueryFor(
+    scope: GitReviewScope,
+    entry: TurnDiffFileEntry,
+    turnIndex?: number,
+): GitReviewFileQuery | null {
+    if (entry.oversize) return null
+    return {
+        scope,
+        path: entry.path,
+        ...(scope === 'last-turn' && turnIndex !== undefined && { turnIndex }),
+    }
 }

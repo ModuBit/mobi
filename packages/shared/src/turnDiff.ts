@@ -92,8 +92,14 @@ export type GitReviewScope = (typeof GIT_REVIEW_SCOPES)[number]
 export const GitReviewScopeDataSchema = z.object({
     files: z.array(TurnDiffFileEntrySchema),
     stats: TurnDiffStatsSchema,
-    /** last-turn 档的两树指针（UI 点文件据此回查 diff）；其他档为 null */
-    git: z.object({ baseTree: z.string().min(1), headTree: z.string().min(1) }).nullable(),
+    /** last-turn 档的两树指针（UI 点文件据此回查 diff）；其他档为 null。
+     *  turnIndex = head 快照序号：web 发单文件查询时原样带回，CLI 按链上该序号取树——
+     *  总览展示与点击之间有新轮完成时，before/after 仍钉在用户看到的那对树上 */
+    git: z.object({
+        baseTree: z.string().min(1),
+        headTree: z.string().min(1),
+        turnIndex: z.number().int().positive(),
+    }).nullable(),
     /** untracked 截断事实（超上限不再逐个数行，条目仍列出但计数可能缺失） */
     truncated: z.boolean().optional(),
 })
@@ -118,6 +124,9 @@ export type GitReviewData = z.infer<typeof GitReviewDataSchema>
 export const GitReviewFileQuerySchema = z.object({
     scope: z.enum(GIT_REVIEW_SCOPES),
     path: z.string().min(1),
+    /** last-turn 档防陈旧：总览返回的 head 快照序号原样带回，CLI 按链上该序号取两树
+     *  （缺省 = 链尾，兼容旧客户端/编程调用） */
+    turnIndex: z.number().int().positive().optional(),
 })
 export type GitReviewFileQuery = z.infer<typeof GitReviewFileQuerySchema>
 

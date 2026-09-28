@@ -30,7 +30,7 @@
 
 import { memo } from 'react'
 import { Folder, FileText } from 'lucide-react'
-import { resolveFileType } from '@/core/lib/fileTypeMeta'
+import { resolveFileType, FALLBACK_COLOR } from '@/core/lib/fileTypeMeta'
 import { EXT_TO_ICON, FILE_TYPE_ICONS } from './fileTypeIcons.generated'
 
 /** 类型色淡底的 alpha 后缀（15%，hex 拼接——表内色值均为 6 位 hex） */
@@ -39,7 +39,7 @@ const TINT_ALPHA = '26'
 /** 目录琥珀色：FileTypeBadge 目录色块单源（mention 徽章 icon 已改随文本色 currentColor，不再共用） */
 export const DIRECTORY_TINT = '#E8A33D'
 
-export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14 }: { path: string; size?: number }) {
+export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14, knownFile = false }: { path: string; size?: number; /** 调用方持 fs 事实（如文件树节点 f.type==='file'）时置 true：启发式误判成目录的无扩展名文件（Caddyfile 等）按无扩展名文件呈现，不画目录色块 */ knownFile?: boolean }) {
     const target = resolveFileType(path)
     if (!target) return null
 
@@ -78,6 +78,14 @@ export const FileTypeBadge = memo(function FileTypeBadge({ path, size = 14 }: { 
     }
 
     if (target.kind === 'directory') {
+        if (knownFile) {
+            // 启发式误判被 fs 事实推翻：按裸 dotfile 同款（中性底 + 通用文件 glyph）
+            return (
+                <span aria-hidden="true" style={{ ...box, background: `${FALLBACK_COLOR}${TINT_ALPHA}` }}>
+                    <FileText size={size - 5} color={FALLBACK_COLOR} strokeWidth={2.4} />
+                </span>
+            )
+        }
         return (
             <span aria-hidden="true" style={box}>
                 <Folder size={size - 5} color={tint} strokeWidth={2.4} />

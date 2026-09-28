@@ -44,7 +44,7 @@ import {
 } from '@mobi/shared'
 import { assembleDiffEntries, git, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import type { TurnSnapshotStore } from '../git/turnSnapshotStore'
+import type { LastTurnDiff, TurnSnapshotStore } from '../git/turnSnapshotStore'
 import { rpcError } from '../rpcResponses'
 import { logger } from '@/ui/logger'
 
@@ -63,7 +63,7 @@ function asRenderableText(raw: string): string | null {
 }
 
 type ScopeFiles = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: null }
-type LastTurnScope = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: { baseTree: string; headTree: string } } | null
+type LastTurnScope = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: { baseTree: string; headTree: string; turnIndex: number } } | null
 
 /** oversize 单点判定：行数超内联渲染阈值即打标（web 只消费标记，不再自己数行数） */
 function stampOversize<T extends TurnDiffFileEntry>(files: T[]): T[] {
@@ -192,8 +192,8 @@ export class GitReviewReader {
         }
 
         // last-turn：口径单源在 store（lastTurnDiff = 链尾两树之差）。空轮（files 空）
-        // 与「链不足两颗」（baseline 尚无完成轮次）都视为无上一轮——回落 HEAD 会把历史
-        // 未提交改动塞进「上一轮」，违背档位语义
+        // 照实返回空清单——「git 口径但零变更」≠「拿不到上一轮」（null，链不足两颗），
+        // 两者在 UI 是两种空态（CONTEXT.md 领域词汇），折叠会让空轮误报「无快照链」
         // 四路查询互不依赖 → 并行（总览延迟 = 最慢一路而非四路之和）
         const [last, staged, unstagedTracked, untracked] = await Promise.all([
             store.lastTurnDiff(sessionId),
@@ -202,9 +202,13 @@ export class GitReviewReader {
             this.untrackedEntries(),
         ])
         let lastTurn: LastTurnScope = null
-        if (last && last.files.length > 0) {
+        if (last) {
             const files = stampOversize(last.files)
-            lastTurn = { files, stats: summarizeTurnDiffFiles(files), git: { baseTree: last.base.tree, headTree: last.head.tree } }
+            lastTurn = {
+                files,
+                stats: summarizeTurnDiffFiles(files),
+                git: { baseTree: last.base.tree, headTree: last.head.tree, turnIndex: last.head.index },
+            }
         }
 
         const unstaged = stampOversize([...unstagedTracked, ...untracked.files].sort((a, b) => a.path.localeCompare(b.path)))
@@ -250,7 +254,8 @@ export class GitReviewReader {
 
     /** 单文件 diff 三件套（patch 统计/降级用，before/after 全文给 @codemirror/merge 渲染）。
      *  last-turn 档的两树与 rename 旧路径由 CLI 从快照链解析（lastTurnDiff 单源），
-     *  浏览器只发 {scope, path}——指针不进协议 */
+     *  浏览器只发 {scope, path}——指针不进协议；turnIndex（总览的 head 序号）原样
+     *  带回时按链上该序号取树，总览展示与点击之间有新轮完成也不会串树 */
     async fileDiff(query: GitReviewFileQuery, store: TurnSnapshotStore | null, sessionId: string): Promise<unknown> {
         if (!GitReviewReader.isSafeRepoRelative(query.path)) {
             throw new Error(`Invalid path: ${query.path}`)
@@ -261,8 +266,19 @@ export class GitReviewReader {
 
         if (query.scope === 'last-turn') {
             if (!store) throw new Error('last-turn requires a git repository')
-            const last = await store.lastTurnDiff(sessionId)
-            if (!last) throw new Error('no completed turn to review')
+            // turnIndex 钉树：按总览展示的那对快照取（防点击前新轮完成串树）；缺省 = 链尾
+            let last: LastTurnDiff
+            if (query.turnIndex !== undefined) {
+                const chain = await store.listChain(sessionId)
+                const idx = chain.findIndex((r) => r.index === query.turnIndex)
+                if (idx < 1) throw new Error(`turn snapshot ${query.turnIndex} not found`)
+                const [base, head] = [chain[idx - 1]!, chain[idx]!]
+                last = { base, head, files: await store.diffTrees(base.tree, head.tree) }
+            } else {
+                const tail = await store.lastTurnDiff(sessionId)
+                if (!tail) throw new Error('no completed turn to review')
+                last = tail
+            }
             // rename：基线侧取旧路径（新路径在基线树不存在），patch 双路径让 -M 识别 rename 对
             const beforePath = last.files.find((f) => f.path === query.path)?.previousPath ?? query.path
             patch = await this.gitAtRoot(['diff', '--find-renames', last.base.tree, last.head.tree, '--', beforePath, query.path])

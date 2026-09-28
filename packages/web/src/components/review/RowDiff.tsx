@@ -28,19 +28,21 @@ import { DiffViewer } from './DiffViewer'
 import type { GitReviewDeps } from './reviewDeps'
 import { fileQueryFor } from './reviewEntries'
 
-export function RowDiff({ sessionId, scope, entry, version, deps }: {
+export function RowDiff({ sessionId, scope, entry, version, deps, turnIndex }: {
     sessionId: string
     scope: GitReviewScope
     entry: TurnDiffFileEntry
     /** 总览拉取时间，总览刷新即展开行 diff 缓存失效 */
     version: number
     deps: GitReviewDeps
+    /** last-turn 档的 head 快照序号（总览原样带回，CLI 钉树防陈旧）；其他档不传 */
+    turnIndex?: number
 }) {
     const { t } = useTranslation()
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
     // oversize 由 CLI 单点打标：不发 diff 拉取（null query → hook disabled），直接降级
-    const diff = deps.useFileDiff(sessionId, fileQueryFor(scope, entry), version)
+    const diff = deps.useFileDiff(sessionId, fileQueryFor(scope, entry, turnIndex), version)
 
     if (entry.oversize) {
         return (
