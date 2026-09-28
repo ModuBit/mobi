@@ -550,34 +550,25 @@ async function runCpuProfile(cdp, runOpts) {
         for (const [pos, us] of [...selfByPos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)) {
             console.log(`${String(Math.round(us / 1000)).padStart(6)}ms  ${pos}`)
         }
-        // 补充：总耗时 top 的调用路径（找大帧的「谁调用谁」）
+        // 补充：总耗时 top 的节点（含子树）——定位大帧的级联 owner
         const totalByNode = new Map()
+        const childrenOf = new Map(profile.nodes.map(n => [n.id, n.children ?? []]))
         const total = id => {
-            if (totalByNode.has(id)) return totalByNode.get(id)
+            const cached = totalByNode.get(id)
+            if (cached !== undefined) return cached
             totalByNode.set(id, 0) // 防环
             const n = nodes.get(id)
-            const sum = (n.hitCount ?? 0) * interval + (n.children ?? []).reduce((s, c) => s + total(c), 0)
+            const sum = (n?.hitCount ?? 0) * interval + childrenOf.get(id).reduce((s, c) => s + total(c), 0)
             totalByNode.set(id, sum)
             return sum
         }
-        const root = profile.nodes.find(n => !n.callFrame.url && !n.parentId) ?? profile.nodes[0]
-        console.log('\n调用树 top（总耗时 > 150ms 的路径，root 起）：')
-        const walk = (id, depth, parentTotal) => {
-            if (depth > 8) return
-            const n = nodes.get(id)
-            if (!n) return
-            const t = total(id)
-            const cf = n.callFrame
-            if (t > parentTotal * 0.05 && t > 150_000) {
-                console.log(`${'  '.repeat(depth)}${Math.round(t / 1000)}ms  ${(cf.url || '').split('/').pop()}:${cf.lineNumber + 1}${cf.functionName ? ' ' + cf.functionName : ''}`)
-                for (const c of (n.children ?? []).map(total).sort((a, b) => b - a).slice(0, 2)) {
-                    // 找到该总耗时对应的 child id
-                    const cid = (n.children ?? []).find(x => total(x) === c)
-                    walk(cid, depth + 1, t)
-                }
-            }
+        for (const n of profile.nodes) total(n.id)
+        console.log('\n总耗时 top 15 节点（含子树）：')
+        for (const [id, t] of [...totalByNode.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15)) {
+            const cf = nodes.get(id)?.callFrame
+            if (!cf || t < 100_000) continue
+            console.log(`${String(Math.round(t / 1000)).padStart(6)}ms  ${(cf.url || '(vm)').split('/').pop()}:${cf.lineNumber + 1}${cf.functionName ? ' ' + cf.functionName : ''}`)
         }
-        walk(root.id, 0, Infinity)
     } finally {
         await closePage(cdp, page)
     }
