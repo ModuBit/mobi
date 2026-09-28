@@ -23,6 +23,8 @@ import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { CopyButton } from '@/components/chat/CopyButton'
+// 副作用导入：向 PrismLight 注册常用语言子集（见模块内注释——609KB 全量 Prism 出关键路径）
+import '@/components/ui/codeHighlighterLanguages'
 
 /** 修正 prism 主题中 pre 默认 margin，并把容器底色归入暖纸体系（语法高亮色板保留）：
  * 代码块与周围内容靠明度差区分——dark 用 colorBgElevated（比背景亮半档的抬升层），
@@ -94,9 +96,10 @@ const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code
         }
     }, [code, explicitLang])
 
-    // prismLightMode={false}：避开 CodeHighlighter 的按需 lazy import
-    // （`react-syntax-highlighter/dist/esm/languages/prism/${lang}` 模板路径在 Vite 下解析失败），
-    // 改为一次性 import 主包获取全量 Prism。
+    // prismLightMode={true}：PrismLight 核心 + codeHighlighterLanguages 预注册的语言子集。
+    // 全量 Prism（609KB）不再进关键路径（perf/基线.md 爬山 #2）。antdx light 模式内部的
+    // `languages/prism/${lang}` 模板动态 import 在 Vite 下会失败并 console.warn——
+    // 语言已由注册表提供，warn 无实害，高亮不受影响。未注册的冷门语言降级素码渲染。
     //
     // header 自定义（视觉 mockup 2026-09-26 定稿）：常驻紧凑一条——左 </> glyph +
     // 语言展示名，右气泡消息同款 CopyButton（Copy/CheckCheck 交互全站统一）。
@@ -104,7 +107,7 @@ const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code
     return (
         <CodeHighlighter
             lang={resolvedLang}
-            prismLightMode={false}
+            prismLightMode={true}
             highlightProps={{ style: isDark ? ONE_DARK_THEME : ONE_LIGHT_THEME }}
             header={(
                 <div className="code-block-header">

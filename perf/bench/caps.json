@@ -1,6 +1,7 @@
 {
   "sessions/lan": { "readyP75Ms": 535 },
-  "sessions/cpu4": { "readyP75Ms": 1135 },
-  "session/lan": { "readyP75Ms": 690 },
-  "session/cpu4": { "readyP75Ms": 2075 }
+  "sessions/cpu4": { "readyP75Ms": 885 },
+  "session/lan": { "readyP75Ms": 695 },
+  "session/cpu4": { "readyP75Ms": 1640 },
+  "sessionMessages/cpu4": { "readyP75Ms": 1700 }
 }

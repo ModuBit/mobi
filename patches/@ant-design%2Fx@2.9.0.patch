@@ -1,0 +1,24 @@
+diff --git a/es/code-highlighter/CodeHighlighter.js b/es/code-highlighter/CodeHighlighter.js
+index 103417a36f5e9c7484a493b41837f3e24ee94dc8..592c7686af66925818aaa7887fab3cc528edf27b 100644
+--- a/es/code-highlighter/CodeHighlighter.js
++++ b/es/code-highlighter/CodeHighlighter.js
+@@ -41,14 +41,11 @@ const getAsyncHighlighter = lang => {
+   }
+   return highlighterCache.get(lang);
+ };
+-const getFullPrismHighlighter = () => {
+-  if (!FullPrismHighlighter) {
+-    FullPrismHighlighter = /*#__PURE__*/lazy(() => import('react-syntax-highlighter').then(module => ({
+-      default: props => /*#__PURE__*/React.createElement(module.Prism, props)
+-    })));
+-  }
+-  return FullPrismHighlighter;
+-};
++// mobi patch（perf 基线 #2）：移除全量 Prism 动态分支——它使 react-syntax-highlighter
++// 整包（609KB 全量语言）保持可达并与静态依赖合并进关键路径 chunk。全量分支永不生效
++// （web 侧已切 light 模式 + codeHighlighterLanguages 预注册语言子集），
++// 返回 light 实例保持 API 兼容，rollup/rolldown 即可摇树掉 ./prism.js。
++const getFullPrismHighlighter = () => SyntaxHighlighter;
+ const CodeHighlighter = /*#__PURE__*/React.forwardRef((props, ref) => {
+   const {
+     lang,

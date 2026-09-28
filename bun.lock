@@ -166,6 +166,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@ant-design/x@2.9.0": "patches/@ant-design%2Fx@2.9.0.patch",
+  },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.4.4", "", {}, "sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg=="],
 

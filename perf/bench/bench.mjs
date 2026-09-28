@@ -110,6 +110,8 @@ const { values } = parseArgs({
         'out-b': { type: 'string' },
         token: { type: 'string' },
         loaf: { type: 'boolean' }, // 单次归因模式：Long Animation Frames 拆解长任务，不出报告
+        'cpu-profile': { type: 'boolean' }, // 单次归因模式：CDP CPU Profiler 自耗时拓扑（函数级）
+        eval: { type: 'string' }, // 单次验证模式：ready 后在页面里求值并打印结果（如检查高亮 span）
     },
 })
 
@@ -289,7 +291,7 @@ function buildInitScript(readyExpr) {
 // ---------- 单次测量 ----------
 
 /** 开一个全新 browser context（冷缓存）+ 注入 cookie 与初始化脚本，导航到目标页并等到「能用」 */
-async function openPage(cdp, { base, cookie, targetPath, readyExpr, cpuRate, xhrStack }) {
+async function openPage(cdp, { base, cookie, targetPath, readyExpr, cpuRate, xhrStack }, { profiler = false } = {}) {
     const ctx = await cdp.send('Target.createBrowserContext', { disposeOnDetach: true })
     const { targetId } = await cdp.send('Target.createTarget', {
         url: 'about:blank',
@@ -299,6 +301,13 @@ async function openPage(cdp, { base, cookie, targetPath, readyExpr, cpuRate, xhr
     await cdp.send('Page.enable', {}, sessionId)
     await cdp.send('Network.enable', {}, sessionId)
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuRate }, sessionId)
+    if (profiler) {
+        // 采样间隔 100µs：函数级归因需要亚毫秒分辨率（默认 1ms 太粗）
+        await cdp.send('Profiler.enable', {}, sessionId)
+        await cdp.send('Profiler.setSamplingInterval', { interval: 100 }, sessionId)
+        // 导航前开采，覆盖模块求值全程
+        await cdp.send('Profiler.start', {}, sessionId)
+    }
     // 冷缓存由全新 context 天然保证；cookie 需在导航前注入，否则被重定向到 /login
     await cdp.send('Network.setCookie', { name: cookie.name, value: cookie.value, url: base, httpOnly: true }, sessionId)
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: buildInitScript(readyExpr) }, sessionId)
@@ -516,6 +525,66 @@ async function runLoafAttribution(cdp, runOpts) {
     }
 }
 
+// ---------- CPU Profiler 归因 ----------
+
+/** ready 后再采样一会，覆盖 ready 边缘的收尾工作 */
+const PROFILE_TAIL_MS = 1500
+
+async function runCpuProfile(cdp, runOpts) {
+    const page = await openPage(cdp, runOpts, { profiler: true })
+    try {
+        await waitReady(cdp, page.sessionId, page.t0)
+        await new Promise(r => setTimeout(r, PROFILE_TAIL_MS))
+        const { profile } = await cdp.send('Profiler.stop', {}, page.sessionId)
+        const nodes = new Map(profile.nodes.map(n => [n.id, n]))
+        const interval = (profile.timeDeltas?.[0] ?? 1000)
+        // 自耗时 = 该节点被采样到的次数 × 采样间隔；按 url:line:col 聚合
+        const selfByPos = new Map()
+        for (const n of profile.nodes) {
+            if (!n.hitCount) continue
+            const cf = n.callFrame
+            const key = `${(cf.url || '(vm)').split('/').pop()}:${cf.lineNumber + 1}:${cf.columnNumber + 1}${cf.functionName ? ' ' + cf.functionName : ''}`
+            selfByPos.set(key, (selfByPos.get(key) ?? 0) + n.hitCount * interval)
+        }
+        console.log(`总采样 ${((profile.endTime - profile.startTime) / 1000).toFixed(0)}ms；自耗时 top 25：`)
+        for (const [pos, us] of [...selfByPos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)) {
+            console.log(`${String(Math.round(us / 1000)).padStart(6)}ms  ${pos}`)
+        }
+        // 补充：总耗时 top 的调用路径（找大帧的「谁调用谁」）
+        const totalByNode = new Map()
+        const total = id => {
+            if (totalByNode.has(id)) return totalByNode.get(id)
+            totalByNode.set(id, 0) // 防环
+            const n = nodes.get(id)
+            const sum = (n.hitCount ?? 0) * interval + (n.children ?? []).reduce((s, c) => s + total(c), 0)
+            totalByNode.set(id, sum)
+            return sum
+        }
+        const root = profile.nodes.find(n => !n.callFrame.url && !n.parentId) ?? profile.nodes[0]
+        console.log('\n调用树 top（总耗时 > 150ms 的路径，root 起）：')
+        const walk = (id, depth, parentTotal) => {
+            if (depth > 8) return
+            const n = nodes.get(id)
+            if (!n) return
+            const t = total(id)
+            const cf = n.callFrame
+            if (t > parentTotal * 0.05 && t > 150_000) {
+                console.log(`${'  '.repeat(depth)}${Math.round(t / 1000)}ms  ${(cf.url || '').split('/').pop()}:${cf.lineNumber + 1}${cf.functionName ? ' ' + cf.functionName : ''}`)
+                for (const c of (n.children ?? []).map(total).sort((a, b) => b - a).slice(0, 2)) {
+                    // 找到该总耗时对应的 child id
+                    const cid = (n.children ?? []).find(x => total(x) === c)
+                    walk(cid, depth + 1, t)
+                }
+            }
+        }
+        walk(root.id, 0, Infinity)
+    } finally {
+        await closePage(cdp, page)
+    }
+}
+
+
+
 // ---------- 主流程 ----------
 
 async function main() {
@@ -585,6 +654,26 @@ async function main() {
         // 归因模式：单次 run，LoAF 拆解长任务后直接退出
         if (values.loaf) {
             await runLoafAttribution(cdp, { base: bases[0], cookie: cookies.get(bases[0]), targetPath, readyExpr, cpuRate: profile.cpuRate, xhrStack: true })
+            return
+        }
+
+        // 归因模式：单次 run，CPU Profiler 自耗时拓扑
+        if (values['cpu-profile']) {
+            await runCpuProfile(cdp, { base: bases[0], cookie: cookies.get(bases[0]), targetPath, readyExpr, cpuRate: profile.cpuRate })
+            return
+        }
+
+        // 验证模式：单次 run，ready 后求值 --eval 表达式并打印（无 --eval 时输出 readyAt）
+        if (values.eval !== undefined || values.eval === '') {
+            const page = await openPage(cdp, { base: bases[0], cookie: cookies.get(bases[0]), targetPath, readyExpr, cpuRate: profile.cpuRate })
+            try {
+                await waitReady(cdp, page.sessionId, page.t0)
+                const expr = values.eval || 'window.__readyAt'
+                const r = await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true }, page.sessionId)
+                console.log(JSON.stringify(r.result?.value ?? r.result))
+            } finally {
+                await closePage(cdp, page)
+            }
             return
         }
 

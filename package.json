@@ -41,5 +41,8 @@
     },
     "lint-staged": {
         "packages/*/src/**/*.{ts,tsx}": "eslint --fix"
+    },
+    "patchedDependencies": {
+        "@ant-design/x@2.9.0": "patches/@ant-design%2Fx@2.9.0.patch"
     }
 }
