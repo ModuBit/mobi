@@ -29,7 +29,7 @@ import type { TurnDiffFileEntry } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
-import { KIND_BADGES } from '@/components/turnDiff/present'
+import { KindBadge } from '@/components/turnDiff/present'
 
 export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     files: readonly TurnDiffFileEntry[]
@@ -65,16 +65,11 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                     return { key: n.path, title: n.name, children: n.children ? render(n.children) : undefined }
                 }
                 const entry = entryByPath.get(n.path)
-                const badge = entry ? KIND_BADGES[entry.kind] : null
                 return {
                     key: n.path,
                     title: (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            {badge && (
-                                <span style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-mono, monospace)', color: isDark ? badge.dark : badge.light }}>
-                                    {badge.label}
-                                </span>
-                            )}
+                            {entry && <KindBadge kind={entry.kind} isDark={isDark} fontSize={10} />}
                             <span>{n.name}</span>
                         </span>
                     ),

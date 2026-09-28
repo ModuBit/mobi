@@ -35,7 +35,7 @@ import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { copyTextToClipboard } from '@/components/chat/CopyButton'
-import { KIND_BADGES, FilePathLabel } from '@/components/turnDiff/present'
+import { FilePathLabel, KindBadge, DiffStat } from '@/components/turnDiff/present'
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
@@ -58,7 +58,6 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
     const { t } = useTranslation()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
-    const badge = KIND_BADGES[file.kind]
 
     /** 复制点击反馈：图标切绿勾 2s（与气泡 CopyButton 同款节奏）；卸载清定时器。
      *  反馈不等剪贴板结果——writeText 在无焦点文档里可能长时间挂起，别拖住 UI */
@@ -82,16 +81,7 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
             data-path={file.path}
             style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
         >
-            {badge && (
-                <span
-                    style={{
-                        fontSize: 11, fontFamily: 'var(--font-mono, monospace)', fontWeight: 600,
-                        color: isDark ? badge.dark : badge.light, flexShrink: 0,
-                    }}
-                >
-                    {badge.label}
-                </span>
-            )}
+            <KindBadge kind={file.kind} isDark={isDark} fontSize={11} />
             {/* 不许伸长（flex-grow 0）只可收缩省略：统计/箭头才能紧跟文件名，右侧空间归 spacer */}
             <span style={{ flex: '0 1 auto', minWidth: 0 }}>
                 <FilePathLabel path={file.path} />
@@ -102,12 +92,7 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
                     ← {basename(file.previousPath)}
                 </span>
             )}
-            {!file.binary && (
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    <span style={{ color: '#4E9A51' }}>+{file.additions}</span>{' '}
-                    <span style={{ color: '#C2544D' }}>-{file.deletions}</span>
-                </span>
-            )}
+            <DiffStat additions={file.additions} deletions={file.deletions} binary={file.binary === true} fontSize={11} />
             {/* 行操作：桌面 hover/focus 显现，触屏常显（antd.css 规则）。
                 复制点击反馈与气泡 CopyButton 同款：图标切绿勾 2s 后还原 */}
             <Flex component="span" align="center" className="review-row-actions" style={{ flexShrink: 0 }}>
@@ -229,8 +214,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
                 {scopeData && (
                     <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>
                         <span style={{ color: 'var(--ant-color-text-secondary)' }}>{t('review.fileCount', { count: scopeData.stats.files })}</span>{' '}
-                        <span style={{ color: '#4E9A51' }}>+{scopeData.stats.additions}</span>{' '}
-                        <span style={{ color: '#C2544D' }}>-{scopeData.stats.deletions}</span>
+                        <DiffStat additions={scopeData.stats.additions} deletions={scopeData.stats.deletions} fontSize={12} />
                         {scopeData.truncated && (
                             <Tooltip title={t('review.truncated')}>
                                 <span style={{ marginLeft: 6, color: 'var(--ant-color-text-tertiary)', cursor: 'help' }}>…</span>

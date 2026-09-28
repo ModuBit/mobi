@@ -31,7 +31,7 @@
  * 两命令按「rename 后路径 / 其余按 path」对齐组装条目。
  */
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,22 +55,33 @@ function sanitizeSessionId(sessionId: string): string {
     return safe
 }
 
-async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
+/** CLI 内 git 执行唯一收口：maxBuffer 64MB（diff 输出可能很大），env 供临时 index 注入 */
+export async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
     const { stdout } = await execFileAsync('git', args, { cwd, env, maxBuffer: 64 * 1024 * 1024 })
     return stdout
 }
+
+/** store 按 cwd 复用（实例无状态、仅携带 cwd）：同 cwd 的每次 RPC 不必重跑
+ *  rev-parse。仓库消失时 git 调用自然失败 → 上层诚实置空，无需失效机制；
+ *  规模上界 = 出现过的项目目录数，无需淘汰。 */
+const stores = new Map<string, TurnSnapshotStore | null>()
 
 /**
  * 打开 cwd 所在仓库的快照存储；cwd 不在 git 仓库内返回 null——
  * 不可用是显式返回值而非异常，调用方据此走非 git 降级口径。
  */
 export async function openTurnSnapshotStore(cwd: string): Promise<TurnSnapshotStore | null> {
+    const cached = stores.get(cwd)
+    if (cached !== undefined) return cached
+    let store: TurnSnapshotStore | null
     try {
         await git(cwd, ['rev-parse', '--show-toplevel'])
+        store = new GitTurnSnapshotStore(cwd)
     } catch {
-        return null
+        store = null
     }
-    return new GitTurnSnapshotStore(cwd)
+    stores.set(cwd, store)
+    return store
 }
 
 export class GitTurnSnapshotStore implements TurnSnapshotStore {
@@ -130,31 +141,48 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
             git(this.cwd, ['diff', '--name-status', '-z', '-M', baseTree, headTree]),
             git(this.cwd, ['diff', '--numstat', '-z', '-M', baseTree, headTree]),
         ])
-        const statuses = parseNameStatus(statusOut)
-        const counts = parseNumstat(numstatOut)
-        const entries: TurnTreeDiffEntry[] = []
-        for (const [path, status] of statuses) {
-            const count = counts.get(path) ?? { additions: 0, deletions: 0, binary: false }
-            entries.push({
-                path,
-                kind: status.kind,
-                additions: count.additions,
-                deletions: count.deletions,
-                binary: count.binary,
-                ...(status.previousPath !== undefined && { previousPath: status.previousPath }),
-            })
-        }
-        return entries.sort((a, b) => a.path.localeCompare(b.path))
+        return assembleDiffEntries(statusOut, numstatOut)
     }
 
     async clearSession(sessionId: string): Promise<number> {
         const safeId = sanitizeSessionId(sessionId)
         const chain = await this.listChain(sessionId)
-        for (const ref of chain) {
-            await git(this.cwd, ['update-ref', '-d', `${REF_NAMESPACE}/${safeId}/${ref.index}`])
-        }
+        if (chain.length === 0) return 0
+        // --stdin 单进程批删：逐 ref 一次 spawn 在长会话（成百上千快照）下线性劣化
+        const input = chain.map((ref) => `delete ${REF_NAMESPACE}/${safeId}/${ref.index}`).join('\n') + '\n'
+        await new Promise<void>((resolve, reject) => {
+            const child = spawn('git', ['update-ref', '--stdin'], { cwd: this.cwd })
+            child.stdin.end(input)
+            let stderr = ''
+            child.stderr?.on('data', (chunk) => { stderr += String(chunk) })
+            child.on('error', reject)
+            child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`git update-ref --stdin exited ${code}: ${stderr}`))))
+        })
         return chain.length
     }
+}
+
+/**
+ * name-status + numstat 两命令输出 → 按路径对齐的条目列表（rename 后路径对齐、
+ * 二进制计数兜底、按 path localeCompare 排序）。快照两树 diff 与审查工作区实况
+ * 查询共用同一组装——格式规则（见文件头实证记录）只此一处。
+ */
+export function assembleDiffEntries(statusOut: string, numstatOut: string): TurnTreeDiffEntry[] {
+    const statuses = parseNameStatus(statusOut)
+    const counts = parseNumstat(numstatOut)
+    const entries: TurnTreeDiffEntry[] = []
+    for (const [path, status] of statuses) {
+        const count = counts.get(path) ?? { additions: 0, deletions: 0, binary: false }
+        entries.push({
+            path,
+            kind: status.kind,
+            additions: count.additions,
+            deletions: count.deletions,
+            binary: count.binary,
+            ...(status.previousPath !== undefined && { previousPath: status.previousPath }),
+        })
+    }
+    return entries.sort((a, b) => a.path.localeCompare(b.path))
 }
 
 /** 临时 index 文件清理（失败不遮蔽主流程） */

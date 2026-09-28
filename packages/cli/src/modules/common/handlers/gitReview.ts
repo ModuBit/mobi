@@ -21,19 +21,17 @@
  * metadata 注入（与 machineReadFileMeta 同信任模型）；路径统一以 repoRoot 为基准
  * （git 在 repoRoot 执行，diff 输出的路径即仓库相对路径，盘上读取同基准）。
  *
- * 快照相关（链、last-turn 两树、快照间 diff）复用 TurnSnapshotStore——git 执行
- * 的收口纪律不破；本模块自己的 exec 只跑工作区实况的只读查询（staged/unstaged/
- * untracked/status/show）。
+ * 快照相关（链、last-turn 两树、快照间 diff）复用 TurnSnapshotStore；git 执行统一
+ * 走 gitTurnSnapshotStore 收口的 git()——本模块只做查询编排（staged/unstaged/
+ * untracked/status/show）与降级语义。
  *
  * untracked 行数计数：`git diff --no-index --numstat /dev/null <path>`（ChatGPT 同解，
  * 差异以退出码 1 表达须从 stdout 取），超过 UNTRACKED_COUNT_CAP 只列条目不再计数
  * （truncated 事实随响应返回）。
  */
 
-import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import {
     GIT_REVIEW_RPC,
     GitReviewDataSchema,
@@ -44,13 +42,11 @@ import {
     type GitReviewFileQuery,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { openTurnSnapshotStore, parseNameStatus, parseNumstat } from '../git/gitTurnSnapshotStore'
+import { assembleDiffEntries, git, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { TurnSnapshotStore } from '../git/turnSnapshotStore'
 import { rpcError } from '../rpcResponses'
 import { logger } from '@/ui/logger'
-
-const execFileAsync = promisify(execFile)
 
 /** untracked 逐文件计数的上限（防超大仓库海量新文件打爆 exec） */
 const UNTRACKED_COUNT_CAP = 100
@@ -78,23 +74,8 @@ function emptyScope(): ScopeFiles {
     return { files: [], stats: summarizeTurnDiffFiles([]), git: null }
 }
 
-/** 由 name-status + numstat 输出组装条目（两命令同 diff 参数，路径按变更后路径对齐） */
-function toEntries(statusOut: string, numstatOut: string): TurnDiffFileEntry[] {
-    const counts = parseNumstat(numstatOut)
-    const entries: TurnDiffFileEntry[] = []
-    for (const [path, status] of parseNameStatus(statusOut)) {
-        const count = counts.get(path) ?? { additions: 0, deletions: 0, binary: false }
-        entries.push({
-            path,
-            kind: status.kind,
-            additions: count.additions,
-            deletions: count.deletions,
-            binary: count.binary,
-            ...(status.previousPath !== undefined && { previousPath: status.previousPath }),
-        })
-    }
-    return entries.sort((a, b) => a.path.localeCompare(b.path))
-}
+/** 由 name-status + numstat 输出组装条目：组装规则单源在
+ *  gitTurnSnapshotStore.assembleDiffEntries（快照两树 diff 与工作区实况查询共用一份） */
 
 /** uncommitted = staged ∪ unstaged：按 path 合并计数（kind 取信息量更大的优先） */
 function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffFileEntry[] {
@@ -168,7 +149,7 @@ export class GitReviewReader {
             this.gitAtRoot([...args, '--numstat', '-z', '-M']),
         ])
         if (statusOut === null || numstatOut === null) return []
-        return toEntries(statusOut, numstatOut)
+        return assembleDiffEntries(statusOut, numstatOut)
     }
 
     /** untracked：status porcelain v2 的 `?` 记录（实证形态 `? path\0`，问号与路径同 token） */
@@ -213,16 +194,19 @@ export class GitReviewReader {
         // last-turn：口径单源在 store（lastTurnDiff = 链尾两树之差）。空轮（files 空）
         // 与「链不足两颗」（baseline 尚无完成轮次）都视为无上一轮——回落 HEAD 会把历史
         // 未提交改动塞进「上一轮」，违背档位语义
+        // 四路查询互不依赖 → 并行（总览延迟 = 最慢一路而非四路之和）
+        const [last, staged, unstagedTracked, untracked] = await Promise.all([
+            store.lastTurnDiff(sessionId),
+            this.entries(['diff', '--cached', '-M', 'HEAD']),
+            this.entries(['diff', '-M']),
+            this.untrackedEntries(),
+        ])
         let lastTurn: LastTurnScope = null
-        const last = await store.lastTurnDiff(sessionId)
         if (last && last.files.length > 0) {
             const files = stampOversize(last.files)
             lastTurn = { files, stats: summarizeTurnDiffFiles(files), git: { baseTree: last.base.tree, headTree: last.head.tree } }
         }
 
-        const staged = await this.entries(['diff', '--cached', '-M', 'HEAD'])
-        const unstagedTracked = await this.entries(['diff', '-M'])
-        const untracked = await this.untrackedEntries()
         const unstaged = stampOversize([...unstagedTracked, ...untracked.files].sort((a, b) => a.path.localeCompare(b.path)))
         const uncommitted = stampOversize(mergeEntries(staged, unstaged))
 
@@ -310,12 +294,10 @@ export class GitReviewReader {
     }
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 })
-    return stdout
-}
-
-/** machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta） */
+/**
+ * machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta）。
+ * git 执行统一走 gitTurnSnapshotStore 的收口 git()；本模块只负责查询编排与降级语义。
+ */
 export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.data, async (data) => {
         try {
@@ -335,7 +317,7 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
     })
     // 会话删除清引用（ADR 0008 refs 治理，hub best-effort 调用）：git mv 不适用——
     // 快照引用本就不进 index，直接逐个删 ref
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>('clearTurnSnapshots', async (data) => {
+    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.clear, async (data) => {
         try {
             const store = await openTurnSnapshotStore(data.cwd)
             const cleared = store ? await store.clearSession(data.sessionId) : 0

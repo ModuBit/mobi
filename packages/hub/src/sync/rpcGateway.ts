@@ -335,7 +335,7 @@ export class RpcGateway {
 
     // 会话删除后清理轮次快照引用（ADR 0008 refs 治理）；best-effort，失败由调用方 warn
     async clearTurnSnapshots(machineId: string, cwd: string, sessionId: string): Promise<void> {
-        await this.machineRpc(machineId, 'clearTurnSnapshots', { cwd, sessionId })
+        await this.machineRpc(machineId, GIT_REVIEW_RPC.clear, { cwd, sessionId })
     }
 
     // machine 通道 desktop 流：触发 CLI 反连 hub attach 路径（远程桌面，见 desktop/broker）

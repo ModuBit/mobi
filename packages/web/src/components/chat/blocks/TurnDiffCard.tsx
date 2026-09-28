@@ -30,28 +30,13 @@ import { ChevronDown, ChevronUp, FileDiff } from 'lucide-react'
 import type { TurnDiffPayload } from '@mobi/shared'
 import { theme } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { KIND_BADGES, FilePathLabel } from '@/components/turnDiff/present'
+import { FilePathLabel, KindBadge, DiffStat } from '@/components/turnDiff/present'
 
 /** 清单默认铺开的条数，超出折叠进「再显示 N 个文件」 */
 const PREVIEW_COUNT = 3
 
 /** prefers-reduced-motion 检测（jsdom 等无 matchMedia 环境安全退化；非响应式足够——只影响时长） */
 const REDUCED_MOTION = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
-
-/** +N -N 统计（绿增红删；二进制以标记替代计数） */
-function DiffStat({ additions, deletions, binary }: { additions: number; deletions: number; binary: boolean }) {
-    const { t } = useTranslation()
-    const { token } = theme.useToken()
-    if (binary) {
-        return <span style={{ fontSize: token.fontSizeSM, color: token.colorTextTertiary }}>{t('chat.turnDiff.binary')}</span>
-    }
-    return (
-        <span style={{ fontSize: token.fontSizeSM, fontFamily: 'mono', whiteSpace: 'nowrap' }}>
-            <span style={{ color: '#4E9A51' }}>+{additions}</span>{' '}
-            <span style={{ color: '#C2544D' }}>-{deletions}</span>
-        </span>
-    )
-}
 
 export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { payload: TurnDiffPayload; onReview?: () => void }) {
     const { t } = useTranslation()
@@ -62,28 +47,20 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { 
     const overflow = payload.files.length - PREVIEW_COUNT
 
     const renderFileRow = (file: TurnDiffPayload['files'][number]) => {
-        const badge = KIND_BADGES[file.kind]
         return (
             <div
                 key={`${file.kind}:${file.path}`}
                 data-testid="turn-diff-file"
                 style={{ display: 'flex', alignItems: 'center', gap: token.marginSM, padding: '4px 0' }}
             >
-                <span
-                    style={{
-                        fontSize: token.fontSizeSM, fontFamily: 'mono', fontWeight: 600,
-                        color: isDark ? badge.dark : badge.light, flexShrink: 0,
-                    }}
-                >
-                    {badge.label}
-                </span>
+                <KindBadge kind={file.kind} isDark={isDark} fontSize={token.fontSizeSM} />
                 <FilePathLabel path={file.path} />
                 {file.previousPath && (
                     <span style={{ fontSize: token.fontSizeSM, color: token.colorTextTertiary, marginLeft: 6, flexShrink: 0 }}>
                         ← {file.previousPath}
                     </span>
                 )}
-                <DiffStat additions={file.additions} deletions={file.deletions} binary={file.binary === true} />
+                <DiffStat additions={file.additions} deletions={file.deletions} binary={file.binary === true} fontSize={token.fontSizeSM} />
             </div>
         )
     }
@@ -122,7 +99,7 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { 
                             </span>
                         )}
                     </div>
-                    <DiffStat additions={payload.stats.additions} deletions={payload.stats.deletions} binary={false} />
+                    <DiffStat additions={payload.stats.additions} deletions={payload.stats.deletions} fontSize={token.fontSizeSM} />
                 </div>
                 {onReview && payload.git && (
                     <button

@@ -163,6 +163,29 @@ function applyPatch<K extends keyof SessionInspectorState>(
     return { sessions: next }
 }
 
+/** 「同型 tab 唯一」动作的共用不变量：已有匹配 tab → 切激活（已激活则原样返回，省一次
+ *  Map 复制）；否则追加新 tab 并激活。tree / review / desktop 三个动作同构，「先查重、
+ *  再激活/创建」只此一处 */
+function activateOrCreateTab(
+    state: WorkspaceState,
+    sessionId: string,
+    match: (t: InspectorTabEntry) => boolean,
+    create: () => InspectorTabEntry,
+): WorkspaceState | { sessions: Map<string, SessionInspectorState> } {
+    const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+    const existed = cur.tabs.find(match)
+    if (existed) {
+        if (cur.activeTabId === existed.id) return state
+        const next = new Map(state.sessions)
+        next.set(sessionId, { ...cur, activeTabId: existed.id })
+        return { sessions: next }
+    }
+    const entry = create()
+    const next = new Map(state.sessions)
+    next.set(sessionId, { ...cur, tabs: [...cur.tabs, entry], activeTabId: entry.id })
+    return { sessions: next }
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     sessions: new Map(),
 
@@ -176,22 +199,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     /** 「文件」动作：新增一个文件树 tab 并激活；已有 tree tab 则直接激活（全局唯一） */
     openFileTreeTab: (sessionId) =>
-        set((state) => {
-            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
-            // 已有「打开文件」(tree) tab → 直接激活，不重复创建
-            const existedTree = cur.tabs.find((t) => t.mode === 'tree')
-            if (existedTree) {
-                if (cur.activeTabId === existedTree.id) return state
-                const next = new Map(state.sessions)
-                next.set(sessionId, { ...cur, activeTabId: existedTree.id })
-                return { sessions: next }
-            }
-            const entry: InspectorTabEntry = { id: uuid(), mode: 'tree' }
-            const tabs = [...cur.tabs, entry]
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...cur, tabs, activeTabId: entry.id })
-            return { sessions: next }
-        }),
+        set((state) => activateOrCreateTab(state, sessionId, (t) => t.mode === 'tree', () => ({ id: uuid(), mode: 'tree' }))),
 
     openFileInTab: (sessionId, tabId, filePath, fileName) =>
         set((state) => {
@@ -281,39 +289,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     /** 打开远程桌面 tab：同 machineId 已开则切激活（每机器一个 tab，画面经 portal 跟随激活面） */
     openDesktopTab: (sessionId, machineId) =>
-        set((state) => {
-            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
-            const existed = cur.tabs.find((t) => t.mode === 'desktop' && t.machineId === machineId)
-            if (existed) {
-                if (cur.activeTabId === existed.id) return state
-                const next = new Map(state.sessions)
-                next.set(sessionId, { ...cur, activeTabId: existed.id })
-                return { sessions: next }
-            }
-            const entry: InspectorTabEntry = { id: uuid(), mode: 'desktop', machineId }
-            const tabs = [...cur.tabs, entry]
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...cur, tabs, activeTabId: entry.id })
-            return { sessions: next }
-        }),
+        set((state) => activateOrCreateTab(
+            state, sessionId,
+            (t) => t.mode === 'desktop' && t.machineId === machineId,
+            () => ({ id: uuid(), mode: 'desktop', machineId }),
+        )),
 
     /** 「审查」动作：全局唯一 review tab（同 tree 去重纪律），已开则切激活 */
     openReviewTab: (sessionId) =>
-        set((state) => {
-            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
-            const existed = cur.tabs.find((t) => t.mode === 'review')
-            if (existed) {
-                if (cur.activeTabId === existed.id) return state
-                const next = new Map(state.sessions)
-                next.set(sessionId, { ...cur, activeTabId: existed.id })
-                return { sessions: next }
-            }
-            const entry: InspectorTabEntry = { id: uuid(), mode: 'review' }
-            const tabs = [...cur.tabs, entry]
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...cur, tabs, activeTabId: entry.id })
-            return { sessions: next }
-        }),
+        set((state) => activateOrCreateTab(state, sessionId, (t) => t.mode === 'review', () => ({ id: uuid(), mode: 'review' }))),
 
     closeTab: (sessionId, tabId) =>
         set((state) => {

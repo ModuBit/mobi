@@ -50,16 +50,20 @@ export const TurnDiffFileEntrySchema = z.object({
 export const OVERSIZE_DIFF_LINES = 5000
 export type TurnDiffFileEntry = z.infer<typeof TurnDiffFileEntrySchema>
 
+/** 变更统计三件套（文件数/增/删）：聊天卡总统计与审查档位统计同形同口径 */
+export const TurnDiffStatsSchema = z.object({
+    files: z.number().int().nonnegative(),
+    additions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+})
+export type TurnDiffStats = z.infer<typeof TurnDiffStatsSchema>
+
 export const TurnDiffPayloadSchema = z.object({
     /** 归属轮次序号：git 模式 = 快照链序；非 git 模式 = 会话内合成计数 */
     turnIndex: z.number().int().positive(),
-    /** diff 基线轮次（null = 会话首个有快照的 turn，基线为 HEAD 树） */
+    /** diff 基线轮次（null = 会话首个有快照的 turn，无更早快照可作基线——不存在 HEAD 兜底语义） */
     baseTurnIndex: z.number().int().positive().nullable(),
-    stats: z.object({
-        files: z.number().int().nonnegative(),
-        additions: z.number().int().nonnegative(),
-        deletions: z.number().int().nonnegative(),
-    }),
+    stats: TurnDiffStatsSchema,
     files: z.array(TurnDiffFileEntrySchema),
     /** 快照对：git 模式的权威事实源指针（审查视图据此复核）；null = 非 git 目录（近似口径） */
     git: z.object({
@@ -70,7 +74,7 @@ export const TurnDiffPayloadSchema = z.object({
 export type TurnDiffPayload = z.infer<typeof TurnDiffPayloadSchema>
 
 /** 由 entries 汇总 stats（合成端与测试共用，避免两处数数） */
-export function summarizeTurnDiffFiles(files: readonly TurnDiffFileEntry[]): TurnDiffPayload['stats'] {
+export function summarizeTurnDiffFiles(files: readonly TurnDiffFileEntry[]): TurnDiffStats {
     return {
         files: files.length,
         additions: files.reduce((sum, f) => sum + f.additions, 0),
@@ -87,11 +91,7 @@ export type GitReviewScope = (typeof GIT_REVIEW_SCOPES)[number]
 /** 单档位数据：文件条目 + 汇总 + 事实指针（last-turn 的两树；其他档 null） */
 export const GitReviewScopeDataSchema = z.object({
     files: z.array(TurnDiffFileEntrySchema),
-    stats: z.object({
-        files: z.number().int().nonnegative(),
-        additions: z.number().int().nonnegative(),
-        deletions: z.number().int().nonnegative(),
-    }),
+    stats: TurnDiffStatsSchema,
     /** last-turn 档的两树指针（UI 点文件据此回查 diff）；其他档为 null */
     git: z.object({ baseTree: z.string().min(1), headTree: z.string().min(1) }).nullable(),
     /** untracked 截断事实（超上限不再逐个数行，条目仍列出但计数可能缺失） */
@@ -116,7 +116,7 @@ export type GitReviewData = z.infer<typeof GitReviewDataSchema>
  *  完成（链在它手里，浏览器不传树指针）；rename 旧路径同样由 CLI 从 diff 条目自解析。
  *  陈旧性由 web 缓存键携带审查总览的刷新版本（协议外元数据，不进请求体） */
 export const GitReviewFileQuerySchema = z.object({
-    scope: z.enum(['last-turn', 'uncommitted', 'unstaged', 'staged']),
+    scope: z.enum(GIT_REVIEW_SCOPES),
     path: z.string().min(1),
 })
 export type GitReviewFileQuery = z.infer<typeof GitReviewFileQuerySchema>
@@ -133,4 +133,6 @@ export type GitReviewFileDiff = z.infer<typeof GitReviewFileDiffSchema>
 export const GIT_REVIEW_RPC = {
     data: 'gitReviewData',
     file: 'gitReviewFile',
+    /** 会话删除时的快照引用清理（hub best-effort 调用） */
+    clear: 'clearTurnSnapshots',
 } as const
