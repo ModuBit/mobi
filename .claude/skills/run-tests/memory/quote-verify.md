@@ -3,7 +3,7 @@ name: quote-verify
 description: 引用特性 E2E 验证——划选 popover / 评论浮层 / chip 列表卡 / 气泡引用组 / 点击定位 / 边界拒绝的 recipe 与合成事件坑
 metadata:
   type: recipe
-  last_verified: 2026-09-25
+  last_verified: 2026-09-28
 ---
 
 # 引用特性验证
@@ -15,7 +15,16 @@ metadata:
 3. **chip**：`[data-testid="quote-chip"]` 文案 `N 条引用`；click 打开 `[data-testid="quote-list"]`（编号+excerpt+评论），胶囊旁 `[data-testid="quote-clear-all"]` × 清空全部；点条目 excerpt 定位源消息；Escape 关闭
 4. **发送后**：气泡内引用**收起为 chip**（2026-09-23 起，图片/附件/引用统一挪到 bubble header）：`[data-testid="user-quote-chip"]` → click 开 `[data-testid="user-quote-list"]` → 点 `user-quote-item-N` 定位源消息；落库断言 `sqlite3 ~/.mobi-e2e/mobi.db`：user 消息 `$.role='user'`，`content[0].type='quote'` 含 messageId/role/excerpt/comment
 5. **模型收到引用的硬证据**：下一条 assistant 消息的 `thinking` 会复述引用与评论内容（XML prompt 被 SDK 正常解析；落库的是结构化 blocks，XML 原文不落库）
-6. **点击定位**：引用条目 `.click()` → 源消息 `[data-quote-message-id]` 锚 → `.quote-locate-flash` 挂上（1200ms 后摘除，**断言要在点击后 1.2s 内**）；源消息在视口顶时 scrollTop 保持 0 是正常的
+6. **点击定位**：引用条目 `.click()` → 源消息 `[data-quote-message-id]` 锚 → 带 offsets 时走片段高亮（`CSS.highlights` 注册 `quote-fragment-flash`，**2400ms 后摘除，断言与截图都要在窗口内**；2026-09-28 前为 1200ms 整段闪烁）；无 offsets / 解析失败兜底整段 `.quote-locate-flash`；源消息在视口顶时 scrollTop 保持 0 是正常的
+
+## 片段高亮（2026-09-28 全链路验证）
+
+1. **注册断言**：点击引用条目后查 `CSS.highlights`（Map-like，`forEach((v,k))` 遍历）含 `quote-fragment-flash`，`highlight.ranges[0].toString()` 应等于落库 excerpt
+2. **视觉断言**：片段 Range 有矩形（`range.getBoundingClientRect()`）且 ::highlight 底色渲染——**截图必须在高亮窗口（2400ms）内**；错过窗口会误判「高亮不可见」（实踩：连拍三次以为 color-mix 不支持，实际是摘除后才截）
+3. **`::highlight` 支持 `color-mix()`**（Chrome 153 实测渲染正常），dark 主题下用 `color-mix(colorWarning 35%, transparent)` 可见；antd `colorWarningBg` dark 档 rgb(58,28,8) 黑底不可辨，别用
+4. **CSS.highlights 不是 Map 实例**（Chrome 153 `instanceof Map` = false）——特性检测按 duck typing（`typeof registry.set === 'function'`），jsdom 无此 API
+5. **vite HMR 不传播 core/lib 纯 TS 模块**：改 quoteLocate.ts 后页面可能继续跑旧模块（excerpt 校验/matches 修复缺失）——必须整页 reload 再验
+6. **调试注入的 test 规则/highlight 用完即删**：残留的 test 注册会污染后续断言（实踩：残留 highlight 让人误判定时摘除失效）
 
 ## 边界拒绝（同为 happy path 一部分）
 

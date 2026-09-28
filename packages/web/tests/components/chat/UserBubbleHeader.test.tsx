@@ -50,7 +50,7 @@ describe('UserBubbleHeader', () => {
         expect(screen.getByTestId('user-quote-item-0')).toHaveTextContent('为什么要这样？')
 
         fireEvent.click(screen.getByTestId('user-quote-item-0'))
-        expect(onQuoteLocate).toHaveBeenCalledWith('m1')
+        expect(onQuoteLocate).toHaveBeenCalledWith('m1', { startOffset: undefined, endOffset: undefined, excerpt: '被引用的内容' })
     })
 
     it('onQuoteLocate 缺省时条目纯展示（无定位入口语义）', () => {

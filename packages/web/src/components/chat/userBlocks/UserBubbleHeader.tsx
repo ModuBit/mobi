@@ -23,6 +23,7 @@ import type { UserContentBlock, UserDocumentBlock, UserQuoteBlock } from '@mobi/
 import { groupUserBlocks, splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { truncatePreview } from '@/core/lib/truncatePreview'
+import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import {
     QuoteChip,
     QuoteItemComment,
@@ -87,7 +88,7 @@ function ReadonlyQuoteItem({ quote, index, divided, onClick, testId }: {
  * 组是引用禁区（data-quote-forbidden + user-select:none）——「引用的引用」语义混乱，
  * 判定器的第二道防御随 chip 一起搬进 popover。
  */
-function UserQuoteChip({ blocks, onLocate }: { blocks: UserQuoteBlock[]; onLocate?: (messageId: string) => void }) {
+function UserQuoteChip({ blocks, onLocate }: { blocks: UserQuoteBlock[]; onLocate?: QuoteLocateFn }) {
     const { t } = useTranslation()
     const [open, setOpen] = useState(false)
     const anchorProps = quoteAnchorProps({ forbidden: true })
@@ -107,7 +108,7 @@ function UserQuoteChip({ blocks, onLocate }: { blocks: UserQuoteBlock[]; onLocat
                         onClick={onLocate
                             ? () => {
                                 setOpen(false)
-                                onLocate?.(b.messageId)
+                                onLocate?.(b.messageId, quoteOffsetsOf(b))
                             }
                             : undefined}
                     />

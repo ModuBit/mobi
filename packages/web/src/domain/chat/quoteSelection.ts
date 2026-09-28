@@ -85,11 +85,13 @@ export interface QuoteSelectionEnv {
     currentQuoteCount: number
 }
 
-/** 锚点属性名（集中定义，渲染层接线与判定共用同一词汇） */
+/** 锚点属性名（集中定义，渲染层接线与判定共用同一词汇；BLOCK_ATTR 另供定位读侧用） */
 const MESSAGE_ID_ATTR = 'data-quote-message-id'
 const ROLE_ATTR = 'data-quote-role'
 const ALLOWED_ATTR = 'data-quote-allowed'
-const BLOCK_ATTR = 'data-quote-block'
+/** block 容器锚（quoteLocate 片段解析也按此找容器，导出共用同一词汇防拼写漂移） */
+export const QUOTE_BLOCK_ATTR = 'data-quote-block'
+const BLOCK_ATTR = QUOTE_BLOCK_ATTR
 const FORBIDDEN_ATTR = 'data-quote-forbidden'
 
 /** 渲染层锚点入参：字段缺省即不落对应属性（allowed 仅在显式 false 时落 "false"） */

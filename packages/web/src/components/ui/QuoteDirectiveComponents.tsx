@@ -31,6 +31,7 @@ import { Quote } from 'lucide-react'
 import type { ComponentProps } from '@ant-design/x-markdown'
 import type { UserQuoteBlock } from '@mobi/shared'
 import { parseDirectiveHits } from '@/domain/chat/directives'
+import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import { QUOTE_DIRECTIVE_NAME } from '@/domain/chat/quoteDirectives'
 import { ARTIFACT_DIRECTIVE_NAME } from '@/domain/chat/artifactDirectives'
 import { ArtifactDirectiveView } from './ArtifactDirectiveComponents'
@@ -39,7 +40,7 @@ import { AppTooltip } from './AppTooltip'
 /** 批注数据 Context：quotes 按 directive index 对齐（位置 i = 注释 i+1），由 agent-text 渲染分支注入 */
 interface QuoteAnnotations {
     quotes: readonly UserQuoteBlock[]
-    onLocate: (messageId: string) => void
+    onLocate: QuoteLocateFn
 }
 
 export const QuoteAnnotationsContext = createContext<QuoteAnnotations | undefined>(undefined)
@@ -79,7 +80,7 @@ export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> 
             data-testid={`quote-annotation-${idx}`}
             onClick={(e) => {
                 e.stopPropagation()
-                annotations.onLocate(quote.messageId)
+                annotations.onLocate(quote.messageId, quoteOffsetsOf(quote))
             }}
             style={{
                 // 零行盒影响方案（2026-09-23 三轮验收收敛）：整体纯 inline + line-height:0——
@@ -121,7 +122,7 @@ export const QuoteDirectiveMarker: FC<{ index?: string; children?: ReactNode }> 
 /** Context 供应壳：quotes 缺省给空数组（组件按越界降级），避免调用方判空 */
 export function QuoteAnnotationsProvider({ quotes, onLocate, children }: {
     quotes?: readonly UserQuoteBlock[]
-    onLocate: (messageId: string) => void
+    onLocate: QuoteLocateFn
     children: ReactNode
 }) {
     return (

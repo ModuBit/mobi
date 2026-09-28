@@ -26,6 +26,7 @@ import type {
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
+import { QuoteLocateFn, quoteOffsetsOf } from '@/core/lib/quoteLocate'
 import { truncatePreview } from '@/core/lib/truncatePreview'
 import { resolveUserImageUrl, type FileRefContext } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
@@ -54,7 +55,7 @@ export interface UserBlockRenderEnv {
      * 交互只在聊天列表接线处有意义——非聊天上下文缺省不传，引用组退化为纯展示
      * （对齐 onEditSketch 的可选能力位模式）
      */
-    onQuoteLocate?: (messageId: string) => void
+    onQuoteLocate?: QuoteLocateFn
 }
 
 /** 各类型视图的统一 props 形态（block 字段按注册键收窄） */
@@ -107,7 +108,7 @@ function QuoteView({ block, env, index = 0, divided = false }:
         <AppTooltip title={block.excerpt} mouseEnterDelay={0.4}>
             <div
                 data-testid={`user-quote-${block.messageId}`}
-                onClick={clickable ? () => env.onQuoteLocate?.(block.messageId) : undefined}
+                onClick={clickable ? () => env.onQuoteLocate?.(block.messageId, quoteOffsetsOf(block)) : undefined}
                 style={{
                     display: 'flex',
                     alignItems: 'flex-start',

@@ -53,7 +53,8 @@ describe('QuoteDirectiveMarker', () => {
         const btn = screen.getByTestId('quote-annotation-1')
         expect(btn).toHaveTextContent(i18n.t('chat.annotationMarker', { count: 1 }))
         fireEvent.click(btn)
-        expect(onLocate).toHaveBeenCalledWith('m1')
+        // quoteOffsetsOf 展开引用位置（fixture 无 offsets 字段 → undefined，点击侧兜底消息级高亮）
+        expect(onLocate).toHaveBeenCalledWith('m1', { startOffset: undefined, endOffset: undefined, excerpt: '被引用的内容' })
     })
 
     it('index 越界 / 无批注数据：诚实降级为 directive 原文', () => {

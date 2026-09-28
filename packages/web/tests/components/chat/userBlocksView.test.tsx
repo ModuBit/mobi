@@ -371,7 +371,7 @@ describe('引用组合并容器（票 06）', () => {
         )
         fireEvent.click(screen.getByTestId('user-quote-q2'))
         expect(onQuoteLocate).toHaveBeenCalledTimes(1)
-        expect(onQuoteLocate).toHaveBeenCalledWith('q2')
+        expect(onQuoteLocate).toHaveBeenCalledWith('q2', { startOffset: undefined, endOffset: undefined, excerpt: '第二条' })
 
         // 能力位缺省（非聊天上下文）：点击无 handler，纯展示不报错
         rerender(<UserBlocksView blocks={[quote('q1', '纯展示')]} />)

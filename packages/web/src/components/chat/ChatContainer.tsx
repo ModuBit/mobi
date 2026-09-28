@@ -32,7 +32,7 @@ import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { isSegmentEmpty, emptySegments, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
 import { resolveQuoteSelection } from '@/domain/chat/quoteSelection'
 import { collectQuoteAnnotationsByAgentId } from '@/domain/chat/quoteDirectives'
-import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS, locateQuotedMessage } from '@/core/lib/quoteLocate'
+import { QUOTE_FLASH_CLASS, QUOTE_FLASH_MS, QUOTE_FRAGMENT_HIGHLIGHT, locateQuotedMessage, type QuoteFragmentOffsets } from '@/core/lib/quoteLocate'
 import { reduceChatBlocks, normalizeDecryptedMessage, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -827,9 +827,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 引用定位入口的统一收口：跳转 = 用户intent看历史 → 先停贴底跟随再滚动，
     // 否则流式期间 RO 追赶钉底与 scrollIntoView 争抢 scrollTop（跳过去立刻被拉回底部）
-    const handleQuoteLocate = useCallback((messageId: string) => {
+    const handleQuoteLocate = useCallback((messageId: string, offsets?: QuoteFragmentOffsets) => {
         chatListRef.current?.stopFollow()
-        locateQuotedMessage(messageId)
+        locateQuotedMessage(messageId, offsets)
     }, [])
 
     // 回应批注数据源：agent 消息 id → 触发本轮回复的 user 消息 quote blocks。
@@ -882,6 +882,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                纯视觉层不占布局（padding 方案会挤占内容宽度引发重排，摘类后排布变化） */
             0% { box-shadow: 0 0 0 3px ${token.colorWarningBorder}, 0 0 0 14px ${token.colorWarningBg}; background: ${token.colorWarningBg}; }
             100% { box-shadow: 0 0 0 3px transparent, 0 0 0 14px transparent; background: transparent; }
+        }
+        /* 片段级高亮（CSS Custom Highlight API，quoteLocate 注册）：
+           ::highlight 的背景动画主流浏览器不可靠，用「常亮 + 定时摘除」形态。
+           colorWarningBg 在 dark 档是深棕（黑底上不可辨，E2E 实测），用 colorWarning
+           实色低透明——两主题都是明快警示色，高亮可辨；无圆角能力（规范限制） */
+        ::highlight(${QUOTE_FRAGMENT_HIGHLIGHT}) {
+            background-color: color-mix(in srgb, ${token.colorWarning} 35%, transparent);
         }
     `, [token])
 

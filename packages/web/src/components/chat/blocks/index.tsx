@@ -22,7 +22,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import { fileRefContext } from '@/core/utils/fileUrl'
 import { quoteAnchorProps } from '@/domain/chat/quoteSelection'
 import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
-import { locateQuotedMessage } from '@/core/lib/quoteLocate'
+import { locateQuotedMessage, type QuoteLocateFn } from '@/core/lib/quoteLocate'
 import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
 import { TextBlock } from './TextBlock'
@@ -56,7 +56,7 @@ export type ChatBlockContext = {
     /** 画板重编辑入口（仅 sketch 标记的 image block 渲染 hover 角标；spec D3/D4） */
     onEditSketchBlock?: (block: UserImageBlock) => void
     /** 引用条目点击定位入口（跳转前停贴底跟随的收口在 ChatContainer；缺省直连 locateQuotedMessage） */
-    onQuoteLocate?: (messageId: string) => void
+    onQuoteLocate?: QuoteLocateFn
     /** 回应批注数据源：agent 消息 id → 触发本轮回复的 user 消息 quote blocks（按 directive
      *  index 对齐，位置 i = 注释 i+1；spec .scratch/response-annotations）。缺省 = 无批注数据，
      *  directive 按原文降级呈现 */
