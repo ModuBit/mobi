@@ -72,4 +72,5 @@ for (const [name, language] of Object.entries(LANGUAGES)) {
     PrismLight.registerLanguage(name, language)
 }
 
-export { PrismLight }
+/** 已注册语言名集合（对账测试消费：codeLanguageDetect 的候选集必须 ⊆ 此集合，防静默降级素码） */
+export const REGISTERED_LANGUAGE_NAMES: ReadonlySet<string> = new Set(Object.keys(LANGUAGES))

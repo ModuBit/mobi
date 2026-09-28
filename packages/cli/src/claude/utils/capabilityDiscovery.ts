@@ -36,6 +36,16 @@ interface CapabilityQuery {
     supportedAgents(): Promise<AgentInfo[]>
 }
 
+/** 插件加载失败条目（SDK 0.3.283，system/init.plugin_errors；键省略 = 无错误，
+ *  Remote worker 形态恒省略）。type 是开放集合，未知值按 generic 语义处理 */
+export type PluginLoadError = { plugin: string; type: string; message: string; path?: string }
+
+/** plugin_errors 条目 → 人读明文（唯一格式化点：sdkOutputLoop 合成横幅等消费方共用，
+ *  禁止在调用方内联同模板——格式漂移历史见 /simplify 盘点） */
+export function formatPluginError(e: PluginLoadError): string {
+    return `${e.plugin} (${e.type})${e.path ? ` @ ${e.path}` : ''}: ${e.message}`
+}
+
 /**
  * 会话能力面发现（spec 批次 G U-27）：在会话自己的 Query 上调 SDK 三方法，
  * 替代 extractSDKMetadataAsync 专用 headless 进程。
@@ -51,15 +61,10 @@ export async function discoverCapabilities(
         const init = (await query.initializationResult() ?? {}) as {
             output_style?: string
             available_output_styles?: string[]
-            /** 插件加载失败（SDK 0.3.283，system/init）；键省略 = 无错误（Remote worker 形态恒省略） */
-            plugin_errors?: Array<{ plugin: string; type: string; message: string; path?: string }>
+            plugin_errors?: PluginLoadError[]
         }
-        // 插件加载失败可观测：此前 headless host 完全看不到，「/ 面板没命令」无法区分
-        // 未安装与加载失败。逐条 warn（type 是开放集合，未知值按原样透出）。
-        // 独立于空结果守卫——能力三件套不可信时错误仍要打
-        for (const e of init.plugin_errors ?? []) {
-            logger.warn(`[capabilityDiscovery] plugin load failed: ${e.plugin} (${e.type})${e.path ? ` @ ${e.path}` : ''}: ${e.message}`)
-        }
+        // 插件加载错误的可观测 owner 是 sdkOutputLoop（合成 warning 横幅 + warn 日志，
+        // 覆盖本函数的全部场景且不依赖能力三件套是否可信）——此处不再重复打
         const [models, commands, agents] = await Promise.all([
             query.supportedModels(),
             query.supportedCommands(),

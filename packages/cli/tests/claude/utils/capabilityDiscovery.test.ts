@@ -121,13 +121,12 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
         })
     })
 
-    it('init.plugin_errors 有条目 → 逐条 logger.warn（plugin/type/path/message，可观测性）', async () => {
+    it('init.plugin_errors 有条目 → 不再重复 warn（可观测 owner 是 sdkOutputLoop，见 /simplify 盘点）', async () => {
         const query = makeQuery({
             initializationResult: vi.fn().mockResolvedValue({
                 commands: [], agents: [], models: [],
                 plugin_errors: [
                     { plugin: 'inline[0]', type: 'path-not-found', message: 'dir missing', path: '/tmp/bad-plugin' },
-                    { plugin: 'foo@market', type: 'dependency-unsatisfied', message: 'needs x' },
                 ],
             }),
         })
@@ -135,39 +134,15 @@ describe('discoverCapabilities（spec 批次 G U-27）', () => {
 
         await discoverCapabilities(query as never, onCapabilities)
 
-        const { warn } = vi.mocked(logger)
-        expect(warn).toHaveBeenCalledTimes(2)
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('inline[0]'))
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('path-not-found'))
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('/tmp/bad-plugin'))
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('foo@market'))
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('dependency-unsatisfied'))
-    })
-
-    it('init 无 plugin_errors（键省略 = 无错误/Remote worker 恒省略形态）→ 不打 warn', async () => {
-        const query = makeQuery()
-        const onCapabilities = vi.fn()
-
-        await discoverCapabilities(query as never, onCapabilities)
-
         expect(vi.mocked(logger).warn).not.toHaveBeenCalled()
+        expect(onCapabilities).toHaveBeenCalledTimes(1)
     })
 
-    it('init.plugin_errors 在场且三件套全空 → warn 照打（错误可观测独立于空结果守卫）', async () => {
-        const query = makeQuery({
-            supportedModels: vi.fn().mockResolvedValue([]),
-            supportedCommands: vi.fn().mockResolvedValue([]),
-            supportedAgents: vi.fn().mockResolvedValue([]),
-            initializationResult: vi.fn().mockResolvedValue({
-                commands: [], agents: [], models: [],
-                plugin_errors: [{ plugin: 'inline[0]', type: 'generic-error', message: 'boom' }],
-            }),
-        })
-        const onCapabilities = vi.fn()
-
-        await discoverCapabilities(query as never, onCapabilities)
-
-        expect(vi.mocked(logger).warn).toHaveBeenCalledTimes(1)
-        expect(onCapabilities).not.toHaveBeenCalled()
+    it('formatPluginError：plugin/type/path/message 拼接，path 缺省不带 @ 段', async () => {
+        const { formatPluginError } = await import('../../../src/claude/utils/capabilityDiscovery')
+        expect(formatPluginError({ plugin: 'inline[0]', type: 'path-not-found', message: 'dir missing', path: '/tmp/bad' }))
+            .toBe('inline[0] (path-not-found) @ /tmp/bad: dir missing')
+        expect(formatPluginError({ plugin: 'foo@market', type: 'dependency-unsatisfied', message: 'needs x' }))
+            .toBe('foo@market (dependency-unsatisfied): needs x')
     })
 })

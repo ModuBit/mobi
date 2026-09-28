@@ -36,6 +36,7 @@ import {
     type ElicitationRequest,
     type ElicitationResult,
 } from '@anthropic-ai/claude-agent-sdk'
+import { formatPluginError } from "./utils/capabilityDiscovery";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
 import { parseSpecialCommand, checkDangerousCommand } from "@/parsers/specialCommands";
@@ -624,9 +625,7 @@ export async function sdkOutputLoop(
             // content 多行明文（横幅 pre-wrap 渲染）
             const pluginErrors = systemInit.plugin_errors;
             if (Array.isArray(pluginErrors) && pluginErrors.length > 0) {
-                const content = pluginErrors
-                    .map(e => `Plugin load failed: ${e.plugin} (${e.type})${e.path ? ` @ ${e.path}` : ''}: ${e.message}`)
-                    .join('\n');
+                const content = pluginErrors.map(formatPluginError).join('\n');
                 logger.warn(`[sdkOutputLoop] plugin load errors:\n${content}`);
                 opts.onMessage({
                     type: 'system',

@@ -18,7 +18,7 @@ import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SE
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkProjectAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
@@ -177,6 +177,26 @@ export function createSessionsRoutes(
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
+    /**
+     * dormancy 阻塞响应的单一收口（/sessions/:id/dormant 与 DELETE /sessions/:id 两路由共用）：
+     * 调 engine.dormantSession 并把结果统一编成响应——阻塞 → 409 { error, blockers }（web
+     * extractBlockers 消费此契约，形状/error 文案必须单点维护）；异常（RPC 编排失败）→
+     * 409 { error }（与 /dormant 口径一致：休眠未确认完成一律按冲突反馈，不穿透 500）。
+     * 返回 null = 休眠成功/幂等成功，调用方可继续后续步骤（删除等）。
+     */
+    async function attemptDormancyOrRespond(c: Context<WebAppEnv>, engine: SyncEngine, sessionId: string): Promise<Response | null> {
+        try {
+            const result = await engine.dormantSession(sessionId)
+            if (!result.ok) {
+                return c.json({ error: 'Session has work in progress', blockers: result.blockers ?? [] }, 409)
+            }
+            return null
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to dorm the session'
+            return c.json({ error: message }, 409)
+        }
+    }
+
     app.get('/sessions', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -287,16 +307,9 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
-        try {
-            const result = await engine.dormantSession(sessionResult.sessionId)
-            if (!result.ok) {
-                return c.json({ error: 'Session has work in progress', blockers: result.blockers ?? [] }, 409)
-            }
-            return c.json({ ok: true })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to dorm the session'
-            return c.json({ error: message }, 409)
-        }
+        // 阻塞/异常响应编排收口在 attemptDormancyOrRespond（与 DELETE 路由共用）
+        const blocked = await attemptDormancyOrRespond(c, engine, sessionResult.sessionId)
+        return blocked ?? c.json({ ok: true })
     })
 
     app.post('/sessions/:id/upload', async (c) => {
@@ -807,11 +820,12 @@ export function createSessionsRoutes(
         // 守卫单一来源 sessionDeleteGuard：fork 行未激活（forkFrom 在场且非 running）不算 active，可删。
         // 常规 active 会话不再直接 409——删除是明确意图，先自动休眠（CLI gate 自查会挡住
         // 运行中/审批待处理的会话，blockers 逐项透传给 web toast）；休眠成功即翻 inactive
-        // （archiveSession 同步 handleSessionEnd），随后删除自然过 sessionCache 的同源守卫
+        // （archiveSession 同步 handleSessionEnd），随后删除自然过 sessionCache 的同源守卫。
+        // 阻塞/异常响应编排与 /dormant 路由共用 attemptDormancyOrRespond
         if (!isSessionRowDeletable(sessionResult.session)) {
-            const dormant = await engine.dormantSession(sessionResult.sessionId)
-            if (!dormant.ok) {
-                return c.json({ error: 'Session has work in progress', blockers: dormant.blockers ?? [] }, 409)
+            const blocked = await attemptDormancyOrRespond(c, engine, sessionResult.sessionId)
+            if (blocked) {
+                return blocked
             }
         }
 

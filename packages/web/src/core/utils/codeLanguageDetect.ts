@@ -87,6 +87,15 @@ export function getCachedDetectedLanguage(code: string): string | undefined {
     return cacheGet(code)
 }
 
+/**
+ * 检测候选语言映射为 prism 名后的集合。仅供 codeHighlighterLanguages 注册表的对账
+ * 测试消费（静态 import 清单无法运行时派生注册，注册表漂移靠该测试锁住），
+ * 业务代码不要用它做渲染判断。
+ */
+export const DETECTABLE_PRISM_LANGUAGES: ReadonlySet<string> = new Set(
+    HLJS_CANDIDATE_LANGUAGES.map((l) => HLJS_TO_PRISM[l] ?? l),
+)
+
 /** 异步检测代码语言，返回 prism 可用的语言名；检测失败 / 无结果时返回兜底通用语言。结果带缓存 */
 export async function detectLanguage(code: string): Promise<string> {
     const cached = cacheGet(code)

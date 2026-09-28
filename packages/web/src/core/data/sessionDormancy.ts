@@ -54,6 +54,16 @@ export function dormancyBlockedText(blockers: string[], t: TFunction, blockedKey
 }
 
 /**
+ * 删除入口的阻塞文案组合（PC/移动端删除失败 catch 共用，extract→判空→定 key 三步
+ * 单点收口）：409 blockers（hub 删除前自动休眠被 gate 挡）→「无法删除：…」；
+ * 非阻塞错误返回 null，调用方自行决定回退（PC 通用错误 toast / 移动端静默）。
+ */
+export function deleteBlockedText(error: unknown, t: TFunction): string | null {
+    const blockers = extractBlockers(error)
+    return blockers.length > 0 ? dormancyBlockedText(blockers, t, 'session.actions.deleteBlocked') : null
+}
+
+/**
  * 手动休眠动作流（dormancy spec §D.11）：调 API → 成功 toast + 失效会话视图。
  * gate 阻塞（409 blockers）→ 确认弹窗给出「仍要退出」强制兜底（archive，无 gate
  * 直杀进程）；取消或非 blocker 失败 → 文案 toast。侧边栏 / 移动端列表共用，
