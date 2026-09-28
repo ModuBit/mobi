@@ -518,6 +518,12 @@ export async function sdkOutputLoop(
          */
         onConversationReset?: (info: { trigger?: string; newConversationId: string }) => void
         /**
+         * 已合成横幅的 plugin_errors 内容签名（会话级去重）：query 重启（output style
+         * 切换/模式切换/resume）init 重带相同错误，不拦则横幅随重启次数线性堆叠。
+         * 由外层会话作用域持有并跨输出循环传入
+         */
+        synthesizedPluginErrorContents?: Set<string>
+        /**
          * turn 输出观测（批次 A 撤回复验判据）：本 turn 一旦有模型输出即触发。
          * launcher 置位 turnTracking.hasOutput，stopKind='turn' 停止时据此区分撤回与中断。
          */
@@ -531,6 +537,25 @@ export async function sdkOutputLoop(
     },
 ): Promise<void> {
     let queryStarted = false;
+
+    /**
+     * native 会话文件 → onSessionFound 收口（init 与 conversation_reset 共用）：
+     * 文件可能尚未落盘（提前激活 / CC 刚切换对话文件），awaitFileExist 等待（超时 10s）
+     * 后异步上报，不阻塞输出循环。消费方幂等（launcher 的 applySessionIdBinding 同 id
+     * 不重复触发；scanner 首启 vs onNewSession 分流）
+     */
+    const trackSessionFile = (sessionId: string): void => {
+        logger.debug(`[sdkOutputLoop] Waiting for session file: ${sessionId}`);
+        const projectDir = getProjectPath(opts.path);
+        void awaitFileExist(join(projectDir, `${sessionId}.jsonl`))
+            .then((found) => {
+                logger.debug(`[sdkOutputLoop] Session file found: ${sessionId} ${found}`);
+                opts.onSessionFound(sessionId);
+            })
+            .catch((e) => {
+                logger.debug(`[sdkOutputLoop] Session file wait failed: ${sessionId}`, e);
+            });
+    };
 
     // 装配 SDK includePartialMessages 拆分的 assistant partial（同 message.id 的多 block）
     // 为一条完整消息后再分发：snapshot 是 message 级（一条累积所有 block），full 也必须是
@@ -606,35 +631,30 @@ export async function sdkOutputLoop(
             // 其 findSessionFiles 自发现文件、readSessionLog 对缺失文件容错返回空，
             // 文件晚于 scanner 启动出现也会被 interval 重扫捕获
             if (systemInit.session_id) {
-                logger.debug(`[sdkOutputLoop] Waiting for session file: ${systemInit.session_id}`);
-                const projectDir = getProjectPath(opts.path);
-                void awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`))
-                    .then((found) => {
-                        logger.debug(`[sdkOutputLoop] Session file found: ${systemInit.session_id} ${found}`);
-                        opts.onSessionFound(systemInit.session_id);
-                    })
-                    .catch((e) => {
-                        logger.debug(`[sdkOutputLoop] Session file wait failed: ${systemInit.session_id}`, e);
-                    });
+                trackSessionFile(systemInit.session_id);
             }
 
             // 插件加载失败可观测（SDK 0.3.283，init.plugin_errors）：此前 headless host 完全
             // 看不到，「/ 面板没命令」无法区分未安装与加载失败。合成一条 warning 级
             // informational 落库——复用 informational 渲染管线（web warning 判据横幅）。
             // CC 对 remote-worker 形态恒省略该键（省略即静默，与历史行为一致）；
-            // content 多行明文（横幅 pre-wrap 渲染）
+            // content 多行明文（横幅 pre-wrap 渲染）。会话级按内容去重：query 重启
+            // （output style 切换/模式切换/resume）init 会重带相同错误，不拦则横幅线性堆叠
             const pluginErrors = systemInit.plugin_errors;
             if (Array.isArray(pluginErrors) && pluginErrors.length > 0) {
                 const content = pluginErrors.map(formatPluginError).join('\n');
-                logger.warn(`[sdkOutputLoop] plugin load errors:\n${content}`);
-                opts.onMessage({
-                    type: 'system',
-                    subtype: 'informational',
-                    content,
-                    level: 'warning',
-                    uuid: randomUUID(),
-                    session_id: systemInit.session_id ?? '',
-                } as unknown as SDKMessage);
+                if (!opts.synthesizedPluginErrorContents?.has(content)) {
+                    opts.synthesizedPluginErrorContents?.add(content);
+                    logger.warn(`[sdkOutputLoop] plugin load errors:\n${content}`);
+                    opts.onMessage({
+                        type: 'system',
+                        subtype: 'informational',
+                        content,
+                        level: 'warning',
+                        uuid: randomUUID(),
+                        session_id: systemInit.session_id ?? '',
+                    } as unknown as SDKMessage);
+                }
             }
         }
 
@@ -662,7 +682,11 @@ export async function sdkOutputLoop(
         // 已失效，且不 reset 的代价是 plan 退出等 CC 侧重置后水位/记忆失真（旧占用数字
         // 挂在已清空的上下文上）。清空动作与 /clear 的 specialCommand 路径同汇
         // applyContextReset（幂等）；mobi 自身 /clear 被拦截不发给 SDK，不产生本帧，
-        // 双路径无重复。trigger/user_message_uuid/timestamp 仅 informational 不判定
+        // 双路径无重复。trigger/user_message_uuid/timestamp 仅 informational 不判定。
+        // transcript 挂接（sdk.d.ts 要求「mount a fresh transcript under new_conversation_id
+        // 并重置缓存标题」）：CC 切到新对话文件后 converter/scanner 仍按旧 id 走——
+        // 复用 init 的文件等待 + onSessionFound 收口（launcher 侧幂等绑定 + hub 补行 +
+        // scanner.onNewSession 切监听文件），resume 才不会丢 reset 之后的对话历史
         if (message.type === 'conversation_reset') {
             const resetMsg = message as SDKConversationResetMessage;
             logger.debug(`[sdkOutputLoop] conversation_reset trigger=${resetMsg.trigger ?? '-'}`);
@@ -670,6 +694,7 @@ export async function sdkOutputLoop(
                 trigger: resetMsg.trigger,
                 newConversationId: resetMsg.new_conversation_id,
             });
+            trackSessionFile(resetMsg.new_conversation_id);
         }
 
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
@@ -941,6 +966,10 @@ export async function claudeRemote(opts: {
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
     // （origin 透传：normal/bash 注入不标 = 'turn'；steer sink 用带 'steer' 的包装）
+    // 已合成横幅的 plugin_errors 内容签名（会话作用域，跨 query 重启共享——
+    // 每次 init 重带相同错误时不重复落库横幅，见 sdkOutputLoop 消费处注释）
+    const synthesizedPluginErrorContents = new Set<string>()
+
     const onBound = (binding: { localIds: string[]; nativeId: string }, origin?: PushOrigin) => {
         opts.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })), origin)
     }
@@ -1317,6 +1346,7 @@ export async function claudeRemote(opts: {
             onContextUsage: opts.onContextUsage,
             onCompactBoundary: opts.onCompactBoundary,
             onConversationReset: opts.onConversationReset,
+            synthesizedPluginErrorContents,
             onTurnOutput: opts.onTurnOutput,
             onRewindRefusal: opts.onRewindRefusal,
             signal: loopAbort.signal,

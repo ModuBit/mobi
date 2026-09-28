@@ -288,7 +288,7 @@ describe('sdkOutputLoop contextUsage 分发', () => {
                 ],
             } as unknown as SDKMessage]),
             { isCompactCommand: false } satisfies LoopContext,
-            { ...baseOpts(), onMessage },
+            { ...baseOpts(), onMessage, synthesizedPluginErrorContents: new Set() },
         )
         const synthesized = onMessage.mock.calls
             .map(([m]) => m)
@@ -316,6 +316,61 @@ describe('sdkOutputLoop contextUsage 分发', () => {
             .map(([m]) => m)
             .find((m: { type?: string; subtype?: string }) => m.type === 'system' && m.subtype === 'informational')
         expect(synthesized).toBeUndefined()
+    })
+
+    it('同一会话跨 query 重启重带相同 plugin_errors → 内容去重只合成一次（横幅不随重启堆叠）', async () => {
+        const onMessage = vi.fn()
+        const signatures = new Set<string>()
+        const initFrame = {
+            type: 'system', subtype: 'init', session_id: 'sess-1',
+            plugin_errors: [{ plugin: 'inline[0]', type: 'generic-error', message: 'boom' }],
+        }
+        const run = () => sdkOutputLoop(
+            mockQuery([initFrame as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onMessage, synthesizedPluginErrorContents: signatures },
+        )
+        await run()
+        await run()
+        await run()
+        const synthesizedCount = onMessage.mock.calls
+            .map(([m]) => m)
+            .filter((m: { type?: string; subtype?: string }) => m.type === 'system' && m.subtype === 'informational')
+            .length
+        expect(synthesizedCount).toBe(1)
+    })
+
+    it('conversation_reset → 对 new_conversation_id 走 onSessionFound（transcript 挂接：converter/scanner 切到新对话文件）', async () => {
+        // awaitFileExist 按真实路径等文件：临时目录预置 <id>.jsonl 使其立即命中
+        const { mkdtempSync, writeFileSync } = await import('node:fs')
+        const { tmpdir } = await import('node:os')
+        const { join } = await import('node:path')
+        const dir = mkdtempSync(join(tmpdir(), 'mobi-conv-reset-'))
+        writeFileSync(join(dir, 'new-conv-id.jsonl'), '')
+        const sessionPaths = await import('../src/claude/utils/path')
+        const pathSpy = vi.spyOn(sessionPaths, 'getProjectPath').mockReturnValue(dir)
+
+        try {
+            const onSessionFound = vi.fn()
+            await sdkOutputLoop(
+                mockQuery([{
+                    type: 'conversation_reset',
+                    new_conversation_id: 'new-conv-id',
+                    uuid: 'frame-uuid',
+                    session_id: 'old-conv-id',
+                    trigger: 'plan_mode_exit',
+                } as unknown as SDKMessage]),
+                { isCompactCommand: false } satisfies LoopContext,
+                { ...baseOpts(), onSessionFound },
+            )
+            // 异步上报：轮询等 awaitFileExist then 链执行
+            for (let i = 0; i < 50 && onSessionFound.mock.calls.length === 0; i++) {
+                await new Promise(r => setTimeout(r, 10))
+            }
+            expect(onSessionFound).toHaveBeenCalledWith('new-conv-id')
+        } finally {
+            pathSpy.mockRestore()
+        }
     })
 
     it('compact_boundary 触发 onCompactBoundary 带 post_tokens', async () => {
