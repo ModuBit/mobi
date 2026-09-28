@@ -51,6 +51,14 @@ export async function discoverCapabilities(
         const init = (await query.initializationResult() ?? {}) as {
             output_style?: string
             available_output_styles?: string[]
+            /** 插件加载失败（SDK 0.3.283，system/init）；键省略 = 无错误（Remote worker 形态恒省略） */
+            plugin_errors?: Array<{ plugin: string; type: string; message: string; path?: string }>
+        }
+        // 插件加载失败可观测：此前 headless host 完全看不到，「/ 面板没命令」无法区分
+        // 未安装与加载失败。逐条 warn（type 是开放集合，未知值按原样透出）。
+        // 独立于空结果守卫——能力三件套不可信时错误仍要打
+        for (const e of init.plugin_errors ?? []) {
+            logger.warn(`[capabilityDiscovery] plugin load failed: ${e.plugin} (${e.type})${e.path ? ` @ ${e.path}` : ''}: ${e.message}`)
         }
         const [models, commands, agents] = await Promise.all([
             query.supportedModels(),
