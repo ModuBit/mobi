@@ -162,11 +162,11 @@ function playSound(kind: AttentionKind): void {
     const ctx = getAudioContext()
     if (!ctx || ctx.state !== 'running') return
     if (kind === 'ready') {
-        playTone(ctx, { freq: 1318.5, startAt: 0, duration: 0.12, volume: 0.22 })
-        playTone(ctx, { freq: 1046.5, startAt: 0.1, duration: 0.2, volume: 0.2 })
+        playTone(ctx, { freq: 1318.5, startAt: 0, duration: 0.12, volume: 0.55 })
+        playTone(ctx, { freq: 1046.5, startAt: 0.1, duration: 0.2, volume: 0.5 })
     } else {
-        playTone(ctx, { freq: 880, startAt: 0, duration: 0.09, volume: 0.32 })
-        playTone(ctx, { freq: 1318.5, startAt: 0.12, duration: 0.14, volume: 0.35 })
+        playTone(ctx, { freq: 880, startAt: 0, duration: 0.09, volume: 0.75 })
+        playTone(ctx, { freq: 1318.5, startAt: 0.12, duration: 0.14, volume: 0.8 })
     }
 }
 
