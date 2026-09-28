@@ -72,6 +72,8 @@ function createState(sessionId: string): InternalState {
 
 const states = new Map<string, InternalState>()
 const listeners = new Map<string, Set<() => void>>()
+/** 进行中的 latest 拉取（sessionId → generation），见 fetchLatestMessages 的在途去重 */
+const latestInFlight = new Map<string, number>()
 
 /**
  * 已撤回行的墓碑（per-session Set<string>，成员为 localId 与 id 双锚点）。
@@ -116,6 +118,7 @@ export function _resetForTest(): void {
     states.clear()
     listeners.clear()
     withdrawnTombstones.clear()
+    latestInFlight.clear()
 }
 
 function getState(sessionId: string): InternalState {
@@ -220,6 +223,7 @@ export function subscribeMessageWindow(sessionId: string, listener: () => void):
 export function clearMessageWindow(sessionId: string): void {
     // 墓碑随窗口状态一并清除（有界性锚点：会话删除后同 id 新行不再被拦截）
     withdrawnTombstones.delete(sessionId)
+    latestInFlight.delete(sessionId)
     const prev = getState(sessionId)
     setState(sessionId, {
         ...createState(sessionId),
@@ -266,12 +270,23 @@ function updateStateForGeneration(sessionId: string, kind: AsyncKind, gen: numbe
 export async function fetchLatestMessages(api: MobiApi, sessionId: string): Promise<void> {
     const prev = _internal.getState(sessionId)
     if (prev.isLoading) return
+    // 在途去重：isLoading 锁只在 store 为空时生效——SSE 快照先于首拉入库时（冷加载下
+    // 两个消费方的 mount effect 先后触发，perf/基线.md 长任务归因实测）isEmpty=false →
+    // isLoading 恒为 false，并发第二笔不会被任何锁挡住，只会被 generation 判废，纯浪费。
+    // 记录在途 generation：同会话已有在途拉取则直接复用其结果；store 被 clear（generation
+    // 递增）后在途记录过期，放行新拉取
+    const inFlight = latestInFlight.get(sessionId)
+    if (inFlight !== undefined) {
+        if (isCurrentGeneration(sessionId, 'latest', inFlight)) return
+        latestInFlight.delete(sessionId)
+    }
     // isLoading 语义 = 「首次加载且 store 无数据」。
     // 重连补拉（store 已有数据）静默 merge，不翻 isLoading —— 否则 ChatContainer 的
     // `if (messagesLoading) return <Spin>` 早返回会翻转，致 ComposerInfoPanel 反复 mount/unmount，
     // 其 useMessages 每次 mount 都触发 useEffect → fetchLatest → isLoading=true → 早返回 → 循环。
     const isEmpty = prev.messages.length === 0
     const gen = beginAsyncGeneration(sessionId, 'latest', { isLoading: isEmpty })
+    latestInFlight.set(sessionId, gen)
     try {
         const res = await api.messages.list(sessionId, { beforeSeq: undefined })
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
@@ -287,6 +302,8 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         // 失败也置 hasFetchedLatest=true 避免空会话循环（用户切走再切回 clear 重置后会重试）
         updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false, hasFetchedLatest: true }))
+    } finally {
+        if (latestInFlight.get(sessionId) === gen) latestInFlight.delete(sessionId)
     }
 }
 
