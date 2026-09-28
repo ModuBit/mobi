@@ -318,9 +318,8 @@ async function git(cwd: string, args: string[]): Promise<string> {
 /** machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta） */
 export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.data, async (data) => {
-        const reader = new GitReviewReader(data.cwd)
         try {
-            return await reader.reviewData(data.sessionId, await openTurnSnapshotStore(data.cwd))
+            return await readerFor(data.cwd).reviewData(data.sessionId, await openTurnSnapshotStore(data.cwd))
         } catch (e) {
             logger.debug('[GitReview] reviewData failed', e)
             return rpcError('Failed to collect git review data')
@@ -328,7 +327,7 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
     })
     rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string; query: GitReviewFileQuery }, unknown>(GIT_REVIEW_RPC.file, async (data) => {
         try {
-            return await new GitReviewReader(data.cwd).fileDiff(data.query, await openTurnSnapshotStore(data.cwd), data.sessionId)
+            return await readerFor(data.cwd).fileDiff(data.query, await openTurnSnapshotStore(data.cwd), data.sessionId)
         } catch (e) {
             logger.debug('[GitReview] fileDiff failed', e)
             return rpcError('Failed to read git diff')
@@ -349,3 +348,20 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
 }
 
 export type { GitReviewFileDiff }
+
+/**
+ * memoized 工厂：reader 按 cwd 复用，私有 repoRoot 缓存才真正跨请求生效
+ * （每次 RPC new 实例的话，首个 rev-parse 之后缓存即随实例丢弃，每请求都要重跑）。
+ * 缓存值只是 cwd 解析出的仓库根路径；仓库消失时 git 调用自然失败 → gitAtRoot null
+ * → 各档诚实置空，无需失效机制。规模上界 = 出现过的项目目录数，无需淘汰。
+ */
+const readers = new Map<string, GitReviewReader>()
+
+function readerFor(cwd: string): GitReviewReader {
+    let reader = readers.get(cwd)
+    if (!reader) {
+        reader = new GitReviewReader(cwd)
+        readers.set(cwd, reader)
+    }
+    return reader
+}
