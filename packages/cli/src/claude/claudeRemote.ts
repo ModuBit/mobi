@@ -616,6 +616,27 @@ export async function sdkOutputLoop(
                         logger.debug(`[sdkOutputLoop] Session file wait failed: ${systemInit.session_id}`, e);
                     });
             }
+
+            // 插件加载失败可观测（SDK 0.3.283，init.plugin_errors）：此前 headless host 完全
+            // 看不到，「/ 面板没命令」无法区分未安装与加载失败。合成一条 warning 级
+            // informational 落库——复用 informational 渲染管线（web warning 判据横幅）。
+            // CC 对 remote-worker 形态恒省略该键（省略即静默，与历史行为一致）；
+            // content 多行明文（横幅 pre-wrap 渲染）
+            const pluginErrors = systemInit.plugin_errors;
+            if (Array.isArray(pluginErrors) && pluginErrors.length > 0) {
+                const content = pluginErrors
+                    .map(e => `Plugin load failed: ${e.plugin} (${e.type})${e.path ? ` @ ${e.path}` : ''}: ${e.message}`)
+                    .join('\n');
+                logger.warn(`[sdkOutputLoop] plugin load errors:\n${content}`);
+                opts.onMessage({
+                    type: 'system',
+                    subtype: 'informational',
+                    content,
+                    level: 'warning',
+                    uuid: randomUUID(),
+                    session_id: systemInit.session_id ?? '',
+                } as unknown as SDKMessage);
+            }
         }
 
         // 处理 system/status：压缩开始信号（status:'compacting'），统一手动/自动两条路径的

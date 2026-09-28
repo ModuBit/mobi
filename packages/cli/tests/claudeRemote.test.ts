@@ -277,6 +277,47 @@ describe('sdkOutputLoop contextUsage 分发', () => {
         )).resolves.toBeUndefined()
     })
 
+    it('system:init 带 plugin_errors → 合成 warning 级 informational 落库（web 横幅复用 informational 管线）', async () => {
+        const onMessage = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'system', subtype: 'init', session_id: 'sess-1',
+                plugin_errors: [
+                    { plugin: 'inline[0]', type: 'path-not-found', message: 'dir missing', path: '/tmp/bad-plugin' },
+                    { plugin: 'foo@market', type: 'dependency-unsatisfied', message: 'needs x' },
+                ],
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onMessage },
+        )
+        const synthesized = onMessage.mock.calls
+            .map(([m]) => m)
+            .find((m: { type?: string; subtype?: string }) => m.type === 'system' && m.subtype === 'informational') as
+            | { content: string; level: string; session_id: string }
+            | undefined
+        expect(synthesized).toBeDefined()
+        expect(synthesized!.level).toBe('warning')
+        expect(synthesized!.session_id).toBe('sess-1')
+        expect(synthesized!.content).toContain('inline[0]')
+        expect(synthesized!.content).toContain('path-not-found')
+        expect(synthesized!.content).toContain('/tmp/bad-plugin')
+        expect(synthesized!.content).toContain('foo@market')
+        expect(synthesized!.content).toContain('\n')
+    })
+
+    it('system:init 无 plugin_errors → 不合成 informational 行', async () => {
+        const onMessage = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{ type: 'system', subtype: 'init', session_id: 'sess-1' } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onMessage },
+        )
+        const synthesized = onMessage.mock.calls
+            .map(([m]) => m)
+            .find((m: { type?: string; subtype?: string }) => m.type === 'system' && m.subtype === 'informational')
+        expect(synthesized).toBeUndefined()
+    })
+
     it('compact_boundary 触发 onCompactBoundary 带 post_tokens', async () => {
         const onCompactBoundary = vi.fn()
         await sdkOutputLoop(
