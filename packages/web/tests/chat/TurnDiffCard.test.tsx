@@ -16,8 +16,8 @@
 
 /**
  * turn-diff 自定义事件渲染链（ADR 0008）：CustomBlockView 对 custom-event 的二级路由、
- * 轮次变更卡呈现（摘要/展开/文件行/rename 呈现）、未注册事件跳过、shared 事件名 ↔
- * web 渲染注册表的一致性 lock。
+ * 轮次变更卡呈现（头部摘要/默认铺开清单/展开收起/rename 呈现）、未注册事件跳过、
+ * shared 事件名 ↔ web 渲染注册表的一致性 lock。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -28,7 +28,9 @@ vi.mock('react-i18next', async (orig) => {
     return {
         ...actual,
         useTranslation: () => ({ t: (k: string, opts?: { count?: number }) =>
-            k === 'chat.turnDiff.filesEdited' ? `已编辑 ${opts?.count} 个文件` : k }),
+            k === 'chat.turnDiff.filesEdited' ? `已编辑 ${opts?.count} 个文件`
+            : k === 'chat.turnDiff.showMoreFiles' ? `再显示 ${opts?.count} 个文件`
+            : k }),
     }
 })
 
@@ -51,6 +53,13 @@ const PAYLOAD: TurnDiffPayload = {
     git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
 }
 
+/** 超出预览条数（3）的载荷：6 个文件，用于展开/收起断言 */
+const OVERFLOW_PAYLOAD: TurnDiffPayload = {
+    ...PAYLOAD,
+    stats: { files: 6, additions: 12, deletions: 5 },
+    files: [...PAYLOAD.files, ...PAYLOAD.files.map((f, i) => ({ ...f, path: `more/${i}.ts` }))],
+}
+
 function makeCustomBlock(blocks: CustomBlock['blocks']): CustomBlock {
     return { kind: 'custom', id: 'custom-1', localId: null, createdAt: 1000, blocks }
 }
@@ -60,31 +69,32 @@ describe('turn-diff 渲染链', () => {
         expect(CUSTOM_EVENT_VIEWS[TURN_DIFF_EVENT]).toBeDefined()
     })
 
-    it('折叠态摘要：文案 + 总统计；展开后逐文件呈现（A 徽标、rename 旧名、计数）', () => {
+    it('头部摘要 + 清单默认铺开（不超 3 条时全显、无展开开关；A 徽标、rename 旧名、计数）', () => {
         render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: PAYLOAD }])} />)
 
         const card = screen.getByTestId('turn-diff-card')
         expect(card.textContent).toContain('已编辑 3 个文件')
         expect(card.textContent).toContain('+9')
         expect(card.textContent).toContain('-4')
-        expect(screen.queryByTestId('turn-diff-file')).toBeNull()
-
-        fireEvent.click(screen.getByTestId('turn-diff-toggle'))
         const rows = screen.getAllByTestId('turn-diff-file')
         expect(rows).toHaveLength(3)
         expect(rows[0]!.textContent).toContain('a.ts')
         expect(rows[0]!.textContent).toContain('src/deep/')
+        expect(rows[0]!.textContent).toContain('M') // modify 也占徽标
         expect(rows[1]!.textContent).toContain('A') // add 徽标
         expect(rows[2]!.textContent).toContain('old.ts') // rename 旧名
         expect(rows[2]!.textContent).toContain('+0')
+        expect(screen.queryByTestId('turn-diff-toggle')).toBeNull()
     })
 
-    it('再点折叠开关收起清单', () => {
-        render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: PAYLOAD }])} />)
+    it('超出 3 条默认收起（aria-hidden），展开开关切换双向（动画用 grid 过渡，行常驻 DOM）', () => {
+        render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: OVERFLOW_PAYLOAD }])} />)
+
+        expect(screen.getByTestId('turn-diff-overflow').getAttribute('aria-hidden')).toBe('true')
         fireEvent.click(screen.getByTestId('turn-diff-toggle'))
-        expect(screen.getAllByTestId('turn-diff-file')).toHaveLength(3)
+        expect(screen.getByTestId('turn-diff-overflow').getAttribute('aria-hidden')).toBe('false')
         fireEvent.click(screen.getByTestId('turn-diff-toggle'))
-        expect(screen.queryByTestId('turn-diff-file')).toBeNull()
+        expect(screen.getByTestId('turn-diff-overflow').getAttribute('aria-hidden')).toBe('true')
     })
 
     it('未注册的 custom-event name 跳过不渲染（向前兼容）', () => {
@@ -94,18 +104,18 @@ describe('turn-diff 渲染链', () => {
         expect(container.querySelector('[data-testid="turn-diff-card"]')).toBeNull()
     })
 
-    it('「审核」按钮：git 模式且传入 onReview 才出现；点击触发且不触发折叠', () => {
+    it('「审核」按钮：git 模式且传入 onReview 才出现；点击触发且不展开清单', () => {
         const onReview = vi.fn()
         // 无 sessionId → 无 onReview → 不出按钮
-        const { rerender } = render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: PAYLOAD }])} />)
+        const { rerender } = render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: OVERFLOW_PAYLOAD }])} />)
         expect(screen.queryByTestId('turn-diff-review')).toBeNull()
 
         // 卡片级按钮语义直测（CustomBlockView→onReview 的接线单测在 workspaceStore 侧覆盖动作本身）
-        rerender(<TurnDiffCard payload={PAYLOAD} onReview={onReview} />)
+        rerender(<TurnDiffCard payload={OVERFLOW_PAYLOAD} onReview={onReview} />)
         fireEvent.click(screen.getByTestId('turn-diff-review'))
         expect(onReview).toHaveBeenCalledTimes(1)
-        // 点击不触发展开（阻断冒泡）
-        expect(screen.queryByTestId('turn-diff-file')).toBeNull()
+        // 点击不触发展开（溢出区保持收起）
+        expect(screen.getByTestId('turn-diff-overflow').getAttribute('aria-hidden')).toBe('true')
     })
 
     it('近似口径（git: null）不出「审核」按钮（无两树指针可查）', () => {

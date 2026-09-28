@@ -48,8 +48,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             locale={antdLocale}
             // 两字按钮自动插空格（「连 接」）与三字以上按钮字距节奏不一致，全局关闭
             button={{ autoInsertSpace: false }}
+            // 全站输入类默认 filled 形态：无边框、淡底填充（组件级 variant 显式传入时可覆盖）
+            input={{ variant: 'filled' }}
+            select={{ variant: 'filled' }}
             theme={{
-                token,
+                token: {
+                    ...token,
+                    // 输入类 focus halo 彻底关停：Select 直接用它画 box-shadow，Input 的
+                    // activeShadow 默认派生也源于它——归零即全站输入框聚焦无环（无边框审美
+                    // 的延续，filled 形态只靠淡底变化表达聚焦）
+                    controlOutlineWidth: 0,
+                },
                 components,
                 algorithm,
                 // 显式开启 CSS 变量模式：把 token 注册为全局 --ant-* 自定义属性（v6 变量名为

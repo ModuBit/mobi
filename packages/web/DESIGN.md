@@ -321,6 +321,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
   参数化用 motion 的 duration-based spring：`duration` 是到达目标的感知时长（越短越跟手），`bounce` 0~1 控制过冲弹性。**bounce 统一为 0**（无 overshoot）——真机体感 overshoot 容易动效过头（2026-08-21 决策去除），保留 spring 的速度继承与可打断性。**组件禁止手写 bounce/duration 字面量**——调气质只改 presets.ts。⚠️ 禁止传 `damping`/`stiffness`：motion 的 `damping` 是绝对阻尼系数（与 Apple 的 damping ratio 阻尼比不是一个东西），且它一出现就会覆盖 `duration`/`bounce`——曾误传 `damping: 0.8`（几乎无阻尼）导致所有 spring 多周期长震荡。
 - **非 spring 的连续量变化也要平滑**：宽度、高度等布局量随交互改变时（如产物 iframe 宽度档位切换），优先加 CSS transition 平滑过渡而非生硬跳变；时长与曲线**走 antd 主题 token**（`token.motionDurationMid` × `token.motionEaseInOut`），禁止硬编码毫秒数或 cubic-bezier 字面量——与 spring 预设同一纪律：调气质只动主题源，不散落组件。初挂载值不变的属性不会被触发，无需额外守卫。
+- **展开/收起必须成对缓动**：可折叠列表（如 turn-diff 卡的文件清单）的展开与收起**两个方向都要有过渡**——只动画单向会让体感不一致（有回应的一向 vs 硬切的一向）。实现用 grid `grid-template-rows: 0fr ↔ 1fr` 过渡（折叠内容常驻 DOM 挂 `aria-hidden`，不测量高度、双向同一条代码路径），时长曲线同走 antd token；禁止条件渲染直接增删行（双向硬切）。`prefers-reduced-motion` 下退化为瞬时切换。
 - **一切动效可打断**：用户在动画进行中的任何输入都应立即生效，动画从当前值+当前速度重新求解，而不是等播完。禁止锁输入等动画完成。
 - **手势释放判定：速度符号优先于位置**。快甩即关、快反向推即回位；拖到一半松手但速度接近零，才按位置判定。释放后用 momentum 投射（inertia decay `0.998`）继续沉降，让手势与动画无缝衔接。
 - **性能边界**：JS spring 跑在主线程，**避开聊天流等大区域**——虚拟列表内的条目不用 spring。所有动效只动 `transform` / `opacity`，不触发 layout。
