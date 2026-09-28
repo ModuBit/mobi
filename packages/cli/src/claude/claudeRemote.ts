@@ -30,6 +30,7 @@ import {
     type SDKPartialAssistantMessage,
     type SDKResultMessage,
     type SDKCompactBoundaryMessage,
+    type SDKConversationResetMessage,
     type McpServerConfig,
     type Settings,
     type ElicitationRequest,
@@ -507,6 +508,15 @@ export async function sdkOutputLoop(
          */
         onCompactBoundary?: (postTokens: number | undefined) => void
         /**
+         * conversation_reset 帧到达时触发（/clear、plan 退出清除上下文、fresh session、
+         * onboarding 四种流）。SDK 指引「无论 trigger 是什么都应 reset」——CC 侧对话树
+         * 已重置，不清则水位/记忆从此失真。launcher 接线与 onContextCleared 同一收口
+         * （applyContextReset 幂等，mobi 自身 /clear 走 specialCommand 拦截不产生本帧，
+         * 双路径天然无重复）。trigger/user_message_uuid/timestamp 仅 informational，
+         * 不参与判定。
+         */
+        onConversationReset?: (info: { trigger?: string; newConversationId: string }) => void
+        /**
          * turn 输出观测（批次 A 撤回复验判据）：本 turn 一旦有模型输出即触发。
          * launcher 置位 turnTracking.hasOutput，stopKind='turn' 停止时据此区分撤回与中断。
          */
@@ -627,10 +637,20 @@ export async function sdkOutputLoop(
             opts.onCompactBoundary?.(postTokens);
         }
 
-        // conversation_reset【不处理】：sdk.d.ts 明确其由 /clear、plan-mode exit、fresh-session
-        // 三种流触发且消息本身无法区分——若据此清空水位，用户退出 plan 模式（mobi 常见路径：
-        // ExitPlanMode 批准后直切）会误清 contextUsage 与 launcher 记忆。mobi /clear 走
-        // specialCommand 路径（handleSpecialCommand → onClear）已正确清空，此处不重复挂接。
+        // 处理 conversation_reset：SDK 0.3.281 起带 trigger 字段，且 sdk.d.ts 明确指引
+        // 「无论 trigger 是什么都应 reset」——旧注释「不处理」的前提（三流无法区分）
+        // 已失效，且不 reset 的代价是 plan 退出等 CC 侧重置后水位/记忆失真（旧占用数字
+        // 挂在已清空的上下文上）。清空动作与 /clear 的 specialCommand 路径同汇
+        // applyContextReset（幂等）；mobi 自身 /clear 被拦截不发给 SDK，不产生本帧，
+        // 双路径无重复。trigger/user_message_uuid/timestamp 仅 informational 不判定
+        if (message.type === 'conversation_reset') {
+            const resetMsg = message as SDKConversationResetMessage;
+            logger.debug(`[sdkOutputLoop] conversation_reset trigger=${resetMsg.trigger ?? '-'}`);
+            opts.onConversationReset?.({
+                trigger: resetMsg.trigger,
+                newConversationId: resetMsg.new_conversation_id,
+            });
+        }
 
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
         if (message.type === 'result') {
@@ -870,6 +890,9 @@ export async function claudeRemote(opts: {
     /** compact 开始（system:status{compacting}）时触发，launcher 幂等收口后发 compact-started 事件 */
     onCompactStart?: () => void,
     onContextCleared?: () => void,
+    /** CC 侧 conversation_reset（plan 退出清除上下文等；mobi 自身 /clear 不产生本帧）。
+     * launcher 接线与 onContextCleared 同一收口 applyContextReset（幂等），见 sdkOutputLoop */
+    onConversationReset?: (info: { trigger?: string; newConversationId: string }) => void,
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
     onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
     onSessionReset?: () => void,
@@ -1273,6 +1296,7 @@ export async function claudeRemote(opts: {
             onCompactStart: opts.onCompactStart,
             onContextUsage: opts.onContextUsage,
             onCompactBoundary: opts.onCompactBoundary,
+            onConversationReset: opts.onConversationReset,
             onTurnOutput: opts.onTurnOutput,
             onRewindRefusal: opts.onRewindRefusal,
             signal: loopAbort.signal,

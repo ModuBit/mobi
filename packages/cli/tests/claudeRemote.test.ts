@@ -232,6 +232,51 @@ describe('sdkOutputLoop contextUsage 分发', () => {
         onRunningChange: vi.fn(),
     })
 
+    it('conversation_reset 触发 onConversationReset 带 trigger 与 new_conversation_id', async () => {
+        const onConversationReset = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'conversation_reset',
+                new_conversation_id: 'new-conv-uuid',
+                uuid: 'frame-uuid',
+                session_id: 'sess-uuid',
+                trigger: 'plan_mode_exit',
+                timestamp: '2026-09-28T08:00:00.000Z',
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onConversationReset },
+        )
+        expect(onConversationReset).toHaveBeenCalledWith({ trigger: 'plan_mode_exit', newConversationId: 'new-conv-uuid' })
+    })
+
+    it('conversation_reset 的 trigger 缺省（旧 emitter）仍触发，trigger 传 undefined', async () => {
+        const onConversationReset = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'conversation_reset',
+                new_conversation_id: 'new-conv-uuid',
+                uuid: 'frame-uuid',
+                session_id: 'sess-uuid',
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onConversationReset },
+        )
+        expect(onConversationReset).toHaveBeenCalledWith({ trigger: undefined, newConversationId: 'new-conv-uuid' })
+    })
+
+    it('未接线 onConversationReset 时 conversation_reset 不炸（可选能力位）', async () => {
+        await expect(sdkOutputLoop(
+            mockQuery([{
+                type: 'conversation_reset',
+                new_conversation_id: 'new-conv-uuid',
+                uuid: 'frame-uuid',
+                session_id: 'sess-uuid',
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            baseOpts(),
+        )).resolves.toBeUndefined()
+    })
+
     it('compact_boundary 触发 onCompactBoundary 带 post_tokens', async () => {
         const onCompactBoundary = vi.fn()
         await sdkOutputLoop(

@@ -1062,6 +1062,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             // /clear 语义收口：边界事件 + 清水位 + 归零记忆（与 output style 切换共用）
                             applyContextReset(session.client, () => this.contextTracker.reset());
                         },
+                        onConversationReset: (info) => {
+                            // CC 侧 conversation_reset（plan 退出清除上下文 / fresh session / onboarding；
+                            // mobi 自身 /clear 走 specialCommand 拦截不产生本帧）。SDK 指引每帧都 reset，
+                            // 与 onContextCleared 同一收口（applyContextReset 幂等，双路径无重复）
+                            logger.debug(`[remote]: Conversation reset (trigger=${info.trigger ?? '-'})`);
+                            applyContextReset(session.client, () => this.contextTracker.reset());
+                        },
                         onContextUsage: (resultMsg, isCompact) => {
                             // 非 compact result 到达即 turn 正常收尾（中断 result 不经过此回调——
                             // 撤回复验语义见 resetTurnTracking）
