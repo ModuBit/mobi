@@ -16,6 +16,9 @@
 
 export type UpdateCallback = (reload: () => void) => void
 
+/** 主动更新检查间隔：60s——部署后一分钟内长驻页面即可看到「新版本」入口 */
+const SW_UPDATE_CHECK_INTERVAL_MS = 60_000
+
 /**
  * 注册 Service Worker 并监听更新，返回注销函数。
  *
@@ -39,12 +42,26 @@ export function registerServiceWorker(onUpdate: UpdateCallback): () => void {
     const hadController = !!navigator.serviceWorker.controller
     // 标记是否已发送 SKIP_WAITING（只在主动更新时监听 controllerchange）
     let skipWaitingSent = false
+    // SW 注册成功后由异步回调填入（周期检查定时器 + visibility 监听的清理）
+    let cleanupSw: (() => void) | null = null
 
     navigator.serviceWorker.register(swUrl, swOptions).then((reg) => {
         // 检查是否有等待中的新 SW
         if (reg.waiting && hadController) {
             notifyUpdate(reg)
         }
+
+        // 主动更新检查：浏览器仅在页面导航时 diff sw.js，SPA/PWA 长驻不导航就
+        // 永远发现不了新版本（2026-09-27 部署后实测）——周期性 reg.update() 拉取
+        //（update 按规范绕过 HTTP 缓存）；页面隐藏时跳过省流量，切回可见时立即补一次
+        const checkForUpdate = () => {
+            if (document.visibilityState !== 'visible') return
+            reg.update().catch(() => {
+                // 网络异常静默，下个周期再试
+            })
+        }
+        const updateTimer = setInterval(checkForUpdate, SW_UPDATE_CHECK_INTERVAL_MS)
+        document.addEventListener('visibilitychange', checkForUpdate)
 
         reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing
@@ -57,6 +74,12 @@ export function registerServiceWorker(onUpdate: UpdateCallback): () => void {
                 }
             })
         })
+
+        // 注册回调内无法返回注销函数（异步），借闭包把 SW 侧清理并入外层 cleanup
+        cleanupSw = () => {
+            clearInterval(updateTimer)
+            document.removeEventListener('visibilitychange', checkForUpdate)
+        }
     }).catch((err) => {
         console.warn('[PWA] SW 注册失败:', err)
     })
@@ -83,6 +106,7 @@ export function registerServiceWorker(onUpdate: UpdateCallback): () => void {
     }
 
     return () => {
+        cleanupSw?.()
         navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
     }
 }
