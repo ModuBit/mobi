@@ -74,7 +74,7 @@ function makeDeps(overrides: {
 }): GitReviewDeps {
     return {
         useReviewData: () => ({ data: overrides.data, error: overrides.error ?? null, isLoading: overrides.isLoading ?? false, updatedAt: 0, refetch: overrides.refetch ?? (() => {}) }),
-        useFileDiff: (_sessionId: string, query: GitReviewFileQuery | null, _version: number) => {
+        useFileDiff: (_sessionId: string, query: GitReviewFileQuery | null) => {
             overrides.onQuery?.(query)
             return {
                 data: overrides.fileDiff
