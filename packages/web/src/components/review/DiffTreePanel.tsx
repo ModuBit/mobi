@@ -29,7 +29,7 @@ import type { TurnDiffFileEntry } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
-import { KIND_BADGES } from '@/components/chat/blocks/TurnDiffCard'
+import { KIND_BADGES } from '@/components/turnDiff/present'
 
 export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     files: readonly TurnDiffFileEntry[]

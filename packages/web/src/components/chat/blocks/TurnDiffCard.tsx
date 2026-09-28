@@ -25,57 +25,18 @@
  */
 
 import { memo, useState } from 'react'
-import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp, FileDiff } from 'lucide-react'
 import type { TurnDiffPayload } from '@mobi/shared'
+import { theme } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { basename } from '@/core/utils/path'
+import { KIND_BADGES, FilePathLabel } from '@/components/turnDiff/present'
 
 /** 清单默认铺开的条数，超出折叠进「再显示 N 个文件」 */
 const PREVIEW_COUNT = 3
 
 /** prefers-reduced-motion 检测（jsdom 等无 matchMedia 环境安全退化；非响应式足够——只影响时长） */
 const REDUCED_MOTION = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
-
-/**
- * 变更类型徽标字面量与配色（kind → 短标 + 明暗双档色；字面量固定不随主题，色值双档各自验证）。
- * 审查视图（GitReviewView）共用同一套：徽标语义与配色只此一处，勿复制。
- */
-export const KIND_BADGES: Record<TurnDiffPayload['files'][number]['kind'], { label: string; light: string; dark: string }> = {
-    add: { label: 'A', light: '#4E9A51', dark: '#6FBF73' },
-    delete: { label: 'D', light: '#C2544D', dark: '#E08A84' },
-    rename: { label: 'R', light: '#8A6FC9', dark: '#B9A5E8' }, // 暗档提亮：旧紫在暗底上不可读（真机实证 2026-09-27）
-    modify: { label: 'M', light: '#B8860B', dark: '#D9A83C' },
-}
-
-/**
- * 路径单行展示、空间不足从左侧省略（保留尾段文件名，用户认路径靠的是尾部）。
- * 两层结构缺一不可（真机实证 2026-09-27）：外层 direction:rtl 让 text-overflow 的
- * 省略号落在行首；内层 unicode-bidi:isolate + LTR 保证路径字符序——若路径直接暴露在
- * rtl 段落里，`__`/`.` 等中性字符会被段落方向重排到行尾（「__pycache__」显示成
- * 「pycache__…__」）。目录/文件名两段配色在内层保持。
- */
-export function FilePathLabel({ path }: { path: string }) {
-    const { token } = theme.useToken()
-    const base = basename(path)
-    const dir = base && path.endsWith(base) ? path.slice(0, path.length - base.length) : ''
-    return (
-        <span
-            style={{
-                flex: 1, minWidth: 0,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                direction: 'rtl', textAlign: 'left',
-                fontSize: token.fontSizeSM, fontFamily: 'mono',
-            }}
-        >
-            <span style={{ direction: 'ltr', unicodeBidi: 'isolate' }}>
-                {dir && <span style={{ color: token.colorTextTertiary }}>{dir}</span>}
-                <span style={{ color: token.colorText }}>{base || path}</span>
-            </span>
-        </span>
-    )
-}
 
 /** +N -N 统计（绿增红删；二进制以标记替代计数） */
 function DiffStat({ additions, deletions, binary }: { additions: number; deletions: number; binary: boolean }) {
