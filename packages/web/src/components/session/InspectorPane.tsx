@@ -20,7 +20,8 @@ import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { PanelRightClose, Folder, FileSearch, FileDiff, Monitor, Maximize, Minimize, Plus } from 'lucide-react'
+import { PanelRightClose, Folder, FileDiff, Monitor, Maximize, Minimize, Plus } from 'lucide-react'
+import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
 import { GitReviewView } from '@/components/review/GitReviewView'
@@ -300,7 +301,12 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
                         </span>
                     ) : (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {tab.mode === 'file' ? <FileSearch size={14} /> : <Folder size={14} />}
+                            {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
+                            {tab.mode === 'file' ? (
+                                <FileTypeBadge path={tab.filePath ?? ''} size={14} />
+                            ) : (
+                                <Folder size={14} />
+                            )}
                             {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
                         </span>
                     )}

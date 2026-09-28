@@ -217,4 +217,28 @@ describe('GitReviewReader（真 git 集成）', () => {
         const chain = await store.listChain(SESSION_ID)
         expect(chain).toHaveLength(0)
     })
+
+    it('非文本兜底（双闸）：untracked 二进制 binary 标记正确；fileDiff 全文不吐二进制/超大内容', async () => {
+        // untracked 二进制：no-index numstat 的 add/del 列为 `- -`（路径列两段拼接），
+        // 条目须正确标 binary:true 且计数为 0
+        await writeFile(join(repoDir, 'logo.bin'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a]))
+        const data = GitReviewDataSchema.parse(await new GitReviewReader(repoDir).reviewData(SESSION_ID, store))
+        const entry = data.scopes.unstaged.files.find((f) => f.path === 'logo.bin')
+        expect(entry).toMatchObject({ kind: 'add', binary: true, additions: 0, deletions: 0 })
+
+        // 全文兜底闸：含 NUL → before/after 均为 null（不进全文通道），patch 不带内容
+        const binDiff = GitReviewFileDiffSchema.parse(await new GitReviewReader(repoDir).fileDiff({ scope: 'unstaged', path: 'logo.bin' }))
+        expect(binDiff.before).toBeNull()
+        expect(binDiff.after).toBeNull()
+        expect(binDiff.patch).not.toContain('PNG')
+
+        // 全文兜底闸：超过 MAX_TEXT_BYTES 的文本 → after 置 null
+        await write('huge.txt', `${'x'.repeat(4 * 1024 * 1024 + 1)}\n`)
+        const hugeDiff = GitReviewFileDiffSchema.parse(await new GitReviewReader(repoDir).fileDiff({ scope: 'unstaged', path: 'huge.txt' }))
+        expect(hugeDiff.after).toBeNull()
+
+        // 对照：小文本不受闸影响
+        const txtDiff = GitReviewFileDiffSchema.parse(await new GitReviewReader(repoDir).fileDiff({ scope: 'unstaged', path: 'new.txt' }))
+        expect(txtDiff.after).toBe('hello\nworld\n')
+    })
 })

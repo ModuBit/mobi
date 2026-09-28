@@ -15,9 +15,10 @@
  */
 
 /**
- * 审查视图组件测试（票05）：hook 注入假数据，不碰网络。清单渲染/统计/目录分组、
- * 文件切换（含默认选中）、空清单态、非 git unavailable 态、单文件查询的
- * 两树指针组装。DiffViewer 以桩替换（codemirror 在 jsdom 下无意义）。
+ * 审查视图组件测试（票05/06/07 + 布局重构）：hook 注入假数据，不碰网络。
+ * header（范围 Select + 统计）、平铺 Collapse 清单（默认全收起 + 点开懒加载查询）、
+ * 空清单态、非 git unavailable 态、单文件查询的两树指针组装、diff 文件树面板开合
+ * 与联动。DiffViewer 以桩替换（codemirror 在 jsdom 下无意义）。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -87,8 +88,18 @@ function makeDeps(overrides: {
     }
 }
 
+/** Collapse 迁移后 aria-expanded 挂在面板头（antd v6）上（头行 label 只承载测试钩子） */
+function expandedOf(row: HTMLElement): string | null {
+    return row.closest('.ant-collapse-header')?.getAttribute('aria-expanded') ?? null
+}
+
+/** 打开范围下拉（antd v6 Select 无 .ant-select-selector，root 即交互入口；选项挂载在打开后的 portal） */
+function openScopeDropdown() {
+    fireEvent.mouseDown(document.querySelector('.ant-select')!)
+}
+
 describe('GitReviewView（hook 注入）', () => {
-    it('清单渲染：统计行 + 目录分组 + kind 徽标；默认选中首个文件并发起两树查询', () => {
+    it('header 统计 + 清单默认全收起；点开才发起两树查询（懒加载）', () => {
         const queries: (GitReviewFileQuery | null)[] = []
         render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: 'old', after: 'new', patch: '' }, onQuery: (q) => queries.push(q) })} />)
 
@@ -101,20 +112,47 @@ describe('GitReviewView（hook 注入）', () => {
         expect(rows[1]!.textContent).toContain('src/deep/')
         expect(rows[1]!.textContent).toContain('a.ts')
 
-        // 默认选中首个文件：effect 首帧 null（未选）→ 选中后带两树指针的 last-turn 查询
+        // 默认全收起：无查询、无 diff 渲染
+        expect(queries.filter((q) => q !== null)).toHaveLength(0)
+        expect(expandedOf(rows[0]!)).toBe('false')
+        expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
+
+        // 点开即发起带两树指针的 last-turn 查询
+        fireEvent.click(rows[0]!)
         const issued = queries.filter((q) => q !== null)
         expect(issued).toHaveLength(1)
         expect(issued[0]).toEqual({ scope: 'last-turn', path: 'b.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+        expect(expandedOf(rows[0]!)).toBe('true')
         expect(screen.getByTestId('diff-viewer-stub').getAttribute('data-before')).toBe('old')
     })
 
-    it('点击另一文件切换 diff（目录分组不影响行定位）', () => {
+    it('单击另一文件追加展开（多开不互斥；懒加载只对展开行发起查询）', () => {
         const queries: (GitReviewFileQuery | null)[] = []
         render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: '', after: 'new', patch: '' }, onQuery: (q) => queries.push(q) })} />)
 
         const rows = screen.getAllByTestId('review-file-row')
+        // 初始全收起；点开两行 → 多开并存
+        fireEvent.click(rows[0]!)
         fireEvent.click(rows[1]!)
+        expect(expandedOf(rows[0]!)).toBe('true')
+        expect(expandedOf(rows[1]!)).toBe('true')
         expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+
+        // 再点同一行收起，另一行保持展开
+        fireEvent.click(rows[1]!)
+        expect(expandedOf(rows[1]!)).toBe('false')
+        expect(expandedOf(rows[0]!)).toBe('true')
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+    })
+
+    it('行操作「在标签页中打开」：调 workspaceStore.openFileTab，不冒泡切换展开', () => {
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: '', after: '', patch: '' } })} />)
+        const rows = screen.getAllByTestId('review-file-row')
+        const btn = rows[1]!.querySelector('button[aria-label="review.openInTab"]') as HTMLButtonElement
+        fireEvent.click(btn)
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs.some((t) => t.mode === 'file' && t.filePath === 'src/deep/a.ts')).toBe(true)
+        expect(expandedOf(rows[1]!)).toBe('false')
     })
 
     it('空清单：提示空态且无文件行', () => {
@@ -145,18 +183,21 @@ describe('GitReviewView（hook 注入）', () => {
                 deps={makeDeps({ data: DATA, fileDiff: { before: 'x', after: 'y', patch: '' }, onQuery: (q) => queries.push(q) })}
             />,
         )
-        // staged 档文件清单
-        expect(screen.getAllByTestId('review-file-row')).toHaveLength(1)
+        // staged 档文件清单；点开才查询（无两树指针）
+        const rows = screen.getAllByTestId('review-file-row')
+        expect(rows).toHaveLength(1)
+        fireEvent.click(rows[0]!)
         expect(queries.filter((q) => q !== null)).toEqual([{ scope: 'staged', path: 'staged-only.txt' }])
     })
 
-    it('无快照链：上一轮档禁用；兜底空态诚实（不装数据）', () => {
+    it('无快照链：上一轮档在下拉中禁用；内容区诚实空态（不装数据）', () => {
         const noChain: GitReviewData = { ...DATA, scopes: { ...DATA.scopes, 'last-turn': null } }
         render(<GitReviewView sessionId="s1" deps={makeDeps({ data: noChain })} />)
-        // 上档空态文案 + 右栏诚实空态
         expect(screen.getAllByText('review.noSnapshot').length).toBeGreaterThanOrEqual(1)
-        // 上一轮 Segmented 选项禁用
-        const disabled = screen.getAllByTestId('review-scope-switch')[0]!.querySelector('.ant-segmented-item-disabled')
+
+        openScopeDropdown()
+        // antd v6 下拉禁用项 class：.ant-select-item-option-disabled
+        const disabled = document.querySelector('.ant-select-item-option-disabled')
         expect(disabled).not.toBeNull()
         expect(disabled!.textContent).toContain('review.scope.lastTurn')
     })
@@ -179,6 +220,7 @@ describe('GitReviewView（hook 注入）', () => {
         const row = screen.getByTestId('review-file-row')
         expect(row.textContent).toContain('after.txt')
         expect(row.textContent).toContain('before.txt')
+        fireEvent.click(row)
         expect(queries.filter((q) => q !== null)[0]).toEqual({
             scope: 'last-turn', path: 'after.txt', previousPath: 'before.txt',
             baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40),
@@ -198,6 +240,7 @@ describe('GitReviewView（hook 注入）', () => {
             },
         }
         render(<GitReviewView sessionId="s1" deps={makeDeps({ data: big, fileDiff: { before: '', after: '', patch: '' } })} />)
+        fireEvent.click(screen.getByTestId('review-file-row'))
         expect(screen.getByTestId('review-too-big')).toBeDefined()
         expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
         // 点击入口 → 调 workspaceStore.openFileTab（新 file tab 激活）
@@ -206,16 +249,54 @@ describe('GitReviewView（hook 注入）', () => {
         expect(s.tabs.some((t) => t.mode === 'file' && t.filePath === 'huge.ts')).toBe(true)
     })
 
-    it('turn 结束驱动刷新：running true→false 触发 refetch（tab 常挂数据不陈旧）', () => {
-        const refetch = vi.fn()
-        const { rerender } = render(
-            <GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, running: false, refetch })} />,
-        )
-        // idle→running：不刷
-        rerender(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, running: true, refetch })} />)
-        expect(refetch).not.toHaveBeenCalled()
-        // running→idle（turn 结束）：刷
-        rerender(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, running: false, refetch })} />)
-        expect(refetch).toHaveBeenCalledTimes(1)
+    it('非文本条目：整行不可展开（无箭头、点击不发查询不出占位）', () => {
+        const withBin: GitReviewData = {
+            ...DATA,
+            scopes: {
+                ...DATA.scopes,
+                'last-turn': {
+                    files: [
+                        { path: '16pic.jpg', kind: 'add', additions: 0, deletions: 0 },
+                        { path: 'text.ts', kind: 'modify', additions: 2, deletions: 0 },
+                    ],
+                    stats: { files: 2, additions: 2, deletions: 0 },
+                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
+                },
+            },
+        }
+        const queries: (GitReviewFileQuery | null)[] = []
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: withBin, fileDiff: { before: '', after: 'x', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+
+        // 点开图片行：行不可展开——无查询、无 diff、无展开箭头
+        const rows = screen.getAllByTestId('review-file-row')
+        fireEvent.click(rows[0]!)
+        expect(queries.filter((q) => q !== null)).toHaveLength(0)
+        expect(expandedOf(rows[0]!)).toBe('false')
+        expect(rows[0]!.querySelector('.review-row-chevron')).toBeNull()
+        expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
+
+        // 文本行照常发查询
+        fireEvent.click(rows[1]!)
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'text.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+    })
+
+    it('diff 文件树面板：开合按钮显隐；点叶节点联动主列表展开对应行', () => {
+        const queries: (GitReviewFileQuery | null)[] = []
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: '', after: '', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+
+        expect(screen.queryByTestId('review-tree-panel')).toBeNull()
+        fireEvent.click(screen.getByTestId('review-tree-toggle'))
+        expect(screen.getByTestId('review-tree-panel')).toBeDefined()
+
+        // 树按目录层级呈现：deep 目录 + 叶节点（默认全展开）
+        expect(screen.getByText('deep')).toBeDefined()
+        const panel = screen.getByTestId('review-tree-panel')
+        // 叶节点标题含 kind 徽标字（textContent = 'Ma.ts'），按尾段匹配
+        const leaf = [...panel.querySelectorAll('.ant-tree-title')].find((el) => (el.textContent ?? '').endsWith('a.ts'))!
+        fireEvent.click(leaf.closest('.ant-tree-node-content-wrapper') ?? leaf)
+        const rows = screen.getAllByTestId('review-file-row')
+        const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
+        expect(expandedOf(target)).toBe('true')
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
     })
 })

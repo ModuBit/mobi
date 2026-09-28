@@ -31,7 +31,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import {
@@ -53,6 +53,17 @@ const execFileAsync = promisify(execFile)
 
 /** untracked 逐文件计数的上限（防超大仓库海量新文件打爆 exec） */
 const UNTRACKED_COUNT_CAP = 100
+
+/** 全文兜底闸上限（字节）：before/after 全文给 web 渲染，超过即不返回（web 落「无法呈现」） */
+const MAX_TEXT_BYTES = 4 * 1024 * 1024
+
+/** 全文兜底闸：git 同款二进制嗅探（内容含 NUL 字节）+ 大小上限（utf8 解码后按长度近似）。
+    patch 由 git diff 生成、二进制自动只出一行说明，不受此闸影响 */
+function asRenderableText(raw: string): string | null {
+    if (raw.length > MAX_TEXT_BYTES) return null
+    if (raw.includes('\0')) return null
+    return raw
+}
 
 type ScopeFiles = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: null }
 type LastTurnScope = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: { baseTree: string; headTree: string } } | null
@@ -168,11 +179,18 @@ export class GitReviewReader {
         const truncated = paths.length > UNTRACKED_COUNT_CAP
         const counted = truncated ? paths.slice(0, UNTRACKED_COUNT_CAP) : paths
         const files = await Promise.all(counted.map(async (path) => {
-            const stdout = await this.noIndexDiff(['diff', '--no-index', '--numstat', '-z', '--', '/dev/null', path])
-            const count = stdout ? parseNumstat(stdout).get(path) : undefined
-            return count
-                ? { path, kind: 'add' as const, ...count }
-                : { path, kind: 'add' as const, additions: 0, deletions: 0, binary: false }
+            // no-index numstat 的路径列是「 /dev/null <path>」两段拼接（-z 下无法与 parseNumstat
+            // 的 key 匹配，实证 2026-09-27）——单文件直取首行前两列，`-` 即二进制
+            const stdout = await this.noIndexDiff(['diff', '--no-index', '--numstat', '--', '/dev/null', path])
+            const cols = stdout?.split('\n')[0]?.split('\t') ?? []
+            const binary = cols[0] === '-' || cols[1] === '-'
+            return {
+                path,
+                kind: 'add' as const,
+                additions: binary ? 0 : Number.parseInt(cols[0] ?? '0', 10) || 0,
+                deletions: binary ? 0 : Number.parseInt(cols[1] ?? '0', 10) || 0,
+                binary,
+            }
         }))
         return { files: files.sort((a, b) => a.path.localeCompare(b.path)), truncated }
     }
@@ -221,17 +239,23 @@ export class GitReviewReader {
         })
     }
 
-    /** git show <rev>:<path>（目标不存在返回 null；rev 形如 tree sha / HEAD / 空=暂存区） */
+    /** git show <rev>:<path>（目标不存在返回 null；rev 形如 tree sha / HEAD / 空=暂存区）。
+     *  先 cat-file -s 卡大小再读，读出后过文本闸——二进制/超大对象不进全文 */
     private async show(rev: string, path: string): Promise<string | null> {
-        return await this.gitAtRoot(['show', `${rev}:${path}`])
+        const sizeOut = await this.gitAtRoot(['cat-file', '-s', `${rev}:${path}`])
+        if (sizeOut === null || Number.parseInt(sizeOut.trim(), 10) > MAX_TEXT_BYTES) return null
+        const out = await this.gitAtRoot(['show', `${rev}:${path}`])
+        return out === null ? null : asRenderableText(out)
     }
 
-    /** 盘上文件（repo 相对路径）；不存在返回 null */
+    /** 盘上文件（repo 相对路径）；不存在/超限/二进制返回 null */
     private async readWorktree(path: string): Promise<string | null> {
         const root = await this.root()
         if (!root) return null
+        const full = join(root, path)
         try {
-            return await readFile(join(root, path), 'utf8')
+            if ((await stat(full)).size > MAX_TEXT_BYTES) return null
+            return asRenderableText(await readFile(full, 'utf8'))
         } catch {
             return null
         }

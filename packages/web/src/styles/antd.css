@@ -473,12 +473,157 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     color: var(--ant-image-preview-operation-color-disabled);
 }
 
-/* 产物 iframe 自适应宽度需要真实容器宽：borderless 气泡内容默认 shrink-to-fit，
-   会把子级 width:100% 解析成「内容历史宽度」（实测锁死 922px）。含产物 iframe 的
-   气泡内容链强制撑满（:has 现代浏览器全支持；移动端 PWA 同为现代内核）。
-   选择器认 artifact-inline-fullwidth 语义布局钩子（HtmlInline 声明）——布局依赖
-   不挂 data-testid（那是测试钩子，被布局依赖属隐式升格，改名即静默塌布局） */
+/* 产物 iframe / turn-diff 卡需要真实容器宽：borderless 气泡内容默认 shrink-to-fit，
+   会把子级 width:100% 解析成「内容历史宽度」（实测锁死 922px）。含两者的气泡内容链
+   强制撑满（:has 现代浏览器全支持；移动端 PWA 同为现代内核）。
+   选择器认 artifact-inline-fullwidth / turn-diff-fullwidth 语义布局钩子（各组件根节点
+   声明）——布局依赖不挂 data-testid（那是测试钩子，被布局依赖属隐式升格，改名即静默塌布局） */
 .chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-body,
-.chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-content {
+.chat-scroll-container .ant-bubble:has(.artifact-inline-fullwidth) .ant-bubble-content,
+.chat-scroll-container .ant-bubble:has(.turn-diff-fullwidth) .ant-bubble-body,
+.chat-scroll-container .ant-bubble:has(.turn-diff-fullwidth) .ant-bubble-content {
     width: 100%;
+}
+
+/* turn-diff 卡的内容层链比产物 iframe 多一层（CustomBlockView wrapper 是 content 的
+   flex item，flex item 默认 shrink-to-fit，会再次把 100% 收缩掉），子级一并撑满 */
+.chat-scroll-container .ant-bubble:has(.turn-diff-fullwidth) .ant-bubble-content > * {
+    width: 100%;
+}
+
+/* 审查视图 Collapse 文件清单：ghost 去边框，仅留 hairline 行分隔；头部压到行密度。
+   自带展开图标列关闭（expandIcon=null，箭头在行头统计右侧），残留容器隐藏。
+   统计旁的展开箭头与行尾操作（复制路径/标签页打开）桌面 hover/focus 显现，
+   触屏无 hover 常显；transition 用 antd css-var token（DESIGN.md 同纪律） */
+.review-collapse > .ant-collapse-item > .ant-collapse-header {
+    padding: 6px 12px;
+}
+/* ---------- 审查 diff：未变更区折叠（DiffViewer 自研 widget） ----------
+   gap 常驻由块 widget 覆盖，行内容由 widget 自渲染；展开/收起 = 同一 DOM 上
+   grid-template-rows auto 0fr ↔ auto 1fr 的成对过渡（DESIGN.md Motion：双向缓动、
+   可打断），时长/曲线走 antd token；行号与图标负偏移到 gutter 列——gutter 是
+   sticky + z-index 200 且在 content 之后渲染，浮层必须 201 才能压过（实证）。 */
+.cm-unchanged {
+    display: grid;
+    grid-template-rows: auto 0fr;
+    transition: grid-template-rows var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease);
+}
+.cm-unchanged.cm-unchanged-expanded {
+    grid-template-rows: auto 1fr;
+}
+@media (prefers-reduced-motion: reduce) {
+    .cm-unchanged {
+        transition: none;
+    }
+}
+.cm-unchanged-clip {
+    overflow: hidden;
+    min-height: 0;
+    /* 向左扩一个 gutter 宽度（widget 在 toDOM 实测写入 --cm-unchanged-extend），
+       让负偏移进 gutter 列的行号不被 overflow:hidden 裁掉；padding 抵消 margin */
+    margin-left: calc(-1 * var(--cm-unchanged-extend, 64px));
+    padding-left: var(--cm-unchanged-extend, 64px);
+}
+.cm-collapse-bar,
+.cm-recollapse-chip {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 12px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--ant-color-text-tertiary);
+    font-size: 11px;
+    transition: color var(--ant-motion-duration-fast, 0.1s) ease;
+}
+.cm-collapse-bar:hover,
+.cm-recollapse-chip:hover {
+    color: var(--ant-color-text);
+}
+/* 交互禁用态（UNCHANGED_INTERACTIVE=false）：手型还原、hover 不点亮 */
+.cm-collapse-bar.cm-unchanged-static,
+.cm-recollapse-chip.cm-unchanged-static {
+    cursor: default;
+}
+.cm-collapse-bar.cm-unchanged-static:hover,
+.cm-recollapse-chip.cm-unchanged-static:hover {
+    color: var(--ant-color-text-tertiary);
+}
+.cm-collapse-rule {
+    flex: 1;
+    height: 1px;
+    background-color: var(--ant-color-border-secondary);
+}
+.cm-collapse-label {
+    white-space: nowrap;
+}
+.cm-collapse-icon {
+    position: absolute;
+    right: calc(100% + 4px);
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    z-index: 201;
+}
+.cm-unchanged-line {
+    position: relative;
+}
+.cm-unchanged-no {
+    position: absolute;
+    /* 度量复刻真实行号 cell（minWidth 40 + padding 5/3 + 右缘距内容区 3px），数字同列 */
+    right: calc(100% + 3px);
+    min-width: 40px;
+    box-sizing: border-box;
+    padding: 0 3px 0 5px;
+    text-align: right;
+    color: var(--ant-color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    z-index: 201;
+}
+.review-collapse .ant-collapse-expand-icon {
+    display: none;
+}
+.review-collapse .review-row-actions,
+.review-collapse .review-row-chevron {
+    opacity: 0;
+    transition: opacity var(--ant-motion-duration-fast, 0.1s) ease;
+}
+.review-collapse .review-file-row:hover .review-row-actions,
+.review-collapse .review-file-row:hover .review-row-chevron,
+.review-collapse .review-file-row:focus-within .review-row-actions,
+.review-collapse .review-file-row:focus-within .review-row-chevron {
+    opacity: 1;
+}
+@media (hover: none) {
+    .review-collapse .review-row-actions,
+    .review-collapse .review-row-chevron {
+        opacity: 1;
+    }
+}
+
+/* 输入类聚焦环彻底关停（2026-09-27，用户多次反馈"讨厌边框"）
+   token 路径（controlOutlineWidth: 0）只对吃 CSS 变量的规则生效——Select 的 focus
+   boxShadow 是 JS 端模板字符串编译期拼死、Input 的部分状态类同理，token 归零压不住
+   全部路径。此处 unlayered 规则按选择器直接压平（mobi unlayered 天然胜过 antd 的
+   :where 层），聚焦反馈只保留 filled 淡底变化。
+   范围=输入类基础件自身的 selector/box：Sender 的 focus 反馈在外层 .ant-sender-main
+   （不受影响），Select 下拉浮层不涉及。 */
+.ant-select,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number {
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* filled 聚焦边框钉死透明：filled 平时 borderColor: transparent，但 focus 改写
+   activeBorderColor、disabled 改写 colorBorderDisabled（Select v6 样式直接作用于根，
+   无 .ant-select-selector 内层）——这是"focus 后还有边框"的真凶，boxShadow 只是
+   配套光环。error/warning 状态提示还有背景色与前缀色兜底，不依赖边框 */
+.ant-input-filled,
+.ant-input-affix-wrapper-filled,
+.ant-input-number-filled,
+.ant-select-filled {
+    border-color: transparent !important;
 }

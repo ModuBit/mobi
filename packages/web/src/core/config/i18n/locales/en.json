@@ -461,7 +461,9 @@
             "noChanges": "No file changes in this turn",
             "approximate": "Approximate (non-git directory)",
             "binary": "binary",
-            "review": "Review"
+            "review": "Review",
+            "showMoreFiles": "Show {{count}} more files",
+            "collapse": "Collapse"
         },
         "codeBlockPlain": "Plain text"
     },
@@ -831,12 +833,17 @@
         "loading": "Loading…",
         "unavailable": "This session's directory is not a git repository, or no snapshot to review",
         "noDiff": "Diff unavailable (binary or missing content)",
+        "unchangedLines": "{{n}} unchanged lines",
+        "collapseUnchanged": "Collapse unchanged lines",
         "diffAria": "File diff view",
         "title": "Review",
         "noSnapshot": "No turn snapshots yet for this session; they appear once turns change files",
         "noSnapshotChanges": "No file changes in this turn",
         "truncated": "Too many untracked files; some were not counted",
         "tooBig": "File too large; diff rendering degraded",
-        "openInViewer": "Open in file viewer"
+        "openInViewer": "Open in file viewer",
+        "openInTab": "Open in tab",
+        "filterPlaceholder": "Filter files",
+        "fileTree": "Changed files tree"
     }
 }
