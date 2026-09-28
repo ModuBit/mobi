@@ -56,10 +56,12 @@ import { ActionLink } from '@/components/ui/ActionLink'
 import { FileChip } from '@/components/ui/FileChip'
 
 describe('ActionLink 文件类型徽章', () => {
-    it('file/open：前置扩展名色块（aria-hidden，不在 accessible name 内）', () => {
+    it('file/open：前置扩展名徽章（aria-hidden，不在 accessible name 内）', () => {
         render(<ActionLink uri="mobi://file/open?path=src%2FApp.tsx">App.tsx</ActionLink>)
         const link = screen.getByRole('link', { name: 'App.tsx' })
-        expect(link).toHaveTextContent('TSX')
+        // 常用扩展名（ts）画 lucide 类型图标而非文本缩写
+        expect(link.querySelector('svg')).toBeInTheDocument()
+        expect(link).not.toHaveTextContent('TSX')
     })
 
     it('file/open 目录路径：画 glyph 徽章（svg）而非文字缩写', () => {
@@ -78,8 +80,9 @@ describe('ActionLink 文件类型徽章', () => {
 
 describe('FileChip 文件类型徽章', () => {
     it('file/open URI chip：前置徽章 + 路径文本', () => {
-        render(<FileChip chip={{ text: 'src/index.ts', uri: 'mobi://file/open?path=src%2Findex.ts' }} />)
-        expect(screen.getByText('TS')).toBeInTheDocument()
+        const { container } = render(<FileChip chip={{ text: 'src/index.ts', uri: 'mobi://file/open?path=src%2Findex.ts' }} />)
+        // ts 走 lucide 类型图标模式（svg），不再输出文本缩写
+        expect(container.querySelector('svg')).toBeInTheDocument()
         expect(screen.getByText('src/index.ts')).toBeInTheDocument()
     })
 

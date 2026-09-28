@@ -319,3 +319,23 @@ h1, h2, h3, h4 {
     background: var(--ant-color-fill);
     border-color: var(--ant-color-border);
 }
+
+/* 文件类型徽章前景双档（FileTypeBadge 文本色块形态）：EXT_BADGES 取 GitHub 语言色
+   （按浅底设计），dark 档深灰底上暗色系（css 紫 #563D7C、C/H 灰 #666 等）对比不足
+   看不清——混白 40% 提亮恢复可读性；light 档保持原色。目录琥珀 #E8A33D 两档通亮，
+   不走此变量。主题档位放 CSS（[data-theme]）而非组件读 store：徽章保持纯展示组件，
+   不把 uiStore/i18n 初始化链拖进轻量消费方（文件树测试因此全挂过，2026-09-27） */
+.file-type-badge {
+    --file-type-badge-fg: var(--badge-fg-base);
+}
+html[data-theme='dark'] .file-type-badge {
+    --file-type-badge-fg: color-mix(in srgb, var(--badge-fg-base) 60%, white);
+}
+
+/* Material 文件图标形态（fileTypeIcons.generated.ts 内联 SVG）：多彩自带配色，
+   明暗主题通用。尺寸 12px 于 14px 盒内（上下留 1px 呼吸），block 防 baseline 缝隙 */
+.file-type-icon svg {
+    width: 12px;
+    height: 12px;
+    display: block;
+}

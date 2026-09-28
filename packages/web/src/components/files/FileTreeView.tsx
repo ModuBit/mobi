@@ -19,7 +19,8 @@ import styled from '@emotion/styled'
 import { Tree, Empty, Skeleton, Input, Button, type TreeProps } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { DataNode } from 'antd/es/tree'
-import { FolderOpen, FolderClosed, File as FileIcon, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
+import { FolderOpen, FolderClosed, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
+import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
 import { LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -427,7 +428,8 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                                 </>
                             )
                         }
-                        return <FileIcon size={14} />
+                        // 文件：扩展名类型徽章（TS 色块/通用 glyph），与工具行/检视 tab 同源
+                        return <FileTypeBadge path={f.path} size={14} />
                     },
                     isLeaf: f.type === 'file',
                 }

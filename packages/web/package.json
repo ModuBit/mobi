@@ -8,7 +8,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen:file-type-icons": "bun run scripts/generate-file-type-icons.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.4",

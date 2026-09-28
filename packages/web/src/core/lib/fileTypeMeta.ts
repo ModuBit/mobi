@@ -30,7 +30,14 @@
  */
 
 export type FileTargetType =
-    | { kind: 'file'; /** 徽章缩写（如 TS / JSON）；null = 无扩展名，展示通用文件 glyph */ label: string | null; color: string }
+    | {
+          kind: 'file'
+          /** 扩展名（小写；空串 = 无扩展名，裸 dotfile 或惯例文件名）——展示层映射类型 icon 用 */
+          ext: string
+          /** 徽章缩写（如 TS / JSON）；null = 无扩展名，展示通用文件 glyph */
+          label: string | null
+          color: string
+      }
     | { kind: 'directory' }
 
 /** 扩展名 → 徽章配色表。色值固定不随主题（品牌色语义，白字前景需中低明度底色） */
@@ -104,7 +111,7 @@ export function resolveFileType(path: string): FileTargetType | null {
     // 隐藏 dotfile（`.env`）有 `.`，落到文件分支
     if (!base.includes('.')) {
         if (KNOWN_EXTENSIONLESS_FILES.has(base.toLowerCase())) {
-            return { kind: 'file', label: null, color: FALLBACK_COLOR }
+            return { kind: 'file', ext: '', label: null, color: FALLBACK_COLOR }
         }
         return { kind: 'directory' }
     }
@@ -113,9 +120,9 @@ export function resolveFileType(path: string): FileTargetType | null {
     // 裸 dotfile（`.env` / `.gitignore`）：唯一 `.` 在开头 → 无扩展名，通用文件 glyph
     const ext = lastDot > 0 ? base.slice(lastDot + 1).toLowerCase() : ''
 
-    if (ext === '') return { kind: 'file', label: null, color: FALLBACK_COLOR }
+    if (ext === '') return { kind: 'file', ext: '', label: null, color: FALLBACK_COLOR }
     const known = EXT_BADGES[ext]
-    if (known) return { kind: 'file', label: known.label, color: known.color }
+    if (known) return { kind: 'file', ext, label: known.label, color: known.color }
     // 未入表的扩展名：中性色 + 扩展名大写截 4 字符（png→PNG、csv→CSV）
-    return { kind: 'file', label: ext.toUpperCase().slice(0, 4), color: FALLBACK_COLOR }
+    return { kind: 'file', ext, label: ext.toUpperCase().slice(0, 4), color: FALLBACK_COLOR }
 }

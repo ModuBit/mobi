@@ -24,14 +24,14 @@ import { resolveFileType } from '@/core/lib/fileTypeMeta'
 
 describe('resolveFileType', () => {
     it('已知扩展名：返回表内缩写与配色', () => {
-        expect(resolveFileType('src/App.tsx')).toEqual({ kind: 'file', label: 'TSX', color: '#3178C6' })
-        expect(resolveFileType('README.md')).toEqual({ kind: 'file', label: 'MD', color: '#4A7CA5' })
-        expect(resolveFileType('package.json')).toEqual({ kind: 'file', label: '{ }', color: '#B08800' })
+        expect(resolveFileType('src/App.tsx')).toEqual({ kind: 'file', ext: 'tsx', label: 'TSX', color: '#3178C6' })
+        expect(resolveFileType('README.md')).toEqual({ kind: 'file', ext: 'md', label: 'MD', color: '#4A7CA5' })
+        expect(resolveFileType('package.json')).toEqual({ kind: 'file', ext: 'json', label: '{ }', color: '#B08800' })
     })
 
     it('未知扩展名：中性色 + 大写截 4 字符', () => {
-        expect(resolveFileType('a/b/data.csv')).toEqual({ kind: 'file', label: 'CSV', color: '#7A7A7A' })
-        expect(resolveFileType('photo.abcdefg')).toEqual({ kind: 'file', label: 'ABCD', color: '#7A7A7A' })
+        expect(resolveFileType('a/b/data.csv')).toEqual({ kind: 'file', ext: 'csv', label: 'CSV', color: '#7A7A7A' })
+        expect(resolveFileType('photo.abcdefg')).toEqual({ kind: 'file', ext: 'abcdefg', label: 'ABCD', color: '#7A7A7A' })
     })
 
     it('扩展名大小写不敏感（A.TS 与 a.ts 同判）', () => {
@@ -44,18 +44,18 @@ describe('resolveFileType', () => {
     })
 
     it('隐藏 dotfile 是文件而非目录：.env 无扩展名 → 通用 glyph（label null）', () => {
-        expect(resolveFileType('.env')).toEqual({ kind: 'file', label: null, color: '#7A7A7A' })
-        expect(resolveFileType('.gitignore')).toEqual({ kind: 'file', label: null, color: '#7A7A7A' })
+        expect(resolveFileType('.env')).toEqual({ kind: 'file', ext: '', label: null, color: '#7A7A7A' })
+        expect(resolveFileType('.gitignore')).toEqual({ kind: 'file', ext: '', label: null, color: '#7A7A7A' })
     })
 
     it('无扩展名的惯例文件名（Dockerfile/Makefile）判为文件而非目录（KNOWN_EXTENSIONLESS_FILES 单源）', () => {
-        expect(resolveFileType('Dockerfile')).toEqual({ kind: 'file', label: null, color: '#7A7A7A' })
+        expect(resolveFileType('Dockerfile')).toEqual({ kind: 'file', ext: '', label: null, color: '#7A7A7A' })
         expect(resolveFileType('scripts/Makefile').kind).toBe('file')
         expect(resolveFileType('x/Makefile').kind).toBe('file')
     })
 
     it('多点文件取最后一个 `.`（app.test.ts → TS）', () => {
-        expect(resolveFileType('app.test.ts')).toEqual({ kind: 'file', label: 'TS', color: '#3178C6' })
+        expect(resolveFileType('app.test.ts')).toEqual({ kind: 'file', ext: 'ts', label: 'TS', color: '#3178C6' })
     })
 
     it('空路径 / 纯斜杠：返回 null（展示层不画徽章）', () => {
