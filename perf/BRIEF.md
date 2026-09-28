@@ -60,8 +60,15 @@ mobi 是自托管局域网 App（浏览器 ↔ Hub 同机房/同机），网络�
 
 ## 棘轮
 
-`bench/ratchet.mjs` 对照 `bench/caps.json`（当前 p75 上限），只许降不许升；
-超限退出码 1，供后续接入 CI。`--update` 刷新上限（需在确认无退化时手动执行）。
+两层，按指标的可比性分家：
+
+- **体积棘轮**（CI 常驻，`.github/workflows/ci.yml` 的 `bundle-size` job）：
+  `bench/size.mjs` 对照 `bench/size-caps.json` 校验构建产物 JS 体积
+  （totalJs / criticalJs / maxChunk，+5% 头寸）。构建字节是确定性指标，
+  CI 硬件浮动不影响；运行时 p75 的跨 run 绝对比较是「分开时段测」的假对比，不做。
+- **p75 棘轮**（本机手动）：`bench/ratchet.mjs` 对照 `bench/caps.json`（当前 p75
+  上限），只许降不许升；超限退出码 1。`--update` 刷新上限（需在确认无退化时手动执行）。
+  CI 不跑浏览器——需要 A/B 相对比较时应做配对测（`--url-b`），独立工作流按需触发。
 
 ## 上线与回滚
 

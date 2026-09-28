@@ -43,6 +43,18 @@ jobs:
       # 死码防线：零引用文件/依赖/坏 import 回潮即 CI 失败（export 面暂 off，清单见 .knip.json）
       - run: bun run lint:knip
 
+  # 体积棘轮（perf/基线.md）。构建产物字节数是确定性指标，能拦「bundle 悄悄变大」；
+  # 运行时 p75 棘轮因 CI 硬件浮动不做跨 run 比较（假对比），留在本机手动跑
+  # （bench.mjs + ratchet.mjs + caps.json），方法论见 perf/BRIEF.md
+  bundle-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run build:web
+      - run: bun perf/bench/size.mjs
+
   # Ir 指令数棘轮（docs/conventions/performance.md）。诚实边界：Ir↔墙钟相关性验证
   # 尚未完成，本门禁以 2% 容差作「回潮绊网」起步；墙钟数字同步打印积累相关性证据，
   # 验证成立后收紧容差。基线文件缺失时本 job 失败并提示运行 bench-baseline 工作流。
