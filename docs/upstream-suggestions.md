@@ -2,6 +2,21 @@
 
 SDK / Claude Code 升级附带的新能力挖掘记录（`/upgrade-deps` 第八步产出）。
 
+## 2026-09-28 · SDK 0.3.278→0.3.283 / CC 2.1.278→2.1.283
+
+| 功能名 | 出处 | 对 mobi 的价值 | 建议落地位置 | 优先级 | 状态 |
+|---|---|---|---|---|---|
+| `getSessionMessages()` / `forkSession()` 不再返回/复制 rewound-away 分支（末分支止于 meta 行或 local command 行时） | SDK 0.3.283 | 直接受益零改动：fork-on-result 与 resume 的消息复制/回放完整性再加固（rewind 后分叉不再带错分支） | — | 高 | 已随升级自动获得（E2E 流式+刷新回放验证通过） |
+| `sdk.mjs` 瘦身 1.47MB→0.97MB（不再打包未用依赖）+ CLI 提前应答 host initialize + in-process MCP 握手内置 | SDK 0.3.281/0.3.282 | 直接受益零改动：二进制体积与 `query()` 会话启动延迟双降 | — | 高 | 已随升级自动获得 |
+| `system/informational` 消息进流（turn 内 warnings/notices 不再丢弃） | SDK 0.3.283 | 直接受益零改动：CC 侧提示（如 auto-mode 计费通知）可落库可查。E2E 实证：informational 行正常落库（type=system/subtype=informational），web 归一化无对应渲染分支自动忽略，管线无扰动 | — | 中 | 已验证（零改动） |
+| `conversation_reset` 帧新增 `trigger` / `user_message_uuid` / `timestamp` | SDK 0.3.281 | 填补已知短板：claudeRemote.ts 注释明确「该消息无法区分 /clear、plan-mode exit、fresh-session 三种流，故不挂接水位清空（plan 退出会误清）」——`trigger` 字段正好补上区分能力，水位清空可从「只认 specialCommand 路径」放宽为「trigger 权威判定」，plan-mode 退出场景也能正确清空 | cli claudeRemote.ts conversation_reset 分支 + shared 帧类型加字段 | 中 | 待做（等真实需求：当前 specialCommand 路径已覆盖 mobi 自己的 /clear） |
+| `@anthropic-ai/claude-agent-sdk/core` 子入口（query/MCP 工具/session 变更，用宿主安装的 zod 与 MCP SDK） | SDK 0.3.282 | 全新能力：cli 二进制（bun compile）可换 core 入口减小打包体积、消除 SDK 内嵌 zod 与 workspace zod 的双份 | cli claudeRemote.ts 等 import 面迁移 | 中低 | 待评估（迁移面广，收益主要是体积；二进制体积当前非痛点） |
+| `prewarm()` / `SpareProcess.claim()`（alpha：会话未知时预启动进程，后绑 folder+options） | SDK 0.3.282 | 全新能力：唤醒/新建会话/分叉激活的进程冷启动可被预热掩盖（ttft 8.9s 中 spawn 占比可观）；alpha API，等稳定 | cli 会话创建编排（dormancy 唤醒 / fork 管线） | 低 | 观望（alpha，等上游转正） |
+| `plugin_errors` 入 `SDKSystemMessage`（system/init 带加载失败的 `--plugin-dir` path） | SDK 0.3.283 | 增强现有功能：「/ 面板丢插件命令」竞态（capabilityDiscovery init 快照 vs 异步注册）的归因诊断信号——插件加载失败从此有结构化可查证据，不再靠猜 | cli capabilityDiscovery 记录 init.plugin_errors → 诊断日志/调试面板 | 低 | 待做（竞态复现时作为诊断抓手） |
+| `verbatimPrompts`（prompt 原样投递：不展开 @path、不分发 slash 命令） | SDK 0.3.280 | 核实：mobi 投递路径依赖 SDK 正常解析（slash 特殊命令、@ 引用），原样投递无场景；未来「原样转发外部内容防注入」可考虑 | — | 低 | 不采纳（无场景） |
+| `managedSettings` 支持 `strictKnownMarketplaces` / `blockedMarketplaces` | SDK 0.3.282 | 核实：mobi 无 managedSettings 下发场景（单用户自托管） | — | 低 | 不采纳 |
+| `fireReason` task-notification origin + `CLAUDE_CODE_HOST_SCHEDULED_RUN` | SDK 0.3.280 | 核实：mobi 自动化是 hub 侧定时派活（自建调度），非 CC 内部 scheduled-task 机制，该 origin 标记不适用 | — | 低 | 不采纳 |
+
 
 ## 2026-09-11 · SDK 0.3.259→0.3.267 / CC 2.1.259→2.1.267
 
