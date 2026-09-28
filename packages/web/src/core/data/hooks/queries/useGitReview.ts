@@ -29,6 +29,8 @@ export interface ReviewDataResult {
     data: GitReviewData | undefined
     error: string | null
     isLoading: boolean
+    /** 总览拉取时间（ms）——单文件 diff 缓存的失效版本源：总览每次刷新，展开行 diff 全部重查 */
+    updatedAt: number
     refetch: () => void
 }
 
@@ -52,6 +54,7 @@ export function useGitReviewData(sessionId: string): ReviewDataResult {
         data: query.data?.data,
         error: query.data?.error ?? (query.error ? String(query.error) : null),
         isLoading: query.isLoading,
+        updatedAt: query.dataUpdatedAt,
         refetch: () => void query.refetch(),
     }
 }
@@ -62,13 +65,13 @@ export interface ReviewFileDiffResult {
     isLoading: boolean
 }
 
-/** 单文件 diff 三件套；query 为 null 时不拉（未选文件 / 无两树指针）。
- *  last-turn 档两树指针并入缓存 key——新一轮后指针变了旧 diff 自动失效 */
-export function useGitReviewFileDiff(sessionId: string, query: GitReviewFileQuery | null): ReviewFileDiffResult {
+/** 单文件 diff 三件套；query 为 null 时不拉（未选文件）。
+ *  version = 审查总览的拉取时间——协议只发 {scope, path}，指针已收口到 CLI；
+ *  总览刷新（新一轮完成/手动 refetch）→ version 变 → 展开行 diff 缓存自动失效重查 */
+export function useGitReviewFileDiff(sessionId: string, query: GitReviewFileQuery | null, version: number): ReviewFileDiffResult {
     const api = useMobiApi()
-    const trees = query?.scope === 'last-turn' ? `${query.baseTree}:${query.headTree}` : ''
     const q = useQuery({
-        queryKey: queryKeys.gitReviewFile(sessionId, query?.scope ?? '', query?.path ?? '', trees),
+        queryKey: queryKeys.gitReviewFile(sessionId, query?.scope ?? '', query?.path ?? '', String(version)),
         queryFn: async () => {
             if (!query) return null
             const res = await api.sessions.gitReviewFile(sessionId, query)

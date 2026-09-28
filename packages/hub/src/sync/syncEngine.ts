@@ -972,7 +972,7 @@ export class SyncEngine {
     /** git 审查单文件 diff 三件套 */
     async gitReviewFile(sessionId: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
         const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.rpcGateway.machineGitReviewFile(machineId, cwd, query)
+        return await this.rpcGateway.machineGitReviewFile(machineId, cwd, sessionId, query)
     }
 
     /** machine 通道分片读文件（同上） */

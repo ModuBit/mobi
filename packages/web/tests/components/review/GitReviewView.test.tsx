@@ -73,8 +73,8 @@ function makeDeps(overrides: {
     refetch?: ReturnType<typeof vi.fn>
 }): GitReviewDeps {
     return {
-        useReviewData: () => ({ data: overrides.data, error: overrides.error ?? null, isLoading: overrides.isLoading ?? false, refetch: overrides.refetch ?? (() => {}) }),
-        useFileDiff: (_sessionId: string, query: GitReviewFileQuery | null) => {
+        useReviewData: () => ({ data: overrides.data, error: overrides.error ?? null, isLoading: overrides.isLoading ?? false, updatedAt: 0, refetch: overrides.refetch ?? (() => {}) }),
+        useFileDiff: (_sessionId: string, query: GitReviewFileQuery | null, _version: number) => {
             overrides.onQuery?.(query)
             return {
                 data: overrides.fileDiff
@@ -117,11 +117,11 @@ describe('GitReviewView（hook 注入）', () => {
         expect(expandedOf(rows[0]!)).toBe('false')
         expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
 
-        // 点开即发起带两树指针的 last-turn 查询
+        // 点开即发起 last-turn 查询（协议只含 scope+path，两树由 CLI 解析）
         fireEvent.click(rows[0]!)
         const issued = queries.filter((q) => q !== null)
         expect(issued).toHaveLength(1)
-        expect(issued[0]).toEqual({ scope: 'last-turn', path: 'b.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+        expect(issued[0]).toEqual({ scope: 'last-turn', path: 'b.ts' })
         expect(expandedOf(rows[0]!)).toBe('true')
         expect(screen.getByTestId('diff-viewer-stub').getAttribute('data-before')).toBe('old')
     })
@@ -136,13 +136,13 @@ describe('GitReviewView（hook 注入）', () => {
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[0]!)).toBe('true')
         expect(expandedOf(rows[1]!)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts' })
 
         // 再点同一行收起，另一行保持展开
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[1]!)).toBe('false')
         expect(expandedOf(rows[0]!)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts' })
     })
 
     it('行操作「在标签页中打开」：调 workspaceStore.openFileTab，不冒泡切换展开', () => {
@@ -202,7 +202,7 @@ describe('GitReviewView（hook 注入）', () => {
         expect(disabled!.textContent).toContain('review.scope.lastTurn')
     })
 
-    it('重命名（票07）：清单行成对呈现旧名；查询携带 previousPath', () => {
+    it('重命名（票07）：清单行成对呈现旧名；查询只含 scope+path（旧路径由 CLI 自解析）', () => {
         const renames: GitReviewData = {
             ...DATA,
             scopes: {
@@ -221,10 +221,7 @@ describe('GitReviewView（hook 注入）', () => {
         expect(row.textContent).toContain('after.txt')
         expect(row.textContent).toContain('before.txt')
         fireEvent.click(row)
-        expect(queries.filter((q) => q !== null)[0]).toEqual({
-            scope: 'last-turn', path: 'after.txt', previousPath: 'before.txt',
-            baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40),
-        })
+        expect(queries.filter((q) => q !== null)[0]).toEqual({ scope: 'last-turn', path: 'after.txt' })
     })
 
     it('大 diff（票07）：超阈值降级为「文件过大」+ 跳转文件查看器入口', () => {
@@ -277,7 +274,7 @@ describe('GitReviewView（hook 注入）', () => {
 
         // 文本行照常发查询
         fireEvent.click(rows[1]!)
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'text.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'text.ts' })
     })
 
     it('diff 文件树面板：开合按钮显隐；点叶节点联动主列表展开对应行', () => {
@@ -297,6 +294,6 @@ describe('GitReviewView（hook 注入）', () => {
         const rows = screen.getAllByTestId('review-file-row')
         const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
         expect(expandedOf(target)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) })
+        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts' })
     })
 })

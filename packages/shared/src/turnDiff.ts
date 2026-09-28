@@ -106,12 +106,13 @@ export const GitReviewDataSchema = z.object({
 })
 export type GitReviewData = z.infer<typeof GitReviewDataSchema>
 
-/** 单文件 diff 查询：工作区三档按 scope 算基线；last-turn 用两树指针（无服务器状态）。
- *  previousPath：rename 条目的旧路径——基线侧取旧路径读 before（新路径在基线树不存在） */
-export const GitReviewFileQuerySchema = z.discriminatedUnion('scope', [
-    z.object({ scope: z.literal('last-turn'), path: z.string().min(1), previousPath: z.string().min(1).optional(), baseTree: z.string().min(1), headTree: z.string().min(1) }),
-    z.object({ scope: z.enum(['uncommitted', 'unstaged', 'staged']), path: z.string().min(1) }),
-])
+/** 单文件 diff 查询：四档统一 {scope, path}——last-turn 的两树解析由 CLI 侧从快照链
+ *  完成（链在它手里，浏览器不传树指针）；rename 旧路径同样由 CLI 从 diff 条目自解析。
+ *  陈旧性由 web 缓存键携带审查总览的刷新版本（协议外元数据，不进请求体） */
+export const GitReviewFileQuerySchema = z.object({
+    scope: z.enum(['last-turn', 'uncommitted', 'unstaged', 'staged']),
+    path: z.string().min(1),
+})
 export type GitReviewFileQuery = z.infer<typeof GitReviewFileQuerySchema>
 
 /** 单文件 diff 三件套（patch 给统计与降级、before/after 全文给渲染，ZCode GitDiffResult 同款） */

@@ -257,8 +257,10 @@ export class GitReviewReader {
         }
     }
 
-    /** 单文件 diff 三件套（patch 统计/降级用，before/after 全文给 @codemirror/merge 渲染） */
-    async fileDiff(query: GitReviewFileQuery): Promise<unknown> {
+    /** 单文件 diff 三件套（patch 统计/降级用，before/after 全文给 @codemirror/merge 渲染）。
+     *  last-turn 档的两树与 rename 旧路径由 CLI 从快照链解析（lastTurnDiff 单源），
+     *  浏览器只发 {scope, path}——指针不进协议 */
+    async fileDiff(query: GitReviewFileQuery, store: TurnSnapshotStore | null, sessionId: string): Promise<unknown> {
         if (!GitReviewReader.isSafeRepoRelative(query.path)) {
             throw new Error(`Invalid path: ${query.path}`)
         }
@@ -267,11 +269,14 @@ export class GitReviewReader {
         let after: string | null
 
         if (query.scope === 'last-turn') {
+            if (!store) throw new Error('last-turn requires a git repository')
+            const last = await store.lastTurnDiff(sessionId)
+            if (!last) throw new Error('no completed turn to review')
             // rename：基线侧取旧路径（新路径在基线树不存在），patch 双路径让 -M 识别 rename 对
-            const beforePath = query.previousPath ?? query.path
-            patch = await this.gitAtRoot(['diff', '--find-renames', query.baseTree, query.headTree, '--', beforePath, query.path])
-            before = await this.show(query.baseTree, beforePath)
-            after = await this.show(query.headTree, query.path)
+            const beforePath = last.files.find((f) => f.path === query.path)?.previousPath ?? query.path
+            patch = await this.gitAtRoot(['diff', '--find-renames', last.base.tree, last.head.tree, '--', beforePath, query.path])
+            before = await this.show(last.base.tree, beforePath)
+            after = await this.show(last.head.tree, query.path)
         } else if (query.scope === 'unstaged') {
             patch = await this.gitAtRoot(['diff', '--', query.path])
             before = await this.show('', query.path)
@@ -314,9 +319,9 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
             return rpcError('Failed to collect git review data')
         }
     })
-    rpcHandlerManager.registerHandler<{ cwd: string; query: GitReviewFileQuery }, unknown>(GIT_REVIEW_RPC.file, async (data) => {
+    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string; query: GitReviewFileQuery }, unknown>(GIT_REVIEW_RPC.file, async (data) => {
         try {
-            return await new GitReviewReader(data.cwd).fileDiff(data.query)
+            return await new GitReviewReader(data.cwd).fileDiff(data.query, await openTurnSnapshotStore(data.cwd), data.sessionId)
         } catch (e) {
             logger.debug('[GitReview] fileDiff failed', e)
             return rpcError('Failed to read git diff')

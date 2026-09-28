@@ -1012,7 +1012,7 @@ export function createSessionsRoutes(
         }
     })
 
-    // git 审查单文件 diff（body = GitReviewFileQuery：scope + path，last-turn 档带两树指针）
+    // git 审查单文件 diff（body = GitReviewFileQuery：scope + path；last-turn 两树由 CLI 侧从快照链解析）
     app.post('/sessions/:id/git-review/file', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

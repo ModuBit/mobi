@@ -29,7 +29,7 @@ import type { TreeProps } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronDown, Copy, ExternalLink, FileQuestion, FolderTree, Search } from 'lucide-react'
-import { GIT_REVIEW_SCOPES, type GitReviewFileDiff, type GitReviewFileQuery, type GitReviewScope, type GitReviewScopeData, type TurnDiffFileEntry } from '@mobi/shared'
+import { GIT_REVIEW_SCOPES, type GitReviewFileDiff, type GitReviewFileQuery, type GitReviewScope, type TurnDiffFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useSession } from '@/core/data/hooks/queries/useSession'
@@ -46,7 +46,7 @@ const BIG_DIFF_LINES = 5000
 /** 依赖注入点：测试换假数据源，生产走 react-query 实现 */
 export interface GitReviewDeps {
     useReviewData: (sessionId: string) => ReviewDataResult
-    useFileDiff: (sessionId: string, query: GitReviewFileQuery | null) => ReviewFileDiffResult
+    useFileDiff: (sessionId: string, query: GitReviewFileQuery | null, version: number) => ReviewFileDiffResult
     /** 会话是否 running（E2E/测试注入；生产走 useSession） */
     useSessionRunning: (sessionId: string) => boolean | undefined
 }
@@ -72,25 +72,20 @@ function canDiff(entry: TurnDiffFileEntry): boolean {
     return !entry.binary && (entry.additions + entry.deletions > 0 || !!entry.previousPath)
 }
 
-/** 行内展开的 diff 区：按档位组装查询并渲染（挂载即拉取，卸载即停——懒加载由此承载） */
-function RowDiff({ sessionId, scope, entry, scopeData, deps }: {
+/** 行内展开的 diff 区：组装查询并渲染（挂载即拉取，卸载即停——懒加载由此承载）。
+ *  查询统一 {scope, path}——last-turn 两树由 CLI 从快照链解析，指针不进协议；
+ *  version = 总览拉取时间，总览刷新即展开行 diff 缓存失效 */
+function RowDiff({ sessionId, scope, entry, version, deps }: {
     sessionId: string
     scope: GitReviewScope
     entry: TurnDiffFileEntry
-    scopeData: GitReviewScopeData
+    version: number
     deps: GitReviewDeps
 }) {
     const { t } = useTranslation()
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
-    // last-turn 档带两树指针（无服务器状态；rename 条目带旧路径供基线侧取 before）；
-    // 其他档按 scope 现查；指针缺失（非 git）不发起
-    const query: GitReviewFileQuery | null = scope === 'last-turn'
-        ? (scopeData.git
-            ? { scope, path: entry.path, ...(entry.previousPath && { previousPath: entry.previousPath }), baseTree: scopeData.git.baseTree, headTree: scopeData.git.headTree }
-            : null)
-        : { scope, path: entry.path }
-    const diff = deps.useFileDiff(sessionId, query)
+    const diff = deps.useFileDiff(sessionId, { scope, path: entry.path }, version)
 
     // 大 diff 降级（票07）：渲染引擎吃全文，超大文件卡真机——跳转文件查看器
     if (!entry.binary && entry.additions + entry.deletions > BIG_DIFF_LINES) {
@@ -448,7 +443,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
                             // 只有文本类条目才有 children（不可展开项永远不会出现在 activeKey）
                             children: scopeData && canDiff(file) && (
                                 <div data-testid="review-file-diff" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-                                    <RowDiff sessionId={sessionId} scope={scope} entry={file} scopeData={scopeData} deps={deps} />
+                                    <RowDiff sessionId={sessionId} scope={scope} entry={file} version={review.updatedAt} deps={deps} />
                                 </div>
                             ),
                             styles: {

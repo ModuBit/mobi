@@ -115,32 +115,30 @@ describe('GitReviewReader（真 git 集成）', () => {
         const reader = new GitReviewReader(repoDir)
 
         // 已暂存档：before = HEAD 内容，after = index 内容
-        const staged = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'staged', path: 'a.txt' }))
+        const staged = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'staged', path: 'a.txt' }, null, ''))
         expect(staged.before).toBe('one\n')
         expect(staged.after).toBe('one\ntwo\n')
         expect(staged.patch).toContain('+two')
 
         // 未暂存档（已跟踪）：before = index 内容，after = 盘上内容
-        const unstaged = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'unstaged', path: 'b.txt' }))
+        const unstaged = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'unstaged', path: 'b.txt' }, null, ''))
         expect(unstaged.before).toBe('orig\n')
         expect(unstaged.after).toBe('x\n')
 
         // untracked 经未暂存档：before = null（index 无此路径），patch 走 no-index
-        const untracked = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'unstaged', path: 'new.txt' }))
+        const untracked = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'unstaged', path: 'new.txt' }, null, ''))
         expect(untracked.before).toBeNull()
         expect(untracked.after).toBe('hello\nworld\n')
         expect(untracked.patch).toContain('+hello')
 
         // 未提交档（untracked 新文件）：HEAD 无此路径，no-index 兜底出 patch
-        const uncommitted = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'uncommitted', path: 'new.txt' }))
+        const uncommitted = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'uncommitted', path: 'new.txt' }, null, ''))
         expect(uncommitted.before).toBeNull()
         expect(uncommitted.patch).toContain('+hello')
 
         // 上一轮档：两树指针回查
         const lastTurn = data.scopes['last-turn']!
-        const lt = GitReviewFileDiffSchema.parse(await reader.fileDiff({
-            scope: 'last-turn', path: 'a.txt', baseTree: lastTurn.git!.baseTree, headTree: lastTurn.git!.headTree,
-        }))
+        const lt = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'last-turn', path: 'a.txt' }, store, SESSION_ID))
         expect(lt.before).toBe('one\ntwo\n')
         expect(lt.after).toBe('one\ntwo\nthree\n')
     })
@@ -174,7 +172,7 @@ describe('GitReviewReader（真 git 集成）', () => {
 
         // file handler：越界路径 → 结构化错误（不抛，走 rpcError 返回）
         const err = await handlers.get('gitReviewFile')!({
-            cwd: repoDir, query: { scope: 'unstaged', path: '../escape' },
+            cwd: repoDir, sessionId: SESSION_ID, query: { scope: 'unstaged', path: '../escape' },
         } as never) as { success: false; error: string }
         expect(err.success).toBe(false)
         expect(err.error).toBeTruthy()
@@ -186,18 +184,16 @@ describe('GitReviewReader（真 git 集成）', () => {
         await write('before-rename.txt', 'rename me\n')
         await git('add', 'before-rename.txt')
         await git('commit', '-qm', 'add before-rename')
-        const base = await store.capture(SESSION_ID)
+        await store.capture(SESSION_ID)
         await git('mv', 'before-rename.txt', 'after-rename.txt')
-        const head = await store.capture(SESSION_ID)
+        await store.capture(SESSION_ID)
 
         const data = GitReviewDataSchema.parse(await reader.reviewData(SESSION_ID, store))
         const entry = data.scopes['last-turn']!.files.find((f) => f.path === 'after-rename.txt')
         expect(entry).toMatchObject({ kind: 'rename', previousPath: 'before-rename.txt' })
 
-        const diff = GitReviewFileDiffSchema.parse(await reader.fileDiff({
-            scope: 'last-turn', path: 'after-rename.txt', previousPath: 'before-rename.txt',
-            baseTree: base.tree, headTree: head.tree,
-        }))
+        // 指针与 previousPath 都不进协议：CLI 从链尾 diff 条目自解析
+        const diff = GitReviewFileDiffSchema.parse(await reader.fileDiff({ scope: 'last-turn', path: 'after-rename.txt' }, store, SESSION_ID))
         expect(diff.before).toBe('rename me\n')
         expect(diff.after).toBe('rename me\n')
         expect(diff.patch).toContain('rename from before-rename.txt')

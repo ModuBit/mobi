@@ -329,8 +329,8 @@ export class RpcGateway {
         return await this.machineRpc(machineId, GIT_REVIEW_RPC.data, { cwd, sessionId }) as GitReviewData | { success: false; error: string }
     }
 
-    async machineGitReviewFile(machineId: string, cwd: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.file, { cwd, query }) as GitReviewFileDiff | { success: false; error: string }
+    async machineGitReviewFile(machineId: string, cwd: string, sessionId: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.file, { cwd, sessionId, query }) as GitReviewFileDiff | { success: false; error: string }
     }
 
     // 会话删除后清理轮次快照引用（ADR 0008 refs 治理）；best-effort，失败由调用方 warn
