@@ -292,7 +292,10 @@ h1, h2, h3, h4 {
  * 与行本体的展开详情物理分离（详见 packages/web/CONTEXT.md 词汇）。 */
 .tool-chip {
     display: inline-block;
-    max-width: 340px;
+    /* 不设固定上限（曾 340px：宽行右侧大量空白时路径/命令被过早截断，2026-09-28 验收）——
+       宽度由 ToolRowItems 的 chip wrapper（flex 1 1 0% + min-width 72px 保底）按剩余空间分配，
+       max-width:100% 只兜「无 flex 约束场景」的溢出 */
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
