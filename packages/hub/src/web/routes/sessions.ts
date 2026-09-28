@@ -804,9 +804,15 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
-        // 守卫单一来源 sessionDeleteGuard：fork 行未激活（forkFrom 在场且非 running）不算 active，可删
+        // 守卫单一来源 sessionDeleteGuard：fork 行未激活（forkFrom 在场且非 running）不算 active，可删。
+        // 常规 active 会话不再直接 409——删除是明确意图，先自动休眠（CLI gate 自查会挡住
+        // 运行中/审批待处理的会话，blockers 逐项透传给 web toast）；休眠成功即翻 inactive
+        // （archiveSession 同步 handleSessionEnd），随后删除自然过 sessionCache 的同源守卫
         if (!isSessionRowDeletable(sessionResult.session)) {
-            return c.json({ error: 'Cannot delete active session. Archive it first.' }, 409)
+            const dormant = await engine.dormantSession(sessionResult.sessionId)
+            if (!dormant.ok) {
+                return c.json({ error: 'Session has work in progress', blockers: dormant.blockers ?? [] }, 409)
+            }
         }
 
         try {

@@ -135,6 +135,7 @@
             "resume": "恢复",
             "deleteConfirmTitle": "删除会话",
             "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
+            "deleteBlocked": "无法删除：{{reasons}}",
             "nameRequired": "请输入会话名称",
             "pin": "置顶",
             "unpin": "取消置顶",

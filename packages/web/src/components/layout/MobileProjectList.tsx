@@ -27,7 +27,7 @@ import {
     ImportOutlined,
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
-import { dormantSessionWithFeedback } from '@/core/data/sessionDormancy'
+import { dormantSessionWithFeedback, dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -244,8 +244,12 @@ export function MobileProjectList() {
                     if (activeSessionId === sessionId) {
                         navigateFromMenu(() => navigate({ to: '/sessions' }))
                     }
-                } catch {
-                    // ignore
+                } catch (error) {
+                    // gate 阻塞（hub 删除前自动休眠被挡）→ 逐项原因文案；其余保持静默（原行为）
+                    const blockers = extractBlockers(error)
+                    if (blockers.length > 0) {
+                        messageApi.error(dormancyBlockedText(blockers, t, 'session.actions.deleteBlocked'))
+                    }
                 } finally {
                     setActionLoading(null)
                 }

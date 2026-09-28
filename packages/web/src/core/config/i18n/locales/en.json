@@ -135,6 +135,7 @@
             "resume": "Resume",
             "deleteConfirmTitle": "Delete Session",
             "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
+            "deleteBlocked": "Cannot delete: {{reasons}}",
             "nameRequired": "Please enter a session name",
             "pin": "Pin",
             "unpin": "Unpin",

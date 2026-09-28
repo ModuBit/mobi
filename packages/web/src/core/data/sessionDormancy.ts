@@ -34,20 +34,23 @@ export interface DormancyActionDeps {
     message: AppMessage
 }
 
-/** 从 axios 错误中提取 409 携带的逐项 blocker code（非 axios / 无字段返回空） */
-function extractBlockers(error: unknown): string[] {
+/** 从 axios 错误中提取 409 携带的逐项 blocker code（非 axios / 无字段返回空）。
+ *  休眠与删除两路共用：删除 active 会话时 hub 会先自动休眠，被 gate 阻塞的 409
+ *  同样携带 blockers（结构同源） */
+export function extractBlockers(error: unknown): string[] {
     return axios.isAxiosError(error)
         ? (error.response?.data as { blockers?: string[] } | undefined)?.blockers ?? []
         : []
 }
 
-/** blocker code 列表 → 「无法休眠：…」完整文案。分隔符走 i18n——中文顿号、
- *  英文逗号是各 locale 自己的排版约定，不硬编码（2026-09-25 review） */
-function dormancyBlockedText(blockers: string[], t: TFunction): string {
+/** blocker code 列表 → 「无法…：reasons」完整文案。分隔符走 i18n——中文顿号、
+ *  英文逗号是各 locale 自己的排版约定，不硬编码（2026-09-25 review）；
+ *  blockedKey 缺省休眠文案，删除场景传 session.actions.deleteBlocked */
+export function dormancyBlockedText(blockers: string[], t: TFunction, blockedKey = 'session.dormancy.blocked'): string {
     const reasons = blockers
         .map((b) => t(`session.dormancy.blocker.${b}`, b))
         .join(t('session.dormancy.blockerSeparator'))
-    return t('session.dormancy.blocked', { reasons })
+    return t(blockedKey, { reasons })
 }
 
 /**

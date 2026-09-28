@@ -180,7 +180,12 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
     let app: ReturnType<typeof import('../../src/web/server').createWebApp>
     let cleanup: () => void
 
-    function setupWithSession(session: Partial<Session>, deleteResult: 'ok' | Error) {
+    function setupWithSession(
+        session: Partial<Session>,
+        deleteResult: 'ok' | Error,
+        /** 守卫不过时删除路由会先尝试休眠（gate 自查）；按此 mock engine.dormantSession */
+        dormantResult: { ok: true } | { ok: false; blockers: string[] } = { ok: true },
+    ) {
         const engine = {
             resolveSessionAccess: (_id: string, _ns: string) => ({
                 ok: true as const,
@@ -189,6 +194,7 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
             }),
             deleteSession: (_sessionId: string) =>
                 deleteResult === 'ok' ? Promise.resolve() : Promise.reject(deleteResult),
+            dormantSession: () => Promise.resolve(dormantResult),
         } as unknown as SyncEngine
         return setupTestApp(engine).then(s => {
             app = s.app
@@ -219,20 +225,30 @@ describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）'
         expect(res.status).toBe(200)
     })
 
-    test('active 常规会话（无 forkFrom）不可删 → 409', async () => {
+    test('active 常规会话（无 forkFrom）：删除自动先休眠，成功即删 → 200', async () => {
         await setupWithSession({ active: true, running: false }, 'ok')
         const token = await getAuthToken(app)
 
         const res = await del(token)
-        expect(res.status).toBe(409)
+        expect(res.status).toBe(200)
     })
 
-    test('running 中的 fork 行不可删 → 409', async () => {
+    test('active 常规会话：休眠被 gate 阻塞（运行中/审批中）→ 409 带 blockers', async () => {
+        await setupWithSession({ active: true, running: false }, 'ok', { ok: false, blockers: ['turn_running'] })
+        const token = await getAuthToken(app)
+
+        const res = await del(token)
+        expect(res.status).toBe(409)
+        const body = await res.json() as { blockers?: string[] }
+        expect(body.blockers).toEqual(['turn_running'])
+    })
+
+    test('running 中的 fork 行不可删：休眠 gate 阻塞 → 409', async () => {
         await setupWithSession({
             active: true,
             running: true,
             metadata: { path: '/tmp/test', host: 'test-host', forkFrom: { parentSessionId: 'p', parentNativeId: 'pn', anchorNativeId: 'an' } },
-        }, 'ok')
+        }, 'ok', { ok: false, blockers: ['turn_running'] })
         const token = await getAuthToken(app)
 
         const res = await del(token)

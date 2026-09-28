@@ -28,7 +28,7 @@ import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinne
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
-import { dormantSessionWithFeedback } from '@/core/data/sessionDormancy'
+import { dormantSessionWithFeedback, dormancyBlockedText, extractBlockers } from '@/core/data/sessionDormancy'
 import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
@@ -142,8 +142,12 @@ export function SidebarProjects() {
                     if (activeSessionId === session.id) {
                         navigate({ to: '/sessions' })
                     }
-                } catch {
-                    messageApi.error(t('common.error'))
+                } catch (error) {
+                    // gate 阻塞（hub 删除前自动休眠被挡）→ 逐项原因文案；其余通用错误
+                    const blockers = extractBlockers(error)
+                    messageApi.error(blockers.length > 0
+                        ? dormancyBlockedText(blockers, t, 'session.actions.deleteBlocked')
+                        : t('common.error'))
                 }
             },
         })
