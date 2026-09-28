@@ -23,6 +23,7 @@ import type {
     CliOutputBlock,
     CustomBlock,
     EventDisplay,
+    SystemNoticeBlock,
     ToolCallBlock,
     ToolPermission,
     UserTextBlock,
@@ -285,6 +286,11 @@ function reconcileBlock(block: ChatBlock, prevById: ChatBlocksById): ChatBlock {
         // custom 消息（ADR 0002）：内容静态（block 数组来自归一层，每次归一都是新引用，
         // 引用比较无意义），无内部状态可合并——与 compact-summary 同策略直接返回
         return block satisfies CustomBlock
+    }
+
+    if (block.kind === 'system-notice') {
+        // system-notice：informational 落库后不可变，内容静态——与 custom 同策略直接返回
+        return block satisfies SystemNoticeBlock
     }
 
     const prevBlock = prev as AgentEventBlock

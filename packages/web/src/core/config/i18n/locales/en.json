@@ -466,7 +466,10 @@
             "showMoreFiles": "Show {{count}} more files",
             "collapse": "Collapse"
         },
-        "codeBlockPlain": "Plain text"
+        "codeBlockPlain": "Plain text",
+        "systemNotice": {
+            "executionStopped": "Execution stopped"
+        }
     },
     "files": {
         "saveStatus": {

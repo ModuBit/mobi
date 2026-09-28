@@ -32,6 +32,8 @@ export type {
     AgentEventBlock,
     ToolCallBlock,
     CustomBlock,
+    SystemNoticeBlock,
+    SystemNoticeLevel,
     ChatBlock
 } from './types'
 
@@ -47,6 +49,9 @@ export { normalizeAgentRecord, isSkippableAgentContent } from './normalizeAgent'
 // 归约器
 export type { LatestUsage } from './reducer'
 export { reduceChatBlocks } from './reducer'
+
+// informational 收窄判据（system-notice 渲染唯一规则）
+export { shouldRenderSystemNotice } from './reducerTimeline'
 
 // 归约器工具
 export type { PermissionEntry } from './reducerTools'

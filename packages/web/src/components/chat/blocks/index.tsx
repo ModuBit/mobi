@@ -29,6 +29,7 @@ import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
+import { SystemNoticeBlock } from './SystemNoticeBlock'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { CompactSummaryBlockComponent } from './CompactSummaryBlock'
 import { CustomBlockView } from './CustomBlock'
@@ -122,6 +123,8 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
             return <ToolCallRenderer block={block} metadata={ctx.metadata} api={ctx.api} sessionId={ctx.sessionId} disabled={ctx.disabled} onDone={ctx.onDone} />
         case 'agent-event':
             return <AgentEventBlock block={block} actions={ctx.turnResultActions?.(block)} />
+        case 'system-notice':
+            return <SystemNoticeBlock block={block} />
         case 'custom':
             return <CustomBlockView block={block} sessionId={ctx.sessionId} />
         default:

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, ToolResult, ToolResultPermission, MessageMeta } from './types'
+import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, StructuredPatch, SystemNoticeLevel, ToolResult, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messageClassification'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
@@ -402,6 +402,26 @@ const handleCompactBoundaryOutput: OutputHandler = (data, ctx) => {
     })
 }
 
+/** SDKInformationalMessage 的合法级别（sdk.d.ts 四档），非法值降级 info（渲染判据不会命中） */
+const INFORMATIONAL_LEVELS: readonly SystemNoticeLevel[] = ['info', 'notice', 'suggestion', 'warning']
+
+/**
+ * 处理 system:informational 消息（CC 2.1.283+ turn 内 warnings/notices）。
+ * 只透传不判定：渲染与否由 reducerTimeline 的收窄判据（shouldRenderSystemNotice）统一决定，
+ * normalize 维持「全量透传」语义，避免判据在两层各写一份产生口径漂移。
+ */
+const handleInformationalOutput: OutputHandler = (data, ctx) => {
+    const levelRaw = asString(data.level)
+    const level = INFORMATIONAL_LEVELS.find((l) => l === levelRaw) ?? 'info'
+    return createEventMessage(ctx, {
+        type: 'informational',
+        content: asString(data.content) ?? '',
+        level,
+        // 下划线/驼峰双格式经 getField 兼容（web/CLAUDE.md 跨格式字段访问约束）
+        ...(getField(data, 'prevent_continuation') === true ? { preventContinuation: true } : {}),
+    })
+}
+
 /** 处理 goal_progress 消息（CLI 自产合成消息，data.type 直接为 goal_progress，无 subtype） */
 const handleGoalProgressOutput: OutputHandler = (data, ctx) => {
     return createEventMessage(ctx, {
@@ -604,6 +624,7 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:turn_duration', handleTurnDurationOutput],
     ['system:microcompact_boundary', handleMicrocompactBoundaryOutput],
     ['system:compact_boundary', handleCompactBoundaryOutput],
+    ['system:informational', handleInformationalOutput],
     ['goal_progress', handleGoalProgressOutput],
     ['system:task_progress', handleTaskProgressOutput],
     ['system:task_notification', handleTaskNotificationOutput],

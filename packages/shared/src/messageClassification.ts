@@ -118,6 +118,10 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'task_notification',
     'task_started',
     'task_updated',
+    // SDKInformationalMessage（CC 2.1.283+ warnings/notices）：放行到 web normalize handler。
+    // 放行 ≠ 渲染——是否产出横幅由 web domain 层收窄判据
+    // （level === 'warning' || prevent_continuation === true）二次决定，其余维持忽略
+    'informational',
 ])
 
 /** 顶层不可见的控制帧（非对话内容，聊天中不渲染） */

@@ -457,7 +457,10 @@
             "showMoreFiles": "再显示 {{count}} 个文件",
             "collapse": "收起"
         },
-        "codeBlockPlain": "纯文本"
+        "codeBlockPlain": "纯文本",
+        "systemNotice": {
+            "executionStopped": "已停止执行"
+        }
     },
     "files": {
         "saveStatus": {

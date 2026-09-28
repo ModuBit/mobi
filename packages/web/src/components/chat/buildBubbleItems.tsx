@@ -180,8 +180,9 @@ export function buildChatBubbleItems(
             role = block.event.type === 'turn-result' ? 'assistant' : 'system'
         } else if (block.kind === 'cli-output') {
             role = block.source === 'assistant' ? 'assistant' : 'user'
-        } else if (block.kind === 'custom') {
-            // 自定义消息（ADR 0002，如 fork 溯源）→ 无边框系统行
+        } else if (block.kind === 'custom' || block.kind === 'system-notice') {
+            // 自定义消息（ADR 0002，如 fork 溯源）→ 无边框系统行；
+            // system-notice 横幅自带配色与左边条，同为无边框系统行
             role = 'system'
         }
 

@@ -576,6 +576,95 @@ describe('reduceTimeline', () => {
     })
 })
 
+// ============ informational 横幅（system-notice）——spec .scratch/system-informational-banner ============
+
+describe('informational 消息（system-notice 判据矩阵 / 产出 / 忽略 / 时序）', () => {
+    function makeCtx() {
+        return {
+            permissionsById: new Map<string, PermissionEntry>(),
+            groups: new Map<string, TracedMessage[]>(),
+            consumedGroupIds: new Set<string>(),
+            titleChangesByToolUseId: new Map<string, string>(),
+            emittedTitleChangeToolUseIds: new Set<string>(),
+            hiddenToolUseIds: new Map<string, string>(),
+        }
+    }
+
+    const informationalEvent = (
+        level: string,
+        preventContinuation: boolean,
+        createdAt = 2000,
+    ): TracedMessage => ({
+        id: 'evt-info',
+        localId: null,
+        createdAt,
+        role: 'event',
+        isSidechain: false,
+        content: {
+            type: 'informational',
+            content: 'Model fallback engaged: quota exceeded',
+            level,
+            ...(preventContinuation ? { preventContinuation: true } : {}),
+        },
+    })
+
+    it.each<[string, boolean, boolean]>([
+        ['info', false, false],
+        ['notice', false, false],
+        ['suggestion', false, false],
+        ['warning', false, true],
+        ['info', true, true],
+        ['notice', true, true],
+        ['suggestion', true, true],
+        ['warning', true, true],
+    ])('判据矩阵 level=%s preventContinuation=%s → 渲染=%s', (level, preventContinuation, expected) => {
+        const { blocks } = reduceTimeline([informationalEvent(level, preventContinuation)], makeCtx())
+        const notices = blocks.filter(b => b.kind === 'system-notice')
+        expect(notices).toHaveLength(expected ? 1 : 0)
+    })
+
+    it.each(['info', 'notice', 'suggestion'] as const)('不命中判据（level=%s）时也不落通用事件行（维持忽略）', (level) => {
+        const { blocks } = reduceTimeline([informationalEvent(level, false)], makeCtx())
+        // 既要没有 system-notice 块，也不能掉进 agent-event 通用渲染把噪音泄进时间线
+        expect(blocks).toHaveLength(0)
+    })
+
+    it('命中时产出 system-notice 块：content 原样 / level / preventContinuation / createdAt 透传', () => {
+        const { blocks } = reduceTimeline([informationalEvent('warning', false, 3456)], makeCtx())
+        expect(blocks).toHaveLength(1)
+        const block = blocks[0]
+        expect(block.kind).toBe('system-notice')
+        if (block.kind === 'system-notice') {
+            expect(block.content).toBe('Model fallback engaged: quota exceeded')
+            expect(block.level).toBe('warning')
+            expect(block.preventContinuation).toBeUndefined()
+            expect(block.createdAt).toBe(3456)
+        }
+    })
+
+    it('preventContinuation=true 时块上携带 preventContinuation 标记', () => {
+        const { blocks } = reduceTimeline([informationalEvent('info', true)], makeCtx())
+        const block = blocks[0]
+        expect(block.kind).toBe('system-notice')
+        if (block.kind === 'system-notice') {
+            expect(block.preventContinuation).toBe(true)
+        }
+    })
+
+    it('时序：informational 是 turn 流中的一条，按消息时序插入不重排', () => {
+        const messages: TracedMessage[] = [
+            createToolCallMessage('tool-1', 'Bash', { command: 'bun test' }, { createdAt: 1000 }),
+            informationalEvent('warning', false, 1001),
+            {
+                id: 'msg-text', localId: 'msg-text', createdAt: 1002, role: 'agent', isSidechain: false,
+                content: [{ type: 'text', text: '正文回复' }],
+            },
+        ]
+        const { blocks } = reduceTimeline(messages, makeCtx())
+        expect(blocks.map(b => b.kind)).toEqual(['tool-call', 'system-notice', 'agent-text'])
+    })
+})
+
 // ============ 截断标注（spec D6）——code-review R1 补强 ============
 
 describe('aborted 截断标注（挂在最后一个渲染为 agent-text 的块）', () => {

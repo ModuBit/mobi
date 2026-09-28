@@ -122,6 +122,66 @@ describe('normalizeAgentRecord', () => {
         expect(result?.content).toEqual([])
     })
 
+    it('system:informational 透传为 informational event（渲染与否由 reducer 判据决定）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'informational',
+                    content: 'Model fallback engaged: quota exceeded',
+                    level: 'warning',
+                    prevent_continuation: true,
+                    uuid: 'u-info-1',
+                    session_id: 's-1',
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        expect(result?.content).toEqual({
+            type: 'informational',
+            content: 'Model fallback engaged: quota exceeded',
+            level: 'warning',
+            preventContinuation: true,
+        })
+    })
+
+    it('system:informational 无 prevent_continuation 时不携带该字段；非法 level 降级 info', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'informational',
+                    content: 'Session completed successfully',
+                    level: 'catastrophic',
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.content).toEqual({
+            type: 'informational',
+            content: 'Session completed successfully',
+            level: 'info',
+        })
+    })
+
+    it('isSkippableAgentContent 不再丢弃 informational（可见性白名单已放行）', () => {
+        expect(isSkippableAgentContent({
+            type: 'output',
+            data: { type: 'system', subtype: 'informational', content: 'x', level: 'notice' },
+        })).toBe(false)
+    })
+
     it('should preserve non-empty thinking content', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,
@@ -145,7 +205,6 @@ describe('normalizeAgentRecord', () => {
             { type: 'reasoning', text: 'Let me analyze this...', uuid: baseParams.messageId, parentUUID: null }
         ])
     })
-
     it('should preserve thinking durationMs/done (remote 打点注入)', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

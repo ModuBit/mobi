@@ -39,6 +39,9 @@ export type UsageData = {
     service_tier?: string
 }
 
+/** SDKInformationalMessage 的告警级别（sdk.d.ts level 四档） */
+export type SystemNoticeLevel = 'info' | 'notice' | 'suggestion' | 'warning'
+
 export type AgentEvent =
     | { type: 'switch'; mode: 'local' | 'remote' }
     | { type: 'message'; message: string }
@@ -74,6 +77,9 @@ export type AgentEvent =
     | { type: 'bg-task-progress'; taskId: string; metrics: AgentMetrics; summary?: string }
     | { type: 'bg-task-completed'; taskId: string; status: 'completed' | 'failed' | 'stopped'; summary?: string; metrics?: AgentMetrics }
     | { type: 'bg-task-updated'; taskId: string; patch: Record<string, unknown> }
+    // informational：CC turn 内 warnings/notices（SDK 0.3.283+，模型降级/用量上限/hook 阻断等）。
+    // normalize 只透传；是否渲染由 reducerTimeline 的收窄判据二次决定（shouldRenderSystemNotice）
+    | { type: 'informational'; content: string; level: SystemNoticeLevel; preventContinuation?: boolean }
     | ({ type: string } & Record<string, unknown>)
 
 export type ToolResultPermission = {
@@ -353,4 +359,20 @@ export type CustomBlock = {
     meta?: MessageMeta
 }
 
-export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | CompactSummaryBlock | ToolCallBlock | AgentEventBlock | CustomBlock
+/**
+ * 系统提示横幅块：CC informational 消息命中渲染判据后的呈现
+ * （模型降级 / 用量上限 / hooks 无应答 / hook 阻断等关键提示，spec .scratch/system-informational-banner）
+ */
+export type SystemNoticeBlock = {
+    kind: 'system-notice'
+    id: string
+    createdAt: number
+    /** 横幅正文（CC 侧英文原文，原样显示不翻译——CC 文案是权威） */
+    content: string
+    level: SystemNoticeLevel
+    /** true = 此消息后 turn 停止执行（如 Stop hook 拒绝），渲染「已停止执行」标记 */
+    preventContinuation?: boolean
+    meta?: MessageMeta
+}
+
+export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | CompactSummaryBlock | ToolCallBlock | AgentEventBlock | CustomBlock | SystemNoticeBlock

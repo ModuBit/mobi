@@ -15,7 +15,7 @@
  */
 
 import { hasCrossSessionOrigin } from '@mobi/shared'
-import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, CustomBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
+import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, CustomBlock, EventDisplay, MessageMeta, SystemNoticeBlock, SystemNoticeLevel, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
@@ -51,6 +51,20 @@ function createEventBlock(params: {
         meta: params.meta,
         display: getEventDisplay(params.event),
     }
+}
+
+/**
+ * informational 渲染收窄判据（唯一规则）：warning 级或阻止继续执行才渲染。
+ *
+ * 为何收窄：informational 承载 CC turn 内全部通知（实测发射点盘点见 spec
+ * .scratch/system-informational-banner），其中「会话完成通知 / auto-mode 计费通知」
+ * 属噪音、「Context low…」与 mobi 既有的 ContextRing 权威 UI 重复——全量渲染会刷屏。
+ * 必须让用户看到的只有两类：warning（模型降级、用量上限、hooks 无应答）与
+ * prevent_continuation=true（hook 阻断，不显示则 prompt 静默消失、turn 莫名停止）。
+ * 判据在此单点收口，禁止内联散落。
+ */
+export function shouldRenderSystemNotice(level: SystemNoticeLevel, preventContinuation?: boolean): boolean {
+    return level === 'warning' || preventContinuation === true
 }
 
 /** 在 blocks 数组中找到指定 ID 的块并替换，使用索引 Map 实现 O(1) 查找 */
@@ -157,6 +171,24 @@ export function reduceTimeline(
             // 全散落、历史加载过滤 ephemeral 后又恢复）。后台任务 UI 的唯一数据源是
             // runtimeState.backgroundTasks（hub 从原始流派生），与 blocks 时间线无关。
             if (msg.content.type === 'bg-task-started' || msg.content.type === 'bg-task-updated') {
+                continue
+            }
+            // informational（CC warnings/notices）：命中收窄判据才产出横幅块，其余维持忽略。
+            // 不命中必须 continue——落到下方通用事件渲染会把 info/notice 级噪音泄进时间线
+            if (msg.content.type === 'informational') {
+                const info = msg.content as Extract<AgentEvent, { type: 'informational' }>
+                if (shouldRenderSystemNotice(info.level, info.preventContinuation)) {
+                    const noticeBlock: SystemNoticeBlock = {
+                        kind: 'system-notice',
+                        id: msg.id,
+                        createdAt: msg.createdAt,
+                        content: info.content,
+                        level: info.level,
+                        ...(info.preventContinuation ? { preventContinuation: true } : {}),
+                        meta: msg.meta,
+                    }
+                    blocks.push(noticeBlock)
+                }
                 continue
             }
             // 检测 compact 事件，记录 metadata 用于下一条 user 消息
