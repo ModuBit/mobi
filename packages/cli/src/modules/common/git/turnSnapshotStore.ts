@@ -49,14 +49,26 @@ export type TurnTreeDiffEntry = {
     previousPath?: string
 }
 
+/** 「上一轮」= 相邻快照之差（ADR 0008 口径的唯一权威出口）：链尾两颗树的 per-file diff。
+ *  base/head 同时携带引用（index 供 baseTurnIndex、tree 供下游指针查询） */
+export type LastTurnDiff = {
+    /** 上一轮基线快照（链尾第 -2 颗） */
+    base: TurnSnapshotRef
+    /** 本轮快照（链尾） */
+    head: TurnSnapshotRef
+    /** 两树 per-file diff；空轮（两树内容无差异）为空数组——「git 口径但零变更」，与「拿不到上一轮」（null）是两回事 */
+    files: TurnTreeDiffEntry[]
+}
+
 /** 轮次快照存储接口——调用方唯一可见的面 */
 export interface TurnSnapshotStore {
     /** 对工作区打一次快照，落引用并返回（序号 = 链尾 +1，链空则 1） */
     capture(sessionId: string): Promise<TurnSnapshotRef>
     /** 读会话快照链，按 index 升序；无链返回空数组 */
     listChain(sessionId: string): Promise<TurnSnapshotRef[]>
-    /** 当前 HEAD 树——首轮快照（链空）的 diff 兜底基线；空仓库（无 commit）返回 null */
-    headTree(): Promise<string | null>
+    /** 「上一轮」领域操作：链尾两树之差。链不足两颗（无 baseline / 空仓库无链）返回
+     *  null——调用方走各自的降级路径（合成器退投影口径、审查档位置空） */
+    lastTurnDiff(sessionId: string): Promise<LastTurnDiff | null>
     /** 两棵树之间的 per-file diff；无差异返回空数组 */
     diffTrees(baseTree: string, headTree: string): Promise<TurnTreeDiffEntry[]>
     /** 清除会话全部快照引用，返回清除数（幂等：无链返回 0） */
@@ -79,8 +91,6 @@ export function createInMemoryTurnSnapshotStore(options?: {
     chains?: Record<string, TurnSnapshotRef[]>
     /** 预置树内容：tree id → 文件映射，供 diffTrees 计算 */
     trees?: InMemoryTrees
-    /** headTree() 返回值（缺省固定值；null 模拟空仓库） */
-    headTree?: string | null
 }): TurnSnapshotStore & {
     /** 测试辅助：直接注册一棵树的内容（供 capture 后改写 diff 预期） */
     registerTree(tree: string, files: TreeFiles): void
@@ -89,8 +99,6 @@ export function createInMemoryTurnSnapshotStore(options?: {
         Object.entries(options?.chains ?? {}).map(([sid, refs]) => [sid, [...refs]]),
     )
     const trees = new Map<string, TreeFiles>(Object.entries(options?.trees ?? {}))
-    // null 是合法值（模拟空仓库），不能用 ?? 吞掉
-    const headTree = options && 'headTree' in options ? options.headTree! : 'fake-head-tree'
 
     const diffFiles = (base: TreeFiles, head: TreeFiles): TurnTreeDiffEntry[] => {
         const paths = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort()
@@ -124,8 +132,12 @@ export function createInMemoryTurnSnapshotStore(options?: {
         async listChain(sessionId) {
             return (chains.get(sessionId) ?? []).map((r) => ({ ...r }))
         },
-        async headTree() {
-            return headTree
+        async lastTurnDiff(sessionId) {
+            const chain = chains.get(sessionId) ?? []
+            if (chain.length < 2) return null
+            const base = chain.at(-2)!
+            const head = chain.at(-1)!
+            return { base: { ...base }, head: { ...head }, files: diffFiles(trees.get(base.tree) ?? {}, trees.get(head.tree) ?? {}) }
         },
         async diffTrees(baseTree, headTree) {
             return diffFiles(trees.get(baseTree) ?? {}, trees.get(headTree) ?? {})

@@ -204,17 +204,13 @@ export class GitReviewReader {
             })
         }
 
-        // last-turn：链尾两树。链只有 baseline（会话启动基线，尚无完成轮次）时视为
-        // 无上一轮——回落 HEAD 会把历史未提交改动塞进「上一轮」，违背档位语义
+        // last-turn：口径单源在 store（lastTurnDiff = 链尾两树之差）。空轮（files 空）
+        // 与「链不足两颗」（baseline 尚无完成轮次）都视为无上一轮——回落 HEAD 会把历史
+        // 未提交改动塞进「上一轮」，违背档位语义
         let lastTurn: LastTurnScope = null
-        const chain = await store.listChain(sessionId)
-        if (chain.length >= 2) {
-            const baseTree = chain.at(-2)!.tree
-            const headTree = chain.at(-1)!.tree
-            if (baseTree !== headTree) {
-                const files = await store.diffTrees(baseTree, headTree)
-                lastTurn = { files, stats: summarizeTurnDiffFiles(files), git: { baseTree, headTree } }
-            }
+        const last = await store.lastTurnDiff(sessionId)
+        if (last && last.files.length > 0) {
+            lastTurn = { files: last.files, stats: summarizeTurnDiffFiles(last.files), git: { baseTree: last.base.tree, headTree: last.head.tree } }
         }
 
         const staged = await this.entries(['diff', '--cached', '-M', 'HEAD'])

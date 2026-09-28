@@ -37,7 +37,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { logger } from '@/ui/logger'
-import type { TurnSnapshotRef, TurnSnapshotStore, TurnTreeDiffEntry, TurnTreeDiffKind } from './turnSnapshotStore'
+import type { LastTurnDiff, TurnSnapshotRef, TurnSnapshotStore, TurnTreeDiffEntry, TurnTreeDiffKind } from './turnSnapshotStore'
 
 const execFileAsync = promisify(execFile)
 
@@ -115,13 +115,12 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
         return refs.sort((a, b) => a.index - b.index)
     }
 
-    async headTree(): Promise<string | null> {
-        try {
-            return (await git(this.cwd, ['rev-parse', 'HEAD^{tree}'])).trim() || null
-        } catch {
-            // 空仓库（无 commit）无 HEAD 树——显式 null，调用方走降级
-            return null
-        }
+    async lastTurnDiff(sessionId: string): Promise<LastTurnDiff | null> {
+        const chain = await this.listChain(sessionId)
+        if (chain.length < 2) return null
+        const base = chain.at(-2)!
+        const head = chain.at(-1)!
+        return { base, head, files: await this.diffTrees(base.tree, head.tree) }
     }
 
     async diffTrees(baseTree: string, headTree: string): Promise<TurnTreeDiffEntry[]> {

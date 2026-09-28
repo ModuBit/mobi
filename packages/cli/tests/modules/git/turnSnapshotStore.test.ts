@@ -63,6 +63,41 @@ describe('createInMemoryTurnSnapshotStore（seam 契约）', () => {
         ])
     })
 
+    it('lastTurnDiff：链尾两树之差，base/head 引用齐备', async () => {
+        const store = createInMemoryTurnSnapshotStore({
+            chains: { 's-1': [{ index: 3, tree: 't3' }, { index: 4, tree: 't4' }] },
+            trees: {
+                t3: { 'a.txt': ['one'] },
+                t4: { 'a.txt': ['one', 'two'], 'new.txt': ['x'] },
+            },
+        })
+        const last = await store.lastTurnDiff('s-1')
+        expect(last!.base).toEqual({ index: 3, tree: 't3' })
+        expect(last!.head).toEqual({ index: 4, tree: 't4' })
+        expect(last!.files).toEqual([
+            { path: 'a.txt', kind: 'modify', additions: 1, deletions: 0, binary: false },
+            { path: 'new.txt', kind: 'add', additions: 1, deletions: 0, binary: false },
+        ])
+    })
+
+    it('lastTurnDiff：链不足两颗返回 null（无 baseline / 空仓库无链）', async () => {
+        const empty = createInMemoryTurnSnapshotStore()
+        expect(await empty.lastTurnDiff('s-1')).toBeNull()
+
+        const baselineOnly = createInMemoryTurnSnapshotStore({ chains: { 's-1': [{ index: 1, tree: 't1' }] } })
+        expect(await baselineOnly.lastTurnDiff('s-1')).toBeNull()
+    })
+
+    it('lastTurnDiff：空轮（两树内容无差异）返回空 files 而非 null——「git 口径但零变更」', async () => {
+        const store = createInMemoryTurnSnapshotStore({
+            chains: { 's-1': [{ index: 1, tree: 't1' }, { index: 2, tree: 't2' }] },
+            trees: { t1: { 'a.txt': ['same'] }, t2: { 'a.txt': ['same'] } },
+        })
+        const last = await store.lastTurnDiff('s-1')
+        expect(last).not.toBeNull()
+        expect(last!.files).toEqual([])
+    })
+
     it('clearSession：清链并返回数量，幂等', async () => {
         const store = createInMemoryTurnSnapshotStore()
         await store.capture('s-1')

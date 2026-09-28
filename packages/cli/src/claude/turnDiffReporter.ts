@@ -155,7 +155,9 @@ export class TurnDiffReporter {
         this.send(envelope as unknown as RawJSONLines)
     }
 
-    /** 快照口径：capture → 与链尾（或 HEAD 树）diff；返回 null = 无基线本轮降级 */
+    /** 快照口径：capture 后取「上一轮 = 相邻快照之差」（口径单源在 store）。返回 null =
+     *  拿不到上一轮（链不足两颗：无 baseline / 空仓库无链），本轮走投影降级——快照已
+     *  入链，后续轮次链自建。HEAD 兜底已删（632048b2：不裹挟历史未提交变更） */
     private async composeFromSnapshots(): Promise<{
         turnIndex: number
         baseTurnIndex: number | null
@@ -163,19 +165,14 @@ export class TurnDiffReporter {
         git: { baseTree: string; headTree: string } | null
     } | null> {
         const store = this.store!
-        const chain = await store.listChain(this.sessionId)
-        const previous = chain.at(-1) ?? null
         const head = await store.capture(this.sessionId)
-        const baseTree = previous?.tree ?? await store.headTree()
-
-        // 无基线（链空且空仓库）：快照照打（后续轮次的基线），本轮走投影降级
-        if (!baseTree) return null
-        const entries = await store.diffTrees(baseTree, head.tree)
+        const last = await store.lastTurnDiff(this.sessionId)
+        if (!last) return null
 
         return {
             turnIndex: head.index,
-            baseTurnIndex: previous?.index ?? null,
-            files: entries.map((e) => ({
+            baseTurnIndex: last.base.index,
+            files: last.files.map((e) => ({
                 path: e.path,
                 kind: e.kind,
                 additions: e.additions,
@@ -183,7 +180,7 @@ export class TurnDiffReporter {
                 ...(e.previousPath !== undefined && { previousPath: e.previousPath }),
                 ...(e.binary && { binary: true }),
             })),
-            git: { baseTree, headTree: head.tree },
+            git: { baseTree: last.base.tree, headTree: last.head.tree },
         }
     }
 

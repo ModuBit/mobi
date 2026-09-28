@@ -65,11 +65,13 @@ function sentPayloads(send: ReturnType<typeof vi.fn>): TurnDiffPayload[] {
 }
 
 describe('TurnDiffReporter（git 快照口径）', () => {
-    it('观测 Edit 观测不产出消息；result 时以相邻快照 diff 合成', async () => {
+    it('result 时以相邻快照 diff 合成：基线 = baseline 快照（链尾 -2），本轮快照入链', async () => {
         const store = createInMemoryTurnSnapshotStore({
+            // 会话启动已打 baseline（index 1），本轮 capture 生成 fake-tree-2
+            chains: { [SID]: [{ index: 1, tree: 't1' }] },
             trees: {
-                'fake-head-tree': { 'a.ts': ['const a = 1'] },
-                'fake-tree-1': { 'a.ts': ['const a = 1', 'const b = 2'], 'new.ts': ['x'] },
+                t1: { 'a.ts': ['const a = 1'] },
+                'fake-tree-2': { 'a.ts': ['const a = 1', 'const b = 2'], 'new.ts': ['x'] },
             },
         })
         const send = vi.fn()
@@ -79,32 +81,28 @@ describe('TurnDiffReporter（git 快照口径）', () => {
         await reporter.onTurnEnd()
 
         const [payload] = sentPayloads(send)
-        expect(payload!.turnIndex).toBe(1)
-        expect(payload!.baseTurnIndex).toBeNull() // 链空，基线 = HEAD 树
-        expect(payload!.git).toEqual({ baseTree: 'fake-head-tree', headTree: 'fake-tree-1' })
+        expect(payload!.turnIndex).toBe(2)
+        expect(payload!.baseTurnIndex).toBe(1)
+        expect(payload!.git).toEqual({ baseTree: 't1', headTree: 'fake-tree-2' })
         expect(payload!.stats).toEqual({ files: 2, additions: 2, deletions: 0 })
         expect(payload!.files.map((f) => f.path)).toEqual(['a.ts', 'new.ts'])
         // 快照已入链
-        expect(await store.listChain(SID)).toHaveLength(1)
+        expect(await store.listChain(SID)).toHaveLength(2)
     })
 
-    it('第二轮：基线 = 上一快照，baseTurnIndex 接续', async () => {
-        const store = createInMemoryTurnSnapshotStore({
-            chains: { [SID]: [{ index: 4, tree: 't4' }] },
-            trees: {
-                t4: { 'a.ts': ['one'] },
-                // fake 的 capture 树名按链长生成：链长 1 → fake-tree-2
-                'fake-tree-2': { 'a.ts': ['one', 'two'] },
-            },
-        })
+    it('链空（baseline 缺失）：本轮退投影口径，快照照打供后续轮次续链——不裹挟历史未提交变更', async () => {
+        // 工作区里预置「历史」改动语义：链空无 baseline，HEAD 兜底已删，不产出 git 口径
+        const store = createInMemoryTurnSnapshotStore()
         const send = vi.fn()
         const reporter = new TurnDiffReporter(SID, store, send)
+
+        reporter.observe(assistantToolUse('t1', 'Edit', '/repo/a.ts'))
         await reporter.onTurnEnd()
 
+        expect(await store.listChain(SID)).toHaveLength(1) // 快照照打
         const [payload] = sentPayloads(send)
-        expect(payload!.turnIndex).toBe(5)
-        expect(payload!.baseTurnIndex).toBe(4)
-        expect(payload!.git).toEqual({ baseTree: 't4', headTree: 'fake-tree-2' })
+        expect(payload!.git).toBeNull()
+        expect(payload!.baseTurnIndex).toBeNull()
     })
 
     it('本轮无文件变化：不出卡（不合成空消息）', async () => {
@@ -119,8 +117,8 @@ describe('TurnDiffReporter（git 快照口径）', () => {
         const store = createInMemoryTurnSnapshotStore()
         const broken = {
             capture: store.capture.bind(store),
-            listChain: async () => { throw new Error('git exploded') },
-            headTree: store.headTree.bind(store),
+            listChain: store.listChain.bind(store),
+            lastTurnDiff: async () => { throw new Error('git exploded') },
             diffTrees: store.diffTrees.bind(store),
             clearSession: store.clearSession.bind(store),
         }
@@ -130,8 +128,8 @@ describe('TurnDiffReporter（git 快照口径）', () => {
         expect(send).not.toHaveBeenCalled()
     })
 
-    it('空仓库首轮（链空且无 HEAD 树）：降级投影口径，快照照打', async () => {
-        const store = createInMemoryTurnSnapshotStore({ headTree: null })
+    it('空仓库首轮：无上一轮，降级投影口径，快照照打', async () => {
+        const store = createInMemoryTurnSnapshotStore()
         const send = vi.fn()
         const reporter = new TurnDiffReporter(SID, store, send)
         reporter.observe(assistantToolUse('t1', 'Write', '/repo/fresh.ts'))
@@ -160,11 +158,11 @@ describe('ensureBaselineSnapshot（会话启动基线）', () => {
         expect(captures).toBe(1)
     })
 
-    it('baseline 失败吞错不抛（回退 HEAD 树语义，不阻塞会话启动）', async () => {
+    it('baseline 失败吞错不抛（不阻塞会话启动）', async () => {
         const broken = {
             capture: async () => { throw new Error('baseline exploded') },
             listChain: async () => [],
-            headTree: async () => null,
+            lastTurnDiff: async () => null,
             diffTrees: async () => [],
             clearSession: async () => 0,
         }
