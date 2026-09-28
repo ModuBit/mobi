@@ -40,9 +40,6 @@ import { DiffViewer } from './DiffViewer'
 import { KIND_BADGES, FilePathLabel } from '@/components/chat/blocks/TurnDiffCard'
 import { useGitReviewData, useGitReviewFileDiff, type ReviewDataResult, type ReviewFileDiffResult } from '@/core/data/hooks/queries/useGitReview'
 
-/** 大 diff 阈值（行数）：超过降级为「文件过大」+ 跳转文件查看器（票07，约 5k 行） */
-const BIG_DIFF_LINES = 5000
-
 /** 依赖注入点：测试换假数据源，生产走 react-query 实现 */
 export interface GitReviewDeps {
     useReviewData: (sessionId: string) => ReviewDataResult
@@ -66,8 +63,8 @@ const SCOPE_LABEL_KEYS: Record<GitReviewScope, string> = {
 }
 
 /** 可 diff 判定：只有文本类条目才可展开（不可展开的行点击无效果、无箭头）。binary 是
- *  服务端标记；未提交档的 untracked 二进制（图片/.pyc）不带标记但行变化恒 0（git
- *  numstat 对二进制给 0），同样拦下——CLI 侧另有全文兜底闸（NUL 嗅探 + 4MB 上限） */
+ *  CLI 单点标记（tracked numstat 与 untracked no-index 两条组装管线同口径），行数判断
+ *  只用于展开性，oversize 行仍可展开——展开落「文件过大」降级 UI（不发 diff 查询） */
 function canDiff(entry: TurnDiffFileEntry): boolean {
     return !entry.binary && (entry.additions + entry.deletions > 0 || !!entry.previousPath)
 }
@@ -85,10 +82,10 @@ function RowDiff({ sessionId, scope, entry, version, deps }: {
     const { t } = useTranslation()
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
-    const diff = deps.useFileDiff(sessionId, { scope, path: entry.path }, version)
+    // oversize 由 CLI 单点打标：不发 diff 拉取（null query → hook disabled），直接降级
+    const diff = deps.useFileDiff(sessionId, entry.oversize ? null : { scope, path: entry.path }, version)
 
-    // 大 diff 降级（票07）：渲染引擎吃全文，超大文件卡真机——跳转文件查看器
-    if (!entry.binary && entry.additions + entry.deletions > BIG_DIFF_LINES) {
+    if (entry.oversize) {
         return (
             <Flex data-testid="review-too-big" vertical align="center" justify="center" gap={10} style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
                 {t('review.tooBig')}

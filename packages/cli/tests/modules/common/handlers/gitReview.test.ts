@@ -237,4 +237,23 @@ describe('GitReviewReader（真 git 集成）', () => {
         const txtDiff = GitReviewFileDiffSchema.parse(await new GitReviewReader(repoDir).fileDiff({ scope: 'unstaged', path: 'new.txt' }))
         expect(txtDiff.after).toBe('hello\nworld\n')
     })
+
+    it('oversize 单点打标：行数超阈值的条目 oversize:true，各档一致', async () => {
+        // 未暂存：untracked 大文件（5001 行 > OVERSIZE_DIFF_LINES）
+        const lines = Array.from({ length: 5001 }, (_, i) => `line ${i}`)
+        await write('big-untracked.txt', lines.join('\n') + '\n')
+        // 未提交：tracked 大文件整文件改写（5001 行 modify）
+        await write('big-tracked.txt', lines.map((l) => `old ${l}`).join('\n') + '\n')
+        await git('add', 'big-tracked.txt')
+        await git('commit', '-qm', 'big-tracked')
+        await write('big-tracked.txt', lines.map((l) => `new ${l}`).join('\n') + '\n')
+
+        const data = GitReviewDataSchema.parse(await new GitReviewReader(repoDir).reviewData(SESSION_ID, store))
+        const untracked = data.scopes.unstaged.files.find((f) => f.path === 'big-untracked.txt')!
+        expect(untracked.oversize).toBe(true)
+        const small = data.scopes.unstaged.files.find((f) => f.path === 'new.txt')!
+        expect(small.oversize).toBeUndefined()
+        const tracked = data.scopes.uncommitted.files.find((f) => f.path === 'big-tracked.txt')!
+        expect(tracked.oversize).toBe(true)
+    })
 })

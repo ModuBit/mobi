@@ -224,22 +224,24 @@ describe('GitReviewView（hook 注入）', () => {
         expect(queries.filter((q) => q !== null)[0]).toEqual({ scope: 'last-turn', path: 'after.txt' })
     })
 
-    it('大 diff（票07）：超阈值降级为「文件过大」+ 跳转文件查看器入口', () => {
+    it('大 diff（oversize 由 CLI 打标）：降级为「文件过大」+ 跳转文件查看器入口，且不发 diff 查询', () => {
         const big: GitReviewData = {
             ...DATA,
             scopes: {
                 ...DATA.scopes,
                 'last-turn': {
-                    files: [{ path: 'huge.ts', kind: 'modify', additions: 4000, deletions: 2000 }],
-                    stats: { files: 1, additions: 4000, deletions: 2000 },
+                    files: [{ path: 'huge.ts', kind: 'modify', additions: 6000, deletions: 0, oversize: true }],
+                    stats: { files: 1, additions: 6000, deletions: 0 },
                     git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40) },
                 },
             },
         }
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: big, fileDiff: { before: '', after: '', patch: '' } })} />)
+        const queries: (GitReviewFileQuery | null)[] = []
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: big, fileDiff: { before: '', after: '', patch: '' }, onQuery: (q) => queries.push(q) })} />)
         fireEvent.click(screen.getByTestId('review-file-row'))
         expect(screen.getByTestId('review-too-big')).toBeDefined()
         expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
+        expect(queries.filter((q) => q !== null)).toHaveLength(0) // oversize 不发 diff 拉取
         // 点击入口 → 调 workspaceStore.openFileTab（新 file tab 激活）
         fireEvent.click(screen.getByTestId('review-too-big-open').querySelector('button') ?? screen.getByTestId('review-too-big-open'))
         const s = useWorkspaceStore.getState().getSession('s1')

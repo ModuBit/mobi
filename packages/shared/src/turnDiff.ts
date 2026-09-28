@@ -41,7 +41,13 @@ export const TurnDiffFileEntrySchema = z.object({
     previousPath: z.string().min(1).optional(),
     /** 二进制文件：计数无意义，恒 0，以本标记表达 */
     binary: z.boolean().optional(),
+    /** diff 超过内联渲染阈值（OVERSIZE_DIFF_LINES）：审查视图降级为「文件过大」+ 跳转，
+     *  不发起单文件 diff 拉取——判定单点在 CLI（web 不再自己数行数） */
+    oversize: z.boolean().optional(),
 })
+
+/** 内联 diff 渲染阈值（行数）：超过即 oversize 降级。CLI 打标、web 消费的唯一判据 */
+export const OVERSIZE_DIFF_LINES = 5000
 export type TurnDiffFileEntry = z.infer<typeof TurnDiffFileEntrySchema>
 
 export const TurnDiffPayloadSchema = z.object({

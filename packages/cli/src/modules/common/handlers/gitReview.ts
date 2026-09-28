@@ -38,6 +38,7 @@ import {
     GIT_REVIEW_RPC,
     GitReviewDataSchema,
     GitReviewFileDiffSchema,
+    OVERSIZE_DIFF_LINES,
     summarizeTurnDiffFiles,
     type GitReviewFileDiff,
     type GitReviewFileQuery,
@@ -67,6 +68,11 @@ function asRenderableText(raw: string): string | null {
 
 type ScopeFiles = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: null }
 type LastTurnScope = { files: TurnDiffFileEntry[]; stats: ReturnType<typeof summarizeTurnDiffFiles>; git: { baseTree: string; headTree: string } } | null
+
+/** oversize 单点判定：行数超内联渲染阈值即打标（web 只消费标记，不再自己数行数） */
+function stampOversize<T extends TurnDiffFileEntry>(files: T[]): T[] {
+    return files.map((f) => (f.additions + f.deletions > OVERSIZE_DIFF_LINES ? { ...f, oversize: true } : f))
+}
 
 function emptyScope(): ScopeFiles {
     return { files: [], stats: summarizeTurnDiffFiles([]), git: null }
@@ -210,14 +216,15 @@ export class GitReviewReader {
         let lastTurn: LastTurnScope = null
         const last = await store.lastTurnDiff(sessionId)
         if (last && last.files.length > 0) {
-            lastTurn = { files: last.files, stats: summarizeTurnDiffFiles(last.files), git: { baseTree: last.base.tree, headTree: last.head.tree } }
+            const files = stampOversize(last.files)
+            lastTurn = { files, stats: summarizeTurnDiffFiles(files), git: { baseTree: last.base.tree, headTree: last.head.tree } }
         }
 
         const staged = await this.entries(['diff', '--cached', '-M', 'HEAD'])
         const unstagedTracked = await this.entries(['diff', '-M'])
         const untracked = await this.untrackedEntries()
-        const unstaged = [...unstagedTracked, ...untracked.files].sort((a, b) => a.path.localeCompare(b.path))
-        const uncommitted = mergeEntries(staged, unstaged)
+        const unstaged = stampOversize([...unstagedTracked, ...untracked.files].sort((a, b) => a.path.localeCompare(b.path)))
+        const uncommitted = stampOversize(mergeEntries(staged, unstaged))
 
         return GitReviewDataSchema.parse({
             unavailable: false,
@@ -230,7 +237,7 @@ export class GitReviewReader {
                     git: null,
                     ...(untracked.truncated && { truncated: true }),
                 },
-                staged: { files: staged, stats: summarizeTurnDiffFiles(staged), git: null },
+                staged: { files: stampOversize(staged), stats: summarizeTurnDiffFiles(staged), git: null },
             },
         })
     }
