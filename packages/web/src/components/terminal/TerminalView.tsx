@@ -51,7 +51,7 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
     const attachedRef = useRef(false)
     const [editorOpen, setEditorOpen] = useState(false)
 
-    // session metadata：取版本（= mobi --version）、项目目录、git 分支用于 banner
+    // session metadata：取版本（= mobi --version）、工作区目录、git 分支用于 banner
     const { data: session } = useSession(sessionId)
     const metadata = session?.metadata
     // session 是否在线（CLI runner 已连接）。三态：metadata 未就绪 = 未知，不驱动

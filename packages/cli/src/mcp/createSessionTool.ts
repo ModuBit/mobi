@@ -79,8 +79,8 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
         directory: z.string().min(1).describe(
             'Absolute path on that machine, resolved there. Created if it does not exist.',
         ),
-        projectId: z.string().optional().describe(
-            'Optional project id to file the new session under. Omit for a loose session.',
+        workspaceId: z.string().optional().describe(
+            'Optional workspace id to file the new session under. Omit for a loose session.',
         ),
         model: z.string().optional().describe(
             'Optional model for the new session. Omit to take the mobi default.',
@@ -138,7 +138,7 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
             'when the work can go to a session that already exists, use send_message_to_session instead. ' +
             'Call list_machines first and pass one of the returned machineIds; this tool does not accept a machine name. ' +
             'directory is required and is resolved on that machine. ' +
-            'Omit projectId, model, effort, permissionMode, and title to take mobi\'s defaults. ' +
+            'Omit workspaceId, model, effort, permissionMode, and title to take mobi\'s defaults. ' +
             'A title is only the new session\'s initial name — that session may rename itself once it knows what ' +
             'the work is, and its own name wins. ' +
             'The new session starts with no first message — it is an empty working context. ' +

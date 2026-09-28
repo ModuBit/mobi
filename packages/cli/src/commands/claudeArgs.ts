@@ -20,7 +20,7 @@ import type { StartOptions } from '@/claude/runClaude'
 
 /**
  * 取「值类 flag」的下一参数作值；缺失或本身是 flag（以 - 开头）时报缺值，
- * 避免把后续 flag 吞作值（如 `mobi --project --yolo` 把 --yolo 当 projectId）
+ * 避免把后续 flag 吞作值（如 `mobi --workspace --yolo` 把 --yolo 当 workspaceId）
  */
 function consumeFlagValue(args: string[], index: number, flagName: string): string {
     const value = args[index + 1]
@@ -32,7 +32,7 @@ function consumeFlagValue(args: string[], index: number, flagName: string): stri
 
 /**
  * 解析 mobi 默认命令（claude）的命令行参数：
- * - mobi 自身的 flag（--project / --permission-mode / --model 等）进 options
+ * - mobi 自身的 flag（--workspace / --permission-mode / --model 等）进 options
  * - 其余参数（含取值）透传给 claude code（unknownArgs → options.claudeArgs）
  *
  * 从 commands/claude.ts 抽出为纯函数，便于单元测试。
@@ -89,9 +89,9 @@ export function parseStartOptions(args: string[]): {
             // 设置启动来源
             options.startedBy = consumeFlagValue(args, i, arg) as 'runner' | 'terminal'
             i += 1
-        } else if (arg === '--project') {
-            // 归属项目 id（Web spawn 透传；终端亦可手动指定）
-            options.projectId = consumeFlagValue(args, i, '--project')
+        } else if (arg === '--workspace') {
+            // 归属工作区 id（Web spawn 透传；终端亦可手动指定）
+            options.workspaceId = consumeFlagValue(args, i, '--workspace')
             i += 1
         } else {
             // 其他claude code参数

@@ -40,7 +40,7 @@ function validateRpcCwd(cwd: string): boolean {
 interface WriteFileRangeRequest {
     /** 首块（offset=0）用：原始文件名，cli 生成唯一名 */
     filename?: string
-    /** 后续块（offset>0）用：首块返回的项目相对路径 */
+    /** 后续块（offset>0）用：首块返回的工作区相对路径 */
     path?: string
     offset: number
     /** 二进制块（Socket.IO 附件，非 base64） */
@@ -53,7 +53,7 @@ interface WriteFileRangeRequest {
 
 interface WriteFileRangeResponse {
     success: boolean
-    /** 首块返回：项目相对路径 */
+    /** 首块返回：工作区相对路径 */
     path?: string
     /** 本次写入字节数 */
     written?: number
@@ -72,7 +72,7 @@ interface DeleteUploadResponse {
 }
 
 interface ReplaceUploadRequest {
-    /** 目标路径（项目相对，须在 uploads 目录内）：文件名原样保留不进唯一名生成——
+    /** 目标路径（工作区相对，须在 uploads 目录内）：文件名原样保留不进唯一名生成——
      *  替换语义要求 path 恒定，附件 id / 草稿引用 / 扩展名全部不动 */
     path: string
     /** 全量内容（单发整文件）：分块协议下「旧文件何时删」需要 commit 信号，很别扭；
@@ -138,8 +138,8 @@ const writtenTracker = new Map<string, { written: number; totalSize?: number }>(
 
 /**
  * 上传目录就绪缓存，避免同月重复 stat + readFile。
- * 条目键为 projectRoot:月份 —— 目录一旦就绪永久有效，非泄漏；
- * 单项目年增 12 条后稳定，多项目按项目数线性增长，无需 LRU。
+ * 条目键为 workspaceRoot:月份 —— 目录一旦就绪永久有效，非泄漏；
+ * 单工作区年增 12 条后稳定，多工作区按工作区数线性增长，无需 LRU。
  */
 const uploadDirCache = new Map<string, string>()
 
@@ -150,20 +150,20 @@ const uploadDirCache = new Map<string, string>()
  * - .mobi/uploads/YYYY-MM/ 按月归档
  * - .mobi/.gitignore 排除 uploads 和 artifacts 目录
  *
- * @param projectRoot 项目根目录
+ * @param workspaceRoot 工作区根目录
  * @returns 当月上传目录的绝对路径
  */
-async function ensureUploadDir(projectRoot: string): Promise<string> {
+async function ensureUploadDir(workspaceRoot: string): Promise<string> {
     // 按月组织：YYYY-MM
     const now = new Date()
     const monthDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
     // 缓存命中则直接返回
-    const cacheKey = `${projectRoot}:${monthDir}`
+    const cacheKey = `${workspaceRoot}:${monthDir}`
     const cached = uploadDirCache.get(cacheKey)
     if (cached) return cached
 
-    const uploadsRoot = getUploadsDir(projectRoot)
+    const uploadsRoot = getUploadsDir(workspaceRoot)
     const uploadDir = join(uploadsRoot, monthDir)
 
     if (!existsSync(uploadDir)) {
@@ -171,7 +171,7 @@ async function ensureUploadDir(projectRoot: string): Promise<string> {
     }
 
     // 确保 .mobi/.gitignore 存在且包含 uploads/ 和 artifacts/
-    const mobiDir = join(projectRoot, '.mobi')
+    const mobiDir = join(workspaceRoot, '.mobi')
     const gitignorePath = join(mobiDir, '.gitignore')
     const requiredEntries = ['uploads/', 'artifacts/']
 
@@ -200,9 +200,9 @@ async function ensureUploadDir(projectRoot: string): Promise<string> {
 /**
  * 校验路径是否在 uploads 目录内（防止路径遍历攻击）
  */
-function isPathWithinUploads(projectRoot: string, relativePath: string): boolean {
-    const uploadsRoot = getUploadsDir(projectRoot)
-    const resolvedPath = resolve(projectRoot, relativePath)
+function isPathWithinUploads(workspaceRoot: string, relativePath: string): boolean {
+    const uploadsRoot = getUploadsDir(workspaceRoot)
+    const resolvedPath = resolve(workspaceRoot, relativePath)
     const normalizedUploads = uploadsRoot.endsWith(sep)
         ? uploadsRoot
         : `${uploadsRoot}${sep}`
@@ -227,7 +227,7 @@ export async function cleanupUploadDir(_sessionId?: string): Promise<void> {
  * 注册上传相关的 RPC handlers
  *
  * @param rpcHandlerManager RPC 处理器管理器
- * @param workingDirectory 当前工作目录（项目根目录）
+ * @param workingDirectory 当前工作目录（工作区根目录）
  */
 export function registerUploadHandlers(
     rpcHandlerManager: RpcHandlerManager,

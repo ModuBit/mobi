@@ -41,8 +41,8 @@ export function buildClaudeSpawnArgs(options: SpawnSessionOptions): string[] {
     if (options.permissionMode) {
         args.push('--permission-mode', options.permissionMode)
     }
-    if (options.projectId) {
-        args.push('--project', options.projectId)
+    if (options.workspaceId) {
+        args.push('--workspace', options.workspaceId)
     }
     return args
 }

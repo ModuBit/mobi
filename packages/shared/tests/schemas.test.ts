@@ -159,10 +159,10 @@ describe('DecryptedMessageSchema', () => {
 describe('MetadataSchema', () => {
     it('完整元数据解析成功', () => {
         const meta = {
-            path: '/project',
+            path: '/workspace',
             host: 'localhost',
             version: '1.0.0',
-            name: 'my-project',
+            name: 'my-workspace',
             os: 'linux',
             summary: { text: '测试摘要', updatedAt: 1000 },
             machineId: 'machine-1',
@@ -170,17 +170,17 @@ describe('MetadataSchema', () => {
             tools: ['tool1', 'tool2'],
         }
         const result = MetadataSchema.parse(meta)
-        expect(result.path).toBe('/project')
+        expect(result.path).toBe('/workspace')
         expect(result.host).toBe('localhost')
         expect(result.version).toBe('1.0.0')
-        expect(result.name).toBe('my-project')
+        expect(result.name).toBe('my-workspace')
         expect(result.summary?.text).toBe('测试摘要')
     })
 
     it('仅 path + host 解析成功', () => {
-        const meta = { path: '/project', host: 'localhost' }
+        const meta = { path: '/workspace', host: 'localhost' }
         const result = MetadataSchema.parse(meta)
-        expect(result.path).toBe('/project')
+        expect(result.path).toBe('/workspace')
         expect(result.host).toBe('localhost')
         // 可选字段应为 undefined
         expect(result.version).toBeUndefined()
@@ -189,7 +189,7 @@ describe('MetadataSchema', () => {
 
     it('缺少必填字段抛错', () => {
         // 缺少 host
-        expect(() => MetadataSchema.parse({ path: '/project' })).toThrow()
+        expect(() => MetadataSchema.parse({ path: '/workspace' })).toThrow()
         // 缺少 path
         expect(() => MetadataSchema.parse({ host: 'localhost' })).toThrow()
         // 空对象
@@ -198,7 +198,7 @@ describe('MetadataSchema', () => {
 
     it('解析包含 gitBranch 的完整 metadata', () => {
         const metadata = {
-            path: '/home/user/project',
+            path: '/home/user/workspace',
             host: 'myhost',
             gitBranch: 'feature/auth',
         }
@@ -208,7 +208,7 @@ describe('MetadataSchema', () => {
 
     it('gitBranch 可选，缺失时不报错', () => {
         const metadata = {
-            path: '/home/user/project',
+            path: '/home/user/workspace',
             host: 'myhost',
         }
         const result = MetadataSchema.parse(metadata)
@@ -217,7 +217,7 @@ describe('MetadataSchema', () => {
 
     it('gitBranch 为 undefined 时不报错', () => {
         const metadata = {
-            path: '/home/user/project',
+            path: '/home/user/workspace',
             host: 'myhost',
             gitBranch: undefined,
         }
@@ -259,16 +259,16 @@ describe('SessionSchema', () => {
     it('含完整元数据解析成功', () => {
         const session = makeMinimal({
             metadata: {
-                path: '/project',
+                path: '/workspace',
                 host: 'localhost',
-                name: 'my-project',
+                name: 'my-workspace',
                 version: '1.0.0',
             },
             permissionMode: 'default',
             mode: 'local',
         })
         const result = SessionSchema.parse(session)
-        expect(result.metadata?.name).toBe('my-project')
+        expect(result.metadata?.name).toBe('my-workspace')
         expect(result.permissionMode).toBe('default')
         expect(result.mode).toBe('local')
     })

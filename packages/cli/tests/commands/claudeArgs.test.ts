@@ -15,7 +15,7 @@
  */
 
 /**
- * 验证 claude 命令参数解析中 --project 的处理（项目实体化 Task 6）。
+ * 验证 claude 命令参数解析中 --workspace 的处理（工作区实体化 Task 6）。
  *
  * @see packages/cli/src/commands/claudeArgs.ts
  */
@@ -23,20 +23,20 @@
 import { describe, expect, it } from 'vitest'
 import { parseStartOptions } from '@/commands/claudeArgs'
 
-describe('parseStartOptions --project', () => {
-    it('解析 --project foo 进 options.projectId', () => {
-        const { options, unknownArgs } = parseStartOptions(['--project', 'foo'])
-        expect(options.projectId).toBe('foo')
+describe('parseStartOptions --workspace', () => {
+    it('解析 --workspace foo 进 options.workspaceId', () => {
+        const { options, unknownArgs } = parseStartOptions(['--workspace', 'foo'])
+        expect(options.workspaceId).toBe('foo')
         expect(unknownArgs).toEqual([])
     })
 
     it('缺值 → 抛错', () => {
-        expect(() => parseStartOptions(['--project'])).toThrow(/Missing --project value/i)
+        expect(() => parseStartOptions(['--workspace'])).toThrow(/Missing --workspace value/i)
     })
 
     it('值类 flag 的下一参数是 flag 时不被吞作值（V6）', () => {
-        // `mobi --project --yolo` 应报缺值，而不是把 --yolo 当 projectId 消费掉
-        expect(() => parseStartOptions(['--project', '--yolo'])).toThrow(/Missing --project value/i)
+        // `mobi --workspace --yolo` 应报缺值，而不是把 --yolo 当 workspaceId 消费掉
+        expect(() => parseStartOptions(['--workspace', '--yolo'])).toThrow(/Missing --workspace value/i)
         expect(() => parseStartOptions(['--model', '--yolo'])).toThrow(/Missing --model value/i)
         expect(() => parseStartOptions(['-m', '--yolo'])).toThrow(/Missing --model value/i)
         expect(() => parseStartOptions(['--effort', '-m'])).toThrow(/Missing --effort value/i)
@@ -46,10 +46,10 @@ describe('parseStartOptions --project', () => {
     it('与 --permission-mode 等其他参数共存互不干扰', () => {
         const { options, unknownArgs } = parseStartOptions([
             '--permission-mode', 'plan',
-            '--project', 'p1',
+            '--workspace', 'p1',
             '--extra-flag', 'value'
         ])
-        expect(options.projectId).toBe('p1')
+        expect(options.workspaceId).toBe('p1')
         expect(options.permissionMode).toBe('plan')
         expect(unknownArgs).toEqual(['--extra-flag', 'value'])
     })

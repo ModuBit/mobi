@@ -17,7 +17,7 @@
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 /**
- * 解析显示路径（相对于项目根目录）
+ * 解析显示路径（相对于工作区根目录）
  */
 export function resolveDisplayPath(path: string, metadata: SessionMetadataSummary | null): string {
     if (!metadata?.path) return path

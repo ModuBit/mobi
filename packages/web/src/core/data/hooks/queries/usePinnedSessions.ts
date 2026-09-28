@@ -22,7 +22,7 @@ import { queryKeys } from '@/core/lib/query-keys'
 const PAGE_SIZE = 20
 
 /**
- * 「置顶」会话列表的统一逻辑层（跨项目/游离的置顶会话，与 useRecentSessions 同构）
+ * 「置顶」会话列表的统一逻辑层（跨工作区/游离的置顶会话，与 useRecentSessions 同构）
  *
  * - 无限分页 + ['sessions'] upsert 脚手架由 useSessionIdsPages 承担（单一数据源策略）
  * - 分页/展开/剩余数等展示逻辑由 usePagedSessionList 共享核心承担

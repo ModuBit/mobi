@@ -20,10 +20,10 @@ import { useCallback, useMemo, useState } from 'react'
 export const SECTION_PAGE_SIZE = 5
 
 /**
- * 侧边栏平级分区的列表前端分页（「项目」分区等：全量数据在手，只做展示截断）
+ * 侧边栏平级分区的列表前端分页（「工作区」分区等：全量数据在手，只做展示截断）
  *
  * 与会话分组的 usePagedSessionList 区分：后者含触底后端 cursor 分页；
- * 本 hook 纯前端——项目实体量级小，hub 一次性返回全量（真分页需求见 docs/pending.md）。
+ * 本 hook 纯前端——工作区实体量级小，hub 一次性返回全量（真分页需求见 docs/pending.md）。
  * 底部链接复用 SessionListFooter（isLoadingMore 恒 false）。
  */
 export function usePagedSectionList<T>(items: T[], pageSize: number = SECTION_PAGE_SIZE) {

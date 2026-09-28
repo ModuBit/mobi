@@ -52,7 +52,7 @@ export interface ChatPaneProps {
  * 承载 PageHeader（SidebarToggle / 移动端 MobileMenuButton / PixelAvatar / 会话名 /
  * 展开按钮）+ SessionContextBar + ChatContainer。
  * - 展开按钮仅在检视面板收起（!expanded）时显示
- * - 归档会话入口移至会话列表（SidebarProjects / MobileProjectList），避免误触
+ * - 归档会话入口移至会话列表（SidebarWorkspaces / MobileWorkspaceList），避免误触
  * - 移动端另挂 EdgeSwipeBack（左缘右滑开菜单）
  */
 export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatPaneProps) {

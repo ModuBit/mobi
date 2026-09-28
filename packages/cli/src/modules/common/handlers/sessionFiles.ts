@@ -27,7 +27,7 @@ const MAX_RESULTS = 50
 const MAX_SEARCH_DEPTH = 10
 /**
  * 树浏览路径（listSessionDirectory）的条目上限。
- * 远高于搜索的 MAX_RESULTS(50)：项目目录应全量可见，避免第 51 项起凭空消失。
+ * 远高于搜索的 MAX_RESULTS(50)：工作区目录应全量可见，避免第 51 项起凭空消失。
  * 极端大目录（如 node_modules）超此上限时，响应带 truncated/total，
  * 前端在目录末尾挂「仅展示前 N 项，共 M 项」提示节点并引导用搜索收窄。
  * 配合 antd Tree virtual 滚动，2000 节点也只渲染可视区 ~20-30 行。

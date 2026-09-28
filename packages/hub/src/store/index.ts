@@ -21,7 +21,7 @@ import { dirname } from 'node:path'
 import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
 import { ContextBoundaryStore } from './contextBoundary'
-import { ProjectStore } from './projectStore'
+import { WorkspaceStore } from './workspaceStore'
 import { PushStore } from './pushStore'
 import { SessionForkStore } from './sessionFork'
 import { migrateLegacyRefMessages } from './legacyRefMigration'
@@ -31,7 +31,7 @@ import { UserStore } from './userStore'
 export type {
     StoredMachine,
     StoredMessage,
-    StoredProject,
+    StoredWorkspace,
     StoredPushSubscription,
     StoredSession,
     StoredUser,
@@ -40,7 +40,7 @@ export type {
 export { MachineStore } from './machineStore'
 export { MessageStore } from './messageStore'
 export { ContextBoundaryStore } from './contextBoundary'
-export { ProjectStore } from './projectStore'
+export { WorkspaceStore } from './workspaceStore'
 export { PushStore } from './pushStore'
 export { SessionForkStore } from './sessionFork'
 export { SessionStore } from './sessionStore'
@@ -56,7 +56,7 @@ const REQUIRED_TABLES = [
     'messages',
     'users',
     'push_subscriptions',
-    'projects'
+    'workspaces'
 ] as const
 
 export class Store {
@@ -70,7 +70,7 @@ export class Store {
     readonly sessionFork: SessionForkStore
     readonly users: UserStore
     readonly push: PushStore
-    readonly projects: ProjectStore
+    readonly workspaces: WorkspaceStore
 
     constructor(dbPath: string) {
         this.dbPath = dbPath
@@ -117,7 +117,7 @@ export class Store {
         this.sessionFork = new SessionForkStore(this.db)
         this.users = new UserStore(this.db)
         this.push = new PushStore(this.db)
-        this.projects = new ProjectStore(this.db)
+        this.workspaces = new WorkspaceStore(this.db)
 
         // ADR 0003 存量迁移：ref block 溯源消息 → mobi URI 动作链接（幂等，见 legacyRefMigration）
         const migrated = migrateLegacyRefMessages(this.db)
@@ -174,13 +174,13 @@ export class Store {
                 agent_state_version INTEGER DEFAULT 1,
                 runtime_state TEXT,
                 runtime_state_updated_at INTEGER,
-                project_id TEXT,
+                workspace_id TEXT,
                 pinned INTEGER DEFAULT 0,
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
-            CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);
 
             CREATE TABLE IF NOT EXISTS machines (
                 id TEXT PRIMARY KEY,
@@ -197,7 +197,7 @@ export class Store {
             );
             CREATE INDEX IF NOT EXISTS idx_machines_namespace ON machines(namespace);
 
-            CREATE TABLE IF NOT EXISTS projects (
+            CREATE TABLE IF NOT EXISTS workspaces (
                 id TEXT PRIMARY KEY,
                 namespace TEXT NOT NULL DEFAULT 'default',
                 machine_id TEXT NOT NULL,
@@ -207,8 +207,8 @@ export class Store {
                 updated_at INTEGER NOT NULL,
                 seq INTEGER DEFAULT 0
             );
-            CREATE INDEX IF NOT EXISTS idx_projects_namespace ON projects(namespace);
-            CREATE INDEX IF NOT EXISTS idx_projects_machine ON projects(machine_id);
+            CREATE INDEX IF NOT EXISTS idx_workspaces_namespace ON workspaces(namespace);
+            CREATE INDEX IF NOT EXISTS idx_workspaces_machine ON workspaces(machine_id);
 
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
@@ -287,23 +287,23 @@ export class Store {
         if (missing.length > 0) {
             throw new Error(
                 `SQLite schema is missing required tables (${missing.join(', ')}). ` +
-                'For databases created before the project-entity feature, stop hub/runner and run ' +
-                '`bun scripts/migrate-projects.ts` to migrate; otherwise back up and rebuild the database.'
+                'For databases created before the workspace-entity feature, stop hub/runner and run ' +
+                '`bun scripts/migrate-workspaces.ts` to migrate; otherwise back up and rebuild the database.'
             )
         }
 
-        // 「项目实体化」前的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分新旧 schema，
+        // 「工作区实体化」前的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分新旧 schema，
         // sessions 列存在性是唯一判别器：旧 group_key schema 若在此放行，
-        // 会在 ProjectCache.warmup 的 SELECT * FROM projects 处崩溃且报错无引导
+        // 会在 WorkspaceCache.warmup 的 SELECT * FROM workspaces 处崩溃且报错无引导
         const sessionColumns = this.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>
-        if (!sessionColumns.some(column => column.name === 'project_id')) {
+        if (!sessionColumns.some(column => column.name === 'workspace_id')) {
             throw new Error(
-                `Detected legacy 'group_key' sessions schema (sessions has no project_id column) at ${this.dbPath}. ` +
-                'Stop hub/runner, then run `bun scripts/migrate-projects.ts` to migrate the database before starting this version.'
+                `Detected legacy 'group_key' sessions schema (sessions has no workspace_id column) at ${this.dbPath}. ` +
+                'Stop hub/runner, then run `bun scripts/migrate-workspaces.ts` to migrate the database before starting this version.'
             )
         }
 
-        // 「项目实体化之后、native_id 之前」的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分，
+        // 「工作区实体化之后、native_id 之前」的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分，
         // 列存在性是唯一判别器：缺列放行会在首个引用 native_id 的 SQL 处报无引导错误。
         // 不做代码内迁移（用户决策：部署时人工补列），此处只负责引导
         // table_xinfo 额外暴露 hidden 列（STORED 生成列 hidden=3），用于区分普通列 vs 生成列

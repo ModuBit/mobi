@@ -16,7 +16,7 @@ flowchart TB
 
     subgraph ClaudeProcess["Claude 子进程"]
         Claude["claude CLI<br/>原生终端交互"]
-        JSONL["JSONL 会话文件<br/>~/.claude/projects/.../"]
+        JSONL["JSONL 会话文件<br/>~/.claude/workspaces/.../"]
     end
 
     subgraph HubSide["Hub 侧"]
@@ -96,7 +96,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Start["claudeLocal(opts)"] --> Dir["mkdirSync(projectDir)<br/>确保项目目录存在"]
+    Start["claudeLocal(opts)"] --> Dir["mkdirSync(workspaceDir)<br/>确保工作区目录存在"]
     Dir --> CheckFlags{"用户已有<br/>--continue/--resume?"}
     CheckFlags -->|是| SkipResume["跳过自动 resume"]
     CheckFlags -->|否| CheckSession{"sessionId 有效?<br/>claudeCheckSession()"}
@@ -124,7 +124,7 @@ flowchart TB
 | `--mcp-config` | MCP 服务器配置（mobi MCP Server） |
 | `--allowedTools` | 允许的工具列表 |
 | `--settings` | Hook 配置文件路径 |
-| `--add-dir` | 添加 blobs 目录（用于文件上传）+ 会话附加目录（`opts.additionalDirectories`，来自项目 folders / metadata 冻结值） |
+| `--add-dir` | 添加 blobs 目录（用于文件上传）+ 会话附加目录（`opts.additionalDirectories`，来自工作区 folders / metadata 冻结值） |
 | 其他 `claudeArgs` | 用户透传的 Claude 参数 |
 
 ### 环境变量
@@ -145,7 +145,7 @@ SessionScanner 在 Local 模式下监听 Claude 写入的 JSONL 会话文件，�
 
 ```mermaid
 flowchart TB
-    Start["createSessionScanner()"] --> Watch["监听项目目录<br/>~/.claude/projects/{hash}/"]
+    Start["createSessionScanner()"] --> Watch["监听工作区目录<br/>~/.claude/workspaces/{hash}/"]
     Watch --> Detect["检测 .jsonl 文件变化"]
     Detect --> Parse["解析 JSONL 行<br/>RawJSONLinesSchema 验证"]
     Parse --> Filter{"过滤内部事件?"}
@@ -175,7 +175,7 @@ Local 模式下的完整消息流：
 ```
 Claude 进程
     │
-    ├── 写入 JSONL 文件（~/.claude/projects/{hash}/{sessionId}.jsonl）
+    ├── 写入 JSONL 文件（~/.claude/workspaces/{hash}/{sessionId}.jsonl）
     │
     └── SessionScanner 监听文件变化
          │

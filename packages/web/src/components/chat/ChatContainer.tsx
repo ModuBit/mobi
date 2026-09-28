@@ -624,7 +624,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // draft 记录锚点与入口（PC Popover / 移动 Drawer），messageId 定位 PC Popover
     // ──────────────────────────────────────────────────────────────
     const [forkDraft, setForkDraft] = useState<{ anchorNativeId: string; source: 'popover' | 'drawer'; targetText: string | null; messageId?: string } | null>(null)
-    // fork 会话创建 mutation（POST + 项目维度视图失效 + 跳转新会话，导航收口在 hook 内）
+    // fork 会话创建 mutation（POST + 工作区维度视图失效 + 跳转新会话，导航收口在 hook 内）
     const { forkSession, isPending: forkPending } = useForkSession(sessionId)
 
     // PC 入口：messageId 标识锚定消息（footer Popover 定位），锚点 = agent 回复 nativeId

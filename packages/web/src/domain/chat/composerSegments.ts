@@ -30,7 +30,7 @@ import { uuid } from '@/core/lib/uuid'
 export interface BlockFileRef {
     id: string
     filename: string
-    /** 项目相对路径（hub url source 的 value） */
+    /** 工作区相对路径（hub url source 的 value） */
     path: string
     mimeType: string
     size: number

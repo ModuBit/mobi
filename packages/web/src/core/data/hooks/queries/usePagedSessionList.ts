@@ -17,7 +17,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { compareSessionsForList } from '@/core/utils/sessionStatus'
-import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
+import type { Session, WorkspaceSessionsPage } from '@/core/data/api/types'
 
 /** 默认展示的会话数；每次点「展开更多」递增的数量 */
 const VISIBLE_PAGE_SIZE = 5
@@ -25,7 +25,7 @@ const VISIBLE_PAGE_SIZE = 5
 /** usePagedSessionList 需要的无限查询状态（由调用方的 useInfiniteQuery 结果贡献） */
 export interface PagedSessionListQueryState {
     /** 无限查询聚合页（sessionIds 分页） */
-    data: { pages: ProjectSessionsPage[] } | undefined
+    data: { pages: WorkspaceSessionsPage[] } | undefined
     isLoading: boolean
     hasNextPage: boolean
     isFetchingNextPage: boolean
@@ -33,7 +33,7 @@ export interface PagedSessionListQueryState {
 }
 
 /**
- * 分页会话分组的共享核心（useProjectSessions / useRecentSessions 复用）
+ * 分页会话分组的共享核心（useWorkspaceSessions / useRecentSessions 复用）
  *
  * 调用方只贡献 queryKey + queryFn（以及 upsert 进 ['sessions'] 的副作用），
  * 本 hook 收口与数据来源无关的展示逻辑：
@@ -64,7 +64,7 @@ export function usePagedSessionList(
     //    元素引用——只看元素全等会吞掉成员变化，UI 停在旧分组直到刷新（E2E 实证回归）；
     // 2. 输出稳定——本分组成员未被波及（过滤+排序结果与上次逐引用全等）时，保持结果引用
     //    不变，切断下游 visibleSessions/行组件在他人会话高频心跳期间的连锁重渲染。
-    const sessionsCacheRef = useRef<{ all: Session[] | undefined; pages: ProjectSessionsPage[] | undefined; result: Session[] }>({
+    const sessionsCacheRef = useRef<{ all: Session[] | undefined; pages: WorkspaceSessionsPage[] | undefined; result: Session[] }>({
         all: undefined,
         pages: undefined,
         result: [],
@@ -108,7 +108,7 @@ export function usePagedSessionList(
 
     // 展开状态三态优先级：用户显式 toggle > 包含活跃会话的自动展开 > 依据内容的默认值。
     // - expandWithContent 分区（「最近」）：有会话默认展开、空分区默认收起——数据异步到达
-    //   后自动展开，无需等用户操作；普通分组（项目组）静态默认收起
+    //   后自动展开，无需等用户操作；普通分组（工作区组）静态默认收起
     // - 用户 toggle 后以用户选择为准，不再随后续数据翻动翻转（收起的分区来新会话不会强行弹开）
     const [override, setOverride] = useState<boolean | null>(null)
     const baseExpanded = expandWithContent ? sessions.length > 0 : false

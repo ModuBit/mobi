@@ -26,7 +26,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { message } from 'antd'
 
-// ============ mock（hook/函数均返回稳定引用，避免 effect 死循环——项目已知坑） ============
+// ============ mock（hook/函数均返回稳定引用，避免 effect 死循环——工作区已知坑） ============
 
 const navigateSpy = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({

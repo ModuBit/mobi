@@ -31,10 +31,10 @@ function seedResumeCaches(queryClient: QueryClient, sessionIds: string[]): reado
     const keys = [
         ...sessionIds.map(sessionId => queryKeys.session(sessionId)),
         queryKeys.sessions,
-        queryKeys.projects,
+        queryKeys.workspaces,
         queryKeys.recentSessions,
         queryKeys.pinnedSessions,
-        queryKeys.projectSessions('project-1'),
+        queryKeys.workspaceSessions('workspace-1'),
     ] as const
 
     for (const key of keys) queryClient.setQueryData(key, { cached: true })
@@ -46,7 +46,7 @@ function createApi(resume: MobiApi['sessions']['resume']): MobiApi {
 }
 
 describe('invalidateSessionViews', () => {
-    it('使会话详情、全局列表及项目视图缓存失效', async () => {
+    it('使会话详情、全局列表及工作区视图缓存失效', async () => {
         const queryClient = createQueryClient()
         const keys = seedResumeCaches(queryClient, [SOURCE_SESSION_ID])
 
@@ -59,7 +59,7 @@ describe('invalidateSessionViews', () => {
 })
 
 describe('resumeSession', () => {
-    it('恢复到同一会话时返回权威 ID，并使会话详情、列表及项目视图缓存失效', async () => {
+    it('恢复到同一会话时返回权威 ID，并使会话详情、列表及工作区视图缓存失效', async () => {
         const queryClient = createQueryClient()
         const keys = seedResumeCaches(queryClient, [SOURCE_SESSION_ID])
         const resume = vi.fn(async () => ({ data: { sessionId: SOURCE_SESSION_ID } }))

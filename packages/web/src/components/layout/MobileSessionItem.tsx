@@ -24,7 +24,7 @@ import { ForkStateBadge } from './ForkStateBadge'
 import { SessionStatusDot } from './SessionStatusDot'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session } from '@/core/data/api/types'
-import { SessionItem, SessionName, TimeLabel, MoreButton } from './mobileProjectList.styles'
+import { SessionItem, SessionName, TimeLabel, MoreButton } from './mobileWorkspaceList.styles'
 
 const { useToken } = antTheme
 

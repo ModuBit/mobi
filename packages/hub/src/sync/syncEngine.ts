@@ -15,11 +15,11 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
-import type { ProjectSessionsResult } from '../store/sessions'
+import type { WorkspaceSessionsResult } from '../store/sessions'
 import { RewindDeleteBoundTracker } from './rewindDeleteBoundTracker'
 import type { SessionFactsSink } from './sessionFacts'
 import type { RpcRegistry } from '../socket/rpcRegistry'
@@ -28,7 +28,7 @@ import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { MachineCache, type Machine } from './machineCache'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
-import { ProjectCache } from './projectCache'
+import { WorkspaceCache } from './workspaceCache'
 import {
     RpcGateway,
     isUnexpectedAlreadyRunning,
@@ -101,7 +101,7 @@ export class SyncEngine {
     private readonly machineCache: MachineCache
     /** Agent 会话操作（B 类工具族）的业务规则入口；socket handler 经此取用，不重新实现一遍规则 */
     readonly agentSessions: AgentSessionService
-    private readonly projectCache: ProjectCache
+    private readonly workspaceCache: WorkspaceCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
     private readonly store: Store
@@ -133,8 +133,8 @@ export class SyncEngine {
             getOnlineMachinesByNamespace: (namespace) => this.machineCache.getOnlineMachinesByNamespace(namespace),
             getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
             getMachineByNamespace: (machineId, namespace) => this.machineCache.getMachineByNamespace(machineId, namespace),
-            // 与 Web 侧 spawn 路由共用同一个实现——项目归属规则只写一份
-            checkProjectAssignable: (projectId, namespace, machineId) => checkProjectAssignable(this, projectId, namespace, machineId),
+            // 与 Web 侧 spawn 路由共用同一个实现——工作区归属规则只写一份
+            checkWorkspaceAssignable: (workspaceId, namespace, machineId) => checkWorkspaceAssignable(this, workspaceId, namespace, machineId),
             spawnSession: async (machineId, directory, options) => {
                 // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约
                 const result = await this.rpcGateway.spawnSession(machineId, directory, options)
@@ -170,7 +170,7 @@ export class SyncEngine {
             waitUntilCanReceive: (sessionId, timeoutMs) => this.receiveReadiness.waitUntilCanReceive(sessionId, timeoutMs),
             canReceiveNow: (sessionId) => this.receiveReadiness.get(sessionId),
         })
-        this.projectCache = new ProjectCache(store, this.eventPublisher)
+        this.workspaceCache = new WorkspaceCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
         this.store = store
@@ -286,28 +286,28 @@ export class SyncEngine {
     // ============ Agent 会话操作（B 类工具族）============
     // 实例见 `agentSessions` 字段
 
-    // ============ 项目（project entity）============
+    // ============ 工作区（workspace entity）============
 
-    getProjects(namespace: string): Project[] {
-        return this.projectCache.getProjects(namespace)
+    getWorkspaces(namespace: string): Workspace[] {
+        return this.workspaceCache.getWorkspaces(namespace)
     }
 
-    getProject(id: string): Project | undefined {
-        return this.projectCache.getProject(id)
+    getWorkspace(id: string): Workspace | undefined {
+        return this.workspaceCache.getWorkspace(id)
     }
 
-    createProject(namespace: string, input: { machineId: string; name: string; folders: ProjectFolder[] }): Project {
-        return this.projectCache.createProject(namespace, input)
+    createWorkspace(namespace: string, input: { machineId: string; name: string; folders: WorkspaceFolder[] }): Workspace {
+        return this.workspaceCache.createWorkspace(namespace, input)
     }
 
-    updateProject(id: string, namespace: string, patch: { name?: string; folders?: ProjectFolder[] }): Project | null {
-        return this.projectCache.updateProject(id, namespace, patch)
+    updateWorkspace(id: string, namespace: string, patch: { name?: string; folders?: WorkspaceFolder[] }): Workspace | null {
+        return this.workspaceCache.updateWorkspace(id, namespace, patch)
     }
 
-    deleteProject(id: string, namespace: string): boolean {
+    deleteWorkspace(id: string, namespace: string): boolean {
         // 返回值 = 被解绑的 session ID 列表（null = 删除失败）；
         // 只对这些 id 刷新内存缓存，避免丢弃返回值的 O(namespace) 全量扫描
-        const affected = this.projectCache.deleteProject(id, namespace)
+        const affected = this.workspaceCache.deleteWorkspace(id, namespace)
         if (affected === null) return false
         for (const sessionId of affected) {
             this.sessionCache.refreshSession(sessionId)
@@ -315,21 +315,21 @@ export class SyncEngine {
         return true
     }
 
-    getSessionsByProject(namespace: string, projectId: string, cursor: number | null, limit?: number): ProjectSessionsResult {
-        return this.store.sessions.getSessionsByProject(namespace, projectId, cursor, limit)
+    getSessionsByWorkspace(namespace: string, workspaceId: string, cursor: number | null, limit?: number): WorkspaceSessionsResult {
+        return this.store.sessions.getSessionsByWorkspace(namespace, workspaceId, cursor, limit)
     }
 
-    getUnboundSessions(namespace: string, cursor: number | null, limit?: number): ProjectSessionsResult {
+    getUnboundSessions(namespace: string, cursor: number | null, limit?: number): WorkspaceSessionsResult {
         return this.store.sessions.getUnboundSessions(namespace, cursor, limit)
     }
 
-    getPinnedSessions(namespace: string, cursor: number | null, limit?: number): ProjectSessionsResult {
+    getPinnedSessions(namespace: string, cursor: number | null, limit?: number): WorkspaceSessionsResult {
         return this.store.sessions.getPinnedSessions(namespace, cursor, limit)
     }
 
     /**
      * 置顶 / 取消置顶（纯展示维度分组，不改归属）。置顶态变化时刷新内存缓存并广播
-     * session-updated，Web 端连带失效「置顶」「项目」「最近」三个分组视图；
+     * session-updated，Web 端连带失效「置顶」「工作区」「最近」三个分组视图；
      * 幂等置顶（态未变）视为成功但不广播，避免无意义的 SSE 扰动。
      */
     setSessionPinned(sessionId: string, pinned: boolean, namespace: string): boolean {
@@ -344,12 +344,12 @@ export class SyncEngine {
     }
 
     /**
-     * 归入项目 / 解绑（移回「最近」）。projectId 须存在且同 namespace（store 层校验）。
+     * 归入工作区 / 解绑（移回「最近」）。workspaceId 须存在且同 namespace（store 层校验）。
      * 归属变化时刷新内存缓存并广播 session-updated，Web 端感知归属变化；
      * 幂等重归入（归属未变）视为成功但不广播，避免无意义的 SSE 扰动。
      */
-    setSessionProject(sessionId: string, projectId: string | null, namespace: string): boolean {
-        const result = this.store.sessions.setSessionProject(sessionId, projectId, namespace)
+    setSessionWorkspace(sessionId: string, workspaceId: string | null, namespace: string): boolean {
+        const result = this.store.sessions.setSessionWorkspace(sessionId, workspaceId, namespace)
         if (result === 'not_found') return false
         if (result === 'noop') return true
         const session = this.sessionCache.refreshSession(sessionId)
@@ -444,11 +444,11 @@ export class SyncEngine {
     private warmupCache(): void {
         this.sessionCache.warmupCache()
         this.machineCache.warmupCache()
-        this.projectCache.warmupCache()
+        this.workspaceCache.warmupCache()
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown, projectId?: string | null): Session {
-        return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode, runtimeState, projectId)
+    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown, workspaceId?: string | null): Session {
+        return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode, runtimeState, workspaceId)
     }
 
     getSessionByClaudeSessionId(nativeSessionId: string, namespace: string): Session | null {
@@ -829,7 +829,7 @@ export class SyncEngine {
         const spawnResult = await this.rpcGateway.spawnSession(
             targetMachine.id,
             metadata.path,
-            {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/projectId
+            {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
                 model: session.runtimeState?.model ?? undefined,
                 permissionMode: session.permissionMode,
                 resumeSessionId: resumeToken,
@@ -1090,23 +1090,23 @@ export class SyncEngine {
 }
 
 /**
- * 项目归属校验（web/cli 路由共用判定，收口在 engine 层避免各路由内联漂移）：
- * - not_found：项目不存在或跨 namespace（调用方一般映射 404）
- * - machine_mismatch：machineId 已知且与项目归属机器不符（调用方映射 403/400，按各自既有约定）
+ * 工作区归属校验（web/cli 路由共用判定，收口在 engine 层避免各路由内联漂移）：
+ * - not_found：工作区不存在或跨 namespace（调用方一般映射 404）
+ * - machine_mismatch：machineId 已知且与工作区归属机器不符（调用方映射 403/400，按各自既有约定）
  * - ok：可归属。machineId 未知/缺失（含非字符串的异常形态）时放行——老数据（无
  *   machineId）不因此被拒，与 PATCH /sessions/:id 的历史语义一致
  */
-export function checkProjectAssignable(
+export function checkWorkspaceAssignable(
     engine: SyncEngine,
-    projectId: string,
+    workspaceId: string,
     namespace: string,
     machineId?: unknown
 ): 'ok' | 'not_found' | 'machine_mismatch' {
-    const project = engine.getProject(projectId)
-    if (!project || project.namespace !== namespace) {
+    const workspace = engine.getWorkspace(workspaceId)
+    if (!workspace || workspace.namespace !== namespace) {
         return 'not_found'
     }
-    if (typeof machineId === 'string' && project.machineId !== machineId) {
+    if (typeof machineId === 'string' && workspace.machineId !== machineId) {
         return 'machine_mismatch'
     }
     return 'ok'

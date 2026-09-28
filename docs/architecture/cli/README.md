@@ -115,7 +115,7 @@ flowchart TB
 | `--model <model>` | 指定 Claude 模型 |
 | `--mobi-starting-mode <mode>` | 启动模式：`local` / `remote` |
 | `--started-by <source>` | 启动来源：`runner` / `terminal` |
-| `--project <id>` | 归属项目 id（Web spawn 透传；终端亦可手动指定） |
+| `--workspace <id>` | 归属工作区 id（Web spawn 透传；终端亦可手动指定） |
 | 其他参数 | 透传给 Claude Code |
 
 **降级策略**：连接 Hub 失败时自动降级为本地模式（`runLocalMode`），直接 `spawn` claude 进程，不提供远程控制功能。

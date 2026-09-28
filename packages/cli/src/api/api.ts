@@ -15,7 +15,7 @@
  */
 
 import axios from 'axios'
-import type { AgentState, CreateMachineResponse, CreateSessionResponse, Project, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
+import type { AgentState, CreateMachineResponse, CreateSessionResponse, Workspace, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
 import { AgentStateSchema, CreateMachineResponseSchema, CreateSessionResponseSchema, RunnerStateSchema, MachineMetadataSchema, MetadataSchema } from '@/api/types'
 import { configuration } from '@/configuration'
 import { getAuthToken } from '@/api/auth'
@@ -80,7 +80,7 @@ export class ApiClient {
                 runtimeState: raw.runtimeState,
                 permissionMode: raw.permissionMode,
                 tag: raw.tag,
-                projectId: raw.projectId
+                workspaceId: raw.workspaceId
             }
         } catch (error: unknown) {
             // 404 → session 不存在，正常情况
@@ -99,8 +99,8 @@ export class ApiClient {
         state: AgentState | null
         mode?: 'local' | 'remote'
         runtimeState?: unknown
-        projectId?: string
-    }): Promise<Session & { project: Project | null }> {
+        workspaceId?: string
+    }): Promise<Session & { workspace: Workspace | null }> {
         const response = await axios.post<CreateSessionResponse>(
             `${configuration.apiUrl}/cli/sessions`,
             {
@@ -109,7 +109,7 @@ export class ApiClient {
                 agentState: opts.state,
                 mode: opts.mode,
                 runtimeState: opts.runtimeState,
-                projectId: opts.projectId
+                workspaceId: opts.workspaceId
             },
             {
                 headers: {
@@ -156,9 +156,9 @@ export class ApiClient {
             runtimeState: raw.runtimeState,
             permissionMode: raw.permissionMode,
             tag: raw.tag,
-            projectId: raw.projectId,
-            // 归属项目（带 projectId 创建时返回；resume / 游离为 null）
-            project: parsed.data.project ?? null
+            workspaceId: raw.workspaceId,
+            // 归属工作区（带 workspaceId 创建时返回；resume / 游离为 null）
+            workspace: parsed.data.workspace ?? null
         }
     }
 

@@ -52,7 +52,7 @@ function renderSession(session: AgentSessionSummary): string {
         `sessionId: ${session.sessionId}`,
         session.name ? `title: ${session.name}` : null,
         session.summary ? `summary: ${session.summary}` : null,
-        session.projectId ? `project: ${session.projectId}` : null,
+        session.workspaceId ? `workspace: ${session.workspaceId}` : null,
         session.machineId ? `machine: ${session.machineId}` : null,
         session.path ? `directory: ${session.path}` : null,
         `active: ${session.active ? 'yes' : 'no'}`,
@@ -98,8 +98,8 @@ export function createListSessionsTool(deps: ListSessionsToolDeps) {
         limit: z.number().int().min(1).max(AGENT_SESSIONS_MAX_LIMIT).optional().describe(
             `Maximum sessions to return. Defaults to ${AGENT_SESSIONS_DEFAULT_LIMIT}, max ${AGENT_SESSIONS_MAX_LIMIT}.`,
         ),
-        projectId: z.string().optional().describe(
-            'Only sessions belonging to this project.',
+        workspaceId: z.string().optional().describe(
+            'Only sessions belonging to this workspace.',
         ),
     })
 
@@ -149,7 +149,7 @@ export function createListSessionsTool(deps: ListSessionsToolDeps) {
         // 描述照 codex 的写法：散文、无 markdown 结构、第一句直说做什么，
         // 重点在**边界**（只有 active 能收消息、id 必须原样用）与**跨工具协作**（send_message 用这里的 id）
         description:
-            'List sessions across mobi. Each entry carries the session id, title, project, the machine it runs on, ' +
+            'List sessions across mobi. Each entry carries the session id, title, workspace, the machine it runs on, ' +
             'whether the session is active (its Claude Code process is still alive), and whether it is currently running a turn. ' +
             'Only active sessions can receive messages. Pass status "INACTIVE" or "ALL" to also see sessions whose process has exited; ' +
             'those cannot be messaged. Use keyword to narrow by title, summary, or working directory. ' +

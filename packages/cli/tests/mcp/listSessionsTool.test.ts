@@ -23,7 +23,7 @@ const SESSION: AgentSessionSummary = {
     sessionId: 'sess-1',
     name: '前端重构',
     summary: '把设置页拆出来',
-    projectId: 'proj-1',
+    workspaceId: 'proj-1',
     machineId: 'm-1',
     path: '/work/app',
     active: true,
@@ -95,7 +95,7 @@ describe('createListSessionsTool', () => {
     it('omits absent optional fields instead of rendering placeholder values', async () => {
         const bare: AgentSessionSummary = {
             sessionId: 'sess-2',
-            projectId: null,
+            workspaceId: null,
             active: false,
             running: false,
             updatedAt: 1_700_000_000_000,
@@ -118,10 +118,10 @@ describe('createListSessionsTool', () => {
         const { deps, listSessions } = buildDeps()
         const tool = createListSessionsTool(deps)
 
-        await tool.execute({ keyword: '重构', status: 'ALL', limit: 5, projectId: 'p1' })
+        await tool.execute({ keyword: '重构', status: 'ALL', limit: 5, workspaceId: 'p1' })
 
         // status / limit 的缺省由 Hub 侧规则决定，工具不预设一份，避免两处漂移
-        expect(listSessions).toHaveBeenCalledWith({ keyword: '重构', status: 'ALL', limit: 5, projectId: 'p1' })
+        expect(listSessions).toHaveBeenCalledWith({ keyword: '重构', status: 'ALL', limit: 5, workspaceId: 'p1' })
     })
 
     it('accepts a missing argument object (all inputs optional)', async () => {

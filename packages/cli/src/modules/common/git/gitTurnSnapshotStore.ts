@@ -63,7 +63,7 @@ export async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv):
 
 /** store 按 cwd 复用（实例无状态、仅携带 cwd）：同 cwd 的每次 RPC 不必重跑
  *  rev-parse。仓库消失时 git 调用自然失败 → 上层诚实置空，无需失效机制；
- *  规模上界 = 出现过的项目目录数，无需淘汰。 */
+ *  规模上界 = 出现过的工作区目录数，无需淘汰。 */
 const stores = new Map<string, TurnSnapshotStore | null>()
 
 /**

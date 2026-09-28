@@ -64,9 +64,9 @@ function makePages(ids: string[], total = ids.length) {
 
 function setup() {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    // 预置缓存：项目 p1 内会话 s1（未置顶）
-    qc.setQueryData<Session[]>(queryKeys.sessions, [makeSession('s1', { projectId: 'p1', pinned: false })])
-    qc.setQueryData(queryKeys.projectSessions('p1'), makePages(['s1']))
+    // 预置缓存：工作区 p1 内会话 s1（未置顶）
+    qc.setQueryData<Session[]>(queryKeys.sessions, [makeSession('s1', { workspaceId: 'p1', pinned: false })])
+    qc.setQueryData(queryKeys.workspaceSessions('p1'), makePages(['s1']))
     qc.setQueryData(queryKeys.recentSessions, makePages([]))
     qc.setQueryData(queryKeys.pinnedSessions, makePages([]))
 
@@ -90,7 +90,7 @@ describe('useSetSessionPinned success 后本地立即生效', () => {
         vi.clearAllMocks()
     })
 
-    it('pin：API 在途时缓存不动，success 瞬间翻转（进置顶区、离开项目组、pinned=true）', async () => {
+    it('pin：API 在途时缓存不动，success 瞬间翻转（进置顶区、离开工作区组、pinned=true）', async () => {
         const { qc, result } = setup()
         const d = deferred()
         setPinnedMock.mockReturnValueOnce(d.promise)
@@ -112,15 +112,15 @@ describe('useSetSessionPinned success 后本地立即生效', () => {
         // success 瞬间本地生效
         expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(true)
         expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual(['s1'])
-        expect(qc.getQueryData<any>(queryKeys.projectSessions('p1'))!.pages[0].sessionIds).toEqual([])
+        expect(qc.getQueryData<any>(queryKeys.workspaceSessions('p1'))!.pages[0].sessionIds).toEqual([])
     })
 
-    it('unpin：回填原项目组（projectId 有值）', async () => {
+    it('unpin：回填原工作区组（workspaceId 有值）', async () => {
         // 预置 s1 已置顶、在置顶区
         const { qc, result } = setup()
-        qc.setQueryData<Session[]>(queryKeys.sessions, [makeSession('s1', { projectId: 'p1', pinned: true })])
+        qc.setQueryData<Session[]>(queryKeys.sessions, [makeSession('s1', { workspaceId: 'p1', pinned: true })])
         qc.setQueryData(queryKeys.pinnedSessions, makePages(['s1']))
-        qc.setQueryData(queryKeys.projectSessions('p1'), makePages([]))
+        qc.setQueryData(queryKeys.workspaceSessions('p1'), makePages([]))
 
         setPinnedMock.mockResolvedValueOnce(undefined)
         await act(async () => {
@@ -129,12 +129,12 @@ describe('useSetSessionPinned success 后本地立即生效', () => {
 
         expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(false)
         expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual([])
-        expect(qc.getQueryData<any>(queryKeys.projectSessions('p1'))!.pages[0].sessionIds).toEqual(['s1'])
+        expect(qc.getQueryData<any>(queryKeys.workspaceSessions('p1'))!.pages[0].sessionIds).toEqual(['s1'])
     })
 
     it('unpin：游离会话回填「最近」', async () => {
         const { qc, result } = setup()
-        qc.setQueryData<Session[]>(queryKeys.sessions, [makeSession('s1', { projectId: null, pinned: true })])
+        qc.setQueryData<Session[]>(queryKeys.sessions, [makeSession('s1', { workspaceId: null, pinned: true })])
         qc.setQueryData(queryKeys.pinnedSessions, makePages(['s1']))
 
         setPinnedMock.mockResolvedValueOnce(undefined)
@@ -170,9 +170,9 @@ describe('useSetSessionPinned success 后本地立即生效', () => {
             await result.current.mutateAsync({ sessionId: 's1', pinned: true }).catch(() => {})
         })
 
-        // 缓存保持原状：pinned=false、仍在项目组、置顶区为空
+        // 缓存保持原状：pinned=false、仍在工作区组、置顶区为空
         expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(false)
-        expect(qc.getQueryData<any>(queryKeys.projectSessions('p1'))!.pages[0].sessionIds).toEqual(['s1'])
+        expect(qc.getQueryData<any>(queryKeys.workspaceSessions('p1'))!.pages[0].sessionIds).toEqual(['s1'])
         expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual([])
     })
 })

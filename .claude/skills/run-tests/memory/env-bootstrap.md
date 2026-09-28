@@ -54,18 +54,18 @@ hub 的 `getSessionsByNamespace` 每次调用都会从 DB 同步，新行即写�
 // /tmp/e2e-seed.ts（绝对路径导入 store）
 import { Store } from '/Users/manerfan/workspace/github/modu/mobi/packages/hub/src/store'
 const store = new Store(process.env.HOME + '/.mobi-e2e/mobi.db')
-const p = store.projects.createProject({ namespace: 'default', machineId: 'm-e2e', name: 'X', folders: [{ path: '/tmp/x', primary: true }] })
-store.sessions.getOrCreateSession('tag-a', { path: '/tmp/x', host: 'e2e', name: 'Session A' }, {}, 'default', undefined, p.id)
+const w = store.workspaces.createWorkspace({ namespace: 'default', machineId: 'm-e2e', name: 'X', folders: [{ path: '/tmp/x', primary: true }] })
+store.sessions.getOrCreateSession('tag-a', { path: '/tmp/x', host: 'e2e', name: 'Session A' }, {}, 'default', undefined, w.id)
 store.close()
 ```
 
 `bun /tmp/e2e-seed.ts` 后浏览器刷新即见。机器无需在线（列表/置顶/归组等纯 DB 链路均可用）。
 
-⚠️ **seed 项目的 machineId 必须用真实机器 id**（先 `SELECT id FROM machines;` 取，或 bootstrap
-就绪后从 /api/machines 读）——虚构 id（如 `m-e2e`）建出的项目在发消息建会话时报 404
-`Machine not found`（spawn 按 machineId 找机器）。事后可 `UPDATE projects SET machine_id=...` 补救。
+⚠️ **seed 工作区的 machineId 必须用真实机器 id**（先 `SELECT id FROM machines;` 取，或 bootstrap
+就绪后从 /api/machines 读）——虚构 id（如 `m-e2e`）建出的工作区在发消息建会话时报 404
+`Machine not found`（spawn 按 machineId 找机器）。事后可 `UPDATE workspaces SET machine_id=...` 补救。
 
-⚠️ **seed 项目的 folder 路径必须在机器 homeDir 之内**（如 `~/workspace/demo`）——machine 通道
+⚠️ **seed 工作区的 folder 路径必须在机器 homeDir 之内**（如 `~/workspace/demo`）——machine 通道
 上传端点有 `validateHomeDirPath` 安全校验（`/api/machines/:id/upload`，X-Mobi-Cwd 头），
 home 外路径（如 `/tmp/x`）返回 403 `outside the home directory`（2026-09-19 画板 E2E 实测，
 根因是 seed 数据而非代码）。session 内上传不受此限（走 session 通道）。

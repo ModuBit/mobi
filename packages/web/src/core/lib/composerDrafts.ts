@@ -216,15 +216,15 @@ function persist(next: DraftsMap): void {
  * 剥离 volatile 的 previewUrl（blob URL 跨会话失效）、quote 截至上限（serialize 时同样截断，双保险）。
  */
 function toPersisted(segments: ComposerSegments): PersistedSegments {
-    const project = (f: BlockFileRef): PersistedFileRef =>
+    const workspace = (f: BlockFileRef): PersistedFileRef =>
         ({
             id: f.id, filename: f.filename, path: f.path, mimeType: f.mimeType, size: f.size,
             ...(f.sketch !== undefined ? { sketch: f.sketch } : {}),
         })
     return {
         text: segments.text,
-        files: segments.files.map(project),
-        images: segments.images.map(project),
+        files: segments.files.map(workspace),
+        images: segments.images.map(workspace),
         quotes: segments.quotes.slice(0, QUOTE_MAX_COUNT),
     }
 }

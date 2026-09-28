@@ -30,7 +30,7 @@ import { createAuthMiddleware, type WebAppEnv } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
 import { createEventsRoutes } from './routes/events'
 import { createSessionsRoutes } from './routes/sessions'
-import { createProjectsRoutes } from './routes/projects'
+import { createWorkspacesRoutes } from './routes/workspaces'
 import { createMessagesRoutes } from './routes/messages'
 import { createPermissionsRoutes } from './routes/permissions'
 import { createMachinesRoutes } from './routes/machines'
@@ -180,7 +180,7 @@ export function createWebApp(options: {
         options.getSyncEngine,
         options.backgroundTaskTracker ? () => options.backgroundTaskTracker : undefined,
     ))
-    app.route('/api', createProjectsRoutes(options.getSyncEngine))
+    app.route('/api', createWorkspacesRoutes(options.getSyncEngine))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
     app.route('/api', createMachinesRoutes(options.getSyncEngine))

@@ -295,7 +295,7 @@ describe('reduceTimeline', () => {
         it('agent-progress 事件更新 ToolCallBlock 的 agentSummary', () => {
             const toolCall = createToolCallMessage('tool-1', 'Agent', {
                 subagent_type: 'Explore',
-                description: '探索项目',
+                description: '探索工作区',
                 prompt: 'Explore the codebase',
             })
             const progressEvent: TracedMessage = {

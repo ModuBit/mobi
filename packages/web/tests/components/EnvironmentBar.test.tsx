@@ -15,14 +15,14 @@
  */
 
 /**
- * 回归守卫：EnvironmentBar 项目即环境
+ * 回归守卫：EnvironmentBar 工作区即环境
  *
- * 新建会话必须选项目——机器与工作目录从项目派生，不再提供机器选择/目录输入。
+ * 新建会话必须选工作区——机器与工作目录从工作区派生，不再提供机器选择/目录输入。
  * jsdom 无法渲染 antd Select 的真实 dropdown（portal + 虚拟列表），
  * 所以 mock Select 为 prop 记录器，直接断言：
  * - 可搜索（showSearch）且按 label 过滤
- * - 底部固定「+ 新建项目」入口（popupRender）且点击回调
- * - 选中项目后派生环境只读回显
+ * - 底部固定「+ 新建工作区」入口（popupRender）且点击回调
+ * - 选中工作区后派生环境只读回显
  */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
@@ -70,7 +70,7 @@ const cpWrapper = ({ children }: { children: ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
 )
 
-const PROJECTS = [
+const WORKSPACES = [
     { id: 'p1', name: 'mobi' },
     { id: 'p2', name: 'demo' },
 ]
@@ -81,13 +81,13 @@ function renderPopup(): ReturnType<typeof render> {
     return render(<div>{popupRender(<div>menu</div>)}</div>)
 }
 
-describe('EnvironmentBar 项目即环境', () => {
-    it('项目 Select 可搜索且按 label 过滤，选项为全量项目', () => {
+describe('EnvironmentBar 工作区即环境', () => {
+    it('工作区 Select 可搜索且按 label 过滤，选项为全量工作区', () => {
         render(
             <EnvironmentBar
-                projects={PROJECTS}
-                selectedProjectId={null}
-                onProjectChange={vi.fn()}
+                workspaces={WORKSPACES}
+                selectedWorkspaceId={null}
+                onWorkspaceChange={vi.fn()}
             />,
             { wrapper: cpWrapper },
         )
@@ -98,31 +98,31 @@ describe('EnvironmentBar 项目即环境', () => {
         expect(options.map(o => o.value)).toEqual(['p1', 'p2'])
     })
 
-    it('下拉底部固定「+ 新建项目」入口，点击触发 onCreateProject', () => {
-        const onCreateProject = vi.fn()
+    it('下拉底部固定「+ 新建工作区」入口，点击触发 onCreateWorkspace', () => {
+        const onCreateWorkspace = vi.fn()
         render(
             <EnvironmentBar
-                projects={PROJECTS}
-                selectedProjectId={null}
-                onProjectChange={vi.fn()}
-                onCreateProject={onCreateProject}
+                workspaces={WORKSPACES}
+                selectedWorkspaceId={null}
+                onWorkspaceChange={vi.fn()}
+                onCreateWorkspace={onCreateWorkspace}
             />,
             { wrapper: cpWrapper },
         )
 
         const { getByText } = renderPopup()
-        fireEvent.click(getByText('project.create'))
-        expect(onCreateProject).toHaveBeenCalledTimes(1)
+        fireEvent.click(getByText('workspace.create'))
+        expect(onCreateWorkspace).toHaveBeenCalledTimes(1)
     })
 
-    it('点击「+ 新建项目」先收起宿主下拉（受控 open），避免弹窗关闭后浮层残留', () => {
-        const onCreateProject = vi.fn()
+    it('点击「+ 新建工作区」先收起宿主下拉（受控 open），避免弹窗关闭后浮层残留', () => {
+        const onCreateWorkspace = vi.fn()
         render(
             <EnvironmentBar
-                projects={PROJECTS}
-                selectedProjectId={null}
-                onProjectChange={vi.fn()}
-                onCreateProject={onCreateProject}
+                workspaces={WORKSPACES}
+                selectedWorkspaceId={null}
+                onWorkspaceChange={vi.fn()}
+                onCreateWorkspace={onCreateWorkspace}
             />,
             { wrapper: cpWrapper },
         )
@@ -133,19 +133,19 @@ describe('EnvironmentBar 项目即环境', () => {
         })
         expect(selectProps.current.open).toBe(true)
 
-        // 点击下拉底部「+ 新建项目」：下拉收起 + 回调触发
+        // 点击下拉底部「+ 新建工作区」：下拉收起 + 回调触发
         const { getByText } = renderPopup()
-        fireEvent.click(getByText('project.create'))
-        expect(onCreateProject).toHaveBeenCalledTimes(1)
+        fireEvent.click(getByText('workspace.create'))
+        expect(onCreateWorkspace).toHaveBeenCalledTimes(1)
         expect(selectProps.current.open).toBe(false)
     })
 
-    it('选中项目后展示派生环境只读回显（机器 + 主目录）', () => {
+    it('选中工作区后展示派生环境只读回显（机器 + 主目录）', () => {
         render(
             <EnvironmentBar
-                projects={PROJECTS}
-                selectedProjectId="p1"
-                onProjectChange={vi.fn()}
+                workspaces={WORKSPACES}
+                selectedWorkspaceId="p1"
+                onWorkspaceChange={vi.fn()}
                 machineLabel="Dev Box"
                 directoryLabel="~/workspace/mobi"
             />,
@@ -155,12 +155,12 @@ describe('EnvironmentBar 项目即环境', () => {
         expect(screen.getByText('Dev Box · ~/workspace/mobi')).toBeInTheDocument()
     })
 
-    it('未选项目时不渲染派生回显', () => {
+    it('未选工作区时不渲染派生回显', () => {
         render(
             <EnvironmentBar
-                projects={PROJECTS}
-                selectedProjectId={null}
-                onProjectChange={vi.fn()}
+                workspaces={WORKSPACES}
+                selectedWorkspaceId={null}
+                onWorkspaceChange={vi.fn()}
                 machineLabel="Dev Box"
                 directoryLabel="~/workspace/mobi"
             />,

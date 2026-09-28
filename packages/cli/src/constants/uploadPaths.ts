@@ -17,10 +17,10 @@
 import { join } from 'path'
 
 /**
- * 获取项目根目录下的 uploads 目录路径
- * @param projectRoot 项目根目录
+ * 获取工作区根目录下的 uploads 目录路径
+ * @param workspaceRoot 工作区根目录
  * @returns .mobi/uploads 目录的绝对路径
  */
-export function getUploadsDir(projectRoot: string): string {
-    return join(projectRoot, '.mobi', 'uploads')
+export function getUploadsDir(workspaceRoot: string): string {
+    return join(workspaceRoot, '.mobi', 'uploads')
 }

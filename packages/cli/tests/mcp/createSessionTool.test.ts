@@ -84,7 +84,7 @@ describe('createCreateSessionTool', () => {
         await tool.execute({
             machineId: 'm1',
             directory: '/work/app',
-            projectId: 'p1',
+            workspaceId: 'p1',
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
@@ -95,7 +95,7 @@ describe('createCreateSessionTool', () => {
         expect(createSession).toHaveBeenCalledWith({
             machineId: 'm1',
             directory: '/work/app',
-            projectId: 'p1',
+            workspaceId: 'p1',
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',

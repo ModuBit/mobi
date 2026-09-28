@@ -61,7 +61,7 @@ function makeSession(store: Store, id: string, metadata: Record<string, unknown>
 describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 0003）', () => {
     test('text+ref 合并为单 text block，标题取 parent name', () => {
         const store = makeStore()
-        makeSession(store, 'p-1', { name: '我的项目', path: '/tmp/proj' })
+        makeSession(store, 'p-1', { name: '我的工作区', path: '/tmp/proj' })
         makeSession(store, 'fork-1', { forkedFrom: { sessionId: 'p-root' } })
         seedLegacyProvenance(store, 'fork-1', 'p-1')
 
@@ -71,7 +71,7 @@ describe('migrateLegacyRefMessages：ref 溯源消息 → 动作链接（ADR 000
         const row = getDb(store).prepare('SELECT content FROM messages WHERE session_id = ?').get('fork-1') as { content: string }
         const content = JSON.parse(row.content)
         expect(content.content).toEqual([
-            { type: 'text', text: 'fork 自会话 [我的项目](mobi://session/open?id=p-1)' },
+            { type: 'text', text: 'fork 自会话 [我的工作区](mobi://session/open?id=p-1)' },
         ])
     })
 

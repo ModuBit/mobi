@@ -15,10 +15,10 @@
  */
 
 /**
- * 项目内会话查询的根前缀
- * 单独导出供批量失效所有 ['projectSessions', projectId] 查询使用（invalidateProjectViews）
+ * 工作区内会话查询的根前缀
+ * 单独导出供批量失效所有 ['workspaceSessions', workspaceId] 查询使用（invalidateWorkspaceViews）
  */
-const projectSessionsRoot = ['projectSessions'] as const
+const workspaceSessionsRoot = ['workspaceSessions'] as const
 
 /**
  * React Query 查询键定义
@@ -33,15 +33,15 @@ export const queryKeys = {
     session: (sessionId: string) => ['session', sessionId] as const,
     /** Sidechain 消息 */
     sidechainMessages: (sessionId: string, parentToolUseId: string) => ['sidechain-messages', sessionId, parentToolUseId] as const,
-    /** 项目列表（第二维为 machineId 或 'all'；亦可作前缀失效所有项目查询） */
-    projects: ['projects'] as const,
-    /** 项目内会话根前缀（批量失效所有项目的会话分组查询） */
-    projectSessionsRoot,
-    /** 项目内会话（ID 分页；前缀失效走 projectSessionsRoot） */
-    projectSessions: (projectId: string) => [...projectSessionsRoot, projectId] as const,
-    /** 未归入项目的「最近」会话 */
+    /** 工作区列表（第二维为 machineId 或 'all'；亦可作前缀失效所有工作区查询） */
+    workspaces: ['workspaces'] as const,
+    /** 工作区内会话根前缀（批量失效所有工作区的会话分组查询） */
+    workspaceSessionsRoot,
+    /** 工作区内会话（ID 分页；前缀失效走 workspaceSessionsRoot） */
+    workspaceSessions: (workspaceId: string) => [...workspaceSessionsRoot, workspaceId] as const,
+    /** 未归入工作区的「最近」会话 */
     recentSessions: ['recentSessions'] as const,
-    /** 置顶会话（跨项目/游离，「置顶」区数据源） */
+    /** 置顶会话（跨工作区/游离，「置顶」区数据源） */
     pinnedSessions: ['pinnedSessions'] as const,
     /** 机器列表 */
     machines: ['machines'] as const,

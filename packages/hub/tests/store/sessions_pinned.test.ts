@@ -71,33 +71,33 @@ describe('sessions 置顶（纯展示维度分组，不改归属）', () => {
         expect(ids).toEqual([c.id, b.id, a.id])
     })
 
-    it('置顶会话从「项目」「最近」过滤、进「置顶」；取消置顶反向', () => {
-        const project = store.projects.createProject({
+    it('置顶会话从「工作区」「最近」过滤、进「置顶」；取消置顶反向', () => {
+        const workspace = store.workspaces.createWorkspace({
             namespace: 'default', machineId: 'm1', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         const bound = store.sessions.getOrCreateSession(
-            'pin-bound', { path: '/a/mobi' }, {}, 'default', undefined, project.id)
+            'pin-bound', { path: '/a/mobi' }, {}, 'default', undefined, workspace.id)
         const unbound = store.sessions.getOrCreateSession('pin-unbound', { path: '/y' }, {}, 'default')
 
-        // 初始：项目 1 条、最近 1 条、置顶 0 条
-        expect(store.sessions.getSessionsByProject('default', project.id, null).total).toBe(1)
+        // 初始：工作区 1 条、最近 1 条、置顶 0 条
+        expect(store.sessions.getSessionsByWorkspace('default', workspace.id, null).total).toBe(1)
         expect(store.sessions.getUnboundSessions('default', null).total).toBe(1)
         expect(store.sessions.getPinnedSessions('default', null).total).toBe(0)
 
         // 置顶后：两端都进「置顶」，原分组过滤掉
         store.sessions.setSessionPinned(bound.id, true, 'default')
         store.sessions.setSessionPinned(unbound.id, true, 'default')
-        expect(store.sessions.getSessionsByProject('default', project.id, null).total).toBe(0)
+        expect(store.sessions.getSessionsByWorkspace('default', workspace.id, null).total).toBe(0)
         expect(store.sessions.getUnboundSessions('default', null).total).toBe(0)
         const pinnedResult = store.sessions.getPinnedSessions('default', null)
         expect(pinnedResult.total).toBe(2)
         expect(pinnedResult.sessions.map(s => s.id).sort()).toEqual([bound.id, unbound.id].sort())
 
-        // 取消置顶：回到原分组（归属原样保留——bound 回项目，unbound 回最近）
+        // 取消置顶：回到原分组（归属原样保留——bound 回工作区，unbound 回最近）
         store.sessions.setSessionPinned(bound.id, false, 'default')
         store.sessions.setSessionPinned(unbound.id, false, 'default')
-        expect(store.sessions.getSessionsByProject('default', project.id, null).total).toBe(1)
+        expect(store.sessions.getSessionsByWorkspace('default', workspace.id, null).total).toBe(1)
         expect(store.sessions.getUnboundSessions('default', null).total).toBe(1)
         expect(store.sessions.getPinnedSessions('default', null).total).toBe(0)
     })

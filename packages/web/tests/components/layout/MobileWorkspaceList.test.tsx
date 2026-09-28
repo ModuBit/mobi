@@ -15,8 +15,8 @@
  */
 
 /**
- * MobileProjectList ActionSheet 测试
- * 验证按 session.projectId 动态显示归属操作（归入项目 / 换项目 + 移至最近）
+ * MobileWorkspaceList ActionSheet 测试
+ * 验证按 session.workspaceId 动态显示归属操作（归入工作区 / 换工作区 + 移至最近）
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -46,13 +46,13 @@ vi.mock('@/core/data/hooks/queries/useSessions', () => ({
     useSessions: () => ({ data: fixtures.sessions }),
 }))
 
-vi.mock('@/core/data/hooks/queries/useProjects', () => ({
-    useProjects: () => ({ data: [{ id: 'proj-1', name: 'P1', machineId: 'm1' }] }),
+vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
+    useWorkspaces: () => ({ data: [{ id: 'proj-1', name: 'P1', machineId: 'm1' }] }),
 }))
 
 const assignMock = vi.hoisted(() => vi.fn())
-vi.mock('@/core/data/hooks/mutations/useProjectMutations', () => ({
-    useAssignSessionProject: () => ({ mutateAsync: assignMock, isPending: false }),
+vi.mock('@/core/data/hooks/mutations/useWorkspaceMutations', () => ({
+    useAssignSessionWorkspace: () => ({ mutateAsync: assignMock, isPending: false }),
 }))
 
 vi.mock('@/core/data/hooks/mutations/useSessionPinned', () => ({
@@ -68,9 +68,9 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 // 三个分区组件桩：渲染触发按钮调用 onSessionAction，隔离 ActionSheet 逻辑
-vi.mock('@/components/layout/MobileProjectGroup', () => ({
-    MobileProjectGroup: ({ onSessionAction }: { onSessionAction: (id: string) => void }) => (
-        <button onClick={() => onSessionAction('sess-in-project')}>open-in-project</button>
+vi.mock('@/components/layout/MobileWorkspaceGroup', () => ({
+    MobileWorkspaceGroup: ({ onSessionAction }: { onSessionAction: (id: string) => void }) => (
+        <button onClick={() => onSessionAction('sess-in-workspace')}>open-in-workspace</button>
     ),
 }))
 vi.mock('@/components/layout/MobileRecentGroup', () => ({
@@ -82,29 +82,29 @@ vi.mock('@/components/layout/MobilePinnedGroup', () => ({
     MobilePinnedGroup: () => null,
 }))
 
-vi.mock('@/components/project/ProjectFormModal', () => ({
-    ProjectFormModal: () => null,
+vi.mock('@/components/workspace/WorkspaceFormModal', () => ({
+    WorkspaceFormModal: () => null,
 }))
 
-// AssignProjectModal 桩：断言 open 状态
-vi.mock('@/components/project/AssignProjectModal', () => ({
-    AssignProjectModal: ({ open }: { open: boolean }) =>
+// AssignWorkspaceModal 桩：断言 open 状态
+vi.mock('@/components/workspace/AssignWorkspaceModal', () => ({
+    AssignWorkspaceModal: ({ open }: { open: boolean }) =>
         open ? <div data-testid="assign-modal" /> : null,
 }))
 
-import { MobileProjectList } from '@/components/layout/MobileProjectList'
+import { MobileWorkspaceList } from '@/components/layout/MobileWorkspaceList'
 
-const inProjectSession = {
-    id: 'sess-in-project',
-    projectId: 'proj-1',
+const inWorkspaceSession = {
+    id: 'sess-in-workspace',
+    workspaceId: 'proj-1',
     pinned: false,
     active: true,
-    metadata: { name: '项目内会话' },
+    metadata: { name: '工作区内会话' },
 } as unknown as Session
 
 const freeSession = {
     id: 'sess-free',
-    projectId: null,
+    workspaceId: null,
     pinned: false,
     active: true,
     metadata: { name: '游离会话' },
@@ -121,51 +121,51 @@ function makeWrapper() {
     }
 }
 
-describe('MobileProjectList ActionSheet 归属操作', () => {
+describe('MobileWorkspaceList ActionSheet 归属操作', () => {
     beforeEach(() => {
         assignMock.mockReset()
     })
 
     afterEach(cleanup)
 
-    it('游离会话：只显示「归入项目」，无「换项目/移至最近」', () => {
+    it('游离会话：只显示「归入工作区」，无「换工作区/移至最近」', () => {
         fixtures.sessions = [freeSession]
-        const { getByText, queryByText } = render(<MobileProjectList />, { wrapper: makeWrapper() })
+        const { getByText, queryByText } = render(<MobileWorkspaceList />, { wrapper: makeWrapper() })
 
         fireEvent.click(getByText('open-free'))
-        expect(getByText('project.assignTo')).toBeInTheDocument()
-        expect(queryByText('project.changeProject')).toBeNull()
-        expect(queryByText('project.toRecent')).toBeNull()
+        expect(getByText('workspace.assignTo')).toBeInTheDocument()
+        expect(queryByText('workspace.changeWorkspace')).toBeNull()
+        expect(queryByText('workspace.toRecent')).toBeNull()
     })
 
-    it('项目内会话：显示「换项目 + 移至最近」，无「归入项目」', () => {
-        fixtures.sessions = [inProjectSession]
-        const { getByText, queryByText } = render(<MobileProjectList />, { wrapper: makeWrapper() })
+    it('工作区内会话：显示「换工作区 + 移至最近」，无「归入工作区」', () => {
+        fixtures.sessions = [inWorkspaceSession]
+        const { getByText, queryByText } = render(<MobileWorkspaceList />, { wrapper: makeWrapper() })
 
-        fireEvent.click(getByText('open-in-project'))
-        expect(getByText('project.changeProject')).toBeInTheDocument()
-        expect(getByText('project.toRecent')).toBeInTheDocument()
-        expect(queryByText('project.assignTo')).toBeNull()
+        fireEvent.click(getByText('open-in-workspace'))
+        expect(getByText('workspace.changeWorkspace')).toBeInTheDocument()
+        expect(getByText('workspace.toRecent')).toBeInTheDocument()
+        expect(queryByText('workspace.assignTo')).toBeNull()
     })
 
-    it('换项目：关 ActionSheet 打开 AssignProjectModal', () => {
-        fixtures.sessions = [inProjectSession]
-        const { getByText, getByTestId, queryByText } = render(<MobileProjectList />, { wrapper: makeWrapper() })
+    it('换工作区：关 ActionSheet 打开 AssignWorkspaceModal', () => {
+        fixtures.sessions = [inWorkspaceSession]
+        const { getByText, getByTestId, queryByText } = render(<MobileWorkspaceList />, { wrapper: makeWrapper() })
 
-        fireEvent.click(getByText('open-in-project'))
-        fireEvent.click(getByText('project.changeProject'))
+        fireEvent.click(getByText('open-in-workspace'))
+        fireEvent.click(getByText('workspace.changeWorkspace'))
         expect(getByTestId('assign-modal')).toBeInTheDocument()
-        expect(queryByText('project.changeProject')).toBeNull() // ActionSheet 已关
+        expect(queryByText('workspace.changeWorkspace')).toBeNull() // ActionSheet 已关
     })
 
-    it('移至最近：assign(projectId: null) + 关 ActionSheet', async () => {
-        fixtures.sessions = [inProjectSession]
+    it('移至最近：assign(workspaceId: null) + 关 ActionSheet', async () => {
+        fixtures.sessions = [inWorkspaceSession]
         assignMock.mockResolvedValue(undefined)
-        const { getByText, queryByText } = render(<MobileProjectList />, { wrapper: makeWrapper() })
+        const { getByText, queryByText } = render(<MobileWorkspaceList />, { wrapper: makeWrapper() })
 
-        fireEvent.click(getByText('open-in-project'))
-        fireEvent.click(getByText('project.toRecent'))
-        await waitFor(() => expect(assignMock).toHaveBeenCalledWith({ sessionId: 'sess-in-project', projectId: null }))
-        await waitFor(() => expect(queryByText('project.toRecent')).toBeNull()) // ActionSheet 已关
+        fireEvent.click(getByText('open-in-workspace'))
+        fireEvent.click(getByText('workspace.toRecent'))
+        await waitFor(() => expect(assignMock).toHaveBeenCalledWith({ sessionId: 'sess-in-workspace', workspaceId: null }))
+        await waitFor(() => expect(queryByText('workspace.toRecent')).toBeNull()) // ActionSheet 已关
     })
 })

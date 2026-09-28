@@ -48,7 +48,7 @@ vi.mock('@tanstack/react-router', () => ({
     useParams: () => ({}),
 }))
 
-// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——项目已知坑） ============
+// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——工作区已知坑） ============
 
 const sessionsGet = vi.hoisted(() => vi.fn())
 const mockApi = {

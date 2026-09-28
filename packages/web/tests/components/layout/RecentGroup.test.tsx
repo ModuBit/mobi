@@ -96,7 +96,7 @@ const sharedProps = {
     pinPendingSessionId: undefined,
 }
 
-// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错——项目已知坑
+// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错——工作区已知坑
 afterEach(cleanup)
 
 describe('RecentGroup（平级「最近」分区）', () => {

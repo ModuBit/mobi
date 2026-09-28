@@ -55,7 +55,7 @@ const SkeletonRow = styled.div<{ $token: Token; $variant: SessionListVariant }>`
 
 interface SessionSkeletonRowsProps {
     variant: SessionListVariant
-    /** 骨架行数（沿用既有差异：桌面 3 行、移动端项目组 3 行 / 「最近」组 2 行） */
+    /** 骨架行数（沿用既有差异：桌面 3 行、移动端工作区组 3 行 / 「最近」组 2 行） */
     rows: number
 }
 

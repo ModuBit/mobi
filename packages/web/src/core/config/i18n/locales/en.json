@@ -59,7 +59,6 @@
         "installApp": "Install App",
         "skills": "Skills",
         "plugins": "Plugins",
-        "projects": "Projects",
         "settings": "Settings",
         "restart": "Restart",
         "refresh": "Refresh",
@@ -72,8 +71,9 @@
         "collapse": "Collapse",
         "pinned": "Pinned",
         "recent": "Recent",
-        "newProject": "New Project",
-        "noSessions": "No sessions yet"
+        "noSessions": "No sessions yet",
+        "workspaces": "Workspaces",
+        "newWorkspace": "New Workspace"
     },
     "home": {
         "newSession": "New Session"
@@ -83,8 +83,6 @@
         "machinePlaceholder": "Select machine",
         "machineLoading": "Loading...",
         "machineEmpty": "No machines available",
-        "project": "Project",
-        "projectPlaceholder": "Search and select a project",
         "workDirectory": "Work Directory",
         "directoryPlaceholder": "Enter work directory path",
         "sessionType": "Session Type",
@@ -107,7 +105,9 @@
         "spawnStage": {
             "creating": "Creating session…",
             "creatingSub": "Request sent, waiting for a response…"
-        }
+        },
+        "workspace": "Workspace",
+        "workspacePlaceholder": "Search and select a workspace"
     },
     "session": {
         "loadFailed": "Failed to load session",
@@ -744,33 +744,6 @@
             "iosManual": "iPhone/iPad: tap Share → Add to Home Screen"
         }
     },
-    "project": {
-        "create": "New Project",
-        "edit": "Edit Project",
-        "delete": "Delete Project",
-        "deleteConfirmTitle": "Delete project \"{{name}}\"?",
-        "deleteConfirmContent": "{{count}} session(s) under it will be moved to \"Recent\"",
-        "deleteConfirmContentFallback": "Sessions under it will be moved to \"Recent\"",
-        "toRecent": "Move to Recent",
-        "changeProject": "Change project…",
-        "assignTo": "Assign to project…",
-        "assignTitle": "Assign to project",
-        "assignPlaceholder": "Select a project",
-        "assignEmpty": "No projects on this machine",
-        "empty": "No projects yet",
-        "name": "Project name",
-        "namePlaceholder": "Enter project name",
-        "machine": "Machine",
-        "folders": "Project folders",
-        "folderPathPlaceholder": "Enter absolute folder path (/ for completion)",
-        "addFolder": "Add folder",
-        "primary": "Primary",
-        "removeFolder": "Remove",
-        "folderPathRequired": "Folder path cannot be empty",
-        "folderOutsideHome": "Folder path must be within the machine home directory ({{homeDir}})",
-        "foldersInvalid": "At least one folder with exactly one primary",
-        "nameRequired": "Project name is required"
-    },
     "desktop": {
         "title": "Remote Desktop",
         "connecting": "Connecting to desktop…",
@@ -849,5 +822,32 @@
         "openInTab": "Open in tab",
         "filterPlaceholder": "Filter files",
         "fileTree": "Changed files tree"
+    },
+    "workspace": {
+        "create": "New Workspace",
+        "edit": "Edit Workspace",
+        "delete": "Delete Workspace",
+        "deleteConfirmTitle": "Delete workspace \"{{name}}\"?",
+        "deleteConfirmContent": "{{count}} session(s) under it will be moved to \"Recent\"",
+        "deleteConfirmContentFallback": "Sessions under it will be moved to \"Recent\"",
+        "toRecent": "Move to Recent",
+        "changeWorkspace": "Change workspace…",
+        "assignTo": "Assign to workspace…",
+        "assignTitle": "Assign to workspace",
+        "assignPlaceholder": "Select a workspace",
+        "assignEmpty": "No workspaces on this machine",
+        "empty": "No workspaces yet",
+        "name": "Workspace name",
+        "namePlaceholder": "Enter workspace name",
+        "machine": "Machine",
+        "folders": "Workspace folders",
+        "folderPathPlaceholder": "Enter absolute folder path (/ for completion)",
+        "addFolder": "Add folder",
+        "primary": "Primary",
+        "removeFolder": "Remove",
+        "folderPathRequired": "Folder path cannot be empty",
+        "folderOutsideHome": "Folder path must be within the machine home directory ({{homeDir}})",
+        "foldersInvalid": "At least one folder with exactly one primary",
+        "nameRequired": "Workspace name is required"
     }
 }

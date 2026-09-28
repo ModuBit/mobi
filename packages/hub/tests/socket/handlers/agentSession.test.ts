@@ -27,7 +27,7 @@ function makeStoredSession(sid: string, namespace = 'default'): StoredSession {
         id: sid, tag: null, namespace, machineId: null,
         createdAt: 1, updatedAt: 1, metadata: null, metadataVersion: 0,
         agentState: null, agentStateVersion: 0, runtimeState: null,
-        runtimeStateUpdatedAt: null, projectId: null, pinned: false, seq: 1,
+        runtimeStateUpdatedAt: null, workspaceId: null, pinned: false, seq: 1,
     }
 }
 
@@ -175,7 +175,7 @@ function callListSessions(socket: ReturnType<typeof makeFakeSocket>, payload: un
 
 describe('listSessionsForAgent handler', () => {
     const SESSIONS: AgentSessionSummary[] = [
-        { sessionId: 's1', projectId: null, active: true, running: false, updatedAt: 1700, pinned: false },
+        { sessionId: 's1', workspaceId: null, active: true, running: false, updatedAt: 1700, pinned: false },
     ]
 
     test('正常请求 → ack ok:true 带回会话清单', () => {
@@ -191,10 +191,10 @@ describe('listSessionsForAgent handler', () => {
         const { deps, seenQueries } = makeDeps()
         register(socket, deps)
 
-        callListSessions(socket, { sid: 's1', keyword: '重构', status: 'ALL', limit: 5, projectId: 'p1' })
+        callListSessions(socket, { sid: 's1', keyword: '重构', status: 'ALL', limit: 5, workspaceId: 'p1' })
 
         // sid 是发给 Hub 的寻址信息，不是筛选条件——混进去会变成服务看不懂的字段
-        expect(seenQueries).toEqual([{ keyword: '重构', status: 'ALL', limit: 5, projectId: 'p1' }])
+        expect(seenQueries).toEqual([{ keyword: '重构', status: 'ALL', limit: 5, workspaceId: 'p1' }])
     })
 
     test('不传查询条件 → 服务收到空查询（默认行为由服务决定，handler 不预设）', () => {
@@ -279,7 +279,7 @@ describe('createSessionForAgent handler', () => {
             sid: 's1',
             machineId: 'm1',
             directory: '/work/app',
-            projectId: 'p1',
+            workspaceId: 'p1',
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
@@ -291,7 +291,7 @@ describe('createSessionForAgent handler', () => {
         expect(seenCreateInputs).toEqual([{
             machineId: 'm1',
             directory: '/work/app',
-            projectId: 'p1',
+            workspaceId: 'p1',
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',

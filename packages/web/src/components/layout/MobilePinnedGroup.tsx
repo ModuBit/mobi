@@ -24,7 +24,7 @@ import { useMenuNavigate } from './useMenuNavigate'
 import {
     SectionHeader, SectionTitleText, SectionChevron,
     SessionListWrapper, SessionListInner, EmptyRow,
-} from './mobileProjectList.styles'
+} from './mobileWorkspaceList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
@@ -37,8 +37,8 @@ interface MobilePinnedGroupProps {
 }
 
 /**
- * 移动端「置顶」分区：跨项目/游离的置顶会话，与「项目」「最近」平级、置于最前（与桌面端一致）。
- * 有会话默认展开、空分区默认收起；置顶/取消置顶走长按 ActionSheet（MobileProjectList 统一处理）
+ * 移动端「置顶」分区：跨工作区/游离的置顶会话，与「工作区」「最近」平级、置于最前（与桌面端一致）。
+ * 有会话默认展开、空分区默认收起；置顶/取消置顶走长按 ActionSheet（MobileWorkspaceList 统一处理）
  */
 export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePinnedGroupProps) {
     const { token } = useToken()

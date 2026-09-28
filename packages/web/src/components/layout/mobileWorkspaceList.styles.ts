@@ -21,9 +21,9 @@ import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 /** antd 主题 token 类型（与各组件 useToken 返回一致） */
 type SidebarToken = ReturnType<typeof antTheme.useToken>['token']
 
-// ========== 移动端项目列表样式组件 ==========
+// ========== 移动端工作区列表样式组件 ==========
 
-// 项目列表区（B-1 定稿）：与 drawer 同底色，仅上下发丝线分隔——
+// 工作区列表区（B-1 定稿）：与 drawer 同底色，仅上下发丝线分隔——
 // 不再用 colorBgLayout 灰底色块：drawer 已是「遮罩 > 面板」两层表面，
 // 嵌第三层材质显拼凑，且深色下 bgLayout 比面板更暗会变成「凹洞」。
 // 分组语义由 SectionHeader 小标签承担
@@ -67,7 +67,7 @@ export const SectionChevron = styled.span<{ $expanded: boolean; $token: SidebarT
     transition: transform 0.15s ease;
 `
 
-// 项目头
+// 工作区头
 export const GroupHeader = styled.div<{ $token: SidebarToken }>`
     display: flex;
     align-items: center;
@@ -88,7 +88,7 @@ export const FolderIcon = styled.span<{ $token: SidebarToken }>`
     color: ${props => props.$token.colorTextTertiary};
 `
 
-// 项目名称
+// 工作区名称
 export const GroupName = styled.span<{ $token: SidebarToken }>`
     flex: 1;
     font-size: 15px;

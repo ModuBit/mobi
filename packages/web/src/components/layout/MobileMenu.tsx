@@ -24,7 +24,7 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { MobileMenuItem } from './mobileMenu.styles'
-import { MobileProjectList } from './MobileProjectList'
+import { MobileWorkspaceList } from './MobileWorkspaceList'
 import { useMenuNavigate } from './useMenuNavigate'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
@@ -126,7 +126,7 @@ export function MobileMenuDrawer() {
     // 非移动端不渲染
     if (!isMobile) return null
 
-    // 将菜单项拆分为「新建会话」和「设置」两组，中间插入项目列表
+    // 将菜单项拆分为「新建会话」和「设置」两组，中间插入工作区列表
     const topItems = mobileNavItems.filter(item => item.key === 'new-session')
     const bottomItems = mobileNavItems.filter(item => item.key !== 'new-session')
 
@@ -152,8 +152,8 @@ export function MobileMenuDrawer() {
                     </MobileMenuItem>
                 ))}
 
-                {/* 项目列表 */}
-                <MobileProjectList />
+                {/* 工作区列表 */}
+                <MobileWorkspaceList />
 
                 {/* 设置等 */}
                 {bottomItems.map((item) => (

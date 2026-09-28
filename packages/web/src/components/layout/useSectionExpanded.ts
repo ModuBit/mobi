@@ -17,7 +17,7 @@
 import { useCallback, useState } from 'react'
 
 /**
- * 侧边栏平级分区（项目 / 最近 / 将来的置顶）的折叠状态
+ * 侧边栏平级分区（工作区 / 最近 / 将来的置顶）的折叠状态
  *
  * 与 usePagedSessionList 的 expandWithContent 同语义，供不承载会话分页的分区使用：
  * - 有内容默认展开、空分区默认收起（数据异步到达后自动展开）

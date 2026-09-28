@@ -22,7 +22,7 @@ import type { DesktopWatchResponse } from '@mobi/shared'
 /**
  * mock connectDesktopView：捕获每次连接的 callbacks（手动触发事件）与 disconnect spy。
  * 走 desktopStreamClient 的回调面（含 close code 语义），比 fake Rfb 更贴近真实链路。
- * 模块级稳定 mock 引用（避免 effect 循环陷阱——项目已知问题）。
+ * 模块级稳定 mock 引用（避免 effect 循环陷阱——工作区已知问题）。
  */
 const rfbCallbacksPerConnection: DesktopViewCallbacks[][] = [[]]
 const disconnectSpies: Array<ReturnType<typeof vi.fn>> = []

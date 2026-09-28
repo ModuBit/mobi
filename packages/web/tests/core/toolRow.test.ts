@@ -69,7 +69,7 @@ describe('inferToolRow：跳转类工具（file/open 可点击）', () => {
         expect(row?.stats).toEqual({ add: 2, del: 0 })
     })
 
-    it('cwd 内绝对路径 chip 文本显示为相对项目根', () => {
+    it('cwd 内绝对路径 chip 文本显示为相对工作区根', () => {
         const row = inferToolRow('Edit', { file_path: '/home/u/proj/src/e.ts' }, metadata)
         expect(row?.chip?.text).toBe('src/e.ts')
     })

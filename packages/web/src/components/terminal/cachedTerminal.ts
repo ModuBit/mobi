@@ -70,14 +70,14 @@ const MOBI_ART = [
 export interface BannerInfo {
     /** mobi 版本（= `mobi --version`，session.metadata.version） */
     version?: string
-    /** 项目目录 cwd（session.metadata.path） */
+    /** 工作区目录 cwd（session.metadata.path） */
     cwd?: string
     /** Git 分支（可选，session.metadata.gitBranch） */
     gitBranch?: string
 }
 
 /**
- * 构建欢迎横幅：MOBI ASCII art + 版本 + 项目目录（含 git 分支）。
+ * 构建欢迎横幅：MOBI ASCII art + 版本 + 工作区目录（含 git 分支）。
  * 由 showBanner 在 metadata 就绪后写入一次；reconnect 不重复。
  */
 export function buildBanner({ version, cwd, gitBranch }: BannerInfo): string {

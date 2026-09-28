@@ -24,7 +24,7 @@ import { useMenuNavigate } from './useMenuNavigate'
 import {
     SectionHeader, SectionTitleText, SectionChevron,
     SessionListWrapper, SessionListInner, EmptyRow,
-} from './mobileProjectList.styles'
+} from './mobileWorkspaceList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
@@ -37,7 +37,7 @@ interface MobileRecentGroupProps {
 }
 
 /**
- * 移动端「最近」分区：游离（未归入项目）会话，与「项目」分区平级（与桌面端一致）。
+ * 移动端「最近」分区：游离（未归入工作区）会话，与「工作区」分区平级（与桌面端一致）。
  * 有会话默认展开、空分区默认收起；用户折叠后选择持久生效
  */
 export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRecentGroupProps) {

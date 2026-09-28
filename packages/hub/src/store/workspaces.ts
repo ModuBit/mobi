@@ -17,12 +17,12 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { validateProjectFolders, PROJECT_FOLDERS_ERROR_MESSAGES, type ProjectFolder } from '@mobi/shared'
+import { validateWorkspaceFolders, WORKSPACE_FOLDERS_ERROR_MESSAGES, type WorkspaceFolder } from '@mobi/shared'
 
 import { safeJsonParse } from './json'
-import type { StoredProject } from './types'
+import type { StoredWorkspace } from './types'
 
-type DbProjectRow = {
+type DbWorkspaceRow = {
     id: string
     namespace: string
     machine_id: string
@@ -33,54 +33,54 @@ type DbProjectRow = {
     seq: number
 }
 
-function toProject(row: DbProjectRow): StoredProject {
+function toWorkspace(row: DbWorkspaceRow): StoredWorkspace {
     return {
         id: row.id,
         namespace: row.namespace,
         machineId: row.machine_id,
         name: row.name,
-        folders: (safeJsonParse(row.folders) as ProjectFolder[]) ?? [],
+        folders: (safeJsonParse(row.folders) as WorkspaceFolder[]) ?? [],
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         seq: row.seq
     }
 }
 
-export function getProjects(db: Database, namespace: string): StoredProject[] {
+export function getWorkspaces(db: Database, namespace: string): StoredWorkspace[] {
     // 排序沿用旧虚拟分组的「最近会话活动浮顶」心智模型：组内会话最新 updated_at 优先，
-    // 无会话（新建/空项目）回退实体编辑时间；seq 作同毫秒 tie-breaker
+    // 无会话（新建/空工作区）回退实体编辑时间；seq 作同毫秒 tie-breaker
     const rows = db.prepare(`
         SELECT p.*,
-               (SELECT MAX(s.updated_at) FROM sessions s WHERE s.project_id = p.id) AS last_active_at
-        FROM projects p
+               (SELECT MAX(s.updated_at) FROM sessions s WHERE s.workspace_id = p.id) AS last_active_at
+        FROM workspaces p
         WHERE p.namespace = ?
         ORDER BY COALESCE(last_active_at, p.updated_at) DESC, p.seq DESC
-    `).all(namespace) as (DbProjectRow & { last_active_at: number | null })[]
-    return rows.map(toProject)
+    `).all(namespace) as (DbWorkspaceRow & { last_active_at: number | null })[]
+    return rows.map(toWorkspace)
 }
 
-/** 跨 namespace 全量项目（缓存 warmup 用，镜像 machines.getMachines 的全量语义） */
-export function getAllProjects(db: Database): StoredProject[] {
+/** 跨 namespace 全量工作区（缓存 warmup 用，镜像 machines.getMachines 的全量语义） */
+export function getAllWorkspaces(db: Database): StoredWorkspace[] {
     const rows = db.prepare(
-        'SELECT * FROM projects ORDER BY updated_at DESC, seq DESC'
-    ).all() as DbProjectRow[]
-    return rows.map(toProject)
+        'SELECT * FROM workspaces ORDER BY updated_at DESC, seq DESC'
+    ).all() as DbWorkspaceRow[]
+    return rows.map(toWorkspace)
 }
 
-export function getProject(db: Database, id: string): StoredProject | null {
-    const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as DbProjectRow | undefined
-    return row ? toProject(row) : null
+export function getWorkspace(db: Database, id: string): StoredWorkspace | null {
+    const row = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as DbWorkspaceRow | undefined
+    return row ? toWorkspace(row) : null
 }
 
-export function createProject(
+export function createWorkspace(
     db: Database,
-    input: { namespace: string; machineId: string; name: string; folders: ProjectFolder[] }
-): StoredProject {
-    const error = validateProjectFolders(input.folders)
-    if (error) throw new Error(PROJECT_FOLDERS_ERROR_MESSAGES[error])
+    input: { namespace: string; machineId: string; name: string; folders: WorkspaceFolder[] }
+): StoredWorkspace {
+    const error = validateWorkspaceFolders(input.folders)
+    if (error) throw new Error(WORKSPACE_FOLDERS_ERROR_MESSAGES[error])
 
     const now = Date.now()
-    const row: DbProjectRow = {
+    const row: DbWorkspaceRow = {
         id: randomUUID(),
         namespace: input.namespace,
         machine_id: input.machineId,
@@ -91,30 +91,30 @@ export function createProject(
         seq: 0
     }
     db.prepare(`
-        INSERT INTO projects (id, namespace, machine_id, name, folders, created_at, updated_at, seq)
+        INSERT INTO workspaces (id, namespace, machine_id, name, folders, created_at, updated_at, seq)
         VALUES (@id, @namespace, @machine_id, @name, @folders, @created_at, @updated_at, 0)
     `).run(row)
-    return toProject(row)
+    return toWorkspace(row)
 }
 
-export function updateProject(
+export function updateWorkspace(
     db: Database,
     id: string,
     namespace: string,
-    patch: { name?: string; folders?: ProjectFolder[] }
-): StoredProject | null {
-    // 先做存在性与 namespace 归属检查：不存在的项目直接返回 null，不触发校验抛错
-    const existing = getProject(db, id)
+    patch: { name?: string; folders?: WorkspaceFolder[] }
+): StoredWorkspace | null {
+    // 先做存在性与 namespace 归属检查：不存在的工作区直接返回 null，不触发校验抛错
+    const existing = getWorkspace(db, id)
     if (!existing || existing.namespace !== namespace) return null
 
     if (patch.folders) {
-        const error = validateProjectFolders(patch.folders)
-        if (error) throw new Error(PROJECT_FOLDERS_ERROR_MESSAGES[error])
+        const error = validateWorkspaceFolders(patch.folders)
+        if (error) throw new Error(WORKSPACE_FOLDERS_ERROR_MESSAGES[error])
     }
 
     const now = Date.now()
     db.prepare(`
-        UPDATE projects
+        UPDATE workspaces
         SET name = @name, folders = @folders, updated_at = @updated_at, seq = seq + 1
         WHERE id = @id AND namespace = @namespace
     `).run({
@@ -124,30 +124,30 @@ export function updateProject(
         folders: JSON.stringify(patch.folders ?? existing.folders),
         updated_at: now
     })
-    return getProject(db, id)
+    return getWorkspace(db, id)
 }
 
 /**
- * 删除项目：同事务内将名下 sessions 解绑（project_id 置 NULL），会话本身不删。
- * 返回受影响的 session id 列表（调用方据此广播/刷新缓存）；项目不存在或跨 namespace
+ * 删除工作区：同事务内将名下 sessions 解绑（workspace_id 置 NULL），会话本身不删。
+ * 返回受影响的 session id 列表（调用方据此广播/刷新缓存）；工作区不存在或跨 namespace
  * 时返回 false。枚举与解绑放在同一事务里，消除「先查后删」间隙内新归入会话解绑了
- * 却不在返回列表的竞态；只取 id（走 idx_sessions_project），调用方无需再全量扫描
+ * 却不在返回列表的竞态；只取 id（走 idx_sessions_workspace），调用方无需再全量扫描
  */
-export function deleteProject(db: Database, id: string, namespace: string): string[] | false {
-    const existing = getProject(db, id)
+export function deleteWorkspace(db: Database, id: string, namespace: string): string[] | false {
+    const existing = getWorkspace(db, id)
     if (!existing || existing.namespace !== namespace) return false
 
     return db.transaction(() => {
         const affectedIds = (db.prepare(
-            'SELECT id FROM sessions WHERE project_id = ?'
+            'SELECT id FROM sessions WHERE workspace_id = ?'
         ).all(id) as Array<{ id: string }>).map(row => row.id)
         // 解绑也遵循 sessions 变更范式：成对递增 updated_at/seq，SSE 增量同步才能感知
         db.prepare(`
             UPDATE sessions
-            SET project_id = NULL, updated_at = @now, seq = seq + 1
-            WHERE project_id = @id
+            SET workspace_id = NULL, updated_at = @now, seq = seq + 1
+            WHERE workspace_id = @id
         `).run({ id, now: Date.now() })
-        db.prepare('DELETE FROM projects WHERE id = ? AND namespace = ?').run(id, namespace)
+        db.prepare('DELETE FROM workspaces WHERE id = ? AND namespace = ?').run(id, namespace)
         return affectedIds
     })()
 }

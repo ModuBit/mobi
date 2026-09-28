@@ -15,7 +15,7 @@
  */
 
 import type { InfiniteData } from '@tanstack/react-query'
-import type { ProjectSessionsPage } from '@/core/data/api/types'
+import type { WorkspaceSessionsPage } from '@/core/data/api/types'
 
 /**
  * 置顶成功后的本地缓存调整（纯函数，便于单测）。
@@ -35,10 +35,10 @@ import type { ProjectSessionsPage } from '@/core/data/api/types'
  * 留给 invalidate 补偿填充——不捏造与真值无关的假页。
  */
 export function toggleIdInPages(
-    data: InfiniteData<ProjectSessionsPage> | undefined,
+    data: InfiniteData<WorkspaceSessionsPage> | undefined,
     sessionId: string,
     add: boolean,
-): InfiniteData<ProjectSessionsPage> | undefined {
+): InfiniteData<WorkspaceSessionsPage> | undefined {
     if (!data) return data
 
     const existed = data.pages.some(p => p.sessionIds.includes(sessionId))
@@ -46,7 +46,7 @@ export function toggleIdInPages(
     // 无页可插/可移（查询刚 reset）：原样返回，不造假页
     if (data.pages.length === 0) return data
 
-    let pages: ProjectSessionsPage[]
+    let pages: WorkspaceSessionsPage[]
     if (add) {
         pages = data.pages.map((p, i) => i === 0
             ? { ...p, sessionIds: [sessionId, ...p.sessionIds], total: p.total + 1 }

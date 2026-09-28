@@ -25,7 +25,7 @@ import { BUBBLE_ROLES } from '@/components/chat/bubbleRoles'
  *
  * 背景：antdx Bubble 对 start 行内置 padding-inline-end: 15%（对侧留白），
  * assistant 气泡内容右侧因此始终空出 ~15% 宽的一条，看起来「不贯穿」。
- * d09f87ed 只删了本项目自加的 5%，antdx 内置 15% 仍在——2026-09-20 实测
+ * d09f87ed 只删了本工作区自加的 5%，antdx 内置 15% 仍在——2026-09-20 实测
  * computed padding-right 169px 才定位到真根因。
  *
  * 修复在 BUBBLE_ROLES.assistant 的 styles.root。本测试渲染真实 Bubble 断言

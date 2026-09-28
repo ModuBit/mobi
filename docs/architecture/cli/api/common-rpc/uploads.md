@@ -1,14 +1,14 @@
 # Uploads Handler (`handlers/uploads.ts`)
 
-远程文件上传管理，支持文件的上传和删除。文件持久化存储在项目根目录 `.mobi/uploads/` 下，跨 session 共享。
+远程文件上传管理，支持文件的上传和删除。文件持久化存储在工作区根目录 `.mobi/uploads/` 下，跨 session 共享。
 
-> **依赖**: 此 Handler 需要 `workingDirectory` 参数（项目根目录），用于确定 `.mobi/` 的位置。通过 `registerCommonHandlers` 统一传入。
+> **依赖**: 此 Handler 需要 `workingDirectory` 参数（工作区根目录），用于确定 `.mobi/` 的位置。通过 `registerCommonHandlers` 统一传入。
 
 ## RPC 方法
 
 ### `uploadFile`
 
-上传文件到项目 `.mobi/uploads/YYYY-MM/` 目录。
+上传文件到工作区 `.mobi/uploads/YYYY-MM/` 目录。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -20,7 +20,7 @@
 **响应**:
 
 ```typescript
-{ success: true, path: string }   // 文件的项目相对路径（如 .mobi/uploads/2026-06/1748900000000-report.pdf）
+{ success: true, path: string }   // 文件的工作区相对路径（如 .mobi/uploads/2026-06/1748900000000-report.pdf）
 // 或
 { success: false, error: string }
 ```
@@ -33,13 +33,13 @@
     ↓
 估算 Base64 解码后大小 → 上限 50MB
     ↓
-ensureUploadDir(projectRoot) → 创建 .mobi/uploads/YYYY-MM/ 和 .gitignore
+ensureUploadDir(workspaceRoot) → 创建 .mobi/uploads/YYYY-MM/ 和 .gitignore
     ↓
 sanitizeFilename + 时间戳前缀 → 生成唯一文件名
     ↓
 Buffer.from(content, 'base64') → writeFile
     ↓
-二次校验实际 buffer 大小 → 返回项目相对路径
+二次校验实际 buffer 大小 → 返回工作区相对路径
 ```
 
 ### `deleteUpload`
@@ -49,7 +49,7 @@ Buffer.from(content, 'base64') → writeFile
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `sessionId` | string | 否 | Session ID（预留） |
-| `path` | string | 是 | 文件的项目相对路径 |
+| `path` | string | 是 | 文件的工作区相对路径 |
 
 **响应**:
 
@@ -64,7 +64,7 @@ Buffer.from(content, 'base64') → writeFile
 ### 目录结构
 
 ```
-项目根/
+工作区根/
 ├── .mobi/
 │   ├── .gitignore              # 内容: uploads/ 和 artifacts/
 │   └── uploads/
@@ -73,7 +73,7 @@ Buffer.from(content, 'base64') → writeFile
 │           └── 1748900001000-report.pdf
 ```
 
-- 使用 `getUploadsDir(projectRoot)` 返回 `.mobi/uploads` 路径
+- 使用 `getUploadsDir(workspaceRoot)` 返回 `.mobi/uploads` 路径
 - 按月自动创建子目录（`YYYY-MM` 格式）
 - `.mobi/.gitignore` 自动创建，内容为 `uploads/` 和 `artifacts/`，排除上传和制品目录
 
@@ -81,7 +81,7 @@ Buffer.from(content, 'base64') → writeFile
 
 ```typescript
 // packages/cli/src/constants/uploadPaths.ts
-getUploadsDir(projectRoot: string): string  // 返回 join(projectRoot, '.mobi', 'uploads')
+getUploadsDir(workspaceRoot: string): string  // 返回 join(workspaceRoot, '.mobi', 'uploads')
 ```
 
 ### 文件名策略
@@ -134,10 +134,10 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024  // 50MB
 ### 路径校验（删除时）
 
 ```typescript
-isPathWithinUploads(projectRoot, relativePath)
+isPathWithinUploads(workspaceRoot, relativePath)
 ```
 
-确保删除操作只能删除 `.mobi/uploads/` 目录内的文件。支持相对路径（通过 `resolve(projectRoot, relativePath)` 解析）。
+确保删除操作只能删除 `.mobi/uploads/` 目录内的文件。支持相对路径（通过 `resolve(workspaceRoot, relativePath)` 解析）。
 
 ## Claude 访问
 

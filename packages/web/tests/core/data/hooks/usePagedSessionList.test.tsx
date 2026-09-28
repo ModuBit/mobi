@@ -21,18 +21,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider, App as AntdApp } from 'antd'
 import type { ReactNode } from 'react'
 
-// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——项目已知坑） ============
+// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——工作区已知坑） ============
 
 const sessionsList = vi.hoisted(() => vi.fn())
 const pinnedSessions = vi.hoisted(() => vi.fn())
-const projectsList = vi.hoisted(() => vi.fn())
-const projectSessions = vi.hoisted(() => vi.fn())
+const workspacesList = vi.hoisted(() => vi.fn())
+const workspaceSessions = vi.hoisted(() => vi.fn())
 const unboundSessions = vi.hoisted(() => vi.fn())
 const mockApi = {
     sessions: { list: sessionsList, pinnedSessions: pinnedSessions },
-    projects: {
-        list: projectsList,
-        sessions: projectSessions,
+    workspaces: {
+        list: workspacesList,
+        sessions: workspaceSessions,
         unboundSessions: unboundSessions,
     },
     visibility: { report: vi.fn().mockResolvedValue(undefined) },
@@ -41,7 +41,7 @@ vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => mockApi,
 }))
 
-// ============ SSEProvider 依赖 mock（对照 useProjects.test.tsx 现成模式） ============
+// ============ SSEProvider 依赖 mock（对照 useWorkspaces.test.tsx 现成模式） ============
 
 type SseHandler = (e: Record<string, unknown>) => void
 const sseListener = vi.hoisted(() => ({ current: null as SseHandler | null }))
@@ -89,10 +89,10 @@ vi.mock('antd', async (orig) => {
     }
 })
 
-import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
+import { useWorkspaceSessions } from '@/core/data/hooks/queries/useWorkspaceSessions'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import { usePinnedSessions } from '@/core/data/hooks/queries/usePinnedSessions'
-import type { Session, Project, ProjectSessionsPage } from '@/core/data/api/types'
+import type { Session, Workspace, WorkspaceSessionsPage } from '@/core/data/api/types'
 
 function makeSession(id: string, overrides: Partial<Session> = {}): Session {
     return {
@@ -113,7 +113,7 @@ function makeSession(id: string, overrides: Partial<Session> = {}): Session {
     } as Session
 }
 
-function makeProject(overrides: Partial<Project> = {}): Project {
+function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     return {
         id: 'p1',
         namespace: 'ns',
@@ -127,8 +127,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     }
 }
 
-/** 构造项目/最近分页响应 */
-function makePage(sessions: Session[], opts: Partial<ProjectSessionsPage> = {}): {
+/** 构造工作区/最近分页响应 */
+function makePage(sessions: Session[], opts: Partial<WorkspaceSessionsPage> = {}): {
     data: { sessions: Session[]; nextCursor: number | null; hasMore: boolean; total: number }
 } {
     return {
@@ -153,7 +153,7 @@ function makeHookWrapper(qc: QueryClient) {
     )
 }
 
-/** 渲染 SSEProvider（对照 useProjects.test.tsx 的 renderProvider） */
+/** 渲染 SSEProvider（对照 useWorkspaces.test.tsx 的 renderProvider） */
 async function renderProvider() {
     const { SSEProvider } = await import('@/core/providers/SSEProvider')
     const qc = makeQueryClient()
@@ -169,23 +169,23 @@ async function renderProvider() {
     return { queryClient: qc }
 }
 
-// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错——项目已知坑
+// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错——工作区已知坑
 afterEach(() => cleanup())
 
-describe('usePagedSessionList 共享核心（经 useProjectSessions 验证）', () => {
+describe('usePagedSessionList 共享核心（经 useWorkspaceSessions 验证）', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        projectsList.mockResolvedValue({ data: { projects: [makeProject()] } })
+        workspacesList.mockResolvedValue({ data: { workspaces: [makeWorkspace()] } })
     })
 
     it('queryFn 将完整 Session upsert 进 ["sessions"] 缓存并按 sessionIds 组装列表', async () => {
         const s1 = makeSession('s1', { active: true, updatedAt: 10 })
         const s2 = makeSession('s2', { updatedAt: 20 })
-        projectSessions.mockResolvedValue(makePage([s1, s2]))
+        workspaceSessions.mockResolvedValue(makePage([s1, s2]))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [])
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions.map(s => s.id)).toEqual(['s1', 's2']))
         // 单一数据源：完整 Session 进全局 ['sessions'] 缓存
@@ -196,11 +196,11 @@ describe('usePagedSessionList 共享核心（经 useProjectSessions 验证）', 
     it('upsert 为增量合并：更新已有条目且保留缓存中无关会话', async () => {
         const existing = makeSession('s1', { active: true })
         const unrelated = makeSession('other')
-        projectSessions.mockResolvedValue(makePage([makeSession('s1', { active: true, updatedAt: 99 })]))
+        workspaceSessions.mockResolvedValue(makePage([makeSession('s1', { active: true, updatedAt: 99 })]))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [existing, unrelated])
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions).toHaveLength(1))
         const cached = qc.getQueryData<Session[]>(['sessions']) ?? []
@@ -213,85 +213,85 @@ describe('usePagedSessionList 共享核心（经 useProjectSessions 验证）', 
     it('排序：活跃会话优先于更新时间更新的非活跃会话', async () => {
         const activeOld = makeSession('a', { active: true, updatedAt: 1 })
         const inactiveNew = makeSession('b', { active: false, updatedAt: 100 })
-        projectSessions.mockResolvedValue(makePage([inactiveNew, activeOld]))
+        workspaceSessions.mockResolvedValue(makePage([inactiveNew, activeOld]))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [])
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions.map(s => s.id)).toEqual(['a', 'b']))
     })
 
     it('showMore 触底：下一档超出本地已加载且后端还有 → fetchNextPage 携带 nextCursor', async () => {
         // 首页 2 条（loadedCount=2 < 下一档 5+5=10）且 hasMore
-        projectSessions.mockResolvedValueOnce(makePage(
+        workspaceSessions.mockResolvedValueOnce(makePage(
             [makeSession('s1'), makeSession('s2')],
             { hasMore: true, nextCursor: 2, total: 7 },
         ))
-        projectSessions.mockResolvedValueOnce(makePage(
+        workspaceSessions.mockResolvedValueOnce(makePage(
             [makeSession('s3')],
             { hasMore: false, nextCursor: null, total: 3 },
         ))
 
         const qc = makeQueryClient()
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions).toHaveLength(2))
         expect(result.current.remainingCount).toBe(2) // total 7 - visibleCount 5
         act(() => result.current.showMore())
         // 触底拉取：第二次调用以首页 nextCursor 为游标
-        await waitFor(() => expect(projectSessions).toHaveBeenCalledWith('p1', 2, 20))
+        await waitFor(() => expect(workspaceSessions).toHaveBeenCalledWith('p1', 2, 20))
         await waitFor(() => expect(result.current.sessions).toHaveLength(3))
     })
 
     it('remainingCount 兜底：total 未就绪时按已加载数计算', async () => {
         // 后端 total 异常（0）但 hasMore=true：hasNextPage 兜底保证 canShowMore 仍可达
-        projectSessions.mockResolvedValueOnce(makePage(
+        workspaceSessions.mockResolvedValueOnce(makePage(
             [makeSession('s1'), makeSession('s2')],
             { hasMore: true, nextCursor: 2, total: 0 },
         ))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [])
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions).toHaveLength(2))
         expect(result.current.remainingCount).toBe(0)
         expect(result.current.canShowMore).toBe(true)
     })
 
-    it('含活跃会话时自动展开；「最近」与项目组行为一致', async () => {
-        projectSessions.mockResolvedValue(makePage([
+    it('含活跃会话时自动展开；「最近」与工作区组行为一致', async () => {
+        workspaceSessions.mockResolvedValue(makePage([
             makeSession('s1'),
             makeSession('s2', { active: true }),
         ]))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [])
-        const { result } = renderHook(() => useProjectSessions('p1', 's2'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1', 's2'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions).toHaveLength(2))
         await waitFor(() => expect(result.current.expanded).toBe(true))
     })
 
-    it('fullProjectPath 取项目 primary folder path', async () => {
-        projectSessions.mockResolvedValue(makePage([]))
+    it('fullWorkspacePath 取工作区 primary folder path', async () => {
+        workspaceSessions.mockResolvedValue(makePage([]))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [])
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
-        await waitFor(() => expect(result.current.fullProjectPath).toBe('/home/u/demo'))
+        await waitFor(() => expect(result.current.fullWorkspacePath).toBe('/home/u/demo'))
         expect(result.current.total).toBe(0)
     })
 
     it('SSE tick 级短路：会话缓存换代但本分组未受波及时结果引用稳定，成员变更时才重算', async () => {
         const s1 = makeSession('s1', { updatedAt: 10 })
-        projectSessions.mockResolvedValue(makePage([s1]))
+        workspaceSessions.mockResolvedValue(makePage([s1]))
 
         const qc = makeQueryClient()
         qc.setQueryData(['sessions'], [s1])
-        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaceSessions('p1'), { wrapper: makeHookWrapper(qc) })
 
         await waitFor(() => expect(result.current.sessions.map(s => s.id)).toEqual(['s1']))
         const stableRef = result.current.sessions
@@ -331,10 +331,10 @@ describe('usePagedSessionList 共享核心（经 useProjectSessions 验证）', 
 describe('useRecentSessions（共享核心经「最近」视图验证）', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        projectsList.mockResolvedValue({ data: { projects: [] } })
+        workspacesList.mockResolvedValue({ data: { workspaces: [] } })
     })
 
-    it('拉取未归入项目的会话并 upsert 进 ["sessions"]', async () => {
+    it('拉取未归入工作区的会话并 upsert 进 ["sessions"]', async () => {
         const s1 = makeSession('r1', { updatedAt: 30 })
         unboundSessions.mockResolvedValue(makePage([s1]))
 
@@ -412,8 +412,8 @@ describe('useRecentSessions（共享核心经「最近」视图验证）', () =>
         expect(result.current.expanded).toBe(false)
     })
 
-    it('回归：分组成员清空（会话归入项目后的空页）而全局缓存元素引用不变 → sessions 必须重算', async () => {
-        // E2E 实证场景：从「最近」归入项目后 invalidate refetch，unbound 返回空页。
+    it('回归：分组成员清空（会话归入工作区后的空页）而全局缓存元素引用不变 → sessions 必须重算', async () => {
+        // E2E 实证场景：从「最近」归入工作区后 invalidate refetch，unbound 返回空页。
         // 空页的 mergeSessions 保留元素引用（容器换代、元素逐引用全等），而分组成员
         // （sessionIds）已独立变化——输入短路若不校验 pages，会吞掉成员变化返回过期
         // result，UI 停留旧分组直到刷新页面（useSessionIdsPages 数据链路本身是正确的）
@@ -450,14 +450,14 @@ describe('usePinnedSessions（共享核心经「置顶」视图验证）', () =>
     })
 })
 
-describe('P1：session-* SSE 事件失效项目视图', () => {
+describe('P1：session-* SSE 事件失效工作区视图', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         sseListener.current = null
         authState.authenticated = true
     })
 
-    async function assertProjectViewsInvalidated(event: Record<string, unknown>) {
+    async function assertWorkspaceViewsInvalidated(event: Record<string, unknown>) {
         const { queryClient: qc } = await renderProvider()
         expect(sseListener.current).toBeTruthy()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
@@ -466,32 +466,32 @@ describe('P1：session-* SSE 事件失效项目视图', () => {
 
         // 批处理窗口 16ms 后统一失效
         await waitFor(() => {
-            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspaces'] })
         })
         const keys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'recentSessions')).toBe(true)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'pinnedSessions')).toBe(true)
-        expect(keys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(true)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'workspaceSessions')).toBe(true)
         invalidateSpy.mockRestore()
     }
 
-    it('session-added → projectViews 批量失效', async () => {
-        await assertProjectViewsInvalidated({ type: 'session-added', sessionId: 's1' })
+    it('session-added → workspaceViews 批量失效', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'session-added', sessionId: 's1' })
     })
 
-    it('session-removed → projectViews 批量失效', async () => {
-        await assertProjectViewsInvalidated({ type: 'session-removed', sessionId: 's1' })
+    it('session-removed → workspaceViews 批量失效', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'session-removed', sessionId: 's1' })
     })
 
-    it('session-updated 完整 session 载荷（归属变更）→ projectViews 批量失效', async () => {
-        await assertProjectViewsInvalidated({ type: 'session-updated', sessionId: 's1', data: { id: 's1', projectId: 'p1' } })
+    it('session-updated 完整 session 载荷（归属变更）→ workspaceViews 批量失效', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'session-updated', sessionId: 's1', data: { id: 's1', workspaceId: 'p1' } })
     })
 
-    it('session-updated 无 data 载荷（删除项目解绑）→ projectViews 批量失效', async () => {
-        await assertProjectViewsInvalidated({ type: 'session-updated', sessionId: 's1' })
+    it('session-updated 无 data 载荷（删除工作区解绑）→ workspaceViews 批量失效', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'session-updated', sessionId: 's1' })
     })
 
-    it('session-updated 轻载荷（心跳/指标/重命名）→ 不失效项目视图（V2：防 refetch 风暴）', async () => {
+    it('session-updated 轻载荷（心跳/指标/重命名）→ 不失效工作区视图（V2：防 refetch 风暴）', async () => {
         const { queryClient: qc } = await renderProvider()
         expect(sseListener.current).toBeTruthy()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
@@ -504,13 +504,13 @@ describe('P1：session-* SSE 事件失效项目视图', () => {
         // 等过批处理窗口（16ms + 余量）
         await new Promise(r => setTimeout(r, 120))
         const keys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
-        expect(keys.some(k => Array.isArray(k) && k[0] === 'projects')).toBe(false)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'workspaces')).toBe(false)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'pinnedSessions')).toBe(false)
-        expect(keys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(false)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'workspaceSessions')).toBe(false)
         invalidateSpy.mockRestore()
     })
 
-    it('project-removed → 折叠进 projectViews 批处理', async () => {
-        await assertProjectViewsInvalidated({ type: 'project-removed', projectId: 'p1', namespace: 'ns' })
+    it('workspace-removed → 折叠进 workspaceViews 批处理', async () => {
+        await assertWorkspaceViewsInvalidated({ type: 'workspace-removed', workspaceId: 'p1', namespace: 'ns' })
     })
 })

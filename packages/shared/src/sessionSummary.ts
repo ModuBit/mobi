@@ -49,11 +49,11 @@ export type SessionSummary = {
     /** 会话置顶（true = 进「置顶」分组） */
     pinned?: boolean
     /**
-     * 归属项目（null = 游离）。必须随摘要输出：所有列表端点（GET /sessions、
-     * 项目/最近/置顶分页）都经 toSessionSummary 序列化，缺了它 Web 全局
-     * ['sessions'] 缓存就永远拿不到归属——取消置顶时无法回填原项目分组
+     * 归属工作区（null = 游离）。必须随摘要输出：所有列表端点（GET /sessions、
+     * 工作区/最近/置顶分页）都经 toSessionSummary 序列化，缺了它 Web 全局
+     * ['sessions'] 缓存就永远拿不到归属——取消置顶时无法回填原工作区分组
      */
-    projectId?: string | null
+    workspaceId?: string | null
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -95,6 +95,6 @@ export function toSessionSummary(session: Session): SessionSummary {
         model: session.runtimeState?.model,
         mode: session.mode,
         pinned: session.pinned,
-        projectId: session.projectId ?? null,
+        workspaceId: session.workspaceId ?? null,
     }
 }

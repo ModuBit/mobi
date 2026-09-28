@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
-// t(key) 直接返回 key（与项目其他组件测试一致）
+// t(key) 直接返回 key（与工作区其他组件测试一致）
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))

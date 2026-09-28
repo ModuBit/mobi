@@ -30,7 +30,7 @@ import { SessionStatusDot } from './SessionStatusDot'
 import type { Session } from '@/core/data/api/types'
 import {
     SessionItem, SessionName, TimeLabel, SessionActions, ActionButton, RenameRow,
-} from './sidebarProjects.styles'
+} from './sidebarWorkspaces.styles'
 
 const { useToken } = antTheme
 
@@ -54,7 +54,7 @@ interface SessionRowProps {
     onTogglePin: () => void
     /** 置顶操作进行中（仅该行禁用，其余行不受牵连） */
     pinLoading?: boolean
-    /** dropdown 分组附加项（「归入项目」/「移至最近」「换项目」），渲染在休眠/删除之前 */
+    /** dropdown 分组附加项（「归入工作区」/「移至最近」「换工作区」），渲染在休眠/删除之前 */
     extraMenuItems?: MenuProps['items']
     /** dropdown 附加项点击（key 为调用方的 item key） */
     onExtraMenuClick?: (key: string) => void

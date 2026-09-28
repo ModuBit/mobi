@@ -24,7 +24,7 @@ const mockEnable = vi.hoisted(() => vi.fn().mockResolvedValue('granted'))
 vi.mock('@/core/data/hooks/useNotificationSetup', () => ({
     useNotificationSetup: () => ({ permission: 'default', subscribed: false, enable: mockEnable }),
 }))
-// t(key) 直接返回 key，断言用 key 字符串（与项目其他组件测试一致）
+// t(key) 直接返回 key，断言用 key 字符串（与工作区其他组件测试一致）
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))

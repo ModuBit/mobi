@@ -21,7 +21,7 @@ import { safeDecodeHeader } from '../utils/headers'
 import { Hono, type Context } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import { checkProjectAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
+import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
@@ -29,12 +29,12 @@ import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { fileMetaHttpStatus, serveFileContent } from './serveFileContent'
 
-/** PATCH /sessions/:id 通用 body：重命名 / 归入项目 / 置顶共用一个端点，至少携带一项 */
+/** PATCH /sessions/:id 通用 body：重命名 / 归入工作区 / 置顶共用一个端点，至少携带一项 */
 const patchSessionSchema = z.object({
     name: z.string().min(1).max(255).optional(),
-    /** 归属项目（null = 移回「最近」）；缺省 = 不动归属 */
-    projectId: z.string().nullable().optional(),
-    /** 置顶（true = 进「置顶」分组，从「项目」「最近」过滤掉）；缺省 = 不动置顶态 */
+    /** 归属工作区（null = 移回「最近」）；缺省 = 不动归属 */
+    workspaceId: z.string().nullable().optional(),
+    /** 置顶（true = 进「置顶」分组，从「工作区」「最近」过滤掉）；缺省 = 不动置顶态 */
     pinned: z.boolean().optional()
 })
 
@@ -226,9 +226,9 @@ export function createSessionsRoutes(
         return c.json({ sessions })
     })
 
-    // GET /sessions/pinned - 置顶会话分页（跨项目/游离，「置顶」区数据源）。
+    // GET /sessions/pinned - 置顶会话分页（跨工作区/游离，「置顶」区数据源）。
     // 注意：此路由必须注册在 /sessions/:id 之前，否则单段路径 pinned 会被按 :id 拦截
-    // （同类坑见 cli.ts 与 projects.ts 的两段路径注释）
+    // （同类坑见 cli.ts 与 workspaces.ts 的两段路径注释）
     app.get('/sessions/pinned', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -243,7 +243,7 @@ export function createSessionsRoutes(
         const namespace = c.get('namespace')
         const result = engine.getPinnedSessions(namespace, parsed.data.cursor ?? null, parsed.data.limit)
 
-        // 与项目/「最近」分页一致：存储字段以分页行为准，仅叠加内存态（active/running/mode）
+        // 与工作区/「最近」分页一致：存储字段以分页行为准，仅叠加内存态（active/running/mode）
         const sessions = result.sessions.map(stored => toSummaryWithLiveState(engine, stored))
 
         return c.json({
@@ -737,8 +737,8 @@ export function createSessionsRoutes(
         return c.json({ ok: cleared })
     })
 
-    // PATCH /sessions/:id：重命名（{name}）与归入项目（{projectId: string|null}）共用端点，至少携带一项。
-    // 注意非原子：projectId 先应用，rename 失败（如版本冲突 409）时归属已变更，不回滚。
+    // PATCH /sessions/:id：重命名（{name}）与归入工作区（{workspaceId: string|null}）共用端点，至少携带一项。
+    // 注意非原子：workspaceId 先应用，rename 失败（如版本冲突 409）时归属已变更，不回滚。
     app.patch('/sessions/:id', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -754,29 +754,29 @@ export function createSessionsRoutes(
         const parsed = patchSessionSchema.safeParse(body)
         if (!parsed.success || (
             parsed.data.name === undefined
-            && parsed.data.projectId === undefined
+            && parsed.data.workspaceId === undefined
             && parsed.data.pinned === undefined
         )) {
-            return c.json({ error: 'Invalid body: name, projectId or pinned is required' }, 400)
+            return c.json({ error: 'Invalid body: name, workspaceId or pinned is required' }, 400)
         }
 
-        // 归入项目 / 移回「最近」；目标项目必须与会话同 machine（机器未知的老数据放行）
-        if (parsed.data.projectId !== undefined) {
+        // 归入工作区 / 移回「最近」；目标工作区必须与会话同 machine（机器未知的老数据放行）
+        if (parsed.data.workspaceId !== undefined) {
             const namespace = c.get('namespace')
-            if (parsed.data.projectId !== null) {
+            if (parsed.data.workspaceId !== null) {
                 // 会话机器未知（老数据无 machineId）时放行；已知则必须匹配（此处保持 400 历史约定）
                 const sessionMachineId = sessionResult.session.metadata?.machineId
-                const assignable = checkProjectAssignable(
-                    engine, parsed.data.projectId, namespace, sessionMachineId
+                const assignable = checkWorkspaceAssignable(
+                    engine, parsed.data.workspaceId, namespace, sessionMachineId
                 )
                 if (assignable === 'not_found') {
-                    return c.json({ error: 'Project not found' }, 404)
+                    return c.json({ error: 'Workspace not found' }, 404)
                 }
                 if (assignable === 'machine_mismatch') {
-                    return c.json({ error: 'Project belongs to a different machine' }, 400)
+                    return c.json({ error: 'Workspace belongs to a different machine' }, 400)
                 }
             }
-            const ok = engine.setSessionProject(sessionResult.sessionId, parsed.data.projectId, namespace)
+            const ok = engine.setSessionWorkspace(sessionResult.sessionId, parsed.data.workspaceId, namespace)
             if (!ok) {
                 return c.json({ error: 'Session not found' }, 404)
             }

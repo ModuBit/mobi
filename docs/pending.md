@@ -40,24 +40,24 @@
 
 ---
 
-## 15. 项目列表分页/限制展示数量
+## 15. 工作区列表分页/限制展示数量
 
 **现状**：
 
-- `SidebarProjects`（PC）和 `MobileMenuDrawer` 内嵌项目列表（Mobile）均全量展示所有项目折叠组
-- 项目组本身是折叠的（只显示一行标题），占用空间小
-- 项目数量从会话 path 聚合而来，当前场景下一般 3\~8 个，不会无限增长
+- `SidebarWorkspaces`（PC）和 `MobileMenuDrawer` 内嵌工作区列表（Mobile）均全量展示所有工作区折叠组
+- 工作区组本身是折叠的（只显示一行标题），占用空间小
+- 工作区数量从会话 path 聚合而来，当前场景下一般 3\~8 个，不会无限增长
 
 **潜在问题**：
 
-- 引入 Project 实体（#14）后，用户可能手动创建/关联大量项目
-- 长期使用后历史项目积累可能超过 20+，导致列表过长
+- 引入 Workspace 实体（#14）后，用户可能手动创建/关联大量工作区
+- 长期使用后历史工作区积累可能超过 20+，导致列表过长
 
 **优化方向**：
 
-- 默认展示最近活跃的 N 个项目（如 10 个），其余折叠到"更多项目"入口
-- 或引入项目归档机制，归档后不在主列表展示
-- 待 Project 实体落地后根据实际数据量决定
+- 默认展示最近活跃的 N 个工作区（如 10 个），其余折叠到"更多工作区"入口
+- 或引入工作区归档机制，归档后不在主列表展示
+- 待 Workspace 实体落地后根据实际数据量决定
 
 ---
 
@@ -106,9 +106,9 @@
 **换方案的触发条件**（出现任一即重新评估）：
 
 1. bun-engine 出了**别的、patch 修不动的 bug**（不活跃 = 没人修，致命）
-2. `@rvncom/socketio-bun-engine` 证明**长期稳定 + 社区广泛采用**（从单人项目变可信）
+2. `@rvncom/socketio-bun-engine` 证明**长期稳定 + 社区广泛采用**（从单人工作区变可信）
 3. socket.io 官方**明确放弃** bun-engine
-4. 项目遇到 bun-engine 的**另一个阻塞问题**（那时一次性换掉，回归成本摊销）
+4. 工作区遇到 bun-engine 的**另一个阻塞问题**（那时一次性换掉，回归成本摊销）
 
 **备选方案**（触发时评估）：
 
@@ -212,7 +212,7 @@
 
 - 跨会话全文检索（会话内容 + 文件路径 + 工具操作）
 - 会话摘要（每条会话自动生成「做了什么/改了哪些文件/结论」的结构化摘要）
-- 按项目/时间/关键词聚合的工作日志视图
+- 按工作区/时间/关键词聚合的工作日志视图
 
 **技术成本**：低。数据已在 hub（SQLite + 全量消息），缺的是检索索引 + 摘要生成 + 查询 UI。不涉及核心管道改动。
 
@@ -240,20 +240,20 @@
 
 ---
 
-## 45. 项目列表真分页（后端 cursor 分页）
+## 45. 工作区列表真分页（后端 cursor 分页）
 
-**背景**（2026-08-14）：侧边栏「项目」分区列表已做**前端分页**（`usePagedSectionList`：默认 5 个 + 展开剩余/收起），但数据仍是 hub `GET /projects` 一次性全量返回。
+**背景**（2026-08-14）：侧边栏「工作区」分区列表已做**前端分页**（`usePagedSectionList`：默认 5 个 + 展开剩余/收起），但数据仍是 hub `GET /workspaces` 一次性全量返回。
 
-**触发条件**：项目数量显著增长（几百+）时，全量拉取 + 全量内存排序（`getProjects` 的 `MAX(s.updated_at)` 派生排序）成为负担，需要真分页。
+**触发条件**：工作区数量显著增长（几百+）时，全量拉取 + 全量内存排序（`getWorkspaces` 的 `MAX(s.updated_at)` 派生排序）成为负担，需要真分页。
 
 **方向**：
 
-- hub `GET /api/projects` 加 cursor 分页（参照 `paginateSessions` 的共享 CTE 分页方案：cursor + total + hasMore）
-- 注意排序键是派生的「组内会话最新活动」（`COALESCE(last_active_at, p.updated_at)`），cursor 需锚定该排序值而非纯 id——换页期间会话活动导致的排序漂移要考虑（sessions 分页同款问题的项目版）
-- web `useProjects` 迁移到 `useSessionIdsPages` 同款 infinite-query 工厂 + `usePagedSectionList` 的触底后端分页模式（现成骨架，替换数据源即可）
-- `AssignProjectModal` / 新建会话项目下拉等全量消费方按需保留全量接口或提高单页上限
+- hub `GET /api/workspaces` 加 cursor 分页（参照 `paginateSessions` 的共享 CTE 分页方案：cursor + total + hasMore）
+- 注意排序键是派生的「组内会话最新活动」（`COALESCE(last_active_at, p.updated_at)`），cursor 需锚定该排序值而非纯 id——换页期间会话活动导致的排序漂移要考虑（sessions 分页同款问题的工作区版）
+- web `useWorkspaces` 迁移到 `useSessionIdsPages` 同款 infinite-query 工厂 + `usePagedSectionList` 的触底后端分页模式（现成骨架，替换数据源即可）
+- `AssignWorkspaceModal` / 新建会话工作区下拉等全量消费方按需保留全量接口或提高单页上限
 
-**优先级**：低。当前项目量级（个位/十位）下无感知；等量级上来再做。
+**优先级**：低。当前工作区量级（个位/十位）下无感知；等量级上来再做。
 
 ---
 
@@ -365,7 +365,7 @@ mobi.app（dmg 分发）
 1. **Seam 三分法**：可替换能力 = Service Definition（声明接口）+ Provider（实现）+ Consumer（使用方），三者一并设计才算 seam。mobi 已有事实 seam：gateway（CCR backend，当时的「核心接口 + 兜底换 backend + capability 声明」正是此思路）。做扩展特性前先问：是给 claude 配置做管理面（CRUD + 配置生成，无 seam），还是 mobi 自己插拔能力（自定义面板、通知渠道等，才需要 seam）
 2. **注册皆可逆副作用**：每个注册（路由/监听器/定时器）必须有对应 disposer，teardown 自动撤销。hub 的 socket handler / SSE / DB watcher 可以此为编码规范（一个简单 effect 风格辅助函数即可，不需要 cordis）
 3. **类型化事件 + 分发模式**：emit / waterfall（环绕中间件、可短路）/ parallel / serial。mobi 事件跨进程（CLI→hub→web），机制不能照搬，但事件域三分法可参考：session 事件 = 持久事实、agent 事件 = 实时协调、能力事件 = 策略挂载
-4. **配置分层叠加**：profile → bundle → patch 逐层叠加、上层可整体替换下层条目。做 skill/MCP 管理时「默认 → 用户级 → 项目级 → 会话级」分层配置模型直接可抄（Claude Code 自家 settings 同构）
+4. **配置分层叠加**：profile → bundle → patch 逐层叠加、上层可整体替换下层条目。做 skill/MCP 管理时「默认 → 用户级 → 工作区级 → 会话级」分层配置模型直接可抄（Claude Code 自家 settings 同构）
 
 **决策标准**（等第一个「真插件」场景出现再定）：
 
@@ -548,7 +548,7 @@ interrupt（用户停止）
 
 **重启时机**：gateway-ccr-backend 推进时（当前卡点见 `.claude/worktrees/gateway/.scratch/gateway/HANDOFF-2026-08-11-slot-env.md`——CCR profiles[] RPC 读写丢失，卡 ③ 槽位 env 注入；CCR 已发 3.0.21/3.0.22 新版，值得先升级复测）。
 
-**相关**：台账批次 F / U-6 / U-10 / U-22；memory `project_gateway-ccr-backend`、`project_gateway-ccr-port-model`。
+**相关**：台账批次 F / U-6 / U-10 / U-22；memory `workspace_gateway-ccr-backend`、`workspace_gateway-ccr-port-model`。
 
 ---
 

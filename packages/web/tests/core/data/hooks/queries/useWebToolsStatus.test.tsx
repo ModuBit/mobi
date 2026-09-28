@@ -19,7 +19,7 @@ import { renderHook, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
-// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——项目已知坑） ============
+// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——工作区已知坑） ============
 
 const machinesList = vi.hoisted(() => vi.fn())
 const webToolsGet = vi.hoisted(() => vi.fn())
@@ -56,7 +56,7 @@ async function renderStatus() {
     return result.current
 }
 
-// vitest 未开 globals：渲染型测试必须显式 cleanup——项目已知坑
+// vitest 未开 globals：渲染型测试必须显式 cleanup——工作区已知坑
 afterEach(() => cleanup())
 
 describe('useWebToolsStatus 三态推导', () => {

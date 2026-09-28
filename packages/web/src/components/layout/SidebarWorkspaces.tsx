@@ -21,8 +21,8 @@ import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { useProjects } from '@/core/data/hooks/queries/useProjects'
-import { useAssignSessionProject, useDeleteProject } from '@/core/data/hooks/mutations/useProjectMutations'
+import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
+import { useAssignSessionWorkspace, useDeleteWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -33,14 +33,14 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
-import { ProjectFormModal } from '@/components/project/ProjectFormModal'
-import { AssignProjectModal } from '@/components/project/AssignProjectModal'
-import type { Session, Project } from '@/core/data/api/types'
+import { WorkspaceFormModal } from '@/components/workspace/WorkspaceFormModal'
+import { AssignWorkspaceModal } from '@/components/workspace/AssignWorkspaceModal'
+import type { Session, Workspace } from '@/core/data/api/types'
 import {
     Container, SectionTitleRow, SectionTitle, SectionChevron, SectionActionButton,
     SessionListWrapper, SessionListInner,
-} from './sidebarProjects.styles'
-import { ProjectGroup } from './ProjectGroup'
+} from './sidebarWorkspaces.styles'
+import { WorkspaceGroup } from './WorkspaceGroup'
 import { RecentGroup } from './RecentGroup'
 import { PinnedGroup } from './PinnedGroup'
 import { SessionListFooter } from './SessionListFooter'
@@ -50,11 +50,11 @@ import { usePagedSectionList } from './usePagedSectionList'
 const { useToken } = antTheme
 
 /**
- * 侧边栏项目分组会话列表
- * 「置顶」「项目」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
- * 置顶是纯展示维度分组（不改归属）：置顶 → 进「置顶」区并从「项目」「最近」过滤掉，取消反向
+ * 侧边栏工作区分组会话列表
+ * 「置顶」「工作区」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
+ * 置顶是纯展示维度分组（不改归属）：置顶 → 进「置顶」区并从「工作区」「最近」过滤掉，取消反向
  */
-export function SidebarProjects() {
+export function SidebarWorkspaces() {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
@@ -68,23 +68,23 @@ export function SidebarProjects() {
     const { startRename, renamingSessionId, renameValue, setRenameValue, cancelRename } = useUiStore()
     const renameActions = useSessionActions(renamingSessionId)
 
-    // 项目管理状态
-    const { data: projects = [] } = useProjects()
-    // 「项目」分区折叠：有项目默认展开、空分区默认收起，用户 toggle 后持久生效
+    // 工作区管理状态
+    const { data: workspaces = [] } = useWorkspaces()
+    // 「工作区」分区折叠：有工作区默认展开、空分区默认收起，用户 toggle 后持久生效
     const {
-        expanded: projectsExpanded,
-        toggleExpanded: toggleProjectsExpanded,
-    } = useSectionExpanded(projects.length > 0)
-    // 项目列表前端分页：默认 5 个，超出 footer 展开剩余 / 收起（数据仍全量拉取）
+        expanded: workspacesExpanded,
+        toggleExpanded: toggleWorkspacesExpanded,
+    } = useSectionExpanded(workspaces.length > 0)
+    // 工作区列表前端分页：默认 5 个，超出 footer 展开剩余 / 收起（数据仍全量拉取）
     const {
-        visibleItems: visibleProjects, showCollapse, canShowMore, remainingCount, showMore, collapse,
-    } = usePagedSectionList(projects)
-    const [projectModalOpen, setProjectModalOpen] = useState(false)
-    const [editingProject, setEditingProject] = useState<Project | null>(null)
+        visibleItems: visibleWorkspaces, showCollapse, canShowMore, remainingCount, showMore, collapse,
+    } = usePagedSectionList(workspaces)
+    const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false)
+    const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null)
     const [assignSession, setAssignSession] = useState<Session | null>(null)
 
-    const assignMutation = useAssignSessionProject()
-    const deleteProjectMutation = useDeleteProject()
+    const assignMutation = useAssignSessionWorkspace()
+    const deleteWorkspaceMutation = useDeleteWorkspace()
     const pinMutation = useSetSessionPinned()
 
     // 确认重命名
@@ -150,53 +150,53 @@ export function SidebarProjects() {
         })
     }, [api, t, queryClient, activeSessionId, navigate, messageApi])
 
-    // ===== 项目管理 =====
+    // ===== 工作区管理 =====
 
-    // 打开新建项目弹窗（分区标题行可折叠，阻断冒泡避免连带触发）
-    const handleOpenCreateProject = useCallback((e: React.MouseEvent) => {
+    // 打开新建工作区弹窗（分区标题行可折叠，阻断冒泡避免连带触发）
+    const handleOpenCreateWorkspace = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
-        setEditingProject(null)
-        setProjectModalOpen(true)
+        setEditingWorkspace(null)
+        setWorkspaceModalOpen(true)
     }, [])
 
-    // 打开编辑项目弹窗
-    const handleOpenEditProject = useCallback((project: Project) => {
-        setEditingProject(project)
-        setProjectModalOpen(true)
+    // 打开编辑工作区弹窗
+    const handleOpenEditWorkspace = useCallback((workspace: Workspace) => {
+        setEditingWorkspace(workspace)
+        setWorkspaceModalOpen(true)
     }, [])
 
-    // 删除项目：名下会话解绑进「最近」（total 未就绪时用不含数字的退化文案，不编造 0）
-    const handleDeleteProject = useCallback((project: Project, total: number | undefined) => {
+    // 删除工作区：名下会话解绑进「最近」（total 未就绪时用不含数字的退化文案，不编造 0）
+    const handleDeleteWorkspace = useCallback((workspace: Workspace, total: number | undefined) => {
         modal.confirm({
-            title: t('project.deleteConfirmTitle', { name: project.name }),
+            title: t('workspace.deleteConfirmTitle', { name: workspace.name }),
             content: total === undefined
-                ? t('project.deleteConfirmContentFallback')
-                : t('project.deleteConfirmContent', { count: total }),
+                ? t('workspace.deleteConfirmContentFallback')
+                : t('workspace.deleteConfirmContent', { count: total }),
             okText: t('common.confirm'),
             okButtonProps: { danger: true },
             cancelText: t('common.cancel'),
             onOk: async () => {
                 try {
-                    await deleteProjectMutation.mutateAsync(project.id)
+                    await deleteWorkspaceMutation.mutateAsync(workspace.id)
                     messageApi.success(t('common.success'))
                 } catch {
                     messageApi.error(t('common.error'))
                 }
             },
         })
-    }, [t, deleteProjectMutation, messageApi])
+    }, [t, deleteWorkspaceMutation, messageApi])
 
     // 移至最近（解除归属）
     const handleMoveToRecent = useCallback(async (session: Session) => {
         try {
-            await assignMutation.mutateAsync({ sessionId: session.id, projectId: null })
+            await assignMutation.mutateAsync({ sessionId: session.id, workspaceId: null })
             messageApi.success(t('common.success'))
         } catch {
             messageApi.error(t('common.error'))
         }
     }, [assignMutation, t, messageApi])
 
-    // 换项目 / 归入项目（打开弹窗，选项按会话机器过滤）
+    // 换工作区 / 归入工作区（打开弹窗，选项按会话机器过滤）
     const handleOpenAssign = useCallback((session: Session) => {
         setAssignSession(session)
     }, [])
@@ -206,7 +206,7 @@ export function SidebarProjects() {
         ? assignMutation.variables?.sessionId
         : undefined
 
-    // 置顶 / 取消置顶（所有分组通用的行内操作，失败提示与归入项目一致）
+    // 置顶 / 取消置顶（所有分组通用的行内操作，失败提示与归入工作区一致）
     const handleTogglePin = useCallback(async (session: Session) => {
         try {
             await pinMutation.mutateAsync({ sessionId: session.id, pinned: !session.pinned })
@@ -239,38 +239,38 @@ export function SidebarProjects() {
 
     return (
         <Container>
-            {/* 「置顶」分区：跨项目/游离的置顶会话，三个平级分区之首 */}
+            {/* 「置顶」分区：跨工作区/游离的置顶会话，三个平级分区之首 */}
             <PinnedGroup {...sharedProps} />
 
             <SectionTitleRow
                 role="button"
-                aria-expanded={projectsExpanded}
-                onClick={toggleProjectsExpanded}
+                aria-expanded={workspacesExpanded}
+                onClick={toggleWorkspacesExpanded}
             >
-                <SectionChevron $token={token} $expanded={projectsExpanded}>
+                <SectionChevron $token={token} $expanded={workspacesExpanded}>
                     <ChevronRight size={12} />
                 </SectionChevron>
-                <SectionTitle $token={token}>{t('nav.projects')}</SectionTitle>
+                <SectionTitle $token={token}>{t('nav.workspaces')}</SectionTitle>
                 <SectionActionButton
                     $token={token}
                     className="section-extra"
-                    title={t('nav.newProject')}
-                    onClick={handleOpenCreateProject}
+                    title={t('nav.newWorkspace')}
+                    onClick={handleOpenCreateWorkspace}
                 >
                     <Plus size={12} />
                 </SectionActionButton>
             </SectionTitleRow>
-            <SessionListWrapper $expanded={projectsExpanded}>
+            <SessionListWrapper $expanded={workspacesExpanded}>
                 <SessionListInner>
-                    {visibleProjects.map(project => (
-                        <ProjectGroup
-                            key={project.id}
-                            project={project}
+                    {visibleWorkspaces.map(workspace => (
+                        <WorkspaceGroup
+                            key={workspace.id}
+                            workspace={workspace}
                             {...sharedProps}
-                            onEditProject={handleOpenEditProject}
-                            onDeleteProject={handleDeleteProject}
+                            onEditWorkspace={handleOpenEditWorkspace}
+                            onDeleteWorkspace={handleDeleteWorkspace}
                             onMoveToRecent={handleMoveToRecent}
-                            onChangeProject={handleOpenAssign}
+                            onChangeWorkspace={handleOpenAssign}
                             assignPendingSessionId={assignPendingSessionId}
                         />
                     ))}
@@ -293,15 +293,15 @@ export function SidebarProjects() {
                 assignPendingSessionId={assignPendingSessionId}
             />
 
-            {/* 新建/编辑项目弹窗 */}
-            <ProjectFormModal
-                open={projectModalOpen}
-                onClose={() => setProjectModalOpen(false)}
-                project={editingProject}
+            {/* 新建/编辑工作区弹窗 */}
+            <WorkspaceFormModal
+                open={workspaceModalOpen}
+                onClose={() => setWorkspaceModalOpen(false)}
+                workspace={editingWorkspace}
             />
 
-            {/* 归入项目弹窗（只列与会话同机器的项目） */}
-            <AssignProjectModal
+            {/* 归入工作区弹窗（只列与会话同机器的工作区） */}
+            <AssignWorkspaceModal
                 session={assignSession}
                 open={!!assignSession}
                 onClose={() => setAssignSession(null)}

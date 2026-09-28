@@ -67,9 +67,9 @@ vi.mock('@/components/layout/usePwaMode', () => ({
     usePwaMode: () => pwaState.current,
 }))
 
-// MobileProjectList 自带 API/hooks,mock 掉避免噪声
-vi.mock('@/components/layout/MobileProjectList', () => ({
-    MobileProjectList: () => null,
+// MobileWorkspaceList 自带 API/hooks,mock 掉避免噪声
+vi.mock('@/components/layout/MobileWorkspaceList', () => ({
+    MobileWorkspaceList: () => null,
 }))
 
 // MobileDrawer 渲染重(portal + history guard + emotion),mock 成裸 div 透传 children

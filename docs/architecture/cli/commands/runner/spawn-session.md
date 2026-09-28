@@ -49,7 +49,7 @@ flowchart TB
 | `model` | `string?` | - | 指定模型 |
 | `effort` | `EffortLevel?` | - | reasoning effort（low / medium / high / xhigh） |
 | `permissionMode` | `PermissionMode?` | - | 权限模式 |
-| `projectId` | `string?` | - | 归属项目 id（Web spawn 透传；Hub 侧已校验项目归属本机） |
+| `workspaceId` | `string?` | - | 归属工作区 id（Web spawn 透传；Hub 侧已校验工作区归属本机） |
 | `token` | `string?` | - | OAuth 认证 token |
 | `machineId` | `string?` | - | 机器 ID |
 | `sessionId` | `string?` | - | 会话 ID（保留字段） |
@@ -189,8 +189,8 @@ if (options.effort !== undefined) {
 if (options.permissionMode) {
   args.push('--permission-mode', options.permissionMode); // 权限模式
 }
-if (options.projectId) {
-  args.push('--project', options.projectId);           // 归属项目
+if (options.workspaceId) {
+  args.push('--workspace', options.workspaceId);           // 归属工作区
 }
 ```
 

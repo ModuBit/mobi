@@ -15,7 +15,7 @@
  */
 
 /**
- * AssignProjectModal 组件测试
+ * AssignWorkspaceModal 组件测试
  * 验证端别自适应：PC 居中 Modal + Radio（现状保留）；mobile MobileDrawer 点行即提交
  */
 
@@ -33,19 +33,19 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 }))
 
 const assignMock = vi.hoisted(() => vi.fn())
-vi.mock('@/core/data/hooks/mutations/useProjectMutations', () => ({
-    useAssignSessionProject: () => ({ mutateAsync: assignMock, isPending: false }),
+vi.mock('@/core/data/hooks/mutations/useWorkspaceMutations', () => ({
+    useAssignSessionWorkspace: () => ({ mutateAsync: assignMock, isPending: false }),
 }))
 
-// 项目 fixtures（vi.mock 工厂被提升，须经 hoisted 引用）
+// 工作区 fixtures（vi.mock 工厂被提升，须经 hoisted 引用）
 const fixtures = vi.hoisted(() => ({
-    projects: [
-        { id: 'proj-1', machineId: 'm1', name: '项目一', folders: [{ path: '/home/u/proj1', primary: true }], createdAt: 1, updatedAt: 1 },
+    workspaces: [
+        { id: 'proj-1', machineId: 'm1', name: '工作区一', folders: [{ path: '/home/u/proj1', primary: true }], createdAt: 1, updatedAt: 1 },
         { id: 'proj-2', machineId: 'other', name: '别的机器', folders: [{ path: '/x', primary: true }], createdAt: 2, updatedAt: 2 },
     ],
 }))
-vi.mock('@/core/data/hooks/queries/useProjects', () => ({
-    useProjects: () => ({ data: fixtures.projects }),
+vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
+    useWorkspaces: () => ({ data: fixtures.workspaces }),
 }))
 
 // MobileDrawer 桩：绕开 framer-motion jsdom spring 发散（既有惯例，见 MobileMenu.test）
@@ -63,7 +63,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
 
-import { AssignProjectModal } from '@/components/project/AssignProjectModal'
+import { AssignWorkspaceModal } from '@/components/workspace/AssignWorkspaceModal'
 
 const session = {
     id: 'sess-1',
@@ -73,12 +73,12 @@ const session = {
 function renderModal(open = true) {
     return render(
         <AntdApp>
-            <AssignProjectModal session={session} open={open} onClose={() => {}} />
+            <AssignWorkspaceModal session={session} open={open} onClose={() => {}} />
         </AntdApp>,
     )
 }
 
-describe('AssignProjectModal', () => {
+describe('AssignWorkspaceModal', () => {
     beforeEach(() => {
         mockIsMobile.value = false
         assignMock.mockReset()
@@ -88,37 +88,37 @@ describe('AssignProjectModal', () => {
 
     it('PC：渲染居中 Modal + Radio 列表（同机器过滤，现状保留）', () => {
         const { getByText, queryByText } = renderModal()
-        expect(getByText('project.assignTitle')).toBeInTheDocument()
-        expect(getByText('项目一')).toBeInTheDocument()
-        // 只列同机器项目
+        expect(getByText('workspace.assignTitle')).toBeInTheDocument()
+        expect(getByText('工作区一')).toBeInTheDocument()
+        // 只列同机器工作区
         expect(queryByText('别的机器')).toBeNull()
     })
 
-    it('mobile：渲染 MobileDrawer + 项目行，点行即提交（同机器过滤）', async () => {
+    it('mobile：渲染 MobileDrawer + 工作区行，点行即提交（同机器过滤）', async () => {
         mockIsMobile.value = true
         const { getByTestId, getByText, queryByText } = renderModal()
 
         expect(getByTestId('mobile-drawer')).toBeInTheDocument()
-        expect(getByTestId('drawer-title').textContent).toBe('project.assignTitle')
-        expect(getByText('项目一')).toBeInTheDocument()
-        // 只列同机器项目
+        expect(getByTestId('drawer-title').textContent).toBe('workspace.assignTitle')
+        expect(getByText('工作区一')).toBeInTheDocument()
+        // 只列同机器工作区
         expect(queryByText('别的机器')).toBeNull()
 
-        fireEvent.click(getByText('项目一'))
+        fireEvent.click(getByText('工作区一'))
         await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1))
-        expect(assignMock).toHaveBeenCalledWith({ sessionId: 'sess-1', projectId: 'proj-1' })
+        expect(assignMock).toHaveBeenCalledWith({ sessionId: 'sess-1', workspaceId: 'proj-1' })
     })
 
-    it('mobile：无同机器项目时展示空态文案，无列表行', () => {
+    it('mobile：无同机器工作区时展示空态文案，无列表行', () => {
         mockIsMobile.value = true
         const emptySession = { id: 'sess-2', metadata: { machineId: 'none' } } as unknown as Session
         const { getByText, queryByText } = render(
             <AntdApp>
-                <AssignProjectModal session={emptySession} open onClose={() => {}} />
+                <AssignWorkspaceModal session={emptySession} open onClose={() => {}} />
             </AntdApp>,
         )
-        expect(getByText('project.assignEmpty')).toBeInTheDocument()
-        expect(queryByText('项目一')).toBeNull()
+        expect(getByText('workspace.assignEmpty')).toBeInTheDocument()
+        expect(queryByText('工作区一')).toBeNull()
     })
 
     it('open=false 时不渲染', () => {

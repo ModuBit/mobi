@@ -24,7 +24,7 @@ type SidebarToken = ReturnType<typeof antTheme.useToken>['token']
  * 移动端菜单抽屉的顶级行样式（MobileMenu 菜单项与 InstallButton menu variant 共用）。
  *
  * 统一视觉规范（2026-08 重构，mockup 定稿）：
- * - 顶级行一律 15px / 500 左对齐（与项目分组头 GroupName 同档），
+ * - 顶级行一律 15px / 500 左对齐（与工作区分组头 GroupName 同档），
  *   子级会话行 14px、分区标签 13px，形成三级层次
  * - 双列行（主题/语言、刷新/重启）列内也用本样式左对齐，
  *   左列图标起点与其他行一致，不再居中
@@ -51,7 +51,7 @@ export const MobileMenuItem = styled.div<{
 
     @media (hover: hover) {
         &:hover {
-            // $active 项 hover 保持选中底色不降档（对齐 sidebarProjects 的模式）
+            // $active 项 hover 保持选中底色不降档（对齐 sidebarWorkspaces 的模式）
             background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
         }
     }

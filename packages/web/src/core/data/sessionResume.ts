@@ -22,7 +22,7 @@ import { invalidateSessionViews } from '@/core/lib/invalidateViews'
  * 恢复会话并返回 Hub 确认的权威会话 ID。
  *
  * 调用方只消费返回值（路由替换 / 动作重放 / 反馈都以此为准），
- * 缓存收敛（旧详情、新详情、全局列表、项目视图）由 module 一并触发。
+ * 缓存收敛（旧详情、新详情、全局列表、工作区视图）由 module 一并触发。
  */
 export async function resumeSession(
     api: MobiApi,

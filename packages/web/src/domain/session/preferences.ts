@@ -23,7 +23,7 @@ const MODEL_STORAGE_KEY = 'mobi:newSession:model'
 const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 const PERMISSION_MODE_STORAGE_KEY = 'mobi:newSession:permissionMode'
 const OUTPUT_STYLE_STORAGE_KEY = 'mobi:newSession:outputStyle'
-const LAST_USED_PROJECT_STORAGE_KEY = 'mobi:newSession:lastUsedProject'
+const LAST_USED_WORKSPACE_STORAGE_KEY = 'mobi:newSession:lastUsedWorkspace'
 
 const VALID_MODELS = CLAUDE_MODEL_FALLBACK.map(m => m.value)
 
@@ -139,26 +139,26 @@ export function savePreferredOutputStyle(style: string): void {
 }
 
 /**
- * 加载最近新建会话使用的项目 id（直接进入新建会话时默认回选）。
- * 项目可能已被删除，调用方须在项目列表中校验存在性后再使用
+ * 加载最近新建会话使用的工作区 id（直接进入新建会话时默认回选）。
+ * 工作区可能已被删除，调用方须在工作区列表中校验存在性后再使用
  */
-export function loadLastUsedProjectId(): string | null {
+export function loadLastUsedWorkspaceId(): string | null {
     try {
-        return localStorage.getItem(LAST_USED_PROJECT_STORAGE_KEY) || null
+        return localStorage.getItem(LAST_USED_WORKSPACE_STORAGE_KEY) || null
     } catch {
         return null
     }
 }
 
 /**
- * 保存最近新建会话使用的项目 id。空串视为清除（不落脏值）
+ * 保存最近新建会话使用的工作区 id。空串视为清除（不落脏值）
  */
-export function saveLastUsedProjectId(projectId: string): void {
+export function saveLastUsedWorkspaceId(workspaceId: string): void {
     try {
-        if (projectId) {
-            localStorage.setItem(LAST_USED_PROJECT_STORAGE_KEY, projectId)
+        if (workspaceId) {
+            localStorage.setItem(LAST_USED_WORKSPACE_STORAGE_KEY, workspaceId)
         } else {
-            localStorage.removeItem(LAST_USED_PROJECT_STORAGE_KEY)
+            localStorage.removeItem(LAST_USED_WORKSPACE_STORAGE_KEY)
         }
     } catch {
         // 忽略存储错误

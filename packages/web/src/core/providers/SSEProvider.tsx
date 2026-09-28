@@ -40,7 +40,7 @@ import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/s
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
 import { ingestUiCommandEvent } from '@/core/data/stores/workspaceStore'
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
-import { invalidateProjectViews } from '@/core/lib/invalidateViews'
+import { invalidateWorkspaceViews } from '@/core/lib/invalidateViews'
 import {
     ingestIncomingMessages,
     ingestSnapshotDelta,
@@ -295,7 +295,7 @@ function patchMachinesCache(qc: QueryClient, machineId: string, data: unknown): 
 
 type PendingInvalidations = {
     sessions: boolean
-    projectViews: boolean
+    workspaceViews: boolean
     machines: boolean
     sessionIds: Set<string>
 }
@@ -342,24 +342,24 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const hadGapRef = useRef(false)
     const pendingInvalidationsRef = useRef<PendingInvalidations>({
         sessions: false,
-        projectViews: false,
+        workspaceViews: false,
         machines: false,
         sessionIds: new Set(),
     })
 
     // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用。
     // - 'sessions'：全局会话列表
-    // - 'projectViews'：项目维度视图（['projects'] / ['projectSessions'] / ['recentSessions']）。
-    //   session 增删改会改变项目组与「最近」的 sessionIds 成员，必须一并刷新，
+    // - 'workspaceViews'：工作区维度视图（['workspaces'] / ['workspaceSessions'] / ['recentSessions']）。
+    //   session 增删改会改变工作区组与「最近」的 sessionIds 成员，必须一并刷新，
     //   否则新会话不出现 / 删除会话残留
-    function scheduleInvalidation(scope: 'sessions' | 'machines' | 'projectViews', sessionId?: string) {
+    function scheduleInvalidation(scope: 'sessions' | 'machines' | 'workspaceViews', sessionId?: string) {
         const pending = pendingInvalidationsRef.current
         if (scope === 'sessions') {
             pending.sessions = true
         } else if (scope === 'machines') {
             pending.machines = true
         } else {
-            pending.projectViews = true
+            pending.workspaceViews = true
         }
         if (sessionId) {
             pending.sessionIds.add(sessionId)
@@ -370,19 +370,19 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             invalidationTimerRef.current = null
             const p = pendingInvalidationsRef.current
             const qc = queryClientRef.current
-            if (!p.sessions && !p.projectViews && !p.machines && p.sessionIds.size === 0) return
+            if (!p.sessions && !p.workspaceViews && !p.machines && p.sessionIds.size === 0) return
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
-            // 项目维度视图三键（projects/recentSessions/projectSessions 根前缀）由 helper 统一收口
-            if (p.projectViews) tasks.push(invalidateProjectViews(qc))
+            // 工作区维度视图三键（workspaces/recentSessions/workspaceSessions 根前缀）由 helper 统一收口
+            if (p.workspaceViews) tasks.push(invalidateWorkspaceViews(qc))
             if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
             for (const sid of Array.from(p.sessionIds)) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))
             }
 
             p.sessions = false
-            p.projectViews = false
+            p.workspaceViews = false
             p.machines = false
             p.sessionIds.clear()
             if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
@@ -392,7 +392,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     /**
      * 断连后的状态对账：hub broadcast 不重放断连期间的事件，漏掉的变更须由 web 端补拉。
      * 各失效对象与缺口：
-     * - sessions 列表 + projectViews：侧边栏/项目分组成员与计数变化
+     * - sessions 列表 + workspaceViews：侧边栏/工作区分组成员与计数变化
      * - 当前会话详情（['session', sid]）：agentState（等待授权/AskUserQuestion）与
      *   runtimeState（task/后台任务列表）的唯一来源——漏了它，断连期间发生的状态变化
      *   将永久陈旧，移动 PWA 下 refetchOnWindowFocus 不可作为确定性兜底
@@ -400,9 +400,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
      */
     function resyncAfterGap() {
         const sid = parseActiveSessionId(window.location.pathname)
-        // sid 为 null（不在会话页）时仍失效列表与项目视图——侧边栏状态也需对账
+        // sid 为 null（不在会话页）时仍失效列表与工作区视图——侧边栏状态也需对账
         scheduleInvalidation('sessions', sid ?? undefined)
-        scheduleInvalidation('projectViews')
+        scheduleInvalidation('workspaceViews')
         // 断连窗口内的 machine-updated 不会被重放，patch 模式的确定性对账点
         scheduleInvalidation('machines')
         if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
@@ -448,8 +448,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         switch (event.type) {
             case 'session-added':
                 scheduleInvalidation('sessions')
-                // 新会话（游离进「最近」或归属项目）需要出现在对应分组视图
-                scheduleInvalidation('projectViews')
+                // 新会话（游离进「最近」或归属工作区）需要出现在对应分组视图
+                scheduleInvalidation('workspaceViews')
                 break
             case 'session-updated': {
                 // 详情缓存尚未建立（如 spawn 后 CLI 首次心跳的 active:true 广播早于会话页
@@ -466,14 +466,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // hub Ready 通知的 60s 冷却（每轮转换都反馈）。首次见到只记基线不响。
                 const attentionKind = trackAttentionTransition(event.sessionId, event.data)
                 if (attentionKind) notifyAttention(attentionKind)
-                // 只有改变分组成员资格的载荷才失效项目视图：
-                // - 完整 session 载荷（delta.id === sessionId，如 setSessionProject 归属变更）
-                // - 无 data 载荷（projectCache 删除项目后逐会话解绑广播）
+                // 只有改变分组成员资格的载荷才失效工作区视图：
+                // - 完整 session 载荷（delta.id === sessionId，如 setSessionWorkspace 归属变更）
+                // - 无 data 载荷（workspaceCache 删除工作区后逐会话解绑广播）
                 // 心跳/指标/重命名等轻载荷只需上方 patchSessionCache——活跃会话流式期间
-                // 这类事件高频，若每次都失效 ['projects']+全部分组会造成 refetch 风暴（V2）
+                // 这类事件高频，若每次都失效 ['workspaces']+全部分组会造成 refetch 风暴（V2）
                 const delta = event.data as Record<string, unknown> | undefined
                 if (delta === undefined || ('id' in delta && delta.id === event.sessionId)) {
-                    scheduleInvalidation('projectViews')
+                    scheduleInvalidation('workspaceViews')
                 }
                 break
             }
@@ -488,8 +488,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 清理该 session 的瞬时建议, 避免删除会话后 bySession Map 残留
                 usePromptSuggestionStore.getState().clearSession(event.sessionId)
                 scheduleInvalidation('sessions')
-                // 删除的会话需从项目组/「最近」分组视图中移除
-                scheduleInvalidation('projectViews')
+                // 删除的会话需从工作区组/「最近」分组视图中移除
+                scheduleInvalidation('workspaceViews')
                 break
             case 'message-received': {
                 if (event.message) {
@@ -554,16 +554,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'machine-updated':
                 patchMachinesCache(queryClientRef.current, event.machineId, event.data)
                 break
-            case 'project-added':
-            case 'project-updated':
-                // 项目实体变更 → 重新拉取项目列表（数据量小，直接 invalidate）
-                qc.invalidateQueries({ queryKey: queryKeys.projects })
+            case 'workspace-added':
+            case 'workspace-updated':
+                // 工作区实体变更 → 重新拉取工作区列表（数据量小，直接 invalidate）
+                qc.invalidateQueries({ queryKey: queryKeys.workspaces })
                 break
-            case 'project-removed':
-                // 名下会话已解绑进「最近」→ 与 session-* 共用 projectViews 批处理
-                // （批量失效项目 + 两个分组视图）；session 级缓存由 hub 逐会话发的
+            case 'workspace-removed':
+                // 名下会话已解绑进「最近」→ 与 session-* 共用 workspaceViews 批处理
+                // （批量失效工作区 + 两个分组视图）；session 级缓存由 hub 逐会话发的
                 // session-updated 走 patchSessionCache，invalidateQueries 天然去重
-                scheduleInvalidation('projectViews')
+                scheduleInvalidation('workspaceViews')
                 break
             case 'heartbeat':
                 break
@@ -778,7 +778,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 重置待处理状态
             pendingInvalidationsRef.current = {
                 sessions: false,
-                projectViews: false,
+                workspaceViews: false,
                 machines: false,
                 sessionIds: new Set(),
             }

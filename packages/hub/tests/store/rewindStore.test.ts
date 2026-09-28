@@ -118,7 +118,7 @@ describe('缺 metadata 列的存量库 → 启动报错引导人工补列', () =
                 metadata TEXT, metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT, agent_state_version INTEGER DEFAULT 1,
                 runtime_state TEXT, runtime_state_updated_at INTEGER,
-                project_id TEXT, seq INTEGER DEFAULT 0
+                workspace_id TEXT, seq INTEGER DEFAULT 0
             );
             CREATE TABLE messages (
                 id TEXT PRIMARY KEY, session_id TEXT NOT NULL, content TEXT NOT NULL,
@@ -145,7 +145,7 @@ describe('缺 metadata 列的存量库 → 启动报错引导人工补列', () =
                 endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
                 created_at INTEGER NOT NULL, UNIQUE(namespace, endpoint)
             );
-            CREATE TABLE projects (
+            CREATE TABLE workspaces (
                 id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
                 machine_id TEXT NOT NULL, name TEXT NOT NULL, folders TEXT NOT NULL,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seq INTEGER DEFAULT 0

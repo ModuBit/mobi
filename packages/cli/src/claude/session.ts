@@ -39,7 +39,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     readonly hookSettings: string | Settings;
     readonly startedBy: 'runner' | 'terminal';
     readonly startingMode: 'local' | 'remote';
-    /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
+    /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
     /** Query 重启状态机：隐藏 pending、异步占位、队列清理和退出哨兵配对。 */
     readonly restart: QueryRestartController;

@@ -31,9 +31,9 @@
 | **builtin** | 硬编码 | 内置命令（clear, compact, context, cost, plan） |
 | **user** | `~/.claude/commands/` | 用户全局自定义命令 |
 | **plugin** | 已安装插件的 `commands/` 目录 | 插件提供的命令 |
-| **project** | `<project>/.claude/commands/` | 项目级自定义命令 |
+| **workspace** | `<workspace>/.claude/commands/` | 工作区级自定义命令 |
 
-**优先级规则**: 后发现的同名命令覆盖先发现的（project > plugin > user > builtin）。
+**优先级规则**: 后发现的同名命令覆盖先发现的（workspace > plugin > user > builtin）。
 
 ### 命令文件格式
 
@@ -57,7 +57,7 @@ listSlashCommands(agent, workingDirectory)
     │   ├── builtin → BUILTIN_COMMANDS 常量
     │   ├── user → scanCommandsDir(~/.claude/commands/)
     │   ├── plugin → 读取 installed_plugins.json → 遍历各插件的 commands/
-    │   └── project → scanCommandsDir(<project>/.claude/commands/)
+    │   └── workspace → scanCommandsDir(<workspace>/.claude/commands/)
     │
     ├── 合并 + 去重（后者覆盖前者）
     │
@@ -111,11 +111,11 @@ scanCommandsDir(dir, source)
 
 | 来源 | 路径 | 说明 |
 |------|------|------|
-| **project** | `<project>/.agents/skills/*/` | 项目级 skill（沿目录树向上搜索至 git 根） |
+| **workspace** | `<workspace>/.agents/skills/*/` | 工作区级 skill（沿目录树向上搜索至 git 根） |
 | **user** | `~/.agents/skills/*/` | 用户全局 skill |
 | **admin** | `/etc/mobi/skills/*/` | 系统管理员 skill |
 
-**优先级**: project > user > admin（同名 skill，project 优先）。
+**优先级**: workspace > user > admin（同名 skill，workspace 优先）。
 
 ### Skill 文件格式
 
@@ -140,17 +140,17 @@ description: Skill 描述
 Skill 的具体内容
 ```
 
-### 项目根目录发现
+### 工作区根目录发现
 
 ```
-listProjectSkillsRoots(workingDirectory)
+listWorkspaceSkillsRoots(workingDirectory)
     │
     └── 从 workingDirectory 向上遍历
         ├── 找到 .git 目录 → 停止，返回沿途所有目录对应的 skills 路径
         └── 到达文件系统根 → 仅返回 workingDirectory 对应的路径
 ```
 
-这确保了嵌套项目结构中，子目录也能继承父项目的 skills。
+这确保了嵌套工作区结构中，子目录也能继承父工作区的 skills。
 
 ### 扫描与合并
 
@@ -158,13 +158,13 @@ listProjectSkillsRoots(workingDirectory)
 listSkills(workingDirectory)
     │
     ├── 并行扫描三个来源
-    │   ├── project → 所有项目级 skill 目录
+    │   ├── workspace → 所有工作区级 skill 目录
     │   ├── user → ~/.agents/skills/
     │   └── admin → /etc/mobi/skills/
     │
     ├── 并行读取 SKILL.md → 解析 frontmatter
     │
-    ├── 去重（同名 skill，首次出现优先 → project 优先）
+    ├── 去重（同名 skill，首次出现优先 → workspace 优先）
     │
     └── 按名称排序返回
 ```
@@ -173,7 +173,7 @@ listSkills(workingDirectory)
 
 ## 共同设计模式
 
-1. **多级来源合并**: 内置/全局/项目分级，后者覆盖前者
+1. **多级来源合并**: 内置/全局/工作区分级，后者覆盖前者
 2. **Frontmatter 解析**: YAML frontmatter 提取元数据，body 作为内容
 3. **并行扫描**: 所有来源 `Promise.all` 并行读取
 4. **Map 去重**: `Map<string, T>` 实现同名校验和覆盖

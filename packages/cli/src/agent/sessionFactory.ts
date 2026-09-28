@@ -21,7 +21,7 @@ import { access } from 'node:fs/promises'
 
 import { ApiClient } from '@/api/api'
 import type { ApiSessionClient } from '@/api/apiSession'
-import type { AgentState, MachineMetadata, Metadata, Project, Session } from '@/api/types'
+import type { AgentState, MachineMetadata, Metadata, Workspace, Session } from '@/api/types'
 import type { EffortLevel } from '@mobi/shared'
 import { notifyRunnerSessionStarted } from '@/runner/controlClient'
 import { readSettings } from '@/persistence'
@@ -43,8 +43,8 @@ export type SessionBootstrapOptions = {
     effort?: EffortLevel
     claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
     startingMode?: 'local' | 'remote'
-    /** 归属项目（Web spawn 透传；缺省 = 游离） */
-    projectId?: string
+    /** 归属工作区（Web spawn 透传；缺省 = 游离） */
+    workspaceId?: string
 }
 
 export type SessionBootstrapResult = {
@@ -147,13 +147,13 @@ function extractResumeSessionId(claudeArgs?: string[]): string | null {
 }
 
 /**
- * 计算会话的额外工作目录，优先级：冻结列表 > 项目派生 > 空。
+ * 计算会话的额外工作目录，优先级：冻结列表 > 工作区派生 > 空。
  * 返回 { dirs, freeze }：freeze 表示派生结果（含空列表）是否应写入 metadata 冻结。
  * 1. metadata.additionalDirectories 键已冻结（创建/迁移时写入，含空列表）→ 直接回放，
- *    完全忽略响应中的 project（不校验 machineId、不读 folders）——resume 历史会话不受
- *    项目后续变更影响，且不重写（freeze=false）
- * 2. 无该键 → 从 project.folders 派生（freeze=true）：
- *    - 显式 --project（explicitProject）时 machineId 必须匹配，不匹配硬失败——用户明确
+ *    完全忽略响应中的 workspace（不校验 machineId、不读 folders）——resume 历史会话不受
+ *    工作区后续变更影响，且不重写（freeze=false）
+ * 2. 无该键 → 从 workspace.folders 派生（freeze=true）：
+ *    - 显式 --workspace（explicitWorkspace）时 machineId 必须匹配，不匹配硬失败——用户明确
  *      指定了归属，错了要立刻暴露
  *    - 非显式（resume 历史会话，含迁移存量首次 resume）时 machineId 不匹配降级为
  *      warn + 空目录且不冻结（freeze=false）——迁移前可恢复的会话不能因机器门禁起不来，
@@ -163,42 +163,42 @@ function extractResumeSessionId(claudeArgs?: string[]): string | null {
  * 3. 都无 → 空数组（freeze=false）
  */
 async function resolveAdditionalDirectories(input: {
-    project: Project | null
+    workspace: Workspace | null
     sessionMetadata: unknown
     machineId: string
     workingDirectory: string
-    /** projectId 是否由用户显式指定（--project / Web spawn）——决定机器门禁是硬失败还是降级 */
-    explicitProject: boolean
+    /** workspaceId 是否由用户显式指定（--workspace / Web spawn）——决定机器门禁是硬失败还是降级 */
+    explicitWorkspace: boolean
 }): Promise<{ dirs: string[]; freeze: boolean }> {
-    const { project, sessionMetadata, machineId, workingDirectory, explicitProject } = input
+    const { workspace, sessionMetadata, machineId, workingDirectory, explicitWorkspace } = input
 
-    // 优先级 1：冻结列表回放（键存在即冻结，空列表同样冻结——单文件夹项目冻结 []，
-    // resume 不再重读项目）。hub 对已绑项目的会话始终返回 project，但冻结后项目
-    // folders 的任何变更都不应影响历史会话，故此处不看 project
+    // 优先级 1：冻结列表回放（键存在即冻结，空列表同样冻结——单文件夹工作区冻结 []，
+    // resume 不再重读工作区）。hub 对已绑工作区的会话始终返回 workspace，但冻结后工作区
+    // folders 的任何变更都不应影响历史会话，故此处不看 workspace
     const frozen = readFrozenAdditionalDirectories(sessionMetadata)
     if (frozen) {
         return { dirs: frozen, freeze: false }
     }
 
-    // 优先级 2：项目派生（新建 / 迁移存量首次 resume）
-    if (project) {
-        // folders 是机器本地路径，项目必须归属本机才能使用
-        if (project.machineId !== machineId) {
-            if (explicitProject) {
-                throw new Error(`Project '${project.name}' belongs to a different machine (${project.machineId}), this machine is ${machineId}`)
+    // 优先级 2：工作区派生（新建 / 迁移存量首次 resume）
+    if (workspace) {
+        // folders 是机器本地路径，工作区必须归属本机才能使用
+        if (workspace.machineId !== machineId) {
+            if (explicitWorkspace) {
+                throw new Error(`Workspace '${workspace.name}' belongs to a different machine (${workspace.machineId}), this machine is ${machineId}`)
             }
             // resume 历史会话（如迁移兜底 'unknown' 或众数机器 ≠ 当前机器）：
             // 机器门禁只约束显式归属，不阻断历史会话恢复——降级为无额外目录，且不冻结，
             // 留待在正确机器上 resume 时再派生
             logger.warn(
-                `[START] 会话所属项目 '${project.name}' 归属其他机器（${project.machineId}，本机 ${machineId}），跳过项目目录注入`
+                `[START] 会话所属工作区 '${workspace.name}' 归属其他机器（${workspace.machineId}，本机 ${machineId}），跳过工作区目录注入`
             )
             return { dirs: [], freeze: false }
         }
 
         const cwd = resolve(workingDirectory)
         const dirs: string[] = []
-        for (const folder of project.folders) {
+        for (const folder of workspace.folders) {
             // 等于 cwd 的文件夹跳过（agent 本就以它为工作目录）；解析路径而非前缀匹配，
             // 避免 /a/mobic 误配 /a/mobi。worktree/子目录启动时 primary≠cwd → 会被加入
             if (resolve(folder.path) === cwd) {
@@ -207,10 +207,10 @@ async function resolveAdditionalDirectories(input: {
             const exists = await access(folder.path).then(() => true).catch(() => false)
             if (!exists) {
                 if (folder.primary) {
-                    // primary 既不是 cwd 又不存在 → 项目主目录失效，硬失败
+                    // primary 既不是 cwd 又不存在 → 工作区主目录失效，硬失败
                     throw new Error(`Primary folder does not exist: ${folder.path}`)
                 }
-                logger.warn(`[START] 项目文件夹不存在，跳过 add-dir: ${folder.path}`)
+                logger.warn(`[START] 工作区文件夹不存在，跳过 add-dir: ${folder.path}`)
                 continue
             }
             dirs.push(folder.path)
@@ -218,7 +218,7 @@ async function resolveAdditionalDirectories(input: {
         return { dirs, freeze: true }
     }
 
-    // 优先级 3：游离 / resume 未绑项目且无冻结 → 空
+    // 优先级 3：游离 / resume 未绑工作区且无冻结 → 空
     return { dirs: [], freeze: false }
 }
 
@@ -286,23 +286,23 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         state: agentState,
         mode: options.startingMode,
         runtimeState: options.effort ? { effort: options.effort } : undefined,
-        projectId: options.projectId
+        workspaceId: options.workspaceId
     })
 
     const apiSession = api.sessionSyncClient(sessionInfo)
 
-    // 解析额外工作目录：优先回放冻结列表，其次从项目 folders 派生（见函数 docstring 的优先级规则）
+    // 解析额外工作目录：优先回放冻结列表，其次从工作区 folders 派生（见函数 docstring 的优先级规则）
     const { dirs: additionalDirectories, freeze } = await resolveAdditionalDirectories({
-        project: sessionInfo.project,
+        workspace: sessionInfo.workspace,
         sessionMetadata: sessionInfo.metadata,
         machineId,
         workingDirectory,
-        explicitProject: options.projectId !== undefined
+        explicitWorkspace: options.workspaceId !== undefined
     })
 
-    // 派生结果冻结（含空列表——单文件夹项目冻结 []，resume 不再重读项目）：
+    // 派生结果冻结（含空列表——单文件夹工作区冻结 []，resume 不再重读工作区）：
     // 仅派生路径（freeze=true）写入；回放路径与机器不匹配降级路径不写，
-    // 保证冻结列表稳定、不被项目后续变更追溯覆盖
+    // 保证冻结列表稳定、不被工作区后续变更追溯覆盖
     if (freeze) {
         apiSession.updateMetadata((current) => ({
             ...current,

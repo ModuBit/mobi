@@ -31,12 +31,12 @@ import { dormantSessionWithFeedback, deleteBlockedText } from '@/core/data/sessi
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { useProjects } from '@/core/data/hooks/queries/useProjects'
+import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { MOBILE_SHEET_DRAWER_CLASS } from '@/components/ui/MobileDrawer'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { useAssignSessionProject } from '@/core/data/hooks/mutations/useProjectMutations'
+import { useAssignSessionWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
 import { useMobiApi } from '@/core/data/api/client'
 import { resumeSession } from '@/core/data/sessionResume'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
@@ -50,13 +50,13 @@ import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import {
     Container, SectionHeader, SectionTitleText, SectionChevron, NewSessionBtn,
     SessionListWrapper, SessionListInner,
-} from './mobileProjectList.styles'
-import { MobileProjectGroup } from './MobileProjectGroup'
+} from './mobileWorkspaceList.styles'
+import { MobileWorkspaceGroup } from './MobileWorkspaceGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
 import { MobilePinnedGroup } from './MobilePinnedGroup'
 import { useMenuNavigate } from './useMenuNavigate'
-import { ProjectFormModal } from '@/components/project/ProjectFormModal'
-import { AssignProjectModal } from '@/components/project/AssignProjectModal'
+import { WorkspaceFormModal } from '@/components/workspace/WorkspaceFormModal'
+import { AssignWorkspaceModal } from '@/components/workspace/AssignWorkspaceModal'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
 import { usePagedSectionList } from './usePagedSectionList'
@@ -64,11 +64,11 @@ import { usePagedSectionList } from './usePagedSectionList'
 const { useToken } = antTheme
 
 /**
- * Mobile 端项目折叠列表
- * 「置顶」「项目」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
+ * Mobile 端工作区折叠列表
+ * 「置顶」「工作区」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
  * 置顶是纯展示维度分组（不改归属），入口在长按 ActionSheet
  */
-export function MobileProjectList() {
+export function MobileWorkspaceList() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message: messageApi, modal } = AntdApp.useApp()
@@ -87,8 +87,8 @@ export function MobileProjectList() {
     const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
     const [renameValue, setRenameValue] = useState('')
 
-    // 新建项目表单状态（ProjectFormModal 端别自适应，移动端渲染为底部 Drawer）
-    const [projectModalOpen, setProjectModalOpen] = useState(false)
+    // 新建工作区表单状态（WorkspaceFormModal 端别自适应，移动端渲染为底部 Drawer）
+    const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false)
 
     // 置顶 / 取消置顶（ActionSheet 入口，所有分组通用）
     const pinMutation = useSetSessionPinned()
@@ -99,7 +99,7 @@ export function MobileProjectList() {
             await pinMutation.mutateAsync({ sessionId: session.id, pinned: !session.pinned })
             setActionSessionId(null)
         } catch {
-            // mutation hook 无 onError，这里与桌面端 SidebarProjects 对齐：失败弹全局错误提示
+            // mutation hook 无 onError，这里与桌面端 SidebarWorkspaces 对齐：失败弹全局错误提示
             messageApi.error(t('common.error'))
         } finally {
             setPinLoadingId(null)
@@ -108,17 +108,17 @@ export function MobileProjectList() {
 
     const renameActions = useSessionActions(renameSessionId)
 
-    // 获取所有项目 + 最近会话（游离会话）
-    const { data: projects = [] } = useProjects()
-    // 「项目」分区折叠：有项目默认展开、空分区默认收起，用户 toggle 后持久生效
+    // 获取所有工作区 + 最近会话（游离会话）
+    const { data: workspaces = [] } = useWorkspaces()
+    // 「工作区」分区折叠：有工作区默认展开、空分区默认收起，用户 toggle 后持久生效
     const {
-        expanded: projectsExpanded,
-        toggleExpanded: toggleProjectsExpanded,
-    } = useSectionExpanded(projects.length > 0)
-    // 项目列表前端分页：默认 5 个，超出 footer 展开剩余 / 收起（与桌面端一致）
+        expanded: workspacesExpanded,
+        toggleExpanded: toggleWorkspacesExpanded,
+    } = useSectionExpanded(workspaces.length > 0)
+    // 工作区列表前端分页：默认 5 个，超出 footer 展开剩余 / 收起（与桌面端一致）
     const {
-        visibleItems: visibleProjects, showCollapse, canShowMore, remainingCount, showMore, collapse,
-    } = usePagedSectionList(projects)
+        visibleItems: visibleWorkspaces, showCollapse, canShowMore, remainingCount, showMore, collapse,
+    } = usePagedSectionList(workspaces)
     // 获取所有会话（用于查找 ActionSheet 对应 session）
     const { data: allSessions } = useSessions()
 
@@ -126,8 +126,8 @@ export function MobileProjectList() {
         return allSessions?.find(s => s.id === sessionId)
     }, [allSessions])
 
-    // 归属变更：换项目 / 归入项目（选择器）+ 移至最近（直接执行）
-    const assignMutation = useAssignSessionProject()
+    // 归属变更：换工作区 / 归入工作区（选择器）+ 移至最近（直接执行）
+    const assignMutation = useAssignSessionWorkspace()
     const [assignSession, setAssignSession] = useState<Session | null>(null)
 
     const handleOpenAssign = useCallback(() => {
@@ -142,7 +142,7 @@ export function MobileProjectList() {
         if (!actionSessionId) return
         setActionLoading('moveToRecent')
         try {
-            await assignMutation.mutateAsync({ sessionId: actionSessionId, projectId: null })
+            await assignMutation.mutateAsync({ sessionId: actionSessionId, workspaceId: null })
             messageApi.success(t('common.success'))
             setActionSessionId(null)
         } catch {
@@ -277,7 +277,7 @@ export function MobileProjectList() {
     return (
         <>
             <Container $token={token}>
-                {/* 「置顶」分区：跨项目/游离的置顶会话，三个平级分区之首 */}
+                {/* 「置顶」分区：跨工作区/游离的置顶会话，三个平级分区之首 */}
                 <MobilePinnedGroup
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}
@@ -285,27 +285,27 @@ export function MobileProjectList() {
                 <SectionHeader
                     $token={token}
                     role="button"
-                    aria-expanded={projectsExpanded}
-                    onClick={toggleProjectsExpanded}
+                    aria-expanded={workspacesExpanded}
+                    onClick={toggleWorkspacesExpanded}
                 >
-                    <SectionChevron $token={token} $expanded={projectsExpanded}>
+                    <SectionChevron $token={token} $expanded={workspacesExpanded}>
                         <ChevronRight size={14} />
                     </SectionChevron>
-                    <SectionTitleText>{t('nav.projects')}</SectionTitleText>
+                    <SectionTitleText>{t('nav.workspaces')}</SectionTitleText>
                     <NewSessionBtn
                         $token={token}
-                        aria-label={t('nav.newProject')}
-                        onClick={(e) => { e.stopPropagation(); setProjectModalOpen(true) }}
+                        aria-label={t('nav.newWorkspace')}
+                        onClick={(e) => { e.stopPropagation(); setWorkspaceModalOpen(true) }}
                     >
                         <Plus size={18} />
                     </NewSessionBtn>
                 </SectionHeader>
-                <SessionListWrapper $expanded={projectsExpanded}>
+                <SessionListWrapper $expanded={workspacesExpanded}>
                     <SessionListInner>
-                        {visibleProjects.map(project => (
-                            <MobileProjectGroup
-                                key={project.id}
-                                project={project}
+                        {visibleWorkspaces.map(workspace => (
+                            <MobileWorkspaceGroup
+                                key={workspace.id}
+                                workspace={workspace}
                                 activeSessionId={activeSessionId}
                                 onSessionAction={setActionSessionId}
                             />
@@ -372,8 +372,8 @@ export function MobileProjectList() {
                             {actionSession.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
                         </Button>
 
-                        {/* 归属操作：按归属动态显示（游离=归入项目；项目内=换项目+移至最近） */}
-                        {actionSession.projectId ? (
+                        {/* 归属操作：按归属动态显示（游离=归入工作区；工作区内=换工作区+移至最近） */}
+                        {actionSession.workspaceId ? (
                             <>
                                 <Button
                                     type="text"
@@ -383,7 +383,7 @@ export function MobileProjectList() {
                                     style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                     onClick={handleOpenAssign}
                                 >
-                                    {t('project.changeProject')}
+                                    {t('workspace.changeWorkspace')}
                                 </Button>
                                 <Button
                                     type="text"
@@ -394,7 +394,7 @@ export function MobileProjectList() {
                                     style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                     onClick={handleMoveToRecent}
                                 >
-                                    {t('project.toRecent')}
+                                    {t('workspace.toRecent')}
                                 </Button>
                             </>
                         ) : (
@@ -406,7 +406,7 @@ export function MobileProjectList() {
                                 style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
                                 onClick={handleOpenAssign}
                             >
-                                {t('project.assignTo')}
+                                {t('workspace.assignTo')}
                             </Button>
                         )}
 
@@ -490,17 +490,17 @@ export function MobileProjectList() {
                 />
             </Modal>
 
-            {/* 归入/换项目选择器（端别自适应，见 AssignProjectModal） */}
-            <AssignProjectModal
+            {/* 归入/换工作区选择器（端别自适应，见 AssignWorkspaceModal） */}
+            <AssignWorkspaceModal
                 session={assignSession}
                 open={!!assignSession}
                 onClose={() => setAssignSession(null)}
             />
 
-            {/* 新建项目表单（移动端渲染为底部 Drawer） */}
-            <ProjectFormModal
-                open={projectModalOpen}
-                onClose={() => setProjectModalOpen(false)}
+            {/* 新建工作区表单（移动端渲染为底部 Drawer） */}
+            <WorkspaceFormModal
+                open={workspaceModalOpen}
+                onClose={() => setWorkspaceModalOpen(false)}
             />
         </>
     )

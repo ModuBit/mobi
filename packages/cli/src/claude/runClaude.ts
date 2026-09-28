@@ -61,8 +61,8 @@ export interface StartOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     startedBy?: 'runner' | 'terminal'
-    /** 归属项目 id（Web spawn / 终端 --project 透传；缺省 = 游离） */
-    projectId?: string
+    /** 归属工作区 id（Web spawn / 终端 --workspace 透传；缺省 = 游离） */
+    workspaceId?: string
 }
 
 /** onUserMessage 消费段的内容解析产物（抽为纯函数便于单测——handler 本体依赖 apiSession/queue 过重） */
@@ -125,7 +125,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         effort: options.effort,
         claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 Hub session
         startingMode,
-        projectId: options.projectId
+        workspaceId: options.workspaceId
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
 

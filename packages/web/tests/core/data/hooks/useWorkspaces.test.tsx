@@ -21,11 +21,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider, App as AntdApp } from 'antd'
 import type { ReactNode } from 'react'
 
-// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——项目已知坑） ============
+// ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——工作区已知坑） ============
 
-const projectsList = vi.hoisted(() => vi.fn())
+const workspacesList = vi.hoisted(() => vi.fn())
 const mockApi = {
-    projects: { list: projectsList },
+    workspaces: { list: workspacesList },
     visibility: { report: vi.fn().mockResolvedValue(undefined) },
 }
 vi.mock('@/core/data/api/client', () => ({
@@ -88,10 +88,10 @@ vi.mock('antd', async (orig) => {
     }
 })
 
-import { useProjects } from '@/core/data/hooks/queries/useProjects'
-import type { Project } from '@mobi/shared'
+import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
+import type { Workspace } from '@mobi/shared'
 
-function makeProject(overrides: Partial<Project> = {}): Project {
+function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     return {
         id: 'p1',
         namespace: 'ns',
@@ -131,41 +131,41 @@ async function renderProvider() {
     return { queryClient: qc }
 }
 
-// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错——项目已知坑
+// vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积致 getBy* 多元素报错——工作区已知坑
 afterEach(() => cleanup())
 
-describe('useProjects', () => {
+describe('useWorkspaces', () => {
     beforeEach(() => {
         vi.clearAllMocks()
     })
 
-    it('拉取项目列表并写入 ["projects", "all"] 缓存', async () => {
-        const projects = [makeProject(), makeProject({ id: 'p2', name: 'Another' })]
-        projectsList.mockResolvedValue({ data: { projects } })
+    it('拉取工作区列表并写入 ["workspaces", "all"] 缓存', async () => {
+        const workspaces = [makeWorkspace(), makeWorkspace({ id: 'p2', name: 'Another' })]
+        workspacesList.mockResolvedValue({ data: { workspaces } })
 
         const qc = makeQueryClient()
-        const { result } = renderHook(() => useProjects(), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaces(), { wrapper: makeHookWrapper(qc) })
 
-        await waitFor(() => expect(result.current.data).toEqual(projects))
-        // 单一数据源：列表进 queryClient 缓存，供 useProjectSessions 取 primary folder path
-        expect(qc.getQueryData(['projects', 'all'])).toEqual(projects)
-        expect(projectsList).toHaveBeenCalledWith(undefined)
+        await waitFor(() => expect(result.current.data).toEqual(workspaces))
+        // 单一数据源：列表进 queryClient 缓存，供 useWorkspaceSessions 取 primary folder path
+        expect(qc.getQueryData(['workspaces', 'all'])).toEqual(workspaces)
+        expect(workspacesList).toHaveBeenCalledWith(undefined)
     })
 
-    it('带 machineId 时透传过滤参数并落 ["projects", machineId] 缓存', async () => {
-        const projects = [makeProject()]
-        projectsList.mockResolvedValue({ data: { projects } })
+    it('带 machineId 时透传过滤参数并落 ["workspaces", machineId] 缓存', async () => {
+        const workspaces = [makeWorkspace()]
+        workspacesList.mockResolvedValue({ data: { workspaces } })
 
         const qc = makeQueryClient()
-        const { result } = renderHook(() => useProjects('m1'), { wrapper: makeHookWrapper(qc) })
+        const { result } = renderHook(() => useWorkspaces('m1'), { wrapper: makeHookWrapper(qc) })
 
-        await waitFor(() => expect(result.current.data).toEqual(projects))
-        expect(projectsList).toHaveBeenCalledWith('m1')
-        expect(qc.getQueryData(['projects', 'm1'])).toEqual(projects)
+        await waitFor(() => expect(result.current.data).toEqual(workspaces))
+        expect(workspacesList).toHaveBeenCalledWith('m1')
+        expect(qc.getQueryData(['workspaces', 'm1'])).toEqual(workspaces)
     })
 })
 
-describe('SSE project 事件失效', () => {
+describe('SSE workspace 事件失效', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         sseListener.current = null
@@ -173,53 +173,53 @@ describe('SSE project 事件失效', () => {
         Object.defineProperty(document, 'hidden', { value: false, configurable: true })
     })
 
-    it('project-updated → invalidate ["projects"]', async () => {
+    it('workspace-updated → invalidate ["workspaces"]', async () => {
         const { queryClient: qc } = await renderProvider()
         expect(sseListener.current).toBeTruthy()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-        sseListener.current!({ type: 'project-updated', projectId: 'p1', namespace: 'ns' })
+        sseListener.current!({ type: 'workspace-updated', workspaceId: 'p1', namespace: 'ns' })
 
         await waitFor(() => {
-            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspaces'] })
         })
-        // 项目实体变更只动项目列表，不牵连会话缓存
+        // 工作区实体变更只动工作区列表，不牵连会话缓存
         const invalidatedKeys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'sessions')).toBe(false)
         invalidateSpy.mockRestore()
     })
 
-    it('project-added → invalidate ["projects"]', async () => {
+    it('workspace-added → invalidate ["workspaces"]', async () => {
         const { queryClient: qc } = await renderProvider()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-        sseListener.current!({ type: 'project-added', projectId: 'p9', namespace: 'ns' })
+        sseListener.current!({ type: 'workspace-added', workspaceId: 'p9', namespace: 'ns' })
 
         await waitFor(() => {
-            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspaces'] })
         })
         invalidateSpy.mockRestore()
     })
 
-    it('project-removed → 折叠进 projectViews 批处理（projects/recentSessions/projectSessions）', async () => {
+    it('workspace-removed → 折叠进 workspaceViews 批处理（workspaces/recentSessions/workspaceSessions）', async () => {
         const { queryClient: qc } = await renderProvider()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-        sseListener.current!({ type: 'project-removed', projectId: 'p1', namespace: 'ns' })
+        sseListener.current!({ type: 'workspace-removed', workspaceId: 'p1', namespace: 'ns' })
 
         await waitFor(() => {
-            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspaces'] })
         })
         const invalidatedKeys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
         // 名下会话解绑进「最近」→ 两个分组视图直接刷新；session 级缓存由 hub 逐会话发的
-        // session-updated（patchSessionCache + projectViews 批处理）覆盖，不再在此直接失效
+        // session-updated（patchSessionCache + workspaceViews 批处理）覆盖，不再在此直接失效
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'recentSessions')).toBe(true)
-        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(true)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'workspaceSessions')).toBe(true)
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'sessions')).toBe(false)
         invalidateSpy.mockRestore()
     })
 
-    it('connection-changed reconnected → 补失效项目视图（断连期间他端的成员/归属变更）', async () => {
+    it('connection-changed reconnected → 补失效工作区视图（断连期间他端的成员/归属变更）', async () => {
         const { queryClient: qc } = await renderProvider()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -229,11 +229,11 @@ describe('SSE project 事件失效', () => {
         await waitFor(() => {
             expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['sessions'] })
         })
-        // 重连必须连带失效项目维度视图，否则断连期间他端的项目/归属变更不补拉
+        // 重连必须连带失效工作区维度视图，否则断连期间他端的工作区/归属变更不补拉
         const invalidatedKeys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
-        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'projects')).toBe(true)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'workspaces')).toBe(true)
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'recentSessions')).toBe(true)
-        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(true)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'workspaceSessions')).toBe(true)
         invalidateSpy.mockRestore()
     })
 })

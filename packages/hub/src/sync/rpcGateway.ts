@@ -33,7 +33,7 @@ export type SpawnSessionOptions = {
     resumeSessionId?: string
     effort?: EffortLevel
     outputStyle?: string
-    projectId?: string
+    workspaceId?: string
 }
 
 export type SpawnGatewayResult =
@@ -247,12 +247,12 @@ export class RpcGateway {
         // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），
         // 只有 runner 等 webhook 超时那一句会被读成 'timeout'
         const spawnError = (message: string) => ({ type: 'error' as const, message, failure: classifyTransportFailure(message) })
-        const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, projectId } = options
+        const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options
         try {
             const result = await this.machineRpc(
                 machineId,
                 'spawn-mobi-session',
-                { type: 'spawn-in-directory', directory, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, projectId }
+                { type: 'spawn-in-directory', directory, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId }
             )
             if (result && typeof result === 'object') {
                 const obj = result as Record<string, unknown>

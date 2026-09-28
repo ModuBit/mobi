@@ -16,51 +16,51 @@
 
 import type { Database } from 'bun:sqlite'
 
-import type { ProjectFolder } from '@mobi/shared'
+import type { WorkspaceFolder } from '@mobi/shared'
 
-import type { StoredProject } from './types'
-import { createProject, deleteProject, getAllProjects, getProject, getProjects, updateProject } from './projects'
+import type { StoredWorkspace } from './types'
+import { createWorkspace, deleteWorkspace, getAllWorkspaces, getWorkspace, getWorkspaces, updateWorkspace } from './workspaces'
 
-/** 项目存储薄包装：与 SessionStore 等保持一致的 db 注入形态 */
-export class ProjectStore {
+/** 工作区存储薄包装：与 SessionStore 等保持一致的 db 注入形态 */
+export class WorkspaceStore {
     private readonly db: Database
 
     constructor(db: Database) {
         this.db = db
     }
 
-    getProjects(namespace: string): StoredProject[] {
-        return getProjects(this.db, namespace)
+    getWorkspaces(namespace: string): StoredWorkspace[] {
+        return getWorkspaces(this.db, namespace)
     }
 
-    getProject(id: string): StoredProject | null {
-        return getProject(this.db, id)
+    getWorkspace(id: string): StoredWorkspace | null {
+        return getWorkspace(this.db, id)
     }
 
-    /** 跨 namespace 全量项目（缓存 warmup 用） */
-    getAllProjects(): StoredProject[] {
-        return getAllProjects(this.db)
+    /** 跨 namespace 全量工作区（缓存 warmup 用） */
+    getAllWorkspaces(): StoredWorkspace[] {
+        return getAllWorkspaces(this.db)
     }
 
-    createProject(input: {
+    createWorkspace(input: {
         namespace: string
         machineId: string
         name: string
-        folders: ProjectFolder[]
-    }): StoredProject {
-        return createProject(this.db, input)
+        folders: WorkspaceFolder[]
+    }): StoredWorkspace {
+        return createWorkspace(this.db, input)
     }
 
-    updateProject(
+    updateWorkspace(
         id: string,
         namespace: string,
-        patch: { name?: string; folders?: ProjectFolder[] }
-    ): StoredProject | null {
-        return updateProject(this.db, id, namespace, patch)
+        patch: { name?: string; folders?: WorkspaceFolder[] }
+    ): StoredWorkspace | null {
+        return updateWorkspace(this.db, id, namespace, patch)
     }
 
-    /** 删除项目并解绑名下会话（事务内）；返回受影响 session id 列表，失败 false */
-    deleteProject(id: string, namespace: string): string[] | false {
-        return deleteProject(this.db, id, namespace)
+    /** 删除工作区并解绑名下会话（事务内）；返回受影响 session id 列表，失败 false */
+    deleteWorkspace(id: string, namespace: string): string[] | false {
+        return deleteWorkspace(this.db, id, namespace)
     }
 }

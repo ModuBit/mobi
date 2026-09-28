@@ -22,9 +22,9 @@ import { join } from 'node:path'
 import { Store } from '../../src/store'
 
 /**
- * V1（code-review）：存量旧 schema 库（user_version 与当前 SCHEMA_VERSION 相同、sessions 带 group_key、无 projects 表）
+ * V1（code-review）：存量旧 schema 库（user_version 与当前 SCHEMA_VERSION 相同、sessions 带 group_key、无 workspaces 表）
  * 必须在 initSchema 阶段被明确拒绝并引导到迁移脚本，
- * 而不是放行后在 ProjectCache.warmup 的 SELECT * FROM projects 处崩溃。
+ * 而不是放行后在 WorkspaceCache.warmup 的 SELECT * FROM workspaces 处崩溃。
  * 注：BASELINE=0 未发布期版本号无法区分新旧 schema，列存在性是唯一判别器，故 fixture 钉当前版本号。
  */
 
@@ -40,7 +40,7 @@ afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
 })
 
-/** 造一个「项目实体化之前」的旧库：五张旧表、sessions 带 group_key、user_version 钉当前 SCHEMA_VERSION */
+/** 造一个「工作区实体化之前」的旧库：五张旧表、sessions 带 group_key、user_version 钉当前 SCHEMA_VERSION */
 function createLegacyDb(): void {
     const db = new Database(dbPath, { create: true, readwrite: true })
     db.run(`
@@ -107,22 +107,22 @@ describe('legacy schema guard', () => {
     it('旧 group_key schema 库 → 启动即报错并引导到迁移脚本', () => {
         createLegacyDb()
 
-        expect(() => new Store(dbPath)).toThrow(/migrate-projects/)
+        expect(() => new Store(dbPath)).toThrow(/migrate-workspaces/)
     })
 
-    it('缺 projects 表的库 → 报错含迁移脚本提示', () => {
+    it('缺 workspaces 表的库 → 报错含迁移脚本提示', () => {
         createLegacyDb()
-        // 手动补 project_id 列，只留「缺 projects 表」一种缺陷
+        // 手动补 workspace_id 列，只留「缺 workspaces 表」一种缺陷
         const db = new Database(dbPath, { create: true, readwrite: true })
-        db.run('ALTER TABLE sessions ADD COLUMN project_id TEXT')
+        db.run('ALTER TABLE sessions ADD COLUMN workspace_id TEXT')
         db.close()
 
-        expect(() => new Store(dbPath)).toThrow(/migrate-projects/)
+        expect(() => new Store(dbPath)).toThrow(/migrate-workspaces/)
     })
 
-    it('缺 native_id 列的库（项目实体化之后、native_id 之前）→ 报错并引导手动补列', () => {
-        // 用当前 Store 建库（含 projects/project_id），再删列模拟旧库——SQLite 不支持 DROP COLUMN 前的
-        // 简化：直接建一个「无 native_id 但有 project_id」的库
+    it('缺 native_id 列的库（工作区实体化之后、native_id 之前）→ 报错并引导手动补列', () => {
+        // 用当前 Store 建库（含 workspaces/workspace_id），再删列模拟旧库——SQLite 不支持 DROP COLUMN 前的
+        // 简化：直接建一个「无 native_id 但有 workspace_id」的库
         const db = new Database(dbPath, { create: true, readwrite: true })
         db.run(`
             CREATE TABLE sessions (
@@ -132,7 +132,7 @@ describe('legacy schema guard', () => {
                 metadata TEXT, metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT, agent_state_version INTEGER DEFAULT 1,
                 runtime_state TEXT, runtime_state_updated_at INTEGER,
-                project_id TEXT, seq INTEGER DEFAULT 0
+                workspace_id TEXT, seq INTEGER DEFAULT 0
             );
             CREATE TABLE messages (
                 id TEXT PRIMARY KEY, session_id TEXT NOT NULL, content TEXT NOT NULL,
@@ -158,7 +158,7 @@ describe('legacy schema guard', () => {
                 endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
                 created_at INTEGER NOT NULL, UNIQUE(namespace, endpoint)
             );
-            CREATE TABLE projects (
+            CREATE TABLE workspaces (
                 id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
                 machine_id TEXT NOT NULL, name TEXT NOT NULL, folders TEXT NOT NULL,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seq INTEGER DEFAULT 0
@@ -182,7 +182,7 @@ describe('legacy schema guard', () => {
                 metadata TEXT, metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT, agent_state_version INTEGER DEFAULT 1,
                 runtime_state TEXT, runtime_state_updated_at INTEGER,
-                project_id TEXT, seq INTEGER DEFAULT 0
+                workspace_id TEXT, seq INTEGER DEFAULT 0
             );
             CREATE TABLE messages (
                 id TEXT PRIMARY KEY, session_id TEXT NOT NULL, content TEXT NOT NULL,
@@ -210,7 +210,7 @@ describe('legacy schema guard', () => {
                 endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
                 created_at INTEGER NOT NULL, UNIQUE(namespace, endpoint)
             );
-            CREATE TABLE projects (
+            CREATE TABLE workspaces (
                 id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
                 machine_id TEXT NOT NULL, name TEXT NOT NULL, folders TEXT NOT NULL,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seq INTEGER DEFAULT 0
@@ -222,14 +222,14 @@ describe('legacy schema guard', () => {
         expect(() => new Store(dbPath)).toThrow(/not a STORED generated column/)
     })
 
-    it('全新库正常初始化（projects 表就位）', () => {
+    it('全新库正常初始化（workspaces 表就位）', () => {
         const store = new Store(dbPath)
-        // projects 表存在且可用
-        const project = store.projects.createProject({
+        // workspaces 表存在且可用
+        const workspace = store.workspaces.createWorkspace({
             namespace: 'default', machineId: 'm1', name: 'x',
             folders: [{ path: '/a', primary: true }]
         })
-        expect(store.projects.getProject(project.id)?.name).toBe('x')
+        expect(store.workspaces.getWorkspace(workspace.id)?.name).toBe('x')
         store.close()
     })
 })

@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import { useMobiApi } from '@/core/data/api/client'
-import { useProjects } from '@/core/data/hooks/queries/useProjects'
+import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { usePagedSessionList } from '@/core/data/hooks/queries/usePagedSessionList'
 import { useSessionIdsPages } from '@/core/data/hooks/queries/useSessionIdsPages'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -25,21 +25,21 @@ import type { Session } from '@/core/data/api/types'
 const PAGE_SIZE = 20
 
 /**
- * 项目内会话列表的统一逻辑层
+ * 工作区内会话列表的统一逻辑层
  *
- * 收口 PC（SidebarProjects）与移动端（MobileProjectList）共用：
- * - 项目内会话无限分页 + ['sessions'] upsert 脚手架由 useSessionIdsPages 承担
+ * 收口 PC（SidebarWorkspaces）与移动端（MobileWorkspaceList）共用：
+ * - 工作区内会话无限分页 + ['sessions'] upsert 脚手架由 useSessionIdsPages 承担
  *   （单一数据源策略）
  * - 分页/展开/剩余数/total 等展示逻辑由 usePagedSessionList 共享核心承担
- * - 完整项目路径提取（从 useProjects 缓存取该项目 primary folder path，供「新建会话」cwd）
+ * - 完整工作区路径提取（从 useWorkspaces 缓存取该工作区 primary folder path，供「新建会话」cwd）
  */
-export interface UseProjectSessionsResult {
-    /** 该项目排序后的完整会话列表（仅含已加载部分） */
+export interface UseWorkspaceSessionsResult {
+    /** 该工作区排序后的完整会话列表（仅含已加载部分） */
     sessions: Session[]
     /** 当前可见（前端 slice 后）的会话列表 */
     visibleSessions: Session[]
-    /** 完整项目路径（项目 primary folder path，无则回退空串） */
-    fullProjectPath: string
+    /** 完整工作区路径（工作区 primary folder path，无则回退空串） */
+    fullWorkspacePath: string
     /** 用户展开态 */
     expanded: boolean
     toggleExpanded: () => void
@@ -57,39 +57,39 @@ export interface UseProjectSessionsResult {
     showMore: () => void
     /** 收起：visibleCount 重置回初始档 */
     collapse: () => void
-    /** 后端真实总数（删除项目确认文案需要；首屏未就绪时为 undefined） */
+    /** 后端真实总数（删除工作区确认文案需要；首屏未就绪时为 undefined） */
     total: number | undefined
 }
 
-export function useProjectSessions(
-    projectId: string | null,
+export function useWorkspaceSessions(
+    workspaceId: string | null,
     activeSessionId?: string,
-): UseProjectSessionsResult {
+): UseWorkspaceSessionsResult {
     const api = useMobiApi()
 
-    // 获取该项目下的会话 ID 列表（始终请求，避免折叠时无数据判断激活态）
+    // 获取该工作区下的会话 ID 列表（始终请求，避免折叠时无数据判断激活态）
     const query = useSessionIdsPages({
-        queryKey: queryKeys.projectSessions(projectId!),
+        queryKey: queryKeys.workspaceSessions(workspaceId!),
         fetchPage: (cursor) =>
-            api.projects.sessions(projectId!, cursor ?? undefined, PAGE_SIZE).then(res => res.data),
-        enabled: !!projectId,
+            api.workspaces.sessions(workspaceId!, cursor ?? undefined, PAGE_SIZE).then(res => res.data),
+        enabled: !!workspaceId,
     })
 
     // 分页/展开/剩余数等展示逻辑：共享核心
     const paged = usePagedSessionList(query, activeSessionId)
 
-    // 项目列表（取 primary folder path；与侧边栏共享同一份缓存）
-    const { data: projects } = useProjects()
+    // 工作区列表（取 primary folder path；与侧边栏共享同一份缓存）
+    const { data: workspaces } = useWorkspaces()
 
-    // 完整项目路径：项目实体 primary folder（即 CC 的 cwd），替代旧版从 session.metadata.path 猜测
-    const fullProjectPath = useMemo(() => {
-        if (!projectId) return ''
-        return projects?.find(p => p.id === projectId)?.folders.find(f => f.primary)?.path ?? ''
-    }, [projects, projectId])
+    // 完整工作区路径：工作区实体 primary folder（即 CC 的 cwd），替代旧版从 session.metadata.path 猜测
+    const fullWorkspacePath = useMemo(() => {
+        if (!workspaceId) return ''
+        return workspaces?.find(p => p.id === workspaceId)?.folders.find(f => f.primary)?.path ?? ''
+    }, [workspaces, workspaceId])
 
-    // total（删除项目二次确认文案用）直接取共享核心的返回，不再从 pages 重算
+    // total（删除工作区二次确认文案用）直接取共享核心的返回，不再从 pages 重算
     return {
         ...paged,
-        fullProjectPath,
+        fullWorkspacePath,
     }
 }

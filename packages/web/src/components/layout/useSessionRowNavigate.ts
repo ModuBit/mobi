@@ -17,7 +17,7 @@
 import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-/** 会话行点击导航（侧边栏项目组与「最近」组一致） */
+/** 会话行点击导航（侧边栏工作区组与「最近」组一致） */
 export function useSessionRowNavigate() {
     const navigate = useNavigate()
 

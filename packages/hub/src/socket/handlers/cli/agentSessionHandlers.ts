@@ -52,7 +52,7 @@ const listSessionsPayloadSchema = z.object({
     keyword: z.string().optional(),
     status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional(),
     limit: z.number().int().optional(),
-    projectId: z.string().optional(),
+    workspaceId: z.string().optional(),
 })
 
 /** machineId / directory 非空：空串会一路走到 spawn 才炸，在这里挡下来更清楚 */
@@ -60,7 +60,7 @@ const createSessionPayloadSchema = z.object({
     sid: z.string(),
     machineId: z.string().min(1),
     directory: z.string().min(1),
-    projectId: z.string().optional(),
+    workspaceId: z.string().optional(),
     model: z.string().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
     permissionMode: PermissionModeSchema.optional(),

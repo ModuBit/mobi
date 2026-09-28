@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach, afterEach, it } from 'bun:test'
 
 import { Store } from '../../src/store'
 
-describe('ProjectStore', () => {
+describe('WorkspaceStore', () => {
     let store: Store
 
     beforeEach(() => {
@@ -29,8 +29,8 @@ describe('ProjectStore', () => {
         store.close()
     })
 
-    test('创建并读取项目', () => {
-        const p = store.projects.createProject({
+    test('创建并读取工作区', () => {
+        const p = store.workspaces.createWorkspace({
             namespace: 'default',
             machineId: 'm1',
             name: 'mobi',
@@ -40,13 +40,13 @@ describe('ProjectStore', () => {
             ]
         })
         expect(p.id).toBeTruthy()
-        expect(store.projects.getProject(p.id)?.name).toBe('mobi')
-        expect(store.projects.getProject(p.id)?.folders).toHaveLength(2)
+        expect(store.workspaces.getWorkspace(p.id)?.name).toBe('mobi')
+        expect(store.workspaces.getWorkspace(p.id)?.folders).toHaveLength(2)
     })
 
     test('folders 非法时抛错（0 项 / 双 primary）', () => {
         expect(() =>
-            store.projects.createProject({
+            store.workspaces.createWorkspace({
                 namespace: 'default',
                 machineId: 'm1',
                 name: 'x',
@@ -54,7 +54,7 @@ describe('ProjectStore', () => {
             })
         ).toThrow()
         expect(() =>
-            store.projects.createProject({
+            store.workspaces.createWorkspace({
                 namespace: 'default',
                 machineId: 'm1',
                 name: 'x',
@@ -67,39 +67,39 @@ describe('ProjectStore', () => {
     })
 
     test('list 按 namespace 过滤、按 updatedAt 倒序', () => {
-        const a = store.projects.createProject({
+        const a = store.workspaces.createWorkspace({
             namespace: 'default',
             machineId: 'm1',
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
-        const b = store.projects.createProject({
+        const b = store.workspaces.createWorkspace({
             namespace: 'default',
             machineId: 'm1',
             name: 'b',
             folders: [{ path: '/b', primary: true }]
         })
-        // 跨 namespace 的项目不应出现
-        store.projects.createProject({
+        // 跨 namespace 的工作区不应出现
+        store.workspaces.createWorkspace({
             namespace: 'other',
             machineId: 'm1',
             name: 'c',
             folders: [{ path: '/c', primary: true }]
         })
         // update a 拉开 updatedAt → a 应排在 b 前
-        store.projects.updateProject(a.id, 'default', { name: 'a2' })
-        const list = store.projects.getProjects('default')
+        store.workspaces.updateWorkspace(a.id, 'default', { name: 'a2' })
+        const list = store.workspaces.getWorkspaces('default')
         expect(list.map(p => p.id)).toEqual([a.id, b.id])
     })
 
-    test('list 按「最近会话活动」排序——活跃项目浮顶，无会话回退实体编辑时间（V7）', () => {
-        const a = store.projects.createProject({
+    test('list 按「最近会话活动」排序——活跃工作区浮顶，无会话回退实体编辑时间（V7）', () => {
+        const a = store.workspaces.createWorkspace({
             namespace: 'default', machineId: 'm1', name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
         Bun.sleepSync(2)
         // b 实体更「新」（后建）——纯实体排序下 b 会钉在 a 上面
-        store.projects.createProject({
+        store.workspaces.createWorkspace({
             namespace: 'default', machineId: 'm1', name: 'b',
             folders: [{ path: '/b', primary: true }]
         })
@@ -107,23 +107,23 @@ describe('ProjectStore', () => {
         // a 名下发生会话活动（updated_at = now，晚于 b 的实体 updatedAt）→ a 应浮顶
         store.sessions.getOrCreateSession('tag-v7', { path: '/a' }, {}, 'default', undefined, a.id)
 
-        const list = store.projects.getProjects('default')
+        const list = store.workspaces.getWorkspaces('default')
         expect(list.map(p => p.id)[0]).toBe(a.id)
     })
 
     test('update 改名/改 folders 并递增 seq', () => {
-        const p = store.projects.createProject({
+        const p = store.workspaces.createWorkspace({
             namespace: 'default',
             machineId: 'm1',
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
-        const updated = store.projects.updateProject(p.id, 'default', { name: 'a2' })
+        const updated = store.workspaces.updateWorkspace(p.id, 'default', { name: 'a2' })
         expect(updated?.name).toBe('a2')
-        expect(store.projects.getProject(p.id)?.seq).toBeGreaterThan(p.seq)
+        expect(store.workspaces.getWorkspace(p.id)?.seq).toBeGreaterThan(p.seq)
 
         // folders patch 分支：替换文件夹列表并再次递增 seq
-        const foldersUpdated = store.projects.updateProject(p.id, 'default', {
+        const foldersUpdated = store.workspaces.updateWorkspace(p.id, 'default', {
             folders: [{ path: '/a/new', primary: true }]
         })
         expect(foldersUpdated?.folders).toEqual([{ path: '/a/new', primary: true }])
@@ -131,37 +131,37 @@ describe('ProjectStore', () => {
 
         // folders patch 非法时抛错
         expect(() =>
-            store.projects.updateProject(p.id, 'default', { folders: [] })
+            store.workspaces.updateWorkspace(p.id, 'default', { folders: [] })
         ).toThrow()
     })
 
-    test('update 不存在的项目（即使 folders 非法）返回 null 而非抛错', () => {
-        const result = store.projects.updateProject('nonexistent', 'default', {
+    test('update 不存在的工作区（即使 folders 非法）返回 null 而非抛错', () => {
+        const result = store.workspaces.updateWorkspace('nonexistent', 'default', {
             folders: []
         })
         expect(result).toBeNull()
     })
 
     test('跨 namespace 的 update 返回 null / delete 返回 false', () => {
-        const p = store.projects.createProject({
+        const p = store.workspaces.createWorkspace({
             namespace: 'default',
             machineId: 'm1',
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
-        expect(store.projects.updateProject(p.id, 'other', { name: 'x' })).toBeNull()
-        expect(store.projects.deleteProject(p.id, 'other')).toBe(false)
-        // 原 namespace 下项目未被误删
-        expect(store.projects.getProject(p.id)?.name).toBe('a')
+        expect(store.workspaces.updateWorkspace(p.id, 'other', { name: 'x' })).toBeNull()
+        expect(store.workspaces.deleteWorkspace(p.id, 'other')).toBe(false)
+        // 原 namespace 下工作区未被误删
+        expect(store.workspaces.getWorkspace(p.id)?.name).toBe('a')
     })
 
-    test('删除不存在的项目返回 false', () => {
-        expect(store.projects.deleteProject('nonexistent', 'default')).toBe(false)
+    test('删除不存在的工作区返回 false', () => {
+        expect(store.workspaces.deleteWorkspace('nonexistent', 'default')).toBe(false)
     })
 
-    // 依赖 Task 3 的 getOrCreateSession(..., projectId) 参数，届时补全实现启用
-    it('删除项目 → 名下 sessions 解绑（project_id 置 NULL），返回受影响 id 与解绑一致', () => {
-        const p = store.projects.createProject({
+    // 依赖 Task 3 的 getOrCreateSession(..., workspaceId) 参数，届时补全实现启用
+    it('删除工作区 → 名下 sessions 解绑（workspace_id 置 NULL），返回受影响 id 与解绑一致', () => {
+        const p = store.workspaces.createWorkspace({
             namespace: 'default',
             machineId: 'm1',
             name: 'mobi',
@@ -175,16 +175,16 @@ describe('ProjectStore', () => {
         )
         // 游离会话不受影响
         store.sessions.getOrCreateSession('proj-del-free', { path: '/x' }, null, 'default')
-        expect(bound1.projectId).toBe(p.id)
+        expect(bound1.workspaceId).toBe(p.id)
 
-        const affected = store.projects.deleteProject(p.id, 'default')
+        const affected = store.workspaces.deleteWorkspace(p.id, 'default')
         // 返回的 id 列表 = 事务内实际解绑的会话，游离会话不在其中
         expect(affected !== false && [...affected].sort()).toEqual([bound1.id, bound2.id].sort())
 
         // 会话本身不删，仅解绑
         const after = store.sessions.getSession(bound1.id)
         expect(after).not.toBeNull()
-        expect(after?.projectId).toBeNull()
-        expect(store.sessions.getSession(bound2.id)?.projectId).toBeNull()
+        expect(after?.workspaceId).toBeNull()
+        expect(store.sessions.getSession(bound2.id)?.workspaceId).toBeNull()
     })
 })

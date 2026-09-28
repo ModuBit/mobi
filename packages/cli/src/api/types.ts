@@ -19,7 +19,7 @@ import {
     AttachmentMetadataSchema,
     MetadataSchema,
     PermissionModeSchema,
-    ProjectSchema,
+    WorkspaceSchema,
     RuntimeStateSchema
 } from '@mobi/shared/schemas'
 import { CrossSessionMetaSchema, LegacyFlatObjectSchema, TurnOriginSchema, UserMessageContentSchema } from '@mobi/shared'
@@ -39,10 +39,10 @@ export type {
 export type SessionPermissionMode = PermissionMode
 export type SessionModel = string | null
 
-/** 项目实体（与 @mobi/shared 的 Project 同构；folders 是机器本地路径） */
-export type Project = z.infer<typeof ProjectSchema>
+/** 工作区实体（与 @mobi/shared 的 Workspace 同构；folders 是机器本地路径） */
+export type Workspace = z.infer<typeof WorkspaceSchema>
 
-export { AgentStateSchema, AttachmentMetadataSchema, MetadataSchema, ProjectSchema }
+export { AgentStateSchema, AttachmentMetadataSchema, MetadataSchema, WorkspaceSchema }
 
 export const MachineMetadataSchema = z.object({
     host: z.string(),
@@ -123,11 +123,11 @@ export const CreateSessionResponseSchema = z.object({
         model: z.string().nullable().optional(),
         permissionMode: PermissionModeSchema.optional(),
         tag: z.string().nullable().optional(),   // 用于 --resume 时复用 Hub session
-        /** 归属项目（null = 游离） */
-        projectId: z.string().nullable().optional()
+        /** 归属工作区（null = 游离） */
+        workspaceId: z.string().nullable().optional()
     }),
-    /** 归属项目实体（创建带 projectId 时返回；resume / 游离时缺失或 null） */
-    project: ProjectSchema.nullable().optional()
+    /** 归属工作区实体（创建带 workspaceId 时返回；resume / 游离时缺失或 null） */
+    workspace: WorkspaceSchema.nullable().optional()
 })
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>

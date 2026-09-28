@@ -68,7 +68,7 @@ local 壳只挂 change_title：A/B 类工具都依赖 Hub 链路，local 不存�
 | web_search / web_fetch | `mcp__mobi-core__web_search` / `..._web_fetch` | core | 只读 web 工具，见 [webtools](/packages/cli/src/webtools/) |
 | open_in_mobi | `mcp__mobi-apps__open_in_mobi` | A | 在 Web UI 打开工作区文件（可带行号）或终端 |
 | list_machines | `mcp__mobi-apps__list_machines` | B | 列**当前在线**机器（离线机器不出现） |
-| list_sessions | `mcp__mobi-apps__list_sessions` | B | 列可派活的会话（keyword / status / limit / projectId） |
+| list_sessions | `mcp__mobi-apps__list_sessions` | B | 列可派活的会话（keyword / status / limit / workspaceId） |
 | create_session | `mcp__mobi-apps__create_session` | B | 在某台机器上起新会话，默认等到「能收消息」再返回 |
 | send_message_to_session | `mcp__mobi-apps__send_message_to_session` | B | 投消息给一个或多个会话 |
 

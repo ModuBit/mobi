@@ -192,14 +192,14 @@ describe('RpcGateway.machineUploadFileRange', () => {
 
         const gateway = new RpcGateway(io, registry)
         const chunk = new Uint8Array([10, 20, 30, 40])
-        const result = await gateway.machineUploadFileRange('M1', '/home/user/projects', 't.png', undefined, 0, chunk, 4)
+        const result = await gateway.machineUploadFileRange('M1', '/home/user/workspaces', 't.png', undefined, 0, chunk, 4)
 
         expect(result.success).toBe(true)
         expect(result.path).toBe('.mobi/uploads/2026-01/test-xyz.png')
 
         const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
         expect(envelope.method).toBe('M1:writeFileRange')
-        expect(envelope.params.cwd).toBe('/home/user/projects')
+        expect(envelope.params.cwd).toBe('/home/user/workspaces')
         expect(envelope.params.filename).toBe('t.png')
         expect(envelope.params.content).toBe(chunk)
     })

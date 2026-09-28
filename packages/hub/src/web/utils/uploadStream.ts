@@ -25,7 +25,7 @@ export const UPLOAD_CHUNK_SIZE = 256 * 1024
 /** 单块写入结果（对称 cli writeFileRange 响应） */
 export interface WriteRangeResult {
     success: boolean
-    /** 首块返回：项目相对路径 */
+    /** 首块返回：工作区相对路径 */
     path?: string
     error?: string
 }
@@ -62,7 +62,7 @@ export function concatBytes(parts: Uint8Array[]): Uint8Array {
  * @param totalSize Content-Length，完整性校验分母
  * @param writeRange 单块转发回调（filename, path, offset, chunk）→ cli 响应
  * @param cleanup 中断清理回调（path）→ deleteUpload
- * @returns 首块 cli 返回的项目相对路径
+ * @returns 首块 cli 返回的工作区相对路径
  * @throws 上传失败/中断（抛出前已尝试 cleanup）
  */
 export async function streamUpload(

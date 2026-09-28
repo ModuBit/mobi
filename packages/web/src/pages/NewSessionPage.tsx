@@ -26,10 +26,10 @@ import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
-import { useProjects } from '@/core/data/hooks/queries/useProjects'
+import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { SessionCreating } from '@/components/session/SessionCreating'
-import { ProjectFormModal } from '@/components/project/ProjectFormModal'
+import { WorkspaceFormModal } from '@/components/workspace/WorkspaceFormModal'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
 import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
@@ -40,9 +40,9 @@ import { SlashCommandDropdown } from '@/components/composer/SlashCommandDropdown
 import { CommandHintBar } from '@/components/composer/CommandHintBar'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
-import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
+import { EnvironmentBar, extractWorkspaceName } from '@/components/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
-import type { Project } from '@/core/data/api/types'
+import type { Workspace } from '@/core/data/api/types'
 import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK, AGENT_OPTIONS } from '@/domain/session/types'
 import {
     loadPreferredAgent,
@@ -55,8 +55,8 @@ import {
     savePreferredPermissionMode,
     loadPreferredOutputStyle,
     savePreferredOutputStyle,
-    loadLastUsedProjectId,
-    saveLastUsedProjectId,
+    loadLastUsedWorkspaceId,
+    saveLastUsedWorkspaceId,
 } from '@/domain/session/preferences'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { Logo } from '@/components/layout/Logo'
@@ -210,7 +210,7 @@ export function NewSessionPage() {
     const { token } = useToken()
     const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
-    const { projectId: initialProjectId } = useSearch({ strict: false }) as { projectId?: string }
+    const { workspaceId: initialWorkspaceId } = useSearch({ strict: false }) as { workspaceId?: string }
     const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
 
@@ -231,16 +231,16 @@ export function NewSessionPage() {
     // 显式选中任一项才随 spawn 透传到 CLI（无偏好持久化，每次从跟随起）
     const [outputStyle, setOutputStyle] = useState<string>(() => loadPreferredOutputStyle())
 
-    // 环境配置（项目即环境：机器 + 工作目录均为所选项目的派生快照，不再手动选择/输入）
-    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+    // 环境配置（工作区即环境：机器 + 工作目录均为所选工作区的派生快照，不再手动选择/输入）
+    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [selectedDirectory, setSelectedDirectory] = useState('')
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
     const [inputText, setInputText] = useState('')
     const [isPending, setIsPending] = useState(false)
-    // 新建项目表单（下拉底部「+ 新建项目」入口；完成创建后自动回填选中）
-    const [projectModalOpen, setProjectModalOpen] = useState(false)
+    // 新建工作区表单（下拉底部「+ 新建工作区」入口；完成创建后自动回填选中）
+    const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false)
 
     // 确认的目录：只有在用户明确选定（blur / 点击标签 / 初始化恢复）时才更新，
     // 用于 metadata 请求，避免输入过程中每字符触发
@@ -255,11 +255,11 @@ export function NewSessionPage() {
     // 数据
     const { machines, isLoading: isLoadingMachines } = useMachines()
     const { spawnSession } = useSpawnSession()
-    // 全量项目（跨机器）：机器由所选项目派生，不再单独选择
-    const { data: allProjects = [] } = useProjects()
-    const initialProject = useMemo(
-        () => (initialProjectId ? allProjects.find(p => p.id === initialProjectId) : undefined),
-        [allProjects, initialProjectId],
+    // 全量工作区（跨机器）：机器由所选工作区派生，不再单独选择
+    const { data: allWorkspaces = [] } = useWorkspaces()
+    const initialWorkspace = useMemo(
+        () => (initialWorkspaceId ? allWorkspaces.find(p => p.id === initialWorkspaceId) : undefined),
+        [allWorkspaces, initialWorkspaceId],
     )
 
     // 当前选中机器的 homeDir
@@ -278,56 +278,56 @@ export function NewSessionPage() {
         return selectedDirectory
     }, [selectedDirectory, machineHomeDir])
 
-    // 选定项目 → 机器 + 工作目录（primary folder）一次性冻结进 state，并把所选同步回
-    // URL param（replace 不产生历史条目）——param 是项目选择的唯一驱动源：手动改选后
-    // 再点侧边栏同一项目的「+」时 param 必然变化，param effect 才能重新应用
+    // 选定工作区 → 机器 + 工作目录（primary folder）一次性冻结进 state，并把所选同步回
+    // URL param（replace 不产生历史条目）——param 是工作区选择的唯一驱动源：手动改选后
+    // 再点侧边栏同一工作区的「+」时 param 必然变化，param effect 才能重新应用
     // （否则手动改选与 param 预选各持一份状态，会互相盖不住）。
-    // selectedProjectId 是冻结快照——项目从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错。
-    // 项目 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
-    const applyProject = useCallback((project: Project) => {
-        setSelectedProjectId(project.id)
-        setSelectedMachineId(project.machineId)
-        const primaryPath = project.folders.find(f => f.primary)?.path
+    // selectedWorkspaceId 是冻结快照——工作区从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错。
+    // 工作区 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
+    const applyWorkspace = useCallback((workspace: Workspace) => {
+        setSelectedWorkspaceId(workspace.id)
+        setSelectedMachineId(workspace.machineId)
+        const primaryPath = workspace.folders.find(f => f.primary)?.path
         if (primaryPath) {
             setSelectedDirectory(primaryPath)
             setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
         }
-        // 记住最近使用的项目：直接进入新建会话（无 param）时默认回选
-        saveLastUsedProjectId(project.id)
-        navigate({ to: '/sessions/new', search: { projectId: project.id }, replace: true })
+        // 记住最近使用的工作区：直接进入新建会话（无 param）时默认回选
+        saveLastUsedWorkspaceId(workspace.id)
+        navigate({ to: '/sessions/new', search: { workspaceId: workspace.id }, replace: true })
     }, [navigate])
 
-    // 搜索参数携带项目（projects 缓存异步就绪）：侧边栏项目上的「+ 新建会话」进入时预选。
-    // 记录已应用的 param id 而非布尔：从另一项目的「+」再次进入时 param 已变，须重新应用
-    // （布尔一次锁死会停留在首个项目上，换项目点击不再切换）
+    // 搜索参数携带工作区（workspaces 缓存异步就绪）：侧边栏工作区上的「+ 新建会话」进入时预选。
+    // 记录已应用的 param id 而非布尔：从另一工作区的「+」再次进入时 param 已变，须重新应用
+    // （布尔一次锁死会停留在首个工作区上，换工作区点击不再切换）
     const appliedParamRef = useRef<string | null>(null)
     useEffect(() => {
-        if (!initialProject || appliedParamRef.current === initialProject.id) return
-        appliedParamRef.current = initialProject.id
-        applyProject(initialProject)
-    }, [initialProject, applyProject])
+        if (!initialWorkspace || appliedParamRef.current === initialWorkspace.id) return
+        appliedParamRef.current = initialWorkspace.id
+        applyWorkspace(initialWorkspace)
+    }, [initialWorkspace, applyWorkspace])
 
-    // 无 param 直接进入（顶栏「+ 新建会话」）：默认选中最近使用的项目。
-    // 项目可能已被删，须在列表内命中才回选；命中失败保持未选（用户手动选择）
+    // 无 param 直接进入（顶栏「+ 新建会话」）：默认选中最近使用的工作区。
+    // 工作区可能已被删，须在列表内命中才回选；命中失败保持未选（用户手动选择）
     const restoredLastUsedRef = useRef(false)
     useEffect(() => {
-        if (restoredLastUsedRef.current || initialProjectId || allProjects.length === 0) return
+        if (restoredLastUsedRef.current || initialWorkspaceId || allWorkspaces.length === 0) return
         restoredLastUsedRef.current = true
-        const lastUsedId = loadLastUsedProjectId()
-        const project = lastUsedId ? allProjects.find(p => p.id === lastUsedId) : undefined
-        if (project) applyProject(project)
-    }, [allProjects, initialProjectId, applyProject])
+        const lastUsedId = loadLastUsedWorkspaceId()
+        const workspace = lastUsedId ? allWorkspaces.find(p => p.id === lastUsedId) : undefined
+        if (workspace) applyWorkspace(workspace)
+    }, [allWorkspaces, initialWorkspaceId, applyWorkspace])
 
-    // 手动选择项目（可搜索下拉）：机器 + 目录从项目派生
-    const handleProjectChange = useCallback((projectId: string) => {
-        const project = allProjects.find(p => p.id === projectId)
-        if (project) applyProject(project)
-    }, [allProjects, applyProject])
+    // 手动选择工作区（可搜索下拉）：机器 + 目录从工作区派生
+    const handleWorkspaceChange = useCallback((workspaceId: string) => {
+        const workspace = allWorkspaces.find(p => p.id === workspaceId)
+        if (workspace) applyWorkspace(workspace)
+    }, [allWorkspaces, applyWorkspace])
 
-    // 下拉底部「+ 新建项目」完成创建：自动回填选中（机器/目录随项目派生）
-    const handleProjectCreated = useCallback((project: Project) => {
-        applyProject(project)
-    }, [applyProject])
+    // 下拉底部「+ 新建工作区」完成创建：自动回填选中（机器/目录随工作区派生）
+    const handleWorkspaceCreated = useCallback((workspace: Workspace) => {
+        applyWorkspace(workspace)
+    }, [applyWorkspace])
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
@@ -378,9 +378,9 @@ export function NewSessionPage() {
     const inputDisabled = !gatePassed
 
     // 动态标题：只在目录确认后更新，避免输入过程中频繁闪动
-    const confirmedProjectName = confirmedDirectory ? extractProjectName(confirmedDirectory) : null
+    const confirmedWorkspaceName = confirmedDirectory ? extractWorkspaceName(confirmedDirectory) : null
     const title = useMemo(() => {
-        const templates = confirmedProjectName
+        const templates = confirmedWorkspaceName
             ? [
                 (name: ReactNode) => <>我们想在 {name} 中构建什么？</>,
                 (name: ReactNode) => <>来聊聊 {name} 吧</>,
@@ -399,10 +399,10 @@ export function NewSessionPage() {
                 textUnderlineOffset: 4,
                 textDecorationThickness: 2,
             }}>
-                {confirmedProjectName}
+                {confirmedWorkspaceName}
             </span>,
         )
-    }, [confirmedProjectName])
+    }, [confirmedWorkspaceName])
 
     // 连点品牌 Logo ≥5 次：开启移动端调试面板（vConsole）+ 解锁「设置页调试区块」（debug.ts）。
     // 这是移动端调试的统一隐蔽入口——以后所有调试能力都走「连点解锁 → 设置页操作」这条链路，
@@ -591,8 +591,8 @@ export function NewSessionPage() {
                 permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
-                // 归属项目（冻结快照：搜索参数预选或手动选择）；项目被删则 hub 报 404，不静默降级
-                projectId: selectedProjectId ?? undefined,
+                // 归属工作区（冻结快照：搜索参数预选或手动选择）；工作区被删则 hub 报 404，不静默降级
+                workspaceId: selectedWorkspaceId ?? undefined,
             }
 
             const result = await spawnSession(input)
@@ -642,7 +642,7 @@ export function NewSessionPage() {
     }, [
         selectedMachineId, selectedDirectory, isPending,
         agent, model, effort, permissionMode, outputStyle, sessionType, worktreeName,
-        selectedProjectId, spawnSession, navigate, messageApi, api.messages,
+        selectedWorkspaceId, spawnSession, navigate, messageApi, api.messages,
     ])
 
     // ============ 按钮状态 ============
@@ -901,10 +901,10 @@ export function NewSessionPage() {
                     onDrop={inputDisabled ? undefined : handleDrop}
                 >
                     <EnvironmentBar
-                        projects={allProjects}
-                        selectedProjectId={selectedProjectId}
-                        onProjectChange={handleProjectChange}
-                        onCreateProject={() => setProjectModalOpen(true)}
+                        workspaces={allWorkspaces}
+                        selectedWorkspaceId={selectedWorkspaceId}
+                        onWorkspaceChange={handleWorkspaceChange}
+                        onCreateWorkspace={() => setWorkspaceModalOpen(true)}
                         machineLabel={machineLabel}
                         directoryLabel={directoryLabel}
                         disabled={false}
@@ -1051,12 +1051,12 @@ export function NewSessionPage() {
                 )}
                 </InputCard>
 
-                {/* 新建项目（项目下拉底部入口，端别自适应：PC Modal / 移动端底部 Drawer）。
-                    完成创建后 onCreated 自动回填选中，机器/目录随项目派生 */}
-                <ProjectFormModal
-                    open={projectModalOpen}
-                    onClose={() => setProjectModalOpen(false)}
-                    onCreated={handleProjectCreated}
+                {/* 新建工作区（工作区下拉底部入口，端别自适应：PC Modal / 移动端底部 Drawer）。
+                    完成创建后 onCreated 自动回填选中，机器/目录随工作区派生 */}
+                <WorkspaceFormModal
+                    open={workspaceModalOpen}
+                    onClose={() => setWorkspaceModalOpen(false)}
+                    onCreated={handleWorkspaceCreated}
                 />
             </ContentWrapper>
         </PageContainer>

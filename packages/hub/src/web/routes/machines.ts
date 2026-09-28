@@ -21,7 +21,7 @@ import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSe
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
-import { checkProjectAssignable, type SyncEngine } from '../../sync/syncEngine'
+import { checkWorkspaceAssignable, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
 import { serveFileContent } from './serveFileContent'
@@ -43,7 +43,7 @@ const spawnBodySchema = z.object({
     permissionMode: PermissionModeSchema.optional(),
     sessionType: z.enum(['simple', 'worktree']).optional(),
     worktreeName: z.string().optional(),
-    projectId: z.string().optional()
+    workspaceId: z.string().optional()
 })
 
 const pathsExistsSchema = z.object({
@@ -101,16 +101,16 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        // 归属校验前置：projectId 必须指向同 namespace 的现存项目且归属目标机器
+        // 归属校验前置：workspaceId 必须指向同 namespace 的现存工作区且归属目标机器
         // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定错误机器的幽灵会话
-        if (parsed.data.projectId) {
+        if (parsed.data.workspaceId) {
             const namespace = c.get('namespace')
-            const assignable = checkProjectAssignable(engine, parsed.data.projectId, namespace, machineId)
+            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace, machineId)
             if (assignable === 'not_found') {
-                return c.json({ error: 'Project not found' }, 404)
+                return c.json({ error: 'Workspace not found' }, 404)
             }
             if (assignable === 'machine_mismatch') {
-                return c.json({ error: 'Project belongs to a different machine' }, 403)
+                return c.json({ error: 'Workspace belongs to a different machine' }, 403)
             }
         }
 
@@ -134,7 +134,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
                 worktreeName: parsed.data.worktreeName,
                 effort: parsed.data.effort,
                 outputStyle: parsed.data.outputStyle,
-                projectId: parsed.data.projectId,
+                workspaceId: parsed.data.workspaceId,
             }
         )
         return c.json(result)

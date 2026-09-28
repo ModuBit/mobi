@@ -156,7 +156,7 @@ interface Session {
     runtimeState?: RuntimeState // 运行时状态（todos、model 等）
     permissionMode?: PermissionMode
     mode?: 'local' | 'remote' // 会话模式
-    projectId?: string | null // 归属项目（null = 游离，进「最近」）
+    workspaceId?: string | null // 归属工作区（null = 游离，进「最近」）
     tag?: string | null     // 标签（用于 getOrCreateSession 复用）
 }
 ```
@@ -200,38 +200,38 @@ interface SessionSummaryMetadata {
 }
 ```
 
-## 项目
+## 工作区
 
-「项目实体化」引入的实体，会话通过 `projectId` 归属项目。详见 [Projects API](./projects.md)。
+「工作区实体化」引入的实体，会话通过 `workspaceId` 归属工作区。详见 [Workspaces API](./workspaces.md)。
 
-### ProjectFolder
+### WorkspaceFolder
 
-项目源文件夹。
+工作区源文件夹。
 
 **源码**: `packages/shared/src/schemas.ts`
 
 ```typescript
-interface ProjectFolder {
+interface WorkspaceFolder {
     path: string       // 机器本地路径
     primary: boolean   // 是否为主文件夹（即 Claude Code 的 cwd）
 }
 ```
 
-`validateProjectFolders()` 校验：至少 1 项且恰好 1 项 `primary`。
+`validateWorkspaceFolders()` 校验：至少 1 项且恰好 1 项 `primary`。
 
-### Project
+### Workspace
 
-项目实体（folders 是机器本地路径，项目归属 machineId）。
+工作区实体（folders 是机器本地路径，工作区归属 machineId）。
 
 **源码**: `packages/shared/src/schemas.ts`
 
 ```typescript
-interface Project {
+interface Workspace {
     id: string
     namespace: string
     machineId: string
     name: string
-    folders: ProjectFolder[]
+    folders: WorkspaceFolder[]
     createdAt: number
     updatedAt: number
     seq: number          // 乐观锁版本号
@@ -259,9 +259,9 @@ type SyncEvent =
     | { type: 'connection-changed', data?: { status: string, subscriptionId?: string }, connected?: boolean, reconnected?: boolean, namespace?: string }
     | { type: 'idle-timeout-warning', sessionId: string, data: { timeoutAt: number, remainingMs: number }, namespace?: string }
     | { type: 'messages-submitted', sessionId: string, localIds: string[], submittedAt: number, namespace?: string }
-    | { type: 'project-added', projectId: string, namespace: string }
-    | { type: 'project-updated', projectId: string, namespace: string }
-    | { type: 'project-removed', projectId: string, namespace: string }
+    | { type: 'workspace-added', workspaceId: string, namespace: string }
+    | { type: 'workspace-updated', workspaceId: string, namespace: string }
+    | { type: 'workspace-removed', workspaceId: string, namespace: string }
 ```
 
 | 事件类型 | 触发场景 |
@@ -277,7 +277,7 @@ type SyncEvent =
 | `connection-changed` | 连接状态变化 |
 | `idle-timeout-warning` | 空闲超时预警，提示会话即将因空闲被关闭 |
 | `messages-submitted` | 排队消息被 CLI 推送给 Claude Code（`lifecycle='pushed'` + `lifecycleAt` 落库；载荷 `submittedAt` 即 push 时刻），Web 据此把悬浮消息翻为正式消息 |
-| `project-added` / `project-updated` / `project-removed` | 项目 CRUD（namespace 必填——EventPublisher 不认 projectId，无缓存回查） |
+| `workspace-added` / `workspace-updated` / `workspace-removed` | 工作区 CRUD（namespace 必填——EventPublisher 不认 workspaceId，无缓存回查） |
 
 ## 会话元数据
 
@@ -313,7 +313,7 @@ interface Metadata {
     flavor?: string | null           // Agent 类型
     worktree?: WorktreeMetadata      // Git Worktree 信息
     gitBranch?: string               // Git 当前分支
-    additionalDirectories?: string[] // 冻结的附加目录（从项目 folders 派生后写回，resume 时直接回放）
+    additionalDirectories?: string[] // 冻结的附加目录（从工作区 folders 派生后写回，resume 时直接回放）
 }
 ```
 

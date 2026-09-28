@@ -30,7 +30,7 @@ export type FileAttachment = {
     file: File
     /** 上传状态 */
     status: 'uploading' | 'complete' | 'error'
-    /** 服务器路径（上传成功后的项目相对路径） */
+    /** 服务器路径（上传成功后的工作区相对路径） */
     path?: string
     /** 错误信息 */
     error?: string

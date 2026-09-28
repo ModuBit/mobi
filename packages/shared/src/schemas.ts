@@ -35,37 +35,37 @@ const WorktreeMetadataSchema = z.object({
 
 export type WorktreeMetadata = z.infer<typeof WorktreeMetadataSchema>
 
-// ============ 项目相关 Schema ============
+// ============ 工作区相关 Schema ============
 
-/** 项目源文件夹（primary 即 CC 的 cwd） */
-export const ProjectFolderSchema = z.object({
+/** 工作区源文件夹（primary 即 CC 的 cwd） */
+export const WorkspaceFolderSchema = z.object({
     path: z.string(),
     primary: z.boolean()
 })
 
-export type ProjectFolder = z.infer<typeof ProjectFolderSchema>
+export type WorkspaceFolder = z.infer<typeof WorkspaceFolderSchema>
 
 /**
- * 项目 folders 校验错误码：校验规则跨端共享（web 表单门禁 + hub API 守卫），
- * 但文案是各端展示层的事——hub 用 PROJECT_FOLDERS_ERROR_MESSAGES 出英文 400 文案，
+ * 工作区 folders 校验错误码：校验规则跨端共享（web 表单门禁 + hub API 守卫），
+ * 但文案是各端展示层的事——hub 用 WORKSPACE_FOLDERS_ERROR_MESSAGES 出英文 400 文案，
  * web 按码映射 i18n key
  */
-export type ProjectFoldersError =
+export type WorkspaceFoldersError =
     | 'empty'          // 列表为空
-    | 'empty_path'     // 存在空路径 / 纯空白路径（空文件夹曾可建出项目）
+    | 'empty_path'     // 存在空路径 / 纯空白路径（空文件夹曾可建出工作区）
     | 'no_primary'     // 无主目录
     | 'multi_primary'  // 多个主目录
 
-/** hub 400 响应文案（web 不用，见 ProjectFoldersError 注释） */
-export const PROJECT_FOLDERS_ERROR_MESSAGES: Record<ProjectFoldersError, string> = {
+/** hub 400 响应文案（web 不用，见 WorkspaceFoldersError 注释） */
+export const WORKSPACE_FOLDERS_ERROR_MESSAGES: Record<WorkspaceFoldersError, string> = {
     empty: 'At least one folder is required',
     empty_path: 'Every folder path is required',
     no_primary: 'Exactly one primary folder is required',
     multi_primary: 'Exactly one primary folder is required',
 }
 
-/** 校验项目文件夹列表：≥1 项、每项 path trim 非空、恰一项 primary；返回错误码或 null */
-export function validateProjectFolders(folders: ProjectFolder[]): ProjectFoldersError | null {
+/** 校验工作区文件夹列表：≥1 项、每项 path trim 非空、恰一项 primary；返回错误码或 null */
+export function validateWorkspaceFolders(folders: WorkspaceFolder[]): WorkspaceFoldersError | null {
     if (folders.length === 0) return 'empty'
     if (folders.some(f => !f.path.trim())) return 'empty_path'
     const primaries = folders.filter(f => f.primary)
@@ -74,19 +74,19 @@ export function validateProjectFolders(folders: ProjectFolder[]): ProjectFolders
     return null
 }
 
-/** 项目实体（folders 是机器本地路径，项目归属 machineId） */
-export const ProjectSchema = z.object({
+/** 工作区实体（folders 是机器本地路径，工作区归属 machineId） */
+export const WorkspaceSchema = z.object({
     id: z.string(),
     namespace: z.string(),
     machineId: z.string(),
     name: z.string(),
-    folders: z.array(ProjectFolderSchema),
+    folders: z.array(WorkspaceFolderSchema),
     createdAt: z.number(),
     updatedAt: z.number(),
     seq: z.number()
 })
 
-export type Project = z.infer<typeof ProjectSchema>
+export type Workspace = z.infer<typeof WorkspaceSchema>
 
 // ============ SDK 相关 Schema ============
 
@@ -776,9 +776,9 @@ export const SessionSchema = z.object({
     permissionMode: PermissionModeSchema.optional(),
     mode: z.enum(['local', 'remote']).optional(),
     tag: z.string().nullable().optional(),   // Hub session 的标签，用于 getOrCreateSession 时复用
-    /** 归属项目（null = 游离，进「最近」） */
-    projectId: z.string().nullable().optional(),
-    /** 会话置顶（true = 进「置顶」分组，同时从「项目」「最近」过滤掉） */
+    /** 归属工作区（null = 游离，进「最近」） */
+    workspaceId: z.string().nullable().optional(),
+    /** 会话置顶（true = 进「置顶」分组，同时从「工作区」「最近」过滤掉） */
     pinned: z.boolean().optional(),
 })
 
@@ -796,9 +796,9 @@ const MachineChangedSchema = SessionEventBaseSchema.extend({
     machineId: z.string()
 })
 
-/** project 事件（hub 的 EventPublisher.resolveNamespace 不认 projectId，无缓存回查，namespace 必填） */
-const ProjectChangedSchema = SessionEventBaseSchema.extend({
-    projectId: z.string(),
+/** workspace 事件（hub 的 EventPublisher.resolveNamespace 不认 workspaceId，无缓存回查，namespace 必填） */
+const WorkspaceChangedSchema = SessionEventBaseSchema.extend({
+    workspaceId: z.string(),
     namespace: z.string()
 })
 
@@ -938,9 +938,9 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         type: z.literal('sdk-metadata-refreshed'),
         sessionId: z.string()
     }),
-    ProjectChangedSchema.extend({ type: z.literal('project-added') }),
-    ProjectChangedSchema.extend({ type: z.literal('project-updated') }),
-    ProjectChangedSchema.extend({ type: z.literal('project-removed') }),
+    WorkspaceChangedSchema.extend({ type: z.literal('workspace-added') }),
+    WorkspaceChangedSchema.extend({ type: z.literal('workspace-updated') }),
+    WorkspaceChangedSchema.extend({ type: z.literal('workspace-removed') }),
     // 桌面观看流控制权状态变化（迭代 2）：授予/退出/空闲超时回落都广播，
     // web 据此同步 UI 与 noVNC viewOnly——权威状态在 hub，RFB 字节流内不夹带信令。
     // 不带 desktop 会话 id：SyncEvent 的 sessionId 语义是 mobi 会话行，混入会误导

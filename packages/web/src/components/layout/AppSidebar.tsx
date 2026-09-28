@@ -22,7 +22,7 @@ import { SidebarHeader } from './SidebarHeader'
 import { SidebarNav } from './SidebarNav'
 import { SidebarDesktopStreams } from './SidebarDesktopStreams'
 import { DESKTOP_ENTRY_ENABLED } from '@/domain/desktop/featureGate'
-import { SidebarProjects } from './SidebarProjects'
+import { SidebarWorkspaces } from './SidebarWorkspaces'
 import { SidebarFooter } from './SidebarFooter'
 import { useWco } from './useWindowControlsOverlay'
 import { CLIP_DURATION, CLIP_EASING } from '@/components/ui/clipConstants'
@@ -80,7 +80,7 @@ export function AppSidebar() {
                 {!isWco && <SidebarHeader />}
                 <SidebarNav />
                 {DESKTOP_ENTRY_ENABLED && <SidebarDesktopStreams />}
-                <SidebarProjects />
+                <SidebarWorkspaces />
                 <SidebarFooter />
             </SidebarInner>
         </SidebarContainer>

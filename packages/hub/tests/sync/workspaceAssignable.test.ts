@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import type { Server } from 'socket.io'
-import { SyncEngine, checkProjectAssignable } from '../../src/sync/syncEngine'
+import { SyncEngine, checkWorkspaceAssignable } from '../../src/sync/syncEngine'
 import { Store } from '../../src/store'
 import type { RpcRegistry } from '../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../src/sse/sseManager'
@@ -42,7 +42,7 @@ function makeEngine(): { engine: SyncEngine; cleanup: () => void } {
     }
 }
 
-describe('checkProjectAssignable', () => {
+describe('checkWorkspaceAssignable', () => {
     let engine: SyncEngine
     let cleanup: () => void
 
@@ -56,36 +56,36 @@ describe('checkProjectAssignable', () => {
         cleanup()
     })
 
-    test('项目存在 + 同 namespace + machineId 匹配 → ok', () => {
-        const project = engine.createProject('default', {
+    test('工作区存在 + 同 namespace + machineId 匹配 → ok', () => {
+        const workspace = engine.createWorkspace('default', {
             machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(checkProjectAssignable(engine, project.id, 'default', 'm1')).toBe('ok')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', 'm1')).toBe('ok')
     })
 
-    test('项目不存在或跨 namespace → not_found', () => {
-        expect(checkProjectAssignable(engine, 'nope', 'default')).toBe('not_found')
+    test('工作区不存在或跨 namespace → not_found', () => {
+        expect(checkWorkspaceAssignable(engine, 'nope', 'default')).toBe('not_found')
 
-        const project = engine.createProject('default', {
+        const workspace = engine.createWorkspace('default', {
             machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(checkProjectAssignable(engine, project.id, 'other', 'm1')).toBe('not_found')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'other', 'm1')).toBe('not_found')
     })
 
-    test('machineId 已知且 ≠ 项目机器 → machine_mismatch', () => {
-        const project = engine.createProject('default', {
+    test('machineId 已知且 ≠ 工作区机器 → machine_mismatch', () => {
+        const workspace = engine.createWorkspace('default', {
             machineId: 'mA', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(checkProjectAssignable(engine, project.id, 'default', 'mB')).toBe('machine_mismatch')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', 'mB')).toBe('machine_mismatch')
     })
 
     test('machineId 未知/缺失（老数据）→ 放行 ok', () => {
-        const project = engine.createProject('default', {
+        const workspace = engine.createWorkspace('default', {
             machineId: 'mA', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(checkProjectAssignable(engine, project.id, 'default', undefined)).toBe('ok')
-        expect(checkProjectAssignable(engine, project.id, 'default', null)).toBe('ok')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', undefined)).toBe('ok')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', null)).toBe('ok')
         // 非字符串形态（异常数据）同样按未知放行，与路由内联断言的历史语义一致
-        expect(checkProjectAssignable(engine, project.id, 'default', 42 as unknown as string)).toBe('ok')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', 42 as unknown as string)).toBe('ok')
     })
 })

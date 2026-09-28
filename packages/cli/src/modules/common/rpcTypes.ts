@@ -30,8 +30,8 @@ export interface SpawnSessionOptions {
     token?: string
     sessionType?: 'simple' | 'worktree'
     worktreeName?: string
-    /** 归属项目 id（Web spawn 透传；缺省 = 游离） */
-    projectId?: string
+    /** 归属工作区 id（Web spawn 透传；缺省 = 游离） */
+    workspaceId?: string
 }
 
 export type SpawnSessionResult =

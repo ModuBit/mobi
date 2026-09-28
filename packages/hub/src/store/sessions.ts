@@ -37,7 +37,7 @@ type DbSessionRow = {
     agent_state_version: number
     runtime_state: string | null
     runtime_state_updated_at: number | null
-    project_id: string | null
+    workspace_id: string | null
     pinned: number
     seq: number
 }
@@ -56,7 +56,7 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         agentStateVersion: row.agent_state_version,
         runtimeState: safeJsonParse(row.runtime_state),
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
-        projectId: row.project_id,
+        workspaceId: row.workspace_id,
         pinned: row.pinned === 1,
         seq: row.seq
     }
@@ -69,14 +69,14 @@ export function getOrCreateSession(
     agentState: unknown,
     namespace: string,
     runtimeState?: unknown,
-    projectId?: string | null
+    workspaceId?: string | null
 ): StoredSession {
     const existing = db.prepare(
         'SELECT * FROM sessions WHERE tag = ? AND namespace = ? ORDER BY created_at DESC LIMIT 1'
     ).get(tag, namespace) as DbSessionRow | undefined
 
     if (existing) {
-        // resume 复用：归属（project_id）不重算——已存在 session 即使本次没带 projectId
+        // resume 复用：归属（workspace_id）不重算——已存在 session 即使本次没带 workspaceId
         // 也保留原归属，避免重连时意外把手工归组改掉
         // 合并新 metadata 到已有 session（新增/更新字段覆盖旧值，旧字段保留）
         const existingMetadata = (safeJsonParse(existing.metadata) as Record<string, unknown>) ?? {}
@@ -120,13 +120,13 @@ export function getOrCreateSession(
     const agentStateJson = agentState === null || agentState === undefined ? null : JSON.stringify(agentState)
     const runtimeStateJson = runtimeState ? JSON.stringify(runtimeState) : null
 
-    // 归属校验：projectId 必须指向同 namespace 的现存项目（CLI 侧把它当硬失败）
-    let projectIdVerified: string | null = null
-    if (projectId) {
-        const project = db.prepare('SELECT id FROM projects WHERE id = ? AND namespace = ?')
-            .get(projectId, namespace) as { id: string } | undefined
-        if (!project) throw new Error(`Project not found: ${projectId}`)
-        projectIdVerified = project.id
+    // 归属校验：workspaceId 必须指向同 namespace 的现存工作区（CLI 侧把它当硬失败）
+    let workspaceIdVerified: string | null = null
+    if (workspaceId) {
+        const workspace = db.prepare('SELECT id FROM workspaces WHERE id = ? AND namespace = ?')
+            .get(workspaceId, namespace) as { id: string } | undefined
+        if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
+        workspaceIdVerified = workspace.id
     }
 
     db.prepare(`
@@ -135,13 +135,13 @@ export function getOrCreateSession(
             metadata, metadata_version,
             agent_state, agent_state_version,
             runtime_state, runtime_state_updated_at,
-            project_id, seq
+            workspace_id, seq
         ) VALUES (
             @id, @tag, @namespace, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             @runtime_state, @runtime_state_updated_at,
-            @project_id, 0
+            @workspace_id, 0
         )
     `).run({
         id,
@@ -153,7 +153,7 @@ export function getOrCreateSession(
         agent_state: agentStateJson,
         runtime_state: runtimeStateJson,
         runtime_state_updated_at: runtimeState ? now : null,
-        project_id: projectIdVerified
+        workspace_id: workspaceIdVerified
     })
 
     const row = getSession(db, id)
@@ -457,9 +457,9 @@ export function deleteSession(db: Database, id: string, namespace: string): bool
     return result.changes > 0
 }
 
-// ============ 项目归属相关 ============
+// ============ 工作区归属相关 ============
 
-export type ProjectSessionsResult = {
+export type WorkspaceSessionsResult = {
     sessions: StoredSession[]
     nextCursor: number | null
     hasMore: boolean
@@ -468,7 +468,7 @@ export type ProjectSessionsResult = {
 }
 
 /**
- * 会话分页查询的共享实现（getSessionsByProject / getUnboundSessions 复用）。
+ * 会话分页查询的共享实现（getSessionsByWorkspace / getUnboundSessions 复用）。
  *
  * 单语句同时取分页数据与全集总数：内层 CTE 用 COUNT(*) OVER() 算全集
  * （仅按 whereSql 过滤，不含 cursor/LIMIT），外层套 cursor 过滤与分页。
@@ -486,7 +486,7 @@ function paginateSessions(
     params: Array<string | number | null>,
     cursor: number | null,
     limit: number = 20
-): ProjectSessionsResult {
+): WorkspaceSessionsResult {
     const cursorCondition = cursor ? 'AND updated_at < ?' : ''
     const sql = `
         WITH counted AS (
@@ -525,23 +525,23 @@ function paginateSessions(
 }
 
 /**
- * 按项目分页查询会话（SQL 按 updated_at 游标；前端再按 active→updatedAt 排序展示）。
- * 置顶会话不进「项目」分组（在「置顶」区展示）。
+ * 按工作区分页查询会话（SQL 按 updated_at 游标；前端再按 active→updatedAt 排序展示）。
+ * 置顶会话不进「工作区」分组（在「置顶」区展示）。
  * 快照一致语义见 paginateSessions 注释。
  */
-export function getSessionsByProject(
+export function getSessionsByWorkspace(
     db: Database,
     namespace: string,
-    projectId: string,
+    workspaceId: string,
     cursor: number | null,
     limit: number = 20
-): ProjectSessionsResult {
+): WorkspaceSessionsResult {
     return paginateSessions(
-        db, 'namespace = ? AND project_id = ? AND pinned = 0', [namespace, projectId], cursor, limit)
+        db, 'namespace = ? AND workspace_id = ? AND pinned = 0', [namespace, workspaceId], cursor, limit)
 }
 
 /**
- * 游离会话分页查询（project_id IS NULL），「最近」区数据源。
+ * 游离会话分页查询（workspace_id IS NULL），「最近」区数据源。
  * 置顶会话不进「最近」（在「置顶」区展示）。
  * 快照一致语义见 paginateSessions 注释。
  */
@@ -550,13 +550,13 @@ export function getUnboundSessions(
     namespace: string,
     cursor: number | null,
     limit: number = 20
-): ProjectSessionsResult {
+): WorkspaceSessionsResult {
     return paginateSessions(
-        db, 'namespace = ? AND project_id IS NULL AND pinned = 0', [namespace], cursor, limit)
+        db, 'namespace = ? AND workspace_id IS NULL AND pinned = 0', [namespace], cursor, limit)
 }
 
 /**
- * 置顶会话分页查询（跨项目/游离），「置顶」区数据源。
+ * 置顶会话分页查询（跨工作区/游离），「置顶」区数据源。
  * 快照一致语义见 paginateSessions 注释。
  */
 export function getPinnedSessions(
@@ -564,44 +564,44 @@ export function getPinnedSessions(
     namespace: string,
     cursor: number | null,
     limit: number = 20
-): ProjectSessionsResult {
+): WorkspaceSessionsResult {
     return paginateSessions(db, 'namespace = ? AND pinned = 1', [namespace], cursor, limit)
 }
 
-/** setSessionProject 的三态结果（幂等语义见函数注释） */
-export type SetSessionProjectResult =
+/** setSessionWorkspace 的三态结果（幂等语义见函数注释） */
+export type SetSessionWorkspaceResult =
     | 'changed'   // 归属变化，已写入（seq/updated_at 递增，调用方需广播）
     | 'noop'      // 归属未变化，幂等跳过（不递增 seq，无需广播）
-    | 'not_found' // 会话不存在，或目标项目不存在 / 跨 namespace
+    | 'not_found' // 会话不存在，或目标工作区不存在 / 跨 namespace
 
 /**
- * 归入项目 / 解绑（纯改归属，不动 metadata）；projectId 须存在且同 namespace。
+ * 归入工作区 / 解绑（纯改归属，不动 metadata）；workspaceId 须存在且同 namespace。
  * updated_at + seq 成对递增，与 sessions 变更范式一致（SSE 增量同步靠 seq 感知）。
- * 幂等：重归入同一项目（project_id 未变）不递增 seq/updated_at，避免无意义的 SSE 扰动
+ * 幂等：重归入同一工作区（workspace_id 未变）不递增 seq/updated_at，避免无意义的 SSE 扰动
  * ——`IS NOT ?` 同时覆盖 null 与非 null 两种「目标与现值相同」的情形（SQLite 的
  * 严格不等号对 NULL 恒为 NULL，IS NOT 才能正确比较）。
  */
-export function setSessionProject(
+export function setSessionWorkspace(
     db: Database,
     id: string,
-    projectId: string | null,
+    workspaceId: string | null,
     namespace: string
-): SetSessionProjectResult {
-    if (projectId) {
-        const project = db.prepare('SELECT id FROM projects WHERE id = ? AND namespace = ?')
-            .get(projectId, namespace) as { id: string } | undefined
-        if (!project) return 'not_found'
+): SetSessionWorkspaceResult {
+    if (workspaceId) {
+        const workspace = db.prepare('SELECT id FROM workspaces WHERE id = ? AND namespace = ?')
+            .get(workspaceId, namespace) as { id: string } | undefined
+        if (!workspace) return 'not_found'
     }
     const result = db.prepare(
-        'UPDATE sessions SET project_id = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ? AND project_id IS NOT ?'
-    ).run(projectId, Date.now(), id, namespace, projectId)
+        'UPDATE sessions SET workspace_id = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ? AND workspace_id IS NOT ?'
+    ).run(workspaceId, Date.now(), id, namespace, workspaceId)
     if (result.changes > 0) return 'changed'
     // changes=0 有两种可能：幂等跳过（会话在、归属没变）或会话不存在，需区分
     return db.prepare('SELECT 1 FROM sessions WHERE id = ? AND namespace = ?')
         .get(id, namespace) ? 'noop' : 'not_found'
 }
 
-/** setSessionPinned 的三态结果（幂等语义与 setSessionProject 一致） */
+/** setSessionPinned 的三态结果（幂等语义与 setSessionWorkspace 一致） */
 export type SetSessionPinnedResult =
     | 'changed'   // 置顶态变化，已写入（seq 递增、updated_at 不动，调用方需广播）
     | 'noop'      // 置顶态未变化，幂等跳过（不递增 seq，无需广播）
@@ -609,7 +609,7 @@ export type SetSessionPinnedResult =
 
 /**
  * 置顶 / 取消置顶。置顶是纯展示维度的分组（不改归属）：置顶 → 会话进「置顶」分组，
- * 同时从「项目」「最近」过滤掉；取消置顶反向。归属（project_id）原样保留——
+ * 同时从「工作区」「最近」过滤掉；取消置顶反向。归属（workspace_id）原样保留——
  * 取消置顶后回到原分组。
  * 只递增 seq（变更代数，供 SSE 广播感知），**不动 updated_at**：分组排序与游标
  * 分页都以 updated_at 为据（paginateSessions），置顶往返若刷新它，会话会窜到

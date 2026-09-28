@@ -38,7 +38,7 @@ export async function claudeLocal(opts: {
     hookSettings: string | Settings
     /** 追加到 claude 默认 system prompt 之后的内容（含 mobi base + 用户 custom/append） */
     systemPromptAppend: string
-    /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
+    /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
     /** 内置插件目录（inline-artifacts ticket 05）：local 模式不走 SDK query（直接 spawn claude
      *  子进程），SDK Options.plugins 的自动 --plugin-dir 转换帮不上忙，只能按 SDK 'argv'
@@ -46,7 +46,7 @@ export async function claudeLocal(opts: {
     pluginDirs?: string[]
 }) {
 
-    // Ensure project directory exists
+    // Ensure workspace directory exists
     const projectDir = getProjectPath(opts.path);
     mkdirSync(projectDir, { recursive: true });
 
@@ -99,7 +99,7 @@ export async function claudeLocal(opts: {
     args.push('--settings', opts.hookSettings);
     logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettings}`);
 
-    // 添加项目 .mobi 目录，使 Claude 可访问上传的附件
+    // 添加工作区 .mobi 目录，使 Claude 可访问上传的附件
     const mobiDir = join(opts.path, '.mobi')
     args.push('--add-dir', mobiDir)
     logger.debug(`[ClaudeLocal] Adding mobi directory: ${mobiDir}`)
@@ -110,10 +110,10 @@ export async function claudeLocal(opts: {
         logger.debug(`[ClaudeLocal] Adding plugin directory: ${dir}`)
     }
 
-    // 项目额外工作目录（创建时冻结 / resume 回放）
+    // 工作区额外工作目录（创建时冻结 / resume 回放）
     for (const dir of opts.additionalDirectories ?? []) {
         args.push('--add-dir', dir)
-        logger.debug(`[ClaudeLocal] Adding project directory: ${dir}`)
+        logger.debug(`[ClaudeLocal] Adding workspace directory: ${dir}`)
     }
 
     // Prepare environment variables

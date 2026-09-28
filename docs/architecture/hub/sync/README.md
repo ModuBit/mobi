@@ -49,7 +49,7 @@ graph TB
         EP[EventPublisher<br/>事件广播]
         SC[SessionCache<br/>会话状态]
         MC[MachineCache<br/>机器状态]
-        PC[ProjectCache<br/>项目缓存]
+        PC[WorkspaceCache<br/>工作区缓存]
         MS[MessageService<br/>消息服务]
         RG[RpcGateway<br/>RPC 网关]
     end
@@ -141,7 +141,7 @@ flowchart LR
 | EventPublisher | CLI → Web | 事件广播（通过 SSE） |
 | SessionCache | 双向 | 会话状态管理 |
 | MachineCache | 双向 | 机器状态管理 |
-| ProjectCache | Web → Web | 项目缓存（CRUD + project-* 事件广播，镜像 sessionCache/machineCache 范式） |
+| WorkspaceCache | Web → Web | 工作区缓存（CRUD + workspace-* 事件广播，镜像 sessionCache/machineCache 范式） |
 | MessageService | Web → CLI | Web 发送消息给 CLI |
 | RpcGateway | Web → CLI | 远程调用 CLI 功能 |
 
@@ -152,7 +152,7 @@ flowchart LR
 | **[EventPublisher](./event-publisher)** | 事件发布器，向 SSE 推送实时事件 |
 | **[SessionCache](./session-cache)** | 会话缓存，管理会话生命周期和活跃状态 |
 | **[MachineCache](./machine-cache)** | 机器缓存，管理 CLI 客户端在线状态 |
-| **ProjectCache** | 项目缓存，管理项目实体 CRUD 并广播 `project-added/updated/removed`；删除项目时逐个广播名下会话的 `session-updated`（解绑进「最近」） |
+| **WorkspaceCache** | 工作区缓存，管理工作区实体 CRUD 并广播 `workspace-added/updated/removed`；删除工作区时逐个广播名下会话的 `session-updated`（解绑进「最近」） |
 | **[MessageService](./message-service)** | 消息服务，处理消息分页和发送 |
 | **[RpcGateway](./rpc-gateway)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
 | **[Snapshot Delta 协议](./snapshot-delta.md)** | 流式消息增量传输：拼接器缓存 + SSE 转发游标 + 重基线/生命周期清理 |
@@ -167,10 +167,10 @@ flowchart LR
 flowchart LR
     A[创建 EventPublisher] --> B[创建 SessionCache]
     B --> C[创建 MachineCache]
-    C --> PC[创建 ProjectCache]
+    C --> PC[创建 WorkspaceCache]
     PC --> D[创建 MessageService]
     D --> E[创建 RpcGateway]
-    E --> F[warmupCache<br/>预热缓存（含 projects 全量）]
+    E --> F[warmupCache<br/>预热缓存（含 workspaces 全量）]
     F --> G[启动定时器<br/>5s 清理不活跃]
 ```
 
@@ -184,19 +184,19 @@ flowchart LR
 | `getSessionsByNamespace()` | 按命名空间获取 |
 | `getSession()` | 获取单个会话 |
 | `getActiveSessions()` | 获取活跃会话 |
-| `getSessionsByProject()` | 按项目分页获取会话（updated_at 游标） |
-| `getUnboundSessions()` | 「最近」区分页（未归属项目的会话） |
+| `getSessionsByWorkspace()` | 按工作区分页获取会话（updated_at 游标） |
+| `getUnboundSessions()` | 「最近」区分页（未归属工作区的会话） |
 
-### 项目操作
+### 工作区操作
 
 | 方法 | 作用 |
 |------|------|
-| `getProjects()` | 按命名空间获取项目列表 |
-| `getProject()` | 获取单个项目（ProjectCache 读穿透回源 DB） |
-| `createProject()` | 创建项目（广播 `project-added`） |
-| `updateProject()` | 改名 / 改 folders（广播 `project-updated`） |
-| `deleteProject()` | 删除项目（事务内解绑名下会话，广播 `project-removed` + 逐个 `session-updated`） |
-| `setSessionProject()` | 会话归入 / 移出项目 |
+| `getWorkspaces()` | 按命名空间获取工作区列表 |
+| `getWorkspace()` | 获取单个工作区（WorkspaceCache 读穿透回源 DB） |
+| `createWorkspace()` | 创建工作区（广播 `workspace-added`） |
+| `updateWorkspace()` | 改名 / 改 folders（广播 `workspace-updated`） |
+| `deleteWorkspace()` | 删除工作区（事务内解绑名下会话，广播 `workspace-removed` + 逐个 `session-updated`） |
+| `setSessionWorkspace()` | 会话归入 / 移出工作区 |
 
 ### 机器查询
 
@@ -258,7 +258,7 @@ packages/hub/src/sync/
 ├── eventPublisher.ts   # 事件发布
 ├── sessionCache.ts     # 会话缓存
 ├── machineCache.ts     # 机器缓存
-├── projectCache.ts     # 项目缓存（CRUD + project-* 事件）
+├── workspaceCache.ts     # 工作区缓存（CRUD + workspace-* 事件）
 ├── messageService.ts   # 消息服务
 ├── sessionMessageRuntimeProjector.ts # 持久化消息 → runtimeState 投影
 ├── sessionMessageFactsProcessor.ts # CLI 消息事实 → 持久化 + 领域 publication

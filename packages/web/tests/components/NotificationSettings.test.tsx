@@ -53,7 +53,7 @@ vi.mock('@/components/layout/InstallButton', () => ({
     InstallButton: () => <div data-testid="install-button" />,
 }))
 
-// t(key) 直接返回 key，断言用 key 字符串（与项目其他组件测试一致，避免 locale 探测问题）
+// t(key) 直接返回 key，断言用 key 字符串（与工作区其他组件测试一致，避免 locale 探测问题）
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))

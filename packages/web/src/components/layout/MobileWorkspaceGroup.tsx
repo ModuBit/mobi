@@ -20,29 +20,29 @@ import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
-import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
-import type { Project } from '@/core/data/api/types'
+import { useWorkspaceSessions } from '@/core/data/hooks/queries/useWorkspaceSessions'
+import type { Workspace } from '@/core/data/api/types'
 import { useMenuNavigate } from './useMenuNavigate'
 import {
     GroupHeader, FolderIcon, GroupName, NewSessionBtn,
     SessionListWrapper, SessionListInner, EmptyRow,
-} from './mobileProjectList.styles'
+} from './mobileWorkspaceList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
 
 const { useToken } = antTheme
 
-interface MobileProjectGroupProps {
-    project: Project
+interface MobileWorkspaceGroupProps {
+    workspace: Workspace
     activeSessionId: string | undefined
     onSessionAction: (sessionId: string) => void
 }
 
-/** 移动端单个项目分组 */
-export function MobileProjectGroup({
-    project, activeSessionId, onSessionAction,
-}: MobileProjectGroupProps) {
+/** 移动端单个工作区分组 */
+export function MobileWorkspaceGroup({
+    workspace, activeSessionId, onSessionAction,
+}: MobileWorkspaceGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
@@ -54,13 +54,13 @@ export function MobileProjectGroup({
         isLoadingInitial, isLoadingMore,
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
-    } = useProjectSessions(project.id, activeSessionId)
+    } = useWorkspaceSessions(workspace.id, activeSessionId)
 
-    // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
+    // 新建会话：带上工作区归属（hub 侧把 cwd 锁定工作区 primary folder + 挂 workspaceId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
-        navigateFromMenu(() => navigate({ to: '/sessions/new', search: { projectId: project.id } }))
-    }, [navigate, navigateFromMenu, project.id])
+        navigateFromMenu(() => navigate({ to: '/sessions/new', search: { workspaceId: workspace.id } }))
+    }, [navigate, navigateFromMenu, workspace.id])
 
     const handleSessionClick = useCallback((sessionId: string) => {
         navigateFromMenu(() => navigate({ to: '/sessions/$sessionId', params: { sessionId } }))
@@ -79,7 +79,7 @@ export function MobileProjectGroup({
                 <FolderIcon $token={token}>
                     {expanded ? <FolderOpen size={18} /> : <FolderClosed size={18} />}
                 </FolderIcon>
-                <GroupName $token={token}>{project.name}</GroupName>
+                <GroupName $token={token}>{workspace.name}</GroupName>
                 <NewSessionBtn $token={token} onClick={handleNewSession} aria-label={t('nav.newSession')}>
                     <Plus size={18} />
                 </NewSessionBtn>

@@ -81,8 +81,8 @@ export type AgentSessionSummary = {
     name?: string
     /** 会话摘要（目前主要由 change_title 写入），信息量弱，只作辅助匹配 */
     summary?: string
-    /** 归属项目（null = 游离） */
-    projectId: string | null
+    /** 归属工作区（null = 游离） */
+    workspaceId: string | null
     /**
      * 所在机器。metadata 里没有时**缺省**，不拿 host 顶替——host 是主机名不是机器 id，
      * 顶替出来的值拿去 create_session 只会得到一个必然失败的入参。
@@ -121,7 +121,7 @@ export type AgentCreateSessionRequest = {
     machineId: string
     /** 绝对路径，在目标机器上解析。目录不存在时由那台机器创建（既有 spawn 语义） */
     directory: string
-    projectId?: string
+    workspaceId?: string
     model?: string
     effort?: EffortLevel
     permissionMode?: PermissionMode
@@ -163,7 +163,7 @@ export type AgentCreateSessionReadiness =
  * create_session 回执。
  *
  * 失败用**自由文本**而非 AgentOpFailureReason 码：建会话的失败来自上游且是开放集合
- * （目录建不出来 / 那台机器没在跑 / 超时 / 项目归属不符），每种都会被翻译成一句
+ * （目录建不出来 / 那台机器没在跑 / 超时 / 工作区归属不符），每种都会被翻译成一句
  * 给人看的话。与 D15 的 per-target `error` 同口径——码在这里没有消费方。
  */
 export type AgentCreateSessionAck =
@@ -525,6 +525,6 @@ export type AgentSessionsRequest = {
     status?: AgentSessionStatus
     /** 缺省 20，上限 50（超出按上限截断，不报错） */
     limit?: number
-    /** 只看某个项目下的会话 */
-    projectId?: string
+    /** 只看某个工作区下的会话 */
+    workspaceId?: string
 }

@@ -16,7 +16,7 @@
 
 import { describe, test, expect } from 'bun:test'
 import { AgentSessionService } from '../../src/sync/agentSessionService'
-import type { ProjectAssignability } from '../../src/sync/agentSessionService'
+import type { WorkspaceAssignability } from '../../src/sync/agentSessionService'
 import type { ReceiveReadiness } from '../../src/sync/sessionReceiveReadiness'
 import { RpcFailure, type RpcFailureKind } from '../../src/sync/rpcFailure'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
@@ -56,7 +56,7 @@ function makeSession(overrides: Partial<Session> & { id: string }): Session {
         agentStateVersion: 0,
         running: false,
         runningAt: 0,
-        projectId: null,
+        workspaceId: null,
         pinned: false,
         ...overrides,
     }
@@ -68,7 +68,7 @@ function makeService(
     overrides?: {
         /** spawn 失败支要连分类一起给——分类由适配器产出，服务只读它（见 rpcFailure） */
         spawnResult?: { type: 'success'; sessionId: string } | { type: 'error'; message: string; failure: RpcFailureKind }
-        projectAssignability?: ProjectAssignability
+        workspaceAssignability?: WorkspaceAssignability
         /** 让 pushAgentMessage 抛一个**带分类**的传输故障（模拟适配器抛出的三种 RPC 故障） */
         pushFailure?: { kind: RpcFailureKind; message: string }
         /** 让 pushAgentMessage 返回这个裁决（模拟 CLI 跑了 handler 却没接住） */
@@ -108,7 +108,7 @@ function makeService(
             machines.find((m) => m.id === machineId && m.namespace === namespace),
         getSessionByNamespace: (sessionId, namespace) =>
             sessions.find((s) => s.id === sessionId && s.namespace === namespace),
-        checkProjectAssignable: () => overrides?.projectAssignability ?? 'ok',
+        checkWorkspaceAssignable: () => overrides?.workspaceAssignability ?? 'ok',
         spawnSession: async (machineId, directory, options) => {
             spawnCalls.push({ machineId, directory, options })
             return overrides?.spawnResult ?? { type: 'success', sessionId: 'new-session-id' }
@@ -338,25 +338,25 @@ describe('AgentSessionService.listSessions — 排序与截断', () => {
     })
 })
 
-describe('AgentSessionService.listSessions — projectId 与字段映射', () => {
-    test('projectId 过滤只留该项目的会话', () => {
+describe('AgentSessionService.listSessions — workspaceId 与字段映射', () => {
+    test('workspaceId 过滤只留该工作区的会话', () => {
         const { service } = makeService([], [
-            makeSession({ id: 'in-project', projectId: 'p1' }),
-            makeSession({ id: 'loose', projectId: null }),
-            makeSession({ id: 'other-project', projectId: 'p2' }),
+            makeSession({ id: 'in-workspace', workspaceId: 'p1' }),
+            makeSession({ id: 'loose', workspaceId: null }),
+            makeSession({ id: 'other-workspace', workspaceId: 'p2' }),
         ])
 
-        expect(service.listSessions('ns', { projectId: 'p1' }).map(s => s.sessionId)).toEqual(['in-project'])
+        expect(service.listSessions('ns', { workspaceId: 'p1' }).map(s => s.sessionId)).toEqual(['in-workspace'])
     })
 
-    test('映射为 agent 视角摘要：标题 / 摘要 / 项目 / 机器 / 目录 / 状态 / 时间 / 模型 / 置顶', () => {
+    test('映射为 agent 视角摘要：标题 / 摘要 / 工作区 / 机器 / 目录 / 状态 / 时间 / 模型 / 置顶', () => {
         const { service } = makeService([], [
             makeSession({
                 id: 's1',
                 active: true,
                 running: true,
                 updatedAt: 1700,
-                projectId: 'p1',
+                workspaceId: 'p1',
                 pinned: true,
                 metadata: {
                     path: '/work/app',
@@ -373,7 +373,7 @@ describe('AgentSessionService.listSessions — projectId 与字段映射', () =>
             sessionId: 's1',
             name: '前端重构',
             summary: '修登录',
-            projectId: 'p1',
+            workspaceId: 'p1',
             machineId: 'm1',
             path: '/work/app',
             active: true,
@@ -385,7 +385,7 @@ describe('AgentSessionService.listSessions — projectId 与字段映射', () =>
     })
 
     test('metadata 缺失时相关字段缺省，不填假值', () => {
-        const { service } = makeService([], [makeSession({ id: 's1', metadata: null, projectId: null })])
+        const { service } = makeService([], [makeSession({ id: 's1', metadata: null, workspaceId: null })])
 
         const [summary] = service.listSessions('ns')
 
@@ -394,7 +394,7 @@ describe('AgentSessionService.listSessions — projectId 与字段映射', () =>
         expect(summary.machineId).toBeUndefined()
         expect(summary.path).toBeUndefined()
         // 不拿 host 之类顶替 machineId——顶替出来的值拿去 create_session 只会得到一个必然失败的入参
-        expect(summary).toMatchObject({ sessionId: 's1', projectId: null, pinned: false })
+        expect(summary).toMatchObject({ sessionId: 's1', workspaceId: null, pinned: false })
     })
 
     test('runtimeState 缺失时 model 缺省（agent 尚未上报，不是「没有模型」）', () => {
@@ -457,33 +457,33 @@ describe('AgentSessionService.createSession — 前置闸', () => {
         expect(spawnCalls).toHaveLength(0)
     })
 
-    test('projectId 不存在 → 拒绝，不碰 spawn', async () => {
-        const { service, spawnCalls } = makeService([online], [], { projectAssignability: 'not_found' })
+    test('workspaceId 不存在 → 拒绝，不碰 spawn', async () => {
+        const { service, spawnCalls } = makeService([online], [], { workspaceAssignability: 'not_found' })
 
         const result = await service.createSession('ns', {
             machineId: 'm1',
             directory: '/work/app',
-            projectId: 'p-missing',
+            workspaceId: 'p-missing',
         })
 
-        expect(failureText(result)).toContain('No project with id "p-missing"')
+        expect(failureText(result)).toContain('No workspace with id "p-missing"')
         expect(spawnCalls).toHaveLength(0)
     })
 
-    test('projectId 归属别的机器 → 拒绝（否则会派生出一个绑错机器的幽灵会话）', async () => {
-        const { service, spawnCalls } = makeService([online], [], { projectAssignability: 'machine_mismatch' })
+    test('workspaceId 归属别的机器 → 拒绝（否则会派生出一个绑错机器的幽灵会话）', async () => {
+        const { service, spawnCalls } = makeService([online], [], { workspaceAssignability: 'machine_mismatch' })
 
         const result = await service.createSession('ns', {
             machineId: 'm1',
             directory: '/work/app',
-            projectId: 'p1',
+            workspaceId: 'p1',
         })
 
         expect(failureText(result)).toContain('belongs to a different machine')
         expect(spawnCalls).toHaveLength(0)
     })
 
-    test('不传 projectId 时跳过归属校验（游离会话是合法默认）', async () => {
+    test('不传 workspaceId 时跳过归属校验（游离会话是合法默认）', async () => {
         let called = 0
         const service = new AgentSessionService({
             getOnlineMachinesByNamespace: () => [online],
@@ -491,7 +491,7 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             getMachineByNamespace: (machineId, namespace) =>
                 machineId === online.id && namespace === online.namespace ? online : undefined,
             getSessionByNamespace: () => undefined,
-            checkProjectAssignable: () => {
+            checkWorkspaceAssignable: () => {
                 called++
                 return 'not_found'
             },
@@ -529,11 +529,11 @@ describe('AgentSessionService.createSession — 起进程', () => {
         expect(spawnCalls).toEqual([{
             machineId: 'm1',
             directory: '/work/app',
-            options: { model: undefined, effort: undefined, permissionMode: undefined, projectId: undefined },
+            options: { model: undefined, effort: undefined, permissionMode: undefined, workspaceId: undefined },
         }])
     })
 
-    test('显式给的选项透传（model / effort / permissionMode / projectId）', async () => {
+    test('显式给的选项透传（model / effort / permissionMode / workspaceId）', async () => {
         const { service, spawnCalls } = makeService([online])
 
         await service.createSession('ns', {
@@ -542,14 +542,14 @@ describe('AgentSessionService.createSession — 起进程', () => {
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
-            projectId: 'p1',
+            workspaceId: 'p1',
         })
 
         expect(spawnCalls[0].options).toEqual({
             model: 'opus',
             effort: 'high',
             permissionMode: 'plan',
-            projectId: 'p1',
+            workspaceId: 'p1',
         })
     })
 

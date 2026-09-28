@@ -18,7 +18,7 @@ import { theme as antTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import { SessionListContainer, EmptyRow } from './sidebarProjects.styles'
+import { SessionListContainer, EmptyRow } from './sidebarWorkspaces.styles'
 import { SessionRow } from './SessionRow'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
@@ -31,7 +31,7 @@ function getSessionName(session: Session): string {
     return metadata?.name || ''
 }
 
-// ========== 分组共享 props（项目组与「最近」一致） ==========
+// ========== 分组共享 props（工作区组与「最近」一致） ==========
 
 export interface SessionListSharedProps {
     activeSessionId: string | undefined
@@ -54,7 +54,7 @@ export interface SessionListSharedProps {
     pinPendingSessionId: string | undefined
 }
 
-// ========== 分组内会话列表（项目组与「最近」共用的渲染骨架） ==========
+// ========== 分组内会话列表（工作区组与「最近」共用的渲染骨架） ==========
 
 interface SessionRowsListProps extends SessionListSharedProps {
     sessions: Session[]
@@ -67,7 +67,7 @@ interface SessionRowsListProps extends SessionListSharedProps {
     showMore: () => void
     collapse: () => void
     onSessionClick: (sessionId: string) => void
-    /** 每行 dropdown 的分组附加项（「移至最近」/「归入项目」等），渲染在休眠/删除之前 */
+    /** 每行 dropdown 的分组附加项（「移至最近」/「归入工作区」等），渲染在休眠/删除之前 */
     renderExtraMenuItems?: (session: Session) => MenuProps['items']
     /** 每行 dropdown 附加项点击（key 为分组定义的 item key） */
     onExtraMenuClick?: (session: Session, key: string) => void

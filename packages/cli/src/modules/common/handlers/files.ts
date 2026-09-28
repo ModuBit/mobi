@@ -42,7 +42,7 @@ interface SaveFileRequest {
     path: string
     content: Uint8Array
     baseEtag: string
-    /** 显式项目根目录（machine 通道注入；缺省回退注册时的 workingDirectory，对齐 uploads.ts 惯例） */
+    /** 显式工作区根目录（machine 通道注入；缺省回退注册时的 workingDirectory，对齐 uploads.ts 惯例） */
     cwd?: string
 }
 

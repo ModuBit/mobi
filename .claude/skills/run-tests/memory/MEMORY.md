@@ -7,7 +7,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [登录](login.md) — token 输入 + Connect 提交、验证跳转
 - [自定义输入框操作](input-box.md) — click → Ctrl+A → type_text 通用规范（登录 / 聊天共用）
 - [创建会话](create-session.md) — 项目即环境：可搜索下拉选项目 / 下拉底部新建项目自动回填 / 发消息即建 / **权限模式残留须显式选回 Auto**（plan-mode 用例污染 localStorage）
-- [项目实体化 UI](create-project.md) — 建项目 / 项目内新建会话 / 归入项目往返 / 编辑 folders / 删项目（Escape 关 modal / hover 按钮 evaluate click 坑）
+- [工作区 UI](create-project.md) — 建工作区 / 工作区内新建会话 / 归入工作区往返 / 编辑 folders / 删工作区（Escape 关 modal / hover 按钮 evaluate click 坑；2026-09-28 项目→工作区更名后复核）
 - [终端游离会话](terminal-session.md) — script 造 PTY 后台跑 CLI，会话入 Recent
 - [文件树验证](file-tree-verify.md) — 展开 inspector 文件树 / 虚拟滚动下数条目（看 network 响应非 DOM）/ 截断字段
 - [对话与验证](chat-verify.md) — 发消息 / 等待轮询 / 权限审批 / 排队消息 / 停止按钮（composer 合并按钮）/ 渲染验证

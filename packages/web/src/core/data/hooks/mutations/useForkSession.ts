@@ -18,11 +18,11 @@ import { useCallback, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useMobiApi } from '@/core/data/api/client'
-import { invalidateProjectViews } from '@/core/lib/invalidateViews'
+import { invalidateWorkspaceViews } from '@/core/lib/invalidateViews'
 
 /**
  * fork 会话创建 Hook（fork-session spec §4.3 / §5.1）：
- * POST /api/sessions/:id/fork → 成功后失效项目维度视图缓存（新会话进侧栏各分组）
+ * POST /api/sessions/:id/fork → 成功后失效工作区维度视图缓存（新会话进侧栏各分组）
  * 并跳转新会话（导航与 useSessionActions 的 deleteSession 同层收口，容器组件只做编排）。
  * 失败 reject 原始错误（hub 响应体 code 供 forkRejectReasonKey 归因），由调用方 toast。
  */
@@ -41,8 +41,8 @@ export function useForkSession(sessionId: string): {
             return res.data.sessionId
         },
         onSuccess: async (newSessionId) => {
-            // 会话增删改变侧栏各分组（projects/recent/pinned/projectSessions）成员，四键连带刷新
-            await invalidateProjectViews(queryClient)
+            // 会话增删改变侧栏各分组（workspaces/recent/pinned/workspaceSessions）成员，四键连带刷新
+            await invalidateWorkspaceViews(queryClient)
             await navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId } })
         },
     })

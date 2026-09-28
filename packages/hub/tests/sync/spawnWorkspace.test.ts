@@ -21,9 +21,9 @@ import { Store } from '../../src/store'
 import type { RpcRegistry } from '../../src/socket/rpcRegistry'
 
 /**
- * spawn 链路透传 projectId 单测：
+ * spawn 链路透传 workspaceId 单测：
  * Web → engine.spawnSession → rpcGateway.spawnSession → runner 的 spawn-mobi-session RPC body。
- * projectId 是最后一个位置参数，未传时 body 中不出现有效值。
+ * workspaceId 是最后一个位置参数，未传时 body 中不出现有效值。
  */
 
 /** 捕获 emitWithAck 的 rpc-request 信封 */
@@ -55,8 +55,8 @@ function makeSpawnRegistry(machineId: string): RpcRegistry {
     } as unknown as RpcRegistry
 }
 
-describe('spawn 链路透传 projectId', () => {
-    test('engine.spawnSession 收到 projectId 后原样出现在 RPC body', async () => {
+describe('spawn 链路透传 workspaceId', () => {
+    test('engine.spawnSession 收到 workspaceId 后原样出现在 RPC body', async () => {
         const capture: EmitCapture = { emitCalls: [] }
         const io = makeSpawnIo(capture)
         const registry = makeSpawnRegistry('machine-p1')
@@ -67,14 +67,14 @@ describe('spawn 链路透传 projectId', () => {
             const result = await engine.spawnSession(
                 'machine-p1',
                 '/tmp/proj',
-                { projectId: 'project-42' }
+                { workspaceId: 'workspace-42' }
             )
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
             expect(capture.emitCalls).toHaveLength(1)
             expect(capture.emitCalls[0].method).toBe('machine-p1:spawn-mobi-session')
             expect(capture.emitCalls[0].params).toMatchObject({
                 directory: '/tmp/proj',
-                projectId: 'project-42',
+                workspaceId: 'workspace-42',
             })
         } finally {
             engine.stop()
@@ -82,7 +82,7 @@ describe('spawn 链路透传 projectId', () => {
         }
     })
 
-    test('engine.spawnSession 未传 projectId 时 RPC body 中 projectId 为 undefined', async () => {
+    test('engine.spawnSession 未传 workspaceId 时 RPC body 中 workspaceId 为 undefined', async () => {
         const capture: EmitCapture = { emitCalls: [] }
         const io = makeSpawnIo(capture)
         const registry = makeSpawnRegistry('machine-p2')
@@ -94,14 +94,14 @@ describe('spawn 链路透传 projectId', () => {
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
             expect(capture.emitCalls).toHaveLength(1)
             expect(capture.emitCalls[0].params).toMatchObject({ directory: '/tmp/proj' })
-            expect((capture.emitCalls[0].params as Record<string, unknown>).projectId).toBeUndefined()
+            expect((capture.emitCalls[0].params as Record<string, unknown>).workspaceId).toBeUndefined()
         } finally {
             engine.stop()
             store.close()
         }
     })
 
-    test('rpcGateway.spawnSession 直接调用时 projectId 进入 RPC body', async () => {
+    test('rpcGateway.spawnSession 直接调用时 workspaceId 进入 RPC body', async () => {
         const capture: EmitCapture = { emitCalls: [] }
         const io = makeSpawnIo(capture)
         const gateway = new RpcGateway(io, makeSpawnRegistry('machine-p3'))
@@ -109,13 +109,13 @@ describe('spawn 链路透传 projectId', () => {
         const result = await gateway.spawnSession(
             'machine-p3',
             '/tmp/proj',
-            { projectId: 'project-99' }
+            { workspaceId: 'workspace-99' }
         )
         expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
         expect(capture.emitCalls).toHaveLength(1)
         expect(capture.emitCalls[0].params).toMatchObject({
             directory: '/tmp/proj',
-            projectId: 'project-99',
+            workspaceId: 'workspace-99',
         })
     })
 })

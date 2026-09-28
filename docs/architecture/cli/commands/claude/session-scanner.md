@@ -23,7 +23,7 @@ Local 模式下 Claude 是独立子进程，直接在终端与用户交互。Mob
 ```mermaid
 flowchart TB
     subgraph ClaudeProcess["Claude 子进程"]
-        Claude["claude CLI"] -->|"写入"| JSONL["JSONL 文件<br/>~/.claude/projects/{hash}/{sessionId}.jsonl"]
+        Claude["claude CLI"] -->|"写入"| JSONL["JSONL 文件<br/>~/.claude/workspaces/{hash}/{sessionId}.jsonl"]
     end
 
     subgraph Scanner["SessionScanner"]
@@ -82,7 +82,7 @@ classDiagram
     }
 
     class ClaudeSessionScanner {
-        -projectDir: string
+        -workspaceDir: string
         -onMessage: Function
         -finishedSessions: Set~string~
         -pendingSessions: Set~string~
@@ -429,5 +429,5 @@ flowchart TB
 |------|------|
 | `packages/cli/src/utils/sync.ts` | `InvalidateSync` — 防抖同步执行器 |
 | `packages/cli/src/modules/watcher/startFileWatcher.ts` | 文件变化监听封装 |
-| `packages/cli/src/claude/utils/path.ts` | `getProjectPath()` — Claude 项目目录定位 |
+| `packages/cli/src/claude/utils/path.ts` | `getWorkspacePath()` — Claude 工作区目录定位 |
 | `packages/cli/src/claude/types.ts` | `RawJSONLines` — JSONL 行类型定义 |

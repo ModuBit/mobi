@@ -199,27 +199,27 @@ export type DeleteUploadResponse = {
     error?: string
 }
 
-// ============ 项目类型（会话按项目 / 「最近」组织） ============
+// ============ 工作区类型（会话按工作区 / 「最近」组织） ============
 
-import type { Project, ProjectFolder } from '@mobi/shared'
+import type { Workspace, WorkspaceFolder } from '@mobi/shared'
 
-export type { Project, ProjectFolder }
+export type { Workspace, WorkspaceFolder }
 
-/** 项目会话分页响应（hub 返回完整 Session） */
-export interface ProjectSessionsResponse {
+/** 工作区会话分页响应（hub 返回完整 Session） */
+export interface WorkspaceSessionsResponse {
     sessions: Session[]
     nextCursor: number | null
     hasMore: boolean
-    /** 项目会话总数（不受游标影响） */
+    /** 工作区会话总数（不受游标影响） */
     total: number
 }
 
-/** hook 内部的归一化分页结构（projectSessions 缓存只存 ID，完整 Session 进全局 sessions 缓存） */
-export interface ProjectSessionsPage {
+/** hook 内部的归一化分页结构（workspaceSessions 缓存只存 ID，完整 Session 进全局 sessions 缓存） */
+export interface WorkspaceSessionsPage {
     sessionIds: string[]
     nextCursor: number | null
     hasMore: boolean
-    /** 项目会话总数（不受游标影响，用于前端显示「真实剩余」） */
+    /** 工作区会话总数（不受游标影响，用于前端显示「真实剩余」） */
     total: number
 }
 

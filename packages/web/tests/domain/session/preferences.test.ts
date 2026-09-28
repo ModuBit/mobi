@@ -20,25 +20,25 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-    loadLastUsedProjectId,
-    saveLastUsedProjectId,
+    loadLastUsedWorkspaceId,
+    saveLastUsedWorkspaceId,
 } from '@/domain/session/preferences'
 
 beforeEach(() => {
     localStorage.clear()
 })
 
-describe('最近使用的项目持久化', () => {
+describe('最近使用的工作区持久化', () => {
     it('未存过返回 null', () => {
-        expect(loadLastUsedProjectId()).toBeNull()
+        expect(loadLastUsedWorkspaceId()).toBeNull()
     })
     it('save 后可 load 回同一 id', () => {
-        saveLastUsedProjectId('p-1')
-        expect(loadLastUsedProjectId()).toBe('p-1')
+        saveLastUsedWorkspaceId('p-1')
+        expect(loadLastUsedWorkspaceId()).toBe('p-1')
     })
-    it('save 空串视为清除（项目被删/游离场景由调用方判定，此处不落脏值）', () => {
-        saveLastUsedProjectId('p-1')
-        saveLastUsedProjectId('')
-        expect(loadLastUsedProjectId()).toBeNull()
+    it('save 空串视为清除（工作区被删/游离场景由调用方判定，此处不落脏值）', () => {
+        saveLastUsedWorkspaceId('p-1')
+        saveLastUsedWorkspaceId('')
+        expect(loadLastUsedWorkspaceId()).toBeNull()
     })
 })

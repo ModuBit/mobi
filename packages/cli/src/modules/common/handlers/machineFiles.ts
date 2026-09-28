@@ -28,7 +28,7 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
  *
  * - 同名覆盖 common handlers 在 machine 连接上的默认注册——registerHandler 是 Map.set，
  *   apiMachine 装配顺序里本模块后注册即生效。默认版 workingDirectory 固定为 runner 启动目录，
- *   无法按项目寻址；本版以显式 cwd 参数化（缺省回退 process.cwd()，对齐 uploads.ts 惯例）
+ *   无法按工作区寻址；本版以显式 cwd 参数化（缺省回退 process.cwd()，对齐 uploads.ts 惯例）
  * - 安全边界 = 读边界（ADR 0004：cwd 子树 ∪ home−黑名单 ∪ /tmp，与 session 通道同源
  *   validateReadPath）。曾有的扩展名白名单已废除（ADR 0006）：session 文件 RPC 的执行层
  *   无条件落在本通道，两链读边界必须完全同一函数同一参数形态，否则冷会话与活跃会话
@@ -37,7 +37,7 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
 
 interface MachineReadFileMetaRequest {
     path: string
-    /** 显式项目根目录；缺省回退 process.cwd() */
+    /** 显式工作区根目录；缺省回退 process.cwd() */
     cwd?: string
 }
 

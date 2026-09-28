@@ -25,7 +25,7 @@ import type { Session } from '@/core/data/api/types'
 import {
     GroupContainer, SectionTitleRow, SectionTitle, SectionChevron,
     SessionListWrapper, SessionListInner,
-} from './sidebarProjects.styles'
+} from './sidebarWorkspaces.styles'
 import { SessionRowsList } from './SessionRowsList'
 import type { SessionListSharedProps } from './SessionRowsList'
 import { useSessionRowNavigate } from './useSessionRowNavigate'
@@ -33,14 +33,14 @@ import { useSessionRowNavigate } from './useSessionRowNavigate'
 const { useToken } = antTheme
 
 interface RecentGroupProps extends SessionListSharedProps {
-    /** 归入项目（打开 AssignProjectModal） */
+    /** 归入工作区（打开 AssignWorkspaceModal） */
     onAssign: (session: Session) => void
-    /** 正在归入项目的会话 id（仅该行禁用入口，其余行不受牵连） */
+    /** 正在归入工作区的会话 id（仅该行禁用入口，其余行不受牵连） */
     assignPendingSessionId: string | undefined
 }
 
 /**
- * 「最近」分区：游离（未归入项目）会话，与「项目」分区平级。
+ * 「最近」分区：游离（未归入工作区）会话，与「工作区」分区平级。
  * 有会话默认展开、空分区默认收起；用户折叠后选择持久生效
  */
 export function RecentGroup({
@@ -58,12 +58,12 @@ export function RecentGroup({
         showMore, collapse,
     } = useRecentSessions(activeSessionId, true)
 
-    // dropdown 附加项：归入项目…
+    // dropdown 附加项：归入工作区…
     const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
         {
             key: 'assign',
             icon: <FolderAddOutlined />,
-            label: t('project.assignTo'),
+            label: t('workspace.assignTo'),
             disabled: session.id === assignPendingSessionId,
         },
     ]), [t, assignPendingSessionId])

@@ -136,9 +136,9 @@ packages/web/src/
 │   │       │   ├── useSessions.ts        会话列表
 │   │       │   ├── useSession.ts         单个会话
 │   │       │   ├── useMessages.ts        消息（无限滚动分页）
-│   │       │   ├── useProjects.ts        项目列表（?machineId 过滤，第二维各自缓存）
-│   │       │   ├── useProjectSessions.ts 项目内会话（分页 + 前端 slice 揭示）
-│   │       │   ├── useRecentSessions.ts  「最近」区会话（未归属项目）
+│   │       │   ├── useWorkspaces.ts        工作区列表（?machineId 过滤，第二维各自缓存）
+│   │       │   ├── useWorkspaceSessions.ts 工作区内会话（分页 + 前端 slice 揭示）
+│   │       │   ├── useRecentSessions.ts  「最近」区会话（未归属工作区）
 │   │       │   ├── usePagedSessionList.ts 会话分页列表通用逻辑（useSessions 补齐 + 可见 slice）
 │   │       │   ├── useMachines.ts        机器列表
 │   │       │   ├── useFileTree.ts        文件树
@@ -151,9 +151,9 @@ packages/web/src/
 │   │       ├── mutations/      TanStack Query 变更（7 个）
 │   │       │   ├── useSendMessage.ts     发送消息（运行中发送→排队）
 │   │       │   ├── useCancelQueuedMessage.ts 取消排队消息（乐观删除 + 两阶段）
-│   │       │   ├── useSessionActions.ts  会话操作（归档/中止/切换/恢复/重命名/归入项目）
-│   │       │   ├── useProjectMutations.ts 项目 CRUD（创建/改名/改 folders/删除）
-│   │       │   └── useSpawnSession.ts    启动新会话（可带 projectId）
+│   │       │   ├── useSessionActions.ts  会话操作（归档/中止/切换/恢复/重命名/归入工作区）
+│   │       │   ├── useWorkspaceMutations.ts 工作区 CRUD（创建/改名/改 folders/删除）
+│   │       │   └── useSpawnSession.ts    启动新会话（可带 workspaceId）
 │   │       ├── useMediaQuery.ts          响应式断点
 │   │       ├── useNotify.ts             通知 Hook
 │   │       └── useNotificationSetup.ts   通知权限 + Web Push 订阅
@@ -304,20 +304,20 @@ packages/web/src/
 │   │       └── lineNumberUtils.ts 行号工具
 │   ├── session/                会话管理
 │   │   ├── SessionDetail.tsx   会话详情
-│   │   ├── NewSessionForm.tsx  新建会话表单（project-first：先选项目再选目录）
+│   │   ├── NewSessionForm.tsx  新建会话表单（workspace-first：先选工作区再选目录）
 │   │   ├── SessionContextBar.tsx 会话上下文栏
 │   │   ├── useMachineDirectoryListing.ts 机器目录列表 Hook
 │   │   └── useRecentPaths.ts   最近路径 Hook
-│   ├── project/                项目管理
-│   │   ├── ProjectFormModal.tsx  项目创建/编辑表单（名称 + folders + primary）
-│   │   └── AssignProjectModal.tsx 会话归入项目弹窗
+│   ├── workspace/                工作区管理
+│   │   ├── WorkspaceFormModal.tsx  工作区创建/编辑表单（名称 + folders + primary）
+│   │   └── AssignWorkspaceModal.tsx 会话归入工作区弹窗
 │   ├── layout/                 布局
 │   │   ├── MainLayout.tsx      三栏布局（RailNav + Sidebar + Content）
 │   │   ├── RailNav.tsx         左侧图标导航栏
 │   │   ├── MobileMenu.tsx      移动端汉堡菜单
 │   │   ├── PageHeader.tsx      页面头部
-│   │   ├── SidebarProjects.tsx 侧边栏项目分组 + 「最近」区
-│   │   ├── MobileProjectList.tsx 移动端项目列表
+│   │   ├── SidebarWorkspaces.tsx 侧边栏工作区分组 + 「最近」区
+│   │   ├── MobileWorkspaceList.tsx 移动端工作区列表
 │   │   ├── navConfig.ts        导航配置
 │   │   ├── InstallButton.tsx   PWA 安装按钮
 │   │   ├── UpdatePrompt.tsx    更新提示
@@ -426,7 +426,7 @@ graph TD
 | 路径 | 页面 | 说明 |
 |------|------|------|
 | `/login` | LoginPage | 登录页（无 MainLayout） |
-| `/sessions` | SessionsPage | 会话列表，左侧项目分组 + 「最近」侧边栏，右侧列表 |
+| `/sessions` | SessionsPage | 会话列表，左侧工作区分组 + 「最近」侧边栏，右侧列表 |
 | `/sessions/$sessionId` | SessionDetailPage | 会话详情，支持聊天/文件/终端三个视图 |
 | `/sessions/new` | NewSessionPage | 新建会话向导 |
 | `/settings` | SettingsLayout（SettingsPage.tsx） | 设置 layout 路由：PC ≥992px 左侧 200px 分区导航，mobile 入口列表 + 子页返回 |
@@ -464,11 +464,11 @@ sequenceDiagram
         Provider->>Provider: messageWindowStore 乐观移除该 localId 及其后全部行<br/>+ composer 回填（deserializeSegments(blocks)，失败兜底 originalText）
         QC->>UI: 自动 re-render
     else session-added / session-removed
-        Provider->>QC: invalidateQueries(sessions) / projectViews 批失效
+        Provider->>QC: invalidateQueries(sessions) / workspaceViews 批失效
         QC->>UI: 刷新列表
-    else project-added / project-updated / project-removed
-        Provider->>QC: invalidateQueries(projects) / projectViews 批失效
-        QC->>UI: 刷新项目与列表
+    else workspace-added / workspace-updated / workspace-removed
+        Provider->>QC: invalidateQueries(workspaces) / workspaceViews 批失效
+        QC->>UI: 刷新工作区与列表
     end
 ```
 
@@ -478,9 +478,9 @@ sequenceDiagram
 - `message-received` 使用 `invalidateQueries` 触发 refetch，因为消息有分页和去重逻辑
 - `messages-submitted` 使用 `markMessagesSubmitted` 就地修补缓存（把命中 localId 的消息 `lifecycle` 翻为 `'pushed'`、`lifecycleAt`/`positionAt` 跳到 submittedAt），避免 refetch 抖动
 - `message-withdrawn`（撤回，#53）走乐观移除 + 回填，与 hub `softDeleteMessagesFrom` 无上界对齐；会话未打开时只落 store 移除、跳过回填（composer 不在场，不覆盖用户输入）
-- 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求；列表失效分 `sessions` / `projectViews`（projects / projectSessions / recentSessions 三个 key）等 scope 批量执行
-- `project-removed` 后名下会话已被 Hub 解绑进「最近」，与 `session-*` 共用 `projectViews` 批失效
-- **sessions 单一数据源**：`useProjectSessions` / `useRecentSessions` 的 queryFn 把分页会话 upsert 进全局 sessions 缓存（`mergeSessions`），列表只持 sessionIds——列表数据永远是全局缓存的视图而非独立副本
+- 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求；列表失效分 `sessions` / `workspaceViews`（workspaces / workspaceSessions / recentSessions 三个 key）等 scope 批量执行
+- `workspace-removed` 后名下会话已被 Hub 解绑进「最近」，与 `session-*` 共用 `workspaceViews` 批失效
+- **sessions 单一数据源**：`useWorkspaceSessions` / `useRecentSessions` 的 queryFn 把分页会话 upsert 进全局 sessions 缓存（`mergeSessions`），列表只持 sessionIds——列表数据永远是全局缓存的视图而非独立副本
 
 ### 消息渲染管线
 
@@ -612,7 +612,7 @@ flowchart LR
 API client 是一个工厂函数 `createMobiApi()`，返回类型化的 API 方法对象。
 所有请求自动附加 JWT token，401 响应触发登出跳转。
 
-会话恢复通过 `core/data/sessionResume.ts` 的聚焦 interface 进入：module 负责调用恢复端点、返回 Hub 确认的权威会话 ID，并统一失效来源/结果会话详情、全局会话列表和项目视图。`useSessionActions`、动作链接以及桌面/移动侧边栏只保留各自的路由、反馈和动作重放。
+会话恢复通过 `core/data/sessionResume.ts` 的聚焦 interface 进入：module 负责调用恢复端点、返回 Hub 确认的权威会话 ID，并统一失效来源/结果会话详情、全局会话列表和工作区视图。`useSessionActions`、动作链接以及桌面/移动侧边栏只保留各自的路由、反馈和动作重放。
 
 ## 状态管理策略
 
@@ -658,7 +658,7 @@ Web 端区分三种状态，使用不同的管理方案：
 ```
 
 - **RailNav**：固定宽度图标导航栏，支持桌面/移动自适应
-- **ContentSidebar**：可折叠的内容侧边栏，展示项目分组会话列表 + 「最近」区（SidebarProjects）
+- **ContentSidebar**：可折叠的内容侧边栏，展示工作区分组会话列表 + 「最近」区（SidebarWorkspaces）
 - **Content Area**：主内容区域，根据视图模式切换聊天/文件/终端
 
 移动端时 RailNav 替换为汉堡菜单（MobileMenu），ContentSidebar 变为全屏覆盖。

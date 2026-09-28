@@ -26,9 +26,9 @@ import {
     getSessions,
     getRecentSessions,
     getSessionsByNamespace,
-    getSessionsByProject as getSessionsByProjectFromDb,
+    getSessionsByWorkspace as getSessionsByWorkspaceFromDb,
     getUnboundSessions as getUnboundSessionsFromDb,
-    setSessionProject as setSessionProjectFromDb,
+    setSessionWorkspace as setSessionWorkspaceFromDb,
     getPinnedSessions as getPinnedSessionsFromDb,
     setSessionPinned as setSessionPinnedFromDb,
     setRuntimeState,
@@ -37,8 +37,8 @@ import {
     mergeRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata,
-    type ProjectSessionsResult,
-    type SetSessionProjectResult,
+    type WorkspaceSessionsResult,
+    type SetSessionWorkspaceResult,
     type SetSessionPinnedResult
 } from './sessions'
 
@@ -55,9 +55,9 @@ export class SessionStore {
         agentState: unknown,
         namespace: string,
         runtimeState?: unknown,
-        projectId?: string | null
+        workspaceId?: string | null
     ): StoredSession {
-        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, runtimeState, projectId)
+        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, runtimeState, workspaceId)
     }
 
     updateSessionMetadata(
@@ -134,27 +134,27 @@ export class SessionStore {
         return deleteSession(this.db, id, namespace)
     }
 
-    // ============ 项目归属相关 ============
+    // ============ 工作区归属相关 ============
 
-    getSessionsByProject(
+    getSessionsByWorkspace(
         namespace: string,
-        projectId: string,
+        workspaceId: string,
         cursor: number | null,
         limit?: number
-    ): ProjectSessionsResult {
-        return getSessionsByProjectFromDb(this.db, namespace, projectId, cursor, limit)
+    ): WorkspaceSessionsResult {
+        return getSessionsByWorkspaceFromDb(this.db, namespace, workspaceId, cursor, limit)
     }
 
     getUnboundSessions(
         namespace: string,
         cursor: number | null,
         limit?: number
-    ): ProjectSessionsResult {
+    ): WorkspaceSessionsResult {
         return getUnboundSessionsFromDb(this.db, namespace, cursor, limit)
     }
 
-    setSessionProject(id: string, projectId: string | null, namespace: string): SetSessionProjectResult {
-        return setSessionProjectFromDb(this.db, id, projectId, namespace)
+    setSessionWorkspace(id: string, workspaceId: string | null, namespace: string): SetSessionWorkspaceResult {
+        return setSessionWorkspaceFromDb(this.db, id, workspaceId, namespace)
     }
 
     // ============ 置顶相关 ============
@@ -163,7 +163,7 @@ export class SessionStore {
         namespace: string,
         cursor: number | null,
         limit?: number
-    ): ProjectSessionsResult {
+    ): WorkspaceSessionsResult {
         return getPinnedSessionsFromDb(this.db, namespace, cursor, limit)
     }
 

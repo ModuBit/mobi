@@ -351,7 +351,7 @@ export type { GitReviewFileDiff }
  * memoized 工厂：reader 按 cwd 复用，私有 repoRoot 缓存才真正跨请求生效
  * （每次 RPC new 实例的话，首个 rev-parse 之后缓存即随实例丢弃，每请求都要重跑）。
  * 缓存值只是 cwd 解析出的仓库根路径；仓库消失时 git 调用自然失败 → gitAtRoot null
- * → 各档诚实置空，无需失效机制。规模上界 = 出现过的项目目录数，无需淘汰。
+ * → 各档诚实置空，无需失效机制。规模上界 = 出现过的工作区目录数，无需淘汰。
  */
 const readers = new Map<string, GitReviewReader>()
 

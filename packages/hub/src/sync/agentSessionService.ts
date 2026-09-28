@@ -51,8 +51,8 @@ import { randomUUID } from 'node:crypto'
 import { hubLogger } from '../logger'
 import type { Machine } from './machineCache'
 
-/** 项目归属校验结论（与 Web 侧 spawn 路由同一规则的取值） */
-export type ProjectAssignability = 'ok' | 'not_found' | 'machine_mismatch'
+/** 工作区归属校验结论（与 Web 侧 spawn 路由同一规则的取值） */
+export type WorkspaceAssignability = 'ok' | 'not_found' | 'machine_mismatch'
 
 /** 建会话入参（sid 是寻址信息，不属于业务规则，服务不收） */
 export type AgentCreateSessionInput = Omit<AgentCreateSessionRequest, 'sid'>
@@ -103,8 +103,8 @@ export interface AgentSessionServiceDeps {
      * 与**每个目标**的活性——两者都是「按 id 在 namespace 内解析一个会话」，一个依赖够用。
      */
     getSessionByNamespace: (sessionId: string, namespace: string) => Session | undefined
-    /** 项目归属校验：与 Web 侧 spawn 路由共用同一实现，两处规则不能各写一份 */
-    checkProjectAssignable: (projectId: string, namespace: string, machineId: string) => ProjectAssignability
+    /** 工作区归属校验：与 Web 侧 spawn 路由共用同一实现，两处规则不能各写一份 */
+    checkWorkspaceAssignable: (workspaceId: string, namespace: string, machineId: string) => WorkspaceAssignability
     /**
      * 起会话进程（既有 spawn 链路：Hub → runner RPC → spawn CLI → 等会话 webhook）。
      *
@@ -116,7 +116,7 @@ export interface AgentSessionServiceDeps {
         model?: string
         effort?: EffortLevel
         permissionMode?: PermissionMode
-        projectId?: string
+        workspaceId?: string
     }) => Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string; failure: RpcFailureKind }>
     /**
      * 把一条跨会话消息推进目标 CLI 的 input stream（RPC 投递，**不经投递队列**）。
@@ -159,7 +159,7 @@ export interface AgentSessionQuery {
     keyword?: string
     status?: AgentSessionStatus
     limit?: number
-    projectId?: string
+    workspaceId?: string
 }
 
 /** 机器 → agent 视角摘要。展示名取机器自报的 displayName，缺省回退 host。 */
@@ -188,13 +188,13 @@ export class AgentSessionService {
     /**
      * 列出可派活的会话（也是「有没有这个会话」的查询入口）。
      *
-     * 顺序：过滤三档 → 项目 → 关键词 → 排序 → 截断 → 映射。先过滤后排序，
+     * 顺序：过滤三档 → 工作区 → 关键词 → 排序 → 截断 → 映射。先过滤后排序，
      * 避免对注定被丢掉的行做比较。
      */
     listSessions(namespace: string, query: AgentSessionQuery = {}): AgentSessionSummary[] {
         return this.deps.getSessionsByNamespace(namespace)
             .filter((session) => matchesStatus(session, query.status ?? 'ACTIVE'))
-            .filter((session) => query.projectId === undefined || session.projectId === query.projectId)
+            .filter((session) => query.workspaceId === undefined || session.workspaceId === query.workspaceId)
             .filter((session) => matchesKeyword(session, query.keyword))
             .sort(compareForAgent)
             .slice(0, resolveLimit(query.limit))
@@ -204,7 +204,7 @@ export class AgentSessionService {
     /**
      * 在某台机器上起一个新会话进程。
      *
-     * 三道前置闸按「便宜且确定」到「昂贵」排：机器在线 → 项目归属 → 起进程。
+     * 三道前置闸按「便宜且确定」到「昂贵」排：机器在线 → 工作区归属 → 起进程。
      * 前两道不花钱就能给出确定的失败原因，别让它们藏在 RPC 报错里。
      *
      * 成功即代表**会话已经存在**：既有 spawn 链路会等 runner 的会话 webhook
@@ -224,16 +224,16 @@ export class AgentSessionService {
             }
         }
 
-        if (input.projectId !== undefined) {
-            const assignable = this.deps.checkProjectAssignable(input.projectId, namespace, machine.id)
+        if (input.workspaceId !== undefined) {
+            const assignable = this.deps.checkWorkspaceAssignable(input.workspaceId, namespace, machine.id)
             if (assignable === 'not_found') {
-                return { ok: false, error: `No project with id "${input.projectId}".` }
+                return { ok: false, error: `No workspace with id "${input.workspaceId}".` }
             }
             if (assignable === 'machine_mismatch') {
                 return {
                     ok: false,
                     error:
-                        `Project "${input.projectId}" belongs to a different machine, ` +
+                        `Workspace "${input.workspaceId}" belongs to a different machine, ` +
                         `so a session started on ${machine.id} cannot join it.`,
                 }
             }
@@ -243,7 +243,7 @@ export class AgentSessionService {
             model: input.model,
             effort: input.effort,
             permissionMode: input.permissionMode,
-            projectId: input.projectId,
+            workspaceId: input.workspaceId,
         })
 
         if (result.type === 'error') {
@@ -687,7 +687,7 @@ function resolveLimit(limit: number | undefined): number {
 function toAgentSessionSummary(session: Session): AgentSessionSummary {
     const summary: AgentSessionSummary = {
         sessionId: session.id,
-        projectId: session.projectId ?? null,
+        workspaceId: session.workspaceId ?? null,
         active: session.active,
         running: session.running,
         updatedAt: session.updatedAt,

@@ -38,7 +38,7 @@ interface LoopOptions {
     outputStyle?: string
     startingMode?: 'local' | 'remote'
     startedBy?: 'runner' | 'terminal'
-    /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
+    /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
     onModeChange: (mode: 'local' | 'remote') => void
     mcpServers: Record<string, McpServerConfig>

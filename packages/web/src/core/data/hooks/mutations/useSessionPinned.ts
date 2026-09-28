@@ -17,14 +17,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { InfiniteData, QueryKey } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import type { ProjectSessionsPage, Session } from '@/core/data/api/types'
+import type { WorkspaceSessionsPage, Session } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateSessionViews } from '@/core/lib/invalidateViews'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
 
-type GroupPages = InfiniteData<ProjectSessionsPage> | undefined
+type GroupPages = InfiniteData<WorkspaceSessionsPage> | undefined
 
-/** 取某根前缀下已缓存的全部 [key, data]（用于批量调整项目分组） */
+/** 取某根前缀下已缓存的全部 [key, data]（用于批量调整工作区分组） */
 function getGroupEntries(
     queryClient: ReturnType<typeof useQueryClient>,
     root: QueryKey,
@@ -39,10 +39,10 @@ function getGroupEntries(
  * 成功后本地缓存立即生效——不再等 invalidate→refetch 的整条收敛链路
  * （大库多会话时要 2-3s，用户感知「点了没反应/慢一拍」）：
  * - ['sessions'] 中该会话 pinned 翻转（按钮态立即正确）
- * - 分组成员同步搬移：pin → 进 ['pinnedSessions']、从「最近」/项目组移除；unpin 反向
- *   （归属未变：projectId 有值回项目组，否则回「最近」；缓存不含该会话、归属未知时
+ * - 分组成员同步搬移：pin → 进 ['pinnedSessions']、从「最近」/工作区组移除；unpin 反向
+ *   （归属未变：workspaceId 有值回工作区组，否则回「最近」；缓存不含该会话、归属未知时
  *   不本地插入，插错分组比晚到更糟，交 invalidate 收敛）
- * 随后 invalidateSessionViews 失效（会话本体/全局/项目维度视图）做真值补偿；
+ * 随后 invalidateSessionViews 失效（会话本体/全局/工作区维度视图）做真值补偿；
  * SSE 事件（现有逻辑不变）负责同步其他端。
  * 失败不做任何本地改动（错误提示由调用方处理）。
  */
@@ -60,8 +60,8 @@ export function useSetSessionPinned() {
             const sessions = queryClient.getQueryData<Session[]>(queryKeys.sessions)
             const session = sessions?.find(s => s.id === sessionId)
             const restoreKey = session
-                ? (session.projectId
-                    ? queryKeys.projectSessions(session.projectId)
+                ? (session.workspaceId
+                    ? queryKeys.workspaceSessions(session.workspaceId)
                     : queryKeys.recentSessions)
                 : null
 
@@ -78,22 +78,22 @@ export function useSetSessionPinned() {
                 toggleIdInPages(old, sessionId, pinned))
 
             if (pinned) {
-                // 离开原分组：从「最近」与所有项目组移除（幂等，不存在的移除是 no-op；
+                // 离开原分组：从「最近」与所有工作区组移除（幂等，不存在的移除是 no-op；
                 // 归属未知时全扫是唯一安全做法）
                 queryClient.setQueryData<GroupPages>(queryKeys.recentSessions, old =>
                     toggleIdInPages(old, sessionId, false))
-                for (const [key] of getGroupEntries(queryClient, queryKeys.projectSessionsRoot)) {
+                for (const [key] of getGroupEntries(queryClient, queryKeys.workspaceSessionsRoot)) {
                     queryClient.setQueryData<GroupPages>(key, old =>
                         toggleIdInPages(old, sessionId, false))
                 }
             } else if (restoreKey) {
-                // 回原分组。缓存查不到归属时不插——插错分组（项目会话闪进「最近」）
+                // 回原分组。缓存查不到归属时不插——插错分组（工作区会话闪进「最近」）
                 // 比晚到更糟，交给下方 invalidate 收敛
                 queryClient.setQueryData<GroupPages>(restoreKey, old =>
                     toggleIdInPages(old, sessionId, true))
             }
 
-            // 真值补偿：会话本体/全局/项目维度视图统一收敛（SSE 侧逻辑不变，天然去重）
+            // 真值补偿：会话本体/全局/工作区维度视图统一收敛（SSE 侧逻辑不变，天然去重）
             void invalidateSessionViews(queryClient, [sessionId])
         },
     })

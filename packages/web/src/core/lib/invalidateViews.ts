@@ -18,22 +18,22 @@ import type { QueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 
 /**
- * 统一失效「项目维度视图」缓存：
- * - ['projects']：项目列表本身
+ * 统一失效「工作区维度视图」缓存：
+ * - ['workspaces']：工作区列表本身
  * - ['recentSessions']：「最近」分组
  * - ['pinnedSessions']：「置顶」分组
- * - ['projectSessions', *]：所有项目的会话分组（根前缀匹配）
+ * - ['workspaceSessions', *]：所有工作区的会话分组（根前缀匹配）
  *
- * 会话增删/归属变更/项目删除都会改变各分组视图的 sessionIds 成员，
+ * 会话增删/归属变更/工作区删除都会改变各分组视图的 sessionIds 成员，
  * 三键必须连带刷新，否则新会话不出现 / 删除会话残留。
- * 收口此前的散布硬编码（SSEProvider 批处理、项目 mutations、侧边栏/移动端列表）。
+ * 收口此前的散布硬编码（SSEProvider 批处理、工作区 mutations、侧边栏/移动端列表）。
  */
-export async function invalidateProjectViews(queryClient: QueryClient): Promise<void> {
+export async function invalidateWorkspaceViews(queryClient: QueryClient): Promise<void> {
     await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspaces }),
         queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
         queryClient.invalidateQueries({ queryKey: queryKeys.pinnedSessions }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectSessionsRoot }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspaceSessionsRoot }),
     ])
 }
 
@@ -41,7 +41,7 @@ export async function invalidateProjectViews(queryClient: QueryClient): Promise<
  * 统一失效「会话身份变更」波及的全部缓存：
  * - ['session', id]：各会话详情（身份变更可能产生新旧两个 ID，全部传入）
  * - ['sessions']：全局会话列表
- * - 项目维度视图（委托 invalidateProjectViews）
+ * - 工作区维度视图（委托 invalidateWorkspaceViews）
  *
  * 恢复 / 重命名 / 归属变更 / 置顶回补等改变会话身份或成员的操作共用此收口，
  * 失效规则只维护这一处。
@@ -54,6 +54,6 @@ export async function invalidateSessionViews(
         ...Array.from(new Set(sessionIds), sessionId =>
             queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })),
         queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-        invalidateProjectViews(queryClient),
+        invalidateWorkspaceViews(queryClient),
     ])
 }

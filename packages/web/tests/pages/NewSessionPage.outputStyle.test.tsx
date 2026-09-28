@@ -23,7 +23,7 @@
  * - 显式选中 Default 后提交 → spawnSession 收到 outputStyle: 'default'
  * - 不改默认直接提交 → spawnSession 入参不含 outputStyle 字段
  *
- * 环境注入：通过 localStorage「最近使用项目」恢复路径预选项目（绕开
+ * 环境注入：通过 localStorage「最近使用工作区」恢复路径预选工作区（绕开
  * EnvironmentBar 交互），让 gate（机器 + 目录）直接通过以便提交。
  *
  * Select 交互说明（antd v6）：选中值在 `.ant-select-content`，展开用
@@ -37,7 +37,7 @@ import { render, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { ConfigProvider, App as AntdApp } from 'antd'
 import '@testing-library/jest-dom/vitest'
-import type { Project } from '@mobi/shared'
+import type { Workspace } from '@mobi/shared'
 import { NewSessionPage } from '@/pages/NewSessionPage'
 
 // —— mock spawn mutation：模块级稳定引用（mock 对象跨渲染保持同一身份，避免 effect 无限循环）——
@@ -54,11 +54,11 @@ vi.mock('@/core/data/hooks/mutations/useSpawnSession', () => ({
 //    在 vitest 下无 JSON import attribute 而炸），本规格与其无关，桩掉 ——
 vi.mock('@/components/sketchpad/SketchDrawer', () => ({ SketchDrawer: () => null }))
 
-// —— mock 数据 hooks：单机器单项目，项目经 localStorage 恢复路径自动选中 ——
+// —— mock 数据 hooks：单机器单工作区，工作区经 localStorage 恢复路径自动选中 ——
 vi.mock('@/core/data/hooks/queries/useMachines', () => ({
     useMachines: () => ({ machines: [], isLoading: false }),
 }))
-const TEST_PROJECT: Project = {
+const TEST_WORKSPACE: Workspace = {
     id: 'p1',
     namespace: 'personal',
     machineId: 'm1',
@@ -68,8 +68,8 @@ const TEST_PROJECT: Project = {
     updatedAt: 0,
     seq: 0,
 }
-vi.mock('@/core/data/hooks/queries/useProjects', () => ({
-    useProjects: () => ({ data: [TEST_PROJECT] }),
+vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
+    useWorkspaces: () => ({ data: [TEST_WORKSPACE] }),
 }))
 
 // —— mock 目录能力 / 斜杠命令：稳定 no-op（页面渲染依赖，不触发真实请求）——
@@ -117,7 +117,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 vi.mock('@/components/layout/SidebarToggle', () => ({ SidebarToggle: () => null }))
 vi.mock('@/components/layout/MobileMenu', () => ({ MobileMenuButton: () => null }))
 vi.mock('@/components/layout/Logo', () => ({ Logo: () => null }))
-vi.mock('@/components/project/ProjectFormModal', () => ({ ProjectFormModal: () => null }))
+vi.mock('@/components/workspace/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
 
 // jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
 class ResizeObserverStub {
@@ -148,8 +148,8 @@ afterAll(() => {
 beforeEach(() => {
     spawnSpy.mockReset()
     spawnSpy.mockResolvedValue({ type: 'success', sessionId: 'sess-1' })
-    // 预置「最近使用项目」：进入页面即自动回选，gate 直接通过
-    localStorage.setItem('mobi:newSession:lastUsedProject', 'p1')
+    // 预置「最近使用工作区」：进入页面即自动回选，gate 直接通过
+    localStorage.setItem('mobi:newSession:lastUsedWorkspace', 'p1')
 })
 afterEach(() => {
     cleanup()
@@ -167,7 +167,7 @@ function renderPage() {
 }
 
 /** 定位 output style 选择器根节点：按选中值文本匹配（跟随 CC 设置 / Default / Explanatory 等，
- *  与其它 Select 区分：模型=Auto、项目名、权限模式为 i18n key）。identity i18n mock 下
+ *  与其它 Select 区分：模型=Auto、工作区名、权限模式为 i18n key）。identity i18n mock 下
  *  「跟随 CC 设置」项 label 即 i18n key 原文 */
 function outputStyleSelect(selectedLabel = 'composer.outputStyleFollowSetting'): HTMLElement {
     const select = Array.from(document.querySelectorAll('.ant-select'))

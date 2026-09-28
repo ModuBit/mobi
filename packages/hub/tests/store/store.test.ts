@@ -62,20 +62,20 @@ describe('Store', () => {
         // 首次创建，无 gitBranch
         const session1 = store.sessions.getOrCreateSession(
             'resume-tag',
-            { name: 'resume-test', path: '/home/user/project' },
+            { name: 'resume-test', path: '/home/user/workspace' },
             null,
             'default'
         )
         expect(session1.metadata).toMatchObject({
             name: 'resume-test',
-            path: '/home/user/project'
+            path: '/home/user/workspace'
         })
         expect(session1.metadata).not.toHaveProperty('gitBranch')
 
         // 恢复（相同 tag），携带新字段 gitBranch
         const session2 = store.sessions.getOrCreateSession(
             'resume-tag',
-            { name: 'resume-test', path: '/home/user/project', gitBranch: 'main' },
+            { name: 'resume-test', path: '/home/user/workspace', gitBranch: 'main' },
             null,
             'default'
         )
@@ -85,7 +85,7 @@ describe('Store', () => {
         // 新字段被合并，旧字段保留
         expect(session2.metadata).toMatchObject({
             name: 'resume-test',
-            path: '/home/user/project',
+            path: '/home/user/workspace',
             gitBranch: 'main'
         })
         // metadata_version 递增
@@ -95,7 +95,7 @@ describe('Store', () => {
     test('metadata 无变化时跳过写入', () => {
         const session1 = store.sessions.getOrCreateSession(
             'skip-tag',
-            { name: 'skip-test', path: '/home/user/project' },
+            { name: 'skip-test', path: '/home/user/workspace' },
             null,
             'default'
         )
@@ -103,7 +103,7 @@ describe('Store', () => {
         // 恢复时携带完全相同的 metadata
         const session2 = store.sessions.getOrCreateSession(
             'skip-tag',
-            { name: 'skip-test', path: '/home/user/project' },
+            { name: 'skip-test', path: '/home/user/workspace' },
             null,
             'default'
         )

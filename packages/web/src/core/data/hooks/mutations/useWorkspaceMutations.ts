@@ -17,89 +17,89 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
-import { invalidateProjectViews } from '@/core/lib/invalidateViews'
-import type { Project, ProjectFolder } from '@/core/data/api/types'
+import { invalidateWorkspaceViews } from '@/core/lib/invalidateViews'
+import type { Workspace, WorkspaceFolder } from '@/core/data/api/types'
 
-/** 创建项目入参（folders 合法性由 hub validateProjectFolders 把关） */
-export interface CreateProjectInput {
+/** 创建工作区入参（folders 合法性由 hub validateWorkspaceFolders 把关） */
+export interface CreateWorkspaceInput {
     name: string
     machineId: string
-    folders: ProjectFolder[]
+    folders: WorkspaceFolder[]
 }
 
-/** 更新项目入参（name/folders 均可选，machineId 不可改） */
-export interface UpdateProjectInput {
+/** 更新工作区入参（name/folders 均可选，machineId 不可改） */
+export interface UpdateWorkspaceInput {
     name?: string
-    folders?: ProjectFolder[]
+    folders?: WorkspaceFolder[]
 }
 
 /**
- * 会话归属变更 / 项目删除后需要刷新的缓存集合：
- * - ['projects']：项目列表本身
+ * 会话归属变更 / 工作区删除后需要刷新的缓存集合：
+ * - ['workspaces']：工作区列表本身
  * - ['sessions']：全局会话缓存（Session 已 upsert，归属变化需重拉）
- * - ['recentSessions'] / ['projectSessions']：两个分组视图（invalidateProjectViews 收口）
+ * - ['recentSessions'] / ['workspaceSessions']：两个分组视图（invalidateWorkspaceViews 收口）
  */
-function useInvalidateProjectCaches() {
+function useInvalidateWorkspaceCaches() {
     const queryClient = useQueryClient()
     return async (opts: { sessionScoped?: boolean } = {}) => {
         if (opts.sessionScoped) {
             await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
-            await invalidateProjectViews(queryClient)
+            await invalidateWorkspaceViews(queryClient)
         } else {
-            await queryClient.invalidateQueries({ queryKey: queryKeys.projects })
+            await queryClient.invalidateQueries({ queryKey: queryKeys.workspaces })
         }
     }
 }
 
-/** 创建项目 */
-export function useCreateProject() {
+/** 创建工作区 */
+export function useCreateWorkspace() {
     const api = useMobiApi()
-    const invalidate = useInvalidateProjectCaches()
+    const invalidate = useInvalidateWorkspaceCaches()
 
     return useMutation({
-        mutationFn: async (input: CreateProjectInput) => {
-            const res = await api.projects.create(input)
-            return res.data.project as Project
+        mutationFn: async (input: CreateWorkspaceInput) => {
+            const res = await api.workspaces.create(input)
+            return res.data.workspace as Workspace
         },
         onSuccess: () => void invalidate(),
     })
 }
 
-/** 更新项目（改名 / 改 folders） */
-export function useUpdateProject() {
+/** 更新工作区（改名 / 改 folders） */
+export function useUpdateWorkspace() {
     const api = useMobiApi()
-    const invalidate = useInvalidateProjectCaches()
+    const invalidate = useInvalidateWorkspaceCaches()
 
     return useMutation({
-        mutationFn: async ({ projectId, patch }: { projectId: string; patch: UpdateProjectInput }) => {
-            const res = await api.projects.update(projectId, patch)
-            return res.data.project as Project
+        mutationFn: async ({ workspaceId, patch }: { workspaceId: string; patch: UpdateWorkspaceInput }) => {
+            const res = await api.workspaces.update(workspaceId, patch)
+            return res.data.workspace as Workspace
         },
         onSuccess: () => void invalidate(),
     })
 }
 
-/** 删除项目（hub 侧名下会话解绑进「最近」，会话维度缓存也要刷新） */
-export function useDeleteProject() {
+/** 删除工作区（hub 侧名下会话解绑进「最近」，会话维度缓存也要刷新） */
+export function useDeleteWorkspace() {
     const api = useMobiApi()
-    const invalidate = useInvalidateProjectCaches()
+    const invalidate = useInvalidateWorkspaceCaches()
 
     return useMutation({
-        mutationFn: async (projectId: string) => {
-            await api.projects.remove(projectId)
+        mutationFn: async (workspaceId: string) => {
+            await api.workspaces.remove(workspaceId)
         },
         onSuccess: () => void invalidate({ sessionScoped: true }),
     })
 }
 
-/** 会话归入项目 / 移出项目（projectId=null 移出） */
-export function useAssignSessionProject() {
+/** 会话归入工作区 / 移出工作区（workspaceId=null 移出） */
+export function useAssignSessionWorkspace() {
     const api = useMobiApi()
-    const invalidate = useInvalidateProjectCaches()
+    const invalidate = useInvalidateWorkspaceCaches()
 
     return useMutation({
-        mutationFn: async ({ sessionId, projectId }: { sessionId: string; projectId: string | null }) => {
-            await api.projects.assignSession(sessionId, projectId)
+        mutationFn: async ({ sessionId, workspaceId }: { sessionId: string; workspaceId: string | null }) => {
+            await api.workspaces.assignSession(sessionId, workspaceId)
         },
         onSuccess: () => void invalidate({ sessionScoped: true }),
     })

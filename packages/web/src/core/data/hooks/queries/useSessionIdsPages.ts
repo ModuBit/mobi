@@ -17,20 +17,20 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 import { mergeSessions } from '@/core/data/cache/sessionCache'
-import type { Session, ProjectSessionsPage, ProjectSessionsResponse } from '@/core/data/api/types'
+import type { Session, WorkspaceSessionsPage, WorkspaceSessionsResponse } from '@/core/data/api/types'
 
 /** useSessionIdsPages 入参：调用方只贡献查询键与单页拉取逻辑 */
 export interface SessionIdsPagesInput {
     /** 无限查询键（queryKeys 工厂产物） */
     queryKey: readonly unknown[]
     /** 拉取一页（cursor=null 表示首页；返回完整 Session 分页载荷） */
-    fetchPage: (cursor: number | null) => Promise<ProjectSessionsResponse>
-    /** 是否启用（如 projectId 就绪才拉取） */
+    fetchPage: (cursor: number | null) => Promise<WorkspaceSessionsResponse>
+    /** 是否启用（如 workspaceId 就绪才拉取） */
     enabled?: boolean
 }
 
 /**
- * 无限分页查询骨架（useProjectSessions / useRecentSessions 复用）
+ * 无限分页查询骨架（useWorkspaceSessions / useRecentSessions 复用）
  *
  * 收口与具体分组无关的脚手架：
  * - useInfiniteQuery 装配（initialPageParam / getNextPageParam 的 cursor 语义）
@@ -42,7 +42,7 @@ export interface SessionIdsPagesInput {
 export function useSessionIdsPages(input: SessionIdsPagesInput) {
     const queryClient = useQueryClient()
 
-    return useInfiniteQuery<ProjectSessionsPage>({
+    return useInfiniteQuery<WorkspaceSessionsPage>({
         queryKey: input.queryKey,
         queryFn: async ({ pageParam }) => {
             // initialPageParam 为 undefined；归一为 null 交给 fetchPage（调用方自行转 API 的 undefined 语义）

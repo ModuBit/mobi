@@ -4,7 +4,7 @@
 - [`packages/hub/src/web/routes/sessions.ts`](/packages/hub/src/web/routes/sessions.ts)
 - [`packages/hub/src/web/routes/serveFileContent.ts`](/packages/hub/src/web/routes/serveFileContent.ts)（read-file / serve-file 共享的文件服务逻辑）
 
-会话相关的 HTTP API，包括会话管理。项目实体与按项目查询会话见 [Projects API](./projects.md)。
+会话相关的 HTTP API，包括会话管理。工作区实体与按工作区查询会话见 [Workspaces API](./workspaces.md)。
 
 ## 路由总览
 
@@ -22,7 +22,7 @@
 | POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 |
 | POST | `/sessions/:id/permission-mode` | 设置权限模式 | 会话活跃 |
 | POST | `/sessions/:id/model` | 设置模型 | 会话活跃 |
-| PATCH | `/sessions/:id` | 重命名会话 / 归入项目 | - |
+| PATCH | `/sessions/:id` | 重命名会话 / 归入工作区 | - |
 | DELETE | `/sessions/:id` | 删除会话 | 会话非活跃 |
 | GET | `/sessions/:id/slash-commands` | 获取斜杠命令 | - |
 | GET | `/sessions/:id/skills` | 获取技能列表 | - |
@@ -34,7 +34,7 @@
 [
     {
         "id": "sess-abc123",
-        "namespace": "/Users/dev/project",
+        "namespace": "/Users/dev/workspace",
         "seq": 5,
         "active": true,
         "running": true,
@@ -42,7 +42,7 @@
         "mode": "local",
         "metadata": {
             "sessionName": "feature-auth",
-            "workingDir": "/Users/dev/project"
+            "workingDir": "/Users/dev/workspace"
         },
         "permissionMode": "default",
         "createdAt": 1712000000000,
@@ -57,7 +57,7 @@
 // Response
 {
     "id": "sess-abc123",
-    "namespace": "/Users/dev/project",
+    "namespace": "/Users/dev/workspace",
     "seq": 5,
     "active": true,
     "activeAt": 1712000060000,
@@ -94,25 +94,25 @@
 { "ok": true }
 ```
 
-### PATCH /sessions/:id — 重命名 / 归入项目
+### PATCH /sessions/:id — 重命名 / 归入工作区
 
-重命名（`name`）与归入项目（`projectId: string | null`，null = 移回「最近」）共用一个端点，请求体至少携带一项。
+重命名（`name`）与归入工作区（`workspaceId: string | null`，null = 移回「最近」）共用一个端点，请求体至少携带一项。
 
 ```json
 // Request（两个字段均可选，至少一项）
-{ "name": "新名称", "projectId": "proj-uuid" }
+{ "name": "新名称", "workspaceId": "proj-uuid" }
 
 // Response
 { "ok": true }
 
 // Error
-{ "error": "Invalid body: name or projectId is required" }   // 400
-{ "error": "Project not found" }                             // 404（projectId 不存在或不属于当前 namespace）
-{ "error": "Project belongs to a different machine" }        // 400（会话与项目不同机器；会话机器未知的老数据放行）
+{ "error": "Invalid body: name or workspaceId is required" }   // 400
+{ "error": "Workspace not found" }                             // 404（workspaceId 不存在或不属于当前 namespace）
+{ "error": "Workspace belongs to a different machine" }        // 400（会话与工作区不同机器；会话机器未知的老数据放行）
 { "error": "..." }                                           // 409（rename 版本冲突）
 ```
 
-注意端点**非原子**：`projectId` 先应用，`rename` 失败（如版本冲突 409）时归属已变更，不回滚。
+注意端点**非原子**：`workspaceId` 先应用，`rename` 失败（如版本冲突 409）时归属已变更，不回滚。
 
 ### GET /sessions/:id/slash-commands — 获取斜杠命令
 

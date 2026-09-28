@@ -61,24 +61,24 @@ POST /cli/sessions
     agentState?: unknown,   // Agent 状态（可选）
     mode?: 'local' | 'remote',
     runtimeState?: unknown,
-    projectId?: string      // 归属项目（Web spawn 透传；缺省 = 游离）
+    workspaceId?: string      // 归属工作区（Web spawn 透传；缺省 = 游离）
 }
 ```
 
 **响应**：
 
 ```json
-{ "session": { ... }, "project": { ... } }
+{ "session": { ... }, "workspace": { ... } }
 ```
 
-`project` 为会话归属的项目实体（未归属时为 `null`），CLI 据此校验归属并把 folders 冻结进 `metadata.additionalDirectories`。
+`workspace` 为会话归属的工作区实体（未归属时为 `null`），CLI 据此校验归属并把 folders 冻结进 `metadata.additionalDirectories`。
 
 **错误**：
 
 | 状态码 | 说明 |
 |--------|------|
-| 404 | Project not found（projectId 不存在或不属于当前 namespace） |
-| 403 | Project belongs to a different machine（项目 folders 是机器本地路径；metadata.machineId 缺失的老数据放行） |
+| 404 | Workspace not found（workspaceId 不存在或不属于当前 namespace） |
+| 403 | Workspace belongs to a different machine（工作区 folders 是机器本地路径；metadata.machineId 缺失的老数据放行） |
 
 调用 `SyncEngine.getOrCreateSession()`，根据 tag 查找或创建会话。
 

@@ -21,7 +21,7 @@ import { INACTIVE_SESSION_DIM } from './inactiveDimming'
 /** antd 主题 token 类型（与各组件 useToken 返回一致） */
 type SidebarToken = ReturnType<typeof antTheme.useToken>['token']
 
-// ========== 桌面侧边栏项目列表样式组件 ==========
+// ========== 桌面侧边栏工作区列表样式组件 ==========
 
 // 整体容器
 export const Container = styled.div`
@@ -33,7 +33,7 @@ export const Container = styled.div`
     min-height: 0;
 `
 
-// 分区标题行（可点击折叠分区 + hover 显示的「新建项目」等按钮）
+// 分区标题行（可点击折叠分区 + hover 显示的「新建工作区」等按钮）
 export const SectionTitleRow = styled.div`
     display: flex;
     align-items: center;
@@ -68,7 +68,7 @@ export const SectionTitle = styled.div<{ $token: SidebarToken }>`
     color: ${props => props.$token.colorTextQuaternary};
 `
 
-// 分区标题上的小操作按钮（新建项目 / 新建游离会话）
+// 分区标题上的小操作按钮（新建工作区 / 新建游离会话）
 export const SectionActionButton = styled.button<{ $token: SidebarToken }>`
     display: inline-flex;
     align-items: center;
@@ -90,12 +90,12 @@ export const SectionActionButton = styled.button<{ $token: SidebarToken }>`
     }
 `
 
-// 项目分组容器
+// 工作区分组容器
 export const GroupContainer = styled.div`
     margin-bottom: 4px;
 `
 
-// 项目头：文件夹图标 + 名称
+// 工作区头：文件夹图标 + 名称
 export const GroupHeader = styled.div<{ $token: SidebarToken }>`
     display: flex;
     align-items: center;
@@ -154,7 +154,7 @@ export const FolderIcon = styled.span<{ $token: SidebarToken }>`
     color: ${props => props.$token.colorTextTertiary};
 `
 
-// 项目名称
+// 工作区名称
 export const GroupName = styled.span`
     flex: 1;
     overflow: hidden;

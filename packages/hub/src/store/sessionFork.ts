@@ -250,7 +250,7 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
         // 1. 新建 fork 会话行。tag 必须非空：resume spawn 后 CLI bootstrapSession 以
         //    「nativeSessionId 查行 → 复用行 tag」绑定既有行，tag NULL 会让 CLI 判定
         //    「未找到」另建新行 → hub mergeSessions 摧毁 fork 行（E2E P0 实证）。
-        //    namespace / machine_id / project_id / runtime_state 继承 parent——配置快照含
+        //    namespace / machine_id / workspace_id / runtime_state 继承 parent——配置快照含
         //    model/effort/outputStyle/permissionMode，激活后 CLI keep-alive 回流同值
         const forkSessionId = randomUUID()
         db.prepare(`
@@ -259,13 +259,13 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
                 metadata, metadata_version,
                 agent_state, agent_state_version,
                 runtime_state, runtime_state_updated_at,
-                project_id, seq
+                workspace_id, seq
             ) VALUES (
                 @id, @tag, @namespace, @machine_id, @now, @now,
                 @metadata, 1,
                 NULL, 1,
                 @runtime_state, @runtime_state_updated_at,
-                @project_id, 0
+                @workspace_id, 0
             )
         `).run({
             id: forkSessionId,
@@ -276,7 +276,7 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
             metadata: JSON.stringify(forkMetadata),
             runtime_state: parent.runtimeState === null ? null : JSON.stringify(parent.runtimeState),
             runtime_state_updated_at: parent.runtimeState === null ? null : now,
-            project_id: parent.projectId,
+            workspace_id: parent.workspaceId,
         })
 
         // 2. 复制 [turnStartSeq..turn 终点] 的未删行：上界扩展到 turn 的 result 行

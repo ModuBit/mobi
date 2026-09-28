@@ -22,41 +22,41 @@ import { EditOutlined, DeleteOutlined, MoreOutlined, ImportOutlined, SwapOutline
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
-import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
-import type { Session, Project } from '@/core/data/api/types'
+import { useWorkspaceSessions } from '@/core/data/hooks/queries/useWorkspaceSessions'
+import type { Session, Workspace } from '@/core/data/api/types'
 import {
     GroupContainer, GroupHeader, HeaderActionButton, FolderIcon, GroupName,
     SessionListWrapper, SessionListInner,
-} from './sidebarProjects.styles'
+} from './sidebarWorkspaces.styles'
 import { SessionRowsList } from './SessionRowsList'
 import type { SessionListSharedProps } from './SessionRowsList'
 import { useSessionRowNavigate } from './useSessionRowNavigate'
 
 const { useToken } = antTheme
 
-interface ProjectGroupProps extends SessionListSharedProps {
-    project: Project
-    /** 编辑项目（标题 hover 菜单） */
-    onEditProject: (project: Project) => void
-    /** 删除项目（标题 hover 菜单，需 total 拼确认文案；total 未就绪时传 undefined） */
-    onDeleteProject: (project: Project, total: number | undefined) => void
+interface WorkspaceGroupProps extends SessionListSharedProps {
+    workspace: Workspace
+    /** 编辑工作区（标题 hover 菜单） */
+    onEditWorkspace: (workspace: Workspace) => void
+    /** 删除工作区（标题 hover 菜单，需 total 拼确认文案；total 未就绪时传 undefined） */
+    onDeleteWorkspace: (workspace: Workspace, total: number | undefined) => void
     /** 移至最近（assignSession(id, null)） */
     onMoveToRecent: (session: Session) => void
-    /** 换项目（打开 AssignProjectModal） */
-    onChangeProject: (session: Session) => void
+    /** 换工作区（打开 AssignWorkspaceModal） */
+    onChangeWorkspace: (session: Session) => void
     /** 正在变更归属的会话 id（仅该行禁用追加操作，其余行不受牵连） */
     assignPendingSessionId: string | undefined
 }
 
 /**
- * 单个项目分组
+ * 单个工作区分组
  * 自动展开包含当前活跃会话的分组，其余折叠
  */
-export function ProjectGroup({
-    project, activeSessionId,
-    onEditProject, onDeleteProject, onMoveToRecent, onChangeProject, assignPendingSessionId,
+export function WorkspaceGroup({
+    workspace, activeSessionId,
+    onEditWorkspace, onDeleteWorkspace, onMoveToRecent, onChangeWorkspace, assignPendingSessionId,
     ...shared
-}: ProjectGroupProps) {
+}: WorkspaceGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
@@ -68,47 +68,47 @@ export function ProjectGroup({
         isLoadingInitial, isLoadingMore,
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
-    } = useProjectSessions(project.id, activeSessionId)
+    } = useWorkspaceSessions(workspace.id, activeSessionId)
 
-    // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
+    // 新建会话：带上工作区归属（hub 侧把 cwd 锁定工作区 primary folder + 挂 workspaceId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
-        navigate({ to: '/sessions/new', search: { projectId: project.id } })
-    }, [navigate, project.id])
+        navigate({ to: '/sessions/new', search: { workspaceId: workspace.id } })
+    }, [navigate, workspace.id])
 
-    // 标题 hover 菜单：编辑 / 删除项目
+    // 标题 hover 菜单：编辑 / 删除工作区
     const headerMenu: MenuProps = {
         items: [
-            { key: 'edit', icon: <EditOutlined />, label: t('project.edit') },
-            { key: 'delete', icon: <DeleteOutlined />, danger: true, label: t('project.delete') },
+            { key: 'edit', icon: <EditOutlined />, label: t('workspace.edit') },
+            { key: 'delete', icon: <DeleteOutlined />, danger: true, label: t('workspace.delete') },
         ],
         onClick: ({ key, domEvent }) => {
             domEvent.stopPropagation()
-            if (key === 'edit') onEditProject(project)
-            if (key === 'delete') onDeleteProject(project, total)
+            if (key === 'edit') onEditWorkspace(workspace)
+            if (key === 'delete') onDeleteWorkspace(workspace, total)
         },
     }
 
-    // dropdown 附加项：移至最近 / 换项目（pending 时整组禁用——两项是互斥的分组变更，
+    // dropdown 附加项：移至最近 / 换工作区（pending 时整组禁用——两项是互斥的分组变更，
     // 只禁其一仍可并发触发另一项）
     const renderExtraMenuItems = useCallback((session: Session): MenuProps['items'] => ([
         {
             key: 'recent',
             icon: <ImportOutlined />,
-            label: t('project.toRecent'),
+            label: t('workspace.toRecent'),
             disabled: session.id === assignPendingSessionId,
         },
         {
             key: 'change',
             icon: <SwapOutlined />,
-            label: t('project.changeProject'),
+            label: t('workspace.changeWorkspace'),
             disabled: session.id === assignPendingSessionId,
         },
     ]), [t, assignPendingSessionId])
     const handleExtraMenuClick = useCallback((session: Session, key: string) => {
         if (key === 'recent') onMoveToRecent(session)
-        if (key === 'change') onChangeProject(session)
-    }, [onMoveToRecent, onChangeProject])
+        if (key === 'change') onChangeWorkspace(session)
+    }, [onMoveToRecent, onChangeWorkspace])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
@@ -120,7 +120,7 @@ export function ProjectGroup({
                 <FolderIcon $token={token}>
                     {expanded ? <FolderOpen size={14} /> : <FolderClosed size={14} />}
                 </FolderIcon>
-                <GroupName>{project.name}</GroupName>
+                <GroupName>{workspace.name}</GroupName>
                 <span className="header-actions" style={{ display: 'inline-flex', gap: 2 }}>
                     <HeaderActionButton $token={token} className="new-session-btn" onClick={handleNewSession}>
                         <Plus size={13} />

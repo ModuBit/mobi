@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
 import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus, GitReviewData, GitReviewFileDiff, GitReviewFileQuery } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
@@ -162,12 +162,12 @@ export function createMobiApi() {
             clearRuntimeStateFields: (sessionId: string, clearFields: ClearableRuntimeStateField[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
-            // 置顶 / 取消置顶（置顶进「置顶」分组，从「项目」「最近」过滤掉；取消反向）
+            // 置顶 / 取消置顶（置顶进「置顶」分组，从「工作区」「最近」过滤掉；取消反向）
             setPinned: (sessionId: string, pinned: boolean) =>
                 client.patch(`/api/sessions/${sessionId}`, { pinned }),
-            // 置顶会话分页（跨项目/游离，「置顶」区数据源）
+            // 置顶会话分页（跨工作区/游离，「置顶」区数据源）
             pinnedSessions: (cursor?: number, limit?: number) =>
-                client.get<ProjectSessionsResponse>('/api/sessions/pinned', {
+                client.get<WorkspaceSessionsResponse>('/api/sessions/pinned', {
                     params: {
                         ...(cursor !== undefined && { cursor }),
                         limit: limit ?? 20,
@@ -342,48 +342,48 @@ export function createMobiApi() {
             getSubscriptionStatus: () => client.get<{ subscribed: boolean }>('/api/push/subscription'),
         },
 
-        // Projects（项目实体化，会话按项目 / 「最近」组织）
-        projects: {
-            // 项目列表（?machineId= 过滤某机器名下项目）
+        // Workspaces（工作区实体化，会话按工作区 / 「最近」组织）
+        workspaces: {
+            // 工作区列表（?machineId= 过滤某机器名下工作区）
             list: (machineId?: string) =>
-                client.get<{ projects: Project[] }>('/api/projects', {
+                client.get<{ workspaces: Workspace[] }>('/api/workspaces', {
                     params: machineId ? { machineId } : undefined,
                 }),
-            get: (projectId: string) =>
-                client.get<{ project: Project }>(`/api/projects/${projectId}`),
-            create: (input: { name: string; machineId: string; folders: ProjectFolder[] }) =>
-                client.post<{ project: Project }>('/api/projects', input),
-            update: (projectId: string, patch: { name?: string; folders?: ProjectFolder[] }) =>
-                client.patch<{ project: Project }>(`/api/projects/${projectId}`, patch),
-            remove: (projectId: string) =>
-                client.delete<{ success: boolean }>(`/api/projects/${projectId}`),
-            // 项目内会话分页（返回完整 Session）
-            sessions: (projectId: string, cursor?: number, limit?: number) =>
-                client.get<ProjectSessionsResponse>(`/api/projects/${projectId}/sessions`, {
+            get: (workspaceId: string) =>
+                client.get<{ workspace: Workspace }>(`/api/workspaces/${workspaceId}`),
+            create: (input: { name: string; machineId: string; folders: WorkspaceFolder[] }) =>
+                client.post<{ workspace: Workspace }>('/api/workspaces', input),
+            update: (workspaceId: string, patch: { name?: string; folders?: WorkspaceFolder[] }) =>
+                client.patch<{ workspace: Workspace }>(`/api/workspaces/${workspaceId}`, patch),
+            remove: (workspaceId: string) =>
+                client.delete<{ success: boolean }>(`/api/workspaces/${workspaceId}`),
+            // 工作区内会话分页（返回完整 Session）
+            sessions: (workspaceId: string, cursor?: number, limit?: number) =>
+                client.get<WorkspaceSessionsResponse>(`/api/workspaces/${workspaceId}/sessions`, {
                     params: {
                         ...(cursor !== undefined && { cursor }),
                         limit: limit ?? 20,
                     },
                 }),
-            // 未归入任何项目的「最近」会话分页
+            // 未归入任何工作区的「最近」会话分页
             unboundSessions: (cursor?: number, limit?: number) =>
-                client.get<ProjectSessionsResponse>('/api/projects/sessions/unbound', {
+                client.get<WorkspaceSessionsResponse>('/api/workspaces/sessions/unbound', {
                     params: {
                         ...(cursor !== undefined && { cursor }),
                         limit: limit ?? 20,
                     },
                 }),
-            // 会话归入项目 / 移出项目（projectId=null 移出）。
-            // PATCH /api/sessions/:id 为合并端点（name/projectId 共用），此处只发 projectId
-            assignSession: (sessionId: string, projectId: string | null) =>
-                client.patch(`/api/sessions/${sessionId}`, { projectId }),
+            // 会话归入工作区 / 移出工作区（workspaceId=null 移出）。
+            // PATCH /api/sessions/:id 为合并端点（name/workspaceId 共用），此处只发 workspaceId
+            assignSession: (sessionId: string, workspaceId: string | null) =>
+                client.patch(`/api/sessions/${sessionId}`, { workspaceId }),
         },
 
         // Machines
         machines: {
             list: () => client.get<{ machines: Machine[] }>('/api/machines'),
-            spawn: (machineId: string, directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string, outputStyle?: string, projectId?: string) =>
-                client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, projectId }),
+            spawn: (machineId: string, directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string, outputStyle?: string, workspaceId?: string) =>
+                client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, workspaceId }),
             checkPathsExist: (machineId: string, paths: string[]) =>
                 client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
             listDirectory: (machineId: string, path: string, opts?: { signal?: AbortSignal }) =>

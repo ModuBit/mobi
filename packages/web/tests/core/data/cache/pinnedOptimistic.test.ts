@@ -16,9 +16,9 @@
 
 import { describe, it, expect } from 'vitest'
 import { toggleIdInPages } from '@/core/data/cache/pinnedOptimistic'
-import type { ProjectSessionsPage } from '@/core/data/api/types'
+import type { WorkspaceSessionsPage } from '@/core/data/api/types'
 
-function makeData(...pages: Array<Partial<ProjectSessionsPage>>) {
+function makeData(...pages: Array<Partial<WorkspaceSessionsPage>>) {
     return {
         pages: pages.map(p => ({
             sessionIds: p.sessionIds ?? [],

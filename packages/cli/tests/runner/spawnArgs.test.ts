@@ -15,7 +15,7 @@
  */
 
 /**
- * 验证 runner spawn 时 mobi CLI 参数构造中 --project 的透传（项目实体化 Task 6）。
+ * 验证 runner spawn 时 mobi CLI 参数构造中 --workspace 的透传（工作区实体化 Task 6）。
  *
  * @see packages/cli/src/runner/spawnArgs.ts
  */
@@ -23,18 +23,18 @@
 import { describe, expect, it } from 'vitest'
 import { buildClaudeSpawnArgs } from '@/runner/spawnArgs'
 
-describe('buildClaudeSpawnArgs --project', () => {
-    it('带 projectId → args 含 [--project, id]', () => {
+describe('buildClaudeSpawnArgs --workspace', () => {
+    it('带 workspaceId → args 含 [--workspace, id]', () => {
         const args = buildClaudeSpawnArgs({
             directory: '/a/mobi',
-            projectId: 'p1'
+            workspaceId: 'p1'
         })
-        expect(args).toContain('--project')
-        expect(args[args.indexOf('--project') + 1]).toBe('p1')
+        expect(args).toContain('--workspace')
+        expect(args[args.indexOf('--workspace') + 1]).toBe('p1')
     })
 
-    it('不带 projectId → args 无 --project', () => {
+    it('不带 workspaceId → args 无 --workspace', () => {
         const args = buildClaudeSpawnArgs({ directory: '/a/mobi' })
-        expect(args.some(a => a === '--project')).toBe(false)
+        expect(args.some(a => a === '--workspace')).toBe(false)
     })
 })

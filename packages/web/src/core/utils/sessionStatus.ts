@@ -32,7 +32,7 @@ type AvatarStatusInput = Pick<Session, 'id' | 'active' | 'running'> & {
 
 /**
  * 根据会话状态映射为头像状态
- * 多处复用：SidebarProjects、MobileProjectList
+ * 多处复用：SidebarWorkspaces、MobileWorkspaceList
  *
  * 待审批判定双数据源：
  *   - 列表项（SessionSummary）：只有 pendingRequestsCount（hub 序列化时已计数）
@@ -95,7 +95,7 @@ type SessionSortInput = Pick<Session, 'active' | 'updatedAt'>
 
 /**
  * 会话列表排序比较函数（返回负数 a 在前、正数 b 在前、0 相等）。
- * 复用于：SidebarProjects、MobileProjectList。
+ * 复用于：SidebarWorkspaces、MobileWorkspaceList。
  *
  * 排序规则：
  *   1. 活跃会话（active=true，含执行中/等待输入/等待确认）永远排在已退出会话（active=false）之前

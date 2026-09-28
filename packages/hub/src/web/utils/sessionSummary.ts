@@ -24,7 +24,7 @@ import type { Session, SyncEngine } from '../../sync/syncEngine'
  * 不本地复刻字段装配）。active/running/activeAt/mode 不入库，只能取内存会话缓存的
  * 实时值——逐 id 调 engine.getSession（缓存命中），替代每个分页请求全 namespace
  * 扫描建 Map 只为修饰 ≤limit 行的 O(namespace) 浪费。
- * 项目 / 「最近」/ 「置顶」三类分页路由共用，避免 live 态装配逻辑散落多份漂移
+ * 工作区 / 「最近」/ 「置顶」三类分页路由共用，避免 live 态装配逻辑散落多份漂移
  */
 export function toSummaryWithLiveState(engine: SyncEngine, stored: StoredSession): SessionSummary {
     const live = engine.getSession(stored.id)

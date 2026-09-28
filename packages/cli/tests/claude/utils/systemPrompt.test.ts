@@ -77,7 +77,7 @@ describe('产物声明契约（inline-artifacts ticket 04）', () => {
     expect(prompt).toContain('mode="wide"');
   });
 
-  it('含产物目录约定：非项目交付物落 <cwd>/.mobi/artifacts/<YYYY-MM>/', () => {
+  it('含产物目录约定：非工作区交付物落 <cwd>/.mobi/artifacts/<YYYY-MM>/', () => {
     expect(prompt).toContain('.mobi/artifacts/');
     expect(prompt).toMatch(/YYYY-MM/);
     // ascii 短文件名 + .gitignore 自隔离两要素

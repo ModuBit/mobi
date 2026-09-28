@@ -16,63 +16,63 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-    ProjectFolderSchema, ProjectSchema, SessionSchema, MetadataSchema,
-    validateProjectFolders, PROJECT_FOLDERS_ERROR_MESSAGES,
+    WorkspaceFolderSchema, WorkspaceSchema, SessionSchema, MetadataSchema,
+    validateWorkspaceFolders, WORKSPACE_FOLDERS_ERROR_MESSAGES,
 } from '../src/schemas'
 
-describe('ProjectFolderSchema', () => {
+describe('WorkspaceFolderSchema', () => {
     it('接受 path + primary', () => {
-        expect(ProjectFolderSchema.parse({ path: '/a/mobi', primary: true })).toEqual({
+        expect(WorkspaceFolderSchema.parse({ path: '/a/mobi', primary: true })).toEqual({
             path: '/a/mobi', primary: true,
         })
     })
     it('缺 primary 失败', () => {
-        expect(ProjectFolderSchema.safeParse({ path: '/a' }).success).toBe(false)
+        expect(WorkspaceFolderSchema.safeParse({ path: '/a' }).success).toBe(false)
     })
 })
 
-describe('validateProjectFolders', () => {
+describe('validateWorkspaceFolders', () => {
     it('空数组报错', () => {
-        expect(validateProjectFolders([])).toBe('empty')
+        expect(validateWorkspaceFolders([])).toBe('empty')
     })
     it('无 primary 报错', () => {
-        expect(validateProjectFolders([{ path: '/a', primary: false }])).toBe('no_primary')
+        expect(validateWorkspaceFolders([{ path: '/a', primary: false }])).toBe('no_primary')
     })
     it('多个 primary 报错', () => {
-        expect(validateProjectFolders([
+        expect(validateWorkspaceFolders([
             { path: '/a', primary: true }, { path: '/b', primary: true },
         ])).toBe('multi_primary')
     })
-    it('path 为空串 / 纯空白报错（空文件夹曾可建出项目的根因）', () => {
-        expect(validateProjectFolders([{ path: '', primary: true }])).toBe('empty_path')
-        expect(validateProjectFolders([
+    it('path 为空串 / 纯空白报错（空文件夹曾可建出工作区的根因）', () => {
+        expect(validateWorkspaceFolders([{ path: '', primary: true }])).toBe('empty_path')
+        expect(validateWorkspaceFolders([
             { path: '/a', primary: true }, { path: '  ', primary: false },
         ])).toBe('empty_path')
     })
     it('合法列表返回 null', () => {
-        expect(validateProjectFolders([
+        expect(validateWorkspaceFolders([
             { path: '/a', primary: true }, { path: '/b', primary: false },
         ])).toBeNull()
     })
-    it('PROJECT_FOLDERS_ERROR_MESSAGES 覆盖全部错误码（hub 400 文案来源）', () => {
-        for (const message of Object.values(PROJECT_FOLDERS_ERROR_MESSAGES)) {
+    it('WORKSPACE_FOLDERS_ERROR_MESSAGES 覆盖全部错误码（hub 400 文案来源）', () => {
+        for (const message of Object.values(WORKSPACE_FOLDERS_ERROR_MESSAGES)) {
             expect(typeof message).toBe('string')
             expect(message.length).toBeGreaterThan(0)
         }
     })
 })
 
-describe('ProjectSchema', () => {
+describe('WorkspaceSchema', () => {
     const base = {
         id: 'p1', namespace: 'default', machineId: 'm1', name: 'mobi',
         createdAt: 1, updatedAt: 1, seq: 0,
     }
     it('接受完整对象', () => {
-        expect(ProjectSchema.safeParse({ ...base, folders: [{ path: '/a/mobi', primary: true }] }).success).toBe(true)
+        expect(WorkspaceSchema.safeParse({ ...base, folders: [{ path: '/a/mobi', primary: true }] }).success).toBe(true)
     })
     it('缺 machineId 失败', () => {
         const { id, namespace, name, createdAt, updatedAt, seq } = base
-        expect(ProjectSchema.safeParse({
+        expect(WorkspaceSchema.safeParse({
             id, namespace, name, createdAt, updatedAt, seq,
             folders: [{ path: '/a', primary: true }],
         }).success).toBe(false)
@@ -85,16 +85,16 @@ describe('SessionSchema/MetadataSchema 扩展', () => {
         active: false, activeAt: 0, metadata: null, metadataVersion: 1,
         agentState: null, agentStateVersion: 1, running: false, runningAt: 0,
     }
-    it('SessionSchema 接受 projectId（可空可缺省）', () => {
+    it('SessionSchema 接受 workspaceId（可空可缺省）', () => {
         expect(SessionSchema.safeParse(sessionBase).success).toBe(true)
-        expect(SessionSchema.safeParse({ ...sessionBase, projectId: null }).success).toBe(true)
+        expect(SessionSchema.safeParse({ ...sessionBase, workspaceId: null }).success).toBe(true)
     })
-    it('SessionSchema 解析后携带 projectId（缺省为 undefined）', () => {
-        expect(SessionSchema.parse({ ...sessionBase, projectId: 'p1' }).projectId).toBe('p1')
-        expect(SessionSchema.parse(sessionBase).projectId).toBeUndefined()
+    it('SessionSchema 解析后携带 workspaceId（缺省为 undefined）', () => {
+        expect(SessionSchema.parse({ ...sessionBase, workspaceId: 'p1' }).workspaceId).toBe('p1')
+        expect(SessionSchema.parse(sessionBase).workspaceId).toBeUndefined()
     })
-    it('SessionSchema 拒绝非字符串 projectId', () => {
-        expect(SessionSchema.safeParse({ ...sessionBase, projectId: 123 }).success).toBe(false)
+    it('SessionSchema 拒绝非字符串 workspaceId', () => {
+        expect(SessionSchema.safeParse({ ...sessionBase, workspaceId: 123 }).success).toBe(false)
     })
     it('MetadataSchema 解析后携带 additionalDirectories', () => {
         const base = { path: '/a', host: 'h' }

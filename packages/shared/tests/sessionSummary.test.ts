@@ -101,14 +101,14 @@ describe('toSessionSummary', () => {
     it('含 metadata 正确提取字段', () => {
         const session = makeSession({
             metadata: {
-                path: '/project',
+                path: '/workspace',
                 host: 'localhost',
-                name: 'my-project',
+                name: 'my-workspace',
                 machineId: 'machine-1',
-                summary: { text: '项目摘要', updatedAt: 1000 },
+                summary: { text: '工作区摘要', updatedAt: 1000 },
                 flavor: 'claude',
                 worktree: {
-                    basePath: '/project',
+                    basePath: '/workspace',
                     branch: 'main',
                     name: 'wt-1',
                 },
@@ -116,10 +116,10 @@ describe('toSessionSummary', () => {
         })
         const summary = toSessionSummary(session)
         expect(summary.metadata).not.toBeNull()
-        expect(summary.metadata!.name).toBe('my-project')
-        expect(summary.metadata!.path).toBe('/project')
+        expect(summary.metadata!.name).toBe('my-workspace')
+        expect(summary.metadata!.path).toBe('/workspace')
         expect(summary.metadata!.machineId).toBe('machine-1')
-        expect(summary.metadata!.summary).toEqual({ text: '项目摘要' })
+        expect(summary.metadata!.summary).toEqual({ text: '工作区摘要' })
         expect(summary.metadata!.flavor).toBe('claude')
         expect(summary.metadata!.worktree?.branch).toBe('main')
     })
@@ -127,7 +127,7 @@ describe('toSessionSummary', () => {
     it('metadata 中无 machineId 时为 undefined', () => {
         const session = makeSession({
             metadata: {
-                path: '/project',
+                path: '/workspace',
                 host: 'localhost',
             },
         })
@@ -178,14 +178,14 @@ describe('toSessionSummary', () => {
         expect(summary.taskProgress).toBeNull()
     })
 
-    it('含 projectId 时透传——Web 取消置顶后据此回填原项目分组', () => {
-        const summary = toSessionSummary(makeSession({ projectId: 'p1' }))
-        expect(summary.projectId).toBe('p1')
+    it('含 workspaceId 时透传——Web 取消置顶后据此回填原工作区分组', () => {
+        const summary = toSessionSummary(makeSession({ workspaceId: 'p1' }))
+        expect(summary.workspaceId).toBe('p1')
     })
 
-    it('projectId 为 null（游离）或缺失时归一为 null，不残留 undefined', () => {
-        expect(toSessionSummary(makeSession({ projectId: null })).projectId).toBeNull()
-        expect(toSessionSummary(makeSession()).projectId).toBeNull()
+    it('workspaceId 为 null（游离）或缺失时归一为 null，不残留 undefined', () => {
+        expect(toSessionSummary(makeSession({ workspaceId: null })).workspaceId).toBeNull()
+        expect(toSessionSummary(makeSession()).workspaceId).toBeNull()
     })
 
     it('fork 字段随摘要透传——web 列表 badge/命名/判据的消费源（E2E P1 回归）', () => {

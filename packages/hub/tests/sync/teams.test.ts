@@ -441,12 +441,12 @@ describe('Agent tool_use 提取完整 member 信息', () => {
                 team_name: 'test-team',
                 name: 'analyzer',
                 subagent_type: 'general-purpose',
-                prompt: '分析项目结构',
-                description: '项目分析',
+                prompt: '分析工作区结构',
+                description: '工作区分析',
             })
         )
         expect(delta).not.toBeNull()
-        expect(delta!.members![0].prompt).toBe('分析项目结构')
+        expect(delta!.members![0].prompt).toBe('分析工作区结构')
         expect(delta!.members![0].status).toBe('running')
         expect(delta!.members![0].startedAt).toBeTypeOf('number')
     })

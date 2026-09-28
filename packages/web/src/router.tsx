@@ -88,13 +88,13 @@ const sessionDetailRoute = createRoute({
     component: SessionDetailPage,
 })
 
-// 新建会话页（?projectId= 预设归属项目；web 创建会话必须选项目，机器/目录由项目派生）
+// 新建会话页（?workspaceId= 预设归属工作区；web 创建会话必须选工作区，机器/目录由工作区派生）
 const newSessionRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'sessions/new',
     component: NewSessionPage,
-    validateSearch: (search: Record<string, unknown>): { projectId?: string } => ({
-        projectId: (search.projectId as string) || undefined,
+    validateSearch: (search: Record<string, unknown>): { workspaceId?: string } => ({
+        workspaceId: (search.workspaceId as string) || undefined,
     }),
 })
 

@@ -21,7 +21,7 @@ import { usePinnedSessions } from '@/core/data/hooks/queries/usePinnedSessions'
 import {
     GroupContainer, SectionTitleRow, SectionTitle, SectionChevron,
     SessionListWrapper, SessionListInner,
-} from './sidebarProjects.styles'
+} from './sidebarWorkspaces.styles'
 import { SessionRowsList } from './SessionRowsList'
 import type { SessionListSharedProps } from './SessionRowsList'
 import { useSessionRowNavigate } from './useSessionRowNavigate'
@@ -29,7 +29,7 @@ import { useSessionRowNavigate } from './useSessionRowNavigate'
 const { useToken } = antTheme
 
 /**
- * 「置顶」分区：置顶会话（跨项目/游离），与「项目」「最近」平级，置于最前。
+ * 「置顶」分区：置顶会话（跨工作区/游离），与「工作区」「最近」平级，置于最前。
  * 有会话默认展开、空分区默认收起；用户折叠后选择持久生效。
  * 置顶/取消置顶入口在会话行 hover 操作（SessionRow 通用 pin 按钮）
  */

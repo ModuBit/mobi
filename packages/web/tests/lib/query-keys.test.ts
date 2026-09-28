@@ -80,8 +80,8 @@ describe('queryKeys', () => {
     describe('key 唯一性', () => {
         it('不同类型的静态 key 应互不相等', () => {
             expect(queryKeys.sessions).not.toEqual(queryKeys.machines)
-            expect(queryKeys.sessions).not.toEqual(queryKeys.projects)
-            expect(queryKeys.machines).not.toEqual(queryKeys.projects)
+            expect(queryKeys.sessions).not.toEqual(queryKeys.workspaces)
+            expect(queryKeys.machines).not.toEqual(queryKeys.workspaces)
         })
 
         it('同一工厂函数不同参数应产生不同 key', () => {

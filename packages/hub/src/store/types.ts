@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { MessageLifecycle, NativeMessageMetadata, Project } from '@mobi/shared'
+import type { MessageLifecycle, NativeMessageMetadata, Workspace } from '@mobi/shared'
 
 export type StoredSession = {
     id: string
@@ -29,9 +29,9 @@ export type StoredSession = {
     agentStateVersion: number
     runtimeState: unknown | null
     runtimeStateUpdatedAt: number | null
-    /** 归属项目 id；游离会话为 null */
-    projectId: string | null
-    /** 会话置顶（true = 进「置顶」分组，同时从「项目」「最近」过滤掉） */
+    /** 归属工作区 id；游离会话为 null */
+    workspaceId: string | null
+    /** 会话置顶（true = 进「置顶」分组，同时从「工作区」「最近」过滤掉） */
     pinned: boolean
     seq: number
 }
@@ -73,8 +73,8 @@ export type StoredMessage = {
     positionAt: number
 }
 
-/** 项目实体存储形态（直接复用 shared 的 Project 定义） */
-export type StoredProject = Project
+/** 工作区实体存储形态（直接复用 shared 的 Workspace 定义） */
+export type StoredWorkspace = Workspace
 
 export type StoredUser = {
     id: number

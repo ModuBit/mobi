@@ -149,7 +149,7 @@ describe('file RPC handlers', () => {
 
         it('writeFile 写边界：~ 路径拒绝（写与 writable 同源 validateWritePath）', async () => {
             // 回归：旧 validatePath 不展开 ~，~/evil 被 resolve 成字面 cwd/~/evil（在 cwd 内）
-            // 放行并真实写入项目内的字面 ~ 目录——与 writable 判定（false）自相矛盾
+            // 放行并真实写入工作区内的字面 ~ 目录——与 writable 判定（false）自相矛盾
             const r = (await rpc2.handleRequest({
                 method: `${SCOPE2}:writeFile`,
                 params: { path: '~/evil.md', content: Buffer.from('x').toString('base64') },

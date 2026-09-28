@@ -184,7 +184,7 @@ export class ApiMachineClient {
                     worktreeName,
                     effort,
                     outputStyle,
-                    projectId
+                    workspaceId
                 } = params || {}
 
                 if (!directory) {
@@ -205,7 +205,7 @@ export class ApiMachineClient {
                     worktreeName,
                     effort,
                     outputStyle,
-                    projectId
+                    workspaceId
                 })
 
                 switch (result.type) {

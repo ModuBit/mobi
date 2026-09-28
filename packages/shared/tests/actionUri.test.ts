@@ -119,8 +119,8 @@ describe('file/open：解析与构造（ADR 0003 二期）', () => {
 
 describe('refBlockToActionText：存量 ref 迁移（ADR 0003）', () => {
     it('session ref → 冻结文案的 md 动作链接', () => {
-        expect(refBlockToActionText({ targetType: 'session', id: 's-1' }, '我的项目'))
-            .toBe('[我的项目](mobi://session/open?id=s-1)')
+        expect(refBlockToActionText({ targetType: 'session', id: 's-1' }, '我的工作区'))
+            .toBe('[我的工作区](mobi://session/open?id=s-1)')
     })
 
     it('未注册 targetType → null（保守不改写）', () => {

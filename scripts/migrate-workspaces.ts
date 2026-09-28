@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-// 一次性迁移脚本：存量会话按 group_key 回填项目实体（「项目实体化」Task 9，方案 A / 设计决策 D11、D13）
+// 一次性迁移脚本：存量库升级到 workspace schema——
+// ① 老库（group_key 虚拟分组）：按 group_key 回填工作区实体（「工作区实体化」Task 9，方案 A / 设计决策 D11、D13）；
+// ② 「项目」命名期已实体化的库（projects 表 / project_id 列）：整体更名到 workspaces / workspace_id；
+// ③ 已是 workspace schema 的库：天然幂等，重跑无副作用
 //
-// 用法：bun scripts/migrate-projects.ts <db路径...>
+// 用法：bun scripts/migrate-workspaces.ts <db路径...>
 // 无参默认处理 ~/.mobi/mobi.db 与 ~/.mobi-dev/mobi.db
 //（目录探测于 2026-08-13 ls 确认：两目录下 db 文件均名为 mobi.db）
 //
@@ -30,12 +33,12 @@ import { randomUUID } from 'node:crypto'
 
 // 目标 schema 版本。来源：packages/hub/src/store/index.ts 的 SCHEMA_VERSION（读取日期 2026-08-13）。
 // BASELINE=0 策略下新旧 schema 版本号同为 1，无法用 user_version 区分新旧库，
-// 判别只能依赖列存在性（project_id / group_key），见脚本内探测逻辑。
+// 判别只能依赖列存在性（workspace_id / group_key），见脚本内探测逻辑。
 const SCHEMA_VERSION = 1
 
-// projects 表 DDL。来源：packages/hub/src/store/index.ts createSchema（复制日期 2026-08-13），逐列一致。
-const CREATE_PROJECTS_SQL = `
-    CREATE TABLE IF NOT EXISTS projects (
+// workspaces 表 DDL。来源：packages/hub/src/store/index.ts createSchema（复制日期 2026-08-13），逐列一致。
+const CREATE_WORKSPACES_SQL = `
+    CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,
         namespace TEXT NOT NULL DEFAULT 'default',
         machine_id TEXT NOT NULL,
@@ -45,8 +48,8 @@ const CREATE_PROJECTS_SQL = `
         updated_at INTEGER NOT NULL,
         seq INTEGER DEFAULT 0
     );
-    CREATE INDEX IF NOT EXISTS idx_projects_namespace ON projects(namespace);
-    CREATE INDEX IF NOT EXISTS idx_projects_machine ON projects(machine_id);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_namespace ON workspaces(namespace);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_machine ON workspaces(machine_id);
 `
 
 /** 默认库路径（探测日期 2026-08-13） */
@@ -63,7 +66,7 @@ type SessionRow = {
     updated_at: number
 }
 
-type ProjectFolder = { path: string; primary: boolean }
+type WorkspaceFolder = { path: string; primary: boolean }
 
 type DbReport = {
     dbPath: string
@@ -132,9 +135,9 @@ function pickMachineId(entries: { machineId: string; updatedAt: number }[]): str
     return best
 }
 
-/** 组内路径集合是否与既有项目一致（同名同文件夹判据，文件夹顺序不敏感） */
-function sameFolders(a: ProjectFolder[], b: ProjectFolder[]): boolean {
-    const key = (f: ProjectFolder[]) => f.map((x) => `${x.primary ? '1' : '0'}:${x.path}`).sort().join('|')
+/** 组内路径集合是否与既有工作区一致（同名同文件夹判据，文件夹顺序不敏感） */
+function sameFolders(a: WorkspaceFolder[], b: WorkspaceFolder[]): boolean {
+    const key = (f: WorkspaceFolder[]) => f.map((x) => `${x.primary ? '1' : '0'}:${x.path}`).sort().join('|')
     return key(a) === key(b)
 }
 
@@ -181,14 +184,27 @@ function migrateDb(dbPath: string): void {
         const migrate = db.transaction(() => {
             const sessionCols = tableColumns(db, 'sessions')
 
-            // 2. 旧库无 project_id 列则补列（BASELINE=0 下列存在性是唯一新旧判别器）
-            if (!sessionCols.includes('project_id')) {
-                db.run('ALTER TABLE sessions ADD COLUMN project_id TEXT')
+            // 2. workspace_id 列升级：按旧命名实体化过的库先 RENAME，未实体化的库补列
+            //    （BASELINE=0 下列存在性是唯一新旧判别器）
+            if (!sessionCols.includes('workspace_id')) {
+                if (sessionCols.includes('project_id')) {
+                    // 「项目」命名期的库：列已在、只是名字旧，重命名保留归属数据
+                    db.run('ALTER TABLE sessions RENAME COLUMN project_id TO workspace_id')
+                } else {
+                    db.run('ALTER TABLE sessions ADD COLUMN workspace_id TEXT')
+                }
             }
 
-            // 3. projects 表 + 索引（幂等）
-            db.run(CREATE_PROJECTS_SQL)
-            db.run('CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)')
+            // 3. workspaces 表 + 索引（幂等）。projects 表存在 = 「项目」命名期的库，先整表改名
+            //    （数据原样保留）；旧索引不随表改名，先删后按新名重建
+            if (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'").get()) {
+                db.run('DROP INDEX IF EXISTS idx_projects_namespace')
+                db.run('DROP INDEX IF EXISTS idx_projects_machine')
+                db.run('DROP INDEX IF EXISTS idx_sessions_project')
+                db.run('ALTER TABLE projects RENAME TO workspaces')
+            }
+            db.run(CREATE_WORKSPACES_SQL)
+            db.run('CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id)')
 
             // 4. 回填（group_key 列仍在 = 尚未回填过；已删列则整段跳过，天然幂等）
             if (sessionCols.includes('group_key')) {
@@ -213,12 +229,12 @@ function migrateDb(dbPath: string): void {
 
     // 7. 报告
     console.log(
-        `[完成] ${dbPath}：新建项目 ${report.created}，复用项目 ${report.reused}，` +
+        `[完成] ${dbPath}：新建工作区 ${report.created}，复用工作区 ${report.reused}，` +
             `挂钩会话 ${report.linked}，跳过行 ${report.skippedRows}，跳过组 ${report.skippedGroups}`
     )
 }
 
-/** 按 (namespace, group_key) 分组回填 project_id */
+/** 按 (namespace, group_key) 分组回填 workspace_id */
 function backfill(db: Database, report: DbReport): void {
     const rows = db
         .prepare('SELECT id, namespace, group_key, metadata, updated_at FROM sessions WHERE group_key IS NOT NULL')
@@ -232,14 +248,14 @@ function backfill(db: Database, report: DbReport): void {
         else groups.set(key, [row])
     }
 
-    const findProject = db.prepare('SELECT id, folders FROM projects WHERE namespace = ? AND name = ?')
-    const insertProject = db.prepare(
-        'INSERT INTO projects (id, namespace, machine_id, name, folders, created_at, updated_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    const findWorkspace = db.prepare('SELECT id, folders FROM workspaces WHERE namespace = ? AND name = ?')
+    const insertWorkspace = db.prepare(
+        'INSERT INTO workspaces (id, namespace, machine_id, name, folders, created_at, updated_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
     const findFallbackMachine = db.prepare(
         'SELECT id FROM machines WHERE namespace = ? ORDER BY updated_at DESC LIMIT 1'
     )
-    const linkSession = db.prepare('UPDATE sessions SET project_id = ? WHERE id = ? AND project_id IS NULL')
+    const linkSession = db.prepare('UPDATE sessions SET workspace_id = ? WHERE id = ? AND workspace_id IS NULL')
 
     for (const groupRows of groups.values()) {
         const namespace = groupRows[0].namespace
@@ -272,40 +288,40 @@ function backfill(db: Database, report: DbReport): void {
         // 最短路径为 primary；等长并列时取字典序最小（先 sort 保证确定化）
         const sortedPaths = [...paths].sort()
         const primaryPath = sortedPaths.reduce((a, b) => (b.length < a.length ? b : a))
-        const folders: ProjectFolder[] = paths.map((p) => ({ path: p, primary: p === primaryPath }))
+        const folders: WorkspaceFolder[] = paths.map((p) => ({ path: p, primary: p === primaryPath }))
         // machine_id 取众数（并列取最新），全空回退 namespace 最近机器，再无则 unknown
         const machineId =
             pickMachineId(machineEntries) ??
             ((findFallbackMachine.get(namespace) as { id: string } | undefined)?.id ?? 'unknown')
 
-        // 幂等键 (namespace, primaryPath)：同名同文件夹的项目直接复用
+        // 幂等键 (namespace, primaryPath)：同名同文件夹的工作区直接复用
         const name = basename(primaryPath)
-        let projectId: string | null = null
-        for (const existing of findProject.all(namespace, name) as { id: string; folders: string }[]) {
-            const existingFolders = (safeJsonParse(existing.folders) as ProjectFolder[] | null) ?? []
+        let workspaceId: string | null = null
+        for (const existing of findWorkspace.all(namespace, name) as { id: string; folders: string }[]) {
+            const existingFolders = (safeJsonParse(existing.folders) as WorkspaceFolder[] | null) ?? []
             if (sameFolders(existingFolders, folders)) {
-                projectId = existing.id
+                workspaceId = existing.id
                 report.reused += 1
                 break
             }
         }
-        if (!projectId) {
-            projectId = randomUUID()
+        if (!workspaceId) {
+            workspaceId = randomUUID()
             const now = Date.now()
-            insertProject.run(projectId, namespace, machineId, name, JSON.stringify(folders), now, now, 0)
+            insertWorkspace.run(workspaceId, namespace, machineId, name, JSON.stringify(folders), now, now, 0)
             report.created += 1
             console.log(
-                `[新建] 项目 ${name}（ns=${namespace}，机器=${machineId}，会话=${groupRows.length}，folders=${JSON.stringify(folders)}）`
+                `[新建] 工作区 ${name}（ns=${namespace}，机器=${machineId}，会话=${groupRows.length}，folders=${JSON.stringify(folders)}）`
             )
         } else {
             console.log(
-                `[复用] 项目 ${name}（ns=${namespace}，机器=${machineId}，会话=${groupRows.length}，folders=${JSON.stringify(folders)}）`
+                `[复用] 工作区 ${name}（ns=${namespace}，机器=${machineId}，会话=${groupRows.length}，folders=${JSON.stringify(folders)}）`
             )
         }
 
         // 挂钩组内会话（group_key 为 NULL 的老会话不在此列，保持游离）
         for (const row of groupRows) {
-            linkSession.run(projectId, row.id)
+            linkSession.run(workspaceId, row.id)
             report.linked += 1
         }
     }

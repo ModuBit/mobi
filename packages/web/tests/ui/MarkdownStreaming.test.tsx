@@ -62,7 +62,7 @@ describe('Markdown 流式渲染（单段架构）', () => {
         displayState.current = ''
     })
 
-    // vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积——项目已知坑
+    // vitest 未开 globals：渲染型测试必须显式 cleanup，否则 DOM 累积——工作区已知坑
     afterEach(() => cleanup())
 
     it('非流式（无 streaming prop）：单段渲染全文', () => {
