@@ -42,6 +42,25 @@ import { queryKeys } from '@/core/lib/query-keys'
 //  patch/contents（pierre hydration 懒拉）。陈旧性：overview 的 targetGeneration
 //  作 files/patch 的缓存键 version——总览刷新 → 新一代键 → 下层数据自动重查 ──
 
+/** RPC 查询的缓存载荷（{data}|{error} 包装，不抛错走 retry；可选属性合成让消费方
+ *  .data/.error 直接可访问，无需 in 收窄） */
+type ReviewQueryPayload<T> = { data: T; error?: undefined } | { error: string; data?: undefined }
+
+/** zod schema 的最小结构面（web 不直依赖 zod，结构类型承接 safeParse） */
+interface SafeParseable<T> {
+    safeParse(data: unknown): { success: true; data: T } | { success: false }
+}
+
+/** RPC 响应收窄单源：schema 通过给 {data}，否则取业务 error 兜底 fallback。
+ *  ⚠️ 同一 query key 的所有观察者必须共用同一 queryFn（工厂见下）——形状分叉会让
+ *  后挂载方拿到对方的包装对象却按自己的形状读，静默落到空分支 */
+function reviewQueryPayload<T>(schema: SafeParseable<T>, raw: unknown, fallback: string): ReviewQueryPayload<T> {
+    const parsed = schema.safeParse(raw)
+    if (parsed.success) return { data: parsed.data }
+    const err = (raw as { error?: string } | undefined)?.error
+    return { error: err ?? fallback }
+}
+
 export interface ReviewOverviewResult {
     data: ReviewOverview | undefined
     error: string | null
@@ -56,10 +75,7 @@ export function useReviewOverview(sessionId: string): ReviewOverviewResult {
         queryKey: queryKeys.gitReviewOverview(sessionId),
         queryFn: async ({ signal }) => {
             const res = await api.sessions.gitReviewOverview(sessionId, { signal })
-            const parsed = ReviewOverviewSchema.safeParse(res.data)
-            if (parsed.success) return { data: parsed.data } as const
-            const err = (res.data as { error?: string } | undefined)?.error
-            return { error: err ?? 'Failed to load review overview' } as const
+            return reviewQueryPayload(ReviewOverviewSchema, res.data, 'Failed to load review overview')
         },
         enabled: !!sessionId,
     })
@@ -85,10 +101,7 @@ export function useReviewFiles(sessionId: string, target: DiffTarget | null, ver
         queryFn: async () => {
             if (!target) return null
             const res = await api.sessions.gitReviewFiles(sessionId, target)
-            const parsed = ReviewFilesResultSchema.safeParse(res.data)
-            if (parsed.success) return { data: parsed.data } as const
-            const err = (res.data as { error?: string } | undefined)?.error
-            return { error: err ?? 'Failed to load review files' } as const
+            return reviewQueryPayload(ReviewFilesResultSchema, res.data, 'Failed to load review files')
         },
         enabled: !!sessionId && !!target,
     })
@@ -105,20 +118,15 @@ export interface ReviewPatchQueryResult {
     isLoading: boolean
 }
 
-/** patch 查询的缓存载荷（{data}|{error} 包装，不抛错走 retry）。
- *  ⚠️ 同一 query key 的所有观察者（useReviewPatch / DiffViewer）必须共用此 queryFn——
- *  形状分叉会让后挂载方拿到对方的包装对象却按自己的形状读，静默落到空分支 */
-export type ReviewPatchQueryPayload = { data: ReviewPatchResult } | { error: string } | null
+/** patch 查询的缓存载荷（{data}|{error} 包装，不抛错走 retry） */
+export type ReviewPatchQueryPayload = ReviewQueryPayload<ReviewPatchResult> | null
 
-/** 共享 queryFn 工厂：hook 与 DiffViewer 同键同形（见 ReviewPatchQueryPayload 警告） */
+/** 共享 queryFn 工厂：hook 与 DiffViewer 同键同形（见 reviewQueryPayload 警告） */
 export function makeReviewPatchQueryFn(api: MobiApi, sessionId: string, target: DiffTarget | null, path: string | null) {
     return async (): Promise<ReviewPatchQueryPayload> => {
         if (!target || !path) return null
         const res = await api.sessions.gitReviewDiff(sessionId, target, path)
-        const parsed = ReviewPatchResultSchema.safeParse(res.data)
-        if (parsed.success) return { data: parsed.data } as const
-        const err = (res.data as { error?: string } | undefined)?.error
-        return { error: err ?? 'Failed to load diff' } as const
+        return reviewQueryPayload(ReviewPatchResultSchema, res.data, 'Failed to load diff')
     }
 }
 
@@ -143,19 +151,25 @@ export interface ReviewContentsQueryResult {
     isLoading: boolean
 }
 
+/** contents 查询的缓存载荷 */
+export type ReviewContentsQueryPayload = ReviewQueryPayload<ReviewContentsResult> | null
+
+/** 共享 queryFn 工厂：hook 与 DiffViewer 同键同形（同 patch——原 contents 侧曾各写一份，
+ *  同键异形是静默空分支的事故形态） */
+export function makeReviewContentsQueryFn(api: MobiApi, sessionId: string, target: DiffTarget | null, path: string | null) {
+    return async (): Promise<ReviewContentsQueryPayload> => {
+        if (!target || !path) return null
+        const res = await api.sessions.gitReviewContents(sessionId, target, path)
+        return reviewQueryPayload(ReviewContentsResultSchema, res.data, 'Failed to load contents')
+    }
+}
+
 /** 全文对 v2（pierre hydration 懒拉）：enabled 由调用方控制（首次展开上下文才触发） */
 export function useReviewContents(sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean): ReviewContentsQueryResult {
     const api = useMobiApi()
     const q = useQuery({
         queryKey: queryKeys.gitReviewContents(sessionId, target ?? { kind: 'turn' }, path ?? ''),
-        queryFn: async () => {
-            if (!target || !path) return null
-            const res = await api.sessions.gitReviewContents(sessionId, target, path)
-            const parsed = ReviewContentsResultSchema.safeParse(res.data)
-            if (parsed.success) return { data: parsed.data } as const
-            const err = (res.data as { error?: string } | undefined)?.error
-            return { error: err ?? 'Failed to load contents' } as const
-        },
+        queryFn: makeReviewContentsQueryFn(api, sessionId, target, path),
         enabled: !!sessionId && !!target && !!path && enabled,
     })
     return {
@@ -218,10 +232,7 @@ export function useReviewCommits(sessionId: string): ReviewCommitsQueryResult {
         queryKey: queryKeys.gitReviewCommits(sessionId),
         queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
             const res = await api.sessions.gitReviewCommits(sessionId, pageParam)
-            const parsed = ReviewCommitsResultSchema.safeParse(res.data)
-            if (parsed.success) return { data: parsed.data } as const
-            const err = (res.data as { error?: string } | undefined)?.error
-            return { error: err ?? 'Failed to load commits' } as const
+            return reviewQueryPayload(ReviewCommitsResultSchema, res.data, 'Failed to load commits')
         },
         initialPageParam: undefined as string | undefined,
         getNextPageParam: (last) => last.data?.nextCursor ?? undefined,

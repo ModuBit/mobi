@@ -28,9 +28,9 @@ import { useMemo } from 'react'
 import { PatchDiff } from '@pierre/diffs/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ReviewContentsResultSchema, type DiffTarget } from '@mobi/shared'
+import { type DiffTarget } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
-import { makeReviewPatchQueryFn } from '@/core/data/hooks/queries/useGitReview'
+import { makeReviewContentsQueryFn, makeReviewPatchQueryFn } from '@/core/data/hooks/queries/useGitReview'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { queryKeys } from '@/core/lib/query-keys'
 import { PIERRE_BRIDGE_VARS } from './pierreTheme'
@@ -62,18 +62,16 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
     })
     const patchPayload = patch.data
 
-    // hydration 懒拉：pierre 首次展开折叠上下文才 fetchQuery（与 useReviewContents 同键共享缓存）
+    // hydration 懒拉：pierre 首次展开折叠上下文才 fetchQuery（与 useReviewContents 同键
+    // 共享缓存）。queryFn 必须同形（makeReviewContentsQueryFn）——同键异形会让缓存命中
+    // 后读到对方的包装形状，静默落空分支
     const loadDiffFiles = useMemo(() => async () => {
-        const data = await queryClient.fetchQuery({
+        const payload = await queryClient.fetchQuery({
             queryKey: queryKeys.gitReviewContents(sessionId, target, path),
-            queryFn: async () => {
-                const res = await api.sessions.gitReviewContents(sessionId, target, path)
-                const parsed = ReviewContentsResultSchema.safeParse(res.data)
-                if (parsed.success) return parsed.data
-                const err = (res.data as { error?: string } | undefined)?.error
-                throw new Error(err ?? 'Failed to load contents')
-            },
+            queryFn: makeReviewContentsQueryFn(api, sessionId, target, path),
         })
+        if (!payload || payload.data === undefined) throw new Error(payload?.error ?? 'contents unavailable')
+        const data = payload.data
         // FileContents 形状 {name, contents}：库的 hydration 返回类型只有两种合法形状
         // （双全文 / 纯改名 oldFile:null）——删除文件（after=null）落纯改名形，hunk 内容
         // 不受影响（patch 已含删行）；两侧皆缺直接抛错走库内静默降级
@@ -99,7 +97,7 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
             style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, display: 'flex', overflow: 'auto' }}
         >
             {/* 空 patch 直接 throw（PoC 实证）——二进制/空 diff 诚实降级文案 */}
-            {patchPayload && 'data' in patchPayload && patchPayload.data.patch ? (
+            {patchPayload && patchPayload.data && patchPayload.data.patch ? (
                 <PatchDiff patch={patchPayload.data.patch} options={options} style={{ ...PIERRE_BRIDGE_VARS, height: '100%', flex: 1 }} />
             ) : (
                 <span style={{ margin: 'auto', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.noDiff')}</span>
