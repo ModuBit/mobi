@@ -49,7 +49,7 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, MOBI_STATE_DIR, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
+import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, MOBI_STATE_DIR, openTurnSnapshotStore, parseNameStatus } from '../git/gitTurnSnapshotStore'
 import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
@@ -150,6 +150,17 @@ export class GitReviewReader {
         }
     }
 
+    /** rename 旧路径单查（name-status 一条命令——entries 的 numstat 半边此处用不到，
+     *  省一次全树 diff） */
+    private async previousPathFor(diffArgs: string[], path: string): Promise<string | null> {
+        const statusOut = await this.gitAtRoot([...diffArgs, '--name-status', '-z', '-M'])
+        if (statusOut === null) return null
+        for (const [newPath, record] of parseNameStatus(statusOut)) {
+            if (newPath === path) return record.previousPath ?? null
+        }
+        return null
+    }
+
     /** journal 全文对 → 真 unified patch（git diff --no-index 目录模式）：before/after 各
      *  落 a/ b/ 子目录的同名文件，输出的 a/<basename> b/<basename> 头正是 pierre 期望的
      *  形状，无需重写。单侧 null = add/delete（对端 /dev/null 语义由目录缺文件表达）。
@@ -211,11 +222,13 @@ export class GitReviewReader {
         return assembleDiffEntries(statusOut, numstatOut)
     }
 
-    /** untracked：status porcelain v2 的 `?` 记录（实证形态 `? path\0`，问号与路径同 token） */
-    private async untrackedEntries(): Promise<{ files: TurnDiffFileEntry[]; truncated: boolean }> {
-        const statusOut = await this.gitAtRoot(['status', '--porcelain=v2', '-z'])
-        if (statusOut === null) return { files: [], truncated: false }
-        const tokens = statusOut.split('\0')
+    /** untracked：status porcelain v2 的 `?` 记录（实证形态 `? path\0`，问号与路径同 token）。
+     *  statusOut 可传入共享的 status 查询（overview/files 与 generation 同一次 status 喂
+     *  两者，省一次全工作区扫描） */
+    private async untrackedEntries(statusOut?: Promise<string | null>): Promise<{ files: TurnDiffFileEntry[]; truncated: boolean }> {
+        const raw = await (statusOut ?? this.gitAtRoot(['status', '--porcelain=v2', '-z']))
+        if (raw === null) return { files: [], truncated: false }
+        const tokens = raw.split('\0')
         const paths: string[] = []
         // 实证（git 2.x，-z）：untracked 记录为 `? path\0`——问号与路径同 token，空格分隔。
         // .mobi/ 内部状态目录过滤（审查 v3 票04 留白收口，MOBI_STATE_DIR 单源）：用户项目
@@ -247,16 +260,17 @@ export class GitReviewReader {
     }
 
     /** 审查数据版本（陈旧性判定的缓存键原料，非单调序号）：快照链尾序号为百万位刻度
-     *  + 工作区 status 条数；非 git 用 journal 写入次数之和 */
-    private async computeGeneration(sessionId: string, store: TurnSnapshotStore | null): Promise<number> {
+     *  + 工作区 status 条数；非 git 用 journal 写入次数之和。statusOut 可传入共享的
+     *  status 查询（与 untrackedEntries 同一次喂两者） */
+    private async computeGeneration(sessionId: string, store: TurnSnapshotStore | null, statusOut?: Promise<string | null>): Promise<number> {
         if (!store) {
             return totalWriteCount(await loadToolChangeJournal(getToolChangesPath(this.cwd, sessionId)))
         }
-        const [chain, statusOut] = await Promise.all([
+        const [chain, raw] = await Promise.all([
             store.listChain(sessionId),
-            this.gitAtRoot(['status', '--porcelain=v2', '-z']),
+            statusOut ?? this.gitAtRoot(['status', '--porcelain=v2', '-z']),
         ])
-        const dirty = statusOut ? statusOut.split('\0').filter((t) => t.trim() !== '').length : 0
+        const dirty = raw ? raw.split('\0').filter((t) => t.trim() !== '').length : 0
         return (chain.at(-1)?.index ?? 0) * 1_000_000 + dirty
     }
 
@@ -281,12 +295,14 @@ export class GitReviewReader {
             })
         }
 
-        // 五路查询互不依赖 → 并行（总览延迟 = 最慢一路而非五路之和）
+        // 五路查询互不依赖 → 并行（总览延迟 = 最慢一路而非五路之和）。status 查询
+        // 单跑一份同时喂 untracked 与 generation（全工作区扫描是最贵的 git 操作）
+        const statusTask = this.gitAtRoot(['status', '--porcelain=v2', '-z'])
         const [turnEntries, stagedEntries, unstagedTracked, untracked, headExists] = await Promise.all([
             this.turnAttribution(store).entriesOf(sessionId, { kind: 'turn' }),
             this.entries(['diff', '--cached', '-M', 'HEAD']),
             this.entries(['diff', '-M']),
-            this.untrackedEntries(),
+            this.untrackedEntries(statusTask),
             this.gitAtRoot(['rev-parse', '--verify', 'HEAD']).then((v) => v !== null),
         ])
 
@@ -298,6 +314,7 @@ export class GitReviewReader {
             return { fileCount: stats.files, additions: stats.additions, deletions: stats.deletions }
         }
         const turnSummary = summarizeReviewFiles(turnEntries)
+        const targetGeneration = await this.computeGeneration(sessionId, store, statusTask)
 
         return ReviewOverviewSchema.parse({
             unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: !headExists },
@@ -309,7 +326,7 @@ export class GitReviewReader {
                 staged: summary(stagedEntries),
             },
             truncated: untracked.truncated,
-            targetGeneration: await this.computeGeneration(sessionId, store),
+            targetGeneration,
         })
     }
 
@@ -321,12 +338,15 @@ export class GitReviewReader {
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
-        const generation = await this.computeGeneration(sessionId, store)
 
         const includeUntracked = target.kind === 'worktree' && target.area !== 'staged'
-        const [tracked, untracked] = await Promise.all([
+        // status 单跑一份喂 untracked 与 generation；generation 并入并行块（原先在块前
+        // 串行 await，多付一整段 status 延迟）
+        const statusTask = this.gitAtRoot(['status', '--porcelain=v2', '-z'])
+        const [tracked, untracked, generation] = await Promise.all([
             this.entries(['diff', ...resolved.diffArgs, '-M']),
-            includeUntracked ? this.untrackedEntries() : Promise.resolve({ files: [] as TurnDiffFileEntry[], truncated: false }),
+            includeUntracked ? this.untrackedEntries(statusTask) : Promise.resolve({ files: [] as TurnDiffFileEntry[], truncated: false }),
+            this.computeGeneration(sessionId, store, statusTask),
         ])
         const merged = target.kind === 'worktree' && target.area === 'uncommitted'
             ? mergeEntries(tracked, [...untracked.files])
@@ -364,14 +384,15 @@ export class GitReviewReader {
     /** git 档单文件 patch：rename 旧路径解析 + untracked no-index 兜底（仅工作区非
      *  staged 档）+ 二进制/超预算打标 */
     private async patchFromGit(diffArgs: string[], path: string, opts: { allowNoIndex: boolean }): Promise<{ patch: string; previousPath: string | null; oversized: boolean; binary: boolean }> {
-        // rename 旧路径解析：目标 pair 的 name-status 单查（entry 的 previousPath）
-        const entries = await this.entries(['diff', ...diffArgs, '-M'])
-        const previousPath = entries.find((e) => e.path === path)?.previousPath ?? null
+        // rename 旧路径解析：name-status 单查（不走 entries——那里的全树 numstat 此处用不到）
+        const previousPath = await this.previousPathFor(diffArgs, path)
         const pathArgs = previousPath ? [previousPath, path] : [path]
 
         // untracked：index 无此路径，普通 diff 不覆盖——no-index 兜底（仅工作区非 staged 档）
-        let patch = await this.gitAtRoot(['diff', ...diffArgs, '--find-renames', '--', ...pathArgs])
-        let numstat = await this.gitAtRoot(['diff', ...diffArgs, '--numstat', '--', ...pathArgs])
+        let [patch, numstat] = await Promise.all([
+            this.gitAtRoot(['diff', ...diffArgs, '--find-renames', '--', ...pathArgs]),
+            this.gitAtRoot(['diff', ...diffArgs, '--numstat', '--', ...pathArgs]),
+        ])
         if (opts.allowNoIndex && !patch) {
             const noIndex = await this.noIndexDiff(['diff', '--no-index', '--', '/dev/null', path])
             if (noIndex) {
@@ -414,9 +435,8 @@ export class GitReviewReader {
     /** git 档全文对：rename 基线侧取旧路径（新路径在基线树不存在）；headRev null =
      *  工作区 fs（'' = index） */
     private async contentsFromGit(diffArgs: string[], baseRev: string, headRev: string | null, path: string): Promise<{ before: string | null; after: string | null; reason: 'binary' | 'oversized' | 'missing' | null }> {
-        const previousPath = headRev !== null
-            ? (await this.entries(['diff', ...diffArgs, '-M'])).find((e) => e.path === path)?.previousPath ?? null
-            : null
+        // rename 基线侧取旧路径（新路径在基线树不存在）；headRev null = 工作区 fs，无 rename 概念
+        const previousPath = headRev !== null ? await this.previousPathFor(diffArgs, path) : null
         const [base, head] = await Promise.all([
             this.showRev(baseRev, previousPath ?? path),
             headRev === null ? this.readWorktreeRev(path) : this.showRev(headRev, path),
