@@ -39,10 +39,14 @@ export const DIRECTIVE_SHAPE = `${DIRECTIVE_PREFIX}([a-z][a-z0-9-]*)\\{([^{}]*)\
 
 const DIRECTIVE_RE = new RegExp(DIRECTIVE_SHAPE, 'g')
 
+/** attrs 值允许的引号：直引号 + 中文弯引号（模型在中文语境输出易带弯引号，容错而非降级） */
+const ATTR_QUOTE = '["“”]'
+const ATTR_VALUE = '[^"“”]*'
+
 /** attrs 串 → 键值表（`key="val"` 空格分隔；值不含引号，协议不定义转义；同名后者覆盖） */
 export function parseDirectiveAttrs(raw: string): Record<string, string> {
     const attrs: Record<string, string> = {}
-    for (const m of raw.matchAll(/([a-zA-Z][\w-]*)="([^"]*)"/g)) {
+    for (const m of raw.matchAll(new RegExp(`([a-zA-Z][\\w-]*)\\s*=\\s*${ATTR_QUOTE}(${ATTR_VALUE})${ATTR_QUOTE}`, 'g'))) {
         attrs[m[1]!] = m[2]!
     }
     return attrs

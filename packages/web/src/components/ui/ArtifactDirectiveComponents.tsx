@@ -28,6 +28,7 @@
 
 import { createContext, useCallback, useContext, useMemo, type FC, type ReactNode } from 'react'
 import { Dropdown, message, theme } from 'antd'
+import { Alert } from 'antd'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, File, FileText, Globe, Image as ImageIcon, Link2, Music, Video } from 'lucide-react'
@@ -237,6 +238,30 @@ const ArtifactCard: FC<{ path: string, reason?: ArtifactCardReason, sessionId?: 
 }
 
 /**
+ * 产物声明解析失败卡：指令字面量对用户是噪音，但「静默吞掉」或「裸展示原文」都不可——
+ * title/hint 说明原因（弯引号、缺 path 等格式问题），原文以 mono 小字保留供排查。
+ */
+const ArtifactInvalidCard: FC<{ raw?: ReactNode }> = ({ raw }) => {
+    const { t } = useTranslation()
+    return (
+        <Alert
+            type="warning"
+            showIcon
+            message={t('chat.artifact.invalidTitle')}
+            description={(
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <span>{t('chat.artifact.invalidHint')}</span>
+                    <code style={{ fontSize: 11, fontFamily: 'var(--font-mono)', wordBreak: 'break-all', color: 'var(--ant-color-text-tertiary)' }}>
+                        {raw}
+                    </code>
+                </div>
+            )}
+            style={{ maxWidth: 460, margin: '4px 0' }}
+        />
+    )
+}
+
+/**
  * :mobi-artifact 渲染入口（MobiDirective 路由表项）：attrs → 类型化参数，非法降级原文；
  * 渲染形态由 classifyArtifact（domain 裁决纯函数）唯一确定，本层只做端口装配：
  * 无寻址 → 卡（不打无效请求）；有端口 → 直接裁决；缺省 → react-query adapter。
@@ -245,7 +270,8 @@ export const ArtifactDirectiveView: FC<{ path?: string, mode?: string, children?
     const env = useContext(ArtifactEnvContext)
     const params = path !== undefined ? parseArtifactParams({ path, mode: mode ?? '' }) : null
 
-    if (!params) return <span>{children}</span>
+    // 解析失败（弯引号/缺 path 等）：异常卡而不是裸原文——指令字面量对用户是噪音
+    if (!params) return <ArtifactInvalidCard raw={children} />
 
     const sessionId = env?.refCtx.sessionId ?? null
     // 寻址上下文缺失（非聊天场景/测试）：直接卡，不打无效请求

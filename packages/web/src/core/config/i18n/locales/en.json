@@ -454,7 +454,9 @@
             "reason.missing": "File not found or unreadable",
             "reason.tooLarge": "Exceeds the inline size limit ({{limit}})",
             "reason.unsupported": "This type can't be inlined",
-            "htmlTitle": "HTML preview"
+            "htmlTitle": "HTML preview",
+            "invalidTitle": "Artifact directive could not be parsed",
+            "invalidHint": "Invalid directive format (e.g. curly quotes), kept as-is"
         },
         "turnDiff": {
             "filesEdited": "Edited {{count}} files",

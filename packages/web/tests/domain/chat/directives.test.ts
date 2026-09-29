@@ -34,6 +34,15 @@ describe('parseDirectiveAttrs', () => {
         expect(parseDirectiveAttrs('a="1" b="two words"')).toEqual({ a: '1', b: 'two words' })
         expect(parseDirectiveAttrs('')).toEqual({})
     })
+
+    it('中文弯引号容错：模型中文语境输出 path=“x” 仍解析（2026-09-29 实踩降级）', () => {
+        expect(parseDirectiveAttrs('path=“.mobi/a.png”')).toEqual({ path: '.mobi/a.png' })
+        expect(parseDirectiveAttrs('mode=“card” path=“a b.png”')).toEqual({ path: 'a b.png', mode: 'card' })
+        // 弯直混排同样命中
+        expect(parseDirectiveAttrs('path="a.png”')).toEqual({ path: 'a.png' })
+        // 值内撇号不受弯单引号容错影响（只容弯双引号，避免截断 don't.mp3 类文件名）
+        expect(parseDirectiveAttrs("path=\"don't.mp3\"")).toEqual({ path: "don't.mp3" })
+    })
 })
 
 describe('parseDirectiveHits', () => {

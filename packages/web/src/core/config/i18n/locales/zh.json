@@ -445,7 +445,9 @@
             "reason.missing": "文件不存在或不可读",
             "reason.tooLarge": "超过 inline 大小上限（{{limit}}）",
             "reason.unsupported": "该类型不支持 inline 展示",
-            "htmlTitle": "网页预览"
+            "htmlTitle": "网页预览",
+            "invalidTitle": "产物声明无法解析",
+            "invalidHint": "指令格式无效（如使用了中文引号），已原样保留"
         },
         "turnDiff": {
             "filesEdited": "已编辑 {{count}} 个文件",
