@@ -92,12 +92,11 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
             'Optional permission mode for the new session. Omit to take the mobi default.',
         ),
         title: z.string().min(1).max(255).optional().describe(
-            'Optional title for the new session. This is only its initial name — the new session may rename itself later. ' +
-            'Omit to leave it unnamed.',
+            'Optional initial title. Omit to leave it unnamed; the session may rename itself once it knows the work.',
         ),
         waitForReady: z.boolean().optional().describe(
-            'Defaults to true: the call returns once the new session can accept messages, so sending to it right away is safe. ' +
-            'Pass false only if you will not message it immediately — it returns as soon as the process is launched.',
+            'Defaults to true: returns once the session can accept messages, so sending to it right away is safe. ' +
+            'Pass false to return as soon as the process is launched.',
         ),
     })
 
@@ -133,20 +132,13 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
         // **使用边界**（能复用已有会话就别新建，对齐 codex create_thread 的
         // "Create a separate task only when the user explicitly asks"）与**跨工具协作**
         description:
-            'Start a new mobi session on one machine. ' +
-            'Create a session only when a new working context is genuinely needed — ' +
-            'when the work can go to a session that already exists, use send_message_to_session instead. ' +
-            'Call list_machines first and pass one of the returned machineIds; this tool does not accept a machine name. ' +
-            'directory is required and is resolved on that machine. ' +
-            'Omit workspaceId, model, effort, permissionMode, and title to take mobi\'s defaults. ' +
-            'A title is only the new session\'s initial name — that session may rename itself once it knows what ' +
-            'the work is, and its own name wins. ' +
-            'The new session starts with no first message — it is an empty working context. ' +
-            'Give it work with send_message_to_session. ' +
-            'Creation is not instant: it launches a real Claude Code process on that machine, and by default the call ' +
-            'waits until that session can actually accept messages. ' +
-            'Failures are reported in plain language — the machine may be offline, the directory may not be creatable, ' +
-            'or setup may have timed out.',
+            'Start a new mobi session on one machine. Create one only when a new working context is genuinely needed — ' +
+            'when the work fits an existing session, use send_message_to_session instead. Call list_machines first and pass ' +
+            'one of the returned machineIds; this tool does not accept a machine name. directory is required and resolved on ' +
+            'that machine. The new session starts with no first message — Give it work with send_message_to_session. ' +
+            'Creation is not instant: it launches a real Claude Code process and waits until that session can actually accept ' +
+            'messages (pass waitForReady=false to skip the wait). Failures are reported in plain language — machine offline, ' +
+            'directory not creatable, or setup timeout.',
         title: 'Create Session',
         inputSchema: createSessionInputSchema,
         execute,

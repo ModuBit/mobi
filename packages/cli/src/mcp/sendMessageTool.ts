@@ -31,8 +31,10 @@
  */
 
 import { z } from 'zod'
-import { UserMessageContentSchema } from '@mobi/shared'
-import type { AgentSendMessageAck, AgentSendMessageRequest, AgentSendMessageTargetResult } from '@mobi/shared'
+import { randomUUID } from 'node:crypto'
+import { statSync } from 'node:fs'
+import { basename } from 'node:path'
+import type { AgentSendMessageAck, AgentSendMessageRequest, AgentSendMessageTargetResult, UserContentBlock } from '@mobi/shared'
 import { errorTextResult, textResult, type MobiToolTextResult } from './toolResult'
 
 export const SEND_MESSAGE_TOOL_NAME = 'send_message_to_session' as const
@@ -87,14 +89,51 @@ export function renderDeliveryResults(results: readonly AgentSendMessageTargetRe
 }
 
 export function createSendMessageTool(deps: SendMessageToolDeps) {
+    // content 用**工具本地精准 schema**而非 shared UserMessageContentSchema：agent 能诚实
+    // 提供的只有「正文文本 + 本机文件路径」——shared 词汇里的 quote.messageId 只有源会话
+    // 知道、FileRefFields（id/size/previewUrl）是 composer 上传侧生成的事实字段，展开进
+    // JSON Schema 既烧 context 又诱导模型手编假数据（2026-09-29 /context 实测 6k）。
+    // wire 形态由 toWireContent 执行期装配，hub 的 gateContent 严格校验不放松。
+    const attachmentPath = z.string().min(1).describe(
+        'Absolute path to a file on YOUR machine (the machine this session runs on).',
+    )
+    const sendMessageBlockSchema = z.discriminatedUnion('type', [
+        z.object({ type: z.literal('text'), text: z.string() }),
+        z.object({ type: z.literal('image'), path: attachmentPath }),
+        z.object({ type: z.literal('document'), path: attachmentPath }),
+    ])
     const sendMessageInputSchema = z.object({
         targets: z.array(z.string().min(1)).min(1).describe(
             'Session ids from list_sessions. Every target must be active. Failures are reported per target.',
         ),
-        content: UserMessageContentSchema.describe(
-            'Usually just a plain string. Also accepts the composer block forms: text, quote, image, document.',
+        content: z.union([z.string(), sendMessageBlockSchema, z.array(sendMessageBlockSchema)]).describe(
+            'Usually just a plain string. Attach a file with an image or document block (path on your machine).',
         ),
     })
+
+    // stat 失败不阻塞：size 只是渲染事实，文件可达性由 hub 的同机闸逐目标裁决并报原因
+    const toWireBlock = (block: z.infer<typeof sendMessageBlockSchema>): UserContentBlock => {
+        if (block.type === 'text') return block
+        let size = 0
+        try {
+            size = statSync(block.path).size
+        } catch {
+            // 文件不存在/不可读：照常装配，hub 闸拒绝时逐目标报错（文案已含文件名）
+        }
+        return {
+            type: block.type,
+            source: { type: 'url', value: block.path },
+            id: randomUUID(),
+            filename: basename(block.path),
+            size,
+        }
+    }
+
+    const toWireContent = (content: string | z.infer<typeof sendMessageBlockSchema> | Array<z.infer<typeof sendMessageBlockSchema>>): AgentSendMessageRequest['content'] => {
+        if (typeof content === 'string') return content
+        if (Array.isArray(content)) return content.map(toWireBlock)
+        return toWireBlock(content)
+    }
 
     async function execute(rawArgs: unknown): Promise<SendMessageToolResult> {
         const parsed = sendMessageInputSchema.safeParse(rawArgs ?? {})
@@ -104,7 +143,7 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
 
         let answer: AgentSendMessageAck
         try {
-            answer = await deps.sendMessage(parsed.data)
+            answer = await deps.sendMessage({ targets: parsed.data.targets, content: toWireContent(parsed.data.content) })
         } catch (error) {
             // socket 断开 / ack 超时：连接故障。此处**不能**说「可能已送达」——
             // ack 没回来，连 hub 走到哪一步都不知道
@@ -139,22 +178,11 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
         // 一段文本」。这里改成如实描述，让 agent 自己选：给本机文件，或把 URL 写进正文
         description:
             'Send a message to one or more sessions. Each target receives it as a user message tagged with this session, ' +
-            'so the receiving agent can see where it came from and reply with this same tool. ' +
-            'Pass session ids from list_sessions. Every target must be active — a session whose process has exited cannot ' +
-            'receive messages, and failures are reported per target. ' +
-            'content takes the same forms as the mobi composer: usually plain text, or blocks of type text, quote, image, ' +
-            'and document. Write clear, cohesive, human-readable prose — the receiving agent reads this the way it reads ' +
-            'a message from the user. ' +
-            'image and document blocks must point at files on your own machine, and every target must be on that same ' +
-            'machine; a local file cannot reach a session on another machine, and such a send fails rather than silently ' +
-            'dropping the file. Nothing fetches URLs: a block whose value is an online URL or a data: URL is not ' +
-            'delivered as an image or a file — the target receives the value as plain text it would have to fetch ' +
-            'itself, and a data: URL only burns context. Either attach a local file, or put the URL in the message text. ' +
-            'Do not wait for a reply. There is no tool that waits — end your turn, and the target\'s response arrives later ' +
-            'as a new message. The receiving agent will not stop what it is doing to handle your message; it sees it ' +
-            'alongside its next tool result. ' +
-            'Messages sent this way are final: they do not enter the recipient\'s submission queue, they cannot be cancelled ' +
-            'or edited, and they appear in the web UI like any other cross-session message.',
+            'and can reply with this same tool. Ids come from list_sessions; every target must be active — failures are ' +
+            'reported per target. content is usually a plain string; image/document blocks take a path on your machine, and ' +
+            'every target must be on that same machine — files cannot cross machines. Nothing fetches URLs: a URL or data: ' +
+            'value is delivered as plain text, so put the URL in the message text instead. Messages are final: they are not ' +
+            'queued and cannot be cancelled. Do not wait for a reply — end your turn; the response arrives later as a new message.',
         title: 'Send Message To Session',
         inputSchema: sendMessageInputSchema,
         execute,

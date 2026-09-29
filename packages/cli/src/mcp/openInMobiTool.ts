@@ -100,7 +100,9 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
         // 描述含检索关键词（tool search defer 场景按描述命中）+ codex 同款"只开 UI"提示，
         // 防止模型误用它读取内容（read-file 才是读取通道）
         description:
-            "Show something to the user in their mobi Web UI: open a workspace file (optionally at a line) or open a terminal, in a tab of the current session's sidebar. Use this after creating or editing an artifact when showing the result would help the user. This only opens the mobi UI; use file reading tools to inspect or interact with the content.",
+            "Show a file to the user in their mobi Web UI: open a workspace file (optionally at a line) or a terminal, " +
+            "in a tab of the current session's sidebar. Use it after creating or editing an artifact worth showing. " +
+            'This only opens the UI — use file reading tools to inspect content.',
         title: 'Open in Mobi',
         inputSchema: openInMobiInputSchema,
         execute,

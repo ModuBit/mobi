@@ -95,9 +95,8 @@ export function createListMachinesTool(deps: ListMachinesToolDeps) {
         // 描述含检索关键词（machine / host / online / where to create a session），
         // 并写明与 create_session 的输入契约——tools search defer 场景按描述命中
         description:
-            'List the machines that are online and reachable right now. ' +
-            'Use a returned machineId with create_session — that tool requires an explicit id and will not accept a machine name. ' +
-            'A machine absent from this list has no CLI running, so no new session can be started on it.',
+            'List machines that are online and reachable right now. Pass a returned machineId to create_session — ' +
+            'that tool will not accept a machine name. A machine absent from this list has no CLI running and cannot host new sessions.',
         title: 'List Machines',
         inputSchema: listMachinesInputSchema,
         execute,

@@ -73,6 +73,61 @@ describe('createSendMessageTool', () => {
         expect(sendMessage).toHaveBeenCalledWith({ targets: ['B', 'C'], content: 'hello there' })
     })
 
+    it('content 收窄：composer 专属词汇（quote / 手填事实字段）被拒，不透传 hub', async () => {
+        // schema 精准面：quote 的 messageId 只有源会话知道、id/size 是上传侧生成的
+        // 事实字段——暴露进 JSON Schema 只会烧 context 并诱导模型手编
+        const { deps, sendMessage } = buildDeps()
+        const tool = createSendMessageTool(deps)
+
+        const quote = await tool.execute({
+            targets: ['B'],
+            content: [{ type: 'quote', messageId: 'm1', role: 'user', excerpt: 'hi' }],
+        })
+
+        expect(quote.isError).toBe(true)
+        expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('image block：本机路径装配成 wire url source + 事实字段（id/filename/size）', async () => {
+        const { deps, sendMessage } = buildDeps()
+        const tool = createSendMessageTool(deps)
+
+        await tool.execute({ targets: ['B'], content: { type: 'image', path: '/tmp/mobi-send-tool-fixture.png' } })
+
+        const sent = sendMessage.mock.calls[0][0].content
+        expect(Array.isArray(sent)).toBe(false)
+        expect(sent).toMatchObject({
+            type: 'image',
+            source: { type: 'url', value: '/tmp/mobi-send-tool-fixture.png' },
+            filename: 'mobi-send-tool-fixture.png',
+        })
+        expect(typeof sent.id).toBe('string')
+        expect(sent.id.length).toBeGreaterThan(0)
+    })
+
+    it('document block 数组形态同样逐个装配；stat 失败不阻塞（size=0，可达性由 hub 同机闸裁决）', async () => {
+        const { deps, sendMessage } = buildDeps()
+        const tool = createSendMessageTool(deps)
+
+        await tool.execute({
+            targets: ['B'],
+            content: [
+                { type: 'text', text: 'see attached' },
+                { type: 'document', path: '/nonexistent-dir/f.txt' },
+            ],
+        })
+
+        const sent = sendMessage.mock.calls[0][0].content
+        expect(sent).toHaveLength(2)
+        expect(sent[0]).toEqual({ type: 'text', text: 'see attached' })
+        expect(sent[1]).toMatchObject({
+            type: 'document',
+            source: { type: 'url', value: '/nonexistent-dir/f.txt' },
+            filename: 'f.txt',
+            size: 0,
+        })
+    })
+
     it('rejects an empty target list and empty ids without calling the hub', async () => {
         const { deps, sendMessage } = buildDeps()
         const tool = createSendMessageTool(deps)
