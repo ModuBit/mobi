@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / hub 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-09-12
+  last_verified: 2026-09-29
 ---
 
 # 环境启动
@@ -94,6 +94,20 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 § cleanup 仍能找到它（pattern 兜底按 `--profile e2e` 匹配），不用手工收尾。
 
 **坑**：Bash 工具里 `nohup ... &` 拉起的进程在**工具调用结束时被沙箱 SIGTERM 回收**（exits.log 见 signal-term、uptime ~5s）——必须用 `run_in_background: true` 且**套 setsid**（与 bootstrap 同理，见下方坑表）。
+
+## runner 单独重启（改 machine 通道 RPC 代码后验新逻辑，2026-09-29）
+
+审查 v2 的 gitReview RPC 在 **runner 进程**执行（hub 纯转发 machine 通道，会话 CLI 不经手）——
+改 `packages/cli/src/modules/**` 的 reader/handler 后必须重启 runner；cleanup+bootstrap 清数据目录，
+单独重启保留。注意：会话 CLI 源码直跑、**新会话即新代码**，但 runner 是常驻的（bootstrap 起的那只
+不会因新会话刷新）。
+
+1. 按 PID 精确杀：`kill $(python3 -c "import json;print(json.load(open('$HOME/.mobi-e2e/runner.state.json'))['pid'])")`
+2. 仓库根目录 `run_in_background: true` 跑 `bun run packages/cli/src/index.ts --profile e2e runner start-sync`
+   （工具调用结束不回收；**普通 Bash 里 nohup & 会被沙箱 SIGTERM**，同 hub 坑）
+3. 就绪：`runner.state.json` 出现新 pid 且 `ps -p <pid>` 存活；httpPort 会变（不必管）
+
+**坑**：macOS 无 `setsid`；runner 崩溃后 hub 侧 git-review 路由 0-1ms 即 500（machine 失联的判别特征）。
 
 ## curl 直调 hub API（不走浏览器）
 
