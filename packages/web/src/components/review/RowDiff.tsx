@@ -16,8 +16,8 @@
 
 /**
  * 行内展开的 diff 区（Collapse children）：挂载即拉取、卸载即停——懒加载由此承载。
- * v2（审查重写票05）：patch（diff 方法）+ contents（全文对，懒拉通道）两路查询，
- * 组装成旧 DiffViewer 的 before/after/patch 视图形状（DiffViewer 本体换血在票 07）。
+ * v2（审查重写票07）：patch 查询闸 loading/error/oversized，渲染本体交
+ * DiffViewer（@pierre/diffs，patch 主输入 + contents hydration 懒拉）。
  */
 
 import { Button, Flex, Spin } from 'antd'
@@ -28,7 +28,7 @@ import { basename } from '@/core/utils/path'
 import { DiffViewer } from './DiffViewer'
 import type { GitReviewDeps } from './reviewDeps'
 
-export function RowDiff({ sessionId, target, entry, version, deps, wrap = true }: {
+export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, layout = 'unified' }: {
     sessionId: string
     /** 审查目标（五档统一寻址） */
     target: DiffTarget
@@ -38,7 +38,7 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true }
     deps: GitReviewDeps
     /** 自动换行开关（审查面板工具区切换） */
     wrap?: boolean
-    /** diff 布局（unified/split，票06 存线；消费在票07 DiffViewer 换血） */
+    /** diff 布局（unified/split，票06） */
     layout?: 'unified' | 'split'
 }) {
     const { t } = useTranslation()
@@ -46,7 +46,6 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true }
 
     // oversized 由 CLI 单点打标：不发 diff 拉取（null path → hook disabled），直接降级
     const patch = deps.useReviewPatch(sessionId, target, entry.oversized ? null : entry.path, version)
-    const contents = deps.useReviewContents(sessionId, target, entry.oversized ? null : entry.path, true)
 
     if (entry.oversized) {
         return (
@@ -62,36 +61,20 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true }
             </Flex>
         )
     }
-    const error = patch.error ?? contents.error
-    if (error) {
-        return <Flex align="center" justify="center" style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-error)' }}>{error}</Flex>
+    if (patch.error) {
+        return <Flex align="center" justify="center" style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-error)' }}>{patch.error}</Flex>
     }
-    if (patch.isLoading || contents.isLoading || (!patch.data && !contents.data)) {
+    if (patch.isLoading || !patch.data) {
         return <Flex align="center" justify="center" style={{ flex: 1, padding: 24 }}><Spin size="small" /></Flex>
     }
     return (
-        <DiffBody
-            patch={patch.data?.patch ?? ''}
-            before={contents.data?.before ?? null}
-            after={contents.data?.after ?? null}
+        <DiffViewer
+            sessionId={sessionId}
+            target={target}
+            path={entry.path}
+            version={version}
             wrap={wrap}
+            layout={layout}
         />
     )
-}
-
-function DiffBody({ patch, before, after, wrap }: { patch: string; before: string | null; after: string | null; wrap: boolean }) {
-    const { t } = useTranslation()
-    // before/after 全文是渲染主通道；二进制或两侧皆缺（如删除且无全文）降级 patch 文本
-    if (before === null && after === null) {
-        return (
-            <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: 12 }}>
-                {patch ? (
-                    <pre style={{ margin: 0, fontSize: 12, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'pre-wrap', color: 'var(--ant-color-text)' }}>{patch}</pre>
-                ) : (
-                    <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.noDiff')}</span>
-                )}
-            </div>
-        )
-    }
-    return <DiffViewer before={before ?? ''} after={after ?? ''} wrap={wrap} />
 }

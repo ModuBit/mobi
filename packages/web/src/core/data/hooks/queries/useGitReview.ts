@@ -40,7 +40,7 @@ import {
     type ReviewOverview,
     type ReviewPatchResult,
 } from '@mobi/shared'
-import { useMobiApi } from '@/core/data/api/client'
+import { useMobiApi, type MobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 
 export interface ReviewDataResult {
@@ -175,24 +175,34 @@ export interface ReviewPatchQueryResult {
     isLoading: boolean
 }
 
+/** patch 查询的缓存载荷（{data}|{error} 包装，不抛错走 retry）。
+ *  ⚠️ 同一 query key 的所有观察者（useReviewPatch / DiffViewer）必须共用此 queryFn——
+ *  形状分叉会让后挂载方拿到对方的包装对象却按自己的形状读，静默落到空分支 */
+export type ReviewPatchQueryPayload = { data: ReviewPatchResult } | { error: string } | null
+
+/** 共享 queryFn 工厂：hook 与 DiffViewer 同键同形（见 ReviewPatchQueryPayload 警告） */
+export function makeReviewPatchQueryFn(api: MobiApi, sessionId: string, target: DiffTarget | null, path: string | null) {
+    return async (): Promise<ReviewPatchQueryPayload> => {
+        if (!target || !path) return null
+        const res = await api.sessions.gitReviewDiff(sessionId, target, path)
+        const parsed = ReviewPatchResultSchema.safeParse(res.data)
+        if (parsed.success) return { data: parsed.data } as const
+        const err = (res.data as { error?: string } | undefined)?.error
+        return { error: err ?? 'Failed to load diff' } as const
+    }
+}
+
 /** 单文件 patch v2（pierre PatchDiff 主输入）；path 为 null 不拉（未展开） */
 export function useReviewPatch(sessionId: string, target: DiffTarget | null, path: string | null, version: number | string = ''): ReviewPatchQueryResult {
     const api = useMobiApi()
     const q = useQuery({
         queryKey: queryKeys.gitReviewPatch(sessionId, target ?? { kind: 'turn' }, path ?? '', version),
-        queryFn: async () => {
-            if (!target || !path) return null
-            const res = await api.sessions.gitReviewDiff(sessionId, target, path)
-            const parsed = ReviewPatchResultSchema.safeParse(res.data)
-            if (parsed.success) return { data: parsed.data } as const
-            const err = (res.data as { error?: string } | undefined)?.error
-            return { error: err ?? 'Failed to load diff' } as const
-        },
+        queryFn: makeReviewPatchQueryFn(api, sessionId, target, path),
         enabled: !!sessionId && !!target && !!path,
     })
     return {
-        data: q.data?.data ?? undefined,
-        error: q.data?.error ?? (q.error ? String(q.error) : null),
+        data: q.data && 'data' in q.data ? q.data.data : undefined,
+        error: (q.data && 'error' in q.data ? q.data.error : null) ?? (q.error ? String(q.error) : null),
         isLoading: !!target && !!path && q.isLoading,
     }
 }

@@ -29,7 +29,7 @@ import { useMemo, useState, type CSSProperties } from 'react'
 import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import { Button, Flex, Radio, Typography } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { PIERRE_BRIDGE_VARS } from './pierreTheme'
+import { PIERRE_BRIDGE_VARS } from '@/components/review/pierreTheme'
 
 /** 生成 ≥3000 行的真实 git patch 样例（确定性伪随机，便于人工核对行号；hunk 头按实际行数统计） */
 function buildBigPatch(): string {

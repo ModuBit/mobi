@@ -33,8 +33,8 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 vi.mock('@/components/review/DiffViewer', () => ({
-    DiffViewer: ({ before, after }: { before: string; after: string }) => (
-        <div data-testid="diff-viewer-stub" data-before={before} data-after={after} />
+    DiffViewer: ({ path, layout }: { path: string; layout: string }) => (
+        <div data-testid="diff-viewer-stub" data-path={path} data-layout={layout} />
     ),
 }))
 
@@ -176,7 +176,7 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(issued).toHaveLength(1)
         expect(issued[0]).toBe('b.ts')
         expect(expandedOf(rows[0]!)).toBe('true')
-        expect(screen.getByTestId('diff-viewer-stub').getAttribute('data-before')).toBe('old')
+        expect(screen.getByTestId('diff-viewer-stub').getAttribute('data-path')).toBe('b.ts')
     })
 
     it('单击另一文件追加展开（多开不互斥；懒加载只对展开行发起查询）', () => {
