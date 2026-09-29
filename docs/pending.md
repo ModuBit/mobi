@@ -894,3 +894,27 @@ interrupt（用户停止）
 **待做**：gateway（CCR backend）集成时一并评估按 [feature pass-through](https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through) 原样透传（含不认识的 `safeguards` 字段与 `safeguard_results` 键），透传达标后把保底注入撤除或默认置 '1'，会话恢复服务端检查（免计费）。注意：该 env 是 CC 官方标注的 temporary setting，可能在未来版本移除，撤除时机需复查文档。
 
 **关联**：system informational 的 web 展示收窄（页头横幅 + level 分档）另行立项；web 端去重需 per content signature（SDK 模式无 ack 语义）。
+
+---
+
+## 90. checkpoint 回滚——审查能力的 restore 扩展（2026-09-29 审查 v3 规划时裁决不立项）
+
+**背景**：ZCode 有完整 checkpoint 回滚链路（`gitCheckpointRepo.ts`：临时 index 快照 → write-tree/commit-tree → 隐藏 ref 挂锚；restore 前按 blob hash 逐路径冲突检测，worktree-only 写回不碰用户 index，rename 旧路径显式清理，restore 后校验）。mobi 审查 v3（.scratch/review-v3/）已把快照链改造成同构形态（临时 index 预热 + workspace pathspec），接缝已留。
+
+**待做**：立项时照抄 ZCode 三方语义（声明基线 from / 目标 to / 磁盘实况），冲突不 force 拒绝写回；restore 入口放审查视图 turn 档（回滚本轮/回滚到某轮）。快照链当前只存 tree 引用（mobi 用 update-ref 挂 tree，ZCode 挂 commit）——restore 需要 blob 级内容可直接从 tree 读，无需改存储。
+
+---
+
+## 91. 审查视图文件内容搜索——ZCode fileChangeFind 同款（2026-09-29 审查 v3 规划时列 P2）
+
+**背景**：ZCode GitPane 支持跨文件变更内容搜索（折叠文件批量预加载 diff 后全局命中、命中行高亮滚动，GitPane.tsx:326-382 + fileChangeFindSearch.ts），审查长文件列表时定位变更有用。
+
+**待做**：mobi 审查视图（ReviewFilesResult + patch 通道）已有全部数据，缺的是前端批量拉 patch + 命中索引 + 滚动定位。注意 ZCode 的性能教训已在注释里：Review 打开同步挂载几百行致 600ms long task，虚拟化 + 只挂可视行（mobi 列表若未虚拟化先解决挂载成本）。
+
+---
+
+## 92. 全量 TurnDiffEvent 流式协议——每次 apply_patch 即发累积净 diff（2026-09-29 审查 v3 规划时列 P2）
+
+**背景**：Codex 在每个 apply_patch 工具完成时即发 `TurnDiffEvent { unified_diff }`（tools/events.rs:668-671，累积净 diff + rendered_diffs 缓存），客户端实时渲染本轮 diff。mobi 票05（review-v3）用「web 侧消息投影」实现了轻量版实时文件列表，零协议改动；但实时**可展开 diff**（投影只有行数）需协议事件。
+
+**待做**：若用户要实时 diff 展开，加 custom event（如 `TURN_DIFF_PATCH_EVENT`）随每次 Edit 族 tool_result 入流，载荷 = 该次 structuredPatch（增量即可，前端累积）；与权威 turn-diff 消息的归并关系需定义（Codex 是 tracker invalidate 后静默，mobi journal 供数可直接增量拼接）。
