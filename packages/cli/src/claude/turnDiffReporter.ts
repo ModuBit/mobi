@@ -35,6 +35,7 @@
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
 import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
+import type { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { logger } from '@/ui/logger'
 
 /**
@@ -60,8 +61,8 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 type CustomEventEnvelope = { mobiCustomEvent: true; role: 'custom'; content: unknown[] }
 
 export class TurnDiffReporter {
-    /** toolUseId → file_path（assistant tool_use 观测，供 tool_result 的 patch 归位） */
-    private readonly toolFilePaths = new Map<string, string>()
+    /** toolUseId → file_path + 工具名（assistant tool_use 观测，供 tool_result 的 patch 归位与 journal 归因） */
+    private readonly toolFilePaths = new Map<string, { path: string; toolName: string }>()
     /** 投影口径：path → 行数累加（降级档的数据源） */
     private readonly projected = new Map<string, { additions: number; deletions: number }>()
     /** 非 git 模式的轮次计数（git 模式用快照链序，不用它） */
@@ -71,6 +72,8 @@ export class TurnDiffReporter {
         private readonly sessionId: string,
         private readonly store: TurnSnapshotStore | null,
         private readonly send: (raw: RawJSONLines) => void,
+        /** 工具层变更记录（spec 2.1 兜底源，票 04 消费）；缺省 = 不采集 */
+        private readonly journal?: PersistentToolChangeJournal,
     ) {}
 
     /** 每条 SDK 转换消息（RawJSONLines）流过时观测；不抛错、不影响主流程 */
@@ -93,7 +96,7 @@ export class TurnDiffReporter {
                     ? (block.input as { file_path?: unknown } | undefined)?.file_path
                     : undefined
                 if (typeof filePath === 'string' && filePath.length > 0) {
-                    this.toolFilePaths.set(block.id, filePath)
+                    this.toolFilePaths.set(block.id, { path: filePath, toolName: block.name })
                     if (!this.projected.has(filePath)) this.projected.set(filePath, { additions: 0, deletions: 0 })
                 }
             }
@@ -111,12 +114,35 @@ export class TurnDiffReporter {
             if (raw === undefined || raw === null) return
             const patches: unknown[] = Array.isArray(raw) ? raw : [raw]
             for (const [i, result] of results.entries()) {
-                const filePath = this.toolFilePaths.get(result.tool_use_id)
-                if (!filePath) continue
+                const observed = this.toolFilePaths.get(result.tool_use_id)
+                if (!observed) continue
                 // 单结果形态 toolUseResult 就是对象本身；合并数组形态按序对应（缺位跳过）
                 const patchSource = Array.isArray(raw) ? patches[i] : patches[0]
-                this.applyStructuredPatch(filePath, patchSource)
+                this.applyStructuredPatch(observed.path, patchSource)
+                // 全文对采集（兜底源）：与行数投影同一遍历，形状不符静默跳过
+                this.recordJournalChange(observed, patchSource)
             }
+        }
+    }
+
+    /**
+     * toolUseResult 的全文对采集（spec 2.1 兜底源）：Edit/MultiEdit 类结果带
+     * originalFile（编辑前全文）、Write 类带 content（写入后全文）；两者都缺
+     * （Bash 等非编辑族结果）跳过。path 优先取结果自带的 filePath，缺省回退
+     * tool_use 的 file_path。缺 content 只记 before 占位（journal 归并规则自理）
+     */
+    private recordJournalChange(observed: { path: string; toolName: string }, patchSource: unknown): void {
+        if (!this.journal) return
+        const src = patchSource as { filePath?: unknown; originalFile?: unknown; content?: unknown } | undefined
+        if (!src || typeof src !== 'object') return
+        const path = typeof src.filePath === 'string' && src.filePath.length > 0 ? src.filePath : observed.path
+        const beforeContent = typeof src.originalFile === 'string' ? src.originalFile : null
+        const afterContent = typeof src.content === 'string' ? src.content : undefined
+        if (beforeContent === null && afterContent === undefined) return
+        try {
+            this.journal.record({ path, beforeContent, afterContent, toolName: observed.toolName })
+        } catch (e) {
+            logger.debug('[TurnDiffReporter] journal record failed', e)
         }
     }
 

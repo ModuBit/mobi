@@ -20,10 +20,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, TurnDiffPayloadSchema, type TurnDiffPayload } from '@mobi/shared'
 import { TurnDiffReporter, ensureBaselineSnapshot } from '@/claude/turnDiffReporter'
 import { createInMemoryTurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
+import { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 
 const SID = 's-1'
 
@@ -227,5 +231,62 @@ describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('stor
         await reporter.onTurnEnd()
         const [payload] = sentPayloads(send)
         expect(payload!.turnIndex).toBe(2) // 计数只在合成时递增
+    })
+})
+
+describe('TurnDiffReporter（journal 全文对采集，审查 v2 票03）', () => {
+    it('Edit 带 originalFile 记 before 占位、Write 带 content 记 after，同 path 归并', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-journal-'))
+        try {
+            const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(SID, null, send, journal)
+
+            // Edit：originalFile（编辑前全文）+ structuredPatch
+            reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                toolUseResult: {
+                    filePath: '/proj/a.ts',
+                    originalFile: 'line1\nline2\n',
+                    structuredPatch: [{ lines: ['-line2', '+line2 edited'] }],
+                },
+            } as unknown as RawJSONLines)
+            // Write：content（写入后全文）
+            reporter.observe(assistantToolUse('t2', 'Write', '/proj/a.ts'))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2' }] },
+                toolUseResult: { filePath: '/proj/a.ts', content: 'new full content\n' },
+            } as unknown as RawJSONLines)
+            // 非编辑族结果（两者都缺）：不入 journal
+            reporter.observe(assistantToolUse('t3', 'Bash', '/proj/x.ts'))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't3' }] },
+                toolUseResult: { stdout: 'ls output' },
+            } as unknown as RawJSONLines)
+
+            await reporter.onTurnEnd()
+            const entry = journal.journal.get('/proj/a.ts')!
+            expect(entry.beforeContent).toBe('line1\nline2\n')
+            expect(entry.afterContent).toBe('new full content\n')
+            expect(entry.writeCount).toBe(2)
+            expect(entry.toolNames).toEqual(['Edit', 'Write'])
+            expect(journal.journal.listPaths()).toEqual(['/proj/a.ts'])
+            await journal.dispose()
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('无 journal（缺省构造）：采集路径静默跳过，投影口径不受影响', async () => {
+        const send = vi.fn()
+        const reporter = new TurnDiffReporter(SID, null, send)
+        reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
+        reporter.observe(userToolResult('t1', ['+x']))
+        await reporter.onTurnEnd()
+        expect(sentPayloads(send)).toHaveLength(1)
     })
 })

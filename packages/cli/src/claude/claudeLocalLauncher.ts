@@ -18,6 +18,7 @@ import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
 import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
+import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
@@ -66,10 +67,13 @@ export async function claudeLocalLauncher(
     const turnDiffStore = await openTurnSnapshotStore(session.path);
     // 会话启动基线（口径修正）：链空先打 baseline，首卡只反映本会话变更而非全部历史未提交
     if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
+    // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
+    const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
     const turnDiffReporter = new TurnDiffReporter(
         session.client.sessionId,
         turnDiffStore,
         (m) => session.client.sendClaudeSessionMessage(m),
+        toolChangeJournal ?? undefined,
     );
 
     // Create scanner
@@ -152,6 +156,7 @@ export async function claudeLocalLauncher(
         }
         session.removeSessionFoundCallback(handleSessionFound);
         goalHandler.dispose();
+        await toolChangeJournal?.dispose();
         await scanner.cleanup();
     }
 }

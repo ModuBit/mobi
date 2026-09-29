@@ -50,6 +50,7 @@ import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
 import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
+import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
@@ -423,10 +424,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const turnDiffStore = await openTurnSnapshotStore(session.path);
         // 会话启动基线（口径修正）：链空先打 baseline，首卡只反映本会话变更而非全部历史未提交
         if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
+        // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
+        const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
         const turnDiffReporter = new TurnDiffReporter(
             session.client.sessionId,
             turnDiffStore,
             (m) => messageQueue.enqueue(m),
+            toolChangeJournal ?? undefined,
         );
         // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 Hub
         // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
@@ -1230,6 +1234,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         } finally {
             // scanner 与 goalHandler 跟 launcher 生命周期一致(跨 turn 复用,仅销毁时清理)
             goalHandler.dispose();
+            // 工具层变更记录：退出前刷盘（去抖挂起的尾巴落盘）
+            await toolChangeJournal?.dispose();
             // 等待 pending scanner 创建完成再 cleanup,防止 launcher 在 start() 完成前退出致孤儿 watcher
             // scannerPromise 仅在回调闭包内赋值，TS CFA 不跟踪闭包赋值会窄化为 null，需 as 恢复联合类型
             const pendingScanner = scannerPromise as Promise<Awaited<ReturnType<typeof createSessionScanner>>> | null;
