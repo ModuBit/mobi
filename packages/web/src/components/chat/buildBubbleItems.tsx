@@ -30,8 +30,10 @@ export type BuildBubbleOptions = {
     contextResetLabel: string
     /** rewind 截断点「已回退至此」分隔线的翻译文本 */
     rewoundToHereLabel: string
-    /** rewind 失败分隔线「回退失败」的翻译文本（filesRestored=false 且 error 存在时使用） */
+    /** rewind 失败分隔线「回退失败」的翻译文本（error 存在时使用） */
     rewindFailedLabel: string
+    /** rewind 失败分隔线的本地化原因文本（调用方经 rewindFailedReasonKey 由 error 映射；CLI error 英文串不直出） */
+    rewindFailedReasonLabel: string
     /** skippedLinks>0 时显示的安全护栏跳过提示（{{count}} 插值） */
     skippedLinksLabel: string
 }
@@ -157,6 +159,7 @@ export function buildChatBubbleItems(
         // isFailed 基于 error 是否非空（F2 修复）：filesRestored 表示文件回滚状态而非整体 rewind 成功，
         // refusal 路径文件可能已回滚成功（filesRestored=true）但截断失败（error 存在）→ 仍显失败；
         // 无 error 时即使 filesRestored=false 也显成功（filesRestored 语义为文件状态，非 rewind 成败）；
+        // 失败原因渲染本地化文案（rewindFailedReasonLabel），CLI 原始英文 error 串不直出；
         // skippedLinks>0 时始终追加跳过提示（无论成功/失败），文件回滚成功但截断失败的中间态也需展示
         if (block.kind === 'agent-event' && block.event.type === 'rewind-completed') {
             const ev = block.event as { filesRestored?: boolean; error?: string; skippedLinks?: number }
@@ -168,7 +171,7 @@ export function buildChatBubbleItems(
                 content: (
                     <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
                         {isFailed ? options.rewindFailedLabel : options.rewoundToHereLabel}
-                        {isFailed && ev.error ? ` · ${ev.error}` : ''}
+                        {isFailed && options.rewindFailedReasonLabel ? ` · ${options.rewindFailedReasonLabel}` : ''}
                         {skippedLinks && skippedLinks > 0
                             ? ` · ${options.skippedLinksLabel.replace('{{count}}', String(skippedLinks))}`
                             : ''}

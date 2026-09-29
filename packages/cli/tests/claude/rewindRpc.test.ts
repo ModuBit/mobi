@@ -23,13 +23,18 @@ import type { EnhancedMode, QueryControlRef } from '../../src/claude/types'
 vi.mock('../../src/claude/utils/rewindAnchor', () => ({
     findRewindAnchor: vi.fn(),
 }))
+vi.mock('../../src/claude/utils/transcriptScan', () => ({
+    findCrossSessionEntryAfter: vi.fn(),
+}))
 vi.mock('@/ui/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 
 import { findRewindAnchor } from '../../src/claude/utils/rewindAnchor'
+import { findCrossSessionEntryAfter } from '../../src/claude/utils/transcriptScan'
 
 const mockedFindAnchor = vi.mocked(findRewindAnchor)
+const mockedCrossSession = vi.mocked(findCrossSessionEntryAfter)
 
 /** 装配 handler 并返回捕获的处理函数表 */
 function setup(opts: {
@@ -82,6 +87,7 @@ function setup(opts: {
 describe('rewind RPC handlers', () => {
     beforeEach(() => {
         mockedFindAnchor.mockReset()
+        mockedCrossSession.mockReset()
     })
 
     describe('rewind-dry-run', () => {
@@ -151,6 +157,30 @@ describe('rewind RPC handlers', () => {
             expect(result.reason).toContain('in progress')
             // 不做锚点预检（busy 与锚点无关，省一次 transcript 读取）
             expect(mockedFindAnchor).not.toHaveBeenCalled()
+        })
+
+        it('丢弃区间含跨会话条目 → canRewind false（SDK --resume-drops-turn 必拒，提前拒绝）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedCrossSession.mockResolvedValue('cs-1')
+            const { handlers } = setup()
+
+            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
+
+            expect(result.canRewind).toBe(false)
+            expect(result.reason).toContain('cross-session')
+            // 区间归因预检以保留锚为起点（锚后才是丢弃区间）
+            expect(mockedCrossSession).toHaveBeenCalledWith('native-sess-1', '/work/dir', 'a1')
+        })
+
+        it('丢弃区间无跨会话条目 → 放行进入 rewindFiles dryRun', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            mockedCrossSession.mockResolvedValue(null)
+            const rewindFiles = vi.fn().mockResolvedValue({ canRewind: true })
+            const { handlers } = setup({ rewindFiles })
+
+            const result = await handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; canRestoreFiles: boolean }
+
+            expect(result).toEqual({ canRewind: true, canRestoreFiles: true })
         })
     })
 

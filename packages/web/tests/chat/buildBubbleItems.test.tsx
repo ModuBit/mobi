@@ -132,6 +132,7 @@ const defaultOptions = {
     contextResetLabel: 'Context cleared',
     rewoundToHereLabel: 'Rewound to here',
     rewindFailedLabel: 'Rewind failed',
+    rewindFailedReasonLabel: 'Rewind not performed (range contains non-attributable entries)',
     skippedLinksLabel: '{{count}} path(s) skipped',
 }
 
@@ -472,7 +473,7 @@ describe('buildChatBubbleItems', () => {
             expect(text).toContain('Rewound to here')
         })
 
-        it('filesRestored=false 且 error 存在 → 显示「回退失败」+ error 文本', () => {
+        it('filesRestored=false 且 error 存在 → 显示「回退失败」+ 本地化 reason（CLI error 英文串不直出）', () => {
             const blocks = [
                 createAgentEvent({
                     id: 'ev-rw-fail',
@@ -489,7 +490,9 @@ describe('buildChatBubbleItems', () => {
             const container = items[0].content as React.ReactElement<{ children: React.ReactNode }>
             const text = childrenToText(container.props.children)
             expect(text).toContain('Rewind failed')
-            expect(text).toContain('rewind rejected: Resume rejected')
+            expect(text).toContain('Rewind not performed (range contains non-attributable entries)')
+            // CLI 原始英文 error 串不直出给用户
+            expect(text).not.toContain('rewind rejected: Resume rejected')
             // 不应显示成功文案
             expect(text).not.toContain('Rewound to here')
         })

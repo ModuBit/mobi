@@ -70,3 +70,54 @@ export async function scanTranscriptForUuid(
     logger.warn(`[transcriptScan] exceeded MAX_PAGES (${MAX_PAGES}) without hitting ${uuid}`)
     return 'not-found'
 }
+
+/** 跨会话入站消息在 transcript 里的标记前缀（CC 原生 SendMessage 写入的 user entry 载体） */
+const CROSS_SESSION_MARKER = '<cross-session-message'
+
+/**
+ * user entry 是否为跨会话入站消息（content 字符串 / text blocks 两种形态都覆盖；
+ * 非字符串 content 一律按「不是」——宽松消费，误判代价由 SDK 归因校验兜底）。
+ */
+function isCrossSessionEntry(entry: SessionMessage): boolean {
+    if (entry.type !== 'user') return false
+    const content = (entry.message as { content?: unknown } | null | undefined)?.content
+    if (typeof content === 'string') return content.includes(CROSS_SESSION_MARKER)
+    if (Array.isArray(content)) {
+        return content.some((b) => {
+            const text = (b as { text?: unknown } | null)?.text
+            return typeof text === 'string' && text.includes(CROSS_SESSION_MARKER)
+        })
+    }
+    return false
+}
+
+/**
+ * rewind 丢弃区间（afterUuid 之后到 transcript 末尾）的跨会话归因预检：
+ * 返回区间内首条跨会话 user entry 的 uuid，无则 null。
+ *
+ * 为何需要：SDK `--resume-drops-turn` 要求丢弃区间内所有条目归因到声明的 turn，
+ * 跨会话入站消息（其他会话经 UDS 直连写入的 user entry）无法归因 → 整个 resume
+ * 被拒（2026-09-29 实踩：rewind 报「成功」实际两次都被拒）。在 dry-run 预检掉，
+ * 免掉「点了确认必失败」的体验断点；锚点不存在（transcript 已变）返回 null 放行，
+ * 执行阶段的 SDK 校验兜底。
+ */
+export async function findCrossSessionEntryAfter(
+    sessionId: string,
+    dir: string,
+    afterUuid: string,
+): Promise<string | null> {
+    let pastAnchor = false
+    for (let page = 0; page < MAX_PAGES; page++) {
+        const messages = await getSessionMessages(sessionId, { dir, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+        if (messages.length === 0) return null
+        for (const entry of messages) {
+            if (!pastAnchor) {
+                if (entry.uuid === afterUuid) pastAnchor = true
+                continue
+            }
+            if (isCrossSessionEntry(entry)) return entry.uuid
+        }
+        if (messages.length < PAGE_SIZE) return null
+    }
+    return null
+}

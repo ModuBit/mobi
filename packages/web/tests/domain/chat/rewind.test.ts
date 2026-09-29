@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { canRewindMessage, collectChainHeadUserRowIds, extractRewindRejectReason, rewindFilesFailedKey, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, extractRewindRejectReason, rewindFailureKind, rewindFailedReasonKey, rewindFilesFailedKey, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
 
 /** 判据入参的最小消息形状（结构化类型，与 DecryptedMessage.metadata 同构） */
 const base = { localId: 'local-1', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1', nativeAckAt: 1755500000000 } }
@@ -150,6 +150,8 @@ describe('rewindRejectReasonKey（dry-run / 执行拒绝文案判别）', () => 
 
     it('busy reason（含 in progress，多端并发）→ inProgress 文案', () => {
         expect(rewindRejectReasonKey('rewind is already in progress')).toBe('chat.rewind.inProgress')
+        expect(rewindRejectReasonKey('rewind range contains cross-session entries not attributable to the declared turn'))
+            .toBe('chat.rewind.crossSession')
     })
 
     it('其余 reason / 缺省 → 笼统 unavailable', () => {
@@ -167,6 +169,29 @@ describe('rewindFilesFailedKey（文件恢复失败文案判别）', () => {
     it('其余 error / 缺省 → 笼统提醒检查工作目录（不直出英文串）', () => {
         expect(rewindFilesFailedKey('some internal error')).toBe('chat.rewind.filesFailed')
         expect(rewindFilesFailedKey(undefined)).toBe('chat.rewind.filesFailed')
+    })
+})
+
+describe('rewindFailureKind（失败终态类别判别：rejected=回退未执行 / files=仅文件恢复失败）', () => {
+    it('SDK 拒绝串 → rejected（历史未动，「对话已回退」类文案对它是误导）', () => {
+        expect(rewindFailureKind('rewind rejected: Claude Code returned an error result: Resume rejected by --resume-drops-turn: ...')).toBe('rejected')
+        expect(rewindFailureKind('Resume rejected by --resume-drops-turn: would discard entries')).toBe('rejected')
+    })
+
+    it('文件恢复类 error → files；无 error → null', () => {
+        expect(rewindFailureKind('rewind boundary not found on hub')).toBe('files')
+        expect(rewindFailureKind('some internal error')).toBe('files')
+        expect(rewindFailureKind(undefined)).toBeNull()
+        expect(rewindFailureKind(null)).toBeNull()
+        expect(rewindFailureKind('')).toBeNull()
+    })
+})
+
+describe('rewindFailedReasonKey（失败分隔线本地化 reason）', () => {
+    it('rejected → 专用短文案；files 类沿用 filesFailed 细分', () => {
+        expect(rewindFailedReasonKey('rewind rejected: Resume rejected by --resume-drops-turn')).toBe('chat.rewind.rejectedByCCShort')
+        expect(rewindFailedReasonKey('rewind boundary not found on hub')).toBe('chat.rewind.filesFailedBoundary')
+        expect(rewindFailedReasonKey('some internal error')).toBe('chat.rewind.filesFailed')
     })
 })
 

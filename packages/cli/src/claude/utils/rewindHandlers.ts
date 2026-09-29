@@ -16,6 +16,7 @@
 
 import { logger } from '@/ui/logger';
 import { findRewindAnchor } from './rewindAnchor';
+import { findCrossSessionEntryAfter } from './transcriptScan';
 import type { QueryRestartController } from './queryRestart';
 import type { EnhancedMode, QueryControlRef } from '../types';
 import type { MessageQueue } from '@/utils/MessageQueue';
@@ -50,6 +51,10 @@ const ANCHOR_REJECT_REASON =
 
 /** rewind 已在途的 busy 拒绝文案（Web 据此映射「回退正在进行中」提示） */
 const REWIND_IN_PROGRESS_REASON = 'rewind is already in progress';
+
+/** 丢弃区间含跨会话条目的拒绝文案（Web 据此映射「无法回退」专用提示，2026-09-29 实踩） */
+const CROSS_SESSION_REJECT_REASON =
+    'rewind range contains cross-session entries not attributable to the declared turn';
 
 /** 校验 rewind 载荷中的 nativeId（用户消息 native uuid） */
 function parseNativeId(payload: unknown): string {
@@ -97,6 +102,15 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
         const resumeAt = await findRewindAnchor(session.sessionId, workingDirectory, nativeId);
         if (!resumeAt) {
             return { canRewind: false, canRestoreFiles: false, reason: ANCHOR_REJECT_REASON };
+        }
+
+        // 丢弃区间归因预检：区间含跨会话入站消息（无法归因到声明 turn）→ SDK --resume-drops-turn
+        // 必拒，提前拒绝免掉「点了确认必失败」的体验断点（执行链不复检——受理窗口内新到
+        // 跨会话消息属低概率，SDK 兜底拒绝 + Web 修复后的诚实失败文案已覆盖）
+        const crossSessionEntry = await findCrossSessionEntryAfter(session.sessionId, workingDirectory, resumeAt);
+        if (crossSessionEntry) {
+            logger.warn(`[rewind] dry-run rejected: cross-session entry ${crossSessionEntry} in drop range`);
+            return { canRewind: false, canRestoreFiles: false, reason: CROSS_SESSION_REJECT_REASON };
         }
 
         // rewindFiles dryRun 需要 running query 句柄（RPC 到 claude 进程读 checkpoint）；

@@ -103,11 +103,13 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         ? tool.input.name : tool.id
 
     const bubbleItems = useMemo(() => {
+        // rewind-completed 是主列表本地合成块（不落库、不入 sidechain），此处 options 仅为
+        // BuildBubbleOptions 形状完备；reasonLabel 无 per-session error 可映射，给通用降态文案
         const baseItems = buildChatBubbleItems(
             childrenBlocks,
             { metadata, isThinking: false, disableDrawer: true },
             isRunning,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t('chat.rewind.filesFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
         )
 
         const items = [...baseItems]

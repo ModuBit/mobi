@@ -117,7 +117,7 @@ describe('custom 消息接入时间线', () => {
         }
 
         const items = buildChatBubbleItems([custom], { metadata: null, isThinking: false }, false, {
-            contextResetLabel: 'x', rewoundToHereLabel: 'x', rewindFailedLabel: 'x', skippedLinksLabel: 'x',
+            contextResetLabel: 'x', rewoundToHereLabel: 'x', rewindFailedLabel: 'x', rewindFailedReasonLabel: 'x', skippedLinksLabel: 'x',
         })
 
         expect(items).toHaveLength(1)

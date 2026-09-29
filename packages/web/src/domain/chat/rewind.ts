@@ -178,14 +178,17 @@ export function collectChainHeadUserRowIds(rows: RewindChainRow[]): Set<string> 
 /**
  * dry-run / 执行拒绝 reason → i18n key 判别：链首场景给 /clear 引导文案，
  * busy（多端并发，rewind 已在途）给「回退正在进行中」提示，
+ * 跨会话条目（CLI dry-run 区间归因预检拒绝）给「无法回退」专用解释，
  * 其余（假锚点 / 换链旧行等）用笼统 unavailable——CLI reason 是英文串，不直出给用户。
  */
 export function rewindRejectReasonKey(reason: string | undefined):
     | 'chat.rewind.firstMessage'
     | 'chat.rewind.inProgress'
+    | 'chat.rewind.crossSession'
     | 'chat.rewind.unavailable' {
     if (reason?.includes('first message')) return 'chat.rewind.firstMessage'
     if (reason?.includes('in progress')) return 'chat.rewind.inProgress'
+    if (reason?.includes('cross-session')) return 'chat.rewind.crossSession'
     return 'chat.rewind.unavailable'
 }
 
@@ -198,6 +201,33 @@ export function rewindRejectReasonKey(reason: string | undefined):
  */
 export function extractRewindRejectReason(err: unknown): string {
     return extractApiError(err)
+}
+
+/**
+ * rewind-completed 失败终态类别判别（error 非空才有失败态）：
+ * - 'rejected'：回退根本未执行——SDK 以 --resume-drops-turn 归因校验拒绝截断
+ *   （典型：回退区间含跨会话入站消息等无法归属到声明 turn 的条目）。历史未被修改，
+ *   「对话已回退」类文案对它是误导（2026-09-29 实踩：拒绝 toast 与失败分隔线矛盾并存）
+ * - 'files'：截断已生效、仅文件恢复失败（合法降态，细分文案见 rewindFilesFailedKey）
+ */
+export type RewindFailureKind = 'rejected' | 'files'
+
+export function rewindFailureKind(error: string | undefined | null): RewindFailureKind | null {
+    if (!error) return null
+    return error.includes('rewind rejected') || error.includes('Resume rejected') ? 'rejected' : 'files'
+}
+
+/**
+ * 失败分隔线的本地化原因 key（CLI error 英文串不直出给用户，原文经 console 留诊断；
+ * 对齐 rewindRejectReasonKey / rewindFilesFailedKey 同一原则）。
+ */
+export function rewindFailedReasonKey(error: string | undefined):
+    | 'chat.rewind.rejectedByCCShort'
+    | 'chat.rewind.filesFailedBoundary'
+    | 'chat.rewind.filesFailed' {
+    return rewindFailureKind(error) === 'rejected'
+        ? 'chat.rewind.rejectedByCCShort'
+        : rewindFilesFailedKey(error)
 }
 
 /**
