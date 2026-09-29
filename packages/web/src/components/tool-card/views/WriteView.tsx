@@ -33,6 +33,7 @@ export function WriteView(props: ToolViewProps) {
         <DiffView
             oldString=""
             newString={content}
+            structuredPatches={props.block.tool.structuredPatch}
             filePath={filePath ?? undefined}
             variant="inline"
             statsType="write"

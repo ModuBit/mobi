@@ -15,53 +15,81 @@
  */
 
 /**
- * structuredPatch → 渲染行 的纯解析函数
+ * structuredPatch → unified patch 文本 的纯合成函数（工具卡 diff 换 @pierre/diffs 渲染核）
  *
  * Claude Code 的 structuredPatch.lines 为 unified diff 行体：前缀字符（' ' context /
  * '-' 删除 / '+' 新增）+ 原行内容，前缀后无分隔空格（已对照真实文件实证）；
  * 空行的 context 行退化为单个空格（甚至空串）。
+ *
+ * 库 parser（parsePatchFiles）硬要求 `--- / +++` 文件头：缺失时整段文本被当作
+ * patch metadata、files 为空（PoC 实证）——合成必须带头，name 仅为占位
+ * （消费方 disableFileHeader 不渲染）。
  */
 import type { StructuredPatch } from '@/domain/chat/types'
 
-/** 解析后的渲染行（与 DiffView 内部行模型对齐，渲染器无需感知数据来源） */
-export type PatchRow = {
+/** 回退路径的渲染行（diffLines(old, new) 的输出行模型） */
+export type PatchRowInput = {
     value: string
     added?: boolean
     removed?: boolean
-    /** context/added 行为 new 文件行号；removed 行为 old 文件行号 */
-    lineNum?: number
 }
 
 /**
- * 把一组 structuredPatch 解析为带真实文件行号的渲染行。
- * 各 patch 独立起算行号（oldStart/newStart），顺序拼接——MultiEdit 的
- * patch 数组按编辑顺序天然对齐。
+ * 把 structuredPatch 数组（MultiEdit 为多条编辑、其余为单条）合成为单个文件的
+ * unified patch 文本。各 hunk 按数组顺序拼接（与编辑顺序天然对齐）。
  */
-export function parseStructuredPatchRows(
-    patches: Array<Pick<StructuredPatch, 'oldStart' | 'newStart' | 'lines'>>,
-): PatchRow[] {
-    const rows: PatchRow[] = []
-    for (const patch of patches) {
-        let oldNum = patch.oldStart
-        let newNum = patch.newStart
-        for (const raw of patch.lines) {
-            const prefix = raw.charAt(0)
-            const value = raw.slice(1)
-            if (prefix === '+') {
-                rows.push({ value, added: true, lineNum: newNum })
-                newNum += 1
-            } else if (prefix === '-') {
-                rows.push({ value, removed: true, lineNum: oldNum })
-                oldNum += 1
-            } else {
-                // context：old/new 行号同步推进，展示 new 文件行号
-                rows.push({ value, lineNum: newNum })
-                oldNum += 1
-                newNum += 1
-            }
+export function composePatchText(name: string, patches: StructuredPatch[]): string {
+    const hunks = patches.map((p) => {
+        const header = `@@ -${p.oldStart},${p.oldLines} +${p.newStart},${p.newLines} @@`
+        return [header, ...p.lines].join('\n')
+    })
+    return [`--- a/${name}`, `+++ b/${name}`, ...hunks].join('\n')
+}
+
+/**
+ * 回退合成（无 structuredPatch 时：执行中预览 / Write 无 patch / 历史消息缺数据）：
+ * diffLines 行模型 → 单 hunk patch 文本。行号是片段相对行号（从 1 起算），
+ * 空 old（Write 新建）落 git 新文件惯例 `@@ -0,0 +1,N @@`。
+ */
+export function composePatchFromLineRows(name: string, rows: PatchRowInput[]): string {
+    let oldCount = 0
+    let newCount = 0
+    const lines: string[] = []
+    for (const row of rows) {
+        if (row.added) {
+            newCount += 1
+            lines.push(`+${row.value}`)
+        } else if (row.removed) {
+            oldCount += 1
+            lines.push(`-${row.value}`)
+        } else {
+            oldCount += 1
+            newCount += 1
+            lines.push(` ${row.value}`)
         }
     }
-    return rows
+    if (lines.length === 0) return ''
+    const hunk: StructuredPatch = {
+        oldStart: oldCount > 0 ? 1 : 0,
+        oldLines: oldCount,
+        newStart: newCount > 0 ? 1 : 0,
+        newLines: newCount,
+        lines,
+    }
+    return composePatchText(name, [hunk])
+}
+
+/** structuredPatch 行数统计（'+' 计 added、'-' 计 removed；形状不符的行跳过） */
+export function countPatchLines(patches: StructuredPatch[]): { added: number; removed: number } {
+    let added = 0
+    let removed = 0
+    for (const patch of patches) {
+        for (const line of patch.lines) {
+            if (line.startsWith('+')) added += 1
+            else if (line.startsWith('-')) removed += 1
+        }
+    }
+    return { added, removed }
 }
 
 /** MultiEdit 的 structuredPatch 数组按编辑顺序与 input.edits 对齐：取第 idx 条编辑的 patch
