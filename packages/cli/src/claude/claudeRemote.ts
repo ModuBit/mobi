@@ -1131,6 +1131,15 @@ export async function claudeRemote(opts: {
         // 编译态路径指向 runtime 解包目录（ensureRuntimeAssets 启动时已保证就绪），开发态指向
         // 仓库源目录。SDK 自动把 plugins 转成 claude 进程的 --plugin-dir，无需手工拼 flag
         plugins: buildBundledPluginOptions(),
+        // CC 2.1.283 起 bypassPermissions 必须搭配 allowDangerouslySkipPermissions: true
+        // （sdk.d.ts: "Must be set to true when using permissionMode: 'bypassPermissions'"——
+        // 确保 bypass 是调用方的显式意图）。缺失时 CC 置 isBypassPermissionsModeAvailable=false：
+        // ① 运行中 permission_mode 重放（compact/restart 后重新协商）被 CC 守卫静默拒绝，
+        //    会话掉回 default——表现为 YOLO 会话不停弹权限审批（非 allow 规则 + 非只读的命令）；
+        // ② 运行中切到 YOLO 同样被静默丢弃。
+        // 无条件携带：mobi 产品层本就允许选 YOLO 和运行中切换，「意图声明」在产品侧成立；
+        // flag 本身无副作用，bypass 是否激活仍完全由 permissionMode 决定。
+        allowDangerouslySkipPermissions: true,
         permissionMode: baseConfig.permissionMode,
         model: baseConfig.model,
         // effort 依赖 thinking 默认值 { type: 'adaptive' } 才能生效，SDK 默认即为 adaptive
@@ -1454,6 +1463,7 @@ export async function claudeRemote(opts: {
             const fallbackConfig = opts.getSessionConfig()
             const fallbackOptions: Options = {
                 ...sdkOptions,
+                // allowDangerouslySkipPermissions 由 sdkOptions 展开继承（无条件携带，见上方注释）
                 permissionMode: fallbackConfig.permissionMode,
                 model: fallbackConfig.model,
                 effort: fallbackConfig.effort,
