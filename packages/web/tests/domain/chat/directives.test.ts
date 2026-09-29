@@ -25,6 +25,7 @@ import {
     parseDirectiveAttrs,
     parseDirectiveHits,
     registerDirective,
+    truncateIncompleteDirectiveTail,
 } from '@/domain/chat/directives'
 
 describe('parseDirectiveAttrs', () => {
@@ -86,5 +87,33 @@ describe('dedupeDirectiveText（quote 已注册：同 index 只留首个）', ()
     it('未注册指令与参数非法的命中不参与去重（原样保留）', () => {
         const text = `${DIRECTIVE_PREFIX}future{x="1"} ${DIRECTIVE_PREFIX}future{x="1"} ${QUOTE_DIRECTIVE}{index="0"} ${QUOTE_DIRECTIVE}{index="0"}`
         expect(dedupeDirectiveText(text)).toBe(text)
+    })
+})
+
+describe('truncateIncompleteDirectiveTail（drip 原子揭示：未闭合尾巴扣住不进渲染）', () => {
+    it('无未闭合尾巴原样返回', () => {
+        const text = `前文 ${QUOTE_DIRECTIVE}{index="1"} 后文`
+        expect(truncateIncompleteDirectiveTail(text)).toBe(text)
+    })
+
+    it('尾部未闭合 directive 扣住（drip 半截不进 x-markdown）', () => {
+        expect(truncateIncompleteDirectiveTail('正文 :mobi-quote{index="')).toBe('正文 ')
+        expect(truncateIncompleteDirectiveTail('正文 :mobi-quote')).toBe('正文 ')
+    })
+
+    it('已闭合尾巴 + 更早的未闭合（第一个未闭合位置截断）', () => {
+        // 前一条已闭合不受影响；截断发生在其后新出现的未闭合处
+        const text = ':mobi-quote{index="1"} 后文 :mobi-quote{index="'
+        expect(truncateIncompleteDirectiveTail(text)).toBe(':mobi-quote{index="1"} 后文 ')
+    })
+
+    it('闭合后不再截断（闭合帧一次性完整进入渲染）', () => {
+        const text = ':mobi-quote{index="1"}'
+        expect(truncateIncompleteDirectiveTail(text)).toBe(text)
+    })
+
+    it('非指令的冒号文本不受影响', () => {
+        const text = '比例 3:1 与时间 12:30'
+        expect(truncateIncompleteDirectiveTail(text)).toBe(text)
     })
 })

@@ -24,6 +24,7 @@ import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import { directiveExtension } from './directivePlugin'
+import { truncateIncompleteDirectiveTail } from '@/domain/chat/directives'
 import { MobiDirective } from './QuoteDirectiveComponents'
 import { isXMarkdownDebugEnabled } from '@/core/lib/xMarkdownDebug'
 import { useStreamingContent } from './useStreamingContent'
@@ -215,6 +216,11 @@ export const Markdown = memo(function Markdown({
 }: MarkdownProps) {
     const useDrip = !!streaming && typing !== false
     const displayContent = useStreamingContent(content ?? '', useDrip)
+    // 指令原子揭示：drip 半截的 `:mobi-*{...}` 尾巴扣住不进 parse——x-markdown 的
+    // 流式 recognizer 不覆盖自定义扩展，半截 Text commit 后闭合不重识别（流式裸
+    // 文本、刷新才成钮的根因，2026-09-28）。仅 drip 流式路径截断；静态/非 drip
+    // 路径恒透传完整 content，模型真输出无闭合字面量时流结束诚实呈现
+    const finalContent = useDrip ? truncateIncompleteDirectiveTail(displayContent) : displayContent
 
     // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
     // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
@@ -262,7 +268,6 @@ export const Markdown = memo(function Markdown({
 
     // 始终用 hook 输出：hook 内部区分历史全显 / 流式逐字 / 流式结束后继续逐字到收敛，
     // 避免 streaming 结束（full message 替换 snapshot）时直接跳到 content 全显覆盖逐字
-    const finalContent = displayContent
 
     // 提取脚注定义，清洗正文（脚注定义从正文移除、集中到尾部 FootnoteSources 渲染）
     const { cleanContent, footnotes } = useMemo(

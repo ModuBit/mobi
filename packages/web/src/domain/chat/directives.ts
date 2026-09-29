@@ -138,3 +138,29 @@ export function dedupeDirectiveText(text: string): string {
     if (!removedAny) return text
     return out + text.slice(cursor)
 }
+
+/**
+ * 未闭合 directive 尾巴：`:mobi-<name>` 后要么直接到串尾、要么 `{` 已出现但
+ * attrs 未闭合——两者都只在**串尾**命中，正文里带后随文字的 `:mobi-x` 字样
+ * （讨论语法本身）不受影响。
+ */
+const INCOMPLETE_DIRECTIVE_TAIL_RE = new RegExp(`${DIRECTIVE_PREFIX}[a-z][a-z0-9-]*(?:\\{[^{}]*$|$)`)
+
+/**
+ * drip 原子揭示截断：把流式揭示前缀里「尚未闭合的 directive 尾巴」扣住不进渲染。
+ *
+ * 为何需要：x-markdown 的流式 recognizer 只覆盖 link/emphasis/code 等内建语法
+ * （半截有占位、闭合重识别），自定义 marked 扩展（`:mobi-*{...}`）半截字符一旦
+ * 按 Text commit，闭合后不重识别——真机表现为流式期间指令裸文本、刷新后才成钮
+ * （2026-09-28）。把半截尾巴扣在 drip 层，闭合帧一次性完整进入 parse，与内建
+ * 语法的 pending 语义对齐。
+ *
+ * 只在 drip 流式路径调用（静态渲染恒透传完整文本）：模型真输出无闭合的
+ * `:mobi-x{` 字面量时，揭示期间尾部暂扣、流结束静态帧诚实呈现原文。
+ * 输出随 display 前缀增长单调不减（截断点只随新字符闭合或不动），与
+ * append-only 假设兼容。
+ */
+export function truncateIncompleteDirectiveTail(text: string): string {
+    const m = text.match(INCOMPLETE_DIRECTIVE_TAIL_RE)
+    return m ? text.slice(0, m.index) : text
+}

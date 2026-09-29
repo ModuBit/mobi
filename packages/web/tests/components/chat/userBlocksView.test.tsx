@@ -283,6 +283,21 @@ describe('document 卡点击 → file/open 动作（ADR 0003 二期）', () => {
         )
         expect(screen.queryByRole('link')).toBeNull()
     })
+
+    it('附件卡不渲染 ActionLink 前置 FileTypeBadge（FileCard 自带图标，双图标已关闭）', () => {
+        render(
+            <UserBlocksView
+                blocks={[{
+                    type: 'document',
+                    source: { type: 'url', value: '.mobi/uploads/pasted-text.txt', mimeType: 'text/plain' },
+                    id: 'd3', filename: 'pasted-text.txt', size: 42,
+                }]}
+                env={{ refCtx: { sessionId: 'sess-1' } }}
+            />,
+        )
+        expect(screen.getByRole('link')).toBeTruthy()
+        expect(document.querySelector('.file-type-badge')).toBeNull()
+    })
 })
 
 describe('USER_BLOCK_RENDERERS 注册表完整性', () => {

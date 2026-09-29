@@ -94,6 +94,11 @@ export interface ActionLinkProps {
     className?: string
     /** 透传内联样式（非 Markdown 场景的局部布局约束，如附件卡的 inline-flex） */
     style?: CSSProperties
+    /**
+     * file/open 动作是否前置 FileTypeBadge（缺省 true）。已自带图标的载体
+     * （如用户消息附件卡 FileCard）传 false 关闭，避免双图标
+     */
+    fileBadge?: boolean
     children?: ReactNode
 }
 
@@ -106,7 +111,7 @@ export interface ActionLinkProps {
  * 照常可用（dormancy spec 用户故事 2：感知不到睡没睡）。
  */
 
-export const ActionLink = memo(function ActionLink({ uri, className, style, children }: ActionLinkProps) {
+export const ActionLink = memo(function ActionLink({ uri, className, style, fileBadge, children }: ActionLinkProps) {
     const dispatch = useActionDispatcher()
 
     // file/open 动作前置文件类型徽章（扩展名色块/目录 glyph）：markdown mobi:// 链接与
@@ -132,7 +137,7 @@ export const ActionLink = memo(function ActionLink({ uri, className, style, chil
 
     return (
         <a href={uri} className={className} style={style} onClick={handleClick} onKeyDown={handleKeyDown}>
-            {filePath ? <FileTypeBadge path={filePath} /> : null}
+            {filePath && fileBadge !== false ? <FileTypeBadge path={filePath} /> : null}
             {children}
         </a>
     )

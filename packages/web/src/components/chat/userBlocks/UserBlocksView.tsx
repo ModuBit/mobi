@@ -189,6 +189,8 @@ export function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
     return (
         <ActionLink
             uri={buildActionUri('file/open', { path: block.source.value, name: block.filename })}
+            // FileCard 自带扩展名图标，关闭 ActionLink 的前置徽章避免双图标
+            fileBadge={false}
             style={{ display: 'inline-flex' }}
         >
             {card}
