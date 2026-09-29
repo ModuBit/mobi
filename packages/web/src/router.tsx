@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { App } from './App'
 import { lazyRoute, routeChunkLoaders } from '@/core/lib/routeChunks'
@@ -145,6 +146,15 @@ const desktopRoute = createRoute({
     component: DesktopPage,
 })
 
+// dev-only PoC 路由（审查重写票01 门禁）：生产构建被 DEV 常量剔除，代码不进产物
+const pocDiffRoute = import.meta.env.DEV
+    ? createRoute({
+        getParentRoute: () => mainLayoutRoute,
+        path: '__poc-diff',
+        component: lazy(() => import('./dev/PocPierreDiff')),
+    })
+    : null
+
 // Create router
 export const router = createRouter({
     routeTree: rootRoute.addChildren([
@@ -157,6 +167,7 @@ export const router = createRouter({
             ]),
             newSessionRoute,
             desktopRoute,
+            ...(pocDiffRoute ? [pocDiffRoute] : []),
             settingsRoute.addChildren([
                 settingsIndexRoute,
                 settingsNotificationsRoute,
