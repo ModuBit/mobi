@@ -197,21 +197,188 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
 
 /* 音频播放器：bg-container 与 layout 区分，无阴影无边框。
    顶部直角（hover 时间浮层在上方需可见）、底部圆角；overflow visible 让浮层不裁剪 */
-.audio-block {
+/* ── 音频播放器（voice-note 胶囊：rareui 波形流光 + mobi 文件名/音量） ──
+   双档全部走 --ant-* token（antd algorithm 自动换档），不用硬编码色值。
+   流光层 light 用 multiply / dark 用 screen（dark 光叠加提亮、light 压暗着色）。 */
+.voice-note-wrap {
     width: 100%;
     max-width: 460px;
-    margin-top: 28px;  /* 给 hover 时间浮层留显示空间（浮层在顶部 -22px） */
-    background: var(--ant-color-bg-container);
-    border-radius: 0 0 var(--ant-border-radius-lg) var(--ant-border-radius-lg);
-    overflow: visible;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
-/* 顶部进度条：无 padding 贴满 audio-block 顶/左/右 */
-.audio-block-progress {
+/* caption 行：文件名（mobi 特有） */
+.voice-note-caption {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    min-width: 0;
+}
+.voice-note-caption > svg {
+    color: var(--ant-color-text-quaternary);
+    flex-shrink: 0;
+}
+.voice-note-name {
+    font-size: 12.5px;
+    color: var(--ant-color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 胶囊本体 */
+.voice-note {
     position: relative;
-    padding: 0;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 52px;
+    padding: 0 12px 0 6px;
+    border-radius: 999px;
+    background: var(--ant-color-bg-container);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ant-color-border-secondary) 55%, transparent);
+    user-select: none;
 }
-/* 进度条与音量条共用一套 thin slider 样式（仅 handle 圆点尺寸不同，见下方各自覆盖）。
-   rail 未播放淡灰；track 已播放主色（纯色）。top:0 + slider height 3px → rail 占满 slider */
+.voice-note-glow {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    border-radius: 999px;
+    mix-blend-mode: multiply;
+}
+html[data-theme='dark'] .voice-note-glow {
+    mix-blend-mode: screen;
+}
+.voice-note-glow-field {
+    position: absolute;
+    inset: 0;
+}
+.voice-note-glow-base {
+    position: absolute;
+    inset: 0;
+}
+.voice-note-glow-blob {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: 999px;
+}
+/* 播放/暂停圆钮 */
+.voice-note-control {
+    z-index: 1;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    background: var(--ant-color-bg-elevated);
+    color: var(--ant-color-text);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--ant-color-text) 12%, transparent);
+    outline-offset: 2px;
+    touch-action: manipulation;
+}
+.voice-note-control:disabled {
+    cursor: default;
+    opacity: 0.4;
+}
+.voice-note-control:not(:disabled):active {
+    transform: scale(0.92);
+}
+/* 波形 seek 条 */
+.voice-note-track {
+    position: relative;
+    flex: 1;
+    height: 100%;
+    min-width: 0;
+    cursor: pointer;
+    touch-action: none;
+    outline-offset: 2px;
+}
+.voice-note-track[aria-valuemax='0'] {
+    cursor: default;
+    opacity: 0.5;
+}
+.voice-note-bars {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    gap: 2px;
+}
+.voice-note-bars > span {
+    flex: 1;
+    min-width: 2px;
+    border-radius: 999px;
+}
+/* 未播条：文本色低透明（双档自动适配）；已播条：文本色全值 */
+.voice-note-bars-bg {
+    background: color-mix(in srgb, var(--ant-color-text) 30%, transparent);
+}
+.voice-note-bars-fg {
+    background: var(--ant-color-text);
+}
+.voice-note-bars-clip {
+    position: absolute;
+    inset: 0;
+}
+/* 时间标签：点击循环倍速 */
+.voice-note-time {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: none;
+    padding: 2px 4px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ant-color-text-quaternary);
+    outline-offset: 2px;
+}
+.voice-note-time:hover {
+    color: var(--ant-color-text-secondary);
+}
+.voice-note-speed {
+    border-radius: 999px;
+    padding: 1px 5px;
+    font-size: 10px;
+    line-height: 1.2;
+    background: color-mix(in srgb, var(--ant-color-text) 12%, transparent);
+    color: var(--ant-color-text-secondary);
+}
+/* 音量钮 */
+.voice-note-vol {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: none;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--ant-color-text-tertiary);
+    outline-offset: 2px;
+}
+.voice-note-vol:hover {
+    color: var(--ant-color-text);
+    background: var(--ant-color-fill-tertiary);
+}
+/* 音量条复用 thin slider（handle 圆点 8px，比进度条小） */
 .mobi-audio-slider .ant-slider {
     margin: 0;
     padding: 0;
@@ -229,15 +396,12 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
 .mobi-audio-slider .ant-slider-track {
     background: var(--ant-color-primary);
 }
-/* 阻止 antd slider hover 时默认给 track 加变浅反馈 */
 .mobi-audio-slider .ant-slider:hover .ant-slider-rail {
     background: var(--ant-color-fill-tertiary) !important;
 }
 .mobi-audio-slider .ant-slider:hover .ant-slider-track {
     background: var(--ant-color-primary) !important;
 }
-/* handle 容器：垂直居中于 rail（top 50% + translate Y -50%）。
-   只覆盖 top/transform，不碰 left/inset-inline-start（保留 antd 的 left% 定位 + 拖动）。 */
 .mobi-audio-slider .ant-slider-handle {
     top: 50% !important;
     transform: translate(-50%, -50%) !important;
@@ -250,60 +414,12 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     top: 50% !important;
     left: 50% !important;
     transform: translate(-50%, -50%) !important;
+    width: 8px !important;
+    height: 8px !important;
 }
 .mobi-audio-slider .ant-slider-handle:hover:not(.ant-slider-handle-disabled)::after,
 .mobi-audio-slider .ant-slider-handle:focus-visible::after {
     box-shadow: 0 0 0 4px var(--ant-color-primary-bg) !important;
-}
-/* handle 圆点尺寸：进度条 10px、音量条 8px（唯一差异） */
-.audio-block-progress .ant-slider-handle::after {
-    width: 10px !important;
-    height: 10px !important;
-}
-.audio-vol-pop .ant-slider-handle::after {
-    width: 8px !important;
-    height: 8px !important;
-}
-/* 内容行：左 info / 中 播放按钮 / 右 控件 */
-.audio-block-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 14px 12px;
-}
-.audio-block-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.audio-block-info > svg {
-    color: var(--ant-color-text-quaternary);
-    flex-shrink: 0;
-}
-.audio-block-name {
-    font-size: 13.5px;
-    font-weight: 500;
-    letter-spacing: -0.005em;
-    color: var(--ant-color-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.audio-block-time {
-    color: var(--ant-color-text-quaternary);
-    font-size: 11.5px;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
-}
-.audio-block-ctrl .ant-btn-text,
-.audio-block-row .ant-btn-text {
-    color: var(--ant-color-text-tertiary);
-}
-.audio-block-row .ant-btn-text:hover {
-    color: var(--ant-color-text);
 }
 /* 音量 hover 弹层：收窄 Popover 自带 inner padding */
 .audio-vol-popover .ant-popover-inner-content {
@@ -321,23 +437,6 @@ html:not([data-theme='dark']) .user-msg-bubble .x-markdown .slash-command-badge 
     color: var(--ant-color-text-tertiary);
     min-width: 22px;
     text-align: right;
-}
-/* hover 进度条时光标位置的时间预览浮层 */
-.audio-hover-tip {
-    position: absolute;
-    top: -22px;
-    transform: translateX(-50%);
-    background: var(--ant-color-bg-elevated);
-    box-shadow: var(--ant-box-shadow-secondary);
-    padding: 3px 7px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    color: var(--ant-color-text);
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 10;
 }
 /* 图片内容视图：图片按原始尺寸显示，仅当超出父组件时等比缩放到 fit；
    水平居中、垂直顶部对齐（小图不被放大、不变形）。 */

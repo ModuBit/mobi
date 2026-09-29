@@ -30,12 +30,31 @@ beforeEach(() => {
     })
 })
 
+/** 元数据加载：jsdom 不派发 loadedmetadata，手动触发（duration NaN → 组件兜底 0）解锁 loading 门 */
+function loadMeta(container: HTMLElement) {
+    fireEvent(container.querySelector('audio')!, new Event('loadedmetadata'))
+}
+
 describe('AudioPlayer', () => {
-    it('渲染：隐藏 audio + 播放按钮（play）+ 文件名 basename', () => {
+    it('渲染：隐藏 audio + 播放按钮（play）+ 文件名 basename + 波形条', () => {
         const { container, getByText } = render(<AudioPlayer src="/x.mp3" filePath="a/b/c.mp3" />)
         expect(container.querySelector('audio')).toBeInTheDocument()
         expect(container.querySelector('button[aria-label="play"]')).toBeInTheDocument()
         expect(getByText('c.mp3')).toBeInTheDocument()
+        // 波形：40 根振幅条 × 双层（未播底 + 进度 clip）
+        expect(container.querySelectorAll('span.voice-note-bars-bg')).toHaveLength(40)
+        expect(container.querySelectorAll('span.voice-note-bars-fg')).toHaveLength(40)
+    })
+
+    it('同一文件波形稳定（seed = filePath hash）', () => {
+        const bars = (filePath: string) => {
+            const { container, unmount } = render(<AudioPlayer src="/x.mp3" filePath={filePath} />)
+            const styles = [...container.querySelectorAll('span.voice-note-bars-bg')].map((n) => n.getAttribute('style'))
+            unmount()
+            return styles
+        }
+        expect(bars('a/b/c.mp3')).toEqual(bars('a/b/c.mp3'))
+        expect(bars('a/b/c.mp3')).not.toEqual(bars('other.mp3'))
     })
 
     it('点击播放按钮 → 调用 audio.play()，按钮切到 pause', () => {
@@ -44,6 +63,7 @@ describe('AudioPlayer', () => {
             return Promise.resolve()
         })
         const { container } = render(<AudioPlayer src="/x.mp3" filePath="a.mp3" />)
+        loadMeta(container)
         const btn = container.querySelector('button[aria-label="play"]')!
         fireEvent.click(btn)
         expect(playSpy).toHaveBeenCalled()
@@ -67,6 +87,7 @@ describe('AudioPlayer', () => {
         window.addEventListener('unhandledrejection', onUnhandledRejection)
         try {
             const { container } = render(<AudioPlayer src="/x.mp3" filePath="a.mp3" />)
+            loadMeta(container)
             const btn = container.querySelector('button[aria-label="play"]')!
             fireEvent.click(btn)
             // 等微任务跑完，让 rejected promise 走完 catch
@@ -75,5 +96,27 @@ describe('AudioPlayer', () => {
         } finally {
             window.removeEventListener('unhandledrejection', onUnhandledRejection)
         }
+    })
+
+    it('播放中 onPlayingChange 上报 true/false（useFileMediaSrc 播放锁契约）', () => {
+        const onPlayingChange = vi.fn()
+        const { container } = render(<AudioPlayer src="/x.mp3" filePath="a.mp3" onPlayingChange={onPlayingChange} />)
+        loadMeta(container)
+        fireEvent.click(container.querySelector('button[aria-label="play"]')!)
+        expect(onPlayingChange).toHaveBeenLastCalledWith(true)
+        fireEvent.click(container.querySelector('button[aria-label="pause"]')!)
+        expect(onPlayingChange).toHaveBeenLastCalledWith(false)
+    })
+
+    it('时间标签点击循环倍速 1→1.5→2→1，非 1 倍速显示徽章', () => {
+        const { container, getByText } = render(<AudioPlayer src="/x.mp3" filePath="a.mp3" />)
+        loadMeta(container)
+        const time = container.querySelector('.voice-note-time')!
+        fireEvent.click(time)
+        expect(container.querySelector('.voice-note-speed')).toHaveTextContent('1.5×')
+        fireEvent.click(time)
+        expect(getByText('2×')).toBeInTheDocument()
+        fireEvent.click(time)
+        expect(container.querySelector('.voice-note-speed')).not.toBeInTheDocument()
     })
 })
