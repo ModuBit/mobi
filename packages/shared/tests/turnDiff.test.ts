@@ -27,6 +27,10 @@ import {
     normalizeUserContent,
 } from '../src/userContentSchema'
 import {
+    DiffTargetSchema,
+    ReviewFilesResultSchema,
+    ReviewOverviewSchema,
+    GIT_REVIEW_RPC,
     summarizeTurnDiffFiles,
     TURN_DIFF_EVENT,
     TurnDiffPayloadSchema,
@@ -64,6 +68,80 @@ describe('TurnDiffPayloadSchema', () => {
     it('summarizeTurnDiffFiles：files/additions/deletions 由 entries 单点汇总', () => {
         expect(summarizeTurnDiffFiles(VALID_PAYLOAD.files)).toEqual({ files: 2, additions: 5, deletions: 3 })
         expect(summarizeTurnDiffFiles([])).toEqual({ files: 0, additions: 0, deletions: 0 })
+    })
+})
+
+describe('DiffTargetSchema（审查重写 v2）', () => {
+    it('三种 kind 合法样例通过', () => {
+        expect(DiffTargetSchema.safeParse({ kind: 'turn' }).success).toBe(true)
+        expect(DiffTargetSchema.safeParse({ kind: 'turn', turnIndex: 3 }).success).toBe(true)
+        expect(DiffTargetSchema.safeParse({ kind: 'worktree', area: 'uncommitted' }).success).toBe(true)
+        expect(DiffTargetSchema.safeParse({ kind: 'commit', range: { base: 'a', head: 'b' } }).success).toBe(true)
+    })
+
+    it('非法目标被拒：未知 kind / 缺 range / 负 turnIndex / 未知 area', () => {
+        expect(DiffTargetSchema.safeParse({ kind: 'branch' }).success).toBe(false)
+        expect(DiffTargetSchema.safeParse({ kind: 'commit', range: { base: 'a' } }).success).toBe(false)
+        expect(DiffTargetSchema.safeParse({ kind: 'turn', turnIndex: 0 }).success).toBe(false)
+        expect(DiffTargetSchema.safeParse({ kind: 'worktree', area: 'index' }).success).toBe(false)
+    })
+})
+
+describe('审查 v2 schema（overview / files）', () => {
+    const VALID_OVERVIEW = {
+        unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: false },
+        isGitRepository: true,
+        scopes: {
+            turn: { fileCount: 2, additions: 5, deletions: 3 },
+            uncommitted: { fileCount: 0, additions: 0, deletions: 0 },
+            unstaged: null,
+            staged: null,
+        },
+        truncated: false,
+        targetGeneration: 1,
+    }
+
+    it('overview 合法样例通过：git 档可用与非 git 档（turn 非 null 其余 null）', () => {
+        expect(ReviewOverviewSchema.safeParse(VALID_OVERVIEW).success).toBe(true)
+        expect(ReviewOverviewSchema.safeParse({
+            ...VALID_OVERVIEW,
+            isGitRepository: false,
+            unavailableScopes: { turn: false, uncommitted: true, unstaged: true, staged: true, commit: true },
+        }).success).toBe(true)
+    })
+
+    it('overview 非法被拒：scopes 可用性档缺失 / 负计数', () => {
+        expect(ReviewOverviewSchema.safeParse({
+            ...VALID_OVERVIEW,
+            unavailableScopes: { turn: false, uncommitted: false, staged: false, commit: false },
+        }).success).toBe(false)
+        expect(ReviewOverviewSchema.safeParse({
+            ...VALID_OVERVIEW,
+            scopes: { ...VALID_OVERVIEW.scopes, turn: { fileCount: -1, additions: 0, deletions: 0 } },
+        }).success).toBe(false)
+    })
+
+    it('files 结果：条目 nullable 字段与 targetGeneration 契约', () => {
+        const result = {
+            files: [
+                { path: 'a.ts', previousPath: null, kind: 'modify', additions: 1, deletions: 0, binary: false, untracked: false, oversized: false },
+                { path: 'b.png', previousPath: null, kind: 'add', additions: null, deletions: null, binary: true, untracked: true, oversized: false },
+            ],
+            stats: { files: 2, additions: 1, deletions: 0 },
+            truncated: false,
+            targetGeneration: 7,
+        }
+        expect(ReviewFilesResultSchema.safeParse(result).success).toBe(true)
+        expect(ReviewFilesResultSchema.safeParse({ ...result, targetGeneration: '7' }).success).toBe(false)
+    })
+
+    it('六方法名注册在 GIT_REVIEW_RPC（防漂移单源 lock）', () => {
+        expect(GIT_REVIEW_RPC.overview).toBe('gitReviewOverview')
+        expect(GIT_REVIEW_RPC.files).toBe('gitReviewFiles')
+        expect(GIT_REVIEW_RPC.diff).toBe('gitReviewDiff')
+        expect(GIT_REVIEW_RPC.contents).toBe('gitReviewContents')
+        expect(GIT_REVIEW_RPC.commits).toBe('gitReviewCommits')
+        expect(GIT_REVIEW_RPC.init).toBe('gitReviewInit')
     })
 })
 

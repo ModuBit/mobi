@@ -144,4 +144,137 @@ export const GIT_REVIEW_RPC = {
     file: 'gitReviewFile',
     /** 会话删除时的快照引用清理（hub best-effort 调用） */
     clear: 'clearTurnSnapshots',
+    // 审查重写 v2 六方法（spec .scratch/review-render-rewrite）：DiffTarget 统一模型
+    overview: 'gitReviewOverview',
+    files: 'gitReviewFiles',
+    diff: 'gitReviewDiff',
+    contents: 'gitReviewContents',
+    commits: 'gitReviewCommits',
+    init: 'gitReviewInit',
 } as const
+
+// ─── 审查重写 v2 协议（DiffTarget 统一模型，六方法）──────────────────────────
+//
+// 数据链：patch 主通道 + 全文对懒拉（pierre loadDiffFiles hydration）。
+// 陈旧性：overview 返回 targetGeneration（刷新版本号），web 缓存键携带它防
+// 「总览展示与点击之间有新轮完成」的错位（替代旧 turnIndex 特判的通用化）。
+
+/** 审查目标（五档收敛的统一寻址）：turn = 快照链两树；worktree = 三工作区档；
+ *  commit = 任意提交对（本轮协议预留，first-parent 语义由 CLI resolver 决定） */
+export const DiffTargetSchema = z.discriminatedUnion('kind', [
+    /** 上一轮：缺省 turnIndex = 链尾（最新完成的轮） */
+    z.object({ kind: z.literal('turn'), turnIndex: z.number().int().positive().optional() }),
+    z.object({ kind: z.literal('worktree'), area: z.enum(['uncommitted', 'unstaged', 'staged']) }),
+    z.object({
+        kind: z.literal('commit'),
+        range: z.object({ base: z.string().min(1), head: z.string().min(1) }),
+    }),
+])
+export type DiffTarget = z.infer<typeof DiffTargetSchema>
+
+/** 五档可用性矩阵（逐档，替代旧全局 unavailable）：true = 该档当前不可用。
+ *  非 git 目录：turn 由工具层降级源供数（false），git 系全 true */
+export const ReviewUnavailableScopesSchema = z.object({
+    turn: z.boolean(),
+    uncommitted: z.boolean(),
+    unstaged: z.boolean(),
+    staged: z.boolean(),
+    commit: z.boolean(),
+})
+export type ReviewUnavailableScopes = z.infer<typeof ReviewUnavailableScopesSchema>
+
+/** 单档统计三件套（轻量，总览态只用得到计数——文件明细走 files 方法） */
+export const ReviewScopeSummarySchema = z.object({
+    fileCount: z.number().int().nonnegative(),
+    additions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+})
+export type ReviewScopeSummary = z.infer<typeof ReviewScopeSummarySchema>
+
+/** 审查总览：四档 + commit 可用性一次拉（与会话 metadata 解析出的 cwd 绑定，hub 只透传） */
+export const ReviewOverviewSchema = z.object({
+    unavailableScopes: ReviewUnavailableScopesSchema,
+    isGitRepository: z.boolean(),
+    /** 各档统计（不可用档 null；非 git 目录 turn 非 null——工具层降级源供数） */
+    scopes: z.object({
+        turn: ReviewScopeSummarySchema.nullable(),
+        uncommitted: ReviewScopeSummarySchema.nullable(),
+        unstaged: ReviewScopeSummarySchema.nullable(),
+        staged: ReviewScopeSummarySchema.nullable(),
+    }),
+    /** 总览统计超过内联上限时打标（明细仍可拉，UI 降级提示） */
+    truncated: z.boolean(),
+    /** 总览刷新版本：任何影响档位数据的会话事件自增；web 缓存键携带防陈旧 */
+    targetGeneration: z.number().int().nonnegative(),
+})
+export type ReviewOverview = z.infer<typeof ReviewOverviewSchema>
+
+/** 文件明细条目（五档统一形状；untracked/oversized 等事实由 CLI 打标） */
+export const ReviewFileEntrySchema = z.object({
+    path: z.string().min(1),
+    /** rename 的原路径 */
+    previousPath: z.string().min(1).nullable(),
+    kind: TurnDiffFileKindSchema,
+    /** 工具层降级源可能给不出计数 */
+    additions: z.number().int().nullable(),
+    deletions: z.number().int().nullable(),
+    binary: z.boolean(),
+    /** git 未跟踪（--no-index 口径的 diff 事实） */
+    untracked: z.boolean(),
+    /** diff 超过内联预算：UI 降级为「文件过大」，不发起 diff 拉取 */
+    oversized: z.boolean(),
+})
+export type ReviewFileEntry = z.infer<typeof ReviewFileEntrySchema>
+
+/** 文件明细（files 方法响应）：targetGeneration 随行，web 原样并入后续 diff/contents 查询的缓存键 */
+export const ReviewFilesResultSchema = z.object({
+    files: z.array(ReviewFileEntrySchema),
+    stats: TurnDiffStatsSchema,
+    truncated: z.boolean(),
+    targetGeneration: z.number().int().nonnegative(),
+})
+export type ReviewFilesResult = z.infer<typeof ReviewFilesResultSchema>
+
+/** 单文件 patch（diff 方法响应）：pierre PatchDiff 主输入 */
+export const ReviewPatchResultSchema = z.object({
+    patch: z.string(),
+    previousPath: z.string().min(1).nullable(),
+    oversized: z.boolean(),
+    binary: z.boolean(),
+})
+export type ReviewPatchResult = z.infer<typeof ReviewPatchResultSchema>
+
+/** 全文对（contents 方法响应）：pierre hydration 懒拉。
+ *  reason 三态 = 拿不到全文的诚实降级原因（null = 成功返回两侧全文） */
+export const ReviewContentsResultSchema = z.object({
+    before: z.string().nullable(),
+    after: z.string().nullable(),
+    reason: z.enum(['oversized', 'binary', 'missing']).nullable(),
+})
+export type ReviewContentsResult = z.infer<typeof ReviewContentsResultSchema>
+
+/** 历史提交（commits 方法条目）：parentSha 供前端组 range {base: parentSha, head: sha} */
+export const ReviewCommitSchema = z.object({
+    sha: z.string().min(1),
+    /** 根提交无父：null（web 对根提交禁选或以空树为 base） */
+    parentSha: z.string().min(1).nullable(),
+    subject: z.string(),
+    authorName: z.string(),
+    authorTimestamp: z.number().int(),
+})
+export type ReviewCommit = z.infer<typeof ReviewCommitSchema>
+
+/** 提交列表（commits 方法响应）：nextCursor = 最后一条 sha，null = 到底 */
+export const ReviewCommitsResultSchema = z.object({
+    commits: z.array(ReviewCommitSchema),
+    /** 游标 = 偏移量字符串（实现取最简单者），null = 到底 */
+    nextCursor: z.string().min(1).nullable(),
+})
+export type ReviewCommitsResult = z.infer<typeof ReviewCommitsResultSchema>
+
+/** 动作结果（init 方法响应） */
+export const ReviewActionResultSchema = z.object({
+    success: z.boolean(),
+    error: z.string().nullable(),
+})
+export type ReviewActionResult = z.infer<typeof ReviewActionResultSchema>
