@@ -82,14 +82,16 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
             : { oldFile: { name: path, contents: data.before }, newFile: { name: path, contents: data.after ?? '' } }
     }, [api, queryClient, sessionId, target, path, version])
 
+    // turn 档不配 loadDiffFiles（turn-archive B：归档只存统计+patch，全文零进盘，
+    // 无全文可 hydrate——零 RPC；其余档懒拉展开折叠上下文）
     const options = useMemo(() => ({
         diffStyle: layout,
         overflow: (wrap ? 'wrap' : 'scroll') as 'wrap' | 'scroll',
         hunkSeparators: 'line-info' as const,
         disableFileHeader: true,
         themeType: resolved as 'light' | 'dark',
-        loadDiffFiles,
-    }), [layout, wrap, resolved, loadDiffFiles])
+        ...(target.kind !== 'turn' && { loadDiffFiles }),
+    }), [layout, wrap, resolved, target, loadDiffFiles])
 
     return (
         <div

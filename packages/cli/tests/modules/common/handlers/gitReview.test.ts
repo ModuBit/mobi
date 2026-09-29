@@ -75,17 +75,16 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
     it('overview：五档可用性 + 各档统计 + targetGeneration；commit 档有 HEAD 即可用', async () => {
         const { ReviewOverviewSchema, DiffTargetSchema } = await import('@mobi/shared')
         const reader = new GitReviewReader(v2Dir)
-        const store = (await openTurnSnapshotStore(v2Dir))!
-        const overview = ReviewOverviewSchema.parse(await reader.overview(v2Session, store))
+        const overview = ReviewOverviewSchema.parse(await reader.overview(v2Session))
         expect(overview.isGitRepository).toBe(true)
         expect(overview.unavailableScopes).toEqual({ turn: false, uncommitted: false, unstaged: false, staged: false, commit: false })
         expect(overview.scopes.turn).toEqual({ fileCount: 0, additions: 0, deletions: 0 })
         expect(overview.scopes.uncommitted).toEqual({ fileCount: 0, additions: 0, deletions: 0 })
         const generationBefore = overview.targetGeneration
 
-        // 工作区改动后 uncommitted 统计推进、版本推进
+        // 工作区改动后 uncommitted 统计推进、版本推进（dirty 刻度）
         await writeFile(join(v2Dir, 'init.txt'), 'init\nchanged\n')
-        const after = ReviewOverviewSchema.parse(await reader.overview(v2Session, store))
+        const after = ReviewOverviewSchema.parse(await reader.overview(v2Session))
         expect(after.scopes.uncommitted).toEqual({ fileCount: 1, additions: 1, deletions: 0 })
         expect(after.targetGeneration).toBeGreaterThan(generationBefore)
         void DiffTargetSchema
@@ -94,18 +93,17 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
     it('files + patch + contents：worktree uncommitted 档全链路', async () => {
         const { ReviewFilesResultSchema, ReviewPatchResultSchema, ReviewContentsResultSchema } = await import('@mobi/shared')
         const reader = new GitReviewReader(v2Dir)
-        const store = (await openTurnSnapshotStore(v2Dir))!
         const target = { kind: 'worktree', area: 'uncommitted' } as const
-        const files = ReviewFilesResultSchema.parse(await reader.files(v2Session, target, store))
+        const files = ReviewFilesResultSchema.parse(await reader.files(v2Session, target))
         expect(files.files.map((f) => f.path)).toEqual(['init.txt'])
         expect(files.files[0]).toMatchObject({ kind: 'modify', additions: 1, deletions: 0, binary: false, untracked: false })
         expect(files.targetGeneration).toBeGreaterThan(0)
 
-        const patch = ReviewPatchResultSchema.parse(await reader.patch(v2Session, target, 'init.txt', null))
+        const patch = ReviewPatchResultSchema.parse(await reader.patch(v2Session, target, 'init.txt'))
         expect(patch.patch).toContain('+changed')
         expect(patch.binary).toBe(false)
 
-        const contents = ReviewContentsResultSchema.parse(await reader.contents(v2Session, target, 'init.txt', null))
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(v2Session, target, 'init.txt'))
         expect(contents.before).toBe('init\n')
         expect(contents.after).toBe('init\nchanged\n')
         expect(contents.reason).toBeNull()
@@ -119,11 +117,11 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         void headParent
         const target = { kind: 'commit', range: { base: headSha + '^', head: headSha } } as const
 
-        const files = ReviewFilesResultSchema.parse(await reader.files(v2Session, target, null))
+        const files = ReviewFilesResultSchema.parse(await reader.files(v2Session, target))
         expect(files.files.map((f) => f.path)).toEqual(['second.txt'])
-        const patch = ReviewPatchResultSchema.parse(await reader.patch(v2Session, target, 'second.txt', null))
+        const patch = ReviewPatchResultSchema.parse(await reader.patch(v2Session, target, 'second.txt'))
         expect(patch.patch).toContain('+second')
-        const contents = ReviewContentsResultSchema.parse(await reader.contents(v2Session, target, 'second.txt', null))
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(v2Session, target, 'second.txt'))
         expect(contents.before).toBeNull()
         expect(contents.after).toBe('second\n')
 
@@ -134,100 +132,37 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         expect(page.nextCursor).toBeNull()
     })
 
-    it('turn 档 journal 补入：gitignored 文件进 turn 清单，git 条目不重复', async () => {
-        const { ReviewFilesResultSchema } = await import('@mobi/shared')
-        const { PersistentToolChangeJournal, getToolChangesPath } = await import('@/modules/common/git/toolChangeJournal')
-        await writeFile(join(v2Dir, '.gitignore'), 'secret.local\n')
-        // 快照（.gitignore 已生效，secret.local 不进树）
-        const store = (await openTurnSnapshotStore(v2Dir))!
-        await store.capture(v2Session)
-        await writeFile(join(v2Dir, 'tracked.txt'), 'tracked new\n')
-        await store.capture(v2Session)
-
-        // journal 记录 gitignored 文件 + 一个 tracked 文件（应去重，git 视角为准）
-        const journalPath = getToolChangesPath(v2Dir, v2Session)
-        const journal = await PersistentToolChangeJournal.open(journalPath)
-        journal.record({ path: 'secret.local', beforeContent: null, afterContent: 'hush\n', toolName: 'Write' })
-        journal.record({ path: 'tracked.txt', beforeContent: null, afterContent: 'stale\n', toolName: 'Write' })
-        await journal.flush()
-
-        const files = ReviewFilesResultSchema.parse(await new GitReviewReader(v2Dir).files(v2Session, { kind: 'turn' }, store))
-        const paths = files.files.map((f) => f.path)
-        expect(paths).toContain('tracked.txt')
-        expect(paths).toContain('secret.local')
-        expect(paths.filter((p) => p === 'tracked.txt')).toHaveLength(1)
-        const secret = files.files.find((f) => f.path === 'secret.local')!
-        expect(secret).toMatchObject({ kind: 'add', untracked: true })
-        await rm(journalPath, { force: true })
-    })
-
-    it('非 git 目录：overview turn 非 null（journal 供数）、git 系全不可用；files(turn) 走 journal', async () => {
-        const { ReviewOverviewSchema, ReviewFilesResultSchema } = await import('@mobi/shared')
-        const { PersistentToolChangeJournal, getToolChangesPath } = await import('@/modules/common/git/toolChangeJournal')
+    it('非 git 目录：turn 档归档供数（无归档 = 空），git 系全不可用；contents(turn) 空降级', async () => {
+        const { ReviewOverviewSchema, ReviewFilesResultSchema, ReviewPatchResultSchema } = await import('@mobi/shared')
         v2NonGit = await mkdtemp(join(tmpdir(), 'mobi-review-v2-nongit-'))
         const sid = 'nongit-session'
-        const journal = await PersistentToolChangeJournal.open(getToolChangesPath(v2NonGit, sid))
-        journal.record({ path: 'app.ts', beforeContent: 'a\n', afterContent: 'a\nb\n', toolName: 'Edit' })
-        await journal.flush()
+        const { FileTurnArchiveStore, getTurnArchivePath } = await import('@/modules/common/git/turnArchiveStore')
+        const archive = new FileTurnArchiveStore(getTurnArchivePath(v2NonGit, sid))
+        await archive.seal({
+            turnIndex: 1,
+            baseTurnIndex: null,
+            sealedAt: Date.now(),
+            files: [{ path: 'app.ts', kind: 'modify', additions: 1, deletions: 0, writeCount: 1, toolNames: ['Edit'], patch: '--- a/app.ts\n+++ b/app.ts\n@@ -1 +1,2 @@\n a\n+b\n', oversizedPatch: false }],
+        })
 
         const reader = new GitReviewReader(v2NonGit)
-        const overview = ReviewOverviewSchema.parse(await reader.overview(sid, null))
+        const overview = ReviewOverviewSchema.parse(await reader.overview(sid))
         expect(overview.isGitRepository).toBe(false)
         expect(overview.unavailableScopes).toEqual({ turn: false, uncommitted: true, unstaged: true, staged: true, commit: true })
         expect(overview.scopes.turn).toEqual({ fileCount: 1, additions: 1, deletions: 0 })
 
-        const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }, null))
+        const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }))
         expect(files.files).toHaveLength(1)
         expect(files.files[0]).toMatchObject({ path: 'app.ts', kind: 'modify', additions: 1 })
         // git 系档位拒绝
-        await expect(reader.files(sid, { kind: 'worktree', area: 'unstaged' }, null)).rejects.toThrow(/git repository/)
-        // contents 从 journal 出全文对
-        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, 'app.ts', null))
-        expect(contents.before).toBe('a\n')
-        expect(contents.after).toBe('a\nb\n')
-        await rm(getToolChangesPath(v2NonGit, sid), { force: true })
-    })
-
-    it('非 git turn 档：Edit 只带 before（afterContent null）→ 消费侧用磁盘当前内容补 after', async () => {
-        // E2E 实证（票09）：Edit 类 toolUseResult 只有 originalFile，journal 的 after 占位 null——
-        // 不补全时统计与 contents 呈「整文件删除」假象（+0 -2 / after missing）
-        const { ReviewOverviewSchema, ReviewFilesResultSchema, ReviewContentsResultSchema, ReviewPatchResultSchema } = await import('@mobi/shared')
-        const { PersistentToolChangeJournal, getToolChangesPath } = await import('@/modules/common/git/toolChangeJournal')
-        const dir = await mkdtemp(join(tmpdir(), 'mobi-review-before-only-'))
-        const sid = 'before-only-session'
-        try {
-            // 磁盘当前内容 = 编辑后已落盘的文件
-            await writeFile(join(dir, 'app.ts'), 'a\nb\nedited\n')
-            const journal = await PersistentToolChangeJournal.open(getToolChangesPath(dir, sid))
-            // Edit 类结果只记 before 占位（journal path 为工具输入的绝对路径，E2E 实证）
-            journal.record({ path: join(dir, 'app.ts'), beforeContent: 'a\nb\n', toolName: 'Edit' })
-            await journal.flush()
-
-            const reader = new GitReviewReader(dir)
-            const overview = ReviewOverviewSchema.parse(await reader.overview(sid, null))
-            expect(overview.scopes.turn).toEqual({ fileCount: 1, additions: 1, deletions: 0 })
-
-            const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }, null))
-            expect(files.files[0]).toMatchObject({ path: join(dir, 'app.ts'), additions: 1, deletions: 0 })
-
-            // patch：journal 源从全文对合成真 unified patch（web PatchDiff 主输入直接可用）
-            const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, { kind: 'turn' }, join(dir, 'app.ts'), null))
-            expect(patch.patch).toContain('+edited')
-            expect(patch.patch).toContain('--- a/app.ts')
-            expect(patch.patch).toContain('+++ b/app.ts')
-
-            const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, join(dir, 'app.ts'), null))
-            expect(contents.before).toBe('a\nb\n')
-            expect(contents.after).toBe('a\nb\nedited\n')
-            expect(contents.reason).toBeNull()
-
-            // journal 档路径闸：cwd 外绝对路径拒绝（文件系统闸，非 repo 相对闸）
-            await expect(reader.contents(sid, { kind: 'turn' }, '/etc/passwd', null)).rejects.toThrow(/Invalid path/)
-            await expect(reader.contents(sid, { kind: 'turn' }, join(dir, '..', 'escape'), null)).rejects.toThrow(/Invalid path/)
-        } finally {
-            await rm(getToolChangesPath(dir, sid), { force: true })
-            await rm(dir, { recursive: true, force: true })
-        }
+        await expect(reader.files(sid, { kind: 'worktree', area: 'unstaged' })).rejects.toThrow(/git repository/)
+        // patch 直读归档封口定稿
+        const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, { kind: 'turn' }, 'app.ts'))
+        expect(patch.patch).toContain('+b')
+        // contents 空降级（归档无全文）
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, 'app.ts'))
+        expect(contents).toMatchObject({ before: null, after: null, reason: 'missing' })
+        await rm(getTurnArchivePath(v2NonGit, sid), { force: true })
     })
 
     it('init：非 git 目录一键 init 后五档上线（缓存失效生效）', async () => {
@@ -235,7 +170,7 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         const initDir = await mkdtemp(join(tmpdir(), 'mobi-review-init-'))
         try {
             const reader = new GitReviewReader(initDir)
-            const before = ReviewOverviewSchema.parse(await reader.overview('s', await openTurnSnapshotStore(initDir)))
+            const before = ReviewOverviewSchema.parse(await reader.overview('s'))
             expect(before.isGitRepository).toBe(false)
 
             const result = await reader.initRepo() as { success: boolean; error: string | null }
@@ -267,8 +202,8 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
     })
 })
 
-// ── v3 turn 档供数反转（封口归档主源）──────────────────────────────────────────
-describe('GitReviewReader v3 turn 档（封口归档主源，真 git 集成）', () => {
+// ── turn-archive B：turn 档读侧收口（patch 直读归档 + contents 空降级 + generation 新公式）──
+describe('GitReviewReader turn 档（归档直读，真 git 集成）', () => {
     let v3Dir: string
     const sid = 'v3-session'
 
@@ -280,16 +215,16 @@ describe('GitReviewReader v3 turn 档（封口归档主源，真 git 集成）',
         await writeFile(join(v3Dir, 'base.txt'), 'base\n')
         await execFileAsync('git', ['add', '-A'], { cwd: v3Dir })
         await execFileAsync('git', ['commit', '-qm', 'init'], { cwd: v3Dir })
-        // 封口归档：turn 1 改 a.ts（归因视角）——工作区另有 b.ts 改动（模拟并发/手改，归档必须无视）
+        // 封口归档（B 形状）：turn 7 改 a.ts——工作区另有 b.ts 改动（模拟并发/手改，归档必须无视）
         const { FileTurnArchiveStore, getTurnArchivePath } = await import('@/modules/common/git/turnArchiveStore')
         const archive = new FileTurnArchiveStore(getTurnArchivePath(v3Dir, sid))
         await archive.seal({
-            turnIndex: 1,
-            baseTurnIndex: null,
-            sealedAt: Date.now(),
-            files: [{ path: join(v3Dir, 'a.ts'), beforeContent: 'one\n', afterContent: 'one\ntwo\n', writeCount: 1, toolNames: ['Edit'], additions: 1, deletions: 0 }],
+            turnIndex: 7,
+            baseTurnIndex: 6,
+            sealedAt: 1_700_000_012_345,
+            files: [{ path: join(v3Dir, 'a.ts'), kind: 'modify', additions: 1, deletions: 0, writeCount: 1, toolNames: ['Edit'], patch: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n one\n+two\n', oversizedPatch: false }],
         })
-        // 工作区实况：b.ts 被改（快照/未提交档视角）
+        // 工作区实况：b.ts 被改（未提交档视角）
         await writeFile(join(v3Dir, 'b.ts'), 'b changed\n')
         await writeFile(join(v3Dir, 'a.ts'), 'one\ntwo\n')
     })
@@ -302,48 +237,59 @@ describe('GitReviewReader v3 turn 档（封口归档主源，真 git 集成）',
     it('overview turn 档 = 最新封口轮（归因），不含工作区其他改动', async () => {
         const { ReviewOverviewSchema } = await import('@mobi/shared')
         const reader = new GitReviewReader(v3Dir)
-        const store = (await openTurnSnapshotStore(v3Dir))!
-        const overview = ReviewOverviewSchema.parse(await reader.overview(sid, store))
+        const overview = ReviewOverviewSchema.parse(await reader.overview(sid))
         // 封口档只有 a.ts +1；b.ts 的工作区改动属于 uncommitted 档
         expect(overview.scopes.turn).toEqual({ fileCount: 1, additions: 1, deletions: 0 })
         expect(overview.scopes.uncommitted!.fileCount).toBeGreaterThanOrEqual(1)
     })
 
-    it('files(turn)：归档条目供数；带 turnIndex 查历史档；越界回落快照链', async () => {
+    it('generation 新公式：floor(sealedAt/10)*10000 + dirty——封口换代、dirty 变化换代', async () => {
+        const { ReviewOverviewSchema } = await import('@mobi/shared')
+        const reader = new GitReviewReader(v3Dir)
+        const base = ReviewOverviewSchema.parse(await reader.overview(sid)).targetGeneration
+        // 封口刻度：floor(1700000012345/10)*10000 = 170000001234*10000
+        expect(base).toBe(170000001234 * 10000 + 2) // dirty = a.ts(untracked) + b.ts(modified)；.mobi 不计
+        // dirty 变化（新增一条 status 记录）→ 换代
+        await writeFile(join(v3Dir, 'c.ts'), 'new\n')
+        const after = ReviewOverviewSchema.parse(await reader.overview(sid)).targetGeneration
+        expect(after).toBe(base + 1)
+    })
+
+    it('files(turn)：归档条目供数；带 turnIndex 查最新轮；历史/越界轮 not found', async () => {
         const { ReviewFilesResultSchema } = await import('@mobi/shared')
         const reader = new GitReviewReader(v3Dir)
-        const store = (await openTurnSnapshotStore(v3Dir))!
-        const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }, store))
+        const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }))
         expect(files.files.map((f) => f.path)).toEqual([join(v3Dir, 'a.ts')])
         expect(files.files[0]).toMatchObject({ kind: 'modify', additions: 1, deletions: 0 })
 
-        const history = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn', turnIndex: 1 }, store))
-        expect(history.files.map((f) => f.path)).toEqual([join(v3Dir, 'a.ts')])
-        // 越界 turnIndex：归档无、快照链也无该序号 → resolver 抛错（明确请求了不存在的轮次）
-        await expect(reader.files(sid, { kind: 'turn', turnIndex: 99 }, store)).rejects.toThrow(/not found/)
+        const latest = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn', turnIndex: 7 }))
+        expect(latest.files).toHaveLength(1)
+        // 滚动单条：历史轮不可查
+        await expect(reader.files(sid, { kind: 'turn', turnIndex: 1 })).rejects.toThrow(/not found/)
+        await expect(reader.files(sid, { kind: 'turn', turnIndex: 99 })).rejects.toThrow(/not found/)
     })
 
-    it('patch/contents(turn)：归档内容对直接供数（历史轮回看冻结），路径闸保持', async () => {
+    it('patch(turn) 直读归档封口定稿；contents 空降级；未记录路径空 patch；路径闸保持', async () => {
         const { ReviewPatchResultSchema, ReviewContentsResultSchema } = await import('@mobi/shared')
         const reader = new GitReviewReader(v3Dir)
-        const store = (await openTurnSnapshotStore(v3Dir))!
         const target = { kind: 'turn' } as const
 
-        const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, target, join(v3Dir, 'a.ts'), store))
+        // patch 直读归档（不再查询时用全文对现合成——归档里没有全文可合成）
+        const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, target, join(v3Dir, 'a.ts')))
         expect(patch.patch).toContain('+two')
-        expect(patch.patch).toContain('--- a/a.ts')
+        expect(patch.oversized).toBe(false)
 
-        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'a.ts'), store))
-        expect(contents.before).toBe('one\n')
-        expect(contents.after).toBe('one\ntwo\n')
+        // contents 空降级（归档无全文，B 方案能力代价）
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'a.ts')))
+        expect(contents).toMatchObject({ before: null, after: null, reason: 'missing' })
 
         // 归档未记录的路径：空 patch / missing
-        const empty = ReviewPatchResultSchema.parse(await reader.patch(sid, target, join(v3Dir, 'b.ts'), store))
+        const empty = ReviewPatchResultSchema.parse(await reader.patch(sid, target, join(v3Dir, 'b.ts')))
         expect(empty.patch).toBe('')
-        const missing = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'b.ts'), store))
+        const missing = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'b.ts')))
         expect(missing).toMatchObject({ before: null, after: null, reason: 'missing' })
 
         // 路径闸：cwd 外拒绝
-        await expect(reader.patch(sid, target, '/etc/passwd', store)).rejects.toThrow(/Invalid path/)
+        await expect(reader.patch(sid, target, '/etc/passwd')).rejects.toThrow(/Invalid path/)
     })
 })

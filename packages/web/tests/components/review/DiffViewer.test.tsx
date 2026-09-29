@@ -43,20 +43,21 @@ afterEach(() => {
     captured.length = 0
 })
 
-const TARGET: DiffTarget = { kind: 'turn' }
+const TARGET: DiffTarget = { kind: 'worktree', area: 'uncommitted' }
+const TURN_TARGET: DiffTarget = { kind: 'turn' }
 
-function renderViewer(overrides: Partial<Parameters<typeof DiffViewer>[0]> = {}, patch: string | null = 'diff --git a/x b/x') {
+function renderViewer(overrides: Partial<Parameters<typeof DiffViewer>[0]> = {}, patch: string | null = 'diff --git a/x b/x', target: DiffTarget = TARGET) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
         // 直接预置 patch 查询缓存（免 mock api 层）；载荷是 {data}|{error} 包装
         // （与 makeReviewPatchQueryFn 同形——同键异形曾致静默空分支，见该函数注释）
         if (patch !== null) {
-            client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(TARGET), 'x.ts', ''], { data: { patch, previousPath: null, oversized: false, binary: false } })
+            client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(target), 'x.ts', ''], { data: { patch, previousPath: null, oversized: false, binary: false } })
         }
     return render(
         <QueryClientProvider client={client}>
             <DiffViewer
                 sessionId="s1"
-                target={TARGET}
+                target={target}
                 path="x.ts"
                 version=""
                 wrap
@@ -85,6 +86,12 @@ describe('DiffViewer（pierre 换血）', () => {
         const { options } = captured[0]!
         expect(options.diffStyle).toBe('split')
         expect(options.overflow).toBe('scroll')
+    })
+
+    it('turn 档：不配 loadDiffFiles（归档只存统计+patch，全文零进盘——零 RPC）', () => {
+        renderViewer({}, 'diff --git a/x b/x', TURN_TARGET)
+        const { options } = captured[0]!
+        expect(options.loadDiffFiles).toBeUndefined()
     })
 
     it('空 patch：不渲染 PatchDiff（空串会 throw，PoC 实证），降级 noDiff 文案', () => {

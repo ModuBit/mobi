@@ -49,8 +49,7 @@ import {
     type TurnDiffFileEntry,
 } from '@mobi/shared'
 import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, MOBI_STATE_DIR, openTurnSnapshotStore, parseNameStatus } from '../git/gitTurnSnapshotStore'
-import { synthesizeContentsPatch } from '../git/contentsPatch'
-import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
+import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -90,10 +89,6 @@ function summarizeReviewFiles(files: readonly { additions?: number | null; delet
     }
 }
 
-function totalWriteCount(journal: { listPaths(): string[]; get(path: string): { writeCount: number } | undefined }): number {
-    return journal.listPaths().reduce((sum, path) => sum + (journal.get(path)?.writeCount ?? 0), 0)
-}
-
 export class GitReviewReader {
     private repoRoot: string | null = null
 
@@ -126,13 +121,9 @@ export class GitReviewReader {
         return Boolean(await this.root())
     }
 
-    /** turn 档供数器（审查 v3 反转的收口面）：随请求装配——store 由调用方注入，
-     *  git 执行注入本实例的收口方法（gitAtRoot 同源） */
-    private turnAttribution(store: TurnSnapshotStore | null): TurnAttributionProvider {
-        return new TurnAttributionProvider(this.cwd, store, {
-            isGitRepository: () => this.isGitRepo(),
-            entries: (args) => this.entries(args),
-        })
+    /** turn 档供数器（收口面）：随请求装配（归档唯一供数源，B 方案后无降级链） */
+    private turnAttribution(): TurnAttributionProvider {
+        return new TurnAttributionProvider(this.cwd)
     }
 
     /**
@@ -159,29 +150,6 @@ export class GitReviewReader {
             if (newPath === path) return record.previousPath ?? null
         }
         return null
-    }
-
-    /** journal 全文对 → 真 unified patch：委托 contentsPatch 单源（reporter 封口共用） */
-    private async synthesizePatchFromContents(path: string, before: string | null, after: string | null): Promise<string> {
-        return synthesizeContentsPatch(git, path, before, after)
-    }
-
-    /** 全文对 → patch 结果（oversize 打标清空；供数档 patch 通道唯一出口） */
-    private async patchFromContents(path: string, before: string | null, after: string | null): Promise<{ patch: string; previousPath: null; oversized: boolean; binary: boolean }> {
-        const patch = await this.synthesizePatchFromContents(path, before, after)
-        const oversized = patch.split('\n').length > OVERSIZE_DIFF_LINES
-        return { patch: oversized ? '' : patch, previousPath: null, oversized, binary: false }
-    }
-
-    /** 全文对 → contents 结果（gateText 三态 + 双空降级择优；供数档 contents 通道唯一出口） */
-    private contentsFromPair(before: string | null, after: string | null): { before: string | null; after: string | null; reason: 'binary' | 'oversized' | 'missing' | null } {
-        const b = before === null ? missingSide() : gateText(before)
-        const a = after === null ? missingSide() : gateText(after)
-        return {
-            before: b.text,
-            after: a.text,
-            reason: b.text === null && a.text === null ? pickDegradedReason(b.reason, a.reason) : null,
-        }
     }
 
     /** name-status + numstat 组装（args 含 'diff' 动词；组装规则单源在 gitTurnSnapshotStore） */
@@ -231,28 +199,42 @@ export class GitReviewReader {
         return { files: files.sort((a, b) => a.path.localeCompare(b.path)), truncated }
     }
 
-    /** 审查数据版本（陈旧性判定的缓存键原料，非单调序号）：快照链尾序号为百万位刻度
-     *  + 工作区 status 条数；非 git 用 journal 写入次数之和。statusOut 可传入共享的
-     *  status 查询（与 untrackedEntries 同一次喂两者） */
-    private async computeGeneration(sessionId: string, store: TurnSnapshotStore | null, statusOut?: Promise<string | null>): Promise<number> {
-        if (!store) {
-            return totalWriteCount(await loadToolChangeJournal(getToolChangesPath(this.cwd, sessionId)))
+    /** 审查数据版本（陈旧性判定的缓存键原料，非单调序号；turn-archive B 票02）：
+     *  `floor(sealedAt/10)*10000 + min(dirty,9999)`——0.1s 封口精度刻度 × 10000 +
+     *  工作区 status 条数刻度。碰撞窗口：同 0.1s 内两次封口且 dirty 未变 → 同代
+     *  （缓存陈旧 ≤0.1s，接受）；dirty >9999 的工作区刻度截断（Number 安全域内，
+     *  现实不可达）。statusOut 可传入共享的 status 查询（与 untrackedEntries 同一次
+     *  喂两者）；非 git 目录 gitAtRoot null → dirty 0，generation 只随封口推进 */
+    private async computeGeneration(sessionId: string, statusOut?: Promise<string | null>): Promise<number> {
+        const sealedAt = (await this.turnArchiveLatest(sessionId))?.sealedAt ?? 0
+        const raw = await (statusOut ?? this.gitAtRoot(['status', '--porcelain=v2', '-z']))
+        // dirty 刻度（记录数，非 token 数——porcelain v2 的 path 是独立 token）与
+        // untrackedEntries 同口径：.mobi 状态目录不算工作区改动
+        const dirty = raw
+            ? raw.split('\0').filter((t) => {
+                if (t.startsWith('? ')) return !isMobiStatePath(t.slice(2))
+                return /^[12u] /.test(t)
+            }).length
+            : 0
+        return Math.floor(sealedAt / 10) * 10000 + Math.min(dirty, 9999)
+    }
+
+    /** 最新封口轮（generation 的封口刻度来源） */
+    private async turnArchiveLatest(sessionId: string): Promise<TurnArchiveRecord | null> {
+        try {
+            return await new FileTurnArchiveStore(getTurnArchivePath(this.cwd, sessionId)).loadLatest()
+        } catch {
+            return null
         }
-        const [chain, raw] = await Promise.all([
-            store.listChain(sessionId),
-            statusOut ?? this.gitAtRoot(['status', '--porcelain=v2', '-z']),
-        ])
-        const dirty = raw ? raw.split('\0').filter((t) => t.trim() !== '').length : 0
-        return (chain.at(-1)?.index ?? 0) * 1_000_000 + dirty
     }
 
     // ── v2 六方法 ──────────────────────────────────────────────────────────────
 
     /** 总览：逐档可用性 + 各档统计。非 git：turn 非 null（供数器 journal 档供数），
      *  git 系全 null。turn 档统计统一走 TurnAttributionProvider（审查 v3 反转） */
-    async overview(sessionId: string, store: TurnSnapshotStore | null): Promise<ReviewOverview> {
+    async overview(sessionId: string): Promise<ReviewOverview> {
         if (!(await this.isGitRepo())) {
-            const turnStats = summarizeReviewFiles(await this.turnAttribution(store).entriesOf(sessionId, { kind: 'turn' }))
+            const turnStats = summarizeReviewFiles(await this.turnAttribution().entriesOf(sessionId, { kind: 'turn' }))
             return ReviewOverviewSchema.parse({
                 unavailableScopes: { turn: false, uncommitted: true, unstaged: true, staged: true, commit: true },
                 isGitRepository: false,
@@ -263,7 +245,7 @@ export class GitReviewReader {
                     staged: null,
                 },
                 truncated: false,
-                targetGeneration: await this.computeGeneration(sessionId, store),
+                targetGeneration: await this.computeGeneration(sessionId),
             })
         }
 
@@ -271,7 +253,7 @@ export class GitReviewReader {
         // 单跑一份同时喂 untracked 与 generation（全工作区扫描是最贵的 git 操作）
         const statusTask = this.gitAtRoot(['status', '--porcelain=v2', '-z'])
         const [turnEntries, stagedEntries, unstagedTracked, untracked, headExists] = await Promise.all([
-            this.turnAttribution(store).entriesOf(sessionId, { kind: 'turn' }),
+            this.turnAttribution().entriesOf(sessionId, { kind: 'turn' }),
             this.entries(['diff', '--cached', '-M', 'HEAD']),
             this.entries(['diff', '-M']),
             this.untrackedEntries(statusTask),
@@ -286,7 +268,7 @@ export class GitReviewReader {
             return { fileCount: stats.files, additions: stats.additions, deletions: stats.deletions }
         }
         const turnSummary = summarizeReviewFiles(turnEntries)
-        const targetGeneration = await this.computeGeneration(sessionId, store, statusTask)
+        const targetGeneration = await this.computeGeneration(sessionId, statusTask)
 
         return ReviewOverviewSchema.parse({
             unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: !headExists },
@@ -302,11 +284,11 @@ export class GitReviewReader {
         })
     }
 
-    /** 文件明细：五档统一形状。turn 档统一走供数器（审查 v3 反转）；工作区三档纯 git */
-    async files(sessionId: string, target: DiffTarget, store: TurnSnapshotStore | null): Promise<unknown> {
+    /** 文件明细：五档统一形状。turn 档统一走供数器；工作区三档纯 git */
+    async files(sessionId: string, target: DiffTarget): Promise<unknown> {
         if (target.kind === 'turn') {
-            const files = await this.turnAttribution(store).entriesOf(sessionId, target)
-            return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: await this.computeGeneration(sessionId, store) })
+            const files = await this.turnAttribution().entriesOf(sessionId, target)
+            return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: await this.computeGeneration(sessionId) })
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
@@ -318,7 +300,7 @@ export class GitReviewReader {
         const [tracked, untracked, generation] = await Promise.all([
             this.entries(['diff', ...resolved.diffArgs, '-M']),
             includeUntracked ? this.untrackedEntries(statusTask) : Promise.resolve({ files: [] as TurnDiffFileEntry[], truncated: false }),
-            this.computeGeneration(sessionId, store, statusTask),
+            this.computeGeneration(sessionId, statusTask),
         ])
         const merged = target.kind === 'worktree' && target.area === 'uncommitted'
             ? mergeEntries(tracked, [...untracked.files])
@@ -332,16 +314,15 @@ export class GitReviewReader {
         })
     }
 
-    /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（内容对无记录/
-     *  journal 源/二进制/超预算），web 落 contents 通道或诚实降级 */
-    async patch(sessionId: string, target: DiffTarget, path: string, store: TurnSnapshotStore | null): Promise<unknown> {
-        // turn 档统一走供数器（审查 v3 反转）：内容型源直出内容对合成 patch；快照源走
-        // 两树 git 查询（无 untracked no-index 兜底——turn 档清单不含 untracked）
+    /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（二进制/超
+     *  预算/归档未记录），web 落 contents 通道或诚实降级 */
+    async patch(sessionId: string, target: DiffTarget, path: string): Promise<unknown> {
+        // turn 档：patch 直读归档封口定稿（B 方案——封口时已合成落盘，查询时零合成）；
+        // 未记录路径 / 无归档 = 空 patch
         if (target.kind === 'turn') {
-            const supplied = await this.turnAttribution(store).pairOf(sessionId, target, path)
+            const supplied = await this.turnAttribution().patchOf(sessionId, target, path)
             if (supplied === null) return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
-            if (supplied.kind === 'contents') return ReviewPatchResultSchema.parse(await this.patchFromContents(path, supplied.before, supplied.after))
-            return ReviewPatchResultSchema.parse(await this.patchFromGit([supplied.baseTree, supplied.headTree], path, { allowNoIndex: false }))
+            return ReviewPatchResultSchema.parse({ patch: supplied.patch, previousPath: null, oversized: supplied.oversizedPatch, binary: false })
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         // git 档路径闸（先 resolve 后闸，源决定闸）
@@ -387,14 +368,11 @@ export class GitReviewReader {
 
     /** 全文对（pierre hydration 懒拉）。reason = 两侧都拿不到时的降级原因；一侧有值
      *  （add/delete 的合法半对）reason 为 null */
-    async contents(sessionId: string, target: DiffTarget, path: string, store: TurnSnapshotStore | null): Promise<unknown> {
-        // turn 档统一走供数器（审查 v3 反转）：内容型源直出内容对（历史轮回看冻结）；
-        // 快照源走两树 git show
+    async contents(sessionId: string, target: DiffTarget, path: string): Promise<unknown> {
+        // turn 档：空降级（B 方案——归档只存统计+patch，全文零进盘；web 端 turn 档
+        // 不配 loadDiffFiles，本方法仅防御外部调用，保留 RPC 面防 500）
         if (target.kind === 'turn') {
-            const supplied = await this.turnAttribution(store).pairOf(sessionId, target, path)
-            if (supplied === null) return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
-            if (supplied.kind === 'contents') return ReviewContentsResultSchema.parse(this.contentsFromPair(supplied.before, supplied.after))
-            return ReviewContentsResultSchema.parse(await this.contentsFromGit([supplied.baseTree, supplied.headTree], supplied.baseTree, supplied.headTree, path))
+            return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         // git 档路径闸（先 resolve 后闸，源决定闸，同 patch）
@@ -496,6 +474,11 @@ function pickDegradedReason(a: FulltextSide['reason'], b: FulltextSide['reason']
     return 'missing'
 }
 
+/** .mobi 状态目录内路径（generation dirty 刻度的过滤口径） */
+function isMobiStatePath(path: string): boolean {
+    return path === MOBI_STATE_DIR || path.startsWith(`${MOBI_STATE_DIR}/`)
+}
+
 /** uncommitted = staged ∪ unstaged：按 path 合并计数（kind 取信息量更大的优先） */
 function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffFileEntry[] {
     const byPath = new Map<string, TurnDiffFileEntry>()
@@ -553,29 +536,29 @@ const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[]
         method: GIT_REVIEW_RPC.overview,
         log: 'overview',
         error: 'Failed to collect review overview',
-        withStore: true,
-        run: async (reader, store, data: { cwd: string; sessionId: string }) => reader.overview(data.sessionId, store),
+        withStore: false,
+        run: async (reader, _store, data: { cwd: string; sessionId: string }) => reader.overview(data.sessionId),
     },
     {
         method: GIT_REVIEW_RPC.files,
         log: 'files',
         error: 'Failed to list review files',
-        withStore: true,
-        run: async (reader, store, data: { sessionId: string; target: DiffTarget }) => reader.files(data.sessionId, data.target, store),
+        withStore: false,
+        run: async (reader, _store, data: { sessionId: string; target: DiffTarget }) => reader.files(data.sessionId, data.target),
     },
     {
         method: GIT_REVIEW_RPC.diff,
         log: 'diff',
         error: 'Failed to read review diff',
-        withStore: true,
-        run: async (reader, store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.patch(data.sessionId, data.target, data.path, store),
+        withStore: false,
+        run: async (reader, _store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.patch(data.sessionId, data.target, data.path),
     },
     {
         method: GIT_REVIEW_RPC.contents,
         log: 'contents',
         error: 'Failed to read review contents',
-        withStore: true,
-        run: async (reader, store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.contents(data.sessionId, data.target, data.path, store),
+        withStore: false,
+        run: async (reader, _store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.contents(data.sessionId, data.target, data.path),
     },
     {
         method: GIT_REVIEW_RPC.commits,
