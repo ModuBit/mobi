@@ -15,7 +15,7 @@
  */
 
 import { logger } from '@/ui/logger'
-import { mkdir, writeFile, rm, readFile, open, stat, rename } from 'fs/promises'
+import { mkdir, writeFile, rm, open, stat, rename } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, resolve, relative, extname, sep, dirname, basename } from 'path'
 import { homedir } from 'os'

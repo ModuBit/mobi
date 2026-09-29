@@ -137,7 +137,7 @@ export class FileTurnFulltextStore {
 
         // 单次目录模式 diff 出整轮 patch：头部形态与 contentsPatch 的四 token 归位实证一致
         // （modify: a{dir}/a/f b{dir}/b/f；add: a{dir}/b/f b{dir}/b/f；delete: a{dir}/a/f b{dir}/a/f）
-        let raw = ''
+        let raw: string
         try {
             raw = await this.gitExec(turnDir, ['diff', '--no-index', '--', join(turnDir, 'a'), join(turnDir, 'b')])
         } catch (e) {

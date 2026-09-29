@@ -93,7 +93,7 @@ describe('FileTurnArchiveStore（滚动单条）', () => {
         expect(await new FileTurnArchiveStore(corruptPath).listTurns()).toEqual([])
     })
 
-    it('旧多轮格式兼容：只认 turns.at(-1)，patch 缺失给空串，遗留全文字段保留（读侧过渡）', async () => {
+    it('旧多轮格式兼容：只认 turns.at(-1)，patch 缺失给空串，遗留全文字段只作 kind 判定不保留', async () => {
         const path = getTurnArchivePath(dir, SID)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, JSON.stringify({
@@ -115,7 +115,9 @@ describe('FileTurnArchiveStore（滚动单条）', () => {
         const legacy = await new FileTurnArchiveStore(path).loadLatest()
         expect(legacy!.files[0]!.patch).toBe('')
         expect(legacy!.files[0]!.kind).toBe('modify') // kind 缺失按遗留全文字段判定
-        expect(legacy!.files[0]!.beforeContent).toBe('old')
+        // 遗留全文字段（hydration 前过渡形状）不再保留进条目（票02：读侧零引用）
+        expect(legacy!.files[0]).not.toHaveProperty('beforeContent')
+        expect(legacy!.files[0]).not.toHaveProperty('afterContent')
     })
 
     it('路径约定：.mobi/turn-diffs/<safeId>/turn-archive.json，sessionId 非法字符兜底替换', () => {
