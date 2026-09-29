@@ -27,7 +27,7 @@ import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, TurnDiffPayloadSchema, type TurnDiffPayload } from '@mobi/shared'
 import { TurnDiffReporter, ensureBaselineSnapshot } from '@/claude/turnDiffReporter'
 import { createInMemoryTurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
-import { createInMemoryTurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
+import { createInMemoryTurnArchiveStore, FileTurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 
 // 补读竞态脚本：同 path 多次补读并发时，模拟「R1 慢返回中间态、R2 快返回末次」的
@@ -384,17 +384,18 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             expect(payload!.stats).toEqual({ files: 1, additions: 1, deletions: 1 })
             // 快照照打（会话资产不断链）
             expect(await store.listChain(SID)).toHaveLength(2)
-            // 封口归档：turnIndex 1、files 带行数与全文对
+            // 封口归档：turnIndex 1、files 带行数与合成 patch（B 方案：无全文字段）
             const [sealed] = archive.records()
             expect(sealed!.turnIndex).toBe(1)
             expect(sealed!.baseTurnIndex).toBeNull()
-            expect(sealed!.files[0]).toMatchObject({ path: filePath, beforeContent: 'old\n', afterContent: 'new\n', writeCount: 1, additions: 1, deletions: 1 })
+            expect(sealed!.files[0]).toMatchObject({ path: filePath, writeCount: 1, additions: 1, deletions: 1, oversizedPatch: false })
+            expect(sealed!.files[0]!.patch).toContain('+new')
         } finally {
             await rm(dir, { recursive: true, force: true })
         }
     })
 
-    it('连续 turn 封口：baseTurnIndex 接续归档，历史档不受后续编辑影响', async () => {
+    it('连续 turn 封口：滚动单条只保最新轮，turnIndex/baseTurnIndex 链路经 payload 断言', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-jseq-'))
         try {
             const fileA = join(dir, 'a.ts')
@@ -417,12 +418,10 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             } as unknown as RawJSONLines)
             await reporter.onTurnEnd()
 
+            // 滚动单条：归档只见最新轮（turn 2）
             const turns = await archive.listTurns()
-            expect(turns.map((t) => t.turnIndex)).toEqual([1, 2])
-            expect(turns[0]!.baseTurnIndex).toBeNull()
-            expect(turns[1]!.baseTurnIndex).toBe(1)
-            // 历史档冻结：turn 1 的 a.ts 内容对不随后续变化
-            expect(turns[0]!.files[0]).toMatchObject({ beforeContent: 'a1\n', afterContent: 'a2\n' })
+            expect(turns.map((t) => t.turnIndex)).toEqual([2])
+            expect(turns[0]!.baseTurnIndex).toBe(1)
             // 第二轮卡只含 b（a 未在本轮编辑）
             const payloads = sentPayloads(send)
             expect(payloads[1]!.files.map((f) => f.path)).toEqual([fileB])
@@ -493,6 +492,7 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
                 seal: async () => { throw new Error('disk full') },
                 listTurns: async () => [],
                 loadTurn: async () => null,
+                loadLatest: async () => null,
             }
             const send = vi.fn()
             const reporter = new TurnDiffReporter(SID, null, send, undefined, brokenArchive)
@@ -504,6 +504,110 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             } as unknown as RawJSONLines)
             await expect(reporter.onTurnEnd()).resolves.toBeUndefined()
             expect(sentPayloads(send)).toHaveLength(1)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+})
+
+describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）', () => {
+    /** 构造带 originalFile 的 Edit 结果消息（真实 snake_case 形态） */
+    function editResult(toolUseId: string, filePath: string, originalFile: string): RawJSONLines {
+        return {
+            type: 'user',
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId }] },
+            tool_use_result: {
+                filePath,
+                originalFile,
+                structuredPatch: [{ lines: ['-old', '+new'] }],
+            },
+        } as unknown as RawJSONLines
+    }
+
+    it('封口归档只存统计+patch：无 beforeContent/afterContent，patch 为合成的 unified diff', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-patch-'))
+        try {
+            const filePath = join(dir, 'a.ts')
+            await writeFile(filePath, 'new\n', 'utf8')
+            const archivePath = join(dir, 'turn-archive.json')
+            const archive = new FileTurnArchiveStore(archivePath)
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(SID, null, send, undefined, archive)
+
+            reporter.observe(assistantToolUse('t1', 'Edit', filePath))
+            reporter.observe(editResult('t1', filePath, 'old\n'))
+            await reporter.onTurnEnd()
+
+            const sealed = (await archive.loadLatest())!
+            expect(sealed.turnIndex).toBe(1)
+            const f = sealed.files[0]!
+            expect(f).not.toHaveProperty('beforeContent')
+            expect(f).not.toHaveProperty('afterContent')
+            expect(f.patch).toContain('-old')
+            expect(f.patch).toContain('+new')
+            expect(f.oversizedPatch).toBe(false)
+            expect(f.additions).toBe(1)
+            expect(f.deletions).toBe(1)
+            expect(f.writeCount).toBe(1)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('patch 超 5000 行：patch 降级为空 + oversizedPatch 打标，counts 保留', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-oversize-'))
+        try {
+            const filePath = join(dir, 'big.ts')
+            const big = Array.from({ length: 6000 }, (_, i) => `line ${i}`).join('\n') + '\n'
+            await writeFile(filePath, big, 'utf8')
+            const archive = new FileTurnArchiveStore(join(dir, 'turn-archive.json'))
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(SID, null, send, undefined, archive)
+
+            reporter.observe(assistantToolUse('t1', 'Write', filePath))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                tool_use_result: { filePath, content: big },
+            } as unknown as RawJSONLines)
+            await reporter.onTurnEnd()
+
+            const f = (await archive.loadLatest())!.files[0]!
+            expect(f.patch).toBe('')
+            expect(f.oversizedPatch).toBe(true)
+            expect(f.additions).toBe(6000)
+            expect(f.deletions).toBe(0)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('重启（新 reporter 实例）：turnIndex 从归档最新轮接续，不再内存自增断档', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-resume-'))
+        try {
+            const filePath = join(dir, 'a.ts')
+            const archivePath = join(dir, 'turn-archive.json')
+            const send1 = vi.fn()
+            const first = new TurnDiffReporter(SID, null, send1, undefined, new FileTurnArchiveStore(archivePath))
+            await writeFile(filePath, 'v2\n', 'utf8')
+            first.observe(assistantToolUse('t1', 'Edit', filePath))
+            first.observe(editResult('t1', filePath, 'v1\n'))
+            await first.onTurnEnd()
+
+            // 新实例（重启语义）：同一归档文件
+            const send2 = vi.fn()
+            const second = new TurnDiffReporter(SID, null, send2, undefined, new FileTurnArchiveStore(archivePath))
+            await writeFile(filePath, 'v3\n', 'utf8')
+            second.observe(assistantToolUse('t2', 'Edit', filePath))
+            second.observe(editResult('t2', filePath, 'v2\n'))
+            await second.onTurnEnd()
+
+            const payload = sentPayloads(send2)[0]!
+            expect(payload.turnIndex).toBe(2)
+            expect(payload.baseTurnIndex).toBe(1)
+            const sealed = (await new FileTurnArchiveStore(archivePath).loadLatest())!
+            expect(sealed.turnIndex).toBe(2)
+            expect(sealed.files[0]!.patch).toContain('+v3')
         } finally {
             await rm(dir, { recursive: true, force: true })
         }

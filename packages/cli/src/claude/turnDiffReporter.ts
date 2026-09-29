@@ -42,10 +42,12 @@
 
 import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
-import { TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
+import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
+import { git } from '@/modules/common/git/gitTurnSnapshotStore'
 import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 import { ToolChangeJournal, type PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
+import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { logger } from '@/ui/logger'
 
@@ -99,7 +101,7 @@ export class TurnDiffReporter {
      *  内容当末次写进 journal/累积（turn 封口与审查供数随之失真）——按调度序串行应用，
      *  后调度的读反映更新的磁盘状态，afterContent 单调前进 */
     private readonly readChains = new Map<string, Promise<void>>()
-    /** journal 模式的轮次计数（快照模式用链序，不用它） */
+    /** 投影口径的轮次计数（journal 口径的 turnIndex 改从归档接续，不走它） */
     private turnCounter = 0
 
     constructor(
@@ -256,29 +258,35 @@ export class TurnDiffReporter {
             (this.store ? await this.composeFromSnapshots(headIndex) : null) ??
             this.composeFromProjection()
         if (files.files.length === 0) return
-        // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）
+        // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）。
+        // B 方案：全文只在内存——逐文件当场合成 patch（git spawn ~20ms/文件，轮末
+        // 一次性），归档只落 `{统计 + patch}`，全文零进盘（滚动单条覆盖写）
         if (files.source === 'journal' && this.archive) {
             try {
                 // 内容对取自本轮累积器快照；counts 复用 files.files 已算结果（同源同时刻
                 // 同判定，不重跑 reviewEntryFromContents——判定单源 + 每文件省一遍全文 diff）
                 const accumulated = this.turnAccumulator.snapshot().files
+                const sealedFiles = await Promise.all(files.files.map(async (e) => {
+                    const f = accumulated[e.path]
+                    if (!f) return []
+                    const raw = await synthesizeContentsPatch(git, e.path, f.beforeContent, f.afterContent)
+                    const oversized = raw.split('\n').length > OVERSIZE_DIFF_LINES
+                    return [{
+                        path: e.path,
+                        kind: e.kind,
+                        additions: e.additions,
+                        deletions: e.deletions,
+                        writeCount: f.writeCount,
+                        toolNames: [...f.toolNames],
+                        patch: oversized ? '' : raw,
+                        oversizedPatch: oversized,
+                    }]
+                }))
                 await this.archive.seal({
                     turnIndex: files.turnIndex,
                     baseTurnIndex: files.baseTurnIndex,
                     sealedAt: Date.now(),
-                    files: files.files.flatMap((e) => {
-                        const f = accumulated[e.path]
-                        if (!f) return []
-                        return [{
-                            path: e.path,
-                            beforeContent: f.beforeContent,
-                            afterContent: f.afterContent,
-                            writeCount: f.writeCount,
-                            toolNames: [...f.toolNames],
-                            additions: e.additions,
-                            deletions: e.deletions,
-                        }]
-                    }),
+                    files: sealedFiles.flat(),
                 })
             } catch (e) {
                 logger.debug('[TurnDiffReporter] archive seal failed', e)
@@ -308,7 +316,8 @@ export class TurnDiffReporter {
         const accumulated = this.turnAccumulator.snapshot().files
         const paths = Object.keys(accumulated)
         if (paths.length === 0) return null
-        // 基线轮 = 归档最新档（本轮封口前读，封口后本轮即成最新）
+        // 基线轮 = 归档最新档（本轮封口前读，封口后本轮即成最新）；turnIndex 接续 =
+        // 归档最新轮 + 1（删内存自增的跨重启断档：重启后从归档事实接续）
         let baseTurnIndex: number | null = null
         if (this.archive) {
             try {
@@ -325,7 +334,7 @@ export class TurnDiffReporter {
                 return { path, ...change }
             })
         return {
-            turnIndex: ++this.turnCounter,
+            turnIndex: baseTurnIndex !== null ? baseTurnIndex + 1 : 1,
             baseTurnIndex,
             files,
             git: null,

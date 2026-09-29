@@ -33,9 +33,8 @@
  * 只列条目不再计数（truncated 事实随响应返回）。
  */
 
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { readFile, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
     GIT_REVIEW_RPC,
     OVERSIZE_DIFF_LINES,
@@ -50,6 +49,7 @@ import {
     type TurnDiffFileEntry,
 } from '@mobi/shared'
 import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, MOBI_STATE_DIR, openTurnSnapshotStore, parseNameStatus } from '../git/gitTurnSnapshotStore'
+import { synthesizeContentsPatch } from '../git/contentsPatch'
 import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
@@ -161,37 +161,9 @@ export class GitReviewReader {
         return null
     }
 
-    /** journal 全文对 → 真 unified patch（git diff --no-index 目录模式）：before/after 各
-     *  落 a/ b/ 子目录的同名文件，输出的 a/<basename> b/<basename> 头正是 pierre 期望的
-     *  形状，无需重写。单侧 null = add/delete（对端 /dev/null 语义由目录缺文件表达）。
-     *  临时目录即写即清，失败吞错返回空串（web 落 contents 通道兜底） */
+    /** journal 全文对 → 真 unified patch：委托 contentsPatch 单源（reporter 封口共用） */
     private async synthesizePatchFromContents(path: string, before: string | null, after: string | null): Promise<string> {
-        if (before === null && after === null) return ''
-        const dir = await mkdtemp(join(tmpdir(), 'mobi-review-patch-'))
-        try {
-            const base = basename(path)
-            const sideA = join(dir, 'a', base)
-            const sideB = join(dir, 'b', base)
-            await mkdir(dirname(sideA), { recursive: true })
-            await mkdir(dirname(sideB), { recursive: true })
-            if (before !== null) await writeFile(sideA, before)
-            if (after !== null) await writeFile(sideB, after)
-            // 非 git 目录 root 为 null（noIndexDiff 的 root 前置会短路），直接以临时目录为执行点
-            let raw: string
-            try {
-                raw = await git(dir, ['diff', '--no-index', '--', join(dir, 'a'), join(dir, 'b')])
-            } catch (e) {
-                // git diff --no-index 以退出码 1 表达差异，stdout 在异常对象上
-                raw = (e as { stdout?: string }).stdout ?? ''
-            }
-            // 头部剥临时目录前缀（git 规范化绝对路径的前导 /）：a<TMP>/a/app.ts → a/app.ts
-            return raw.replaceAll(`a${dir}/a/`, 'a/').replaceAll(`b${dir}/b/`, 'b/')
-        } catch (e) {
-            logger.debug('[GitReviewReader] synthesize patch failed', e)
-            return ''
-        } finally {
-            await rm(dir, { recursive: true, force: true })
-        }
+        return synthesizeContentsPatch(git, path, before, after)
     }
 
     /** 全文对 → patch 结果（oversize 打标清空；供数档 patch 通道唯一出口） */

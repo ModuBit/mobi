@@ -84,9 +84,9 @@ describe('TurnAttributionProvider（降级链单点）', () => {
         expect(entries.map((f) => f.path)).toEqual(['b.ts'])
         expect(entries[0]).toMatchObject({ kind: 'modify', additions: 1, deletions: 0, untracked: true })
 
-        // 带 turnIndex = 该轮归档（历史轮回看冻结）
-        const history = await provider.resolve(DIR_SID, { kind: 'turn', turnIndex: 1 })
-        expect(history).toEqual({ kind: 'sealed', record: expect.objectContaining({ turnIndex: 1 }) })
+        // 滚动单条（turn-archive B）：历史轮不再保留——带历史 turnIndex 查询落 not found
+        // （快照链已无该序号 pair，journal 兜底会给错数据故拒绝）
+        await expect(provider.resolve(DIR_SID, { kind: 'turn', turnIndex: 1 })).rejects.toThrow(/not found/)
     })
 
     it('非 git 目录归档仍优先（归档检查先于 isGit 判定，与既有 overview/files 行为一致）', async () => {

@@ -100,7 +100,7 @@ export function archiveToReviewEntries(record: TurnArchiveRecord): ReviewFileEnt
         .map((f) => ReviewFileEntrySchema.parse({
             path: f.path,
             previousPath: null,
-            kind: contentsChangeOf(f.beforeContent, f.afterContent).kind,
+            kind: contentsChangeOf(f.beforeContent ?? null, f.afterContent ?? null).kind,
             additions: f.additions,
             deletions: f.deletions,
             binary: false,
@@ -252,7 +252,7 @@ export class TurnAttributionProvider {
         gatePathForSource('workspace', path, this.cwd, null)
         if (source.kind === 'sealed') {
             const entry = source.record.files.find((f) => f.path === path)
-            return entry ? { kind: 'contents', before: entry.beforeContent, after: entry.afterContent } : null
+            return entry ? { kind: 'contents', before: entry.beforeContent ?? null, after: entry.afterContent ?? null } : null
         }
         const entry = (await loadToolJournalForReview(sessionId, this.cwd, path)).get(path)
         return entry ? { kind: 'contents', before: entry.beforeContent, after: entry.afterContent } : null
