@@ -406,19 +406,32 @@ const handleCompactBoundaryOutput: OutputHandler = (data, ctx) => {
 const INFORMATIONAL_LEVELS: readonly SystemNoticeLevel[] = ['info', 'notice', 'suggestion', 'warning']
 
 /**
+ * system:informational data 的解析投影（字段口径单源）：level 白名单降级、
+ * content 字符串收窄、prevent_continuation 下划线/驼峰双格式经 getField（web/CLAUDE.md
+ * 跨格式字段访问约束）。渲染 handler 与 live notice 发布判据共用，勿在消费方重写。
+ */
+export function parseInformational(data: unknown): { level: SystemNoticeLevel; content: string; preventContinuation: boolean } {
+    const rec = isObject(data) ? data : {}
+    const levelRaw = asString(rec.level)
+    return {
+        level: INFORMATIONAL_LEVELS.find((l) => l === levelRaw) ?? 'info',
+        content: asString(rec.content) ?? '',
+        preventContinuation: getField(rec, 'prevent_continuation') === true,
+    }
+}
+
+/**
  * 处理 system:informational 消息（CC 2.1.283+ turn 内 warnings/notices）。
  * 只透传不判定：渲染与否由 reducerTimeline 的收窄判据（shouldRenderSystemNotice）统一决定，
  * normalize 维持「全量透传」语义，避免判据在两层各写一份产生口径漂移。
  */
 const handleInformationalOutput: OutputHandler = (data, ctx) => {
-    const levelRaw = asString(data.level)
-    const level = INFORMATIONAL_LEVELS.find((l) => l === levelRaw) ?? 'info'
+    const parsed = parseInformational(data)
     return createEventMessage(ctx, {
         type: 'informational',
-        content: asString(data.content) ?? '',
-        level,
-        // 下划线/驼峰双格式经 getField 兼容（web/CLAUDE.md 跨格式字段访问约束）
-        ...(getField(data, 'prevent_continuation') === true ? { preventContinuation: true } : {}),
+        content: parsed.content,
+        level: parsed.level,
+        ...(parsed.preventContinuation ? { preventContinuation: true as const } : {}),
     })
 }
 

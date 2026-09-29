@@ -15,7 +15,8 @@
  */
 
 import { create } from 'zustand'
-import { getField, unwrapOutputMessage } from '@mobi/shared'
+import { unwrapOutputMessage } from '@mobi/shared'
+import { parseInformational } from '@/domain/chat/normalizeAgent'
 
 /**
  * 实时系统提示 store（per-session keyed，messageWindowStore 闸门单生产方、
@@ -64,13 +65,10 @@ export const useLiveNoticeStore = create<LiveNoticeState>((set) => ({
             return { noticeBySession: next }
         }),
 
-    clearSession: (sessionId) =>
-        set((state) => {
-            if (!state.noticeBySession.has(sessionId)) return state
-            const next = new Map(state.noticeBySession)
-            next.delete(sessionId)
-            return { noticeBySession: next }
-        }),
+    // 清除会话 slot：与 ✕ 关闭同一语义（单 slot 删除），委托同一实现
+    clearSession: (sessionId) => {
+        useLiveNoticeStore.getState().dismissLiveNotice(sessionId)
+    },
 }))
 
 /** 指定会话的当前实时提示（无则 undefined——zustand Object.is 稳定） */
@@ -90,8 +88,8 @@ export function publishLiveNotice(sessionId: string, notice: { id: string; conte
  * 的实时到达——info/notice/suggestion 完全静默，阻断继续型走流内回放渲染
  * （reducerTimeline.shouldRenderSystemNotice），都不经此通道。
  * 输入是 DecryptedMessage 层的 raw 形状（content: z.unknown()），经 unwrapOutputMessage
- * 收窄；与 normalizeAgent 的 informational 解析保持字段口径一致（level 原值比较、
- * prevent_continuation 下划线/驼峰经 getField）。
+ * 收窄；字段解析单源 normalizeAgent.parseInformational（level 白名单降级后判 warning、
+ * prevent_continuation 双格式）。
  * 调用点：messageWindowStore.ingestIncomingMessages（SSE 实时闸门；backfill 重播不调）。
  */
 export function maybePublishLiveNotice(sessionId: string, message: { id: string; content: unknown }): void {
@@ -99,10 +97,10 @@ export function maybePublishLiveNotice(sessionId: string, message: { id: string;
     if (!unwrapped || unwrapped.role !== 'agent') return
     const data = unwrapped.data
     if (data.type !== 'system' || data.subtype !== 'informational') return
-    if (data.level !== 'warning') return
-    if (getField(data, 'prevent_continuation') === true) return
-    if (typeof data.content !== 'string' || data.content.length === 0) return
-    publishLiveNotice(sessionId, { id: message.id, content: data.content })
+    const parsed = parseInformational(data)
+    if (parsed.level !== 'warning' || parsed.preventContinuation) return
+    if (parsed.content.length === 0) return
+    publishLiveNotice(sessionId, { id: message.id, content: parsed.content })
 }
 
 /** 测试用：清空所有状态（vitest 隔离） */
