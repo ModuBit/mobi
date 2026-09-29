@@ -24,8 +24,6 @@ import { groupCollapsibleToolCalls, type GroupedBlock } from '@/domain/chat/grou
 import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { renderChatBlock } from './blocks'
 import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
-import { LiveTurnFilesCard } from './blocks/LiveTurnFilesCard'
-import { projectLiveTurnFiles } from './liveTurnFiles'
 
 export type BuildBubbleOptions = {
     /** context-cleared 分隔线的翻译文本 */
@@ -252,21 +250,6 @@ export function buildChatBubbleItems(
             variant: bubbleVariant(role, block),
             block,
         })
-    }
-
-    // 流式 turn 文件卡（审查 v3 票05）：turn 进行中从消息流实时投影「本轮已编辑文件」，
-    // 追加在列表尾。turn-result 事件到达即重置投影段（files 空 → 卡消失），权威
-    // turn-diff 卡同帧在位替换，不闪变；isRunning 门槛挡掉会话中断后的历史残留段
-    if (isRunning) {
-        const liveFiles = projectLiveTurnFiles(blocks)
-        if (liveFiles.length > 0) {
-            items.push({
-                key: 'live-turn-files',
-                role: 'assistant',
-                content: <LiveTurnFilesCard files={liveFiles} />,
-                variant: 'borderless',
-            })
-        }
     }
 
     return items
