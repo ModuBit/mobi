@@ -22,9 +22,9 @@
  * diffTargetResolver，本模块只做查询编排与降级语义。数据链：patch 主通道 +
  * 全文对懒拉（web pierre hydration），全文只在 contents 方法给。
  *
- * 兜底事实源（spec 2.1）：工具层 journal（.mobi/turn-diffs/<sid>/tool-changes.json）。
- * turn 档 = 快照两树 diff ∪ journal 补入（gitignored 文件；Bash 写文件已进快照，
- * journal 只补 git 视野外）；非 git 目录 turn 档由 journal 全权供数（toolSourceOnly）。
+ * turn 档供数（审查 v3 反转，结构收口）：统一经 TurnAttributionProvider（降级链
+ * 单点：封口归档 → 快照两树 → journal；路径闸随源走）——本模块不再自行做封口档
+ * 前置分流，只承接供数器交回的出口（内容对合成 patch/全文、两树 git 查询）。
  *
  * cwd 由 hub 从会话 metadata 注入（与 machineReadFileMeta 同信任模型）；路径统一以
  * repoRoot 为基准（git 在 repoRoot 执行，diff 输出的路径即仓库相对路径，盘上读取
@@ -34,27 +34,24 @@
  */
 
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
     GIT_REVIEW_RPC,
     OVERSIZE_DIFF_LINES,
     ReviewCommitsResultSchema,
     ReviewContentsResultSchema,
-    ReviewFileEntrySchema,
     ReviewFilesResultSchema,
     ReviewOverviewSchema,
     ReviewPatchResultSchema,
     summarizeTurnDiffFiles,
     type DiffTarget,
-    type ReviewFileEntry,
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
 import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
-import { getToolChangesPath, loadToolChangeJournal, ToolChangeJournal } from '../git/toolChangeJournal'
-import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
-import { countLineChanges } from '../git/lineChangeStat'
+import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
+import { isSafeRepoRelative, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
@@ -85,9 +82,6 @@ function missingSide(): FulltextSide {
     return { text: null, reason: 'missing' }
 }
 
-/** 行多重集差统计（审查 v3 抽出单源：turn 卡合成与审查 turn 档共用） */
-export { countLineChanges } from '../git/lineChangeStat'
-
 function summarizeReviewFiles(files: readonly { additions?: number | null; deletions?: number | null }[]): TurnDiffStats {
     return {
         files: files.length,
@@ -96,115 +90,14 @@ function summarizeReviewFiles(files: readonly { additions?: number | null; delet
     }
 }
 
-/** journal → review 条目：before null 且 after 有 = 新建（add），其余 modify；计数行多重集近似 */
-function journalToEntries(journal: { listPaths(): string[]; get(path: string): { beforeContent: string | null; afterContent: string | null } | undefined }): ReviewFileEntry[] {
-    return journal.listPaths().sort((a, b) => a.localeCompare(b)).map((path) => {
-        const entry = journal.get(path)!
-        const kind = entry.beforeContent === null && entry.afterContent !== null ? 'add' as const : 'modify' as const
-        const counts = countLineChanges(entry.beforeContent, entry.afterContent)
-        const lineCount = (entry.afterContent ?? entry.beforeContent ?? '').split('\n').length
-        return ReviewFileEntrySchema.parse({
-            path,
-            previousPath: null,
-            kind,
-            additions: counts.additions,
-            deletions: counts.deletions,
-            binary: false,
-            untracked: true,
-            oversized: lineCount > OVERSIZE_DIFF_LINES,
-        })
-    })
-}
-
 function totalWriteCount(journal: { listPaths(): string[]; get(path: string): { writeCount: number } | undefined }): number {
     return journal.listPaths().reduce((sum, path) => sum + (journal.get(path)?.writeCount ?? 0), 0)
-}
-
-/** 归档轮 → review 条目（kind 由内容对判定；行数封口时已定稿直接读） */
-function archiveToReviewEntries(record: TurnArchiveRecord): ReturnType<typeof ReviewFileEntrySchema.parse>[] {
-    return record.files
-        .map((f) => ReviewFileEntrySchema.parse({
-            path: f.path,
-            previousPath: null,
-            kind: f.beforeContent === null && f.afterContent !== null ? 'add' : f.afterContent === null && f.beforeContent !== null ? 'delete' : 'modify',
-            additions: f.additions,
-            deletions: f.deletions,
-            binary: false,
-            untracked: true,
-            oversized: f.additions + f.deletions > OVERSIZE_DIFF_LINES,
-        }))
-        .sort((a, b) => a.path.localeCompare(b.path))
-}
-
-/** 归档轮 → turn 差异条目（overview 统计用） */
-function archiveToDiffEntries(record: TurnArchiveRecord): TurnDiffFileEntry[] {
-    return archiveToReviewEntries(record).map((f) => ({
-        path: f.path,
-        kind: f.kind,
-        additions: f.additions ?? 0,
-        deletions: f.deletions ?? 0,
-    }))
-}
-
-/** turn 档审查用 journal 装载（after 补全）：Edit 类 toolUseResult 只带 originalFile
- *  （before 全文）不带 after——journal 占位 null（spec 2.1「归并规则自理」）。消费时
- *  用磁盘当前内容补 after（编辑后文件已删 = null 保持，全删语义成立）；before 缺失
- *  （Write 只记 after）不补。E2E 实证（票09）：缺此补全时非 git turn 档统计与全文对
- *  呈「整文件删除」假象（+0 -2 / after missing） */
-async function loadToolJournalForReview(sessionId: string, cwd: string): Promise<ToolChangeJournal> {
-    const journal = await loadToolChangeJournal(getToolChangesPath(cwd, sessionId))
-    const snapshot = journal.snapshot()
-    let patched = false
-    for (const [path, entry] of Object.entries(snapshot.files)) {
-        if (entry.afterContent !== null || entry.beforeContent === null) continue
-        const abs = isAbsolute(path) ? path : join(cwd, path)
-        try {
-            entry.afterContent = await readFile(abs, 'utf8')
-            patched = true
-        } catch {
-            // 文件已删除：保持 null = 全删
-        }
-    }
-    return patched ? ToolChangeJournal.restore(snapshot) : journal
 }
 
 export class GitReviewReader {
     private repoRoot: string | null = null
 
     constructor(private readonly cwd: string) {}
-
-    /** 仓库相对路径安全闸门：拒绝绝对路径、反斜杠与 `..` 逃逸（git 子系统自带同规则，盘上读取同闸门） */
-    private static isSafeRepoRelative(path: string): boolean {
-        if (path === '' || path.startsWith('/') || path.includes('\\')) return false
-        return path.split('/').every((seg) => seg !== '..')
-    }
-
-    /** journal 供数档（toolSourceOnly）的路径闸：path 是工具输入的文件系统路径
-     *  （E2E 实证为绝对路径；相对时以 cwd 为基准），只要求解析后不逃出 cwd */
-    private static isSafeWorkspacePath(path: string, cwd: string): boolean {
-        if (path === '' || path.includes('\0') || path.includes('\\')) return false
-        const abs = resolve(isAbsolute(path) ? path : join(cwd, path))
-        return abs === cwd || abs.startsWith(cwd + sep)
-    }
-
-    /** turn 档封口归档装载（审查 v3 主供数源）：无归档/损坏 = 空数组（兜底链接手） */
-    private async loadTurnArchive(sessionId: string): Promise<TurnArchiveRecord[]> {
-        try {
-            return await new FileTurnArchiveStore(getTurnArchivePath(this.cwd, sessionId)).listTurns()
-        } catch {
-            return []
-        }
-    }
-
-    /** turn target 的封口档：缺省 = 最新封口（「上一轮」语义）；带 turnIndex = 该轮归档。
-     *  返回 null = 归档未覆盖（首 turn 进行中 / 旧会话 / turnIndex 越界）→ 调用方走
-     *  既有兜底链（快照两树 ∪ journal 补入 / 会话累计 journal） */
-    private async sealedTurnFor(sessionId: string, target: DiffTarget): Promise<TurnArchiveRecord | null> {
-        if (target.kind !== 'turn') return null
-        const turns = await this.loadTurnArchive(sessionId)
-        if (target.turnIndex !== undefined) return turns.find((t) => t.turnIndex === target.turnIndex) ?? null
-        return turns.at(-1) ?? null
-    }
 
     private async root(): Promise<string | null> {
         if (this.repoRoot !== null) return this.repoRoot
@@ -227,10 +120,19 @@ export class GitReviewReader {
         }
     }
 
-    /** git 判定（resolver 注入用）：与 store 解耦——store 为 null 只代表快照链不可用。
-     *  注意 root() 二次调用返回缓存空串（非 null），须按 falsy 判定 */
+    /** git 判定（resolver / 供数器注入用）：与 store 解耦——store 为 null 只代表快照链
+     *  不可用。注意 root() 二次调用返回缓存空串（非 null），须按 falsy 判定 */
     private async isGitRepo(): Promise<boolean> {
         return Boolean(await this.root())
+    }
+
+    /** turn 档供数器（审查 v3 反转的收口面）：随请求装配——store 由调用方注入，
+     *  git 执行注入本实例的收口方法（gitAtRoot 同源） */
+    private turnAttribution(store: TurnSnapshotStore | null): TurnAttributionProvider {
+        return new TurnAttributionProvider(this.cwd, store, {
+            isGitRepository: () => this.isGitRepo(),
+            entries: (args) => this.entries(args),
+        })
     }
 
     /**
@@ -344,13 +246,6 @@ export class GitReviewReader {
         return { files: files.sort((a, b) => a.path.localeCompare(b.path)), truncated }
     }
 
-    /** 由 journal 补入 git 视野外的路径（gitignored 文件；已在 git 条目中的路径不重复） */
-    private mergeJournalSupplement(gitFiles: TurnDiffFileEntry[], journal: Awaited<ReturnType<typeof loadToolChangeJournal>>): TurnDiffFileEntry[] {
-        const known = new Set(gitFiles.map((f) => f.path))
-        const supplement = journalToEntries(journal).filter((f) => !known.has(f.path))
-        return [...gitFiles, ...supplement.map((f) => ({ path: f.path, kind: f.kind, additions: f.additions ?? 0, deletions: f.deletions ?? 0 }))]
-    }
-
     /** 审查数据版本（陈旧性判定的缓存键原料，非单调序号）：快照链尾序号为百万位刻度
      *  + 工作区 status 条数；非 git 用 journal 写入次数之和 */
     private async computeGeneration(sessionId: string, store: TurnSnapshotStore | null): Promise<number> {
@@ -367,16 +262,11 @@ export class GitReviewReader {
 
     // ── v2 六方法 ──────────────────────────────────────────────────────────────
 
-    /** 总览：逐档可用性 + 各档统计。非 git：turn 非 null（journal 供数），git 系全 null。
-     *  turn 档供数（审查 v3 反转）：最新封口归档为主（「上一轮」= 最新封口轮）；无封口
-     *  （首 turn 进行中/旧会话）走既有兜底（快照两树 ∪ journal 补入 / 会话累计 journal） */
+    /** 总览：逐档可用性 + 各档统计。非 git：turn 非 null（供数器 journal 档供数），
+     *  git 系全 null。turn 档统计统一走 TurnAttributionProvider（审查 v3 反转） */
     async overview(sessionId: string, store: TurnSnapshotStore | null): Promise<ReviewOverview> {
-        const journal = await loadToolJournalForReview(sessionId, this.cwd)
-        const sealed = (await this.loadTurnArchive(sessionId)).at(-1) ?? null
-
-        if (!store) {
-            const turnFiles = sealed ? archiveToDiffEntries(sealed) : journalToEntries(journal)
-            const turnStats = summarizeReviewFiles(turnFiles)
+        if (!(await this.isGitRepo())) {
+            const turnStats = summarizeReviewFiles(await this.turnAttribution(store).entriesOf(sessionId, { kind: 'turn' }))
             return ReviewOverviewSchema.parse({
                 unavailableScopes: { turn: false, uncommitted: true, unstaged: true, staged: true, commit: true },
                 isGitRepository: false,
@@ -387,22 +277,19 @@ export class GitReviewReader {
                     staged: null,
                 },
                 truncated: false,
-                targetGeneration: totalWriteCount(journal),
+                targetGeneration: await this.computeGeneration(sessionId, store),
             })
         }
 
-        // 四路查询互不依赖 → 并行（总览延迟 = 最慢一路而非四路之和）
-        const [last, stagedEntries, unstagedTracked, untracked, headExists] = await Promise.all([
-            store.lastTurnDiff(sessionId),
+        // 五路查询互不依赖 → 并行（总览延迟 = 最慢一路而非五路之和）
+        const [turnEntries, stagedEntries, unstagedTracked, untracked, headExists] = await Promise.all([
+            this.turnAttribution(store).entriesOf(sessionId, { kind: 'turn' }),
             this.entries(['diff', '--cached', '-M', 'HEAD']),
             this.entries(['diff', '-M']),
             this.untrackedEntries(),
             this.gitAtRoot(['rev-parse', '--verify', 'HEAD']).then((v) => v !== null),
         ])
 
-        const turnGit = sealed ? archiveToDiffEntries(sealed) : last ? last.files : []
-        // 封口档已是归因全量（含 gitignored），无需 journal 补入；兜底路径维持补入
-        const turnFull = sealed ? turnGit : this.mergeJournalSupplement(turnGit, journal)
         const unstagedFull = [...unstagedTracked, ...untracked.files].sort((a, b) => a.path.localeCompare(b.path))
         const uncommittedFull = mergeEntries(stagedEntries, unstagedFull)
 
@@ -410,12 +297,13 @@ export class GitReviewReader {
             const stats = summarizeTurnDiffFiles(files)
             return { fileCount: stats.files, additions: stats.additions, deletions: stats.deletions }
         }
+        const turnSummary = summarizeReviewFiles(turnEntries)
 
         return ReviewOverviewSchema.parse({
             unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: !headExists },
             isGitRepository: true,
             scopes: {
-                turn: summary(turnFull),
+                turn: { fileCount: turnSummary.files, additions: turnSummary.additions, deletions: turnSummary.deletions },
                 uncommitted: summary(uncommittedFull),
                 unstaged: summary(unstagedFull),
                 staged: summary(stagedEntries),
@@ -425,24 +313,15 @@ export class GitReviewReader {
         })
     }
 
-    /** 文件明细：五档统一形状。turn 档（审查 v3 反转）= 封口归档为主，兜底 = 快照两树
-     *  ∪ journal 补入（git）/ 会话累计 journal（非 git）；工作区三档纯 git */
+    /** 文件明细：五档统一形状。turn 档统一走供数器（审查 v3 反转）；工作区三档纯 git */
     async files(sessionId: string, target: DiffTarget, store: TurnSnapshotStore | null): Promise<unknown> {
         if (target.kind === 'turn') {
-            const sealed = await this.sealedTurnFor(sessionId, target)
-            if (sealed) {
-                const files = archiveToReviewEntries(sealed)
-                return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: await this.computeGeneration(sessionId, store) })
-            }
+            const files = await this.turnAttribution(store).entriesOf(sessionId, target)
+            return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: await this.computeGeneration(sessionId, store) })
         }
-        const resolved = await resolveDiffTarget(sessionId, target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-        const generation = await this.computeGeneration(sessionId, store)
-
-        if (resolved.toolSourceOnly) {
-            const files = journalToEntries(await loadToolJournalForReview(sessionId, this.cwd))
-            return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: generation })
-        }
+        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
+        const generation = await this.computeGeneration(sessionId, store)
 
         const includeUntracked = target.kind === 'worktree' && target.area !== 'staged'
         const [tracked, untracked] = await Promise.all([
@@ -452,15 +331,7 @@ export class GitReviewReader {
         const merged = target.kind === 'worktree' && target.area === 'uncommitted'
             ? mergeEntries(tracked, [...untracked.files])
             : [...tracked, ...untracked.files].sort((a, b) => a.path.localeCompare(b.path))
-        // turn 档补入 journal（git 视野外路径，gitignored 等）；已在 git 条目中的不重复。
-        // supplement 保持 review 条目形状（untracked 事实不经过 TurnDiffFileEntry 有损转换）
-        let files = merged.map(toReviewEntry)
-        if (target.kind === 'turn') {
-            const journal = await loadToolJournalForReview(sessionId, this.cwd)
-            const known = new Set(files.map((f) => f.path))
-            files = [...files, ...journalToEntries(journal).filter((f) => !known.has(f.path))]
-                .sort((a, b) => a.path.localeCompare(b.path))
-        }
+        const files = merged.map(toReviewEntry)
         return ReviewFilesResultSchema.parse({
             files,
             stats: summarizeReviewFiles(files),
@@ -469,39 +340,38 @@ export class GitReviewReader {
         })
     }
 
-    /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（journal 源/二进制/
-     *  超预算），web 落 contents 通道或诚实降级 */
+    /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（内容对无记录/
+     *  journal 源/二进制/超预算），web 落 contents 通道或诚实降级 */
     async patch(sessionId: string, target: DiffTarget, path: string, store: TurnSnapshotStore | null): Promise<unknown> {
-        // turn 档封口归档供数（审查 v3 反转）：内容对封口时已记全，无需读盘补全
-        const sealed = await this.sealedTurnFor(sessionId, target)
-        if (sealed) {
-            if (!GitReviewReader.isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
-            const entry = sealed.files.find((f) => f.path === path)
-            if (!entry) return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
-            return ReviewPatchResultSchema.parse(await this.patchFromContents(path, entry.beforeContent, entry.afterContent))
+        // turn 档统一走供数器（审查 v3 反转）：内容型源直出内容对合成 patch；快照源走
+        // 两树 git 查询（无 untracked no-index 兜底——turn 档清单不含 untracked）
+        if (target.kind === 'turn') {
+            const supplied = await this.turnAttribution(store).pairOf(sessionId, target, path)
+            if (supplied === null) return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
+            if (supplied.kind === 'contents') return ReviewPatchResultSchema.parse(await this.patchFromContents(path, supplied.before, supplied.after))
+            return ReviewPatchResultSchema.parse(await this.patchFromGit([supplied.baseTree, supplied.headTree], path, { allowNoIndex: false }))
         }
-        const resolved = await resolveDiffTarget(sessionId, target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-        // 路径闸按供数源分流（先 resolve 后闸）：journal 档的 path 是文件系统路径，git 档是仓库相对路径
-        if (resolved.toolSourceOnly) {
-            if (!GitReviewReader.isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
-            const entry = (await loadToolJournalForReview(sessionId, this.cwd)).get(path)
-            if (!entry) return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
-            return ReviewPatchResultSchema.parse(await this.patchFromContents(path, entry.beforeContent, entry.afterContent))
-        }
-        if (!GitReviewReader.isSafeRepoRelative(path)) {
-            throw new Error(`Invalid path: ${path}`)
-        }
+        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
+        if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
 
+        return ReviewPatchResultSchema.parse(await this.patchFromGit(resolved.diffArgs, path, {
+            allowNoIndex: target.kind === 'worktree' && target.area !== 'staged',
+        }))
+    }
+
+    /** git 档单文件 patch：rename 旧路径解析 + untracked no-index 兜底（仅工作区非
+     *  staged 档）+ 二进制/超预算打标 */
+    private async patchFromGit(diffArgs: string[], path: string, opts: { allowNoIndex: boolean }): Promise<{ patch: string; previousPath: string | null; oversized: boolean; binary: boolean }> {
         // rename 旧路径解析：目标 pair 的 name-status 单查（entry 的 previousPath）
-        const entries = await this.entries(['diff', ...resolved.diffArgs, '-M'])
+        const entries = await this.entries(['diff', ...diffArgs, '-M'])
         const previousPath = entries.find((e) => e.path === path)?.previousPath ?? null
         const pathArgs = previousPath ? [previousPath, path] : [path]
 
         // untracked：index 无此路径，普通 diff 不覆盖——no-index 兜底（仅工作区非 staged 档）
-        let patch = await this.gitAtRoot(['diff', ...resolved.diffArgs, '--find-renames', '--', ...pathArgs])
-        let numstat = await this.gitAtRoot(['diff', ...resolved.diffArgs, '--numstat', '--', ...pathArgs])
-        if (target.kind === 'worktree' && target.area !== 'staged' && !patch) {
+        let patch = await this.gitAtRoot(['diff', ...diffArgs, '--find-renames', '--', ...pathArgs])
+        let numstat = await this.gitAtRoot(['diff', ...diffArgs, '--numstat', '--', ...pathArgs])
+        if (opts.allowNoIndex && !patch) {
             const noIndex = await this.noIndexDiff(['diff', '--no-index', '--', '/dev/null', path])
             if (noIndex) {
                 patch = noIndex
@@ -513,51 +383,47 @@ export class GitReviewReader {
         const cols = numstat?.split('\n')[0]?.split('\t') ?? []
         const binary = cols[0] === '-' || cols[1] === '-'
         const oversized = (patch?.split('\n').length ?? 0) > OVERSIZE_DIFF_LINES
-        return ReviewPatchResultSchema.parse({
+        return {
             patch: binary || oversized ? '' : patch ?? '',
             previousPath,
             oversized,
             binary,
-        })
+        }
     }
 
     /** 全文对（pierre hydration 懒拉）。reason = 两侧都拿不到时的降级原因；一侧有值
      *  （add/delete 的合法半对）reason 为 null */
     async contents(sessionId: string, target: DiffTarget, path: string, store: TurnSnapshotStore | null): Promise<unknown> {
-        // turn 档封口归档供数（审查 v3 反转）：历史轮回看看到的是该轮当时的内容对
-        const sealed = await this.sealedTurnFor(sessionId, target)
-        if (sealed) {
-            if (!GitReviewReader.isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
-            const entry = sealed.files.find((f) => f.path === path)
-            if (!entry) return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
-            return ReviewContentsResultSchema.parse(this.contentsFromPair(entry.beforeContent, entry.afterContent))
+        // turn 档统一走供数器（审查 v3 反转）：内容型源直出内容对（历史轮回看冻结）；
+        // 快照源走两树 git show
+        if (target.kind === 'turn') {
+            const supplied = await this.turnAttribution(store).pairOf(sessionId, target, path)
+            if (supplied === null) return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
+            if (supplied.kind === 'contents') return ReviewContentsResultSchema.parse(this.contentsFromPair(supplied.before, supplied.after))
+            return ReviewContentsResultSchema.parse(await this.contentsFromGit([supplied.baseTree, supplied.headTree], supplied.baseTree, supplied.headTree, path))
         }
-        const resolved = await resolveDiffTarget(sessionId, target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-        // 路径闸按供数源分流（同 patch）：journal 档的 path 是文件系统路径，git 档是仓库相对路径
-        if (resolved.toolSourceOnly) {
-            if (!GitReviewReader.isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
-            const entry = (await loadToolJournalForReview(sessionId, this.cwd)).get(path)
-            if (!entry) return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
-            return ReviewContentsResultSchema.parse(this.contentsFromPair(entry.beforeContent, entry.afterContent))
-        }
-        if (!GitReviewReader.isSafeRepoRelative(path)) {
-            throw new Error(`Invalid path: ${path}`)
-        }
+        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
+        if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
 
-        // rename：基线侧取旧路径（新路径在基线树不存在）——name-status 单查解析
-        const previousPath = resolved.headRev !== null
-            ? (await this.entries(['diff', ...resolved.diffArgs, '-M'])).find((e) => e.path === path)?.previousPath ?? null
+        return ReviewContentsResultSchema.parse(await this.contentsFromGit(resolved.diffArgs, resolved.baseRev!, resolved.headRev, path))
+    }
+
+    /** git 档全文对：rename 基线侧取旧路径（新路径在基线树不存在）；headRev null =
+     *  工作区 fs（'' = index） */
+    private async contentsFromGit(diffArgs: string[], baseRev: string, headRev: string | null, path: string): Promise<{ before: string | null; after: string | null; reason: 'binary' | 'oversized' | 'missing' | null }> {
+        const previousPath = headRev !== null
+            ? (await this.entries(['diff', ...diffArgs, '-M'])).find((e) => e.path === path)?.previousPath ?? null
             : null
         const [base, head] = await Promise.all([
-            this.showRev(resolved.baseRev!, previousPath ?? path),
-            resolved.headRev === null ? this.readWorktreeRev(path) : this.showRev(resolved.headRev, path),
+            this.showRev(baseRev, previousPath ?? path),
+            headRev === null ? this.readWorktreeRev(path) : this.showRev(headRev, path),
         ])
-        return ReviewContentsResultSchema.parse({
+        return {
             before: base.text,
             after: head.text,
             reason: base.text === null && head.text === null ? pickDegradedReason(base.reason, head.reason) : null,
-        })
+        }
     }
 
     /** 历史提交（游标分页，游标 = 偏移量字符串——sha 游标需 ^exclude 语义，偏移最简单） */
@@ -634,20 +500,6 @@ function pickDegradedReason(a: FulltextSide['reason'], b: FulltextSide['reason']
     if (a === 'binary' || b === 'binary') return 'binary'
     if (a === 'oversized' || b === 'oversized') return 'oversized'
     return 'missing'
-}
-
-/** git 条目 → review 条目（oversized 单点打标；untracked=false 由调用方向补） */
-function toReviewEntry(e: TurnDiffFileEntry): ReviewFileEntry {
-    return ReviewFileEntrySchema.parse({
-        path: e.path,
-        previousPath: e.previousPath ?? null,
-        kind: e.kind,
-        additions: e.additions,
-        deletions: e.deletions,
-        binary: e.binary ?? false,
-        untracked: false,
-        oversized: e.additions + e.deletions > OVERSIZE_DIFF_LINES,
-    })
 }
 
 /** uncommitted = staged ∪ unstaged：按 path 合并计数（kind 取信息量更大的优先） */
