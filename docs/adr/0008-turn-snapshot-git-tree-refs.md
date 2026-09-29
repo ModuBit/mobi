@@ -3,6 +3,7 @@
 ## Status
 
 accepted（2026-09-27）。turn 文件变更与审查特性（`.scratch/turn-diff/`）的事实源基线。
+**快照链部分已废除**（2026-09-29，见文末 Amendment 2）：git tree 快照引用整体退场，turn 档事实源收敛于封口归档。
 
 ## 背景
 
@@ -53,3 +54,14 @@ mobi 需要同一份事实供给：轮次变更卡统计、审查视图「上一
 快照链本身不废：它是会话资产（审查 generation、历史兜底、checkpoint 接缝），照常 capture 不断链。供数收敛于 `TurnAttributionProvider`（降级链单点：封口归档 → 快照两树 → journal 补全），`diffTargetResolver` 不再平行解析 turn。
 
 裁决理由：审查视图要的是「这一轮**这个会话**改了什么」的归因口径，快照 diff 给的是「工作区两时点之差」的实况口径。原文 Consequences 里「用户在轮间手改的内容会被如实归入其中一轮，是归因口径的诚实呈现」的辩护，在真实并发场景（多会话同工作区，E2E 实证）下站不住——另一会话的改动会被算进本轮卡片与审查档位，故反转供数而非修正解释。
+
+## Amendment 2：快照链退场——turn-archive B 极简化（2026-09-29）
+
+Amendment 1 的「快照链本身不废（审查 generation、历史兜底、checkpoint 接缝）」经 B 方案裁决**整体废除**（spec/tickets 在 `.scratch/turn-archive-b/`），本 ADR 描述的 `refs/mobi/turn-diffs` git tree 快照机制已删除（`turnSnapshotStore` / `gitTurnSnapshotStore` 退场）：
+
+- **归档滚动单条**：`.mobi/turn-diffs/<sessionId>/turn-archive.json` 只保最新一轮，每文件记录 = `{统计 + patch}`，全文一个字节不进盘；patch 是封口当场合成的 unified diff（超行数闸降级为空 + oversizedPatch 打标，统计永远保留）
+- **journal 持久层退场**：ToolChangeJournal 收敛为纯内存归并器（turn 内累积原料），持久化只剩归档一份事实源；`tool-changes.json` 不再存在
+- **供数单层化**：Amendment 1 的三层降级链（封口归档 → 快照两树 → journal 补全）塌缩为两层——封口归档（唯一 git 事实层）→ 投影（非 git 降级，`git: null`）；generation 改为 `floor(sealedAt/10)*10000 + min(dirty,9999)` 公式，不再依赖快照链
+- **能力代价（已接受）**：Bash 写文件的轮次不再出 turn 卡；历史 turn 卡点开全文降级（统计在消息 payload 自含）；历史 turnIndex 查询「not found」（归档只有最新轮）。A 方案（hydration 全文多轮保留）备档 docs/pending.md #93
+
+废除理由：快照链的三项残余价值在实况下均不成立——历史兜底被「旧格式/旧会话一次性读侧兼容」替代；generation 可由归档 sealedAt + git status 公式等价表达；checkpoint 接缝是 SDK 自有能力无需 mobi 快照。而快照链的持续成本（会话清理对账、fork/resume 续链、refs 治理、capture 健壮性维护）是真实的。极简化后事实源唯一（归档），消费端只读不算。
