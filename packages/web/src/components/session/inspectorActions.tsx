@@ -30,6 +30,8 @@ export interface InspectorActionContext {
     openTerminal: () => void
     /** 打开远程桌面 tab（会话机器未知时为 undefined = 不可用） */
     openDesktop?: () => void
+    /** 打开审查 tab（git 审查视图，全局唯一） */
+    openReview: () => void
 }
 
 /** 检视面板可用动作的唯一真相源：空态卡片列表与「+」下拉菜单共同消费。 */
@@ -39,7 +41,7 @@ export interface InspectorActionDescriptor {
     Icon: LucideIcon
     /** 文案 i18n key */
     labelKey: string
-    /** 暂未支持的动作置灰（审查） */
+    /** 硬置灰（与 enabled 无关的常禁项；当前无） */
     disabled: boolean
     /** 可用性判定（缺省 = 可用）：terminal 上限、desktop 机器未知等「为什么禁用」收拢在此 */
     enabled?: (ctx: InspectorActionContext) => boolean
@@ -71,7 +73,13 @@ const ALL_INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = [
         enabled: (ctx) => Boolean(ctx.openDesktop),
         run: (ctx) => ctx.openDesktop?.(),
     },
-    { key: 'review', Icon: FileSearch, labelKey: 'session.inspector.review', disabled: true, run: () => undefined },
+    {
+        key: 'review',
+        Icon: FileSearch,
+        labelKey: 'session.inspector.review',
+        disabled: false,
+        run: (ctx) => ctx.openReview(),
+    },
 ]
 
 export const INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = DESKTOP_ENTRY_ENABLED

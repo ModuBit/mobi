@@ -97,13 +97,18 @@ describe('InspectorPane', () => {
     })
     afterEach(() => cleanup())
 
-    it('空态：渲染 文件/终端/审查 三个按钮，终端/文件可用，审查 disabled', () => {
+    it('空态：渲染 文件/终端/审查 三个按钮且全部可用，点审查打开审查 tab', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         renderWithClient(<InspectorPane sessionId="s1" />)
         expect(screen.getByRole('button', { name: 'session.inspector.openFile' })).toBeEnabled()
         // terminal 在空态启用（无 tab → terminalDisabled=false），点击可新建终端
         expect(screen.getByRole('button', { name: 'session.inspector.terminal' })).toBeEnabled()
-        expect(screen.getByRole('button', { name: 'session.inspector.review' })).toBeDisabled()
+        // 审查重写后审查视图全量可用（空态按钮曾是置灰占位，票09 E2E 发现后接线）
+        const review = screen.getByRole('button', { name: 'session.inspector.review' })
+        expect(review).toBeEnabled()
+        fireEvent.click(review)
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs.filter((t) => t.mode === 'review')).toHaveLength(1)
     })
 
     it('空态：点「终端」→ 新建 terminal tab', () => {

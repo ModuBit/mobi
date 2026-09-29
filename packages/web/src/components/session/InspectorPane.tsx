@@ -217,6 +217,7 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
     const openDesktopTab = useWorkspaceStore((s) => s.openDesktopTab)
+    const openReviewTab = useWorkspaceStore((s) => s.openReviewTab)
     const renameTerminalTab = useWorkspaceStore((s) => s.renameTerminalTab)
     // 终端数与上限：达上限时 disable 新建入口（叠加 INSPECTOR_ACTIONS.disabled）
     const terminalCount = tabs.filter((t) => t.mode === 'terminal').length
@@ -247,6 +248,7 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
         openFile: () => openFileTreeTab(sessionId),
         openTerminal: () => openTerminalTab(sessionId),
         openDesktop: machineId ? () => openDesktopTab(sessionId, machineId) : undefined,
+        openReview: () => openReviewTab(sessionId),
     }
     const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
         const { Icon } = action
@@ -383,14 +385,7 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
                 />
             )}
             {everExpanded && showEmpty && (
-                <InspectorEmptyState
-                    actionsContext={{
-                        terminalLimitReached,
-                        openFile: () => openFileTreeTab(sessionId),
-                        openTerminal: () => openTerminalTab(sessionId),
-                        openDesktop: machineId ? () => openDesktopTab(sessionId, machineId) : undefined,
-                    }}
-                />
+                <InspectorEmptyState actionsContext={actionsContext} />
             )}
             {/* 空态/离线态的浮动 rightChrome（tab 态的在 tabBarExtraContent）。
                 zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点 */}

@@ -47,6 +47,17 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
     // oversized 由 CLI 单点打标：不发 diff 拉取（null path → hook disabled），直接降级
     const patch = deps.useReviewPatch(sessionId, target, entry.oversized ? null : entry.path, version)
 
+    // 纯 rename（内容零增删）的 patch 只有 rename 头、无 hunk——pierre 在
+    // disableFileHeader 下渲染 0 高空白（E2E 实测），诚实给专用文案
+    const renameOnly = entry.kind === 'rename' && (entry.additions ?? 0) + (entry.deletions ?? 0) === 0
+
+    if (renameOnly) {
+        return (
+            <Flex data-testid="review-rename-only" align="center" justify="center" style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                {t('review.renameOnly')}
+            </Flex>
+        )
+    }
     if (entry.oversized) {
         return (
             <Flex data-testid="review-too-big" vertical align="center" justify="center" gap={10} style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
