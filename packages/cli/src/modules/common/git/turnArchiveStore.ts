@@ -27,8 +27,10 @@
  * （与 tool-changes.json 同纪律）；损坏文件按空归档起步（事实源宁可缺失不阻塞主流程）。
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { sanitizeSessionId } from './gitTurnSnapshotStore'
+import { writeFileAtomic } from './atomicWrite'
 
 /** 封口的单文件内容对（journal 归并规则的同款形状：before 取首次、after 取末次） */
 export type TurnArchiveFile = {
@@ -66,9 +68,8 @@ export interface TurnArchiveStore {
 
 /** 落盘路径：工作区 `.mobi/turn-diffs/<sessionId>/turn-archive.json`（与 tool-changes.json 同目录约定） */
 export function getTurnArchivePath(workspaceRoot: string, sessionId: string): string {
-    // 与 getToolChangesPath 同一字符面兜底，保路径合法
-    const safeId = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')
-    return join(workspaceRoot, '.mobi', 'turn-diffs', safeId, 'turn-archive.json')
+    // 字符面单源 sanitizeSessionId（与快照 ref 子树/journal 目录同清洗）
+    return join(workspaceRoot, '.mobi', 'turn-diffs', sanitizeSessionId(sessionId), 'turn-archive.json')
 }
 
 /** 落盘 wire 形状 */
@@ -124,10 +125,7 @@ export class FileTurnArchiveStore implements TurnArchiveStore {
         const turns = (await this.readAll()).filter((t) => t.turnIndex !== record.turnIndex)
         turns.push(record)
         turns.sort((a, b) => a.turnIndex - b.turnIndex)
-        await mkdir(dirname(this.filePath), { recursive: true })
-        const tmp = `${this.filePath}.${process.pid}.tmp`
-        await writeFile(tmp, JSON.stringify({ turns } satisfies ArchiveFileShape))
-        await rename(tmp, this.filePath)
+        await writeFileAtomic(this.filePath, JSON.stringify({ turns } satisfies ArchiveFileShape))
     }
 
     async listTurns(): Promise<TurnArchiveRecord[]> {

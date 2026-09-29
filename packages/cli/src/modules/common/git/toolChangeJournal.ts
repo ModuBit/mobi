@@ -26,8 +26,10 @@
  * 不阻塞主流程）。
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { sanitizeSessionId } from './gitTurnSnapshotStore'
+import { writeFileAtomic } from './atomicWrite'
 
 /** 归并后的单文件变更事实 */
 export type ToolChangeEntry = {
@@ -118,9 +120,8 @@ export class ToolChangeJournal {
 
 /** 工具层变更文件的落盘路径：工作区 `.mobi/turn-diffs/<sessionId>/tool-changes.json` */
 export function getToolChangesPath(workspaceRoot: string, sessionId: string): string {
-    // 与 gitTurnSnapshotStore 的 refname 白名单同一字符面，兜底保路径合法
-    const safeId = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')
-    return join(workspaceRoot, '.mobi', 'turn-diffs', safeId, 'tool-changes.json')
+    // 字符面单源 sanitizeSessionId（与快照 ref 子树同清洗，目录才对得上）
+    return join(workspaceRoot, '.mobi', 'turn-diffs', sanitizeSessionId(sessionId), 'tool-changes.json')
 }
 
 /** 只读装载（RPC handler 消费）：文件不存在/损坏按空 journal——兜底源宁可缺失不阻塞查询 */
@@ -172,10 +173,7 @@ export class PersistentToolChangeJournal {
     }
 
     private async write(): Promise<void> {
-        await mkdir(dirname(this.filePath), { recursive: true })
-        const tmp = `${this.filePath}.${process.pid}.tmp`
-        await writeFile(tmp, JSON.stringify(this.journal.snapshot()))
-        await rename(tmp, this.filePath)
+        await writeFileAtomic(this.filePath, JSON.stringify(this.journal.snapshot()))
     }
 
     /** 立即落盘（取消挂起定时器） */

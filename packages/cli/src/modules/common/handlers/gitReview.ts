@@ -49,7 +49,7 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
+import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, MOBI_STATE_DIR, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
 import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
@@ -218,12 +218,12 @@ export class GitReviewReader {
         const tokens = statusOut.split('\0')
         const paths: string[] = []
         // 实证（git 2.x，-z）：untracked 记录为 `? path\0`——问号与路径同 token，空格分隔。
-        // .mobi/ 内部状态目录过滤（审查 v3 票04 留白收口）：用户项目未 gitignore 时
-        // journal/归档文件会以 untracked 出现，混进工作区实况档是噪音
+        // .mobi/ 内部状态目录过滤（审查 v3 票04 留白收口，MOBI_STATE_DIR 单源）：用户项目
+        // 未 gitignore 时 journal/归档文件会以 untracked 出现，混进工作区实况档是噪音
         for (const token of tokens) {
             if (!token.startsWith('? ')) continue
             const path = token.slice(2)
-            if (path === '.mobi' || path.startsWith('.mobi/')) continue
+            if (path === MOBI_STATE_DIR || path.startsWith(`${MOBI_STATE_DIR}/`)) continue
             paths.push(path)
         }
         if (paths.length === 0) return { files: [], truncated: false }

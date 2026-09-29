@@ -42,15 +42,18 @@ import type { LastTurnDiff, TurnSnapshotRef, TurnSnapshotStore, TurnTreeDiffEntr
 
 const execFileAsync = promisify(execFile)
 
-/** .mobi 内部状态目录不入快照（审查 v3 票04 由 '.mobi/artifacts' 收敛为全目录：
+/** .mobi 内部状态目录（单源）：不入快照（审查 v3 票04 由 '.mobi/artifacts' 收敛为全目录：
  *  artifacts/turn-diffs journal/封口归档都是 mobi 自身状态，有自己的展示通道，
- *  混进变更归因是噪音——journal 每轮都在写，不摘除会让快照兜底档每轮多出内部文件） */
-const EXCLUDE_PATH = '.mobi'
+ *  混进变更归因是噪音——journal 每轮都在写，不摘除会让快照兜底档每轮多出内部文件）；
+ *  审查侧 untracked 清单的过滤同源引用此常量 */
+export const MOBI_STATE_DIR = '.mobi'
 
 const REF_NAMESPACE = 'refs/mobi/turn-diffs'
 
-/** 引用名合法字符白名单外的字符（sessionId 理论上不含，兜底替换保 refname 合法） */
-function sanitizeSessionId(sessionId: string): string {
+/** 引用名合法字符白名单外的字符（sessionId 理论上不含，兜底替换保 refname 合法）。
+ *  快照 ref 子树与 journal/归档落盘目录靠同一清洗对上（getToolChangesPath /
+ *  getTurnArchivePath 派生自它），字符面单源在此 */
+export function sanitizeSessionId(sessionId: string): string {
     const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')
     if (safe !== sessionId) {
         logger.debug(`[TurnSnapshotStore] sessionId 含引用名非法字符，已替换: ${sessionId} -> ${safe}`)
@@ -119,7 +122,7 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
             // 忽略」的路径会让整个 add 以「Use -f」报错退出（真仓库实证 2026-09-27）
             const scope = await this.repoScope()
             await git(scope.root, scope.prefix ? ['add', '-A', '--', scope.prefix] : ['add', '-A'], env)
-            await git(this.cwd, ['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', EXCLUDE_PATH], env)
+            await git(this.cwd, ['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', MOBI_STATE_DIR], env)
             const tree = (await git(this.cwd, ['write-tree'], env)).trim()
             // index 分配 CAS：update-ref 带全零 oldvalue 断言「引用尚不存在」，并发
             // capture（fork 场景同仓库同 sessionId）输家重读链重试，不会互相覆盖引用
