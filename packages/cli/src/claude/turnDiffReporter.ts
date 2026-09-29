@@ -33,7 +33,10 @@
  *
  * journal 采集边界：覆盖 Edit/Write/MultiEdit/NotebookEdit 的 toolUseResult 全文对
  * （afterContent 落笔即读盘补全），主线与 sidechain（subagent）消息流一视同仁——
- * reporter 不看 parent_tool_use_id，sidechain 编辑归到外层 turn（采集契约有测试锁定）；
+ * reporter 不看 parent_tool_use_id，sidechain 编辑归到外层 turn（采集契约有测试锁定）。
+ * sidechain 兜底（E2E 实证）：CC 不给 sidechain tool_result 附 toolUseResult，
+ * 「一视同仁」只有半边成立——sidechain 的编辑族 tool_use 观测时预读盘记 before、
+ * 对应 tool_result 无 toolUseResult 时再读盘记 after（is_error / 零变更不入账）。
  * Bash 写入不在内——漏但不错归因（ZCode 同行为）。投影口径（降级档）同此边界。
  */
 
@@ -83,6 +86,10 @@ export class TurnDiffReporter {
      *  内容当末次写进 journal/累积（turn 封口与审查供数随之失真）——按调度序串行应用，
      *  后调度的读反映更新的磁盘状态，afterContent 单调前进 */
     private readonly readChains = new Map<string, Promise<void>>()
+    /** sidechain 兜底的盘上预读（path → before 侧全文；读失败 = 新建语义 null）：
+     *  sidechain tool_use 观测时落，对应 tool_result 无 toolUseResult 时消费。
+     *  同 path 首次预读为准（journal before 取首次同构），onTurnEnd 清空 */
+    private readonly preReads = new Map<string, Promise<string | null>>()
     /** 投影口径的轮次计数（journal 口径的 turnIndex 改从归档接续，不走它） */
     private turnCounter = 0
 
@@ -115,8 +122,12 @@ export class TurnDiffReporter {
                     ? (block.input as { file_path?: unknown } | undefined)?.file_path
                     : undefined
                 if (typeof filePath === 'string' && filePath.length > 0) {
+                    const sidechain = getField(message, 'isSidechain') === true
                     this.toolFilePaths.set(block.id, { path: filePath, toolName: block.name })
-                    if (!this.projected.has(filePath)) this.projected.set(filePath, { additions: 0, deletions: 0 })
+                    // sidechain 不进投影：其结果永不带 structuredPatch，只会产 0/0 噪声条目
+                    if (!sidechain && !this.projected.has(filePath)) this.projected.set(filePath, { additions: 0, deletions: 0 })
+                    // sidechain 兜底的 before 侧预读（主线结果带 toolUseResult，用不上不预读）
+                    if (sidechain) this.schedulePreRead(filePath)
                 }
             }
             return
@@ -132,7 +143,11 @@ export class TurnDiffReporter {
             // toolUseResult 键名双格式（SDK 消息驼峰/下划线并存，E2E 实证 snake_case）：
             // 必须走 getField，直读驼峰会让投影与 journal 双双空转（E2E 实证 +0 -0）
             const raw = getField(message, 'toolUseResult')
-            if (raw === undefined || raw === null) return
+            if (raw === undefined || raw === null) {
+                // 无 toolUseResult（sidechain 实证形态）：兜底采集（预读 before + 读盘 after）
+                this.captureUnattributedWrites(results)
+                return
+            }
             const patches: unknown[] = Array.isArray(raw) ? raw : [raw]
             for (const [i, result] of results.entries()) {
                 const observed = this.toolFilePaths.get(result.tool_use_id)
@@ -186,6 +201,41 @@ export class TurnDiffReporter {
         this.readChains.set(path, chained)
     }
 
+    /** sidechain 兜底预读（before 侧唯一来源）：tool_use 观测到落笔前，磁盘即编辑前
+     *  内容；同 path 首次为准（journal before 取首次同构）；读失败 = 新建语义 null */
+    private schedulePreRead(path: string): void {
+        if (this.preReads.has(path)) return
+        this.preReads.set(path, readFile(path, 'utf8').catch(() => null))
+    }
+
+    /**
+     * sidechain 兜底采集：tool_result 无 toolUseResult 时的内容对补全——before 取
+     * tool_use 观测时的预读、after 读盘（落笔后的磁盘内容）。有预读的编辑族 result
+     * 才兜底；is_error（失败的编辑盘上无变更）与 before/after 相同（零变更）不入账。
+     * 挂 pendingReads（onTurnEnd 收口）+ turn 纪元守卫（防泄漏进下一轮）。
+     */
+    private captureUnattributedWrites(results: ReadonlyArray<{ type: 'tool_result'; tool_use_id: string }>): void {
+        for (const result of results) {
+            if ((result as { is_error?: unknown }).is_error === true) continue
+            const observed = this.toolFilePaths.get(result.tool_use_id)
+            if (!observed) continue
+            const preRead = this.preReads.get(observed.path)
+            if (!preRead) continue
+            const epoch = this.turnEpoch
+            const task = preRead
+                .then((before) => readFile(observed.path, 'utf8').then((after) => ({ before, after })).catch(() => ({ before, after: null })))
+                .then(({ before, after }) => {
+                    if (epoch !== this.turnEpoch) return
+                    if (after === null || after === before) return
+                    this.turnAccumulator.record({ path: observed.path, beforeContent: before, toolName: observed.toolName })
+                    this.turnAccumulator.recordAfter(observed.path, after, observed.toolName)
+                })
+                .catch(() => undefined)
+                .finally(() => this.pendingReads.delete(task))
+            this.pendingReads.add(task)
+        }
+    }
+
     /** structuredPatch（unified diff hunk 数组）行数累加进投影（容错：形状不符不计） */
     private applyStructuredPatch(filePath: string, patchSource: unknown): void {
         const counts = countStructuredPatch(patchSource)
@@ -208,6 +258,7 @@ export class TurnDiffReporter {
             this.turnEpoch += 1
             this.toolFilePaths.clear()
             this.projected.clear()
+            this.preReads.clear()
             // 换新实例清空 turn 累积（turnEpoch 守卫已作废在途读盘，无泄漏窗口）
             this.turnAccumulator = new ToolChangeJournal()
         }

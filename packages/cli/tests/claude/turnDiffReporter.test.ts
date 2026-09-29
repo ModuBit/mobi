@@ -33,7 +33,7 @@ import { git } from '@/modules/common/git/gitExec'
 
 // 补读竞态脚本：同 path 多次补读并发时，模拟「R1 慢返回中间态、R2 快返回末次」的
 // resolve 乱序（磁盘真实时序 = 调度序）。未命中的 readFile 调用透传 actual。
-const readScript = vi.hoisted(() => ({ reads: [] as Array<{ path: string; value: string; delayMs: number; done?: boolean }> }))
+const readScript = vi.hoisted(() => ({ reads: [] as Array<{ path: string; value: string; delayMs: number; done?: boolean; error?: boolean }> }))
 vi.mock('node:fs/promises', async (importOriginal) => {
     const actual = await importOriginal<typeof import('node:fs/promises')>()
     return {
@@ -43,6 +43,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
             if (!scripted) return actual.readFile(path, options as never)
             scripted.done = true
             await new Promise((resolve) => setTimeout(resolve, scripted.delayMs))
+            // error 脚本 = 模拟 ENOENT（fs 线程池并发下「读不存在的文件」与测试的建盘
+            // 写无顺序保证，必须脚本化才能确定 pre-read 拿到 ENOENT）
+            if (scripted.error) throw Object.assign(new Error('ENOENT (scripted)'), { code: 'ENOENT' })
             return scripted.value
         },
     }
@@ -490,6 +493,90 @@ describe('TurnDiffReporter（sidechain/subagent 写工具补采）', () => {
                 message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
                 tool_use_result: { stdout: 'subagent finished, edited 3 files' },
             } as unknown as RawJSONLines)
+            await reporter.onTurnEnd()
+
+            expect(sentPayloads(send)).toHaveLength(0)
+            expect(archive.records()).toHaveLength(0)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    // ── sidechain 兜底（E2E 实证：CC 不给 sidechain tool_result 附 toolUseResult）──
+    /** sidechain user tool_result（E2E 实证形态：无 toolUseResult，只有归位键） */
+    function bareResult(toolUseId: string, isError = false): RawJSONLines {
+        return {
+            type: 'user',
+            isSidechain: true,
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, ...(isError ? { is_error: true } : {}) }] },
+        } as unknown as RawJSONLines
+    }
+
+    it('sidechain Write 无 toolUseResult：tool_use 预读 before=null（新建）+ result 读盘 after，add 全文对入归档', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-scfallback-'))
+        try {
+            const filePath = join(dir, 'sub-demo.txt')
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            // 预读脚本化：Write 新建前文件不存在（线程池并发下脚本化才能锁定 ENOENT → before null）
+            readScript.reads.push({ path: filePath, value: '', delayMs: 0, error: true })
+            reporter.observe(sidechainAssistantToolUse('st1', 'Write', filePath, 'task-1'))
+            await writeFile(filePath, 'sub\n', 'utf8') // 工具落笔发生在 tool_use 之后
+            reporter.observe(bareResult('st1'))
+            await reporter.onTurnEnd()
+
+            const [payload] = sentPayloads(send)
+            expect(payload!.files).toHaveLength(1)
+            expect(payload!.files[0]).toMatchObject({ path: filePath, kind: 'add', additions: 1, deletions: 0 })
+            const sealed = archive.records()[0]!
+            expect(sealed.files[0]).toMatchObject({ path: filePath, writeCount: 1, oversizedPatch: false })
+            expect(sealed.files[0]!.patch).toContain('+sub')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('sidechain Edit 无 toolUseResult：预读 before + 读盘 after → modify 全文对', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-scfallback-edit-'))
+        try {
+            const filePath = join(dir, 'sub-edit.txt')
+            await writeFile(filePath, 'old\n', 'utf8')
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            // 预读脚本化：fs 线程池并发下真实读与测试的覆写无顺序保证（实踩：读到截断
+            // 空文件），脚本锁定 before='old\n'；after 读（第二笔）透传真实盘 → 'new\n'
+            readScript.reads.push({ path: filePath, value: 'old\n', delayMs: 0 })
+            reporter.observe(sidechainAssistantToolUse('st1', 'Edit', filePath, 'task-1'))
+            await writeFile(filePath, 'new\n', 'utf8')
+            reporter.observe(bareResult('st1'))
+            await reporter.onTurnEnd()
+
+            const [payload] = sentPayloads(send)
+            expect(payload!.files[0]).toMatchObject({ path: filePath, kind: 'modify', additions: 1, deletions: 1 })
+            const sealed = archive.records()[0]!
+            expect(sealed.files[0]!.patch).toContain('-old')
+            expect(sealed.files[0]!.patch).toContain('+new')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('sidechain result is_error：失败的编辑不入账（sidechain tool_use 也不进投影，无 0/0 噪声）', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-scerror-'))
+        try {
+            const filePath = join(dir, 'sub-err.txt')
+            await writeFile(filePath, 'old\n', 'utf8')
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            reporter.observe(sidechainAssistantToolUse('st1', 'Edit', filePath, 'task-1'))
+            await writeFile(filePath, 'new\n', 'utf8')
+            reporter.observe(bareResult('st1', true))
             await reporter.onTurnEnd()
 
             expect(sentPayloads(send)).toHaveLength(0)
