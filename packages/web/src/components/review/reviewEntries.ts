@@ -15,37 +15,34 @@
  */
 
 /**
- * 审查文件条目的可展开性 / 单文件查询语义（纯函数，jsdom 单测覆盖边界）。
- * GitReviewView 的行箭头、Collapse 过滤、树面板联动、RowDiff 查询组装共用同一口径——
- * 「哪些条目可看 diff、查询怎么发」集中一处而非散落成内联条件。
+ * 审查文件条目的可展开性 / 档位可用性语义（纯函数，jsdom 单测覆盖边界）。
+ * GitReviewView 的行箭头、Collapse 过滤、树面板联动、档位禁用共用同一口径——
+ * 「哪些条目可看 diff、哪些档位可用」集中一处而非散落成内联条件。
+ *
+ * v2（审查重写票05）：条目形状换 ReviewFileEntry（计数 nullable、oversized 打标），
+ * 档位寻址换 DiffTarget（可用性矩阵在 overview.unavailableScopes）。
  */
 
-import type { GitReviewFileQuery, GitReviewScope, TurnDiffFileEntry } from '@mobi/shared'
+import { DiffTargetSchema, type DiffTarget, type ReviewFileEntry, type ReviewOverview } from '@mobi/shared'
 
 /**
  * 可 diff 判定：只有文本类条目才可展开（不可展开的行点击无效果、无箭头）。binary 是
- * CLI 单点标记（tracked numstat 与 untracked no-index 两条组装管线同口径），行数判断
- * 只用于展开性，oversize 行仍可展开——展开落「文件过大」降级 UI（不发 diff 查询）
+ * CLI 单点标记，行数判断只用于展开性——oversized 行仍可展开，展开落「文件过大」
+ * 降级 UI（不发 patch/contents 查询）。工具层降级源可能给不出计数（null 按 0）
  */
-export function isDiffable(entry: TurnDiffFileEntry): boolean {
-    return !entry.binary && (entry.additions + entry.deletions > 0 || !!entry.previousPath)
+export function isDiffable(entry: ReviewFileEntry): boolean {
+    return !entry.binary && ((entry.additions ?? 0) + (entry.deletions ?? 0) > 0 || !!entry.previousPath)
 }
 
-/**
- * 行内展开的 diff 查询组装：统一 {scope, path}（两树指针不进协议）；oversize 条目
- * 返回 null（hook disabled，不发拉取，直接落降级 UI）。last-turn 档附 turnIndex
- * （总览的 head 快照序号）——CLI 按链上该序号取树，总览展示与点击之间有新轮完成
- * 也不会串树
- */
-export function fileQueryFor(
-    scope: GitReviewScope,
-    entry: TurnDiffFileEntry,
-    turnIndex?: number,
-): GitReviewFileQuery | null {
-    if (entry.oversize) return null
-    return {
-        scope,
-        path: entry.path,
-        ...(scope === 'last-turn' && turnIndex !== undefined && { turnIndex }),
-    }
+/** 档位可用性（overview 的可用性矩阵 → 当前 target 一个布尔）；overview 未到不算不可用 */
+export function isTargetUnavailable(overview: ReviewOverview | undefined, target: DiffTarget): boolean {
+    if (!overview) return false
+    if (target.kind === 'turn') return overview.unavailableScopes.turn
+    if (target.kind === 'commit') return overview.unavailableScopes.commit
+    return overview.unavailableScopes[target.area]
+}
+
+/** Select 序列化键 → DiffTarget（损坏输入抛错，调用方吞掉不切档） */
+export function parseTargetKey(key: string): DiffTarget {
+    return DiffTargetSchema.parse(JSON.parse(key))
 }

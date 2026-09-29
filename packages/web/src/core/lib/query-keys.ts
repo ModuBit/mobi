@@ -18,6 +18,8 @@
  * 工作区内会话查询的根前缀
  * 单独导出供批量失效所有 ['workspaceSessions', workspaceId] 查询使用（invalidateWorkspaceViews）
  */
+import type { DiffTarget } from '@mobi/shared'
+
 const workspaceSessionsRoot = ['workspaceSessions'] as const
 
 /**
@@ -60,7 +62,14 @@ export const queryKeys = {
     /** git 审查总览（四档范围数据） */
     gitReview: (sessionId: string) => ['git-review', sessionId] as const,
     /** git 审查单文件 diff（version = 审查总览的 updatedAt：总览刷新即旧 diff 失效；两树指针不进协议） */
-    gitReviewFile: (sessionId: string, scope: string, path: string, version = '') => ['git-review-file', sessionId, scope, path, version] as const,
+    gitReviewFile: (sessionId: string, scope: string, path: string, version: number | string = '') => ['git-review-file', sessionId, scope, path, version] as const,
+    // ── 审查重写 v2（DiffTarget 统一模型）：target 进键用 JSON 稳定序列化；
+    //  version = 总览的 targetGeneration（CLI 数据版本，防「总览展示与点击之间数据变化」陈旧）──
+    gitReviewOverview: (sessionId: string) => ['git-review-v2-overview', sessionId] as const,
+    gitReviewFiles: (sessionId: string, target: DiffTarget, version: number | string = '') => ['git-review-v2-files', sessionId, JSON.stringify(target), String(version)] as const,
+    gitReviewPatch: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-patch', sessionId, JSON.stringify(target), path, String(version)] as const,
+    gitReviewContents: (sessionId: string, target: DiffTarget, path: string) => ['git-review-v2-contents', sessionId, JSON.stringify(target), path] as const,
+    gitReviewCommits: (sessionId: string) => ['git-review-v2-commits', sessionId] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
     /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */

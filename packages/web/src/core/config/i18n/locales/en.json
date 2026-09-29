@@ -801,7 +801,8 @@
             "lastTurn": "Last turn",
             "uncommitted": "Uncommitted",
             "unstaged": "Unstaged",
-            "staged": "Staged"
+            "staged": "Staged",
+            "commits": "Commits…"
         },
         "fileCount": "{{count}} files",
         "rootDir": "(root)",

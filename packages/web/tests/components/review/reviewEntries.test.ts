@@ -15,16 +15,25 @@
  */
 
 /**
- * 审查条目语义纯函数单测：可展开判定（isDiffable）与单文件查询组装（fileQueryFor）。
- * 箭头显隐、Collapse 过滤、树面板联动、行内 diff 查询共用这两个口径——边界在这里锁死。
+ * 审查条目语义纯函数单测（审查重写 v2）：可展开判定（isDiffable）、档位可用性
+ * （isTargetUnavailable）、Select 序列化键往返（parseTargetKey）。
+ * 箭头显隐、Collapse 过滤、树面板联动、档位禁用共用这些口径——边界在这里锁死。
  */
 
 import { describe, expect, it } from 'vitest'
-import type { TurnDiffFileEntry } from '@mobi/shared'
-import { fileQueryFor, isDiffable } from '@/components/review/reviewEntries'
+import { isDiffable, isTargetUnavailable, parseTargetKey } from '@/components/review/reviewEntries'
+import type { DiffTarget, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 
-function entry(overrides: Partial<TurnDiffFileEntry> = {}): TurnDiffFileEntry {
-    return { path: 'a.ts', kind: 'modify', additions: 2, deletions: 1, ...overrides }
+function entry(overrides: Partial<ReviewFileEntry> = {}): ReviewFileEntry {
+    return { path: 'a.ts', kind: 'modify', additions: 2, deletions: 1, binary: false, untracked: false, oversized: false, previousPath: null, ...overrides }
+}
+
+const OVERVIEW: ReviewOverview = {
+    unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: false },
+    isGitRepository: true,
+    scopes: { turn: { fileCount: 0, additions: 0, deletions: 0 }, uncommitted: null, unstaged: null, staged: null },
+    truncated: false,
+    targetGeneration: 1,
 }
 
 describe('isDiffable（可展开判定）', () => {
@@ -46,18 +55,37 @@ describe('isDiffable（可展开判定）', () => {
     })
 })
 
-describe('fileQueryFor（单文件查询组装）', () => {
-    it('普通条目：{scope, path}，指针不进协议', () => {
-        expect(fileQueryFor('last-turn', entry({ path: 'x/y.ts' }))).toEqual({ scope: 'last-turn', path: 'x/y.ts' })
-        expect(fileQueryFor('staged', entry())).toEqual({ scope: 'staged', path: 'a.ts' })
+describe('isTargetUnavailable（档位可用性矩阵）', () => {
+    it('各档位映射矩阵对应项；overview 未到不算不可用', () => {
+        const target = (t: DiffTarget) => t
+        expect(isTargetUnavailable(OVERVIEW, target({ kind: 'turn' }))).toBe(false)
+        expect(isTargetUnavailable(OVERVIEW, target({ kind: 'worktree', area: 'staged' }))).toBe(false)
+        expect(isTargetUnavailable(undefined, target({ kind: 'worktree', area: 'unstaged' }))).toBe(false)
     })
 
-    it('last-turn 带 turnIndex（总览 head 序号）原样带回；其他档不带', () => {
-        expect(fileQueryFor('last-turn', entry(), 7)).toEqual({ scope: 'last-turn', path: 'a.ts', turnIndex: 7 })
-        expect(fileQueryFor('uncommitted', entry(), 7)).toEqual({ scope: 'uncommitted', path: 'a.ts' })
+    it('非 git 矩阵：turn 可用（工具层降级源）、git 系全不可用', () => {
+        const nonGit: ReviewOverview = {
+            ...OVERVIEW,
+            isGitRepository: false,
+            unavailableScopes: { turn: false, uncommitted: true, unstaged: true, staged: true, commit: true },
+        }
+        expect(isTargetUnavailable(nonGit, { kind: 'turn' })).toBe(false)
+        expect(isTargetUnavailable(nonGit, { kind: 'worktree', area: 'uncommitted' })).toBe(true)
+        expect(isTargetUnavailable(nonGit, { kind: 'commit', range: { base: 'a', head: 'b' } })).toBe(true)
     })
+})
 
-    it('oversize：null（hook disabled，不发拉取，落「文件过大」降级 UI）', () => {
-        expect(fileQueryFor('last-turn', entry({ oversize: true }), 7)).toBeNull()
+describe('parseTargetKey（Select 序列化键往返）', () => {
+    it('三种 kind 往返一致；损坏输入抛错', () => {
+        for (const t of [
+            { kind: 'turn' } as DiffTarget,
+            { kind: 'turn', turnIndex: 3 } as DiffTarget,
+            { kind: 'worktree', area: 'uncommitted' } as DiffTarget,
+            { kind: 'commit', range: { base: 'a', head: 'b' } } as DiffTarget,
+        ]) {
+            expect(parseTargetKey(JSON.stringify(t))).toEqual(t)
+        }
+        expect(() => parseTargetKey('not json')).toThrow()
+        expect(() => parseTargetKey(JSON.stringify({ kind: 'branch' }))).toThrow()
     })
 })

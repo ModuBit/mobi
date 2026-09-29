@@ -15,10 +15,10 @@
  */
 
 /**
- * 审查视图组件测试（票05/06/07 + 布局重构）：hook 注入假数据，不碰网络。
- * header（范围 Select + 统计）、平铺 Collapse 清单（默认全收起 + 点开懒加载查询）、
- * 空清单态、非 git unavailable 态、单文件查询的两树指针组装、diff 文件树面板开合
- * 与联动。DiffViewer 以桩替换（codemirror 在 jsdom 下无意义）。
+ * 审查视图组件测试（审查重写 v2 票05，行为等价迁移）：hook 注入假数据，不碰网络。
+ * header（目标 Select + 统计）、平铺 Collapse 清单（默认全收起 + 点开懒加载查询）、
+ * 空清单态、逐档不可用态、单文件 patch/contents 查询、diff 文件树面板开合与联动。
+ * DiffViewer 以桩替换（pierre/codemirror 在 jsdom 下无意义）。
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -40,50 +40,89 @@ vi.mock('@/components/review/DiffViewer', () => ({
 
 import { GitReviewView, type GitReviewDeps } from '@/components/review/GitReviewView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import type { GitReviewData, GitReviewFileQuery } from '@mobi/shared'
+import type { DiffTarget, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 
 afterEach(cleanup)
 
-const LAST_TURN: GitReviewData['scopes']['last-turn'] = {
-    // 真实不变量：CLI 侧按 path localeCompare 排序——b.ts（根目录）在 src/deep/a.ts 前
-    files: [
-        { path: 'b.ts', kind: 'add', additions: 4, deletions: 0 },
-        { path: 'src/deep/a.ts', kind: 'modify', additions: 5, deletions: 3 },
-    ],
-    stats: { files: 2, additions: 9, deletions: 3 },
-    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
-}
-const STAGED: NonNullable<GitReviewData['scopes']['last-turn']> = {
-    files: [{ path: 'staged-only.txt', kind: 'modify', additions: 1, deletions: 1 }],
-    stats: { files: 1, additions: 1, deletions: 1 },
-    git: null,
-}
-const DATA: GitReviewData = {
-    unavailable: false,
-    scopes: { 'last-turn': LAST_TURN, uncommitted: STAGED, unstaged: STAGED, staged: STAGED },
+/** ReviewFileEntry 组装（补默认字段，测试只写关心的维度） */
+function entry(partial: Partial<ReviewFileEntry> & { path: string }): ReviewFileEntry {
+    return {
+        previousPath: null,
+        kind: 'modify',
+        additions: 1,
+        deletions: 0,
+        binary: false,
+        untracked: false,
+        oversized: false,
+        ...partial,
+    }
 }
 
+const TURN_FILES: ReviewFileEntry[] = [
+    // 真实不变量：CLI 侧按 path localeCompare 排序——b.ts（根目录）在 src/deep/a.ts 前
+    entry({ path: 'b.ts', kind: 'add', additions: 4, deletions: 0 }),
+    entry({ path: 'src/deep/a.ts', additions: 5, deletions: 3 }),
+]
+const STAGED_FILES: ReviewFileEntry[] = [entry({ path: 'staged-only.txt', additions: 1, deletions: 1 })]
+
+const OVERVIEW: ReviewOverview = {
+    unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: false },
+    isGitRepository: true,
+    scopes: {
+        turn: { fileCount: 2, additions: 9, deletions: 3 },
+        uncommitted: { fileCount: 1, additions: 1, deletions: 1 },
+        unstaged: { fileCount: 1, additions: 1, deletions: 1 },
+        staged: { fileCount: 1, additions: 1, deletions: 1 },
+    },
+    truncated: false,
+    targetGeneration: 7,
+}
+
+const FILES_FOR = (target: DiffTarget | null) => {
+    if (target === null) return null
+    const files = target.kind === 'turn' ? TURN_FILES : target.kind === 'worktree' && target.area === 'staged' ? STAGED_FILES : TURN_FILES
+    return {
+        files,
+        stats: { files: files.length, additions: files.reduce((s, f) => s + (f.additions ?? 0), 0), deletions: files.reduce((s, f) => s + (f.deletions ?? 0), 0) },
+        truncated: false,
+        targetGeneration: 7,
+    }
+}
+
+const TARGET_TURN: DiffTarget = { kind: 'turn' }
+const TARGET_STAGED: DiffTarget = { kind: 'worktree', area: 'staged' }
+
 function makeDeps(overrides: {
-    data?: GitReviewData
-    error?: string | null
+    overview?: ReviewOverview | undefined
+    overviewError?: string | null
     isLoading?: boolean
-    fileDiff?: { before: string | null; after: string | null; patch: string }
-    onQuery?: (query: GitReviewFileQuery | null) => void
+    filesFor?: (target: DiffTarget | null) => { files: ReviewFileEntry[]; truncated: boolean } | null
+    contents?: { before: string | null; after: string | null } | null
+    onQuery?: (path: string | null) => void
     running?: boolean | undefined
     refetch?: ReturnType<typeof vi.fn>
 }): GitReviewDeps {
+    const filesFor = overrides.filesFor ?? FILES_FOR
     return {
-        useReviewData: () => ({ data: overrides.data, error: overrides.error ?? null, isLoading: overrides.isLoading ?? false, updatedAt: 0, refetch: overrides.refetch ?? (() => {}) }),
-        useFileDiff: (_sessionId: string, query: GitReviewFileQuery | null) => {
-            overrides.onQuery?.(query)
+        useReviewOverview: () => ({ data: overrides.overview, error: overrides.overviewError ?? null, isLoading: overrides.isLoading ?? false, refetch: overrides.refetch ?? (() => {}) }),
+        useReviewFiles: (_sessionId: string, target: DiffTarget | null) => {
+            const data = filesFor(target)
+            // stats/targetGeneration 测试多数不关心：补默认值
+            const normalized = data ? { stats: { files: data.files.length, additions: 0, deletions: 0 }, targetGeneration: 7, ...data } : null
+            return { data: normalized ?? undefined, error: null, isLoading: false }
+        },
+        useReviewPatch: (_sessionId: string, _target: DiffTarget | null, path: string | null) => {
+            overrides.onQuery?.(path)
+            return { data: path ? { patch: '', previousPath: null, oversized: false, binary: false } : undefined, error: null, isLoading: false }
+        },
+        useReviewContents: (_sessionId: string, _target: DiffTarget | null, path: string | null) => {
             return {
-                data: overrides.fileDiff
-                    ? { patch: overrides.fileDiff.patch, before: overrides.fileDiff.before, after: overrides.fileDiff.after }
-                    : undefined,
+                data: path && overrides.contents !== null ? { before: overrides.contents?.before ?? null, after: overrides.contents?.after ?? null, reason: null } : undefined,
                 error: null,
                 isLoading: false,
             }
         },
+        useReviewCommits: () => ({ data: [], error: null, isLoading: false, loadMore: () => {}, hasNextPage: false, isLoadingMore: false }),
         useSessionRunning: () => overrides.running,
     }
 }
@@ -98,10 +137,15 @@ function openScopeDropdown() {
     fireEvent.mouseDown(document.querySelector('.ant-select')!)
 }
 
-describe('GitReviewView（hook 注入）', () => {
-    it('header 统计 + 清单默认全收起；点开才发起两树查询（懒加载）', () => {
-        const queries: (GitReviewFileQuery | null)[] = []
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: 'old', after: 'new', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+describe('GitReviewView（hook 注入 v2）', () => {
+    it('header 统计 + 清单默认全收起；点开才发起 patch/contents 查询（懒加载）', () => {
+        const queries: (string | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: 'old', after: 'new' }, onQuery: (p) => queries.push(p) })}
+            />,
+        )
 
         expect(screen.getByTestId('git-review-view')).toBeDefined()
         expect(screen.getByText('review.scope.lastTurn')).toBeDefined()
@@ -117,36 +161,39 @@ describe('GitReviewView（hook 注入）', () => {
         expect(expandedOf(rows[0]!)).toBe('false')
         expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
 
-        // 点开即发起 last-turn 查询（协议只含 scope+path，两树由 CLI 解析）
+        // 点开即发起查询（target 由视图主体持有，查询只带 path）
         fireEvent.click(rows[0]!)
         const issued = queries.filter((q) => q !== null)
         expect(issued).toHaveLength(1)
-        expect(issued[0]).toEqual({ scope: 'last-turn', path: 'b.ts', turnIndex: 2 })
+        expect(issued[0]).toBe('b.ts')
         expect(expandedOf(rows[0]!)).toBe('true')
         expect(screen.getByTestId('diff-viewer-stub').getAttribute('data-before')).toBe('old')
     })
 
     it('单击另一文件追加展开（多开不互斥；懒加载只对展开行发起查询）', () => {
-        const queries: (GitReviewFileQuery | null)[] = []
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: '', after: 'new', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+        const queries: (string | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: 'new' }, onQuery: (p) => queries.push(p) })}
+            />,
+        )
 
         const rows = screen.getAllByTestId('review-file-row')
-        // 初始全收起；点开两行 → 多开并存
         fireEvent.click(rows[0]!)
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[0]!)).toBe('true')
         expect(expandedOf(rows[1]!)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', turnIndex: 2 })
+        expect(queries.at(-1)).toBe('src/deep/a.ts')
 
         // 再点同一行收起，另一行保持展开
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[1]!)).toBe('false')
         expect(expandedOf(rows[0]!)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', turnIndex: 2 })
     })
 
     it('行操作「在标签页中打开」：调 workspaceStore.openFileTab，不冒泡切换展开', () => {
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: '', after: '', patch: '' } })} />)
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' } })} />)
         const rows = screen.getAllByTestId('review-file-row')
         const btn = rows[1]!.querySelector('button[aria-label="review.openInTab"]') as HTMLButtonElement
         fireEvent.click(btn)
@@ -156,43 +203,61 @@ describe('GitReviewView（hook 注入）', () => {
     })
 
     it('空清单：提示空态且无文件行', () => {
-        const empty: GitReviewData = { ...DATA, scopes: { ...DATA.scopes, 'last-turn': { ...LAST_TURN!, files: [], stats: { files: 0, additions: 0, deletions: 0 } } } }
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: empty })} />)
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, filesFor: () => ({ files: [], truncated: false }) })}
+            />,
+        )
         expect(screen.queryByTestId('review-file-row')).toBeNull()
         // 上一轮档空清单：文案区分「无快照变化」与其他档「暂无变更」
         expect(screen.getByText('review.noSnapshotChanges')).toBeDefined()
     })
 
-    it('非 git 目录：unavailable 诚实空态，不渲染清单', () => {
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: { ...DATA, unavailable: true } })} />)
+    it('非 git 目录：git 系档位不可用诚实空态；turn 档（工具层降级源）仍可用', () => {
+        const nonGit: ReviewOverview = {
+            ...OVERVIEW,
+            isGitRepository: false,
+            unavailableScopes: { turn: false, uncommitted: true, unstaged: true, staged: true, commit: true },
+        }
+        // turn 档可用
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: nonGit, contents: { before: 'a', after: 'b' } })} />)
+        expect(screen.getAllByTestId('review-file-row')).toHaveLength(2)
+        cleanup()
+        // 切到 staged（受控 target）→ 不可用空态
+        render(<GitReviewView sessionId="s1" target={TARGET_STAGED} deps={makeDeps({ overview: nonGit })} />)
         expect(screen.queryByTestId('review-file-row')).toBeNull()
         expect(screen.getByText('review.unavailable')).toBeDefined()
     })
 
     it('拉数失败：错误文案替代清单', () => {
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ error: 'boom' })} />)
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ overviewError: 'boom' })} />)
         expect(screen.getByText('boom')).toBeDefined()
     })
 
-    it('档位切换（受控）：其他档查询不带两树指针，文件列表随档刷新', () => {
-        const queries: (GitReviewFileQuery | null)[] = []
+    it('档位切换（受控）：staged 档文件列表随档刷新，查询带对路径', () => {
+        const queries: (string | null)[] = []
         render(
             <GitReviewView
                 sessionId="s1"
-                scope="staged"
-                deps={makeDeps({ data: DATA, fileDiff: { before: 'x', after: 'y', patch: '' }, onQuery: (q) => queries.push(q) })}
+                target={TARGET_STAGED}
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: 'x', after: 'y' }, onQuery: (p) => queries.push(p) })}
             />,
         )
-        // staged 档文件清单；点开才查询（无两树指针）
         const rows = screen.getAllByTestId('review-file-row')
         expect(rows).toHaveLength(1)
         fireEvent.click(rows[0]!)
-        expect(queries.filter((q) => q !== null)).toEqual([{ scope: 'staged', path: 'staged-only.txt' }])
+        expect(queries.filter((q) => q !== null)).toEqual(['staged-only.txt'])
     })
 
     it('无快照链：上一轮档在下拉中禁用；内容区诚实空态（不装数据）', () => {
-        const noChain: GitReviewData = { ...DATA, scopes: { ...DATA.scopes, 'last-turn': null } }
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: noChain })} />)
+        const noChain: ReviewOverview = { ...OVERVIEW, scopes: { ...OVERVIEW.scopes, turn: null } }
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: noChain, filesFor: (t) => (t?.kind === 'turn' ? null : FILES_FOR(t)) })}
+            />,
+        )
         expect(screen.getAllByText('review.noSnapshot').length).toBeGreaterThanOrEqual(1)
 
         openScopeDropdown()
@@ -202,46 +267,42 @@ describe('GitReviewView（hook 注入）', () => {
         expect(disabled!.textContent).toContain('review.scope.lastTurn')
     })
 
-    it('重命名（票07）：清单行成对呈现旧名；查询只含 scope+path（旧路径由 CLI 自解析）', () => {
-        const renames: GitReviewData = {
-            ...DATA,
-            scopes: {
-                ...DATA.scopes,
-                'last-turn': {
-                    files: [{ path: 'after.txt', kind: 'rename', additions: 0, deletions: 0, previousPath: 'before.txt' }],
-                    stats: { files: 1, additions: 0, deletions: 0 },
-                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
-                },
-            },
-        }
-        const queries: (GitReviewFileQuery | null)[] = []
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: renames, fileDiff: { before: 'r', after: 'r', patch: '' }, onQuery: (q) => queries.push(q) })} />)
-
+    it('重命名：清单行成对呈现旧名', () => {
+        const renames = (t: DiffTarget | null) => ({
+            files: t?.kind === 'turn'
+                ? [entry({ path: 'after.txt', kind: 'rename' as const, additions: 0, deletions: 0, previousPath: 'before.txt' })]
+                : STAGED_FILES,
+            truncated: false,
+        })
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, filesFor: renames, contents: { before: 'r', after: 'r' } })}
+            />,
+        )
         const row = screen.getByTestId('review-file-row')
         expect(row.textContent).toContain('after.txt')
         expect(row.textContent).toContain('before.txt')
-        fireEvent.click(row)
-        expect(queries.filter((q) => q !== null)[0]).toEqual({ scope: 'last-turn', path: 'after.txt', turnIndex: 2 })
     })
 
-    it('大 diff（oversize 由 CLI 打标）：降级为「文件过大」+ 跳转文件查看器入口，且不发 diff 查询', () => {
-        const big: GitReviewData = {
-            ...DATA,
-            scopes: {
-                ...DATA.scopes,
-                'last-turn': {
-                    files: [{ path: 'huge.ts', kind: 'modify', additions: 6000, deletions: 0, oversize: true }],
-                    stats: { files: 1, additions: 6000, deletions: 0 },
-                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
-                },
-            },
-        }
-        const queries: (GitReviewFileQuery | null)[] = []
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: big, fileDiff: { before: '', after: '', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+    it('大 diff（oversized 由 CLI 打标）：降级为「文件过大」+ 跳转文件查看器入口，不发 diff 查询', () => {
+        const big = (t: DiffTarget | null) => ({
+            files: t?.kind === 'turn'
+                ? [entry({ path: 'huge.ts', additions: 6000, deletions: 0, oversized: true })]
+                : STAGED_FILES,
+            truncated: false,
+        })
+        const queries: (string | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, filesFor: big, contents: { before: '', after: '' }, onQuery: (p) => queries.push(p) })}
+            />,
+        )
         fireEvent.click(screen.getByTestId('review-file-row'))
         expect(screen.getByTestId('review-too-big')).toBeDefined()
         expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
-        expect(queries.filter((q) => q !== null)).toHaveLength(0) // oversize 不发 diff 拉取
+        expect(queries.filter((q) => q !== null)).toHaveLength(0) // oversized 不发 diff 拉取
         // 点击入口 → 调 workspaceStore.openFileTab（新 file tab 激活）
         fireEvent.click(screen.getByTestId('review-too-big-open').querySelector('button') ?? screen.getByTestId('review-too-big-open'))
         const s = useWorkspaceStore.getState().getSession('s1')
@@ -249,22 +310,22 @@ describe('GitReviewView（hook 注入）', () => {
     })
 
     it('非文本条目：整行不可展开（无箭头、点击不发查询不出占位）', () => {
-        const withBin: GitReviewData = {
-            ...DATA,
-            scopes: {
-                ...DATA.scopes,
-                'last-turn': {
-                    files: [
-                        { path: '16pic.jpg', kind: 'add', additions: 0, deletions: 0 },
-                        { path: 'text.ts', kind: 'modify', additions: 2, deletions: 0 },
-                    ],
-                    stats: { files: 2, additions: 2, deletions: 0 },
-                    git: { baseTree: 'a'.repeat(40), headTree: 'b'.repeat(40), turnIndex: 2 },
-                },
-            },
-        }
-        const queries: (GitReviewFileQuery | null)[] = []
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: withBin, fileDiff: { before: '', after: 'x', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+        const withBin = (t: DiffTarget | null) => ({
+            files: t?.kind === 'turn'
+                ? [
+                    entry({ path: '16pic.jpg', kind: 'add' as const, additions: 0, deletions: 0 }),
+                    entry({ path: 'text.ts', additions: 2, deletions: 0 }),
+                ]
+                : STAGED_FILES,
+            truncated: false,
+        })
+        const queries: (string | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, filesFor: withBin, contents: { before: '', after: 'x' }, onQuery: (p) => queries.push(p) })}
+            />,
+        )
 
         // 点开图片行：行不可展开——无查询、无 diff、无展开箭头
         const rows = screen.getAllByTestId('review-file-row')
@@ -276,12 +337,17 @@ describe('GitReviewView（hook 注入）', () => {
 
         // 文本行照常发查询
         fireEvent.click(rows[1]!)
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'text.ts', turnIndex: 2 })
+        expect(queries.at(-1)).toBe('text.ts')
     })
 
     it('diff 文件树面板：开合按钮显隐；点叶节点联动主列表展开对应行', () => {
-        const queries: (GitReviewFileQuery | null)[] = []
-        render(<GitReviewView sessionId="s1" deps={makeDeps({ data: DATA, fileDiff: { before: '', after: '', patch: '' }, onQuery: (q) => queries.push(q) })} />)
+        const queries: (string | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' }, onQuery: (p) => queries.push(p) })}
+            />,
+        )
 
         expect(screen.queryByTestId('review-tree-panel')).toBeNull()
         fireEvent.click(screen.getByTestId('review-tree-toggle'))
@@ -296,6 +362,16 @@ describe('GitReviewView（hook 注入）', () => {
         const rows = screen.getAllByTestId('review-file-row')
         const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
         expect(expandedOf(target)).toBe('true')
-        expect(queries.at(-1)).toEqual({ scope: 'last-turn', path: 'src/deep/a.ts', turnIndex: 2 })
+        expect(queries.at(-1)).toBe('src/deep/a.ts')
+    })
+
+    it('running→idle 翻转驱动 overview refetch（开着审查 tab 跑新轮次后自动刷新）', () => {
+        const refetch = vi.fn()
+        const { rerender } = render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, running: true, refetch })} />)
+        rerender(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, running: false, refetch })} />)
+        expect(refetch).toHaveBeenCalledTimes(1)
+        // idle→idle 不重复触发
+        rerender(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, running: false, refetch })} />)
+        expect(refetch).toHaveBeenCalledTimes(1)
     })
 })

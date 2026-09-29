@@ -25,14 +25,15 @@ import type { TreeProps } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
-import type { TurnDiffFileEntry } from '@mobi/shared'
+import type { TurnDiffFileKind } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
 import { KindBadge } from '@/components/turnDiff/present'
 
 export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
-    files: readonly TurnDiffFileEntry[]
+    /** 最小结构（path/kind）——turn/review 两种条目形状共用 */
+    files: ReadonlyArray<{ path: string; kind: TurnDiffFileKind }>
     selectedPath: string | null
     onOpenFile: (path: string) => void
 }) {

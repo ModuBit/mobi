@@ -18,21 +18,30 @@
  * 审查视图的数据依赖注入点：测试换假数据源（不碰网络），生产走 react-query /
  * useSession 实现。GitReviewView 与 RowDiff 共用此接口——hook 的调用方（行内 diff
  * 懒加载）与视图主体注入同一套假源，测试才能单点替换。
+ *
+ * v2（审查重写票05）：DiffTarget 统一模型的五 hooks 面——overview（逐档可用性 +
+ * 数据版本）/ files / patch / contents（懒拉 enabled）/ commits（翻页累积）。
  */
 
-import { useGitReviewData, useGitReviewFileDiff, type ReviewDataResult, type ReviewFileDiffResult } from '@/core/data/hooks/queries/useGitReview'
+import { useReviewCommits, useReviewContents, useReviewFiles, useReviewOverview, useReviewPatch, type ReviewCommitsQueryResult, type ReviewContentsQueryResult, type ReviewFilesQueryResult, type ReviewOverviewResult, type ReviewPatchQueryResult } from '@/core/data/hooks/queries/useGitReview'
 import { useSession } from '@/core/data/hooks/queries/useSession'
-import type { GitReviewFileQuery } from '@mobi/shared'
+import type { DiffTarget } from '@mobi/shared'
 
 export interface GitReviewDeps {
-    useReviewData: (sessionId: string) => ReviewDataResult
-    useFileDiff: (sessionId: string, query: GitReviewFileQuery | null, version: number) => ReviewFileDiffResult
+    useReviewOverview: (sessionId: string) => ReviewOverviewResult
+    useReviewFiles: (sessionId: string, target: DiffTarget | null, version: number | string) => ReviewFilesQueryResult
+    useReviewPatch: (sessionId: string, target: DiffTarget | null, path: string | null, version: number | string) => ReviewPatchQueryResult
+    useReviewContents: (sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean) => ReviewContentsQueryResult
+    useReviewCommits: (sessionId: string) => ReviewCommitsQueryResult
     /** 会话是否 running（E2E/测试注入；生产走 useSession） */
     useSessionRunning: (sessionId: string) => boolean | undefined
 }
 
 export const defaultDeps: GitReviewDeps = {
-    useReviewData: useGitReviewData,
-    useFileDiff: useGitReviewFileDiff,
+    useReviewOverview,
+    useReviewFiles,
+    useReviewPatch,
+    useReviewContents,
+    useReviewCommits,
     useSessionRunning: (sessionId) => useSession(sessionId).data?.running,
 }

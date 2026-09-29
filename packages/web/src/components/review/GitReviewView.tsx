@@ -15,11 +15,11 @@
  */
 
 /**
- * 审查视图（inspector「审查」tab，turn-diff 票05/06/07）：顶部 header（范围切换 +
+ * 审查视图（inspector「审查」tab；审查重写 v2 票05 最小适配）：顶部 header（目标切换 +
  * 汇总统计 + 右侧功能按钮），content 平铺文件列表（单击懒加载展开该文件 diff，
  * 多开不互斥），可开合右侧 diff 文件树面板（筛选 + 目录树，与文件
- * 目录树同款交互）。四档范围（上一轮/未提交/未暂存/已暂存；shared GIT_REVIEW_SCOPES
- * 单源）。档位受控——inspector 侧挂 tab viewState 持久化（票06），组件自身保持可测
+ * 目录树同款交互）。档位寻址 = DiffTarget（turn/worktree/commit，shared 单源）。
+ * 档位受控——inspector 侧挂 tab viewState 持久化，组件自身保持可测
  * （数据经 deps 注入的 hooks 拉取，测试注入假数据不碰网络）。
  *
  * 子模块：reviewEntries（可展开/查询语义纯函数）、reviewDeps（数据注入点）、
@@ -29,8 +29,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { Button, Collapse, Empty, Flex, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CheckCheck, ChevronDown, Copy, ExternalLink, FileQuestion, FolderTree } from 'lucide-react'
-import { GIT_REVIEW_SCOPES, type GitReviewScope, type TurnDiffFileEntry } from '@mobi/shared'
+import { CheckCheck, ChevronDown, Copy, ExternalLink, FileQuestion, FolderTree, WrapText } from 'lucide-react'
+import { type DiffTarget, type ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
@@ -39,22 +39,22 @@ import { FilePathLabel, KindBadge, DiffStat } from '@/components/turnDiff/presen
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
-import { isDiffable } from './reviewEntries'
+import { isDiffable, isTargetUnavailable, parseTargetKey as DiffTargetParse } from './reviewEntries'
 
 // 对外保持原导出面（测试/消费方从 GitReviewView 取注入接口类型）
 export type { GitReviewDeps } from './reviewDeps'
 
-/** 档位 → i18n key（shared GIT_REVIEW_SCOPES 单源遍历，新档位漏文案会在 UI 直接露 key） */
-const SCOPE_LABEL_KEYS: Record<GitReviewScope, string> = {
-    'last-turn': 'review.scope.lastTurn',
-    uncommitted: 'review.scope.uncommitted',
-    unstaged: 'review.scope.unstaged',
-    staged: 'review.scope.staged',
-}
+/** 档位选项（DiffTarget 单源遍历）：Select 的 value 用稳定序列化键；「提交…」占位项票 06 实现 */
+const TARGET_OPTIONS: Array<{ target: DiffTarget; labelKey: string; disabled?: boolean }> = [
+    { target: { kind: 'turn' }, labelKey: 'review.scope.lastTurn' },
+    { target: { kind: 'worktree', area: 'uncommitted' }, labelKey: 'review.scope.uncommitted' },
+    { target: { kind: 'worktree', area: 'unstaged' }, labelKey: 'review.scope.unstaged' },
+    { target: { kind: 'worktree', area: 'staged' }, labelKey: 'review.scope.staged' },
+]
 
 /** 手风琴文件行的头（Collapse label）：徽标/路径 + 紧随其后的统计与展开箭头（均 hover 显现），
  *  行尾 hover 操作（复制/打开标签页）。Collapse 自带展开图标关闭（expandIcon=null） */
-function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file: TurnDiffFileEntry; expanded: boolean }) {
+function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file: ReviewFileEntry; expanded: boolean }) {
     const { t } = useTranslation()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
@@ -92,7 +92,7 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
                     ← {basename(file.previousPath)}
                 </span>
             )}
-            <DiffStat additions={file.additions} deletions={file.deletions} binary={file.binary === true} fontSize={11} />
+            <DiffStat additions={file.additions ?? 0} deletions={file.deletions ?? 0} binary={file.binary} fontSize={11} />
             {/* 行操作：桌面 hover/focus 显现，触屏常显（antd.css 规则）。
                 复制点击反馈与气泡 CopyButton 同款：图标切绿勾 2s 后还原 */}
             <Flex component="span" align="center" className="review-row-actions" style={{ flexShrink: 0 }}>
@@ -130,44 +130,48 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
     )
 }
 
-export const GitReviewView = memo(function GitReviewView({ sessionId, scope: scopeProp, onScopeChange, deps = defaultDeps }: {
+export const GitReviewView = memo(function GitReviewView({ sessionId, target: targetProp, onTargetChange, deps = defaultDeps }: {
     sessionId: string
-    /** 受控档位（inspector 经 tab viewState 持久化）；缺省「上一轮」 */
-    scope?: GitReviewScope
-    onScopeChange?: (s: GitReviewScope) => void
+    /** 受控审查目标（inspector 经 tab viewState 持久化）；缺省「上一轮」 */
+    target?: DiffTarget
+    onTargetChange?: (t: DiffTarget) => void
     deps?: GitReviewDeps
 }) {
     const { t } = useTranslation()
-    const [scopeState, setScopeState] = useState<GitReviewScope>('last-turn')
-    const scope = scopeProp ?? scopeState
-    const changeScope = onScopeChange ?? setScopeState
+    const [targetState, setTargetState] = useState<DiffTarget>({ kind: 'turn' })
+    const target = targetProp ?? targetState
+    const changeTarget = onTargetChange ?? setTargetState
 
-    const review = deps.useReviewData(sessionId)
+    const overview = deps.useReviewOverview(sessionId)
     const running = deps.useSessionRunning(sessionId)
     /** 多开：当前展开 diff 的文件路径集合（默认全收起，交给用户点开） */
     const [expandedPaths, setExpandedPaths] = useState<string[]>([])
     const [treeOpen, setTreeOpen] = useState(false)
+    /** diff 自动换行（默认开，保持既有行为；关闭后长行横向滚动） */
+    const [wrap, setWrap] = useState(true)
 
     // 审查数据是易变工作区事实：tab 常挂不卸载，靠「running→idle 翻转」驱动 refetch——
     // 开着审查 tab 跑新轮次，turn 结束后上一轮档自动刷新（E2E 实证缺失此刷新的坑）
     const wasRunningRef = useRef(false)
     useEffect(() => {
         const isRunning = running ?? false
-        if (wasRunningRef.current && !isRunning) review.refetch()
+        if (wasRunningRef.current && !isRunning) overview.refetch()
         wasRunningRef.current = isRunning
-    }, [running, review])
+    }, [running, overview])
 
-    const scopeData = review.data?.scopes[scope] ?? null
+    // 文件明细随总览的数据版本（targetGeneration）换缓存键：总览刷新 → 明细自动重查
+    const filesResult = deps.useReviewFiles(sessionId, isTargetUnavailable(overview.data, target) ? null : target, overview.data?.targetGeneration ?? '')
+    const scopeData = filesResult.data ?? null
     const files = scopeData?.files ?? []
     // 切档位清空展开（各档文件集不同，跨档残留无意义）
     useEffect(() => {
         setExpandedPaths([])
-    }, [scope])
+    }, [JSON.stringify(target)])
 
     // 「上一轮」无快照链（会话无轮次变更消息）→ 禁用该档（空态文案诚实，不装死数据）
-    const lastTurnMissing = review.data?.scopes['last-turn'] === null
+    const lastTurnMissing = overview.data?.scopes.turn === null
 
-    if (review.isLoading) {
+    if (overview.isLoading) {
         return (
             <Flex data-testid="git-review-view" align="center" justify="center" gap={8} style={{ height: '100%', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
                 <Spin size="small" />
@@ -175,14 +179,22 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
             </Flex>
         )
     }
-    if (review.error) {
+    if (overview.error) {
         return (
             <Flex data-testid="git-review-view" align="center" justify="center" style={{ height: '100%' }}>
-                <Empty image={<FileQuestion size={36} color="var(--ant-color-text-quaternary)" />} description={<span style={{ fontSize: 12 }}>{review.error}</span>} />
+                <Empty image={<FileQuestion size={36} color="var(--ant-color-text-quaternary)" />} description={<span style={{ fontSize: 12 }}>{overview.error}</span>} />
             </Flex>
         )
     }
-    if (!review.data || review.data.unavailable) {
+    if (filesResult.error) {
+        return (
+            <Flex data-testid="git-review-view" align="center" justify="center" style={{ height: '100%' }}>
+                <Empty image={<FileQuestion size={36} color="var(--ant-color-text-quaternary)" />} description={<span style={{ fontSize: 12 }}>{filesResult.error}</span>} />
+            </Flex>
+        )
+    }
+    // 逐档可用性（非 git 目录 turn 档仍可用——工具层降级源；git 系档诚实空态）
+    if (isTargetUnavailable(overview.data, target)) {
         return (
             <Flex data-testid="git-review-view" align="center" justify="center" style={{ height: '100%', padding: 24 }}>
                 <Empty image={<FileQuestion size={36} color="var(--ant-color-text-quaternary)" />} description={<span style={{ fontSize: 12 }}>{t('review.unavailable')}</span>} />
@@ -200,15 +212,23 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
             >
                 <Select
                     size="small"
-                    value={scope}
-                    onChange={(v) => changeScope(v as GitReviewScope)}
+                    value={JSON.stringify(target)}
+                    onChange={(v) => {
+                        try {
+                            changeTarget(DiffTargetParse(v as string))
+                        } catch { /* 序列化键损坏不切档 */ }
+                    }}
                     style={{ width: 112 }}
                     popupMatchSelectWidth={false}
-                    options={GIT_REVIEW_SCOPES.map((s) => ({
-                        value: s,
-                        label: t(SCOPE_LABEL_KEYS[s]),
-                        disabled: s === 'last-turn' && lastTurnMissing,
-                    }))}
+                    options={[
+                        ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
+                            value: JSON.stringify(t2),
+                            label: t(labelKey),
+                            disabled: t2.kind === 'turn' && lastTurnMissing,
+                        })),
+                        // 「提交…」占位禁用项（commit 选择器，票 06 实现）
+                        { value: '__commits__', label: t('review.scope.commits'), disabled: true },
+                    ]}
                     data-testid="review-scope-switch"
                 />
                 {scopeData && (
@@ -223,15 +243,27 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
                     </span>
                 )}
                 <Flex flex={1} />
-                <Tooltip title={t('review.fileTree')}>
-                    <Button
-                        type="text" size="small"
-                        aria-label={t('review.fileTree')}
-                        data-testid="review-tree-toggle"
-                        icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
-                        onClick={() => setTreeOpen((v) => !v)}
-                    />
-                </Tooltip>
+                {/* 右侧工具区：面板级功能按钮（新工具并列挂入，勿混进左侧摘要区） */}
+                <Flex align="center" gap={2} style={{ marginLeft: 'auto' }} data-testid="review-toolbar">
+                    <Tooltip title={t('review.wrap')}>
+                        <Button
+                            type="text" size="small"
+                            aria-label={t('review.wrap')}
+                            data-testid="review-wrap-toggle"
+                            icon={<WrapText size={15} style={{ color: wrap ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
+                            onClick={() => setWrap((v) => !v)}
+                        />
+                    </Tooltip>
+                    <Tooltip title={t('review.fileTree')}>
+                        <Button
+                            type="text" size="small"
+                            aria-label={t('review.fileTree')}
+                            data-testid="review-tree-toggle"
+                            icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
+                            onClick={() => setTreeOpen((v) => !v)}
+                        />
+                    </Tooltip>
+                </Flex>
             </Flex>
 
             {/* Content：平铺文件清单（Collapse 手风琴）+ 可开合 diff 文件树 */}
@@ -260,12 +292,11 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
                                 <div data-testid="review-file-diff" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
                                     <RowDiff
                                         sessionId={sessionId}
-                                        scope={scope}
+                                        target={target}
                                         entry={file}
-                                        version={review.updatedAt}
+                                        version={overview.data?.targetGeneration ?? ''}
                                         deps={deps}
-                                        // last-turn 档带总览的 head 序号：CLI 钉树防「点击前新轮完成串树」
-                                        turnIndex={scope === 'last-turn' ? scopeData?.git?.turnIndex : undefined}
+                                        wrap={wrap}
                                     />
                                 </div>
                             ),
@@ -280,11 +311,13 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, scope: sco
                     />
                     {scopeData && files.length === 0 && (
                         <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
-                            {scope === 'last-turn' ? t('review.noSnapshotChanges') : t('review.empty')}
+                            {target.kind === 'turn' ? t('review.noSnapshotChanges') : t('review.empty')}
                         </Flex>
                     )}
                     {!scopeData && (
-                        <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.noSnapshot')}</Flex>
+                        <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                            {target.kind === 'turn' ? t('review.noSnapshot') : t('review.empty')}
+                        </Flex>
                     )}
                 </Flex>
                 {treeOpen && (

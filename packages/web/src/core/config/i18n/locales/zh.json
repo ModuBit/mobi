@@ -792,7 +792,8 @@
             "lastTurn": "上一轮",
             "uncommitted": "未提交",
             "unstaged": "未暂存",
-            "staged": "已暂存"
+            "staged": "已暂存",
+            "commits": "提交…"
         },
         "fileCount": "{{count}} 个文件",
         "rootDir": "（根目录）",

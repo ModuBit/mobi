@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus, GitReviewData, GitReviewFileDiff, GitReviewFileQuery } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus, DiffTarget, GitReviewData, GitReviewFileDiff, GitReviewFileQuery, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -225,6 +225,19 @@ export function createMobiApi() {
             // git 审查单文件 diff 三件套（patch + before/after 全文）
             gitReviewFile: (sessionId: string, query: GitReviewFileQuery) =>
                 client.post<GitReviewFileDiff | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/file`, query),
+            // ── 审查重写 v2 六方法（DiffTarget 统一模型）──
+            gitReviewOverview: (sessionId: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ReviewOverview | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/overview`, { signal: opts?.signal }),
+            gitReviewFiles: (sessionId: string, target: DiffTarget) =>
+                client.post<ReviewFilesResult | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/files`, target),
+            gitReviewDiff: (sessionId: string, target: DiffTarget, path: string) =>
+                client.post<ReviewPatchResult | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/diff`, { target, path }),
+            gitReviewContents: (sessionId: string, target: DiffTarget, path: string) =>
+                client.post<ReviewContentsResult | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/contents`, { target, path }),
+            gitReviewCommits: (sessionId: string, cursor?: string) =>
+                client.post<ReviewCommitsResult | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/commits`, { cursor }),
+            gitReviewInit: (sessionId: string) =>
+                client.post<ReviewActionResult | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/init`),
         },
 
         // Messages

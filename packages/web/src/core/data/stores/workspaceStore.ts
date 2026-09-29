@@ -55,7 +55,10 @@ export interface TabViewState {
     /** 缩放（1=100%），仅可缩放类型（如 PDF） */
     scale?: number
     /** 审查 tab 的范围档位（turn-diff 票06：范围选择持久化，重进 tab 保持上次档位） */
+    /** @deprecated 旧审查档位持久化（审查重写 v2 起 reviewTarget 替代，08 删） */
     reviewScope?: (typeof GIT_REVIEW_SCOPES)[number]
+    /** 审查目标持久化（DiffTarget 的 JSON 序列化键，票05） */
+    reviewTarget?: string
 }
 
 /** 单个 session 的检视面板状态 */
