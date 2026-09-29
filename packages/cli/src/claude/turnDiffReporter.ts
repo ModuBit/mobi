@@ -33,7 +33,7 @@
  */
 
 import type { RawJSONLines } from '@/claude/types'
-import { TURN_DIFF_EVENT, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
+import { TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
 import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 import type { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { logger } from '@/ui/logger'
@@ -110,7 +110,9 @@ export class TurnDiffReporter {
             const results = (msg.content as Array<{ type?: string; tool_use_id?: string }>)
                 .filter((c): c is { type: 'tool_result'; tool_use_id: string } => c?.type === 'tool_result' && !!c.tool_use_id)
             if (results.length === 0) return
-            const raw = (message as { toolUseResult?: unknown }).toolUseResult
+            // toolUseResult 键名双格式（SDK 消息驼峰/下划线并存，E2E 实证 snake_case）：
+            // 必须走 getField，直读驼峰会让投影与 journal 双双空转（E2E 实证 +0 -0）
+            const raw = getField(message, 'toolUseResult')
             if (raw === undefined || raw === null) return
             const patches: unknown[] = Array.isArray(raw) ? raw : [raw]
             for (const [i, result] of results.entries()) {

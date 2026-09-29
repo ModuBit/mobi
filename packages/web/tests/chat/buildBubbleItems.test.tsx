@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { TURN_DIFF_EVENT } from '@mobi/shared'
 import type { ChatBlock, ChatToolCall, ToolCallBlock, UserTextBlock, AgentTextBlock, AgentEventBlock } from '@/domain/chat'
 import type { ChatBlockContext } from '@/components/chat/blocks'
 import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
@@ -226,6 +227,39 @@ describe('buildChatBubbleItems', () => {
             const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
             expect(items).toHaveLength(1)
             expect(items[0].role).toBe('assistant')
+        })
+
+        it('审核卡片上浮：turn-result 概要行与其后的 turn-diff 卡换位', () => {
+            const turnDiffCard: ChatBlock = {
+                kind: 'custom',
+                id: 'custom-diff',
+                localId: null,
+                createdAt: 1000,
+                blocks: [{ type: 'custom-event', name: TURN_DIFF_EVENT, value: { turnIndex: 1 } }],
+            }
+            const blocks: ChatBlock[] = [
+                createAgentText({ id: 'a1' }),
+                createAgentEvent({ id: 'ev1', event: { type: 'turn-result', durationMs: 1000, tokens: 50 } }),
+                turnDiffCard,
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items.map((i) => i.key)).toEqual(['a1', 'custom-diff', 'ev1'])
+        })
+
+        it('非审核卡片的 custom 消息不换位（如 fork 溯源行保持时间序）', () => {
+            const forkNotice: ChatBlock = {
+                kind: 'custom',
+                id: 'custom-fork',
+                localId: null,
+                createdAt: 1000,
+                blocks: [{ type: 'text', text: 'fork 自会话 xxx' }],
+            }
+            const blocks: ChatBlock[] = [
+                createAgentEvent({ id: 'ev1', event: { type: 'turn-result', durationMs: 1000, tokens: 50 } }),
+                forkNotice,
+            ]
+            const items = buildChatBubbleItems(blocks, defaultCtx, false, defaultOptions)
+            expect(items.map((i) => i.key)).toEqual(['ev1', 'custom-fork'])
         })
 
         it('agent-event(non-turn-result) → role: system', () => {

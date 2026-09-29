@@ -68,12 +68,20 @@ export async function resolveDiffTarget(
 
     switch (target.kind) {
         case 'turn': {
-            // turn 档依赖快照链；仓库在而链不可用（异常路径）按「无上一轮」抛
-            if (!snapshotStore) throw new Error('turn snapshot not found (store unavailable)')
+            // 链空是常态路径而非异常（会话始于非 git 期、一键 init 后首查）：降级 journal
+            // 供数（与 overview 的 turn 统计同语义，彼处链空也是 journal 补入兜底）；
+            // store 不可用（极端）同此兜底。带 turnIndex 越界仍抛错——明确请求了不存在
+            // 的历史轮次，journal 只有当前状态，兜底会给错数据
+            if (!snapshotStore) {
+                return { isGitRepository: true, toolSourceOnly: true, baseRev: null, headRev: null, diffArgs: [] }
+            }
             const pair = target.turnIndex !== undefined
                 ? await chainPairAt(snapshotStore, sessionId, target.turnIndex)
                 : await tailPair(snapshotStore, sessionId)
-            if (!pair) throw new Error(`turn snapshot not found (turnIndex: ${target.turnIndex ?? 'tail'})`)
+            if (!pair) {
+                if (target.turnIndex !== undefined) throw new Error(`turn snapshot not found (turnIndex: ${target.turnIndex})`)
+                return { isGitRepository: true, toolSourceOnly: true, baseRev: null, headRev: null, diffArgs: [] }
+            }
             return {
                 isGitRepository: true,
                 toolSourceOnly: false,

@@ -15,11 +15,12 @@
  */
 
 import type React from 'react'
-import type { ChatBlock } from '@/domain/chat'
+import type { ChatBlock, CustomBlock } from '@/domain/chat'
+import { TURN_DIFF_EVENT } from '@mobi/shared'
 import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
 import type { ChatBlockContext } from './blocks'
-import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
+import { groupCollapsibleToolCalls, type GroupedBlock } from '@/domain/chat/groupToolCalls'
 import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { renderChatBlock } from './blocks'
 import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
@@ -36,6 +37,57 @@ export type BuildBubbleOptions = {
 }
 
 const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
+
+/** turn-diff 审核卡片（custom 消息携带 TURN_DIFF_EVENT 事件） */
+function isTurnDiffCard(block: ChatBlock | GroupedBlock | undefined): block is CustomBlock {
+    return block?.kind === 'custom' && block.blocks.some(
+        (b) => b.type === 'custom-event' && b.name === TURN_DIFF_EVENT,
+    )
+}
+
+/**
+ * 展示序重排（展示序 ≠ 落库时间序，读 presentationRank 注册表）：低阶注脚让位给
+ * 紧随其后的连续高阶块，整体换位、其余不动——与 groupCollapsibleToolCalls 同层的
+ * 时间线展示变换，渲染循环保持单遍直推。无换位发生时原数组原样返回（引用稳定）。
+ */
+function orderForPresentation<T extends ChatBlock | GroupedBlock>(blocks: T[]): T[] {
+    let changed = false
+    const out: T[] = []
+    for (let i = 0; i < blocks.length;) {
+        const rank = presentationRank(blocks[i]!)
+        if (rank === undefined || rank > 0) {
+            out.push(blocks[i]!)
+            i++
+            continue
+        }
+        let j = i + 1
+        while (j < blocks.length) {
+            const next = presentationRank(blocks[j]!)
+            if (next === undefined || next <= rank) break
+            j++
+        }
+        if (j === i + 1) {
+            out.push(blocks[i]!)
+            i++
+            continue
+        }
+        changed = true
+        out.push(...blocks.slice(i + 1, j), blocks[i]!)
+        i = j
+    }
+    return changed ? out : blocks
+}
+
+/**
+ * 展示阶注册表（展示序 ≠ 落库时间序）：数值大者贴上，小者垫底；未注册 = 不参与重排。
+ * 落库顺序是时间序权威（rewind/分页/审计依赖），展示诉求只在时间线变换层换位——
+ * 新消息类型有同样诉求时在此注册一行，勿在重排逻辑里写类型特判。
+ */
+function presentationRank(block: ChatBlock | GroupedBlock | undefined): number | undefined {
+    if (block?.kind === 'agent-event' && block.event.type === 'turn-result') return 0 // 概要行：收尾注脚
+    if (isTurnDiffCard(block)) return 1 // 审核卡片：本轮主产物
+    return undefined
+}
 
 export type BubbleItemBase = {
     key: string
@@ -73,7 +125,7 @@ export function buildChatBubbleItems(
     const isActiveReasoning = (b: { kind: 'agent-reasoning'; id: string; done?: boolean }): boolean =>
         isRunning && b.id === lastAssistantBlockKey && !b.done
 
-    const grouped = groupCollapsibleToolCalls(blocks)
+    const grouped = orderForPresentation(groupCollapsibleToolCalls(blocks))
 
     const items: BubbleItemBase[] = []
 

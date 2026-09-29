@@ -33,8 +33,9 @@
  * 只列条目不再计数（truncated 事实随响应返回）。
  */
 
-import { readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
     GIT_REVIEW_RPC,
     OVERSIZE_DIFF_LINES,
@@ -51,7 +52,7 @@ import {
     type TurnDiffFileEntry,
 } from '@mobi/shared'
 import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
-import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
+import { getToolChangesPath, loadToolChangeJournal, ToolChangeJournal } from '../git/toolChangeJournal'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
@@ -135,6 +136,28 @@ function totalWriteCount(journal: { listPaths(): string[]; get(path: string): { 
     return journal.listPaths().reduce((sum, path) => sum + (journal.get(path)?.writeCount ?? 0), 0)
 }
 
+/** turn 档审查用 journal 装载（after 补全）：Edit 类 toolUseResult 只带 originalFile
+ *  （before 全文）不带 after——journal 占位 null（spec 2.1「归并规则自理」）。消费时
+ *  用磁盘当前内容补 after（编辑后文件已删 = null 保持，全删语义成立）；before 缺失
+ *  （Write 只记 after）不补。E2E 实证（票09）：缺此补全时非 git turn 档统计与全文对
+ *  呈「整文件删除」假象（+0 -2 / after missing） */
+async function loadToolJournalForReview(sessionId: string, cwd: string): Promise<ToolChangeJournal> {
+    const journal = await loadToolChangeJournal(getToolChangesPath(cwd, sessionId))
+    const snapshot = journal.snapshot()
+    let patched = false
+    for (const [path, entry] of Object.entries(snapshot.files)) {
+        if (entry.afterContent !== null || entry.beforeContent === null) continue
+        const abs = isAbsolute(path) ? path : join(cwd, path)
+        try {
+            entry.afterContent = await readFile(abs, 'utf8')
+            patched = true
+        } catch {
+            // 文件已删除：保持 null = 全删
+        }
+    }
+    return patched ? ToolChangeJournal.restore(snapshot) : journal
+}
+
 export class GitReviewReader {
     private repoRoot: string | null = null
 
@@ -144,6 +167,14 @@ export class GitReviewReader {
     private static isSafeRepoRelative(path: string): boolean {
         if (path === '' || path.startsWith('/') || path.includes('\\')) return false
         return path.split('/').every((seg) => seg !== '..')
+    }
+
+    /** journal 供数档（toolSourceOnly）的路径闸：path 是工具输入的文件系统路径
+     *  （E2E 实证为绝对路径；相对时以 cwd 为基准），只要求解析后不逃出 cwd */
+    private static isSafeWorkspacePath(path: string, cwd: string): boolean {
+        if (path === '' || path.includes('\0') || path.includes('\\')) return false
+        const abs = resolve(isAbsolute(path) ? path : join(cwd, path))
+        return abs === cwd || abs.startsWith(cwd + sep)
     }
 
     private async root(): Promise<string | null> {
@@ -185,6 +216,39 @@ export class GitReviewReader {
         } catch (e) {
             const out = (e as { stdout?: string }).stdout
             return typeof out === 'string' && out !== '' ? out : null
+        }
+    }
+
+    /** journal 全文对 → 真 unified patch（git diff --no-index 目录模式）：before/after 各
+     *  落 a/ b/ 子目录的同名文件，输出的 a/<basename> b/<basename> 头正是 pierre 期望的
+     *  形状，无需重写。单侧 null = add/delete（对端 /dev/null 语义由目录缺文件表达）。
+     *  临时目录即写即清，失败吞错返回空串（web 落 contents 通道兜底） */
+    private async synthesizePatchFromContents(path: string, before: string | null, after: string | null): Promise<string> {
+        if (before === null && after === null) return ''
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-review-patch-'))
+        try {
+            const base = basename(path)
+            const sideA = join(dir, 'a', base)
+            const sideB = join(dir, 'b', base)
+            await mkdir(dirname(sideA), { recursive: true })
+            await mkdir(dirname(sideB), { recursive: true })
+            if (before !== null) await writeFile(sideA, before)
+            if (after !== null) await writeFile(sideB, after)
+            // 非 git 目录 root 为 null（noIndexDiff 的 root 前置会短路），直接以临时目录为执行点
+            let raw: string
+            try {
+                raw = await git(dir, ['diff', '--no-index', '--', join(dir, 'a'), join(dir, 'b')])
+            } catch (e) {
+                // git diff --no-index 以退出码 1 表达差异，stdout 在异常对象上
+                raw = (e as { stdout?: string }).stdout ?? ''
+            }
+            // 头部剥临时目录前缀（git 规范化绝对路径的前导 /）：a<TMP>/a/app.ts → a/app.ts
+            return raw.replaceAll(`a${dir}/a/`, 'a/').replaceAll(`b${dir}/b/`, 'b/')
+        } catch (e) {
+            logger.debug('[GitReviewReader] synthesize patch failed', e)
+            return ''
+        } finally {
+            await rm(dir, { recursive: true, force: true })
         }
     }
 
@@ -253,7 +317,7 @@ export class GitReviewReader {
 
     /** 总览：逐档可用性 + 各档统计。非 git：turn 非 null（journal 供数），git 系全 null */
     async overview(sessionId: string, store: TurnSnapshotStore | null): Promise<ReviewOverview> {
-        const journal = await loadToolChangeJournal(getToolChangesPath(this.cwd, sessionId))
+        const journal = await loadToolJournalForReview(sessionId, this.cwd)
 
         if (!store) {
             const turnFiles = journalToEntries(journal)
@@ -311,7 +375,7 @@ export class GitReviewReader {
         const generation = await this.computeGeneration(sessionId, store)
 
         if (resolved.toolSourceOnly) {
-            const files = journalToEntries(await loadToolChangeJournal(getToolChangesPath(this.cwd, sessionId)))
+            const files = journalToEntries(await loadToolJournalForReview(sessionId, this.cwd))
             return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: generation })
         }
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
@@ -328,7 +392,7 @@ export class GitReviewReader {
         // supplement 保持 review 条目形状（untracked 事实不经过 TurnDiffFileEntry 有损转换）
         let files = merged.map(toReviewEntry)
         if (target.kind === 'turn') {
-            const journal = await loadToolChangeJournal(getToolChangesPath(this.cwd, sessionId))
+            const journal = await loadToolJournalForReview(sessionId, this.cwd)
             const known = new Set(files.map((f) => f.path))
             files = [...files, ...journalToEntries(journal).filter((f) => !known.has(f.path))]
                 .sort((a, b) => a.path.localeCompare(b.path))
@@ -344,12 +408,18 @@ export class GitReviewReader {
     /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（journal 源/二进制/
      *  超预算），web 落 contents 通道或诚实降级 */
     async patch(sessionId: string, target: DiffTarget, path: string, store: TurnSnapshotStore | null): Promise<unknown> {
+        const resolved = await resolveDiffTarget(sessionId, target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
+        // 路径闸按供数源分流（先 resolve 后闸）：journal 档的 path 是文件系统路径，git 档是仓库相对路径
+        if (resolved.toolSourceOnly) {
+            if (!GitReviewReader.isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
+            const entry = (await loadToolJournalForReview(sessionId, this.cwd)).get(path)
+            if (!entry) return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
+            const patch = await this.synthesizePatchFromContents(path, entry.beforeContent, entry.afterContent)
+            const oversized = (patch.split('\n').length) > OVERSIZE_DIFF_LINES
+            return ReviewPatchResultSchema.parse({ patch: oversized ? '' : patch, previousPath: null, oversized, binary: false })
+        }
         if (!GitReviewReader.isSafeRepoRelative(path)) {
             throw new Error(`Invalid path: ${path}`)
-        }
-        const resolved = await resolveDiffTarget(sessionId, target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-        if (resolved.toolSourceOnly) {
-            return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
         }
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
 
@@ -384,13 +454,11 @@ export class GitReviewReader {
     /** 全文对（pierre hydration 懒拉）。reason = 两侧都拿不到时的降级原因；一侧有值
      *  （add/delete 的合法半对）reason 为 null */
     async contents(sessionId: string, target: DiffTarget, path: string, store: TurnSnapshotStore | null): Promise<unknown> {
-        if (!GitReviewReader.isSafeRepoRelative(path)) {
-            throw new Error(`Invalid path: ${path}`)
-        }
         const resolved = await resolveDiffTarget(sessionId, target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-
+        // 路径闸按供数源分流（同 patch）：journal 档的 path 是文件系统路径，git 档是仓库相对路径
         if (resolved.toolSourceOnly) {
-            const entry = (await loadToolChangeJournal(getToolChangesPath(this.cwd, sessionId))).get(path)
+            if (!GitReviewReader.isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
+            const entry = (await loadToolJournalForReview(sessionId, this.cwd)).get(path)
             if (!entry) return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
             const before = entry.beforeContent === null ? missingSide() : gateText(entry.beforeContent)
             const after = entry.afterContent === null ? missingSide() : gateText(entry.afterContent)
@@ -399,6 +467,9 @@ export class GitReviewReader {
                 after: after.text,
                 reason: before.text === null && after.text === null ? pickDegradedReason(before.reason, after.reason) : null,
             })
+        }
+        if (!GitReviewReader.isSafeRepoRelative(path)) {
+            throw new Error(`Invalid path: ${path}`)
         }
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
 

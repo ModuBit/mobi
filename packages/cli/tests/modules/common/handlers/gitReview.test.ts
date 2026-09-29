@@ -187,6 +187,48 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         await rm(getToolChangesPath(v2NonGit, sid), { force: true })
     })
 
+    it('非 git turn 档：Edit 只带 before（afterContent null）→ 消费侧用磁盘当前内容补 after', async () => {
+        // E2E 实证（票09）：Edit 类 toolUseResult 只有 originalFile，journal 的 after 占位 null——
+        // 不补全时统计与 contents 呈「整文件删除」假象（+0 -2 / after missing）
+        const { ReviewOverviewSchema, ReviewFilesResultSchema, ReviewContentsResultSchema, ReviewPatchResultSchema } = await import('@mobi/shared')
+        const { PersistentToolChangeJournal, getToolChangesPath } = await import('@/modules/common/git/toolChangeJournal')
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-review-before-only-'))
+        const sid = 'before-only-session'
+        try {
+            // 磁盘当前内容 = 编辑后已落盘的文件
+            await writeFile(join(dir, 'app.ts'), 'a\nb\nedited\n')
+            const journal = await PersistentToolChangeJournal.open(getToolChangesPath(dir, sid))
+            // Edit 类结果只记 before 占位（journal path 为工具输入的绝对路径，E2E 实证）
+            journal.record({ path: join(dir, 'app.ts'), beforeContent: 'a\nb\n', toolName: 'Edit' })
+            await journal.flush()
+
+            const reader = new GitReviewReader(dir)
+            const overview = ReviewOverviewSchema.parse(await reader.overview(sid, null))
+            expect(overview.scopes.turn).toEqual({ fileCount: 1, additions: 1, deletions: 0 })
+
+            const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }, null))
+            expect(files.files[0]).toMatchObject({ path: join(dir, 'app.ts'), additions: 1, deletions: 0 })
+
+            // patch：journal 源从全文对合成真 unified patch（web PatchDiff 主输入直接可用）
+            const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, { kind: 'turn' }, join(dir, 'app.ts'), null))
+            expect(patch.patch).toContain('+edited')
+            expect(patch.patch).toContain('--- a/app.ts')
+            expect(patch.patch).toContain('+++ b/app.ts')
+
+            const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, join(dir, 'app.ts'), null))
+            expect(contents.before).toBe('a\nb\n')
+            expect(contents.after).toBe('a\nb\nedited\n')
+            expect(contents.reason).toBeNull()
+
+            // journal 档路径闸：cwd 外绝对路径拒绝（文件系统闸，非 repo 相对闸）
+            await expect(reader.contents(sid, { kind: 'turn' }, '/etc/passwd', null)).rejects.toThrow(/Invalid path/)
+            await expect(reader.contents(sid, { kind: 'turn' }, join(dir, '..', 'escape'), null)).rejects.toThrow(/Invalid path/)
+        } finally {
+            await rm(getToolChangesPath(dir, sid), { force: true })
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
     it('init：非 git 目录一键 init 后五档上线（缓存失效生效）', async () => {
         const { ReviewOverviewSchema } = await import('@mobi/shared')
         const initDir = await mkdtemp(join(tmpdir(), 'mobi-review-init-'))

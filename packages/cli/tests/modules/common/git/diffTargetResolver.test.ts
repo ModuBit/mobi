@@ -40,10 +40,15 @@ describe('resolveDiffTarget（ref 对照表）', () => {
         expect(resolved).toMatchObject({ baseRev: 't2', headRev: 't3' })
     })
 
-    it('turnIndex 越界 / 链不足两颗：抛错（handler 转 rpcError）', async () => {
+    it('turnIndex 越界：抛错（明确请求了不存在的轮次）；链空（tail）与 store null：降级 journal 供数', async () => {
         const store = createInMemoryTurnSnapshotStore({ chains: { s: [{ index: 1, tree: 't1' }] } })
         await expect(resolveDiffTarget('s', { kind: 'turn', turnIndex: 9 }, { isGitRepository: true, snapshotStore: store })).rejects.toThrow(/not found/)
-        await expect(resolveDiffTarget('s', { kind: 'turn' }, { isGitRepository: true, snapshotStore: store })).rejects.toThrow(/not found/)
+        // 链空（init 后首查的常态路径）：journal 兜底，与 overview 的 turn 统计同语义
+        const empty = createInMemoryTurnSnapshotStore()
+        expect(await resolveDiffTarget('s', { kind: 'turn' }, { isGitRepository: true, snapshotStore: empty }))
+            .toMatchObject({ isGitRepository: true, toolSourceOnly: true, baseRev: null, headRev: null })
+        expect(await resolveDiffTarget('s', { kind: 'turn' }, { isGitRepository: true, snapshotStore: null }))
+            .toMatchObject({ isGitRepository: true, toolSourceOnly: true })
     })
 
     it('worktree 三档：uncommitted=HEAD vs 工作区、unstaged=index vs 工作区、staged=HEAD vs index', async () => {

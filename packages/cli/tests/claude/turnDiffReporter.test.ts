@@ -232,6 +232,35 @@ describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('stor
         const [payload] = sentPayloads(send)
         expect(payload!.turnIndex).toBe(2) // 计数只在合成时递增
     })
+
+    it('snake_case tool_use_result（真实 SDK 消息形态，E2E 实证）：投影与 journal 照常采集', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-snake-'))
+        try {
+            const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(SID, null, send, journal)
+            reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                // 真实 CC 消息是 snake_case 键（web CLAUDE.md「跨格式字段访问」的前提事实）
+                tool_use_result: {
+                    filePath: '/proj/a.ts',
+                    originalFile: 'old\n',
+                    structuredPatch: [{ lines: ['-old', '+new'] }],
+                },
+            } as unknown as RawJSONLines)
+            await reporter.onTurnEnd()
+
+            const [payload] = sentPayloads(send)
+            expect(payload!.stats).toEqual({ files: 1, additions: 1, deletions: 1 })
+            const entry = journal.journal.get('/proj/a.ts')!
+            expect(entry.beforeContent).toBe('old\n')
+            await journal.dispose()
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
 })
 
 describe('TurnDiffReporter（journal 全文对采集，审查 v2 票03）', () => {
