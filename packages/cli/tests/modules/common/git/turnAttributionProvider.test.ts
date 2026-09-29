@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TurnAttributionProvider, type TurnAttributionGitOps } from '@/modules/common/git/turnAttributionProvider'
+import { TurnAttributionProvider, gatePathForSource, type TurnAttributionGitOps } from '@/modules/common/git/turnAttributionProvider'
 import { createInMemoryTurnSnapshotStore, type TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 import { FileTurnArchiveStore, getTurnArchivePath } from '@/modules/common/git/turnArchiveStore'
 import { PersistentToolChangeJournal, getToolChangesPath } from '@/modules/common/git/toolChangeJournal'
@@ -199,5 +199,22 @@ describe('TurnAttributionProvider（降级链单点）', () => {
     it('非 turn 目标拒绝（resolver 职责边界）', async () => {
         const provider = providerFor(dir, stubGitOps(), null)
         await expect(provider.resolve(DIR_SID, { kind: 'worktree', area: 'unstaged' })).rejects.toThrow(/turn/)
+    })
+})
+
+describe('gatePathForSource（③ 闸分流收口）', () => {
+    const cwd = '/repo/workspace'
+
+    it("git 源 = 仓库相对闸：绝对路径 / `..` 逃逸拒绝；repoRoot 给出时校验落在仓库内", () => {
+        expect(() => gatePathForSource('git', 'a/b.ts', cwd, '/repo')).not.toThrow()
+        expect(() => gatePathForSource('git', '/etc/passwd', cwd, '/repo')).toThrow(/Invalid path/)
+        expect(() => gatePathForSource('git', '../escape', cwd, '/repo')).toThrow(/Invalid path/)
+        // 正常输入的解析必在 repoRoot 内（防御闭环分支不误伤）
+        expect(() => gatePathForSource('git', 'sub/../a.ts', cwd, '/repo')).toThrow(/Invalid path/)
+    })
+
+    it("workspace 源 = 工作区闸：cwd 外绝对路径拒绝（repoRoot 不参与）", () => {
+        expect(() => gatePathForSource('workspace', join(cwd, 'a.ts'), cwd, null)).not.toThrow()
+        expect(() => gatePathForSource('workspace', '/etc/passwd', cwd, null)).toThrow(/Invalid path/)
     })
 })

@@ -51,7 +51,7 @@ import {
 } from '@mobi/shared'
 import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, openTurnSnapshotStore } from '../git/gitTurnSnapshotStore'
 import { getToolChangesPath, loadToolChangeJournal } from '../git/toolChangeJournal'
-import { isSafeRepoRelative, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
+import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
@@ -352,7 +352,8 @@ export class GitReviewReader {
             return ReviewPatchResultSchema.parse(await this.patchFromGit([supplied.baseTree, supplied.headTree], path, { allowNoIndex: false }))
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-        if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
+        // git 档路径闸（先 resolve 后闸，源决定闸）
+        gatePathForSource('git', path, this.cwd, await this.root())
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
 
         return ReviewPatchResultSchema.parse(await this.patchFromGit(resolved.diffArgs, path, {
@@ -403,7 +404,8 @@ export class GitReviewReader {
             return ReviewContentsResultSchema.parse(await this.contentsFromGit([supplied.baseTree, supplied.headTree], supplied.baseTree, supplied.headTree, path))
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
-        if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
+        // git 档路径闸（先 resolve 后闸，源决定闸，同 patch）
+        gatePathForSource('git', path, this.cwd, await this.root())
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
 
         return ReviewContentsResultSchema.parse(await this.contentsFromGit(resolved.diffArgs, resolved.baseRev!, resolved.headRev, path))

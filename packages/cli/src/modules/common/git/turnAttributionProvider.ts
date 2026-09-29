@@ -65,6 +65,23 @@ export function isSafeWorkspacePath(path: string, cwd: string): boolean {
     return abs === cwd || abs.startsWith(cwd + sep)
 }
 
+/** 路径闸按供数源分流（③ 收口，与供数器闸同规则单点）：'workspace' = 内容型源
+ *  （归档/journal 供数档），path 是工具输入的文件系统路径（工作区闸）；'git' = git
+ *  档，path 是仓库相对路径（repo 相对闸；repoRoot 给出时校验解析后落在仓库内——盘上
+ *  读取同基准）。失败抛 Invalid path，wire 契约（错误文案与触发时机）不变 */
+export function gatePathForSource(source: 'git' | 'workspace', path: string, cwd: string, repoRoot: string | null): void {
+    if (source === 'workspace') {
+        if (!isSafeWorkspacePath(path, cwd)) throw new Error(`Invalid path: ${path}`)
+        return
+    }
+    if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
+    // 防御闭环（正常输入不可达）：闸已拒绝绝对路径与 `..` 段，解析必在 repoRoot 内
+    if (repoRoot !== null) {
+        const abs = resolve(repoRoot, path)
+        if (abs !== repoRoot && !abs.startsWith(repoRoot + sep)) throw new Error(`Invalid path: ${path}`)
+    }
+}
+
 // ── 内容对 → review 条目（判定单源在 reviewEntry，② 收口）──────────────────────
 
 /** journal → review 条目（kind/counts/oversized 判定单源 reviewEntryFromContents） */
@@ -201,10 +218,10 @@ export class TurnAttributionProvider {
     async pairOf(sessionId: string, target: DiffTarget, path: string): Promise<TurnSuppliedPair | null> {
         const source = await this.resolve(sessionId, target)
         if (source.kind === 'snapshot') {
-            if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
+            gatePathForSource('git', path, this.cwd, null)
             return { kind: 'snapshot', baseTree: source.baseTree, headTree: source.headTree }
         }
-        if (!isSafeWorkspacePath(path, this.cwd)) throw new Error(`Invalid path: ${path}`)
+        gatePathForSource('workspace', path, this.cwd, null)
         if (source.kind === 'sealed') {
             const entry = source.record.files.find((f) => f.path === path)
             return entry ? { kind: 'contents', before: entry.beforeContent, after: entry.afterContent } : null
