@@ -83,6 +83,19 @@ describe('FileTurnFulltextStore.sealFiles（真 git 集成）', () => {
         }
     })
 
+    it('纯 add 轮（无任何 a 侧文件）：a 目录自动补建，patch 不因 git fatal 而丢失', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-fulltext-pureadd-'))
+        try {
+            const result = await makeStore(dir).sealFiles(1, [
+                { path: join(dir, 'new.ts'), beforeContent: null, afterContent: 'fresh\n' },
+            ])
+            expect(result.get(join(dir, 'new.ts'))!.patch).toContain('+fresh')
+            expect(result.get(join(dir, 'new.ts'))!.patch).toContain('new file mode')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
     it('多文件一轮：单次 git diff 出全部 per-file patch（切分正确）', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'mobi-fulltext-multi-'))
         try {

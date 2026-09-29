@@ -135,6 +135,12 @@ export class FileTurnFulltextStore {
         }
         if (writable.length === 0) return result
 
+        // 两侧目录必须都存在：`git diff --no-index` 对不存在的路径直接 fatal（stdout 空），
+        // 纯 add 轮（无任何 a 侧文件）整个 a 目录未创建会丢整轮 patch——存在但为空则
+        // 正常产出 /dev/null 语义 patch，与缺侧协议一致
+        await mkdir(join(turnDir, 'a'), { recursive: true })
+        await mkdir(join(turnDir, 'b'), { recursive: true })
+
         // 单次目录模式 diff 出整轮 patch：头部形态与 contentsPatch 的四 token 归位实证一致
         // （modify: a{dir}/a/f b{dir}/b/f；add: a{dir}/b/f b{dir}/b/f；delete: a{dir}/a/f b{dir}/a/f）
         let raw: string
