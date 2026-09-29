@@ -31,7 +31,7 @@ export interface GitReviewDeps {
     useReviewOverview: (sessionId: string) => ReviewOverviewResult
     useReviewFiles: (sessionId: string, target: DiffTarget | null, version: number | string) => ReviewFilesQueryResult
     useReviewPatch: (sessionId: string, target: DiffTarget | null, path: string | null, version: number | string) => ReviewPatchQueryResult
-    useReviewContents: (sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean) => ReviewContentsQueryResult
+    useReviewContents: (sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean, version?: number | string) => ReviewContentsQueryResult
     useReviewCommits: (sessionId: string) => ReviewCommitsQueryResult
     /** 一键 init git 仓库（票06；mutation 型，测试注入假源） */
     useReviewInit: (sessionId: string) => ReviewInitResult

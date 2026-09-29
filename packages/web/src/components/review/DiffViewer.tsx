@@ -64,10 +64,11 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
 
     // hydration 懒拉：pierre 首次展开折叠上下文才 fetchQuery（与 useReviewContents 同键
     // 共享缓存）。queryFn 必须同形（makeReviewContentsQueryFn）——同键异形会让缓存命中
-    // 后读到对方的包装形状，静默落空分支
+    // 后读到对方的包装形状，静默落空分支。键携带 version（与 patch 同代）：staleTime
+    // 窗口内 fetchQuery 命中的必须是新代全文，否则 hydration 上下文与 patch 行号错位
     const loadDiffFiles = useMemo(() => async () => {
         const payload = await queryClient.fetchQuery({
-            queryKey: queryKeys.gitReviewContents(sessionId, target, path),
+            queryKey: queryKeys.gitReviewContents(sessionId, target, path, version),
             queryFn: makeReviewContentsQueryFn(api, sessionId, target, path),
         })
         if (!payload || payload.data === undefined) throw new Error(payload?.error ?? 'contents unavailable')
@@ -79,7 +80,7 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
         return data.before === null
             ? { oldFile: null, newFile: { name: path, contents: data.after ?? '' } }
             : { oldFile: { name: path, contents: data.before }, newFile: { name: path, contents: data.after ?? '' } }
-    }, [api, queryClient, sessionId, target, path])
+    }, [api, queryClient, sessionId, target, path, version])
 
     const options = useMemo(() => ({
         diffStyle: layout,

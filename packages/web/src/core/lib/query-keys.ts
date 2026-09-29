@@ -64,7 +64,7 @@ export const queryKeys = {
     gitReviewOverview: (sessionId: string) => ['git-review-v2-overview', sessionId] as const,
     gitReviewFiles: (sessionId: string, target: DiffTarget, version: number | string = '') => ['git-review-v2-files', sessionId, JSON.stringify(target), String(version)] as const,
     gitReviewPatch: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-patch', sessionId, JSON.stringify(target), path, String(version)] as const,
-    gitReviewContents: (sessionId: string, target: DiffTarget, path: string) => ['git-review-v2-contents', sessionId, JSON.stringify(target), path] as const,
+    gitReviewContents: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-contents', sessionId, JSON.stringify(target), path, String(version)] as const,
     gitReviewCommits: (sessionId: string) => ['git-review-v2-commits', sessionId] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,

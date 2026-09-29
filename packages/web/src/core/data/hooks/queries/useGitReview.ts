@@ -164,11 +164,12 @@ export function makeReviewContentsQueryFn(api: MobiApi, sessionId: string, targe
     }
 }
 
-/** 全文对 v2（pierre hydration 懒拉）：enabled 由调用方控制（首次展开上下文才触发） */
-export function useReviewContents(sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean): ReviewContentsQueryResult {
+/** 全文对 v2（pierre hydration 懒拉）：enabled 由调用方控制（首次展开上下文才触发）；
+ *  version = 总览 targetGeneration（与 patch 同代——staleTime 窗口内不得读到旧代全文） */
+export function useReviewContents(sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean, version: number | string = ''): ReviewContentsQueryResult {
     const api = useMobiApi()
     const q = useQuery({
-        queryKey: queryKeys.gitReviewContents(sessionId, target ?? { kind: 'turn' }, path ?? ''),
+        queryKey: queryKeys.gitReviewContents(sessionId, target ?? { kind: 'turn' }, path ?? '', version),
         queryFn: makeReviewContentsQueryFn(api, sessionId, target, path),
         enabled: !!sessionId && !!target && !!path && enabled,
     })

@@ -92,4 +92,23 @@ describe('DiffViewer（pierre 换血）', () => {
         expect(screen.queryByTestId('patch-diff-stub')).toBeNull()
         expect(screen.getByTestId('git-diff-viewer').textContent).toContain('Diff unavailable')
     })
+
+    it('hydration fetchQuery 键携带 version（与 patch 同代——30s staleTime 窗口内不得命中旧代全文）', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        const fetchSpy = vi.spyOn(client, 'fetchQuery').mockResolvedValue({ data: { before: 'b\n', after: 'a\n' } })
+        // 预置同代 patch 缓存让 PatchDiff 同步渲染（loadDiffFiles 才会被捕获）
+        client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(TARGET), 'x.ts', '42'], { data: { patch: 'diff --git a/x b/x', previousPath: null, oversized: false, binary: false } })
+        render(
+            <QueryClientProvider client={client}>
+                <DiffViewer sessionId="s1" target={TARGET} path="x.ts" version={42} wrap layout="unified" />
+            </QueryClientProvider>,
+        )
+        const loadDiffFiles = captured[0]!.options.loadDiffFiles as () => Promise<unknown>
+        await expect(loadDiffFiles()).resolves.toEqual({
+            oldFile: { name: 'x.ts', contents: 'b\n' },
+            newFile: { name: 'x.ts', contents: 'a\n' },
+        })
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+        expect(fetchSpy.mock.calls[0]![0].queryKey).toEqual(['git-review-v2-contents', 's1', JSON.stringify(TARGET), 'x.ts', '42'])
+    })
 })
