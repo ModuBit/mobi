@@ -20,14 +20,24 @@ import {
     CLAUDE_AGENT_TEAMS_ENV,
     CLAUDE_TODO_TOOLS_ENV,
     ENABLE_TOOL_SEARCH_ENV,
+    CLAUDE_AUTO_MODE_SERVER_ENV,
 } from '../../src/claude/featureFlags'
 
 describe('buildClaudeFeatureEnv', () => {
-    test('全部关闭时含 todo tools 与 tool search 保底注入', () => {
+    test('全部关闭时含 todo tools / tool search / auto mode server 保底注入', () => {
         expect(buildClaudeFeatureEnv({ agentTeams: false, claudeEnv: {} })).toEqual({
             [CLAUDE_TODO_TOOLS_ENV]: '1',
             [ENABLE_TOOL_SEARCH_ENV]: 'true',
+            [CLAUDE_AUTO_MODE_SERVER_ENV]: '0',
         })
+    })
+
+    test('auto mode server 保底注入可被 claudeEnv 显式开启（gateway 实现 safeguards 透传后跟服务端检查）', () => {
+        const env = buildClaudeFeatureEnv({
+            agentTeams: false,
+            claudeEnv: { [CLAUDE_AUTO_MODE_SERVER_ENV]: '1' },
+        })
+        expect(env[CLAUDE_AUTO_MODE_SERVER_ENV]).toBe('1')
     })
 
     test('agentTeams 开启时注入 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', () => {
@@ -75,7 +85,11 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: 'not-an-object' as unknown as Record<string, string>,
         })
-        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1', [ENABLE_TOOL_SEARCH_ENV]: 'true' })
+        expect(env).toEqual({
+            [CLAUDE_TODO_TOOLS_ENV]: '1',
+            [ENABLE_TOOL_SEARCH_ENV]: 'true',
+            [CLAUDE_AUTO_MODE_SERVER_ENV]: '0',
+        })
     })
 
     test('claudeEnv 为数组时防御为仅含内置注入（数组也是 object，须显式排除）', () => {
@@ -86,7 +100,11 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: ['ANTHROPIC_LOG', 'debug'] as unknown as Record<string, string>,
         })
-        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1', [ENABLE_TOOL_SEARCH_ENV]: 'true' })
+        expect(env).toEqual({
+            [CLAUDE_TODO_TOOLS_ENV]: '1',
+            [ENABLE_TOOL_SEARCH_ENV]: 'true',
+            [CLAUDE_AUTO_MODE_SERVER_ENV]: '0',
+        })
     })
 
     test('claudeEnv 值非 string 时跳过该键（保证返回类型 Record<string,string>）', () => {

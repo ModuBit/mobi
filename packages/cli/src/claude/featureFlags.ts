@@ -42,6 +42,17 @@ export const CLAUDE_TODO_TOOLS_ENV = 'CLAUDE_CODE_ENABLE_TODO_TOOLS';
 export const ENABLE_TOOL_SEARCH_ENV = 'ENABLE_TOOL_SEARCH';
 
 /**
+ * auto mode 服务端分类器检查开关（由 claude 侧读取）。保底注入 '0'：经 gateway/proxy
+ * （mobi proxy / CCR 链路）的会话到不了服务端检查，CC 退回自发 classifier 请求并按
+ * token 计费，且 SDK/stream-json 模式无法像终端那样 ack 静默 24h——每次 fallback 都
+ * 会重发一条 informational 提示。置 0 后 classifier 恒为 CC 自发（计费不变），提示
+ * 永不出现。gateway 实现 safeguards 透传（feature pass-through）后，用户可在
+ * settings.cli.json claudeEnv 显式置 '1' 重新启用服务端检查。
+ * 见 https://code.claude.com/docs/en/auto-mode-classifier-billing 与 pending 台账。
+ */
+export const CLAUDE_AUTO_MODE_SERVER_ENV = 'CLAUDE_CODE_AUTO_MODE_SERVER';
+
+/**
  * buildClaudeFeatureEnv 的输入。可选——不传时从 configuration 单例读取默认值，
  * 调用点（claudeRemote / runClaude）无需改动；测试可显式传参做纯函数验证。
  */
@@ -73,6 +84,8 @@ export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<st
         [CLAUDE_TODO_TOOLS_ENV]: '1',
         // 客户端 tool search 保底（见 ENABLE_TOOL_SEARCH_ENV 注释）；claudeEnv 层可覆盖
         [ENABLE_TOOL_SEARCH_ENV]: 'true',
+        // auto mode 服务端检查关闭保底（见 CLAUDE_AUTO_MODE_SERVER_ENV 注释）；claudeEnv 层可覆盖
+        [CLAUDE_AUTO_MODE_SERVER_ENV]: '0',
     };
 
     if (agentTeams) {

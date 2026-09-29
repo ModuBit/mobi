@@ -882,3 +882,15 @@ interrupt（用户停止）
 **参照系**：ZCode（~/workspace/github/study/ZCode）用 streamdown 2.5 内建块级 memo + 无动画 + 无逐字揭示，生产顺畅；但其为「无打字机」观感，与 mobi 逐字揭示卖点不同，不可直接照搬结论。
 
 **触发条件**：~~真机可感知顿挫时立项~~ → 简化为「ant x 发 2.10.0 后顺手升级启用」，无需单独立项。
+
+---
+
+## 89. auto mode classifier 计费——gateway feature pass-through 后撤除 `CLAUDE_CODE_AUTO_MODE_SERVER=0` 保底注入（2026-09-28 记录）
+
+**背景**：Claude Code auto mode 的安全分类器检查改由服务端顺带完成（不计费），但经 gateway/proxy（mobi proxy / CCR 链路）的会话因 gateway 丢弃/改写 `safeguards` 请求字段与 `safeguard_results` 响应键而到不了服务端检查，CC 退回自发 classifier 请求按 token 计费，并每次 fallback 重发一条 `system/informational`（warning）提示——SDK/stream-json 模式无法像终端那样 ack 静默 24h。文档：https://code.claude.com/docs/en/auto-mode-classifier-billing
+
+**已做（临时）**：`buildClaudeFeatureEnv` 保底注入 `CLAUDE_CODE_AUTO_MODE_SERVER=0`（`packages/cli/src/claude/featureFlags.ts`），classifier 恒为 CC 自发（计费不变）、提示永不出现；claudeEnv 可显式覆盖。
+
+**待做**：gateway（CCR backend）集成时一并评估按 [feature pass-through](https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through) 原样透传（含不认识的 `safeguards` 字段与 `safeguard_results` 键），透传达标后把保底注入撤除或默认置 '1'，会话恢复服务端检查（免计费）。注意：该 env 是 CC 官方标注的 temporary setting，可能在未来版本移除，撤除时机需复查文档。
+
+**关联**：system informational 的 web 展示收窄（页头横幅 + level 分档）另行立项；web 端去重需 per content signature（SDK 模式无 ack 语义）。
