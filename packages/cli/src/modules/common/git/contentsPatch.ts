@@ -28,7 +28,7 @@ import { basename, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { logger } from '@/ui/logger'
 
-/** git 执行注入（gitTurnSnapshotStore 收口 git() 同源：抛错式，--no-index 的退出码 1
+/** git 执行注入（gitExec 收口 git() 同源：抛错式，--no-index 的退出码 1
  *  表达「有差异」，stdout 挂在异常对象上由本模块取回） */
 export type GitExec = (cwd: string, args: string[]) => Promise<string>
 

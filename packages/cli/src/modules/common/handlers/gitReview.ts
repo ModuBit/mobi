@@ -22,9 +22,8 @@
  * diffTargetResolver，本模块只做查询编排与降级语义。数据链：patch 主通道 +
  * 全文对懒拉（web pierre hydration），全文只在 contents 方法给。
  *
- * turn 档供数（审查 v3 反转，结构收口）：统一经 TurnAttributionProvider（降级链
- * 单点：封口归档 → 快照两树 → journal；路径闸随源走）——本模块不再自行做封口档
- * 前置分流，只承接供数器交回的出口（内容对合成 patch/全文、两树 git 查询）。
+ * turn 档供数（turn-archive B）：统一经 TurnAttributionProvider（归档唯一供数源）——
+ * patch 直读归档封口定稿、contents 空降级（归档只存统计+patch，全文零进盘）。
  *
  * cwd 由 hub 从会话 metadata 注入（与 machineReadFileMeta 同信任模型）；路径统一以
  * repoRoot 为基准（git 在 repoRoot 执行，diff 输出的路径即仓库相对路径，盘上读取
@@ -33,7 +32,7 @@
  * 只列条目不再计数（truncated 事实随响应返回）。
  */
 
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
     GIT_REVIEW_RPC,
@@ -48,13 +47,13 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, dropTurnSnapshotStoreCache, git, MOBI_STATE_DIR, openTurnSnapshotStore, parseNameStatus } from '../git/gitTurnSnapshotStore'
+import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus } from '../git/gitExec'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
+import { getToolChangesPath } from '../git/toolChangeJournal'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
-import type { TurnSnapshotStore } from '../git/turnSnapshotStore'
 import { rpcError } from '../rpcResponses'
 import { logger } from '@/ui/logger'
 
@@ -152,7 +151,7 @@ export class GitReviewReader {
         return null
     }
 
-    /** name-status + numstat 组装（args 含 'diff' 动词；组装规则单源在 gitTurnSnapshotStore） */
+    /** name-status + numstat 组装（args 含 'diff' 动词；组装规则单源在 gitExec） */
     private async entries(args: string[]): Promise<TurnDiffFileEntry[]> {
         const [statusOut, numstatOut] = await Promise.all([
             this.gitAtRoot([...args, '--name-status', '-z', '-M']),
@@ -424,12 +423,11 @@ export class GitReviewReader {
         return ReviewCommitsResultSchema.parse({ commits, nextCursor: hasMore ? String(skip + COMMITS_PAGE_SIZE) : null })
     }
 
-    /** 一键 git init（Codex 同款非 git 兜底）：成功后失效 reader 与 store 的仓库判定缓存 */
+    /** 一键 git init（Codex 同款非 git 兜底）：成功后失效 reader 的仓库判定缓存 */
     async initRepo(): Promise<unknown> {
         try {
             await git(this.cwd, ['init'])
             this.repoRoot = null
-            dropTurnSnapshotStoreCache(this.cwd)
             return { success: true, error: null }
         } catch (e) {
             return { success: false, error: e instanceof Error ? e.message : String(e) }
@@ -500,9 +498,9 @@ function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffF
 
 /**
  * machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta）。
- * git 执行统一走 gitTurnSnapshotStore 的收口 git()；本模块只负责查询编排与降级语义。
+ * git 执行统一走 gitExec 的收口 git()；本模块只负责查询编排与降级语义。
  *
- * 七连 handler 样板（reader/store 装配 + try/catch rpcError 同构）收敛为方法表 +
+ * 七连 handler 样板（reader 装配 + try/catch rpcError 同构）收敛为方法表 +
  * 通用 wrapper（⑤ 表驱动收口）：wire 契约（方法名/数据形状/错误文案/debug 标签）不变。
  */
 
@@ -513,21 +511,35 @@ type GitReviewHandlerDef = {
     log: string
     /** rpcError 文案（hub 透传给 web 的错误信息） */
     error: string
-    /** 是否装配快照 store（commits/init 用不到，不做多余的 store 打开副作用） */
-    withStore: boolean
-    run: (reader: GitReviewReader, store: TurnSnapshotStore | null, data: never) => Promise<unknown>
+    run: (reader: GitReviewReader, data: never) => Promise<unknown>
+}
+
+/** 会话删除清落盘状态（wire 名留 clearTurnSnapshots——hub 契约不变，语义已换）：
+ *  删 turn 归档与 tool-changes journal 落盘文件（快照链随 B 方案退场，无 ref 可清） */
+async function clearSessionState(cwd: string, sessionId: string): Promise<number> {
+    const files = [
+        getTurnArchivePath(cwd, sessionId),
+        getToolChangesPath(cwd, sessionId),
+    ]
+    let cleared = 0
+    for (const file of files) {
+        try {
+            await rm(file, { force: true })
+            cleared += 1
+        } catch {
+            // 单文件删除失败不阻断另一个
+        }
+    }
+    return cleared
 }
 
 const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[] = [
     {
-        // 会话删除清引用（ADR 0008 refs 治理，hub best-effort 调用）：git mv 不适用——
-        // 快照引用本就不进 index，直接逐个删 ref
         method: GIT_REVIEW_RPC.clear,
         log: 'clearTurnSnapshots',
         error: 'Failed to clear turn snapshots',
-        withStore: true,
-        run: async (_reader, store, data: { cwd: string; sessionId: string }) => {
-            const cleared = store ? await store.clearSession(data.sessionId) : 0
+        run: async (_reader, data: { cwd: string; sessionId: string }) => {
+            const cleared = await clearSessionState(data.cwd, data.sessionId)
             return { success: true, cleared }
         },
     },
@@ -536,42 +548,36 @@ const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[]
         method: GIT_REVIEW_RPC.overview,
         log: 'overview',
         error: 'Failed to collect review overview',
-        withStore: false,
-        run: async (reader, _store, data: { cwd: string; sessionId: string }) => reader.overview(data.sessionId),
+        run: async (reader, data: { cwd: string; sessionId: string }) => reader.overview(data.sessionId),
     },
     {
         method: GIT_REVIEW_RPC.files,
         log: 'files',
         error: 'Failed to list review files',
-        withStore: false,
-        run: async (reader, _store, data: { sessionId: string; target: DiffTarget }) => reader.files(data.sessionId, data.target),
+        run: async (reader, data: { sessionId: string; target: DiffTarget }) => reader.files(data.sessionId, data.target),
     },
     {
         method: GIT_REVIEW_RPC.diff,
         log: 'diff',
         error: 'Failed to read review diff',
-        withStore: false,
-        run: async (reader, _store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.patch(data.sessionId, data.target, data.path),
+        run: async (reader, data: { sessionId: string; target: DiffTarget; path: string }) => reader.patch(data.sessionId, data.target, data.path),
     },
     {
         method: GIT_REVIEW_RPC.contents,
         log: 'contents',
         error: 'Failed to read review contents',
-        withStore: false,
-        run: async (reader, _store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.contents(data.sessionId, data.target, data.path),
+        run: async (reader, data: { sessionId: string; target: DiffTarget; path: string }) => reader.contents(data.sessionId, data.target, data.path),
     },
     {
         method: GIT_REVIEW_RPC.commits,
         log: 'commits',
         error: 'Failed to list commits',
-        withStore: false,
-        run: async (reader, _store, data: { cursor?: string }) => reader.commits(data.cursor),
+        run: async (reader, data: { cursor?: string }) => reader.commits(data.cursor),
     },
     {
         method: GIT_REVIEW_RPC.init,
         log: 'init',
         error: 'Failed to initialize git repository',
-        withStore: false,
         run: async (reader) => reader.initRepo(),
     },
 ]
@@ -580,9 +586,7 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
     for (const def of GIT_REVIEW_HANDLERS) {
         rpcHandlerManager.registerHandler<{ cwd: string }, unknown>(def.method, async (data) => {
             try {
-                const reader = readerFor(data.cwd)
-                const store = def.withStore ? await openTurnSnapshotStore(data.cwd) : null
-                return await def.run(reader, store, data as never)
+                return await def.run(readerFor(data.cwd), data as never)
             } catch (e) {
                 logger.debug(`[GitReview] ${def.log} failed`, e)
                 return rpcError(def.error)

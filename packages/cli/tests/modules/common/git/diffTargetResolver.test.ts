@@ -16,13 +16,11 @@
 
 /**
  * DiffTarget resolver 单测（审查重写 v2 票04）：ref 对照表逐行断言 + 非 git 降级 +
- * turn 档拒绝（供数反转后归 TurnAttributionProvider，断言随职责迁移）。快照链用
- * 内存 fake（seam 契约见 turnSnapshotStore.test.ts）。
+ * turn 档拒绝（供数反转后归 TurnAttributionProvider，断言随职责迁移）。
  */
 
 import { describe, expect, it } from 'vitest'
 import { resolveDiffTarget } from '@/modules/common/git/diffTargetResolver'
-import { createInMemoryTurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 
 describe('resolveDiffTarget（ref 对照表）', () => {
     it('turn 档拒绝：已交 TurnAttributionProvider 供数（审查 v3 供数反转）', async () => {

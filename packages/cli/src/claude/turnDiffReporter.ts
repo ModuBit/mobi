@@ -15,21 +15,17 @@
  */
 
 /**
- * 轮次变更合成器（ADR 0008 / 审查 v3 供数反转）：result 消息处理点后置任务——
- * 快照照打（会话资产）→ 合成 turn-diff 自定义事件消息入流（local / remote 两模式
- * 共用，模式同 GoalStatusHandler）。
+ * 轮次变更合成器（ADR 0008 / turn-archive B）：result 消息处理点后置任务——
+ * 合成 turn-diff 自定义事件消息入流（local / remote 两模式共用，模式同
+ * GoalStatusHandler），journal 口径命中时封口归档。
  *
- * 口径（v3 供数双轨，唯一权威）：「归因」与「实况」分层——
+ * 口径：「归因」与「投影」分层（turn-archive B 后快照链退场）——
  * - 归因层（主源）：turn 内 journal 累积（本会话 Edit 族工具的内容对）。会话私有，
  *   天然免疫并发会话/用户手改/shell 改动的归因污染（Codex TurnDiffTracker /
  *   ZCode per-turn 快照同款机制）；git: null（web 端 ≈ 近似标记）。合成后封口归档
  *   （turnArchiveStore，历史轮回看的精确性基础）。
- * - 实况层（兜底）：累积为空时回落相邻快照 diff（旧会话/journal 不可用）——
- *   「工作区两时点之差」，并发场景会互相归因，故只作兜底不作主源。
- * - 投影层（末位）：store 为 null（非 git）且无累积时降级，`git: null` 显式标记。
- *
- * 快照照打：journal 口径命中也照常 capture——快照链是会话资产（审查 generation、
- * 历史兜底、checkpoint 接缝），不随供数反转断链。
+ * - 投影层（降级档）：累积为空时用工具事件行数累加（Bash/subagent 写入不在内），
+ *   `git: null` 显式标记。
  *
  * 时序：result 是本轮最后一条消息，合成异步执行、完成后经注入的 send 通道入列
  * （remote 传 messageQueue.enqueue 保 FIFO；local 顺序流直发）。下一轮用户消息快于
@@ -37,34 +33,18 @@
  *
  * journal 采集边界：只覆盖 Edit/Write/MultiEdit/NotebookEdit 的 toolUseResult 全文对
  * （afterContent 落笔即读盘补全）；Bash/subagent 写入不在内——漏但不错归因（ZCode
- * 同行为）。投影口径（末位降级档）同此边界。
+ * 同行为）。投影口径（降级档）同此边界。
  */
 
 import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
 import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
-import { git } from '@/modules/common/git/gitTurnSnapshotStore'
-import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
+import { git } from '@/modules/common/git/gitExec'
 import { ToolChangeJournal, type PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
 import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { logger } from '@/ui/logger'
-
-/**
- * 会话启动基线快照（口径修正，dev 实证 2026-09-27）：链空时打一颗 baseline——
- * 否则首卡基线是 HEAD 树，会把目录里历史未提交改动全部算进首卡（demo 实证：
- * 只改 1 个文件出卡 52 个）。baseline 后首卡基线 = 会话起点；空仓库也照打（空树），
- * 顺带让空仓库首轮即走 git 口径。失败吞错：不阻塞会话启动。
- */
-export async function ensureBaselineSnapshot(store: TurnSnapshotStore, sessionId: string): Promise<void> {
-    try {
-        const chain = await store.listChain(sessionId)
-        if (chain.length === 0) await store.capture(sessionId)
-    } catch (e) {
-        logger.debug('[TurnDiffReporter] baseline capture failed, fallback to HEAD tree', e)
-    }
-}
 
 /** 记变更的编辑族工具（工具名 → 是否取 input.file_path；名单即采集口径边界） */
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
@@ -82,7 +62,7 @@ type ComposedFiles = {
     baseTurnIndex: number | null
     files: TurnDiffFileEntry[]
     git: { baseTree: string; headTree: string } | null
-    source: 'journal' | 'snapshot' | 'projection'
+    source: 'journal' | 'projection'
 }
 
 export class TurnDiffReporter {
@@ -105,12 +85,10 @@ export class TurnDiffReporter {
     private turnCounter = 0
 
     constructor(
-        private readonly sessionId: string,
-        private readonly store: TurnSnapshotStore | null,
         private readonly send: (raw: RawJSONLines) => void,
         /** 工具层变更记录（会话累计事实源，审查消费）；缺省 = 不采集 */
         private readonly journal?: PersistentToolChangeJournal,
-        /** turn 封口归档（审查 v3 历史轮回看的事实源）；缺省 = 不封口 */
+        /** turn 封口归档（历史轮回看的事实源）；缺省 = 不封口 */
         private readonly archive?: TurnArchiveStore,
     ) {}
 
@@ -244,19 +222,7 @@ export class TurnDiffReporter {
     }
 
     private async composeAndSend(): Promise<void> {
-        // 快照照打（会话资产，不随供数反转断链）：吞错，失败时兜底 diff 仍可从链尾取
-        let headIndex: number | null = null
-        if (this.store) {
-            try {
-                headIndex = (await this.store.capture(this.sessionId)).index
-            } catch (e) {
-                logger.debug('[TurnDiffReporter] turn capture failed', e)
-            }
-        }
-        const files =
-            (await this.composeFromTurnAccumulation()) ??
-            (this.store ? await this.composeFromSnapshots(headIndex) : null) ??
-            this.composeFromProjection()
+        const files = (await this.composeFromTurnAccumulation()) ?? this.composeFromProjection()
         if (files.files.length === 0) return
         // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）。
         // B 方案：全文只在内存——逐文件当场合成 patch（git spawn ~20ms/文件，轮末
@@ -342,30 +308,7 @@ export class TurnDiffReporter {
         }
     }
 
-    /** 实况口径（兜底）：「上一轮 = 相邻快照之差」（capture 已在 composeAndSend 统一执行）。
-     *  返回 null = 拿不到上一轮（链不足两颗：无 baseline / 空仓库无链），本轮走投影降级。
-     *  HEAD 兜底已删（632048b2：不裹挟历史未提交变更） */
-    private async composeFromSnapshots(headIndex: number | null): Promise<ComposedFiles | null> {
-        const last = await this.store!.lastTurnDiff(this.sessionId)
-        if (!last) return null
-
-        return {
-            turnIndex: headIndex ?? last.head.index,
-            baseTurnIndex: last.base.index,
-            files: last.files.map((e) => ({
-                path: e.path,
-                kind: e.kind,
-                additions: e.additions,
-                deletions: e.deletions,
-                ...(e.previousPath !== undefined && { previousPath: e.previousPath }),
-                ...(e.binary && { binary: true }),
-            })),
-            git: { baseTree: last.base.tree, headTree: last.head.tree },
-            source: 'snapshot',
-        }
-    }
-
-    /** 投影口径（末位降级档）：工具事件累加，Bash/subagent 写入不在内 */
+    /** 投影口径（降级档）：工具事件累加，Bash/subagent 写入不在内 */
     private composeFromProjection(): ComposedFiles {
         const files: TurnDiffFileEntry[] = [...this.projected.entries()]
             .sort(([a], [b]) => a.localeCompare(b))

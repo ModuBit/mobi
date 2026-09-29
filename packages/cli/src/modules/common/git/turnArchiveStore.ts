@@ -36,7 +36,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { TurnDiffFileKind } from '@mobi/shared'
 import { contentsChangeOf } from './reviewEntry'
-import { sanitizeSessionId } from './gitTurnSnapshotStore'
+import { sanitizeSessionId } from './gitExec'
 import { writeFileAtomic } from './atomicWrite'
 
 /** 封口的单文件记录（B 方案：统计 + patch，无全文） */

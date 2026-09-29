@@ -28,7 +28,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { sanitizeSessionId } from './gitTurnSnapshotStore'
+import { sanitizeSessionId } from './gitExec'
 import { writeFileAtomic } from './atomicWrite'
 
 /** 归并后的单文件变更事实 */

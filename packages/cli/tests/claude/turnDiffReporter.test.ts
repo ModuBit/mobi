@@ -15,8 +15,9 @@
  */
 
 /**
- * TurnDiffReporter 合成契约：观测序列 → 载荷断言。git 口径用内存 fake store
- * （seam 契约见 turnSnapshotStore.test.ts），投影口径直接喂 RawJSONLines 消息序列。
+ * TurnDiffReporter 合成契约：观测序列 → 载荷断言。归因口径走 journal 累积 +
+ * 封口归档（turn-archive B：滚动单条 + 封口存 patch），降级投影口径直接喂
+ * RawJSONLines 消息序列。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -25,8 +26,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, TurnDiffPayloadSchema, type TurnDiffPayload } from '@mobi/shared'
-import { TurnDiffReporter, ensureBaselineSnapshot } from '@/claude/turnDiffReporter'
-import { createInMemoryTurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
+import { TurnDiffReporter } from '@/claude/turnDiffReporter'
 import { createInMemoryTurnArchiveStore, FileTurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 
@@ -90,115 +90,10 @@ function sentPayloads(send: ReturnType<typeof vi.fn>): TurnDiffPayload[] {
     })
 }
 
-describe('TurnDiffReporter（git 快照口径）', () => {
-    it('result 时以相邻快照 diff 合成：基线 = baseline 快照（链尾 -2），本轮快照入链', async () => {
-        const store = createInMemoryTurnSnapshotStore({
-            // 会话启动已打 baseline（index 1），本轮 capture 生成 fake-tree-2
-            chains: { [SID]: [{ index: 1, tree: 't1' }] },
-            trees: {
-                t1: { 'a.ts': ['const a = 1'] },
-                'fake-tree-2': { 'a.ts': ['const a = 1', 'const b = 2'], 'new.ts': ['x'] },
-            },
-        })
+describe('TurnDiffReporter（投影降级口径）', () => {
+    it('无累积时降级：structuredPatch 行数累加，同文件合并，git: null', async () => {
         const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, store, send)
-
-        reporter.observe(assistantToolUse('t1', 'Edit', '/repo/a.ts'))
-        await reporter.onTurnEnd()
-
-        const [payload] = sentPayloads(send)
-        expect(payload!.turnIndex).toBe(2)
-        expect(payload!.baseTurnIndex).toBe(1)
-        expect(payload!.git).toEqual({ baseTree: 't1', headTree: 'fake-tree-2' })
-        expect(payload!.stats).toEqual({ files: 2, additions: 2, deletions: 0 })
-        expect(payload!.files.map((f) => f.path)).toEqual(['a.ts', 'new.ts'])
-        // 快照已入链
-        expect(await store.listChain(SID)).toHaveLength(2)
-    })
-
-    it('链空（baseline 缺失）：本轮退投影口径，快照照打供后续轮次续链——不裹挟历史未提交变更', async () => {
-        // 工作区里预置「历史」改动语义：链空无 baseline，HEAD 兜底已删，不产出 git 口径
-        const store = createInMemoryTurnSnapshotStore()
-        const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, store, send)
-
-        reporter.observe(assistantToolUse('t1', 'Edit', '/repo/a.ts'))
-        await reporter.onTurnEnd()
-
-        expect(await store.listChain(SID)).toHaveLength(1) // 快照照打
-        const [payload] = sentPayloads(send)
-        expect(payload!.git).toBeNull()
-        expect(payload!.baseTurnIndex).toBeNull()
-    })
-
-    it('本轮无文件变化：不出卡（不合成空消息）', async () => {
-        const store = createInMemoryTurnSnapshotStore()
-        const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, store, send)
-        await reporter.onTurnEnd()
-        expect(send).not.toHaveBeenCalled()
-    })
-
-    it('store 合成失败：吞错不抛出（turn 完成不受阻），turn 状态照常重置', async () => {
-        const store = createInMemoryTurnSnapshotStore()
-        const broken = {
-            capture: store.capture.bind(store),
-            listChain: store.listChain.bind(store),
-            lastTurnDiff: async () => { throw new Error('git exploded') },
-            diffTrees: store.diffTrees.bind(store),
-            clearSession: store.clearSession.bind(store),
-        }
-        const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, broken, send)
-        await expect(reporter.onTurnEnd()).resolves.toBeUndefined()
-        expect(send).not.toHaveBeenCalled()
-    })
-
-    it('空仓库首轮：无上一轮，降级投影口径，快照照打', async () => {
-        const store = createInMemoryTurnSnapshotStore()
-        const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, store, send)
-        reporter.observe(assistantToolUse('t1', 'Write', '/repo/fresh.ts'))
-        await reporter.onTurnEnd()
-
-        expect(await store.listChain(SID)).toHaveLength(1) // 基线快照已打
-        const [payload] = sentPayloads(send)
-        expect(payload!.git).toBeNull()
-        expect(payload!.files).toEqual([{ path: '/repo/fresh.ts', kind: 'modify', additions: 0, deletions: 0 }])
-    })
-})
-
-describe('ensureBaselineSnapshot（会话启动基线）', () => {
-    it('链空：打一颗基线快照——首卡基线从 HEAD 树收窄为会话起点，历史未提交变更不入首卡', async () => {
-        const store = createInMemoryTurnSnapshotStore()
-        let captures = 0
-        const orig = store.capture.bind(store)
-        store.capture = async (id: string) => { captures += 1; return orig(id) }
-
-        await ensureBaselineSnapshot(store, SID)
-        expect(captures).toBe(1)
-        expect(await store.listChain(SID)).toHaveLength(1)
-
-        // 已有链（重启 resume）：不补打
-        await ensureBaselineSnapshot(store, SID)
-        expect(captures).toBe(1)
-    })
-
-    it('baseline 失败吞错不抛（不阻塞会话启动）', async () => {
-        const broken = {
-            capture: async () => { throw new Error('baseline exploded') },
-            listChain: async () => [],
-            lastTurnDiff: async () => null,
-            diffTrees: async () => [],
-            clearSession: async () => 0,
-        }
-        await expect(ensureBaselineSnapshot(broken as never, SID)).resolves.toBeUndefined()
-    })
-})
-
-describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('store 为 null：structuredPatch 行数累加，同文件合并，git: null', async () => {
-        const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, null, send)
+        const reporter = new TurnDiffReporter(send)
         reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
         reporter.observe(userToolResult('t1', [' ctx', '+added', '-removed']))
         reporter.observe(assistantToolUse('t2', 'Edit', '/proj/a.ts')) // 同文件第二笔
@@ -216,7 +111,7 @@ describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('stor
 
     it('并行工具调用合并消息：多条 tool_result 与 toolUseResult 数组按序归位，不漏计', async () => {
         const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, null, send)
+        const reporter = new TurnDiffReporter(send)
         reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
         reporter.observe(assistantToolUse('t2', 'Edit', '/proj/b.ts'))
         reporter.observe({
@@ -245,7 +140,7 @@ describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('stor
 
     it('本轮无编辑观测：不出卡；下一轮计数接续', async () => {
         const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, null, send)
+        const reporter = new TurnDiffReporter(send)
         await reporter.onTurnEnd()
         expect(send).not.toHaveBeenCalled()
 
@@ -263,7 +158,7 @@ describe('TurnDiffReporter（非 git 投影降级口径）', () => {    it('stor
             await writeFile(filePath, 'new\n', 'utf8')
             const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, journal)
+            const reporter = new TurnDiffReporter(send, journal)
             reporter.observe(assistantToolUse('t1', 'Edit', filePath))
             reporter.observe({
                 type: 'user',
@@ -294,7 +189,7 @@ describe('TurnDiffReporter（journal 全文对采集，审查 v2 票03）', () =
         try {
             const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, journal)
+            const reporter = new TurnDiffReporter(send, journal)
 
             // Edit：originalFile（编辑前全文）+ structuredPatch
             reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
@@ -337,7 +232,7 @@ describe('TurnDiffReporter（journal 全文对采集，审查 v2 票03）', () =
 
     it('无 journal（缺省构造）：采集路径静默跳过，投影口径不受影响', async () => {
         const send = vi.fn()
-        const reporter = new TurnDiffReporter(SID, null, send)
+        const reporter = new TurnDiffReporter(send)
         reporter.observe(assistantToolUse('t1', 'Edit', '/proj/a.ts'))
         reporter.observe(userToolResult('t1', ['+x']))
         await reporter.onTurnEnd()
@@ -345,7 +240,7 @@ describe('TurnDiffReporter（journal 全文对采集，审查 v2 票03）', () =
     })
 })
 
-describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02）', () => {
+describe('TurnDiffReporter（journal 主源 + 封口归档）', () => {
     /** 构造带 originalFile 的 Edit 结果消息（真实 snake_case 形态） */
     function editResult(toolUseId: string, filePath: string, originalFile: string): RawJSONLines {
         return {
@@ -359,31 +254,25 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
         } as unknown as RawJSONLines
     }
 
-    it('journal 累积命中：payload 来自累积而非快照 diff（git:null），快照照打不断链', async () => {
+    it('journal 累积命中：payload 只含本会话编辑的文件（归因免疫并发/手改），封口归档落 patch', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-jprimary-'))
         try {
             const filePath = join(dir, 'a.ts')
             await writeFile(filePath, 'new\n', 'utf8')
-            const store = createInMemoryTurnSnapshotStore({
-                chains: { [SID]: [{ index: 1, tree: 't1' }] },
-                // 快照口径「看得见」的额外文件（模拟并发会话/手改）——journal 主源必须无视它
-                trees: { t1: { 'a.ts': ['old'] }, 'fake-tree-2': { 'a.ts': ['new'], 'other-session.ts': ['x'] } },
-            })
+            // 工作区里预置「别人改的」文件（模拟并发会话/手改）——归因主源必须无视它
+            await writeFile(join(dir, 'other-session.ts'), 'x\n', 'utf8')
             const archive = createInMemoryTurnArchiveStore()
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, store, send, undefined, archive)
+            const reporter = new TurnDiffReporter(send, undefined, archive)
 
             reporter.observe(assistantToolUse('t1', 'Edit', filePath))
             reporter.observe(editResult('t1', filePath, 'old\n'))
             await reporter.onTurnEnd()
 
             const [payload] = sentPayloads(send)
-            // 归因：只含本会话编辑的文件，快照 diff 里的 other-session.ts 不出现
             expect(payload!.files.map((f) => f.path)).toEqual([filePath])
             expect(payload!.git).toBeNull()
             expect(payload!.stats).toEqual({ files: 1, additions: 1, deletions: 1 })
-            // 快照照打（会话资产不断链）
-            expect(await store.listChain(SID)).toHaveLength(2)
             // 封口归档：turnIndex 1、files 带行数与合成 patch（B 方案：无全文字段）
             const [sealed] = archive.records()
             expect(sealed!.turnIndex).toBe(1)
@@ -402,7 +291,7 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             const fileB = join(dir, 'b.ts')
             const archive = createInMemoryTurnArchiveStore()
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, undefined, archive)
+            const reporter = new TurnDiffReporter(send, undefined, archive)
 
             await writeFile(fileA, 'a2\n', 'utf8')
             reporter.observe(assistantToolUse('t1', 'Edit', fileA))
@@ -438,7 +327,7 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             await writeFile(filePath, 'old+new\n', 'utf8')
             const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, journal)
+            const reporter = new TurnDiffReporter(send, journal)
 
             reporter.observe(assistantToolUse('t1', 'Edit', filePath))
             reporter.observe(editResult('t1', filePath, 'old\n'))
@@ -462,7 +351,7 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             const filePath = join(dir, 'a.ts')
             const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, journal)
+            const reporter = new TurnDiffReporter(send, journal)
 
             // 两次 Edit 的补读并发在途：R1（先调度）慢返回中间态、R2（后调度）快返回末次
             readScript.reads.push(
@@ -495,7 +384,7 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
                 loadLatest: async () => null,
             }
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, undefined, brokenArchive)
+            const reporter = new TurnDiffReporter(send, undefined, brokenArchive)
             reporter.observe(assistantToolUse('t1', 'Write', join(dir, 'x.ts')))
             reporter.observe({
                 type: 'user',
@@ -532,7 +421,7 @@ describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）'
             const archivePath = join(dir, 'turn-archive.json')
             const archive = new FileTurnArchiveStore(archivePath)
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, undefined, archive)
+            const reporter = new TurnDiffReporter(send, undefined, archive)
 
             reporter.observe(assistantToolUse('t1', 'Edit', filePath))
             reporter.observe(editResult('t1', filePath, 'old\n'))
@@ -562,7 +451,7 @@ describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）'
             await writeFile(filePath, big, 'utf8')
             const archive = new FileTurnArchiveStore(join(dir, 'turn-archive.json'))
             const send = vi.fn()
-            const reporter = new TurnDiffReporter(SID, null, send, undefined, archive)
+            const reporter = new TurnDiffReporter(send, undefined, archive)
 
             reporter.observe(assistantToolUse('t1', 'Write', filePath))
             reporter.observe({
@@ -588,7 +477,7 @@ describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）'
             const filePath = join(dir, 'a.ts')
             const archivePath = join(dir, 'turn-archive.json')
             const send1 = vi.fn()
-            const first = new TurnDiffReporter(SID, null, send1, undefined, new FileTurnArchiveStore(archivePath))
+            const first = new TurnDiffReporter(send1, undefined, new FileTurnArchiveStore(archivePath))
             await writeFile(filePath, 'v2\n', 'utf8')
             first.observe(assistantToolUse('t1', 'Edit', filePath))
             first.observe(editResult('t1', filePath, 'v1\n'))
@@ -596,7 +485,7 @@ describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）'
 
             // 新实例（重启语义）：同一归档文件
             const send2 = vi.fn()
-            const second = new TurnDiffReporter(SID, null, send2, undefined, new FileTurnArchiveStore(archivePath))
+            const second = new TurnDiffReporter(send2, undefined, new FileTurnArchiveStore(archivePath))
             await writeFile(filePath, 'v3\n', 'utf8')
             second.observe(assistantToolUse('t2', 'Edit', filePath))
             second.observe(editResult('t2', filePath, 'v2\n'))

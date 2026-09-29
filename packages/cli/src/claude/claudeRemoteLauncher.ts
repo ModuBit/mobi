@@ -48,8 +48,7 @@ import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFail
 import type { ApiSessionClient } from "@/api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
-import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
-import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
+import { TurnDiffReporter } from "./turnDiffReporter";
 import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
 import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
 import { getProjectPath } from "./utils/path";
@@ -420,18 +419,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             session.client,
             (m) => session.client.sendClaudeSessionMessage(m),
         );
-        // 轮次变更合成器（ADR 0008）：快照存储打开失败(非 git 目录)时 reporter 内部降级投影口径；
+        // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；
         // 合成消息经 messageQueue 入列(FIFO，排在 result 与延迟中的 assistant 消息之后)
-        const turnDiffStore = await openTurnSnapshotStore(session.path);
-        // 会话启动基线（口径修正）：链空先打 baseline，首卡只反映本会话变更而非全部历史未提交
-        if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
         // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
         const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
-        // turn 封口归档（审查 v3 历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
+        // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
         const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
         const turnDiffReporter = new TurnDiffReporter(
-            session.client.sessionId,
-            turnDiffStore,
             (m) => messageQueue.enqueue(m),
             toolChangeJournal ?? undefined,
             turnArchive,

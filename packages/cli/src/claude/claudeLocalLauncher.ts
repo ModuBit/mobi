@@ -16,8 +16,7 @@
 
 import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
-import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
-import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
+import { TurnDiffReporter } from "./turnDiffReporter";
 import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
 import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
 import { Session } from "./session";
@@ -64,17 +63,12 @@ export async function claudeLocalLauncher(
     // goal 状态处理器:双发 reportGoalStatus RPC + goal_progress 聊天消息
     const goalHandler = new GoalStatusHandler(session.client, (m) => session.client.sendClaudeSessionMessage(m));
 
-    // 轮次变更合成器（ADR 0008）：非 git 目录时 reporter 内部降级投影口径；顺序流直发
-    const turnDiffStore = await openTurnSnapshotStore(session.path);
-    // 会话启动基线（口径修正）：链空先打 baseline，首卡只反映本会话变更而非全部历史未提交
-    if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
+    // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；顺序流直发
     // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
     const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
-    // turn 封口归档（审查 v3 历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
+    // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
     const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
     const turnDiffReporter = new TurnDiffReporter(
-        session.client.sessionId,
-        turnDiffStore,
         (m) => session.client.sendClaudeSessionMessage(m),
         toolChangeJournal ?? undefined,
         turnArchive,

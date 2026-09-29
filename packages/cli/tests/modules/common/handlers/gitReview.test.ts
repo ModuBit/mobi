@@ -16,8 +16,8 @@
 
 /**
  * git 审查数据链真仓库集成测试（审查重写 v2 六方法）：临时目录 git init 走真实 git，
- * overview/files/patch/contents/commits/init 逐方法断言 + turn 档 journal 补入 +
- * 路径越界拒绝 + 非 git 目录 journal 供数。快照相关断言背书 02 的存储接口契约。
+ * overview/files/patch/contents/commits/init 逐方法断言 + turn 档归档供数 +
+ * 路径越界拒绝 + 非 git 目录归档供数。generation 断言背书 B 方案新公式契约。
  */
 
 import { afterAll, beforeAll, describe, it, expect } from 'vitest'
@@ -27,7 +27,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { GitReviewReader, registerGitReviewHandlers } from '@/modules/common/handlers/gitReview'
-import { openTurnSnapshotStore } from '@/modules/common/git/gitTurnSnapshotStore'
 import { getTurnArchivePath } from '@/modules/common/git/turnArchiveStore'
 import { ReviewContentsResultSchema } from '@mobi/shared'
 
@@ -176,10 +175,8 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
             const result = await reader.initRepo() as { success: boolean; error: string | null }
             expect(result.success).toBe(true)
 
-            // reader 自身缓存已失效（repoRoot 置空）；store 缓存也失效 → 重新打开非 null
-            const store = await openTurnSnapshotStore(initDir)
-            expect(store).not.toBeNull()
-            const after = ReviewOverviewSchema.parse(await reader.overview('s', store))
+            // reader 自身缓存已失效（repoRoot 置空）→ 下一请求重跑 rev-parse 上线
+            const after = ReviewOverviewSchema.parse(await reader.overview('s'))
             expect(after.isGitRepository).toBe(true)
             expect(after.unavailableScopes.turn).toBe(false)
         } finally {
