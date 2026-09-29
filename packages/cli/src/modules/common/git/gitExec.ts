@@ -38,8 +38,8 @@ const execFileAsync = promisify(execFile)
 export const MOBI_STATE_DIR = '.mobi'
 
 /** 引用名合法字符白名单外的字符（sessionId 理论上不含，兜底替换）。
- *  快照 ref 子树与 journal/归档落盘目录靠同一清洗对上（getToolChangesPath /
- *  getTurnArchivePath 派生自它），字符面单源在此 */
+ *  归档/journal 落盘目录（`.mobi/turn-diffs/<sid>/`）靠同一清洗对上（getTurnArchivePath
+ *  派生自它），字符面单源在此 */
 export function sanitizeSessionId(sessionId: string): string {
     const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')
     if (safe !== sessionId) {

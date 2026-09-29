@@ -49,7 +49,6 @@ import type { ApiSessionClient } from "@/api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter } from "./turnDiffReporter";
-import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
 import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
@@ -421,13 +420,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         );
         // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；
         // 合成消息经 messageQueue 入列(FIFO，排在 result 与延迟中的 assistant 消息之后)
-        // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
-        const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
         // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
         const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
         const turnDiffReporter = new TurnDiffReporter(
             (m) => messageQueue.enqueue(m),
-            toolChangeJournal ?? undefined,
             turnArchive,
         );
         // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 Hub
@@ -1232,8 +1228,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         } finally {
             // scanner 与 goalHandler 跟 launcher 生命周期一致(跨 turn 复用,仅销毁时清理)
             goalHandler.dispose();
-            // 工具层变更记录：退出前刷盘（去抖挂起的尾巴落盘）
-            await toolChangeJournal?.dispose();
             // 等待 pending scanner 创建完成再 cleanup,防止 launcher 在 start() 完成前退出致孤儿 watcher
             // scannerPromise 仅在回调闭包内赋值，TS CFA 不跟踪闭包赋值会窄化为 null，需 as 恢复联合类型
             const pendingScanner = scannerPromise as Promise<Awaited<ReturnType<typeof createSessionScanner>>> | null;

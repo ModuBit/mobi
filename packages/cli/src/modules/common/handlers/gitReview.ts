@@ -47,9 +47,8 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus } from '../git/gitExec'
+import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus, sanitizeSessionId } from '../git/gitExec'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
-import { getToolChangesPath } from '../git/toolChangeJournal'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -515,22 +514,15 @@ type GitReviewHandlerDef = {
 }
 
 /** 会话删除清落盘状态（wire 名留 clearTurnSnapshots——hub 契约不变，语义已换）：
- *  删 turn 归档与 tool-changes journal 落盘文件（快照链随 B 方案退场，无 ref 可清） */
+ *  删 `.mobi/turn-diffs/<sid>/` 整目录——turn 归档在此，tool-changes.json 孤儿
+ *  （持久层已退场）同目录顺带清掉 */
 async function clearSessionState(cwd: string, sessionId: string): Promise<number> {
-    const files = [
-        getTurnArchivePath(cwd, sessionId),
-        getToolChangesPath(cwd, sessionId),
-    ]
-    let cleared = 0
-    for (const file of files) {
-        try {
-            await rm(file, { force: true })
-            cleared += 1
-        } catch {
-            // 单文件删除失败不阻断另一个
-        }
+    try {
+        await rm(join(cwd, MOBI_STATE_DIR, 'turn-diffs', sanitizeSessionId(sessionId)), { recursive: true, force: true })
+        return 1
+    } catch {
+        return 0
     }
-    return cleared
 }
 
 const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[] = [

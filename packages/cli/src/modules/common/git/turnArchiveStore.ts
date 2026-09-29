@@ -89,7 +89,7 @@ export function getTurnArchivePath(workspaceRoot: string, sessionId: string): st
 /** 旧多轮格式形状（只读兼容） */
 type LegacyArchiveFileShape = { turns: unknown[] }
 
-/** 单条形状还原（坏条目给 null 跳过不抛），与 ToolChangeJournal.restore 同容错纪律 */
+/** 单条形状还原（坏条目给 null 跳过不抛）——事实源宁可缺失不阻塞读侧 */
 function restoreRecord(raw: unknown): TurnArchiveRecord | null {
     if (!raw || typeof raw !== 'object') return null
     const r = raw as Partial<TurnArchiveRecord>

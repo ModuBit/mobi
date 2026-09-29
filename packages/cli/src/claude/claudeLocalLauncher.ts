@@ -17,7 +17,6 @@
 import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter } from "./turnDiffReporter";
-import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
 import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
@@ -64,13 +63,10 @@ export async function claudeLocalLauncher(
     const goalHandler = new GoalStatusHandler(session.client, (m) => session.client.sendClaudeSessionMessage(m));
 
     // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；顺序流直发
-    // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
-    const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
     // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
     const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
     const turnDiffReporter = new TurnDiffReporter(
         (m) => session.client.sendClaudeSessionMessage(m),
-        toolChangeJournal ?? undefined,
         turnArchive,
     );
 
@@ -154,7 +150,6 @@ export async function claudeLocalLauncher(
         }
         session.removeSessionFoundCallback(handleSessionFound);
         goalHandler.dispose();
-        await toolChangeJournal?.dispose();
         await scanner.cleanup();
     }
 }

@@ -40,7 +40,7 @@ import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
 import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
 import { git } from '@/modules/common/git/gitExec'
-import { ToolChangeJournal, type PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
+import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
 import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
@@ -86,8 +86,6 @@ export class TurnDiffReporter {
 
     constructor(
         private readonly send: (raw: RawJSONLines) => void,
-        /** 工具层变更记录（会话累计事实源，审查消费）；缺省 = 不采集 */
-        private readonly journal?: PersistentToolChangeJournal,
         /** turn 封口归档（历史轮回看的事实源）；缺省 = 不封口 */
         private readonly archive?: TurnArchiveStore,
     ) {}
@@ -157,14 +155,9 @@ export class TurnDiffReporter {
         const beforeContent = typeof src.originalFile === 'string' ? src.originalFile : null
         const afterContent = typeof src.content === 'string' ? src.content : undefined
         if (beforeContent === null && afterContent === undefined) return
-        try {
-            this.journal?.record({ path, beforeContent, afterContent, toolName: observed.toolName })
-        } catch (e) {
-            logger.debug('[TurnDiffReporter] journal record failed', e)
-        }
-        // turn 内累积（归因主源，独立于 journal 是否启用）：归并规则单源 ToolChangeJournal
+        // turn 内累积（归因主源）：归并规则单源 ToolChangeJournal
         this.turnAccumulator.record({ path, beforeContent, afterContent, toolName: observed.toolName })
-        // afterContent 缺失（Edit 类只带 before）：异步读盘补全 journal 与 turn 累积
+        // afterContent 缺失（Edit 类只带 before）：异步读盘补全 turn 累积
         if (afterContent === undefined) this.scheduleAfterRead(path, observed.toolName)
     }
 
@@ -177,12 +170,6 @@ export class TurnDiffReporter {
             .then(() => readFile(path, 'utf8'))
             .then((content) => {
                 if (epoch !== this.turnEpoch) return
-                // journal 只补 after 不计写入次数（写入计数归属本次 tool_result，已在同步路径 +1）
-                try {
-                    this.journal?.recordAfter(path, content, toolName)
-                } catch (e) {
-                    logger.debug('[TurnDiffReporter] journal recordAfter failed', e)
-                }
                 this.turnAccumulator.recordAfter(path, content, toolName)
             })
             .catch(() => undefined) // 读失败（文件已删/不可读）：保持占位 null；链上吞错不断链

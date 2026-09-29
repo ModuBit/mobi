@@ -15,21 +15,11 @@
  */
 
 /**
- * 工具层变更记录（ToolChangeJournal，审查重写 v2 spec 2.1）——turn 档的兜底事实源：
- * 从 CC 原生 toolUseResult 采集 structuredPatch 同源的 originalFile / content，按 path
- * 归并（before 取首次、after 取末次、writeCount 累加）。
- *
- * 消费方（票 04 resolver）：非 git 目录的降级源、gitignored 文件的补入源。
- * 落盘：`.mobi/turn-diffs/<sessionId>/tool-changes.json`（与 turn 快照引用的
- * refs/mobi/turn-diffs/<sessionId> 同一会话子树约定），record 触发 500ms 去抖原子写；
- * 重启会话 restore 恢复。损坏文件容错：解析失败按空 journal 起步（事实源宁可缺失
- * 不阻塞主流程）。
+ * 工具层变更归并规则单源（ToolChangeJournal，审查重写 v2 票03 引入）——turn 内按
+ * path 归并内容对（before 取首次、after 取末次、writeCount 累加、toolNames 保序
+ * 去重）。turn-archive B 后只作 TurnDiffReporter 的每轮内存累积器（全文只进内存，
+ * 封口时合成 patch 落归档，全文零进盘；tool-changes.json 持久层已随 B 方案退场）。
  */
-
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { sanitizeSessionId } from './gitExec'
-import { writeFileAtomic } from './atomicWrite'
 
 /** 归并后的单文件变更事实 */
 export type ToolChangeEntry = {
@@ -43,7 +33,7 @@ export type ToolChangeEntry = {
     toolNames: string[]
 }
 
-/** 落盘/restore 的 wire 形状：path → entry */
+/** snapshot 的 wire 形状：path → entry */
 export type ToolChangeSnapshot = { files: Record<string, ToolChangeEntry> }
 
 /** record 入参（afterContent 缺省 = 本条只补 before 占位，不覆盖末次内容） */
@@ -54,7 +44,6 @@ export type ToolChangeRecordInput = {
     toolName: string
 }
 
-/** 归并与序列化逻辑收口在本类（纯内存，I/O 在 PersistentToolChangeJournal） */
 export class ToolChangeJournal {
     private readonly files = new Map<string, ToolChangeEntry>()
 
@@ -97,97 +86,5 @@ export class ToolChangeJournal {
     get(path: string): ToolChangeEntry | undefined {
         const entry = this.files.get(path)
         return entry ? { ...entry, toolNames: [...entry.toolNames] } : undefined
-    }
-
-    /** 从落盘 JSON 恢复（逐条形状过滤，坏条目跳过不抛） */
-    static restore(raw: unknown): ToolChangeJournal {
-        const journal = new ToolChangeJournal()
-        const files = (raw as ToolChangeSnapshot | null | undefined)?.files
-        if (!files || typeof files !== 'object') return journal
-        for (const [path, entry] of Object.entries(files)) {
-            if (typeof path !== 'string' || path.length === 0 || !entry || typeof entry !== 'object') continue
-            const e = entry as Partial<ToolChangeEntry>
-            journal.files.set(path, {
-                beforeContent: typeof e.beforeContent === 'string' ? e.beforeContent : null,
-                afterContent: typeof e.afterContent === 'string' ? e.afterContent : null,
-                writeCount: typeof e.writeCount === 'number' && Number.isFinite(e.writeCount) ? e.writeCount : 1,
-                toolNames: Array.isArray(e.toolNames) ? e.toolNames.filter((n): n is string => typeof n === 'string') : [],
-            })
-        }
-        return journal
-    }
-}
-
-/** 工具层变更文件的落盘路径：工作区 `.mobi/turn-diffs/<sessionId>/tool-changes.json` */
-export function getToolChangesPath(workspaceRoot: string, sessionId: string): string {
-    // 字符面单源 sanitizeSessionId（与快照 ref 子树同清洗，目录才对得上）
-    return join(workspaceRoot, '.mobi', 'turn-diffs', sanitizeSessionId(sessionId), 'tool-changes.json')
-}
-
-/** 只读装载（RPC handler 消费）：文件不存在/损坏按空 journal——兜底源宁可缺失不阻塞查询 */
-export async function loadToolChangeJournal(filePath: string): Promise<ToolChangeJournal> {
-    try {
-        return ToolChangeJournal.restore(JSON.parse(await readFile(filePath, 'utf8')))
-    } catch {
-        return new ToolChangeJournal()
-    }
-}
-
-/**
- * 带落盘调度的持久化 journal：launcher/reporter 依赖的形态——record 即调度去抖写，
- * flush/dispose 收口刷盘。原子写（tmp + rename）防半截 JSON。
- */
-export class PersistentToolChangeJournal {
-    private timer: ReturnType<typeof setTimeout> | null = null
-    private pending: Promise<void> = Promise.resolve()
-
-    private constructor(
-        private readonly filePath: string,
-        readonly journal: ToolChangeJournal,
-        private readonly debounceMs: number,
-    ) {}
-
-    /** 打开：读既有文件恢复（不存在/损坏按空起步） */
-    static async open(filePath: string, options?: { debounceMs?: number }): Promise<PersistentToolChangeJournal> {
-        return new PersistentToolChangeJournal(filePath, await loadToolChangeJournal(filePath), options?.debounceMs ?? 500)
-    }
-
-    /** 透传记录并调度去抖落盘 */
-    record(entry: ToolChangeRecordInput): void {
-        this.journal.record(entry)
-        this.scheduleWrite()
-    }
-
-    /** 透传只补 after（不计写入次数）并调度去抖落盘 */
-    recordAfter(path: string, afterContent: string, toolName: string): void {
-        this.journal.recordAfter(path, afterContent, toolName)
-        this.scheduleWrite()
-    }
-
-    private scheduleWrite(): void {
-        if (this.timer) clearTimeout(this.timer)
-        this.timer = setTimeout(() => {
-            this.timer = null
-            this.pending = this.pending.then(() => this.write()).catch(() => undefined)
-        }, this.debounceMs)
-    }
-
-    private async write(): Promise<void> {
-        await writeFileAtomic(this.filePath, JSON.stringify(this.journal.snapshot()))
-    }
-
-    /** 立即落盘（取消挂起定时器） */
-    async flush(): Promise<void> {
-        if (this.timer) {
-            clearTimeout(this.timer)
-            this.timer = null
-        }
-        this.pending = this.pending.then(() => this.write()).catch(() => undefined)
-        await this.pending
-    }
-
-    /** 退出前收口：落盘后不再接受新写入（dispose 后 record 仍内存安全，只是不再刷盘） */
-    async dispose(): Promise<void> {
-        await this.flush()
     }
 }
