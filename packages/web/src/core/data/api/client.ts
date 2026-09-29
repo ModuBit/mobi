@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus, DiffTarget, GitReviewData, GitReviewFileDiff, GitReviewFileQuery, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -219,13 +219,7 @@ export function createMobiApi() {
                 client.get<ListFilesResponse>(`/api/sessions/${sessionId}/search-files`, { params: { query, type }, signal: opts?.signal }),
             listDirectory: (sessionId: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-directory`, { params: { path, prefix }, signal: opts?.signal }),
-            // git 审查总览（turn-diff 审查视图）：四档范围数据一次拉（会话休眠可查，machine 通道）
-            gitReview: (sessionId: string, opts?: { signal?: AbortSignal }) =>
-                client.get<GitReviewData | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review`, { signal: opts?.signal }),
-            // git 审查单文件 diff 三件套（patch + before/after 全文）
-            gitReviewFile: (sessionId: string, query: GitReviewFileQuery) =>
-                client.post<GitReviewFileDiff | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/file`, query),
-            // ── 审查重写 v2 六方法（DiffTarget 统一模型）──
+            // ── 审查 v2 六方法（DiffTarget 统一模型；machine 通道，会话休眠可查）──
             gitReviewOverview: (sessionId: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ReviewOverview | { success: false; error: string }>(`/api/sessions/${sessionId}/git-review/overview`, { signal: opts?.signal }),
             gitReviewFiles: (sessionId: string, target: DiffTarget) =>

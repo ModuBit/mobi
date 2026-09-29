@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, GitReviewFileQuerySchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
@@ -1005,56 +1005,6 @@ export function createSessionsRoutes(
             return c.json({
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to read file meta',
-            }, 500)
-        }
-    })
-
-    // git 审查总览（turn-diff 审查视图）：四档一次拉。hub 纯转发——git 事实全部在
-    // CLI 侧 machine 通道现查（ADR 0006），会话休眠可查
-    app.get('/sessions/:id/git-review', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        try {
-            return c.json(await engine.gitReviewData(sessionResult.sessionId))
-        } catch (error) {
-            return c.json({
-                success: false,
-                error: error instanceof Error ? error.message : 'Failed to collect git review data',
-            }, 500)
-        }
-    })
-
-    // git 审查单文件 diff（body = GitReviewFileQuery：scope + path；last-turn 两树由 CLI 侧从快照链解析）
-    app.post('/sessions/:id/git-review/file', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        const parsed = GitReviewFileQuerySchema.safeParse(await c.req.json().catch(() => null))
-        if (!parsed.success) {
-            return c.json({ success: false, error: 'Invalid git review file query' }, 400)
-        }
-
-        try {
-            return c.json(await engine.gitReviewFile(sessionResult.sessionId, parsed.data))
-        } catch (error) {
-            return c.json({
-                success: false,
-                error: error instanceof Error ? error.message : 'Failed to read git diff',
             }, 500)
         }
     })

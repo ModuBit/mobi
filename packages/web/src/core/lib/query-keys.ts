@@ -59,11 +59,7 @@ export const queryKeys = {
     sessionFile: (sessionId: string, path: string, etag?: string) => ['session-file', sessionId, path, etag] as const,
     /** 会话文件元数据（mime/size/etag） */
     sessionFileMeta: (sessionId: string, path: string) => ['session-file-meta', sessionId, path] as const,
-    /** git 审查总览（四档范围数据） */
-    gitReview: (sessionId: string) => ['git-review', sessionId] as const,
-    /** git 审查单文件 diff（version = 审查总览的 updatedAt：总览刷新即旧 diff 失效；两树指针不进协议） */
-    gitReviewFile: (sessionId: string, scope: string, path: string, version: number | string = '') => ['git-review-file', sessionId, scope, path, version] as const,
-    // ── 审查重写 v2（DiffTarget 统一模型）：target 进键用 JSON 稳定序列化；
+    // ── 审查 v2（DiffTarget 统一模型）：target 进键用 JSON 稳定序列化；
     //  version = 总览的 targetGeneration（CLI 数据版本，防「总览展示与点击之间数据变化」陈旧）──
     gitReviewOverview: (sessionId: string) => ['git-review-v2-overview', sessionId] as const,
     gitReviewFiles: (sessionId: string, target: DiffTarget, version: number | string = '') => ['git-review-v2-files', sessionId, JSON.stringify(target), String(version)] as const,

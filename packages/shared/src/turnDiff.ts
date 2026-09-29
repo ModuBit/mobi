@@ -84,64 +84,8 @@ export function summarizeTurnDiffFiles(files: readonly TurnDiffFileEntry[]): Tur
 
 // ─── 审查数据链（git RPC，ADR 0006 machine 通道）───────────────────────────────
 
-/** 审查范围档位（受控注册，CONTEXT.md「审查范围」）：未注册的档位在结构上不存在 */
-export const GIT_REVIEW_SCOPES = ['last-turn', 'uncommitted', 'unstaged', 'staged'] as const
-export type GitReviewScope = (typeof GIT_REVIEW_SCOPES)[number]
-
-/** 单档位数据：文件条目 + 汇总 + 事实指针（last-turn 的两树；其他档 null） */
-export const GitReviewScopeDataSchema = z.object({
-    files: z.array(TurnDiffFileEntrySchema),
-    stats: TurnDiffStatsSchema,
-    /** last-turn 档的两树指针（UI 点文件据此回查 diff）；其他档为 null。
-     *  turnIndex = head 快照序号：web 发单文件查询时原样带回，CLI 按链上该序号取树——
-     *  总览展示与点击之间有新轮完成时，before/after 仍钉在用户看到的那对树上 */
-    git: z.object({
-        baseTree: z.string().min(1),
-        headTree: z.string().min(1),
-        turnIndex: z.number().int().positive(),
-    }).nullable(),
-    /** untracked 截断事实（超上限不再逐个数行，条目仍列出但计数可能缺失） */
-    truncated: z.boolean().optional(),
-})
-export type GitReviewScopeData = z.infer<typeof GitReviewScopeDataSchema>
-
-/** 审查总览：四档一次拉（与会话 metadata 解析出的 cwd 绑定，hub 只透传） */
-export const GitReviewDataSchema = z.object({
-    /** 非 git 目录总开关：true 时四档全 null（UI 诚实空态） */
-    unavailable: z.boolean(),
-    scopes: z.object({
-        'last-turn': GitReviewScopeDataSchema.nullable(),
-        uncommitted: GitReviewScopeDataSchema,
-        unstaged: GitReviewScopeDataSchema,
-        staged: GitReviewScopeDataSchema,
-    }),
-})
-export type GitReviewData = z.infer<typeof GitReviewDataSchema>
-
-/** 单文件 diff 查询：四档统一 {scope, path}——last-turn 的两树解析由 CLI 侧从快照链
- *  完成（链在它手里，浏览器不传树指针）；rename 旧路径同样由 CLI 从 diff 条目自解析。
- *  陈旧性由 web 缓存键携带审查总览的刷新版本（协议外元数据，不进请求体） */
-export const GitReviewFileQuerySchema = z.object({
-    scope: z.enum(GIT_REVIEW_SCOPES),
-    path: z.string().min(1),
-    /** last-turn 档防陈旧：总览返回的 head 快照序号原样带回，CLI 按链上该序号取两树
-     *  （缺省 = 链尾，兼容旧客户端/编程调用） */
-    turnIndex: z.number().int().positive().optional(),
-})
-export type GitReviewFileQuery = z.infer<typeof GitReviewFileQuerySchema>
-
-/** 单文件 diff 三件套（patch 给统计与降级、before/after 全文给渲染，ZCode GitDiffResult 同款） */
-export const GitReviewFileDiffSchema = z.object({
-    patch: z.string(),
-    before: z.string().nullable(),
-    after: z.string().nullable(),
-})
-export type GitReviewFileDiff = z.infer<typeof GitReviewFileDiffSchema>
-
 /** machine 通道 git RPC 方法名（CLI handler 注册与 hub RpcGateway 转发共用，防漂移单源） */
 export const GIT_REVIEW_RPC = {
-    data: 'gitReviewData',
-    file: 'gitReviewFile',
     /** 会话删除时的快照引用清理（hub best-effort 调用） */
     clear: 'clearTurnSnapshots',
     // 审查重写 v2 六方法（spec .scratch/review-render-rewrite）：DiffTarget 统一模型

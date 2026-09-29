@@ -37,8 +37,6 @@ import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
     GIT_REVIEW_RPC,
-    GitReviewDataSchema,
-    GitReviewFileDiffSchema,
     OVERSIZE_DIFF_LINES,
     ReviewCommitsResultSchema,
     ReviewContentsResultSchema,
@@ -457,75 +455,6 @@ export class GitReviewReader {
         }
     }
 
-    // ── 旧协议兼容壳（web 未迁移前的兼容面，票 08 删）────────────────────────────
-
-    /**
-     * @deprecated 旧四档总览：内部走 overview + files 新实现，组装旧 schema 形状。
-     * 旧 GitReviewDataSchema 的 unavailable 总开关 = 新 isGitRepository。
-     */
-    async reviewData(sessionId: string, store: TurnSnapshotStore | null): Promise<unknown> {
-        const overview = await this.overview(sessionId, store)
-        if (!overview.isGitRepository) {
-            return GitReviewDataSchema.parse({
-                unavailable: true,
-                scopes: { 'last-turn': null, uncommitted: emptyScope(), unstaged: emptyScope(), staged: emptyScope() },
-            })
-        }
-
-        // last-turn files：链不足两颗（被清理/无基线）时旧语义 = null 档，不抛
-        const turnResult = await this.files(sessionId, { kind: 'turn' }, store).catch(() => null) as { files: ReviewFileEntry[] } | null
-        const [uncommitted, unstaged, staged, chain] = await Promise.all([
-            this.files(sessionId, { kind: 'worktree', area: 'uncommitted' }, store),
-            this.files(sessionId, { kind: 'worktree', area: 'unstaged' }, store),
-            this.files(sessionId, { kind: 'worktree', area: 'staged' }, store),
-            store ? store.listChain(sessionId) : Promise.resolve([]),
-        ])
-
-        // last-turn 两树指针：旧协议让 web 带回 turnIndex 钉树（新协议由 targetGeneration 替代）
-        const head = chain.at(-1)
-        const base = chain.at(-2)
-        const lastTurnGit = base && head ? { baseTree: base.tree, headTree: head.tree, turnIndex: head.index } : null
-
-        const turnData = toOldEntries(turnResult?.files ?? [])
-        const uncommittedData = toOldEntries((uncommitted as { files: ReviewFileEntry[] }).files)
-        const unstagedData = toOldEntries((unstaged as { files: ReviewFileEntry[] }).files)
-        const stagedData = toOldEntries((staged as { files: ReviewFileEntry[] }).files)
-
-        return GitReviewDataSchema.parse({
-            unavailable: false,
-            scopes: {
-                'last-turn': lastTurnGit
-                    ? { files: turnData, stats: summarizeTurnDiffFiles(turnData), git: lastTurnGit }
-                    : null,
-                uncommitted: { files: uncommittedData, stats: summarizeTurnDiffFiles(uncommittedData), git: null },
-                unstaged: {
-                    files: unstagedData,
-                    stats: summarizeTurnDiffFiles(unstagedData),
-                    git: null,
-                    ...((unstaged as { truncated: boolean }).truncated && { truncated: true }),
-                },
-                staged: { files: stagedData, stats: summarizeTurnDiffFiles(stagedData), git: null },
-            },
-        })
-    }
-
-    /**
-     * @deprecated 旧单文件 diff 三件套：内部走 patch + contents 新实现，组装旧 schema 形状。
-     *  oversized/binary 的旧语义 = before/after 置 null（patch 空串），与新协议一致。
-     */
-    async fileDiff(query: { scope: 'last-turn' | 'uncommitted' | 'unstaged' | 'staged'; path: string; turnIndex?: number }, store: TurnSnapshotStore | null, sessionId: string): Promise<unknown> {
-        const target: DiffTarget = query.scope === 'last-turn'
-            ? { kind: 'turn', ...(query.turnIndex !== undefined ? { turnIndex: query.turnIndex } : {}) }
-            : { kind: 'worktree', area: query.scope }
-        const [patchResult, contentsResult] = await Promise.all([
-            this.patch(sessionId, target, query.path, store),
-            this.contents(sessionId, target, query.path, store),
-        ])
-        const p = patchResult as { patch: string }
-        const c = contentsResult as { before: string | null; after: string | null }
-        return GitReviewFileDiffSchema.parse({ patch: p.patch, before: c.before, after: c.after })
-    }
-
     // ── 全文读取设施 ───────────────────────────────────────────────────────────
 
     /** git show <rev>:<path>（目标不存在返回 null；rev 形如 tree sha / HEAD / ''=index）。
@@ -578,19 +507,6 @@ function toReviewEntry(e: TurnDiffFileEntry): ReviewFileEntry {
     })
 }
 
-/** review 条目 → 旧协议条目（兼容壳专用：nullable 计数回 0，oversized → oversize） */
-function toOldEntries(files: ReviewFileEntry[]): TurnDiffFileEntry[] {
-    return files.map((f) => ({
-        path: f.path,
-        kind: f.kind,
-        additions: f.additions ?? 0,
-        deletions: f.deletions ?? 0,
-        ...(f.previousPath !== null && { previousPath: f.previousPath }),
-        ...(f.binary && { binary: true }),
-        ...(f.oversized && { oversize: true }),
-    }))
-}
-
 /** uncommitted = staged ∪ unstaged：按 path 合并计数（kind 取信息量更大的优先） */
 function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffFileEntry[] {
     const byPath = new Map<string, TurnDiffFileEntry>()
@@ -610,31 +526,11 @@ function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffF
     return [...byPath.values()].sort((x, y) => x.path.localeCompare(y.path))
 }
 
-function emptyScope(): { files: TurnDiffFileEntry[]; stats: TurnDiffStats; git: null } {
-    return { files: [], stats: summarizeTurnDiffFiles([]), git: null }
-}
-
 /**
  * machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta）。
  * git 执行统一走 gitTurnSnapshotStore 的收口 git()；本模块只负责查询编排与降级语义。
  */
 export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.data, async (data) => {
-        try {
-            return await readerFor(data.cwd).reviewData(data.sessionId, await openTurnSnapshotStore(data.cwd))
-        } catch (e) {
-            logger.debug('[GitReview] reviewData failed', e)
-            return rpcError('Failed to collect git review data')
-        }
-    })
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string; query: { scope: 'last-turn' | 'uncommitted' | 'unstaged' | 'staged'; path: string; turnIndex?: number } }, unknown>(GIT_REVIEW_RPC.file, async (data) => {
-        try {
-            return await readerFor(data.cwd).fileDiff(data.query, await openTurnSnapshotStore(data.cwd), data.sessionId)
-        } catch (e) {
-            logger.debug('[GitReview] fileDiff failed', e)
-            return rpcError('Failed to read git diff')
-        }
-    })
     // 会话删除清引用（ADR 0008 refs 治理，hub best-effort 调用）：git mv 不适用——
     // 快照引用本就不进 index，直接逐个删 ref
     rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.clear, async (data) => {

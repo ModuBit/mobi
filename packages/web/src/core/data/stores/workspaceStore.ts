@@ -16,7 +16,7 @@
 
 import { create } from 'zustand'
 import { uuid } from '@/core/lib/uuid'
-import { GIT_REVIEW_SCOPES, type SyncEvent } from '@mobi/shared'
+import { type SyncEvent } from '@mobi/shared'
 import { basename } from '@/core/utils/path'
 
 /** 每 session 终端数上限（与后端 DEFAULT_MAX_TERMINALS 对齐） */
@@ -54,9 +54,6 @@ export interface TabViewState {
     scrollRatio?: number
     /** 缩放（1=100%），仅可缩放类型（如 PDF） */
     scale?: number
-    /** 审查 tab 的范围档位（turn-diff 票06：范围选择持久化，重进 tab 保持上次档位） */
-    /** @deprecated 旧审查档位持久化（审查重写 v2 起 reviewTarget 替代，08 删） */
-    reviewScope?: (typeof GIT_REVIEW_SCOPES)[number]
     /** 审查目标持久化（DiffTarget 的 JSON 序列化键，票05） */
     reviewTarget?: string
     /** 审查 diff 布局（unified/split，审查重写票06） */

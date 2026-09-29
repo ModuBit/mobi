@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type DiffTarget, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
@@ -323,17 +323,7 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'readFileRange', { cwd, path, offset, length }) as RpcReadFileRangeResponse
     }
 
-    // machine 通道 git 审查数据链（turn-diff 审查视图）：cwd 由 hub 从会话 metadata 注入，
-    // 纯转发——git 事实全部在 CLI 侧现查，hub 无 git 相关逻辑
-    async machineGitReviewData(machineId: string, cwd: string, sessionId: string): Promise<GitReviewData | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.data, { cwd, sessionId }) as GitReviewData | { success: false; error: string }
-    }
-
-    async machineGitReviewFile(machineId: string, cwd: string, sessionId: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.file, { cwd, sessionId, query }) as GitReviewFileDiff | { success: false; error: string }
-    }
-
-    // ── 审查重写 v2 六方法（DiffTarget 统一模型）：同款纯转发，git 事实全部在 CLI 侧 ──
+    // ── 审查重写 v2 六方法（DiffTarget 统一模型）：纯转发，git 事实全部在 CLI 侧 ──
     async machineGitReviewOverview(machineId: string, cwd: string, sessionId: string): Promise<ReviewOverview | { success: false; error: string }> {
         return await this.machineRpc(machineId, GIT_REVIEW_RPC.overview, { cwd, sessionId }) as ReviewOverview | { success: false; error: string }
     }
