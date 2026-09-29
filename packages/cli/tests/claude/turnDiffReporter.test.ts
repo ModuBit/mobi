@@ -386,6 +386,118 @@ describe('TurnDiffReporter（归因主源 + 封口归档）', () => {
     })
 })
 
+describe('TurnDiffReporter（sidechain/subagent 写工具补采）', () => {
+    /** sidechain assistant tool_use（sdkToLogConverter 实际形态：顶层 isSidechain/parentToolUseId 标记） */
+    function sidechainAssistantToolUse(toolUseId: string, name: string, filePath: string, parentToolUseId: string): RawJSONLines {
+        return {
+            type: 'assistant',
+            isSidechain: true,
+            parentToolUseId,
+            message: {
+                role: 'assistant',
+                content: [{ type: 'tool_use', id: toolUseId, name, input: { file_path: filePath } }],
+            },
+        } as unknown as RawJSONLines
+    }
+
+    /** sidechain user tool_result（snake_case tool_use_result，带 originalFile 全文对） */
+    function sidechainEditResult(toolUseId: string, filePath: string, originalFile: string, parentToolUseId: string): RawJSONLines {
+        return {
+            type: 'user',
+            isSidechain: true,
+            parentToolUseId,
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId }] },
+            tool_use_result: {
+                filePath,
+                originalFile,
+                structuredPatch: [{ lines: ['-old', '+new'] }],
+            },
+        } as unknown as RawJSONLines
+    }
+
+    it('sidechain Edit 全文对进入封口归档：subagent 编辑归到外层 turn', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-sidechain-'))
+        try {
+            const filePath = join(dir, 'sub.ts')
+            await writeFile(filePath, 'new\n', 'utf8')
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            reporter.observe(sidechainAssistantToolUse('st1', 'Edit', filePath, 'task-1'))
+            reporter.observe(sidechainEditResult('st1', filePath, 'old\n', 'task-1'))
+            await reporter.onTurnEnd()
+
+            const [payload] = sentPayloads(send)
+            expect(payload!.files.map((f) => f.path)).toEqual([filePath])
+            const sealed = archive.records()[0]!
+            expect(sealed.files[0]).toMatchObject({ path: filePath, writeCount: 1, additions: 1, deletions: 1 })
+            expect(sealed.files[0]!.patch).toContain('+new')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('主线 + sidechain 同 turn 混合编辑同文件：before 取首次 / after 取末次 / writeCount 累加', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-mixed-'))
+        try {
+            const filePath = join(dir, 'a.ts')
+            await writeFile(filePath, 'final\n', 'utf8')
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            // 主线 Edit（before v0）→ sidechain Edit（before v1）→ 主线 Write（after final）
+            reporter.observe(assistantToolUse('t1', 'Edit', filePath))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                tool_use_result: { filePath, originalFile: 'v0\n', structuredPatch: [{ lines: ['-v0', '+v1'] }] },
+            } as unknown as RawJSONLines)
+            reporter.observe(sidechainAssistantToolUse('st1', 'Edit', filePath, 'task-1'))
+            reporter.observe(sidechainEditResult('st1', filePath, 'v1\n', 'task-1'))
+            reporter.observe(assistantToolUse('t2', 'Write', filePath))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2' }] },
+                tool_use_result: { filePath, content: 'final\n' },
+            } as unknown as RawJSONLines)
+            await reporter.onTurnEnd()
+
+            const sealed = archive.records()[0]!
+            const f = sealed.files[0]!
+            expect(f).toMatchObject({ path: filePath, writeCount: 3 })
+            expect(f.toolNames).toEqual(['Edit', 'Write']) // 保序去重
+            expect(f.patch).toContain('-v0')
+            expect(f.patch).toContain('+final')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('Task 工具自身的结果不产生文件条目（非编辑族天然排除）', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-tasktool-'))
+        try {
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            reporter.observe(assistantToolUse('t1', 'Task', '/proj/na'))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                tool_use_result: { stdout: 'subagent finished, edited 3 files' },
+            } as unknown as RawJSONLines)
+            await reporter.onTurnEnd()
+
+            expect(sentPayloads(send)).toHaveLength(0)
+            expect(archive.records()).toHaveLength(0)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+})
+
 describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）', () => {
     /** 构造带 originalFile 的 Edit 结果消息（真实 snake_case 形态） */
     function editResult(toolUseId: string, filePath: string, originalFile: string): RawJSONLines {
