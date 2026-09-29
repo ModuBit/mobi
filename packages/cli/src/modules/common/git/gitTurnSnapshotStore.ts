@@ -66,6 +66,11 @@ export async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv):
  *  规模上界 = 出现过的工作区目录数，无需淘汰。 */
 const stores = new Map<string, TurnSnapshotStore | null>()
 
+/** 仓库判定缓存失效（审查 v2 git init 后放行）：下次 openTurnSnapshotStore 重跑 rev-parse */
+export function dropTurnSnapshotStoreCache(cwd: string): void {
+    stores.delete(cwd)
+}
+
 /**
  * 打开 cwd 所在仓库的快照存储；cwd 不在 git 仓库内返回 null——
  * 不可用是显式返回值而非异常，调用方据此走非 git 降级口径。

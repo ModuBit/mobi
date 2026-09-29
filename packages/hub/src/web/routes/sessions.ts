@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, GitReviewFileQuerySchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, GitReviewFileQuerySchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
@@ -1056,6 +1056,93 @@ export function createSessionsRoutes(
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to read git diff',
             }, 500)
+        }
+    })
+
+    // ── 审查重写 v2（DiffTarget 统一模型，六方法）：hub 纯转发，target 经 schema 校验 ──
+    app.get('/sessions/:id/git-review/overview', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+        try {
+            return c.json(await engine.gitReviewOverview(sessionResult.sessionId))
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to collect review overview' }, 500)
+        }
+    })
+
+    app.post('/sessions/:id/git-review/files', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+        const parsed = DiffTargetSchema.safeParse(await c.req.json().catch(() => null))
+        if (!parsed.success) return c.json({ success: false, error: 'Invalid diff target' }, 400)
+        try {
+            return c.json(await engine.gitReviewFiles(sessionResult.sessionId, parsed.data))
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list review files' }, 500)
+        }
+    })
+
+    app.post('/sessions/:id/git-review/diff', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+        const body = await c.req.json().catch(() => null) as { target?: unknown; path?: unknown } | null
+        const parsedTarget = DiffTargetSchema.safeParse(body?.target)
+        if (!parsedTarget.success || typeof body?.path !== 'string' || body.path.length === 0) {
+            return c.json({ success: false, error: 'Invalid review diff query' }, 400)
+        }
+        try {
+            return c.json(await engine.gitReviewDiff(sessionResult.sessionId, parsedTarget.data, body.path))
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to read review diff' }, 500)
+        }
+    })
+
+    app.post('/sessions/:id/git-review/contents', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+        const body = await c.req.json().catch(() => null) as { target?: unknown; path?: unknown } | null
+        const parsedTarget = DiffTargetSchema.safeParse(body?.target)
+        if (!parsedTarget.success || typeof body?.path !== 'string' || body.path.length === 0) {
+            return c.json({ success: false, error: 'Invalid review contents query' }, 400)
+        }
+        try {
+            return c.json(await engine.gitReviewContents(sessionResult.sessionId, parsedTarget.data, body.path))
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to read review contents' }, 500)
+        }
+    })
+
+    app.post('/sessions/:id/git-review/commits', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+        const body = await c.req.json().catch(() => null) as { cursor?: unknown } | null
+        const cursor = typeof body?.cursor === 'string' ? body.cursor : undefined
+        try {
+            return c.json(await engine.gitReviewCommits(sessionResult.sessionId, cursor))
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list commits' }, 500)
+        }
+    })
+
+    app.post('/sessions/:id/git-review/init', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) return sessionResult
+        try {
+            return c.json(await engine.gitReviewInit(sessionResult.sessionId))
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to initialize git repository' }, 500)
         }
     })
 

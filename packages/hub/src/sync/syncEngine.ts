@@ -15,7 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type DiffTarget, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
@@ -973,6 +973,37 @@ export class SyncEngine {
     async gitReviewFile(sessionId: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
         const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
         return await this.rpcGateway.machineGitReviewFile(machineId, cwd, sessionId, query)
+    }
+
+    // ── 审查重写 v2 六方法（DiffTarget 统一模型，同 resolveSessionFileExecution 寻址）──
+    async gitReviewOverview(sessionId: string): Promise<ReviewOverview | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewOverview(machineId, cwd, sessionId)
+    }
+
+    async gitReviewFiles(sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewFiles(machineId, cwd, sessionId, target)
+    }
+
+    async gitReviewDiff(sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewDiff(machineId, cwd, sessionId, target, path)
+    }
+
+    async gitReviewContents(sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewContents(machineId, cwd, sessionId, target, path)
+    }
+
+    async gitReviewCommits(sessionId: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewCommits(machineId, cwd, cursor)
+    }
+
+    async gitReviewInit(sessionId: string): Promise<ReviewActionResult | { success: false; error: string }> {
+        const { machineId, cwd } = this.resolveSessionFileExecution(sessionId)
+        return await this.rpcGateway.machineGitReviewInit(machineId, cwd)
     }
 
     /** machine 通道分片读文件（同上） */

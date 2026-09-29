@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type DiffTarget, type GitReviewData, type GitReviewFileDiff, type GitReviewFileQuery, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
@@ -331,6 +331,31 @@ export class RpcGateway {
 
     async machineGitReviewFile(machineId: string, cwd: string, sessionId: string, query: GitReviewFileQuery): Promise<GitReviewFileDiff | { success: false; error: string }> {
         return await this.machineRpc(machineId, GIT_REVIEW_RPC.file, { cwd, sessionId, query }) as GitReviewFileDiff | { success: false; error: string }
+    }
+
+    // ── 审查重写 v2 六方法（DiffTarget 统一模型）：同款纯转发，git 事实全部在 CLI 侧 ──
+    async machineGitReviewOverview(machineId: string, cwd: string, sessionId: string): Promise<ReviewOverview | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.overview, { cwd, sessionId }) as ReviewOverview | { success: false; error: string }
+    }
+
+    async machineGitReviewFiles(machineId: string, cwd: string, sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.files, { cwd, sessionId, target }) as ReviewFilesResult | { success: false; error: string }
+    }
+
+    async machineGitReviewDiff(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.diff, { cwd, sessionId, target, path }) as ReviewPatchResult | { success: false; error: string }
+    }
+
+    async machineGitReviewContents(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.contents, { cwd, sessionId, target, path }) as ReviewContentsResult | { success: false; error: string }
+    }
+
+    async machineGitReviewCommits(machineId: string, cwd: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.commits, { cwd, cursor }) as ReviewCommitsResult | { success: false; error: string }
+    }
+
+    async machineGitReviewInit(machineId: string, cwd: string): Promise<ReviewActionResult | { success: false; error: string }> {
+        return await this.machineRpc(machineId, GIT_REVIEW_RPC.init, { cwd }) as ReviewActionResult | { success: false; error: string }
     }
 
     // 会话删除后清理轮次快照引用（ADR 0008 refs 治理）；best-effort，失败由调用方 warn
