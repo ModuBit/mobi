@@ -18,6 +18,7 @@ import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter } from "./turnDiffReporter";
 import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
+import { FileTurnFulltextStore, getTurnFulltextRoot } from "@/modules/common/git/turnFulltextStore";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
@@ -64,10 +65,13 @@ export async function claudeLocalLauncher(
 
     // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；顺序流直发
     // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
+    // 全文目录存储（hydration）：封口落 a/b 全文 + 归档带 ref
     const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
+    const turnFulltext = new FileTurnFulltextStore(getTurnFulltextRoot(session.path, session.client.sessionId), session.path);
     const turnDiffReporter = new TurnDiffReporter(
         (m) => session.client.sendClaudeSessionMessage(m),
         turnArchive,
+        turnFulltext,
     );
 
     // Create scanner

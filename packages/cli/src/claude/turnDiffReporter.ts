@@ -31,9 +31,10 @@
  * （remote 传 messageQueue.enqueue 保 FIFO；local 顺序流直发）。下一轮用户消息快于
  * 合成完成时可能反超——合成是毫秒级快路径，接受此窗口。
  *
- * journal 采集边界：只覆盖 Edit/Write/MultiEdit/NotebookEdit 的 toolUseResult 全文对
- * （afterContent 落笔即读盘补全）；Bash/subagent 写入不在内——漏但不错归因（ZCode
- * 同行为）。投影口径（降级档）同此边界。
+ * journal 采集边界：覆盖 Edit/Write/MultiEdit/NotebookEdit 的 toolUseResult 全文对
+ * （afterContent 落笔即读盘补全），主线与 sidechain（subagent）消息流一视同仁——
+ * reporter 不看 parent_tool_use_id，sidechain 编辑归到外层 turn（采集契约有测试锁定）；
+ * Bash 写入不在内——漏但不错归因（ZCode 同行为）。投影口径（降级档）同此边界。
  */
 
 import { readFile } from 'node:fs/promises'
@@ -43,6 +44,7 @@ import { git } from '@/modules/common/git/gitExec'
 import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
 import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
+import type { TurnFulltextRef, TurnFulltextSealed } from '@/modules/common/git/turnFulltextStore'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { logger } from '@/ui/logger'
 
@@ -88,6 +90,9 @@ export class TurnDiffReporter {
         private readonly send: (raw: RawJSONLines) => void,
         /** turn 封口归档（历史轮回看的事实源）；缺省 = 不封口 */
         private readonly archive?: TurnArchiveStore,
+        /** 全文目录存储（hydration）：封口落 a/b 全文 + 目录模式合成 patch + 归档带
+         *  ref；缺省 = 归档条目无 ref（patch 走单文件兜底合成，行为同 B 方案） */
+        private readonly fulltext?: { sealFiles(turnIndex: number, files: ReadonlyArray<{ path: string; beforeContent: string | null; afterContent: string | null }>): Promise<Map<string, TurnFulltextSealed & { ref?: TurnFulltextRef }>> },
     ) {}
 
     /** 每条 SDK 转换消息（RawJSONLines）流过时观测；不抛错、不影响主流程 */
@@ -212,16 +217,44 @@ export class TurnDiffReporter {
         const files = (await this.composeFromTurnAccumulation()) ?? this.composeFromProjection()
         if (files.files.length === 0) return
         // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）。
-        // B 方案：全文只在内存——逐文件当场合成 patch（git spawn ~20ms/文件，轮末
-        // 一次性），归档只落 `{统计 + patch}`，全文零进盘（滚动单条覆盖写）
+        // hydration：全文镜像落 a/b 目录（turnFulltextStore），patch 由目录模式单次
+        // diff 合成，归档条目带 ref；无全文产出（旧构造/路径逃逸/落盘失败）走单文件兜底
         if (files.source === 'journal' && this.archive) {
             try {
                 // 内容对取自本轮累积器快照；counts 复用 files.files 已算结果（同源同时刻
                 // 同判定，不重跑 reviewEntryFromContents——判定单源 + 每文件省一遍全文 diff）
                 const accumulated = this.turnAccumulator.snapshot().files
+                // hydration：全文落 a/b 目录 + 单次目录模式 diff 合成整轮 patch（失败的
+                // 整体降级 = 全文件走单文件兜底，归档照常封口）
+                let fulltext: Map<string, TurnFulltextSealed> | null = null
+                if (this.fulltext) {
+                    try {
+                        fulltext = await this.fulltext.sealFiles(
+                            files.turnIndex,
+                            Object.entries(accumulated).map(([path, f]) => ({ path, beforeContent: f.beforeContent, afterContent: f.afterContent })),
+                        )
+                    } catch (e) {
+                        logger.debug('[TurnDiffReporter] fulltext seal failed, fallback to per-file synth', e)
+                    }
+                }
                 const sealedFiles = await Promise.all(files.files.map(async (e) => {
                     const f = accumulated[e.path]
                     if (!f) return []
+                    const viaFulltext = fulltext?.get(e.path)
+                    if (viaFulltext) {
+                        return [{
+                            path: e.path,
+                            kind: e.kind,
+                            additions: e.additions,
+                            deletions: e.deletions,
+                            writeCount: f.writeCount,
+                            toolNames: [...f.toolNames],
+                            patch: viaFulltext.patch,
+                            oversizedPatch: viaFulltext.oversized,
+                            ref: viaFulltext.ref,
+                        }]
+                    }
+                    // 无全文产出（旧构造 / 路径逃逸 / 落盘失败）：单文件兜底合成，无 ref
                     const raw = await synthesizeContentsPatch(git, e.path, f.beforeContent, f.afterContent)
                     const oversized = raw.split('\n').length > OVERSIZE_DIFF_LINES
                     return [{

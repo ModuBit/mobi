@@ -21,13 +21,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, TurnDiffPayloadSchema, type TurnDiffPayload } from '@mobi/shared'
 import { TurnDiffReporter } from '@/claude/turnDiffReporter'
 import { createInMemoryTurnArchiveStore, FileTurnArchiveStore, type TurnArchiveRecord } from '@/modules/common/git/turnArchiveStore'
+import { FileTurnFulltextStore } from '@/modules/common/git/turnFulltextStore'
+import { git } from '@/modules/common/git/gitExec'
 
 // 补读竞态脚本：同 path 多次补读并发时，模拟「R1 慢返回中间态、R2 快返回末次」的
 // resolve 乱序（磁盘真实时序 = 调度序）。未命中的 readFile 调用透传 actual。
@@ -598,6 +600,75 @@ describe('TurnDiffReporter（turn-archive B：滚动单条 + 封口存 patch）'
             expect(sealed.files[0]!.patch).toContain('+v3')
         } finally {
             await rm(dir, { recursive: true, force: true })
+        }
+    })
+})
+
+describe('TurnDiffReporter（hydration：全文目录 + 归档 ref）', () => {
+    /** 构造带 originalFile 的 Edit 结果消息（真实 snake_case 形态） */
+    function editResult(toolUseId: string, filePath: string, originalFile: string): RawJSONLines {
+        return {
+            type: 'user',
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId }] },
+            tool_use_result: {
+                filePath,
+                originalFile,
+                structuredPatch: [{ lines: ['-old', '+new'] }],
+            },
+        } as unknown as RawJSONLines
+    }
+
+    it('封口落 a/b 全文目录，归档条目带 ref，patch 来自目录模式合成', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-fulltext-'))
+        try {
+            const filePath = join(dir, 'src', 'a.ts')
+            await mkdir(join(dir, 'src'), { recursive: true })
+            await writeFile(filePath, 'new\n', 'utf8')
+            const archive = new FileTurnArchiveStore(join(dir, '.mobi', 'turn-diffs', 's-1', 'turn-archive.json'))
+            const fulltext = new FileTurnFulltextStore(join(dir, '.mobi', 'turn-diffs', 's-1'), dir, git)
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive, fulltext)
+
+            reporter.observe(assistantToolUse('t1', 'Edit', filePath))
+            reporter.observe(editResult('t1', filePath, 'old\n'))
+            await reporter.onTurnEnd()
+
+            const sealed = (await archive.loadLatest())!
+            const f = sealed.files[0]!
+            expect(f.ref).toEqual({ before: join('a', 'src', 'a.ts'), after: join('b', 'src', 'a.ts') })
+            expect(f.patch).toContain('-old')
+            expect(f.patch).toContain('+new')
+            // 全文在盘
+            const turnDir = join(dir, '.mobi', 'turn-diffs', 's-1', '1')
+            expect(await readFile(join(turnDir, 'a', 'src', 'a.ts'), 'utf8')).toBe('old\n')
+            expect(await readFile(join(turnDir, 'b', 'src', 'a.ts'), 'utf8')).toBe('new\n')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('工作区外路径：无 ref 无 patch 来源走单文件兜底合成，归档照常封口', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-escape-'))
+        const outside = await mkdtemp(join(tmpdir(), 'mobi-reporter-outside-'))
+        try {
+            const filePath = join(outside, 'x.ts')
+            await writeFile(filePath, 'new\n', 'utf8')
+            const archive = new FileTurnArchiveStore(join(dir, '.mobi', 'turn-diffs', 's-1', 'turn-archive.json'))
+            const fulltext = new FileTurnFulltextStore(join(dir, '.mobi', 'turn-diffs', 's-1'), dir, git)
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive, fulltext)
+
+            reporter.observe(assistantToolUse('t1', 'Edit', filePath))
+            reporter.observe(editResult('t1', filePath, 'old\n'))
+            await reporter.onTurnEnd()
+
+            const sealed = (await archive.loadLatest())!
+            const f = sealed.files[0]!
+            expect(f.ref).toBeUndefined()
+            expect(f.patch).toContain('+new') // 单文件兜底合成仍出 patch
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+            await rm(outside, { recursive: true, force: true })
         }
     })
 })
