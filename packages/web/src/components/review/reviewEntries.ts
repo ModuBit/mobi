@@ -26,12 +26,13 @@
 import { DiffTargetSchema, type DiffTarget, type ReviewFileEntry, type ReviewOverview } from '@mobi/shared'
 
 /**
- * 可 diff 判定：只有文本类条目才可展开（不可展开的行点击无效果、无箭头）。binary /
- * oversized 是 CLI 单点标记（oversized 行数过多无法渲染 diff，行内操作可跳文件查看器），
- * 行数判断只用于展开性——工具层降级源可能给不出计数（null 按 0）
+ * 可 diff 判定：只有文本类条目才可展开（不可展开的行点击无效果、无箭头）。binary 是
+ * CLI 单点标记；oversized 可展开——hydration 后读侧对带 ref 的归档条目现场合成 patch，
+ * 无 ref（旧归档）由 RowDiff 按 patch 结果降级 tooBig；行数判断只用于展开性——工具层
+ * 降级源可能给不出计数（null 按 0）
  */
 export function isDiffable(entry: ReviewFileEntry): boolean {
-    return !entry.binary && !entry.oversized && ((entry.additions ?? 0) + (entry.deletions ?? 0) > 0 || !!entry.previousPath)
+    return !entry.binary && ((entry.additions ?? 0) + (entry.deletions ?? 0) > 0 || !!entry.previousPath)
 }
 
 /** 档位可用性（overview 的可用性矩阵 → 当前 target 一个布尔）；overview 未到不算不可用 */

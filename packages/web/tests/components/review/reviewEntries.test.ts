@@ -53,6 +53,10 @@ describe('isDiffable（可展开判定）', () => {
     it('零变化且无旧路径 → 不可展开（如 mode-only 条目）', () => {
         expect(isDiffable(entry({ additions: 0, deletions: 0 }))).toBe(false)
     })
+
+    it('oversized → 可展开（hydration 后读侧现场合成 patch，无 ref 由 RowDiff 降级）', () => {
+        expect(isDiffable(entry({ oversized: true, additions: 6000, deletions: 0 }))).toBe(true)
+    })
 })
 
 describe('isTargetUnavailable（档位可用性矩阵）', () => {

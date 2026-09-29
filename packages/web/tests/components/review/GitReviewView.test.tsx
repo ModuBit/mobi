@@ -348,7 +348,7 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(row.textContent).toContain('before.txt')
     })
 
-    it('大 diff（oversized 由 CLI 打标，票06 起）：整行不可展开（无箭头、点击不发查询不出占位）', () => {
+    it('oversized 行：可展开并发 diff 拉取（hydration 后读侧现场合成 patch；无 ref 由 RowDiff 按结果降级 tooBig）', () => {
         const big = (t: DiffTarget | null) => ({
             files: t?.kind === 'turn'
                 ? [
@@ -366,12 +366,12 @@ describe('GitReviewView（hook 注入 v2）', () => {
             />,
         )
         const rows = screen.getAllByTestId('review-file-row')
+        // oversized 不再前置拦截：行有箭头，点击展开并发 patch 查询
+        expect(rows[0]!.querySelector('.review-row-chevron')).not.toBeNull()
         fireEvent.click(rows[0]!)
-        expect(queries.filter((q) => q !== null)).toHaveLength(0) // oversized 不发 diff 拉取
-        expect(expandedOf(rows[0]!)).toBe('false')
-        expect(rows[0]!.querySelector('.review-row-chevron')).toBeNull()
-        expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
-        // 行内「打开标签页」仍可用——oversized 唯一出口
+        expect(expandedOf(rows[0]!)).toBe('true')
+        expect(queries.filter((q) => q !== null)).toContain('huge.ts')
+        // 行内「打开标签页」仍可用
         fireEvent.click(rows[0]!.querySelector('button[aria-label="review.openInTab"]') as HTMLButtonElement)
         const s = useWorkspaceStore.getState().getSession('s1')
         expect(s.tabs.some((t) => t.mode === 'file' && t.filePath === 'huge.ts')).toBe(true)

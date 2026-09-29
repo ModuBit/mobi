@@ -44,8 +44,9 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
     const { t } = useTranslation()
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
-    // oversized 由 CLI 单点打标：不发 diff 拉取（null path → hook disabled），直接降级
-    const patch = deps.useReviewPatch(sessionId, target, entry.oversized ? null : entry.path, version)
+    // hydration 后 oversized 照常拉取：读侧对带 ref 的归档条目现场合成 patch，
+    // 无 ref（旧归档）返回 oversized 打标 → 按结果降级 tooBig
+    const patch = deps.useReviewPatch(sessionId, target, entry.path, version)
 
     // 纯 rename（内容零增删）的 patch 只有 rename 头、无 hunk——pierre 在
     // disableFileHeader 下渲染 0 高空白（E2E 实测），诚实给专用文案
@@ -58,7 +59,14 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
             </Flex>
         )
     }
-    if (entry.oversized) {
+    if (patch.error) {
+        return <Flex align="center" justify="center" style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-error)' }}>{patch.error}</Flex>
+    }
+    if (patch.isLoading || !patch.data) {
+        return <Flex align="center" justify="center" style={{ flex: 1, padding: 24 }}><Spin size="small" /></Flex>
+    }
+    if (patch.data.oversized) {
+        // 读侧打标仍在（旧归档无 ref / 现场合成失败）：降级 tooBig + 跳文件查看器
         return (
             <Flex data-testid="review-too-big" vertical align="center" justify="center" gap={10} style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
                 {t('review.tooBig')}
@@ -71,12 +79,6 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
                 </Button>
             </Flex>
         )
-    }
-    if (patch.error) {
-        return <Flex align="center" justify="center" style={{ flex: 1, fontSize: 12, color: 'var(--ant-color-error)' }}>{patch.error}</Flex>
-    }
-    if (patch.isLoading || !patch.data) {
-        return <Flex align="center" justify="center" style={{ flex: 1, padding: 24 }}><Spin size="small" /></Flex>
     }
     return (
         <DiffViewer
