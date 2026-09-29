@@ -52,14 +52,14 @@ import type { TurnSnapshotStore } from './turnSnapshotStore'
 // ── 路径闸（源决定闸，① 自 gitReview 迁入）─────────────────────────────────────
 
 /** 仓库相对路径安全闸门：拒绝绝对路径、反斜杠与 `..` 逃逸（git 子系统自带同规则，盘上读取同闸门） */
-export function isSafeRepoRelative(path: string): boolean {
+function isSafeRepoRelative(path: string): boolean {
     if (path === '' || path.startsWith('/') || path.includes('\\')) return false
     return path.split('/').every((seg) => seg !== '..')
 }
 
 /** 内容型源（归档/journal 供数档）的路径闸：path 是工具输入的文件系统路径
  *  （E2E 实证为绝对路径；相对时以 cwd 为基准），只要求解析后不逃出 cwd */
-export function isSafeWorkspacePath(path: string, cwd: string): boolean {
+function isSafeWorkspacePath(path: string, cwd: string): boolean {
     if (path === '' || path.includes('\0') || path.includes('\\')) return false
     const abs = resolve(isAbsolute(path) ? path : join(cwd, path))
     return abs === cwd || abs.startsWith(cwd + sep)

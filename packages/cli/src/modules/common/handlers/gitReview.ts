@@ -636,8 +636,6 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
     }
 }
 
-export type { ReviewOverview }
-
 /**
  * memoized 工厂：reader 按 cwd 复用，私有 repoRoot 缓存才真正跨请求生效
  * （每次 RPC new 实例的话，首个 rev-parse 之后缓存即随实例丢弃，每请求都要重跑）。

@@ -15,12 +15,14 @@
  */
 
 /**
- * 轮次变更（Turn Diff，ADR 0008）：一轮对话造成的文件变更事实，CLI 在轮次结束时
- * 合成的 custom 消息载荷（自定义事件形态，见 userContentSchema 的 custom-event）。
+ * 轮次变更（Turn Diff，ADR 0008 + 审查 v3 供数反转）：一轮对话造成的文件变更事实，
+ * CLI 在轮次结束时合成的 custom 消息载荷（自定义事件形态，见 userContentSchema 的
+ * custom-event）。
  *
- * 事实源与口径：git 模式下统计 = 相邻两快照 diff 的 numstat（唯一权威口径，聊天卡
- * 与审查视图共用，数字不许有两套）；非 git 目录 `git: null`，文件清单与计数来自
- * 工具事件投影的近似口径（Bash 写文件覆盖不到，是该降级档的已知边界）。
+ * 事实源与口径（v3 双轨）：归因主源 = turn 内工具层内容对累积（本会话 Edit 族，封口
+ * 归档供历史轮回看）；实况兜底 = 相邻两快照 diff 的 numstat（累积为空才回落）；
+ * 非 git 目录 `git: null`，文件清单与计数来自工具事件投影的近似口径。文件清单与增删
+ * 统计只有一个权威口径（聊天卡与审查视图共用），数字不许有两套。
  */
 
 import { z } from 'zod'
@@ -41,12 +43,9 @@ export const TurnDiffFileEntrySchema = z.object({
     previousPath: z.string().min(1).optional(),
     /** 二进制文件：计数无意义，恒 0，以本标记表达 */
     binary: z.boolean().optional(),
-    /** diff 超过内联渲染阈值（OVERSIZE_DIFF_LINES）：审查视图降级为「文件过大」+ 跳转，
-     *  不发起单文件 diff 拉取——判定单点在 CLI（web 不再自己数行数） */
-    oversize: z.boolean().optional(),
 })
 
-/** 内联 diff 渲染阈值（行数）：超过即 oversize 降级。CLI 打标、web 消费的唯一判据 */
+/** 内联 diff 渲染阈值（行数）：超过即 oversized 降级。CLI 打标、web 消费的唯一判据 */
 export const OVERSIZE_DIFF_LINES = 5000
 export type TurnDiffFileEntry = z.infer<typeof TurnDiffFileEntrySchema>
 
