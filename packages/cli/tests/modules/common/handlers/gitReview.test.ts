@@ -28,6 +28,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { GitReviewReader, registerGitReviewHandlers } from '@/modules/common/handlers/gitReview'
 import { openTurnSnapshotStore } from '@/modules/common/git/gitTurnSnapshotStore'
+import { getTurnArchivePath } from '@/modules/common/git/turnArchiveStore'
 import { ReviewContentsResultSchema } from '@mobi/shared'
 
 const execFileAsync = promisify(execFile)
@@ -263,5 +264,86 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         expect(overview.isGitRepository).toBe(true)
         const commits = await handlers.get('gitReviewCommits')!({ cwd: v2Dir } as never) as { commits: unknown[] }
         expect(commits.commits.length).toBeGreaterThan(0)
+    })
+})
+
+// ── v3 turn 档供数反转（封口归档主源）──────────────────────────────────────────
+describe('GitReviewReader v3 turn 档（封口归档主源，真 git 集成）', () => {
+    let v3Dir: string
+    const sid = 'v3-session'
+
+    beforeAll(async () => {
+        v3Dir = await mkdtemp(join(tmpdir(), 'mobi-review-v3-'))
+        await execFileAsync('git', ['init', '-q'], { cwd: v3Dir })
+        await execFileAsync('git', ['config', 'user.email', 'test@mobi.local'], { cwd: v3Dir })
+        await execFileAsync('git', ['config', 'user.name', 'mobi-test'], { cwd: v3Dir })
+        await writeFile(join(v3Dir, 'base.txt'), 'base\n')
+        await execFileAsync('git', ['add', '-A'], { cwd: v3Dir })
+        await execFileAsync('git', ['commit', '-qm', 'init'], { cwd: v3Dir })
+        // 封口归档：turn 1 改 a.ts（归因视角）——工作区另有 b.ts 改动（模拟并发/手改，归档必须无视）
+        const { FileTurnArchiveStore, getTurnArchivePath } = await import('@/modules/common/git/turnArchiveStore')
+        const archive = new FileTurnArchiveStore(getTurnArchivePath(v3Dir, sid))
+        await archive.seal({
+            turnIndex: 1,
+            baseTurnIndex: null,
+            sealedAt: Date.now(),
+            files: [{ path: join(v3Dir, 'a.ts'), beforeContent: 'one\n', afterContent: 'one\ntwo\n', writeCount: 1, toolNames: ['Edit'], additions: 1, deletions: 0 }],
+        })
+        // 工作区实况：b.ts 被改（快照/未提交档视角）
+        await writeFile(join(v3Dir, 'b.ts'), 'b changed\n')
+        await writeFile(join(v3Dir, 'a.ts'), 'one\ntwo\n')
+    })
+
+    afterAll(async () => {
+        await rm(getTurnArchivePath(v3Dir, sid), { force: true })
+        await rm(v3Dir, { recursive: true, force: true })
+    })
+
+    it('overview turn 档 = 最新封口轮（归因），不含工作区其他改动', async () => {
+        const { ReviewOverviewSchema } = await import('@mobi/shared')
+        const reader = new GitReviewReader(v3Dir)
+        const store = (await openTurnSnapshotStore(v3Dir))!
+        const overview = ReviewOverviewSchema.parse(await reader.overview(sid, store))
+        // 封口档只有 a.ts +1；b.ts 的工作区改动属于 uncommitted 档
+        expect(overview.scopes.turn).toEqual({ fileCount: 1, additions: 1, deletions: 0 })
+        expect(overview.scopes.uncommitted!.fileCount).toBeGreaterThanOrEqual(1)
+    })
+
+    it('files(turn)：归档条目供数；带 turnIndex 查历史档；越界回落快照链', async () => {
+        const { ReviewFilesResultSchema } = await import('@mobi/shared')
+        const reader = new GitReviewReader(v3Dir)
+        const store = (await openTurnSnapshotStore(v3Dir))!
+        const files = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn' }, store))
+        expect(files.files.map((f) => f.path)).toEqual([join(v3Dir, 'a.ts')])
+        expect(files.files[0]).toMatchObject({ kind: 'modify', additions: 1, deletions: 0 })
+
+        const history = ReviewFilesResultSchema.parse(await reader.files(sid, { kind: 'turn', turnIndex: 1 }, store))
+        expect(history.files.map((f) => f.path)).toEqual([join(v3Dir, 'a.ts')])
+        // 越界 turnIndex：归档无、快照链也无该序号 → resolver 抛错（明确请求了不存在的轮次）
+        await expect(reader.files(sid, { kind: 'turn', turnIndex: 99 }, store)).rejects.toThrow(/not found/)
+    })
+
+    it('patch/contents(turn)：归档内容对直接供数（历史轮回看冻结），路径闸保持', async () => {
+        const { ReviewPatchResultSchema, ReviewContentsResultSchema } = await import('@mobi/shared')
+        const reader = new GitReviewReader(v3Dir)
+        const store = (await openTurnSnapshotStore(v3Dir))!
+        const target = { kind: 'turn' } as const
+
+        const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, target, join(v3Dir, 'a.ts'), store))
+        expect(patch.patch).toContain('+two')
+        expect(patch.patch).toContain('--- a/a.ts')
+
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'a.ts'), store))
+        expect(contents.before).toBe('one\n')
+        expect(contents.after).toBe('one\ntwo\n')
+
+        // 归档未记录的路径：空 patch / missing
+        const empty = ReviewPatchResultSchema.parse(await reader.patch(sid, target, join(v3Dir, 'b.ts'), store))
+        expect(empty.patch).toBe('')
+        const missing = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'b.ts'), store))
+        expect(missing).toMatchObject({ before: null, after: null, reason: 'missing' })
+
+        // 路径闸：cwd 外拒绝
+        await expect(reader.patch(sid, target, '/etc/passwd', store)).rejects.toThrow(/Invalid path/)
     })
 })
