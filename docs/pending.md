@@ -918,3 +918,13 @@ interrupt（用户停止）
 **背景**：Codex 在每个 apply_patch 工具完成时即发 `TurnDiffEvent { unified_diff }`（tools/events.rs:668-671，累积净 diff + rendered_diffs 缓存），客户端实时渲染本轮 diff。mobi 票05（review-v3）用「web 侧消息投影」实现了轻量版实时文件列表，零协议改动；但实时**可展开 diff**（投影只有行数）需协议事件。
 
 **待做**：若用户要实时 diff 展开，加 custom event（如 `TURN_DIFF_PATCH_EVENT`）随每次 Edit 族 tool_result 入流，载荷 = 该次 structuredPatch（增量即可，前端累积）；与权威 turn-diff 消息的归并关系需定义（Codex 是 tracker invalidate 后静默，mobi journal 供数可直接增量拼接）。
+
+---
+
+## 93. turn 档 hydration 展开上下文——B 方案裁剪掉的 A 方案，后悔了从这里捡（2026-09-29 turn-archive B 方案定稿时）
+
+**背景**：turn-archive B 方案（.scratch/turn-archive-b/）把归档全文砍掉，turn 档 diff 视图 = 纯 patch（无上下文展开/全文查看）。被裁掉的 A 方案 = 归档保留内容对全文（阈值 4MB 与传输闸 MAX_TEXT_BYTES 同源），撑 pierre hydration（loadDiffFiles 展开折叠上下文）+ contents 通道全文查看。
+
+**代价回顾**：A 的归档体积 O(正常文件大小×2)/轮；lock 级文件靠 4MB 闸降级（存 patch+统计，contentGated 标）。四档（未提交/未暂存/已暂存/已提交）hydration 走 git show 不受 B/A 影响。
+
+**若恢复**：turnArchiveStore 文件记录加回 beforeContent/afterContent（可空）+ contentGated 标；reporter 封口时全文还在内存（累积器），存全文 + 存 patch 二选一或都存；供数器 pairOf 恢复 contents 出口；DiffViewer turn 档恢复 loadDiffFiles hydration。数据结构变更见 .scratch/turn-archive-b/spec.md 的「A 方案备档」节。
