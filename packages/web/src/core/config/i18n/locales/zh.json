@@ -460,6 +460,10 @@
         "codeBlockPlain": "纯文本",
         "systemNotice": {
             "executionStopped": "已停止执行"
+        },
+        "liveNotice": {
+            "title": "系统提示",
+            "dismiss": "关闭"
         }
     },
     "files": {
@@ -800,6 +804,7 @@
         "loading": "加载中…",
         "unavailable": "当前会话目录不是 git 仓库，或没有可审查的快照",
         "noDiff": "无法呈现差异（二进制或内容缺失）",
+        "renameOnly": "重命名，内容未变更",
         "diffAria": "文件差异视图",
         "title": "审查",
         "noSnapshot": "此会话还没有轮次快照，对话产生文件变更后会出现",
@@ -809,7 +814,14 @@
         "openInViewer": "在文件查看器中打开",
         "openInTab": "在标签页中打开",
         "filterPlaceholder": "筛选文件",
-        "fileTree": "变更文件树"
+        "fileTree": "变更文件树",
+        "wrap": "自动换行",
+        "initRepo": "初始化 git 仓库",
+        "initRepoSuccess": "git 仓库已初始化",
+        "needsGit": "需 Git 仓库",
+        "layoutSplit": "分栏视图",
+        "layoutUnified": "统一视图",
+        "loadMore": "加载更多"
     },
     "workspace": {
         "create": "新建工作区",

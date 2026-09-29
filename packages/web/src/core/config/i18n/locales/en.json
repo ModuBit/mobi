@@ -469,6 +469,10 @@
         "codeBlockPlain": "Plain text",
         "systemNotice": {
             "executionStopped": "Execution stopped"
+        },
+        "liveNotice": {
+            "title": "System notice",
+            "dismiss": "Dismiss"
         }
     },
     "files": {
@@ -809,6 +813,7 @@
         "loading": "Loading…",
         "unavailable": "This session's directory is not a git repository, or no snapshot to review",
         "noDiff": "Diff unavailable (binary or missing content)",
+        "renameOnly": "Renamed without content changes",
         "diffAria": "File diff view",
         "title": "Review",
         "noSnapshot": "No turn snapshots yet for this session; they appear once turns change files",
@@ -818,7 +823,14 @@
         "openInViewer": "Open in file viewer",
         "openInTab": "Open in tab",
         "filterPlaceholder": "Filter files",
-        "fileTree": "Changed files tree"
+        "fileTree": "Changed files tree",
+        "wrap": "Word wrap",
+        "initRepo": "Initialize Git repository",
+        "initRepoSuccess": "Git repository initialized",
+        "needsGit": "Requires Git",
+        "layoutSplit": "Split view",
+        "layoutUnified": "Unified view",
+        "loadMore": "Load more"
     },
     "workspace": {
         "create": "New Workspace",

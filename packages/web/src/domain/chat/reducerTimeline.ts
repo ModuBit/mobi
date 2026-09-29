@@ -15,7 +15,7 @@
  */
 
 import { hasCrossSessionOrigin } from '@mobi/shared'
-import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, CustomBlock, EventDisplay, MessageMeta, SystemNoticeBlock, SystemNoticeLevel, ToolCallBlock, ToolPermission } from './types'
+import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, CustomBlock, EventDisplay, MessageMeta, SystemNoticeBlock, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
@@ -54,17 +54,21 @@ function createEventBlock(params: {
 }
 
 /**
- * informational 渲染收窄判据（唯一规则）：warning 级或阻止继续执行才渲染。
+ * informational 回放渲染判据（唯一规则）：阻断继续执行才回放。
  *
  * 为何收窄：informational 承载 CC turn 内全部通知（实测发射点盘点见 spec
  * .scratch/system-informational-banner），其中「会话完成通知 / auto-mode 计费通知」
  * 属噪音、「Context low…」与 mobi 既有的 ContextRing 权威 UI 重复——全量渲染会刷屏。
- * 必须让用户看到的只有两类：warning（模型降级、用量上限、hooks 无应答）与
- * prevent_continuation=true（hook 阻断，不显示则 prompt 静默消失、turn 莫名停止）。
  * 判据在此单点收口，禁止内联散落。
+ *
+ * 02 票收窄（2026-09-28 定稿）：informational 是「实时事件通知」而非「会话内容」——
+ * warning 级在 SSE 到达时经 messageWindowStore 闸门发布 liveNoticeStore → 页头横幅
+ * （纯内存态，刷新即消失），不再回放；本判据只保留阻断继续型
+ * prevent_continuation=true（hook 阻断，不显示则 prompt 静默消失、turn 莫名停止——
+ * SDK level 四档无 error，这是「必须持久可见」的唯一现实形态）。
  */
-export function shouldRenderSystemNotice(level: SystemNoticeLevel, preventContinuation?: boolean): boolean {
-    return level === 'warning' || preventContinuation === true
+export function shouldRenderSystemNotice(preventContinuation?: boolean): boolean {
+    return preventContinuation === true
 }
 
 /** 在 blocks 数组中找到指定 ID 的块并替换，使用索引 Map 实现 O(1) 查找 */
@@ -177,7 +181,7 @@ export function reduceTimeline(
             // 不命中必须 continue——落到下方通用事件渲染会把 info/notice 级噪音泄进时间线
             if (msg.content.type === 'informational') {
                 const info = msg.content as Extract<AgentEvent, { type: 'informational' }>
-                if (shouldRenderSystemNotice(info.level, info.preventContinuation)) {
+                if (shouldRenderSystemNotice(info.preventContinuation)) {
                     const noticeBlock: SystemNoticeBlock = {
                         kind: 'system-notice',
                         id: msg.id,

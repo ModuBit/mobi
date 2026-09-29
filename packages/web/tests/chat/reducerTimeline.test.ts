@@ -609,10 +609,12 @@ describe('informational 消息（system-notice 判据矩阵 / 产出 / 忽略 / 
     })
 
     it.each<[string, boolean, boolean]>([
+        // 02 票收窄：warning 不再回放（改走 SSE 实时页头横幅）；流内只保留阻断继续型
+        // （SDK level 四档无 error——「必须持久可见」的现实形态就是 prevent_continuation）
         ['info', false, false],
         ['notice', false, false],
         ['suggestion', false, false],
-        ['warning', false, true],
+        ['warning', false, false],
         ['info', true, true],
         ['notice', true, true],
         ['suggestion', true, true],
@@ -630,20 +632,20 @@ describe('informational 消息（system-notice 判据矩阵 / 产出 / 忽略 / 
     })
 
     it('命中时产出 system-notice 块：content 原样 / level / preventContinuation / createdAt 透传', () => {
-        const { blocks } = reduceTimeline([informationalEvent('warning', false, 3456)], makeCtx())
+        const { blocks } = reduceTimeline([informationalEvent('info', true, 3456)], makeCtx())
         expect(blocks).toHaveLength(1)
         const block = blocks[0]
         expect(block.kind).toBe('system-notice')
         if (block.kind === 'system-notice') {
             expect(block.content).toBe('Model fallback engaged: quota exceeded')
-            expect(block.level).toBe('warning')
-            expect(block.preventContinuation).toBeUndefined()
+            expect(block.level).toBe('info')
+            expect(block.preventContinuation).toBe(true)
             expect(block.createdAt).toBe(3456)
         }
     })
 
     it('preventContinuation=true 时块上携带 preventContinuation 标记', () => {
-        const { blocks } = reduceTimeline([informationalEvent('info', true)], makeCtx())
+        const { blocks } = reduceTimeline([informationalEvent('notice', true)], makeCtx())
         const block = blocks[0]
         expect(block.kind).toBe('system-notice')
         if (block.kind === 'system-notice') {
@@ -654,7 +656,7 @@ describe('informational 消息（system-notice 判据矩阵 / 产出 / 忽略 / 
     it('时序：informational 是 turn 流中的一条，按消息时序插入不重排', () => {
         const messages: TracedMessage[] = [
             createToolCallMessage('tool-1', 'Bash', { command: 'bun test' }, { createdAt: 1000 }),
-            informationalEvent('warning', false, 1001),
+            informationalEvent('notice', true, 1001),
             {
                 id: 'msg-text', localId: 'msg-text', createdAt: 1002, role: 'agent', isSidechain: false,
                 content: [{ type: 'text', text: '正文回复' }],

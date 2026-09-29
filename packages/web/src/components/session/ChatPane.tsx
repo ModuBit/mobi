@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { PanelRight } from 'lucide-react'
 import styled from '@emotion/styled'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { LiveSystemNoticeBar } from '@/components/chat/LiveSystemNoticeBar'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
 import { ChatContainer } from '@/components/chat/ChatContainer'
 import { ContextRing } from '@/components/composer/ContextRing'
@@ -116,6 +117,9 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
     return (
         <Layout style={{ height: '100%' }}>
             <PageHeader left={headerLeft} right={headerRight} />
+
+            {/* 实时系统提示横幅（02 票）：warning informational 的 SSE 到达提示，纯内存态刷新即消失 */}
+            <LiveSystemNoticeBar sessionId={sessionId} />
 
             <SessionContextBar
                 metadata={session.metadata as SessionMetadataSummary | null}

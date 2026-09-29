@@ -29,6 +29,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { SnapshotBlock, SnapshotBlockDelta } from '@mobi/shared'
 import { applySnapshotBlockDeltas, locateSnapshotBlocks } from '@mobi/shared'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
+import { maybePublishLiveNotice } from '@/core/data/stores/liveNoticeStore'
 import { mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
 import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMessagesSubmitted'
 import { trimByTurnBoundary } from '@/domain/chat/turnBoundary'
@@ -340,6 +341,11 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
     // 撤回墓碑闸门：迟到的同 id 广播不复活已撤回行（E2E 缺陷）
     incoming = filterWithdrawn(sessionId, incoming)
     if (incoming.length === 0) return
+    // 实时系统提示发布（02 票）：warning informational 经 liveNoticeStore 弹页头横幅。
+    // backfill 重播是历史行回放（补写路径），不属实时信号，跳过——「刷新即消失」的保证点
+    if (!options?.backfill) {
+        for (const m of incoming) maybePublishLiveNotice(sessionId, m)
+    }
     _internal.updateState(sessionId, prev => {
         // backfill 预过滤（与 filterWithdrawn 同构的前置闸门）：merge 不引入新 id，Set 一次
         // 建好即可——历史行重播批量到达时避免逐行 O(窗口) 线性扫
