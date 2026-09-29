@@ -76,9 +76,9 @@ describe('useFileRenderState', () => {
         expect(renderState().result.current.status).toBe('too-large')
     })
 
-    it('markdown 阈值独立下调（TipTap 无虚拟化）：512KB~2MB 也 → too-large', () => {
-        // 介于 markdown(512KB) 与 textPlain(2MB) 之间：只读也挂 TipTap，须拦截
-        mockedMeta.mockReturnValue({ data: { mime: 'text/markdown', size: 1024 * 1024, etag: 'e' }, isLoading: false, error: null } as any)
+    it('markdown 与文本同档（2MB）：≥2MB → too-large', () => {
+        // markdown(2MB) 与 textPlain 同值：2MB 即拦截
+        mockedMeta.mockReturnValue({ data: { mime: 'text/markdown', size: 2 * 1024 * 1024, etag: 'e' }, isLoading: false, error: null } as any)
         mockedContent.mockReturnValue({ data: undefined, isLoading: false, error: null } as any)
         expect(renderState('s', 'a.md').result.current.status).toBe('too-large')
 

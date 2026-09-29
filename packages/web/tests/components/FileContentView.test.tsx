@@ -339,9 +339,9 @@ describe('FileContentView', () => {
         expect(screen.queryByRole('img')).not.toBeInTheDocument()
     })
 
-    it('大 PDF（≥10MB）→ FileTooLarge，不渲染 react-pdf', () => {
-        // 11MB ≥ pdf(10MB) → tooLarge
-        setMock({ mime: 'application/pdf', size: 11 * 1024 * 1024, etag: '11-1' }, null)
+    it('大 PDF（≥20MB）→ FileTooLarge，不渲染 react-pdf', () => {
+        // 21MB ≥ pdf(20MB) → tooLarge
+        setMock({ mime: 'application/pdf', size: 21 * 1024 * 1024, etag: '11-1' }, null)
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="big.pdf" />)
         expect(screen.getByText('files.tooLarge')).toBeInTheDocument()

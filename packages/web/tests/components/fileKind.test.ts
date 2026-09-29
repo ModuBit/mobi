@@ -54,9 +54,9 @@ describe('resolveFileKind', () => {
         }
     })
 
-    it('text 高亮阈值：size >= 1MB → highlight:false', () => {
-        expect(resolveFileKind(meta('text/plain', 1024 * 1024)).highlight).toBe(false)
-        expect(resolveFileKind(meta('text/plain', 1024 * 1024 - 1)).highlight).toBe(true)
+    it('text 高亮阈值：size >= 2MB → highlight:false', () => {
+        expect(resolveFileKind(meta('text/plain', 2 * 1024 * 1024)).highlight).toBe(false)
+        expect(resolveFileKind(meta('text/plain', 2 * 1024 * 1024 - 1)).highlight).toBe(true)
     })
 
     it('不可直显 → binary', () => {
