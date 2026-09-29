@@ -50,8 +50,15 @@ export async function synthesizeContentsPatch(git: GitExec, path: string, before
             // git diff --no-index 以退出码 1 表达差异，stdout 在异常对象上
             raw = (e as { stdout?: string }).stdout ?? ''
         }
-        // 头部剥临时目录前缀（git 规范化绝对路径的前导 /）：a<TMP>/a/app.ts → a/app.ts
-        return raw.replaceAll(`a${dir}/a/`, 'a/').replaceAll(`b${dir}/b/`, 'b/')
+        // 头部剥临时目录前缀（git 规范化绝对路径的前导 /）。实证（git 2.x 目录模式）
+        // 四形态——a/b 前缀不总对应 a/b 目录：单侧 null 时 git 把非缺侧路径指到对端
+        // 目录（modify: a{TMP}/a/f b{TMP}/b/f；add: a{TMP}/b/f b{TMP}/b/f；
+        // delete: a{TMP}/a/f b{TMP}/a/f），四 token 各自归位 a/<name> / b/<name>
+        return raw
+            .replaceAll(`a${dir}/a/`, 'a/')
+            .replaceAll(`a${dir}/b/`, 'a/')
+            .replaceAll(`b${dir}/b/`, 'b/')
+            .replaceAll(`b${dir}/a/`, 'b/')
     } catch (e) {
         logger.debug('[ContentsPatch] synthesize patch failed', e)
         return ''
