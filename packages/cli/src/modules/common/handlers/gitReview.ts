@@ -319,7 +319,7 @@ export class GitReviewReader {
             const files = await this.turnAttribution(store).entriesOf(sessionId, target)
             return ReviewFilesResultSchema.parse({ files, stats: summarizeReviewFiles(files), truncated: false, targetGeneration: await this.computeGeneration(sessionId, store) })
         }
-        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
+        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
         const generation = await this.computeGeneration(sessionId, store)
 
@@ -351,7 +351,7 @@ export class GitReviewReader {
             if (supplied.kind === 'contents') return ReviewPatchResultSchema.parse(await this.patchFromContents(path, supplied.before, supplied.after))
             return ReviewPatchResultSchema.parse(await this.patchFromGit([supplied.baseTree, supplied.headTree], path, { allowNoIndex: false }))
         }
-        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
+        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         // git 档路径闸（先 resolve 后闸，源决定闸）
         gatePathForSource('git', path, this.cwd, await this.root())
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')
@@ -403,7 +403,7 @@ export class GitReviewReader {
             if (supplied.kind === 'contents') return ReviewContentsResultSchema.parse(this.contentsFromPair(supplied.before, supplied.after))
             return ReviewContentsResultSchema.parse(await this.contentsFromGit([supplied.baseTree, supplied.headTree], supplied.baseTree, supplied.headTree, path))
         }
-        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo(), snapshotStore: store })
+        const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         // git 档路径闸（先 resolve 后闸，源决定闸，同 patch）
         gatePathForSource('git', path, this.cwd, await this.root())
         if (!resolved.isGitRepository) throw new Error('target requires a git repository')

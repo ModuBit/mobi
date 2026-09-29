@@ -36,7 +36,6 @@
  */
 
 import type { DiffTarget } from '@mobi/shared'
-import type { TurnSnapshotStore } from './turnSnapshotStore'
 
 export type ResolvedDiffTarget = {
     isGitRepository: boolean
@@ -50,14 +49,13 @@ export type ResolvedDiffTarget = {
 
 export async function resolveDiffTarget(
     target: DiffTarget,
-    deps: { isGitRepository: boolean; snapshotStore: TurnSnapshotStore | null },
+    deps: { isGitRepository: boolean },
 ): Promise<ResolvedDiffTarget> {
     // turn 档由 TurnAttributionProvider 供数（审查 v3 供数反转，降级链含封口归档）
     if (target.kind === 'turn') throw new Error('turn target is served by TurnAttributionProvider')
     if (!deps.isGitRepository) {
         return { isGitRepository: false, baseRev: null, headRev: null, diffArgs: [] }
     }
-    const snapshotStore = deps.snapshotStore
 
     switch (target.kind) {
         case 'worktree':
