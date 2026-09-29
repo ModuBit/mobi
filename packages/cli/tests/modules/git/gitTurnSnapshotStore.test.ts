@@ -167,3 +167,56 @@ describe('openTurnSnapshotStore（真 git 集成）', () => {
         await store.clearSession('s-isolate')
     })
 })
+
+// ── v3 capture 健壮性：scope 收敛 + .mobi 摘除 ────────────────────────────────
+describe('capture scope 收敛（审查 v3 票04，真 git 集成）', () => {
+    let subRepo: string
+
+    async function gitAt(dir: string, ...args: string[]): Promise<string> {
+        const { stdout } = await execFileAsync('git', args, { cwd: dir })
+        return stdout
+    }
+
+    beforeAll(async () => {
+        subRepo = await mkdtemp(join(tmpdir(), 'mobi-turn-scope-'))
+        await gitAt(subRepo, 'init', '-q')
+        await gitAt(subRepo, 'config', 'user.email', 'test@mobi.local')
+        await gitAt(subRepo, 'config', 'user.name', 'mobi-test')
+        await writeFile(join(subRepo, 'root.txt'), 'root\n')
+        await mkdir(join(subRepo, 'sub'), { recursive: true })
+        await writeFile(join(subRepo, 'sub', 'inner.txt'), 'inner\n')
+        await gitAt(subRepo, 'add', '-A')
+        await gitAt(subRepo, 'commit', '-qm', 'init')
+    })
+
+    afterAll(async () => {
+        await rm(subRepo, { recursive: true, force: true })
+    })
+
+    it('子目录会话：prefix 外的变更不入两树 diff（scope 收敛）', async () => {
+        const subStore = (await openTurnSnapshotStore(join(subRepo, 'sub')))!
+        const base = await subStore.capture('s-scope')
+        // prefix 内外各改一个文件
+        await writeFile(join(subRepo, 'root.txt'), 'root changed\n')       // prefix 外（模拟其他 workspace）
+        await writeFile(join(subRepo, 'sub', 'inner.txt'), 'inner v2\n')  // prefix 内
+        const head = await subStore.capture('s-scope')
+
+        const entries = await subStore.diffTrees(base.tree, head.tree)
+        // repoRoot 执行 → 仓库相对路径（与审查 worktree 档同基准）；prefix 外的 root.txt 不出现
+        expect(entries.map((e) => e.path)).toEqual(['sub/inner.txt'])
+        // 根目录 store 打开的同一仓库不受影响（scope 随 cwd）
+        await subStore.clearSession('s-scope')
+    })
+
+    it('.mobi 全目录摘除出快照（journal/归档内部状态不入变更归因）', async () => {
+        const store = (await openTurnSnapshotStore(subRepo))!
+        await mkdir(join(subRepo, '.mobi', 'turn-diffs', 'sess'), { recursive: true })
+        await writeFile(join(subRepo, '.mobi', 'turn-diffs', 'sess', 'tool-changes.json'), '{}')
+        await writeFile(join(subRepo, '.mobi', 'turn-diffs', 'sess', 'turn-archive.json'), '{}')
+        const { tree } = await store.capture('s-mobi-exclude')
+        const lsTree = await gitAt(subRepo, 'ls-tree', '-r', '--name-only', tree)
+        expect(lsTree).not.toContain('.mobi/')
+        expect(lsTree).toContain('root.txt')
+        await store.clearSession('s-mobi-exclude')
+    })
+})

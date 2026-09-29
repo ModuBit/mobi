@@ -33,16 +33,19 @@
 
 import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { copyFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { logger } from '@/ui/logger'
 import type { LastTurnDiff, TurnSnapshotRef, TurnSnapshotStore, TurnTreeDiffEntry, TurnTreeDiffKind } from './turnSnapshotStore'
 
 const execFileAsync = promisify(execFile)
 
-/** 产物目录不入快照（产物有自己的展示通道，混进变更归因是噪音） */
-const EXCLUDE_PATH = '.mobi/artifacts'
+/** .mobi 内部状态目录不入快照（审查 v3 票04 由 '.mobi/artifacts' 收敛为全目录：
+ *  artifacts/turn-diffs journal/封口归档都是 mobi 自身状态，有自己的展示通道，
+ *  混进变更归因是噪音——journal 每轮都在写，不摘除会让快照兜底档每轮多出内部文件） */
+const EXCLUDE_PATH = '.mobi'
 
 const REF_NAMESPACE = 'refs/mobi/turn-diffs'
 
@@ -61,7 +64,7 @@ export async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv):
     return stdout
 }
 
-/** store 按 cwd 复用（实例无状态、仅携带 cwd）：同 cwd 的每次 RPC 不必重跑
+/** store 按 cwd 复用（仅携带 cwd 与 prefix 缓存）：同 cwd 的每次 RPC 不必重跑
  *  rev-parse。仓库消失时 git 调用自然失败 → 上层诚实置空，无需失效机制；
  *  规模上界 = 出现过的工作区目录数，无需淘汰。 */
 const stores = new Map<string, TurnSnapshotStore | null>()
@@ -92,16 +95,30 @@ export async function openTurnSnapshotStore(cwd: string): Promise<TurnSnapshotSt
 export class GitTurnSnapshotStore implements TurnSnapshotStore {
     constructor(private readonly cwd: string) {}
 
+    /** 仓库根与 prefix（scope 收敛用，按实例缓存——store 按 cwd 复用）。scope 类 git
+     *  命令统一在 repoRoot 执行 + 仓库相对 pathspec（子目录 cwd 下 pathspec 相对 cwd
+     *  解析，直接用 prefix 会指向 sub/sub/——真仓库实证 2026-09-29） */
+    private scopeCache: { root: string; prefix: string } | undefined
+
     async capture(sessionId: string): Promise<TurnSnapshotRef> {
         const safeId = sanitizeSessionId(sessionId)
         // 临时 index：独立于用户暂存区，add 与 write-tree 都指向它，用完即删
         const tmpIndex = join(tmpdir(), `mobi-turn-idx-${randomUUID()}`)
         const env = { ...process.env, GIT_INDEX_FILE: tmpIndex }
         try {
-            // 全量 add（-A 只收未忽略文件）后把产物目录从临时 index 摘除——
-            // 不用 exclude pathspec：pathspec 显式命中「已被 .gitignore 忽略」的路径
-            // 会让整个 add 以「Use -f」报错退出（真仓库实证 2026-09-27），绝对不能容忍
-            await git(this.cwd, ['add', '-A'], env)
+            // 预热临时 index（审查 v3 票04，ZCode gitCheckpointRepo 同款解法）：空 index 下
+            // `add -A` 对每个未改动文件 open/read/hash 写对象（Windows+Defender 实测放大到
+            // 5-15ms/文件，大仓库单次 capture 秒级）。优先复制用户 index——stat cache 让
+            // 未改动文件走 stat-match 快速路径直接跳过；无 index（刚 init 的空仓）降级
+            // read-tree HEAD（tracked 文件 hash-match）；再失败回落空 index。
+            // 最终树由 add 决定，预热只影响速度不影响语义
+            await this.primeIndex(tmpIndex, env)
+            // scope 收敛（审查 v3 票04）：只 add 会话 cwd（prefix）内的变更——monorepo
+            // 子目录会话不裹挟其他 workspace 的改动；prefix 外保持预热 index 的内容
+            // （ZCode 同构）。不用 exclude pathspec：pathspec 显式命中「已被 .gitignore
+            // 忽略」的路径会让整个 add 以「Use -f」报错退出（真仓库实证 2026-09-27）
+            const scope = await this.repoScope()
+            await git(scope.root, scope.prefix ? ['add', '-A', '--', scope.prefix] : ['add', '-A'], env)
             await git(this.cwd, ['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', EXCLUDE_PATH], env)
             const tree = (await git(this.cwd, ['write-tree'], env)).trim()
             // index 分配 CAS：update-ref 带全零 oldvalue 断言「引用尚不存在」，并发
@@ -124,6 +141,39 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
         } finally {
             await fsRemove(tmpIndex)
         }
+    }
+
+    /** 预热临时 index：copyFile 用户 index → 降级 read-tree HEAD → 空 index（全吞错） */
+    private async primeIndex(tmpIndex: string, env: NodeJS.ProcessEnv): Promise<void> {
+        const { root } = await this.repoScope()
+        try {
+            // rev-parse --git-path 可能返回相对执行 cwd 的路径（worktree/submodule 场景），resolve 兜底
+            const rel = (await git(root, ['rev-parse', '--git-path', 'index'])).trim()
+            if (rel.length > 0) {
+                await copyFile(resolve(root, rel), tmpIndex)
+                return
+            }
+        } catch {
+            // 用户 index 不存在或不可读：降级
+        }
+        try {
+            await git(root, ['read-tree', 'HEAD'], env)
+        } catch {
+            // 无 HEAD（全新空仓）：空 index
+        }
+    }
+
+    /** 仓库根 + prefix 查询（失败 = 以 cwd 本体全量 scope，按实例缓存） */
+    private async repoScope(): Promise<{ root: string; prefix: string }> {
+        if (this.scopeCache !== undefined) return this.scopeCache
+        try {
+            const root = (await git(this.cwd, ['rev-parse', '--show-toplevel'])).trim()
+            const prefix = (await git(this.cwd, ['rev-parse', '--show-prefix'])).trim()
+            this.scopeCache = { root, prefix }
+        } catch {
+            this.scopeCache = { root: this.cwd, prefix: '' }
+        }
+        return this.scopeCache
     }
 
     async listChain(sessionId: string): Promise<TurnSnapshotRef[]> {
@@ -154,10 +204,13 @@ export class GitTurnSnapshotStore implements TurnSnapshotStore {
 
     async diffTrees(baseTree: string, headTree: string): Promise<TurnTreeDiffEntry[]> {
         if (baseTree === headTree) return []
-        // name-status 定 kind（含 rename 旧路径），numstat 定计数，按路径对齐组装
+        // name-status 定 kind（含 rename 旧路径），numstat 定计数，按路径对齐组装。
+        // pathspec 收敛（审查 v3 票04）：树是全仓库的，diff 输出收敛到会话 cwd scope
+        const { root, prefix } = await this.repoScope()
+        const spec = prefix ? ['--', prefix] : []
         const [statusOut, numstatOut] = await Promise.all([
-            git(this.cwd, ['diff', '--name-status', '-z', '-M', baseTree, headTree]),
-            git(this.cwd, ['diff', '--numstat', '-z', '-M', baseTree, headTree]),
+            git(root, ['diff', '--name-status', '-z', '-M', baseTree, headTree, ...spec]),
+            git(root, ['diff', '--numstat', '-z', '-M', baseTree, headTree, ...spec]),
         ])
         return assembleDiffEntries(statusOut, numstatOut)
     }

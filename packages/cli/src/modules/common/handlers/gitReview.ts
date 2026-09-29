@@ -315,9 +315,14 @@ export class GitReviewReader {
         if (statusOut === null) return { files: [], truncated: false }
         const tokens = statusOut.split('\0')
         const paths: string[] = []
-        // 实证（git 2.x，-z）：untracked 记录为 `? path\0`——问号与路径同 token，空格分隔
+        // 实证（git 2.x，-z）：untracked 记录为 `? path\0`——问号与路径同 token，空格分隔。
+        // .mobi/ 内部状态目录过滤（审查 v3 票04 留白收口）：用户项目未 gitignore 时
+        // journal/归档文件会以 untracked 出现，混进工作区实况档是噪音
         for (const token of tokens) {
-            if (token.startsWith('? ')) paths.push(token.slice(2))
+            if (!token.startsWith('? ')) continue
+            const path = token.slice(2)
+            if (path === '.mobi' || path.startsWith('.mobi/')) continue
+            paths.push(path)
         }
         if (paths.length === 0) return { files: [], truncated: false }
         const truncated = paths.length > UNTRACKED_COUNT_CAP
