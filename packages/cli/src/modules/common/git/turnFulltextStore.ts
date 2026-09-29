@@ -30,14 +30,51 @@
  * 落盘；崩溃窗口与归档一致（孤儿 turn 目录不对账，读侧以归档为唯一事实源）。
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve } from 'node:path'
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { OVERSIZE_DIFF_LINES } from '@mobi/shared'
 import { git, sanitizeSessionId } from './gitExec'
+import { ensureMobiGitignore } from './mobiGitignore'
 import { logger } from '@/ui/logger'
 
 /** git 执行注入（与 contentsPatch 的 GitExec 同源形状） */
 export type GitExec = (cwd: string, args: string[]) => Promise<string>
+
+/** turn 全文目录保留数（最新 N 个 turnId 目录；调 N 只改此处） */
+export const TURN_FULLTEXT_KEEP = 1
+
+/** session 目录保留数（`.mobi/turn-diffs/` 下最多保留的会话目录个数） */
+export const TURN_SESSION_KEEP = 30
+
+/**
+ * turn 目录滚动清理：turnId（纯数字）子目录按 mtime 留最新 keep 个。调用方保证
+ * 「写新 → 清旧」顺序；尽力而为吞错（治理失败不阻塞封口）。
+ */
+export async function pruneTurnDirs(rootDir: string, keep = TURN_FULLTEXT_KEEP): Promise<void> {
+    await pruneByMtime(rootDir, keep, (name) => /^\d+$/.test(name))
+}
+
+/**
+ * session 目录滚动清理：turn-diffs 根下按 mtime 留最新 keep 个目录，exclude（当前
+ * 会话）永不自删。整目录删除天然涵盖 turn-archive.json 与全文目录（两者同目录同居）。
+ */
+export async function pruneSessionDirs(turnDiffsRoot: string, keep = TURN_SESSION_KEEP, exclude?: string): Promise<void> {
+    await pruneByMtime(turnDiffsRoot, keep, () => true, exclude)
+}
+
+/** mtime 排序的通用滚动删除（归并读目录/stat 失败与单目录删除失败，全部吞错） */
+async function pruneByMtime(dir: string, keep: number, filter: (name: string) => boolean, exclude?: string): Promise<void> {
+    try {
+        const names = (await readdir(dir, { withFileTypes: true }))
+            .filter((e) => e.isDirectory() && filter(e.name) && e.name !== exclude)
+            .map((e) => e.name)
+        const stamped = await Promise.all(names.map(async (n) => ({ n, mtime: (await stat(join(dir, n))).mtimeMs })))
+        const victims = stamped.sort((a, b) => a.mtime - b.mtime).slice(0, Math.max(0, stamped.length - keep))
+        await Promise.all(victims.map(({ n }) => rm(join(dir, n), { recursive: true, force: true }).catch(() => undefined)))
+    } catch (e) {
+        logger.debug('[TurnFulltext] prune failed (best effort)', dir, e)
+    }
+}
 
 /** 归档条目的全文指针（相对 turnId 目录；缺侧省略字段——add 无 before、delete 无 after） */
 export type TurnFulltextRef = { before?: string; after?: string }
@@ -76,6 +113,9 @@ export class FileTurnFulltextStore {
         const result = new Map<string, TurnFulltextSealed>()
         const writable: Array<{ path: string; rel: string; before: string | null; after: string | null }> = []
         const turnDir = join(this.rootDir, String(turnIndex))
+
+        // 排除面：turn-diffs 子树产生前先确保 .mobi/.gitignore（单源 mobiGitignore，尽力而为）
+        await ensureMobiGitignore(this.workspaceRoot)
 
         for (const f of files) {
             if (f.beforeContent === null && f.afterContent === null) continue
@@ -119,6 +159,11 @@ export class FileTurnFulltextStore {
             const oversized = patch.split('\n').length > OVERSIZE_DIFF_LINES
             result.set(w.path, { ref, patch: oversized ? '' : patch, oversized })
         }
+
+        // 存储治理（写新 → 清旧）：turn 目录留最新 TURN_FULLTEXT_KEEP 个；session 目录
+        // 留最新 TURN_SESSION_KEEP 个（exclude 当前会话永不自删）。尽力而为吞错
+        await pruneTurnDirs(this.rootDir)
+        await pruneSessionDirs(dirname(this.rootDir), TURN_SESSION_KEEP, basename(this.rootDir))
         return result
     }
 

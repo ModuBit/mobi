@@ -129,3 +129,73 @@ describe('FileTurnFulltextStore.sealFiles（真 git 集成）', () => {
         }
     })
 })
+
+// ── 存储治理（票04）：turn 滚动 + session 滚动 + gitignore 排除面 ──────────────
+describe('FileTurnFulltextStore 存储治理', () => {
+    const cleanup: string[] = []
+
+    it('turn 滚动：seal 两轮后旧 turnId 目录被删，非 turnId 文件（归档）保留', async () => {
+        const { mkdir, writeFile, readdir } = await import('node:fs/promises')
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-fulltext-prune-'))
+        cleanup.push(dir)
+        const rootDir = join(dir, '.mobi', 'turn-diffs', 's1')
+        const store = new FileTurnFulltextStore(rootDir, dir)
+        // 同居占位文件（turn-archive.json 由归档写，形状同位）：验证滚动不误删非目录条目
+        await mkdir(rootDir, { recursive: true })
+        await writeFile(join(rootDir, 'turn-archive.json'), '{}', 'utf-8')
+        await store.sealFiles(1, [{ path: join(dir, 'f.ts'), beforeContent: 'a\n', afterContent: 'b\n' }])
+        await store.sealFiles(2, [{ path: join(dir, 'f.ts'), beforeContent: 'b\n', afterContent: 'c\n' }])
+        const names = await readdir(rootDir)
+        expect(names.filter((n) => /^\d+$/.test(n))).toEqual(['2'])
+        expect(names).toContain('turn-archive.json')
+    })
+
+    it('session 滚动：超 KEEP 的最老目录被删，当前会话目录永不自删', async () => {
+        const { mkdir, utimes } = await import('node:fs/promises')
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-fulltext-session-prune-'))
+        cleanup.push(dir)
+        const diffsRoot = join(dir, '.mobi', 'turn-diffs')
+        // 造 32 个假 session 目录 + 递增 mtime（时间反着给：s032 最老）
+        for (let i = 1; i <= 32; i++) {
+            const name = `s${String(i).padStart(3, '0')}`
+            await mkdir(join(diffsRoot, name), { recursive: true })
+            const t = new Date(Date.now() - i * 1000)
+            await utimes(join(diffsRoot, name), t, t)
+        }
+        // 当前会话目录 s000（mtime 最老仍不可删）
+        await mkdir(join(diffsRoot, 's000'), { recursive: true })
+        const store = new FileTurnFulltextStore(join(diffsRoot, 's000'), dir)
+        await store.sealFiles(1, [{ path: join(dir, 'f.ts'), beforeContent: 'a\n', afterContent: 'b\n' }])
+        const { readdir } = await import('node:fs/promises')
+        const names = (await readdir(diffsRoot)).sort()
+        // 33 个目录 → 候选 32（exclude s000）留 30：删最老 2 个 → 共 31 个
+        expect(names).toHaveLength(31)
+        expect(names).toContain('s000')
+        expect(names).not.toContain('s032')
+        expect(names).not.toContain('s031')
+        expect(names).toContain('s030')
+    })
+
+    it('gitignore：seal 落盘后 .mobi/.gitignore 含 turn-diffs/', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-fulltext-gitignore-'))
+        cleanup.push(dir)
+        const store = new FileTurnFulltextStore(join(dir, '.mobi', 'turn-diffs', 's1'), dir)
+        await store.sealFiles(1, [{ path: join(dir, 'f.ts'), beforeContent: 'a\n', afterContent: 'b\n' }])
+        const content = await readFile(join(dir, '.mobi', '.gitignore'), 'utf-8')
+        expect(content).toContain('turn-diffs/')
+        expect(content).toContain('uploads/')
+        expect(content).toContain('artifacts/')
+    })
+
+    it('垃圾条目：session 目录里的普通文件不参与 session 滚动也不被误删', async () => {
+        const { mkdir, writeFile: wf, readdir } = await import('node:fs/promises')
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-fulltext-junk-'))
+        cleanup.push(dir)
+        const diffsRoot = join(dir, '.mobi', 'turn-diffs')
+        await mkdir(diffsRoot, { recursive: true })
+        await wf(join(diffsRoot, 'stray-file.txt'), 'not a session dir\n')
+        const store = new FileTurnFulltextStore(join(diffsRoot, 'current'), dir)
+        await store.sealFiles(1, [{ path: join(dir, 'f.ts'), beforeContent: 'a\n', afterContent: 'b\n' }])
+        expect(await readdir(diffsRoot)).toContain('stray-file.txt')
+    })
+})

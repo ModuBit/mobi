@@ -95,6 +95,17 @@ describe('writeFileRange handler', () => {
         expect(Array.from(buf)).toEqual([1, 2, 3, 4])
     })
 
+    it('上传就绪同时确保 .mobi/.gitignore 含 turn-diffs/（单源 mobiGitignore）', async () => {
+        const res = await mockRpc.call('writeFileRange', {
+            filename: 'g.png', offset: 0, content: new Uint8Array([1]), totalSize: 1,
+        })
+        expect(res.success).toBe(true)
+        const gitignore = await readFile(join(tempDir, '.mobi', '.gitignore'), 'utf-8')
+        expect(gitignore).toContain('uploads/')
+        expect(gitignore).toContain('artifacts/')
+        expect(gitignore).toContain('turn-diffs/')
+    })
+
     it('多段扩展名：防碰撞随机段插在扩展簇之前，.excalidraw.png 保持完整', async () => {
         const content = new Uint8Array([1, 2, 3])
         const res = await mockRpc.call('writeFileRange', {

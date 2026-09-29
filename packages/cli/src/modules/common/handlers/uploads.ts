@@ -22,6 +22,7 @@ import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { getUploadsDir } from '@/constants/uploadPaths'
+import { ensureMobiGitignore } from '../git/mobiGitignore'
 import { ALLOWED_EXTENSIONS_SET, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 /**
@@ -148,7 +149,7 @@ const uploadDirCache = new Map<string, string>()
  *
  * 创建目录结构：
  * - .mobi/uploads/YYYY-MM/ 按月归档
- * - .mobi/.gitignore 排除 uploads 和 artifacts 目录
+ * - .mobi/.gitignore 排除条目单源 mobiGitignore（uploads/artifacts/turn-diffs）
  *
  * @param workspaceRoot 工作区根目录
  * @returns 当月上传目录的绝对路径
@@ -170,27 +171,8 @@ async function ensureUploadDir(workspaceRoot: string): Promise<string> {
         await mkdir(uploadDir, { recursive: true })
     }
 
-    // 确保 .mobi/.gitignore 存在且包含 uploads/ 和 artifacts/
-    const mobiDir = join(workspaceRoot, '.mobi')
-    const gitignorePath = join(mobiDir, '.gitignore')
-    const requiredEntries = ['uploads/', 'artifacts/']
-
-    if (!existsSync(gitignorePath)) {
-        await mkdir(mobiDir, { recursive: true })
-        await writeFile(gitignorePath, requiredEntries.join('\n') + '\n', 'utf-8')
-    } else {
-        // 检查已有内容，补充缺失的条目
-        const content = await readFile(gitignorePath, 'utf-8')
-        const lines = content.split('\n')
-        const missing = requiredEntries.filter(entry => !lines.includes(entry))
-        if (missing.length > 0) {
-            // 在末尾追加缺失的条目
-            const newContent = content.endsWith('\n')
-                ? content + missing.join('\n') + '\n'
-                : content + '\n' + missing.join('\n') + '\n'
-            await writeFile(gitignorePath, newContent, 'utf-8')
-        }
-    }
+    // 确保 .mobi/.gitignore 存在且包含 mobi 状态目录排除条目（单源 mobiGitignore）
+    await ensureMobiGitignore(workspaceRoot)
 
     // 缓存已就绪的目录路径
     uploadDirCache.set(cacheKey, uploadDir)
