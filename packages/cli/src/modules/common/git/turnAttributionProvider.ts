@@ -131,21 +131,28 @@ export function toReviewEntry(e: TurnDiffFileEntry): ReviewFileEntry {
  *  用磁盘当前内容补 after（编辑后文件已删 = null 保持，全删语义成立）；before 缺失
  *  （Write 只记 after）不补。E2E 实证（票09）：缺此补全时非 git turn 档统计与全文对
  *  呈「整文件删除」假象（+0 -2 / after missing） */
-export async function loadToolJournalForReview(sessionId: string, cwd: string): Promise<ToolChangeJournal> {
+/**
+ * turn 档审查用 journal 装载（after 补全）：Edit 类 toolUseResult 只带 originalFile
+ * （before 全文）不带 after——journal 占位 null（spec 2.1「归并规则自理」）。消费时
+ * 用磁盘当前内容补 after（编辑后文件已删 = null 保持，全删语义成立）；before 缺失
+ * （Write 只记 after）不补。E2E 实证（票09）：缺此补全时非 git turn 档统计与全文对
+ * 呈「整文件删除」假象（+0 -2 / after missing）。
+ * onlyPath 给出时只补该路径（单文件 contents 查询不必为一条目全量读盘）
+ */
+export async function loadToolJournalForReview(sessionId: string, cwd: string, onlyPath?: string): Promise<ToolChangeJournal> {
     const journal = await loadToolChangeJournal(getToolChangesPath(cwd, sessionId))
     const snapshot = journal.snapshot()
-    let patched = false
-    for (const [path, entry] of Object.entries(snapshot.files)) {
-        if (entry.afterContent !== null || entry.beforeContent === null) continue
+    const targets = Object.entries(snapshot.files).filter(([path, entry]) =>
+        (onlyPath === undefined || path === onlyPath) && entry.afterContent === null && entry.beforeContent !== null)
+    await Promise.all(targets.map(async ([path, entry]) => {
         const abs = isAbsolute(path) ? path : join(cwd, path)
         try {
             entry.afterContent = await readFile(abs, 'utf8')
-            patched = true
         } catch {
             // 文件已删除：保持 null = 全删
         }
-    }
-    return patched ? ToolChangeJournal.restore(snapshot) : journal
+    }))
+    return ToolChangeJournal.restore(snapshot)
 }
 
 // ── 供数器 ─────────────────────────────────────────────────────────────────────
@@ -237,7 +244,7 @@ export class TurnAttributionProvider {
             const entry = source.record.files.find((f) => f.path === path)
             return entry ? { kind: 'contents', before: entry.beforeContent, after: entry.afterContent } : null
         }
-        const entry = (await loadToolJournalForReview(sessionId, this.cwd)).get(path)
+        const entry = (await loadToolJournalForReview(sessionId, this.cwd, path)).get(path)
         return entry ? { kind: 'contents', before: entry.beforeContent, after: entry.afterContent } : null
     }
 

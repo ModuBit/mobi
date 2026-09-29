@@ -43,7 +43,7 @@ import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
 import { isTerminalUserLifecycle, terminalLifecycleLabelKey, terminalReasonLabelKey } from '@/domain/chat/terminalReason'
-import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFailureKind, rewindFailedReasonKey, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { canForkMessage, collectForkTargetBlockIds, extractForkRejectCode, forkRejectReasonKey, agentBlockMessageKey } from '@/domain/chat/fork'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
@@ -555,9 +555,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             pendingBackfillRef.current = null
         }
         if (!rewindCompletion.filesRestored && rewindCompletion.error && rewindCompletion.error !== 'timeout') {
-            // 部分降态提示：CLI error 是英文串不直出（对齐 rewindRejectReasonKey 原则），原文留 console 诊断
-            console.warn('[rewind] files restore failed:', rewindCompletion.error)
-            messageApi.warning(t(rewindFilesFailedKey(rewindCompletion.error)))
+            // CLI error 是英文串不直出（对齐 rewindRejectReasonKey 原则），原文留 console 诊断：
+            // rejected（SDK 拒绝截断）时回退根本未执行，历史未变——绝不能落「对话已回退」的
+            // filesFailed 文案（2026-09-29 实踩：拒绝 toast 与失败分隔线矛盾并存）；files 类
+            // （截断已生效、仅文件恢复失败）才是合法降态提示
+            console.warn('[rewind] completed with error:', rewindCompletion.error)
+            if (rewindFailureKind(rewindCompletion.error) === 'rejected') {
+                messageApi.error(t('chat.rewind.rejectedByCC'))
+            } else {
+                messageApi.warning(t(rewindFilesFailedKey(rewindCompletion.error)))
+            }
         }
     }, [rewindCompletion, messageApi, t])
 
@@ -982,7 +989,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             chatBlocks,
             renderCtx,
             !!session?.running,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t(rewindFailedReasonKey(rewindCompletion?.error)), skippedLinksLabel: t('chat.rewind.skippedLinks') },
         )
 
         // 移动端「⋯」菜单目标索引（key → 操作信息；判据与 footer 同源同帧计算）。
@@ -1190,7 +1197,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile, handleEditSketchFromBubble])
+    }, [chatBlocks, session?.running, session?.active, session?.mode, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind, openForkPopover, forkPending, confirmFork, cancelFork, forkDraft, isMobile, handleEditSketchFromBubble, rewindCompletion])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
