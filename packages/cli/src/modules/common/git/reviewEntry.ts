@@ -27,25 +27,36 @@
  * 事实，git 条目走 toReviewEntry）；binary 恒 false（全文对为文本）。
  */
 
-import { OVERSIZE_DIFF_LINES, ReviewFileEntrySchema, type ReviewFileEntry } from '@mobi/shared'
+import { OVERSIZE_DIFF_LINES, ReviewFileEntrySchema, type ReviewFileEntry, type TurnDiffFileKind } from '@mobi/shared'
 import { countLineChanges } from './lineChangeStat'
+
+/** 内容对判定的非 wire 形状（kind + 行数，数字恒非 null）：合成端（TurnDiffFileEntry）
+ *  与 wire 条目（ReviewFileEntry）共用的底层判定 */
+export type ContentsChange = { kind: TurnDiffFileKind; additions: number; deletions: number }
+
+/** 内容对 → kind/counts 判定（kind 规则与计数口径的单点，wire 装配在其上） */
+export function contentsChangeOf(before: string | null, after: string | null): ContentsChange {
+    const counts = countLineChanges(before, after)
+    return {
+        kind: before === null && after !== null
+            ? 'add' as const
+            : after === null && before !== null
+                ? 'delete' as const
+                : 'modify' as const,
+        additions: counts.additions,
+        deletions: counts.deletions,
+    }
+}
 
 /** 内容对 → review 条目（kind/counts/oversized 判定单源） */
 export function reviewEntryFromContents(path: string, before: string | null, after: string | null): ReviewFileEntry {
-    const kind = before === null && after !== null
-        ? 'add' as const
-        : after === null && before !== null
-            ? 'delete' as const
-            : 'modify' as const
-    const counts = countLineChanges(before, after)
+    const change = contentsChangeOf(before, after)
     return ReviewFileEntrySchema.parse({
         path,
         previousPath: null,
-        kind,
-        additions: counts.additions,
-        deletions: counts.deletions,
+        ...change,
         binary: false,
         untracked: true,
-        oversized: counts.additions + counts.deletions > OVERSIZE_DIFF_LINES,
+        oversized: change.additions + change.deletions > OVERSIZE_DIFF_LINES,
     })
 }

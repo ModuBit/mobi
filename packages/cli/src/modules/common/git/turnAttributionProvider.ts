@@ -44,7 +44,7 @@ import {
     type ReviewFileEntry,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { reviewEntryFromContents } from './reviewEntry'
+import { contentsChangeOf, reviewEntryFromContents } from './reviewEntry'
 import { getToolChangesPath, loadToolChangeJournal, ToolChangeJournal } from './toolChangeJournal'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from './turnArchiveStore'
 import type { TurnSnapshotStore } from './turnSnapshotStore'
@@ -92,10 +92,21 @@ export function journalToEntries(journal: { listPaths(): string[]; get(path: str
     })
 }
 
-/** 归档轮 → review 条目（判定单源 reviewEntryFromContents；内容对封口时已记全） */
+/** 归档轮 → review 条目：kind 判定单源 contentsChangeOf，counts 读封口定稿值
+ *  （turnArchiveStore 的契约——行数封口时定稿、消费端只读不算，历史统计不随消费端
+ *  算法演进漂移）；内容对封口时已记全 */
 export function archiveToReviewEntries(record: TurnArchiveRecord): ReviewFileEntry[] {
     return record.files
-        .map((f) => reviewEntryFromContents(f.path, f.beforeContent, f.afterContent))
+        .map((f) => ReviewFileEntrySchema.parse({
+            path: f.path,
+            previousPath: null,
+            kind: contentsChangeOf(f.beforeContent, f.afterContent).kind,
+            additions: f.additions,
+            deletions: f.deletions,
+            binary: false,
+            untracked: true,
+            oversized: f.additions + f.deletions > OVERSIZE_DIFF_LINES,
+        }))
         .sort((a, b) => a.path.localeCompare(b.path))
 }
 

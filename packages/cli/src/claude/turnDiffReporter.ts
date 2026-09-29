@@ -44,8 +44,8 @@ import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
 import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
-import type { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
-import { reviewEntryFromContents } from '@/modules/common/git/reviewEntry'
+import { ToolChangeJournal, type PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
+import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { logger } from '@/ui/logger'
 
@@ -70,16 +70,9 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 /** 合成事件信封（mobiCustomEvent 标记由 apiSession 咽喉点识别，custom role 原样落库） */
 type CustomEventEnvelope = { mobiCustomEvent: true; role: 'custom'; content: unknown[] }
 
-/** turn 内累积的单文件内容对（归档 record files 的同款形状）。
- *  采集入口即要求全文对至少一侧非空（两者都缺的 toolUseResult 跳过），行数恒由
- *  reviewEntryFromContents 计算（判定单源），无需 hunk 兜底字段 */
-type TurnAccumulatedFile = {
-    path: string
-    beforeContent: string | null
-    afterContent: string | null
-    writeCount: number
-    toolNames: string[]
-}
+/** turn 内累积的单文件内容对 = ToolChangeEntry 的归并规则（before 取首次 / after 取
+ *  末次 / writeCount 累加 / toolNames 保序去重）——复用 ToolChangeJournal 本体作每轮
+ *  累积器，规则单源不双写（它纯内存无 I/O，I/O 只在 Persistent 包装层） */
 
 /** 合成结果（带供数源标签：journal 源需封口归档） */
 type ComposedFiles = {
@@ -95,8 +88,9 @@ export class TurnDiffReporter {
     private readonly toolFilePaths = new Map<string, { path: string; toolName: string }>()
     /** 投影口径：path → 行数累加（末位降级档的数据源） */
     private readonly projected = new Map<string, { additions: number; deletions: number }>()
-    /** 归因口径：turn 内按 path 累积的内容对（主源；onTurnEnd 封口归档后清空） */
-    private readonly turnFiles = new Map<string, TurnAccumulatedFile>()
+    /** 归因口径：turn 内按 path 累积的内容对（主源；归并规则单源 ToolChangeJournal，
+     *  onTurnEnd 封口归档后换新实例清空） */
+    private turnAccumulator = new ToolChangeJournal()
     /** turn 纪元：清空 turnFiles 后作废在途的异步读盘补全（防泄漏进下一轮） */
     private turnEpoch = 0
     /** 在途异步读盘补全（onTurnEnd 合成前 await，保测试与封口的确定性） */
@@ -184,21 +178,8 @@ export class TurnDiffReporter {
         } catch (e) {
             logger.debug('[TurnDiffReporter] journal record failed', e)
         }
-        // turn 内累积（归因主源，独立于 journal 是否启用）：before 取首次、after 取末次、writeCount 累加
-        const existing = this.turnFiles.get(path)
-        if (existing) {
-            if (afterContent !== undefined) existing.afterContent = afterContent
-            existing.writeCount += 1
-            if (!existing.toolNames.includes(observed.toolName)) existing.toolNames.push(observed.toolName)
-        } else {
-            this.turnFiles.set(path, {
-                path,
-                beforeContent,
-                afterContent: afterContent ?? null,
-                writeCount: 1,
-                toolNames: [observed.toolName],
-            })
-        }
+        // turn 内累积（归因主源，独立于 journal 是否启用）：归并规则单源 ToolChangeJournal
+        this.turnAccumulator.record({ path, beforeContent, afterContent, toolName: observed.toolName })
         // afterContent 缺失（Edit 类只带 before）：异步读盘补全 journal 与 turn 累积
         if (afterContent === undefined) this.scheduleAfterRead(path, observed.toolName)
     }
@@ -215,8 +196,7 @@ export class TurnDiffReporter {
                 } catch (e) {
                     logger.debug('[TurnDiffReporter] journal recordAfter failed', e)
                 }
-                const tf = this.turnFiles.get(path)
-                if (tf) tf.afterContent = content
+                this.turnAccumulator.recordAfter(path, content, toolName)
             })
             .catch(() => undefined) // 读失败（文件已删/不可读）：保持占位 null
             .finally(() => this.pendingReads.delete(task))
@@ -245,7 +225,8 @@ export class TurnDiffReporter {
             this.turnEpoch += 1
             this.toolFilePaths.clear()
             this.projected.clear()
-            this.turnFiles.clear()
+            // 换新实例清空 turn 累积（turnEpoch 守卫已作废在途读盘，无泄漏窗口）
+            this.turnAccumulator = new ToolChangeJournal()
         }
     }
 
@@ -267,22 +248,25 @@ export class TurnDiffReporter {
         // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）
         if (files.source === 'journal' && this.archive) {
             try {
+                // 内容对取自本轮累积器快照；counts 复用 files.files 已算结果（同源同时刻
+                // 同判定，不重跑 reviewEntryFromContents——判定单源 + 每文件省一遍全文 diff）
+                const accumulated = this.turnAccumulator.snapshot().files
                 await this.archive.seal({
                     turnIndex: files.turnIndex,
                     baseTurnIndex: files.baseTurnIndex,
                     sealedAt: Date.now(),
-                    files: [...this.turnFiles.values()].map((f) => {
-                        // kind/counts 判定单源（reviewEntryFromContents，审查 v3 收口）
-                        const entry = reviewEntryFromContents(f.path, f.beforeContent, f.afterContent)
-                        return {
-                            path: f.path,
+                    files: files.files.flatMap((e) => {
+                        const f = accumulated[e.path]
+                        if (!f) return []
+                        return [{
+                            path: e.path,
                             beforeContent: f.beforeContent,
                             afterContent: f.afterContent,
                             writeCount: f.writeCount,
                             toolNames: [...f.toolNames],
-                            additions: entry.additions ?? 0,
-                            deletions: entry.deletions ?? 0,
-                        }
+                            additions: e.additions,
+                            deletions: e.deletions,
+                        }]
                     }),
                 })
             } catch (e) {
@@ -306,9 +290,13 @@ export class TurnDiffReporter {
         this.send(envelope as unknown as RawJSONLines)
     }
 
-    /** 归因口径（主源）：turn 内 journal 累积 → 内容对行数（会话私有，免疫并发污染） */
+    /** 归因口径（主源）：turn 内 journal 累积 → 内容对行数（会话私有，免疫并发污染）。
+     *  kind/counts 判定单源 contentsChangeOf（数字恒非 null，wire 的 nullable 仅是
+     *  ReviewFileEntry 协议形状） */
     private async composeFromTurnAccumulation(): Promise<ComposedFiles | null> {
-        if (this.turnFiles.size === 0) return null
+        const accumulated = this.turnAccumulator.snapshot().files
+        const paths = Object.keys(accumulated)
+        if (paths.length === 0) return null
         // 基线轮 = 归档最新档（本轮封口前读，封口后本轮即成最新）
         let baseTurnIndex: number | null = null
         if (this.archive) {
@@ -318,13 +306,12 @@ export class TurnDiffReporter {
                 logger.debug('[TurnDiffReporter] archive listTurns failed', e)
             }
         }
-        const files: TurnDiffFileEntry[] = [...this.turnFiles.keys()]
+        const files: TurnDiffFileEntry[] = paths
             .sort((a, b) => a.localeCompare(b))
             .map((path) => {
-                const f = this.turnFiles.get(path)!
-                // kind/counts 判定单源（reviewEntryFromContents，审查 v3 收口）
-                const entry = reviewEntryFromContents(path, f.beforeContent, f.afterContent)
-                return { path, kind: entry.kind, additions: entry.additions ?? 0, deletions: entry.deletions ?? 0 }
+                const f = accumulated[path]!
+                const change = contentsChangeOf(f.beforeContent, f.afterContent)
+                return { path, ...change }
             })
         return {
             turnIndex: ++this.turnCounter,
