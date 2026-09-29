@@ -33,7 +33,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { OVERSIZE_DIFF_LINES } from '@mobi/shared'
-import { git } from './gitExec'
+import { git, sanitizeSessionId } from './gitExec'
 import { logger } from '@/ui/logger'
 
 /** git 执行注入（与 contentsPatch 的 GitExec 同源形状） */
@@ -48,9 +48,10 @@ export type TurnFulltextSealed = { ref?: TurnFulltextRef; patch: string; oversiz
 /** sealFiles 入参的单文件内容对（ToolChangeEntry 的子集形状） */
 export type TurnFulltextInput = { path: string; beforeContent: string | null; afterContent: string | null }
 
-/** 全文目录根：工作区 `.mobi/turn-diffs/<sessionId>/`（turnId 子目录 + turn-archive.json 同居） */
+/** 全文目录根：工作区 `.mobi/turn-diffs/<sessionId>/`（turnId 子目录 + turn-archive.json 同居）。
+ *  sessionId 与归档路径同清洗（读侧 sessionId 经 RPC 进来，字符面硬闸） */
 export function getTurnFulltextRoot(workspaceRoot: string, sessionId: string): string {
-    return join(workspaceRoot, '.mobi', 'turn-diffs', sessionId)
+    return join(workspaceRoot, '.mobi', 'turn-diffs', sanitizeSessionId(sessionId))
 }
 
 /**

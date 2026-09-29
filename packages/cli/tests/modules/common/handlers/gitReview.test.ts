@@ -276,7 +276,7 @@ describe('GitReviewReader turn 档（归档直读，真 git 集成）', () => {
         expect(patch.patch).toContain('+two')
         expect(patch.oversized).toBe(false)
 
-        // contents 空降级（归档无全文，B 方案能力代价）
+        // contents 空降级（条目无 ref——旧归档形状走现状）
         const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, target, join(v3Dir, 'a.ts')))
         expect(contents).toMatchObject({ before: null, after: null, reason: 'missing' })
 
@@ -288,5 +288,65 @@ describe('GitReviewReader turn 档（归档直读，真 git 集成）', () => {
 
         // 路径闸：cwd 外拒绝
         await expect(reader.patch(sid, target, '/etc/passwd')).rejects.toThrow(/Invalid path/)
+    })
+})
+
+// ── hydration：turn 档 ref 读侧（oversized 现场合成 + contents 历史轮全文）──────
+describe('GitReviewReader turn 档 hydration（ref 全文）', () => {
+    let hDir: string
+    const sid = 'hydration-review'
+
+    const fileA = () => join(hDir, 'oversized.ts')
+    const fileB = () => join(hDir, 'history.ts')
+
+    beforeAll(async () => {
+        hDir = await mkdtemp(join(tmpdir(), 'mobi-review-hydration-'))
+        // 真实全文目录 + 带 ref 归档：oversized.ts 超 patch 闸、history.ts 常规
+        const { FileTurnFulltextStore, getTurnFulltextRoot } = await import('@/modules/common/git/turnFulltextStore')
+        const store = new FileTurnFulltextStore(getTurnFulltextRoot(hDir, sid), hDir)
+        const sealed = await store.sealFiles(3, [
+            { path: fileA(), beforeContent: 'x\n'.repeat(3000), afterContent: 'y\n'.repeat(3000) },
+            { path: fileB(), beforeContent: 'old-content\n', afterContent: 'new-content\n' },
+        ])
+        const { FileTurnArchiveStore } = await import('@/modules/common/git/turnArchiveStore')
+        const archive = new FileTurnArchiveStore(getTurnArchivePath(hDir, sid))
+        await archive.seal({
+            turnIndex: 3,
+            baseTurnIndex: 2,
+            sealedAt: 1,
+            files: [
+                { path: fileA(), kind: 'modify', additions: 3000, deletions: 3000, writeCount: 1, toolNames: ['Write'], patch: '', oversizedPatch: true, ref: sealed.get(fileA())!.ref },
+                { path: fileB(), kind: 'modify', additions: 1, deletions: 1, writeCount: 1, toolNames: ['Edit'], patch: '-old-content\n+new-content\n', oversizedPatch: false, ref: sealed.get(fileB())!.ref },
+            ],
+        })
+        // 工作区实况偏离该轮事实：contents 必须返回归档全文而非盘上现状
+        await writeFile(fileB(), 'diverged-after-seal\n')
+    })
+
+    afterAll(async () => {
+        await rm(hDir, { recursive: true, force: true })
+    })
+
+    it('patch(turn)：oversized 带 ref → 现场合出 patch（oversized 解除）', async () => {
+        const { ReviewPatchResultSchema } = await import('@mobi/shared')
+        const reader = new GitReviewReader(hDir)
+        const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, { kind: 'turn' }, fileA()))
+        expect(patch.oversized).toBe(false)
+        expect(patch.patch).toContain('-x')
+        expect(patch.patch).toContain('+y')
+    })
+
+    it('contents(turn)：带 ref → 归档全文（历史轮 before 可得，工作区偏离不影响）', async () => {
+        const reader = new GitReviewReader(hDir)
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, fileB()))
+        expect(contents.before).toBe('old-content\n')
+        expect(contents.after).toBe('new-content\n')
+        expect(contents.reason).toBeNull()
+    })
+
+    it('contents(turn)：归档未记录路径 = missing（协议不变）', async () => {
+        const reader = new GitReviewReader(hDir)
+        const missing = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, join(hDir, 'not-recorded.ts')))
+        expect(missing).toMatchObject({ before: null, after: null, reason: 'missing' })
     })
 })

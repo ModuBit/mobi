@@ -367,10 +367,23 @@ export class GitReviewReader {
     /** 全文对（pierre hydration 懒拉）。reason = 两侧都拿不到时的降级原因；一侧有值
      *  （add/delete 的合法半对）reason 为 null */
     async contents(sessionId: string, target: DiffTarget, path: string): Promise<unknown> {
-        // turn 档：空降级（B 方案——归档只存统计+patch，全文零进盘；web 端 turn 档
-        // 不配 loadDiffFiles，本方法仅防御外部调用，保留 RPC 面防 500）
+        // turn 档：hydration——条目带 ref 时读归档全文目录（历史轮 before 也可得，该轮
+        // 事实不受工作区后续变化影响）；无 ref（旧归档）/ 未记录 / 无归档 = 空降级（协议不变）
         if (target.kind === 'turn') {
-            return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
+            const supplied = await this.turnAttribution().contentsOf(sessionId, target, path)
+            if (!supplied) return ReviewContentsResultSchema.parse({ before: null, after: null, reason: 'missing' })
+            const side = (raw: string | null): FulltextSide => {
+                if (raw === null) return missingSide()
+                const gated = gateText(raw)
+                return gated.text !== null ? { text: gated.text, reason: null } : { text: null, reason: gated.reason }
+            }
+            const base = side(supplied.before)
+            const head = side(supplied.after)
+            return ReviewContentsResultSchema.parse({
+                before: base.text,
+                after: head.text,
+                reason: base.text === null && head.text === null ? pickDegradedReason(base.reason, head.reason) : null,
+            })
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         // git 档路径闸（先 resolve 后闸，源决定闸，同 patch）
