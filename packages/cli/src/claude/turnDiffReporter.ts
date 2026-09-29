@@ -95,6 +95,10 @@ export class TurnDiffReporter {
     private turnEpoch = 0
     /** 在途异步读盘补全（onTurnEnd 合成前 await，保测试与封口的确定性） */
     private readonly pendingReads = new Set<Promise<void>>()
+    /** 同 path 补读的串行链：并发读的 resolve 顺序不保证，乱序 recordAfter 会把中间态
+     *  内容当末次写进 journal/累积（turn 封口与审查供数随之失真）——按调度序串行应用，
+     *  后调度的读反映更新的磁盘状态，afterContent 单调前进 */
+    private readonly readChains = new Map<string, Promise<void>>()
     /** journal 模式的轮次计数（快照模式用链序，不用它） */
     private turnCounter = 0
 
@@ -184,10 +188,13 @@ export class TurnDiffReporter {
         if (afterContent === undefined) this.scheduleAfterRead(path, observed.toolName)
     }
 
-    /** 异步读盘补 afterContent：fire-and-forget，turn 纪元守卫防泄漏进下一轮 */
+    /** 异步读盘补 afterContent：fire-and-forget，turn 纪元守卫防泄漏进下一轮；
+     *  同 path 挂上串行链（见 readChains 注释）保证应用顺序 = 调度顺序 */
     private scheduleAfterRead(path: string, toolName: string): void {
         const epoch = this.turnEpoch
-        const task = readFile(path, 'utf8')
+        const prior = this.readChains.get(path) ?? Promise.resolve()
+        const task = prior
+            .then(() => readFile(path, 'utf8'))
             .then((content) => {
                 if (epoch !== this.turnEpoch) return
                 // journal 只补 after 不计写入次数（写入计数归属本次 tool_result，已在同步路径 +1）
@@ -198,9 +205,13 @@ export class TurnDiffReporter {
                 }
                 this.turnAccumulator.recordAfter(path, content, toolName)
             })
-            .catch(() => undefined) // 读失败（文件已删/不可读）：保持占位 null
+            .catch(() => undefined) // 读失败（文件已删/不可读）：保持占位 null；链上吞错不断链
             .finally(() => this.pendingReads.delete(task))
+        const chained = task.finally(() => {
+            if (this.readChains.get(path) === chained) this.readChains.delete(path)
+        })
         this.pendingReads.add(task)
+        this.readChains.set(path, chained)
     }
 
     /** structuredPatch（unified diff hunk 数组）行数累加进投影（容错：形状不符不计） */

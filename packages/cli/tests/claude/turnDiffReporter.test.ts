@@ -19,7 +19,7 @@
  * （seam 契约见 turnSnapshotStore.test.ts），投影口径直接喂 RawJSONLines 消息序列。
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,7 +30,28 @@ import { createInMemoryTurnSnapshotStore } from '@/modules/common/git/turnSnapsh
 import { createInMemoryTurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 
+// 补读竞态脚本：同 path 多次补读并发时，模拟「R1 慢返回中间态、R2 快返回末次」的
+// resolve 乱序（磁盘真实时序 = 调度序）。未命中的 readFile 调用透传 actual。
+const readScript = vi.hoisted(() => ({ reads: [] as Array<{ path: string; value: string; delayMs: number; done?: boolean }> }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('node:fs/promises')>()
+    return {
+        ...actual,
+        readFile: async (path: string, options?: unknown) => {
+            const scripted = readScript.reads.find((r) => r.path === path && !r.done)
+            if (!scripted) return actual.readFile(path, options as never)
+            scripted.done = true
+            await new Promise((resolve) => setTimeout(resolve, scripted.delayMs))
+            return scripted.value
+        },
+    }
+})
+
 const SID = 's-1'
+
+beforeEach(() => {
+    readScript.reads.length = 0
+})
 
 /** 构造 assistant tool_use 消息（RawJSONLines 形态，观测所需的最小字段） */
 function assistantToolUse(toolUseId: string, name: string, filePath: string): RawJSONLines {
@@ -430,6 +451,35 @@ describe('TurnDiffReporter（journal 主源 + 封口归档，审查 v3 票01/02�
             expect(entry.writeCount).toBe(1) // 补读不计写入次数
             const [payload] = sentPayloads(send)
             expect(payload!.files[0]!.kind).toBe('modify') // 非 delete（after 占位 null 的假象）
+            await journal.dispose()
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('同 turn 同文件两次 Edit 补读乱序 resolve：末次内容不被中间态覆盖（按调度序应用）', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-race-'))
+        try {
+            const filePath = join(dir, 'a.ts')
+            const journal = await PersistentToolChangeJournal.open(join(dir, 'tool-changes.json'))
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(SID, null, send, journal)
+
+            // 两次 Edit 的补读并发在途：R1（先调度）慢返回中间态、R2（后调度）快返回末次
+            readScript.reads.push(
+                { path: filePath, value: 'mid\n', delayMs: 30 },
+                { path: filePath, value: 'final\n', delayMs: 0 },
+            )
+            reporter.observe(assistantToolUse('t1', 'Edit', filePath))
+            reporter.observe(editResult('t1', filePath, 'v0\n'))
+            reporter.observe(assistantToolUse('t2', 'Edit', filePath))
+            reporter.observe(editResult('t2', filePath, 'mid\n'))
+            await reporter.onTurnEnd()
+
+            // 归并规则 before 取首次 / after 取末次：乱序回写会把 after 钉死在中间态
+            const entry = journal.journal.get(filePath)!
+            expect(entry.beforeContent).toBe('v0\n')
+            expect(entry.afterContent).toBe('final\n')
             await journal.dispose()
         } finally {
             await rm(dir, { recursive: true, force: true })
