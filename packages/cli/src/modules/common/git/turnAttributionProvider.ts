@@ -236,8 +236,18 @@ export class TurnAttributionProvider {
     async pairOf(sessionId: string, target: DiffTarget, path: string): Promise<TurnSuppliedPair | null> {
         const source = await this.resolve(sessionId, target)
         if (source.kind === 'snapshot') {
-            gatePathForSource('git', path, this.cwd, null)
-            return { kind: 'snapshot', baseTree: source.baseTree, headTree: source.headTree }
+            // git 视野内路径（仓库相对形状）走两树出口；闸拒绝的形状（entriesOf 补入
+            // 清单的绝对路径 gitignored 文件等）journal 有记录则由 journal 供内容对——
+            // 清单可见却渲染不出 = 供数断层。journal 也没有 = 真非法路径，维持
+            // Invalid path 契约（错误文案与触发时机不变）
+            if (isSafeRepoRelative(path)) {
+                gatePathForSource('git', path, this.cwd, null)
+                return { kind: 'snapshot', baseTree: source.baseTree, headTree: source.headTree }
+            }
+            const entry = (await loadToolJournalForReview(sessionId, this.cwd, path)).get(path)
+            if (!entry) gatePathForSource('git', path, this.cwd, null)
+            gatePathForSource('workspace', path, this.cwd, null)
+            return { kind: 'contents', before: entry!.beforeContent, after: entry!.afterContent }
         }
         gatePathForSource('workspace', path, this.cwd, null)
         if (source.kind === 'sealed') {

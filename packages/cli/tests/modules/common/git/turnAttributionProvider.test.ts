@@ -196,6 +196,25 @@ describe('TurnAttributionProvider（降级链单点）', () => {
         await expect(snapshotProvider.pairOf(gsid, { kind: 'turn' }, 'a.ts')).resolves.toEqual({ kind: 'snapshot', baseTree: 't1', headTree: 't2' })
     })
 
+    it('pairOf 快照源：journal 补入的 gitignored 路径由 journal 供内容对（清单可见即渲染得出，与 entriesOf 补入对齐）', async () => {
+        const sid = 'pair-snapshot-journal'
+        // entriesOf 快照源把 git 视野外路径（绝对路径 gitignored 文件等）补进文件清单；
+        // pairOf 对同一路径必须给得出内容对——闸拒绝的形状查 journal，命中走工作区闸
+        const secretPath = join(dir, 'secret.local')
+        const journal = await PersistentToolChangeJournal.open(getToolChangesPath(dir, sid))
+        journal.record({ path: secretPath, beforeContent: null, afterContent: 'hush\n', toolName: 'Write' })
+        await journal.flush()
+
+        const provider = providerFor(dir, stubGitOps(), createInMemoryTurnSnapshotStore({
+            chains: { [sid]: [{ index: 1, tree: 't1' }, { index: 2, tree: 't2' }] },
+        }))
+        await expect(provider.pairOf(sid, { kind: 'turn' }, secretPath)).resolves.toEqual({ kind: 'contents', before: null, after: 'hush\n' })
+        // journal 也没有的非法路径：维持 Invalid path 契约（真非法 ≠ 补入缺记录）
+        await expect(provider.pairOf(sid, { kind: 'turn' }, '/etc/passwd')).rejects.toThrow(/Invalid path/)
+        // git 视野内路径（仓库相对形状）仍走快照两树出口，不绕 journal
+        await expect(provider.pairOf(sid, { kind: 'turn' }, 'a.ts')).resolves.toEqual({ kind: 'snapshot', baseTree: 't1', headTree: 't2' })
+    })
+
     it('非 turn 目标拒绝（resolver 职责边界）', async () => {
         const provider = providerFor(dir, stubGitOps(), null)
         await expect(provider.resolve(DIR_SID, { kind: 'worktree', area: 'unstaged' })).rejects.toThrow(/turn/)
