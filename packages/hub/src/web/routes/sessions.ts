@@ -1009,92 +1009,112 @@ export function createSessionsRoutes(
         }
     })
 
-    // ── 审查重写 v2（DiffTarget 统一模型，六方法）：hub 纯转发，target 经 schema 校验 ──
-    app.get('/sessions/:id/git-review/overview', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) return sessionResult
-        try {
-            return c.json(await engine.gitReviewOverview(sessionResult.sessionId))
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to collect review overview' }, 500)
-        }
-    })
+    // ── 审查重写 v2（DiffTarget 统一模型，六方法）：hub 纯转发。六条路由的
+    // 「守卫 → body 解析 → engine 调用 → 错误兜底」同构样板收为方法表 + 注册循环
+    // （与 CLI 侧 GIT_REVIEW_HANDLERS 表驱动同款收口）；wire 契约（方法/校验错误
+    // 文案/兜底文案/状态码）不变 ──
 
-    app.post('/sessions/:id/git-review/files', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) return sessionResult
-        const parsed = DiffTargetSchema.safeParse(await c.req.json().catch(() => null))
-        if (!parsed.success) return c.json({ success: false, error: 'Invalid diff target' }, 400)
-        try {
-            return c.json(await engine.gitReviewFiles(sessionResult.sessionId, parsed.data))
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list review files' }, 500)
-        }
-    })
+    /** git-review 路由表条目：run 的 args 以 never 反变收窄（各条目自带参数形状注解，
+     *  表外零断言） */
+    type GitReviewRouteDef = {
+        path: string
+        verb: 'get' | 'post'
+        /** 兜底文案（error.message 缺省时；与 CLI 侧 handler error 同一事实） */
+        fallback: string
+        /** 400 校验文案（无 body 校验的路由为 null） */
+        invalidError: string | null
+        /** body → engine 调用参数；返回 null = 校验失败（仅 invalidError 非 null 的路由） */
+        parse: (body: unknown) => unknown[] | null
+        run: (engine: SyncEngine, sessionId: string, args: never) => Promise<unknown>
+    }
 
-    app.post('/sessions/:id/git-review/diff', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) return sessionResult
-        const body = await c.req.json().catch(() => null) as { target?: unknown; path?: unknown } | null
-        const parsedTarget = DiffTargetSchema.safeParse(body?.target)
-        if (!parsedTarget.success || typeof body?.path !== 'string' || body.path.length === 0) {
-            return c.json({ success: false, error: 'Invalid review diff query' }, 400)
-        }
-        try {
-            return c.json(await engine.gitReviewDiff(sessionResult.sessionId, parsedTarget.data, body.path))
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to read review diff' }, 500)
-        }
-    })
+    const GIT_REVIEW_ROUTES: readonly GitReviewRouteDef[] = [
+        {
+            path: 'overview',
+            verb: 'get',
+            fallback: 'Failed to collect review overview',
+            invalidError: null,
+            parse: () => [],
+            run: (engine, sessionId) => engine.gitReviewOverview(sessionId),
+        },
+        {
+            path: 'files',
+            verb: 'post',
+            fallback: 'Failed to list review files',
+            invalidError: 'Invalid diff target',
+            parse: (body) => {
+                const parsed = DiffTargetSchema.safeParse(body)
+                return parsed.success ? [parsed.data] : null
+            },
+            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>]) => engine.gitReviewFiles(sessionId, args[0]),
+        },
+        {
+            path: 'diff',
+            verb: 'post',
+            fallback: 'Failed to read review diff',
+            invalidError: 'Invalid review diff query',
+            parse: (body) => {
+                const b = body as { target?: unknown; path?: unknown } | null
+                const parsedTarget = DiffTargetSchema.safeParse(b?.target)
+                if (!parsedTarget.success || typeof b?.path !== 'string' || b.path.length === 0) return null
+                return [parsedTarget.data, b.path]
+            },
+            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>, string]) => engine.gitReviewDiff(sessionId, args[0], args[1]),
+        },
+        {
+            path: 'contents',
+            verb: 'post',
+            fallback: 'Failed to read review contents',
+            invalidError: 'Invalid review contents query',
+            parse: (body) => {
+                const b = body as { target?: unknown; path?: unknown } | null
+                const parsedTarget = DiffTargetSchema.safeParse(b?.target)
+                if (!parsedTarget.success || typeof b?.path !== 'string' || b.path.length === 0) return null
+                return [parsedTarget.data, b.path]
+            },
+            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>, string]) => engine.gitReviewContents(sessionId, args[0], args[1]),
+        },
+        {
+            path: 'commits',
+            verb: 'post',
+            fallback: 'Failed to list commits',
+            invalidError: null,
+            parse: (body) => {
+                const cursor = (body as { cursor?: unknown } | null)?.cursor
+                return [typeof cursor === 'string' ? cursor : undefined]
+            },
+            run: (engine, sessionId, args: [string | undefined]) => engine.gitReviewCommits(sessionId, args[0]),
+        },
+        {
+            path: 'init',
+            verb: 'post',
+            fallback: 'Failed to initialize git repository',
+            invalidError: null,
+            parse: () => [],
+            run: (engine, sessionId) => engine.gitReviewInit(sessionId),
+        },
+    ]
 
-    app.post('/sessions/:id/git-review/contents', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) return sessionResult
-        const body = await c.req.json().catch(() => null) as { target?: unknown; path?: unknown } | null
-        const parsedTarget = DiffTargetSchema.safeParse(body?.target)
-        if (!parsedTarget.success || typeof body?.path !== 'string' || body.path.length === 0) {
-            return c.json({ success: false, error: 'Invalid review contents query' }, 400)
+    for (const def of GIT_REVIEW_ROUTES) {
+        const handler = async (c: Context) => {
+            const engine = requireSyncEngine(c, getSyncEngine)
+            if (engine instanceof Response) return engine
+            const sessionResult = requireSessionFromParam(c, engine)
+            if (sessionResult instanceof Response) return sessionResult
+            const body = def.verb === 'post' ? await c.req.json().catch(() => null) : null
+            const args = def.parse(body)
+            if (args === null && def.invalidError !== null) {
+                return c.json({ success: false, error: def.invalidError }, 400)
+            }
+            try {
+                return c.json(await def.run(engine, sessionResult.sessionId, args as never))
+            } catch (error) {
+                return c.json({ success: false, error: error instanceof Error ? error.message : def.fallback }, 500)
+            }
         }
-        try {
-            return c.json(await engine.gitReviewContents(sessionResult.sessionId, parsedTarget.data, body.path))
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to read review contents' }, 500)
-        }
-    })
-
-    app.post('/sessions/:id/git-review/commits', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) return sessionResult
-        const body = await c.req.json().catch(() => null) as { cursor?: unknown } | null
-        const cursor = typeof body?.cursor === 'string' ? body.cursor : undefined
-        try {
-            return c.json(await engine.gitReviewCommits(sessionResult.sessionId, cursor))
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list commits' }, 500)
-        }
-    })
-
-    app.post('/sessions/:id/git-review/init', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) return sessionResult
-        try {
-            return c.json(await engine.gitReviewInit(sessionResult.sessionId))
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to initialize git repository' }, 500)
-        }
-    })
+        if (def.verb === 'get') app.get(`/sessions/:id/git-review/${def.path}`, handler)
+        else app.post(`/sessions/:id/git-review/${def.path}`, handler)
+    }
 
     app.get('/sessions/:id/metadata', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
