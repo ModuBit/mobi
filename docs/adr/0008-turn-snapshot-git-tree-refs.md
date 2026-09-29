@@ -65,3 +65,15 @@ Amendment 1 的「快照链本身不废（审查 generation、历史兜底、che
 - **能力代价（已接受）**：Bash 写文件的轮次不再出 turn 卡；历史 turn 卡点开全文降级（统计在消息 payload 自含）；历史 turnIndex 查询「not found」（归档只有最新轮）。A 方案（hydration 全文多轮保留）备档 docs/pending.md #93
 
 废除理由：快照链的三项残余价值在实况下均不成立——历史兜底被「旧格式/旧会话一次性读侧兼容」替代；generation 可由归档 sealedAt + git status 公式等价表达；checkpoint 接缝是 SDK 自有能力无需 mobi 快照。而快照链的持续成本（会话清理对账、fork/resume 续链、refs 治理、capture 健壮性维护）是真实的。极简化后事实源唯一（归档），消费端只读不算。
+
+## Amendment 3：hydration——归档找回全文（2026-09-30）
+
+Amendment 2「全文一个字节不进盘」经 hydration 特性（spec/tickets 在 `.scratch/turn-archive-hydration/`）**部分反转**——B 方案的两项能力代价（oversized 历史轮不可看、sidechain 编辑不采集）实测不可接受，找回全文但保留滚动治理，不做 A 方案的无界累积：
+
+- **全文目录**：封口时归并后的 before/after 全文镜像写入 `.mobi/turn-diffs/<sid>/<turn>/{a,b}/`（`turnFulltextStore`），patch 由**单次** `git diff --no-index a/ b/` 目录模式合成整轮（git spawn 从 per-file 降 per-turn）；归档条目带 `ref` 指回全文（缺侧省略字段 = /dev/null 语义）
+- **存储治理**：turn 目录滚动留最新 1（Amendment 2 的「归档滚动单条」扩展到全文目录）、session 目录留最新 30——全文是**有界缓存**而非 A 方案的历史资产，`.mobi/.gitignore` 单源排除
+- **读侧**：oversized+ref 惰性现场合成 patch（`patchOf`，不落盘不回写归档）；`contentsOf` 出全文对（历史轮 before 也可得，撑后续 hydration 展开）；无 ref（旧归档/路径逃逸）维持 B 方案语义
+- **sidechain 兜底**：E2E 实证 CC 不给 subagent 的 tool_result 附 toolUseResult（「主线与 sidechain 一视同仁」只有半边成立）——sidechain 编辑族 tool_use 观测时预读盘记 before、对应 tool_result 无 toolUseResult 时读盘记 after（is_error/零变更不入账）；sidechain 不进投影（结果永不带 structuredPatch，进了只产 0/0 噪声条目）
+- **审查 UI 放开 oversized**：`isDiffable` 不再排除 oversized 行，RowDiff 照常拉取（读侧现场合成），降级 tooBig 改按 patch 返回结果兜底（旧归档无 ref）
+
+路径安全：`file_path` 来自模型输出，镜像相对路径前 resolve 校验不逃出工作区，逃逸条目跳过落盘由调用方兜底合成（无 ref）。

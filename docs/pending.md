@@ -921,7 +921,9 @@ interrupt（用户停止）
 
 ---
 
-## 93. turn 档 hydration 展开上下文——B 方案裁剪掉的 A 方案，后悔了从这里捡（2026-09-29 turn-archive B 方案定稿时）
+## 93. turn 档 hydration 展开上下文——B 方案裁剪掉的 A 方案，后悔了从这里捡（2026-09-30 已部分落地：hydration 特性交付）
+
+> **2026-09-30 更新**：turn-archive hydration 特性已交付（.scratch/turn-archive-hydration/ 票 01-05，510b45e3..9c5d5bae）——归档条目带 ref 指向 `.mobi/turn-diffs/<sid>/<turn>/a|b/` 全文目录（turn 目录滚动留 1、session 留 30），oversized 历史轮读侧现场合成 patch + contents 通道全文（contentsOf），subagent（sidechain）编辑兜底采集，审查 UI oversized 行放开可展开。pierre loadDiffFiles 展开折叠上下文仍未接——上下文展开这半边想捡从这里继续。
 
 **背景**：turn-archive B 方案（.scratch/turn-archive-b/）把归档全文砍掉，turn 档 diff 视图 = 纯 patch（无上下文展开/全文查看）。被裁掉的 A 方案 = 归档保留内容对全文（阈值 4MB 与传输闸 MAX_TEXT_BYTES 同源），撑 pierre hydration（loadDiffFiles 展开折叠上下文）+ contents 通道全文查看。
 
