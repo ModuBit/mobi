@@ -45,7 +45,7 @@ import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
 import type { TurnSnapshotStore } from '@/modules/common/git/turnSnapshotStore'
 import type { PersistentToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
-import { countLineChanges } from '@/modules/common/git/lineChangeStat'
+import { reviewEntryFromContents } from '@/modules/common/git/reviewEntry'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { logger } from '@/ui/logger'
 
@@ -72,7 +72,7 @@ type CustomEventEnvelope = { mobiCustomEvent: true; role: 'custom'; content: unk
 
 /** turn 内累积的单文件内容对（归档 record files 的同款形状）。
  *  采集入口即要求全文对至少一侧非空（两者都缺的 toolUseResult 跳过），行数恒由
- *  countLineChanges 计算，无需 hunk 兜底字段 */
+ *  reviewEntryFromContents 计算（判定单源），无需 hunk 兜底字段 */
 type TurnAccumulatedFile = {
     path: string
     beforeContent: string | null
@@ -271,15 +271,19 @@ export class TurnDiffReporter {
                     turnIndex: files.turnIndex,
                     baseTurnIndex: files.baseTurnIndex,
                     sealedAt: Date.now(),
-                    files: [...this.turnFiles.values()].map((f) => ({
-                        path: f.path,
-                        beforeContent: f.beforeContent,
-                        afterContent: f.afterContent,
-                        writeCount: f.writeCount,
-                        toolNames: [...f.toolNames],
-                        additions: this.entryCounts(f).additions,
-                        deletions: this.entryCounts(f).deletions,
-                    })),
+                    files: [...this.turnFiles.values()].map((f) => {
+                        // kind/counts 判定单源（reviewEntryFromContents，审查 v3 收口）
+                        const entry = reviewEntryFromContents(f.path, f.beforeContent, f.afterContent)
+                        return {
+                            path: f.path,
+                            beforeContent: f.beforeContent,
+                            afterContent: f.afterContent,
+                            writeCount: f.writeCount,
+                            toolNames: [...f.toolNames],
+                            additions: entry.additions ?? 0,
+                            deletions: entry.deletions ?? 0,
+                        }
+                    }),
                 })
             } catch (e) {
                 logger.debug('[TurnDiffReporter] archive seal failed', e)
@@ -318,7 +322,9 @@ export class TurnDiffReporter {
             .sort((a, b) => a.localeCompare(b))
             .map((path) => {
                 const f = this.turnFiles.get(path)!
-                return { path, kind: this.entryKind(f), ...this.entryCounts(f) }
+                // kind/counts 判定单源（reviewEntryFromContents，审查 v3 收口）
+                const entry = reviewEntryFromContents(path, f.beforeContent, f.afterContent)
+                return { path, kind: entry.kind, additions: entry.additions ?? 0, deletions: entry.deletions ?? 0 }
             })
         return {
             turnIndex: ++this.turnCounter,
@@ -327,18 +333,6 @@ export class TurnDiffReporter {
             git: null,
             source: 'journal',
         }
-    }
-
-    /** kind 判定单源：before null 且 after 有 = 新建，after null 且 before 有 = 全删，其余 modify */
-    private entryKind(f: TurnAccumulatedFile): TurnDiffFileEntry['kind'] {
-        if (f.beforeContent === null && f.afterContent !== null) return 'add'
-        if (f.afterContent === null && f.beforeContent !== null) return 'delete'
-        return 'modify'
-    }
-
-    /** 行数单源：内容对多重集差（采集入口保证至少一侧非空） */
-    private entryCounts(f: TurnAccumulatedFile): { additions: number; deletions: number } {
-        return countLineChanges(f.beforeContent, f.afterContent)
     }
 
     /** 实况口径（兜底）：「上一轮 = 相邻快照之差」（capture 已在 composeAndSend 统一执行）。

@@ -44,7 +44,7 @@ import {
     type ReviewFileEntry,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { countLineChanges } from './lineChangeStat'
+import { reviewEntryFromContents } from './reviewEntry'
 import { getToolChangesPath, loadToolChangeJournal, ToolChangeJournal } from './toolChangeJournal'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from './turnArchiveStore'
 import type { TurnSnapshotStore } from './turnSnapshotStore'
@@ -65,41 +65,20 @@ export function isSafeWorkspacePath(path: string, cwd: string): boolean {
     return abs === cwd || abs.startsWith(cwd + sep)
 }
 
-// ── 内容对 → review 条目（② 换纯函数前的既有判定，随 ① 迁入）────────────────────
+// ── 内容对 → review 条目（判定单源在 reviewEntry，② 收口）──────────────────────
 
-/** journal → review 条目：before null 且 after 有 = 新建（add），其余 modify；计数行多重集近似 */
+/** journal → review 条目（kind/counts/oversized 判定单源 reviewEntryFromContents） */
 export function journalToEntries(journal: { listPaths(): string[]; get(path: string): { beforeContent: string | null; afterContent: string | null } | undefined }): ReviewFileEntry[] {
     return journal.listPaths().sort((a, b) => a.localeCompare(b)).map((path) => {
         const entry = journal.get(path)!
-        const kind = entry.beforeContent === null && entry.afterContent !== null ? 'add' as const : 'modify' as const
-        const counts = countLineChanges(entry.beforeContent, entry.afterContent)
-        const lineCount = (entry.afterContent ?? entry.beforeContent ?? '').split('\n').length
-        return ReviewFileEntrySchema.parse({
-            path,
-            previousPath: null,
-            kind,
-            additions: counts.additions,
-            deletions: counts.deletions,
-            binary: false,
-            untracked: true,
-            oversized: lineCount > OVERSIZE_DIFF_LINES,
-        })
+        return reviewEntryFromContents(path, entry.beforeContent, entry.afterContent)
     })
 }
 
-/** 归档轮 → review 条目（kind 由内容对判定；行数封口时已定稿直接读） */
+/** 归档轮 → review 条目（判定单源 reviewEntryFromContents；内容对封口时已记全） */
 export function archiveToReviewEntries(record: TurnArchiveRecord): ReviewFileEntry[] {
     return record.files
-        .map((f) => ReviewFileEntrySchema.parse({
-            path: f.path,
-            previousPath: null,
-            kind: f.beforeContent === null && f.afterContent !== null ? 'add' : f.afterContent === null && f.beforeContent !== null ? 'delete' : 'modify',
-            additions: f.additions,
-            deletions: f.deletions,
-            binary: false,
-            untracked: true,
-            oversized: f.additions + f.deletions > OVERSIZE_DIFF_LINES,
-        }))
+        .map((f) => reviewEntryFromContents(f.path, f.beforeContent, f.afterContent))
         .sort((a, b) => a.path.localeCompare(b.path))
 }
 
