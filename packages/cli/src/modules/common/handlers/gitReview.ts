@@ -526,70 +526,94 @@ function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffF
 /**
  * machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta）。
  * git 执行统一走 gitTurnSnapshotStore 的收口 git()；本模块只负责查询编排与降级语义。
+ *
+ * 七连 handler 样板（reader/store 装配 + try/catch rpcError 同构）收敛为方法表 +
+ * 通用 wrapper（⑤ 表驱动收口）：wire 契约（方法名/数据形状/错误文案/debug 标签）不变。
  */
-export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
-    // 会话删除清引用（ADR 0008 refs 治理，hub best-effort 调用）：git mv 不适用——
-    // 快照引用本就不进 index，直接逐个删 ref
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.clear, async (data) => {
-        try {
-            const store = await openTurnSnapshotStore(data.cwd)
+
+/** RPC 方法表条目：run 的 data 参数以 never 反变收窄（各条目自带数据形状注解，
+ *  表外零断言）；log/error 与收口前逐条一致 */
+type GitReviewHandlerDef = {
+    /** debug 日志标签（`[GitReview] <log> failed`） */
+    log: string
+    /** rpcError 文案（hub 透传给 web 的错误信息） */
+    error: string
+    /** 是否装配快照 store（commits/init 用不到，不做多余的 store 打开副作用） */
+    withStore: boolean
+    run: (reader: GitReviewReader, store: TurnSnapshotStore | null, data: never) => Promise<unknown>
+}
+
+const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[] = [
+    {
+        // 会话删除清引用（ADR 0008 refs 治理，hub best-effort 调用）：git mv 不适用——
+        // 快照引用本就不进 index，直接逐个删 ref
+        method: GIT_REVIEW_RPC.clear,
+        log: 'clearTurnSnapshots',
+        error: 'Failed to clear turn snapshots',
+        withStore: true,
+        run: async (_reader, store, data: { cwd: string; sessionId: string }) => {
             const cleared = store ? await store.clearSession(data.sessionId) : 0
             return { success: true, cleared }
-        } catch (e) {
-            logger.debug('[GitReview] clearTurnSnapshots failed', e)
-            return rpcError('Failed to clear turn snapshots')
-        }
-    })
-
+        },
+    },
     // ── v2 六方法 ──
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string }, unknown>(GIT_REVIEW_RPC.overview, async (data) => {
-        try {
-            return await readerFor(data.cwd).overview(data.sessionId, await openTurnSnapshotStore(data.cwd))
-        } catch (e) {
-            logger.debug('[GitReview] overview failed', e)
-            return rpcError('Failed to collect review overview')
-        }
-    })
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string; target: DiffTarget }, unknown>(GIT_REVIEW_RPC.files, async (data) => {
-        try {
-            return await readerFor(data.cwd).files(data.sessionId, data.target, await openTurnSnapshotStore(data.cwd))
-        } catch (e) {
-            logger.debug('[GitReview] files failed', e)
-            return rpcError('Failed to list review files')
-        }
-    })
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string; target: DiffTarget; path: string }, unknown>(GIT_REVIEW_RPC.diff, async (data) => {
-        try {
-            return await readerFor(data.cwd).patch(data.sessionId, data.target, data.path, await openTurnSnapshotStore(data.cwd))
-        } catch (e) {
-            logger.debug('[GitReview] diff failed', e)
-            return rpcError('Failed to read review diff')
-        }
-    })
-    rpcHandlerManager.registerHandler<{ cwd: string; sessionId: string; target: DiffTarget; path: string }, unknown>(GIT_REVIEW_RPC.contents, async (data) => {
-        try {
-            return await readerFor(data.cwd).contents(data.sessionId, data.target, data.path, await openTurnSnapshotStore(data.cwd))
-        } catch (e) {
-            logger.debug('[GitReview] contents failed', e)
-            return rpcError('Failed to read review contents')
-        }
-    })
-    rpcHandlerManager.registerHandler<{ cwd: string; cursor?: string }, unknown>(GIT_REVIEW_RPC.commits, async (data) => {
-        try {
-            return await readerFor(data.cwd).commits(data.cursor)
-        } catch (e) {
-            logger.debug('[GitReview] commits failed', e)
-            return rpcError('Failed to list commits')
-        }
-    })
-    rpcHandlerManager.registerHandler<{ cwd: string }, unknown>(GIT_REVIEW_RPC.init, async (data) => {
-        try {
-            return await readerFor(data.cwd).initRepo()
-        } catch (e) {
-            logger.debug('[GitReview] init failed', e)
-            return rpcError('Failed to initialize git repository')
-        }
-    })
+    {
+        method: GIT_REVIEW_RPC.overview,
+        log: 'overview',
+        error: 'Failed to collect review overview',
+        withStore: true,
+        run: async (reader, store, data: { cwd: string; sessionId: string }) => reader.overview(data.sessionId, store),
+    },
+    {
+        method: GIT_REVIEW_RPC.files,
+        log: 'files',
+        error: 'Failed to list review files',
+        withStore: true,
+        run: async (reader, store, data: { sessionId: string; target: DiffTarget }) => reader.files(data.sessionId, data.target, store),
+    },
+    {
+        method: GIT_REVIEW_RPC.diff,
+        log: 'diff',
+        error: 'Failed to read review diff',
+        withStore: true,
+        run: async (reader, store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.patch(data.sessionId, data.target, data.path, store),
+    },
+    {
+        method: GIT_REVIEW_RPC.contents,
+        log: 'contents',
+        error: 'Failed to read review contents',
+        withStore: true,
+        run: async (reader, store, data: { sessionId: string; target: DiffTarget; path: string }) => reader.contents(data.sessionId, data.target, data.path, store),
+    },
+    {
+        method: GIT_REVIEW_RPC.commits,
+        log: 'commits',
+        error: 'Failed to list commits',
+        withStore: false,
+        run: async (reader, _store, data: { cursor?: string }) => reader.commits(data.cursor),
+    },
+    {
+        method: GIT_REVIEW_RPC.init,
+        log: 'init',
+        error: 'Failed to initialize git repository',
+        withStore: false,
+        run: async (reader) => reader.initRepo(),
+    },
+]
+
+export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
+    for (const def of GIT_REVIEW_HANDLERS) {
+        rpcHandlerManager.registerHandler<{ cwd: string }, unknown>(def.method, async (data) => {
+            try {
+                const reader = readerFor(data.cwd)
+                const store = def.withStore ? await openTurnSnapshotStore(data.cwd) : null
+                return await def.run(reader, store, data as never)
+            } catch (e) {
+                logger.debug(`[GitReview] ${def.log} failed`, e)
+                return rpcError(def.error)
+            }
+        })
+    }
 }
 
 export type { ReviewOverview }
