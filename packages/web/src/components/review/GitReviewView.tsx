@@ -27,13 +27,14 @@
  */
 
 import { memo, useEffect, useRef, useState } from 'react'
-import { Button, Collapse, Empty, Flex, Select, Spin, Tooltip } from 'antd'
+import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CheckCheck, ChevronDown, Copy, ExternalLink, FileQuestion, FolderTree, WrapText } from 'lucide-react'
-import { type DiffTarget, type ReviewFileEntry } from '@mobi/shared'
+import { CheckCheck, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, WrapText } from 'lucide-react'
+import { type DiffTarget, type ReviewCommit, type ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
+import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { copyTextToClipboard } from '@/components/chat/CopyButton'
 import { FilePathLabel, KindBadge, DiffStat } from '@/components/turnDiff/present'
 import { RowDiff } from './RowDiff'
@@ -44,6 +45,9 @@ import { isDiffable, isTargetUnavailable, parseTargetKey as DiffTargetParse } fr
 // 对外保持原导出面（测试/消费方从 GitReviewView 取注入接口类型）
 export type { GitReviewDeps } from './reviewDeps'
 
+/** commit 档在 Select 序列化键里的占位（选中它不切档，只弹 commit 选择面板） */
+const COMMIT_OPTION_KEY = '__commits__'
+
 /** 档位选项（DiffTarget 单源遍历）：Select 的 value 用稳定序列化键；「提交…」占位项票 06 实现 */
 const TARGET_OPTIONS: Array<{ target: DiffTarget; labelKey: string; disabled?: boolean }> = [
     { target: { kind: 'turn' }, labelKey: 'review.scope.lastTurn' },
@@ -51,6 +55,91 @@ const TARGET_OPTIONS: Array<{ target: DiffTarget; labelKey: string; disabled?: b
     { target: { kind: 'worktree', area: 'unstaged' }, labelKey: 'review.scope.unstaged' },
     { target: { kind: 'worktree', area: 'staged' }, labelKey: 'review.scope.staged' },
 ]
+
+/** commit 选择面板（Popover 内嵌列表，票06）：短 sha · subject · 相对时间 + 加载更多。
+ *  根提交（无父）不可选——commit 档 diff 语义是 parent..head，根提交没有 parent */
+function CommitPicker({ commits, selectedHead, onPick, onLoadMore, hasNextPage, isLoadingMore, isLoading, error }: {
+    commits: ReviewCommit[]
+    selectedHead: string | null
+    onPick: (commit: ReviewCommit) => void
+    onLoadMore: () => void
+    hasNextPage: boolean
+    isLoadingMore: boolean
+    isLoading: boolean
+    error: string | null
+}) {
+    const { t } = useTranslation()
+    if (isLoading) {
+        return <Flex align="center" justify="center" style={{ width: 260, height: 120 }}><Spin size="small" /></Flex>
+    }
+    if (error) {
+        return <Flex style={{ width: 260, padding: 12, fontSize: 12, color: 'var(--ant-color-error)' }}>{error}</Flex>
+    }
+    return (
+        <Flex vertical data-testid="review-commit-picker" style={{ width: 280, maxHeight: 320 }}>
+            <Flex vertical style={{ overflowY: 'auto', minHeight: 0 }}>
+                {commits.map((commit) => {
+                    const rootCommit = commit.parentSha === null
+                    const selected = commit.sha === selectedHead
+                    return (
+                        <button
+                            key={commit.sha}
+                            type="button"
+                            disabled={rootCommit}
+                            data-testid="review-commit-item"
+                            data-sha={commit.sha}
+                            onClick={() => !rootCommit && onPick(commit)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                width: '100%', padding: '5px 8px', border: 'none', cursor: rootCommit ? 'not-allowed' : 'pointer',
+                                textAlign: 'left', background: selected ? 'var(--ant-color-fill-tertiary)' : 'transparent',
+                                borderRadius: 6, fontSize: 12, color: 'var(--ant-color-text)',
+                            }}
+                        >
+                            <span style={{ fontFamily: 'var(--font-mono, monospace)', color: 'var(--ant-color-text-secondary)', flexShrink: 0 }}>
+                                {commit.sha.slice(0, 7)}
+                            </span>
+                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {commit.subject}
+                            </span>
+                            <span style={{ color: 'var(--ant-color-text-tertiary)', flexShrink: 0 }}>
+                                {formatRelativeTime(commit.authorTimestamp * 1000, t)}
+                            </span>
+                        </button>
+                    )
+                })}
+                {commits.length === 0 && (
+                    <Flex style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.empty')}</Flex>
+                )}
+            </Flex>
+            {hasNextPage && (
+                <Button
+                    size="small" type="text"
+                    data-testid="review-commit-load-more"
+                    loading={isLoadingMore}
+                    onClick={onLoadMore}
+                    style={{ marginTop: 4 }}
+                >
+                    {t('review.loadMore')}
+                </Button>
+            )}
+        </Flex>
+    )
+}
+
+/** 非 git 目录空态（票06）：说明 + 一键 init，成功后总览失效五档上线 */
+function NonGitEmptyState({ onInit, pending }: { onInit: () => void; pending: boolean }) {
+    const { t } = useTranslation()
+    return (
+        <Flex vertical align="center" justify="center" gap={12} style={{ height: '100%', padding: 24 }}>
+            <FileQuestion size={36} color="var(--ant-color-text-quaternary)" />
+            <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.needsGit')}</span>
+            <Button size="small" data-testid="review-init-git" loading={pending} onClick={onInit}>
+                {t('review.initRepo')}
+            </Button>
+        </Flex>
+    )
+}
 
 /** 手风琴文件行的头（Collapse label）：徽标/路径 + 紧随其后的统计与展开箭头（均 hover 显现），
  *  行尾 hover 操作（复制/打开标签页）。Collapse 自带展开图标关闭（expandIcon=null） */
@@ -130,25 +219,48 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
     )
 }
 
-export const GitReviewView = memo(function GitReviewView({ sessionId, target: targetProp, onTargetChange, deps = defaultDeps }: {
+export const GitReviewView = memo(function GitReviewView({ sessionId, target: targetProp, onTargetChange, layout: layoutProp, onLayoutChange, deps = defaultDeps }: {
     sessionId: string
     /** 受控审查目标（inspector 经 tab viewState 持久化）；缺省「上一轮」 */
     target?: DiffTarget
     onTargetChange?: (t: DiffTarget) => void
+    /** 受控 diff 布局（票06，inspector 经 tab viewState 持久化）；缺省 unified */
+    layout?: 'unified' | 'split'
+    onLayoutChange?: (l: 'unified' | 'split') => void
     deps?: GitReviewDeps
 }) {
     const { t } = useTranslation()
+    const { message } = App.useApp()
     const [targetState, setTargetState] = useState<DiffTarget>({ kind: 'turn' })
     const target = targetProp ?? targetState
     const changeTarget = onTargetChange ?? setTargetState
+    const [layoutState, setLayoutState] = useState<'unified' | 'split'>('unified')
+    const layout = layoutProp ?? layoutState
+    const changeLayout = onLayoutChange ?? setLayoutState
 
     const overview = deps.useReviewOverview(sessionId)
     const running = deps.useSessionRunning(sessionId)
+    const commits = deps.useReviewCommits(sessionId)
+    const initGit = deps.useReviewInit(sessionId)
     /** 多开：当前展开 diff 的文件路径集合（默认全收起，交给用户点开） */
     const [expandedPaths, setExpandedPaths] = useState<string[]>([])
     const [treeOpen, setTreeOpen] = useState(false)
+    /** commit 选择面板（Select 点「提交…」弹出，非下拉） */
+    const [commitsOpen, setCommitsOpen] = useState(false)
     /** diff 自动换行（默认开，保持既有行为；关闭后长行横向滚动） */
     const [wrap, setWrap] = useState(true)
+
+    // init 失败 toast（mutation 错误文案）；成功 toast 一次性（succeededAt 变化沿触发）
+    const succeededAtRef = useRef(0)
+    useEffect(() => {
+        if (initGit.error) void message.error(initGit.error)
+    }, [initGit.error, message])
+    useEffect(() => {
+        if (initGit.succeededAt && initGit.succeededAt !== succeededAtRef.current) {
+            succeededAtRef.current = initGit.succeededAt
+            void message.success(t('review.initRepoSuccess'))
+        }
+    }, [initGit.succeededAt, message, t])
 
     // 审查数据是易变工作区事实：tab 常挂不卸载，靠「running→idle 翻转」驱动 refetch——
     // 开着审查 tab 跑新轮次，turn 结束后上一轮档自动刷新（E2E 实证缺失此刷新的坑）
@@ -170,6 +282,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
 
     // 「上一轮」无快照链（会话无轮次变更消息）→ 禁用该档（空态文案诚实，不装死数据）
     const lastTurnMissing = overview.data?.scopes.turn === null
+    // 非 git 目录：git 系档禁用/隐藏，commit 选择器一并隐藏（仅 turn 可用）
+    const isGitRepo = overview.data?.isGitRepository !== false
 
     if (overview.isLoading) {
         return (
@@ -193,8 +307,15 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
             </Flex>
         )
     }
-    // 逐档可用性（非 git 目录 turn 档仍可用——工具层降级源；git 系档诚实空态）
+    // 逐档可用性（非 git 目录 turn 档仍可用——工具层降级源；git 系档诚实空态 + 一键 init）
     if (isTargetUnavailable(overview.data, target)) {
+        if (overview.data?.isGitRepository === false) {
+            return (
+                <Flex data-testid="git-review-view" vertical style={{ height: '100%' }}>
+                    <NonGitEmptyState onInit={initGit.init} pending={initGit.isPending} />
+                </Flex>
+            )
+        }
         return (
             <Flex data-testid="git-review-view" align="center" justify="center" style={{ height: '100%', padding: 24 }}>
                 <Empty image={<FileQuestion size={36} color="var(--ant-color-text-quaternary)" />} description={<span style={{ fontSize: 12 }}>{t('review.unavailable')}</span>} />
@@ -210,27 +331,74 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 gap={10}
                 style={{ padding: '8px 12px', borderBottom: '1px solid var(--ant-color-border-secondary)', flexShrink: 0 }}
             >
-                <Select
-                    size="small"
-                    value={JSON.stringify(target)}
-                    onChange={(v) => {
-                        try {
-                            changeTarget(DiffTargetParse(v as string))
-                        } catch { /* 序列化键损坏不切档 */ }
+                <Popover
+                    open={commitsOpen}
+                    onOpenChange={(visible) => {
+                        // 点击锚点本身的 open 请求一律不理（Select 点开的是档位下拉）；
+                        // 面板只由「提交…」选项点选打开，外点关闭
+                        if (!visible) setCommitsOpen(false)
                     }}
-                    style={{ width: 112 }}
-                    popupMatchSelectWidth={false}
-                    options={[
-                        ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
-                            value: JSON.stringify(t2),
-                            label: t(labelKey),
-                            disabled: t2.kind === 'turn' && lastTurnMissing,
-                        })),
-                        // 「提交…」占位禁用项（commit 选择器，票 06 实现）
-                        { value: '__commits__', label: t('review.scope.commits'), disabled: true },
-                    ]}
-                    data-testid="review-scope-switch"
-                />
+                    trigger={['click']}
+                    placement="bottomLeft"
+                    content={
+                        <CommitPicker
+                            commits={commits.data}
+                            selectedHead={target.kind === 'commit' ? target.range.head : null}
+                            onPick={(c) => {
+                                setCommitsOpen(false)
+                                changeTarget({ kind: 'commit', range: { base: c.parentSha ?? '', head: c.sha } })
+                            }}
+                            onLoadMore={commits.loadMore}
+                            hasNextPage={commits.hasNextPage}
+                            isLoadingMore={commits.isLoadingMore}
+                            isLoading={commits.isLoading}
+                            error={commits.error}
+                        />
+                    }
+                >
+                    <Select
+                        size="small"
+                        value={JSON.stringify(target)}
+                        onChange={(v) => {
+                            // 「提交…」项不切档，只弹 commit 选择面板
+                            if (v === COMMIT_OPTION_KEY) {
+                                setCommitsOpen(true)
+                                return
+                            }
+                            try {
+                                changeTarget(DiffTargetParse(v as string))
+                            } catch { /* 序列化键损坏不切档 */ }
+                        }}
+                        style={{ width: 128 }}
+                        popupMatchSelectWidth={false}
+                        labelRender={({ label, value }) => {
+                            // commit 档显示 短sha · 截断 subject（非 commit 档走默认 label）
+                            if (target.kind === 'commit') {
+                                const c = commits.data.find((x) => x.sha === target.range.head)
+                                const text = c ? `${c.sha.slice(0, 7)} · ${c.subject}` : t('review.scope.commits')
+                                return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</span>
+                            }
+                            return label ?? String(value)
+                        }}
+                        options={[
+                            ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
+                                value: JSON.stringify(t2),
+                                label: (
+                                    <span>
+                                        {t(labelKey)}
+                                        {!isGitRepo && t2.kind !== 'turn' && (
+                                            <span style={{ color: 'var(--ant-color-text-quaternary)' }}> · {t('review.needsGit')}</span>
+                                        )}
+                                    </span>
+                                ),
+                                disabled: (t2.kind === 'turn' && lastTurnMissing) || (!isGitRepo && t2.kind !== 'turn'),
+                            })),
+                            // 「提交…」→ commit 选择面板（非 git 目录隐藏）
+                            ...(isGitRepo ? [{ value: COMMIT_OPTION_KEY, label: t('review.scope.commits') }] : []),
+                        ]}
+                        data-testid="review-scope-switch"
+                    />
+                </Popover>
                 {scopeData && (
                     <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>
                         <span style={{ color: 'var(--ant-color-text-secondary)' }}>{t('review.fileCount', { count: scopeData.stats.files })}</span>{' '}
@@ -252,6 +420,15 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             data-testid="review-wrap-toggle"
                             icon={<WrapText size={15} style={{ color: wrap ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
                             onClick={() => setWrap((v) => !v)}
+                        />
+                    </Tooltip>
+                    <Tooltip title={layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit')}>
+                        <Button
+                            type="text" size="small"
+                            aria-label={layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit')}
+                            data-testid="review-layout-toggle"
+                            icon={<Columns2 size={15} style={{ color: layout === 'split' ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
+                            onClick={() => changeLayout(layout === 'split' ? 'unified' : 'split')}
                         />
                     </Tooltip>
                     <Tooltip title={t('review.fileTree')}>
@@ -297,6 +474,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                         version={overview.data?.targetGeneration ?? ''}
                                         deps={deps}
                                         wrap={wrap}
+                                        layout={layout}
                                     />
                                 </div>
                             ),

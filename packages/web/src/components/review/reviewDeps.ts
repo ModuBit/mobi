@@ -23,7 +23,7 @@
  * 数据版本）/ files / patch / contents（懒拉 enabled）/ commits（翻页累积）。
  */
 
-import { useReviewCommits, useReviewContents, useReviewFiles, useReviewOverview, useReviewPatch, type ReviewCommitsQueryResult, type ReviewContentsQueryResult, type ReviewFilesQueryResult, type ReviewOverviewResult, type ReviewPatchQueryResult } from '@/core/data/hooks/queries/useGitReview'
+import { useReviewCommits, useReviewContents, useReviewFiles, useReviewInit, useReviewOverview, useReviewPatch, type ReviewCommitsQueryResult, type ReviewContentsQueryResult, type ReviewFilesQueryResult, type ReviewInitResult, type ReviewOverviewResult, type ReviewPatchQueryResult } from '@/core/data/hooks/queries/useGitReview'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import type { DiffTarget } from '@mobi/shared'
 
@@ -33,6 +33,8 @@ export interface GitReviewDeps {
     useReviewPatch: (sessionId: string, target: DiffTarget | null, path: string | null, version: number | string) => ReviewPatchQueryResult
     useReviewContents: (sessionId: string, target: DiffTarget | null, path: string | null, enabled: boolean) => ReviewContentsQueryResult
     useReviewCommits: (sessionId: string) => ReviewCommitsQueryResult
+    /** 一键 init git 仓库（票06；mutation 型，测试注入假源） */
+    useReviewInit: (sessionId: string) => ReviewInitResult
     /** 会话是否 running（E2E/测试注入；生产走 useSession） */
     useSessionRunning: (sessionId: string) => boolean | undefined
 }
@@ -43,5 +45,6 @@ export const defaultDeps: GitReviewDeps = {
     useReviewPatch,
     useReviewContents,
     useReviewCommits,
+    useReviewInit,
     useSessionRunning: (sessionId) => useSession(sessionId).data?.running,
 }

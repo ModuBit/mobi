@@ -141,21 +141,24 @@ const ADD_TAB_KEY = '__inspector_add'
  * 上次档位；hook 须在稳定组件里调（renderTabContent 在 items map 里跑，不能内联）
  */
 function ReviewTab({ sessionId, tabId }: { sessionId: string; tabId: string }) {
-    const target = useWorkspaceStore((s) => {
-        const tab = s.getSession(sessionId).tabs.find((t) => t.id === tabId)
+    const tab = useWorkspaceStore((s) => s.getSession(sessionId).tabs.find((t) => t.id === tabId))
+    const target = (() => {
         const raw = tab?.viewState?.reviewTarget as string | undefined
         try {
             return raw ? parseTargetKey(raw) : { kind: 'turn' as const }
         } catch {
             return { kind: 'turn' as const }
         }
-    })
+    })()
+    const layout = tab?.viewState?.reviewLayout === 'split' ? 'split' : 'unified'
     const setTabViewState = useWorkspaceStore((s) => s.setTabViewState)
     return (
         <GitReviewView
             sessionId={sessionId}
             target={target}
             onTargetChange={(t) => setTabViewState(sessionId, tabId, { reviewTarget: JSON.stringify(t) })}
+            layout={layout}
+            onLayoutChange={(l) => setTabViewState(sessionId, tabId, { reviewLayout: l })}
         />
     )
 }

@@ -38,6 +38,8 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true }
     deps: GitReviewDeps
     /** 自动换行开关（审查面板工具区切换） */
     wrap?: boolean
+    /** diff 布局（unified/split，票06 存线；消费在票07 DiffViewer 换血） */
+    layout?: 'unified' | 'split'
 }) {
     const { t } = useTranslation()
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)

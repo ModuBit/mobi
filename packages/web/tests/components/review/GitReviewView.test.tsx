@@ -40,7 +40,7 @@ vi.mock('@/components/review/DiffViewer', () => ({
 
 import { GitReviewView, type GitReviewDeps } from '@/components/review/GitReviewView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import type { DiffTarget, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
+import type { DiffTarget, ReviewCommit, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 
 afterEach(cleanup)
 
@@ -64,6 +64,11 @@ const TURN_FILES: ReviewFileEntry[] = [
     entry({ path: 'src/deep/a.ts', additions: 5, deletions: 3 }),
 ]
 const STAGED_FILES: ReviewFileEntry[] = [entry({ path: 'staged-only.txt', additions: 1, deletions: 1 })]
+
+const COMMITS: ReviewCommit[] = [
+    { sha: 'aaaaaaa444444444444444444444444444444444', parentSha: 'bbbbbbb444444444444444444444444444444444', subject: 'feat: add login flow', authorName: 'A', authorTimestamp: 1759000000 },
+    { sha: 'ccccccc444444444444444444444444444444444', parentSha: null, subject: 'chore: initial commit', authorName: 'A', authorTimestamp: 1758900000 },
+]
 
 const OVERVIEW: ReviewOverview = {
     unavailableScopes: { turn: false, uncommitted: false, unstaged: false, staged: false, commit: false },
@@ -101,8 +106,11 @@ function makeDeps(overrides: {
     onQuery?: (path: string | null) => void
     running?: boolean | undefined
     refetch?: ReturnType<typeof vi.fn>
+    commits?: ReviewCommit[]
+    onInit?: () => void
 }): GitReviewDeps {
     const filesFor = overrides.filesFor ?? FILES_FOR
+    const initSpy = overrides.onInit ?? (() => {})
     return {
         useReviewOverview: () => ({ data: overrides.overview, error: overrides.overviewError ?? null, isLoading: overrides.isLoading ?? false, refetch: overrides.refetch ?? (() => {}) }),
         useReviewFiles: (_sessionId: string, target: DiffTarget | null) => {
@@ -122,7 +130,8 @@ function makeDeps(overrides: {
                 isLoading: false,
             }
         },
-        useReviewCommits: () => ({ data: [], error: null, isLoading: false, loadMore: () => {}, hasNextPage: false, isLoadingMore: false }),
+        useReviewCommits: () => ({ data: overrides.commits ?? [], error: null, isLoading: false, loadMore: () => {}, hasNextPage: false, isLoadingMore: false }),
+        useReviewInit: () => ({ init: initSpy, isPending: false, error: null, succeededAt: 0 }),
         useSessionRunning: () => overrides.running,
     }
 }
@@ -214,7 +223,7 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(screen.getByText('review.noSnapshotChanges')).toBeDefined()
     })
 
-    it('非 git 目录：git 系档位不可用诚实空态；turn 档（工具层降级源）仍可用', () => {
+    it('非 git 目录：turn 档可用；切 staged 档出「一键 init」空态，点按调 init；下拉 git 系禁用且无「提交…」项', () => {
         const nonGit: ReviewOverview = {
             ...OVERVIEW,
             isGitRepository: false,
@@ -224,10 +233,64 @@ describe('GitReviewView（hook 注入 v2）', () => {
         render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: nonGit, contents: { before: 'a', after: 'b' } })} />)
         expect(screen.getAllByTestId('review-file-row')).toHaveLength(2)
         cleanup()
-        // 切到 staged（受控 target）→ 不可用空态
-        render(<GitReviewView sessionId="s1" target={TARGET_STAGED} deps={makeDeps({ overview: nonGit })} />)
+
+        // 切到 staged（受控 target）→ 一键 init 空态
+        const onInit = vi.fn()
+        render(<GitReviewView sessionId="s1" target={TARGET_STAGED} deps={makeDeps({ overview: nonGit, onInit })} />)
         expect(screen.queryByTestId('review-file-row')).toBeNull()
-        expect(screen.getByText('review.unavailable')).toBeDefined()
+        fireEvent.click(screen.getByTestId('review-init-git'))
+        expect(onInit).toHaveBeenCalledTimes(1)
+        cleanup()
+
+        // turn 档下拉：git 系禁用 + needsGit 后缀、无「提交…」项
+        render(<GitReviewView sessionId="s1" target={TARGET_TURN} deps={makeDeps({ overview: nonGit })} />)
+        openScopeDropdown()
+        const disabledOptions = [...document.querySelectorAll('.ant-select-item-option-disabled')]
+        expect(disabledOptions.length).toBe(3)
+        expect(disabledOptions[0]!.textContent).toContain('review.needsGit')
+        expect(document.querySelectorAll('.ant-select-item-option')).toHaveLength(4) // 4 档，无 commits 项
+    })
+
+    it('commit 选择器：点「提交…」弹面板 → 选 commit 切 commit 档；根提交（无父）不可选', () => {
+        const onTargetChange = vi.fn()
+        render(<GitReviewView sessionId="s1" target={TARGET_TURN} onTargetChange={onTargetChange} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, contents: { before: '', after: '' } })} />)
+
+        openScopeDropdown()
+        const commitsOption = [...document.querySelectorAll('.ant-select-item-option')].find((o) => o.textContent === 'review.scope.commits')
+        expect(commitsOption).toBeDefined()
+        fireEvent.click(commitsOption!)
+
+        // 面板出现：两行提交 + 根提交禁用
+        const items = screen.getAllByTestId('review-commit-item')
+        expect(items).toHaveLength(2)
+        expect((items[0] as HTMLButtonElement).disabled).toBe(false)
+        expect((items[1] as HTMLButtonElement).disabled).toBe(true) // 根提交 parentSha=null
+        expect(items[0]!.textContent).toContain('feat: add login flow')
+
+        fireEvent.click(items[0]!)
+        expect(onTargetChange).toHaveBeenCalledWith({ kind: 'commit', range: { base: 'bbbbbbb444444444444444444444444444444444', head: 'aaaaaaa444444444444444444444444444444444' } })
+    })
+
+    it('layout 切换：非受控内部翻转 + 受控回调（inspector viewState 持久化通道）', () => {
+        // 受控：点按钮回调带新值，组件不自改
+        const onLayoutChange = vi.fn()
+        const { rerender } = render(
+            <GitReviewView sessionId="s1" layout="unified" onLayoutChange={onLayoutChange} deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' } })} />,
+        )
+        fireEvent.click(screen.getByTestId('review-layout-toggle'))
+        expect(onLayoutChange).toHaveBeenCalledWith('split')
+        // 受控值更新后按钮 tooltip 目标反转为「统一」
+        rerender(<GitReviewView sessionId="s1" layout="split" onLayoutChange={onLayoutChange} deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' } })} />)
+        fireEvent.click(screen.getByTestId('review-layout-toggle'))
+        expect(onLayoutChange).toHaveBeenLastCalledWith('unified')
+
+        // 非受控：内部 state 翻转（按钮可连续点击）
+        cleanup()
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' } })} />)
+        const btn = () => screen.getByTestId('review-layout-toggle')
+        fireEvent.click(btn())
+        fireEvent.click(btn())
+        expect(onLayoutChange).toHaveBeenCalledTimes(2) // 非受控实例不触发受控回调
     })
 
     it('拉数失败：错误文案替代清单', () => {
@@ -285,10 +348,13 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(row.textContent).toContain('before.txt')
     })
 
-    it('大 diff（oversized 由 CLI 打标）：降级为「文件过大」+ 跳转文件查看器入口，不发 diff 查询', () => {
+    it('大 diff（oversized 由 CLI 打标，票06 起）：整行不可展开（无箭头、点击不发查询不出占位）', () => {
         const big = (t: DiffTarget | null) => ({
             files: t?.kind === 'turn'
-                ? [entry({ path: 'huge.ts', additions: 6000, deletions: 0, oversized: true })]
+                ? [
+                    entry({ path: 'huge.ts', additions: 6000, deletions: 0, oversized: true }),
+                    entry({ path: 'text.ts', additions: 2, deletions: 0 }),
+                ]
                 : STAGED_FILES,
             truncated: false,
         })
@@ -299,14 +365,19 @@ describe('GitReviewView（hook 注入 v2）', () => {
                 deps={makeDeps({ overview: OVERVIEW, filesFor: big, contents: { before: '', after: '' }, onQuery: (p) => queries.push(p) })}
             />,
         )
-        fireEvent.click(screen.getByTestId('review-file-row'))
-        expect(screen.getByTestId('review-too-big')).toBeDefined()
-        expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
+        const rows = screen.getAllByTestId('review-file-row')
+        fireEvent.click(rows[0]!)
         expect(queries.filter((q) => q !== null)).toHaveLength(0) // oversized 不发 diff 拉取
-        // 点击入口 → 调 workspaceStore.openFileTab（新 file tab 激活）
-        fireEvent.click(screen.getByTestId('review-too-big-open').querySelector('button') ?? screen.getByTestId('review-too-big-open'))
+        expect(expandedOf(rows[0]!)).toBe('false')
+        expect(rows[0]!.querySelector('.review-row-chevron')).toBeNull()
+        expect(screen.queryByTestId('diff-viewer-stub')).toBeNull()
+        // 行内「打开标签页」仍可用——oversized 唯一出口
+        fireEvent.click(rows[0]!.querySelector('button[aria-label="review.openInTab"]') as HTMLButtonElement)
         const s = useWorkspaceStore.getState().getSession('s1')
         expect(s.tabs.some((t) => t.mode === 'file' && t.filePath === 'huge.ts')).toBe(true)
+        // 文本行照常展开
+        fireEvent.click(rows[1]!)
+        expect(expandedOf(rows[1]!)).toBe('true')
     })
 
     it('非文本条目：整行不可展开（无箭头、点击不发查询不出占位）', () => {

@@ -59,6 +59,8 @@ export interface TabViewState {
     reviewScope?: (typeof GIT_REVIEW_SCOPES)[number]
     /** 审查目标持久化（DiffTarget 的 JSON 序列化键，票05） */
     reviewTarget?: string
+    /** 审查 diff 布局（unified/split，审查重写票06） */
+    reviewLayout?: 'unified' | 'split'
 }
 
 /** 单个 session 的检视面板状态 */

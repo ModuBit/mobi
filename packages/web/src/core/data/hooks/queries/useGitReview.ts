@@ -20,10 +20,11 @@
  * { data | error }，组件不碰原始形状。
  */
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
     GitReviewDataSchema,
     GitReviewFileDiffSchema,
+    ReviewActionResultSchema,
     ReviewCommitsResultSchema,
     ReviewContentsResultSchema,
     ReviewFilesResultSchema,
@@ -221,6 +222,41 @@ export function useReviewContents(sessionId: string, target: DiffTarget | null, 
         data: q.data?.data ?? undefined,
         error: q.data?.error ?? (q.error ? String(q.error) : null),
         isLoading: !!target && !!path && enabled && q.isLoading,
+    }
+}
+
+export interface ReviewInitResult {
+    init: () => void
+    isPending: boolean
+    /** 失败文案（业务错误或网络错误）；组件侧 message.error 呈现 */
+    error: string | null
+    /** 成功时刻（dataUpdatedAt，0=未成功过）：组件侧成功 toast 的信号源 */
+    succeededAt: number
+}
+
+/** 一键初始化 git 仓库（审查重写票06）：成功后失效总览缓存（五档即刻上线） */
+export function useReviewInit(sessionId: string): ReviewInitResult {
+    const api = useMobiApi()
+    const queryClient = useQueryClient()
+    const mutation = useMutation({
+        mutationFn: async () => {
+            const res = await api.sessions.gitReviewInit(sessionId)
+            const parsed = ReviewActionResultSchema.safeParse(res.data)
+            if (parsed.success) return parsed.data
+            const err = (res.data as { error?: string } | undefined)?.error
+            throw new Error(err ?? 'Failed to init git repository')
+        },
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.gitReviewOverview(sessionId) })
+        },
+    })
+    return {
+        init: () => void mutation.mutate(),
+        isPending: mutation.isPending,
+        error: mutation.error ? String(mutation.error.message ?? mutation.error) : null,
+        // 成功时刻：提交时间无法从 mutation 直读，用提交成功后总览失效前的本地时点——
+        // 简化为「isSuccess 翻转时取当下」，组件按变化沿 toast 一次
+        succeededAt: mutation.isSuccess ? mutation.submittedAt : 0,
     }
 }
 
