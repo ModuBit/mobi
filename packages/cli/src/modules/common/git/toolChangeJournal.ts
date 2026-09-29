@@ -73,6 +73,15 @@ export class ToolChangeJournal {
         }
     }
 
+    /** 只补 afterContent 不计写入次数（异步读盘补全专用——写入计数归属触发读盘的那次
+     *  tool_result，已在同步 record 路径 +1，这里再计会翻倍）；路径未记录过则忽略 */
+    recordAfter(path: string, afterContent: string, toolName: string): void {
+        const existing = this.files.get(path)
+        if (!existing) return
+        existing.afterContent = afterContent
+        if (!existing.toolNames.includes(toolName)) existing.toolNames.push(toolName)
+    }
+
     snapshot(): ToolChangeSnapshot {
         const files: Record<string, ToolChangeEntry> = {}
         for (const [path, entry] of this.files) files[path] = { ...entry, toolNames: [...entry.toolNames] }
@@ -145,6 +154,16 @@ export class PersistentToolChangeJournal {
     /** 透传记录并调度去抖落盘 */
     record(entry: ToolChangeRecordInput): void {
         this.journal.record(entry)
+        this.scheduleWrite()
+    }
+
+    /** 透传只补 after（不计写入次数）并调度去抖落盘 */
+    recordAfter(path: string, afterContent: string, toolName: string): void {
+        this.journal.recordAfter(path, afterContent, toolName)
+        this.scheduleWrite()
+    }
+
+    private scheduleWrite(): void {
         if (this.timer) clearTimeout(this.timer)
         this.timer = setTimeout(() => {
             this.timer = null

@@ -51,6 +51,7 @@ import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter, ensureBaselineSnapshot } from "./turnDiffReporter";
 import { openTurnSnapshotStore } from "@/modules/common/git/gitTurnSnapshotStore";
 import { PersistentToolChangeJournal, getToolChangesPath } from "@/modules/common/git/toolChangeJournal";
+import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
@@ -426,11 +427,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         if (turnDiffStore) await ensureBaselineSnapshot(turnDiffStore, session.client.sessionId);
         // 工具层变更记录（审查重写 v2 兜底源）：非 git 降级源 / gitignored 补入源；采集失败不阻塞
         const toolChangeJournal = await PersistentToolChangeJournal.open(getToolChangesPath(session.path, session.client.sessionId)).catch(() => null);
+        // turn 封口归档（审查 v3 历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
+        const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
         const turnDiffReporter = new TurnDiffReporter(
             session.client.sessionId,
             turnDiffStore,
             (m) => messageQueue.enqueue(m),
             toolChangeJournal ?? undefined,
+            turnArchive,
         );
         // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 Hub
         // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
