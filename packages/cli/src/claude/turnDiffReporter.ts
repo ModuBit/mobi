@@ -27,9 +27,15 @@
  * - 投影层（降级档）：累积为空时用工具事件行数累加（Bash/subagent 写入不在内），
  *   `git: null` 显式标记。
  *
- * 时序：result 是本轮最后一条消息，合成异步执行、完成后经注入的 send 通道入列
- * （remote 传 messageQueue.enqueue 保 FIFO；local 顺序流直发）。下一轮用户消息快于
- * 合成完成时可能反超——合成是毫秒级快路径，接受此窗口。
+ * 轮界隔离（排队消息竞态，2026-09-30）：result 到达时**同步冻结**本轮采集上下文
+ * （TurnContext 五件套整包换新），旧引用闭包交给封口链——封口操作的是冻结快照，
+ * 与后续轮的 observe 天然隔离（queue 立即投喂下一轮时不串轮、不丢数据）。封口
+ * 入串行队列执行（归档 seal / 全文落盘不并发，滚动单条语义下并发覆盖会丢轮）。
+ *
+ * 时序：卡片先于归档 IO——卡片 wire 载荷（stats/files）纯内存可算，在在途读盘
+ * 收口后立即入流，归档封口（全文落盘 + 目录 diff + seal，秒级盘 IO）在卡片之后
+ * 后台执行。排队消息场景下保证卡片落库在下一轮用户消息之前（result → 卡片 →
+ * 下一轮 user）；归档晚到由读侧降级协议兜底。
  *
  * journal 采集边界：覆盖 Edit/Write/MultiEdit/NotebookEdit 的 toolUseResult 全文对
  * （afterContent 落笔即读盘补全），主线与 sidechain（subagent）消息流一视同仁——
@@ -42,7 +48,7 @@
 
 import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
-import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry } from '@mobi/shared'
+import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry, type TurnDiffPayload } from '@mobi/shared'
 import { git } from '@/modules/common/git/gitExec'
 import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
@@ -70,26 +76,47 @@ type ComposedFiles = {
     source: 'journal' | 'projection'
 }
 
-export class TurnDiffReporter {
-    /** toolUseId → file_path + 工具名（assistant tool_use 观测，供 tool_result 的 patch 归位与 journal 归因） */
-    private readonly toolFilePaths = new Map<string, { path: string; toolName: string }>()
+/**
+ * 单轮采集上下文：轮界状态五件套整包。result 到达时同步换新实例（冻结语义），
+ * 旧引用闭包交给封口链消费——异步读盘补全等回写一律捕获所属 ctx（写冻结的旧
+ * accumulator 无害：封口链在等它，或已消费完毕无人再读），与下一轮互不干扰，
+ * 无需纪元守卫。
+ */
+type TurnContext = {
+    /** 归因主源：turn 内按 path 累积的内容对 */
+    accumulator: ToolChangeJournal
     /** 投影口径：path → 行数累加（末位降级档的数据源） */
-    private readonly projected = new Map<string, { additions: number; deletions: number }>()
-    /** 归因口径：turn 内按 path 累积的内容对（主源；归并规则单源 ToolChangeJournal，
-     *  onTurnEnd 封口归档后换新实例清空） */
-    private turnAccumulator = new ToolChangeJournal()
-    /** turn 纪元：清空 turnFiles 后作废在途的异步读盘补全（防泄漏进下一轮） */
-    private turnEpoch = 0
-    /** 在途异步读盘补全（onTurnEnd 合成前 await，保测试与封口的确定性） */
-    private readonly pendingReads = new Set<Promise<void>>()
+    projected: Map<string, { additions: number; deletions: number }>
+    /** toolUseId → file_path + 工具名（assistant tool_use 观测，供 tool_result 的 patch 归位与 journal 归因） */
+    toolFilePaths: Map<string, { path: string; toolName: string }>
+    /** 在途异步读盘（封口合成前 await，保确定性） */
+    pendingReads: Set<Promise<void>>
     /** 同 path 补读的串行链：并发读的 resolve 顺序不保证，乱序 recordAfter 会把中间态
      *  内容当末次写进 journal/累积（turn 封口与审查供数随之失真）——按调度序串行应用，
      *  后调度的读反映更新的磁盘状态，afterContent 单调前进 */
-    private readonly readChains = new Map<string, Promise<void>>()
+    readChains: Map<string, Promise<void>>
     /** sidechain 兜底的盘上预读（path → before 侧全文；读失败 = 新建语义 null）：
      *  sidechain tool_use 观测时落，对应 tool_result 无 toolUseResult 时消费。
-     *  同 path 首次预读为准（journal before 取首次同构），onTurnEnd 清空 */
-    private readonly preReads = new Map<string, Promise<string | null>>()
+     *  同 path 首次预读为准（journal before 取首次同构） */
+    preReads: Map<string, Promise<string | null>>
+}
+
+function createTurnContext(): TurnContext {
+    return {
+        accumulator: new ToolChangeJournal(),
+        projected: new Map(),
+        toolFilePaths: new Map(),
+        pendingReads: new Set(),
+        readChains: new Map(),
+        preReads: new Map(),
+    }
+}
+
+export class TurnDiffReporter {
+    /** 当前轮采集上下文（observe 永远写当前轮；result 到达即整包换新） */
+    private ctx = createTurnContext()
+    /** 封口串行链：归档 seal / 全文落盘不并发（滚动单条语义下并发覆盖会丢轮） */
+    private sealQueue: Promise<void> = Promise.resolve()
     /** 投影口径的轮次计数（journal 口径的 turnIndex 改从归档接续，不走它） */
     private turnCounter = 0
 
@@ -123,9 +150,9 @@ export class TurnDiffReporter {
                     : undefined
                 if (typeof filePath === 'string' && filePath.length > 0) {
                     const sidechain = getField(message, 'isSidechain') === true
-                    this.toolFilePaths.set(block.id, { path: filePath, toolName: block.name })
+                    this.ctx.toolFilePaths.set(block.id, { path: filePath, toolName: block.name })
                     // sidechain 不进投影：其结果永不带 structuredPatch，只会产 0/0 噪声条目
-                    if (!sidechain && !this.projected.has(filePath)) this.projected.set(filePath, { additions: 0, deletions: 0 })
+                    if (!sidechain && !this.ctx.projected.has(filePath)) this.ctx.projected.set(filePath, { additions: 0, deletions: 0 })
                     // sidechain 兜底的 before 侧预读（主线结果带 toolUseResult，用不上不预读）
                     if (sidechain) this.schedulePreRead(filePath)
                 }
@@ -150,7 +177,7 @@ export class TurnDiffReporter {
             }
             const patches: unknown[] = Array.isArray(raw) ? raw : [raw]
             for (const [i, result] of results.entries()) {
-                const observed = this.toolFilePaths.get(result.tool_use_id)
+                const observed = this.ctx.toolFilePaths.get(result.tool_use_id)
                 if (!observed) continue
                 // 单结果形态 toolUseResult 就是对象本身；合并数组形态按序对应（缺位跳过）
                 const patchSource = Array.isArray(raw) ? patches[i] : patches[0]
@@ -176,63 +203,62 @@ export class TurnDiffReporter {
         const afterContent = typeof src.content === 'string' ? src.content : undefined
         if (beforeContent === null && afterContent === undefined) return
         // turn 内累积（归因主源）：归并规则单源 ToolChangeJournal
-        this.turnAccumulator.record({ path, beforeContent, afterContent, toolName: observed.toolName })
+        this.ctx.accumulator.record({ path, beforeContent, afterContent, toolName: observed.toolName })
         // afterContent 缺失（Edit 类只带 before）：异步读盘补全 turn 累积
         if (afterContent === undefined) this.scheduleAfterRead(path, observed.toolName)
     }
 
-    /** 异步读盘补 afterContent：fire-and-forget，turn 纪元守卫防泄漏进下一轮；
+    /** 异步读盘补 afterContent：fire-and-forget；捕获所属 ctx——回读写进冻结的旧
+     *  accumulator 无害（封口链在等它或已消费完），跨轮隔离由 ctx 换新天然保证；
      *  同 path 挂上串行链（见 readChains 注释）保证应用顺序 = 调度顺序 */
     private scheduleAfterRead(path: string, toolName: string): void {
-        const epoch = this.turnEpoch
-        const prior = this.readChains.get(path) ?? Promise.resolve()
+        const ctx = this.ctx
+        const prior = ctx.readChains.get(path) ?? Promise.resolve()
         const task = prior
             .then(() => readFile(path, 'utf8'))
             .then((content) => {
-                if (epoch !== this.turnEpoch) return
-                this.turnAccumulator.recordAfter(path, content, toolName)
+                ctx.accumulator.recordAfter(path, content, toolName)
             })
             .catch(() => undefined) // 读失败（文件已删/不可读）：保持占位 null；链上吞错不断链
-            .finally(() => this.pendingReads.delete(task))
+            .finally(() => ctx.pendingReads.delete(task))
         const chained = task.finally(() => {
-            if (this.readChains.get(path) === chained) this.readChains.delete(path)
+            if (ctx.readChains.get(path) === chained) ctx.readChains.delete(path)
         })
-        this.pendingReads.add(task)
-        this.readChains.set(path, chained)
+        ctx.pendingReads.add(task)
+        ctx.readChains.set(path, chained)
     }
 
     /** sidechain 兜底预读（before 侧唯一来源）：tool_use 观测到落笔前，磁盘即编辑前
      *  内容；同 path 首次为准（journal before 取首次同构）；读失败 = 新建语义 null */
     private schedulePreRead(path: string): void {
-        if (this.preReads.has(path)) return
-        this.preReads.set(path, readFile(path, 'utf8').catch(() => null))
+        if (this.ctx.preReads.has(path)) return
+        this.ctx.preReads.set(path, readFile(path, 'utf8').catch(() => null))
     }
 
     /**
      * sidechain 兜底采集：tool_result 无 toolUseResult 时的内容对补全——before 取
      * tool_use 观测时的预读、after 读盘（落笔后的磁盘内容）。有预读的编辑族 result
      * 才兜底；is_error（失败的编辑盘上无变更）与 before/after 相同（零变更）不入账。
-     * 挂 pendingReads（onTurnEnd 收口）+ turn 纪元守卫（防泄漏进下一轮）。
+     * 回写捕获所属 ctx（跨轮隔离由 ctx 换新保证），挂 pendingReads（封口收口）。
      */
     private captureUnattributedWrites(results: ReadonlyArray<{ type: 'tool_result'; tool_use_id: string }>): void {
+        const ctx = this.ctx
         for (const result of results) {
             if ((result as { is_error?: unknown }).is_error === true) continue
-            const observed = this.toolFilePaths.get(result.tool_use_id)
+            const observed = ctx.toolFilePaths.get(result.tool_use_id)
             if (!observed) continue
-            const preRead = this.preReads.get(observed.path)
+            const preRead = ctx.preReads.get(observed.path)
             if (!preRead) continue
-            const epoch = this.turnEpoch
             const task = preRead
                 .then((before) => readFile(observed.path, 'utf8').then((after) => ({ before, after })).catch(() => ({ before, after: null })))
                 .then(({ before, after }) => {
-                    if (epoch !== this.turnEpoch) return
                     if (after === null || after === before) return
-                    this.turnAccumulator.record({ path: observed.path, beforeContent: before, toolName: observed.toolName })
-                    this.turnAccumulator.recordAfter(observed.path, after, observed.toolName)
+                    ctx.accumulator.record({ path: observed.path, beforeContent: before, toolName: observed.toolName })
+                    ctx.accumulator.recordAfter(observed.path, after, observed.toolName)
                 })
                 .catch(() => undefined)
-                .finally(() => this.pendingReads.delete(task))
-            this.pendingReads.add(task)
+                .finally(() => ctx.pendingReads.delete(task))
+            ctx.pendingReads.add(task)
         }
     }
 
@@ -240,41 +266,53 @@ export class TurnDiffReporter {
     private applyStructuredPatch(filePath: string, patchSource: unknown): void {
         const counts = countStructuredPatch(patchSource)
         if (!counts) return
-        const agg = this.projected.get(filePath) ?? { additions: 0, deletions: 0 }
+        const agg = this.ctx.projected.get(filePath) ?? { additions: 0, deletions: 0 }
         agg.additions += counts.additions
         agg.deletions += counts.deletions
-        this.projected.set(filePath, agg)
+        this.ctx.projected.set(filePath, agg)
     }
 
-    /** result 消息到达时调用：合成并投递本轮变更消息；失败只记日志，不阻塞 turn 完成 */
-    async onTurnEnd(): Promise<void> {
-        try {
-            // 在途读盘补全先收口（afterContent 就绪后再合成/封口，保证确定性）
-            await Promise.all([...this.pendingReads])
-            await this.composeAndSend()
-        } catch (e) {
-            logger.debug('[TurnDiffReporter] compose failed', e)
-        } finally {
-            this.turnEpoch += 1
-            this.toolFilePaths.clear()
-            this.projected.clear()
-            this.preReads.clear()
-            // 换新实例清空 turn 累积（turnEpoch 守卫已作废在途读盘，无泄漏窗口）
-            this.turnAccumulator = new ToolChangeJournal()
-        }
+    /**
+     * result 消息到达时调用：**同步冻结**本轮采集上下文（后续 observe 落在新轮，
+     * 与封口互不干扰），封口入串行队列后台执行。返回封口完成的 promise——launcher
+     * void 调用不等待（不阻塞 turn 完成），测试 await 保确定性；失败只记日志。
+     */
+    onTurnEnd(): Promise<void> {
+        const sealed = this.ctx
+        this.ctx = createTurnContext()
+        const task = this.sealQueue.then(() => this.sealTurn(sealed))
+        // 链上吞错（单轮封口失败不断后续轮）；返回值同样吞错（launcher void 调用无
+        // rejection 处理方）
+        this.sealQueue = task.then(() => undefined, () => undefined)
+        return task.catch((e) => {
+            logger.debug('[TurnDiffReporter] seal failed', e)
+        })
     }
 
-    private async composeAndSend(): Promise<void> {
-        const files = (await this.composeFromTurnAccumulation()) ?? this.composeFromProjection()
+    /** 单轮封口：在途读盘收口 → 合成 → 卡片入流 → 归档封口（后台串行） */
+    private async sealTurn(ctx: TurnContext): Promise<void> {
+        // 在途读盘补全先收口（afterContent 就绪后再合成/封口，保证确定性）
+        await Promise.all([...ctx.pendingReads])
+        const files = (await this.composeFromTurnAccumulation(ctx)) ?? this.composeFromProjection(ctx)
         if (files.files.length === 0) return
+        // 卡片先发：wire 载荷纯内存可算，不等归档 IO——排队消息场景下保证卡片
+        // 落库在下一轮用户消息之前（result → 卡片 → 下一轮 user）
+        const payload = TurnDiffPayloadSchema.parse({
+            turnIndex: files.turnIndex,
+            baseTurnIndex: files.baseTurnIndex,
+            stats: summarizeTurnDiffFiles(files.files),
+            files: files.files,
+            git: files.git,
+        })
+        this.sendEnvelope(payload)
         // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）。
         // hydration：全文镜像落 a/b 目录（turnFulltextStore），patch 由目录模式单次
         // diff 合成，归档条目带 ref；无全文产出（旧构造/路径逃逸/落盘失败）走单文件兜底
         if (files.source === 'journal' && this.archive) {
             try {
-                // 内容对取自本轮累积器快照；counts 复用 files.files 已算结果（同源同时刻
+                // 内容对取自冻结累积器快照；counts 复用 files.files 已算结果（同源同时刻
                 // 同判定，不重跑 reviewEntryFromContents——判定单源 + 每文件省一遍全文 diff）
-                const accumulated = this.turnAccumulator.snapshot().files
+                const accumulated = ctx.accumulator.snapshot().files
                 // hydration：全文落 a/b 目录 + 单次目录模式 diff 合成整轮 patch（失败的
                 // 整体降级 = 全文件走单文件兜底，归档照常封口）
                 let fulltext: Map<string, TurnFulltextSealed> | null = null
@@ -329,15 +367,10 @@ export class TurnDiffReporter {
                 logger.debug('[TurnDiffReporter] archive seal failed', e)
             }
         }
+    }
 
-        const payload = TurnDiffPayloadSchema.parse({
-            turnIndex: files.turnIndex,
-            baseTurnIndex: files.baseTurnIndex,
-            stats: summarizeTurnDiffFiles(files.files),
-            files: files.files,
-            git: files.git,
-        })
-
+    /** turn-diff 自定义事件入流（卡片时间线在 result 之后） */
+    private sendEnvelope(payload: TurnDiffPayload): void {
         const envelope: CustomEventEnvelope = {
             mobiCustomEvent: true,
             role: 'custom',
@@ -349,12 +382,13 @@ export class TurnDiffReporter {
     /** 归因口径（主源）：turn 内 journal 累积 → 内容对行数（会话私有，免疫并发污染）。
      *  kind/counts 判定单源 contentsChangeOf（数字恒非 null，wire 的 nullable 仅是
      *  ReviewFileEntry 协议形状） */
-    private async composeFromTurnAccumulation(): Promise<ComposedFiles | null> {
-        const accumulated = this.turnAccumulator.snapshot().files
+    private async composeFromTurnAccumulation(ctx: TurnContext): Promise<ComposedFiles | null> {
+        const accumulated = ctx.accumulator.snapshot().files
         const paths = Object.keys(accumulated)
         if (paths.length === 0) return null
         // 基线轮 = 归档最新档（本轮封口前读，封口后本轮即成最新）；turnIndex 接续 =
-        // 归档最新轮 + 1（删内存自增的跨重启断档：重启后从归档事实接续）
+        // 归档最新轮 + 1（删内存自增的跨重启断档：重启后从归档事实接续）。封口串行
+        // 队列保证读归档时上一轮已 seal 完毕，链路无竞态
         let baseTurnIndex: number | null = null
         if (this.archive) {
             try {
@@ -380,8 +414,8 @@ export class TurnDiffReporter {
     }
 
     /** 投影口径（降级档）：工具事件累加，Bash/subagent 写入不在内 */
-    private composeFromProjection(): ComposedFiles {
-        const files: TurnDiffFileEntry[] = [...this.projected.entries()]
+    private composeFromProjection(ctx: TurnContext): ComposedFiles {
+        const files: TurnDiffFileEntry[] = [...ctx.projected.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([path, agg]) => ({
                 path,

@@ -759,3 +759,88 @@ describe('TurnDiffReporter（hydration：全文目录 + 归档 ref）', () => {
         }
     })
 })
+
+describe('TurnDiffReporter（排队消息竞态隔离）', () => {
+    /** 构造带 originalFile 的 Edit 结果消息（真实 snake_case 形态） */
+    function editResult(toolUseId: string, filePath: string, originalFile: string): RawJSONLines {
+        return {
+            type: 'user',
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId }] },
+            tool_use_result: {
+                filePath,
+                originalFile,
+                structuredPatch: [{ lines: ['-old', '+new'] }],
+            },
+        } as unknown as RawJSONLines
+    }
+
+    it('queue 场景 turn1 封口未完成时 turn2 已观测：两轮卡片与归档互不串轮', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-queue-race-'))
+        try {
+            const fileA = join(dir, 'a.ts')
+            const fileB = join(dir, 'b.ts')
+            const archive = createInMemoryTurnArchiveStore()
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, archive)
+
+            // turn1 的 Edit 补读脚本化慢返回（50ms）：turn1 封口挂在 await pendingReads，
+            // 期间 queue 场景的 turn2 消息流已开始观测
+            await writeFile(fileA, 'a2\n', 'utf8')
+            readScript.reads.push({ path: fileA, value: 'a2\n', delayMs: 50 })
+            reporter.observe(assistantToolUse('t1', 'Edit', fileA))
+            reporter.observe(editResult('t1', fileA, 'a1\n'))
+            void reporter.onTurnEnd() // 不 await（launcher 的 void 语义 = queue 立即投喂）
+
+            await writeFile(fileB, 'b2\n', 'utf8')
+            reporter.observe(assistantToolUse('t2', 'Edit', fileB))
+            reporter.observe(editResult('t2', fileB, 'b1\n'))
+            await reporter.onTurnEnd() // 等整个封口队列
+
+            const payloads = sentPayloads(send)
+            expect(payloads).toHaveLength(2)
+            expect(payloads[0]!.files.map((f) => f.path)).toEqual([fileA])
+            expect(payloads[1]!.files.map((f) => f.path)).toEqual([fileB])
+            // 归档滚动单条：turn2 seal 覆盖 turn1 档——断言最终档是 turn2 且未被 turn1 文件混入
+            // （turn1 归因隔离已由 payloads[0] 只含 fileA 锁定）
+            const records = archive.records()
+            expect(records.map((r) => r.turnIndex)).toEqual([2])
+            expect(records[0]!.files.map((f) => f.path)).toEqual([fileB])
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
+    it('卡片发送不等归档 IO：send 先于 fulltext sealFiles（queue 场景卡片顺序保障）', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-send-first-'))
+        try {
+            const filePath = join(dir, 'a.ts')
+            await writeFile(filePath, 'new\n', 'utf8')
+            const archive = createInMemoryTurnArchiveStore()
+            const order: string[] = []
+            const send = vi.fn(() => { order.push('send') })
+            // hydration 封口是秒级盘 IO（写 a/b + 目录 diff）——mock 带延迟模拟
+            const fulltext = {
+                sealFiles: vi.fn(async () => {
+                    order.push('sealFiles')
+                    await new Promise((resolve) => setTimeout(resolve, 20))
+                    return new Map()
+                }),
+            }
+            const reporter = new TurnDiffReporter(send, archive, fulltext)
+
+            reporter.observe(assistantToolUse('t1', 'Write', filePath))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                tool_use_result: { filePath, content: 'new\n' },
+            } as unknown as RawJSONLines)
+            await reporter.onTurnEnd()
+
+            // 卡片载荷纯内存可算：必须在归档 IO 之前入流（落库顺序 = result → 卡片 → 下一轮 user）
+            expect(order[0]).toBe('send')
+            expect(order).toContain('sealFiles')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+})
