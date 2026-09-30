@@ -27,9 +27,9 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
+import { App, Button, Collapse, Dropdown, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, RefreshCw, WrapText } from 'lucide-react'
+import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, MoreHorizontal, RefreshCw, WrapText } from 'lucide-react'
 import { type DiffTarget, type ReviewCommit, type ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
@@ -554,9 +554,39 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                     </span>
                 )}
                 <Flex flex={1} />
-                {/* 右侧工具区：面板级功能按钮（新工具并列挂入，勿混进左侧摘要区） */}
+                {/* 右侧工具区：面板级功能按钮（新工具并列挂入，勿混进左侧摘要区）。
+                    移动端四键收进「更多」Dropdown 节省横宽，桌面保持平铺 */}
                 <Flex align="center" gap={2} style={{ marginLeft: 'auto' }} data-testid="review-toolbar">
-                    <Tooltip title={t('review.refresh')}>
+                    {isMobile ? (
+                        <Dropdown
+                            menu={{
+                                items: [
+                                    { key: 'refresh', label: t('review.refresh'), icon: <RefreshCw size={14} />, disabled: overview.isFetching },
+                                    { key: 'collapseAll', label: t('review.collapseAll'), icon: <ChevronsDownUp size={14} /> },
+                                    { key: 'wrap', label: t('review.wrap'), icon: <WrapText size={14} /> },
+                                    { key: 'layout', label: layout === 'split' ? t('review.layoutUnified') : t('review.layoutSplit'), icon: <Columns2 size={14} /> },
+                                ],
+                                onClick: ({ key }) => {
+                                    if (key === 'refresh') overview.refetch()
+                                    else if (key === 'collapseAll') setExpandedPaths([])
+                                    else if (key === 'wrap') setWrap((v) => !v)
+                                    else if (key === 'layout') changeLayout(layout === 'split' ? 'unified' : 'split')
+                                },
+                            }}
+                            trigger={['click']}
+                            placement="bottomRight"
+                        >
+                            <Button
+                                type="text" size="small"
+                                aria-label={t('common.more')}
+                                aria-haspopup="menu"
+                                data-testid="review-more"
+                                icon={<MoreHorizontal size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
+                            />
+                        </Dropdown>
+                    ) : (
+                        <>
+                            <Tooltip title={t('review.refresh')}>
                         <Button
                             type="text" size="small"
                             aria-label={t('review.refresh')}
@@ -601,6 +631,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             onClick={() => changeLayout(layout === 'split' ? 'unified' : 'split')}
                         />
                     </Tooltip>
+                        </>
+                    )}
                     {isMobile ? (
                         /* 移动/窄屏：树按钮锚定 Popover 弹层（触屏无 hover，不叠 Tooltip，
                             与 FileContentViewHeader 的树 Popover 同款交互） */
