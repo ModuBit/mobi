@@ -138,3 +138,13 @@ export function assembleDiffEntries(statusOut: string, numstatOut: string): Turn
     }
     return entries.sort((a, b) => a.path.localeCompare(b.path))
 }
+
+/**
+ * patch/文本行数（unified 行口径）：末尾换行不算新行——`split('\n').length` 会把
+ * 尾部换行多算一行，恰好压线的 patch 会被行数闸误截/误标 oversized（审查行数闸
+ * 与 hydration 行数判定共用此口径）。
+ */
+export function textLineCount(text: string): number {
+    if (text === '') return 0
+    return text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
+}

@@ -158,7 +158,12 @@ describe('FileTurnFulltextStore 存储治理', () => {
         await writeFile(join(rootDir, 'turn-archive.json'), '{}', 'utf-8')
         await store.sealFiles(1, [{ path: join(dir, 'f.ts'), beforeContent: 'a\n', afterContent: 'b\n' }])
         await store.sealFiles(2, [{ path: join(dir, 'f.ts'), beforeContent: 'b\n', afterContent: 'c\n' }])
-        const names = await readdir(rootDir)
+        // 治理时序：sealFiles 本身不清理（归档 seal 可能失败，旧目录仍被归档 ref 引用），
+        // prune 由调用方在 seal 成功后显式触发
+        let names = await readdir(rootDir)
+        expect(names.filter((n) => /^\d+$/.test(n))).toEqual(['1', '2'])
+        await store.prune()
+        names = await readdir(rootDir)
         expect(names.filter((n) => /^\d+$/.test(n))).toEqual(['2'])
         expect(names).toContain('turn-archive.json')
     })
@@ -179,6 +184,8 @@ describe('FileTurnFulltextStore 存储治理', () => {
         await mkdir(join(diffsRoot, 's000'), { recursive: true })
         const store = new FileTurnFulltextStore(join(diffsRoot, 's000'), dir)
         await store.sealFiles(1, [{ path: join(dir, 'f.ts'), beforeContent: 'a\n', afterContent: 'b\n' }])
+        // 治理时序：prune 由调用方在归档 seal 成功后显式触发
+        await store.prune()
         const { readdir } = await import('node:fs/promises')
         const names = (await readdir(diffsRoot)).sort()
         // 33 个目录 → 候选 32（exclude s000）留 30：删最老 2 个 → 共 31 个

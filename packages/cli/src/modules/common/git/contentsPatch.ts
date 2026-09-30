@@ -34,12 +34,14 @@ export type GitExec = (cwd: string, args: string[]) => Promise<string>
 
 /** `git diff --no-index` 目录模式出口：退出码 1 表达「有差异」，stdout 挂在异常对象
  *  上由本模块取回（synthesizeContentsPatch 与 turnFulltextStore 的整轮目录 diff 共用；
- *  cwd = a/b 目录的共同父目录） */
+ *  cwd = a/b 目录的共同父目录）。真失败（退出码 ≥2 / maxBuffer 超限）原样上抛——
+ *  混同成空输出会让残缺/空 patch 以 oversizedPatch:false 当真封口进归档 */
 export async function runNoIndexDiff(git: GitExec, cwd: string, aDir: string, bDir: string): Promise<string> {
     try {
         return await git(cwd, ['diff', '--no-index', '--', aDir, bDir])
     } catch (e) {
-        return (e as { stdout?: string }).stdout ?? ''
+        if ((e as { code?: unknown }).code === 1) return (e as { stdout?: string }).stdout ?? ''
+        throw e
     }
 }
 

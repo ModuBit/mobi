@@ -48,7 +48,7 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus } from '../git/gitExec'
+import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus, textLineCount } from '../git/gitExec'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
 import { getTurnFulltextRoot } from '../git/turnFulltextStore'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
@@ -67,12 +67,12 @@ const MAX_TEXT_BYTES = 4 * 1024 * 1024
 /** commits 分页页长（游标 = 偏移量字符串，取实现简单者） */
 const COMMITS_PAGE_SIZE = 50
 
-/** 文本闸：git 同款二进制嗅探（内容含 NUL）+ 大小/行数上限（行数闸与字节闸同维——
-    全文进 pierre 渲染无虚拟化，行数才是 DOM 成本；超限不返回，reason=oversized）。
-    patch 由 git diff 生成、二进制自动只出一行说明，不走此闸 */
+/** 文本闸：git 同款二进制嗅探（内容含 NUL）+ 大小上限（只闸字节与二进制，不闸行数
+    ——本闸服务 contents 全文对（hydration 展开折叠上下文），普通大源文件是合法输入；
+    行数闸是 patch 渲染口径，单源在 truncatePatch）。patch 由 git diff 生成、二进制
+    自动只出一行说明，不走此闸 */
 function gateText(raw: string): { text: string; reason: null } | { text: null; reason: 'binary' | 'oversized' } {
     if (raw.length > MAX_TEXT_BYTES) return { text: null, reason: 'oversized' }
-    if (raw.split('\n').length > REVIEW_RENDER_MAX_LINES) return { text: null, reason: 'oversized' }
     if (raw.includes('\0')) return { text: null, reason: 'binary' }
     return { text: raw, reason: null }
 }
@@ -80,12 +80,13 @@ function gateText(raw: string): { text: string; reason: null } | { text: null; r
 /**
  * patch 渲染截断：超过 REVIEW_RENDER_MAX_LINES 行只返回前 N 行（API 不全量返回，
  * 防超大 diff 打爆传输与渲染），truncatedLines 带总行数供 web 出「Open in Viewer」。
- * 按行硬切——pierre 对截断在 hunk 中间的 patch 容忍（渲染到截断处）。
+ * 按行硬切——pierre 对截断在 hunk 中间的 patch 容忍（渲染到截断处）。行数口径单源
+ * textLineCount（尾换行不算新行）；导出供测试直采行数闸边界
  */
-function truncatePatch(patch: string): { patch: string; truncatedLines: number } {
-    const lines = patch.split('\n')
-    if (lines.length <= REVIEW_RENDER_MAX_LINES) return { patch, truncatedLines: 0 }
-    return { patch: lines.slice(0, REVIEW_RENDER_MAX_LINES).join('\n'), truncatedLines: lines.length }
+export function truncatePatch(patch: string): { patch: string; truncatedLines: number } {
+    const total = textLineCount(patch)
+    if (total <= REVIEW_RENDER_MAX_LINES) return { patch, truncatedLines: 0 }
+    return { patch: patch.split('\n').slice(0, REVIEW_RENDER_MAX_LINES).join('\n'), truncatedLines: total }
 }
 
 type FulltextSide = { text: string | null; reason: 'missing' | 'binary' | 'oversized' | null }
@@ -212,14 +213,17 @@ export class GitReviewReader {
         return { files: files.sort((a, b) => a.path.localeCompare(b.path)), truncated }
     }
 
-    /** 审查数据版本（陈旧性判定的缓存键原料，非单调序号；turn-archive B 票02）：
+    /** 审查数据版本（陈旧性判定的缓存键，非单调序号；turn-archive B 票02）：
      *  `floor(sealedAt/10)*10000 + min(dirty,9999)`——0.1s 封口精度刻度 × 10000 +
-     *  工作区 status 条数刻度。碰撞窗口：同 0.1s 内两次封口且 dirty 未变 → 同代
-     *  （缓存陈旧 ≤0.1s，接受）；dirty >9999 的工作区刻度截断（Number 安全域内，
-     *  现实不可达）。statusOut 可传入共享的 status 查询（与 untrackedEntries 同一次
-     *  喂两者）；非 git 目录 gitAtRoot null → dirty 0，generation 只随封口推进 */
+     *  工作区 status 条数刻度。同进程内按 (sealedAt, dirty) 状态对单调化（见下）。
+     *  statusOut 可传入共享的 status 查询（与 untrackedEntries 同一次喂两者）；非 git
+     *  目录 gitAtRoot null → dirty 0，generation 只随封口推进 */
+    private lastGenState: { turnIndex: number; sealedAt: number; dirty: number; generation: number } | null = null
+
     private async computeGeneration(sessionId: string, statusOut?: Promise<string | null>): Promise<number> {
-        const sealedAt = (await this.turnArchiveLatest(sessionId))?.sealedAt ?? 0
+        const latest = await this.turnArchiveLatest(sessionId)
+        const sealedAt = latest?.sealedAt ?? 0
+        const turnIndex = latest?.turnIndex ?? 0
         const raw = await (statusOut ?? this.gitAtRoot(['status', '--porcelain=v2', '-z']))
         // dirty 刻度（记录数，非 token 数——porcelain v2 的 path 是独立 token）与
         // untrackedEntries 同口径：.mobi 状态目录不算工作区改动
@@ -229,7 +233,15 @@ export class GitReviewReader {
                 return /^[12u] /.test(t)
             }).length
             : 0
-        return Math.floor(sealedAt / 10) * 10000 + Math.min(dirty, 9999)
+        // 单调化：公式在同 0.1s 内两次封口且 dirty 未变时不前进（同 ms 连封可达，
+        // queue 快速连轮场景），缓存键会永不前进、陈旧数据不自愈——按 (封口轮, 刻度,
+        // dirty) 状态对判状态：未变返回原键（同状态同代），前进时保证键严格大于此前
+        // 任何值
+        const prev = this.lastGenState
+        if (prev !== null && prev.turnIndex === turnIndex && prev.sealedAt === sealedAt && prev.dirty === dirty) return prev.generation
+        const generation = Math.max(Math.floor(sealedAt / 10) * 10000 + Math.min(dirty, 9999), prev !== null ? prev.generation + 1 : 0)
+        this.lastGenState = { turnIndex, sealedAt, dirty, generation }
+        return generation
     }
 
     /** 最新封口轮（generation 的封口刻度来源） */
@@ -373,7 +385,7 @@ export class GitReviewReader {
         // 二进制：numstat 计数列 `-`——patch 不出（git 的一行说明对渲染无意义）
         const cols = numstat?.split('\n')[0]?.split('\t') ?? []
         const binary = cols[0] === '-' || cols[1] === '-'
-        const oversized = (patch?.split('\n').length ?? 0) > OVERSIZE_DIFF_LINES
+        const oversized = patch !== null && textLineCount(patch) > OVERSIZE_DIFF_LINES
         if (binary) return { patch: '', previousPath, oversized, binary, truncatedLines: 0 }
         const cut = truncatePatch(patch ?? '')
         return { patch: cut.patch, previousPath, oversized, binary, truncatedLines: cut.truncatedLines }

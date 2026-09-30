@@ -26,9 +26,9 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { GitReviewReader, registerGitReviewHandlers } from '@/modules/common/handlers/gitReview'
+import { GitReviewReader, registerGitReviewHandlers, truncatePatch } from '@/modules/common/handlers/gitReview'
 import { getTurnArchivePath } from '@/modules/common/git/turnArchiveStore'
-import { ReviewContentsResultSchema } from '@mobi/shared'
+import { REVIEW_RENDER_MAX_LINES, ReviewContentsResultSchema } from '@mobi/shared'
 
 const execFileAsync = promisify(execFile)
 
@@ -309,6 +309,22 @@ describe('GitReviewReader turn 档（归档直读，真 git 集成）', () => {
         // 路径闸：cwd 外拒绝
         await expect(reader.patch(sid, target, '/etc/passwd')).rejects.toThrow(/Invalid path/)
     })
+
+    it('generation 撞刻不自锁：同毫秒两次封口且 dirty 未变，键仍严格前进', async () => {
+        const { ReviewOverviewSchema } = await import('@mobi/shared')
+        const { FileTurnArchiveStore } = await import('@/modules/common/git/turnArchiveStore')
+        // 独立 sid 的滚动单条归档：同 sealedAt 连封两轮（公式值不前进的碰撞场景）
+        const raceSid = 'race-session'
+        const archive = new FileTurnArchiveStore(getTurnArchivePath(v3Dir, raceSid))
+        const sameMs = 1_700_000_099_999
+        await archive.seal({ turnIndex: 1, baseTurnIndex: null, sealedAt: sameMs, files: [] })
+        const reader = new GitReviewReader(v3Dir)
+        const g1 = ReviewOverviewSchema.parse(await reader.overview(raceSid)).targetGeneration
+        await archive.seal({ turnIndex: 2, baseTurnIndex: 1, sealedAt: sameMs, files: [] })
+        const g2 = ReviewOverviewSchema.parse(await reader.overview(raceSid)).targetGeneration
+        expect(g2).toBeGreaterThan(g1)
+        await rm(getTurnArchivePath(v3Dir, raceSid), { force: true })
+    })
 })
 
 // ── hydration：turn 档 ref 读侧（oversized 现场合成 + contents 历史轮全文）──────
@@ -367,15 +383,38 @@ describe('GitReviewReader turn 档 hydration（ref 全文）', () => {
         expect(contents.reason).toBeNull()
     })
 
-    it('contents(turn)：全文超渲染行闸 → oversized 降级（hydration 静默退纯 patch）', async () => {
+    it('contents(turn)：全文超 patch 渲染行数仍正常返回（行数闸是 patch 渲染口径，contents 只闸字节/二进制）', async () => {
         const reader = new GitReviewReader(hDir)
         const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, fileA()))
-        expect(contents).toMatchObject({ before: null, after: null, reason: 'oversized' })
+        expect(contents.before).toBe('x\n'.repeat(3000))
+        expect(contents.after).toBe('y\n'.repeat(3000))
+        expect(contents.reason).toBeNull()
     })
 
     it('contents(turn)：归档未记录路径 = missing（协议不变）', async () => {
         const reader = new GitReviewReader(hDir)
         const missing = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, join(hDir, 'not-recorded.ts')))
         expect(missing).toMatchObject({ before: null, after: null, reason: 'missing' })
+    })
+})
+
+// ── 行数闸边界（textLineCount 口径：尾换行不算新行）────────────────────────────
+describe('truncatePatch 行数闸边界', () => {
+    function renderLines(n: number): string {
+        return Array.from({ length: n }, (_, i) => `line${i}`).join('\n') + '\n'
+    }
+
+    it('恰好压线（含尾换行）不误截：truncatedLines = 0 且 patch 原样', () => {
+        const exact = renderLines(REVIEW_RENDER_MAX_LINES)
+        const cut = truncatePatch(exact)
+        expect(cut.truncatedLines).toBe(0)
+        expect(cut.patch).toBe(exact)
+    })
+
+    it('压线 +1 → 截到行限，truncatedLines 带总行数（尾换行不多算）', () => {
+        const over = renderLines(REVIEW_RENDER_MAX_LINES + 1)
+        const cut = truncatePatch(over)
+        expect(cut.patch.split('\n')).toHaveLength(REVIEW_RENDER_MAX_LINES)
+        expect(cut.truncatedLines).toBe(REVIEW_RENDER_MAX_LINES + 1)
     })
 })

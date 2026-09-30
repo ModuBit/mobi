@@ -22,13 +22,43 @@
 import { describe, expect, it } from 'vitest'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { synthesizeContentsPatch, type GitExec } from '@/modules/common/git/contentsPatch'
+import { runNoIndexDiff, synthesizeContentsPatch, type GitExec } from '@/modules/common/git/contentsPatch'
 import { git } from '@/modules/common/git/gitExec'
 
 const execFileAsync = promisify(execFile)
 
 /** 真 git 执行（cwd/tmp 参数由 contentsPatch 控制） */
 const realGit: GitExec = (cwd, args) => execFileAsync('git', args, { cwd }).then((r) => r.stdout)
+
+describe('runNoIndexDiff 退出码分流', () => {
+    it('退出码 1 = 有差异：从异常对象取回 stdout，不抛', async () => {
+        const diffExit: GitExec = async () => {
+            const e = new Error('git diff exited 1') as Error & { code: number; stdout: string }
+            e.code = 1
+            e.stdout = 'diff --git a/f b/f\n'
+            throw e
+        }
+        await expect(runNoIndexDiff(diffExit, '/cwd', '/a', '/b')).resolves.toBe('diff --git a/f b/f\n')
+    })
+
+    it('退出码 ≥2 = 真失败：上抛（混同空输出会让残缺 patch 当真封口）', async () => {
+        const fatal: GitExec = async () => {
+            const e = new Error('fatal: bad object') as Error & { code: number }
+            e.code = 128
+            throw e
+        }
+        await expect(runNoIndexDiff(fatal, '/cwd', '/a', '/b')).rejects.toThrow('fatal: bad object')
+    })
+
+    it('synthesizeContentsPatch 对真失败走兜底空串（单文件降级语义不变）', async () => {
+        const fatal: GitExec = async () => {
+            const e = new Error('ENOBUFS') as Error & { code: string }
+            e.code = 'ENOBUFS'
+            throw e
+        }
+        await expect(synthesizeContentsPatch(fatal, '/proj/f.ts', 'a\n', 'b\n')).resolves.toBe('')
+    })
+})
 
 describe('synthesizeContentsPatch（真 git 集成）', () => {
     it('modify：头为 a/<name> / b/<name>，无临时目录泄漏，正文含 +/- 行', async () => {

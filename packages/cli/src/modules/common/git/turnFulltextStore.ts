@@ -35,7 +35,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 import { OVERSIZE_DIFF_LINES } from '@mobi/shared'
 import { runNoIndexDiff, stripNoIndexPrefixes, type GitExec } from './contentsPatch'
 import { isSafeWorkspacePath } from './pathGates'
-import { git, sanitizeSessionId } from './gitExec'
+import { git, sanitizeSessionId, textLineCount } from './gitExec'
 import { ensureMobiGitignore } from './mobiGitignore'
 import { logger } from '@/ui/logger'
 
@@ -156,15 +156,19 @@ export class FileTurnFulltextStore {
             if (w.before !== null) ref.before = join('a', w.rel)
             if (w.after !== null) ref.after = join('b', w.rel)
             const patch = sections.get(w.rel) ?? ''
-            const oversized = patch.split('\n').length > OVERSIZE_DIFF_LINES
+            const oversized = textLineCount(patch) > OVERSIZE_DIFF_LINES
             result.set(w.path, { ref, patch: oversized ? '' : patch, oversized })
         }
+        return result
+    }
 
-        // 存储治理（写新 → 清旧）：turn 目录留最新 TURN_FULLTEXT_KEEP 个；session 目录
-        // 留最新 TURN_SESSION_KEEP 个（exclude 当前会话永不自删）。尽力而为吞错
+    /** 存储治理（写新 → 清旧）：turn 目录留最新 TURN_FULLTEXT_KEEP 个；session 目录
+     *  留最新 TURN_SESSION_KEEP 个（exclude 当前会话永不自删）。尽力而为吞错。
+     *  调用方必须在**归档 seal 成功后**才调——seal 失败时旧全文目录仍被归档 ref 引用，
+     *  提前清理会让 ref 悬空（oversized 现场合成与 contents 回读永久降级） */
+    async prune(): Promise<void> {
         await pruneTurnDirs(this.rootDir)
         await pruneSessionDirs(dirname(this.rootDir), TURN_SESSION_KEEP, basename(this.rootDir))
-        return result
     }
 
     /** 读回 ref 指向的全文（审查读侧：oversized 兜底 / contents 历史轮供数）。

@@ -49,7 +49,7 @@
 import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
 import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry, type TurnDiffPayload } from '@mobi/shared'
-import { git } from '@/modules/common/git/gitExec'
+import { git, textLineCount } from '@/modules/common/git/gitExec'
 import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
 import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
@@ -134,7 +134,7 @@ export class TurnDiffReporter {
         private readonly archive?: TurnArchiveStore,
         /** 全文目录存储（hydration）：封口落 a/b 全文 + 目录模式合成 patch + 归档带
          *  ref；缺省 = 归档条目无 ref（patch 走单文件兜底合成，行为同 B 方案） */
-        private readonly fulltext?: Pick<FileTurnFulltextStore, 'sealFiles'>,
+        private readonly fulltext?: Pick<FileTurnFulltextStore, 'sealFiles' | 'prune'>,
     ) {}
 
     /** 每条 SDK 转换消息（RawJSONLines）流过时观测；不抛错、不影响主流程 */
@@ -343,7 +343,7 @@ export class TurnDiffReporter {
                     // 落盘失败）单文件兜底合成（无 ref）
                     const viaFulltext = fulltext?.get(e.path)
                     const raw = viaFulltext?.patch ?? await synthesizeContentsPatch(git, e.path, f.beforeContent, f.afterContent)
-                    const oversizedPatch = viaFulltext ? viaFulltext.oversized : raw.split('\n').length > OVERSIZE_DIFF_LINES
+                    const oversizedPatch = viaFulltext ? viaFulltext.oversized : textLineCount(raw) > OVERSIZE_DIFF_LINES
                     return [{
                         path: e.path,
                         kind: e.kind,
@@ -362,6 +362,9 @@ export class TurnDiffReporter {
                     sealedAt: Date.now(),
                     files: sealedFiles.flat(),
                 })
+                // 全文存储治理在 seal 成功后（seal 失败时旧全文目录仍被归档 ref 引用，
+                // 提前 prune 会悬空 ref）；滚动单条下 prune 删的是上一轮目录
+                if (this.fulltext) await this.fulltext.prune()
             } catch (e) {
                 logger.debug('[TurnDiffReporter] archive seal failed', e)
             }
