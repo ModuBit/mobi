@@ -168,9 +168,11 @@ function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: stri
             className="review-file-row"
             data-testid="review-file-row"
             data-path={file.path}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
+            // lineHeight 收紧：徽标/mono 路径/统计三档字号混排时，antd 继承的 22px 行盒
+            // 让不同字体的 baseline 错位（徽标视觉偏离行中心）；小行高 + flex 居中即对齐
+            style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, lineHeight: 1.2 }}
         >
-            <KindBadge kind={file.kind} isDark={isDark} fontSize={11} />
+            <KindBadge kind={file.kind} isDark={isDark} fontSize={12} />
             {/* 不许伸长（flex-grow 0）只可收缩省略：统计/箭头才能紧跟文件名，右侧空间归 spacer */}
             <span style={{ flex: '0 1 auto', minWidth: 0 }}>
                 <FilePathLabel path={file.path} />
@@ -181,7 +183,7 @@ function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: stri
                     ← {basename(file.previousPath)}
                 </span>
             )}
-            <DiffStat additions={file.additions ?? 0} deletions={file.deletions ?? 0} binary={file.binary} fontSize={11} />
+            <DiffStat additions={file.additions ?? 0} deletions={file.deletions ?? 0} binary={file.binary} fontSize={12} />
             {/* 行操作：桌面 hover/focus 显现，触屏常显（antd.css 规则）。
                 复制点击反馈与气泡 CopyButton 同款：图标切绿勾 2s 后还原 */}
             <Flex component="span" align="center" className="review-row-actions" style={{ flexShrink: 0 }}>

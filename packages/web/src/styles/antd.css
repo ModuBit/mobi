@@ -597,13 +597,16 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 .review-collapse > .ant-collapse-item > .ant-collapse-header {
     padding: 6px 12px;
 }
-/* 行 hover 铺淡底（整行可点的 affordance；圆角避免色块贴边生硬） */
-.review-collapse .review-file-row {
-    border-radius: var(--ant-border-radius, 6px);
-    transition: background-color var(--ant-motion-duration-fast, 0.1s) ease;
+/* title 是 flex:auto 的 nowrap 内容盒：min-width 默认 auto 不收缩，超宽路径把整行
+   撑破——路径左省略失效、行尾统计/箭头被顶出视口、hover 色块不满行。放开收缩。 */
+.review-collapse > .ant-collapse-item > .ant-collapse-header > .ant-collapse-title {
+    flex: 1;
+    min-width: 0;
 }
-.review-collapse .review-file-row:hover {
+/* 行 hover 铺淡底挂 header（含 padding 满行，整行可点的 affordance；圆角避免色块贴边生硬） */
+.review-collapse > .ant-collapse-item > .ant-collapse-header:hover {
     background-color: var(--ant-color-fill-tertiary);
+    border-radius: var(--ant-border-radius, 6px);
 }
 .review-collapse .ant-collapse-expand-icon {
     display: none;
