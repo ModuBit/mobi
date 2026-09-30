@@ -52,7 +52,8 @@ export function DiffStat({ additions, deletions, binary = false, fontSize }: {
 }) {
     const { t } = useTranslation()
     if (binary) {
-        return <span style={{ fontSize, color: 'var(--ant-color-text-tertiary)' }}>{t('chat.turnDiff.binary')}</span>
+        // nowrap + flexShrink:0：行宽不足时压缩的是路径，二进制标记不能被压成竖排
+        return <span style={{ fontSize, color: 'var(--ant-color-text-tertiary)', whiteSpace: 'nowrap', flexShrink: 0 }}>{t('chat.turnDiff.binary')}</span>
     }
     return (
         <span style={{ fontSize, fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>
