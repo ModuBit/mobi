@@ -23,6 +23,7 @@
 | `src/store/projects.ts` | 项目实体存储（「项目实体化」，会话按项目 / 「最近」组织） |
 | `src/web/routes/projects.ts` | 项目 Web API（/api/projects） |
 | `src/socket/server.ts` | Socket.IO 服务器 |
+| `src/socket/sessionSocketOwners.ts` | 同 session CLI socket 的接管仲裁（单一持有者，防旧连接断开连根拔掉幸存 CLI 的 RPC 注册） |
 | `src/web/server.ts` | HTTP 服务器 |
 | `src/sse/sseManager.ts` | SSE 管理器 |
 

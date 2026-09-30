@@ -120,7 +120,7 @@ socket.on('disconnect', () => {
 | `update-metadata` | 请求/响应 | 乐观锁更新 metadata | `session-update` → 同房间 | onWebappEvent |
 | `update-state` | 请求/响应 | 乐观锁更新 agentState | `session-update` → 同房间 | onWebappEvent |
 | `session-alive` | 单向 | — | — | onSessionAlive |
-| `session-end` | 单向 | 经消息事实 module force-push 排队消息 | — | onSessionEnd + onWebappEvent（messages-submitted SSE） |
+| `session-end` | ack 制 | 经消息事实 module force-push 排队消息 | — | ack(`ok`) + onSessionEnd + onWebappEvent（messages-submitted SSE） |
 | `messages-facts` | 单向 | 交给消息事实 module（见下） | 存储行 publication → `session-update` | publication → onWebappEvent |
 | `run-started` | 单向 | 落库 `runtimeState.runStartedAt`（含时间倒退保护） | `session-update` → 同房间 | onWebappEvent |
 | `receive-readiness` | 单向 | —（**刻意不落库**：随会话进程生灭的「此刻」事实） | —（不广播：每轮翻转，广播只会刷屏） | factsSink.handleReceiveReadiness |
@@ -172,9 +172,11 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 简单转发事件给 SyncEngine：
 
 - `session-alive` → `onSessionAlive` → SyncEngine 更新会话活跃状态
-- `session-end` → `onSessionEnd` → SyncEngine 清理会话资源
+- `session-end` → `onSessionEnd` → SyncEngine 清理会话资源，处理完成后 `ack({ ok: true })`；校验/处理失败 `ack({ ok: false })`
 
 两者都先做访问控制，不合法则返回错误。
+
+**session-end 为什么是 ack 制**：早期为单向事件，CLI 落库后立即关 socket，`session-end` 与 transport close 竞态，谁后到谁赢——end 丢失时活跃状态悬挂、registry 被清空，web 从此不可管控该会话进程（2026-09-30 事故）。现在 CLI 等 ack 确认落达再关 socket（`sendSessionDeath` 带 5s 超时兜底，不阻塞退出流程）。
 
 **session-end force-push**：CLI 离线时，把仍排队的本地 user 消息（`lifecycle = 'queued'`）全部 push，防止悬浮条卡死。handler 查询待提交 localId 后，合成一个 `pushed` fact 交给 `SessionMessageFactsProcessor`，因此正常上报和结束补偿共用同一套幂等落库与 publication 规则。
 

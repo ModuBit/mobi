@@ -52,7 +52,7 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为六组：
 | `session-message`（snapshot / snapshotDelta） | CLI → Hub | 校验会话后交给 `SnapshotSync.ingest()`，不落库；接受的 publication 转交 SyncEngine |
 | `snapshot-stream-end` | CLI → Hub | 通知 `SnapshotSync` 精确结束指定流，清完整基线和订阅游标 |
 | `session-alive` | CLI → Hub | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
-| `session-end` | CLI → Hub | 会话结束，触发清理 |
+| `session-end` | CLI → Hub | 会话结束，触发清理；**ack 制**——Hub 处理完回 ack，CLI 确认落达再关 socket（防 close 竞态丢失） |
 | `context-usage` | CLI → Hub | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
 | `goal-status` | CLI → Hub | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
 | `run-started` | CLI → Hub | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
@@ -204,6 +204,8 @@ hub→CLI 推送按域分事件名：session room 走 `session-update`，machine
 
 CLI 通过 `rpc-register` 注册 RPC 方法（如权限操作、文件操作），Web 端通过 Hub 调用。
 
+方法映射是 `method → socketId` 的单映射，后写覆盖。同 session 的第二个 CLI 连接会经 [`SessionSocketOwners`](/packages/hub/src/socket/sessionSocketOwners.ts) 接管仲裁：新连接在 `takeOver()` 记录持有者后**主动踢掉旧连接**。没有这一步，新旧连接并存时 registry 判给旧连接，旧连接断开的 `unregisterAll` 会连根拔掉幸存 CLI 的注册，web 从此不可管控该进程（2026-09-30 事故）。
+
 详见 [RpcRegistry](./rpc.md)。
 
 ## 终端代理
@@ -258,6 +260,7 @@ packages/hub/src/socket/
 ├── server.ts                  # 入口：创建 Socket.IO Server，配置 namespace
 ├── socketTypes.ts             # 类型定义：SocketData、SocketServer 等
 ├── rpcRegistry.ts             # RPC 方法注册表
+├── sessionSocketOwners.ts     # 同 session CLI socket 的接管仲裁（单一持有者）
 ├── terminalRegistry.ts        # 终端注册表，管理终端生命周期
 └── handlers/
     ├── terminal.ts            # /terminal namespace 处理器

@@ -94,6 +94,18 @@
 { "ok": true }
 ```
 
+### POST /sessions/:id/archive — 归档会话
+
+错误经 `readRpcFailure` 分类收口，不再裸 500：
+
+```json
+// Error
+{ "error": "Session is not reachable" }   // 409（unreachable / timeout 等传输类故障）
+{ "error": "<RPC 故障原文>" }             // 409（其他故障，透传 message）
+```
+
+会话已落库 `lifecycleState: 'archived'` 时幂等成功（不再发起 killSession），用于翻掉 `session-end` 丢失造成的悬挂活跃态。
+
 ### PATCH /sessions/:id — 重命名 / 归入工作区
 
 重命名（`name`）与归入工作区（`workspaceId: string | null`，null = 移回「最近」）共用一个端点，请求体至少携带一项。
