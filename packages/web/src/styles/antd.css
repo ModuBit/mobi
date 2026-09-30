@@ -596,13 +596,6 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
    触屏无 hover 常显；transition 用 antd css-var token（DESIGN.md 同纪律） */
 @keyframes review-refresh-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 
-/* 审查文件树开合缓动的 reduced-motion 降级（DESIGN.md Motion）：瞬时切换不滑入 */
-@media (prefers-reduced-motion: reduce) {
-    [data-testid='review-tree-holder'] {
-        transition: none;
-    }
-}
-
 /* 审查文件树节点单行省略：antd Tree 的 content-wrapper 默认 min-width:auto 不收缩，
    长文件名把标题撑折行；放开收缩链让 title 内的 ellipsis 生效 */
 .review-tree .ant-tree-node-content-wrapper {

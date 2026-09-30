@@ -27,7 +27,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Splitter, Tooltip } from 'antd'
+import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, RefreshCw, WrapText } from 'lucide-react'
 import { type DiffTarget, type ReviewCommit, type ReviewFileEntry } from '@mobi/shared'
@@ -37,6 +37,7 @@ import { basename } from '@/core/utils/path'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { copyTextToClipboard } from '@/components/chat/CopyButton'
 import { FilePathLabel, KindBadge, DiffStat } from '@/components/turnDiff/present'
+import { SplitLayout } from '@/components/ui/SplitLayout'
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
@@ -144,35 +145,33 @@ function NonGitEmptyState({ onInit, pending }: { onInit: () => void; pending: bo
 /** 手风琴文件行的头（Collapse label）：徽标/路径 + 紧随其后的统计与展开箭头（均 hover 显现），
  *  行尾 hover 操作（复制/打开标签页）。Collapse 自带展开图标关闭（expandIcon=null） */
 /**
- * 清单/树分栏：treeSize 内聚在此。受控 size 的回写若放在 GitReviewView，
- * 拖拽每帧 setState 会拖着 61 行清单全量重渲（实测非常卡）——挪到本组件后
- * 拖拽只重渲分栏壳，children 元素引用不变，React 对清单子树直接 bail out
+ * 清单/树分栏：与会话页「聊天 ↔ 检查器」同一套 SplitLayout（宽度过渡裁剪 + 可拖拽
+ * ratio + 拖到右缘自动收起）。ratio 状态内聚在此——若上提 GitReviewView，拖拽每帧
+ * setState 会拖着 61 行清单全量重渲（实测非常卡）；挪到本组件后拖拽只重渲分栏壳，
+ * children 元素引用不变，React 对清单子树直接 bail out
  */
-const ReviewSplitter = memo(function ReviewSplitter({ treeOpen, list, tree }: {
+const ReviewSplitter = memo(function ReviewSplitter({ treeOpen, onTreeOpenChange, list, tree }: {
     treeOpen: boolean
+    /** 拖到右缘自动收起（SplitLayout shouldCollapseOnDrag）回传父组件 */
+    onTreeOpenChange: (open: boolean) => void
     list: ReactNode
     tree: ReactNode
 }) {
-    /** 树 pane 拖拽记忆宽度（px）：开合往返与重开都回到最近拖拽值 */
-    const [treeSize, setTreeSize] = useState(264)
+    /** 左侧（清单）占比：0.8 即树 pane 默认约 20% 宽；拖拽后沿用最近值，开合往返不丢 */
+    const [splitRatio, setSplitRatio] = useState(0.8)
     return (
-        <Splitter
-            style={{ flex: 1, minHeight: 0 }}
-            collapsible={{ motion: true }}
-            onResize={(sizes) => {
-                const next = sizes[1]
-                if (next > 0) setTreeSize(next)
-            }}
-        >
-            {/* 清单 panel 只留 min 不设 max：Splitter 对部分受控 + 上限约束的场景
-                会把清单钳在 max、剩余空间无人认领（收起树后右侧留白 20%）——去掉
-                max 让自动分配把余量全额给清单 */}
-            <Splitter.Panel min="20%">{list}</Splitter.Panel>
-            {/* 树 pane：收起仅 size 0 折叠不销毁——筛选/展开状态在开合往返间保留 */}
-            <Splitter.Panel size={treeOpen ? treeSize : 0} min={200} max={520}>
-                {tree}
-            </Splitter.Panel>
-        </Splitter>
+        <div style={{ flex: 1, minHeight: 0 }}>
+            <SplitLayout
+                left={list}
+                right={tree}
+                expanded={treeOpen}
+                splitRatio={splitRatio}
+                secondaryMaximized={false}
+                onExpandedChange={onTreeOpenChange}
+                onSplitRatioChange={setSplitRatio}
+                defaultSplitRatio={0.8}
+            />
+        </div>
     )
 })
 
@@ -543,9 +542,10 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
 
             {/* Content：平铺文件清单（Collapse 手风琴）+ 可拖拽调宽的 diff 文件树。
                 分栏壳与拖拽状态内聚在 ReviewSplitter（拖拽流畅性见其注释）；
-                treeOpen 切 size 0↔记忆值（收起即折叠），容器 collapsible motion 供折叠动画 */}
+                treeOpen 切展开态，树 pane 宽度过渡/淡入淡出由 SplitLayout 外壳承担 */}
             <ReviewSplitter
                 treeOpen={treeOpen}
+                onTreeOpenChange={setTreeOpen}
                 list={
                     <Flex vertical style={{ height: '100%', overflowY: 'auto' }}>
                     <Collapse
@@ -603,18 +603,9 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 </Flex>
                 }
                 tree={
-                    /* 变更文件树 pane：常挂载（收起仅折叠不销毁——筛选/展开状态在开合
-                        往返间保留）；holder 只承担淡入淡出与 aria-hidden，宽度交给拖拽 */
-                    <div
-                        data-testid="review-tree-holder"
-                        aria-hidden={!treeOpen}
-                        style={{
-                            height: '100%',
-                            opacity: treeOpen ? 1 : 0,
-                            overflow: 'hidden',
-                            transition: `opacity var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
-                        }}
-                    >
+                    /* 变更文件树 pane：SplitLayout 右栏外壳承担宽度过渡与淡入淡出，
+                        收起仅折叠不销毁——筛选/展开状态在开合往返间保留 */
+                    <div data-testid="review-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>
                         <DiffTreePanel
                             files={files}
                             selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}

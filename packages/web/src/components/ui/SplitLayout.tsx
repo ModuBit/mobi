@@ -79,6 +79,11 @@ const LeftClipInner = styled.div<{ $width: number; $dragging: boolean; $fluid: b
     flex-shrink: 0;
     overflow: hidden;
     transition: ${p => (p.$dragging || p.$fluid ? 'none' : `width ${CLIP_DURATION} ${CLIP_EASING}`)};
+
+    /* reduced-motion 降级（DESIGN.md Motion）：宽度过渡改瞬时 */
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
+    }
 `
 
 // 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。拖动时禁用过渡以跟手。
@@ -88,6 +93,11 @@ const RightClipOuter = styled.div<{ $width: string; $dragging: boolean }>`
     flex-shrink: 0;
     overflow: hidden;
     transition: ${p => (p.$dragging ? 'none' : `width ${CLIP_DURATION} ${CLIP_EASING}`)};
+
+    /* reduced-motion 降级（DESIGN.md Motion）：宽度过渡改瞬时 */
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
+    }
 `
 
 /** 桌面右栏内层：固定自然宽度，不随外层动画重排。 */
@@ -97,6 +107,11 @@ const RightClipInner = styled.div<{ $width: number; $visible: boolean }>`
     opacity: ${p => (p.$visible ? 1 : 0)};
     pointer-events: ${p => (p.$visible ? 'auto' : 'none')};
     transition: opacity 0.2s ease;
+
+    /* reduced-motion 降级（DESIGN.md Motion）：淡入淡出改瞬时 */
+    @media (prefers-reduced-motion: reduce) {
+        transition: none;
+    }
 `
 
 /**
