@@ -75,5 +75,6 @@ Amendment 2「全文一个字节不进盘」经 hydration 特性（spec/tickets 
 - **读侧**：oversized+ref 惰性现场合成 patch（`patchOf`，不落盘不回写归档）；`contentsOf` 出全文对（历史轮 before 也可得，撑后续 hydration 展开）；无 ref（旧归档/路径逃逸）维持 B 方案语义
 - **sidechain 兜底**：E2E 实证 CC 不给 subagent 的 tool_result 附 toolUseResult（「主线与 sidechain 一视同仁」只有半边成立）——sidechain 编辑族 tool_use 观测时预读盘记 before、对应 tool_result 无 toolUseResult 时读盘记 after（is_error/零变更不入账）；sidechain 不进投影（结果永不带 structuredPatch，进了只产 0/0 噪声条目）
 - **审查 UI 放开 oversized**：`isDiffable` 不再排除 oversized 行，RowDiff 照常拉取（读侧现场合成），降级 tooBig 改按 patch 返回结果兜底（旧归档无 ref）
+- **渲染行数闸**：Amendment 3 当日追加——oversized 放开后 E2E 实测 pierre 渲染核无虚拟化（6000 行 diff = 24k DOM 节点、秒级卡顿），渲染安全线低于存储闸，新增 `REVIEW_RENDER_MAX_LINES=1500` 单点收在 CLI patch 出口（两出口统一截断 + `truncatedLines` 总行数；`gateText` contents 同值行闸，超限 hydration 静默降级纯 patch）；web 渲染截断 patch + 底部 footer 标注 + Open in Viewer 出口（FileContentView 走 CM6 虚拟化安全），RowDiff tooBig 收窄为 `oversized && !patch`（仅旧归档无 ref 降级）
 
 路径安全：`file_path` 来自模型输出，镜像相对路径前 resolve 校验不逃出工作区，逃逸条目跳过落盘由调用方兜底合成（无 ref）。

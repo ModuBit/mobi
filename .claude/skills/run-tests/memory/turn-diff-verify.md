@@ -34,8 +34,11 @@ last_verified: 2026-09-30
    `document.querySelector('diffs-container').shadowRoot.textContent` 含期望行内容；
    file row 需展开后才渲染。**展开行必须用 CDP click（take_snapshot 拿 uid）**——evaluate
    `.click()` 对受控 Collapse（activeKey=expandedPaths）不触发 onChange
-7. **oversized 行（2026-09-30 起）**：可展开（isDiffable 不再排除），照常拉 patch 渲染真实 diff
-   （读侧对带 ref 归档现场合成）；`[data-testid="review-too-big"]` 只在旧归档无 ref 时出现
+7. **oversized 行（2026-09-30 起）**：可展开（isDiffable 不再排除），照常拉 patch 渲染——API 出口
+   截断前 `REVIEW_RENDER_MAX_LINES`(1500) 行 + `[data-testid="review-diff-truncated"]` footer
+   （标注 shown/total + Open in file viewer 按钮跳 FileContentView，CM6 虚拟化看全文）；
+   E2E 实证 6000 行 diff 展开 500ms / DOM 6073（截断前 14s+ / 24k）；
+   `[data-testid="review-too-big"]` 只在旧归档无 ref 时出现
 8. **归档落盘断言**（事实源直读，最可靠）：
    `~workspace/demo/.mobi/turn-diffs/<sessionId>/turn-archive.json` —— wire 形状
    `{turnIndex, baseTurnIndex, sealedAt, files:[{path, kind, additions, deletions, writeCount, toolNames, patch, oversizedPatch, ref?}]}`；
