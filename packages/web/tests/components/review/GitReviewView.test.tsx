@@ -518,7 +518,7 @@ describe('GitReviewView（hook 注入 v2）', () => {
             vi.advanceTimersByTime(300)
             const rows = screen.getAllByTestId('review-file-row')
             const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
-            expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' })
+            expect(scrollSpy).toHaveBeenCalledWith({ block: 'start' })
             expect(scrollSpy.mock.instances[0]).toBe(target)
         } finally {
             vi.useRealTimers()
