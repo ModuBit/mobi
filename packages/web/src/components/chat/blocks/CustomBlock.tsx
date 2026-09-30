@@ -71,9 +71,10 @@ export const CustomBlockView = memo(function CustomBlockView({ block, sessionId 
     const openReviewTab = useWorkspaceStore((s) => s.openReviewTab)
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
 
-    // 「审核」入口：开审查 tab 落「上一轮」档并展开 inspector（折叠时只开 tab 等于没做）
+    // 「审查」入口：开审查 tab 强制落「上一轮」档并展开 inspector（折叠时只开 tab 等于没做；
+    // 已有 review tab 停在别的档时也拉回——入口语义是「看这轮的审查」，不是「切到审查面板」）
     const onReview = sessionId ? () => {
-        openReviewTab(sessionId)
+        openReviewTab(sessionId, JSON.stringify({ kind: 'turn' }))
         setExpanded(sessionId, true)
     } : undefined
 

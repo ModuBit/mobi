@@ -17,10 +17,10 @@
 /**
  * 轮次变更卡（Turn Diff Card）：渲染 CLI 合成的 turn-diff 自定义事件（ADR 0008）。
  * 卡片是已落库事实的呈现，自身不做任何统计——数字即载荷（唯一权威口径，ADR 0008）。
- * git 模式（payload.git）带「审核」按钮：打开 inspector 审查 tab 落「上一轮」档；
- * 近似口径（git: null）无两树指针，不出按钮。
+ * 带「审查」按钮：打开 inspector 审查 tab 并强制落「上一轮」档（供数反转后审查 turn
+ * 档由封口归档供数，卡片不再依赖 payload.git 两树指针——journal 口径同样出按钮）。
  *
- * 布局（对齐参考稿）：宽 100%；头部图标砖 + 标题/总统计两行 + 右侧审核；分隔线下
+ * 布局（对齐参考稿）：宽 100%；头部图标砖 + 标题/总统计两行 + 右侧审查；分隔线下
  * 文件清单默认铺开（前 PREVIEW_COUNT 条），超出时底部「再显示 N 个文件」展开/收起。
  */
 
@@ -93,15 +93,10 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { 
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: token.fontSize, color: token.colorText }}>
                         {t('chat.turnDiff.filesEdited', { count: payload.stats.files })}
-                        {!payload.git && (
-                            <span title={t('chat.turnDiff.approximate')} style={{ marginLeft: 6, fontSize: token.fontSizeSM, color: token.colorTextTertiary }}>
-                                ≈
-                            </span>
-                        )}
                     </div>
                     <DiffStat additions={payload.stats.additions} deletions={payload.stats.deletions} fontSize={token.fontSizeSM} />
                 </div>
-                {onReview && payload.git && (
+                {onReview && (
                     <button
                         type="button"
                         data-testid="turn-diff-review"

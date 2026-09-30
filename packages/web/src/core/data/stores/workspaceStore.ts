@@ -135,7 +135,7 @@ interface WorkspaceState {
     /** 打开远程桌面 tab（跟随会话机器）：同 machineId 已开则切激活，不重复创建 */
     openDesktopTab: (sessionId: string, machineId: string) => void
     /** 「审查」tab（git 审查视图）：全局唯一（同会话一个审查面板），已开则切激活 */
-    openReviewTab: (sessionId: string) => void
+    openReviewTab: (sessionId: string, reviewTarget?: string) => void
     setActiveTab: (sessionId: string, tabId: string) => void
     /** 记住某 tab 的视图状态（滚动比例/缩放等）；patch 与现有值逐字段合并，同值短路 */
     setTabViewState: (sessionId: string, tabId: string, patch: Partial<TabViewState>) => void
@@ -297,9 +297,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             () => ({ id: uuid(), mode: 'desktop', machineId }),
         )),
 
-    /** 「审查」动作：全局唯一 review tab（同 tree 去重纪律），已开则切激活 */
-    openReviewTab: (sessionId) =>
-        set((state) => activateOrCreateTab(state, sessionId, (t) => t.mode === 'review', () => ({ id: uuid(), mode: 'review' }))),
+    /** 「审查」动作：全局唯一 review tab（同 tree 去重纪律），已开则切激活。
+     *  reviewTarget（DiffTarget 序列化键）可选：传入时新建即带、已开则覆盖——
+     *  轮次变更卡入口语义是「跳到指定档」，不带参的调用（inspector 侧按钮）不动档位 */
+    openReviewTab: (sessionId, reviewTarget) => {
+        set((state) => activateOrCreateTab(
+            state, sessionId,
+            (t) => t.mode === 'review',
+            () => ({ id: uuid(), mode: 'review', viewState: reviewTarget ? { reviewTarget } : undefined }),
+        ))
+        // 已有 review tab 的路径：activateOrCreateTab 只切激活，目标档在这里补落
+        if (!reviewTarget) return
+        const cur = get().sessions.get(sessionId)
+        const tab = cur?.tabs.find((t) => t.mode === 'review')
+        if (cur && tab && tab.viewState?.reviewTarget !== reviewTarget) {
+            get().setTabViewState(sessionId, tab.id, { reviewTarget })
+        }
+    },
 
     closeTab: (sessionId, tabId) =>
         set((state) => {

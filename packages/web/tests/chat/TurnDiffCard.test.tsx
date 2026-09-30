@@ -104,7 +104,7 @@ describe('turn-diff 渲染链', () => {
         expect(container.querySelector('[data-testid="turn-diff-card"]')).toBeNull()
     })
 
-    it('「审核」按钮：git 模式且传入 onReview 才出现；点击触发且不展开清单', () => {
+    it('「审查」按钮：传入 onReview 即出现（journal 口径无两树指针也出）；点击触发且不展开清单', () => {
         const onReview = vi.fn()
         // 无 sessionId → 无 onReview → 不出按钮
         const { rerender } = render(<CustomBlockView block={makeCustomBlock([{ type: 'custom-event', name: TURN_DIFF_EVENT, value: OVERFLOW_PAYLOAD }])} />)
@@ -118,8 +118,10 @@ describe('turn-diff 渲染链', () => {
         expect(screen.getByTestId('turn-diff-overflow').getAttribute('aria-hidden')).toBe('true')
     })
 
-    it('近似口径（git: null）不出「审核」按钮（无两树指针可查）', () => {
+    it('journal 口径（git: null）同样出「审查」按钮（供数反转后卡片事实源是归档，审查 turn 档可达）', () => {
         render(<TurnDiffCard payload={{ ...PAYLOAD, git: null }} onReview={() => {}} />)
-        expect(screen.queryByTestId('turn-diff-review')).toBeNull()
+        expect(screen.getByTestId('turn-diff-review')).toBeTruthy()
+        // ≈ 近似标记随快照链退役：journal 内容对是精确统计，不再打「近似」标
+        expect(screen.queryByTitle('chat.turnDiff.approximate')).toBeNull()
     })
 })

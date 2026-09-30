@@ -103,6 +103,25 @@ describe('workspaceStore', () => {
         expect(after.activeTabId).toBe(s.tabs[0].id)
     })
 
+    it('openReviewTab 带 reviewTarget：新建落 viewState，已开则覆盖旧档（审查卡入口 = 强制落上一轮）', () => {
+        const target = JSON.stringify({ kind: 'turn' })
+        useWorkspaceStore.getState().openReviewTab('s1', target)
+        let s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs[0].viewState?.reviewTarget).toBe(target)
+
+        // 用户切到别的档后，再次入口调用应把档拉回目标值（不新增 tab）
+        useWorkspaceStore.getState().setTabViewState('s1', s.tabs[0].id, { reviewTarget: JSON.stringify({ kind: 'worktree', area: 'staged' }) })
+        useWorkspaceStore.getState().openReviewTab('s1', target)
+        s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0].viewState?.reviewTarget).toBe(target)
+
+        // 无目标参数：不动已有档位（inspector 侧「审查」动作语义 = 只开/激活）
+        useWorkspaceStore.getState().setTabViewState('s1', s.tabs[0].id, { reviewTarget: JSON.stringify({ kind: 'worktree', area: 'staged' }) })
+        useWorkspaceStore.getState().openReviewTab('s1')
+        expect(useWorkspaceStore.getState().getSession('s1').tabs[0].viewState?.reviewTarget).toBe(JSON.stringify({ kind: 'worktree', area: 'staged' }))
+    })
+
     it('openFileInTab 未命中：当前 tree tab 转为 file tab，保留 id', () => {
         useWorkspaceStore.getState().openFileTreeTab('s1')
         const treeId = useWorkspaceStore.getState().getSession('s1').tabs[0].id

@@ -22,10 +22,10 @@
  * 口径：「归因」与「投影」分层（turn-archive B 后快照链退场）——
  * - 归因层（主源）：turn 内 journal 累积（本会话 Edit 族工具的内容对）。会话私有，
  *   天然免疫并发会话/用户手改/shell 改动的归因污染（Codex TurnDiffTracker /
- *   ZCode per-turn 快照同款机制）；git: null（web 端 ≈ 近似标记）。合成后封口归档
+ *   ZCode per-turn 快照同款机制）；git: null（快照链退役后恒 null，web 卡按钮不依赖它）。合成后封口归档
  *   （turnArchiveStore，历史轮回看的精确性基础）。
  * - 投影层（降级档）：累积为空时用工具事件行数累加（Bash/subagent 写入不在内），
- *   `git: null` 显式标记。
+ *   `git: null` 显式标记（web 卡按钮同样可用——审查 turn 档由归档/降级源供数）。
  *
  * 轮界隔离（排队消息竞态，2026-09-30）：result 到达时**同步冻结**本轮采集上下文
  * （TurnContext 五件套整包换新），旧引用闭包交给封口链——封口操作的是冻结快照，

@@ -465,7 +465,6 @@
             "filesEdited": "Edited {{count}} files",
             "fileEdited": "Edited 1 file",
             "noChanges": "No file changes in this turn",
-            "approximate": "Approximate (non-git directory)",
             "binary": "binary",
             "review": "Review",
             "showMoreFiles": "Show {{count}} more files",

@@ -21,7 +21,8 @@
  *
  * 事实源与口径（v3 双轨）：归因主源 = turn 内工具层内容对累积（本会话 Edit 族，封口
  * 归档供历史轮回看）；实况兜底 = 相邻两快照 diff 的 numstat（累积为空才回落）；
- * 非 git 目录 `git: null`，文件清单与计数来自工具事件投影的近似口径。文件清单与增删
+ * 非 git 目录 `git: null`（快照链退役后所有路径恒 null，web 端按钮不再依赖该字段——
+ * 审查 turn 档由封口归档供数）。文件清单与增删
  * 统计只有一个权威口径（聊天卡与审查视图共用），数字不许有两套。
  */
 
@@ -72,7 +73,7 @@ export const TurnDiffPayloadSchema = z.object({
     baseTurnIndex: z.number().int().positive().nullable(),
     stats: TurnDiffStatsSchema,
     files: z.array(TurnDiffFileEntrySchema),
-    /** 快照对：git 模式的权威事实源指针（审查视图据此复核）；null = 非 git 目录（近似口径） */
+    /** 快照对（遗留字段）：快照链退役后恒 null，保留仅为旧落库消息 wire 兼容；web 不再消费 */
     git: z.object({
         baseTree: z.string().min(1),
         headTree: z.string().min(1),
