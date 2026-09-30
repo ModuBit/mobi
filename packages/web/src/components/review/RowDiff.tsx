@@ -51,11 +51,12 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
     // 截断），无 ref（旧归档）返回 oversized 打标 + 空 patch → 降级 tooBig
     const patch = deps.useReviewPatch(sessionId, target, entry.path, version)
 
-    // pending 上报：与下方 Spin 的判据同口径（无数据也算 pending）；卸载收尾
+    // pending 上报：与下方 Spin 的判据同口径（「拉取中或无数据」才算 pending；error 态
+    // data 永远 undefined，若算进去 loading 指示永不还原）；卸载收尾
     useEffect(() => {
-        onPendingChange?.(entry.path, patch.isLoading || !patch.data)
+        onPendingChange?.(entry.path, patch.isLoading || (!patch.data && !patch.error))
         return () => onPendingChange?.(entry.path, false)
-    }, [entry.path, patch.isLoading, patch.data, onPendingChange])
+    }, [entry.path, patch.isLoading, patch.data, patch.error, onPendingChange])
 
     // 纯 rename（内容零增删）的 patch 只有 rename 头、无 hunk——pierre 在
     // disableFileHeader 下渲染 0 高空白（E2E 实测），诚实给专用文案

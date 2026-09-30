@@ -115,6 +115,7 @@ function makeDeps(overrides: {
     filesFor?: (target: DiffTarget | null) => { files: ReviewFileEntry[]; truncated: boolean } | null
     contents?: { before: string | null; after: string | null } | null
     patchLoading?: boolean
+    patchError?: string
     onQuery?: (path: string | null) => void
     running?: boolean | undefined
     refetch?: ReturnType<typeof vi.fn>
@@ -135,8 +136,9 @@ function makeDeps(overrides: {
         },
         useReviewPatch: (_sessionId: string, _target: DiffTarget | null, path: string | null) => {
             overrides.onQuery?.(path)
-            const data = path ? { patch: '', previousPath: null, oversized: false, binary: false } : undefined
-            return { data: overrides.patchLoading ? undefined : data, error: null, isLoading: overrides.patchLoading ?? false }
+            // 对齐 react-query 语义：error 态 data 为 undefined
+            const data = path && !overrides.patchError ? { patch: '', previousPath: null, oversized: false, binary: false } : undefined
+            return { data: overrides.patchLoading ? undefined : data, error: overrides.patchError ?? null, isLoading: overrides.patchLoading ?? false }
         },
         useReviewContents: (_sessionId: string, _target: DiffTarget | null, path: string | null) => {
             return {
@@ -491,6 +493,27 @@ describe('GitReviewView（hook 注入 v2）', () => {
         // 文本行照常展开
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[1]!)).toBe('true')
+    })
+
+    it('patch 查询失败：行内渲染错误文案，行头 loading 指示还原（error 态不算 pending）', () => {
+        const withBad = (t: DiffTarget | null) => ({
+            files: t?.kind === 'turn'
+                ? [entry({ path: 'bad.ts' }), entry({ path: 'text.ts', additions: 2, deletions: 0 })]
+                : STAGED_FILES,
+            truncated: false,
+        })
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, filesFor: withBad, contents: { before: '', after: '' }, patchError: 'rpc failed' })}
+            />,
+        )
+        const rows = screen.getAllByTestId('review-file-row')
+        fireEvent.click(rows[0]!)
+        expect(expandedOf(rows[0]!)).toBe('true')
+        // error 态 data 恒 undefined：pending 判据若含裸 !data，行头 loading 永不还原
+        expect(screen.getByText('rpc failed')).toBeTruthy()
+        expect(rows[0]!.querySelector('[data-testid="review-row-loading"]')).toBeNull()
     })
 
     it('非文本条目：整行不可展开（无箭头、点击不发查询不出占位）', () => {

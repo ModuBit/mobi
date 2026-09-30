@@ -510,15 +510,26 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
    composer QuoteChipBar / 气泡 UserBubbleHeader；.review-tree-popover = 审查/文件树移动端弹层
    GitReviewView）：topLeft/bottomLeft 的 anchor 对齐放置 + 卡宽接近视口，窄屏右缘必然贴屏/
    溢出（2026-09-23 验收，anchor 左缘随内容浮动，纯宽度钳制算不死）——干脆窄屏锁死水平
-   几何：两侧各留 16px。树/列表内容超宽超高分由各自 content 内部滚动，本层不做裁剪 */
+   几何：两侧各留 16px。树/列表内容超宽超高分由各自 content 内部滚动，本层不做裁剪。
+   阈值差异：quote-list 自己定的 640；review-tree 必须对齐 useIsMobile 的 768——树走
+   Popover 的分支就由该 hook 驱动，641–767 区间不锁宽会被树行 nowrap 撑破视口（诱发整页横滚） */
 @media (max-width: 640px) {
-    .quote-list-popover,
+    .quote-list-popover {
+        left: 16px !important;
+        width: calc(100vw - 32px) !important;
+        max-width: none;
+    }
+    .quote-list-popover .ant-popover-inner {
+        max-width: none;
+    }
+}
+
+@media (max-width: 767.98px) {
     .review-tree-popover {
         left: 16px !important;
         width: calc(100vw - 32px) !important;
         max-width: none;
     }
-    .quote-list-popover .ant-popover-inner,
     .review-tree-popover .ant-popover-inner {
         max-width: none;
     }

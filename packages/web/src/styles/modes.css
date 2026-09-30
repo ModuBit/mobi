@@ -14,8 +14,8 @@
 
 .terminal-reconnect-mask {
     background: var(--ant-color-bg-mask);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     color: var(--ant-color-text);
 }
 
