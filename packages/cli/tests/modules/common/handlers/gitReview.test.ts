@@ -108,6 +108,26 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         expect(contents.reason).toBeNull()
     })
 
+    it('git 档 patch 超渲染行闸 → 截断（API 不全量返回）+ truncatedLines；小 patch 完整', async () => {
+        const { ReviewPatchResultSchema, REVIEW_RENDER_MAX_LINES } = await import('@mobi/shared')
+        const reader = new GitReviewReader(v2Dir)
+        const target = { kind: 'worktree', area: 'uncommitted' } as const
+        // 大文件：2000 行修改 → patch 行数远超 1500
+        await writeFile(join(v2Dir, 'big.txt'), Array.from({ length: 2000 }, (_, i) => `line-${i + 1}`).join('\n') + '\n')
+        await writeFile(join(v2Dir, 'init.txt'), 'init\nchanged2\n')
+        const big = ReviewPatchResultSchema.parse(await reader.patch(v2Session, target, 'big.txt'))
+        expect(big.patch.split('\n')).toHaveLength(REVIEW_RENDER_MAX_LINES)
+        expect(big.truncatedLines).toBeGreaterThan(REVIEW_RENDER_MAX_LINES)
+        expect(big.patch).toContain('+line-1')
+        expect(big.patch).not.toContain('+line-2000')
+        // 小 patch 不截断，truncatedLines = 0（default 兼容形态）
+        const small = ReviewPatchResultSchema.parse(await reader.patch(v2Session, target, 'init.txt'))
+        expect(small.truncatedLines).toBe(0)
+        expect(small.patch).toContain('+changed2')
+        // 清理大文件避免影响后续用例的 uncommitted 统计
+        await rm(join(v2Dir, 'big.txt'))
+    })
+
     it('commit 档：files/diff/contents 钉在历史提交对；commits 分页', async () => {
         const { ReviewFilesResultSchema, ReviewPatchResultSchema, ReviewCommitsResultSchema } = await import('@mobi/shared')
         const reader = new GitReviewReader(v2Dir)
@@ -327,13 +347,16 @@ describe('GitReviewReader turn 档 hydration（ref 全文）', () => {
         await rm(hDir, { recursive: true, force: true })
     })
 
-    it('patch(turn)：oversized 带 ref → 现场合出 patch（oversized 解除）', async () => {
-        const { ReviewPatchResultSchema } = await import('@mobi/shared')
+    it('patch(turn)：oversized 带 ref → 现场合出 patch，超渲染闸截断（truncatedLines 带总行数）', async () => {
+        const { ReviewPatchResultSchema, REVIEW_RENDER_MAX_LINES } = await import('@mobi/shared')
         const reader = new GitReviewReader(hDir)
         const patch = ReviewPatchResultSchema.parse(await reader.patch(sid, { kind: 'turn' }, fileA()))
         expect(patch.oversized).toBe(false)
+        // 3000 行 delete + 3000 行 add 的 patch 远超渲染闸：只回前 N 行（delete 段内），'+y' 不可见
         expect(patch.patch).toContain('-x')
-        expect(patch.patch).toContain('+y')
+        expect(patch.patch).not.toContain('+y')
+        expect(patch.patch.split('\n')).toHaveLength(REVIEW_RENDER_MAX_LINES)
+        expect(patch.truncatedLines).toBeGreaterThan(REVIEW_RENDER_MAX_LINES)
     })
 
     it('contents(turn)：带 ref → 归档全文（历史轮 before 可得，工作区偏离不影响）', async () => {
@@ -342,6 +365,12 @@ describe('GitReviewReader turn 档 hydration（ref 全文）', () => {
         expect(contents.before).toBe('old-content\n')
         expect(contents.after).toBe('new-content\n')
         expect(contents.reason).toBeNull()
+    })
+
+    it('contents(turn)：全文超渲染行闸 → oversized 降级（hydration 静默退纯 patch）', async () => {
+        const reader = new GitReviewReader(hDir)
+        const contents = ReviewContentsResultSchema.parse(await reader.contents(sid, { kind: 'turn' }, fileA()))
+        expect(contents).toMatchObject({ before: null, after: null, reason: 'oversized' })
     })
 
     it('contents(turn)：归档未记录路径 = missing（协议不变）', async () => {

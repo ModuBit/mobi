@@ -37,6 +37,7 @@ import { join } from 'node:path'
 import {
     GIT_REVIEW_RPC,
     OVERSIZE_DIFF_LINES,
+    REVIEW_RENDER_MAX_LINES,
     ReviewCommitsResultSchema,
     ReviewContentsResultSchema,
     ReviewFilesResultSchema,
@@ -65,12 +66,25 @@ const MAX_TEXT_BYTES = 4 * 1024 * 1024
 /** commits 分页页长（游标 = 偏移量字符串，取实现简单者） */
 const COMMITS_PAGE_SIZE = 50
 
-/** 文本闸：git 同款二进制嗅探（内容含 NUL）+ 大小上限。patch 由 git diff 生成、
-    二进制自动只出一行说明，不受此闸影响 */
+/** 文本闸：git 同款二进制嗅探（内容含 NUL）+ 大小/行数上限（行数闸与字节闸同维——
+    全文进 pierre 渲染无虚拟化，行数才是 DOM 成本；超限不返回，reason=oversized）。
+    patch 由 git diff 生成、二进制自动只出一行说明，不走此闸 */
 function gateText(raw: string): { text: string; reason: null } | { text: null; reason: 'binary' | 'oversized' } {
     if (raw.length > MAX_TEXT_BYTES) return { text: null, reason: 'oversized' }
+    if (raw.split('\n').length > REVIEW_RENDER_MAX_LINES) return { text: null, reason: 'oversized' }
     if (raw.includes('\0')) return { text: null, reason: 'binary' }
     return { text: raw, reason: null }
+}
+
+/**
+ * patch 渲染截断：超过 REVIEW_RENDER_MAX_LINES 行只返回前 N 行（API 不全量返回，
+ * 防超大 diff 打爆传输与渲染），truncatedLines 带总行数供 web 出「Open in Viewer」。
+ * 按行硬切——pierre 对截断在 hunk 中间的 patch 容忍（渲染到截断处）。
+ */
+function truncatePatch(patch: string): { patch: string; truncatedLines: number } {
+    const total = patch.split('\n').length
+    if (total <= REVIEW_RENDER_MAX_LINES) return { patch, truncatedLines: 0 }
+    return { patch: patch.split('\n').slice(0, REVIEW_RENDER_MAX_LINES).join('\n'), truncatedLines: total }
 }
 
 type FulltextSide = { text: string | null; reason: 'missing' | 'binary' | 'oversized' | null }
@@ -312,15 +326,17 @@ export class GitReviewReader {
         })
     }
 
-    /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（二进制/超
-     *  预算/归档未记录），web 落 contents 通道或诚实降级 */
+    /** 单文件 patch（pierre PatchDiff 主输入）。空 patch = 无 patch 可给（二进制/归档
+     *  未记录），web 落 contents 通道或诚实降级。出口统一渲染截断（REVIEW_RENDER_MAX_LINES，
+     *  oversized+ref 现场合成的真实 patch 同样截断——API 不全量返回） */
     async patch(sessionId: string, target: DiffTarget, path: string): Promise<unknown> {
         // turn 档：patch 直读归档封口定稿（B 方案——封口时已合成落盘，查询时零合成）；
-        // 未记录路径 / 无归档 = 空 patch
+        // 未记录路径 / 无归档 = 空 patch；oversized+ref 由 patchOf 现场合成
         if (target.kind === 'turn') {
             const supplied = await this.turnAttribution().patchOf(sessionId, target, path)
             if (supplied === null) return ReviewPatchResultSchema.parse({ patch: '', previousPath: null, oversized: false, binary: false })
-            return ReviewPatchResultSchema.parse({ patch: supplied.patch, previousPath: null, oversized: supplied.oversizedPatch, binary: false })
+            const cut = truncatePatch(supplied.patch)
+            return ReviewPatchResultSchema.parse({ patch: cut.patch, previousPath: null, oversized: supplied.oversizedPatch, binary: false, truncatedLines: cut.truncatedLines })
         }
         const resolved = await resolveDiffTarget(target, { isGitRepository: await this.isGitRepo() })
         // git 档路径闸（先 resolve 后闸，源决定闸）
@@ -333,8 +349,9 @@ export class GitReviewReader {
     }
 
     /** git 档单文件 patch：rename 旧路径解析 + untracked no-index 兜底（仅工作区非
-     *  staged 档）+ 二进制/超预算打标 */
-    private async patchFromGit(diffArgs: string[], path: string, opts: { allowNoIndex: boolean }): Promise<{ patch: string; previousPath: string | null; oversized: boolean; binary: boolean }> {
+     *  staged 档）+ 二进制打标 + 渲染截断（oversized 打标保留供 web 语义，超行不再
+     *  置空 patch——截断渲染 + viewer 出口取代一刀切不可看） */
+    private async patchFromGit(diffArgs: string[], path: string, opts: { allowNoIndex: boolean }): Promise<{ patch: string; previousPath: string | null; oversized: boolean; binary: boolean; truncatedLines: number }> {
         // rename 旧路径解析：name-status 单查（不走 entries——那里的全树 numstat 此处用不到）
         const previousPath = await this.previousPathFor(diffArgs, path)
         const pathArgs = previousPath ? [previousPath, path] : [path]
@@ -356,12 +373,9 @@ export class GitReviewReader {
         const cols = numstat?.split('\n')[0]?.split('\t') ?? []
         const binary = cols[0] === '-' || cols[1] === '-'
         const oversized = (patch?.split('\n').length ?? 0) > OVERSIZE_DIFF_LINES
-        return {
-            patch: binary || oversized ? '' : patch ?? '',
-            previousPath,
-            oversized,
-            binary,
-        }
+        if (binary) return { patch: '', previousPath, oversized, binary, truncatedLines: 0 }
+        const cut = truncatePatch(patch ?? '')
+        return { patch: cut.patch, previousPath, oversized, binary, truncatedLines: cut.truncatedLines }
     }
 
     /** 全文对（pierre hydration 懒拉）。reason = 两侧都拿不到时的降级原因；一侧有值

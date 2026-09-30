@@ -16,7 +16,9 @@
 
 /**
  * 单文件 diff 渲染（审查重写票07）：渲染本体换 @pierre/diffs 的 PatchDiff——
- * patch 主输入（虚拟化承载大 diff），loadDiffFiles hydration 懒拉全文展开上下文。
+ * patch 主输入（渲染核无虚拟化，超大 diff 由 CLI 出口截断 REVIEW_RENDER_MAX_LINES
+ * 行，本组件渲染截断结果 + 底部「Open in Viewer」出口），loadDiffFiles hydration
+ * 懒拉全文展开上下文（全文行闸在 CLI gateText，超限库内静默降级纯 patch）。
  * 姿势全部来自 PoC 票01 实证（.scratch/review-render-rewrite/poc-report.md）：
  * - host 高度 + 外层滚动容器由调用方给（diffs-container 原生组件不自持高度）
  * - 空 patch 直接 throw——本组件守卫降级为 noDiff 文案
@@ -26,12 +28,15 @@
 
 import { useMemo } from 'react'
 import { PatchDiff } from '@pierre/diffs/react'
+import { Button, Flex } from 'antd'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { type DiffTarget } from '@mobi/shared'
+import { REVIEW_RENDER_MAX_LINES, type DiffTarget } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { makeReviewContentsQueryFn, makeReviewPatchQueryFn } from '@/core/data/hooks/queries/useGitReview'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { basename } from '@/core/utils/path'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { queryKeys } from '@/core/lib/query-keys'
 import { PIERRE_BRIDGE_VARS } from './pierreTheme'
 
@@ -51,6 +56,7 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
     const api = useMobiApi()
     const queryClient = useQueryClient()
     const resolved = useUiStore((s) => resolveTheme(s.theme))
+    const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
     // patch 与行内 RowDiff 同键共享缓存（RowDiff 先行闸 loading/error，这里只管渲染输入）。
     // queryFn 必须与 useReviewPatch 同形（makeReviewPatchQueryFn）——同键异形会让缓存命中
@@ -94,17 +100,30 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
     }), [layout, wrap, resolved, target, loadDiffFiles])
 
     return (
-        <div
-            data-testid="git-diff-viewer"
-            aria-label={t('review.diffAria')}
-            style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, display: 'flex', overflow: 'auto' }}
-        >
+        <Flex data-testid="git-diff-viewer" vertical aria-label={t('review.diffAria')} style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, overflow: 'auto' }}>
             {/* 空 patch 直接 throw（PoC 实证）——二进制/空 diff 诚实降级文案 */}
             {patchPayload && patchPayload.data && patchPayload.data.patch ? (
-                <PatchDiff patch={patchPayload.data.patch} options={options} style={{ ...PIERRE_BRIDGE_VARS, height: '100%', flex: 1 }} />
+                <>
+                    <PatchDiff patch={patchPayload.data.patch} options={options} style={{ ...PIERRE_BRIDGE_VARS, minHeight: '100%', flex: 1 }} />
+                    {/* API 出口截断（REVIEW_RENDER_MAX_LINES）：诚实标注 + 文件查看器出口 */}
+                    {(patchPayload.data.truncatedLines ?? 0) > 0 && (
+                        <Flex
+                            data-testid="review-diff-truncated"
+                            align="center"
+                            justify="center"
+                            gap={10}
+                            style={{ flexShrink: 0, padding: '8px 12px', fontSize: 12, color: 'var(--ant-color-text-tertiary)', borderTop: '1px solid var(--ant-color-border-secondary)' }}
+                        >
+                            {t('review.diffTruncated', { shown: REVIEW_RENDER_MAX_LINES, total: patchPayload.data.truncatedLines })}
+                            <Button size="small" onClick={() => openFileTab(sessionId, path, basename(path))}>
+                                {t('review.openInViewer')}
+                            </Button>
+                        </Flex>
+                    )}
+                </>
             ) : (
                 <span style={{ margin: 'auto', fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{t('review.noDiff')}</span>
             )}
-        </div>
+        </Flex>
     )
 }

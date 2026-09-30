@@ -816,6 +816,7 @@
         "noSnapshotChanges": "本轮没有文件变更",
         "truncated": "untracked 文件过多，部分未逐一计数",
         "tooBig": "文件过大，差异渲染已降级",
+        "diffTruncated": "差异过大，仅展示前 {{shown}} 行（共 {{total}} 行）",
         "openInViewer": "在文件查看器中打开",
         "openInTab": "在标签页中打开",
         "filterPlaceholder": "筛选文件",

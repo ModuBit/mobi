@@ -825,6 +825,7 @@
         "noSnapshotChanges": "No file changes in this turn",
         "truncated": "Too many untracked files; some were not counted",
         "tooBig": "File too large; diff rendering degraded",
+        "diffTruncated": "Diff too large; showing first {{shown}} lines of {{total}}",
         "openInViewer": "Open in file viewer",
         "openInTab": "Open in tab",
         "filterPlaceholder": "Filter files",

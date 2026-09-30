@@ -47,6 +47,14 @@ export const TurnDiffFileEntrySchema = z.object({
 
 /** 内联 diff 渲染阈值（行数）：超过即 oversized 降级。CLI 打标、web 消费的唯一判据 */
 export const OVERSIZE_DIFF_LINES = 5000
+
+/**
+ * 审查 patch 渲染安全线（行数）：diff 方法出口的单文件 patch 截断闸——pierre 渲染核
+ * 无虚拟化（E2E 实测 6000 行 = 24k DOM 节点、展开秒级卡顿），超过即截断（API 不全量
+ * 返回），web 渲染截断 patch + 「Open in Viewer」出口。独立于 OVERSIZE_DIFF_LINES
+ * （那是封口存储/传输维度的闸），渲染维度阈更低。contents 全文行闸同值。
+ */
+export const REVIEW_RENDER_MAX_LINES = 1500
 export type TurnDiffFileEntry = z.infer<typeof TurnDiffFileEntrySchema>
 
 /** 变更统计三件套（文件数/增/删）：聊天卡总统计与审查档位统计同形同口径 */
@@ -178,12 +186,15 @@ export const ReviewFilesResultSchema = z.object({
 })
 export type ReviewFilesResult = z.infer<typeof ReviewFilesResultSchema>
 
-/** 单文件 patch（diff 方法响应）：pierre PatchDiff 主输入 */
+/** 单文件 patch（diff 方法响应）：pierre PatchDiff 主输入。
+ *  truncatedLines = patch 总行数（仅截断时 >0；完整 = 0，default 兼容旧 CLI wire），
+ *  patch 字段此时只含前 REVIEW_RENDER_MAX_LINES 行 */
 export const ReviewPatchResultSchema = z.object({
     patch: z.string(),
     previousPath: z.string().min(1).nullable(),
     oversized: z.boolean(),
     binary: z.boolean(),
+    truncatedLines: z.number().int().nonnegative().default(0),
 })
 export type ReviewPatchResult = z.infer<typeof ReviewPatchResultSchema>
 

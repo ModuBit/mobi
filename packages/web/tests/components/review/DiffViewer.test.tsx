@@ -51,7 +51,7 @@ function renderViewer(overrides: Partial<Parameters<typeof DiffViewer>[0]> = {},
         // 直接预置 patch 查询缓存（免 mock api 层）；载荷是 {data}|{error} 包装
         // （与 makeReviewPatchQueryFn 同形——同键异形曾致静默空分支，见该函数注释）
         if (patch !== null) {
-            client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(target), 'x.ts', ''], { data: { patch, previousPath: null, oversized: false, binary: false } })
+            client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(target), 'x.ts', ''], { data: { patch, previousPath: null, oversized: false, binary: false, truncatedLines: 0 } })
         }
     return render(
         <QueryClientProvider client={client}>
@@ -104,7 +104,7 @@ describe('DiffViewer（pierre 换血）', () => {
         const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
         const fetchSpy = vi.spyOn(client, 'fetchQuery').mockResolvedValue({ data: { before: 'b\n', after: 'a\n' } })
         // 预置同代 patch 缓存让 PatchDiff 同步渲染（loadDiffFiles 才会被捕获）
-        client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(TARGET), 'x.ts', '42'], { data: { patch: 'diff --git a/x b/x', previousPath: null, oversized: false, binary: false } })
+        client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(TARGET), 'x.ts', '42'], { data: { patch: 'diff --git a/x b/x', previousPath: null, oversized: false, binary: false, truncatedLines: 0 } })
         render(
             <QueryClientProvider client={client}>
                 <DiffViewer sessionId="s1" target={TARGET} path="x.ts" version={42} wrap layout="unified" />
@@ -117,5 +117,22 @@ describe('DiffViewer（pierre 换血）', () => {
         })
         expect(fetchSpy).toHaveBeenCalledTimes(1)
         expect(fetchSpy.mock.calls[0]![0].queryKey).toEqual(['git-review-v2-contents', 's1', JSON.stringify(TARGET), 'x.ts', '42'])
+    })
+
+    it('API 出口截断（truncatedLines>0）：渲染截断标注 footer + Open in Viewer 按钮', () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        client.setQueryData(['git-review-v2-patch', 's1', JSON.stringify(TARGET), 'x.ts', ''], { data: { patch: 'diff --git a/x b/x', previousPath: null, oversized: false, binary: false, truncatedLines: 6000 } })
+        render(
+            <QueryClientProvider client={client}>
+                <DiffViewer sessionId="s1" target={TARGET} path="x.ts" version="" wrap layout="unified" />
+            </QueryClientProvider>,
+        )
+        expect(screen.getByTestId('review-diff-truncated').textContent).toContain('6000')
+        expect(screen.getByRole('button', { name: 'Open in file viewer' })).toBeDefined()
+    })
+
+    it('未截断（truncatedLines=0）：无截断标注 footer', () => {
+        renderViewer()
+        expect(screen.queryByTestId('review-diff-truncated')).toBeNull()
     })
 })
