@@ -32,6 +32,29 @@ import { logger } from '@/ui/logger'
  *  表达「有差异」，stdout 挂在异常对象上由本模块取回） */
 export type GitExec = (cwd: string, args: string[]) => Promise<string>
 
+/** `git diff --no-index` 目录模式出口：退出码 1 表达「有差异」，stdout 挂在异常对象
+ *  上由本模块取回（synthesizeContentsPatch 与 turnFulltextStore 的整轮目录 diff 共用；
+ *  cwd = a/b 目录的共同父目录） */
+export async function runNoIndexDiff(git: GitExec, cwd: string, aDir: string, bDir: string): Promise<string> {
+    try {
+        return await git(cwd, ['diff', '--no-index', '--', aDir, bDir])
+    } catch (e) {
+        return (e as { stdout?: string }).stdout ?? ''
+    }
+}
+
+/** 头部剥临时目录前缀（git 规范化绝对路径的前导 /）。实证（git 2.x 目录模式）
+ *  四形态——a/b 前缀不总对应 a/b 目录：单侧 null 时 git 把非缺侧路径指到对端
+ *  目录（modify: a{TMP}/a/f b{TMP}/b/f；add: a{TMP}/b/f b{TMP}/b/f；
+ *  delete: a{TMP}/a/f b{TMP}/a/f），四 token 各自归位 a/<name> / b/<name> */
+export function stripNoIndexPrefixes(raw: string, dir: string): string {
+    return raw
+        .replaceAll(`a${dir}/a/`, 'a/')
+        .replaceAll(`a${dir}/b/`, 'a/')
+        .replaceAll(`b${dir}/b/`, 'b/')
+        .replaceAll(`b${dir}/a/`, 'b/')
+}
+
 export async function synthesizeContentsPatch(git: GitExec, path: string, before: string | null, after: string | null): Promise<string> {
     if (before === null && after === null) return ''
     const dir = await mkdtemp(join(tmpdir(), 'mobi-review-patch-'))
@@ -43,22 +66,8 @@ export async function synthesizeContentsPatch(git: GitExec, path: string, before
         await mkdir(dirname(sideB), { recursive: true })
         if (before !== null) await writeFile(sideA, before)
         if (after !== null) await writeFile(sideB, after)
-        let raw: string
-        try {
-            raw = await git(dir, ['diff', '--no-index', '--', join(dir, 'a'), join(dir, 'b')])
-        } catch (e) {
-            // git diff --no-index 以退出码 1 表达差异，stdout 在异常对象上
-            raw = (e as { stdout?: string }).stdout ?? ''
-        }
-        // 头部剥临时目录前缀（git 规范化绝对路径的前导 /）。实证（git 2.x 目录模式）
-        // 四形态——a/b 前缀不总对应 a/b 目录：单侧 null 时 git 把非缺侧路径指到对端
-        // 目录（modify: a{TMP}/a/f b{TMP}/b/f；add: a{TMP}/b/f b{TMP}/b/f；
-        // delete: a{TMP}/a/f b{TMP}/a/f），四 token 各自归位 a/<name> / b/<name>
-        return raw
-            .replaceAll(`a${dir}/a/`, 'a/')
-            .replaceAll(`a${dir}/b/`, 'a/')
-            .replaceAll(`b${dir}/b/`, 'b/')
-            .replaceAll(`b${dir}/a/`, 'b/')
+        const raw = await runNoIndexDiff(git, dir, join(dir, 'a'), join(dir, 'b'))
+        return stripNoIndexPrefixes(raw, dir)
     } catch (e) {
         logger.debug('[ContentsPatch] synthesize patch failed', e)
         return ''

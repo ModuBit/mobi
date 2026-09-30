@@ -33,12 +33,11 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { OVERSIZE_DIFF_LINES } from '@mobi/shared'
+import { runNoIndexDiff, stripNoIndexPrefixes, type GitExec } from './contentsPatch'
+import { isSafeWorkspacePath } from './pathGates'
 import { git, sanitizeSessionId } from './gitExec'
 import { ensureMobiGitignore } from './mobiGitignore'
 import { logger } from '@/ui/logger'
-
-/** git 执行注入（与 contentsPatch 的 GitExec 同源形状） */
-export type GitExec = (cwd: string, args: string[]) => Promise<string>
 
 /** turn 全文目录保留数（最新 N 个 turnId 目录；调 N 只改此处） */
 export const TURN_FULLTEXT_KEEP = 1
@@ -111,28 +110,31 @@ export class FileTurnFulltextStore {
      */
     async sealFiles(turnIndex: number, files: ReadonlyArray<TurnFulltextInput>): Promise<Map<string, TurnFulltextSealed>> {
         const result = new Map<string, TurnFulltextSealed>()
-        const writable: Array<{ path: string; rel: string; before: string | null; after: string | null }> = []
         const turnDir = join(this.rootDir, String(turnIndex))
 
         // 排除面：turn-diffs 子树产生前先确保 .mobi/.gitignore（单源 mobiGitignore，尽力而为）
         await ensureMobiGitignore(this.workspaceRoot)
 
-        for (const f of files) {
-            if (f.beforeContent === null && f.afterContent === null) continue
-            const rel = relative(this.workspaceRoot, resolve(f.path))
-            // 路径逃逸（工作区外绝对路径 / ../ 穿越举）不落盘：file_path 来自模型输出，这里是硬闸
-            if (rel.length === 0 || rel.startsWith('..') || resolve(this.workspaceRoot, rel) !== resolve(f.path)) {
+        // 逐文件并行落盘（writeSide 的 recursive mkdir 幂等，互不干扰）；路径逃逸
+        // （工作区外绝对路径 / ../ 穿越）不落盘：file_path 来自模型输出，闸单源 pathGates
+        const candidates = await Promise.all(files.map(async (f) => {
+            if (f.beforeContent === null && f.afterContent === null) return null
+            if (!isSafeWorkspacePath(f.path, this.workspaceRoot)) {
                 logger.debug('[TurnFulltext] skip path outside workspace', f.path)
-                continue
+                return null
             }
+            const rel = relative(this.workspaceRoot, resolve(f.path))
+            if (rel.length === 0) return null
             try {
                 if (f.beforeContent !== null) await writeSide(join(turnDir, 'a', rel), f.beforeContent)
                 if (f.afterContent !== null) await writeSide(join(turnDir, 'b', rel), f.afterContent)
-                writable.push({ path: f.path, rel, before: f.beforeContent, after: f.afterContent })
             } catch (e) {
                 logger.debug('[TurnFulltext] write side failed, skip', f.path, e)
+                return null
             }
-        }
+            return { path: f.path, rel, before: f.beforeContent, after: f.afterContent }
+        }))
+        const writable = candidates.filter((c) => c !== null)
         if (writable.length === 0) return result
 
         // 两侧目录必须都存在：`git diff --no-index` 对不存在的路径直接 fatal（stdout 空），
@@ -141,20 +143,12 @@ export class FileTurnFulltextStore {
         await mkdir(join(turnDir, 'a'), { recursive: true })
         await mkdir(join(turnDir, 'b'), { recursive: true })
 
-        // 单次目录模式 diff 出整轮 patch：头部形态与 contentsPatch 的四 token 归位实证一致
-        // （modify: a{dir}/a/f b{dir}/b/f；add: a{dir}/b/f b{dir}/b/f；delete: a{dir}/a/f b{dir}/a/f）
-        let raw: string
-        try {
-            raw = await this.gitExec(turnDir, ['diff', '--no-index', '--', join(turnDir, 'a'), join(turnDir, 'b')])
-        } catch (e) {
-            // git diff --no-index 以退出码 1 表达差异，stdout 在异常对象上
-            raw = (e as { stdout?: string }).stdout ?? ''
-        }
-        const stripped = raw
-            .replaceAll(`a${turnDir}/a/`, 'a/')
-            .replaceAll(`a${turnDir}/b/`, 'a/')
-            .replaceAll(`b${turnDir}/b/`, 'b/')
-            .replaceAll(`b${turnDir}/a/`, 'b/')
+        // 单次目录模式 diff 出整轮 patch；退出码 1 取 stdout 与头部剥临时目录前缀的
+        // 四 token 归位，出口处理单源在 contentsPatch（与单文件合成同一套实证约定）
+        const stripped = stripNoIndexPrefixes(
+            await runNoIndexDiff(this.gitExec, turnDir, join(turnDir, 'a'), join(turnDir, 'b')),
+            turnDir,
+        )
 
         const sections = splitDiffSections(stripped)
         for (const w of writable) {
@@ -184,7 +178,8 @@ export class FileTurnFulltextStore {
                 return null
             }
         }
-        return { before: await read(ref.before), after: await read(ref.after) }
+        const [before, after] = await Promise.all([read(ref.before), read(ref.after)])
+        return { before, after }
     }
 }
 

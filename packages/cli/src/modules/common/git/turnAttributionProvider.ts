@@ -28,46 +28,16 @@
  * 路径闸：归档的 path 是工具输入的文件系统路径（工作区闸，isSafeWorkspacePath）。
  */
 
-import { isAbsolute, join, resolve, sep } from 'node:path'
 import { OVERSIZE_DIFF_LINES, ReviewFileEntrySchema, type DiffTarget, type ReviewFileEntry } from '@mobi/shared'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from './turnArchiveStore'
 import { FileTurnFulltextStore, getTurnFulltextRoot } from './turnFulltextStore'
 import { synthesizeContentsPatch } from './contentsPatch'
+import { gatePathForSource } from './pathGates'
 import { git } from './gitExec'
 import { logger } from '@/ui/logger'
 
-// ── 路径闸（源决定闸）─────────────────────────────────────────────────────────
-
-/** 仓库相对路径安全闸门：拒绝绝对路径、反斜杠与 `..` 逃逸（git 子系统自带同规则，盘上读取同闸门） */
-export function isSafeRepoRelative(path: string): boolean {
-    if (path === '' || path.startsWith('/') || path.includes('\\')) return false
-    return path.split('/').every((seg) => seg !== '..')
-}
-
-/** 归档供数档的路径闸：path 是工具输入的文件系统路径（E2E 实证为绝对路径；相对时以
- *  cwd 为基准），只要求解析后不逃出 cwd */
-function isSafeWorkspacePath(path: string, cwd: string): boolean {
-    if (path === '' || path.includes('\0') || path.includes('\\')) return false
-    const abs = resolve(isAbsolute(path) ? path : join(cwd, path))
-    return abs === cwd || abs.startsWith(cwd + sep)
-}
-
-/** 路径闸按供数源分流：'workspace' = 归档供数档，path 是工具输入的文件系统路径
- *  （工作区闸）；'git' = git 档，path 是仓库相对路径（repo 相对闸；repoRoot 给出时
- *  校验解析后落在仓库内——盘上读取同基准）。失败抛 Invalid path，wire 契约（错误
- *  文案与触发时机）不变 */
-export function gatePathForSource(source: 'git' | 'workspace', path: string, cwd: string, repoRoot: string | null): void {
-    if (source === 'workspace') {
-        if (!isSafeWorkspacePath(path, cwd)) throw new Error(`Invalid path: ${path}`)
-        return
-    }
-    if (!isSafeRepoRelative(path)) throw new Error(`Invalid path: ${path}`)
-    // 防御闭环（正常输入不可达）：闸已拒绝绝对路径与 `..` 段，解析必在 repoRoot 内
-    if (repoRoot !== null) {
-        const abs = resolve(repoRoot, path)
-        if (abs !== repoRoot && !abs.startsWith(repoRoot + sep)) throw new Error(`Invalid path: ${path}`)
-    }
-}
+// 路径闸单源在 pathGates（工作区闸/仓库闸 + 源分流）；re-export 保持既有 import 面不变
+export { gatePathForSource }
 
 // ── 归档轮 → review 条目（判定单源在 reviewEntry）─────────────────────────────
 

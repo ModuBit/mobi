@@ -48,8 +48,9 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus, sanitizeSessionId } from '../git/gitExec'
+import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus } from '../git/gitExec'
 import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
+import { getTurnFulltextRoot } from '../git/turnFulltextStore'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
 import { resolveDiffTarget } from '../git/diffTargetResolver'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -82,9 +83,9 @@ function gateText(raw: string): { text: string; reason: null } | { text: null; r
  * 按行硬切——pierre 对截断在 hunk 中间的 patch 容忍（渲染到截断处）。
  */
 function truncatePatch(patch: string): { patch: string; truncatedLines: number } {
-    const total = patch.split('\n').length
-    if (total <= REVIEW_RENDER_MAX_LINES) return { patch, truncatedLines: 0 }
-    return { patch: patch.split('\n').slice(0, REVIEW_RENDER_MAX_LINES).join('\n'), truncatedLines: total }
+    const lines = patch.split('\n')
+    if (lines.length <= REVIEW_RENDER_MAX_LINES) return { patch, truncatedLines: 0 }
+    return { patch: lines.slice(0, REVIEW_RENDER_MAX_LINES).join('\n'), truncatedLines: lines.length }
 }
 
 type FulltextSide = { text: string | null; reason: 'missing' | 'binary' | 'oversized' | null }
@@ -188,7 +189,7 @@ export class GitReviewReader {
         for (const token of tokens) {
             if (!token.startsWith('? ')) continue
             const path = token.slice(2)
-            if (path === MOBI_STATE_DIR || path.startsWith(`${MOBI_STATE_DIR}/`)) continue
+            if (isMobiStatePath(path)) continue
             paths.push(path)
         }
         if (paths.length === 0) return { files: [], truncated: false }
@@ -545,7 +546,7 @@ type GitReviewHandlerDef = {
  *  （持久层已退场）同目录顺带清掉 */
 async function clearSessionState(cwd: string, sessionId: string): Promise<number> {
     try {
-        await rm(join(cwd, MOBI_STATE_DIR, 'turn-diffs', sanitizeSessionId(sessionId)), { recursive: true, force: true })
+        await rm(getTurnFulltextRoot(cwd, sessionId), { recursive: true, force: true })
         return 1
     } catch {
         return 0

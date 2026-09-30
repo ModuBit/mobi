@@ -53,7 +53,7 @@ import { git } from '@/modules/common/git/gitExec'
 import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
 import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
 import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
-import type { TurnFulltextRef, TurnFulltextSealed } from '@/modules/common/git/turnFulltextStore'
+import type { FileTurnFulltextStore, TurnFulltextSealed } from '@/modules/common/git/turnFulltextStore'
 import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
 import { logger } from '@/ui/logger'
 
@@ -125,7 +125,7 @@ export class TurnDiffReporter {
     private ctx = createTurnContext()
     /** 封口串行链：归档 seal / 全文落盘不并发（滚动单条语义下并发覆盖会丢轮） */
     private sealQueue: Promise<void> = Promise.resolve()
-    /** 投影口径的轮次计数（journal 口径的 turnIndex 改从归档接续，不走它） */
+    /** 投影口径的轮次计数（仅归档缺省时的兜底；归档在则 turnIndex 从归档接续） */
     private turnCounter = 0
 
     constructor(
@@ -134,7 +134,7 @@ export class TurnDiffReporter {
         private readonly archive?: TurnArchiveStore,
         /** 全文目录存储（hydration）：封口落 a/b 全文 + 目录模式合成 patch + 归档带
          *  ref；缺省 = 归档条目无 ref（patch 走单文件兜底合成，行为同 B 方案） */
-        private readonly fulltext?: { sealFiles(turnIndex: number, files: ReadonlyArray<{ path: string; beforeContent: string | null; afterContent: string | null }>): Promise<Map<string, TurnFulltextSealed & { ref?: TurnFulltextRef }>> },
+        private readonly fulltext?: Pick<FileTurnFulltextStore, 'sealFiles'>,
     ) {}
 
     /** 每条 SDK 转换消息（RawJSONLines）流过时观测；不抛错、不影响主流程 */
@@ -303,7 +303,7 @@ export class TurnDiffReporter {
     private async sealTurn(ctx: TurnContext, resultNativeId?: string): Promise<void> {
         // 在途读盘补全先收口（afterContent 就绪后再合成/封口，保证确定性）
         await Promise.all([...ctx.pendingReads])
-        const files = (await this.composeFromTurnAccumulation(ctx)) ?? this.composeFromProjection(ctx)
+        const files = (await this.composeFromTurnAccumulation(ctx)) ?? await this.composeFromProjection(ctx)
         if (files.files.length === 0) return
         // 卡片先发：wire 载荷纯内存可算，不等归档 IO——排队消息场景下保证卡片
         // 落库在下一轮用户消息之前（result → 卡片 → 下一轮 user）
@@ -339,23 +339,11 @@ export class TurnDiffReporter {
                 const sealedFiles = await Promise.all(files.files.map(async (e) => {
                     const f = accumulated[e.path]
                     if (!f) return []
+                    // patch 优先取全文目录模式的整轮产出；无全文产出（旧构造 / 路径逃逸 /
+                    // 落盘失败）单文件兜底合成（无 ref）
                     const viaFulltext = fulltext?.get(e.path)
-                    if (viaFulltext) {
-                        return [{
-                            path: e.path,
-                            kind: e.kind,
-                            additions: e.additions,
-                            deletions: e.deletions,
-                            writeCount: f.writeCount,
-                            toolNames: [...f.toolNames],
-                            patch: viaFulltext.patch,
-                            oversizedPatch: viaFulltext.oversized,
-                            ref: viaFulltext.ref,
-                        }]
-                    }
-                    // 无全文产出（旧构造 / 路径逃逸 / 落盘失败）：单文件兜底合成，无 ref
-                    const raw = await synthesizeContentsPatch(git, e.path, f.beforeContent, f.afterContent)
-                    const oversized = raw.split('\n').length > OVERSIZE_DIFF_LINES
+                    const raw = viaFulltext?.patch ?? await synthesizeContentsPatch(git, e.path, f.beforeContent, f.afterContent)
+                    const oversizedPatch = viaFulltext ? viaFulltext.oversized : raw.split('\n').length > OVERSIZE_DIFF_LINES
                     return [{
                         path: e.path,
                         kind: e.kind,
@@ -363,8 +351,9 @@ export class TurnDiffReporter {
                         deletions: e.deletions,
                         writeCount: f.writeCount,
                         toolNames: [...f.toolNames],
-                        patch: oversized ? '' : raw,
-                        oversizedPatch: oversized,
+                        patch: oversizedPatch ? '' : raw,
+                        oversizedPatch,
+                        ...(viaFulltext?.ref ? { ref: viaFulltext.ref } : {}),
                     }]
                 }))
                 await this.archive.seal({
@@ -403,9 +392,9 @@ export class TurnDiffReporter {
         let baseTurnIndex: number | null = null
         if (this.archive) {
             try {
-                baseTurnIndex = (await this.archive.listTurns()).at(-1)?.turnIndex ?? null
+                baseTurnIndex = (await this.archive.loadLatest())?.turnIndex ?? null
             } catch (e) {
-                logger.debug('[TurnDiffReporter] archive listTurns failed', e)
+                logger.debug('[TurnDiffReporter] archive loadLatest failed', e)
             }
         }
         const files: TurnDiffFileEntry[] = paths
@@ -424,8 +413,10 @@ export class TurnDiffReporter {
         }
     }
 
-    /** 投影口径（降级档）：工具事件累加，Bash/subagent 写入不在内 */
-    private composeFromProjection(ctx: TurnContext): ComposedFiles {
+    /** 投影口径（降级档）：工具事件累加，Bash/subagent 写入不在内。turnIndex 与
+     *  journal 口径共用同一序号空间——归档在则同样从归档接续（重启后投影轮不再与
+     *  journal 轮撞号/断档），归档缺省才退内存计数 */
+    private async composeFromProjection(ctx: TurnContext): Promise<ComposedFiles> {
         const files: TurnDiffFileEntry[] = [...ctx.projected.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([path, agg]) => ({
@@ -434,6 +425,14 @@ export class TurnDiffReporter {
                 additions: agg.additions,
                 deletions: agg.deletions,
             }))
+        if (this.archive) {
+            try {
+                const latest = await this.archive.loadLatest()
+                return { turnIndex: (latest?.turnIndex ?? 0) + 1, baseTurnIndex: latest?.turnIndex ?? null, files, git: null, source: 'projection' }
+            } catch (e) {
+                logger.debug('[TurnDiffReporter] archive loadLatest failed', e)
+            }
+        }
         return { turnIndex: ++this.turnCounter, baseTurnIndex: null, files, git: null, source: 'projection' }
     }
 }

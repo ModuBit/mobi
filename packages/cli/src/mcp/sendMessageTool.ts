@@ -129,7 +129,7 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
         }
     }
 
-    const toWireContent = (content: string | z.infer<typeof sendMessageBlockSchema> | Array<z.infer<typeof sendMessageBlockSchema>>): AgentSendMessageRequest['content'] => {
+    const toWireContent = (content: z.infer<typeof sendMessageInputSchema>['content']): AgentSendMessageRequest['content'] => {
         if (typeof content === 'string') return content
         if (Array.isArray(content)) return content.map(toWireBlock)
         return toWireBlock(content)
