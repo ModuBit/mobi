@@ -42,7 +42,7 @@ import { RatioSplitLayout } from '@/components/ui/SplitLayout'
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
-import { isDiffable, isTargetUnavailable, parseTargetKey as DiffTargetParse } from './reviewEntries'
+import { isDiffable, isTargetUnavailable, parseTargetKey as DiffTargetParse, serializeTargetKey } from './reviewEntries'
 
 // 对外保持原导出面（测试/消费方从 GitReviewView 取注入接口类型）
 export type { GitReviewDeps } from './reviewDeps'
@@ -52,6 +52,12 @@ const COMMIT_ITEM_PREFIX = 'commit:'
 
 /** 「已提交」子菜单在 scope 菜单里的 key（commit 档选中态高亮它） */
 const COMMITS_MENU_KEY = 'commits'
+
+/** commit 菜单项/占位/哨兵的统一宽度：子菜单 popup 宽由它撑定，三处必须一致（窄屏由 antd.css 收口） */
+const COMMIT_ITEM_WIDTH = 300
+
+/** 树点文件定位前等 Collapse 展开动画结束的延时：动画中行头位置未定，立即滚会停偏 */
+const COLLAPSE_SETTLE_DELAY_MS = 260
 
 /** 档位选项（DiffTarget 单源遍历）：菜单项 key 用稳定序列化键；「已提交」二级子菜单内选 commit */
 const TARGET_OPTIONS: Array<{ target: DiffTarget; labelKey: string; disabled?: boolean }> = [
@@ -81,7 +87,7 @@ function CommitLoadSentinel({ onLoad, active, loading }: { onLoad: () => void; a
         return () => io.disconnect()
     }, [active])
     return (
-        <div ref={ref} data-testid="review-commit-sentinel" style={{ display: 'flex', justifyContent: 'center', width: 300, padding: loading ? 6 : 0, height: loading ? undefined : 1 }}>
+        <div ref={ref} data-testid="review-commit-sentinel" style={{ display: 'flex', justifyContent: 'center', width: COMMIT_ITEM_WIDTH, padding: loading ? 6 : 0, height: loading ? undefined : 1 }}>
             {loading && <Spin size="small" />}
         </div>
     )
@@ -107,7 +113,8 @@ function NonGitEmptyState({ onInit, pending }: { onInit: () => void; pending: bo
  * 清单/树分栏壳：ratio 状态内聚在 RatioSplitLayout（拖拽流畅性见其注释）。
  */
 
-function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: string; file: ReviewFileEntry; expanded: boolean; pending?: boolean }) {
+/** memo：清单 50+ 行时，单行展开/pending 翻转只重渲该行（props 全为稳定原语/引用） */
+const FileRowHeader = memo(function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: string; file: ReviewFileEntry; expanded: boolean; pending?: boolean }) {
     const { t } = useTranslation()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
@@ -188,7 +195,7 @@ function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: stri
             )}
         </div>
     )
-}
+})
 
 export const GitReviewView = memo(function GitReviewView({ sessionId, target: targetProp, onTargetChange, layout: layoutProp, onLayoutChange, deps = defaultDeps }: {
     sessionId: string
@@ -227,6 +234,13 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         })
     }, [])
     const [treeOpen, setTreeOpen] = useState(false)
+    /** 树是否开过：桌面右栏「收起仅折叠不销毁」（保筛选/展开状态），但首开前不挂载——
+     *  清单大时躲开隐藏 pane 的整棵树构建成本，用户不开树就零付费 */
+    const [treeEverOpened, setTreeEverOpened] = useState(false)
+    const openTree = useCallback((open: boolean) => {
+        if (open) setTreeEverOpened(true)
+        setTreeOpen(open)
+    }, [])
     /** 移动/窄屏（<768px）不摆分栏：文件树走 Popover 弹层（与文件内容头「从树打开」同款） */
     const isMobile = useIsMobile()
 
@@ -270,7 +284,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
     // 切档位清空展开（各档文件集不同，跨档残留无意义）
     useEffect(() => {
         setExpandedPaths([])
-    }, [JSON.stringify(target)])
+    }, [serializeTargetKey(target)])
 
     // 幽灵清理：清单刷新后已消失的 path 从展开态剔除——否则换回原清单时该行无声复活
     // （ZCode GitPane 同款语义；scopeData null 是加载中，跳过防误清）
@@ -293,11 +307,24 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         // 已展开无动画立即定位；新展开等 Collapse 动画结束再滚
         const already = expandedPaths.includes(path)
         setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
-        revealRow(path, already ? 0 : 260)
+        revealRow(path, already ? 0 : COLLAPSE_SETTLE_DELAY_MS)
         return true
     }, [files, expandedPaths, revealRow])
     // 非 git 目录：git 系档禁用/隐藏，commit 选择器一并隐藏（仅 turn 可用）
     const isGitRepo = overview.data?.isGitRepository !== false
+
+    // 树开关按钮单源：移动包 Popover（触屏无 hover，不叠 Tooltip）、桌面包 Tooltip，
+    // 按钮本体（icon 着色/aria/testid）只写一遍——onClick 仅桌面需要（移动由 Popover 受控）
+    const treeToggleButton = (
+        <Button
+            type="text" size="small"
+            aria-label={t('review.fileTree')}
+            aria-expanded={treeOpen}
+            data-testid="review-tree-toggle"
+            icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
+            onClick={isMobile ? undefined : () => openTree(!treeOpen)}
+        />
+    )
 
     if (overview.isLoading) {
         return (
@@ -417,7 +444,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                         triggerSubMenuAction: isMobile ? 'click' : 'hover',
                         items: [
                             ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
-                                key: JSON.stringify(t2),
+                                key: serializeTargetKey(t2),
                                 label: (
                                     <span>
                                         {t(labelKey)}
@@ -435,7 +462,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                 label: t('review.scope.commits'),
                                 children: [
                                     // 首拉中 / 失败占位
-                                    ...(commits.isLoading ? [{ key: '__loading__', disabled: true, label: <Flex justify="center" style={{ width: 300, padding: 6 }}><Spin size="small" /></Flex> }] : []),
+                                    ...(commits.isLoading ? [{ key: '__loading__', disabled: true, label: <Flex justify="center" style={{ width: COMMIT_ITEM_WIDTH, padding: 6 }}><Spin size="small" /></Flex> }] : []),
                                     ...(commits.error ? [{ key: '__error__', disabled: true, label: commits.error }] : []),
                                     ...commits.data.map((c) => ({
                                         key: `${COMMIT_ITEM_PREFIX}${c.sha}`,
@@ -446,7 +473,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                                 data-testid="review-commit-item"
                                                 data-sha={c.sha}
                                                 data-root={c.parentSha === null || undefined}
-                                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: 300 }}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: COMMIT_ITEM_WIDTH }}
                                             >
                                                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {c.subject}
@@ -469,7 +496,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                 ],
                             }] : []),
                         ],
-                        selectedKeys: [target.kind === 'commit' ? COMMITS_MENU_KEY : JSON.stringify(target)],
+                        selectedKeys: [target.kind === 'commit' ? COMMITS_MENU_KEY : serializeTargetKey(target)],
                         onClick: ({ key }) => {
                             if (key.startsWith(COMMIT_ITEM_PREFIX)) {
                                 const c = commits.data.find((x) => x.sha === key.slice(COMMIT_ITEM_PREFIX.length))
@@ -494,7 +521,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                     const c = commits.data.find((x) => x.sha === target.range.head)
                                     return c ? `${c.sha.slice(0, 7)} · ${c.subject}` : t('review.scope.commits')
                                 })()
-                                : t(TARGET_OPTIONS.find(({ target: t2 }) => JSON.stringify(t2) === JSON.stringify(target))?.labelKey ?? 'review.scope.commits')}
+                                : t(TARGET_OPTIONS.find(({ target: t2 }) => serializeTargetKey(t2) === serializeTargetKey(target))?.labelKey ?? 'review.scope.commits')}
                         </span>
                         <ChevronDown size={12} style={{ flexShrink: 0, color: 'var(--ant-color-text-tertiary)' }} />
                     </Button>
@@ -595,7 +622,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             与 FileContentViewHeader 的树 Popover 同款交互） */
                         <Popover
                             open={treeOpen}
-                            onOpenChange={setTreeOpen}
+                            onOpenChange={openTree}
                             trigger="click"
                             placement="bottomLeft"
                             /* 窄屏撑满横向 + 高度上限（antd.css 锁几何，quote-list-popover 同款坑：
@@ -614,23 +641,11 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                 </div>
                             }
                         >
-                            <Button
-                                type="text" size="small"
-                                aria-label={t('review.fileTree')}
-                                aria-expanded={treeOpen}
-                                data-testid="review-tree-toggle"
-                                icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
-                            />
+                            {treeToggleButton}
                         </Popover>
                     ) : (
                         <Tooltip title={t('review.fileTree')}>
-                            <Button
-                                type="text" size="small"
-                                aria-label={t('review.fileTree')}
-                                data-testid="review-tree-toggle"
-                                icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
-                                onClick={() => setTreeOpen((v) => !v)}
-                            />
+                            {treeToggleButton}
                         </Tooltip>
                     )}
                 </Flex>
@@ -647,17 +662,20 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
             ) : (
                 <RatioSplitLayout
                     expanded={treeOpen}
-                    onExpandedChange={setTreeOpen}
+                    onExpandedChange={openTree}
                     left={listNode}
                     right={
                         /* 变更文件树 pane：SplitLayout 右栏外壳承担宽度过渡与淡入淡出，
-                            收起仅折叠不销毁——筛选/展开状态在开合往返间保留 */
+                            收起仅折叠不销毁——筛选/展开状态在开合往返间保留；
+                            首开前不挂载（treeEverOpened），躲开隐藏 pane 的整棵树成本 */
                         <div data-testid="review-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>
-                            <DiffTreePanel
-                                files={files}
-                                selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
-                                onOpenFile={handleTreeOpenFile}
-                            />
+                            {treeEverOpened && (
+                                <DiffTreePanel
+                                    files={files}
+                                    selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
+                                    onOpenFile={handleTreeOpenFile}
+                                />
+                            )}
                         </div>
                     }
                 />

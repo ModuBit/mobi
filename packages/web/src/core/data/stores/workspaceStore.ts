@@ -306,13 +306,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             (t) => t.mode === 'review',
             () => ({ id: uuid(), mode: 'review', viewState: reviewTarget ? { reviewTarget } : undefined }),
         ))
-        // 已有 review tab 的路径：activateOrCreateTab 只切激活，目标档在这里补落
+        // 已有 review tab 的路径：activateOrCreateTab 只切激活，目标档在这里补落（同值短路由 setTabViewState 内部兜）
         if (!reviewTarget) return
-        const cur = get().sessions.get(sessionId)
-        const tab = cur?.tabs.find((t) => t.mode === 'review')
-        if (cur && tab && tab.viewState?.reviewTarget !== reviewTarget) {
-            get().setTabViewState(sessionId, tab.id, { reviewTarget })
-        }
+        const tab = get().sessions.get(sessionId)?.tabs.find((t) => t.mode === 'review')
+        if (tab) get().setTabViewState(sessionId, tab.id, { reviewTarget })
     },
 
     closeTab: (sessionId, tabId) =>

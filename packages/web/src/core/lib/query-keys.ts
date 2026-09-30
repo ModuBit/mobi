@@ -19,6 +19,10 @@
  * 单独导出供批量失效所有 ['workspaceSessions', workspaceId] 查询使用（invalidateWorkspaceViews）
  */
 import type { DiffTarget } from '@mobi/shared'
+import { serializeTargetKey } from '@/components/review/reviewEntries'
+
+/** DiffTarget → 查询键片段（统一走 serializeTargetKey，与 viewState/菜单 key 同一 wire 契约） */
+const targetKey = serializeTargetKey
 
 const workspaceSessionsRoot = ['workspaceSessions'] as const
 
@@ -62,9 +66,9 @@ export const queryKeys = {
     // ── 审查 v2（DiffTarget 统一模型）：target 进键用 JSON 稳定序列化；
     //  version = 总览的 targetGeneration（CLI 数据版本，防「总览展示与点击之间数据变化」陈旧）──
     gitReviewOverview: (sessionId: string) => ['git-review-v2-overview', sessionId] as const,
-    gitReviewFiles: (sessionId: string, target: DiffTarget, version: number | string = '') => ['git-review-v2-files', sessionId, JSON.stringify(target), String(version)] as const,
-    gitReviewPatch: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-patch', sessionId, JSON.stringify(target), path, String(version)] as const,
-    gitReviewContents: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-contents', sessionId, JSON.stringify(target), path, String(version)] as const,
+    gitReviewFiles: (sessionId: string, target: DiffTarget, version: number | string = '') => ['git-review-v2-files', sessionId, targetKey(target), String(version)] as const,
+    gitReviewPatch: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-patch', sessionId, targetKey(target), path, String(version)] as const,
+    gitReviewContents: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-contents', sessionId, targetKey(target), path, String(version)] as const,
     gitReviewCommits: (sessionId: string) => ['git-review-v2-commits', sessionId] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,

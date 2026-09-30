@@ -163,7 +163,8 @@ export function SplitLayout({
     onSplitRatioChange,
     leftMinRatio = DEFAULT_LEFT_MIN_RATIO,
     defaultSplitRatio = 0.5,
-}: SplitLayoutProps) {    const isMobile = useIsMobile()
+}: SplitLayoutProps) {
+    const isMobile = useIsMobile()
     const containerRef = useRef<HTMLDivElement>(null)
     const [containerWidth, setContainerWidth] = useState(0)
     const [dragging, setDragging] = useState(false)

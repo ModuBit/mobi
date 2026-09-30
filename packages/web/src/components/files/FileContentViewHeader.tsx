@@ -19,14 +19,11 @@ import { Button, Dropdown, Popover, theme as antTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import FileTreeView from '@/components/files/FileTreeView'
 
 export interface FileContentViewHeaderProps {
     sessionId: string
-    /** 当前 tab id：Folders 选文件后调 openFileInTab 用 */
-    tabId: string
     filePath: string
     /** more 菜单额外项（refresh/copyPath/markdown toggle 等由父组件提供） */
     extraMenuItems: MenuProps['items']
@@ -35,6 +32,8 @@ export interface FileContentViewHeaderProps {
     /** 文件树开合（受控，状态归 FileContentView：桌面驱动分栏，移动驱动 Popover） */
     treeOpen: boolean
     onTreeOpenChange: (open: boolean) => void
+    /** 树选文件（父组件转 tab；移动弹层选中后父组件决定是否收起） */
+    onTreeOpenFile: (filePath: string, fileName: string) => void
 }
 
 /**
@@ -45,10 +44,9 @@ export interface FileContentViewHeaderProps {
  *
  * 不持有 view state、不 import 任何 *ContentView——它是 markdown/pdf 等无关的展示外壳。
  */
-export default function FileContentViewHeader({ sessionId, tabId, filePath, extraMenuItems, saveStatus, treeOpen, onTreeOpenChange }: FileContentViewHeaderProps) {
+export default function FileContentViewHeader({ sessionId, filePath, extraMenuItems, saveStatus, treeOpen, onTreeOpenChange, onTreeOpenFile }: FileContentViewHeaderProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
-    const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     const isMobile = useIsMobile()
     const saveColor = saveStatus === 'conflict' ? token.colorError
         : saveStatus === 'dirty' ? token.colorWarning
@@ -125,6 +123,18 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
         }
     }, [cutStart, crumbWidth, filePath, lastIndex])
 
+    // 树开关按钮单源：移动包 Popover（触屏无 hover）、桌面直切分栏；
+    // 按钮本体（icon 着色/aria）只写一遍，onClick 仅桌面需要（移动由 Popover 受控）
+    const treeToggleButton = (
+        <Button
+            type="text" size="small"
+            aria-label={t('files.openFromTree')}
+            aria-expanded={treeOpen}
+            icon={<Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />}
+            onClick={isMobile ? undefined : () => onTreeOpenChange(!treeOpen)}
+        />
+    )
+
     return (
         <div style={{
             display: 'flex', alignItems: 'center', gap: 4,
@@ -152,6 +162,8 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
                 <Dropdown menu={{ items: extraMenuItems }} trigger={['click']}>
                     <Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />
                 </Dropdown>
+                {/* 树开关按钮单源：移动包 Popover（触屏无 hover）、桌面直切分栏；
+                    按钮本体（icon 着色/aria）只写一遍，onClick 仅桌面需要（移动由 Popover 受控） */}
                 {isMobile ? (
                     /* 移动/窄屏：树按钮锚定 Popover 弹层（触屏无 hover）。
                         revealPath：打开弹层即定位到当前文件（展开祖先目录 + 滚动 + 选中），
@@ -168,30 +180,18 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
                                     active={treeOpen}
                                     revealPath={filePath}
                                     onOpenFile={(fp, fn) => {
-                                        // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
-                                        openFileInTab(sessionId, tabId, fp, fn)
+                                        onTreeOpenFile(fp, fn)
                                         onTreeOpenChange(false)
                                     }}
                                 />
                             </div>
                         }
                     >
-                        <Button
-                            type="text" size="small"
-                            aria-label={t('files.openFromTree')}
-                            aria-expanded={treeOpen}
-                            icon={<Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />}
-                        />
+                        {treeToggleButton}
                     </Popover>
                 ) : (
                     /* 桌面：树按钮只切父组件的分栏开合，树本体由 FileContentView 渲染在右栏 */
-                    <Button
-                        type="text" size="small"
-                        aria-label={t('files.openFromTree')}
-                        aria-expanded={treeOpen}
-                        icon={<Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />}
-                        onClick={() => onTreeOpenChange(!treeOpen)}
-                    />
+                    treeToggleButton
                 )}
             </div>
         </div>

@@ -43,6 +43,11 @@ export function isTargetUnavailable(overview: ReviewOverview | undefined, target
     return overview.unavailableScopes[target.area]
 }
 
+/** DiffTarget → 序列化键（与 parseTargetKey 互逆；菜单 key / query key / viewState 共用的 wire 契约，收口单点） */
+export function serializeTargetKey(target: DiffTarget): string {
+    return JSON.stringify(target)
+}
+
 /** Select 序列化键 → DiffTarget（损坏输入抛错，调用方吞掉不切档） */
 export function parseTargetKey(key: string): DiffTarget {
     return DiffTargetSchema.parse(JSON.parse(key))

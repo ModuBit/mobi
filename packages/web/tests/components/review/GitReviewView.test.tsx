@@ -32,14 +32,6 @@ vi.mock('@/core/data/hooks/useMediaQuery', async (importOriginal) => {
     return { ...actual, useIsMobile: () => mobile }
 })
 
-/** 桌面分栏分支用到 ResizeObserver，jsdom 无原生实现，stub 空实现（SplitLayout.test 同款） */
-class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-}
-vi.stubGlobal('ResizeObserver', ResizeObserverStub)
-
 vi.mock('react-i18next', async (orig) => {
     const actual = await orig()
     return {

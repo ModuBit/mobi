@@ -20,6 +20,7 @@ import { theme as antTheme } from 'antd'
 import { TURN_DIFF_EVENT, type ContentBlock, type UserCustomEventBlock } from '@mobi/shared'
 import type { CustomBlock as CustomBlockType } from '@/domain/chat'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { serializeTargetKey } from '@/components/review/reviewEntries'
 import { Markdown } from '@/components/ui/Markdown'
 import { TurnDiffCard } from './TurnDiffCard'
 
@@ -74,7 +75,7 @@ export const CustomBlockView = memo(function CustomBlockView({ block, sessionId 
     // 「审查」入口：开审查 tab 强制落「上一轮」档并展开 inspector（折叠时只开 tab 等于没做；
     // 已有 review tab 停在别的档时也拉回——入口语义是「看这轮的审查」，不是「切到审查面板」）
     const onReview = sessionId ? () => {
-        openReviewTab(sessionId, JSON.stringify({ kind: 'turn' }))
+        openReviewTab(sessionId, serializeTargetKey({ kind: 'turn' }))
         setExpanded(sessionId, true)
     } : undefined
 

@@ -57,10 +57,17 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     // 文件树开合：桌面驱动 header 右侧分栏，移动驱动 header 的 Popover 弹层（与审查视图同款交互）
     const isMobile = useIsMobile()
     const [treeOpen, setTreeOpen] = useState(false)
+    /** 树是否开过：桌面右栏「收起仅折叠不销毁」（保树的展开/滚动位置），但首开前不挂载——
+     *  FileTreeView 挂载即订阅根目录列表（staleTime 0），用户不开树就不该每 tab 付一次目录 RPC */
+    const [treeEverOpened, setTreeEverOpened] = useState(false)
+    const openTree = useCallback((open: boolean) => {
+        if (open) setTreeEverOpened(true)
+        setTreeOpen(open)
+    }, [])
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     /** 树选文件 → 当前 tab 转该文件（store 去重：同文件不响应/别 tab 已开则激活）。桌面分栏不收起，移动弹层由 header 收 */
-    const handleTreeOpenFile = useCallback((fp: string, fn?: string) => {
-        openFileInTab(sessionId, tabId, fp, fn ?? fp)
+    const handleTreeOpenFile = useCallback((fp: string, fn: string) => {
+        openFileInTab(sessionId, tabId, fp, fn)
     }, [openFileInTab, sessionId, tabId])
 
     // 编辑器状态机：ready+editable 时启用；非 ready 传占位（hooks 无条件调用，内部 draft=null 短路）
@@ -171,42 +178,44 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 : editor.saving ? 'saving'
                     : editor.dirty ? 'dirty' : 'saved'
 
+    // 内容体：移动/桌面两支渲染同一份（桌面仅多包一层分栏左 pane）
+    const body = renderBody(state, sessionId, tabId, filePath, t, editor)
+
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区（more 菜单 + 文件树入口） */}
             <FileContentViewHeader
                 sessionId={sessionId}
-                tabId={tabId}
                 filePath={filePath}
                 extraMenuItems={moreMenuItems}
                 saveStatus={saveStatus}
                 treeOpen={treeOpen}
-                onTreeOpenChange={setTreeOpen}
+                onTreeOpenChange={openTree}
+                onTreeOpenFile={handleTreeOpenFile}
             />
             {/* content：移动 = 满宽直渲染（树在 header Popover）；桌面 = 内容↔树可拖拽分栏
                 （ratio 内聚在 RatioSplitLayout，treeOpen 切展开态，收起仅折叠不销毁——
                 树的展开/滚动位置在开合往返间保留） */}
             {isMobile ? (
-                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                    {renderBody(state, sessionId, tabId, filePath, t, editor)}
-                </div>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{body}</div>
             ) : (
                 <RatioSplitLayout
                     expanded={treeOpen}
-                    onExpandedChange={setTreeOpen}
+                    onExpandedChange={openTree}
                     left={
-                        <div style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
-                            {renderBody(state, sessionId, tabId, filePath, t, editor)}
-                        </div>
+                        <div style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>{body}</div>
                     }
                     right={
                         <div data-testid="file-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>
-                            <FileTreeView
-                                sessionId={sessionId}
-                                active={treeOpen}
-                                revealPath={filePath}
-                                onOpenFile={handleTreeOpenFile}
-                            />
+                            {/* treeEverOpened：首开前不挂载，躲开 FileTreeView 挂载即订阅目录列表的每次 tab RPC */}
+                            {treeEverOpened && (
+                                <FileTreeView
+                                    sessionId={sessionId}
+                                    active={treeOpen}
+                                    revealPath={filePath}
+                                    onOpenFile={handleTreeOpenFile}
+                                />
+                            )}
                         </div>
                     }
                 />

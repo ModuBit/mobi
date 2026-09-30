@@ -506,30 +506,19 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     color: var(--ant-color-text-tertiary) !important;
 }
 
-/* 引用列表卡浮层（composer QuoteChipBar / 气泡 UserBubbleHeader 共用 overlayClassName）：
-   窄屏下 topLeft 的 anchor 对齐放置 + 卡宽接近视口，右缘必然贴屏/溢出（2026-09-23 验收，
-   anchor 左缘随内容浮动，纯宽度钳制算不死）——干脆窄屏锁死水平几何：两侧各留 16px */
+/* 窄屏锚定弹层锁几何（共用 overlayClassName：.quote-list-popover = 引用列表卡浮层
+   composer QuoteChipBar / 气泡 UserBubbleHeader；.review-tree-popover = 审查/文件树移动端弹层
+   GitReviewView）：topLeft/bottomLeft 的 anchor 对齐放置 + 卡宽接近视口，窄屏右缘必然贴屏/
+   溢出（2026-09-23 验收，anchor 左缘随内容浮动，纯宽度钳制算不死）——干脆窄屏锁死水平
+   几何：两侧各留 16px。树/列表内容超宽超高分由各自 content 内部滚动，本层不做裁剪 */
 @media (max-width: 640px) {
-    .quote-list-popover {
-        left: 16px !important;
-        width: calc(100vw - 32px) !important;
-        max-width: none;
-    }
-    .quote-list-popover .ant-popover-inner {
-        max-width: none;
-    }
-}
-
-/* 审查文件树移动端弹层（GitReviewView overlayClassName）：窄屏撑满横向（两侧各留 16px）
-   + 高度上限由 content 的 min(70dvh, 560px) 声明。与 quote-list-popover 同款坑：
-   topLeft/bottomLeft 的 anchor 对齐在窄屏必然贴边/溢出，纯宽度钳制算不死，锁死几何。
-   树内容超宽由 DiffTreePanel 内部溢出滚动，本层不做裁剪 */
-@media (max-width: 640px) {
+    .quote-list-popover,
     .review-tree-popover {
         left: 16px !important;
         width: calc(100vw - 32px) !important;
         max-width: none;
     }
+    .quote-list-popover .ant-popover-inner,
     .review-tree-popover .ant-popover-inner {
         max-width: none;
     }
