@@ -26,7 +26,7 @@
  * RowDiff（行内 diff 区）、DiffTreePanel（右侧文件树）。本文件只留视图主体与文件行头。
  */
 
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Collapse, Dropdown, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, MoreHorizontal, RefreshCw, WrapText } from 'lucide-react'
@@ -38,7 +38,7 @@ import { basename } from '@/core/utils/path'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { copyTextToClipboard } from '@/components/chat/CopyButton'
 import { FilePathLabel, KindBadge, DiffStat } from '@/components/turnDiff/present'
-import { SplitLayout } from '@/components/ui/SplitLayout'
+import { RatioSplitLayout } from '@/components/ui/SplitLayout'
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
@@ -146,35 +146,8 @@ function NonGitEmptyState({ onInit, pending }: { onInit: () => void; pending: bo
 /** 手风琴文件行的头（Collapse label）：徽标/路径 + 紧随其后的统计与展开箭头（均 hover 显现），
  *  行尾 hover 操作（复制/打开标签页）。Collapse 自带展开图标关闭（expandIcon=null） */
 /**
- * 清单/树分栏：与会话页「聊天 ↔ 检查器」同一套 SplitLayout（宽度过渡裁剪 + 可拖拽
- * ratio + 拖到右缘自动收起）。ratio 状态内聚在此——若上提 GitReviewView，拖拽每帧
- * setState 会拖着 61 行清单全量重渲（实测非常卡）；挪到本组件后拖拽只重渲分栏壳，
- * children 元素引用不变，React 对清单子树直接 bail out
+ * 清单/树分栏壳：ratio 状态内聚在 RatioSplitLayout（拖拽流畅性见其注释）。
  */
-const ReviewSplitter = memo(function ReviewSplitter({ treeOpen, onTreeOpenChange, list, tree }: {
-    treeOpen: boolean
-    /** 拖到右缘自动收起（SplitLayout shouldCollapseOnDrag）回传父组件 */
-    onTreeOpenChange: (open: boolean) => void
-    list: ReactNode
-    tree: ReactNode
-}) {
-    /** 左侧（清单）占比：0.8 即树 pane 默认约 20% 宽；拖拽后沿用最近值，开合往返不丢 */
-    const [splitRatio, setSplitRatio] = useState(0.8)
-    return (
-        <div style={{ flex: 1, minHeight: 0 }}>
-            <SplitLayout
-                left={list}
-                right={tree}
-                expanded={treeOpen}
-                splitRatio={splitRatio}
-                secondaryMaximized={false}
-                onExpandedChange={onTreeOpenChange}
-                onSplitRatioChange={setSplitRatio}
-                defaultSplitRatio={0.8}
-            />
-        </div>
-    )
-})
 
 function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: string; file: ReviewFileEntry; expanded: boolean; pending?: boolean }) {
     const { t } = useTranslation()
@@ -408,7 +381,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         )
     }
 
-    // 清单提为局部 ReactNode：桌面进 ReviewSplitter 左栏，移动/窄屏满宽直渲染（同一份 JSX）
+    // 清单提为局部 ReactNode：桌面进 RatioSplitLayout 左栏，移动/窄屏满宽直渲染（同一份 JSX）
     const listNode = (
         <Flex vertical style={{ height: '100%', overflowY: 'auto' }}>
             <Collapse
@@ -680,7 +653,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
             </Flex>
 
             {/* Content：平铺文件清单（Collapse 手风琴）。桌面 = 清单↔树可拖拽分栏
-                （分栏壳与拖拽状态内聚在 ReviewSplitter，拖拽流畅性见其注释；
+                （ratio 内聚在 RatioSplitLayout，拖拽流畅性见其注释；
                 treeOpen 切展开态，树 pane 宽度过渡/淡入淡出由 SplitLayout 外壳承担）；
                 移动/窄屏 = 清单满宽，文件树走 header 的 Popover 弹层，无分栏 */}
             {isMobile ? (
@@ -688,11 +661,11 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                     {listNode}
                 </div>
             ) : (
-                <ReviewSplitter
-                    treeOpen={treeOpen}
-                    onTreeOpenChange={setTreeOpen}
-                    list={listNode}
-                    tree={
+                <RatioSplitLayout
+                    expanded={treeOpen}
+                    onExpandedChange={setTreeOpen}
+                    left={listNode}
+                    right={
                         /* 变更文件树 pane：SplitLayout 右栏外壳承担宽度过渡与淡入淡出，
                             收起仅折叠不销毁——筛选/展开状态在开合往返间保留 */
                         <div data-testid="review-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>

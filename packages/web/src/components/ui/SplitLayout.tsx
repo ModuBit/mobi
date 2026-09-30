@@ -28,7 +28,7 @@
  * 受控组件：expanded / splitRatio / secondaryMaximized 由外部持有，通过回调变更。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import styled from '@emotion/styled'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { computeSplitRatio, shouldCollapseOnDrag, DEFAULT_LEFT_MIN_RATIO } from './splitLayoutUtils'
@@ -163,8 +163,7 @@ export function SplitLayout({
     onSplitRatioChange,
     leftMinRatio = DEFAULT_LEFT_MIN_RATIO,
     defaultSplitRatio = 0.5,
-}: SplitLayoutProps) {
-    const isMobile = useIsMobile()
+}: SplitLayoutProps) {    const isMobile = useIsMobile()
     const containerRef = useRef<HTMLDivElement>(null)
     const [containerWidth, setContainerWidth] = useState(0)
     const [dragging, setDragging] = useState(false)
@@ -310,3 +309,40 @@ export function SplitLayout({
         </div>
     )
 }
+
+/**
+ * SplitLayout 的「ratio 自管理」变体：调用方只给 expanded/回调与两栏内容，
+ * 拖拽比例状态内聚在此组件。
+ *
+ * 为什么内聚（勿上提）：若 ratio state 放在外层父组件，拖拽每帧 setState 会拖着
+ * 左栏大子树全量重渲（审查清单 61 行实测非常卡）；收在本组件后拖拽只重渲分栏壳，
+ * left/right 元素引用不变，React 对子树直接 bail out。
+ */
+export const RatioSplitLayout = memo(function RatioSplitLayout({ expanded, onExpandedChange, left, right, defaultSplitRatio = 0.8 }: {
+    /** 右栏是否展开 */
+    expanded: boolean
+    /** 展开/收起变更（拖到右缘自动收起也走这里） */
+    onExpandedChange: (expanded: boolean) => void
+    /** 左侧（主）面板内容 */
+    left: ReactNode
+    /** 右侧（次要）面板内容 */
+    right: ReactNode
+    /** 默认左侧占比（右栏约占 1-该值），拖拽后沿用最近值 */
+    defaultSplitRatio?: number
+}) {
+    const [splitRatio, setSplitRatio] = useState(defaultSplitRatio)
+    return (
+        <div style={{ flex: 1, minHeight: 0 }}>
+            <SplitLayout
+                left={left}
+                right={right}
+                expanded={expanded}
+                splitRatio={splitRatio}
+                secondaryMaximized={false}
+                onExpandedChange={onExpandedChange}
+                onSplitRatioChange={setSplitRatio}
+                defaultSplitRatio={defaultSplitRatio}
+            />
+        </div>
+    )
+})

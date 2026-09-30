@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Suspense, lazy, useEffect, useRef } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, App } from 'antd'
 import type { MenuProps } from 'antd'
@@ -28,10 +28,14 @@ import ImageContentView from '@/components/files/ImageContentView'
 import PdfContentView from '@/components/files/PdfContentView'
 import MediaContentView from '@/components/files/MediaContentView'
 import FileContentViewHeader from '@/components/files/FileContentViewHeader'
+import FileTreeView from '@/components/files/FileTreeView'
+import { RatioSplitLayout } from '@/components/ui/SplitLayout'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useFileRenderState, type ReadyRenderState } from '@/components/files/useFileRenderState'
 import { useFileEditor, type FileEditorState } from '@/components/files/useFileEditor'
 import { SaveConflictDialog } from '@/components/files/SaveConflictDialog'
 import { registerEditor, unregisterEditor } from '@/components/files/EditorRegistry'
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 
 // 懒加载编辑器（Tiptap/CodeMirror 体积大，首次进入编辑态才加载 bundle）
 const CodeEditorView = lazy(() => import('@/components/files/CodeEditorView').then(m => ({ default: m.CodeEditorView })))
@@ -49,6 +53,15 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     const { message } = App.useApp()
     const queryClient = useQueryClient()
     const state = useFileRenderState(sessionId, filePath)
+
+    // 文件树开合：桌面驱动 header 右侧分栏，移动驱动 header 的 Popover 弹层（与审查视图同款交互）
+    const isMobile = useIsMobile()
+    const [treeOpen, setTreeOpen] = useState(false)
+    const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
+    /** 树选文件 → 当前 tab 转该文件（store 去重：同文件不响应/别 tab 已开则激活）。桌面分栏不收起，移动弹层由 header 收 */
+    const handleTreeOpenFile = useCallback((fp: string, fn?: string) => {
+        openFileInTab(sessionId, tabId, fp, fn ?? fp)
+    }, [openFileInTab, sessionId, tabId])
 
     // 编辑器状态机：ready+editable 时启用；非 ready 传占位（hooks 无条件调用，内部 draft=null 短路）
     const isReady = state.status === 'ready'
@@ -160,18 +173,44 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区（more 菜单 + 文件树） */}
+            {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区（more 菜单 + 文件树入口） */}
             <FileContentViewHeader
                 sessionId={sessionId}
                 tabId={tabId}
                 filePath={filePath}
                 extraMenuItems={moreMenuItems}
                 saveStatus={saveStatus}
+                treeOpen={treeOpen}
+                onTreeOpenChange={setTreeOpen}
             />
-            {/* content：按 RenderState exhaustive switch 渲染 */}
-            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                {renderBody(state, sessionId, tabId, filePath, t, editor)}
-            </div>
+            {/* content：移动 = 满宽直渲染（树在 header Popover）；桌面 = 内容↔树可拖拽分栏
+                （ratio 内聚在 RatioSplitLayout，treeOpen 切展开态，收起仅折叠不销毁——
+                树的展开/滚动位置在开合往返间保留） */}
+            {isMobile ? (
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                    {renderBody(state, sessionId, tabId, filePath, t, editor)}
+                </div>
+            ) : (
+                <RatioSplitLayout
+                    expanded={treeOpen}
+                    onExpandedChange={setTreeOpen}
+                    left={
+                        <div style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
+                            {renderBody(state, sessionId, tabId, filePath, t, editor)}
+                        </div>
+                    }
+                    right={
+                        <div data-testid="file-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>
+                            <FileTreeView
+                                sessionId={sessionId}
+                                active={treeOpen}
+                                revealPath={filePath}
+                                onOpenFile={handleTreeOpenFile}
+                            />
+                        </div>
+                    }
+                />
+            )}
             {/* OCC 冲突 Drawer（编辑态且检测到冲突时） */}
             {editableNow && editor.conflict && (
                 <SaveConflictDialog

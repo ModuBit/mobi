@@ -48,6 +48,7 @@ describe('FileContentViewHeader 面包屑左省略', () => {
             <FileContentViewHeader
                 sessionId="s" tabId="t" filePath="a/b/c.ts"
                 extraMenuItems={[]}
+                treeOpen={false} onTreeOpenChange={() => {}}
             />,
         )
         const crumb = observers[0]
@@ -63,6 +64,7 @@ describe('FileContentViewHeader 面包屑左省略', () => {
             <FileContentViewHeader
                 sessionId="s" tabId="t" filePath="a.ts"
                 extraMenuItems={[{ key: 'x', label: 'X' }]}
+                treeOpen={false} onTreeOpenChange={() => {}}
             />,
         )
         expect(container.querySelector('button')).toBeInTheDocument()
@@ -74,6 +76,7 @@ describe('FileContentViewHeader 面包屑左省略', () => {
             <FileContentViewHeader
                 sessionId="s" tabId="t" filePath="a/b/c/d.ts"
                 extraMenuItems={[]}
+                treeOpen={false} onTreeOpenChange={() => {}}
             />,
         )
         const crumb = observers[0]

@@ -20,6 +20,7 @@ import type { MenuProps } from 'antd'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import FileTreeView from '@/components/files/FileTreeView'
 
 export interface FileContentViewHeaderProps {
@@ -31,24 +32,28 @@ export interface FileContentViewHeaderProps {
     extraMenuItems: MenuProps['items']
     /** 保存状态指示（仅 editable 文件传入；undefined 时不显示） */
     saveStatus?: 'saved' | 'saving' | 'dirty' | 'conflict'
+    /** 文件树开合（受控，状态归 FileContentView：桌面驱动分栏，移动驱动 Popover） */
+    treeOpen: boolean
+    onTreeOpenChange: (open: boolean) => void
 }
 
 /**
  * 文件内容视图头部：纯展示组件。
  * - 左：面包屑（按 / 分段，文件名加粗；空间不够时左侧逐段省略，至少保留文件名）
- * - 右：more 菜单（items 由父组件提供，本组件不感知文件类型）+ 文件树 Popover
+ * - 右：more 菜单（items 由父组件提供，本组件不感知文件类型）+ 文件树入口
+ *   （移动 = Popover 弹层；桌面 = 按钮切父组件分栏，本组件不渲染树本体）
  *
  * 不持有 view state、不 import 任何 *ContentView——它是 markdown/pdf 等无关的展示外壳。
  */
-export default function FileContentViewHeader({ sessionId, tabId, filePath, extraMenuItems, saveStatus }: FileContentViewHeaderProps) {
+export default function FileContentViewHeader({ sessionId, tabId, filePath, extraMenuItems, saveStatus, treeOpen, onTreeOpenChange }: FileContentViewHeaderProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
+    const isMobile = useIsMobile()
     const saveColor = saveStatus === 'conflict' ? token.colorError
         : saveStatus === 'dirty' ? token.colorWarning
             : saveStatus === 'saving' ? token.colorPrimary
                 : token.colorTextTertiary
-    const [treeOpen, setTreeOpen] = useState(false)
 
     // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
     const segments = filePath.split('/').filter(Boolean)
@@ -147,30 +152,47 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
                 <Dropdown menu={{ items: extraMenuItems }} trigger={['click']}>
                     <Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />
                 </Dropdown>
-                <Popover
-                    open={treeOpen}
-                    onOpenChange={setTreeOpen}
-                    trigger="click"
-                    placement="bottomLeft"
-                    content={
-                        <div style={{ width: 300, height: 400, overflow: 'auto' }}>
-                            {/* revealPath：打开弹层即定位到当前文件（展开祖先目录 + 滚动 + 选中），
-                                用户不必在弹层里重新逐层找当前文件 */}
-                            <FileTreeView
-                                sessionId={sessionId}
-                                active={treeOpen}
-                                revealPath={filePath}
-                                onOpenFile={(fp, fn) => {
-                                    // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
-                                    openFileInTab(sessionId, tabId, fp, fn)
-                                    setTreeOpen(false)
-                                }}
-                            />
-                        </div>
-                    }
-                >
-                    <Button type="text" size="small" icon={<Folders size={14} />} aria-label={t('files.openFromTree')} />
-                </Popover>
+                {isMobile ? (
+                    /* 移动/窄屏：树按钮锚定 Popover 弹层（触屏无 hover）。
+                        revealPath：打开弹层即定位到当前文件（展开祖先目录 + 滚动 + 选中），
+                        用户不必在弹层里重新逐层找当前文件 */
+                    <Popover
+                        open={treeOpen}
+                        onOpenChange={onTreeOpenChange}
+                        trigger="click"
+                        placement="bottomLeft"
+                        content={
+                            <div style={{ width: 300, height: 400, overflow: 'auto' }}>
+                                <FileTreeView
+                                    sessionId={sessionId}
+                                    active={treeOpen}
+                                    revealPath={filePath}
+                                    onOpenFile={(fp, fn) => {
+                                        // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
+                                        openFileInTab(sessionId, tabId, fp, fn)
+                                        onTreeOpenChange(false)
+                                    }}
+                                />
+                            </div>
+                        }
+                    >
+                        <Button
+                            type="text" size="small"
+                            aria-label={t('files.openFromTree')}
+                            aria-expanded={treeOpen}
+                            icon={<Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />}
+                        />
+                    </Popover>
+                ) : (
+                    /* 桌面：树按钮只切父组件的分栏开合，树本体由 FileContentView 渲染在右栏 */
+                    <Button
+                        type="text" size="small"
+                        aria-label={t('files.openFromTree')}
+                        aria-expanded={treeOpen}
+                        icon={<Folders size={14} style={{ color: treeOpen ? token.colorText : token.colorTextTertiary }} />}
+                        onClick={() => onTreeOpenChange(!treeOpen)}
+                    />
+                )}
             </div>
         </div>
     )

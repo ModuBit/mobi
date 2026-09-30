@@ -58,6 +58,14 @@ beforeAll(() => {
     })
 })
 
+// 桌面/移动分支切换：jsdom matchMedia 恒 false → useIsMobile() 默认 true（移动）。
+// 既有用例按移动分支编写（Folders Popover），桌面用例把 mobile 置 false，afterEach 复位
+let mobile = true
+vi.mock('@/core/data/hooks/useMediaQuery', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/core/data/hooks/useMediaQuery')>()
+    return { ...actual, useIsMobile: () => mobile }
+})
+
 vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
     const actual = await vi.importActual<typeof import('@/core/data/hooks/queries/useFileTree')>(
         '@/core/data/hooks/queries/useFileTree',
@@ -186,6 +194,7 @@ function setMockMetaState({ isLoading, error }: { isLoading?: boolean; error?: E
 
 describe('FileContentView', () => {
     beforeEach(() => useWorkspaceStore.getState().clearAll())
+    afterEach(() => { mobile = true })
     afterEach(() => cleanup())
 
     // —— loading / error 分支（characterization：meta 先行决定渲染态）——
@@ -471,6 +480,39 @@ describe('FileContentView', () => {
             const tab = s.tabs.find((t) => t.id === 't1')
             expect(tab?.filePath).toBe('other.ts')
         })
+    })
+
+    it('桌面：树按钮切分栏（无 Popover），选文件转 tab 且分栏不收起', async () => {
+        mobile = false
+        useWorkspaceStore.setState((s) => ({
+            sessions: new Map(s.sessions).set('s1', {
+                expanded: true,
+                splitRatio: 0.5,
+                chatHidden: false,
+                tabs: [{ id: 't1', mode: 'tree' }],
+                activeTabId: 't1',
+            }),
+        }))
+        setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        // 分栏右栏恒挂载（收起仅折叠不销毁），初始收起
+        const btn = screen.getByRole('button', { name: 'files.openFromTree' })
+        expect(btn).toHaveAttribute('aria-expanded', 'false')
+        const holder = screen.getByTestId('file-tree-holder')
+        expect(holder).toHaveAttribute('aria-hidden', 'true')
+        // 点按钮 → 分栏展开（无 Popover 弹层）
+        fireEvent.click(btn)
+        expect(btn).toHaveAttribute('aria-expanded', 'true')
+        expect(holder).toHaveAttribute('aria-hidden', 'false')
+        // 树内点文件 → tab 转该文件；桌面分栏保持展开
+        const otherNode = await screen.findByText('other.ts')
+        fireEvent.click(otherNode)
+        await waitFor(() => {
+            const tab = useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.id === 't1')
+            expect(tab?.filePath).toBe('other.ts')
+        })
+        expect(holder).toHaveAttribute('aria-hidden', 'false')
     })
 
     it('.md 默认渲染（WYSIWYG 编辑器，写边界内可编辑）', async () => {
