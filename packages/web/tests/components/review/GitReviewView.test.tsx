@@ -21,8 +21,24 @@
  * DiffViewer 以桩替换（pierre/codemirror 在 jsdom 下无意义）。
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+
+/** 切换移动 / 桌面：mock useIsMobile 读取此变量（审查树桌面=分栏、移动=Popover 弹层）。
+ *  默认桌面——jsdom 的 matchMedia stub 恒 false 会被 useIsMobile 判成移动 */
+let mobile = false
+vi.mock('@/core/data/hooks/useMediaQuery', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/core/data/hooks/useMediaQuery')>()
+    return { ...actual, useIsMobile: () => mobile }
+})
+
+/** 桌面分栏分支用到 ResizeObserver，jsdom 无原生实现，stub 空实现（SplitLayout.test 同款） */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 
 vi.mock('react-i18next', async (orig) => {
     const actual = await orig()
@@ -43,6 +59,9 @@ import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import type { DiffTarget, ReviewCommit, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 
 afterEach(cleanup)
+beforeEach(() => {
+    mobile = false
+})
 
 /** ReviewFileEntry 组装（补默认字段，测试只写关心的维度） */
 function entry(partial: Partial<ReviewFileEntry> & { path: string }): ReviewFileEntry {
@@ -503,6 +522,35 @@ describe('GitReviewView（hook 注入 v2）', () => {
         const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
         expect(expandedOf(target)).toBe('true')
         expect(queries.at(-1)).toBe('src/deep/a.ts')
+    })
+
+    it('移动端：不摆分栏，文件树走 Popover 弹层；点叶节点展开行并收起弹层', () => {
+        mobile = true
+        const queries: (string | null)[] = []
+        render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' }, onQuery: (p) => queries.push(p) })}
+            />,
+        )
+
+        // 无分栏外壳（清单满宽），树按钮锚定 Popover
+        expect(screen.queryByTestId('review-tree-holder')).toBeNull()
+        const treeBtn = screen.getByTestId('review-tree-toggle')
+        expect(treeBtn.getAttribute('aria-expanded')).toBe('false')
+        fireEvent.click(treeBtn)
+        expect(treeBtn.getAttribute('aria-expanded')).toBe('true')
+
+        // 弹层内树面板呈现，点叶节点联动主列表展开对应行
+        const panel = screen.getByTestId('review-tree-panel')
+        const leaf = [...panel.querySelectorAll('.ant-tree-title')].find((el) => (el.textContent ?? '').endsWith('a.ts'))!
+        fireEvent.click(leaf.closest('.ant-tree-node-content-wrapper') ?? leaf)
+        const rows = screen.getAllByTestId('review-file-row')
+        const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
+        expect(expandedOf(target)).toBe('true')
+        expect(queries.at(-1)).toBe('src/deep/a.ts')
+        // 点中有效文件后弹层收起
+        expect(treeBtn.getAttribute('aria-expanded')).toBe('false')
     })
 
     it('文件树点文件：主列表展开后滚动定位到该行（用户无需自己找）', () => {

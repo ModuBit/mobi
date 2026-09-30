@@ -33,6 +33,7 @@ import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, 
 import { type DiffTarget, type ReviewCommit, type ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { basename } from '@/core/utils/path'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { copyTextToClipboard } from '@/components/chat/CopyButton'
@@ -295,6 +296,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         })
     }, [])
     const [treeOpen, setTreeOpen] = useState(false)
+    /** 移动/窄屏（<768px）不摆分栏：文件树走 Popover 弹层（与文件内容头「从树打开」同款） */
+    const isMobile = useIsMobile()
 
     /** 把指定行滚进视口（树点文件定位用）：顶格到可视区顶部——行头 + 展开的 diff
      *  从头展示（'nearest' 会停在「行头刚好贴底」，diff 全在视口外等于没定位）；
@@ -352,6 +355,18 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
 
     // 「上一轮」无快照链（会话无轮次变更消息）→ 禁用该档（空态文案诚实，不装死数据）
     const lastTurnMissing = overview.data?.scopes.turn === null
+
+    /** 树点文件 → 主列表展开该行（与清单同闸：非文本条目不展开），返回是否真的展开。
+     *  桌面分栏与移动弹层两个树入口共用；移动端按返回值决定是否收起弹层 */
+    const handleTreeOpenFile = useCallback((path: string): boolean => {
+        const entry = files.find((f) => f.path === path)
+        if (!entry || !isDiffable(entry)) return false
+        // 已展开无动画立即定位；新展开等 Collapse 动画结束再滚
+        const already = expandedPaths.includes(path)
+        setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
+        revealRow(path, already ? 0 : 260)
+        return true
+    }, [files, expandedPaths, revealRow])
     // 非 git 目录：git 系档禁用/隐藏，commit 选择器一并隐藏（仅 turn 可用）
     const isGitRepo = overview.data?.isGitRepository !== false
 
@@ -392,6 +407,64 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
             </Flex>
         )
     }
+
+    // 清单提为局部 ReactNode：桌面进 ReviewSplitter 左栏，移动/窄屏满宽直渲染（同一份 JSX）
+    const listNode = (
+        <Flex vertical style={{ height: '100%', overflowY: 'auto' }}>
+            <Collapse
+                className="review-collapse"
+                ghost
+                size="small"
+                // 多开受控：activeKey 即展开集合，点按切换各自开合。
+                // 自带展开图标关闭——箭头画在行尾（hover 显现，随开合旋转）
+                expandIcon={() => null}
+                activeKey={expandedPaths}
+                onChange={(keys) => setExpandedPaths(keys.map(String).filter((k) => {
+                    // 非文本类条目不可展开：把点按产生的 key 滤掉（web 端拦截，CLI 有兜底闸）
+                    const entry = files.find((f) => f.path === k)
+                    return entry !== undefined && isDiffable(entry)
+                }))}
+                // 面板体懒加载语义：rc-collapse 未展开过的面板不渲染 children——
+                // RowDiff（diff 查询）展开才挂载，与「单击懒加载展开」一致
+                items={files.map((file) => ({
+                    key: file.path,
+                    label: <FileRowHeader sessionId={sessionId} file={file} expanded={expandedPaths.includes(file.path)} pending={pendingPaths.has(file.path)} />,
+                    // 只有文本类条目才有 children（不可展开项永远不会出现在 activeKey）
+                    children: scopeData && isDiffable(file) && (
+                        <div data-testid="review-file-diff" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
+                            <RowDiff
+                                sessionId={sessionId}
+                                target={target}
+                                entry={file}
+                                version={overview.data?.targetGeneration ?? ''}
+                                deps={deps}
+                                wrap={wrap}
+                                layout={layout}
+                                onPendingChange={reportPending}
+                            />
+                        </div>
+                    ),
+                    styles: {
+                        // 宽度 100% + 高度不限：diff 随内容自然撑开，滚动交给外层清单
+                        body: {
+                            width: '100%', padding: 0, display: 'flex',
+                            background: 'var(--ant-color-bg-container)',
+                        },
+                    },
+                }))}
+            />
+            {scopeData && files.length === 0 && (
+                <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                    {target.kind === 'turn' ? t('review.noSnapshotChanges') : t('review.empty')}
+                </Flex>
+            )}
+            {!scopeData && (
+                <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
+                    {target.kind === 'turn' ? t('review.noSnapshot') : t('review.empty')}
+                </Flex>
+            )}
+        </Flex>
+    )
 
     return (
         <Flex data-testid="git-review-view" vertical style={{ height: '100%', minHeight: 0 }}>
@@ -528,100 +601,74 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             onClick={() => changeLayout(layout === 'split' ? 'unified' : 'split')}
                         />
                     </Tooltip>
-                    <Tooltip title={t('review.fileTree')}>
-                        <Button
-                            type="text" size="small"
-                            aria-label={t('review.fileTree')}
-                            data-testid="review-tree-toggle"
-                            icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
-                            onClick={() => setTreeOpen((v) => !v)}
-                        />
-                    </Tooltip>
+                    {isMobile ? (
+                        /* 移动/窄屏：树按钮锚定 Popover 弹层（触屏无 hover，不叠 Tooltip，
+                            与 FileContentViewHeader 的树 Popover 同款交互） */
+                        <Popover
+                            open={treeOpen}
+                            onOpenChange={setTreeOpen}
+                            trigger="click"
+                            placement="bottomLeft"
+                            content={
+                                <div style={{ width: 300, height: 400, overflow: 'auto' }}>
+                                    <DiffTreePanel
+                                        files={files}
+                                        selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
+                                        onOpenFile={(path) => {
+                                            if (handleTreeOpenFile(path)) setTreeOpen(false)
+                                        }}
+                                    />
+                                </div>
+                            }
+                        >
+                            <Button
+                                type="text" size="small"
+                                aria-label={t('review.fileTree')}
+                                aria-expanded={treeOpen}
+                                data-testid="review-tree-toggle"
+                                icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
+                            />
+                        </Popover>
+                    ) : (
+                        <Tooltip title={t('review.fileTree')}>
+                            <Button
+                                type="text" size="small"
+                                aria-label={t('review.fileTree')}
+                                data-testid="review-tree-toggle"
+                                icon={<FolderTree size={15} style={{ color: treeOpen ? 'var(--ant-color-text)' : 'var(--ant-color-text-tertiary)' }} />}
+                                onClick={() => setTreeOpen((v) => !v)}
+                            />
+                        </Tooltip>
+                    )}
                 </Flex>
             </Flex>
 
-            {/* Content：平铺文件清单（Collapse 手风琴）+ 可拖拽调宽的 diff 文件树。
-                分栏壳与拖拽状态内聚在 ReviewSplitter（拖拽流畅性见其注释）；
-                treeOpen 切展开态，树 pane 宽度过渡/淡入淡出由 SplitLayout 外壳承担 */}
-            <ReviewSplitter
-                treeOpen={treeOpen}
-                onTreeOpenChange={setTreeOpen}
-                list={
-                    <Flex vertical style={{ height: '100%', overflowY: 'auto' }}>
-                    <Collapse
-                        className="review-collapse"
-                        ghost
-                        size="small"
-                        // 多开受控：activeKey 即展开集合，点按切换各自开合。
-                        // 自带展开图标关闭——箭头画在行尾（hover 显现，随开合旋转）
-                        expandIcon={() => null}
-                        activeKey={expandedPaths}
-                        onChange={(keys) => setExpandedPaths(keys.map(String).filter((k) => {
-                            // 非文本类条目不可展开：把点按产生的 key 滤掉（web 端拦截，CLI 有兜底闸）
-                            const entry = files.find((f) => f.path === k)
-                            return entry !== undefined && isDiffable(entry)
-                        }))}
-                        // 面板体懒加载语义：rc-collapse 未展开过的面板不渲染 children——
-                        // RowDiff（diff 查询）展开才挂载，与「单击懒加载展开」一致
-                        items={files.map((file) => ({
-                            key: file.path,
-                            label: <FileRowHeader sessionId={sessionId} file={file} expanded={expandedPaths.includes(file.path)} pending={pendingPaths.has(file.path)} />,
-                            // 只有文本类条目才有 children（不可展开项永远不会出现在 activeKey）
-                            children: scopeData && isDiffable(file) && (
-                                <div data-testid="review-file-diff" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-                                    <RowDiff
-                                        sessionId={sessionId}
-                                        target={target}
-                                        entry={file}
-                                        version={overview.data?.targetGeneration ?? ''}
-                                        deps={deps}
-                                        wrap={wrap}
-                                        layout={layout}
-                                        onPendingChange={reportPending}
-                                    />
-                                </div>
-                            ),
-                            styles: {
-                                // 宽度 100% + 高度不限：diff 随内容自然撑开，滚动交给外层清单
-                                body: {
-                                    width: '100%', padding: 0, display: 'flex',
-                                    background: 'var(--ant-color-bg-container)',
-                                },
-                            },
-                        }))}
-                    />
-                    {scopeData && files.length === 0 && (
-                        <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
-                            {target.kind === 'turn' ? t('review.noSnapshotChanges') : t('review.empty')}
-                        </Flex>
-                    )}
-                    {!scopeData && (
-                        <Flex vertical style={{ padding: 12, fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>
-                            {target.kind === 'turn' ? t('review.noSnapshot') : t('review.empty')}
-                        </Flex>
-                    )}
-                </Flex>
-                }
-                tree={
-                    /* 变更文件树 pane：SplitLayout 右栏外壳承担宽度过渡与淡入淡出，
-                        收起仅折叠不销毁——筛选/展开状态在开合往返间保留 */
-                    <div data-testid="review-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>
-                        <DiffTreePanel
-                            files={files}
-                            selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
-                            onOpenFile={(path) => {
-                                // 与主列表同闸：非文本条目点了也只选中树节点，不展开行
-                                const entry = files.find((f) => f.path === path)
-                                if (!entry || !isDiffable(entry)) return
-                                // 已展开无动画立即定位；新展开等 Collapse 动画结束再滚
-                                const already = expandedPaths.includes(path)
-                                setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
-                                revealRow(path, already ? 0 : 260)
-                            }}
-                        />
-                    </div>
-                }
-            />
+            {/* Content：平铺文件清单（Collapse 手风琴）。桌面 = 清单↔树可拖拽分栏
+                （分栏壳与拖拽状态内聚在 ReviewSplitter，拖拽流畅性见其注释；
+                treeOpen 切展开态，树 pane 宽度过渡/淡入淡出由 SplitLayout 外壳承担）；
+                移动/窄屏 = 清单满宽，文件树走 header 的 Popover 弹层，无分栏 */}
+            {isMobile ? (
+                <div style={{ flex: 1, minHeight: 0 }}>
+                    {listNode}
+                </div>
+            ) : (
+                <ReviewSplitter
+                    treeOpen={treeOpen}
+                    onTreeOpenChange={setTreeOpen}
+                    list={listNode}
+                    tree={
+                        /* 变更文件树 pane：SplitLayout 右栏外壳承担宽度过渡与淡入淡出，
+                            收起仅折叠不销毁——筛选/展开状态在开合往返间保留 */
+                        <div data-testid="review-tree-holder" aria-hidden={!treeOpen} style={{ height: '100%', overflow: 'hidden' }}>
+                            <DiffTreePanel
+                                files={files}
+                                selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
+                                onOpenFile={handleTreeOpenFile}
+                            />
+                        </div>
+                    }
+                />
+            )}
         </Flex>
     )
 })
