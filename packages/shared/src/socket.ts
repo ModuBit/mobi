@@ -420,7 +420,9 @@ export interface ClientToServerEvents {
         /** 当前 output style：随 keep-alive 上报，hub 落 runtimeState.outputStyle 供 resume 回放 */
         outputStyle?: string
     }) => void
-    'session-end': (data: { sid: string; time: number }) => void
+    // ack 制：CLI 关 socket 前等回执，裸 emit + 立即 close 会把事件丢在本地缓冲
+    // （hub 收不到 → active 永久悬挂，2026-09-30 事故）
+    'session-end': (data: { sid: string; time: number }, ack: (response: { ok: boolean }) => void) => void
     'update-metadata': (data: { sid: string; expectedVersion: number; metadata: unknown }, cb: (answer: {
         result: 'error'
         reason?: SocketErrorReason

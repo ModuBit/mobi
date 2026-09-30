@@ -259,3 +259,59 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         }
     })
 })
+
+/**
+ * dormantSession / archiveSession 对「DB 已 archived 但缓存仍 active」悬挂态的处理
+ * （2026-09-30 事故）：CLI 自行归档后 session-end 丢失，hub 缓存悬挂在 active，
+ * 走 RPC 必然 unreachable，还会把传输故障伪装成 "Session has work in progress"。
+ */
+describe('dormantSession / archiveSession 的 archived 悬挂态兜底', () => {
+    /** 内存缓存 active、DB metadata 带 archived 终态的会话（registry 对会话 RPC 不可达） */
+    function seedStaleActiveArchivedSession(h: ReturnType<typeof makeWakeEngine>) {
+        const session = h.engine.getOrCreateSession(
+            'wake-archived',
+            { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1', lifecycleState: 'archived' },
+            null,
+            'default',
+        )
+        h.engine.handleSessionAlive({ sid: session.id, time: Date.now() })
+        expect(session.active).toBe(true)
+        return session
+    }
+
+    test('DB 已 archived → dormantSession 幂等 ok，不走必然 unreachable 的 RPC', async () => {
+        const h = makeWakeEngine()
+        try {
+            const session = seedStaleActiveArchivedSession(h)
+            // registry fake 对 dormancyCheck 返回 null：若走 RPC 会抛 RpcFailure
+            const result = await h.engine.dormantSession(session.id)
+            expect(result).toEqual({ ok: true })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('DB 已 archived → archiveSession 跳过 killSession，只补收尾（翻掉悬挂的 active）', async () => {
+        const h = makeWakeEngine()
+        try {
+            const session = seedStaleActiveArchivedSession(h)
+            // registry fake 对 killSession 返回 null：若走 RPC 会抛 RpcFailure
+            await h.engine.archiveSession(session.id)
+            expect(h.engine.getSession(session.id)!.active).toBe(false)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('RPC unreachable → blockers 用分类语义（Session is not reachable），不透框架句子', async () => {
+        const h = makeWakeEngine()
+        try {
+            const session = seedDormantSession(h)
+            h.engine.handleSessionAlive({ sid: session.id, time: Date.now() })
+            const result = await h.engine.dormantSession(session.id)
+            expect(result).toEqual({ ok: false, blockers: ['Session is not reachable'] })
+        } finally {
+            h.cleanup()
+        }
+    })
+})

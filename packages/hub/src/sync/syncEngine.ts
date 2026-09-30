@@ -47,6 +47,7 @@ import {
     type SpawnSessionOptions
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { readRpcFailure } from './rpcFailure'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
 import { hubLogger } from '../logger'
 
@@ -584,19 +585,34 @@ export class SyncEngine {
         // 不报「RPC handler not registered」这类与语义无关的错
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
         if (!session || !session.active) return { ok: true }
+        // DB 终态已 archived（CLI 自行归档但 session-end 丢失）→ 幂等成功：再走 RPC
+        // 必然 unreachable，还会把传输故障伪装成 "work in progress"（2026-09-30 事故）
+        if (this.isArchivedInDb(sessionId)) return { ok: true }
         let check: { ok: boolean; blockers: string[] }
         try {
             check = await this.rpcGateway.dormancyCheck(sessionId)
         } catch (error) {
-            return { ok: false, blockers: [error instanceof Error ? error.message : 'Session is not reachable'] }
+            // unreachable/timeout 是框架句子，不透给 web；分类语义 = 会话此刻不可达
+            const { kind, message } = readRpcFailure(error)
+            return { ok: false, blockers: [kind === 'other' ? message : 'Session is not reachable'] }
         }
         if (!check.ok) return check
         await this.archiveSession(sessionId)
         return { ok: true }
     }
 
+    /** DB 里的生命周期终态：CLI 自行归档后 metadata 落 archived，hub 缓存可能仍悬挂 active */
+    private isArchivedInDb(sessionId: string): boolean {
+        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
+        return session?.metadata?.lifecycleState === 'archived'
+    }
+
     async archiveSession(sessionId: string): Promise<void> {
-        await this.rpcGateway.killSession(sessionId)
+        // DB 终态已 archived → 跳过必然 unreachable 的 killSession，只补收尾
+        // （handleSessionEnd 翻掉悬挂的 active）；RPC 失败由调用方收口，这里不吞
+        if (!this.isArchivedInDb(sessionId)) {
+            await this.rpcGateway.killSession(sessionId)
+        }
         this.factsSink.handleSessionEnd?.({ sid: sessionId, time: Date.now() })
     }
     async switchSession(sessionId: string, to: 'remote' | 'local'): Promise<void> {

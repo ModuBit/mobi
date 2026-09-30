@@ -22,6 +22,7 @@ import { Hono, type Context } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine, type Session, type OutputStyleSwitchOutcome, type ForkSessionResult } from '../../sync/syncEngine'
+import { readRpcFailure } from '../../sync/rpcFailure'
 import { isSessionRowDeletable } from '../../sync/sessionDeleteGuard'
 import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
@@ -562,7 +563,16 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
-        await engine.archiveSession(sessionResult.sessionId)
+        try {
+            await engine.archiveSession(sessionResult.sessionId)
+        } catch (error) {
+            // 与 /dormant 同口径：归档未确认完成一律按冲突反馈，不穿透 500（2026-09-30
+            // 事故：killSession RpcFailure 直接打成 Internal Server Error）。unreachable/
+            // timeout 的框架句子不透给 web，分类语义 = 会话此刻不可达（timeout 按「可能
+            // 已送达」说，但 HTTP 层只有「未确认完成」可表）
+            const { kind, message } = readRpcFailure(error)
+            return c.json({ error: kind === 'other' ? message : 'Session is not reachable' }, 409)
+        }
         return c.json({ ok: true })
     })
 

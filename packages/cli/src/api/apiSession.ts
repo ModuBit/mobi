@@ -960,9 +960,19 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    sendSessionDeath(): void {
+    /**
+     * 会话结束上报（ack 制）：确认 hub 落达（或超时兜底）才返回，调用方（cleanup
+     * 流程）据此再关 socket——裸 emit + 立即 close 会把事件丢在本地缓冲，hub 收不到
+     * session-end，active 永久悬挂（2026-09-30 事故）。超时/断连时关闭照常进行，
+     * hub 侧由心跳过期清扫收敛 active。
+     */
+    async sendSessionDeath(): Promise<void> {
         void cleanupUploadDir(this.sessionId)
-        this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() })
+        try {
+            await this.socket.timeout(5_000).emitWithAck('session-end', { sid: this.sessionId, time: Date.now() })
+        } catch {
+            // 上报失败不阻塞退出流程
+        }
     }
 
     updateMetadata(handler: (metadata: Metadata) => Metadata): void {

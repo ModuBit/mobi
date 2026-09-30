@@ -414,10 +414,23 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     socket.on('cache-status', (raw) => validateAndForward(factSchemas['cache-status'], raw, (data) => factsSink?.handleCacheStatus?.(data)))
     socket.on('run-started', (raw) => validateAndForward(factSchemas['run-started'], raw, (data) => factsSink?.handleRunStarted?.(data)))
     socket.on('receive-readiness', (raw) => validateAndForward(factSchemas['receive-readiness'], raw, (data) => factsSink?.handleReceiveReadiness?.(data)))
-    socket.on('session-end', (raw) => validateAndForward(factSchemas['session-end'], raw, (data) => {
-        factsSink?.handleSessionEnd?.(data)
-        forcePushUnsubmittedAfterEnd(data.sid)
-    }))
+    socket.on('session-end', (raw, ack) => {
+        // ack 制：CLI 关 socket 前等这个回执（shared/socket.ts 的 session-end 注释）
+        const parsed = factSchemas['session-end'].safeParse(raw)
+        if (!parsed.success) {
+            ack?.({ ok: false })
+            return
+        }
+        const sessionAccess = resolveSessionAccess(parsed.data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', parsed.data.sid, sessionAccess.reason)
+            ack?.({ ok: false })
+            return
+        }
+        factsSink?.handleSessionEnd?.(parsed.data)
+        forcePushUnsubmittedAfterEnd(parsed.data.sid)
+        ack?.({ ok: true })
+    })
 
     socket.on('idle-timeout-warning', (data: { sid?: unknown; timeoutAt?: unknown; remainingMs?: unknown }) => {
         if (!data || typeof data.sid !== 'string' || typeof data.timeoutAt !== 'number' || typeof data.remainingMs !== 'number') {

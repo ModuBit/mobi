@@ -31,6 +31,7 @@ import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
 import type { AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
+import { SessionSocketOwners } from './sessionSocketOwners'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotSync } from '../sync/snapshotSync'
 import type { RewindDeleteBoundTracker } from '../sync/rewindDeleteBoundTracker'
@@ -162,6 +163,8 @@ export function createSocketServer(deps: SocketServerDeps): {
     const snapshotSync = deps.snapshotSync
 
     const rpcRegistry = new RpcRegistry()
+    // 同 session CLI socket 接管仲裁（sessionSocketOwners.ts 模块头写明为什么必须仲裁）
+    const sessionSocketOwners = new SessionSocketOwners()
     const terminalRegistry = new TerminalRegistry({
         idleTimeoutMs,
         onIdle: (entry) => {
@@ -196,6 +199,7 @@ export function createSocketServer(deps: SocketServerDeps): {
             io,
             store: deps.store,
             rpcRegistry,
+            sessionSocketOwners,
             terminalRegistry,
             backgroundTaskTracker,
             snapshotSync,

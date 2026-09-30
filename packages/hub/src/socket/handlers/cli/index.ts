@@ -16,6 +16,7 @@
 
 import type { Store, StoredMachine, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
+import type { SessionSocketOwners } from '../../sessionSocketOwners'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
@@ -60,10 +61,15 @@ export type CliHandlersDeps = {
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
     factsSink?: SessionFactsSink
     onWebappEvent?: (event: SyncEvent) => void
+    /**
+     * 同 session CLI socket 的接管仲裁表（单一持有者保证方法映射不悬空）。
+     * 由 server.ts 组装传入；缺省（部分单测直接调 registerCliHandlers）时跳过仲裁。
+     */
+    sessionSocketOwners?: SessionSocketOwners
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
+    const { io, store, rpcRegistry, sessionSocketOwners, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -97,10 +103,18 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
 
     const auth = socket.handshake.auth as Record<string, unknown> | undefined
     const sessionId = typeof auth?.sessionId === 'string' ? auth.sessionId : null
+    const sessionSlotClaimed = Boolean(sessionId && resolveSessionAccess(sessionId).ok)
     let snapshotLease: SnapshotCliLease | null = null
-    if (sessionId && resolveSessionAccess(sessionId).ok) {
+    if (sessionId && sessionSlotClaimed) {
         socket.join(`session:${sessionId}`)
         snapshotLease = snapshotSync.attachCli(sessionId)
+        // 同 session 新连接接管、踢掉旧连接（类注释写明为什么要仲裁）：没有这一步，
+        // 新旧连接并存时 RpcRegistry 的后写覆盖 + 旧方断开的 unregisterAll 会让
+        // 幸存 CLI 的注册无声丢失，web 从此对它不可管控（2026-09-30 事故）
+        const prevOwnerId = sessionSocketOwners?.takeOver(sessionId, socket.id) ?? null
+        if (prevOwnerId) {
+            io.of('/cli').sockets.get(prevOwnerId)?.disconnect(true)
+        }
     }
 
     const machineId = typeof auth?.machineId === 'string' ? auth.machineId : null
@@ -153,6 +167,9 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     })
 
     socket.on('disconnect', () => {
+        if (sessionId && sessionSlotClaimed) {
+            sessionSocketOwners?.release(sessionId, socket.id)
+        }
         rpcRegistry.unregisterAll(socket)
         cleanupTerminalHandlers(socket, { terminalRegistry, terminalNamespace })
         // lease 内部校验当前持有者，旧连接迟到 disconnect 不会清掉新连接的基线。

@@ -51,7 +51,8 @@ export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLi
             archiveReason
         }))
 
-        options.apiSession.sendSessionDeath()
+        // session-end 是 ack 制（sendSessionDeath 注释）：确认落达再关 socket
+        await options.apiSession.sendSessionDeath()
         await options.apiSession.flush()
         await options.apiSession.close()
     }
