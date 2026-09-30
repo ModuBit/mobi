@@ -263,6 +263,15 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         })
     }, [])
     const [treeOpen, setTreeOpen] = useState(false)
+
+    /** 把指定行滚进视口（树点文件定位用）：block:'nearest' 不打扰已就位的视口；
+     *  delayMs 供等 Collapse 展开动画结束——动画中行头位置未定，立即滚会停偏 */
+    const revealRow = useCallback((path: string, delayMs: number) => {
+        window.setTimeout(() => {
+            document.querySelector(`[data-path="${CSS.escape(path)}"][data-testid="review-file-row"]`)
+                ?.scrollIntoView({ block: 'nearest' })
+        }, delayMs)
+    }, [])
     /** commit 选择面板（Select 点「提交…」弹出，非下拉） */
     const [commitsOpen, setCommitsOpen] = useState(false)
     /** diff 自动换行（默认开，保持既有行为；关闭后长行横向滚动） */
@@ -562,7 +571,10 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             // 与主列表同闸：非文本条目点了也只选中树节点，不展开行
                             const entry = files.find((f) => f.path === path)
                             if (!entry || !isDiffable(entry)) return
+                            // 已展开无动画立即定位；新展开等 Collapse 动画结束再滚
+                            const already = expandedPaths.includes(path)
                             setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
+                            revealRow(path, already ? 0 : 260)
                         }}
                     />
                 )}

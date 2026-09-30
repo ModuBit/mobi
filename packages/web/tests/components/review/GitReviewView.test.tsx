@@ -502,6 +502,30 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(queries.at(-1)).toBe('src/deep/a.ts')
     })
 
+    it('文件树点文件：主列表展开后滚动定位到该行（用户无需自己找）', () => {
+        // jsdom 未实现 scrollIntoView，桩掉捕获调用
+        const scrollSpy = vi.fn()
+        Element.prototype.scrollIntoView = scrollSpy
+        vi.useFakeTimers()
+        try {
+            render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: '' } })} />)
+            fireEvent.click(screen.getByTestId('review-tree-toggle'))
+            const panel = screen.getByTestId('review-tree-panel')
+            const leaf = [...panel.querySelectorAll('.ant-tree-title')].find((el) => (el.textContent ?? '').endsWith('a.ts'))!
+            fireEvent.click(leaf.closest('.ant-tree-node-content-wrapper') ?? leaf)
+
+            // 展开动画结束后才定位（行头最终位置）
+            vi.advanceTimersByTime(300)
+            const rows = screen.getAllByTestId('review-file-row')
+            const target = rows.find((r) => r.getAttribute('data-path') === 'src/deep/a.ts')!
+            expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' })
+            expect(scrollSpy.mock.instances[0]).toBe(target)
+        } finally {
+            vi.useRealTimers()
+            delete Element.prototype.scrollIntoView
+        }
+    })
+
     it('running→idle 翻转驱动 overview refetch（开着审查 tab 跑新轮次后自动刷新）', () => {
         const refetch = vi.fn()
         const { rerender } = render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, running: true, refetch })} />)
