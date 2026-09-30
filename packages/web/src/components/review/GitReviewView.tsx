@@ -564,7 +564,23 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                         </Flex>
                     )}
                 </Flex>
-                {treeOpen && (
+                {/* 变更文件树：常挂载 + 外壳宽度/透明度缓动（条件渲染瞬切生硬；收起态
+                    aria-hidden 屏蔽、width 0 + overflow hidden 裁剪。缓动 token 用 antd
+                    css-var（同 GitReviewView 滑动按钮先例） */}
+                <div
+                    data-testid="review-tree-holder"
+                    aria-hidden={!treeOpen}
+                    style={{
+                        width: treeOpen ? 264 : 0,
+                        opacity: treeOpen ? 1 : 0,
+                        flexShrink: 0,
+                        overflow: 'hidden',
+                        transition: [
+                            `width var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
+                            `opacity var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
+                        ].join(', '),
+                    }}
+                >
                     <DiffTreePanel
                         files={files}
                         selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
@@ -578,7 +594,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             revealRow(path, already ? 0 : 260)
                         }}
                     />
-                )}
+                </div>
             </Flex>
         </Flex>
     )

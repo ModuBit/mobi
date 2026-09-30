@@ -486,9 +486,12 @@ describe('GitReviewView（hook 注入 v2）', () => {
             />,
         )
 
-        expect(screen.queryByTestId('review-tree-panel')).toBeNull()
-        fireEvent.click(screen.getByTestId('review-tree-toggle'))
-        expect(screen.getByTestId('review-tree-panel')).toBeDefined()
+        // 树常挂载（缓动动画载体）：收起态外壳 aria-hidden，点开后可见
+        const treeBtn = screen.getByTestId('review-tree-toggle')
+        const holder = screen.getByTestId('review-tree-holder')
+        expect(holder.getAttribute('aria-hidden')).toBe('true')
+        fireEvent.click(treeBtn)
+        expect(holder.getAttribute('aria-hidden')).toBe('false')
 
         // 树按目录层级呈现：deep 目录 + 叶节点（默认全展开）
         expect(screen.getByText('deep')).toBeDefined()

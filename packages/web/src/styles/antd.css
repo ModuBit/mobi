@@ -596,6 +596,13 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
    触屏无 hover 常显；transition 用 antd css-var token（DESIGN.md 同纪律） */
 @keyframes review-refresh-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 
+/* 审查文件树开合缓动的 reduced-motion 降级（DESIGN.md Motion）：瞬时切换不滑入 */
+@media (prefers-reduced-motion: reduce) {
+    [data-testid='review-tree-holder'] {
+        transition: none;
+    }
+}
+
 .review-collapse > .ant-collapse-item > .ant-collapse-header {
     padding: 6px 12px;
 }
