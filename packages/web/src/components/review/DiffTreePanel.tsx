@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import styled from '@emotion/styled'
 import { Empty, Flex, Input, Tree } from 'antd'
 import type { TreeProps } from 'antd'
 import type { DataNode } from 'antd/es/tree'
@@ -28,9 +29,33 @@ import { Search, FolderClosed, FolderOpen } from 'lucide-react'
 import type { TurnDiffFileKind } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
-import { buildPathTree, collectDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
+import { buildPathTree, collectDirKeys, commonDirectoryPrefix, type NestedFileNode } from '@/core/utils/pathTree'
 import { KindBadge } from '@/components/turnDiff/present'
 import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
+
+/**
+ * 树区容器。与文件树 TreeWrap 同款行对齐修正：inline svg 图标默认 baseline 对齐
+ * 会低半格，icon 槽转 inline-flex + line-height 0 垂直居中于行（2026-09-30 反馈）。
+ */
+const TreeArea = styled.div`
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    && .ant-tree-iconEle {
+        display: inline-flex;
+        align-items: center;
+        line-height: 0;
+    }
+    && .ant-tree-node-content-wrapper {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+    }
+    && .ant-tree-title {
+        min-width: 0;
+        white-space: nowrap;
+    }
+`
 
 export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     /** 最小结构（path/kind）——turn/review 两种条目形状共用 */
@@ -48,10 +73,14 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     )
     const entryByPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files])
 
-    // 扁平条目 → 嵌套树（与文件目录树搜索同一条 buildPathTree 通路）
+    // 扁平条目 → 嵌套树（与文件目录树搜索同一条 buildPathTree 通路）。
+    // 先剥公共目录前缀：变更全落项目子树时树从项目目录起展示（与文件树根语义一致）；
+    // 按全量 files 计算而非 filtered，筛选时树形不随结果集跳变。树内 path 变相对，
+    // 叶子 key 拼回前缀还原全路径，选中/打开仍走全路径语义
+    const rootPrefix = useMemo(() => commonDirectoryPrefix(files.map((f) => f.path)), [files])
     const tree = useMemo(
-        () => buildPathTree(filtered.map((f) => ({ name: basename(f.path), path: f.path, type: 'file' as const }))),
-        [filtered],
+        () => buildPathTree(filtered.map((f) => ({ name: basename(f.path), path: f.path.slice(rootPrefix.length), type: 'file' as const }))),
+        [filtered, rootPrefix],
     )
 
     /** 受控展开：数据（档位/筛选）变化即全展开——面板的树只承载变更文件，量小，全展开即默认形态 */
@@ -77,9 +106,9 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                         children: n.children ? render(n.children) : undefined,
                     }
                 }
-                const entry = entryByPath.get(n.path)
+                const entry = entryByPath.get(rootPrefix + n.path)
                 return {
-                    key: n.path,
+                    key: rootPrefix + n.path,
                     // 文件类型图标走 icon 槽（与文件树同源 FileTypeBadge），kind 徽标留在 title
                     icon: () => <FileTypeBadge path={n.path} size={14} knownFile />,
                     title: (
@@ -116,7 +145,7 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                 placeholder={t('review.filterPlaceholder')}
                 data-testid="review-tree-filter"
             />
-            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            <TreeArea>
                 {filtered.length > 0 ? (
                     <Tree
                         blockNode
@@ -130,7 +159,7 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                 ) : (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('files.noResults')} style={{ marginTop: 24 }} />
                 )}
-            </div>
+            </TreeArea>
         </Flex>
     )
 }

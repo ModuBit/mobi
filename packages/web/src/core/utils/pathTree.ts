@@ -63,6 +63,22 @@ export function buildPathTree(files: FileNode[]): NestedFileNode[] {
 }
 
 /**
+ * 所有路径的最长公共目录前缀（含结尾 '/'；无公共目录返回 ''）。
+ * diff 文件树用：变更全部落在项目子树时剥掉根前缀，树从项目目录起展示（与文件树根语义一致）。
+ * 按完整目录段对齐（末段视为文件名，永不并入前缀），因此单文件返回其所在目录。
+ */
+export function commonDirectoryPrefix(paths: readonly string[]): string {
+    if (paths.length === 0) return ''
+    const segments = paths.map((p) => p.split('/'))
+    // 公共段数上限 = 最短段数 - 1：末段是文件名，不参与目录前缀
+    const limit = Math.min(...segments.map((s) => s.length)) - 1
+    const first = segments[0]!
+    let i = 0
+    while (i < limit && segments.every((s) => s[i] === first[i])) i++
+    return i > 0 ? `${first.slice(0, i).join('/')}/` : ''
+}
+
+/**
  * 收集嵌套树中所有目录节点的 path（用于 antd Tree expandedKeys 全展开）。
  */
 export function collectDirKeys(nodes: NestedFileNode[]): string[] {
