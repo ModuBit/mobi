@@ -22,7 +22,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 
 /** 切换移动 / 桌面：mock useIsMobile 读取此变量（审查树桌面=分栏、移动=Popover 弹层）。
  *  默认桌面——jsdom 的 matchMedia stub 恒 false 会被 useIsMobile 判成移动 */
@@ -127,6 +127,8 @@ function makeDeps(overrides: {
     running?: boolean | undefined
     refetch?: ReturnType<typeof vi.fn>
     commits?: ReviewCommit[]
+    hasNextPage?: boolean
+    onLoadMore?: () => void
     onInit?: () => void
 }): GitReviewDeps {
     const filesFor = overrides.filesFor ?? FILES_FOR
@@ -151,7 +153,7 @@ function makeDeps(overrides: {
                 isLoading: false,
             }
         },
-        useReviewCommits: () => ({ data: overrides.commits ?? [], error: null, isLoading: false, loadMore: () => {}, hasNextPage: false, isLoadingMore: false }),
+        useReviewCommits: () => ({ data: overrides.commits ?? [], error: null, isLoading: false, loadMore: overrides.onLoadMore ?? (() => {}), hasNextPage: overrides.hasNextPage ?? false, isLoadingMore: false }),
         useReviewInit: () => ({ init: initSpy, isPending: false, error: null, succeededAt: 0 }),
         useSessionRunning: () => overrides.running,
     }
@@ -162,9 +164,9 @@ function expandedOf(row: HTMLElement): string | null {
     return row.closest('.ant-collapse-header')?.getAttribute('aria-expanded') ?? null
 }
 
-/** 打开范围下拉（antd v6 Select 无 .ant-select-selector，root 即交互入口；选项挂载在打开后的 portal） */
+/** 打开范围下拉（Dropdown menu，点触发按钮；菜单项挂载在打开后的 portal） */
 function openScopeDropdown() {
-    fireEvent.mouseDown(document.querySelector('.ant-select')!)
+    fireEvent.click(screen.getByTestId('review-scope-switch'))
 }
 
 describe('GitReviewView（hook 注入 v2）', () => {
@@ -327,33 +329,63 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(onInit).toHaveBeenCalledTimes(1)
         cleanup()
 
-        // turn 档下拉：git 系禁用 + needsGit 后缀、无「提交…」项
+        // turn 档下拉：git 系禁用 + needsGit 后缀、无「已提交」子菜单
         render(<GitReviewView sessionId="s1" target={TARGET_TURN} deps={makeDeps({ overview: nonGit })} />)
         openScopeDropdown()
-        const disabledOptions = [...document.querySelectorAll('.ant-select-item-option-disabled')]
+        const disabledOptions = [...document.querySelectorAll('.ant-dropdown-menu-item-disabled')]
         expect(disabledOptions.length).toBe(3)
         expect(disabledOptions[0]!.textContent).toContain('review.needsGit')
-        expect(document.querySelectorAll('.ant-select-item-option')).toHaveLength(4) // 4 档，无 commits 项
+        expect(document.querySelectorAll('.ant-dropdown-menu-item')).toHaveLength(4) // 4 档，无 commits 项
+        expect(document.querySelector('.ant-menu-submenu')).toBeNull()
     })
 
-    it('commit 选择器：点「提交…」弹面板 → 选 commit 切 commit 档；根提交（无父）不可选', () => {
+    it('commit 子菜单：展开「已提交」列 commit → 选中切 commit 档；根提交（无父）不可选', async () => {
         const onTargetChange = vi.fn()
         render(<GitReviewView sessionId="s1" target={TARGET_TURN} onTargetChange={onTargetChange} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, contents: { before: '', after: '' } })} />)
 
         openScopeDropdown()
-        const commitsOption = [...document.querySelectorAll('.ant-select-item-option')].find((o) => o.textContent === 'review.scope.commits')
-        expect(commitsOption).toBeDefined()
-        fireEvent.click(commitsOption!)
+        // hover「已提交」展开子菜单（rc-menu desktop 由 mouseenter 触发；Dropdown 内类名带 dropdown 前缀）
+        const submenuTitle = [...document.querySelectorAll('.ant-dropdown-menu-submenu-title')].find((el) => el.textContent === 'review.scope.commits')
+        expect(submenuTitle).toBeDefined()
+        fireEvent.mouseEnter(submenuTitle!)
+        await waitFor(() => expect(screen.getAllByTestId('review-commit-item')).toHaveLength(2))
 
-        // 面板出现：两行提交 + 根提交禁用
+        // 两行提交：正常提交可点、根提交（parentSha=null）菜单项禁用
         const items = screen.getAllByTestId('review-commit-item')
-        expect(items).toHaveLength(2)
-        expect((items[0] as HTMLButtonElement).disabled).toBe(false)
-        expect((items[1] as HTMLButtonElement).disabled).toBe(true) // 根提交 parentSha=null
+        const itemRow = (el: HTMLElement) => el.closest('.ant-dropdown-menu-item')!
+        expect(itemRow(items[0]!).className).not.toContain('-disabled')
+        expect(itemRow(items[1]!).className).toContain('-disabled') // 根提交 parentSha=null
         expect(items[0]!.textContent).toContain('feat: add login flow')
 
-        fireEvent.click(items[0]!)
+        fireEvent.click(itemRow(items[0]!))
         expect(onTargetChange).toHaveBeenCalledWith({ kind: 'commit', range: { base: 'bbbbbbb444444444444444444444444444444444', head: 'aaaaaaa444444444444444444444444444444444' } })
+    })
+
+    it('commit 列表滚动加载：哨兵进入视口自动翻页（无「加载更多」按钮）', async () => {
+        // stub IO：捕获实例，测试手动派发「已进入视口」
+        const observers: { cb: IntersectionObserverCallback; seen: boolean }[] = []
+        vi.stubGlobal('IntersectionObserver', class {
+            constructor(cb: IntersectionObserverCallback) { observers.push({ cb, seen: false }) }
+            observe() {}
+            disconnect() {}
+            unobserve() {}
+        })
+        try {
+            const onLoadMore = vi.fn()
+            render(<GitReviewView sessionId="s1" target={TARGET_TURN} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, hasNextPage: true, onLoadMore })} />)
+
+            openScopeDropdown()
+            const submenuTitle = [...document.querySelectorAll('.ant-dropdown-menu-submenu-title')].find((el) => el.textContent === 'review.scope.commits')
+            fireEvent.mouseEnter(submenuTitle!)
+            // 子菜单懒渲染，等 portal 挂载；无「加载更多」按钮，只有哨兵
+            await waitFor(() => expect(screen.getByTestId('review-commit-sentinel')).toBeDefined())
+
+            // 哨兵进入视口 → loadMore
+            act(() => { observers[0]!.cb([{ isIntersecting: true } ] as IntersectionObserverEntry[], observers[0]! as unknown as IntersectionObserver) })
+            expect(onLoadMore).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.unstubAllGlobals()
+        }
     })
 
     it('layout 切换：非受控内部翻转 + 受控回调（inspector viewState 持久化通道）', () => {
@@ -409,8 +441,8 @@ describe('GitReviewView（hook 注入 v2）', () => {
         expect(screen.getAllByText('review.noSnapshot').length).toBeGreaterThanOrEqual(1)
 
         openScopeDropdown()
-        // antd v6 下拉禁用项 class：.ant-select-item-option-disabled
-        const disabled = document.querySelector('.ant-select-item-option-disabled')
+        // 禁用项 class：antd v6 menu 项为 .ant-dropdown-menu-item-disabled
+        const disabled = document.querySelector('.ant-dropdown-menu-item-disabled')
         expect(disabled).not.toBeNull()
         expect(disabled!.textContent).toContain('review.scope.lastTurn')
     })

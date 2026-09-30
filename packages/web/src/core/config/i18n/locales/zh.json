@@ -801,7 +801,7 @@
             "uncommitted": "未提交",
             "unstaged": "未暂存",
             "staged": "已暂存",
-            "commits": "提交…"
+            "commits": "已提交"
         },
         "fileCount": "{{count}} 个文件",
         "empty": "暂无变更",

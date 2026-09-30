@@ -567,6 +567,25 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     color: var(--ant-color-text-secondary);
 }
 
+/* 审查 scope 下拉的「已提交」二级子菜单（GitReviewView）：commit 列表可长（每页 50，
+   历史多的仓库多页累积），子菜单浮层限高内滚——滚动到底由列表尾部的 IO 哨兵自动翻页。
+   antd items 模式无 per-submenu popupClassName，收口到子菜单滚动容器通用类
+   （项目内无其他 Dropdown submenu 使用方，影响面可控） */
+.ant-dropdown-menu-sub {
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+/* 窄屏：子菜单浮层贴屏幕右缘展开，固定 300 宽（label 内联样式）会溢出裁掉相对时间——
+   收窄为自适应，留出主菜单锚点左侧的展开空间 */
+@media (max-width: 768px) {
+    .ant-dropdown-menu-sub [data-testid='review-commit-item'],
+    .ant-dropdown-menu-sub [data-testid='review-commit-sentinel'] {
+        width: auto !important;
+        max-width: calc(100vw - 150px);
+    }
+}
+
 /* antd Image hover 遮罩（cover 层）已全局去除（preview.cover=false），小手光标原本
    挂在 cover 上随之丢失——补回到可预览的 Image 根元素（rc-image 仅在可预览时置 role=button） */
 .ant-image[role='button'] {

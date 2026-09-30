@@ -810,7 +810,7 @@
             "uncommitted": "Uncommitted",
             "unstaged": "Unstaged",
             "staged": "Staged",
-            "commits": "Commits…"
+            "commits": "Commits"
         },
         "fileCount": "{{count}} files",
         "empty": "No changes",
