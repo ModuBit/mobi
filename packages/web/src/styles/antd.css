@@ -520,6 +520,21 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     }
 }
 
+/* 审查文件树移动端弹层（GitReviewView overlayClassName）：窄屏撑满横向（两侧各留 16px）
+   + 高度上限由 content 的 min(70dvh, 560px) 声明。与 quote-list-popover 同款坑：
+   topLeft/bottomLeft 的 anchor 对齐在窄屏必然贴边/溢出，纯宽度钳制算不死，锁死几何。
+   树内容超宽由 DiffTreePanel 内部溢出滚动，本层不做裁剪 */
+@media (max-width: 640px) {
+    .review-tree-popover {
+        left: 16px !important;
+        width: calc(100vw - 32px) !important;
+        max-width: none;
+    }
+    .review-tree-popover .ant-popover-inner {
+        max-width: none;
+    }
+}
+
 /* 产物卡「打开方式」下拉（ArtifactDirectiveComponents 分体式按钮）：antd 原生菜单
    密度太紧凑（14px/5px padding/8px radius），对齐原生 App 菜单的呼吸感——大圆角、
    宽行高、图标 26px 底色块；仅作用于本组件浮层（popupClassName 作用域收口） */
@@ -596,14 +611,14 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
    触屏无 hover 常显；transition 用 antd css-var token（DESIGN.md 同纪律） */
 @keyframes review-refresh-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 
-/* 审查文件树节点单行省略：antd Tree 的 content-wrapper 默认 min-width:auto 不收缩，
-   长文件名把标题撑折行；放开收缩链让 title 内的 ellipsis 生效 */
-.review-tree .ant-tree-node-content-wrapper {
-    min-width: 0;
-}
+/* 审查文件树节点单行完整展示、超宽横向滚动（与文件树 Popover 同款）：
+   树 title 不折行不省略，inner 撑到内容宽，由面板滚动容器横向滚——
+   省略号会吞掉长文件名/扩展名，滚动兜底才能看全名 */
 .review-tree .ant-tree-title {
-    display: flex;
-    min-width: 0;
+    white-space: nowrap;
+}
+.review-tree .ant-tree-list-holder-inner {
+    min-width: max-content;
 }
 
 .review-collapse > .ant-collapse-item > .ant-collapse-header {

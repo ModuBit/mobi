@@ -609,8 +609,12 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                             onOpenChange={setTreeOpen}
                             trigger="click"
                             placement="bottomLeft"
+                            /* 窄屏撑满横向 + 高度上限（antd.css 锁几何，quote-list-popover 同款坑：
+                                anchor 对齐在窄屏算不死，必须锁死）；
+                                树内容超宽交给面板内部溢出滚动 */
+                            overlayClassName="review-tree-popover"
                             content={
-                                <div style={{ width: 300, height: 400, overflow: 'auto' }}>
+                                <div style={{ width: '100%', height: 'min(70dvh, 560px)', overflow: 'auto' }}>
                                     <DiffTreePanel
                                         files={files}
                                         selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}

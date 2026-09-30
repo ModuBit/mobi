@@ -69,11 +69,11 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                 return {
                     key: n.path,
                     title: (
-                        // 单行不折行：徽标不收缩、文件名超出省略（窄 pane 下长文件名/长
-                        // 扩展名折行很难看）；收缩链靠 review-tree 的 CSS 放开 wrapper
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%' }}>
+                        // 单行完整展示：徽标 + 全名不省略，超宽由容器横向滚动
+                        // （与文件树 Popover 同款语义——省略号吞名字难看，滚动兜底）
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
                             {entry && <KindBadge kind={entry.kind} isDark={isDark} fontSize={10} />}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.name}</span>
+                            <span>{n.name}</span>
                         </span>
                     ),
                     isLeaf: true,
