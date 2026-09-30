@@ -594,6 +594,8 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
    自带展开图标列关闭（expandIcon=null，箭头在行头统计右侧），残留容器隐藏。
    统计旁的展开箭头与行尾操作（复制路径/标签页打开）桌面 hover/focus 显现，
    触屏无 hover 常显；transition 用 antd css-var token（DESIGN.md 同纪律） */
+@keyframes review-refresh-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+
 .review-collapse > .ant-collapse-item > .ant-collapse-header {
     padding: 6px 12px;
 }

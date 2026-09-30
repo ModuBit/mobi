@@ -819,6 +819,8 @@
         "openInViewer": "在文件查看器中打开",
         "openInTab": "在标签页中打开",
         "filterPlaceholder": "筛选文件",
+        "refresh": "刷新",
+        "collapseAll": "折叠全部",
         "fileTree": "变更文件树",
         "wrap": "自动换行",
         "initRepo": "初始化 git 仓库",

@@ -828,6 +828,8 @@
         "openInViewer": "Open in file viewer",
         "openInTab": "Open in tab",
         "filterPlaceholder": "Filter files",
+        "refresh": "Refresh",
+        "collapseAll": "Collapse all",
         "fileTree": "Changed files tree",
         "wrap": "Word wrap",
         "initRepo": "Initialize Git repository",

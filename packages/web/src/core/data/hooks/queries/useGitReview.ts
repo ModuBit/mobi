@@ -65,6 +65,8 @@ export interface ReviewOverviewResult {
     data: ReviewOverview | undefined
     error: string | null
     isLoading: boolean
+    /** 任意取数中（含后台重取），刷新按钮转圈用 */
+    isFetching: boolean
     refetch: () => void
 }
 
@@ -83,6 +85,7 @@ export function useReviewOverview(sessionId: string): ReviewOverviewResult {
         data: query.data?.data,
         error: query.data?.error ?? (query.error ? String(query.error) : null),
         isLoading: query.isLoading,
+        isFetching: query.isFetching,
         refetch: () => void query.refetch(),
     }
 }

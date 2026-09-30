@@ -29,7 +29,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CheckCheck, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, WrapText } from 'lucide-react'
+import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, RefreshCw, WrapText } from 'lucide-react'
 import { type DiffTarget, type ReviewCommit, type ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
@@ -298,6 +298,16 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         setExpandedPaths([])
     }, [JSON.stringify(target)])
 
+    // 幽灵清理：清单刷新后已消失的 path 从展开态剔除——否则换回原清单时该行无声复活
+    // （ZCode GitPane 同款语义；scopeData null 是加载中，跳过防误清）
+    useEffect(() => {
+        if (!scopeData) return
+        setExpandedPaths((prev) => {
+            const next = prev.filter((p) => files.some((f) => f.path === p))
+            return next.length === prev.length ? prev : next
+        })
+    }, [scopeData, files])
+
     // 「上一轮」无快照链（会话无轮次变更消息）→ 禁用该档（空态文案诚实，不装死数据）
     const lastTurnMissing = overview.data?.scopes.turn === null
     // 非 git 目录：git 系档禁用/隐藏，commit 选择器一并隐藏（仅 turn 可用）
@@ -431,6 +441,33 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 <Flex flex={1} />
                 {/* 右侧工具区：面板级功能按钮（新工具并列挂入，勿混进左侧摘要区） */}
                 <Flex align="center" gap={2} style={{ marginLeft: 'auto' }} data-testid="review-toolbar">
+                    <Tooltip title={t('review.refresh')}>
+                        <Button
+                            type="text" size="small"
+                            aria-label={t('review.refresh')}
+                            data-testid="review-refresh"
+                            icon={
+                                <RefreshCw
+                                    size={15}
+                                    style={{
+                                        color: 'var(--ant-color-text-tertiary)',
+                                        // 取数中转圈（CSS animation，同 TeamAgentPanel/TasksPanel 先例）
+                                        animation: overview.isFetching ? 'review-refresh-spin 1s linear infinite' : undefined,
+                                    }}
+                                />
+                            }
+                            onClick={() => overview.refetch()}
+                        />
+                    </Tooltip>
+                    <Tooltip title={t('review.collapseAll')}>
+                        <Button
+                            type="text" size="small"
+                            aria-label={t('review.collapseAll')}
+                            data-testid="review-collapse-all"
+                            icon={<ChevronsDownUp size={15} style={{ color: 'var(--ant-color-text-tertiary)' }} />}
+                            onClick={() => setExpandedPaths([])}
+                        />
+                    </Tooltip>
                     <Tooltip title={t('review.wrap')}>
                         <Button
                             type="text" size="small"

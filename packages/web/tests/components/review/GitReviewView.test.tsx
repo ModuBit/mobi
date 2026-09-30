@@ -113,7 +113,7 @@ function makeDeps(overrides: {
     const filesFor = overrides.filesFor ?? FILES_FOR
     const initSpy = overrides.onInit ?? (() => {})
     return {
-        useReviewOverview: () => ({ data: overrides.overview, error: overrides.overviewError ?? null, isLoading: overrides.isLoading ?? false, refetch: overrides.refetch ?? (() => {}) }),
+        useReviewOverview: () => ({ data: overrides.overview, error: overrides.overviewError ?? null, isLoading: overrides.isLoading ?? false, isFetching: false, refetch: overrides.refetch ?? (() => {}) }),
         useReviewFiles: (_sessionId: string, target: DiffTarget | null) => {
             const data = filesFor(target)
             // stats/targetGeneration 测试多数不关心：补默认值
@@ -224,6 +224,47 @@ describe('GitReviewView（hook 注入 v2）', () => {
             />,
         )
         expect(rows[0]!.closest('.ant-collapse-header')!.querySelector('[data-testid="review-row-loading"]')).toBeNull()
+    })
+
+    it('工具区「刷新」：触发总览 refetch（targetGeneration 变化 → 清单与展开行 diff 换键连带重拉）', () => {
+        const refetch = vi.fn()
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, refetch, contents: { before: '', after: 'new' } })} />)
+        fireEvent.click(screen.getByTestId('review-refresh'))
+        expect(refetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('工具区「折叠全部」：多开状态一键全收', () => {
+        render(<GitReviewView sessionId="s1" deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: 'new' } })} />)
+        const rows = screen.getAllByTestId('review-file-row')
+        fireEvent.click(rows[0]!)
+        fireEvent.click(rows[1]!)
+        expect(expandedOf(rows[0]!)).toBe('true')
+        fireEvent.click(screen.getByTestId('review-collapse-all'))
+        expect(expandedOf(rows[0]!)).toBe('false')
+        expect(expandedOf(rows[1]!)).toBe('false')
+    })
+
+    it('清单刷新后已消失的文件自动收起：换数据再换回，原展开态不复活（幽灵清理）', () => {
+        const base = { overview: OVERVIEW, contents: { before: '', after: 'new' } }
+        const { rerender } = render(<GitReviewView sessionId="s1" deps={makeDeps(base)} />)
+        const rows = screen.getAllByTestId('review-file-row')
+        fireEvent.click(rows[1]!)
+        expect(expandedOf(rows[1]!)).toBe('true')
+
+        // 数据换版：src/deep/a.ts 从清单消失（幽灵 path 留在展开态里不可见）
+        const filesAfter = TURN_FILES.filter((f) => f.path !== 'src/deep/a.ts')
+        rerender(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ ...base, filesFor: () => ({ files: filesAfter, truncated: false }) })}
+            />,
+        )
+
+        // 清单恢复：若无幽灵清理，展开态残留会让该行无声复活
+        rerender(<GitReviewView sessionId="s1" deps={makeDeps(base)} />)
+        const restored = screen.getAllByTestId('review-file-row')
+        expect(restored).toHaveLength(2)
+        expect(expandedOf(restored[1]!)).toBe('false')
     })
 
     it('行操作「在标签页中打开」：调 workspaceStore.openFileTab，不冒泡切换展开', () => {
