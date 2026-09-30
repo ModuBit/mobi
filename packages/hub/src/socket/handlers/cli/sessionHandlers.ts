@@ -57,7 +57,13 @@ const messageSchema = z.object({
     frame: z.object({ rev: z.number().int().nonnegative(), baseRev: z.null() }).optional(),
     /** 增量帧（delta 协议）：携带时 message 缺省，走拼接器 apply 路径 */
     snapshotDelta: SnapshotDeltaFrameSchema.optional(),
-    category: z.enum(['discard', 'ephemeral', 'persistent']).optional()
+    category: z.enum(['discard', 'ephemeral', 'persistent']).optional(),
+    /** 审查卡位置声明（turn-diff 卡等 CLI 合成消息）：值为**归属 result 行**的 nativeId
+     *  （CLI 时间轴锚定具体行，不找「最新」——封口异步期间下一轮 result 可能已落库）。
+     *  落库 position_at = 该 result 行 position_at - 1（getResultPositionAt）——排在 result
+     *  之前，且恒早于 queue 投喂的 position 地板（MAX+1），queue 立即投喂场景卡片不输给
+     *  下一轮用户气泡；锚查不到（异常时序）退回默认落库时刻 */
+    positionBeforeResultId: z.string().optional()
 })
 
 const updateMetadataSchema = z.object({
@@ -205,7 +211,15 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 保持缺省，仍由 attach 兜底——绝不读 session.metadata（跨时代残留旧值）
         const metadata = messageFactsProcessor.enrichMetadata(sid, parsed.data.metadata ?? null)
 
-        const msg = store.messages.addMessage(sid, content, localId, category, metadata)
+        // positionBeforeResultId 归属声明（审查卡）：position_at 权威在 hub——按 CLI 带
+        // 的归属 result 行 nativeId 定位，取该行之前（-1ms）；锚查不到（异常时序）退回
+        // 默认落库时刻
+        const resultPos = parsed.data.positionBeforeResultId !== undefined
+            ? store.messages.getResultPositionAt(sid, parsed.data.positionBeforeResultId)
+            : null
+        const positionAt = resultPos !== null ? resultPos - 1 : undefined
+
+        const msg = store.messages.addMessage(sid, content, localId, category, metadata, positionAt)
 
         // 终态已持久化：兼容清理同 localId 的流式快照。
         snapshotSync.messagePersisted(sid, localId ?? null)

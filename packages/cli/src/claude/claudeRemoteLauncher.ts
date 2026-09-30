@@ -804,7 +804,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 提前 return）不触发——被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
                 messageQueue.enqueue(logMessage);
                 if ((logMessage as { type?: string }).type === 'result') {
-                    void turnDiffReporter.onTurnEnd();
+                    // uuid = result 行落库 localId 同源（apiSession 咽喉点）——卡片位置声明按它锚定归属行
+                    void turnDiffReporter.onTurnEnd((logMessage as { uuid?: string }).uuid);
                 }
             }
         };

@@ -86,7 +86,8 @@ export async function claudeLocalLauncher(
                 // 卡片必须排在 result 之后（时间线顺序）。观测/合成失败不影响主流程
                 if ((message as { type?: string }).type === 'result') {
                     session.client.sendClaudeSessionMessage(message)
-                    void turnDiffReporter.onTurnEnd()
+                    // uuid = result 行落库 localId 同源（apiSession咽喉点）——卡片位置声明按它锚定归属行
+                    void turnDiffReporter.onTurnEnd((message as { uuid?: string }).uuid)
                 } else {
                     turnDiffReporter.observe(message)
                     session.client.sendClaudeSessionMessage(message)

@@ -19,6 +19,7 @@ import { Database } from 'bun:sqlite'
 
 import {
     addMessage,
+    getResultPositionAt,
     getMessages,
     markMessagesPushed,
     getUnsubmittedLocalMessages,
@@ -195,5 +196,61 @@ describe('lifecycle + position_at', () => {
         const asCli = addMessage(db, 's', CLI_ECHO, 'loc-1')
         expect(asCli.lifecycle).toBeNull()
         expect(asCli.lifecycleAt).toBeNull()
+    })
+})
+
+describe('turn-diff 卡 positionBeforeResult 落库', () => {
+    let db: Database
+    beforeEach(() => { db = makeDb() })
+
+    /** result 行内容（agent output 包装，data.type='result'） */
+    const RESULT = { role: 'agent', content: { type: 'output', data: { type: 'result', subtype: 'success' } } }
+    const TURN_CARD = { role: 'custom', content: [{ type: 'custom-event', name: 'turn-diff', value: {} }] }
+    /** result 行的 content 类型判别路径（json_extract $.content.data.type） */
+    const NON_RESULT = { role: 'agent', content: { type: 'output', data: { type: 'assistant', message: {} } } }
+
+    test('getResultPositionAt：按归属 result 行 nativeId 定位 position_at；找不到/非 result 为 null', () => {
+        expect(getResultPositionAt(db, 's', 'r1')).toBeNull()
+        addMessage(db, 's', NON_RESULT, 'r0', 'persistent', null, 1000)
+        expect(getResultPositionAt(db, 's', 'r0')).toBeNull() // id 存在但内容非 result
+        addMessage(db, 's', RESULT, 'r1', 'persistent', null, 2000)
+        addMessage(db, 's', RESULT, 'r2', 'persistent', null, 3000)
+        // 锚定具体行而非「最新」——封口链异步期间下一轮 result 可能已落库
+        expect(getResultPositionAt(db, 's', 'r1')).toBe(2000)
+        expect(getResultPositionAt(db, 's', 'r2')).toBe(3000)
+        expect(getResultPositionAt(db, 's', 'rX')).toBeNull()
+    })
+
+    test('addMessage 显式 positionAt 覆盖默认 now（唯一调用场景：审查卡对齐本轮 result）', () => {
+        const card = addMessage(db, 's', TURN_CARD, undefined, 'persistent', null, 3000)
+        expect(card.positionAt).toBe(3000)
+    })
+
+    test('卡片 position_at = 归属 result-1：常规时序严格夹在前一条与 result 之间；queue 地板仍在卡后', () => {
+        addMessage(db, 's', NON_RESULT, undefined, 'persistent', null, 1990)
+        addMessage(db, 's', RESULT, 'r1', 'persistent', null, 2000)
+        // hub handler 语义：卡片 position_at = 归属 result 行的 position_at - 1
+        addMessage(db, 's', TURN_CARD, undefined, 'persistent', null, getResultPositionAt(db, 's', 'r1')! - 1)
+        // getMessages 升序（旧→新）：卡片(1999) 在前一条(1990)之后、result(2000) 之前
+        const timeline = getMessages(db, 's', 10)
+        expect(timeline.map((m) => m.seq)).toEqual([1, 3, 2])
+
+        // queue 投喂地板 = 全表 MAX(position_at)+1（新插入 webapp 行 position=now，
+        // 远大于测试用的 2000 刻度）→ 排队消息恒在卡片与 result 之后
+        const web = addMessage(db, 's', WEBAPP_USER, 'loc-1')
+        const { positionAt } = markMessagesPushed(db, 's', ['loc-1'], 2000)
+        expect(positionAt).toBe(web.positionAt + 1)
+        expect(positionAt).toBeGreaterThan(2001)
+    })
+
+    test('卡片与前一条同毫秒撞刻：卡片落到前一条之前（已知 1ms 权衡，仍早于 result 与 queue 消息）', () => {
+        // result 与前一条消息同毫秒落库（pos 2000/2000）→ 卡片 1999 排到两者之前。
+        // position 严格有序下无中间刻可用；同 ms 内的相对次序本就不稳定，
+        // 卡片早 1ms 不影响「卡片 < result < queue 消息」主序
+        addMessage(db, 's', NON_RESULT, undefined, 'persistent', null, 2000)
+        addMessage(db, 's', RESULT, 'r1', 'persistent', null, 2000)
+        addMessage(db, 's', TURN_CARD, undefined, 'persistent', null, getResultPositionAt(db, 's', 'r1')! - 1)
+        const timeline = getMessages(db, 's', 10)
+        expect(timeline.map((m) => m.seq)).toEqual([3, 1, 2])
     })
 })

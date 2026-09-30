@@ -396,6 +396,11 @@ export interface ClientToServerEvents {
          *  （混版本防 transcript 污染）；新 hub 分支顺序 snapshotDelta 优先，不受影响 */
         snapshotDelta?: SnapshotDeltaFrame
         category?: MessageCategory
+        /** 审查卡位置声明（turn-diff 卡等 CLI 合成消息）：值为**归属 result 行**的 nativeId
+         *  ——hub 据此把落库 position_at 定为该 result 行之前（-1ms，CLI 锚定具体行不找
+         *  「最新」），恒早于 queue 投喂的 position 地板（MAX+1），queue 立即投喂场景卡片
+         *  不输给下一轮用户气泡。老 hub 忽略 */
+        positionBeforeResultId?: string
     }) => void
     /** snapshot 流结束信号（delta 协议）：full message 已持久化，hub 据此精确清理该流缓存
      *  （full 的 localId 与流的 sdkUuid 不同，hub 无法自行映射）。老 hub 无此 handler，静默忽略 */

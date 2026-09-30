@@ -30,7 +30,7 @@ import type { SnapshotBlock, SnapshotBlockDelta } from '@mobi/shared'
 import { applySnapshotBlockDeltas, locateSnapshotBlocks } from '@mobi/shared'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { maybePublishLiveNotice } from '@/core/data/stores/liveNoticeStore'
-import { mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
+import { compareMessages, mergeMessages, isQueuedInMobi } from '@/core/lib/messages'
 import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMessagesSubmitted'
 import { trimByTurnBoundary } from '@/domain/chat/turnBoundary'
 
@@ -105,6 +105,23 @@ function isWithdrawn(sessionId: string, m: DecryptedMessage): boolean {
     const tombstone = withdrawnTombstones.get(sessionId)
     if (!tombstone || tombstone.size === 0) return false
     return (m.localId != null && tombstone.has(m.localId)) || (m.id != null && tombstone.has(m.id))
+}
+
+/**
+ * 乱序 append 修复：窗口数组除「刚追加的末行」外恒有序（fetch/reconcile 排序入窗 +
+ * 每次实时 append 都走本函数），乱序只可能出现在末尾——把末行 pop 出、从后向前找
+ * 正确位置 splice 回去，其余行引用原样不动。position 回填的消息（turn-diff 审查卡
+ * positionAt = 归属 result-1）晚于 position 已跳变的 queue 气泡到达时，盲目 append
+ * 会把卡片压到气泡之后（E2E 实锤）；有序时调用方守卫拦截，本函数不进热路径。
+ */
+function insertOutOfOrderTail(messages: DecryptedMessage[]): DecryptedMessage[] {
+    const tail = messages[messages.length - 1]!
+    let idx = messages.length - 1
+    while (idx > 0 && compareMessages(messages[idx - 1]!, tail) > 0) idx--
+    const next = messages.slice()
+    next.copyWithin(idx + 1, idx, messages.length - 1)
+    next[idx] = tail
+    return next
 }
 
 /** 过滤墓碑命中行（fetch/ingest 入库前的统一闸门） */
@@ -360,6 +377,13 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
             messages = resolveMessageCache(messages, m, options)
         }
         if (messages === prev.messages) return prev
+        // 乱序到达守卫：常态 positionAt 单调（append 即有序）零成本放行；末尾逆序
+        // （position 回填消息晚到）时只把末行插回正确位置，其余行引用不动
+        const prevTail = prev.messages[prev.messages.length - 1]
+        const tail = messages[messages.length - 1]
+        if (tail !== prevTail && prevTail !== undefined && compareMessages(prevTail, tail!) > 0) {
+            messages = insertOutOfOrderTail(messages)
+        }
         // turn 边界裁剪（#40 C-1）：超阈值时裁头，游标随裁剪点前移（历史由 fetchOlder 回补）
         const { messages: trimmed, oldestSeq: trimmedOldest } = trimAfterMerge(prev, messages)
         if (trimmed !== messages) {

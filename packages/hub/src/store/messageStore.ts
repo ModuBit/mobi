@@ -25,6 +25,7 @@ import {
     bindNativeIds,
     cancelAllQueuedMessages,
     cancelQueuedMessage,
+    getResultPositionAt,
     getMessagesByNativeId,
     hasQueuedMessagesAfter,
     markTerminalReason,
@@ -51,8 +52,13 @@ export class MessageStore {
         this.db = db
     }
 
-    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent', metadata?: NativeMessageMetadata | null): StoredMessage {
-        return addMessage(this.db, sessionId, content, localId, category, metadata)
+    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent', metadata?: NativeMessageMetadata | null, positionAt?: number): StoredMessage {
+        return addMessage(this.db, sessionId, content, localId, category, metadata, positionAt)
+    }
+
+    /** 按归属 result 行 nativeId 查该行 position_at（turn-diff 审查卡 positionBeforeResultId 的定位锚） */
+    getResultPositionAt(sessionId: string, nativeId: string): number | null {
+        return getResultPositionAt(this.db, sessionId, nativeId)
     }
 
     /** 绑定用户消息的 native 锚点到 metadata（push 时上报）；只补空缺，幂等。返回补写后的行（供广播）。 */

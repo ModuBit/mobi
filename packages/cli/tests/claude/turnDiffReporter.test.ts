@@ -843,4 +843,28 @@ describe('TurnDiffReporter（排队消息竞态隔离）', () => {
             await rm(dir, { recursive: true, force: true })
         }
     })
+
+    it('envelope 顶层带 positionBeforeResultId 归属声明（hub 按该 result 行定位卡片 position_at，不找「最新」）', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'mobi-reporter-pos-hint-'))
+        try {
+            const filePath = join(dir, 'a.ts')
+            await writeFile(filePath, 'new\n', 'utf8')
+            const send = vi.fn()
+            const reporter = new TurnDiffReporter(send, createInMemoryTurnArchiveStore())
+
+            reporter.observe(assistantToolUse('t1', 'Write', filePath))
+            reporter.observe({
+                type: 'user',
+                message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] },
+                tool_use_result: { filePath, content: 'new\n' },
+            } as unknown as RawJSONLines)
+            await reporter.onTurnEnd('result-uuid-1')
+
+            expect(send).toHaveBeenCalled()
+            const raw = send.mock.calls[0]![0] as { positionBeforeResultId?: string }
+            expect(raw.positionBeforeResultId).toBe('result-uuid-1')
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
 })

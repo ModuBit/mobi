@@ -451,6 +451,10 @@ export class ApiSessionClient extends EventEmitter {
                 message: body,
                 localId: randomUUID(),
                 category: 'persistent',
+                // 位置声明（turnDiffReporter 卡片）：归属 result 行的 nativeId——hub 据
+                // 该行定位 position_at（result 前 -1ms），早于 queue 投喂的 position 地板，
+                // 卡片不输给下一轮用户气泡
+                positionBeforeResultId: (body as { positionBeforeResultId?: string }).positionBeforeResultId,
             })
             return
         }

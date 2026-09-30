@@ -134,6 +134,10 @@ export function addMessage(
     localId: string | null | undefined,
     category: MessageCategory = 'persistent',
     metadata: NativeMessageMetadata | null = null,
+    /** 显式 position_at 覆盖（唯一调用场景：turn-diff 审查卡对齐本轮 result 行，见
+     *  getResultPositionAt）——缺省 = now（落库时刻）。已存在行（resume 重放）
+     *  的 UPDATE 分支不受影响：position_at 首写即定，不二次跳变 */
+    positionAt?: number,
 ): StoredMessage {
     const now = Date.now()
 
@@ -211,7 +215,7 @@ export function addMessage(
         category: category,
         lifecycle: lifecycle,
         lifecycle_at: lifecycle === 'queued' ? now : null,
-        position_at: now,
+        position_at: positionAt ?? now,
     })
 
     const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
@@ -219,6 +223,26 @@ export function addMessage(
         throw new Error('Failed to create message')
     }
     return toStoredMessage(row)
+}
+
+/**
+ * 按归属 result 行的 nativeId（= 落库 localId）查该行 position_at（turn-diff 审查卡的
+ * 定位锚，positionBeforeResultId 协议的服务端实现）。锚定**具体行**而非「最新」：封口链
+ * 异步期间下一轮 result 可能已落库，「最新」会锚错轮。调用方取该值 - 1 作卡片 position_at
+ * ——排在 result 之前，与更早消息同毫秒撞刻时主时间线 tie-break（position_at DESC,
+ * seq DESC + 升序 reverse）让 seq 更大的卡片自然夹在前一条与 result 之间；排队消息投喂的
+ * position 地板是 MAX(position_at)+1（markMessagesPushed），恒在卡之后——queue 立即投喂
+ * 场景下卡片不输给下一轮用户气泡。找不到（异常时序 / id 未落库 / 非 result 内容）返回
+ * null，调用方退回默认落库时刻。
+ */
+export function getResultPositionAt(db: Database, sessionId: string, nativeId: string): number | null {
+    const row = db.prepare(`
+        SELECT position_at AS p FROM messages
+        WHERE session_id = ? AND local_id = ? AND category = 'persistent' AND deleted_at IS NULL
+          AND json_extract(content, '$.content.data.type') = 'result'
+        LIMIT 1
+    `).get(sessionId, nativeId) as { p: number } | undefined
+    return row?.p ?? null
 }
 
 export function getMessages(

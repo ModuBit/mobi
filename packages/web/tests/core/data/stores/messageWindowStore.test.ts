@@ -237,6 +237,35 @@ describe('ingestIncomingMessages oldestSeq', () => {
     })
 })
 
+describe('ingestIncomingMessages 乱序到达守卫（position 回填消息晚到不出错序）', () => {
+    beforeEach(() => _resetForTest())
+
+    it('queue 气泡 position 跳变后，晚到的审查卡 position 更小 → 插到气泡之前（不全量重排）', () => {
+        // turn-diff 审查卡 positionAt = 归属 result-1，晚于已被消费（position 跳到消费
+        // 时刻）的 queue 气泡到达；ingest 不得盲目 append
+        ingestIncomingMessages('s1', [msg('queue-bubble', 1000)])
+        ingestIncomingMessages('s1', [msg('result', 998)])
+        ingestIncomingMessages('s1', [msg('turn-card', 999)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['result', 'turn-card', 'queue-bubble'])
+    })
+
+    it('守卫只移动乱序行：其余行引用保持不变', () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2)])
+        const before = getMessageWindowState('s1').messages
+        ingestIncomingMessages('s1', [msg('card', 1.5)])
+        const after = getMessageWindowState('s1').messages
+        expect(after.map(m => m.id)).toEqual(['a', 'card', 'b'])
+        expect(after[0]).toBe(before[0])
+        expect(after[2]).toBe(before[1])
+    })
+
+    it('常态流式 position 单调递增 → append 后仍有序，不触发插入', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        ingestIncomingMessages('s1', [msg('b', 2)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b'])
+    })
+})
+
 describe('ingestIncomingMessages backfill 语义（attach 重播旧行不出 ghost）', () => {
     beforeEach(() => _resetForTest())
 

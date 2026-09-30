@@ -64,7 +64,7 @@ export function isQueuedInMobi(msg: DecryptedMessage): boolean {
  * 不随排队消费跳变——若以 seq 为主键，运行中发消息时用户消息会卡在上一轮 assistant 输出中间
  *（乐观发送时刻早于 turn 结束时落库的后续 assistant 消息）。positionAt 缺失（如 snapshot）回退 seq。
  */
-function compareMessages(a: DecryptedMessage, b: DecryptedMessage): number {
+export function compareMessages(a: DecryptedMessage, b: DecryptedMessage): number {
     const aPos = typeof a.positionAt === 'number' ? a.positionAt : null
     const bPos = typeof b.positionAt === 'number' ? b.positionAt : null
 

@@ -60,8 +60,16 @@ import { logger } from '@/ui/logger'
 /** 记变更的编辑族工具（工具名 → 是否取 input.file_path；名单即采集口径边界） */
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
-/** 合成事件信封（mobiCustomEvent 标记由 apiSession 咽喉点识别，custom role 原样落库） */
-type CustomEventEnvelope = { mobiCustomEvent: true; role: 'custom'; content: unknown[] }
+/** 合成事件信封（mobiCustomEvent 标记由 apiSession 咽喉点识别，custom role 原样落库）。
+ *  positionBeforeResultId：归属 result 行的 nativeId，随信封透传 hub——落库 position_at
+ *  由 hub 权威按该行定位（result 前 -1ms），消除 queue 立即投喂时卡片输给下一轮用户气泡
+ *  的毫秒级展示竞态；锚定具体行而非「最新」，封口异步期间下一轮 result 已落库也不锚错轮 */
+type CustomEventEnvelope = {
+    mobiCustomEvent: true
+    role: 'custom'
+    content: unknown[]
+    positionBeforeResultId?: string
+}
 
 /** turn 内累积的单文件内容对 = ToolChangeEntry 的归并规则（before 取首次 / after 取
  *  末次 / writeCount 累加 / toolNames 保序去重）——复用 ToolChangeJournal 本体作每轮
@@ -274,13 +282,15 @@ export class TurnDiffReporter {
 
     /**
      * result 消息到达时调用：**同步冻结**本轮采集上下文（后续 observe 落在新轮，
-     * 与封口互不干扰），封口入串行队列后台执行。返回封口完成的 promise——launcher
-     * void 调用不等待（不阻塞 turn 完成），测试 await 保确定性；失败只记日志。
+     * 与封口互不干扰），封口入串行队列后台执行。resultNativeId 是本轮 result 消息的
+     * uuid（落库 localId 同源）——卡片位置声明按它锚定归属 result 行。返回封口完成的
+     * promise——launcher void 调用不等待（不阻塞 turn 完成），测试 await 保确定性；
+     * 失败只记日志。
      */
-    onTurnEnd(): Promise<void> {
+    onTurnEnd(resultNativeId?: string): Promise<void> {
         const sealed = this.ctx
         this.ctx = createTurnContext()
-        const task = this.sealQueue.then(() => this.sealTurn(sealed))
+        const task = this.sealQueue.then(() => this.sealTurn(sealed, resultNativeId))
         // 链上吞错（单轮封口失败不断后续轮）；返回值同样吞错（launcher void 调用无
         // rejection 处理方）
         this.sealQueue = task.then(() => undefined, () => undefined)
@@ -290,7 +300,7 @@ export class TurnDiffReporter {
     }
 
     /** 单轮封口：在途读盘收口 → 合成 → 卡片入流 → 归档封口（后台串行） */
-    private async sealTurn(ctx: TurnContext): Promise<void> {
+    private async sealTurn(ctx: TurnContext, resultNativeId?: string): Promise<void> {
         // 在途读盘补全先收口（afterContent 就绪后再合成/封口，保证确定性）
         await Promise.all([...ctx.pendingReads])
         const files = (await this.composeFromTurnAccumulation(ctx)) ?? this.composeFromProjection(ctx)
@@ -304,7 +314,7 @@ export class TurnDiffReporter {
             files: files.files,
             git: files.git,
         })
-        this.sendEnvelope(payload)
+        this.sendEnvelope(payload, resultNativeId)
         // journal 口径：封口归档（历史轮回看的事实源），失败吞错（消费端走兜底）。
         // hydration：全文镜像落 a/b 目录（turnFulltextStore），patch 由目录模式单次
         // diff 合成，归档条目带 ref；无全文产出（旧构造/路径逃逸/落盘失败）走单文件兜底
@@ -370,11 +380,12 @@ export class TurnDiffReporter {
     }
 
     /** turn-diff 自定义事件入流（卡片时间线在 result 之后） */
-    private sendEnvelope(payload: TurnDiffPayload): void {
+    private sendEnvelope(payload: TurnDiffPayload, resultNativeId?: string): void {
         const envelope: CustomEventEnvelope = {
             mobiCustomEvent: true,
             role: 'custom',
             content: [{ type: 'custom-event', name: TURN_DIFF_EVENT, value: payload }],
+            positionBeforeResultId: resultNativeId,
         }
         this.send(envelope as unknown as RawJSONLines)
     }
