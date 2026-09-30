@@ -27,7 +27,7 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
+import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Splitter, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronsDownUp, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, RefreshCw, WrapText } from 'lucide-react'
 import { type DiffTarget, type ReviewCommit, type ReviewFileEntry } from '@mobi/shared'
@@ -263,6 +263,8 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
         })
     }, [])
     const [treeOpen, setTreeOpen] = useState(false)
+    /** 树 pane 拖拽记忆宽度（px）：开合往返与重开都回到最近拖拽值 */
+    const [treeSize, setTreeSize] = useState(264)
 
     /** 把指定行滚进视口（树点文件定位用）：顶格到可视区顶部——行头 + 展开的 diff
      *  从头展示（'nearest' 会停在「行头刚好贴底」，diff 全在视口外等于没定位）；
@@ -508,9 +510,19 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 </Flex>
             </Flex>
 
-            {/* Content：平铺文件清单（Collapse 手风琴）+ 可开合 diff 文件树 */}
-            <Flex flex={1} style={{ minHeight: 0 }}>
-                <Flex vertical flex={1} style={{ minWidth: 0, overflowY: 'auto' }}>
+            {/* Content：平铺文件清单（Collapse 手风琴）+ 可拖拽调宽的 diff 文件树。
+                Splitter 受控树 pane：treeOpen 切 size 0↔记忆值（收起即折叠），拖拽经
+                onResize 回写记忆值；容器 collapsible motion 供折叠动画（DESIGN.md Motion） */}
+            <Splitter
+                style={{ flex: 1, minHeight: 0 }}
+                collapsible={{ motion: true }}
+                onResize={(sizes) => {
+                    const next = sizes[1]
+                    if (next > 0) setTreeSize(next)
+                }}
+            >
+                <Splitter.Panel min="20%" max="80%">
+                    <Flex vertical style={{ height: '100%', overflowY: 'auto' }}>
                     <Collapse
                         className="review-collapse"
                         ghost
@@ -564,38 +576,41 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                         </Flex>
                     )}
                 </Flex>
-                {/* 变更文件树：常挂载 + 外壳宽度/透明度缓动（条件渲染瞬切生硬；收起态
-                    aria-hidden 屏蔽、width 0 + overflow hidden 裁剪。缓动 token 用 antd
-                    css-var（同 GitReviewView 滑动按钮先例） */}
-                <div
-                    data-testid="review-tree-holder"
-                    aria-hidden={!treeOpen}
-                    style={{
-                        width: treeOpen ? 264 : 0,
-                        opacity: treeOpen ? 1 : 0,
-                        flexShrink: 0,
-                        overflow: 'hidden',
-                        transition: [
-                            `width var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
-                            `opacity var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
-                        ].join(', '),
-                    }}
+                </Splitter.Panel>
+                {/* 变更文件树 pane：常挂载（收起仅 size 0 折叠，不销毁——筛选/展开状态
+                    在开合往返间保留）；holder 只承担淡入淡出与 aria-hidden，宽度交给
+                    Splitter 拖拽 */}
+                <Splitter.Panel
+                    size={treeOpen ? treeSize : 0}
+                    min={200}
+                    max={520}
                 >
-                    <DiffTreePanel
-                        files={files}
-                        selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
-                        onOpenFile={(path) => {
-                            // 与主列表同闸：非文本条目点了也只选中树节点，不展开行
-                            const entry = files.find((f) => f.path === path)
-                            if (!entry || !isDiffable(entry)) return
-                            // 已展开无动画立即定位；新展开等 Collapse 动画结束再滚
-                            const already = expandedPaths.includes(path)
-                            setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
-                            revealRow(path, already ? 0 : 260)
+                    <div
+                        data-testid="review-tree-holder"
+                        aria-hidden={!treeOpen}
+                        style={{
+                            height: '100%',
+                            opacity: treeOpen ? 1 : 0,
+                            overflow: 'hidden',
+                            transition: `opacity var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
                         }}
-                    />
-                </div>
-            </Flex>
+                    >
+                        <DiffTreePanel
+                            files={files}
+                            selectedPath={expandedPaths[expandedPaths.length - 1] ?? null}
+                            onOpenFile={(path) => {
+                                // 与主列表同闸：非文本条目点了也只选中树节点，不展开行
+                                const entry = files.find((f) => f.path === path)
+                                if (!entry || !isDiffable(entry)) return
+                                // 已展开无动画立即定位；新展开等 Collapse 动画结束再滚
+                                const already = expandedPaths.includes(path)
+                                setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
+                                revealRow(path, already ? 0 : 260)
+                            }}
+                        />
+                    </div>
+                </Splitter.Panel>
+            </Splitter>
         </Flex>
     )
 })

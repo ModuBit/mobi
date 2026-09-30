@@ -603,6 +603,16 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     }
 }
 
+/* 审查文件树节点单行省略：antd Tree 的 content-wrapper 默认 min-width:auto 不收缩，
+   长文件名把标题撑折行；放开收缩链让 title 内的 ellipsis 生效 */
+.review-tree .ant-tree-node-content-wrapper {
+    min-width: 0;
+}
+.review-tree .ant-tree-title {
+    display: flex;
+    min-width: 0;
+}
+
 .review-collapse > .ant-collapse-item > .ant-collapse-header {
     padding: 6px 12px;
 }

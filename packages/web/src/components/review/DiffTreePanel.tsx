@@ -69,9 +69,11 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                 return {
                     key: n.path,
                     title: (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        // 单行不折行：徽标不收缩、文件名超出省略（窄 pane 下长文件名/长
+                        // 扩展名折行很难看）；收缩链靠 review-tree 的 CSS 放开 wrapper
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%' }}>
                             {entry && <KindBadge kind={entry.kind} isDark={isDark} fontSize={10} />}
-                            <span>{n.name}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.name}</span>
                         </span>
                     ),
                     isLeaf: true,
@@ -88,7 +90,8 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
         <Flex
             data-testid="review-tree-panel"
             vertical
-            style={{ width: 264, flexShrink: 0, borderLeft: '1px solid var(--ant-color-border-secondary)', minHeight: 0 }}
+            className="review-tree"
+            style={{ height: '100%', minHeight: 0 }}
         >
             <Input
                 size="small"
