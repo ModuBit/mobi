@@ -521,7 +521,10 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                     if (next > 0) setTreeSize(next)
                 }}
             >
-                <Splitter.Panel min="20%" max="80%">
+                {/* 清单 panel 只留 min 不设 max：Splitter 对部分受控 + 上限约束的场景
+                    会把清单钳在 max、剩余空间无人认领（收起树后右侧留白 20%）——去掉
+                    max 让自动分配把余量全额给清单 */}
+                <Splitter.Panel min="20%">
                     <Flex vertical style={{ height: '100%', overflowY: 'auto' }}>
                     <Collapse
                         className="review-collapse"
