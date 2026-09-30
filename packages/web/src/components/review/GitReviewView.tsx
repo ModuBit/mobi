@@ -406,7 +406,15 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                 <Dropdown
                     trigger={['click']}
                     placement="bottomLeft"
+                    // 关闭即卸载 popup 树：触屏无 mouseleave 兜底，选中 commit 关主菜单后
+                    // 子菜单 popup 会泄漏残留（PC 靠移开鼠标的 mouseleave 才正常）；
+                    // 卸载同时清掉 openKeys 残留，避免重开时子菜单自动展开
+                    destroyOnHidden
                     menu={{
+                        // 触屏走 click 展开子菜单：hover 语义在触屏上靠 tap 合成的 mouseenter，
+                        // 选择 commit 关闭主菜单的退场窗口里合成 mouseover 链会把子菜单再次
+                        // 「复活」再随卸载消失（闪烁）；PC 保持 hover 手感
+                        triggerSubMenuAction: isMobile ? 'click' : 'hover',
                         items: [
                             ...TARGET_OPTIONS.map(({ target: t2, labelKey }) => ({
                                 key: JSON.stringify(t2),

@@ -576,13 +576,28 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
     overflow-y: auto;
 }
 
-/* 窄屏：子菜单浮层贴屏幕右缘展开，固定 300 宽（label 内联样式）会溢出裁掉相对时间——
-   收窄为自适应，留出主菜单锚点左侧的展开空间 */
+/* 窄屏：子菜单从主菜单右侧展开（锚点 x≈130），item 内联固定 300 宽会把 popup 撑到
+   恒 328px，<458px 视口必然溢出右缘——rc-trigger 的 align 只算一次，内容后撑宽不会
+   回拉，溢出还会诱发移动端整页横滚（主菜单被滚出屏）。
+   ul 直接定宽收进视口：item 的 ellipsis 链（flex+minWidth:0）依赖确定宽度，间接钳制
+   （max-width / width:auto）会陷入「li 由内容撑开」的循环失控，定宽是唯一闭合解 */
 @media (max-width: 768px) {
+    .ant-dropdown-menu-sub {
+        width: calc(100vw - 150px);
+        overflow-x: hidden;
+    }
+    /* ellipsis 收缩链逐层闭合：ul 定宽 → li(flex) → title-content(flex item)
+       → item。任何一层 min-width:auto 都会让 min-content 把整链撑破 */
+    .ant-dropdown-menu-sub .ant-dropdown-menu-item,
+    .ant-dropdown-menu-sub .ant-dropdown-menu-title-content,
+    .ant-dropdown-menu-sub [data-testid='review-commit-item'],
+    .ant-dropdown-menu-sub [data-testid='review-commit-sentinel'] {
+        min-width: 0 !important;
+    }
     .ant-dropdown-menu-sub [data-testid='review-commit-item'],
     .ant-dropdown-menu-sub [data-testid='review-commit-sentinel'] {
         width: auto !important;
-        max-width: calc(100vw - 150px);
+        max-width: 100%;
     }
 }
 

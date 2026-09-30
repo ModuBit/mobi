@@ -341,13 +341,15 @@ describe('GitReviewView（hook 注入 v2）', () => {
 
     it('commit 子菜单：展开「已提交」列 commit → 选中切 commit 档；根提交（无父）不可选', async () => {
         const onTargetChange = vi.fn()
+        // 子菜单 click 展开 = 移动端语义（桌面走 hover，见 triggerSubMenuAction 分端）
+        mobile = true
         render(<GitReviewView sessionId="s1" target={TARGET_TURN} onTargetChange={onTargetChange} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, contents: { before: '', after: '' } })} />)
 
         openScopeDropdown()
         // hover「已提交」展开子菜单（rc-menu desktop 由 mouseenter 触发；Dropdown 内类名带 dropdown 前缀）
         const submenuTitle = [...document.querySelectorAll('.ant-dropdown-menu-submenu-title')].find((el) => el.textContent === 'review.scope.commits')
         expect(submenuTitle).toBeDefined()
-        fireEvent.mouseEnter(submenuTitle!)
+        fireEvent.click(submenuTitle!)
         await waitFor(() => expect(screen.getAllByTestId('review-commit-item')).toHaveLength(2))
 
         // 两行提交：正常提交可点、根提交（parentSha=null）菜单项禁用
@@ -372,11 +374,13 @@ describe('GitReviewView（hook 注入 v2）', () => {
         })
         try {
             const onLoadMore = vi.fn()
+            // 移动端语义：子菜单 click 展开
+            mobile = true
             render(<GitReviewView sessionId="s1" target={TARGET_TURN} deps={makeDeps({ overview: OVERVIEW, commits: COMMITS, hasNextPage: true, onLoadMore })} />)
 
             openScopeDropdown()
             const submenuTitle = [...document.querySelectorAll('.ant-dropdown-menu-submenu-title')].find((el) => el.textContent === 'review.scope.commits')
-            fireEvent.mouseEnter(submenuTitle!)
+            fireEvent.click(submenuTitle!)
             // 子菜单懒渲染，等 portal 挂载；无「加载更多」按钮，只有哨兵
             await waitFor(() => expect(screen.getByTestId('review-commit-sentinel')).toBeDefined())
 
