@@ -103,6 +103,7 @@ function makeDeps(overrides: {
     isLoading?: boolean
     filesFor?: (target: DiffTarget | null) => { files: ReviewFileEntry[]; truncated: boolean } | null
     contents?: { before: string | null; after: string | null } | null
+    patchLoading?: boolean
     onQuery?: (path: string | null) => void
     running?: boolean | undefined
     refetch?: ReturnType<typeof vi.fn>
@@ -121,7 +122,8 @@ function makeDeps(overrides: {
         },
         useReviewPatch: (_sessionId: string, _target: DiffTarget | null, path: string | null) => {
             overrides.onQuery?.(path)
-            return { data: path ? { patch: '', previousPath: null, oversized: false, binary: false } : undefined, error: null, isLoading: false }
+            const data = path ? { patch: '', previousPath: null, oversized: false, binary: false } : undefined
+            return { data: overrides.patchLoading ? undefined : data, error: null, isLoading: overrides.patchLoading ?? false }
         },
         useReviewContents: (_sessionId: string, _target: DiffTarget | null, path: string | null) => {
             return {
@@ -199,6 +201,29 @@ describe('GitReviewView（hook 注入 v2）', () => {
         fireEvent.click(rows[1]!)
         expect(expandedOf(rows[1]!)).toBe('false')
         expect(expandedOf(rows[0]!)).toBe('true')
+    })
+
+    it('展开行 patch 请求中：行头出 loading 指示（chevron 位置），就绪后还原', () => {
+        const { rerender } = render(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: 'new' }, patchLoading: true })}
+            />,
+        )
+        const rows = screen.getAllByTestId('review-file-row')
+        fireEvent.click(rows[0]!)
+        // 请求中：行头（collapse header 内）出现 loading 指示
+        expect(rows[0]!.closest('.ant-collapse-header')!.querySelector('[data-testid="review-row-loading"]')).not.toBeNull()
+        expect(rows[1]!.closest('.ant-collapse-header')!.querySelector('[data-testid="review-row-loading"]')).toBeNull()
+
+        // 就绪：loading 指示还原为展开箭头
+        rerender(
+            <GitReviewView
+                sessionId="s1"
+                deps={makeDeps({ overview: OVERVIEW, contents: { before: '', after: 'new' }, patchLoading: false })}
+            />,
+        )
+        expect(rows[0]!.closest('.ant-collapse-header')!.querySelector('[data-testid="review-row-loading"]')).toBeNull()
     })
 
     it('行操作「在标签页中打开」：调 workspaceStore.openFileTab，不冒泡切换展开', () => {

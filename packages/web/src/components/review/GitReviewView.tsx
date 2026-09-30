@@ -26,7 +26,7 @@
  * RowDiff（行内 diff 区）、DiffTreePanel（右侧文件树）。本文件只留视图主体与文件行头。
  */
 
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Collapse, Empty, Flex, Popover, Select, Spin, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronDown, Columns2, Copy, ExternalLink, FileQuestion, FolderTree, WrapText } from 'lucide-react'
@@ -143,7 +143,7 @@ function NonGitEmptyState({ onInit, pending }: { onInit: () => void; pending: bo
 
 /** 手风琴文件行的头（Collapse label）：徽标/路径 + 紧随其后的统计与展开箭头（均 hover 显现），
  *  行尾 hover 操作（复制/打开标签页）。Collapse 自带展开图标关闭（expandIcon=null） */
-function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file: ReviewFileEntry; expanded: boolean }) {
+function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: string; file: ReviewFileEntry; expanded: boolean; pending?: boolean }) {
     const { t } = useTranslation()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
@@ -203,16 +203,21 @@ function FileRowHeader({ sessionId, file, expanded }: { sessionId: string; file:
                 </Tooltip>
             </Flex>
             {/* 展开/收起箭头放行尾：hover 显现（Collapse 自带图标已关），随开合旋转。
-                不可展开的条目（非文本）不给箭头——行本身不响应展开 */}
+                不可展开的条目（非文本）不给箭头——行本身不响应展开。
+                请求中：箭头位置换 loading 指示（RowDiff 上报 pending，就绪还原） */}
             {isDiffable(file) && (
                 <span className="review-row-chevron" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', color: 'var(--ant-color-text-tertiary)' }}>
-                    <ChevronDown
-                        size={13}
-                        style={{
-                            transform: expanded ? 'none' : 'rotate(-90deg)',
-                            transition: `transform var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
-                        }}
-                    />
+                    {pending ? (
+                        <Spin size="small" data-testid="review-row-loading" />
+                    ) : (
+                        <ChevronDown
+                            size={13}
+                            style={{
+                                transform: expanded ? 'none' : 'rotate(-90deg)',
+                                transition: `transform var(--ant-motion-duration-mid, 0.2s) var(--ant-motion-ease-in-out, ease)`,
+                            }}
+                        />
+                    )}
                 </span>
             )}
         </div>
@@ -244,6 +249,17 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
     const initGit = deps.useReviewInit(sessionId)
     /** 多开：当前展开 diff 的文件路径集合（默认全收起，交给用户点开） */
     const [expandedPaths, setExpandedPaths] = useState<string[]>([])
+    /** 展开行 patch 查询 pending 集合（RowDiff 上报；行头 loading 指示的来源） */
+    const [pendingPaths, setPendingPaths] = useState<ReadonlySet<string>>(() => new Set())
+    const reportPending = useCallback((path: string, pending: boolean) => {
+        setPendingPaths((prev) => {
+            if (prev.has(path) === pending) return prev
+            const next = new Set(prev)
+            if (pending) next.add(path)
+            else next.delete(path)
+            return next
+        })
+    }, [])
     const [treeOpen, setTreeOpen] = useState(false)
     /** commit 选择面板（Select 点「提交…」弹出，非下拉） */
     const [commitsOpen, setCommitsOpen] = useState(false)
@@ -463,7 +479,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                         // RowDiff（diff 查询）展开才挂载，与「单击懒加载展开」一致
                         items={files.map((file) => ({
                             key: file.path,
-                            label: <FileRowHeader sessionId={sessionId} file={file} expanded={expandedPaths.includes(file.path)} />,
+                            label: <FileRowHeader sessionId={sessionId} file={file} expanded={expandedPaths.includes(file.path)} pending={pendingPaths.has(file.path)} />,
                             // 只有文本类条目才有 children（不可展开项永远不会出现在 activeKey）
                             children: scopeData && isDiffable(file) && (
                                 <div data-testid="review-file-diff" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
@@ -475,6 +491,7 @@ export const GitReviewView = memo(function GitReviewView({ sessionId, target: ta
                                         deps={deps}
                                         wrap={wrap}
                                         layout={layout}
+                                        onPendingChange={reportPending}
                                     />
                                 </div>
                             ),

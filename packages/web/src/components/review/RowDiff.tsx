@@ -21,6 +21,7 @@
  */
 
 import { Button, Flex, Spin } from 'antd'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DiffTarget, ReviewFileEntry } from '@mobi/shared'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
@@ -28,7 +29,7 @@ import { basename } from '@/core/utils/path'
 import { DiffViewer } from './DiffViewer'
 import type { GitReviewDeps } from './reviewDeps'
 
-export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, layout = 'unified' }: {
+export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, layout = 'unified', onPendingChange }: {
     sessionId: string
     /** 审查目标（五档统一寻址） */
     target: DiffTarget
@@ -40,6 +41,8 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
     wrap?: boolean
     /** diff 布局（unified/split，票06） */
     layout?: 'unified' | 'split'
+    /** 查询 pending 状态上报（行头 loading 指示用）；卸载必回 false */
+    onPendingChange?: (path: string, pending: boolean) => void
 }) {
     const { t } = useTranslation()
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
@@ -47,6 +50,12 @@ export function RowDiff({ sessionId, target, entry, version, deps, wrap = true, 
     // hydration 后 oversized 照常拉取：读侧对带 ref 的归档条目现场合成 patch（API 出口
     // 截断），无 ref（旧归档）返回 oversized 打标 + 空 patch → 降级 tooBig
     const patch = deps.useReviewPatch(sessionId, target, entry.path, version)
+
+    // pending 上报：与下方 Spin 的判据同口径（无数据也算 pending）；卸载收尾
+    useEffect(() => {
+        onPendingChange?.(entry.path, patch.isLoading || !patch.data)
+        return () => onPendingChange?.(entry.path, false)
+    }, [entry.path, patch.isLoading, patch.data, onPendingChange])
 
     // 纯 rename（内容零增删）的 patch 只有 rename 头、无 hunk——pierre 在
     // disableFileHeader 下渲染 0 高空白（E2E 实测），诚实给专用文案

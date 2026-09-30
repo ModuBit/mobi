@@ -87,6 +87,10 @@ export function FilePathLabel({ path }: { path: string }) {
         <span
             style={{
                 flex: 1, minWidth: 0,
+                // inline-block + maxWidth：让 overflow/ellipsis 在非 flex 父（如审查行的
+                // 收缩包装 span）里也生效——span 默认 inline 时 overflow:hidden 无效，
+                // 审查清单宽度不足时路径直接溢出而非左省略
+                display: 'inline-block', maxWidth: '100%',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 direction: 'rtl', textAlign: 'left',
                 fontSize: token.fontSizeSM, fontFamily: 'var(--font-mono, monospace)',

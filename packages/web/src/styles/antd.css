@@ -597,6 +597,14 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 .review-collapse > .ant-collapse-item > .ant-collapse-header {
     padding: 6px 12px;
 }
+/* 行 hover 铺淡底（整行可点的 affordance；圆角避免色块贴边生硬） */
+.review-collapse .review-file-row {
+    border-radius: var(--ant-border-radius, 6px);
+    transition: background-color var(--ant-motion-duration-fast, 0.1s) ease;
+}
+.review-collapse .review-file-row:hover {
+    background-color: var(--ant-color-fill-tertiary);
+}
 .review-collapse .ant-collapse-expand-icon {
     display: none;
 }
