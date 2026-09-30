@@ -24,12 +24,13 @@ import { Empty, Flex, Input, Tree } from 'antd'
 import type { TreeProps } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import { useTranslation } from 'react-i18next'
-import { Search } from 'lucide-react'
+import { Search, FolderClosed, FolderOpen } from 'lucide-react'
 import type { TurnDiffFileKind } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
 import { KindBadge } from '@/components/turnDiff/present'
+import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
 
 export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     /** 最小结构（path/kind）——turn/review 两种条目形状共用 */
@@ -63,11 +64,24 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
         const render = (nodes: NestedFileNode[]): DataNode[] =>
             nodes.map((n) => {
                 if (n.type === 'directory') {
-                    return { key: n.path, title: n.name, children: n.children ? render(n.children) : undefined }
+                    return {
+                        key: n.path,
+                        title: n.name,
+                        // 与文件树同款：双图标挂 icon 槽，展开/收起切换交给 CSS（aria-expanded 显隐）
+                        icon: () => (
+                            <>
+                                <FolderClosed className="folder-closed" size={14} />
+                                <FolderOpen className="folder-open" size={14} />
+                            </>
+                        ),
+                        children: n.children ? render(n.children) : undefined,
+                    }
                 }
                 const entry = entryByPath.get(n.path)
                 return {
                     key: n.path,
+                    // 文件类型图标走 icon 槽（与文件树同源 FileTypeBadge），kind 徽标留在 title
+                    icon: () => <FileTypeBadge path={n.path} size={14} knownFile />,
                     title: (
                         // 单行完整展示：徽标 + 全名不省略，超宽由容器横向滚动
                         // （与文件树 Popover 同款语义——省略号吞名字难看，滚动兜底）
@@ -91,7 +105,7 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
             data-testid="review-tree-panel"
             vertical
             className="review-tree"
-            style={{ height: '100%', minHeight: 0 }}
+            style={{ height: '100%', minHeight: 0, padding: 8 }}
         >
             <Input
                 size="small"
@@ -100,13 +114,13 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={t('review.filterPlaceholder')}
-                style={{ margin: 8 }}
                 data-testid="review-tree-filter"
             />
-            <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {filtered.length > 0 ? (
                     <Tree
                         blockNode
+                        showIcon
                         treeData={treeData}
                         expandedKeys={expandedKeys}
                         onExpand={(keys) => setExpandedKeys(keys)}

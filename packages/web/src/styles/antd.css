@@ -620,6 +620,25 @@ html[data-theme='dark'] .ant-btn-variant-solid:disabled {
 .review-tree .ant-tree-list-holder-inner {
     min-width: max-content;
 }
+/* 以下三条抄自 FileTreeView TreeWrap：13px 行密度、lucide 图标垂直居中、
+   folder 双图标按 antd 自带 aria-expanded 显隐（收起 FolderClosed / 展开 FolderOpen） */
+.review-tree .ant-tree {
+    font-size: 13px;
+    /* 透出宿主背景（Popover inner / 分栏面板色）：antd 默认 colorBgContainer
+       会在面板上画出一块异色矩形（FileTreeView TreeWrap 同款覆盖） */
+    background: transparent;
+}
+.review-tree .ant-tree-iconEle {
+    display: inline-flex;
+    align-items: center;
+    line-height: 0;
+}
+.review-tree .ant-tree-treenode[aria-expanded='true'] .folder-closed {
+    display: none;
+}
+.review-tree .ant-tree-treenode[aria-expanded='false'] .folder-open {
+    display: none;
+}
 
 .review-collapse > .ant-collapse-item > .ant-collapse-header {
     padding: 6px 12px;
