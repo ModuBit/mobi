@@ -88,16 +88,17 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
             : { oldFile: { name: path, contents: data.before }, newFile: { name: path, contents: data.after ?? '' } }
     }, [api, queryClient, sessionId, target, path, version])
 
-    // turn 档不配 loadDiffFiles（turn-archive B：归档只存统计+patch，全文零进盘，
-    // 无全文可 hydrate——零 RPC；其余档懒拉展开折叠上下文）
+    // 全档配 loadDiffFiles（含 turn：hydration 票03 后封口归档落 a/ b/ 全文目录，
+    // contents 能供历史轮全文——折叠上下文可展开。旧归档无 ref 时 contents 返回
+    // missing → loader 抛错 → 库内静默降级为不可展开，同旧行为）
     const options = useMemo(() => ({
         diffStyle: layout,
         overflow: (wrap ? 'wrap' : 'scroll') as 'wrap' | 'scroll',
         hunkSeparators: 'line-info' as const,
         disableFileHeader: true,
         themeType: resolved as 'light' | 'dark',
-        ...(target.kind !== 'turn' && { loadDiffFiles }),
-    }), [layout, wrap, resolved, target, loadDiffFiles])
+        loadDiffFiles,
+    }), [layout, wrap, resolved, loadDiffFiles])
 
     return (
         <Flex data-testid="git-diff-viewer" vertical aria-label={t('review.diffAria')} style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, overflow: 'auto' }}>

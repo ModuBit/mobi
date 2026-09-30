@@ -88,10 +88,10 @@ describe('DiffViewer（pierre 换血）', () => {
         expect(options.overflow).toBe('scroll')
     })
 
-    it('turn 档：不配 loadDiffFiles（归档只存统计+patch，全文零进盘——零 RPC）', () => {
+    it('turn 档：同样配 loadDiffFiles（hydration 票03 后归档存 a/ b/ 全文，contents 可供——旧归档无 ref 走库内静默降级）', () => {
         renderViewer({}, 'diff --git a/x b/x', TURN_TARGET)
         const { options } = captured[0]!
-        expect(options.loadDiffFiles).toBeUndefined()
+        expect(typeof options.loadDiffFiles).toBe('function')
     })
 
     it('空 patch：不渲染 PatchDiff（空串会 throw，PoC 实证），降级 noDiff 文案', () => {
