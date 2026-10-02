@@ -15,7 +15,6 @@
  */
 
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { registerBashHandlers } from './handlers/bash'
 import { registerCommandHandlers } from './handlers/commands'
 import { registerDifftasticHandlers } from './handlers/difftastic'
 import { registerFileHandlers } from './handlers/files'
@@ -23,7 +22,6 @@ import { registerSessionFilesHandler } from './handlers/sessionFiles'
 import { registerUploadHandlers } from './handlers/uploads'
 
 export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
-    registerBashHandlers(rpcHandlerManager, workingDirectory)
     registerFileHandlers(rpcHandlerManager, workingDirectory)
     registerDifftasticHandlers(rpcHandlerManager, workingDirectory)
     registerCommandHandlers(rpcHandlerManager, workingDirectory)
