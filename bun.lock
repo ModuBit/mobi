@@ -46,6 +46,19 @@
         "vitest": "^5.0.2",
       },
     },
+    "packages/daemon": {
+      "name": "@mobi/daemon",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mobi/node-core": "workspace:*",
+        "@mobi/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^26.6.3",
+        "bun-types": "^1.4.2",
+        "vitest": "^5.0.2",
+      },
+    },
     "packages/hub": {
       "name": "mobi-hub",
       "version": "0.0.0",
@@ -63,6 +76,31 @@
         "@types/node": "^26.6.3",
         "@types/web-push": "^3.6.4",
         "bun-types": "^1.4.2",
+      },
+    },
+    "packages/node-core": {
+      "name": "@mobi/node-core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mobi/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^26.6.3",
+        "bun-types": "^1.4.2",
+        "vitest": "^5.0.2",
+      },
+    },
+    "packages/session": {
+      "name": "@mobi/session",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mobi/node-core": "workspace:*",
+        "@mobi/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^26.6.3",
+        "bun-types": "^1.4.2",
+        "vitest": "^5.0.2",
       },
     },
     "packages/shared": {
@@ -601,6 +639,12 @@
     "@microsoft/fetch-event-source": ["@microsoft/fetch-event-source@2.0.1", "", {}, "sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA=="],
 
     "@mobi/cli": ["@mobi/cli@workspace:packages/cli"],
+
+    "@mobi/daemon": ["@mobi/daemon@workspace:packages/daemon"],
+
+    "@mobi/node-core": ["@mobi/node-core@workspace:packages/node-core"],
+
+    "@mobi/session": ["@mobi/session@workspace:packages/session"],
 
     "@mobi/shared": ["@mobi/shared@workspace:packages/shared"],
 

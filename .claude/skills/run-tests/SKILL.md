@@ -72,6 +72,9 @@ git diff --name-only @{u}..HEAD 2>/dev/null \
 | 改动文件集为空 | 全量（兜底：检测不到改动时不给假绿灯） |
 | 命中根级/跨包文件（`tsconfig*.json`、根 `package.json`、`bun.lock`、eslint/depcruise 配置、`.github/`） | 全量 |
 | 命中 `packages/shared/**` | 全量（协议底座，其余三包都依赖） |
+| 命中 `packages/node-core/**` | 全量（node-core 被 daemon/session/cli 依赖） |
+| 只命中 `packages/daemon/**` | `bun run test:daemon` |
+| 只命中 `packages/session/**` | `bun run test:session` |
 | 只命中 `packages/hub/**` | `bun run test:hub` |
 | 只命中 `packages/cli/**` | `bun run test:cli` |
 | 只命中 `packages/web/**` | `bun run test:web` |
@@ -129,6 +132,9 @@ E2E 的具体**操作 recipe 与踩坑记录**存在 `memory/`（随 skill 提�
 | 包 | 运行器 | 正确命令 |
 |---|---|---|
 | shared | vitest | `bun run test:shared` |
+| node-core | vitest | `bun run test:node-core` |
+| daemon | bun 内置（tests/hub/）+ vitest 串联 | `bun run test:daemon` |
+| session | vitest | `bun run test:session` |
 | hub | bun 内置 | `bun run test:hub` |
 | cli | vitest | `bun run test:cli` |
 | web | vitest (jsdom) | `bun run test:web` |

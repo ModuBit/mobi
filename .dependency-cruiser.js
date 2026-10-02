@@ -71,6 +71,47 @@ module.exports = {
       },
     },
 
+    /* ===== 新包（personal-agent-rewrite ③）：依赖方向 04 §6 ===== */
+    // node-core → shared only
+    {
+      name: 'node-core-only-shared',
+      comment: 'node-core 只能依赖 shared，不允许依赖 daemon/session/hub/cli/web',
+      severity: 'error',
+      from: {
+        path: '^packages/node-core/src/',
+      },
+      to: {
+        path: '^packages/(daemon|session|hub|cli|web)/src/',
+        pathNot: 'node_modules',
+      },
+    },
+    // daemon → node-core + shared（与 session 互相禁止）
+    {
+      name: 'daemon-only-nodecore-shared',
+      comment: 'daemon 只能依赖 node-core/shared，不允许依赖 session/hub/cli/web（daemon ⟂ session）',
+      severity: 'error',
+      from: {
+        path: '^packages/daemon/src/',
+      },
+      to: {
+        path: '^packages/(session|hub|cli|web)/src/',
+        pathNot: 'node_modules',
+      },
+    },
+    // session → node-core + shared（与 daemon 互相禁止）
+    {
+      name: 'session-only-nodecore-shared',
+      comment: 'session 只能依赖 node-core/shared，不允许依赖 daemon/hub/cli/web（daemon ⟂ session）',
+      severity: 'error',
+      from: {
+        path: '^packages/session/src/',
+      },
+      to: {
+        path: '^packages/(daemon|hub|cli|web)/src/',
+        pathNot: 'node_modules',
+      },
+    },
+
     /* ===== 禁止引用其他包的内部 src/ 路径 ===== */
     {
       name: 'no-internal-src-import',

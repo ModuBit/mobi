@@ -1,0 +1,25 @@
+{
+  "name": "@mobi/daemon",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun run test:bun && bun run test:vitest",
+    "test:bun": "bun test --parallel tests/hub/",
+    "test:vitest": "vitest run"
+  },
+  "dependencies": {
+    "@mobi/node-core": "workspace:*",
+    "@mobi/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "bun-types": "^1.4.2",
+    "vitest": "^5.0.2"
+  },
+  "sideEffects": false
+}
