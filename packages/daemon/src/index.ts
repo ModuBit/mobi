@@ -43,6 +43,7 @@ import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { SnapshotSync } from './sync/snapshotSync'
+import { SocketMachineHost } from './machine/SocketMachineHost'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
@@ -204,7 +205,16 @@ async function main() {
         agentSessions: () => syncEngine?.agentSessions
     })
 
-    syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager, rewindDeleteBoundTracker)
+    // machine 执行层显式注入（ticket-15）：machine 族调用收拢在 SocketMachineHost，
+    // ④ 后续票替换此实现即可，SyncEngine 透传与路由不动
+    syncEngine = new SyncEngine(
+        store,
+        socketServer.io,
+        socketServer.rpcRegistry,
+        sseManager,
+        rewindDeleteBoundTracker,
+        new SocketMachineHost(socketServer.io, socketServer.rpcRegistry)
+    )
 
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)

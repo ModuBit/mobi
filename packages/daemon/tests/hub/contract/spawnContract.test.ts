@@ -31,8 +31,8 @@ interface EngineHandle {
     cleanup: () => void
     /** 手动标记会话为 active（模拟 /session-started webhook） */
     markActive: (sessionId: string) => void
-    /** 获取底层 rpcGateway，用于恢复原始方法 */
-    getRpcGateway: () => any
+    /** 获取底层 machineHost，用于恢复原始方法 */
+    getMachineHost: () => any
 }
 
 /**
@@ -99,7 +99,7 @@ function makeEngine(): EngineHandle {
                 running: false,
             })
         },
-        getRpcGateway: () => (engine as any).rpcGateway,
+        getMachineHost: () => (engine as any).machineHost,
     }
 }
 
@@ -109,20 +109,20 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getRpcGateway().spawnSession
+        originalSpawn = h.getMachineHost().spawnSession
     })
 
     afterEach(() => {
         // 恢复原始方法
         if (originalSpawn) {
-            h.getRpcGateway().spawnSession = originalSpawn
+            h.getMachineHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
 
     test('新会话 spawn → RPC 成功返回 sessionId', async () => {
-        // Mock rpcGateway.spawnSession 返回成功
-        h.getRpcGateway().spawnSession = mock(async () => ({
+        // Mock machineHost.spawnSession 返回成功
+        h.getMachineHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: 'session-new-1',
         }))
@@ -136,8 +136,8 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
     })
 
     test('新会话收到 unexpected already-running → error (S09)', async () => {
-        // Mock rpcGateway 返回 already-running（新会话不应该出现）
-        h.getRpcGateway().spawnSession = mock(async () => ({
+        // Mock machineHost 返回 already-running（新会话不应该出现）
+        h.getMachineHost().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
 
@@ -156,12 +156,12 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getRpcGateway().spawnSession
+        originalSpawn = h.getMachineHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getRpcGateway().spawnSession = originalSpawn
+            h.getMachineHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -173,7 +173,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
 
         // Mock spawnSession（不应该被调用）
         const spawnMock = mock(async () => ({ type: 'success' as const, sessionId: 'should-not-call' }))
-        h.getRpcGateway().spawnSession = spawnMock
+        h.getMachineHost().spawnSession = spawnMock
 
         const result = await h.engine.resumeSession(existing.id, NAMESPACE)
 
@@ -191,7 +191,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
         const existing = createSessionWithPath(h, '/tmp/inactive')
 
         // Mock spawnSession 返回成功（sessionId 相同）
-        h.getRpcGateway().spawnSession = mock(async () => ({
+        h.getMachineHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: existing.id,
         }))
@@ -217,12 +217,12 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getRpcGateway().spawnSession
+        originalSpawn = h.getMachineHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getRpcGateway().spawnSession = originalSpawn
+            h.getMachineHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -231,8 +231,8 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
         // 创建一个未 active 的会话（用于 resume），必须有完整的 metadata.path
         const existing = createSessionWithPath(h, '/tmp/already')
 
-        // Mock rpcGateway 返回 already-running
-        h.getRpcGateway().spawnSession = mock(async () => ({
+        // Mock machineHost 返回 already-running
+        h.getMachineHost().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
 
@@ -252,12 +252,12 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getRpcGateway().spawnSession
+        originalSpawn = h.getMachineHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getRpcGateway().spawnSession = originalSpawn
+            h.getMachineHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -266,7 +266,7 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
         const existing = createSessionWithPath(h, '/tmp/timeout')
 
         // Mock spawnSession 返回成功，但不标记为 active
-        h.getRpcGateway().spawnSession = mock(async () => ({
+        h.getMachineHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: existing.id,
         }))
@@ -292,12 +292,12 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getRpcGateway().spawnSession
+        originalSpawn = h.getMachineHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getRpcGateway().spawnSession = originalSpawn
+            h.getMachineHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -305,8 +305,8 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
     test('runner 返回 error → 原样传递', async () => {
         const existing = createSessionWithPath(h, '/tmp/error')
 
-        // Mock rpcGateway 返回错误
-        h.getRpcGateway().spawnSession = mock(async () => ({
+        // Mock machineHost 返回错误
+        h.getMachineHost().spawnSession = mock(async () => ({
             type: 'error' as const,
             message: 'Test spawn failed',
         }))

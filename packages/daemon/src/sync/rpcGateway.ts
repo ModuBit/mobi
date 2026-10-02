@@ -14,141 +14,52 @@
  * limitations under the License.
  */
 
-import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type StopKind } from '@mobi/shared'
+/**
+ * 会话进程族 RPC 网关（Hub → CLI，按 sessionId 路由）。
+ *
+ * ticket-15 起 machine 族（按 machineId 路由）方法已整体搬往
+ * {@link ../machine/SocketMachineHost}，本类只剩会话族；两者共用
+ * {@link SocketRpcCaller} 的传输语义。下方 machine 族类型 re-export 仅为
+ * 兼容既有 import（syncEngine 等），新代码请从 `../machine/MachineHost` 取。
+ */
+
+import type { EffortLevel, PermissionMode } from '@mobi/shared/types'
+import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnswers, type PermissionUpdate, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
-import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
+import type { RpcRefreshMetadataResponse } from '../machine/MachineHost'
+import { SocketRpcCaller } from './rpcCaller'
 
-/** spawn 会话选项（深化候选②：位置参数 → 对象——effort/outputStyle 等字段此前靠
- *  第 9/10 位次约定透传，新增字段漏位/错位无法被类型捕获）。
- *  仅进程内签名；'spawn-mobi-session' 的 wire payload 本就是对象，线上协议不变 */
-export type SpawnSessionOptions = {
-    /** Mobi 当前仅支持 Claude */
-    agent?: 'claude'
-    model?: string
-    permissionMode?: PermissionMode
-    sessionType?: 'simple' | 'worktree'
-    worktreeName?: string
-    resumeSessionId?: string
-    effort?: EffortLevel
-    outputStyle?: string
-    workspaceId?: string
-}
+// ── machine 族类型 re-export（兼容既有 import，正源在 ../machine/MachineHost）──
+export type {
+    MachineHost,
+    SpawnSessionOptions,
+    SpawnGatewayResult,
+    RpcRefreshMetadataResponse,
+    RpcSaveFileResponse,
+    RpcWriteFileRangeResponse,
+    RpcDeleteUploadResponse,
+    RpcReplaceUploadResponse,
+    RpcGetWebToolsConfigResponse,
+    RpcSetWebToolsConfigResponse,
+    RpcVerifyWebToolsProviderResponse,
+    RpcDirectoryEntry,
+    RpcListDirectoryResponse,
+    RpcPathExistsResponse
+} from '../machine/MachineHost'
+export { UNEXPECTED_ALREADY_RUNNING, isUnexpectedAlreadyRunning } from '../machine/MachineHost'
 
-export type SpawnGatewayResult =
-    | { type: 'success'; sessionId: string }
-    | { type: 'already-running' }
-    | { type: 'error'; message: string; failure: RpcFailureKind }
-
-/** 新会话 spawn 路径（agent 会话通道 / web 新建路由）无 resume 目标，already-running
- *  不可达——两处防御收窄共用此谓词与文案，防止字面量漂移（.scratch/wake-dedup） */
-export const UNEXPECTED_ALREADY_RUNNING = 'Unexpected already-running for non-resume spawn'
-
-export function isUnexpectedAlreadyRunning(
-    result: SpawnGatewayResult,
-): result is Extract<SpawnGatewayResult, { type: 'already-running' }> {
-    return result.type === 'already-running'
-}
-
-export type RpcRefreshMetadataResponse = {
-    success: boolean
-    metadata?: SDKMetadata
-    error?: string
-}
-
-// 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared，此处 re-export 兼容既有引用
-import type {
-    RpcFileMeta,
-    ReadFileMetaResponse as RpcReadFileMetaResponse,
-    RpcReadFileRangeResponse
-} from '@mobi/shared/fileMeta'
-export type { RpcFileMeta, RpcReadFileMetaResponse, RpcReadFileRangeResponse }
-
-// saveFile 响应（覆盖已存在文件 + etag OCC；请求侧 content 为 Uint8Array 二进制附件）
-export type RpcSaveFileResponse =
-    | { success: true; etag: string }
-    | { success: false; conflict: true; currentEtag: string }
-    | { success: false; error: string; code?: string }
-
-// 文件范围写入响应（对称 readFileRange，content 为 Uint8Array 二进制附件）
-export type RpcWriteFileRangeResponse = {
-    success: boolean
-    path?: string
-    written?: number
-    error?: string
-}
-
-export type RpcDeleteUploadResponse = {
-    success: boolean
-    error?: string
-}
-
-// 同 path 原子替换上传响应（「编辑已有上传」场景；content 为 Uint8Array 二进制附件）
-export type RpcReplaceUploadResponse = {
-    success: boolean
-    error?: string
-}
-
-// web 工具配置读取响应（runner 侧凭据已脱敏）
-export type RpcGetWebToolsConfigResponse = {
-    config: RedactedWebToolsConfig
-}
-
-// web 工具配置写入响应（业务失败走 envelope，不用传输层错误表达）
-export type RpcSetWebToolsConfigResponse =
-    | { success: true }
-    | { success: false; error: string }
-
-// web 工具 provider 验证连接响应（一次轻量真实搜索；业务失败走 envelope）
-export type RpcVerifyWebToolsProviderResponse =
-    | { success: true; latencyMs: number }
-    | { success: false; error: string }
-
-export type RpcDirectoryEntry = {
-    name: string
-    type: 'file' | 'directory' | 'other'
-    size?: number
-    modified?: number
-}
-
-export type RpcListDirectoryResponse = {
-    success: boolean
-    entries?: RpcDirectoryEntry[]
-    /** 树浏览：条目数达到上限被截断（搜索路径不置位） */
-    truncated?: boolean
-    /** 树浏览：截断前的条目总数，用于前端「共 N 项」提示 */
-    total?: number
-    error?: string
-}
-
-export type RpcPathExistsResponse = {
-    exists: Record<string, boolean>
-}
-
-/**
- * 把一句**别处产出的传输层散文**读成一类故障——本文件唯一还在读文案的地方。
- *
- * 之所以还剩这一处：三类故障里有两类的句子不是 hub 产的——socket.io 的 ack 超时
- * （`operation has timed out`）由框架给，runner 等会话 webhook 超时
- * （`Session webhook timeout for PID N`）**由另一个进程**给。要彻底不读文案，得让
- * runner 的回执带结构化字段，那是 docs/pending.md #78 要回答的事。
- *
- * 与之相对，`unreachable` 的两句是本文件自己抛的，**在抛出那一刻就带上了分类**，
- * 不在这儿再认一遍——给自己产的句子留一条猜测后路，正是这套分类要拆掉的东西。
- *
- * 两类超时共用一条规则：socket.io 的 ack 超时与 runner 的 webhook 超时都含
- * timeout / timed out。
- */
-function classifyTransportFailure(message: string): RpcFailureKind {
-    return /timed?\s*out/i.test(message) ? 'timeout' : 'other'
-}
+// 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared（MachineHost 内做别名）
+export type { RpcFileMeta, RpcReadFileMetaResponse, RpcReadFileRangeResponse } from '../machine/MachineHost'
 
 export class RpcGateway {
+    private readonly caller: SocketRpcCaller
+
     constructor(
-        private readonly io: Server,
-        private readonly rpcRegistry: RpcRegistry
+        io: Server,
+        rpcRegistry: RpcRegistry
     ) {
+        this.caller = new SocketRpcCaller(io, rpcRegistry)
     }
 
     async approvePermission(
@@ -231,196 +142,6 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'killSession', {})
     }
 
-    /**
-     * 在 machine 上起一个会话进程。
-     *
-     * 失败支**带上传输分类**（`failure`）：这条链路里混着三种来路的句子——rpcCall 抛的
-     * 分类错、runner 自己产的人话（目录建不出来 / 进程起来就退出 / 等会话 webhook 超时）、
-     * 以及这里合成的几句话。分类在**产生它的这一层**一次定完，调用方按 kind 分支、
-     * 按 message 说话，不必再读句子（见 rpcFailure 模块头）。
-     */
-    async spawnSession(
-        machineId: string,
-        directory: string,
-        options: SpawnSessionOptions = {},
-    ): Promise<SpawnGatewayResult> {
-        // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），
-        // 只有 runner 等 webhook 超时那一句会被读成 'timeout'
-        const spawnError = (message: string) => ({ type: 'error' as const, message, failure: classifyTransportFailure(message) })
-        const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options
-        try {
-            const result = await this.machineRpc(
-                machineId,
-                'spawn-mobi-session',
-                { type: 'spawn-in-directory', directory, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId }
-            )
-            if (result && typeof result === 'object') {
-                const obj = result as Record<string, unknown>
-                if (obj.type === 'success' && typeof obj.sessionId === 'string') {
-                    return { type: 'success', sessionId: obj.sessionId }
-                }
-                if (obj.type === 'already-running') {
-                    return { type: 'already-running' }
-                }
-                if (obj.type === 'error' && typeof obj.errorMessage === 'string') {
-                    return spawnError(obj.errorMessage)
-                }
-                if (obj.type === 'requestToApproveDirectoryCreation' && typeof obj.directory === 'string') {
-                    return spawnError(`Directory creation requires approval: ${obj.directory}`)
-                }
-                if (typeof obj.error === 'string') {
-                    return spawnError(obj.error)
-                }
-                if (obj.type !== 'success' && typeof obj.message === 'string') {
-                    return spawnError(obj.message)
-                }
-            }
-            const details = typeof result === 'string'
-                ? result
-                : (() => {
-                    try {
-                        return JSON.stringify(result)
-                    } catch {
-                        return String(result)
-                    }
-                })()
-            return spawnError(`Unexpected spawn result: ${details}`)
-        } catch (error) {
-            // 走到这里的是 rpcCall 抛的 RpcFailure，分类已经带着（本方法其余部分不抛）。
-            // 万一不是：readRpcFailure 读成 'other'——hub 自己抛的错不该被当跨进程散文猜
-            const { kind, message } = readRpcFailure(error)
-            return { type: 'error', message, failure: kind }
-        }
-    }
-
-    async checkPathsExist(machineId: string, paths: string[]): Promise<Record<string, boolean>> {
-        const result = await this.machineRpc(machineId, 'path-exists', { paths }) as RpcPathExistsResponse | unknown
-        if (!result || typeof result !== 'object') {
-            throw new Error('Unexpected path-exists result')
-        }
-
-        const existsValue = (result as RpcPathExistsResponse).exists
-        if (!existsValue || typeof existsValue !== 'object') {
-            throw new Error('Unexpected path-exists result')
-        }
-
-        const exists: Record<string, boolean> = {}
-        for (const [key, value] of Object.entries(existsValue)) {
-            exists[key] = value === true
-        }
-        return exists
-    }
-
-    // machine 通道读文件 meta（cwd 显式参数化，读边界同 validateReadPath，ADR 0006）。
-    // 服务跨会话存活的静态资源读取（消息附件预览），与会话进程存活解耦；
-    // 返回的 mime/size/etag 用于流式读取前置判断
-    async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
-        return await this.machineRpc(machineId, 'readFileMeta', { cwd, path }) as RpcReadFileMetaResponse
-    }
-
-    // machine 通道分片读文件（同上）
-    async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
-        return await this.machineRpc(machineId, 'readFileRange', { cwd, path, offset, length }) as RpcReadFileRangeResponse
-    }
-
-    // ── 审查重写 v2 六方法（DiffTarget 统一模型）：纯转发，git 事实全部在 CLI 侧 ──
-    async machineGitReviewOverview(machineId: string, cwd: string, sessionId: string): Promise<ReviewOverview | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.overview, { cwd, sessionId }) as ReviewOverview | { success: false; error: string }
-    }
-
-    async machineGitReviewFiles(machineId: string, cwd: string, sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.files, { cwd, sessionId, target }) as ReviewFilesResult | { success: false; error: string }
-    }
-
-    async machineGitReviewDiff(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.diff, { cwd, sessionId, target, path }) as ReviewPatchResult | { success: false; error: string }
-    }
-
-    async machineGitReviewContents(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.contents, { cwd, sessionId, target, path }) as ReviewContentsResult | { success: false; error: string }
-    }
-
-    async machineGitReviewCommits(machineId: string, cwd: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.commits, { cwd, cursor }) as ReviewCommitsResult | { success: false; error: string }
-    }
-
-    async machineGitReviewInit(machineId: string, cwd: string): Promise<ReviewActionResult | { success: false; error: string }> {
-        return await this.machineRpc(machineId, GIT_REVIEW_RPC.init, { cwd }) as ReviewActionResult | { success: false; error: string }
-    }
-
-    // 会话删除后清理轮次快照引用（ADR 0008 refs 治理）；best-effort，失败由调用方 warn
-    async clearTurnSnapshots(machineId: string, cwd: string, sessionId: string): Promise<void> {
-        await this.machineRpc(machineId, GIT_REVIEW_RPC.clear, { cwd, sessionId })
-    }
-
-    // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）。
-    // ADR 0006 + dormancy spec §E：写边界锚定由 hub 注入 cwd 保证（runner 侧 validateWritePath
-    // 以 cwd 为根），会话进程不在也可写（冷编辑器自动保存不唤醒）
-    async machineSaveFile(machineId: string, cwd: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
-        return await this.machineRpc(machineId, 'saveFile', { cwd, path, content, baseEtag }) as RpcSaveFileResponse
-    }
-
-    async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
-        return await this.machineRpc(machineId, 'list-directory', { path, homeDir }) as RpcListDirectoryResponse
-    }
-
-    // 文件流式上传到 machine 指定目录（Uint8Array 二进制附件，非 base64）
-    async machineUploadFileRange(
-        machineId: string,
-        cwd: string,
-        filename: string,
-        path: string | undefined,
-        offset: number,
-        content: Uint8Array,
-        totalSize?: number,
-    ): Promise<RpcWriteFileRangeResponse> {
-        return await this.machineRpc(machineId, 'writeFileRange', { cwd, filename, path, offset, content, totalSize }) as RpcWriteFileRangeResponse
-    }
-
-    // 删除 machine 上的已上传文件
-    async machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
-        return await this.machineRpc(machineId, 'deleteUpload', { cwd, path }) as RpcDeleteUploadResponse
-    }
-
-    // 同 path 原子替换 machine 上的已上传文件
-    async machineReplaceUpload(machineId: string, cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
-        return await this.machineRpc(machineId, 'replaceUpload', { cwd, path, content }) as RpcReplaceUploadResponse
-    }
-
-    // web 工具配置读写（runner 落盘，会话进程惰性读生效）
-    async getWebToolsConfig(machineId: string): Promise<RpcGetWebToolsConfigResponse> {
-        return await this.machineRpc(machineId, 'get-web-tools-config', {}) as RpcGetWebToolsConfigResponse
-    }
-
-    async setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse> {
-        return await this.machineRpc(machineId, 'set-web-tools-config', { config }) as RpcSetWebToolsConfigResponse
-    }
-
-    // web 工具 provider 验证连接（草稿凭据优先于已存值，runner 不落盘）
-    async verifyWebToolsProvider(
-        machineId: string,
-        providerId: string,
-        credentials?: Record<string, string>,
-    ): Promise<RpcVerifyWebToolsProviderResponse> {
-        return await this.machineRpc(machineId, 'verify-web-tools-provider', { providerId, credentials }) as RpcVerifyWebToolsProviderResponse
-    }
-
-    // 在 machine 上搜索文件（type 与 session 路由同参：'file' | 'directory' 过滤，缺省=目录+文件合并）
-    async machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
-        return await this.machineRpc(machineId, 'searchSessionFiles', { cwd, query, type }) as RpcListDirectoryResponse
-    }
-
-    // 列出 machine 会话目录
-    async machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
-        return await this.machineRpc(machineId, 'listSessionDirectory', { cwd, path, prefix }) as RpcListDirectoryResponse
-    }
-
-    // 刷新 machine 上的会话元数据
-    async machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {
-        return await this.machineRpc(machineId, 'refreshMetadata', { cwd }) as RpcRefreshMetadataResponse
-    }
-
-
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {
         return await this.sessionRpc(sessionId, 'refreshMetadata', {}) as RpcRefreshMetadataResponse
     }
@@ -449,14 +170,14 @@ export class RpcGateway {
      * 有本地排队态、要绑定 native_id；这条不走队列——消息由别的会话投来，
      * 目标侧从没排过队，`localIds` 也不传（消息身份已由信封携带）。
      *
-     * **调用方（AgentSessionService）明确的拒收走返回值，不走异常**——拒收是确定性的
-     * 业务裁决，而异常通道那边是**传输故障**（无 handler / socket 断 / 超时），抛出时就
-     * 带上了分类（`RpcFailure`）；要是一条恰好含 "timed out" 的拒收理由走了异常通道，
-     * 会被说成「可能已送达、别重发」，把确定的事说成不确定。只有真·传输故障才抛。
+     * **调用方明确的拒收走返回值，不走异常**——拒收是确定性的业务裁决，而异常通道
+     * 那边是**传输故障**（无 handler / socket 断 / 超时），抛出时就带上了分类
+     * （`RpcFailure`）；要是一条恰好含 "timed out" 的拒收理由走了异常通道，会被
+     * 说成「可能已送达、别重发」，把确定的事说成不确定。只有真·传输故障才抛。
      *
      * **`rejected` 也是失败**（见 AgentMessagePushResult）：那表示 CLI 跑了 handler 却
-     * 没收下（input stream 已关）。静默当成功会落一条永远不会被处理的库行，还告诉 agent
-     * 「送到了」——比报错坏得多。
+     * 没收下（input stream 已关）。静默当成功会落一条永远不会被处理的库行，还告诉
+     * agent「送到了」——比报错坏得多。
      */
     async pushAgentMessage(sessionId: string, delivery: AgentMessageDelivery): Promise<AgentMessagePushResult> {
         const result = await this.sessionRpc(sessionId, 'push-agent-message', delivery) as AgentMessagePushResult | null
@@ -472,35 +193,6 @@ export class RpcGateway {
     }
 
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {
-        return await this.rpcCall(`${sessionId}:${method}`, params)
-    }
-
-    private async machineRpc(machineId: string, method: string, params: unknown): Promise<unknown> {
-        return await this.rpcCall(`${machineId}:${method}`, params)
-    }
-
-    private async rpcCall(method: string, params: unknown): Promise<unknown> {
-        const socketId = this.rpcRegistry.getSocketIdForMethod(method)
-        if (!socketId) {
-            // 「不可达」这件事这里就知道，不必让下游从句子反解（见 rpcFailure 模块头）
-            throw new RpcFailure('unreachable', `RPC handler not registered: ${method}`)
-        }
-
-        const socket = this.io.of('/cli').sockets.get(socketId)
-        if (!socket) {
-            throw new RpcFailure('unreachable', `RPC socket disconnected: ${method}`)
-        }
-
-        try {
-            // Socket.IO 原生序列化：params 对象直传，响应对象直收（含二进制附件）
-            return await socket.timeout(30_000).emitWithAck('rpc-request', {
-                method,
-                params
-            }) as unknown
-        } catch (error) {
-            // 这里抛出来的句子是**框架给的**（ack 超时），只能按文案读
-            const message = error instanceof Error ? error.message : String(error)
-            throw new RpcFailure(classifyTransportFailure(message), message)
-        }
+        return await this.caller.call(`${sessionId}:${method}`, params)
     }
 }

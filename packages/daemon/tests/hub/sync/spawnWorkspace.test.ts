@@ -16,7 +16,7 @@
 
 import { describe, test, expect } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
-import { RpcGateway } from '../../../src/sync/rpcGateway'
+import { SocketMachineHost } from '../../../src/machine/SocketMachineHost'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
@@ -104,7 +104,7 @@ describe('spawn 链路透传 workspaceId', () => {
     test('rpcGateway.spawnSession 直接调用时 workspaceId 进入 RPC body', async () => {
         const capture: EmitCapture = { emitCalls: [] }
         const io = makeSpawnIo(capture)
-        const gateway = new RpcGateway(io, makeSpawnRegistry('machine-p3'))
+        const gateway = new SocketMachineHost(io, makeSpawnRegistry('machine-p3'))
 
         const result = await gateway.spawnSession(
             'machine-p3',
