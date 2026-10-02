@@ -20,13 +20,12 @@ import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { PanelRightClose, Folder, FileDiff, Monitor, Maximize, Minimize, Plus } from 'lucide-react'
+import { PanelRightClose, Folder, FileDiff, Maximize, Minimize, Plus } from 'lucide-react'
 import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
 import { GitReviewView } from '@/components/review/GitReviewView'
 import { parseTargetKey } from '@/components/review/reviewEntries'
-import { DesktopStreamSurface } from '@/components/desktop/DesktopStreamSurface'
 
 import { getEditorApi } from '@/components/files/EditorRegistry'
 // TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，
@@ -129,8 +128,6 @@ export interface InspectorPaneProps {
     sessionId: string
     /** session 是否在线（CLI runner 已连接）；离线时 rightChrome 改浮动定位（不进 tabBar） */
     active?: boolean
-    /** 会话所在机器（远程桌面 tab 观看目标）；缺失时 desktop 动作置灰 */
-    machineId?: string
 }
 
 /** 尾部「+」tab 的 key（仅作菜单触发，不进 store） */
@@ -163,7 +160,7 @@ function ReviewTab({ sessionId, tabId }: { sessionId: string; tabId: string }) {
     )
 }
 
-export function InspectorPane({ sessionId, active = true, machineId }: InspectorPaneProps) {
+export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) {
     const { t } = useTranslation()
     const { modal, message } = App.useApp()
     const isMobile = useIsMobile()
@@ -216,7 +213,6 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
     }, [closeTab, sessionId, t, modal, message])
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
-    const openDesktopTab = useWorkspaceStore((s) => s.openDesktopTab)
     const openReviewTab = useWorkspaceStore((s) => s.openReviewTab)
     const renameTerminalTab = useWorkspaceStore((s) => s.renameTerminalTab)
     // 终端数与上限：达上限时 disable 新建入口（叠加 INSPECTOR_ACTIONS.disabled）
@@ -247,7 +243,6 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
         terminalLimitReached,
         openFile: () => openFileTreeTab(sessionId),
         openTerminal: () => openTerminalTab(sessionId),
-        openDesktop: machineId ? () => openDesktopTab(sessionId, machineId) : undefined,
         openReview: () => openReviewTab(sessionId),
     }
     const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
@@ -273,10 +268,6 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
                 </Suspense>
             )
         }
-        if (tab.mode === 'desktop' && tab.machineId) {
-            // 画面经 Provider 容器搬迁进本 tab（连接不动）；卸载 release 走引用计数 GC
-            return <DesktopStreamSurface machineId={tab.machineId} />
-        }
         if (tab.mode === 'review') {
             // git 审查视图（turn-diff）：数据 machine 通道现查，休眠可开；档位挂 viewState 持久化
             return <ReviewTab sessionId={sessionId} tabId={tab.id} />
@@ -300,11 +291,6 @@ export function InspectorPane({ sessionId, active = true, machineId }: Inspector
                             tab={tab}
                             onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
                         />
-                    ) : tab.mode === 'desktop' ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Monitor size={14} />
-                            {t('desktop.title')}
-                        </span>
                     ) : tab.mode === 'review' ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <FileDiff size={14} />

@@ -34,8 +34,6 @@ const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
-const DesktopSection = lazyRoute(routeChunkLoaders.DesktopSection)
-const DesktopPage = lazyRoute(routeChunkLoaders.DesktopPage)
 
 
 // Root route - wraps all routes with App component
@@ -123,27 +121,11 @@ const settingsWebToolsRoute = createRoute({
     path: 'web-tools',
     component: WebToolsSection,
 })
-// 远程桌面分区（VNC 密码向导）
-const settingsDesktopRoute = createRoute({
-    getParentRoute: () => settingsRoute,
-    path: 'desktop',
-    component: DesktopSection,
-})
 // 调试分区（未解锁渲染空分区）
 const settingsDebugRoute = createRoute({
     getParentRoute: () => settingsRoute,
     path: 'debug',
     component: DebugSectionRoute,
-})
-
-// 远程桌面观看页（迭代 1 只读）：?machine= 支持侧边栏点击流直达该机器
-const desktopRoute = createRoute({
-    getParentRoute: () => mainLayoutRoute,
-    path: 'desktop',
-    validateSearch: (search: Record<string, unknown>): { machine?: string } => ({
-        machine: typeof search.machine === 'string' && search.machine.length > 0 ? search.machine : undefined,
-    }),
-    component: DesktopPage,
 })
 
 // dev-only PoC 路由（审查重写票01 门禁）：生产构建被 DEV 常量剔除，代码不进产物
@@ -166,13 +148,11 @@ export const router = createRouter({
                 sessionDetailRoute,
             ]),
             newSessionRoute,
-            desktopRoute,
             ...(pocDiffRoute ? [pocDiffRoute] : []),
             settingsRoute.addChildren([
                 settingsIndexRoute,
                 settingsNotificationsRoute,
                 settingsWebToolsRoute,
-                settingsDesktopRoute,
                 settingsDebugRoute,
             ]),
         ]),

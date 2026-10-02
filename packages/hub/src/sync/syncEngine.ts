@@ -15,7 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type DesktopVncStatus, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
@@ -207,11 +207,6 @@ export class SyncEngine {
     /** UI 命令发布入口（CLI socket handler 用）：统一走 handleRealtimeEvent 发布——
      *  未来加在它上面的横切关注点（缓存刷新等）不会绕过 ui-command */
     publishUiCommand(event: Extract<SyncEvent, { type: 'ui-command' }>): void {
-        this.handleRealtimeEvent(event)
-    }
-
-    /** 桌面控制权状态变化发布入口（desktop broker 回调用）：同走 handleRealtimeEvent */
-    publishDesktopControlChanged(event: Extract<SyncEvent, { type: 'desktop-control-changed' }>): void {
         this.handleRealtimeEvent(event)
     }
 
@@ -1013,21 +1008,6 @@ export class SyncEngine {
     /** machine 通道分片读文件（同上） */
     async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
         return await this.rpcGateway.machineReadFileRange(machineId, cwd, path, offset, length)
-    }
-
-    /** machine 通道 desktop 流：触发 CLI 反连 hub attach 路径（远程桌面，见 desktop/broker） */
-    async machineDesktopStream(machineId: string, ticket: string, attachPath: string): Promise<void> {
-        return await this.rpcGateway.machineDesktopStream(machineId, ticket, attachPath)
-    }
-
-    /** machine 通道 desktop 配置：VNC 密码写入（hub 纯中转，不落盘副本） */
-    async machineDesktopSetVncPassword(machineId: string, vncPassword: string): Promise<void> {
-        return await this.rpcGateway.machineDesktopSetVncPassword(machineId, vncPassword)
-    }
-
-    /** machine 通道 desktop 配置：VNC 密码配置状态 */
-    async machineDesktopVncStatus(machineId: string): Promise<DesktopVncStatus> {
-        return await this.rpcGateway.machineDesktopVncStatus(machineId)
     }
 
     async machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {

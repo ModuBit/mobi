@@ -16,7 +16,6 @@
 
 import { z } from 'zod'
 import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
-import { desktopControlStateSchema } from './desktopProtocol'
 
 export const PermissionModeSchema = z.enum(PERMISSION_MODES)
 
@@ -941,15 +940,6 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     WorkspaceChangedSchema.extend({ type: z.literal('workspace-added') }),
     WorkspaceChangedSchema.extend({ type: z.literal('workspace-updated') }),
     WorkspaceChangedSchema.extend({ type: z.literal('workspace-removed') }),
-    // 桌面观看流控制权状态变化（迭代 2）：授予/退出/空闲超时回落都广播，
-    // web 据此同步 UI 与 noVNC viewOnly——权威状态在 hub，RFB 字节流内不夹带信令。
-    // 不带 desktop 会话 id：SyncEvent 的 sessionId 语义是 mobi 会话行，混入会误导
-    // resolveNamespace 去查会话缓存（查不到 → namespace 解析失败 → 事件被丢）
-    SessionEventBaseSchema.extend({
-        type: z.literal('desktop-control-changed'),
-        machineId: z.string(),
-        control: desktopControlStateSchema,
-    }),
     // agent 触达 mobi 界面的 A 类 UI 命令（瞬态事件：不落库、不进快照、刷新不恢复，见 .scratch/agent-apps/spec.md D9）。
     // sessionId 是可选路由元数据：Hub 从 socket sid 解析后盖章（会话无关动作如 set_theme 缺省 → namespace 全播），
     // CLI 不填——投递路由属 Hub 职责，payload 只描述"做什么"

@@ -52,10 +52,6 @@
         "newSession": "New Chat",
         "search": "Search",
         "automation": "Automation",
-        "desktopStreams": "Remote Desktop",
-        "desktopStreamsClose": "Close viewing stream",
-        "desktopStreamsCloseConfirm": "Close this viewing stream?",
-        "desktopStreamsCloseHint": "This disconnects {{machineId}}'s desktop from all viewers",
         "installApp": "Install App",
         "skills": "Skills",
         "plugins": "Plugins",
@@ -119,7 +115,6 @@
             "restore": "Restore",
             "openFile": "Open File",
             "terminal": "Terminal",
-            "desktop": "Remote Desktop",
             "review": "Review",
             "addTab": "Add",
             "terminalLimitReached": "Limit reached ({{max}})",
@@ -575,10 +570,6 @@
                 "statusUnconfigured": "Not configured",
                 "statusOffline": "Offline"
             },
-            "desktop": {
-                "title": "Remote Desktop",
-                "desc": "VNC password and viewing guide"
-            },
             "debug": {
                 "title": "Debug",
                 "desc": "Diagnostics and feature flags"
@@ -750,49 +741,6 @@
             "install": "Install",
             "installPrompt": "Install Mobi locally for quick access anytime",
             "iosManual": "iPhone/iPad: tap Share → Add to Home Screen"
-        }
-    },
-    "desktop": {
-        "title": "Remote Desktop",
-        "connecting": "Connecting to desktop…",
-        "disconnected": "Disconnected",
-        "noMachine": "No machine online",
-        "viewOnlyHint": "Keyboard and pointer input has no effect until you take control",
-        "touch": {
-            "keyboard": "Keyboard"
-        },
-        "firstFramePending": "Receiving video…",
-        "landscape": "Landscape",
-        "landscapeExit": "Exit landscape",
-        "landscapeUnsupported": "Auto-rotate is not supported here; please rotate your device",
-        "control": {
-            "stateViewOnly": "Viewing",
-            "stateControlled": "Controlling",
-            "take": "Take control",
-            "release": "Release control"
-        },
-        "connectFailed": "Connection failed",
-        "surface": {
-            "retryHint": "Reconnects automatically; streaming stops about {{seconds}}s after the last surface closes"
-        },
-        "failure": {
-            "vncAuthFailed": "Authentication failed: the VNC password is incorrect or has changed. Check it on the controlled Mac and try again",
-            "vncPasswordMissing": "The controlled Mac has no VNC password configured yet. Enable it in System Settings and save it in Desktop settings first",
-            "streamClosed": "The viewing stream was closed (possibly from another device)",
-            "superseded": "A new viewing session started on another device for this machine",
-            "upstreamUnavailable": "Screen sharing on the controlled machine is unavailable: make sure it is enabled in System Settings"
-        },
-        "settings": {
-            "title": "Remote Desktop",
-            "guideTitle": "Complete two steps before first use",
-            "guideStep1": "On your Mac, open System Settings → General → Sharing → Screen Sharing, click the ⓘ button, enable \"VNC viewers may control screen with password\" and set a password (up to 16 chars)",
-            "guideStep2": "Enter the same password below (it is stored only on the controlled machine; neither the web app nor the server keeps a copy)",
-            "configured": "✓ VNC password configured",
-            "notConfigured": "VNC password not configured",
-            "passwordPlaceholder": "VNC password (up to 16 chars)",
-            "save": "Save",
-            "saved": "VNC password saved",
-            "privacyNote": "The password is stored only in the mobi config file on the controlled machine; viewing connections use one-time short-lived tokens. The VNC protocol only uses the first 8 characters for authentication — longer input is truncated, matching macOS behavior."
         }
     },
     "sketch": {

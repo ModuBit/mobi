@@ -20,8 +20,6 @@ import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { SidebarHeader } from './SidebarHeader'
 import { SidebarNav } from './SidebarNav'
-import { SidebarDesktopStreams } from './SidebarDesktopStreams'
-import { DESKTOP_ENTRY_ENABLED } from '@/domain/desktop/featureGate'
 import { SidebarWorkspaces } from './SidebarWorkspaces'
 import { SidebarFooter } from './SidebarFooter'
 import { useWco } from './useWindowControlsOverlay'
@@ -79,7 +77,6 @@ export function AppSidebar() {
             <SidebarInner $token={token} $expanded={sidebarExpanded}>
                 {!isWco && <SidebarHeader />}
                 <SidebarNav />
-                {DESKTOP_ENTRY_ENABLED && <SidebarDesktopStreams />}
                 <SidebarWorkspaces />
                 <SidebarFooter />
             </SidebarInner>

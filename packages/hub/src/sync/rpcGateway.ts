@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DesktopVncStatus, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, GIT_REVIEW_RPC, type AgentMessageDelivery, type AgentMessagePushResult, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type RedactedWebToolsConfig, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import { RpcFailure, readRpcFailure, type RpcFailureKind } from './rpcFailure'
@@ -351,21 +351,6 @@ export class RpcGateway {
     // 会话删除后清理轮次快照引用（ADR 0008 refs 治理）；best-effort，失败由调用方 warn
     async clearTurnSnapshots(machineId: string, cwd: string, sessionId: string): Promise<void> {
         await this.machineRpc(machineId, GIT_REVIEW_RPC.clear, { cwd, sessionId })
-    }
-
-    // machine 通道 desktop 流：触发 CLI 反连 hub attach 路径（远程桌面，见 desktop/broker）
-    async machineDesktopStream(machineId: string, ticket: string, attachPath: string): Promise<void> {
-        await this.machineRpc(machineId, 'desktop-stream', { ticket, attachPath })
-    }
-
-    // machine 通道 desktop 配置：VNC 密码写入（hub 纯中转，不落盘副本）
-    async machineDesktopSetVncPassword(machineId: string, vncPassword: string): Promise<void> {
-        await this.machineRpc(machineId, 'set-desktop-vnc-password', { vncPassword })
-    }
-
-    // machine 通道 desktop 配置：VNC 密码配置状态（只回是否已配置）
-    async machineDesktopVncStatus(machineId: string): Promise<DesktopVncStatus> {
-        return await this.machineRpc(machineId, 'get-desktop-vnc-status', {}) as DesktopVncStatus
     }
 
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）。

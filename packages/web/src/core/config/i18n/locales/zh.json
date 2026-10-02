@@ -52,10 +52,6 @@
         "newSession": "新对话",
         "search": "搜索",
         "automation": "自动化",
-        "desktopStreams": "远程桌面",
-        "desktopStreamsClose": "关闭观看流",
-        "desktopStreamsCloseConfirm": "关闭这条观看流？",
-        "desktopStreamsCloseHint": "将断开 {{machineId}} 的桌面画面与所有观看者",
         "installApp": "安装到本地",
         "skills": "技能",
         "plugins": "插件",
@@ -119,7 +115,6 @@
             "restore": "恢复",
             "openFile": "打开文件",
             "terminal": "终端",
-            "desktop": "远程桌面",
             "review": "审查",
             "addTab": "新建",
             "terminalLimitReached": "已达上限（{{max}}）",
@@ -566,10 +561,6 @@
                 "statusUnconfigured": "未配置",
                 "statusOffline": "不在线"
             },
-            "desktop": {
-                "title": "远程桌面",
-                "desc": "VNC 密码与观看引导"
-            },
             "debug": {
                 "title": "调试",
                 "desc": "诊断信息与实验开关"
@@ -741,49 +732,6 @@
             "install": "安装到本地",
             "installPrompt": "安装 Mobi 到本地，随时快速访问",
             "iosManual": "iPhone/iPad：点底部「分享」→「添加到主屏幕」"
-        }
-    },
-    "desktop": {
-        "title": "远程桌面",
-        "connecting": "正在连接桌面画面…",
-        "disconnected": "连接已断开",
-        "noMachine": "没有在线的机器",
-        "viewOnlyHint": "未接管控制时，此页面上的键鼠操作不会生效",
-        "touch": {
-            "keyboard": "键盘"
-        },
-        "firstFramePending": "正在接收画面…",
-        "landscape": "横屏",
-        "landscapeExit": "退出横屏",
-        "landscapeUnsupported": "当前浏览器不支持自动横屏，请旋转手机",
-        "control": {
-            "stateViewOnly": "观看中",
-            "stateControlled": "控制中",
-            "take": "接管控制",
-            "release": "退出控制"
-        },
-        "connectFailed": "连接失败",
-        "surface": {
-            "retryHint": "画面断开后会自动重连；展示面全部关闭约 {{seconds}} 秒后停止观看"
-        },
-        "failure": {
-            "vncAuthFailed": "认证失败：VNC 密码不正确或已更改，请在被控 Mac 的设置里核对后重试",
-            "vncPasswordMissing": "被控 Mac 尚未配置 VNC 密码，请先在系统设置中开启并到远程桌面设置里录入",
-            "streamClosed": "观看流已被关闭（可能从其他设备操作）",
-            "superseded": "该机器已在其他设备开始新的观看",
-            "upstreamUnavailable": "被控电脑的屏幕共享暂不可用：请确认已在系统设置开启屏幕共享"
-        },
-        "settings": {
-            "title": "远程桌面",
-            "guideTitle": "首次使用请完成两步配置",
-            "guideStep1": "在 Mac 上打开 系统设置 → 通用 → 共享 → 屏幕共享，开启后点右侧 ⓘ，勾选「VNC 观看者可以用密码控制屏幕」并设置一个密码（最长 16 位）",
-            "guideStep2": "在下方输入同一个密码保存（密码只保存在这台电脑上，网页与服务器不留副本）",
-            "configured": "✓ 已配置 VNC 密码",
-            "notConfigured": "尚未配置 VNC 密码",
-            "passwordPlaceholder": "VNC 密码（最长 16 位）",
-            "save": "保存",
-            "saved": "VNC 密码已保存",
-            "privacyNote": "密码仅保存在被控电脑的 mobi 配置文件中；观看连接使用一次性短时效票据。VNC 协议仅使用前 8 位参与认证，超长部分与 Mac 系统行为一致被截断。"
         }
     },
     "sketch": {

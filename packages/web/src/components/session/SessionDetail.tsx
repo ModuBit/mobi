@@ -96,7 +96,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                 <InspectorPane
                     sessionId={sessionId}
                     active={session?.active ?? false}
-                    machineId={session?.metadata?.machineId}
                 />
             }
         />

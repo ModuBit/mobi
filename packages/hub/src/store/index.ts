@@ -130,6 +130,14 @@ export class Store {
         this.db.close()
     }
 
+    /**
+     * 仅供测试使用：直接访问底层数据库连接
+     * @internal
+     */
+    getDatabaseForTesting(): Database {
+        return this.db
+    }
+
     private initSchema(): void {
         const currentVersion = this.getUserVersion()
         if (currentVersion === 0) {

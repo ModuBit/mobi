@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DesktopWatchResponse, DesktopStreamsResponse, DesktopControlResponse, DesktopVncStatus, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
+import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -459,24 +459,6 @@ export function createMobiApi() {
                         { providerId, credentials },
                     ),
             },
-        },
-
-        // Desktop（远程桌面观看；observe token 走响应体、组件内存持有，不进 URL）
-        desktop: {
-            watch: (machineId: string) =>
-                client.post<DesktopWatchResponse>('/api/desktop/watch', { machineId }),
-            streams: (opts?: { signal?: AbortSignal }) =>
-                client.get<DesktopStreamsResponse>('/api/desktop/streams', { signal: opts?.signal }),
-            closeStream: (sessionId: string) =>
-                client.delete<{ success: true }>(`/api/desktop/streams/${sessionId}`),
-            grantControl: (machineId: string) =>
-                client.post<DesktopControlResponse>(`/api/desktop/machines/${machineId}/control`),
-            releaseControl: (machineId: string) =>
-                client.delete<DesktopControlResponse>(`/api/desktop/machines/${machineId}/control`),
-            setVncPassword: (machineId: string, vncPassword: string) =>
-                client.post<{ success: true }>('/api/desktop/vnc-password', { machineId, vncPassword }),
-            vncStatus: (machineId: string, opts?: { signal?: AbortSignal }) =>
-                client.get<DesktopVncStatus>('/api/desktop/vnc-status', { params: { machineId }, signal: opts?.signal }),
         },
     }
 }

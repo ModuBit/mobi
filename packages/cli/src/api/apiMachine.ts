@@ -34,13 +34,6 @@ import { registerMachineDirectoryHandler } from '../modules/common/handlers/mach
 import { registerWebToolsConfigHandler } from '../modules/common/handlers/webToolsConfig'
 import { registerMachineFileHandlers } from '../modules/common/handlers/machineFiles'
 import { registerGitReviewHandlers } from '../modules/common/handlers/gitReview'
-import { registerDesktopConfigHandler } from '../modules/common/handlers/desktopConfig'
-import { readSettings } from '@/persistence'
-import { runDesktopStreamTransport } from '../desktop/streamTransport'
-import { desktopStreamRequestSchema, DESKTOP_ATTACH_PATH } from '@mobi/shared'
-
-/** 本机 VNC（macOS 屏幕共享）端口；demo/测试可用环境变量指向假 RFB server */
-const DESKTOP_VNC_PORT = Number(process.env.MOBI_DESKTOP_VNC_PORT ?? 5900)
 
 interface ServerToRunnerEvents {
     'machine-update': (data: Update) => void
@@ -139,31 +132,7 @@ export class ApiMachineClient {
         registerGitReviewHandlers(this.rpcHandlerManager)
 
         // 远程桌面配置（VNC 密码写入/状态查询，machine 级）
-        registerDesktopConfigHandler(this.rpcHandlerManager)
-
-        // 远程桌面流：hub watch 触发，反连 hub attach 路径并桥接本机 VNC（desktop/ 模块）。
-        // 流在后台跑、立即 ack——hub 侧 RPC 有 30s 超时，不能被流的生命周期拖住；
-        // 流的收束由两侧连接关闭完成（迭代 1 无主动取消通道）
-        this.rpcHandlerManager.registerHandler<unknown, { started: boolean }>('desktop-stream', async (params) => {
-            const parsed = desktopStreamRequestSchema.safeParse(params)
-            if (!parsed.success || parsed.data.attachPath !== DESKTOP_ATTACH_PATH) {
-                return { started: false }
-            }
-            // VNC 密码读自身 settings（set-desktop-vnc-password 落盘的那份），
-            // 随 metadata 上行供 hub 代认证；未配置则 undefined（上游 None 时可看）
-            const settings = await readSettings()
-            const handle = runDesktopStreamTransport({
-                gatewayUrl: configuration.apiUrl,
-                machineId: this.machine.id,
-                ticket: parsed.data.ticket,
-                attachPath: parsed.data.attachPath,
-                target: { host: '127.0.0.1', port: DESKTOP_VNC_PORT },
-                vncPassword: settings.desktop?.vncPassword,
-                log: (message) => logger.debug(`[desktop] ${message}`),
-            })
-            handle.done.catch((error) => logger.debug('[desktop] stream transport error', error))
-            return { started: true }
-        })
+        // （已移除，见 project_remote-assist-plan.md）
     }
 
     setRPCHandlers({ spawnSession, stopSession, requestShutdown }: MachineRpcHandlers): void {
