@@ -27,46 +27,19 @@ module.exports = {
       },
     },
 
-    /* ===== hub: 只依赖 shared ===== */
-    {
-      name: 'hub-only-shared',
-      comment: 'hub 只能依赖 shared，不允许依赖 cli/web',
-      severity: 'error',
-      from: {
-        path: '^packages/hub/src/',
-      },
-      to: {
-        path: '^packages/(cli|web)/src/',
-        pathNot: 'node_modules',
-      },
-    },
+    /* ===== hub 规则已随 ticket-12 移除（hub 并入 daemon） ===== */
 
-    /* ===== cli: 只依赖 shared ===== */
-    // 有意豁免 hub/src/index.ts：cli 嵌入式启动 hub server（hub.ts 动态 import），
-    // 单一二进制架构，非协议依赖；其余 cli→hub/src/* 路径仍违规
+    /* ===== cli: 不依赖 web ===== */
+    // hub 已并入 daemon（ticket-12），cli 对 daemon 走包名 @mobi/daemon（node_modules 边不可见）
     {
       name: 'cli-only-shared',
-      comment: 'cli 只能依赖 shared，不允许依赖 hub/web（豁免 hub/src/index.ts：cli 嵌入式启动 hub server，单一二进制架构，非协议依赖）',
+      comment: 'cli 不允许依赖 web（daemon/node-core/session 走包名依赖）',
       severity: 'warn',
       from: {
         path: '^packages/cli/src/',
       },
       to: {
-        path: '^packages/(hub|web)/src/',
-        pathNot: ['node_modules', '^packages/hub/src/index\\.ts$'],
-      },
-    },
-
-    /* ===== web: 只依赖 shared ===== */
-    {
-      name: 'web-only-shared',
-      comment: 'web 只能依赖 shared，不允许依赖 hub/cli',
-      severity: 'error',
-      from: {
         path: '^packages/web/src/',
-      },
-      to: {
-        path: '^packages/(hub|cli)/src/',
         pathNot: 'node_modules',
       },
     },
@@ -123,6 +96,20 @@ module.exports = {
       },
     },
 
+    /* ===== web: 只依赖 shared ===== */
+    {
+      name: 'web-only-shared',
+      comment: 'web 只能依赖 shared，不允许依赖 hub/cli',
+      severity: 'error',
+      from: {
+        path: '^packages/web/src/',
+      },
+      to: {
+        path: '^packages/(daemon|cli)/src/',
+        pathNot: 'node_modules',
+      },
+    },
+
     /* ===== SnapshotSync 模块边界 ===== */
     // 快照同步 module 只决定快照内容（衔接判定/游标/缓存），历史回放由 adapter 层查 DB 后
     // 喂进来、网络发送归 socket/sse adapter、观测只记录不聚合——越界即腐化起点，CI 硬卡
@@ -131,10 +118,10 @@ module.exports = {
       comment: 'SnapshotSync 不触 store（DB）/ sse / socket——投递与持久化归 adapter 层，module 纯状态机',
       severity: 'error',
       from: {
-        path: '^packages/hub/src/sync/snapshotSync\\.ts$',
+        path: '^packages/daemon/src/sync/snapshotSync\\.ts$',
       },
       to: {
-        path: '^packages/hub/src/(store|sse|socket)/',
+        path: '^packages/daemon/src/(store|sse|socket)/',
       },
     },
   ],

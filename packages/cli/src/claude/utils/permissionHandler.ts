@@ -23,7 +23,7 @@
 
 import { logger } from "@/lib";
 import type { ElicitationRequest, ElicitationResult, SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
+import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "@mobi/node-core/claudeSdk/types";
 import type { PermissionAnswers, PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
 import { Session } from "../session";
 import { PermissionMode } from "../types";

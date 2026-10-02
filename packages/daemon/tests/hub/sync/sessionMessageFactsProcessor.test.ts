@@ -16,8 +16,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { Store } from '../../src/store'
-import { SessionMessageFactsProcessor, type MessageFactsPublication } from '../../src/sync/sessionMessageFactsProcessor'
+import { Store } from '../../../src/store'
+import { SessionMessageFactsProcessor, type MessageFactsPublication } from '../../../src/sync/sessionMessageFactsProcessor'
 
 const WEBAPP_USER = {
     role: 'user',

@@ -16,9 +16,9 @@
 
 import { describe, test, expect, spyOn } from 'bun:test'
 
-import { SyncEngine } from '../../src/sync/syncEngine'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
+import { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
 /**
  * SyncEngine.wakeSession 单测（dormancy spec §B）：休眠会话唤醒 = fire-and-forget
@@ -63,7 +63,7 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
             return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
         },
     } as unknown as RpcRegistry
-    const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+    const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
     const engine = new SyncEngine(store, io, registry, sseManager)
     engineRef.engine = engine
     return {
@@ -182,7 +182,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         const registry = {
             getSocketIdForMethod() { return 'sock-1' },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const engine = new SyncEngine(store, io, registry, sseManager)
         engineRef.engine = engine
         try {

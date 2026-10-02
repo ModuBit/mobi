@@ -16,12 +16,12 @@
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 
-import { Store } from '../../src/store'
-import { registerSessionHandlers, type SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
-import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
-import { RewindDeleteBoundTracker } from '../../src/sync/rewindDeleteBoundTracker'
-import type { SyncEvent } from '../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import { registerSessionHandlers, type SessionHandlersDeps } from '../../../src/socket/handlers/cli/sessionHandlers'
+import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
+import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
+import type { SyncEvent } from '../../../src/sync/syncEngine'
 
 /** webapp 用户消息内容（真实信封） */
 const WEBAPP_USER = { role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'webapp' } }

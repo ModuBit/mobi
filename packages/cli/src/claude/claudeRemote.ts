@@ -45,12 +45,12 @@ import { PushableAsyncIterable } from "@mobi/node-core/utils/PushableAsyncIterab
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
-import type { PermissionResult } from "./sdk/types";
+import type { PermissionResult } from "@mobi/node-core/claudeSdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
 import { isAbortedTerminalReason, type CommandLifecycleState } from "@mobi/shared";
 import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
-import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
+import { getClaudeExecutablePath } from "@mobi/node-core/claudeSdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'

@@ -15,8 +15,8 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { MessageService } from '../../src/sync/messageService'
-import type { StoredMessage } from '../../src/store/types'
+import { MessageService } from '../../../src/sync/messageService'
+import type { StoredMessage } from '../../../src/store/types'
 
 /** 构造 StoredMessage（默认 pending 排队消息） */
 function msg(seq: number, over: Partial<StoredMessage> = {}): StoredMessage {

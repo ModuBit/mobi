@@ -16,14 +16,14 @@
 
 import fs from 'fs/promises';
 
-import { ApiClient } from '@/api/api';
+import { ApiClient } from '@mobi/node-core/api/api';
 import { TrackedSession } from './types';
-import { RunnerState, Metadata } from '@/api/types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/rpcTypes';
+import { RunnerState, Metadata } from '@mobi/node-core/api/types';
+import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
-import { authAndSetupMachineIfNeeded } from '@/ui/auth';
+import { authAndSetupMachineIfNeeded } from './authSetup';
 import packageJson from '../../package.json';
-import { getEnvironmentInfo } from '@/ui/doctor';
+import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
 import { writeRunnerState, RunnerLocallyPersistedState, readRunnerState, acquireRunnerLock, releaseRunnerLock } from '@mobi/node-core/persistence';
 import { isProcessAlive, isWindows, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
@@ -37,6 +37,7 @@ import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
 import { buildMachineMetadata } from './machineMetadata';
+import { ApiMachineClient } from './apiMachine';
 
 export async function startRunner(): Promise<void> {
   // —— 退出日志：最早挂载，注入 logger ring buffer 还原崩溃前上下文 ——
@@ -681,7 +682,7 @@ export async function startRunner(): Promise<void> {
     logger.debug(`[RUNNER RUN] Machine registered: ${machine.id}`);
 
     // Create realtime machine session
-    const apiMachine = api.machineSyncClient(machine);
+    const apiMachine = ApiMachineClient.create(api.token, machine);
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({

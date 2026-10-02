@@ -26,7 +26,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { GitReviewReader, registerGitReviewHandlers, truncatePatch } from '@/modules/common/handlers/gitReview'
+import { GitReviewReader, registerGitReviewHandlers, truncatePatch } from '@/handlers/gitReview'
 import { getTurnArchivePath } from '@mobi/node-core/git/turnArchiveStore'
 import { REVIEW_RENDER_MAX_LINES, ReviewContentsResultSchema } from '@mobi/shared'
 

@@ -16,6 +16,14 @@
 
 import { z } from 'zod'
 import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
+// Usage statistics for assistant messages（ticket-12 下沉：node-core api/types 与 cli claude/types 共用）
+export const UsageSchema = z.object({
+  input_tokens: z.number().int().nonnegative(),
+  cache_creation_input_tokens: z.number().int().nonnegative().nullable().optional(),
+  cache_read_input_tokens: z.number().int().nonnegative().nullable().optional(),
+  output_tokens: z.number().int().nonnegative(),
+  service_tier: z.string().nullable().optional(),
+});
 
 export const PermissionModeSchema = z.enum(PERMISSION_MODES)
 

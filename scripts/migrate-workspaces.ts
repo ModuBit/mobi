@@ -31,12 +31,12 @@ import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
-// 目标 schema 版本。来源：packages/hub/src/store/index.ts 的 SCHEMA_VERSION（读取日期 2026-08-13）。
+// 目标 schema 版本。来源：packages/daemon/src/store/index.ts 的 SCHEMA_VERSION（读取日期 2026-08-13）。
 // BASELINE=0 策略下新旧 schema 版本号同为 1，无法用 user_version 区分新旧库，
 // 判别只能依赖列存在性（workspace_id / group_key），见脚本内探测逻辑。
 const SCHEMA_VERSION = 1
 
-// workspaces 表 DDL。来源：packages/hub/src/store/index.ts createSchema（复制日期 2026-08-13），逐列一致。
+// workspaces 表 DDL。来源：packages/daemon/src/store/index.ts createSchema（复制日期 2026-08-13），逐列一致。
 const CREATE_WORKSPACES_SQL = `
     CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,

@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { SessionReceiveReadiness } from '../../src/sync/sessionReceiveReadiness'
+import { SessionReceiveReadiness } from '../../../src/sync/sessionReceiveReadiness'
 
 /** 等待者名单是私有状态——这里只为验「超时不泄漏」而探一眼（该性质没有外部表现） */
 function pendingWaiters(readiness: SessionReceiveReadiness, sessionId: string): number {

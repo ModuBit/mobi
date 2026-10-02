@@ -27,7 +27,7 @@ function parseCookieValue(setCookie: string | null, name: string): string | unde
 }
 
 describe('Auth API', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {

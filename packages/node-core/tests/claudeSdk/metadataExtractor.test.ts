@@ -34,7 +34,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 // mock getClaudeExecutablePath（异步，dev 模式返回 undefined，编译态返回路径）
 const mockGetClaudeExecutablePath = vi.fn()
-vi.mock('@/claude/sdk/claudeExecutable', () => ({
+vi.mock('@/claudeSdk/claudeExecutable', () => ({
     getClaudeExecutablePath: () => mockGetClaudeExecutablePath(),
 }))
 
@@ -55,7 +55,7 @@ vi.mock('@mobi/node-core/runtime/bundledPlugins', () => ({
 }))
 
 // 在 mock 设置之后 import
-import { extractSDKMetadata, extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor'
+import { extractSDKMetadata, extractSDKMetadataAsync } from '@/claudeSdk/metadataExtractor'
 
 // 构造模拟的 initializationResult 响应
 function makeInitResponse(overrides?: Record<string, unknown>) {

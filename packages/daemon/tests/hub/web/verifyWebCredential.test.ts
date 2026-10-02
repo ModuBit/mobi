@@ -18,8 +18,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resetConfiguration, createConfiguration } from '../../src/configuration'
-import { verifyWebCredential } from '../../src/web/auth/verifyWebCredential'
+import { resetConfiguration, createConfiguration } from '../../../src/configuration'
+import { verifyWebCredential } from '../../../src/web/auth/verifyWebCredential'
 
 describe('verifyWebCredential', () => {
     let isolatedHome: string

@@ -20,7 +20,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { describe, test, expect } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
-import { Store } from '../../src/store'
+import { Store } from '../../../src/store'
 
 describe('Store schema 初始化', () => {
     function createTempDir(): string {

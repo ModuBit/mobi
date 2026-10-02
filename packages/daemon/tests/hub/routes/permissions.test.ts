@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 const REQUEST_ID = 'req-1'
@@ -59,7 +59,7 @@ const mockSyncEngine = {
 } as unknown as SyncEngine
 
 describe('Permissions API — POST /api/sessions/:id/permissions/:requestId/approve', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {

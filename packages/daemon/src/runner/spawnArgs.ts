@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SpawnSessionOptions } from '@/modules/common/rpcTypes'
+import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
  * 构造 runner spawn mobi 子进程（默认 claude 命令）的 CLI 参数。

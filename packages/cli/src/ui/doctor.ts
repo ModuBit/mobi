@@ -25,44 +25,19 @@ import chalk from 'chalk'
 import { spawn } from 'node:child_process'
 import { configuration } from '@mobi/node-core/configuration'
 import { readSettings, readHubSettings } from '@mobi/node-core/persistence'
-import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
-import { findAllMobiProcesses } from '@/runner/doctor'
+import { checkIfRunnerRunningAndCleanupStaleState } from '@mobi/daemon/runner/controlClient'
+import { findAllMobiProcesses } from '@mobi/daemon/runner/doctor'
 import { readRunnerState } from '@mobi/node-core/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { isBunCompiled, projectPath, runtimePath } from '@mobi/node-core/projectPath'
-import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
+import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
 import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime'
 import packageJson from '../../package.json'
 
-/**
- * Get relevant environment information for debugging
- */
-export function getEnvironmentInfo(): Record<string, string | number | boolean | string[] | undefined> {
-    return {
-        PWD: process.env.PWD,
-        MOBI_HOME: process.env.MOBI_HOME,
-        MOBI_API_URL: process.env.MOBI_API_URL,
-        MOBI_PROJECT_ROOT: process.env.MOBI_PROJECT_ROOT,
-        CLI_API_TOKEN_SET: Boolean(process.env.CLI_API_TOKEN),
-        DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING,
-        NODE_ENV: process.env.NODE_ENV,
-        DEBUG: process.env.DEBUG,
-        workingDirectory: process.cwd(),
-        processArgv: process.argv,
-        mobiHomeDir: configuration?.mobiHomeDir,
-        apiUrl: configuration?.apiUrl,
-        logsDir: configuration?.logsDir,
-        processPid: process.pid,
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        user: process.env.USER,
-        home: process.env.HOME,
-        shell: process.env.SHELL,
-        terminal: process.env.TERM,
-    };
-}
+// getEnvironmentInfo 已抽 @mobi/node-core/environmentInfo（ticket-12：runner/session/cli 三侧共用），此处 re-export
+export { getEnvironmentInfo } from '@mobi/node-core/environmentInfo'
+import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo'
 
 function getLogFiles(logDir: string): { file: string, path: string, modified: Date }[] {
     if (!existsSync(logDir)) {

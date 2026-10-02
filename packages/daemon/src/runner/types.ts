@@ -18,7 +18,7 @@
  * Runner-specific types (not related to API/server communication)
  */
 
-import { Metadata } from '@/api/types';
+import { Metadata } from '@mobi/node-core/api/types';
 import { ChildProcess } from 'child_process';
 
 /**

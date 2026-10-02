@@ -16,7 +16,7 @@
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 
-import { Store } from '../../src/store'
+import { Store } from '../../../src/store'
 
 let store: Store
 

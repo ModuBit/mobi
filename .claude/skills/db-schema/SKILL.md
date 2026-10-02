@@ -5,7 +5,7 @@ description: 管理数据库 schema 版本 — 查看状态、标记发布、脚
 
 # db-schema — 数据库 Schema 版本管理
 
-管理 `packages/hub/src/store/index.ts` 中的 `SCHEMA_VERSION` 和 `SCHEMA_RELEASE_BASELINE`。
+管理 `packages/daemon/src/store/index.ts` 中的 `SCHEMA_VERSION` 和 `SCHEMA_RELEASE_BASELINE`。
 
 ## 用法
 
@@ -31,7 +31,7 @@ digraph db_schema {
 
 ## 第 1 步：读取当前状态
 
-读取 `packages/hub/src/store/index.ts`，提取：
+读取 `packages/daemon/src/store/index.ts`，提取：
 - `SCHEMA_VERSION` 的值
 - `SCHEMA_RELEASE_BASELINE` 的值
 
@@ -63,7 +63,7 @@ digraph db_schema {
 2. **判断是否需要操作：**
    - `VERSION === BASELINE` → 无待迁移变更，输出 `✅ 无 schema 变更，BASELINE 无需更新`，结束
    - `VERSION > BASELINE` → 继续第 3 步
-3. 编辑 `packages/hub/src/store/index.ts`，将 `SCHEMA_RELEASE_BASELINE` 的赋值改为 `SCHEMA_VERSION` 的值
+3. 编辑 `packages/daemon/src/store/index.ts`，将 `SCHEMA_RELEASE_BASELINE` 的赋值改为 `SCHEMA_VERSION` 的值
 4. 展示变更结果：
 
 ```
@@ -119,7 +119,7 @@ digraph db_schema {
 
 ## 注意事项
 
-- 只修改 `packages/hub/src/store/index.ts` 中的常量和方法
+- 只修改 `packages/daemon/src/store/index.ts` 中的常量和方法
 - 迁移方法必须用事务包裹（BEGIN / COMMIT / ROLLBACK）
 - 变更后记得同步更新 `createSchema()` 的建表语句（新安装时使用）
 - 修改完 schema 后运行测试验证

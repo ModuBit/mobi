@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import { Store } from '../../src/store'
-import { createWebApp } from '../../src/web/server'
-import { createConfiguration, resetConfiguration } from '../../src/configuration'
-import type { SSEManager } from '../../src/sse/sseManager'
-import type { VisibilityTracker } from '../../src/visibility/visibilityTracker'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import { createWebApp } from '../../../src/web/server'
+import { createConfiguration, resetConfiguration } from '../../../src/configuration'
+import type { SSEManager } from '../../../src/sse/sseManager'
+import type { VisibilityTracker } from '../../../src/visibility/visibilityTracker'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

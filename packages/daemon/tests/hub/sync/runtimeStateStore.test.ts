@@ -15,11 +15,11 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { RuntimeStateStore } from '../../src/sync/runtimeStateStore'
-import { SessionCache } from '../../src/sync/sessionCache'
-import { Store } from '../../src/store'
+import { RuntimeStateStore } from '../../../src/sync/runtimeStateStore'
+import { SessionCache } from '../../../src/sync/sessionCache'
+import { Store } from '../../../src/store'
 import type { Session } from '@mobi/shared/types'
-import type { EventPublisher } from '../../src/sync/eventPublisher'
+import type { EventPublisher } from '../../../src/sync/eventPublisher'
 
 const stubPublisher = { emit: () => {} } as unknown as EventPublisher
 

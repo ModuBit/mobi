@@ -25,7 +25,7 @@
  */
 
 import type { TrackedSession } from './types'
-import type { SpawnSessionResult } from '@/modules/common/rpcTypes'
+import type { SpawnSessionResult } from '@mobi/shared/hostProtocol'
 
 /**
  * 在在册 child 中查「resume 目标相同」的活表项。无 resume 目标的表项（手动 /

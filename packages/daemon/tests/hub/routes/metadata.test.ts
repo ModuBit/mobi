@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session, SDKMetadata } from '@mobi/shared'
 
 const cachedMetadata: SDKMetadata = {
@@ -43,7 +43,7 @@ function makeSession(sdkMetadata?: SDKMetadata): Session {
 }
 
 describe('GET /api/sessions/:id/metadata — SWR', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void = () => {}
 
     async function bootstrap(session: Session, engine: Partial<SyncEngine>) {

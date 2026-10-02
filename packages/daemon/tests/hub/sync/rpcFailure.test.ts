@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { RpcFailure, readRpcFailure } from '../../src/sync/rpcFailure'
+import { RpcFailure, readRpcFailure } from '../../../src/sync/rpcFailure'
 
 describe('readRpcFailure', () => {
     test('RpcFailure → 原样读出分类与文案', () => {

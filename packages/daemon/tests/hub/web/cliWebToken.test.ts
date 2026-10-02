@@ -17,8 +17,8 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { setupTestApp, testCliApiToken, testWebApiToken } from '../helpers/setupTestApp'
-import { createWebApp } from '../../src/web/server'
-import { getConfiguration } from '../../src/configuration'
+import { createWebApp } from '../../../src/web/server'
+import { getConfiguration } from '../../../src/configuration'
 
 describe('CLI web-token API（远程部署语义：cli 经 HTTP 读取/轮换 hub 的 webApiToken）', () => {
     let app: ReturnType<typeof createWebApp>

@@ -16,10 +16,10 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import type { Server } from 'socket.io'
-import { SyncEngine } from '../../src/sync/syncEngine'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
-import type { SSEManager } from '../../src/sse/sseManager'
+import { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
+import type { SSEManager } from '../../../src/sse/sseManager'
 import { setupTestApp, getAuthToken, testCliApiToken } from '../helpers/setupTestApp'
 
 /** 构造真实 SyncEngine（内存 Store + 空 socket/SSE），路由集成测试用 */
@@ -46,7 +46,7 @@ function makeEngineHandle(): { engine: SyncEngine; cleanup: () => void } {
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 describe('workspaces REST 路由 + 会话归属', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let engine: SyncEngine
     let engineCleanup: () => void
     let appCleanup: () => void

@@ -25,7 +25,7 @@ import {
 import { CrossSessionMetaSchema, LegacyFlatObjectSchema, TurnOriginSchema, UserMessageContentSchema } from '@mobi/shared'
 import type { PermissionMode } from '@mobi/shared/types'
 import { z } from 'zod'
-import { UsageSchema } from '@/claude/types'
+import { UsageSchema } from '@mobi/shared/schemas'
 
 export type Usage = z.infer<typeof UsageSchema>
 

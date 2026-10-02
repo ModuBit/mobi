@@ -22,6 +22,7 @@
         "@anthropic-ai/claude-agent-sdk": "^0.3.283",
         "@anthropic-ai/sandbox-runtime": "^0.0.77",
         "@anthropic-ai/sdk": "^0.128.0",
+        "@mobi/daemon": "workspace:*",
         "@mobi/node-core": "workspace:*",
         "@mobi/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.30.1",
@@ -53,23 +54,15 @@
       "dependencies": {
         "@mobi/node-core": "workspace:*",
         "@mobi/shared": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^26.6.3",
-        "bun-types": "^1.4.2",
-        "vitest": "^5.0.2",
-      },
-    },
-    "packages/hub": {
-      "name": "mobi-hub",
-      "version": "0.0.0",
-      "dependencies": {
-        "@mobi/shared": "workspace:*",
         "@socket.io/bun-engine": "^0.1.2",
         "cookie": "^2.0.1",
+        "fastify": "^5.12.5",
+        "fastify-type-provider-zod": "7.0.0",
         "hono": "^4.13.9",
         "jose": "^6.2.12",
+        "ps-list": "^9.0.0",
         "socket.io": "^4.8.4",
+        "socket.io-client": "^4.8.4",
         "web-push": "^3.6.7",
         "zod": "^4.6.5",
       },
@@ -77,6 +70,7 @@
         "@types/node": "^26.6.3",
         "@types/web-push": "^3.6.4",
         "bun-types": "^1.4.2",
+        "vitest": "^5.0.2",
       },
     },
     "packages/node-core": {
@@ -2178,8 +2172,6 @@
     "minizlib": ["minizlib@3.1.0", "", { "dependencies": { "minipass": "^7.1.2" } }, "sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw=="],
 
     "mlly": ["mlly@1.8.1", "", { "dependencies": { "acorn": "^8.16.0", "pathe": "^2.0.3", "pkg-types": "^1.3.1", "ufo": "^1.6.3" } }, "sha512-SnL6sNutTwRWWR/vcmCYHSADjiEesp5TGQQ0pXyLhW5IoeibRlF/CbSLailbB3CNqJUk9cVJ9dUDnbD7GrcHBQ=="],
-
-    "mobi-hub": ["mobi-hub@workspace:packages/hub"],
 
     "mobi-web": ["mobi-web@workspace:packages/web"],
 

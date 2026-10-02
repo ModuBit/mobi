@@ -17,9 +17,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
-import { createSessionsRoutes } from '../../src/web/routes/sessions'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
+import { createSessionsRoutes } from '../../../src/web/routes/sessions'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {
@@ -72,7 +72,7 @@ function makeApp(getEngine: () => SyncEngine | null, tracker: BackgroundTaskTrac
 
 describe('rewind API 路由', () => {
     let cleanup: () => void
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let token: string
 
     beforeEach(async () => {

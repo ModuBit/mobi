@@ -15,13 +15,13 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHandlers'
-import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
-import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
+import { registerSessionHandlers } from '../../../src/socket/handlers/cli/sessionHandlers'
+import type { SessionHandlersDeps } from '../../../src/socket/handlers/cli/sessionHandlers'
+import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
 import { textEnvelope, blocksOf as envelopeBlocksOf } from '../helpers/snapshotDelta'
-import type { StoredSession } from '../../src/store/types'
-import type { SyncEvent } from '../../src/sync/syncEngine'
+import type { StoredSession } from '../../../src/store/types'
+import type { SyncEvent } from '../../../src/sync/syncEngine'
 
 /**
  * snapshot delta 协议 handler 层接缝测试（票 01 建 CLI→hub 段、票 02 加 hub→web 段）：

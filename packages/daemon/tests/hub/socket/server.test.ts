@@ -15,11 +15,11 @@
  */
 
 import { describe, test, expect, spyOn } from 'bun:test'
-import { createSocketServer, extractTerminalToken } from '../../src/socket/server'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
+import { createSocketServer, extractTerminalToken } from '../../../src/socket/server'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
 import { testJwtSecret } from '../helpers/setupTestApp'
-import { AUTH_COOKIE_NAME } from '../../src/web/auth/session'
-import { hubLogger } from '../../src/logger'
+import { AUTH_COOKIE_NAME } from '../../../src/web/auth/session'
+import { hubLogger } from '../../../src/logger'
 
 describe('extractTerminalToken 双源提取', () => {
     test('cookie 优先：带 mobi_token cookie 返回 cookie token', () => {

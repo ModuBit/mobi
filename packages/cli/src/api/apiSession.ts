@@ -44,13 +44,13 @@ import type {
     SessionModel,
     SessionPermissionMode,
     UserMessage
-} from './types'
-import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from './types'
+} from '@mobi/node-core/api/types'
+import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from '@mobi/node-core/api/types'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerCommonHandlers } from '../modules/common/registerCommonHandlers'
-import { cleanupUploadDir } from '../modules/common/handlers/uploads'
+import { registerCommonHandlers } from '@mobi/node-core/handlers/registerCommonHandlers'
+import { cleanupUploadDir } from '@mobi/node-core/handlers/uploads'
 import { TerminalManager } from '@/terminal/TerminalManager'
-import { applyVersionedAck } from './versionedUpdate'
+import { applyVersionedAck } from '@mobi/node-core/api/versionedUpdate'
 import { IdleTimer } from '@/modules/common/idleTimer'
 import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
 
@@ -110,6 +110,11 @@ export class ApiSessionClient extends EventEmitter {
      * 由 claudeRemoteLauncher 在创建发送器时注入。
      */
     private onSnapshotTransportReset: (() => void) | null = null
+
+    // 原 ApiClient.sessionSyncClient 工厂（ticket-12：ApiClient 归 node-core 后跨包无法直接构造本类）
+    static create(token: string, session: Session): ApiSessionClient {
+        return new ApiSessionClient(token, session)
+    }
 
     constructor(token: string, session: Session) {
         super()

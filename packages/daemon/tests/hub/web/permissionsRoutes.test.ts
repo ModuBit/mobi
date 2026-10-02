@@ -16,8 +16,8 @@
 
 import { describe, test, expect } from 'bun:test'
 
-import { createPermissionsRoutes } from '../../src/web/routes/permissions'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import { createPermissionsRoutes } from '../../../src/web/routes/permissions'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {

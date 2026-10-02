@@ -16,8 +16,8 @@
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 
-import { Store } from '../../src/store'
-import { RewindDeleteBoundTracker } from '../../src/sync/rewindDeleteBoundTracker'
+import { Store } from '../../../src/store'
+import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
 
 /**
  * rewind 软删除上界（M3 防御）：迟到截断回报不得吞掉受理后新发的消息。

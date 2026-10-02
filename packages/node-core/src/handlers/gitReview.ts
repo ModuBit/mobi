@@ -55,7 +55,7 @@ import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '@mobi
 import { resolveDiffTarget } from '@mobi/node-core/git/diffTargetResolver'
 import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
-import { rpcError } from '../rpcResponses'
+import { rpcError } from './rpcResponses'
 import { logger } from '@mobi/node-core/logger'
 
 /** untracked 逐文件计数的上限（防超大仓库海量新文件打爆 exec） */

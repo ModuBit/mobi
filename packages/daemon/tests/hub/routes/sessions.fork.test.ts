@@ -16,7 +16,7 @@
 
 import { describe, test, expect, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 /**
@@ -54,7 +54,7 @@ function makeMockEngine(forkResult: { ok: true; sessionId: string } | { ok: fals
 }
 
 describe('POST /api/sessions/:id/fork', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     function setup(mockEngine: SyncEngine) {
@@ -177,7 +177,7 @@ describe('POST /api/sessions/:id/fork', () => {
 })
 
 describe('DELETE /api/sessions/:id fork 删除守卫（isSessionRowDeletable）', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     function setupWithSession(

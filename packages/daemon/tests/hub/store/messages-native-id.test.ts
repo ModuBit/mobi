@@ -17,8 +17,8 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
-import { Store } from '../../src/store'
-import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages, getMessagesByNativeId, hasQueuedMessagesAfter, markTerminalReason, softDeleteMessagesFrom } from '../../src/store/messages'
+import { Store } from '../../../src/store'
+import { addMessage, advanceMessagesLifecycle, bindNativeIds, cancelAllQueuedMessages, getMessages, getMessagesByNativeId, hasQueuedMessagesAfter, markTerminalReason, softDeleteMessagesFrom } from '../../../src/store/messages'
 
 /** 建一个带 metadata/deleted_at 列的最小 messages 表（无 FK/无 sessions，纯模块级函数测试，参照 messages-byposition.test.ts） */
 function makeDb(): Database {

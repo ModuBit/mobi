@@ -15,8 +15,8 @@
  */
 
 import { describe, test, expect, mock } from 'bun:test'
-import { NotificationHub } from '../../src/notifications/notificationHub'
-import type { SyncEvent } from '../../src/sync/syncEngine'
+import { NotificationHub } from '../../../src/notifications/notificationHub'
+import type { SyncEvent } from '../../../src/sync/syncEngine'
 
 /** 构造 message-received(ready) 事件，模拟 CLI sendSessionEvent({type:'ready'}) 经 socket message → sessionHandlers → onWebappEvent 的产物 */
 function makeReadyEvent(sessionId: string): SyncEvent {

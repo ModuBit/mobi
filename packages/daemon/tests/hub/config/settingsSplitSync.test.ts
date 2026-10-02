@@ -18,8 +18,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resetConfiguration, createConfiguration } from '../../src/configuration'
-import { updateSettingsFile } from '../../src/config/settings'
+import { resetConfiguration, createConfiguration } from '../../../src/configuration'
+import { updateSettingsFile } from '../../../src/config/settings'
 
 /**
  * settings 拆分的两处回归锁定：

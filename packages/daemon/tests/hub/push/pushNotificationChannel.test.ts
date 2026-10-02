@@ -15,11 +15,11 @@
  */
 
 import { describe, test, expect, mock } from 'bun:test'
-import { PushNotificationChannel } from '../../src/push/pushNotificationChannel'
-import { VisibilityTracker } from '../../src/visibility/visibilityTracker'
-import { SSEManager } from '../../src/sse/sseManager'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
-import type { PushService } from '../../src/push/pushService'
+import { PushNotificationChannel } from '../../../src/push/pushNotificationChannel'
+import { VisibilityTracker } from '../../../src/visibility/visibilityTracker'
+import { SSEManager } from '../../../src/sse/sseManager'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
+import type { PushService } from '../../../src/push/pushService'
 
 /** 最小 Session 桩,满足 channel 读取的字段 */
 function makeSession(overrides: Record<string, unknown> = {}) {

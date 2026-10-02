@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp } from '../helpers/setupTestApp'
 
 describe('Manifest API', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {

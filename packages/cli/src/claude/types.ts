@@ -23,14 +23,9 @@ import { z } from "zod";
 import type { RewindFilesResult } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types";
 
-// Usage statistics for assistant messages - used in apiSession.ts
-export const UsageSchema = z.object({
-  input_tokens: z.number().int().nonnegative(),
-  cache_creation_input_tokens: z.number().int().nonnegative().nullable().optional(),
-  cache_read_input_tokens: z.number().int().nonnegative().nullable().optional(),
-  output_tokens: z.number().int().nonnegative(),
-  service_tier: z.string().nullable().optional(),
-});
+// UsageSchema 已下沉 @mobi/shared/schemas（ticket-12，node-core api/types 共用），此处 re-export 保调用方零改动
+export { UsageSchema } from '@mobi/shared/schemas'
+import { UsageSchema } from '@mobi/shared/schemas'
 
 const RawMessageSchema = z.object({
   role: z.string().optional(),

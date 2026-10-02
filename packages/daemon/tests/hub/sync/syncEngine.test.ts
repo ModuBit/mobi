@@ -15,10 +15,10 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { SyncEngine } from '../../src/sync/syncEngine'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
-import { RewindDeleteBoundTracker } from '../../src/sync/rewindDeleteBoundTracker'
+import { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
+import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
 
 /**
  * renameSession 单测：验证 sessionCache 更新后 best-effort 同步 RPC 到 CLI。
@@ -65,7 +65,7 @@ function makeEngine(opts: { renameOnline: boolean; emitDelayMs?: number; onlineM
         },
     } as unknown as RpcRegistry
 
-    const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+    const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
     const engine = new SyncEngine(store, io, registry, sseManager)
 
@@ -194,7 +194,7 @@ describe('SyncEngine.rewind 受理上界', () => {
                 return method.endsWith(':rewind') ? 'sock-1' : null
             },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
         const tracker = new RewindDeleteBoundTracker()
         const engine = new SyncEngine(store, io, registry, sseManager, tracker)
@@ -315,7 +315,7 @@ describe('SyncEngine.abortSession stopKind', () => {
                 return method.endsWith(':abort') ? 'sock-1' : null
             },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const engine = new SyncEngine(store, io, registry, sseManager)
 
         return {
@@ -375,7 +375,7 @@ describe('SyncEngine.abortSession stopKind', () => {
                 return method.endsWith(':abort') ? 'sock-1' : null
             },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const engine = new SyncEngine(store, io, registry, sseManager)
 
         try {
@@ -425,7 +425,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
                 return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
             },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
         const engine = new SyncEngine(store, io, registry, sseManager)
         engineRef.engine = engine
@@ -485,7 +485,7 @@ describe('SyncEngine.switchOutputStyle 结构化分层（深化候选⑥）', ()
                 return method.endsWith(':switch-output-style') ? 'sock-1' : null
             },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
         const engine = new SyncEngine(store, io, registry, sseManager)
         return {

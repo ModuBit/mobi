@@ -45,7 +45,7 @@ vi.mock('@/supervisor/control', () => ({
     sendControlCommand: mockSendControlCommand,
 }))
 
-vi.mock('@/runner/controlClient', () => ({
+vi.mock('@mobi/daemon/runner/controlClient', () => ({
     isRunnerRunningCurrentlyInstalledMobiVersion: mockIsRunnerRunning,
 }))
 

@@ -21,7 +21,7 @@ import {
     UPLOAD_CHUNK_SIZE,
     type ByteReader,
     type WriteRangeResult,
-} from '../../src/web/utils/uploadStream'
+} from '../../../src/web/utils/uploadStream'
 
 /**
  * 构造 fake reader：逐个返回 chunks；breakAt 指定第几次 read 抛错（模拟连接中断）

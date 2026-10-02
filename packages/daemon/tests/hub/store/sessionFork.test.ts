@@ -18,8 +18,8 @@ import { describe, test, expect } from 'bun:test'
 
 import { MetadataSchema } from '@mobi/shared'
 
-import { Store } from '../../src/store'
-import { isTurnStartContent } from '../../src/store/sessionFork'
+import { Store } from '../../../src/store'
+import { isTurnStartContent } from '../../../src/store/sessionFork'
 
 // ============ 消息内容构造器（真实信封形态，见 contextBoundary.test.ts / web turnBoundary）============
 

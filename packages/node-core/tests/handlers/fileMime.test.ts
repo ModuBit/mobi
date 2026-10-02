@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { lookupMime } from '@/modules/common/handlers/fileMime'
+import { lookupMime } from '@/handlers/fileMime'
 
 describe('lookupMime', () => {
     it('常见扩展名命中 mime 表', () => {

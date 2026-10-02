@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { chmod, mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { readFileMetaAt, readFileRangeAt } from '@/modules/common/handlers/fileRead'
+import { readFileMetaAt, readFileRangeAt } from '@/handlers/fileRead'
 
 describe('readFileMetaAt', () => {
     let rootDir: string

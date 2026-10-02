@@ -47,7 +47,7 @@ vi.mock('fs/promises', async (importOriginal) => {
     }
 })
 
-const { registerUploadHandlers } = await import('@/modules/common/handlers/uploads')
+const { registerUploadHandlers } = await import('@/handlers/uploads')
 
 interface MockHandlerResult {
     success: boolean

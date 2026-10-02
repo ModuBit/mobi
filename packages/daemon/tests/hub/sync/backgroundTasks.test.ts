@@ -22,8 +22,8 @@ import {
     extractExcludedTaskStartedIds,
     extractTaskStartedInfo,
     applyBackgroundTaskDelta,
-} from '../../src/sync/backgroundTasks'
-import type { BackgroundTaskDelta, BackgroundTaskItem } from '../../src/sync/backgroundTasks'
+} from '../../../src/sync/backgroundTasks'
+import type { BackgroundTaskDelta, BackgroundTaskItem } from '../../../src/sync/backgroundTasks'
 
 // ============ 辅助函数 ============
 

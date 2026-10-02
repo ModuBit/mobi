@@ -38,7 +38,7 @@ jobs:
         run: bun run build:web
 
       - name: Generate embedded web assets
-        run: cd packages/hub && bun run generate:embedded-web-assets
+        run: cd packages/daemon && bun run generate:embedded-web-assets
 
       - name: Build binary
         run: cd packages/cli && bun run build:exe:raw -- --target ${{ matrix.target }}

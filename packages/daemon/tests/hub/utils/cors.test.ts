@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { assertCorsOriginsForCredentials } from '../../src/utils/cors'
+import { assertCorsOriginsForCredentials } from '../../../src/utils/cors'
 
 describe('assertCorsOriginsForCredentials', () => {
     test('credentials:true + 含 "*" → throw', () => {

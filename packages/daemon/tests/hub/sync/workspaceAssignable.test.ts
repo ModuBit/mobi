@@ -16,10 +16,10 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import type { Server } from 'socket.io'
-import { SyncEngine, checkWorkspaceAssignable } from '../../src/sync/syncEngine'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
-import type { SSEManager } from '../../src/sse/sseManager'
+import { SyncEngine, checkWorkspaceAssignable } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
+import type { SSEManager } from '../../../src/sse/sseManager'
 
 /** 构造真实 SyncEngine（内存 Store + 空 socket/SSE） */
 function makeEngine(): { engine: SyncEngine; cleanup: () => void } {

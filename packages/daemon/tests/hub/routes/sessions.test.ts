@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {
@@ -134,7 +134,7 @@ describe('Sessions API（dormancy：休眠会话配置暂存与手动休眠）',
 })
 
 describe('Sessions API', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {

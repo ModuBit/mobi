@@ -41,3 +41,12 @@ import('./commands/runCli').then(({ runCli }) => {
     console.error('Failed to start CLI:', err)
     process.exit(1)
 })
+
+// 注册编译期内嵌 claude 二进制 loader（ticket-12）：embeddedClaudeBinary.bun 绑定 cli
+// 的编译期资产（bun:bundle feature + tools/archives 相对路径），归 cli 包；node-core 的
+// claudeExecutable 经此注入取用。须在 profile 加载之后（configuration 单例会读注入的 env）
+void (async () => {
+    const { registerEmbeddedClaudeBinaryLoader } = await import('@mobi/node-core/claudeSdk/claudeExecutable')
+    const { loadEmbeddedClaudeBinary } = await import('@/runtime/embeddedClaudeBinary.bun')
+    registerEmbeddedClaudeBinaryLoader(loadEmbeddedClaudeBinary)
+})()

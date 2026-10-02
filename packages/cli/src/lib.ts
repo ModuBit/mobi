@@ -25,7 +25,7 @@
  */
 
 // These exports allow me to use this package a library in dev-environment cli helper programs
-export { ApiClient } from '@/api/api'
+export { ApiClient } from '@mobi/node-core/api/api'
 export { ApiSessionClient } from '@/api/apiSession'
 
 export { logger } from '@mobi/node-core/logger'

@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getOrCreateWebApiToken } from '../../src/config/webApiToken'
+import { getOrCreateWebApiToken } from '../../../src/config/webApiToken'
 
 describe('getOrCreateWebApiToken', () => {
     let dataDir: string

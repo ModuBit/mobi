@@ -34,14 +34,21 @@ const h = vi.hoisted(() => ({
     access: vi.fn()
 }))
 
-vi.mock('@/api/api', () => ({
+vi.mock('@mobi/node-core/api/api', () => ({
     ApiClient: {
         create: async () => ({
             getOrCreateSession: h.getOrCreateSession,
             getSessionByClaudeSessionId: h.getSessionByClaudeSessionId,
             getOrCreateMachine: async () => ({}),
-            sessionSyncClient: () => ({ updateMetadata: h.updateMetadata })
+            // token 供 ApiSessionClient.create（sessionSyncClient 工厂已拆分，ticket-12）
+            token: 'test-token'
         })
+    }
+}))
+// 原 ApiClient.sessionSyncClient 工厂拆分（ticket-12）：mock 跟随新注入点
+vi.mock('@/api/apiSession', () => ({
+    ApiSessionClient: {
+        create: () => ({ updateMetadata: h.updateMetadata })
     }
 }))
 

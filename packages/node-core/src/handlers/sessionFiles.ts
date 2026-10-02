@@ -19,9 +19,9 @@ import { readdir, stat } from 'fs/promises'
 import { join, resolve, isAbsolute } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { validatePath, isWithinBlacklistedDir } from '../pathSecurity'
-import { getErrorMessage, rpcError } from '../rpcResponses'
-import { runStream as runRipgrepStream } from '@/modules/ripgrep/index'
+import { validatePath, isWithinBlacklistedDir } from './pathSecurity'
+import { getErrorMessage, rpcError } from './rpcResponses'
+import { runStream as runRipgrepStream } from '../ripgrep/index'
 
 const MAX_RESULTS = 50
 const MAX_SEARCH_DEPTH = 10

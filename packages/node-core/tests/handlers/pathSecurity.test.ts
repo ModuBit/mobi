@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePath, validateHomeDirPath } from '@/modules/common/pathSecurity';
+import { validatePath, validateHomeDirPath } from '@/handlers/pathSecurity';
 
 describe('validatePath', () => {
     const workingDir = '/home/user/project';

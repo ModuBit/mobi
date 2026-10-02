@@ -15,11 +15,11 @@
  */
 
 import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerCommandHandlers } from './handlers/commands'
-import { registerDifftasticHandlers } from './handlers/difftastic'
-import { registerFileHandlers } from './handlers/files'
-import { registerSessionFilesHandler } from './handlers/sessionFiles'
-import { registerUploadHandlers } from './handlers/uploads'
+import { registerCommandHandlers } from './commands'
+import { registerDifftasticHandlers } from './difftastic'
+import { registerFileHandlers } from './files'
+import { registerSessionFilesHandler } from './sessionFiles'
+import { registerUploadHandlers } from './uploads'
 
 export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     registerFileHandlers(rpcHandlerManager, workingDirectory)

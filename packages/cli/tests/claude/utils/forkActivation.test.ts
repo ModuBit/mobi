@@ -24,7 +24,7 @@ import {
     forkActivationFailureMessage,
     type ForkActivationPlan,
 } from '../../../src/claude/utils/forkActivation'
-import type { Metadata } from '@/api/types'
+import type { Metadata } from '@mobi/node-core/api/types'
 import { buildForkStartupFields, resolveStartSessionId } from '../../../src/claude/claudeRemote'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({

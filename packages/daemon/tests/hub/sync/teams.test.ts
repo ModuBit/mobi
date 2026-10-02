@@ -21,7 +21,7 @@ import {
     extractTeamMemberCompletionFromMessageContent,
     applyTeamStateDelta,
     handleTeamSessionEnd,
-} from '../../src/sync/teams'
+} from '../../../src/sync/teams'
 import type { TeamState } from '@mobi/shared/types'
 
 // ============ 辅助函数 ============

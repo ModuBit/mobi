@@ -18,7 +18,7 @@ import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import { fileEtag, type RpcFileMeta, type RpcReadFileRangeResponse } from '@mobi/shared/fileMeta'
-import { getErrorMessage, rpcError } from '../rpcResponses'
+import { getErrorMessage, rpcError } from './rpcResponses'
 import { lookupMime } from './fileMime'
 
 /** readFileMetaAt 的 Result 契约：失败整形（含 ENOENT 结构化码）在此 module 统一，handler 只透传 */

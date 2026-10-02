@@ -36,7 +36,7 @@ import {
     validateSelection,
     mergeProviderCredentials,
     registerWebToolsConfigHandler,
-} from '@/modules/common/handlers/webToolsConfig'
+} from '@/handlers/webToolsConfig'
 import { createProviderFor } from '@mobi/node-core/webtools/registry'
 
 describe('parseWebToolsConfig（schema 层校验）', () => {

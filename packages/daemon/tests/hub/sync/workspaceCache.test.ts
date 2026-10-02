@@ -16,10 +16,10 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import type { SyncEvent } from '@mobi/shared/types'
-import { Store } from '../../src/store'
-import { EventPublisher } from '../../src/sync/eventPublisher'
-import { WorkspaceCache } from '../../src/sync/workspaceCache'
-import type { SSEManager } from '../../src/sse/sseManager'
+import { Store } from '../../../src/store'
+import { EventPublisher } from '../../../src/sync/eventPublisher'
+import { WorkspaceCache } from '../../../src/sync/workspaceCache'
+import type { SSEManager } from '../../../src/sse/sseManager'
 
 /** 构造捕获广播事件的 WorkspaceCache（SSE 联动断言用） */
 function makeCache(store: Store): { cache: WorkspaceCache; events: SyncEvent[] } {

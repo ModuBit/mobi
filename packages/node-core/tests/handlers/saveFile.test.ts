@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile, stat, readFile, readdir, mkdtemp } from 'fs/promi
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerFileHandlers } from '@/modules/common/handlers/files'
+import { registerFileHandlers } from '@/handlers/files'
 
 // 从注册的 handler 中取出指定方法直接调用（绕过 socket，单测 handler 逻辑）
 function getHandler(mgr: RpcHandlerManager, method: string) {

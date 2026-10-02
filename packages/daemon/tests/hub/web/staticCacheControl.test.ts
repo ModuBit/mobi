@@ -18,7 +18,7 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { staticCacheControl } from '../../src/web/utils/staticCacheControl'
+import { staticCacheControl } from '../../../src/web/utils/staticCacheControl'
 import { setupTestApp } from '../helpers/setupTestApp'
 
 /**
@@ -80,7 +80,7 @@ describe('staticCacheControl（纯函数策略）', () => {
 })
 
 describe('Hub 静态资源 Cache-Control（集成）', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
     let tmpDist: string
 

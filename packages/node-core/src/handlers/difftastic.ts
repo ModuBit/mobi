@@ -16,9 +16,9 @@
 
 import { logger } from '@mobi/node-core/logger'
 import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { run as runDifftastic } from '@/modules/difftastic/index'
-import { validatePath } from '../pathSecurity'
-import { getErrorMessage, rpcError } from '../rpcResponses'
+import { run as runDifftastic } from '../difftastic/index'
+import { validatePath } from './pathSecurity'
+import { getErrorMessage, rpcError } from './rpcResponses'
 
 interface DifftasticRequest {
     args: string[]

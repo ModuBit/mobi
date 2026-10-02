@@ -15,12 +15,12 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { registerSessionHandlers } from '../../../src/socket/handlers/cli/sessionHandlers'
-import type { SessionHandlersDeps } from '../../../src/socket/handlers/cli/sessionHandlers'
-import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
-import { SnapshotSync } from '../../../src/sync/snapshotSync'
-import type { StoredSession } from '../../../src/store/types'
-import type { SyncEvent } from '../../../src/sync/syncEngine'
+import { registerSessionHandlers } from '../../../../src/socket/handlers/cli/sessionHandlers'
+import type { SessionHandlersDeps } from '../../../../src/socket/handlers/cli/sessionHandlers'
+import { BackgroundTaskTracker } from '../../../../src/sync/backgroundTaskTracker'
+import { SnapshotSync } from '../../../../src/sync/snapshotSync'
+import type { StoredSession } from '../../../../src/store/types'
+import type { SyncEvent } from '../../../../src/sync/syncEngine'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */
 function makeStoredSession(sid: string): StoredSession {

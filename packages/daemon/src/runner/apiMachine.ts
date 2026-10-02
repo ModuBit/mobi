@@ -23,17 +23,17 @@ import { stat } from 'node:fs/promises'
 import { logger } from '@mobi/node-core/logger'
 import { configuration } from '@mobi/node-core/configuration'
 import type { Update, UpdateMachineBody } from '@mobi/shared'
-import type { RunnerState, Machine, MachineMetadata } from './types'
-import { RunnerStateSchema, MachineMetadataSchema } from './types'
+import type { RunnerState, Machine, MachineMetadata } from '@mobi/node-core/api/types'
+import { RunnerStateSchema, MachineMetadataSchema } from '@mobi/shared/hostProtocol'
 import { backoff } from '@mobi/node-core/utils/time'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerCommonHandlers } from '../modules/common/registerCommonHandlers'
-import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
-import { applyVersionedAck } from './versionedUpdate'
-import { registerMachineDirectoryHandler } from '../modules/common/handlers/machineDirectory'
-import { registerWebToolsConfigHandler } from '../modules/common/handlers/webToolsConfig'
-import { registerMachineFileHandlers } from '../modules/common/handlers/machineFiles'
-import { registerGitReviewHandlers } from '../modules/common/handlers/gitReview'
+import { registerCommonHandlers } from '@mobi/node-core/handlers/registerCommonHandlers'
+import type { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol'
+import { applyVersionedAck } from '@mobi/node-core/api/versionedUpdate'
+import { registerMachineDirectoryHandler } from '@mobi/node-core/handlers/machineDirectory'
+import { registerWebToolsConfigHandler } from '@mobi/node-core/handlers/webToolsConfig'
+import { registerMachineFileHandlers } from '@mobi/node-core/handlers/machineFiles'
+import { registerGitReviewHandlers } from '@mobi/node-core/handlers/gitReview'
 
 interface ServerToRunnerEvents {
     'machine-update': (data: Update) => void
@@ -87,6 +87,11 @@ export class ApiMachineClient {
     private socket!: Socket<ServerToRunnerEvents, RunnerToServerEvents>
     private keepAliveInterval: NodeJS.Timeout | null = null
     private rpcHandlerManager: RpcHandlerManager
+
+    // 原 ApiClient.machineSyncClient 工厂（ticket-12：ApiClient 归 node-core 后跨包无法直接构造本类）
+    static create(token: string, machine: Machine): ApiMachineClient {
+        return new ApiMachineClient(token, machine)
+    }
 
     constructor(
         private readonly token: string,

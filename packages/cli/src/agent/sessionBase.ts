@@ -16,7 +16,7 @@
 
 import { ApiClient, ApiSessionClient } from '@/lib';
 import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
-import type { Metadata, SessionModel, SessionPermissionMode } from '@/api/types';
+import type { Metadata, SessionModel, SessionPermissionMode } from '@mobi/node-core/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import { logger } from '@mobi/node-core/logger';
 import { readGitBranch } from '@mobi/node-core/utils/worktreeEnv';

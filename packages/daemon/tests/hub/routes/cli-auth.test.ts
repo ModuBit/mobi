@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, testCliApiToken, testWebApiToken } from '../helpers/setupTestApp'
 
 describe('/cli 鉴权反向隔离', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {

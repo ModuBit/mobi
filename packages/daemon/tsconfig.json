@@ -1,6 +1,11 @@
 {
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
+        "lib": [
+            "es2020",
+            "es2022"
+        ],
+        "noEmit": true,
         "types": [
             "node",
             "bun-types"
@@ -11,8 +16,13 @@
             ]
         }
     },
+    "exclude": [
+        "node_modules",
+        "dist"
+    ],
     "include": [
         "src/**/*.ts",
+        "src/**/*.d.ts",
         "tests/**/*.ts"
     ]
 }

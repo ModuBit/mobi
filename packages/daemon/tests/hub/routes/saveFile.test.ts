@@ -16,7 +16,7 @@
 
 import { describe, test, expect, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 

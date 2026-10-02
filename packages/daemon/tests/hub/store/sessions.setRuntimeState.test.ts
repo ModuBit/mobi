@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { Store } from '../../src/store'
+import { Store } from '../../../src/store'
 
 describe('setRuntimeState 时序', () => {
     let store: Store

@@ -30,7 +30,7 @@ vi.mock('@mobi/node-core/logger', () => ({
 
 // vi.mock 之上再导入被测模块（vitest 会把 vi.mock 提升到文件顶部）
 import { resolveUserMessageContent } from '@/claude/runClaude'
-import { UserMessageSchema } from '@/api/types'
+import { UserMessageSchema } from '@mobi/node-core/api/types'
 
 let dir: string
 const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47])

@@ -15,9 +15,9 @@
  */
 
 import { describe, test, expect, mock } from 'bun:test'
-import { SSEManager } from '../../src/sse/sseManager'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
-import { VisibilityTracker } from '../../src/visibility/visibilityTracker'
+import { SSEManager } from '../../../src/sse/sseManager'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
+import { VisibilityTracker } from '../../../src/visibility/visibilityTracker'
 import { blocksOf, textEnvelope } from '../helpers/snapshotDelta'
 
 /** 构造一个 SSE 连接的 send 回调,记录是否被调用 */

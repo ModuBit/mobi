@@ -19,12 +19,12 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { access } from 'node:fs/promises'
 
-import { ApiClient } from '@/api/api'
-import type { ApiSessionClient } from '@/api/apiSession'
-import type { AgentState, Metadata, Workspace, Session } from '@/api/types'
+import { ApiClient } from '@mobi/node-core/api/api'
+import { ApiSessionClient } from '@/api/apiSession'
+import type { AgentState, Metadata, Workspace, Session } from '@mobi/node-core/api/types'
 import type { EffortLevel } from '@mobi/shared'
 import { notifyRunnerSessionStarted } from '@/agent/sessionWebhook'
-import { buildMachineMetadata } from '@/runner/machineMetadata'
+import { buildMachineMetadata } from '@mobi/daemon/runner/machineMetadata'
 import { readSettings } from '@mobi/node-core/persistence'
 import { configuration } from '@mobi/node-core/configuration'
 import { logger } from '@mobi/node-core/logger'
@@ -279,7 +279,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         workspaceId: options.workspaceId
     })
 
-    const apiSession = api.sessionSyncClient(sessionInfo)
+    const apiSession = ApiSessionClient.create(api.token, sessionInfo)
 
     // 解析额外工作目录：优先回放冻结列表，其次从工作区 folders 派生（见函数 docstring 的优先级规则）
     const { dirs: additionalDirectories, freeze } = await resolveAdditionalDirectories({

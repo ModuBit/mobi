@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentState } from "@/api/types";
+import type { AgentState } from "@mobi/node-core/api/types";
 import type { PermissionMode } from "@mobi/shared/types";
 import type { PermissionAnswers, PermissionUpdate, SDKUIHints } from "@mobi/shared";
 

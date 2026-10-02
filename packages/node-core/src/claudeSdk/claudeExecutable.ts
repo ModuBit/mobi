@@ -14,7 +14,21 @@
  * limitations under the License.
  */
 
-import { isBunCompiled } from '@mobi/node-core/projectPath';
+import { isBunCompiled } from '../projectPath';
+
+/**
+ * 内嵌 claude 二进制加载器注入点（ticket-12）。
+ *
+ * `runtime/embeddedClaudeBinary.bun` 依赖 bun:bundle feature 与 cli 包
+ * tools/archives 的编译期资产路径，必须留在 cli 包；本模块归 node-core 后
+ * 由 cli 启动早期（bootstrap）注册实际 loader，node-core 不直接引用它。
+ * 未注册时编译态回退 undefined（与原「提取失败回退」语义一致），dev 态不触发。
+ */
+let embeddedClaudeBinaryLoader: (() => Promise<string>) | undefined;
+
+export function registerEmbeddedClaudeBinaryLoader(loader: () => Promise<string>): void {
+    embeddedClaudeBinaryLoader = loader;
+}
 
 /**
  * 解析 claude 可执行路径（local + remote 共用）。
@@ -41,8 +55,11 @@ export async function getClaudeExecutablePath(): Promise<string | undefined> {
     }
 
     const { extractFromBunfs } = await import('@anthropic-ai/claude-agent-sdk/extract');
-    const { loadEmbeddedClaudeBinary } = await import('@/runtime/embeddedClaudeBinary.bun');
-    const extracted = extractFromBunfs(await loadEmbeddedClaudeBinary());
+    // loader 由 cli bootstrap 注册（embeddedClaudeBinary.bun 属 cli 编译期资产，见文件头注）
+    if (!embeddedClaudeBinaryLoader) {
+        return undefined;
+    }
+    const extracted = extractFromBunfs(await embeddedClaudeBinaryLoader());
     // SDK 提取失败（tmpDir 不可写/磁盘满/chmod 失败等）时会返回原始 $bunfs/~BUN 虚拟路径，
     // 子进程无法从中 spawn。检测到即视为未提取，回退 undefined 让调用方兜底。
     if (extracted.includes('$bunfs') || extracted.includes('~BUN')) {

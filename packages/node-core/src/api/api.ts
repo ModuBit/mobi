@@ -15,21 +15,24 @@
  */
 
 import axios from 'axios'
-import type { AgentState, CreateMachineResponse, CreateSessionResponse, Workspace, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
-import { AgentStateSchema, CreateMachineResponseSchema, CreateSessionResponseSchema, RunnerStateSchema, MachineMetadataSchema, MetadataSchema } from '@/api/types'
+import type { AgentState, CreateMachineResponse, CreateSessionResponse, Workspace, RunnerState, Machine, MachineMetadata, Metadata, Session } from './types'
+import { AgentStateSchema, CreateMachineResponseSchema, CreateSessionResponseSchema, RunnerStateSchema, MachineMetadataSchema, MetadataSchema } from './types'
 import { configuration } from '@mobi/node-core/configuration'
-import { getAuthToken } from '@/api/auth'
+import { getAuthToken } from './auth'
 import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
 import { logger } from '@mobi/node-core/logger'
-import { ApiMachineClient } from './apiMachine'
-import { ApiSessionClient } from './apiSession'
 
 export class ApiClient {
     static async create(): Promise<ApiClient> {
         return new ApiClient(getAuthToken())
     }
 
-    private constructor(private readonly token: string) { }
+    private constructor(private readonly _token: string) { }
+
+    /** Bearer token（sessionSyncClient/machineSyncClient 工厂拆到各子客户端后，调用方构造子客户端用） */
+    get token(): string {
+        return this._token
+    }
 
     async getSessionByClaudeSessionId(nativeSessionId: string): Promise<Session | null> {
         try {
@@ -216,11 +219,4 @@ export class ApiClient {
         }
     }
 
-    sessionSyncClient(session: Session): ApiSessionClient {
-        return new ApiSessionClient(this.token, session)
-    }
-
-    machineSyncClient(machine: Machine): ApiMachineClient {
-        return new ApiMachineClient(this.token, machine)
-    }
 }

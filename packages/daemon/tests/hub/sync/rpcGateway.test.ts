@@ -16,9 +16,9 @@
 
 import { describe, test, expect, mock } from 'bun:test'
 import type { PermissionUpdate } from '@mobi/shared'
-import { RpcGateway } from '../../src/sync/rpcGateway'
-import { RpcFailure } from '../../src/sync/rpcFailure'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
+import { RpcGateway } from '../../../src/sync/rpcGateway'
+import { RpcFailure } from '../../../src/sync/rpcFailure'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
 // ============ 辅助：构造 fake socket.io Server / Registry / Socket ============
 

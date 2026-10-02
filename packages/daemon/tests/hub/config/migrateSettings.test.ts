@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { migrateLegacySettings } from '../../src/config/migrateSettings'
+import { migrateLegacySettings } from '../../../src/config/migrateSettings'
 
 let dataDir: string
 

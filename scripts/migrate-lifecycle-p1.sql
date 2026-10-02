@@ -3,7 +3,7 @@
 --
 -- 用途：将旧 messages 表的 submitted_at / queue_state 列替换为
 --       lifecycle / lifecycle_at 列（SQLite 无法 DROP COLUMN，采用表重建法）。
---       表结构与索引名以 packages/hub/src/store/index.ts 的 createSchema 为准。
+--       表结构与索引名以 packages/daemon/src/store/index.ts 的 createSchema 为准。
 --
 -- 用法：sqlite3 ~/.mobi/mobi.db < scripts/migrate-lifecycle-p1.sql
 --       （deploy 前对现有库手动执行；执行前建议先停服并备份 db 文件）

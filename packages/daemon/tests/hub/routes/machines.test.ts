@@ -16,8 +16,8 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
-import type { Machine } from '../../src/sync/machineCache'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
+import type { Machine } from '../../../src/sync/machineCache'
 
 const mockMachine: Machine = {
     id: 'test-machine-1',
@@ -55,7 +55,7 @@ const mockSyncEngine = {
 } as unknown as SyncEngine
 
 describe('Machines API', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {

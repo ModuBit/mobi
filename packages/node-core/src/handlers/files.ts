@@ -22,8 +22,8 @@ import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { validateReadPath, validateWritePath } from '../pathSecurity'
-import { getErrorMessage, rpcError } from '../rpcResponses'
+import { validateReadPath, validateWritePath } from './pathSecurity'
+import { getErrorMessage, rpcError } from './rpcResponses'
 import { fsError, normalizeCwdParam, readFileMetaAt, readFileRangeAt } from './fileRead'
 
 interface WriteFileRequest {

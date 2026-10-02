@@ -15,10 +15,10 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { createSessionsRoutes } from '../../src/web/routes/sessions'
-import { RpcFailure } from '../../src/sync/rpcFailure'
-import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import { createSessionsRoutes } from '../../../src/web/routes/sessions'
+import { RpcFailure } from '../../../src/sync/rpcFailure'
+import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 
 /**
  * POST /api/sessions/:id/archive 的异常收口（2026-09-30 事故）：会话 RPC 不可达时

@@ -78,7 +78,7 @@ export const hubCommand: CommandDefinition = {
             startPpidWatchdog({
                 onOrphaned: () => process.kill(process.pid, 'SIGTERM'),
             })
-            await import('../../../hub/src/index')
+            await import('@mobi/daemon')
             return
         }
 

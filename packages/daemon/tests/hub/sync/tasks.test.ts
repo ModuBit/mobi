@@ -19,8 +19,8 @@ import {
     extractTaskDeltasFromMessageContent,
     applyTaskDelta,
     PendingTaskMap,
-} from '../../src/sync/tasks'
-import type { TaskDelta, TaskItem } from '../../src/sync/tasks'
+} from '../../../src/sync/tasks'
+import type { TaskDelta, TaskItem } from '../../../src/sync/tasks'
 
 // ============ 辅助函数 ============
 

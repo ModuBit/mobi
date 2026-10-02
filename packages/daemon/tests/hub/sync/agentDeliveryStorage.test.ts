@@ -15,9 +15,9 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { SyncEngine } from '../../src/sync/syncEngine'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
+import { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
 /**
  * 跨会话投递**落库那一步**的形状（装配点 → MessageService → store 的那条链）。
@@ -84,7 +84,7 @@ function makeHandle(): Handle {
         },
     } as unknown as RpcRegistry
 
-    const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+    const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
     // path / host 是 MetadataSchema 的必填项——缺了整份 metadata 会被 zod 判废，
     // 于是发件方名字降级成空串（本用例正要断言它落在 meta 上）

@@ -15,8 +15,8 @@
  */
 
 import { describe, test, expect, mock } from 'bun:test'
-import { registerTerminalHandlers } from '../../src/socket/handlers/terminal'
-import { TerminalRegistry } from '../../src/socket/terminalRegistry'
+import { registerTerminalHandlers } from '../../../src/socket/handlers/terminal'
+import { TerminalRegistry } from '../../../src/socket/terminalRegistry'
 
 /** 构造一个 mock web socket（terminal namespace 客户端） */
 function makeSocket(id: string, namespace = 'ns') {

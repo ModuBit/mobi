@@ -19,7 +19,7 @@ import { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Store } from '../../src/store'
+import { Store } from '../../../src/store'
 
 /**
  * V1（code-review）：存量旧 schema 库（user_version 与当前 SCHEMA_VERSION 相同、sessions 带 group_key、无 workspaces 表）

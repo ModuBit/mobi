@@ -19,7 +19,7 @@ import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import { logger } from '@mobi/node-core/logger';
 import { AgentSessionBase } from '@/agent/sessionBase';
 import type { McpServerConfig, Settings } from '@anthropic-ai/claude-agent-sdk';
-import type { SessionModel } from '@/api/types';
+import type { SessionModel } from '@mobi/node-core/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode, PermissionMode } from './types';
 import { QueryRestartController } from './utils/queryRestart';

@@ -19,7 +19,7 @@ import { mkdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter, filterByPrefix, registerSessionFilesHandler } from '@/modules/common/handlers/sessionFiles'
+import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter, filterByPrefix, registerSessionFilesHandler } from '@/handlers/sessionFiles'
 
 describe('isSearchQuery', () => {
     it('普通文件名应触发搜索', () => {

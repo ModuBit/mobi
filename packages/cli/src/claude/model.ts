@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SessionModel } from '@/api/types'
+import type { SessionModel } from '@mobi/node-core/api/types'
 
 /**
  * 规范化 Claude 会话模型

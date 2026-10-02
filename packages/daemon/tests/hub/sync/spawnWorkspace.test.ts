@@ -15,10 +15,10 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { SyncEngine } from '../../src/sync/syncEngine'
-import { RpcGateway } from '../../src/sync/rpcGateway'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
+import { SyncEngine } from '../../../src/sync/syncEngine'
+import { RpcGateway } from '../../../src/sync/rpcGateway'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
 /**
  * spawn 链路透传 workspaceId 单测：
@@ -60,7 +60,7 @@ describe('spawn 链路透传 workspaceId', () => {
         const capture: EmitCapture = { emitCalls: [] }
         const io = makeSpawnIo(capture)
         const registry = makeSpawnRegistry('machine-p1')
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const store = new Store(':memory:')
         const engine = new SyncEngine(store, io, registry, sseManager)
         try {
@@ -86,7 +86,7 @@ describe('spawn 链路透传 workspaceId', () => {
         const capture: EmitCapture = { emitCalls: [] }
         const io = makeSpawnIo(capture)
         const registry = makeSpawnRegistry('machine-p2')
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const store = new Store(':memory:')
         const engine = new SyncEngine(store, io, registry, sseManager)
         try {

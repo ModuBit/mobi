@@ -16,8 +16,8 @@
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 
-import { Store } from '../../src/store'
-import { isContextBoundaryContent } from '../../src/store/messages'
+import { Store } from '../../../src/store'
+import { isContextBoundaryContent } from '../../../src/store/messages'
 
 /** 边界指针字段（会话行 metadata 上的唯一判据来源） */
 const BOUNDARY_KEY = 'contextBoundarySeq'

@@ -15,11 +15,11 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { registerCliHandlers } from '../../src/socket/handlers/cli'
-import type { CliHandlersDeps } from '../../src/socket/handlers/cli'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
+import { registerCliHandlers } from '../../../src/socket/handlers/cli'
+import type { CliHandlersDeps } from '../../../src/socket/handlers/cli'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
 import { textEnvelope } from '../helpers/snapshotDelta'
-import type { StoredSession } from '../../src/store/types'
+import type { StoredSession } from '../../../src/store/types'
 
 /**
  * A1 迟到 disconnect 竞态（code-review）：CLI 快速重连后，旧 socket 的 disconnect

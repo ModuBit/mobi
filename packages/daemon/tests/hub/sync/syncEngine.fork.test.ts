@@ -18,9 +18,9 @@ import { describe, test, expect } from 'bun:test'
 
 import { MetadataSchema } from '@mobi/shared'
 
-import { SyncEngine } from '../../src/sync/syncEngine'
-import { Store } from '../../src/store'
-import type { RpcRegistry } from '../../src/socket/rpcRegistry'
+import { SyncEngine } from '../../../src/sync/syncEngine'
+import { Store } from '../../../src/store'
+import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
 /**
  * SyncEngine.forkSession 单测：验证编排层（锚点/边界/turn 起点校验 → store 事务 → 缓存刷新）。
@@ -42,7 +42,7 @@ function makeEngine(): EngineHandle {
     const registry = {
         getSocketIdForMethod() { return null },
     } as unknown as RpcRegistry
-    const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+    const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
     const engine = new SyncEngine(store, io, registry, sseManager)
     return {
         engine,
@@ -264,7 +264,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
                 return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
             },
         } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const engine = new SyncEngine(store, io, registry, sseManager)
         engineRef.engine = engine
         return {
@@ -398,7 +398,7 @@ describe('fork 激活翻转补投排队消息', () => {
             }),
         } as unknown as import('socket.io').Server
         const registry = { getSocketIdForMethod() { return null } } as unknown as RpcRegistry
-        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const engine = new SyncEngine(store, io, registry, sseManager)
         try {
             const session = engine.getOrCreateSession(

@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { SnapshotDeltaStats } from '../../src/sync/snapshotDeltaStats'
+import { SnapshotDeltaStats } from '../../../src/sync/snapshotDeltaStats'
 
 const fullPayload = { message: { content: { content: { data: { message: { content: [{ type: 'text', text: 'x'.repeat(400) }] } } } } } }
 const deltaPayload = { localId: 'l1', rev: 3, baseRev: 2, deltas: [{ op: 'append', index: 0, text: 'xy' }] }

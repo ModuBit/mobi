@@ -11,17 +11,23 @@
             "bun-types"
         ],
         "paths": {
-            "@/*": ["./src/*"],
-            "#embedded-assets": ["./src/runtime/embeddedAssets"]
+            "@/*": [
+                "./src/*"
+            ],
+            "#embedded-assets": [
+                "./src/runtime/embeddedAssets"
+            ]
         }
     },
     "include": [
+        "../daemon/src/**/*.d.ts",
+        "../daemon/src/**/*.ts",
+        "src/**/*.d.ts",
         "src/**/*.ts",
         "src/**/*.tsx",
-        "src/**/*.d.ts",
-        "tools/**/*.d.ts",
-        "../hub/src/**/*.ts",
-        "../hub/src/**/*.d.ts"
+        "tools/**/*.d.ts"
     ],
-    "exclude": ["node_modules"]
+    "exclude": [
+        "node_modules"
+    ]
 }

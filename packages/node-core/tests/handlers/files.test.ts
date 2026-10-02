@@ -19,7 +19,7 @@ import { mkdtemp, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerFileHandlers } from '@/modules/common/handlers/files'
+import { registerFileHandlers } from '@/handlers/files'
 
 /**
  * files handler 测试（readFileMeta / readFileRange）

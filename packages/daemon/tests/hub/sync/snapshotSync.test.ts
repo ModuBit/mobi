@@ -17,8 +17,8 @@
 import { describe, expect, test } from 'bun:test'
 import type { SnapshotDeltaFrame } from '@mobi/shared'
 
-import { SnapshotDeltaStats } from '../../src/sync/snapshotDeltaStats'
-import { SnapshotSync, type SnapshotPublication } from '../../src/sync/snapshotSync'
+import { SnapshotDeltaStats } from '../../../src/sync/snapshotDeltaStats'
+import { SnapshotSync, type SnapshotPublication } from '../../../src/sync/snapshotSync'
 import { blocksOf, envelope, textEnvelope } from '../helpers/snapshotDelta'
 
 const delta = (rev: number, baseRev: number, text: string): SnapshotDeltaFrame => ({

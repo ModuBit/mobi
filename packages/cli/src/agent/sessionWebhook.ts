@@ -21,7 +21,7 @@
  * 依赖 daemon 包；端点路径与请求体类型单源于 @mobi/shared/hostProtocol。
  */
 
-import type { Metadata } from '@/api/types'
+import type { Metadata } from '@mobi/node-core/api/types'
 import { RUNNER_SESSION_STARTED_PATH, type SessionStartedWebhookBody } from '@mobi/shared/hostProtocol'
 import { loopbackRunnerPost } from '@mobi/node-core/utils/loopbackRunnerPost'
 

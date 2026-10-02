@@ -15,7 +15,7 @@
  */
 
 import chalk from 'chalk'
-import { killRunawayMobiProcesses } from '@/runner/doctor'
+import { killRunawayMobiProcesses } from '@mobi/daemon/runner/doctor'
 import { runDoctorCommand } from '@/ui/doctor'
 import { printExitReport } from '@/ui/exitLogReport'
 import { getActiveProfile } from '@mobi/shared/profile'

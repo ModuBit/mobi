@@ -17,9 +17,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { RuntimeState } from '@mobi/shared/types'
 
-import { Store } from '../../src/store'
-import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
-import { SessionMessageRuntimeProjector } from '../../src/sync/sessionMessageRuntimeProjector'
+import { Store } from '../../../src/store'
+import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
+import { SessionMessageRuntimeProjector } from '../../../src/sync/sessionMessageRuntimeProjector'
 
 function makeSystemContent(subtype: string, extra: Record<string, unknown> = {}): unknown {
     return {

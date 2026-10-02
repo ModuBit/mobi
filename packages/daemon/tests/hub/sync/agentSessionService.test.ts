@@ -15,13 +15,13 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { AgentSessionService } from '../../src/sync/agentSessionService'
-import type { WorkspaceAssignability } from '../../src/sync/agentSessionService'
-import type { ReceiveReadiness } from '../../src/sync/sessionReceiveReadiness'
-import { RpcFailure, type RpcFailureKind } from '../../src/sync/rpcFailure'
+import { AgentSessionService } from '../../../src/sync/agentSessionService'
+import type { WorkspaceAssignability } from '../../../src/sync/agentSessionService'
+import type { ReceiveReadiness } from '../../../src/sync/sessionReceiveReadiness'
+import { RpcFailure, type RpcFailureKind } from '../../../src/sync/rpcFailure'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
 import type { AgentMessageDelivery, AgentMessagePushResult, UserContentBlock } from '@mobi/shared'
-import type { Machine } from '../../src/sync/machineCache'
+import type { Machine } from '../../../src/sync/machineCache'
 import type { Session } from '@mobi/shared/types'
 
 /** 构造最小 Machine（只填服务真正读的字段） */

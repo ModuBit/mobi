@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {
@@ -68,7 +68,7 @@ function newEngineWithRangeSpy() {
 }
 
 describe('GET /api/sessions/:id/read-file 流式', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
     beforeEach(async () => {
@@ -217,7 +217,7 @@ describe('GET /api/sessions/:id/read-file 流式', () => {
 })
 
 describe('GET /api/sessions/:id/read-file 空文件', () => {
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
     const emptyRangeCalls: Array<{ offset: number; length: number }> = []
 

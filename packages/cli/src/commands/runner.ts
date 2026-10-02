@@ -15,11 +15,11 @@
  */
 
 import chalk from 'chalk'
-import { startRunner } from '@/runner/run'
+import { startRunner } from '@mobi/daemon/runner/run'
 import {
     listRunnerSessions,
     stopRunnerSession
-} from '@/runner/controlClient'
+} from '@mobi/daemon/runner/controlClient'
 import { getLatestRunnerLog } from '@mobi/node-core/logger'
 import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
 import { initializeToken } from '@/ui/tokenInit'

@@ -24,7 +24,7 @@ import { appendMcpConfigArg } from "./utils/mcpConfig";
 import { withBunRuntimeEnv } from "@mobi/node-core/utils/bunRuntime";
 import { spawnWithAbort } from "@mobi/node-core/utils/spawnWithAbort";
 import { stripNewlinesForWindowsShellArg } from "@mobi/node-core/utils/shellEscape";
-import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
+import { getClaudeExecutablePath } from "@mobi/node-core/claudeSdk/claudeExecutable";
 import type { McpServerConfig, Settings } from "@anthropic-ai/claude-agent-sdk";
 
 export async function claudeLocal(opts: {

@@ -37,7 +37,7 @@ import { configuration } from '@mobi/node-core/configuration'
 import { readSettings } from '@mobi/node-core/persistence'
 import { ensureSupervisorRunning, sendControlCommand } from '@/supervisor/control'
 import { logger } from '@mobi/node-core/logger'
-import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
+import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@mobi/daemon/runner/controlClient'
 
 /** hub /health 探测超时 */
 const HEALTH_CHECK_TIMEOUT_MS = 1000

@@ -15,10 +15,10 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { registerUiCommandHandlers } from '../../../src/socket/handlers/cli/uiCommandHandlers'
-import type { UiCommandHandlersDeps } from '../../../src/socket/handlers/cli/uiCommandHandlers'
-import type { StoredSession } from '../../../src/store/types'
-import type { SyncEvent } from '../../../src/sync/syncEngine'
+import { registerUiCommandHandlers } from '../../../../src/socket/handlers/cli/uiCommandHandlers'
+import type { UiCommandHandlersDeps } from '../../../../src/socket/handlers/cli/uiCommandHandlers'
+import type { StoredSession } from '../../../../src/store/types'
+import type { SyncEvent } from '../../../../src/sync/syncEngine'
 import type { UiCommandAction } from '@mobi/shared/types'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */

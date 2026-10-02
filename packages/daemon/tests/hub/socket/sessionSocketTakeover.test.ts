@@ -15,11 +15,11 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { registerCliHandlers } from '../../src/socket/handlers/cli'
-import type { CliHandlersDeps } from '../../src/socket/handlers/cli'
-import { SessionSocketOwners } from '../../src/socket/sessionSocketOwners'
-import { RpcRegistry } from '../../src/socket/rpcRegistry'
-import { SnapshotSync } from '../../src/sync/snapshotSync'
+import { registerCliHandlers } from '../../../src/socket/handlers/cli'
+import type { CliHandlersDeps } from '../../../src/socket/handlers/cli'
+import { SessionSocketOwners } from '../../../src/socket/sessionSocketOwners'
+import { RpcRegistry } from '../../../src/socket/rpcRegistry'
+import { SnapshotSync } from '../../../src/sync/snapshotSync'
 
 /**
  * 同 session 的 CLI socket 接管仲裁（2026-09-30 事故的根因修复）：

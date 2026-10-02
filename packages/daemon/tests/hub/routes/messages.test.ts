@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
 
 const mockSession: Session = {
@@ -89,7 +89,7 @@ function makeSendEngine(opts: { active?: boolean; forkFrom?: unknown } = {}) {
 
 describe('POST /api/sessions/:id/messages（双发送格式）', () => {
     let cleanup: () => void
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
 
     afterEach(() => {
         cleanup?.()
@@ -195,7 +195,7 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
 
 describe('DELETE /api/sessions/:id/messages/:messageId（CLI 权威的取消）', () => {
     let cleanup: () => void
-    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
 
     afterEach(() => {
         cleanup?.()

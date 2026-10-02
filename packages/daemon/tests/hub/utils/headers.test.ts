@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { safeDecodeHeader } from '../../src/web/utils/headers'
+import { safeDecodeHeader } from '../../../src/web/utils/headers'
 
 describe('safeDecodeHeader', () => {
     test('合法 URL 编码 → 正确解码', () => {

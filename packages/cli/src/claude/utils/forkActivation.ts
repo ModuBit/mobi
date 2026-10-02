@@ -16,7 +16,7 @@
 
 import { logger } from '@mobi/node-core/logger'
 import { scanTranscriptForUuid } from './transcriptScan'
-import type { Metadata } from '@/api/types'
+import type { Metadata } from '@mobi/node-core/api/types'
 
 /**
  * fork 激活计划（fork-session spec §5.2）：待激活分叉会话首条消息触发时，

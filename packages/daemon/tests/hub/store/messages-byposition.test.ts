@@ -25,7 +25,7 @@ import {
     getUnsubmittedLocalMessages,
     cancelQueuedMessage,
     getMessageSubmitState
-} from '../../src/store/messages'
+} from '../../../src/store/messages'
 
 function makeDb() {
     const db = new Database(':memory:', { create: true, readwrite: true, strict: true })

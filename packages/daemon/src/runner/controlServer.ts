@@ -23,10 +23,10 @@ import fastify from 'fastify';
 import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@mobi/node-core/logger';
-import { Metadata } from '@/api/types';
+import { Metadata } from '@mobi/node-core/api/types';
 import { RUNNER_SESSION_STARTED_PATH } from '@mobi/shared/hostProtocol';
 import { TrackedSession } from './types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/rpcTypes';
+import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 
 export function startRunnerControlServer({
   getChildren,

@@ -55,49 +55,49 @@ digraph sync_docs {
 
 | 代码变更 glob | 影响文档 |
 |---|---|
-| `packages/hub/src/store/*` | `docs/architecture/hub/store/README.md` |
-| `packages/hub/src/sync/syncEngine.ts` | `docs/architecture/hub/sync/README.md` |
-| `packages/hub/src/sync/eventPublisher.ts` | `docs/architecture/hub/sync/event-publisher.md` |
-| `packages/hub/src/sync/sessionCache.ts` | `docs/architecture/hub/sync/session-cache.md` |
-| `packages/hub/src/sync/machineCache.ts` | `docs/architecture/hub/sync/machine-cache.md` |
-| `packages/hub/src/sync/messageService.ts` | `docs/architecture/hub/sync/message-service.md` |
-| `packages/hub/src/sync/rpcGateway.ts` | `docs/architecture/hub/sync/rpc-gateway.md` |
-| `packages/hub/src/sync/backgroundTasks.ts` | `docs/architecture/hub/sync/README.md` |
-| `packages/hub/src/sync/tasks.ts` | `docs/architecture/hub/sync/README.md` |
-| `packages/hub/src/sync/teams.ts` | `docs/architecture/hub/sync/README.md` |
-| `packages/hub/src/sync/todos.ts` | `docs/architecture/hub/sync/README.md` |
+| `packages/daemon/src/store/*` | `docs/architecture/hub/store/README.md` |
+| `packages/daemon/src/sync/syncEngine.ts` | `docs/architecture/hub/sync/README.md` |
+| `packages/daemon/src/sync/eventPublisher.ts` | `docs/architecture/hub/sync/event-publisher.md` |
+| `packages/daemon/src/sync/sessionCache.ts` | `docs/architecture/hub/sync/session-cache.md` |
+| `packages/daemon/src/sync/machineCache.ts` | `docs/architecture/hub/sync/machine-cache.md` |
+| `packages/daemon/src/sync/messageService.ts` | `docs/architecture/hub/sync/message-service.md` |
+| `packages/daemon/src/sync/rpcGateway.ts` | `docs/architecture/hub/sync/rpc-gateway.md` |
+| `packages/daemon/src/sync/backgroundTasks.ts` | `docs/architecture/hub/sync/README.md` |
+| `packages/daemon/src/sync/tasks.ts` | `docs/architecture/hub/sync/README.md` |
+| `packages/daemon/src/sync/teams.ts` | `docs/architecture/hub/sync/README.md` |
+| `packages/daemon/src/sync/todos.ts` | `docs/architecture/hub/sync/README.md` |
 
 #### Hub — 通信层
 
 | 代码变更 glob | 影响文档 |
 |---|---|
-| `packages/hub/src/socket/server.ts` | `docs/architecture/hub/socket/README.md` |
-| `packages/hub/src/socket/handlers.ts` | `docs/architecture/hub/socket/handlers.md` |
-| `packages/hub/src/socket/rpc.ts` | `docs/architecture/hub/socket/rpc.md` |
-| `packages/hub/src/socket/terminal.ts` | `docs/architecture/hub/socket/terminal.md` |
-| `packages/hub/src/sse/*` | `docs/architecture/hub/sse/README.md` |
+| `packages/daemon/src/socket/server.ts` | `docs/architecture/hub/socket/README.md` |
+| `packages/daemon/src/socket/handlers.ts` | `docs/architecture/hub/socket/handlers.md` |
+| `packages/daemon/src/socket/rpc.ts` | `docs/architecture/hub/socket/rpc.md` |
+| `packages/daemon/src/socket/terminal.ts` | `docs/architecture/hub/socket/terminal.md` |
+| `packages/daemon/src/sse/*` | `docs/architecture/hub/sse/README.md` |
 
 #### Hub — Web API
 
 | 代码变更 glob | 影响文档 |
 |---|---|
-| `packages/hub/src/web/routes/sessions.ts` | `docs/architecture/hub/web/api/sessions.md` |
-| `packages/hub/src/web/routes/messages.ts` | `docs/architecture/hub/web/api/messages.md` |
-| `packages/hub/src/web/routes/permissions.ts` | `docs/architecture/hub/web/api/permissions.md` |
-| `packages/hub/src/web/routes/push.ts` | `docs/architecture/hub/web/api/push.md` |
-| `packages/hub/src/web/routes/git.ts` | `docs/architecture/hub/web/api/git.md` |
-| `packages/hub/src/web/routes/manifest.ts` | `docs/architecture/hub/web/README.md` |
-| `packages/hub/src/web/auth.ts` | `docs/architecture/hub/web/auth.md` |
+| `packages/daemon/src/web/routes/sessions.ts` | `docs/architecture/hub/web/api/sessions.md` |
+| `packages/daemon/src/web/routes/messages.ts` | `docs/architecture/hub/web/api/messages.md` |
+| `packages/daemon/src/web/routes/permissions.ts` | `docs/architecture/hub/web/api/permissions.md` |
+| `packages/daemon/src/web/routes/push.ts` | `docs/architecture/hub/web/api/push.md` |
+| `packages/daemon/src/web/routes/git.ts` | `docs/architecture/hub/web/api/git.md` |
+| `packages/daemon/src/web/routes/manifest.ts` | `docs/architecture/hub/web/README.md` |
+| `packages/daemon/src/web/auth.ts` | `docs/architecture/hub/web/auth.md` |
 
 #### Hub — 基础设施
 
 | 代码变更 glob | 影响文档 |
 |---|---|
-| `packages/hub/src/config/*` | `docs/architecture/hub/config/README.md` |
-| `packages/hub/src/notification/*` | `docs/architecture/hub/notification/README.md` |
-| `packages/hub/src/push/*` | `docs/architecture/hub/push/README.md` |
-| `packages/hub/src/visibility/*` | `docs/architecture/hub/visibility/README.md` |
-| `packages/hub/src/index.ts` | `docs/architecture/hub/README.md` |
+| `packages/daemon/src/config/*` | `docs/architecture/hub/config/README.md` |
+| `packages/daemon/src/notification/*` | `docs/architecture/hub/notification/README.md` |
+| `packages/daemon/src/push/*` | `docs/architecture/hub/push/README.md` |
+| `packages/daemon/src/visibility/*` | `docs/architecture/hub/visibility/README.md` |
+| `packages/daemon/src/index.ts` | `docs/architecture/hub/README.md` |
 
 #### CLI
 

@@ -22,7 +22,7 @@ import {
     EGRESS_PLACEHOLDER,
     STRIPPED_BASE64_MARKER,
     EGRESS_TRUNCATE_CHARS,
-} from '../../src/sync/egressStrip'
+} from '../../../src/sync/egressStrip'
 
 // ============ 帧构造 helper ============
 

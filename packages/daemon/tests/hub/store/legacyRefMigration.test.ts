@@ -17,8 +17,8 @@
 import { describe, test, expect } from 'bun:test'
 import type { Database } from 'bun:sqlite'
 
-import { Store } from '../../src/store'
-import { migrateLegacyRefMessages } from '../../src/store/legacyRefMigration'
+import { Store } from '../../../src/store'
+import { migrateLegacyRefMessages } from '../../../src/store/legacyRefMigration'
 
 /** Store.db 为 private，测试经类型断言触达（messages-native-id.test.ts 同例） */
 function getDb(store: Store): Database {

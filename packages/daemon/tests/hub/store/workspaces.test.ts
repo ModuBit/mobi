@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach, it } from 'bun:test'
 
-import { Store } from '../../src/store'
+import { Store } from '../../../src/store'
 
 describe('WorkspaceStore', () => {
     let store: Store

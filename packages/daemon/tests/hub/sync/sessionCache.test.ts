@@ -15,9 +15,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { SessionCache } from '../../src/sync/sessionCache'
-import { Store } from '../../src/store'
-import type { EventPublisher } from '../../src/sync/eventPublisher'
+import { SessionCache } from '../../../src/sync/sessionCache'
+import { Store } from '../../../src/store'
+import type { EventPublisher } from '../../../src/sync/eventPublisher'
 import type { SDKMetadata } from '@mobi/shared'
 
 // SessionCache 仅依赖 publisher.emit（rename 路径对已存在 session 不广播），

@@ -15,10 +15,10 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { registerAgentSessionHandlers } from '../../../src/socket/handlers/cli/agentSessionHandlers'
-import type { AgentSessionHandlersDeps } from '../../../src/socket/handlers/cli/agentSessionHandlers'
-import type { StoredSession } from '../../../src/store/types'
-import type { AccessErrorReason } from '../../../src/socket/handlers/cli/types'
+import { registerAgentSessionHandlers } from '../../../../src/socket/handlers/cli/agentSessionHandlers'
+import type { AgentSessionHandlersDeps } from '../../../../src/socket/handlers/cli/agentSessionHandlers'
+import type { StoredSession } from '../../../../src/store/types'
+import type { AccessErrorReason } from '../../../../src/socket/handlers/cli/types'
 import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */

@@ -15,8 +15,8 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { MessageService } from '../../src/sync/messageService'
-import { Store } from '../../src/store'
+import { MessageService } from '../../../src/sync/messageService'
+import { Store } from '../../../src/store'
 
 /**
  * sendMessage 落库格式测试：用户消息 content 三形态（string / 单 block / block 数组）

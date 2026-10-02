@@ -16,8 +16,8 @@
 
 import { describe, test, expect } from 'bun:test'
 import { Hono } from 'hono'
-import { createEventsRoutes } from '../../src/web/routes/events'
-import type { SyncEngine } from '../../src/sync/syncEngine'
+import { createEventsRoutes } from '../../../src/web/routes/events'
+import type { SyncEngine } from '../../../src/sync/syncEngine'
 
 /**
  * /snapshot-resync 订阅属主校验（D1）：定向 resync 绕过 broadcast 的 namespace 过滤，

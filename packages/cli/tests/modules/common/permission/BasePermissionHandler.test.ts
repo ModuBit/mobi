@@ -19,7 +19,7 @@ import {
     BasePermissionHandler,
     type PermissionCompletion
 } from '@/modules/common/permission/BasePermissionHandler'
-import type { AgentState } from '@/api/types'
+import type { AgentState } from '@mobi/node-core/api/types'
 import type { PermissionUpdate, SDKUIHints } from '@mobi/shared'
 
 // 最小子类：仅满足 BasePermissionHandler 的两个抽象方法，便于直接测 addPendingRequest

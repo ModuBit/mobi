@@ -25,7 +25,7 @@ describe('getClaudeExecutablePath', () => {
 
     it('MOBI_CLAUDE_PATH 优先返回', async () => {
         process.env.MOBI_CLAUDE_PATH = '/custom/claude';
-        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        const { getClaudeExecutablePath } = await import('@/claudeSdk/claudeExecutable');
         expect(await getClaudeExecutablePath()).toBe('/custom/claude');
     });
 
@@ -35,7 +35,7 @@ describe('getClaudeExecutablePath', () => {
             projectPath: () => '/x',
             runtimePath: () => '/x',
         }));
-        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        const { getClaudeExecutablePath } = await import('@/claudeSdk/claudeExecutable');
         expect(await getClaudeExecutablePath()).toBeUndefined();
     });
 
@@ -48,10 +48,8 @@ describe('getClaudeExecutablePath', () => {
         vi.doMock('@anthropic-ai/claude-agent-sdk/extract', () => ({
             extractFromBunfs: (p: string) => `/tmp/extracted${p}`,
         }));
-        vi.doMock('@/runtime/embeddedClaudeBinary.bun', () => ({
-            loadEmbeddedClaudeBinary: async () => '/bunfs/claude.bin',
-        }));
-        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        const { registerEmbeddedClaudeBinaryLoader, getClaudeExecutablePath } = await import('@/claudeSdk/claudeExecutable');
+        registerEmbeddedClaudeBinaryLoader(async () => '/bunfs/claude.bin');
         expect(await getClaudeExecutablePath()).toBe('/tmp/extracted/bunfs/claude.bin');
     });
 
@@ -65,10 +63,8 @@ describe('getClaudeExecutablePath', () => {
             // SDK 提取失败时的降级：返回未解压的虚拟路径
             extractFromBunfs: () => '/$bunfs/root/tools/archives/claude-darwin-arm64.bin',
         }));
-        vi.doMock('@/runtime/embeddedClaudeBinary.bun', () => ({
-            loadEmbeddedClaudeBinary: async () => '/$bunfs/root/tools/archives/claude-darwin-arm64.bin',
-        }));
-        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        const { registerEmbeddedClaudeBinaryLoader, getClaudeExecutablePath } = await import('@/claudeSdk/claudeExecutable');
+        registerEmbeddedClaudeBinaryLoader(async () => '/$bunfs/root/tools/archives/claude-darwin-arm64.bin');
         expect(await getClaudeExecutablePath()).toBeUndefined();
     });
 
@@ -83,10 +79,8 @@ describe('getClaudeExecutablePath', () => {
         vi.doMock('@anthropic-ai/claude-agent-sdk/extract', () => ({
             extractFromBunfs: extractSpy,
         }));
-        vi.doMock('@/runtime/embeddedClaudeBinary.bun', () => ({
-            loadEmbeddedClaudeBinary: async () => '/bunfs/claude.bin',
-        }));
-        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        const { registerEmbeddedClaudeBinaryLoader, getClaudeExecutablePath } = await import('@/claudeSdk/claudeExecutable');
+        registerEmbeddedClaudeBinaryLoader(async () => '/bunfs/claude.bin');
         expect(await getClaudeExecutablePath()).toBe('/custom/claude');
         expect(extractSpy).not.toHaveBeenCalled();
     });

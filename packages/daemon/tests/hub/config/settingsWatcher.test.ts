@@ -18,8 +18,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, rm, writeFile, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createConfiguration, resetConfiguration, configuration } from '../../src/configuration'
-import { startWebApiTokenWatcher, type SettingsWatcher } from '../../src/config/settingsWatcher'
+import { createConfiguration, resetConfiguration, configuration } from '../../../src/configuration'
+import { startWebApiTokenWatcher, type SettingsWatcher } from '../../../src/config/settingsWatcher'
 
 // 轮询断言：fs.watch 异步触发，等条件满足或超时
 // macOS FSEvents 延迟可达数秒，超时给足 3000ms 避免误报

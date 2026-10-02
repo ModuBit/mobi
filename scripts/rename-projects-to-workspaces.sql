@@ -26,7 +26,7 @@ DROP INDEX IF EXISTS idx_sessions_project;
 -- 3. 列改名
 ALTER TABLE sessions RENAME COLUMN project_id TO workspace_id;
 
--- 4. 按新名重建索引（与 packages/hub/src/store/index.ts createSchema 逐条一致）
+-- 4. 按新名重建索引（与 packages/daemon/src/store/index.ts createSchema 逐条一致）
 CREATE INDEX IF NOT EXISTS idx_workspaces_namespace ON workspaces(namespace);
 CREATE INDEX IF NOT EXISTS idx_workspaces_machine ON workspaces(machine_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);

@@ -22,6 +22,10 @@ process.env.DEV = 'false';
 const { installStdioEpipeGuard } = await import('@mobi/node-core/utils/stdioEpipeGuard');
 installStdioEpipeGuard();
 
+// 注意：编译期内嵌 claude 二进制 loader 的注册在 index.ts 内、profile 加载之后执行
+// （configuration 单例在 profile 注入 env 前构造会破坏 index 的 loadProfile→argv 剔除契约，
+// 2026-10-02 实证：提前 import 曾致 runCli 二次 loadProfile 抛 Profile 不存在）
+
 await import('./index');
 
 export {};
