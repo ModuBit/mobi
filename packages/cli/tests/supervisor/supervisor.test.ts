@@ -213,6 +213,46 @@ describe('Supervisor 托管状态机', () => {
         expect(h.supervisor.status().runner).toMatchObject({ status: 'stopped' })
     })
 
+    // ============ daemon 组件（ticket-16：hub+runner 同进程单组件）============
+
+    it('start daemon → running；status 含 daemon 组件；崩溃走退避重拉', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('daemon')
+        expect(h.processes).toHaveLength(1)
+        expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running' })
+
+        // 崩溃 → 与 hub 同一套退避状态机
+        h.advance(1_000)
+        h.processes[0].exit(1)
+        expect(h.supervisor.status().daemon.status).toBe('backoff')
+        vi.advanceTimersByTime(1_000)
+        expect(h.processes).toHaveLength(2)
+        expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running' })
+    })
+
+    it('shutdown 有序：runner → daemon → hub（daemon 排在 runner 之后、hub 之前）', async () => {
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
+        h.supervisor.start('runner')
+        const shutdownPromise = h.supervisor.shutdown()
+        // runner 最先停
+        expect(h.processes[2].killedWith).toBe('SIGTERM')
+        expect(h.processes[1].killedWith).toBeNull() // daemon 未被杀
+        expect(h.processes[0].killedWith).toBeNull() // hub 未被杀
+        h.processes[2].exit(0)
+        // runner 停止后 daemon 才被杀
+        expect(h.processes[1].killedWith).toBe('SIGTERM')
+        expect(h.processes[0].killedWith).toBeNull()
+        h.processes[1].exit(0)
+        // daemon 停止后 hub 才被杀
+        expect(h.processes[0].killedWith).toBe('SIGTERM')
+        h.processes[0].exit(0)
+        await shutdownPromise
+        expect(h.supervisor.status().daemon).toMatchObject({ status: 'stopped' })
+    })
+
     it('stderr 尾部截断——崩溃现场仅保留最后 8000 字符', () => {
         vi.useFakeTimers()
         const h = createHarness()

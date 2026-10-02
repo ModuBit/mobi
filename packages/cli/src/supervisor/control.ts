@@ -25,7 +25,7 @@ import { connect, createServer, type Socket } from 'node:net'
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli'
 import { configuration } from '@mobi/node-core/configuration'
 
-export type ServiceScope = 'hub' | 'runner' | 'both'
+export type ServiceScope = 'hub' | 'runner' | 'daemon' | 'both'
 
 export type ControlRequest =
     | { cmd: 'start'; scope: ServiceScope; host?: string; port?: number }

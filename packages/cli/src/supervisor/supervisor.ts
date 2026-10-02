@@ -25,7 +25,7 @@
 
 import { nextBackoffMs, nextCrashCount, shouldGiveUp } from './restartPolicy'
 
-export type ComponentName = 'hub' | 'runner'
+export type ComponentName = 'hub' | 'runner' | 'daemon'
 export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 
 /** supervisor 眼中的子进程（与 ChildProcess 接口兼容，便于注入假对象） */
@@ -163,15 +163,15 @@ export class Supervisor {
     }
 
     /**
-     * 有序关停全部组件：先 runner 后 hub。
-     * 同步发起对 runner 的停止，其后每个组件 exit 后再停下一个。
+     * 有序关停全部组件：会话宿主先于服务（runner/daemon 先、hub 最后）。
+     * 同步发起对第一个组件的停止，其后每个组件 exit 后再停下一个。
      * 返回的 Promise 在全部组件退出后 resolve。
      */
     shutdown(): Promise<void> {
         if (this.shuttingDown) return Promise.resolve()
         this.shuttingDown = true
 
-        const order: ComponentName[] = ['runner', 'hub']
+        const order: ComponentName[] = ['runner', 'daemon', 'hub']
         this.shutdownQueue = order.filter((name) => {
             const rt = this.runtimes.get(name)
             if (!rt) return false
@@ -214,7 +214,7 @@ export class Supervisor {
                 consecutiveCrashes: rt?.consecutiveCrashes ?? 0,
             }
         }
-        return { hub: reportFor('hub'), runner: reportFor('runner') }
+        return { hub: reportFor('hub'), runner: reportFor('runner'), daemon: reportFor('daemon') }
     }
 
     private spawnComponent(name: ComponentName): void {

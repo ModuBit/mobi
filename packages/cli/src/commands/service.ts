@@ -55,10 +55,11 @@ export const serviceCommand: CommandDefinition = {
             return
         }
 
-        // 解析可选的组件前缀：service [hub|runner] <action>
-        let scope: ServiceScope = 'both'
+        // 解析可选的组件前缀：service [hub|runner|daemon] <action>
+        // 默认 daemon（ticket-16：hub+runner 同进程单组件）；both 为旧形态显式保留
+        let scope: ServiceScope = 'daemon'
         let actionArgs = args
-        if (args[0] === 'hub' || args[0] === 'runner') {
+        if (args[0] === 'hub' || args[0] === 'runner' || args[0] === 'daemon') {
             scope = args[0]
             actionArgs = args.slice(1)
         }

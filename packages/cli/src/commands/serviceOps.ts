@@ -37,9 +37,10 @@ interface ServiceStatusPayload {
     pid: number
     hub: ComponentStatusReport
     runner: ComponentStatusReport
+    daemon: ComponentStatusReport
 }
 
-const LABEL: Record<'hub' | 'runner', string> = { hub: 'Hub', runner: 'Runner' }
+const LABEL: Record<ComponentStatusReport['name'], string> = { hub: 'Hub', runner: 'Runner', daemon: 'Daemon' }
 
 function colorStatus(status: ComponentStatusReport['status']): string {
     if (status === 'running') return chalk.green('running')
@@ -49,9 +50,9 @@ function colorStatus(status: ComponentStatusReport['status']): string {
 }
 
 /** 展示用的期望状态摘要（supervisor 未运行时也能显示配置） */
-function readDesiredLite(): { hub: boolean; port: number } {
+function readDesiredLite(): { hub: boolean; daemon: boolean; port: number } {
     const state = readDesiredState()
-    return { hub: state?.hub ?? false, port: state?.port ?? 2222 }
+    return { hub: state?.hub ?? false, daemon: state?.daemon ?? false, port: state?.port ?? 2222 }
 }
 
 /**
@@ -87,17 +88,17 @@ function printStatus(payload: ServiceStatusPayload): void {
     console.log(chalk.bold('Service Status'))
     console.log('')
     console.log(`  Supervisor: ${chalk.green('running')} (PID ${payload.pid})`)
-    for (const report of [payload.hub, payload.runner]) {
+    for (const report of [payload.hub, payload.runner, payload.daemon]) {
         const pidText = report.pid ? ` (PID ${report.pid})` : ''
         const crashText = report.consecutiveCrashes > 0
             ? chalk.gray(` [连续崩溃 ${report.consecutiveCrashes}]`)
             : ''
         console.log(`  ${LABEL[report.name].padEnd(9)}: ${colorStatus(report.status)}${pidText}${crashText}`)
     }
-    if (desired.hub) {
+    if (desired.hub || desired.daemon) {
         console.log(`  Web URL:   ${chalk.cyan(`http://localhost:${desired.port}`)}`)
     }
-    if (payload.hub.status === 'failed' || payload.runner.status === 'failed') {
+    if (payload.hub.status === 'failed' || payload.runner.status === 'failed' || payload.daemon.status === 'failed') {
         console.log('')
         console.log(chalk.yellow('  有组件处于 failed 状态，崩溃现场见 ~/.mobi/logs/<组件>-crash.log'))
     }
@@ -118,8 +119,8 @@ export async function serviceStart(scope: ServiceScope, options: StartOptions = 
             START_COMMAND_TIMEOUT_MS,
         ) as ServiceStatusPayload
         printStatus(payload)
-        // hub 实际在跑（无论本次 scope 是否含 hub）才打印访问入口
-        if (payload.hub.status === 'running') {
+        // hub/daemon 实际在跑（无论本次 scope）才打印访问入口
+        if (payload.hub.status === 'running' || payload.daemon.status === 'running') {
             const desired = readDesiredLite()
             console.log('')
             console.log(chalk.green(`Service ready at ${chalk.cyan(`http://localhost:${desired.port}`)}`))

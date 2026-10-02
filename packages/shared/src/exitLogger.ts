@@ -42,7 +42,7 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
-export type ProcessType = 'hub' | 'runner' | 'cli'
+export type ProcessType = 'hub' | 'runner' | 'cli' | 'daemon'
 
 export type ExitReason =
   | 'normal'

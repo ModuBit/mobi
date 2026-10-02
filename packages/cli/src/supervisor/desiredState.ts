@@ -30,6 +30,8 @@ export interface SupervisorDesiredState {
     hub: boolean
     /** 是否托管 runner */
     runner: boolean
+    /** 是否托管 daemon（ticket-16：hub+runner 同进程单组件） */
+    daemon: boolean
     /** hub 监听地址 */
     host: string
     /** hub 监听端口 */
@@ -56,6 +58,7 @@ export function defaultDesiredState(): SupervisorDesiredState {
     return {
         hub: false,
         runner: false,
+        daemon: false,
         host: DEFAULT_SUPERVISOR_HOST,
         port: profilePortOrDefault(),
     }
@@ -76,6 +79,7 @@ export function readDesiredState(
         return {
             hub: Boolean(parsed.hub),
             runner: Boolean(parsed.runner),
+            daemon: Boolean(parsed.daemon),
             host: typeof parsed.host === 'string' && parsed.host ? parsed.host : DEFAULT_SUPERVISOR_HOST,
             port:
                 Number.isFinite(port) && Number.isInteger(port) && port > 0 && port < 65536

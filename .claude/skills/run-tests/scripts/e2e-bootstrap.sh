@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # E2E 测试环境引导脚本
-# 直跑形态启动 Hub + Web Dev Server + Runner（start-sync 前台组件本体，不经
-# supervisor 托管），等待所有服务就绪后保持前台运行
+# 直跑形态启动 Daemon（hub+runner 同进程，start-sync 前台组件本体，不经
+# supervisor 托管）+ Web Dev Server，等待所有服务就绪后保持前台运行
 # Ctrl+C 或收到 SIGTERM 时自动清理所有子进程
 # 通过 --profile e2e 加载配置
 
@@ -23,7 +23,6 @@ readonly POLL_INTERVAL=0.5
 
 HUB_PID=""
 WEB_PID=""
-RUNNER_BG_PID=""
 CLEANUP_DONE=false
 
 # 自动清理占用端口的进程
@@ -96,10 +95,11 @@ cleanup() {
 
     e2e_log_section "清理 E2E 测试环境"
 
-    # 1. 优雅终止直跑子进程：hub/web/runner 均为 start-sync 直跑形态，
-    #    是本脚本的直接子进程（PID 即 bun 本体），SIGTERM 走各自优雅清理。
+    # 1. 优雅终止直跑子进程：daemon/web 均为 start-sync 直跑形态，
+    #    是本脚本的直接子进程（PID 即 bun 本体），SIGTERM 走各自优雅清理
+    #    （daemon 内含 hub+runner，一并有序关停）。
     #    PPID 看门狗兜底：本脚本意外死亡时组件自行退出
-    for name_pid in "Hub:${HUB_PID}" "Web Dev Server:${WEB_PID}" "Runner:${RUNNER_BG_PID}"; do
+    for name_pid in "Daemon:${HUB_PID}" "Web Dev Server:${WEB_PID}"; do
         local label="${name_pid%%:*}"
         local cpid="${name_pid##*:}"
         if [[ -n "${cpid}" ]] && kill -0 "${cpid}" 2>/dev/null; then
@@ -109,8 +109,8 @@ cleanup() {
         fi
     done
 
-    # 1.5 Runner 会话子进程兜底：按 state file 走 HTTP 逐个停止 claude 会话，
-    #     再对 runner 本体补一发优雅停止（上一步 SIGTERM 已使其退出时自动跳过）
+    # 1.5 daemon 内 runner 会话子进程兜底：按 state file 走 HTTP 逐个停止
+    #     claude 会话，再补一发 runner 优雅停止（daemon 已退出时自动跳过）
     e2e_stop_runner "${RUNNER_STATE_FILE}"
 
     # 2. 端口兜底清理：直跑进程若因异常脱离父子关系（如被 disown 的孙进程），
@@ -157,24 +157,37 @@ main() {
     # 清理上次残留的就绪信号（mkdir -p 不删旧文件）
     rm -f "${E2E_TMPDIR}/ready.flag"
 
-    # 3. 启动 Hub（直跑形态：不经 supervisor，start-sync 前台运行 hub 本体。
-    #    --host/--port 直接生效；PPID 看门狗保证本脚本死亡时 hub 自杀）
-    e2e_log_section "启动 Hub"
+    # 3. 启动 daemon（ticket-16：hub+runner 同进程；直跑形态不经 supervisor，
+    #    start-sync 前台运行 daemon 本体，--host/--port 直接生效；
+    #    PPID 看门狗保证本脚本死亡时 daemon 自杀。日志仍落 hub.log——既有诊断路径不变）
+    e2e_log_section "启动 Daemon (hub + runner)"
 
     bun run "${MOBI_ROOT}/packages/cli/src/index.ts" --profile "${PROFILE_NAME}" \
-        hub start-sync --host 127.0.0.1 --port "${HUB_PORT}" &>"${E2E_TMPDIR}/logs/hub.log" &
+        daemon start-sync --host 127.0.0.1 --port "${HUB_PORT}" &>"${E2E_TMPDIR}/logs/hub.log" &
     HUB_PID="${!}"
-    e2e_log_info "Hub 进程已启动 (PID: ${HUB_PID})"
+    e2e_log_info "Daemon 进程已启动 (PID: ${HUB_PID})"
 
-    # 4. 等待 Hub 就绪
-    e2e_log_info "等待 Hub 就绪..."
-    if ! wait_for_url "${HUB_HEALTH_URL}" "Hub"; then
-        e2e_log_error "Hub 启动失败，日志内容："
+    # 4. 等待 daemon 就绪：/health 通过 + runner 侧 state 文件（同进程 runner 就绪标志）
+    e2e_log_info "等待 Daemon 就绪..."
+    local daemon_waited=0
+    local daemon_ready=false
+    while (( daemon_waited < MAX_RUNNER_WAIT_SECONDS * 2 )); do
+        if curl -sf --max-time 2 "${HUB_HEALTH_URL}" &>/dev/null && \
+           e2e_read_runner_state "${RUNNER_STATE_FILE}" && \
+           [[ -n "${RUNNER_PID}" ]] && kill -0 "${RUNNER_PID}" 2>/dev/null; then
+            daemon_ready=true
+            break
+        fi
+        sleep "${POLL_INTERVAL}"
+        daemon_waited=$(( daemon_waited + 1 ))
+    done
+    if [[ "${daemon_ready}" == false ]]; then
+        e2e_log_error "Daemon 启动失败，日志内容："
         cat "${E2E_TMPDIR}/logs/hub.log" 2>/dev/null || true
         cleanup
         exit 1
     fi
-    e2e_log_info "Hub 已就绪 ✓"
+    e2e_log_info "Daemon 已就绪 ✓ (hub+runner PID ${RUNNER_PID})"
 
     # 5. 启动 Web Dev Server
     e2e_log_section "启动 Web Dev Server"
@@ -197,42 +210,14 @@ main() {
     fi
     e2e_log_info "Web Dev Server 已就绪 ✓"
 
-    # 7. 启动 Runner（直跑形态同 Hub：后台运行 start-sync，就绪以 state file 为准）
-    e2e_log_section "启动 Runner"
-
-    bun run "${MOBI_ROOT}/packages/cli/src/index.ts" --profile "${PROFILE_NAME}" \
-        runner start-sync &>"${E2E_TMPDIR}/logs/runner.log" &
-    RUNNER_BG_PID="${!}"
-
-    e2e_log_info "等待 Runner 就绪..."
-    local runner_waited=0
-    local runner_ready=false
-    while (( runner_waited < MAX_RUNNER_WAIT_SECONDS * 2 )); do
-        if e2e_read_runner_state "${RUNNER_STATE_FILE}" && \
-           [[ -n "${RUNNER_PID}" ]] && kill -0 "${RUNNER_PID}" 2>/dev/null; then
-            runner_ready=true
-            break
-        fi
-        sleep "${POLL_INTERVAL}"
-        runner_waited=$((runner_waited + 1))
-    done
-
-    if [[ "${runner_ready}" == false ]]; then
-        e2e_log_error "Runner 启动失败，日志内容："
-        cat "${E2E_TMPDIR}/logs/runner.log" 2>/dev/null || true
-        cleanup
-        exit 1
-    fi
-    e2e_log_info "Runner 已就绪 ✓ (PID: ${RUNNER_PID})"
-
-    # 8. 输出服务信息
+    # 7. 输出服务信息
     e2e_log_section "E2E 测试环境就绪"
     # 写就绪信号文件（Claude 轮询此文件判断就绪，不依赖 stdout echo——stdout 在后台任务会被 tail 缓冲）
     touch "${E2E_TMPDIR}/ready.flag"
     echo -e "  ${BOLD}Hub${RESET}:          http://localhost:${HUB_PORT}"
     echo -e "  ${BOLD}Hub 健康检查${RESET}:  ${HUB_HEALTH_URL}"
     echo -e "  ${BOLD}Web${RESET}:          http://localhost:${WEB_PORT}"
-    echo -e "  ${BOLD}Runner${RESET}:        PID ${RUNNER_PID}"
+    echo -e "  ${BOLD}Runner${RESET}:        同进程 (PID ${RUNNER_PID})"
     echo -e "  ${BOLD}数据目录${RESET}:     ${E2E_TMPDIR}"
     echo ""
     e2e_log_info "按 Ctrl+C 停止所有服务并清理"
