@@ -16,9 +16,12 @@
 
 /**
  * Library exports for slopus package
- * 
+ *
  * This file provides the main API classes and types for external consumption
  * without the CLI-specific functionality.
+ *
+ * [归属标记] personal-agent-rewrite：dev helper 出口，归 cli 包（ticket-14 处理；
+ * 内部调用方 claude/agent 若干处在搬迁票改为直引各模块）。
  */
 
 // These exports allow me to use this package a library in dev-environment cli helper programs

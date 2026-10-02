@@ -17,6 +17,9 @@
 /**
  * CLI 启动早期的服务自动拉起（hub + runner），统一经 supervisor 托管。
  *
+ * [归属标记] personal-agent-rewrite：依赖 supervisor/control 与 runner/controlClient
+ * （属 cli 侧职责），不随 utils 其余部分归 node-core——ticket-14 挪 cli 包。
+ *
  * 收编背景：`hub start-sync` / `runner start-sync` 带 PPID 看门狗（父进程死亡即
  * 自杀），任何 detached spawn start-sync 并期望该进程比调用方活得更久的路径，
  * 都会在调用方退出后被看门狗杀掉。因此自动拉起一律改为
