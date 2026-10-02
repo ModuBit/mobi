@@ -3,10 +3,14 @@ name: fork-verify
 description: fork 分叉会话 E2E 验证 — fork API 直调 / 待激活观察 / 激活路径断言 / mobi URI 动作链接形态溯源消息（2026-09-07 动作链接版回归）
 metadata:
   type: recipe
-  last_verified: 2026-09-07
+  last_verified: 2026-10-02
 ---
 
 # fork 分叉会话验证
+
+## UI 按钮路径是两步
+
+消息区 "Fork from here" 按钮点击**只打开确认浮层**（描述文案 + Create forked session / Cancel），须再点 "Create forked session" 才真正创建并跳转新会话页。只点第一下就 sleep 等 DB 会出现「新会话不存在」假象（2026-10-02 实踩）。新会话初始为 Pending（待激活），消息复制完整性用 `SELECT session_id, count(*) FROM messages GROUP BY session_id` 断言。
 
 ## 直调 API 造 fork（免走 UI Popover）
 
