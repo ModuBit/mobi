@@ -1,4 +1,4 @@
-# Common RPC Handlers (`packages/cli/src/modules/common/`)
+# Common RPC Handlers (`packages/session/src/modules/common/`)
 
 Hub（Web 端）远程调用 CLI 侧能力的统一入口。Handler 共享统一响应格式，并按读、写与通道用途应用对应的路径策略。
 

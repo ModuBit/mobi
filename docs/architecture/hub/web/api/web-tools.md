@@ -1,6 +1,6 @@
 # Web 工具配置 API
 
-**文件**: [`packages/hub/src/web/routes/webTools.ts`](/packages/hub/src/web/routes/webTools.ts)
+**文件**: [`packages/daemon/src/web/routes/webTools.ts`](/packages/daemon/src/web/routes/webTools.ts)
 
 mobi 自定义 Web 工具（替换 CC 内置 WebSearch/WebFetch）的配置入口。**hub 纯透传、零存储**：配置真相源在目标机器的 `~/.mobi/settings.json` 的 `webTools` 段，读写经 [RpcGateway](../../sync/rpc-gateway.md) 的 machine 级 RPC 转发给 runner。
 
@@ -82,5 +82,5 @@ mobi 自定义 Web 工具（替换 CC 内置 WebSearch/WebFetch）的配置入�
 ## 相关链路
 
 - 协议类型：`@mobi/shared` 的 `WebToolsConfigSchema` / `WebToolsConfigSubmissionSchema` / `RedactedWebToolsConfig` / `maskCredential`
-- runner RPC handler：[`packages/cli/src/modules/common/handlers/webToolsConfig.ts`](/packages/cli/src/modules/common/handlers/webToolsConfig.ts)
+- runner RPC handler：[`packages/node-core/src/handlers/webToolsConfig.ts`](/packages/node-core/src/handlers/webToolsConfig.ts)
 - Web 配置页：`packages/web/src/components/settings/webtools/`（分区入口见 `sections/WebToolsSection.tsx`）

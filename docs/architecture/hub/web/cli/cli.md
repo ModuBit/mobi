@@ -1,6 +1,6 @@
 # CLI 路由
 
-**文件**: [`packages/hub/src/web/routes/cli.ts`](/packages/hub/src/web/routes/cli.ts)
+**文件**: [`packages/daemon/src/web/routes/cli.ts`](/packages/daemon/src/web/routes/cli.ts)
 
 CLI 专用的 HTTP API，用于会话和机器的初始化与查询。
 
@@ -42,7 +42,7 @@ POST /cli/web-token  → { webToken: string, envOverride: boolean }
 ```
 
 - `envOverride: true`：hub 以 `WEB_API_TOKEN` 环境变量运行，重启后轮换会被 env 值覆盖（POST 在轮换**前**取值）
-- POST 复用 [`webApiToken.ts`](/packages/hub/src/config/webApiToken.ts) 的 `rotateWebApiToken()` 持久化，随后 `_setWebApiToken()` 即时热更新 configuration 单例（不等 settingsWatcher）
+- POST 复用 [`webApiToken.ts`](/packages/daemon/src/config/webApiToken.ts) 的 `rotateWebApiToken()` 持久化，随后 `_setWebApiToken()` 即时热更新 configuration 单例（不等 settingsWatcher）
 
 ## 会话操作
 

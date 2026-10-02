@@ -1,8 +1,8 @@
 # Sessions API
 
 **文件**：
-- [`packages/hub/src/web/routes/sessions.ts`](/packages/hub/src/web/routes/sessions.ts)
-- [`packages/hub/src/web/routes/serveFileContent.ts`](/packages/hub/src/web/routes/serveFileContent.ts)（read-file / serve-file 共享的文件服务逻辑）
+- [`packages/daemon/src/web/routes/sessions.ts`](/packages/daemon/src/web/routes/sessions.ts)
+- [`packages/daemon/src/web/routes/serveFileContent.ts`](/packages/daemon/src/web/routes/serveFileContent.ts)（read-file / serve-file 共享的文件服务逻辑）
 
 会话相关的 HTTP API，包括会话管理。工作区实体与按工作区查询会话见 [Workspaces API](./workspaces.md)。
 
@@ -151,7 +151,7 @@ flowchart TB
 
 ## 守卫函数
 
-**文件**：[`packages/hub/src/web/routes/guards.ts`](/packages/hub/src/web/routes/guards.ts)
+**文件**：[`packages/daemon/src/web/routes/guards.ts`](/packages/daemon/src/web/routes/guards.ts)
 
 | 函数 | 作用 |
 |------|------|
@@ -172,7 +172,7 @@ flowchart TB
 
 ### 共享文件服务：`serveFileContent()`
 
-**文件**：[`serveFileContent.ts`](/packages/hub/src/web/routes/serveFileContent.ts)
+**文件**：[`serveFileContent.ts`](/packages/daemon/src/web/routes/serveFileContent.ts)
 
 从 read-file 抽出的共享逻辑，吃绝对路径输出流式响应：`readFileMeta` → 304 协商缓存 → Range(206) 解析 → 响应头 → stream 分片翻译（含客户端断开兜底）。`read-file` 与 `serve-file` 都委托给它，避免复制粘贴。
 

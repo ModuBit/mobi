@@ -21,8 +21,8 @@ import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTra
 
 /**
  * rewind 软删除上界（M3 防御）：迟到截断回报不得吞掉受理后新发的消息。
- * @see packages/hub/src/store/messages.ts softDeleteMessagesFrom(maxSeq)
- * @see packages/hub/src/sync/rewindDeleteBoundTracker.ts
+ * @see packages/daemon/src/store/messages.ts softDeleteMessagesFrom(maxSeq)
+ * @see packages/daemon/src/sync/rewindDeleteBoundTracker.ts
  */
 describe('rewind 软删除上界', () => {
     let store: Store

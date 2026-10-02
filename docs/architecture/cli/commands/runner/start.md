@@ -39,7 +39,7 @@ sequenceDiagram
 
 ### spawnMobiCli
 
-**文件**: [`packages/cli/src/utils/spawnMobiCli.ts`](/packages/cli/src/utils/spawnMobiCli.ts)
+**文件**: [`packages/node-core/src/utils/spawnMobiCli.ts`](/packages/node-core/src/utils/spawnMobiCli.ts)
 
 启动一个新的 mobi CLI 进程（detached 模式），继承当前进程的环境变量。
 
@@ -54,7 +54,7 @@ child.unref()  // 允许父进程退出
 
 ### checkIfRunnerRunningAndCleanupStaleState
 
-**文件**: [`packages/cli/src/runner/controlClient.ts`](/packages/cli/src/runner/controlClient.ts)
+**文件**: [`packages/daemon/src/runner/controlClient.ts`](/packages/daemon/src/runner/controlClient.ts)
 
 检查 Runner 是否运行，并清理过期的状态文件。
 
@@ -77,6 +77,6 @@ export async function checkIfRunnerRunningAndCleanupStaleState(): Promise<boolea
 ## 代码入口
 
 - **命令入口**: `packages/cli/src/commands/runner.ts:69-93`
-- **后台启动**: `packages/cli/src/utils/spawnMobiCli.ts`
-- **Runner 主逻辑**: `packages/cli/src/runner/run.ts`
-- **重试检查**: `packages/cli/src/runner/controlClient.ts`
+- **后台启动**: `packages/node-core/src/utils/spawnMobiCli.ts`
+- **Runner 主逻辑**: `packages/daemon/src/runner/run.ts`
+- **重试检查**: `packages/daemon/src/runner/controlClient.ts`

@@ -56,5 +56,5 @@ tail -f "$(mobi runner logs)"
 ## 代码入口
 
 - **命令入口**: [`packages/cli/src/commands/runner.ts:111-119`](/packages/cli/src/commands/runner.ts)
-- **日志查找**: [`packages/cli/src/ui/logger.ts`](/packages/cli/src/ui/logger.ts) — `getLatestRunnerLog()`
-- **日志路径写入**: [`packages/cli/src/runner/run.ts:614-623`](/packages/cli/src/runner/run.ts) — `writeRunnerState({ runnerLogPath })`
+- **日志查找**: [`packages/node-core/src/logger.ts`](/packages/node-core/src/logger.ts) — `getLatestRunnerLog()`
+- **日志路径写入**: [`packages/daemon/src/runner/run.ts:614-623`](/packages/daemon/src/runner/run.ts) — `writeRunnerState({ runnerLogPath })`

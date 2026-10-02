@@ -158,7 +158,7 @@ describe('checkDangerousCommand', () => {
         // 所有 rm 变体一律拦截
         ['rm file.txt', '文件删除操作'],
         ['rm -rf /', '文件删除操作'],
-        ['rm -rf hub/src/config', '文件删除操作'],
+        ['rm -rf daemon/src/config', '文件删除操作'],
         ['rm -rf ./node_modules', '文件删除操作'],
         ['rm -f specific-file.txt', '文件删除操作'],
         ['rm -rf /tmp/test-dir', '文件删除操作'],

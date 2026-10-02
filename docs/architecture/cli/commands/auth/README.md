@@ -189,7 +189,7 @@ webApiToken 归 hub 所有（`settings.hub.json`，在 hub 机器上），cli �
 
 ## Configuration 单例
 
-**文件**: [`packages/cli/src/configuration.ts`](/packages/cli/src/configuration.ts)
+**文件**: [`packages/node-core/src/configuration.ts`](/packages/node-core/src/configuration.ts)
 
 全局配置单例，在模块加载时同步创建：
 
@@ -208,7 +208,7 @@ webApiToken 归 hub 所有（`settings.hub.json`，在 hub 机器上），cli �
 
 ## Persistence 持久化
 
-**文件**: [`packages/cli/src/persistence.ts`](/packages/cli/src/persistence.ts)
+**文件**: [`packages/node-core/src/persistence.ts`](/packages/node-core/src/persistence.ts)
 
 ### Settings 文件操作
 

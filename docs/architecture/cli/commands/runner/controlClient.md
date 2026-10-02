@@ -2,7 +2,7 @@
 
 CLI 侧与 Runner 进程通信的 HTTP 客户端封装。所有 CLI 命令通过它与 Runner 进程内的 ControlServer 交互。
 
-**文件**: [`packages/cli/src/runner/controlClient.ts`](/packages/cli/src/runner/controlClient.ts)
+**文件**: [`packages/daemon/src/runner/controlClient.ts`](/packages/daemon/src/runner/controlClient.ts)
 
 ## 定位
 
@@ -159,7 +159,7 @@ stopRunner()
 import { listRunnerSessions, stopRunnerSession, spawnRunnerSession, stopRunner,
          checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
 
-// packages/cli/src/agent/sessionFactory.ts — 会话创建后通知
+// packages/session/src/agent/sessionFactory.ts — 会话创建后通知
 import { notifyRunnerSessionStarted } from '@/runner/controlClient'
 
 // packages/cli/src/ui/doctor.ts — 诊断检查
@@ -168,7 +168,7 @@ import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient
 // packages/cli/src/commands/claude.ts — claude 命令中检查版本
 import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
 
-// packages/cli/src/runner/run.ts — Runner 内部使用状态管理和版本检测
+// packages/daemon/src/runner/run.ts — Runner 内部使用状态管理和版本检测
 import { cleanupRunnerState, getInstalledCliMtimeMs,
          isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient'
 ```

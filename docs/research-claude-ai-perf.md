@@ -107,7 +107,7 @@
 **文章做法**：Valgrind + `node --predictable` 对纯 JS 热路径数指令，一次运行即得确定性数字，CI 棘轮只降不升；实证相关性：指令 −48%/−31% → 墙钟 −78%/−44%（§ANYTHING CAN BE HILL CLIMBED）。文章选的热路径之一恰好是「装配会话消息树的例程」。
 
 **mobi 现状**：两个候选落点均确认存在：
-- `packages/cli/src/claude/utils/assistantPartialAssembler.ts`——纯函数装配器（`Map<msgId, Pending>` 累积 + message 边界 flush），无 DOM、无 IO，输入可用固定 SDK 消息序列 fixture，是理想的第一落点；且与文章选的「message tree assembly」几乎同构。
+- `packages/session/src/claude/utils/assistantPartialAssembler.ts`——纯函数装配器（`Map<msgId, Pending>` 累积 + message 边界 flush），无 DOM、无 IO，输入可用固定 SDK 消息序列 fixture，是理想的第一落点；且与文章选的「message tree assembly」几乎同构。
 - `packages/web/src/core/data/stores/messageWindowStore.ts`——消息窗口滑动的纯逻辑 external store，依赖极小，次选。
 
 **建议**：列为远期候选（mobi 当前无 CI 基准设施，先有确定性基准文化再谈棘轮）。注意一点：文章方法是 `node --predictable` + Valgrind，mobi 运行时是 bun——这两个模块无 bun 特有 API，基准可在 node 下跑，不冲突。配套方法论先行项：给热路径建 fixture 回放（现成的会话消息序列即可）。
@@ -179,5 +179,5 @@
   - x-markdown patch：`.claude/skills/upgrade-deps/references/x-markdown-patch.md`
   - reload：`packages/web/src/core/pwa/{forceUpdate,registerSW}.ts`、`packages/web/src/core/utils/reload.ts`、`packages/web/src/components/layout/{MobileMenu,SidebarFooter,UpdatePrompt,MainLayout}.tsx`
   - 热区：`packages/web/src/components/composer/{ChatComposer,ComposerInfoPanel}.tsx`、`packages/web/src/components/chat/{ChatContainer,BubbleListChat}.tsx`、`packages/web/src/core/data/stores/messageWindowStore.ts`
-  - 基准落点：`packages/cli/src/claude/utils/assistantPartialAssembler.ts`
+  - 基准落点：`packages/session/src/claude/utils/assistantPartialAssembler.ts`
 - 关联 memory：`project_xmarkdown-incremental-patch`、`project_pwa-sync-reload-swallowed`、`project_message-window-store`、`xmarkdown-append-only-assumption`、`project_streamdown-migration-research`、`streaming-ux-smoothness`。

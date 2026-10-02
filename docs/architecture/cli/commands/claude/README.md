@@ -65,13 +65,13 @@ graph TB
     end
 
     subgraph Core["核心层"]
-        RunClaude["runClaude()<br/>packages/cli/src/claude/runClaude.ts"]
-        Bootstrap["bootstrapSession()<br/>packages/cli/src/agent/sessionFactory.ts"]
-        Loop["loop()<br/>packages/cli/src/claude/loop.ts"]
+        RunClaude["runClaude()<br/>packages/session/src/claude/runClaude.ts"]
+        Bootstrap["bootstrapSession()<br/>packages/session/src/agent/sessionFactory.ts"]
+        Loop["loop()<br/>packages/session/src/claude/loop.ts"]
     end
 
     subgraph LoopEngine["模式循环引擎"]
-        LoopBase["runLocalRemoteSession()<br/>packages/cli/src/agent/loopBase.ts"]
+        LoopBase["runLocalRemoteSession()<br/>packages/session/src/agent/loopBase.ts"]
     end
 
     subgraph LocalMode["Local 模式"]
@@ -88,7 +88,7 @@ graph TB
     end
 
     subgraph Support["支撑组件"]
-        Session["Session<br/>packages/cli/src/claude/session.ts"]
+        Session["Session<br/>packages/session/src/claude/session.ts"]
         MCP["MCP 工具族<br/>mcp/mobiAppsServer.ts + mobiCoreServer.ts<br/>claude/utils/startMobiMcpServer.ts"]
         HookServer["Hook Server"]
         MessageQ["MessageQueue"]
@@ -159,7 +159,7 @@ flowchart TB
 
 ### 阶段二：会话启动（`runClaude.ts`）
 
-**文件**: `packages/cli/src/claude/runClaude.ts:49-385`
+**文件**: `packages/session/src/claude/runClaude.ts:49-385`
 
 ```mermaid
 flowchart TB
@@ -182,17 +182,17 @@ flowchart TB
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| **ApiClient** | `packages/cli/src/api/api.ts` | HTTP 客户端，与 Hub REST API 通信 |
-| **ApiSessionClient** | `packages/cli/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
-| **Session** | `packages/cli/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
-| **MCP 工具族** | remote：`packages/cli/src/mcp/mobiAppsServer.ts` + `mobiCoreServer.ts`（进程内）；local：`packages/cli/src/claude/utils/startMobiMcpServer.ts`（HTTP 壳，仅 change_title） | 详见 [MCP 模块](../../mcp/) |
-| **Hook Server** | `packages/cli/src/claude/utils/startHookServer.ts`（local HTTP）；remote 走 SDK `hooks.SessionStart` 进程内回调 | 接收 Claude SessionStart 通知，绑定守卫见 `claude/utils/sessionIdBinding.ts` |
-| **MessageQueue** | `packages/cli/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
-| **RunnerLifecycle** | `packages/cli/src/agent/runnerLifecycle.ts` | 进程信号处理和清理 |
+| **ApiClient** | `packages/node-core/src/api/api.ts` | HTTP 客户端，与 Hub REST API 通信 |
+| **ApiSessionClient** | `packages/session/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
+| **Session** | `packages/session/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
+| **MCP 工具族** | remote：`packages/session/src/mcp/mobiAppsServer.ts` + `mobiCoreServer.ts`（进程内）；local：`packages/session/src/claude/utils/startMobiMcpServer.ts`（HTTP 壳，仅 change_title） | 详见 [MCP 模块](../../mcp/) |
+| **Hook Server** | `packages/session/src/claude/utils/startHookServer.ts`（local HTTP）；remote 走 SDK `hooks.SessionStart` 进程内回调 | 接收 Claude SessionStart 通知，绑定守卫见 `claude/utils/sessionIdBinding.ts` |
+| **MessageQueue** | `packages/node-core/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
+| **RunnerLifecycle** | `packages/session/src/agent/runnerLifecycle.ts` | 进程信号处理和清理 |
 
 ### 阶段三：模式循环（`loop.ts` + `loopBase.ts`）
 
-**文件**: `packages/cli/src/claude/loop.ts:58-92` → `packages/cli/src/agent/loopBase.ts`
+**文件**: `packages/session/src/claude/loop.ts:58-92` → `packages/session/src/agent/loopBase.ts`
 
 ```mermaid
 flowchart TB
@@ -247,7 +247,7 @@ flowchart LR
 
 ### 创建（bootstrapSession）
 
-**文件**: `packages/cli/src/agent/sessionFactory.ts`
+**文件**: `packages/session/src/agent/sessionFactory.ts`
 
 ```
 bootstrapSession({ flavor, startedBy, workingDirectory, workspaceId, ... })
@@ -265,7 +265,7 @@ bootstrapSession({ flavor, startedBy, workingDirectory, workspaceId, ... })
 
 ### 关闭（cleanupAndExit）
 
-**文件**: `packages/cli/src/agent/runnerLifecycle.ts`
+**文件**: `packages/session/src/agent/runnerLifecycle.ts`
 
 关闭顺序：
 

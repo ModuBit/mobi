@@ -12,7 +12,7 @@
 
 **相关文件**：
 
-- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — Snapshot 生成与发送
+- `packages/session/src/claude/utils/streamSnapshotSender.ts` — Snapshot 生成与发送
 - `packages/web/src/components/ui/Markdown.tsx` — 前端逐字揭示渲染
 
 **现状**：
@@ -66,7 +66,7 @@
 **相关文件**：
 
 - `packages/web/src/core/data/stores/notificationBadgeStore.ts` — 角标状态（一期前端本地）
-- `packages/hub/src/notifications/` — 通知中心（未来扩展点）
+- `packages/daemon/src/notifications/` — 通知中心（未来扩展点）
 
 **现状（通知重设计一期）**：
 
@@ -146,9 +146,9 @@
 
 **相关文件**（本次功能落地后）：
 
-- `packages/cli/src/claude/claudeRemote.ts` — `userInputLoop` / `sdkOutputLoop`（interrupt 编排注入点）
-- `packages/cli/src/claude/claudeRemoteLauncher.ts` — `queryRef.interrupt()`、`handleAbortRequest`
-- `packages/cli/src/utils/MessageQueue.ts` — 入队时机检测 running
+- `packages/session/src/claude/claudeRemote.ts` — `userInputLoop` / `sdkOutputLoop`（interrupt 编排注入点）
+- `packages/session/src/claude/claudeRemoteLauncher.ts` — `queryRef.interrupt()`、`handleAbortRequest`
+- `packages/node-core/src/utils/MessageQueue.ts` — 入队时机检测 running
 
 **优先级**：中。本次轮次级体验上线后，若用户反馈"中途转向不够即时"再实施。
 
@@ -168,7 +168,7 @@
 
 - `packages/web/src/components/ui/useStreamingContent.ts` — 逐字揭示 hook
 - `packages/web/src/components/chat/buildBubbleItems.tsx` — isStreaming 判定
-- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — snapshot flush 节奏
+- `packages/session/src/claude/utils/streamSnapshotSender.ts` — snapshot flush 节奏
 
 **排查方向**：复现时按 [streaming.md 的调试方法](architecture/web/streaming.md#调试方法) 加 `[BB]`/`[SC]`/`[TICK]` log，依次确认 raf 是否执行（坑 1）、snapshot/full 的 block.id 是否稳定（坑 2）、streaming 是否 true（坑 3）。
 
@@ -193,7 +193,7 @@
 **涉及文件**：
 
 - `packages/shared/src/exitLogger.ts` — `installExitHandlers` / `onExitSync`
-- `packages/hub/src/index.ts` — `exitCtx` / shutdown
+- `packages/daemon/src/index.ts` — `exitCtx` / shutdown
 - `scripts/observe-sigterm.sh` — 外部观测脚本
 
 **优先级**：中。兜底已就位，根因待复现。
@@ -346,7 +346,7 @@ mobi.app（dmg 分发）
 
 **相关文件**：
 
-- `packages/cli/src/claude/sdk/claudeExecutable.ts` — 回退链主体
+- `packages/node-core/src/claudeSdk/claudeExecutable.ts` — 回退链主体
 - `packages/cli/src/runtime/embeddedClaudeBinary.bun.ts` — undefined 语义 + feature 门控
 - `packages/cli/scripts/downloadClaudeBinary.ts` / `packages/cli/src/runtime/claudeBinarySource.ts` — 下载与校验逻辑复用源
 
@@ -435,9 +435,9 @@ interrupt（用户停止）
 
 **相关文件**：
 
-- `packages/cli/src/claude/claudeRemoteLauncher.ts` — `handleAbortRequest`（三分支判定注入点）
-- `packages/cli/src/claude/claudeRemote.ts` — `sdkOutputLoop`（「无输出」判定）
-- `packages/hub/src/store/messages.ts` — `softDeleteMessagesFrom`（软删除复用）
+- `packages/session/src/claude/claudeRemoteLauncher.ts` — `handleAbortRequest`（三分支判定注入点）
+- `packages/session/src/claude/claudeRemote.ts` — `sdkOutputLoop`（「无输出」判定）
+- `packages/daemon/src/store/messages.ts` — `softDeleteMessagesFrom`（软删除复用）
 - rewind 回填链路：`rewindStore.ts` / `draftRequest` / `collectRewindBatchText`
 
 **优先级**：简单版 A 已实施（2026-08-31）；优化点 B 后续。
@@ -495,7 +495,7 @@ interrupt（用户停止）
 
 **hub HTTP/2 能力记录**（2026-09-09 实测）：Bun 1.4.1+ 支持 `Bun.serve({tls, http2: true})`（同端口同 handler，TLS 走 ALPN 按连接协商、cleartext 走 prior-knowledge；1.4.2 实测均生效）。**暂不启用**，原因：① 浏览器仅在 TLS 上协商 h2，远端 hub 无证书无反代，开了对浏览器无效；② Bun h2 上 WebSocket 未实现（RFC 8441 extended CONNECT 待补），CLI Socket.IO 依赖经典 WS upgrade——ALPN 按连接协商 CLI 落 1.1 可避开但需实测；③ 需全量回归验证；④ 无当前痛点驱动。给远端 hub 上 TLS 时顺手开启即可。
 
-**相关文件**：`packages/hub/src/sse/sseManager.ts`、`packages/hub/src/web/routes/events.ts`、`packages/web/src/core/providers/SSEProvider.tsx`
+**相关文件**：`packages/daemon/src/sse/sseManager.ts`、`packages/daemon/src/web/routes/events.ts`、`packages/web/src/core/providers/SSEProvider.tsx`
 
 ---
 
@@ -661,7 +661,7 @@ interrupt（用户停止）
 
 ## 76. 图片/文档块的在线 URL 支持（跨会话投递目前会降级成文本）（2026-09-13，待做）
 
-**背景**：`send_message_to_session` 的 content 支持 image / document 块，但**块里的 URL 不会被取回**。CLI 的 blocks→prompt 转换（`packages/cli/src/utils/promptBuilder.ts` 的 `buildPromptFromBlocks` → `tryReadImageBase64`）只会 `readFileSync(source.value)`：`http(s)://` 与 `data:` 一律失败，图片降级成 `@值` 文本；document 更是无条件变成 `@值`。更糟的是 `data:` ——整段 base64 会以文本塞进 prompt，白烧 token。hub 侧的自足 URL 判据（`isSelfContainedUrl`）让这类块绕过同机器闸，于是投递报成功、对面拿到的却只是一段文本。判据本身不算错（这类块确实不依赖发件方机器上的文件），错的是「放行」不等于「图送到了」。
+**背景**：`send_message_to_session` 的 content 支持 image / document 块，但**块里的 URL 不会被取回**。CLI 的 blocks→prompt 转换（`packages/node-core/src/utils/promptBuilder.ts` 的 `buildPromptFromBlocks` → `tryReadImageBase64`）只会 `readFileSync(source.value)`：`http(s)://` 与 `data:` 一律失败，图片降级成 `@值` 文本；document 更是无条件变成 `@值`。更糟的是 `data:` ——整段 base64 会以文本塞进 prompt，白烧 token。hub 侧的自足 URL 判据（`isSelfContainedUrl`）让这类块绕过同机器闸，于是投递报成功、对面拿到的却只是一段文本。判据本身不算错（这类块确实不依赖发件方机器上的文件），错的是「放行」不等于「图送到了」。
 
 **当前处置**（2026-09-13）：工具描述与 hub 附件闸的失败文案都已如实写明「URL 不会被取回——给本机文件，或把 URL 写进正文」，不再推荐这么用；行为未改。同机器与跨机器都一样降级，不是跨会话独有。
 
@@ -692,9 +692,9 @@ interrupt（用户停止）
 
 | 层 | 失败形状 | 位置 |
 |---|---|---|
-| RPC handler 内部 | `{ success: false; error: string }`（`rpcError(message, extras?)`） | `packages/cli/src/modules/common/rpcResponses.ts` |
+| RPC handler 内部 | `{ success: false; error: string }`（`rpcError(message, extras?)`） | `packages/node-core/src/handlers/rpcResponses.ts` |
 | socket `rpc-request` 的 ack | `callback: (response: unknown) => void`——**完全无类型**，形状由各 method 自约 | `packages/shared/src/socket.ts` |
-| 跨进程 spawn 回执 | `{ type: 'error'; errorMessage: string }` | `packages/cli/src/modules/common/rpcTypes.ts` |
+| 跨进程 spawn 回执 | `{ type: 'error'; errorMessage: string }` | `packages/shared/src/hostProtocol.ts` |
 
 即 **mobi 没有通用 error code**。唯一的码化是 `AgentOpFailureReason`（`invalid-payload` / `handler-misconfigured` / `SocketErrorReason`），只覆盖 **mobi 自己产生的封闭失败集合**；上游来的失败一律自由文本，且是**有意**的——`AgentCreateSessionAck` 的注释写着「建会话的失败来自上游且是开放集合」。所以边界不是没划，是划在「自己产生的封闭集合 vs 上游的开放集合」。
 
@@ -703,7 +703,7 @@ interrupt（用户停止）
 - `AgentOpFailureReason`——自己产生的封闭失败枚举
 - `RpcAcceptResult`（`shared/src/sessionConfig.ts`）——**业务拒绝不走 throw**，语义由结构承载（深化候选⑥）
 - `AgentMessagePushResult`（`delivered` / `rejected` + reason）——逐目标的裁决
-- `RpcFailure` + `RpcFailureKind`（`packages/hub/src/sync/rpcFailure.ts`，2026-09-13 候选 #3 落地）——传输故障分类，**分类在产生它的那一层带上**，消费方只读；`unreachable` / `timeout` / `other` 就是标准化的第一批样本
+- `RpcFailure` + `RpcFailureKind`（`packages/daemon/src/sync/rpcFailure.ts`，2026-09-13 候选 #3 落地）——传输故障分类，**分类在产生它的那一层带上**，消费方只读；`unreachable` / `timeout` / `other` 就是标准化的第一批样本
 
 **待设计要回答的问题**（不是清单，是必须拍板的）：
 
@@ -711,7 +711,7 @@ interrupt（用户停止）
 2. **码与人话的关系**：一个码配一句？码稳定、文案可改？谁来保证「同一个码在不同出口说的话一致」（今天 `translateSpawnFailure` / `translatePushFailure` 是同一套分类、两套措辞，这是有意的，标准化时要不要保留这个自由度）
 3. **跨进程兼容**：老 CLI/runner 不认新码时怎么降级（今天候选 #3 的答案：降级到「原样透出上游那句」，不损坏）
 4. **谁消费码**：agent 的工具回执要的是**指令**（「别重试」「先 list_sessions」），人看的 UI 要的是文案，程序分支要的是码——三者是不是同一条错误对象上的三个投影？
-5. **传输故障那一档还剩一个洞**：`spawnSession` 里只有 runner 的 `Session webhook timeout for PID N`（`packages/cli/src/runner/run.ts:447`）还必须读文案——它是**跨进程散文**，判据现在收在适配器内的 `classifyTransportFailure`（rpcGateway）。彻底消灭它要给 `SpawnSessionResult` 的 error 支加结构化字段，**这是标准化的第二批样本**
+5. **传输故障那一档还剩一个洞**：`spawnSession` 里只有 runner 的 `Session webhook timeout for PID N`（`packages/daemon/src/runner/run.ts:447`）还必须读文案——它是**跨进程散文**，判据现在收在适配器内的 `classifyTransportFailure`（rpcGateway）。彻底消灭它要给 `SpawnSessionResult` 的 error 支加结构化字段，**这是标准化的第二批样本**
 
 ## 79. 会话在「等就绪」期间死掉时，等待者只能等满预算（2026-09-13，待做）
 
@@ -889,7 +889,7 @@ interrupt（用户停止）
 
 **背景**：Claude Code auto mode 的安全分类器检查改由服务端顺带完成（不计费），但经 gateway/proxy（mobi proxy / CCR 链路）的会话因 gateway 丢弃/改写 `safeguards` 请求字段与 `safeguard_results` 响应键而到不了服务端检查，CC 退回自发 classifier 请求按 token 计费，并每次 fallback 重发一条 `system/informational`（warning）提示——SDK/stream-json 模式无法像终端那样 ack 静默 24h。文档：https://code.claude.com/docs/en/auto-mode-classifier-billing
 
-**已做（临时）**：`buildClaudeFeatureEnv` 保底注入 `CLAUDE_CODE_AUTO_MODE_SERVER=0`（`packages/cli/src/claude/featureFlags.ts`），classifier 恒为 CC 自发（计费不变）、提示永不出现；claudeEnv 可显式覆盖。
+**已做（临时）**：`buildClaudeFeatureEnv` 保底注入 `CLAUDE_CODE_AUTO_MODE_SERVER=0`（`packages/session/src/claude/featureFlags.ts`），classifier 恒为 CC 自发（计费不变）、提示永不出现；claudeEnv 可显式覆盖。
 
 **待做**：gateway（CCR backend）集成时一并评估按 [feature pass-through](https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through) 原样透传（含不认识的 `safeguards` 字段与 `safeguard_results` 键），透传达标后把保底注入撤除或默认置 '1'，会话恢复服务端检查（免计费）。注意：该 env 是 CC 官方标注的 temporary setting，可能在未来版本移除，撤除时机需复查文档。
 

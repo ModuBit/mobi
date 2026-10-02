@@ -21,7 +21,7 @@ import { TASK_TOOL_NAMES } from './tasks'
 /**
  * 出口剥离（egress strip）：消息行离开 hub 供 web 消费时按工具策略对 tool_result
  * 重内容做的展示层瘦身。存储层始终是完整事实，剥离只作用于消费边界且不可变——
- * 术语见 packages/hub/CONTEXT.md「出口剥离」。
+ * 术语见 packages/daemon/CONTEXT.md「出口剥离」。
  *
  * 策略四条（spec: .scratch/tool-result-egress-strip/spec.md D6）：
  * 1. 文件类工具（内容可从磁盘重建）→ content 替换为占位

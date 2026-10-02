@@ -11,8 +11,8 @@ flowchart TB
     Start["mobi hub start-sync --host x --port y"] --> Parse["parseHubArgs()<br/>解析 --host / --port"]
     Parse --> Env["设置环境变量<br/>MOBI_LISTEN_HOST / MOBI_LISTEN_PORT"]
     Env --> Watchdog["startPpidWatchdog()<br/>父进程（supervisor）死亡时 SIGTERM 自杀"]
-    Watchdog --> Import["import('../../../hub/src/index')"]
-    Import --> HubMain["packages/hub/src/index.ts → main()"]
+    Watchdog --> Import["import('../../../daemon/src/index')"]
+    Import --> HubMain["packages/daemon/src/index.ts → main()"]
     HubMain --> Config["createConfiguration()"]
     Config --> Store["Store (SQLite)"]
     Config --> SocketServer["SocketServer"]
@@ -29,7 +29,7 @@ flowchart TB
 
 ## Hub 模块启动流程
 
-Hub 模块（`packages/hub/src/index.ts`）的 `main()` 函数按顺序初始化各组件：
+Hub 模块（`packages/daemon/src/index.ts`）的 `main()` 函数按顺序初始化各组件：
 
 ```mermaid
 flowchart TB

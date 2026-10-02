@@ -112,7 +112,7 @@ flowchart TB
 
 ## 进程发现与分类
 
-**文件**: [`packages/cli/src/runner/doctor.ts`](/packages/cli/src/runner/doctor.ts)
+**文件**: [`packages/daemon/src/runner/doctor.ts`](/packages/daemon/src/runner/doctor.ts)
 
 通过 `ps-list` 枚举系统进程，识别 mobi 相关进程：
 
@@ -225,4 +225,4 @@ packages/cli/src/
 | `packages/cli/src/commands/doctor.ts` | [`doctorCommand`](/packages/cli/src/commands/doctor.ts) |
 | `packages/cli/src/ui/doctor.ts` | [`runDoctorCommand()`](/packages/cli/src/ui/doctor.ts) |
 | `packages/cli/src/ui/exitLogReport.ts` | [`printExitReport()`](/packages/cli/src/ui/exitLogReport.ts) |
-| `packages/cli/src/runner/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/packages/cli/src/runner/doctor.ts) |
+| `packages/daemon/src/runner/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/packages/daemon/src/runner/doctor.ts) |

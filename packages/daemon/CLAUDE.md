@@ -21,4 +21,4 @@
 
 ## 编码规范
 
-→ [docs/conventions/](../../docs/conventions/)（hub 侧沿用 docs/conventions/hub.md，14 票文档路径同步）
+→ [docs/conventions/](../../docs/conventions/)（hub 侧见 [daemon.md](../../docs/conventions/daemon.md)）

@@ -54,10 +54,10 @@ Vite 将 React 应用编译为静态文件到 `web/dist/`。
 **Step 2: 生成嵌入资产清单**
 
 ```bash
-cd packages/hub && bun run generate:embedded-web-assets
+cd packages/daemon && bun run generate:embedded-web-assets
 ```
 
-扫描 `web/dist/` 中所有文件，生成 `hub/src/web/embeddedAssets.generated.ts`：
+扫描 `web/dist/` 中所有文件，生成 `daemon/src/web/embeddedAssets.generated.ts`：
 
 ```typescript
 import asset0 from '../../web/dist/index.html' assert { type: 'file' };
@@ -97,7 +97,7 @@ mobi [args]
           └─ runCli()    ← 解析参数，ensureRuntimeAssets()
               └─ registry 匹配子命令
                   ├─ (无参数) → claude
-                  ├─ hub     → 动态 import hub/src/index
+                  ├─ hub     → 动态 import daemon/src/index
                   ├─ runner  → 后台会话管理
                   └─ ...
 ```

@@ -47,7 +47,7 @@ sequenceDiagram
 
 ## Socket.IO 认证
 
-**文件**: [`packages/hub/src/socket/server.ts`](/packages/hub/src/socket/server.ts)
+**文件**: [`packages/daemon/src/socket/server.ts`](/packages/daemon/src/socket/server.ts)
 
 Socket.IO 通过命名空间隔离，认证逻辑与 HTTP 相同，但传递方式不同：
 
@@ -98,7 +98,7 @@ flowchart TB
 
 ## CLI 认证（Access Token）
 
-**文件**: [`packages/hub/src/web/routes/cli.ts`](/packages/hub/src/web/routes/cli.ts)
+**文件**: [`packages/daemon/src/web/routes/cli.ts`](/packages/daemon/src/web/routes/cli.ts)
 
 CLI 路由通过中间件验证 Access Token：
 
@@ -121,7 +121,7 @@ flowchart TB
 
 ### 登录流程
 
-**文件**: [`packages/hub/src/web/routes/auth.ts`](/packages/hub/src/web/routes/auth.ts)
+**文件**: [`packages/daemon/src/web/routes/auth.ts`](/packages/daemon/src/web/routes/auth.ts)
 
 ```mermaid
 flowchart TB
@@ -137,7 +137,7 @@ flowchart TB
 
 ### JWT 中间件
 
-**文件**: [`packages/hub/src/web/middleware/auth.ts`](/packages/hub/src/web/middleware/auth.ts)
+**文件**: [`packages/daemon/src/web/middleware/auth.ts`](/packages/daemon/src/web/middleware/auth.ts)
 
 ```mermaid
 flowchart TB
@@ -169,7 +169,7 @@ flowchart TB
 
 ### CLI_API_TOKEN（Access Token）
 
-**文件**: [`packages/hub/src/config/cliApiToken.ts`](/packages/hub/src/config/cliApiToken.ts)
+**文件**: [`packages/daemon/src/config/cliApiToken.ts`](/packages/daemon/src/config/cliApiToken.ts)
 
 | 优先级 | 来源 | 说明 |
 |--------|------|------|
@@ -189,7 +189,7 @@ flowchart TB
 
 ### WEB_API_TOKEN（Web 登录密钥）
 
-**文件**: [`packages/hub/src/config/webApiToken.ts`](/packages/hub/src/config/webApiToken.ts)
+**文件**: [`packages/daemon/src/config/webApiToken.ts`](/packages/daemon/src/config/webApiToken.ts)
 
 Web 浏览器登录专用密钥（`POST /api/auth` 校验源），与 `CLI_API_TOKEN` 完全独立、互不通用。
 
@@ -205,7 +205,7 @@ Web 浏览器登录专用密钥（`POST /api/auth` 校验源），与 `CLI_API_T
 
 ### JWT Secret
 
-**文件**: [`packages/hub/src/config/jwtSecret.ts`](/packages/hub/src/config/jwtSecret.ts)
+**文件**: [`packages/daemon/src/config/jwtSecret.ts`](/packages/daemon/src/config/jwtSecret.ts)
 
 | 来源 | 说明 |
 |------|------|

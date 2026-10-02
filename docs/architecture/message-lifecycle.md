@@ -184,7 +184,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 ## 第 2 步：CLI 转换（SDKToLogConverter）
 
-**文件**：`packages/cli/src/claude/utils/sdkToLogConverter.ts`
+**文件**：`packages/session/src/claude/utils/sdkToLogConverter.ts`
 
 将 `SDKMessage` 转换为 Hub 可存储的 `RawJSONLines` 格式。
 
@@ -200,7 +200,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 ### 消息分类过滤
 
-**文件**：`packages/cli/src/claude/claudeRemoteLauncher.ts`
+**文件**：`packages/session/src/claude/claudeRemoteLauncher.ts`
 
 `onMessage` 回调中，`convert()` 之后、`enqueue()` 之前调用 `classifyMessage(type, subtype)`：
 - 分类为 `discard` 的消息直接 `return`，不发送到 Hub
@@ -235,7 +235,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 ### 流式 Snapshot（StreamSnapshotSender）
 
-**文件**：`packages/cli/src/claude/utils/streamSnapshotSender.ts`
+**文件**：`packages/session/src/claude/utils/streamSnapshotSender.ts`
 
 在等待完整 assistant 消息期间，CLI 通过 `StreamSnapshotSender` 向 Web 端发送实时快照，实现打字机效果。
 
@@ -272,14 +272,14 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全�
 
 ## 第 3 步：Hub 存储、分类与同步
 
-**存储**：`packages/hub/src/store/index.ts` — SQLite WAL 模式
+**存储**：`packages/daemon/src/store/index.ts` — SQLite WAL 模式
 
 转换后的 `RawJSONLines` 通过 `OutgoingMessageQueue` 发送到 Hub，存入 `messages` 表。
 
 ### 消息分类处理
 
 **分类文件**：`packages/shared/src/messageClassification.ts`（与 CLI 共享）
-**存储层**：`packages/hub/src/store/messages.ts`
+**存储层**：`packages/daemon/src/store/messages.ts`
 
 1. **接收时分类**：Hub 在 `message` handler 中解析消息内容，提取 `type`/`subtype`，调用 `classifyMessage()` 得到 `category`
 2. **带 category 存储**：`messages` 表有 `category TEXT NOT NULL DEFAULT 'persistent'` 列，新增索引 `idx_messages_session_category(session_id, category, seq)`
@@ -297,11 +297,11 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全�
 | 3 | `content.role` | 兜底（user/agent） |
 | 兜底 | 返回 `'persistent'` | 提取失败时 |
 
-### OutgoingMessageQueue（`packages/cli/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
+### OutgoingMessageQueue（`packages/session/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
 
 **主键策略**：Hub 的 `addMessage` 使用 `localId ?? randomUUID()` 作为消息 `id`，即优先使用 CLI 提供的 SDK uuid，仅当无 `localId` 时才生成随机 UUID。
 
-**同步**：`packages/hub/src/sync/syncEngine.ts` — SSE 推送
+**同步**：`packages/daemon/src/sync/syncEngine.ts` — SSE 推送
 
 Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `session-updated`：会话状态变化（心跳、agent state）
@@ -729,15 +729,15 @@ type ChatBlock =
 | 层级 | 文件 | 职责 |
 |------|------|------|
 | SDK 类型 | `@anthropic-ai/claude-agent-sdk` | SDKMessage 类型定义 |
-| CLI 转换 | `packages/cli/src/claude/utils/sdkToLogConverter.ts` | SDK → RawJSONLines |
-| CLI 类型 | `packages/cli/src/claude/types.ts` | RawJSONLines Schema 定义 |
-| CLI 启动 | `packages/cli/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
-| CLI 队列 | `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
-| CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发、gated pump（排队消息门控）、commandLifecycleToFact（command_lifecycle 帧 → 终态信号） |
-| CLI 快照发送 | `packages/cli/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
-| Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化（lifecycle/position_at 列、byPosition 分页） |
-| Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
-| Hub 消息服务 | `packages/hub/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
+| CLI 转换 | `packages/session/src/claude/utils/sdkToLogConverter.ts` | SDK → RawJSONLines |
+| CLI 类型 | `packages/session/src/claude/types.ts` | RawJSONLines Schema 定义 |
+| CLI 启动 | `packages/session/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
+| CLI 队列 | `packages/session/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
+| CLI 循环 | `packages/session/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发、gated pump（排队消息门控）、commandLifecycleToFact（command_lifecycle 帧 → 终态信号） |
+| CLI 快照发送 | `packages/session/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
+| Hub 存储 | `packages/daemon/src/store/index.ts` | SQLite 消息持久化（lifecycle/position_at 列、byPosition 分页） |
+| Hub 同步 | `packages/daemon/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
+| Hub 消息服务 | `packages/daemon/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
 | Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + 按 `parentUuid` 关联清理，assembler 聚合后可靠）、messages-submitted 处理 |
 | Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 lifecycle 翻为 pushed（first-write-wins） |
 | Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑）+「已丢弃」分区（终态可见性，无操作） |

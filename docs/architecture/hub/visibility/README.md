@@ -1,6 +1,6 @@
 # VisibilityTracker 页面可见性追踪
 
-**文件**: [`packages/hub/src/visibility/visibilityTracker.ts`](/packages/hub/src/visibility/visibilityTracker.ts)
+**文件**: [`packages/daemon/src/visibility/visibilityTracker.ts`](/packages/daemon/src/visibility/visibilityTracker.ts)
 
 VisibilityTracker 追踪 SSE 连接的页面可见性状态，是通知投递决策的核心依据：页面可见时走 SSE 实时推送，页面不可见且已订阅 push 时降级为 Web Push（无订阅则 SSE toast 兜底）。
 

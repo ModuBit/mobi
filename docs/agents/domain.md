@@ -5,7 +5,7 @@ engineering skills 探索代码库时应如何消费本仓库的 domain 文档�
 ## Before exploring, read these
 
 - **`CONTEXT-MAP.md`**（仓库根）— multi-context 布局的入口，指向每个 context 的 `CONTEXT.md`。按主题读取相关包的那一份。
-- 各包的 **`CONTEXT.md`**：`packages/shared/`、`packages/hub/`、`packages/cli/`、`packages/web/`
+- 各包的 **`CONTEXT.md`**：`packages/shared/`、`packages/daemon/`、`packages/cli/`、`packages/web/`
 - **`docs/adr/`** — 系统级架构决策。涉及某包时也检查该包目录下是否有 context 级 ADR。
 - **项目既有文档**（补充）：`docs/architecture/`（模块架构）、`docs/conventions/`（编码规范）、各包 `CLAUDE.md`。
 

@@ -15,8 +15,8 @@
 > - [共同模式](#共同模式)
 
 **文件**:
-- [`packages/hub/src/socket/handlers/cli/index.ts`](/packages/hub/src/socket/handlers/cli/index.ts) — /cli 入口
-- [`packages/hub/src/socket/handlers/terminal.ts`](/packages/hub/src/socket/handlers/terminal.ts) — /terminal 入口
+- [`packages/daemon/src/socket/handlers/cli/index.ts`](/packages/daemon/src/socket/handlers/cli/index.ts) — /cli 入口
+- [`packages/daemon/src/socket/handlers/terminal.ts`](/packages/daemon/src/socket/handlers/terminal.ts) — /terminal 入口
 
 两个 namespace 在客户端连接后，分别注册各自的处理器组。本文梳理 connection 之后的完整流程。
 
@@ -108,7 +108,7 @@ socket.on('disconnect', () => {
 
 ## /cli 会话处理器
 
-**文件**: [`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`](/packages/hub/src/socket/handlers/cli/sessionHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/sessionHandlers.ts`](/packages/daemon/src/socket/handlers/cli/sessionHandlers.ts)
 
 处理会话相关的所有事件。
 
@@ -184,7 +184,7 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 所有消息事实上报收敛为单一事件 `messages-facts`（协议载荷 `{ sid, facts: MessageFact[] }`）：批内多种 fact 一次往返。原 4 个独立 socket 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）已随 #54 下线，语义由各 fact kind 承载。
 
-规则入口是 [`SessionMessageFactsProcessor`](/packages/hub/src/sync/sessionMessageFactsProcessor.ts)。它按 CLI Socket 连接实例化，公开两个操作：
+规则入口是 [`SessionMessageFactsProcessor`](/packages/daemon/src/sync/sessionMessageFactsProcessor.ts)。它按 CLI Socket 连接实例化，公开两个操作：
 
 - `process({ sessionId, facts })`：将不可信 fact 字段逐项收窄，执行幂等/单调持久化，返回按 fact 顺序排列的领域 publication。
 - `enrichMetadata(sessionId, metadata)`：使用本连接已确认的 `attached.nativeSessionId` 补齐后续合成消息；显式 metadata 优先，且不读取可能属于上一时代的 session metadata。
@@ -206,7 +206,7 @@ module 不依赖 Socket 或 SSE。handler 只校验批次外层和会话访问�
 
 ## /cli 机器处理器
 
-**文件**: [`packages/hub/src/socket/handlers/cli/machineHandlers.ts`](/packages/hub/src/socket/handlers/cli/machineHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/machineHandlers.ts`](/packages/daemon/src/socket/handlers/cli/machineHandlers.ts)
 
 与会话处理器结构对称，处理机器相关事件。
 
@@ -224,7 +224,7 @@ module 不依赖 Socket 或 SSE。handler 只校验批次外层和会话访问�
 
 ## /cli RPC 处理器
 
-**文件**: [`packages/hub/src/socket/handlers/cli/rpcHandlers.ts`](/packages/hub/src/socket/handlers/cli/rpcHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/rpcHandlers.ts`](/packages/daemon/src/socket/handlers/cli/rpcHandlers.ts)
 
 最简单的处理器组，只做注册/注销。
 
@@ -239,7 +239,7 @@ rpc-unregister →  rpcRegistry.unregister(socket, method)
 
 ## /cli 终端处理器（CLI 端）
 
-**文件**: [`packages/hub/src/socket/handlers/cli/terminalHandlers.ts`](/packages/hub/src/socket/handlers/cli/terminalHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/terminalHandlers.ts`](/packages/daemon/src/socket/handlers/cli/terminalHandlers.ts)
 
 CLI 端的终端事件处理器，负责将 CLI 的终端输出转发给 Web 端。
 
@@ -276,7 +276,7 @@ flowchart LR
 
 ## /cli UI 命令处理器（A 类）
 
-**文件**: [`packages/hub/src/socket/handlers/cli/uiCommandHandlers.ts`](/packages/hub/src/socket/handlers/cli/uiCommandHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/uiCommandHandlers.ts`](/packages/daemon/src/socket/handlers/cli/uiCommandHandlers.ts)
 
 agent 让 mobi 界面做点什么（如打开文件）。与 B 类的分界：**依赖 Web 在线、是瞬态呈现（不落库）**。
 
@@ -290,7 +290,7 @@ ack 的 `delivered` 是「已广播给活跃 Web 连接」，不是「用户已�
 
 ## /cli Agent 会话操作处理器（B 类）
 
-**文件**: [`packages/hub/src/socket/handlers/cli/agentSessionHandlers.ts`](/packages/hub/src/socket/handlers/cli/agentSessionHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/agentSessionHandlers.ts`](/packages/daemon/src/socket/handlers/cli/agentSessionHandlers.ts)
 
 agent 触达**其他会话**（列机器 / 列会话 / 建会话 / 投消息，见 ADR 0005）。与 A 类的分界：**不依赖 Web 在线、落库即终态**。
 

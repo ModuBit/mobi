@@ -3,7 +3,7 @@
 **核心文件**：
 
 - [`packages/shared/src/snapshotDelta.ts`](/packages/shared/src/snapshotDelta.ts)（协议类型 + apply 共享逻辑）
-- [`packages/hub/src/sync/snapshotSync.ts`](/packages/hub/src/sync/snapshotSync.ts)（Hub 快照同步生命周期）
+- [`packages/daemon/src/sync/snapshotSync.ts`](/packages/daemon/src/sync/snapshotSync.ts)（Hub 快照同步生命周期）
 
 流式消息的增量传输协议（`.scratch/snapshot-delta` 特性）：CLI→hub→web 两段增量，替代每 500ms 全量重发，传输量 O(N) 而非 O(N²)。
 

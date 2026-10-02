@@ -2,7 +2,7 @@
 
 Runner 进程诊断与清理工具，用于发现和杀死失控的 MOBI 进程。
 
-**文件**: [`packages/cli/src/runner/doctor.ts`](/packages/cli/src/runner/doctor.ts)
+**文件**: [`packages/daemon/src/runner/doctor.ts`](/packages/daemon/src/runner/doctor.ts)
 
 ## 定位
 

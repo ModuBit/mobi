@@ -1,13 +1,13 @@
-# Hub 编码规范
+# daemon 编码规范
 
-适用于 `hub/` 包（Bun + Hono + Socket.IO + SQLite）。
+适用于 `daemon/` 包（Bun + Hono + Socket.IO + SQLite，hub 进程 + runner 进程两个入口；架构叙述见 docs/architecture/hub/，26 票重写）。runner 侧（`src/runner/`：spawn 管线 / controlServer / worktree / spawnDedup）随 12 票并入，模块结构与依赖注入规则同下。
 
 ## 模块结构
 
 每个模块一个目录，入口为 `index.ts`：
 
 ```
-packages/hub/src/
+packages/daemon/src/
 ├── sync/
 │   ├── index.ts          # 导出 SyncEngine
 │   ├── syncEngine.ts     # 核心实现
@@ -133,6 +133,6 @@ db.prepare('INSERT INTO sessions (...) VALUES (...)').run({ ... })
 ## 测试
 
 - 测试框架：`bun:test`（`describe`、`test`、`expect`）
-- 测试目录：`packages/hub/tests/`（与源码分离）
+- 测试目录：`packages/daemon/tests/hub/`（与源码分离）
 - 数据库：测试使用 `:memory:` SQLite
 - 测试运行：`bun run test`（根目录）

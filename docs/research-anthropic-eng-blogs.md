@@ -127,7 +127,7 @@ loop = **agent 重复工作循环直到停止条件满足**。分类维度四个
 
 **mobi 现状（已核实）**：
 
-- 产品代码内**没有任何 cron/定时设施**——全库无 scheduler；后台任务 = SDK 的 run_in_background Bash/Agent（hub 侧 packages/hub/src/sync/backgroundTasks.ts 从 task_started / background_tasks_changed 提取，Monitor 工具恒后台）。注意这是「后台」不是「定时」：没有时间触发器。
+- 产品代码内**没有任何 cron/定时设施**——全库无 scheduler；后台任务 = SDK 的 run_in_background Bash/Agent（hub 侧 packages/daemon/src/sync/backgroundTasks.ts 从 task_started / background_tasks_changed 提取，Monitor 工具恒后台）。注意这是「后台」不是「定时」：没有时间触发器。
 - 已有 loop 资产按博客四分法归类：
   - **Turn-based + verification skill**：run-tests 就是博客说的「把人工验证编码成 SKILL.md」——typecheck → 单测 → lint → E2E 四步自验证，检查量化（如 cli 248/248、lint warning budget 0）。这是博客框架下 mobi 最成熟的一条，**已达标，无需动作**。
   - **Goal-based**：未使用。候选是 upgrade-deps skill——「升级完成且 typecheck + test + lint 全绿」是天然的确定性退出条件。
@@ -193,7 +193,7 @@ loop = **agent 重复工作循环直到停止条件满足**。分类维度四个
   - packages/web/vitest.config.ts（tests/** include、jsdom、15s timeout 及压载注释）
   - packages/web/tests/ 目录清单（17 子目录镜像 src 结构）
   - .dependency-cruiser.js（包边界 + 循环依赖规则；无持久化依赖图产物）
-  - packages/hub/src/sync/backgroundTasks.ts（后台任务 = SDK run_in_background 提取；无定时设施）
+  - packages/daemon/src/sync/backgroundTasks.ts（后台任务 = SDK run_in_background 提取；无定时设施）
   - ~/.claude/skills/matt-code-review/SKILL.md（双轴 Standards/Spec review 协议、并行 subagent、smell baseline）
 - 姊妹篇：docs/research-claude-ai-perf.md（方法论上游，performance.md 出处）、docs/research-zcode-interactions.md。
 - 关联 memory：project_web-test-performance（40s 基线）、project_deps-pinned-by-transitive（升级 pin 约束）、feedback_matt-skills-cr-conflict（review 触发纪律）、feedback_subagent-flow-too-heavy（loop 规模判断）。

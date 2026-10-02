@@ -85,7 +85,7 @@ digraph sync_docs {
 | `packages/daemon/src/web/routes/messages.ts` | `docs/architecture/hub/web/api/messages.md` |
 | `packages/daemon/src/web/routes/permissions.ts` | `docs/architecture/hub/web/api/permissions.md` |
 | `packages/daemon/src/web/routes/push.ts` | `docs/architecture/hub/web/api/push.md` |
-| `packages/daemon/src/web/routes/git.ts` | `docs/architecture/hub/web/api/git.md` |
+| `packages/daemon/src/web/routes/sessions.ts` | `docs/architecture/hub/web/api/git.md` |
 | `packages/daemon/src/web/routes/manifest.ts` | `docs/architecture/hub/web/README.md` |
 | `packages/daemon/src/web/auth.ts` | `docs/architecture/hub/web/auth.md` |
 
@@ -105,10 +105,11 @@ digraph sync_docs {
 |---|---|
 | `packages/cli/src/commands/**/*.ts` | `docs/architecture/cli/commands/<command>/README.md` |
 | `packages/cli/src/commands/registry.ts` | `docs/architecture/cli/README.md` |
-| `packages/cli/src/claude/*.ts` | `docs/architecture/cli/commands/claude/*.md` |
-| `packages/cli/src/api/*.ts` | `docs/architecture/cli/api/*.md` |
-| `packages/cli/src/modules/common/rpc/*.ts` | `docs/architecture/cli/api/common-rpc/*.md` |
-| `packages/cli/src/modules/common/handlers/*.ts` | `docs/architecture/cli/api/common-rpc/<handler>.md` |
+| `packages/session/src/claude/*.ts` | `docs/architecture/cli/commands/claude/*.md` |
+| `packages/session/src/api/*.ts`（apiSession） | `docs/architecture/cli/api/*.md` |
+| `packages/node-core/src/api/*.ts`（ApiClient/auth/types） | `docs/architecture/cli/api/*.md` |
+| `packages/node-core/src/rpc/*.ts` | `docs/architecture/cli/api/common-rpc/*.md` |
+| `packages/node-core/src/handlers/*.ts` | `docs/architecture/cli/api/common-rpc/<handler>.md` |
 
 #### Web
 

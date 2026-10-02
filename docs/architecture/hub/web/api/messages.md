@@ -1,6 +1,6 @@
 # 消息 API
 
-**文件**: [`packages/hub/src/web/routes/messages.ts`](/packages/hub/src/web/routes/messages.ts)
+**文件**: [`packages/daemon/src/web/routes/messages.ts`](/packages/daemon/src/web/routes/messages.ts)
 
 ## 端点
 

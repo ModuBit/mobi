@@ -80,7 +80,7 @@ Buffer.from(content, 'base64') → writeFile
 ### 路径常量
 
 ```typescript
-// packages/cli/src/constants/uploadPaths.ts
+// packages/node-core/src/constants/uploadPaths.ts
 getUploadsDir(workspaceRoot: string): string  // 返回 join(workspaceRoot, '.mobi', 'uploads')
 ```
 

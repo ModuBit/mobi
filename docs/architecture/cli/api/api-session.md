@@ -181,7 +181,7 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 
 ### 接收就绪上报
 
-`reportReceiveReadiness(canReceive)` 通过 `socket.emit('receive-readiness', { sid, canReceive })` 上报**本会话此刻能不能收消息**。它是唯一的 socket 出口，但**写端不在这里**——谁在什么时候翻，由 [`claude/utils/inboundChannel.ts`](/packages/cli/src/claude/utils/inboundChannel.ts) 的 `InboundChannel` 决定，因为「sink 装上去」与「上报能收」必须同进同出，而它们的两处触发点（`onAgentMessageSinkReady` 接通 / launch `finally` 断开）在 launcher 里相隔 87 行。
+`reportReceiveReadiness(canReceive)` 通过 `socket.emit('receive-readiness', { sid, canReceive })` 上报**本会话此刻能不能收消息**。它是唯一的 socket 出口，但**写端不在这里**——谁在什么时候翻，由 [`claude/utils/inboundChannel.ts`](/packages/session/src/claude/utils/inboundChannel.ts) 的 `InboundChannel` 决定，因为「sink 装上去」与「上报能收」必须同进同出，而它们的两处触发点（`onAgentMessageSinkReady` 接通 / launch `finally` 断开）在 launcher 里相隔 87 行。
 
 翻转规则两条：
 

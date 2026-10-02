@@ -35,7 +35,7 @@ Runner 是 Mobi 的后台进程管理器，负责 Claude 会话的生命周期�
 |----------|------|-----------|
 | API 通信层 | [docs/architecture/cli/api/](../../api/) | Runner 通过 `ApiClient` / `ApiMachineClient` 与 Hub 通信 |
 | Common RPC | [docs/architecture/cli/api/common-rpc/](../../api/common-rpc/) | 理解 RPC 注册模式，Runner 中的 `setRPCHandlers` 使用相同机制 |
-| 项目整体架构 | [docs/architecture.md](../../../architecture.md) | 理解 CLI / Hub / Web 三端关系 |
+| 项目整体架构 | [docs/architecture.md](../../architecture.md) | 理解 CLI / Hub / Web 三端关系 |
 
 ### 术语表
 

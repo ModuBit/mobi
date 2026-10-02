@@ -2,7 +2,7 @@
 
 > 本文是 **mobi 自有的原创分析**（非上游文档副本），对照 [docs/claude-agent-sdk/README.md](./README.md) 索引的官方能力，盘点 mobi 实际用了什么、用得不合理之处、以及可用但暂未用、能提升 mobi 的能力。
 >
-> 基线：`@anthropic-ai/claude-agent-sdk@0.3.218`（cli 包）。代码位置以 `packages/cli/src/claude/` 为主。
+> 基线：`@anthropic-ai/claude-agent-sdk@0.3.218`（cli 包）。代码位置以 `packages/session/src/claude/` 为主。
 > 编写日期：2026-07-29。SDK 迭代很快，落地前请按 README 索引拉最新官方文档复核 API。
 
 ---

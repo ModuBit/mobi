@@ -75,7 +75,7 @@ git diff --name-only @{u}..HEAD 2>/dev/null \
 | 命中 `packages/node-core/**` | 全量（node-core 被 daemon/session/cli 依赖） |
 | 只命中 `packages/daemon/**` | `bun run test:daemon` |
 | 只命中 `packages/session/**` | `bun run test:session` |
-| 只命中 `packages/hub/**` | `bun run test:hub` |
+| 只命中 `packages/daemon/**` | `bun run test:hub` |
 | 只命中 `packages/cli/**` | `bun run test:cli` |
 | 只命中 `packages/web/**` | `bun run test:web` |
 | 无法判断（如删除文件、rename 等） | 全量 |

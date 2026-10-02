@@ -136,12 +136,12 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 
 | SDK 使用面 | mobi 代码位置 | changelog 关注点 |
 |---|---|---|
-| `includePartialMessages` + assistant partial 装配 | `packages/cli/src/claude/claudeRemote.ts`（query options）、`packages/cli/src/claude/utils/assistantPartialAssembler.ts` | partial 拆分语义、`message.id` 共享、block 累积 / flush 边界 |
-| claude 二进制 resolve（dev + 编译态） | `packages/cli/src/claude/sdk/claudeExecutable.ts` | `pathToClaudeCodeExecutable`、平台子包结构、manifest、`extractFromBunfs` |
+| `includePartialMessages` + assistant partial 装配 | `packages/session/src/claude/claudeRemote.ts`（query options）、`packages/session/src/claude/utils/assistantPartialAssembler.ts` | partial 拆分语义、`message.id` 共享、block 累积 / flush 边界 |
+| claude 二进制 resolve（dev + 编译态） | `packages/node-core/src/claudeSdk/claudeExecutable.ts` | `pathToClaudeCodeExecutable`、平台子包结构、manifest、`extractFromBunfs` |
 | 工具协议注入与调度 | SDK 注入（plan 模式 / Write / Bash …） | 工具行为、入参/返回 schema、plan 模式流程 |
-| SDK hooks 回调 | `packages/cli/src/claude/utils/sessionHookForwarder.ts`、`startHookServer.ts` | hooks 回调签名、可用事件、输入数据结构 |
-| 权限审批 | `packages/cli/src/claude/utils/permissionHandler.ts` | `canUseTool` / 权限回调契约 |
-| session resume | `packages/cli/src/claude/session.ts` | resume 语义、消息重放格式 |
+| SDK hooks 回调 | `packages/session/src/claude/utils/sessionHookForwarder.ts`、`startHookServer.ts` | hooks 回调签名、可用事件、输入数据结构 |
+| 权限审批 | `packages/session/src/claude/utils/permissionHandler.ts` | `canUseTool` / 权限回调契约 |
+| session resume | `packages/session/src/claude/session.ts` | resume 语义、消息重放格式 |
 | MCP / system prompt | `utils/mcpConfig.ts`、`utils/systemPrompt.ts` | MCP 配置契约、prompt 注入点 |
 | 环境变量 / 配置 | env-vars（见配置文档） | 新增 / 废弃 / 默认值变化的 env |
 

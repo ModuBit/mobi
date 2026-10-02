@@ -215,7 +215,7 @@ Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离�
 
 ## API 通信层
 
-CLI 通过 `packages/cli/src/api/` 与 Hub 通信，包括 HTTP REST 和 Socket.IO WebSocket。
+CLI 通过 `packages/session/src/api/` 与 Hub 通信，包括 HTTP REST 和 Socket.IO WebSocket。
 
 详见 [API 通信层](./api)。
 

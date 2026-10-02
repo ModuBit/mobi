@@ -18,7 +18,7 @@
  * 入站消息落在 meta 上的来源标注（两个维度 + 它们的读写）。
  *
  * **维度一「谁发的」**——跨会话消息的发送方身份（`CrossSessionOrigin`）。领域上这是一个
- * 概念、两条来源（`packages/hub/CONTEXT.md`）：CC 原生 peer（CLI 经 UserPromptSubmit
+ * 概念、两条来源（`packages/daemon/CONTEXT.md`）：CC 原生 peer（CLI 经 UserPromptSubmit
  * hook 观测落库）与 mobi 自发投递（agent 经 send_message_to_session）。两者的差别只有
  * 一处——**有没有 fromSessionId**。本模块把它写成 `fromSessionId: string | null`，让
  * 「没有」是个明确的取值，而不是靠字段缺失去暗示。

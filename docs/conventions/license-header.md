@@ -23,7 +23,7 @@
 ## 适用范围
 
 - `packages/shared/src/`
-- `packages/hub/src/`
+- `packages/daemon/src/`
 - `packages/cli/src/`
 - `packages/web/src/`
 - 项目配置文件

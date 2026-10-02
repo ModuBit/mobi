@@ -146,7 +146,7 @@ flowchart LR
 ## 代码入口
 
 ```
-packages/hub/src/
+packages/daemon/src/
 ├── index.ts                     # 主入口，组件组装
 ├── configuration.ts             # 配置管理
 ├── config/

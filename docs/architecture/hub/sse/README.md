@@ -1,6 +1,6 @@
 # SSEManager
 
-**文件**: [`packages/hub/src/sse/sseManager.ts`](/packages/hub/src/sse/sseManager.ts)
+**文件**: [`packages/daemon/src/sse/sseManager.ts`](/packages/daemon/src/sse/sseManager.ts)
 
 管理 SSE（Server-Sent Events）连接，负责事件推送。
 

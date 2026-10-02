@@ -1,7 +1,7 @@
 # Workspaces API
 
 **文件**：
-- [`packages/hub/src/web/routes/workspaces.ts`](/packages/hub/src/web/routes/workspaces.ts)
+- [`packages/daemon/src/web/routes/workspaces.ts`](/packages/daemon/src/web/routes/workspaces.ts)
 
 工作区实体（「工作区实体化」）相关的 HTTP API。工作区 = 一台机器上的一组源文件夹（folders，primary 即 Claude Code 的 cwd），会话通过 `workspaceId` 归属工作区，未归属的会话进入「最近」。
 
@@ -114,7 +114,7 @@ GET /api/workspaces/proj-1/sessions?limit=20&cursor=1712000060000
 
 ## SSE 联动
 
-工作区 CRUD 由 WorkspaceCache（`packages/hub/src/sync/workspaceCache.ts`）广播事件：
+工作区 CRUD 由 WorkspaceCache（`packages/daemon/src/sync/workspaceCache.ts`）广播事件：
 
 | 事件 | 触发 |
 |------|------|

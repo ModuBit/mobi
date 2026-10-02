@@ -1,8 +1,8 @@
 # Configuration 配置系统
 
 **文件**:
-- [`packages/hub/src/configuration.ts`](/packages/hub/src/configuration.ts) — 配置入口，单例管理
-- [`packages/hub/src/config/`](/packages/hub/src/config/) — 各配置项的生成与持久化
+- [`packages/daemon/src/configuration.ts`](/packages/daemon/src/configuration.ts) — 配置入口，单例管理
+- [`packages/daemon/src/config/`](/packages/daemon/src/config/) — 各配置项的生成与持久化
 
 Configuration 管理 Hub 的所有运行时配置，遵循统一的优先级策略，确保配置可追溯、可持久化。
 
@@ -10,7 +10,7 @@ Configuration 管理 Hub 的所有运行时配置，遵循统一的优先级策�
 
 ## 配置文件拆分迁移
 
-**文件**: [`packages/hub/src/config/migrateSettings.ts`](/packages/hub/src/config/migrateSettings.ts)
+**文件**: [`packages/daemon/src/config/migrateSettings.ts`](/packages/daemon/src/config/migrateSettings.ts)
 
 旧单文件 `settings.json` → `settings.hub.json` + `settings.cli.json` 的自动迁移，在 `createConfiguration()` 加载服务器设置**之前**执行：
 
@@ -32,7 +32,7 @@ flowchart TB
 | 新文件已存在（如升级后先跑过 wizard） | 旧字段仅补缺、不覆盖新值，之后同样归档 |
 | 旧文件无 cli 专属字段且 cli 文件不存在 | 不写空 `{}` 占位 cli 文件（避免阻断 co-located cliApiToken 同步） |
 
-> cli 侧另有对称的单侧迁移（`packages/cli/src/persistence.ts` 的 `migrateLegacyCliSettings`）：
+> cli 侧另有对称的单侧迁移（`packages/node-core/src/persistence.ts` 的 `migrateLegacyCliSettings`）：
 > 远程部署形态下 hub 的迁移够不到 cli 机器，cli 命令执行时把旧文件的 cli 专属字段
 > 补缺搬进本机 `settings.cli.json`，不归档旧文件（归档权在本迁移）。
 
@@ -103,7 +103,7 @@ configuration.listenPort
 
 ### 服务器设置（ServerSettings）
 
-**文件**: [`packages/hub/src/config/serverSettings.ts`](/packages/hub/src/config/serverSettings.ts)
+**文件**: [`packages/daemon/src/config/serverSettings.ts`](/packages/daemon/src/config/serverSettings.ts)
 
 加载 `listenHost`、`listenPort`、`publicUrl`、`corsOrigins` 四项配置：
 
@@ -130,7 +130,7 @@ flowchart TB
 
 ### CLI API Token
 
-**文件**: [`packages/hub/src/config/cliApiToken.ts`](/packages/hub/src/config/cliApiToken.ts)
+**文件**: [`packages/daemon/src/config/cliApiToken.ts`](/packages/daemon/src/config/cliApiToken.ts)
 
 CLI 客户端认证用的共享密钥，三级来源：
 
@@ -163,7 +163,7 @@ flowchart TB
 
 ### Web API Token
 
-**文件**: [`packages/hub/src/config/webApiToken.ts`](/packages/hub/src/config/webApiToken.ts)
+**文件**: [`packages/daemon/src/config/webApiToken.ts`](/packages/daemon/src/config/webApiToken.ts)
 
 Web 浏览器登录专用密钥（`POST /api/auth` 的校验源），与 CLI 的 `cliApiToken` **完全独立、互不通用**。三级来源：环境变量 `WEB_API_TOKEN` > `settings.hub.json` > 自动生成（32 字节 base64url）。
 
@@ -178,7 +178,7 @@ Web 浏览器登录专用密钥（`POST /api/auth` 的校验源），与 CLI 的
 
 ### JWT Secret
 
-**文件**: [`packages/hub/src/config/jwtSecret.ts`](/packages/hub/src/config/jwtSecret.ts)
+**文件**: [`packages/daemon/src/config/jwtSecret.ts`](/packages/daemon/src/config/jwtSecret.ts)
 
 Web 端 JWT 签名密钥，独立存储在 `jwt-secret.json` 中：
 
@@ -191,7 +191,7 @@ Web 端 JWT 签名密钥，独立存储在 `jwt-secret.json` 中：
 
 ### VAPID Keys
 
-**文件**: [`packages/hub/src/config/vapidKeys.ts`](/packages/hub/src/config/vapidKeys.ts)
+**文件**: [`packages/daemon/src/config/vapidKeys.ts`](/packages/daemon/src/config/vapidKeys.ts)
 
 Web Push 通知的 VAPID 密钥对，存储在 `settings.hub.json` 中：
 
@@ -203,7 +203,7 @@ Web Push 通知的 VAPID 密钥对，存储在 `settings.hub.json` 中：
 
 ### Owner ID
 
-**文件**: [`packages/hub/src/config/ownerId.ts`](/packages/hub/src/config/ownerId.ts)
+**文件**: [`packages/daemon/src/config/ownerId.ts`](/packages/daemon/src/config/ownerId.ts)
 
 Hub 所有者的数字标识，用于 CLI 认证：
 
@@ -218,7 +218,7 @@ Hub 所有者的数字标识，用于 CLI 认证：
 
 ### getOrCreateSettingsValue
 
-**文件**: [`packages/hub/src/config/generators.ts`](/packages/hub/src/config/generators.ts)
+**文件**: [`packages/daemon/src/config/generators.ts`](/packages/daemon/src/config/generators.ts)
 
 "存在则读取，不存在则生成并保存"的通用模式，操作 `settings.hub.json` 中的字段：
 
@@ -249,7 +249,7 @@ flowchart TB
 
 ### Settings 读写
 
-**文件**: [`packages/hub/src/config/settings.ts`](/packages/hub/src/config/settings.ts)
+**文件**: [`packages/daemon/src/config/settings.ts`](/packages/daemon/src/config/settings.ts)
 
 `settings.hub.json` 的底层读写与锁协议：
 
@@ -269,7 +269,7 @@ flowchart TB
 ## 代码结构
 
 ```
-packages/hub/src/
+packages/daemon/src/
 ├── configuration.ts          # Configuration 单例 + createConfiguration()（含迁移触发、co-located cliApiToken 同步）
 └── config/
     ├── migrateSettings.ts    # 旧 settings.json 自动迁移（拆分 + 补缺合并 + .bak 归档）

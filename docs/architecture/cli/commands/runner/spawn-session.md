@@ -2,7 +2,7 @@
 
 Runner 中最核心的函数，负责创建一个新的 Claude 会话进程并等待其就绪。
 
-**文件**: [`packages/cli/src/runner/run.ts:208-556`](/packages/cli/src/runner/run.ts)
+**文件**: [`packages/daemon/src/runner/run.ts:208-556`](/packages/daemon/src/runner/run.ts)
 
 ## 整体流程
 
@@ -38,7 +38,7 @@ flowchart TB
 
 ### SpawnSessionOptions
 
-**文件**: [`packages/cli/src/modules/common/rpcTypes.ts`](/packages/cli/src/modules/common/rpcTypes.ts)
+**文件**: [`packages/shared/src/hostProtocol.ts`](/packages/shared/src/hostProtocol.ts)
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
@@ -100,7 +100,7 @@ flowchart TB
 
 ## 阶段二：Worktree 创建（Lines 278-321）
 
-**文件**: [`packages/cli/src/runner/worktree.ts`](/packages/cli/src/runner/worktree.ts)
+**文件**: [`packages/daemon/src/runner/worktree.ts`](/packages/daemon/src/runner/worktree.ts)
 
 仅当 `sessionType === 'worktree'` 时执行。
 
@@ -171,7 +171,7 @@ if (options.token) {
 
 ## 阶段四：CLI 参数构建
 
-参数构建抽为纯函数 `buildClaudeSpawnArgs()`（[`packages/cli/src/runner/spawnArgs.ts`](/packages/cli/src/runner/spawnArgs.ts)，便于单元测试）：
+参数构建抽为纯函数 `buildClaudeSpawnArgs()`（[`packages/daemon/src/runner/spawnArgs.ts`](/packages/daemon/src/runner/spawnArgs.ts)，便于单元测试）：
 
 ```typescript
 const args = ['claude'];                              // mobi claude 子命令
@@ -381,9 +381,9 @@ flowchart TB
 
 | 文件 | 说明 |
 |------|------|
-| [`run.ts:208-556`](/packages/cli/src/runner/run.ts) | `spawnSession` 实现 |
-| [`rpcTypes.ts`](/packages/cli/src/modules/common/rpcTypes.ts) | `SpawnSessionOptions` / `SpawnSessionResult` 类型 |
-| [`types.ts`](/packages/cli/src/runner/types.ts) | `TrackedSession` 类型 |
-| [`worktree.ts`](/packages/cli/src/runner/worktree.ts) | `createWorktree` / `removeWorktree` |
-| [`spawnMobiCli.ts`](/packages/cli/src/utils/spawnMobiCli.ts) | 子进程 spawn 工具 |
-| [`controlServer.ts`](/packages/cli/src/runner/controlServer.ts) | `/spawn-session` 端点 |
+| [`run.ts:208-556`](/packages/daemon/src/runner/run.ts) | `spawnSession` 实现 |
+| [`rpcTypes.ts`](/packages/shared/src/hostProtocol.ts) | `SpawnSessionOptions` / `SpawnSessionResult` 类型 |
+| [`types.ts`](/packages/daemon/src/runner/types.ts) | `TrackedSession` 类型 |
+| [`worktree.ts`](/packages/daemon/src/runner/worktree.ts) | `createWorktree` / `removeWorktree` |
+| [`spawnMobiCli.ts`](/packages/node-core/src/utils/spawnMobiCli.ts) | 子进程 spawn 工具 |
+| [`controlServer.ts`](/packages/daemon/src/runner/controlServer.ts) | `/spawn-session` 端点 |

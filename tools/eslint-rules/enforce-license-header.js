@@ -1,7 +1,7 @@
 /**
  * enforce-license-header 规则
  *
- * 检查 shared/src/、hub/src/、cli/src/、web/src/ 下的 .ts/.tsx 文件
+ * 检查 shared/src/、node-core/src/、daemon/src/、session/src/、cli/src/、web/src/ 下的 .ts/.tsx 文件
  * 是否包含 Copyright Maner·Fan 版权头
  */
 'use strict'
@@ -9,7 +9,7 @@
 const fs = require('fs')
 
 // 需要检查版权头的目录前缀
-const SCOPE_PREFIXES = ['shared/src/', 'hub/src/', 'cli/src/', 'web/src/']
+const SCOPE_PREFIXES = ['shared/src/', 'node-core/src/', 'daemon/src/', 'session/src/', 'cli/src/', 'web/src/']
 
 module.exports = {
   meta: {

@@ -1,6 +1,6 @@
 # Git 与文件 API
 
-**文件**: [`packages/hub/src/web/routes/git.ts`](/packages/hub/src/web/routes/git.ts)
+**文件**: [`packages/daemon/src/web/routes/sessions.ts`](/packages/daemon/src/web/routes/sessions.ts)
 
 ## 端点
 

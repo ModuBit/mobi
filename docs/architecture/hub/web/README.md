@@ -1,6 +1,6 @@
 # WebServer 架构
 
-**文件**: [`packages/hub/src/web/server.ts`](/packages/hub/src/web/server.ts)
+**文件**: [`packages/daemon/src/web/server.ts`](/packages/daemon/src/web/server.ts)
 
 HTTP 服务器，使用 Hono 框架。
 
@@ -90,4 +90,4 @@ flowchart LR
 | `/cli` | Access Token | CLI 客户端 |
 | `/terminal` | JWT | Web 终端 |
 
-认证逻辑在 [`packages/hub/src/socket/server.ts`](/packages/hub/src/socket/server.ts)，通过 Socket.IO 中间件实现。
+认证逻辑在 [`packages/daemon/src/socket/server.ts`](/packages/daemon/src/socket/server.ts)，通过 Socket.IO 中间件实现。

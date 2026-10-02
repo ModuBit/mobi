@@ -52,7 +52,7 @@ hub 的 `getSessionsByNamespace` 每次调用都会从 DB 同步，新行即写�
 
 ```ts
 // /tmp/e2e-seed.ts（绝对路径导入 store）
-import { Store } from '/Users/manerfan/workspace/github/modu/mobi/packages/hub/src/store'
+import { Store } from '/Users/manerfan/workspace/github/modu/mobi/packages/daemon/src/store'
 const store = new Store(process.env.HOME + '/.mobi-e2e/mobi.db')
 const w = store.workspaces.createWorkspace({ namespace: 'default', machineId: 'm-e2e', name: 'X', folders: [{ path: '/tmp/x', primary: true }] })
 store.sessions.getOrCreateSession('tag-a', { path: '/tmp/x', host: 'e2e', name: 'Session A' }, {}, 'default', undefined, w.id)
@@ -98,7 +98,7 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 ## runner 单独重启（改 machine 通道 RPC 代码后验新逻辑，2026-09-29）
 
 审查 v2 的 gitReview RPC 在 **runner 进程**执行（hub 纯转发 machine 通道，会话 CLI 不经手）——
-改 `packages/cli/src/modules/**` 的 reader/handler 后必须重启 runner；cleanup+bootstrap 清数据目录，
+改 `packages/session/src/modules/**` 的 reader/handler 后必须重启 runner；cleanup+bootstrap 清数据目录，
 单独重启保留。注意：会话 CLI 源码直跑、**新会话即新代码**，但 runner 是常驻的（bootstrap 起的那只
 不会因新会话刷新）。
 

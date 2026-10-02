@@ -1,6 +1,6 @@
 # SocketServer
 
-**文件**: [`packages/hub/src/socket/server.ts`](/packages/hub/src/socket/server.ts)
+**文件**: [`packages/daemon/src/socket/server.ts`](/packages/daemon/src/socket/server.ts)
 
 SocketServer 是 Hub 的实时通信层，基于 Socket.IO，负责 CLI 客户端和 Web 前端之间的双向实时通信。
 
@@ -204,7 +204,7 @@ hub→CLI 推送按域分事件名：session room 走 `session-update`，machine
 
 CLI 通过 `rpc-register` 注册 RPC 方法（如权限操作、文件操作），Web 端通过 Hub 调用。
 
-方法映射是 `method → socketId` 的单映射，后写覆盖。同 session 的第二个 CLI 连接会经 [`SessionSocketOwners`](/packages/hub/src/socket/sessionSocketOwners.ts) 接管仲裁：新连接在 `takeOver()` 记录持有者后**主动踢掉旧连接**。没有这一步，新旧连接并存时 registry 判给旧连接，旧连接断开的 `unregisterAll` 会连根拔掉幸存 CLI 的注册，web 从此不可管控该进程（2026-09-30 事故）。
+方法映射是 `method → socketId` 的单映射，后写覆盖。同 session 的第二个 CLI 连接会经 [`SessionSocketOwners`](/packages/daemon/src/socket/sessionSocketOwners.ts) 接管仲裁：新连接在 `takeOver()` 记录持有者后**主动踢掉旧连接**。没有这一步，新旧连接并存时 registry 判给旧连接，旧连接断开的 `unregisterAll` 会连根拔掉幸存 CLI 的注册，web 从此不可管控该进程（2026-09-30 事故）。
 
 详见 [RpcRegistry](./rpc.md)。
 
@@ -256,7 +256,7 @@ CLI → SocketServer（通过回调）→ SyncEngine → SSEManager → Web
 ## 代码结构
 
 ```
-packages/hub/src/socket/
+packages/daemon/src/socket/
 ├── server.ts                  # 入口：创建 Socket.IO Server，配置 namespace
 ├── socketTypes.ts             # 类型定义：SocketData、SocketServer 等
 ├── rpcRegistry.ts             # RPC 方法注册表
@@ -284,6 +284,6 @@ packages/hub/src/socket/
 
 ### 传输上限（bun-engine）
 
-bun-engine 的 `maxHttpBufferSize` 设为 **4MB**（`packages/hub/src/socket/server.ts`）。注意此选项必须**直接设在 bun-engine 构造参数**上——`io.bind(外部 engine)` 不会把 `new Server({ maxHttpBufferSize })` 透传给外部 engine。
+bun-engine 的 `maxHttpBufferSize` 设为 **4MB**（`packages/daemon/src/socket/server.ts`）。注意此选项必须**直接设在 bun-engine 构造参数**上——`io.bind(外部 engine)` 不会把 `new Server({ maxHttpBufferSize })` 透传给外部 engine。
 
 允许 `readFileRange` / `uploadFileRange` 等 RPC 的单个二进制 chunk（当前 2MB）往返；bun-engine 默认仅 1MB，超过会触发 `payload too large` 断连（CLI 大文件预览/上传失败的常见根因）。调整 shared `RPC_BINARY_CHUNK_SIZE` 时需同步评估此上限。

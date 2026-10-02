@@ -1,6 +1,6 @@
 # mcp 命令 — MCP stdio bridge
 
-**文件**: [`packages/cli/src/commands/mcp.ts`](/packages/cli/src/commands/mcp.ts) → [`packages/cli/src/mcp/mobiMcpStdioBridge.ts`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts)
+**文件**: [`packages/cli/src/commands/mcp.ts`](/packages/cli/src/commands/mcp.ts) → [`packages/session/src/mcp/mobiMcpStdioBridge.ts`](/packages/session/src/mcp/mobiMcpStdioBridge.ts)
 
 `mobi mcp` 启动一个只暴露 `change_title` 的 **stdio MCP server**，把工具调用转发给一个已经跑着的 mobi HTTP MCP server。
 

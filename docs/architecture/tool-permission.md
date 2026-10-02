@@ -44,7 +44,7 @@ AgentState.requests: Record<toolCallId, {
 
 ### CLI 端
 
-**PermissionHandler** — `packages/cli/src/claude/utils/permissionHandler.ts`
+**PermissionHandler** — `packages/session/src/claude/utils/permissionHandler.ts`
 
 核心类，实现 SDK 的 `canUseTool` 回调。职责：
 
@@ -52,7 +52,7 @@ AgentState.requests: Record<toolCallId, {
 2. 未命中 → 创建 pending Promise，阻塞 SDK
 3. 收到 RPC 审批结果 → 转换为 `PermissionResult` → resolve Promise
 
-**BasePermissionHandler** — `packages/cli/src/modules/common/permission/BasePermissionHandler.ts`
+**BasePermissionHandler** — `packages/session/src/modules/common/permission/BasePermissionHandler.ts`
 
 抽象基类，提供：
 
@@ -60,7 +60,7 @@ AgentState.requests: Record<toolCallId, {
 - `updateAgentState()` — 修改 `AgentState.requests` 并同步到 Hub
 - RPC handler 注册 — 注册 `'permission'` 方法，接收审批结果
 
-**SDK 接入点** — `packages/cli/src/claude/claudeRemote.ts`
+**SDK 接入点** — `packages/session/src/claude/claudeRemote.ts`
 
 ```typescript
 // SDK 配置
@@ -71,18 +71,18 @@ canUseTool: async (toolName, input, options) => {
 
 ### Hub 端
 
-**HTTP 路由** — `packages/hub/src/web/routes/permissions.ts`
+**HTTP 路由** — `packages/daemon/src/web/routes/permissions.ts`
 
 | 路由 | 用途 |
 |------|------|
 | `POST /sessions/:id/permissions/:requestId/approve` | 批准，可附带 `{ mode, allowTools, decision, answers }`；answers 值类型 `PermissionAnswers`（string/number/boolean/string[] + 嵌套格式，批次 C 为 elicitation 表单值放宽） |
 | `POST /sessions/:id/permissions/:requestId/deny` | 拒绝，可附带 `{ decision, reason }` |
 
-**RpcGateway** — `packages/hub/src/sync/rpcGateway.ts`
+**RpcGateway** — `packages/daemon/src/sync/rpcGateway.ts`
 
 通过 Socket.IO `rpc-request` 将审批结果转发到 CLI 端。查找 RpcRegistry 中注册的 CLI socket 发送。
 
-**AgentState 同步** — `packages/hub/src/socket/handlers/cli/sessionHandlers.ts`
+**AgentState 同步** — `packages/daemon/src/socket/handlers/cli/sessionHandlers.ts`
 
 CLI 发送 `update-state` 后，Hub 写入 SQLite（乐观锁），广播 `session-updated` SSE 事件。
 
@@ -291,18 +291,18 @@ SDK 收到的最终工具输入变为：
 | **Shared** | `packages/shared/src/schemas.ts` | AgentState、AgentStateRequest、SDKUIHints Schema |
 | **Shared** | `packages/shared/src/modes.ts` | PermissionMode 枚举 |
 | **Shared** | `packages/shared/src/socket.ts` | Socket.IO 事件类型定义 |
-| **CLI** | `packages/cli/src/claude/utils/permissionHandler.ts` | 核心权限处理器，四种场景的审批结果处理 |
-| **CLI** | `packages/cli/src/modules/common/permission/BasePermissionHandler.ts` | 抽象基类：pending 管理、RPC 注册、agentState 同步 |
-| **CLI** | `packages/cli/src/claude/claudeRemoteLauncher.ts` | SDK 接入、PLAN_FAKE_REJECT 拦截 |
-| **CLI** | `packages/cli/src/claude/claudeRemote.ts` | SDK `canUseTool` 配置 |
-| **CLI** | `packages/cli/src/api/apiSession.ts` | `updateAgentState()` Socket.IO 同步 |
-| **CLI** | `packages/cli/src/api/rpc/RpcHandlerManager.ts` | RPC 方法注册与分发 |
-| **CLI** | `packages/cli/src/claude/sdk/prompts.ts` | PLAN_FAKE_REJECT / PLAN_FAKE_RESTART 常量 |
-| **Hub** | `packages/hub/src/web/routes/permissions.ts` | approve / deny HTTP 路由 |
-| **Hub** | `packages/hub/src/sync/rpcGateway.ts` | RPC 调用 CLI |
-| **Hub** | `packages/hub/src/sync/syncEngine.ts` | 中间层，委托 rpcGateway |
-| **Hub** | `packages/hub/src/socket/handlers/cli/sessionHandlers.ts` | 处理 `update-state`，广播 SSE |
-| **Hub** | `packages/hub/src/socket/handlers/cli/rpcHandlers.ts` | 处理 `rpc-register` |
+| **CLI** | `packages/session/src/claude/utils/permissionHandler.ts` | 核心权限处理器，四种场景的审批结果处理 |
+| **CLI** | `packages/session/src/modules/common/permission/BasePermissionHandler.ts` | 抽象基类：pending 管理、RPC 注册、agentState 同步 |
+| **CLI** | `packages/session/src/claude/claudeRemoteLauncher.ts` | SDK 接入、PLAN_FAKE_REJECT 拦截 |
+| **CLI** | `packages/session/src/claude/claudeRemote.ts` | SDK `canUseTool` 配置 |
+| **CLI** | `packages/session/src/api/apiSession.ts` | `updateAgentState()` Socket.IO 同步 |
+| **CLI** | `packages/node-core/src/rpc/RpcHandlerManager.ts` | RPC 方法注册与分发 |
+| **CLI** | `packages/node-core/src/claudeSdk/prompts.ts` | PLAN_FAKE_REJECT / PLAN_FAKE_RESTART 常量 |
+| **Hub** | `packages/daemon/src/web/routes/permissions.ts` | approve / deny HTTP 路由 |
+| **Hub** | `packages/daemon/src/sync/rpcGateway.ts` | RPC 调用 CLI |
+| **Hub** | `packages/daemon/src/sync/syncEngine.ts` | 中间层，委托 rpcGateway |
+| **Hub** | `packages/daemon/src/socket/handlers/cli/sessionHandlers.ts` | 处理 `update-state`，广播 SSE |
+| **Hub** | `packages/daemon/src/socket/handlers/cli/rpcHandlers.ts` | 处理 `rpc-register` |
 | **Web** | `packages/web/src/core/data/api/client.ts` | API 客户端：approve / deny |
 | **Web** | `packages/web/src/core/providers/SSEProvider.tsx` | SSE 接收，更新 session 缓存 |
 | **Web** | `packages/web/src/domain/chat/reducerTools.ts` | 从 agentState 提取权限映射 |
