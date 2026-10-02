@@ -22,10 +22,10 @@ import { basename } from '@/core/utils/path'
 /** 每 session 终端数上限（与后端 DEFAULT_MAX_TERMINALS 对齐） */
 export const MAX_TERMINALS_PER_SESSION = 3
 
-/** 单个 tab：文件树视图、已打开的文件、终端、远程桌面或代码审查 */
+/** 单个 tab：文件树视图、已打开的文件、终端或代码审查 */
 export interface InspectorTabEntry {
     id: string
-    mode: 'tree' | 'file' | 'terminal' | 'desktop' | 'review'
+    mode: 'tree' | 'file' | 'terminal' | 'review'
     /** mode='file'：相对路径（去重 key + tooltip） */
     filePath?: string
     /** mode='file'：tab 显示名 */
@@ -36,8 +36,6 @@ export interface InspectorTabEntry {
     terminalSeq?: number
     /** mode='terminal'：自定义名（双击重命名）；空则显示"终端 N" */
     title?: string
-    /** mode='desktop'：观看的机器（跟随会话所在机器） */
-    machineId?: string
     /**
      * 该 tab 的视图状态（切走再切回恢复）。挂 tab 上：closeTab 自动清；新类型只需扩字段。
      * 通用 scrollRatio（所有可滚动类型共用）+ 按需扩展（scale 仅可缩放类型如 PDF）。
@@ -132,8 +130,6 @@ interface WorkspaceState {
     renameTerminalTab: (sessionId: string, tabId: string, title: string) => void
     /** 关闭 tab；归空则收起 inspector；关的是 active 则激活相邻 */
     closeTab: (sessionId: string, tabId: string) => void
-    /** 打开远程桌面 tab（跟随会话机器）：同 machineId 已开则切激活，不重复创建 */
-    openDesktopTab: (sessionId: string, machineId: string) => void
     /** 「审查」tab（git 审查视图）：全局唯一（同会话一个审查面板），已开则切激活 */
     openReviewTab: (sessionId: string, reviewTarget?: string) => void
     setActiveTab: (sessionId: string, tabId: string) => void
@@ -166,7 +162,7 @@ function applyPatch<K extends keyof SessionInspectorState>(
 }
 
 /** 「同型 tab 唯一」动作的共用不变量：已有匹配 tab → 切激活（已激活则原样返回，省一次
- *  Map 复制）；否则追加新 tab 并激活。tree / review / desktop 三个动作同构，「先查重、
+ *  Map 复制）；否则追加新 tab 并激活。tree / review 两个动作同构，「先查重、
  *  再激活/创建」只此一处 */
 function activateOrCreateTab(
     state: WorkspaceState,
@@ -288,14 +284,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             next.set(sessionId, { ...cur, tabs })
             return { sessions: next }
         }),
-
-    /** 打开远程桌面 tab：同 machineId 已开则切激活（每机器一个 tab，画面经 portal 跟随激活面） */
-    openDesktopTab: (sessionId, machineId) =>
-        set((state) => activateOrCreateTab(
-            state, sessionId,
-            (t) => t.mode === 'desktop' && t.machineId === machineId,
-            () => ({ id: uuid(), mode: 'desktop', machineId }),
-        )),
 
     /** 「审查」动作：全局唯一 review tab（同 tree 去重纪律），已开则切激活。
      *  reviewTarget（DiffTarget 序列化键）可选：传入时新建即带、已开则覆盖——

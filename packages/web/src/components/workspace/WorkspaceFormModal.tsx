@@ -15,9 +15,9 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
+import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Spin, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { DesktopOutlined, FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
+import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { validateWorkspaceFolders, type WorkspaceFolder, type WorkspaceFoldersError } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
@@ -25,7 +25,6 @@ import { useCreateWorkspace, useUpdateWorkspace } from '@/core/data/hooks/mutati
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { Workspace } from '@/core/data/api/types'
-import { buildMachineSelectOptions } from '@/core/utils/machineUtils'
 import { isPathWithinHomeDir } from '@/core/utils/path'
 
 /**
@@ -140,7 +139,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     const isEdit = !!workspace
     const isMobile = useIsMobile()
 
-    const { machines, isLoading: machinesLoading } = useMachines()
+    const { machines } = useMachines()
 
     const createMutation = useCreateWorkspace()
     const updateMutation = useUpdateWorkspace()
@@ -171,23 +170,12 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
             initialFolderKeysRef.current = new Set(workspace.folders.map(folderKey))
         } else {
             setName('')
-            setMachineId(machines.length === 1 ? machines[0].id : null)
+            // 单机化：恒取第一台机器（加载中/空列表时 null，由现有禁用提交逻辑兜底）
+            setMachineId(machines[0]?.id ?? null)
             setFolders([{ key: nextFolderKey(), path: '', primary: true }])
             initialFolderKeysRef.current = new Set()
         }
-    }, [open, workspace?.id])
-
-    // 单机时隐藏机器选择器，直接取唯一值（与新建会话的单一机器隐藏逻辑一致）
-    const showMachineSelect = !isEdit && machines.length > 1
-    useEffect(() => {
-        if (isEdit) return
-        if (machines.length === 1 && machineId !== machines[0].id) {
-            setMachineId(machines[0].id)
-        }
-        if (machineId && !machines.find(m => m.id === machineId)) {
-            setMachineId(machines.length === 1 ? machines[0].id : null)
-        }
-    }, [machines, machineId, isEdit])
+    }, [open, workspace?.id, machines, nextFolderKey])
 
     const currentMachine = machines.find(m => m.id === machineId)
     const machineHomeDir = currentMachine?.metadata?.homeDir as string | undefined
@@ -263,19 +251,6 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
                     autoFocus
                 />
             </Form.Item>
-
-            {showMachineSelect && (
-                <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />{t('workspace.machine')}</>}>
-                    <Select
-                        value={machineId ?? undefined}
-                        onChange={setMachineId}
-                        disabled={isPending}
-                        loading={machinesLoading}
-                        placeholder={machinesLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
-                        options={buildMachineSelectOptions(machines)}
-                    />
-                </Form.Item>
-            )}
 
             <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('workspace.folders')}</>}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
