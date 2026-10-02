@@ -96,3 +96,18 @@ export type WorktreeInfo = {
     name: string;
     createdAt: number;
 };
+
+// —— session-started webhook（session → runner controlServer，Q3 spawn 判据）——
+
+/** 会话自报端点路径（runner controlServer 与会话侧客户端共用单一来源） */
+export const RUNNER_SESSION_STARTED_PATH = '/session-started'
+
+/**
+ * 会话自报请求体。注意 controlServer 侧校验刻意宽松（metadata 直传透传、
+ * 不做 strip）——此类型只约束客户端构造侧；若未来收紧服务端校验，
+ * 必须先核对 MetadataSchema 字段完整性（zod strip 会静默裁字段）。
+ */
+export interface SessionStartedWebhookBody {
+    sessionId: string
+    metadata: import('./schemas').Metadata
+}

@@ -21,12 +21,12 @@
 
 import { logger } from '@/ui/logger';
 import { clearRunnerState, readRunnerState } from '@/persistence';
-import { Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { isBunCompiled, projectPath } from '@/projectPath';
 import { isProcessAlive, killProcess } from '@/utils/process';
+import { loopbackRunnerPost } from '@/utils/loopbackRunnerPost';
 
 export function getInstalledCliMtimeMs(): number | undefined {
   if (isBunCompiled()) {
@@ -49,60 +49,9 @@ export function getInstalledCliMtimeMs(): number | undefined {
   }
 }
 
+// 传输底座已抽 utils/loopbackRunnerPost（与 session 侧 sessionWebhook 共用，解缠 6）
 async function runnerPost(path: string, body?: unknown): Promise<{ error?: string } | Record<string, unknown>> {
-  const state = await readRunnerState();
-  if (!state?.httpPort) {
-    const errorMessage = 'No runner running, no state file found';
-    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
-    return {
-      error: errorMessage
-    };
-  }
-
-  if (!isProcessAlive(state.pid)) {
-    const errorMessage = 'Runner is not running, file is stale';
-    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
-    return {
-      error: errorMessage
-    };
-  }
-
-  try {
-    const timeout = process.env.MOBI_RUNNER_HTTP_TIMEOUT ? parseInt(process.env.MOBI_RUNNER_HTTP_TIMEOUT) : 10_000;
-    const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {}),
-      // Mostly increased for stress test
-      signal: AbortSignal.timeout(timeout)
-    });
-    
-    if (!response.ok) {
-      const errorMessage = `Request failed: ${path}, HTTP ${response.status}`;
-      logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
-      return {
-        error: errorMessage
-      };
-    }
-    
-    return await response.json() as Record<string, unknown>;
-  } catch (error) {
-    const errorMessage = `Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
-    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
-    return {
-      error: errorMessage
-    }
-  }
-}
-
-export async function notifyRunnerSessionStarted(
-  sessionId: string,
-  metadata: Metadata
-): Promise<{ error?: string } | Record<string, unknown>> {
-  return await runnerPost('/session-started', {
-    sessionId,
-    metadata
-  });
+  return loopbackRunnerPost(path, body);
 }
 
 export async function listRunnerSessions(): Promise<unknown[]> {

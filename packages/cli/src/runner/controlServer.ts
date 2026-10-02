@@ -24,6 +24,7 @@ import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
+import { RUNNER_SESSION_STARTED_PATH } from '@mobi/shared/hostProtocol';
 import { TrackedSession } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/rpcTypes';
 
@@ -50,8 +51,9 @@ export function startRunnerControlServer({
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
 
-    // Session reports itself after creation
-    typed.post('/session-started', {
+    // Session reports itself after creation（端点路径与请求体类型单源 @mobi/shared/hostProtocol；
+    // 校验保持宽松 metadata 直传透传——收紧前必须核对 MetadataSchema 完整性）
+    typed.post(RUNNER_SESSION_STARTED_PATH, {
       schema: {
         body: z.object({
           sessionId: z.string(),

@@ -49,8 +49,13 @@ vi.mock('@/persistence', () => ({
     readSettings: async () => ({ machineId: 'm1' })
 }))
 
-vi.mock('@/runner/controlClient', () => ({
+// 会话自报 webhook 已拆到 session 侧（解缠 6），mock 跟随新位置；
+// 底层传输 utils/loopbackRunnerPost 一并桩掉，防测试环境真发 loopback 请求
+vi.mock('@/agent/sessionWebhook', () => ({
     notifyRunnerSessionStarted: async () => null
+}))
+vi.mock('@/utils/loopbackRunnerPost', () => ({
+    loopbackRunnerPost: async () => ({ error: 'mocked' })
 }))
 
 vi.mock('@/configuration', () => ({
