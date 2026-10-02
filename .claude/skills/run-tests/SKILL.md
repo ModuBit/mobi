@@ -134,3 +134,57 @@ E2E 的具体**操作 recipe 与踩坑记录**存在 `memory/`（随 skill 提�
 | web | vitest (jsdom) | `bun run test:web` |
 
 web 包的 `bun test` 会调用 bun 内置运行器，完全忽略 `vitest.config.ts` 中的 `environment: 'jsdom'` 和 `setupFiles` 配置，导致所有依赖 DOM API 的测试报 `document is not defined`。始终从根目录执行 `bun run test` 或 `bun run test:web`。
+
+## 可用性门
+
+可用性冒烟脚本 (`scripts/smoke.sh`) 是所有后续 personal-agent-rewrite ticket 的「可用性门」——验证构建产物是否还能正常使用。
+
+### 何时跑
+
+- personal-agent-rewrite 每张 ticket 合入后，在验收阶段执行
+- 怀疑构建产物损坏时
+
+### 用法
+
+两种形态：
+
+```bash
+# 1. 测试二进制产物（默认使用 dist-exe/<平台>/mobi）
+.claude/skills/run-tests/scripts/smoke.sh --binary
+
+# 2. 指定二进制路径
+.claude/skills/run-tests/scripts/smoke.sh --binary /path/to/mobi
+
+# 3. 测试源码运行（bun run packages/cli/src/index.ts）
+.claude/skills/run-tests/scripts/smoke.sh --source
+```
+
+### 流程
+
+固定使用 `--profile e2e`（MOBI_HOME=~/.mobi-e2e，端口 2224，与生产/dev 隔离）：
+
+1. 检查端口占用（被占用直接失败，打印占用 PID）
+2. 启动 hub 和 runner（start-sync 前台形态）
+3. 等待 `/health` 就绪
+4. 使用 profile 的 `WEB_API_TOKEN` 登录
+5. 获取工作区列表（无则创建指向 `~/workspace/demo`）
+6. 创建会话
+7. 发送消息「只回复 OK」
+8. 轮询消息接口直到出现 assistant 回复（上限 180s）
+9. 输出耗时
+10. 按记录的 PID 优雅停止（SIGTERM，10s 后 SIGKILL）
+
+### 退出码
+
+- `0` — 通过
+- 非 `0` — 失败，打印失败阶段与 hub/runner 日志尾 50 行
+
+### 失败时查看日志
+
+脚本会在失败时自动打印日志尾部。如需完整日志：
+
+```bash
+tail -200 ~/.mobi-e2e/hub.log
+tail -200 ~/.mobi-e2e/runner.log
+```
+

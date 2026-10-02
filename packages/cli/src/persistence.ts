@@ -54,11 +54,6 @@ export interface Settings {
   bashInjectContext?: boolean
   // web 工具配置（provider 启停/凭据/当前选择），由 runner RPC 读写；会话进程 mtime 惰性读
   webTools?: WebToolsConfig
-  // 远程桌面配置（desktop/ 模块）：VNC 密码与 macOS「VNC 观看者可以用密码控制屏幕」
-  // 所设密码一致；由 hub RPC 写入，只在被控机本地留存（web/hub 均不落盘副本）
-  desktop?: {
-    vncPassword?: string
-  }
 }
 
 /** hub 设置文件受限写形状：cli 只允许写 listen*（hub 监听配置），其余字段归 hub 所有 */
@@ -372,18 +367,24 @@ export async function acquireRunnerLock(
       return fileHandle;
     } catch (error: unknown) {
       if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'EEXIST') {
-        // Lock file exists, check if process is still running
+        // Lock file exists, check if process is still running.
+        // 锁内容不是「存活进程的 PID」（死 PID / 空文件 / 损坏内容）一律视为陈旧锁删除——
+        // 否则一个 0 字节残留锁会让所有后续 runner 拿锁失败后静默退出（E2E 实踩）
+        let staleLock: boolean
         try {
-          const lockPid = readFileSync(configuration.runnerLockFile, 'utf-8').trim();
-          if (lockPid && !isNaN(Number(lockPid))) {
-            if (!isProcessAlive(Number(lockPid))) {
-              // Process doesn't exist, remove stale lock
-              unlinkSync(configuration.runnerLockFile);
-              continue; // Retry acquisition
-            }
-          }
+          const lockPid = Number(readFileSync(configuration.runnerLockFile, 'utf-8').trim());
+          staleLock = !Number.isFinite(lockPid) || lockPid <= 0 || !isProcessAlive(lockPid);
         } catch {
           // Can't read lock file, might be corrupted
+          staleLock = true;
+        }
+        if (staleLock) {
+          try {
+            unlinkSync(configuration.runnerLockFile);
+          } catch {
+            // 并发竞争下可能已被其他进程删除，下一轮重试兜底
+          }
+          continue; // Retry acquisition
         }
       }
 
