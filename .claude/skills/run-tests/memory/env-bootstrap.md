@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / hub 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-09-29
+  last_verified: 2026-10-02
 ---
 
 # 环境启动
@@ -117,6 +117,7 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 
 - **bootstrap 依赖 shell PATH 里的 bun** — 脚本内部裸调 `bun`；Claude 会话的 shell 常无 `~/.bun/bin`，表现为「等待 Hub 就绪超时 + 日志 `bun: command not found`」且静默失败。先 `export PATH="$HOME/.bun/bin:$PATH"` 再跑 bootstrap（2026-09-03）
 - **bootstrap 被沙箱按进程组回收（2026-09-11）** — 工具调用结束时沙箱可能 SIGTERM 整个进程组：`nohup &` 内联跑和 `run_in_background` 跑都被回收过（脚本有 TERM trap → cleanup → exit 0，exits.log 见 signal-term，uptime 10-40s 不等；同形状调用存活与否不确定）。**稳定解法：`perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV' bash …/e2e-bootstrap.sh`**——setsid 脱离进程组，组杀不可及；READY 后必须 `curl /health` 复核 hub 真活
+- **setsid 也必须配 run_in_background（2026-10-02 实证）** — hub 单独重启时在普通 Bash 调用里 `perl setsid … &` 拉起，health 曾就绪、API 短暂可用，~1 分钟后仍被沙箱回收（页面报 Session not found → 接着连接拒绝）。**setsid + `run_in_background: true` 双保险缺一不可**；拉起后隔 20s 再 `curl /health` 复核一次才可信
 - **直跑进程识别** — `ps -eo pid,ppid,command | grep start-sync`：e2e 组件 ppid 指向
   bootstrap 脚本；若 ppid 变 1 且环境应已清理，按 PID 精确 kill（禁全局 pkill）
 - **bootstrap 不退出不是卡死** — 末尾 `wait` 常驻是设计（保持环境）；background 跑 + 轮询 `ready.flag`，ready 后直接用，**不等脚本退出 / stdout echo**（stdout 后台被缓冲看不到）
