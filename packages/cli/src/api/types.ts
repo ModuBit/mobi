@@ -44,35 +44,13 @@ export type Workspace = z.infer<typeof WorkspaceSchema>
 
 export { AgentStateSchema, AttachmentMetadataSchema, MetadataSchema, WorkspaceSchema }
 
-export const MachineMetadataSchema = z.object({
-    host: z.string(),
-    platform: z.string(),
-    mobiCliVersion: z.string(),
-    displayName: z.string().optional(),
-    homeDir: z.string(),
-    mobiHomeDir: z.string(),
-    mobiLibDir: z.string()
-})
-
-export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
-
-export const RunnerStateSchema = z.object({
-    status: z.union([z.enum(['running', 'shutting-down']), z.string()]),
-    pid: z.number().optional(),
-    httpPort: z.number().optional(),
-    startedAt: z.number().optional(),
-    shutdownRequestedAt: z.number().optional(),
-    shutdownSource: z.union([z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']), z.string()]).optional(),
-    lastSpawnError: z.object({
-        message: z.string(),
-        pid: z.number().optional(),
-        exitCode: z.number().nullable().optional(),
-        signal: z.string().nullable().optional(),
-        at: z.number()
-    }).nullable().optional()
-})
-
-export type RunnerState = z.infer<typeof RunnerStateSchema>
+// 宿主协议类型（MachineMetadata / RunnerState）已下沉 @mobi/shared/hostProtocol，
+// 此处 re-export 保持既有调用方不变（搬迁票删）
+import type { MachineMetadata, RunnerState } from '@mobi/shared/hostProtocol'
+export { MachineMetadataSchema } from '@mobi/shared/hostProtocol'
+export type { MachineMetadata } from '@mobi/shared/hostProtocol'
+export { RunnerStateSchema } from '@mobi/shared/hostProtocol'
+export type { RunnerState } from '@mobi/shared/hostProtocol'
 
 export type Machine = {
     id: string

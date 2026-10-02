@@ -19,16 +19,13 @@ import { randomBytes } from 'node:crypto';
 import { access, mkdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import type { WorktreeInfo } from '@mobi/shared/hostProtocol';
 
 const execFileAsync = promisify(execFile);
 
-export type WorktreeInfo = {
-  basePath: string;
-  worktreePath: string;
-  branch: string;
-  name: string;
-  createdAt: number;
-};
+// WorktreeInfo 类型已下沉 @mobi/shared/hostProtocol（会话侧 worktreeEnv 也用），
+// 此处 re-export 保持既有调用方不变（搬迁票删）
+export type { WorktreeInfo };
 
 type WorktreeResult =
   | { ok: true; info: WorktreeInfo }

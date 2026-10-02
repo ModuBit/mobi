@@ -14,28 +14,10 @@
  * limitations under the License.
  */
 
-import type { EffortLevel, PermissionMode } from '@mobi/shared'
+/**
+ * spawn RPC 契约：SpawnSessionOptions / SpawnSessionResult 已下沉
+ * `@mobi/shared/hostProtocol`（宿主协议单一来源），此处 re-export 保持既有
+ * 调用方不变（personal-agent-rewrite 搬迁票删除）。
+ */
 
-export interface SpawnSessionOptions {
-    machineId?: string
-    directory: string
-    sessionId?: string
-    resumeSessionId?: string
-    approvedNewDirectoryCreation?: boolean
-    agent?: 'claude'  // Mobi 当前仅支持 Claude
-    model?: string
-    effort?: EffortLevel  // reasoning effort (low | medium | high | xhigh)
-    outputStyle?: string  // CC output style（Default/Proactive/Concise/Explanatory/Learning 或自定义名）
-    permissionMode?: PermissionMode
-    token?: string
-    sessionType?: 'simple' | 'worktree'
-    worktreeName?: string
-    /** 归属工作区 id（Web spawn 透传；缺省 = 游离） */
-    workspaceId?: string
-}
-
-export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
-    | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string }
-    | { type: 'already-running' }
+export type { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol'

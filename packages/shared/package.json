@@ -14,7 +14,8 @@
     "./fileMeta": "./src/fileMeta.ts",
     "./upload": "./src/upload.ts",
     "./exitLogger": "./src/exitLogger.ts",
-    "./logger": "./src/logger.ts"
+    "./logger": "./src/logger.ts",
+    "./hostProtocol": "./src/hostProtocol.ts"
   },
   "scripts": {
     "test": "vitest run",
