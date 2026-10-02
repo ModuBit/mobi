@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 
 /**
  * 首块孤儿清理专项测试。

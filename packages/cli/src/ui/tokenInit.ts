@@ -26,8 +26,8 @@
 import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import chalk from 'chalk'
-import { configuration } from '@/configuration'
-import { readSettings, updateSettings } from '@/persistence'
+import { configuration } from '@mobi/node-core/configuration'
+import { readSettings, updateSettings } from '@mobi/node-core/persistence'
 import { initializeApiUrl } from '@/ui/apiUrlInit'
 
 /**

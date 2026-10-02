@@ -27,9 +27,9 @@ import { join } from 'node:path'
 import type { RawJSONLines } from '@/claude/types'
 import { TURN_DIFF_EVENT, TurnDiffPayloadSchema, type TurnDiffPayload } from '@mobi/shared'
 import { TurnDiffReporter } from '@/claude/turnDiffReporter'
-import { createInMemoryTurnArchiveStore, FileTurnArchiveStore, type TurnArchiveRecord } from '@/modules/common/git/turnArchiveStore'
-import { FileTurnFulltextStore } from '@/modules/common/git/turnFulltextStore'
-import { git } from '@/modules/common/git/gitExec'
+import { createInMemoryTurnArchiveStore, FileTurnArchiveStore, type TurnArchiveRecord } from '@mobi/node-core/git/turnArchiveStore'
+import { FileTurnFulltextStore } from '@mobi/node-core/git/turnFulltextStore'
+import { git } from '@mobi/node-core/git/gitExec'
 
 // 补读竞态脚本：同 path 多次补读并发时，模拟「R1 慢返回中间态、R2 快返回末次」的
 // resolve 乱序（磁盘真实时序 = 调度序）。未命中的 readFile 调用透传 actual。

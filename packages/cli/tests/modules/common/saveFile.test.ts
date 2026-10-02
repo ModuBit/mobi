@@ -18,7 +18,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { mkdir, rm, writeFile, stat, readFile, readdir, mkdtemp } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerFileHandlers } from '@/modules/common/handlers/files'
 
 // 从注册的 handler 中取出指定方法直接调用（绕过 socket，单测 handler 逻辑）

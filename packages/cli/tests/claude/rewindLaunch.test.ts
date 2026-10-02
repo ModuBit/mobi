@@ -24,7 +24,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     query: vi.fn(),
     startup: vi.fn(),
 }))
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 

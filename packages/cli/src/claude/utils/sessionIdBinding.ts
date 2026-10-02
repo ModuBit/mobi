@@ -22,7 +22,7 @@
  * 此处收口「仅在 id 变更时绑定一次」的幂等语义，供两个 transport 复用。
  */
 
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 /** 绑定所需的最小 Session 结构（结构化类型，避免依赖完整 Session）；sessionId 为 null 表示尚未发现 */
 export interface SessionIdBindTarget {

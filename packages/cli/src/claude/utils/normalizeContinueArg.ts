@@ -15,7 +15,7 @@
  */
 
 import { listSessions } from '@anthropic-ai/claude-agent-sdk'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 const CONTINUE_FLAGS = ['--continue', '-c']
 const RESUME_FLAGS = ['--resume', '-r']

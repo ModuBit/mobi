@@ -37,7 +37,7 @@ import { runNoIndexDiff, stripNoIndexPrefixes, type GitExec } from './contentsPa
 import { isSafeWorkspacePath } from './pathGates'
 import { git, sanitizeSessionId, textLineCount } from './gitExec'
 import { ensureMobiGitignore } from './mobiGitignore'
-import { logger } from '@/ui/logger'
+import { logger } from '../logger'
 
 /** turn 全文目录保留数（最新 N 个 turnId 目录；调 N 只改此处） */
 export const TURN_FULLTEXT_KEEP = 1

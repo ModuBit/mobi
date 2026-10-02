@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
+import { ToolChangeJournal } from '@/git/toolChangeJournal'
 
 describe('ToolChangeJournal 归并规则', () => {
     it('同 path 三次写入：before 不变、after 取末次显式值、writeCount=3', () => {

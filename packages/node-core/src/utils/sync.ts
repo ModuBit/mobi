@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { backoff } from "@/utils/time";
+import { backoff } from "./time";
 
 /**
  * 失效-同步控制器

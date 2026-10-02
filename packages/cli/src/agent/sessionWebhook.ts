@@ -23,7 +23,7 @@
 
 import type { Metadata } from '@/api/types'
 import { RUNNER_SESSION_STARTED_PATH, type SessionStartedWebhookBody } from '@mobi/shared/hostProtocol'
-import { loopbackRunnerPost } from '@/utils/loopbackRunnerPost'
+import { loopbackRunnerPost } from '@mobi/node-core/utils/loopbackRunnerPost'
 
 export async function notifyRunnerSessionStarted(
     sessionId: string,

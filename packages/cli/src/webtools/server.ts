@@ -22,9 +22,9 @@
  */
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { readWebToolsConfig } from './config'
-import { resolveSearchProvider, resolveFetchProvider, domainFilter, NO_PROVIDER_MESSAGE } from './registry'
-import { WebToolError } from './provider'
+import { readWebToolsConfig } from '@mobi/node-core/webtools/config'
+import { resolveSearchProvider, resolveFetchProvider, domainFilter, NO_PROVIDER_MESSAGE } from '@mobi/node-core/webtools/registry'
+import { WebToolError } from '@mobi/node-core/webtools/provider'
 import { textResult, type MobiToolTextResult } from '@/mcp/toolResult'
 
 /** 统一错误 → isError 工具结果（agent loop 不中断，模型可重试/换思路） */

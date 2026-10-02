@@ -23,7 +23,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { configuration } from '@/configuration'
+import { configuration } from '@mobi/node-core/configuration'
 
 export interface SupervisorDesiredState {
     /** 是否托管 hub */

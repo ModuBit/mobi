@@ -18,7 +18,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { reportRewindCompletion, type RewindReportClient } from '../../../src/claude/utils/rewindReport'
 import type { PendingRewind } from '../../../src/claude/types'
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { trimIdent } from "@/utils/trimIdent";
+import { trimIdent } from "@mobi/node-core/utils/trimIdent";
 import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_DIRECTIVE, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
 
 /**

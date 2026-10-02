@@ -16,8 +16,8 @@
 
 import { resolve } from 'path'
 import { homedir } from 'os'
-import { logger } from '@/ui/logger'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { logger } from '@mobi/node-core/logger'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { rpcError } from '../rpcResponses'
 import { validateReadPath, validateWritePath } from '../pathSecurity'
 import { normalizeCwdParam, readFileMetaAt, readFileRangeAt } from './fileRead'

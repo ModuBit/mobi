@@ -17,8 +17,8 @@
 import { readFileSync } from 'node:fs'
 import type { UserContentBlock, UserImageBlock } from '@mobi/shared'
 import { QUOTE_DIRECTIVE } from '@mobi/shared'
-import { logger } from '@/ui/logger'
-import { escapeXmlText } from '@/utils/xmlEscape'
+import { logger } from '../logger'
+import { escapeXmlText } from './xmlEscape'
 
 /** 单个 Anthropic content 元素（mobi prompt 场景子集） */
 export type PromptContentBlock =

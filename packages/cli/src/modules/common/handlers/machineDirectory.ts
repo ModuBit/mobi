@@ -16,7 +16,7 @@
 
 import { readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { rpcError, getErrorMessage } from '../rpcResponses'
 

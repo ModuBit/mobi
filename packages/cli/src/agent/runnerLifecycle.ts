@@ -15,7 +15,7 @@
  */
 
 import type { ApiSessionClient } from '@/api/apiSession'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import { restoreTerminalState } from '@/ui/terminalState'
 
 type RunnerLifecycleOptions = {

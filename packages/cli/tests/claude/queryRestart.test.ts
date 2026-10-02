@@ -22,7 +22,7 @@ import {
     type QueryRestartRequest,
 } from '../../src/claude/utils/queryRestart'
 import type { EnhancedMode } from '../../src/claude/types'
-import { MessageQueue } from '../../src/utils/MessageQueue'
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue'
 
 const mode: EnhancedMode = { permissionMode: 'default' }
 

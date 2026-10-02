@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ensureMobiGitignore, MOBI_GITIGNORE_ENTRIES } from '@/modules/common/git/mobiGitignore'
+import { ensureMobiGitignore, MOBI_GITIGNORE_ENTRIES } from '@/git/mobiGitignore'
 
 describe('ensureMobiGitignore', () => {
     const cleanup: string[] = []

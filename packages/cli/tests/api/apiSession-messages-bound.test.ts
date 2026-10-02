@@ -22,11 +22,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  * - emitMessagesBound 上报用户消息的 localId→nativeId 绑定（空数组不 emit）
  */
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() },
 }))
 
-vi.mock('@/configuration', () => ({
+vi.mock('@mobi/node-core/configuration', () => ({
     configuration: {
         apiUrl: 'http://127.0.0.1:2222',
         disconnectTimeoutMs: 600_000,
@@ -35,7 +35,7 @@ vi.mock('@/configuration', () => ({
     },
 }))
 
-vi.mock('@/api/rpc/RpcHandlerManager', () => ({
+vi.mock('@mobi/node-core/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
         setOnRpcCalled = vi.fn()
         onSocketConnect = vi.fn()

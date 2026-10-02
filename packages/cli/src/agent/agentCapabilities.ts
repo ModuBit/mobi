@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 /**
  * Agent 会话定位信息（agent 自身的 session 标识 + 工作目录 + 类型）。

@@ -19,9 +19,9 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, utimesSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
-import { MOBI_PLUGIN_MANIFEST_REL_PATH, VISUALIZE_SKILL_REL_PATH } from '@/runtime/bundledPlugins';
+import { MOBI_PLUGIN_MANIFEST_REL_PATH, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
 import type { EmbeddedAsset } from '#embedded-assets';
-import { projectPath } from '@/projectPath';
+import { projectPath } from '@mobi/node-core/projectPath';
 
 describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', () => {
   // 临时目录充当 runtime root，等价 MOBI_HOME 隔离

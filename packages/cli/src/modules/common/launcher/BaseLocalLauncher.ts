@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger'
-import { Future } from '@/utils/future'
+import { logger } from '@mobi/node-core/logger'
+import { Future } from '@mobi/node-core/utils/future'
 import { getLocalLaunchExitReason } from '@/agent/localLaunchPolicy'
 import type { LocalLaunchExitReason, StartedBy } from '@/agent/localLaunchPolicy'
 

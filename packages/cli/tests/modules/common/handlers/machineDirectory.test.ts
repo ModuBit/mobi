@@ -18,7 +18,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerMachineDirectoryHandler } from '@/modules/common/handlers/machineDirectory'
 
 async function createTempDir(prefix: string): Promise<string> {

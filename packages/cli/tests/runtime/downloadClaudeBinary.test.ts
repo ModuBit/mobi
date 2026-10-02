@@ -23,7 +23,7 @@ import * as tar from 'tar';
 
 // 保留真实实现，测试内按需 spyOn 覆盖 manifest / version
 vi.mock('@/runtime/claudeBinarySource', async () => {
-    const actual = await vi.importActual<typeof import('@/runtime/claudeBinarySource')>('@/runtime/claudeBinarySource');
+    const actual = await vi.importActual<typeof import('@mobi/node-core/runtime/claudeBinarySource')>('@/runtime/claudeBinarySource');
     return { ...actual };
 });
 
@@ -40,7 +40,7 @@ describe('downloadClaudeBinary', () => {
     it('缓存 sha256 匹配时跳过下载', async () => {
         const data = 'abc';
         const sha = createHash('sha256').update(data).digest('hex');
-        const source = await import('@/runtime/claudeBinarySource');
+        const source = await import('@mobi/node-core/runtime/claudeBinarySource');
         vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',
@@ -60,7 +60,7 @@ describe('downloadClaudeBinary', () => {
     });
 
     it('缓存损坏（sha 不匹配）触发重新下载', async () => {
-        const source = await import('@/runtime/claudeBinarySource');
+        const source = await import('@mobi/node-core/runtime/claudeBinarySource');
         vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',
@@ -88,7 +88,7 @@ describe('downloadClaudeBinary', () => {
         const fixturePath = join(tmpRoot, 'wrong.tgz');
         await tar.create({ file: fixturePath, gzip: true, cwd: srcDir }, ['package/claude']);
 
-        const source = await import('@/runtime/claudeBinarySource');
+        const source = await import('@mobi/node-core/runtime/claudeBinarySource');
         vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',
@@ -113,7 +113,7 @@ describe('downloadClaudeBinary', () => {
     });
 
     it('stall 超时：read 永久挂起时在 stallTimeoutMs 内 reject 而非永久阻塞', async () => {
-        const source = await import('@/runtime/claudeBinarySource');
+        const source = await import('@mobi/node-core/runtime/claudeBinarySource');
         vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',
@@ -163,7 +163,7 @@ describe('downloadClaudeBinary', () => {
         await tar.create({ file: fixturePath, gzip: true, cwd: srcDir }, ['package/claude']);
         const fixture = readFileSync(fixturePath);
 
-        const source = await import('@/runtime/claudeBinarySource');
+        const source = await import('@mobi/node-core/runtime/claudeBinarySource');
         vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',

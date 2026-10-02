@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { GitReviewReader, registerGitReviewHandlers, truncatePatch } from '@/modules/common/handlers/gitReview'
-import { getTurnArchivePath } from '@/modules/common/git/turnArchiveStore'
+import { getTurnArchivePath } from '@mobi/node-core/git/turnArchiveStore'
 import { REVIEW_RENDER_MAX_LINES, ReviewContentsResultSchema } from '@mobi/shared'
 
 const execFileAsync = promisify(execFile)
@@ -155,7 +155,7 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         const { ReviewOverviewSchema, ReviewFilesResultSchema, ReviewPatchResultSchema } = await import('@mobi/shared')
         v2NonGit = await mkdtemp(join(tmpdir(), 'mobi-review-v2-nongit-'))
         const sid = 'nongit-session'
-        const { FileTurnArchiveStore, getTurnArchivePath } = await import('@/modules/common/git/turnArchiveStore')
+        const { FileTurnArchiveStore, getTurnArchivePath } = await import('@mobi/node-core/git/turnArchiveStore')
         const archive = new FileTurnArchiveStore(getTurnArchivePath(v2NonGit, sid))
         await archive.seal({
             turnIndex: 1,
@@ -233,7 +233,7 @@ describe('GitReviewReader turn 档（归档直读，真 git 集成）', () => {
         await execFileAsync('git', ['add', '-A'], { cwd: v3Dir })
         await execFileAsync('git', ['commit', '-qm', 'init'], { cwd: v3Dir })
         // 封口归档（B 形状）：turn 7 改 a.ts——工作区另有 b.ts 改动（模拟并发/手改，归档必须无视）
-        const { FileTurnArchiveStore, getTurnArchivePath } = await import('@/modules/common/git/turnArchiveStore')
+        const { FileTurnArchiveStore, getTurnArchivePath } = await import('@mobi/node-core/git/turnArchiveStore')
         const archive = new FileTurnArchiveStore(getTurnArchivePath(v3Dir, sid))
         await archive.seal({
             turnIndex: 7,
@@ -312,7 +312,7 @@ describe('GitReviewReader turn 档（归档直读，真 git 集成）', () => {
 
     it('generation 撞刻不自锁：同毫秒两次封口且 dirty 未变，键仍严格前进', async () => {
         const { ReviewOverviewSchema } = await import('@mobi/shared')
-        const { FileTurnArchiveStore } = await import('@/modules/common/git/turnArchiveStore')
+        const { FileTurnArchiveStore } = await import('@mobi/node-core/git/turnArchiveStore')
         // 独立 sid 的滚动单条归档：同 sealedAt 连封两轮（公式值不前进的碰撞场景）
         const raceSid = 'race-session'
         const archive = new FileTurnArchiveStore(getTurnArchivePath(v3Dir, raceSid))
@@ -338,13 +338,13 @@ describe('GitReviewReader turn 档 hydration（ref 全文）', () => {
     beforeAll(async () => {
         hDir = await mkdtemp(join(tmpdir(), 'mobi-review-hydration-'))
         // 真实全文目录 + 带 ref 归档：oversized.ts 超 patch 闸、history.ts 常规
-        const { FileTurnFulltextStore, getTurnFulltextRoot } = await import('@/modules/common/git/turnFulltextStore')
+        const { FileTurnFulltextStore, getTurnFulltextRoot } = await import('@mobi/node-core/git/turnFulltextStore')
         const store = new FileTurnFulltextStore(getTurnFulltextRoot(hDir, sid), hDir)
         const sealed = await store.sealFiles(3, [
             { path: fileA(), beforeContent: 'x\n'.repeat(3000), afterContent: 'y\n'.repeat(3000) },
             { path: fileB(), beforeContent: 'old-content\n', afterContent: 'new-content\n' },
         ])
-        const { FileTurnArchiveStore } = await import('@/modules/common/git/turnArchiveStore')
+        const { FileTurnArchiveStore } = await import('@mobi/node-core/git/turnArchiveStore')
         const archive = new FileTurnArchiveStore(getTurnArchivePath(hDir, sid))
         await archive.seal({
             turnIndex: 3,

@@ -17,7 +17,7 @@
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { platform } from 'os'
-import { runtimePath } from '@/projectPath'
+import { runtimePath } from '../projectPath'
 
 /**
  * 平台标记文件名，由 unpack-tools 脚本或 ensureRuntimeAssets 写入

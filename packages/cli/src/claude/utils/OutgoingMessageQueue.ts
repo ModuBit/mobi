@@ -21,7 +21,7 @@
  * while allowing delayed messages to be released early when needed.
  */
 
-import { AsyncLock } from '@/utils/lock';
+import { AsyncLock } from '@mobi/node-core/utils/lock';
 
 interface QueueItem<T> {
     id: number;                    // Incremental ID for ordering

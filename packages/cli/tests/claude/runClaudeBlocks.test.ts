@@ -24,7 +24,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() },
 }))
 

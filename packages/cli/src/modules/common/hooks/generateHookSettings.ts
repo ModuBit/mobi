@@ -16,9 +16,9 @@
 
 import { join } from 'node:path';
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
-import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
-import { getMobiCliCommand } from '@/utils/spawnMobiCli';
+import { configuration } from '@mobi/node-core/configuration';
+import { logger } from '@mobi/node-core/logger';
+import { getMobiCliCommand } from '@mobi/node-core/utils/spawnMobiCli';
 
 type HookCommandConfig = {
     matcher: string;

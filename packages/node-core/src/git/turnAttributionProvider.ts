@@ -34,7 +34,7 @@ import { FileTurnFulltextStore, getTurnFulltextRoot } from './turnFulltextStore'
 import { synthesizeContentsPatch } from './contentsPatch'
 import { gatePathForSource } from './pathGates'
 import { git } from './gitExec'
-import { logger } from '@/ui/logger'
+import { logger } from '../logger'
 
 // 路径闸单源在 pathGates（工作区闸/仓库闸 + 源分流）；re-export 保持既有 import 面不变
 export { gatePathForSource }

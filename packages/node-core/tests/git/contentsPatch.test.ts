@@ -22,8 +22,8 @@
 import { describe, expect, it } from 'vitest'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { runNoIndexDiff, synthesizeContentsPatch, type GitExec } from '@/modules/common/git/contentsPatch'
-import { git } from '@/modules/common/git/gitExec'
+import { runNoIndexDiff, synthesizeContentsPatch, type GitExec } from '@/git/contentsPatch'
+import { git } from '@/git/gitExec'
 
 const execFileAsync = promisify(execFile)
 

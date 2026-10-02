@@ -16,8 +16,8 @@
 
 import { ApiSessionClient } from "@/api/apiSession"
 import type { LauncherDormancyFacts } from "@/claude/utils/dormancyGate";
-import { MessageQueue } from "@/utils/MessageQueue"
-import { logger } from "@/ui/logger"
+import { MessageQueue } from "@mobi/node-core/utils/MessageQueue"
+import { logger } from "@mobi/node-core/logger"
 import { runLocalRemoteSession } from "@/agent/loopBase"
 import { Session } from "./session"
 import { claudeLocalLauncher } from "./claudeLocalLauncher"

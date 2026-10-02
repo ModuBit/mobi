@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 import { findRewindAnchor } from './rewindAnchor';
 import { findCrossSessionEntryAfter } from './transcriptScan';
 import type { QueryRestartController } from './queryRestart';
 import type { EnhancedMode, QueryControlRef } from '../types';
-import type { MessageQueue } from '@/utils/MessageQueue';
+import type { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 
 /**
  * rewind RPC 依赖的会话视图（Session 的结构子集——结构化依赖便于单测替身，

@@ -35,7 +35,7 @@ import {
     readSdkVersion,
     resolveRegistry,
     verifySha256,
-} from '../src/runtime/claudeBinarySource';
+} from '@mobi/node-core/runtime/claudeBinarySource';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ARCHIVES_DIR = resolve(__dirname, '..', 'tools', 'archives');

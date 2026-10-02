@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { isBunCompiled } from '@/projectPath';
+import { isBunCompiled } from '../projectPath';
 
 export type BunRuntimeEnvOptions = {
     allowBunBeBun?: boolean;

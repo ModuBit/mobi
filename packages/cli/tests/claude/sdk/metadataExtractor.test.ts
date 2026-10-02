@@ -39,7 +39,7 @@ vi.mock('@/claude/sdk/claudeExecutable', () => ({
 }))
 
 // mock logger
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn() },
 }))
 
@@ -50,7 +50,7 @@ vi.mock('@mobi/shared', () => ({}))
 const mockBuildBundledPluginOptions = vi.fn(() => [
     { type: 'local' as const, path: '/mock/plugins/mobi' },
 ])
-vi.mock('@/runtime/bundledPlugins', () => ({
+vi.mock('@mobi/node-core/runtime/bundledPlugins', () => ({
     buildBundledPluginOptions: () => mockBuildBundledPluginOptions(),
 }))
 

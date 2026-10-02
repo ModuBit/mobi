@@ -22,7 +22,7 @@
  * 回调调用方（内部以 SIGTERM 自杀，走既有优雅清理路径）。
  */
 
-import { isProcessAlive } from '@/utils/process'
+import { isProcessAlive } from '@mobi/node-core/utils/process'
 
 export interface PpidWatchdogOptions {
     /** 监控的父进程 pid，默认捕获调用时的 process.ppid */

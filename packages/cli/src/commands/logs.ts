@@ -16,7 +16,7 @@
 
 import chalk from 'chalk'
 import { findLatestLog, type LogProcessType } from '@mobi/shared/logger'
-import { configuration } from '@/configuration'
+import { configuration } from '@mobi/node-core/configuration'
 import type { CommandDefinition, CommandContext } from './types'
 
 const TYPES: LogProcessType[] = ['hub', 'runner', 'cli']

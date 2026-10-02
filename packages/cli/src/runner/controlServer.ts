@@ -22,7 +22,7 @@
 import fastify from 'fastify';
 import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 import { Metadata } from '@/api/types';
 import { RUNNER_SESSION_STARTED_PATH } from '@mobi/shared/hostProtocol';
 import { TrackedSession } from './types';

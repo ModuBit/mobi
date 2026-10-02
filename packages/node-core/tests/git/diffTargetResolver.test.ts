@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { resolveDiffTarget } from '@/modules/common/git/diffTargetResolver'
+import { resolveDiffTarget } from '@/git/diffTargetResolver'
 
 describe('resolveDiffTarget（ref 对照表）', () => {
     it('turn 档拒绝：已交 TurnAttributionProvider 供数（审查 v3 供数反转）', async () => {

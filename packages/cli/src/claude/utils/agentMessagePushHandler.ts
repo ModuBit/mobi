@@ -32,8 +32,8 @@
  */
 
 import { normalizeUserContent, UserMessageContentSchema, type AgentMessageDelivery, type AgentMessagePushResult } from '@mobi/shared'
-import type { PromptPayload } from '@/utils/promptBuilder'
-import { buildPromptFromBlocks } from '@/utils/promptBuilder'
+import type { PromptPayload } from '@mobi/node-core/utils/promptBuilder'
+import { buildPromptFromBlocks } from '@mobi/node-core/utils/promptBuilder'
 import { withCrossSessionEnvelope } from './crossSessionEnvelope'
 
 /** sink 未就绪 = 本轮 Query 的 input stream 没接上（重启/退出窗口） */

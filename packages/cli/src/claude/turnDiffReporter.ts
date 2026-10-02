@@ -49,13 +49,13 @@
 import { readFile } from 'node:fs/promises'
 import type { RawJSONLines } from '@/claude/types'
 import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry, type TurnDiffPayload } from '@mobi/shared'
-import { git, textLineCount } from '@/modules/common/git/gitExec'
-import { ToolChangeJournal } from '@/modules/common/git/toolChangeJournal'
-import { contentsChangeOf } from '@/modules/common/git/reviewEntry'
-import { synthesizeContentsPatch } from '@/modules/common/git/contentsPatch'
-import type { FileTurnFulltextStore, TurnFulltextSealed } from '@/modules/common/git/turnFulltextStore'
-import type { TurnArchiveStore } from '@/modules/common/git/turnArchiveStore'
-import { logger } from '@/ui/logger'
+import { git, textLineCount } from '@mobi/node-core/git/gitExec'
+import { ToolChangeJournal } from '@mobi/node-core/git/toolChangeJournal'
+import { contentsChangeOf } from '@mobi/node-core/git/reviewEntry'
+import { synthesizeContentsPatch } from '@mobi/node-core/git/contentsPatch'
+import type { FileTurnFulltextStore, TurnFulltextSealed } from '@mobi/node-core/git/turnFulltextStore'
+import type { TurnArchiveStore } from '@mobi/node-core/git/turnArchiveStore'
+import { logger } from '@mobi/node-core/logger'
 
 /** 记变更的编辑族工具（工具名 → 是否取 input.file_path；名单即采集口径边界） */
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])

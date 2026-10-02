@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerCommandHandlers } from './handlers/commands'
 import { registerDifftasticHandlers } from './handlers/difftastic'
 import { registerFileHandlers } from './handlers/files'

@@ -23,7 +23,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 
 const fetchMock = vi.fn()
 
-vi.mock('@/configuration', () => ({
+vi.mock('@mobi/node-core/configuration', () => ({
     configuration: {
         apiUrl: 'http://hub.test:2222',
         cliApiToken: 'cli-token-xyz',

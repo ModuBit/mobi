@@ -18,7 +18,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { mkdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter, filterByPrefix, registerSessionFilesHandler } from '@/modules/common/handlers/sessionFiles'
 
 describe('isSearchQuery', () => {

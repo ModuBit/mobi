@@ -45,7 +45,7 @@ vi.mock('@/api/api', () => ({
     }
 }))
 
-vi.mock('@/persistence', () => ({
+vi.mock('@mobi/node-core/persistence', () => ({
     readSettings: async () => ({ machineId: 'm1' })
 }))
 
@@ -54,11 +54,11 @@ vi.mock('@/persistence', () => ({
 vi.mock('@/agent/sessionWebhook', () => ({
     notifyRunnerSessionStarted: async () => null
 }))
-vi.mock('@/utils/loopbackRunnerPost', () => ({
+vi.mock('@mobi/node-core/utils/loopbackRunnerPost', () => ({
     loopbackRunnerPost: async () => ({ error: 'mocked' })
 }))
 
-vi.mock('@/configuration', () => ({
+vi.mock('@mobi/node-core/configuration', () => ({
     configuration: { mobiHomeDir: '/tmp/mobi-home', apiUrl: 'http://hub.test' }
 }))
 
@@ -66,12 +66,12 @@ vi.mock('@/workspacePath', () => ({
     runtimePath: () => '/tmp/mobi-runtime'
 }))
 
-vi.mock('@/utils/worktreeEnv', () => ({
+vi.mock('@mobi/node-core/utils/worktreeEnv', () => ({
     readWorktreeEnv: () => null,
     readGitBranch: () => null
 }))
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn(), infoDeveloper: vi.fn(), debugLargeJson: vi.fn() }
 }))
 

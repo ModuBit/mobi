@@ -26,7 +26,7 @@ import { promisify } from 'node:util'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { FileTurnFulltextStore } from '@/modules/common/git/turnFulltextStore'
+import { FileTurnFulltextStore } from '@/git/turnFulltextStore'
 
 const execFileAsync = promisify(execFile)
 

@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ReliableRewindReportQueue, type AckSocket, type PendingRewindReport } from '../../../src/claude/utils/reliableReport'
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 

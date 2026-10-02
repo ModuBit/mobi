@@ -17,7 +17,7 @@
 import { describe, test, expect, vi, afterEach } from 'vitest'
 
 // logger 仅打日志，mock 掉避免依赖链
-vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn() } }))
+vi.mock('@mobi/node-core/logger', () => ({ logger: { debug: vi.fn() } }))
 
 import {
     registerAgentCapabilities,

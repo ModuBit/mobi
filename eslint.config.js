@@ -29,6 +29,9 @@ module.exports = tseslint.config(
   // 自定义规则：作用于 packages/*/src/
   {
     files: ['packages/shared/src/**/*.ts', 'packages/shared/src/**/*.tsx',
+            'packages/node-core/src/**/*.ts', 'packages/node-core/src/**/*.tsx',
+            'packages/daemon/src/**/*.ts', 'packages/daemon/src/**/*.tsx',
+            'packages/session/src/**/*.ts', 'packages/session/src/**/*.tsx',
             'packages/hub/src/**/*.ts', 'packages/hub/src/**/*.tsx',
             'packages/cli/src/**/*.ts', 'packages/cli/src/**/*.tsx',
             'packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],

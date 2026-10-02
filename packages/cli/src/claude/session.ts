@@ -15,8 +15,8 @@
  */
 
 import { ApiClient, ApiSessionClient } from '@/lib';
-import { MessageQueue } from '@/utils/MessageQueue';
-import { logger } from '@/ui/logger';
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
+import { logger } from '@mobi/node-core/logger';
 import { AgentSessionBase } from '@/agent/sessionBase';
 import type { McpServerConfig, Settings } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';

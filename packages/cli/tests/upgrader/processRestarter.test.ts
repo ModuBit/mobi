@@ -18,19 +18,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { detectActiveProcesses, formatActiveProcessesPrompt, hasActiveProcesses, type ActiveProcesses } from '@/upgrader/processRestarter'
 
 // mock persistence
-vi.mock('@/persistence', () => ({
+vi.mock('@mobi/node-core/persistence', () => ({
     readHubState: vi.fn().mockResolvedValue({ pid: 1000, listenHost: 'localhost', listenPort: 2222 }),
     readRunnerState: vi.fn().mockResolvedValue({ pid: 2000, httpPort: 3000 }),
 }))
 
 // mock process utils
-vi.mock('@/utils/process', () => ({
+vi.mock('@mobi/node-core/utils/process', () => ({
     isProcessAlive: vi.fn().mockReturnValue(true),
     killProcess: vi.fn().mockResolvedValue(true),
 }))
 
 // mock logger
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
 }))
 
@@ -42,7 +42,7 @@ describe('detectActiveProcesses', () => {
     })
 
     it('returns null when no hub state', async () => {
-        const { readHubState } = await import('@/persistence')
+        const { readHubState } = await import('@mobi/node-core/persistence')
         ;(readHubState as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
 
         const result = await detectActiveProcesses()

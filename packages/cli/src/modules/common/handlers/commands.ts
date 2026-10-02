@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { logger } from '@mobi/node-core/logger'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { extractSDKMetadata, type SDKMetadata } from '@/claude/sdk/metadataExtractor'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 

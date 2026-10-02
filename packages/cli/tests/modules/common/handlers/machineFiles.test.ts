@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, join } from 'path'
-import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerMachineFileHandlers } from '@/modules/common/handlers/machineFiles'
 
 /**

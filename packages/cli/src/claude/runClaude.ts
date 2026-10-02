@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 import { loop } from '@/claude/loop';
 import { evaluateDormancyGate, type DormancyFacts, type LauncherDormancyFacts } from '@/claude/utils/dormancyGate';
 import { DEFAULT_RECHECK_MS } from '@/modules/common/idleTimer';
 import { AgentState, SessionModel } from '@/api/types';
 import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
-import { MessageQueue } from '@/utils/MessageQueue';
-import { hashObject } from '@/utils/deterministicJson';
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
+import { hashObject } from '@mobi/node-core/utils/deterministicJson';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
@@ -40,9 +40,9 @@ import { bootstrapSession } from '@/agent/sessionFactory';
 import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '@/agent/runnerLifecycle';
 import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
-import { buildPromptFromBlocks, type PromptPayload } from '@/utils/promptBuilder';
+import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
 import { normalizeClaudeSessionModel } from './model';
-import { getInvokedCwd } from '@/utils/invokedCwd';
+import { getInvokedCwd } from '@mobi/node-core/utils/invokedCwd';
 import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
 import { registerRewindHandlers } from './utils/rewindHandlers';

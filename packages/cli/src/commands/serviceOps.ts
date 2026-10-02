@@ -23,7 +23,7 @@
  */
 
 import chalk from 'chalk'
-import { configuration } from '@/configuration'
+import { configuration } from '@mobi/node-core/configuration'
 import { ensureSupervisorRunning, sendControlCommand, type ServiceScope } from '@/supervisor/control'
 import { readDesiredState } from '@/supervisor/desiredState'
 import type { ComponentStatusReport } from '@/supervisor/supervisor'

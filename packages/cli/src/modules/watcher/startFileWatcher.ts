@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { logger } from "@/ui/logger";
-import { delay } from "@/utils/time";
+import { logger } from "@mobi/node-core/logger";
+import { delay } from "@mobi/node-core/utils/time";
 import { watch } from "fs/promises";
 
 /**

@@ -18,7 +18,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { applyOutputStyleSwitch } from '../../src/claude/utils/outputStyleSwitch'
 import { QueryRestartController } from '../../src/claude/utils/queryRestart'
 import type { EnhancedMode } from '../../src/claude/types'
-import { MessageQueue } from '../../src/utils/MessageQueue'
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue'
 
 /** 用真实本地队列装配 restart module，只替换 output style 的领域副作用。 */
 function setup(running = false) {

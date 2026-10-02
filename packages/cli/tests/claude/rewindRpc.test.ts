@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { registerRewindHandlers, type RewindSessionView } from '../../src/claude/utils/rewindHandlers'
-import { MessageQueue } from '../../src/utils/MessageQueue'
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue'
 import { QueryRestartController, RESTART_EXIT_SENTINEL } from '../../src/claude/utils/queryRestart'
 import type { EnhancedMode, QueryControlRef } from '../../src/claude/types'
 
@@ -26,7 +26,7 @@ vi.mock('../../src/claude/utils/rewindAnchor', () => ({
 vi.mock('../../src/claude/utils/transcriptScan', () => ({
     findCrossSessionEntryAfter: vi.fn(),
 }))
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 

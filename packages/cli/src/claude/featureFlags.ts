@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { configuration } from '@/configuration';
+import { configuration } from '@mobi/node-core/configuration';
 
 /** Claude Code agent teams 实验开关（由 claude 侧读取） */
 export const CLAUDE_AGENT_TEAMS_ENV = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS';

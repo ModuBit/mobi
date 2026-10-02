@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { RpcHandlerManager } from "@/api/rpc/RpcHandlerManager";
+import { RpcHandlerManager } from "@mobi/node-core/rpc/RpcHandlerManager";
 import { logger } from "@/lib";
 
 type KillSessionRequest = Record<string, never>;

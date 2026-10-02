@@ -30,7 +30,7 @@ describe('getClaudeExecutablePath', () => {
     });
 
     it('dev 模式（非编译态）返回 undefined，交 SDK 自动 resolve', async () => {
-        vi.doMock('@/projectPath', () => ({
+        vi.doMock('@mobi/node-core/projectPath', () => ({
             isBunCompiled: () => false,
             projectPath: () => '/x',
             runtimePath: () => '/x',
@@ -40,7 +40,7 @@ describe('getClaudeExecutablePath', () => {
     });
 
     it('编译态走 extractFromBunfs', async () => {
-        vi.doMock('@/projectPath', () => ({
+        vi.doMock('@mobi/node-core/projectPath', () => ({
             isBunCompiled: () => true,
             projectPath: () => '/x',
             runtimePath: () => '/x',
@@ -56,7 +56,7 @@ describe('getClaudeExecutablePath', () => {
     });
 
     it('编译态 extractFromBunfs 返回 $bunfs 原始路径（提取失败）时回退 undefined', async () => {
-        vi.doMock('@/projectPath', () => ({
+        vi.doMock('@mobi/node-core/projectPath', () => ({
             isBunCompiled: () => true,
             projectPath: () => '/x',
             runtimePath: () => '/x',
@@ -75,7 +75,7 @@ describe('getClaudeExecutablePath', () => {
     it('MOBI_CLAUDE_PATH 优先于编译态（短路）', async () => {
         process.env.MOBI_CLAUDE_PATH = '/custom/claude';
         const extractSpy = vi.fn((p: string) => `/tmp/extracted${p}`);
-        vi.doMock('@/projectPath', () => ({
+        vi.doMock('@mobi/node-core/projectPath', () => ({
             isBunCompiled: () => true,
             projectPath: () => '/x',
             runtimePath: () => '/x',

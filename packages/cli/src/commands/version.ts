@@ -17,7 +17,7 @@
 import chalk from 'chalk'
 import packageJson from '../../package.json'
 import { fetchReleases } from '@/upgrader/checker'
-import { readSettings } from '@/persistence'
+import { readSettings } from '@mobi/node-core/persistence'
 import type { Channel } from '@/upgrader/constants'
 import type { CommandDefinition, CommandContext } from './types'
 

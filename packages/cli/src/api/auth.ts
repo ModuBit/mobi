@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { configuration } from '@/configuration'
+import { configuration } from '@mobi/node-core/configuration'
 
 export function getAuthToken(): string {
     if (!configuration.cliApiToken) {

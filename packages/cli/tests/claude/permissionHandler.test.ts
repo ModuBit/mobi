@@ -416,7 +416,7 @@ describe('PermissionHandler — updatedPermissions 填 mobi Set 兜底持久化'
 // 背景：running 中 web 切换权限模式后，若权限判断仍以「消息入队时快照」为准，
 // 消费旧消息会把 session 回写成旧值，心跳随即把旧值顶回 web（bug）。
 // 修复语义：权限判断读 session 当前值，消息快照不再回写 session。
-import { logger } from '../../src/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 describe('PermissionHandler — 权限模式单一真相源 = session（方案 A）', () => {
     let abortSignal: AbortSignal

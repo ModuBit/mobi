@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { logger } from '@mobi/node-core/logger'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { run as runDifftastic } from '@/modules/difftastic/index'
 import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'

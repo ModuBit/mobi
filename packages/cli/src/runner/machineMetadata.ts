@@ -24,8 +24,8 @@
 import os from 'node:os'
 
 import type { MachineMetadata } from '@mobi/shared/hostProtocol'
-import { configuration } from '@/configuration'
-import { runtimePath } from '@/projectPath'
+import { configuration } from '@mobi/node-core/configuration'
+import { runtimePath } from '@mobi/node-core/projectPath'
 import packageJson from '../../package.json'
 
 export function buildMachineMetadata(): MachineMetadata {

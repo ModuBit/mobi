@@ -16,28 +16,28 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('@/persistence', () => ({
+vi.mock('@mobi/node-core/persistence', () => ({
     readSettings: vi.fn(),
     updateSettings: vi.fn(),
 }))
 
 // registry 模块 mock：createProviderFor 换 spy（verify 断言构造实参），prepareCredentials 纯函数用真实实现
-vi.mock('@/webtools/registry', async (importOriginal) => ({
-    ...(await importOriginal<typeof import('@/webtools/registry')>()),
+vi.mock('@mobi/node-core/webtools/registry', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@mobi/node-core/webtools/registry')>()),
     createProviderFor: vi.fn(),
 }))
 
 import type { WebToolsConfigSubmission } from '@mobi/shared'
-import { readSettings, updateSettings, type Settings } from '@/persistence'
-import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import type { RpcRequest } from '@/api/rpc/types'
+import { readSettings, updateSettings, type Settings } from '@mobi/node-core/persistence'
+import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
+import type { RpcRequest } from '@mobi/node-core/rpc/types'
 import {
     parseWebToolsConfig,
     validateSelection,
     mergeProviderCredentials,
     registerWebToolsConfigHandler,
 } from '@/modules/common/handlers/webToolsConfig'
-import { createProviderFor } from '@/webtools/registry'
+import { createProviderFor } from '@mobi/node-core/webtools/registry'
 
 describe('parseWebToolsConfig（schema 层校验）', () => {
     it('合法配置通过并补默认 timeoutMs', () => {

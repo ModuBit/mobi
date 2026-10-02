@@ -16,8 +16,11 @@
 
 import { dirname, resolve, join } from 'path';
 import { fileURLToPath } from 'url';
-import { configuration } from '@/configuration';
-import packageJson from '../package.json';
+import { configuration } from './configuration';
+// 语义锚定：projectPath/configuration 的「安装根」与版本号指 mobi CLI 包
+// （bundledPlugins / runtime 资产 / 版本检查都以 cli 包为安装主体），
+// 本模块搬入 node-core 后须跨包锚定回 cli（workspace 源码布局稳定：packages/node-core/src → ../../cli）
+import packageJson from '../../cli/package.json';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +29,7 @@ const bunMain = globalThis.Bun?.main ?? '';
 const isCompiled = bunMain.includes('$bunfs') || bunMain.includes('/~BUN/');
 
 export function projectPath(): string {
-    return resolve(__dirname, '..');
+    return resolve(__dirname, '../../cli');
 }
 
 export function runtimePath(): string {

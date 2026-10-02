@@ -31,7 +31,7 @@ vi.mock('node:fs', () => ({
 }))
 
 // mock logger
-vi.mock('@/ui/logger', () => ({
+vi.mock('@/logger', () => ({
     logger: { debug: vi.fn() },
 }))
 

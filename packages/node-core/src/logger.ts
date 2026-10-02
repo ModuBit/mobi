@@ -30,10 +30,10 @@ import {
     createTimestampForLogEntry,
     type LogLevel,
 } from '@mobi/shared/logger'
-import { configuration } from '@/configuration'
+import { configuration } from './configuration'
 import { appendFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import { readRunnerState } from '@/persistence'
+import { readRunnerState } from './persistence'
 
 /** 按 configuration.processType 解析本次会话的日志文件路径 */
 function sessionLogPath(): string {

@@ -24,9 +24,10 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import packageJson from '../package.json'
-import { getCliArgs } from '@/utils/cliArgs'
-import type { Settings } from '@/persistence'
+// 版本号指 mobi CLI 包（安装主体），本模块搬入 node-core 后跨包锚定（与 projectPath 同理）
+import packageJson from '../../cli/package.json'
+import { getCliArgs } from './utils/cliArgs'
+import type { Settings } from './settingsTypes'
 
 class Configuration {
     private _apiUrl: string

@@ -19,7 +19,7 @@
  */
 
 import { spawn } from 'child_process';
-import { resolveBinaryPath } from '@/utils/resolveBinaryPath';
+import { resolveBinaryPath } from '@mobi/node-core/utils/resolveBinaryPath';
 
 export interface DifftasticResult {
     exitCode: number

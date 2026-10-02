@@ -17,13 +17,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { startup } from '@anthropic-ai/claude-agent-sdk'
 import { claudeRemote } from '../../src/claude/claudeRemote'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     query: vi.fn(),
     startup: vi.fn(),
 }))
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn(), debugLargeJson: vi.fn() },
 }))
 

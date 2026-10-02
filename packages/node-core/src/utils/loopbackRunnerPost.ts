@@ -20,9 +20,9 @@
  * 从 runner/controlClient 的 runnerPost 抽出（personal-agent-rewrite 解缠 6）。
  */
 
-import { readRunnerState } from '@/persistence'
-import { isProcessAlive } from '@/utils/process'
-import { logger } from '@/ui/logger'
+import { readRunnerState } from '../persistence'
+import { isProcessAlive } from './process'
+import { logger } from '../logger'
 
 /** 向本机 runner controlServer 发 POST；runner 不在 / 请求失败时返回 { error } 不抛异常 */
 export async function loopbackRunnerPost(

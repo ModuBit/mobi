@@ -18,7 +18,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { Logger } from '@/ui/logger'
+import { Logger } from '@/logger'
 
 const TEST_DIR = join(tmpdir(), 'mobi-test-cli-logger')
 

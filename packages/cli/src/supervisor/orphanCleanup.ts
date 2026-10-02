@@ -22,9 +22,9 @@
  * 退出后立即拉起新 supervisor。此时残留进程占着端口/锁文件，必须先清再拉。
  */
 
-import { readHubState, readRunnerState } from '@/persistence'
-import { isProcessAlive, killProcess } from '@/utils/process'
-import { logger } from '@/ui/logger'
+import { readHubState, readRunnerState } from '@mobi/node-core/persistence'
+import { isProcessAlive, killProcess } from '@mobi/node-core/utils/process'
+import { logger } from '@mobi/node-core/logger'
 
 export async function cleanupOrphans(): Promise<void> {
     const hubState = await readHubState()

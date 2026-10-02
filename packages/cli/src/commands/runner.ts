@@ -20,7 +20,7 @@ import {
     listRunnerSessions,
     stopRunnerSession
 } from '@/runner/controlClient'
-import { getLatestRunnerLog } from '@/ui/logger'
+import { getLatestRunnerLog } from '@mobi/node-core/logger'
 import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
 import { initializeToken } from '@/ui/tokenInit'
 import { serviceStart, serviceStop, serviceRestart, serviceStatus } from './serviceOps'

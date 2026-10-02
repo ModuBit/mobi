@@ -23,7 +23,7 @@
  */
 import { statSync, readFileSync, existsSync } from 'node:fs'
 import { WebToolsConfigSchema, normalizeWebToolsConfig, type WebToolsConfig } from '@mobi/shared'
-import { configuration } from '@/configuration'
+import { configuration } from '../configuration'
 
 let cache: { file: string; mtimeMs: number; config: WebToolsConfig } | null = null
 

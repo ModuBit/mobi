@@ -43,8 +43,8 @@
 
 import { spawn, SpawnOptions, type ChildProcess } from 'child_process';
 import { join } from 'node:path';
-import { isBunCompiled, projectPath } from '@/projectPath';
-import { logger } from '@/ui/logger';
+import { isBunCompiled, projectPath } from '../projectPath';
+import { logger } from '../logger';
 import { existsSync } from 'node:fs';
 
 /**

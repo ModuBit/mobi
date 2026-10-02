@@ -15,7 +15,7 @@
  */
 
 import { join } from 'node:path';
-import { isBunCompiled, projectPath, runtimePath } from '@/projectPath';
+import { isBunCompiled, projectPath, runtimePath } from '../projectPath';
 import type { SdkPluginConfig } from '@anthropic-ai/claude-agent-sdk';
 
 /**

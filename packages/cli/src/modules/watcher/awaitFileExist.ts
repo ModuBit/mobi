@@ -15,7 +15,7 @@
  */
 
 import { access } from "fs/promises";
-import { delay } from "@/utils/time";
+import { delay } from "@mobi/node-core/utils/time";
 
 export async function awaitFileExist(file: string, timeout: number = 10000) {
     const startTime = Date.now();

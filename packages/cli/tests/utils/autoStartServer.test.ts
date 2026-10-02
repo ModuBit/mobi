@@ -36,7 +36,7 @@ const {
     mockIsRunnerRunning: vi.fn(),
 }))
 
-vi.mock('@/persistence', () => ({
+vi.mock('@mobi/node-core/persistence', () => ({
     readSettings: mockReadSettings,
 }))
 
@@ -49,11 +49,11 @@ vi.mock('@/runner/controlClient', () => ({
     isRunnerRunningCurrentlyInstalledMobiVersion: mockIsRunnerRunning,
 }))
 
-vi.mock('@/configuration', () => ({
+vi.mock('@mobi/node-core/configuration', () => ({
     configuration: { apiUrl: 'http://localhost:2222', supervisorSocketFile: '/tmp/mobi-test.sock' },
 }))
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn() },
 }))
 

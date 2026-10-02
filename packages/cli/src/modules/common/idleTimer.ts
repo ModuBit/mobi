@@ -23,7 +23,7 @@
  * - 预警通知：交互不活跃超时提前发送预警
  */
 
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 
 /** 阻塞复查默认周期 */
 export const DEFAULT_RECHECK_MS = 30_000;

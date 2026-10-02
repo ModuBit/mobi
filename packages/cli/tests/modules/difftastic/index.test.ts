@@ -23,7 +23,7 @@ import { run } from '@/modules/difftastic';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { tmpdir, platform } from 'os';
-import { runtimePath } from '@/projectPath';
+import { runtimePath } from '@mobi/node-core/projectPath';
 
 // 检查 difftastic 二进制文件是否存在
 function isDifftasticAvailable(): boolean {

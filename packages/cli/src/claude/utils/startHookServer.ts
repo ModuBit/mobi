@@ -23,7 +23,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 
 /**
  * Data received from Claude's SessionStart hook.

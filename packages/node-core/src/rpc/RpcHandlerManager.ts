@@ -19,7 +19,7 @@
  * Manages RPC method registration and handler execution (no encryption).
  */
 
-import { logger as defaultLogger } from '@/ui/logger'
+import { logger as defaultLogger } from '../logger'
 import type { RpcHandler, RpcHandlerConfig, RpcRequest, RpcHandlerOptions } from './types'
 import type { Socket } from 'socket.io-client'
 

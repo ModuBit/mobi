@@ -17,10 +17,10 @@
 import axios from 'axios'
 import type { AgentState, CreateMachineResponse, CreateSessionResponse, Workspace, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
 import { AgentStateSchema, CreateMachineResponseSchema, CreateSessionResponseSchema, RunnerStateSchema, MachineMetadataSchema, MetadataSchema } from '@/api/types'
-import { configuration } from '@/configuration'
+import { configuration } from '@mobi/node-core/configuration'
 import { getAuthToken } from '@/api/auth'
-import { apiValidationError } from '@/utils/errorUtils'
-import { logger } from '@/ui/logger'
+import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
+import { logger } from '@mobi/node-core/logger'
 import { ApiMachineClient } from './apiMachine'
 import { ApiSessionClient } from './apiSession'
 

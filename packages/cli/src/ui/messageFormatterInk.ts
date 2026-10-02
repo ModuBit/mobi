@@ -16,7 +16,7 @@
 
 import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { MessageBuffer } from './ink/messageBuffer'
-import { logger } from './logger'
+import { logger } from '@mobi/node-core/logger'
 
 export type OnAssistantResultInkCallback = (result: SDKResultMessage, messageBuffer: MessageBuffer) => void | Promise<void>
 

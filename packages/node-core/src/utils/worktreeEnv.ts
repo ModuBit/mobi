@@ -19,7 +19,7 @@ import { realpathSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 
 import type { WorktreeInfo } from '@mobi/shared/hostProtocol';
-import { logger } from '@/ui/logger';
+import { logger } from '../logger';
 
 export function readWorktreeEnv(): WorktreeInfo | null {
     return readWorktreeFromEnv() ?? readWorktreeFromGit();

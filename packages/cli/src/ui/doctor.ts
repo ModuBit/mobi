@@ -23,16 +23,16 @@
 
 import chalk from 'chalk'
 import { spawn } from 'node:child_process'
-import { configuration } from '@/configuration'
-import { readSettings, readHubSettings } from '@/persistence'
+import { configuration } from '@mobi/node-core/configuration'
+import { readSettings, readHubSettings } from '@mobi/node-core/persistence'
 import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
 import { findAllMobiProcesses } from '@/runner/doctor'
-import { readRunnerState } from '@/persistence'
+import { readRunnerState } from '@mobi/node-core/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { isBunCompiled, projectPath, runtimePath } from '@/projectPath'
+import { isBunCompiled, projectPath, runtimePath } from '@mobi/node-core/projectPath'
 import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
-import { withBunRuntimeEnv } from '@/utils/bunRuntime'
+import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime'
 import packageJson from '../../package.json'
 
 /**

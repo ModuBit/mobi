@@ -29,7 +29,7 @@ import {
     FileTurnArchiveStore,
     getTurnArchivePath,
     type TurnArchiveRecord,
-} from '@/modules/common/git/turnArchiveStore'
+} from '@/git/turnArchiveStore'
 
 const SID = 's-1'
 

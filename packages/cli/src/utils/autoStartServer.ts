@@ -33,10 +33,10 @@
  */
 
 import chalk from 'chalk'
-import { configuration } from '@/configuration'
-import { readSettings } from '@/persistence'
+import { configuration } from '@mobi/node-core/configuration'
+import { readSettings } from '@mobi/node-core/persistence'
 import { ensureSupervisorRunning, sendControlCommand } from '@/supervisor/control'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
 
 /** hub /health 探测超时 */

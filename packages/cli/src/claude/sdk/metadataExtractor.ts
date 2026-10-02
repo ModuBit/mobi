@@ -21,11 +21,11 @@
 
 import { existsSync } from 'fs'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { logger } from '@/ui/logger'
-import { configuration } from '@/configuration'
+import { logger } from '@mobi/node-core/logger'
+import { configuration } from '@mobi/node-core/configuration'
 import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
-import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
-import { buildBundledPluginOptions } from '@/runtime/bundledPlugins'
+import { stripBunDebuggerEnv } from '@mobi/node-core/utils/spawnMobiCli'
+import { buildBundledPluginOptions } from '@mobi/node-core/runtime/bundledPlugins'
 import type { SDKMetadata } from '@mobi/shared'
 
 // 重新导出类型供其他模块使用

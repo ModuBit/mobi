@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { logger } from "@/ui/logger";
+import { logger } from "@mobi/node-core/logger";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getProjectPath } from "./path";

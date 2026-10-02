@@ -16,7 +16,7 @@
 
 import type { ContextUsage, ContextUsageBreakdown } from '@mobi/shared'
 import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKResultMessage, Query } from '@anthropic-ai/claude-agent-sdk'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, type AssistantUsage } from './utils/contextUsageCalc'
 import { guessContextWindow } from './utils/modelContextWindow'
 import { extractBreakdown } from './utils/contextBreakdown'

@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { OVERSIZE_DIFF_LINES } from '@mobi/shared'
-import { reviewEntryFromContents } from '@/modules/common/git/reviewEntry'
+import { reviewEntryFromContents } from '@/git/reviewEntry'
 
 describe('reviewEntryFromContents（判定单源）', () => {
     it('kind 三态：before null 且 after 有 = add / after null 且 before 有 = delete / 其余 modify', () => {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { isBunCompiled } from '@/projectPath';
+import { isBunCompiled } from '@mobi/node-core/projectPath';
 
 /**
  * 解析 claude 可执行路径（local + remote 共用）。

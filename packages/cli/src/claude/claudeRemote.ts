@@ -41,7 +41,7 @@ import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
 import { parseSpecialCommand, checkDangerousCommand } from "@/parsers/specialCommands";
 import { logger, configuration } from "@/lib";
-import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
+import { PushableAsyncIterable } from "@mobi/node-core/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
@@ -49,7 +49,7 @@ import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
 import { isAbortedTerminalReason, type CommandLifecycleState } from "@mobi/shared";
-import { buildBundledPluginOptions } from "@/runtime/bundledPlugins";
+import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
@@ -59,9 +59,9 @@ import type { CacheStatus } from '@mobi/shared'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
 import type { PushOrigin } from './utils/stopAction'
-import type { PromptPayload } from '@/utils/promptBuilder'
+import type { PromptPayload } from '@mobi/node-core/utils/promptBuilder'
 import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
-import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
+import { stripBunDebuggerEnv } from '@mobi/node-core/utils/spawnMobiCli'
 import { isRewindRefusalError, extractRewindRefusalFromResult } from './utils/rewindRefusal'
 import { buildCacheStatusFromSessionStart } from './utils/cacheStatus'
 import type { ForkActivationPlan } from './utils/forkActivation'

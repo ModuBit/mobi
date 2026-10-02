@@ -26,7 +26,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { logger } from '@/ui/logger'
+import { logger } from '../logger'
 
 /** 默认排除条目（单源：新增 mobi 状态子目录时在此补一条） */
 export const MOBI_GITIGNORE_ENTRIES = ['uploads/', 'artifacts/', 'turn-diffs/']

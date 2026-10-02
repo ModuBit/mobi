@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { RpcHandlerManager } from '../../../src/api/rpc/RpcHandlerManager'
+import { RpcHandlerManager } from '@/rpc/RpcHandlerManager'
 
 // Characterization 测试：锁定 RpcHandlerManager 现有行为，
 // 为 lint any→unknown 收窄提供回归保护。

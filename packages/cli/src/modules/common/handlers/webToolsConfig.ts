@@ -33,9 +33,9 @@ import {
     type WebToolProviderId,
     type RedactedWebToolsConfig,
 } from '@mobi/shared'
-import { updateSettings, readSettings } from '@/persistence'
-import { createProviderFor, prepareCredentials } from '@/webtools/registry'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { updateSettings, readSettings } from '@mobi/node-core/persistence'
+import { createProviderFor, prepareCredentials } from '@mobi/node-core/webtools/registry'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 
 export type ValidateResult = { ok: true; config: WebToolsConfigSubmission } | { ok: false; error: string }
 

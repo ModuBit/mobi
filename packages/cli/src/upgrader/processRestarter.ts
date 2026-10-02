@@ -15,8 +15,8 @@
  */
 
 import chalk from 'chalk'
-import { readHubState, readRunnerState } from '@/persistence'
-import { isProcessAlive } from '@/utils/process'
+import { readHubState, readRunnerState } from '@mobi/node-core/persistence'
+import { isProcessAlive } from '@mobi/node-core/utils/process'
 
 export interface ProcessInfo {
     pid: number
@@ -53,7 +53,7 @@ export async function detectActiveProcesses(): Promise<ActiveProcesses> {
 export async function restartProcesses(): Promise<void> {
     console.log(chalk.gray('Restarting service...'))
     const { execFileSync } = await import('node:child_process')
-    const { getMobiCliCommand } = await import('@/utils/spawnMobiCli')
+    const { getMobiCliCommand } = await import('@mobi/node-core/utils/spawnMobiCli')
 
     // 获取 hub 的 host/port 透传给 service restart
     const hubState = await readHubState()

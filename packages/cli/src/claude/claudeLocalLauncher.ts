@@ -17,14 +17,14 @@
 import { claudeLocal } from "./claudeLocal";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter } from "./turnDiffReporter";
-import { FileTurnArchiveStore, getTurnArchivePath } from "@/modules/common/git/turnArchiveStore";
-import { FileTurnFulltextStore, getTurnFulltextRoot } from "@/modules/common/git/turnFulltextStore";
+import { FileTurnArchiveStore, getTurnArchivePath } from "@mobi/node-core/git/turnArchiveStore";
+import { FileTurnFulltextStore, getTurnFulltextRoot } from "@mobi/node-core/git/turnFulltextStore";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
-import { buildBundledPluginOptions } from "@/runtime/bundledPlugins";
+import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
 import { BaseLocalLauncher } from "@/modules/common/launcher/BaseLocalLauncher";
-import { logger } from "@/ui/logger";
+import { logger } from "@mobi/node-core/logger";
 import type { EnhancedMode } from "./types";
 
 /**

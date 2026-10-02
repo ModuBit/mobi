@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import type { AgentInfo, ModelInfo, SlashCommand } from '@mobi/shared'
 
 /** 三方法返回的能力面（写入 metadata.sdkMetadata 的子集；output style 两字段供 web 切换器消费） */

@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createRpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import type { RpcRequest } from '@/api/rpc/types'
+import { createRpcHandlerManager } from '@/rpc/RpcHandlerManager'
+import type { RpcRequest } from '@/rpc/types'
 
 // 模拟 hub→cli 的 rpc-request 往返：调 handleRequest 拿到 handler 结果对象
 describe('RPC 序列化：对象直传（不再 JSON.stringify）', () => {

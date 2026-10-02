@@ -19,10 +19,10 @@ import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
-import { configuration } from '@/configuration'
+import { configuration } from '@mobi/node-core/configuration'
 import { writeDesiredState } from '@/supervisor/desiredState'
-import { getMobiCliCommand } from '@/utils/spawnMobiCli'
-import { isBunCompiled } from '@/projectPath'
+import { getMobiCliCommand } from '@mobi/node-core/utils/spawnMobiCli'
+import { isBunCompiled } from '@mobi/node-core/projectPath'
 import { askYesNo } from './prompts'
 
 // macOS launchd

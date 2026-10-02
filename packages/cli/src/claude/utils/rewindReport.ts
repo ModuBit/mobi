@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 import type { PendingRewind } from '../types';
 
 /** rewind 两段回报依赖的 client 视图（ApiSessionClient 的结构子集，便于单测替身） */

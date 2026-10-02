@@ -15,7 +15,7 @@
  */
 
 import type { RpcAcceptResult } from '@mobi/shared'
-import { MessageQueue } from '@/utils/MessageQueue'
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue'
 import type { EnhancedMode, PendingRewind } from '../types'
 
 /**

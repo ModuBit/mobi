@@ -16,9 +16,9 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { discoverCapabilities } from '../../../src/claude/utils/capabilityDiscovery'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 

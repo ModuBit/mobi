@@ -20,9 +20,9 @@ import { arch, platform } from 'node:os';
 import * as tar from 'tar';
 import packageJson from '../../package.json';
 import type { EmbeddedAsset } from '#embedded-assets';
-import { isBunCompiled, runtimePath } from '@/projectPath';
-import { MOBI_PLUGIN_MANIFEST, MOBI_PLUGIN_MANIFEST_REL_PATH, PLUGIN_ASSET_PREFIX } from '@/runtime/bundledPlugins';
-import { UNPACKED_PLATFORM_MARKER } from '@/utils/resolveBinaryPath';
+import { isBunCompiled, runtimePath } from '@mobi/node-core/projectPath';
+import { MOBI_PLUGIN_MANIFEST, MOBI_PLUGIN_MANIFEST_REL_PATH, PLUGIN_ASSET_PREFIX } from '@mobi/node-core/runtime/bundledPlugins';
+import { UNPACKED_PLATFORM_MARKER } from '@mobi/node-core/utils/resolveBinaryPath';
 
 const RUNTIME_MARKER = '.runtime-version';
 

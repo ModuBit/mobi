@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 import type { AgentSessionBase } from './sessionBase';
 
 export type LoopLauncher<TSession> = (session: TSession) => Promise<'switch' | 'exit'>;

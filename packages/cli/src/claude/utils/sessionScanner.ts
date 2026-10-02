@@ -17,7 +17,7 @@
 import { GoalStatusAttachment, GoalStatusAttachmentSchema, RawJSONLines, RawJSONLinesSchema } from "../types";
 import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { logger } from "@/ui/logger";
+import { logger } from "@mobi/node-core/logger";
 import { getProjectPath } from "./path";
 import { BaseSessionScanner, SessionFileScanEntry, SessionFileScanResult, SessionFileScanStats } from "@/modules/common/session/BaseSessionScanner";
 

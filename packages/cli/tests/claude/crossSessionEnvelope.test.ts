@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import { withCrossSessionEnvelope } from '@/claude/utils/crossSessionEnvelope'
 import { parseInboundCrossSession } from '@/claude/utils/inboundCrossSession'
-import { buildPromptFromBlocks } from '@/utils/promptBuilder'
+import { buildPromptFromBlocks } from '@mobi/node-core/utils/promptBuilder'
 import type { UserContentBlock } from '@mobi/shared'
 
 const envelope = { fromName: 'Sender', fromSessionId: 'A', messageId: 'm1' }

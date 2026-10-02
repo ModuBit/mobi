@@ -92,7 +92,7 @@ export const setupCommand: CommandDefinition = {
 
         if (choice === 'now') {
             const { execFileSync } = await import('node:child_process')
-            const { getMobiCliCommand } = await import('@/utils/spawnMobiCli')
+            const { getMobiCliCommand } = await import('@mobi/node-core/utils/spawnMobiCli')
 
             const serviceArgs = ['service', 'start', '--host', settings.listenHost, '--port', String(settings.listenPort)]
             const cmd = getMobiCliCommand(serviceArgs)

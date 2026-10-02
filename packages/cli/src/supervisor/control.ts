@@ -22,8 +22,8 @@
  */
 
 import { connect, createServer, type Socket } from 'node:net'
-import { spawnMobiCli } from '@/utils/spawnMobiCli'
-import { configuration } from '@/configuration'
+import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli'
+import { configuration } from '@mobi/node-core/configuration'
 
 export type ServiceScope = 'hub' | 'runner' | 'both'
 

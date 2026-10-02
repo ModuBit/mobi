@@ -15,8 +15,8 @@
  */
 
 import { spawn, type SpawnOptions, type StdioOptions } from 'node:child_process';
-import { logger } from '@/ui/logger';
-import { killProcessByChildProcess } from '@/utils/process';
+import { logger } from '../logger';
+import { killProcessByChildProcess } from './process';
 
 const DEFAULT_ABORT_EXIT_CODES = [130, 137, 143];
 const DEFAULT_ABORT_SIGNALS: NodeJS.Signals[] = ['SIGTERM'];

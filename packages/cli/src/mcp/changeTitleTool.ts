@@ -28,7 +28,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import type { ApiSessionClient } from '@/api/apiSession'
 import { syncAgentRename, type AgentSessionLocator } from '@/agent/agentCapabilities'
 import { CHANGE_TITLE_TOOL_NAME, CHANGE_TITLE_TOOL_SHAPE } from './changeTitleShape'

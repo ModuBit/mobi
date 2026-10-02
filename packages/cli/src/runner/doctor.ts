@@ -27,7 +27,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { killProcess } from '@/utils/process';
+import { killProcess } from '@mobi/node-core/utils/process';
 
 export interface MobiProcess {
   pid: number

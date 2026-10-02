@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import { mkdir, writeFile, rm, open, stat, rename } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, resolve, relative, extname, sep, dirname, basename } from 'path'
 import { homedir } from 'os'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { getUploadsDir } from '@/constants/uploadPaths'
-import { ensureMobiGitignore } from '../git/mobiGitignore'
+import { getUploadsDir } from '@mobi/node-core/constants/uploadPaths'
+import { ensureMobiGitignore } from '@mobi/node-core/git/mobiGitignore'
 import { ALLOWED_EXTENSIONS_SET, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 /**

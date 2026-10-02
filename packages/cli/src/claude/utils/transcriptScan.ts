@@ -15,7 +15,7 @@
  */
 
 import { getSessionMessages, type SessionMessage } from '@anthropic-ai/claude-agent-sdk'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 /** 正向分页每页条数 */
 const PAGE_SIZE = 50

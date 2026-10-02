@@ -28,7 +28,7 @@
  * 覆盖需落盘持久化，不值得。
  */
 
-import { logger } from '@/ui/logger';
+import { logger } from '@mobi/node-core/logger';
 
 /** 待上报的 rewind 回报（event + body 与 hub socket handler 入参同构） */
 export type PendingRewindReport =

@@ -22,7 +22,7 @@ import {
     SandboxManager as BaseSandboxManager,
     type SandboxRuntimeConfig,
 } from '@anthropic-ai/sandbox-runtime'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 import { loadSandboxConfig, type SandboxConfig } from './sandboxConfig'
 
 // ─── 状态（单例模式，仅支持单一 cwd） ───

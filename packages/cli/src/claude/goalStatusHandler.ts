@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto'
 import type { GoalStatus } from '@mobi/shared'
 import type { ApiSessionClient } from '@/lib'
 import type { GoalStatusAttachment, RawJSONLines } from './types'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 /**
  * session 级 goal 状态处理器(local / remote 两模式共用)。

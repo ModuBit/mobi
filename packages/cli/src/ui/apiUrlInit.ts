@@ -23,8 +23,8 @@
  * 3. Default value (http://localhost:2222)
  */
 
-import { configuration } from '@/configuration'
-import { readSettings } from '@/persistence'
+import { configuration } from '@mobi/node-core/configuration'
+import { readSettings } from '@mobi/node-core/persistence'
 
 /**
  * Initialize API URL

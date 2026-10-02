@@ -26,11 +26,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const warnMock = vi.hoisted(() => vi.fn())
 const debugMock = vi.hoisted(() => vi.fn())
-vi.mock('@/ui/logger', () => ({
+vi.mock('@mobi/node-core/logger', () => ({
     logger: { warn: warnMock, debug: debugMock, info: vi.fn(), error: vi.fn() },
 }))
 
-vi.mock('@/configuration', () => ({
+vi.mock('@mobi/node-core/configuration', () => ({
     configuration: {
         apiUrl: 'http://127.0.0.1:2222',
         disconnectTimeoutMs: 600_000,
@@ -39,7 +39,7 @@ vi.mock('@/configuration', () => ({
     },
 }))
 
-vi.mock('@/api/rpc/RpcHandlerManager', () => ({
+vi.mock('@mobi/node-core/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
         setOnRpcCalled = vi.fn()
         onSocketConnect = vi.fn()

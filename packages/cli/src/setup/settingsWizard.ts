@@ -16,7 +16,7 @@
 
 import chalk from 'chalk'
 import { randomBytes } from 'node:crypto'
-import { readSettings, readHubSettings, updateSettings, updateHubSettings } from '@/persistence'
+import { readSettings, readHubSettings, updateSettings, updateHubSettings } from '@mobi/node-core/persistence'
 import { askYesNo, askInput, askPort } from './prompts'
 
 /**

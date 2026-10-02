@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { InvalidateSync } from "@/utils/sync";
+import { InvalidateSync } from "@mobi/node-core/utils/sync";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 
 export type SessionFileScanEntry<TEvent> = {

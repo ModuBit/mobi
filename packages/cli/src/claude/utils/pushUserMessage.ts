@@ -16,7 +16,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { PromptPayload } from '@/utils/promptBuilder'
+import type { PromptPayload } from '@mobi/node-core/utils/promptBuilder'
 import { logger } from '@/lib'
 
 export interface PushUserMessageOpts {

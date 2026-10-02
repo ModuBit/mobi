@@ -48,15 +48,15 @@ import {
     type ReviewOverview,
     type TurnDiffFileEntry,
 } from '@mobi/shared'
-import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus, textLineCount } from '../git/gitExec'
-import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '../git/turnArchiveStore'
-import { getTurnFulltextRoot } from '../git/turnFulltextStore'
-import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '../git/turnAttributionProvider'
-import { resolveDiffTarget } from '../git/diffTargetResolver'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { assembleDiffEntries, git, MOBI_STATE_DIR, parseNameStatus, textLineCount } from '@mobi/node-core/git/gitExec'
+import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from '@mobi/node-core/git/turnArchiveStore'
+import { getTurnFulltextRoot } from '@mobi/node-core/git/turnFulltextStore'
+import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '@mobi/node-core/git/turnAttributionProvider'
+import { resolveDiffTarget } from '@mobi/node-core/git/diffTargetResolver'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
 import { rpcError } from '../rpcResponses'
-import { logger } from '@/ui/logger'
+import { logger } from '@mobi/node-core/logger'
 
 /** untracked 逐文件计数的上限（防超大仓库海量新文件打爆 exec） */
 const UNTRACKED_COUNT_CAP = 100

@@ -15,8 +15,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { configuration } from '@/configuration'
-import { updateSettings } from '@/persistence'
+import { configuration } from '@mobi/node-core/configuration'
+import { updateSettings } from '@mobi/node-core/persistence'
 
 export async function authAndSetupMachineIfNeeded(): Promise<{
     token: string

@@ -25,10 +25,10 @@
 
 import { unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configuration } from '@/configuration'
-import { logger } from '@/ui/logger'
-import { spawnMobiCli } from '@/utils/spawnMobiCli'
-import { isUrlOk, waitForUrlOk } from '@/utils/httpHealth'
+import { configuration } from '@mobi/node-core/configuration'
+import { logger } from '@mobi/node-core/logger'
+import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli'
+import { isUrlOk, waitForUrlOk } from '@mobi/node-core/utils/httpHealth'
 import { Supervisor } from './supervisor'
 import {
     startControlServer,

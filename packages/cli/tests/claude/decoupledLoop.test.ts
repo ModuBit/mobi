@@ -20,7 +20,7 @@ import {
     userInputLoop,
     type LoopContext,
 } from '../../src/claude/claudeRemote'
-import { PushableAsyncIterable } from '../../src/utils/PushableAsyncIterable'
+import { PushableAsyncIterable } from '@mobi/node-core/utils/PushableAsyncIterable'
 import type { SpecialCommandContext } from '../../src/claude/claudeRemote'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 

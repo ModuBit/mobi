@@ -28,7 +28,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { logger } from '@/ui/logger'
+import { logger } from '../logger'
 import type { TurnDiffFileEntry, TurnDiffFileKind } from '@mobi/shared'
 
 const execFileAsync = promisify(execFile)

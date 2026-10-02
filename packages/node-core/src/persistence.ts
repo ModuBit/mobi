@@ -24,37 +24,12 @@ import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { configuration } from '@/configuration'
-import { isProcessAlive } from '@/utils/process';
-import type { WebToolsConfig } from '@mobi/shared'
-
-export interface Settings {
-  // This ID is used as the actual database ID on the server
-  // All machine operations use this ID
-  machineId?: string
-  // cli 的连接凭证（`mobi auth login` 写入，随 cli 部署位置走）；
-  // hub 侧验证基准存 settings.hub.json，两份语义独立
-  cliApiToken?: string
-  // API URL for server connections (priority: env MOBI_API_URL > this > default)
-  apiUrl?: string
-  // Legacy field name (for migration, read-only)
-  serverUrl?: string
-  // 超时配置
-  disconnectTimeoutMs?: number   // 连接断开超时
-  idleTimeoutMs?: number         // 交互不活跃超时
-  timeoutWarningMs?: number      // 预警提前时间
-  // 升级 channel: 'stable' | 'rc'，默认 'stable'
-  updateChannel?: 'stable' | 'rc'
-  // 注入给 claude 子进程的额外环境变量（优先级高于 process.env 与内置开关）
-  // 由 buildClaudeFeatureEnv 合并进 sdkOptions.env，用户可在 settings.cli.json 自由扩展
-  claudeEnv?: Record<string, string>
-  // !bash 命令本地执行后，是否把命令+输出作为隐藏上下文注入 SDK，让模型感知并响应。
-  // true（默认）= 注入即响应（等同 Claude CLI 的 respondToBashCommands:true）；
-  // false = 仅本地执行、UI 展示合成工具对，模型完全不参与（!cmd 不耗 token）。
-  bashInjectContext?: boolean
-  // web 工具配置（provider 启停/凭据/当前选择），由 runner RPC 读写；会话进程 mtime 惰性读
-  webTools?: WebToolsConfig
-}
+import { configuration } from './configuration'
+import { isProcessAlive } from './utils/process';
+// Settings 定义已抽 settingsTypes.ts（断 configuration↔persistence 循环，ticket-11）；
+// 此处 re-export 保调用方（import type { Settings } from persistence）零改动
+export type { Settings } from './settingsTypes'
+import type { Settings } from './settingsTypes'
 
 /** hub 设置文件受限写形状：cli 只允许写 listen*（hub 监听配置），其余字段归 hub 所有 */
 export interface HubListenSettings {

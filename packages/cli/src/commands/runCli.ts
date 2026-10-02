@@ -16,9 +16,9 @@
 
 import packageJson from '../../package.json'
 import { ensureRuntimeAssets } from '@/runtime/assets'
-import { isBunCompiled } from '@/projectPath'
-import { logger } from '@/ui/logger'
-import { getCliArgs } from '@/utils/cliArgs'
+import { isBunCompiled } from '@mobi/node-core/projectPath'
+import { logger } from '@mobi/node-core/logger'
+import { getCliArgs } from '@mobi/node-core/utils/cliArgs'
 import { loadProfile } from '@mobi/shared/profile'
 import { resolveCommand } from './registry'
 
@@ -33,7 +33,7 @@ export async function runCli(): Promise<void> {
 
     // cli 侧旧单文件 settings.json 的一次性迁移（profile 的 MOBI_HOME 已就位）。
     // 须先于 configuration 首次读 settings：远程部署形态下 hub 的迁移够不到 cli 机器
-    const { migrateLegacyCliSettings } = await import('@/persistence')
+    const { migrateLegacyCliSettings } = await import('@mobi/node-core/persistence')
     await migrateLegacyCliSettings()
 
     if (args.includes('-v') || args.includes('--version')) {

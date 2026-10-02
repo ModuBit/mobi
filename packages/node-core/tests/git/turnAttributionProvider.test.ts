@@ -24,9 +24,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TurnAttributionProvider, gatePathForSource } from '@/modules/common/git/turnAttributionProvider'
-import { FileTurnArchiveStore, getTurnArchivePath } from '@/modules/common/git/turnArchiveStore'
-import { FileTurnFulltextStore, getTurnFulltextRoot } from '@/modules/common/git/turnFulltextStore'
+import { TurnAttributionProvider, gatePathForSource } from '@/git/turnAttributionProvider'
+import { FileTurnArchiveStore, getTurnArchivePath } from '@/git/turnArchiveStore'
+import { FileTurnFulltextStore, getTurnFulltextRoot } from '@/git/turnFulltextStore'
 
 const DIR_SID = 's-1'
 

@@ -29,7 +29,7 @@ import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AddressInfo } from "node:net";
 import { asMcpInputSchema } from "@/mcp/mcpSchemaCompat";
-import { logger } from "@/ui/logger";
+import { logger } from "@mobi/node-core/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import type { AgentSessionLocator } from "@/agent/agentCapabilities";
 import { createChangeTitleToolForSession } from "@/mcp/changeTitleTool";

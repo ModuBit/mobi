@@ -19,14 +19,14 @@
  * Used by CLI commands to interact with running runner
  */
 
-import { logger } from '@/ui/logger';
-import { clearRunnerState, readRunnerState } from '@/persistence';
+import { logger } from '@mobi/node-core/logger';
+import { clearRunnerState, readRunnerState } from '@mobi/node-core/persistence';
 import packageJson from '../../package.json';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { isBunCompiled, projectPath } from '@/projectPath';
-import { isProcessAlive, killProcess } from '@/utils/process';
-import { loopbackRunnerPost } from '@/utils/loopbackRunnerPost';
+import { isBunCompiled, projectPath } from '@mobi/node-core/projectPath';
+import { isProcessAlive, killProcess } from '@mobi/node-core/utils/process';
+import { loopbackRunnerPost } from '@mobi/node-core/utils/loopbackRunnerPost';
 
 export function getInstalledCliMtimeMs(): number | undefined {
   if (isBunCompiled()) {
@@ -155,7 +155,7 @@ export async function isRunnerRunningCurrentlyInstalledMobiVersion(): Promise<bo
     // If reading package.json doesn't work correctly after npm upgrades, 
     // we can revert to spawning a process (but should add timeout and cleanup!)
     /*
-    const { spawnMobiCLI } = await import('@/utils/spawnMobiCLI');
+    const { spawnMobiCLI } = await import('@mobi/node-core/utils/spawnMobiCli');
     const MobiProcess = spawnMobiCLI(['--version'], { stdio: 'pipe' });
     let version: string | null = null;
     MobiProcess.stdout?.on('data', (data) => {

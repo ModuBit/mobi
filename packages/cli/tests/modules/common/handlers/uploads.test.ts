@@ -19,7 +19,7 @@ import { mkdtemp, rm, readFile, stat } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerUploadHandlers } from '@/modules/common/handlers/uploads'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 

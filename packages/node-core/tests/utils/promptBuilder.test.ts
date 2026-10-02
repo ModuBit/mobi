@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { UserContentBlock } from '@mobi/shared'
 
-vi.mock('@/ui/logger', () => ({
+vi.mock('@/logger', () => ({
     logger: { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() },
 }))
 

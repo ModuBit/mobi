@@ -16,14 +16,14 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { logger } from "@/ui/logger";
+import { logger } from "@mobi/node-core/logger";
 import { restoreTerminalState } from "@/ui/terminalState";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
 import { appendMcpConfigArg } from "./utils/mcpConfig";
-import { withBunRuntimeEnv } from "@/utils/bunRuntime";
-import { spawnWithAbort } from "@/utils/spawnWithAbort";
-import { stripNewlinesForWindowsShellArg } from "@/utils/shellEscape";
+import { withBunRuntimeEnv } from "@mobi/node-core/utils/bunRuntime";
+import { spawnWithAbort } from "@mobi/node-core/utils/spawnWithAbort";
+import { stripNewlinesForWindowsShellArg } from "@mobi/node-core/utils/shellEscape";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import type { McpServerConfig, Settings } from "@anthropic-ai/claude-agent-sdk";
 

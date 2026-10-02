@@ -18,8 +18,8 @@ import chalk from 'chalk'
 import os from 'node:os'
 import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
-import { configuration } from '@/configuration'
-import { readSettings, clearMachineId, updateSettings } from '@/persistence'
+import { configuration } from '@mobi/node-core/configuration'
+import { readSettings, clearMachineId, updateSettings } from '@mobi/node-core/persistence'
 import type { CommandDefinition } from './types'
 
 /** GET/POST /cli/web-token 响应（hub 侧 webApiToken 归 hub 所有，cli 经 API 读取/轮换） */

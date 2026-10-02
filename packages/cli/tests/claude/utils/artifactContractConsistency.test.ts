@@ -33,7 +33,7 @@ import {
   ARTIFACT_HTML_INLINE_LIMIT_MB,
 } from '@mobi/shared';
 import { systemPrompt } from '@/claude/utils/systemPrompt';
-import { projectPath } from '@/projectPath';
+import { projectPath } from '@mobi/node-core/projectPath';
 
 /** skill 散文（与 bundledPlugins 解包同源的仓库文件） */
 const SKILL_MD = readFileSync(

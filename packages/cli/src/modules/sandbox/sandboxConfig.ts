@@ -16,8 +16,8 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { logger } from '@/ui/logger'
-import { configuration } from '@/configuration'
+import { logger } from '@mobi/node-core/logger'
+import { configuration } from '@mobi/node-core/configuration'
 
 // 沙箱配置
 export interface SandboxConfig {

@@ -19,8 +19,8 @@
  */
 
 import { spawn } from 'child_process';
-import { resolveBinaryPath } from '@/utils/resolveBinaryPath';
-import { withBunRuntimeEnv } from '@/utils/bunRuntime';
+import { resolveBinaryPath } from '@mobi/node-core/utils/resolveBinaryPath';
+import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime';
 
 export interface RipgrepResult {
     exitCode: number

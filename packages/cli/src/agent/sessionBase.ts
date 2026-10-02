@@ -15,11 +15,11 @@
  */
 
 import { ApiClient, ApiSessionClient } from '@/lib';
-import { MessageQueue } from '@/utils/MessageQueue';
+import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import type { Metadata, SessionModel, SessionPermissionMode } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
-import { logger } from '@/ui/logger';
-import { readGitBranch } from '@/utils/worktreeEnv';
+import { logger } from '@mobi/node-core/logger';
+import { readGitBranch } from '@mobi/node-core/utils/worktreeEnv';
 
 export type AgentSessionBaseOptions<Mode> = {
     api: ApiClient;

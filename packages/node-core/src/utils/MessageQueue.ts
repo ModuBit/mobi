@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { logger } from "@/ui/logger";
+import { logger } from "../logger";
 import type { PromptContentBlock, PromptPayload } from "./promptBuilder";
 
 interface QueueItem<T> {

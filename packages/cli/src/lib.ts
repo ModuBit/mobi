@@ -28,7 +28,7 @@
 export { ApiClient } from '@/api/api'
 export { ApiSessionClient } from '@/api/apiSession'
 
-export { logger } from '@/ui/logger'
-export { configuration } from '@/configuration'
+export { logger } from '@mobi/node-core/logger'
+export { configuration } from '@mobi/node-core/configuration'
 
 export { RawJSONLinesSchema, type RawJSONLines } from '@/claude/types'
