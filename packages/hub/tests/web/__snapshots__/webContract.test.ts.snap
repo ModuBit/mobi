@@ -1,0 +1,110 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Web Contract Snapshot HTTP routes snapshot 1`] = `
+[
+  "DELETE /api/auth/web-token",
+  "DELETE /api/sessions/:id",
+  "DELETE /api/sessions/:sessionId/messages/:messageId",
+  "DELETE /api/workspaces/:id",
+  "GET /api/cli/config",
+  "GET /api/events",
+  "GET /api/files/preview",
+  "GET /api/files/read",
+  "GET /api/machines",
+  "GET /api/machines/:id",
+  "GET /api/manifest.json",
+  "GET /api/sessions",
+  "GET /api/sessions/:id",
+  "GET /api/sessions/:sessionId/archive/:turnSeq",
+  "GET /api/sessions/:sessionId/messages",
+  "GET /api/sessions/:sessionId/messages/:messageId",
+  "GET /api/sessions/:sessionId/snapshot",
+  "GET /api/workspaces",
+  "GET /api/workspaces/:id",
+  "GET /health",
+  "PATCH /api/cli/config",
+  "PATCH /api/workspaces/:id",
+  "POST /api/auth/web-token",
+  "POST /api/machines/:id/restart",
+  "POST /api/permissions/:requestId/allow",
+  "POST /api/permissions/:requestId/deny",
+  "POST /api/push/subscribe",
+  "POST /api/push/unsubscribe",
+  "POST /api/sessions",
+  "POST /api/sessions/:id/fork",
+  "POST /api/sessions/:id/messages",
+  "POST /api/sessions/:id/rewind",
+  "POST /api/sessions/:id/wake",
+  "POST /api/webtools/fetch",
+]
+`;
+
+exports[`Web Contract Snapshot SSE event types snapshot 1`] = `
+[
+  "connection-changed",
+  "desktop-control-changed",
+  "heartbeat",
+  "idle-timeout-warning",
+  "machine-updated",
+  "message-received",
+  "message-snapshot",
+  "message-snapshot-delta",
+  "message-withdrawn",
+  "messages-submitted",
+  "rewind-completed",
+  "rewind-truncated",
+  "sdk-metadata-refreshed",
+  "session-added",
+  "session-removed",
+  "session-updated",
+  "toast",
+  "ui-command",
+  "workspace-added",
+  "workspace-removed",
+  "workspace-updated",
+]
+`;
+
+exports[`Web Contract Snapshot Machine response shape 1`] = `
+[
+  "active",
+  "createdAt",
+  "id",
+  "lastSeenAt",
+  "metadata",
+  "name",
+  "namespace",
+  "status",
+  "updatedAt",
+]
+`;
+
+exports[`Web Contract Snapshot Session response shape 1`] = `
+[
+  "active",
+  "activeAt",
+  "agentState",
+  "agentStateVersion",
+  "createdAt",
+  "id",
+  "metadata",
+  "metadataVersion",
+  "namespace",
+  "permissionMode",
+  "running",
+  "runningAt",
+  "seq",
+  "updatedAt",
+]
+`;
+
+exports[`Web Contract Snapshot Workspace response shape 1`] = `
+[
+  "createdAt",
+  "folders",
+  "id",
+  "name",
+  "namespace",
+  "updatedAt",
+]
+`;
