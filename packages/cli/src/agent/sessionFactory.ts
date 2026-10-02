@@ -21,9 +21,10 @@ import { access } from 'node:fs/promises'
 
 import { ApiClient } from '@/api/api'
 import type { ApiSessionClient } from '@/api/apiSession'
-import type { AgentState, MachineMetadata, Metadata, Workspace, Session } from '@/api/types'
+import type { AgentState, Metadata, Workspace, Session } from '@/api/types'
 import type { EffortLevel } from '@mobi/shared'
 import { notifyRunnerSessionStarted } from '@/runner/controlClient'
+import { buildMachineMetadata } from '@/runner/machineMetadata'
 import { readSettings } from '@/persistence'
 import { configuration } from '@/configuration'
 import { logger } from '@/ui/logger'
@@ -57,17 +58,6 @@ export type SessionBootstrapResult = {
     workingDirectory: string
     /** 创建时冻结 / resume 回放的额外工作目录（已过滤不存在路径） */
     additionalDirectories: string[]
-}
-
-export function buildMachineMetadata(): MachineMetadata {
-    return {
-        host: process.env.MOBI_HOSTNAME || os.hostname(),
-        platform: os.platform(),
-        mobiCliVersion: packageJson.version,
-        homeDir: os.homedir(),
-        mobiHomeDir: configuration.mobiHomeDir,
-        mobiLibDir: runtimePath()
-    }
 }
 
 export function buildSessionMetadata(options: {

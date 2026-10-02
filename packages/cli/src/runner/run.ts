@@ -36,7 +36,7 @@ import { startRunnerControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
-import { buildMachineMetadata } from '@/agent/sessionFactory';
+import { buildMachineMetadata } from './machineMetadata';
 
 export async function startRunner(): Promise<void> {
   // —— 退出日志：最早挂载，注入 logger ring buffer 还原崩溃前上下文 ——
