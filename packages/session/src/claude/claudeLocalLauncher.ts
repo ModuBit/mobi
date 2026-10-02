@@ -23,7 +23,7 @@ import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
-import { BaseLocalLauncher } from "@/modules/common/launcher/BaseLocalLauncher";
+import { BaseLocalLauncher } from "../modules/common/launcher/BaseLocalLauncher";
 import { logger } from "@mobi/node-core/logger";
 import type { EnhancedMode } from "./types";
 

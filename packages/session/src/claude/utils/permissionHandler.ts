@@ -21,7 +21,7 @@
  * Handles tool permission requests, responses, and state management.
  */
 
-import { logger } from "@/lib";
+import { logger } from '@mobi/node-core/logger'
 import type { ElicitationRequest, ElicitationResult, SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "@mobi/node-core/claudeSdk/types";
 import type { PermissionAnswers, PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
@@ -32,7 +32,7 @@ import {
     BasePermissionHandler,
     type PendingPermissionRequest,
     type PermissionCompletion
-} from "@/modules/common/permission/BasePermissionHandler";
+} from "../../modules/common/permission/BasePermissionHandler";
 
 interface PermissionResponse {
     id: string;

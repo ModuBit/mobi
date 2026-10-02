@@ -31,7 +31,7 @@
  */
 
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
-import { ApiSessionClient } from '@/api/apiSession'
+import { ApiSessionClient } from '../api/apiSession'
 import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
 import { toSdkTool } from './sdkTool'
 import { OPEN_IN_MOBI_TOOL_NAME, createOpenInMobiTool } from './openInMobiTool'

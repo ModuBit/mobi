@@ -19,7 +19,7 @@ import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@mobi/node-core/logger";
 import { getProjectPath } from "./path";
-import { BaseSessionScanner, SessionFileScanEntry, SessionFileScanResult, SessionFileScanStats } from "@/modules/common/session/BaseSessionScanner";
+import { BaseSessionScanner, SessionFileScanEntry, SessionFileScanResult, SessionFileScanStats } from "../../modules/common/session/BaseSessionScanner";
 
 /**
  * Claude Code 内部事件类型，需要在扫描时静默跳过。

@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-import { ApiSessionClient } from "@/api/apiSession"
-import type { LauncherDormancyFacts } from "@/claude/utils/dormancyGate";
+import { ApiSessionClient } from "../api/apiSession"
+import type { LauncherDormancyFacts } from "./utils/dormancyGate";
 import { MessageQueue } from "@mobi/node-core/utils/MessageQueue"
 import { logger } from "@mobi/node-core/logger"
-import { runLocalRemoteSession } from "@/agent/loopBase"
+import { runLocalRemoteSession } from "../agent/loopBase"
 import { Session } from "./session"
 import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
-import { ApiClient } from "@/lib"
+import { ApiClient } from '@mobi/node-core/api/api'
 import type { SessionModel } from "@mobi/node-core/api/types"
 import type { EffortLevel } from "@mobi/shared/types"
 import { PermissionMode, QueryControlRef, type EnhancedMode } from "./types"

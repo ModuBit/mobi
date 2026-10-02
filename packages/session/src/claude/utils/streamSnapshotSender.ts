@@ -16,7 +16,7 @@
 
 import { SNAPSHOT_PENDING_ID, buildStreamingToolInputPreview, type DecryptedMessage, type SnapshotBlock, type SnapshotBlockDelta, type SnapshotDeltaFrame } from '@mobi/shared'
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { RawJSONLines } from '@/claude/types'
+import type { RawJSONLines } from '../types'
 import type { SDKToLogConverter } from './sdkToLogConverter'
 
 /**

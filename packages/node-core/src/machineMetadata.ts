@@ -15,10 +15,9 @@
  */
 
 /**
- * 机器身份元数据构造（runner 侧）：machine 注册时上报的静态身份。
- * 从 agent/sessionFactory 拆出——daemon（runner）与 session（终端游离会话）
- * 都要注册 machine，但构造逻辑是宿主能力，随 11 票与 getEnvironmentInfo/
- * machineId 读取一起归 node-core。
+ * 机器身份元数据构造：machine 注册时上报的静态身份。
+ * daemon（runner）与 session（终端游离会话）都要注册 machine，
+ * 构造逻辑是宿主能力，归 node-core（锚 cli/package.json 取版本）。
  */
 
 import os from 'node:os'
@@ -26,7 +25,7 @@ import os from 'node:os'
 import type { MachineMetadata } from '@mobi/shared/hostProtocol'
 import { configuration } from '@mobi/node-core/configuration'
 import { runtimePath } from '@mobi/node-core/projectPath'
-import packageJson from '../../package.json'
+import packageJson from '../../cli/package.json'
 
 export function buildMachineMetadata(): MachineMetadata {
     return {

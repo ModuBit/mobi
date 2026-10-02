@@ -8,6 +8,8 @@
 
 ## 关键文件
 
+会话宿主代码（claude/ agent/ mcp/ terminal/ api/apiSession 等）已搬 `@mobi/session`（ticket-13），机器层 handlers / ripgrep / api 四件在 `@mobi/node-core`（11/12 票）。cli 只剩组合根：入口、命令路由、supervisor/setup/upgrader/auth UI、runtime 编译期资产。
+
 | 文件 | 职责 |
 |------|------|
 | `src/index.ts` | 主入口 |
@@ -15,23 +17,9 @@
 | `src/commands/registry.ts` | 命令注册表 |
 | `src/commands/claude.ts` | 默认命令，启动 Claude 会话 |
 | `src/commands/claudeArgs.ts` | claude 命令参数解析（parseStartOptions 纯函数，含 --project） |
-| `src/runner/spawnArgs.ts` | runner spawn 子进程 CLI 参数构建（buildClaudeSpawnArgs 纯函数） |
 | `src/supervisor/` | 进程托管：`supervisor.ts` 状态机、`control.ts` IPC、`index.ts` runSupervisor 编排、`desiredState.ts` 期望状态、`restartPolicy.ts` 退避策略、`ppidWatchdog.ts` 看门狗 |
 | `src/commands/serviceOps.ts` | service 命令族共用操作（ensure supervisor + IPC + 状态输出） |
 | `src/utils/httpHealth.ts` | waitForUrlOk HTTP 健康轮询 |
-| `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
-| `src/claude/utils/queryRestart.ts` | Remote Query 重启单槽：统一 rewind / output style 的占位、队列哨兵配对与完成语义 |
-| `src/claude/utils/cacheStatus.ts` | SessionStart 缓存信号组装（`buildCacheStatusFromSessionStart` 两模式共用；resume/fork 且过期才产出，[cache-probe] 探针日志） |
-| `src/claude/utils/inboundChannel.ts` | 入站通道写端：本轮 sink 的生死与「能收消息」上报同进同出（`reportReceiveReadiness` 的唯一调用方；Hub 侧消费见 [api-session](/docs/architecture/cli/api/api-session.md)） |
-| `src/mcp/changeTitleTool.ts` | change_title 核心工具工厂（transport 无关；local HTTP / remote SDK 进程内，见 ADR 0001） |
-| `src/mcp/changeTitleShape.ts` | change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）：三种壳（SDK / HTTP / stdio bridge）共用，bridge 不 import 整条实现 |
-| `src/mcp/mobiAppsServer.ts` | `mobi-apps` 工具族装配（A 类 UI 命令 + B 类会话操作；仅 remote，B 类依赖 Hub，见 ADR 0005）；注册表兼作预授权清单的单源 |
-| `src/mcp/sessionTransports.ts` | 会话 MCP / hook settings 按模式装配（remote 内联 settings 零临时文件）；派生 `MOBI_PREAUTHORIZED_TOOLS` |
-| `src/webtools/` | 自定义 Web 工具（挂进 `mobi-core` server，toolAliases 替换内置 WebSearch/WebFetch；仅 remote 模式） |
-| `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
-| `src/modules/common/handlers/fileRead.ts` | 两通道共享文件读取（meta、范围、EOF、结构化错误） |
-| `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/uploads`） |
-| `src/modules/common/handlers/uploads.ts` | 文件上传/删除 RPC Handler |
 
 ## 已知陷阱
 

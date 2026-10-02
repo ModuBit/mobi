@@ -17,7 +17,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "@mobi/node-core/logger";
-import { restoreTerminalState } from "@/ui/terminalState";
+import { restoreTerminalState } from "../ui/terminalState";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
 import { appendMcpConfigArg } from "./utils/mcpConfig";

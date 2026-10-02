@@ -15,7 +15,7 @@
  */
 
 import { InvalidateSync } from "@mobi/node-core/utils/sync";
-import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
+import { startFileWatcher } from "../../watcher/startFileWatcher";
 
 export type SessionFileScanEntry<TEvent> = {
     event: TEvent;

@@ -15,7 +15,7 @@
  */
 
 import { renameSession } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentCapabilities, AgentSessionLocator } from '@/agent/agentCapabilities'
+import type { AgentCapabilities, AgentSessionLocator } from '../agent/agentCapabilities'
 import type { Session } from './session'
 
 /**

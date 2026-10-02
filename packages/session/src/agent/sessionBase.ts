@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { ApiClient, ApiSessionClient } from '@/lib';
+import { ApiClient } from '@mobi/node-core/api/api'
+import type { ApiSessionClient } from '../api/apiSession'
 import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import type { Metadata, SessionModel, SessionPermissionMode } from '@mobi/node-core/api/types';
 import type { EffortLevel } from '@mobi/shared';

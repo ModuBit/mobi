@@ -16,7 +16,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { GoalStatus } from '@mobi/shared'
-import type { ApiSessionClient } from '@/lib'
+import type { ApiSessionClient } from '../api/apiSession'
 import type { GoalStatusAttachment, RawJSONLines } from './types'
 import { logger } from '@mobi/node-core/logger'
 

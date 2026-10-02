@@ -23,7 +23,7 @@ import { logger } from '@mobi/node-core/logger'
 import { backoff } from '@mobi/node-core/utils/time'
 import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
 import { AsyncLock } from '@mobi/node-core/utils/lock'
-import type { RawJSONLines } from '@/claude/types'
+import type { RawJSONLines } from '../claude/types'
 import { configuration } from '@mobi/node-core/configuration'
 import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
@@ -49,9 +49,9 @@ import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessag
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerCommonHandlers } from '@mobi/node-core/handlers/registerCommonHandlers'
 import { cleanupUploadDir } from '@mobi/node-core/handlers/uploads'
-import { TerminalManager } from '@/terminal/TerminalManager'
+import { TerminalManager } from '../terminal/TerminalManager'
 import { applyVersionedAck } from '@mobi/node-core/api/versionedUpdate'
-import { IdleTimer } from '@/modules/common/idleTimer'
+import { IdleTimer } from '../modules/common/idleTimer'
 import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
 
 /** 兜底重连初始退避（ms），上限 30s */

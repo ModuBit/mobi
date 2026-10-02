@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { runMobiMcpStdioBridge } from '@/mcp/mobiMcpStdioBridge'
+import { runMobiMcpStdioBridge } from '@mobi/session/mcp/mobiMcpStdioBridge'
 import type { CommandDefinition } from './types'
 
 export const mcpCommand: CommandDefinition = {

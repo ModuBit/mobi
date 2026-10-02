@@ -36,7 +36,7 @@ import { startRunnerControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
-import { buildMachineMetadata } from './machineMetadata';
+import { buildMachineMetadata } from '@mobi/node-core/machineMetadata';
 import { ApiMachineClient } from './apiMachine';
 
 export async function startRunner(): Promise<void> {

@@ -34,9 +34,9 @@
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import { MOBI_APPS_SERVER_NAME, MOBI_CORE_SERVER_NAME } from '@mobi/shared'
-import type { AgentSessionLocator } from '@/agent/agentCapabilities'
-import type { ApiSessionClient } from '@/api/apiSession'
-import { CROSS_SESSION_INBOUND_ACCEPT } from '@/modules/common/hooks/generateHookSettings'
+import type { AgentSessionLocator } from '../agent/agentCapabilities'
+import type { ApiSessionClient } from '../api/apiSession'
+import { CROSS_SESSION_INBOUND_ACCEPT } from '../modules/common/hooks/generateHookSettings'
 import { MOBI_APPS_TOOL_NAMES, createMobiAppsServer } from './mobiAppsServer'
 import { MOBI_CORE_TOOL_NAMES, createMobiCoreServer } from './mobiCoreServer'
 

@@ -26,9 +26,9 @@
 
 // These exports allow me to use this package a library in dev-environment cli helper programs
 export { ApiClient } from '@mobi/node-core/api/api'
-export { ApiSessionClient } from '@/api/apiSession'
+export { ApiSessionClient } from '@mobi/session/api/apiSession'
 
 export { logger } from '@mobi/node-core/logger'
 export { configuration } from '@mobi/node-core/configuration'
 
-export { RawJSONLinesSchema, type RawJSONLines } from '@/claude/types'
+export { RawJSONLinesSchema, type RawJSONLines } from '@mobi/session/claude/types'

@@ -17,9 +17,9 @@
 import { render } from 'ink';
 import type { ReactElement } from 'react';
 import type { StopKind } from '@mobi/shared';
-import { normalizeStopKind } from '@/claude/utils/stopAction';
-import { MessageBuffer } from '@/ui/ink/messageBuffer';
-import { restoreTerminalState } from '@/ui/terminalState';
+import { normalizeStopKind } from '../../../claude/utils/stopAction';
+import { MessageBuffer } from '../../../ui/ink/messageBuffer';
+import { restoreTerminalState } from '../../../ui/terminalState';
 
 export type RemoteLauncherExitReason = 'switch' | 'exit';
 

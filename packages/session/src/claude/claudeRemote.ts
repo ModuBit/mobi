@@ -39,11 +39,12 @@ import {
 import { formatPluginError } from "./utils/capabilityDiscovery";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
-import { parseSpecialCommand, checkDangerousCommand } from "@/parsers/specialCommands";
-import { logger, configuration } from "@/lib";
+import { parseSpecialCommand, checkDangerousCommand } from "../parsers/specialCommands";
+import { logger } from '@mobi/node-core/logger'
+import { configuration } from '@mobi/node-core/configuration'
 import { PushableAsyncIterable } from "@mobi/node-core/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
-import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
+import { awaitFileExist } from "../modules/watcher/awaitFileExist";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "@mobi/node-core/claudeSdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
@@ -51,7 +52,7 @@ import type { SDKUIHints } from "@mobi/shared";
 import { isAbortedTerminalReason, type CommandLifecycleState } from "@mobi/shared";
 import { buildBundledPluginOptions } from "@mobi/node-core/runtime/bundledPlugins";
 import { getClaudeExecutablePath } from "@mobi/node-core/claudeSdk/claudeExecutable";
-import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
+import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "../modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'

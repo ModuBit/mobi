@@ -18,17 +18,17 @@ import React from "react";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Session } from "./session";
-import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
+import { RemoteModeDisplay } from "../ui/ink/RemoteModeDisplay";
 import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState } from "./claudeRemote";
 import { classifyInboundTurn } from './utils/inboundCrossSession';
 import { createAgentMessagePushHandler } from './utils/agentMessagePushHandler';
-import { parseSpecialCommand } from "@/parsers/specialCommands";
+import { parseSpecialCommand } from "../parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@mobi/node-core/utils/future";
 import type { PromptPayload } from "@mobi/node-core/utils/promptBuilder";
 import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
-import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
+import { formatClaudeMessageForInk } from "../ui/messageFormatterInk";
 import { logger } from "@mobi/node-core/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { applyContextReset } from "./utils/contextReset";
@@ -45,7 +45,7 @@ import { RESTART_EXIT_SENTINEL } from "./utils/queryRestart";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage, type ForkActivationFailureReason } from "./utils/forkActivation";
-import type { ApiSessionClient } from "@/api/apiSession";
+import type { ApiSessionClient } from "../api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { TurnDiffReporter } from "./turnDiffReporter";
@@ -66,7 +66,7 @@ import {
     RemoteLauncherBase,
     type RemoteLauncherDisplayContext,
     type RemoteLauncherExitReason
-} from "@/modules/common/remote/RemoteLauncherBase";
+} from "../modules/common/remote/RemoteLauncherBase";
 
 /** commands_changed 触发能力发现的最小间隔 */
 const COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS = 10_000;

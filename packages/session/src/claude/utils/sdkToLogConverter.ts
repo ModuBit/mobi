@@ -28,7 +28,7 @@ import type {
     SDKSystemMessage,
     SDKResultMessage
 } from '@anthropic-ai/claude-agent-sdk'
-import type { RawJSONLines } from '@/claude/types'
+import type { RawJSONLines } from '../types'
 import type { ClaudePermissionMode } from '@mobi/shared/types'
 
 /**

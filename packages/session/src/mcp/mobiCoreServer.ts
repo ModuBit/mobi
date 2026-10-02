@@ -26,11 +26,11 @@
  */
 
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
-import { ApiSessionClient } from '@/api/apiSession'
+import { ApiSessionClient } from '../api/apiSession'
 import { MOBI_CORE_SERVER_NAME } from '@mobi/shared'
-import type { AgentSessionLocator } from '@/agent/agentCapabilities'
+import type { AgentSessionLocator } from '../agent/agentCapabilities'
 import { CHANGE_TITLE_TOOL_NAME, createChangeTitleToolForSession } from './changeTitleTool'
-import { webSearchTool, webFetchTool } from '@/webtools/server'
+import { webSearchTool, webFetchTool } from '../webtools/server'
 import { toSdkTool } from './sdkTool'
 
 /**

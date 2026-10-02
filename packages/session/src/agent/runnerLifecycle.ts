@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import type { ApiSessionClient } from '@/api/apiSession'
+import type { ApiSessionClient } from '../api/apiSession'
 import { logger } from '@mobi/node-core/logger'
-import { restoreTerminalState } from '@/ui/terminalState'
+import { restoreTerminalState } from '../ui/terminalState'
 
 type RunnerLifecycleOptions = {
     apiSession: ApiSessionClient

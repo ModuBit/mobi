@@ -15,7 +15,7 @@
  */
 
 import { RpcHandlerManager } from "@mobi/node-core/rpc/RpcHandlerManager";
-import { logger } from "@/lib";
+import { logger } from '@mobi/node-core/logger'
 
 type KillSessionRequest = Record<string, never>;
 

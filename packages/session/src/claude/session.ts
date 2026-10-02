@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-import { ApiClient, ApiSessionClient } from '@/lib';
+import { ApiClient } from '@mobi/node-core/api/api'
+import type { ApiSessionClient } from '../api/apiSession'
 import { MessageQueue } from '@mobi/node-core/utils/MessageQueue';
 import { logger } from '@mobi/node-core/logger';
-import { AgentSessionBase } from '@/agent/sessionBase';
+import { AgentSessionBase } from '../agent/sessionBase';
 import type { McpServerConfig, Settings } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@mobi/node-core/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode, PermissionMode } from './types';
 import { QueryRestartController } from './utils/queryRestart';
 import type { ForkActivationPlan } from './utils/forkActivation';
-import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
+import type { LocalLaunchExitReason } from '../agent/localLaunchPolicy';
 
 type LocalLaunchFailure = {
     message: string;

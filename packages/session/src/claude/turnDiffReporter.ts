@@ -47,7 +47,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import type { RawJSONLines } from '@/claude/types'
+import type { RawJSONLines } from './types'
 import { OVERSIZE_DIFF_LINES, TURN_DIFF_EVENT, getField, summarizeTurnDiffFiles, TurnDiffPayloadSchema, type TurnDiffFileEntry, type TurnDiffPayload } from '@mobi/shared'
 import { git, textLineCount } from '@mobi/node-core/git/gitExec'
 import { ToolChangeJournal } from '@mobi/node-core/git/toolChangeJournal'

@@ -16,7 +16,7 @@
 
 import { z } from 'zod'
 import { PERMISSION_MODES, type EffortLevel } from '@mobi/shared'
-import type { StartOptions } from '@/claude/runClaude'
+import type { StartOptions } from '@mobi/session/claude/runClaude'
 
 /**
  * 取「值类 flag」的下一参数作值；缺失或本身是 flag（以 - 开头）时报缺值，

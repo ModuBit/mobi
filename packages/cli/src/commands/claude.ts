@@ -17,7 +17,7 @@
 import chalk from 'chalk'
 import { execFileSync, spawn } from 'node:child_process'
 import { PROTOCOL_VERSION } from '@mobi/shared'
-import type { StartOptions } from '@/claude/runClaude'
+import type { StartOptions } from '@mobi/session/claude/runClaude'
 import { configuration } from '@mobi/node-core/configuration'
 import { authAndSetupMachineIfNeeded } from '@mobi/daemon/runner/authSetup'
 import { logger } from '@mobi/node-core/logger'
@@ -182,7 +182,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
         await maybeAutoStartRunner()
 
         try {
-            const { runClaude } = await import('@/claude/runClaude')
+            const { runClaude } = await import('@mobi/session/claude/runClaude')
             await runClaude(options)
         } catch (error) {
             const { message, messageLower, axiosCode: _axiosCode, httpStatus, responseErrorText, serverProtocolVersion } = extractErrorInfo(error)

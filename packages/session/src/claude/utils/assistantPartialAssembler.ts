@@ -15,7 +15,7 @@
  */
 
 import type { SDKMessage, SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
-import { logger } from '@/lib'
+import { logger } from '@mobi/node-core/logger'
 
 /**
  * 装配 SDK includePartialMessages 拆分的 assistant partial 消息

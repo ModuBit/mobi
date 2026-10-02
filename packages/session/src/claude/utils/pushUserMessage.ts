@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { PromptPayload } from '@mobi/node-core/utils/promptBuilder'
-import { logger } from '@/lib'
+import { logger } from '@mobi/node-core/logger'
 
 export interface PushUserMessageOpts {
     /** 本批消息的 mobi localId；空/缺省 = 注入路径（不绑定 native_id） */
