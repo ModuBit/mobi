@@ -64,6 +64,58 @@ export interface HubLocallyPersistedState {
   startTime: string;
 }
 
+/**
+ * daemon 本地状态（ticket-22 起 hub/runner state 文件停写后的唯一进程状态）：
+ * daemonEntry 启动就绪时写入、优雅退出时清理。读取方：loopbackRunnerPost
+ * （controlServer 探活）、doctor、upgrader/processRestarter、supervisor 孤儿清理、
+ * e2e 脚本。
+ */
+export interface DaemonLocallyPersistedState {
+  pid: number;
+  /** 主端口（Web + /terminal） */
+  hubPort: number;
+  /** 宿主通道端口（ticket-21：/cli socket + /cli/* HTTP 的 loopback listener） */
+  hostPort: number;
+  /** runner controlServer 端口（同进程 runner 的进程管理通道） */
+  runnerHttpPort: number;
+  startTime: string;
+}
+
+/**
+ * 读取 daemon 状态文件；缺失/损坏返回 null（损坏仅记 stderr 不抛，
+ * 与 readRunnerState 的容错语义一致）
+ */
+export async function readDaemonState(): Promise<DaemonLocallyPersistedState | null> {
+  try {
+    if (!existsSync(configuration.daemonStateFile)) {
+      return null;
+    }
+    const content = await readFile(configuration.daemonStateFile, 'utf-8');
+    return JSON.parse(content) as DaemonLocallyPersistedState;
+  } catch (error) {
+    console.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, error);
+    return null;
+  }
+}
+
+/**
+ * 写入 daemon 状态文件（同步写保证原子性，与 writeRunnerState 同语义）
+ */
+export function writeDaemonState(state: DaemonLocallyPersistedState): void {
+  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
+}
+
+/**
+ * 清理 daemon 状态文件（优雅退出时；清理失败不阻塞退出）
+ */
+export function clearDaemonState(): void {
+  try {
+    unlinkSync(configuration.daemonStateFile);
+  } catch {
+    // 文件可能已不存在
+  }
+}
+
 export async function readSettings(): Promise<Settings> {
   if (!existsSync(configuration.settingsFile)) {
     return { ...defaultSettings }
@@ -303,30 +355,6 @@ export async function readRunnerState(): Promise<RunnerLocallyPersistedState | n
 }
 
 /**
- * Write runner state to local file (synchronously for atomic operation)
- */
-export function writeRunnerState(state: RunnerLocallyPersistedState): void {
-  writeFileSync(configuration.runnerStateFile, JSON.stringify(state, null, 2), 'utf-8');
-}
-
-/**
- * Clean up runner state file and lock file
- */
-export async function clearRunnerState(): Promise<void> {
-  if (existsSync(configuration.runnerStateFile)) {
-    await unlink(configuration.runnerStateFile);
-  }
-  // Also clean up lock file if it exists (for stale cleanup)
-  if (existsSync(configuration.runnerLockFile)) {
-    try {
-      await unlink(configuration.runnerLockFile);
-    } catch {
-      // Lock file might be held by running runner, ignore error
-    }
-  }
-}
-
-/**
  * Acquire an exclusive lock file for the runner.
  * The lock file proves the runner is running and prevents multiple instances.
  * Returns the file handle to hold for the runner's lifetime, or null if locked.
@@ -391,7 +419,8 @@ export async function releaseRunnerLock(lockHandle: FileHandle): Promise<void> {
 }
 
 //
-// Hub 状态持久化
+// 旧形态 Hub 状态文件（ticket-22 停写；readHubState/readRunnerState 仅供
+// supervisor 孤儿清理做升级过渡期兜底，存量环境全量切换后删除）
 //
 
 /**
@@ -410,18 +439,3 @@ export async function readHubState(): Promise<HubLocallyPersistedState | null> {
   }
 }
 
-/**
- * 写入 Hub 状态文件（同步写入保证原子性）
- */
-export function writeHubState(state: HubLocallyPersistedState): void {
-  writeFileSync(configuration.hubStateFile, JSON.stringify(state, null, 2), 'utf-8');
-}
-
-/**
- * 清理 Hub 状态文件
- */
-export async function clearHubState(): Promise<void> {
-  if (existsSync(configuration.hubStateFile)) {
-    await unlink(configuration.hubStateFile);
-  }
-}

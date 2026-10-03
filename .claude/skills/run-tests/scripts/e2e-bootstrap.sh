@@ -111,13 +111,13 @@ cleanup() {
 
     # 1.5 daemon 内 runner 会话子进程兜底：按 state file 走 HTTP 逐个停止
     #     claude 会话，再补一发 runner 优雅停止（daemon 已退出时自动跳过）
-    e2e_stop_runner "${RUNNER_STATE_FILE}"
+    e2e_stop_daemon "${RUNNER_STATE_FILE}"
 
     # 2. 端口兜底清理：直跑进程若因异常脱离父子关系（如被 disown 的孙进程），
     #    按监听端口必杀，避免孤儿残留
     e2e_log_info "端口兜底清理..."
     local control_port=""
-    if e2e_read_runner_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
+    if e2e_read_daemon_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
         control_port="${RUNNER_HTTP_PORT}"
     fi
     for port in "${HUB_PORT}" "${WEB_PORT}" ${control_port}; do
@@ -173,7 +173,7 @@ main() {
     local daemon_ready=false
     while (( daemon_waited < MAX_RUNNER_WAIT_SECONDS * 2 )); do
         if curl -sf --max-time 2 "${HUB_HEALTH_URL}" &>/dev/null && \
-           e2e_read_runner_state "${RUNNER_STATE_FILE}" && \
+           e2e_read_daemon_state "${RUNNER_STATE_FILE}" && \
            [[ -n "${RUNNER_PID}" ]] && kill -0 "${RUNNER_PID}" 2>/dev/null; then
             daemon_ready=true
             break

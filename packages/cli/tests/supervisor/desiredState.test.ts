@@ -40,15 +40,15 @@ describe('supervisor 期望状态持久化', () => {
         delete process.env.MOBI_LISTEN_PORT
     })
 
-    it('默认状态：hub/runner/daemon 均不托管，host/port 取默认值', () => {
+    it('默认状态：daemon 不托管，host/port 取默认值', () => {
         delete process.env.MOBI_LISTEN_PORT
         const state = defaultDesiredState()
-        expect(state).toEqual({ hub: false, runner: false, daemon: false, host: '127.0.0.1', port: 2222 })
+        expect(state).toEqual({ daemon: false, host: '127.0.0.1', port: 2222 })
     })
 
     it('默认端口感知 profile：MOBI_LISTEN_PORT 设置时取 profile 端口（e2e=2224 / dev=2223）', () => {
         // 背景：supervisor 由 CLI spawn 时继承 profile env；desired state 为空时若硬编码
-        // 2222，`mobi hub start --profile e2e` 不带 --port 会与 default 环境 hub 撞端口
+        // 2222，`mobi daemon start --profile e2e` 不带 --port 会与 default 环境 daemon 撞端口
         vi.stubEnv('MOBI_LISTEN_PORT', '2224')
         expect(defaultDesiredState().port).toBe(2224)
         vi.stubEnv('MOBI_LISTEN_PORT', '2223')
@@ -64,7 +64,7 @@ describe('supervisor 期望状态持久化', () => {
 
     it('readDesiredState 损坏端口回落也感知 profile 端口', () => {
         vi.stubEnv('MOBI_LISTEN_PORT', '2224')
-        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, host: '127.0.0.1', port: 'x' }))
+        writeFileSync(stateFile, JSON.stringify({ daemon: true, host: '127.0.0.1', port: 'x' }))
         expect(readDesiredState(stateFile)?.port).toBe(2224)
     })
 
@@ -73,24 +73,43 @@ describe('supervisor 期望状态持久化', () => {
     })
 
     it('写入后可读回', () => {
-        const state: SupervisorDesiredState = { hub: true, runner: false, daemon: true, host: '0.0.0.0', port: 3333 }
+        const state: SupervisorDesiredState = { daemon: true, host: '0.0.0.0', port: 3333 }
         writeDesiredState(state, stateFile)
         expect(readDesiredState(stateFile)).toEqual(state)
     })
 
-    it('daemon 字段缺省时容错归一为 false（ticket-16 之前的旧期望状态文件）', () => {
+    it('旧格式迁移（ticket-22）：hub:true/runner:false → daemon:true', () => {
         writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, host: '127.0.0.1', port: 2222 }))
-        expect(readDesiredState(stateFile)).toEqual({ hub: true, runner: false, daemon: false, host: '127.0.0.1', port: 2222 })
+        expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
+    })
+
+    it('旧格式迁移：hub:false/runner:true → daemon:true（任一旧组件在托管即恢复）', () => {
+        writeFileSync(stateFile, JSON.stringify({ hub: false, runner: true, host: '127.0.0.1', port: 2222 }))
+        expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
+    })
+
+    it('旧格式迁移幂等：迁移后回写新格式，再读结果不变且旧键消失', () => {
+        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, host: '127.0.0.1', port: 2222 }))
+        const migrated = readDesiredState(stateFile)!
+        writeDesiredState(migrated, stateFile)
+        const reread = readDesiredState(stateFile)
+        expect(reread).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
+        expect(reread).toEqual(migrated)
+    })
+
+    it('旧格式全 false → daemon:false（未托管不误恢复）', () => {
+        writeFileSync(stateFile, JSON.stringify({ hub: false, runner: false, host: '127.0.0.1', port: 2222 }))
+        expect(readDesiredState(stateFile)).toEqual({ daemon: false, host: '127.0.0.1', port: 2222 })
     })
 
     it('损坏/缺字段的 JSON 被容错归一：布尔强制、非法端口回落默认', () => {
-        writeFileSync(stateFile, JSON.stringify({ hub: 1, runner: 'yes', daemon: 'true', host: 123, port: 'x' }))
-        expect(readDesiredState(stateFile)).toEqual({ hub: true, runner: true, daemon: true, host: '127.0.0.1', port: 2222 })
+        writeFileSync(stateFile, JSON.stringify({ daemon: 'true', hub: 1, host: 123, port: 'x' }))
+        expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
     })
 
     it('非整数端口（浮点）归一为默认端口', () => {
-        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, daemon: true, host: '127.0.0.1', port: 3333.5 }))
-        expect(readDesiredState(stateFile)).toEqual({ hub: true, runner: false, daemon: true, host: '127.0.0.1', port: 2222 })
+        writeFileSync(stateFile, JSON.stringify({ daemon: true, host: '127.0.0.1', port: 3333.5 }))
+        expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
     })
 
     it('非法 JSON 返回 null（视为无状态）', () => {

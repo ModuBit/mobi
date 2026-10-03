@@ -940,3 +940,5 @@ interrupt（用户停止）
 **疑点链**：`messageService.redeliverQueued`（handleSessionAlive 激活翻转点广播 new-message 到 CLI 房间）→ CLI 消费并 markMessagesPushed，但此时 sink（receive-readiness）可能未接通 → 消息丢弃且 lifecycle 已推进，无重试路径。
 
 **定位入口**：packages/daemon/src/sync/messageService.ts `redeliverQueued` / syncEngine.handleSessionAlive 激活翻转分支；CLI 侧 new-message 消费与 canReceive 门（packages/session）。修法方向：消费侧在 sink 未通时保留 queued（不推进 lifecycle），或补投由 receive-readiness latch 驱动而非激活翻转。
+
+**2026-10-03 新证据（ticket-22 E2E）**：wake（非 dormant）场景同现象——对 inactive 会话发消息触发 wakeSession spawn，会话进程上线、active=true，但入队消息悬空 ~9 分钟；直到下一条消息（会话已 active，走正常投递路径）才连带被处理并回复。「激活翻转窗口」比 dormant 更宽：spawn → CLI connect → active 翻转全程未补投。侧证疑点链方向。

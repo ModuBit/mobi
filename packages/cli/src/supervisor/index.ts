@@ -64,7 +64,7 @@ export async function runSupervisor(): Promise<void> {
     let finished = false
     let idleTimer: ReturnType<typeof setTimeout> | null = null
 
-    const crashLogPath = (name: 'hub' | 'runner' | 'daemon') => join(configuration.logsDir, `${name}-crash.log`)
+    const crashLogPath = (name: 'daemon') => join(configuration.logsDir, `${name}-crash.log`)
 
     const supervisor = new Supervisor(
         {
@@ -110,11 +110,11 @@ export async function runSupervisor(): Promise<void> {
     // 注意：必须是函数声明（提升）而非 const 箭头函数——控制 socket 在孤儿清理前
     // 就已 bind（bind 占锁），清理 await 期间事件循环放开，IPC 指令可能在下方
     // const 初始化前到达，箭头函数会触发 TDZ（"Cannot access before initialization"）
-    function hubHealthUrl(): string {
+    function daemonHealthUrl(): string {
         return `http://${desired.host}:${desired.port}/health`
     }
 
-    function hubEnv(): Record<string, string | undefined> {
+    function daemonEnv(): Record<string, string | undefined> {
         return {
             ...process.env,
             MOBI_LISTEN_HOST: desired.host,
@@ -123,15 +123,15 @@ export async function runSupervisor(): Promise<void> {
     }
 
     /**
-     * 等服务型组件（hub/daemon）就绪：观察到 pid 翻转到新实例且健康检查通过。
+     * 等 daemon 就绪：观察到 pid 翻转到新实例且健康检查通过。
      * restart 场景旧实例在 SIGTERM 排水期仍可能应答 /health，仅凭健康检查会
      * 提前放行（随后旧实例死亡），故必须同时观察到 pid 变化。
      */
-    async function waitForServiceHealthyAfterRespawn(name: 'hub' | 'daemon', prevPid: number | undefined): Promise<boolean> {
+    async function waitForDaemonHealthyAfterRespawn(prevPid: number | undefined): Promise<boolean> {
         const deadline = Date.now() + HUB_HEALTH_TIMEOUT_MS
         while (Date.now() < deadline) {
-            const pid = supervisor.status()[name].pid
-            if (pid !== undefined && pid !== prevPid && (await isUrlOk(hubHealthUrl()))) {
+            const pid = supervisor.status().daemon.pid
+            if (pid !== undefined && pid !== prevPid && (await isUrlOk(daemonHealthUrl()))) {
                 return true
             }
             await new Promise((resolve) => setTimeout(resolve, 200))
@@ -140,104 +140,58 @@ export async function runSupervisor(): Promise<void> {
     }
 
     /**
-     * 启动/重启服务型组件（hub 或 daemon）并等待健康。期望状态先落盘再过健康门：
+     * 启动/重启 daemon 并等待健康。期望状态先落盘再过健康门：
      * 健康门 throw 时 Supervisor 内部已托管该组件，持久层必须同步为 true，
      * 否则 supervisor 重启后不恢复（状态分叉）。
      *
-     * - 组件在跑且本次变更了 host/port：start 对 running 组件是幂等跳过，不会
+     * - daemon 在跑且本次变更了 host/port：start 对 running 组件是幂等跳过，不会
      *   应用新配置（新端口健康门必失败 + 期望状态与实际分叉——supervisor 重启
      *   后组件会意外换端口），降级为 restart 语义
-     * - 组件在跑且未变更配置（幂等 start）：旧实例即目标，直接健康门
-     *
-     * daemon（ticket-16）与 hub 同构：起进程即含 hub 侧 /health，健康门复用。
+     * - daemon 在跑且未变更配置（幂等 start）：旧实例即目标，直接健康门
      */
-    async function launchServiceAndWait(name: 'hub' | 'daemon', mode: 'start' | 'restart', configChanged: boolean): Promise<void> {
-        const report = supervisor.status()[name]
-        const alreadyRunning = desired[name] && report.status === 'running'
+    async function launchDaemonAndWait(mode: 'start' | 'restart', configChanged: boolean): Promise<void> {
+        const report = supervisor.status().daemon
+        const alreadyRunning = desired.daemon && report.status === 'running'
         const needsRespawn = mode === 'restart' || (configChanged && alreadyRunning)
         const prevPid = report.pid
 
         if (needsRespawn) {
-            supervisor.restart(name, hubEnv())
+            supervisor.restart('daemon', daemonEnv())
         } else {
-            supervisor.start(name, hubEnv())
+            supervisor.start('daemon', daemonEnv())
         }
-        desired[name] = true
+        desired.daemon = true
         everManaged = true
         writeDesiredState(desired)
 
         const healthy =
             alreadyRunning && !needsRespawn
-                ? await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
-                : await waitForServiceHealthyAfterRespawn(name, prevPid)
+                ? await waitForUrlOk(daemonHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
+                : await waitForDaemonHealthyAfterRespawn(prevPid)
         if (!healthy) {
-            throw new Error(`${name} ${needsRespawn ? 'restarted' : 'started'} but health check failed`)
+            throw new Error(`daemon ${needsRespawn ? 'restarted' : 'started'} but health check failed`)
         }
     }
 
     async function handleRequest(request: ControlRequest): Promise<unknown> {
+        // 旧客户端（ticket-22 前的二进制）可能发来 hub/runner/both scope：
+        // 协议无 zod 校验（scope 是纯客户端侧类型），单组件模型下统一落到 daemon
         switch (request.cmd) {
-            case 'start': {
+            case 'start':
+            case 'restart': {
+                const mode = request.cmd
                 const prevHost = desired.host
                 const prevPort = desired.port
-                if (request.host) desired.host = request.host
-                if (request.port) desired.port = request.port
-                const hubConfigChanged = desired.host !== prevHost || desired.port !== prevPort
-
-                const targets: Array<'hub' | 'runner' | 'daemon'> =
-                    request.scope === 'both' ? ['hub', 'runner'] : [request.scope]
-
-                for (const target of targets) {
-                    if (target === 'runner') {
-                        // runner 依赖 hub：hub 在期望托管集时必须先等 hub 健康
-                        if (desired.hub) {
-                            const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
-                            if (!healthy) throw new Error('hub is not healthy, refusing to start runner')
-                        }
-                        supervisor.start('runner', process.env)
-                        desired.runner = true
-                        everManaged = true
-                        writeDesiredState(desired)
-                    } else {
-                        // hub / daemon 同为服务型组件（daemon 自含 runner，健康门复用 /health）
-                        await launchServiceAndWait(target, 'start', hubConfigChanged)
-                    }
-                }
+                if ('host' in request && request.host) desired.host = request.host
+                if ('port' in request && request.port) desired.port = request.port
+                const configChanged = desired.host !== prevHost || desired.port !== prevPort
+                await launchDaemonAndWait(mode, mode === 'restart' ? false : configChanged)
                 return { pid: process.pid, ...supervisor.status() }
             }
             case 'stop': {
-                const targets: Array<'hub' | 'runner' | 'daemon'> =
-                    request.scope === 'both' ? ['hub', 'runner'] : [request.scope]
-                for (const target of targets) {
-                    supervisor.stop(target)
-                    desired[target] = false
-                }
+                supervisor.stop('daemon')
+                desired.daemon = false
                 writeDesiredState(desired)
-                return { pid: process.pid, ...supervisor.status() }
-            }
-            case 'restart': {
-                if (request.host) desired.host = request.host
-                if (request.port) desired.port = request.port
-                // 与 start 同序：先 hub（过健康门）再 runner。旧序 runner→hub
-                // 不等 hub 就绪就重启 runner，会让 runner 对着正在被杀/未就绪
-                // 的 hub 空转一轮重连
-                const targets: Array<'hub' | 'runner' | 'daemon'> =
-                    request.scope === 'both' ? ['hub', 'runner'] : [request.scope]
-                for (const target of targets) {
-                    if (target === 'runner') {
-                        if (desired.hub) {
-                            const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
-                            if (!healthy) throw new Error('hub is not healthy, refusing to restart runner')
-                        }
-                        supervisor.restart('runner', process.env)
-                        desired.runner = true
-                        everManaged = true
-                        writeDesiredState(desired)
-                    } else {
-                        // mode=restart 时恒走 respawn，configChanged 参数仅供 start 分支参考
-                        await launchServiceAndWait(target, 'restart', false)
-                    }
-                }
                 return { pid: process.pid, ...supervisor.status() }
             }
             case 'status':
@@ -301,24 +255,14 @@ export async function runSupervisor(): Promise<void> {
         }
     }
 
-    // 4. 恢复期望状态（B 路径开机自启 = 恢复停机前配置）
+    // 4. 恢复期望状态（B 路径开机自启 = 恢复停机前配置）。
+    // 旧格式（hub/runner 布尔）已在 readDesiredState 迁移归并为 daemon；
+    // 末尾 writeDesiredState 回写新格式，旧键自然消失
     if (desired.daemon) {
-        supervisor.start('daemon', hubEnv())
+        supervisor.start('daemon', daemonEnv())
         everManaged = true
-        const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
+        const healthy = await waitForUrlOk(daemonHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
         if (!healthy) logger.debug('[SUPERVISOR] daemon not healthy after restore, continuing')
-    }
-    if (desired.hub || desired.runner) {
-        if (desired.hub) {
-            supervisor.start('hub', hubEnv())
-            everManaged = true
-            const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
-            if (!healthy) logger.debug('[SUPERVISOR] hub not healthy after restore, continuing')
-        }
-        if (desired.runner) {
-            supervisor.start('runner', process.env)
-            everManaged = true
-        }
     } else if (!everManaged) {
         // 空期望启动（A 路径：ensureSupervisorRunning 先 spawn 再发指令）：
         // 给首条指令留宽限窗口，避免 supervisor 抢跑退出造成竞态

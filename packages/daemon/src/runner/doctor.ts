@@ -46,7 +46,7 @@ export function getMobiHomeForProfile(profile: string): string {
 
 async function readRunnerPid(mobiHome: string): Promise<number | undefined> {
   try {
-    const statePath = join(mobiHome, 'runner.state.json')
+    const statePath = join(mobiHome, 'daemon.state.json')
     if (!existsSync(statePath)) return undefined
     const state = JSON.parse(await readFile(statePath, 'utf8'))
     return state.pid

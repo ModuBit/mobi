@@ -25,9 +25,9 @@ import chalk from 'chalk'
 import { spawn } from 'node:child_process'
 import { configuration } from '@mobi/node-core/configuration'
 import { readSettings, readHubSettings } from '@mobi/node-core/persistence'
-import { checkIfRunnerRunningAndCleanupStaleState } from '@mobi/daemon/runner/controlClient'
 import { findAllMobiProcesses } from '@mobi/daemon/runner/doctor'
-import { readRunnerState } from '@mobi/node-core/persistence'
+import { readDaemonState } from '@mobi/node-core/persistence'
+import { isProcessAlive } from '@mobi/node-core/utils/process'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { isBunCompiled, projectPath, runtimePath } from '@mobi/node-core/projectPath'
@@ -156,30 +156,28 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
 
     }
 
-    // Runner status - shown for both 'all' and 'runner' filters
-    console.log(chalk.bold('\n🤖 Runner Status'));
+    // Daemon status - shown for both 'all' and 'runner' filters
+    console.log(chalk.bold('\n🤖 Daemon Status'));
     try {
-        const isRunning = await checkIfRunnerRunningAndCleanupStaleState();
-        const state = await readRunnerState();
+        const state = await readDaemonState();
+        const isRunning = state ? isProcessAlive(state.pid) : false;
 
         if (isRunning && state) {
-            console.log(chalk.green('✓ Runner is running'));
+            console.log(chalk.green('✓ Daemon is running'));
             console.log(`  PID: ${state.pid}`);
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
-            console.log(`  CLI Version: ${state.startedWithCliVersion}`);
-            if (state.httpPort) {
-                console.log(`  HTTP Port: ${state.httpPort}`);
-            }
+            console.log(`  Hub Port: ${state.hubPort}`);
+            console.log(`  Host Port: ${state.hostPort}`);
         } else if (state && !isRunning) {
-            console.log(chalk.yellow('⚠️  Runner state exists but process not running (stale)'));
+            console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
         } else {
-            console.log(chalk.red('❌ Runner is not running'));
+            console.log(chalk.red('❌ Daemon is not running'));
         }
 
-        // Show runner state file
+        // Show daemon state file
         if (state) {
-            console.log(chalk.bold('\n📄 Runner State:'));
-            console.log(chalk.blue(`Location: ${configuration.runnerStateFile}`));
+            console.log(chalk.bold('\n📄 Daemon State:'));
+            console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
             console.log(chalk.gray(JSON.stringify(state, null, 2)));
         }
 

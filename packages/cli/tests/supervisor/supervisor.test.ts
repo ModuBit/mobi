@@ -102,23 +102,23 @@ describe('Supervisor 托管状态机', () => {
 
     it('start → running；重复 start 幂等（不再 spawn）', () => {
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         expect(h.processes).toHaveLength(1)
-        expect(h.supervisor.status().hub).toMatchObject({ managed: true, status: 'running' })
+        expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running' })
 
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         expect(h.processes).toHaveLength(1)
     })
 
     it('崩溃 → 退避重启；稳定运行 60s 后计数清零', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
 
         // 第 1 次崩溃（运行 10s < 60s）：1s 后重启
         h.advance(10_000)
         h.processes[0].exit(1)
-        expect(h.supervisor.status().hub.status).toBe('backoff')
+        expect(h.supervisor.status().daemon.status).toBe('backoff')
         vi.advanceTimersByTime(1_000)
         expect(h.processes).toHaveLength(2)
 
@@ -135,13 +135,13 @@ describe('Supervisor 托管状态机', () => {
         h.processes[2].exit(1)
         vi.advanceTimersByTime(1_000)
         expect(h.processes).toHaveLength(4)
-        expect(h.supervisor.status().hub.consecutiveCrashes).toBe(1)
+        expect(h.supervisor.status().daemon.consecutiveCrashes).toBe(1)
     })
 
     it('连续 5 次启动即崩 → failed，不再自动重启，崩溃现场落盘', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
 
         for (let i = 0; i < 4; i++) {
             h.processes.at(-1)!.emitStderr(`crash ${i + 1}\n`)
@@ -158,8 +158,8 @@ describe('Supervisor 托管状态机', () => {
         vi.advanceTimersByTime(60_000)
 
         expect(h.processes).toHaveLength(5)
-        const hub = h.supervisor.status().hub
-        expect(hub.status).toBe('failed')
+        const daemon = h.supervisor.status().daemon
+        expect(daemon.status).toBe('failed')
         expect(h.crashLogs).toHaveLength(1)
         expect(h.crashLogs[0].tail).toContain('final crash')
     })
@@ -167,53 +167,32 @@ describe('Supervisor 托管状态机', () => {
     it('显式 stop → 不触发重启，托管集清空时回调 onEmpty', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.stop('hub')
+        h.supervisor.start('daemon')
+        h.supervisor.stop('daemon')
         expect(h.processes[0].killedWith).toBe('SIGTERM')
         h.processes[0].exit(0)
 
         vi.advanceTimersByTime(60_000)
         expect(h.processes).toHaveLength(1)
-        expect(h.supervisor.status().hub).toMatchObject({ managed: false, status: 'stopped' })
+        expect(h.supervisor.status().daemon).toMatchObject({ managed: false, status: 'stopped' })
         expect(h.onEmptySpy).toHaveBeenCalledTimes(1)
     })
 
     it('restart → 重置崩溃计数并立即重拉（不经退避）', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         h.advance(1_000)
         h.processes[0].exit(1) // 崩一次，计数 1
         vi.advanceTimersByTime(1_000) // 退避完成，重拉
         expect(h.processes).toHaveLength(2)
 
-        h.supervisor.restart('hub')
+        h.supervisor.restart('daemon')
         expect(h.processes[1].killedWith).toBe('SIGTERM')
         h.processes[1].exit(0) // 显式重启的退出
         expect(h.processes).toHaveLength(3) // 立即重拉
-        expect(h.supervisor.status().hub.consecutiveCrashes).toBe(0)
+        expect(h.supervisor.status().daemon.consecutiveCrashes).toBe(0)
     })
-
-    it('shutdown → 先 runner 后 hub 有序停止，全部退出后 resolve', async () => {
-        const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.start('runner')
-        const shutdownPromise = h.supervisor.shutdown()
-        expect(h.processes[0].killedWith).toBeNull() // hub 尚未被杀
-        expect(h.processes[1].killedWith).toBe('SIGTERM')
-        h.processes[1].exit(0)
-        // runner 停止后 hub 才被杀
-        expect(h.processes[0].killedWith).toBe('SIGTERM')
-        h.processes[0].exit(0)
-        await shutdownPromise
-        // 第二次调用幂等，立即 resolve；两进程均已退出，终态均为 stopped
-        await h.supervisor.shutdown()
-        expect(h.processes.every((p) => p.killedWith === 'SIGTERM')).toBe(true)
-        expect(h.supervisor.status().hub).toMatchObject({ status: 'stopped' })
-        expect(h.supervisor.status().runner).toMatchObject({ status: 'stopped' })
-    })
-
-    // ============ daemon 组件（ticket-16：hub+runner 同进程单组件）============
 
     it('start daemon → running；status 含 daemon 组件；崩溃走退避重拉', () => {
         vi.useFakeTimers()
@@ -222,7 +201,7 @@ describe('Supervisor 托管状态机', () => {
         expect(h.processes).toHaveLength(1)
         expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running' })
 
-        // 崩溃 → 与 hub 同一套退避状态机
+        // 崩溃 → 退避状态机
         h.advance(1_000)
         h.processes[0].exit(1)
         expect(h.supervisor.status().daemon.status).toBe('backoff')
@@ -231,32 +210,10 @@ describe('Supervisor 托管状态机', () => {
         expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running' })
     })
 
-    it('shutdown 有序：runner → daemon → hub（daemon 排在 runner 之后、hub 之前）', async () => {
-        const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.start('daemon')
-        h.supervisor.start('runner')
-        const shutdownPromise = h.supervisor.shutdown()
-        // runner 最先停
-        expect(h.processes[2].killedWith).toBe('SIGTERM')
-        expect(h.processes[1].killedWith).toBeNull() // daemon 未被杀
-        expect(h.processes[0].killedWith).toBeNull() // hub 未被杀
-        h.processes[2].exit(0)
-        // runner 停止后 daemon 才被杀
-        expect(h.processes[1].killedWith).toBe('SIGTERM')
-        expect(h.processes[0].killedWith).toBeNull()
-        h.processes[1].exit(0)
-        // daemon 停止后 hub 才被杀
-        expect(h.processes[0].killedWith).toBe('SIGTERM')
-        h.processes[0].exit(0)
-        await shutdownPromise
-        expect(h.supervisor.status().daemon).toMatchObject({ status: 'stopped' })
-    })
-
     it('stderr 尾部截断——崩溃现场仅保留最后 8000 字符', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
 
         for (let i = 0; i < 5; i++) {
             if (i === 4) h.processes.at(-1)!.emitStderr('x'.repeat(9000) + 'TAIL_MARKER')
@@ -274,7 +231,7 @@ describe('Supervisor 托管状态机', () => {
     it('failed 后显式 start → 清崩溃计数立即重拉（而非 no-op）', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
 
         // 连崩 5 次 → failed
         for (let i = 0; i < 5; i++) {
@@ -283,26 +240,26 @@ describe('Supervisor 托管状态机', () => {
             if (i < 4) vi.advanceTimersByTime(nextBackoffFor(i + 1))
         }
         vi.advanceTimersByTime(60_000)
-        expect(h.supervisor.status().hub.status).toBe('failed')
+        expect(h.supervisor.status().daemon.status).toBe('failed')
 
         // 显式 start：用户要求现在就绪——立即重拉且计数清零
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         expect(h.processes).toHaveLength(6)
-        expect(h.supervisor.status().hub).toMatchObject({ status: 'running', consecutiveCrashes: 0 })
+        expect(h.supervisor.status().daemon).toMatchObject({ status: 'running', consecutiveCrashes: 0 })
     })
 
     it('backoff 退避中显式 start → 不等退避立即重拉', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         h.advance(1_000)
         h.processes[0].exit(1)
-        expect(h.supervisor.status().hub.status).toBe('backoff')
+        expect(h.supervisor.status().daemon.status).toBe('backoff')
 
         // 退避还剩 1s：显式 start 立即拉起
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         expect(h.processes).toHaveLength(2)
-        expect(h.supervisor.status().hub).toMatchObject({ status: 'running', consecutiveCrashes: 0 })
+        expect(h.supervisor.status().daemon).toMatchObject({ status: 'running', consecutiveCrashes: 0 })
     })
 
     it('running 中显式 start 传入新 env → 幂等不重拉，但刷新 env 供下次重拉使用', () => {
@@ -323,8 +280,8 @@ describe('Supervisor 托管状态机', () => {
     it('stop 后子进程挂起信号 → 宽限期到升级 SIGKILL（状态机不卡死）', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.stop('hub')
+        h.supervisor.start('daemon')
+        h.supervisor.stop('daemon')
         // 只发过 SIGTERM，进程不响应（挂起：如 SQLite 死循环/断点暂停）
         expect(h.processes[0].killedWith).toBe('SIGTERM')
         vi.advanceTimersByTime(5_000)
@@ -334,8 +291,8 @@ describe('Supervisor 托管状态机', () => {
     it('stop 后子进程正常退出 → 不升级 SIGKILL（宽限定时器被清理）', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.stop('hub')
+        h.supervisor.start('daemon')
+        h.supervisor.stop('daemon')
         h.processes[0].exit(0)
         vi.advanceTimersByTime(5_000)
         expect(h.processes[0].killedWith).toBe('SIGTERM')
@@ -344,8 +301,8 @@ describe('Supervisor 托管状态机', () => {
     it('restart 后子进程挂起 → SIGKILL 升级后 exit 到达仍正常重拉', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.restart('hub')
+        h.supervisor.start('daemon')
+        h.supervisor.restart('daemon')
         vi.advanceTimersByTime(5_000)
         expect(h.processes[0].killedWith).toBe('SIGKILL')
         // SIGKILL 致死的 exit 到达（signal='SIGKILL'）→ restartOnExit 照常重拉
@@ -355,48 +312,46 @@ describe('Supervisor 托管状态机', () => {
         expect(h.processes[1].killedWith).toBeNull()
     })
 
-    it('shutdown 遇挂起组件 → SIGKILL 升级后串行推进，promise 最终 resolve', async () => {
+    it('shutdown 遇挂起组件 → SIGKILL 升级后 promise 最终 resolve', async () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('runner')
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         const p = h.supervisor.shutdown()
-        // runner 挂起不退
+        // 组件挂起不退
         vi.advanceTimersByTime(5_000)
         expect(h.processes[0].killedWith).toBe('SIGKILL')
-        // SIGKILL 后 exit 到达 → 推进到 hub（SIGTERM）
+        // SIGKILL 后 exit 到达 → shutdown 完成
         h.processes[0].exit(null)
-        expect(h.processes[1].killedWith).toBe('SIGTERM')
-        h.processes[1].exit(0)
         await vi.waitFor(() => p) // 不抛超时即 resolve
+        expect(h.supervisor.status().daemon).toMatchObject({ status: 'stopped' })
     })
 
     it('宽限期内的迟到 kill 不会误杀重拉的新进程（child 引用比对）', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.restart('hub')
+        h.supervisor.start('daemon')
+        h.supervisor.restart('daemon')
         // SIGTERM 后进程「缓慢」退出：宽限期前 exit 到达，restart 立即重拉新进程
         h.processes[0].exit(0)
         expect(h.processes).toHaveLength(2)
         // 旧宽限定时器随后 fire（时间轴上迟到）：不得对新进程发 SIGKILL
         vi.advanceTimersByTime(5_000)
         expect(h.processes[1].killedWith).toBeNull()
-        expect(h.supervisor.status().hub.status).toBe('running')
+        expect(h.supervisor.status().daemon.status).toBe('running')
     })
 
     it('stop→start 竞态：旧进程迟到的 exit 不清新进程引用、不触发崩溃重拉', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
-        h.supervisor.stop('hub') // SIGTERM 已发，旧进程优雅排水中（exit 未到达）
-        h.supervisor.start('hub') // 立即重拉：rt.process 已换成新 child
+        h.supervisor.start('daemon')
+        h.supervisor.stop('daemon') // SIGTERM 已发，旧进程优雅排水中（exit 未到达）
+        h.supervisor.start('daemon') // 立即重拉：rt.process 已换成新 child
         expect(h.processes).toHaveLength(2)
-        expect(h.supervisor.status().hub).toMatchObject({ managed: true, status: 'running' })
+        expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running' })
 
         // 旧进程 exit 迟到到达：身份校验应忽略，不得把新进程清成幽灵 + 误走崩溃退避
         h.processes[0].exit(0)
-        expect(h.supervisor.status().hub).toMatchObject({ managed: true, status: 'running', pid: h.processes[1].pid })
+        expect(h.supervisor.status().daemon).toMatchObject({ managed: true, status: 'running', pid: h.processes[1].pid })
         // 新进程不受牵连，也没有退避重拉出第三个进程
         expect(h.processes[1].killedWith).toBeNull()
         vi.advanceTimersByTime(60_000)
@@ -406,12 +361,12 @@ describe('Supervisor 托管状态机', () => {
     it('spawn error（无 exit）→ 视同崩溃进入退避，错误信息进崩溃现场', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
 
         // spawn 异步失败（如二进制缺失）：只有 error 没有 exit
         h.processes[0].emitError('spawn mobi ENOENT')
-        expect(h.supervisor.status().hub.status).toBe('backoff')
-        expect(h.supervisor.status().hub.consecutiveCrashes).toBe(1)
+        expect(h.supervisor.status().daemon.status).toBe('backoff')
+        expect(h.supervisor.status().daemon.consecutiveCrashes).toBe(1)
 
         // 退避后重拉
         vi.advanceTimersByTime(1_000)
@@ -421,13 +376,13 @@ describe('Supervisor 托管状态机', () => {
     it('exit 之后再到达的 error → 忽略，不重复计数', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
         h.advance(1_000)
         h.processes[0].exit(1)
         // exit 已处理：迟到的 error（如对已退出进程 kill 的 ESRCH）不应再计一次崩溃
         h.processes[0].emitError('kill ESRCH')
 
-        expect(h.supervisor.status().hub.consecutiveCrashes).toBe(1)
+        expect(h.supervisor.status().daemon.consecutiveCrashes).toBe(1)
         vi.advanceTimersByTime(nextBackoffFor(1))
         expect(h.processes).toHaveLength(2)
     })
@@ -435,7 +390,7 @@ describe('Supervisor 托管状态机', () => {
     it('连续 spawn error → 计数累加到 failed，崩溃现场含 spawn error 信息', () => {
         vi.useFakeTimers()
         const h = createHarness()
-        h.supervisor.start('hub')
+        h.supervisor.start('daemon')
 
         for (let i = 0; i < 5; i++) {
             h.advance(1_000)
@@ -444,7 +399,7 @@ describe('Supervisor 托管状态机', () => {
         }
         vi.advanceTimersByTime(60_000)
 
-        expect(h.supervisor.status().hub.status).toBe('failed')
+        expect(h.supervisor.status().daemon.status).toBe('failed')
         expect(h.crashLogs).toHaveLength(1)
         expect(h.crashLogs[0].tail).toContain('spawn mobi ENOENT')
     })

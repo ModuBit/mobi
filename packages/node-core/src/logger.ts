@@ -32,8 +32,7 @@ import {
 } from '@mobi/shared/logger'
 import { configuration } from './configuration'
 import { appendFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { join, basename } from 'node:path'
-import { readRunnerState } from './persistence'
+import { join } from 'node:path'
 
 /** 按 configuration.processType 解析本次会话的日志文件路径 */
 function sessionLogPath(): string {
@@ -204,33 +203,8 @@ export async function listRunnerLogFiles(limit: number = 50): Promise<LogFileInf
             })
             .sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
-        // Prefer the path persisted by the runner if present (return 0th element if present)
-        try {
-            const state = await readRunnerState();
-
-            if (!state) {
-                return logs;
-            }
-
-            if (state.runnerLogPath && existsSync(state.runnerLogPath)) {
-                const stats = statSync(state.runnerLogPath);
-                const persisted: LogFileInfo = {
-                    file: basename(state.runnerLogPath),
-                    path: state.runnerLogPath,
-                    modified: stats.mtime
-                };
-                const idx = logs.findIndex(l => l.path === persisted.path);
-                if (idx >= 0) {
-                    const [found] = logs.splice(idx, 1);
-                    logs.unshift(found);
-                } else {
-                    logs.unshift(persisted);
-                }
-            }
-        } catch {
-            // Ignore errors reading runner state; fall back to directory listing
-        }
-
+        //（旧「优先取 runner.state.json 持久的 logPath」分支随 runner state 停写删除，
+        //  ticket-22：daemon.state.json 不记录 logPath，目录序即权威序）
         return logs.slice(0, Math.max(0, limit));
     } catch {
         return [];

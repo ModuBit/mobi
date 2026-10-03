@@ -14,31 +14,31 @@
  * limitations under the License.
  */
 
+/**
+ * `mobi runner` 命令：会话管理工具族（list / stop-session / logs）。
+ *
+ * start/stop/restart/status/start-sync 别名已随单组件模型删除（ticket-22）：
+ * runner 与 hub 同进程为 daemon，进程级操作走 `mobi daemon` / `mobi service`。
+ */
+
 import chalk from 'chalk'
-import { startRunner } from '@mobi/daemon/runner/run'
 import {
     listRunnerSessions,
     stopRunnerSession
 } from '@mobi/daemon/runner/controlClient'
 import { getLatestRunnerLog } from '@mobi/node-core/logger'
-import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
-import { initializeToken } from '@/ui/tokenInit'
-import { serviceStart, serviceStop, serviceRestart, serviceStatus } from './serviceOps'
 import type { CommandDefinition } from './types'
 
 function showRunnerHelp(): void {
     console.log(`
-${chalk.bold('mobi runner')} - Manage background runner
+${chalk.bold('mobi runner')} - Manage runner sessions
 
 ${chalk.bold('Usage:')}
-  mobi runner start                Start runner (supervised, via mobi service runner start)
-  mobi runner stop                 Stop runner (sessions stay alive)
-  mobi runner restart              Restart runner
-  mobi runner status               Show runner status
   mobi runner list                 List active sessions
   mobi runner logs                 Show latest log file path
   mobi runner stop-session <id>    Stop a specific session
 
+${chalk.gray('Runner runs inside the mobi daemon — start/stop it with')} ${chalk.cyan('mobi daemon')}
 ${chalk.gray('Clean up all mobi processes:')} ${chalk.cyan('mobi doctor clean')}
 `)
 }
@@ -59,13 +59,13 @@ export const runnerCommand: CommandDefinition = {
                 const sessions = await listRunnerSessions()
 
                 if (sessions.length === 0) {
-                    console.log('No active sessions this runner is aware of (they might have been started by a previous version of the runner)')
+                    console.log('No active sessions this runner is aware of (they might have been started by a previous version of the daemon)')
                 } else {
                     console.log('Active sessions:')
                     console.log(JSON.stringify(sessions, null, 2))
                 }
             } catch {
-                console.log('No runner running')
+                console.log('No daemon running')
             }
             return
         }
@@ -81,39 +81,8 @@ export const runnerCommand: CommandDefinition = {
                 const success = await stopRunnerSession(sessionId)
                 console.log(success ? 'Session stopped' : 'Failed to stop session')
             } catch {
-                console.log('No runner running')
+                console.log('No daemon running')
             }
-            return
-        }
-
-        if (runnerSubcommand === 'start') {
-            await serviceStart('runner')
-            return
-        }
-
-        if (runnerSubcommand === 'start-sync') {
-            // 父进程（supervisor，或前台调试时的 shell）死亡时自杀，
-            // 避免孤儿 runner 占锁文件/状态文件（SIGTERM 走 runner 既有优雅清理）
-            startPpidWatchdog({
-                onOrphaned: () => process.kill(process.pid, 'SIGTERM'),
-            })
-            await initializeToken()
-            await startRunner()
-            process.exit(0)
-        }
-
-        if (runnerSubcommand === 'stop') {
-            await serviceStop('runner')
-            return
-        }
-
-        if (runnerSubcommand === 'restart') {
-            await serviceRestart('runner')
-            return
-        }
-
-        if (runnerSubcommand === 'status') {
-            await serviceStatus()
             return
         }
 

@@ -22,15 +22,19 @@
  * 薄壳各自的进程级职责（exit logger、信号、崩溃检测），合一为组件名 `daemon`。
  *
  * 关停顺序 = runner.stop → hub.stop（会话宿主先行，服务殿后）。
- * state 文件：新写 `daemon.state.json`；hub/runner 侧的 state 文件由各自
- * core 继续写（doctor、upgrader、e2e 脚本仍在读，22 票再收）。
+ * state 文件：daemon.state.json（ticket-22 起 hub/runner state 文件停写，
+ * doctor/upgrader/e2e 脚本等读取方统一从 persistence 读 daemon 状态）。
  */
 
 import { installExitLogger, installExitHandlers, resolveMobiLogsDir, isProcessAlive, type ExitLogger } from '@mobi/shared/exitLogger'
 import { cleanupOldLogs } from '@mobi/shared/logger'
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
 import { configuration } from '@mobi/node-core/configuration'
+import {
+    writeDaemonState,
+    clearDaemonState,
+    type DaemonLocallyPersistedState,
+} from '@mobi/node-core/persistence'
 import { logger } from '@mobi/node-core/logger'
 import { hubLogger } from './logger'
 import { startHub, type HubHandle } from './hubServer'
@@ -41,41 +45,19 @@ export interface StartDaemonOptions {
     port?: number
 }
 
-interface DaemonPersistedState {
-    pid: number
-    hubPort: number
-    /** 宿主通道端口（ticket-21：/cli socket + /cli/* HTTP 的 loopback listener） */
-    hostPort: number
-    runnerHttpPort: number
-    startTime: string
-}
-
 function daemonStateFile(): string {
-    return join(configuration.mobiHomeDir, 'daemon.state.json')
-}
-
-function writeDaemonState(state: DaemonPersistedState): void {
-    writeFileSync(daemonStateFile(), JSON.stringify(state, null, 2), 'utf-8')
-}
-
-function clearDaemonState(): void {
-    if (existsSync(daemonStateFile())) {
-        try {
-            unlinkSync(daemonStateFile())
-        } catch {
-            // 清理失败不阻塞退出
-        }
-    }
+    return configuration.daemonStateFile
 }
 
 /**
- * 启动检测兜底（与 hub 薄壳同源）：读 hub.state.json，若上次实例 pid 已死则
- * 补记 killed-externally。runner 侧的检测并入此处（同一进程，一份就够）。
+ * 启动检测兜底：读 daemon.state.json，若上次实例 pid 已死则补记
+ * killed-externally（覆盖 SIGKILL/OOM 等运行时来不及写记录的场景；
+ * 优雅退出时 state 已被清理，不会误报）。
  */
 function detectPreviousCrash(exitLogger: ExitLogger): void {
-    if (!existsSync(configuration.hubStateFile)) return
+    if (!existsSync(daemonStateFile())) return
     try {
-        const prev = JSON.parse(readFileSync(configuration.hubStateFile, 'utf-8')) as { pid?: number }
+        const prev = JSON.parse(readFileSync(daemonStateFile(), 'utf-8')) as { pid?: number }
         if (typeof prev.pid === 'number' && prev.pid !== process.pid && !isProcessAlive(prev.pid)) {
             exitLogger.recordExternalKill(prev.pid)
         }
@@ -136,7 +118,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
         hostPort: hub.hostPort,
         runnerHttpPort: runner.httpPort,
         startTime: new Date().toLocaleString()
-    })
+    } satisfies DaemonLocallyPersistedState)
 
     // 关停编排：先 runner（会话宿主）后 hub（服务），幂等
     let shuttingDown = false
@@ -163,4 +145,13 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     logger.debug('[DAEMON] Daemon is ready!')
 
     await new Promise(() => {})
+}
+
+// 直接 `bun run src/daemonEntry.ts`（包 scripts.start/dev）时的自启；
+// 常规路径是 CLI `mobi daemon start-sync` 动态 import startDaemon 调用
+if (import.meta.main) {
+    startDaemon().catch((error) => {
+        hubLogger.error('Fatal error:', error)
+        process.exit(1)
+    })
 }

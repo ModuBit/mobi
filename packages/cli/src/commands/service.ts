@@ -18,23 +18,19 @@ import chalk from 'chalk'
 import { runSupervisor } from '@/supervisor'
 import { serviceStart, serviceStop, serviceRestart, serviceStatus } from './serviceOps'
 import { parseHostPortArgs } from './serviceArgs'
-import type { ServiceScope } from '@/supervisor/control'
 import type { CommandDefinition, CommandContext } from './types'
 
 function showServiceHelp(): void {
     console.log(`
-${chalk.bold('mobi service')} - Manage hub + runner via supervisor
+${chalk.bold('mobi service')} - Manage the mobi daemon via supervisor
 
 ${chalk.bold('Usage:')}
-  mobi service start [--host <host>] [--port <port>]   Start hub and runner (supervised)
-  mobi service stop                                    Stop hub and runner, supervisor exits
-  mobi service restart                                 Restart hub and runner
-  mobi service status                                  Show supervisor/hub/runner status
+  mobi service start [--host <host>] [--port <port>]   Start daemon (supervised)
+  mobi service stop                                    Stop daemon, supervisor exits
+  mobi service restart                                 Restart daemon
+  mobi service status                                  Show supervisor/daemon status
 
-  mobi service hub <start|stop|restart|status>          Manage hub only
-  mobi service runner <start|stop|restart|status>       Manage runner only
-
-${chalk.gray('mobi hub / mobi runner 顶层命令是 service 子命令的别名')}
+${chalk.gray('mobi daemon 顶层命令是 service 子命令的别名')}
 `)
 }
 
@@ -55,28 +51,27 @@ export const serviceCommand: CommandDefinition = {
             return
         }
 
-        // 解析可选的组件前缀：service [hub|runner|daemon] <action>
-        // 默认 daemon（ticket-16：hub+runner 同进程单组件）；both 为旧形态显式保留
-        let scope: ServiceScope = 'daemon'
+        // 解析可选的组件前缀：service daemon <action>（等价于无前缀）
+        // hub/runner 前缀已随单组件模型删除（ticket-22）；旧客户端发的
+        // hub/runner scope 由 supervisor 服务端归一为 daemon
         let actionArgs = args
-        if (args[0] === 'hub' || args[0] === 'runner' || args[0] === 'daemon') {
-            scope = args[0]
+        if (args[0] === 'daemon') {
             actionArgs = args.slice(1)
         }
         const action = actionArgs[0]
 
         if (action === 'start') {
             const { host, port } = parseHostPortArgs(actionArgs.slice(1))
-            await serviceStart(scope, { host, port })
+            await serviceStart('daemon', { host, port })
             return
         }
         if (action === 'stop') {
-            await serviceStop(scope)
+            await serviceStop('daemon')
             return
         }
         if (action === 'restart') {
             const { host, port } = parseHostPortArgs(actionArgs.slice(1))
-            await serviceRestart(scope, { host, port })
+            await serviceRestart('daemon', { host, port })
             return
         }
         if (action === 'status') {

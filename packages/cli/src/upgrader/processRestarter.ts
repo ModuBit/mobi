@@ -15,7 +15,7 @@
  */
 
 import chalk from 'chalk'
-import { readHubState, readRunnerState } from '@mobi/node-core/persistence'
+import { readDaemonState } from '@mobi/node-core/persistence'
 import { isProcessAlive } from '@mobi/node-core/utils/process'
 
 export interface ProcessInfo {
@@ -24,30 +24,24 @@ export interface ProcessInfo {
 }
 
 export interface ActiveProcesses {
-    hub: ProcessInfo | null
-    runner: ProcessInfo | null
+    daemon: ProcessInfo | null
 }
 
 /**
- * 检测当前活跃的 mobi 进程
+ * 检测当前活跃的 mobi 进程（ticket-22 起单组件：daemon.state.json 的 pid）
  */
 export async function detectActiveProcesses(): Promise<ActiveProcesses> {
-    const hubState = await readHubState()
-    const runnerState = await readRunnerState()
+    const state = await readDaemonState()
 
-    const hub: ProcessInfo | null = hubState
-        ? { pid: hubState.pid, running: isProcessAlive(hubState.pid) }
+    const daemon: ProcessInfo | null = state
+        ? { pid: state.pid, running: isProcessAlive(state.pid) }
         : null
 
-    const runner: ProcessInfo | null = runnerState
-        ? { pid: runnerState.pid, running: isProcessAlive(runnerState.pid) }
-        : null
-
-    return { hub, runner }
+    return { daemon }
 }
 
 /**
- * 重启 hub 和 runner
+ * 重启 daemon（hub+runner 同进程，一次重启即全量替换为新版二进制）
  * 使用 mobi service restart 子命令
  */
 export async function restartProcesses(): Promise<void> {
@@ -55,14 +49,11 @@ export async function restartProcesses(): Promise<void> {
     const { execFileSync } = await import('node:child_process')
     const { getMobiCliCommand } = await import('@mobi/node-core/utils/spawnMobiCli')
 
-    // 获取 hub 的 host/port 透传给 service restart
-    const hubState = await readHubState()
+    // 透传当前监听端口给 service restart（非默认端口时）
+    const state = await readDaemonState()
     const args = ['service', 'restart']
-    if (hubState?.listenHost && hubState.listenHost !== '127.0.0.1') {
-        args.push('--host', hubState.listenHost)
-    }
-    if (hubState?.listenPort && hubState.listenPort !== 2222) {
-        args.push('--port', String(hubState.listenPort))
+    if (state?.hubPort && state.hubPort !== 2222) {
+        args.push('--port', String(state.hubPort))
     }
 
     const cmd = getMobiCliCommand(args)
@@ -73,29 +64,20 @@ export async function restartProcesses(): Promise<void> {
         return
     }
 
-    console.log(chalk.green('Hub and runner restarted'))
+    console.log(chalk.green('Daemon restarted'))
 }
 
 /**
  * 格式化活跃进程提示
  */
 export function formatActiveProcessesPrompt(processes: ActiveProcesses): string {
-    const parts: string[] = []
-    if (processes.hub?.running) {
-        parts.push(`Hub (PID ${processes.hub.pid})`)
-    }
-    if (processes.runner?.running) {
-        parts.push(`Runner (PID ${processes.runner.pid})`)
-    }
-
-    if (parts.length === 0) return ''
-
-    return `${parts.join(' and ')} ${parts.length > 1 ? 'are' : 'is'} running. Restart now?`
+    if (!processes.daemon?.running) return ''
+    return `Daemon (PID ${processes.daemon.pid}) is running. Restart now?`
 }
 
 /**
  * 检查是否有活跃进程
  */
 export function hasActiveProcesses(processes: ActiveProcesses): boolean {
-    return (processes.hub?.running ?? false) || (processes.runner?.running ?? false)
+    return processes.daemon?.running ?? false
 }

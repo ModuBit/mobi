@@ -15,7 +15,7 @@
  */
 
 /**
- * Supervisor 托管状态机：hub/runner 子进程的 spawn/监控/退避重启/崩溃计数。
+ * Supervisor 托管状态机：daemon 子进程的 spawn/监控/退避重启/崩溃计数。
  *
  * 设计约束：
  * - 本类不含任何业务逻辑（不碰 SQLite/网络/协议），spawn、时钟、崩溃日志
@@ -25,7 +25,8 @@
 
 import { nextBackoffMs, nextCrashCount, shouldGiveUp } from './restartPolicy'
 
-export type ComponentName = 'hub' | 'runner' | 'daemon'
+/** ticket-22 起唯一托管组件：hub+runner 已合并为 daemon（16 票过渡的 hub/runner 双组件删除） */
+export type ComponentName = 'daemon'
 export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 
 /** supervisor 眼中的子进程（与 ChildProcess 接口兼容，便于注入假对象） */
@@ -53,7 +54,7 @@ export interface SupervisorDeps {
 }
 
 export interface SupervisorHooks {
-    /** 期望托管集清空（hub/runner 均被显式 stop）时触发；supervisor 进程据此退出 */
+    /** 期望托管集清空（daemon 被显式 stop）时触发；supervisor 进程据此退出 */
     onEmpty: () => void
 }
 
@@ -75,7 +76,7 @@ const MAX_STDERR_TAIL_CHARS = 8_000
 /**
  * SIGTERM 宽限期：子进程挂起信号（如 SQLite 死循环、调试器断点暂停）时 exit
  * 永不到达，stop/shutdown 的状态机会卡死（finish 永不完成）。超时即升级
- * SIGKILL 强杀。正常优雅关闭（hub 排水 + clearHubState）远快于此值不受影响
+ * SIGKILL 强杀。正常优雅关闭（daemon 排水 + clearDaemonState）远快于此值不受影响
  * （见 docs/pending.md #46）。
  */
 const KILL_GRACE_MS = 5_000
@@ -96,8 +97,8 @@ export class Supervisor {
     /**
      * 托管并启动一个组件。真正在跑则幂等跳过（但刷新 env，供下次重拉使用）；
      * failed/backoff 态（崩溃放弃或退避等待中）显式 start 视为用户要求现在就绪
-     * ——清崩溃计数立即重拉，否则 `mobi service hub start` 对 failed 组件是 no-op，
-     * 自动拉起路径（maybeAutoStartRunner）也永远救不活它。
+     * ——清崩溃计数立即重拉，否则 `mobi daemon start` 对 failed 组件是 no-op，
+     * 自动拉起路径（ensureDaemonRunning）也永远救不活它。
      */
     start(name: ComponentName, env: Record<string, string | undefined> = process.env): void {
         if (this.shuttingDown) throw new Error('supervisor is shutting down')
@@ -163,16 +164,14 @@ export class Supervisor {
     }
 
     /**
-     * 有序关停全部组件：会话宿主先于服务（runner/daemon 先、hub 最后）。
-     * 同步发起对第一个组件的停止，其后每个组件 exit 后再停下一个。
-     * 返回的 Promise 在全部组件退出后 resolve。
+     * 有序关停全部组件：单组件（daemon）后语义退化为「停 daemon」，保留 Promise
+     * 形态与 exit 事件驱动 + 宽限 SIGKILL 的既有保证。
      */
     shutdown(): Promise<void> {
         if (this.shuttingDown) return Promise.resolve()
         this.shuttingDown = true
 
-        const order: ComponentName[] = ['runner', 'daemon', 'hub']
-        this.shutdownQueue = order.filter((name) => {
+        this.shutdownQueue = (['daemon'] as ComponentName[]).filter((name) => {
             const rt = this.runtimes.get(name)
             if (!rt) return false
             if (rt.restartTimer) {
@@ -214,7 +213,7 @@ export class Supervisor {
                 consecutiveCrashes: rt?.consecutiveCrashes ?? 0,
             }
         }
-        return { hub: reportFor('hub'), runner: reportFor('runner'), daemon: reportFor('daemon') }
+        return { daemon: reportFor('daemon') }
     }
 
     private spawnComponent(name: ComponentName): void {

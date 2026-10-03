@@ -26,7 +26,6 @@
 
 import { configuration, createConfiguration } from './configuration'
 import { hubLogger } from './logger'
-import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
 import { SyncEngine, type SyncEvent } from './sync/syncEngine'
 import { BackgroundTaskTracker } from './sync/backgroundTaskTracker'
@@ -259,14 +258,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     hubLogger.info('')
     hubLogger.info('Mobi Hub is ready!')
 
-    // 写入 hub 状态文件，供 CLI status/stop 子命令使用
-    // （daemon 同进程模式下继续写：doctor、upgrader、e2e 脚本仍在读，22 票再收）
-    writeHubState(config.dataDir, {
-        pid: process.pid,
-        listenHost: config.listenHost,
-        listenPort: config.listenPort,
-        startTime: new Date().toLocaleString()
-    })
+    // daemon 进程状态由 daemonEntry 统一写 daemon.state.json（ticket-22：hub.state.json 停写）
 
     let stopped = false
     const setRunnerBridge = (bridge: RunnerSessionBridge): void => {
@@ -290,7 +282,6 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
             if (stopped) return
             stopped = true
             hubLogger.info('Shutting down...')
-            clearHubState(config.dataDir)
             notificationHub?.stop()
             syncEngine?.stop()
             sseManager?.stop()

@@ -26,15 +26,11 @@ import { dirname } from 'node:path'
 import { configuration } from '@mobi/node-core/configuration'
 
 export interface SupervisorDesiredState {
-    /** 是否托管 hub */
-    hub: boolean
-    /** 是否托管 runner */
-    runner: boolean
-    /** 是否托管 daemon（ticket-16：hub+runner 同进程单组件） */
+    /** 是否托管 daemon（ticket-22 起唯一组件；旧格式的 hub/runner 读取时迁移归并） */
     daemon: boolean
-    /** hub 监听地址 */
+    /** daemon 监听地址 */
     host: string
-    /** hub 监听端口 */
+    /** daemon 监听端口 */
     port: number
 }
 
@@ -56,8 +52,6 @@ function profilePortOrDefault(): number {
 
 export function defaultDesiredState(): SupervisorDesiredState {
     return {
-        hub: false,
-        runner: false,
         daemon: false,
         host: DEFAULT_SUPERVISOR_HOST,
         port: profilePortOrDefault(),
@@ -67,6 +61,11 @@ export function defaultDesiredState(): SupervisorDesiredState {
 /**
  * 读取期望状态。文件缺失或整体非法 JSON 返回 null；
  * 字段级损坏则强制归一（布尔化、非法端口回落默认），保证 supervisor 永远能启动。
+ *
+ * 旧格式迁移（ticket-22，一次性、幂等）：16 票过渡期的 hub/runner 布尔归并为
+ * `daemon = daemon || hub || runner`——任一旧组件在托管即恢复 daemon。迁移后的
+ * 归一结果由调用方（runSupervisor 末尾 writeDesiredState）回写，旧键自然消失；
+ * 迁移语义幂等：新格式文件无 hub/runner 键，再读结果不变。
  */
 export function readDesiredState(
     filePath: string = configuration.supervisorStateFile,
@@ -77,9 +76,7 @@ export function readDesiredState(
         if (typeof parsed !== 'object' || parsed === null) return null
         const port = Number(parsed.port)
         return {
-            hub: Boolean(parsed.hub),
-            runner: Boolean(parsed.runner),
-            daemon: Boolean(parsed.daemon),
+            daemon: Boolean(parsed.daemon) || Boolean(parsed.hub) || Boolean(parsed.runner),
             host: typeof parsed.host === 'string' && parsed.host ? parsed.host : DEFAULT_SUPERVISOR_HOST,
             port:
                 Number.isFinite(port) && Number.isInteger(port) && port > 0 && port < 65536

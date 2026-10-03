@@ -15,41 +15,17 @@
  */
 
 /**
- * HTTP client helpers for runner communication
- * Used by CLI commands to interact with running runner
+ * runner controlServer 的 CLI 侧客户端（`mobi runner list / stop-session`）。
+ *
+ * ticket-22 收缩：旧的自重启协作族（checkIfRunnerRunningAndCleanupStaleState /
+ * isRunnerRunningCurrentlyInstalledMobiVersion / stopRunner——依赖 runner.state.json
+ * 的 pid/版本比对）随 runner mtime 自重启与独立 runner 进程一起删除；传输底座
+ * 在 @mobi/node-core/utils/loopbackRunnerPost（读 daemon.state.json 的
+ * runnerHttpPort 探活）。
  */
 
-import { logger } from '@mobi/node-core/logger';
-import { clearRunnerState, readRunnerState } from '@mobi/node-core/persistence';
-import packageJson from '../../package.json';
-import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { isBunCompiled, projectPath } from '@mobi/node-core/projectPath';
-import { isProcessAlive, killProcess } from '@mobi/node-core/utils/process';
 import { loopbackRunnerPost } from '@mobi/node-core/utils/loopbackRunnerPost';
 
-export function getInstalledCliMtimeMs(): number | undefined {
-  if (isBunCompiled()) {
-    try {
-      return statSync(process.execPath).mtimeMs;
-    } catch {
-      return undefined;
-    }
-  }
-
-  const packageJsonPath = join(projectPath(), 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    return undefined;
-  }
-
-  try {
-    return statSync(packageJsonPath).mtimeMs;
-  } catch {
-    return undefined;
-  }
-}
-
-// 传输底座已抽 utils/loopbackRunnerPost（与 session 侧 sessionWebhook 共用，解缠 6）
 async function runnerPost(path: string, body?: unknown): Promise<{ error?: string } | Record<string, unknown>> {
   return loopbackRunnerPost(path, body);
 }
@@ -63,160 +39,4 @@ export async function listRunnerSessions(): Promise<unknown[]> {
 export async function stopRunnerSession(sessionId: string): Promise<boolean> {
   const result = await runnerPost('/stop-session', { sessionId });
   return (result as { success?: boolean }).success || false;
-}
-
-export async function stopRunnerHttp(): Promise<void> {
-  await runnerPost('/stop');
-}
-
-/**
- * The version check is still quite naive.
- * For instance we are not handling the case where we upgraded mobi,
- * the runner is still running, and it recieves a new message to spawn a new session.
- * This is a tough case - we need to somehow figure out to restart ourselves,
- * yet still handle the original request.
- * 
- * Options:
- * 1. Periodically check during the health checks whether our version is the same as CLIs version. If not - restart.
- * 2. Wait for a command from the machine session, or any other signal to
- * check for version & restart.
- *   a. Handle the request first
- *   b. Let the request fail, restart and rely on the client retrying the request
- * 
- * I like option 1 a little better.
- * Maybe we can ... wait for it ... have another runner to make sure 
- * our runner is always alive and running the latest version.
- * 
- * That seems like an overkill and yet another process to manage - lets not do this :D
- * 
- * TODO: This function should return a state object with
- * clear state - if it is running / or errored out or something else.
- * Not just a boolean.
- * 
- * We can destructure the response on the caller for richer output.
- * For instance when running `mobi runner status` we can show more information.
- */
-export async function checkIfRunnerRunningAndCleanupStaleState(): Promise<boolean> {
-  const state = await readRunnerState();
-  if (!state) {
-    return false;
-  }
-
-  // Check if the runner is running
-  if (isProcessAlive(state.pid)) {
-    return true;
-  }
-
-  logger.debug('[RUNNER RUN] Runner PID not running, cleaning up state');
-  await cleanupRunnerState();
-  return false;
-}
-
-/**
- * Check if the running runner version matches the current CLI version.
- * This should work from both the runner itself & a new CLI process.
- * Works via the runner.state.json file.
- * 
- * @returns true if versions match, false if versions differ or no runner running
- */
-export async function isRunnerRunningCurrentlyInstalledMobiVersion(): Promise<boolean> {
-  logger.debug('[RUNNER CONTROL] Checking if runner is running same version');
-  const runningRunner = await checkIfRunnerRunningAndCleanupStaleState();
-  if (!runningRunner) {
-    logger.debug('[RUNNER CONTROL] No runner running, returning false');
-    return false;
-  }
-
-  const state = await readRunnerState();
-  if (!state) {
-    logger.debug('[RUNNER CONTROL] No runner state found, returning false');
-    return false;
-  }
-  
-  try {
-    const currentCliMtimeMs = getInstalledCliMtimeMs();
-    if (typeof currentCliMtimeMs === 'number' && typeof state.startedWithCliMtimeMs === 'number') {
-      logger.debug(`[RUNNER CONTROL] Current CLI mtime: ${currentCliMtimeMs}, Runner started with mtime: ${state.startedWithCliMtimeMs}`);
-      return currentCliMtimeMs === state.startedWithCliMtimeMs;
-    }
-
-    const currentCliVersion = packageJson.version;
-    logger.debug(`[RUNNER CONTROL] Current CLI version: ${currentCliVersion}, Runner started with version: ${state.startedWithCliVersion}`);
-    return currentCliVersion === state.startedWithCliVersion;
-    
-    // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
-    // Kirill does not understand how the upgrade of npm packages happen and whether 
-    // we will get a new path or not when mobi is upgraded globally.
-    // If reading package.json doesn't work correctly after npm upgrades, 
-    // we can revert to spawning a process (but should add timeout and cleanup!)
-    /*
-    const { spawnMobiCLI } = await import('@mobi/node-core/utils/spawnMobiCli');
-    const MobiProcess = spawnMobiCLI(['--version'], { stdio: 'pipe' });
-    let version: string | null = null;
-    MobiProcess.stdout?.on('data', (data) => {
-      version = data.toString().trim();
-    });
-    await new Promise(resolve => MobiProcess.stdout?.on('close', resolve));
-    logger.debug(`[RUNNER CONTROL] Current CLI version: ${version}, Runner started with version: ${state.startedWithCliVersion}`);
-    return version === state.startedWithCliVersion;
-    */
-  } catch (error) {
-    logger.debug('[RUNNER CONTROL] Error checking runner version', error);
-    return false;
-  }
-}
-
-export async function cleanupRunnerState(): Promise<void> {
-  try {
-    await clearRunnerState();
-    logger.debug('[RUNNER RUN] Runner state file removed');
-  } catch (error) {
-    logger.debug('[RUNNER RUN] Error cleaning up runner metadata', error);
-  }
-}
-
-export async function stopRunner() {
-  try {
-    const state = await readRunnerState();
-    if (!state) {
-      logger.debug('No runner state found');
-      return;
-    }
-
-    logger.debug(`Stopping runner with PID ${state.pid}`);
-
-    // Try HTTP graceful stop
-    try {
-      await stopRunnerHttp();
-
-      // Wait for runner to die
-      await waitForProcessDeath(state.pid, 2000);
-      logger.debug('Runner stopped gracefully via HTTP');
-      return;
-    } catch (error) {
-      logger.debug('HTTP stop failed, will force kill', error);
-    }
-
-    // Force kill
-    const killed = await killProcess(state.pid, true);
-    if (killed) {
-      logger.debug('Force killed runner');
-    } else {
-      logger.debug('Runner already dead or could not be killed');
-    }
-  } catch (error) {
-    logger.debug('Error stopping runner', error);
-  }
-}
-
-async function waitForProcessDeath(pid: number, timeout: number): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    if (isProcessAlive(pid)) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      continue;
-    }
-    return; // Process is dead
-  }
-  throw new Error('Process did not die within timeout');
 }

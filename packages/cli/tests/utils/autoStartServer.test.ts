@@ -16,9 +16,9 @@
 
 /**
  * 自动拉起收编 supervisor 后的行为锁定：
- * - hub/runner 都经 ensureSupervisorRunning + 控制指令拉起，不再直接 spawn start-sync
- * - 既有触发条件语义不变（MOBI_API_URL / apiUrl / cliApiToken / hub 已在运行）
- * - runner 拉起失败静默降级，不向上抛错
+ * - daemon 经 ensureSupervisorRunning + 控制指令拉起，不再直接 spawn start-sync
+ * - 既有触发条件语义不变（MOBI_API_URL / apiUrl / cliApiToken / daemon 已在运行）
+ * - 拉起失败静默降级，不向上抛错
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -26,18 +26,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // vi.hoisted 保证 vi.mock 工厂（会被提升到文件顶部）能引用这些 mock
 const {
     mockReadSettings,
+    mockReadDaemonState,
+    mockIsProcessAlive,
     mockEnsureSupervisorRunning,
     mockSendControlCommand,
-    mockIsRunnerRunning,
 } = vi.hoisted(() => ({
     mockReadSettings: vi.fn(),
+    mockReadDaemonState: vi.fn(),
+    mockIsProcessAlive: vi.fn(),
     mockEnsureSupervisorRunning: vi.fn(),
     mockSendControlCommand: vi.fn(),
-    mockIsRunnerRunning: vi.fn(),
 }))
 
 vi.mock('@mobi/node-core/persistence', () => ({
     readSettings: mockReadSettings,
+    readDaemonState: mockReadDaemonState,
 }))
 
 vi.mock('@/supervisor/control', () => ({
@@ -45,8 +48,8 @@ vi.mock('@/supervisor/control', () => ({
     sendControlCommand: mockSendControlCommand,
 }))
 
-vi.mock('@mobi/daemon/runner/controlClient', () => ({
-    isRunnerRunningCurrentlyInstalledMobiVersion: mockIsRunnerRunning,
+vi.mock('@mobi/node-core/utils/process', () => ({
+    isProcessAlive: mockIsProcessAlive,
 }))
 
 vi.mock('@mobi/node-core/configuration', () => ({
@@ -57,22 +60,22 @@ vi.mock('@mobi/node-core/logger', () => ({
     logger: { debug: vi.fn() },
 }))
 
-import { maybeAutoStartServer, maybeAutoStartRunner } from '@/utils/autoStartServer'
+import { ensureDaemonRunning } from '@/utils/autoStartServer'
 
-/** 默认满足全部触发条件（无 MOBI_API_URL、无 apiUrl、有 token、hub 未运行） */
+/** 默认满足全部触发条件（无 MOBI_API_URL、无 apiUrl、有 token、daemon 未运行） */
 function resetHappyPathPreconditions(): void {
     delete process.env.MOBI_API_URL
     mockReadSettings.mockResolvedValue({ apiUrl: undefined, serverUrl: undefined, cliApiToken: 'token' })
-    // hub health 探测失败（未运行）
+    mockReadDaemonState.mockResolvedValue(null)
+    mockIsProcessAlive.mockReturnValue(false)
+    // daemon health 探测失败（未运行）
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')))
 }
 
-describe('maybeAutoStartServer', () => {
-    let consoleLog: ReturnType<typeof vi.spyOn>
-
+describe('ensureDaemonRunning', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+        vi.spyOn(console, 'log').mockImplementation(() => {})
         resetHappyPathPreconditions()
         mockEnsureSupervisorRunning.mockResolvedValue(undefined)
         mockSendControlCommand.mockResolvedValue({ pid: 1 })
@@ -80,16 +83,16 @@ describe('maybeAutoStartServer', () => {
 
     afterEach(() => {
         vi.unstubAllGlobals()
-        consoleLog.mockRestore()
+        vi.restoreAllMocks()
     })
 
-    it('条件满足时经 supervisor 拉起 hub（start 指令 + 60s 超时）', async () => {
-        await maybeAutoStartServer()
+    it('条件满足时经 supervisor 拉起 daemon（start 指令 + 60s 超时）', async () => {
+        await ensureDaemonRunning()
 
         expect(mockEnsureSupervisorRunning).toHaveBeenCalledTimes(1)
         expect(mockSendControlCommand).toHaveBeenCalledWith(
             '/tmp/mobi-test.sock',
-            { cmd: 'start', scope: 'hub' },
+            { cmd: 'start', scope: 'daemon' },
             60_000
         )
     })
@@ -97,7 +100,7 @@ describe('maybeAutoStartServer', () => {
     it('MOBI_API_URL 已设置则跳过', async () => {
         process.env.MOBI_API_URL = 'https://remote.example.com'
 
-        await maybeAutoStartServer()
+        await ensureDaemonRunning()
 
         expect(mockEnsureSupervisorRunning).not.toHaveBeenCalled()
         expect(mockSendControlCommand).not.toHaveBeenCalled()
@@ -106,7 +109,7 @@ describe('maybeAutoStartServer', () => {
     it('settings.json 配置了 apiUrl 则跳过', async () => {
         mockReadSettings.mockResolvedValue({ apiUrl: 'https://remote.example.com' })
 
-        await maybeAutoStartServer()
+        await ensureDaemonRunning()
 
         expect(mockEnsureSupervisorRunning).not.toHaveBeenCalled()
     })
@@ -114,65 +117,40 @@ describe('maybeAutoStartServer', () => {
     it('settings.json 无 cliApiToken 则跳过', async () => {
         mockReadSettings.mockResolvedValue({})
 
-        await maybeAutoStartServer()
+        await ensureDaemonRunning()
 
         expect(mockEnsureSupervisorRunning).not.toHaveBeenCalled()
     })
 
-    it('hub 已在运行（health 探测通过）则跳过', async () => {
+    it('daemon 已在运行（pid 存活 + health 探测通过）则跳过', async () => {
+        mockReadDaemonState.mockResolvedValue({ pid: 4321, hubPort: 2222, hostPort: 12222, runnerHttpPort: 3000, startTime: 'now' })
+        mockIsProcessAlive.mockReturnValue(true)
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
-        await maybeAutoStartServer()
+        await ensureDaemonRunning()
 
         expect(mockEnsureSupervisorRunning).not.toHaveBeenCalled()
         expect(mockSendControlCommand).not.toHaveBeenCalled()
+    })
+
+    it('state 文件缺失（无 daemon.state.json）也满足拉起条件', async () => {
+        mockReadDaemonState.mockResolvedValue(null)
+
+        await ensureDaemonRunning()
+
+        expect(mockEnsureSupervisorRunning).toHaveBeenCalledTimes(1)
     })
 
     it('supervisor 拉起失败不抛错，仅打印警告', async () => {
         mockEnsureSupervisorRunning.mockRejectedValue(new Error('spawn failed'))
 
-        await expect(maybeAutoStartServer()).resolves.toBeUndefined()
+        await expect(ensureDaemonRunning()).resolves.toBeUndefined()
         expect(mockSendControlCommand).not.toHaveBeenCalled()
     })
-})
 
-describe('maybeAutoStartRunner', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        vi.spyOn(console, 'log').mockImplementation(() => {})
-        mockEnsureSupervisorRunning.mockResolvedValue(undefined)
-        mockSendControlCommand.mockResolvedValue({ pid: 1 })
-    })
+    it('控制指令失败静默降级：不抛错、不中断会话启动', async () => {
+        mockSendControlCommand.mockRejectedValue(new Error('daemon started but health check failed'))
 
-    afterEach(() => {
-        vi.restoreAllMocks()
-    })
-
-    it('runner 已在跑（当前版本）则不拉起', async () => {
-        mockIsRunnerRunning.mockResolvedValue(true)
-
-        await maybeAutoStartRunner()
-
-        expect(mockEnsureSupervisorRunning).not.toHaveBeenCalled()
-    })
-
-    it('runner 未跑则经 supervisor 拉起（start 指令 + 60s 超时）', async () => {
-        mockIsRunnerRunning.mockResolvedValue(false)
-
-        await maybeAutoStartRunner()
-
-        expect(mockEnsureSupervisorRunning).toHaveBeenCalledTimes(1)
-        expect(mockSendControlCommand).toHaveBeenCalledWith(
-            '/tmp/mobi-test.sock',
-            { cmd: 'start', scope: 'runner' },
-            60_000
-        )
-    })
-
-    it('拉起失败静默降级：不抛错、不中断会话启动', async () => {
-        mockIsRunnerRunning.mockResolvedValue(false)
-        mockSendControlCommand.mockRejectedValue(new Error('hub is not healthy, refusing to start runner'))
-
-        await expect(maybeAutoStartRunner()).resolves.toBeUndefined()
+        await expect(ensureDaemonRunning()).resolves.toBeUndefined()
     })
 })

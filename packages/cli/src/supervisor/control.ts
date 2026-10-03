@@ -25,7 +25,8 @@ import { connect, createServer, type Socket } from 'node:net'
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli'
 import { configuration } from '@mobi/node-core/configuration'
 
-export type ServiceScope = 'hub' | 'runner' | 'daemon' | 'both'
+/** ticket-22 起唯一托管组件；旧客户端发来的 hub/runner/both scope 由服务端归一为 daemon */
+export type ServiceScope = 'daemon'
 
 export type ControlRequest =
     | { cmd: 'start'; scope: ServiceScope; host?: string; port?: number }

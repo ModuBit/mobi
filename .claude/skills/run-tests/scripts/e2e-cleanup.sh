@@ -42,15 +42,15 @@ main() {
         e2e_log_warn "mobi doctor clean 执行失败"
     fi
 
-    # 2. 停止 Runner（通过状态文件）
-    e2e_stop_runner "${RUNNER_STATE_FILE}"
+    # 2. 停止 daemon（通过状态文件）
+    e2e_stop_daemon "${RUNNER_STATE_FILE}"
 
     # 3. 端口兜底清理（始终执行，防止 doctor clean 遗漏子进程）
     e2e_log_info "端口兜底清理..."
     local cleaned=0
-    # 读 runner control server 端口（动态分配，doctor clean 可能遗漏）
+    # 读 daemon 内 runner controlServer 端口（动态分配，doctor clean 可能遗漏）
     local control_port=""
-    if e2e_read_runner_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
+    if e2e_read_daemon_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
         control_port="${RUNNER_HTTP_PORT}"
     fi
     for port in "${HUB_PORT}" "${WEB_PORT}" ${control_port}; do

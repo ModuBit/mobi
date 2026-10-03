@@ -161,10 +161,9 @@ export async function installService(host: string, port: number): Promise<void> 
         rmSync(legacyWrapper)
     }
 
-    // 种子期望状态：launchd/systemd 拉起 supervisor 后据此恢复 daemon
-    // （ticket-16 起 hub+runner 同进程；hub/runner 旧形态字段留 false），
+    // 种子期望状态：launchd/systemd 拉起 supervisor 后据此恢复 daemon，
     // 且让向导选择的 host/port 真正生效（否则空期望 30s 自退、服务装完即死）
-    writeDesiredState({ hub: false, runner: false, daemon: true, host, port })
+    writeDesiredState({ daemon: true, host, port })
 
     if (platform === 'darwin') {
         installLaunchd()

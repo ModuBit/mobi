@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { detectActiveProcesses, formatActiveProcessesPrompt, hasActiveProcesses, type ActiveProcesses } from '@/upgrader/processRestarter'
 
 // mock persistence
 vi.mock('@mobi/node-core/persistence', () => ({
-    readHubState: vi.fn().mockResolvedValue({ pid: 1000, listenHost: 'localhost', listenPort: 2222 }),
-    readRunnerState: vi.fn().mockResolvedValue({ pid: 2000, httpPort: 3000 }),
+    readDaemonState: vi.fn().mockResolvedValue({ pid: 1000, hubPort: 2222, hostPort: 12222, runnerHttpPort: 3000, startTime: 'now' }),
 }))
 
 // mock process utils
@@ -29,60 +28,43 @@ vi.mock('@mobi/node-core/utils/process', () => ({
     killProcess: vi.fn().mockResolvedValue(true),
 }))
 
-// mock logger
-vi.mock('@mobi/node-core/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
-}))
-
 describe('detectActiveProcesses', () => {
-    it('detects running hub and runner', async () => {
+    it('detects running daemon', async () => {
         const result = await detectActiveProcesses()
-        expect(result.hub).toEqual({ pid: 1000, running: true })
-        expect(result.runner).toEqual({ pid: 2000, running: true })
+        expect(result.daemon).toEqual({ pid: 1000, running: true })
     })
 
-    it('returns null when no hub state', async () => {
-        const { readHubState } = await import('@mobi/node-core/persistence')
-        ;(readHubState as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
+    it('returns null when no daemon state', async () => {
+        const { readDaemonState } = await import('@mobi/node-core/persistence')
+        ;(readDaemonState as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
 
         const result = await detectActiveProcesses()
-        expect(result.hub).toBeNull()
+        expect(result.daemon).toBeNull()
     })
 })
 
 describe('formatActiveProcessesPrompt', () => {
-    it('formats hub only', () => {
-        const processes: ActiveProcesses = {
-            hub: { pid: 1000, running: true },
-            runner: null,
-        }
-        expect(formatActiveProcessesPrompt(processes)).toBe('Hub (PID 1000) is running. Restart now?')
-    })
-
-    it('formats hub and runner', () => {
-        const processes: ActiveProcesses = {
-            hub: { pid: 1000, running: true },
-            runner: { pid: 2000, running: true },
-        }
-        expect(formatActiveProcessesPrompt(processes)).toBe('Hub (PID 1000) and Runner (PID 2000) are running. Restart now?')
+    it('formats running daemon', () => {
+        const processes: ActiveProcesses = { daemon: { pid: 1000, running: true } }
+        expect(formatActiveProcessesPrompt(processes)).toBe('Daemon (PID 1000) is running. Restart now?')
     })
 
     it('returns empty string when no active processes', () => {
-        const processes: ActiveProcesses = { hub: null, runner: null }
+        const processes: ActiveProcesses = { daemon: null }
         expect(formatActiveProcessesPrompt(processes)).toBe('')
     })
 })
 
 describe('hasActiveProcesses', () => {
-    it('returns true when hub is running', () => {
-        expect(hasActiveProcesses({ hub: { pid: 1000, running: true }, runner: null })).toBe(true)
+    it('returns true when daemon is running', () => {
+        expect(hasActiveProcesses({ daemon: { pid: 1000, running: true } })).toBe(true)
     })
 
-    it('returns true when runner is running', () => {
-        expect(hasActiveProcesses({ hub: null, runner: { pid: 2000, running: true } })).toBe(true)
+    it('returns false when daemon not running', () => {
+        expect(hasActiveProcesses({ daemon: { pid: 1000, running: false } })).toBe(false)
     })
 
     it('returns false when nothing running', () => {
-        expect(hasActiveProcesses({ hub: null, runner: null })).toBe(false)
+        expect(hasActiveProcesses({ daemon: null })).toBe(false)
     })
 })

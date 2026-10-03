@@ -22,7 +22,7 @@ import { configuration } from '@mobi/node-core/configuration'
 import { authAndSetupMachineIfNeeded } from '@mobi/daemon/runner/authSetup'
 import { logger } from '@mobi/node-core/logger'
 import { initializeToken } from '@/ui/tokenInit'
-import { maybeAutoStartServer, maybeAutoStartRunner } from '@/utils/autoStartServer'
+import { ensureDaemonRunning } from '@/utils/autoStartServer'
 import { withBunRuntimeEnv } from '@mobi/node-core/utils/bunRuntime'
 import { extractErrorInfo } from '@mobi/node-core/utils/errorUtils'
 import { getClaudeExecutablePath } from '@mobi/node-core/claudeSdk/claudeExecutable'
@@ -169,17 +169,11 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
         // 初始化 cli auth token
         await initializeToken()
-        // 启动 mobi hub （如果需要）
-        // hub/runner 均经 supervisor 托管：CLI 会话结束后仍存活
-        await maybeAutoStartServer()
+        // 启动 mobi daemon（如果需要）——经 supervisor 托管，
+        // CLI 会话结束后 daemon 继续存活以服务 Web 与管理会话
+        await ensureDaemonRunning()
         // 确保设置了 cli auth token 并初始化 machineId
         await authAndSetupMachineIfNeeded()
-
-        logger.debug('Ensuring mobi background service is running & matches our version...')
-
-        // 启动 mobi runner （如果需要）——经 supervisor 托管，
-        // CLI 会话结束后 runner 继续存活以管理会话
-        await maybeAutoStartRunner()
 
         try {
             const { runClaude } = await import('@mobi/session/claude/runClaude')

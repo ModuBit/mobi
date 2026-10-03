@@ -16,7 +16,7 @@
 
 /**
  * service 命令族共用的 CLI 侧操作：确保 supervisor 存活 → 发控制指令 → 打印结果。
- * `mobi service`、`mobi hub`、`mobi runner` 三个入口都走这里，保证语义唯一。
+ * `mobi service` / `mobi daemon` 两个入口都走这里，保证语义唯一。
  *
  * start/restart 会主动拉起 supervisor；status/stop 只探活不拉起，
  * 避免只读查询在冷启动时意外唤醒 supervisor 并按 desired state 恢复整套服务。
@@ -35,12 +35,10 @@ export interface StartOptions {
 
 interface ServiceStatusPayload {
     pid: number
-    hub: ComponentStatusReport
-    runner: ComponentStatusReport
     daemon: ComponentStatusReport
 }
 
-const LABEL: Record<ComponentStatusReport['name'], string> = { hub: 'Hub', runner: 'Runner', daemon: 'Daemon' }
+const LABEL: Record<ComponentStatusReport['name'], string> = { daemon: 'Daemon' }
 
 function colorStatus(status: ComponentStatusReport['status']): string {
     if (status === 'running') return chalk.green('running')
@@ -50,15 +48,15 @@ function colorStatus(status: ComponentStatusReport['status']): string {
 }
 
 /** 展示用的期望状态摘要（supervisor 未运行时也能显示配置） */
-function readDesiredLite(): { hub: boolean; daemon: boolean; port: number } {
+function readDesiredLite(): { daemon: boolean; port: number } {
     const state = readDesiredState()
-    return { hub: state?.hub ?? false, daemon: state?.daemon ?? false, port: state?.port ?? 2222 }
+    return { daemon: state?.daemon ?? false, port: state?.port ?? 2222 }
 }
 
 /**
  * start/restart 的 IPC 客户端超时。
- * 服务端 start 的 hub 健康门最长 30s（HUB_HEALTH_TIMEOUT_MS），外加
- * ensureSupervisorRunning 的 spawn 就绪期；默认 10s 会在 hub 启动慢时
+ * 服务端 start 的健康门最长 30s（HUB_HEALTH_TIMEOUT_MS），外加
+ * ensureSupervisorRunning 的 spawn 就绪期；默认 10s 会在 daemon 启动慢时
  * 假报失败而服务实际成功，故显式放宽到 60s。
  */
 const START_COMMAND_TIMEOUT_MS = 60_000
@@ -88,19 +86,18 @@ function printStatus(payload: ServiceStatusPayload): void {
     console.log(chalk.bold('Service Status'))
     console.log('')
     console.log(`  Supervisor: ${chalk.green('running')} (PID ${payload.pid})`)
-    for (const report of [payload.hub, payload.runner, payload.daemon]) {
-        const pidText = report.pid ? ` (PID ${report.pid})` : ''
-        const crashText = report.consecutiveCrashes > 0
-            ? chalk.gray(` [连续崩溃 ${report.consecutiveCrashes}]`)
-            : ''
-        console.log(`  ${LABEL[report.name].padEnd(9)}: ${colorStatus(report.status)}${pidText}${crashText}`)
-    }
-    if (desired.hub || desired.daemon) {
+    const report = payload.daemon
+    const pidText = report.pid ? ` (PID ${report.pid})` : ''
+    const crashText = report.consecutiveCrashes > 0
+        ? chalk.gray(` [连续崩溃 ${report.consecutiveCrashes}]`)
+        : ''
+    console.log(`  ${LABEL[report.name].padEnd(9)}: ${colorStatus(report.status)}${pidText}${crashText}`)
+    if (desired.daemon) {
         console.log(`  Web URL:   ${chalk.cyan(`http://localhost:${desired.port}`)}`)
     }
-    if (payload.hub.status === 'failed' || payload.runner.status === 'failed' || payload.daemon.status === 'failed') {
+    if (report.status === 'failed') {
         console.log('')
-        console.log(chalk.yellow('  有组件处于 failed 状态，崩溃现场见 ~/.mobi/logs/<组件>-crash.log'))
+        console.log(chalk.yellow('  daemon 处于 failed 状态，崩溃现场见 ~/.mobi/logs/daemon-crash.log'))
     }
 }
 
@@ -115,12 +112,11 @@ export async function serviceStart(scope: ServiceScope, options: StartOptions = 
                 host: options.host,
                 port: options.port,
             },
-            // 服务端 hub 健康门最长 30s + spawn 就绪期，默认 10s 会假报失败
+            // 服务端健康门最长 30s + spawn 就绪期，默认 10s 会假报失败
             START_COMMAND_TIMEOUT_MS,
         ) as ServiceStatusPayload
         printStatus(payload)
-        // hub/daemon 实际在跑（无论本次 scope）才打印访问入口
-        if (payload.hub.status === 'running' || payload.daemon.status === 'running') {
+        if (payload.daemon.status === 'running') {
             const desired = readDesiredLite()
             console.log('')
             console.log(chalk.green(`Service ready at ${chalk.cyan(`http://localhost:${desired.port}`)}`))
@@ -129,18 +125,15 @@ export async function serviceStart(scope: ServiceScope, options: StartOptions = 
 }
 
 export async function serviceStop(scope: ServiceScope): Promise<void> {
+    void scope // 单组件模型下 stop 恒为 daemon；保留参数与 start/restart 形状一致
     // 只探活不拉起：本来没跑就没必要（也不应该）唤醒 supervisor 再停它
     if (!(await isSupervisorAlive())) {
         console.log(chalk.yellow('Service is not running'))
         return
     }
     await runControlAction(async () => {
-        await sendControlCommand(configuration.supervisorSocketFile, { cmd: 'stop', scope })
-        if (scope === 'both') {
-            console.log(chalk.green('Service stopped'))
-        } else {
-            console.log(chalk.green(`${LABEL[scope]} stopped`))
-        }
+        await sendControlCommand(configuration.supervisorSocketFile, { cmd: 'stop', scope: 'daemon' })
+        console.log(chalk.green('Service stopped'))
     })
 }
 

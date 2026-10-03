@@ -42,12 +42,12 @@ e2e_load_profile() {
 
     # 展开 ~ 为 $HOME
     E2E_TMPDIR="${E2E_TMPDIR/#\~/$HOME}"
-    RUNNER_STATE_FILE="${E2E_TMPDIR}/runner.state.json"
+    RUNNER_STATE_FILE="${E2E_TMPDIR}/daemon.state.json"
 }
 
-# ─── Runner 管理函数 ──────────────────────────────────────────────────────────
+# ─── Daemon（含 runner controlServer）管理函数 ──────────────────────────────────────────────────────────
 
-e2e_read_runner_state() {
+e2e_read_daemon_state() {
     local state_file="$1"
     RUNNER_PID=""
     RUNNER_HTTP_PORT=""
@@ -56,9 +56,9 @@ e2e_read_runner_state() {
         return 1
     fi
 
-    # 单次 jq 调用同时提取 pid 和 httpPort
+    # 单次 jq 调用同时提取 pid 和 runnerHttpPort（ticket-22 起 daemon.state.json）
     read -r RUNNER_PID RUNNER_HTTP_PORT < <(
-        jq -r '(.pid // ""), (.httpPort // "")' "${state_file}" 2>/dev/null
+        jq -r '(.pid // ""), (.runnerHttpPort // "")' "${state_file}" 2>/dev/null
     ) || true
 
     if [[ -z "${RUNNER_PID}" ]]; then
@@ -67,16 +67,16 @@ e2e_read_runner_state() {
     return 0
 }
 
-e2e_stop_runner() {
+e2e_stop_daemon() {
     local state_file="$1"
 
     if ! e2e_read_runner_state "${state_file}"; then
-        e2e_log_info "Runner 状态文件不存在或无法解析"
+        e2e_log_info "Daemon 状态文件不存在或无法解析"
         return 0
     fi
 
     if ! kill -0 "${RUNNER_PID}" 2>/dev/null; then
-        e2e_log_info "Runner 进程未运行 (PID: ${RUNNER_PID})"
+        e2e_log_info "Daemon 进程未运行 (PID: ${RUNNER_PID})"
         return 0
     fi
 
@@ -90,7 +90,7 @@ e2e_stop_runner() {
         child_pids=$(echo "${children_json}" | jq -r '.children[]?.pid // empty' 2>/dev/null || true)
 
         for cpid in ${child_pids}; do
-            e2e_log_info "终止 Runner 子进程 (PID: ${cpid})"
+            e2e_log_info "终止会话子进程 (PID: ${cpid})"
             curl -sf -X POST "http://127.0.0.1:${RUNNER_HTTP_PORT}/stop-session" \
                 -H 'Content-Type: application/json' \
                 -d "{\"sessionId\": \"PID-${cpid}\"}" &>/dev/null || true
@@ -99,14 +99,14 @@ e2e_stop_runner() {
 
     # 2. 优雅停止 Runner
     if [[ -n "${RUNNER_HTTP_PORT}" ]]; then
-        e2e_log_info "通过 HTTP 优雅停止 Runner (PID: ${RUNNER_PID})"
+        e2e_log_info "通过 HTTP 优雅停止 daemon 内 runner (PID: ${RUNNER_PID})"
         curl -sf -X POST "http://127.0.0.1:${RUNNER_HTTP_PORT}/stop" &>/dev/null || true
         sleep 1
     fi
 
     # 3. SIGTERM 兜底
     if kill -0 "${RUNNER_PID}" 2>/dev/null; then
-        e2e_log_info "终止 Runner 进程 (PID: ${RUNNER_PID})"
+        e2e_log_info "终止 daemon 进程 (PID: ${RUNNER_PID})"
         kill -TERM "${RUNNER_PID}" 2>/dev/null || true
     fi
 }

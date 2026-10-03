@@ -19,7 +19,6 @@ import { claudeCommand } from './claude'
 import { runnerCommand } from './runner'
 import { doctorCommand } from './doctor'
 import { mcpCommand } from './mcp'
-import { hubCommand } from './hub'
 import { daemonCommand } from './daemon'
 import { serviceCommand } from './service'
 import { logsCommand } from './logs'
@@ -33,7 +32,6 @@ import type { CommandContext, CommandDefinition } from './types'
 const COMMANDS: CommandDefinition[] = [
     authCommand,
     mcpCommand,
-    hubCommand,
     daemonCommand,
     serviceCommand,
     logsCommand,

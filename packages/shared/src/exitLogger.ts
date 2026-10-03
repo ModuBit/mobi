@@ -119,7 +119,7 @@ export function resolveMobiLogsDir(): string {
 }
 
 /**
- * 从 MOBI_HOME（或默认 ~/.mobi）解析根目录。供定位 hub.state.json / runner.state.json。
+ * 从 MOBI_HOME（或默认 ~/.mobi）解析根目录。供定位 daemon.state.json。
  */
 export function resolveMobiHome(): string {
   return process.env.MOBI_HOME

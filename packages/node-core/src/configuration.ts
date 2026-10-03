@@ -44,6 +44,8 @@ class Configuration {
     public readonly runnerStateFile: string
     public readonly runnerLockFile: string
     public readonly hubStateFile: string
+    /** daemon 本地状态文件（ticket-22 起唯一组件的进程状态；hub/runner state 文件停写，仅孤儿清理过渡期读） */
+    public readonly daemonStateFile: string
     public readonly supervisorSocketFile: string
     public readonly supervisorStateFile: string
     public readonly currentCliVersion: string
@@ -97,6 +99,7 @@ class Configuration {
         this.runnerStateFile = join(this.mobiHomeDir, 'runner.state.json')
         this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
         this.hubStateFile = join(this.mobiHomeDir, 'hub.state.json')
+        this.daemonStateFile = join(this.mobiHomeDir, 'daemon.state.json')
         this.supervisorSocketFile = join(this.mobiHomeDir, 'supervisor.sock')
         this.supervisorStateFile = join(this.mobiHomeDir, 'supervisor-state.json')
 

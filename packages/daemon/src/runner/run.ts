@@ -15,14 +15,13 @@
  */
 
 /**
- * Runner - `runner start-sync` 进程入口 + 可复用生命周期核心（ticket-16 拆分）。
+ * Runner 生命周期核心（ticket-16 拆分；ticket-22 起无独立进程入口）。
  *
- * `startRunnerCore` 只负责「起一个 runner」：锁、control server、心跳自检，返回
+ * `startRunnerCore` 只负责「起一个 runner」：锁、control server、定时自检，返回
  * `RunnerHandle`。machine 通道已删（ticket-20）：本机 machine 行由 hub 侧自注册，
  * runner 侧运行时事实（httpPort / spawn 结果 / 关停状态）经注入的
  * {@link RunnerCoreDeps.updateMachineRunnerState} 直写。**不含任何进程级职责**——
- * exit logger、信号处理、崩溃检测由调用方承担（本文件薄壳 `startRunner` /
- * daemonEntry 同进程编排）。
+ * exit logger、信号处理、崩溃检测由调用方承担（daemonEntry 同进程编排）。
  */
 
 import fs from 'fs/promises';
@@ -32,22 +31,17 @@ import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrack
 import { RunnerState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
-import packageJson from '../../package.json';
-import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
-import { writeRunnerState, RunnerLocallyPersistedState, readRunnerState, acquireRunnerLock, releaseRunnerLock } from '@mobi/node-core/persistence';
+import { acquireRunnerLock, releaseRunnerLock } from '@mobi/node-core/persistence';
 import { getConfiguration, resolveHostPort } from '../configuration';
 import type { FileHandle } from 'node:fs/promises';
-import { isProcessAlive, isWindows, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
-import { installExitLogger, resolveMobiLogsDir } from '@mobi/shared/exitLogger';
-
-import { cleanupRunnerState, getInstalledCliMtimeMs, isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient';
+import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
 import { startRunnerControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
 
-/** 关停来源（沿用原 startRunner 的四类，hub 侧 runnerState.shutdownSource 透传） */
+/** 关停来源（三类，hub 侧 runnerState.shutdownSource 透传） */
 export type RunnerShutdownSource = 'mobi-cli' | 'os-signal' | 'exception';
 
 /**
@@ -610,21 +604,6 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     onMobiSessionWebhook
   });
 
-  const startedWithCliMtimeMs = getInstalledCliMtimeMs();
-
-  // Write initial runner state (no lock needed for state file)
-  // （daemon 同进程模式下继续写：doctor、upgrader、e2e 脚本仍在读，22 票再收）
-  const fileState: RunnerLocallyPersistedState = {
-    pid: process.pid,
-    httpPort: controlPort,
-    startTime: new Date().toLocaleString(),
-    startedWithCliVersion: packageJson.version,
-    startedWithCliMtimeMs,
-    runnerLogPath: logger.logFilePath
-  };
-  writeRunnerState(fileState);
-  logger.debug('[RUNNER RUN] Runner state written');
-
   // 本机 machine 行由 hub 侧自注册（ticket-20：machine 通道删除，daemon 即本机）；
   // runner 这里只补 control server 端口等运行时事实（httpPort 在 hub 注册时未知）
   deps?.updateMachineRunnerState((state: RunnerState | null) => ({
@@ -672,96 +651,25 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     });
   };
 
-  // Every 60 seconds:
-  // 1. Prune stale sessions
-  // 2. Check if runner needs update
-  // 3. If outdated, restart with latest version
-  // 4. Write heartbeat
+  // 定时自检（间隔沿用 MOBI_RUNNER_HEARTBEAT_INTERVAL）：
+  // 清理已死会话的追踪行（决策单源在 sessionTracking.pruneDeadTrackedSessions）。
+  // 旧职责退役（ticket-22）：二进制 mtime 自重启删除（与 supervisor restart 重叠，
+  // 升级路径由 upgrader/processRestarter 走 service restart 替换整个 daemon）；
+  // runner.state.json 心跳停写（daemon.state.json 由 daemonEntry 维护，读取方已迁移）
   const heartbeatIntervalMs = parseInt(process.env.MOBI_RUNNER_HEARTBEAT_INTERVAL || '60000');
-  let heartbeatRunning = false
-  const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
-    if (heartbeatRunning) {
-      return;
-    }
-    heartbeatRunning = true;
-
-    if (process.env.DEBUG) {
-      logger.debug(`[RUNNER RUN] Health check started at ${new Date().toLocaleString()}`);
-    }
-
-    // Prune stale sessions（决策单源在 sessionTracking.pruneDeadTrackedSessions）
+  const pruneStaleSessionsInterval = setInterval(() => {
     for (const pid of pruneDeadTrackedSessions(pidToTrackedSession, isProcessAlive)) {
       logger.debug(`[RUNNER RUN] Removing stale session with PID ${pid} (process no longer exists)`);
     }
-
-    // Check if runner needs update
-    const installedCliMtimeMs = getInstalledCliMtimeMs();
-    if (typeof installedCliMtimeMs === 'number' &&
-        typeof startedWithCliMtimeMs === 'number' &&
-        installedCliMtimeMs !== startedWithCliMtimeMs) {
-      logger.debug('[RUNNER RUN] Runner is outdated, triggering self-restart with latest version, clearing heartbeat interval');
-
-      clearInterval(restartOnStaleVersionAndHeartbeat);
-
-      // Spawn new runner through the CLI
-      // We do not need to clean ourselves up - we will be killed by
-      // the CLI start command.
-      // 1. It will first check if runner is running (yes in this case)
-      // 2. If the version is stale (it will read runner.state.json file and check startedWithCliVersion) & compare it to its own version
-      // 3. Next it will start a new runner with the latest version with runner-sync :D
-      // Done!
-      try {
-        spawnMobiCli(['runner', 'start'], {
-          detached: true,
-          stdio: 'ignore'
-        });
-      } catch (error) {
-        logger.debug('[RUNNER RUN] Failed to spawn new runner, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);
-      }
-
-      // So we can just hang forever
-      logger.debug('[RUNNER RUN] Hanging for a bit - waiting for CLI to kill us because we are running outdated version of the code');
-      await new Promise(resolve => setTimeout(resolve, 10_000));
-      process.exit(0);
-    }
-
-    // Before wrecklessly overwriting the runner state file, we should check if we are the ones who own it
-    // Race condition is possible, but thats okay for the time being :D
-    const runnerState = await readRunnerState();
-    if (runnerState && runnerState.pid !== process.pid) {
-      logger.debug('[RUNNER RUN] Somehow a different runner was started without killing us. We should kill ourselves.')
-      requestShutdown('exception', 'A different runner was started without killing us. We should kill ourselves.')
-    }
-
-    // Heartbeat
-    try {
-      const updatedState: RunnerLocallyPersistedState = {
-        pid: process.pid,
-        httpPort: controlPort,
-        startTime: fileState.startTime,
-        startedWithCliVersion: packageJson.version,
-        startedWithCliMtimeMs,
-        lastHeartbeat: new Date().toLocaleString(),
-        runnerLogPath: fileState.runnerLogPath
-      };
-      writeRunnerState(updatedState);
-      if (process.env.DEBUG) {
-        logger.debug(`[RUNNER RUN] Health check completed at ${updatedState.lastHeartbeat}`);
-      }
-    } catch (error) {
-      logger.debug('[RUNNER RUN] Failed to write heartbeat', error);
-    }
-
-    heartbeatRunning = false;
-  }, heartbeatIntervalMs); // Every 60 seconds in production
+  }, heartbeatIntervalMs);
 
   // 优雅清理（幂等）：清理顺序与原 cleanupAndShutdown 一致，只是不再 process.exit
   const cleanup = async (source: RunnerShutdownSource, errorMessage?: string) => {
     logger.debug(`[RUNNER RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
 
-    // Clear health check interval
-    clearInterval(restartOnStaleVersionAndHeartbeat);
-    logger.debug('[RUNNER RUN] Health check interval cleared');
+    // Clear prune interval
+    clearInterval(pruneStaleSessionsInterval);
+    logger.debug('[RUNNER RUN] Prune interval cleared');
 
     // Update runner state before shutting down（同步直写，无需等待发送窗口）
     deps?.updateMachineRunnerState((state: RunnerState | null) => ({
@@ -772,7 +680,6 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     }));
 
     await stopControlServer();
-    await cleanupRunnerState();
     await releaseRunnerLock(runnerLockHandle);
 
     logger.debug('[RUNNER RUN] Cleanup completed');
@@ -811,109 +718,4 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
   logger.debug('[RUNNER RUN] Runner started successfully, waiting for shutdown request');
 
   return handle;
-}
-
-export async function startRunner(): Promise<void> {
-  // —— 退出日志：最早挂载，注入 logger ring buffer 还原崩溃前上下文 ——
-  const runnerExitLogger = installExitLogger('runner', {
-    logsDir: resolveMobiLogsDir(),
-    ringBuffer: logger,
-  });
-
-  // —— OOM/SIGKILL 兜底：检测上次 runner 实例异常消失 ——
-  const prevRunnerState = await readRunnerState();
-  if (prevRunnerState?.pid && prevRunnerState.pid !== process.pid && !isProcessAlive(prevRunnerState.pid)) {
-    runnerExitLogger.recordExternalKill(prevRunnerState.pid);
-  }
-
-  // 进程级关停编排：信号/异常 → handle.stop；内部关停（exited）→ 清理完成后退出
-  let handle: RunnerHandle | null = null;
-  let exiting = false;
-  const exitAfter = async (promise: Promise<unknown>, code = 0) => {
-    if (exiting) return;
-    exiting = true;
-    await promise.catch(() => {});
-    process.exit(code);
-  };
-
-  process.on('SIGINT', () => {
-    runnerExitLogger.recordExit({ reason: 'signal-int', signal: 'SIGINT' });
-    logger.debug('[RUNNER RUN] Received SIGINT');
-    void exitAfter(handle ? handle.stop('os-signal') : Promise.resolve());
-  });
-
-  process.on('SIGTERM', () => {
-    runnerExitLogger.recordExit({ reason: 'signal-term', signal: 'SIGTERM' });
-    logger.debug('[RUNNER RUN] Received SIGTERM');
-    void exitAfter(handle ? handle.stop('os-signal') : Promise.resolve());
-  });
-
-  if (isWindows()) {
-    process.on('SIGBREAK', () => {
-      runnerExitLogger.recordExit({ reason: 'signal-term', signal: 'SIGBREAK' });
-      logger.debug('[RUNNER RUN] Received SIGBREAK');
-      void exitAfter(handle ? handle.stop('os-signal') : Promise.resolve());
-    });
-  }
-
-  process.on('uncaughtException', (error) => {
-    runnerExitLogger.recordExit({
-      reason: 'crash-uncaught',
-      errorMessage: error.message,
-      stack: error.stack,
-    });
-    logger.debug('[RUNNER RUN] FATAL: Uncaught exception', error);
-    logger.debug(`[RUNNER RUN] Stack trace: ${error.stack}`);
-    void exitAfter(handle ? handle.stop('exception', error.message) : Promise.resolve(), handle ? 0 : 1);
-  });
-
-  process.on('unhandledRejection', (reason, promise) => {
-    const error = reason instanceof Error ? reason : new Error(`Unhandled promise rejection: ${reason}`);
-    runnerExitLogger.recordExit({
-      reason: 'crash-unhandled',
-      errorMessage: error.message,
-      stack: error.stack,
-    });
-    logger.debug('[RUNNER RUN] FATAL: Unhandled promise rejection', reason);
-    logger.debug('[RUNNER RUN] Rejected promise:', promise);
-    logger.debug('[RUNNER RUN] Stack trace:', error.stack);
-    void exitAfter(handle ? handle.stop('exception', error.message) : Promise.resolve(), handle ? 0 : 1);
-  });
-
-  process.on('exit', (code) => {
-    runnerExitLogger.recordExit({ reason: code === 0 ? 'normal' : 'error-exit', exitCode: code });
-    logger.debug(`[RUNNER RUN] Process exiting with code: ${code}`);
-  });
-
-  process.on('beforeExit', (code) => {
-    logger.debug(`[RUNNER RUN] Process about to exit with code: ${code}`);
-  });
-
-  logger.debug('[RUNNER RUN] Starting runner process...');
-  logger.debugLargeJson('[RUNNER RUN] Environment', getEnvironmentInfo());
-
-  // Check if already running
-  // Check if running runner version matches current CLI version
-  const runningRunnerVersionMatches = await isRunnerRunningCurrentlyInstalledMobiVersion();
-  if (!runningRunnerVersionMatches) {
-    logger.debug('[RUNNER RUN] Runner version mismatch detected, restarting runner with current CLI version');
-    await stopRunner();
-  } else {
-    logger.debug('[RUNNER RUN] Runner version matches, keeping existing runner');
-    console.log('Runner already running with matching version');
-    process.exit(0);
-  }
-
-  try {
-    handle = await startRunnerCore();
-    // 内部关停请求到达 → 清理完成后退出进程
-    await exitAfter(handle.exited.then(({ source, errorMessage }) => handle!.stop(source, errorMessage)));
-  } catch (error) {
-    if (error instanceof RunnerLockHeldError) {
-      logger.debug('[RUNNER RUN] Runner lock file already held, another runner is running');
-      process.exit(0);
-    }
-    logger.debug('[RUNNER RUN][FATAL] Failed somewhere unexpectedly - exiting with code 1', error);
-    process.exit(1);
-  }
 }
