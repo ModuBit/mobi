@@ -20,12 +20,12 @@ import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { rpcError, getErrorMessage } from './rpcResponses'
 
-interface ListMachineDirectoryRequest {
+export interface ListMachineDirectoryRequest {
     path: string
     homeDir: string
 }
 
-interface ListMachineDirectoryResponse {
+export interface ListMachineDirectoryResponse {
     success: boolean
     entries?: Array<{ name: string }>
     error?: string
@@ -35,30 +35,36 @@ interface ListMachineDirectoryResponse {
  * 注册 machine 级 list-directory RPC handler
  */
 export function registerMachineDirectoryHandler(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<ListMachineDirectoryRequest, ListMachineDirectoryResponse>('list-directory', async (params) => {
-        const { path: targetPath, homeDir } = params ?? {}
+    rpcHandlerManager.registerHandler<ListMachineDirectoryRequest, ListMachineDirectoryResponse>('list-directory', (params) => listMachineDirectoryImpl(params))
+}
 
-        if (!targetPath || !homeDir) {
-            return rpcError('Path and homeDir are required')
-        }
+/**
+ * list-directory 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * 行为单源——socket 路径与本地直调不会分叉。
+ */
+export async function listMachineDirectoryImpl(params: ListMachineDirectoryRequest | undefined): Promise<ListMachineDirectoryResponse> {
+    const { path: targetPath, homeDir } = params ?? {}
 
-        const validation = validateHomeDirPath(targetPath, homeDir)
-        if (!validation.valid) {
-            return rpcError(validation.error!)
-        }
+    if (!targetPath || !homeDir) {
+        return rpcError('Path and homeDir are required')
+    }
 
-        try {
-            const resolvedPath = resolve(targetPath)
-            const entries = await readdir(resolvedPath, { withFileTypes: true })
+    const validation = validateHomeDirPath(targetPath, homeDir)
+    if (!validation.valid) {
+        return rpcError(validation.error!)
+    }
 
-            const directories = entries
-                .filter((entry) => entry.isDirectory())
-                .map((entry) => ({ name: entry.name }))
-                .sort((a, b) => a.name.localeCompare(b.name))
+    try {
+        const resolvedPath = resolve(targetPath)
+        const entries = await readdir(resolvedPath, { withFileTypes: true })
 
-            return { success: true, entries: directories }
-        } catch (error) {
-            return rpcError(getErrorMessage(error, 'Failed to list directory'))
-        }
-    })
+        const directories = entries
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => ({ name: entry.name }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+        return { success: true, entries: directories }
+    } catch (error) {
+        return rpcError(getErrorMessage(error, 'Failed to list directory'))
+    }
 }

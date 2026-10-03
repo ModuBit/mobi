@@ -47,7 +47,7 @@ interface FileEntry {
     path?: string
 }
 
-interface ListSessionFilesResponse {
+export interface ListSessionFilesResponse {
     success: boolean
     entries?: FileEntry[]
     /** 树浏览：条目数达到 MAX_TREE_ENTRIES 被截断 */
@@ -312,74 +312,85 @@ function validateRpcCwd(cwd: string): boolean {
     return normalized === normalizedHome || normalized.startsWith(homePrefix)
 }
 
+/**
+ * searchSessionFiles 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * 行为单源——socket 路径与本地直调不会分叉。
+ */
+export async function searchSessionFilesImpl(data: { query: string, cwd?: string, type?: 'file' | 'directory' }, workingDirectory: string): Promise<ListSessionFilesResponse> {
+    // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+    const effectiveCwd = data.cwd || workingDirectory
+    if (data.cwd && !validateRpcCwd(data.cwd)) {
+        return rpcError('Invalid cwd: path is outside home directory')
+    }
+    if (data.cwd && isWithinBlacklistedDir(data.cwd, homedir())) {
+        return rpcError('Access denied: path is in a restricted directory')
+    }
+    logger.debug('Search session files request:', data.query)
+
+    try {
+        const entries = await searchFiles(effectiveCwd, data.query, data.type)
+        return { success: true, entries }
+    } catch (error) {
+        return rpcError(getErrorMessage(error, 'Failed to search files'))
+    }
+}
+
+/**
+ * listSessionDirectory 实现（同上，本地化直调目标）。目录列表（工作目录内 + 外）。
+ */
+export async function listSessionDirectoryImpl(data: ListSessionFilesRequest & { cwd?: string; prefix?: string }, workingDirectory: string): Promise<ListSessionFilesResponse> {
+    // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+    const effectiveCwd = data.cwd || workingDirectory
+    if (data.cwd && !validateRpcCwd(data.cwd)) {
+        return rpcError('Invalid cwd: path is outside home directory')
+    }
+    if (data.cwd && isWithinBlacklistedDir(data.cwd, homedir())) {
+        return rpcError('Access denied: path is in a restricted directory')
+    }
+    logger.debug('List session directory request:', data.path)
+
+    try {
+        let targetPath = data.path || '.'
+
+        // 展开 ~/ 为 home 目录
+        if (targetPath.startsWith('~')) {
+            targetPath = join(homedir(), targetPath.slice(1))
+        }
+
+        // 解析为绝对路径：已是绝对路径时直接使用，否则相对 effectiveCwd 解析
+        const resolvedPath = isAbsolute(targetPath)
+            ? targetPath
+            : resolve(effectiveCwd, targetPath)
+
+        // 工作目录内：校验路径安全性
+        if (isWithinWorkingDir(resolvedPath, effectiveCwd)) {
+            const validation = validatePath(resolvedPath, effectiveCwd)
+            if (!validation.valid) {
+                return rpcError(validation.error ?? 'Invalid path')
+            }
+        } else {
+            // 工作目录外：验证目标是存在的目录
+            try {
+                const stats = await stat(resolvedPath)
+                if (!stats.isDirectory()) {
+                    return rpcError('Path is not a directory')
+                }
+            } catch {
+                return rpcError('Directory does not exist or is not accessible')
+            }
+        }
+
+        const result = await listDirectory(resolvedPath, data.prefix)
+        return { success: true, entries: result.entries, truncated: result.truncated, total: result.total }
+    } catch (error) {
+        return rpcError(getErrorMessage(error, 'Failed to list directory'))
+    }
+}
+
 export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // 接口 1：ripgrep 模糊搜索（工作目录内）
-    rpcHandlerManager.registerHandler<{ query: string, cwd?: string, type?: 'file' | 'directory' }, ListSessionFilesResponse>('searchSessionFiles', async (data) => {
-        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
-        const effectiveCwd = data.cwd || workingDirectory
-        if (data.cwd && !validateRpcCwd(data.cwd)) {
-            return rpcError('Invalid cwd: path is outside home directory')
-        }
-        if (data.cwd && isWithinBlacklistedDir(data.cwd, homedir())) {
-            return rpcError('Access denied: path is in a restricted directory')
-        }
-        logger.debug('Search session files request:', data.query)
-
-        try {
-            const entries = await searchFiles(effectiveCwd, data.query, data.type)
-            return { success: true, entries }
-        } catch (error) {
-            return rpcError(getErrorMessage(error, 'Failed to search files'))
-        }
-    })
+    rpcHandlerManager.registerHandler<{ query: string, cwd?: string, type?: 'file' | 'directory' }, ListSessionFilesResponse>('searchSessionFiles', (data) => searchSessionFilesImpl(data, workingDirectory))
 
     // 接口 2：目录列表（工作目录内 + 外）
-    rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string; prefix?: string }, ListSessionFilesResponse>('listSessionDirectory', async (data) => {
-        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
-        const effectiveCwd = data.cwd || workingDirectory
-        if (data.cwd && !validateRpcCwd(data.cwd)) {
-            return rpcError('Invalid cwd: path is outside home directory')
-        }
-        if (data.cwd && isWithinBlacklistedDir(data.cwd, homedir())) {
-            return rpcError('Access denied: path is in a restricted directory')
-        }
-        logger.debug('List session directory request:', data.path)
-
-        try {
-            let targetPath = data.path || '.'
-
-            // 展开 ~/ 为 home 目录
-            if (targetPath.startsWith('~')) {
-                targetPath = join(homedir(), targetPath.slice(1))
-            }
-
-            // 解析为绝对路径：已是绝对路径时直接使用，否则相对 effectiveCwd 解析
-            const resolvedPath = isAbsolute(targetPath)
-                ? targetPath
-                : resolve(effectiveCwd, targetPath)
-
-            // 工作目录内：校验路径安全性
-            if (isWithinWorkingDir(resolvedPath, effectiveCwd)) {
-                const validation = validatePath(resolvedPath, effectiveCwd)
-                if (!validation.valid) {
-                    return rpcError(validation.error ?? 'Invalid path')
-                }
-            } else {
-                // 工作目录外：验证目标是存在的目录
-                try {
-                    const stats = await stat(resolvedPath)
-                    if (!stats.isDirectory()) {
-                        return rpcError('Path is not a directory')
-                    }
-                } catch {
-                    return rpcError('Directory does not exist or is not accessible')
-                }
-            }
-
-            const result = await listDirectory(resolvedPath, data.prefix)
-            return { success: true, entries: result.entries, truncated: result.truncated, total: result.total }
-        } catch (error) {
-            return rpcError(getErrorMessage(error, 'Failed to list directory'))
-        }
-    })
+    rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string; prefix?: string }, ListSessionFilesResponse>('listSessionDirectory', (data) => listSessionDirectoryImpl(data, workingDirectory))
 }

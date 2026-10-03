@@ -32,6 +32,8 @@ import { registerMachineFileHandlers } from '@mobi/node-core/handlers/machineFil
 import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
 import { registerFileHandlers } from '@mobi/node-core/handlers/files'
 import { registerUploadHandlers } from '@mobi/node-core/handlers/uploads'
+import { registerMachineDirectoryHandler } from '@mobi/node-core/handlers/machineDirectory'
+import { registerSessionFilesHandler } from '@mobi/node-core/handlers/sessionFiles'
 import { LocalMachineHost } from '../../../src/machine/LocalMachineHost'
 import { SocketMachineHost } from '../../../src/machine/SocketMachineHost'
 import { makeFakeIo, makeFakeRegistry } from '../sync/fakeTransport'
@@ -46,6 +48,8 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
     registerFileHandlers(manager, homeDir, homeDir)
     registerUploadHandlers(manager, homeDir)
     registerMachineFileHandlers(manager, homeDir)
+    registerMachineDirectoryHandler(manager)
+    registerSessionFilesHandler(manager, homeDir)
     manager.registerHandler('path-exists', (params: unknown) => checkPathsExistImpl(params))
 
     // serving socket：emitWithAck 直送 RpcHandlerManager（socket.io 回路的最小等价物）
@@ -66,6 +70,9 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
         [`${MACHINE_ID}:writeFileRange`, 'sock-contract'],
         [`${MACHINE_ID}:deleteUpload`, 'sock-contract'],
         [`${MACHINE_ID}:replaceUpload`, 'sock-contract'],
+        [`${MACHINE_ID}:list-directory`, 'sock-contract'],
+        [`${MACHINE_ID}:searchSessionFiles`, 'sock-contract'],
+        [`${MACHINE_ID}:listSessionDirectory`, 'sock-contract'],
     ]))
     return { socketHost: new SocketMachineHost(io, registry) }
 }
@@ -197,5 +204,35 @@ describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）
     test('machineUploadFileRange：越界 cwd（home 外）拒绝同构', async () => {
         expect(await localHost.machineUploadFileRange(MACHINE_ID, '/System', 'up.png', undefined, 0, new Uint8Array([1]), 1))
             .toEqual(await socketHost.machineUploadFileRange(MACHINE_ID, '/System', 'up.png', undefined, 0, new Uint8Array([1]), 1))
+    })
+
+    // ── 组3：目录与搜索（list-directory / searchSessionFiles / listSessionDirectory）──
+
+    test('listMachineDirectory：成功 + home 外路径拒绝同构', async () => {
+        expect(await localHost.listMachineDirectory(MACHINE_ID, tmpRoot, HOME))
+            .toEqual(await socketHost.listMachineDirectory(MACHINE_ID, tmpRoot, HOME))
+        expect(await localHost.listMachineDirectory(MACHINE_ID, '/System', HOME))
+            .toEqual(await socketHost.listMachineDirectory(MACHINE_ID, '/System', HOME))
+    })
+
+    test('machineListSessionDirectory：树浏览（truncated/total 同构）', async () => {
+        expect(await localHost.machineListSessionDirectory(MACHINE_ID, tmpRoot, ''))
+            .toEqual(await socketHost.machineListSessionDirectory(MACHINE_ID, tmpRoot, ''))
+        expect(await localHost.machineListSessionDirectory(MACHINE_ID, tmpRoot, '', 'hel'))
+            .toEqual(await socketHost.machineListSessionDirectory(MACHINE_ID, tmpRoot, '', 'hel'))
+    })
+
+    test('machineListSessionDirectory：不存在目录 + 越界 cwd 拒绝同构', async () => {
+        expect(await localHost.machineListSessionDirectory(MACHINE_ID, tmpRoot, 'no-such-dir'))
+            .toEqual(await socketHost.machineListSessionDirectory(MACHINE_ID, tmpRoot, 'no-such-dir'))
+        expect(await localHost.machineListSessionDirectory(MACHINE_ID, '/System', ''))
+            .toEqual(await socketHost.machineListSessionDirectory(MACHINE_ID, '/System', ''))
+    })
+
+    test('machineSearchFiles：ripgrep 搜索同构（file/directory 过滤）', async () => {
+        expect(await localHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'hello'))
+            .toEqual(await socketHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'hello'))
+        expect(await localHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'sub', 'directory'))
+            .toEqual(await socketHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'sub', 'directory'))
     })
 })

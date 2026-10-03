@@ -31,7 +31,9 @@ import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
 import { machineReadFileMetaImpl, machineReadFileRangeImpl } from '@mobi/node-core/handlers/machineFiles'
 import { saveFileImpl } from '@mobi/node-core/handlers/files'
 import { writeFileRangeImpl, deleteUploadImpl, replaceUploadImpl } from '@mobi/node-core/handlers/uploads'
-import type { MachineHost, SpawnSessionOptions } from './MachineHost'
+import { listMachineDirectoryImpl } from '@mobi/node-core/handlers/machineDirectory'
+import { searchSessionFilesImpl, listSessionDirectoryImpl } from '@mobi/node-core/handlers/sessionFiles'
+import type { MachineHost, RpcListDirectoryResponse, SpawnSessionOptions } from './MachineHost'
 
 export class LocalMachineHost implements MachineHost {
     /** 未切换方法组的 socket 兜底（逐组退场） */
@@ -99,8 +101,11 @@ export class LocalMachineHost implements MachineHost {
         return await saveFileImpl({ cwd, path, content, baseEtag }, homedir(), homedir())
     }
 
-    async listMachineDirectory(machineId: string, path: string, homeDir: string) {
-        return await this.fallback.listMachineDirectory(machineId, path, homeDir)
+    // ── 目录与搜索组（ticket-17 组3：本地直调）──
+
+    // 条目形状（仅 name）比 RpcListDirectoryEntry 窄——与 SocketMachineHost 同款 as 断言透传
+    async listMachineDirectory(_machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
+        return await listMachineDirectoryImpl({ path, homeDir }) as RpcListDirectoryResponse
     }
 
     async machineUploadFileRange(
@@ -135,12 +140,12 @@ export class LocalMachineHost implements MachineHost {
         return await this.fallback.verifyWebToolsProvider(machineId, providerId, credentials)
     }
 
-    async machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory') {
-        return await this.fallback.machineSearchFiles(machineId, cwd, query, type)
+    async machineSearchFiles(_machineId: string, cwd: string, query: string, type?: 'file' | 'directory') {
+        return await searchSessionFilesImpl({ cwd, query, type }, homedir())
     }
 
-    async machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string) {
-        return await this.fallback.machineListSessionDirectory(machineId, cwd, path, prefix)
+    async machineListSessionDirectory(_machineId: string, cwd: string, path: string, prefix?: string) {
+        return await listSessionDirectoryImpl({ cwd, path, prefix }, homedir())
     }
 
     async machineRefreshMetadata(machineId: string, cwd: string) {
