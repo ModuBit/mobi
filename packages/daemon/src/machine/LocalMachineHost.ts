@@ -34,7 +34,9 @@ import { writeFileRangeImpl, deleteUploadImpl, replaceUploadImpl } from '@mobi/n
 import { listMachineDirectoryImpl } from '@mobi/node-core/handlers/machineDirectory'
 import { searchSessionFilesImpl, listSessionDirectoryImpl } from '@mobi/node-core/handlers/sessionFiles'
 import { gitReviewRpcImpl } from '@mobi/node-core/handlers/gitReview'
-import type { MachineHost, RpcListDirectoryResponse, SpawnSessionOptions } from './MachineHost'
+import { getWebToolsConfigImpl, setWebToolsConfigImpl, verifyWebToolsProviderImpl } from '@mobi/node-core/handlers/webToolsConfig'
+import { refreshMetadataImpl } from '@mobi/node-core/handlers/commands'
+import type { MachineHost, RpcGetWebToolsConfigResponse, RpcListDirectoryResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './MachineHost'
 
 export class LocalMachineHost implements MachineHost {
     /** 未切换方法组的 socket 兜底（逐组退场） */
@@ -131,16 +133,19 @@ export class LocalMachineHost implements MachineHost {
         return await replaceUploadImpl({ cwd, path, content }, homedir())
     }
 
-    async getWebToolsConfig(machineId: string) {
-        return await this.fallback.getWebToolsConfig(machineId)
+    // ── web-tools + metadata 组（ticket-17 组5：本地直调）──
+
+    // error envelope 形状比 MachineHost 响应类型宽——与 SocketMachineHost 同款 as 断言透传
+    async getWebToolsConfig(_machineId: string): Promise<RpcGetWebToolsConfigResponse> {
+        return await getWebToolsConfigImpl() as RpcGetWebToolsConfigResponse
     }
 
-    async setWebToolsConfig(machineId: string, config: unknown) {
-        return await this.fallback.setWebToolsConfig(machineId, config)
+    async setWebToolsConfig(_machineId: string, config: unknown) {
+        return await setWebToolsConfigImpl({ config })
     }
 
-    async verifyWebToolsProvider(machineId: string, providerId: string, credentials?: Record<string, string>) {
-        return await this.fallback.verifyWebToolsProvider(machineId, providerId, credentials)
+    async verifyWebToolsProvider(_machineId: string, providerId: string, credentials?: Record<string, string>) {
+        return await verifyWebToolsProviderImpl({ providerId: providerId as never, credentials })
     }
 
     async machineSearchFiles(_machineId: string, cwd: string, query: string, type?: 'file' | 'directory') {
@@ -151,7 +156,7 @@ export class LocalMachineHost implements MachineHost {
         return await listSessionDirectoryImpl({ cwd, path, prefix }, homedir())
     }
 
-    async machineRefreshMetadata(machineId: string, cwd: string) {
-        return await this.fallback.machineRefreshMetadata(machineId, cwd)
+    async machineRefreshMetadata(_machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {
+        return await refreshMetadataImpl({ cwd }) as RpcRefreshMetadataResponse
     }
 }

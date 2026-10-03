@@ -35,6 +35,7 @@ import { registerUploadHandlers } from '@mobi/node-core/handlers/uploads'
 import { registerMachineDirectoryHandler } from '@mobi/node-core/handlers/machineDirectory'
 import { registerSessionFilesHandler } from '@mobi/node-core/handlers/sessionFiles'
 import { registerGitReviewHandlers } from '@mobi/node-core/handlers/gitReview'
+import { registerWebToolsConfigHandler } from '@mobi/node-core/handlers/webToolsConfig'
 import { GIT_REVIEW_RPC } from '@mobi/shared'
 import { LocalMachineHost } from '../../../src/machine/LocalMachineHost'
 import { SocketMachineHost } from '../../../src/machine/SocketMachineHost'
@@ -53,6 +54,7 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
     registerMachineDirectoryHandler(manager)
     registerSessionFilesHandler(manager, homeDir)
     registerGitReviewHandlers(manager)
+    registerWebToolsConfigHandler(manager)
     manager.registerHandler('path-exists', (params: unknown) => checkPathsExistImpl(params))
 
     // serving socket：emitWithAck 直送 RpcHandlerManager（socket.io 回路的最小等价物）
@@ -77,6 +79,8 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
         [`${MACHINE_ID}:searchSessionFiles`, 'sock-contract'],
         [`${MACHINE_ID}:listSessionDirectory`, 'sock-contract'],
         ...Object.values(GIT_REVIEW_RPC).map((m) => [`${MACHINE_ID}:${m}`, 'sock-contract']) as [string, string][],
+        [`${MACHINE_ID}:get-web-tools-config`, 'sock-contract'],
+        [`${MACHINE_ID}:verify-web-tools-provider`, 'sock-contract'],
     ]))
     return { socketHost: new SocketMachineHost(io, registry) }
 }
@@ -283,5 +287,18 @@ describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）
     test('clearTurnSnapshots：幂等清档同构', async () => {
         await localHost.clearTurnSnapshots(MACHINE_ID, gitRoot, 'sess-x')
         await socketHost.clearTurnSnapshots(MACHINE_ID, gitRoot, 'sess-x')
+    })
+
+    // ── 组5：web-tools（get 只读 / verify 非法参数零 IO 路径；set 写真实 settings
+    //    由 node-core webToolsConfigRpc 单测覆盖，refreshMetadata 由 E2E metadata 端点覆盖）──
+
+    test('getWebToolsConfig：脱敏回显同构（只读）', async () => {
+        expect(await localHost.getWebToolsConfig(MACHINE_ID))
+            .toEqual(await socketHost.getWebToolsConfig(MACHINE_ID))
+    })
+
+    test('verifyWebToolsProvider：非法参数（schema 拒绝）同构', async () => {
+        expect(await localHost.verifyWebToolsProvider(MACHINE_ID, 'no-such-provider', { any: 'x' }))
+            .toEqual(await socketHost.verifyWebToolsProvider(MACHINE_ID, 'no-such-provider', { any: 'x' }))
     })
 })

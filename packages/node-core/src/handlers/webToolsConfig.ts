@@ -106,75 +106,86 @@ export function mergeProviderCredentials(current: WebToolsConfig, incoming: WebT
 export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<Record<string, never>, { config: RedactedWebToolsConfig } | { error: string }>(
         'get-web-tools-config',
-        async () => {
-            try {
-                const settings = await readSettings()
-                // 存量归一：残留已下线 provider 条目剔除而非整体清空（损坏输入同样回退空配置），不抛 RPC error
-                return { config: redactWebToolsConfig(normalizeWebToolsConfig(settings.webTools)) }
-            } catch (error) {
-                // 读盘 IO 失败（如权限/磁盘）：显式 error envelope，Web 侧区别于"机器离线"提示
-                return { error: `读取 web 工具配置失败：${error instanceof Error ? error.message : String(error)}` }
-            }
-        },
+        () => getWebToolsConfigImpl(),
     )
 
     rpcHandlerManager.registerHandler<{ config: unknown }, { success: true } | { success: false; error: string }>(
         'set-web-tools-config',
-        async (params) => {
-            // 顺序：先 schema-parse incoming，锁内凭据 merge（在场性三分支）后对 merge 结果做选择校验。
-            // 若先校验后 merge，脱敏页"未修改保持不变"的保存会被"缺少凭据"误拒；
-            // merge/校验放在 updateSettings 的 updater 闭包内，消除锁外快照的并发丢更新窗口
-            const parsed = parseWebToolsConfig(params?.config)
-            if (!parsed.ok) return { success: false, error: parsed.error }
-            try {
-                await updateSettings((s) => {
-                    // 存量归一：残留已下线 provider 条目剔除，保存不被存量砖化阻塞
-                    const currentConfig = normalizeWebToolsConfig(s.webTools)
-                    const merged = mergeProviderCredentials(currentConfig, parsed.config)
-                    const error = validateSelection(merged)
-                    if (error) throw new Error(error) // updater 抛出则不落盘
-                    return { ...s, webTools: merged }
-                })
-                return { success: true }
-            } catch (error) {
-                return { success: false, error: error instanceof Error ? error.message : String(error) }
-            }
-        },
+        (params) => setWebToolsConfigImpl(params),
     )
 
-    // 凭据连通性验证：保存前用草稿 key 试连（草稿非空优先，其余沿用已存值），
-    // 一次真实 search（maxResults=1 省配额）的往返延迟即验证结果；不落盘、不泄露凭据值
     rpcHandlerManager.registerHandler<
         { providerId: WebToolProviderId; credentials?: Record<string, string> },
         { success: true; latencyMs: number } | { success: false; error: string }
-    >('verify-web-tools-provider', async (params) => {
-        // RPC 边界 schema 校验：与 hub 路由共用同一 schema，credentials 畸形值（null/数字）
-        // 整体拒绝而非静默过滤——否则会用已存凭据跑真实验证，返回「验证通过」假阳性
-        const parsed = VerifyWebToolsProviderSchema.safeParse(params)
-        if (!parsed.success) {
-            const issue = parsed.error.issues[0]
-            return { success: false, error: `verify 参数非法（${issue?.path.join('.') ?? 'params'}）：${issue?.message ?? ''}` }
+    >('verify-web-tools-provider', (params) => verifyWebToolsProviderImpl(params))
+}
+
+/** get-web-tools-config 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，行为单源 */
+export async function getWebToolsConfigImpl(): Promise<{ config: RedactedWebToolsConfig } | { error: string }> {
+    try {
+        const settings = await readSettings()
+        // 存量归一：残留已下线 provider 条目剔除而非整体清空（损坏输入同样回退空配置），不抛 RPC error
+        return { config: redactWebToolsConfig(normalizeWebToolsConfig(settings.webTools)) }
+    } catch (error) {
+        // 读盘 IO 失败（如权限/磁盘）：显式 error envelope，Web 侧区别于"机器离线"提示
+        return { error: `读取 web 工具配置失败：${error instanceof Error ? error.message : String(error)}` }
+    }
+}
+
+/** set-web-tools-config 实现（同上，本地化直调目标）。 */
+export async function setWebToolsConfigImpl(params: { config: unknown }): Promise<{ success: true } | { success: false; error: string }> {
+    // 顺序：先 schema-parse incoming，锁内凭据 merge（在场性三分支）后对 merge 结果做选择校验。
+    // 若先校验后 merge，脱敏页"未修改保持不变"的保存会被"缺少凭据"误拒；
+    // merge/校验放在 updateSettings 的 updater 闭包内，消除锁外快照的并发丢更新窗口
+    const parsed = parseWebToolsConfig(params?.config)
+    if (!parsed.ok) return { success: false, error: parsed.error }
+    try {
+        await updateSettings((s) => {
+            // 存量归一：残留已下线 provider 条目剔除，保存不被存量砖化阻塞
+            const currentConfig = normalizeWebToolsConfig(s.webTools)
+            const merged = mergeProviderCredentials(currentConfig, parsed.config)
+            const error = validateSelection(merged)
+            if (error) throw new Error(error) // updater 抛出则不落盘
+            return { ...s, webTools: merged }
+        })
+        return { success: true }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+}
+
+/**
+ * 凭据连通性验证（同上，本地化直调目标）：保存前用草稿 key 试连（草稿非空优先，
+ * 其余沿用已存值），一次真实 search（maxResults=1 省配额）的往返延迟即验证结果；
+ * 不落盘、不泄露凭据值
+ */
+export async function verifyWebToolsProviderImpl(params: { providerId: WebToolProviderId; credentials?: Record<string, string> }): Promise<{ success: true; latencyMs: number } | { success: false; error: string }> {
+    // RPC 边界 schema 校验：与 hub 路由共用同一 schema，credentials 畸形值（null/数字）
+    // 整体拒绝而非静默过滤——否则会用已存凭据跑真实验证，返回「验证通过」假阳性
+    const parsed = VerifyWebToolsProviderSchema.safeParse(params)
+    if (!parsed.success) {
+        const issue = parsed.error.issues[0]
+        return { success: false, error: `verify 参数非法（${issue?.path.join('.') ?? 'params'}）：${issue?.message ?? ''}` }
+    }
+    const { providerId, credentials } = parsed.data
+    try {
+        const settings = await readSettings()
+        const config = normalizeWebToolsConfig(settings.webTools)
+        const entry = config.providers?.find((p) => p.id === providerId)
+        // 凭据合成：草稿非空字符串且为声明键时优先，其余用已存值（脏键不参与合成）
+        const merged: Record<string, string> = { ...entry?.credentials }
+        for (const [key, value] of Object.entries(credentials ?? {})) {
+            if (value && declaredCredentialKey(providerId, key)) merged[key] = value
         }
-        const { providerId, credentials } = parsed.data
-        try {
-            const settings = await readSettings()
-            const config = normalizeWebToolsConfig(settings.webTools)
-            const entry = config.providers?.find((p) => p.id === providerId)
-            // 凭据合成：草稿非空字符串且为声明键时优先，其余用已存值（脏键不参与合成）
-            const merged: Record<string, string> = { ...entry?.credentials }
-            for (const [key, value] of Object.entries(credentials ?? {})) {
-                if (value && declaredCredentialKey(providerId, key)) merged[key] = value
-            }
-            const { missing, apiKey } = prepareCredentials(providerId, merged)
-            if (missing.length > 0) return { success: false, error: `缺少凭据：${missing.join(', ')}` }
-            // 超时钳制：条目 timeoutMs 最高 120s，超出 hub 30s socket 上限的部分必被掐断白等
-            const timeoutMs = Math.min(entry?.timeoutMs ?? 15_000, VERIFY_TIMEOUT_CAP_MS)
-            const provider = createProviderFor(providerId, { apiKey: apiKey!, timeoutMs })
-            const started = Date.now()
-            await provider.search({ query: 'connection test', maxResults: 1 })
-            return { success: true, latencyMs: Date.now() - started }
-        } catch (error) {
-            return { success: false, error: error instanceof Error ? error.message : String(error) }
-        }
-    })
+        const { missing, apiKey } = prepareCredentials(providerId, merged)
+        if (missing.length > 0) return { success: false, error: `缺少凭据：${missing.join(', ')}` }
+        // 超时钳制：条目 timeoutMs 最高 120s，超出 hub 30s socket 上限的部分必被掐断白等
+        const timeoutMs = Math.min(entry?.timeoutMs ?? 15_000, VERIFY_TIMEOUT_CAP_MS)
+        const provider = createProviderFor(providerId, { apiKey: apiKey!, timeoutMs })
+        const started = Date.now()
+        await provider.search({ query: 'connection test', maxResults: 1 })
+        return { success: true, latencyMs: Date.now() - started }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
 }
