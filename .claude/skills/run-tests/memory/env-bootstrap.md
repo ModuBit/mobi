@@ -8,13 +8,24 @@ metadata:
 
 # 环境启动
 
-## 架构形态（2026-08-26 起：直跑，不经 supervisor）
+## 架构形态（2026-10-03 起：daemon 同进程直跑，不经 supervisor）
 
-hub/web/runner 均为 `start-sync` 直跑形态——bootstrap 的**直接子进程**（PID 即 bun 本体，
-kill TERM 直达），PPID 看门狗保证 bootstrap 死亡时组件自杀。e2e 环境不存在 supervisor；
-`mobi service *`（supervisor 托管）只属于生产 default profile。
+bootstrap 起 **daemon start-sync 单进程**（hub+runner 同进程，ticket-16），加 web dev server。
+daemon 是 bootstrap 的**直接子进程**（PID 即 bun 本体，kill TERM 直达），PPID 看门狗保证
+bootstrap 死亡时组件自杀。就绪判据 = `/health` + `runner.state.json` 有活 pid（同进程 runner
+就绪标志）；`daemon.state.json`（pid/hubPort/runnerHttpPort）同 pid 三写。日志仍落
+logs/hub.log（既有诊断路径）。会话 CLI 由 daemon 进程内 runner spawn（ppid=daemon）。
+e2e 环境默认无 supervisor；但 R15 类验证用 supervisor 形态（见下方 supervisor 段）。
 背景：supervisor 托管形态曾在 E2E 泄漏「幽灵 supervisor」（绕过强杀子进程 + rm -rf 后
 failed 态常驻且 socket 失联不可发现），累积 10 个后才根治为直跑。
+
+## supervisor 形态（R15 验证用，2026-10-03 实证）
+
+直跑环境清掉后：
+1. `setsid + run_in_background` 起 `bun run packages/cli/src/index.ts --profile e2e service supervise --sync`（日志 >> ~/.mobi-e2e/logs/supervisor.log）
+2. `mobi --profile e2e service daemon start --host 127.0.0.1 --port 2224`（默认托管 daemon 组件；hub/runner 字段显示 stopped 是旧形态）
+3. `kill -TERM <daemon pid>` → supervisor 数秒内重拉（daemon.state.json pid 翻新）；会话进程 PID 不变（孤儿化 ppid→1）且重连后 active 恢复
+4. `service stop` 收尾（scope=daemon）；空 `service shutdown` 报「顶层命令是别名」——直接 kill supervisor PID
 
 ## 步骤
 
@@ -77,7 +88,10 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 边界校验等）前必须 cleanup + bootstrap 重启环境；否则表现为「修复无效」，极易误判为代码 bug。
 判别手段：`ps -eo pid,ppid,command | grep "packages/cli/src/index.ts claude"` 看会话 CLI 启动时间。
 
-## hub 单独重启（验证 CLI socket 断线重连，2026-09-09）
+## hub 单独重启（2026-09-09；ticket-16 起改用 daemon 命令，其余同理）
+
+§ ticket-16 起命令换 `daemon start-sync`（hub+runner 同进程）；runner 单独重启段随之失效——
+runner 已无独立进程，改 runner 侧代码同样重启 daemon。
 
 不 cleanup 整环境，只重启 hub（触发 CLI socket 断连→重连，snapshot delta 场景实测 forceFull 重发）。
 **改了 hub 源码后验新逻辑走这条**——cleanup+bootstrap 会清空数据目录，项目/会话全丢要重建；
@@ -95,7 +109,7 @@ runner spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 
 **坑**：Bash 工具里 `nohup ... &` 拉起的进程在**工具调用结束时被沙箱 SIGTERM 回收**（exits.log 见 signal-term、uptime ~5s）——必须用 `run_in_background: true` 且**套 setsid**（与 bootstrap 同理，见下方坑表）。
 
-## runner 单独重启（改 machine 通道 RPC 代码后验新逻辑，2026-09-29）
+## runner 单独重启（2026-09-29；ticket-16 起失效——runner 已并入 daemon 进程，重启 daemon 即可）
 
 审查 v2 的 gitReview RPC 在 **runner 进程**执行（hub 纯转发 machine 通道，会话 CLI 不经手）——
 改 `packages/session/src/modules/**` 的 reader/handler 后必须重启 runner；cleanup+bootstrap 清数据目录，
