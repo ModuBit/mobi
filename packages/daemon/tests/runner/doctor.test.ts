@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { deriveProfileFromEnvText, findRunawayMobiProcesses } from '@/runner/doctor'
+import { deriveProfileFromEnvText, findAllMobiProcesses, findRunawayMobiProcesses } from '@/runner/doctor'
 
 // pid 取超 PID_MAX 的 7 位数，确保不与真实进程碰撞（readRunnerPid 即便读到真实 dev
 // runner pid 也不会命中这些合成 pid，测试天然隔离、无需 mock fs）
@@ -26,6 +26,8 @@ const PID_DEV_SUPERVISOR = 1001004
 const PID_E2E_HUB = 1002001
 const PID_E2E_SUPERVISOR = 1002002
 const PID_DEFAULT_RUNNER = 1003001
+const PID_E2E_DAEMON = 1002003
+const PID_DEV_DAEMON = 1002004
 
 // 合成的 mobi 进程列表（cmd 内容决定 type 归类，profile 由 attributor 决定）
 const SYNTHETIC_PROCESSES = [
@@ -36,6 +38,9 @@ const SYNTHETIC_PROCESSES = [
     { pid: PID_E2E_HUB, name: 'mobi', cmd: 'mobi hub start' },
     { pid: PID_E2E_SUPERVISOR, name: 'mobi', cmd: 'mobi service supervise --sync' },
     { pid: PID_DEFAULT_RUNNER, name: 'mobi', cmd: 'mobi runner start' },
+    // ticket-22 起的标准 daemon 进程形态（源码直跑 / 二进制两种）
+    { pid: PID_E2E_DAEMON, name: 'bun', cmd: 'bun src/index.ts daemon start-sync --host 127.0.0.1 --port 2224' },
+    { pid: PID_DEV_DAEMON, name: 'mobi', cmd: 'mobi daemon start-sync' },
 ]
 
 vi.mock('ps-list', () => ({
@@ -51,6 +56,8 @@ const PROFILE_BY_PID: Record<number, string> = {
     [PID_E2E_HUB]: 'e2e',
     [PID_E2E_SUPERVISOR]: 'e2e',
     [PID_DEFAULT_RUNNER]: 'default',
+    [PID_E2E_DAEMON]: 'e2e',
+    [PID_DEV_DAEMON]: 'dev',
 }
 const stubAttributor = async (pids: number[]): Promise<Map<number, string | undefined>> => {
     const result = new Map<number, string | undefined>()
@@ -89,6 +96,7 @@ describe('deriveProfileFromEnvText', () => {
     })
 })
 
+
 describe('findRunawayMobiProcesses', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -98,9 +106,9 @@ describe('findRunawayMobiProcesses', () => {
         const result = await findRunawayMobiProcesses('dev', stubAttributor)
         const pids = result.map(r => r.pid).sort()
 
-        // dev runner / hub / session / supervisor 全部命中
+        // dev runner / hub / session / supervisor / daemon 全部命中
         expect(pids).toEqual(
-            [PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION, PID_DEV_SUPERVISOR].sort(),
+            [PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION, PID_DEV_SUPERVISOR, PID_DEV_DAEMON].sort(),
         )
         // 不含 e2e / default
         expect(pids).not.toContain(PID_E2E_HUB)
@@ -108,17 +116,30 @@ describe('findRunawayMobiProcesses', () => {
         expect(pids).not.toContain(PID_DEFAULT_RUNNER)
     })
 
-    it('profile=e2e：只返回 e2e 归属的进程', async () => {
+    it('profile=e2e：只返回 e2e 归属的进程（含 daemon 进程形态）', async () => {
         const result = await findRunawayMobiProcesses('e2e', stubAttributor)
-        expect(result.map(r => r.pid).sort()).toEqual([PID_E2E_HUB, PID_E2E_SUPERVISOR].sort())
+        expect(result.map(r => r.pid).sort()).toEqual(
+            [PID_E2E_HUB, PID_E2E_SUPERVISOR, PID_E2E_DAEMON].sort(),
+        )
+        const classified = await findAllMobiProcesses(stubAttributor)
+        expect(classified.find(p => p.pid === PID_E2E_DAEMON)?.type).toBe('dev-daemon')
     })
 
-    it('profile 省略 → clean all：返回全部可清理进程（含 supervisor）', async () => {
+    it('daemon start-sync 进程形态被识别为 daemon/dev-daemon（不落 user-session）', async () => {
+        const classified = await findAllMobiProcesses(stubAttributor)
+        const byPid = new Map(classified.map(r => [r.pid, r.type]))
+        // 源码直跑（cmd 含 src/index.ts）→ dev-daemon；二进制形态 → daemon
+        expect(byPid.get(PID_E2E_DAEMON)).toBe('dev-daemon')
+        expect(byPid.get(PID_DEV_DAEMON)).toBe('daemon')
+    })
+
+    it('profile 省略 → clean all：返回全部可清理进程（含 supervisor 与 daemon）', async () => {
         const result = await findRunawayMobiProcesses(undefined, stubAttributor)
         const pids = result.map(r => r.pid).sort()
         expect(pids).toEqual([
             PID_DEFAULT_RUNNER, PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION,
             PID_DEV_SUPERVISOR, PID_E2E_HUB, PID_E2E_SUPERVISOR,
+            PID_E2E_DAEMON, PID_DEV_DAEMON,
         ].sort())
     })
 

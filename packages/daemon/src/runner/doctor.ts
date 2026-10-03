@@ -136,6 +136,7 @@ async function getProcessProfiles(pids: number[]): Promise<Map<number, string | 
 const RUNNABLE_TYPES = new Set([
   'runner', 'dev-runner',
   'hub', 'dev-hub',
+  'daemon', 'dev-daemon',
   'supervisor', 'dev-supervisor',
   'runner-spawned-session', 'dev-runner-spawned',
   'runner-version-check', 'dev-runner-version-check',
@@ -165,6 +166,10 @@ export async function findAllMobiProcesses(attributor: ProfileAttributor = getPr
         type = 'current';
       } else if (cmd.includes('--version')) {
         type = isDevMode ? 'dev-runner-version-check' : 'runner-version-check';
+      } else if (cmd.includes('daemon start-sync') || cmd.includes('daemon start')) {
+        // ticket-22 起的标准 daemon 进程形态（hub+runner 同进程）；
+        // 不识别会落 user-session 兜底、逃出 clean 清理集合（pending #96）
+        type = isDevMode ? 'dev-daemon' : 'daemon';
       } else if (cmd.includes('runner start-sync') || cmd.includes('runner start')) {
         type = isDevMode ? 'dev-runner' : 'runner';
       } else if (cmd.includes('hub start-sync') || cmd.includes('hub start')) {

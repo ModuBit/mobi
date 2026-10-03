@@ -959,7 +959,11 @@ interrupt（用户停止）
 6. `mobi service supervise` 起 supervisor（新拓扑单 daemon）
 7. 回退：停服 → 还原 .bak → 装回上一版二进制
 
-## 96. doctor clean 不识别 daemon 进程——分类规则未随 ticket-22 拓扑更新（2026-10-03 ticket-26 文档票发现）
+## 96. ✅ 已解决：doctor clean 不识别 daemon 进程（2026-10-04 修复）
+
+**修复**：`daemon/src/runner/doctor.ts` 分类规则加 `daemon start-sync`/`daemon start` 分支（源码直跑→dev-daemon、二进制→daemon），RUNNABLE_TYPES 同步纳入；`cli/src/ui/doctor.ts` 补 daemon/hub/supervisor 等缺失分组标签。单测 4 例（红→绿）+ 真机实证（e2e daemon 22214 识别进 Dev Daemon 分组）。**顺带发现**：smoke 脚本只优雅停 daemon、不清其 spawn 的会话进程（残留靠 doctor clean 兜底）——低优先，后续给 smoke 补会话清理。
+
+原文：
 
 **现象**：`packages/daemon/src/runner/doctor.ts` 的进程分类只识别旧形态（`runner start-sync` / `hub start-sync` / supervisor / runner-spawned-session / runner-version-check，RUNNABLE_TYPES 集合）。`mobi daemon start-sync`（ticket-22 后的标准 daemon 进程形态）不匹配任何分支，落 `user-session`（dev 模式落 `dev-related`）——两者均不在清理集合，`mobi doctor clean` 不会清理 daemon 进程。
 
@@ -974,3 +978,19 @@ interrupt（用户停止）
 - **测试框架统一**：bun:test（daemon hub 域）与 vitest（shared/node-core/cli/session/web）并存是裁决 Q7 的既定状态，不强行统一
 - **configuration 单例合一**：settings.hub.json / settings.cli.json 拆分保留（写权限边界），不合并回单文件
 - **web 契约 machineId 字段清理**：D4=C 冻结保留，见 ADR 0010；真多机时按新架构重做
+
+## 98. web 终端每会话上限 3 未拦截——Terminal 5 个仍可开（2026-10-02 ③门回归发现，2026-10-04 补记入册）
+
+**现象**：R10 验收时同会话连开 5 个终端均成功，未见「已达上限」拦截。③门验收记录（2026-10-02）已提及但一直未入 pending（违反「票中发现必记 pending」纪律，现补）。
+
+**定位入口**：web 终端面板与 daemon 侧 TerminalManager 的会话级终端数闸（设计上限 3）；待确认是闸未实现还是前端未消费。
+
+## 99. slash 面板丢插件命令——capabilityDiscovery init 快照与 CC 插件命令异步注册竞态，commands_changed 不补投（2026-09 发现，2026-10-04 补记入册）
+
+**现象**：会话早期打开 / 面板时 CC 插件命令（异步注册）不在 capabilityDiscovery 的 init 快照里；后续 `commands_changed` 信号不触发补投，面板持续缺命令直到会话重启。判 local/remote 命令归属看 `--mobi-starting-mode`。
+
+**修法方向**：commands_changed 到达时对 capability snapshot 做增量补投（或懒拉取）。
+
+## 100. R11 上传子项连续两轮回归未复验（验证债，非代码缺陷）
+
+文件链路五端点（file-meta/read-file/save-file/list-directory/search-files）多轮 curl 实证通过，但「上传」子项自 ③门起未再真机验证。下次 E2E 顺带补验。
