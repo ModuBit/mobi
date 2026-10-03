@@ -930,3 +930,13 @@ interrupt（用户停止）
 **代价回顾**：A 的归档体积 O(正常文件大小×2)/轮；lock 级文件靠 4MB 闸降级（存 patch+统计，contentGated 标）。四档（未提交/未暂存/已暂存/已提交）hydration 走 git show 不受 B/A 影响。
 
 **若恢复**：turnArchiveStore 文件记录加回 beforeContent/afterContent（可空）+ contentGated 标；reporter 封口时全文还在内存（累积器），存全文 + 存 patch 二选一或都存；供数器 pairOf 恢复 contents 出口；DiffViewer turn 档恢复 loadDiffFiles hydration。数据结构变更见 .scratch/turn-archive-b/spec.md 的「A 方案备档」节。
+
+## 94. dormant 唤醒窗口入队消息永久悬空——redeliverQueued 补投时序竞态（2026-10-03 ticket-20 E2E 发现，待定位）
+
+**现象**：dormant 后、唤醒前入队的用户消息，唤醒 spawn 成功、CLI connect、lifecycle 被推进（非 queued），但消息未进 CC input stream——永久无回复。唤醒完成后再发的消息正常。ticket-20 E2E 两连复现（DORMANT-OK / RACE3），CC transcript 零命中。
+
+**非新引入**：HEAD=8206aabb（ticket-19 后）worktree 对照环境复现实证，缺口在 ticket-20 之前已存在。与 06 回归清单 R08 附带发现「会话进程死后 active 翻转窗口内发的消息悬空」疑似同源（首拉竞态类）。
+
+**疑点链**：`messageService.redeliverQueued`（handleSessionAlive 激活翻转点广播 new-message 到 CLI 房间）→ CLI 消费并 markMessagesPushed，但此时 sink（receive-readiness）可能未接通 → 消息丢弃且 lifecycle 已推进，无重试路径。
+
+**定位入口**：packages/daemon/src/sync/messageService.ts `redeliverQueued` / syncEngine.handleSessionAlive 激活翻转分支；CLI 侧 new-message 消费与 canReceive 门（packages/session）。修法方向：消费侧在 sink 未通时保留 queued（不推进 lifecycle），或补投由 receive-readiness latch 驱动而非激活翻转。
