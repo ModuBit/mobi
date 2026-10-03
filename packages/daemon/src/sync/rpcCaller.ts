@@ -17,10 +17,9 @@
 /**
  * socket 传输调用器（ticket-15 自 rpcGateway 抽出）。
  *
- * Hub → CLI（session 族）与 Hub → machine（machine 族）两条 RPC 通道共用同一个
- * `rpc-request` 事件与同一套故障分类。此前传输逻辑长在 RpcGateway 里；MachineHost
- * 拆出后两个适配器（RpcGateway / SocketMachineHost）各持一个本类实例，传输语义
- * 仍只写一份（行为零变化）。
+ * Hub → CLI（session 族）RPC 通道的传输语义单源。machine 族在 ticket-20 已随
+ * machine socket 通道删除（本地直调），此前为两条通道共写一份传输逻辑而拆出的
+ * 本类现在只剩 RpcGateway 一个持有方。
  */
 
 import type { Server } from 'socket.io'

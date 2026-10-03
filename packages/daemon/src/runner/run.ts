@@ -17,21 +17,21 @@
 /**
  * Runner - `runner start-sync` 进程入口 + 可复用生命周期核心（ticket-16 拆分）。
  *
- * `startRunnerCore` 只负责「起一个 runner」：锁、注册、control server、machine
- * 通道、心跳，返回 `RunnerHandle`。**不含任何进程级职责**——exit logger、信号
- * 处理、崩溃检测由调用方承担（本文件薄壳 `startRunner` / daemonEntry 同进程
- * 编排）。`startRunner`（`runner start-sync`）行为与拆分前完全一致。
+ * `startRunnerCore` 只负责「起一个 runner」：锁、control server、心跳自检，返回
+ * `RunnerHandle`。machine 通道已删（ticket-20）：本机 machine 行由 hub 侧自注册，
+ * runner 侧运行时事实（httpPort / spawn 结果 / 关停状态）经注入的
+ * {@link RunnerCoreDeps.updateMachineRunnerState} 直写。**不含任何进程级职责**——
+ * exit logger、信号处理、崩溃检测由调用方承担（本文件薄壳 `startRunner` /
+ * daemonEntry 同进程编排）。
  */
 
 import fs from 'fs/promises';
 
-import { ApiClient } from '@mobi/node-core/api/api';
 import { TrackedSession } from './types';
 import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
 import { RunnerState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
-import { authAndSetupMachineIfNeeded } from './authSetup';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
@@ -39,25 +39,20 @@ import { writeRunnerState, RunnerLocallyPersistedState, readRunnerState, acquire
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, isWindows, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
 import { installExitLogger, resolveMobiLogsDir } from '@mobi/shared/exitLogger';
-import { withRetry } from '@mobi/node-core/utils/time';
-import { isRetryableConnectionError } from '@mobi/node-core/utils/errorUtils';
 
 import { cleanupRunnerState, getInstalledCliMtimeMs, isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient';
 import { startRunnerControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata';
-import { ApiMachineClient } from './apiMachine';
 
 /** 关停来源（沿用原 startRunner 的四类，hub 侧 runnerState.shutdownSource 透传） */
-export type RunnerShutdownSource = 'mobi-app' | 'mobi-cli' | 'os-signal' | 'exception';
+export type RunnerShutdownSource = 'mobi-cli' | 'os-signal' | 'exception';
 
-/** runner 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
 /**
  * hub → runner 核心的会话执行桥（ticket-18）：spawn/stop 直调 + 追踪表补登。
- * spawn 契约与 'spawn-mobi-session' RPC、controlServer /spawn-session 完全同源
- * （同一份 spawnSession 闭包），仅传输方式不同。
+ * spawn 契约与 controlServer /spawn-session 曾完全同源（同一份 spawnSession
+ * 闭包）；该端点已随 machine 通道删除（ticket-20），spawn 唯一入口是本桥。
  */
 export interface RunnerSessionBridge {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
@@ -66,6 +61,7 @@ export interface RunnerSessionBridge {
     registerSessionTracking: (signal: SessionTrackingSignal) => void
 }
 
+/** runner 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
 export interface RunnerHandle {
     /** control server 端口（daemon.state.json / runner.state.json 记录用） */
     httpPort: number
@@ -77,7 +73,7 @@ export interface RunnerHandle {
     bridge: RunnerSessionBridge
     /**
      * 优雅关停（幂等）。清理顺序沿用原 cleanupAndShutdown：停心跳 → 上报
-     * shutting-down → 断 machine 通道 → 停 control server → 清 state → 释放锁。
+     * shutting-down → 停 control server → 清 state → 释放锁。
      * **不杀 detached 会话子进程**（现状语义：runner 停止时会话存活）。
      */
     stop(source: RunnerShutdownSource, errorMessage?: string): Promise<void>
@@ -88,6 +84,16 @@ export interface RunnerHandle {
     exited: Promise<{ source: RunnerShutdownSource; errorMessage?: string }>
 }
 
+/**
+ * daemon 编排注入的 hub 侧能力（ticket-20）：machine 通道删除后，runner 运行时
+ * 事实直写 hub（同进程）。缺省（standalone `runner start-sync`）时静默跳过——
+ * 该形态本就不连 hub。
+ */
+export interface RunnerCoreDeps {
+    /** 本机 runnerState 直写（spawn 结果上报 / httpPort / 关停状态） */
+    updateMachineRunnerState: (handler: (state: RunnerState | null) => RunnerState) => void
+}
+
 /** 锁已被占用：另一 runner 实例在跑（薄壳据此静默退出，非错误） */
 export class RunnerLockHeldError extends Error {
     constructor() {
@@ -96,16 +102,12 @@ export class RunnerLockHeldError extends Error {
     }
 }
 
-export async function startRunnerCore(): Promise<RunnerHandle> {
+export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHandle> {
   // Acquire exclusive lock (proves runner is running)
   const runnerLockHandle: FileHandle | null = await acquireRunnerLock(5, 200);
   if (!runnerLockHandle) {
     throw new RunnerLockHeldError();
   }
-
-  // Ensure auth and machine registration BEFORE anything else
-  const { machineId } = await authAndSetupMachineIfNeeded();
-  logger.debug('[RUNNER RUN] Auth and machine setup complete');
 
   // Setup state - key by PID
   const pidToTrackedSession = new Map<number, TrackedSession>();
@@ -587,7 +589,6 @@ export async function startRunnerCore(): Promise<RunnerHandle> {
   const { port: controlPort, stop: stopControlServer } = await startRunnerControlServer({
     getChildren: getCurrentChildren,
     stopSession,
-    spawnSession,
     requestShutdown: () => requestShutdown('mobi-cli'),
     onMobiSessionWebhook
   });
@@ -607,52 +608,19 @@ export async function startRunnerCore(): Promise<RunnerHandle> {
   writeRunnerState(fileState);
   logger.debug('[RUNNER RUN] Runner state written');
 
-  // Prepare initial runner state
-  const initialRunnerState: RunnerState = {
-    status: 'offline',
+  // 本机 machine 行由 hub 侧自注册（ticket-20：machine 通道删除，daemon 即本机）；
+  // runner 这里只补 control server 端口等运行时事实（httpPort 在 hub 注册时未知）
+  deps?.updateMachineRunnerState((state: RunnerState | null) => ({
+    ...(state ?? { status: 'running' }),
+    status: 'running',
     pid: process.pid,
     httpPort: controlPort,
-    startedAt: Date.now()
-  };
-
-  // Create API client
-  const api = await ApiClient.create();
-
-  // Get or create machine (with retry for transient connection errors)
-  const machine = await withRetry(
-    () => api.getOrCreateMachine({
-      machineId,
-      metadata: buildMachineMetadata(),
-      runnerState: initialRunnerState
-    }),
-    {
-      maxAttempts: 60,
-      minDelay: 1000,
-      maxDelay: 30000,
-      shouldRetry: isRetryableConnectionError,
-      onRetry: (error, attempt, nextDelayMs) => {
-        const errorMsg = error instanceof Error ? error.message : String(error)
-        logger.debug(`[RUNNER RUN] Failed to register machine (attempt ${attempt}), retrying in ${nextDelayMs}ms: ${errorMsg}`)
-      }
-    }
-  );
-  logger.debug(`[RUNNER RUN] Machine registered: ${machine.id}`);
-
-  // Create realtime machine session
-  const apiMachine = ApiMachineClient.create(api.token, machine);
-
-  // Set RPC handlers
-  apiMachine.setRPCHandlers({
-    spawnSession,
-    stopSession,
-    requestShutdown: () => requestShutdown('mobi-app')
-  });
-
-  // Connect to server
-  apiMachine.connect();
+    startedAt: state?.startedAt ?? Date.now(),
+  }));
+  logger.debug('[RUNNER RUN] Runner state reported (local machine channel)');
 
   reportSpawnOutcomeToHub = (outcome) => {
-    void apiMachine.updateRunnerState((state: RunnerState | null) => {
+    void deps?.updateMachineRunnerState((state: RunnerState | null) => {
       const baseState: RunnerState = state
         ? { ...state }
         : { status: 'running' };
@@ -684,8 +652,6 @@ export async function startRunnerCore(): Promise<RunnerHandle> {
           at: Date.now()
         }
       };
-    }).catch((error) => {
-      logger.debug('[RUNNER RUN] Failed to update runner state with spawn outcome', error);
     });
   };
 
@@ -780,18 +746,14 @@ export async function startRunnerCore(): Promise<RunnerHandle> {
     clearInterval(restartOnStaleVersionAndHeartbeat);
     logger.debug('[RUNNER RUN] Health check interval cleared');
 
-    // Update runner state before shutting down
-    await apiMachine.updateRunnerState((state: RunnerState | null) => ({
+    // Update runner state before shutting down（同步直写，无需等待发送窗口）
+    deps?.updateMachineRunnerState((state: RunnerState | null) => ({
       ...state,
       status: 'shutting-down',
       shutdownRequestedAt: Date.now(),
       shutdownSource: source
     }));
 
-    // Give time for metadata update to send
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    apiMachine.shutdown();
     await stopControlServer();
     await cleanupRunnerState();
     await releaseRunnerLock(runnerLockHandle);

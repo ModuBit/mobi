@@ -17,10 +17,10 @@
 /**
  * 会话进程族 RPC 网关（Hub → CLI，按 sessionId 路由）。
  *
- * ticket-15 起 machine 族（按 machineId 路由）方法已整体搬往
- * {@link ../machine/SocketMachineHost}，本类只剩会话族；两者共用
- * {@link SocketRpcCaller} 的传输语义。下方 machine 族类型 re-export 仅为
- * 兼容既有 import（syncEngine 等），新代码请从 `../machine/MachineHost` 取。
+ * machine 族（按 machineId 路由）在 ticket-17/20 已本地直调化（SocketMachineHost
+ * 随 machine socket 通道删除），本类只剩会话族，传输语义在 {@link SocketRpcCaller}。
+ * 下方 machine 族类型 re-export 仅为兼容既有 import（syncEngine 等），新代码请从
+ * `../machine/MachineHost` 取。
  */
 
 import type { EffortLevel, PermissionMode } from '@mobi/shared/types'

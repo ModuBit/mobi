@@ -360,8 +360,6 @@ export type Update = z.infer<typeof UpdateSchema>
 export interface ServerToClientEvents {
     /** Hub→CLI 会话推送（session room）：new-message / update-session 三种 body，按 body.t 判别 */
     'session-update': (data: Update) => void
-    /** Hub→CLI 机器推送（machine room）：update-machine body */
-    'machine-update': (data: Update) => void
     'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     'terminal:open': (data: TerminalOpenPayload) => void
     'terminal:write': (data: TerminalWritePayload) => void
@@ -446,31 +444,6 @@ export interface ClientToServerEvents {
         result: 'success'
         version: number
         agentState: unknown | null
-    }) => void) => void
-    'machine-alive': (data: { machineId: string; time: number }) => void
-    'machine-update-metadata': (data: { machineId: string; expectedVersion: number; metadata: unknown }, cb: (answer: {
-        result: 'error'
-        reason?: SocketErrorReason
-    } | {
-        result: 'version-mismatch'
-        version: number
-        metadata: unknown | null
-    } | {
-        result: 'success'
-        version: number
-        metadata: unknown | null
-    }) => void) => void
-    'machine-update-state': (data: { machineId: string; expectedVersion: number; runnerState: unknown | null }, cb: (answer: {
-        result: 'error'
-        reason?: SocketErrorReason
-    } | {
-        result: 'version-mismatch'
-        version: number
-        runnerState: unknown | null
-    } | {
-        result: 'success'
-        version: number
-        runnerState: unknown | null
     }) => void) => void
     'rpc-register': (data: { method: string }) => void
     'rpc-unregister': (data: { method: string }) => void

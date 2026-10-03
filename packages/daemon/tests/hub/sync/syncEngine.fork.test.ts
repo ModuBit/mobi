@@ -21,6 +21,8 @@ import { MetadataSchema } from '@mobi/shared'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
+import type { MachineHost } from '../../../src/machine/MachineHost'
+import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
  * SyncEngine.forkSession 单测：验证编排层（锚点/边界/turn 起点校验 → store 事务 → 缓存刷新）。
@@ -241,31 +243,27 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
         let spawnCall: Record<string, unknown> | null = null
         const engineRef: { engine?: SyncEngine } = {}
 
-        const fakeSocket = {
-            timeout() { return this },
-            async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
-                if (payload.method.endsWith(':spawn-mobi-session')) {
-                    const engine = engineRef.engine!
-                    const spawned = engine.getOrCreateSession(
-                        'tag-fork-resumed', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
-                    )
-                    engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
-                    spawnCall = payload.params as Record<string, unknown>
-                    return { type: 'success', sessionId: spawned.id }
-                }
-                return { ok: true }
+        // ticket-20 起 spawn 观测点从 machine socket RPC 改为 MachineHost 直调入参
+        const machineHost = {
+            spawnSession: async (_machineId: string, _directory: string, options?: SpawnSessionOptions) => {
+                const engine = engineRef.engine!
+                const spawned = engine.getOrCreateSession(
+                    'tag-fork-resumed', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
+                )
+                engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
+                spawnCall = (options ?? {}) as Record<string, unknown>
+                return { type: 'success', sessionId: spawned.id }
             },
-        }
+        } as unknown as MachineHost
+
         const io = {
-            of() { return { sockets: new Map([['sock-1', fakeSocket]]) } },
+            of() { return { sockets: new Map() } },
         } as unknown as import('socket.io').Server
         const registry = {
-            getSocketIdForMethod(method: string) {
-                return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
-            },
+            getSocketIdForMethod() { return null },
         } as unknown as RpcRegistry
         const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-        const engine = new SyncEngine(store, io, registry, sseManager)
+        const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
         engineRef.engine = engine
         return {
             engine,
@@ -282,8 +280,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
         const h = makeSpawnEngine()
         try {
             // 机器在线（同 namespace，targetMachine 匹配前置）
-            h.engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
-            h.engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            h.engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
 
             // 建 parent + fork 行（走 forkSession 编排，fork 行 metadata 由 store 层写入）
             const parent = h.engine.getOrCreateSession(

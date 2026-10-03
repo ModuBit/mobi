@@ -84,20 +84,16 @@ function makeHarness(): Harness {
         stopSession: () => true,
     }
 
-    // fallback 一旦被触达即抛错——bridge 注入后 spawn 必须走直调
-    const machineHost = new LocalMachineHost({
-        spawnSession: () => { throw new Error('socket fallback must not be reached when bridge is wired') },
-    } as never, () => bridge)
+    // LocalMachineHost 只带 bridge——socket 兜底已删（ticket-20），直调是唯一路径
+    const machineHost = new LocalMachineHost(() => bridge)
 
     const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
 
     // hubServer.setRunnerBridge 同款 glue（单源 createSessionTrackingSync）
     engine.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), (signal) => bridge!.registerSessionTracking(signal)))
 
-    // 注册在线 machine（spawn 寻址前提）
-    const machineCache = (engine as any).machineCache
-    machineCache.getOrCreateMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
-    machineCache.handleMachineAlive({ machineId: MACHINE_ID, time: Date.now() })
+    // 注册本机 machine（spawn 寻址前提；ticket-20 起自注册即常驻 active）
+    engine.registerLocalMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
 
     return {
         engine,

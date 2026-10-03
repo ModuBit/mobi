@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Store, StoredMachine, StoredSession } from '../../../store'
+import type { Store, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SessionSocketOwners } from '../../sessionSocketOwners'
 import type { SyncEvent } from '../../../sync/syncEngine'
@@ -25,16 +25,10 @@ import type { AgentSessionOps } from '../../../sync/agentSessionService'
 import type { SnapshotCliLease, SnapshotSync } from '../../../sync/snapshotSync'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
-import { registerMachineHandlers } from './machineHandlers'
 import { registerUiCommandHandlers } from './uiCommandHandlers'
 import { registerAgentSessionHandlers } from './agentSessionHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
 import { registerSessionHandlers } from './sessionHandlers'
-
-type MachineAlivePayload = {
-    machineId: string
-    time: number
-}
 
 export type CliHandlersDeps = {
     io: SocketServer
@@ -46,8 +40,6 @@ export type CliHandlersDeps = {
     snapshotSync: SnapshotSync
     /** rewind 软删除上界（SyncEngine 受理时写；与 SyncEngine 共用同一实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
-    /** 机器心跳（机器级事实，经 machineHandlers 更新在线状态；不属于会话事实 sink） */
-    onMachineAlive?: (payload: MachineAlivePayload) => void
     /** Web SSE 在线检查（ui-command 离线静默判定；hidden 后台 tab 也算在线） */
     hasActiveSseConnection?: (namespace: string) => boolean
     /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播） */
@@ -66,7 +58,7 @@ export type CliHandlersDeps = {
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
+    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
     const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
@@ -78,20 +70,6 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
             return { ok: true, value: session }
         }
         if (store.sessions.getSession(sessionId)) {
-            return { ok: false, reason: 'access-denied' }
-        }
-        return { ok: false, reason: 'not-found' }
-    }
-
-    const resolveMachineAccess = (machineId: string): AccessResult<StoredMachine> => {
-        if (!namespace) {
-            return { ok: false, reason: 'namespace-missing' }
-        }
-        const machine = store.machines.getMachineByNamespace(machineId, namespace)
-        if (machine) {
-            return { ok: true, value: machine }
-        }
-        if (store.machines.getMachine(machineId)) {
             return { ok: false, reason: 'access-denied' }
         }
         return { ok: false, reason: 'not-found' }
@@ -113,11 +91,6 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         }
     }
 
-    const machineId = typeof auth?.machineId === 'string' ? auth.machineId : null
-    if (machineId && resolveMachineAccess(machineId).ok) {
-        socket.join(`machine:${machineId}`)
-    }
-
     const emitAccessError = (scope: 'session' | 'machine', id: string, reason: AccessErrorReason) => {
         const message = reason === 'access-denied'
             ? `${scope} access denied`
@@ -136,13 +109,6 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         snapshotSync,
         rewindDeleteBoundTracker,
         factsSink,
-        onWebappEvent
-    })
-    registerMachineHandlers(socket, {
-        store,
-        resolveMachineAccess,
-        emitAccessError,
-        onMachineAlive,
         onWebappEvent
     })
     registerUiCommandHandlers(socket, {

@@ -16,11 +16,8 @@
 
 /**
  * {@link MachineHost} 的本地实现（ticket-17，WP4.3）：直调 machine handlers 的
- * 实现函数，替换经 socket loopback 的 {@link SocketMachineHost}。
- *
- * 绞杀者模式逐组切换：每个方法组一个提交从「委托 fallback」翻成「直调」，
- * fallback 常驻兜底——已切换方法不再出现 `unreachable` 与 30s 传输超时
- * （07 N），`RpcFailure` 结果结构与 `kind` 分类语义保持（调用方分支不动，25 票清）。
+ * 实现函数。ticket-20 起 socket 版实现（SocketMachineHost）随 machine 通道删除，
+ * 本类是唯一实现。
  *
  * `machineId` 形参保留（D4=C 路由残留），本地实现忽略之。
  */
@@ -41,20 +38,19 @@ import { mapSpawnResultToGateway } from './spawnResultMapping'
 import type { RunnerSessionBridge } from '../runner/run'
 
 export class LocalMachineHost implements MachineHost {
-    /** 未切换方法组的 socket 兜底（逐组退场） */
-    private readonly fallback: MachineHost
-    /** runner 会话执行桥（ticket-18 spawn 直调）；daemon 编排在 runner 就绪后注入，注入前走 socket 兜底 */
+    /** runner 会话执行桥（ticket-18 spawn 直调）；daemon 编排在 runner 就绪后注入 */
     private readonly runnerBridge: () => RunnerSessionBridge | null
 
-    constructor(fallback: MachineHost, runnerBridge: () => RunnerSessionBridge | null = () => null) {
-        this.fallback = fallback
+    constructor(runnerBridge: () => RunnerSessionBridge | null = () => null) {
         this.runnerBridge = runnerBridge
     }
 
     async spawnSession(machineId: string, directory: string, options?: SpawnSessionOptions) {
         const bridge = this.runnerBridge()
         if (!bridge) {
-            return await this.fallback.spawnSession(machineId, directory, options)
+            // socket 兜底已随 machine 通道删除（ticket-20）：bridge 注入前（daemon 启动窗口）
+            // 或脱离 daemon 的调用方会到这里，按明确错误透出而非静默等待
+            return { type: 'error' as const, message: 'Runner bridge is not wired (machine channel removed in ticket-20)', failure: 'other' as const }
         }
         const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options ?? {}
         try {

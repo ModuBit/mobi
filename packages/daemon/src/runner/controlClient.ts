@@ -65,11 +65,6 @@ export async function stopRunnerSession(sessionId: string): Promise<boolean> {
   return (result as { success?: boolean }).success || false;
 }
 
-export async function spawnRunnerSession(directory: string, sessionId?: string): Promise<{ error?: string } | Record<string, unknown>> {
-  const result = await runnerPost('/spawn-session', { directory, sessionId });
-  return result;
-}
-
 export async function stopRunnerHttp(): Promise<void> {
   await runnerPost('/stop');
 }

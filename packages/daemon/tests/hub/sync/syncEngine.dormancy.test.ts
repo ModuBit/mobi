@@ -19,6 +19,8 @@ import { describe, test, expect, spyOn } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
+import type { MachineHost, SpawnGatewayResult } from '../../../src/machine/MachineHost'
+import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
  * SyncEngine.wakeSession 单测（dormancy spec §B）：休眠会话唤醒 = fire-and-forget
@@ -28,7 +30,8 @@ import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
  */
 
 /** 构造带 spawn 计数的 SyncEngine（spawn fake 同步创建新会话并上报 alive；
- *  spawnReply 提供时 fake 原样返回该结果、不造会话——already-running 场景用） */
+ *  spawnReply 提供时 fake 原样返回该结果、不造会话——already-running 场景用。
+ *  ticket-20 起 spawn 观测点从 machine socket RPC 改为 MachineHost 直调入参） */
 function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
     engine: SyncEngine
     store: Store
@@ -39,32 +42,27 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
     const engineRef: { engine?: SyncEngine } = {}
     const calls: Record<string, unknown>[] = []
 
-    const fakeSocket = {
-        timeout() { return this },
-        async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
-            if (payload.method.endsWith(':spawn-mobi-session')) {
-                calls.push(payload.params as Record<string, unknown>)
-                if (opts.spawnReply) return opts.spawnReply
-                const engine = engineRef.engine!
-                const spawned = engine.getOrCreateSession(
-                    `tag-wake-${calls.length}`, { path: '/tmp/proj', host: 'h-1' }, null, 'default'
-                )
-                engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
-                return { type: 'success', sessionId: spawned.id }
-            }
-            return { ok: true }
+    const machineHost = {
+        spawnSession: async (_machineId: string, _directory: string, options?: SpawnSessionOptions) => {
+            calls.push((options ?? {}) as Record<string, unknown>)
+            if (opts.spawnReply) return opts.spawnReply as unknown as SpawnGatewayResult
+            const engine = engineRef.engine!
+            const spawned = engine.getOrCreateSession(
+                `tag-wake-${calls.length}`, { path: '/tmp/proj', host: 'h-1' }, null, 'default'
+            )
+            engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
+            return { type: 'success', sessionId: spawned.id }
         },
-    }
+    } as unknown as MachineHost
+
     const io = {
-        of() { return { sockets: new Map([['sock-1', fakeSocket]]) } },
+        of() { return { sockets: new Map() } },
     } as unknown as import('socket.io').Server
     const registry = {
-        getSocketIdForMethod(method: string) {
-            return method.endsWith(':spawn-mobi-session') ? 'sock-1' : null
-        },
+        getSocketIdForMethod() { return null },
     } as unknown as RpcRegistry
     const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-    const engine = new SyncEngine(store, io, registry, sseManager)
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
     engineRef.engine = engine
     return {
         engine,
@@ -79,8 +77,7 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
 
 /** 在线机器 + 休眠会话（有 machineId/nativeSessionId 的完整 metadata） */
 function seedDormantSession(h: ReturnType<typeof makeWakeEngine>) {
-    h.engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
-    h.engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+    h.engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
     const session = h.engine.getOrCreateSession(
         'wake-session',
         { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' },
@@ -167,27 +164,23 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         }
     })
 
-    test('spawn RPC throw（机器掉线/ack 超时）→ 异常就地消化，不构成 unhandled rejection', async () => {
+    test('spawn 失败（MachineHost 抛错）→ 异常就地消化，不构成 unhandled rejection', async () => {
         const store = new Store(':memory:')
-        const engineRef: { engine?: SyncEngine } = {}
-        const throwingSocket = {
-            timeout() { return this },
-            async emitWithAck() {
-                throw new Error('rpc timeout')
+        const throwingHost = {
+            spawnSession: async () => {
+                throw new Error('spawn failed')
             },
-        }
+        } as unknown as MachineHost
         const io = {
-            of() { return { sockets: new Map([['sock-1', throwingSocket]]) } },
+            of() { return { sockets: new Map() } },
         } as unknown as import('socket.io').Server
         const registry = {
-            getSocketIdForMethod() { return 'sock-1' },
+            getSocketIdForMethod() { return null },
         } as unknown as RpcRegistry
         const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-        const engine = new SyncEngine(store, io, registry, sseManager)
-        engineRef.engine = engine
+        const engine = new SyncEngine(store, io, registry, sseManager, undefined, throwingHost)
         try {
-            engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
             const session = engine.getOrCreateSession(
                 'wake-throw', { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' }, null, 'default',
             )

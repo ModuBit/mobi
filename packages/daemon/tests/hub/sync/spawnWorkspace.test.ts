@@ -16,106 +16,70 @@
 
 import { describe, test, expect } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
-import { SocketMachineHost } from '../../../src/machine/SocketMachineHost'
+import { LocalMachineHost } from '../../../src/machine/LocalMachineHost'
+import type { RunnerSessionBridge } from '../../../src/runner/run'
+import type { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 
 /**
- * spawn 链路透传 workspaceId 单测：
- * Web → engine.spawnSession → rpcGateway.spawnSession → runner 的 spawn-mobi-session RPC body。
- * workspaceId 是最后一个位置参数，未传时 body 中不出现有效值。
+ * spawn 链路透传 workspaceId 单测（ticket-20 起 socket 通道删除，观测点改为
+ * runner bridge 的 spawn 入参）：
+ * Web → engine.spawnSession → LocalMachineHost → RunnerSessionBridge.spawnSession。
+ * workspaceId 是最后一个位置参数，未传时入参中不出现有效值。
  */
 
-/** 捕获 emitWithAck 的 rpc-request 信封 */
-interface EmitCapture {
-    emitCalls: { method: string; params: unknown }[]
+/** 捕获 bridge.spawnSession 的入参 */
+interface BridgeCapture {
+    spawnCalls: SpawnSessionOptions[]
 }
 
-/** 构造 fake socket.io Server：单个 socket，emitWithAck 返回 spawn 成功信封 */
-function makeSpawnIo(capture: EmitCapture) {
-    const fakeSocket = {
-        timeout() { return this },
-        async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
-            capture.emitCalls.push(payload)
-            return { type: 'success', sessionId: 'spawned-1' }
+function makeEngine(capture: BridgeCapture): SyncEngine {
+    const io = { of: () => ({ sockets: new Map() }), emit: () => {} } as unknown as import('socket.io').Server
+    const registry = { getSocketIdForMethod: () => null } as unknown as RpcRegistry
+    const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
+    const store = new Store(':memory:')
+    const bridge: RunnerSessionBridge = {
+        spawnSession: async (options) => {
+            capture.spawnCalls.push(options)
+            return { type: 'success', sessionId: 'spawned-1' } satisfies SpawnSessionResult
         },
+        stopSession: () => true,
+        registerSessionTracking: () => {},
     }
-    const sockets = new Map<string, unknown>([['sock-1', fakeSocket]])
-    return {
-        of() { return { sockets } },
-    } as unknown as import('socket.io').Server
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost(() => bridge))
+    // 本机自注册（spawn 寻址前提；ticket-20 起常驻 active）
+    engine.registerLocalMachine('machine-p1', { host: 'test-host' }, null, 'default')
+    return engine
 }
 
-/** 构造 fake rpcRegistry：machine 的 spawn-mobi-session 方法路由到 sock-1 */
-function makeSpawnRegistry(machineId: string): RpcRegistry {
-    return {
-        getSocketIdForMethod(method: string) {
-            return method === `${machineId}:spawn-mobi-session` ? 'sock-1' : null
-        },
-    } as unknown as RpcRegistry
-}
-
-describe('spawn 链路透传 workspaceId', () => {
-    test('engine.spawnSession 收到 workspaceId 后原样出现在 RPC body', async () => {
-        const capture: EmitCapture = { emitCalls: [] }
-        const io = makeSpawnIo(capture)
-        const registry = makeSpawnRegistry('machine-p1')
-        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-        const store = new Store(':memory:')
-        const engine = new SyncEngine(store, io, registry, sseManager)
+describe('spawn 链路透传 workspaceId（bridge 直调）', () => {
+    test('engine.spawnSession 收到 workspaceId 后原样出现在 bridge 入参', async () => {
+        const capture: BridgeCapture = { spawnCalls: [] }
+        const engine = makeEngine(capture)
         try {
-            const result = await engine.spawnSession(
-                'machine-p1',
-                '/tmp/proj',
-                { workspaceId: 'workspace-42' }
-            )
+            const result = await engine.spawnSession('machine-p1', '/tmp/proj', { workspaceId: 'workspace-42' })
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
-            expect(capture.emitCalls).toHaveLength(1)
-            expect(capture.emitCalls[0].method).toBe('machine-p1:spawn-mobi-session')
-            expect(capture.emitCalls[0].params).toMatchObject({
+            expect(capture.spawnCalls).toHaveLength(1)
+            expect(capture.spawnCalls[0]).toMatchObject({
                 directory: '/tmp/proj',
                 workspaceId: 'workspace-42',
             })
         } finally {
             engine.stop()
-            store.close()
         }
     })
 
-    test('engine.spawnSession 未传 workspaceId 时 RPC body 中 workspaceId 为 undefined', async () => {
-        const capture: EmitCapture = { emitCalls: [] }
-        const io = makeSpawnIo(capture)
-        const registry = makeSpawnRegistry('machine-p2')
-        const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-        const store = new Store(':memory:')
-        const engine = new SyncEngine(store, io, registry, sseManager)
+    test('engine.spawnSession 未传 workspaceId 时 bridge 入参中不出现有效值', async () => {
+        const capture: BridgeCapture = { spawnCalls: [] }
+        const engine = makeEngine(capture)
         try {
-            const result = await engine.spawnSession('machine-p2', '/tmp/proj')
+            const result = await engine.spawnSession('machine-p1', '/tmp/proj')
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
-            expect(capture.emitCalls).toHaveLength(1)
-            expect(capture.emitCalls[0].params).toMatchObject({ directory: '/tmp/proj' })
-            expect((capture.emitCalls[0].params as Record<string, unknown>).workspaceId).toBeUndefined()
+            expect(capture.spawnCalls).toHaveLength(1)
+            expect((capture.spawnCalls[0] as unknown as Record<string, unknown>).workspaceId).toBeUndefined()
         } finally {
             engine.stop()
-            store.close()
         }
-    })
-
-    test('rpcGateway.spawnSession 直接调用时 workspaceId 进入 RPC body', async () => {
-        const capture: EmitCapture = { emitCalls: [] }
-        const io = makeSpawnIo(capture)
-        const gateway = new SocketMachineHost(io, makeSpawnRegistry('machine-p3'))
-
-        const result = await gateway.spawnSession(
-            'machine-p3',
-            '/tmp/proj',
-            { workspaceId: 'workspace-99' }
-        )
-        expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
-        expect(capture.emitCalls).toHaveLength(1)
-        expect(capture.emitCalls[0].params).toMatchObject({
-            directory: '/tmp/proj',
-            workspaceId: 'workspace-99',
-        })
     })
 })

@@ -16,7 +16,6 @@
 
 import { z } from 'zod'
 import type { Store } from '../store'
-import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
 
 const machineMetadataSchema = z.object({
@@ -54,6 +53,12 @@ export interface Machine {
 export class MachineCache {
     private readonly machines: Map<string, Machine> = new Map()
     private readonly lastBroadcastAtByMachineId: Map<string, number> = new Map()
+    /**
+     * 本机 machine id 集合（ticket-20）：daemon 即本机——machine 通道删除后无心跳，
+     * 这些 machine 常驻 active、expireInactive 对其不生效（含驱逐）。
+     * 实际只有一个成员；用集合承载语义（「本机们」而非「指定的那台」）
+     */
+    private readonly localMachineIds: Set<string> = new Set()
 
     constructor(
         private readonly store: Store,
@@ -153,24 +158,17 @@ export class MachineCache {
         }
     }
 
-    handleMachineAlive(payload: { machineId: string; time: number }): void {
-        const t = clampAliveTime(payload.time)
-        if (!t) return
-
-        const machine = this.machines.get(payload.machineId) ?? this.refreshMachine(payload.machineId)
-        if (!machine) return
-
-        const wasActive = machine.active
+    /**
+     * 本机自注册（ticket-20）：upsert 本机行、标记常驻 active 并置活广播。
+     * daemon 启动时调用一次，替代旧 machine 通道的「HTTP 注册 + 心跳保活」。
+     */
+    registerLocalMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): Machine {
+        const machine = this.getOrCreateMachine(id, metadata, runnerState, namespace)
+        this.localMachineIds.add(id)
         machine.active = true
-        machine.activeAt = Math.max(machine.activeAt, t)
-
-        const now = Date.now()
-        const lastBroadcastAt = this.lastBroadcastAtByMachineId.get(machine.id) ?? 0
-        const shouldBroadcast = (!wasActive && machine.active) || (now - lastBroadcastAt > 10_000)
-        if (shouldBroadcast) {
-            this.lastBroadcastAtByMachineId.set(machine.id, now)
-            this.publisher.emit({ type: 'machine-updated', machineId: machine.id, data: machine })
-        }
+        machine.activeAt = Date.now()
+        this.publisher.emit({ type: 'machine-updated', machineId: id, data: machine })
+        return machine
     }
 
     expireInactive(now: number = Date.now()): void {
@@ -178,6 +176,8 @@ export class MachineCache {
         const evictionMs = 3_600_000 // 1 小时
 
         for (const machine of this.machines.values()) {
+            // 本机常驻 active（无心跳），不过期、不驱逐
+            if (this.localMachineIds.has(machine.id)) continue
             if (!machine.active) continue
             if (now - machine.activeAt <= machineTimeoutMs) continue
             machine.active = false
@@ -186,6 +186,7 @@ export class MachineCache {
 
         // 驱逐长时间 inactive 的 machine（仍在 DB 中，按需重新加载）
         for (const [id, machine] of this.machines) {
+            if (this.localMachineIds.has(id)) continue
             if (!machine.active && now - machine.activeAt > evictionMs) {
                 this.machines.delete(id)
                 this.lastBroadcastAtByMachineId.delete(id)

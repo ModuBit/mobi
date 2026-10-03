@@ -15,6 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
+import type { RunnerState } from '@mobi/node-core/api/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
@@ -25,7 +26,7 @@ import type { SessionFactsSink } from './sessionFacts'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
-import { SocketMachineHost } from '../machine/SocketMachineHost'
+import { LocalMachineHost } from '../machine/LocalMachineHost'
 import type { MachineHost } from '../machine/MachineHost'
 import { MachineCache, type Machine } from './machineCache'
 import { AgentSessionService } from './agentSessionService'
@@ -107,8 +108,8 @@ export class SyncEngine {
     private readonly workspaceCache: WorkspaceCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
-    /** 机器执行层（ticket-15）：machine 族调用的收拢点，现由 socket 通道实现，
-     *  ④ 后续票在实现内逐项换本地实现；public 供装配与契约测试注入边界 */
+    /** 机器执行层（ticket-15 起）：machine 族调用收拢点；ticket-20 起 socket 实现退场，
+     *  LocalMachineHost 是唯一实现（public 供装配与契约测试注入边界） */
     readonly machineHost: MachineHost
     private readonly store: Store
     /**
@@ -132,8 +133,7 @@ export class SyncEngine {
         sseManager: SSEManager,
         rewindDeleteBounds?: RewindDeleteBoundTracker,
         machineHost?: MachineHost
-    ) {
-        this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
+    ) {        this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.agentSessions = new AgentSessionService({
@@ -180,7 +180,9 @@ export class SyncEngine {
         this.workspaceCache = new WorkspaceCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
-        this.machineHost = machineHost ?? new SocketMachineHost(io, rpcRegistry)
+        // socket 版实现已随 machine 通道删除（ticket-20）；缺省给无 bridge 的本地实现——
+        // 非直调路径全可用，spawn 会报「bridge 未接线」（生产由 hubServer 注入带 bridge 的实例）
+        this.machineHost = machineHost ?? new LocalMachineHost(() => null)
         this.store = store
         this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
         this.factsSink = {
@@ -449,8 +451,36 @@ export class SyncEngine {
      */
     readonly factsSink: SessionFactsSink
 
-    handleMachineAlive(payload: { machineId: string; time: number }): void {
-        this.machineCache.handleMachineAlive(payload)
+    /**
+     * 本机自注册（ticket-20）：machine 通道删除后 daemon 即本机——启动时 upsert 本机行、
+     * 常驻 active（无心跳、expireInactive 豁免）。
+     */
+    registerLocalMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): void {
+        this.machineCache.registerLocalMachine(id, metadata, runnerState, namespace)
+    }
+
+    /**
+     * 本机 runnerState 更新（旧 machine 通道 `updateRunnerState` 的本地直写替身）：
+     * runner 侧 spawn 结果上报 / 关停状态写这里。版本冲突时重读重试（同进程单写者，
+     * 一次通常即成；循环只是防未来多写者的护栏）。
+     */
+    updateMachineRunnerState(machineId: string, handler: (state: RunnerState | null) => RunnerState): void {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const machine = this.machineCache.getMachine(machineId)
+            // machineCache 里 runnerState 是 unknown（存储层透传），此处是唯一写入方，收窄安全
+            const next = handler((machine?.runnerState ?? null) as RunnerState | null)
+            const result = this.store.machines.updateMachineRunnerState(
+                machineId,
+                next,
+                machine?.runnerStateVersion ?? 0,
+                machine?.namespace ?? 'default'
+            )
+            if (result.result === 'success') {
+                this.machineCache.refreshMachine(machineId)
+                return
+            }
+        }
+        // 版本冲突三次：丢弃本次更新（非关键状态，不值得抛错打断调用方）
     }
 
     private expireInactive(): void {

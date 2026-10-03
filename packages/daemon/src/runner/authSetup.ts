@@ -18,14 +18,11 @@ import { randomUUID } from 'node:crypto'
 import { configuration } from '@mobi/node-core/configuration'
 import { updateSettings } from '@mobi/node-core/persistence'
 
-export async function authAndSetupMachineIfNeeded(): Promise<{
-    token: string
-    machineId: string
-}> {
-    if (!configuration.cliApiToken) {
-        throw new Error('CLI_API_TOKEN is required')
-    }
-
+/**
+ * 本机 machineId（settings 持久化 UUID，首次生成）。runner 侧注册与 hub 侧
+ * 自注册（ticket-20）共用同一身份源。
+ */
+export async function ensureMachineId(): Promise<string> {
     const settings = await updateSettings((current) => {
         if (!current.machineId) {
             return {
@@ -40,6 +37,16 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         throw new Error('Failed to initialize machineId')
     }
 
-    return { token: configuration.cliApiToken, machineId: settings.machineId }
+    return settings.machineId
 }
 
+export async function authAndSetupMachineIfNeeded(): Promise<{
+    token: string
+    machineId: string
+}> {
+    if (!configuration.cliApiToken) {
+        throw new Error('CLI_API_TOKEN is required')
+    }
+
+    return { token: configuration.cliApiToken, machineId: await ensureMachineId() }
+}

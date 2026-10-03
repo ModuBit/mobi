@@ -16,8 +16,8 @@
 
 /**
  * socket 传输 fake 三件套（SocketRpcCaller 测试共用）：fake socket / fake io / fake registry。
- * ticket-15 起 RpcGateway 与 SocketMachineHost 的传输语义同在 SocketRpcCaller，
- * 两侧测试共用这套 fake。
+ * ticket-20 起 machine socket 通道已删（SocketMachineHost 退场），只剩会话族
+ * RpcGateway 的测试用这套 fake。
  */
 
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'

@@ -24,7 +24,7 @@
  * 否则与 runner 同进程时两套信号处理互抢、hub shutdown 直接 exit 砍掉清理。
  */
 
-import { createConfiguration } from './configuration'
+import { configuration, createConfiguration } from './configuration'
 import { hubLogger } from './logger'
 import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
@@ -40,10 +40,13 @@ import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { SnapshotSync } from './sync/snapshotSync'
-import { SocketMachineHost } from './machine/SocketMachineHost'
 import { LocalMachineHost } from './machine/LocalMachineHost'
 import type { RunnerSessionBridge } from './runner/run'
 import { createSessionTrackingSync } from './runner/sessionTracking'
+import { ensureMachineId } from './runner/authSetup'
+import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
+import type { RunnerState } from '@mobi/node-core/api/types'
+import { parseAccessToken } from './utils/accessToken'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
@@ -63,6 +66,11 @@ export interface HubHandle {
      * 未调用（hub 单独跑 / 测试）时两条路径都走 socket 兜底，行为与此前一致。
      */
     setRunnerBridge(bridge: RunnerSessionBridge): void
+    /**
+     * 本机 runnerState 直写（ticket-20，旧 machine 通道 updateRunnerState 的替身）：
+     * daemon 编排注入给 runner core——spawn 结果上报 / 关停状态经此落库并广播。
+     */
+    updateLocalMachineRunnerState(handler: (state: RunnerState | null) => RunnerState): void
     /** 优雅关停：清 state → 通知/SSE/engine/web 逐层停。幂等（二次调用为 no-op） */
     stop(): Promise<void>
 }
@@ -178,8 +186,6 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         // 会话事实上报（心跳/水位/目标/轮次/结束）→ sink 落库 + SSE 推（深化候选③）；
         // 惰性：socket server 先于 SyncEngine 创建，handler 触发时才取 sink
         factsSink: () => syncEngine?.factsSink,
-        // CLI 机器心跳 → 更新机器在线状态
-        onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload),
         // ui-command（agent 触达 mobi 界面）：Web SSE 在线检查 + 经 SyncEngine 发布广播
         hasActiveSseConnection: (namespace) => sseManager?.hasActiveConnection(namespace) ?? false,
         publishUiCommand: (event) => syncEngine?.publishUiCommand(event),
@@ -187,10 +193,10 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         agentSessions: () => syncEngine?.agentSessions
     })
 
-    // machine 执行层显式注入（ticket-15 接口 / ticket-17 本地化）：LocalMachineHost
-    // 逐组从 socket 兜底翻成本地直调，SyncEngine 透传与路由不动
+    // machine 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：
+    // LocalMachineHost 直调 node-core handler 实现函数，不经 socket
     // runner bridge 持有槽（ticket-18）：LocalMachineHost 构造期 runner 尚未启动，
-    // 惰性 getter 在 spawn 时解包——注入前为 null（socket 兜底），daemon 编排注入后直调
+    // 惰性 getter 在 spawn 时解包——注入前为 null（spawn 报 bridge 未接线），daemon 编排注入后直调
     let runnerBridge: RunnerSessionBridge | null = null
     syncEngine = new SyncEngine(
         store,
@@ -198,7 +204,18 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         socketServer.rpcRegistry,
         sseManager,
         rewindDeleteBoundTracker,
-        new LocalMachineHost(new SocketMachineHost(socketServer.io, socketServer.rpcRegistry), () => runnerBridge)
+        new LocalMachineHost(() => runnerBridge)
+    )
+
+    // 本机自注册（ticket-20）：machine 通道删除，daemon 即本机——启动时 upsert 本机行并
+    // 常驻 active（无心跳、expireInactive 豁免）。machineId 与 runner 侧 authSetup 同源
+    //（settings 持久化的 UUID，ensureMachineId 首次生成）
+    const localMachineId = await ensureMachineId()
+    syncEngine.registerLocalMachine(
+        localMachineId,
+        buildMachineMetadata(),
+        { status: 'running', pid: process.pid, startedAt: Date.now() },
+        parseAccessToken(configuration.cliApiToken)?.namespace ?? 'default'
     )
 
     const notificationChannels: NotificationChannel[] = [
@@ -246,10 +263,15 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         engine?.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), bridge.registerSessionTracking))
     }
 
+    const updateLocalMachineRunnerState = (handler: (state: RunnerState | null) => RunnerState): void => {
+        syncEngine?.updateMachineRunnerState(localMachineId, handler)
+    }
+
     return {
         port: config.listenPort,
         dataDir: config.dataDir,
         setRunnerBridge,
+        updateLocalMachineRunnerState,
         stop: async () => {
             if (stopped) return
             stopped = true

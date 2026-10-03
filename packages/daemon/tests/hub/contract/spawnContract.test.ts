@@ -77,16 +77,12 @@ function makeEngine(): EngineHandle {
         broadcast: () => {},
     } as unknown as SSEManager
 
-    // ticket-18：spawn 契约对 Local 实现跑一遍（bridge 未注入 → fallback 不可达即抛错，
-    // 证明用例真正穿过 LocalMachineHost 而非残留 socket 路径）
-    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost({
-        spawnSession: () => { throw new Error('socket fallback must not be reached') },
-    } as never))
+    // LocalMachineHost 只带 bridge 槽（socket 兜底已删，ticket-20）——用例真正穿过
+    // LocalMachineHost 的直调路径
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost())
 
-    // 注册 machine（必须在线才能 spawn）
-    const machineCache = (engine as any).machineCache
-    machineCache.getOrCreateMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
-    machineCache.handleMachineAlive({ machineId: MACHINE_ID, time: Date.now() })
+    // 注册本机 machine（spawn 寻址前提；ticket-20 起自注册即常驻 active）
+    engine.registerLocalMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
 
     return {
         engine,

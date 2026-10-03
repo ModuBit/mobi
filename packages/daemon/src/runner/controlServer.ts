@@ -26,18 +26,15 @@ import { logger } from '@mobi/node-core/logger';
 import { Metadata } from '@mobi/node-core/api/types';
 import { RUNNER_SESSION_STARTED_PATH } from '@mobi/shared/hostProtocol';
 import { TrackedSession } from './types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 
 export function startRunnerControlServer({
   getChildren,
   stopSession,
-  spawnSession,
   requestShutdown,
   onMobiSessionWebhook
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
-  spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onMobiSessionWebhook: (sessionId: string, metadata: Metadata) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
@@ -122,79 +119,8 @@ export function startRunnerControlServer({
     });
 
     // Spawn new session
-    typed.post('/spawn-session', {
-      schema: {
-        body: z.object({
-          directory: z.string(),
-          sessionId: z.string().optional(),
-          sessionType: z.enum(['simple', 'worktree']).optional(),
-          worktreeName: z.string().optional(),
-          workspaceId: z.string().optional()
-        }),
-        response: {
-          200: z.object({
-            success: z.boolean(),
-            sessionId: z.string().optional(),
-            approvedNewDirectoryCreation: z.boolean().optional()
-          }),
-          409: z.object({
-            success: z.boolean(),
-            requiresUserApproval: z.boolean().optional(),
-            actionRequired: z.string().optional(),
-            directory: z.string().optional()
-          }),
-          500: z.object({
-            success: z.boolean(),
-            error: z.string().optional()
-          })
-        }
-      }
-    }, async (request, reply) => {
-      const { directory, sessionId, sessionType, worktreeName, workspaceId } = request.body;
-
-      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, workspaceId=${workspaceId || 'none'}`);
-      const result = await spawnSession({ directory, sessionId, sessionType, worktreeName, workspaceId });
-
-      switch (result.type) {
-        case 'success':
-          // Check if sessionId exists, if not return error
-          if (!result.sessionId) {
-            reply.code(500);
-            return {
-              success: false,
-              error: 'Failed to spawn session: no session ID returned'
-            };
-          }
-          return {
-            success: true,
-            sessionId: result.sessionId,
-            approvedNewDirectoryCreation: true
-          };
-        
-        case 'requestToApproveDirectoryCreation':
-          reply.code(409); // Conflict - user input needed
-          return { 
-            success: false,
-            requiresUserApproval: true,
-            actionRequired: 'CREATE_DIRECTORY',
-            directory: result.directory
-          };
-        
-        case 'already-running':
-          // 本入口不透传 resume 目标（仅 hub 唤醒路径会有），防御性按成功透出
-          return {
-            success: true,
-            approvedNewDirectoryCreation: true
-          };
-
-        case 'error':
-          reply.code(500);
-          return {
-            success: false,
-            error: result.errorMessage
-          };
-      }
-    });
+    // （端点已删，ticket-20：spawnRunnerSession 零调用方——spawn 唯一入口是
+    //  daemon 进程内的 RunnerSessionBridge 直调）
 
     // Stop runner
     typed.post('/stop', {
