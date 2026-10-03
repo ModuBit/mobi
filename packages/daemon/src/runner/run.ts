@@ -27,6 +27,7 @@ import fs from 'fs/promises';
 
 import { ApiClient } from '@mobi/node-core/api/api';
 import { TrackedSession } from './types';
+import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
 import { RunnerState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
@@ -53,9 +54,27 @@ import { ApiMachineClient } from './apiMachine';
 export type RunnerShutdownSource = 'mobi-app' | 'mobi-cli' | 'os-signal' | 'exception';
 
 /** runner 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
+/**
+ * hub → runner 核心的会话执行桥（ticket-18）：spawn/stop 直调 + 追踪表补登。
+ * spawn 契约与 'spawn-mobi-session' RPC、controlServer /spawn-session 完全同源
+ * （同一份 spawnSession 闭包），仅传输方式不同。
+ */
+export interface RunnerSessionBridge {
+    spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
+    stopSession: (sessionId: string) => boolean
+    /** 追踪补登/刷新（Q8）：决策单源见 sessionTracking.applySessionTrackingSignal */
+    registerSessionTracking: (signal: SessionTrackingSignal) => void
+}
+
 export interface RunnerHandle {
     /** control server 端口（daemon.state.json / runner.state.json 记录用） */
     httpPort: number
+    /**
+     * 会话执行桥（ticket-18）：hub 侧 LocalMachineHost 直调本 runner 核心的
+     * spawn/stop/追踪表，绕过 socket loopback。daemon 编排在 runner 就绪后
+     * 经 HubHandle.setRunnerBridge 注入。
+     */
+    bridge: RunnerSessionBridge
     /**
      * 优雅关停（幂等）。清理顺序沿用原 cleanupAndShutdown：停心跳 → 上报
      * shutting-down → 断 machine 通道 → 停 control server → 清 state → 释放锁。
@@ -687,12 +706,9 @@ export async function startRunnerCore(): Promise<RunnerHandle> {
       logger.debug(`[RUNNER RUN] Health check started at ${new Date().toLocaleString()}`);
     }
 
-    // Prune stale sessions
-    for (const [pid, _] of pidToTrackedSession.entries()) {
-      if (!isProcessAlive(pid)) {
-        logger.debug(`[RUNNER RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-        pidToTrackedSession.delete(pid);
-      }
+    // Prune stale sessions（决策单源在 sessionTracking.pruneDeadTrackedSessions）
+    for (const pid of pruneDeadTrackedSessions(pidToTrackedSession, isProcessAlive)) {
+      logger.debug(`[RUNNER RUN] Removing stale session with PID ${pid} (process no longer exists)`);
     }
 
     // Check if runner needs update
@@ -783,8 +799,19 @@ export async function startRunnerCore(): Promise<RunnerHandle> {
     logger.debug('[RUNNER RUN] Cleanup completed');
   };
 
+  // hub 直调桥（ticket-18）：spawn/stop 复用本闭包内实现；追踪补登单源在 sessionTracking
+  const bridge: RunnerSessionBridge = {
+    spawnSession,
+    stopSession,
+    registerSessionTracking: (signal) => {
+      const outcome = applySessionTrackingSignal(pidToTrackedSession, signal, isProcessAlive);
+      logger.debug(`[RUNNER RUN] Session tracking signal ${signal.sessionId}: ${outcome.op}${outcome.op === 'skip' ? ` (${outcome.reason})` : ''}`);
+    },
+  };
+
   const handle: RunnerHandle = {
     httpPort: controlPort,
+    bridge,
     stop: async (source, errorMessage) => {
       requestShutdown(source, errorMessage);
       if (!shutdownRequest) {

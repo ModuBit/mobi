@@ -123,6 +123,10 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     }
     logger.debug(`[DAEMON] Runner ready (control port ${runner.httpPort})`)
 
+    // runner 桥注入（ticket-18）：spawn 直调 + session-alive 驱动追踪补登
+    hub.setRunnerBridge(runner.bridge)
+    logger.debug('[DAEMON] Runner session bridge wired to hub')
+
     writeDaemonState({
         pid: process.pid,
         hubPort: hub.port,

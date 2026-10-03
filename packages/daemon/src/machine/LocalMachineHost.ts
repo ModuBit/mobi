@@ -37,17 +37,37 @@ import { gitReviewRpcImpl } from '@mobi/node-core/handlers/gitReview'
 import { getWebToolsConfigImpl, setWebToolsConfigImpl, verifyWebToolsProviderImpl } from '@mobi/node-core/handlers/webToolsConfig'
 import { refreshMetadataImpl } from '@mobi/node-core/handlers/commands'
 import type { MachineHost, RpcGetWebToolsConfigResponse, RpcListDirectoryResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './MachineHost'
+import { mapSpawnResultToGateway } from './spawnResultMapping'
+import type { RunnerSessionBridge } from '../runner/run'
 
 export class LocalMachineHost implements MachineHost {
     /** 未切换方法组的 socket 兜底（逐组退场） */
     private readonly fallback: MachineHost
+    /** runner 会话执行桥（ticket-18 spawn 直调）；daemon 编排在 runner 就绪后注入，注入前走 socket 兜底 */
+    private readonly runnerBridge: () => RunnerSessionBridge | null
 
-    constructor(fallback: MachineHost) {
+    constructor(fallback: MachineHost, runnerBridge: () => RunnerSessionBridge | null = () => null) {
         this.fallback = fallback
+        this.runnerBridge = runnerBridge
     }
 
     async spawnSession(machineId: string, directory: string, options?: SpawnSessionOptions) {
-        return await this.fallback.spawnSession(machineId, directory, options)
+        const bridge = this.runnerBridge()
+        if (!bridge) {
+            return await this.fallback.spawnSession(machineId, directory, options)
+        }
+        const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options ?? {}
+        try {
+            // 直调 runner 核心（同一份 spawnSession 闭包，dedup/目录建/worktree/webhook 等待全同源）；
+            // 结果归一映射与 socket 路径共用单源
+            const result = await bridge.spawnSession({ type: 'spawn-in-directory', directory, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } as never)
+            return mapSpawnResultToGateway(result)
+        } catch (error) {
+            // 直调不会抛 RpcFailure（transport 不存在了）；runner 闭包自身全捕获。
+            // 万一抛出（未来改动引入）：按 other 归类，不给跨进程散文猜分类留后路
+            const message = error instanceof Error ? error.message : String(error)
+            return { type: 'error' as const, message, failure: 'other' as const }
+        }
     }
 
     // ── 文件读组（ticket-17 组1：本地直调，不经 socket loopback）──

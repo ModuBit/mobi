@@ -42,6 +42,8 @@ import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { SnapshotSync } from './sync/snapshotSync'
 import { SocketMachineHost } from './machine/SocketMachineHost'
 import { LocalMachineHost } from './machine/LocalMachineHost'
+import type { RunnerSessionBridge } from './runner/run'
+import { createSessionTrackingSync } from './runner/sessionTracking'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
@@ -55,6 +57,12 @@ export interface HubHandle {
     port: number
     /** 数据目录（state 文件所在，供调用方绑定退出清理） */
     dataDir: string
+    /**
+     * runner 会话执行桥注入（ticket-18）：daemon 编排在 runner core 就绪后调用——
+     * LocalMachineHost.spawnSession 翻直调，session-alive 驱动追踪补登/刷新。
+     * 未调用（hub 单独跑 / 测试）时两条路径都走 socket 兜底，行为与此前一致。
+     */
+    setRunnerBridge(bridge: RunnerSessionBridge): void
     /** 优雅关停：清 state → 通知/SSE/engine/web 逐层停。幂等（二次调用为 no-op） */
     stop(): Promise<void>
 }
@@ -178,13 +186,16 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
 
     // machine 执行层显式注入（ticket-15 接口 / ticket-17 本地化）：LocalMachineHost
     // 逐组从 socket 兜底翻成本地直调，SyncEngine 透传与路由不动
+    // runner bridge 持有槽（ticket-18）：LocalMachineHost 构造期 runner 尚未启动，
+    // 惰性 getter 在 spawn 时解包——注入前为 null（socket 兜底），daemon 编排注入后直调
+    let runnerBridge: RunnerSessionBridge | null = null
     syncEngine = new SyncEngine(
         store,
         socketServer.io,
         socketServer.rpcRegistry,
         sseManager,
         rewindDeleteBoundTracker,
-        new LocalMachineHost(new SocketMachineHost(socketServer.io, socketServer.rpcRegistry))
+        new LocalMachineHost(new SocketMachineHost(socketServer.io, socketServer.rpcRegistry), () => runnerBridge)
     )
 
     const notificationChannels: NotificationChannel[] = [
@@ -225,9 +236,17 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     })
 
     let stopped = false
+    const setRunnerBridge = (bridge: RunnerSessionBridge): void => {
+        runnerBridge = bridge
+        // 会话 socket 重连/心跳 → 会话行 metadata 同步进 runner 追踪表（Q8 补登 + 查重键刷新）
+        const engine = syncEngine
+        engine?.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), bridge.registerSessionTracking))
+    }
+
     return {
         port: config.listenPort,
         dataDir: config.dataDir,
+        setRunnerBridge,
         stop: async () => {
             if (stopped) return
             stopped = true

@@ -396,6 +396,18 @@ export class SyncEngine {
         this.eventPublisher.emit(event)
     }
 
+    /**
+     * 会话追踪同步钩子（ticket-18 Q8）：会话 socket 重连/心跳到达时，把会话行
+     * metadata（hostPid + 当前 nativeSessionId）同步给 runner 追踪表——daemon
+     * 重启后的补登与查重键刷新都从这里驱动。由 hubServer 在 runner bridge 就绪
+     * 后注入；未注入（hub 单独跑、测试）时为 no-op。
+     */
+    private sessionTrackingSync: ((sid: string) => void) | null = null
+
+    setSessionTrackingSync(fn: ((sid: string) => void) | null): void {
+        this.sessionTrackingSync = fn
+    }
+
     handleSessionAlive(payload: {
         sid: string
         time: number
@@ -406,6 +418,12 @@ export class SyncEngine {
         effort?: EffortLevel
         outputStyle?: string
     }): void {
+        // 追踪同步先行（补登/查重键刷新，fire-and-forget；失败不影响激活语义）
+        try {
+            this.sessionTrackingSync?.(payload.sid)
+        } catch (error) {
+            hubLogger.debug('[SYNC] Session tracking sync failed:', error)
+        }
         // 激活翻转入参快照：handleSessionAlive 同步更新 sessionCache，前后各读一次即可判定翻转
         const wasActive = this.sessionCache.getSession(payload.sid)?.active ?? false
         this.sessionCache.handleSessionAlive(payload)

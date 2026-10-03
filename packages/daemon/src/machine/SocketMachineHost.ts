@@ -24,7 +24,8 @@ import { GIT_REVIEW_RPC, type DiffTarget, type ReviewActionResult, type ReviewCo
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { Server } from 'socket.io'
 import { readRpcFailure } from '../sync/rpcFailure'
-import { classifyTransportFailure, SocketRpcCaller } from '../sync/rpcCaller'
+import { SocketRpcCaller } from '../sync/rpcCaller'
+import { mapSpawnResultToGateway } from './spawnResultMapping'
 import type {
     MachineHost,
     RpcDeleteUploadResponse,
@@ -67,9 +68,6 @@ export class SocketMachineHost implements MachineHost {
         directory: string,
         options: SpawnSessionOptions = {},
     ): Promise<SpawnGatewayResult> {
-        // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），
-        // 只有 runner 等 webhook 超时那一句会被读成 'timeout'
-        const spawnError = (message: string) => ({ type: 'error' as const, message, failure: classifyTransportFailure(message) })
         const { agent = 'claude', model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId } = options
         try {
             const result = await this.machineRpc(
@@ -77,37 +75,8 @@ export class SocketMachineHost implements MachineHost {
                 'spawn-mobi-session',
                 { type: 'spawn-in-directory', directory, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort, outputStyle, workspaceId }
             )
-            if (result && typeof result === 'object') {
-                const obj = result as Record<string, unknown>
-                if (obj.type === 'success' && typeof obj.sessionId === 'string') {
-                    return { type: 'success', sessionId: obj.sessionId }
-                }
-                if (obj.type === 'already-running') {
-                    return { type: 'already-running' }
-                }
-                if (obj.type === 'error' && typeof obj.errorMessage === 'string') {
-                    return spawnError(obj.errorMessage)
-                }
-                if (obj.type === 'requestToApproveDirectoryCreation' && typeof obj.directory === 'string') {
-                    return spawnError(`Directory creation requires approval: ${obj.directory}`)
-                }
-                if (typeof obj.error === 'string') {
-                    return spawnError(obj.error)
-                }
-                if (obj.type !== 'success' && typeof obj.message === 'string') {
-                    return spawnError(obj.message)
-                }
-            }
-            const details = typeof result === 'string'
-                ? result
-                : (() => {
-                    try {
-                        return JSON.stringify(result)
-                    } catch {
-                        return String(result)
-                    }
-                })()
-            return spawnError(`Unexpected spawn result: ${details}`)
+            // 回执 → SpawnGatewayResult 归一映射单源（与 LocalMachineHost 直调共用）
+            return mapSpawnResultToGateway(result)
         } catch (error) {
             // 走到这里的是调用器抛的 RpcFailure，分类已经带着（本方法其余部分不抛）。
             // 万一不是：readRpcFailure 读成 'other'——hub 自己抛的错不该被当跨进程散文猜
