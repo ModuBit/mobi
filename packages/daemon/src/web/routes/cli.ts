@@ -144,18 +144,12 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
 
         const namespace = c.get('namespace')
         // 归属校验前置：workspaceId 必须指向同 namespace 的现存工作区（404 约定与 PATCH /sessions/:id 一致），
-        // 避免 store 层抛错被宽 catch 吞成 400、掩盖真实故障（DB 错误等应照常 500）
+        // 避免 store 层抛错被宽 catch 吞成 400、掩盖真实故障（DB 错误等应照常 500）。
+        // 单机语义（ticket-25）下工作区与会话恒同机，机器一致性判据已随多机分支收敛删除
         if (parsed.data.workspaceId) {
-            // 机器一致性前置：工作区 folders 是机器本地路径，归属其它机器时必须当场拒绝，
-            // 否则 CLI 侧后置校验失败退出后会留下绑定该工作区的幽灵空会话（D13/spec §4.1）。
-            // metadata 是 z.unknown()，machineId 只能在此处内联提取（缺失 = 老数据/异常，checkWorkspaceAssignable 放行）
-            const requestMachineId = (parsed.data.metadata as { machineId?: unknown } | null)?.machineId
-            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace, requestMachineId)
+            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace)
             if (assignable === 'not_found') {
                 return c.json({ error: 'Workspace not found' }, 404)
-            }
-            if (assignable === 'machine_mismatch') {
-                return c.json({ error: 'Workspace belongs to a different machine' }, 403)
             }
         }
         const session = engine.getOrCreateSession(

@@ -53,12 +53,6 @@ export interface Machine {
 export class MachineCache {
     private readonly machines: Map<string, Machine> = new Map()
     private readonly lastBroadcastAtByMachineId: Map<string, number> = new Map()
-    /**
-     * 本机 machine id 集合（ticket-20）：daemon 即本机——machine 通道删除后无心跳，
-     * 这些 machine 常驻 active、expireInactive 对其不生效（含驱逐）。
-     * 实际只有一个成员；用集合承载语义（「本机们」而非「指定的那台」）
-     */
-    private readonly localMachineIds: Set<string> = new Set()
 
     constructor(
         private readonly store: Store,
@@ -161,36 +155,14 @@ export class MachineCache {
     /**
      * 本机自注册（ticket-20）：upsert 本机行、标记常驻 active 并置活广播。
      * daemon 启动时调用一次，替代旧 machine 通道的「HTTP 注册 + 心跳保活」。
+     * ticket-25 起 active 无翻转点（多机过期/驱逐逻辑已删）——「常驻」由
+     * 「没有任何代码会把它翻成 false」保证。
      */
     registerLocalMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): Machine {
         const machine = this.getOrCreateMachine(id, metadata, runnerState, namespace)
-        this.localMachineIds.add(id)
         machine.active = true
         machine.activeAt = Date.now()
         this.publisher.emit({ type: 'machine-updated', machineId: id, data: machine })
         return machine
-    }
-
-    expireInactive(now: number = Date.now()): void {
-        const machineTimeoutMs = 45_000
-        const evictionMs = 3_600_000 // 1 小时
-
-        for (const machine of this.machines.values()) {
-            // 本机常驻 active（无心跳），不过期、不驱逐
-            if (this.localMachineIds.has(machine.id)) continue
-            if (!machine.active) continue
-            if (now - machine.activeAt <= machineTimeoutMs) continue
-            machine.active = false
-            this.publisher.emit({ type: 'machine-updated', machineId: machine.id, data: { active: false } })
-        }
-
-        // 驱逐长时间 inactive 的 machine（仍在 DB 中，按需重新加载）
-        for (const [id, machine] of this.machines) {
-            if (this.localMachineIds.has(id)) continue
-            if (!machine.active && now - machine.activeAt > evictionMs) {
-                this.machines.delete(id)
-                this.lastBroadcastAtByMachineId.delete(id)
-            }
-        }
     }
 }

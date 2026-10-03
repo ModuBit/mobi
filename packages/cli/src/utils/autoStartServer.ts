@@ -81,13 +81,7 @@ async function shouldAutoStartDaemon(): Promise<boolean> {
     // Condition 2: Check settings.cli.json
     const settings = await readSettings()
 
-    // 2a: apiUrl is set in settings.cli.json (user configured a specific hub)
-    if (settings.apiUrl || settings.serverUrl) {
-        logger.debug('[AUTO-START] apiUrl is set in settings.cli.json, skipping auto-start')
-        return false
-    }
-
-    // 2b: cliApiToken exists in settings.cli.json (daemon was previously started)
+    // 2a: cliApiToken exists in settings.cli.json (daemon was previously started)
     if (!settings.cliApiToken) {
         logger.debug('[AUTO-START] No cliApiToken in settings, skipping auto-start')
         return false

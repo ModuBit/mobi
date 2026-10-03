@@ -28,7 +28,7 @@
  * 依赖一律收成窄入参（不直接持 Store / MachineCache），便于单测用内存假件。
  */
 
-import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, isSelfContainedUrl, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
+import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT, normalizeUserContent, UserMessageContentSchema } from '@mobi/shared'
 import type {
     AgentCreateSessionAck,
     AgentCreateSessionReadiness,
@@ -39,9 +39,6 @@ import type {
     AgentSendMessageTargetResult,
     AgentSessionStatus,
     AgentSessionSummary,
-    UserContentBlock,
-    UserDocumentBlock,
-    UserImageBlock,
 } from '@mobi/shared'
 import type { Session } from '@mobi/shared/types'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
@@ -51,8 +48,8 @@ import { randomUUID } from 'node:crypto'
 import { hubLogger } from '../logger'
 import type { Machine } from './machineCache'
 
-/** 工作区归属校验结论（与 Web 侧 spawn 路由同一规则的取值） */
-export type WorkspaceAssignability = 'ok' | 'not_found' | 'machine_mismatch'
+/** 工作区归属校验结论（与 Web 侧 spawn 路由同一规则的取值；单机语义下机器恒匹配，只判存在性） */
+export type WorkspaceAssignability = 'ok' | 'not_found'
 
 /** 建会话入参（sid 是寻址信息，不属于业务规则，服务不收） */
 export type AgentCreateSessionInput = Omit<AgentCreateSessionRequest, 'sid'>
@@ -75,20 +72,15 @@ export interface AgentSendMessageInput {
     content: unknown
 }
 
-/** 需要目标机器上真实存在的文件的 block（见 findLocalFileBlocks） */
-type LocalFileBlock = UserImageBlock | UserDocumentBlock
-
 /**
- * 一次扇出的共享上下文：整批相同的判据（发件方身份、内容层的本机文件需求）
- * 与逐目标才成立的事实（目标会话、活性）分开，免得每个目标重算一遍。
+ * 一次扇出的共享上下文：整批相同的判据（发件方身份）与逐目标才成立的事实
+ * （目标会话、活性）分开，免得每个目标重算一遍。
  */
 interface DeliveryContext {
     /** 信封字段（messageId 逐目标生成，不在这里） */
     delivery: Omit<AgentMessageDelivery, 'messageId'>
-    /** 发件方会话（取信封名字与同机器判据；解析不到时缺省，见 isSameMachineProven） */
+    /** 发件方会话（取信封名字；解析不到时缺省降级空串） */
     sender: Session | undefined
-    /** 内容里需要本机文件的那些 block（**全部**：话术要说清几张都没发）；纯文本全程为空，不触发任何机器判据 */
-    localFiles: readonly LocalFileBlock[]
 }
 
 export interface AgentSessionServiceDeps {
@@ -104,7 +96,7 @@ export interface AgentSessionServiceDeps {
      */
     getSessionByNamespace: (sessionId: string, namespace: string) => Session | undefined
     /** 工作区归属校验：与 Web 侧 spawn 路由共用同一实现，两处规则不能各写一份 */
-    checkWorkspaceAssignable: (workspaceId: string, namespace: string, machineId: string) => WorkspaceAssignability
+    checkWorkspaceAssignable: (workspaceId: string, namespace: string) => WorkspaceAssignability
     /**
      * 起会话进程（既有 spawn 链路：Hub → runner RPC → spawn CLI → 等会话 webhook）。
      *
@@ -225,17 +217,9 @@ export class AgentSessionService {
         }
 
         if (input.workspaceId !== undefined) {
-            const assignable = this.deps.checkWorkspaceAssignable(input.workspaceId, namespace, machine.id)
+            const assignable = this.deps.checkWorkspaceAssignable(input.workspaceId, namespace)
             if (assignable === 'not_found') {
                 return { ok: false, error: `No workspace with id "${input.workspaceId}".` }
-            }
-            if (assignable === 'machine_mismatch') {
-                return {
-                    ok: false,
-                    error:
-                        `Workspace "${input.workspaceId}" belongs to a different machine, ` +
-                        `so a session started on ${machine.id} cannot join it.`,
-                }
             }
         }
 
@@ -342,7 +326,6 @@ export class AgentSessionService {
                 fromSessionId,
             },
             sender,
-            localFiles: findLocalFileBlocks(gate.blocks),
         }
 
         // 目标之间互不依赖，并发投递：总耗时是「最慢的那个」而不是「各目标之和」。
@@ -377,19 +360,6 @@ export class AgentSessionService {
                 error:
                     `Session "${targetSessionId}" is not running any more, so it cannot receive messages. ` +
                     'Call list_sessions to find one that is still active.',
-            }
-        }
-
-        // 附件闸（D22）：带的文件只在发件方与目标同机器时可投。判据是「**目标侧**能不能读到
-        // 那个路径」——推给 CC 时 document 只剩 `@path`、image 要 `readFileSync`，读的都是
-        // **目标机器**的文件系统。整条失败，不做静默降级：剔掉该 block 继续发文本，会让
-        // agent 以为文件带上了，那比失败更坏（与内容闸同一条理由）
-        const { localFiles } = context
-        if (localFiles.length > 0 && !isSameMachineProven(context.sender, target)) {
-            return {
-                sessionId: targetSessionId,
-                ok: false,
-                error: unreadableAttachmentsMessage(localFiles),
             }
         }
 
@@ -474,99 +444,23 @@ function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery
 }
 
 /**
- * 找出内容里需要**目标机器上真实存在的文件**的 block（没有则空数组）。
- *
- * 收**全部**而不是第一个：拒绝话术要把文件名都说出来（见 unreadableAttachmentsMessage）。
- *
- * 只有 image / document 可能落在这一档，判据落在 `source.value` 上：推给 CC 时
- * `document` 换算成 `@<source.value>`、`image` 要 `readFileSync(source.value)`，
- * 两个换算读的都是它。
- *
- * `previewUrl` 换一个网络地址**救不了这一档**，所以不参与判据：Web 会用 previewUrl
- * 把图渲染得很好看，而 CC 手上仍是一个它那台机器上不存在的路径——渲染好看而投递报成功，
- * 正是「agent 以为文件带上了」的那类欺骗。
- *
- * `data` 形态是骨架占位（没有磁盘路径），不参与；值本身就自足的（`isSelfContainedUrl`：
- * blob / data / http(s)）也不参与——它不依赖**任何**机器上的文件，而本闸问的是「目标机器
- * 读不到发件方那个路径」，对这一档无从谈起。
- *
- * 代价要认清：这类块到了对面**不会变成图片**——CLI 的 blocks→prompt 转换只会
- * `readFileSync(value)`，网络地址与 data: 都会失败并降级成 `@值` 文本（对面得自己去取）。
- * 也就是说「闸放行」不等于「图送到了」，所以工具描述里如实写明了这一点、不推荐这么用；
- * 想让它真能送达，得让 CLI 那侧支持取回（见 docs/pending.md）。
- *
- * 引用（quote）跨会话时 messageId 在本会话里悬空，但渲染只读 excerpt（D20），无需判据。
+ * 找出内容里需要目标机器上真实存在的文件的 block —— 已随 ticket-25 多机分支收敛删除：
+ * 单机语义下所有会话共享同一文件系统，本机路径对任何目标都可读，机器判据恒真。
+ * （多机时代的判据与拒绝话术见 git 历史 findLocalFileBlocks / isSameMachineProven /
+ *  unreadableAttachmentsMessage。）
  */
-function findLocalFileBlocks(blocks: readonly UserContentBlock[]): LocalFileBlock[] {
-    const found: LocalFileBlock[] = []
-    for (const block of blocks) {
-        if (block.type !== 'image' && block.type !== 'document') continue
-        if (block.source.type !== 'url') continue
-        if (isSelfContainedUrl(block.source.value)) continue
-        found.push(block)
-    }
-    return found
-}
-
-/**
- * 能否**证明**发件方与目标在同一台机器上——注意问的是「能否证明」，不是「是否同一台」。
- *
- * 判据要回答的是「同一个文件系统」，不是「同一个机器 id」：machineId 优先，缺失时退回
- * host（与 syncEngine 解析会话所属机器同一次序）。同一 host 上的多个 runner 共享磁盘，
- * 路径互通，正是本判据要问的。
- *
- * **拿不到身份就证明不了**（发件方解析不到、或两边都没自报机器身份），这一支与「确实不在
- * 同一台机器」共用 false。两者成因不同，但 agent 能做的事完全一样（改网络 URL / 让人搬
- * 文件），所以拒绝话术也共用一句对两种成因都成立的话（见 unreadableAttachmentsMessage）：
- * 说的是「无法确认」，不是「它就在另一台机器上」（2026-09-13 架构评审候选 #8）。
- */
-function isSameMachineProven(sender: Session | undefined, target: Session): boolean {
-    const senderId = sender?.metadata?.machineId
-    const targetId = target.metadata?.machineId
-    if (senderId && targetId) return senderId === targetId
-
-    const senderHost = sender?.metadata?.host
-    const targetHost = target.metadata?.host
-    return Boolean(senderHost) && senderHost === targetHost
-}
-
-/**
- * 附件闸的拒绝话术。**说的是「无法确认同机器」，不是「它在另一台机器上」**——两种成因
- * （确实不是同一台 / 拿不到机器身份）共用这一句，所以这句必须对两者都为真
- * （见 isSameMachineProven）。
- *
- * 文件**全部列出**：一条带两张本机图的消息跨机器时，只报第一个文件名会让 agent 解释不了
- * 第二张的去向（2026-09-13 架构评审候选 #8 附带项）。
- */
-function unreadableAttachmentsMessage(files: readonly LocalFileBlock[]): string {
-    const one = files.length === 1
-    const names = files.map((file) => `"${file.filename}"`).join(', ')
-    return (
-        `The message carries ${one ? 'a local file' : 'local files'} (${names}), and mobi could not confirm that session is on the same machine. ` +
-        `A file path only means something on the machine it was written on, so ${one ? 'the file' : 'those files'} could not be read there. ` +
-        `Nothing was sent — mobi does not drop ${one ? 'the file' : 'the files'} and send the text anyway. ` +
-        'Moving files between machines is not supported yet. ' +
-        'If the content is reachable online, put the URL in the message text instead of attaching it as a block — ' +
-        'a URL in a block value is not fetched either, it just arrives as text.'
-    )
-}
 
 /**
  * spawn 失败翻译。**只按分类值分支**，不读文案——分类由适配器在产生故障的那一层定下
  * （见 rpcFailure 模块头），本服务不再解析句子。
  *
- * 只翻译传输故障两支：它们描述的是 mobi 的内部结构（哪个 handler 没注册、哪个 socket
- * 断了）或一个不确定的结局，agent 无从据此行动，还容易把 "RPC handler not registered"
- * 误读成「这个工具坏了」。上游自己产出的失败（目录建不出来 / 进程起来就退出）本来就是
- * 人话，归 `other` 原样透出，不另造一套映射。
+ * 只翻译超时一支：它描述的是一个不确定的结局（进程可能已经起来了），agent 无从据此行动。
+ * 上游自己产出的失败（目录建不出来 / 进程起来就退出）本来就是人话，归 `other` 原样
+ * 透出，不另造一套映射。（ticket-25 起 spawn 走本地直调，「machine 没跑 runner」的
+ * unreachable 分类不再出现，该支文案随之删除。）
  */
 function translateSpawnFailure(failure: RpcFailureKind, message: string): string {
     switch (failure) {
-        case 'unreachable':
-            return (
-                'That machine is not running a mobi runner right now, so no session can be started on it. ' +
-                'Call list_machines to see which machines are reachable.'
-            )
         case 'timeout':
             // 两种超时共用一句：RPC 30s 未回，与 runner 等会话 webhook 15s 未果。
             // 两种情况下进程都可能已经起来了——所以说「可能已建」，并给出避免建重的方法

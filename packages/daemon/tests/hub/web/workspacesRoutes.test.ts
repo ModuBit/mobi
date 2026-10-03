@@ -191,7 +191,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
     })
 
     describe('PATCH /api/sessions/:id 归入工作区', () => {
-        test('machine 不匹配 → 400', async () => {
+        test('工作区机器与请求机器不同 → 单机语义下放行 200（机器判据已删，ticket-25）', async () => {
             const session = engine.getOrCreateSession(
                 'tag-patch-1', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
             )
@@ -202,8 +202,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 headers: authHeaders,
                 body: JSON.stringify({ workspaceId: data.workspace!.id }),
             })
-            expect(res.status).toBe(400)
-            expect(await res.json()).toMatchObject({ error: expect.stringContaining('machine') })
+            expect(res.status).toBe(200)
         })
 
         test('跨 namespace 工作区 → 404', async () => {
@@ -360,26 +359,18 @@ describe('workspaces REST 路由 + 会话归属', () => {
             expect(await res.json()).toMatchObject({ error: 'Workspace not found' })
         })
 
-        test('machine 不匹配 → 403 且不落库（幽灵会话回归）', async () => {
+        test('单机语义：请求 machineId 与工作区机器不同 → 照常创建（机器判据已删，ticket-25）', async () => {
             const { data } = await createWorkspace({ name: 'cli-ghost-proj', machineId: 'mA' })
             const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({
                     tag: 'tag-cli-ghost',
-                    // 关键：请求机器 mB ≠ 工作区机器 mA——hub 应当场拒绝，不留绑定错误机器的空会话
                     metadata: { path: '/ghost/marker', host: 'h', machineId: 'mB' },
                     workspaceId: data.workspace!.id,
                 }),
             })
-            expect(res.status).toBe(403)
-            expect(await res.json()).toMatchObject({ error: 'Workspace belongs to a different machine' })
-
-            // 幽灵会话回归：工作区名下不应出现任何会话
-            const list = await app.request(`/api/workspaces/${data.workspace!.id}/sessions?limit=100`, { headers: authHeaders })
-            expect(list.status).toBe(200)
-            const body = await list.json() as { sessions: Array<{ id: string; metadata?: { path?: string } }> }
-            expect(body.sessions.some(s => s.metadata?.path === '/ghost/marker')).toBe(false)
+            expect(res.status).toBe(200)
         })
 
         test('machine 匹配 → 200 正常创建', async () => {

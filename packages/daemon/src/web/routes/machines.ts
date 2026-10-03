@@ -101,16 +101,13 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        // 归属校验前置：workspaceId 必须指向同 namespace 的现存工作区且归属目标机器
-        // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定错误机器的幽灵会话
+        // 归属校验前置：workspaceId 必须指向同 namespace 的现存工作区
+        // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定不存在工作区的幽灵会话
         if (parsed.data.workspaceId) {
             const namespace = c.get('namespace')
-            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace, machineId)
+            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace)
             if (assignable === 'not_found') {
                 return c.json({ error: 'Workspace not found' }, 404)
-            }
-            if (assignable === 'machine_mismatch') {
-                return c.json({ error: 'Workspace belongs to a different machine' }, 403)
             }
         }
 

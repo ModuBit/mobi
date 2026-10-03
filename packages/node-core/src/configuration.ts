@@ -179,10 +179,6 @@ class Configuration {
         return this.isRunnerProcess ? 'runner' : 'cli'
     }
 
-    _setApiUrl(url: string): void {
-        this._apiUrl = url
-    }
-
     get cliApiToken(): string {
         return this._cliApiToken
     }

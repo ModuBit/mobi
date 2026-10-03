@@ -31,10 +31,6 @@ export interface Settings {
   // cli 的连接凭证（`mobi auth login` 写入，随 cli 部署位置走）；
   // hub 侧验证基准存 settings.hub.json，两份语义独立
   cliApiToken?: string
-  // API URL for server connections (priority: env MOBI_API_URL > this > default)
-  apiUrl?: string
-  // Legacy field name (for migration, read-only)
-  serverUrl?: string
   // 超时配置
   disconnectTimeoutMs?: number   // 连接断开超时
   idleTimeoutMs?: number         // 交互不活跃超时

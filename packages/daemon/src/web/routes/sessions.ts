@@ -770,20 +770,14 @@ export function createSessionsRoutes(
             return c.json({ error: 'Invalid body: name, workspaceId or pinned is required' }, 400)
         }
 
-        // 归入工作区 / 移回「最近」；目标工作区必须与会话同 machine（机器未知的老数据放行）
+        // 归入工作区 / 移回「最近」；目标工作区须为同 namespace 的现存工作区
+        // （单机语义下机器恒匹配，只判存在性——ticket-25）
         if (parsed.data.workspaceId !== undefined) {
             const namespace = c.get('namespace')
             if (parsed.data.workspaceId !== null) {
-                // 会话机器未知（老数据无 machineId）时放行；已知则必须匹配（此处保持 400 历史约定）
-                const sessionMachineId = sessionResult.session.metadata?.machineId
-                const assignable = checkWorkspaceAssignable(
-                    engine, parsed.data.workspaceId, namespace, sessionMachineId
-                )
+                const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace)
                 if (assignable === 'not_found') {
                     return c.json({ error: 'Workspace not found' }, 404)
-                }
-                if (assignable === 'machine_mismatch') {
-                    return c.json({ error: 'Workspace belongs to a different machine' }, 400)
                 }
             }
             const ok = engine.setSessionWorkspace(sessionResult.sessionId, parsed.data.workspaceId, namespace)

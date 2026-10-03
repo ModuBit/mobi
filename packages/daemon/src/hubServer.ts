@@ -209,8 +209,8 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     )
 
     // 本机自注册（ticket-20）：machine 通道删除，daemon 即本机——启动时 upsert 本机行并
-    // 常驻 active（无心跳、expireInactive 豁免）。machineId 与 runner 侧 authSetup 同源
-    //（settings 持久化的 UUID，ensureMachineId 首次生成）
+    // 常驻 active（无心跳，也无过期翻转点——ticket-25 起机器过期逻辑已删）。machineId 与
+    // runner 侧 authSetup 同源（settings 持久化的 UUID，ensureMachineId 首次生成）
     const localMachineId = await ensureMachineId()
     syncEngine.registerLocalMachine(
         localMachineId,

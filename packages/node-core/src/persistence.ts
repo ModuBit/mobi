@@ -245,8 +245,6 @@ export async function updateHubSettings(
 const LEGACY_CLI_FIELDS = [
   'machineId',
   'cliApiToken',
-  'apiUrl',
-  'serverUrl',
   'updateChannel',
   'disconnectTimeoutMs',
   'idleTimeoutMs',

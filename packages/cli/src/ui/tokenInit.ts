@@ -28,16 +28,12 @@ import { stdin as input, stdout as output } from 'node:process'
 import chalk from 'chalk'
 import { configuration } from '@mobi/node-core/configuration'
 import { readSettings, updateSettings } from '@mobi/node-core/persistence'
-import { initializeApiUrl } from '@/ui/apiUrlInit'
 
 /**
  * Initialize CLI API token
  * Must be called before any API operations
  */
 export async function initializeToken(): Promise<void> {
-    // Initialize API URL first (env > settings.cli.json > default)
-    await initializeApiUrl()
-
     // 1. Environment variable has highest priority (allows temporary override)
     if (configuration.cliApiToken) {
         return

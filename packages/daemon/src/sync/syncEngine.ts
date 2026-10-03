@@ -141,7 +141,7 @@ export class SyncEngine {
             getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
             getMachineByNamespace: (machineId, namespace) => this.machineCache.getMachineByNamespace(machineId, namespace),
             // 与 Web 侧 spawn 路由共用同一个实现——工作区归属规则只写一份
-            checkWorkspaceAssignable: (workspaceId, namespace, machineId) => checkWorkspaceAssignable(this, workspaceId, namespace, machineId),
+            checkWorkspaceAssignable: (workspaceId, namespace) => checkWorkspaceAssignable(this, workspaceId, namespace),
             spawnSession: async (machineId, directory, options) => {
                 // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约
                 const result = await this.machineHost.spawnSession(machineId, directory, options)
@@ -453,7 +453,7 @@ export class SyncEngine {
 
     /**
      * 本机自注册（ticket-20）：machine 通道删除后 daemon 即本机——启动时 upsert 本机行、
-     * 常驻 active（无心跳、expireInactive 豁免）。
+     * 常驻 active（无心跳，也无过期翻转点——ticket-25 起机器过期逻辑已删）。
      */
     registerLocalMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): void {
         this.machineCache.registerLocalMachine(id, metadata, runnerState, namespace)
@@ -485,11 +485,12 @@ export class SyncEngine {
 
     private expireInactive(): void {
         // 心跳过期 = 这个会话已经不在了。顺带抹掉挂在它生命周期上的进程内事实——CLI 被强杀
-        // 或崩溃时不会上报 session-end，这里是「它没了」唯一的兜底判据，否则那些事实只增不减
+        // 或崩溃时不会上报 session-end，这里是「它没了」唯一的兜底判据，否则那些事实只增不减。
+        // （machineCache 的 expireInactive 已随 ticket-25 多机分支收敛删除：machines 表恒本机，
+        // 常驻 active、无过期语义）
         for (const sessionId of this.sessionCache.expireInactive()) {
             this.receiveReadiness.clear(sessionId)
         }
-        this.machineCache.expireInactive()
     }
 
     private warmupCache(): void {
@@ -1162,22 +1163,17 @@ export class SyncEngine {
 /**
  * 工作区归属校验（web/cli 路由共用判定，收口在 engine 层避免各路由内联漂移）：
  * - not_found：工作区不存在或跨 namespace（调用方一般映射 404）
- * - machine_mismatch：machineId 已知且与工作区归属机器不符（调用方映射 403/400，按各自既有约定）
- * - ok：可归属。machineId 未知/缺失（含非字符串的异常形态）时放行——老数据（无
- *   machineId）不因此被拒，与 PATCH /sessions/:id 的历史语义一致
+ * - ok：可归属。单机语义（ticket-25）下 workspace 与会话/请求恒同机，机器匹配判据
+ *   随多机分支收敛删除，这里只判存在性与 namespace。
  */
 export function checkWorkspaceAssignable(
     engine: SyncEngine,
     workspaceId: string,
-    namespace: string,
-    machineId?: unknown
-): 'ok' | 'not_found' | 'machine_mismatch' {
+    namespace: string
+): 'ok' | 'not_found' {
     const workspace = engine.getWorkspace(workspaceId)
     if (!workspace || workspace.namespace !== namespace) {
         return 'not_found'
-    }
-    if (typeof machineId === 'string' && workspace.machineId !== machineId) {
-        return 'machine_mismatch'
     }
     return 'ok'
 }

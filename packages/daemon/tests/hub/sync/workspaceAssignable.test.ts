@@ -56,11 +56,11 @@ describe('checkWorkspaceAssignable', () => {
         cleanup()
     })
 
-    test('工作区存在 + 同 namespace + machineId 匹配 → ok', () => {
+    test('工作区存在 + 同 namespace → ok', () => {
         const workspace = engine.createWorkspace('default', {
             machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', 'm1')).toBe('ok')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'default')).toBe('ok')
     })
 
     test('工作区不存在或跨 namespace → not_found', () => {
@@ -69,23 +69,6 @@ describe('checkWorkspaceAssignable', () => {
         const workspace = engine.createWorkspace('default', {
             machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(checkWorkspaceAssignable(engine, workspace.id, 'other', 'm1')).toBe('not_found')
-    })
-
-    test('machineId 已知且 ≠ 工作区机器 → machine_mismatch', () => {
-        const workspace = engine.createWorkspace('default', {
-            machineId: 'mA', name: 'a', folders: [{ path: '/a', primary: true }],
-        })
-        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', 'mB')).toBe('machine_mismatch')
-    })
-
-    test('machineId 未知/缺失（老数据）→ 放行 ok', () => {
-        const workspace = engine.createWorkspace('default', {
-            machineId: 'mA', name: 'a', folders: [{ path: '/a', primary: true }],
-        })
-        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', undefined)).toBe('ok')
-        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', null)).toBe('ok')
-        // 非字符串形态（异常数据）同样按未知放行，与路由内联断言的历史语义一致
-        expect(checkWorkspaceAssignable(engine, workspace.id, 'default', 42 as unknown as string)).toBe('ok')
+        expect(checkWorkspaceAssignable(engine, workspace.id, 'other')).toBe('not_found')
     })
 })

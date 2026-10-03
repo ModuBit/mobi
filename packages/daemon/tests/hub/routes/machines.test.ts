@@ -121,26 +121,6 @@ describe('Machines API', () => {
         expect((args[2] as { workspaceId?: string }).workspaceId).toBe('workspace-7')
     })
 
-    test('POST /api/machines/:id/spawn workspaceId 归属其它机器 → 403 且不触发 spawn', async () => {
-        const token = await getAuthToken(app)
-        workspaces.set('workspace-other', { id: 'workspace-other', namespace: 'default', machineId: 'another-machine' })
-        const before = spawnCalls.length
-
-        const res = await app.request('/api/machines/test-machine-1/spawn', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ directory: '/home/testuser/workspaces', workspaceId: 'workspace-other' }),
-        })
-
-        expect(res.status).toBe(403)
-        expect(await res.json()).toMatchObject({ error: 'Workspace belongs to a different machine' })
-        // 幽灵会话回归：spawn 未被调用，会话未被派生
-        expect(spawnCalls.length).toBe(before)
-    })
-
     test('POST /api/machines/:id/spawn workspaceId 不存在 → 404（存在性校验在前）', async () => {
         const token = await getAuthToken(app)
 
