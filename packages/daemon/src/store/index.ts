@@ -26,7 +26,6 @@ import { PushStore } from './pushStore'
 import { SessionForkStore } from './sessionFork'
 import { migrateLegacyRefMessages } from './legacyRefMigration'
 import { SessionStore } from './sessionStore'
-import { UserStore } from './userStore'
 
 export type {
     StoredMachine,
@@ -34,7 +33,6 @@ export type {
     StoredWorkspace,
     StoredPushSubscription,
     StoredSession,
-    StoredUser,
     VersionedUpdateResult
 } from './types'
 export { MachineStore } from './machineStore'
@@ -44,7 +42,6 @@ export { WorkspaceStore } from './workspaceStore'
 export { PushStore } from './pushStore'
 export { SessionForkStore } from './sessionFork'
 export { SessionStore } from './sessionStore'
-export { UserStore } from './userStore'
 
 const SCHEMA_VERSION: number = 1
 // 发布基线：0 表示未发布，schema 可直接修改无需迁移；
@@ -54,7 +51,6 @@ const REQUIRED_TABLES = [
     'sessions',
     'machines',
     'messages',
-    'users',
     'push_subscriptions',
     'workspaces'
 ] as const
@@ -68,7 +64,6 @@ export class Store {
     readonly messages: MessageStore
     readonly contextBoundary: ContextBoundaryStore
     readonly sessionFork: SessionForkStore
-    readonly users: UserStore
     readonly push: PushStore
     readonly workspaces: WorkspaceStore
 
@@ -115,7 +110,6 @@ export class Store {
         this.messages = new MessageStore(this.db)
         this.contextBoundary = new ContextBoundaryStore(this.db)
         this.sessionFork = new SessionForkStore(this.db)
-        this.users = new UserStore(this.db)
         this.push = new PushStore(this.db)
         this.workspaces = new WorkspaceStore(this.db)
 
@@ -247,17 +241,6 @@ export class Store {
                 ON messages(session_id, position_at DESC, seq DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_session_queued
                 ON messages(session_id) WHERE lifecycle = 'queued';
-
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                platform TEXT NOT NULL,
-                platform_user_id TEXT NOT NULL,
-                namespace TEXT NOT NULL DEFAULT 'default',
-                created_at INTEGER NOT NULL,
-                UNIQUE(platform, platform_user_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_users_platform ON users(platform);
-            CREATE INDEX IF NOT EXISTS idx_users_platform_namespace ON users(platform, namespace);
 
             CREATE TABLE IF NOT EXISTS push_subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

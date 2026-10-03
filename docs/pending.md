@@ -942,3 +942,18 @@ interrupt（用户停止）
 **定位入口**：packages/daemon/src/sync/messageService.ts `redeliverQueued` / syncEngine.handleSessionAlive 激活翻转分支；CLI 侧 new-message 消费与 canReceive 门（packages/session）。修法方向：消费侧在 sink 未通时保留 queued（不推进 lifecycle），或补投由 receive-readiness latch 驱动而非激活翻转。
 
 **2026-10-03 新证据（ticket-22 E2E）**：wake（非 dormant）场景同现象——对 inactive 会话发消息触发 wakeSession spawn，会话进程上线、active=true，但入队消息悬空 ~9 分钟；直到下一条消息（会话已 active，走正常投递路径）才连带被处理并回复。「激活翻转窗口」比 dormant 更宽：spawn → CLI connect → active 翻转全程未补投。侧证疑点链方向。
+
+## 95. ticket-24 生产库迁移待执行——需停生产 daemon，会切断当前托管会话（2026-10-03 ticket-24 交付时记录）
+
+**背景**：ticket-24（DB 结构清理）代码与迁移脚本已交付（scripts/migrate-personal-agent.ts，含 --confirm 门与幂等）；dev 库已迁移核对通过；e2e 新库（smoke 后）已验证无 users 表。**生产库（~/.mobi/mobi.db）未迁移**——开工核对（2026-10-03）：machines 1（=本机 2fe328e4）、users 0、sessions 161、workspaces 5、messages 321811、非本机行 0，与 07 K 一致，预期迁移为纯结构清理（删 users 表、0 行删除）。
+
+**为何未执行**：生产 daemon（hub 59986 + runner 86953，supervisor 61376）由旧版二进制运行，且实施会话本身由 runner 86953 托管——停服即自杀，无法完成迁移→核对→重启链路。且迁移后必须部署新二进制（旧版 REQUIRED_TABLES 含 users，缺表即启动失败），本质是一次完整生产部署（含 ticket-22 的 supervisor 单 daemon 拓扑切换）。
+
+**执行清单（用户在场或独立终端窗口操作）**：
+1. `mobi service stop`（或按 PID 停 supervisor 61376 及子进程）
+2. `cp ~/.mobi/mobi.db ~/.mobi/mobi.db.bak-20261003`（脚本也会自动备份）
+3. `bun scripts/migrate-personal-agent.ts ~/.mobi/mobi.db`（他机行 0，无需 --confirm）
+4. `sqlite3 -readonly ~/.mobi/mobi.db "SELECT name FROM sqlite_master WHERE type='table'"` 核对无 users
+5. 部署新二进制（build:exe 产物）到 ~/.local/bin/mobi（macOS 26 须先 rm 再 cp，见 memory「Tahoe 二进制替换」）
+6. `mobi service supervise` 起 supervisor（新拓扑单 daemon）
+7. 回退：停服 → 还原 .bak → 装回上一版二进制

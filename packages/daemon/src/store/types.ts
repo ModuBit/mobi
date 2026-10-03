@@ -76,14 +76,6 @@ export type StoredMessage = {
 /** 工作区实体存储形态（直接复用 shared 的 Workspace 定义） */
 export type StoredWorkspace = Workspace
 
-export type StoredUser = {
-    id: number
-    platform: string
-    platformUserId: string
-    namespace: string
-    createdAt: number
-}
-
 export type StoredPushSubscription = {
     id: number
     namespace: string
