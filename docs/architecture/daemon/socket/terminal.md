@@ -3,7 +3,7 @@
 **文件**:
 - [`packages/daemon/src/socket/terminalRegistry.ts`](/packages/daemon/src/socket/terminalRegistry.ts)
 - [`packages/daemon/src/socket/handlers/terminal.ts`](/packages/daemon/src/socket/handlers/terminal.ts)（/terminal namespace）
-- [`packages/daemon/src/socket/handlers/cli/terminalHandlers.ts`](/packages/daemon/src/socket/handlers/cli/terminalHandlers.ts)（/cli namespace）
+- [`packages/daemon/src/socket/handlers/cli/index.ts`](/packages/daemon/src/socket/handlers/cli/index.ts)（/cli namespace，registerCliHandlers）
 
 终端代理在 Web 浏览器和 CLI 之间实时转发终端 I/O，让用户可以在浏览器中操作远程终端。
 

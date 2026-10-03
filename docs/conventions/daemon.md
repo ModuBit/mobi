@@ -1,6 +1,6 @@
 # daemon 编码规范
 
-适用于 `daemon/` 包（Bun + Hono + Socket.IO + SQLite，hub 进程 + runner 进程两个入口；架构叙述见 docs/architecture/hub/，26 票重写）。runner 侧（`src/runner/`：spawn 管线 / controlServer / worktree / spawnDedup）随 12 票并入，模块结构与依赖注入规则同下。
+适用于 `daemon/` 包（Bun + Hono + Socket.IO + SQLite，单进程 daemon：hub+runner 同进程（16 票），架构叙述见 [docs/architecture/daemon/](../architecture/daemon/)）。runner 侧（`src/runner/`：spawn 管线 / controlServer / worktree / spawnDedup）随 12 票并入，模块结构与依赖注入规则同下。
 
 ## 模块结构
 

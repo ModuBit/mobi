@@ -48,6 +48,7 @@ const isMobi = name.includes('Mobi') ||
 | `pid === process.pid` | `current` | `current` |
 | `--version` | `runner-version-check` | `dev-runner-version-check` |
 | `runner start-sync` 或 `runner start` | `runner` | `dev-runner` |
+| （注）`daemon start-sync` | 未识别，落 `user-session` | 见 pending #96 |
 | `--started-by runner` | `runner-spawned-session` | `dev-runner-spawned` |
 | `doctor` | `doctor` | `dev-doctor` |
 | `--yolo` | — | `dev-session` |

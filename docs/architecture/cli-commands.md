@@ -7,9 +7,10 @@
 ```
 mobi [options]                # 默认命令：启动 Claude Code 会话（远程控制模式）
 mobi setup                    # 交互式首次配置向导
-mobi service <action>         # 统一管理 Hub + Runner
-mobi hub <action>             # 单独管理 Hub 服务器
-mobi runner <action>          # 单独管理 Runner 进程
+mobi service <action>         # supervisor 托管 daemon
+mobi daemon <action>          # daemon 进程管理（service daemon 的别名）
+mobi runner <action>          # 会话管理工具族（list / stop-session / logs）
+mobi logs [target]            # 打印各进程最新日志路径
 mobi auth <action>            # 管理认证凭据
 mobi version                  # 版本信息
 mobi upgrade                  # 自升级
@@ -18,15 +19,17 @@ mobi mcp                      # MCP stdio 桥接（内部使用）
 mobi hook-forwarder           # SessionStart hook 转发（内部使用）
 ```
 
+> `mobi hub` 命令已删除（ticket-22）：hub 与 runner 合并为单机 daemon，进程级操作统一走 `mobi daemon` / `mobi service`。
+
 ## 命令详解
 
 ### `mobi` (默认命令)
 
-启动一个 Claude Code 会话，通过 Hub 实现远程控制。支持透传所有 Claude Code 参数。
+启动一个 Claude Code 会话，经 daemon 实现远程控制。支持透传所有 Claude Code 参数。
 
 | 文件 | `packages/cli/src/commands/claude.ts` |
 |------|------|
-| 启动模式 | `remote`（默认）通过 Hub 桥接；降级到 `local` 直接运行 claude |
+| 启动模式 | `remote`（默认）经 daemon 由 Web 驱动；降级到 `local` 直接运行 claude |
 
 ```
 mobi                          启动会话
@@ -41,29 +44,19 @@ mobi --resume                 恢复上次会话
 
 | 文件 | `packages/cli/src/commands/setup.ts` |
 |------|------|
-| 子模块 | `setup/settingsWizard.ts`（配置 settings.json）、`setup/serviceManager.ts`（系统服务管理） |
+| 子模块 | `setup/settingsWizard.ts`（配置 settings）、`setup/serviceManager.ts`（系统服务管理） |
 
 ```
 mobi setup                    完整向导：settings → 选择启动方式
-mobi setup settings           仅配置 settings.json
+mobi setup settings           仅配置 settings
 mobi setup service install    安装为系统服务（launchd / systemd）
 mobi setup service remove     移除系统服务
 mobi setup service status     查看系统服务状态
 ```
 
-**配置内容：**
-- `cliApiToken` — 自动生成或重新生成
-- `listenHost` / `listenPort` — Hub 监听地址（默认 127.0.0.1:2222）
-- `apiUrl` — 从 host:port 自动派生
-
-**启动方式三选一：**
-1. 立即启动（后台进程，重启后需手动）
-2. 安装为系统服务（开机自启）
-3. 稍后手动启动
-
 ### `mobi service`
 
-统一管理 Hub 和 Runner 的生命周期。先启动 Hub 等待就绪，再启动 Runner。
+supervisor 托管 daemon 的生命周期。
 
 | 文件 | `packages/cli/src/commands/service.ts` |
 |------|------|
@@ -75,41 +68,53 @@ mobi service restart
 mobi service status
 ```
 
-**停止顺序：** 先 Runner → 再 Hub（确保连接正确关闭）
+托管集只含一个 daemon 组件；清空时 supervisor 自动退出。`supervise --sync`（内部子命令）前台运行 supervisor 本体。
 
-### `mobi hub`
+### `mobi daemon`
 
-单独管理 Hub 服务器。
+daemon 进程管理，顶层命令是 `service daemon` 子命令的别名。
 
-| 文件 | `packages/cli/src/commands/hub.ts` |
+| 文件 | `packages/cli/src/commands/daemon.ts` |
 |------|------|
 
 ```
-mobi hub start [--host <host>] [--port <port>]
-mobi hub stop
-mobi hub restart
-mobi hub status
+mobi daemon start [--host <host>] [--port <port>]   后台启动（supervisor 托管）
+mobi daemon start-sync [--host] [--port]            前台直跑（内部子命令）
+mobi daemon stop               停止 daemon（会话子进程保持存活）
+mobi daemon restart            重启
+mobi daemon status             显示状态
 ```
 
-**后台启动原理：** `start` 子命令 spawn `hub start-sync` 作为 detached 子进程，轮询 `/health` 端点确认就绪。
+**后台启动原理：** `start` 子命令 spawn `daemon start-sync` 作为 detached 子进程，轮询 `/health` 端点确认就绪。
 
-**`start-sync`（内部子命令）：** 直接 `import` hub 入口，阻塞运行。不应对用户暴露。
+**`start-sync`（内部子命令）：** 动态 import `@mobi/daemon/daemonEntry` 阻塞运行。不应对用户暴露。
 
 ### `mobi runner`
 
-单独管理 Runner 进程。
+会话管理工具族。runner 与 hub 同进程为 daemon，进程级操作走 `mobi daemon` / `mobi service`。
 
 | 文件 | `packages/cli/src/commands/runner.ts` |
 |------|------|
 
 ```
-mobi runner start                后台启动
-mobi runner stop                 停止（会话保持存活）
-mobi runner restart              重启
-mobi runner status               查看状态（PID、端口、心跳等）
 mobi runner list                 列出活跃会话
-mobi runner logs                 显示最新日志文件路径
 mobi runner stop-session <id>    停止指定会话
+mobi runner logs                 显示最新日志文件路径
+```
+
+### `mobi logs`
+
+打印各进程最新日志文件路径。
+
+| 文件 | `packages/cli/src/commands/logs.ts` |
+|------|------|
+
+```
+mobi logs            打印 hub / runner / cli 各自最新路径
+mobi logs hub        打印最新 hub 日志路径
+mobi logs runner     打印最新 runner 日志路径
+mobi logs cli        打印最新 cli 日志路径
+mobi logs all        等同 mobi logs
 ```
 
 ### `mobi auth`
@@ -125,7 +130,7 @@ mobi auth login               手动输入 CLI_API_TOKEN
 mobi auth logout              清除本地凭据
 ```
 
-**Token 优先级：** `CLI_API_TOKEN` 环境变量 > `~/.mobi/settings.json` > 自动生成
+**Token 优先级：** `CLI_API_TOKEN` 环境变量 > `~/.mobi/settings.cli.json` > 自动生成
 
 > 首次配置推荐使用 `mobi setup settings`，它会自动生成 token。
 
@@ -165,17 +170,19 @@ mobi upgrade v0.2.0           升级到指定版本
 
 | 文件 | `packages/cli/src/commands/doctor.ts` |
 |------|------|
-| 子模块 | `runner/doctor.ts`（进程发现与清理）、`ui/doctor.ts`（诊断 UI） |
+| 子模块 | `runner/doctor.ts`（进程发现与清理，现位于 daemon 包）、`ui/doctor.ts`（诊断 UI） |
 
 ```
 mobi doctor                   运行完整诊断
-mobi doctor hub               诊断 Hub 问题
-mobi doctor runner            诊断 Runner 问题
+mobi doctor hub               诊断 daemon 服务域问题
+mobi doctor runner            诊断 runner 域问题
 mobi doctor clean             清理所有残留进程
 mobi doctor clean [profile]   清理指定 profile 的残留进程
+mobi doctor exits [--process hub|runner|cli] [--limit N]
+                              查看近期进程退出记录
 ```
 
-**可清理的进程类型：** runner、hub、runner-spawned-session、runner-version-check 及其 dev 变体。
+**可清理的进程类型：** supervisor、旧 hub/runner 形态及其 spawn 会话、版本检查（含 dev 变体）。⚠️ 已知缺口：`daemon start-sync` 进程未被分类规则识别（落 `user-session`，不在清理集合），见 docs/pending.md。
 
 ### `mobi mcp` / `mobi hook-forwarder`
 
@@ -204,18 +211,19 @@ Usage:
 `start`（公开）→ spawn `start-sync`（内部）→ detached + unref → 轮询就绪：
 
 ```typescript
-const child = spawnMobiCli(['hub', 'start-sync'], { detached: true, stdio: 'ignore' })
+const child = spawnMobiCli(['daemon', 'start-sync'], { detached: true, stdio: 'ignore' })
 child.unref()
-// 轮询 /health 或 checkIfRunnerRunningAndCleanupStaleState()
+// 轮询 /health
 ```
 
 ### 状态持久化
 
 | 组件 | 文件 | 字段 |
 |------|------|------|
-| Hub | `~/.mobi/hub.state.json` | pid, listenHost, listenPort, startTime |
-| Runner | `~/.mobi/runner.state.json` | pid, httpPort, startTime, lastHeartbeat, runnerLogPath |
-| Settings | `~/.mobi/settings.json` | cliApiToken, listenHost, listenPort, apiUrl, updateChannel |
+| daemon | `~/.mobi/daemon.state.json` | pid, hubPort（主端口）, hostPort（宿主通道）, runnerHttpPort, startTime |
+| Settings | `~/.mobi/settings.hub.json` + `~/.mobi/settings.cli.json` | token / 监听 / machineId / claudeEnv 等（见 [配置指南](../configuration.md)） |
+
+`hub.state.json` / `runner.state.json` 已停写（ticket-22，daemon.state.json 是唯一进程状态源）。
 
 ### 系统服务
 
@@ -224,4 +232,4 @@ child.unref()
 | macOS | launchd | `~/Library/LaunchAgents/com.modu.mobi.plist` |
 | Linux | systemd user unit | `~/.config/systemd/user/mobi.service` |
 
-两者共用同一个 wrapper 脚本 `~/.mobi/mobi-service.sh`：后台启动 Hub → 轮询就绪 → 前台 exec Runner。
+两者共用同一个 wrapper 脚本 `~/.mobi/mobi-service.sh`：后台启动 daemon → 轮询就绪。

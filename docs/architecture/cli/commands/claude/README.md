@@ -30,7 +30,7 @@ CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数
 
 | 前置内容 | 位置 | 为什么需要 |
 |----------|------|-----------|
-| Hub 架构 | [docs/architecture/hub/](../../../hub/) | Claude 命令通过 Hub 实现远程控制 |
+| Hub 架构 | [daemon 架构](../../../daemon/) | Claude 命令通过 Hub 实现远程控制 |
 | API 通信层 | [docs/architecture/cli/api/](../../api/) | Session 通过 Socket.IO 与 Hub 通信 |
 | Runner 架构 | [docs/architecture/cli/commands/runner/](../runner/) | Runner 负责会话的后台管理和 spawn |
 | MCP 工具族 | [docs/architecture/cli/mcp/](../../mcp/) | Claude 命令装配会话内 MCP 工具（remote 进程内 / local HTTP 壳） |
@@ -124,9 +124,9 @@ flowchart TB
     Token --> AutoHub["maybeAutoStartServer()<br/>自动启动 Hub（如需要）"]
     AutoHub --> Auth["authAndSetupMachineIfNeeded()<br/>认证并注册机器"]
     Auth --> Runner{"Runner 运行中\n且版本匹配?"}
-    Runner -->|否| StartRunner["spawnMobiCli('runner start-sync')<br/>后台启动 Runner"]
+    Runner -->|否| StartDaemon["ensureDaemonRunning()<br/>自动拉起 daemon（start-sync）"]
     Runner -->|是| RunClaude["runClaude(options)"]
-    StartRunner --> RunClaude
+    StartDaemon --> RunClaude
     RunClaude --> ConnError{"连接 Hub 失败?"}
     ConnError -->|是| LocalMode["降级到本地模式<br/>直接 spawn claude"]
     ConnError -->|否| Bootstrap["bootstrapSession()"]

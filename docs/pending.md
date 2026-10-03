@@ -780,12 +780,13 @@ interrupt（用户停止）
 
 ---
 
-## 82. 桌面观看 UI 入口下线，待稳定后恢复（2026-09-18，迭代 3 起点）
+## 82. 桌面观看 UI 入口下线，恢复时按单机架构重做（2026-09-18 迭代 3 起点；2026-10-03 ticket-26 改判）
 
 **现状**：
 
 - 桌面观看/控制权功能本体已实现并 E2E 验证（迭代 1+2，commit `6a0f2a4`→`5178a06b` + `52ad0e9b`），但真机链路尚不稳定，用户决定先下线入口（`52ad0e9b` 之后一笔）
 - 入口闸：`packages/web/src/domain/desktop/featureGate.ts` 的 `DESKTOP_ENTRY_ENABLED = false`——检视面板「+」菜单/空态卡片（`INSPECTOR_ACTIONS` 过滤）与侧边栏「远程桌面」分区均已隐藏；`/desktop` 与 `/settings/desktop` 直链仍可达（恢复验收用）
+- **2026-10-03 改判（personal-agent-rewrite）**：多机数据面已删（ADR 0010），原观看流「cli 侧 attach 被控端 VNC、hub 观察端 observe」的跨机前提不复存在——**恢复时按单机新架构重做**（本机 daemon 直连本机/局域网 VNC，无 machine 路由），不是把旧链路翻闸放出；旧实现的归因注册表、控制权权威等架构评审结论（memory）可复用
 
 **真机暴露的稳定性问题**：
 
@@ -957,3 +958,19 @@ interrupt（用户停止）
 5. 部署新二进制（build:exe 产物）到 ~/.local/bin/mobi（macOS 26 须先 rm 再 cp，见 memory「Tahoe 二进制替换」）
 6. `mobi service supervise` 起 supervisor（新拓扑单 daemon）
 7. 回退：停服 → 还原 .bak → 装回上一版二进制
+
+## 96. doctor clean 不识别 daemon 进程——分类规则未随 ticket-22 拓扑更新（2026-10-03 ticket-26 文档票发现）
+
+**现象**：`packages/daemon/src/runner/doctor.ts` 的进程分类只识别旧形态（`runner start-sync` / `hub start-sync` / supervisor / runner-spawned-session / runner-version-check，RUNNABLE_TYPES 集合）。`mobi daemon start-sync`（ticket-22 后的标准 daemon 进程形态）不匹配任何分支，落 `user-session`（dev 模式落 `dev-related`）——两者均不在清理集合，`mobi doctor clean` 不会清理 daemon 进程。
+
+**影响**：E2E/dev 场景手工拉起的 daemon（setsid/nohup）清理不到；旧形态识别兜底还在，生产 supervisor 托管的 daemon 不受影响（clean 按树清理）。
+
+**修法方向**：分类规则加 `daemon start-sync` 分支并纳入 RUNNABLE_TYPES；doctor 子命令文档（`mobi doctor hub/runner`）的域描述亦需按单机语义复核。
+
+## 97. personal-agent-rewrite 本期明确不做项（2026-10-03 ticket-26 记录，阶段⑥可选或另立项）
+
+- **UDS 替代宿主通道 loopback TCP**：Socket.IO over UDS 需自研 engine 适配，工具链零支持；loopback 已满足外网不可达目标。见 ADR 0009 Considered Options
+- **桌面壳（desktop app 壳）**：不在本期（用户原话），将来需要时另立项
+- **测试框架统一**：bun:test（daemon hub 域）与 vitest（shared/node-core/cli/session/web）并存是裁决 Q7 的既定状态，不强行统一
+- **configuration 单例合一**：settings.hub.json / settings.cli.json 拆分保留（写权限边界），不合并回单文件
+- **web 契约 machineId 字段清理**：D4=C 冻结保留，见 ADR 0010；真多机时按新架构重做

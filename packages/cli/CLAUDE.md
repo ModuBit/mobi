@@ -1,6 +1,6 @@
 # cli
 
-客户端，在本地启动 Claude Code 会话并通过 Hub 实现远程控制。
+组合根：二进制入口、命令路由、supervisor/setup/upgrader/auth UI 与 runtime 编译期资产。daemon 与 session 经命令动态 import 装配，cli 自身无业务逻辑。
 
 ## 编码规范
 

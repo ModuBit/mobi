@@ -1,13 +1,14 @@
 # daemon
 
-单机 daemon：原 hub（Hono Web + Socket.IO + SQLite store/sync + SSE + push）+ runner（spawn 管线 / controlServer / worktree / spawnDedup / apiMachine / authSetup）合并落点；进程拓扑不变（hub、runner 仍是两个进程，16 票同进程化）。machine 层 handlers（files/uploads/gitReview/webToolsConfig 等）与 registerCommonHandlers 归 @mobi/node-core（session 与 daemon 双侧共用）。
+单机自足 daemon：原 hub（Hono Web + Socket.IO + SQLite store/sync + SSE + push）+ runner（spawn 管线 / controlServer / worktree / spawnDedup）合并为**一个进程**（16 票同进程化，22 票收尾），machine 层本地化（LocalMachineHost，17/18 票）。会话子进程经宿主通道（loopback-only 独立 listener，`/cli` socket + `/cli/*` HTTP，端口 = 主端口 + 10000）回连本进程。
 
 依赖方向：只依赖 `@mobi/node-core` 与 `@mobi/shared`，禁止依赖 session / cli / web。
 
 ## 关键入口
 
-- `src/index.ts` — hub 进程入口（原 hub 入口，cli `commands/hub.ts` 经 `@mobi/daemon` 动态 import 启动）
-- `src/runner/run.ts` — runner 进程入口
+- `src/daemonEntry.ts` — daemon 唯一入口（cli `commands/daemon.ts` 的 `start-sync` 经 `@mobi/daemon/daemonEntry` 动态 import 启动）：主端口 + 宿主通道双 listener 装配 + 同进程 runner 编排 + 写 `daemon.state.json`
+- `src/hubServer.ts` — 双 listener（主端口 Web + 宿主通道）装配
+- `src/runner/` — 同进程 runner（spawn 管线 / controlServer / worktree / spawnDedup / doctor）
 - `scripts/generate-embedded-web-assets.ts` — web 静态资产嵌入生成（build:exe 调）
 
 ## 测试

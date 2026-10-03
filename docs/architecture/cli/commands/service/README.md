@@ -16,7 +16,7 @@ mobi service hub start|stop|restart|status     # 单组件
 mobi service runner start|stop|restart|status
 
 mobi hub start / mobi runner start             # 别名，行为与 service 子命令一致
-mobi hub start-sync / runner start-sync        # 前台直跑（supervisor 内部也用它）
+mobi daemon start-sync [--host] [--port]        # 前台直跑（supervisor 内部也用它）
 ```
 
 语义要点：
@@ -45,7 +45,7 @@ flowchart TB
     end
 
     Hub["hub start-sync<br/>（子进程）"]
-    Runner["runner start-sync<br/>（子进程）"]
+    Daemon["daemon start-sync<br/>（子进程）"]
 
     ServiceOps -->|IPC 指令| ControlServer
     ControlServer --> StateMachine

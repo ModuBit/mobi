@@ -1,16 +1,17 @@
 # 单文件打包架构
 
-Mobi 使用 `bun build --compile` 将四个模块打包为一个独立可执行文件，无需 Bun 或 Node.js 运行时。
+Mobi 使用 `bun build --compile` 将全部工作区包打包为一个独立可执行文件，无需 Bun 或 Node.js 运行时。
 
 ## 整体结构
 
 ```
 mobi (单个二进制文件，~93MB)
 ├── Bun Runtime          ← 嵌入的 JavaScriptCore 运行时
-├── CLI 模块             ← 命令路由 + 所有子命令
-├── Hub 模块             ← Hono + Socket.IO 服务器
-├── Web 静态资产         ← HTML/CSS/JS，嵌入 hub
-├── Shared 协议          ← Zod schema，TypeScript 源码直接打包
+├── CLI 模块             ← 组合根：命令路由 + 所有子命令
+├── Daemon 模块          ← 单机自足服务器（Hono + Socket.IO，含同进程 runner）
+├── Session 模块         ← 会话宿主（与 daemon 一起按需动态 import）
+├── Web 静态资产         ← HTML/CSS/JS，嵌入 daemon
+├── Shared/node-core     ← 协议与节点侧共享库，TypeScript 源码直接打包
 └── 工具二进制           ← ripgrep/difftastic tar 包，按平台条件嵌入
 ```
 
@@ -96,9 +97,9 @@ mobi [args]
       └─ index.ts        ← 加载 profile
           └─ runCli()    ← 解析参数，ensureRuntimeAssets()
               └─ registry 匹配子命令
-                  ├─ (无参数) → claude
-                  ├─ hub     → 动态 import daemon/src/index
-                  ├─ runner  → 后台会话管理
+                  ├─ (无参数) → claude（装配 session 包）
+                  ├─ daemon  → 动态 import daemon/daemonEntry（单机自足服务器）
+                  ├─ runner  → 会话管理工具族（list / stop-session / logs）
                   └─ ...
 ```
 
@@ -122,9 +123,9 @@ mobi [args]
     版本匹配 → 跳过解压 → 直接使用已解压的工具
 ```
 
-## Hub Web 资产服务
+## Daemon Web 资产服务
 
-Hub 在两种模式下服务 Web 前端：
+daemon 在两种模式下服务 Web 前端：
 
 **编译模式**（`isBunCompiled() === true`）：
 - `loadEmbeddedAssetMap()` 读取 `embeddedAssets.generated.ts` 中的资产清单
@@ -178,5 +179,4 @@ CLI 的 `package.json` 中定义了 import map：
 
 - **非静态可分析的动态 import 不会被打包**：所有 `import()` 必须是静态字符串
 - **Linux 依赖系统 libc**：非完全静态链接，需要 glibc 或 musl
-- **react-devtools-core stub**：ink v7 无条件导入此包，编译后的二进制中通过 stub 包提供空导出
 - **二进制体积**：~93MB（包含 Bun 运行时 + 应用代码 + Web 资产 + 工具 tar 包）

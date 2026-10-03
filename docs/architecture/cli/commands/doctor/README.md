@@ -137,6 +137,8 @@ flowchart TB
 | `current` | `pid === process.pid` |
 | `runner-version-check` | 命令包含 `--version` |
 | `runner` | 命令包含 `runner start-sync` 或 `runner start` |
+
+> ⚠️ 分类规则尚未识别 `daemon start-sync` 进程形态（落 `user-session`，不在清理集合）——见 docs/pending.md #96。
 | `runner-spawned-session` | 命令包含 `--started-by runner` |
 | `doctor` | 命令包含 `doctor` |
 | `user-session` | 其他（生产模式） |

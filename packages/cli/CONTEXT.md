@@ -1,63 +1,19 @@
-# CLI（Agent 会话运行时）
+# CLI（组合根）
 
-mobi CLI 侧的领域语言：本地拉起并托管 Claude Code 会话进程，向 hub 同步会话状态与消息。
+cli 侧的领域语言：二进制入口与进程编排。会话宿主词汇（local/remote、锚点、轮次变更等）见 [session 包](../session/CONTEXT.md)，daemon 词汇见 [daemon 包](../daemon/CONTEXT.md)。
 
 ## Language
 
-### 会话控制方向
-
-**local 模式**:
-本地终端控制——用户在本机终端直接操作，mobi spawn 独立的 claude 子进程，用户与该子进程交互。
-_Avoid_: 交互模式、interactive（旧口头称呼）
-
-**remote 模式**:
-远程控制——会话经 hub 由 Web 端驱动，Claude 以 SDK Query 形态跑在 mobi 进程内（headless，无终端 UI）。
-_Avoid_: headless 模式（旧口头称呼）
-
-两个词的区分标准是**谁在控制会话**（本地终端 vs Web 远程），不是进程拓扑。
-
-### 锚点
-
-两个锚点同源（都取自消息的 native uuid），方向相反：rewind 从锚点**向前丢弃**，fork 从锚点**向前保留**。
-
-**Rewind 锚点**:
-rewind 的回退目标——用户消息的 nativeId，激活时换算为其前最近一条 assistant entry（resumeSessionAt 保留锚），截断重启只保留该锚（含）之前的历史。
-_Avoid_: 直接把用户消息 uuid 当 resumeSessionAt（会保留该条导致重发重复）
-
-**分叉锚点**:
-fork 的分叉基点——agent 回复消息的 nativeId，激活时直接作截断式 fork 的 resumeSessionAt（含该条），分叉会话的历史锁定在点 fork 时刻的锚点，不受 parent 后续变化影响。
-_Avoid_: 分叉点（口语）、fork 点
-
-### Query 重启
-
-**Restart module**:
-remote 模式中 Query 重启的单一状态所有者。rewind 与 output style 切换只向它提交重启意图；它统一管理异步准备占位、待执行单槽、消息队列清理与退出哨兵配对，launcher 负责消费和完成请求。
-_Avoid_: 让 handler 或 launcher 直接读写 pending / in-flight 标志，或者自行清队列并注入哨兵。
-
 ### 进程角色
 
-**Runner**:
-常驻的会话管家进程，spawn 并跟踪 Claude 会话子进程；经 supervisor 的 unix socket 接受组件级启停。
-
-### 轮次变更
-
-**轮次变更（Turn Diff）**：
-一轮对话造成的文件变更事实——CLI 在轮次结束时合成并落库的 custom 消息（shared「自定义事件」形态，name=`turn-diff`）。事实源按 v3 供数反转分层：归因主源 = turn 内工具层内容对累积（本会话 Edit 族，封口归档供历史轮回看）；实况兜底 = 相邻两轮快照之间的 git 差异（累积为空才回落）；非 git 目录退化为工具事件投影的近似口径。文件清单与增删统计只有一个权威口径，聊天卡与审查视图共用同一份事实。
-_Avoid_: 逐次编辑流水（那是工具行粒度，不是轮次粒度）、双口径统计（卡片与审查的数字必须同源）、把快照 diff 当主源（并发会话/手改会互相归因）
-
-**轮次快照（Turn Snapshot）**：
-轮次边界上对工作区可追踪内容的一次 git 目录快照——只落 git 对象与引用，不产生提交、不进入分支历史、不触碰用户暂存区与工作区。轮次变更的实况兜底 = 相邻快照之差；快照引用按会话聚集、随会话生灭（会话删除即清理引用，未清理的引用只钉住压缩字节，无运行时成本）。
-_Avoid_: 全文备份/内容快照（快照引用已有 git 对象，不复制文件内容）、影子提交（没有 commit）
-
-**上一轮（Last Turn）**：
-审查 turn 档的缺省语义 = 最新封口归档轮（供数器 `TurnAttributionProvider` 收口，归因口径）；归档未覆盖时回落快照链口径——store 的 `lastTurnDiff`（base = 链尾 -2、head = 链尾，引用与 per-file diff 一并返回）。链不足两颗（baseline 缺失/空仓库无链）= 拿不到上一轮（`null`，消费方各自降级：合成器退投影口径、审查档位置空）；空轮（两树内容无差异）= git 口径但零变更（空 files，不发卡），两者不是一回事。不存在 HEAD 兜底语义（`632048b2`：不裹挟历史未提交变更）。
-_Avoid_: 各消费方自行从链推导「上一轮」（口径双写）、HEAD 树兜底（裹挟历史改动）、绕开供数器直查归档或快照链
+**组合根**:
+cli 包的定位——只含入口、命令路由、supervisor/setup/upgrader/auth UI 与 runtime 编译期资产；daemon 与 session 按命令经动态 import 装配，cli 自身无业务逻辑。
+_Avoid_: 客户端（多机拓扑下的旧定位，已废）
 
 **Supervisor**:
-组件守护进程，托管 hub 与 runner 的拉起、崩溃退避重启；控制通道为 unix domain socket。
+组件守护进程，只托管单个 daemon 的拉起、崩溃退避重启；控制通道为 unix domain socket。托管集清空时自动退出。
+_Avoid_: 托管 hub 与 runner（旧拓扑，runner 已并入 daemon）
 
-**Hook Server**:
-local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server（hook 经 hook-forwarder 命令转发）。
-
-**mobi MCP Server**:
-承载 `change_title` 等面向模型的工具的 MCP server；local 模式为 HTTP transport，remote 模式为 SDK 进程内 server。
+**会话子进程**:
+daemon 经宿主 spawn 的 `mobi claude` 子进程（源码直跑，session 包），经宿主通道回连 daemon。
+_Avoid_: CLI 客户端（旧拓扑下会话由远端机器的 CLI 提供）

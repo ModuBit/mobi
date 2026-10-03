@@ -112,7 +112,7 @@ export function createXxxTool(deps: XxxToolDeps)   // 工厂：依赖注入，�
 
 ### 与「会话此刻能收消息」的关系
 
-`create_session` 的 `waitForReady`（默认 true）与 `send_message_to_session` 的失败解释，都依赖 CLI 上报的 sink 接通事实。**上报点不在本模块**（在 [`claude/claudeRemoteLauncher.ts`](/packages/session/src/claude/claudeRemoteLauncher.ts) → [`api/apiSession.ts`](/packages/session/src/api/apiSession.ts) 的 `reportReceiveReadiness`），落点与判据见 [Hub socket 文档](/docs/architecture/hub/socket/README.md) 与 [hub/sync 文档](/docs/architecture/hub/sync/README.md)。此处只需知道一件事：**「能收消息」是会反复翻转的「此刻」事实，工具不能拿它当闸门，只能拿它「等」和「把失败说准」**。
+`create_session` 的 `waitForReady`（默认 true）与 `send_message_to_session` 的失败解释，都依赖 CLI 上报的 sink 接通事实。**上报点不在本模块**（在 [`claude/claudeRemoteLauncher.ts`](/packages/session/src/claude/claudeRemoteLauncher.ts) → [`api/apiSession.ts`](/packages/session/src/api/apiSession.ts) 的 `reportReceiveReadiness`），落点与判据见 [Hub socket 文档](/docs/architecture/daemon/socket/README.md) 与 [hub/sync 文档](/docs/architecture/daemon/sync/README.md)。此处只需知道一件事：**「能收消息」是会反复翻转的「此刻」事实，工具不能拿它当闸门，只能拿它「等」和「把失败说准」**。
 
 ## change_title 核心流程
 

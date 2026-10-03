@@ -149,12 +149,12 @@ flowchart LR
 
 | 组件 | 职责 |
 |------|------|
-| **[EventPublisher](./event-publisher)** | 事件发布器，向 SSE 推送实时事件 |
-| **[SessionCache](./session-cache)** | 会话缓存，管理会话生命周期和活跃状态 |
-| **[MachineCache](./machine-cache)** | 机器缓存，管理 CLI 客户端在线状态 |
+| **[EventPublisher](./event-publisher.md)** | 事件发布器，向 SSE 推送实时事件 |
+| **[SessionCache](./session-cache.md)** | 会话缓存，管理会话生命周期和活跃状态 |
+| **[MachineCache](./machine-cache.md)** | 机器缓存，管理 CLI 客户端在线状态 |
 | **WorkspaceCache** | 工作区缓存，管理工作区实体 CRUD 并广播 `workspace-added/updated/removed`；删除工作区时逐个广播名下会话的 `session-updated`（解绑进「最近」） |
-| **[MessageService](./message-service)** | 消息服务，处理消息分页和发送 |
-| **[RpcGateway](./rpc-gateway)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
+| **[MessageService](./message-service.md)** | 消息服务，处理消息分页和发送 |
+| **[RpcGateway](./rpc-gateway.md)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
 | **[Snapshot Delta 协议](./snapshot-delta.md)** | 流式消息增量传输：拼接器缓存 + SSE 转发游标 + 重基线/生命周期清理 |
 | **SessionMessageRuntimeProjector** | 已持久化消息 → runtimeState 的连接级投影；封装跨消息配对、顺序合并、自动清理与持久化 |
 | **SessionMessageFactsProcessor** | CLI 消息事实处理；封装不可信字段收窄、幂等/单调落库、连接级 native session 上下文并返回领域 publication |

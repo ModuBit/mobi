@@ -206,7 +206,7 @@ module 不依赖 Socket 或 SSE。handler 只校验批次外层和会话访问�
 
 ## /cli 机器处理器
 
-**文件**: [`packages/daemon/src/socket/handlers/cli/machineHandlers.ts`](/packages/daemon/src/socket/handlers/cli/machineHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/index.ts`](/packages/daemon/src/socket/handlers/cli/index.ts)（machine 域 handler 已并入 registerCliHandlers）
 
 与会话处理器结构对称，处理机器相关事件。
 
@@ -239,7 +239,7 @@ rpc-unregister →  rpcRegistry.unregister(socket, method)
 
 ## /cli 终端处理器（CLI 端）
 
-**文件**: [`packages/daemon/src/socket/handlers/cli/terminalHandlers.ts`](/packages/daemon/src/socket/handlers/cli/terminalHandlers.ts)
+**文件**: [`packages/daemon/src/socket/handlers/cli/index.ts`](/packages/daemon/src/socket/handlers/cli/index.ts)（terminal 域 handler 已并入 registerCliHandlers）
 
 CLI 端的终端事件处理器，负责将 CLI 的终端输出转发给 Web 端。
 

@@ -1,6 +1,6 @@
-# Hub 模块
+# Daemon 模块
 
-Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
+daemon 是 Mobi 的单机自足服务器：原 hub（Web + Socket.IO + SQLite 同步）与 runner（spawn 管线）合并为一个进程，加上本地化的 machine 层。每台机器一个 daemon，同时服务 Web 前端、spawn 并跟踪会话子进程。
 
 ## 新人指引
 
@@ -8,10 +8,10 @@ Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
 
 阅读本文档前，建议了解以下概念：
 
-- **Socket.IO**：实时双向通信框架，Hub 用它管理 CLI 和 Web 的实时连接
-- **SSE (Server-Sent Events)**：服务器单向推送协议，Hub 用它向 Web 推送实时事件
-- **SQLite (WAL 模式)**：嵌入式数据库，Hub 用它持久化会话、消息等数据
-- **Web Push (VAPID)**：浏览器推送通知协议，Hub 用它实现离线通知
+- **Socket.IO**：实时双向通信框架，daemon 用它管理会话子进程和 Web 的实时连接
+- **SSE (Server-Sent Events)**：服务器单向推送协议，daemon 用它向 Web 推送实时事件
+- **SQLite (WAL 模式)**：嵌入式数据库，daemon 用它持久化会话、消息等数据
+- **Web Push (VAPID)**：浏览器推送通知协议，daemon 用它实现离线通知
 
 ### 建议阅读顺序
 
@@ -19,7 +19,7 @@ Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
 2. [Configuration](./config) — 了解配置体系，后续模块都依赖配置
 3. [Store](./store) — 了解数据存储层，SyncEngine 在此基础上运作
 4. [SyncEngine](./sync) — **核心模块**，建议按 README → 各子文档的顺序精读
-5. [SocketServer](./socket) — CLI 连接管理，先看 README，再按需查看 handlers / rpc / terminal
+5. [SocketServer](./socket) — 会话子进程连接管理，先看 README，再按需查看 handlers / rpc / terminal
 6. [WebServer](./web) — HTTP API 层，先看 README 和 auth，再按需查看各 API 端点
 7. [SSEManager](./sse) — Web 实时推送
 8. [VisibilityTracker](./visibility) — 页面可见性追踪（影响通知策略）
@@ -29,14 +29,15 @@ Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
 
 | 术语 | 含义 |
 |------|------|
-| **Session** | 一次 Agent 会话，对应 CLI 的一次 `claude` 运行实例 |
-| **Machine** | 一台运行 CLI 的机器，一个 Machine 可运行多个 Session |
-| **Namespace** | Socket.IO 的多租户隔离机制，Hub 使用 `/cli`（CLI 连接）和 `/web`（Web 连接）两个 namespace |
+| **Session** | 一次 Agent 会话，对应一次 `mobi claude` 运行实例（会话子进程） |
+| **Machine** | 路由残留（单机假设下的历史字段）：machines 表恒一行 = 本机，`machineId` 仅作 API 路径与会话归属字段保留，无跨机路由语义 |
+| **宿主通道** | 会话子进程回连 daemon 的独立 loopback listener（`/cli` namespace + `/cli/*` HTTP，端口 = 主端口 + 10000），不经 frp 暴露 |
+| **Namespace** | Socket.IO 的多租户隔离机制，daemon 使用 `/cli`（会话子进程连接，宿主通道）和 `/web`、`/terminal`（Web 连接，主端口） |
 | **SyncEvent** | SyncEngine 产生的事件，如 `session-updated`、`message-created`，用于通知其他组件 |
-| **RpcGateway** | Web → CLI 的远程调用网关，支持权限审批、文件操作、Git 操作等 |
-| **SyncEngine** | 核心同步引擎，协调所有数据操作（Session、Machine、Message），是 Hub 的"大脑" |
+| **RpcGateway** | Web → 会话子进程的远程调用网关，支持权限审批、文件操作、Git 操作等 |
+| **SyncEngine** | 核心同步引擎，协调所有数据操作（Session、Machine、Message），是 daemon 的"大脑" |
 | **Store** | SQLite 数据存储层，提供 Cache（内存缓存）和 Persistence（持久化）两层抽象 |
-| **Terminal** | 终端通道，CLI ↔ Web 的实时双向终端 I/O，不经过 SyncEngine |
+| **Terminal** | 终端通道，Web ↔ daemon 内 TerminalManager（pty）的实时双向终端 I/O，不经过 SyncEngine |
 | **VAPID** | Voluntary Application Server Identification，Web Push 的服务器身份验证协议 |
 | **SSE** | Server-Sent Events，服务器向浏览器单向推送事件的协议 |
 | **Visibility** | 页面可见性状态（visible/hidden），影响通知策略——可见时用 SSE 推送，不可见时用 Web Push |
@@ -45,21 +46,23 @@ Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
 
 ```mermaid
 graph TB
-    CLI[CLI 客户端]
+    Session[会话子进程<br/>（session 包）]
     Web[Web 浏览器]
 
-    subgraph Hub
-        IO[SocketServer<br/>Socket.IO]
+    subgraph Daemon
+        HostIO[宿主通道 listener<br/>127.0.0.1<br/>/cli Socket.IO + /cli/* HTTP]
+        IO[SocketServer<br/>Socket.IO /web /terminal]
         WS[WebServer<br/>HTTP + SSE]
         SE[SyncEngine]
+        Host[LocalMachineHost<br/>spawn 管线]
         Store[(Store)]
     end
 
-    CLI <-->|实时| IO
-    CLI -->|初始化| WS
-    Web <-->|实时| IO
-    Web <-->|HTTP/SSE| WS
+    Session <-->|宿主通道| HostIO
+    Web <-->|HTTP/SSE/socket| WS
+    Host -->|spawn / SIGTERM| Session
 
+    HostIO <--> SE
     IO <--> SE
     WS --> SE
     SE --> Store
@@ -67,14 +70,14 @@ graph TB
 
 ## 数据通道
 
-### 上行流（CLI → Hub → Web）
+### 上行流（会话子进程 → daemon → Web）
 
 | 路径 | 场景 |
 |------|------|
-| **HTTP** | 会话/机器初始化、消息回填 |
-| **Socket.IO** | 心跳、消息、状态更新、终端事件 |
+| **HTTP（宿主通道）** | 会话/机器初始化、消息回填 |
+| **Socket.IO（宿主通道）** | 心跳、消息、状态更新 |
 
-### 下行流（Web → Hub → CLI）
+### 下行流（Web → daemon → 会话子进程）
 
 | 路径 | 场景 |
 |------|------|
@@ -83,7 +86,7 @@ graph TB
 
 ### 终端通道
 
-CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
+Web ↔ Socket.IO(/terminal) ↔ daemon 内 TerminalManager（pty），实时双向，不经过 SyncEngine。
 
 详见 [SyncEngine 架构](./sync)。
 
@@ -93,7 +96,7 @@ CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
 |------|------|
 | **[Configuration](./config)** | 配置管理，统一优先级与持久化 |
 | **[SyncEngine](./sync)** | 同步引擎，协调所有数据操作 |
-| **[SocketServer](./socket)** | Socket.IO 服务器，处理 CLI 连接 |
+| **[SocketServer](./socket)** | Socket.IO 服务器，处理会话子进程连接（宿主通道）与 Web 连接（主端口） |
 | **[WebServer](./web)** | HTTP 服务器，提供 API 和静态资源 |
 | **[SSEManager](./sse)** | 管理 SSE 连接，向 Web 推送实时事件 |
 | **[SnapshotSync](./sync/snapshot-delta.md)** | 管理流式快照基线、版本衔接、订阅游标与连接生命周期 |
@@ -101,6 +104,7 @@ CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
 | **[PushService](./push)** | Web Push 通知，离线时推送通知 |
 | **[NotificationHub](./notification)** | 通知调度，监听事件并分发通知 |
 | **[Store](./store)** | 数据存储，SQLite 数据库 |
+| **[LocalMachineHost（runner/）](../../../packages/daemon/src/runner/)** | 同进程 runner：会话子进程 spawn 管线、controlServer、worktree、spawnDedup |
 
 ## 组件依赖关系
 
@@ -147,8 +151,11 @@ flowchart LR
 
 ```
 packages/daemon/src/
-├── index.ts                     # 主入口，组件组装
-├── configuration.ts             # 配置管理
+├── daemonEntry.ts                # 主入口（mobi daemon start-sync 经动态 import 启动），组件组装 + 同进程 runner 编排
+├── hubServer.ts                  # 主端口 + 宿主通道双 listener 装配
+├── configuration.ts              # 配置管理
+├── runner/                       # 同进程 runner（原 runner 包：spawn 管线 / controlServer / worktree / spawnDedup）
+├── machine/                      # machine 层本地化（LocalMachineHost）
 ├── config/
 │   ├── jwtSecret.ts             # JWT 密钥
 │   └── vapidKeys.ts             # VAPID 密钥
