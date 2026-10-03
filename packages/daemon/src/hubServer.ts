@@ -41,6 +41,7 @@ import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { SnapshotSync } from './sync/snapshotSync'
 import { SocketMachineHost } from './machine/SocketMachineHost'
+import { LocalMachineHost } from './machine/LocalMachineHost'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
 import { PushNotificationChannel } from './push/pushNotificationChannel'
@@ -175,15 +176,15 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         agentSessions: () => syncEngine?.agentSessions
     })
 
-    // machine 执行层显式注入（ticket-15）：machine 族调用收拢在 SocketMachineHost，
-    // ④ 后续票替换此实现即可，SyncEngine 透传与路由不动
+    // machine 执行层显式注入（ticket-15 接口 / ticket-17 本地化）：LocalMachineHost
+    // 逐组从 socket 兜底翻成本地直调，SyncEngine 透传与路由不动
     syncEngine = new SyncEngine(
         store,
         socketServer.io,
         socketServer.rpcRegistry,
         sseManager,
         rewindDeleteBoundTracker,
-        new SocketMachineHost(socketServer.io, socketServer.rpcRegistry)
+        new LocalMachineHost(new SocketMachineHost(socketServer.io, socketServer.rpcRegistry))
     )
 
     const notificationChannels: NotificationChannel[] = [
