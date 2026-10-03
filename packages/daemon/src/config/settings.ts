@@ -16,7 +16,7 @@
 
 import { hubLogger } from '../logger'
 import { existsSync } from 'node:fs'
-import { mkdir, open, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, stat, unlink, writeFile, chmod, type FileHandle } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 /**
@@ -142,6 +142,9 @@ export async function writeSettings(settingsFile: string, settings: Settings): P
 
     const tmpFile = settingsFile + '.tmp'
     await writeFile(tmpFile, JSON.stringify(settings, null, 2))
+    // settings 含 token 凭证（ticket-21 收紧）：落盘前限权，rename 保留 tmp 权限——
+    // chmod 在 rename 前做，避免内容已就位但权限还宽的窗口
+    await chmod(tmpFile, 0o600)
     await rename(tmpFile, settingsFile)
 }
 

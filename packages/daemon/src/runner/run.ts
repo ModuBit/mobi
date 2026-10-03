@@ -36,6 +36,7 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@mobi/node-core/environmentInfo';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
 import { writeRunnerState, RunnerLocallyPersistedState, readRunnerState, acquireRunnerLock, releaseRunnerLock } from '@mobi/node-core/persistence';
+import { getConfiguration, resolveHostPort } from '../configuration';
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, isWindows, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
 import { installExitLogger, resolveMobiLogsDir } from '@mobi/shared/exitLogger';
@@ -99,6 +100,19 @@ export class RunnerLockHeldError extends Error {
     constructor() {
         super('Runner lock file already held, another runner is running');
         this.name = 'RunnerLockHeldError';
+    }
+}
+
+/**
+ * 会话子进程的宿主端口求值：daemon 进程内（startRunnerCore 经 daemonEntry 编排）用
+ * daemon 配置（hub 已初始化，含 listenPort 派生）；standalone runner（退化形态，配置
+ * 未初始化）回退 env/默认派生——与 node-core CLI 侧默认 12222 对齐
+ */
+function resolveSpawnHostPort(): number {
+    try {
+        return getConfiguration().hostPort
+    } catch {
+        return resolveHostPort(2222)
     }
 }
 
@@ -351,7 +365,10 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
         env: {
           ...process.env,
-          ...extraEnv
+          ...extraEnv,
+          // 宿主通道端口（ticket-21）：会话子进程必须连 loopback 宿主 listener——
+          // 显式注入覆盖继承值（profile/legacy env 可能还指向主端口），不依赖 settings 猜测
+          MOBI_API_URL: `http://127.0.0.1:${resolveSpawnHostPort()}`
         }
       });
 

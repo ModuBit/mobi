@@ -47,6 +47,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 describe('workspaces REST 路由 + 会话归属', () => {
     let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
+    let hostApp: ReturnType<typeof import('../../../src/web/server').createHostApp>
     let engine: SyncEngine
     let engineCleanup: () => void
     let appCleanup: () => void
@@ -60,6 +61,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
         const setup = await setupTestApp(engine)
         app = setup.app
+        hostApp = setup.hostApp
         appCleanup = setup.cleanup
 
         const token = await getAuthToken(app)
@@ -329,7 +331,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
     describe('POST /cli/sessions 响应带 workspace', () => {
         test('带 workspaceId → 响应含 workspace 且 session.workspaceId 一致', async () => {
             const { data } = await createWorkspace({ name: 'cli-proj', machineId: 'm1' })
-            const res = await app.request('/cli/sessions', {
+            const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({
@@ -345,7 +347,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('带非法 workspaceId → 404（校验前置，不落库）', async () => {
-            const res = await app.request('/cli/sessions', {
+            const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({
@@ -360,7 +362,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
         test('machine 不匹配 → 403 且不落库（幽灵会话回归）', async () => {
             const { data } = await createWorkspace({ name: 'cli-ghost-proj', machineId: 'mA' })
-            const res = await app.request('/cli/sessions', {
+            const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({
@@ -382,7 +384,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
         test('machine 匹配 → 200 正常创建', async () => {
             const { data } = await createWorkspace({ name: 'cli-match-proj', machineId: 'mA' })
-            const res = await app.request('/cli/sessions', {
+            const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({
@@ -398,7 +400,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
         test('metadata.machineId 缺失（老数据/异常）→ 放行', async () => {
             const { data } = await createWorkspace({ name: 'cli-legacy-proj', machineId: 'mA' })
-            const res = await app.request('/cli/sessions', {
+            const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({
@@ -411,7 +413,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('不带 workspaceId → workspace 为 null', async () => {
-            const res = await app.request('/cli/sessions', {
+            const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
                 body: JSON.stringify({

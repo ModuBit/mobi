@@ -15,7 +15,7 @@
  */
 
 import { Store } from '../../../src/store'
-import { createWebApp } from '../../../src/web/server'
+import { createWebApp, createHostApp } from '../../../src/web/server'
 import { createConfiguration, resetConfiguration } from '../../../src/configuration'
 import type { SSEManager } from '../../../src/sse/sseManager'
 import type { VisibilityTracker } from '../../../src/visibility/visibilityTracker'
@@ -70,6 +70,12 @@ export async function setupTestApp(
         distDirOverride: opts.distDirOverride,
     })
 
+    // 宿主通道子应用（ticket-21）：/cli/* 已从主 app 迁独立 listener，测试改打这里
+    const hostApp = createHostApp({
+        getSyncEngine: () => (syncEngine ?? null) as SyncEngine,
+        corsOrigins: ['http://localhost:3000'],
+    })
+
     const cleanup = () => {
         store.close()
         delete process.env.CLI_API_TOKEN
@@ -79,7 +85,7 @@ export async function setupTestApp(
         resetConfiguration()
     }
 
-    return { store, app, cleanup }
+    return { store, app, hostApp, cleanup }
 }
 
 export async function getAuthToken(app: ReturnType<typeof createWebApp>): Promise<string> {

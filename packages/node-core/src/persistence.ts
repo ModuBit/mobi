@@ -21,7 +21,7 @@
  */
 
 import { FileHandle } from 'node:fs/promises'
-import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, open, unlink, rename, stat, chmod } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { configuration } from './configuration'
@@ -150,6 +150,8 @@ async function withSettingsLock<S extends object>(
 
     // Write atomically using rename
     await writeFile(tmpFile, JSON.stringify(updated, null, 2));
+    // settings 含 token 凭证（ticket-21 收紧）：落盘前限权，rename 保留 tmp 权限
+    await chmod(tmpFile, 0o600);
     await rename(tmpFile, settingsFile); // Atomic on POSIX
 
     return updated;

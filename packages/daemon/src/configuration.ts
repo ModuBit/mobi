@@ -33,6 +33,7 @@
  */
 
 import { existsSync, mkdirSync } from 'node:fs'
+import { chmod } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { hubLogger } from './logger'
@@ -62,6 +63,28 @@ async function syncCliApiTokenToCoLocatedCli(dataDir: string, token: string): Pr
 }
 
 export type ConfigSource = 'env' | 'file' | 'default'
+
+/** 宿主端口派生偏移：listenPort + 10000（与 CLI 侧默认 12222 对齐） */
+const HOST_PORT_OFFSET = 10_000
+
+/** 宿主端口解析：env MOBI_HOST_PORT 优先，否则按主端口派生（非法值回退派生，fail-open） */
+export function resolveHostPort(listenPort: number): number {
+    const raw = process.env.MOBI_HOST_PORT
+    if (raw) {
+        const parsed = Number.parseInt(raw, 10)
+        if (Number.isFinite(parsed) && parsed > 0 && parsed < 65_536) {
+            return parsed
+        }
+        hubLogger.warn(`[Hub] MOBI_HOST_PORT="${raw}" 非法（须为 1-65535），回退派生端口`)
+    }
+    // 派生越界（listenPort 接近 65535 时）wrap 回非特权段；生产端口 2222-2224 派生恒在界内
+    const derived = listenPort + HOST_PORT_OFFSET
+    if (derived <= 65_535) {
+        return derived
+    }
+    hubLogger.warn(`[Hub] listenPort ${listenPort} 派生宿主端口 ${derived} 越界，wrap 回非特权段`)
+    return 1_024 + (derived % (65_535 - 1_024))
+}
 
 export interface ConfigSources {
     listenHost: ConfigSource
@@ -104,6 +127,13 @@ class Configuration {
     /** Port for the HTTP service */
     public readonly listenPort: number
 
+    /**
+     * 宿主通道端口（ticket-21 Q10=a）：/cli socket namespace 与 /cli/* HTTP 挂在
+     * 这个端口的 loopback listener 上，不经 frp 暴露——外网物理够不到宿主通道。
+     * 派生自 listenPort + 10000（2222→12222），env MOBI_HOST_PORT 可覆盖
+     */
+    public readonly hostPort: number
+
     /** Host/IP to bind the HTTP service to */
     public readonly listenHost: string
 
@@ -133,6 +163,7 @@ class Configuration {
         // Apply server settings
         this.listenHost = serverSettings.listenHost
         this.listenPort = serverSettings.listenPort
+        this.hostPort = resolveHostPort(this.listenPort)
         this.publicUrl = serverSettings.publicUrl
         this.corsOrigins = serverSettings.corsOrigins
         this.hubName = serverSettings.hubName
@@ -206,6 +237,12 @@ class Configuration {
         // co-located 便利：同目录存在 cli 配置且其无连接凭证时同步一份，
         // 保持「hub 首启 → 本机 cli 即连」的开箱体验；远程部署无同目录文件自动跳过
         await syncCliApiTokenToCoLocatedCli(dataDir, tokenResult.token)
+
+        // 存量 settings 权限收敛（ticket-21）：升级前以 0644 落盘的文件补收紧到 0600
+        //（新写路径已统一限权，这里只兜旧文件；失败不阻塞启动）
+        for (const file of [config.settingsFile, getCliSettingsFile(dataDir)]) {
+            await chmod(file, 0o600).catch(() => { /* 不存在/不可改均忽略 */ })
+        }
 
         // 6. Load Web API token
         const webTokenResult = await getOrCreateWebApiToken(dataDir)

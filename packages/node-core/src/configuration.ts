@@ -67,7 +67,12 @@ class Configuration {
 
     constructor() {
         // Server configuration
-        this._apiUrl = process.env.MOBI_API_URL || 'http://localhost:2222'
+        // 默认指向宿主通道 listener（ticket-21：/cli socket + /cli/* HTTP 在
+        // 127.0.0.1 的独立 loopback 端口，派生规则 = 主端口 + 10000，与 daemon 侧
+        // resolveHostPort 对齐；MOBI_HOST_PORT 覆盖时两侧同读该 env）。daemon spawn
+        // 的会话子进程会显式注入精确值，这里只是同机 CLI 的开箱默认
+        this._apiUrl = process.env.MOBI_API_URL
+            || `http://127.0.0.1:${process.env.MOBI_HOST_PORT ?? 12222}`
         this._cliApiToken = process.env.CLI_API_TOKEN || ''
 
         // Check if we're running as runner based on process args

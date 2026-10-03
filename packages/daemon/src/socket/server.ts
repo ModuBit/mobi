@@ -104,7 +104,10 @@ export type SocketServerDeps = {
 
 export function createSocketServer(deps: SocketServerDeps): {
     io: SocketServer
+    /** 主端口 engine（web server 挂载：web HTTP + /terminal namespace） */
     engine: Engine
+    /** 宿主端口 engine（独立 loopback listener：/cli namespace，ticket-21） */
+    hostEngine: Engine
     rpcRegistry: RpcRegistry
 } {
     const corsOrigins = deps.corsOrigins ?? configuration.corsOrigins
@@ -123,14 +126,11 @@ export function createSocketServer(deps: SocketServerDeps): {
         credentials: false
     }
 
-    const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
-        cors: corsOptions,
-        // 4MB：允许 readFileRange 单 chunk 二进制响应（socket.io 默认 1MB，超过会断连）。
-        // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一，与 RPC_BINARY_CHUNK_SIZE 协同
-        maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE
-    })
-
-    const engine = new Engine({
+    // 双实例（ticket-21 Q10=a）：宿主通道（/cli namespace + /cli/* HTTP）走独立 loopback
+    // listener，不经 frp 暴露；主 listener 只承载 web 与 /terminal。io 与 engine 的
+    // 命名以「谁是默认返回值」为准——io=宿主 socket.io（SyncEngine/rpc 只用 /cli 族），
+    // engine=主端口 engine（web server 挂载），hostEngine=宿主端口 engine
+    const makeEngineOptions = () => ({
         path: '/socket.io/',
         cors: corsOptions,
         // 4MB：允许 readFileRange 单 chunk 二进制响应（cli → hub 方向）。
@@ -140,7 +140,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         // 表现为 hub stream 拿不到 chunk、大文件（图片/视频）预览 body 为空。
         // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一（与 RPC_BINARY_CHUNK_SIZE 协同）。
         maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE,
-        allowRequest: async (req) => {
+        allowRequest: async (req: Request) => {
             const origin = req.headers.get('origin')
             if (!origin || allowAllOrigins || corsOrigins.includes(origin)) {
                 return
@@ -148,7 +148,24 @@ export function createSocketServer(deps: SocketServerDeps): {
             throw 'Origin not allowed'
         }
     })
-    io.bind(engine)
+
+    // 宿主实例（/cli namespace）：绑宿主端口 engine，由 startHostServer 挂载
+    const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
+        cors: corsOptions,
+        // 4MB：允许 readFileRange 单 chunk 二进制响应（socket.io 默认 1MB，超过会断连）。
+        // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一，与 RPC_BINARY_CHUNK_SIZE 协同
+        maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE
+    })
+    const hostEngine = new Engine(makeEngineOptions())
+    io.bind(hostEngine)
+
+    // 主端口实例（/terminal namespace）：绑主端口 engine，由 startWebServer 挂载
+    const webIo = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
+        cors: corsOptions,
+        maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE
+    })
+    const engine = new Engine(makeEngineOptions())
+    webIo.bind(engine)
 
     const idleTimeoutMs = resolveEnvNumber('MOBI_TERMINAL_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS)
     const maxTerminals = resolveEnvNumber('MOBI_TERMINAL_MAX_TERMINALS', DEFAULT_MAX_TERMINALS)
@@ -156,7 +173,8 @@ export function createSocketServer(deps: SocketServerDeps): {
     const maxTerminalsPerSession = maxTerminals
     
     const cliNs = io.of('/cli')
-    const terminalNs = io.of('/terminal')
+    // 终端 namespace 挂在主端口 socket.io 实例上（web 浏览器可达；frp 转发主端口）
+    const terminalNs = webIo.of('/terminal')
 
     // 单实例共享（缺省自建仅测试路径用）：CLI 连接事件维护，rewind API 闸门读取
     const backgroundTaskTracker = deps.backgroundTaskTracker ?? new BackgroundTaskTracker()
@@ -260,5 +278,5 @@ export function createSocketServer(deps: SocketServerDeps): {
         maxTerminalsPerSession
     }))
 
-    return { io, engine, rpcRegistry }
+    return { io, engine, hostEngine, rpcRegistry }
 }

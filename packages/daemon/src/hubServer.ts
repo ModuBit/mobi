@@ -33,7 +33,7 @@ import { BackgroundTaskTracker } from './sync/backgroundTaskTracker'
 import { RewindDeleteBoundTracker } from './sync/rewindDeleteBoundTracker'
 import { NotificationHub } from './notifications/notificationHub'
 import type { NotificationChannel } from './notifications/notificationTypes'
-import { startWebServer } from './web/server'
+import { startWebServer, startHostServer, createHostApp } from './web/server'
 import { getOrCreateJwtSecret } from './config/jwtSecret'
 import { startWebApiTokenWatcher } from './config/settingsWatcher'
 import { createSocketServer } from './socket/server'
@@ -58,6 +58,8 @@ import type { WebSocketData } from '@socket.io/bun-engine'
 export interface HubHandle {
     /** 实际监听端口（config 解析结果，可能来自 env/settings/default） */
     port: number
+    /** 宿主通道端口（ticket-21：/cli socket + /cli/* HTTP 独立 loopback listener，127.0.0.1 only） */
+    hostPort: number
     /** 数据目录（state 文件所在，供调用方绑定退出清理） */
     dataDir: string
     /**
@@ -237,12 +239,23 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         backgroundTaskTracker,
     })
 
+    // 宿主通道 listener（ticket-21 Q10=a）：/cli/* HTTP + /cli namespace socket，
+    // 只绑 127.0.0.1，不经 frp 暴露——外网物理够不到宿主通道
+    const hostServer: BunServer<WebSocketData> = startHostServer({
+        hostApp: createHostApp({
+            getSyncEngine: () => syncEngine,
+            corsOrigins: config.corsOrigins,
+        }),
+        hostEngine: socketServer.hostEngine,
+    })
+
     // 启动 settings.hub.json 监听：webApiToken 轮换时热 reload，无需重启 hub
     const settingsWatcher = startWebApiTokenWatcher()
 
     hubLogger.info('')
     hubLogger.info('[Web] Hub listening on :' + config.listenPort)
     hubLogger.info('[Web] Local:  http://localhost:' + config.listenPort)
+    hubLogger.info('[Host] Host channel on 127.0.0.1:' + config.hostPort + ' (loopback only)')
     hubLogger.info('')
     hubLogger.info('Mobi Hub is ready!')
 
@@ -269,6 +282,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
 
     return {
         port: config.listenPort,
+        hostPort: config.hostPort,
         dataDir: config.dataDir,
         setRunnerBridge,
         updateLocalMachineRunnerState,
@@ -280,6 +294,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
             notificationHub?.stop()
             syncEngine?.stop()
             sseManager?.stop()
+            hostServer?.stop()
             webServer?.stop()
             settingsWatcher.stop()
             store.close()

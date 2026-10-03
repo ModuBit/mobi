@@ -159,9 +159,10 @@ export function createWebApp(options: {
         allowHeaders: ['authorization', 'content-type']
     })
     app.use('/api/*', corsMiddleware)
-    app.use('/cli/*', corsMiddleware)
 
-    app.route('/cli', createCliRoutes(options.getSyncEngine))
+    // 宿主通道已迁独立 listener（ticket-21 Q10=a）：主端口对 /cli/* 显式 404——
+    // 必须在静态/嵌入 fallback 之前注册，否则 GET /cli/* 会被 SPA fallback 吃掉回 index.html
+    app.all('/cli/*', (c) => c.json({ error: 'Host channel is not served on this port' }, 404))
 
     app.route('/api', createAuthRoutes(options.jwtSecret))
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
@@ -256,6 +257,70 @@ export function createWebApp(options: {
     })
 
     return app
+}
+
+/**
+ * 宿主通道子应用（ticket-21 Q10=a）：只挂 /cli/* 路由，承载在独立 loopback listener
+ * （127.0.0.1:hostPort）上——不经 frp 暴露，外网物理够不到。CLI_API_TOKEN 校验
+ * 保留在路由自身（createCliRoutes），边界靠拓扑而非仅靠判断
+ */
+export function createHostApp(options: {
+    getSyncEngine: () => SyncEngine | null
+    corsOrigins?: string[]
+}): Hono {
+    const app = new Hono()
+
+    app.onError((err, c) => {
+        hubLogger.error(`[Host] Unhandled error on ${c.req.method} ${c.req.path}`, err)
+        return c.json({ error: 'Internal Host Error' }, 500)
+    })
+
+    // CLI 是非浏览器客户端（axios/socket.io），CORS 本可省；挂同款配置仅为
+    // 排障时浏览器直探不留跨域噪音
+    const corsOrigins = options.corsOrigins ?? configuration.corsOrigins
+    app.use('/cli/*', cors({
+        origin: corsOrigins.includes('*') ? '*' : corsOrigins,
+        credentials: true,
+        allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowHeaders: ['authorization', 'content-type']
+    }))
+
+    app.route('/cli', createCliRoutes(options.getSyncEngine))
+
+    // 宿主端口判活（诊断/脚本用；主端口 /health 语义不变）
+    app.get('/health', (c) => c.json({ status: 'ok', protocolVersion: PROTOCOL_VERSION }))
+
+    return app
+}
+
+/**
+ * 宿主 listener：Bun.serve 只绑 127.0.0.1，承载 /cli/* HTTP 与 /cli namespace 的
+ * Socket.IO engine。返回 server 供关停（HubHandle.stop 统一收口）
+ */
+export function startHostServer(options: {
+    hostApp: Hono
+    hostEngine: SocketEngine
+}): BunServer<WebSocketData> {
+    const socketHandler = options.hostEngine.handler()
+
+    const server = Bun.serve({
+        hostname: '127.0.0.1',
+        port: configuration.hostPort,
+        idleTimeout: Math.max(30, socketHandler.idleTimeout),
+        maxRequestBodySize: Math.max(MAX_UPLOAD_BYTES, socketHandler.maxRequestBodySize ?? 0),
+        websocket: socketHandler.websocket,
+        fetch: (req, server) => {
+            const url = new URL(req.url)
+            if (url.pathname.startsWith('/socket.io/')) {
+                return socketHandler.fetch(req, server)
+            }
+            return options.hostApp.fetch(req)
+        }
+    })
+
+    hubLogger.info(`[Host] Host channel listening on 127.0.0.1:${configuration.hostPort} (loopback only)`)
+
+    return server
 }
 
 export async function startWebServer(options: {

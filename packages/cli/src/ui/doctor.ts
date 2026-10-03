@@ -108,6 +108,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
         const env = getEnvironmentInfo();
         console.log(`MOBI_HOME: ${env.MOBI_HOME ? chalk.green(env.MOBI_HOME) : chalk.gray('not set')}`);
         console.log(`MOBI_API_URL: ${env.MOBI_API_URL ? chalk.green(env.MOBI_API_URL) : chalk.gray('not set')}`);
+        console.log(`MOBI_HOST_PORT: ${env.MOBI_HOST_PORT ? chalk.green(env.MOBI_HOST_PORT) : chalk.gray('not set (derived: main port + 10000)')}`);
         console.log(`CLI_API_TOKEN: ${env.CLI_API_TOKEN_SET ? chalk.green('set') : chalk.gray('not set')}`);
         console.log(`DANGEROUSLY_LOG_TO_SERVER: ${env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING ? chalk.yellow('ENABLED') : chalk.gray('not set')}`);
         console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);

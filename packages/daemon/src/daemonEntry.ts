@@ -44,6 +44,8 @@ export interface StartDaemonOptions {
 interface DaemonPersistedState {
     pid: number
     hubPort: number
+    /** 宿主通道端口（ticket-21：/cli socket + /cli/* HTTP 的 loopback listener） */
+    hostPort: number
     runnerHttpPort: number
     startTime: string
 }
@@ -131,6 +133,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     writeDaemonState({
         pid: process.pid,
         hubPort: hub.port,
+        hostPort: hub.hostPort,
         runnerHttpPort: runner.httpPort,
         startTime: new Date().toLocaleString()
     })

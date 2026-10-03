@@ -51,12 +51,14 @@ describe('startHub / stop 生命周期', () => {
 
     beforeAll(async () => {
         mkdirSync(DATA_DIR, { recursive: true })
-        // startHub 经 env 覆盖监听地址，须隔离并事后还原（bun test 单文件单进程）
-        for (const key of ['MOBI_HOME', 'MOBI_LISTEN_HOST', 'MOBI_LISTEN_PORT']) {
+        // startHub 经 env 覆盖监听地址，须隔离并事后还原（bun test 单文件单进程）。
+        // 宿主端口同样 pickFree：随机主端口 +10000 派生会越界（>65535），显式指定
+        for (const key of ['MOBI_HOME', 'MOBI_LISTEN_HOST', 'MOBI_LISTEN_PORT', 'MOBI_HOST_PORT']) {
             savedEnv[key] = process.env[key]
         }
         process.env.MOBI_HOME = DATA_DIR
         port = await pickFreePort()
+        process.env.MOBI_HOST_PORT = String(await pickFreePort())
         handle = await startHub({ host: '127.0.0.1', port })
     })
 
@@ -73,6 +75,15 @@ describe('startHub / stop 生命周期', () => {
         expect(handle.port).toBe(port)
         const response = await fetch(`http://127.0.0.1:${port}/health`)
         expect(response.ok).toBe(true)
+    })
+
+    it('宿主 listener 生效：hostPort /health 可达、主端口 /cli/* 显式 404（ticket-21）', async () => {
+        const hostHealth = await fetch(`http://127.0.0.1:${handle.hostPort}/health`)
+        expect(hostHealth.ok).toBe(true)
+
+        // 边界靠拓扑：主端口对宿主路径 404（frp 只转发主端口 → 外网够不到 /cli/*）
+        const mainPortCli = await fetch(`http://127.0.0.1:${port}/cli/sessions`)
+        expect(mainPortCli.status).toBe(404)
     })
 
     it('stop → 端口释放（可被重新绑定）、幂等', async () => {

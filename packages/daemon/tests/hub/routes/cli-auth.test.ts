@@ -18,19 +18,19 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { setupTestApp, testCliApiToken, testWebApiToken } from '../helpers/setupTestApp'
 
 describe('/cli 鉴权反向隔离', () => {
-    let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
+    let hostApp: ReturnType<typeof import('../../../src/web/server').createHostApp>
     let cleanup: () => void
 
     beforeEach(async () => {
         const setup = await setupTestApp()
-        app = setup.app
+        hostApp = setup.hostApp
         cleanup = setup.cleanup
     })
 
     afterEach(() => cleanup())
 
     test('cliApiToken 可访问 /cli/sessions（基线）', async () => {
-        const res = await app.request('/cli/sessions', {
+        const res = await hostApp.request('/cli/sessions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ describe('/cli 鉴权反向隔离', () => {
     })
 
     test('webApiToken 不能访问 /cli（反向隔离）', async () => {
-        const res = await app.request('/cli/sessions', {
+        const res = await hostApp.request('/cli/sessions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -55,7 +55,7 @@ describe('/cli 鉴权反向隔离', () => {
     })
 
     test('无 Authorization 访问 /cli 返回 401', async () => {
-        const res = await app.request('/cli/sessions', { method: 'POST' })
+        const res = await hostApp.request('/cli/sessions', { method: 'POST' })
         expect(res.status).toBe(401)
     })
 })
