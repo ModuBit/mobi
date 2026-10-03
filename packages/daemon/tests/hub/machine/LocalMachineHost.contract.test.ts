@@ -30,6 +30,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerMachineFileHandlers } from '@mobi/node-core/handlers/machineFiles'
 import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
+import { registerFileHandlers } from '@mobi/node-core/handlers/files'
+import { registerUploadHandlers } from '@mobi/node-core/handlers/uploads'
 import { LocalMachineHost } from '../../../src/machine/LocalMachineHost'
 import { SocketMachineHost } from '../../../src/machine/SocketMachineHost'
 import { makeFakeIo, makeFakeRegistry } from '../sync/fakeTransport'
@@ -40,6 +42,9 @@ const HOME = homedir()
 // socket 侧用真 handler：注册形态与 runner apiMachine 一致（machineFiles 覆盖式注册 + path-exists）
 function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
     const manager = new RpcHandlerManager({ scopePrefix: MACHINE_ID })
+    // 装配顺序与 runner apiMachine 同构：common 先注册，machineFiles 覆盖 readFileMeta/readFileRange
+    registerFileHandlers(manager, homeDir, homeDir)
+    registerUploadHandlers(manager, homeDir)
     registerMachineFileHandlers(manager, homeDir)
     manager.registerHandler('path-exists', (params: unknown) => checkPathsExistImpl(params))
 
@@ -57,6 +62,10 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
         [`${MACHINE_ID}:readFileMeta`, 'sock-contract'],
         [`${MACHINE_ID}:readFileRange`, 'sock-contract'],
         [`${MACHINE_ID}:path-exists`, 'sock-contract'],
+        [`${MACHINE_ID}:saveFile`, 'sock-contract'],
+        [`${MACHINE_ID}:writeFileRange`, 'sock-contract'],
+        [`${MACHINE_ID}:deleteUpload`, 'sock-contract'],
+        [`${MACHINE_ID}:replaceUpload`, 'sock-contract'],
     ]))
     return { socketHost: new SocketMachineHost(io, registry) }
 }
@@ -71,6 +80,7 @@ describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）
         tmpRoot = join(HOME, `mobi-lmh-contract-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         await mkdir(join(tmpRoot, 'sub'), { recursive: true })
         await writeFile(join(tmpRoot, 'hello.txt'), '0123456789abcdef', 'utf-8')
+        await writeFile(join(tmpRoot, 'note.md'), '# v1\n', 'utf-8')
 
         localHost = new LocalMachineHost({} as never) // 组1 方法不落 fallback，兜底不需要真实现
         socketHost = makeServingPair(HOME).socketHost
@@ -116,5 +126,76 @@ describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）
     test('machineReadFileRange：越界路径拒绝同构', async () => {
         expect(await localHost.machineReadFileRange(MACHINE_ID, tmpRoot, '/System/escape.txt', 0, 4))
             .toEqual(await socketHost.machineReadFileRange(MACHINE_ID, tmpRoot, '/System/escape.txt', 0, 4))
+    })
+
+    // ── 组2：写/上传（saveFile / writeFileRange / deleteUpload / replaceUpload）──
+    // 写操作有副作用：local 先行、socket 跟进会读到 local 的结果——两侧各用独立文件比对形状与语义
+
+    test('machineSaveFile：OCC 成功（etag 刷新）与冲突两形态同构', async () => {
+        const a = await localHost.machineSaveFile(MACHINE_ID, tmpRoot, 'note.md', new TextEncoder().encode('# v2\n'), '')
+        const b = await socketHost.machineSaveFile(MACHINE_ID, tmpRoot, 'note.md', new TextEncoder().encode('# v2\n'), '')
+        // etag 含 mtime（两侧写入时刻不同必不等），归一后比对形状
+        const normalizeEtag = (r: unknown) => {
+            const obj = { ...(r as object) } as { etag?: string; currentEtag?: string }
+            if (obj.etag !== undefined) obj.etag = '<etag>'
+            if (obj.currentEtag !== undefined) obj.currentEtag = '<etag>'
+            return obj
+        }
+        expect(normalizeEtag(a)).toEqual(normalizeEtag(b))
+        expect((a as { success: boolean }).success).toBe(true)
+
+        // baseEtag 过期 → conflict + currentEtag（两侧行为同构）
+        const c = await localHost.machineSaveFile(MACHINE_ID, tmpRoot, 'note.md', new TextEncoder().encode('# x\n'), '0-1')
+        const d = await socketHost.machineSaveFile(MACHINE_ID, tmpRoot, 'note.md', new TextEncoder().encode('# x\n'), '0-1')
+        expect(c).toEqual(d)
+        expect((c as { conflict?: boolean }).conflict).toBe(true)
+    })
+
+    test('machineSaveFile：写边界外（home 外绝对路径）→ ACCESS_DENIED 同构', async () => {
+        expect(await localHost.machineSaveFile(MACHINE_ID, tmpRoot, '/System/escape.md', new TextEncoder().encode('x'), ''))
+            .toEqual(await socketHost.machineSaveFile(MACHINE_ID, tmpRoot, '/System/escape.md', new TextEncoder().encode('x'), ''))
+    })
+
+    test('machineSaveFile：目标不存在 → ENOENT 同构', async () => {
+        const a = await localHost.machineSaveFile(MACHINE_ID, tmpRoot, 'ghost.md', new TextEncoder().encode('x'), '')
+        const b = await socketHost.machineSaveFile(MACHINE_ID, tmpRoot, 'ghost.md', new TextEncoder().encode('x'), '')
+        expect(a).toEqual(b)
+        expect((a as { code?: string }).code).toBe('ENOENT')
+    })
+
+    test('machineUploadFileRange → replaceUpload → deleteUpload 全链路同构', async () => {
+        // 首块（两侧各一个文件名，避免互相踩）；唯一名含时间戳+随机段，path 归一后比对
+        const normalizeUploadPath = (r: unknown) => {
+            const obj = { ...(r as object) } as { path?: string }
+            if (obj.path) obj.path = obj.path.replace(/-[a-z0-9]+(\.[a-z0-9]+)?$/i, '-<id>$1')
+            return obj
+        }
+        const a = await localHost.machineUploadFileRange(MACHINE_ID, tmpRoot, 'up.png', undefined, 0, new Uint8Array([1, 2, 3, 4]), 8)
+        const b = await socketHost.machineUploadFileRange(MACHINE_ID, tmpRoot, 'up.png', undefined, 0, new Uint8Array([5, 6, 7, 8]), 8)
+        expect(normalizeUploadPath(a)).toEqual(normalizeUploadPath(b))
+        expect((a as { success: boolean; written?: number }).success).toBe(true)
+
+        // 后续块（追加到各自首块返回的 path）
+        const aPath = (a as { path?: string }).path!
+        const bPath = (b as { path?: string }).path!
+        expect(await localHost.machineUploadFileRange(MACHINE_ID, tmpRoot, 'up.png', aPath, 4, new Uint8Array([9, 10, 11, 12]), 8))
+            .toEqual(await socketHost.machineUploadFileRange(MACHINE_ID, tmpRoot, 'up.png', bPath, 4, new Uint8Array([13, 14, 15, 16]), 8))
+
+        // 替换（同 path 原子换血）
+        expect(await localHost.machineReplaceUpload(MACHINE_ID, tmpRoot, aPath, new Uint8Array([9, 9])))
+            .toEqual(await socketHost.machineReplaceUpload(MACHINE_ID, tmpRoot, bPath, new Uint8Array([8, 8])))
+
+        // 越界 path（uploads 目录外）→ 拒绝同构
+        expect(await localHost.machineDeleteUpload(MACHINE_ID, tmpRoot, 'hello.txt'))
+            .toEqual(await socketHost.machineDeleteUpload(MACHINE_ID, tmpRoot, 'note.md'))
+
+        // 删除收尾
+        expect(await localHost.machineDeleteUpload(MACHINE_ID, tmpRoot, aPath))
+            .toEqual(await socketHost.machineDeleteUpload(MACHINE_ID, tmpRoot, bPath))
+    })
+
+    test('machineUploadFileRange：越界 cwd（home 外）拒绝同构', async () => {
+        expect(await localHost.machineUploadFileRange(MACHINE_ID, '/System', 'up.png', undefined, 0, new Uint8Array([1]), 1))
+            .toEqual(await socketHost.machineUploadFileRange(MACHINE_ID, '/System', 'up.png', undefined, 0, new Uint8Array([1]), 1))
     })
 })

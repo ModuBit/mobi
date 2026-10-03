@@ -38,7 +38,7 @@ function validateRpcCwd(cwd: string): boolean {
     return normalized === normalizedHome || normalized.startsWith(homePrefix)
 }
 
-interface WriteFileRangeRequest {
+export interface WriteFileRangeRequest {
     /** 首块（offset=0）用：原始文件名，cli 生成唯一名 */
     filename?: string
     /** 后续块（offset>0）用：首块返回的工作区相对路径 */
@@ -52,7 +52,7 @@ interface WriteFileRangeRequest {
     totalSize?: number
 }
 
-interface WriteFileRangeResponse {
+export interface WriteFileRangeResponse {
     success: boolean
     /** 首块返回：工作区相对路径 */
     path?: string
@@ -61,18 +61,18 @@ interface WriteFileRangeResponse {
     error?: string
 }
 
-interface DeleteUploadRequest {
+export interface DeleteUploadRequest {
     path: string
     /** 覆盖工作目录（machine channel 传入） */
     cwd?: string
 }
 
-interface DeleteUploadResponse {
+export interface DeleteUploadResponse {
     success: boolean
     error?: string
 }
 
-interface ReplaceUploadRequest {
+export interface ReplaceUploadRequest {
     /** 目标路径（工作区相对，须在 uploads 目录内）：文件名原样保留不进唯一名生成——
      *  替换语义要求 path 恒定，附件 id / 草稿引用 / 扩展名全部不动 */
     path: string
@@ -83,7 +83,7 @@ interface ReplaceUploadRequest {
     cwd?: string
 }
 
-interface ReplaceUploadResponse {
+export interface ReplaceUploadResponse {
     success: boolean
     error?: string
 }
@@ -218,202 +218,213 @@ export function registerUploadHandlers(
     // 分块写文件（替换旧 base64 整包 uploadFile，对称 readFileRange 无状态）
     rpcHandlerManager.registerHandler<WriteFileRangeRequest, WriteFileRangeResponse>(
         'writeFileRange',
-        async (data) => {
-            logger.debug('写入文件块:', data.filename ?? data.path, 'offset:', data.offset, 'len:', data.content.length)
-
-            // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
-            const effectiveCwd = data.cwd || workingDirectory
-            if (data.cwd && !validateRpcCwd(data.cwd)) {
-                return rpcError('Invalid cwd: path is outside home directory')
-            }
-
-            // offset / content 基本校验
-            if (!Number.isFinite(data.offset) || data.offset < 0) {
-                return rpcError('Invalid offset')
-            }
-            if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
-                return rpcError('Content is required')
-            }
-
-            try {
-                if (data.offset === 0 && data.filename) {
-                    // ── 首块：创建文件 ──
-                    const extError = validateFileExtension(data.filename)
-                    if (extError) return rpcError(extError)
-
-                    // 总大小预校验（第二道闸；hub 已 Content-Length 预校验为第一道）
-                    if (typeof data.totalSize === 'number' && Number.isFinite(data.totalSize) && data.totalSize > MAX_UPLOAD_BYTES) {
-                        return rpcError('File too large (max 50MB)')
-                    }
-
-                    const uploadDir = await ensureUploadDir(effectiveCwd)
-                    const sanitizedFilename = sanitizeFilename(data.filename)
-                    // 时间戳 + 随机段，避免同毫秒同名并发上传碰撞（open('w') 覆盖丢数据）。
-                    // 随机段插在「扩展簇」（尾部连续 .ext，如 .excalidraw.png / .tar.gz）之前，
-                    // 保持多段扩展名完整——extname 只认最后一段会把双扩展拆成 .excalidraw-<id>.png
-                    const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-                    // 前导点（.gitignore / .env 等隐藏文件）属文件名而非扩展名：先剥离再匹配
-                    // 扩展簇，否则 base 为空 → 唯一名变成以连字符开头的 '-<id>.gitignore'
-                    const leadingDot = sanitizedFilename.startsWith('.') ? '.' : ''
-                    const stem = leadingDot ? sanitizedFilename.slice(1) : sanitizedFilename
-                    const extCluster = stem.match(/(?:\.[A-Za-z0-9]+)+$/)?.[0] ?? ''
-                    const base = extCluster ? stem.slice(0, stem.length - extCluster.length) : stem
-                    const uniqueFilename = `${leadingDot}${base}-${shortId}${extCluster}`
-                    const filePath = join(uploadDir, uniqueFilename)
-
-                    // 单块大小校验（第三道闸）
-                    if (data.content.length > MAX_UPLOAD_BYTES) return rpcError('File too large (max 50MB)')
-
-                    // open 成功后若 write/close 失败（磁盘满 / EIO），文件已落盘但 path 尚未返回 hub，
-                    // hub 侧 cleanup 因无 path 无法清理 → 内层兜底删除孤儿文件
-                    const fd = await open(filePath, 'w')  // 创建/截断
-                    try {
-                        await fd.write(data.content, 0, data.content.length, 0)
-                        await fd.close()
-                    } catch (writeErr) {
-                        await fd.close().catch(() => {})
-                        await rm(filePath, { force: true }).catch(() => {})
-                        logger.debug('首块写入失败，已清理孤儿文件:', filePath, writeErr)
-                        return rpcError(getErrorMessage(writeErr, 'Failed to write file range'))
-                    }
-
-                    // 记录累计（open 成功后写入，避免孤儿 entry）；单块即完成则清理，防止 Map 无限增长
-                    writtenTracker.set(filePath, { written: data.content.length, totalSize: data.totalSize })
-                    if (data.totalSize !== undefined && data.content.length >= data.totalSize) {
-                        writtenTracker.delete(filePath)
-                    }
-
-                    return { success: true, path: relative(effectiveCwd, filePath), written: data.content.length }
-                } else if (data.path && data.offset > 0) {
-                    // ── 后续块：按 path + offset 追加（offset>0；首块由 filename 分支处理，offset=0+path 拒绝） ──
-                    if (!isPathWithinUploads(effectiveCwd, data.path)) {
-                        return rpcError('Invalid upload path')
-                    }
-                    const fullPath = resolve(effectiveCwd, data.path)
-
-                    const st = await stat(fullPath)
-                    // 纵深防御：offset 不得超过当前文件 size，防止稀疏文件空洞绕过大小限制
-                    if (data.offset > st.size) {
-                        return rpcError('Offset out of bounds')
-                    }
-
-                    // 累计超限兜底：基数取 tracker 记录与实际文件大小的较大者。
-                    // 仅看进程内 tracker 会在 cli 重启 / 指向既有文件时回退到 0，从而绕过封顶。
-                    const prev = writtenTracker.get(fullPath)
-                    const baseWritten = Math.max(prev?.written ?? 0, st.size)
-                    if (baseWritten + data.content.length > MAX_UPLOAD_BYTES) {
-                        writtenTracker.delete(fullPath)
-                        return rpcError('File too large (max 50MB)')
-                    }
-
-                    const fd = await open(fullPath, 'r+')  // 必须已存在，不截断
-                    await fd.write(data.content, 0, data.content.length, data.offset)
-                    await fd.close()
-
-                    // 累计更新；完成（累计 >= totalSize）则清理 entry，避免 writtenTracker 无限增长
-                    const newWritten = baseWritten + data.content.length
-                    if (prev?.totalSize !== undefined && newWritten >= prev.totalSize) {
-                        writtenTracker.delete(fullPath)
-                    } else {
-                        writtenTracker.set(fullPath, { written: newWritten, totalSize: prev?.totalSize })
-                    }
-
-                    return { success: true, written: data.content.length }
-                } else {
-                    return rpcError('Either filename (offset=0) or path (offset>0) is required')
-                }
-            } catch (error) {
-                const nodeError = error as NodeJS.ErrnoException
-                // 文件不存在（offset>0 但首块未写 / path 错）→ 明确错误
-                if (nodeError.code === 'ENOENT') {
-                    return rpcError('Upload file not found (offset out of order or invalid path)')
-                }
-                logger.debug('写入文件块失败:', error)
-                return rpcError(getErrorMessage(error, 'Failed to write file range'))
-            }
-        },
-    )
+        (data) => writeFileRangeImpl(data, workingDirectory))
 
     // 删除上传文件
     rpcHandlerManager.registerHandler<DeleteUploadRequest, DeleteUploadResponse>(
         'deleteUpload',
-        async (data) => {
-            // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
-            const effectiveCwd = data.cwd || workingDirectory
-            if (data.cwd && !validateRpcCwd(data.cwd)) {
-                return rpcError('Invalid cwd: path is outside home directory')
-            }
-
-            const path = data?.path?.trim()
-            if (!path) {
-                return rpcError('Path is required')
-            }
-
-            // 校验路径在 uploads 目录内
-            if (!isPathWithinUploads(effectiveCwd, path)) {
-                return rpcError('Invalid upload path')
-            }
-
-            try {
-                const fullPath = resolve(effectiveCwd, path)
-                await rm(fullPath, { force: true })
-                // 同步清理累计追踪 entry（删除 / 中断后失效，避免 stale entry 泄漏）
-                writtenTracker.delete(fullPath)
-                return { success: true }
-            } catch (error) {
-                logger.debug('删除上传文件失败:', error)
-                return rpcError(getErrorMessage(error, 'Failed to delete upload file'))
-            }
-        },
-    )
+        (data) => deleteUploadImpl(data, workingDirectory))
 
     // 同 path 原子替换上传（「编辑已有上传」场景，如画板重编辑换图）
     rpcHandlerManager.registerHandler<ReplaceUploadRequest, ReplaceUploadResponse>(
         'replaceUpload',
-        async (data) => {
-            // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
-            const effectiveCwd = data.cwd || workingDirectory
-            if (data.cwd && !validateRpcCwd(data.cwd)) {
-                return rpcError('Invalid cwd: path is outside home directory')
-            }
+        (data) => replaceUploadImpl(data, workingDirectory))
+}
 
-            const path = data?.path?.trim()
-            if (!path) {
-                return rpcError('Path is required')
-            }
-            if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
-                return rpcError('Content is required')
-            }
-            if (data.content.length > MAX_UPLOAD_BYTES) {
-                return rpcError('File too large (max 50MB)')
-            }
+/**
+ * writeFileRange 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * 行为单源——socket 路径与本地直调不会分叉。
+ */
+export async function writeFileRangeImpl(data: WriteFileRangeRequest, workingDirectory: string): Promise<WriteFileRangeResponse> {
+        logger.debug('写入文件块:', data.filename ?? data.path, 'offset:', data.offset, 'len:', data.content.length)
 
-            // 校验路径在 uploads 目录内 + 扩展名白名单（文件名不变 ⇒ 扩展簇不变，
-            // 但 path 是客户端自报的，首发伪造仍要拦）
-            if (!isPathWithinUploads(effectiveCwd, path)) {
-                return rpcError('Invalid upload path')
-            }
-            const extError = validateFileExtension(basename(path))
-            if (extError) return rpcError(extError)
+        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+        const effectiveCwd = data.cwd || workingDirectory
+        if (data.cwd && !validateRpcCwd(data.cwd)) {
+            return rpcError('Invalid cwd: path is outside home directory')
+        }
 
+        // offset / content 基本校验
+        if (!Number.isFinite(data.offset) || data.offset < 0) {
+            return rpcError('Invalid offset')
+        }
+        if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
+            return rpcError('Content is required')
+        }
+
+        try {
+            if (data.offset === 0 && data.filename) {
+                // ── 首块：创建文件 ──
+                const extError = validateFileExtension(data.filename)
+                if (extError) return rpcError(extError)
+
+                // 总大小预校验（第二道闸；hub 已 Content-Length 预校验为第一道）
+                if (typeof data.totalSize === 'number' && Number.isFinite(data.totalSize) && data.totalSize > MAX_UPLOAD_BYTES) {
+                    return rpcError('File too large (max 50MB)')
+                }
+
+                const uploadDir = await ensureUploadDir(effectiveCwd)
+                const sanitizedFilename = sanitizeFilename(data.filename)
+                // 时间戳 + 随机段，避免同毫秒同名并发上传碰撞（open('w') 覆盖丢数据）。
+                // 随机段插在「扩展簇」（尾部连续 .ext，如 .excalidraw.png / .tar.gz）之前，
+                // 保持多段扩展名完整——extname 只认最后一段会把双扩展拆成 .excalidraw-<id>.png
+                const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+                // 前导点（.gitignore / .env 等隐藏文件）属文件名而非扩展名：先剥离再匹配
+                // 扩展簇，否则 base 为空 → 唯一名变成以连字符开头的 '-<id>.gitignore'
+                const leadingDot = sanitizedFilename.startsWith('.') ? '.' : ''
+                const stem = leadingDot ? sanitizedFilename.slice(1) : sanitizedFilename
+                const extCluster = stem.match(/(?:\.[A-Za-z0-9]+)+$/)?.[0] ?? ''
+                const base = extCluster ? stem.slice(0, stem.length - extCluster.length) : stem
+                const uniqueFilename = `${leadingDot}${base}-${shortId}${extCluster}`
+                const filePath = join(uploadDir, uniqueFilename)
+
+                // 单块大小校验（第三道闸）
+                if (data.content.length > MAX_UPLOAD_BYTES) return rpcError('File too large (max 50MB)')
+
+                // open 成功后若 write/close 失败（磁盘满 / EIO），文件已落盘但 path 尚未返回 hub，
+                // hub 侧 cleanup 因无 path 无法清理 → 内层兜底删除孤儿文件
+                const fd = await open(filePath, 'w')  // 创建/截断
+                try {
+                    await fd.write(data.content, 0, data.content.length, 0)
+                    await fd.close()
+                } catch (writeErr) {
+                    await fd.close().catch(() => {})
+                    await rm(filePath, { force: true }).catch(() => {})
+                    logger.debug('首块写入失败，已清理孤儿文件:', filePath, writeErr)
+                    return rpcError(getErrorMessage(writeErr, 'Failed to write file range'))
+                }
+
+                // 记录累计（open 成功后写入，避免孤儿 entry）；单块即完成则清理，防止 Map 无限增长
+                writtenTracker.set(filePath, { written: data.content.length, totalSize: data.totalSize })
+                if (data.totalSize !== undefined && data.content.length >= data.totalSize) {
+                    writtenTracker.delete(filePath)
+                }
+
+                return { success: true, path: relative(effectiveCwd, filePath), written: data.content.length }
+            } else if (data.path && data.offset > 0) {
+                // ── 后续块：按 path + offset 追加（offset>0；首块由 filename 分支处理，offset=0+path 拒绝） ──
+                if (!isPathWithinUploads(effectiveCwd, data.path)) {
+                    return rpcError('Invalid upload path')
+                }
+                const fullPath = resolve(effectiveCwd, data.path)
+
+                const st = await stat(fullPath)
+                // 纵深防御：offset 不得超过当前文件 size，防止稀疏文件空洞绕过大小限制
+                if (data.offset > st.size) {
+                    return rpcError('Offset out of bounds')
+                }
+
+                // 累计超限兜底：基数取 tracker 记录与实际文件大小的较大者。
+                // 仅看进程内 tracker 会在 cli 重启 / 指向既有文件时回退到 0，从而绕过封顶。
+                const prev = writtenTracker.get(fullPath)
+                const baseWritten = Math.max(prev?.written ?? 0, st.size)
+                if (baseWritten + data.content.length > MAX_UPLOAD_BYTES) {
+                    writtenTracker.delete(fullPath)
+                    return rpcError('File too large (max 50MB)')
+                }
+
+                const fd = await open(fullPath, 'r+')  // 必须已存在，不截断
+                await fd.write(data.content, 0, data.content.length, data.offset)
+                await fd.close()
+
+                // 累计更新；完成（累计 >= totalSize）则清理 entry，避免 writtenTracker 无限增长
+                const newWritten = baseWritten + data.content.length
+                if (prev?.totalSize !== undefined && newWritten >= prev.totalSize) {
+                    writtenTracker.delete(fullPath)
+                } else {
+                    writtenTracker.set(fullPath, { written: newWritten, totalSize: prev?.totalSize })
+                }
+
+                return { success: true, written: data.content.length }
+            } else {
+                return rpcError('Either filename (offset=0) or path (offset>0) is required')
+            }
+        } catch (error) {
+            const nodeError = error as NodeJS.ErrnoException
+            // 文件不存在（offset>0 但首块未写 / path 错）→ 明确错误
+            if (nodeError.code === 'ENOENT') {
+                return rpcError('Upload file not found (offset out of order or invalid path)')
+            }
+            logger.debug('写入文件块失败:', error)
+            return rpcError(getErrorMessage(error, 'Failed to write file range'))
+        }}
+
+/**
+ * deleteUpload 实现（同上，本地化直调目标）。
+ */
+export async function deleteUploadImpl(data: DeleteUploadRequest, workingDirectory: string): Promise<DeleteUploadResponse> {
+        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+        const effectiveCwd = data.cwd || workingDirectory
+        if (data.cwd && !validateRpcCwd(data.cwd)) {
+            return rpcError('Invalid cwd: path is outside home directory')
+        }
+
+        const path = data?.path?.trim()
+        if (!path) {
+            return rpcError('Path is required')
+        }
+
+        // 校验路径在 uploads 目录内
+        if (!isPathWithinUploads(effectiveCwd, path)) {
+            return rpcError('Invalid upload path')
+        }
+
+        try {
             const fullPath = resolve(effectiveCwd, path)
-            // 临时文件落目标同目录：同文件系统 rename 原子生效——任一时刻 path 要么完整
-            // 旧内容要么完整新内容，写坏只伤临时文件（直接 open('w') 截断会把半截新内容
-            // 留在被引用的正式 path 上，无法恢复）。源文件已不存在时 rename 照常创建，
-            // 语义为幂等写入（replace 的目标 = 「该 path 持有新内容」）
-            const tmpPath = `${fullPath}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.tmp`
-            try {
-                await mkdir(dirname(fullPath), { recursive: true })
-                await writeFile(tmpPath, data.content)
-                await rename(tmpPath, fullPath)
-                // 内容已换血，累计追踪 entry 失效
-                writtenTracker.delete(fullPath)
-                return { success: true }
-            } catch (error) {
-                await rm(tmpPath, { force: true }).catch(() => {})
-                logger.debug('替换上传文件失败:', error)
-                return rpcError(getErrorMessage(error, 'Failed to replace upload file'))
-            }
-        },
-    )
+            await rm(fullPath, { force: true })
+            // 同步清理累计追踪 entry（删除 / 中断后失效，避免 stale entry 泄漏）
+            writtenTracker.delete(fullPath)
+            return { success: true }
+        } catch (error) {
+            logger.debug('删除上传文件失败:', error)
+            return rpcError(getErrorMessage(error, 'Failed to delete upload file'))
+        }}
+
+/**
+ * replaceUpload 实现（同上，本地化直调目标）。
+ */
+export async function replaceUploadImpl(data: ReplaceUploadRequest, workingDirectory: string): Promise<ReplaceUploadResponse> {
+        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+        const effectiveCwd = data.cwd || workingDirectory
+        if (data.cwd && !validateRpcCwd(data.cwd)) {
+            return rpcError('Invalid cwd: path is outside home directory')
+        }
+
+        const path = data?.path?.trim()
+        if (!path) {
+            return rpcError('Path is required')
+        }
+        if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
+            return rpcError('Content is required')
+        }
+        if (data.content.length > MAX_UPLOAD_BYTES) {
+            return rpcError('File too large (max 50MB)')
+        }
+
+        // 校验路径在 uploads 目录内 + 扩展名白名单（文件名不变 ⇒ 扩展簇不变，
+        // 但 path 是客户端自报的，首发伪造仍要拦）
+        if (!isPathWithinUploads(effectiveCwd, path)) {
+            return rpcError('Invalid upload path')
+        }
+        const extError = validateFileExtension(basename(path))
+        if (extError) return rpcError(extError)
+
+        const fullPath = resolve(effectiveCwd, path)
+        // 临时文件落目标同目录：同文件系统 rename 原子生效——任一时刻 path 要么完整
+        // 旧内容要么完整新内容，写坏只伤临时文件（直接 open('w') 截断会把半截新内容
+        // 留在被引用的正式 path 上，无法恢复）。源文件已不存在时 rename 照常创建，
+        // 语义为幂等写入（replace 的目标 = 「该 path 持有新内容」）
+        const tmpPath = `${fullPath}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.tmp`
+        try {
+            await mkdir(dirname(fullPath), { recursive: true })
+            await writeFile(tmpPath, data.content)
+            await rename(tmpPath, fullPath)
+            // 内容已换血，累计追踪 entry 失效
+            writtenTracker.delete(fullPath)
+            return { success: true }
+        } catch (error) {
+            await rm(tmpPath, { force: true }).catch(() => {})
+            logger.debug('替换上传文件失败:', error)
+            return rpcError(getErrorMessage(error, 'Failed to replace upload file'))
+        }
 }

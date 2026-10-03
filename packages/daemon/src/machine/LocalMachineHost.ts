@@ -29,6 +29,8 @@ import { homedir } from 'node:os'
 import type { DiffTarget } from '@mobi/shared'
 import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
 import { machineReadFileMetaImpl, machineReadFileRangeImpl } from '@mobi/node-core/handlers/machineFiles'
+import { saveFileImpl } from '@mobi/node-core/handlers/files'
+import { writeFileRangeImpl, deleteUploadImpl, replaceUploadImpl } from '@mobi/node-core/handlers/uploads'
 import type { MachineHost, SpawnSessionOptions } from './MachineHost'
 
 export class LocalMachineHost implements MachineHost {
@@ -91,8 +93,10 @@ export class LocalMachineHost implements MachineHost {
         await this.fallback.clearTurnSnapshots(machineId, cwd, sessionId)
     }
 
-    async machineSaveFile(machineId: string, cwd: string, path: string, content: Uint8Array, baseEtag: string) {
-        return await this.fallback.machineSaveFile(machineId, cwd, path, content, baseEtag)
+    // ── 写/上传组（ticket-17 组2：本地直调）──
+    // 回退 workingDirectory 仅在 cwd 缺省时生效；MachineHost 四方法恒注入 cwd，回退不参与语义
+    async machineSaveFile(_machineId: string, cwd: string, path: string, content: Uint8Array, baseEtag: string) {
+        return await saveFileImpl({ cwd, path, content, baseEtag }, homedir(), homedir())
     }
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string) {
@@ -100,7 +104,7 @@ export class LocalMachineHost implements MachineHost {
     }
 
     async machineUploadFileRange(
-        machineId: string,
+        _machineId: string,
         cwd: string,
         filename: string,
         path: string | undefined,
@@ -108,15 +112,15 @@ export class LocalMachineHost implements MachineHost {
         content: Uint8Array,
         totalSize?: number,
     ) {
-        return await this.fallback.machineUploadFileRange(machineId, cwd, filename, path, offset, content, totalSize)
+        return await writeFileRangeImpl({ cwd, filename, path, offset, content, totalSize }, homedir())
     }
 
-    async machineDeleteUpload(machineId: string, cwd: string, path: string) {
-        return await this.fallback.machineDeleteUpload(machineId, cwd, path)
+    async machineDeleteUpload(_machineId: string, cwd: string, path: string) {
+        return await deleteUploadImpl({ cwd, path }, homedir())
     }
 
-    async machineReplaceUpload(machineId: string, cwd: string, path: string, content: Uint8Array) {
-        return await this.fallback.machineReplaceUpload(machineId, cwd, path, content)
+    async machineReplaceUpload(_machineId: string, cwd: string, path: string, content: Uint8Array) {
+        return await replaceUploadImpl({ cwd, path, content }, homedir())
     }
 
     async getWebToolsConfig(machineId: string) {
