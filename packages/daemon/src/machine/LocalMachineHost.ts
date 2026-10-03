@@ -25,7 +25,10 @@
  * `machineId` 形参保留（D4=C 路由残留），本地实现忽略之。
  */
 
+import { homedir } from 'node:os'
 import type { DiffTarget } from '@mobi/shared'
+import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
+import { machineReadFileMetaImpl, machineReadFileRangeImpl } from '@mobi/node-core/handlers/machineFiles'
 import type { MachineHost, SpawnSessionOptions } from './MachineHost'
 
 export class LocalMachineHost implements MachineHost {
@@ -40,16 +43,24 @@ export class LocalMachineHost implements MachineHost {
         return await this.fallback.spawnSession(machineId, directory, options)
     }
 
-    async checkPathsExist(machineId: string, paths: string[]) {
-        return await this.fallback.checkPathsExist(machineId, paths)
+    // ── 文件读组（ticket-17 组1：本地直调，不经 socket loopback）──
+
+    async checkPathsExist(_machineId: string, paths: string[]) {
+        const result = await checkPathsExistImpl({ paths })
+        // socket 版对回执做布尔归一（信任边界），本地直调结果同样归一保持同构
+        const exists: Record<string, boolean> = {}
+        for (const [key, value] of Object.entries(result.exists)) {
+            exists[key] = value === true
+        }
+        return exists
     }
 
-    async machineReadFileMeta(machineId: string, cwd: string, path: string) {
-        return await this.fallback.machineReadFileMeta(machineId, cwd, path)
+    async machineReadFileMeta(_machineId: string, cwd: string, path: string) {
+        return await machineReadFileMetaImpl({ cwd, path }, homedir())
     }
 
-    async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number) {
-        return await this.fallback.machineReadFileRange(machineId, cwd, path, offset, length)
+    async machineReadFileRange(_machineId: string, cwd: string, path: string, offset: number, length: number) {
+        return await machineReadFileRangeImpl({ cwd, path, offset, length }, homedir())
     }
 
     async machineGitReviewOverview(machineId: string, cwd: string, sessionId: string) {

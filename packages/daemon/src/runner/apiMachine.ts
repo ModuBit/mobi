@@ -19,7 +19,6 @@
  */
 
 import { io, type Socket } from 'socket.io-client'
-import { stat } from 'node:fs/promises'
 import { logger } from '@mobi/node-core/logger'
 import { configuration } from '@mobi/node-core/configuration'
 import type { Update, UpdateMachineBody } from '@mobi/shared'
@@ -34,6 +33,7 @@ import { registerMachineDirectoryHandler } from '@mobi/node-core/handlers/machin
 import { registerWebToolsConfigHandler } from '@mobi/node-core/handlers/webToolsConfig'
 import { registerMachineFileHandlers } from '@mobi/node-core/handlers/machineFiles'
 import { registerGitReviewHandlers } from '@mobi/node-core/handlers/gitReview'
+import { checkPathsExistImpl, type PathExistsRequest, type PathExistsResponse } from '@mobi/node-core/handlers/pathExists'
 
 interface ServerToRunnerEvents {
     'machine-update': (data: Update) => void
@@ -75,14 +75,6 @@ type MachineRpcHandlers = {
     requestShutdown: () => void
 }
 
-interface PathExistsRequest {
-    paths: string[]
-}
-
-interface PathExistsResponse {
-    exists: Record<string, boolean>
-}
-
 export class ApiMachineClient {
     private socket!: Socket<ServerToRunnerEvents, RunnerToServerEvents>
     private keepAliveInterval: NodeJS.Timeout | null = null
@@ -104,24 +96,7 @@ export class ApiMachineClient {
 
         registerCommonHandlers(this.rpcHandlerManager, process.cwd())
 
-        this.rpcHandlerManager.registerHandler<PathExistsRequest, PathExistsResponse>('path-exists', async (params) => {
-            const rawPaths = Array.isArray(params?.paths) ? params.paths : []
-            const uniquePaths = Array.from(new Set(rawPaths.filter((path): path is string => typeof path === 'string')))
-            const exists: Record<string, boolean> = {}
-
-            await Promise.all(uniquePaths.map(async (path) => {
-                const trimmed = path.trim()
-                if (!trimmed) return
-                try {
-                    const stats = await stat(trimmed)
-                    exists[trimmed] = stats.isDirectory()
-                } catch {
-                    exists[trimmed] = false
-                }
-            }))
-
-            return { exists }
-        })
+        this.rpcHandlerManager.registerHandler<PathExistsRequest, PathExistsResponse>('path-exists', (params) => checkPathsExistImpl(params))
 
         registerMachineDirectoryHandler(this.rpcHandlerManager)
 

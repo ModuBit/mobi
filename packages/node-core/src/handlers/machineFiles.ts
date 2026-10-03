@@ -71,18 +71,17 @@ function resolveAllowedMachinePath(
 }
 
 /**
- * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界单闸门）。
+ * readFileMeta 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * 行为单源——socket 路径与本地直调不会分叉。
  */
-export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
-    const resolveAllowed = (cwd: string, relPath: string | undefined) => resolveAllowedMachinePath(cwd, relPath, homeDir)
-    rpcHandlerManager.registerHandler<MachineReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
-        const resolved = resolveAllowed(data.cwd ?? '', data.path)
-        if ('error' in resolved) {
-            return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
-        }
+export function machineReadFileMetaImpl(data: MachineReadFileMetaRequest, homeDir: string): Promise<ReadFileMetaResponse> {
+    const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path, homeDir)
+    if ('error' in resolved) {
+        return Promise.resolve(rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined))
+    }
 
-        logger.debug('[MACHINE] Read file meta:', resolved.abs)
-        const result = await readFileMetaAt(resolved.abs)
+    logger.debug('[MACHINE] Read file meta:', resolved.abs)
+    return readFileMetaAt(resolved.abs).then((result) => {
         if (!result.success) {
             logger.debug('[MACHINE] Failed to read file meta:', result)
             return result
@@ -91,18 +90,30 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
         // 判定与真实写校验漂移会让 web 显示可写但保存被拒（dormancy：冷编辑器经此通道读 meta）
         return { success: true, meta: result.meta, writable: validateWritePath(data.path, normalizeCwdParam(data.cwd, process.cwd()), homeDir).valid }
     })
+}
 
-    rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {
-        const resolved = resolveAllowed(data.cwd ?? '', data.path)
-        if ('error' in resolved) {
-            return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
-        }
+/**
+ * readFileRange 实现（同上，本地化直调目标）。
+ */
+export async function machineReadFileRangeImpl(data: MachineReadFileRangeRequest, homeDir: string): Promise<ReadFileRangeResponse> {
+    const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path, homeDir)
+    if ('error' in resolved) {
+        return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
+    }
 
-        logger.debug('[MACHINE] Read file range:', resolved.abs, data.offset, data.length)
-        const result = await readFileRangeAt(resolved.abs, data.offset, data.length)
-        if (!result.success) {
-            logger.debug('[MACHINE] Failed to read file range:', result)
-        }
-        return result
-    })
+    logger.debug('[MACHINE] Read file range:', resolved.abs, data.offset, data.length)
+    const result = await readFileRangeAt(resolved.abs, data.offset, data.length)
+    if (!result.success) {
+        logger.debug('[MACHINE] Failed to read file range:', result)
+    }
+    return result
+}
+
+/**
+ * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界单闸门）。
+ */
+export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
+    rpcHandlerManager.registerHandler<MachineReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', (data) => machineReadFileMetaImpl(data, homeDir))
+
+    rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', (data) => machineReadFileRangeImpl(data, homeDir))
 }
