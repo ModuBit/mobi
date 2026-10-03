@@ -48,7 +48,6 @@ function makeDeps(snapshotSync: SnapshotSync) {
             machines: { getMachineByNamespace: () => null, getMachine: () => null },
         } as unknown as CliHandlersDeps['store'],
         rpcRegistry: { unregisterAll: () => {} } as unknown as CliHandlersDeps['rpcRegistry'],
-        terminalRegistry: { removeByCliSocket: () => [] } as unknown as CliHandlersDeps['terminalRegistry'],
         backgroundTaskTracker: {} as CliHandlersDeps['backgroundTaskTracker'],
         snapshotSync,
         onWebappEvent: () => {},

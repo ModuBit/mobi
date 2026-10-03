@@ -48,12 +48,6 @@ vi.mock('@mobi/node-core/rpc/RpcHandlerManager', () => ({
     },
 }))
 
-vi.mock('@/terminal/TerminalManager', () => ({
-    TerminalManager: class {
-        closeAll = vi.fn()
-    },
-}))
-
 // socket.io-client mock：极简 emitter（vi.hoisted 先于 import 执行，不能用 node:events）+ connect/disconnect spy
 const connectSpy = vi.hoisted(() => vi.fn())
 const mockSocket = vi.hoisted(() => {

@@ -65,7 +65,6 @@ function makeDeps(opts: {
             machines: { getMachineByNamespace: () => null, getMachine: () => null },
         } as unknown as CliHandlersDeps['store'],
         rpcRegistry: opts.registry,
-        terminalRegistry: { removeByCliSocket: () => [] } as unknown as CliHandlersDeps['terminalRegistry'],
         backgroundTaskTracker: {} as CliHandlersDeps['backgroundTaskTracker'],
         snapshotSync: new SnapshotSync(),
         onWebappEvent: () => {},

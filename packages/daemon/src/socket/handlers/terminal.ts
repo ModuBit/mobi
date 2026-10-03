@@ -14,10 +14,18 @@
  * limitations under the License.
  */
 
+/**
+ * web /terminal namespace 处理器（ticket-19 起 pty 由 daemon 持有）：
+ * create/write/resize/close 直调 {@link TerminalHost}，不再转发会话进程——
+ * 休眠会话开终端照常成功且不触发唤醒（dormancy spec §B.6 耦合已删）。
+ * 事件名与载荷不变（02 webContract 契约锁定）。
+ */
+
 import { TerminalOpenPayloadSchema } from '@mobi/shared'
 import { z } from 'zod'
 import type { TerminalRegistry, TerminalRegistryEntry } from '../terminalRegistry'
-import type { SocketServer, SocketWithData } from '../socketTypes'
+import type { TerminalHost } from '../../terminal/TerminalHost'
+import type { SocketWithData } from '../socketTypes'
 
 const terminalCreateSchema = TerminalOpenPayloadSchema
 
@@ -37,23 +45,20 @@ const terminalCloseSchema = z.object({
 })
 
 export type TerminalHandlersDeps = {
-    io: SocketServer
-    getSession: (sessionId: string) => { active: boolean; namespace: string } | null
     terminalRegistry: TerminalRegistry
+    terminalHost: TerminalHost
+    /** 会话归属（namespace 校验用；active 状态不再参与——终端与会话进程解耦） */
+    getSession: (sessionId: string) => { namespace: string } | null
     maxTerminalsPerSocket: number
     maxTerminalsPerSession: number
-    /** 休眠会话唤醒（dormancy spec §B.6）：terminal:create 命中非活跃会话时触发后台拉起 */
-    wakeSession?: (sessionId: string) => void
 }
 
 export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalHandlersDeps): void {
-    const { io, getSession, terminalRegistry, maxTerminalsPerSocket, maxTerminalsPerSession } = deps
-    const cliNamespace = io.of('/cli')
+    const { terminalRegistry, terminalHost, getSession, maxTerminalsPerSocket, maxTerminalsPerSession } = deps
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
-    const emitTerminalError = (terminalId: string, message: string, code?: 'session_waking') => {
-        // code 为 undefined 时 socket.io 序列化自动丢弃该字段，payload 与旧三元写法等价
-        socket.emit('terminal:error', { terminalId, message, code })
+    const emitTerminalError = (terminalId: string, message: string) => {
+        socket.emit('terminal:error', { terminalId, message })
     }
 
     const resolveEntryForSocket = (terminalId: string): TerminalRegistryEntry | null => {
@@ -62,43 +67,6 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return null
         }
         return entry
-    }
-
-    const resolveCliSocket = (entry: TerminalRegistryEntry, reportError: boolean): SocketWithData | null => {
-        const cliSocket = cliNamespace.sockets.get(entry.cliSocketId)
-        if (!cliSocket || cliSocket.data.namespace !== namespace) {
-            terminalRegistry.remove(entry.terminalId)
-            if (reportError) {
-                emitTerminalError(entry.terminalId, 'CLI disconnected.')
-            }
-            return null
-        }
-        return cliSocket
-    }
-
-    const emitCloseToCli = (entry: TerminalRegistryEntry): void => {
-        const cliSocket = cliNamespace.sockets.get(entry.cliSocketId)
-        if (!cliSocket || cliSocket.data.namespace !== namespace) {
-            return
-        }
-        cliSocket.emit('terminal:close', {
-            sessionId: entry.sessionId,
-            terminalId: entry.terminalId
-        })
-    }
-
-    const pickCliSocketId = (sessionId: string): string | null => {
-        const room = cliNamespace.adapter.rooms.get(`session:${sessionId}`)
-        if (!room || room.size === 0) {
-            return null
-        }
-        for (const socketId of room) {
-            const cliSocket = cliNamespace.sockets.get(socketId)
-            if (cliSocket && cliSocket.data.namespace === namespace) {
-                return cliSocket.id
-            }
-        }
-        return null
     }
 
     socket.on('terminal:create', (data: unknown) => {
@@ -111,13 +79,6 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
         const session = getSession(sessionId)
         if (!namespace || !session || session.namespace !== namespace) {
             emitTerminalError(terminalId, 'Session is unavailable.')
-            return
-        }
-        if (!session.active) {
-            // 休眠会话打开终端即唤醒（dormancy spec §B.6）：hub 触发后台拉起，
-            // 结构化 code 让 web 自动重试 create（进程上线后 create 必达）
-            deps.wakeSession?.(sessionId)
-            emitTerminalError(terminalId, 'Session is dormant — waking up…', 'session_waking')
             return
         }
 
@@ -144,31 +105,14 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return
         }
 
-        const cliSocketId = pickCliSocketId(sessionId)
-        if (!cliSocketId) {
-            emitTerminalError(terminalId, 'CLI is not connected for this session.')
-            return
-        }
-
-        const entry = terminalRegistry.register(terminalId, sessionId, socket.id, cliSocketId)
+        const entry = terminalRegistry.register(terminalId, sessionId, socket.id)
         if (!entry) {
             emitTerminalError(terminalId, 'Terminal ID is already in use.')
             return
         }
 
-        const cliSocket = cliNamespace.sockets.get(cliSocketId)
-        if (!cliSocket) {
-            terminalRegistry.remove(terminalId)
-            emitTerminalError(terminalId, 'CLI is not connected for this session.')
-            return
-        }
-
-        cliSocket.emit('terminal:open', {
-            sessionId,
-            terminalId,
-            cols,
-            rows
-        })
+        // pty 直开（daemon 进程内）：ready/output/exit/error 经 TerminalHost 回发本 socket
+        terminalHost.create(sessionId, terminalId, cols, rows)
         terminalRegistry.markActivity(terminalId)
     })
 
@@ -184,15 +128,7 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return
         }
 
-        const cliSocket = resolveCliSocket(entry, true)
-        if (!cliSocket) {
-            return
-        }
-        cliSocket.emit('terminal:write', {
-            sessionId: entry.sessionId,
-            terminalId,
-            data: payload
-        })
+        terminalHost.write(terminalId, payload)
         terminalRegistry.markActivity(terminalId)
     })
 
@@ -208,16 +144,7 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return
         }
 
-        const cliSocket = resolveCliSocket(entry, true)
-        if (!cliSocket) {
-            return
-        }
-        cliSocket.emit('terminal:resize', {
-            sessionId: entry.sessionId,
-            terminalId,
-            cols,
-            rows
-        })
+        terminalHost.resize(terminalId, cols, rows)
         terminalRegistry.markActivity(terminalId)
     })
 
@@ -233,14 +160,11 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return
         }
 
-        terminalRegistry.remove(terminalId)
-        emitCloseToCli(entry)
+        terminalHost.close(terminalId)
     })
 
     socket.on('disconnect', () => {
         const removed = terminalRegistry.removeBySocket(socket.id)
-        for (const entry of removed) {
-            emitCloseToCli(entry)
-        }
+        terminalHost.closeEntries(removed)
     })
 }

@@ -29,7 +29,7 @@ type TerminalRuntime = TerminalSession & {
     idleTimer: ReturnType<typeof setTimeout> | null
 }
 
-type TerminalManagerOptions = {
+export type TerminalManagerOptions = {
     sessionId: string
     getSessionPath: () => string | null
     onReady: (payload: TerminalReadyPayload) => void
@@ -38,14 +38,15 @@ type TerminalManagerOptions = {
     onError: (payload: TerminalErrorPayload) => void
     idleTimeoutMs?: number
     maxTerminals?: number
-    onTerminalInput?: () => void
+    /** 终端全部清空时回调一次（宿主据此回收本 manager 实例） */
+    onAllClosed?: () => void
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
 const DEFAULT_MAX_TERMINALS = 3
 /**
  * PTY 子进程的默认 TERM。
- * runner 从 GUI / VS Code launch / nohup 等非 tty 环境启动时，自身 process.env 常无 TERM，
+ * daemon 从 GUI / launchd 等非 tty 环境启动时，自身 process.env 常无 TERM，
  * 若不显式补上，PTY 子 shell 的 TERM 为空 → top/vim 报 "unknown terminal"、
  * zsh 按 TERM 查 termcap 配键绑定失败（backspace/方向键异常）。
  * xterm-256color 与前端 xterm.js 的能力匹配，是安全默认值。
@@ -92,7 +93,7 @@ export function buildFilteredEnv(): NodeJS.ProcessEnv {
         }
         env[key] = value
     }
-    // PTY 必须有明确 TERM；缺失（runner 从非 tty 环境启动）或为空时补默认值
+    // PTY 必须有明确 TERM；缺失（daemon 从非 tty 环境启动）或为空时补默认值
     if (!env.TERM) {
         env.TERM = DEFAULT_TERM
     }
@@ -109,13 +110,8 @@ export class TerminalManager {
     private readonly idleTimeoutMs: number
     private readonly maxTerminals: number
     private readonly terminals: Map<string, TerminalRuntime> = new Map()
-
-    /** 休眠 gate 事实：存活终端（PTY）数（dormancy spec） */
-    get activeCount(): number {
-        return this.terminals.size;
-    }
     private readonly filteredEnv: NodeJS.ProcessEnv
-    private readonly onTerminalInput?: () => void
+    private readonly onAllClosed?: () => void
 
     constructor(options: TerminalManagerOptions) {
         this.sessionId = options.sessionId
@@ -127,7 +123,7 @@ export class TerminalManager {
         this.idleTimeoutMs = options.idleTimeoutMs ?? resolveEnvNumber('MOBI_TERMINAL_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS)
         this.maxTerminals = options.maxTerminals ?? resolveEnvNumber('MOBI_TERMINAL_MAX_TERMINALS', DEFAULT_MAX_TERMINALS)
         this.filteredEnv = buildFilteredEnv()
-        this.onTerminalInput = options.onTerminalInput
+        this.onAllClosed = options.onAllClosed
     }
 
     create(terminalId: string, cols: number, rows: number): void {
@@ -230,8 +226,6 @@ export class TerminalManager {
             this.emitError(terminalId, 'Terminal not found.')
             return
         }
-        // 重置空闲计时器（终端输入）
-        this.onTerminalInput?.()
         runtime.terminal.write(data)
         this.markActivity(runtime)
     }
@@ -299,6 +293,10 @@ export class TerminalManager {
             runtime.terminal.close()
         } catch (error) {
             logger.debug('[TERMINAL] Failed to close terminal', { error })
+        }
+
+        if (this.terminals.size === 0) {
+            this.onAllClosed?.()
         }
     }
 

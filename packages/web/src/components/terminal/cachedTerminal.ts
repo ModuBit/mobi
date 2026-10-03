@@ -19,8 +19,8 @@ import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 
-/** 终端连接状态机（inactive = 会话休眠/离线的有意断开，区别于意外的 reconnecting） */
-export type TerminalStatus = 'connecting' | 'connected' | 'reconnecting' | 'error' | 'inactive'
+/** 终端连接状态机 */
+export type TerminalStatus = 'connecting' | 'connected' | 'reconnecting' | 'error'
 
 /** 终端主题模式（跟随 web 主题） */
 export type TerminalThemeMode = 'dark' | 'light'
@@ -111,8 +111,6 @@ export interface CachedTerminal {
     setTheme: (mode: TerminalThemeMode) => void
     /** 直接发送字节序列到 PTY（虚拟按键用，不经 xterm 输入焦点） */
     send: (data: string) => void
-    /** 控制 socket 连接（离线断开避免被拒、在线重连） */
-    setActive: (active: boolean) => void
     /** 内部销毁钩子（断 socket + 销毁 xterm）；仅 clearCachedInstance 调用 */
     dispose: () => void
 }
@@ -120,16 +118,15 @@ export interface CachedTerminal {
 interface CreateOptions {
     sessionId: string
     terminalId: string
-    /** 初始是否建连（session 离线时传 false，延迟到 active 再连）；默认 true */
-    initialActive?: boolean
 }
 
 /**
  * 创建一个常驻终端实例（xterm + socket）。
  * socket 断开不杀后端进程（TerminalManager 常驻）；重连 re-attach。
  * dispose 时断开 socket 并销毁 xterm（仅 clearCachedInstance 触发）。
+ * pty 由 daemon 持有（ticket-19）：会话休眠与否不影响终端连接，无 active 门控。
  */
-export function createCachedTerminal({ sessionId, terminalId, initialActive = true }: CreateOptions): CachedTerminal {
+export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): CachedTerminal {
     const domNode = document.createElement('div')
     domNode.style.cssText = `width:100%;height:100%;background:${XTERM_DARK_THEME.background};padding:4px;overflow:hidden;`
 
@@ -152,7 +149,7 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
     let socket: Socket | null = null
     let isOpen = false
 
-    // 连接状态机：connecting(初始) → connected | reconnecting | error | inactive
+    // 连接状态机：connecting(初始) → connected | reconnecting | error
     let status: TerminalStatus = 'connecting'
     const listeners = new Set<(s: TerminalStatus) => void>()
     const setStatus = (next: TerminalStatus) => {
@@ -171,8 +168,6 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
             // httpOnly cookie（mobi_token）按 host 携带；dev 端口不同仍可直连 Hub，production 保持同源
             transports: ['websocket'],
             path: '/socket.io',
-            // 离线 session 不主动建连（setActive(true) 后再 connect），避免被 hub 以 inactive 拒绝
-            autoConnect: initialActive,
         })
 
         socket.on('terminal:output', (d: { sessionId: string; terminalId: string; data: string }) => {
@@ -212,65 +207,28 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
         socket.on('terminal:ready', (d: { sessionId: string; terminalId: string }) => {
             if (d.sessionId === sessionId && d.terminalId === terminalId) {
                 isOpen = true
-                wakeRetryCount = 0 // 唤醒重试成功：复位计数，下次休眠重新计
                 setStatus('connected')
             }
         })
-        // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）。
-        // 有意断开（setActive(false) 已置 inactive）不覆盖——inactive 即该语义的单一事实源，
-        // 不另设影子标记（任何重连入口都无需记得清标记）
-        socket.on('disconnect', () => {
-            if (status !== 'inactive') setStatus('reconnecting')
-        })
+        // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）
+        socket.on('disconnect', () => setStatus('reconnecting'))
         socket.on('reconnect_attempt', () => setStatus('reconnecting'))
         socket.on('connect_error', () => setStatus('error'))
-        // terminal:error：hub 内部 emit（emitTerminalError/onIdle/cleanup）普遍只带
-        // { terminalId, message }，不带 sessionId（仅 CLI 转发路径带）；每个实例独占
+        // terminal:error：daemon 内部 emit（emitTerminalError/onIdle/cleanup）普遍只带
+        // { terminalId, message }，不带 sessionId；每个实例独占
         // socket，socketId 天然隔离事件，故只按 terminalId 过滤，sessionId 标可选如实反映 hub 违约
-        socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string; code?: 'session_waking' }) => {
+        socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string }) => {
             if (d.terminalId === terminalId) {
-                // 唤醒重试中不是终态错误：显式 reconnecting 态（UI 转圈），耗尽后由
-                // scheduleWakeRetry 翻 error；其余 create 被拒/CLI 断开才是真 error
-                setStatus(d.code === 'session_waking' ? 'reconnecting' : 'error')
-                isOpen = false // 复位：create 被拒/CLI 断开时不再发 terminal:write，避免击键静默丢弃
+                setStatus('error')
+                isOpen = false // 复位：create 被拒时不再发 terminal:write，避免击键静默丢弃
                 terminal.write(`\r\n\x1b[31m[${d.message}]\x1b[0m\r\n`)
-                // 休眠会话唤醒中（dormancy）：hub 已触发后台拉起，定时重发 create 直至进程上线
-                if (d.code === 'session_waking') {
-                    scheduleWakeRetry()
-                }
             }
         })
     }
 
     wireSocket()
 
-    // 唤醒重试：create 被拒（session_waking）后周期重发，进程上线即成功（terminal:ready 翻转状态）；
-    // 有界重试（30 次 ≈ 45s）防机器离线时无限循环，耗尽后翻 error 由用户手动重连
-    let wakeRetryCount = 0
-    let wakeRetryTimer: ReturnType<typeof setTimeout> | null = null
-    const WAKE_RETRY_LIMIT = 30
-    const WAKE_RETRY_INTERVAL_MS = 1500
-    const scheduleWakeRetry = () => {
-        if (wakeRetryCount >= WAKE_RETRY_LIMIT) {
-            // 重试用尽：把「唤醒中」的 reconnecting 态落回真错误（否则 loading 永转）
-            setStatus('error')
-            return
-        }
-        if (wakeRetryTimer) return
-        wakeRetryCount += 1
-        wakeRetryTimer = setTimeout(() => {
-            wakeRetryTimer = null
-            if (socket?.connected && !isOpen) {
-                const { cols, rows } = terminal
-                socket.emit('terminal:create', { sessionId, terminalId, cols, rows })
-            }
-        }, WAKE_RETRY_INTERVAL_MS)
-    }
-
     const reconnect = () => {
-        // 手动重连是新的唤醒机会：复位耗尽的上次计数，否则重试配额用尽后手动兜底
-        // 只发一次 create 就被 scheduleWakeRetry 的上限检查翻回 error
-        wakeRetryCount = 0
         // 不 clear：保留历史；写分隔横幅
         terminal.write('\r\n\x1b[90m--- reconnected ---\x1b[0m\r\n')
         if (!socket) return
@@ -308,17 +266,6 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
     const send = (data: string) => {
         if (socket?.connected && isOpen) {
             socket.emit('terminal:write', { sessionId, terminalId, data })
-        }
-    }
-
-    // 控制 socket 连接：离线 session 断开（不 emit create，避免被 hub 以 inactive 拒绝），在线连
-    const setActive = (active: boolean) => {
-        if (!socket) return
-        if (active) socket.connect()
-        else {
-            isOpen = false
-            setStatus('inactive')
-            socket.disconnect()
         }
     }
 
@@ -399,7 +346,6 @@ export function createCachedTerminal({ sessionId, terminalId, initialActive = tr
         showBanner,
         setTheme,
         send,
-        setActive,
         dispose,
     }
 }

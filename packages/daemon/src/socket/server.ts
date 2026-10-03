@@ -37,6 +37,7 @@ import { SnapshotSync } from '../sync/snapshotSync'
 import type { RewindDeleteBoundTracker } from '../sync/rewindDeleteBoundTracker'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
+import { TerminalHost } from '../terminal/TerminalHost'
 import type { CliSocketWithData, SocketData, SocketServer } from './socketTypes'
 
 const jwtPayloadSchema = z.object({
@@ -84,9 +85,9 @@ export type SocketServerDeps = {
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     /** 快照同步 module。必传：CLI ingest 与 SSEManager 的订阅必须共享同一实例，漏传会静默脑裂 */
     snapshotSync: SnapshotSync
-    getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
-    /** 休眠会话唤醒（dormancy）：惰性取 SyncEngine（socket server 先于其创建） */
-    wakeSession?: (sessionId: string) => void
+    /** 会话归属与工作目录（终端 pty 的 cwd = metadata.path）。pty 由 daemon 持有
+     *  （ticket-19），active 状态不再参与终端链路 */
+    getSession?: (sessionId: string) => { namespace: string; sessionPath: string | null } | null
     onWebappEvent?: (event: SyncEvent) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts）。
@@ -165,20 +166,36 @@ export function createSocketServer(deps: SocketServerDeps): {
     const rpcRegistry = new RpcRegistry()
     // 同 session CLI socket 接管仲裁（sessionSocketOwners.ts 模块头写明为什么必须仲裁）
     const sessionSocketOwners = new SessionSocketOwners()
+    // 空闲计时单源在 registry：到点通知 web 并杀 pty（host.close 复用主动关闭路径）
     const terminalRegistry = new TerminalRegistry({
         idleTimeoutMs,
         onIdle: (entry) => {
-            const terminalSocket = terminalNs.sockets.get(entry.socketId)
-            terminalSocket?.emit('terminal:error', {
+            emitToTerminalSocket(entry.terminalId, 'terminal:error', {
                 terminalId: entry.terminalId,
                 message: 'Terminal closed due to inactivity.'
             })
-            const cliSocket = cliNs.sockets.get(entry.cliSocketId)
-            cliSocket?.emit('terminal:close', {
-                sessionId: entry.sessionId,
-                terminalId: entry.terminalId
-            })
+            terminalHost.close(entry.terminalId)
         }
+    })
+
+    // 终端事件出口：terminalId → 持有它的 web socket（找不到即丢弃——socket 已断/条目已摘）
+    const emitToTerminalSocket = (
+        terminalId: string,
+        event: 'terminal:ready' | 'terminal:output' | 'terminal:exit' | 'terminal:error',
+        payload: Record<string, unknown>
+    ) => {
+        const entry = terminalRegistry.get(terminalId)
+        if (!entry) {
+            return
+        }
+        terminalNs.sockets.get(entry.socketId)?.emit(event, payload)
+    }
+
+    // pty 宿主（ticket-19）：create 先注册 registry 再直开——onReady 回发时条目必在
+    const terminalHost = new TerminalHost({
+        terminalRegistry,
+        getSessionPath: (sessionId) => deps.getSession?.(sessionId)?.sessionPath ?? null,
+        emitToSocket: emitToTerminalSocket
     })
 
     cliNs.use((socket, next) => {
@@ -200,7 +217,6 @@ export function createSocketServer(deps: SocketServerDeps): {
             store: deps.store,
             rpcRegistry,
             sessionSocketOwners,
-            terminalRegistry,
             backgroundTaskTracker,
             snapshotSync,
             rewindDeleteBoundTracker: deps.rewindDeleteBoundTracker,
@@ -239,13 +255,11 @@ export function createSocketServer(deps: SocketServerDeps): {
         }
     })
     terminalNs.on('connection', (socket) => registerTerminalHandlers(socket, {
-        io,
-        // active 状态只从内存获取，不存储在数据库中
         getSession: (sessionId) => deps.getSession?.(sessionId) ?? null,
         terminalRegistry,
+        terminalHost,
         maxTerminalsPerSocket,
-        maxTerminalsPerSession,
-        wakeSession: (sessionId) => deps.wakeSession?.(sessionId)
+        maxTerminalsPerSession
     }))
 
     return { io, engine, rpcRegistry }

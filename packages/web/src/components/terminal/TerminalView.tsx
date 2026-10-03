@@ -39,9 +39,9 @@ interface TerminalViewProps {
     terminalId: string
 }
 
-/** 断开态：需要展示重连遮罩的连接状态（inactive = 会话休眠的有意断开，同样遮罩承载） */
+/** 断开态：需要展示重连遮罩的连接状态 */
 function isDisconnected(status: TerminalStatus): boolean {
-    return status === 'reconnecting' || status === 'error' || status === 'inactive'
+    return status === 'reconnecting' || status === 'error'
 }
 
 export default function TerminalView({ sessionId, terminalId }: TerminalViewProps) {
@@ -51,20 +51,16 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
     const attachedRef = useRef(false)
     const [editorOpen, setEditorOpen] = useState(false)
 
-    // session metadata：取版本（= mobi --version）、工作区目录、git 分支用于 banner
+    // session metadata：取版本（= mobi --version）、工作区目录、git 分支用于 banner。
+    // 终端与会话进程解耦（ticket-19：pty 由 daemon 持有），active 不再参与建连
     const { data: session } = useSession(sessionId)
     const metadata = session?.metadata
-    // session 是否在线（CLI runner 已连接）。三态：metadata 未就绪 = 未知，不驱动
-    // socket（未知 ≠ 离线——否则在线会话首帧会被误置 inactive，闪现休眠遮罩）；
-    // 就绪后离线不建终端 socket，避免被 hub 以 inactive 拒绝
-    const active: boolean | null = session ? session.active === true : null
     // 终端主题跟随 web（亮/暗，system 模式实时响应 OS）
     const isDark = useIsDark()
 
     const { instance } = useCachedInstance<CachedTerminal>(
-        // 仅已知在线才自动建连；未知（metadata 未就绪）不建连，等就绪由 setActive 驱动
         `terminal:${sessionId}:${terminalId}`,
-        () => createCachedTerminal({ sessionId, terminalId, initialActive: active === true }),
+        () => createCachedTerminal({ sessionId, terminalId }),
         disposeCachedTerminal,
     )
 
@@ -76,9 +72,8 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         return instance.subscribe(setStatus)
     }, [instance])
 
-    // 重连按钮 loading 直接绑 reconnecting 态：唤醒重试（session_waking 显式翻
-    // reconnecting）与 socket.io 自动重连期间转圈；connected/error/inactive 终态
-    // 自动停转、按钮恢复可点（重试耗尽状态机会落回 error，不会永久转圈）
+    // 重连按钮 loading 直接绑 reconnecting 态：socket.io 自动重连期间转圈；
+    // connected/error 终态自动停转、按钮恢复可点
     const reconnecting = status === 'reconnecting'
     const handleReconnect = () => {
         instance?.reconnect()
@@ -99,12 +94,6 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         if (!instance) return
         instance.setTheme(isDark ? 'dark' : 'light')
     }, [instance, isDark])
-
-    // 在线/离线控制 socket：metadata 未就绪（null）不驱动；离线断开（不 emit create），在线连
-    useEffect(() => {
-        if (!instance || active === null) return
-        instance.setActive(active)
-    }, [instance, active])
 
     // attach 缓存的 domNode 到可见容器
     useEffect(() => {
@@ -186,8 +175,7 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
                             loading={reconnecting}
                             onClick={handleReconnect}
                         >
-                            {/* inactive（会话休眠）态按钮语义是唤醒兜底入口——术语见 CONTEXT.md「唤醒」 */}
-                            {status === 'inactive' ? t('terminal.wake') : t('terminal.reconnect')}
+                            {t('terminal.reconnect')}
                         </Button>
                     </div>
                 )}

@@ -17,6 +17,7 @@
 import { describe, test, expect, mock } from 'bun:test'
 import { registerTerminalHandlers } from '../../../src/socket/handlers/terminal'
 import { TerminalRegistry } from '../../../src/socket/terminalRegistry'
+import type { TerminalHost } from '../../../src/terminal/TerminalHost'
 
 /** 构造一个 mock web socket（terminal namespace 客户端） */
 function makeSocket(id: string, namespace = 'ns') {
@@ -36,35 +37,37 @@ function makeSocket(id: string, namespace = 'ns') {
     }
 }
 
-/** 构造 handler deps（含一个 mock CLI socket，归属于 session:s1 房间） */
-function makeDeps() {
-    const cliSocket = { id: 'cli-1', data: { namespace: 'ns' }, emit: mock(() => {}) }
-    const cliNamespace = {
-        sockets: new Map([['cli-1', cliSocket]]),
-        adapter: { rooms: new Map([['session:s1', new Set(['cli-1'])]]) },
-    }
+/** 记录调用的 TerminalHost 替身（handler 层测注册/上限/归属，真实 pty 由 E2E 覆盖） */
+function makeHost() {
     return {
-        io: { of: mock(() => cliNamespace) },
-        getSession: mock(() => ({ active: true, namespace: 'ns' })),
+        create: mock(() => {}),
+        write: mock(() => {}),
+        resize: mock(() => {}),
+        close: mock(() => {}),
+        closeEntries: mock(() => {}),
+    }
+}
+
+function makeDeps() {
+    return {
+        // daemon 持有形态：getSession 只回答归属（无 active——休眠会话开终端照常成功）
+        getSession: mock(() => ({ namespace: 'ns' })),
         terminalRegistry: new TerminalRegistry({ idleTimeoutMs: 0 }),
+        terminalHost: makeHost() as unknown as TerminalHost,
         maxTerminalsPerSocket: 3,
         maxTerminalsPerSession: 3,
-        _cliSocket: cliSocket as unknown as { emit: ReturnType<typeof mock> },
     }
 }
 
 const PAYLOAD = { sessionId: 's1', terminalId: 't1', cols: 80, rows: 24 }
 
-describe('terminal:create 同 socket 重连', () => {
-    test('首次 create：转发 terminal:open 给 CLI，不报错', () => {
+describe('terminal:create（pty 由 daemon 持有）', () => {
+    test('成功：直调 host.create，无 error', () => {
         const web = makeSocket('web-1')
         const deps = makeDeps()
         registerTerminalHandlers(web as never, deps as never)
         web._handlers.get('terminal:create')!(PAYLOAD)
-        expect(deps._cliSocket.emit).toHaveBeenCalledWith(
-            'terminal:open',
-            expect.objectContaining({ terminalId: 't1' }),
-        )
+        expect(deps.terminalHost.create).toHaveBeenCalledWith('s1', 't1', 80, 24)
         expect(web.emit).not.toHaveBeenCalled()
     })
 
@@ -73,17 +76,10 @@ describe('terminal:create 同 socket 重连', () => {
         const deps = makeDeps()
         registerTerminalHandlers(web as never, deps as never)
         web._handlers.get('terminal:create')!(PAYLOAD)
-        deps._cliSocket.emit.mockClear()
         web.emit.mockClear()
 
-        // 同 socket 重连：重发 create（前端 reconnect 场景）
         web._handlers.get('terminal:create')!(PAYLOAD)
-        // CLI 再次收到 open（CLI 端 TerminalManager 复用已存在的 PTY）
-        expect(deps._cliSocket.emit).toHaveBeenCalledWith(
-            'terminal:open',
-            expect.objectContaining({ terminalId: 't1' }),
-        )
-        // 不报 already in use
+        expect(deps.terminalHost.create).toHaveBeenCalledTimes(2)
         expect(web.emit).not.toHaveBeenCalled()
     })
 
@@ -102,9 +98,28 @@ describe('terminal:create 同 socket 重连', () => {
         )
     })
 
+    test('达 session 上限（3）：第 4 个 terminalId 被拒', () => {
+        const deps = makeDeps()
+        const mk = (id: string, tid: string) => {
+            const web = makeSocket(id)
+            registerTerminalHandlers(web as never, deps as never)
+            web._handlers.get('terminal:create')!({ sessionId: 's1', terminalId: tid, cols: 80, rows: 24 })
+            return web
+        }
+        mk('web-1', 't1')
+        mk('web-2', 't2')
+        mk('web-3', 't3')
+
+        const web4 = mk('web-4', 't4')
+        expect(web4.emit).toHaveBeenCalledWith(
+            'terminal:error',
+            expect.objectContaining({ message: 'Too many terminals open for this session (max 3).' }),
+        )
+        expect(deps.terminalHost.create).toHaveBeenCalledTimes(3)
+    })
+
     test('达 session 上限（3）时同 socket 重连：先清旧 entry 再过上限检查，成功', () => {
         const deps = makeDeps()
-        // 3 个 web socket 各开一个 terminal（每实例独占 socket），countForSession 达 3
         const mk = (id: string, tid: string) => {
             const web = makeSocket(id)
             registerTerminalHandlers(web as never, deps as never)
@@ -114,15 +129,97 @@ describe('terminal:create 同 socket 重连', () => {
         const web1 = mk('web-1', 't1')
         mk('web-2', 't2')
         mk('web-3', 't3')
-
-        ;(deps._cliSocket.emit as ReturnType<typeof mock>).mockClear()
         web1.emit.mockClear()
+
         // web1 重连 t1（同 socket 重发 create）：旧 entry 先清，不触发 too many
         web1._handlers.get('terminal:create')!({ sessionId: 's1', terminalId: 't1', cols: 80, rows: 24 })
-        expect(deps._cliSocket.emit).toHaveBeenCalledWith(
-            'terminal:open',
-            expect.objectContaining({ terminalId: 't1' }),
-        )
         expect(web1.emit).not.toHaveBeenCalled()
+        expect(deps.terminalHost.create).toHaveBeenCalledTimes(4)
+    })
+
+    test('休眠（inactive）会话 create 照常成功——终端与会话进程解耦，不触发唤醒', () => {
+        const web = makeSocket('web-1')
+        const deps = makeDeps()
+        registerTerminalHandlers(web as never, deps as never)
+        web._handlers.get('terminal:create')!(PAYLOAD)
+        expect(deps.terminalHost.create).toHaveBeenCalledWith('s1', 't1', 80, 24)
+        expect(web.emit).not.toHaveBeenCalled()
+    })
+})
+
+describe('terminal:write / resize / close', () => {
+    test('write/resize 直调 host（经 registry 归属校验）', () => {
+        const web = makeSocket('web-1')
+        const deps = makeDeps()
+        registerTerminalHandlers(web as never, deps as never)
+        web._handlers.get('terminal:create')!(PAYLOAD)
+
+        web._handlers.get('terminal:write')!({ terminalId: 't1', data: 'ls\n' })
+        expect(deps.terminalHost.write).toHaveBeenCalledWith('t1', 'ls\n')
+
+        web._handlers.get('terminal:resize')!({ terminalId: 't1', cols: 120, rows: 40 })
+        expect(deps.terminalHost.resize).toHaveBeenCalledWith('t1', 120, 40)
+    })
+
+    test('非持有 socket 的 write 被忽略（归属校验）', () => {
+        const deps = makeDeps()
+        const web1 = makeSocket('web-1')
+        registerTerminalHandlers(web1 as never, deps as never)
+        web1._handlers.get('terminal:create')!(PAYLOAD)
+
+        const web2 = makeSocket('web-2')
+        registerTerminalHandlers(web2 as never, deps as never)
+        web2._handlers.get('terminal:write')!({ terminalId: 't1', data: 'ls\n' })
+        expect(deps.terminalHost.write).not.toHaveBeenCalled()
+    })
+
+    test('close：直调 host.close（registry 摘除由 host 负责，TerminalHost 单测锁定）', () => {
+        const web = makeSocket('web-1')
+        const deps = makeDeps()
+        registerTerminalHandlers(web as never, deps as never)
+        web._handlers.get('terminal:create')!(PAYLOAD)
+
+        web._handlers.get('terminal:close')!({ terminalId: 't1' })
+        expect(deps.terminalHost.close).toHaveBeenCalledWith('t1')
+
+        // 重开：不再被 already in use 拦
+        web.emit.mockClear()
+        web._handlers.get('terminal:create')!(PAYLOAD)
+        expect(web.emit).not.toHaveBeenCalled()
+    })
+
+    test('disconnect：该 socket 名下终端批量关闭', () => {
+        const web = makeSocket('web-1')
+        const deps = makeDeps()
+        registerTerminalHandlers(web as never, deps as never)
+        web._handlers.get('terminal:create')!({ sessionId: 's1', terminalId: 't1', cols: 80, rows: 24 })
+        web._handlers.get('terminal:create')!({ sessionId: 's2', terminalId: 't2', cols: 80, rows: 24 })
+
+        web._handlers.get('disconnect')!()
+        expect(deps.terminalHost.closeEntries).toHaveBeenCalledTimes(1)
+        const entries = (deps.terminalHost.closeEntries as ReturnType<typeof mock>).mock.calls[0][0]
+        expect(entries.map((e: { terminalId: string }) => e.terminalId).sort()).toEqual(['t1', 't2'])
+        expect(deps.terminalRegistry.countForSocket('web-1')).toBe(0)
+    })
+})
+
+describe('TerminalRegistry 空闲回收（计时单源）', () => {
+    test('空闲到点：onIdle 回调后条目自动移除', async () => {
+        const onIdle = mock(() => {})
+        const registry = new TerminalRegistry({ idleTimeoutMs: 20, onIdle })
+        registry.register('t1', 's1', 'web-1')
+        await new Promise((r) => setTimeout(r, 60))
+        expect(onIdle).toHaveBeenCalledTimes(1)
+        expect(registry.get('t1')).toBeNull()
+    })
+
+    test('markActivity 重置计时', async () => {
+        const onIdle = mock(() => {})
+        const registry = new TerminalRegistry({ idleTimeoutMs: 40, onIdle })
+        registry.register('t1', 's1', 'web-1')
+        await new Promise((r) => setTimeout(r, 25))
+        registry.markActivity('t1')
+        await new Promise((r) => setTimeout(r, 25))
+        expect(onIdle).not.toHaveBeenCalled()
     })
 })

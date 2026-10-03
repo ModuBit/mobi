@@ -1,6 +1,6 @@
 # session
 
-会话宿主：与 Claude Code 会话进程共处的一切——claude/（Local/Remote 循环、SDK 消息装配、rewind/compact/output style 等 utils）、agent/（会话工厂与生命周期）、api/apiSession（CLI↔hub 会话通道）、mcp/（会话侧 MCP 工具族与 transport 装配）、modules/{sandbox,watcher} 与 common/{hooks,launcher,permission,remote,session,idleTimer}、terminal/（TerminalManager，19 票前暂在此）、ui/ink 与 terminalState/messageFormatterInk、webtools/server（web 工具 server 组装，registry 在 node-core）。
+会话宿主：与 Claude Code 会话进程共处的一切——claude/（Local/Remote 循环、SDK 消息装配、rewind/compact/output style 等 utils）、agent/（会话工厂与生命周期）、api/apiSession（CLI↔hub 会话通道）、mcp/（会话侧 MCP 工具族与 transport 装配）、modules/{sandbox,watcher} 与 common/{hooks,launcher,permission,remote,session,idleTimer}、ui/ink 与 terminalState/messageFormatterInk、webtools/server（web 工具 server 组装，registry 在 node-core）。web 终端 pty（TerminalManager）19 票起归 daemon 包。
 
 依赖方向：只依赖 `@mobi/node-core` 与 `@mobi/shared`，禁止依赖 daemon / cli / web（daemon ⟂ session）。
 

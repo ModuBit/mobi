@@ -23,7 +23,6 @@ import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTr
 import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { AgentSessionOps } from '../../../sync/agentSessionService'
 import type { SnapshotCliLease, SnapshotSync } from '../../../sync/snapshotSync'
-import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 import { registerMachineHandlers } from './machineHandlers'
@@ -31,7 +30,6 @@ import { registerUiCommandHandlers } from './uiCommandHandlers'
 import { registerAgentSessionHandlers } from './agentSessionHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
 import { registerSessionHandlers } from './sessionHandlers'
-import { cleanupTerminalHandlers, registerTerminalHandlers } from './terminalHandlers'
 
 type MachineAlivePayload = {
     machineId: string
@@ -42,7 +40,6 @@ export type CliHandlersDeps = {
     io: SocketServer
     store: Store
     rpcRegistry: RpcRegistry
-    terminalRegistry: TerminalRegistry
     /** 活跃后台任务集合（CLI 事件维护，rewind API 闸门读取；与 web 路由层共用同一实例） */
     backgroundTaskTracker: BackgroundTaskTracker
     /** 快照同步 module：统一拥有缓存、CLI lease 与订阅游标。 */
@@ -69,8 +66,7 @@ export type CliHandlersDeps = {
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, sessionSocketOwners, terminalRegistry, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
-    const terminalNamespace = io.of('/terminal')
+    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, onMachineAlive, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
     const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
@@ -149,12 +145,6 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         onMachineAlive,
         onWebappEvent
     })
-    registerTerminalHandlers(socket, {
-        terminalRegistry,
-        terminalNamespace,
-        resolveSessionAccess,
-        emitAccessError
-    })
     registerUiCommandHandlers(socket, {
         resolveSessionAccess,
         hasActiveSseConnection: hasActiveSseConnection ?? (() => false),
@@ -171,7 +161,6 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
             sessionSocketOwners?.release(sessionId, socket.id)
         }
         rpcRegistry.unregisterAll(socket)
-        cleanupTerminalHandlers(socket, { terminalRegistry, terminalNamespace })
         // lease 内部校验当前持有者，旧连接迟到 disconnect 不会清掉新连接的基线。
         snapshotLease?.disconnect()
     })

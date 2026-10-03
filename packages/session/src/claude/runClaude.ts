@@ -263,8 +263,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     };
 
     // 休眠 gate（dormancy spec）：空闲/断连到点先过 gate，有阻塞事务（审批/排队/turn/
-    // 终端/后台任务）则不退出——空闲路径进 IdleTimer 阻塞复查；断连路径保持进程等重连后
-    // 由空闲流程再查（断连期间无事可做，不另设定时器）
+    // 后台任务）则不退出——空闲路径进 IdleTimer 阻塞复查；断连路径保持进程等重连后
+    // 由空闲流程再查（断连期间无事可做，不另设定时器）。终端不再是 gate 事实（ticket-19：
+    // pty 由 daemon 持有，在用终端 ≠ 会话不休眠）
     const readDormancyFacts = (): DormancyFacts => {
         // launcher 侧事实一次采样（同一快照），缺省按 0 处理（launcher 就绪前）
         const launcher: LauncherDormancyFacts = launcherDormancyFacts?.() ?? { pendingPermissions: 0, backgroundTasks: 0 };
@@ -272,7 +273,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             pendingPermissions: launcher.pendingPermissions,
             queuedMessages: messageQueue.size(),
             turnRunning: currentSessionRef.current?.running ?? false,
-            liveTerminals: apiSession.activeTerminalCount,
             backgroundTasks: launcher.backgroundTasks,
         };
     };

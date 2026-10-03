@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { buildFilteredEnv } from '@/terminal/TerminalManager'
+import { buildFilteredEnv } from '../../src/terminal/TerminalManager'
 
 /**
  * buildFilteredEnv 行为锁定：

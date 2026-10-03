@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
+/**
+ * web 终端登记表（ticket-19 起 pty 由 daemon 持有）：terminalId → 归属会话 +
+ * 持有它的 web socket。空闲计时单源在此（TerminalHost 的 TerminalManager 自身
+ * idle 关闭），到点回调 onIdle 由装配层负责 emit error + 杀 pty。
+ */
+
 export type TerminalRegistryEntry = {
     terminalId: string
     sessionId: string
     socketId: string
-    cliSocketId: string
     idleTimer: ReturnType<typeof setTimeout> | null
 }
 
@@ -34,8 +39,6 @@ export class TerminalRegistry {
     private readonly terminalsBySocket = new Map<string, Set<string>>()
     // sessionId -> terminalId集合（按会话索引）
     private readonly terminalsBySession = new Map<string, Set<string>>()
-    // cliSocketId -> terminalId集合（按CLI socket索引）
-    private readonly terminalsByCliSocket = new Map<string, Set<string>>()
     private readonly idleTimeoutMs: number
     private readonly onIdle?: (entry: TerminalRegistryEntry) => void
 
@@ -44,7 +47,7 @@ export class TerminalRegistry {
         this.onIdle = options.onIdle
     }
 
-    register(terminalId: string, sessionId: string, socketId: string, cliSocketId: string): TerminalRegistryEntry | null {
+    register(terminalId: string, sessionId: string, socketId: string): TerminalRegistryEntry | null {
         if (this.terminals.has(terminalId)) {
             return null
         }
@@ -53,14 +56,12 @@ export class TerminalRegistry {
             terminalId,
             sessionId,
             socketId,
-            cliSocketId,
             idleTimer: null
         }
 
         this.terminals.set(terminalId, entry)
         this.addToIndex(this.terminalsBySocket, socketId, terminalId)
         this.addToIndex(this.terminalsBySession, sessionId, terminalId)
-        this.addToIndex(this.terminalsByCliSocket, cliSocketId, terminalId)
         this.scheduleIdle(entry)
 
         return entry
@@ -87,7 +88,6 @@ export class TerminalRegistry {
         this.terminals.delete(terminalId)
         this.removeFromIndex(this.terminalsBySocket, entry.socketId, terminalId)
         this.removeFromIndex(this.terminalsBySession, entry.sessionId, terminalId)
-        this.removeFromIndex(this.terminalsByCliSocket, entry.cliSocketId, terminalId)
         if (entry.idleTimer) {
             clearTimeout(entry.idleTimer)
         }
@@ -97,14 +97,6 @@ export class TerminalRegistry {
 
     removeBySocket(socketId: string): TerminalRegistryEntry[] {
         const ids = this.terminalsBySocket.get(socketId)
-        if (!ids || ids.size === 0) {
-            return []
-        }
-        return Array.from(ids).map((terminalId) => this.remove(terminalId)).filter(Boolean) as TerminalRegistryEntry[]
-    }
-
-    removeByCliSocket(socketId: string): TerminalRegistryEntry[] {
-        const ids = this.terminalsByCliSocket.get(socketId)
         if (!ids || ids.size === 0) {
             return []
         }

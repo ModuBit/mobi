@@ -149,7 +149,6 @@
                 "pending_permissions": "有等待处理的审批",
                 "queued_messages": "有排队消息",
                 "turn_running": "正在回复中",
-                "live_terminals": "有打开的终端",
                 "background_tasks": "有后台任务在运行"
             }
         },
@@ -521,14 +520,12 @@
     "terminal": {
         "title": "终端",
         "reconnect": "重连",
-        "wake": "唤醒",
         "disconnectedHint": "连接已断开，断开期间的输出已丢失",
         "status": {
             "connecting": "连接中",
             "connected": "已连接",
             "reconnecting": "重连中",
-            "error": "已断开",
-            "inactive": "会话休眠中"
+            "error": "已断开"
         },
         "virtualKeys": {
             "aria": "终端虚拟按键",

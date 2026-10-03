@@ -18,19 +18,14 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { io, type Socket } from 'socket.io-client'
 import axios from 'axios'
-import type { ZodType } from 'zod'
 import { logger } from '@mobi/node-core/logger'
 import { backoff } from '@mobi/node-core/utils/time'
 import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
 import { AsyncLock } from '@mobi/node-core/utils/lock'
 import type { RawJSONLines } from '../claude/types'
 import { configuration } from '@mobi/node-core/configuration'
-import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
-    TerminalClosePayloadSchema,
-    TerminalOpenPayloadSchema,
-    TerminalResizePayloadSchema,
-    TerminalWritePayloadSchema,
     classifyMessage,
     isMobiSentCrossSession,
     toCrossSessionMeta
@@ -49,7 +44,6 @@ import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessag
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerCommonHandlers } from '@mobi/node-core/handlers/registerCommonHandlers'
 import { cleanupUploadDir } from '@mobi/node-core/handlers/uploads'
-import { TerminalManager } from '../terminal/TerminalManager'
 import { applyVersionedAck } from '@mobi/node-core/api/versionedUpdate'
 import { IdleTimer } from '../modules/common/idleTimer'
 import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
@@ -87,7 +81,6 @@ export class ApiSessionClient extends EventEmitter {
     private needsBackfill = false
     private hasConnectedOnce = false
     readonly rpcHandlerManager: RpcHandlerManager
-    private readonly terminalManager: TerminalManager
     private idleTimer: IdleTimer | null = null
     /**
      * 休眠 gate 判定（dormancy spec）：false = 有阻塞事务（审批/排队/turn/终端/后台任务），
@@ -147,16 +140,6 @@ export class ApiSessionClient extends EventEmitter {
             reconnectionDelayMax: 5000,
             transports: ['websocket'],
             autoConnect: false
-        })
-
-        this.terminalManager = new TerminalManager({
-            sessionId: this.sessionId,
-            getSessionPath: () => this.metadata?.path ?? null,
-            onReady: (payload: TerminalReadyPayload) => this.socket.emit('terminal:ready', payload),
-            onOutput: (payload: TerminalOutputPayload) => this.socket.emit('terminal:output', payload),
-            onExit: (payload: TerminalExitPayload) => this.socket.emit('terminal:exit', payload),
-            onError: (payload: TerminalErrorPayload) => this.socket.emit('terminal:error', payload),
-            onTerminalInput: () => this.idleTimer?.reset()
         })
 
         // 初始化 IdleTimer。休眠 gate 的复查判定经 onIdleTimeoutBlockedRecheck 注入
@@ -220,7 +203,6 @@ export class ApiSessionClient extends EventEmitter {
             logger.warn('[API] Socket disconnected:', reason)
             this.scheduleManualReconnect(reason)
             this.rpcHandlerManager.onSocketDisconnect()
-            this.terminalManager.closeAll()
             this.idleTimer?.onDisconnect()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
@@ -241,36 +223,6 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('error', (payload) => {
             logger.debug('[API] Socket error:', payload)
         })
-
-        const handleTerminalEvent = <T extends { sessionId: string }>(
-            schema: ZodType<T>,
-            handler: (payload: T) => void
-        ) => (data: unknown) => {
-            const parsed = schema.safeParse(data)
-            if (!parsed.success) {
-                return
-            }
-            if (parsed.data.sessionId !== this.sessionId) {
-                return
-            }
-            handler(parsed.data)
-        }
-
-        this.socket.on('terminal:open', handleTerminalEvent(TerminalOpenPayloadSchema, (payload) => {
-            this.terminalManager.create(payload.terminalId, payload.cols, payload.rows)
-        }))
-
-        this.socket.on('terminal:write', handleTerminalEvent(TerminalWritePayloadSchema, (payload) => {
-            this.terminalManager.write(payload.terminalId, payload.data)
-        }))
-
-        this.socket.on('terminal:resize', handleTerminalEvent(TerminalResizePayloadSchema, (payload) => {
-            this.terminalManager.resize(payload.terminalId, payload.cols, payload.rows)
-        }))
-
-        this.socket.on('terminal:close', handleTerminalEvent(TerminalClosePayloadSchema, (payload) => {
-            this.terminalManager.close(payload.terminalId)
-        }))
 
         this.socket.on('session-update', (data: Update) => {
             try {
@@ -1149,22 +1101,14 @@ export class ApiSessionClient extends EventEmitter {
     close(): void {
         this.rpcHandlerManager.setOnRpcCalled(undefined)
         this.rpcHandlerManager.onSocketDisconnect()
-        this.terminalManager.closeAll()
         this.idleTimer?.destroy()
         this.clearManualReconnect()
         this.socket.disconnect()
     }
 
-    /** 休眠 gate 事实：存活终端（PTY）数（dormancy spec） */
-    get activeTerminalCount(): number {
-        return this.terminalManager.activeCount
-    }
-
     /**
-     * 安装休眠 gate 判定（dormancy spec）：由 runClaude 在装配完成后调用。
-     * false = 有阻塞事务，空闲到点不退出、进入 IdleTimer 阻塞复查。
+     * 安装休眠 gate 判定（IdleTimer 阻塞复查的数据源；构造后装配，见构造处注释）
      */
-    /** 安装休眠 gate 判定（IdleTimer 阻塞复查的数据源；构造后装配，见构造处注释） */
     installDormancyDecide(decide: () => boolean): void {
         this.dormancyDecide = decide
     }
