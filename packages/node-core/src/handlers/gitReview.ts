@@ -616,14 +616,22 @@ const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[]
 
 export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
     for (const def of GIT_REVIEW_HANDLERS) {
-        rpcHandlerManager.registerHandler<{ cwd: string }, unknown>(def.method, async (data) => {
-            try {
-                return await def.run(readerFor(data.cwd), data as never)
-            } catch (e) {
-                logger.debug(`[GitReview] ${def.log} failed`, e)
-                return rpcError(def.error)
-            }
-        })
+        rpcHandlerManager.registerHandler<{ cwd: string }, unknown>(def.method, (data) => gitReviewRpcImpl(def.method, data))
+    }
+}
+
+/**
+ * gitReview 族 RPC 统一实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost
+ * 共用，行为单源——socket 路径与本地直调不会分叉（方法表查表 + 同构 try/catch rpcError）。
+ */
+export async function gitReviewRpcImpl(method: string, data: { cwd: string } & Record<string, unknown>): Promise<unknown> {
+    const def = GIT_REVIEW_HANDLERS.find((d) => d.method === method)
+    if (!def) return rpcError('Method not found')
+    try {
+        return await def.run(readerFor(data.cwd), data as never)
+    } catch (e) {
+        logger.debug(`[GitReview] ${def.log} failed`, e)
+        return rpcError(def.error)
     }
 }
 

@@ -26,13 +26,14 @@
  */
 
 import { homedir } from 'node:os'
-import type { DiffTarget } from '@mobi/shared'
+import { GIT_REVIEW_RPC, type DiffTarget, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult } from '@mobi/shared'
 import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
 import { machineReadFileMetaImpl, machineReadFileRangeImpl } from '@mobi/node-core/handlers/machineFiles'
 import { saveFileImpl } from '@mobi/node-core/handlers/files'
 import { writeFileRangeImpl, deleteUploadImpl, replaceUploadImpl } from '@mobi/node-core/handlers/uploads'
 import { listMachineDirectoryImpl } from '@mobi/node-core/handlers/machineDirectory'
 import { searchSessionFilesImpl, listSessionDirectoryImpl } from '@mobi/node-core/handlers/sessionFiles'
+import { gitReviewRpcImpl } from '@mobi/node-core/handlers/gitReview'
 import type { MachineHost, RpcListDirectoryResponse, SpawnSessionOptions } from './MachineHost'
 
 export class LocalMachineHost implements MachineHost {
@@ -67,32 +68,34 @@ export class LocalMachineHost implements MachineHost {
         return await machineReadFileRangeImpl({ cwd, path, offset, length }, homedir())
     }
 
-    async machineGitReviewOverview(machineId: string, cwd: string, sessionId: string) {
-        return await this.fallback.machineGitReviewOverview(machineId, cwd, sessionId)
+    // ── git 审查族（ticket-17 组4：本地直调，方法表查表单源）──
+
+    async machineGitReviewOverview(_machineId: string, cwd: string, sessionId: string) {
+        return await gitReviewRpcImpl(GIT_REVIEW_RPC.overview, { cwd, sessionId }) as ReviewOverview | { success: false; error: string }
     }
 
-    async machineGitReviewFiles(machineId: string, cwd: string, sessionId: string, target: DiffTarget) {
-        return await this.fallback.machineGitReviewFiles(machineId, cwd, sessionId, target)
+    async machineGitReviewFiles(_machineId: string, cwd: string, sessionId: string, target: DiffTarget) {
+        return await gitReviewRpcImpl(GIT_REVIEW_RPC.files, { cwd, sessionId, target }) as ReviewFilesResult | { success: false; error: string }
     }
 
-    async machineGitReviewDiff(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string) {
-        return await this.fallback.machineGitReviewDiff(machineId, cwd, sessionId, target, path)
+    async machineGitReviewDiff(_machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string) {
+        return await gitReviewRpcImpl(GIT_REVIEW_RPC.diff, { cwd, sessionId, target, path }) as ReviewPatchResult | { success: false; error: string }
     }
 
-    async machineGitReviewContents(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string) {
-        return await this.fallback.machineGitReviewContents(machineId, cwd, sessionId, target, path)
+    async machineGitReviewContents(_machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string) {
+        return await gitReviewRpcImpl(GIT_REVIEW_RPC.contents, { cwd, sessionId, target, path }) as ReviewContentsResult | { success: false; error: string }
     }
 
-    async machineGitReviewCommits(machineId: string, cwd: string, cursor?: string) {
-        return await this.fallback.machineGitReviewCommits(machineId, cwd, cursor)
+    async machineGitReviewCommits(_machineId: string, cwd: string, cursor?: string) {
+        return await gitReviewRpcImpl(GIT_REVIEW_RPC.commits, { cwd, cursor }) as ReviewCommitsResult | { success: false; error: string }
     }
 
-    async machineGitReviewInit(machineId: string, cwd: string) {
-        return await this.fallback.machineGitReviewInit(machineId, cwd)
+    async machineGitReviewInit(_machineId: string, cwd: string) {
+        return await gitReviewRpcImpl(GIT_REVIEW_RPC.init, { cwd }) as ReviewActionResult
     }
 
-    async clearTurnSnapshots(machineId: string, cwd: string, sessionId: string) {
-        await this.fallback.clearTurnSnapshots(machineId, cwd, sessionId)
+    async clearTurnSnapshots(_machineId: string, cwd: string, sessionId: string) {
+        await gitReviewRpcImpl(GIT_REVIEW_RPC.clear, { cwd, sessionId })
     }
 
     // ── 写/上传组（ticket-17 组2：本地直调）──

@@ -34,6 +34,8 @@ import { registerFileHandlers } from '@mobi/node-core/handlers/files'
 import { registerUploadHandlers } from '@mobi/node-core/handlers/uploads'
 import { registerMachineDirectoryHandler } from '@mobi/node-core/handlers/machineDirectory'
 import { registerSessionFilesHandler } from '@mobi/node-core/handlers/sessionFiles'
+import { registerGitReviewHandlers } from '@mobi/node-core/handlers/gitReview'
+import { GIT_REVIEW_RPC } from '@mobi/shared'
 import { LocalMachineHost } from '../../../src/machine/LocalMachineHost'
 import { SocketMachineHost } from '../../../src/machine/SocketMachineHost'
 import { makeFakeIo, makeFakeRegistry } from '../sync/fakeTransport'
@@ -50,6 +52,7 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
     registerMachineFileHandlers(manager, homeDir)
     registerMachineDirectoryHandler(manager)
     registerSessionFilesHandler(manager, homeDir)
+    registerGitReviewHandlers(manager)
     manager.registerHandler('path-exists', (params: unknown) => checkPathsExistImpl(params))
 
     // serving socket：emitWithAck 直送 RpcHandlerManager（socket.io 回路的最小等价物）
@@ -73,12 +76,14 @@ function makeServingPair(homeDir: string): { socketHost: SocketMachineHost } {
         [`${MACHINE_ID}:list-directory`, 'sock-contract'],
         [`${MACHINE_ID}:searchSessionFiles`, 'sock-contract'],
         [`${MACHINE_ID}:listSessionDirectory`, 'sock-contract'],
+        ...Object.values(GIT_REVIEW_RPC).map((m) => [`${MACHINE_ID}:${m}`, 'sock-contract']) as [string, string][],
     ]))
     return { socketHost: new SocketMachineHost(io, registry) }
 }
 
 describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）', () => {
     let tmpRoot: string
+    let gitRoot: string
     let localHost: LocalMachineHost
     let socketHost: SocketMachineHost
 
@@ -89,12 +94,25 @@ describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）
         await writeFile(join(tmpRoot, 'hello.txt'), '0123456789abcdef', 'utf-8')
         await writeFile(join(tmpRoot, 'note.md'), '# v1\n', 'utf-8')
 
+        // 组4：git 审查族需要一个真仓库（init + 首提交 + 未提交改动）
+        gitRoot = join(HOME, `mobi-lmh-git-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+        await mkdir(gitRoot, { recursive: true })
+        await Bun.write(join(gitRoot, 'repo.txt'), 'line1\n')
+        const gitRun = (args: string[]) => Bun.spawnSync(['git', '-C', gitRoot, ...args])
+        gitRun(['init'])
+        gitRun(['config', 'user.email', 'contract@test'])
+        gitRun(['config', 'user.name', 'contract'])
+        gitRun(['add', '.'])
+        gitRun(['commit', '-m', 'init'])
+        await Bun.write(join(gitRoot, 'repo.txt'), 'line1\nline2\n')
+
         localHost = new LocalMachineHost({} as never) // 组1 方法不落 fallback，兜底不需要真实现
         socketHost = makeServingPair(HOME).socketHost
     })
 
     afterAll(async () => {
         await rm(tmpRoot, { recursive: true, force: true })
+        await rm(gitRoot, { recursive: true, force: true })
     })
 
     test('checkPathsExist：目录 / 文件（仅目录算 exists）/ 不存在三态一致', async () => {
@@ -234,5 +252,36 @@ describe('LocalMachineHost 契约（组1 文件读：直调 ≡ socket 回路）
             .toEqual(await socketHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'hello'))
         expect(await localHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'sub', 'directory'))
             .toEqual(await socketHost.machineSearchFiles(MACHINE_ID, tmpRoot, 'sub', 'directory'))
+    })
+
+    // ── 组4：git 审查族（overview / files / diff / contents / commits / init / clear）──
+    // readerFor 按 cwd memoized + repoRoot 缓存跨请求存活——两侧共用同一进程内缓存，
+    // 契约只验「同输入同输出」，git 状态由用例固定
+
+    test('machineGitReviewOverview：git 仓库 + 非 git 目录两形态同构', async () => {
+        expect(await localHost.machineGitReviewOverview(MACHINE_ID, gitRoot, 'sess-x'))
+            .toEqual(await socketHost.machineGitReviewOverview(MACHINE_ID, gitRoot, 'sess-x'))
+        expect(await localHost.machineGitReviewOverview(MACHINE_ID, tmpRoot, 'sess-x'))
+            .toEqual(await socketHost.machineGitReviewOverview(MACHINE_ID, tmpRoot, 'sess-x'))
+    })
+
+    test('machineGitReviewFiles + Diff：worktree unstaged 档同构', async () => {
+        const target = { kind: 'worktree', area: 'unstaged' } as const
+        expect(await localHost.machineGitReviewFiles(MACHINE_ID, gitRoot, 'sess-x', target))
+            .toEqual(await socketHost.machineGitReviewFiles(MACHINE_ID, gitRoot, 'sess-x', target))
+        expect(await localHost.machineGitReviewDiff(MACHINE_ID, gitRoot, 'sess-x', target, 'repo.txt'))
+            .toEqual(await socketHost.machineGitReviewDiff(MACHINE_ID, gitRoot, 'sess-x', target, 'repo.txt'))
+    })
+
+    test('machineGitReviewContents + Commits：全文对 + 游标分页同构', async () => {
+        expect(await localHost.machineGitReviewContents(MACHINE_ID, gitRoot, 'sess-x', { kind: 'commit', range: { base: 'HEAD~1', head: 'HEAD' } }, 'repo.txt'))
+            .toEqual(await socketHost.machineGitReviewContents(MACHINE_ID, gitRoot, 'sess-x', { kind: 'commit', range: { base: 'HEAD~1', head: 'HEAD' } }, 'repo.txt'))
+        expect(await localHost.machineGitReviewCommits(MACHINE_ID, gitRoot))
+            .toEqual(await socketHost.machineGitReviewCommits(MACHINE_ID, gitRoot))
+    })
+
+    test('clearTurnSnapshots：幂等清档同构', async () => {
+        await localHost.clearTurnSnapshots(MACHINE_ID, gitRoot, 'sess-x')
+        await socketHost.clearTurnSnapshots(MACHINE_ID, gitRoot, 'sess-x')
     })
 })
