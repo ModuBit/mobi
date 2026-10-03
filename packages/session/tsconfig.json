@@ -1,22 +1,21 @@
 {
-    "extends": "../../tsconfig.base.json",
-    "compilerOptions": {
-        "jsx": "react",
-        "types": [
-            "node",
-            "bun-types"
-        ],
-        "paths": {
-            "@/*": [
-                "./src/*"
-            ]
-        }
-    },
-    "include": [
-        "src/**/*.ts",
-        "src/**/*.tsx"
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "bun-types"
     ],
-    "exclude": [
-        "node_modules"
-    ]
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

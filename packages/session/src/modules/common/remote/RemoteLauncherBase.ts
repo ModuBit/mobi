@@ -14,21 +14,13 @@
  * limitations under the License.
  */
 
-import { render } from 'ink';
-import type { ReactElement } from 'react';
 import type { StopKind } from '@mobi/shared';
 import { normalizeStopKind } from '../../../claude/utils/stopAction';
-import { MessageBuffer } from '../../../ui/ink/messageBuffer';
+import { MessageBuffer } from '../../../ui/messageBuffer';
+import { attachRemoteDisplay, type RemoteDisplayHandle } from '../../../ui/remoteDisplay';
 import { restoreTerminalState } from '../../../ui/terminalState';
 
 export type RemoteLauncherExitReason = 'switch' | 'exit';
-
-export type RemoteLauncherDisplayContext = {
-    messageBuffer: MessageBuffer;
-    logPath?: string;
-    onExit: () => void | Promise<void>;
-    onSwitchToLocal: () => void | Promise<void>;
-};
 
 export type RemoteLauncherTerminalHandlers = {
     onExit: () => void | Promise<void>;
@@ -54,7 +46,8 @@ export abstract class RemoteLauncherBase {
     protected readonly logPath?: string;
     protected exitReason: RemoteLauncherExitReason | null = null;
     protected shouldExit: boolean = false;
-    private inkInstance: ReturnType<typeof render> | null = null;
+    /** 纯文本展示句柄（ticket-23 起替代 ink render 实例） */
+    private display: RemoteDisplayHandle | null = null;
 
     protected constructor(logPath?: string) {
         this.logPath = logPath;
@@ -62,25 +55,18 @@ export abstract class RemoteLauncherBase {
         this.messageBuffer = new MessageBuffer();
     }
 
-    protected abstract createDisplay(context: RemoteLauncherDisplayContext): ReactElement;
-
     protected abstract runMainLoop(): Promise<void>;
 
     protected abstract cleanup(): Promise<void>;
 
     protected setupTerminal(handlers: RemoteLauncherTerminalHandlers): void {
-        if (this.hasTTY) {
-            console.clear();
-            this.inkInstance = render(this.createDisplay({
-                messageBuffer: this.messageBuffer,
-                logPath: this.logPath,
-                onExit: handlers.onExit,
-                onSwitchToLocal: handlers.onSwitchToLocal
-            }), {
-                exitOnCtrlC: false,
-                patchConsole: false
-            });
-        }
+        this.display = attachRemoteDisplay({
+            messageBuffer: this.messageBuffer,
+            logPath: this.logPath,
+            hasTTY: this.hasTTY,
+            onExit: handlers.onExit,
+            onSwitchToLocal: handlers.onSwitchToLocal
+        });
 
         if (this.hasTTY) {
             process.stdin.resume();
@@ -131,10 +117,8 @@ export abstract class RemoteLauncherBase {
                 // 错误可忽略：stdin 已关闭或不可暂停
             }
         }
-        if (this.inkInstance) {
-            this.inkInstance.unmount();
-        }
-        this.messageBuffer.clear();
+        this.display?.detach();
+        this.display = null;
     }
 
     protected async start(handlers: RemoteLauncherTerminalHandlers): Promise<RemoteLauncherExitReason> {

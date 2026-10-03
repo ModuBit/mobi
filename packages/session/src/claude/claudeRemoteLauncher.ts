@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-import React from "react";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Session } from "./session";
-import { RemoteModeDisplay } from "../ui/ink/RemoteModeDisplay";
 import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState } from "./claudeRemote";
 import { classifyInboundTurn } from './utils/inboundCrossSession';
 import { createAgentMessagePushHandler } from './utils/agentMessagePushHandler';
@@ -64,7 +62,6 @@ import {
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
-    type RemoteLauncherDisplayContext,
     type RemoteLauncherExitReason
 } from "../modules/common/remote/RemoteLauncherBase";
 
@@ -196,10 +193,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.queryControlRef = queryControlRef;
         this.getSessionConfig = getSessionConfig;
         this.flushConfig = flushConfig;
-    }
-
-    protected createDisplay(context: RemoteLauncherDisplayContext): React.ReactElement {
-        return React.createElement(RemoteModeDisplay, context);
     }
 
     private async abort(): Promise<void> {

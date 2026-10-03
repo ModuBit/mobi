@@ -35,8 +35,10 @@ export type KeyIntent =
     | { kind: 'ignore' }
 
 /** CSI u 序列：ESC[<codepoint>[;<mods>[:<event>…]]u */
+// eslint-disable-next-line no-control-regex -- Kitty 键盘协议序列解析（ESC 转义，业务必要）
 const CSI_U_RE = /^\u001b\[(\d+)((?:[:;]\d+(?::\d+)*)*)?u/
 /** Kitty key-release（事件类型 3）：与旧 ink 处理器同一判定式，避免边界分歧 */
+// eslint-disable-next-line no-control-regex -- Kitty 键盘协议序列解析（ESC 转义，业务必要）
 const KEY_RELEASE_RE = /^\u001b\[[0-9;]*:3u$/
 
 /**
