@@ -1004,10 +1004,8 @@ interrupt（用户停止）
 
 文件链路五端点（file-meta/read-file/save-file/list-directory/search-files）多轮 curl 实证通过；「上传」子项本轮 E2E 补验全链路通过：composer 附件按钮 → AttachPanel「文件」上传（附件卡 complete、无 error）→ 落盘 `<cwd>/.mobi/uploads/2026-10/<name>-<去重后缀>.<ext>`（内容逐字节完整）→ user 消息以 document block 落库（url 指向去重后相对路径、filename、size）→ 模型经 @ mention 读取并逐字回显首行。上传链路无缺陷。
 
-## 101. E2E bootstrap 自然退出不触发清理（trap 未挂 EXIT）（2026-10-04 e2e 脚本重构时发现）
+## 101. ✅ 已解决：E2E bootstrap 自然退出不触发清理（trap 未挂 EXIT）（2026-10-04 修复）
 
-**现象**：`e2e-bootstrap.sh` 的 `trap cleanup SIGINT SIGTERM` 只覆盖信号路径；daemon/web 任一子进程死亡导致 `wait` 返回、脚本**正常退出**时 cleanup 不执行——web dev server 残留监听 5175、数据目录整目录残留（2026-10-04 实测：TERM daemon 后 bootstrap exit 0，web 24232 存活、`~/.mobi-e2e` 未删）。
+**现象**：`e2e-bootstrap.sh` 的 `trap cleanup SIGINT SIGTERM` 只覆盖信号路径；daemon/web 任一子进程死亡导致 `wait` 返回、脚本**自然退出**时 cleanup 不执行——web dev server 残留监听 5175、数据目录整目录残留（2026-10-04 实测：TERM daemon 后 bootstrap exit 0，web 存活、`~/.mobi-e2e` 未删）。
 
-**影响**：低——下次 bootstrap 的 check_port 会杀残留 web、rm 旧 ready.flag；旧库保留（bootstrap 本就不删库）。但「脚本退出=环境已清」的直觉失真，且孤儿会话 CLI 靠 doctor clean 兜底才被收。
-
-**修法方向**：`trap cleanup EXIT`（SIGINT/SIGTERM 分支显式 exit 触发），cleanup 已有 CLEANUP_DONE 幂等闸。顺带复核 smoke.sh 已挂 EXIT 无此问题。
+**修复**：清理改挂 `trap cleanup EXIT`（信号分支 `trap 'exit 130/143' SIGINT/SIGTERM` 显式退出驱动 EXIT trap；cleanup 自带 CLEANUP_DONE 幂等闸）。实跑验证：TERM daemon → wait 返回 → 脚本自然退出 → EXIT trap 清理执行（web 停止、数据目录删除、exit 0）。

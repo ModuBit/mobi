@@ -139,7 +139,12 @@ cleanup() {
     e2e_log_info "清理完成"
 }
 
-trap cleanup SIGINT SIGTERM
+# 清理挂 EXIT 而非信号：子进程死亡导致 wait 返回、脚本自然退出时也要清理
+# （#101：只挂 SIGINT/SIGTERM 时自然退出不触发，web/数据目录残留）。
+# 信号分支显式 exit 以驱动 EXIT trap；cleanup 自带 CLEANUP_DONE 幂等闸
+trap cleanup EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
 
 # ─── 主流程 ───────────────────────────────────────────────────────────────────
 main() {
