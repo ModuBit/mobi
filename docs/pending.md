@@ -1000,6 +1000,6 @@ interrupt（用户停止）
 
 **验证**：sessionHandlers.test.ts 新增 3 例（有变→补发 / 无变（仅其他字段）→不补发 / 首写→补发）红→绿；全量门禁通过。
 
-## 100. R11 上传子项连续两轮回归未复验（验证债，非代码缺陷）
+## 100. ✅ 已解决：R11 上传子项真机复验通过（2026-10-04 补验）
 
-文件链路五端点（file-meta/read-file/save-file/list-directory/search-files）多轮 curl 实证通过，但「上传」子项自 ③门起未再真机验证。下次 E2E 顺带补验。
+文件链路五端点（file-meta/read-file/save-file/list-directory/search-files）多轮 curl 实证通过；「上传」子项本轮 E2E 补验全链路通过：composer 附件按钮 → AttachPanel「文件」上传（附件卡 complete、无 error）→ 落盘 `<cwd>/.mobi/uploads/2026-10/<name>-<去重后缀>.<ext>`（内容逐字节完整）→ user 消息以 document block 落库（url 指向去重后相对路径、filename、size）→ 模型经 @ mention 读取并逐字回显首行。上传链路无缺陷。

@@ -13,6 +13,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [终端游离会话](terminal-session.md) — script 造 PTY 后台跑 CLI，会话入 Recent
 - [文件树验证](file-tree-verify.md) — 展开 inspector 文件树 / 虚拟滚动下数条目（看 network 响应非 DOM）/ 截断字段
 - [对话与验证](chat-verify.md) — 发消息 / 等待轮询 / 权限审批 / 排队消息 / 停止按钮（composer 合并按钮）/ 渲染验证
+- [附件上传验证](upload-verify.md) — AttachPanel「文件」按钮可直接 upload_file / 落盘 .mobi/uploads/YYYY-MM/ 去重断言 / DB document block / 模型回显；messages 表无 role 列用 rowid
 - [plan 模式切换验证](plan-mode-verify.md) — 切 plan / 触发 exit_plan_mode / 批准四档按钮 / 模式生效观测点（composer 指示器 + 编辑是否弹审批）
 - [通用误判](pitfalls-general.md) — 不归属单一任务的经验（token 用途、诊断命令、短生命周期 DOM 验证、工具禁用）
 - [调试解锁 E2E](debug-unlock-e2e.md) — evaluate_script 模拟连点 + 拦截 a.click 捕获下载
