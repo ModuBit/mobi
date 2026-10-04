@@ -984,11 +984,13 @@ interrupt（用户停止）
 - **configuration 单例合一**：settings.hub.json / settings.cli.json 拆分保留（写权限边界），不合并回单文件
 - **web 契约 machineId 字段清理**：D4=C 冻结保留，见 ADR 0010；真多机时按新架构重做
 
-## 98. web 终端每会话上限 3 未拦截——Terminal 5 个仍可开（2026-10-02 ③门回归发现，2026-10-04 补记入册）
+## 98. ✅ 已解决：web 终端每会话上限 3 未拦截——非当前缺陷（19 票已修，2026-10-04 E2E 实证关闭）
 
-**现象**：R10 验收时同会话连开 5 个终端均成功，未见「已达上限」拦截。③门验收记录（2026-10-02）已提及但一直未入 pending（违反「票中发现必记 pending」纪律，现补）。
+**定性**：现象记录于 2026-10-02 ③门 R10——当时终端走旧 CLI 转发路径（ticket-19 未实施）。④ 票 19（pty 迁入 daemon）引入 daemon 侧三层闸：socket 级（registry.countForSocket）、session 级（registry.countForSession）、manager 级（TerminalManager.maxTerminals），默认均 3（`MOBI_TERMINALS_MAX_TERMINALS` 覆盖）；单测已锁「达 session 上限（3）：第 4 个 terminalId 被拒」（terminalHandler.test.ts）。⑤门 R10 复核走「引用既有」未真验，#98 补记时未复核当前行为。
 
-**定位入口**：web 终端面板与 daemon 侧 TerminalManager 的会话级终端数闸（设计上限 3）；待确认是闸未实现还是前端未消费。
+**实证（2026-10-04 E2E，socket.io-client 直连 e2e daemon 连开 4 个）**：#1-3 terminal:ready、#4 terminal:error "Too many terminals open for this session (max 3)"；关闭后槽位正确释放（复跑两轮行为一致）。前端 error 有消费（cachedTerminal terminal:error → error 态 + 红字写屏）。
+
+**顺带观察（非缺陷）**：web 每终端独立 socket，socket 级闸在 web 拓扑下永不约束（每 socket 恒 1），session 级闸是实际生效层（socket 级保留作 API 层防御）；前端 openTerminalTab 无预拦截，第 4 个 tab 照开、错误以终端内红字呈现——如需「点 + 时禁用/提示」属 UX 增强，不在本项范围。
 
 ## 99. slash 面板丢插件命令——capabilityDiscovery init 快照与 CC 插件命令异步注册竞态，commands_changed 不补投（2026-09 发现，2026-10-04 补记入册）
 
