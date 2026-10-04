@@ -992,11 +992,13 @@ interrupt（用户停止）
 
 **顺带观察（非缺陷）**：web 每终端独立 socket，socket 级闸在 web 拓扑下永不约束（每 socket 恒 1），session 级闸是实际生效层（socket 级保留作 API 层防御）；前端 openTerminalTab 无预拦截，第 4 个 tab 照开、错误以终端内红字呈现——如需「点 + 时禁用/提示」属 UX 增强，不在本项范围。
 
-## 99. slash 面板丢插件命令——capabilityDiscovery init 快照与 CC 插件命令异步注册竞态，commands_changed 不补投（2026-09 发现，2026-10-04 补记入册）
+## 99. ✅ 已解决：slash 面板丢插件命令——CLI 补投链已备但 web 侧收不到刷新通知（2026-10-04 修复）
 
-**现象**：会话早期打开 / 面板时 CC 插件命令（异步注册）不在 capabilityDiscovery 的 init 快照里；后续 `commands_changed` 信号不触发补投，面板持续缺命令直到会话重启。判 local/remote 命令归属看 `--mobi-starting-mode`。
+**调查结论**：pending 记录的「commands_changed 不触发补投」缺口已于 2026-09-25 `2e9dfeb8`（commands_changed 转能力发现通道）+ `7d397808`（节流 trailing 补发）修复——CLI 侧链路完整：commands_changed → 节流重跑 capabilityDiscovery → supportedCommands（REPLACE 语义）→ updateMetadata 回写 hub。**残余缺口在 hub→web 段**：web 只在 SSE `sdk-metadata-refreshed` 时失效 sdkMetadata query（SSEProvider），而该事件此前仅 hub 后台刷新路径（`applyRefreshedSDKMetadata`）发出；CLI `update-metadata` 写路径只发 `session-updated`——web 不 refetch，/ 面板持续旧命令直到页面重开（原现象「直到会话重启」的另一解释）。
 
-**修法方向**：commands_changed 到达时对 capability snapshot 做增量补投（或懒拉取）。
+**修复**（hub 写边界收口）：`handleUpdateMetadata` 成功且 metadata.sdkMetadata 子对象实际变更时补发 `sdk-metadata-refreshed`（复用既有 web 消费通道，零 web 改动）；变更判定导出 `sdkMetadataChanged`（含 undefined 语义，比较基准取写入前 raw stored 行，顺序无关等价闸防 refetch↔SSE 死循环，与 `applyRefreshedSDKMetadata` 同理）。覆盖 commands_changed 补投、outputStyle 切换、首轮能力发现等全部 CLI metadata 回写来源。
+
+**验证**：sessionHandlers.test.ts 新增 3 例（有变→补发 / 无变（仅其他字段）→不补发 / 首写→补发）红→绿；全量门禁通过。
 
 ## 100. R11 上传子项连续两轮回归未复验（验证债，非代码缺陷）
 

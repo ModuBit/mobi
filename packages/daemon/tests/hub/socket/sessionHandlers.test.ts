@@ -611,3 +611,95 @@ describe('session-message：边界消息落库推进 contextBoundarySeq', () => 
         expect(events.some(e => e.type === 'session-updated')).toBe(false)
     })
 })
+
+describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发（pending #99）', () => {
+    function makeUpdateMetadataDeps(initialSdkMetadata: unknown) {
+        const store = new Store(':memory:')
+        const sid = store.sessions.getOrCreateSession('update-metadata-test', { path: '/tmp/x' }, null, 'default').id
+        // getOrCreateSession 写入初始 metadata 后 version 已是 1——后续 CAS 以实际读数为准
+        let version = store.sessions.getSession(sid)!.metadataVersion
+        if (initialSdkMetadata !== undefined) {
+            store.sessions.updateSessionMetadata(
+                sid,
+                { path: '/tmp/x', sdkMetadata: initialSdkMetadata },
+                version,
+                'default',
+            )
+            version = store.sessions.getSession(sid)!.metadataVersion
+        }
+        const events: SyncEvent[] = []
+        const deps: SessionHandlersDeps = {
+            store,
+            resolveSessionAccess: (id: string) => {
+                const session = store.sessions.getSession(id)
+                return session ? { ok: true as const, value: session } : { ok: false as const, reason: 'not-found' as const }
+            },
+            emitAccessError: () => {},
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            snapshotSync: new SnapshotSync(),
+            onWebappEvent: (e: SyncEvent) => { events.push(e) },
+        }
+        const current = store.sessions.getSession(sid)!
+        return { store, sid, deps, events, version: current.metadataVersion }
+    }
+
+    /** 触发 update-metadata（CLI 快照回写路径），返回收到的事件类型列表 */
+    function emitUpdateMetadata(
+        fakeSocket: ReturnType<typeof makeFakeSocket>,
+        sid: string,
+        version: number,
+        metadata: unknown,
+    ): void {
+        fakeSocket.emit('update-metadata', { sid, expectedVersion: version, metadata }, () => {})
+    }
+
+    test('sdkMetadata 内容有变（commands 增）→ 补发 sdk-metadata-refreshed', () => {
+        const fakeSocket = makeFakeSocket()
+        const { sid, deps, events, version } = makeUpdateMetadataDeps({
+            commands: [{ name: 'compact', description: '', argumentHint: '' }],
+        })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        emitUpdateMetadata(fakeSocket, sid, version, {
+            path: '/tmp/x',
+            sdkMetadata: {
+                commands: [
+                    { name: 'compact', description: '', argumentHint: '' },
+                    { name: 'plugin:hello', description: 'async plugin command', argumentHint: '' },
+                ],
+            },
+        })
+
+        expect(events.some(e => e.type === 'session-updated')).toBe(true)
+        // RED：当前实现不发该事件——web sdkMetadata query 不会失效，/ 面板持续旧命令
+        expect(events.some(e => e.type === 'sdk-metadata-refreshed')).toBe(true)
+    })
+
+    test('sdkMetadata 无变化（仅其他 metadata 字段变）→ 不补发', () => {
+        const fakeSocket = makeFakeSocket()
+        const sdk = { commands: [{ name: 'compact', description: '', argumentHint: '' }] }
+        const { sid, deps, events, version } = makeUpdateMetadataDeps(sdk)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        emitUpdateMetadata(fakeSocket, sid, version, {
+            path: '/tmp/changed',
+            sdkMetadata: { commands: [{ name: 'compact', description: '', argumentHint: '' }] },
+        })
+
+        expect(events.some(e => e.type === 'session-updated')).toBe(true)
+        expect(events.some(e => e.type === 'sdk-metadata-refreshed')).toBe(false)
+    })
+
+    test('首次写入 sdkMetadata（旧无新有）→ 补发', () => {
+        const fakeSocket = makeFakeSocket()
+        const { sid, deps, events, version } = makeUpdateMetadataDeps(undefined)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        emitUpdateMetadata(fakeSocket, sid, version, {
+            path: '/tmp/x',
+            sdkMetadata: { commands: [{ name: 'compact', description: '', argumentHint: '' }] },
+        })
+
+        expect(events.some(e => e.type === 'sdk-metadata-refreshed')).toBe(true)
+    })
+})

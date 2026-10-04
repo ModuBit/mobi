@@ -841,6 +841,18 @@ function sdkMetadataEqual(a: SDKMetadata, b: SDKMetadata): boolean {
 }
 
 /**
+ * sdkMetadata 变更判定（含 undefined 语义，供 update-metadata 写边界复用）：
+ * 一边有一边无即变；两边都有按顺序无关等价比较。任何 sdkMetadata 实际变更的写路径
+ * 都应据此决定是否发 sdk-metadata-refreshed（web 只监听该事件失效 sdkMetadata query）。
+ */
+export function sdkMetadataChanged(a: SDKMetadata | undefined, b: SDKMetadata | undefined): boolean {
+    if (a === undefined || b === undefined) {
+        return a !== b
+    }
+    return !sdkMetadataEqual(a, b)
+}
+
+/**
  * 稳定 JSON 串：对象按 key 排序、数组按元素稳定串排序（数组顺序无关）。
  * commands/agents/models 等集合，SDK 跨次返回顺序可能不稳——若按原序比较，
  * 会把「顺序抖动」误判为内容变化，每次后台刷新都写库 + 发 SSE，触发

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents } from '@mobi/shared'
+import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -26,6 +26,7 @@ import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { SnapshotSync } from '../../../sync/snapshotSync'
 import { toDecryptedMessage } from '../../../sync/messageService'
+import { sdkMetadataChanged } from '../../../sync/sessionCache'
 import { isContextBoundaryContent } from '../../../store/messages'
 import {
     SessionMessageFactsProcessor,
@@ -310,6 +311,16 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
             socket.to(`session:${sid}`).emit('session-update', update)
             onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, metadata } })
+            // sdkMetadata 子对象有变（CLI update-metadata 路径：commands_changed 补投、outputStyle
+            // 切换等）→ 补发 sdk-metadata-refreshed。web 只监听该事件失效 sdkMetadata query，
+            // session-updated 不触发 refetch——缺此通知 / 面板将持续显示旧命令直到页面重开
+            // （pending #99）。比较取写入前的 raw stored 行（sessionAccess 在写前解析），与
+            // applyRefreshedSDKMetadata 的 raw 基准同理；等价闸防 refetch↔SSE 死循环
+            const oldSdk = (sessionAccess.value.metadata as Record<string, unknown> | null)?.sdkMetadata as SDKMetadata | undefined
+            const newSdk = (metadata as Record<string, unknown> | null)?.sdkMetadata as SDKMetadata | undefined
+            if (sdkMetadataChanged(oldSdk, newSdk)) {
+                onWebappEvent?.({ type: 'sdk-metadata-refreshed', sessionId: sid })
+            }
         }
     }
 
