@@ -1,35 +1,24 @@
 {
-  // supervisor 架构下的两种调试形态（dev profile 端口 2223，与 default 2222 / e2e 2224 隔离）：
+  // 单机架构（daemon 单进程）下的两种调试形态（dev profile 端口 2223，与 default 2222 / e2e 2224 隔离）：
   //
-  // 1. 直跑组件（本文件三个 Start-Sync 配置）：断点直达 hub/runner 本体，不走
-  //    supervisor 托管。适合调试业务逻辑——hub 内部 / runner 会话循环。
+  // 1. 直跑 daemon（Daemon Start-Sync 配置）：断点直达 daemon 本体，不走 supervisor
+  //    托管。适合调试业务逻辑——Web API / 同步 / spawn 管线 / 会话循环。
   // 2. 调试 supervisor（Supervisor 配置）：调试托管状态机（spawn/退避重启/desired state）。
-  //    注意：supervisor spawn 的 hub/runner 子进程会被 stripBunDebuggerEnv 清掉调试器
-  //    变量（防 EADDRINUSE），断点打不到子进程——要断点组件本体请用形态 1，两者互斥
+  //    注意：supervisor spawn 的 daemon 子进程会被 stripBunDebuggerEnv 清掉调试器
+  //    变量（防 EADDRINUSE），断点打不到子进程——要断点 daemon 本体请用形态 1，两者互斥
   //    （同端口，同时起会撞 2223）。
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug: Hub Start-Sync (dev profile)",
+      "name": "Debug: Daemon Start-Sync (dev profile)",
       "type": "bun",
       "request": "launch",
       "program": "${workspaceFolder}/packages/cli/src/index.ts",
       "cwd": "${workspaceFolder}/packages/cli",
-      "args": ["--profile", "dev", "hub", "start-sync"],
+      "args": ["--profile", "dev", "daemon", "start-sync"],
       "env": {
         "NODE_ENV": "development",
         "MOBI_LISTEN_HOST": "0.0.0.0"
-      }
-    },
-    {
-      "name": "Debug: CLI Runner Start-Sync (dev profile)",
-      "type": "bun",
-      "request": "launch",
-      "program": "${workspaceFolder}/packages/cli/src/index.ts",
-      "cwd": "${workspaceFolder}/packages/cli",
-      "args": ["--profile", "dev", "runner", "start-sync"],
-      "env": {
-        "NODE_ENV": "development"
       }
     },
     {
@@ -39,8 +28,8 @@
       "program": "${workspaceFolder}/packages/cli/src/index.ts",
       "cwd": "${workspaceFolder}/packages/cli",
       // 前台跑 supervisor 状态机（不托管自拉起，由 VS Code 直接 launch 便于断点）。
-      // hub/runner 由 supervisor spawn（工作区源码 + dev profile env，端口 2223）；
-      // 起好后可用 `mobi --profile dev service start/stop` 发控制指令驱动状态迁移
+      // daemon 由 supervisor spawn（工作区源码 + dev profile env，端口 2223）；
+      // 起好后可用 `mobi --profile dev service daemon start/stop` 发控制指令驱动状态迁移
       "args": ["--profile", "dev", "service", "supervise", "--sync"],
       "env": {
         "NODE_ENV": "development"
@@ -60,8 +49,8 @@
   ],
   "compounds": [
     {
-      "name": "Debug: Hub + CLI Runner + Web (dev profile)",
-      "configurations": ["Debug: Hub Start-Sync (dev profile)", "Debug: CLI Runner Start-Sync (dev profile)", "Debug: Web Dev Server (dev profile)"],
+      "name": "Debug: Daemon + Web (dev profile)",
+      "configurations": ["Debug: Daemon Start-Sync (dev profile)", "Debug: Web Dev Server (dev profile)"],
       "stopAll": true
     }
   ]
