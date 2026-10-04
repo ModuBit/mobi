@@ -148,9 +148,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     /** compact started 幂等闸门：手动 specialCommand 与 system:status{compacting} 双源同汇，
      *  同一次压缩只发一次 compact-started；boundary/completed 终态清位（见 handleCompactStart） */
     private compactStartGate = new CompactStartGate()
-    /** nextMessage 是否持有被暂存的待投递批次（mode 变更/isolate 时 stash）。
+    /** nextMessage 是否持有被暂存的待投递批次（mode 变更/isolate/轮次中止时 stash）。
      *  暂存批次不在 MessageQueue 里但下轮必投——撤回初判把它视同「队列非空」 */
     private pendingBatchHeld = false
+    /** 暂存的待投递批次（原 runMainLoop 闭包变量 pending 提升为字段）：mode 变更 / isolate /
+     *  轮次中止（pending #94 存活不变量）时收口于此，下一轮 nextMessage 首取原样投递。
+     *  **跨轮存活**，轮收尾 finally 只复位 pendingBatchHeld 标记、绝不清空本字段 */
+    private pendingBatch: { message: PromptPayload; mode: EnhancedMode; isolate: boolean; hash: string; localIds: string[] } | null = null
     /** 撤回生效后待拦的死亡回执：撤回后本 turn 的第一条中断 result 不转发 hub（E2E 残留缺陷
      *  修复——否则该 result 以更大 seq 落库，web 仍渲染「Session aborted」灰行）。消费即清除 */
     private suppressNextInterruptedResult = false
@@ -283,6 +287,23 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      *  撤回初判用——非空说明停止后还有消息会跑，不能撤回 */
     private isPumpQueueEmpty(): boolean {
         return this.session.queue.size() === 0 && !this.pendingBatchHeld
+    }
+
+    /**
+     * 已 collect 消息的暂存收口（pending #94 存活不变量）：消息已被 collectBatch shift
+     * （pushed fact 已发、Hub lifecycle 已推进为 pushed），因轮次中止或投递异常无法进入
+     * SDK input stream 时收口于此，下一轮 nextMessage 首取原样投递——绝不随轮次收尾丢弃，
+     * 否则消息永久悬空（Hub 不再补投、CLI 队列已无此消息）
+     */
+    private holdForNextRound(msg: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }): null {
+        if (this.pendingBatch) {
+            logger.warn('[remote]: holdForNextRound overwriting an undelivered held batch', {
+                heldLocalIds: this.pendingBatch.localIds,
+            })
+        }
+        this.pendingBatch = { ...msg, isolate: false, hash: this.session.queue.modeHasher(msg.mode) }
+        this.pendingBatchHeld = true
+        return null
     }
 
     /**
@@ -818,9 +839,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         };
 
         try {
-            // 暂存待下轮重启会话再投递的完整批次（mode 变更/isolate 时存入，恢复时原样返回）
-            let pending: Awaited<ReturnType<typeof session.queue.waitForMessagesAndGetAsString>> = null;
-
             let previousSessionId: string | null = null;
             while (!this.exitReason) {
                 logger.debug('[remote]: launch');
@@ -957,16 +975,22 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 this.runCapabilityDiscovery();
                             }
                         },
-                        nextMessage: async () => {
-                            if (pending) {
-                                const p = pending;
-                                pending = null;
+                        nextMessage: async (roundEndSignal?: AbortSignal) => {
+                            if (this.pendingBatch) {
+                                const p = this.pendingBatch;
+                                this.pendingBatch = null;
                                 this.pendingBatchHeld = false;
                                 return p;
                             }
 
                             for (;;) {
-                                const msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                                // 队列等待同时感知轮级 abort 与调用方传入的收尾信号（pending #94）：
+                                // 不带信号的等待被外层竞争丢弃后，仍会在消息到达时 shift（pushed fact
+                                // 已发）并返回给无人消费——永久悬空
+                                const waitSignal = roundEndSignal
+                                    ? AbortSignal.any([controller.signal, roundEndSignal])
+                                    : controller.signal;
+                                const msg = await session.queue.waitForMessagesAndGetAsString(waitSignal);
                                 if (!msg) return null;
 
                                 // 重置空闲计时器（用户发送消息）
@@ -998,9 +1022,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     continue;
                                 }
 
+                                // 消息已 shift（pushed fact 已发、Hub lifecycle 已推进）而本轮已在
+                                // 收尾：暂存下一轮投递，返回 null 让消费方干净结束（pending #94）
+                                if (controller.signal.aborted || roundEndSignal?.aborted) {
+                                    logger.debug('[remote]: round ending, holding collected message for next round');
+                                    return this.holdForNextRound(msg);
+                                }
+
                                 if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
                                     logger.debug('[remote]: mode has changed, pending message');
-                                    pending = msg;
+                                    this.pendingBatch = msg;
                                     this.pendingBatchHeld = true;
                                     return null;
                                 }
@@ -1012,6 +1043,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 };
                             }
                         },
+                        // 已 collect 消息的丢弃防线接线（pending #94）：claudeRemote 侧 initial /
+                        // inputLoop 在轮次中止/异常时交回，暂存到下一轮投递
+                        onCollectedMessageAbandoned: (msg) => { this.holdForNextRound(msg) },
                         onSessionFound: (sessionId) => {
                             // 绑定幂等守卫：systemInit 与 SessionStart hook（remote 进程内回调，ADR 0001）
                             // 双源共用，同 id 不重复触发
@@ -1082,7 +1116,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             session.clearSessionId();
                         },
                         onReady: () => {
-                            if (!pending && session.queue.size() === 0) {
+                            if (!this.pendingBatch && session.queue.size() === 0) {
                                 session.client.sendSessionEvent({ type: 'ready' });
                             }
                         },

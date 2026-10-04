@@ -932,17 +932,22 @@ interrupt（用户停止）
 
 **若恢复**：turnArchiveStore 文件记录加回 beforeContent/afterContent（可空）+ contentGated 标；reporter 封口时全文还在内存（累积器），存全文 + 存 patch 二选一或都存；供数器 pairOf 恢复 contents 出口；DiffViewer turn 档恢复 loadDiffFiles hydration。数据结构变更见 .scratch/turn-archive-b/spec.md 的「A 方案备档」节。
 
-## 94. dormant 唤醒窗口入队消息永久悬空——redeliverQueued 补投时序竞态（2026-10-03 ticket-20 E2E 发现，待定位）
+## 94. ✅ 已解决：唤醒窗口入队消息永久悬空——已 collect 消息随轮次收尾被静默丢弃（2026-10-04 修复）
 
-**现象**：dormant 后、唤醒前入队的用户消息，唤醒 spawn 成功、CLI connect、lifecycle 被推进（非 queued），但消息未进 CC input stream——永久无回复。唤醒完成后再发的消息正常。ticket-20 E2E 两连复现（DORMANT-OK / RACE3），CC transcript 零命中。
+**根因**（CLI 消费链三处「shift 已发 pushed fact、消息只存在于局部变量、被静默丢弃」窗口）：
+- `claudeRemote.ts` userInputLoop 的 `abortable(nextMessage(), signal, null)` 竞争：abort 赢时丢弃仍在途、随后被 shift 的消息；消息到手后 `signal?.aborted` 检查也直接丢弃（无 requeue）
+- launcher `nextMessage` 内部队列等待不感知消费方收尾信号：被外层竞争抛弃的等待 promise 仍会在消息到达时 shift 并返回给无人消费
+- claudeRemote initial 路径：消息 shift 后、`pushUserMessage` 前的 await（fallback 冷启动 `query()` 抛错等）走 catch，initial 随局部变量丢失
 
-**非新引入**：HEAD=8206aabb（ticket-19 后）worktree 对照环境复现实证，缺口在 ticket-20 之前已存在。与 06 回归清单 R08 附带发现「会话进程死后 active 翻转窗口内发的消息悬空」疑似同源（首拉竞态类）。
+三处同违反一条不变量：**消息一旦被 collectBatch shift（pushed fact 已发、Hub lifecycle 推进为 pushed），必须进 SDK input stream 或暂存下轮投递**——丢弃即永久悬空（Hub 不再补投、CLI 队列已无此消息、CC transcript 零命中）。
 
-**疑点链**：`messageService.redeliverQueued`（handleSessionAlive 激活翻转点广播 new-message 到 CLI 房间）→ CLI 消费并 markMessagesPushed，但此时 sink（receive-readiness）可能未接通 → 消息丢弃且 lifecycle 已推进，无重试路径。
+**修复**（存活不变量三窗收口，暂存容器=launcher 跨轮存活的 pending 批次，原 mode 变更 stash 机制提升为字段）：
+- `nextMessage` 契约扩展：接受可选收尾信号，队列等待经 `AbortSignal.any` 同时感知轮级 abort 与收尾信号
+- shift 后发现轮次中止 → `holdForNextRound` 暂存、返回 null 让消费方干净结束
+- userInputLoop 移除 abortable 竞争（信号直接传入 nextMessage）；消息到手但已 abort → `onCollectedMessageAbandoned` 交回暂存，不再丢弃
+- claudeRemote initial 路径：`unpushedInitial`（声明在 try 外——catch 与 try 块是兄弟作用域）追踪未投递 initial，轮次异常时交回暂存
 
-**定位入口**：packages/daemon/src/sync/messageService.ts `redeliverQueued` / syncEngine.handleSessionAlive 激活翻转分支；CLI 侧 new-message 消费与 canReceive 门（packages/session）。修法方向：消费侧在 sink 未通时保留 queued（不推进 lifecycle），或补投由 receive-readiness latch 驱动而非激活翻转。
-
-**2026-10-03 新证据（ticket-22 E2E）**：wake（非 dormant）场景同现象——对 inactive 会话发消息触发 wakeSession spawn，会话进程上线、active=true，但入队消息悬空 ~9 分钟；直到下一条消息（会话已 active，走正常投递路径）才连带被处理并回复。「激活翻转窗口」比 dormant 更宽：spawn → CLI connect → active 翻转全程未补投。侧证疑点链方向。
+**验证**：新增 `packages/session/tests/claude/collectedMessageSurvival.test.ts` 3 例（inputLoop abort 丢弃→交回 / 正常路径回归 / initial fallback 冷启动失败→交回），红→绿；decoupledLoop 2 例更新至 nextMessage 新契约；全量门禁 + E2E wake 路径回归（kill→wake 5s 回复）通过。**注**：简单 kill→wake 场景连跑 4 轮未命中原始竞态（窗口窄），修复由代码分析定位 + 单测级复现锁定。
 
 ## 95. ticket-24 生产库迁移待执行——需停生产 daemon，会切断当前托管会话（2026-10-03 ticket-24 交付时记录）
 

@@ -776,7 +776,7 @@ export async function userInputLoop(
     messages: PushableAsyncIterable<SDKUserMessage>,
     ctx: LoopContext,
     opts: {
-        nextMessage: () => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>
+        nextMessage: (signal?: AbortSignal) => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>
         specialCommandCtx: SpecialCommandContext
         /** 中止信号，外部调用 abort() 时退出循环 */
         signal?: AbortSignal
@@ -788,6 +788,12 @@ export async function userInputLoop(
         onBound?: (binding: { localIds: string[]; nativeId: string }) => void
         /** 输入 push 前回调：置 LoopContext.hasInput 并立即置 running（提前激活后 init 不再驱动 running） */
         markInputPushed: () => void
+        /**
+         * 已 collect 消息的丢弃防线（pending #94）：nextMessage 返回的消息已被 collectBatch
+         * shift（pushed fact 已发、Hub lifecycle 已推进），若此刻轮次 abort 已触发，静默丢弃
+         * 即永久悬空。此回调把消息交回投递方（launcher 暂存 pending，下轮原样投递）
+         */
+        onCollectedMessageAbandoned?: (message: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }) => void
     },
 ): Promise<void> {
     while (!opts.signal?.aborted) {
@@ -803,14 +809,19 @@ export async function userInputLoop(
             if (opts.signal?.aborted) { messages.end(); return }
         }
 
-        // 将 nextMessage 与 abort 信号竞争，避免 sdkOutputLoop 结束后永远挂起
-        const next = await (opts.signal
-            ? abortable(opts.nextMessage(), opts.signal, null)
-            : opts.nextMessage()
-        )
+        // nextMessage 自身感知 abort 信号（队列等待在 abort 时返回 null，不再需要外层竞争——
+        // abortable 竞争会在信号触发时丢弃一个仍在途、随后被 shift 的消息，见 pending #94）
+        const next = await opts.nextMessage(opts.signal)
 
-        // null 或已中止 → 结束
-        if (!next || opts.signal?.aborted) {
+        if (!next) {
+            messages.end();
+            return;
+        }
+
+        // 消息已 collect（lifecycle 已推进），abort 后不得再推入垂死的输入流：
+        // 交回投递方暂存到下一轮，否则永久悬空（pending #94）
+        if (opts.signal?.aborted) {
+            opts.onCollectedMessageAbandoned?.(next);
             messages.end();
             return;
         }
@@ -913,7 +924,18 @@ export async function claudeRemote(opts: {
     onElicitation: (request: ElicitationRequest, options: { signal: AbortSignal; requestId: string }) => Promise<ElicitationResult | null>,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>,
+    /**
+     * 拉取下一条用户消息。signal 用于轮次收尾时中止队列等待（不 shift、消息留队）；
+     * 若消息已 shift 且轮次 abort 已触发，调用方经 onCollectedMessageAbandoned 交回
+     * 暂存（pending #94 存活不变量）
+     */
+    nextMessage: (signal?: AbortSignal) => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>,
+    /**
+     * 已 collect 消息的丢弃防线（pending #94）：initial / inputLoop 消费的消息在 push 进
+     * SDK input stream 前因轮次中止或异常无法投递时，经此回调交回投递方暂存到下一轮。
+     * 消息此刻 lifecycle 已推进为 pushed，静默丢弃即永久悬空
+     */
+    onCollectedMessageAbandoned?: (message: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }) => void,
     /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定。
      *  origin 标注 push 来源（批次 A 撤回语义）：'turn' = 新 turn 首 push（缺省），
      *  'steer' = turn 运行中的 steer sink push——launcher 据此决定是否复位 hasOutput（C1） */
@@ -1368,6 +1390,10 @@ export async function claudeRemote(opts: {
     // 下面的 early return（等不到首条消息 / 首条特殊命令退出 / 首条 !bash 注入关）
     // 都可能发生在提前激活之后——统一由 finally 清理 attach 产物（abort 输出循环、
     // 关闭 query、销毁 snapshotSender、复位 running、未消费的 warm 补关）。
+    // 已 collect 未投递的 initial（pending #94 存活不变量）：须声明在 try 外——catch 子句
+    // 与 try 块是兄弟作用域，try 内 let 对 catch 不可见；push 进 SDK input stream 或被特殊
+    // 命令接管（含本地 bash）即清空，仍非空时轮次异常经 onCollectedMessageAbandoned 交回暂存
+    let unpushedInitial: { message: PromptPayload; mode: EnhancedMode; localIds: string[] } | null = null;
     try {
         // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
         // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断。
@@ -1396,8 +1422,13 @@ export async function claudeRemote(opts: {
                 throw e
             }
             await opts.onRewindTruncated?.()
-            const msg = await opts.nextMessage()
+            const msg = await opts.nextMessage(loopAbort.signal)
             if (!msg) {
+                return
+            }
+            // 已 collect 但轮次已中止：交回暂存（pending #94 存活不变量）
+            if (loopAbort.signal.aborted) {
+                opts.onCollectedMessageAbandoned?.(msg)
                 return
             }
             initial = msg
@@ -1420,8 +1451,13 @@ export async function claudeRemote(opts: {
                 opts.onQueryReady?.(response, { isResume: startFrom != null });
                 startOutputLoop(response)
             }
-            const msg = await opts.nextMessage()
+            const msg = await opts.nextMessage(loopAbort.signal)
             if (!msg) {
+                return
+            }
+            // 已 collect 但轮次已中止：交回暂存（pending #94 存活不变量）
+            if (loopAbort.signal.aborted) {
+                opts.onCollectedMessageAbandoned?.(msg)
                 return
             }
             initial = msg
@@ -1432,17 +1468,25 @@ export async function claudeRemote(opts: {
         // 注入文本由此处触发 turn，其 stream_event 先于后面的 attach 段流动，晚回填快照缺 model
         loopCtx.initialModel = initial.mode.model
 
+        // 已 collect 未投递的 initial 开始追踪（声明在 try 外，见其注释）
+        unpushedInitial = initial;
+
         const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
         const initialResult = await handleSpecialCommand(asCommandText(initial.message), specialCommandCtx, initial.localIds)
 
         if (initialResult.shouldExit) {
+            unpushedInitial = null;
             return
         }
 
         // 首条即 bash：注入开 → 注入已入 messages、由已启动的循环消费触发模型轮次；注入关 → 纯本地、退出。
         const isBashInitial = initialResult.handled && !initialResult.isCompact
-        if (isBashInitial && !configuration.bashInjectContext) {
-            return
+        if (isBashInitial) {
+            // bash 路径已由 executeBashCommand 接管（注入开 push 注入文本 / 注入关本地执行），原文不再投递
+            unpushedInitial = null;
+            if (!configuration.bashInjectContext) {
+                return
+            }
         }
 
         loopCtx.isCompactCommand = initialResult.isCompact;
@@ -1506,6 +1550,7 @@ export async function claudeRemote(opts: {
             markInputPushed();
             pushUserMessage(messages, sanitizePayload(initial.message), { localIds: initial.localIds, onBound });
         }
+        unpushedInitial = null;
 
         // —— 输入循环：initial 已被外层消费，此刻才安全启动（避免双消费者竞争绕过特殊命令处理）；
         // 输出循环已在提前激活 / fallback attach 时启动
@@ -1517,11 +1562,16 @@ export async function claudeRemote(opts: {
             onBound,
             markInputPushed,
             signal: loopAbort.signal,
+            onCollectedMessageAbandoned: opts.onCollectedMessageAbandoned,
         })
 
         await Promise.race([outputLoopPromise!, inputLoopPromise])
         if (outputLoopError !== null) throw outputLoopError
     } catch (e) {
+        // initial 已 collect 未投递且轮次异常：交回投递方暂存，否则随局部变量永久悬空（pending #94）
+        if (unpushedInitial) {
+            opts.onCollectedMessageAbandoned?.(unpushedInitial);
+        }
         // 增强错误日志：捕获 SDK 抛出的非标准错误对象。
         // 保持 debug 级：此处 re-throw，错误最终由 claudeRemoteLauncher 的终态 catch
         // 以 error 级落盘（含 SDK 自带的 stderr tail）；这里提级会与 launcher 双写。

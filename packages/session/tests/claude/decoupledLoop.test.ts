@@ -685,9 +685,13 @@ describe('取消机制 (AbortController)', () => {
         const specialCommandCtx = createMockSpecialCommandCtx()
         const controller = new AbortController()
 
-        // nextMessage 永远不 resolve（模拟挂起）
-        const neverResolve = () => new Promise<null>(() => {})
-        const nextMessage = vi.fn().mockImplementation(neverResolve)
+        // nextMessage 挂起直到 signal abort（新契约：队列等待由 nextMessage 自身感知收尾
+        // 信号并返回 null——外层 abortable 竞争会丢弃在途已 shift 的消息，pending #94 已移除）
+        const hangUntilAbort = (signal?: AbortSignal) =>
+            new Promise<null>((resolve) => {
+                signal?.addEventListener('abort', () => resolve(null), { once: true })
+            })
+        const nextMessage = vi.fn().mockImplementation(hangUntilAbort)
 
         const loopPromise = userInputLoop(messages, ctx, {
             nextMessage,
@@ -713,7 +717,11 @@ describe('取消机制 (AbortController)', () => {
         const ctx: LoopContext = { isCompactCommand: false, compactStarted: false, hasInput: true }
         const controller = new AbortController()
 
-        const nextMessage = vi.fn().mockImplementation(() => new Promise<null>(() => {}))
+        // nextMessage 挂起直到 signal abort（新契约见上：队列等待感知收尾信号）
+        const nextMessage = vi.fn().mockImplementation((signal?: AbortSignal) =>
+            new Promise<null>((resolve) => {
+                signal?.addEventListener('abort', () => resolve(null), { once: true })
+            }))
         const specialCommandCtx = createMockSpecialCommandCtx()
 
         // sdkOutputLoop 用空迭代器立即结束
