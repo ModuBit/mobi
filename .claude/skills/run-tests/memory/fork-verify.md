@@ -82,4 +82,4 @@ parent 首轮 prompt 让模型「记住暗号」时，模型会自发把暗号�
 
 ## E2E 环境共享坑（2026-09-07）
 
-多 agent 并行跑 E2E 时，别人跑 `e2e-cleanup.sh`（`rm -rf ~/.mobi-e2e`）会**在你验证中途整库重建**——先 `stat ~/.mobi-e2e/mobi.db` + 核对进程树起点时间，确认自己早前断言是否发生在 wipe 前；需要 hub 带新代码重启时用常驻 wrapper bash 包一层（`bash -c 'bun run … hub start-sync & echo $! > pid; wait'`），否则 PPID 看门狗会在 wrapper 退出后 5s 杀掉 hub。
+多 agent 并行跑 E2E 时，别人跑 `e2e-cleanup.sh`（`rm -rf ~/.mobi-e2e`）会**在你验证中途整库重建**——先 `stat ~/.mobi-e2e/mobi.db` + 核对进程树起点时间，确认自己早前断言是否发生在 wipe 前；需要 daemon 带新代码重启时用常驻 wrapper bash 包一层（`bash -c 'bun run … daemon start-sync & echo $! > pid; wait'`），否则 PPID 看门狗会在 wrapper 退出后 5s 杀掉 daemon。

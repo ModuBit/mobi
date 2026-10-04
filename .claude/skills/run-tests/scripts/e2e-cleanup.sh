@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # E2E 测试环境清理脚本
 # 1. mobi doctor clean 清理注册进程
-# 2. Runner 优雅停止
+# 2. Daemon 优雅停止
 # 3. 端口兜底清理（始终执行，防止 doctor clean 遗漏子进程）
 # 4. 清理数据目录
 
@@ -43,17 +43,17 @@ main() {
     fi
 
     # 2. 停止 daemon（通过状态文件）
-    e2e_stop_daemon "${RUNNER_STATE_FILE}"
+    e2e_stop_daemon "${DAEMON_STATE_FILE}"
 
     # 3. 端口兜底清理（始终执行，防止 doctor clean 遗漏子进程）
     e2e_log_info "端口兜底清理..."
     local cleaned=0
-    # 读 daemon 内 runner controlServer 端口（动态分配，doctor clean 可能遗漏）
+    # 读 daemon controlServer 端口（动态分配，doctor clean 可能遗漏）
     local control_port=""
-    if e2e_read_daemon_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
-        control_port="${RUNNER_HTTP_PORT}"
+    if e2e_read_daemon_state "${DAEMON_STATE_FILE}" 2>/dev/null && [[ -n "${DAEMON_CONTROL_PORT}" ]]; then
+        control_port="${DAEMON_CONTROL_PORT}"
     fi
-    for port in "${HUB_PORT}" "${WEB_PORT}" ${control_port}; do
+    for port in "${DAEMON_PORT}" "${WEB_PORT}" ${control_port}; do
         local pids
         pids=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
         for pid in ${pids}; do
@@ -67,7 +67,7 @@ main() {
         e2e_log_info "清理了 ${cleaned} 个残留进程"
         # 等待端口释放
         sleep 1
-        for port in "${HUB_PORT}" "${WEB_PORT}"; do
+        for port in "${DAEMON_PORT}" "${WEB_PORT}"; do
             local remaining
             remaining=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
             if [[ -n "${remaining}" ]]; then

@@ -32,9 +32,9 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 
 第 2 步：单元 & 集成测试
     全量：bun run test
-    路由子集：bun run test:cli（或 test:hub / test:web / test:shared，按第 0 步结果）
+    路由子集：bun run test:cli（或 test:daemon / test:web / test:session 等，按第 0 步结果）
     注意：必须从项目根目录执行，不要 cd 到子目录后单独跑 bun test
-    - hub 用 bun 内置运行器，shared/cli/web 用 vitest
+    - daemon 双运行器（bun 内置 + vitest），shared/node-core/session/cli/web 用 vitest
     - 在 web 目录下直接 bun test 会忽略 vitest.config.ts 的 jsdom 配置
     ↓ 失败 → 分析失败原因，修复后重新执行
 
@@ -45,7 +45,7 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 
 第 4 步：E2E 验证（按需）
     判断是否需要 E2E：不仅限于 UI 变更，任何影响用户通过 Web 使用
-    Mobi 的改动（Hub API、协议、Runner 等）都需要 E2E 验证。
+    Mobi 的改动（daemon API、协议、会话宿主等）都需要 E2E 验证。
     详见 references/e2e.md
     ⚠️ 操作前先读 memory/MEMORY.md（见下「E2E 学习记忆」），避免重新探索
 
@@ -54,7 +54,7 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 
 ## 受影响包路由规则
 
-全量测试空闲机器 ~40s（web 31s + 其余三包 9s），但在机器被压载时（生产 hub/runner/会话 CLI 并行、内存换页）可劣化到 ~400s（2026-08-22 实测 10 倍差距，用例执行时间 50s↔529s）。按改动路由可以：① 正常时把 cli 类小改动的反馈压到 ~7s；② 压载时避免跑最重、对负载最敏感的 web 包。**路由只影响第 2 步的单测范围**，typecheck/lint 始终全量，CI 始终全量兜底。
+全量测试空闲机器 ~40s（web 31s + 其余三包 9s），但在机器被压载时（生产 daemon/会话 CLI 并行、内存换页）可劣化到 ~400s（2026-08-22 实测 10 倍差距，用例执行时间 50s↔529s）。按改动路由可以：① 正常时把 cli 类小改动的反馈压到 ~7s；② 压载时避免跑最重、对负载最敏感的 web 包。**路由只影响第 2 步的单测范围**，typecheck/lint 始终全量，CI 始终全量兜底。
 
 **计算改动文件**（两者取并集，不依赖「上次跑到哪」的状态）：
 
@@ -75,7 +75,6 @@ git diff --name-only @{u}..HEAD 2>/dev/null \
 | 命中 `packages/node-core/**` | 全量（node-core 被 daemon/session/cli 依赖） |
 | 只命中 `packages/daemon/**` | `bun run test:daemon` |
 | 只命中 `packages/session/**` | `bun run test:session` |
-| 只命中 `packages/daemon/**` | `bun run test:hub` |
 | 只命中 `packages/cli/**` | `bun run test:cli` |
 | 只命中 `packages/web/**` | `bun run test:web` |
 | 无法判断（如删除文件、rename 等） | 全量 |
@@ -135,7 +134,6 @@ E2E 的具体**操作 recipe 与踩坑记录**存在 `memory/`（随 skill 提�
 | node-core | vitest | `bun run test:node-core` |
 | daemon | bun 内置（tests/hub/）+ vitest 串联 | `bun run test:daemon` |
 | session | vitest | `bun run test:session` |
-| hub | bun 内置 | `bun run test:hub` |
 | cli | vitest | `bun run test:cli` |
 | web | vitest (jsdom) | `bun run test:web` |
 
@@ -170,7 +168,7 @@ web 包的 `bun test` 会调用 bun 内置运行器，完全忽略 `vitest.confi
 固定使用 `--profile e2e`（MOBI_HOME=~/.mobi-e2e，端口 2224，与生产/dev 隔离）：
 
 1. 检查端口占用（被占用直接失败，打印占用 PID）
-2. 启动 hub 和 runner（start-sync 前台形态）
+2. 启动 daemon（单进程，start-sync 前台形态）
 3. 等待 `/health` 就绪
 4. 使用 profile 的 `WEB_API_TOKEN` 登录
 5. 获取工作区列表（无则创建指向 `~/workspace/demo`）
@@ -183,14 +181,13 @@ web 包的 `bun test` 会调用 bun 内置运行器，完全忽略 `vitest.confi
 ### 退出码
 
 - `0` — 通过
-- 非 `0` — 失败，打印失败阶段与 hub/runner 日志尾 50 行
+- `0` 以外 — 失败，打印失败阶段与 daemon 日志尾 50 行
 
 ### 失败时查看日志
 
 脚本会在失败时自动打印日志尾部。如需完整日志：
 
 ```bash
-tail -200 ~/.mobi-e2e/hub.log
-tail -200 ~/.mobi-e2e/runner.log
+tail -200 ~/.mobi-e2e/logs/daemon.log
 ```
 

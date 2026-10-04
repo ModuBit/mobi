@@ -19,7 +19,7 @@ e2e_log_section() { echo -e "\n${BOLD}${CYAN}=== $* ===${RESET}"; }
 # ─── Profile 加载 ─────────────────────────────────────────────────────────────
 # 从 profile 文件加载配置到全局变量
 # 参数：$1 = profile 名称
-# 设置：HUB_PORT, WEB_PORT, E2E_TMPDIR, RUNNER_STATE_FILE
+# 设置：DAEMON_PORT, WEB_PORT, E2E_TMPDIR, DAEMON_STATE_FILE
 #       如果提供了 $2=strict 则文件不存在时退出，否则使用默认值
 e2e_load_profile() {
     local profile_name="$1"
@@ -27,7 +27,7 @@ e2e_load_profile() {
     local profile_file="${HOME}/.mobi/profiles/${profile_name}.env"
 
     if [[ -f "${profile_file}" ]]; then
-        HUB_PORT=$(grep -E '^MOBI_LISTEN_PORT=' "${profile_file}" | head -1 | cut -d= -f2 | xargs)
+        DAEMON_PORT=$(grep -E '^MOBI_LISTEN_PORT=' "${profile_file}" | head -1 | cut -d= -f2 | xargs)
         WEB_PORT=$(grep -E '^MOBI_WEB_PORT=' "${profile_file}" | head -1 | cut -d= -f2 | xargs)
         E2E_TMPDIR=$(grep -E '^MOBI_HOME=' "${profile_file}" | head -1 | cut -d= -f2 | xargs)
     elif [[ "${strict}" == "strict" ]]; then
@@ -35,33 +35,33 @@ e2e_load_profile() {
         echo "请先运行: profiles/install.sh"
         exit 1
     else
-        HUB_PORT=2224
+        DAEMON_PORT=2224
         WEB_PORT=5175
         E2E_TMPDIR="${HOME}/.mobi-e2e"
     fi
 
     # 展开 ~ 为 $HOME
     E2E_TMPDIR="${E2E_TMPDIR/#\~/$HOME}"
-    RUNNER_STATE_FILE="${E2E_TMPDIR}/daemon.state.json"
+    DAEMON_STATE_FILE="${E2E_TMPDIR}/daemon.state.json"
 }
 
-# ─── Daemon（含 runner controlServer）管理函数 ──────────────────────────────────────────────────────────
+# ─── Daemon 管理函数（state 读取 / controlServer 优雅停止） ──────────────────────────────────────────────────────────
 
 e2e_read_daemon_state() {
     local state_file="$1"
-    RUNNER_PID=""
-    RUNNER_HTTP_PORT=""
+    DAEMON_PID=""
+    DAEMON_CONTROL_PORT=""
 
     if [[ ! -f "${state_file}" ]]; then
         return 1
     fi
 
     # 单次 jq 调用同时提取 pid 和 runnerHttpPort（ticket-22 起 daemon.state.json）
-    read -r RUNNER_PID RUNNER_HTTP_PORT < <(
+    read -r DAEMON_PID DAEMON_CONTROL_PORT < <(
         jq -r '(.pid // ""), (.runnerHttpPort // "")' "${state_file}" 2>/dev/null
     ) || true
 
-    if [[ -z "${RUNNER_PID}" ]]; then
+    if [[ -z "${DAEMON_PID}" ]]; then
         return 1
     fi
     return 0
@@ -70,20 +70,20 @@ e2e_read_daemon_state() {
 e2e_stop_daemon() {
     local state_file="$1"
 
-    if ! e2e_read_runner_state "${state_file}"; then
+    if ! e2e_read_daemon_state "${state_file}"; then
         e2e_log_info "Daemon 状态文件不存在或无法解析"
         return 0
     fi
 
-    if ! kill -0 "${RUNNER_PID}" 2>/dev/null; then
-        e2e_log_info "Daemon 进程未运行 (PID: ${RUNNER_PID})"
+    if ! kill -0 "${DAEMON_PID}" 2>/dev/null; then
+        e2e_log_info "Daemon 进程未运行 (PID: ${DAEMON_PID})"
         return 0
     fi
 
     # 1. 获取并终止所有子进程
-    if [[ -n "${RUNNER_HTTP_PORT}" ]]; then
+    if [[ -n "${DAEMON_CONTROL_PORT}" ]]; then
         local children_json
-        children_json=$(curl -sf -X POST "http://127.0.0.1:${RUNNER_HTTP_PORT}/list" 2>/dev/null \
+        children_json=$(curl -sf -X POST "http://127.0.0.1:${DAEMON_CONTROL_PORT}/list" 2>/dev/null \
             || echo '{"children":[]}')
 
         local child_pids
@@ -91,22 +91,22 @@ e2e_stop_daemon() {
 
         for cpid in ${child_pids}; do
             e2e_log_info "终止会话子进程 (PID: ${cpid})"
-            curl -sf -X POST "http://127.0.0.1:${RUNNER_HTTP_PORT}/stop-session" \
+            curl -sf -X POST "http://127.0.0.1:${DAEMON_CONTROL_PORT}/stop-session" \
                 -H 'Content-Type: application/json' \
                 -d "{\"sessionId\": \"PID-${cpid}\"}" &>/dev/null || true
         done
     fi
 
-    # 2. 优雅停止 Runner
-    if [[ -n "${RUNNER_HTTP_PORT}" ]]; then
-        e2e_log_info "通过 HTTP 优雅停止 daemon 内 runner (PID: ${RUNNER_PID})"
-        curl -sf -X POST "http://127.0.0.1:${RUNNER_HTTP_PORT}/stop" &>/dev/null || true
+    # 2. 优雅停止 daemon（经 controlServer）
+    if [[ -n "${DAEMON_CONTROL_PORT}" ]]; then
+        e2e_log_info "通过 controlServer HTTP 优雅停止 daemon (PID: ${DAEMON_PID})"
+        curl -sf -X POST "http://127.0.0.1:${DAEMON_CONTROL_PORT}/stop" &>/dev/null || true
         sleep 1
     fi
 
     # 3. SIGTERM 兜底
-    if kill -0 "${RUNNER_PID}" 2>/dev/null; then
-        e2e_log_info "终止 daemon 进程 (PID: ${RUNNER_PID})"
-        kill -TERM "${RUNNER_PID}" 2>/dev/null || true
+    if kill -0 "${DAEMON_PID}" 2>/dev/null; then
+        e2e_log_info "终止 daemon 进程 (PID: ${DAEMON_PID})"
+        kill -TERM "${DAEMON_PID}" 2>/dev/null || true
     fi
 }

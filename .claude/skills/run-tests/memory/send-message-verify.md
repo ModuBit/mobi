@@ -229,7 +229,7 @@ s=json.dumps(json.loads(content),ensure_ascii=False)   # 仅 role='user' 且 seq
 
 - **mobi 侧成立**：DB `metadata.name` 就是 title，Web 列表 / `list_sessions` 都读它。验法：
   `sqlite3 ~/.mobi-e2e/mobi.db "SELECT json_extract(metadata,'\$.name') FROM sessions WHERE id='<新会话>';"`
-- **hub.log 里不该再有 `[renameSession] 同步 CC 标题失败`** —— 那是「hub 去给新会话发
+- hub 日志（现 logs/daemon.log）里不该再有 `[renameSession] 同步 CC 标题失败` —— 那是「hub 去给新会话发
   rename-session RPC」才会有的告警。看到它 = 有人把这条 RPC 加回来了，而它**必然失败**：
   `createSession` 在 spawn 回执时就返回，那时新会话的 `rename-session` handler 还没注册
   （它在回执之后、会话进程自己的运行时初始化里才注册）。实测窗口只有十几毫秒（回执后
