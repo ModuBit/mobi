@@ -949,20 +949,11 @@ interrupt（用户停止）
 
 **验证**：新增 `packages/session/tests/claude/collectedMessageSurvival.test.ts` 3 例（inputLoop abort 丢弃→交回 / 正常路径回归 / initial fallback 冷启动失败→交回），红→绿；decoupledLoop 2 例更新至 nextMessage 新契约；全量门禁 + E2E wake 路径回归（kill→wake 5s 回复）通过。**注**：简单 kill→wake 场景连跑 4 轮未命中原始竞态（窗口窄），修复由代码分析定位 + 单测级复现锁定。
 
-## 95. ticket-24 生产库迁移待执行——需停生产 daemon，会切断当前托管会话（2026-10-03 ticket-24 交付时记录）
+## 95. ✅ 已解决：生产库迁移 + 单机拓扑部署已执行（2026-10-05）
 
-**背景**：ticket-24（DB 结构清理）代码与迁移脚本已交付（scripts/migrate-personal-agent.ts，含 --confirm 门与幂等）；dev 库已迁移核对通过；e2e 新库（smoke 后）已验证无 users 表。**生产库（~/.mobi/mobi.db）未迁移**——开工核对（2026-10-03）：machines 1（=本机 2fe328e4）、users 0、sessions 161、workspaces 5、messages 321811、非本机行 0，与 07 K 一致，预期迁移为纯结构清理（删 users 表、0 行删除）。
+**执行记录**：由会话 CLI 以 setsid 原子脚本执行（用户授权，会话进程实测孤儿化不死、全程存活）。旧拓扑三进程（supervisor 61376 → hub 59986 + runner 86953）全停 → WAL checkpoint + 库备份（1.4G `mobi.db.bak-20261005`）→ migrate-personal-agent.ts 迁移（users 表已删、行数核对）→ 二进制替换（旧版备份 `~/mobi-old-binary.bak`）→ `service start` 起新拓扑。验证：health ok、2222 单 daemon 进程（40561 supervise → 40562 daemon start-sync）、auth + 工作区 API（5 工作区）全通过。日志 `~/deploy-prod-20261005-*.log`、结果 `~/deploy-prod-result.txt`。
 
-**为何未执行**：生产 daemon（hub 59986 + runner 86953，supervisor 61376）由旧版二进制运行，且实施会话本身由 runner 86953 托管——停服即自杀，无法完成迁移→核对→重启链路。且迁移后必须部署新二进制（旧版 REQUIRED_TABLES 含 users，缺表即启动失败），本质是一次完整生产部署（含 ticket-22 的 supervisor 单 daemon 拓扑切换）。
-
-**执行清单（用户在场或独立终端窗口操作）**：
-1. `mobi service stop`（或按 PID 停 supervisor 61376 及子进程）
-2. `cp ~/.mobi/mobi.db ~/.mobi/mobi.db.bak-20261003`（脚本也会自动备份）
-3. `bun scripts/migrate-personal-agent.ts ~/.mobi/mobi.db`（他机行 0，无需 --confirm）
-4. `sqlite3 -readonly ~/.mobi/mobi.db "SELECT name FROM sqlite_master WHERE type='table'"` 核对无 users
-5. 部署新二进制（build:exe 产物）到 ~/.local/bin/mobi（macOS 26 须先 rm 再 cp，见 memory「Tahoe 二进制替换」）
-6. `mobi service supervise` 起 supervisor（新拓扑单 daemon）
-7. 回退：停服 → 还原 .bak → 装回上一版二进制
+**发现**：① 旧 runner 退出的会话进程是孤儿化（ppid=1）而非被杀——「停服即断线」不成立，托管会话可在部署中存活；② 唤醒把同会话 spawn 出第二进程（34560 孤儿 + 41723 新托管并存），wake-dedup 双进程缺口又一实例（spec 已定稿在 .scratch/wake-dedup/，待实施）；③ 脚本 `$LOG；`（变量后紧跟中文分号）set -u 下 unbound——deploy-artifact.sh 已记录过的坑重犯，中文邻接变量一律 `${}`。
 
 ## 96. ✅ 已解决：doctor clean 不识别 daemon 进程（2026-10-04 修复）
 
