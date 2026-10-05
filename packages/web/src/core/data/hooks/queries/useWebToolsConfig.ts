@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { RedactedWebToolsConfig, WebToolsConfigSubmission } from '@mobi/shared'
 
-/** 两跳加载结果：ok / offline（无在线机器或网络异常）/ error（runner 读盘失败，文案区分于离线） */
+/** 两跳加载结果：ok / offline（executor 未就绪或网络异常）/ error（runner 读盘失败，文案区分于离线） */
 export type WebToolsConfigQueryData =
-    | { status: 'ok'; machineId: string; config: RedactedWebToolsConfig }
+    | { status: 'ok'; config: RedactedWebToolsConfig }
     | { status: 'offline' }
     | { status: 'error'; message: string }
 
@@ -29,43 +29,35 @@ export type WebToolsConfigQueryData =
 export type WebToolsSaveResult = { ok: true } | { ok: false; error: string }
 
 /**
- * 共享 query options：机器列表（第一台在线，复用 queryKeys.machines 缓存去重 RTT）→ 该机器脱敏配置。
- * 入口徽标（useWebToolsStatus select 派生）与子页（useWebToolsConfig）消费同一份缓存，
- * 保存后失效一次即两处同步——不再有两条互不失效的加载路径。
+ * 共享 query options：直接拉宿主脱敏配置（/api/web-tools 顶级域，204 去掉「先查机器列表
+ * 换 machineId」间接层）。入口徽标（useWebToolsStatus select 派生）与子页（useWebToolsConfig）
+ * 消费同一份缓存，保存后失效一次即两处同步——不再有两条互不失效的加载路径。
  */
-export function webToolsConfigQuery(api: ReturnType<typeof useMobiApi>, queryClient: QueryClient) {
+export function webToolsConfigQuery(api: ReturnType<typeof useMobiApi>) {
     return {
         queryKey: queryKeys.webToolsConfig,
         queryFn: async (): Promise<WebToolsConfigQueryData> => {
             try {
-                // 与 useMachines 同 key 同结构：staleTime 内命中缓存，机器列表不再重复请求
-                const machinesData = await queryClient.ensureQueryData({
-                    queryKey: queryKeys.machines,
-                    queryFn: async () => (await api.machines.list()).data,
-                })
-                const online = machinesData.machines.find((m) => m.active)
-                if (!online) return { status: 'offline' }
-                const configRes = await api.machines.webTools.get(online.id)
-                // 200 + { error } 变体 = runner 读盘失败（机器在线），与离线分开提示
+                const configRes = await api.webTools.get()
+                // 200 + { error } 变体 = runner 读盘失败（executor 在线），与离线分开提示
                 if (!('config' in configRes.data)) {
                     return { status: 'error', message: configRes.data.error ?? '' }
                 }
-                return { status: 'ok', machineId: online.id, config: configRes.data.config }
+                return { status: 'ok', config: configRes.data.config }
             } catch (error) {
-                // 502（runner 离线）/ 网络异常统一按"机器离线"；warn 保留现场（先观测原则）
+                // 502（executor 未就绪）/ 网络异常统一按"离线"；warn 保留现场（先观测原则）
                 console.warn('[webToolsConfig] 加载失败', error)
                 return { status: 'offline' }
             }
         },
         staleTime: 30_000,
         retry: false,
-        // 状态摘要只在挂载/导航时需要新鲜；移动端 PWA focus 抖动不应触发两跳重拉
+        // 状态摘要只在挂载/导航时需要新鲜；移动端 PWA focus 抖动不应触发重拉
         refetchOnWindowFocus: false,
     }
 }
 
 export interface WebToolsState {
-    machineId: string | null
     config: RedactedWebToolsConfig | null
     offline: boolean
     loadError: string | null
@@ -80,17 +72,17 @@ export interface WebToolsState {
 export function useWebToolsConfig(): WebToolsState {
     const api = useMobiApi()
     const queryClient = useQueryClient()
-    const query = useQuery(webToolsConfigQuery(api, queryClient))
+    const query = useQuery(webToolsConfigQuery(api))
 
     const saveMutation = useMutation({
         mutationFn: async (config: WebToolsConfigSubmission): Promise<WebToolsSaveResult> => {
             if (query.data?.status !== 'ok') return { ok: false, error: '' }
             try {
-                const res = await api.machines.webTools.set(query.data.machineId, config)
+                const res = await api.webTools.set(config)
                 if (res.data?.success !== true) return { ok: false, error: res.data?.error ?? '' }
                 return { ok: true }
             } catch {
-                // 502（runner 离线）等传输层异常：error 留空，调用方回退通用文案
+                // 502（executor 未就绪）等传输层异常：error 留空，调用方回退通用文案
                 return { ok: false, error: '' }
             }
         },
@@ -104,7 +96,6 @@ export function useWebToolsConfig(): WebToolsState {
 
     const data = query.data
     return {
-        machineId: data?.status === 'ok' ? data.machineId : null,
         config: data?.status === 'ok' ? data.config : null,
         offline: !query.isPending && (data == null || data.status === 'offline'),
         loadError: data?.status === 'error' ? data.message : null,

@@ -21,10 +21,9 @@ import type { ReactNode } from 'react'
 
 // ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——工作区已知坑） ============
 
-const machinesList = vi.hoisted(() => vi.fn())
 const webToolsGet = vi.hoisted(() => vi.fn())
 const mockApi = {
-    machines: { list: machinesList, webTools: { get: webToolsGet } },
+    webTools: { get: webToolsGet },
 }
 vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => mockApi,
@@ -41,10 +40,6 @@ function makeHookWrapper(qc: QueryClient) {
     return ({ children }: { children: ReactNode }) => (
         <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     )
-}
-
-function makeMachine(overrides: Partial<{ id: string; active: boolean }> = {}) {
-    return { id: 'm1', active: true, ...overrides }
 }
 
 /** 渲染 hook 并等到非 loading（queryFn resolve 后必然离开 pending） */
@@ -64,31 +59,19 @@ describe('useWebToolsStatus 三态推导', () => {
         vi.clearAllMocks()
     })
 
-    it('无 active 机器 → offline', async () => {
-        machinesList.mockResolvedValue({ data: { machines: [makeMachine({ active: false })] } })
-        expect(await renderStatus()).toBe('offline')
-        // 第一跳已短路，不应再请求配置
-        expect(webToolsGet).not.toHaveBeenCalled()
-    })
-
     it('webTools.get 返回 { error } 变体 → offline', async () => {
-        machinesList.mockResolvedValue({ data: { machines: [makeMachine()] } })
         webToolsGet.mockResolvedValue({ data: { error: 'boom' } })
         expect(await renderStatus()).toBe('offline')
     })
 
     it('路由指向 provider（search/fetch 任一非空）→ enabled（以实际路由为准）', async () => {
-        machinesList.mockResolvedValue({ data: { machines: [makeMachine({ id: 'm1' }), makeMachine({ id: 'm2' })] } })
         webToolsGet.mockResolvedValue({
             data: { config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true }] } },
         })
         expect(await renderStatus()).toBe('enabled')
-        // 多机取第一台在线
-        expect(webToolsGet).toHaveBeenCalledWith('m1')
     })
 
     it('仅开关打开而无路由 → unconfigured（runner resolve 返回 null，绿点徽标不得虚报可用）', async () => {
-        machinesList.mockResolvedValue({ data: { machines: [makeMachine()] } })
         webToolsGet.mockResolvedValue({
             data: { config: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: { set: true } } }] } },
         })
@@ -96,7 +79,6 @@ describe('useWebToolsStatus 三态推导', () => {
     })
 
     it('providers 存在但均未启用 → unconfigured', async () => {
-        machinesList.mockResolvedValue({ data: { machines: [makeMachine()] } })
         webToolsGet.mockResolvedValue({
             data: { config: { providers: [{ id: 'tavily', enabled: false }] } },
         })
@@ -104,13 +86,12 @@ describe('useWebToolsStatus 三态推导', () => {
     })
 
     it('providers 缺省（未配置任何 provider）→ unconfigured', async () => {
-        machinesList.mockResolvedValue({ data: { machines: [makeMachine()] } })
         webToolsGet.mockResolvedValue({ data: { config: {} } })
         expect(await renderStatus()).toBe('unconfigured')
     })
 
-    it('machines.list reject → offline', async () => {
-        machinesList.mockRejectedValue(new Error('network down'))
+    it('get reject（executor 未就绪/网络异常）→ offline', async () => {
+        webToolsGet.mockRejectedValue(new Error('network down'))
         expect(await renderStatus()).toBe('offline')
     })
 })

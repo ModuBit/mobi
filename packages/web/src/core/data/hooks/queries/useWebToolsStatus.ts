@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { webToolsConfigQuery, type WebToolsConfigQueryData } from './useWebToolsConfig'
 
@@ -37,9 +37,8 @@ export function deriveWebToolsStatus(data: WebToolsConfigQueryData | undefined):
  */
 export function useWebToolsStatus(): WebToolsStatus {
     const api = useMobiApi()
-    const queryClient = useQueryClient()
     const query = useQuery({
-        ...webToolsConfigQuery(api, queryClient),
+        ...webToolsConfigQuery(api),
         select: deriveWebToolsStatus,
     })
     if (query.isPending) return 'loading'

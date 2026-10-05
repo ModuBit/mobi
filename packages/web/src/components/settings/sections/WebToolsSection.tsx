@@ -71,14 +71,14 @@ const Hint = styled.span<{ $token: Token }>`
 /**
  * Web 工具子页：顶部用途路由卡（web_search/web_fetch 即时保存）+ 下方 provider 卡列表
  * （开关外置、点击卡身展开内联凭据编辑器）。
- * 配置真相源在目标机器的 `~/.mobi/settings.json`（hub 纯透传 runner RPC）。
+ * 配置真相源在宿主的 `~/.mobi/settings.json`（daemon 纯透传 runner RPC）。
  */
 export function WebToolsSection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const api = useMobiApi()
     const { message } = App.useApp()
-    const { machineId, config, offline, loadError, loaded, saving, save } = useWebToolsConfig()
+    const { config, offline, loadError, loaded, saving, save } = useWebToolsConfig()
     // 展开态提升到本层持有：保存后 invalidate 重读脱敏配置，子树不卸载编辑器不收起，A 卡展开时操作 B 卡互不影响
     const [expandedId, setExpandedId] = useState<WebToolProviderId | null>(null)
 
@@ -140,9 +140,8 @@ export function WebToolsSection() {
         id: WebToolProviderId,
         credentials: Record<string, string>,
     ): Promise<VerifyResult> => {
-        if (!machineId) return { success: false, error: t('settings.webTools.offline') }
         try {
-            return (await api.machines.webTools.verify(machineId, id, credentials)).data
+            return (await api.webTools.verify(id, credentials)).data
         } catch {
             return { success: false, error: t('settings.webTools.loadFailed') }
         }

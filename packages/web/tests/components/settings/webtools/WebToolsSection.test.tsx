@@ -22,10 +22,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 // 稳定引用（模块级单例）：useMobiApi 每次渲染返回同一对象，避免 effect 无限循环（worker OOM 前车之鉴）
 const stableApi = {
-    machines: {
-        list: vi.fn(),
-        webTools: { get: vi.fn(), set: vi.fn(), verify: vi.fn() },
-    },
+    webTools: { get: vi.fn(), set: vi.fn(), verify: vi.fn() },
 }
 
 vi.mock('@/core/data/api/client', () => ({
@@ -109,10 +106,9 @@ function renderSection() {
     )
 }
 
-/** 首台在线机器 m1 + tavily 已启用已设 key 的脱敏配置（两跳请求依次消费；可重复消费供 reload） */
+/** tavily 已启用已设 key 的脱敏配置（单跳请求直接消费；可重复消费供 reload） */
 function mockLoadConfig(overrides?: { enabled?: boolean; searchProviderId?: 'tavily'; fetchProviderId?: 'tavily' }) {
-    stableApi.machines.list.mockResolvedValue({ data: { machines: [{ id: 'm1', active: true }] } })
-    stableApi.machines.webTools.get.mockResolvedValue({
+    stableApi.webTools.get.mockResolvedValue({
         data: {
             config: {
                 searchProviderId: overrides?.searchProviderId,
@@ -130,10 +126,9 @@ function mockLoadConfig(overrides?: { enabled?: boolean; searchProviderId?: 'tav
 describe('WebToolsSection', () => {
     beforeEach(() => {
         // mockReset：清掉上一用例的 mockResolvedValue 队列与调用记录，各用例自设响应
-        stableApi.machines.list.mockReset()
-        stableApi.machines.webTools.get.mockReset()
-        stableApi.machines.webTools.set.mockReset()
-        stableApi.machines.webTools.verify.mockReset()
+        stableApi.webTools.get.mockReset()
+        stableApi.webTools.set.mockReset()
+        stableApi.webTools.verify.mockReset()
         routeState.onChange = null
         editorState.onSave = null
     })
@@ -198,7 +193,7 @@ describe('WebToolsSection', () => {
         await waitFor(() =>
             expect(screen.getByText('该 provider 正承担 搜索 / 抓取，请先调整用途路由')).toBeTruthy(),
         )
-        expect(stableApi.machines.webTools.set).not.toHaveBeenCalled()
+        expect(stableApi.webTools.set).not.toHaveBeenCalled()
         // 开关仍选中
         expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
     })
@@ -206,26 +201,24 @@ describe('WebToolsSection', () => {
     it('启用未引用 provider：即时保存全量 providers（凭据键不在场=保持）并重读配置', async () => {
         // 未启用且未被路由引用 → 允许打开
         mockLoadConfig({ enabled: false })
-        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
+        stableApi.webTools.set.mockResolvedValue({ data: { success: true } })
         renderSection()
 
         await waitFor(() => expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toBeTruthy())
         fireEvent.click(screen.getByRole('switch', { name: 'tavily-enabled' }))
 
-        await waitFor(() => expect(stableApi.machines.webTools.set).toHaveBeenCalledTimes(1))
-        const [machineId, config] = stableApi.machines.webTools.set.mock.calls[0] as [
-            string,
+        await waitFor(() => expect(stableApi.webTools.set).toHaveBeenCalledTimes(1))
+        const [config] = stableApi.webTools.set.mock.calls[0] as [
             { providers: Array<{ id: string; enabled: boolean; timeoutMs: number; credentials: Record<string, unknown> }> },
         ]
-        expect(machineId).toBe('m1')
         expect(config.providers).toEqual([{ id: 'tavily', enabled: true, timeoutMs: 8000, credentials: {} }])
-        // 成功后 reload：两跳请求重跑（get 至少第二次）
-        await waitFor(() => expect(stableApi.machines.webTools.get.mock.calls.length).toBeGreaterThanOrEqual(2))
+        // 成功后 reload：请求重跑（get 至少第二次）
+        await waitFor(() => expect(stableApi.webTools.get.mock.calls.length).toBeGreaterThanOrEqual(2))
     })
 
     it('路由变更即时保存：set 以含新 searchProviderId 的 config 调用，成功后重读', async () => {
         mockLoadConfig({ enabled: true, searchProviderId: 'tavily', fetchProviderId: 'tavily' })
-        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
+        stableApi.webTools.set.mockResolvedValue({ data: { success: true } })
         renderSection()
 
         await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
@@ -233,22 +226,20 @@ describe('WebToolsSection', () => {
         // 通过捕获的 onChange 回调触发路由变更（真实 Select 单 provider 恒锁定，UI 路径不可达）
         await routeState.onChange!({ searchProviderId: 'tavily' })
 
-        await waitFor(() => expect(stableApi.machines.webTools.set).toHaveBeenCalledTimes(1))
-        const [machineId, config] = stableApi.machines.webTools.set.mock.calls[0] as [
-            string,
+        await waitFor(() => expect(stableApi.webTools.set).toHaveBeenCalledTimes(1))
+        const [config] = stableApi.webTools.set.mock.calls[0] as [
             { searchProviderId?: string; fetchProviderId?: string; providers: unknown[] },
         ]
-        expect(machineId).toBe('m1')
         expect(config.searchProviderId).toBe('tavily')
         // 未变更的 fetch 路由回填现值（整体替换语义）
         expect(config.fetchProviderId).toBe('tavily')
         // 成功后 reload：get 重读
-        await waitFor(() => expect(stableApi.machines.webTools.get.mock.calls.length).toBeGreaterThanOrEqual(2))
+        await waitFor(() => expect(stableApi.webTools.get.mock.calls.length).toBeGreaterThanOrEqual(2))
     })
 
     it('凭据保存走 saveBase：set 实参回填 search/fetch 路由字段（防整体替换清空路由）', async () => {
         mockLoadConfig({ enabled: true, searchProviderId: 'tavily', fetchProviderId: 'tavily' })
-        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
+        stableApi.webTools.set.mockResolvedValue({ data: { success: true } })
         renderSection()
 
         // 展开编辑器（占位渲染 null，onSave 已被捕获）
@@ -257,9 +248,8 @@ describe('WebToolsSection', () => {
         expect(editorState.onSave).toBeTruthy()
         await editorState.onSave!({ apiKey: 'tvly-new-key' })
 
-        await waitFor(() => expect(stableApi.machines.webTools.set).toHaveBeenCalledTimes(1))
-        const [, config] = stableApi.machines.webTools.set.mock.calls[0] as [
-            string,
+        await waitFor(() => expect(stableApi.webTools.set).toHaveBeenCalledTimes(1))
+        const [config] = stableApi.webTools.set.mock.calls[0] as [
             { searchProviderId?: string; fetchProviderId?: string; providers: Array<{ id: string; enabled: boolean; timeoutMs: number; credentials: Record<string, string | null> }> },
         ]
         // providers 整体替换语义：路由字段必须回填现值，否则保存凭据会静默清空路由
@@ -274,7 +264,7 @@ describe('WebToolsSection', () => {
     it('保存失败（success:false）：恰好一条 error toast 且透传 runner 原因（非通用文案），开关状态不变', async () => {
         // 已启用且未被路由引用 → 允许关闭；提交返回业务失败
         mockLoadConfig({ enabled: true })
-        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: false, error: 'provider "tavily" 缺少凭据：apiKey' } })
+        stableApi.webTools.set.mockResolvedValue({ data: { success: false, error: 'provider "tavily" 缺少凭据：apiKey' } })
         renderSection()
 
         await waitFor(() => expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toBeTruthy())
@@ -297,14 +287,13 @@ describe('WebToolsSection', () => {
         expect(screen.queryByRole('combobox')).toBeNull()
     })
 
-    it('机器离线（get reject）→ offline Alert 呈现，不渲染配置区', async () => {
-        stableApi.machines.list.mockResolvedValue({ data: { machines: [{ id: 'm1', active: true }] } })
-        stableApi.machines.webTools.get.mockRejectedValue(new Error('offline'))
+    it('executor 未就绪（get reject）→ offline Alert 呈现，不渲染配置区', async () => {
+        stableApi.webTools.get.mockRejectedValue(new Error('offline'))
         renderSection()
 
         await waitFor(() => expect(screen.getByText('机器离线，无法加载 Web 工具配置')).toBeTruthy())
         expect(screen.queryByRole('switch', { name: 'tavily-enabled' })).toBeNull()
-        expect(stableApi.machines.webTools.set).not.toHaveBeenCalled()
+        expect(stableApi.webTools.set).not.toHaveBeenCalled()
     })
 
     it('单 provider：路由行不锁定且可清除（allowClear）——teardown 流程（清路由 → 禁用 provider）畅通', async () => {
@@ -325,7 +314,7 @@ describe('WebToolsSection', () => {
 
     it('路由清除（null）：set payload 不含被清除的路由字段（区别于「未提及回填现值」）', async () => {
         mockLoadConfig({ enabled: true, searchProviderId: 'tavily', fetchProviderId: 'tavily' })
-        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
+        stableApi.webTools.set.mockResolvedValue({ data: { success: true } })
         renderSection()
 
         await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
@@ -333,9 +322,8 @@ describe('WebToolsSection', () => {
         // 清除 fetch 路由：null 语义 → payload 只回填 search 现值，fetch 字段整体缺席（整体替换语义下即清除落盘）
         await routeState.onChange!({ fetchProviderId: null })
 
-        await waitFor(() => expect(stableApi.machines.webTools.set).toHaveBeenCalledTimes(1))
-        const [, config] = stableApi.machines.webTools.set.mock.calls[0] as [
-            string,
+        await waitFor(() => expect(stableApi.webTools.set).toHaveBeenCalledTimes(1))
+        const [config] = stableApi.webTools.set.mock.calls[0] as [
             { searchProviderId?: string; fetchProviderId?: string; providers: unknown[] },
         ]
         expect(config.searchProviderId).toBe('tavily')

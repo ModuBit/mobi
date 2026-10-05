@@ -15,32 +15,27 @@
  */
 
 /**
- * web 工具配置路由（纯透传 → runner RPC）：
- * hub 不存任何 web 工具状态，配置真相源在目标机器的 ~/.mobi/settings.cli.json
+ * web 工具配置路由（纯透传 → runner RPC；ticket 204 顶级化，原 /api/machines/:id/web-tools）：
+ * daemon 不存任何 web 工具状态，配置真相源在宿主的 ~/.mobi/settings.cli.json。
+ * executor 未就绪（bridge 未接线/RPC 不可达）→ 502，web 据此呈现 offline。
  */
 import { Hono } from 'hono'
 import { VerifyWebToolsProviderSchema } from '@mobi/shared'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireMachine } from './guards'
 
 export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    app.get('/machines/:id/web-tools', async (c) => {
+    app.get('/web-tools', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not connected' }, 503)
         }
 
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
         try {
-            const result = await engine.getWebToolsConfig(machineId)
+            // machineId 实参为 D4=C 路由残留（本地实现忽略），602 形参收窄时删除
+            const result = await engine.getWebToolsConfig('')
             return c.json(result)
         } catch (error) {
             // 502 = runner RPC 传输层不可达/超时；业务失败走 envelope 200（与 CLI 侧 RpcHandlerManager ack 行为对齐）
@@ -48,16 +43,10 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
-    app.post('/machines/:id/web-tools', async (c) => {
+    app.post('/web-tools', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
         }
 
         const body = await c.req.json().catch(() => null) as { config?: unknown } | null
@@ -66,7 +55,7 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const result = await engine.setWebToolsConfig(machineId, body.config)
+            const result = await engine.setWebToolsConfig('', body.config)
             return c.json(result)
         } catch (error) {
             // 502 = runner RPC 传输层不可达/超时；业务失败走 envelope 200（与 CLI 侧 RpcHandlerManager ack 行为对齐）
@@ -75,16 +64,10 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
     })
 
     // 验证连接：透传 runner RPC（一次轻量真实搜索；凭据草稿优先于已存值，不落盘）
-    app.post('/machines/:id/web-tools/verify', async (c) => {
+    app.post('/web-tools/verify', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
         }
 
         // schema 校验（与 runner handler 共用 VerifyWebToolsProviderSchema）：
@@ -97,7 +80,7 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const result = await engine.verifyWebToolsProvider(machineId, parsed.data.providerId, parsed.data.credentials)
+            const result = await engine.verifyWebToolsProvider('', parsed.data.providerId, parsed.data.credentials)
             return c.json(result)
         } catch (error) {
             // 502 = runner RPC 传输层不可达/超时；业务失败走 envelope 200（与 get/set 一致）

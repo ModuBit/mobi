@@ -20,22 +20,18 @@ import type { WebAppEnv } from '../../../src/web/middleware/auth'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
 import { createWebToolsRoutes } from '../../../src/web/routes/webTools'
 
-const NAMESPACE = 'ns-test'
+/**
+ * webTools 路由（纯透传；ticket 204 顶级化，原 /api/machines/:id/web-tools 去机器维度）。
+ * machineId 形参残留：底层 engine 方法仍收空串占位，602 形参收窄时删。
+ */
 
-/** 测试用 engine mock：getMachine 供 requireMachine 做 namespace 归属校验 */
+/** 测试用 engine mock（透传目标的三个方法） */
 function createTestEngine(overrides?: {
     getWebToolsConfig?: (id: string) => Promise<unknown>
     setWebToolsConfig?: (id: string, config: unknown) => Promise<unknown>
     verifyWebToolsProvider?: (id: string, providerId: string, credentials?: Record<string, string>) => Promise<unknown>
-    /** machine 归属的 namespace；null 表示 machine 不存在 */
-    machineNamespace?: string | null
 }): SyncEngine {
-    // 注意不能用 ??：machineNamespace 显式传 null 表示「machine 不存在」，需与未传区分
-    const namespace =
-        overrides && 'machineNamespace' in overrides ? overrides.machineNamespace : NAMESPACE
     return {
-        getMachine: () =>
-            namespace === null ? undefined : { id: 'm1', namespace },
         getWebToolsConfig: overrides?.getWebToolsConfig ?? vi.fn(),
         setWebToolsConfig: overrides?.setWebToolsConfig ?? vi.fn(),
         verifyWebToolsProvider: overrides?.verifyWebToolsProvider ?? vi.fn(),
@@ -46,7 +42,7 @@ function createTestApp(engine: SyncEngine | null) {
     const app = new Hono<WebAppEnv>()
     // 模拟 auth 中间件注入的 namespace 变量
     app.use('*', async (c, next) => {
-        c.set('namespace', NAMESPACE)
+        c.set('namespace', 'ns-test')
         await next()
     })
     app.route('/api', createWebToolsRoutes(() => engine))
@@ -54,32 +50,32 @@ function createTestApp(engine: SyncEngine | null) {
 }
 
 describe('webTools 路由（纯透传）', () => {
-    it('GET 转发 machineId 并返回 config', async () => {
+    it('GET 透传并返回 config（machineId 残留形参收空串）', async () => {
         const getSpy = vi.fn().mockResolvedValue({ config: { searchProviderId: 'tavily' } })
         const app = createTestApp(createTestEngine({ getWebToolsConfig: getSpy }))
-        const res = await app.request('/api/machines/m1/web-tools')
+        const res = await app.request('/api/web-tools')
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ config: { searchProviderId: 'tavily' } })
-        expect(getSpy).toHaveBeenCalledWith('m1')
+        expect(getSpy).toHaveBeenCalledWith('')
     })
 
     it('POST 校验 body 后转发 config', async () => {
         const setSpy = vi.fn().mockResolvedValue({ success: true })
         const app = createTestApp(createTestEngine({ setWebToolsConfig: setSpy }))
-        const res = await app.request('/api/machines/m1/web-tools', {
+        const res = await app.request('/api/web-tools', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ config: { searchProviderId: 'bocha' } }),
         })
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ success: true })
-        expect(setSpy).toHaveBeenCalledWith('m1', { searchProviderId: 'bocha' })
+        expect(setSpy).toHaveBeenCalledWith('', { searchProviderId: 'bocha' })
     })
 
     it('POST 无 config → 400', async () => {
         const setSpy = vi.fn()
         const app = createTestApp(createTestEngine({ setWebToolsConfig: setSpy }))
-        const res = await app.request('/api/machines/m1/web-tools', {
+        const res = await app.request('/api/web-tools', {
             method: 'POST',
             body: '{}',
             headers: { 'content-type': 'application/json' },
@@ -90,7 +86,7 @@ describe('webTools 路由（纯透传）', () => {
 
     it('POST body 非 JSON → 400', async () => {
         const app = createTestApp(createTestEngine())
-        const res = await app.request('/api/machines/m1/web-tools', {
+        const res = await app.request('/api/web-tools', {
             method: 'POST',
             body: 'not-json',
             headers: { 'content-type': 'application/json' },
@@ -100,27 +96,15 @@ describe('webTools 路由（纯透传）', () => {
 
     it('engine 未就绪 → 503', async () => {
         const app = createTestApp(null)
-        const res = await app.request('/api/machines/m1/web-tools')
+        const res = await app.request('/api/web-tools')
         expect(res.status).toBe(503)
     })
 
-    it('machine 不存在 → 404', async () => {
-        const app = createTestApp(createTestEngine({ machineNamespace: null }))
-        const res = await app.request('/api/machines/m1/web-tools')
-        expect(res.status).toBe(404)
-    })
-
-    it('machine 归属其他 namespace → 403', async () => {
-        const app = createTestApp(createTestEngine({ machineNamespace: 'ns-other' }))
-        const res = await app.request('/api/machines/m1/web-tools')
-        expect(res.status).toBe(403)
-    })
-
-    it('GET 下游抛错 → 502 带 error', async () => {
+    it('GET 下游抛错 → 502 带 error（executor 未就绪场景，web 据此呈现 offline）', async () => {
         const app = createTestApp(
             createTestEngine({ getWebToolsConfig: vi.fn().mockRejectedValue(new Error('runner offline')) }),
         )
-        const res = await app.request('/api/machines/m1/web-tools')
+        const res = await app.request('/api/web-tools')
         expect(res.status).toBe(502)
         expect(((await res.json()) as { error: string }).error).toContain('runner offline')
     })
@@ -129,7 +113,7 @@ describe('webTools 路由（纯透传）', () => {
         const app = createTestApp(
             createTestEngine({ setWebToolsConfig: vi.fn().mockRejectedValue(new Error('write failed')) }),
         )
-        const res = await app.request('/api/machines/m1/web-tools', {
+        const res = await app.request('/api/web-tools', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ config: {} }),
@@ -141,7 +125,7 @@ describe('webTools 路由（纯透传）', () => {
     it('POST /verify 透传 runner 结果（success envelope）', async () => {
         const verifySpy = vi.fn().mockResolvedValue({ success: true, latencyMs: 42 })
         const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ providerId: 'tavily', credentials: { apiKey: 'k' } }),
@@ -149,13 +133,13 @@ describe('webTools 路由（纯透传）', () => {
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ success: true, latencyMs: 42 })
         // 凭据草稿透传给 runner（不落盘）
-        expect(verifySpy).toHaveBeenCalledWith('m1', 'tavily', { apiKey: 'k' })
+        expect(verifySpy).toHaveBeenCalledWith('', 'tavily', { apiKey: 'k' })
     })
 
     it('POST /verify 缺 providerId → 400', async () => {
         const verifySpy = vi.fn()
         const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({}),
@@ -167,7 +151,7 @@ describe('webTools 路由（纯透传）', () => {
     it('POST /verify credentials 畸形值（null/数字）→ 400（边界拒绝，防假阳性透传）', async () => {
         const verifySpy = vi.fn()
         const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ providerId: 'tavily', credentials: { apiKey: null } }),
@@ -179,7 +163,7 @@ describe('webTools 路由（纯透传）', () => {
     it('POST /verify 未知 providerId → 400（schema enum 拒绝）', async () => {
         const verifySpy = vi.fn()
         const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ providerId: 'nope' }),
@@ -190,7 +174,7 @@ describe('webTools 路由（纯透传）', () => {
 
     it('POST /verify engine 未就绪 → 503', async () => {
         const app = createTestApp(null)
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ providerId: 'tavily' }),
@@ -202,7 +186,7 @@ describe('webTools 路由（纯透传）', () => {
         const app = createTestApp(
             createTestEngine({ verifyWebToolsProvider: vi.fn().mockRejectedValue(new Error('runner offline')) }),
         )
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ providerId: 'tavily', credentials: { apiKey: 'secret-draft' } }),
@@ -220,7 +204,7 @@ describe('webTools 路由（纯透传）', () => {
                 verifyWebToolsProvider: vi.fn().mockResolvedValue({ success: false, error: 'invalid api key' }),
             }),
         )
-        const res = await app.request('/api/machines/m1/web-tools/verify', {
+        const res = await app.request('/api/web-tools/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ providerId: 'tavily' }),
