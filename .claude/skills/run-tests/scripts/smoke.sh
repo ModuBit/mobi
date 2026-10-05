@@ -167,25 +167,25 @@ login() {
     e2e_log_info "登录成功 ✓"
 }
 
-# ─── 等 daemon 完成本机自注册 ──────────────────────────────────────────────────
-# daemon 启动时向库内自注册本机（machine 层本地化后唯一元素）——spawn 依赖
-# machineId，未注册完就去建工作区/会话会拿不到。判据用 machines API 非空而非
-# daemon.state.json：state 写在自注册之前，不代表可用
+# ─── 等 daemon 完成启动装配 ───────────────────────────────────────────────────
+# 就绪判据（ticket 201 起改用 daemon status API）：GET /api/daemon/status 返回 200
+# ——syncEngine 未接入（启动早期）返回 503 starting；就绪后返回宿主静态身份。
+# 不再用 /api/machines：机器列表这一层随 machine 概念移除退场
 wait_for_daemon_ready() {
     local waited=0
-    local machine_id=""
+    local status=""
     while (( waited < 30 )); do
-        machine_id=$(curl -sf -X GET \
-            "http://localhost:${DAEMON_PORT}/api/machines" \
-            -b "${E2E_TMPDIR}/cookies.txt" 2>/dev/null | jq -r '.machines[0].id // empty' 2>/dev/null)
-        if [[ -n "${machine_id}" && "${machine_id}" != "null" ]]; then
-            e2e_log_info "Daemon 就绪 ✓ (本机自注册完成，机器 ${machine_id:0:8}…，等待 $((waited / 2))s)"
+        status=$(curl -sf -X GET \
+            "http://localhost:${DAEMON_PORT}/api/daemon/status" \
+            -b "${E2E_TMPDIR}/cookies.txt" 2>/dev/null | jq -r '.status // empty' 2>/dev/null)
+        if [[ "${status}" == "ok" ]]; then
+            e2e_log_info "Daemon 就绪 ✓ (等待 $((waited / 2))s)"
             return 0
         fi
         sleep 0.5
         waited=$((waited + 1))
     done
-    e2e_log_error "等待 daemon 就绪超时 (30s)：本机自注册未完成（机器列表为空）"
+    e2e_log_error "等待 daemon 就绪超时 (30s)：/api/daemon/status 未返回 ok"
     exit 1
 }
 
@@ -195,7 +195,7 @@ get_or_create_workspace() {
 
     wait_for_daemon_ready
 
-    # 先获取机器列表
+    # machineId 仅为 workspaces 建行过渡需要（404 去维后删除）；列表仍恒单元素
     local machines
     machines=$(curl -sf -X GET \
         "http://localhost:${DAEMON_PORT}/api/machines" \
@@ -242,26 +242,10 @@ get_or_create_workspace() {
 create_session() {
     e2e_log_section "创建会话"
 
-    # 获取机器 ID
-    local machines
-    machines=$(curl -sf -X GET \
-        "http://localhost:${DAEMON_PORT}/api/machines" \
-        -b "${E2E_TMPDIR}/cookies.txt") || {
-        e2e_log_error "获取机器列表失败"
-        exit 1
-    }
-
-    local machine_id
-    machine_id=$(echo "${machines}" | jq -r '.machines[0].id')
-
-    if [[ -z "${machine_id}" || "${machine_id}" == "null" ]]; then
-        e2e_log_error "未找到可用机器"
-        exit 1
-    fi
-
+    # 单机 spawn：POST /api/sessions/spawn（去 machineId 维度，ticket 201）
     local session_response
     session_response=$(curl -sf -X POST \
-        "http://localhost:${DAEMON_PORT}/api/machines/${machine_id}/spawn" \
+        "http://localhost:${DAEMON_PORT}/api/sessions/spawn" \
         -H "Content-Type: application/json" \
         -b "${E2E_TMPDIR}/cookies.txt" \
         -d "{\"directory\": \"${HOME}/workspace/demo\", \"workspaceId\": \"${WORKSPACE_ID}\"}") || {

@@ -49,6 +49,8 @@ export const queryKeys = {
     pinnedSessions: ['pinnedSessions'] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
+    /** daemon 状态（单机：GET /api/daemon/status，取代机器列表作为宿主身份/就绪源） */
+    daemonStatus: ['daemon-status'] as const,
     /** 机器 SDK 元数据 */
     machineMetadata: (machineId: string, cwd: string) => ['machineMetadata', machineId, cwd] as const,
     /** 会话文件搜索 */

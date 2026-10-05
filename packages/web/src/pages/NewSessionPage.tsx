@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
+import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { SessionCreating } from '@/components/session/SessionCreating'
@@ -201,7 +202,7 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
 /**
  * 新建会话页面
  *
- * 状态机：gate（未选机器+目录） → create（空输入） → send（有内容）
+ * 状态机：gate（未选目录） → create（空输入） → send（有内容）
  * 两步创建：spawnSession → sendMessage → navigate
  * 两行 Sender 布局：Row 1 = 环境选择 | Row 2 = 配置 + 操作
  */
@@ -231,9 +232,8 @@ export function NewSessionPage() {
     // 显式选中任一项才随 spawn 透传到 CLI（无偏好持久化，每次从跟随起）
     const [outputStyle, setOutputStyle] = useState<string>(() => loadPreferredOutputStyle())
 
-    // 环境配置（工作区即环境：机器 + 工作目录均为所选工作区的派生快照，不再手动选择/输入）
+    // 环境配置（工作区即环境：工作目录为所选工作区的派生快照，不再手动选择/输入）
     const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
-    const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [selectedDirectory, setSelectedDirectory] = useState('')
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
@@ -253,7 +253,10 @@ export function NewSessionPage() {
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 数据
+    // machine 通道列表仅剩 capTarget 过渡用途（202 文件读域重组后删除）；
+    // 宿主身份（homeDir/显示名）与就绪源改 daemon status
     const { machines, isLoading: isLoadingMachines } = useMachines()
+    const { status: daemonStatus } = useDaemonStatus()
     const { spawnSession } = useSpawnSession()
     // 全量工作区（跨机器）：机器由所选工作区派生，不再单独选择
     const { data: allWorkspaces = [] } = useWorkspaces()
@@ -262,14 +265,10 @@ export function NewSessionPage() {
         [allWorkspaces, initialWorkspaceId],
     )
 
-    // 当前选中机器的 homeDir
-    const currentMachine = machines.find(m => m.id === selectedMachineId)
-    const machineHomeDir = currentMachine?.metadata?.homeDir as string | undefined
-    // 过渡态回显：机器显示名 + home 缩写为 ~ 的目录（仅展示用，非提交值）
-    const machineLabel = currentMachine?.metadata?.displayName
-        ?? currentMachine?.metadata?.host
-        ?? currentMachine?.id?.slice(0, 8)
-        ?? ''
+    // 宿主 homeDir（单机：daemon 即宿主，直源 daemon status）
+    const machineHomeDir = daemonStatus?.host?.homeDir
+    // 过渡态回显：宿主显示名 + home 缩写为 ~ 的目录（仅展示用，非提交值）
+    const machineLabel = daemonStatus?.host?.hostname ?? ''
     const directoryLabel = useMemo(() => {
         if (!selectedDirectory) return ''
         if (machineHomeDir && selectedDirectory.startsWith(machineHomeDir)) {
@@ -286,7 +285,6 @@ export function NewSessionPage() {
     // 工作区 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
     const applyWorkspace = useCallback((workspace: Workspace) => {
         setSelectedWorkspaceId(workspace.id)
-        setSelectedMachineId(workspace.machineId)
         const primaryPath = workspace.folders.find(f => f.primary)?.path
         if (primaryPath) {
             setSelectedDirectory(primaryPath)
@@ -331,10 +329,12 @@ export function NewSessionPage() {
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
-        return (selectedMachineId && confirmedDirectory)
-            ? { kind: 'machine', machineId: selectedMachineId, cwd: confirmedDirectory }
+        // 过渡期仍走 machine 通道（202 文件读域重组后切 /api/files）：单机取列表首个 id
+        const machineId = machines[0]?.id
+        return (machineId && confirmedDirectory)
+            ? { kind: 'machine', machineId, cwd: confirmedDirectory }
             : null
-    }, [selectedMachineId, confirmedDirectory])
+    }, [machines, confirmedDirectory])
     const capabilities = useDirectoryCapabilities(capTarget, { metadataEnabled: metadataNeeded })
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
@@ -371,8 +371,8 @@ export function NewSessionPage() {
     // 同步防重入标志（ref 即时生效，弥补 isPending setState 的异步窗口）(#13)
     const submittingRef = useRef(false)
 
-    // Gate：是否已选好环境
-    const gatePassed = !!(selectedMachineId && selectedDirectory)
+    // Gate：是否已选好环境（单机：目录即全部——机器维度已随 machine 概念移除）
+    const gatePassed = !!selectedDirectory
     const hasContent = inputText.trim().length > 0
     const hasAttachments = attachments.length > 0
     const inputDisabled = !gatePassed
@@ -559,7 +559,7 @@ export function NewSessionPage() {
 
     // ============ 提交处理 ============
     const handleSubmit = useCallback(async () => {
-        if (!selectedMachineId || !selectedDirectory || isPending || submittingRef.current) return
+        if (!selectedDirectory || isPending || submittingRef.current) return
         // 附件上传中不允许提交（与 ChatComposer 一致），避免 uploading 附件被静默丢弃 (#1)
         if (attachmentsRef.current.some(a => a.status === 'uploading')) {
             messageApi.warning('附件上传中，请稍候')
@@ -580,7 +580,6 @@ export function NewSessionPage() {
 
         try {
             const input: SpawnInput = {
-                machineId: selectedMachineId,
                 directory: selectedDirectory || '/',
                 agent,
                 model: model === 'auto' ? undefined : model,
@@ -640,7 +639,7 @@ export function NewSessionPage() {
             setIsPending(false)
         }
     }, [
-        selectedMachineId, selectedDirectory, isPending,
+        selectedDirectory, isPending,
         agent, model, effort, permissionMode, outputStyle, sessionType, worktreeName,
         selectedWorkspaceId, spawnSession, navigate, messageApi, api.messages,
     ])

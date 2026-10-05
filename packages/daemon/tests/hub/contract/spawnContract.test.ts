@@ -58,8 +58,8 @@ function createSessionWithPath(h: EngineHandle, path: string, nativeId?: string)
     )
 }
 
-/** 构造测试 engine，注册一台在线 machine */
-function makeEngine(): EngineHandle {
+/** 构造测试 engine，注册一台在线 machine（executorReady 缺省就绪；executorNotReady 用例外） */
+function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
     const store = new Store(':memory:')
 
     const io = {
@@ -83,6 +83,11 @@ function makeEngine(): EngineHandle {
 
     // 注册本机 machine（spawn 寻址前提；ticket-20 起自注册即常驻 active）
     engine.registerLocalMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
+
+    // executor 就绪（ticket 201 起 resume/spawn 判据；机器列表层已删）
+    if (opts.executorReady !== false) {
+        engine.markExecutorReady()
+    }
 
     return {
         engine,
@@ -378,21 +383,20 @@ describe('Spawn Contract: 会话不存在或无权限', () => {
         }
     })
 
-    test('resume 无在线 machine → no_machine_online', async () => {
-        // 创建会话但让 machine 离线（必须有完整的 metadata.path）
-        const existing = createSessionWithPath(h, '/tmp/offline')
+    test('resume executor 未就绪 → executor_not_ready', async () => {
+        // 创建会话（必须有完整的 metadata.path）；engine 不标记 executor 就绪
+        const h2 = makeEngine({ executorReady: false })
+        try {
+            const existing = createSessionWithPath(h2, '/tmp/offline')
 
-        // 让 machine 离线：直接更新 DB，不走 cache
-        h.store.getDatabaseForTesting().prepare('UPDATE machines SET active = 0 WHERE id = ?').run(MACHINE_ID)
-        // 清除缓存中的 machine
-        const machineCache = (h.engine as any).machineCache
-        machineCache.machines.delete(MACHINE_ID)
+            const result = await h2.engine.resumeSession(existing.id, NAMESPACE)
 
-        const result = await h.engine.resumeSession(existing.id, NAMESPACE)
-
-        expect(result.type).toBe('error')
-        if (result.type === 'error') {
-            expect(result.code).toBe('no_machine_online')
+            expect(result.type).toBe('error')
+            if (result.type === 'error') {
+                expect(result.code).toBe('executor_not_ready')
+            }
+        } finally {
+            h2.cleanup()
         }
     })
 })

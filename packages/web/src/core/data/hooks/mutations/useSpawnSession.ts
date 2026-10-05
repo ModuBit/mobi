@@ -23,7 +23,6 @@ import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import type { AgentType, SessionType } from '@/domain/session/types'
 
 export interface SpawnInput {
-    machineId: string
     directory: string
     agent?: AgentType
     model?: string
@@ -33,7 +32,7 @@ export interface SpawnInput {
     permissionMode?: PermissionMode
     sessionType?: SessionType
     worktreeName?: string
-    /** 归属工作区（缺省 = 游离会话，进「最近」）；hub 侧校验工作区存在且属于该机器 */
+    /** 归属工作区（缺省 = 游离会话，进「最近」）；daemon 侧校验工作区存在且属本机 */
     workspaceId?: string
 }
 
@@ -51,8 +50,7 @@ export function useSpawnSession(): {
     const mutation = useMutation({
         mutationFn: async (input: SpawnInput): Promise<SpawnResponse> => {
             try {
-                const res = await api.machines.spawn(
-                    input.machineId,
+                const res = await api.sessions.spawn(
                     input.directory,
                     input.agent,
                     input.model,

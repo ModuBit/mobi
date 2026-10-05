@@ -279,8 +279,9 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
     test('resumeToken 用 fork 行预生成 nativeSessionId（禁改 parentNativeId）', async () => {
         const h = makeSpawnEngine()
         try {
-            // 机器在线（同 namespace，targetMachine 匹配前置）
+            // executor 就绪（ticket 201 起 resume 判据；机器列表层已删）
             h.engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
+            h.engine.markExecutorReady()
 
             // 建 parent + fork 行（走 forkSession 编排，fork 行 metadata 由 store 层写入）
             const parent = h.engine.getOrCreateSession(
@@ -350,7 +351,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
     test('resumeSession 失败 → hub 落 forkError 错误态（CLI 离线场景，spec §5.3）', async () => {
         const h = makeSpawnEngine()
         try {
-            // 不注册任何在线机器 → resumeSession 走 no_machine_online 失败路径
+            // 不标记 executor 就绪 → resumeSession 走 executor_not_ready 失败路径
             const parent = h.engine.getOrCreateSession(
                 'fork-offline-parent',
                 { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'parent-native-1' },

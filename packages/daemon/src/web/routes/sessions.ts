@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
+import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
+import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
@@ -198,6 +200,67 @@ export function createSessionsRoutes(
         }
     }
 
+    // ── spawn（原 POST /machines/:id/spawn，机器维度删除后迁入 sessions 资源域）──
+
+    const spawnBodySchema = z.object({
+        directory: z.string().min(1),
+        agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
+        model: z.string().optional(),
+        effort: z.enum(EFFORT_LEVELS).optional(),
+        outputStyle: z.string().optional(),
+        permissionMode: PermissionModeSchema.optional(),
+        sessionType: z.enum(['simple', 'worktree']).optional(),
+        worktreeName: z.string().optional(),
+        workspaceId: z.string().optional()
+    })
+
+    app.post('/sessions/spawn', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = spawnBodySchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        // 归属校验前置：workspaceId 必须指向同 namespace 的现存工作区
+        // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定不存在工作区的幽灵会话
+        if (parsed.data.workspaceId) {
+            const namespace = c.get('namespace')
+            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace)
+            if (assignable === 'not_found') {
+                return c.json({ error: 'Workspace not found' }, 404)
+            }
+        }
+
+        // 安全校验：directory 必须在本机 homeDir 内（单机后 homeDir 直源宿主静态身份，
+        // 与 daemon 进程同机等价，不再经 machines 行 metadata 中转）
+        const homeDir = buildMachineMetadata().homeDir
+        const validation = validateHomeDirPath(parsed.data.directory, homeDir)
+        if (!validation.valid) {
+            return c.json({ error: validation.error }, 403)
+        }
+
+        const result = await engine.spawnSession(
+            '', // machineId 形参为 D4=C 路由残留（本地实现忽略），602 形参收窄时删除
+            parsed.data.directory,
+            {   // 选项对象化（深化候选②）：resumeSessionId 等缺省字段不再靠 undefined 占位对位
+                agent: parsed.data.agent,
+                model: parsed.data.model,
+                permissionMode: parsed.data.permissionMode,
+                sessionType: parsed.data.sessionType,
+                worktreeName: parsed.data.worktreeName,
+                effort: parsed.data.effort,
+                outputStyle: parsed.data.outputStyle,
+                workspaceId: parsed.data.workspaceId,
+            }
+        )
+        return c.json(result)
+    })
+
     app.get('/sessions', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -284,7 +347,7 @@ export function createSessionsRoutes(
         const result = await engine.resumeSession(sessionResult.sessionId, namespace)
         if (result.type === 'error') {
             const status: 200 | 401 | 403 | 404 | 500 | 503 =
-                result.code === 'no_machine_online' ? 503
+                result.code === 'executor_not_ready' ? 503
                     : result.code === 'access_denied' ? 403
                         : result.code === 'session_not_found' ? 404
                             : 500

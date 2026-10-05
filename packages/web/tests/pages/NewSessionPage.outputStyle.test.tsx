@@ -24,7 +24,7 @@
  * - 不改默认直接提交 → spawnSession 入参不含 outputStyle 字段
  *
  * 环境注入：通过 localStorage「最近使用工作区」恢复路径预选工作区（绕开
- * EnvironmentBar 交互），让 gate（机器 + 目录）直接通过以便提交。
+ * EnvironmentBar 交互），让 gate（目录）直接通过以便提交。
  *
  * Select 交互说明（antd v6）：选中值在 `.ant-select-content`，展开用
  * fireEvent.mouseDown(`.ant-select`)，选项 portal 到 body（virtual={false}）。
@@ -54,9 +54,16 @@ vi.mock('@/core/data/hooks/mutations/useSpawnSession', () => ({
 //    在 vitest 下无 JSON import attribute 而炸），本规格与其无关，桩掉 ——
 vi.mock('@/components/sketchpad/SketchDrawer', () => ({ SketchDrawer: () => null }))
 
-// —— mock 数据 hooks：单机器单工作区，工作区经 localStorage 恢复路径自动选中 ——
+// —— mock 数据 hooks：单工作区，工作区经 localStorage 恢复路径自动选中 ——
 vi.mock('@/core/data/hooks/queries/useMachines', () => ({
     useMachines: () => ({ machines: [], isLoading: false }),
+}))
+// —— mock daemon 状态（宿主身份/就绪源；单机无机器选择，ticket 201）——
+vi.mock('@/core/data/hooks/queries/useDaemonStatus', () => ({
+    useDaemonStatus: () => ({
+        status: { status: 'ok', host: { hostname: 'test-host', platform: 'darwin', homeDir: '/home/u' } },
+        isLoading: false,
+    }),
 }))
 const TEST_WORKSPACE: Workspace = {
     id: 'p1',
@@ -246,7 +253,6 @@ describe('NewSessionPage output style 选择器', () => {
         await submit()
         expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({
             outputStyle: 'Explanatory',
-            machineId: 'm1',
             directory: '/home/u/demo',
         }))
     })

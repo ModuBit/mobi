@@ -32,7 +32,7 @@ import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 /** 构造带 spawn 计数的 SyncEngine（spawn fake 同步创建新会话并上报 alive；
  *  spawnReply 提供时 fake 原样返回该结果、不造会话——already-running 场景用。
  *  ticket-20 起 spawn 观测点从 machine socket RPC 改为 MachineHost 直调入参） */
-function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
+function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorReady?: boolean } = {}): {
     engine: SyncEngine
     store: Store
     spawnCalls: () => Record<string, unknown>[]
@@ -64,6 +64,10 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown> } = {}): {
     const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
     const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
     engineRef.engine = engine
+    // executor 就绪（ticket 201 起 resume 判据；机器列表层已删）
+    if (opts.executorReady !== false) {
+        engine.markExecutorReady()
+    }
     return {
         engine,
         store,
@@ -206,17 +210,11 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         }
     })
 
-    test('无机器在线 → 唤醒静默失败，入队消息保留在 queued', async () => {
-        const h = makeWakeEngine()
+    test('executor 未就绪 → 唤醒静默失败，入队消息保留在 queued', async () => {
+        const h = makeWakeEngine({ executorReady: false })
         try {
-            h.engine.getOrCreateMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
-            // 不发 handleMachineAlive：机器存在但离线 → resumeSession 走 no_machine_online
-            const session = h.engine.getOrCreateSession(
-                'wake-offline',
-                { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' },
-                null,
-                'default',
-            )
+            // 不标记 executor 就绪 → resumeSession 走 executor_not_ready
+            const session = seedDormantSession(h)
             h.store.messages.addMessage(session.id, { role: 'user', content: [{ type: 'text', text: 'hi' }], meta: { sentFrom: 'webapp' } }, 'l1')
 
             // fire-and-forget：不 throw 即为过

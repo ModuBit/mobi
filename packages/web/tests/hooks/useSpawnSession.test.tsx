@@ -27,12 +27,12 @@ import { renderHook, act, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
-// 隔离 api.machines.spawn，避免真实 HTTP
+// 隔离 api.sessions.spawn，避免真实 HTTP
 const mocks = vi.hoisted(() => ({
     spawn: vi.fn(),
 }))
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: () => ({ machines: { spawn: mocks.spawn } }),
+    useMobiApi: () => ({ sessions: { spawn: mocks.spawn } }),
 }))
 // t 仅作兜底文案，返回 key 即可
 vi.mock('react-i18next', () => ({
@@ -48,7 +48,6 @@ function makeWrapper(qc: QueryClient) {
 }
 
 const INPUT = {
-    machineId: 'm1',
     directory: '/home/u/proj',
     agent: 'claude' as const,
     model: undefined,
@@ -84,20 +83,20 @@ describe('useSpawnSession', () => {
     it('hub 返回 error（HTTP 200 + body.type=error）时透传 message，而非吞成 success', async () => {
         // hub spawnSession 失败时 return c.json({ type:'error', message }) —— HTTP 仍 200
         // axios 对 200 不抛错，故 useSpawnSession 必须读取 body.type 判定
-        mocks.spawn.mockResolvedValueOnce({ data: { type: 'error', message: 'No machine online' } })
+        mocks.spawn.mockResolvedValueOnce({ data: { type: 'error', message: 'Executor not ready' } })
         const { result } = renderHook(() => useSpawnSession(), { wrapper: makeWrapper(qc) })
 
         let res: { type: string; sessionId?: string; message?: string } | undefined
         await act(async () => { res = await result.current.spawnSession(INPUT) })
 
         expect(res?.type).toBe('error')
-        expect(res?.message).toBe('No machine online')
+        expect(res?.message).toBe('Executor not ready')
         // 不能退化为 success+undefined sessionId（那会让 NewSessionPage 走兜底「创建会话失败」而丢失真实原因）
         expect(res?.sessionId).toBeUndefined()
     })
 
     it('hub 返回 shape 异常时给出可读错误（而非 success+undefined）', async () => {
-        // 例：machine 离线时 machineRpc 可能返回非预期结构
+        // 例：executor 未接线时 RPC 可能返回非预期结构
         mocks.spawn.mockResolvedValueOnce({ data: { unexpected: true } })
         const { result } = renderHook(() => useSpawnSession(), { wrapper: makeWrapper(qc) })
 

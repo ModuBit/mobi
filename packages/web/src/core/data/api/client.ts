@@ -121,6 +121,9 @@ export function createMobiApi() {
         // Sessions
         sessions: {
             list: () => client.get<{ sessions: Session[] }>('/api/sessions'),
+            // spawn 新会话（单机：POST /api/sessions/spawn，原 /api/machines/:id/spawn 去 machineId 重组）
+            spawn: (directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string, outputStyle?: string, workspaceId?: string) =>
+                client.post('/api/sessions/spawn', { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, workspaceId }),
             get: (sessionId: string) => client.get<{ session: Session }>(`/api/sessions/${sessionId}`),
             create: (path: string) => client.post<Session>('/api/sessions', { path }),
             delete: (sessionId: string) => client.delete(`/api/sessions/${sessionId}`),
@@ -386,11 +389,14 @@ export function createMobiApi() {
                 client.patch(`/api/sessions/${sessionId}`, { workspaceId }),
         },
 
+        // Host / daemon（单机：daemon 即宿主；机器列表这一层随 machine 概念移除退场）
+        daemon: {
+            status: () => client.get<{ status: 'ok' | 'starting'; host: { hostname: string; platform: string; homeDir: string } }>('/api/daemon/status'),
+        },
+
         // Machines
         machines: {
             list: () => client.get<{ machines: Machine[] }>('/api/machines'),
-            spawn: (machineId: string, directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string, outputStyle?: string, workspaceId?: string) =>
-                client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, permissionMode, sessionType, worktreeName, effort, outputStyle, workspaceId }),
             checkPathsExist: (machineId: string, paths: string[]) =>
                 client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
             listDirectory: (machineId: string, path: string, opts?: { signal?: AbortSignal }) =>

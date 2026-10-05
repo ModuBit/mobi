@@ -16,12 +16,11 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { PermissionModeSchema, EFFORT_LEVELS } from '@mobi/shared'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
-import { checkWorkspaceAssignable, type SyncEngine } from '../../sync/syncEngine'
+import { type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
 import { serveFileContent } from './serveFileContent'
@@ -33,18 +32,6 @@ import { serveFileContent } from './serveFileContent'
  * 调 hub API；恒注 CSP 后 script 仍可跑（内嵌页面预览语义），但任何网络外呼被切断，
  * 攻击面收敛为纯展示。
  */
-
-const spawnBodySchema = z.object({
-    directory: z.string().min(1),
-    agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
-    model: z.string().optional(),
-    effort: z.enum(EFFORT_LEVELS).optional(),
-    outputStyle: z.string().optional(),
-    permissionMode: PermissionModeSchema.optional(),
-    sessionType: z.enum(['simple', 'worktree']).optional(),
-    worktreeName: z.string().optional(),
-    workspaceId: z.string().optional()
-})
 
 const pathsExistsSchema = z.object({
     paths: z.array(z.string().min(1)).max(1000)
@@ -81,60 +68,6 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const namespace = c.get('namespace')
         const machines = engine.getOnlineMachinesByNamespace(namespace)
         return c.json({ machines })
-    })
-
-    app.post('/machines/:id/spawn', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = spawnBodySchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        // 归属校验前置：workspaceId 必须指向同 namespace 的现存工作区
-        // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定不存在工作区的幽灵会话
-        if (parsed.data.workspaceId) {
-            const namespace = c.get('namespace')
-            const assignable = checkWorkspaceAssignable(engine, parsed.data.workspaceId, namespace)
-            if (assignable === 'not_found') {
-                return c.json({ error: 'Workspace not found' }, 404)
-            }
-        }
-
-        // 安全校验：directory 必须在 homeDir 内
-        const homeDir = machine.metadata?.homeDir
-        if (homeDir) {
-            const validation = validateHomeDirPath(parsed.data.directory, homeDir)
-            if (!validation.valid) {
-                return c.json({ error: validation.error }, 403)
-            }
-        }
-
-        const result = await engine.spawnSession(
-            machineId,
-            parsed.data.directory,
-            {   // 选项对象化（深化候选②）：resumeSessionId 等缺省字段不再靠 undefined 占位对位
-                agent: parsed.data.agent,
-                model: parsed.data.model,
-                permissionMode: parsed.data.permissionMode,
-                sessionType: parsed.data.sessionType,
-                worktreeName: parsed.data.worktreeName,
-                effort: parsed.data.effort,
-                outputStyle: parsed.data.outputStyle,
-                workspaceId: parsed.data.workspaceId,
-            }
-        )
-        return c.json(result)
     })
 
     app.post('/machines/:id/paths/exists', async (c) => {

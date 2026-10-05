@@ -263,6 +263,8 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     let stopped = false
     const setRunnerBridge = (bridge: RunnerSessionBridge): void => {
         runnerBridge = bridge
+        // executor 管线就绪：此后 spawn/resume 判据从「machineCache 有在线机器」切换为该标志
+        syncEngine?.markExecutorReady()
         // 会话 socket 重连/心跳 → 会话行 metadata 同步进 runner 追踪表（Q8 补登 + 查重键刷新）
         const engine = syncEngine
         engine?.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), bridge.registerSessionTracking))

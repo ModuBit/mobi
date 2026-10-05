@@ -74,7 +74,7 @@ export type {
 
 export type ResumeSessionResult =
     | { type: 'success'; sessionId: string }
-    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'no_machine_online' | 'resume_unavailable' | 'resume_failed' }
+    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'executor_not_ready' | 'resume_unavailable' | 'resume_failed' }
 
 /**
  * fork 会话创建（POST /api/sessions/:id/fork）的结构化结果：
@@ -125,6 +125,12 @@ export class SyncEngine {
     private inactivityTimer: NodeJS.Timeout | null = null
     /** 唤醒防重入：在途 resume spawn 的会话集合（wakeSession 单源读写） */
     private readonly wakeInFlight = new Set<string>()
+    /**
+     * executor（同进程 runner 管线）就绪标志：bridge 注入即置位（hubServer.setRunnerBridge）。
+     * 取代旧 machineCache online 检查作为「能否 spawn/resume」的判据——旧判据依赖 machines 表
+     * 行状态，新判据直接反映执行层接线事实：bridge 未注入时 spawn 必报「bridge 未接线」。
+     */
+    private executorReady = false
 
     constructor(
         store: Store,
@@ -788,6 +794,15 @@ export class SyncEngine {
         }
     }
 
+    /** executor 就绪标志接线（见 executorReady 字段说明）：bridge 注入时调用，幂等 */
+    markExecutorReady(): void {
+        this.executorReady = true
+    }
+
+    isExecutorReady(): boolean {
+        return this.executorReady
+    }
+
     async spawnSession(
         machineId: string,
         directory: string,
@@ -869,32 +884,17 @@ export class SyncEngine {
         // 此时 fallback 为新会话而非 resume
         const resumeToken = metadata.nativeSessionId
 
-        const onlineMachines = this.machineCache.getOnlineMachinesByNamespace(namespace)
-        if (onlineMachines.length === 0) {
-            // fork 行：CLI 离线也激活不了——hub 侧落 forkError 错误态（spec §5.3）
-            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'no machine online')
-            return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
-        }
-
-        const targetMachine = (() => {
-            if (metadata.machineId) {
-                const exact = onlineMachines.find((machine) => machine.id === metadata.machineId)
-                if (exact) return exact
-            }
-            if (metadata.host) {
-                const hostMatch = onlineMachines.find((machine) => machine.metadata?.host === metadata.host)
-                if (hostMatch) return hostMatch
-            }
-            return null
-        })()
-
-        if (!targetMachine) {
-            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'no machine online')
-            return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
+        // 单机世界：executor（同进程 runner 管线）就绪即可 resume——不再有「挑机器/
+        // 匹配 metadata.machineId|host」这一层（machine 概念移除，ticket 201）
+        if (!this.isExecutorReady()) {
+            // fork 行：executor 未就绪也激活不了——daemon 侧落 forkError 错误态（spec §5.3）
+            this.markForkActivationErrorIfPending(sessionId, 'activation-failed', 'executor not ready')
+            return { type: 'error', message: 'Executor not ready', code: 'executor_not_ready' }
         }
 
         const spawnResult = await this.machineHost.spawnSession(
-            targetMachine.id,
+            // machineId 形参为 D4=C 路由残留（本地实现忽略），602 形参收窄时删除
+            '',
             metadata.path,
             {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
                 model: session.runtimeState?.model ?? undefined,

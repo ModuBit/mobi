@@ -431,8 +431,9 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
         const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
         engineRef.engine = engine
         try {
-            // 机器在线（同 namespace）
+            // executor 就绪（ticket 201 起 resume 判据；机器列表层已删）
             engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
+            engine.markExecutorReady()
 
             // 已结束会话：runtimeState 持久化 effort + outputStyle（keep-alive 落库的终态）
             const session = engine.getOrCreateSession(
