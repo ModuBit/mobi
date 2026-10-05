@@ -17,10 +17,9 @@
 /**
  * 机器执行层内部接口（ticket-15，绞杀者起点）。
  *
- * daemon 侧一切「要在某台 machine 上做事」的调用（spawn / 文件 / git 审查 / webTools /
+ * daemon 侧一切「要在本机做的执行层事」（spawn / 文件 / git 审查 / webTools /
  * 元数据）都收到这个接口上，调用方（syncEngine 透传 + agent 会话服务）不再感知传输。
- * 首个实现 {@link SocketMachineHost} 包一层现有 machine 通道 RPC，行为零变化；
- * ④ 后续按能力逐项换成本地实现（WP4.3），调用方不动。
+ * 唯一实现 {@link LocalMachineHost}（ticket-20 起 socket 版实现随 machine 通道删除）。
  *
  * `machineId` 参数保留（D4=C 路由残留）：多机删除是 ⑤ 的事，先不做形参收窄。
  * 返回类型沿用现有 RPC 结果类型——`RpcFailure` 的 `kind` 分类由实现保证

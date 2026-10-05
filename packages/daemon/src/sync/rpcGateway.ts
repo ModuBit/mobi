@@ -17,10 +17,8 @@
 /**
  * 会话进程族 RPC 网关（Hub → CLI，按 sessionId 路由）。
  *
- * machine 族（按 machineId 路由）在 ticket-17/20 已本地直调化（SocketMachineHost
- * 随 machine socket 通道删除），本类只剩会话族，传输语义在 {@link SocketRpcCaller}。
- * 下方 machine 族类型 re-export 仅为兼容既有 import（syncEngine 等），新代码请从
- * `../machine/MachineHost` 取。
+ * machine 族（按 machineId 路由）在 ticket-17/20 已本地直调化，本类只剩会话族，
+ * 传输语义在 {@link SocketRpcCaller}。
  */
 
 import type { EffortLevel, PermissionMode } from '@mobi/shared/types'
@@ -29,28 +27,6 @@ import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { RpcRefreshMetadataResponse } from '../machine/MachineHost'
 import { SocketRpcCaller } from './rpcCaller'
-
-// ── machine 族类型 re-export（兼容既有 import，正源在 ../machine/MachineHost）──
-export type {
-    MachineHost,
-    SpawnSessionOptions,
-    SpawnGatewayResult,
-    RpcRefreshMetadataResponse,
-    RpcSaveFileResponse,
-    RpcWriteFileRangeResponse,
-    RpcDeleteUploadResponse,
-    RpcReplaceUploadResponse,
-    RpcGetWebToolsConfigResponse,
-    RpcSetWebToolsConfigResponse,
-    RpcVerifyWebToolsProviderResponse,
-    RpcDirectoryEntry,
-    RpcListDirectoryResponse,
-    RpcPathExistsResponse
-} from '../machine/MachineHost'
-export { UNEXPECTED_ALREADY_RUNNING, isUnexpectedAlreadyRunning } from '../machine/MachineHost'
-
-// 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared（MachineHost 内做别名）
-export type { RpcFileMeta, RpcReadFileMetaResponse, RpcReadFileRangeResponse } from '../machine/MachineHost'
 
 export class RpcGateway {
     private readonly caller: SocketRpcCaller

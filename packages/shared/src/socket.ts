@@ -333,39 +333,24 @@ const UpdateSessionBodySchema = z.object({
     }).nullable()
 })
 
-const UpdateMachineBodySchema = z.object({
-    t: z.literal('update-machine'),
-    machineId: z.string(),
-    metadata: z.object({
-        version: z.number(),
-        value: z.unknown()
-    }).nullable(),
-    runnerState: z.object({
-        version: z.number(),
-        value: z.unknown().nullable()
-    }).nullable()
-})
-
-export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>
-
 export const UpdateSchema = z.object({
     id: z.string(),
     seq: z.number(),
-    body: z.union([UpdateNewMessageBodySchema, UpdateSessionBodySchema, UpdateMachineBodySchema]),
+    body: z.union([UpdateNewMessageBodySchema, UpdateSessionBodySchema]),
     createdAt: z.number()
 })
 
 export type Update = z.infer<typeof UpdateSchema>
 
 export interface ServerToClientEvents {
-    /** Hub→CLI 会话推送（session room）：new-message / update-session 三种 body，按 body.t 判别 */
+    /** Hub→CLI 会话推送（session room）：new-message / update-session 两种 body，按 body.t 判别 */
     'session-update': (data: Update) => void
     'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     'terminal:open': (data: TerminalOpenPayload) => void
     'terminal:write': (data: TerminalWritePayload) => void
     'terminal:resize': (data: TerminalResizePayload) => void
     'terminal:close': (data: TerminalClosePayload) => void
-    error: (data: { message: string; code?: SocketErrorReason; scope?: 'session' | 'machine'; id?: string }) => void
+    error: (data: { message: string; code?: SocketErrorReason; scope?: 'session'; id?: string }) => void
 }
 
 /** 消息的上游 native 事实（rewind 锚点）——nativeId 为 transcript 消息 uuid；nativeSessionId 为所属

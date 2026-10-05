@@ -16,8 +16,8 @@
 
 /**
  * spawn 结果 → {@link SpawnGatewayResult} 的映射单源（ticket-18 抽出）。
- * SocketMachineHost（socket 回路回执）与 LocalMachineHost（runner 直调回执）共用，
- * 两条路径的成功/already-running/error(+failure 分类) 归一不会分叉。
+ * 所有 spawn 回执路径（runner 直调回执等）共用，
+ * 成功/already-running/error(+failure 分类) 归一不会分叉。
  */
 
 import { classifyTransportFailure } from '../sync/rpcCaller'

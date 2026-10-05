@@ -27,15 +27,10 @@ import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { LocalMachineHost } from '../machine/LocalMachineHost'
-import type { MachineHost } from '../machine/MachineHost'
-import { MachineCache, type Machine } from './machineCache'
-import { AgentSessionService } from './agentSessionService'
-import { MessageService, type SendMessagePayload } from './messageService'
-import { WorkspaceCache } from './workspaceCache'
 import {
-    RpcGateway,
     isUnexpectedAlreadyRunning,
     UNEXPECTED_ALREADY_RUNNING,
+    type MachineHost,
     type RpcDeleteUploadResponse,
     type RpcGetWebToolsConfigResponse,
     type RpcListDirectoryResponse,
@@ -48,7 +43,12 @@ import {
     type RpcVerifyWebToolsProviderResponse,
     type RpcWriteFileRangeResponse,
     type SpawnSessionOptions
-} from './rpcGateway'
+} from '../machine/MachineHost'
+import { MachineCache, type Machine } from './machineCache'
+import { AgentSessionService } from './agentSessionService'
+import { MessageService, type SendMessagePayload } from './messageService'
+import { WorkspaceCache } from './workspaceCache'
+import { RpcGateway } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 import { readRpcFailure } from './rpcFailure'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
@@ -70,7 +70,7 @@ export type {
     RpcSetWebToolsConfigResponse,
     RpcVerifyWebToolsProviderResponse,
     RpcWriteFileRangeResponse
-} from './rpcGateway'
+} from '../machine/MachineHost'
 
 export type ResumeSessionResult =
     | { type: 'success'; sessionId: string }

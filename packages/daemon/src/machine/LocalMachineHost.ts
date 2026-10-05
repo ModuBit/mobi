@@ -15,9 +15,8 @@
  */
 
 /**
- * {@link MachineHost} 的本地实现（ticket-17，WP4.3）：直调 machine handlers 的
- * 实现函数。ticket-20 起 socket 版实现（SocketMachineHost）随 machine 通道删除，
- * 本类是唯一实现。
+ * {@link MachineHost} 的唯一本地实现（ticket-17/20）：直调 machine handlers 的
+ * 实现函数（socket 版实现随 machine 通道删除）。
  *
  * `machineId` 形参保留（D4=C 路由残留），本地实现忽略之。
  */
@@ -124,7 +123,7 @@ export class LocalMachineHost implements MachineHost {
 
     // ── 目录与搜索组（ticket-17 组3：本地直调）──
 
-    // 条目形状（仅 name）比 RpcListDirectoryEntry 窄——与 SocketMachineHost 同款 as 断言透传
+    // 条目形状（仅 name）比 RpcListDirectoryEntry 窄——as 断言透传
     async listMachineDirectory(_machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
         return await listMachineDirectoryImpl({ path, homeDir }) as RpcListDirectoryResponse
     }
@@ -151,7 +150,7 @@ export class LocalMachineHost implements MachineHost {
 
     // ── web-tools + metadata 组（ticket-17 组5：本地直调）──
 
-    // error envelope 形状比 MachineHost 响应类型宽——与 SocketMachineHost 同款 as 断言透传
+    // error envelope 形状比 MachineHost 响应类型宽——as 断言透传
     async getWebToolsConfig(_machineId: string): Promise<RpcGetWebToolsConfigResponse> {
         return await getWebToolsConfigImpl() as RpcGetWebToolsConfigResponse
     }

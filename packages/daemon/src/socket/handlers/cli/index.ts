@@ -91,7 +91,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         }
     }
 
-    const emitAccessError = (scope: 'session' | 'machine', id: string, reason: AccessErrorReason) => {
+    const emitAccessError = (scope: 'session', id: string, reason: AccessErrorReason) => {
         const message = reason === 'access-denied'
             ? `${scope} access denied`
             : reason === 'not-found'

@@ -38,7 +38,7 @@ import type { AccessErrorReason, AccessResult } from './types'
 
 type ResolveSessionAccess = (sessionId: string) => AccessResult<StoredSession>
 
-type EmitAccessError = (scope: 'session' | 'machine', id: string, reason: AccessErrorReason) => void
+type EmitAccessError = (scope: 'session', id: string, reason: AccessErrorReason) => void
 
 type UpdateMetadataHandler = ClientToServerEvents['update-metadata']
 type UpdateStateHandler = ClientToServerEvents['update-state']
