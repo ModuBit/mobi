@@ -51,8 +51,10 @@ export const queryKeys = {
     machines: ['machines'] as const,
     /** daemon 状态（单机：GET /api/daemon/status，取代机器列表作为宿主身份/就绪源） */
     daemonStatus: ['daemon-status'] as const,
-    /** 机器 SDK 元数据 */
+    /** 机器 SDK 元数据（machine 通道过渡；203 后宿主元数据走 hostMetadata） */
     machineMetadata: (machineId: string, cwd: string) => ['machineMetadata', machineId, cwd] as const,
+    /** 宿主 SDK 元数据（单机：cwd 单维度，原 machineMetadata 去 machineId） */
+    hostMetadata: (cwd: string) => ['hostMetadata', cwd] as const,
     /** 会话文件搜索 */
     sessionFiles: (sessionId: string, query: string) => ['session-files', sessionId, query] as const,
     /** 会话目录 */

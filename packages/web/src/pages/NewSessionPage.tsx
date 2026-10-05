@@ -25,7 +25,6 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, OUTPUT_STYLE_FOLLOW_SETTING, getPermissionModeTone } from '@mobi/shared'
-import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
@@ -253,10 +252,8 @@ export function NewSessionPage() {
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 数据
-    // machine 通道列表仅剩 capTarget 过渡用途（202 文件读域重组后删除）；
-    // 宿主身份（homeDir/显示名）与就绪源改 daemon status
-    const { machines, isLoading: isLoadingMachines } = useMachines()
-    const { status: daemonStatus } = useDaemonStatus()
+    // 宿主身份（homeDir/显示名）与就绪源走 daemon status（机器列表层已随 machine 概念移除）
+    const { status: daemonStatus, isLoading: isLoadingDaemonStatus } = useDaemonStatus()
     const { spawnSession } = useSpawnSession()
     // 全量工作区（跨机器）：机器由所选工作区派生，不再单独选择
     const { data: allWorkspaces = [] } = useWorkspaces()
@@ -329,11 +326,9 @@ export function NewSessionPage() {
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
-        // host 通道单机即宿主；machineId 为过渡字段（203 迁上传/metadata 后删）
-        return confirmedDirectory
-            ? { kind: 'host', cwd: confirmedDirectory, machineId: machines[0]?.id }
-            : null
-    }, [machines, confirmedDirectory])
+        // host 通道单机即宿主，cwd 单参数
+        return confirmedDirectory ? { kind: 'host', cwd: confirmedDirectory } : null
+    }, [confirmedDirectory])
     const capabilities = useDirectoryCapabilities(capTarget, { metadataEnabled: metadataNeeded })
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
@@ -864,7 +859,7 @@ export function NewSessionPage() {
     ].filter(Boolean)
 
     // ============ 加载中 ============
-    if (isLoadingMachines) {
+    if (isLoadingDaemonStatus) {
         return (
             <PageContainer>
                 <Spin size="large" />

@@ -394,7 +394,7 @@ export function createMobiApi() {
             status: () => client.get<{ status: 'ok' | 'starting'; host: { hostname: string; platform: string; homeDir: string } }>('/api/daemon/status'),
         },
 
-        // 宿主文件读域（单机：/api/files/*，原 /api/machines/:id/* 去 machineId 重组；
+        // 宿主文件域（单机：/api/files/*，原 /api/machines/:id/* 去 machineId 重组；
         // 与上方 session 通道 files 组区分）
         hostFiles: {
             pathsExist: (paths: string[]) =>
@@ -406,21 +406,12 @@ export function createMobiApi() {
             // 目录列表（@ 引用展开子目录）
             listSessionDirectory: (cwd: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>('/api/files/list-session-directory', { params: { cwd, path, prefix }, signal: opts?.signal }),
-        },
-
-        // Machines（过渡组：202 后仅剩 metadata + upload×3 + webTools 透传；203/204 迁走后删除）
-        machines: {
-            list: () => client.get<{ machines: Machine[] }>('/api/machines'),
-            // SDK metadata（slash 命令）
-            metadata: (machineId: string, cwd: string, opts?: { signal?: AbortSignal }) =>
-                client.get(`/api/machines/${machineId}/metadata`, { params: { cwd }, signal: opts?.signal }),
             // 文件上传（二进制流式 + 进度 + 取消，cwd 走 header，替换 FormData→multipart）
             upload: (
-                machineId: string,
                 cwd: string,
                 file: File,
                 opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void },
-            ) => client.post(`/api/machines/${machineId}/upload`, file, {
+            ) => client.post('/api/files/upload', file, {
                 headers: {
                     'Content-Type': 'application/octet-stream',
                     'X-Mobi-Filename': encodeURIComponent(file.name),
@@ -432,16 +423,15 @@ export function createMobiApi() {
                 signal: opts?.signal,
             }),
             // 文件上传删除
-            deleteUpload: (machineId: string, cwd: string, path: string) =>
-                client.post(`/api/machines/${machineId}/upload/delete`, { cwd, path }),
+            deleteUpload: (cwd: string, path: string) =>
+                client.post('/api/files/upload/delete', { cwd, path }),
             // 同 path 原子替换已上传文件（对称 session 通道）
             replaceUpload: (
-                machineId: string,
                 cwd: string,
                 path: string,
                 file: Blob,
                 opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void },
-            ) => client.post(`/api/machines/${machineId}/upload/replace`, file, {
+            ) => client.post('/api/files/upload/replace', file, {
                 headers: {
                     'Content-Type': 'application/octet-stream',
                     'X-Mobi-Cwd': encodeURIComponent(cwd),
@@ -452,7 +442,19 @@ export function createMobiApi() {
                     : undefined,
                 signal: opts?.signal,
             }),
-            // Web 工具配置（hub 纯透传 runner RPC；凭据脱敏回显，机器离线 502 reject）
+        },
+
+        // SDK 元数据域（/api/sdk/*；会话内 SWR 缓存语义在 sessions.metadata）
+        sdk: {
+            // 新建会话页选目录后、会话行尚未存在时的元数据通道（slash 命令等）
+            hostMetadata: (cwd: string, opts?: { signal?: AbortSignal }) =>
+                client.get('/api/sdk/host-metadata', { params: { cwd }, signal: opts?.signal }),
+        },
+
+        // Machines（过渡组：仅剩列表 + webTools 透传；205/204 各自迁移后删除）
+        machines: {
+            list: () => client.get<{ machines: Machine[] }>('/api/machines'),
+            // Web 工具配置（hub 纯透传 runner RPC；凭据脱敏回显，机器离线 502 reject）——204 迁 /api/web-tools
             webTools: {
                 get: (machineId: string) =>
                     client.get<{ config: RedactedWebToolsConfig } | { error: string }>(`/api/machines/${machineId}/web-tools`),
