@@ -1000,3 +1000,15 @@ interrupt（用户停止）
 **现象**：`e2e-bootstrap.sh` 的 `trap cleanup SIGINT SIGTERM` 只覆盖信号路径；daemon/web 任一子进程死亡导致 `wait` 返回、脚本**自然退出**时 cleanup 不执行——web dev server 残留监听 5175、数据目录整目录残留（2026-10-04 实测：TERM daemon 后 bootstrap exit 0，web 存活、`~/.mobi-e2e` 未删）。
 
 **修复**：清理改挂 `trap cleanup EXIT`（信号分支 `trap 'exit 130/143' SIGINT/SIGTERM` 显式退出驱动 EXIT trap；cleanup 自带 CLEANUP_DONE 幂等闸）。实跑验证：TERM daemon → wait 返回 → 脚本自然退出 → EXIT trap 清理执行（web 停止、数据目录删除、exit 0）。
+
+## 102. ✅ 已解决：loopback 健康检查/自访 HTTP 被本地代理劫持——restart 误报 + 会话 spawn 全挂（2026-10-05 修复）
+
+**现象**（同一根因三症状，生产 daemon 自带代理 env 的 shell 重启后出现）：
+① `mobi daemon restart` / `service restart` 恒报 "health check failed"——但 restart 实际每次都成功（旧 daemon SIGTERM 5ms 退出、新 daemon ~2.5s ready，CLI 却等满 30s `HUB_HEALTH_TIMEOUT_MS` 误报）；② CLI API 调用报 "Request failed with status code 502"；③ `/api/machines/:id/spawn` 报 "Session process exited before webhook for PID X (exit code 1). stderr: … 502"——session 进程向 runner controlServer 回调 `/session-started`（loopback axios）被劫持 502 后退出，**新会话无法 spawn**。
+
+**根因**：用户 shell 常驻 `http_proxy=http://127.0.0.1:7897`（`https_proxy`/`all_proxy` 同）且**无 `no_proxy`**；supervisor/daemon/session 进程从 shell 继承后，所有 loopback HTTP（Bun fetch 吃代理 env、axios 同）都被本地代理劫持回 502（代理不回源 loopback）。健康门 `isUrlOk`（node-core httpHealth）、CLI axios 客户端、session webhook 三处全中。
+
+**修复**：loopback 豁免收口在组合根——新增 `node-core/src/utils/proxyEnv.ts` `ensureLoopbackBypassesProxy()`（向 `no_proxy`/`NO_PROXY` 合并 `localhost,127.0.0.1,::1`，保留既有条目、幂等），CLI 入口（`cli/src/index.ts`）profile 加载后调用一次。所有 mobi 进程（supervisor/daemon/session 均经 CLI spawn）入口自愈，env 随 spawn 链继承；不影响出站 LLM 流量走代理。
+
+**验证**：行为复现测试（bun 子进程 + 假代理：归一化前 loopback fetch 被劫持 502 → 归一化后直连 200；axios 同）红→绿；e2e 隔离 profile 带污染 env 实证 `service start`/`daemon restart` 秒级真通过（时序核实：旧 daemon 5ms 退出、新 daemon 17ms ready、健康门真过）；supervisor 进程 env 实证已归一化。Bun fetch 与 axios 均实证惰性读取 `no_proxy`（运行时改 env 即生效）。
+
