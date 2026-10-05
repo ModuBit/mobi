@@ -78,32 +78,13 @@ describe('supervisor 期望状态持久化', () => {
         expect(readDesiredState(stateFile)).toEqual(state)
     })
 
-    it('旧格式迁移（ticket-22）：hub:true/runner:false → daemon:true', () => {
-        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, host: '127.0.0.1', port: 2222 }))
-        expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
-    })
-
-    it('旧格式迁移：hub:false/runner:true → daemon:true（任一旧组件在托管即恢复）', () => {
-        writeFileSync(stateFile, JSON.stringify({ hub: false, runner: true, host: '127.0.0.1', port: 2222 }))
-        expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
-    })
-
-    it('旧格式迁移幂等：迁移后回写新格式，再读结果不变且旧键消失', () => {
-        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, host: '127.0.0.1', port: 2222 }))
-        const migrated = readDesiredState(stateFile)!
-        writeDesiredState(migrated, stateFile)
-        const reread = readDesiredState(stateFile)
-        expect(reread).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
-        expect(reread).toEqual(migrated)
-    })
-
-    it('旧格式全 false → daemon:false（未托管不误恢复）', () => {
-        writeFileSync(stateFile, JSON.stringify({ hub: false, runner: false, host: '127.0.0.1', port: 2222 }))
+    it('旧格式键（hub/runner）被忽略：不再迁移归并，视为未托管', () => {
+        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: true, host: '127.0.0.1', port: 2222 }))
         expect(readDesiredState(stateFile)).toEqual({ daemon: false, host: '127.0.0.1', port: 2222 })
     })
 
     it('损坏/缺字段的 JSON 被容错归一：布尔强制、非法端口回落默认', () => {
-        writeFileSync(stateFile, JSON.stringify({ daemon: 'true', hub: 1, host: 123, port: 'x' }))
+        writeFileSync(stateFile, JSON.stringify({ daemon: 'true', host: 123, port: 'x' }))
         expect(readDesiredState(stateFile)).toEqual({ daemon: true, host: '127.0.0.1', port: 2222 })
     })
 

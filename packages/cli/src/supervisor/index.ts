@@ -104,7 +104,7 @@ export async function runSupervisor(): Promise<void> {
     const server = await bindControlServer()
     logger.debug(`[SUPERVISOR] Control server listening: ${configuration.supervisorSocketFile}`)
 
-    // 3. 孤儿清理：清掉上次残留的 hub/runner
+    // 3. 孤儿清理：清掉上次残留的 daemon
     await cleanupOrphans()
 
     // 注意：必须是函数声明（提升）而非 const 箭头函数——控制 socket 在孤儿清理前
@@ -174,8 +174,7 @@ export async function runSupervisor(): Promise<void> {
     }
 
     async function handleRequest(request: ControlRequest): Promise<unknown> {
-        // 旧客户端（ticket-22 前的二进制）可能发来 hub/runner/both scope：
-        // 协议无 zod 校验（scope 是纯客户端侧类型），单组件模型下统一落到 daemon
+        // scope 是纯客户端侧类型、协议无 zod 校验，单组件模型下统一落到 daemon
         switch (request.cmd) {
             case 'start':
             case 'restart': {
@@ -256,8 +255,6 @@ export async function runSupervisor(): Promise<void> {
     }
 
     // 4. 恢复期望状态（B 路径开机自启 = 恢复停机前配置）。
-    // 旧格式（hub/runner 布尔）已在 readDesiredState 迁移归并为 daemon；
-    // 末尾 writeDesiredState 回写新格式，旧键自然消失
     if (desired.daemon) {
         supervisor.start('daemon', daemonEnv())
         everManaged = true

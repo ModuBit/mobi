@@ -17,7 +17,7 @@
 /**
  * Supervisor 控制通道：Unix socket + 换行分隔 JSON 行协议。
  *
- * CLI 命令（service/hub/runner）是客户端，supervisor 常驻进程是服务端。
+ * CLI 命令（service/daemon 族）是客户端，supervisor 常驻进程是服务端。
  * 协议：一行请求 `{id, cmd, ...}` → 一行响应 `{id, ok, data | error}`。
  */
 
@@ -25,7 +25,7 @@ import { connect, createServer, type Socket } from 'node:net'
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli'
 import { configuration } from '@mobi/node-core/configuration'
 
-/** ticket-22 起唯一托管组件；旧客户端发来的 hub/runner/both scope 由服务端归一为 daemon */
+/** 唯一托管组件（单机 daemon） */
 export type ServiceScope = 'daemon'
 
 export type ControlRequest =

@@ -41,10 +41,8 @@ class Configuration {
     /** hub 配置文件（listen* 等），仅本机 co-located 部署时可写；远程部署时它在 hub 机器上 */
     public readonly hubSettingsFile: string
     public readonly privateKeyFile: string
-    public readonly runnerStateFile: string
     public readonly runnerLockFile: string
-    public readonly hubStateFile: string
-    /** daemon 本地状态文件（ticket-22 起唯一组件的进程状态；hub/runner state 文件停写，仅孤儿清理过渡期读） */
+    /** daemon 本地状态文件（唯一组件的进程状态） */
     public readonly daemonStateFile: string
     public readonly supervisorSocketFile: string
     public readonly supervisorStateFile: string
@@ -96,9 +94,7 @@ class Configuration {
         this.settingsFile = join(this.mobiHomeDir, 'settings.cli.json')
         this.hubSettingsFile = join(this.mobiHomeDir, 'settings.hub.json')
         this.privateKeyFile = join(this.mobiHomeDir, 'access.key')
-        this.runnerStateFile = join(this.mobiHomeDir, 'runner.state.json')
         this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
-        this.hubStateFile = join(this.mobiHomeDir, 'hub.state.json')
         this.daemonStateFile = join(this.mobiHomeDir, 'daemon.state.json')
         this.supervisorSocketFile = join(this.mobiHomeDir, 'supervisor.sock')
         this.supervisorStateFile = join(this.mobiHomeDir, 'supervisor-state.json')
