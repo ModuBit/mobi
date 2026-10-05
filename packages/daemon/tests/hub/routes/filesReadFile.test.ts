@@ -15,23 +15,21 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import { homedir } from 'node:os'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import type { SyncEngine } from '../../../src/sync/syncEngine'
 
 /**
- * GET /api/machines/:id/read-file 路由测试：
+ * GET /api/files/read-file 路由测试（ticket 202：原 /api/machines/:id/read-file 去机器维度）：
  * 鉴权 / 参数校验 / cwd 边界 / meta→stream 全链路（serveFileContent 复用层不重复测，
- * 由 sessions 侧 readFileStreaming/fileMeta 测试覆盖）。
+ * 由 sessions 侧 readFileStreaming/fileMeta 测试覆盖）。homeDir 直源宿主静态身份，
+ * 测试 cwd 基于真实 os.homedir() 构造。
  */
 
 const CHUNK = 'PNGDATA-bin'
+const HOME = homedir()
 
 const mockSyncEngine = {
-    getMachine: (_id: string) => ({
-        id: 'test-machine-1',
-        namespace: 'default',
-        metadata: { host: 't', platform: 'linux', mobiCliVersion: '0.1.0', homeDir: '/home/testuser' },
-    }),
     machineReadFileMeta: async (_mid: unknown, _cwd: unknown, path: string) => {
         if (path.endsWith('.missing.png')) {
             return { success: false, error: 'ENOENT', code: 'ENOENT' }
@@ -53,7 +51,7 @@ const mockSyncEngine = {
     },
 } as unknown as SyncEngine
 
-describe('GET /api/machines/:id/read-file', () => {
+describe('GET /api/files/read-file', () => {
     let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
 
@@ -75,25 +73,25 @@ describe('GET /api/machines/:id/read-file', () => {
     }
 
     test('400：缺 path 参数', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj')
+        const res = await get(`/api/files/read-file?cwd=${encodeURIComponent(`${HOME}/proj`)}`)
         expect(res.status).toBe(400)
     })
 
     test('403：cwd 在 homeDir 外', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/etc&path=.mobi/uploads/a.png')
+        const res = await get('/api/files/read-file?cwd=/etc&path=.mobi/uploads/a.png')
         expect(res.status).toBe(403)
     })
 
     test('200：meta→stream 返回图片内容与响应头', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/a.png')
+        const res = await get(`/api/files/read-file?cwd=${encodeURIComponent(`${HOME}/proj`)}&path=.mobi/uploads/a.png`)
         expect(res.status).toBe(200)
         expect(res.headers.get('content-type')).toBe('image/png')
         expect(res.headers.get('etag')).toBe('8-123')
         expect(await res.text()).toBe(CHUNK)
     })
 
-    test('200：html 文档带 nosniff + 断网 CSP（防 hub origin 脚本执行）', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/evil.html')
+    test('200：html 文档带 nosniff + 断网 CSP（防 origin 脚本执行）', async () => {
+        const res = await get(`/api/files/read-file?cwd=${encodeURIComponent(`${HOME}/proj`)}&path=.mobi/uploads/evil.html`)
         expect(res.status).toBe(200)
         expect(res.headers.get('x-content-type-options')).toBe('nosniff')
         const csp = res.headers.get('content-security-policy') ?? ''
@@ -102,19 +100,19 @@ describe('GET /api/machines/:id/read-file', () => {
     })
 
     test('404：meta ENOENT 结构化透传', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/x.missing.png')
+        const res = await get(`/api/files/read-file?cwd=${encodeURIComponent(`${HOME}/proj`)}&path=.mobi/uploads/x.missing.png`)
         expect(res.status).toBe(404)
     })
 
     test('200：流中 success 缺 chunk（版本偏斜 CLI）→ 干净截断而非 500/崩溃', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/x.ghost.png')
+        const res = await get(`/api/files/read-file?cwd=${encodeURIComponent(`${HOME}/proj`)}&path=.mobi/uploads/x.ghost.png`)
         // 响应头已在 stream 开始前发出（200 不可撤回），断言为空体干净终止
         expect(res.status).toBe(200)
         expect(await res.text()).toBe('')
     })
 
     test('500：其余失败透传', async () => {
-        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/b.bin')
+        const res = await get(`/api/files/read-file?cwd=${encodeURIComponent(`${HOME}/proj`)}&path=.mobi/uploads/b.bin`)
         expect(res.status).toBe(500)
     })
 })

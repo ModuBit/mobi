@@ -15,6 +15,8 @@
  */
 
 import type { Context } from 'hono'
+import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
+import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
 import type { Machine, Session, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 
@@ -79,4 +81,30 @@ export function requireMachine(
         return c.json({ error: 'Machine access denied' }, 403)
     }
     return machine
+}
+
+/**
+ * 宿主 homeDir 单源（ticket 202）：daemon 即宿主，homeDir 直源宿主静态身份，
+ * 不再经 machines 行 metadata 中转（buildHostMetadata 为 602 改名目标）。
+ */
+export function requireHostHomeDir(): string {
+    return buildMachineMetadata().homeDir
+}
+
+/**
+ * 校验 cwd 必须在 homeDir 范围内且不在黑名单目录（密钥/凭证/工具配置，
+ * 防 ripgrep/list 读取敏感文件）。homeDir 缺失时拒绝请求。
+ */
+export function validateCwd(cwd: string, homeDir: string | undefined): Response | null {
+    if (!homeDir) {
+        return new Response(JSON.stringify({ error: 'Home directory not available' }), { status: 400 })
+    }
+    const validation = validateHomeDirPath(cwd, homeDir)
+    if (!validation.valid) {
+        return new Response(JSON.stringify({ error: validation.error }), { status: 403 })
+    }
+    if (isWithinBlacklistedDir(cwd, homeDir)) {
+        return new Response(JSON.stringify({ error: 'Access denied: path is in a restricted directory' }), { status: 403 })
+    }
+    return null
 }

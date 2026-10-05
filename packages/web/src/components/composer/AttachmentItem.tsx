@@ -347,7 +347,7 @@ const ImageThumb = memo(function ImageThumb({
 
     // 预览 src 三级分流（与消息气泡 ImageView 同思路，判据统一走 resolveUserImageUrl）：
     // 1) 有本地 file → objectURL（上传中 / 正常态）
-    // 2) 恢复态空 file 且有 path：machineId+cwd 可得 → machine 端点；否则回退 session read-file
+    // 2) 恢复态空 file 且有 path：cwd 可得 → host 端点；否则回退 session read-file
     // 3) 都没有（如新建会话页的恢复态）→ 回退图标
     const thumbSrc =
         previewUrl

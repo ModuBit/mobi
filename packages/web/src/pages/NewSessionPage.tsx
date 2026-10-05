@@ -329,10 +329,9 @@ export function NewSessionPage() {
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
-        // 过渡期仍走 machine 通道（202 文件读域重组后切 /api/files）：单机取列表首个 id
-        const machineId = machines[0]?.id
-        return (machineId && confirmedDirectory)
-            ? { kind: 'machine', machineId, cwd: confirmedDirectory }
+        // host 通道单机即宿主；machineId 为过渡字段（203 迁上传/metadata 后删）
+        return confirmedDirectory
+            ? { kind: 'host', cwd: confirmedDirectory, machineId: machines[0]?.id }
             : null
     }, [machines, confirmedDirectory])
     const capabilities = useDirectoryCapabilities(capTarget, { metadataEnabled: metadataNeeded })

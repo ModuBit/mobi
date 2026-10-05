@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { UserContentBlock, UserImageBlock } from '@mobi/shared'
-import { buildMachineReadFileUrl } from '@/core/utils/fileUrl'
+import { buildHostReadFileUrl } from '@/core/utils/fileUrl'
 
 // 轻量 mock Markdown：UserBlocksView 的测试关注「block 分发」而非 markdown 渲染管线，
 // XMarkdown 全链路由 ui/MarkdownStreaming.test.tsx 与 E2E 覆盖
@@ -528,38 +528,38 @@ describe('UserBlocksView ImageView（图片视图细部）', () => {
         expect(preview!.textContent).not.toMatch(/1\s*\/\s*1/)
     })
 
-    it('无 sessionId（spawn 前草稿）时 src 回退 machine 端点', () => {
+    it('无 sessionId（spawn 前草稿）时 src 回退 host 端点（cwd 单参数）', () => {
         const { container } = render(
             <UserBlocksView
                 blocks={[serverImageBlock()]}
-                env={{ refCtx: { machineId: 'm-1', cwd: '/Users/t/demo' } }}
+                env={{ refCtx: { cwd: '/Users/t/demo' } }}
             />,
         )
         const src = container.querySelector('img')!.getAttribute('src')!
-        expect(src).toContain('/api/machines/m-1/read-file')
+        expect(src).toContain('/api/files/read-file')
         expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/photo.png'))
         // 无会话行：不会打 sessions read-file
         expect(src).not.toContain('/api/sessions/')
     })
 
-    it('env 带 sessionId 时 src 走 session 端点（ADR 0006：执行层在 runner，优先于 machine）', () => {
+    it('env 带 sessionId 时 src 走 session 端点（ADR 0006：执行层在 runner，优先于 host）', () => {
         const { container } = render(
             <UserBlocksView
                 blocks={[serverImageBlock()]}
-                env={{ refCtx: { sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' } }}
+                env={{ refCtx: { sessionId: 'sess-1', cwd: '/Users/t/demo' } }}
             />,
         )
         const src = container.querySelector('img')!.getAttribute('src')!
         expect(src).toContain('/api/sessions/sess-1/read-file')
         expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/photo.png'))
-        expect(src).not.toContain('/api/machines/')
+        expect(src).not.toContain('/api/files/read-file')
     })
 })
 
-describe('buildMachineReadFileUrl', () => {
+describe('buildHostReadFileUrl', () => {
     it('cwd 与 path 并入查询串，支持 v/download', () => {
-        const url = new URL(buildMachineReadFileUrl('m-1', '/h/demo', '.mobi/uploads/a.png', { etag: 'e1', download: true }), 'http://localhost')
-        expect(url.pathname).toBe('/api/machines/m-1/read-file')
+        const url = new URL(buildHostReadFileUrl('/h/demo', '.mobi/uploads/a.png', { etag: 'e1', download: true }), 'http://localhost')
+        expect(url.pathname).toBe('/api/files/read-file')
         expect(url.searchParams.get('cwd')).toBe('/h/demo')
         expect(url.searchParams.get('path')).toBe('.mobi/uploads/a.png')
         expect(url.searchParams.get('v')).toBe('e1')

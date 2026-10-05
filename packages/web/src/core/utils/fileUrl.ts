@@ -55,12 +55,11 @@ export function buildReadFileUrl(
 }
 
 /**
- * machine 通道 read-file 端点 URL 构造：跨会话存活的静态资源读取（消息附件预览等）。
+ * host 通道 read-file 端点 URL 构造：跨会话存活的静态资源读取（消息附件预览等）。
  * 与 buildReadFileUrl 的 v 参数机制一致（etag 作内容版本），协商缓存行为相同；
- * 差异仅在寻址——sessionId 换成 machineId + cwd 显式二元组，会话关闭不影响可达性。
+ * 差异仅在寻址——sessionId 换成 cwd 单参数（单机：daemon 即宿主），会话关闭不影响可达性。
  */
-export function buildMachineReadFileUrl(
-    machineId: string,
+export function buildHostReadFileUrl(
     cwd: string,
     filePath: string,
     opts: {
@@ -73,7 +72,7 @@ export function buildMachineReadFileUrl(
     const params = new URLSearchParams({ cwd, path: filePath })
     if (opts.download) params.set('download', '1')
     if (opts.etag) params.set('v', opts.etag)
-    return `/api/machines/${machineId}/read-file?${params.toString()}`
+    return `/api/files/read-file?${params.toString()}`
 }
 
 /**
@@ -90,15 +89,14 @@ export function buildServeFileUrl(sessionId: string, relPath: string): string {
 /**
  * 会话文件寻址上下文（read-file 端点寻址所需字段的单源类型）：
  * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达）；
- * 无会话行（spawn 前的草稿/画板）回退 machine 显式二元组；双缺 = 无法构造任何端点。
+ * 无会话行（spawn 前的草稿/画板）回退 host 端点（cwd 单参数）；双缺 = 无法构造任何端点。
  */
 export interface FileRefContext {
     sessionId?: string
-    machineId?: string
     cwd?: string
     /**
-     * 会话行元数据在手（非 null）却缺 machineId/cwd——ADR 0006 后 hub 的 session 寻址
-     * 必然失败且无回退，此时构造 session URL 只会把「优雅无图」劣化成 hub 报错破图。
+     * 会话行元数据在手（非 null）却缺 cwd——ADR 0006 后 hub 的 session 寻址
+     * 必然失败且无回退，此时构造 session URL 只会把「优雅无图」劣化成报错破图。
      * 元数据为 null（尚未加载）不置位：乐观走 session 端点，不因加载时序降级。
      */
     sessionAddressingBroken?: boolean
@@ -108,17 +106,17 @@ export interface FileRefContext {
  * 从 (sessionId, 会话元数据) 投影寻址上下文——「挑哪些字段、怎么映射」的唯一出处
  * （元数据 path 即 cwd）。此前 ChatComposer / 气泡渲染各自手写同一投影，字段改名时
  * 必然漏改；所有消费方（画板回源、气泡图、附件缩略图）统一经此构造。
+ * 存量会话行 metadata JSON 里的 machineId 残留被忽略，不清洗（单机寻址只认 path）。
  */
 export function fileRefContext(
     sessionId: string | undefined,
-    metadata: { machineId?: string; path?: string } | null | undefined,
+    metadata: { path?: string } | null | undefined,
 ): FileRefContext {
     return {
         sessionId,
-        machineId: metadata?.machineId,
         cwd: metadata?.path,
         sessionAddressingBroken: sessionId != null && metadata != null
-            && (!metadata.machineId || !metadata.path),
+            && !metadata.path,
     }
 }
 
@@ -126,10 +124,9 @@ export function fileRefContext(
  * 用户消息 image block → 可取数 URL（气泡 ImageView 渲染、composer 附件缩略图、
  * 画板重编辑取 PNG 共用）：blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地
  * 预览、网络图）；否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造。
- * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达；跨机器
- * 场景也由 hub 按会话行解析 machineId，比本端 machineId 更权威）；无会话行（spawn
- * 前的草稿/画板）回退 machine 端点。双缺（如新建会话页的恢复态）返回 null。
- * 判据来自 shared——Hub 的跨会话投递用同一份判断「这条消息是否依赖目标机器上的本地文件」，
+ * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达）；无会话行
+ * （spawn 前的草稿/画板）回退 host 端点（cwd 单参数）。双缺（如新建会话页的恢复态）
+ * 返回 null。判据来自 shared——跨会话投递用同一份判断「这条消息是否依赖宿主上的本地文件」，
  * 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」
  */
 export function resolveUserImageUrl(
@@ -139,10 +136,10 @@ export function resolveUserImageUrl(
     const raw = block.previewUrl ?? block.source.value
     if (isSelfContainedUrl(raw)) return raw
     if (env.sessionId) {
-        // 寻址已确认损坏（元数据缺 machineId/cwd）：session 端点必然失败，走占位而非破图
+        // 寻址已确认损坏（元数据缺 cwd）：session 端点必然失败，走占位而非破图
         if (env.sessionAddressingBroken) return null
         return buildReadFileUrl(env.sessionId, raw)
     }
-    if (env.machineId && env.cwd) return buildMachineReadFileUrl(env.machineId, env.cwd, raw)
+    if (env.cwd) return buildHostReadFileUrl(env.cwd, raw)
     return null
 }

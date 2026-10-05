@@ -14,47 +14,19 @@
  * limitations under the License.
  */
 
+/**
+ * machine 通道过渡路由（ticket 202 后仅剩 metadata + upload×3；文件读五条已迁
+ * routes/files.ts，spawn 已迁 routes/sessions.ts，webTools 在 routes/webTools.ts）。
+ * 203/204 迁走后本文件整体删除。
+ */
+
 import { Hono } from 'hono'
-import { z } from 'zod'
-import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
 import { type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireMachine } from './guards'
-import { serveFileContent } from './serveFileContent'
-
-/**
- * HTML 预览 CSP：machine 通道与 session 通道同源——serveFileContent 按 mime 恒注
- * PREVIEW_CSP（capability 面与威胁模型注释在其定义处）。machine read-file 白名单放行了
- * .html/.js——若裸渲染，机器侧植入的 HTML 将在 hub origin 执行且自带登录 cookie，可自由
- * 调 hub API；恒注 CSP 后 script 仍可跑（内嵌页面预览语义），但任何网络外呼被切断，
- * 攻击面收敛为纯展示。
- */
-
-const pathsExistsSchema = z.object({
-    paths: z.array(z.string().min(1)).max(1000)
-})
-
-/**
- * 校验 cwd 必须在 machine 的 homeDir 范围内
- * homeDir 缺失时拒绝请求（与 list-directory 路由保持一致）
- */
-function validateCwd(cwd: string, homeDir: string | undefined): Response | null {
-    if (!homeDir) {
-        return new Response(JSON.stringify({ error: 'Machine homeDir not available' }), { status: 400 })
-    }
-    const validation = validateHomeDirPath(cwd, homeDir)
-    if (!validation.valid) {
-        return new Response(JSON.stringify({ error: validation.error }), { status: 403 })
-    }
-    // 拒绝风险目录（密钥/凭证/工具配置），防止 ripgrep/list 读取敏感文件
-    if (isWithinBlacklistedDir(cwd, homeDir)) {
-        return new Response(JSON.stringify({ error: 'Access denied: path is in a restricted directory' }), { status: 403 })
-    }
-    return null
-}
+import { requireMachine, validateCwd } from './guards'
 
 export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
@@ -68,120 +40,6 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const namespace = c.get('namespace')
         const machines = engine.getOnlineMachinesByNamespace(namespace)
         return c.json({ machines })
-    })
-
-    app.post('/machines/:id/paths/exists', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
-        const body = await c.req.json().catch(() => null)
-        const parsed = pathsExistsSchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        const uniquePaths = Array.from(new Set(parsed.data.paths.map((path) => path.trim()).filter(Boolean)))
-        if (uniquePaths.length === 0) {
-            return c.json({ exists: {} })
-        }
-
-        try {
-            const exists = await engine.checkPathsExist(machineId, uniquePaths)
-            return c.json({ exists })
-        } catch (error) {
-            return c.json({ error: error instanceof Error ? error.message : 'Failed to check paths' }, 500)
-        }
-    })
-
-    app.get('/machines/:id/list-directory', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
-        // 获取 homeDir
-        const homeDir = machine.metadata?.homeDir
-        if (!homeDir) {
-            return c.json({ success: false, error: 'Machine homeDir not available' }, 400)
-        }
-
-        const path = c.req.query('path') ?? ''
-        if (!path) {
-            return c.json({ success: false, error: 'Path parameter is required' }, 400)
-        }
-
-        // 安全校验：path 必须在 homeDir 内
-        const validation = validateHomeDirPath(path, homeDir)
-        if (!validation.valid) {
-            return c.json({ success: false, error: validation.error }, 403)
-        }
-
-        try {
-            const result = await engine.listMachineDirectory(machineId, path, homeDir)
-            return c.json(result)
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }, 500)
-        }
-    })
-
-    /**
-     * machine 通道读文件：跨会话存活的静态资源读取（消息附件预览等）。
-     * cwd/path 均为显式查询参数（客户端自报信任模型，与 upload/list-directory 一致）；
-     * cwd 先过 homeDir 黑白名单校验，路径边界与类型白名单由 cli 策略层最终裁决
-     * （读边界 cwd ∪ home−黑名单 + 图片/html/js/css 白名单，见 cli machineFiles handler 与 ADR 0004）。
-     * 复用 serveFileContent 全套机制（meta→304→Range→stream），仅数据源换成 machine reader。
-     */
-    app.get('/machines/:id/read-file', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
-        const cwd = c.req.query('cwd') ?? ''
-        const path = c.req.query('path') ?? ''
-        if (!cwd || !path) {
-            return c.json({ error: 'cwd and path parameters are required' }, 400)
-        }
-
-        // 与 list-directory 同一判据：cwd 必须落在 machine homeDir 内且不在黑名单目录
-        const invalidCwd = validateCwd(cwd, machine.metadata?.homeDir)
-        if (invalidCwd) {
-            return invalidCwd
-        }
-
-        return serveFileContent(
-            c,
-            {
-                readFileMeta: (p) => engine.machineReadFileMeta(machineId, cwd, p),
-                readFileRange: (p, o, l) => engine.machineReadFileRange(machineId, cwd, p, o, l),
-            },
-            path,
-            {
-                download: c.req.query('download') === '1',
-                // nosniff 防 MIME 嗅探；html 文档 CSP 由 serveFileContent 恒注（见上注）
-                extraHeaders: { 'x-content-type-options': 'nosniff' },
-            },
-        )
     })
 
     // 刷新 machine 上的会话元数据
@@ -355,74 +213,6 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json(result)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to replace upload' }, 500)
-        }
-    })
-
-    // 在 machine 上搜索文件
-    app.get('/machines/:id/search-files', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
-        const cwd = c.req.query('cwd')
-        const query = c.req.query('query')
-        if (!cwd) {
-            return c.json({ error: 'cwd parameter is required' }, 400)
-        }
-        if (!query) {
-            return c.json({ error: 'query parameter is required' }, 400)
-        }
-        // 与 session 路由同参：缺省曾致 machine 通道永远走「目录+文件合并」，type 过滤失效
-        const type = c.req.query('type') as 'file' | 'directory' | undefined
-
-        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
-        if (cwdError) return cwdError
-
-        try {
-            const result = await engine.machineSearchFiles(machineId, cwd, query, type)
-            return c.json(result)
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to search files' }, 500)
-        }
-    })
-
-    // 列出 machine 会话目录
-    app.get('/machines/:id/list-session-directory', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not connected' }, 503)
-        }
-
-        const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
-        if (machine instanceof Response) {
-            return machine
-        }
-
-        const cwd = c.req.query('cwd')
-        const path = c.req.query('path') ?? ''
-        if (!cwd) {
-            return c.json({ error: 'cwd parameter is required' }, 400)
-        }
-
-        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
-        if (cwdError) return cwdError
-
-        // 可选 prefix：大目录下收窄候选集，避免匹配项被 MAX_RESULTS 截断
-        const prefix = c.req.query('prefix') ?? undefined
-
-        try {
-            const result = await engine.machineListSessionDirectory(machineId, cwd, path, prefix)
-            return c.json(result)
-        } catch (error) {
-            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list session directory' }, 500)
         }
     })
 

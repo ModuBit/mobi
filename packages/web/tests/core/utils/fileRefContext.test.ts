@@ -23,35 +23,31 @@ import { describe, expect, it } from 'vitest'
 import { fileRefContext, resolveUserImageUrl } from '@/core/utils/fileUrl'
 
 describe('fileRefContext 字段投影', () => {
-    it('元数据的 path 映射为 cwd，machineId 原样透传', () => {
+    it('元数据的 path 映射为 cwd（machineId 残留被忽略，不清洗）', () => {
         expect(fileRefContext('s-1', { machineId: 'm-1', path: '/home/u/proj' })).toEqual({
             sessionId: 's-1',
-            machineId: 'm-1',
             cwd: '/home/u/proj',
             sessionAddressingBroken: false,
         })
     })
 
-    it('元数据缺省（新建会话等）时 machine/cwd 为 undefined，仅留 session 回退通道', () => {
+    it('元数据缺省（新建会话等）时 cwd 为 undefined，仅留 session 回退通道', () => {
         // null/undefined = 元数据未知（可能尚未加载）：不置 broken，乐观走 session 端点
-        expect(fileRefContext('s-1', null)).toEqual({ sessionId: 's-1', machineId: undefined, cwd: undefined, sessionAddressingBroken: false })
-        expect(fileRefContext('s-1', undefined)).toEqual({ sessionId: 's-1', machineId: undefined, cwd: undefined, sessionAddressingBroken: false })
+        expect(fileRefContext('s-1', null)).toEqual({ sessionId: 's-1', cwd: undefined, sessionAddressingBroken: false })
+        expect(fileRefContext('s-1', undefined)).toEqual({ sessionId: 's-1', cwd: undefined, sessionAddressingBroken: false })
     })
 
-    it('sessionId 缺省（恢复态老入口）时不阻塞 machine 寻址', () => {
-        expect(fileRefContext(undefined, { machineId: 'm-1', path: '/w' })).toEqual({
+    it('sessionId 缺省（恢复态老入口）时不阻塞 host 寻址', () => {
+        expect(fileRefContext(undefined, { path: '/w' })).toEqual({
             sessionId: undefined,
-            machineId: 'm-1',
             cwd: '/w',
             sessionAddressingBroken: false,
         })
     })
 
-    it('元数据在手却缺 machineId/cwd：置 sessionAddressingBroken（hub 侧寻址必然失败）', () => {
-        expect(fileRefContext('s-1', { path: '/w' }).sessionAddressingBroken).toBe(true)
-        expect(fileRefContext('s-1', { machineId: 'm-1' }).sessionAddressingBroken).toBe(true)
+    it('元数据在手却缺 path：置 sessionAddressingBroken（session 侧寻址必然失败）', () => {
         expect(fileRefContext('s-1', {}).sessionAddressingBroken).toBe(true)
-        expect(fileRefContext('s-1', { machineId: 'm-1', path: '/w' }).sessionAddressingBroken).toBe(false)
+        expect(fileRefContext('s-1', { path: '/w' }).sessionAddressingBroken).toBe(false)
         expect(fileRefContext(undefined, {}).sessionAddressingBroken).toBe(false)
     })
 })
@@ -62,14 +58,14 @@ describe('resolveUserImageUrl 寻址优先级', () => {
     const block = { previewUrl: undefined, source: { type: 'image' as const, value: '.mobi/uploads/2026-01/a.png' } }
 
     it('有 sessionId：走 session read-file（执行层在 runner，会话退出仍可达）', () => {
-        expect(resolveUserImageUrl(block, { sessionId: 's-1', machineId: 'm-1', cwd: '/p' })).toBe(
+        expect(resolveUserImageUrl(block, { sessionId: 's-1', cwd: '/p' })).toBe(
             '/api/sessions/s-1/read-file?path=.mobi%2Fuploads%2F2026-01%2Fa.png',
         )
     })
 
-    it('无会话行（spawn 前草稿）：回退 machine 端点', () => {
-        expect(resolveUserImageUrl(block, { machineId: 'm-1', cwd: '/p' })).toBe(
-            '/api/machines/m-1/read-file?cwd=%2Fp&path=.mobi%2Fuploads%2F2026-01%2Fa.png',
+    it('无会话行（spawn 前草稿）：回退 host 端点（cwd 单参数）', () => {
+        expect(resolveUserImageUrl(block, { cwd: '/p' })).toBe(
+            '/api/files/read-file?cwd=%2Fp&path=.mobi%2Fuploads%2F2026-01%2Fa.png',
         )
     })
 
@@ -77,7 +73,7 @@ describe('resolveUserImageUrl 寻址优先级', () => {
         expect(resolveUserImageUrl(block, {})).toBeNull()
     })
 
-    it('寻址已损坏（元数据缺 machineId/cwd）：session 端点必然失败 → null 走占位而非破图', () => {
+    it('寻址已损坏（元数据缺 path）：session 端点必然失败 → null 走占位而非破图', () => {
         expect(resolveUserImageUrl(block, { sessionId: 's-1', sessionAddressingBroken: true })).toBeNull()
     })
 

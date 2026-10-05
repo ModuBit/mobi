@@ -65,10 +65,10 @@ const ArtifactEnvContext = createContext<ArtifactEnv | undefined>(undefined)
 export function ArtifactEnvProvider({ refCtx, fileMeta, children }: { refCtx: FileRefContext, fileMeta?: (sessionId: string, path: string) => ArtifactMetaState, children: ReactNode }) {
     // value 按 refCtx 的原始字段 memo：调用点每渲染重建 refCtx 对象（消息列表流式期间
     // 每 chunk 重跑），不 memo 会换新引用把树里全部产物消费者强拉重渲染
-    const { sessionId, machineId, cwd, sessionAddressingBroken } = refCtx
+    const { sessionId, cwd, sessionAddressingBroken } = refCtx
     const value = useMemo(
-        () => ({ refCtx: { sessionId, machineId, cwd, sessionAddressingBroken } as FileRefContext, fileMeta }),
-        [sessionId, machineId, cwd, sessionAddressingBroken, fileMeta],
+        () => ({ refCtx: { sessionId, cwd, sessionAddressingBroken } as FileRefContext, fileMeta }),
+        [sessionId, cwd, sessionAddressingBroken, fileMeta],
     )
     return <ArtifactEnvContext.Provider value={value}>{children}</ArtifactEnvContext.Provider>
 }

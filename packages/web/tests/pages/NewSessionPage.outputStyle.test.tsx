@@ -55,8 +55,11 @@ vi.mock('@/core/data/hooks/mutations/useSpawnSession', () => ({
 vi.mock('@/components/sketchpad/SketchDrawer', () => ({ SketchDrawer: () => null }))
 
 // —— mock 数据 hooks：单工作区，工作区经 localStorage 恢复路径自动选中 ——
+// 注意 machines 必须是模块级稳定引用：capTarget 依赖 machines，逐渲染新数组会让
+// capabilities 链路 effect 无限循环（worker 空转挂死，见 useMobiApi 稳定 mock 同款坑）
+const { stableMachines } = vi.hoisted(() => ({ stableMachines: [] as never[] }))
 vi.mock('@/core/data/hooks/queries/useMachines', () => ({
-    useMachines: () => ({ machines: [], isLoading: false }),
+    useMachines: () => ({ machines: stableMachines, isLoading: false }),
 }))
 // —— mock daemon 状态（宿主身份/就绪源；单机无机器选择，ticket 201）——
 vi.mock('@/core/data/hooks/queries/useDaemonStatus', () => ({

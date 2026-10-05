@@ -369,7 +369,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // 会话状态机（everOpened 门控 / 完成语义 / 回源守卫）收在 useSketchSession
     const resolveContext = useMemo(
         () => fileRefContext(sessionId, metadata),
-        [sessionId, metadata?.machineId, metadata?.path],
+        [sessionId, metadata?.path],
     )
     const sketchSession = useSketchSession({
         addSketchFile,

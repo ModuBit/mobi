@@ -103,7 +103,9 @@ export function useMachineDirectoryListing(
 
         setIsLoading(true)
         try {
-            const res = await api.machines.listDirectory(mId, parentPath, { signal: controller.signal })
+            // 202 文件读域：/api/files/list-directory 已去 machineId 维度；
+            // 入参 mId 仅作缓存重置键保留（404 workspaces 去维时随 WorkspaceFormModal 收敛）
+            const res = await api.hostFiles.listDirectory(parentPath, { signal: controller.signal })
             if (controller.signal.aborted) return
 
             const data = res.data as ListDirectoryResponse
@@ -128,7 +130,7 @@ export function useMachineDirectoryListing(
                 setIsLoading(false)
             }
         }
-    }, [api.machines])
+    }, [api.files])
 
     useEffect(() => {
         if (timerRef.current) {

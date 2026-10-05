@@ -34,6 +34,7 @@ import { createWorkspacesRoutes } from './routes/workspaces'
 import { createMessagesRoutes } from './routes/messages'
 import { createPermissionsRoutes } from './routes/permissions'
 import { createMachinesRoutes } from './routes/machines'
+import { createFilesRoutes } from './routes/files'
 import { createHostRoutes } from './routes/host'
 import { createWebToolsRoutes } from './routes/webTools'
 import { createCliRoutes } from './routes/cli'
@@ -176,6 +177,7 @@ export function createWebApp(options: {
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
     app.route('/api', createMachinesRoutes(options.getSyncEngine))
+    app.route('/api', createFilesRoutes(options.getSyncEngine))
     app.route('/api', createHostRoutes(options.getSyncEngine))
     app.route('/api', createWebToolsRoutes(options.getSyncEngine))
     app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))

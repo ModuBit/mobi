@@ -21,11 +21,13 @@ import { useMachineMetadata } from './useMachineMetadata'
 import type { SDKMetadata, Command, ListFilesResponse, UploadFileResponse, DeleteUploadResponse } from '@/core/data/api/types'
 
 /**
- * 资源定位目标：tagged union 区分 session 通道与 machine 通道
+ * 资源定位目标：tagged union 区分 session 通道与 host 通道（单机：daemon 即宿主）。
+ * machineId 为过渡字段：仅上传（203 迁 /api/files/upload）与 metadata（203 迁
+ * /api/sdk/host-metadata）仍走 machine 通道需要；两票落地后删除。
  */
 export type CapabilityTarget =
     | { kind: 'session'; sessionId: string }
-    | { kind: 'machine'; machineId: string; cwd: string }
+    | { kind: 'host'; cwd: string; machineId?: string }
 
 /** searchFiles/listDirectory 返回体（@ 文件引用双通道共用） */
 export type FileSearchResult = { data: ListFilesResponse }
@@ -59,7 +61,7 @@ export interface DirectoryCapabilities {
 
 /**
  * 资源定位抽象 hook
- * 根据 CapabilityTarget 自动路由到 session 或 machine 通道，
+ * 根据 CapabilityTarget 自动路由到 session 或 host 通道，
  * 返回统一的 DirectoryCapabilities 接口
  *
  * @param options.metadataEnabled 是否启用 metadata 查询（含 commands），
@@ -79,8 +81,8 @@ export function useDirectoryCapabilities(
         metadataEnabled,
     )
     const machineMeta = useMachineMetadata(
-        target?.kind === 'machine' ? target.machineId : null,
-        target?.kind === 'machine' ? target.cwd : null,
+        target?.kind === 'host' ? target.machineId ?? null : null,
+        target?.kind === 'host' ? target.cwd : null,
         metadataEnabled,
     )
 
@@ -105,7 +107,7 @@ export function useDirectoryCapabilities(
                 api.sessions.searchFiles(target.sessionId, query, undefined, opts)
         }
         return (query: string, opts?: { signal?: AbortSignal }) =>
-            api.machines.searchFiles(target.machineId, target.cwd, query, opts)
+            api.hostFiles.searchFiles(target.cwd, query, opts)
     }, [target, api])
 
     const listDirectory = useMemo(() => {
@@ -115,7 +117,7 @@ export function useDirectoryCapabilities(
                 api.sessions.listDirectory(target.sessionId, path, prefix, opts)
         }
         return (path: string, prefix: string | undefined, opts?: { signal?: AbortSignal }) =>
-            api.machines.listSessionDirectory(target.machineId, target.cwd, path, prefix, opts)
+            api.hostFiles.listSessionDirectory(target.cwd, path, prefix, opts)
     }, [target, api])
 
     const uploadFile = useMemo(() => {
@@ -124,8 +126,13 @@ export function useDirectoryCapabilities(
             return (file: File, opts?: { signal?: AbortSignal }) =>
                 api.sessions.upload(target.sessionId, file, opts)
         }
-        return (file: File, opts?: { signal?: AbortSignal }) =>
-            api.machines.upload(target.machineId, target.cwd, file, opts)
+        // 过渡（203 迁 /api/files/upload）：上传仍走 machine 通道，需 machineId
+        return (file: File, opts?: { signal?: AbortSignal }) => {
+            if (!target.machineId) {
+                return Promise.resolve({ data: { success: false, error: 'Host unavailable' } })
+            }
+            return api.machines.upload(target.machineId, target.cwd, file, opts)
+        }
     }, [target, api])
 
     const deleteUpload = useMemo(() => {
@@ -133,7 +140,13 @@ export function useDirectoryCapabilities(
         if (target.kind === 'session') {
             return (path: string) => api.sessions.deleteUpload(target.sessionId, path)
         }
-        return (path: string) => api.machines.deleteUpload(target.machineId, target.cwd, path)
+        // 过渡（203 迁 /api/files/upload/delete）：删除仍走 machine 通道，需 machineId
+        return (path: string) => {
+            if (!target.machineId) {
+                return Promise.resolve({ data: { success: false, error: 'Host unavailable' } })
+            }
+            return api.machines.deleteUpload(target.machineId, target.cwd, path)
+        }
     }, [target, api])
 
     const replaceUpload = useMemo(() => {
@@ -142,8 +155,13 @@ export function useDirectoryCapabilities(
             return (path: string, file: Blob, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) =>
                 api.sessions.replaceUpload(target.sessionId, path, file, opts)
         }
-        return (path: string, file: Blob, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) =>
-            api.machines.replaceUpload(target.machineId, target.cwd, path, file, opts)
+        // 过渡（203 迁 /api/files/upload/replace）：替换仍走 machine 通道，需 machineId
+        return (path: string, file: Blob, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) => {
+            if (!target.machineId) {
+                return Promise.resolve({ data: { success: false, error: 'Host unavailable' } })
+            }
+            return api.machines.replaceUpload(target.machineId, target.cwd, path, file, opts)
+        }
     }, [target, api])
 
     return useMemo(() => ({

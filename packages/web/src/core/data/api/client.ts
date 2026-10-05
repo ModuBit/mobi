@@ -394,13 +394,23 @@ export function createMobiApi() {
             status: () => client.get<{ status: 'ok' | 'starting'; host: { hostname: string; platform: string; homeDir: string } }>('/api/daemon/status'),
         },
 
-        // Machines
+        // 宿主文件读域（单机：/api/files/*，原 /api/machines/:id/* 去 machineId 重组；
+        // 与上方 session 通道 files 组区分）
+        hostFiles: {
+            pathsExist: (paths: string[]) =>
+                client.post<{ exists: Record<string, boolean> }>('/api/files/paths-exists', { paths }),
+            listDirectory: (path: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListDirectoryResponse>('/api/files/list-directory', { params: { path }, signal: opts?.signal }),
+            searchFiles: (cwd: string, query: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>('/api/files/search-files', { params: { cwd, query }, signal: opts?.signal }),
+            // 目录列表（@ 引用展开子目录）
+            listSessionDirectory: (cwd: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>('/api/files/list-session-directory', { params: { cwd, path, prefix }, signal: opts?.signal }),
+        },
+
+        // Machines（过渡组：202 后仅剩 metadata + upload×3 + webTools 透传；203/204 迁走后删除）
         machines: {
             list: () => client.get<{ machines: Machine[] }>('/api/machines'),
-            checkPathsExist: (machineId: string, paths: string[]) =>
-                client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
-            listDirectory: (machineId: string, path: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListDirectoryResponse>(`/api/machines/${machineId}/list-directory`, { params: { path }, signal: opts?.signal }),
             // SDK metadata（slash 命令）
             metadata: (machineId: string, cwd: string, opts?: { signal?: AbortSignal }) =>
                 client.get(`/api/machines/${machineId}/metadata`, { params: { cwd }, signal: opts?.signal }),
@@ -442,12 +452,6 @@ export function createMobiApi() {
                     : undefined,
                 signal: opts?.signal,
             }),
-            // 文件搜索（@ 引用）
-            searchFiles: (machineId: string, cwd: string, query: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListFilesResponse>(`/api/machines/${machineId}/search-files`, { params: { cwd, query }, signal: opts?.signal }),
-            // 目录列表（@ 引用展开子目录）
-            listSessionDirectory: (machineId: string, cwd: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListFilesResponse>(`/api/machines/${machineId}/list-session-directory`, { params: { cwd, path, prefix }, signal: opts?.signal }),
             // Web 工具配置（hub 纯透传 runner RPC；凭据脱敏回显，机器离线 502 reject）
             webTools: {
                 get: (machineId: string) =>
