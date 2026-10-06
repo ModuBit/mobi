@@ -18,7 +18,7 @@ graph TB
     subgraph "状态与通信层"
         RPC["RpcHandlerManager<br/>注册 'permission' RPC 方法"]
         STATE["AgentState<br/>requests / completedRequests"]
-        CLIENT["ApiSessionClient<br/>Socket.IO ↔ Hub ↔ Web"]
+        CLIENT["ApiSessionClient<br/>Socket.IO ↔ daemon ↔ Web"]
     end
 
     SDK -->|"canUseTool 回调"| PH

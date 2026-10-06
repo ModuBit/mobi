@@ -2,6 +2,8 @@
 
 ## Status
 
+**superseded（2026-10-06）**——核心裁决（session 寻址、无条件单路径、cwd 注入写边界、读边界统一）被 [ADR 0011](0011-remove-machine-concept.md) 继承，但「machine 执行」的承载已变化：`/api/machines/:id/*` machine 通道删除，执行层为 daemon 内 `ExecutorHost` 本地直调（`/api/files/*` 五条 + `/api/sessions/:id/*`），machineId 形参收窄。以下为历史原文。
+
 accepted（2026-09-24）。修订 ADR 0004 中「machineFiles.ts 保留其独有的扩展名白名单」条款（白名单放宽，读边界两通道完全统一）。
 
 ## 背景

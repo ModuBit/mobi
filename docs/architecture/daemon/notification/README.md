@@ -110,7 +110,7 @@ shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)
   否（后台 + 有订阅）→ Web Push
 ```
 
-**通道选择由 Hub 判定**（`PushNotificationChannel` 按 `shouldUseToast` 分级）：
+**通道选择由 daemon 判定**（`PushNotificationChannel` 按 `shouldUseToast` 分级）：
 - **有可见连接**（用户在前台）→ `sendToast` 投递，不打扰。
 - **无 push 订阅**（无法走 Web Push）→ `sendToast` 兜底投递，前端转系统通知。
 - **后台 + 已订阅 push** → `PushService.sendToNamespace` 发送 Web Push（SW 独立线程，长时后台可靠）。
@@ -123,7 +123,7 @@ shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)
 | visible 但不在该 session | 页面 Toast + 角标 |
 | hidden | 系统通知（Web Notification） |
 
-多设备天然支持：每个活跃 SSE 连接独立在前端判定展示方式，Hub 不需关心各连接的可见性。
+多设备天然支持：每个活跃 SSE 连接独立在前端判定展示方式，daemon 不需关心各连接的可见性。
 
 ## 组装过程
 

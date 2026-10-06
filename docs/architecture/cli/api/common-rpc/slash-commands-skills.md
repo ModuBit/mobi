@@ -1,6 +1,6 @@
 # Slash Commands & Skills Handler (`handlers/slashCommands.ts`, `handlers/skills.ts`)
 
-命令和 Skill 的远程发现接口。Hub 通过这些 RPC 查询 CLI 侧可用的自定义命令和技能。
+命令和 Skill 的远程发现接口。daemon 通过这些 RPC 查询 CLI 侧可用的自定义命令和技能。
 
 ---
 

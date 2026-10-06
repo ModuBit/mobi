@@ -38,9 +38,9 @@ AgentState.requests: Record<toolCallId, {
 
 | 事件 | 方向 | 用途 |
 |------|------|------|
-| `update-state` | CLI → Hub | 同步 `AgentState`（含 pending 权限请求） |
-| `rpc-request` | Hub → CLI | 转发 Web 端的审批结果 |
-| `rpc-register` / `rpc-unregister` | CLI → Hub | 注册/注销 RPC 方法 |
+| `update-state` | CLI → daemon | 同步 `AgentState`（含 pending 权限请求） |
+| `rpc-request` | daemon → CLI | 转发 Web 端的审批结果 |
+| `rpc-register` / `rpc-unregister` | CLI → daemon | 注册/注销 RPC 方法 |
 
 ### CLI 端
 
@@ -57,7 +57,7 @@ AgentState.requests: Record<toolCallId, {
 抽象基类，提供：
 
 - `pendingRequests` Map 管理
-- `updateAgentState()` — 修改 `AgentState.requests` 并同步到 Hub
+- `updateAgentState()` — 修改 `AgentState.requests` 并同步到 daemon
 - RPC handler 注册 — 注册 `'permission'` 方法，接收审批结果
 
 **SDK 接入点** — `packages/session/src/claude/claudeRemote.ts`
@@ -69,7 +69,7 @@ canUseTool: async (toolName, input, options) => {
 }
 ```
 
-### Hub 端
+### daemon 端
 
 **HTTP 路由** — `packages/daemon/src/web/routes/permissions.ts`
 
@@ -84,7 +84,7 @@ canUseTool: async (toolName, input, options) => {
 
 **AgentState 同步** — `packages/daemon/src/socket/handlers/cli/sessionHandlers.ts`
 
-CLI 发送 `update-state` 后，Hub 写入 SQLite（乐观锁），广播 `session-updated` SSE 事件。
+CLI 发送 `update-state` 后，daemon 写入 SQLite（乐观锁），广播 `session-updated` SSE 事件。
 
 ### Web 端
 
@@ -110,7 +110,7 @@ CLI 发送 `update-state` 后，Hub 写入 SQLite（乐观锁），广播 `sessi
 sequenceDiagram
     participant SDK as Agent SDK
     participant CLI as CLI PermissionHandler
-    participant Hub as Hub
+    participant daemon as daemon
     participant Web as Web UI
 
     SDK->>CLI: canUseTool(toolName, input)
@@ -119,15 +119,15 @@ sequenceDiagram
         CLI-->>SDK: allow
     else 需要授权
         CLI->>CLI: 创建 pending Promise (阻塞 SDK)
-        CLI->>Hub: Socket.IO 'update-state' (AgentState.requests[id])
-        Hub->>Hub: 写入 SQLite (乐观锁)
-        Hub->>Web: SSE 'session-updated'
+        CLI->>daemon: Socket.IO 'update-state' (AgentState.requests[id])
+        daemon->>daemon: 写入 SQLite (乐观锁)
+        daemon->>Web: SSE 'session-updated'
         Web->>Web: 更新 React Query 缓存
         Web->>Web: 渲染授权 UI
 
         Note over Web: 用户点击 Allow / Deny
-        Web->>Hub: POST approve / deny
-        Hub->>CLI: Socket.IO 'rpc-request' (审批结果)
+        Web->>daemon: POST approve / deny
+        daemon->>CLI: Socket.IO 'rpc-request' (审批结果)
         CLI->>CLI: handlePermissionResponse → PermissionResult
         CLI->>CLI: resolve(pending Promise)
         CLI-->>SDK: PermissionResult
@@ -168,7 +168,7 @@ response.approved
 
 | 链路 | 状态 |
 |------|------|
-| Web → Hub → CLI → SDK | 正常传递，作为 deny `message` 传给模型 |
+| Web → daemon → CLI → SDK | 正常传递，作为 deny `message` 传给模型 |
 | CLI 回传 Web 展示 | **丢失** — `PermissionsField` 类型未定义 `reason` 字段 |
 
 ---
@@ -276,7 +276,7 @@ SDK 收到的最终工具输入变为：
 
 **触发**：MCP 服务器主动发起 form elicitation（`Options.onElicitation` 回调，MCP 协议层用户输入请求——不是工具审批）。
 
-**CLI 端**：`PermissionHandler.handleElicitation` —— `mode === 'url'` 一律 decline（授权链路留 pending #63）；form 模式校验 `requestedSchema`（object + properties）后以**合成 toolName `mcp_elicitation`** 走既有 pending 体系（D1：hub/shared 协议零改动），pending id 用 control_request envelope 的 `requestId`；`serverName`/`message`/`requestedSchema` 放 `arguments`，`title`/`displayName`/`description` 走 `sdkHints`。响应回来后 `coerceElicitationContent` 按 schema 逐字段转型（number/boolean/enum）组 `ElicitResult.content`——**转型单点位在 handleElicitation 内**；abort/turn 重置经 `cancelPendingRequests` reject 统一转 `{ action: 'cancel' }`（不向 SDK 抛异常/null，fail-closed 契约）。
+**CLI 端**：`PermissionHandler.handleElicitation` —— `mode === 'url'` 一律 decline（授权链路留 pending #63）；form 模式校验 `requestedSchema`（object + properties）后以**合成 toolName `mcp_elicitation`** 走既有 pending 体系（D1：shared 协议零改动），pending id 用 control_request envelope 的 `requestId`；`serverName`/`message`/`requestedSchema` 放 `arguments`，`title`/`displayName`/`description` 走 `sdkHints`。响应回来后 `coerceElicitationContent` 按 schema 逐字段转型（number/boolean/enum）组 `ElicitResult.content`——**转型单点位在 handleElicitation 内**；abort/turn 重置经 `cancelPendingRequests` reject 统一转 `{ action: 'cancel' }`（不向 SDK 抛异常/null，fail-closed 契约）。
 
 **Web UI**：`ElicitationFormCard` —— elicitation 没有 tool_use 消息，不进 reducer block 体系：`getPermissions` 与 `ToolInteractionPanel` 按 `isElicitationToolName` 过滤（防 ensureToolBlock 建幽灵工具块），由 `ComposerInfoPanel` 内的请求区直接消费 `agentState.requests` 渲染表单卡片（composer 面板区域）。表单按 schema 字段类型映射：string→Input（enum→Select）、number→InputNumber、boolean→Switch；提交走既有 approve API 的 answers 通道（值含 number/boolean）。
 
@@ -298,11 +298,11 @@ SDK 收到的最终工具输入变为：
 | **CLI** | `packages/session/src/api/apiSession.ts` | `updateAgentState()` Socket.IO 同步 |
 | **CLI** | `packages/node-core/src/rpc/RpcHandlerManager.ts` | RPC 方法注册与分发 |
 | **CLI** | `packages/node-core/src/claudeSdk/prompts.ts` | PLAN_FAKE_REJECT / PLAN_FAKE_RESTART 常量 |
-| **Hub** | `packages/daemon/src/web/routes/permissions.ts` | approve / deny HTTP 路由 |
-| **Hub** | `packages/daemon/src/sync/rpcGateway.ts` | RPC 调用 CLI |
-| **Hub** | `packages/daemon/src/sync/syncEngine.ts` | 中间层，委托 rpcGateway |
-| **Hub** | `packages/daemon/src/socket/handlers/cli/sessionHandlers.ts` | 处理 `update-state`，广播 SSE |
-| **Hub** | `packages/daemon/src/socket/handlers/cli/rpcHandlers.ts` | 处理 `rpc-register` |
+| **daemon** | `packages/daemon/src/web/routes/permissions.ts` | approve / deny HTTP 路由 |
+| **daemon** | `packages/daemon/src/sync/rpcGateway.ts` | RPC 调用 CLI |
+| **daemon** | `packages/daemon/src/sync/syncEngine.ts` | 中间层，委托 rpcGateway |
+| **daemon** | `packages/daemon/src/socket/handlers/cli/sessionHandlers.ts` | 处理 `update-state`，广播 SSE |
+| **daemon** | `packages/daemon/src/socket/handlers/cli/rpcHandlers.ts` | 处理 `rpc-register` |
 | **Web** | `packages/web/src/core/data/api/client.ts` | API 客户端：approve / deny |
 | **Web** | `packages/web/src/core/providers/SSEProvider.tsx` | SSE 接收，更新 session 缓存 |
 | **Web** | `packages/web/src/domain/chat/reducerTools.ts` | 从 agentState 提取权限映射 |

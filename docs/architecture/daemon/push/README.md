@@ -15,8 +15,8 @@ flowchart LR
     end
 
     Service <-->|订阅/推送| PushService[推送服务]
-    Hub[Mobi Hub] -->|发送消息| PushService
-    Hub <-->|保存 subscription| Service
+    daemon[Mobi daemon] -->|发送消息| PushService
+    daemon <-->|保存 subscription| Service
 ```
 
 ### 推送服务由浏览器决定
@@ -36,20 +36,20 @@ sequenceDiagram
     participant Browser as 浏览器
     participant SW as Service Worker
     participant PushService as 推送服务
-    participant Hub as Mobi Hub
+    participant daemon as Mobi daemon
 
     Note over Browser,SW: 订阅阶段
-    Browser->>Hub: GET /api/push/vapid-public-key
-    Hub-->>Browser: publicKey
+    Browser->>daemon: GET /api/push/vapid-public-key
+    daemon-->>Browser: publicKey
     Browser->>SW: 注册 Service Worker
     SW->>PushService: subscribe(publicKey)
     PushService-->>SW: subscription
     SW-->>Browser: subscription
-    Browser->>Hub: POST /api/push/subscribe
-    Hub-->>Browser: ok
+    Browser->>daemon: POST /api/push/subscribe
+    daemon-->>Browser: ok
 
-    Note over Hub,Browser: 推送阶段
-    Hub->>PushService: POST to endpoint
+    Note over daemon,Browser: 推送阶段
+    daemon->>PushService: POST to endpoint
     PushService->>SW: push 事件
     SW->>Browser: 显示 Notification
 ```
@@ -104,7 +104,7 @@ flowchart TB
 #### 推送时的加密流程
 
 ```
-Hub 发送推送：
+daemon 发送推送：
 ┌─────────────────────────────────────────────┐
 │  1. 用 VAPID privateKey 签名（身份认证）     │
 │  2. 用 p256dh 加密消息（端到端加密）         │

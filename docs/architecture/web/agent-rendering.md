@@ -40,7 +40,7 @@ flowchart LR
 ```
 SDK subagent 消息
   → CLI sdkToLogConverter (isSidechain=true)
-  → Hub SQLite 存储
+  → daemon SQLite 存储
   → SSE / API 推送到 Web
   → normalizeAgent.ts (标记 isSidechain)
   → reducer.ts (traceMessages 将 sidechain 消息归为父 tool-call 的 children)

@@ -2,7 +2,7 @@
 
 文件 [`packages/cli/src/commands/auth.ts`](/packages/cli/src/commands/auth.ts)
 
-CLI 的认证系统管理 API Token 和机器身份，确保 CLI 能安全连接 Hub。
+CLI 的认证系统管理 API Token，确保 CLI 能安全连接 daemon。
 
 ## 架构概览
 
@@ -14,9 +14,7 @@ flowchart TB
     end
 
     subgraph Init["初始化层"]
-        ApiUrlInit["initializeApiUrl()<br/>ui/apiUrlInit.ts"]
         TokenInit["initializeToken()<br/>ui/tokenInit.ts"]
-        AuthSetup["authAndSetupMachineIfNeeded()<br/>ui/auth.ts"]
     end
 
     subgraph Config["配置层"]
@@ -29,27 +27,25 @@ flowchart TB
     end
 
     AuthCmd --> Persist
-    ClaudeCmd --> ApiUrlInit --> TokenInit --> AuthSetup
+    ClaudeCmd --> TokenInit
     TokenInit --> Conf & Persist
-    AuthSetup --> Persist
     Persist --> SettingsFile
     Conf -->|"读写"| SettingsFile
 ```
 
 ## 认证维度
 
-CLI 认证包含两个维度：
+CLI 认证包含一个维度：
 
 | 维度 | 说明 | 存储位置 |
 |------|------|----------|
-| **API Token** | CLI 与 Hub 的共享密钥，用于 Socket.IO 认证 | `~/.mobi/settings.cli.json` → `cliApiToken` |
-| **Machine ID** | 机器唯一标识，用于多租户隔离 | `~/.mobi/settings.cli.json` → `machineId` |
+| **API Token** | CLI 与 daemon 的共享密钥，用于 Socket.IO 认证 | `~/.mobi/settings.cli.json` → `cliApiToken` |
 
 此外还有 API URL 配置：
 
 | 维度 | 说明 | 存储位置 |
 |------|------|----------|
-| **API URL** | Hub 服务器地址 | `~/.mobi/settings.cli.json` → `apiUrl` |
+| **API URL** | daemon 服务器地址 | `~/.mobi/settings.cli.json` → `apiUrl` |
 
 ## 优先级链
 
@@ -81,44 +77,21 @@ flowchart LR
 
 **初始化**：`initializeToken()`（`ui/tokenInit.ts`）
 
-### Machine ID
-
-首次需要时自动生成 UUID v4，写入 `settings.cli.json`。不会从环境变量读取。
-
-**初始化**：`authAndSetupMachineIfNeeded()`（`ui/auth.ts`）
-
 ## 初始化流程
 
-`claudeCommand` 启动时自动执行三步初始化：
+`claudeCommand` 启动时自动执行初始化：
 
 ```mermaid
 flowchart TB
-    Start["claudeCommand.run()"] --> Step1["1. initializeApiUrl()"]
-    Step1 --> Step2["2. initializeToken()"]
-    Step2 --> Step3["3. authAndSetupMachineIfNeeded()"]
-    Step3 --> Ready["认证就绪"]
+    Start["claudeCommand.run()"] --> Step1["initializeToken()"]
+    Step1 --> Ready["认证就绪"]
 ```
 
-### Step 1: initializeApiUrl()
+### initializeToken()
 
 ```mermaid
 flowchart TB
-    Start["initializeApiUrl()"] --> Env{"MOBI_API_URL<br/>环境变量?"}
-    Env -->|有| Done["保持默认值<br/>（构造器已设置）"]
-    Env -->|无| Read["读取 settings.cli.json"]
-    Read --> ApiUrl{"apiUrl 存在?"}
-    ApiUrl -->|是| Set1["configuration._setApiUrl()"]
-    ApiUrl -->|否| Legacy{"serverUrl 存在?<br/>（旧字段）"}
-    Legacy -->|是| Set2["configuration._setApiUrl()<br/>向后兼容"]
-    Legacy -->|否| Default["使用默认值<br/>http://localhost:2222"]
-```
-
-### Step 2: initializeToken()
-
-```mermaid
-flowchart TB
-    Start["initializeToken()"] --> Step1["initializeApiUrl()"]
-    Step1 --> Env{"CLI_API_TOKEN<br/>环境变量?"}
+    Start["initializeToken()"] --> Env{"CLI_API_TOKEN<br/>环境变量?"}
     Env -->|有| Done["直接返回<br/>（构造器已设置）"]
     Env -->|无| Read["读取 settings.cli.json"]
     Read --> HasToken{"cliApiToken 存在?"}
@@ -127,20 +100,6 @@ flowchart TB
     TTY -->|否| Error["抛出错误<br/>提示设置环境变量"]
     TTY -->|是| Prompt["交互式输入 Token"]
     Prompt --> Save["保存到 settings.cli.json<br/>+ configuration"]
-```
-
-### Step 3: authAndSetupMachineIfNeeded()
-
-```mermaid
-flowchart TB
-    Start["authAndSetupMachineIfNeeded()"] --> Check{"cliApiToken<br/>已设置?"}
-    Check -->|否| Error["抛出错误"]
-    Check -->|是| Update["updateSettings()"]
-    Update --> HasId{"machineId 存在?"}
-    HasId -->|是| Return["返回 { token, machineId }"]
-    HasId -->|否| Generate["生成 randomUUID()"]
-    Generate --> Save["写入 settings.cli.json"]
-    Save --> Return
 ```
 
 ## auth 命令
@@ -157,7 +116,6 @@ flowchart TB
 MOBI_API_URL:    http://localhost:2222
 CLI_API_TOKEN:   set / missing
 Token Source:    environment / settings file / none
-Machine ID:      xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 Host:            my-machine
 ```
 
@@ -171,20 +129,19 @@ Host:            my-machine
 #### logout — 登出
 
 1. 从 `settings.cli.json` 清除 `cliApiToken`
-2. 清除 `machineId`
-3. 环境变量中的 Token 仍然生效（提示用户）
+2. 环境变量中的 Token 仍然生效（提示用户）
 
 #### web-token / rotate-web-token — Web 登录令牌（HTTP API）
 
-webApiToken 归 hub 所有（`settings.hub.json`，在 hub 机器上），cli 与 hub 可不同机器部署，
-故这两个子命令一律经 hub HTTP API 而非本地文件：
+webApiToken 归 daemon 所有（`settings.daemon.json`，在 daemon 机器上），cli 与 daemon 可不同机器部署，
+故这两个子命令一律经 daemon HTTP API 而非本地文件：
 
 | 子命令 | API | 行为 |
 |--------|-----|------|
 | `web-token` | `GET /cli/web-token` | 回显当前 webApiToken + `envOverride` 标志 |
-| `rotate-web-token` | `POST /cli/web-token` | hub 生成新 token、落盘并即时热更新，返回新值 |
+| `rotate-web-token` | `POST /cli/web-token` | daemon 生成新 token、落盘并即时热更新，返回新值 |
 
-两命令均以 `Authorization: Bearer <cliApiToken>` 鉴权；`envOverride: true` 表示 hub 以
+两命令均以 `Authorization: Bearer <cliApiToken>` 鉴权；`envOverride: true` 表示 daemon 以
 `WEB_API_TOKEN` 环境变量运行，重启后轮换会被 env 值覆盖（cli 据此提示）。
 
 ## Configuration 单例
@@ -199,8 +156,8 @@ webApiToken 归 hub 所有（`settings.hub.json`，在 hub 机器上），cli �
 | `cliApiToken` | `CLI_API_TOKEN` | `''` |
 | `mobiHomeDir` | `MOBI_HOME` | `~/.mobi` |
 | `settingsFile` | 派生 | `{mobiHomeDir}/settings.cli.json` |
-| `hubSettingsFile` | 派生 | `{mobiHomeDir}/settings.hub.json` |
-| `isRunnerProcess` | 进程参数 | `false` |
+| `daemonSettingsFile` | 派生 | `{mobiHomeDir}/settings.daemon.json` |
+| `isDaemonProcess` | 进程参数 | `false` |
 
 构造器自动创建 `~/.mobi/` 和 `~/.mobi/logs/` 目录。
 
@@ -216,8 +173,8 @@ webApiToken 归 hub 所有（`settings.hub.json`，在 hub 机器上），cli �
 |------|------|
 | `readSettings()` | 读取 `settings.cli.json`，不存在或解析失败返回空对象 |
 | `updateSettings(updater)` | 原子更新 cli 文件：文件锁 → 读取 → 更新 → tmp + rename 写入 |
-| `readHubSettings()` | 读取 `settings.hub.json`（只读展示用） |
-| `updateHubSettings(updater)` | 受限写本机 hub 文件的 `listen*`（其余字段归 hub 所有，原样保留） |
+| `readDaemonSettings()` | 读取 `settings.daemon.json`（只读展示用） |
+| `updateDaemonSettings(updater)` | 受限写本机 daemon 文件的 `listen*`（其余字段归 daemon 所有，原样保留） |
 
 ### updateSettings 原子更新机制
 
@@ -237,7 +194,7 @@ flowchart TB
     Rename --> Unlock["释放文件锁"]
 ```
 
-- **文件锁**：`settings.cli.json.lock`，`wx` 模式创建（排他）；hub 侧有对称实现
+- **文件锁**：`settings.cli.json.lock`，`wx` 模式创建（排他）；daemon 侧有对称实现
 - **重试**：最多 50 次，每次间隔 100ms
 - **过期**：锁文件超过 10s 自动视为过期
 - **原子写入**：先写 `.tmp` 再 `rename`，保证数据完整性
@@ -246,9 +203,8 @@ flowchart TB
 
 ```typescript
 interface Settings {
-    machineId?: string                    // 机器唯一标识
-    cliApiToken?: string                   // CLI 连接凭证（hub 侧验证基准在 settings.hub.json）
-    apiUrl?: string                        // Hub API URL
+    cliApiToken?: string                   // CLI 连接凭证（daemon 侧验证基准在 settings.daemon.json）
+    apiUrl?: string                        // daemon API URL
     serverUrl?: string                     // 旧字段名（向后兼容读取）
     updateChannel?: 'stable' | 'rc'        // 升级通道
     disconnectTimeoutMs?: number           // 连接断开超时
@@ -256,7 +212,7 @@ interface Settings {
     timeoutWarningMs?: number              // 预警提前时间
     claudeEnv?: Record<string, string>     // 注入 claude 子进程的额外环境变量
     bashInjectContext?: boolean            // !bash 输出是否注入 SDK context
-    webTools?: WebToolsConfig              // Web 工具配置（runner RPC 读写）
+    webTools?: WebToolsConfig              // Web 工具配置（daemon controlServer 读写）
 }
 ```
 
@@ -267,18 +223,16 @@ packages/cli/src/
 ├── commands/
 │   └── auth.ts                # auth 命令：login / logout / status / web-token / rotate-web-token
 ├── ui/
-│   ├── apiUrlInit.ts           # API URL 初始化
-│   ├── tokenInit.ts            # Token 初始化（含交互式输入）
-│   └── auth.ts                 # Machine ID 初始化
-├── configuration.ts            # 全局配置单例
-└── persistence.ts              # 文件持久化（Settings 读写 + 文件锁）
+│   └── tokenInit.ts           # Token 初始化（含交互式输入）
+└── setup/
+    └── settingsWizard.ts      # setup 向导（读/写 daemon settings 的 listen*）
 ```
 
 ## 文件分布
 
 ```
 ~/.mobi/
-├── settings.cli.json       # cli 配置（Token、Machine ID、API URL 等，随 cli 部署位置走）
-├── settings.hub.json       # hub 配置（仅 co-located 部署时在本机）
+├── settings.cli.json       # cli 配置（Token、API URL 等，随 cli 部署位置走）
+├── settings.daemon.json    # daemon 配置（webApiToken、listen* 等）
 └── settings.cli.json.lock  # 更新时的文件锁（临时）
 ```

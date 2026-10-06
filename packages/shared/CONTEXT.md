@@ -45,7 +45,7 @@ _Avoid_: 引用（ref）——ref block 已删除，动作链接是其唯一后�
 文件读写的安全边界（[ADR 0004](../../docs/adr/0004-read-boundary-cwd-union-home.md)）。协议只承诺透传路径，实际可达范围由边界裁决。
 
 **读边界（Read Boundary）**：
-允许读取的路径集合 = cwd 子树 ∪ (home 子树 − 黑名单)。`~` 前缀展开为 home 后判定。两读取通道（session / machine）同源共用。
+允许读取的路径集合 = cwd 子树 ∪ (home 子树 − 黑名单)。`~` 前缀展开为 home 后判定。两读取通道（session / host）同源共用。
 _Avoid_: 白名单——黑名单是例外列举，读边界是允许集定义
 
 **写边界（Write Boundary）**：

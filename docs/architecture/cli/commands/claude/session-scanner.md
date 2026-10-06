@@ -1,6 +1,6 @@
 # SessionScanner — Local 模式的会话文件扫描器
 
-Local 模式下，Claude 进程将消息写入 JSONL 文件。SessionScanner 负责监听这些文件的变化，解析新消息并转发到 Hub。
+Local 模式下，Claude 进程将消息写入 JSONL 文件。SessionScanner 负责监听这些文件的变化，解析新消息并转发到 daemon。
 
 **文件**:
 - [`packages/session/src/claude/utils/sessionScanner.ts`](/packages/session/src/claude/utils/sessionScanner.ts) — Claude 专用实现（243 行）
@@ -46,7 +46,7 @@ flowchart TB
     Parse -->|"去重检查"| Dedup["processedEventKeys"]
     Dedup -->|"新消息"| Handle["handleFileScan()"]
     Handle -->|"onMessage()"| Launcher["claudeLocalLauncher"]
-    Launcher -->|"sendClaudeSessionMessage()"| Hub["Hub"]
+    Launcher -->|"sendClaudeSessionMessage()"| daemon["daemon"]
 ```
 
 ## 类层次
@@ -167,7 +167,7 @@ beforeScan()           ← 子类：清空扫描追踪
         ├── parseSessionFile()  ← 子类：从 cursor 解析新行
         ├── generateEventKey()  ← 子类：为每条消息生成去重 key
         ├── 去重检查            ← processedEventKeys 过滤
-        ├── handleFileScan()    ← 子类：处理新消息（发送到 Hub）
+        ├── handleFileScan()    ← 子类：处理新消息（发送到 daemon）
         ├── setCursor()         ← 更新读取位置
         └── 记录新 key          ← 加入已处理集合
     │

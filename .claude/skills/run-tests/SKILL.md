@@ -132,7 +132,7 @@ E2E 的具体**操作 recipe 与踩坑记录**存在 `memory/`（随 skill 提�
 |---|---|---|
 | shared | vitest | `bun run test:shared` |
 | node-core | vitest | `bun run test:node-core` |
-| daemon | bun 内置（tests/hub/）+ vitest 串联 | `bun run test:daemon` |
+| daemon | bun 内置（tests/server/）+ vitest 串联 | `bun run test:daemon` |
 | session | vitest | `bun run test:session` |
 | cli | vitest | `bun run test:cli` |
 | web | vitest (jsdom) | `bun run test:web` |

@@ -199,7 +199,7 @@ Web 浏览器登录专用密钥（`POST /api/auth` 校验源），与 `CLI_API_T
 | 2 | 配置文件 `~/.mobi/settings.json` | 持久化存储 |
 | 3 | 自动生成 | 首次启动时生成并保存 |
 
-**轮换（不重启 hub）**：`mobi auth rotate-web-token` 重写 settings.json，hub 经 `settingsWatcher`（fs.watch 目录监听）热 reload。查看当前值：`mobi auth web-token`。
+**轮换（不重启 daemon）**：`mobi auth rotate-web-token` 重写 settings.json，daemon 经 `settingsWatcher`（fs.watch 目录监听）热 reload。查看当前值：`mobi auth web-token`。
 
 > 已知 tradeoff：轮换后已签发的 JWT 最长 1 天自然失效（JWT 无状态），新登录需用新 WEB_API_TOKEN。
 

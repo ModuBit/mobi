@@ -109,7 +109,7 @@ interface DecryptedMessage {
     lifecycleAt?: number | null // 最近一次 lifecycle 转换的时刻；非排队消息恒为 null
     content: unknown      // 消息内容：信封 {role, content, meta}——用户输入的 content 恒为 UserContentBlock[] 数组（text/image/document/quote，schema 见 shared userContentSchema.ts），agent 信封 data 为 SDK 原始消息透传（详见 message-lifecycle.md「mobi 信封」节）
     createdAt: number     // 创建时间戳（毫秒）
-    snapshot?: boolean    // 标识流式快照消息（未落库，Hub 直接透传给 Web）
+    snapshot?: boolean    // 标识流式快照消息（未落库，daemon 直接透传给 Web）
 }
 ```
 
@@ -193,7 +193,6 @@ interface SessionSummary {
 interface SessionSummaryMetadata {
     name?: string
     path: string
-    machineId?: string
     summary?: { text: string }
     flavor?: string | null
     worktree?: WorktreeMetadata
@@ -221,7 +220,7 @@ interface WorkspaceFolder {
 
 ### Workspace
 
-工作区实体（folders 是机器本地路径，工作区归属 machineId）。
+工作区实体（folders 是宿主本地路径；machineId 已随 remove-machine 删除，ADR 0011）。
 
 **源码**: `packages/shared/src/schemas.ts`
 
@@ -229,7 +228,6 @@ interface WorkspaceFolder {
 interface Workspace {
     id: string
     namespace: string
-    machineId: string
     name: string
     folders: WorkspaceFolder[]
     createdAt: number
@@ -252,7 +250,7 @@ type SyncEvent =
     | { type: 'session-updated', sessionId: string, data?: unknown, namespace?: string }
     | { type: 'session-removed', sessionId: string, namespace?: string }
     | { type: 'message-received', sessionId: string, message: DecryptedMessage, namespace?: string }
-    | { type: 'machine-updated', machineId: string, data?: unknown, namespace?: string }
+    | { type: 'daemon-status', data?: unknown, namespace?: string }
     | { type: 'toast', data: { title: string, body: string, sessionId: string, url: string, kind: 'ready' | 'permission' }, namespace?: string }
     | { type: 'message-snapshot', sessionId: string, message: DecryptedMessage, namespace?: string }
     | { type: 'heartbeat', data?: { timestamp: number }, namespace?: string }
@@ -270,9 +268,9 @@ type SyncEvent =
 | `session-updated` | 会话状态变化（活跃/思考/配置等） |
 | `session-removed` | 会话从缓存/数据库中删除 |
 | `message-received` | 收到新消息 |
-| `machine-updated` | 机器状态变化（上线/离线/心跳） |
+| `daemon-status` | executor 状态变化（就绪/spawn 结果/关停，权威源 executorRuntime 内存单例） |
 | `toast` | 需要展示 Toast 通知（`kind: 'ready'` = Agent 等待输入，`kind: 'permission'` = CLI 请求权限） |
-| `message-snapshot` | 流式快照消息（未落库，Hub 直接透传给 Web） |
+| `message-snapshot` | 流式快照消息（未落库，daemon 直接透传给 Web） |
 | `heartbeat` | 心跳事件 |
 | `connection-changed` | 连接状态变化 |
 | `idle-timeout-warning` | 空闲超时预警，提示会话即将因空闲被关闭 |
@@ -295,7 +293,6 @@ interface Metadata {
     name?: string                    // 会话名称
     os?: string                      // 操作系统
     summary?: { text: string, updatedAt: number } // 会话摘要
-    machineId?: string               // 机器唯一 ID
     claudeSessionId?: string         // Claude 原生会话 ID
     tools?: string[]                 // 可用工具列表
     sdkMetadata?: SDKMetadata        // SDK 元数据
@@ -303,9 +300,9 @@ interface Metadata {
     mobiHomeDir?: string             // Mobi 主目录
     mobiLibDir?: string              // Mobi 库目录
     mobiToolsDir?: string            // Mobi 工具目录
-    startedFromRunner?: boolean      // 是否由 Runner 启动
+    startedFromDaemon?: boolean      // 是否由 daemon spawn 启动
     hostPid?: number                 // 主进程 PID
-    startedBy?: 'runner' | 'terminal' // 启动来源
+    startedBy?: 'daemon' | 'runner' | 'terminal' // 启动来源（'runner' 为存量行读侧容错）
     lifecycleState?: string          // 生命周期状态
     lifecycleStateSince?: number     // 生命周期状态变更时间
     archivedBy?: string              // 归档操作者
@@ -479,11 +476,11 @@ interface RuntimeState {
     todos?: TodoItem[]
     tasks?: TaskItem[]
     backgroundTasks?: BackgroundTaskItem[]
-    foregroundTasks?: ForegroundTaskItem[] // 前台执行中任务清单（hub 从消息投影维护）
+    foregroundTasks?: ForegroundTaskItem[] // 前台执行中任务清单（daemon 从消息投影维护）
     teamState?: TeamState
     model?: string | null
     effort?: EffortLevel
-    permissionMode?: PermissionMode // CLI keep-alive 上报落库，hub 重启后 resume 回放
+    permissionMode?: PermissionMode // CLI keep-alive 上报落库，daemon 重启后 resume 回放
     outputStyle?: string
     contextUsage?: ContextUsage // 上下文用量快照（CLI 事件驱动上报，见 ContextUsage）
     goalStatus?: GoalStatus | null // 当前/最近一次 /goal 状态；null 表示清空
@@ -538,7 +535,7 @@ interface BackgroundTaskItem {
     description: string
     subagentType?: string
     status: 'running' | 'completed' | 'failed' | 'stopped'
-    /** 是否为后台任务（SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 hub 判定后写入） */
+    /** 是否为后台任务（SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 daemon 判定后写入） */
     isBackground: boolean
     metrics?: {
         tokens: number

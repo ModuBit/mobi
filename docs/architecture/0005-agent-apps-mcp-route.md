@@ -28,7 +28,7 @@ mobi 会话内的 agent 工具目前只能本地执行。期望 agent 能触达 
   - 强制 `ENABLE_TOOL_SEARCH=true`：defer 生效（请求体只剩 `ToolSearch` + `DeferredToolPlaceholder`，工具 JSON ~28KB），GLM 后端零异常，行为正确，成本约降至 1/25~1/4。
   - 工具选择准确率（60 工具）：全量 10/10 vs defer 10/10（选名）；实际调用 5/5 vs 4~5/5，defer 平均多 ~1.5 turn（检索 round-trip）。
 - 即"proxy 链路 → defer 不可用 → MCP 工具上下文必爆"的前提不成立：CC 的 MCP tool search 是客户端实现（占位符 + 普通工具形态的 ToolSearch），不依赖服务端 tool_reference 块，对代理/第三方后端透明。
-- CLI 路线的剩余优势（人类可直接用命令、服务非 mobi 会话）不足以抵消其成本（子进程鉴权连 Hub 基建、审批显示为命令行文本、回执非结构化）。
+- CLI 路线的剩余优势（人类可直接用命令、服务非 mobi 会话）不足以抵消其成本（子进程鉴权连 daemon 基建、审批显示为命令行文本、回执非结构化）。
 
 **dispatch tool（按域聚合 action 判别联合）**——被用户否决：接口形态被压扁，宽 schema 的分支参数模型猜不准，zod 只能事后报错。仅在 defer 不可用时才值得考虑，而 defer 已实测可用。
 

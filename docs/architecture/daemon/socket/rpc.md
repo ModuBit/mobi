@@ -2,16 +2,16 @@
 
 **文件**: [`packages/daemon/src/socket/rpcRegistry.ts`](/packages/daemon/src/socket/rpcRegistry.ts)
 
-RpcRegistry 管理 CLI 注册的 RPC 方法，使 Web 端可以通过 Hub 远程调用 CLI 的方法。
+RpcRegistry 管理 CLI 注册的 RPC 方法，使 Web 端可以通过 daemon 远程调用 CLI 的方法。
 
 ## 架构
 
 ```mermaid
 flowchart LR
-    Web[Web 端] -->|HTTP API| Hub[Hub Server]
-    Hub -->|rpc-request| Registry[RpcRegistry]
+    Web[Web 端] -->|HTTP API| daemon[daemon Server]
+    daemon -->|rpc-request| Registry[RpcRegistry]
     Registry -->|method → socketId| CLI[CLI Socket]
-    CLI -->|callback| Hub -->|response| Web
+    CLI -->|callback| daemon -->|response| Web
 ```
 
 ## 数据结构
@@ -32,16 +32,16 @@ socketIdToMethods:  Map<socketId, Set<method>> // CLI socket ID → 方法集合
 ```mermaid
 sequenceDiagram
     participant CLI
-    participant Hub as SocketServer
+    participant daemon as SocketServer
     participant Registry as RpcRegistry
 
-    CLI->>Hub: rpc-register { method: "approve_request" }
-    Hub->>Registry: register(socket, method)
+    CLI->>daemon: rpc-register { method: "approve_request" }
+    daemon->>Registry: register(socket, method)
     Note over Registry: methodToSocketId["approve_request"] = socket.id
     Note over Registry: socketIdToMethods[socket.id].add("approve_request")
 
-    CLI->>Hub: rpc-unregister { method: "approve_request" }
-    Hub->>Registry: unregister(socket, method)
+    CLI->>daemon: rpc-unregister { method: "approve_request" }
+    daemon->>Registry: unregister(socket, method)
     Note over Registry: 移除双向索引
 ```
 

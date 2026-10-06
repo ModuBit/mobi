@@ -1,13 +1,13 @@
 # 版本化更新协议 (`versionedUpdate.ts`)
 
-乐观锁机制，确保 CLI 与 Hub 之间的元数据/状态更新不会因并发冲突而丢失。
+乐观锁机制，确保 CLI 与 daemon 之间的元数据/状态更新不会因并发冲突而丢失。
 
 ## 核心思想
 
-CLI 和 Hub 各自维护一份带版本号的本地缓存。更新时：
+CLI 和 daemon 各自维护一份带版本号的本地缓存。更新时：
 
 1. CLI 发送 `{ value, expectedVersion }`
-2. Hub 比对 `expectedVersion` 与服务端版本
+2. daemon 比对 `expectedVersion` 与服务端版本
 3. 匹配 → 更新成功，返回新版本
 4. 不匹配 → 返回最新值，CLI 需重试
 
@@ -70,8 +70,6 @@ ack (unknown)
 |--------|---------|----------|
 | `ApiSessionClient` | session metadata | `'metadata'` |
 | `ApiSessionClient` | agent state | `'agentState'` |
-| `ApiMachineClient` | machine metadata | `'metadata'` |
-| `ApiMachineClient` | runner state | `'runnerState'` |
 
 ## 重试机制
 

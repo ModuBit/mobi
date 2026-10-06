@@ -786,7 +786,7 @@ interrupt（用户停止）
 
 - 桌面观看/控制权功能本体已实现并 E2E 验证（迭代 1+2，commit `6a0f2a4`→`5178a06b` + `52ad0e9b`），但真机链路尚不稳定，用户决定先下线入口（`52ad0e9b` 之后一笔）
 - 入口闸：`packages/web/src/domain/desktop/featureGate.ts` 的 `DESKTOP_ENTRY_ENABLED = false`——检视面板「+」菜单/空态卡片（`INSPECTOR_ACTIONS` 过滤）与侧边栏「远程桌面」分区均已隐藏；`/desktop` 与 `/settings/desktop` 直链仍可达（恢复验收用）
-- **2026-10-03 改判（personal-agent-rewrite）**：多机数据面已删（ADR 0010），原观看流「cli 侧 attach 被控端 VNC、hub 观察端 observe」的跨机前提不复存在——**恢复时按单机新架构重做**（本机 daemon 直连本机/局域网 VNC，无 machine 路由），不是把旧链路翻闸放出；旧实现的归因注册表、控制权权威等架构评审结论（memory）可复用
+- **2026-10-03 改判（personal-agent-rewrite）**：多机数据面已删（ADR 0010），原观看流「cli 侧 attach 被控端 VNC、hub 观察端 observe」的跨机前提不复存在——**恢复时按单机新架构重做**（本机 daemon 直连本机/局域网 VNC，无 machine 路由），不是把旧链路翻闸放出；旧实现的归因注册表、控制权权威等架构评审结论（memory）可复用。**2026-10-06 注**：remove-machine 已把 machineId 契约/DB 清干净（ADR 0011），本项恢复不受影响，仍按新架构重做
 
 **真机暴露的稳定性问题**：
 
@@ -973,7 +973,7 @@ interrupt（用户停止）
 - **桌面壳（desktop app 壳）**：不在本期（用户原话），将来需要时另立项
 - **测试框架统一**：bun:test（daemon hub 域）与 vitest（shared/node-core/cli/session/web）并存是裁决 Q7 的既定状态，不强行统一
 - **configuration 单例合一**：settings.hub.json / settings.cli.json 拆分保留（写权限边界），不合并回单文件
-- **web 契约 machineId 字段清理**：D4=C 冻结保留，见 ADR 0010；真多机时按新架构重做
+- ~~**web 契约 machineId 字段清理**~~：**已由 remove-machine 特性完成（2026-10-06，推翻 D4=C）**——契约/DB/落盘全清，见 ADR 0011；真多机时按新架构重做，不复用旧契约
 
 ## 98. ✅ 已解决：web 终端每会话上限 3 未拦截——非当前缺陷（19 票已修，2026-10-04 E2E 实证关闭）
 

@@ -1,12 +1,11 @@
-# ApiClient (`api.ts`)
+# ApiClient (`packages/node-core/src/api/api.ts`)
 
-HTTP 客户端工厂，负责向 Hub REST API 创建/查找 Session 和 Machine 资源。
+HTTP 客户端，负责向 daemon REST API 创建/查找 Session 资源。
 
 ## 核心职责
 
 - Token 认证的 HTTP 请求封装
-- Session / Machine 资源的创建与查找
-- 作为 `ApiSessionClient` 和 `ApiMachineClient` 的工厂入口
+- Session 资源的创建与查找
 
 ## 类结构
 
@@ -14,10 +13,7 @@ HTTP 客户端工厂，负责向 Hub REST API 创建/查找 Session 和 Machine 
 ApiClient
 ├── static create()            // 异步工厂，自动获取 auth token
 ├── getSessionByClaudeSessionId(claudeSessionId)  // 按 Claude Session ID 查找
-├── getOrCreateSession(opts)   // 创建或获取 session
-├── getOrCreateMachine(opts)   // 创建或获取 machine
-├── sessionSyncClient(session) // 工厂：创建 ApiSessionClient
-└── machineSyncClient(machine) // 工厂：创建 ApiMachineClient
+└── getOrCreateSession(opts)   // 创建或获取 session
 ```
 
 ## API 端点
@@ -40,27 +36,14 @@ POST /cli/sessions
 Body: { tag, metadata, agentState, mode?, runtimeState?, workspaceId? }
 ```
 
-- **用途**: 创建新 session 或获取已有 session（Hub 端按 tag 幂等）
+- **用途**: 创建新 session 或获取已有 session（daemon 端按 tag 幂等）
 - **参数**:
   - `tag`: session 标签（用于 `--resume` 复用）
-  - `metadata`: 机器/路径信息
+  - `metadata`: 路径信息
   - `agentState`: Agent 状态快照
-  - `workspaceId`: 归属工作区 id（`--workspace` 透传；Hub 校验工作区归属本机，404/403 时报错）
+  - `workspaceId`: 归属工作区 id（`--workspace` 透传）
 - **返回**: `Session & { workspace: Workspace | null }`——`workspace` 为归属工作区实体（游离时 `null`），CLI 据此派生并冻结 `metadata.additionalDirectories`
 - **错误处理**: 响应校验失败抛出 `apiValidationError`
-
-### `getOrCreateMachine(opts)`
-
-```
-POST /cli/machines
-Body: { id, metadata, runnerState }
-```
-
-- **用途**: 注册或更新机器信息
-- **参数**:
-  - `id`: 机器唯一标识（hostname-based）
-  - `metadata`: 机器元数据（host, platform, version 等）
-  - `runnerState`: Runner 运行状态
 
 ## 响应解析模式
 
@@ -70,14 +53,14 @@ Body: { id, metadata, runnerState }
 // 1. Zod Schema 校验原始响应
 const parsed = SomeSchema.safeParse(response.data)
 
-// 2. metadata / agentState / runnerState 独立解析
+// 2. metadata / agentState 独立解析
 // 任何字段解析失败不影响其他字段
 
 // 3. 返回类型化的对象
 ```
 
 这种模式确保：
-- Hub 响应格式变更不会导致整个请求失败
+- daemon 响应格式变更不会导致整个请求失败
 - 不认识的字段被安全忽略
 - 日志记录所有解析失败
 
@@ -85,7 +68,6 @@ const parsed = SomeSchema.safeParse(response.data)
 
 | 调用者 | 用途 |
 |--------|------|
-| `runner/run.ts` | Runner 启动时注册 Machine |
 | `agent/sessionFactory.ts` | 启动 Claude Session 前创建/查找 Session |
 
 ## 设计要点

@@ -10,7 +10,7 @@ RPC 网关，通过 Socket.IO 调用 CLI 的功能。
 
 ```mermaid
 flowchart TB
-    subgraph Hub
+    subgraph daemon
         SyncEngine[SyncEngine]
         RpcGateway[RpcGateway]
         RpcRegistry[RpcRegistry<br/>method - socketId]
@@ -22,7 +22,6 @@ flowchart TB
 
     subgraph CLI
         CLI1[CLI 客户端 1<br/>session:xxx]
-        CLI2[CLI 客户端 2<br/>machine:yyy]
     end
 
     SyncEngine --> RpcGateway
@@ -48,7 +47,9 @@ flowchart TB
 
 **Method 命名规则**：
 - Session 级别：`{sessionId}:{method}`（如 `sess-123:git-status`）
-- Machine 级别：`{machineId}:{method}`（如 `mac-456:spawn-mobi-session`）
+
+> machine 级 RPC（原 `{machineId}:{method}`）已随 machine 通道删除本地直调化（ExecutorHost，
+> ticket-17/20 / remove-machine），本网关只剩会话族。
 
 ### RpcGateway
 
@@ -58,13 +59,11 @@ flowchart TB
 |------|------|------------|
 | `approvePermission` | 批准权限请求 | `{sessionId}:permission` |
 | `denyPermission` | 拒绝权限请求 | `{sessionId}:permission` |
-| `abortSession` | 中止会话（`stopKind` 三档：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`；后两档 hub 侧同步 `cancelAllQueuedMessages` 批量清 queued 行） | `{sessionId}:abort` |
+| `abortSession` | 中止会话（`stopKind` 三档：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`；后两档 daemon 侧同步 `cancelAllQueuedMessages` 批量清 queued 行） | `{sessionId}:abort` |
 | `switchSession` | 切换 local/remote | `{sessionId}:switch` |
 | `requestSessionConfig` | 请求配置更新 | `{sessionId}:set-session-config` |
 | `requestRename` | 回写 CC customTitle（Mobi → CC 标题同步，best-effort） | `{sessionId}:rename-session` |
 | `killSession` | 杀死会话 | `{sessionId}:killSession` |
-| `spawnSession` | 创建新会话（支持 `sessionType`/`worktreeName`/`resumeSessionId`/`effort`/`workspaceId` 参数；workspaceId 经 hub 校验工作区归属目标机器后透传 CLI） | `{machineId}:spawn-mobi-session` |
-| `checkPathsExist` | 检查路径是否存在 | `{machineId}:path-exists` |
 | `getGitStatus` | 获取 Git 状态 | `{sessionId}:git-status` |
 | `readSessionFile` | 读取文件 | `{sessionId}:readFile` |
 | `listDirectory` | 列出目录 | `{sessionId}:listDirectory` |
@@ -72,14 +71,10 @@ flowchart TB
 | `deleteUploadFile` | 删除上传文件 | `{sessionId}:deleteUpload` |
 | `searchSessionFiles` | 搜索会话文件 | `{sessionId}:searchSessionFiles` |
 | `listSessionDirectory` | 列出会话目录 | `{sessionId}:listSessionDirectory` |
-| `listMachineDirectory` | 列出机器目录 | `{machineId}:list-directory` |
 | `refreshMetadata` | 刷新 SDK 元数据 | `{sessionId}:refreshMetadata` |
 | `stopTask` | 停止后台任务 | `{sessionId}:stop-task` |
 | `runRipgrep` | 搜索代码 | `{sessionId}:ripgrep` |
 | `cancelCliQueuedMessage` | 取消 CLI 内存队列中缓冲的排队消息（两阶段取消的 CLI 侧） | `{sessionId}:cancel-queued-message` |
-| `getWebToolsConfig` | 读取 web 工具配置（凭据脱敏回显；hub 纯透传不落库） | `{machineId}:get-web-tools-config` |
-| `setWebToolsConfig` | 写入 web 工具配置（runner 锁内按在场性 merge 凭据后落盘 settings.json） | `{machineId}:set-web-tools-config` |
-| `verifyWebToolsProvider` | 验证 web 工具 provider 连通性（草稿凭据优先，一次真实搜索，不落盘） | `{machineId}:verify-web-tools-provider` |
 
 ## RPC 调用流程
 
@@ -124,6 +119,6 @@ socket.timeout(30_000).emitWithAck('rpc-request', {
 | 超时 | CLI 30 秒内未响应（socket.io 文案 `operation has timed out`） | `timeout` |
 | 其他传输异常 | 框架/序列化等 | `other` |
 
-**分类在产生它的这一层定下**——`unreachable` 两句由 `rpcCall` 自己抛出时直接带上，不再靠下游读文案反解。剩下还在读句子的只有**别处产出的散文**（socket.io 的 ack 超时、runner 的 `Session webhook timeout for PID N`），判据集中在文件内的 `classifyTransportFailure`，要彻底拆掉它得让 runner 的回执带结构化字段（见 `docs/pending.md` #78）。
+**分类在产生它的这一层定下**——`unreachable` 两句由 `rpcCall` 自己抛出时直接带上，不再靠下游读文案反解。剩下还在读句子的只有**别处产出的散文**（socket.io 的 ack 超时、executor lifecycle 的 `Session webhook timeout for PID N`），判据集中在文件内的 `classifyTransportFailure`，要彻底拆掉它得让 executor 的回执带结构化字段（见 `docs/pending.md` #78）。
 
-`spawnSession` 把异常收敛成结果值，失败支同样带上分类（`{ type:'error'; message; failure }`）——这条链路里混着 rpcCall 的分类错、runner 的人话与本地合成句，分类在这里一次定完。`SyncEngine.spawnSession`（Web 出口）只透出 `message`，分类是 hub 内部的说法，不进 HTTP body。
+`spawnSession` 把异常收敛成结果值，失败支同样带上分类（`{ type:'error'; message; failure }`）——这条链路里混着 rpcCall 的分类错、executor 的人话与本地合成句，分类在这里一次定完。`SyncEngine.spawnSession`（Web 出口）只透出 `message`，分类是 daemon 内部的说法，不进 HTTP body。

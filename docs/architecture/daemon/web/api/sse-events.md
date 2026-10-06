@@ -21,7 +21,6 @@ Server-Sent Events（SSE）用于向 Web 客户端推送实时事件。
 |------|------|------|
 | `all` | boolean | 订阅所有事件（默认 false） |
 | `sessionId` | string | 订阅特定会话 |
-| `machineId` | string | 订阅特定机器 |
 | `visibility` | `visible` / `hidden` | 页面可见性（默认 hidden） |
 
 ### 连接流程
@@ -34,7 +33,7 @@ sequenceDiagram
 
     Web->>Server: GET /api/events?sessionId=xxx
     Server->>Server: 验证 JWT
-    Server->>Server: 验证 session/machine 访问权限
+    Server->>Server: 验证 session 访问权限
     Server->>SSEManager: subscribe()
     Server-->>Web: SSE: connection-changed
     Note over Web,SSEManager: 长连接保持
@@ -148,4 +147,3 @@ Authorization: Bearer <jwt>
 |------|------|------------|
 | 全局 | `all=true` | 所有事件 |
 | 会话 | `sessionId=xxx` | 该会话相关事件 |
-| 机器 | `machineId=xxx` | 该机器相关事件 |

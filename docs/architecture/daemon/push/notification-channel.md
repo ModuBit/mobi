@@ -44,7 +44,7 @@ flowchart TB
     push --> done
 ```
 
-**通道选择**（Hub 端）：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`（依赖 `sseManager.hasVisibleConnection` 间接消费 VisibilityTracker，与 `pushService.hasSubscription`）。
+**通道选择**（daemon 端）：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`（依赖 `sseManager.hasVisibleConnection` 间接消费 VisibilityTracker，与 `pushService.hasSubscription`）。
 
 | 条件 | 通知方式 |
 |------|---------|

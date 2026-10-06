@@ -8,7 +8,7 @@
 
 ## 解决的问题
 
-Claude 命令在运行时需要处理来自 Hub（Web 用户）的消息，这些消息携带不同的运行模式（permissionMode、model、systemPrompt 等）。核心挑战：
+Claude 命令在运行时需要处理来自 daemon（Web 用户）的消息，这些消息携带不同的运行模式（permissionMode、model、systemPrompt 等）。核心挑战：
 
 1. **模式一致性** — 同一批次送给 Claude 的消息必须具有相同的运行模式，否则会触发不必要的会话重配置
 2. **特殊命令隔离** — `/compact`、`/clear` 等命令必须独占处理，不能与普通消息混批
@@ -55,7 +55,7 @@ interface QueueItem<T> {
     mode: T;              // 模式上下文（如 EnhancedMode）
     modeHash: string;     // 模式的确定性哈希值（由 modeHasher 计算）
     isolate?: boolean;    // 是否要求隔离处理
-    localId?: string;     // 用户消息的本地 ID，用于通知 Hub 已消费
+    localId?: string;     // 用户消息的本地 ID，用于通知 daemon 已消费
 }
 ```
 
@@ -119,7 +119,7 @@ hash 相同 = 所有影响 Claude 运行行为的参数一致 → 可以合并�
 
 | 方法 | 用途 |
 |------|------|
-| `setOnBatchConsumed(handler)` | 注册批次消费回调，`collectBatch` 取出一批后触发，参数为本批 `localIds`。`runClaude` 绑定此回调 → `apiSession.emitMessagesConsumed(localIds)` 通知 Hub |
+| `setOnBatchConsumed(handler)` | 注册批次消费回调，`collectBatch` 取出一批后触发，参数为本批 `localIds`。`runClaude` 绑定此回调 → `apiSession.emitMessagesConsumed(localIds)` 通知 daemon |
 
 ### 生命周期
 
@@ -175,7 +175,7 @@ const batch = await queue.waitForMessagesAndGetAsString(abortSignal);
 // batch.mode     — 这一批的 EnhancedMode
 // batch.isolate  — 是否为隔离消息
 // batch.hash     — modeHash
-// batch.localIds — 本批已消费的 localId 列表（已通过 onBatchConsumed 回调通知 Hub）
+// batch.localIds — 本批已消费的 localId 列表（已通过 onBatchConsumed 回调通知 daemon）
 ```
 
 ## 线程模型
@@ -191,9 +191,9 @@ MessageQueue 是单生产者-单消费者模型：
 
 | 维度 | MessageQueue（本组件） | OutgoingMessageQueue |
 |------|----------------------|---------------------|
-| **方向** | Hub → CLI → Claude（入站） | Claude → CLI → Hub（出站） |
+| **方向** | daemon → CLI → Claude（入站） | Claude → CLI → daemon（出站） |
 | **文件** | `packages/node-core/src/utils/MessageQueue.ts` | `packages/session/src/claude/utils/OutgoingMessageQueue.ts` |
-| **功能** | 按 mode 分批收集用户消息 | 有序发送 Claude 输出到 Hub |
+| **功能** | 按 mode 分批收集用户消息 | 有序发送 Claude 输出到 daemon |
 | **模式** | 仅 Remote 模式 | 仅 Remote 模式 |
 | **核心关注** | 模式一致性 | 消息顺序和完整性（tool call 配对） |
 

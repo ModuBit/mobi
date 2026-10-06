@@ -14,7 +14,7 @@ graph TB
         CmdDefault["claudeCommand<br/>（默认，装配 session）"]
         CmdAuth["auth"]
         CmdDaemon["daemon"]
-        CmdRunner["runner<br/>（会话管理工具族）"]
+        CmdSessions["sessions<br/>（会话管理工具族）"]
         CmdMcp["mcp"]
         CmdDoctor["doctor"]
         CmdService["service"]
@@ -26,7 +26,7 @@ graph TB
     end
 
     Entry --> Registry
-    Registry --> CmdDefault & CmdAuth & CmdDaemon & CmdRunner & CmdMcp & CmdDoctor & CmdService & CmdLogs & CmdSetup & CmdUpgrade & CmdVersion & CmdHook
+    Registry --> CmdDefault & CmdAuth & CmdDaemon & CmdSessions & CmdMcp & CmdDoctor & CmdService & CmdLogs & CmdSetup & CmdUpgrade & CmdVersion & CmdHook
 
     CmdDaemon -->|"动态 import daemonEntry"| Daemon["daemon<br/>（单机自足服务器）"]
     CmdDefault -->|"经宿主通道连 daemon"| Daemon
@@ -76,7 +76,7 @@ resolveCommand(args) → { command, context }
 | **(default)** | `claude` | ✅ | 启动 Claude Code 会话（session 包装配），经宿主通道连 daemon |
 | `auth` | — | ✅ | 认证管理（login / logout / status） |
 | [`daemon`](./commands/daemon) | `service daemon` | ✅ | 启动/管理单机 daemon（经 supervisor 托管） |
-| [`runner`](./commands/runner) | — | ✅ | 会话管理工具族（list / stop-session / logs；进程级操作走 `mobi daemon`） |
+| [`sessions`](./commands/sessions) | — | ✅ | 会话管理工具族（list / stop；进程级操作走 `mobi daemon`） |
 | [`mcp`](./commands/mcp) | — | ❌ | MCP stdio bridge，把 `change_title` 调用转发给已有 HTTP MCP（当前无实际场景） |
 | [`doctor`](./commands/doctor) | — | ✅ | 系统诊断与故障排除 |
 | [`service`](./commands/service) | — | ✅ | supervisor 托管 daemon（start / stop / restart / status） |
@@ -86,7 +86,7 @@ resolveCommand(args) → { command, context }
 | `version` | — | ❌ | 版本信息（show / list） |
 | [`hook`](./commands/hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
 
-> `mobi hub` / `mobi runner <start|stop|restart|status>` 顶层别名已删除（ticket-22，runner 与 hub 已合并为单 daemon）。
+> `mobi hub` / `mobi runner` 命令已删除（ticket-22 与 remove-machine 601，runner 与 hub 已合并为单 daemon）：会话管理走 `mobi sessions`。
 
 ### 命令详解
 
@@ -125,9 +125,9 @@ flowchart TB
 
 | 子命令 | 说明 |
 |--------|------|
-| `status` | 显示当前连接配置（Token 状态、Machine ID） |
+| `status` | 显示当前连接配置（Token 状态、Host） |
 | `login` | 交互式输入并保存 CLI_API_TOKEN |
-| `logout` | 清除本地凭据（Token 和 Machine ID） |
+| `logout` | 清除本地凭据（Token） |
 
 Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.cli.json` > 交互式输入。
 
@@ -143,17 +143,14 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.cli.json` > �
 
 详见 [Daemon 命令](./commands/daemon)。
 
-#### [runner](./commands/runner) — 会话管理工具族
+#### [sessions](./commands/sessions) — 会话管理工具族
 
 | 子命令 | 说明 |
 |--------|------|
 | `list` | 列出活跃会话 |
-| `stop-session <id>` | 停止指定会话 |
-| `logs` | 显示最新 daemon 日志路径 |
+| `stop <id>` | 停止指定会话 |
 
-runner 与 hub 同进程为 daemon，进程级操作走 `mobi daemon` / `mobi service`。原 runner 的 spawn 管线、controlServer 等内部结构见 [runner 内部文档](./commands/runner)。
-
-详见 [Runner 命令](./commands/runner)。
+会话运行在 daemon 内，进程级操作走 `mobi daemon` / `mobi service`；spawn 管线、controlServer 等内部结构见 [daemon executor 架构](../daemon/)。
 
 #### [mcp](./commands/mcp) — MCP stdio bridge
 
@@ -168,7 +165,6 @@ runner 与 hub 同进程为 daemon，进程级操作走 `mobi daemon` / `mobi se
 | 子命令 | 说明 |
 |--------|------|
 | (无) | 运行完整诊断检查 |
-| `hub` / `runner` | 按域诊断 |
 | `clean [profile]` | 清理失控的 mobi 进程 |
 | `exits` | 查看近期进程退出记录 |
 
@@ -237,7 +233,7 @@ packages/cli/src/
 │   ├── claudeArgs.ts            # claude 命令参数解析（parseStartOptions 纯函数）
 │   ├── auth.ts                  # 认证管理命令
 │   ├── daemon.ts                # daemon 管理命令（start / start-sync / stop / restart / status）
-│   ├── runner.ts                # 会话管理工具族（list / stop-session / logs）
+│   ├── sessions.ts              # 会话管理工具族（list / stop）
 │   ├── mcp.ts                   # MCP 命令入口
 │   ├── doctor.ts                # 系统诊断命令
 │   ├── service.ts               # service 命令矩阵 + supervise --sync 入口

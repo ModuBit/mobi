@@ -1,6 +1,6 @@
 # Daemon 模块
 
-daemon 是 Mobi 的单机自足服务器：原 hub（Web + Socket.IO + SQLite 同步）与 runner（spawn 管线）合并为一个进程，加上本地化的 machine 层。每台机器一个 daemon，同时服务 Web 前端、spawn 并跟踪会话子进程。
+daemon 是 Mobi 的单机自足服务器：Web（Hono + Socket.IO + SQLite 同步）与会话 spawn 管线（executor）合并为一个进程。每台机器一个 daemon，同时服务 Web 前端、spawn 并跟踪会话子进程（见 [ADR 0011](../../adr/0011-remove-machine-concept.md)）。
 
 ## 新人指引
 
@@ -30,12 +30,11 @@ daemon 是 Mobi 的单机自足服务器：原 hub（Web + Socket.IO + SQLite �
 | 术语 | 含义 |
 |------|------|
 | **Session** | 一次 Agent 会话，对应一次 `mobi claude` 运行实例（会话子进程） |
-| **Machine** | 路由残留（单机假设下的历史字段）：machines 表恒一行 = 本机，`machineId` 仅作 API 路径与会话归属字段保留，无跨机路由语义 |
 | **宿主通道** | 会话子进程回连 daemon 的独立 loopback listener（`/cli` namespace + `/cli/*` HTTP，端口 = 主端口 + 10000），不经 frp 暴露 |
 | **Namespace** | Socket.IO 的多租户隔离机制，daemon 使用 `/cli`（会话子进程连接，宿主通道）和 `/web`、`/terminal`（Web 连接，主端口） |
 | **SyncEvent** | SyncEngine 产生的事件，如 `session-updated`、`message-created`，用于通知其他组件 |
 | **RpcGateway** | Web → 会话子进程的远程调用网关，支持权限审批、文件操作、Git 操作等 |
-| **SyncEngine** | 核心同步引擎，协调所有数据操作（Session、Machine、Message），是 daemon 的"大脑" |
+| **SyncEngine** | 核心同步引擎，协调所有数据操作（Session、Workspace、Message），是 daemon 的"大脑" |
 | **Store** | SQLite 数据存储层，提供 Cache（内存缓存）和 Persistence（持久化）两层抽象 |
 | **Terminal** | 终端通道，Web ↔ daemon 内 TerminalManager（pty）的实时双向终端 I/O，不经过 SyncEngine |
 | **VAPID** | Voluntary Application Server Identification，Web Push 的服务器身份验证协议 |
@@ -54,7 +53,7 @@ graph TB
         IO[SocketServer<br/>Socket.IO /web /terminal]
         WS[WebServer<br/>HTTP + SSE]
         SE[SyncEngine]
-        Host[LocalMachineHost<br/>spawn 管线]
+        Host[LocalExecutor<br/>spawn 管线]
         Store[(Store)]
     end
 
@@ -74,7 +73,7 @@ graph TB
 
 | 路径 | 场景 |
 |------|------|
-| **HTTP（宿主通道）** | 会话/机器初始化、消息回填 |
+| **HTTP（宿主通道）** | 会话初始化、消息回填 |
 | **Socket.IO（宿主通道）** | 心跳、消息、状态更新 |
 
 ### 下行流（Web → daemon → 会话子进程）
@@ -104,7 +103,7 @@ Web ↔ Socket.IO(/terminal) ↔ daemon 内 TerminalManager（pty），实时双
 | **[PushService](./push)** | Web Push 通知，离线时推送通知 |
 | **[NotificationHub](./notification)** | 通知调度，监听事件并分发通知 |
 | **[Store](./store)** | 数据存储，SQLite 数据库 |
-| **[LocalMachineHost（runner/）](../../../packages/daemon/src/runner/)** | 同进程 runner：会话子进程 spawn 管线、controlServer、worktree、spawnDedup |
+| **[LocalExecutor（executor/）](../../../packages/daemon/src/executor/localExecutor.ts)** | 进程内执行器：会话子进程 spawn 管线、controlServer、worktree、spawnDedup（直调 node-core handler） |
 
 ## 组件依赖关系
 
@@ -151,11 +150,10 @@ flowchart LR
 
 ```
 packages/daemon/src/
-├── daemonEntry.ts                # 主入口（mobi daemon start-sync 经动态 import 启动），组件组装 + 同进程 runner 编排
-├── hubServer.ts                  # 主端口 + 宿主通道双 listener 装配
+├── daemonEntry.ts                # 主入口（mobi daemon start-sync 经动态 import 启动），组件组装 + 同进程 executor 编排
+├── server.ts                     # 主端口 + 宿主通道双 listener 装配
 ├── configuration.ts              # 配置管理
-├── runner/                       # 同进程 runner（原 runner 包：spawn 管线 / controlServer / worktree / spawnDedup）
-├── machine/                      # machine 层本地化（LocalMachineHost）
+├── executor/                     # 进程内执行器（spawn 管线 / controlServer / worktree / spawnDedup / ExecutorHost+LocalExecutor）
 ├── config/
 │   ├── jwtSecret.ts             # JWT 密钥
 │   └── vapidKeys.ts             # VAPID 密钥

@@ -26,14 +26,12 @@ flowchart LR
 | GET | `/cli/sessions/by-claude-session/:claudeSessionId` | 通过 Claude Session ID 查找 |
 | GET | `/cli/sessions/:id` | 获取会话 |
 | GET | `/cli/sessions/:id/messages` | 获取消息列表 |
-| POST | `/cli/machines` | 创建或加载机器 |
-| GET | `/cli/machines/:id` | 获取机器 |
 | GET | `/cli/web-token` | 读取当前 webApiToken + `envOverride` 标志 |
 | POST | `/cli/web-token` | 轮换 webApiToken（落盘 + 热更新 configuration） |
 
 ## web-token（远程轮换）
 
-webApiToken 归 hub 所有（`settings.hub.json`），cli 与 hub 可不同机器部署，
+webApiToken 归 daemon 所有（`settings.daemon.json`），cli 与 daemon 可不同机器部署，
 cli 经此 API 代行原「直接写文件」的轮换语义（`mobi auth web-token` / `rotate-web-token`）。
 
 ```
@@ -41,7 +39,7 @@ GET  /cli/web-token  → { webToken: string, envOverride: boolean }
 POST /cli/web-token  → { webToken: string, envOverride: boolean }
 ```
 
-- `envOverride: true`：hub 以 `WEB_API_TOKEN` 环境变量运行，重启后轮换会被 env 值覆盖（POST 在轮换**前**取值）
+- `envOverride: true`：daemon 以 `WEB_API_TOKEN` 环境变量运行，重启后轮换会被 env 值覆盖（POST 在轮换**前**取值）
 - POST 复用 [`webApiToken.ts`](/packages/daemon/src/config/webApiToken.ts) 的 `rotateWebApiToken()` 持久化，随后 `_setWebApiToken()` 即时热更新 configuration 单例（不等 settingsWatcher）
 
 ## 会话操作
@@ -78,7 +76,7 @@ POST /cli/sessions
 | 状态码 | 说明 |
 |--------|------|
 | 404 | Workspace not found（workspaceId 不存在或不属于当前 namespace） |
-| 403 | Workspace belongs to a different machine（工作区 folders 是机器本地路径；metadata.machineId 缺失的老数据放行） |
+| 403 | Workspace access denied（工作区归属校验按 namespace） |
 
 调用 `SyncEngine.getOrCreateSession()`，根据 tag 查找或创建会话。
 
@@ -136,51 +134,6 @@ GET /cli/sessions/:id/messages?afterSeq=0&limit=200
 { "messages": [ ... ] }
 ```
 
-## 机器操作
-
-### 创建/加载机器
-
-```
-POST /cli/machines
-```
-
-**请求体**：
-
-```typescript
-{
-    id: string,           // 机器 ID
-    metadata: unknown,    // 机器元数据
-    runnerState?: unknown // Runner 状态（可选）
-}
-```
-
-**响应**：
-
-```json
-{ "machine": { ... } }
-```
-
-调用 `SyncEngine.getOrCreateMachine()`，根据 ID 查找或创建机器。
-
-### 获取机器
-
-```
-GET /cli/machines/:id
-```
-
-**响应**：
-
-```json
-{ "machine": { ... } }
-```
-
-**错误**：
-
-| 状态码 | 说明 |
-|--------|------|
-| 403 | Machine access denied |
-| 404 | Machine not found |
-
 ## 命名空间隔离
 
 所有操作都基于 namespace 进行隔离，确保不同 CLI 客户端只能访问自己的数据。
@@ -189,24 +142,17 @@ GET /cli/machines/:id
 flowchart TB
     subgraph 辅助函数
         resolveSession["resolveSessionForNamespace()"]
-        resolveMachine["resolveMachineForNamespace()"]
     end
 
     subgraph SyncEngine
         getAccess["resolveSessionAccess()"]
-        getByNs["getMachineByNamespace()"]
     end
 
     resolveSession --> getAccess
-    resolveMachine --> getByNs
 
     getAccess -->|"ok: true"| returnSession[返回会话]
     getAccess -->|"reason: access-denied"| err403[403 错误]
     getAccess -->|"reason: not-found"| err404[404 错误]
-
-    getByNs -->|找到| returnMachine[返回机器]
-    getByNs -->|未找到但存在| err403m[403 错误]
-    getByNs -->|不存在| err404m[404 错误]
 ```
 
 ## 与 SyncEngine 交互

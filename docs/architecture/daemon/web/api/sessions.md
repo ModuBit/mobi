@@ -120,7 +120,7 @@
 // Error
 { "error": "Invalid body: name or workspaceId is required" }   // 400
 { "error": "Workspace not found" }                             // 404（workspaceId 不存在或不属于当前 namespace）
-{ "error": "Workspace belongs to a different machine" }        // 400（会话与工作区不同机器；会话机器未知的老数据放行）
+{ "error": "Workspace access denied" }        // 403（工作区归属校验按 namespace）
 { "error": "..." }                                           // 409（rename 版本冲突）
 ```
 

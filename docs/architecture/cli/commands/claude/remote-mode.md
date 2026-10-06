@@ -1,6 +1,6 @@
 # Remote 模式
 
-Remote 模式通过 Claude Code SDK 的 `query()` 函数驱动 Claude，消息经由 Hub 中转，支持 Web 端远程控制。这是 Mobi 的核心价值所在。
+Remote 模式通过 Claude Code SDK 的 `query()` 函数驱动 Claude，消息经由 daemon 中转，支持 Web 端远程控制。这是 Mobi 的核心价值所在。
 
 ---
 
@@ -12,9 +12,9 @@ flowchart TB
         Browser["浏览器"]
     end
 
-    subgraph Hub["Hub 侧"]
-        SocketHub["Socket.IO Server"]
-        SSEHub["SSE 推送"]
+    subgraph daemon["daemon 侧"]
+        SocketSrv["Socket.IO Server"]
+        SSESrv["SSE 推送"]
     end
 
     subgraph CLI["CLI 进程"]
@@ -36,8 +36,8 @@ flowchart TB
         ClaudeProcess["Claude 进程<br/>（SDK 内部管理）"]
     end
 
-    Browser -->|"发送消息"| SocketHub
-    SocketHub -->|"onUserMessage()"| SessionQ
+    Browser -->|"发送消息"| SocketSrv
+    SocketSrv -->|"onUserMessage()"| SessionQ
     SessionQ -->|"nextMessage()"| MsgQueue
     MsgQueue --> ClaudeRemote
     ClaudeRemote --> Query
@@ -47,9 +47,9 @@ flowchart TB
     ClaudeRemote -->|"onMessage()"| Converter
     ClaudeRemote -->|"onMessage()"| Permission
     Converter --> OutQueue
-    OutQueue -->|"sendClaudeSessionMessage()"| SocketHub
-    SocketHub -->|"SSE"| SSEHub
-    SSEHub -->|"推送"| Browser
+    OutQueue -->|"sendClaudeSessionMessage()"| SocketSrv
+    SocketSrv -->|"SSE"| SSESrv
+    SSESrv -->|"推送"| Browser
 ```
 
 ## ClaudeRemoteLauncher
@@ -164,8 +164,8 @@ handler 不再直接维护 pending / in-flight 字段，也不自行编排清队
 |------|----------|------|
 | **Ctrl+C** | 终端 `onExit` handler | `requestExit('exit')` → 中止 SDK → 清理退出 |
 | **双击空格** | 终端 `onSwitchToLocal` handler | `requestExit('switch')` → 切换到 Local |
-| **RPC abort** | Hub 侧发送 abort RPC | 三档分派（`stopKind`，批次 A）：`'turn'` 只停本轮（含撤回两段式判定）；`'turn-queue'` 加 `interrupt({cancelQueued:true})` 清 CC 层队列；`'turn-queue-tasks'` 再遍历 `stopTask` 终止后台任务（`perTaskStopAffordance: true` 下点按不再连带后台） |
-| **RPC switch** | Hub 侧发送 switch RPC | 切换到 Local 模式 |
+| **RPC abort** | daemon 侧发送 abort RPC | 三档分派（`stopKind`，批次 A）：`'turn'` 只停本轮（含撤回两段式判定）；`'turn-queue'` 加 `interrupt({cancelQueued:true})` 清 CC 层队列；`'turn-queue-tasks'` 再遍历 `stopTask` 终止后台任务（`perTaskStopAffordance: true` 下点按不再连带后台） |
+| **RPC switch** | daemon 侧发送 switch RPC | 切换到 Local 模式 |
 
 ## claudeRemote — SDK 集成
 
@@ -277,9 +277,9 @@ const sdkOptions: Options = {
     └── catch AbortError → 忽略
 ```
 
-**门控效果**：用户在 agent 运行期间发送的消息（status='queued'）会排队悬浮在 Web 端，等 agent idle（result 到达）后才被真正拉取并送给 SDK，此时 CLI 通过 `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts` 统一出口，`messages-facts` 事件 pushed fact）通知 Hub 将这批消息的 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）。
+**门控效果**：用户在 agent 运行期间发送的消息（status='queued'）会排队悬浮在 Web 端，等 agent idle（result 到达）后才被真正拉取并送给 SDK，此时 CLI 通过 `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts` 统一出口，`messages-facts` 事件 pushed fact）通知 daemon 将这批消息的 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）。
 
-**command_lifecycle 帧拦截**：CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。`onMessage` 中纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）把 started→processing、completed→done、cancelled/discarded/refused 直传（帧上可选 `terminal_reason` 原样透传进 fact），控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报 Hub 终态推进。
+**command_lifecycle 帧拦截**：CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。`onMessage` 中纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）把 started→processing、completed→done、cancelled/discarded/refused 直传（帧上可选 `terminal_reason` 原样透传进 fact），控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报 daemon 终态推进。
 
 ## PermissionHandler — 工具权限审批
 
@@ -297,8 +297,8 @@ flowchart TB
     Auto -->|是| Allow["behavior: 'allow'"]
     Auto -->|否| Request["创建审批请求<br/>toolCalls.set(id, request)"]
 
-    Request --> Hub["sendClaudeSessionMessage()<br/>发送审批请求到 Hub"]
-    Hub --> WebUser["Web 用户审批"]
+    Request --> daemon["sendClaudeSessionMessage()<br/>发送审批请求到 daemon"]
+    daemon --> WebUser["Web 用户审批"]
     WebUser -->|"approved / denied"| RPC["rpc-request: respond-to-permission"]
     RPC --> Respond["handlePermissionResponse()"]
     Respond -->|"approved"| Allow
@@ -335,7 +335,7 @@ allowedTools: string[]
 
 **文件**: `packages/session/src/claude/utils/sdkToLogConverter.ts`
 
-将 Claude Code SDK 的 `SDKMessage` 转换为 Hub 可理解的日志格式：
+将 Claude Code SDK 的 `SDKMessage` 转换为 daemon 可理解的日志格式：
 
 ```
 SDKMessage (type: 'assistant')
@@ -347,7 +347,7 @@ SDKMessage (type: 'assistant')
     │   └── 返回 LogMessage
     │
     └── OutgoingMessageQueue.enqueue(logMessage)
-         └── sendClaudeSessionMessage() → Hub
+         └── sendClaudeSessionMessage() → daemon
 ```
 
 ### 消息类型映射
@@ -374,7 +374,7 @@ assistant (tool_use: Task, input.prompt)
 
 **文件**: `packages/session/src/claude/utils/OutgoingMessageQueue.ts`（207 行）
 
-确保发送到 Hub 的消息有序且完整。
+确保发送到 daemon 的消息有序且完整。
 
 ### 工作原理
 
@@ -391,7 +391,7 @@ flowchart LR
 **延迟机制**：
 - Assistant 消息包含 tool_use → 延迟 250ms（等待可能的 tool_result）
 - tool_result 到达 → 立即释放关联的延迟消息
-- 防止 tool_use 和 tool_result 在 Hub 侧顺序错乱
+- 防止 tool_use 和 tool_result 在 daemon 侧顺序错乱
 
 ### 保序策略
 
@@ -422,7 +422,7 @@ flowchart TB
     Check -->|否| Pass["正常传递"]
 
     Hack --> SDK["SDK 继续"]
-    Pass --> Hub["发送到 Hub"]
+    Pass --> daemon["发送到 daemon"]
 ```
 
 **原因**：Mobi 通过 Web 端控制 Plan Mode 的退出，需要拦截 SDK 默认的 plan rejection 行为。

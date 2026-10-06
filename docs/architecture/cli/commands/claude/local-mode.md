@@ -1,6 +1,6 @@
 # Local 模式
 
-Local 模式是 Claude 命令的基础模式：直接 spawn Claude 进程，用户在终端与 Claude 交互。Mobi 作为旁观者，通过监听 JSONL 文件将消息同步到 Hub。
+Local 模式是 Claude 命令的基础模式：直接 spawn Claude 进程，用户在终端与 Claude 交互。Mobi 作为旁观者，通过监听 JSONL 文件将消息同步到 daemon。
 
 ---
 
@@ -19,8 +19,8 @@ flowchart TB
         JSONL["JSONL 会话文件<br/>~/.claude/workspaces/.../"]
     end
 
-    subgraph HubSide["Hub 侧"]
-        Hub["Hub 服务器"]
+    subgraph DaemonSide["daemon 侧"]
+        daemon["daemon 服务器"]
         Web["Web 前端"]
     end
 
@@ -28,10 +28,10 @@ flowchart TB
     BaseLauncher --> Claude
     Claude -->|"写入会话"| JSONL
     JSONL -->|"监听"| Scanner
-    Scanner -->|"sendClaudeSessionMessage()"| Hub
-    Hub -->|"SSE 推送"| Web
+    Scanner -->|"sendClaudeSessionMessage()"| daemon
+    daemon -->|"SSE 推送"| Web
 
-    Hub -->|"RPC: abort/switch"| BaseLauncher
+    daemon -->|"RPC: abort/switch"| BaseLauncher
     BaseLauncher -->|"终止/切换"| Claude
 ```
 
@@ -78,7 +78,7 @@ flowchart TB
     Success -->|是| Consume["consumeOneTimeFlags()<br/>exitReason = 'exit'"]
     Success -->|否| Error["recordLocalLaunchFailure()"]
     Error --> Policy{"退出策略?"}
-    Policy -->|"runner + remote"| Retry["重试 spawn"]
+    Policy -->|"daemon + local"| Retry["强制改 remote"]
     Policy -->|"其他"| SwitchToRemote["exitReason = 'switch'"]
 
     Consume --> Return2["返回 exitReason"]
@@ -87,7 +87,7 @@ flowchart TB
 ```
 
 **退出策略**：
-- `startedBy === 'runner' && startingMode === 'remote'` → 重试 spawn（Runner 启动的远程会话不应切换到 Local）
+- `startedBy === 'daemon' && startingMode === 'local'` → 强制改 remote（daemon spawn 的会话不允许 local/交互模式，runClaude 启动时守卫）
 - 其他场景 → 返回 `'switch'`，触发模式切换到 Remote
 
 ## claudeLocal — Spawn Claude 进程
@@ -141,7 +141,7 @@ flowchart TB
 
 **文件**: `packages/session/src/claude/utils/sessionScanner.ts`
 
-SessionScanner 在 Local 模式下监听 Claude 写入的 JSONL 会话文件，将消息转发到 Hub：
+SessionScanner 在 Local 模式下监听 Claude 写入的 JSONL 会话文件，将消息转发到 daemon：
 
 ```mermaid
 flowchart TB
@@ -168,7 +168,7 @@ flowchart TB
 - `finished` 文件 — 会话已结束
 - 新文件出现时触发 `onNewSession` 回调，更新 Session ID
 
-## Hub 侧消息流
+## daemon 侧消息流
 
 Local 模式下的完整消息流：
 
@@ -183,7 +183,7 @@ Claude 进程
          ├── 过滤内部事件
          └── session.client.sendClaudeSessionMessage(message)
               │
-              └── Socket.IO emit → Hub
+              └── Socket.IO emit → daemon
                    │
                    ├── SyncEngine 接收
                    ├── EventPublisher 广播
@@ -196,10 +196,10 @@ Local 模式在以下场景切换到 Remote：
 
 | 触发方式 | 说明 |
 |----------|------|
-| **Hub 消息到达** | `queue.onMessage` 回调触发，用户通过 Web 发送消息 |
-| **RPC switch** | Hub 侧发送 `switch` RPC 请求 |
-| **RPC abort** | Hub 侧发送 `abort` RPC，终止当前 Claude 进程 |
-| **Claude 进程退出** | 非 runner 启动的会话，启动失败时切换到 Remote |
+| **daemon 消息到达** | `queue.onMessage` 回调触发，用户通过 Web 发送消息 |
+| **RPC switch** | daemon 侧发送 `switch` RPC 请求 |
+| **RPC abort** | daemon 侧发送 `abort` RPC，终止当前 Claude 进程 |
+| **Claude 进程退出** | 非 daemon 启动的会话，启动失败时切换到 Remote |
 
 ## 与 Remote 模式的关键差异
 
@@ -207,7 +207,7 @@ Local 模式在以下场景切换到 Remote：
 |------|-------|--------|
 | Claude 进程 | 独立子进程，直连终端 | SDK 内嵌，消息通过 API |
 | 消息获取 | SessionScanner 监听 JSONL | SDK `for await` 迭代 |
-| 消息发送到 Hub | `sendClaudeSessionMessage()` | `OutgoingMessageQueue` 有序发送 |
-| 权限审批 | Claude 自行处理 | `PermissionHandler` + Hub 审批 |
+| 消息发送到 daemon | `sendClaudeSessionMessage()` | `OutgoingMessageQueue` 有序发送 |
+| 权限审批 | Claude 自行处理 | `PermissionHandler` + daemon 审批 |
 | 终端 UI | Claude 原生界面 | Ink 自定义界面 |
 | 进程管理 | `spawnWithAbort()` | SDK `AbortController` |

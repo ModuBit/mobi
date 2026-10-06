@@ -1,6 +1,6 @@
 # 消息生命周期：从 SDK 到 UI
 
-本文档追踪一条消息从 Claude Agent SDK 产生，经过 CLI 转换、Hub 存储、SSE 同步，到 Web 端标准化、归约、最终渲染的完整路径。重点关注：哪些消息被丢弃、哪些被处理、每一步的转换规则是什么。
+本文档追踪一条消息从 Claude Agent SDK 产生，经过 CLI 转换、daemon 存储、SSE 同步，到 Web 端标准化、归约、最终渲染的完整路径。重点关注：哪些消息被丢弃、哪些被处理、每一步的转换规则是什么。
 
 ## 全局流程
 
@@ -8,12 +8,12 @@
 flowchart LR
     SDK["Claude Agent SDK<br/>SDKMessage"]
     CLI["CLI<br/>SDKToLogConverter"]
-    HUB["Hub<br/>SQLite + SSE"]
+    DAEMON["daemon<br/>SQLite + SSE"]
     WEB["Web<br/>normalize → reduce → render"]
 
     SDK -->|"user / assistant / system / result"| CLI
-    CLI -->|"过滤 result<br/>转换 RawJSONLines"| HUB
-    HUB -->|"DecryptedMessage"| WEB
+    CLI -->|"过滤 result<br/>转换 RawJSONLines"| DAEMON
+    DAEMON -->|"DecryptedMessage"| WEB
 ```
 
 ---
@@ -48,7 +48,7 @@ flowchart LR
 
 SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单就是为了不误伤未知新类型（默认 persistent）。
 
-### ② mobi 信封（CLI→Hub 落库形态，`apiSession.sendClaudeSessionMessage`）
+### ② mobi 信封（CLI→daemon 落库形态，`apiSession.sendClaudeSessionMessage`）
 
 ```json
 { "role": "agent", "content": { "type": "output", "data": { …SDK 原始消息原样… } }, "meta": { "sentFrom": "cli" } }
@@ -57,13 +57,13 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 - `role`：仅 `user`（真用户输入）/ `agent`（其余一切，含 system/result）
 - `content.type`：`output`（CLI 上报 SDK 消息）；webapp 用户输入的 content 是**block 数组**（AG-UI 对齐的 `UserContentBlock[]`，text/image/document/quote 四型，见 shared `userContentSchema.ts`）或兼容旧格式的 `text`
 - **`data` 是 SDK 原始消息的不透明透传**（`type`/`subtype`/`message.usage` 原样保留）——从 DB 取 SDK 字段直接下钻 `data.xxx`，无 mobi 改写（见 pending #56「投影税」）
-- 用户消息**写入侧统一归一**：hub `sendMessage` 经 shared `normalizeUserContent` 把 string / 旧平铺 `{type:'text',text,attachments}` / 新格式三形态归一为 block 数组落库；读取侧 web 端由同一函数归一（存量零迁移）
+- 用户消息**写入侧统一归一**：daemon `sendMessage` 经 shared `normalizeUserContent` 把 string / 旧平铺 `{type:'text',text,attachments}` / 新格式三形态归一为 block 数组落库；读取侧 web 端由同一函数归一（存量零迁移）
 - **入站跨会话消息**（2026-08-28；2026-09-01 批次 D 扩展 source 细分）：CLI 经 SDK UserPromptSubmit hook 观测的入站 turn（`claude/utils/inboundCrossSession.ts` 的 `classifyInboundTurn` 按 hook `source`+信封甄别 `peer`/`scheduled`/`loop`），经 `sendInboundCrossSessionMessage` 落库为 `role=user` + `meta.sentFrom='cli'`（存量形状；**不排队由下面的 crossSession 标注决定**）+ `meta.crossSession = { from: 来源会话名 }`（发送方未命名时 `from` 为空串，**键恒在**——键缺失会让 Web 的 compact 判定把降级消息误渲染成 compact-summary）+ `meta.turnOrigin`（`peer`/`scheduled`/`loop`）；web 按 turnOrigin 渲染「📨 来自 xxx」/「⏰ 定时任务」/「🔁 /loop」标签。CC 行为坑：turn 卡权限审批窗口内入站的消息会被 CC 丢弃（queued_command remove），hook 不触发
-- **mobi 自发投递的跨会话消息**（`send_message_to_session`，2026-09-12）：走 **Hub RPC 直推**（`push-agent-message`），**不经 hook 观测**。落库同样是 `role=user` + `meta.sentFrom='cli'`（存量形状；**不排队由 crossSession 标注决定**，见「不变量与单一决策点」）+ `meta.crossSession.from`（发件方会话名），另带 **`meta.fromSessionId`**；**不写 `meta.turnOrigin`**（保持「仅 hook 观测携带」的原义）。信封只进推给 CC 的那份，落库不含（同前一条）
+- **mobi 自发投递的跨会话消息**（`send_message_to_session`，2026-09-12）：走 **daemon RPC 直推**（`push-agent-message`），**不经 hook 观测**。落库同样是 `role=user` + `meta.sentFrom='cli'`（存量形状；**不排队由 crossSession 标注决定**，见「不变量与单一决策点」）+ `meta.crossSession.from`（发件方会话名），另带 **`meta.fromSessionId`**；**不写 `meta.turnOrigin`**（保持「仅 hook 观测携带」的原义）。信封只进推给 CC 的那份，落库不含（同前一条）
   - 两条路径靠 **`fromSessionId` 的存在性**区分：有 id → mobi 自发；有 from-name 无 id → CC 原生 peer；都没有 → 人。**「存在」＝非空**——空串归 `null`，信封读侧、meta 读写侧与判据共用 shared 的 `normalizeFromSessionId` 一处规则（2026-09-13 code-review 补：放行空串会让判据说「这条投过了」而落库行说「没有 id」，观测路径据此把一条真的 peer turn 静默丢掉）
   - 两条路径的 meta 形状由 **shared 的 `CrossSessionOrigin`/`toCrossSessionMeta` 单点产出**（`packages/shared/src/inboundOrigin.ts`，2026-09-13 架构评审候选 #1）：此前该身份在 RPC 载荷、信封、落库 meta、Web 四处各描述一遍、且 id 的摆位互不相同
   - 观测路径**跳过带 `from-session-id` 的信封**（`classifyInboundTurn` 返回 null）：否则同一封信封会落两行（投递路径一行 + 观测路径一行）
-  - 这个不变量（mobi 投递过的消息在目标侧只记一次、且不再进 SDK）由**一处判据 `isMobiDelivered` 守三个出口**（2026-09-13 架构评审候选 #2）：Hub 的 CLI 房间回灌（`hub/sync/messageService.ts` 直接问判据，**不再有 `skipCliEcho` 标志**）、CLI 重连 backfill 守卫、本观测路径。信封读侧归一成与 meta 同一个 `CrossSessionOrigin` 形状，所以三条出口问的是同一句话——任一处改了判据而另两处没跟上，2026-09-12 实测的「同一封信封落两行、相隔 15ms」就会重现
+  - 这个不变量（mobi 投递过的消息在目标侧只记一次、且不再进 SDK）由**一处判据 `isMobiDelivered` 守三个出口**（2026-09-13 架构评审候选 #2）：daemon 的 CLI 房间回灌（`sync/messageService.ts` 直接问判据，**不再有 `skipCliEcho` 标志**）、CLI 重连 backfill 守卫、本观测路径。信封读侧归一成与 meta 同一个 `CrossSessionOrigin` 形状，所以三条出口问的是同一句话——任一处改了判据而另两处没跟上，2026-09-12 实测的「同一封信封落两行、相隔 15ms」就会重现
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 
@@ -87,7 +87,7 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 **设计文档**：`docs/superpowers/specs/2026-06-07-message-classification-filtering-design.md`
 **实现文件**：`packages/shared/src/messageClassification.ts`
 
-消息分类规则定义在 `@mobi/shared`，CLI 和 Hub 共享，单一事实来源。采用**黑名单**模式：只有明确匹配到 `discard` 或 `ephemeral` 规则的消息才会被特殊处理，**其余一律默认 `persistent`**。
+消息分类规则定义在 `@mobi/shared`，CLI 和 daemon 共享，单一事实来源。采用**黑名单**模式：只有明确匹配到 `discard` 或 `ephemeral` 规则的消息才会被特殊处理，**其余一律默认 `persistent`**。
 
 ### 三级分类
 
@@ -95,7 +95,7 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 type MessageCategory = 'discard' | 'ephemeral' | 'persistent'
 ```
 
-| 级别 | 含义 | CLI | Hub 存储 | Hub 历史查询 | SSE 推送 |
+| 级别 | 含义 | CLI | daemon 存储 | daemon 历史查询 | SSE 推送 |
 |------|------|-----|---------|-------------|---------|
 | `discard` | 直接丢弃 | ✘ 不发送 | — | — | — |
 | `ephemeral` | 实时临时 | → 发送 | ✓ 存储 | ✘ 过滤 | ✓ 推送 |
@@ -103,7 +103,7 @@ type MessageCategory = 'discard' | 'ephemeral' | 'persistent'
 
 ### 分类规则
 
-**discard（CLI 直接丢弃，不发送到 Hub）**：
+**discard（CLI 直接丢弃，不发送到 daemon）**：
 
 | type | subtype | 说明 |
 |------|---------|------|
@@ -135,7 +135,7 @@ type MessageCategory = 'discard' | 'ephemeral' | 'persistent'
 ### 分类在管线中的位置
 
 ```
-                         CLI                        Hub                        Web
+                         CLI                        daemon                        Web
                     ┌──────────┐              ┌──────────────┐         ┌──────────┐
  SDK 消息 ────────→ │ convert  │              │              │         │          │
                     │   ↓      │              │  classify    │         │          │
@@ -158,7 +158,7 @@ type MessageCategory = 'discard' | 'ephemeral' | 'persistent'
 | 保障点 | 机制 |
 |--------|------|
 | 未知消息 | `classifyMessage()` 未匹配任何规则 → `persistent` |
-| 提取失败 | Hub 提取 type/subtype 失败 → `persistent` |
+| 提取失败 | daemon 提取 type/subtype 失败 → `persistent` |
 | 存量数据 | `ALTER TABLE ADD COLUMN DEFAULT 'persistent'`，自动填充 |
 | SSE 推送 | `ephemeral` 消息仍通过 SSE 实时推送，行为不变 |
 | Web 端 | 零改动，两层过滤（分类层 + Web 可见性白名单）互不干扰 |
@@ -186,7 +186,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 **文件**：`packages/session/src/claude/utils/sdkToLogConverter.ts`
 
-将 `SDKMessage` 转换为 Hub 可存储的 `RawJSONLines` 格式。
+将 `SDKMessage` 转换为 daemon 可存储的 `RawJSONLines` 格式。
 
 ### 转换规则
 
@@ -203,7 +203,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 **文件**：`packages/session/src/claude/claudeRemoteLauncher.ts`
 
 `onMessage` 回调中，`convert()` 之后、`enqueue()` 之前调用 `classifyMessage(type, subtype)`：
-- 分类为 `discard` 的消息直接 `return`，不发送到 Hub
+- 分类为 `discard` 的消息直接 `return`，不发送到 daemon
 - 分类为 `ephemeral` / `persistent` 的消息正常入队
 - 过滤在 `convert()` 之后：确保格式转换完成，type/subtype 字段可被分类函数读取
 
@@ -244,7 +244,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 ```
 SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全量基线或增量帧
                                                        ↓
-                                      Hub SnapshotSync 校验并维护完整基线（不落库）
+                                      daemon SnapshotSync 校验并维护完整基线（不落库）
                                                        ↓
                                 SSE 按订阅游标发送增量，或发送完整基线追赶
                                                        ↓
@@ -257,7 +257,7 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全�
 |------|------|
 | snapshot id | 使用 SDK `stream_event` 的 uuid，与最终 assistant 消息的 uuid **不同**（它们是两条不同的 JSON 日志行） |
 | snapshot 标识 | `DecryptedMessage.snapshot = true` 区分快照和正式消息 |
-| Hub 处理 | snapshot 不写入 SQLite；`SnapshotSync` 对增量做版本衔接并保留当前完整基线，发布 `message-snapshot` 或 `message-snapshot-delta` |
+| daemon 处理 | snapshot 不写入 SQLite；`SnapshotSync` 对增量做版本衔接并保留当前完整基线，发布 `message-snapshot` 或 `message-snapshot-delta` |
 | 关联清理 | Web 端通过 **`parentUuid`** 关联同一轮次的 snapshot 和 full message；前提：CLI `AssistantPartialAssembler` 把 SDK 拆分的 full 按 `message.id` 聚合成一条 → snapshot/full 1-vs-1 → parentUuid 不漂移 → 清理可靠（= message queue 之前稳定态）。reducer 的 `(messageId, type)` 过滤兜底 parentUuid 边界（双保险，见 [streaming.md](web/streaming.md) 关键设计 1） |
 
 ### 特殊方法
@@ -270,25 +270,25 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全�
 
 ---
 
-## 第 3 步：Hub 存储、分类与同步
+## 第 3 步：daemon 存储、分类与同步
 
 **存储**：`packages/daemon/src/store/index.ts` — SQLite WAL 模式
 
-转换后的 `RawJSONLines` 通过 `OutgoingMessageQueue` 发送到 Hub，存入 `messages` 表。
+转换后的 `RawJSONLines` 通过 `OutgoingMessageQueue` 发送到 daemon，存入 `messages` 表。
 
 ### 消息分类处理
 
 **分类文件**：`packages/shared/src/messageClassification.ts`（与 CLI 共享）
 **存储层**：`packages/daemon/src/store/messages.ts`
 
-1. **接收时分类**：Hub 在 `message` handler 中解析消息内容，提取 `type`/`subtype`，调用 `classifyMessage()` 得到 `category`
+1. **接收时分类**：daemon 在 `message` handler 中解析消息内容，提取 `type`/`subtype`，调用 `classifyMessage()` 得到 `category`
 2. **带 category 存储**：`messages` 表有 `category TEXT NOT NULL DEFAULT 'persistent'` 列，新增索引 `idx_messages_session_category(session_id, category, seq)`
 3. **历史查询过滤**：`getMessages` / `getMessagesAfter` / `getSidechainMessages` 均加 `WHERE category != 'ephemeral'` 条件
 4. **SSE 推送不变**：`ephemeral` 消息照常通过 SSE 实时推送给 Web，与分类前行为完全一致
 
 ### type/subtype 提取路径
 
-消息经 CLI `sendClaudeSessionMessage()` 包装后有两种结构，Hub 按优先级提取：
+消息经 CLI `sendClaudeSessionMessage()` 包装后有两种结构，daemon 按优先级提取：
 
 | 优先级 | 提取路径 | 适用消息 |
 |--------|---------|---------|
@@ -299,16 +299,16 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送全�
 
 ### OutgoingMessageQueue（`packages/session/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
 
-**主键策略**：Hub 的 `addMessage` 使用 `localId ?? randomUUID()` 作为消息 `id`，即优先使用 CLI 提供的 SDK uuid，仅当无 `localId` 时才生成随机 UUID。
+**主键策略**：daemon 的 `addMessage` 使用 `localId ?? randomUUID()` 作为消息 `id`，即优先使用 CLI 提供的 SDK uuid，仅当无 `localId` 时才生成随机 UUID。
 
 **同步**：`packages/daemon/src/sync/syncEngine.ts` — SSE 推送
 
-Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
+daemon 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `session-updated`：会话状态变化（心跳、agent state）
 - `message-received`：新消息到达（落库后的完整消息）
 - `message-snapshot`：流式快照透传（不落库，`snapshot: true`）
 - `session-added` / `session-removed`：会话增删
-- `machine-updated`：机器状态变化
+- `daemon-status`：daemon 状态变化
 - `toast`：通知消息
 - `heartbeat`：心跳
 - `connection-changed`：连接状态变化
@@ -333,7 +333,7 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 
 **去重键与 uuid 语义（2026-08-25 实测钉死）**：
 
-- **Hub 落库去重只看 `localId = body.uuid`**（`apiSession.sendClaudeSessionMessage`，resume 不变，重发 = UPDATE 同一行）；`message.id`（Anthropic 分配）**不参与** Hub 去重，只用于 CLI 侧 assembler 归拢碎片 + 前端 `(messageId, type)` 兜底（藏在信封 `data.message.id` 里被 web 挖出）
+- **daemon 落库去重只看 `localId = body.uuid`**（`apiSession.sendClaudeSessionMessage`，resume 不变，重发 = UPDATE 同一行）；`message.id`（Anthropic 分配）**不参与** daemon 去重，只用于 CLI 侧 assembler 归拢碎片 + 前端 `(messageId, type)` 兜底（藏在信封 `data.message.id` 里被 web 挖出）
 - **合并行 uuid = 最后一个碎片的 uuid**（`template.uuid`）；block 内部**无 uuid**（uuid 是行级字段）；被丢弃的中间碎片 uuid 无任何下游消费者，权威副本在 `.jsonl`（其本身也是 block-per-line，uuid 与 SDK emit 一一对应）
 - **不能用 uuid 做 snapshot↔full 关联的原因**：snapshot 每次 flush 现生成随机 uuid；`sdkUuid`（stream_event 包装层）不写 .jsonl、不等于任何 body uuid——snapshot 与 full 之间唯一共享的稳定标识是 `message.id`（message_start 即携带）
 - 详细分析（assembler 必要性、abort 合并键边界、信封投影税）见 [streaming.md](web/streaming.md) 关键设计 1 的实测定位与 pending #56
@@ -358,13 +358,13 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 | `lifecycle_at` (`lifecycleAt`) | 最近一次 lifecycle 转换的时刻；非排队消息恒 `NULL`。不参与排序（排序请用 `positionAt`，不要 COALESCE 本字段） |
 | `position_at` (`positionAt`) | 排序锚点；insert 时 = `created_at`，排队消息 push 时跳到 push 时刻（保留「运行中消费的消息排在 turn 之后」UX） |
 
-转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded|refused}`，`queued→withdrawn`。推进序由 shared `LIFECYCLE_RANK` 定义（与 Hub SQL CASE rank 同语义，勿单边改：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4——done/cancelled/discarded/refused 同 rank 互不覆盖、withdrawn 单独高位 5），`isLifecycleAhead` 为其判定函数。
+转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded|refused}`，`queued→withdrawn`。推进序由 shared `LIFECYCLE_RANK` 定义（与 daemon SQL CASE rank 同语义，勿单边改：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4——done/cancelled/discarded/refused 同 rank 互不覆盖、withdrawn 单独高位 5），`isLifecycleAhead` 为其判定函数。
 
-### 事实上报协议（messages-facts，CLI→Hub）
+### 事实上报协议（messages-facts，CLI→daemon）
 
-CLI→Hub 的消息事实收敛为单一 socket 事件 **`messages-facts`**（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型，批内合并多 kind 一次往返）：
+CLI→daemon 的消息事实收敛为单一 socket 事件 **`messages-facts`**（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型，批内合并多 kind 一次往返）：
 
-| fact kind | 语义 | Hub 处理（共享函数） |
+| fact kind | 语义 | daemon 处理（共享函数） |
 |------|------|------|
 | `pushed` | 一批 localId 已推给 Claude Code | `processSubmitted` → `markMessagesPushed`（queued→pushed，first-write-wins） |
 | `bound` | localId → nativeId 锚点绑定（push 时生成，可带 nativeSessionId） | `processBound` → `bindNativeIds`（幂等，逐项校验） |
@@ -373,11 +373,11 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 **`messages-facts`**（�
 | `lifecycle` | command_lifecycle 终态信号（state 含 `refused`，可带 `terminalReason`） | `processLifecycleFact` → `advanceMessagesLifecycle`（单调推进，见下） |
 | `withdrawn` | 撤回刚发消息（pending #53，批次 A）：最后一条 user 无任何输出时停止 | `processWithdrawnFact` → 按 nativeId 定位行 → `softDeleteMessagesFrom(seq)`（无上界，兜住竞态行）→ `advanceMessagesLifecycle` 留档 `'withdrawn'` → SSE `message-withdrawn`（web 清窗 + 回填 composer，见「停止三档与撤回」） |
 
-`at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。原 4 个独立 socket 事件（`messages-submitted`/`messages-bound`/`messages-native-attached`/`messages-acked`）已下线（#54 收敛完成，Hub 只受理 `messages-facts`）。注意 SSE `messages-submitted`（Hub→Web）名字与载荷 `{localIds, submittedAt}` 不变。
+`at` 为 CLI 观测时刻，缺省由 daemon 取接收时刻。原 4 个独立 socket 事件（`messages-submitted`/`messages-bound`/`messages-native-attached`/`messages-acked`）已下线（#54 收敛完成，daemon 只受理 `messages-facts`）。注意 SSE `messages-submitted`（daemon→Web）名字与载荷 `{localIds, submittedAt}` 不变。
 
 ### 终态接入：command_lifecycle 帧拦截
 
-CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。CLI `onMessage` 中用纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）拦截：**started→processing、completed→done、cancelled/discarded/refused 直传**，帧上可选 `terminal_reason` 原样透传进 fact（开放 string，web 消费时才解释；hub 只消费 state 不落库——见 pending #60）；queued 不上报（Hub 已有初始排队态）。控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报。Hub `advanceMessagesLifecycle` 按 nativeId 单调推进（CASE rank：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4（含 refused），已处终态/withdrawn 不被覆盖、processing 不回退，乱序帧安全），推进后 `getMessagesByIds` 回读完整行，`broadcastStoredMessages` 逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费，见「终态 UI 可见性」）。
+CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。CLI `onMessage` 中用纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）拦截：**started→processing、completed→done、cancelled/discarded/refused 直传**，帧上可选 `terminal_reason` 原样透传进 fact（开放 string，web 消费时才解释；daemon 只消费 state 不落库——见 pending #60）；queued 不上报（daemon 已有初始排队态）。控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报。daemon `advanceMessagesLifecycle` 按 nativeId 单调推进（CASE rank：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4（含 refused），已处终态/withdrawn 不被覆盖、processing 不回退，乱序帧安全），推进后 `getMessagesByIds` 回读完整行，`broadcastStoredMessages` 逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费，见「终态 UI 可见性」）。
 
 ### 终态 UI 可见性（P3，粗粒度）
 
@@ -394,7 +394,7 @@ CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `comma
 
 停止动作从「一个按钮一种结果」分化为三档（shared `StopKind`，判别函数 `isCancelQueued`/`shouldStopTasks` 集中语义，spec：`docs/superpowers/specs/2026-08-31-stop-queue-semantics-design.md`）：
 
-| stopKind | 语义 | hub 层队列（lifecycle='queued'） | CC 层队列（已 push 未执行） | 后台任务 |
+| stopKind | 语义 | daemon 层队列（lifecycle='queued'） | CC 层队列（已 push 未执行） | 后台任务 |
 |---|---|---|---|---|
 | `'turn'`（点按，缺省） | 只停本轮 | 不动 | 不动（`interrupt()`） | 继续运行（`perTaskStopAffordance: true`） |
 | `'turn-queue'` | 停本轮 + 清空队列 | `cancelAllQueuedMessages` 批量物理删除 | `interrupt({cancelQueued:true})`，被取消消息由 command_lifecycle `'cancelled'` 帧自动回流落库 | 继续运行 |
@@ -404,11 +404,11 @@ CLI `handleAbortRequest(stopKind)` 是分派中心（`claudeRemoteLauncher.ts`�
 
 停止灰行对账：中断 result 注入 `stopKind`/`stillQueuedCount`（SDK `interrupt` 回执的 `still_queued` 长度），aborted event 按优先级渲染「N 条消息仍会执行」＞「队列已清空」＞「队列与后台任务已停止」，字段缺省渲染与历史一致。撤回的 web 消费：SSE `message-withdrawn` → `messageWindowStore` 乐观移除该 localId 及其后全部行（与软删除无上界对齐）+ composer 回填（`deserializeSegments(blocks)`，失败兜底 `originalText`；会话未打开只落移除不回填）。
 
-已知边界：撤回只清 Hub/Web，CLI `.jsonl` 残留行在 resume 时复活（pending #53；方案 B 用 `resumeSessionAt` 裁剪，后续做）。
+已知边界：撤回只清 daemon/Web，CLI `.jsonl` 残留行在 resume 时复活（pending #53；方案 B 用 `resumeSessionAt` 裁剪，后续做）。
 
 ### 不变量与单一决策点
 
-- **写入决策只在 Hub `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli' && 不带跨会话标注`）决定 `lifecycle='queued'`。
+- **写入决策只在 daemon `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli' && 不带跨会话标注`）决定 `lifecycle='queued'`。
   - 两条不排队的理由，说的是同一件事（「不是待消费的用户提交」）：**CLI 来源**（Claude Code 输出流回显，已在对话里）；**带跨会话标注的入站 turn**（agent 投递的跨会话消息、CC 原生 peer、scheduled / loop 唤醒——落库时都已进过 SDK）。webapp 及未来端默认排队。
   - 判据②读的是 **meta.crossSession 键在不在**（`hasCrossSessionOrigin`，`readCrossSessionOrigin` 的布尔形式），不是某个 `sentFrom` 取值：这两个写入方原先都靠把 `sentFrom` 写成 `'cli'` 借「不排队」这个副作用，改一个字符串就会让这三类入站消息静默进队列。**别用 `isMobiDelivered`**（它要求 `fromSessionId` 非空，会漏掉 peer 与 scheduled/loop）。
 - **读取只看显式状态**：Web `isQueuedInMobi` = `lifecycle==='queued'`，不再反推来源或时间戳。
@@ -417,41 +417,41 @@ CLI `handleAbortRequest(stopKind)` 是分派中心（`claudeRemoteLauncher.ts`�
 
 ```mermaid
 flowchart LR
-    Web["Web 用户<br/>（agent 运行中发送）"] -->|"POST 消息<br/>localId"| Hub["Hub<br/>addMessage"]
-    Hub -->|"isQueueableUserSubmission<br/>→ lifecycle='queued'"| DB[("SQLite<br/>排队")]
-    Hub -->|"SSE message-received<br/>lifecycle=queued"| WebBar["Web 悬浮条<br/>QueuedMessagesBar"]
+    Web["Web 用户<br/>（agent 运行中发送）"] -->|"POST 消息<br/>localId"| daemon["daemon<br/>addMessage"]
+    daemon -->|"isQueueableUserSubmission<br/>→ lifecycle='queued'"| DB[("SQLite<br/>排队")]
+    daemon -->|"SSE message-received<br/>lifecycle=queued"| WebBar["Web 悬浮条<br/>QueuedMessagesBar"]
 
     CLI["CLI gated pump<br/>agent idle 时 pull"] -->|"collectBatch<br/>localIds（同步标 in-flight）"| Consume["消费"]
-    Consume -->|"emitFacts（pushed fact）<br/>socket messages-facts"| Hub2["Hub<br/>processSubmitted"]
-    Hub2 -->|"markMessagesPushed<br/>queued→pushed"| DB2[("SQLite")]
-    Hub2 -->|"SSE messages-submitted"| WebFinal["Web<br/>markMessagesSubmitted<br/>翻为正式消息"]
+    Consume -->|"emitFacts（pushed fact）<br/>socket messages-facts"| Daemon2["daemon<br/>processSubmitted"]
+    Daemon2 -->|"markMessagesPushed<br/>queued→pushed"| DB2[("SQLite")]
+    Daemon2 -->|"SSE messages-submitted"| WebFinal["Web<br/>markMessagesSubmitted<br/>翻为正式消息"]
 
     CC["Claude Code"] -->|"command_lifecycle 帧<br/>started/completed/cancelled/discarded"| Intercept["CLI onMessage<br/>commandLifecycleToFact 拦截"]
-    Intercept -->|"emitLifecycleFact<br/>messages-facts lifecycle fact"| Hub3["Hub<br/>advanceMessagesLifecycle"]
-    Hub3 -->|"单调推进 processing/终态<br/>getMessagesByIds 回读"| DB3[("SQLite")]
-    Hub3 -->|"update new-message 逐行广播<br/>（Web 单调合并实时生效）"| WebT["Web"]
+    Intercept -->|"emitLifecycleFact<br/>messages-facts lifecycle fact"| Daemon3["daemon<br/>advanceMessagesLifecycle"]
+    Daemon3 -->|"单调推进 processing/终态<br/>getMessagesByIds 回读"| DB3[("SQLite")]
+    Daemon3 -->|"update new-message 逐行广播<br/>（Web 单调合并实时生效）"| WebT["Web"]
 ```
 
 ### 关键环节
 
 | 环节 | 位置 | 行为 |
 |------|------|------|
-| **入库决策** | Hub `addMessage` + shared `isQueueableUserSubmission` | denylist：非 CLI 来源、且不带跨会话标注的 user+localId → `lifecycle='queued'`；其余 → `NULL` |
+| **入库决策** | daemon `addMessage` + shared `isQueueableUserSubmission` | denylist：非 CLI 来源、且不带跨会话标注的 user+localId → `lifecycle='queued'`；其余 → `NULL` |
 | **Gated Pump（C-2）** | CLI `userInputLoop` | agent 运行时不 pull，等 result 才拉取，消息始终停留在 MessageQueue |
-| **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts`） | → Hub `messages-facts` handler → `processSubmitted` → `markMessagesPushed`（queued→pushed，first-write-wins）→ SSE `messages-submitted` |
-| **回显确认（acked）** | CLI `onMessage` 检测 isReplay 回显 → `emitMessagesAcked`（`emitFacts`） | → Hub `processAcked`：按 nativeId 双写——先 `advanceMessagesAcked` 推进 `lifecycle='acked'` 再写 `metadata.nativeAckAt`（rewind 判据不动，共一时间戳消除分叉），推进行逐行广播 |
-| **终态接入（command_lifecycle）** | CLI `onMessage` 帧拦截 `commandLifecycleToFact`（started→processing、completed→done、cancelled/discarded/refused 直传，terminal_reason 透传）→ `emitLifecycleFact`（`emitFacts`） | → Hub `processLifecycleFact` → `advanceMessagesLifecycle`（nativeId 单调推进，CASE rank 防乱序回退）→ `getMessagesByIds` 回读 → 逐行广播 update new-message（Web 单调合并实时生效，见「终态 UI 可见性」） |
-| **撤回（withdrawn，#53）** | CLI `handleAbortRequest('turn')` 撤回两段式判定（无输出 + 队列空 + `lastPushedNativeId` 非空，interrupt 后复验）→ `emitWithdrawnFact`（`emitFacts`） | → Hub `processWithdrawnFact` → `softDeleteMessagesFrom(seq)` + lifecycle 留档 `'withdrawn'` → SSE `message-withdrawn`（Web 乐观移除 + composer 回填，见「停止三档与撤回」） |
-| **首页钉入** | Hub `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`lifecycle='queued'`，`getUnsubmittedLocalMessages`），追加到列表尾部、不参与 `nextBeforeSeq`/`hasMore` 计算。翻页游标 = 页内最老消息的 seq（**不分 lifecycle**）——跳过 queued 会让整页全 queued 时 `hasMore=false` 锁死更早历史；queued 锚点 position 跳变的漂移由 Web `mergeMessages` id 去重兜底 |
-| **session-end 兜底** | Hub `sessionHandlers` | CLI 离线时把所有剩余 `lifecycle='queued'` 消息 force-push（`markMessagesPushed`），防止悬浮条卡死 |
-| **取消（CLI 权威）** | Web `DELETE` → Hub | Hub 先 `getMessageSubmitState`（`lifecycle!=='queued'` 即已提交）；DB 仍 queued 时问 CLI `cancel-queued-message`：`tryCancel` 返回 `submitted`（in-flight，已 collect）/`cancelled`（仍在队列）/`not-in-queue`（尚未送达）。仅 `cancelled`/`not-in-queue` 才物理删 DB——**in-flight 绝不删**，防幽灵消息 |
+| **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts`） | → daemon `messages-facts` handler → `processSubmitted` → `markMessagesPushed`（queued→pushed，first-write-wins）→ SSE `messages-submitted` |
+| **回显确认（acked）** | CLI `onMessage` 检测 isReplay 回显 → `emitMessagesAcked`（`emitFacts`） | → daemon `processAcked`：按 nativeId 双写——先 `advanceMessagesAcked` 推进 `lifecycle='acked'` 再写 `metadata.nativeAckAt`（rewind 判据不动，共一时间戳消除分叉），推进行逐行广播 |
+| **终态接入（command_lifecycle）** | CLI `onMessage` 帧拦截 `commandLifecycleToFact`（started→processing、completed→done、cancelled/discarded/refused 直传，terminal_reason 透传）→ `emitLifecycleFact`（`emitFacts`） | → daemon `processLifecycleFact` → `advanceMessagesLifecycle`（nativeId 单调推进，CASE rank 防乱序回退）→ `getMessagesByIds` 回读 → 逐行广播 update new-message（Web 单调合并实时生效，见「终态 UI 可见性」） |
+| **撤回（withdrawn，#53）** | CLI `handleAbortRequest('turn')` 撤回两段式判定（无输出 + 队列空 + `lastPushedNativeId` 非空，interrupt 后复验）→ `emitWithdrawnFact`（`emitFacts`） | → daemon `processWithdrawnFact` → `softDeleteMessagesFrom(seq)` + lifecycle 留档 `'withdrawn'` → SSE `message-withdrawn`（Web 乐观移除 + composer 回填，见「停止三档与撤回」） |
+| **首页钉入** | daemon `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`lifecycle='queued'`，`getUnsubmittedLocalMessages`），追加到列表尾部、不参与 `nextBeforeSeq`/`hasMore` 计算。翻页游标 = 页内最老消息的 seq（**不分 lifecycle**）——跳过 queued 会让整页全 queued 时 `hasMore=false` 锁死更早历史；queued 锚点 position 跳变的漂移由 Web `mergeMessages` id 去重兜底 |
+| **session-end 兜底** | daemon `sessionHandlers` | CLI 离线时把所有剩余 `lifecycle='queued'` 消息 force-push（`markMessagesPushed`），防止悬浮条卡死 |
+| **取消（CLI 权威）** | Web `DELETE` → daemon | daemon 先 `getMessageSubmitState`（`lifecycle!=='queued'` 即已提交）；DB 仍 queued 时问 CLI `cancel-queued-message`：`tryCancel` 返回 `submitted`（in-flight，已 collect）/`cancelled`（仍在队列）/`not-in-queue`（尚未送达）。仅 `cancelled`/`not-in-queue` 才物理删 DB——**in-flight 绝不删**，防幽灵消息 |
 
 ### Web 端处理
 
 | 组件 | 职责 |
 |------|------|
 | `QueuedMessagesBar` | composer 上方悬浮条，展示排队消息，✕ 取消 / ✎ 编辑（回填草稿）/ ⚡ steer；另含「已丢弃」分区（cancelled/discarded 灰色删除线 + 状态词，无操作，终态可见性） |
-| `useSendMessage` | 乐观注入：`isRunning` → `lifecycle='queued'`+`status='queued'`（`lifecycleAt`/`positionAt`/`createdAt` 共用同一发送时刻，对齐 hub「queued 时 lifecycle_at = created_at」契约），否则 `status='sending'` |
+| `useSendMessage` | 乐观注入：`isRunning` → `lifecycle='queued'`+`status='queued'`（`lifecycleAt`/`positionAt`/`createdAt` 共用同一发送时刻，对齐 daemon「queued 时 lifecycle_at = created_at」契约），否则 `status='sending'` |
 | `useCancelQueuedMessage` | 乐观删除缓存中的 localId 消息；`status='sent'` 时失效重拉 |
 | `markMessagesSubmitted` | SSE `messages-submitted` 到达时，把命中 localId 的消息 `lifecycle='pushed'`（+ `lifecycleAt`/`positionAt` 跳到 submittedAt，first-write-wins） |
 | `mergeMessages` | 合并去重时 lifecycle 单调防护（rank 泛化）：prev 已推进而 row 回退（rank 更低或同 rank 异终态，且 prev 不晚于 row）时保留 prev 的 lifecycle + lifecycleAt，陈旧 echo / in-flight fetch 旧响应晚到均适用，防幽灵回悬浮条 |
@@ -534,7 +534,7 @@ result 消息在整个管线中有三层处理：
 
 | 层级 | 位置 | 行为 |
 |------|------|------|
-| **CLI 转换** | `sdkToLogConverter.ts` | `case 'result': return null` — 不写入 Hub |
+| **CLI 转换** | `sdkToLogConverter.ts` | `case 'result': return null` — 不写入 daemon |
 | **Web 过滤兜底** | `normalize.ts` | 检查 `data.type === 'result'` → return null — 即使漏过 CLI 也不渲染 |
 | **Web 标准化** | `normalizeAgent.ts` | aborted → event, error → event, success → null |
 
@@ -654,7 +654,7 @@ type ChatBlock =
 
 | 层 | 位置 | 职责 | 时机 |
 |----|------|------|------|
-| **分类层**（CLI + Hub） | CLI `onMessage` + Hub 存储 | 传输 + 存储 + 查询优化 | 数据链路层 |
+| **分类层**（CLI + daemon） | CLI `onMessage` + daemon 存储 | 传输 + 存储 + 查询优化 | 数据链路层 |
 | **可见性白名单**（Web） | `isClaudeChatVisibleMessage()` | 渲染过滤 | 展示层 |
 | **隐藏工具**（Web） | `isHiddenTool()` | 隐藏内部工具调用 | 展示层 |
 
@@ -662,8 +662,8 @@ type ChatBlock =
 
 | 分类 | 消息 | 分类位置 | 效果 |
 |------|------|----------|------|
-| `discard` | `thinking_tokens`、`hook_*`、`plugin_install`、`files_persisted`、`auth_status`、`rate_limit_event`、`command_lifecycle` | CLI `onMessage` | 不发送到 Hub，全链路不可见 |
-| `ephemeral` | `task_progress`、`task_started`、`task_updated`、`task_notification`、`tool_progress`、`tool_use_summary`、`prompt_suggestion`、`system:status` | Hub 存储时标记 | 存 DB，SSE 实时推送，历史查询时过滤 |
+| `discard` | `thinking_tokens`、`hook_*`、`plugin_install`、`files_persisted`、`auth_status`、`rate_limit_event`、`command_lifecycle` | CLI `onMessage` | 不发送到 daemon，全链路不可见 |
+| `ephemeral` | `task_progress`、`task_started`、`task_updated`、`task_notification`、`tool_progress`、`tool_use_summary`、`prompt_suggestion`、`system:status` | daemon 存储时标记 | 存 DB，SSE 实时推送，历史查询时过滤 |
 | `persistent` | 所有未命中上述规则的消息 | — | 完整保留，正常存储和查询 |
 
 ### 第二层：完全丢弃（normalize 阶段，不进入后续流程）
@@ -694,7 +694,7 @@ type ChatBlock =
 | 阶段 | 事件 | 处理 |
 |------|------|------|
 | SDK stream_event 到达 | CLI `StreamSnapshotSender` 累积 delta | 每 500ms 生成 snapshot |
-| Snapshot 发送 | Hub 收到 `snapshot: true` 的全量或增量帧 | 不落库；`SnapshotSync` 校验版本并推进完整基线缓存 |
+| Snapshot 发送 | daemon 收到 `snapshot: true` 的全量或增量帧 | 不落库；`SnapshotSync` 校验版本并推进完整基线缓存 |
 | SSE 下发 | `SSEManager` → subscription handle | 游标衔接且已协商 delta 时发增量；否则发当前完整基线追赶 |
 | Web 收到 snapshot | `SSEProvider` → `upsertMessageCache` / `ingestSnapshotDelta` | 全量同 id 原地更新；增量在已有版本基线上应用 |
 | Web 渲染 snapshot | `reducerTimeline` → `isSnapshot` 标记 | `AgentTextBlock` / `AgentReasoningBlock` 带 `isSnapshot` 标记，ChatContainer 对最后一个 running snapshot 启用 typing 光标 |
@@ -735,9 +735,9 @@ type ChatBlock =
 | CLI 队列 | `packages/session/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
 | CLI 循环 | `packages/session/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发、gated pump（排队消息门控）、commandLifecycleToFact（command_lifecycle 帧 → 终态信号） |
 | CLI 快照发送 | `packages/session/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
-| Hub 存储 | `packages/daemon/src/store/index.ts` | SQLite 消息持久化（lifecycle/position_at 列、byPosition 分页） |
-| Hub 同步 | `packages/daemon/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
-| Hub 消息服务 | `packages/daemon/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
+| daemon 存储 | `packages/daemon/src/store/index.ts` | SQLite 消息持久化（lifecycle/position_at 列、byPosition 分页） |
+| daemon 同步 | `packages/daemon/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
+| daemon 消息服务 | `packages/daemon/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
 | Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + 按 `parentUuid` 关联清理，assembler 聚合后可靠）、messages-submitted 处理 |
 | Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 lifecycle 翻为 pushed（first-write-wins） |
 | Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑）+「已丢弃」分区（终态可见性，无操作） |
@@ -749,5 +749,5 @@ type ChatBlock =
 | Web 时间线归约 | `packages/web/src/domain/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换、隐藏工具过滤（isHiddenTool） |
 | Web 工具过滤 | `packages/web/src/domain/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
 | Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
-| 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible / MessageFact 联合类型 / LIFECYCLE_RANK + isLifecycleAhead（lifecycle rank 单调判定，与 hub SQL CASE 同语义） |
-| 共享分类 | `packages/shared/src/messageClassification.ts` | classifyMessage / shouldSendToHub / shouldIncludeInHistory |
+| 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible / MessageFact 联合类型 / LIFECYCLE_RANK + isLifecycleAhead（lifecycle rank 单调判定，与 daemon SQL CASE 同语义） |
+| 共享分类 | `packages/shared/src/messageClassification.ts` | classifyMessage / isClaudeChatVisibleMessage / isClaudeChatVisibleSystemSubtype |

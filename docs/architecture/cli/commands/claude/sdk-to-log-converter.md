@@ -1,6 +1,6 @@
 # SDK 消息转换器 (SDKToLogConverter)
 
-将 Claude Agent SDK 的 `SDKMessage` 转换为 Hub/Web 可理解的 `RawJSONLines` 日志格式，是 Remote 模式下消息从 SDK 流向 Hub 的关键桥梁。
+将 Claude Agent SDK 的 `SDKMessage` 转换为 daemon/Web 可理解的 `RawJSONLines` 日志格式，是 Remote 模式下消息从 SDK 流向 daemon 的关键桥梁。
 
 ## 架构总览
 
@@ -144,7 +144,7 @@ sequenceDiagram
 }
 ```
 
-在 `claudeRemoteLauncher.ts:397-403` 的 `finally` 块中调用，为所有未完成的 tool call 生成中断结果，确保 Hub 侧消息链完整。
+在 `claudeRemoteLauncher.ts:397-403` 的 `finally` 块中调用，为所有未完成的 tool call 生成中断结果，确保 daemon 侧消息链完整。
 
 ### resetParentChain
 

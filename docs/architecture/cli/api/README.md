@@ -1,34 +1,29 @@
 # API 通信层 (`packages/session/src/api/`)
 
-CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期管理、消息同步和 RPC 调用。
+CLI 会话子进程与 daemon 之间的双向通信层，承载 Session 生命周期管理、消息同步和 RPC 调用。
 
 ## 架构总览
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     packages/session/src/api/                         │
+│                     packages/session/src/api/                 │
 │                                                              │
-│  ┌──────────┐  HTTP  ┌─────────────────┐                    │
-│  │ ApiClient │──────▶│ Hub REST API     │                    │
-│  │ (api.ts)  │       │ /cli/sessions    │                    │
-│  │           │       │ /cli/machines    │                    │
-│  └─────┬─────┘       └──────────────────┘                    │
+│  ┌──────────────────┐  HTTP  ┌──────────────────┐            │
+│  │ ApiClient         │──────▶│ daemon REST API   │            │
+│  │ (node-core        │       │ /cli/sessions     │            │
+│  │  api/api.ts)      │       └──────────────────┘            │
+│  └─────┬────────────┘                                        │
 │        │ factory                                             │
-│        ├───────────┐                                         │
-│        │           │                                         │
-│  ┌─────▼─────┐ ┌───▼──────────────┐                         │
-│  │ApiSession │ │ ApiMachineClient  │  Socket.IO              │
-│  │  Client   │ │ (apiMachine.ts)   │─────────▶ Hub WS        │
-│  │(apiSession│ │                   │  /cli namespace          │
-│  │  .ts)     │ │  Machine RPC      │  machine-scoped          │
-│  │           │ │  spawnSession     │                          │
-│  │ Session   │ │  stopSession      │                          │
-│  │ 消息同步   │ │  pathExists       │                          │
-│  │ Terminal  │ │  stopRunner       │                          │
-│  │ Backfill  │ └───────────────────┘                          │
-│  │ Session RPC│                                                 │
-│  └─────┬─────┘                                                │
-│        │                                                      │
+│  ┌─────▼────────────┐     Socket.IO                         │
+│  │ ApiSessionClient │─────────▶ daemon WS                    │
+│  │ (apiSession.ts)  │           /cli namespace               │
+│  │                  │           session-scoped               │
+│  │ Session 消息同步  │                                        │
+│  │ Terminal         │                                        │
+│  │ Backfill         │                                        │
+│  │ Session RPC      │                                        │
+│  └─────┬────────────┘                                        │
+│        │                                                     │
 │  ┌─────▼──────────────────────┐                               │
 │  │        rpc/                 │  通用 RPC 基础设施             │
 │  │  RpcHandlerManager          │  方法注册 + 请求分发           │
@@ -52,21 +47,15 @@ CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期�
 
 | 文件 | 职责 | 通信方式 | 详细文档 |
 |------|------|---------|---------|
-| `api.ts` | ApiClient 工厂，HTTP 资源创建 | HTTP REST | [api-client.md](./api-client.md) |
-| `apiSession.ts` | Session 级 Socket.IO 客户端 | WebSocket | [api-session.md](./api-session.md) |
-| `apiMachine.ts` | Machine 级 Socket.IO 客户端 | WebSocket | [api-machine.md](./api-machine.md) |
-| `types.ts` | 共享 Schema 和类型定义 | - | [types.md](./types.md) |
-| `auth.ts` | Auth Token 获取 | - | 内联（极简，仅从 configuration 读取 token） |
-| `versionedUpdate.ts` | 乐观锁版本化更新协议 | - | [versioned-update.md](./versioned-update.md) |
-| `socketOutbox.ts` | Socket 离线消息缓冲队列 | - | [socket-outbox.md](./socket-outbox.md) |
-| `rpc/RpcHandlerManager.ts` | RPC 方法注册与分发 | - | [rpc.md](./rpc.md) |
-| `rpc/types.ts` | RPC 类型定义 | - | 同上 |
+| `apiSession.ts`（session 包） | Session 级 Socket.IO 客户端 | WebSocket | [api-session.md](./api-session.md) |
+| `api.ts`（node-core） | HTTP 客户端，资源创建 | HTTP REST | [api-client.md](./api-client.md) |
+| `types.ts`（node-core） | 共享 Schema 和类型定义 | - | [types.md](./types.md) |
+| `auth.ts`（node-core） | Auth Token 获取 | - | 内联（极简，仅从 configuration 读取 token） |
+| `versionedUpdate.ts`（node-core） | 乐观锁版本化更新协议 | - | [versioned-update.md](./versioned-update.md) |
+| `rpc/RpcHandlerManager.ts`（node-core） | RPC 方法注册与分发 | - | [rpc.md](./rpc.md) |
+| `rpc/types.ts`（node-core） | RPC 类型定义 | - | 同上 |
 
-## 模块清单
-
-| 模块 | 职责 |
-|------|------|
-| `modules/common/idleTimer.ts` | Session 自动超时计时器 |
+> `socketOutbox.ts`（Socket 离线消息缓冲队列，预留设施）已随 machine 通道退场删除，历史设计见 [socket-outbox.md](./socket-outbox.md)。
 
 ## 通信协议
 
@@ -74,17 +63,11 @@ CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期�
 
 - `GET /cli/sessions/by-claude-session/:id` — 按 Claude Session ID 查找 session
 - `POST /cli/sessions` — 创建或获取 session
-- `POST /cli/machines` — 创建或获取 machine
 - `GET /cli/sessions/:id/messages` — 消息回填
 
 ### WebSocket（Socket.IO）
 
-所有 WS 连接挂载到 `/cli` namespace，通过 `clientType` 区分身份：
-
-| clientType | 用途 | 标识 |
-|------------|------|------|
-| `session-scoped` | 会话消息同步 | `sessionId` |
-| `machine-scoped` | 机器管理与 RPC | `machineId` |
+所有 WS 连接挂载到 `/cli` namespace，`clientType: 'session-scoped'`，以 `sessionId` 标识。
 
 ### RPC
 
@@ -93,14 +76,12 @@ CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期�
 ## 调用关系
 
 ```
-runner/run.ts ──────▶ ApiClient ──▶ ApiMachineClient (machine WebSocket)
-                         │
-agent/sessionFactory ──▶│
-                         └────▶ ApiSessionClient (session WebSocket)
-                                       │
-agent/loop.ts ◀──────────────────────────┘ (通过 ApiSessionClient 接收用户消息)
+agent/sessionFactory ──▶ ApiClient (HTTP 创建/查找 session)
+        │
+        └────▶ ApiSessionClient (session WebSocket)
+                     │
+agent/loop.ts ◀──────┘ (通过 ApiSessionClient 接收用户消息)
 ```
 
-- **ApiClient** 是工厂入口，负责 HTTP 资源创建 + 工厂方法
-- **ApiMachineClient** 由 Runner 持有，管理机器级生命周期
+- **ApiClient**（node-core）负责 HTTP 资源创建
 - **ApiSessionClient** 由每个 Claude Session 持有，负责消息双向同步

@@ -9,10 +9,10 @@
 
 | 方法 | 路径 | 功能 | 要求 |
 |------|------|------|------|
-| GET | `/workspaces` | 工作区列表 | 支持 `?machineId=` 过滤 |
+| GET | `/workspaces` | 工作区列表 | - |
 | POST | `/workspaces` | 创建工作区 | - |
 | GET | `/workspaces/:id` | 获取工作区详情 | - |
-| PATCH | `/workspaces/:id` | 改名 / 改 folders（machineId 不可改） | - |
+| PATCH | `/workspaces/:id` | 改名 / 改 folders | - |
 | DELETE | `/workspaces/:id` | 删除工作区（名下会话解绑进「最近」） | - |
 | GET | `/workspaces/:id/sessions` | 工作区内会话分页 | - |
 | GET | `/workspaces/sessions/unbound` | 「最近」区会话分页（未归属工作区的会话） | - |
@@ -27,7 +27,6 @@
 interface Workspace {
     id: string          // UUID
     namespace: string   // 命名空间
-    machineId: string   // 归属机器（folders 是机器本地路径，跨机器不可用）
     name: string
     folders: Array<{ path: string, primary: boolean }>
     createdAt: number
@@ -49,19 +48,19 @@ interface Workspace {
 
 ```
 GET /api/workspaces                        // 全部
-GET /api/workspaces?machineId=mach-123     // 按机器过滤
+GET /api/workspaces     // 列表（无过滤参数）
 ```
 
 ```json
 // Response
-{ "workspaces": [ { "id": "proj-1", "name": "mobi", "machineId": "mach-123", "folders": [...] } ] }
+{ "workspaces": [ { "id": "proj-1", "name": "mobi", "folders": [...] } ] }
 ```
 
 ### POST /workspaces — 创建工作区
 
 ```json
 // Request
-{ "name": "mobi", "machineId": "mach-123", "folders": [{ "path": "/Users/dev/mobi", "primary": true }] }
+{ "name": "mobi", "folders": [{ "path": "/Users/dev/mobi", "primary": true }] }
 
 // Response
 { "workspace": { ... } }
@@ -129,5 +128,5 @@ workspace 事件必须带 `namespace`——EventPublisher 的 `resolveNamespace`
 | 端点 | 工作区语义 |
 |------|----------|
 | `POST /cli/sessions` | 请求可带 `workspaceId`（校验同 namespace 现存工作区 + 机器归属），响应附带 `workspace` 实体 |
-| `POST /api/machines/:id/spawn` | spawn 可带 `workspaceId`（工作区须归属目标机器） |
+| `POST /api/sessions/spawn` | spawn 可带 `workspaceId`（归属校验按 namespace） |
 | `PATCH /api/sessions/:id` | `workspaceId` 字段归入 / 移出工作区，见 [Sessions API](./sessions.md) |

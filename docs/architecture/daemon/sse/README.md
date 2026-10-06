@@ -86,7 +86,7 @@ broadcast(event: SyncEvent): void
 | `messages-submitted` | all=true 或对应 session 的订阅者 |
 | `idle-timeout-warning` | all=true 或对应 session 的订阅者 |
 | `session-updated` | all=true 或 session 匹配 |
-| `machine-updated` | all=true 或 machine 匹配 |
+| `daemon-status` | all=true（executor 状态广播） |
 
 **使用场景**：SyncEngine 广播事件给所有订阅者
 
@@ -106,7 +106,7 @@ flowchart TB
     check -->|idle-timeout-warning| session
     check -->|all=true| all[发送所有事件]
     check -->|event.sessionId| match[匹配 sessionId]
-    check -->|event.machineId| match[匹配 machineId]
+    check -->|event.sessionId| match[匹配 sessionId]
     check -->|其他| skip[不发送]
 ```
 

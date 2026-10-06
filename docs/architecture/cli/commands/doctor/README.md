@@ -8,31 +8,19 @@ Doctor 提供 CLI 环境的诊断检查和进程清理功能，帮助排查问�
 
 ```mermaid
 flowchart TB
-    Cmd["doctor 命令"] -->|"clean"| Clean["killRunawayMobiProcesses()<br/>runner/doctor.ts"]
+    Cmd["doctor 命令"] -->|"clean"| Clean["killRunawayMobiProcesses()<br/>executor/doctor.ts"]
     Cmd -->|"exits"| Exits["printExitReport()<br/>ui/exitLogReport.ts"]
     Cmd -->|"无参数 / 其他"| Run["runDoctorCommand()<br/>ui/doctor.ts"]
 
-    Run --> Filter{"filter 参数"}
-    Filter -->|"'all'"| All["完整诊断"]
-    Filter -->|"'runner'"| Runner["仅 Runner 诊断"]
-
-    subgraph All["完整诊断（all）"]
+    subgraph Run["完整诊断"]
         Basic["基本信息<br/>版本 / 平台"]
-        Spawn["Runner Spawn 诊断<br/>编译模式 vs 开发模式"]
+        Runtime["Runtime 诊断<br/>编译模式 vs 开发模式"]
         Config["配置信息<br/>mobiHome / apiUrl"]
         Env["环境变量"]
-        Settings["settings.json 内容"]
+        Settings["settings.cli.json + settings.daemon.json"]
         Auth["认证状态"]
-    end
-
-    subgraph Runner["Runner 诊断（all + runner）"]
-        Status["Runner 状态<br/>PID / 版本 / 端口"]
+        Status["Daemon 状态<br/>PID / 启动时间 / 端口"]
         Processes["所有 mobi 进程列表"]
-    end
-
-    subgraph Logs["日志信息（仅 all）"]
-        LogFiles["日志文件列表"]
-        Support["支持链接"]
     end
 
     Clean --> FindRunaway["findRunawayMobiProcesses()"]
@@ -41,58 +29,41 @@ flowchart TB
 
 ### 命令路由
 
-```mermaid
-flowchart TB
-    Args["commandArgs"] --> Check1{"'clean'?"}
-    Check1 -->|是| Clean["killRunawayMobiProcesses()"]
-    Check1 -->|否| CheckExits{"'exits'?"}
-    CheckExits -->|是| Exits["printExitReport()"]
-    CheckExits -->|否| Check2{"'runner'?"}
-    Check2 -->|是| RunnerFilter["runDoctorCommand('runner')"]
-    Check2 -->|否| AllFilter["runDoctorCommand(undefined)<br/>默认 all"]
-```
-
 `commands/doctor.ts` 的路由逻辑：
-- `commandArgs[0] === 'clean'` → 进程清理
-- `commandArgs[0] === 'exits'` → 打印进程退出记录
-- `commandArgs[0] === 'runner'` → 仅 Runner 诊断
-- 其他 → 完整诊断（默认）
+- `commandArgs[0] === 'clean'` → 进程清理（可选 positional profile / 全局 `--profile`）
+- `commandArgs[0] === 'exits'` → 打印进程退出记录（`--process daemon|cli` / `--limit N`）
+- 其他已知子命令（历史 `daemon`/`runner` filter 已随 machine 概念收敛删除，601）→ 警告后忽略
+- 无参数 → 完整诊断（默认）
 
 ## 子命令
 
 | 子命令 | 说明 |
 |--------|------|
 | (无) | 运行完整诊断检查 |
-| `runner` | 仅输出 Runner 诊断（等同于 `mobi runner status`） |
-| `clean` | 清理失控的 mobi 进程 |
-| `exits` | 打印进程退出记录（`exits.log`），支持 `--process hub\|runner\|cli` / `--limit N` |
+| `clean` | 清理失控的 mobi 进程（可限定 profile） |
+| `exits` | 打印进程退出记录（`exits.log`），支持 `--process daemon\|cli` / `--limit N` |
 
 ## 诊断报告内容
-
-### filter = all（完整诊断）
 
 `mobi doctor` 默认输出完整诊断，包含以下区块：
 
 | 区块 | 内容 |
 |------|------|
 | **Basic Information** | CLI 版本、平台、Node.js 版本 |
-| **Runner Spawn Diagnostics** | 编译模式（executable + runtime assets）或开发模式（project root + entrypoint） |
-| **Configuration** | mobiHome 路径、Hub URL、日志目录 |
+| **Runtime Diagnostics** | 编译模式（executable + runtime assets）或开发模式（project root + entrypoint） |
+| **Configuration** | mobiHome 路径、daemon URL、日志目录 |
 | **Environment Variables** | MOBI_HOME、MOBI_API_URL、CLI_API_TOKEN（脱敏）、DEBUG 等 |
-| **Settings** | `settings.json` 内容（Token 脱敏为 `***`） |
+| **CLI Settings** | `settings.cli.json` 内容（Token 脱敏为 `***`） |
+| **Daemon Settings** | `settings.daemon.json` 内容（本机无此文件时提示 daemon 可能远程部署） |
 | **Direct Connect Auth** | Token 来源和状态 |
-| **Runner Status** | Runner 运行状态、PID、启动时间、CLI 版本、HTTP 端口 |
+| **Daemon Status** | `daemon.state.json` 运行状态、PID、启动时间、HTTP/宿主通道端口（读旧 `hubPort` 容错） |
 | **All mobi CLI Processes** | 所有相关进程，按类型分组 |
-| **Log Files** | 近期日志文件列表（普通日志 + Runner 日志） |
+| **Log Files** | 近期日志文件列表（daemon 桶含历史 `-hub.log` / `-runner.log` 文件名） |
 | **Support & Bug Reports** | Issue 链接、文档链接 |
-
-### filter = runner（仅 Runner 诊断）
-
-`mobi doctor runner` 或 `mobi runner status`，仅输出 Runner Status 区块。
 
 ## Claude Code Doctor 集成
 
-`filter = all` 且 `process.stdin.isTTY` 为 `true` 时，mobi doctor 会在自身诊断完成后自动 spawn `claude doctor`：
+`process.stdin.isTTY` 为 `true` 时，mobi doctor 会在自身诊断完成后自动 spawn `claude doctor`：
 
 ```mermaid
 flowchart TB
@@ -108,11 +79,10 @@ flowchart TB
 **设计决策**：
 - **TTY 检查**：`claude doctor` 是交互式命令（等待用户按 Enter），非 TTY 环境（管道、重定向）下跳过，避免进程挂起
 - **stdio: inherit**：直接将 stdin/stdout/stderr 透传给 `claude doctor`，用户获得完整交互体验
-- **filter = all only**：仅完整诊断模式才触发，`runner` 模式跳过
 
 ## 进程发现与分类
 
-**文件**: [`packages/daemon/src/runner/doctor.ts`](/packages/daemon/src/runner/doctor.ts)
+**文件**: [`packages/daemon/src/executor/doctor.ts`](/packages/daemon/src/executor/doctor.ts)
 
 通过 `ps-list` 枚举系统进程，识别 mobi 相关进程：
 
@@ -122,12 +92,13 @@ flowchart TB
     Filter --> Classify["按命令行分类"]
 
     Classify --> Current["current<br/>当前进程"]
-    Classify --> Runner["runner / dev-runner<br/>runner start-sync"]
+    Classify --> Daemon["daemon / dev-daemon<br/>daemon start-sync"]
+    Classify --> Supervisor["supervisor / dev-supervisor<br/>service supervise"]
     Classify --> Session["user-session / dev-session<br/>mobi 会话"]
-    Classify --> Spawned["runner-spawned-session<br/>--started-by runner"]
-    Classify --> Version["runner-version-check<br/>--version 检查"]
+    Classify --> Spawned["spawned-session<br/>--started-by daemon"]
+    Classify --> Version["version-check<br/>--version 检查"]
     Classify --> Doctor["doctor / dev-doctor<br/>mobi doctor"]
-    Classify --> Unknown["unknown<br/>其他"]
+    Classify --> Unknown["unknown / dev-related<br/>其他"]
 ```
 
 识别规则（按优先级）：
@@ -135,25 +106,27 @@ flowchart TB
 | 类型 | 匹配规则 |
 |------|----------|
 | `current` | `pid === process.pid` |
-| `runner-version-check` | 命令包含 `--version` |
-| `runner` | 命令包含 `runner start-sync` 或 `runner start` |
+| `version-check` | 命令包含 `--version` |
+| `daemon` | 命令包含 `daemon start-sync` 或 `daemon start` |
+| `supervisor` | 命令包含 `service supervise` |
+| `spawned-session` | 命令包含 `--started-by daemon`（daemon executor spawn 会话子进程注入词） |
+| `doctor` | 命令包含 `doctor` |
+| `dev-session` | 命令包含 `--yolo` |
+| `user-session` / `dev-related` | 其他（兜底） |
+| `dev-*` | 上述类型的开发模式变体（命令包含 `src/index.ts`） |
 
 > ⚠️ 分类规则尚未识别 `daemon start-sync` 进程形态（落 `user-session`，不在清理集合）——见 docs/pending.md #96。
-| `runner-spawned-session` | 命令包含 `--started-by runner` |
-| `doctor` | 命令包含 `doctor` |
-| `user-session` | 其他（生产模式） |
-| `dev-*` | 上述类型的开发模式变体（命令包含 `src/index.ts`） |
 
 mobi 进程识别条件：进程名包含 `Mobi`，或进程名为 `node` 且命令包含 `mobi`，或命令包含 `Mobi-coder`，或进程名/命令匹配 `mobi` 二进制，或开发模式（`src/index.ts`）。
 
 ## 进程清理（clean）
 
-`mobi doctor clean` 清理失控的 mobi 进程：
+`mobi doctor clean [profile]` 清理失控的 mobi 进程：
 
 ```mermaid
 flowchart TB
-    Start["killRunawayMobiProcesses()"] --> Find["findRunawayMobiProcesses()"]
-    Find --> Filter["过滤可清理类型：<br/>runner / runner-spawned-session / runner-version-check<br/>（排除当前进程）"]
+    Start["killRunawayMobiProcesses(profile?)"] --> Find["findRunawayMobiProcesses(profile)"]
+    Find --> Filter["过滤可清理类型：<br/>daemon / supervisor / spawned-session / version-check<br/>（含 dev 变体；排除当前进程）"]
     Filter --> Loop["遍历每个进程"]
     Loop --> SigTerm["kill(pid, SIGTERM)"]
     SigTerm --> Wait["等待 1s"]
@@ -164,17 +137,20 @@ flowchart TB
     Next --> Loop
 ```
 
-**可清理的进程类型**：`runner`、`dev-runner`、`runner-spawned-session`、`dev-runner-spawned`、`runner-version-check`、`dev-runner-version-check`。排除当前进程和用户会话进程。
+**可清理的进程类型**（`RUNNABLE_TYPES`）：`daemon`、`dev-daemon`、`supervisor`、`dev-supervisor`、`spawned-session`、`dev-spawned-session`、`version-check`、`dev-version-check`。历史类型（runner 形态、runner-version-check 等）随 machine 概念收敛从识别集合删除（601）。
+
+- **profile 过滤**：传入 profile 时按进程 env 的 `MOBI_HOME`（`ps -E` 读 env）批量归属，并叠加该 profile 的 `daemon.state.json` pid 兜底
+- **supervisor 必须可识别**：否则 E2E/dev 清理脚本绕过它强杀子进程后会残留「无子进程却永不退出」的幽灵
 
 ## 进程退出记录（exits）
 
-`mobi doctor exits` 打印 `~/.mobi/logs/exits.log` 中的进程退出记录，用于排查 hub/runner/cli 无故退出。
+`mobi doctor exits` 打印 `~/.mobi/logs/exits.log` 中的进程退出记录，用于排查 daemon/cli 无故退出。
 
 **文件**: [`packages/cli/src/ui/exitLogReport.ts`](/packages/cli/src/ui/exitLogReport.ts)
 
 ### 退出日志机制
 
-三个长生命周期进程（hub / runner / cli）启动时挂载 `@mobi/shared` 的 `installExitLogger`，捕获退出事件统一写入 `exits.log`：
+两个长生命周期进程（daemon / cli）启动时挂载 `@mobi/shared` 的 `installExitLogger`，捕获退出事件统一写入 `exits.log`：
 
 | 事件 | reason | 写 exits.log | 写 dump |
 |---|---|---|---|
@@ -184,9 +160,11 @@ flowchart TB
 | `SIGTERM` / `SIGBREAK` | `signal-term` | ✓ | ✗ |
 | `exit` | `normal` / `error-exit` | ✓ | ✗ |
 
+历史记录的 `processType`（`hub` / `runner`）读取侧归并到 `daemon` 桶展示。
+
 ### SIGKILL / OOM 兜底
 
-进程被 SIGKILL / OOM killer / 段错误终止时，JS 运行时来不及执行任何代码，崩溃 handler 无法触发。为此 hub 和 runner 在**下次启动时**检测持久化 pid 标记（`hub.state.json` / `runner.state.json`），若上次 pid 已死则补记一条 `killed-externally` 记录。CLI 主进程无长驻标记，不做此兜底（但仍捕获 crash）。
+进程被 SIGKILL / OOM killer / 段错误终止时，JS 运行时来不及执行任何代码，崩溃 handler 无法触发。为此 daemon 在**下次启动时**检测持久化 pid 标记（`daemon.state.json`），若上次 pid 已死则补记一条 `killed-externally` 记录。CLI 主进程无长驻标记，不做此兜底（但仍捕获 crash）。
 
 ### 文件布局
 
@@ -204,9 +182,9 @@ dump 仅保留非敏感 env（`MOBI_HOME` / `MOBI_PROFILE` / `MOBI_API_URL` / `N
 ### 用法
 
 ```bash
-mobi doctor exits                       # 最近 20 条
-mobi doctor exits --process hub         # 仅 hub
-mobi doctor exits --limit 50            # 最近 50 条
+mobi doctor exits                         # 最近 20 条
+mobi doctor exits --process daemon        # 仅 daemon
+mobi doctor exits --limit 50              # 最近 50 条
 ```
 
 ## 代码结构
@@ -218,8 +196,8 @@ packages/cli/src/
 ├── ui/
 │   ├── doctor.ts                # 诊断报告输出
 │   └── exitLogReport.ts         # 进程退出记录报告（mobi doctor exits）
-└── runner/
-    └── doctor.ts                # 进程发现、分类、清理
+└── daemon（@mobi/daemon）
+    └── src/executor/doctor.ts   # 进程发现、分类、清理
 ```
 
 | 文件 | 入口 |
@@ -227,4 +205,4 @@ packages/cli/src/
 | `packages/cli/src/commands/doctor.ts` | [`doctorCommand`](/packages/cli/src/commands/doctor.ts) |
 | `packages/cli/src/ui/doctor.ts` | [`runDoctorCommand()`](/packages/cli/src/ui/doctor.ts) |
 | `packages/cli/src/ui/exitLogReport.ts` | [`printExitReport()`](/packages/cli/src/ui/exitLogReport.ts) |
-| `packages/daemon/src/runner/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/packages/daemon/src/runner/doctor.ts) |
+| `packages/daemon/src/executor/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/packages/daemon/src/executor/doctor.ts) |

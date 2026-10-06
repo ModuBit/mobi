@@ -1,6 +1,6 @@
 # 系统架构
 
-Mobi 由六个包组成，围绕**「单机 daemon 托管 Claude Code 会话子进程，Web 在浏览器操控」**的核心架构（personal-agent-rewrite 后的最终形态）：每台机器的 mobi 自给自足，daemon 同时承载 Web 服务、会话 spawn 与机器层操作。
+Mobi 由六个包组成，围绕**「单机 daemon 托管 Claude Code 会话子进程，Web 在浏览器操控」**的核心架构（personal-agent-rewrite 后的最终形态）：每台机器的 mobi 自给自足，daemon 同时承载 Web 服务与会话 spawn（执行层为进程内 executor）。
 
 ## 整体架构（单机拓扑）
 
@@ -14,8 +14,8 @@ graph LR
 
 要点：
 
-- **单机假设**：machines 表恒一行（本机），daemon 启动时自注册并常驻 active；跨机数据面已在 hub 侧收敛（machine 通道删除、多机死分支清理）。
-- **会话子进程**由 daemon 进程内 runner spawn（`cli claude ...`，源码直跑），经**宿主通道**回连 daemon。宿主通道是 loopback-only 的独立 Socket.IO listener（端口 = 主端口 + 10000，`MOBI_HOST_PORT` 覆盖；详见 [ADR 0009](../adr/0009-host-channel-loopback-listener.md)）。
+- **单机假设**：machines 表已删除（remove-machine，见 [ADR 0011](../adr/0011-remove-machine-concept.md)），无任何「他机」概念；executor 状态为内存单例（executorRuntime），经 `/api/daemon/status` 与 `daemon-status` SSE 暴露。
+- **会话子进程**由 daemon 进程内 executor spawn（`cli claude ...`，源码直跑），经**宿主通道**回连 daemon。宿主通道是 loopback-only 的独立 Socket.IO listener（端口 = 主端口 + 10000，`MOBI_HOST_PORT` 覆盖；详见 [ADR 0009](../adr/0009-host-channel-loopback-listener.md)）。
 - **supervisor**（`mobi service supervise`）只托管单个 daemon 组件；daemon 的进程状态单源是 `daemon.state.json`。
 
 ## 六个包
@@ -24,7 +24,7 @@ graph LR
 |---|---|---|---|
 | **shared** | 跨包共享的 Zod Schema 和类型 | TypeScript + Zod | — |
 | **node-core** | 节点侧共享库（git 簇 / logger / configuration / persistence / handlers / api 四件） | TypeScript + Bun | — |
-| **daemon** | 单机 daemon：原 hub（Web + Socket.IO + SQLite）+ runner（spawn 管线）+ machine handlers，一个进程 | Bun + Hono + Socket.IO + SQLite | [→ daemon/](daemon/) |
+| **daemon** | 单机 daemon：Web + Socket.IO + SQLite + spawn 管线（executor），一个进程 | Bun + Hono + Socket.IO + SQLite | [→ daemon/](daemon/) |
 | **session** | 会话宿主：与 Claude Code 会话进程共处的一切（claude/agent/mcp/terminal、local/remote 循环） | TypeScript + Claude Agent SDK | [→ cli/](cli/)（会话宿主叙述） |
 | **cli** | 组合根：二进制入口、命令路由、supervisor/setup/upgrader/auth UI | Bun | [→ cli/](cli/) |
 | **web** | 浏览器前端，远程交互界面 | React 19 + Ant Design X + TanStack | [→ web/](web/) |
@@ -64,7 +64,7 @@ graph TB
         SE --- SSEMgr[SSEManager]
         SE --- Socket[SocketServer<br/>主端口 + 宿主通道]
         Socket --- RPC[RPCGateway]
-        SE --- Host[LocalMachineHost<br/>spawn 管线]
+        SE --- Host[LocalExecutor<br/>spawn 管线]
         SSEMgr --- Visibility[VisibilityTracker]
         Visibility --- Push[PushService]
         Push --- Notification[NotificationHub]

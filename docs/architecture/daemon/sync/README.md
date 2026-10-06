@@ -2,7 +2,7 @@
 
 **文件**: [`packages/daemon/src/sync/syncEngine.ts`](/packages/daemon/src/sync/syncEngine.ts)
 
-SyncEngine 是 Hub 的核心协调层，统一管理会话、机器、消息和事件。
+SyncEngine 是 daemon 的核心协调层，统一管理会话、机器、消息和事件。
 
 ## 1. 顶层视图
 
@@ -48,7 +48,6 @@ graph TB
     subgraph SyncEngine
         EP[EventPublisher<br/>事件广播]
         SC[SessionCache<br/>会话状态]
-        MC[MachineCache<br/>机器状态]
         PC[WorkspaceCache<br/>工作区缓存]
         MS[MessageService<br/>消息服务]
         RG[RpcGateway<br/>RPC 网关]
@@ -56,7 +55,6 @@ graph TB
 
     EP --> SSE[SSEManager]
     SC --> Store[(Store)]
-    MC --> Store
     MS --> Store
 ```
 
@@ -69,21 +67,18 @@ graph LR
     CLI[CLI] -->|Socket.IO| IO[SocketServer]
     CLI -->|HTTP| WS[WebServer]
     IO --> SC[SessionCache]
-    IO --> MC[MachineCache]
     WS --> SC
     SC --> EP[EventPublisher]
-    MC --> EP
     EP --> SSE[SSEManager]
     SSE --> Web[Web]
 ```
 
 **HTTP 路径场景**：
 - 会话初始化：`POST /cli/sessions`、`GET /cli/sessions/by-claude-session/:id`
-- 机器初始化：`POST /cli/machines`
 - 消息回填：`GET /cli/sessions/:id/messages`（断线重连后获取缺失消息）
 
 **Socket.IO 路径场景**：
-- 心跳：`session-alive`、`machine-alive`
+- 心跳：`session-alive`
 - 消息发送：`message`
 - 状态更新：`update-metadata`、`update-state`
 - 终端事件：`terminal:*`
@@ -140,8 +135,7 @@ flowchart LR
 |------|------|------|
 | EventPublisher | CLI → Web | 事件广播（通过 SSE） |
 | SessionCache | 双向 | 会话状态管理 |
-| MachineCache | 双向 | 机器状态管理 |
-| WorkspaceCache | Web → Web | 工作区缓存（CRUD + workspace-* 事件广播，镜像 sessionCache/machineCache 范式） |
+| WorkspaceCache | Web → Web | 工作区缓存（CRUD + workspace-* 事件广播，镜像 sessionCache 范式） |
 | MessageService | Web → CLI | Web 发送消息给 CLI |
 | RpcGateway | Web → CLI | 远程调用 CLI 功能 |
 
@@ -151,7 +145,6 @@ flowchart LR
 |------|------|
 | **[EventPublisher](./event-publisher.md)** | 事件发布器，向 SSE 推送实时事件 |
 | **[SessionCache](./session-cache.md)** | 会话缓存，管理会话生命周期和活跃状态 |
-| **[MachineCache](./machine-cache.md)** | 机器缓存，管理 CLI 客户端在线状态 |
 | **WorkspaceCache** | 工作区缓存，管理工作区实体 CRUD 并广播 `workspace-added/updated/removed`；删除工作区时逐个广播名下会话的 `session-updated`（解绑进「最近」） |
 | **[MessageService](./message-service.md)** | 消息服务，处理消息分页和发送 |
 | **[RpcGateway](./rpc-gateway.md)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
@@ -166,8 +159,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     A[创建 EventPublisher] --> B[创建 SessionCache]
-    B --> C[创建 MachineCache]
-    C --> PC[创建 WorkspaceCache]
+    B --> PC[创建 WorkspaceCache]
     PC --> D[创建 MessageService]
     D --> E[创建 RpcGateway]
     E --> F[warmupCache<br/>预热缓存（含 workspaces 全量）]
@@ -198,13 +190,12 @@ flowchart LR
 | `deleteWorkspace()` | 删除工作区（事务内解绑名下会话，广播 `workspace-removed` + 逐个 `session-updated`） |
 | `setSessionWorkspace()` | 会话归入 / 移出工作区 |
 
-### 机器查询
+### executor 状态
 
 | 方法 | 作用 |
 |------|------|
-| `getMachines()` | 获取所有机器 |
-| `getOnlineMachines()` | 获取在线机器 |
-| `getMachine()` | 获取单个机器 |
+| `isExecutorReady()` / `markExecutorReady()` | spawn/resume 判据（bridge 注入即置位） |
+| `publishDaemonStatus()` | 广播 `daemon-status`（executor 状态权威源 = executorRuntime 内存单例） |
 
 ### 消息操作
 
@@ -223,7 +214,7 @@ flowchart LR
 | `abortSession()` | 中止会话（`stopKind` 三档：`turn`/`turn-queue`/`turn-queue-tasks`，缺省 `turn`） |
 | `archiveSession()` | 归档会话（已落库 `lifecycleState: 'archived'` 时幂等成功，不再发起 killSession） |
 | `switchSession()` | 切换本地/远程模式 |
-| `renameSession()` | 重命名会话（更新 Hub DB 后 best-effort 同步 CC customTitle） |
+| `renameSession()` | 重命名会话（更新 daemon DB 后 best-effort 同步 CC customTitle） |
 | `deleteSession()` | 删除会话 |
 
 ### 权限操作
@@ -257,7 +248,6 @@ packages/daemon/src/sync/
 ├── syncEngine.ts       # 主入口
 ├── eventPublisher.ts   # 事件发布
 ├── sessionCache.ts     # 会话缓存
-├── machineCache.ts     # 机器缓存
 ├── workspaceCache.ts     # 工作区缓存（CRUD + workspace-* 事件）
 ├── messageService.ts   # 消息服务
 ├── sessionMessageRuntimeProjector.ts # 持久化消息 → runtimeState 投影

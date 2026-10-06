@@ -1,15 +1,15 @@
-# Files RPC (`handlers/files.ts` / `handlers/machineFiles.ts`)
+# Files Handlers (`handlers/files.ts` / `handlers/hostFiles.ts`)
 
-浏览器不直接访问本机文件系统；Hub 通过 RPC 请求 CLI 读写文件。读取有 session 和 machine 两条通道，共用文件 implementation，各自保留寻址与授权策略。
+浏览器不直接访问本机文件系统；daemon 承担文件读写。有 session 和 host 两条通道，共用文件 implementation，各自保留寻址与授权策略。
 
 ## 两条读取通道
 
-| Adapter | 寻址 | 通道策略 |
-|---|---|---|
-| `files.ts` | session 的 `workingDirectory` | `validateReadPath`；meta 额外返回 `writable` |
-| `machineFiles.ts` | `machineId + cwd` | `validateReadPath` 后再校验扩展名白名单 |
+| Adapter | 寻址 | 通道 | 策略 |
+|---|---|---|---|
+| `files.ts` | session 的 `workingDirectory` | 会话 WebSocket RPC（`readFileMeta` / `readFileRange` / `writeFile` / `saveFile`） | `validateReadPath`；meta 额外返回 `writable` |
+| `hostFiles.ts` | 显式 `cwd` 参数（缺省回退 `process.cwd()`） | daemon HTTP 路由（`/api/files/*`）与 executor 本地直调（`LocalExecutor.hostReadFileMeta` 等） | `validateReadPath`，与 session 通道同源同参 |
 
-Machine adapter 会覆盖 machine 连接上的默认同名 handler，供跨会话的附件和静态资源读取。它的扩展名限制不影响 session 通道。
+host 通道供跨会话存活的静态资源读取（消息附件预览等）。曾有的扩展名白名单已废除（ADR 0006）：两链读边界必须完全同一函数同一参数形态，否则冷会话与活跃会话的文件读行为分叉；闸门 = 目录黑名单 + 敏感文件名单（`validateReadPath` 单源）。
 
 ## 共享文件读取 module
 
@@ -28,9 +28,9 @@ readFileRangeAt(absPath, offset?, length?)
 - `[offset, offset + length)` 字节范围读取；
 - 统一失败结果，其中 `ENOENT` 保留结构化错误码。
 
-该 module **不负责**路径权限、Machine 扩展名白名单、Session 可写性和 RPC 注册；这些仍属于两个 adapter。
+该 module **不负责**路径权限、Session 可写性和 RPC 注册；这些仍属于两个 adapter。
 
-## RPC 方法
+## 方法
 
 ### `readFileMeta`
 
@@ -42,11 +42,11 @@ readFileRangeAt(absPath, offset?, length?)
 { success: false, error: string, code?: string }
 ```
 
-`etag = size-mtimeMs`。`writable` 仅由 session adapter 返回，并使用与写入相同的 `validateWritePath`。
+`etag = size-mtimeMs`。`writable` 仅由 session 通道返回，并使用与写入相同的 `validateWritePath`。
 
 ### `readFileRange`
 
-读取 `[offset, offset + length)` 字节范围，Socket.IO 以原生二进制附件传输 `Uint8Array`：
+读取 `[offset, offset + length)` 字节范围，Socket.IO 以原生二进制附件传输 `Uint8Array`（HTTP 通道直接回二进制响应）：
 
 ```typescript
 { success: true, chunk: Uint8Array }
@@ -72,7 +72,6 @@ readFileRangeAt(absPath, offset?, length?)
 - 读边界：`cwd` 子树 ∪（`home` 子树 − 黑名单），见 ADR 0004。
 - 写边界：严格 `cwd` 子树。
 - `ACCESS_DENIED`：路径边界拒绝。
-- `EXT_FORBIDDEN`：Machine 通道扩展名拒绝。
 - `ENOENT`：目标文件不存在。
 
 路径策略先于文件读取 module 执行，因此共享范围语义不会扩大任一通道的可访问文件集。

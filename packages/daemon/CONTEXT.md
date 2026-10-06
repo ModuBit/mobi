@@ -7,12 +7,12 @@ daemon 侧的领域语言：会话实体的持久化与多端同步。
 ### 进程拓扑
 
 **daemon**:
-单机自足的服务器进程——原 hub（Web + Socket.IO + SQLite）与 runner（spawn 管线）合并且 machine 层本地化后的唯一常驻服务。每台机器一个 daemon，承载 Web 服务、会话子进程 spawn 与跟踪、机器层操作。
+单机自足的服务器进程——原 hub（Web + Socket.IO + SQLite）与 runner（spawn 管线）合并后的唯一常驻服务（machine 层已随 ADR 0011 彻底移除）。每台机器一个 daemon，承载 Web 服务与会话子进程 spawn / 跟踪。
 _Avoid_: hub（历史名，文档不再用）、中心服务器（多机语义已废）
 
 **宿主**:
-daemon 进程内 spawn 并跟踪会话子进程的一方（原 runner 职责，同进程化后并入）。「宿主通道」「宿主端口」中的宿主均指它。
-_Avoid_: runner（进程角色名已废，daemon 同进程后无独立 runner 进程）
+daemon 进程内 spawn 并跟踪会话子进程的一方（原 runner 职责，同进程化后并入），代码承载为 `ExecutorHost` 接口 + `LocalExecutor` 实现（`packages/daemon/src/executor/`）。「宿主通道」「宿主端口」中的宿主均指它。
+_Avoid_: runner / machine（进程角色与路由概念均已废，单机世界无路由标识）
 
 **宿主通道**:
 会话子进程回连 daemon 的独立 loopback listener：只绑 `127.0.0.1`，端口 = 主端口 + 10000（`MOBI_HOST_PORT` 覆盖），承载 `/cli` Socket.IO namespace 与 `/cli/*` HTTP 路由。不经 frp 暴露，外网物理不可达（主端口对这些路径 404）。

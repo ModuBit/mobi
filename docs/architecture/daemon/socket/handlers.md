@@ -29,9 +29,9 @@ flowchart TB
         CliAuth --> CliRegister["registerCliHandlers()"]
         CliRegister --> Init["初始化：提取 namespace<br/>创建访问控制函数<br/>加入房间"]
         Init --> Reg1[Session Handlers]
-        Init --> Reg2[Machine Handlers]
         Init --> Reg3[RPC Handlers]
         Init --> Reg4[CLI Terminal Handlers]
+        Init --> Reg5[UI Command / Agent Session Handlers]
     end
 
     subgraph "/terminal namespace"
@@ -47,9 +47,9 @@ flowchart TB
 | | /cli `registerCliHandlers` | /terminal `registerTerminalHandlers` |
 |---|---|---|
 | 客户端 | CLI 客户端 | Web 浏览器 |
-| 处理器数 | 4 组子处理器 | 1 组 |
-| 访问控制 | resolveSessionAccess / resolveMachineAccess | getSession + namespace 检查 |
-| 房间加入 | session + machine 房间 | 无 |
+| 处理器数 | 5 组子处理器 | 1 组 |
+| 访问控制 | resolveSessionAccess | getSession + namespace 检查 |
+| 房间加入 | session 房间 | 无 |
 | 跨 namespace | 需要访问 /terminal socket | 需要访问 /cli socket |
 
 ---
@@ -63,9 +63,9 @@ CLI 客户端通过认证后，进入 `registerCliHandlers(socket, deps)`。
 ```mermaid
 flowchart TB
     Start["registerCliHandlers()"] --> NS["提取 namespace<br/>from socket.data"]
-    NS --> Access["创建 resolveSessionAccess<br/>创建 resolveMachineAccess"]
-    Access --> Room["从 handshake.auth 提取<br/>sessionId / machineId"]
-    Room --> Join["加入房间<br/>session:{sid} / machine:{mid}"]
+    NS --> Access["创建 resolveSessionAccess"]
+    Access --> Room["从 handshake.auth 提取<br/>sessionId"]
+    Room --> Join["加入房间<br/>session:{sid}"]
     Join --> Handlers["注册 4 组处理器"]
 ```
 
@@ -74,23 +74,21 @@ flowchart TB
 | 函数 | 逻辑 |
 |------|------|
 | `resolveSessionAccess(sid)` | namespace 检查 → 按 namespace 查询 session → 返回 ok / access-denied / not-found |
-| `resolveMachineAccess(mid)` | namespace 检查 → 按 namespace 查询 machine → 返回 ok / access-denied / not-found |
 
-这两个函数实现了多租户隔离：同一个 sessionId，只有匹配 namespace 的客户端才能访问。
+这个函数实现了多租户隔离：同一个 sessionId，只有匹配 namespace 的客户端才能访问。
 
-**房间加入**：从 `handshake.auth` 中提取 `sessionId` 和 `machineId`，权限校验通过后加入。后续 `socket.to(room).emit(...)` 实现同房间广播。
+**房间加入**：从 `handshake.auth` 中提取 `sessionId`，权限校验通过后加入。后续 `socket.to(room).emit(...)` 实现同房间广播。
 
 ### 2. 处理器注册
 
-初始化后，依次注册 6 组处理器：
+初始化后，依次注册 5 组处理器：
 
 ```
 registerRpcHandlers(socket, rpcRegistry)
 registerSessionHandlers(socket, { store, resolveSessionAccess, emitAccessError, ... })
-registerMachineHandlers(socket, { store, resolveMachineAccess, emitAccessError, ... })
 registerTerminalHandlers(socket, { terminalRegistry, terminalNamespace, resolveSessionAccess, ... })
 registerUiCommandHandlers(socket, { resolveSessionAccess, hasActiveSseConnection, publishUiCommand })
-registerAgentSessionHandlers(socket, { resolveSessionAccess, listOnlineMachines, listSessions, createSession, sendMessageToSessions })
+registerAgentSessionHandlers(socket, { resolveSessionAccess, agentSessions })
 ```
 
 另外注册 `ping`（心跳）和 `disconnect`（断线清理）。
@@ -180,7 +178,7 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 **session-end force-push**：CLI 离线时，把仍排队的本地 user 消息（`lifecycle = 'queued'`）全部 push，防止悬浮条卡死。handler 查询待提交 localId 后，合成一个 `pushed` fact 交给 `SessionMessageFactsProcessor`，因此正常上报和结束补偿共用同一套幂等落库与 publication 规则。
 
-### messages-facts：统一消息事实（CLI→Hub 唯一受理通道）
+### messages-facts：统一消息事实（CLI→daemon 唯一受理通道）
 
 所有消息事实上报收敛为单一事件 `messages-facts`（协议载荷 `{ sid, facts: MessageFact[] }`）：批内多种 fact 一次往返。原 4 个独立 socket 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）已随 #54 下线，语义由各 fact kind 承载。
 
@@ -200,25 +198,7 @@ module 不依赖 Socket 或 SSE。handler 只校验批次外层和会话访问�
 | `lifecycle` | 仅接收协议枚举字符串；单调推进，重复/乱序无命中时静默；`processing` 不保存临时 reason，终态才把非空 terminalReason 写入本次命中行 |
 | `withdrawn` | 先定位未删批首行；锚点已终态或其后仍有 queued 消息时拒绝连带删除，否则从锚点起软删除、留档 withdrawn，并发布 composer 回填所需的 localId/blocks/originalText |
 
-`fact.at` 缺省取 Hub 接收时刻，而且同一批只取一次 `now`，所以缺省时间在批内一致。终态信号的 CLI 侧来源见 [message-lifecycle.md](../../message-lifecycle.md)「终态接入：command_lifecycle 帧拦截」。
-
----
-
-## /cli 机器处理器
-
-**文件**: [`packages/daemon/src/socket/handlers/cli/index.ts`](/packages/daemon/src/socket/handlers/cli/index.ts)（machine 域 handler 已并入 registerCliHandlers）
-
-与会话处理器结构对称，处理机器相关事件。
-
-### 事件一览
-
-| 事件 | 模式 | 数据库 | 广播 | 回调 |
-|------|------|--------|------|------|
-| `machine-alive` | 单向 | — | — | onMachineAlive |
-| `machine-update-metadata` | 请求/响应 | 乐观锁更新 | `machine-update` → machine 房间 | onWebappEvent |
-| `machine-update-state` | 请求/响应 | 乐观锁更新 | `machine-update` → machine 房间 | onWebappEvent |
-
-模式与会话处理器完全一致：访问控制 → 乐观锁更新 → 广播 + onWebappEvent。唯一区别是房间名为 `machine:{id}` 而非 `session:{id}`。
+`fact.at` 缺省取 daemon 接收时刻，而且同一批只取一次 `now`，所以缺省时间在批内一致。终态信号的 CLI 侧来源见 [message-lifecycle.md](../../message-lifecycle.md)「终态接入：command_lifecycle 帧拦截」。
 
 ---
 
@@ -292,17 +272,16 @@ ack 的 `delivered` 是「已广播给活跃 Web 连接」，不是「用户已�
 
 **文件**: [`packages/daemon/src/socket/handlers/cli/agentSessionHandlers.ts`](/packages/daemon/src/socket/handlers/cli/agentSessionHandlers.ts)
 
-agent 触达**其他会话**（列机器 / 列会话 / 建会话 / 投消息，见 ADR 0005）。与 A 类的分界：**不依赖 Web 在线、落库即终态**。
+agent 触达**其他会话**（列会话 / 建会话 / 投消息，见 ADR 0005；列机器事件已随 machine 概念移除退场）。与 A 类的分界：**不依赖 Web 在线、落库即终态**。
 
-四个事件形状一致：**入参只校验形状 → `resolveSessionAccess` 鉴权取 namespace → 调 `AgentSessionService` → 把结果转 ack**。业务规则（过滤排序、机器解析、扇出、失败翻译）全在服务里，handler 不重复一份（与 `SessionMessageFactsProcessor` / `SessionForkStore` 同一分工）。
+四个事件形状一致：**入参只校验形状 → `resolveSessionAccess` 鉴权取 namespace → 调 `AgentSessionService` → 把结果转 ack**。业务规则（过滤排序、扇出、失败翻译）全在服务里，handler 不重复一份（与 `SessionMessageFactsProcessor` / `SessionForkStore` 同一分工）。
 
 服务以**一个能力对象**（`AgentSessionOps`，从服务类 Pick 出来的四个方法）整份注入，不逐方法开字段：此前这条链上四个方法名在三层里各改一遍名、各判一遍空。
 
-装配缺失属组装 bug，**在注册时判一次**（`agentSessions` 缺席 → 四个事件一次性回固定回执），故每个 handler 各自只有一条代码路径。回执一律明确拒绝而非静默：列类回 `handler-misconfigured`，写类回一句「会话服务不可用」的人话。**不静默返回空清单**——那会让 agent 以为「一台机器/一个会话都没有」；也**不能不注册**——CLI 的 emitWithAck 会等一个永远不来的回执，agent 只剩超时。
+装配缺失属组装 bug，**在注册时判一次**（`agentSessions` 缺席 → 四个事件一次性回固定回执），故每个 handler 各自只有一条代码路径。回执一律明确拒绝而非静默：列类回 `handler-misconfigured`，写类回一句「会话服务不可用」的人话。**不静默返回空清单**——那会让 agent 以为「一个会话都没有」；也**不能不注册**——CLI 的 emitWithAck 会等一个永远不来的回执，agent 只剩超时。
 
 | 事件 | 模式 | 服务方法 |
 |------|------|----------|
-| `listMachinesForAgent` | 请求/响应 | `listMachines` |
 | `listSessionsForAgent` | 请求/响应 | `listSessions` |
 | `createSessionForAgent` | 请求/响应 | `createSession`（`waitForReady` 默认等到新会话能收消息再返回） |
 | `sendMessageToSessionForAgent` | 请求/响应 | `sendMessageToSessions` |
@@ -391,12 +370,12 @@ flowchart LR
 ```
 
 1. **Zod 验证**：所有 payload 都用 Zod schema 验证，不合法直接忽略（静默丢弃，不报错）
-2. **访问控制**：通过 `resolveSessionAccess` 或 `resolveMachineAccess` 检查 namespace 隔离
+2. **访问控制**：通过 `resolveSessionAccess` 检查 namespace 隔离
 3. **业务处理**：数据库操作、转发、广播等
 
 ### 双重通知
 
-CLI → Hub 的事件处理后，数据通过两条路径到达 Web 端：
+CLI → daemon 的事件处理后，数据通过两条路径到达 Web 端：
 
 ```mermaid
 flowchart LR

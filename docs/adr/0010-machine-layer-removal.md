@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted（2026-10-03）。personal-agent-rewrite ticket-20/24/25 落地（裁决 Q2/Q4，契约 D4=C，namespace Q6）。
+**superseded（2026-10-06）**——被 [ADR 0011](0011-remove-machine-concept.md) 取代：单机化结论被继承，但 **D4=C「machineId 作路由残留保留」裁决作废**，machineId 契约与 machines 表已彻底移除。以下为历史原文。
+
+accepted（2026-10-03，已被 0011 取代）。personal-agent-rewrite ticket-20/24/25 落地（裁决 Q2/Q4，契约 D4=C，namespace Q6）。
 
 ## 背景
 

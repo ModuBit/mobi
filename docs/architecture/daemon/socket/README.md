@@ -2,7 +2,7 @@
 
 **文件**: [`packages/daemon/src/socket/server.ts`](/packages/daemon/src/socket/server.ts)
 
-SocketServer 是 Hub 的实时通信层，基于 Socket.IO，负责 CLI 客户端和 Web 前端之间的双向实时通信。
+SocketServer 是 daemon 的实时通信层，基于 Socket.IO，负责 CLI 客户端和 Web 前端之间的双向实时通信。
 
 ## 整体架构
 
@@ -17,7 +17,7 @@ flowchart TB
 
         subgraph cliNs["/cli namespace"]
             CliAuth[API Token 认证]
-            CliHandlers[会话 / 机器 / RPC / 终端]
+            CliHandlers[会话 / RPC / 终端]
         end
 
         subgraph termNs["/terminal namespace"]
@@ -42,68 +42,59 @@ flowchart TB
 
 ### /cli namespace
 
-CLI 连接后，通过事件与 Hub 交互。事件按职责分为六组：
+CLI 连接后，通过事件与 daemon 交互。事件按职责分为六组：
 
 **会话事件**（`sessionHandlers.ts`）
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `message` | CLI → Hub | 发送消息，存入数据库并广播给同房间客户端 |
-| `session-message`（snapshot / snapshotDelta） | CLI → Hub | 校验会话后交给 `SnapshotSync.ingest()`，不落库；接受的 publication 转交 SyncEngine |
-| `snapshot-stream-end` | CLI → Hub | 通知 `SnapshotSync` 精确结束指定流，清完整基线和订阅游标 |
-| `session-alive` | CLI → Hub | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
-| `session-end` | CLI → Hub | 会话结束，触发清理；**ack 制**——Hub 处理完回 ack，CLI 确认落达再关 socket（防 close 竞态丢失） |
-| `context-usage` | CLI → Hub | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
-| `goal-status` | CLI → Hub | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
-| `run-started` | CLI → Hub | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
-| `cache-status` | CLI → Hub | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
-| `receive-readiness` | CLI → Hub | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / **接通过之后**收尾断开 `false`；从未接通的一轮不上报，因为 `false` 在 Hub 侧读作「它曾经连上过、连接没了」）。**不落库、不广播**——只在 Hub 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
-| `update-metadata` | CLI ⇄ Hub | 更新会话元数据（名称等），带乐观锁 |
-| `update-state` | CLI ⇄ Hub | 更新 Agent 状态（requests 等），带乐观锁 |
-| `idle-timeout-warning` | CLI → Hub | 空闲超时预警，广播到 Web 端 |
-
-**机器事件**（`machineHandlers.ts`）
-
-| 事件 | 方向 | 说明 |
-|------|------|------|
-| `machine-alive` | CLI → Hub | 机器心跳，保活在线状态 |
-| `machine-update-metadata` | CLI ⇄ Hub | 更新机器元数据 |
-| `machine-update-state` | CLI ⇄ Hub | 更新 Runner 状态 |
+| `message` | CLI → daemon | 发送消息，存入数据库并广播给同房间客户端 |
+| `session-message`（snapshot / snapshotDelta） | CLI → daemon | 校验会话后交给 `SnapshotSync.ingest()`，不落库；接受的 publication 转交 SyncEngine |
+| `snapshot-stream-end` | CLI → daemon | 通知 `SnapshotSync` 精确结束指定流，清完整基线和订阅游标 |
+| `session-alive` | CLI → daemon | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
+| `session-end` | CLI → daemon | 会话结束，触发清理；**ack 制**——daemon 处理完回 ack，CLI 确认落达再关 socket（防 close 竞态丢失） |
+| `context-usage` | CLI → daemon | 上下文用量事件驱动上报（启动采样/result 采样走 SDK `getContextUsage({detail:'summary'})` 零 LLM + assistant usage 派生），落库到 `runtimeState.contextUsage` 并广播给 Web |
+| `goal-status` | CLI → daemon | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
+| `run-started` | CLI → daemon | 轮次起点上报（`running` 翻转 false→true 时），落库 `runtimeState.runStartedAt` 并广播给 Web；StatusBar 计时的权威来源（不随 Web 消息窗口化丢失） |
+| `cache-status` | CLI → daemon | 会话恢复（resume/fork）时 prompt cache 过期状态（SessionStart hook 信号），落库 `runtimeState.cacheStatus` 并广播给 Web；`cacheStatus:null` 表示清空（首 turn result 到达后 CLI 清除） |
+| `receive-readiness` | CLI → daemon | 「本会话此刻能不能收消息」的翻转上报（sink 接通 `true` / **接通过之后**收尾断开 `false`；从未接通的一轮不上报，因为 `false` 在 daemon 侧读作「它曾经连上过、连接没了」）。**不落库、不广播**——只在 daemon 进程内喂 `SessionReceiveReadiness`（供「建完即可用」等待与投递失败成因解释），随会话进程生灭且会反复翻转 |
+| `update-metadata` | CLI ⇄ daemon | 更新会话元数据（名称等），带乐观锁 |
+| `update-state` | CLI ⇄ daemon | 更新 Agent 状态（requests 等），带乐观锁 |
+| `idle-timeout-warning` | CLI → daemon | 空闲超时预警，广播到 Web 端 |
 
 **RPC 事件**（`rpcHandlers.ts`）
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `rpc-register` | CLI → Hub | 注册 RPC 方法 |
-| `rpc-unregister` | CLI → Hub | 注销 RPC 方法 |
+| `rpc-register` | CLI → daemon | 注册 RPC 方法 |
+| `rpc-unregister` | CLI → daemon | 注销 RPC 方法 |
 
-Hub 通过 `rpc-request` 事件调用 CLI 的 RPC 方法，用于 Web 端发起的权限操作、文件操作等。详见 [RPC 框架](./rpc.md)。
+daemon 通过 `rpc-request` 事件调用 CLI 的 RPC 方法，用于 Web 端发起的权限操作、文件操作等。详见 [RPC 框架](./rpc.md)。
 
 **终端事件（CLI 端）**（`terminalHandlers.ts`）
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `terminal:ready` | CLI → Hub | 终端就绪 |
-| `terminal:output` | CLI → Hub | 终端输出 |
-| `terminal:exit` | CLI → Hub | 终端退出 |
-| `terminal:error` | CLI → Hub | 终端错误 |
+| `terminal:ready` | CLI → daemon | 终端就绪 |
+| `terminal:output` | CLI → daemon | 终端输出 |
+| `terminal:exit` | CLI → daemon | 终端退出 |
+| `terminal:error` | CLI → daemon | 终端错误 |
 
 **UI 命令事件**（`uiCommandHandlers.ts`，agent 触达 mobi 界面，A 类）
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `sendUiCommand` | CLI → Hub | agent 发起的 UI 命令（如打开文件），广播给活跃 Web 连接。ack 的 `delivered=true` 是「已广播给活跃连接」而非「用户已看到」；无 Web 在线时 `false`（调用成功、非错误），连接故障才 reject |
+| `sendUiCommand` | CLI → daemon | agent 发起的 UI 命令（如打开文件），广播给活跃 Web 连接。ack 的 `delivered=true` 是「已广播给活跃连接」而非「用户已看到」；无 Web 在线时 `false`（调用成功、非错误），连接故障才 reject |
 
 **Agent 会话操作事件**（`agentSessionHandlers.ts`，agent 触达其他会话，B 类；见 ADR 0005）
 
-namespace 由 Hub 从鉴权过的 `sid` 解析，CLI 不填也不可信；四个都是 `emitWithAck` 的请求/响应事件。
+namespace 由 daemon 从鉴权过的 `sid` 解析，CLI 不填也不可信；都是 `emitWithAck` 的请求/响应事件。
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `listMachinesForAgent` | CLI → Hub | 列可派活的**在线**机器（离线机器不出现，列出来只会让 agent 选中注定失败的目标） |
-| `listSessionsForAgent` | CLI → Hub | 列可派活的会话（keyword / status / limit / workspaceId 过滤；默认 `ACTIVE`、上限 50） |
-| `createSessionForAgent` | CLI → Hub | 在某台机器上起新会话进程。默认 `waitForReady`：返回前**保证新会话能收消息**（服务端固定 3s 预算），ack 带 `readiness: 'ready' \| 'not-ready' \| 'not-checked'`；等不到仍算成功（会话确实建好了）。失败文案由 Hub 译成人话 |
-| `sendMessageToSessionForAgent` | CLI → Hub | 把一条消息投给若干会话。**不经投递队列**（落库时带跨会话标注 ⇒ `lifecycle=null`）、不可取消/编辑；逐目标独立返回 `{sessionId, ok, error?}`，失败文案里「还没连上」与「连接没了」靠 `receive-readiness` 的事实分开说 |
+| `listSessionsForAgent` | CLI → daemon | 列可派活的会话（keyword / status / limit / workspaceId 过滤；默认 `ACTIVE`、上限 50） |
+| `createSessionForAgent` | CLI → daemon | 在指定目录起新会话进程（`{directory}`，单机无机器维度）。默认 `waitForReady`：返回前**保证新会话能收消息**（服务端固定 3s 预算），ack 带 `readiness: 'ready' \| 'not-ready' \| 'not-checked'`；等不到仍算成功（会话确实建好了）。失败文案由 daemon 译成人话 |
+| `sendMessageToSessionForAgent` | CLI → daemon | 把一条消息投给若干会话。**不经投递队列**（落库时带跨会话标注 ⇒ `lifecycle=null`）、不可取消/编辑；逐目标独立返回 `{sessionId, ok, error?}`，失败文案里「还没连上」与「连接没了」靠 `receive-readiness` 的事实分开说 |
 
 各事件的详细处理流程见 [事件处理器架构](./handlers.md)。
 
@@ -113,12 +104,12 @@ Web 端通过此 namespace 代理终端 I/O：
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `terminal:create` | Web → Hub | 创建终端，转发给 CLI |
-| `terminal:write` | Web → Hub | 终端输入，转发给 CLI |
-| `terminal:resize` | Web → Hub | 终端大小变更，转发给 CLI |
-| `terminal:close` | Web → Hub | 关闭终端 |
+| `terminal:create` | Web → daemon | 创建终端，转发给 CLI |
+| `terminal:write` | Web → daemon | 终端输入，转发给 CLI |
+| `terminal:resize` | Web → daemon | 终端大小变更，转发给 CLI |
+| `terminal:close` | Web → daemon | 关闭终端 |
 
-终端数据流：Web ↔ `/terminal` ↔ Hub ↔ `/cli` ↔ CLI，不经过 SyncEngine。详见 [事件处理器架构](./handlers.md) 和 [终端代理](./terminal.md)。
+终端数据流：Web ↔ `/terminal` ↔ daemon ↔ `/cli` ↔ CLI，不经过 SyncEngine。详见 [事件处理器架构](./handlers.md) 和 [终端代理](./terminal.md)。
 
 ## 核心机制
 
@@ -157,7 +148,7 @@ socket.data.namespace = parsed.data.ns
 
 ### 权限控制
 
-每个事件处理前都会通过 `resolveSessionAccess` 或 `resolveMachineAccess` 检查：
+每个事件处理前都会通过 `resolveSessionAccess` 检查：
 
 1. namespace 是否匹配（多租户隔离）
 2. 资源是否存在
@@ -182,9 +173,8 @@ CLI 连接后自动加入房间，用于 Socket.IO 的广播定向：
 | 房间 | 加入条件 | 用途 |
 |------|----------|------|
 | `session:{sessionId}` | auth 中携带 sessionId 且有权限 | 同会话的 CLI 客户端接收 `update` 事件 |
-| `machine:{machineId}` | auth 中携带 machineId 且有权限 | 同机器的 CLI 客户端接收 `update` 事件 |
 
-hub→CLI 推送按域分事件名：session room 走 `session-update`，machine room 走 `machine-update`（body.t 判别不变）。
+daemon→CLI 推送按域分事件名：session room 走 `session-update`（body.t 判别）。
 
 ### 快照连接 lease
 
@@ -192,7 +182,7 @@ hub→CLI 推送按域分事件名：session room 走 `session-update`，machine
 
 ### 乐观锁
 
-`update-metadata`、`update-state`、`machine-update-metadata`、`machine-update-state` 四个事件使用乐观锁机制：
+`update-metadata`、`update-state` 两个事件使用乐观锁机制：
 
 - 请求中携带 `expectedVersion`
 - 数据库更新时比对版本号
@@ -202,7 +192,7 @@ hub→CLI 推送按域分事件名：session room 走 `session-update`，machine
 
 ## RPC 框架
 
-CLI 通过 `rpc-register` 注册 RPC 方法（如权限操作、文件操作），Web 端通过 Hub 调用。
+CLI 通过 `rpc-register` 注册 RPC 方法（如权限操作、文件操作），Web 端通过 daemon 调用。
 
 方法映射是 `method → socketId` 的单映射，后写覆盖。同 session 的第二个 CLI 连接会经 [`SessionSocketOwners`](/packages/daemon/src/socket/sessionSocketOwners.ts) 接管仲裁：新连接在 `takeOver()` 记录持有者后**主动踢掉旧连接**。没有这一步，新旧连接并存时 registry 判给旧连接，旧连接断开的 `unregisterAll` 会连根拔掉幸存 CLI 的注册，web 从此不可管控该进程（2026-09-30 事故）。
 
@@ -268,7 +258,6 @@ packages/daemon/src/socket/
         ├── index.ts           # /cli 入口：注册所有 CLI 处理器
         ├── types.ts           # 访问控制类型：AccessResult
         ├── sessionHandlers.ts # 会话事件处理器
-        ├── machineHandlers.ts # 机器事件处理器
         ├── rpcHandlers.ts     # RPC 注册/注销处理器
         ├── terminalHandlers.ts # 终端事件处理器（CLI 端）
         ├── uiCommandHandlers.ts # UI 命令处理器（A 类：agent 触达 mobi 界面）

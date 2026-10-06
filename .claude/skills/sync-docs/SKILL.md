@@ -34,7 +34,7 @@ digraph sync_docs {
 
 - 使用 `git diff --name-only` 和 `git diff --name-only --cached` 获取变更文件列表
 - 使用 `git ls-files --others --exclude-standard` 获取新增文件
-- 将变更文件按包分类（shared/ hub/ cli/ web/）
+- 将变更文件按包分类（shared/ daemon/ cli/ session/ web/）
 
 ### 第 1.5 步：快速预检
 
@@ -51,7 +51,7 @@ digraph sync_docs {
 
 根据以下映射表，将变更文件精确映射到受影响的文档。
 
-#### Hub — 数据层
+#### daemon — 数据层
 
 | 代码变更 glob | 影响文档 |
 |---|---|
@@ -59,7 +59,8 @@ digraph sync_docs {
 | `packages/daemon/src/sync/syncEngine.ts` | `docs/architecture/daemon/sync/README.md` |
 | `packages/daemon/src/sync/eventPublisher.ts` | `docs/architecture/daemon/sync/event-publisher.md` |
 | `packages/daemon/src/sync/sessionCache.ts` | `docs/architecture/daemon/sync/session-cache.md` |
-| `packages/daemon/src/sync/machineCache.ts` | `docs/architecture/daemon/sync/machine-cache.md` |
+| `packages/daemon/src/sync/executorRuntime.ts` | `docs/architecture/daemon/sync/README.md` |
+| `packages/daemon/src/sync/agentSessionService.ts` | `docs/architecture/daemon/socket/handlers.md` |
 | `packages/daemon/src/sync/messageService.ts` | `docs/architecture/daemon/sync/message-service.md` |
 | `packages/daemon/src/sync/rpcGateway.ts` | `docs/architecture/daemon/sync/rpc-gateway.md` |
 | `packages/daemon/src/sync/backgroundTasks.ts` | `docs/architecture/daemon/sync/README.md` |
@@ -67,29 +68,34 @@ digraph sync_docs {
 | `packages/daemon/src/sync/teams.ts` | `docs/architecture/daemon/sync/README.md` |
 | `packages/daemon/src/sync/todos.ts` | `docs/architecture/daemon/sync/README.md` |
 
-#### Hub — 通信层
+#### daemon — 通信层
 
 | 代码变更 glob | 影响文档 |
 |---|---|
 | `packages/daemon/src/socket/server.ts` | `docs/architecture/daemon/socket/README.md` |
-| `packages/daemon/src/socket/handlers.ts` | `docs/architecture/daemon/socket/handlers.md` |
-| `packages/daemon/src/socket/rpc.ts` | `docs/architecture/daemon/socket/rpc.md` |
-| `packages/daemon/src/socket/terminal.ts` | `docs/architecture/daemon/socket/terminal.md` |
+| `packages/daemon/src/socket/handlers/**` | `docs/architecture/daemon/socket/handlers.md` |
+| `packages/daemon/src/socket/rpcRegistry.ts` | `docs/architecture/daemon/socket/rpc.md` |
+| `packages/daemon/src/socket/handlers/terminal.ts` | `docs/architecture/daemon/socket/terminal.md` |
 | `packages/daemon/src/sse/*` | `docs/architecture/daemon/sse/README.md` |
 
-#### Hub — Web API
+#### daemon — Web API
 
 | 代码变更 glob | 影响文档 |
 |---|---|
 | `packages/daemon/src/web/routes/sessions.ts` | `docs/architecture/daemon/web/api/sessions.md` |
+| `packages/daemon/src/web/routes/files.ts` | `docs/architecture/daemon/web/api/web-tools.md`（同域文件路由） |
+| `packages/daemon/src/web/routes/webTools.ts` | `docs/architecture/daemon/web/api/web-tools.md` |
+| `packages/daemon/src/web/routes/sdk.ts` | `docs/architecture/daemon/web/api/sessions.md` |
+| `packages/daemon/src/web/routes/host.ts` | `docs/architecture/daemon/web/api/sessions.md` |
+| `packages/daemon/src/web/routes/workspaces.ts` | `docs/architecture/daemon/web/api/workspaces.md` |
 | `packages/daemon/src/web/routes/messages.ts` | `docs/architecture/daemon/web/api/messages.md` |
 | `packages/daemon/src/web/routes/permissions.ts` | `docs/architecture/daemon/web/api/permissions.md` |
 | `packages/daemon/src/web/routes/push.ts` | `docs/architecture/daemon/web/api/push.md` |
 | `packages/daemon/src/web/routes/sessions.ts` | `docs/architecture/daemon/web/api/git.md` |
-| `packages/daemon/src/web/routes/manifest.ts` | `docs/architecture/daemon/web/README.md` |
+| `packages/daemon/src/web/routes/manifest.ts`、`events.ts` | `docs/architecture/daemon/web/README.md`、`api/sse-events.md` |
 | `packages/daemon/src/web/auth.ts` | `docs/architecture/daemon/web/auth.md` |
 
-#### Hub — 基础设施
+#### daemon — 基础设施
 
 | 代码变更 glob | 影响文档 |
 |---|---|
@@ -97,7 +103,8 @@ digraph sync_docs {
 | `packages/daemon/src/notification/*` | `docs/architecture/daemon/notification/README.md` |
 | `packages/daemon/src/push/*` | `docs/architecture/daemon/push/README.md` |
 | `packages/daemon/src/visibility/*` | `docs/architecture/daemon/visibility/README.md` |
-| `packages/daemon/src/index.ts` | `docs/architecture/daemon/README.md` |
+| `packages/daemon/src/daemonEntry.ts`、`src/server.ts` | `docs/architecture/daemon/README.md` |
+| `packages/daemon/src/executor/**` | `docs/architecture/daemon/README.md` |
 
 #### CLI
 
@@ -106,7 +113,7 @@ digraph sync_docs {
 | `packages/cli/src/commands/**/*.ts` | `docs/architecture/cli/commands/<command>/README.md` |
 | `packages/cli/src/commands/registry.ts` | `docs/architecture/cli/README.md` |
 | `packages/session/src/claude/*.ts` | `docs/architecture/cli/commands/claude/*.md` |
-| `packages/session/src/api/*.ts`（apiSession） | `docs/architecture/cli/api/*.md` |
+| `packages/session/src/api/apiSession.ts` | `docs/architecture/cli/api/*.md` |
 | `packages/node-core/src/api/*.ts`（ApiClient/auth/types） | `docs/architecture/cli/api/*.md` |
 | `packages/node-core/src/rpc/*.ts` | `docs/architecture/cli/api/common-rpc/*.md` |
 | `packages/node-core/src/handlers/*.ts` | `docs/architecture/cli/api/common-rpc/<handler>.md` |

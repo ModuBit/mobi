@@ -8,7 +8,7 @@ Mobi 使用 `bun build --compile` 将全部工作区包打包为一个独立可�
 mobi (单个二进制文件，~93MB)
 ├── Bun Runtime          ← 嵌入的 JavaScriptCore 运行时
 ├── CLI 模块             ← 组合根：命令路由 + 所有子命令
-├── Daemon 模块          ← 单机自足服务器（Hono + Socket.IO，含同进程 runner）
+├── Daemon 模块          ← 单机自足服务器（Hono + Socket.IO，含同进程 executor）
 ├── Session 模块         ← 会话宿主（与 daemon 一起按需动态 import）
 ├── Web 静态资产         ← HTML/CSS/JS，嵌入 daemon
 ├── Shared/node-core     ← 协议与节点侧共享库，TypeScript 源码直接打包
@@ -99,7 +99,7 @@ mobi [args]
               └─ registry 匹配子命令
                   ├─ (无参数) → claude（装配 session 包）
                   ├─ daemon  → 动态 import daemon/daemonEntry（单机自足服务器）
-                  ├─ runner  → 会话管理工具族（list / stop-session / logs）
+                  ├─ sessions → 会话管理工具族（list / stop）
                   └─ ...
 ```
 

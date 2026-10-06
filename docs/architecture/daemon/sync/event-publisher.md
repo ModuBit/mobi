@@ -38,7 +38,7 @@ flowchart TB
 ```
 
 **说明**：
-1. 事件可能没有 `namespace` 字段，需要从 `sessionId` 或 `machineId` 反查
+1. 事件可能没有 `namespace` 字段，需要从 `sessionId` 反查
 2. `resolveNamespace` 由 SyncEngine 提供，用于补充事件的 namespace
 3. 内部监听器出错不影响其他监听器和 SSE 广播
 
@@ -50,7 +50,7 @@ flowchart TB
 |------|------|
 | **NotificationHub** | 监听会话事件，在用户离开页面时发送 Web Push 通知 |
 
-> 注：SessionCache、MachineCache 等组件不通过 subscribe 监听，而是由 SyncEngine 直接调用其方法更新状态。
+> 注：SessionCache 等组件不通过 subscribe 监听，而是由 SyncEngine 直接调用其方法更新状态。
 
 ## emit 触发场景
 
@@ -60,7 +60,7 @@ flowchart LR
         emit[socket.emit]
     end
 
-    subgraph Hub
+    subgraph daemon
         handlers[Socket Handlers]
         sync[SyncEngine]
         publisher[EventPublisher]
@@ -72,7 +72,7 @@ flowchart LR
     publisher -->|broadcast| sse[SSEManager]
 ```
 
-> **Socket 事件**：CLI 通过 Socket.IO 发送给 Hub 的事件，如 `socket.emit('session-message', data)`
+> **Socket 事件**：CLI 通过 Socket.IO 发送给 daemon 的事件，如 `socket.emit('session-message', data)`
 
 ### SessionHandlers
 
@@ -82,12 +82,11 @@ flowchart LR
 | CLI 更新会话元数据 | `update-metadata` | `session-updated` |
 | CLI 更新会话状态 | `update-state` | `session-updated` |
 
-### MachineHandlers
+### Executor 状态
 
 | CLI 触发 | Socket 事件名 | 产生的 SyncEvent |
 |----------|--------------|------------------|
-| CLI 更新机器元数据 | `machine-update-metadata` | `machine-updated` |
-| CLI 更新机器状态 | `machine-update-state` | `machine-updated` |
+| daemon executor 状态变化 | （进程内直写） | `daemon-status` |
 
 ### 其他事件类型
 

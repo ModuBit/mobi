@@ -115,7 +115,7 @@ DELETE /api/sessions/:id/messages/:messageId
 }
 ```
 
-**旧平铺格式**（旧版 web/PWA 窗口期兼容；hub 归一后以数组落库）：
+**旧平铺格式**（旧版 web/PWA 窗口期兼容；daemon 归一后以数组落库）：
 
 ```typescript
 {

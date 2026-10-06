@@ -10,7 +10,7 @@ HTTP 服务器，使用 Hono 框架。
 
 | 路由前缀 | 客户端 | 认证方式 | 用途 |
 |---------|--------|---------|------|
-| `/cli/*` | CLI | Access Token | CLI 初始化、查询（Session/Machine CRUD） |
+| `/cli/*` | CLI | Access Token | CLI 初始化、查询（Session CRUD） |
 | `/api/*` | Web | JWT | Web 端操作（会话管理、消息、权限、Git 等） |
 
 详细端点：
@@ -27,7 +27,7 @@ HTTP 服务器，使用 Hono 框架。
 | `/manifest.webmanifest` | 无 | PWA Manifest |
 | `/api/messages/*` | [JWT](./auth.md) | [消息管理](./api/messages.md) |
 | `/api/permissions/*` | [JWT](./auth.md) | [权限操作](./api/permissions.md) |
-| `/api/machines/*` | [JWT](./auth.md) | 机器管理（含 [Web 工具配置](./api/web-tools.md)） |
+| `/api/files/*`、`/api/web-tools` | [JWT](./auth.md) | [宿主文件域](./api/web-tools.md)与 Web 工具配置 |
 | `/api/git/*` | [JWT](./auth.md) | [Git 与文件操作](./api/git.md) |
 | `/api/push/*` | [JWT](./auth.md) | [推送订阅](./api/push.md) |
 | `/*` | - | 静态资源（Web UI） |
@@ -44,7 +44,6 @@ flowchart TB
     match -->|/cli/*| cli_auth[Access Token 认证]
     cli_auth --> cli{CLI 子路由}
     cli -->|/cli/sessions| cli_sess[会话 CRUD]
-    cli -->|/cli/machines| cli_machine[机器 CRUD]
 
     match -->|/api/*| jwt[JWT 认证中间件]
     jwt --> submatch{子路由}
@@ -53,7 +52,7 @@ flowchart TB
     submatch -->|/api/workspaces| workspaces[工作区]
     submatch -->|/api/messages| messages[消息]
     submatch -->|/api/permissions| permissions[权限]
-    submatch -->|/api/machines| machines[机器]
+    submatch -->|/api/files| files[文件域]
     submatch -->|/api/git| git[Git]
     submatch -->|/api/push| push[推送]
 

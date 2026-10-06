@@ -7,7 +7,7 @@
 **E2E 测试 = 模拟真实用户行为。所有操作必须通过浏览器完成。**
 
 禁止的行为：
-- ❌ 用 curl/脚本直接调 Hub API 创建会话、注入数据
+- ❌ 用 curl/脚本直接调 daemon API 创建会话、注入数据
 - ❌ 用 `evaluate_script` 修改前端状态或 localStorage
 - ❌ 跳过浏览器 UI，绕过正常用户操作流程
 - ❌ 把调试排错当成 E2E 测试（数据没出现时应该排查代码，不是注入数据）
@@ -23,8 +23,8 @@
 不是只有 UI 变更才需要 E2E。任何可能影响用户通过 Web 使用 Mobi 的改动，都应该跑 E2E 验证：
 
 - **Web 前端变更** → 需要 E2E
-- **Hub API/协议变更** → 需要 E2E（前端依赖这些接口）
-- **CLI/Runner 变更** → 需要 E2E（会话创建和管理走 Runner）
+- **daemon API/协议变更** → 需要 E2E（前端依赖这些接口）
+- **CLI/executor 变更** → 需要 E2E（会话创建和管理走 daemon executor）
 - **Shared 协议/Schema 变更** → 需要 E2E（影响前后端通信）
 - **仅内部工具/构建脚本变更** → 跳过 E2E
 - **用户明确要求 E2E** → 执行
@@ -46,7 +46,7 @@ nohup bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh >/dev/null 2>&1 &
 for i in $(seq 1 30); do test -f ~/.mobi-e2e/ready.flag && echo "READY" && break; sleep 2; done
 ```
 
-超时（~60s）无 ready.flag → 启动失败，查日志 `~/.mobi-e2e/logs/`（hub.log / web.log / runner.log）。
+超时（~60s）无 ready.flag → 启动失败，查日志 `~/.mobi-e2e/logs/`（daemon.log 等；历史 -hub.log / -runner.log 归并 daemon 桶）。
 
 > 启动细节、profile 检查、端口隔离表、故障恢复、常见误判 → 见 `memory/env-bootstrap.md`
 

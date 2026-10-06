@@ -20,7 +20,7 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 
 1. **本文件** — 建立整体架构认知
 2. `src/router.tsx` — 路由结构，理解页面组织
-3. `src/core/data/api/` — API 层，理解与 Hub 的 HTTP 通信
+3. `src/core/data/api/` — API 层，理解与 daemon 的 HTTP 通信
 4. `src/core/providers/SSEProvider.tsx` — SSE 实时事件处理
 5. `src/core/notifications/` — toast 通知三分支决策（收到 toast 后前端本地判定展示方式）
 6. `src/domain/chat/` — 消息解析管线，理解 reducer → normalize → 分组流程
@@ -136,11 +136,10 @@ packages/web/src/
 │   │       │   ├── useSessions.ts        会话列表
 │   │       │   ├── useSession.ts         单个会话
 │   │       │   ├── useMessages.ts        消息（无限滚动分页）
-│   │       │   ├── useWorkspaces.ts        工作区列表（?machineId 过滤，第二维各自缓存）
+│   │       │   ├── useWorkspaces.ts        工作区列表
 │   │       │   ├── useWorkspaceSessions.ts 工作区内会话（分页 + 前端 slice 揭示）
 │   │       │   ├── useRecentSessions.ts  「最近」区会话（未归属工作区）
 │   │       │   ├── usePagedSessionList.ts 会话分页列表通用逻辑（useSessions 补齐 + 可见 slice）
-│   │       │   ├── useMachines.ts        机器列表
 │   │       │   ├── useFileTree.ts        文件树
 │   │       │   ├── useGitStatus.ts       Git 状态
 │   │       │   ├── useGitDiff.ts         Git Diff
@@ -306,7 +305,7 @@ packages/web/src/
 │   │   ├── SessionDetail.tsx   会话详情
 │   │   ├── NewSessionForm.tsx  新建会话表单（workspace-first：先选工作区再选目录）
 │   │   ├── SessionContextBar.tsx 会话上下文栏
-│   │   ├── useMachineDirectoryListing.ts 机器目录列表 Hook
+│   │   ├── useDirectoryCapabilities.ts 目录能力 Hook（是否可列目录）
 │   │   └── useRecentPaths.ts   最近路径 Hook
 │   ├── workspace/                工作区管理
 │   │   ├── WorkspaceFormModal.tsx  工作区创建/编辑表单（名称 + folders + primary）
@@ -357,7 +356,7 @@ packages/web/src/
 │   │   │   ├── WebToolsSection.tsx Web 工具分区（用途路由卡 + provider 卡，子组件见 webtools/）
 │   │   │   └── DebugSectionRoute.tsx 调试分区路由（未解锁渲染空分区）
 │   │   └── webtools/           Web 工具子页组件
-│   │       ├── useWebToolsConfig.ts 配置读写 Hook（经 hub RPC 读写 runner settings，凭据在场性提交）
+│   │       ├── useWebToolsConfig.ts 配置读写 Hook（经 daemon 读写 web 工具配置，凭据在场性提交）
 │   │       ├── RouteCard.tsx   用途路由卡（搜索/抓取 provider 选择，即时保存）
 │   │       ├── ProviderCard.tsx provider 卡（开关外置 + 内联展开凭据编辑）
 │   │       └── CredentialEditor.tsx 凭据编辑器（只读预览态/替换编辑态 + 验证连接）
@@ -441,13 +440,13 @@ graph TD
 
 ```mermaid
 sequenceDiagram
-    participant Hub as Hub SSEManager
+    participant daemon as daemon SSEManager
     participant SSEClient as SSEClient
     participant Provider as SSEProvider
     participant QC as React Query Cache
     participant UI as UI 组件
 
-    Hub->>SSEClient: SSE 事件流
+    daemon->>SSEClient: SSE 事件流
     SSEClient->>Provider: SyncEvent
     Provider->>Provider: handleSyncEvent()
 
@@ -477,9 +476,9 @@ sequenceDiagram
 - `session-updated` 使用 `setQueryData` 直接修补缓存，避免心跳触发 API 请求
 - `message-received` 使用 `invalidateQueries` 触发 refetch，因为消息有分页和去重逻辑
 - `messages-submitted` 使用 `markMessagesSubmitted` 就地修补缓存（把命中 localId 的消息 `lifecycle` 翻为 `'pushed'`、`lifecycleAt`/`positionAt` 跳到 submittedAt），避免 refetch 抖动
-- `message-withdrawn`（撤回，#53）走乐观移除 + 回填，与 hub `softDeleteMessagesFrom` 无上界对齐；会话未打开时只落 store 移除、跳过回填（composer 不在场，不覆盖用户输入）
+- `message-withdrawn`（撤回，#53）走乐观移除 + 回填，与 daemon `softDeleteMessagesFrom` 无上界对齐；会话未打开时只落 store 移除、跳过回填（composer 不在场，不覆盖用户输入）
 - 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求；列表失效分 `sessions` / `workspaceViews`（workspaces / workspaceSessions / recentSessions 三个 key）等 scope 批量执行
-- `workspace-removed` 后名下会话已被 Hub 解绑进「最近」，与 `session-*` 共用 `workspaceViews` 批失效
+- `workspace-removed` 后名下会话已被 daemon 解绑进「最近」，与 `session-*` 共用 `workspaceViews` 批失效
 - **sessions 单一数据源**：`useWorkspaceSessions` / `useRecentSessions` 的 queryFn 把分页会话 upsert 进全局 sessions 缓存（`mergeSessions`），列表只持 sessionIds——列表数据永远是全局缓存的视图而非独立副本
 
 ### 消息渲染管线
@@ -531,7 +530,7 @@ Agent 工具（`Task` / `Agent`）是渲染复杂度最高的部分，有内联�
 
 ### 流式逐字渲染
 
-流式回复的"打字机"逐字效果横跨 CLI → Hub → Web 三层，有多个 dev-only 隐蔽坑（StrictMode 下 raf 被 cleanup 取消、snapshot/full 的 localId 不一致导致重 mount 等）。
+流式回复的"打字机"逐字效果横跨 CLI → daemon → Web 三层，有多个 dev-only 隐蔽坑（StrictMode 下 raf 被 cleanup 取消、snapshot/full 的 localId 不一致导致重 mount 等）。
 
 详细架构、关键决策与调试方法见 [→ 流式逐字渲染](streaming.md)
 
@@ -601,8 +600,8 @@ flowchart LR
         Client["api/client.ts<br/>createMobiApi()"]
     end
 
-    subgraph Hub
-        REST["Hub WebServer<br/>HTTP REST"]
+    subgraph daemon
+        REST["daemon WebServer<br/>HTTP REST"]
     end
 
     Q --> Client --> REST
@@ -612,7 +611,7 @@ flowchart LR
 API client 是一个工厂函数 `createMobiApi()`，返回类型化的 API 方法对象。
 所有请求自动附加 JWT token，401 响应触发登出跳转。
 
-会话恢复通过 `core/data/sessionResume.ts` 的聚焦 interface 进入：module 负责调用恢复端点、返回 Hub 确认的权威会话 ID，并统一失效来源/结果会话详情、全局会话列表和工作区视图。`useSessionActions`、动作链接以及桌面/移动侧边栏只保留各自的路由、反馈和动作重放。
+会话恢复通过 `core/data/sessionResume.ts` 的聚焦 interface 进入：module 负责调用恢复端点、返回 daemon 确认的权威会话 ID，并统一失效来源/结果会话详情、全局会话列表和工作区视图。`useSessionActions`、动作链接以及桌面/移动侧边栏只保留各自的路由、反馈和动作重放。
 
 ## 状态管理策略
 

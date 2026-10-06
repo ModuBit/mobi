@@ -1,6 +1,6 @@
 # OutgoingMessageQueue — 有序出站消息队列
 
-一个严格保序的出站消息队列，确保 Claude 的流式输出按接收顺序发送给 Hub，并支持 tool call 的延迟释放机制。
+一个严格保序的出站消息队列，确保 Claude 的流式输出按接收顺序发送给 daemon，并支持 tool call 的延迟释放机制。
 
 **文件**: [`packages/session/src/claude/utils/OutgoingMessageQueue.ts`](/packages/session/src/claude/utils/OutgoingMessageQueue.ts)
 
@@ -8,9 +8,9 @@
 
 ## 解决的问题
 
-Remote 模式下，Claude Code SDK 以流式方式产生消息（assistant 文本、tool_use、tool_result 等），这些消息需要实时发送给 Hub 以供 Web 用户查看。核心挑战：
+Remote 模式下，Claude Code SDK 以流式方式产生消息（assistant 文本、tool_use、tool_result 等），这些消息需要实时发送给 daemon 以供 Web 用户查看。核心挑战：
 
-1. **严格保序** — Hub 和 Web 前端依赖消息顺序来还原对话流，乱序会导致 UI 错乱
+1. **严格保序** — daemon 和 Web 前端依赖消息顺序来还原对话流，乱序会导致 UI 错乱
 2. **tool_use / tool_result 配对** — assistant 消息包含 tool_use 后，对应的 tool_result 可能延迟到达（需要用户审批权限），在此期间不能发送后续消息
 3. **并发安全** — SDK 回调、定时器、权限审批回调来自不同微任务，需要互斥保护
 
@@ -46,7 +46,7 @@ flowchart TB
     ToolResult --> Process
     Permission --> Process
 
-    Process -->|"sendFunction()"| Hub["Hub<br/>sendClaudeSessionMessage()"]
+    Process -->|"sendFunction()"| daemon["daemon<br/>sendClaudeSessionMessage()"]
 ```
 
 ## 数据模型
@@ -96,7 +96,7 @@ assistant 消息中如果包含 `tool_use`，入队时标记为 `delayed` 并设
 sequenceDiagram
     participant SDK as Claude SDK
     participant Q as OutgoingMessageQueue
-    participant Hub as Hub
+    participant daemon as daemon
 
     SDK->>Q: assistant (含 tool_use A) → enqueue({ delay: 250, toolCallIds: [A] })
     Note over Q: 队列: [#1 delayed, waiting]
@@ -104,12 +104,12 @@ sequenceDiagram
     SDK->>Q: user (含 tool_result A) → releaseToolCall(A)
     Note over Q: #1 released, processQueue() 发送
 
-    Q->>Hub: sendClaudeSessionMessage(#1)
+    Q->>daemon: sendClaudeSessionMessage(#1)
 
     SDK->>Q: user (含 tool_result A) → enqueue(tool_result)
     Note over Q: 队列: [#2 released, immediate]
 
-    Q->>Hub: sendClaudeSessionMessage(#2)
+    Q->>daemon: sendClaudeSessionMessage(#2)
 ```
 
 三种释放途径：
@@ -144,7 +144,7 @@ const messageQueue = new OutgoingMessageQueue(
 );
 ```
 
-sendFunction 直接调用 `ApiSessionClient.sendClaudeSessionMessage()`，将消息通过 Socket.IO 发送给 Hub。
+sendFunction 直接调用 `ApiSessionClient.sendClaudeSessionMessage()`，将消息通过 Socket.IO 发送给 daemon。
 
 ### 消息入队逻辑
 
@@ -213,7 +213,7 @@ Claude SDK 的消息流中，assistant（含 tool_use）和 user（含 tool_resu
 
 | 维度 | MessageQueue | OutgoingMessageQueue |
 |------|-------------|---------------------|
-| **方向** | 入站：Hub → Claude | 出站：Claude → Hub |
+| **方向** | 入站：daemon → Claude | 出站：Claude → daemon |
 | **核心关注** | 按模式分批（哪些消息一起处理） | 严格保序（消息按什么顺序发出去） |
 | **分批策略** | 相同 modeHash 的消息合并为一条 | 不合并，每条独立发送 |
 | **延迟机制** | 无 | delay + release（tool call 配对） |

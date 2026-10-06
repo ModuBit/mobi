@@ -6,7 +6,7 @@ accepted（2026-10-03）。personal-agent-rewrite ticket-21 落定（Q10=a）。
 
 ## 背景
 
-原拓扑中 runner 与 hub 分离，会话 CLI 经公网可达的 hub 端口连接（`/cli` namespace + `/cli/*` HTTP 与 Web 流量同 listener）。进程合并（ticket-16）与 spawn 本地化（ticket-18）之后，会话子进程与 daemon 恒同机——会话回连流量不再需要（也不应该）走暴露面：
+原拓扑中 runner 与 hub 分离，会话 CLI 经公网可达的 hub 端口连接（hub/runner 为单机 daemon 定稿前的历史组件名）（`/cli` namespace + `/cli/*` HTTP 与 Web 流量同 listener）。进程合并（ticket-16）与 spawn 本地化（ticket-18）之后，会话子进程与 daemon 恒同机——会话回连流量不再需要（也不应该）走暴露面：
 
 - 会话子进程的认证 token 走宿主通道，若通道与公网流量同端口，攻击面无谓扩大
 - frp 反向代理场景下，外网流量到达 daemon 时来源地址恒为 loopback——**不能按来源地址区分「本机会话」与「外网请求」**（07 K 实证）

@@ -13,18 +13,18 @@
 flowchart LR
     Web[Web 浏览器<br/>xterm.js]
     TermNS["/terminal<br/>namespace"]
-    Hub[SocketServer]
+    daemon[SocketServer]
     CliNS["/cli<br/>namespace"]
     CLI[CLI 客户端]
 
     Web -->|create/write/resize/close| TermNS
-    TermNS --> Hub
-    Hub -->|open/write/resize/close| CliNS
+    TermNS --> daemon
+    daemon -->|open/write/resize/close| CliNS
     CliNS --> CLI
 
     CLI -->|ready/output/exit/error| CliNS
-    CliNS --> Hub
-    Hub -->|ready/output/exit/error| TermNS
+    CliNS --> daemon
+    daemon -->|ready/output/exit/error| TermNS
     TermNS --> Web
 ```
 

@@ -10,7 +10,7 @@ mobi 会话里的 agent 通过 MCP 工具触达 mobi 自身——接受 UI 呈�
 
 ```mermaid
 flowchart TB
-    Core["工具工厂（transport 无关）<br/>changeTitleTool / openInMobiTool / listMachinesTool<br/>listSessionsTool / createSessionTool / sendMessageTool"]
+    Core["工具工厂（transport 无关）<br/>changeTitleTool / openInMobiTool<br/>listSessionsTool / createSessionTool / sendMessageTool"]
 
     subgraph remote["remote 模式（Web 控制，SDK Query 在 mobi 进程内）"]
         Apps["mobi-apps<br/>createSdkMcpServer（进程内）"]
@@ -33,14 +33,14 @@ flowchart TB
 
 | 壳 | 文件 | 模式 | 挂载的工具 | 通信 |
 |------|------|------|-----------|------|
-| **mobi-apps** | [`mcp/mobiAppsServer.ts`](/packages/session/src/mcp/mobiAppsServer.ts) | 仅 remote | A 类 + B 类（5 个） | SDK 进程内，零端口零临时文件 |
+| **mobi-apps** | [`mcp/mobiAppsServer.ts`](/packages/session/src/mcp/mobiAppsServer.ts) | 仅 remote | A 类 + B 类（4 个） | SDK 进程内，零端口零临时文件 |
 | **mobi-core** | [`mcp/mobiCoreServer.ts`](/packages/session/src/mcp/mobiCoreServer.ts) | remote | change_title / web_search / web_fetch | 同上 |
 | **HTTP 壳** | [`claude/utils/startMobiMcpServer.ts`](/packages/session/src/claude/utils/startMobiMcpServer.ts) | 仅 local | 仅 change_title | StreamableHTTP，stateless（每请求独立 transport） |
 | **stdio bridge** | [`mcp/mobiMcpStdioBridge.ts`](/packages/session/src/mcp/mobiMcpStdioBridge.ts) | 独立命令 | 仅 change_title | stdio → HTTP 转发；**当前无实际使用场景** |
 
 装配点在 [`mcp/sessionTransports.ts`](/packages/session/src/mcp/sessionTransports.ts) 的 `buildSessionMcpServers()`：remote 传两个进程内 server 对象，local 传 `{'mobi-core': {type:'http', url}}`。local 模式缺 url 时**抛错而非静默传空串**——那是装配时序 bug（HTTP 壳未先启动）。同一函数还导出 remote 模式的内联 hook settings（`REMOTE_INLINE_HOOK_SETTINGS`，零临时文件）。
 
-local 壳只挂 change_title：A/B 类工具都依赖 Hub 链路，local 不存在；web 工具在 local 模式下本就被 SDK 的 server 序列化过滤，从未生效，故不再挂载。
+local 壳只挂 change_title：A/B 类工具都依赖 daemon 链路，local 不存在；web 工具在 local 模式下本就被 SDK 的 server 序列化过滤，从未生效，故不再挂载。
 
 ## 命名法：mobi-core / mobi-apps
 
@@ -54,7 +54,7 @@ local 壳只挂 change_title：A/B 类工具都依赖 Hub 链路，local 不存�
 `mobi-apps` 内部再分两类（照 OpenAI Codex 的 `codex_apps`：一个 namespace 装全部应用工具）：
 
 - **A 类 · UI 呈现**：驱动 Web 界面（`open_in_mobi`，后续 `focus_session` / `set_theme` 进此）。依赖 Web 在线，瞬态呈现不落库。
-- **B 类 · 系统操作**：会话操作（`list_machines` / `list_sessions` / `create_session` / `send_message_to_session`）。不依赖 Web，落库即终态。
+- **B 类 · 系统操作**：会话操作（`list_sessions` / `create_session` / `send_message_to_session`）。不依赖 Web，落库即终态。（`list_machines` 已随 machine 概念移除退场——单机世界 daemon 即宿主，agent 无需挑机器）
 
 接口形态的决策记录见 [ADR 0005](/docs/architecture/0005-agent-apps-mcp-route.md)。
 
@@ -67,9 +67,8 @@ local 壳只挂 change_title：A/B 类工具都依赖 Hub 链路，local 不存�
 | change_title | `mcp__mobi-core__change_title` | core | 改当前会话标题 |
 | web_search / web_fetch | `mcp__mobi-core__web_search` / `..._web_fetch` | core | 只读 web 工具，见 [webtools](/packages/node-core/src/webtools/) |
 | open_in_mobi | `mcp__mobi-apps__open_in_mobi` | A | 在 Web UI 打开工作区文件（可带行号）或终端 |
-| list_machines | `mcp__mobi-apps__list_machines` | B | 列**当前在线**机器（离线机器不出现） |
 | list_sessions | `mcp__mobi-apps__list_sessions` | B | 列可派活的会话（keyword / status / limit / workspaceId） |
-| create_session | `mcp__mobi-apps__create_session` | B | 在某台机器上起新会话，默认等到「能收消息」再返回 |
+| create_session | `mcp__mobi-apps__create_session` | B | 起新会话，默认等到「能收消息」再返回 |
 | send_message_to_session | `mcp__mobi-apps__send_message_to_session` | B | 投消息给一个或多个会话 |
 
 web 工具由 [`webtools/server.ts`](/packages/session/src/webtools/server.ts) 提供、已是 SDK `tool()` 形态，`mobi-core` 直接挂载；模型仍用内置名 `WebSearch` / `WebFetch` 调用，经 [`claude/claudeRemote.ts`](/packages/session/src/claude/claudeRemote.ts) 的 `toolAliases` 重定向过来。
@@ -106,24 +105,24 @@ export function createXxxTool(deps: XxxToolDeps)   // 工厂：依赖注入，�
 
 ### 失败/成功文案的归属
 
-**失败原因由上游（Hub）译成人话，工具只负责显示**——B 类工具的 `error` 字段就是 Hub 译好的句子。工具自己拼的话只有「逐目标清单」的框架（`renderDeliveryResults`：全成 / 部分成 / 全败三种话术），重点在部分失败时告诉 agent **不能盲目重发**。
+**失败原因由上游（daemon）译成人话，工具只负责显示**——B 类工具的 `error` 字段就是 daemon 译好的句子。工具自己拼的话只有「逐目标清单」的框架（`renderDeliveryResults`：全成 / 部分成 / 全败三种话术），重点在部分失败时告诉 agent **不能盲目重发**。
 
-成功文案反过来：Hub 只报事实（如 `readiness: 'ready' | 'not-ready' | 'not-checked'`），措辞在工具侧按事实拼。
+成功文案反过来：daemon 只报事实（如 `readiness: 'ready' | 'not-ready' | 'not-checked'`），措辞在工具侧按事实拼。
 
 ### 与「会话此刻能收消息」的关系
 
-`create_session` 的 `waitForReady`（默认 true）与 `send_message_to_session` 的失败解释，都依赖 CLI 上报的 sink 接通事实。**上报点不在本模块**（在 [`claude/claudeRemoteLauncher.ts`](/packages/session/src/claude/claudeRemoteLauncher.ts) → [`api/apiSession.ts`](/packages/session/src/api/apiSession.ts) 的 `reportReceiveReadiness`），落点与判据见 [Hub socket 文档](/docs/architecture/daemon/socket/README.md) 与 [hub/sync 文档](/docs/architecture/daemon/sync/README.md)。此处只需知道一件事：**「能收消息」是会反复翻转的「此刻」事实，工具不能拿它当闸门，只能拿它「等」和「把失败说准」**。
+`create_session` 的 `waitForReady`（默认 true）与 `send_message_to_session` 的失败解释，都依赖 CLI 上报的 sink 接通事实。**上报点不在本模块**（在 [`claude/claudeRemoteLauncher.ts`](/packages/session/src/claude/claudeRemoteLauncher.ts) → [`api/apiSession.ts`](/packages/session/src/api/apiSession.ts) 的 `reportReceiveReadiness`），落点与判据见 [daemon socket 文档](/docs/architecture/daemon/socket/README.md) 与 [daemon sync 文档](/docs/architecture/daemon/sync/README.md)。此处只需知道一件事：**「能收消息」是会反复翻转的「此刻」事实，工具不能拿它当闸门，只能拿它「等」和「把失败说准」**。
 
 ## change_title 核心流程
 
 ```mermaid
 flowchart TB
     Call["change_title({ title })<br/>schema.safeParse"] --> Send["client.sendClaudeSessionMessage({<br/>type: 'summary', summary: title, leafUuid: randomUUID()<br/>})"]
-    Send --> Emit["socket.emit('session-message', ...)<br/>发送到 Hub + updateMetadata 写 summary"]
+    Send --> Emit["socket.emit('session-message', ...)<br/>发送到 daemon + updateMetadata 写 summary"]
     Call --> RenameCC["syncAgentRename(getAgentLocator(), title)<br/>best-effort 回写 CC customTitle"]
 ```
 
-`sendClaudeSessionMessage` 对 `type: 'summary'` 的处理：① 经 Socket.IO 发消息到 Hub；② 自动 `updateMetadata()` 把标题写进 session metadata（`summary.text` + `summary.updatedAt`）。
+`sendClaudeSessionMessage` 对 `type: 'summary'` 的处理：① 经 Socket.IO 发消息到 daemon；② 自动 `updateMetadata()` 把标题写进 session metadata（`summary.text` + `summary.updatedAt`）。
 
 `syncAgentRename`（经 agent capability registry 按 flavor 分发）调 SDK `renameSession(claudeSessionId, title, { dir })`，把标题回写到 Claude Code 的 session 文件（`custom-title` entry），保持 CC 会话列表标题与 mobi 一致（LWW）。会话未就绪 / SDK 失败时静默吞错（best-effort），不影响 mobi 侧已完成的改名。Web UI 重命名走 `rename-session` RPC，复用同一函数。
 
@@ -160,7 +159,6 @@ packages/session/src/mcp/
 ├── changeTitleShape.ts      # change_title 的对外形状单源（名/说明/标题/schema，只依赖 zod）
 ├── changeTitleTool.ts       # change_title 核心（remote SDK / local HTTP / stdio bridge 共用形状）
 ├── openInMobiTool.ts        # open_in_mobi（A 类）
-├── listMachinesTool.ts      # list_machines（B 类）
 ├── listSessionsTool.ts      # list_sessions（B 类）
 ├── createSessionTool.ts     # create_session（B 类）
 └── sendMessageTool.ts       # send_message_to_session（B 类）
@@ -175,4 +173,4 @@ packages/session/src/mcp/
 
 ## 测试入口
 
-`packages/cli/tests/mcp/` 下按文件一一对应：`changeTitleTool.test.ts`、`openInMobiTool.test.ts`、`listMachinesTool.test.ts`、`listSessionsTool.test.ts`、`createSessionTool.test.ts`、`sendMessageTool.test.ts`、`sessionTransports.test.ts`（装配形态断言）。
+`packages/cli/tests/mcp/` 下按文件一一对应：`changeTitleTool.test.ts`、`openInMobiTool.test.ts`、`listSessionsTool.test.ts`、`createSessionTool.test.ts`、`sendMessageTool.test.ts`、`sessionTransports.test.ts`（装配形态断言）。

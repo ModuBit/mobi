@@ -40,7 +40,7 @@ sequenceDiagram
     participant Settings as generateHookSettings
     participant Claude as Claude Code
     participant Forwarder as hook-forwarder
-    participant Hub as Hub (Socket.IO)
+    participant daemon as daemon (Socket.IO)
 
     RunClaude->>HookServer: startHookServer()
     HookServer-->>RunClaude: { port, token, stop() }
@@ -55,7 +55,7 @@ sequenceDiagram
     HookServer->>HookServer: 验证 token
     HookServer->>RunClaude: onSessionHook(sessionId, data)
     RunClaude->>RunClaude: applySessionIdBinding() 幂等守卫<br/>检测 session ID 变化触发 onSessionFound()
-    RunClaude->>Hub: updateMetadata() → Socket.IO<br/>emitWithAck('update-metadata')
+    RunClaude->>daemon: updateMetadata() → Socket.IO<br/>emitWithAck('update-metadata')
     RunClaude->>RunClaude: [local] scanner.onNewSession()<br/>[remote] logConverter.updateSessionId()
 ```
 
@@ -84,7 +84,7 @@ flowchart TB
     Compare -->|不同| Found["session.onSessionFound(sessionId)"]
     Found --> Update["client.updateMetadata()"]
     Update --> SocketIO["socket.emitWithAck('update-metadata')<br/>通过 Socket.IO 通道"]
-    SocketIO --> Hub["Hub 接收并更新 session metadata<br/>写入 Claude session ID"]
+    SocketIO --> daemon["daemon 接收并更新 session metadata<br/>写入 Claude session ID"]
     Found --> Callbacks["遍历 sessionFoundCallbacks"]
     Callbacks --> Local["[local 模式]<br/>scanner.onNewSession()<br/>切换扫描的 .jsonl 文件"]
     Callbacks --> Remote["[remote 模式]<br/>sdkToLogConverter.updateSessionId()<br/>更新日志转换器"]
@@ -94,7 +94,7 @@ flowchart TB
 
 | 动作 | 通道 | 说明 |
 |------|------|------|
-| `updateMetadata()` | Socket.IO (`emitWithAck`) | 将 Claude session ID 写入 Hub 侧的 metadata，携带乐观锁版本号 `expectedVersion` |
+| `updateMetadata()` | Socket.IO (`emitWithAck`) | 将 Claude session ID 写入 daemon 侧的 metadata，携带乐观锁版本号 `expectedVersion` |
 | `scanner.onNewSession()` | 本地调用（local 模式） | Session Scanner 切换到新 session 的 `.jsonl` 文件，旧 session 移入 `pendingSessions` |
 | `sdkToLogConverter.updateSessionId()` | 本地调用（remote 模式） | 更新日志转换器的 sessionId，用于后续日志格式化 |
 

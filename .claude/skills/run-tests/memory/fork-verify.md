@@ -15,7 +15,7 @@ metadata:
 ## 直调 API 造 fork（免走 UI Popover）
 
 ```bash
-WEB_TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/.mobi-e2e/settings.hub.json'))['webApiToken'])")
+WEB_TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/.mobi-e2e/settings.daemon.json'))['webApiToken'])")
 curl -s -c /tmp/jar -X POST http://localhost:2224/api/auth -H 'Content-Type: application/json' \
   -d "{\"accessToken\":\"$WEB_TOKEN\"}"     # 字段名是 accessToken（不是 token）
 curl -s -b /tmp/jar -X POST http://localhost:2224/api/sessions/<parent-id>/fork \

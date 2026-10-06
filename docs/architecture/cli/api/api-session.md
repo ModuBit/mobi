@@ -1,11 +1,11 @@
 # ApiSessionClient (`apiSession.ts`)
 
-Session 级别的 Socket.IO 客户端，负责 Claude 会话与 Hub 之间的双向消息同步。
+Session 级别的 Socket.IO 客户端，负责 Claude 会话与 daemon 之间的双向消息同步。
 
 ## 核心职责
 
 - 建立 session-scoped WebSocket 连接
-- 双向消息转发（Claude 输出 → Hub，Hub 用户消息 → Claude）
+- 双向消息转发（Claude 输出 → daemon，daemon 用户消息 → Claude）
 - 消息回填（断线重连后补漏）
 - Session 元数据/状态同步（带乐观锁）
 - Terminal 会话管理
@@ -28,7 +28,7 @@ io(`${apiUrl}/cli`, {
 
 ## 消息流向
 
-### Claude → Hub（上行）
+### Claude → daemon（上行）
 
 ```
 Claude 进程输出 → loop.ts → ApiSessionClient.sendClaudeSessionMessage(body)
@@ -43,9 +43,9 @@ Claude 进程输出 → loop.ts → ApiSessionClient.sendClaudeSessionMessage(bo
 - **用户消息**: `type === 'user'` 且非 sidechain/meta → 作为 `user` 角色发送
 - **Agent 输出**: 所有其他消息作为 `agent` 角色发送
 - **Summary 更新**: 检测 `type === 'summary'`，自动更新 session metadata
-- **入站跨会话消息**: `sendInboundCrossSessionMessage(text, kind, origin, nativeId)`（2026-08-28；2026-09-01 批次 D 加 kind；2026-09-13 改收 `origin`）——UserPromptSubmit hook 观测的入站 turn（`classifyInboundTurn` 甄别 peer/scheduled/loop）唯一持久化入口，`role=user` + `meta.crossSession={from}` + `meta.turnOrigin=kind`（sentFrom 恒 'cli' 是存量形状，**不排队由 crossSession 标注决定**）。`origin` 是信封读侧归一出来的 `CrossSessionOrigin`（scheduled/loop 无来源会话，传 null）；meta 形状不在此拼装，由 shared 的 `toCrossSessionMeta` 单点产出（`packages/shared/src/inboundOrigin.ts`），与 Hub 自发投递那一路共用同一份
+- **入站跨会话消息**: `sendInboundCrossSessionMessage(text, kind, origin, nativeId)`（2026-08-28；2026-09-01 批次 D 加 kind；2026-09-13 改收 `origin`）——UserPromptSubmit hook 观测的入站 turn（`classifyInboundTurn` 甄别 peer/scheduled/loop）唯一持久化入口，`role=user` + `meta.crossSession={from}` + `meta.turnOrigin=kind`（sentFrom 恒 'cli' 是存量形状，**不排队由 crossSession 标注决定**）。`origin` 是信封读侧归一出来的 `CrossSessionOrigin`（scheduled/loop 无来源会话，传 null）；meta 形状不在此拼装，由 shared 的 `toCrossSessionMeta` 单点产出（`packages/shared/src/inboundOrigin.ts`），与 daemon 自发投递那一路共用同一份
 
-### Hub → Claude（下行）
+### daemon → Claude（下行）
 
 ```
 socket.on('session-update', { body.t === 'new-message' })
@@ -55,7 +55,7 @@ socket.on('session-update', { body.t === 'new-message' })
                     │
                     ├── seq 去重检查（单调递增）
                     ├── UserMessageSchema 解析
-                    ├── localId 合并（Hub 放在 message 外层，合并进 UserMessage）
+                    ├── localId 合并（daemon 放在 message 外层，合并进 UserMessage）
                     ├── enqueueUserMessage()
                     └── 其他 → emit('session-message')
                     │
@@ -64,17 +64,17 @@ socket.on('session-update', { body.t === 'new-message' })
 ```
 
 - **消息去重**: 基于 `seq` 单调递增，跳过旧消息
-- **localId 合并**: Hub 将 `localId` 放在 message 外层（与 content 信封同级），`handleIncomingMessage` 将其合并进 UserMessage，供 `runClaude` 入队 → `collectBatch` → `emitMessagesConsumed` 追踪 consume
+- **localId 合并**: daemon 将 `localId` 放在 message 外层（与 content 信封同级），`handleIncomingMessage` 将其合并进 UserMessage，供 `runClaude` 入队 → `collectBatch` → `emitMessagesConsumed` 追踪 consume
 - **消息缓冲**: `pendingMessages` 队列，在 callback 注册前暂存消息
 
 ### 消息类型
 
 | 类型 | 结构 | 方向 |
 |------|------|------|
-| 用户文本 | `{ role:'user', content:{type:'text', text} }` | Hub→Claude |
-| Agent 输出 | `{ role:'agent', content:{type:'output', data} }` | Claude→Hub |
-| Agent 事件 | `{ role:'agent', content:{type:'agent', data} }` | Claude→Hub |
-| Session 事件 | `{ role:'agent', content:{type:'event', data} }` | Claude→Hub |
+| 用户文本 | `{ role:'user', content:{type:'text', text} }` | daemon→Claude |
+| Agent 输出 | `{ role:'agent', content:{type:'output', data} }` | Claude→daemon |
+| Agent 事件 | `{ role:'agent', content:{type:'agent', data} }` | Claude→daemon |
+| Session 事件 | `{ role:'agent', content:{type:'event', data} }` | Claude→daemon |
 
 ## 消息回填机制
 
@@ -116,18 +116,18 @@ reconnect → needsBackfill = true → backfillIfNeeded()
 
 ## Terminal 管理
 
-通过 `TerminalManager` 管理 Hub 侧发起的终端会话：
+通过 `TerminalManager` 管理 daemon 侧发起的终端会话：
 
 | 事件 | 方向 | 说明 |
 |------|------|------|
-| `terminal:open` | Hub→CLI | 创建终端实例 |
-| `terminal:write` | Hub→CLI | 写入数据 |
-| `terminal:resize` | Hub→CLI | 调整大小 |
-| `terminal:close` | Hub→CLI | 关闭终端 |
-| `terminal:ready` | CLI→Hub | 终端就绪 |
-| `terminal:output` | CLI→Hub | 输出数据 |
-| `terminal:exit` | CLI→Hub | 终端退出 |
-| `terminal:error` | CLI→Hub | 错误 |
+| `terminal:open` | daemon→CLI | 创建终端实例 |
+| `terminal:write` | daemon→CLI | 写入数据 |
+| `terminal:resize` | daemon→CLI | 调整大小 |
+| `terminal:close` | daemon→CLI | 关闭终端 |
+| `terminal:ready` | CLI→daemon | 终端就绪 |
+| `terminal:output` | CLI→daemon | 输出数据 |
+| `terminal:exit` | CLI→daemon | 终端退出 |
+| `terminal:error` | CLI→daemon | 错误 |
 
 所有 Terminal 事件通过 Zod Schema 校验 + `sessionId` 过滤。
 
@@ -135,12 +135,12 @@ reconnect → needsBackfill = true → backfillIfNeeded()
 
 Session 级 RPC 通过 `RpcHandlerManager` 管理：
 - 构造时注册 `commonHandlers`（文件操作、bash、git 等）
-- 通过 `rpc-request` 事件接收 Hub 侧的 RPC 调用
+- 通过 `rpc-request` 事件接收 daemon 侧的 RPC 调用
 - 方法名格式: `{sessionId}:{method}`
 
 ## Session 事件
 
-`sendSessionEvent` 发送特殊事件到 Hub：
+`sendSessionEvent` 发送特殊事件到 daemon：
 
 | 事件类型 | 数据 | 用途 |
 |----------|------|------|
@@ -154,26 +154,26 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 
 ### 消息事实上报（messages-facts）
 
-CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型）。四个 emit 方法 + 新增的 `emitLifecycleFact` / `emitWithdrawnFact` 全部收敛到私有 `emitFacts` 统一出口：
+CLI→daemon 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型）。四个 emit 方法 + 新增的 `emitLifecycleFact` / `emitWithdrawnFact` 全部收敛到私有 `emitFacts` 统一出口：
 
 | 方法 | fact kind | 触发 |
 |------|-----------|------|
-| `emitMessagesSubmitted(localIds)` | `pushed` | `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发；Hub 侧 `markMessagesPushed` 推进 `lifecycle='pushed'` 并转发 SSE 给 Web |
+| `emitMessagesSubmitted(localIds)` | `pushed` | `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发；daemon 侧 `markMessagesPushed` 推进 `lifecycle='pushed'` 并转发 SSE 给 Web |
 | `emitMessagesBound(bindings, nativeSessionId?)` | `bound` | push 给 SDK 时生成预设 uuid（native 锚点），`(localId, nativeId)` 配对即确定即上报 |
 | `emitNativeAttached(nativeSessionId)` | `attached` | `onSessionFound` 中 id 真正变化时补写该会话缺 nativeSessionId 的消息行 |
 | `emitMessagesAcked(nativeId)` | `acked` | CC isReplay 回显确认（rewind 判据） |
 | `emitLifecycleFact(nativeId, state)` | `lifecycle` | `onMessage` 中 `commandLifecycleToFact` 拦截 CC 的 command_lifecycle 帧（started→processing、completed→done、cancelled/discarded/refused 直传，可选 `terminal_reason` 透传），转终态信号上报 |
-| `emitWithdrawnFact(nativeId)` | `withdrawn` | 撤回刚发消息（#53，批次 A）：`handleAbortRequest('turn')` 撤回两段式复验通过后上报，Hub 侧软删除 + SSE `message-withdrawn` |
+| `emitWithdrawnFact(nativeId)` | `withdrawn` | 撤回刚发消息（#53，批次 A）：`handleAbortRequest('turn')` 撤回两段式复验通过后上报，daemon 侧软删除 + SSE `message-withdrawn` |
 
-统一走 `messages-facts` 事件（#54 收敛已完成）：原 4 个独立事件已从 Hub 与 shared 协议中下线。
+统一走 `messages-facts` 事件（#54 收敛已完成）：原 4 个独立事件已从 daemon 与 shared 协议中下线。
 
 ### 上下文用量上报
 
-`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。来源双路：启动采样/result 采样由 `contextUsageTracker` 调 SDK `getContextUsage({ detail: 'summary' })`（**本地估算，零 API/零 LLM**，`detail:'full'` 才触发 count_tokens——勿用）；`maxTokens` 取 summary 的 `rawMaxTokens`（CC 权威窗口）。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
+`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。来源双路：启动采样/result 采样由 `contextUsageTracker` 调 SDK `getContextUsage({ detail: 'summary' })`（**本地估算，零 API/零 LLM**，`detail:'full'` 才触发 count_tokens——勿用）；`maxTokens` 取 summary 的 `rawMaxTokens`（CC 权威窗口）。daemon 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
 
 ### 缓存状态上报
 
-`reportCacheStatus(cacheStatus)` 通过 `socket.emit('cache-status', { sid, cacheStatus })` 上报会话恢复时的 prompt cache 状态（SessionStart resume/fork 且 `prompt_cache_likely_expired=true` 时，组装单点在 `claude/utils/cacheStatus.ts`，remote 进程内 hook 与 local HTTP hook 共用）。Hub 落库到 `runtimeState.cacheStatus` + SSE 推 Web；首个 result 帧到达时 `sendClaudeSessionMessage` 咽喉点无条件 emit `null` 清空（hub 侧 merge 幂等，常态零开销）。两侧均有 `[cache-probe]` info 探针日志（cache-miss 调查观测点）。
+`reportCacheStatus(cacheStatus)` 通过 `socket.emit('cache-status', { sid, cacheStatus })` 上报会话恢复时的 prompt cache 状态（SessionStart resume/fork 且 `prompt_cache_likely_expired=true` 时，组装单点在 `claude/utils/cacheStatus.ts`，remote 进程内 hook 与 local HTTP hook 共用）。daemon 落库到 `runtimeState.cacheStatus` + SSE 推 Web；首个 result 帧到达时 `sendClaudeSessionMessage` 咽喉点无条件 emit `null` 清空（daemon 侧 merge 幂等，常态零开销）。两侧均有 `[cache-probe]` info 探针日志（cache-miss 调查观测点）。
 
 > ⚠️ **`totalTokens` 现状与目标（2026-08-26 实测钉死）**：当前实现 `calcContextUsageFromResult` 用 `result.usage` 的三项和当"当前占用"——**口径错误**：`result.usage` 是 turn 内主循环所有请求的逐项累计（实测 255232 = 127488+127744），会远超窗口（1M 窗口显示 1.12M）且随 turn 内请求数波动。正确口径 = 主线最后一条 assistant 的瞬时水位（见下），修复方案见 `docs/superpowers/specs/2026-08-25-context-waterline-design.md`（含 assistant usage 在装配层丢失、需从 stream_event 捕获注入的根因）。
 
@@ -186,9 +186,9 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 翻转规则两条：
 
 - **翻转才报**：同一状态重复置位不重复 emit（轮次之间是 `true` / `false` 交替）。
-- **从没接通过的一轮不报 `false`**：query 都没起来就进 `finally` 的那种轮次，真相是「还没有过上报」，不是「连接没了」。Hub 把 `false` 读作「它连上过、现在连接没了」（`unreachableDeliveryMessage` 的两个分支就按这个值分），多报一个 `false` 会让 Hub 说出一句写端无从知道的话。
+- **从没接通过的一轮不报 `false`**：query 都没起来就进 `finally` 的那种轮次，真相是「还没有过上报」，不是「连接没了」。daemon 把 `false` 读作「它连上过、现在连接没了」（`unreachableDeliveryMessage` 的两个分支就按这个值分），多报一个 `false` 会让 daemon 说出一句写端无从知道的话。
 
-它是**「此刻」的事实，不是稳定属性**：sink 每轮收尾被清空、下一轮再接上，同一个会话会反复翻转。所以 Hub 侧**不落库、不广播**，只在进程内喂 `SessionReceiveReadiness`（一个 keyed by sessionId 的内存 latch + 「等它就绪」原语），用途只有两个：
+它是**「此刻」的事实，不是稳定属性**：sink 每轮收尾被清空、下一轮再接上，同一个会话会反复翻转。所以 daemon 侧**不落库、不广播**，只在进程内喂 `SessionReceiveReadiness`（一个 keyed by sessionId 的内存 latch + 「等它就绪」原语），用途只有两个：
 
 - `create_session` 的「建完即可用」——等它变真再返回（spawn 回执与 sink 接通实测差 134–549ms，所以判据只能是 sink，**不能**是 `active` / `running` / RPC handler 登记）
 - 投递失败时区分「还没接上」（该重试）与「连接没了」（该放弃）
@@ -269,7 +269,7 @@ flush({ timeoutMs })
     └── socket.timeout().emitWithAck('ping')  // 确认消息到达
 ```
 
-用于 session 结束时确保所有待发消息到达 Hub。
+用于 session 结束时确保所有待发消息到达 daemon。
 
 ## 关键设计
 
