@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, Machine, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
 import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
@@ -355,13 +355,12 @@ export function createMobiApi() {
         // Workspaces（工作区实体化，会话按工作区 / 「最近」组织）
         workspaces: {
             // 工作区列表（?machineId= 过滤某机器名下工作区）
-            list: (machineId?: string) =>
+            list: () =>
                 client.get<{ workspaces: Workspace[] }>('/api/workspaces', {
-                    params: machineId ? { machineId } : undefined,
                 }),
             get: (workspaceId: string) =>
                 client.get<{ workspace: Workspace }>(`/api/workspaces/${workspaceId}`),
-            create: (input: { name: string; machineId: string; folders: WorkspaceFolder[] }) =>
+            create: (input: { name: string; folders: WorkspaceFolder[] }) =>
                 client.post<{ workspace: Workspace }>('/api/workspaces', input),
             update: (workspaceId: string, patch: { name?: string; folders?: WorkspaceFolder[] }) =>
                 client.patch<{ workspace: Workspace }>(`/api/workspaces/${workspaceId}`, patch),
@@ -469,11 +468,6 @@ export function createMobiApi() {
                 ),
         },
 
-        // Machines（过渡组：仅剩列表。宿主身份/就绪已切 /api/daemon/status（205），
-        // 此组只剩 WorkspaceFormModal 的 machineId 来源——404 workspaces 去 machineId 时删除）
-        machines: {
-            list: () => client.get<{ machines: Machine[] }>('/api/machines'),
-        },
     }
 }
 

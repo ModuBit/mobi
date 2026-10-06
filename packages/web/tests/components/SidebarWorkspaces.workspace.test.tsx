@@ -111,7 +111,6 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     return {
         id: 'p1',
         namespace: 'ns',
-        machineId: 'm1',
         name: 'Demo',
         folders: [{ path: '/home/u/demo', primary: true }],
         createdAt: 1,
@@ -127,13 +126,13 @@ function pageOf(sessions: Session[], total = sessions.length) {
 }
 
 const P1 = makeWorkspace()
-const P2 = makeWorkspace({ id: 'p2', machineId: 'm2', name: 'OtherMachine' })
+const P2 = makeWorkspace({ id: 'p2', name: 'SecondWorkspace' })
 
 function setup(opts: { workspaces?: Workspace[]; workspaceSessionsMap?: Record<string, Session[]>; recent?: Session[]; pinned?: Session[] } = {}) {
     const workspaces = opts.workspaces ?? [P1, P2]
     const map = opts.workspaceSessionsMap ?? {}
-    workspacesList.mockImplementation(async (machineId?: string) => ({
-        data: { workspaces: machineId ? workspaces.filter(p => p.machineId === machineId) : workspaces },
+    workspacesList.mockImplementation(async () => ({
+        data: { workspaces },
     }))
     workspaceSessions.mockImplementation(async (workspaceId: string) => pageOf(map[workspaceId] ?? []))
     unboundSessions.mockResolvedValue(pageOf(opts.recent ?? []))
@@ -170,7 +169,7 @@ describe('SidebarWorkspaces 工作区实体化', () => {
 
         // 工作区组标题 = workspace.name（工作区实体化后不再从路径提取目录名）
         expect(await screen.findByText('Demo')).toBeInTheDocument()
-        expect(screen.getByText('OtherMachine')).toBeInTheDocument()
+        expect(screen.getByText('SecondWorkspace')).toBeInTheDocument()
         expect(screen.getByText('nav.recent')).toBeInTheDocument()
 
         // 工作区组会话（含活跃会话自动展开）
@@ -261,9 +260,9 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         await waitFor(() => expect(assignSession).toHaveBeenCalledWith('s1', null))
     })
 
-    it('「归入工作区」只列与会话同机器的工作区', async () => {
+    it('「归入工作区」弹窗可选工作区并完成归属（单机：无机器过滤）', async () => {
         const r1 = makeSession('r1', '游离会话', {
-            metadata: { path: '/home/u/x', host: 'h', name: '游离会话', machineId: 'm1' },
+            metadata: { path: '/home/u/x', host: 'h', name: '游离会话' },
         })
         setup({ recent: [r1] })
         await screen.findByText('游离会话')
@@ -274,13 +273,12 @@ describe('SidebarWorkspaces 工作区实体化', () => {
         fireEvent.click(rowMore)
         fireEvent.click(await screen.findByText('workspace.assignTo'))
 
-        // 弹窗打开：同机器工作区可选，跨机器工作区不出现（查询限定在弹窗内，排除侧边栏同名分组；
+        // 弹窗打开：全量工作区可选（单机无机器过滤；查询限定在弹窗内，排除侧边栏同名分组；
         // Modal.confirm 静态弹窗跨测试残留，须从 assignTitle 反查所属弹窗）
         await waitFor(() => expect(screen.getByText('workspace.assignTitle')).toBeInTheDocument())
         const modal = screen.getByText('workspace.assignTitle').closest('.ant-modal') as HTMLElement
         expect(modal).toBeTruthy()
         expect(within(modal).getByText('Demo')).toBeInTheDocument()
-        expect(within(modal).queryByText('OtherMachine')).not.toBeInTheDocument()
 
         // 选中后确认 → assignSession(sessionId, workspaceId)
         fireEvent.click(within(modal).getByText('Demo'))

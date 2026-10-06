@@ -37,7 +37,7 @@ export const queryKeys = {
     session: (sessionId: string) => ['session', sessionId] as const,
     /** Sidechain 消息 */
     sidechainMessages: (sessionId: string, parentToolUseId: string) => ['sidechain-messages', sessionId, parentToolUseId] as const,
-    /** 工作区列表（第二维为 machineId 或 'all'；亦可作前缀失效所有工作区查询） */
+    /** 工作区列表（可作前缀失效所有工作区查询） */
     workspaces: ['workspaces'] as const,
     /** 工作区内会话根前缀（批量失效所有工作区的会话分组查询） */
     workspaceSessionsRoot,
@@ -52,7 +52,6 @@ export const queryKeys = {
     /** daemon 状态（单机：GET /api/daemon/status，取代机器列表作为宿主身份/就绪源） */
     daemonStatus: ['daemon-status'] as const,
     /** 机器 SDK 元数据（machine 通道过渡；203 后宿主元数据走 hostMetadata） */
-    machineMetadata: (machineId: string, cwd: string) => ['machineMetadata', machineId, cwd] as const,
     /** 宿主 SDK 元数据（单机：cwd 单维度，原 machineMetadata 去 machineId） */
     hostMetadata: (cwd: string) => ['hostMetadata', cwd] as const,
     /** 会话文件搜索 */

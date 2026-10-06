@@ -33,7 +33,6 @@ import { createSessionsRoutes } from './routes/sessions'
 import { createWorkspacesRoutes } from './routes/workspaces'
 import { createMessagesRoutes } from './routes/messages'
 import { createPermissionsRoutes } from './routes/permissions'
-import { createMachinesRoutes } from './routes/machines'
 import { createFilesRoutes } from './routes/files'
 import { createSdkRoutes } from './routes/sdk'
 import { createHostRoutes } from './routes/host'
@@ -177,7 +176,6 @@ export function createWebApp(options: {
     app.route('/api', createWorkspacesRoutes(options.getSyncEngine))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
-    app.route('/api', createMachinesRoutes(options.getSyncEngine))
     app.route('/api', createFilesRoutes(options.getSyncEngine))
     app.route('/api', createSdkRoutes(options.getSyncEngine))
     app.route('/api', createHostRoutes(options.getSyncEngine))

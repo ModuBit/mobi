@@ -117,20 +117,6 @@ export type RunnerState = {
 }
 
 // 机器信息
-export type Machine = {
-    id: string
-    active: boolean
-    metadata: {
-        host: string
-        platform: string
-        displayName?: string
-        homeDir?: string
-    } | null
-    runnerState?: RunnerState | null
-}
-
-export type MachinesResponse = { machines: Machine[] }
-
 /** GET /api/daemon/status 返回形状（与 daemon-status SSE 事件 payload 同形，SSEProvider 直 patch） */
 export type DaemonStatus = {
     status: 'ok' | 'starting'

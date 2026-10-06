@@ -72,7 +72,6 @@ function isExactDirectoryMatch(
  * - 隐藏目录默认不展示，仅当前缀以 . 开头时展示
  */
 export function useMachineDirectoryListing(
-    machineId: string | null,
     directory: string,
     homeDir?: string,
 ): {
@@ -86,25 +85,14 @@ export function useMachineDirectoryListing(
     const abortRef = useRef<AbortController | null>(null)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const cacheRef = useRef<Map<string, DirectoryOption[]>>(new Map())
-    const prevMachineIdRef = useRef<string | null>(machineId)
 
-    // machineId 变化时清空缓存
-    useEffect(() => {
-        if (prevMachineIdRef.current !== machineId) {
-            cacheRef.current.clear()
-            prevMachineIdRef.current = machineId
-        }
-    }, [machineId])
-
-    const fetchDirectories = useCallback(async (mId: string, parentPath: string) => {
+    const fetchDirectories = useCallback(async (parentPath: string) => {
         abortRef.current?.abort()
         const controller = new AbortController()
         abortRef.current = controller
 
         setIsLoading(true)
         try {
-            // 202 文件读域：/api/files/list-directory 已去 machineId 维度；
-            // 入参 mId 仅作缓存重置键保留（404 workspaces 去维时随 WorkspaceFormModal 收敛）
             const res = await api.hostFiles.listDirectory(parentPath, { signal: controller.signal })
             if (controller.signal.aborted) return
 
@@ -138,7 +126,7 @@ export function useMachineDirectoryListing(
             timerRef.current = null
         }
 
-        if (!machineId || !directory.startsWith('/')) {
+        if (!directory.startsWith('/')) {
             setOptions([])
             setIsLoading(false)
             return
@@ -161,7 +149,7 @@ export function useMachineDirectoryListing(
             }
 
             timerRef.current = setTimeout(() => {
-                fetchDirectories(machineId, parentPath)
+                fetchDirectories(parentPath)
             }, 300)
         } else {
             const parsed = parsePrefixInput(directory)
@@ -193,7 +181,7 @@ export function useMachineDirectoryListing(
             }
             abortRef.current?.abort()
         }
-    }, [machineId, directory, fetchDirectories])
+    }, [directory, fetchDirectories])
 
     return { options, isLoading }
 }

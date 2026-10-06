@@ -33,16 +33,16 @@ afterEach(cleanup)
 
 // ============ 稳定 mock 引用（返回新引用会致 effect 无限循环——工作区已知坑） ============
 
-const machinesResult = vi.hoisted(() => ({
-    machines: [{
-        id: 'm1',
-        active: true,
-        metadata: { displayName: 'Dev Box', platform: 'darwin', homeDir: '/home/u' },
-    }],
+const daemonStatusResult = vi.hoisted(() => ({
+    status: {
+        status: 'ok',
+        host: { hostname: 'dev-box', platform: 'darwin', homeDir: '/home/u' },
+        executor: null,
+    },
     isLoading: false,
 }))
-vi.mock('@/core/data/hooks/queries/useMachines', () => ({
-    useMachines: () => machinesResult,
+vi.mock('@/core/data/hooks/queries/useDaemonStatus', () => ({
+    useDaemonStatus: () => daemonStatusResult,
 }))
 
 const createMutateAsync = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -81,7 +81,6 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     return {
         id: 'p1',
         namespace: 'ns',
-        machineId: 'm1',
         name: 'Demo',
         folders: [{ path: '/home/u/demo', primary: true }],
         createdAt: 1,
@@ -111,7 +110,7 @@ function okButton(): HTMLButtonElement {
 }
 
 describe('WorkspaceFormModal（PC Modal 形态）', () => {
-    it('编辑模式回填 name/folders，单机时隐藏机器选择器', async () => {
+    it('编辑模式回填 name/folders', async () => {
         const workspace = makeWorkspace({
             folders: [
                 { path: '/home/u/demo', primary: true },
@@ -127,8 +126,6 @@ describe('WorkspaceFormModal（PC Modal 形态）', () => {
         // 两个文件夹路径回填
         expect(screen.getByDisplayValue('/home/u/demo')).toBeInTheDocument()
         expect(screen.getByDisplayValue('/home/u/demo/sub')).toBeInTheDocument()
-        // 单机：机器选择器隐藏（AutoComplete 也是 ant-select，按 placeholder 断言）
-        expect(screen.queryByPlaceholderText('newSession.machinePlaceholder')).toBeNull()
         // 回填即合法：提交可用
         expect(okButton()).toBeEnabled()
     })
@@ -225,7 +222,7 @@ describe('WorkspaceFormModal（新建 + onCreated 回填）', () => {
                 <WorkspaceFormModal open onClose={() => {}} workspace={null} onCreated={onCreated} />
             </AntdApp>,
         )
-        // 单机自动选中（machines mock 只有一台）；只填名称时 folder 路径仍为空 → 门禁拦截
+        // 只填名称时 folder 路径仍为空 → 门禁拦截
         const nameInput = await screen.findByPlaceholderText('workspace.namePlaceholder')
         fireEvent.change(nameInput, { target: { value: 'Fresh' } })
         expect(await screen.findByText('workspace.folderPathRequired')).toBeInTheDocument()
@@ -245,7 +242,6 @@ describe('WorkspaceFormModal（新建 + onCreated 回填）', () => {
         await waitFor(() => {
             expect(createMutateAsync).toHaveBeenCalledWith({
                 name: 'Fresh',
-                machineId: 'm1',
                 folders: [{ path: '/home/u/fresh', primary: true }],
             })
         })
@@ -256,10 +252,10 @@ describe('WorkspaceFormModal（新建 + onCreated 回填）', () => {
         expect(updateMutateAsync).not.toHaveBeenCalled()
     })
 
-    it('home 外路径门禁：提示须位于机器主目录内 + 提交禁用（与创建会话 cwd 同一约束）', async () => {
+    it('home 外路径门禁：提示须位于宿主主目录内 + 提交禁用（与创建会话 cwd 同一约束）', async () => {
         renderModal(makeWorkspace())
 
-        // 新建场景无初始快照：home 外路径整体拦截
+        // 新建场景无初始快照：home 外路径整体拦截（hostHomeDir 来自 daemonStatus mock = /home/u）
         const pathInput = document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement
         expect(pathInput).not.toBeNull()
         fireEvent.change(pathInput, { target: { value: '/etc/secret' } })

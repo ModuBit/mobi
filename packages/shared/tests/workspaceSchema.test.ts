@@ -64,20 +64,22 @@ describe('validateWorkspaceFolders', () => {
 
 describe('WorkspaceSchema', () => {
     const base = {
-        id: 'p1', namespace: 'default', machineId: 'm1', name: 'mobi',
+        id: 'p1', namespace: 'default', name: 'mobi',
         createdAt: 1, updatedAt: 1, seq: 0,
     }
-    it('接受完整对象', () => {
-        expect(WorkspaceSchema.safeParse({ ...base, folders: [{ path: '/a/mobi', primary: true }] }).success).toBe(true)
+    it('接受完整对象（无 machineId——machine 概念 404 起彻底退场）', () => {
+        const parsed = WorkspaceSchema.parse({ ...base, folders: [{ path: '/a/mobi', primary: true }] })
+        expect(parsed).toEqual({
+            id: 'p1', namespace: 'default', name: 'mobi',
+            createdAt: 1, updatedAt: 1, seq: 0,
+            folders: [{ path: '/a/mobi', primary: true }],
+        })
     })
-    it('machineId 可缺省（402 起过渡 optional，404 彻底删）', () => {
-        const { id, namespace, name, createdAt, updatedAt, seq } = base
-        const withoutMachine = {
-            id, namespace, name, createdAt, updatedAt, seq,
-            folders: [{ path: '/a', primary: true }],
-        }
-        expect(WorkspaceSchema.safeParse(withoutMachine).success).toBe(true)
-        expect(WorkspaceSchema.safeParse({ ...withoutMachine, machineId: 'm1' }).success).toBe(true)
+    it('残留 machineId 输入被剥离，解析结果不携带该字段', () => {
+        const parsed = WorkspaceSchema.parse({
+            ...base, machineId: 'm1', folders: [{ path: '/a', primary: true }],
+        })
+        expect(parsed).not.toHaveProperty('machineId')
     })
 })
 

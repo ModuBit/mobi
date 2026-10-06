@@ -95,7 +95,6 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     return {
         id: 'p1',
         namespace: 'ns',
-        machineId: 'm1',
         name: 'Demo',
         folders: [{ path: '/home/u/demo', primary: true }],
         createdAt: 1,
@@ -139,7 +138,7 @@ describe('useWorkspaces', () => {
         vi.clearAllMocks()
     })
 
-    it('拉取工作区列表并写入 ["workspaces", "all"] 缓存', async () => {
+    it('拉取工作区列表并写入 ["workspaces"] 缓存', async () => {
         const workspaces = [makeWorkspace(), makeWorkspace({ id: 'p2', name: 'Another' })]
         workspacesList.mockResolvedValue({ data: { workspaces } })
 
@@ -148,21 +147,10 @@ describe('useWorkspaces', () => {
 
         await waitFor(() => expect(result.current.data).toEqual(workspaces))
         // 单一数据源：列表进 queryClient 缓存，供 useWorkspaceSessions 取 primary folder path
-        expect(qc.getQueryData(['workspaces', 'all'])).toEqual(workspaces)
-        expect(workspacesList).toHaveBeenCalledWith(undefined)
+        expect(qc.getQueryData(['workspaces'])).toEqual(workspaces)
+        expect(workspacesList).toHaveBeenCalledWith()
     })
 
-    it('带 machineId 时透传过滤参数并落 ["workspaces", machineId] 缓存', async () => {
-        const workspaces = [makeWorkspace()]
-        workspacesList.mockResolvedValue({ data: { workspaces } })
-
-        const qc = makeQueryClient()
-        const { result } = renderHook(() => useWorkspaces('m1'), { wrapper: makeHookWrapper(qc) })
-
-        await waitFor(() => expect(result.current.data).toEqual(workspaces))
-        expect(workspacesList).toHaveBeenCalledWith('m1')
-        expect(qc.getQueryData(['workspaces', 'm1'])).toEqual(workspaces)
-    })
 })
 
 describe('SSE workspace 事件失效', () => {

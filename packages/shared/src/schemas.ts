@@ -101,12 +101,10 @@ export function validateWorkspaceFolders(folders: WorkspaceFolder[]): WorkspaceF
     return null
 }
 
-/** 工作区实体（folders 是宿主本地路径；machineId 已随 machine 概念移除退场——
- *  402 起 daemon 不再读写该列，字段收窄 optional 作过渡，404 彻底删） */
+/** 工作区实体（folders 是宿主本地路径；machineId 已随 machine 概念移除彻底退场） */
 export const WorkspaceSchema = z.object({
     id: z.string(),
     namespace: z.string(),
-    machineId: z.string().optional(),
     name: z.string(),
     folders: z.array(WorkspaceFolderSchema),
     createdAt: z.number(),

@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { validateWorkspaceFolders, type WorkspaceFolder, type WorkspaceFoldersError } from '@mobi/shared'
-import { useMachines } from '@/core/data/hooks/queries/useMachines'
+import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useCreateWorkspace, useUpdateWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -44,7 +44,6 @@ interface EditableFolder extends WorkspaceFolder {
 }
 
 interface FolderRowProps {
-    machineId: string | null
     homeDir: string | undefined
     folder: WorkspaceFolder
     /** 是否允许移除（至少保留一行，空列表由校验兜底提示） */
@@ -57,13 +56,13 @@ interface FolderRowProps {
 
 /** 单个文件夹行：路径输入（子目录补全）+ 主目录 Radio + 移除按钮（移动端纵向堆叠） */
 function FolderRow({
-    machineId, homeDir, folder, canRemove, disabled,
+    homeDir, folder, canRemove, disabled,
     onPathChange, onPrimaryChange, onRemove,
 }: FolderRowProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const isMobile = useIsMobile()
-    const { options, isLoading } = useMachineDirectoryListing(machineId, folder.path, homeDir)
+    const { options, isLoading } = useMachineDirectoryListing(folder.path, homeDir)
 
     const autoCompleteOptions = useMemo(() => {
         if (!folder.path.trim() && homeDir) {
@@ -139,7 +138,8 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     const isEdit = !!workspace
     const isMobile = useIsMobile()
 
-    const { machines } = useMachines()
+    const { status: daemonStatus } = useDaemonStatus()
+    const hostHomeDir = daemonStatus?.host?.homeDir
 
     const createMutation = useCreateWorkspace()
     const updateMutation = useUpdateWorkspace()
@@ -151,7 +151,6 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
 
     // 表单状态
     const [name, setName] = useState('')
-    const [machineId, setMachineId] = useState<string | null>(null)
     const [folders, setFolders] = useState<EditableFolder[]>([{ key: 0, path: '', primary: true }])
 
     // 打开时按模式初始化（编辑回填 / 新建重置）——仅在打开/切换编辑对象时执行，
@@ -165,20 +164,15 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
         if (!open) return
         if (workspace) {
             setName(workspace.name)
-            setMachineId(workspace.machineId ?? null)
             setFolders(workspace.folders.map(f => ({ ...f, key: nextFolderKey() })))
             initialFolderKeysRef.current = new Set(workspace.folders.map(folderKey))
         } else {
             setName('')
-            // 单机化：恒取第一台机器（加载中/空列表时 null，由现有禁用提交逻辑兜底）
-            setMachineId(machines[0]?.id ?? null)
             setFolders([{ key: nextFolderKey(), path: '', primary: true }])
             initialFolderKeysRef.current = new Set()
         }
-    }, [open, workspace?.id, machines, nextFolderKey])
+    }, [open, workspace?.id, nextFolderKey])
 
-    const currentMachine = machines.find(m => m.id === machineId)
-    const machineHomeDir = currentMachine?.metadata?.homeDir as string | undefined
 
     // 校验：名称 + folders 结构（shared 出错误码）+ home 范围（与创建会话 cwd 同一约束）
     const nameError = name.trim() ? null : t('workspace.nameRequired')
@@ -198,13 +192,13 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
         if (code) return t(FOLDERS_ERROR_I18N[code])
         // 机器 homeDir 已知时，改动过的 folder 路径必须在其内（hub 侧 validateFoldersWithinHomeDir
         // 是提交后的服务端兜底，这里前置到表单即时反馈；homeDir 缺失时放行，与其语义一致）
-        if (machineHomeDir && foldersChanged
-            && folders.some(f => !isPathWithinHomeDir(f.path.trim(), machineHomeDir))) {
-            return t('workspace.folderOutsideHome', { homeDir: machineHomeDir })
+        if (hostHomeDir && foldersChanged
+            && folders.some(f => !isPathWithinHomeDir(f.path.trim(), hostHomeDir))) {
+            return t('workspace.folderOutsideHome', { homeDir: hostHomeDir })
         }
         return null
-    }, [folders, machineHomeDir, foldersChanged, t])
-    const isValid = !nameError && !foldersError && !!machineId
+    }, [folders, hostHomeDir, foldersChanged, t])
+    const isValid = !nameError && !foldersError
 
     const handleAddFolder = useCallback(() => {
         setFolders(prev => [...prev, { key: nextFolderKey(), path: '', primary: false }])
@@ -227,7 +221,6 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
             } else {
                 const created = await createMutation.mutateAsync({
                     name: name.trim(),
-                    machineId: machineId!,
                     folders: trimmedFolders,
                 })
                 onCreated?.(created)
@@ -257,8 +250,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
                     {folders.map((folder, idx) => (
                         <FolderRow
                             key={folder.key}
-                            machineId={machineId}
-                            homeDir={machineHomeDir}
+                            homeDir={hostHomeDir}
                             folder={folder}
                             canRemove={folders.length > 1}
                             disabled={isPending}

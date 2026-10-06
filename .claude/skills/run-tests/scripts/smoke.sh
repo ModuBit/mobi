@@ -195,18 +195,7 @@ get_or_create_workspace() {
 
     wait_for_daemon_ready
 
-    # machineId 仅为 workspaces 建行过渡需要（404 去维后删除）；列表仍恒单元素
-    local machines
-    machines=$(curl -sf -X GET \
-        "http://localhost:${DAEMON_PORT}/api/machines" \
-        -b "${E2E_TMPDIR}/cookies.txt") || {
-        e2e_log_error "获取机器列表失败"
-        exit 1
-    }
-
-    local machine_id
-    machine_id=$(echo "${machines}" | jq -r '.machines[0].id')
-
+    # 404 起工作区无 machineId 维度：直接走列表/创建
     # 获取工作区列表
     local workspaces_response
     workspaces_response=$(curl -sf -X GET \
@@ -226,7 +215,7 @@ get_or_create_workspace() {
             "http://localhost:${DAEMON_PORT}/api/workspaces" \
             -H "Content-Type: application/json" \
             -b "${E2E_TMPDIR}/cookies.txt" \
-            -d "{\"name\": \"Demo\", \"machineId\": \"${machine_id}\", \"folders\": [{\"path\": \"${HOME}/workspace/demo\", \"primary\": true}]}") || {
+            -d "{\"name\": \"Demo\", \"folders\": [{\"path\": \"${HOME}/workspace/demo\", \"primary\": true}]}") || {
             e2e_log_error "创建工作区失败"
             exit 1
         }

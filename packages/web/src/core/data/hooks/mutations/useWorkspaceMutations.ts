@@ -23,11 +23,10 @@ import type { Workspace, WorkspaceFolder } from '@/core/data/api/types'
 /** 创建工作区入参（folders 合法性由 hub validateWorkspaceFolders 把关） */
 export interface CreateWorkspaceInput {
     name: string
-    machineId: string
     folders: WorkspaceFolder[]
 }
 
-/** 更新工作区入参（name/folders 均可选，machineId 不可改） */
+/** 更新工作区入参（name/folders 均可选） */
 export interface UpdateWorkspaceInput {
     name?: string
     folders?: WorkspaceFolder[]

@@ -37,12 +37,13 @@ vi.mock('@/core/data/hooks/mutations/useWorkspaceMutations', () => ({
     useAssignSessionWorkspace: () => ({ mutateAsync: assignMock, isPending: false }),
 }))
 
-// 工作区 fixtures（vi.mock 工厂被提升，须经 hoisted 引用）
+// 工作区 fixtures（vi.mock 工厂被提升，须经 hoisted 引用；list 可按用例替换，afterEach 还原）
+const defaultWorkspaces = [
+    { id: 'proj-1', name: '工作区一', folders: [{ path: '/home/u/proj1', primary: true }], createdAt: 1, updatedAt: 1 },
+    { id: 'proj-2', name: '工作区二', folders: [{ path: '/x', primary: true }], createdAt: 2, updatedAt: 2 },
+]
 const fixtures = vi.hoisted(() => ({
-    workspaces: [
-        { id: 'proj-1', machineId: 'm1', name: '工作区一', folders: [{ path: '/home/u/proj1', primary: true }], createdAt: 1, updatedAt: 1 },
-        { id: 'proj-2', machineId: 'other', name: '别的机器', folders: [{ path: '/x', primary: true }], createdAt: 2, updatedAt: 2 },
-    ],
+    workspaces: [] as Array<Record<string, unknown>>,
 }))
 vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
     useWorkspaces: () => ({ data: fixtures.workspaces }),
@@ -67,7 +68,7 @@ import { AssignWorkspaceModal } from '@/components/workspace/AssignWorkspaceModa
 
 const session = {
     id: 'sess-1',
-    metadata: { machineId: 'm1' },
+    metadata: { path: '/home/u/proj1' },
 } as unknown as Session
 
 function renderModal(open = true) {
@@ -82,39 +83,37 @@ describe('AssignWorkspaceModal', () => {
     beforeEach(() => {
         mockIsMobile.value = false
         assignMock.mockReset()
+        fixtures.workspaces = defaultWorkspaces.map((w) => ({ ...w }))
     })
 
     afterEach(cleanup)
 
-    it('PC：渲染居中 Modal + Radio 列表（同机器过滤，现状保留）', () => {
-        const { getByText, queryByText } = renderModal()
+    it('PC：渲染居中 Modal + Radio 列表（单机：全量工作区可选）', () => {
+        const { getByText } = renderModal()
         expect(getByText('workspace.assignTitle')).toBeInTheDocument()
         expect(getByText('工作区一')).toBeInTheDocument()
-        // 只列同机器工作区
-        expect(queryByText('别的机器')).toBeNull()
+        expect(getByText('工作区二')).toBeInTheDocument()
     })
 
-    it('mobile：渲染 MobileDrawer + 工作区行，点行即提交（同机器过滤）', async () => {
+    it('mobile：渲染 MobileDrawer + 工作区行，点行即提交', async () => {
         mockIsMobile.value = true
-        const { getByTestId, getByText, queryByText } = renderModal()
+        const { getByTestId, getByText } = renderModal()
 
         expect(getByTestId('mobile-drawer')).toBeInTheDocument()
         expect(getByTestId('drawer-title').textContent).toBe('workspace.assignTitle')
         expect(getByText('工作区一')).toBeInTheDocument()
-        // 只列同机器工作区
-        expect(queryByText('别的机器')).toBeNull()
 
         fireEvent.click(getByText('工作区一'))
         await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1))
         expect(assignMock).toHaveBeenCalledWith({ sessionId: 'sess-1', workspaceId: 'proj-1' })
     })
 
-    it('mobile：无同机器工作区时展示空态文案，无列表行', () => {
+    it('mobile：无工作区时展示空态文案，无列表行', () => {
         mockIsMobile.value = true
-        const emptySession = { id: 'sess-2', metadata: { machineId: 'none' } } as unknown as Session
+        fixtures.workspaces = []
         const { getByText, queryByText } = render(
             <AntdApp>
-                <AssignWorkspaceModal session={emptySession} open onClose={() => {}} />
+                <AssignWorkspaceModal session={null} open onClose={() => {}} />
             </AntdApp>,
         )
         expect(getByText('workspace.assignEmpty')).toBeInTheDocument()

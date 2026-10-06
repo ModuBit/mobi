@@ -19,19 +19,14 @@ import { useMobiApi } from '@/core/data/api/client'
 import type { Workspace } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
 
-/**
- * 获取工作区列表
- *
- * @param machineId 可选，过滤某机器名下的工作区；缺省拉全部（缓存维度 'all'）
- */
-export function useWorkspaces(machineId?: string) {
+/** 获取工作区列表（单机：machineId 维度已随 machine 概念移除退场） */
+export function useWorkspaces() {
     const api = useMobiApi()
 
     return useQuery({
-        // 第二维 machineId ?? 'all'：不同过滤维度各自缓存，['workspaces'] 前缀失效全部
-        queryKey: [...queryKeys.workspaces, machineId ?? 'all'],
+        queryKey: [...queryKeys.workspaces],
         queryFn: async () => {
-            const res = await api.workspaces.list(machineId)
+            const res = await api.workspaces.list()
             return res.data.workspaces as Workspace[]
         },
         enabled: true,

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { App, Button, Modal, Radio, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined } from '@ant-design/icons'
@@ -33,24 +33,13 @@ export interface AssignWorkspaceModalProps {
     onClose: () => void
 }
 
-/**
- * 「归入工作区」弹窗
- *
- * 会话只能归入与其同机器的工作区（工作区 folders 是机器本地路径，跨机器无意义），
- * 故选项按 session.metadata.machineId 过滤
- */
+/** 「归入工作区」弹窗（单机：原「同机器过滤」随 machine 概念移除退场，全量工作区可选） */
 export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspaceModalProps) {
     const { t } = useTranslation()
     const { message: messageApi } = App.useApp()
     const { data: workspaces = [] } = useWorkspaces()
     const assignMutation = useAssignSessionWorkspace()
 
-    const machineId = (session?.metadata as { machineId?: string } | null | undefined)?.machineId
-    // 只列同机器工作区
-    const machineWorkspaces = useMemo(
-        () => workspaces.filter(p => p.machineId === machineId),
-        [workspaces, machineId],
-    )
 
     const [selected, setSelected] = useState<string | null>(null)
     const isMobile = useIsMobile()
@@ -78,13 +67,13 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
     if (isMobile) {
         return (
             <MobileDrawer open={open} onClose={onClose} title={t('workspace.assignTitle')}>
-                {machineWorkspaces.length === 0 ? (
+                {workspaces.length === 0 ? (
                     <Text type="secondary" style={{ padding: '16px 20px', display: 'block' }}>
                         {t('workspace.assignEmpty')}
                     </Text>
                 ) : (
                     <div style={{ padding: '8px 0' }}>
-                        {machineWorkspaces.map(workspace => (
+                        {workspaces.map(workspace => (
                             <Button
                                 key={workspace.id}
                                 type="text"
@@ -122,7 +111,7 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
             cancelText={t('common.cancel')}
             destroyOnHidden
         >
-            {machineWorkspaces.length === 0 ? (
+            {workspaces.length === 0 ? (
                 <Text type="secondary">{t('workspace.assignEmpty')}</Text>
             ) : (
                 <Radio.Group
@@ -130,7 +119,7 @@ export function AssignWorkspaceModal({ session, open, onClose }: AssignWorkspace
                     onChange={(e) => setSelected(e.target.value)}
                     style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}
                 >
-                    {machineWorkspaces.map(workspace => (
+                    {workspaces.map(workspace => (
                         <Radio key={workspace.id} value={workspace.id}>
                             <FolderOutlined style={{ marginRight: 6 }} />
                             <span>{workspace.name}</span>
