@@ -26,7 +26,7 @@ import type { SessionFactsSink } from './sessionFacts'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
-import { LocalMachineHost } from '../machine/LocalMachineHost'
+import { LocalMachineHost } from '../executor/localExecutor'
 import {
     isUnexpectedAlreadyRunning,
     UNEXPECTED_ALREADY_RUNNING,
@@ -43,9 +43,9 @@ import {
     type RpcVerifyWebToolsProviderResponse,
     type RpcWriteFileRangeResponse,
     type SpawnSessionOptions
-} from '../machine/MachineHost'
+} from '../executor/executorHost'
 import { getExecutorState } from './executorRuntime'
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
+import { buildMachineMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
@@ -70,7 +70,7 @@ export type {
     RpcSetWebToolsConfigResponse,
     RpcVerifyWebToolsProviderResponse,
     RpcWriteFileRangeResponse
-} from '../machine/MachineHost'
+} from '../executor/executorHost'
 
 export type ResumeSessionResult =
     | { type: 'success'; sessionId: string }

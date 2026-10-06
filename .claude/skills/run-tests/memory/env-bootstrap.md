@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / daemon 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-10-04
+  last_verified: 2026-10-06
 ---
 
 # 环境启动
@@ -65,21 +65,17 @@ default 与 e2e 端口隔离、互不冲突；冲突即环境异常。
 // /tmp/e2e-seed.ts（绝对路径导入 store）
 import { Store } from '/Users/manerfan/workspace/github/modu/mobi/packages/daemon/src/store'
 const store = new Store(process.env.HOME + '/.mobi-e2e/mobi.db')
-const w = store.workspaces.createWorkspace({ namespace: 'default', machineId: 'm-e2e', name: 'X', folders: [{ path: '/tmp/x', primary: true }] })
+const w = store.workspaces.createWorkspace({ namespace: 'default', name: 'X', folders: [{ path: '/tmp/x', primary: true }] })
 store.sessions.getOrCreateSession('tag-a', { path: '/tmp/x', host: 'e2e', name: 'Session A' }, {}, 'default', undefined, w.id)
 store.close()
 ```
 
-`bun /tmp/e2e-seed.ts` 后浏览器刷新即见。机器无需在线（列表/置顶/归组等纯 DB 链路均可用）。
+`bun /tmp/e2e-seed.ts` 后浏览器刷新即见（machine 概念 2026-10-06 已彻底移除：工作区无 machineId、machines 表不存在，seed 不再需要机器在线）。
 
-⚠️ **seed 工作区的 machineId 必须用真实机器 id**（先 `SELECT id FROM machines;` 取，或 bootstrap
-就绪后从 /api/machines 读）——虚构 id（如 `m-e2e`）建出的工作区在发消息建会话时报 404
-`Machine not found`（spawn 按 machineId 找机器）。事后可 `UPDATE workspaces SET machine_id=...` 补救。
-
-⚠️ **seed 工作区的 folder 路径必须在机器 homeDir 之内**（如 `~/workspace/demo`）——machine 通道
-上传端点有 `validateHomeDirPath` 安全校验（`/api/machines/:id/upload`，X-Mobi-Cwd 头），
-home 外路径（如 `/tmp/x`）返回 403 `outside the home directory`（2026-09-19 画板 E2E 实测，
-根因是 seed 数据而非代码）。session 内上传不受此限（走 session 通道）。
+⚠️ **seed 工作区的 folder 路径必须在机器 homeDir 之内**（如 `~/workspace/demo`）——上传端点有
+`validateHomeDirPath` 安全校验，home 外路径（如 `/tmp/x`）返回 403（2026-09-19 画板 E2E 实测，
+根因是 seed 数据而非代码）；spawn 也会因 primary folder 不存在/越界失败（④门演练实测
+`Primary folder does not exist: /tmp/x`）。session 内上传不受此限（走 session 通道）。
 
 ## 会话 CLI 代码新鲜度（2026-09-08）
 

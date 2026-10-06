@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { buildClaudeSpawnArgs } from '@/runner/spawnArgs'
+import { buildClaudeSpawnArgs } from '@/executor/spawnArgs'
 
 describe('buildClaudeSpawnArgs --workspace', () => {
     it('带 workspaceId → args 含 [--workspace, id]', () => {

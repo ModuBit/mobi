@@ -21,7 +21,7 @@
  */
 
 import { classifyTransportFailure } from '../sync/rpcCaller'
-import type { SpawnGatewayResult } from './MachineHost'
+import type { SpawnGatewayResult } from './executorHost'
 
 export function mapSpawnResultToGateway(result: unknown): SpawnGatewayResult {
     // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），

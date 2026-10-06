@@ -25,7 +25,7 @@ import type { EffortLevel, PermissionMode } from '@mobi/shared/types'
 import { DEFAULT_STOP_KIND, type AgentMessageDelivery, type AgentMessagePushResult, type PermissionAnswers, type PermissionUpdate, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
-import type { RpcRefreshMetadataResponse } from '../machine/MachineHost'
+import type { RpcRefreshMetadataResponse } from '../executor/executorHost'
 import { SocketRpcCaller } from './rpcCaller'
 
 export class RpcGateway {

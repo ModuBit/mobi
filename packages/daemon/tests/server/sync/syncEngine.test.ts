@@ -19,7 +19,7 @@ import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
-import type { MachineHost } from '../../../src/machine/MachineHost'
+import type { MachineHost } from '../../../src/executor/executorHost'
 
 /**
  * renameSession 单测：验证 sessionCache 更新后 best-effort 同步 RPC 到 CLI。

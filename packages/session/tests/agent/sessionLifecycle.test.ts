@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createRunnerLifecycle } from '@/agent/runnerLifecycle'
+import { createRunnerLifecycle } from '@/agent/sessionLifecycle'
 import type { ApiSessionClient } from '@/api/apiSession'
 
 /**

@@ -19,9 +19,9 @@ import { resolve } from 'node:path'
 
 export default defineConfig({
     test: {
-        // tests/hub/ 归 bun 内置运行器（test:bun），vitest 只收其余测试
+        // tests/server/ 归 bun 内置运行器（test:bun），vitest 只收其余测试
         include: ['tests/**/*.test.ts'],
-        exclude: ['tests/hub', 'node_modules', 'dist'],
+        exclude: ['tests/server', 'node_modules', 'dist'],
     },
     resolve: {
         alias: {

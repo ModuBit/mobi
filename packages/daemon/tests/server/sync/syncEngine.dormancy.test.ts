@@ -19,7 +19,7 @@ import { describe, test, expect, spyOn } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
-import type { MachineHost, SpawnGatewayResult } from '../../../src/machine/MachineHost'
+import type { MachineHost, SpawnGatewayResult } from '../../../src/executor/executorHost'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**

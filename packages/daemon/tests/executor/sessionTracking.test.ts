@@ -19,8 +19,8 @@ import {
     applySessionTrackingSignal,
     pruneDeadTrackedSessions,
     type SessionTrackingSignal,
-} from '@/runner/sessionTracking'
-import type { TrackedSession } from '@/runner/types'
+} from '@/executor/sessionTracking'
+import type { TrackedSession } from '@/executor/types'
 
 function makeMap(entries: Array<[number, TrackedSession]>): Map<number, TrackedSession> {
     return new Map(entries)

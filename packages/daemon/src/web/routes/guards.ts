@@ -16,7 +16,7 @@
 
 import type { Context } from 'hono'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
+import { buildMachineMetadata } from '@mobi/node-core/hostMetadata'
 import type { Session, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 

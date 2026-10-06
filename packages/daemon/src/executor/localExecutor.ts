@@ -24,17 +24,17 @@
 import { homedir } from 'node:os'
 import { GIT_REVIEW_RPC, type DiffTarget, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult } from '@mobi/shared'
 import { checkPathsExistImpl } from '@mobi/node-core/handlers/pathExists'
-import { machineReadFileMetaImpl, machineReadFileRangeImpl } from '@mobi/node-core/handlers/machineFiles'
+import { machineReadFileMetaImpl, machineReadFileRangeImpl } from '@mobi/node-core/handlers/hostFiles'
 import { saveFileImpl } from '@mobi/node-core/handlers/files'
 import { writeFileRangeImpl, deleteUploadImpl, replaceUploadImpl } from '@mobi/node-core/handlers/uploads'
-import { listMachineDirectoryImpl } from '@mobi/node-core/handlers/machineDirectory'
+import { listMachineDirectoryImpl } from '@mobi/node-core/handlers/hostDirectory'
 import { searchSessionFilesImpl, listSessionDirectoryImpl } from '@mobi/node-core/handlers/sessionFiles'
 import { gitReviewRpcImpl } from '@mobi/node-core/handlers/gitReview'
 import { getWebToolsConfigImpl, setWebToolsConfigImpl, verifyWebToolsProviderImpl } from '@mobi/node-core/handlers/webToolsConfig'
 import { refreshMetadataImpl } from '@mobi/node-core/handlers/commands'
-import type { MachineHost, RpcGetWebToolsConfigResponse, RpcListDirectoryResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './MachineHost'
+import type { MachineHost, RpcGetWebToolsConfigResponse, RpcListDirectoryResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './executorHost'
 import { mapSpawnResultToGateway } from './spawnResultMapping'
-import type { RunnerSessionBridge } from '../runner/run'
+import type { RunnerSessionBridge } from '../executor/lifecycle'
 
 export class LocalMachineHost implements MachineHost {
     /** runner 会话执行桥（ticket-18 spawn 直调）；daemon 编排在 runner 就绪后注入 */

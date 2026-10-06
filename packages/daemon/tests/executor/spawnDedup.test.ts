@@ -22,8 +22,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { createResumeDedupGuard, findRunningResumeDuplicate } from '@/runner/spawnDedup'
-import type { TrackedSession } from '@/runner/types'
+import { createResumeDedupGuard, findRunningResumeDuplicate } from '@/executor/spawnDedup'
+import type { TrackedSession } from '@/executor/types'
 
 const tracked = (overrides: Partial<TrackedSession> = {}): TrackedSession => ({
   startedBy: 'runner',

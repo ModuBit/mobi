@@ -16,8 +16,8 @@
 
 import { describe, test, expect } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
-import { LocalMachineHost } from '../../../src/machine/LocalMachineHost'
-import type { RunnerSessionBridge } from '../../../src/runner/run'
+import { LocalMachineHost } from '../../../src/executor/localExecutor'
+import type { RunnerSessionBridge } from '../../../src/executor/lifecycle'
 import type { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'

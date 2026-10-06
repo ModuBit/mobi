@@ -37,7 +37,7 @@ import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
-import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '../agent/runnerLifecycle';
+import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
 import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';

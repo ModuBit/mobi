@@ -26,7 +26,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startHub, type HubHandle } from '../../src/hubServer'
+import { startHub, type HubHandle } from '../../src/server'
 
 const DATA_DIR = join(tmpdir(), `mobi-test-hub-server-${process.pid}`)
 

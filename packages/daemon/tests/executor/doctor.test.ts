@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { deriveProfileFromEnvText, findAllMobiProcesses, findRunawayMobiProcesses } from '@/runner/doctor'
+import { deriveProfileFromEnvText, findAllMobiProcesses, findRunawayMobiProcesses } from '@/executor/doctor'
 
 // pid 取超 PID_MAX 的 7 位数，确保不与真实进程碰撞（readRunnerPid 即便读到真实 dev
 // daemon pid 也不会命中这些合成 pid，测试天然隔离、无需 mock fs）

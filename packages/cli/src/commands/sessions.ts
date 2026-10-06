@@ -26,7 +26,7 @@ import chalk from 'chalk'
 import {
     listRunnerSessions,
     stopRunnerSession
-} from '@mobi/daemon/runner/controlClient'
+} from '@mobi/daemon/executor/controlClient'
 import type { CommandDefinition } from './types'
 
 function showSessionsHelp(): void {

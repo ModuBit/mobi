@@ -16,7 +16,7 @@
 
 import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
+import { buildMachineMetadata } from '@mobi/node-core/hostMetadata'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'

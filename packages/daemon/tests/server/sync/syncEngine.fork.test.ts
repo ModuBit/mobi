@@ -21,7 +21,7 @@ import { MetadataSchema } from '@mobi/shared'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
-import type { MachineHost } from '../../../src/machine/MachineHost'
+import type { MachineHost } from '../../../src/executor/executorHost'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**

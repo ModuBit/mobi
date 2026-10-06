@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerMachineDirectoryHandler } from '@/handlers/machineDirectory'
+import { registerMachineDirectoryHandler } from '@/handlers/hostDirectory'
 
 async function createTempDir(prefix: string): Promise<string> {
     const base = tmpdir()
