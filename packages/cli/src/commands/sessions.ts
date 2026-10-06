@@ -15,10 +15,11 @@
  */
 
 /**
- * `mobi runner` 命令：会话管理工具族（list / stop-session / logs）。
+ * `mobi sessions` 命令：会话管理工具族（list / stop）。
  *
- * start/stop/restart/status/start-sync 别名已随单组件模型删除（ticket-22）：
- * runner 与 hub 同进程为 daemon，进程级操作走 `mobi daemon` / `mobi service`。
+ * 原 `mobi runner` 命令面去 runner 词汇（remove-machine 601）：runner 概念随单机
+ * daemon 收敛退场，会话管理能力原样承接于此；日志查看走 `mobi logs`，
+ * 进程级操作走 `mobi daemon` / `mobi service`。
  */
 
 import chalk from 'chalk'
@@ -26,40 +27,38 @@ import {
     listRunnerSessions,
     stopRunnerSession
 } from '@mobi/daemon/runner/controlClient'
-import { getLatestRunnerLog } from '@mobi/node-core/logger'
 import type { CommandDefinition } from './types'
 
-function showRunnerHelp(): void {
+function showSessionsHelp(): void {
     console.log(`
-${chalk.bold('mobi runner')} - Manage runner sessions
+${chalk.bold('mobi sessions')} - Manage daemon sessions
 
 ${chalk.bold('Usage:')}
-  mobi runner list                 List active sessions
-  mobi runner logs                 Show latest log file path
-  mobi runner stop-session <id>    Stop a specific session
+  mobi sessions list         List active sessions
+  mobi sessions stop <id>    Stop a specific session
 
-${chalk.gray('Runner runs inside the mobi daemon — start/stop it with')} ${chalk.cyan('mobi daemon')}
+${chalk.gray('Sessions run inside the mobi daemon — manage it with')} ${chalk.cyan('mobi daemon')}
 ${chalk.gray('Clean up all mobi processes:')} ${chalk.cyan('mobi doctor clean')}
 `)
 }
 
-export const runnerCommand: CommandDefinition = {
-    name: 'runner',
+export const sessionsCommand: CommandDefinition = {
+    name: 'sessions',
     requiresRuntimeAssets: true,
     run: async ({ commandArgs }) => {
-        const runnerSubcommand = commandArgs[0]
+        const subcommand = commandArgs[0]
 
-        if (runnerSubcommand === '-h' || runnerSubcommand === '--help') {
-            showRunnerHelp()
+        if (subcommand === '-h' || subcommand === '--help') {
+            showSessionsHelp()
             return
         }
 
-        if (runnerSubcommand === 'list') {
+        if (subcommand === 'list') {
             try {
                 const sessions = await listRunnerSessions()
 
                 if (sessions.length === 0) {
-                    console.log('No active sessions this runner is aware of (they might have been started by a previous version of the daemon)')
+                    console.log('No active sessions this daemon is aware of')
                 } else {
                     console.log('Active sessions:')
                     console.log(JSON.stringify(sessions, null, 2))
@@ -70,7 +69,7 @@ export const runnerCommand: CommandDefinition = {
             return
         }
 
-        if (runnerSubcommand === 'stop-session') {
+        if (subcommand === 'stop') {
             const sessionId = commandArgs[1]
             if (!sessionId) {
                 console.error('Session ID required')
@@ -86,16 +85,6 @@ export const runnerCommand: CommandDefinition = {
             return
         }
 
-        if (runnerSubcommand === 'logs') {
-            const latest = await getLatestRunnerLog()
-            if (!latest) {
-                console.log('No runner logs found')
-            } else {
-                console.log(latest.path)
-            }
-            process.exit(0)
-        }
-
-        showRunnerHelp()
+        showSessionsHelp()
     },
 }

@@ -171,7 +171,7 @@ ${chalk.bold('Usage:')}
         if (shouldRestart) {
             await restartProcesses()
         } else {
-            console.log(chalk.gray('Restart later: mobi hub restart && mobi runner restart'))
+            console.log(chalk.gray('Restart later: mobi service restart'))
         }
     }
 }

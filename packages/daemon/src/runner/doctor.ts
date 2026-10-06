@@ -133,13 +133,13 @@ async function getProcessProfiles(pids: number[]): Promise<Map<number, string | 
     return result
 }
 
+// 历史类型（runner/hub start 形态、runner-version-check 等）随 machine 概念收敛
+// 从识别集合删除（601）——那些进程形态早已不存在，doctor clean 不再认领
 const RUNNABLE_TYPES = new Set([
-  'runner', 'dev-runner',
-  'hub', 'dev-hub',
   'daemon', 'dev-daemon',
   'supervisor', 'dev-supervisor',
-  'runner-spawned-session', 'dev-runner-spawned',
-  'runner-version-check', 'dev-runner-version-check',
+  'spawned-session', 'dev-spawned-session',
+  'version-check', 'dev-version-check',
 ])
 
 export async function findAllMobiProcesses(attributor: ProfileAttributor = getProcessProfiles): Promise<MobiProcess[]> {
@@ -165,22 +165,19 @@ export async function findAllMobiProcesses(attributor: ProfileAttributor = getPr
       if (proc.pid === process.pid) {
         type = 'current';
       } else if (cmd.includes('--version')) {
-        type = isDevMode ? 'dev-runner-version-check' : 'runner-version-check';
+        type = isDevMode ? 'dev-version-check' : 'version-check';
       } else if (cmd.includes('daemon start-sync') || cmd.includes('daemon start')) {
-        // ticket-22 起的标准 daemon 进程形态（hub+runner 同进程）；
+        // 标准单机 daemon 进程形态；
         // 不识别会落 user-session 兜底、逃出 clean 清理集合（pending #96）
         type = isDevMode ? 'dev-daemon' : 'daemon';
-      } else if (cmd.includes('runner start-sync') || cmd.includes('runner start')) {
-        type = isDevMode ? 'dev-runner' : 'runner';
-      } else if (cmd.includes('hub start-sync') || cmd.includes('hub start')) {
-        type = isDevMode ? 'dev-hub' : 'hub';
       } else if (cmd.includes('service supervise')) {
         // supervisor 常驻进程必须可被 doctor clean 识别，否则 E2E/dev 清理脚本
         // 绕过它强杀子进程后会残留"无子进程却永不退出"的幽灵（profile 归属
         // 靠 ps -E 读 env 的 MOBI_HOME，supervisor 由 CLI spawn 时继承）
         type = isDevMode ? 'dev-supervisor' : 'supervisor';
       } else if (cmd.includes('--started-by runner')) {
-        type = isDevMode ? 'dev-runner-spawned' : 'runner-spawned-session';
+        // 注入词仍为 'runner'（spawnArgs，602 随内部命名一把梭收口）
+        type = isDevMode ? 'dev-spawned-session' : 'spawned-session';
       } else if (cmd.includes('doctor')) {
         type = isDevMode ? 'dev-doctor' : 'doctor';
       } else if (cmd.includes('--yolo')) {

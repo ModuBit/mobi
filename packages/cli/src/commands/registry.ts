@@ -16,7 +16,7 @@
 
 import { authCommand } from './auth'
 import { claudeCommand } from './claude'
-import { runnerCommand } from './runner'
+import { sessionsCommand } from './sessions'
 import { doctorCommand } from './doctor'
 import { mcpCommand } from './mcp'
 import { daemonCommand } from './daemon'
@@ -36,7 +36,7 @@ const COMMANDS: CommandDefinition[] = [
     serviceCommand,
     logsCommand,
     doctorCommand,
-    runnerCommand,
+    sessionsCommand,
     versionCommand,
     upgradeCommand,
     setupCommand,

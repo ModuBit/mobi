@@ -42,8 +42,8 @@ export const DEFAULT_SUPERVISOR_PORT = 2222
  * spawn 时继承 profile env），无/非法则回落 2222。
  *
  * 背景：e2e/dev profile 端口与 default 不同（2224/2223）。desired state 为空时若
- * 硬编码 2222，`mobi hub start --profile e2e` 不带 --port 会与 default 环境 hub
- * 撞端口，且 supervisor 健康门可能打到 default hub 上假通过。
+ * 硬编码 2222，`mobi daemon start --profile e2e` 不带 --port 会与 default 环境
+ * daemon 撞端口，且 supervisor 健康门可能打到 default daemon 上假通过。
  */
 function profilePortOrDefault(): number {
     const envPort = Number(process.env.MOBI_LISTEN_PORT)

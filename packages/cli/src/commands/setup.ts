@@ -112,8 +112,7 @@ export const setupCommand: CommandDefinition = {
         } else {
             console.log('')
             console.log(chalk.gray('Start manually:'))
-            console.log(chalk.gray('  mobi hub start'))
-            console.log(chalk.gray('  mobi runner start'))
+            console.log(chalk.gray('  mobi daemon start'))
         }
     }
 }

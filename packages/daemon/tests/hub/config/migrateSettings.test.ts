@@ -81,7 +81,8 @@ describe('migrateLegacySettings', () => {
         expect(hub.claudeEnv).toBeUndefined()
 
         const cli = readJson(join(dataDir, 'settings.cli.json'))
-        expect(cli.machineId).toBe('mid-1')
+        // machineId 已随 machine 概念移除（503 死字段）：不迁移
+        expect(cli.machineId).toBeUndefined()
         expect(cli.apiUrl).toBe('http://localhost:2222')
         expect(cli.updateChannel).toBe('stable')
         expect(cli.disconnectTimeoutMs).toBe(600000)
@@ -125,7 +126,8 @@ describe('migrateLegacySettings', () => {
 
         const cli = readJson(join(dataDir, 'settings.cli.json'))
         expect(cli.cliApiToken).toBe('cli-kept')
-        expect(cli.machineId).toBe('mid-1')
+        // machineId 已入死字段清单（503）：不迁移
+        expect(cli.machineId).toBeUndefined()
         expect(cli.claudeEnv).toEqual({ FOO: '1' })
     })
 
@@ -139,7 +141,8 @@ describe('migrateLegacySettings', () => {
         expect(result).toEqual({ migrated: true, reason: 'migrated' })
         const cli = readJson(join(dataDir, 'settings.cli.json'))
         expect(cli.cliApiToken).toBe('wizard-generated')
-        expect(cli.machineId).toBe('mid-1')
+        // machineId 已入死字段清单（503）：不迁移
+        expect(cli.machineId).toBeUndefined()
     })
 
     test('旧文件无 cli 专属字段且 cli 文件不存在时不写空占位文件', async () => {

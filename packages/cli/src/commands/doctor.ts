@@ -32,13 +32,11 @@ ${chalk.bold('mobi doctor')} - System diagnostics & troubleshooting
 
 ${chalk.bold('Usage:')}
   mobi doctor                 Run diagnostics
-  mobi doctor hub             Diagnose hub issues
-  mobi doctor runner          Diagnose runner issues
   mobi doctor clean           Clean up all runaway processes
   mobi doctor clean [profile] Clean up processes for a specific profile
   mobi --profile X doctor clean   同上（--profile 是全局 flag，等价 positional）
   mobi doctor exits           Show recent process exit records
-  mobi doctor exits --process hub|runner|cli
+  mobi doctor exits --process daemon|cli
   mobi doctor exits --limit N
 `)
             return
@@ -55,7 +53,7 @@ ${chalk.bold('Usage:')}
             if (profile) {
                 console.log(`Cleaning up runaway processes for profile: ${chalk.cyan(profile)}`)
             } else {
-                console.log('Cleaning up all mobi processes (hub, runner, sessions)')
+                console.log('Cleaning up all mobi processes (daemon, sessions)')
             }
 
             const result = await killRunawayMobiProcesses(profile)
@@ -78,6 +76,10 @@ ${chalk.bold('Usage:')}
             return
         }
 
-        await runDoctorCommand(commandArgs[0])
+        if (commandArgs.length > 0) {
+            // 历史子命令 hub/runner 已随 machine 概念收敛删除（601），未知子命令不再透传
+            console.log(chalk.yellow(`Unknown doctor subcommand: ${commandArgs[0]}`))
+        }
+        await runDoctorCommand()
     }
 }

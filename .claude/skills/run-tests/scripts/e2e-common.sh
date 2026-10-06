@@ -56,9 +56,9 @@ e2e_read_daemon_state() {
         return 1
     fi
 
-    # 单次 jq 调用同时提取 pid 和 runnerHttpPort（ticket-22 起 daemon.state.json）
+    # 单次 jq 调用同时提取 pid 和 controlPort（502 起新字段，旧字段 runnerHttpPort 兜底）
     read -r DAEMON_PID DAEMON_CONTROL_PORT < <(
-        jq -r '(.pid // ""), (.runnerHttpPort // "")' "${state_file}" 2>/dev/null
+        jq -r '(.pid // ""), (.controlPort // .runnerHttpPort // "")' "${state_file}" 2>/dev/null
     ) || true
 
     if [[ -z "${DAEMON_PID}" ]]; then

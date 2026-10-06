@@ -58,22 +58,11 @@ function getLogFiles(logDir: string): { file: string, path: string, modified: Da
     }
 }
 
-/**
- * Run doctor command specifically for runner diagnostics
- */
-export async function runDoctorRunner(): Promise<void> {
-    return runDoctorCommand('runner');
-}
-
-export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Promise<void> {
-    // Default to 'all' if no filter specified
-    if (!filter) {
-        filter = 'all';
-    }
+export async function runDoctorCommand(): Promise<void> {
+    const filter = 'all';
     
     console.log(`\n${chalk.bold.cyan('🩺 mobi CLI Doctor')} ${chalk.bold(filter)}\n`);
 
-    // For 'all' filter, show everything. For 'runner', only show runner-related info
     if (filter === 'all') {
         // Version and basic info
         console.log(chalk.bold('📋 Basic Information'));
@@ -82,8 +71,8 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
         console.log(`Node.js Version: ${chalk.green(process.version)}`);
         console.log('');
 
-        // Runner spawn diagnostics
-        console.log(chalk.bold('🔧 Runner Spawn Diagnostics'));
+        // 运行时资产诊断（原「Runner Spawn Diagnostics」随 runner 词汇收敛，601）
+        console.log(chalk.bold('🔧 Runtime Diagnostics'));
         const projectRoot = projectPath();
         const cliEntrypoint = join(projectRoot, 'src', 'index.ts');
 
@@ -156,7 +145,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
 
     }
 
-    // Daemon status - shown for both 'all' and 'runner' filters
+    // Daemon status
     console.log(chalk.bold('\n🤖 Daemon Status'));
     try {
         const state = await readDaemonState();
@@ -195,19 +184,19 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
 
             // Display each group
             Object.entries(grouped).forEach(([type, processes]) => {
+                // 历史 hub/runner 类型键随识别集合收敛删除（601）；历史 exits.log/残留进程
+                // 的未知类型走 fallback 原样显示（展示容错）
                 const typeLabels: Record<string, string> = {
                     'current': '📍 Current Process',
-                    'runner': '🤖 Runner',
-                    'runner-version-check': '🔍 Runner Version Check (stuck)',
-                    'runner-spawned-session': '🔗 Runner-Spawned Sessions',
-                    'hub': '🌐 Hub (legacy)',
                     'daemon': '⚙️  Daemon',
                     'dev-daemon': '🛠️  Dev Daemon',
                     'supervisor': '🛡️  Supervisor',
                     'dev-supervisor': '🛠️  Dev Supervisor',
+                    'spawned-session': '🔗 Spawned Sessions',
+                    'dev-spawned-session': '🛠️  Dev Spawned Sessions',
+                    'version-check': '🔍 Version Check (stuck)',
+                    'dev-version-check': '🛠️  Dev Version Check (stuck)',
                     'user-session': '👤 User Sessions',
-                    'dev-runner': '🛠️  Dev Runner',
-                    'dev-runner-version-check': '🛠️  Dev Runner Version Check (stuck)',
                     'dev-session': '🛠️  Dev Sessions',
                     'dev-doctor': '🛠️  Dev Doctor',
                     'dev-related': '🛠️  Dev Related',
@@ -232,7 +221,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
             console.log(chalk.gray('To clean up runaway processes: mobi doctor clean [profile]'));
         }
     } catch (_error) {
-        console.log(chalk.red('❌ Error checking runner status'));
+        console.log(chalk.red('❌ Error checking daemon status'));
     }
 
     // Log files - only show for 'all' filter

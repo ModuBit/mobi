@@ -23,7 +23,7 @@ import type { CommandDefinition, CommandContext } from './types'
 
 function showDaemonHelp(): void {
     console.log(`
-${chalk.bold('mobi daemon')} - Manage the single-process daemon (hub + runner)
+${chalk.bold('mobi daemon')} - Manage the single-process daemon
 
 ${chalk.bold('Usage:')}
   mobi daemon start [--host <host>] [--port <port>]
@@ -58,7 +58,7 @@ export const daemonCommand: CommandDefinition = {
             startPpidWatchdog({
                 onOrphaned: () => process.kill(process.pid, 'SIGTERM'),
             })
-            // 同进程 runner 需要 CLI token 连本进程 hub 认证（与 runner start-sync 同源）
+            // 同进程 executor 需要 CLI token 连本进程 daemon 认证
             await initializeToken()
             const { startDaemon } = await import('@mobi/daemon/daemonEntry')
             await startDaemon({ host, port })

@@ -127,9 +127,9 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Commands:')}
   mobi setup               Interactive setup wizard (first-time)
-  mobi service <action>    Manage hub + runner service
-  mobi hub <action>        Manage hub server
-  mobi runner <action>     Manage background runner
+  mobi service <action>    Manage the mobi service
+  mobi daemon <action>     Manage the single-process daemon
+  mobi sessions <action>   Manage daemon sessions
   mobi auth <action>       Manage authentication
   mobi mcp                 Start MCP stdio bridge
   mobi version             Show version info

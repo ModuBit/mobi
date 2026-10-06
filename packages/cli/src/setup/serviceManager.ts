@@ -99,7 +99,7 @@ ${supervise.argv.map((arg) => `        <string>${escapeXml(arg)}</string>`).join
  */
 function generateSystemdUnit(): string {
     return `[Unit]
-Description=Mobi Supervisor (hub + runner)
+Description=Mobi Supervisor (single-process daemon)
 After=network.target
 
 [Service]
@@ -126,7 +126,7 @@ export async function installService(host: string, port: number): Promise<void> 
 
     if (platform !== 'darwin' && platform !== 'linux') {
         console.log(chalk.yellow('System service is not supported on this platform yet'))
-        console.log(chalk.gray('  Use "mobi hub start" and "mobi runner start" instead'))
+        console.log(chalk.gray('  Use "mobi daemon start" instead'))
         return
     }
 
