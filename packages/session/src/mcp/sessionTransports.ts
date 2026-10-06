@@ -19,7 +19,7 @@
  *
  * server 按职责拆分（命名法：mobi-apps = mobi 应用提供的工具族，mobi-core = 内置基础能力）：
  * - mobi-apps：agent 触达 mobi 应用的工具族，含 A 类 UI 呈现（open_in_mobi）与
- *   B 类系统操作（list_machines 等会话操作）。仅 remote——链路依赖 Hub，
+ *   B 类系统操作（list_sessions 等会话操作）。仅 remote——链路依赖 Hub，
  *   local 不存在（D1）。
  * - mobi-core：内置基础能力（change_title / web_search / web_fetch）。
  *   remote 走 SDK 进程内 server；local 走 HTTP server 壳（仅 change_title，

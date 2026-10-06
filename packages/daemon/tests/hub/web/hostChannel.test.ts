@@ -66,22 +66,23 @@ describe('宿主通道独立监听（ticket-21）', () => {
         const { engine, store } = makeSyncEngine()
         const { cleanup } = await setupTestApp(engine)
         const hostApp = createHostApp({ getSyncEngine: () => engine })
+        const sessionBody = JSON.stringify({ tag: 'tag-host-channel', metadata: { path: '/tmp/proj' } })
         try {
-            const noAuth = await hostApp.request('/cli/machines', {
+            const noAuth = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: 'm-1', metadata: {} }),
+                body: sessionBody,
             })
             expect(noAuth.status).toBe(401)
 
-            const authed = await hostApp.request('/cli/machines', {
+            const authed = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${testCliApiToken}` },
-                body: JSON.stringify({ id: 'm-1', metadata: {} }),
+                body: sessionBody,
             })
             expect(authed.status).toBe(200)
-            const body = await authed.json() as { machine?: { id?: string } }
-            expect(body.machine?.id).toBe('m-1')
+            const body = await authed.json() as { session?: { tag?: string } }
+            expect(body.session?.tag).toBe('tag-host-channel')
 
             // 宿主判活端点（诊断通道）
             const health = await hostApp.request('/health')

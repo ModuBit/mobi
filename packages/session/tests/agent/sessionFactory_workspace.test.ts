@@ -15,13 +15,14 @@
  */
 
 /**
- * 验证 bootstrapSession 的工作区归属语义（工作区实体化 Task 6）：
- * - 带 workspaceId：machineId 匹配 + folders 存在性校验，过滤后冻结进 metadata
- * - machineId 不匹配 / primary 缺失 → 硬失败
+ * 验证 bootstrapSession 的工作区归属语义（工作区实体化 Task 6；machineId 门禁
+ * 已随 machine 概念移除退场——单机世界工作区恒属本机）：
+ * - 带 workspaceId：folders 存在性校验，过滤后冻结进 metadata
+ * - primary 缺失 → 硬失败
  * - 不带 workspaceId：游离会话，additionalDirectories 为空、不冻结
  * - resume：回放创建时冻结的 metadata.additionalDirectories
  *
- * @see packages/cli/src/agent/sessionFactory.ts
+ * @see packages/session/src/agent/sessionFactory.ts
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,7 +40,6 @@ vi.mock('@mobi/node-core/api/api', () => ({
         create: async () => ({
             getOrCreateSession: h.getOrCreateSession,
             getSessionByClaudeSessionId: h.getSessionByClaudeSessionId,
-            getOrCreateMachine: async () => ({}),
             // token 供 ApiSessionClient.create（sessionSyncClient 工厂已拆分，ticket-12）
             token: 'test-token'
         })
@@ -50,10 +50,6 @@ vi.mock('@/api/apiSession', () => ({
     ApiSessionClient: {
         create: () => ({ updateMetadata: h.updateMetadata })
     }
-}))
-
-vi.mock('@mobi/node-core/persistence', () => ({
-    readSettings: async () => ({ machineId: 'm1' })
 }))
 
 // 会话自报 webhook 已拆到 session 侧（解缠 6），mock 跟随新位置；
@@ -89,13 +85,10 @@ vi.mock('node:fs/promises', () => ({
 
 import { bootstrapSession } from '@/agent/sessionFactory'
 
-const MACHINE_ID = 'm1'
-
 function baseWorkspace(overrides: Record<string, unknown> = {}) {
     return {
         id: 'p1',
         namespace: 'default',
-        machineId: MACHINE_ID,
         name: 'mobi',
         folders: [
             { path: '/a/mobi', primary: true },
@@ -171,22 +164,6 @@ describe('bootstrapSession 工作区归属', () => {
         })
     })
 
-    it('machineId 不匹配 → 抛错且不冻结', async () => {
-        stubExists(['/a/mobi', '/a/shared'])
-        h.getOrCreateSession.mockResolvedValue({
-            ...mockSession({ workspaceId: 'p1' }),
-            workspace: baseWorkspace({ machineId: 'm-other' })
-        })
-
-        await expect(bootstrapSession({
-            flavor: 'claude',
-            startedBy: 'terminal',
-            workingDirectory: '/a/mobi',
-            workspaceId: 'p1'
-        })).rejects.toThrow(/different machine/i)
-        expect(h.updateMetadata).not.toHaveBeenCalled()
-    })
-
     it('primary 缺失（且非进程 cwd）→ 抛错', async () => {
         stubExists([])
         h.getOrCreateSession.mockResolvedValue({
@@ -231,7 +208,7 @@ describe('bootstrapSession 工作区归属', () => {
                 workspaceId: 'p1',
                 metadata: { path: '/a/mobi', additionalDirectories: ['/frozen'] }
             }),
-            workspace: baseWorkspace({ machineId: 'm-other' })
+            workspace: baseWorkspace()
         })
 
         const result = await bootstrapSession({
@@ -246,29 +223,7 @@ describe('bootstrapSession 工作区归属', () => {
         expect(h.updateMetadata).not.toHaveBeenCalled()
     })
 
-    it('resume 已绑会话但无冻结列表且工作区机器不匹配（迁移存量 unknown/众数机器）：容忍降级，不抛错不冻结', async () => {
-        stubExists(['/a/mobi', '/a/shared'])
-        h.getOrCreateSession.mockResolvedValue({
-            ...mockSession({ workspaceId: 'p1', metadata: { path: '/a/mobi' } }),
-            // 迁移兜底 'unknown' 或组内众数机器 ≠ 当前机器
-            workspace: baseWorkspace({ machineId: 'unknown' })
-        })
-
-        // 迁移前该会话可正常 resume；machineId 门禁只应约束显式 --workspace，不应阻断历史会话恢复
-        const result = await bootstrapSession({
-            flavor: 'claude',
-            startedBy: 'terminal',
-            workingDirectory: '/a/mobi',
-            claudeArgs: ['--resume', 'cs1']
-        })
-
-        expect(result.additionalDirectories).toEqual([])
-        expect(h.access).not.toHaveBeenCalled()
-        // 不冻结：留待在正确机器上 resume 时再派生
-        expect(h.updateMetadata).not.toHaveBeenCalled()
-    })
-
-    it('resume 已绑会话但无冻结列表（迁移存量）：按当前 workspace folders 派生并冻结', async () => {
+    it('resume 已绑会话但无冻结列表：按当前 workspace folders 派生并冻结', async () => {
         stubExists(['/a/mobi', '/a/shared'])
         h.getOrCreateSession.mockResolvedValue({
             ...mockSession({ workspaceId: 'p1', metadata: { path: '/a/mobi' } }),
@@ -322,8 +277,8 @@ describe('bootstrapSession 工作区归属', () => {
                 workspaceId: 'p1',
                 metadata: { path: '/a/mobi', additionalDirectories: [] }
             }),
-            // 故意 machineId 不匹配也无所谓——回放分支不读 workspace
-            workspace: baseWorkspace({ machineId: 'm-other' })
+            // 回放分支不读 workspace
+            workspace: baseWorkspace()
         })
 
         const result = await bootstrapSession({

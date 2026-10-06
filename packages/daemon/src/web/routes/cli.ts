@@ -21,7 +21,7 @@ import { configuration, getConfiguration } from '../../configuration'
 import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
 import { rotateWebApiToken } from '../../config/webApiToken'
-import { checkWorkspaceAssignable, type Machine, type Session, type SyncEngine } from '../../sync/syncEngine'
+import { checkWorkspaceAssignable, type Session, type SyncEngine } from '../../sync/syncEngine'
 
 const bearerSchema = z.string().regex(/^Bearer\s+(.+)$/i)
 
@@ -33,12 +33,6 @@ const createOrLoadSessionSchema = z.object({
     runtimeState: z.unknown().optional(),
     /** 归属工作区（Web spawn 透传；缺省 = 游离） */
     workspaceId: z.string().optional()
-})
-
-const createOrLoadMachineSchema = z.object({
-    id: z.string().min(1),
-    metadata: z.unknown(),
-    runnerState: z.unknown().nullable().optional()
 })
 
 const getMessagesQuerySchema = z.object({
@@ -66,21 +60,6 @@ function resolveSessionForNamespace(
         status: access.reason === 'access-denied' ? 403 : 404,
         error: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found'
     }
-}
-
-function resolveMachineForNamespace(
-    engine: SyncEngine,
-    machineId: string,
-    namespace: string
-): { ok: true; machine: Machine } | { ok: false; status: 403 | 404; error: string } {
-    const machine = engine.getMachineByNamespace(machineId, namespace)
-    if (machine) {
-        return { ok: true, machine }
-    }
-    if (engine.getMachine(machineId)) {
-        return { ok: false, status: 403, error: 'Machine access denied' }
-    }
-    return { ok: false, status: 404, error: 'Machine not found' }
 }
 
 export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<CliEnv> {
@@ -212,40 +191,6 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         const limit = parsed.data.limit ?? 200
         const messages = engine.getMessagesAfter(resolved.sessionId, { afterSeq: parsed.data.afterSeq, limit })
         return c.json({ messages })
-    })
-
-    app.post('/machines', async (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not ready' }, 503)
-        }
-        const json = await c.req.json().catch(() => null)
-        const parsed = createOrLoadMachineSchema.safeParse(json)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body' }, 400)
-        }
-
-        const namespace = c.get('namespace')
-        const existing = engine.getMachine(parsed.data.id)
-        if (existing && existing.namespace !== namespace) {
-            return c.json({ error: 'Machine access denied' }, 403)
-        }
-        const machine = engine.getOrCreateMachine(parsed.data.id, parsed.data.metadata, parsed.data.runnerState ?? null, namespace)
-        return c.json({ machine })
-    })
-
-    app.get('/machines/:id', (c) => {
-        const engine = getSyncEngine()
-        if (!engine) {
-            return c.json({ error: 'Not ready' }, 503)
-        }
-        const machineId = c.req.param('id')
-        const namespace = c.get('namespace')
-        const resolved = resolveMachineForNamespace(engine, machineId, namespace)
-        if (!resolved.ok) {
-            return c.json({ error: resolved.error }, resolved.status)
-        }
-        return c.json({ machine: resolved.machine })
     })
 
     return app

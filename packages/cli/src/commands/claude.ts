@@ -19,7 +19,6 @@ import { execFileSync, spawn } from 'node:child_process'
 import { PROTOCOL_VERSION } from '@mobi/shared'
 import type { StartOptions } from '@mobi/session/claude/runClaude'
 import { configuration } from '@mobi/node-core/configuration'
-import { authAndSetupMachineIfNeeded } from '@mobi/daemon/runner/authSetup'
 import { logger } from '@mobi/node-core/logger'
 import { initializeToken } from '@/ui/tokenInit'
 import { ensureDaemonRunning } from '@/utils/autoStartServer'
@@ -172,9 +171,6 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
         // 启动 mobi daemon（如果需要）——经 supervisor 托管，
         // CLI 会话结束后 daemon 继续存活以服务 Web 与管理会话
         await ensureDaemonRunning()
-        // 确保设置了 cli auth token 并初始化 machineId
-        await authAndSetupMachineIfNeeded()
-
         try {
             const { runClaude } = await import('@mobi/session/claude/runClaude')
             await runClaude(options)

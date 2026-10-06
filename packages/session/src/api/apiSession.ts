@@ -24,7 +24,7 @@ import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
 import { AsyncLock } from '@mobi/node-core/utils/lock'
 import type { RawJSONLines } from '../claude/types'
 import { configuration } from '@mobi/node-core/configuration'
-import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentMachinesAck, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
 import {
     classifyMessage,
     isMobiSentCrossSession,
@@ -755,23 +755,9 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * 列出可派活的在线机器（B 类工具族）。
-     *
-     * 与 sendUiCommand 同型：emitWithAck 等回执，超时/断连 reject 由调用方
-     * 按连接故障处理——业务失败（无权限 / 入参非法）走 ack 的 ok:false，
-     * 两者语义不同，勿混淆。
-     */
-    async listOnlineMachinesForAgent(): Promise<AgentMachinesAck> {
-        const answer = await this.socket
-            .timeout(AGENT_OP_ACK_TIMEOUT_MS)
-            .emitWithAck('listMachinesForAgent', { sid: this.sessionId })
-        return answer as AgentMachinesAck
-    }
-
-    /**
      * 列出会话供 agent 挑选派活目标（B 类工具族）。
      *
-     * 口径同 listOnlineMachinesForAgent：业务失败（入参非法 / 无权限）走 ack 的
+     * 与 sendUiCommand 同口径：业务失败（入参非法 / 无权限）走 ack 的
      * ok:false，连接故障走 reject，两者语义不同。
      * 查询条件从 wire 类型派生（去掉 sid）——CLI 只填 sid，其余原样透传。
      */

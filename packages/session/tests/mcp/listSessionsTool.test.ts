@@ -24,7 +24,6 @@ const SESSION: AgentSessionSummary = {
     name: '前端重构',
     summary: '把设置页拆出来',
     workspaceId: 'proj-1',
-    machineId: 'm-1',
     path: '/work/app',
     active: true,
     running: false,
@@ -84,7 +83,6 @@ describe('createListSessionsTool', () => {
         expect(text).toContain('sess-1')
         expect(text).toContain('前端重构')
         expect(text).toContain('proj-1')
-        expect(text).toContain('m-1')
         expect(text).toContain('/work/app')
         expect(text).toContain('active: yes')
         expect(text).toContain('running: no')
@@ -109,7 +107,6 @@ describe('createListSessionsTool', () => {
         // 缺就是不知道——写成 "-" 之类反而像有值
         expect(text).not.toContain('title:')
         expect(text).not.toContain('directory:')
-        expect(text).not.toContain('machine:')
         expect(text).toContain('sess-2')
         expect(text).toContain('active: no')
     })

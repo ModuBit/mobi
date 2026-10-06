@@ -73,11 +73,8 @@ function successDetail(readiness: AgentCreateSessionReadiness): string {
 
 export function createCreateSessionTool(deps: CreateSessionToolDeps) {
     const createSessionInputSchema = z.object({
-        machineId: z.string().min(1).describe(
-            'A machineId returned by list_machines. Must be the id itself — a machine name is not accepted.',
-        ),
         directory: z.string().min(1).describe(
-            'Absolute path on that machine, resolved there. Created if it does not exist.',
+            'Absolute path, resolved on the mobi host. Created if it does not exist.',
         ),
         workspaceId: z.string().optional().describe(
             'Optional workspace id to file the new session under. Omit for a loose session.',
@@ -121,7 +118,7 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
         }
 
         return textResult(
-            `Created session ${answer.sessionId} (machine ${parsed.data.machineId}, directory ${parsed.data.directory}). ` +
+            `Created session ${answer.sessionId} (directory ${parsed.data.directory}). ` +
             successDetail(answer.readiness)
         )
     }
@@ -132,13 +129,12 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
         // **使用边界**（能复用已有会话就别新建，对齐 codex create_thread 的
         // "Create a separate task only when the user explicitly asks"）与**跨工具协作**
         description:
-            'Start a new mobi session on one machine. Create one only when a new working context is genuinely needed — ' +
-            'when the work fits an existing session, use send_message_to_session instead. Call list_machines first and pass ' +
-            'one of the returned machineIds; this tool does not accept a machine name. directory is required and resolved on ' +
-            'that machine. The new session starts with no first message — Give it work with send_message_to_session. ' +
-            'Creation is not instant: it launches a real Claude Code process and waits until that session can actually accept ' +
-            'messages (pass waitForReady=false to skip the wait). Failures are reported in plain language — machine offline, ' +
-            'directory not creatable, or setup timeout.',
+            'Start a new mobi session. Create one only when a new working context is genuinely needed — ' +
+            'when the work fits an existing session, use send_message_to_session instead. directory is required ' +
+            'and resolved on the mobi host. The new session starts with no first message — Give it work with ' +
+            'send_message_to_session. Creation is not instant: it launches a real Claude Code process and waits ' +
+            'until that session can actually accept messages (pass waitForReady=false to skip the wait). ' +
+            'Failures are reported in plain language — directory not creatable, or setup timeout.',
         title: 'Create Session',
         inputSchema: createSessionInputSchema,
         execute,

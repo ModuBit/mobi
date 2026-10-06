@@ -15,12 +15,12 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { configuration } from '@mobi/node-core/configuration'
 import { updateSettings } from '@mobi/node-core/persistence'
 
 /**
- * 本机 machineId（settings 持久化 UUID，首次生成）。runner 侧注册与 hub 侧
- * 自注册（ticket-20）共用同一身份源。
+ * 本机 machineId（settings 持久化 UUID，首次生成）。唯一消费方 = hubServer 启动时的
+ * 本机自注册（machines 表行在 401 store 退场前仍需 id）；会话进程不再注册 machine
+ * （remove-machine 302 起 authAndSetupMachineIfNeeded 已删）。
  */
 export async function ensureMachineId(): Promise<string> {
     const settings = await updateSettings((current) => {
@@ -38,15 +38,4 @@ export async function ensureMachineId(): Promise<string> {
     }
 
     return settings.machineId
-}
-
-export async function authAndSetupMachineIfNeeded(): Promise<{
-    token: string
-    machineId: string
-}> {
-    if (!configuration.cliApiToken) {
-        throw new Error('CLI_API_TOKEN is required')
-    }
-
-    return { token: configuration.cliApiToken, machineId: await ensureMachineId() }
 }

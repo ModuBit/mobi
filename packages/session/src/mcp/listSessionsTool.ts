@@ -19,7 +19,7 @@
  *
  * agent 找派活目标的主入口，也是它「有没有这个会话」的查询手段。
  *
- * 回执三分支（与 list_machines 同口径，勿混淆）：
+ * 回执三分支（与 open_in_mobi 同口径，勿混淆）：
  * - ok:true + 非空清单 → 正常返回
  * - ok:true + 空清单 → **成功非错误**（确实没匹配上），但必须说清是「没有」
  *   还是「有但它没在跑」——这正是 status 三档存在的理由
@@ -53,7 +53,6 @@ function renderSession(session: AgentSessionSummary): string {
         session.name ? `title: ${session.name}` : null,
         session.summary ? `summary: ${session.summary}` : null,
         session.workspaceId ? `workspace: ${session.workspaceId}` : null,
-        session.machineId ? `machine: ${session.machineId}` : null,
         session.path ? `directory: ${session.path}` : null,
         `active: ${session.active ? 'yes' : 'no'}`,
         `running: ${session.running ? 'yes' : 'no'}`,

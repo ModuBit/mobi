@@ -15,8 +15,8 @@
  */
 
 import axios from 'axios'
-import type { AgentState, CreateMachineResponse, CreateSessionResponse, Workspace, RunnerState, Machine, MachineMetadata, Metadata, Session } from './types'
-import { AgentStateSchema, CreateMachineResponseSchema, CreateSessionResponseSchema, RunnerStateSchema, MachineMetadataSchema, MetadataSchema } from './types'
+import type { AgentState, CreateSessionResponse, Workspace, Metadata, Session } from './types'
+import { AgentStateSchema, CreateSessionResponseSchema, MetadataSchema } from './types'
 import { configuration } from '@mobi/node-core/configuration'
 import { getAuthToken } from './auth'
 import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
@@ -162,60 +162,6 @@ export class ApiClient {
             workspaceId: raw.workspaceId,
             // 归属工作区（带 workspaceId 创建时返回；resume / 游离为 null）
             workspace: parsed.data.workspace ?? null
-        }
-    }
-
-    async getOrCreateMachine(opts: {
-        machineId: string
-        metadata: MachineMetadata
-        runnerState?: RunnerState
-    }): Promise<Machine> {
-        const response = await axios.post<CreateMachineResponse>(
-            `${configuration.apiUrl}/cli/machines`,
-            {
-                id: opts.machineId,
-                metadata: opts.metadata,
-                runnerState: opts.runnerState ?? null
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 60_000
-            }
-        )
-
-        const parsed = CreateMachineResponseSchema.safeParse(response.data)
-        if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/machines response', response)
-        }
-
-        const raw = parsed.data.machine
-
-        const metadata = (() => {
-            if (raw.metadata == null) return null
-            const parsedMetadata = MachineMetadataSchema.safeParse(raw.metadata)
-            return parsedMetadata.success ? parsedMetadata.data : null
-        })()
-
-        const runnerState = (() => {
-            if (raw.runnerState == null) return null
-            const parsedRunnerState = RunnerStateSchema.safeParse(raw.runnerState)
-            return parsedRunnerState.success ? parsedRunnerState.data : null
-        })()
-
-        return {
-            id: raw.id,
-            seq: raw.seq,
-            createdAt: raw.createdAt,
-            updatedAt: raw.updatedAt,
-            active: raw.active,
-            activeAt: raw.activeAt,
-            metadata,
-            metadataVersion: raw.metadataVersion,
-            runnerState,
-            runnerStateVersion: raw.runnerStateVersion
         }
     }
 

@@ -40,12 +40,13 @@ describe('createCreateSessionTool', () => {
         expect(desc).toContain('use send_message_to_session instead')
     })
 
-    it('description sends the model to list_machines for the id and refuses machine names', () => {
+    it('description states the directory is resolved on the mobi host (单机，无机器挑选)', () => {
         const { deps } = buildDeps()
         const desc = createCreateSessionTool(deps).description
 
-        expect(desc).toContain('Call list_machines first')
-        expect(desc).toContain('does not accept a machine name')
+        expect(desc).toContain('resolved on the mobi host')
+        expect(desc).not.toContain('list_machines')
+        expect(desc).not.toContain('machine')
     })
 
     it('description warns that creation is not instant and that failures come back in plain language', () => {
@@ -69,11 +70,10 @@ describe('createCreateSessionTool', () => {
         const { deps } = buildDeps({ ok: true, sessionId: 's-new', readiness: 'ready' })
         const tool = createCreateSessionTool(deps)
 
-        const result = await tool.execute({ machineId: 'm1', directory: '/work/app' })
+        const result = await tool.execute({ directory: '/work/app' })
 
         expect(result.isError).toBe(false)
         expect(result.content[0].text).toContain('s-new')
-        expect(result.content[0].text).toContain('send_message_to_session')
         expect(result.content[0].text).toContain('no messages')
     })
 
@@ -82,7 +82,6 @@ describe('createCreateSessionTool', () => {
         const tool = createCreateSessionTool(deps)
 
         await tool.execute({
-            machineId: 'm1',
             directory: '/work/app',
             workspaceId: 'p1',
             model: 'opus',
@@ -93,7 +92,6 @@ describe('createCreateSessionTool', () => {
         })
 
         expect(createSession).toHaveBeenCalledWith({
-            machineId: 'm1',
             directory: '/work/app',
             workspaceId: 'p1',
             model: 'opus',
@@ -108,9 +106,9 @@ describe('createCreateSessionTool', () => {
         const { deps, createSession } = buildDeps()
         const tool = createCreateSessionTool(deps)
 
-        await tool.execute({ machineId: 'm1', directory: '/work/app' })
+        await tool.execute({ directory: '/work/app' })
 
-        expect(createSession).toHaveBeenCalledWith({ machineId: 'm1', directory: '/work/app' })
+        expect(createSession).toHaveBeenCalledWith({ directory: '/work/app' })
     })
 
     it('description says the call waits until the new session can accept messages', () => {
@@ -126,34 +124,32 @@ describe('createCreateSessionTool', () => {
         const tool = createCreateSessionTool(deps)
 
         for (const title of ['', 'x'.repeat(256)]) {
-            const result = await tool.execute({ machineId: 'm1', directory: '/work/app', title })
+            const result = await tool.execute({ directory: '/work/app', title })
 
             expect(result.isError).toBe(true)
         }
         expect(createSession).not.toHaveBeenCalled()
     })
 
-    it('rejects a missing machineId, a blank directory, and an unknown effort without calling the hub', async () => {
+    it('rejects a blank directory and an unknown effort without calling the hub', async () => {
         const { deps, createSession } = buildDeps()
         const tool = createCreateSessionTool(deps)
 
         // 都必须在此挡下：空 directory 会一路走到 runner 才报 "Directory is required"
-        const missingMachine = await tool.execute({ directory: '/work/app' })
-        const blankDirectory = await tool.execute({ machineId: 'm1', directory: '' })
-        const badEffort = await tool.execute({ machineId: 'm1', directory: '/d', effort: 'max' })
+        const blankDirectory = await tool.execute({ directory: '' })
+        const badEffort = await tool.execute({ directory: '/d', effort: 'max' })
 
-        expect(missingMachine.isError).toBe(true)
         expect(blankDirectory.isError).toBe(true)
         expect(badEffort.isError).toBe(true)
         expect(createSession).not.toHaveBeenCalled()
     })
 
     it('passes the hub\'s plain-language failure through unwrapped', async () => {
-        const message = 'No online machine with id "m1". Call list_machines to get the ids of machines that are reachable right now.'
+        const message = 'Failed to start the session process: the daemon exited immediately after launch.'
         const { deps } = buildDeps({ ok: false, error: message })
         const tool = createCreateSessionTool(deps)
 
-        const result = await tool.execute({ machineId: 'm1', directory: '/work/app' })
+        const result = await tool.execute({ directory: '/work/app' })
 
         // Hub 是唯一翻译点，且这些句子写成能独立读懂——再包一层前缀只会稀释它
         expect(result.isError).toBe(true)
@@ -164,7 +160,7 @@ describe('createCreateSessionTool', () => {
         const createSession = vi.fn().mockRejectedValue(new Error('operation has timed out'))
         const tool = createCreateSessionTool({ createSession })
 
-        const result = await tool.execute({ machineId: 'm1', directory: '/work/app' })
+        const result = await tool.execute({ directory: '/work/app' })
 
         expect(result.isError).toBe(true)
         expect(result.content[0].text).toContain('timed out')
@@ -176,7 +172,7 @@ describe('createCreateSessionTool', () => {
 describe('createCreateSessionTool — 建成功后的三种就绪措辞（D42）', () => {
     async function textFor(readiness: 'ready' | 'not-ready' | 'not-checked') {
         const { deps } = buildDeps({ ok: true, sessionId: 's-new', readiness })
-        return (await createCreateSessionTool(deps).execute({ machineId: 'm1', directory: '/work/app' }))
+        return (await createCreateSessionTool(deps).execute({ directory: '/work/app' }))
     }
 
     it('ready → 明说现在就能收，可以直接派活', async () => {

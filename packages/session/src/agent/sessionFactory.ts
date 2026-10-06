@@ -24,8 +24,6 @@ import { ApiSessionClient } from '../api/apiSession'
 import type { AgentState, Metadata, Workspace, Session } from '@mobi/node-core/api/types'
 import type { EffortLevel } from '@mobi/shared'
 import { notifyRunnerSessionStarted } from './sessionWebhook'
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
-import { readSettings } from '@mobi/node-core/persistence'
 import { configuration } from '@mobi/node-core/configuration'
 import { logger } from '@mobi/node-core/logger'
 import { runtimePath } from '@mobi/node-core/projectPath'
@@ -53,7 +51,6 @@ export type SessionBootstrapResult = {
     apiSession: ApiSessionClient
     sessionInfo: Session
     metadata: Metadata
-    machineId: string
     startedBy: SessionStartedBy
     workingDirectory: string
     /** 创建时冻结 / resume 回放的额外工作目录（已过滤不存在路径） */
@@ -64,7 +61,6 @@ export function buildSessionMetadata(options: {
     flavor: string
     startedBy: SessionStartedBy
     workingDirectory: string
-    machineId: string
     now?: number
 }): Metadata {
     const mobiLibDir = runtimePath()
@@ -77,7 +73,6 @@ export function buildSessionMetadata(options: {
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
-        machineId: options.machineId,
         homeDir: os.homedir(),
         mobiHomeDir: configuration.mobiHomeDir,
         mobiLibDir,
@@ -91,17 +86,6 @@ export function buildSessionMetadata(options: {
         worktree: worktreeInfo ?? undefined,
         gitBranch: gitBranch ?? undefined,
     }
-}
-
-async function getMachineIdOrExit(): Promise<string> {
-    const settings = await readSettings()
-    const machineId = settings?.machineId
-    if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on ${packageJson.bugs}`)
-        process.exit(1)
-    }
-    logger.debug(`Using machineId: ${machineId}`)
-    return machineId
 }
 
 async function reportSessionStarted(sessionId: string, metadata: Metadata): Promise<void> {
@@ -140,27 +124,20 @@ function extractResumeSessionId(claudeArgs?: string[]): string | null {
  * 计算会话的额外工作目录，优先级：冻结列表 > 工作区派生 > 空。
  * 返回 { dirs, freeze }：freeze 表示派生结果（含空列表）是否应写入 metadata 冻结。
  * 1. metadata.additionalDirectories 键已冻结（创建/迁移时写入，含空列表）→ 直接回放，
- *    完全忽略响应中的 workspace（不校验 machineId、不读 folders）——resume 历史会话不受
+ *    完全忽略响应中的 workspace（不读 folders）——resume 历史会话不受
  *    工作区后续变更影响，且不重写（freeze=false）
  * 2. 无该键 → 从 workspace.folders 派生（freeze=true）：
- *    - 显式 --workspace（explicitWorkspace）时 machineId 必须匹配，不匹配硬失败——用户明确
- *      指定了归属，错了要立刻暴露
- *    - 非显式（resume 历史会话，含迁移存量首次 resume）时 machineId 不匹配降级为
- *      warn + 空目录且不冻结（freeze=false）——迁移前可恢复的会话不能因机器门禁起不来，
- *      留待在正确机器上 resume 时再派生
  *    - 存在性校验：解析后等于 cwd 的文件夹跳过（agent 本就在里面），其余（含 primary）
  *      逐个校验并加入；primary 非 cwd 且缺失硬失败，其余缺失 warn 跳过
+ *    - （machineId 归属门禁已随 machine 概念移除退场——单机世界工作区恒属本机）
  * 3. 都无 → 空数组（freeze=false）
  */
 async function resolveAdditionalDirectories(input: {
     workspace: Workspace | null
     sessionMetadata: unknown
-    machineId: string
     workingDirectory: string
-    /** workspaceId 是否由用户显式指定（--workspace / Web spawn）——决定机器门禁是硬失败还是降级 */
-    explicitWorkspace: boolean
 }): Promise<{ dirs: string[]; freeze: boolean }> {
-    const { workspace, sessionMetadata, machineId, workingDirectory, explicitWorkspace } = input
+    const { workspace, sessionMetadata, workingDirectory } = input
 
     // 优先级 1：冻结列表回放（键存在即冻结，空列表同样冻结——单文件夹工作区冻结 []，
     // resume 不再重读工作区）。hub 对已绑工作区的会话始终返回 workspace，但冻结后工作区
@@ -172,20 +149,6 @@ async function resolveAdditionalDirectories(input: {
 
     // 优先级 2：工作区派生（新建 / 迁移存量首次 resume）
     if (workspace) {
-        // folders 是机器本地路径，工作区必须归属本机才能使用
-        if (workspace.machineId !== machineId) {
-            if (explicitWorkspace) {
-                throw new Error(`Workspace '${workspace.name}' belongs to a different machine (${workspace.machineId}), this machine is ${machineId}`)
-            }
-            // resume 历史会话（如迁移兜底 'unknown' 或众数机器 ≠ 当前机器）：
-            // 机器门禁只约束显式归属，不阻断历史会话恢复——降级为无额外目录，且不冻结，
-            // 留待在正确机器上 resume 时再派生
-            logger.warn(
-                `[START] 会话所属工作区 '${workspace.name}' 归属其他机器（${workspace.machineId}，本机 ${machineId}），跳过工作区目录注入`
-            )
-            return { dirs: [], freeze: false }
-        }
-
         const cwd = resolve(workingDirectory)
         const dirs: string[] = []
         for (const folder of workspace.folders) {
@@ -255,18 +218,10 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         }
     }
 
-    // 注册 machine
-    const machineId = await getMachineIdOrExit()
-    await api.getOrCreateMachine({
-        machineId,
-        metadata: buildMachineMetadata()
-    })
-
     const metadata = buildSessionMetadata({
         flavor: options.flavor,
         startedBy,
-        workingDirectory,
-        machineId
+        workingDirectory
     })
 
     // 创建或复用 session
@@ -285,14 +240,12 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
     const { dirs: additionalDirectories, freeze } = await resolveAdditionalDirectories({
         workspace: sessionInfo.workspace,
         sessionMetadata: sessionInfo.metadata,
-        machineId,
-        workingDirectory,
-        explicitWorkspace: options.workspaceId !== undefined
+        workingDirectory
     })
 
     // 派生结果冻结（含空列表——单文件夹工作区冻结 []，resume 不再重读工作区）：
-    // 仅派生路径（freeze=true）写入；回放路径与机器不匹配降级路径不写，
-    // 保证冻结列表稳定、不被工作区后续变更追溯覆盖
+    // 仅派生路径（freeze=true）写入；回放路径不写，保证冻结列表稳定、
+    // 不被工作区后续变更追溯覆盖
     if (freeze) {
         apiSession.updateMetadata((current) => ({
             ...current,
@@ -308,7 +261,6 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         apiSession,
         sessionInfo,
         metadata,
-        machineId,
         startedBy,
         workingDirectory,
         additionalDirectories

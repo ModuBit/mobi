@@ -20,7 +20,7 @@
  * 定位：**mobi 应用提供的工具族**——agent 触达 mobi 的全部能力，分两类：
  * - A 类 · UI 呈现：驱动 Web 界面（open_in_mobi 等，后续 focus_session / set_theme 进此）。
  *   依赖 Web 在线，瞬态呈现不落库。
- * - B 类 · 系统操作：会话操作（list_machines / list_sessions / create_session /
+ * - B 类 · 系统操作：会话操作（list_sessions / create_session /
  *   send_message_to_session）。不依赖 Web，落库即终态。
  *
  * 两类同处一个 server（照 codex 的 codex_apps：一个 namespace 装全部应用工具）；
@@ -35,7 +35,6 @@ import { ApiSessionClient } from '../api/apiSession'
 import { MOBI_APPS_SERVER_NAME } from '@mobi/shared'
 import { toSdkTool } from './sdkTool'
 import { OPEN_IN_MOBI_TOOL_NAME, createOpenInMobiTool } from './openInMobiTool'
-import { LIST_MACHINES_TOOL_NAME, createListMachinesTool } from './listMachinesTool'
 import { LIST_SESSIONS_TOOL_NAME, createListSessionsTool } from './listSessionsTool'
 import { CREATE_SESSION_TOOL_NAME, createCreateSessionTool } from './createSessionTool'
 import { SEND_MESSAGE_TOOL_NAME, createSendMessageTool } from './sendMessageTool'
@@ -56,12 +55,6 @@ const MOBI_APPS_TOOLS = [
         name: OPEN_IN_MOBI_TOOL_NAME,
         build: (client: ApiSessionClient) => createOpenInMobiTool({
             sendUiCommand: (action) => client.sendUiCommand(action),
-        }),
-    },
-    {
-        name: LIST_MACHINES_TOOL_NAME,
-        build: (client: ApiSessionClient) => createListMachinesTool({
-            listMachines: () => client.listOnlineMachinesForAgent(),
         }),
     },
     {
@@ -101,6 +94,10 @@ export function createMobiAppsServer(client: ApiSessionClient) {
         // 一句话就够——检索与使用指导的责任在每个工具自己的 description 上，
         // 这里只回答"这个 server 是谁提供的"
         instructions: 'Tools provided by the Mobi app.',
-        tools: buildMobiAppsTools(client).map(toSdkTool),
+        // 工具表是异构 Shape 的联合，toSdkTool 的泛型 Shape 无法跨联合推断——
+        // 收窄到约束实例化（AnyZodRawShape）逐个适配
+        tools: buildMobiAppsTools(client).map((definition) =>
+            toSdkTool(definition as Parameters<typeof toSdkTool>[0])
+        ),
     })
 }
