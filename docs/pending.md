@@ -1012,3 +1012,9 @@ interrupt（用户停止）
 
 **验证**：行为复现测试（bun 子进程 + 假代理：归一化前 loopback fetch 被劫持 502 → 归一化后直连 200；axios 同）红→绿；e2e 隔离 profile 带污染 env 实证 `service start`/`daemon restart` 秒级真通过（时序核实：旧 daemon 5ms 退出、新 daemon 17ms ready、健康门真过）；supervisor 进程 env 实证已归一化。Bun fetch 与 axios 均实证惰性读取 `no_proxy`（运行时改 env 即生效）。
 
+
+## 103. webContract.test.ts 路由 stub 清单与 server.ts 实际路由脱节
+
+**发现**（remove-machine 202-205 逐票实施时确认，205 Comments 在案）：`packages/daemon/tests/hub/web/webContract.test.ts` 的「HTTP routes snapshot」是在测试文件内**自模拟**注册路由（注释称「与 src/web/server.ts 实际注册保持一致」），并非扫描真实 server.ts——201-204 域重组（`/api/machines/:id/*` → `/api/sessions/spawn`、`/api/files/*`、`/api/sdk/host-metadata`、`/api/web-tools`、`/api/daemon/status`）后 stub 清单未同步，快照仍在锁旧路由面，契约快照已失真。
+
+**建议**：改为从 server.ts 真实导出路由清单（Hono `app.routes`）生成快照，消灭「自模拟脱节」这类漂移；或至少在 404/603 收口票把 stub 清单同步到终态。当前不阻塞任何行为（旧路由已真删，web client 也已切新域）。
