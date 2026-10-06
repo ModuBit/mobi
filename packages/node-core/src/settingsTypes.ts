@@ -25,9 +25,6 @@
 import type { WebToolsConfig } from '@mobi/shared'
 
 export interface Settings {
-  // This ID is used as the actual database ID on the server
-  // All machine operations use this ID
-  machineId?: string
   // cli 的连接凭证（`mobi auth login` 写入，随 cli 部署位置走）；
   // daemon 侧验证基准存 settings.daemon.json，两份语义独立
   cliApiToken?: string

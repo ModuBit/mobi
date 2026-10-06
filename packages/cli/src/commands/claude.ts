@@ -48,7 +48,7 @@ async function runLocalMode(options: StartOptions): Promise<void> {
     console.log(chalk.gray('   Remote control features are disabled.\n'))
 
     if (options.workspaceId) {
-        // 工作区归属需要 Hub 连接（校验 machineId / folders 并冻结），离线降级时无法生效
+        // 工作区归属需要 Hub 连接（校验 folders 并冻结），离线降级时无法生效
         console.warn(chalk.yellow('⚠️  Hub 不可达，--workspace 已忽略'))
         console.warn(chalk.gray('   Workspace membership requires a Hub connection.\n'))
     }
@@ -193,11 +193,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
             }
 
             // 其他错误处理
-            if (httpStatus === 403 && responseErrorText === 'Machine access denied') {
-                console.error(chalk.red('Machine access denied.'))
-                console.error(chalk.gray('  This machineId is already registered under a different namespace.'))
-                console.error(chalk.gray('  Fix: run `mobi auth logout`, or set a separate MOBI_HOME per namespace.'))
-            } else if (httpStatus === 403 && responseErrorText === 'Session access denied') {
+            if (httpStatus === 403 && responseErrorText === 'Session access denied') {
                 console.error(chalk.red('Session access denied.'))
                 console.error(chalk.gray('  This session belongs to a different namespace.'))
                 console.error(chalk.gray('  Use the matching CLI_API_TOKEN or switch namespaces.'))

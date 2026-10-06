@@ -54,7 +54,7 @@ describe('cli settings 拆分', () => {
     it('updateSettings 只写 settings.cli.json，不触碰 settings.daemon.json', async () => {
         const { updateSettings } = await loadPersistence()
 
-        await updateSettings(s => ({ ...s, cliApiToken: 'cli-token', machineId: 'mid' }))
+        await updateSettings(s => ({ ...s, cliApiToken: 'cli-token' }))
 
         expect(existsSync(cliFile())).toBe(true)
         expect(readJson(cliFile()).cliApiToken).toBe('cli-token')
@@ -121,7 +121,7 @@ describe('cli settings 拆分', () => {
     describe('migrateLegacyCliSettings（cli 侧一次性迁移，远程部署形态）', () => {
         const legacyFile = () => join(home, 'settings.json')
 
-        it('旧 settings.json 存在时把 cli 字段补缺写入 cli 文件，旧文件保留（归档权归 hub 迁移）', async () => {
+        it('旧 settings.json 存在时把 cli 字段补缺写入 cli 文件，旧文件保留（归档权归 daemon 迁移）', async () => {
             writeFileSync(legacyFile(), JSON.stringify({
                 cliApiToken: 'legacy-token',
                 machineId: 'legacy-mid',
@@ -135,7 +135,8 @@ describe('cli settings 拆分', () => {
 
             const cli = readJson(cliFile())
             expect(cli.cliApiToken).toBe('legacy-token')
-            expect(cli.machineId).toBe('legacy-mid')
+            // machineId 已随 machine 概念移除（503）：不再迁移进 cli 文件
+            expect(cli.machineId).toBeUndefined()
             expect(cli.claudeEnv).toEqual({ FOO: '1' })
             // hub 专属字段不进 cli 文件
             expect(cli.webApiToken).toBeUndefined()
@@ -145,7 +146,7 @@ describe('cli settings 拆分', () => {
         })
 
         it('cli 文件已有值不覆盖（补缺语义，幂等）', async () => {
-            writeFileSync(legacyFile(), JSON.stringify({ cliApiToken: 'legacy-token', machineId: 'legacy-mid' }))
+            writeFileSync(legacyFile(), JSON.stringify({ cliApiToken: 'legacy-token' }))
             writeFileSync(cliFile(), JSON.stringify({ cliApiToken: 'current-token' }))
             const { migrateLegacyCliSettings } = await loadPersistence()
 
@@ -153,7 +154,7 @@ describe('cli settings 拆分', () => {
 
             const cli = readJson(cliFile())
             expect(cli.cliApiToken).toBe('current-token')
-            expect(cli.machineId).toBe('legacy-mid')
+            expect(cli.cliApiToken).not.toBe('legacy-token')
         })
 
         it('无旧文件时幂等跳过；旧文件解析失败时跳过不阻断（cli 有交互式 prompt 兜底）', async () => {
@@ -177,6 +178,22 @@ describe('cli settings 拆分', () => {
             await migrateLegacyCliSettings()
             expect(readJson(cliFile()).cliApiToken).toBe('legacy-token')
         })
+    })
+
+    it('503 machineId 清除：cli 配置残留字段被一次性删除，其余字段保留（幂等）', async () => {
+        writeFileSync(cliFile(), JSON.stringify({ cliApiToken: 'kept', machineId: 'legacy-mid', apiUrl: 'http://x' }))
+        const { migrateLegacyCliSettings } = await loadPersistence()
+
+        await migrateLegacyCliSettings()
+
+        const cli = readJson(cliFile())
+        expect(cli.machineId).toBeUndefined()
+        expect(cli.cliApiToken).toBe('kept')
+        expect(cli.apiUrl).toBe('http://x')
+
+        // 幂等：再跑不写盘（无残留直接返回）
+        await migrateLegacyCliSettings()
+        expect(readJson(cliFile()).cliApiToken).toBe('kept')
     })
 
     it('非原子 writeSettings 已删除（所有写必须走锁内入口）', async () => {

@@ -43,7 +43,6 @@ export interface MigrationResult {
 
 /** cli 专属字段：迁移时落 settings.cli.json，其余（daemon 接口内字段）落 settings.daemon.json */
 const CLI_ONLY_FIELDS = [
-    'machineId',
     'apiUrl',
     'serverUrl',
     'updateChannel',
@@ -55,8 +54,12 @@ const CLI_ONLY_FIELDS = [
     'webTools',
 ] as const
 
-/** 死字段（零读写点）：不迁移，随旧文件 .bak 归档 */
-const DEAD_FIELDS = ['machineIdConfirmedByServer', 'runnerAutoStartWhenRunningMobi'] as const
+/** 死字段（零读写点）：不迁移，随旧文件 .bak 归档；machineId 随 machine 概念移除入列（503） */
+const DEAD_FIELDS = [
+    'machineIdConfirmedByServer',
+    'runnerAutoStartWhenRunningMobi',
+    'machineId',
+] as const
 
 /** daemon 侧旧键 → 新键（501 hubName → daemonName 读旧写新） */
 const LEGACY_KEY_RENAMES: Record<string, string> = { hubName: 'daemonName' }

@@ -252,9 +252,8 @@ export async function updateDaemonSettings(
   })
 }
 
-/** 旧单文件中 cli 专属字段（与 hub 侧 migrateSettings 的 CLI_ONLY_FIELDS + cliApiToken 对应） */
+/** 旧单文件中 cli 专属字段（与 daemon 侧 migrateSettings 的 CLI_ONLY_FIELDS + cliApiToken 对应） */
 const LEGACY_CLI_FIELDS = [
-  'machineId',
   'cliApiToken',
   'updateChannel',
   'disconnectTimeoutMs',
@@ -276,6 +275,18 @@ const LEGACY_CLI_FIELDS = [
  * fail-fast 会把坏旧文件放大成所有命令不可用。
  */
 export async function migrateLegacyCliSettings(): Promise<void> {
+  // remove-machine 503：machineId 随 machine 概念移除清除——cli 配置残留字段一次性删除
+  //（幂等：无残留不写盘；任何命令启动都会经过这里，旧文件/旧写法的 machineId 在此消失）
+  const current = await readSettings() as Settings & { machineId?: unknown }
+  if (current.machineId !== undefined) {
+    await updateSettings(settings => {
+      const next = { ...settings } as Settings & { machineId?: unknown }
+      delete next.machineId
+      return next as Settings
+    })
+    console.log('[PERSISTENCE] Removed legacy machineId from settings.cli.json')
+  }
+
   const legacyFile = join(configuration.mobiHomeDir, 'settings.json')
   if (!existsSync(legacyFile)) {
     return
@@ -300,9 +311,9 @@ export async function migrateLegacyCliSettings(): Promise<void> {
   }
 
   // 已无缺失字段则不写盘（迁移幂等，避免每次启动无谓 I/O）
-  const current = await readSettings()
+  const existing = await readSettings()
   const hasMissing = Object.keys(cliSplit).some(
-    key => (current as unknown as Record<string, unknown>)[key] === undefined
+    key => (existing as unknown as Record<string, unknown>)[key] === undefined
   )
   if (!hasMissing) {
     return
@@ -337,13 +348,6 @@ export async function clearCredentials(): Promise<void> {
   if (existsSync(configuration.privateKeyFile)) {
     await unlink(configuration.privateKeyFile);
   }
-}
-
-export async function clearMachineId(): Promise<void> {
-  await updateSettings(settings => ({
-    ...settings,
-    machineId: undefined
-  }));
 }
 
 /**

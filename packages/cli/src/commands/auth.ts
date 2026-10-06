@@ -19,7 +19,7 @@ import os from 'node:os'
 import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import { configuration } from '@mobi/node-core/configuration'
-import { readSettings, clearMachineId, updateSettings } from '@mobi/node-core/persistence'
+import { readSettings, updateSettings } from '@mobi/node-core/persistence'
 import type { CommandDefinition } from './types'
 
 /** GET/POST /cli/web-token 响应（hub 侧 webApiToken 归 hub 所有，cli 经 API 读取/轮换） */
@@ -82,7 +82,6 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
         console.log(chalk.gray(`  MOBI_API_URL: ${configuration.apiUrl}`))
         console.log(chalk.gray(`  CLI_API_TOKEN: ${hasToken ? 'set' : 'missing'}`))
         console.log(chalk.gray(`  Token Source: ${tokenSource}`))
-        console.log(chalk.gray(`  Machine ID: ${settings.machineId ?? 'not set'}`))
         console.log(chalk.gray(`  Host: ${os.hostname()}`))
 
         if (!hasToken) {
@@ -142,8 +141,7 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
             ...current,
             cliApiToken: undefined
         }))
-        await clearMachineId()
-        console.log(chalk.green('Cleared local credentials (token and machineId).'))
+        console.log(chalk.green('Cleared local credentials (token).'))
         console.log(chalk.gray('Note: If CLI_API_TOKEN is set via environment variable, it will still be used.'))
         return
     }
