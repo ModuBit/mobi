@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+import { homedir } from 'node:os'
+
+/** 宿主 homeDir（401 起 workspaces homeDir 校验直源宿主静态身份，测试路径须落 home 内） */
+const HOME = homedir()
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import type { Server } from 'socket.io'
 import { SyncEngine } from '../../../src/sync/syncEngine'
@@ -82,7 +86,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
             body: JSON.stringify({
                 name: input.name,
                 machineId: input.machineId,
-                folders: input.folders ?? [{ path: `/a/${input.name}`, primary: true }],
+                folders: input.folders ?? [{ path: `${HOME}/e2e-ws/${input.name}`, primary: true }],
             }),
         })
         return { res, data: await res.json() as { workspace?: { id: string; name: string } } }
@@ -101,7 +105,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 headers: authHeaders,
                 body: JSON.stringify({
                     name: 'bad', machineId: 'm1',
-                    folders: [{ path: '/a', primary: true }, { path: '/b', primary: true }],
+                    folders: [{ path: `${HOME}/a`, primary: true }, { path: `${HOME}/b`, primary: true }],
                 }),
             })
             expect(res.status).toBe(400)
@@ -210,7 +214,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 'tag-patch-ns', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
             )
             const other = engine.createWorkspace('other', {
-                machineId: 'mA', name: 'other-ns', folders: [{ path: '/o', primary: true }],
+                machineId: 'mA', name: 'other-ns', folders: [{ path: `${HOME}/o`, primary: true }],
             })
 
             const res = await app.request(`/api/sessions/${session.id}`, {
@@ -475,9 +479,6 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
     describe('folders homeDir 校验（V8：建工作区时前置拦截，避免 spawn 时才 403）', () => {
         test('folder 在目标机器 homeDir 外 → 400', async () => {
-            // 走 engine 注册路径（与生产 CLI 一致，machineCache 可见）；store 直插缓存不可见
-            engine.getOrCreateMachine('m-home', { homeDir: '/home/u' }, null, 'default')
-
             const res = await app.request('/api/workspaces', {
                 method: 'POST',
                 headers: authHeaders,
@@ -498,21 +499,9 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 body: JSON.stringify({
                     name: 'ok-proj', machineId: 'm-home',
                     folders: [
-                        { path: '/home/u/work/demo', primary: true },
-                        { path: '/home/u/work/shared', primary: false }
+                        { path: `${HOME}/work/demo`, primary: true },
+                        { path: `${HOME}/work/shared`, primary: false }
                     ]
-                })
-            })
-            expect(res.status).toBe(200)
-        })
-
-        test('机器未知（无 homeDir）→ 放行（与 spawn 路由同语义）', async () => {
-            const res = await app.request('/api/workspaces', {
-                method: 'POST',
-                headers: authHeaders,
-                body: JSON.stringify({
-                    name: 'no-machine-proj', machineId: 'm-ghost',
-                    folders: [{ path: '/any/where', primary: true }]
                 })
             })
             expect(res.status).toBe(200)
@@ -525,7 +514,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 headers: authHeaders,
                 body: JSON.stringify({
                     name: 'patch-proj', machineId: 'm-home',
-                    folders: [{ path: '/home/u/work/patch', primary: true }]
+                    folders: [{ path: `${HOME}/work/patch`, primary: true }]
                 })
             })
             const { workspace } = await created.json() as { workspace: { id: string } }

@@ -48,8 +48,6 @@ function makeEngine(capture: BridgeCapture): SyncEngine {
         registerSessionTracking: () => {},
     }
     const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost(() => bridge))
-    // 本机自注册（spawn 寻址前提；ticket-20 起常驻 active）
-    engine.registerLocalMachine('machine-p1', { host: 'test-host' }, null, 'default')
     return engine
 }
 

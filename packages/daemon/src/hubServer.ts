@@ -42,9 +42,7 @@ import { SnapshotSync } from './sync/snapshotSync'
 import { LocalMachineHost } from './machine/LocalMachineHost'
 import type { RunnerSessionBridge } from './runner/run'
 import { createSessionTrackingSync } from './runner/sessionTracking'
-import { ensureMachineId } from './runner/authSetup'
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
-import { updateExecutorState } from './sync/executorRuntime'
+import { updateExecutorState as writeExecutorState } from './sync/executorRuntime'
 import type { RunnerState } from '@mobi/node-core/api/types'
 import { parseAccessToken } from './utils/accessToken'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
@@ -69,10 +67,11 @@ export interface HubHandle {
      */
     setRunnerBridge(bridge: RunnerSessionBridge): void
     /**
-     * 本机 runnerState 直写（ticket-20，旧 machine 通道 updateRunnerState 的替身）：
-     * daemon 编排注入给 runner core——spawn 结果上报 / 关停状态经此落库并广播。
+     * executor 状态直写（ticket-20 建，401 起 machineCache 落库退场）：daemon 编排注入给
+     * runner core——spawn 结果上报 / 关停状态经此写 executorRuntime 内存单例并广播
+     * daemon-status。
      */
-    updateLocalMachineRunnerState(handler: (state: RunnerState | null) => RunnerState): void
+    updateExecutorState(handler: (state: RunnerState | null) => RunnerState): void
     /** 优雅关停：清 state → 通知/SSE/engine/web 逐层停。幂等（二次调用为 no-op） */
     stop(): Promise<void>
 }
@@ -209,19 +208,11 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         new LocalMachineHost(() => runnerBridge)
     )
 
-    // 本机自注册（ticket-20）：machine 通道删除，daemon 即本机——启动时 upsert 本机行并
-    // 常驻 active（无心跳，也无过期翻转点——ticket-25 起机器过期逻辑已删）。machineId 与
-    // runner 侧 authSetup 同源（settings 持久化的 UUID，ensureMachineId 首次生成）。
-    // runnerState 同时镜像进 executorRuntime 内存单例（205：权威读源），落库仅诊断兼容（R2）
-    const localMachineId = await ensureMachineId()
+    // daemon 主 namespace 盖章 + executor 初始态（401：machines 行自注册退场——
+    // store 层已删，executor 权威状态只在 executorRuntime 内存单例，205 定）
+    syncEngine.setDaemonNamespace(parseAccessToken(configuration.cliApiToken)?.namespace ?? 'default')
     const initialRunnerState: RunnerState = { status: 'running', pid: process.pid, startedAt: Date.now() }
-    syncEngine.registerLocalMachine(
-        localMachineId,
-        buildMachineMetadata(),
-        initialRunnerState,
-        parseAccessToken(configuration.cliApiToken)?.namespace ?? 'default'
-    )
-    updateExecutorState(() => initialRunnerState)
+    writeExecutorState(() => initialRunnerState)
 
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)
@@ -275,15 +266,13 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     }
 
     /**
-     * 本机 executor 状态直写（ticket-20 建，205 收敛读源）：daemon 编排注入给 runner core
-     * ——spawn 结果上报 / 关停状态经此①写 executorRuntime 内存单例（权威读源，
-     * /api/daemon/status 与 daemon-status SSE 的数据源）②落库 machineCache（R2：诊断
-     * 兼容暂留，401 store 退场时删）③广播 daemon-status 事件。
-     * handler 只应用一次（以 executorRuntime 旧值为基），machineCache 落库取其结果。
+     * executor 状态直写（ticket-20 建，205 收敛读源，401 落库退场）：daemon 编排注入给
+     * runner core——spawn 结果上报 / 关停状态经此①写 executorRuntime 内存单例（权威读源，
+     * /api/daemon/status 与 daemon-status SSE 的数据源）②广播 daemon-status 事件。
+     * handler 只应用一次（以 executorRuntime 旧值为基）。
      */
-    const updateLocalMachineRunnerState = (handler: (state: RunnerState | null) => RunnerState): void => {
-        const next = updateExecutorState(handler)
-        syncEngine?.updateMachineRunnerState(localMachineId, () => next)
+    const updateExecutorState = (handler: (state: RunnerState | null) => RunnerState): void => {
+        writeExecutorState(handler)
         syncEngine?.publishDaemonStatus()
     }
 
@@ -292,7 +281,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         hostPort: config.hostPort,
         dataDir: config.dataDir,
         setRunnerBridge,
-        updateLocalMachineRunnerState,
+        updateExecutorState,
         stop: async () => {
             if (stopped) return
             stopped = true

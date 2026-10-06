@@ -36,20 +36,6 @@ export type StoredSession = {
     seq: number
 }
 
-export type StoredMachine = {
-    id: string
-    namespace: string
-    createdAt: number
-    updatedAt: number
-    metadata: unknown | null
-    metadataVersion: number
-    runnerState: unknown | null
-    runnerStateVersion: number
-    active: boolean
-    activeAt: number | null
-    seq: number
-}
-
 export type StoredMessage = {
     id: string
     sessionId: string

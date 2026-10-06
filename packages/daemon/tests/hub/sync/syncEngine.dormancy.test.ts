@@ -81,7 +81,6 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
 
 /** 在线机器 + 休眠会话（有 machineId/nativeSessionId 的完整 metadata） */
 function seedDormantSession(h: ReturnType<typeof makeWakeEngine>) {
-    h.engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
     const session = h.engine.getOrCreateSession(
         'wake-session',
         { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' },
@@ -184,7 +183,6 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
         const engine = new SyncEngine(store, io, registry, sseManager, undefined, throwingHost)
         try {
-            engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
             const session = engine.getOrCreateSession(
                 'wake-throw', { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' }, null, 'default',
             )

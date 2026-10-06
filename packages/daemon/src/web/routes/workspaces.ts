@@ -21,7 +21,7 @@ import { z } from 'zod'
 import { checkWorkspaceAssignable, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
-import { requireSyncEngine } from './guards'
+import { requireHostHomeDir, requireSyncEngine } from './guards'
 
 const listWorkspacesQuerySchema = z.object({
     machineId: z.string().min(1).optional()
@@ -55,9 +55,10 @@ export function createWorkspacesRoutes(getSyncEngine: () => SyncEngine | null): 
     const validateFoldersWithinHomeDir = (
         engine: SyncEngine, machineId: string | undefined, folders: Array<{ path: string }>
     ): string | null => {
-        // 机器未知（查不到归属机器）时放行，与守卫语义一致
-        if (!machineId) return null
-        const homeDir = engine.getMachine(machineId)?.metadata?.homeDir
+        // 单机世界（401）：machineId 形参仅为 R1 契约残留（404 删），归属机器恒本机，
+        // homeDir 直源宿主静态身份（与 requireHostHomeDir 同源）
+        void engine
+        const homeDir = requireHostHomeDir()
         if (!homeDir) return null
         for (const folder of folders) {
             const validation = validateHomeDirPath(folder.path, homeDir)

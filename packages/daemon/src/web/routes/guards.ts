@@ -17,7 +17,7 @@
 import type { Context } from 'hono'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
-import type { Machine, Session, SyncEngine } from '../../sync/syncEngine'
+import type { Session, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 
 export function requireSyncEngine(
@@ -65,22 +65,6 @@ export function requireSessionFromParam(
         return result
     }
     return result
-}
-
-export function requireMachine(
-    c: Context<WebAppEnv>,
-    engine: SyncEngine,
-    machineId: string
-): Machine | Response {
-    const namespace = c.get('namespace')
-    const machine = engine.getMachine(machineId)
-    if (!machine) {
-        return c.json({ error: 'Machine not found' }, 404)
-    }
-    if (machine.namespace !== namespace) {
-        return c.json({ error: 'Machine access denied' }, 403)
-    }
-    return machine
 }
 
 /**

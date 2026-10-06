@@ -20,7 +20,7 @@
  * `startRunnerCore` 只负责「起一个 runner」：锁、control server、定时自检，返回
  * `RunnerHandle`。machine 通道已删（ticket-20）：本机 machine 行由 hub 侧自注册，
  * runner 侧运行时事实（httpPort / spawn 结果 / 关停状态）经注入的
- * {@link RunnerCoreDeps.updateMachineRunnerState} 直写。**不含任何进程级职责**——
+ * {@link RunnerCoreDeps.updateExecutorState} 直写。**不含任何进程级职责**——
  * exit logger、信号处理、崩溃检测由调用方承担（daemonEntry 同进程编排）。
  */
 
@@ -86,7 +86,7 @@ export interface RunnerHandle {
  */
 export interface RunnerCoreDeps {
     /** 本机 runnerState 直写（spawn 结果上报 / httpPort / 关停状态） */
-    updateMachineRunnerState: (handler: (state: RunnerState | null) => RunnerState) => void
+    updateExecutorState: (handler: (state: RunnerState | null) => RunnerState) => void
 }
 
 /** 锁已被占用：另一 runner 实例在跑（薄壳据此静默退出，非错误） */
@@ -606,7 +606,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
 
   // 本机 machine 行由 hub 侧自注册（ticket-20：machine 通道删除，daemon 即本机）；
   // runner 这里只补 control server 端口等运行时事实（httpPort 在 hub 注册时未知）
-  deps?.updateMachineRunnerState((state: RunnerState | null) => ({
+  deps?.updateExecutorState((state: RunnerState | null) => ({
     ...(state ?? { status: 'running' }),
     status: 'running',
     pid: process.pid,
@@ -616,7 +616,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
   logger.debug('[RUNNER RUN] Runner state reported (local machine channel)');
 
   reportSpawnOutcomeToHub = (outcome) => {
-    void deps?.updateMachineRunnerState((state: RunnerState | null) => {
+    void deps?.updateExecutorState((state: RunnerState | null) => {
       const baseState: RunnerState = state
         ? { ...state }
         : { status: 'running' };
@@ -672,7 +672,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     logger.debug('[RUNNER RUN] Prune interval cleared');
 
     // Update runner state before shutting down（同步直写，无需等待发送窗口）
-    deps?.updateMachineRunnerState((state: RunnerState | null) => ({
+    deps?.updateExecutorState((state: RunnerState | null) => ({
       ...state,
       status: 'shutting-down',
       shutdownRequestedAt: Date.now(),

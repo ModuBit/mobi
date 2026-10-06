@@ -95,8 +95,9 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     // runner 由 CLI start 命令先行替换，这里不越权重写
     let runner: RunnerHandle
     try {
-        // runner 运行时事实直写 hub（ticket-20 machine 通道删除后的本地替身）
-        runner = await startRunnerCore({ updateMachineRunnerState: (handler) => hub.updateLocalMachineRunnerState(handler) })
+        // runner 运行时事实直写 hub（ticket-20 machine 通道删除后的本地替身；
+        // 401 起 runner core 选项同步去 machine 命名）
+        runner = await startRunnerCore({ updateExecutorState: (handler) => hub.updateExecutorState(handler) })
     } catch (error) {
         if (error instanceof RunnerLockHeldError) {
             logger.debug('[DAEMON] Another runner holds the lock; stopping hub and exiting')

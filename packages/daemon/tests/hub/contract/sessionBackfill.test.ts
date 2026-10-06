@@ -92,9 +92,6 @@ function makeHarness(): Harness {
     // hubServer.setRunnerBridge 同款 glue（单源 createSessionTrackingSync）
     engine.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), (signal) => bridge!.registerSessionTracking(signal)))
 
-    // 注册本机 machine（spawn 寻址前提；ticket-20 起自注册即常驻 active）
-    engine.registerLocalMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
-
     return {
         engine,
         store,

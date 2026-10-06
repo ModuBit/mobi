@@ -18,7 +18,6 @@ import { Database } from 'bun:sqlite'
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
 import { ContextBoundaryStore } from './contextBoundary'
 import { WorkspaceStore } from './workspaceStore'
@@ -28,14 +27,12 @@ import { migrateLegacyRefMessages } from './legacyRefMigration'
 import { SessionStore } from './sessionStore'
 
 export type {
-    StoredMachine,
     StoredMessage,
     StoredWorkspace,
     StoredPushSubscription,
     StoredSession,
     VersionedUpdateResult
 } from './types'
-export { MachineStore } from './machineStore'
 export { MessageStore } from './messageStore'
 export { ContextBoundaryStore } from './contextBoundary'
 export { WorkspaceStore } from './workspaceStore'
@@ -49,7 +46,6 @@ const SCHEMA_VERSION: number = 1
 const SCHEMA_RELEASE_BASELINE: number = 0
 const REQUIRED_TABLES = [
     'sessions',
-    'machines',
     'messages',
     'push_subscriptions',
     'workspaces'
@@ -60,7 +56,6 @@ export class Store {
     private readonly dbPath: string
 
     readonly sessions: SessionStore
-    readonly machines: MachineStore
     readonly messages: MessageStore
     readonly contextBoundary: ContextBoundaryStore
     readonly sessionFork: SessionForkStore
@@ -106,7 +101,6 @@ export class Store {
         }
 
         this.sessions = new SessionStore(this.db)
-        this.machines = new MachineStore(this.db)
         this.messages = new MessageStore(this.db)
         this.contextBoundary = new ContextBoundaryStore(this.db)
         this.sessionFork = new SessionForkStore(this.db)

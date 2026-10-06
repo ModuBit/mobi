@@ -15,10 +15,9 @@
  */
 
 /**
- * machine 通道过渡路由（ticket 203 后仅剩 GET /machines 列表——web useMachines 与
- * smoke 建 workspace 的 machineId 来源，205 切 /api/daemon/status 后随消费方一起删；
- * 文件域已迁 routes/files.ts，spawn 已迁 routes/sessions.ts，元数据已迁 routes/sdk.ts，
- * webTools 在 routes/webTools.ts）。
+ * GET /api/machines 过渡 shim（401 起 store 层退场，数据源换 daemon status 投影——
+ * 恒单行、id 恒 'local'；消费方只剩 web WorkspaceFormModal 的 machineId 下拉与 smoke
+ * 建工作区，R1（workspaces.machine_id NOT NULL）未解前保留契约，404 随消费方整条删）。
  */
 
 import { Hono } from 'hono'
@@ -34,9 +33,15 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Not connected' }, 503)
         }
 
-        const namespace = c.get('namespace')
-        const machines = engine.getOnlineMachinesByNamespace(namespace)
-        return c.json({ machines })
+        const status = engine.getDaemonStatus()
+        return c.json({
+            machines: [{
+                id: 'local',
+                active: true,
+                metadata: status.host,
+                runnerState: status.executor,
+            }],
+        })
     })
 
     return app

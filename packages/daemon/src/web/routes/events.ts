@@ -71,7 +71,6 @@ export function createEventsRoutes(
         const query = c.req.query()
         const all = parseBoolean(query.all)
         const sessionId = parseOptionalId(query.sessionId)
-        const machineId = parseOptionalId(query.machineId)
         const subscriptionId = randomUUID()
         const visibility = parseVisibility(query.visibility)
         // snapshot delta 能力协商（票 02）：老 web 不带参数 → 恒收全量（零破坏升级）
@@ -79,7 +78,7 @@ export function createEventsRoutes(
         const namespace = c.get('namespace')
         let resolvedSessionId = sessionId
 
-        if (sessionId || machineId) {
+        if (sessionId) {
             const engine = getSyncEngine()
             if (!engine) {
                 return c.json({ error: 'Not connected' }, 503)
@@ -91,15 +90,6 @@ export function createEventsRoutes(
                 }
                 resolvedSessionId = sessionResult.sessionId
             }
-            if (machineId) {
-                const machine = engine.getMachine(machineId)
-                if (!machine) {
-                    return c.json({ error: 'Machine not found' }, 404)
-                }
-                if (machine.namespace !== namespace) {
-                    return c.json({ error: 'Machine access denied' }, 403)
-                }
-            }
         }
 
         return streamSSE(c, async (stream) => {
@@ -108,7 +98,6 @@ export function createEventsRoutes(
                 namespace,
                 all,
                 sessionId: resolvedSessionId,
-                machineId,
                 visibility,
                 snapshotDelta,
                 send: (event) => stream.writeSSE({ data: JSON.stringify(event) }),

@@ -32,7 +32,7 @@ interface EngineHandle {
     cleanup: () => void
     /** 手动标记会话为 active（模拟 /session-started webhook） */
     markActive: (sessionId: string) => void
-    /** 获取底层 machineHost，用于恢复原始方法 */
+    /** 获取底层 executor（原 machineHost），用于恢复原始方法 */
     getMachineHost: () => any
 }
 
@@ -81,9 +81,6 @@ function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
     // LocalMachineHost 的直调路径
     const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost())
 
-    // 注册本机 machine（spawn 寻址前提；ticket-20 起自注册即常驻 active）
-    engine.registerLocalMachine(MACHINE_ID, { host: 'test-host' }, {}, NAMESPACE)
-
     // executor 就绪（ticket 201 起 resume/spawn 判据；机器列表层已删）
     if (opts.executorReady !== false) {
         engine.markExecutorReady()
@@ -105,7 +102,7 @@ function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
                 running: false,
             })
         },
-        getMachineHost: () => (engine as any).machineHost,
+        getMachineHost: () => (engine as any).executor,
     }
 }
 
@@ -127,7 +124,7 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
     })
 
     test('新会话 spawn → RPC 成功返回 sessionId', async () => {
-        // Mock machineHost.spawnSession 返回成功
+        // Mock executor.spawnSession 返回成功
         h.getMachineHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: 'session-new-1',
@@ -142,7 +139,7 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
     })
 
     test('新会话收到 unexpected already-running → error (S09)', async () => {
-        // Mock machineHost 返回 already-running（新会话不应该出现）
+        // Mock executor 返回 already-running（新会话不应该出现）
         h.getMachineHost().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
@@ -237,7 +234,7 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
         // 创建一个未 active 的会话（用于 resume），必须有完整的 metadata.path
         const existing = createSessionWithPath(h, '/tmp/already')
 
-        // Mock machineHost 返回 already-running
+        // Mock executor 返回 already-running
         h.getMachineHost().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
@@ -311,7 +308,7 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
     test('runner 返回 error → 原样传递', async () => {
         const existing = createSessionWithPath(h, '/tmp/error')
 
-        // Mock machineHost 返回错误
+        // Mock executor 返回错误
         h.getMachineHost().spawnSession = mock(async () => ({
             type: 'error' as const,
             message: 'Test spawn failed',

@@ -279,8 +279,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
     test('resumeToken 用 fork 行预生成 nativeSessionId（禁改 parentNativeId）', async () => {
         const h = makeSpawnEngine()
         try {
-            // executor 就绪（ticket 201 起 resume 判据；机器列表层已删）
-            h.engine.registerLocalMachine('machine-1', { host: 'h-1', platform: 'darwin', mobiCliVersion: 'test' }, null, 'default')
+            // executor 就绪（ticket 201 起 resume 判据）
             h.engine.markExecutorReady()
 
             // 建 parent + fork 行（走 forkSession 编排，fork 行 metadata 由 store 层写入）
