@@ -92,11 +92,20 @@ function createLegacyDb(): void {
             content TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             seq INTEGER NOT NULL,
-            metadata TEXT,
+            local_id TEXT,
             native_id TEXT GENERATED ALWAYS AS (json_extract(metadata, '$.nativeId')) STORED,
+            metadata TEXT,
+            deleted_at INTEGER,
+            is_sidechain INTEGER NOT NULL DEFAULT 0,
+            parent_tool_use_id TEXT,
+            category TEXT NOT NULL DEFAULT 'persistent',
+            lifecycle TEXT,
+            lifecycle_at INTEGER,
             position_at INTEGER NOT NULL,
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
+        CREATE INDEX idx_messages_session ON messages(session_id, seq);
+        CREATE INDEX idx_messages_session_queued ON messages(session_id) WHERE lifecycle = 'queued';
         CREATE TABLE push_subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             namespace TEXT NOT NULL,
@@ -177,6 +186,15 @@ describe('migrate-remove-machine', () => {
         const store = new Store(dbPath)
         expect(store.workspaces.getWorkspaces('default')).toHaveLength(2)
         store.close()
+
+        // messages 表不被本迁移触碰，须保持可用：lifecycle 行可写（fixture 曾用缺 lifecycle
+        // 列的旧形状 messages，createSchema 的 queued 部分索引在其上建不出——④门演练实锤）
+        const raw = new Database(dbPath)
+        raw.run(
+            'INSERT INTO messages (id, session_id, content, created_at, seq, position_at, lifecycle, lifecycle_at) ' +
+            "VALUES ('msg-queued', 'sess-a', '{}', 1, 2, 1, 'queued', 1)"
+        )
+        raw.close()
     })
 
     it('daemon.state.json 存在 → 拒跑不改库', () => {
