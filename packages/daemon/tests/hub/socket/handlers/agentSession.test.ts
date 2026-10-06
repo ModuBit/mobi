@@ -19,7 +19,7 @@ import { registerAgentSessionHandlers } from '../../../../src/socket/handlers/cl
 import type { AgentSessionHandlersDeps } from '../../../../src/socket/handlers/cli/agentSessionHandlers'
 import type { StoredSession } from '../../../../src/store/types'
 import type { AccessErrorReason } from '../../../../src/socket/handlers/cli/types'
-import type { AgentCreateSessionAck, AgentMachineSummary, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
+import type { AgentCreateSessionAck, AgentSendMessageTargetResult, AgentSessionSummary } from '@mobi/shared'
 
 /** 构造最小 StoredSession mock（仅含必要字段） */
 function makeStoredSession(sid: string, namespace = 'default'): StoredSession {
@@ -44,12 +44,10 @@ function makeFakeSocket() {
     }
 }
 
-type Ack = { ok: true; machines: AgentMachineSummary[] } | { ok: false; reason: string }
 type SessionsAck = { ok: true; sessions: AgentSessionSummary[] } | { ok: false; reason: string }
 type SendAck = { ok: true; results: AgentSendMessageTargetResult[] } | { ok: false; reason: string }
 
 function makeDeps(opts?: {
-    machines?: AgentMachineSummary[]
     sessions?: AgentSessionSummary[]
     createResult?: AgentCreateSessionAck
     sendResult?: AgentSendMessageTargetResult[]
@@ -66,10 +64,6 @@ function makeDeps(opts?: {
             : { ok: true as const, value: makeStoredSession(sid) }),
         // 能力对象整份交付（与生产同形）：四个方法一次给出，不再逐方法判空
         agentSessions: {
-            listMachines: (namespace: string) => {
-                seenNamespaces.push(namespace)
-                return opts?.machines ?? []
-            },
             listSessions: (namespace: string, query) => {
                 seenNamespaces.push(namespace)
                 seenQueries.push(query)
@@ -97,74 +91,12 @@ function callSend(socket: ReturnType<typeof makeFakeSocket>, payload: unknown): 
     })
 }
 
-/** 触发 listMachinesForAgent 并捕获 ack 回执 */
-function callListMachines(socket: ReturnType<typeof makeFakeSocket>, payload: unknown): Ack {
-    let answer: Ack | undefined
-    socket.emit('listMachinesForAgent', payload, (a: Ack) => { answer = a })
-    return answer!
-}
-
 function register(
     socket: ReturnType<typeof makeFakeSocket>,
     deps: AgentSessionHandlersDeps,
 ): void {
     registerAgentSessionHandlers(socket as unknown as Parameters<typeof registerAgentSessionHandlers>[0], deps)
 }
-
-describe('listMachinesForAgent handler', () => {
-    test('正常请求 → ack ok:true 带回机器清单', () => {
-        const socket = makeFakeSocket()
-        const machines: AgentMachineSummary[] = [
-            { machineId: 'm1', name: 'Mac Mini', hostname: 'host-a', activeAt: 1700 },
-        ]
-        const { deps } = makeDeps({ machines })
-        register(socket, deps)
-
-        expect(callListMachines(socket, { sid: 's1' })).toEqual({ ok: true, machines })
-    })
-
-    test('namespace 取自鉴权会话而非入参——agent 只能看到自己 namespace 的资源', () => {
-        const socket = makeFakeSocket()
-        const { deps, seenNamespaces } = makeDeps()
-        // 入参 sid 与鉴权解析出的会话不同（resume 换 id 场景）：必须用后者的 namespace
-        deps.resolveSessionAccess = (sid: string) => ({
-            ok: true as const,
-            value: makeStoredSession(`authoritative-${sid}`, 'ns-from-session'),
-        })
-        register(socket, deps)
-
-        callListMachines(socket, { sid: 's1' })
-
-        expect(seenNamespaces).toEqual(['ns-from-session'])
-    })
-
-    test('会话访问被拒 → ack ok:false 且不查机器', () => {
-        const socket = makeFakeSocket()
-        const { deps, seenNamespaces } = makeDeps()
-        deps.resolveSessionAccess = () => ({ ok: false as const, reason: 'access-denied' })
-        register(socket, deps)
-
-        expect(callListMachines(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'access-denied' })
-        expect(seenNamespaces).toHaveLength(0)
-    })
-
-    test('非法 payload（缺 sid）→ ack ok:false（invalid-payload）', () => {
-        const socket = makeFakeSocket()
-        const { deps, seenNamespaces } = makeDeps()
-        register(socket, deps)
-
-        expect(callListMachines(socket, {})).toEqual({ ok: false, reason: 'invalid-payload' })
-        expect(seenNamespaces).toHaveLength(0)
-    })
-
-    test('无在线机器 → ack ok:true 带空数组（真实空态，不是故障）', () => {
-        const socket = makeFakeSocket()
-        const { deps } = makeDeps({ machines: [] })
-        register(socket, deps)
-
-        expect(callListMachines(socket, { sid: 's1' })).toEqual({ ok: true, machines: [] })
-    })
-})
 
 /** 触发 listSessionsForAgent 并捕获 ack 回执 */
 function callListSessions(socket: ReturnType<typeof makeFakeSocket>, payload: unknown): SessionsAck {
@@ -266,7 +198,7 @@ describe('createSessionForAgent handler', () => {
         const { deps } = makeDeps({ createResult: { ok: true, sessionId: 's-new', readiness: 'ready' } })
         register(socket, deps)
 
-        expect(await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app' }))
+        expect(await callCreateSession(socket, { sid: 's1', directory: '/work/app' }))
             .toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
     })
 
@@ -277,7 +209,6 @@ describe('createSessionForAgent handler', () => {
 
         await callCreateSession(socket, {
             sid: 's1',
-            machineId: 'm1',
             directory: '/work/app',
             workspaceId: 'p1',
             model: 'opus',
@@ -289,7 +220,6 @@ describe('createSessionForAgent handler', () => {
 
         // sid 是发给 Hub 的寻址信息，不是建会话的参数——混进去会变成服务看不懂的字段
         expect(seenCreateInputs).toEqual([{
-            machineId: 'm1',
             directory: '/work/app',
             workspaceId: 'p1',
             model: 'opus',
@@ -307,7 +237,6 @@ describe('createSessionForAgent handler', () => {
 
         const bad = await callCreateSession(socket, {
             sid: 's1',
-            machineId: 'm1',
             directory: '/work/app',
             waitForReady: 'yes',
         })
@@ -315,8 +244,8 @@ describe('createSessionForAgent handler', () => {
         expect(seenCreateInputs).toHaveLength(0)
 
         // 默认值是业务规则，归 AgentSessionService（同 limit 的取舍）：这里原样透传缺失
-        await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app' })
-        expect(seenCreateInputs).toEqual([{ machineId: 'm1', directory: '/work/app' }])
+        await callCreateSession(socket, { sid: 's1', directory: '/work/app' })
+        expect(seenCreateInputs).toEqual([{ directory: '/work/app' }])
     })
 
     test('title 只校验形状：空串 / 超长拒绝，正常值透传', async () => {
@@ -324,9 +253,9 @@ describe('createSessionForAgent handler', () => {
         const { deps, seenCreateInputs } = makeDeps()
         register(socket, deps)
 
-        const blank = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app', title: '' })
+        const blank = await callCreateSession(socket, { sid: 's1', directory: '/work/app', title: '' })
         const tooLong = await callCreateSession(socket, {
-            sid: 's1', machineId: 'm1', directory: '/work/app', title: 'x'.repeat(256),
+            sid: 's1', directory: '/work/app', title: 'x'.repeat(256),
         })
 
         // 与 Web 侧改名同一上限（255）——两处规则不一样会让 agent 设得上、人改不上
@@ -344,23 +273,22 @@ describe('createSessionForAgent handler', () => {
         })
         register(socket, deps)
 
-        await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/work/app' })
+        await callCreateSession(socket, { sid: 's1', directory: '/work/app' })
 
         expect(seenNamespaces).toEqual(['ns-from-session'])
     })
 
-    test('非法 payload（缺 machineId / directory 为空 / effort 越界）→ 拒绝且不调服务', async () => {
+    test('非法 payload（directory 为空 / effort 越界）→ 拒绝且不调服务', async () => {
         const socket = makeFakeSocket()
         const { deps, seenCreateInputs } = makeDeps()
         register(socket, deps)
 
         // 空串会一路走到 spawn 才炸（runner 报 "Directory is required"），在这里挡下来更清楚
-        const missing = await callCreateSession(socket, { sid: 's1', directory: '/work/app' })
-        const blank = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '' })
-        const badEffort = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d', effort: 'max' })
+        const blankDirectory = await callCreateSession(socket, { sid: 's1', directory: '' })
+        const blank = await callCreateSession(socket, { sid: 's1', directory: '' })
+        const badEffort = await callCreateSession(socket, { sid: 's1', directory: '/d', effort: 'max' })
 
-        expect(missing.ok).toBe(false)
-        expect(blank.ok).toBe(false)
+        expect(blankDirectory.ok).toBe(false)
         expect(badEffort.ok).toBe(false)
         expect(seenCreateInputs).toHaveLength(0)
     })
@@ -371,7 +299,7 @@ describe('createSessionForAgent handler', () => {
         deps.resolveSessionAccess = () => ({ ok: false as const, reason: 'access-denied' })
         register(socket, deps)
 
-        expect((await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })).ok).toBe(false)
+        expect((await callCreateSession(socket, { sid: 's1', directory: '/d' })).ok).toBe(false)
         expect(seenCreateInputs).toHaveLength(0)
     })
 
@@ -380,11 +308,11 @@ describe('createSessionForAgent handler', () => {
             const socket = makeFakeSocket()
             const { deps } = makeDeps({ accessReason: reason })
             register(socket, deps)
-            const answer = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })
+            const answer = await callCreateSession(socket, { sid: 's1', directory: '/d' })
             return answer.ok ? '' : answer.error
         }
 
-        // 「invalid arguments」会把 agent 赶去改 machineId/directory 反复重试一个改不好的东西，
+        // 「invalid arguments」会把 agent 赶去改 directory 反复重试一个改不好的东西，
         // 而问题在 mobi 对「发问的那个会话」的认定上，与入参无关
         for (const reason of ['namespace-missing', 'access-denied'] as const) {
             const text = await rejectedError(reason)
@@ -399,11 +327,11 @@ describe('createSessionForAgent handler', () => {
 
     test('服务给的失败文案原样回给 CLI（翻译只发生在服务一处）', async () => {
         const socket = makeFakeSocket()
-        const { deps } = makeDeps({ createResult: { ok: false, error: 'No online machine with id "m1".' } })
+        const { deps } = makeDeps({ createResult: { ok: false, error: 'No workspace with id "p-missing".' } })
         register(socket, deps)
 
-        expect(await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' }))
-            .toEqual({ ok: false, error: 'No online machine with id "m1".' })
+        expect(await callCreateSession(socket, { sid: 's1', directory: '/d' }))
+            .toEqual({ ok: false, error: 'No workspace with id "p-missing".' })
     })
 })
 
@@ -504,24 +432,23 @@ describe('sendMessageToSessionForAgent handler', () => {
 
 /**
  * 服务缺席是**装配期**的一个事实（组装 bug），不是四个请求各判一遍的运行期状态——
- * 所以这里也只有一个用例，四个事件一次说清。
+ * 所以这里也只有一个用例，各事件一次说清。
  */
 describe('registerAgentSessionHandlers — 服务未装配', () => {
-    test('四个事件一律拒绝，且写明这是 mobi 的问题（不静默回空清单、也不让 agent 白等超时）', async () => {
+    test('各事件一律拒绝，且写明这是 mobi 的问题（不静默回空清单、也不让 agent 白等超时）', async () => {
         const socket = makeFakeSocket()
         // 只给鉴权解析：能力对象整个缺席，正是「组装漏了一环」的样子
         register(socket, { resolveSessionAccess: () => ({ ok: true as const, value: makeStoredSession('s1') }) })
 
-        // 关键：绝不能回 { ok: true, machines: [] } / { ok: true, sessions: [] }——那会把
-        //「服务没接上」伪装成「一台机器都没有 / 一个会话都没有」
-        expect(callListMachines(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'handler-misconfigured' })
+        // 关键：绝不能回 { ok: true, sessions: [] }——那会把
+        //「服务没接上」伪装成「一个会话都没有」
         expect(callListSessions(socket, { sid: 's1' })).toEqual({ ok: false, reason: 'handler-misconfigured' })
         expect(await callSend(socket, { sid: 's1', targets: ['B'], content: 'hi' }))
             .toEqual({ ok: false, reason: 'handler-misconfigured' })
 
         // 建会话那一支要说清「这是 mobi 的问题，别重试」——笼统回 invalid arguments
         // 会让 agent 反复改入参，去重试一个改不好的东西
-        const created = await callCreateSession(socket, { sid: 's1', machineId: 'm1', directory: '/d' })
+        const created = await callCreateSession(socket, { sid: 's1', directory: '/d' })
         expect(created.ok).toBe(false)
         expect(created.ok ? '' : created.error).toContain('do not retry')
     })

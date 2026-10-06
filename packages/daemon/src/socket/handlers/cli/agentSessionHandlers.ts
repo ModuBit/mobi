@@ -33,14 +33,9 @@ import type { AccessErrorReason, AccessResult } from './types'
 import type { StoredSession } from '../../../store'
 import type { AgentSessionOps } from '../../../sync/agentSessionService'
 
-type ListMachinesForAgentHandler = ClientToServerEvents['listMachinesForAgent']
 type ListSessionsForAgentHandler = ClientToServerEvents['listSessionsForAgent']
 type CreateSessionForAgentHandler = ClientToServerEvents['createSessionForAgent']
 type SendMessageForAgentHandler = ClientToServerEvents['sendMessageToSessionForAgent']
-
-const listMachinesPayloadSchema = z.object({
-    sid: z.string(),
-})
 
 /**
  * 入参只校验**形状**，不校验 limit 的取值区间——「上限 50、超出按上限截断」
@@ -55,10 +50,9 @@ const listSessionsPayloadSchema = z.object({
     workspaceId: z.string().optional(),
 })
 
-/** machineId / directory 非空：空串会一路走到 spawn 才炸，在这里挡下来更清楚 */
+/** directory 非空：空串会一路走到 spawn 才炸，在这里挡下来更清楚 */
 const createSessionPayloadSchema = z.object({
     sid: z.string(),
-    machineId: z.string().min(1),
     directory: z.string().min(1),
     workspaceId: z.string().optional(),
     model: z.string().optional(),
@@ -93,9 +87,10 @@ const SERVICE_UNAVAILABLE_ERROR =
 /**
  * 「发问的会话本身没过鉴权」的文案（create_session 的 `error` 字段）。
  *
- * **不能笼统回 invalid arguments**：那会让 agent 去改 machineId / directory / title 反复
+ * **不能笼统回 invalid arguments**：那会让 agent 去改 directory / title 反复
  * 重试一个改不好的东西，而问题在 mobi 对「发问的那个会话」的认定上，与入参无关
- *（list / send 三分支回的是 access.reason，口径本就不同）。
+ *（list / send 三分支回的是 access.reason，口径本就不同）。`machineId` 入参已随
+ * machine 概念移除退场（remove-machine 301）。
  *
  * 分两句是因为**处置不同**：not-found = 那个会话已经没了；另两种 = mobi 没认出它的身份。
  * 两者都不是重试能解决的，所以都写明别重试。
@@ -120,7 +115,6 @@ export type AgentSessionHandlersDeps = {
 }
 
 type AgentSessionEventName =
-    | 'listMachinesForAgent'
     | 'listSessionsForAgent'
     | 'createSessionForAgent'
     | 'sendMessageToSessionForAgent'
@@ -142,11 +136,11 @@ type UnavailableReplyRow = {
     [E in AgentSessionEventName]: { event: E; reply: AckFailureOf<E> }
 }[AgentSessionEventName]
 
-/** 服务缺席时回什么（四个失败分支的联合，每个的形状来自它自己那条 ack） */
+/** 服务缺席时回什么（各失败分支的联合，每个的形状来自它自己那条 ack） */
 type UnavailableReply = UnavailableReplyRow['reply']
 
 /**
- * 服务缺席时四个事件各回什么——一个事实，一张表。
+ * 服务缺席时各事件回什么——一个事实，一张表。
  *
  * **不能干脆不注册这几个事件**：CLI 的 emitWithAck 等的是一个永远不来的回执，
  * agent 那边只剩超时，连线索都没有。
@@ -154,26 +148,25 @@ type UnavailableReply = UnavailableReplyRow['reply']
  * 回执也必须写明「这是 mobi 的问题、别重试」（同 callerRejectedError 的理由）：
  * 笼统回 invalid arguments 会让 agent 反复改入参，去重试一个改不好的东西。
  *
- * ⚠️ **新增第五个 B 类事件时要记得在这里加一行**：不打算重开候选 #4 已定的形状（守卫搬出
+ * ⚠️ **新增 B 类事件时要记得在这里加一行**：不打算重开候选 #4 已定的形状（守卫搬出
  * handler 收成一张表），代价就是「事件名清单」在这份文件里而不是跟着 handler 走——漏加一行
  * 的症状是服务缺席时那个事件完全没有 handler，CLI 只等到 socket 超时（编译器拦不住，
  * `AgentSessionEventName` 是手写的联合）。
  */
 const UNAVAILABLE_REPLIES: readonly UnavailableReplyRow[] = [
-    { event: 'listMachinesForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
     { event: 'listSessionsForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
     { event: 'createSessionForAgent', reply: { ok: false, error: SERVICE_UNAVAILABLE_ERROR } },
     { event: 'sendMessageToSessionForAgent', reply: { ok: false, reason: 'handler-misconfigured' } },
 ]
 
 /**
- * 服务缺席时的四个 handler（组装的兜底路径）。
+ * 服务缺席时的 handler（组装的兜底路径）。
  *
  * 注意这**不是**「没装配就静默回空清单」：回的是明确的拒绝，且写明是 mobi 的问题——
- * 空清单会把「服务没接上」伪装成「一台机器都没有」。
+ * 空清单会把「服务没接上」伪装成「什么都没有」。
  */
 function registerUnavailableAgentSessionHandlers(socket: CliSocketWithData): void {
-    hubLogger.error('[AgentSessions] 服务未装配，四个事件一律被拒（组装 bug）')
+    hubLogger.error('[AgentSessions] 服务未装配，B 类事件一律被拒（组装 bug）')
     for (const { event, reply } of UNAVAILABLE_REPLIES) {
         // 四个事件的 ack 签名各不相同，表驱动跨过了事件联合类型——一次显式 cast，
         // 与文件里逐 handler 的 `as XxxHandler` 同类
@@ -182,7 +175,7 @@ function registerUnavailableAgentSessionHandlers(socket: CliSocketWithData): voi
 }
 
 /**
- * 注册四个 B 类事件。
+ * 注册三个 B 类事件。
  *
  * 失败分支一律走 ack 的 ok:false + reason，不抛异常——emitWithAck 的 reject
  * 留给连接故障，两者语义不同（与 ui-command 同口径）。
@@ -195,22 +188,6 @@ export function registerAgentSessionHandlers(socket: CliSocketWithData, deps: Ag
         registerUnavailableAgentSessionHandlers(socket)
         return
     }
-
-    socket.on('listMachinesForAgent', ((raw: unknown, cb: Parameters<ListMachinesForAgentHandler>[1]) => {
-        const parsed = listMachinesPayloadSchema.safeParse(raw)
-        if (!parsed.success) {
-            cb?.({ ok: false, reason: 'invalid-payload' })
-            return
-        }
-
-        const access = resolveSessionAccess(parsed.data.sid)
-        if (!access.ok) {
-            cb?.({ ok: false, reason: access.reason })
-            return
-        }
-
-        cb?.({ ok: true, machines: agentSessions.listMachines(access.value.namespace) })
-    }) as ListMachinesForAgentHandler)
 
     socket.on('listSessionsForAgent', ((raw: unknown, cb: Parameters<ListSessionsForAgentHandler>[1]) => {
         const parsed = listSessionsPayloadSchema.safeParse(raw)

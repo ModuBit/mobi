@@ -46,24 +46,8 @@ export type AgentOpFailureReason =
     | 'invalid-payload'
     | 'handler-misconfigured'
 
-/** 在线机器摘要（agent 视角：只给能派活的目标，不含离线候选） */
-export type AgentMachineSummary = {
-    machineId: string
-    /** 展示名：机器自报 displayName，缺省回退 host */
-    name: string
-    hostname: string
-    /** 最近心跳时刻（ms） */
-    activeAt: number
-}
-
-/**
- * list machines 回执。判别联合而非可选字段：成功分支必带清单，
- * 消费方无需对 machines 判空（与 UiCommandAck 的 delivered+reason? 形态不同，
- * 因为这里没有"成功但结果为空"与"失败"的语义混淆空间）。
- */
-export type AgentMachinesAck =
-    | { ok: true; machines: AgentMachineSummary[] }
-    | { ok: false; reason: AgentOpFailureReason }
+/** 在线机器摘要（agent 视角）与 list_machines 回执已随 machine 概念移除退场
+ *  （remove-machine 301）——单机世界 daemon 即宿主，agent 无需挑机器 */
 
 /**
  * list_sessions 的 status 三档。
@@ -83,11 +67,6 @@ export type AgentSessionSummary = {
     summary?: string
     /** 归属工作区（null = 游离） */
     workspaceId: string | null
-    /**
-     * 所在机器。metadata 里没有时**缺省**，不拿 host 顶替——host 是主机名不是机器 id，
-     * 顶替出来的值拿去 create_session 只会得到一个必然失败的入参。
-     */
-    machineId?: string
     /** 工作目录。metadata 解析失败时缺省（不填假值） */
     path?: string
     /** 该会话的 CLI 进程是否还活着（Hub 内存态，非落库字段） */
@@ -100,7 +79,9 @@ export type AgentSessionSummary = {
     pinned: boolean
 }
 
-/** list sessions 回执。判别联合，理由同 AgentMachinesAck */
+/** list sessions 回执。判别联合而非可选字段：成功分支必带清单，
+ *  消费方无需对 sessions 判空（与 UiCommandAck 的 delivered+reason? 形态不同，
+ *  因为这里没有"成功但结果为空"与"失败"的语义混淆空间）。 */
 export type AgentSessionsAck =
     | { ok: true; sessions: AgentSessionSummary[] }
     | { ok: false; reason: AgentOpFailureReason }
@@ -117,9 +98,7 @@ export const AGENT_SESSIONS_MAX_LIMIT = 50
 /** createSessionForAgent 入参 */
 export type AgentCreateSessionRequest = {
     sid: string
-    /** **只接受 machineId**（来自 list_machines）；不收机器名——名字会重、会变，id 不会 */
-    machineId: string
-    /** 绝对路径，在目标机器上解析。目录不存在时由那台机器创建（既有 spawn 语义） */
+    /** 绝对路径，daemon 本机解析。目录不存在时创建（既有 spawn 语义） */
     directory: string
     workspaceId?: string
     model?: string
@@ -163,7 +142,7 @@ export type AgentCreateSessionReadiness =
  * create_session 回执。
  *
  * 失败用**自由文本**而非 AgentOpFailureReason 码：建会话的失败来自上游且是开放集合
- * （目录建不出来 / 那台机器没在跑 / 超时 / 工作区归属不符），每种都会被翻译成一句
+ * （目录建不出来 / 进程起来即退 / 超时 / 工作区归属不符），每种都会被翻译成一句
  * 给人看的话。与 D15 的 per-target `error` 同口径——码在这里没有消费方。
  */
 export type AgentCreateSessionAck =
@@ -468,11 +447,10 @@ export interface ClientToServerEvents {
     'sendUiCommand': (data: { sid: string; action: UiCommandAction }, cb: (answer: UiCommandAck) => void) => void
     /** CLI→Hub 的会话操作（agent 触达其他会话，B 类）。与 A 类的区别：不依赖 Web 在线、
      *  不是瞬态呈现（落库即终态）。namespace 由 Hub 从鉴权过的 sid 解析，CLI 不填。 */
-    'listMachinesForAgent': (data: { sid: string }, cb: (answer: AgentMachinesAck) => void) => void
     /** 同上，列出会话供 agent 挑选派活目标。sid 是发问方自己的会话（Hub 据此定 namespace），
      *  其余字段是 agent 的查询条件——namespace 不在入参里，也不可信。 */
     'listSessionsForAgent': (data: AgentSessionsRequest, cb: (answer: AgentSessionsAck) => void) => void
-    /** 同上，在某台机器上起一个新会话进程。语义是「现在就有了这个会话」，
+    /** 同上，在本机起一个新会话进程。语义是「现在就有了这个会话」，
      *  没有「建了行但空着」的中间态——建完即可往里发消息。 */
     'createSessionForAgent': (data: AgentCreateSessionRequest, cb: (answer: AgentCreateSessionAck) => void) => void
     /** 同上，把一条消息投给别的会话。**不经投递队列**——Hub 落库即终态并经 RPC 直推目标

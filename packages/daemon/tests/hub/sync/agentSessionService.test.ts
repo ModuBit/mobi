@@ -21,25 +21,7 @@ import type { ReceiveReadiness } from '../../../src/sync/sessionReceiveReadiness
 import { RpcFailure, type RpcFailureKind } from '../../../src/sync/rpcFailure'
 import { AGENT_SESSIONS_DEFAULT_LIMIT, AGENT_SESSIONS_MAX_LIMIT } from '@mobi/shared'
 import type { AgentMessageDelivery, AgentMessagePushResult, UserContentBlock } from '@mobi/shared'
-import type { Machine } from '../../../src/sync/machineCache'
 import type { Session } from '@mobi/shared/types'
-
-/** 构造最小 Machine（只填服务真正读的字段） */
-function makeMachine(overrides: Partial<Machine> & { id: string }): Machine {
-    return {
-        namespace: 'default',
-        seq: 1,
-        createdAt: 1,
-        updatedAt: 100,
-        active: true,
-        activeAt: 200,
-        metadata: { host: 'host-a', platform: 'darwin', mobiCliVersion: '1.0.0' },
-        metadataVersion: 0,
-        runnerState: null,
-        runnerStateVersion: 0,
-        ...overrides,
-    }
-}
 
 /** 构造最小 Session（只填服务真正读的字段） */
 function makeSession(overrides: Partial<Session> & { id: string }): Session {
@@ -63,7 +45,6 @@ function makeSession(overrides: Partial<Session> & { id: string }): Session {
 }
 
 function makeService(
-    machines: Machine[],
     sessions: Session[] = [],
     overrides?: {
         /** spawn 失败支要连分类一起给——分类由适配器产出，服务只读它（见 rpcFailure） */
@@ -83,9 +64,8 @@ function makeService(
         canReceiveNow?: boolean
     },
 ) {
-    const seenNamespaces: string[] = []
     const seenSessionNamespaces: string[] = []
-    const spawnCalls: Array<{ machineId: string; directory: string; options: unknown }> = []
+    const spawnCalls: Array<{ directory: string; options: unknown }> = []
     const pushed: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
     const stored: Array<{ sessionId: string; delivery: AgentMessageDelivery }> = []
     const renamed: Array<{ sessionId: string; name: string }> = []
@@ -96,21 +76,15 @@ function makeService(
     /** 投递失败后读事实的入参（用来证明「先试再解释」：失败前不该有人读它） */
     const readinessReads: string[] = []
     const service = new AgentSessionService({
-        getOnlineMachinesByNamespace: (namespace) => {
-            seenNamespaces.push(namespace)
-            return machines
-        },
         getSessionsByNamespace: (namespace) => {
             seenSessionNamespaces.push(namespace)
             return sessions
         },
-        getMachineByNamespace: (machineId, namespace) =>
-            machines.find((m) => m.id === machineId && m.namespace === namespace),
         getSessionByNamespace: (sessionId, namespace) =>
             sessions.find((s) => s.id === sessionId && s.namespace === namespace),
         checkWorkspaceAssignable: () => overrides?.workspaceAssignability ?? 'ok',
-        spawnSession: async (machineId, directory, options) => {
-            spawnCalls.push({ machineId, directory, options })
+        spawnSession: async (directory, options) => {
+            spawnCalls.push({ directory, options })
             return overrides?.spawnResult ?? { type: 'success', sessionId: 'new-session-id' }
         },
         pushAgentMessage: async (sessionId, delivery) => {
@@ -147,51 +121,8 @@ function makeService(
             return overrides?.canReceiveNow
         },
     })
-    return { service, seenNamespaces, seenSessionNamespaces, spawnCalls, pushed, stored, renamed, readinessWaits, readinessReads }
+    return { service, seenSessionNamespaces, spawnCalls, pushed, stored, renamed, readinessWaits, readinessReads }
 }
-
-describe('AgentSessionService.listMachines', () => {
-    test('把 namespace 透传给在线机器查询，不做二次过滤', () => {
-        const { service, seenNamespaces } = makeService([makeMachine({ id: 'm1' })])
-        service.listMachines('ns-42')
-        // 在线过滤是查询方的职责（machineCache）；服务不重复实现一遍规则
-        expect(seenNamespaces).toEqual(['ns-42'])
-    })
-
-    test('映射为 agent 视角摘要：id / 名称 / 主机名 / 心跳时刻', () => {
-        const { service } = makeService([
-            makeMachine({
-                id: 'm1',
-                activeAt: 1700,
-                metadata: { host: 'host-a', platform: 'darwin', mobiCliVersion: '1.0.0', displayName: 'Mac Mini' },
-            }),
-        ])
-
-        expect(service.listMachines('ns')).toEqual([
-            { machineId: 'm1', name: 'Mac Mini', hostname: 'host-a', activeAt: 1700 },
-        ])
-    })
-
-    test('展示名回退链：displayName 缺省回退 host', () => {
-        const { service } = makeService([makeMachine({ id: 'm1' })])
-
-        expect(service.listMachines('ns')[0].name).toBe('host-a')
-    })
-
-    test('metadata 缺失时回退机器 id，不抛错', () => {
-        const { service } = makeService([makeMachine({ id: 'm1', metadata: null })])
-
-        expect(service.listMachines('ns')).toEqual([
-            { machineId: 'm1', name: 'm1', hostname: 'm1', activeAt: 200 },
-        ])
-    })
-
-    test('无在线机器时返回空数组（不是 undefined）', () => {
-        const { service } = makeService([])
-
-        expect(service.listMachines('ns')).toEqual([])
-    })
-})
 
 describe('AgentSessionService.listSessions — status 三档', () => {
     const sessions = [
@@ -200,25 +131,25 @@ describe('AgentSessionService.listSessions — status 三档', () => {
     ]
 
     test('缺省只列 active——未激活的进程已经不在，派活必然失败', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns').map(s => s.sessionId)).toEqual(['live'])
     })
 
     test('INACTIVE 只列未激活（用于区分「没这个会话」与「有但没在跑」）', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { status: 'INACTIVE' }).map(s => s.sessionId)).toEqual(['dead'])
     })
 
     test('ALL 两档都列', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { status: 'ALL' }).map(s => s.sessionId).sort()).toEqual(['dead', 'live'])
     })
 
     test('namespace 取自入参（由 handler 从鉴权会话解析后传入），服务不做二次过滤', () => {
-        const { service, seenSessionNamespaces } = makeService([], [])
+        const { service, seenSessionNamespaces } = makeService()
 
         service.listSessions('ns-99')
 
@@ -235,37 +166,37 @@ describe('AgentSessionService.listSessions — 关键词过滤', () => {
     ]
 
     test('命中标题', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { keyword: '重构' }).map(s => s.sessionId)).toEqual(['by-name'])
     })
 
     test('命中摘要', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { keyword: '登录' }).map(s => s.sessionId)).toEqual(['by-summary'])
     })
 
     test('命中工作目录', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { keyword: 'api-server' }).map(s => s.sessionId)).toEqual(['by-path'])
     })
 
     test('大小写不敏感，前后空白忽略', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { keyword: '  API-SERVER  ' }).map(s => s.sessionId)).toEqual(['by-path'])
     })
 
     test('空关键词等同没给——否则 agent 传个空串会得到空清单，误判成「一个会话都没有」', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { keyword: '   ' })).toHaveLength(sessions.length)
     })
 
     test('关键词是子串匹配而非分词：跨字段拼不出匹配', () => {
-        const { service } = makeService([], sessions)
+        const { service } = makeService(sessions)
 
         expect(service.listSessions('ns', { keyword: '重构修复' })).toEqual([])
     })
@@ -273,7 +204,7 @@ describe('AgentSessionService.listSessions — 关键词过滤', () => {
 
 describe('AgentSessionService.listSessions — 排序与截断', () => {
     test('active 优先，即便它的 updatedAt 更旧', () => {
-        const { service } = makeService([], [
+        const { service } = makeService([
             makeSession({ id: 'live-old', active: true, updatedAt: 100 }),
             makeSession({ id: 'dead-new', active: false, updatedAt: 999 }),
         ])
@@ -282,7 +213,7 @@ describe('AgentSessionService.listSessions — 排序与截断', () => {
     })
 
     test('同档内按最近活动降序', () => {
-        const { service } = makeService([], [
+        const { service } = makeService([
             makeSession({ id: 'older', updatedAt: 100 }),
             makeSession({ id: 'newer', updatedAt: 300 }),
             makeSession({ id: 'middle', updatedAt: 200 }),
@@ -297,7 +228,7 @@ describe('AgentSessionService.listSessions — 排序与截断', () => {
                 Array.from({ length: n }, (_, i) => [`r${i}`, { tool: 'Bash', arguments: {} }]),
             ),
         })
-        const { service } = makeService([], [
+        const { service } = makeService([
             makeSession({ id: 'older-but-more-pending', updatedAt: 100, agentState: pending(3) }),
             makeSession({ id: 'newer-no-pending', updatedAt: 300, agentState: pending(0) }),
         ])
@@ -306,7 +237,7 @@ describe('AgentSessionService.listSessions — 排序与截断', () => {
     })
 
     test('limit 截断，取排序后的前 N 条', () => {
-        const { service } = makeService([], [
+        const { service } = makeService([
             makeSession({ id: 'a', updatedAt: 100 }),
             makeSession({ id: 'b', updatedAt: 300 }),
             makeSession({ id: 'c', updatedAt: 200 }),
@@ -317,20 +248,20 @@ describe('AgentSessionService.listSessions — 排序与截断', () => {
 
     test('缺省 limit = 20', () => {
         const many = Array.from({ length: 30 }, (_, i) => makeSession({ id: `s${i}`, updatedAt: 1000 - i }))
-        const { service } = makeService([], many)
+        const { service } = makeService(many)
 
         expect(service.listSessions('ns')).toHaveLength(AGENT_SESSIONS_DEFAULT_LIMIT)
     })
 
     test('limit 超上限按上限截断（不报错——agent 要的是「给我一批」）', () => {
         const many = Array.from({ length: 60 }, (_, i) => makeSession({ id: `s${i}`, updatedAt: 1000 - i }))
-        const { service } = makeService([], many)
+        const { service } = makeService(many)
 
         expect(service.listSessions('ns', { limit: 999 })).toHaveLength(AGENT_SESSIONS_MAX_LIMIT)
     })
 
     test('非法 limit（0 / 负数 / 小数）归到合法区间', () => {
-        const { service } = makeService([], [makeSession({ id: 'a' }), makeSession({ id: 'b' })])
+        const { service } = makeService([makeSession({ id: 'a' }), makeSession({ id: 'b' })])
 
         expect(service.listSessions('ns', { limit: 0 })).toHaveLength(1)
         expect(service.listSessions('ns', { limit: -5 })).toHaveLength(1)
@@ -340,7 +271,7 @@ describe('AgentSessionService.listSessions — 排序与截断', () => {
 
 describe('AgentSessionService.listSessions — workspaceId 与字段映射', () => {
     test('workspaceId 过滤只留该工作区的会话', () => {
-        const { service } = makeService([], [
+        const { service } = makeService([
             makeSession({ id: 'in-workspace', workspaceId: 'p1' }),
             makeSession({ id: 'loose', workspaceId: null }),
             makeSession({ id: 'other-workspace', workspaceId: 'p2' }),
@@ -349,8 +280,8 @@ describe('AgentSessionService.listSessions — workspaceId 与字段映射', () 
         expect(service.listSessions('ns', { workspaceId: 'p1' }).map(s => s.sessionId)).toEqual(['in-workspace'])
     })
 
-    test('映射为 agent 视角摘要：标题 / 摘要 / 工作区 / 机器 / 目录 / 状态 / 时间 / 模型 / 置顶', () => {
-        const { service } = makeService([], [
+    test('映射为 agent 视角摘要：标题 / 摘要 / 工作区 / 目录 / 状态 / 时间 / 模型 / 置顶', () => {
+        const { service } = makeService([
             makeSession({
                 id: 's1',
                 active: true,
@@ -363,7 +294,6 @@ describe('AgentSessionService.listSessions — workspaceId 与字段映射', () 
                     host: 'host-a',
                     name: '前端重构',
                     summary: { text: '修登录', updatedAt: 1 },
-                    machineId: 'm1',
                 },
                 runtimeState: { model: 'opus' },
             }),
@@ -374,7 +304,6 @@ describe('AgentSessionService.listSessions — workspaceId 与字段映射', () 
             name: '前端重构',
             summary: '修登录',
             workspaceId: 'p1',
-            machineId: 'm1',
             path: '/work/app',
             active: true,
             running: true,
@@ -385,26 +314,24 @@ describe('AgentSessionService.listSessions — workspaceId 与字段映射', () 
     })
 
     test('metadata 缺失时相关字段缺省，不填假值', () => {
-        const { service } = makeService([], [makeSession({ id: 's1', metadata: null, workspaceId: null })])
+        const { service } = makeService([makeSession({ id: 's1', metadata: null, workspaceId: null })])
 
         const [summary] = service.listSessions('ns')
 
         expect(summary.name).toBeUndefined()
         expect(summary.summary).toBeUndefined()
-        expect(summary.machineId).toBeUndefined()
         expect(summary.path).toBeUndefined()
-        // 不拿 host 之类顶替 machineId——顶替出来的值拿去 create_session 只会得到一个必然失败的入参
         expect(summary).toMatchObject({ sessionId: 's1', workspaceId: null, pinned: false })
     })
 
     test('runtimeState 缺失时 model 缺省（agent 尚未上报，不是「没有模型」）', () => {
-        const { service } = makeService([], [makeSession({ id: 's1' })])
+        const { service } = makeService([makeSession({ id: 's1' })])
 
         expect(service.listSessions('ns')[0].model).toBeUndefined()
     })
 
     test('无会话时返回空数组（不是 undefined）', () => {
-        const { service } = makeService([], [])
+        const { service } = makeService()
 
         expect(service.listSessions('ns')).toEqual([])
     })
@@ -417,66 +344,23 @@ function failureText(result: { ok: boolean; error?: string }): string {
 }
 
 describe('AgentSessionService.createSession — 前置闸', () => {
-    const online = makeMachine({ id: 'm1', namespace: 'ns' })
-
-    test('机器不在清单里 → 人话 + 指路 list_machines，且不碰 spawn', async () => {
-        const { service, spawnCalls } = makeService([])
-
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
-
-        expect(failureText(result)).toContain('No online machine with id "m1"')
-        expect(failureText(result)).toContain('list_machines')
-        // 前置闸的价值就是「不花钱也能确定失败」——碰了 spawn 就白花一次 RPC
-        expect(spawnCalls).toHaveLength(0)
-    })
-
-    test('传机器名（而非 id）落到同一条失败——不做名字模糊匹配', async () => {
-        const { service, spawnCalls } = makeService([online])
-
-        const result = await service.createSession('ns', { machineId: 'Mac Mini', directory: '/work/app' })
-
-        expect(failureText(result)).toContain('No online machine with id "Mac Mini"')
-        expect(spawnCalls).toHaveLength(0)
-    })
-
-    test('机器在本 namespace 但已离线 → 同样拒绝（离线机器起不了会话）', async () => {
-        const { service, spawnCalls } = makeService([makeMachine({ id: 'm1', namespace: 'ns', active: false })])
-
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
-
-        expect(failureText(result)).toContain('No online machine')
-        expect(spawnCalls).toHaveLength(0)
-    })
-
-    test('机器属于别的 namespace → 看不见即拒绝（namespace 是隔离边界）', async () => {
-        const { service, spawnCalls } = makeService([makeMachine({ id: 'm1', namespace: 'other' })])
-
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
-
-        expect(failureText(result)).toContain('No online machine')
-        expect(spawnCalls).toHaveLength(0)
-    })
-
     test('workspaceId 不存在 → 拒绝，不碰 spawn', async () => {
-        const { service, spawnCalls } = makeService([online], [], { workspaceAssignability: 'not_found' })
+        const { service, spawnCalls } = makeService([], { workspaceAssignability: 'not_found' })
 
         const result = await service.createSession('ns', {
-            machineId: 'm1',
             directory: '/work/app',
             workspaceId: 'p-missing',
         })
 
         expect(failureText(result)).toContain('No workspace with id "p-missing"')
+        // 前置闸的价值就是「不花钱也能确定失败」——碰了 spawn 就白花一次 RPC
         expect(spawnCalls).toHaveLength(0)
     })
 
     test('不传 workspaceId 时跳过归属校验（游离会话是合法默认）', async () => {
         let called = 0
         const service = new AgentSessionService({
-            getOnlineMachinesByNamespace: () => [online],
             getSessionsByNamespace: () => [],
-            getMachineByNamespace: (machineId, namespace) =>
-                machineId === online.id && namespace === online.namespace ? online : undefined,
             getSessionByNamespace: () => undefined,
             checkWorkspaceAssignable: () => {
                 called++
@@ -490,7 +374,7 @@ describe('AgentSessionService.createSession — 前置闸', () => {
             canReceiveNow: () => undefined,
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        const result = await service.createSession('ns', { directory: '/work/app' })
 
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
         expect(called).toBe(0)
@@ -498,33 +382,29 @@ describe('AgentSessionService.createSession — 前置闸', () => {
 })
 
 describe('AgentSessionService.createSession — 起进程', () => {
-    const online = makeMachine({ id: 'm1', namespace: 'ns' })
-
     test('成功 → ok:true 带 sessionId', async () => {
-        const { service } = makeService([online], [], { spawnResult: { type: 'success', sessionId: 's-new' } })
+        const { service } = makeService([], { spawnResult: { type: 'success', sessionId: 's-new' } })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        const result = await service.createSession('ns', { directory: '/work/app' })
 
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
     })
 
-    test('machineId / directory 与可选选项原样透传给 spawn（缺省项不编默认值）', async () => {
-        const { service, spawnCalls } = makeService([online])
+    test('directory 与可选选项原样透传给 spawn（缺省项不编默认值）', async () => {
+        const { service, spawnCalls } = makeService([])
 
-        await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        await service.createSession('ns', { directory: '/work/app' })
 
         expect(spawnCalls).toEqual([{
-            machineId: 'm1',
             directory: '/work/app',
             options: { model: undefined, effort: undefined, permissionMode: undefined, workspaceId: undefined },
         }])
     })
 
     test('显式给的选项透传（model / effort / permissionMode / workspaceId）', async () => {
-        const { service, spawnCalls } = makeService([online])
+        const { service, spawnCalls } = makeService([])
 
         await service.createSession('ns', {
-            machineId: 'm1',
             directory: '/work/app',
             model: 'opus',
             effort: 'high',
@@ -540,22 +420,13 @@ describe('AgentSessionService.createSession — 起进程', () => {
         })
     })
 
-    test('namespace 透传用于机器解析', async () => {
-        const { service } = makeService([online])
-
-        await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
-
-        expect((await service.createSession('other-ns', { machineId: 'm1', directory: '/work/app' })).ok).toBe(false)
-    })
 })
 
 describe('AgentSessionService.createSession — 初始标题（D10 的可选 title）', () => {
-    const online = makeMachine({ id: 'm1', namespace: 'ns' })
-
     test('给了 title → 建完调改名（走人手动改名那条路），且不进 spawn 透传', async () => {
-        const { service, renamed, spawnCalls } = makeService([online], [], { spawnResult: { type: 'success', sessionId: 's-new' } })
+        const { service, renamed, spawnCalls } = makeService([], { spawnResult: { type: 'success', sessionId: 's-new' } })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: '验收会话' })
+        const result = await service.createSession('ns', { directory: '/work/app', title: '验收会话' })
 
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
         expect(renamed).toEqual([{ sessionId: 's-new', name: '验收会话' }])
@@ -564,43 +435,43 @@ describe('AgentSessionService.createSession — 初始标题（D10 的可选 tit
     })
 
     test('不给 title → 一次改名都不调（缺省就是没有名字，不编一个）', async () => {
-        const { service, renamed } = makeService([online], [], { spawnResult: { type: 'success', sessionId: 's-new' } })
+        const { service, renamed } = makeService([], { spawnResult: { type: 'success', sessionId: 's-new' } })
 
-        await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        await service.createSession('ns', { directory: '/work/app' })
 
         expect(renamed).toHaveLength(0)
     })
 
     test('改名撞 CAS 版本 → 刷新后重试一次就成（时序问题，不是规则冲突）', async () => {
-        const { service, renamed } = makeService([online], [], {
+        const { service, renamed } = makeService([], {
             spawnResult: { type: 'success', sessionId: 's-new' },
             renameFailures: 1,
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: 'T' })
+        const result = await service.createSession('ns', { directory: '/work/app', title: 'T' })
 
         expect(result.ok).toBe(true)
         expect(renamed).toEqual([{ sessionId: 's-new', name: 'T' }])
     })
 
     test('两次都改名失败 → 仍判成功（会话已建好可用，不为一个称呼把它判失败）', async () => {
-        const { service, renamed } = makeService([online], [], {
+        const { service, renamed } = makeService([], {
             spawnResult: { type: 'success', sessionId: 's-new' },
             renameFailures: 2,
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', title: 'T' })
+        const result = await service.createSession('ns', { directory: '/work/app', title: 'T' })
 
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
         expect(renamed).toHaveLength(0)
     })
 
     test('进程没起来 → 不调改名（没有会话可改名）', async () => {
-        const { service, renamed } = makeService([online], [], {
+        const { service, renamed } = makeService([], {
             spawnResult: { type: 'error', message: 'directory could not be created', failure: 'other' },
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/nope', title: 'T' })
+        const result = await service.createSession('ns', { directory: '/nope', title: 'T' })
 
         expect(result.ok).toBe(false)
         expect(renamed).toHaveLength(0)
@@ -608,59 +479,57 @@ describe('AgentSessionService.createSession — 初始标题（D10 的可选 tit
 })
 
 describe('AgentSessionService.createSession — 建完等就绪（waitForReady，D39/D42）', () => {
-    const online = makeMachine({ id: 'm1', namespace: 'ns' })
-
     test('默认等：等的是新会话，预算用服务端固定值（不暴露给 agent）', async () => {
-        const { service, readinessWaits } = makeService([online], [], {
+        const { service, readinessWaits } = makeService([], {
             spawnResult: { type: 'success', sessionId: 's-new' },
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        const result = await service.createSession('ns', { directory: '/work/app' })
 
         expect(readinessWaits).toEqual([{ sessionId: 's-new', timeoutMs: 3000 }])
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'ready' })
     })
 
     test('waitForReady:false → 一次都不等，说「没查过」而不是「不能收」', async () => {
-        const { service, readinessWaits } = makeService([online], [], {
+        const { service, readinessWaits } = makeService([], {
             spawnResult: { type: 'success', sessionId: 's-new' },
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app', waitForReady: false })
+        const result = await service.createSession('ns', { directory: '/work/app', waitForReady: false })
 
         expect(readinessWaits).toHaveLength(0)
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'not-checked' })
     })
 
     test('等满超时 → 仍算成功（会话确实建好了），只是就绪状态说成 not-ready', async () => {
-        const { service } = makeService([online], [], {
+        const { service } = makeService([], {
             spawnResult: { type: 'success', sessionId: 's-new' },
             readiness: 'timeout',
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        const result = await service.createSession('ns', { directory: '/work/app' })
 
         // 不判失败：判失败会逼 agent 再建一个，正是「一物两建」要避免的
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'not-ready' })
     })
 
     test('等待期间就翻成「不能收」（确定的否定）→ 与超时同一种说法（都是「现在收不下」）', async () => {
-        const { service } = makeService([online], [], {
+        const { service } = makeService([], {
             spawnResult: { type: 'success', sessionId: 's-new' },
             readiness: 'unavailable',
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        const result = await service.createSession('ns', { directory: '/work/app' })
 
         expect(result).toEqual({ ok: true, sessionId: 's-new', readiness: 'not-ready' })
     })
 
     test('进程没起来 → 不等（没有会话可等，也不该多花 3s 去等一个不存在的会话）', async () => {
-        const { service, readinessWaits } = makeService([online], [], {
+        const { service, readinessWaits } = makeService([], {
             spawnResult: { type: 'error', message: 'boom', failure: 'other' },
         })
 
-        const result = await service.createSession('ns', { machineId: 'm1', directory: '/work/app' })
+        const result = await service.createSession('ns', { directory: '/work/app' })
 
         expect(result.ok).toBe(false)
         expect(readinessWaits).toHaveLength(0)
@@ -668,14 +537,12 @@ describe('AgentSessionService.createSession — 建完等就绪（waitForReady�
 })
 
 describe('AgentSessionService.createSession — 失败翻译', () => {
-    const online = makeMachine({ id: 'm1', namespace: 'ns' })
-
     /** 失败支照适配器的形态构造：**分类与文案分开给**——服务只读分类，不读句子 */
     const spawnFailing = (failure: RpcFailureKind, message: string) =>
-        makeService([online], [], { spawnResult: { type: 'error', message, failure } })
+        makeService([], { spawnResult: { type: 'error', message, failure } })
 
     const spawnFailureText = async (failure: RpcFailureKind, message: string) =>
-        failureText(await spawnFailing(failure, message).service.createSession('ns', { machineId: 'm1', directory: '/d' }))
+        failureText(await spawnFailing(failure, message).service.createSession('ns', { directory: '/d' }))
 
     test('unreachable（适配器仍可能产出该分类）→ 原样透出内部文案，不翻译', async () => {
         // ticket-25 起 spawn 走本地直调，该分类正常链路不再出现；万一适配器仍抛出，
@@ -718,7 +585,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
     const targetC = makeSession({ id: 'C', namespace: 'ns', metadata: { path: '/work/c', host: 'host-a' } })
 
     test('每个目标各投一次、各落一次，逐条报成功', async () => {
-        const { service, pushed, stored } = makeService([], [sender, targetB, targetC])
+        const { service, pushed, stored } = makeService([sender, targetB, targetC])
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B', 'C'], content: 'hello' })
 
@@ -731,7 +598,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
     })
 
     test('投递与落库拿到的是同一份 delivery（信封只进投递那一份，落库那份不含信封）', async () => {
-        const { service, pushed, stored } = makeService([], [sender, targetB])
+        const { service, pushed, stored } = makeService([sender, targetB])
 
         await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hello' })
 
@@ -742,7 +609,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
     })
 
     test('delivery 带发送方名字与 id，且消息标识在投递前就已生成（D24）', async () => {
-        const { service, pushed } = makeService([], [sender, targetB])
+        const { service, pushed } = makeService([sender, targetB])
 
         await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -752,7 +619,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
     })
 
     test('同一批里不同目标拿到不同的消息标识（各自是各自会话里的一行）', async () => {
-        const { service, pushed } = makeService([], [sender, targetB, targetC])
+        const { service, pushed } = makeService([sender, targetB, targetC])
 
         await service.sendMessageToSessions('ns', 'A', { targets: ['B', 'C'], content: 'hi' })
 
@@ -761,7 +628,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
 
     test('发送方会话未命名 → fromName 降级为空串，不拿 id 冒充名字', async () => {
         const unnamed = makeSession({ id: 'A', namespace: 'ns', metadata: { path: '/w', host: 'h' } })
-        const { service, pushed } = makeService([], [unnamed, targetB])
+        const { service, pushed } = makeService([unnamed, targetB])
 
         await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -779,14 +646,14 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
         ]
 
         for (const content of cases) {
-            const { service, stored } = makeService([], [sender, targetB])
+            const { service, stored } = makeService([sender, targetB])
             await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content })
             expect(stored[0].delivery.blocks).toEqual([{ type: 'text', text: 'hello' }])
         }
     })
 
     test('部分成功不整体回滚：B 成功、不存在的目标逐条失败', async () => {
-        const { service, stored } = makeService([], [sender, targetB])
+        const { service, stored } = makeService([sender, targetB])
 
         const results = await service.sendMessageToSessions('ns', 'A', {
             targets: ['B', 'does-not-exist'],
@@ -803,7 +670,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
 
     test('目标未激活（进程已退）→ 明确失败，不投递也不落库', async () => {
         const dead = makeSession({ id: 'D', namespace: 'ns', active: false })
-        const { service, pushed, stored } = makeService([], [sender, dead])
+        const { service, pushed, stored } = makeService([sender, dead])
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['D'], content: 'hi' })
 
@@ -815,7 +682,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
     })
 
     test('落库失败仍报成功：投递已经发生，报失败会诱导 agent 重发一遍', async () => {
-        const { service, pushed } = makeService([], [sender, targetB], { storeFailure: 'disk is full' })
+        const { service, pushed } = makeService([sender, targetB], { storeFailure: 'disk is full' })
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -825,7 +692,7 @@ describe('AgentSessionService.sendMessageToSessions — 扇出', () => {
 
     test('跨 namespace 的同 id 会话取不到（解析按 id + namespace 成对）', async () => {
         const otherNamespace = makeSession({ id: 'B', namespace: 'other' })
-        const { service, pushed } = makeService([], [sender, otherNamespace])
+        const { service, pushed } = makeService([sender, otherNamespace])
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -840,7 +707,7 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
 
     /** 传输故障照适配器的形态构造：**分类与文案分开给**——服务只读分类，不读句子 */
     async function failureText(failure: RpcFailureKind, message: string, canReceiveNow?: boolean): Promise<string> {
-        const { service } = makeService([], [sender, targetB], {
+        const { service } = makeService([sender, targetB], {
             pushFailure: { kind: failure, message },
             canReceiveNow,
         })
@@ -850,7 +717,7 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
 
     /** CLI 明确拒收（跑了 handler，只是这一刻收不下）——走返回值，不走异常通道 */
     async function rejectionText(reason: string, canReceiveNow?: boolean): Promise<string> {
-        const { service } = makeService([], [sender, targetB], {
+        const { service } = makeService([sender, targetB], {
             pushVerdict: { status: 'rejected', reason },
             canReceiveNow,
         })
@@ -922,7 +789,7 @@ describe('AgentSessionService.sendMessageToSessions — RPC 失败翻译', () =>
     })
 
     test('投递失败的目标不落库（Web 上不该出现永远不会被处理的消息）', async () => {
-        const { service, stored } = makeService([], [sender, targetB], {
+        const { service, stored } = makeService([sender, targetB], {
             pushFailure: { kind: 'timeout', message: 'operation has timed out' },
         })
 
@@ -937,7 +804,7 @@ describe('AgentSessionService.sendMessageToSessions — 事实是解释，不是
     const targetB = makeSession({ id: 'B', namespace: 'ns' })
 
     test('事实为假时仍然照发：轮次之间的几十毫秒窗口不该把健康会话挡在门外', async () => {
-        const { service, pushed, readinessReads } = makeService([], [sender, targetB], { canReceiveNow: false })
+        const { service, pushed, readinessReads } = makeService([sender, targetB], { canReceiveNow: false })
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -948,7 +815,7 @@ describe('AgentSessionService.sendMessageToSessions — 事实是解释，不是
     })
 
     test('投递失败时才读事实，且读的是失败之后的值', async () => {
-        const { service, readinessReads } = makeService([], [sender, targetB], {
+        const { service, readinessReads } = makeService([sender, targetB], {
             pushFailure: { kind: 'unreachable', message: 'RPC handler not registered: B:push-agent-message' },
             canReceiveNow: false,
         })
@@ -959,7 +826,7 @@ describe('AgentSessionService.sendMessageToSessions — 事实是解释，不是
     })
 
     test('投递不等待：事实的「等」只属于 create_session', async () => {
-        const { service, readinessWaits } = makeService([], [sender, targetB])
+        const { service, readinessWaits } = makeService([sender, targetB])
 
         await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: 'hi' })
 
@@ -973,7 +840,7 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
     const targetC = makeSession({ id: 'C', namespace: 'ns' })
 
     test('四型 block 原样投递并落库（text / quote / image / document）', async () => {
-        const { service, pushed, stored } = makeService([], [sender, targetB])
+        const { service, pushed, stored } = makeService([sender, targetB])
         const content: UserContentBlock[] = [
             { type: 'text', text: 'look at this' },
             { type: 'quote', messageId: 'm-prev', role: 'user', excerpt: 'earlier question' },
@@ -991,7 +858,7 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
     })
 
     test('内容类失败对每个目标都是同一句话（一件事，不是每个目标一件事）', async () => {
-        const { service } = makeService([], [sender, targetB, targetC])
+        const { service } = makeService([sender, targetB, targetC])
 
         const results = await service.sendMessageToSessions('ns', 'A', {
             targets: ['B', 'C'],
@@ -1004,7 +871,7 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
 
     test('空内容 / 空数组 → 拒绝（nothing to send）', async () => {
         for (const content of ['', []]) {
-            const { service } = makeService([], [sender, targetB])
+            const { service } = makeService([sender, targetB])
             const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content })
             expect(results[0].ok).toBe(false)
             expect(results[0].error).toContain('nothing to send')
@@ -1012,7 +879,7 @@ describe('AgentSessionService.sendMessageToSessions — 内容闸', () => {
     })
 
     test('形状不认识 → 拒绝，并指出该用什么形态', async () => {
-        const { service, pushed } = makeService([], [sender, targetB])
+        const { service, pushed } = makeService([sender, targetB])
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: { text: 'hi' } })
 
@@ -1028,10 +895,10 @@ describe('AgentSessionService.sendMessageToSessions — 附件（单机语义）
     const image = { type: 'image' as const, source: { type: 'url' as const, value: '/work/a/pic.png' }, id: 'i1', filename: 'pic.png', size: 10 }
 
     const session = (id: string) =>
-        makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: 'host-a', machineId: 'm-a' } })
+        makeSession({ id, namespace: 'ns', metadata: { path: `/work/${id}`, host: 'host-a' } })
 
     test('带本机文件的消息 → 照常投递并落库（跨会话附件不再有机器判据）', async () => {
-        const { service, pushed, stored } = makeService([], [session('A'), session('B')])
+        const { service, pushed, stored } = makeService([session('A'), session('B')])
 
         const results = await service.sendMessageToSessions('ns', 'A', { targets: ['B'], content: image })
 

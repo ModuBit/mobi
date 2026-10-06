@@ -17,7 +17,7 @@
 /**
  * Agent 会话操作服务（B 类工具族的编排入口）。
  *
- * 职责：agent 触达其他会话的全部业务规则——列会话、列机器、建会话、
+ * 职责：agent 触达其他会话的全部业务规则——列会话、建会话、
  * 把消息投给别的会话。**方法是这些规则的唯一入口**：socket handler 只做
  * 外层校验、鉴权、调用、把结果转 ack（与 SessionMessageFactsProcessor /
  * SessionForkStore 的既有分工一致）。
@@ -33,7 +33,6 @@ import type {
     AgentCreateSessionAck,
     AgentCreateSessionReadiness,
     AgentCreateSessionRequest,
-    AgentMachineSummary,
     AgentMessageDelivery,
     AgentMessagePushResult,
     AgentSendMessageTargetResult,
@@ -46,7 +45,6 @@ import type { ReceiveReadiness } from './sessionReceiveReadiness'
 import { readRpcFailure, type RpcFailureKind } from './rpcFailure'
 import { randomUUID } from 'node:crypto'
 import { hubLogger } from '../logger'
-import type { Machine } from './machineCache'
 
 /** 工作区归属校验结论（与 Web 侧 spawn 路由同一规则的取值；单机语义下机器恒匹配，只判存在性） */
 export type WorkspaceAssignability = 'ok' | 'not_found'
@@ -84,12 +82,8 @@ interface DeliveryContext {
 }
 
 export interface AgentSessionServiceDeps {
-    /** namespace 内在线的机器；离线机器不出现在结果里（派活目标必须在线） */
-    getOnlineMachinesByNamespace: (namespace: string) => Machine[]
     /** namespace 内的全部会话（含未激活）；过滤排序由本服务负责 */
     getSessionsByNamespace: (namespace: string) => Session[]
-    /** 按 id 取机器（含离线）。派活前必须确认它**在线**——离线机器起不了会话 */
-    getMachineByNamespace: (machineId: string, namespace: string) => Machine | undefined
     /**
      * 按 id 取会话（含未激活）。投递要同时拿到**发送方**的名字/机器（信封与同机器判据）
      * 与**每个目标**的活性——两者都是「按 id 在 namespace 内解析一个会话」，一个依赖够用。
@@ -104,7 +98,7 @@ export interface AgentSessionServiceDeps {
      * 按分类值分支，不解析文案（见 rpcFailure 模块头）。类型上是必填的：这条分类
      * 跨的是一段接口，漏掉它编译器拦得住。
      */
-    spawnSession: (machineId: string, directory: string, options: {
+    spawnSession: (directory: string, options: {
         model?: string
         effort?: EffortLevel
         permissionMode?: PermissionMode
@@ -154,28 +148,8 @@ export interface AgentSessionQuery {
     workspaceId?: string
 }
 
-/** 机器 → agent 视角摘要。展示名取机器自报的 displayName，缺省回退 host。 */
-function toMachineSummary(machine: Machine): AgentMachineSummary {
-    // 展示名缺省回退到主机名，而主机名自己还可能缺省——两级回退的规则只写这一处
-    const hostname = machine.metadata?.host ?? machine.id
-    return {
-        machineId: machine.id,
-        name: machine.metadata?.displayName ?? hostname,
-        hostname,
-        activeAt: machine.activeAt,
-    }
-}
-
 export class AgentSessionService {
     constructor(private readonly deps: AgentSessionServiceDeps) {}
-
-    /**
-     * 列出可派活的机器。
-     * 只返回在线机器——离线机器的会话建不起来，列出来只会让 agent 选中一个注定失败的目标。
-     */
-    listMachines(namespace: string): AgentMachineSummary[] {
-        return this.deps.getOnlineMachinesByNamespace(namespace).map(toMachineSummary)
-    }
 
     /**
      * 列出可派活的会话（也是「有没有这个会话」的查询入口）。
@@ -194,10 +168,9 @@ export class AgentSessionService {
     }
 
     /**
-     * 在某台机器上起一个新会话进程。
+     * 在本机起一个新会话进程。
      *
-     * 三道前置闸按「便宜且确定」到「昂贵」排：机器在线 → 工作区归属 → 起进程。
-     * 前两道不花钱就能给出确定的失败原因，别让它们藏在 RPC 报错里。
+     * 前置闸（工作区归属）不花钱就能给出确定的失败原因，别让它藏在 RPC 报错里。
      *
      * 成功即代表**会话已经存在**：既有 spawn 链路会等 runner 的会话 webhook
      * （最多 15s）才返回，所以拿到 sessionId 时行已落、进程已起。
@@ -206,16 +179,6 @@ export class AgentSessionService {
      * 「收得下消息」是两个时刻，中间隔着上百毫秒。
      */
     async createSession(namespace: string, input: AgentCreateSessionInput): Promise<AgentCreateSessionAck> {
-        const machine = this.deps.getMachineByNamespace(input.machineId, namespace)
-        if (!machine || !machine.active) {
-            return {
-                ok: false,
-                error:
-                    `No online machine with id "${input.machineId}". ` +
-                    'Call list_machines to get the ids of machines that are reachable right now.',
-            }
-        }
-
         if (input.workspaceId !== undefined) {
             const assignable = this.deps.checkWorkspaceAssignable(input.workspaceId, namespace)
             if (assignable === 'not_found') {
@@ -223,7 +186,7 @@ export class AgentSessionService {
             }
         }
 
-        const result = await this.deps.spawnSession(machine.id, input.directory, {
+        const result = await this.deps.spawnSession(input.directory, {
             model: input.model,
             effort: input.effort,
             permissionMode: input.permissionMode,
@@ -411,7 +374,7 @@ export class AgentSessionService {
  */
 export type AgentSessionOps = Pick<
     AgentSessionService,
-    'listMachines' | 'listSessions' | 'createSession' | 'sendMessageToSessions'
+    'listSessions' | 'createSession' | 'sendMessageToSessions'
 >
 
 /**
@@ -593,7 +556,6 @@ function toAgentSessionSummary(session: Session): AgentSessionSummary {
     if (metadata) {
         summary.name = metadata.name
         summary.summary = metadata.summary?.text
-        summary.machineId = metadata.machineId
         summary.path = metadata.path
     }
 
