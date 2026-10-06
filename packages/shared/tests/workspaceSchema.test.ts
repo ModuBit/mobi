@@ -70,12 +70,14 @@ describe('WorkspaceSchema', () => {
     it('接受完整对象', () => {
         expect(WorkspaceSchema.safeParse({ ...base, folders: [{ path: '/a/mobi', primary: true }] }).success).toBe(true)
     })
-    it('缺 machineId 失败', () => {
+    it('machineId 可缺省（402 起过渡 optional，404 彻底删）', () => {
         const { id, namespace, name, createdAt, updatedAt, seq } = base
-        expect(WorkspaceSchema.safeParse({
+        const withoutMachine = {
             id, namespace, name, createdAt, updatedAt, seq,
             folders: [{ path: '/a', primary: true }],
-        }).success).toBe(false)
+        }
+        expect(WorkspaceSchema.safeParse(withoutMachine).success).toBe(true)
+        expect(WorkspaceSchema.safeParse({ ...withoutMachine, machineId: 'm1' }).success).toBe(true)
     })
 })
 

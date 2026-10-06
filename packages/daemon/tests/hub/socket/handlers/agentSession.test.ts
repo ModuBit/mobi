@@ -24,7 +24,7 @@ import type { AgentCreateSessionAck, AgentSendMessageTargetResult, AgentSessionS
 /** 构造最小 StoredSession mock（仅含必要字段） */
 function makeStoredSession(sid: string, namespace = 'default'): StoredSession {
     return {
-        id: sid, tag: null, namespace, machineId: null,
+        id: sid, tag: null, namespace,
         createdAt: 1, updatedAt: 1, metadata: null, metadataVersion: 0,
         agentState: null, agentStateVersion: 0, runtimeState: null,
         runtimeStateUpdatedAt: null, workspaceId: null, pinned: false, seq: 1,

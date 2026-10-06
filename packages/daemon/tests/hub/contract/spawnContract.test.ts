@@ -349,17 +349,16 @@ describe('Spawn Contract: 会话不存在或无权限', () => {
         const sessionId = randomUUID()
         h.store.getDatabaseForTesting().prepare(`
             INSERT INTO sessions (
-                id, tag, namespace, machine_id, created_at, updated_at,
+                id, tag, namespace, created_at, updated_at,
                 metadata, metadata_version,
                 agent_state, agent_state_version,
                 runtime_state, runtime_state_updated_at,
                 workspace_id, seq
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
             sessionId,
             'test-tag',
             NAMESPACE,
-            MACHINE_ID,
             Date.now(),
             Date.now(),
             JSON.stringify({}), // 空的 metadata，没有 path

@@ -79,13 +79,12 @@ describe('workspaces REST 路由 + 会话归属', () => {
     })
 
     /** 经 API 创建工作区，返回 workspace */
-    async function createWorkspace(input: { name: string; machineId: string; folders?: Array<{ path: string; primary: boolean }> }) {
+    async function createWorkspace(input: { name: string; folders?: Array<{ path: string; primary: boolean }> }) {
         const res = await app.request('/api/workspaces', {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify({
                 name: input.name,
-                machineId: input.machineId,
                 folders: input.folders ?? [{ path: `${HOME}/e2e-ws/${input.name}`, primary: true }],
             }),
         })
@@ -94,7 +93,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
     describe('POST /api/workspaces', () => {
         test('合法创建返回 { workspace }', async () => {
-            const { res, data } = await createWorkspace({ name: 'mobi', machineId: 'm1' })
+            const { res, data } = await createWorkspace({ name: 'mobi' })
             expect(res.status).toBe(200)
             expect(data.workspace?.name).toBe('mobi')
         })
@@ -104,7 +103,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({
-                    name: 'bad', machineId: 'm1',
+                    name: 'bad',
                     folders: [{ path: `${HOME}/a`, primary: true }, { path: `${HOME}/b`, primary: true }],
                 }),
             })
@@ -116,7 +115,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({
-                    name: 'empty-path', machineId: 'm1',
+                    name: 'empty-path',
                     folders: [{ path: '', primary: true }],
                 }),
             })
@@ -126,26 +125,12 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
     })
 
-    describe('GET /api/workspaces', () => {
-        test('支持 ?machineId= 过滤', async () => {
-            await createWorkspace({ name: 'p-m1', machineId: 'm1' })
-            await createWorkspace({ name: 'p-m2', machineId: 'm2' })
-
-            const res = await app.request('/api/workspaces?machineId=m1', { headers: authHeaders })
-            expect(res.status).toBe(200)
-            const data = await res.json() as { workspaces: Array<{ id: string; name: string; machineId: string }> }
-            expect(data.workspaces.every(p => p.machineId === 'm1')).toBe(true)
-            expect(data.workspaces.some(p => p.name === 'p-m1')).toBe(true)
-            expect(data.workspaces.some(p => p.name === 'p-m2')).toBe(false)
-        })
-    })
-
     describe('GET/PATCH/DELETE /api/workspaces/:id', () => {
         test('GET 不存在 → 404；存在 → { workspace }', async () => {
             const missing = await app.request('/api/workspaces/nope', { headers: authHeaders })
             expect(missing.status).toBe(404)
 
-            const { data } = await createWorkspace({ name: 'get-me', machineId: 'm1' })
+            const { data } = await createWorkspace({ name: 'get-me' })
             const res = await app.request(`/api/workspaces/${data.workspace!.id}`, { headers: authHeaders })
             expect(res.status).toBe(200)
             const body = await res.json() as { workspace: { id: string } }
@@ -153,7 +138,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('PATCH 改名；folders 非法 → 400', async () => {
-            const { data } = await createWorkspace({ name: 'rename-me', machineId: 'm1' })
+            const { data } = await createWorkspace({ name: 'rename-me' })
             const res = await app.request(`/api/workspaces/${data.workspace!.id}`, {
                 method: 'PATCH',
                 headers: authHeaders,
@@ -172,7 +157,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('DELETE 后名下会话进 unbound，工作区 404', async () => {
-            const { data } = await createWorkspace({ name: 'del-me', machineId: 'mA' })
+            const { data } = await createWorkspace({ name: 'del-me' })
             const workspaceId = data.workspace!.id
             const session = engine.getOrCreateSession(
                 'tag-del-1', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default', undefined, undefined, workspaceId
@@ -199,7 +184,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
             const session = engine.getOrCreateSession(
                 'tag-patch-1', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
             )
-            const { data } = await createWorkspace({ name: 'on-mB', machineId: 'mB' })
+            const { data } = await createWorkspace({ name: 'on-mB' })
 
             const res = await app.request(`/api/sessions/${session.id}`, {
                 method: 'PATCH',
@@ -214,7 +199,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 'tag-patch-ns', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
             )
             const other = engine.createWorkspace('other', {
-                machineId: 'mA', name: 'other-ns', folders: [{ path: `${HOME}/o`, primary: true }],
+                name: 'other-ns', folders: [{ path: `${HOME}/o`, primary: true }],
             })
 
             const res = await app.request(`/api/sessions/${session.id}`, {
@@ -230,7 +215,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
             const legacy = engine.getOrCreateSession(
                 'tag-patch-legacy', { path: '/a', host: 'h' }, null, 'default'
             )
-            const { data } = await createWorkspace({ name: 'legacy-ok', machineId: 'mB' })
+            const { data } = await createWorkspace({ name: 'legacy-ok' })
             const legacyRes = await app.request(`/api/sessions/${legacy.id}`, {
                 method: 'PATCH',
                 headers: authHeaders,
@@ -242,7 +227,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
             const session = engine.getOrCreateSession(
                 'tag-patch-2', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
             )
-            const { data: projA } = await createWorkspace({ name: 'on-mA', machineId: 'mA' })
+            const { data: projA } = await createWorkspace({ name: 'on-mA' })
             const res = await app.request(`/api/sessions/${session.id}`, {
                 method: 'PATCH',
                 headers: authHeaders,
@@ -257,7 +242,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('PATCH { workspaceId: null } 移回「最近」', async () => {
-            const { data } = await createWorkspace({ name: 'unassign', machineId: 'mA' })
+            const { data } = await createWorkspace({ name: 'unassign' })
             const session = engine.getOrCreateSession(
                 'tag-patch-3', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default', undefined, undefined, data.workspace!.id
             )
@@ -277,7 +262,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
     describe('分页（limit/cursor）', () => {
         test('GET /api/workspaces/:id/sessions 分页', async () => {
-            const { data } = await createWorkspace({ name: 'paged', machineId: 'm1' })
+            const { data } = await createWorkspace({ name: 'paged' })
             const workspaceId = data.workspace!.id
             const ids: string[] = []
             for (let i = 0; i < 3; i++) {
@@ -333,7 +318,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
 
     describe('POST /cli/sessions 响应带 workspace', () => {
         test('带 workspaceId → 响应含 workspace 且 session.workspaceId 一致', async () => {
-            const { data } = await createWorkspace({ name: 'cli-proj', machineId: 'm1' })
+            const { data } = await createWorkspace({ name: 'cli-proj' })
             const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
@@ -364,7 +349,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('单机语义：请求 machineId 与工作区机器不同 → 照常创建（机器判据已删，ticket-25）', async () => {
-            const { data } = await createWorkspace({ name: 'cli-ghost-proj', machineId: 'mA' })
+            const { data } = await createWorkspace({ name: 'cli-ghost-proj' })
             const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
@@ -378,7 +363,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('machine 匹配 → 200 正常创建', async () => {
-            const { data } = await createWorkspace({ name: 'cli-match-proj', machineId: 'mA' })
+            const { data } = await createWorkspace({ name: 'cli-match-proj' })
             const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
@@ -394,7 +379,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('metadata.machineId 缺失（老数据/异常）→ 放行', async () => {
-            const { data } = await createWorkspace({ name: 'cli-legacy-proj', machineId: 'mA' })
+            const { data } = await createWorkspace({ name: 'cli-legacy-proj' })
             const res = await hostApp.request('/cli/sessions', {
                 method: 'POST',
                 headers: cliHeaders,
@@ -455,7 +440,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
         })
 
         test('PATCH {name, workspaceId} 组合 → 两者都生效', async () => {
-            const { data } = await createWorkspace({ name: 'combo-proj', machineId: 'mA' })
+            const { data } = await createWorkspace({ name: 'combo-proj' })
             const session = engine.getOrCreateSession(
                 'tag-rename-combo', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
             )
@@ -483,7 +468,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({
-                    name: 'bad-proj', machineId: 'm-home',
+                    name: 'bad-proj',
                     folders: [{ path: '/etc/evil', primary: true }]
                 })
             })
@@ -497,7 +482,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({
-                    name: 'ok-proj', machineId: 'm-home',
+                    name: 'ok-proj',
                     folders: [
                         { path: `${HOME}/work/demo`, primary: true },
                         { path: `${HOME}/work/shared`, primary: false }
@@ -513,7 +498,7 @@ describe('workspaces REST 路由 + 会话归属', () => {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({
-                    name: 'patch-proj', machineId: 'm-home',
+                    name: 'patch-proj',
                     folders: [{ path: `${HOME}/work/patch`, primary: true }]
                 })
             })

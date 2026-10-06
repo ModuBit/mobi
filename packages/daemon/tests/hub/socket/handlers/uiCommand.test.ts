@@ -24,7 +24,7 @@ import type { UiCommandAction } from '@mobi/shared/types'
 /** 构造最小 StoredSession mock（仅含必要字段） */
 function makeStoredSession(sid: string): StoredSession {
     return {
-        id: sid, tag: null, namespace: 'default', machineId: null,
+        id: sid, tag: null, namespace: 'default',
         createdAt: 1, updatedAt: 1, metadata: null, metadataVersion: 0,
         agentState: null, agentStateVersion: 0, runtimeState: null,
         runtimeStateUpdatedAt: null, workspaceId: null, pinned: false, seq: 1,

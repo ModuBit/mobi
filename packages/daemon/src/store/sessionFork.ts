@@ -209,7 +209,7 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
     }
     const forkedFrom: ForkedFromMetadata = { sessionId: parent.id }
 
-    // 会话 metadata 继承 parent（path/host/machineId/flavor 等身份字段随行），叠加 fork 专属字段。
+    // 会话 metadata 继承 parent（path/host/flavor 等身份字段随行），叠加 fork 专属字段。
     // contextBoundarySeq 刻意剥离：指针语义锚定 parent 的 seq 序列，残留在 fork 行上会让 fork 消息
     // 全部误判「边界之前」（rewind 入口被锁死）——剥离后由读侧 resolve 按 fork 自身行惰性回填。
     // summary 同样剥离：parent 的动态生成物（displayName 优先级高于 name，不剥离会盖住
@@ -255,13 +255,13 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
         const forkSessionId = randomUUID()
         db.prepare(`
             INSERT INTO sessions (
-                id, tag, namespace, machine_id, created_at, updated_at,
+                id, tag, namespace, created_at, updated_at,
                 metadata, metadata_version,
                 agent_state, agent_state_version,
                 runtime_state, runtime_state_updated_at,
                 workspace_id, seq
             ) VALUES (
-                @id, @tag, @namespace, @machine_id, @now, @now,
+                @id, @tag, @namespace, @now, @now,
                 @metadata, 1,
                 NULL, 1,
                 @runtime_state, @runtime_state_updated_at,
@@ -271,7 +271,6 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
             id: forkSessionId,
             tag: randomUUID(),
             namespace: parent.namespace,
-            machine_id: parent.machineId,
             now,
             metadata: JSON.stringify(forkMetadata),
             runtime_state: parent.runtimeState === null ? null : JSON.stringify(parent.runtimeState),

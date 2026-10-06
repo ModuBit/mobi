@@ -282,7 +282,7 @@ export class SyncEngine {
         return this.workspaceCache.getWorkspace(id)
     }
 
-    createWorkspace(namespace: string, input: { machineId: string; name: string; folders: WorkspaceFolder[] }): Workspace {
+    createWorkspace(namespace: string, input: { name: string; folders: WorkspaceFolder[] }): Workspace {
         return this.workspaceCache.createWorkspace(namespace, input)
     }
 

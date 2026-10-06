@@ -45,11 +45,21 @@ afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
 })
 
-/** 建一个「含 users 表 + 本机/他机混合数据」的库：用当前 Store 建新 schema，再手动补 users 表（模拟旧库） */
+/** 建一个「含 users/machines 表 + machine_id 列」的库：用当前 Store 建新 schema，
+ *  再手动补旧结构（模拟 402 前的存量库——migrate-personal-agent 的处理对象） */
 function createFixtureDb(): void {
     const store = new Store(dbPath)
     const db = store.getDatabaseForTesting()
     db.run(`
+        ALTER TABLE sessions ADD COLUMN machine_id TEXT;
+        ALTER TABLE workspaces ADD COLUMN machine_id TEXT NOT NULL DEFAULT '';
+        CREATE TABLE machines (
+            id TEXT PRIMARY KEY,
+            namespace TEXT NOT NULL DEFAULT 'default',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX idx_machines_namespace ON machines(namespace);
         CREATE TABLE users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             platform TEXT NOT NULL,

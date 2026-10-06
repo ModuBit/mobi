@@ -53,7 +53,6 @@ describe('WorkspaceCache', () => {
 
     test('createWorkspace 后缓存可读，并广播 workspace-added（带 namespace）', () => {
         const workspace = cache.createWorkspace('default', {
-            machineId: 'm1',
             name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }],
         })
@@ -67,7 +66,6 @@ describe('WorkspaceCache', () => {
 
     test('createWorkspace folders 非法时透传 store 抛错且不发事件', () => {
         expect(() => cache.createWorkspace('default', {
-            machineId: 'm1',
             name: 'x',
             folders: [{ path: '/a', primary: true }, { path: '/b', primary: true }],
         })).toThrow()
@@ -76,7 +74,7 @@ describe('WorkspaceCache', () => {
 
     test('updateWorkspace 后广播 workspace-updated 且缓存刷新', () => {
         const workspace = cache.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
 
         const updated = cache.updateWorkspace(workspace.id, 'default', { name: 'a2' })
@@ -89,7 +87,7 @@ describe('WorkspaceCache', () => {
 
     test('updateWorkspace 跨 namespace / 不存在 → null 不发事件', () => {
         const workspace = cache.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
         expect(cache.updateWorkspace(workspace.id, 'other', { name: 'x' })).toBeNull()
         const count = events.length
@@ -99,7 +97,7 @@ describe('WorkspaceCache', () => {
 
     test('deleteWorkspace 后广播 workspace-removed，名下会话逐个广播 session-updated', () => {
         const workspace = cache.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
         const s1 = store.sessions.getOrCreateSession('t1', { path: '/a' }, null, 'default', undefined, workspace.id)
         const s2 = store.sessions.getOrCreateSession('t2', { path: '/a' }, null, 'default', undefined, workspace.id)
@@ -128,7 +126,7 @@ describe('WorkspaceCache', () => {
     test('deleteWorkspace 不存在 / 跨 namespace → null 不发事件', () => {
         expect(cache.deleteWorkspace('nope', 'default')).toBeNull()
         const workspace = cache.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
         expect(cache.deleteWorkspace(workspace.id, 'other')).toBeNull()
         expect(events.filter(e => e.type === 'workspace-removed')).toHaveLength(0)
@@ -136,10 +134,10 @@ describe('WorkspaceCache', () => {
 
     test('getWorkspaces 按 namespace 过滤、updatedAt 倒序', async () => {
         const a = cache.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
         cache.createWorkspace('other', {
-            machineId: 'm1', name: 'b', folders: [{ path: '/b', primary: true }],
+            name: 'b', folders: [{ path: '/b', primary: true }],
         })
         await new Promise(r => setTimeout(r, 5))
         // 更新 a 抬升 updatedAt，a 应排在最前
@@ -152,7 +150,7 @@ describe('WorkspaceCache', () => {
 
     test('warmup：DB 已有工作区时新缓存实例可读（重启恢复）', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'pre',
+            namespace: 'default', name: 'pre',
             folders: [{ path: '/a', primary: true }],
         })
 

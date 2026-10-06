@@ -58,7 +58,7 @@ describe('checkWorkspaceAssignable', () => {
 
     test('工作区存在 + 同 namespace → ok', () => {
         const workspace = engine.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
         expect(checkWorkspaceAssignable(engine, workspace.id, 'default')).toBe('ok')
     })
@@ -67,7 +67,7 @@ describe('checkWorkspaceAssignable', () => {
         expect(checkWorkspaceAssignable(engine, 'nope', 'default')).toBe('not_found')
 
         const workspace = engine.createWorkspace('default', {
-            machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
+            name: 'a', folders: [{ path: '/a', primary: true }],
         })
         expect(checkWorkspaceAssignable(engine, workspace.id, 'other')).toBe('not_found')
     })

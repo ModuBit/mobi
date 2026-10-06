@@ -44,7 +44,6 @@ export class WorkspaceStore {
 
     createWorkspace(input: {
         namespace: string
-        machineId: string
         name: string
         folders: WorkspaceFolder[]
     }): StoredWorkspace {

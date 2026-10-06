@@ -31,7 +31,7 @@ afterEach(() => {
 describe('sessions 与 workspace 关联', () => {
     it('getOrCreateSession 带 workspaceId 写入归属', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         const s = store.sessions.getOrCreateSession('tag1', { path: '/a/mobi' }, {}, 'default', undefined, workspace.id)
@@ -50,7 +50,7 @@ describe('sessions 与 workspace 关联', () => {
 
     it('getSessionsByWorkspace 分页 + total；getUnboundSessions 只含游离', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         // 注：插入间隔 1ms 确保 updated_at 严格不同（同毫秒会让 `< cursor` 跳过所有同毫秒行）
@@ -91,7 +91,7 @@ describe('sessions 与 workspace 关联', () => {
 
     it('cursor 页空结果时 total 仍报全集数（V5：翻页间隙 updated_at 被顶起的会话不丢「展开更多」）', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         for (let i = 0; i < 3; i++) {
@@ -117,7 +117,7 @@ describe('sessions 与 workspace 关联', () => {
 
     it('setSessionWorkspace 归入 / 解绑', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         const s = store.sessions.getOrCreateSession('tag9', { path: '/x' }, {}, 'default')
@@ -129,7 +129,7 @@ describe('sessions 与 workspace 关联', () => {
 
     it('setSessionWorkspace 幂等：重归入同一工作区不递增 seq/updated_at', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         const s = store.sessions.getOrCreateSession('tag9b', { path: '/x' }, {}, 'default')
@@ -150,7 +150,7 @@ describe('sessions 与 workspace 关联', () => {
         expect(store.sessions.setSessionWorkspace(s.id, 'nope', 'default')).toBe('not_found')
         // 跨 namespace：工作区在 other，会话在 default
         const other = store.workspaces.createWorkspace({
-            namespace: 'other', machineId: 'm1', name: 'y',
+            namespace: 'other', name: 'y',
             folders: [{ path: '/y', primary: true }]
         })
         expect(store.sessions.setSessionWorkspace(s.id, other.id, 'default')).toBe('not_found')
@@ -160,7 +160,7 @@ describe('sessions 与 workspace 关联', () => {
 
     it('resume 复用：已存在 session 的 workspaceId 不变（合并分支不重算归属）', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         store.sessions.getOrCreateSession('tag11', { path: '/a/mobi' }, {}, 'default', undefined, workspace.id)

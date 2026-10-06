@@ -83,7 +83,7 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
 function seedDormantSession(h: ReturnType<typeof makeWakeEngine>) {
     const session = h.engine.getOrCreateSession(
         'wake-session',
-        { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' },
+        { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'native-1' },
         null,
         'default',
     )
@@ -184,7 +184,7 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         const engine = new SyncEngine(store, io, registry, sseManager, undefined, throwingHost)
         try {
             const session = engine.getOrCreateSession(
-                'wake-throw', { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' }, null, 'default',
+                'wake-throw', { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'native-1' }, null, 'default',
             )
             // fire-and-forget 内部必须自吞异常：Bun 下 unhandled rejection 默认终止进程
             engine.wakeSession(session.id)
@@ -259,7 +259,7 @@ describe('dormantSession / archiveSession 的 archived 悬挂态兜底', () => {
     function seedStaleActiveArchivedSession(h: ReturnType<typeof makeWakeEngine>) {
         const session = h.engine.getOrCreateSession(
             'wake-archived',
-            { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1', lifecycleState: 'archived' },
+            { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'native-1', lifecycleState: 'archived' },
             null,
             'default',
         )

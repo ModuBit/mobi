@@ -127,7 +127,7 @@ describe('legacy schema guard', () => {
         db.run(`
             CREATE TABLE sessions (
                 id TEXT PRIMARY KEY, tag TEXT,
-                namespace TEXT NOT NULL DEFAULT 'default', machine_id TEXT,
+                namespace TEXT NOT NULL DEFAULT 'default',
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
                 metadata TEXT, metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT, agent_state_version INTEGER DEFAULT 1,
@@ -141,13 +141,6 @@ describe('legacy schema guard', () => {
                 category TEXT NOT NULL DEFAULT 'persistent', submitted_at INTEGER,
                 queue_state TEXT, position_at INTEGER NOT NULL
             );
-            CREATE TABLE machines (
-                id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
-                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-                metadata TEXT, metadata_version INTEGER DEFAULT 1,
-                runner_state TEXT, runner_state_version INTEGER DEFAULT 1,
-                active INTEGER DEFAULT 0, active_at INTEGER, seq INTEGER DEFAULT 0
-            );
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL,
                 platform_user_id TEXT NOT NULL, namespace TEXT NOT NULL DEFAULT 'default',
@@ -160,7 +153,7 @@ describe('legacy schema guard', () => {
             );
             CREATE TABLE workspaces (
                 id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
-                machine_id TEXT NOT NULL, name TEXT NOT NULL, folders TEXT NOT NULL,
+                name TEXT NOT NULL, folders TEXT NOT NULL,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seq INTEGER DEFAULT 0
             );
         `)
@@ -177,7 +170,7 @@ describe('legacy schema guard', () => {
         db.run(`
             CREATE TABLE sessions (
                 id TEXT PRIMARY KEY, tag TEXT,
-                namespace TEXT NOT NULL DEFAULT 'default', machine_id TEXT,
+                namespace TEXT NOT NULL DEFAULT 'default',
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
                 metadata TEXT, metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT, agent_state_version INTEGER DEFAULT 1,
@@ -193,13 +186,6 @@ describe('legacy schema guard', () => {
                 category TEXT NOT NULL DEFAULT 'persistent', submitted_at INTEGER,
                 queue_state TEXT, position_at INTEGER NOT NULL
             );
-            CREATE TABLE machines (
-                id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
-                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-                metadata TEXT, metadata_version INTEGER DEFAULT 1,
-                runner_state TEXT, runner_state_version INTEGER DEFAULT 1,
-                active INTEGER DEFAULT 0, active_at INTEGER, seq INTEGER DEFAULT 0
-            );
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL,
                 platform_user_id TEXT NOT NULL, namespace TEXT NOT NULL DEFAULT 'default',
@@ -212,7 +198,7 @@ describe('legacy schema guard', () => {
             );
             CREATE TABLE workspaces (
                 id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
-                machine_id TEXT NOT NULL, name TEXT NOT NULL, folders TEXT NOT NULL,
+                name TEXT NOT NULL, folders TEXT NOT NULL,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seq INTEGER DEFAULT 0
             );
         `)
@@ -222,11 +208,30 @@ describe('legacy schema guard', () => {
         expect(() => new Store(dbPath)).toThrow(/not a STORED generated column/)
     })
 
+    it('sessions/workspaces 含 machine_id 列（machine 概念退场前的存量库）→ 报错并引导 migrate-remove-machine', () => {
+        // 手写五张 REQUIRED 表 + machine_id 列（绕开 createSchema），模拟 402 前存量库
+        const db = new Database(dbPath, { create: true, readwrite: true })
+        db.run(`
+            CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT, machine_id TEXT);
+            CREATE TABLE messages (
+                id TEXT PRIMARY KEY, metadata TEXT,
+                native_id TEXT GENERATED ALWAYS AS (json_extract(metadata, '$.nativeId')) STORED
+            );
+            CREATE TABLE push_subscriptions (id INTEGER PRIMARY KEY);
+            CREATE TABLE workspaces (id TEXT PRIMARY KEY, machine_id TEXT);
+            CREATE TABLE machines (id TEXT PRIMARY KEY);
+        `)
+        db.run('PRAGMA user_version = 1')
+        db.close()
+
+        expect(() => new Store(dbPath)).toThrow(/migrate-remove-machine/)
+    })
+
     it('全新库正常初始化（workspaces 表就位）', () => {
         const store = new Store(dbPath)
         // workspaces 表存在且可用
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'x',
+            namespace: 'default', name: 'x',
             folders: [{ path: '/a', primary: true }]
         })
         expect(store.workspaces.getWorkspace(workspace.id)?.name).toBe('x')

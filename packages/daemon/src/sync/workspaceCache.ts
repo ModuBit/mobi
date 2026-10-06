@@ -53,7 +53,7 @@ export class WorkspaceCache {
         return this.workspaces.get(id) ?? this.store.workspaces.getWorkspace(id) ?? undefined
     }
 
-    createWorkspace(namespace: string, input: { machineId: string; name: string; folders: WorkspaceFolder[] }): Workspace {
+    createWorkspace(namespace: string, input: { name: string; folders: WorkspaceFolder[] }): Workspace {
         // folders 非法（0 项 / 双 primary）由 store 层 validateWorkspaceFolders 抛错
         const workspace = this.store.workspaces.createWorkspace({ namespace, ...input })
         this.workspaces.set(workspace.id, workspace)

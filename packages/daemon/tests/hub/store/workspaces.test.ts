@@ -32,7 +32,6 @@ describe('WorkspaceStore', () => {
     test('创建并读取工作区', () => {
         const p = store.workspaces.createWorkspace({
             namespace: 'default',
-            machineId: 'm1',
             name: 'mobi',
             folders: [
                 { path: '/a/mobi', primary: true },
@@ -48,7 +47,6 @@ describe('WorkspaceStore', () => {
         expect(() =>
             store.workspaces.createWorkspace({
                 namespace: 'default',
-                machineId: 'm1',
                 name: 'x',
                 folders: []
             })
@@ -56,7 +54,6 @@ describe('WorkspaceStore', () => {
         expect(() =>
             store.workspaces.createWorkspace({
                 namespace: 'default',
-                machineId: 'm1',
                 name: 'x',
                 folders: [
                     { path: '/a', primary: true },
@@ -69,20 +66,17 @@ describe('WorkspaceStore', () => {
     test('list 按 namespace 过滤、按 updatedAt 倒序', () => {
         const a = store.workspaces.createWorkspace({
             namespace: 'default',
-            machineId: 'm1',
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
         const b = store.workspaces.createWorkspace({
             namespace: 'default',
-            machineId: 'm1',
             name: 'b',
             folders: [{ path: '/b', primary: true }]
         })
         // 跨 namespace 的工作区不应出现
         store.workspaces.createWorkspace({
             namespace: 'other',
-            machineId: 'm1',
             name: 'c',
             folders: [{ path: '/c', primary: true }]
         })
@@ -94,13 +88,13 @@ describe('WorkspaceStore', () => {
 
     test('list 按「最近会话活动」排序——活跃工作区浮顶，无会话回退实体编辑时间（V7）', () => {
         const a = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'a',
+            namespace: 'default', name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
         Bun.sleepSync(2)
         // b 实体更「新」（后建）——纯实体排序下 b 会钉在 a 上面
         store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'b',
+            namespace: 'default', name: 'b',
             folders: [{ path: '/b', primary: true }]
         })
         Bun.sleepSync(2)
@@ -114,7 +108,6 @@ describe('WorkspaceStore', () => {
     test('update 改名/改 folders 并递增 seq', () => {
         const p = store.workspaces.createWorkspace({
             namespace: 'default',
-            machineId: 'm1',
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
@@ -145,7 +138,6 @@ describe('WorkspaceStore', () => {
     test('跨 namespace 的 update 返回 null / delete 返回 false', () => {
         const p = store.workspaces.createWorkspace({
             namespace: 'default',
-            machineId: 'm1',
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
@@ -163,7 +155,6 @@ describe('WorkspaceStore', () => {
     it('删除工作区 → 名下 sessions 解绑（workspace_id 置 NULL），返回受影响 id 与解绑一致', () => {
         const p = store.workspaces.createWorkspace({
             namespace: 'default',
-            machineId: 'm1',
             name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })

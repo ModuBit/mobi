@@ -73,7 +73,7 @@ describe('sessions 置顶（纯展示维度分组，不改归属）', () => {
 
     it('置顶会话从「工作区」「最近」过滤、进「置顶」；取消置顶反向', () => {
         const workspace = store.workspaces.createWorkspace({
-            namespace: 'default', machineId: 'm1', name: 'mobi',
+            namespace: 'default', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
         const bound = store.sessions.getOrCreateSession(

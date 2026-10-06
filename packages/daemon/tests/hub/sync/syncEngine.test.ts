@@ -437,7 +437,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
             // 已结束会话：runtimeState 持久化 effort + outputStyle（keep-alive 落库的终态）
             const session = engine.getOrCreateSession(
                 'tag-resume-replay',
-                { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'native-1' },
+                { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'native-1' },
                 null,
                 'default',
                 'remote',

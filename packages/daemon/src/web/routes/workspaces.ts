@@ -23,13 +23,8 @@ import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireHostHomeDir, requireSyncEngine } from './guards'
 
-const listWorkspacesQuerySchema = z.object({
-    machineId: z.string().min(1).optional()
-})
-
 const createWorkspaceSchema = z.object({
     name: z.string().min(1),
-    machineId: z.string().min(1),
     folders: z.array(WorkspaceFolderSchema)
 })
 
@@ -53,11 +48,9 @@ export function createWorkspacesRoutes(getSyncEngine: () => SyncEngine | null): 
      * 403」的可用性陷阱。返回错误文案或 null
      */
     const validateFoldersWithinHomeDir = (
-        engine: SyncEngine, machineId: string | undefined, folders: Array<{ path: string }>
+        folders: Array<{ path: string }>
     ): string | null => {
-        // 单机世界（401）：machineId 形参仅为 R1 契约残留（404 删），归属机器恒本机，
-        // homeDir 直源宿主静态身份（与 requireHostHomeDir 同源）
-        void engine
+        // 单机世界（401）：归属机器恒本机，homeDir 直源宿主静态身份（与 requireHostHomeDir 同源）
         const homeDir = requireHostHomeDir()
         if (!homeDir) return null
         for (const folder of folders) {
@@ -69,22 +62,13 @@ export function createWorkspacesRoutes(getSyncEngine: () => SyncEngine | null): 
         return null
     }
 
-    // GET /api/workspaces - 工作区列表（支持 ?machineId= 过滤）
+    // GET /api/workspaces - 工作区列表
     app.get('/workspaces', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const parsed = listWorkspacesQuerySchema.safeParse(c.req.query())
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid query parameters' }, 400)
-        }
-
         const namespace = c.get('namespace')
-        let workspaces = engine.getWorkspaces(namespace)
-        if (parsed.data.machineId) {
-            workspaces = workspaces.filter(p => p.machineId === parsed.data.machineId)
-        }
-        return c.json({ workspaces })
+        return c.json({ workspaces: engine.getWorkspaces(namespace) })
     })
 
     // POST /api/workspaces - 创建工作区（folders 合法性由 validateWorkspaceFolders 把关）
@@ -104,7 +88,7 @@ export function createWorkspacesRoutes(getSyncEngine: () => SyncEngine | null): 
         }
 
         // folders 路径范围前置校验（homeDir 外 → 400），避免建得起来、spawn 时才被拒
-        const homeDirError = validateFoldersWithinHomeDir(engine, parsed.data.machineId, parsed.data.folders)
+        const homeDirError = validateFoldersWithinHomeDir(parsed.data.folders)
         if (homeDirError) {
             return c.json({ error: homeDirError }, 400)
         }
@@ -175,9 +159,8 @@ export function createWorkspacesRoutes(getSyncEngine: () => SyncEngine | null): 
             if (foldersError) {
                 return c.json({ error: WORKSPACE_FOLDERS_ERROR_MESSAGES[foldersError] }, 400)
             }
-            // 换 folders 时同样做 homeDir 范围校验（machineId 不可改，按既有归属校验）
-            const machineId = engine.getWorkspace(id)?.machineId
-            const homeDirError = validateFoldersWithinHomeDir(engine, machineId, parsed.data.folders)
+            // 换 folders 时同样做 homeDir 范围校验
+            const homeDirError = validateFoldersWithinHomeDir(parsed.data.folders)
             if (homeDirError) {
                 return c.json({ error: homeDirError }, 400)
             }

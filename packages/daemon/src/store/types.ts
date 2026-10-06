@@ -20,7 +20,6 @@ export type StoredSession = {
     id: string
     tag: string | null
     namespace: string
-    machineId: string | null
     createdAt: number
     updatedAt: number
     metadata: unknown | null

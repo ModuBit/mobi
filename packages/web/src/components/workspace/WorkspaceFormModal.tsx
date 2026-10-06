@@ -165,7 +165,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
         if (!open) return
         if (workspace) {
             setName(workspace.name)
-            setMachineId(workspace.machineId)
+            setMachineId(workspace.machineId ?? null)
             setFolders(workspace.folders.map(f => ({ ...f, key: nextFolderKey() })))
             initialFolderKeysRef.current = new Set(workspace.folders.map(folderKey))
         } else {

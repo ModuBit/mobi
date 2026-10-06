@@ -28,7 +28,6 @@ type DbSessionRow = {
     id: string
     tag: string | null
     namespace: string
-    machine_id: string | null
     created_at: number
     updated_at: number
     metadata: string | null
@@ -47,7 +46,6 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         id: row.id,
         tag: row.tag,
         namespace: row.namespace,
-        machineId: row.machine_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         metadata: safeJsonParse(row.metadata),
@@ -131,13 +129,13 @@ export function getOrCreateSession(
 
     db.prepare(`
         INSERT INTO sessions (
-            id, tag, namespace, machine_id, created_at, updated_at,
+            id, tag, namespace, created_at, updated_at,
             metadata, metadata_version,
             agent_state, agent_state_version,
             runtime_state, runtime_state_updated_at,
             workspace_id, seq
         ) VALUES (
-            @id, @tag, @namespace, NULL, @created_at, @updated_at,
+            @id, @tag, @namespace, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             @runtime_state, @runtime_state_updated_at,

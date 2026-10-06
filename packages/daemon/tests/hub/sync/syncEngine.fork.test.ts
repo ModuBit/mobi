@@ -285,7 +285,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
             // 建 parent + fork 行（走 forkSession 编排，fork 行 metadata 由 store 层写入）
             const parent = h.engine.getOrCreateSession(
                 'fork-resume-parent',
-                { path: '/tmp/proj', host: 'h-1', machineId: 'machine-1', nativeSessionId: 'parent-native-1' },
+                { path: '/tmp/proj', host: 'h-1', nativeSessionId: 'parent-native-1' },
                 null,
                 'default',
             )

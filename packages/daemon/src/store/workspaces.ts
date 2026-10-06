@@ -25,7 +25,6 @@ import type { StoredWorkspace } from './types'
 type DbWorkspaceRow = {
     id: string
     namespace: string
-    machine_id: string
     name: string
     folders: string
     created_at: number
@@ -37,7 +36,6 @@ function toWorkspace(row: DbWorkspaceRow): StoredWorkspace {
     return {
         id: row.id,
         namespace: row.namespace,
-        machineId: row.machine_id,
         name: row.name,
         folders: (safeJsonParse(row.folders) as WorkspaceFolder[]) ?? [],
         createdAt: row.created_at,
@@ -74,7 +72,7 @@ export function getWorkspace(db: Database, id: string): StoredWorkspace | null {
 
 export function createWorkspace(
     db: Database,
-    input: { namespace: string; machineId: string; name: string; folders: WorkspaceFolder[] }
+    input: { namespace: string; name: string; folders: WorkspaceFolder[] }
 ): StoredWorkspace {
     const error = validateWorkspaceFolders(input.folders)
     if (error) throw new Error(WORKSPACE_FOLDERS_ERROR_MESSAGES[error])
@@ -83,7 +81,6 @@ export function createWorkspace(
     const row: DbWorkspaceRow = {
         id: randomUUID(),
         namespace: input.namespace,
-        machine_id: input.machineId,
         name: input.name,
         folders: JSON.stringify(input.folders),
         created_at: now,
@@ -91,8 +88,8 @@ export function createWorkspace(
         seq: 0
     }
     db.prepare(`
-        INSERT INTO workspaces (id, namespace, machine_id, name, folders, created_at, updated_at, seq)
-        VALUES (@id, @namespace, @machine_id, @name, @folders, @created_at, @updated_at, 0)
+        INSERT INTO workspaces (id, namespace, name, folders, created_at, updated_at, seq)
+        VALUES (@id, @namespace, @name, @folders, @created_at, @updated_at, 0)
     `).run(row)
     return toWorkspace(row)
 }

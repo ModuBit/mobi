@@ -161,7 +161,6 @@ export class Store {
                 id TEXT PRIMARY KEY,
                 tag TEXT,
                 namespace TEXT NOT NULL DEFAULT 'default',
-                machine_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 metadata TEXT,
@@ -178,25 +177,9 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
             CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);
 
-            CREATE TABLE IF NOT EXISTS machines (
-                id TEXT PRIMARY KEY,
-                namespace TEXT NOT NULL DEFAULT 'default',
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                metadata TEXT,
-                metadata_version INTEGER DEFAULT 1,
-                runner_state TEXT,
-                runner_state_version INTEGER DEFAULT 1,
-                active INTEGER DEFAULT 0,
-                active_at INTEGER,
-                seq INTEGER DEFAULT 0
-            );
-            CREATE INDEX IF NOT EXISTS idx_machines_namespace ON machines(namespace);
-
             CREATE TABLE IF NOT EXISTS workspaces (
                 id TEXT PRIMARY KEY,
                 namespace TEXT NOT NULL DEFAULT 'default',
-                machine_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 folders TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
@@ -204,7 +187,6 @@ export class Store {
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_workspaces_namespace ON workspaces(namespace);
-            CREATE INDEX IF NOT EXISTS idx_workspaces_machine ON workspaces(machine_id);
 
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
@@ -311,6 +293,19 @@ export class Store {
                 'Stop hub/runner, then run ' +
                 `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN metadata TEXT; ALTER TABLE messages ADD COLUMN deleted_at INTEGER;"' and restart.`
             )
+        }
+
+        // 「machine 概念退场前」的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分，
+        // machine_id 列存在性是唯一判别器：放行会在 workspaces INSERT / WorkspaceCache 读处处错。
+        // 不做代码内迁移（沿用 workspace_id 先例：部署时跑迁移脚本），此处只负责引导
+        for (const table of ['sessions', 'workspaces'] as const) {
+            const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+            if (columns.some(column => column.name === 'machine_id')) {
+                throw new Error(
+                    `Detected legacy ${table} schema (${table} still has a machine_id column) at ${this.dbPath}. ` +
+                    'Stop daemon, then run `bun scripts/migrate-remove-machine.ts --confirm ' + this.dbPath + '` to migrate before starting this version.'
+                )
+            }
         }
 
         // native_id 必须是 STORED 生成列（值恒等于 metadata.nativeId）。Phase 1 遗留的普通 TEXT 列
