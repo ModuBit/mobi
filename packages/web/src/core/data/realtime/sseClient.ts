@@ -20,7 +20,7 @@ import type { SyncEvent } from '@mobi/shared'
 type SyncEventListener = (event: SyncEvent) => void
 type UnauthorizedHandler = () => void
 
-/** 3 个心跳周期(hub 每 30s 发心跳)无任何活动,视为连接半死(TCP 活着但无数据,移动端网络切换常见) */
+/** 3 个心跳周期(daemon 每 30s 发心跳)无任何活动,视为连接半死(TCP 活着但无数据,移动端网络切换常见) */
 const HEARTBEAT_STALE_MS = 90_000
 /** 看门狗检查间隔,仅前台生效(hidden 跳过,避免移动端后台定时器节流误判) */
 const WATCHDOG_INTERVAL_MS = 10_000
@@ -30,7 +30,7 @@ const RECONNECT_MAX_DELAY_MS = 30_000
 const RECONNECT_JITTER_MS = 500
 
 /**
- * SSE 客户端，用于接收 Hub 服务器的实时事件
+ * SSE 客户端，用于接收 daemon 服务器的实时事件
  * 使用 @microsoft/fetch-event-source 实现，支持自定义 headers 和状态码检测
  *
  * 连接健康保障:

@@ -61,8 +61,8 @@ import { logger } from '@mobi/node-core/logger'
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
 /** 合成事件信封（mobiCustomEvent 标记由 apiSession 咽喉点识别，custom role 原样落库）。
- *  positionBeforeResultId：归属 result 行的 nativeId，随信封透传 hub——落库 position_at
- *  由 hub 权威按该行定位（result 前 -1ms），消除 queue 立即投喂时卡片输给下一轮用户气泡
+ *  positionBeforeResultId：归属 result 行的 nativeId，随信封透传 daemon——落库 position_at
+ *  由 daemon 权威按该行定位（result 前 -1ms），消除 queue 立即投喂时卡片输给下一轮用户气泡
  *  的毫秒级展示竞态；锚定具体行而非「最新」，封口异步期间下一轮 result 已落库也不锚错轮 */
 type CustomEventEnvelope = {
     mobiCustomEvent: true

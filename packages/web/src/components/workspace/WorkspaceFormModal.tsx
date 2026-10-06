@@ -156,7 +156,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     // 打开时按模式初始化（编辑回填 / 新建重置）——仅在打开/切换编辑对象时执行，
     // 不追踪 machines 等数据变化（避免表单被后台 refetch 覆盖用户输入）。
     // 同时快照初始 folders（path+primary 联合键）：home 范围校验只查「用户改动过的
-    // path」、folders 未变时 patch 不传——早于 hub 前置校验创建的存量 home 外工作区
+    // path」、folders 未变时 patch 不传——早于 daemon 前置校验创建的存量 home 外工作区
     // 才不会连纯改名都被锁死
     const initialFolderKeysRef = useRef<Set<string>>(new Set())
     const folderKey = (f: { path: string; primary: boolean }) => `${f.path.trim()}|${f.primary}`
@@ -177,7 +177,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     // 校验：名称 + folders 结构（shared 出错误码）+ home 范围（与创建会话 cwd 同一约束）
     const nameError = name.trim() ? null : t('workspace.nameRequired')
     // folders 是否被改动（行级：path 或 primary 任一变化即算——path+primary 联合键）。
-    // 存量工作区可能含 home 外 path（早于 hub 前置校验创建），只拦新改动、放行未动的
+    // 存量工作区可能含 home 外 path（早于 daemon 前置校验创建），只拦新改动、放行未动的
     // 旧值——否则机器后来才上报 homeDir 时，纯改名也会被整体锁死且无绕过入口
     const foldersChanged = useMemo(
         () => {
@@ -190,7 +190,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
     const foldersError = useMemo(() => {
         const code = validateWorkspaceFolders(folders)
         if (code) return t(FOLDERS_ERROR_I18N[code])
-        // 机器 homeDir 已知时，改动过的 folder 路径必须在其内（hub 侧 validateFoldersWithinHomeDir
+        // 机器 homeDir 已知时，改动过的 folder 路径必须在其内（daemon 侧 validateFoldersWithinHomeDir
         // 是提交后的服务端兜底，这里前置到表单即时反馈；homeDir 缺失时放行，与其语义一致）
         if (hostHomeDir && foldersChanged
             && folders.some(f => !isPathWithinHomeDir(f.path.trim(), hostHomeDir))) {
@@ -212,7 +212,7 @@ export function WorkspaceFormModal({ open, onClose, workspace, onCreated }: Work
             if (isEdit && workspace) {
                 await updateMutation.mutateAsync({
                     workspaceId: workspace.id,
-                    // folders 未动就不传：hub 对显式传入的 folders 做全量 home 校验，
+                    // folders 未动就不传：daemon 对显式传入的 folders 做全量 home 校验，
                     // 纯改名不应因存量 path 被拒（与上面行级校验的语义一致）
                     patch: foldersChanged
                         ? { name: name.trim(), folders: trimmedFolders }

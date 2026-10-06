@@ -170,7 +170,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
 
     /**
      * 请求包装：清旧错误（setError null）+ pendingAction 管理 + 404 静默收起。
-     * hub 对「会话仍存活但 requestId 已被处理」返回 404 + code:'permission_request_gone'
+     * daemon 对「会话仍存活但 requestId 已被处理」返回 404 + code:'permission_request_gone'
      * （SSE 滞后/重复点击）→ 静默 onDone 自愈，不报错；其余 404 仍当真实失败提示。
      * 对齐 PermissionFooter.run。
      */

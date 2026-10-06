@@ -96,7 +96,7 @@ export function parseRipgrepOutput(output: string, limit: number): FileEntry[] {
 
 /**
  * 路径段有序匹配：queryParts 各段按顺序出现在 filePath 中
- * 如 ['docs','hub'] 匹配 'docs/conventions/hub.md'
+ * 如 ['docs','conventions'] 匹配 'docs/conventions/testing.md'
  */
 export function pathMatchesQuery(filePath: string, queryParts: string[]): boolean {
     let from = 0
@@ -153,7 +153,7 @@ export function applyTypeFilter(
 /**
  * 从 query 中解析最长已存在的目录前缀
  * 如 "docs/architecture/hu" → { dirPrefix: "docs/architecture", matchParts: ["hu"] }
- * 如 "hub" → { dirPrefix: "", matchParts: ["hub"] }
+ * 如 "daemon" → { dirPrefix: "", matchParts: ["daemon"] }
  */
 async function resolveDirPrefix(
     workingDirectory: string,
@@ -301,7 +301,7 @@ function isWithinWorkingDir(targetPath: string, workingDirectory: string): boole
 
 /**
  * 校验 RPC 参数中的 cwd 是否在安全范围内
- * 纵深防御：即使 hub 侧已校验，CLI 侧也确保 cwd 在 home 目录内
+ * 纵深防御：即使 daemon 侧已校验，CLI 侧也确保 cwd 在 home 目录内
  */
 function validateRpcCwd(cwd: string): boolean {
     const resolved = resolve(cwd)
@@ -313,7 +313,7 @@ function validateRpcCwd(cwd: string): boolean {
 }
 
 /**
- * searchSessionFiles 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * searchSessionFiles 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，
  * 行为单源——socket 路径与本地直调不会分叉。
  */
 export async function searchSessionFilesImpl(data: { query: string, cwd?: string, type?: 'file' | 'directory' }, workingDirectory: string): Promise<ListSessionFilesResponse> {

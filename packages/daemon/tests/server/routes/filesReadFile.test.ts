@@ -30,7 +30,7 @@ const CHUNK = 'PNGDATA-bin'
 const HOME = homedir()
 
 const mockSyncEngine = {
-    machineReadFileMeta: async (_mid: unknown, _cwd: unknown, path: string) => {
+    hostReadFileMeta: async (_cwd: unknown, path: string) => {
         if (path.endsWith('.missing.png')) {
             return { success: false, error: 'ENOENT', code: 'ENOENT' }
         }
@@ -42,7 +42,7 @@ const mockSyncEngine = {
         }
         return { success: false, error: 'File extension ".bin" is not allowed over machine channel' }
     },
-    machineReadFileRange: async (_mid: unknown, _cwd: unknown, p: unknown, offset: number, length: number) => {
+    hostReadFileRange: async (_cwd: unknown, p: unknown, offset: number, length: number) => {
         // 版本偏斜 CLI 模拟：success 但缺 chunk（rpcGateway 类型 cast 无运行时校验），serveFileContent 须干净截断
         if ((p as string).endsWith('.ghost.png')) {
             return { success: true }

@@ -50,13 +50,13 @@ function createTestApp(engine: SyncEngine | null) {
 }
 
 describe('webTools 路由（纯透传）', () => {
-    it('GET 透传并返回 config（machineId 残留形参收空串）', async () => {
+    it('GET 透传并返回 config', async () => {
         const getSpy = vi.fn().mockResolvedValue({ config: { searchProviderId: 'tavily' } })
         const app = createTestApp(createTestEngine({ getWebToolsConfig: getSpy }))
         const res = await app.request('/api/web-tools')
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ config: { searchProviderId: 'tavily' } })
-        expect(getSpy).toHaveBeenCalledWith('')
+        expect(getSpy).toHaveBeenCalledWith()
     })
 
     it('POST 校验 body 后转发 config', async () => {
@@ -69,7 +69,7 @@ describe('webTools 路由（纯透传）', () => {
         })
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ success: true })
-        expect(setSpy).toHaveBeenCalledWith('', { searchProviderId: 'bocha' })
+        expect(setSpy).toHaveBeenCalledWith({ searchProviderId: 'bocha' })
     })
 
     it('POST 无 config → 400', async () => {
@@ -122,7 +122,7 @@ describe('webTools 路由（纯透传）', () => {
         expect(((await res.json()) as { error: string }).error).toContain('write failed')
     })
 
-    it('POST /verify 透传 runner 结果（success envelope）', async () => {
+    it('POST /verify 透传 executor 结果（success envelope）', async () => {
         const verifySpy = vi.fn().mockResolvedValue({ success: true, latencyMs: 42 })
         const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
         const res = await app.request('/api/web-tools/verify', {
@@ -132,8 +132,8 @@ describe('webTools 路由（纯透传）', () => {
         })
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ success: true, latencyMs: 42 })
-        // 凭据草稿透传给 runner（不落盘）
-        expect(verifySpy).toHaveBeenCalledWith('', 'tavily', { apiKey: 'k' })
+        // 凭据草稿透传给 executor（不落盘）
+        expect(verifySpy).toHaveBeenCalledWith('tavily', { apiKey: 'k' })
     })
 
     it('POST /verify 缺 providerId → 400', async () => {

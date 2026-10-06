@@ -17,7 +17,7 @@
 import { isObject } from './utils'
 
 /**
- * Agent 类工具的判定单源：hub 前台任务投影（foregroundTasks）与 web 工具卡片
+ * Agent 类工具的判定单源：daemon 前台任务投影（foregroundTasks）与 web 工具卡片
  * （knownTools）共用，SDK 改名/新增别名只改此处。
  */
 

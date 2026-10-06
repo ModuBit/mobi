@@ -37,7 +37,7 @@ import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '../agent/sessionFactory';
-import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
+import { createModeChangeHandler, createSessionLifecycle, setControlledByUser } from '../agent/sessionLifecycle';
 import { SESSION_CONFIG_FIELDS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { buildPromptFromBlocks, type PromptPayload } from '@mobi/node-core/utils/promptBuilder';
@@ -60,7 +60,7 @@ export interface StartOptions {
     shouldStartRunner?: boolean
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    startedBy?: 'runner' | 'terminal'
+    startedBy?: 'daemon' | 'terminal'
     /** 归属工作区 id（Web spawn / 终端 --workspace 透传；缺省 = 游离） */
     workspaceId?: string
 }
@@ -102,17 +102,17 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     logger.debugLargeJson('[START] MOBI process started', getEnvironmentInfo());
     logger.debug(`[START] Options: startedBy=${startedBy}, startingMode=${options.startingMode}`);
 
-    // Validate runner spawn requirements
-    if (startedBy === 'runner' && options.startingMode === 'local') {
-        logger.debug('Runner spawn requested with local mode - forcing remote mode');
+    // Validate daemon spawn requirements
+    if (startedBy === 'daemon' && options.startingMode === 'local') {
+        logger.debug('Daemon spawn requested with local mode - forcing remote mode');
         options.startingMode = 'remote';
         // TODO: Eventually we should error here instead of silently switching
-        // throw new Error('Runner-spawned sessions cannot use local/interactive mode');
+        // throw new Error('Daemon-spawned sessions cannot use local/interactive mode');
     }
 
     const initialState: AgentState = {};
     const initialModel = normalizeClaudeSessionModel(options.model);
-    const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
+    const startingMode = options.startingMode ?? (startedBy === 'daemon' ? 'remote' : 'local');
     // -c 规范化为显式 --resume（bootstrapSession 的 tag 复用与 claudeLocal 透传都依赖
     // 显式 --resume 形态；详见 normalizeContinueArg 的 docstring）
     options.claudeArgs = await normalizeContinueArg(options.claudeArgs, workingDirectory);
@@ -123,7 +123,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         agentState: initialState,
         model: initialModel ?? undefined,
         effort: options.effort,
-        claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 Hub session
+        claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 daemon session
         startingMode,
         workspaceId: options.workspaceId
     });
@@ -231,7 +231,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     logger.infoDeveloper(`Session: ${sessionInfo.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 
-    const lifecycle = createRunnerLifecycle({
+    const lifecycle = createSessionLifecycle({
         apiSession,
         logTag: 'claude',
         stopKeepAlive: () => currentSessionRef.current?.stopKeepAlive(),
@@ -278,14 +278,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     };
     apiSession.installDormancyDecide(() => evaluateDormancyGate(readDormancyFacts()).ok);
 
-    // 手动休眠预检（dormancy spec §D.11）：hub 路由经此 RPC 问 gate，阻塞时逐项原因返回 web
+    // 手动休眠预检（dormancy spec §D.11）：daemon 路由经此 RPC 问 gate，阻塞时逐项原因返回 web
     apiSession.rpcHandlerManager.registerHandler<Record<string, never>, ReturnType<typeof evaluateDormancyGate>>('dormancyCheck', async () =>
         evaluateDormancyGate(readDormancyFacts())
     );
 
-    // 断连超时被 gate 阻塞后的复查：无定时器补位则进程在 hub 不可达时永久驻留成僵尸
+    // 断连超时被 gate 阻塞后的复查：无定时器补位则进程在 daemon 不可达时永久驻留成僵尸
     // （阻塞事实解除也没人再问）。周期复查通过即退出；重连后 IdleTimer 已重排空闲计时，
-    // 该复查随之取消（hub 在场由空闲流程接管，见 idleTimer disconnect 语义）
+    // 该复查随之取消（daemon 在场由空闲流程接管，见 idleTimer disconnect 语义）
     const DISCONNECT_RECHECK_INTERVAL_MS = DEFAULT_RECHECK_MS;
     let disconnectRecheckTimer: ReturnType<typeof setInterval> | null = null;
     const stopDisconnectRecheck = () => {
@@ -326,7 +326,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         disallowedTools: mode.disallowedTools
     }));
 
-    // 消费批次时通知 Hub（messages-facts pushed → lifecycle='pushed'）
+    // 消费批次时通知 daemon（messages-facts pushed → lifecycle='pushed'）
     messageQueue.setOnBatchConsumed((localIds) => {
         apiSession.emitMessagesSubmitted(localIds);
     });
@@ -346,7 +346,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
     // live 配置字段的「session 状态读写 + 运行中动态 apply」接线表（深化候选②）：
     // 新增 live 字段在此注册一行，diff 与动态 apply 由 syncSessionModes 统一遍历；
-    // 值校验 schema 同源 shared SESSION_CONFIG_FIELDS（hub 路由与本文件 handler 共用）
+    // 值校验 schema 同源 shared SESSION_CONFIG_FIELDS（daemon 路由与本文件 handler 共用）
     type LiveConfigKey = 'permissionMode' | 'model' | 'effort'
     type LiveConfigValue = PermissionMode | SessionModel | EffortLevel
     type LiveQueryControl = NonNullable<QueryControlRef['current']>
@@ -457,7 +457,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
-        // 防御性归一：hub 落库恒为 block 数组，但历史库回放/旧 hub 窗口期可能仍是平铺对象或 string。
+        // 防御性归一：daemon 落库恒为 block 数组，但历史库回放/旧 daemon 窗口期可能仍是平铺对象或 string。
         // 无法归一则跳过本条——只打 id 元信息不打正文，避免用户内容落入服务端日志
         const resolved = resolveUserMessageContent(message.content);
         if (!resolved) {
@@ -547,7 +547,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         if (config.effort !== undefined) {
             // 校验同源 shared SESSION_CONFIG_FIELDS（深化候选②）：EFFORT_LEVELS 枚举单一来源，
-            // hub 路由与此处不再各自手写枚举判断
+            // daemon 路由与此处不再各自手写枚举判断
             const parsed = SESSION_CONFIG_FIELDS.effort.schema.safeParse(config.effort);
             if (!parsed.success) {
                 throw new Error('Invalid effort level');
@@ -559,7 +559,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort } };
     });
 
-    // Web UI 重命名 → Hub rename-session RPC → 回写 agent 侧标题（Mobi → agent 单向同步）
+    // Web UI 重命名 → daemon rename-session RPC → 回写 agent 侧标题（Mobi → agent 单向同步）
     apiSession.rpcHandlerManager.registerHandler('rename-session', async (payload: unknown) => {
         if (!payload || typeof payload !== 'object') {
             throw new Error('Invalid rename payload');
@@ -571,7 +571,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         await syncAgentRename(claudeLocator(currentSessionRef.current), title);
     });
 
-    // rewind RPC（Web → Hub → CLI）：dry-run 预检与执行闸门。restart module 挂在 Session 上——
+    // rewind RPC（Web → daemon → CLI）：dry-run 预检与执行闸门。restart module 挂在 Session 上——
     // launcher while 循环与此处共享同一实例（loop 创建、onSessionReady 回填 currentSessionRef），
     // 文件回滚在受理阶段经 queryControlRef（running query 句柄）先于截断执行
     registerRewindHandlers({
@@ -582,11 +582,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         workingDirectory,
     });
 
-    // output style 切换 RPC（Web → Hub → CLI）：/clear 语义受理。重启状态与哨兵配对由
+    // output style 切换 RPC（Web → daemon → CLI）：/clear 语义受理。重启状态与哨兵配对由
     // session.restart module 持有；session 未就绪时拒绝，running 中拒绝（Web 端已 disable，双保险）。
     apiSession.rpcHandlerManager.registerHandler('switch-output-style', (payload: unknown) => {
         // 结构化受理结果（深化候选⑥，rewind 先例）：业务拒绝不 throw——RPC 错误通道
-        // 只剩 message 字符串，hub 据 `includes('rejected')` 反解 409/502 分层会因文案
+        // 只剩 message 字符串，daemon 据 `includes('rejected')` 反解 409/502 分层会因文案
         // 改动静默失效；accepted:false 即「副作用确定未发生」，语义由结构承载
         if (!payload || typeof payload !== 'object') {
             return { accepted: false, reason: 'Invalid output style payload' };

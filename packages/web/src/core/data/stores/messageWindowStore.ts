@@ -309,7 +309,7 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         const res = await api.messages.list(sessionId, { beforeSeq: undefined })
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         updateStateForGeneration(sessionId, 'latest', gen, prev => {
-            // 撤回墓碑闸门：响应迟到 / hub 侧撤回落库竞态时，响应仍可能含已撤回行——跳过不合并
+            // 撤回墓碑闸门：响应迟到 / daemon 侧撤回落库竞态时，响应仍可能含已撤回行——跳过不合并
             const merged = mergeMessages(prev.messages, filterWithdrawn(sessionId, res.data.messages))
             // turn 边界裁剪（#40 C-1）：重连补拉把窗口带回全量时收敛内存
             return _internal.buildState(prev, replaceWindowAndTrim(prev, merged, res.data.page.hasMore))
@@ -351,7 +351,7 @@ export async function fetchOlderMessages(api: MobiApi, sessionId: string): Promi
  * SSE 增量入库（message-received / message-snapshot）。
  * 用 resolveMessageCache 逐条 reduce，保留 snapshot→full 替换清理语义。
  * 不分路径、不 trim——窗口裁剪由上层 effect 负责。
- * backfill（hub attach 补写路径的重播标记）：只 merge 已在窗口的行——历史行重播以旧
+ * backfill（daemon attach 补写路径的重播标记）：只 merge 已在窗口的行——历史行重播以旧
  * positionAt/乱序 append 会出 ghost 气泡；窗口外行直接丢弃（fetchLatest 自带补写后的 metadata）。
  */
 export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMessage[], options?: { skipIfNotSnapshot?: boolean; backfill?: boolean }): void {
@@ -399,7 +399,7 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
 /**
  * SSE snapshot 增量帧入库（message-snapshot-delta，delta 协议票 02）。
  *
- * 按 localId 定位窗口内该 snapshot 消息，baseRev 严格衔接才应用 op（与 hub/shared 的
+ * 按 localId 定位窗口内该 snapshot 消息，baseRev 严格衔接才应用 op（与 daemon/shared 的
  * apply 语义同源）；任何不衔接/无记录/违规 op 均 no-op——丢弃优于错乱，等全量基线
  * （resync 补发或 message-snapshot 全量）或 full message 终态替换。
  * 应用成功后浅拷贝目标消息行（数组新引用驱动下游 memo；content 内部 blocks 就地变异，
@@ -454,7 +454,7 @@ function cloneSnapshotEnvelope(content: unknown, blocks: SnapshotBlock[]): unkno
  * rewind 超时对账（M4）：重拉首页并以服务端为准**替换**窗口内容——
  * 与 fetchLatest 的 merge 语义不同，服务端已软删除的行（SSE 事件丢失时本地残留）
  * 会被移除；仅保留本地未提交的乐观行（sending/queued/failed，服务端无对应行）。
- * 供超时兜底在解锁 sender 前收敛「界面 ↔ Hub DB」的失同步。
+ * 供超时兜底在解锁 sender 前收敛「界面 ↔ daemon DB」的失同步。
  */
 export async function reconcileLatestMessages(api: MobiApi, sessionId: string): Promise<void> {
     const prev = _internal.getState(sessionId)
@@ -522,7 +522,7 @@ export function markMessagesSubmitted(sessionId: string, localIds: string[], sub
 }
 
 /**
- * rewind 截断：清除窗口内 seq >= deleteFromSeq 的已加载行（与 Hub 软删除范围一致，spec §4.4）。
+ * rewind 截断：清除窗口内 seq >= deleteFromSeq 的已加载行（与 daemon 软删除范围一致，spec §4.4）。
  * 无 seq 行（乐观/快照）保留——rewind 期间会话必为 idle，正常无在途行；
  * 清除后剩余不足视口时由 BubbleListChat 的 fill 级联自动 prepend 补足。
  * oldestSeq 不变（只删尾部，最小 seq 不动）。
@@ -532,9 +532,9 @@ export function rewindFrom(sessionId: string, deleteFromSeq: number): void {
 }
 
 /**
- * 消息撤回（#53）：移除目标 localId 及其后全部行——与 hub softDeleteMessagesFrom
+ * 消息撤回（#53）：移除目标 localId 及其后全部行——与 daemon softDeleteMessagesFrom
  * 的「无上界软删除」对齐，兜住撤回期间竞态到达的后继行。锚点兼容 localId / id
- * （hub 广播的 localId 取 row.localId ?? row.id）；目标不存在时不动任何行
+ * （daemon 广播的 localId 取 row.localId ?? row.id）；目标不存在时不动任何行
  * （撤回尽力而为，fetchLatestMessages refetch 兜底对账）。
  *
  * 同时记 tombstone（目标锚点 + 被移除的全部尾随行，localId/id 双记）：迟到的 acked
@@ -573,10 +573,10 @@ export function updateMessageStatus(sessionId: string, localId: string, status: 
 
 /**
  * 清队列档批量取消（stopKind=turn-queue / turn-queue-tasks）：乐观移除全部本地 queued 行，
- * 与 hub 批量物理删除同步发生——abort onSettled 的 fetchLatest 走 merge（只增/更新不删），
+ * 与 daemon 批量物理删除同步发生——abort onSettled 的 fetchLatest 走 merge（只增/更新不删），
  * 缺这步服务端已删的 queued 行残留，QueuedMessagesBar 悬浮条不消失（E2E 缺陷）。
- * 展示口径单源 isQueuedInMobi：排除 status sending/failed 的乐观在途行（未被 hub 建行的，
- * hub 批删删不到它们，照常留在输入轨道）。
+ * 展示口径单源 isQueuedInMobi：排除 status sending/failed 的乐观在途行（未被 daemon 建行的，
+ * daemon 批删删不到它们，照常留在输入轨道）。
  */
 export function removeQueuedMessages(sessionId: string): void {
     filterMessages(sessionId, m => !isQueuedInMobi(m))

@@ -28,7 +28,7 @@
 import { watch, type FSWatcher } from 'node:fs'
 import { dirname, basename } from 'node:path'
 import { configuration, getConfiguration } from '../configuration'
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import { readSettings } from './settings'
 
 const DEBOUNCE_MS = 100
@@ -60,7 +60,7 @@ export function startWebApiTokenWatcher(): SettingsWatcher {
                     // 此时值的来源就是文件（无论启动时是 env 还是 generated）
                     getConfiguration()._setWebApiToken(next, 'file', false)
                     lastWebToken = next
-                    hubLogger.info('[Hub] webApiToken reloaded from settings.daemon.json')
+                    daemonLogger.info('[DAEMON] webApiToken reloaded from settings.daemon.json')
                 }
             })
             .catch(() => {
@@ -87,7 +87,7 @@ export function startWebApiTokenWatcher(): SettingsWatcher {
             // FSEvents/inotify 极少出错；出错时 watcher 会自动关闭，无需特殊处理
         })
         // 注册后立即检查一次：追赶 createConfiguration 快照与 watch 注册之间
-        // （hub 启动期间）可能发生的文件变更，避免轮换静默丢失
+        // （daemon 启动期间）可能发生的文件变更，避免轮换静默丢失
         reloadIfChanged()
     } catch {
         // 目录不存在等极端情况：无法监听，静默放弃

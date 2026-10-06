@@ -17,7 +17,7 @@
 /**
  * web 工具配置的 mtime 惰性读取（read-through cache）。
  *
- * 生效机制 = 文件系统即广播：runner 落盘 settings.cli.json 后，任何会话进程的
+ * 生效机制 = 文件系统即广播：daemon 落盘 settings.cli.json 后，任何会话进程的
  * 下一次 web 工具调用 statSync 检查 mtime、变了才重读 → 热更新零通知零协调。
  * 不用 FSWatcher：原子写是 tmp+rename 换 inode，Linux inotify 会盯旧 inode 静默失效。
  */

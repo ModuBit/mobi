@@ -26,7 +26,7 @@
  * - ok:false / emitWithAck reject → isError（业务拒绝与连接故障都归此，
  *   但内容上要能分辨——reject 的文案不提 reason，见下方分支）
  *
- * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 Hub，local 模式无此通道。
+ * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 daemon，local 模式无此通道。
  */
 
 import { z } from 'zod'
@@ -37,7 +37,7 @@ import { errorTextResult, textResult, type MobiToolTextResult } from './toolResu
 export const LIST_SESSIONS_TOOL_NAME = 'list_sessions' as const
 
 export interface ListSessionsToolDeps {
-    /** 向 Hub 要会话清单（emitWithAck 等回执，见 ApiSessionClient.listSessionsForAgent） */
+    /** 向 daemon 要会话清单（emitWithAck 等回执，见 ApiSessionClient.listSessionsForAgent） */
     listSessions: (query: Omit<AgentSessionsRequest, 'sid'>) => Promise<
         | { ok: true; sessions: AgentSessionSummary[] }
         | { ok: false; reason: string }
@@ -113,12 +113,12 @@ export function createListSessionsTool(deps: ListSessionsToolDeps) {
             answer = await deps.listSessions(parsed.data)
         } catch (error) {
             // socket 断开 / ack 超时：连接故障。此处不提 reason——reason 是业务拒绝的字段
-            return errorTextResult('Failed to reach mobi hub', error)
+            return errorTextResult('Failed to reach mobi daemon', error)
         }
 
         if (!answer.ok) {
             return {
-                content: [{ type: 'text', text: `The session list was rejected by mobi hub (${answer.reason}).` }],
+                content: [{ type: 'text', text: `The session list was rejected by mobi daemon (${answer.reason}).` }],
                 isError: true,
             }
         }

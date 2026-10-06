@@ -18,7 +18,7 @@ import { NotificationSettings } from '@/components/settings/NotificationSettings
 
 /**
  * 通知与推送分区：包一层现有 NotificationSettings
- * （namespace：hub 端从 token 自动解析，client 无需传值，传空串语义占位）
+ * （namespace：daemon 端从 token 自动解析，client 无需传值，传空串语义占位）
  */
 export function NotificationsSection() {
     return <NotificationSettings namespace="" />

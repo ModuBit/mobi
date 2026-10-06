@@ -27,7 +27,7 @@ import { ALLOWED_EXTENSIONS_SET, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from
 
 /**
  * 校验 RPC 参数中的 cwd 是否在安全范围内
- * 纵深防御：即使 hub 侧已校验，CLI 侧也确保 cwd 在 home 目录内
+ * 纵深防御：即使 daemon 侧已校验，CLI 侧也确保 cwd 在 home 目录内
  */
 function validateRpcCwd(cwd: string): boolean {
     const resolved = resolve(cwd)
@@ -133,7 +133,7 @@ function sanitizeFilename(filename: string): string {
 /**
  * 累计写入追踪（path → 已写字节），用于累计超限兜底。
  * 进程内 Map，随 cli 进程生命周期。
- * 依赖 hub 侧 emitWithAck 串行背压，cli 侧单线程顺序处理同一文件的上传块，此处无锁。
+ * 依赖 daemon 侧 emitWithAck 串行背压，cli 侧单线程顺序处理同一文件的上传块，此处无锁。
  */
 const writtenTracker = new Map<string, { written: number; totalSize?: number }>()
 
@@ -232,7 +232,7 @@ export function registerUploadHandlers(
 }
 
 /**
- * writeFileRange 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * writeFileRange 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，
  * 行为单源——socket 路径与本地直调不会分叉。
  */
 export async function writeFileRangeImpl(data: WriteFileRangeRequest, workingDirectory: string): Promise<WriteFileRangeResponse> {
@@ -258,7 +258,7 @@ export async function writeFileRangeImpl(data: WriteFileRangeRequest, workingDir
                 const extError = validateFileExtension(data.filename)
                 if (extError) return rpcError(extError)
 
-                // 总大小预校验（第二道闸；hub 已 Content-Length 预校验为第一道）
+                // 总大小预校验（第二道闸；daemon 已 Content-Length 预校验为第一道）
                 if (typeof data.totalSize === 'number' && Number.isFinite(data.totalSize) && data.totalSize > MAX_UPLOAD_BYTES) {
                     return rpcError('File too large (max 50MB)')
                 }
@@ -281,8 +281,8 @@ export async function writeFileRangeImpl(data: WriteFileRangeRequest, workingDir
                 // 单块大小校验（第三道闸）
                 if (data.content.length > MAX_UPLOAD_BYTES) return rpcError('File too large (max 50MB)')
 
-                // open 成功后若 write/close 失败（磁盘满 / EIO），文件已落盘但 path 尚未返回 hub，
-                // hub 侧 cleanup 因无 path 无法清理 → 内层兜底删除孤儿文件
+                // open 成功后若 write/close 失败（磁盘满 / EIO），文件已落盘但 path 尚未返回 daemon，
+                // daemon 侧 cleanup 因无 path 无法清理 → 内层兜底删除孤儿文件
                 const fd = await open(filePath, 'w')  // 创建/截断
                 try {
                     await fd.write(data.content, 0, data.content.length, 0)

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createRunnerLifecycle } from '@/agent/sessionLifecycle'
+import { createSessionLifecycle } from '@/agent/sessionLifecycle'
 import type { ApiSessionClient } from '@/api/apiSession'
 
 /**
@@ -40,7 +40,7 @@ function makeFakeApiSession(order: string[], ackDelayMs: number) {
 describe('runnerLifecycle cleanup 的 session-end 顺序', () => {
     it('close 必须等 sendSessionDeath 落达之后', async () => {
         const order: string[] = []
-        const lifecycle = createRunnerLifecycle({
+        const lifecycle = createSessionLifecycle({
             apiSession: makeFakeApiSession(order, 20),
             logTag: 'test',
         })

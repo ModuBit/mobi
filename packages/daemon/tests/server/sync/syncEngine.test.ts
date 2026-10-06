@@ -19,7 +19,7 @@ import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
-import type { MachineHost } from '../../../src/executor/executorHost'
+import type { ExecutorHost } from '../../../src/executor/executorHost'
 
 /**
  * renameSession 单测：验证 sessionCache 更新后 best-effort 同步 RPC 到 CLI。
@@ -34,13 +34,13 @@ interface EngineHandle {
     cleanup: () => void
 }
 
-/** 构造真实 SyncEngine + 可控 fake io/registry/sse（machineHost 可注入——
- *  ticket-20 起 machine 族走 MachineHost 直调，不再落 machine socket RPC） */
+/** 构造真实 SyncEngine + 可控 fake io/registry/sse（executorHost 可注入——
+ *  ticket-20 起 machine 族走 ExecutorHost 直调，不再落 machine socket RPC） */
 function makeEngine(opts: {
     renameOnline: boolean
     emitDelayMs?: number
     onlineMethods?: string[]
-    machineHost?: MachineHost
+    executorHost?: ExecutorHost
 }): EngineHandle {
     const store = new Store(':memory:')
     const emitCalls: { method: string; params: unknown }[] = []
@@ -74,7 +74,7 @@ function makeEngine(opts: {
 
     const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
-    const engine = new SyncEngine(store, io, registry, sseManager, undefined, opts.machineHost)
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, opts.executorHost)
 
     return {
         engine,
@@ -402,14 +402,14 @@ describe('SyncEngine.abortSession stopKind', () => {
  * effort/outputStyle 回放给 CLI（否则回落默认值）。
  */
 describe('SyncEngine.resumeSession 回放 runtimeState', () => {
-    test('effort 与 outputStyle 均传入 spawn 入参（MachineHost 直调观测）', async () => {
+    test('effort 与 outputStyle 均传入 spawn 入参（ExecutorHost 直调观测）', async () => {
         const store = new Store(':memory:')
         // engine 后建（host 构造时尚无引用）：spawn 受理时同步注册新会话并 active，
         // 让 resumeSession 的 waitForSessionActive 立即通过
         const engineRef: { engine?: SyncEngine } = {}
         const spawnOptions: Record<string, unknown>[] = []
-        const machineHost = {
-            spawnSession: async (_machineId: string, _directory: string, options?: Record<string, unknown>) => {
+        const executorHost = {
+            spawnSession: async (_directory: string, options?: Record<string, unknown>) => {
                 const engine = engineRef.engine!
                 const spawned = engine.getOrCreateSession(
                     'tag-resumed-new', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
@@ -418,7 +418,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
                 spawnOptions.push(options ?? {})
                 return { type: 'success', sessionId: spawned.id }
             },
-        } as unknown as MachineHost
+        } as unknown as ExecutorHost
 
         const io = {
             of() { return { sockets: new Map() } },
@@ -428,7 +428,7 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
         } as unknown as RpcRegistry
         const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
 
-        const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
+        const engine = new SyncEngine(store, io, registry, sseManager, undefined, executorHost)
         engineRef.engine = engine
         try {
             // executor 就绪（ticket 201 起 resume 判据）
@@ -555,12 +555,12 @@ describe('SyncEngine.switchOutputStyle 结构化分层（深化候选⑥）', ()
  * session 寻址、本机执行，无条件单路径：文件/路径类操作不经会话进程，
  * 一律按会话行解析 cwd 后落 host 层。cwd 缺失显式报错（不回退 session
  * socket——双执行路径正是要消灭的东西）；saveFile 同样 host 化（cwd 注入，写边界仍锚定会话 cwd 子树）。
- * ticket-20 起观测点是 MachineHost 直调入参（捕获型 host mock），不再有 machine socket RPC；
- * machineId 形参随单机化退化为占位空串（602 形参收窄时删除），断言按空串锁定。
+ * ticket-20 起观测点是 ExecutorHost 直调入参（捕获型 host mock），不再有 machine socket RPC；
+ * machineId 形参已随单机化收窄（602），断言只锁 cwd 注入与业务参数。
  */
 describe('SyncEngine 会话文件 RPC 执行层', () => {
-    /** 捕获型 MachineHost：machine 族方法调用记为 { method, args }，返回固定 ok 信封 */
-    function makeRecordingHost(): { host: MachineHost; calls: { method: string; args: unknown[] }[] } {
+    /** 捕获型 ExecutorHost：machine 族方法调用记为 { method, args }，返回固定 ok 信封 */
+    function makeRecordingHost(): { host: ExecutorHost; calls: { method: string; args: unknown[] }[] } {
         const calls: { method: string; args: unknown[] }[] = []
         const rec = (method: string) => (...args: unknown[]) => {
             calls.push({ method, args })
@@ -568,21 +568,21 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
         }
         const host = {
             spawnSession: rec('spawnSession'),
-            machineReadFileMeta: rec('machineReadFileMeta'),
-            machineReadFileRange: rec('machineReadFileRange'),
-            machineSaveFile: rec('machineSaveFile'),
-            machineUploadFileRange: rec('machineUploadFileRange'),
-            machineDeleteUpload: rec('machineDeleteUpload'),
-            machineReplaceUpload: rec('machineReplaceUpload'),
-            machineSearchFiles: rec('machineSearchFiles'),
-            machineListSessionDirectory: rec('machineListSessionDirectory'),
-        } as unknown as MachineHost
+            hostReadFileMeta: rec('hostReadFileMeta'),
+            hostReadFileRange: rec('hostReadFileRange'),
+            hostSaveFile: rec('hostSaveFile'),
+            hostUploadFileRange: rec('hostUploadFileRange'),
+            hostDeleteUpload: rec('hostDeleteUpload'),
+            hostReplaceUpload: rec('hostReplaceUpload'),
+            hostSearchFiles: rec('hostSearchFiles'),
+            hostListSessionDirectory: rec('hostListSessionDirectory'),
+        } as unknown as ExecutorHost
         return { host, calls }
     }
 
     function makeFileEngine(): { h: EngineHandle; calls: { method: string; args: unknown[] }[] } {
         const { host, calls } = makeRecordingHost()
-        const h = makeEngine({ renameOnline: false, machineHost: host })
+        const h = makeEngine({ renameOnline: false, executorHost: host })
         return { h, calls }
     }
 
@@ -590,12 +590,12 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
         return h.engine.getOrCreateSession(`tag-file-exec-${Math.random().toString(36).slice(2)}`, metadata, null, 'default')
     }
 
-    test('readFileMeta 落 machine 层并注入 cwd', async () => {
+    test('readFileMeta 落 host 层并注入 cwd', async () => {
         const { h, calls } = makeFileEngine()
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             await h.engine.readFileMeta(session.id, 'a.txt')
-            expect(calls).toEqual([{ method: 'machineReadFileMeta', args: ['', '/tmp/proj', 'a.txt'] }])
+            expect(calls).toEqual([{ method: 'hostReadFileMeta', args: ['/tmp/proj', 'a.txt'] }])
         } finally {
             h.cleanup()
         }
@@ -606,7 +606,7 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             await h.engine.readFileRange(session.id, 'a.txt', 5, 100)
-            expect(calls).toEqual([{ method: 'machineReadFileRange', args: ['', '/tmp/proj', 'a.txt', 5, 100] }])
+            expect(calls).toEqual([{ method: 'hostReadFileRange', args: ['/tmp/proj', 'a.txt', 5, 100] }])
         } finally {
             h.cleanup()
         }
@@ -617,7 +617,7 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             await h.engine.searchSessionFiles(session.id, 'hub', 'file')
-            expect(calls).toEqual([{ method: 'machineSearchFiles', args: ['', '/tmp/proj', 'hub', 'file'] }])
+            expect(calls).toEqual([{ method: 'hostSearchFiles', args: ['/tmp/proj', 'hub', 'file'] }])
         } finally {
             h.cleanup()
         }
@@ -628,21 +628,20 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             await h.engine.listSessionDirectory(session.id, 'docs', 'hu')
-            expect(calls).toEqual([{ method: 'machineListSessionDirectory', args: ['', '/tmp/proj', 'docs', 'hu'] }])
+            expect(calls).toEqual([{ method: 'hostListSessionDirectory', args: ['/tmp/proj', 'docs', 'hu'] }])
         } finally {
             h.cleanup()
         }
     })
 
-    test('uploadFileRange 落 machine writeFileRange 并注入 cwd', async () => {
+    test('uploadFileRange 落 host 层 writeFileRange 并注入 cwd', async () => {
         const { h, calls } = makeFileEngine()
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             const chunk = new Uint8Array([1, 2, 3])
             await h.engine.uploadFileRange(session.id, 'f.png', undefined, 0, chunk, 3)
-            expect(calls[0].method).toBe('machineUploadFileRange')
-            const [machineId, cwd, filename, path, offset, content, totalSize] = calls[0].args
-            expect(machineId).toBe('')
+            expect(calls[0].method).toBe('hostUploadFileRange')
+            const [cwd, filename, path, offset, content, totalSize] = calls[0].args
             expect(cwd).toBe('/tmp/proj')
             expect(filename).toBe('f.png')
             expect(path).toBeUndefined()
@@ -660,9 +659,9 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             await h.engine.deleteUploadFile(session.id, '.mobi/uploads/a.png')
             await h.engine.replaceUploadFile(session.id, '.mobi/uploads/a.png', new Uint8Array([9]))
-            expect(calls[0]).toEqual({ method: 'machineDeleteUpload', args: ['', '/tmp/proj', '.mobi/uploads/a.png'] })
-            expect(calls[1].method).toBe('machineReplaceUpload')
-            expect(calls[1].args.slice(0, 3)).toEqual(['', '/tmp/proj', '.mobi/uploads/a.png'])
+            expect(calls[0]).toEqual({ method: 'hostDeleteUpload', args: ['/tmp/proj', '.mobi/uploads/a.png'] })
+            expect(calls[1].method).toBe('hostReplaceUpload')
+            expect(calls[1].args.slice(0, 2)).toEqual(['/tmp/proj', '.mobi/uploads/a.png'])
         } finally {
             h.cleanup()
         }
@@ -680,13 +679,13 @@ describe('SyncEngine 会话文件 RPC 执行层', () => {
         }
     })
 
-    test('saveFile 同样 machine 化（冷编辑器：改文件不唤醒会话）', async () => {
+    test('saveFile 同样 host 化（冷编辑器：改文件不唤醒会话）', async () => {
         const { h, calls } = makeFileEngine()
         try {
             const session = seedSession(h, { path: '/tmp/proj', host: 'h' })
             const content = new Uint8Array([1])
             await h.engine.saveFile(session.id, 'a.txt', content, '1-1')
-            expect(calls).toEqual([{ method: 'machineSaveFile', args: ['', '/tmp/proj', 'a.txt', content, '1-1'] }])
+            expect(calls).toEqual([{ method: 'hostSaveFile', args: ['/tmp/proj', 'a.txt', content, '1-1'] }])
         } finally {
             h.cleanup()
         }

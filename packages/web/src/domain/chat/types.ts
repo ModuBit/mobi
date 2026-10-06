@@ -101,7 +101,7 @@ export type AgentMetrics = {
 export type BackgroundTask = {
     taskId: string
     toolUseId: string | null
-    /** 'unknown'：task_updated 补建条目无法确证工具类型（hub 诚实降级，不冒充 Bash） */
+    /** 'unknown'：task_updated 补建条目无法确证工具类型（daemon 诚实降级，不冒充 Bash） */
     toolName: 'Bash' | 'Agent' | 'Monitor' | 'unknown'
     description: string
     subagentType?: string
@@ -200,7 +200,7 @@ export type NormalizedMessage = ({
     originalText?: string
     /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
     isSynthetic?: boolean
-    /** 流式快照消息（未落库，Hub 直接透传） */
+    /** 流式快照消息（未落库，daemon 直接透传） */
     snapshot?: boolean
     /** Anthropic 分配的 message.id（snapshot 与 full 共享，双保险第二道按 (messageId, type) 去重的键） */
     messageId?: string
@@ -264,7 +264,7 @@ export type AgentTextBlock = {
     isSynthetic?: boolean
     /** 是否正在流式输出 */
     isStreaming?: boolean
-    /** 是否为流式 snapshot（snapshot 字段由 Hub 透传，尚未落库） */
+    /** 是否为流式 snapshot（snapshot 字段由 daemon 透传，尚未落库） */
     isSnapshot?: boolean
     /** 源 assistant 消息被截断（spec D6）：该块为消息内最后一个 text 块时渲染「已截断」中性标注 */
     aborted?: boolean
@@ -279,7 +279,7 @@ export type AgentReasoningBlock = {
     meta?: MessageMeta
     /** 是否正在流式输出 */
     isStreaming?: boolean
-    /** 是否为流式 snapshot（snapshot 字段由 Hub 透传，尚未落库） */
+    /** 是否为流式 snapshot（snapshot 字段由 daemon 透传，尚未落库） */
     isSnapshot?: boolean
     /** thinking 块流式生成耗时（ms）；仅 remote 有，local/历史消息为 undefined → 不展示时长 */
     durationMs?: number
@@ -344,7 +344,7 @@ export type ToolCallBlock = {
 }
 
 /**
- * 自定义消息块（ADR 0002）：hub/mobi 注入的非 CC 消息（首期为 fork 溯源「fork 自会话 xxx」）。
+ * 自定义消息块（ADR 0002）：daemon/mobi 注入的非 CC 消息（首期为 fork 溯源「fork 自会话 xxx」）。
  * blocks 为统一词汇表（text/image/document/quote）数组——unknown block 已在归一层
  * （normalizeContentBlocks）剔除；渲染层按 block.type 分发（见 blocks/CustomBlock.tsx），
  * 未注册项跳过不渲染。内部动作不走 block：文本中的 mobi:// 动作链接由 Markdown

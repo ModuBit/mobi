@@ -72,19 +72,20 @@ describe('printExitReport', () => {
         writeLines(record({ reason: 'crash-uncaught', errorMessage: 'boom' }))
         const out = capture(() => printExitReport({ logsDir }))
         expect(out).toContain('crash-uncaught')
-        expect(out).toContain('HUB')
+        expect(out).toContain('CLI')
         expect(out).toContain('boom')
     })
 
-    it('processFilter 过滤掉其他进程类型', () => {
+    it('processFilter 过滤掉其他进程类型（历史 hub/runner 记录归并 daemon）', () => {
         writeLines(
-            record({ processType: 'hub', reason: 'normal' }),
+            record({ processType: 'daemon', reason: 'normal' }),
             record({ processType: 'runner', pid: 456, reason: 'signal-term' })
         )
-        const out = capture(() => printExitReport({ logsDir, processFilter: 'hub' }))
-        expect(out).toContain('HUB')
+        // 历史 'runner' 记录被 readExitRecords 归并为 daemon，两条都命中 daemon 过滤
+        const out = capture(() => printExitReport({ logsDir, processFilter: 'daemon' }))
+        expect(out).toContain('DAEMON')
         expect(out).toContain('normal')
-        expect(out).not.toContain('RUNNER')
+        expect(out).toContain('signal-term')
     })
 
     it('dumpFile 存在时打印 dump 路径', () => {

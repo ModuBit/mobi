@@ -15,7 +15,7 @@
  */
 
 /**
- * 流式上传管道（对称下载侧 /read-file 流式）：web 二进制 body → hub reader 聚合 → cli writeFileRange。
+ * 流式上传管道（对称下载侧 /read-file 流式）：web 二进制 body → daemon reader 聚合 → cli writeFileRange。
  * session 与 machine 通道共用，调用方注入 writeRange（转发到对应 RPC）+ cleanup（删半成品）。
  */
 
@@ -54,7 +54,7 @@ export function concatBytes(parts: Uint8Array[]): Uint8Array {
 
 /**
  * 流式上传：从请求 body reader 逐块读 → 聚合到 UPLOAD_CHUNK_SIZE → 经 writeRange 转发到 cli
- * （emitWithAck 串行 await = 天然背压：cli 没写完上一块，hub 不读下一块，TCP 窗口传导到 web）。
+ * （emitWithAck 串行 await = 天然背压：cli 没写完上一块，daemon 不读下一块，TCP 窗口传导到 web）。
  * 中断（reader 抛错 / cli rpcError / offset≠totalSize）→ 抛出前调 cleanup 删半成品。
  *
  * @param reader 请求 body 的 reader（c.req.raw.body.getReader()）

@@ -278,8 +278,8 @@ export function NewSessionPage() {
     // URL param（replace 不产生历史条目）——param 是工作区选择的唯一驱动源：手动改选后
     // 再点侧边栏同一工作区的「+」时 param 必然变化，param effect 才能重新应用
     // （否则手动改选与 param 预选各持一份状态，会互相盖不住）。
-    // selectedWorkspaceId 是冻结快照——工作区从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错。
-    // 工作区 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
+    // selectedWorkspaceId 是冻结快照——工作区从缓存消失（被删）也不清空，spawn 仍透传由 daemon 报错。
+    // 工作区 folders 在 daemon/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
     const applyWorkspace = useCallback((workspace: Workspace) => {
         setSelectedWorkspaceId(workspace.id)
         const primaryPath = workspace.folders.find(f => f.primary)?.path
@@ -584,7 +584,7 @@ export function NewSessionPage() {
                 permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
-                // 归属工作区（冻结快照：搜索参数预选或手动选择）；工作区被删则 hub 报 404，不静默降级
+                // 归属工作区（冻结快照：搜索参数预选或手动选择）；工作区被删则 daemon 报 404，不静默降级
                 workspaceId: selectedWorkspaceId ?? undefined,
             }
 

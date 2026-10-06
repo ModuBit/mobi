@@ -36,7 +36,7 @@
  *
  * ## Cross-Platform Support
  *
- * This utility handles spawning MOBI CLI subprocesses (for runner processes)
+ * This utility handles spawning MOBI CLI subprocesses (for daemon executor)
  * in a cross-platform way, detecting the current runtime mode and using
  * the appropriate command and arguments.
  */

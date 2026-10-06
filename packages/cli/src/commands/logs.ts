@@ -19,16 +19,15 @@ import { findLatestLog, type LogProcessType } from '@mobi/shared/logger'
 import { configuration } from '@mobi/node-core/configuration'
 import type { CommandDefinition, CommandContext } from './types'
 
-const TYPES: LogProcessType[] = ['hub', 'runner', 'cli']
+const TYPES: LogProcessType[] = ['daemon', 'cli']
 
 function showHelp(): void {
     console.log(`
 ${chalk.bold('mobi logs')} - 打印各进程最新日志文件路径
 
 ${chalk.bold('Usage:')}
-  mobi logs            打印 hub / runner / cli 各自最新路径
-  mobi logs hub        打印最新 hub 日志路径
-  mobi logs runner     打印最新 runner 日志路径
+  mobi logs            打印 daemon / cli 各自最新路径
+  mobi logs daemon     打印最新 daemon 日志路径（历史 -hub.log / -runner.log 一并纳入）
   mobi logs cli        打印最新 cli 日志路径
   mobi logs all        等同 mobi logs
 

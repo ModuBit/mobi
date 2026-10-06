@@ -15,7 +15,7 @@
  */
 
 /**
- * PPID 看门狗：hub/runner 被 supervisor 托管时保证"父死子亡"。
+ * PPID 看门狗：daemon 被 supervisor 托管时保证"父死子亡"。
  *
  * supervisor 被 SIGKILL 后子进程不会收到任何信号（变孤儿、被 init 收养），
  * 端口与锁文件将一直被占。本看门狗轮询父进程存活状态，发现父进程死亡后

@@ -26,7 +26,7 @@ import { casUpdateSessionMetadataBestEffort, getSession } from './sessions'
  * 最近一次边界消息（compact_boundary / context-cleared）的 seq。
  * 判定 `msg.seq <= contextBoundarySeq` = 边界之前（不可 fork / 不可 rewind），O(1)。
  *
- * 已知取舍：字段声明在 shared MetadataSchema（web 消费经 sessionCache 可达），但 hub 侧
+ * 已知取舍：字段声明在 shared MetadataSchema（web 消费经 sessionCache 可达），但 daemon 侧
  * sdkMetadata 刷新路径从缓存重建 metadata 写回时可能抹掉非 SDK 字段——因此本指针仍是
  * 「尽力而为 + 读侧自愈」：字段缺失/被抹时 resolve 惰性回填（向回扫最近一条边界行），
  * 下次消费自动补上。rewind 软删除行后指针也可能滞后，同走自愈。
@@ -77,7 +77,7 @@ export function resolveContextBoundarySeq(db: Database, sessionId: string): numb
     return seq
 }
 
-/** 边界指针领域存储（Store 聚合的子 Store，见 hub 编码规范） */
+/** 边界指针领域存储（Store 聚合的子 Store，见 daemon 编码规范） */
 export class ContextBoundaryStore {
     private readonly db: Database
 

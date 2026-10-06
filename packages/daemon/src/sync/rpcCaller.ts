@@ -17,7 +17,7 @@
 /**
  * socket 传输调用器（ticket-15 自 rpcGateway 抽出）。
  *
- * Hub → CLI（session 族）RPC 通道的传输语义单源。machine 族在 ticket-20 已随
+ * daemon → CLI（session 族）RPC 通道的传输语义单源。machine 族在 ticket-20 已随
  * machine socket 通道删除（本地直调），此前为两条通道共写一份传输逻辑而拆出的
  * 本类现在只剩 RpcGateway 一个持有方。
  */
@@ -29,15 +29,15 @@ import { RpcFailure, type RpcFailureKind } from './rpcFailure'
 /**
  * 把一句**别处产出的传输层散文**读成一类故障——传输适配层唯一还在读文案的地方。
  *
- * 之所以还剩这一处：三类故障里有两类的句子不是 hub 产的——socket.io 的 ack 超时
- * （`operation has timed out`）由框架给，runner 等会话 webhook 超时
+ * 之所以还剩这一处：三类故障里有两类的句子不是 daemon 产的——socket.io 的 ack 超时
+ * （`operation has timed out`）由框架给，executor 等会话 webhook 超时
  * （`Session webhook timeout for PID N`）**由另一个进程**给。要彻底不读文案，得让
- * runner 的回执带结构化字段，那是 docs/pending.md #78 要回答的事。
+ * executor 的回执带结构化字段，那是 docs/pending.md #78 要回答的事。
  *
  * 与之相对，`unreachable` 的两句是本层自己抛的，**在抛出那一刻就带上了分类**，
  * 不在这儿再认一遍——给自己产的句子留一条猜测后路，正是这套分类要拆掉的东西。
  *
- * 两类超时共用一条规则：socket.io 的 ack 超时与 runner 的 webhook 超时都含
+ * 两类超时共用一条规则：socket.io 的 ack 超时与 executor 的 webhook 超时都含
  * timeout / timed out。
  */
 export function classifyTransportFailure(message: string): RpcFailureKind {

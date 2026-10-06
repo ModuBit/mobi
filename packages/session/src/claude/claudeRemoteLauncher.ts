@@ -115,7 +115,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 消息 payload push 进 SDK input stream
     // （payload 可为数组 content block——队列消息可能是带图片的 PromptPayload）
     private steerSink: ((payload: PromptPayload, localId?: string) => boolean) | null = null;
-    // 跨会话消息 sink + 对 Hub 的「此刻能收消息」上报：两者必须同步翻转，收进
+    // 跨会话消息 sink + 对 daemon 的「此刻能收消息」上报：两者必须同步翻转，收进
     // InboundChannel 一处声明（与 steerSink 分开而不是复用：这条不经投递队列，
     // 入参没有 localId——不绑定 native_id；接通时机也更早，见 claudeRemote 的说明）
     private readonly inbound = new InboundChannel(
@@ -124,7 +124,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // 上次真实 turn 的窗口/成本/瞬时 usage 记忆、代际守卫、窗口口径——全部内藏在 tracker，
     // launcher 只在 SDK 事件点转发（深化候选①，见 contextUsageTracker.ts 与其编排测试）
     private readonly contextTracker = new ContextUsageTracker({
-        // 读：queryRef 生命周期归 launcher，tracker 只见通道；写：hub 上报通道
+        // 读：queryRef 生命周期归 launcher，tracker 只见通道；写：daemon 上报通道
         fetchSummary: () => this.fetchContextSummary(),
         reportUsage: (usage) => this.session.client.reportContextUsage(usage),
     })
@@ -155,7 +155,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      *  轮次中止（pending #94 存活不变量）时收口于此，下一轮 nextMessage 首取原样投递。
      *  **跨轮存活**，轮收尾 finally 只复位 pendingBatchHeld 标记、绝不清空本字段 */
     private pendingBatch: { message: PromptPayload; mode: EnhancedMode; isolate: boolean; hash: string; localIds: string[] } | null = null
-    /** 撤回生效后待拦的死亡回执：撤回后本 turn 的第一条中断 result 不转发 hub（E2E 残留缺陷
+    /** 撤回生效后待拦的死亡回执：撤回后本 turn 的第一条中断 result 不转发 daemon（E2E 残留缺陷
      *  修复——否则该 result 以更大 seq 落库，web 仍渲染「Session aborted」灰行）。消费即清除 */
     private suppressNextInterruptedResult = false
     /** 已做过能力发现的去重键（nativeSessionId；resume 首轮 sessionId 未回写时为 '__pending__' 哨兵）——
@@ -259,8 +259,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
             this.session.client.emitWithdrawnFact(this.turnTracking.lastPushedNativeId)
             this.turnTracking.lastPushedNativeId = null
-            // 撤回生效：拦下本 turn 即将到达的中断 result（死亡回执），不转发 hub/落库——
-            // hub 已按撤回锚软删除，回执再落库会以更大 seq 复活为灰行（spec §5.2）
+            // 撤回生效：拦下本 turn 即将到达的中断 result（死亡回执），不转发 daemon/落库——
+            // daemon 已按撤回锚软删除，回执再落库会以更大 seq 复活为灰行（spec §5.2）
             this.suppressNextInterruptedResult = true
             return                                       // 撤回路径抑制 aborted event（spec D6/§5.2）
         }
@@ -291,9 +291,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
     /**
      * 已 collect 消息的暂存收口（pending #94 存活不变量）：消息已被 collectBatch shift
-     * （pushed fact 已发、Hub lifecycle 已推进为 pushed），因轮次中止或投递异常无法进入
+     * （pushed fact 已发、daemon lifecycle 已推进为 pushed），因轮次中止或投递异常无法进入
      * SDK input stream 时收口于此，下一轮 nextMessage 首取原样投递——绝不随轮次收尾丢弃，
-     * 否则消息永久悬空（Hub 不再补投、CLI 队列已无此消息）
+     * 否则消息永久悬空（daemon 不再补投、CLI 队列已无此消息）
      */
     private holdForNextRound(msg: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }): null {
         if (this.pendingBatch) {
@@ -361,7 +361,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     /**
      * fork 激活收口（fork-session spec §5.2 步骤 4/5）：init 返回预生成 fork id 时，
      * CC 已物化 fork transcript——清除本地激活簿记并经 updateMetadata（现有版本化通道）
-     * 上报 hub 清除 forkFrom（omitForkFrom 保留持久溯源 forkedFrom，badge 解除）。
+     * 上报 daemon 清除 forkFrom（omitForkFrom 保留持久溯源 forkedFrom，badge 解除）。
      * 幂等：forkActivation 置 null 后的 init（compact 切换 / 重启轮）不再触发。
      * init 返回非预生成 id（SDK 未采纳 sessionId option，异常路径）→ 按激活失败双通道
      * 收口（forkError + 时间线消息，forkFrom 保留供重试/删除）：若只静默保留簿记，
@@ -444,7 +444,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             turnArchive,
             turnFulltext,
         );
-        // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 Hub
+        // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 daemon
         // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
         const reportNativeAttach = createNativeAttachReporter(
             (nativeSessionId) => session.client.emitNativeAttached(nativeSessionId)
@@ -479,7 +479,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
         });
 
-        // 取消排队消息（web → hub → cli 两阶段取消的 CLI 侧）
+        // 取消排队消息（web → daemon → cli 两阶段取消的 CLI 侧）
         // CLI 是「是否仍可安全取消」的权威：in-flight（已 collectBatch/steal，即将喂 agent）→ 不可取消，
         // 否则会产生幽灵消息。tryCancel 区分 in-flight / 仍在队列 / CLI 未知三种。
         session.client.rpcHandlerManager.registerHandler('cancel-queued-message', async (params) => {
@@ -488,7 +488,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             return { status: session.queue.tryCancel(localId) }
         });
 
-        // steer 排队消息（web → hub → cli）：把仍排队的消息从内存队列取出，
+        // steer 排队消息（web → daemon → cli）：把仍排队的消息从内存队列取出，
         // 立即 push 进 SDK input stream，由 Claude Code 在内部安全点处理。
         // 设计权衡：steer 绕过 MessageQueue 的 modeHash 一致性检查与 collectBatch 的 pending 重启机制，
         // 消息以「当前运行 Query 的配置」被处理，而非入队时的配置。若用户排队后改了 model/permissionMode，
@@ -533,12 +533,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 pushBack()
                 return { status: 'submitted' }
             }
-            // push 成功 → 立即通知 Hub 已提交（与 collectBatch 同路径）
+            // push 成功 → 立即通知 daemon 已提交（与 collectBatch 同路径）
             session.client.emitMessagesSubmitted([localId])
             return { status: 'steered' }
         });
 
-        // 跨会话消息投递（Hub → CLI）：别的会话的 agent 把一条消息投给本会话。
+        // 跨会话消息投递（daemon → CLI）：别的会话的 agent 把一条消息投给本会话。
         //
         // 与 steer-queued-message 的分界（本特性与既有投递路径的交界，勿混）：
         // 那条从**本会话自己的投递队列**里 steal 一条排队消息；这条**完全不碰队列**——
@@ -562,10 +562,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
         // 消费前排序屏障：排队消息被消费时（collectBatch → onBatchConsumed → pushed fact 直连
         // emit），先清空本发送队列——上一轮消息（含 result）经 setTimeout(0) 异步发送，不 flush 的
-        // 话 fact 抢在 result 落库前到达 Hub，position_at 跳变早于 result created_at，
+        // 话 fact 抢在 result 落库前到达 daemon，position_at 跳变早于 result created_at，
         // Web 按 positionAt 排序会把排队消息排到上一轮 result 之前（详见 setBeforeCollect）。
         // 屏障只保证「fact 晚于 result 发出」；跨时钟时间戳比较（fact.at vs result 落库时刻）
-        // 的残余竞态由 Hub 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底。
+        // 的残余竞态由 daemon 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底。
         session.queue.setBeforeCollect(() => messageQueue.flush());
 
         permissionHandler.setOnPermissionRequest((toolCallId: string) => {
@@ -609,8 +609,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
 
             // 拦截 command_lifecycle 帧：CC 排队消息生命周期回执。控制帧不 convert 不落库
-            //（classifyMessage discard 兜底），只取信号转 lifecycle fact 上报 Hub。
-            // command_uuid = push 时预设的 nativeId，Hub 按 nativeId 反查推进
+            //（classifyMessage discard 兜底），只取信号转 lifecycle fact 上报 daemon。
+            // command_uuid = push 时预设的 nativeId，daemon 按 nativeId 反查推进
             const lifecycleSignal = commandLifecycleToFact(message)
             if (lifecycleSignal) {
                 session.client.emitLifecycleFact(
@@ -631,7 +631,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
             // 命令列表变化（SDKCommandsChangedMessage，sdk.d.ts REPLACE 语义）：CC 在技能/
             // 命令目录变化时推送（与用户交互无关，会话空闲期也会到达）。supportedCommands()
-            // 已跟踪最新推送，此处只需重跑能力发现刷新 sdkMetadata.commands → hub SSE →
+            // 已跟踪最新推送，此处只需重跑能力发现刷新 sdkMetadata.commands → daemon SSE →
             // web 命令面板 refetch；消息本体由 classifyMessage discard（不进消息流）。
             // 节流：目录扫描期可能连发，10s 内只发现一次
             if (message.type === 'system' && (message as { subtype?: string }).subtype === 'commands_changed') {
@@ -656,7 +656,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
                 this.contextTracker.onInit((message as { model?: string }).model)
                 // fork 激活收口（fork-session spec §5.2 步骤 4/5）：init 返回预生成 id 即 CC
-                // 已物化 fork transcript——清本地簿记 + 上报 hub 清除 forkFrom（保留 forkedFrom）
+                // 已物化 fork transcript——清本地簿记 + 上报 daemon 清除 forkFrom（保留 forkedFrom）
                 this.settleForkActivation((message as { session_id?: string }).session_id)
             }
 
@@ -723,7 +723,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 轮次变更观测（投影口径数据源），失败不影响主流程
                 turnDiffReporter.observe(logMessage);
 
-                // 过滤 discard 类消息，不发送到 Hub
+                // 过滤 discard 类消息，不发送到 daemon
                 if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
                     return
                 }
@@ -734,7 +734,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 if ((logMessage as { type?: string }).type === 'result') {
                     const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
                     if (isAbortedTerminalReason(reason)) {
-                        // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 hub 转发/落库。
+                        // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 daemon 转发/落库。
                         // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
                         // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
                         if (this.suppressNextInterruptedResult) {
@@ -847,7 +847,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，restart 请求已置位。
                 // SDK 的截断由下面 claudeRemote 的 startup 预热承载（resumeSessionAt 加载到
                 // 锚点即截断，不再走空跑轮）。两段回报经 onRewindTruncated 回调移到 startup
-                // 截断后——对齐设计文档「先 CLI 截断成功，再 Hub 软删除（CLI 失败则 Hub 不动）」，
+                // 截断后——对齐设计文档「先 CLI 截断成功，再 daemon 软删除（CLI 失败则 daemon 不动）」，
                 // 截断失败由下方 catch 补发 completed { error }。rewind 局部变量保留 resumeAt 供传参。
                 const restart = session.restart.current();
                 const rewind = restart?.kind === 'rewind' ? restart : undefined;
@@ -857,7 +857,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                 // fork 激活预检（fork-session spec §5.2 步骤 3）：锚点必须仍在 parent transcript 上
                 // （parent 可能已 rewind 深于锚点 / transcript 文件丢失）。失败 → 上报错误态并结束
-                // launcher 循环——首条消息不消费（hub 侧保持 queued），forkFrom 保留（badge 不解除，
+                // launcher 循环——首条消息不消费（daemon 侧保持 queued），forkFrom 保留（badge 不解除，
                 // 会话可删除），下次发消息重新 spawn 预检即重试
                 const forkActivation = session.forkActivation;
                 if (forkActivation) {
@@ -945,7 +945,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onQueryReady: (query, { isResume }) => {
                             this.queryRef = query;
                             // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。
-                            // resume 会话跳过：hub 已持久化真实水位/成本（web 首拉恢复），
+                            // resume 会话跳过：daemon 已持久化真实水位/成本（web 首拉恢复），
                             // 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
                             if (!isResume) void this.contextTracker.collectStartupUsage(query);
                             // 暴露给外部用于动态 setModel/setPermissionMode
@@ -1022,7 +1022,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     continue;
                                 }
 
-                                // 消息已 shift（pushed fact 已发、Hub lifecycle 已推进）而本轮已在
+                                // 消息已 shift（pushed fact 已发、daemon lifecycle 已推进）而本轮已在
                                 // 收尾：暂存下一轮投递，返回 null 让消费方干净结束（pending #94）
                                 if (controller.signal.aborted || roundEndSignal?.aborted) {
                                     logger.debug('[remote]: round ending, holding collected message for next round');
@@ -1050,7 +1050,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             // 绑定幂等守卫：systemInit 与 SessionStart hook（remote 进程内回调，ADR 0001）
                             // 双源共用，同 id 不重复触发
                             applySessionIdBinding(() => session, sessionId);
-                            // attach：native session 变化（首启/新会话/compact 切换）→ Hub 补写空缺行
+                            // attach：native session 变化（首启/新会话/compact 切换）→ daemon 补写空缺行
                             reportNativeAttach(sessionId);
                             if (!scannerPromise) {
                                 // 首次：启动 scanner(只传 onAttachmentStatus,不传 onMessage——
@@ -1122,8 +1122,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSnapshot: (out) => {
                             // delta 协议三出口：全量帧走 legacy snapshot 通道（带 rev 标记），
-                            // 增量帧走 snapshotDelta 通道（hub 侧拼接器重建全量），
-                            // stream-end 信号通知 hub 清缓存与订阅游标（full 落库即流结束）
+                            // 增量帧走 snapshotDelta 通道（daemon 侧拼接器重建全量），
+                            // stream-end 信号通知 daemon 清缓存与订阅游标（full 落库即流结束）
                             if (out.kind === 'full') {
                                 session.client.sendContentSnapshot(out.message, { rev: out.frame.rev });
                             } else if (out.kind === 'delta') {
@@ -1154,7 +1154,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
                         // 跨会话消息 sink 与 steer sink 同生命周期：本轮的 input stream 关了就置空。
-                        // 「能收消息」的上报与 sink 同进同出——装上去的同一刻报 true（Hub 拿它等
+                        // 「能收消息」的上报与 sink 同进同出——装上去的同一刻报 true（daemon 拿它等
                         // 「建完即可用」，见 SessionReceiveReadiness）
                         onAgentMessageSinkReady: (push) => { this.inbound.ready(push) },
                         // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
@@ -1185,7 +1185,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     }
                 } catch (e) {
                     // 截断失败（claudeRemote 抛错）：补发 completed { error } 而不发 truncated——
-                    // 对齐设计文档「CLI 失败则 Hub 不动」：Hub 不软删除，Web 收到 error 终态解锁
+                    // 对齐设计文档「CLI 失败则 daemon 不动」：daemon 不软删除，Web 收到 error 终态解锁
                     // 并 toast 原因。文件回滚结果 filesRestored 在 RPC 阶段已确定（先于截断），如实携带。
                     if (rewind && session.restart.current() === restart) {
                         session.client.emitRewindCompleted(
@@ -1241,7 +1241,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 命中 stale sink 导致 steer push 抛错（虽已 try/catch 回填，但清空让未就绪态更明确）
                     this.steerSink = null;
                     // 本轮入站通道已关，本会话此刻收不下消息了。**这不是「会话退了」**——
-                    // 下一轮起来会再报 true；Hub 侧据此把「还没接上」与「已经退出」分开说
+                    // 下一轮起来会再报 true；daemon 侧据此把「还没接上」与「已经退出」分开说
                     this.inbound.down();
                     // 轮级状态复位：后台任务集合按「进程重启即清空」语义随轮清空（sdk.d.ts level 信号
                     // 为 per-process）；待注入停止信息与暂存批次标记不跨轮残留
@@ -1302,7 +1302,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 /**
  * 从 background_tasks_changed 的 tasks 数组提取存活任务 id 集合（批次 A『全部停止』遍历源）。
  * 提取规则（task_id 非空字符串 + 跳过 ambient 家务任务，spec D1/D2；非数组输入返回空集合
- * 即 REPLACE 语义清空）单源于 shared 的 extractLiveBackgroundTaskIds——cli 与 hub 共用，
+ * 即 REPLACE 语义清空）单源于 shared 的 extractLiveBackgroundTaskIds——cli 与 daemon 共用，
  * 此处仅作薄包装以保持既有导出签名（ReadonlySet）与调用方不变。
  */
 export function collectLiveTaskIds(tasks: unknown): ReadonlySet<string> {

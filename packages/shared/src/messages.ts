@@ -71,7 +71,7 @@ export interface UnwrappedOutputMessage {
 /**
  * 解包 SDK 输出消息的通用骨架：
  * envelope → { role, content } → content.type === 'output' → data。
- * 此前这段解包在 hub sync/tasks.ts 与 sync/teams.ts 三处手写且 role 校验已分叉，
+ * 此前这段解包在 daemon sync/tasks.ts 与 sync/teams.ts 三处手写且 role 校验已分叉，
  * 收口于此——envelope 格式变化只改这一处，不会再有静默丢 delta 的漏改点。
  *
  * - 不做 role 过滤：实测 envelope role 随真实消息类型变化（assistant 消息 'agent'、
@@ -108,7 +108,7 @@ export function extractAnthropicMessageId(messageContent: unknown): string | nul
 
 /**
  * turn 终点判定（已解包产物形态）：agent result 输出行（SDK 轮次结束的 usage 概要行）。
- * 信封知识收口于此——fork 复制切割（hub sessionFork）与前台任务孤儿清扫（hub 投影器，
+ * 信封知识收口于此——fork 复制切割（daemon sessionFork）与前台任务孤儿清扫（daemon 投影器，
  * 热路径需复用单次解包产物）共用同一判据，'result' 类型字面量不再散落多处。
  */
 export function isTurnResultUnwrapped(unwrapped: UnwrappedOutputMessage | null): boolean {
@@ -145,7 +145,7 @@ export type SentFrom = 'cli' | 'webapp' | (string & {})
  */
 export type MessageLifecycle = 'queued' | 'pushed' | 'acked' | 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused' | 'withdrawn'
 
-/** lifecycle 状态推进序——与 hub advanceMessagesLifecycle 的 SQL CASE rank 同语义，勿单边改。
+/** lifecycle 状态推进序——与 daemon advanceMessagesLifecycle 的 SQL CASE rank 同语义，勿单边改。
  *  终态（done/cancelled/discarded/refused）同为 4：互不覆盖（first-terminal-wins）。withdrawn 单独高位（永不后续推进）。 */
 export const LIFECYCLE_RANK: Record<Exclude<MessageLifecycle, null>, number> = {
     queued: 0, pushed: 1, acked: 2, processing: 3, done: 4, cancelled: 4, discarded: 4, refused: 4, withdrawn: 5,
@@ -154,8 +154,8 @@ export const LIFECYCLE_RANK: Record<Exclude<MessageLifecycle, null>, number> = {
 /**
  * command_lifecycle 帧可驱动的 lifecycle 状态（单一来源）——MessageLifecycle 的命令轨道子集：
  * started→processing、completed→done、cancelled/discarded/refused 直传（CLI commandLifecycleToFact 转译）。
- * 与 MessageLifecycle/LIFECYCLE_RANK 的对应：排除 queued/pushed/acked（hub 自身推进，不经
- * command_lifecycle 帧）与 withdrawn（撤回留档，仅 hub 内部写入）；本集合全部落在 rank 3/4 档。
+ * 与 MessageLifecycle/LIFECYCLE_RANK 的对应：排除 queued/pushed/acked（daemon 自身推进，不经
+ * command_lifecycle 帧）与 withdrawn（撤回留档，仅 daemon 内部写入）；本集合全部落在 rank 3/4 档。
  * satisfies 保证不越出 MessageLifecycle 值域（消费端勿手写字面量联合副本，新增状态只改这里）。
  */
 export const COMMAND_LIFECYCLE_STATES = ['processing', 'done', 'cancelled', 'discarded', 'refused'] as const satisfies readonly MessageLifecycle[]
@@ -174,10 +174,10 @@ export function isLifecycleAhead(current: MessageLifecycle | null | undefined, c
 /**
  * 停止动作三档（批次 A：停止 × 队列语义闭环）。
  * - 'turn'：只中断当前 turn（web 点按停止；队列照跑、后台任务存活）
- * - 'turn-queue'：中断当前 turn + 清空两层队列（hub queued 物理删除 + CC 层 cancel_queued）
+ * - 'turn-queue'：中断当前 turn + 清空两层队列（daemon queued 物理删除 + CC 层 cancel_queued）
  * - 'turn-queue-tasks'：再终止全部运行中的后台任务（遍历 stopTask）
  */
-/** StopKind 的运行时取值（单一来源）：hub abort 路由的 z.enum 直接引用，
+/** StopKind 的运行时取值（单一来源）：daemon abort 路由的 z.enum 直接引用，
  *  勿在消费端手写字符串数组副本（新增档位只改这里） */
 export const STOP_KIND_VALUES = ['turn', 'turn-queue', 'turn-queue-tasks'] as const
 
@@ -208,8 +208,8 @@ export function isAbortedTerminalReason(reason: unknown): boolean {
 }
 
 /**
- * CLI→Hub 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
- * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。
+ * CLI→daemon 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
+ * `at` 为 CLI 观测时刻，缺省由 daemon 取接收时刻。
  * kind 语义：pushed=排队消息已推给 SDK、bound=native 锚点绑定、attached=native session 补写、
  * acked=CC isReplay 回显确认、lifecycle=command_lifecycle 帧转译、withdrawn=撤回（#53）。
  */
@@ -251,7 +251,7 @@ export function isCliOrigin(content: unknown): boolean {
  *
  * 其余所有来源（webapp 及未来端）默认排队。
  *
- * **判据②读的是结构，不是某个取值**（2026-09-13）：两个写入方（hub 的 `sendMessage` 带
+ * **判据②读的是结构，不是某个取值**（2026-09-13）：两个写入方（daemon 的 `sendMessage` 带
  * origin、CLI 的 `sendInboundCrossSessionMessage`）此前都靠把 `sentFrom` 写成 `'cli'` 来借
  * 「不排队」这个副作用——不变量于是挂在一个与事实不符的取值上，谁改一个字符串，这三类入站
  * 消息就静默进队列（Web 上多一条永不会被消费的悬浮消息）。现在读来源标注本身
@@ -261,7 +261,7 @@ export function isCliOrigin(content: unknown): boolean {
  * `isMobiDelivered`（那条要求 fromSessionId 非空）：CC 原生 peer 与 scheduled / loop 都没有
  * fromSessionId，而它们有 localId、role 也是 user——漏掉就是真的进队列。
  *
- * 这是「排队」的**唯一写入决策点**：Hub `addMessage` 据此决定 lifecycle。
+ * 这是「排队」的**唯一写入决策点**：daemon `addMessage` 据此决定 lifecycle。
  * Web 端只读 lifecycle，不再反推来源。
  */
 export function isQueueableUserSubmission(content: unknown, localId: string | null | undefined): boolean {

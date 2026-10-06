@@ -20,12 +20,12 @@ import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { rpcError, getErrorMessage } from './rpcResponses'
 
-export interface ListMachineDirectoryRequest {
+export interface ListHostDirectoryRequest {
     path: string
     homeDir: string
 }
 
-export interface ListMachineDirectoryResponse {
+export interface ListHostDirectoryResponse {
     success: boolean
     entries?: Array<{ name: string }>
     error?: string
@@ -34,15 +34,15 @@ export interface ListMachineDirectoryResponse {
 /**
  * 注册 machine 级 list-directory RPC handler
  */
-export function registerMachineDirectoryHandler(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<ListMachineDirectoryRequest, ListMachineDirectoryResponse>('list-directory', (params) => listMachineDirectoryImpl(params))
+export function registerHostDirectoryHandler(rpcHandlerManager: RpcHandlerManager): void {
+    rpcHandlerManager.registerHandler<ListHostDirectoryRequest, ListHostDirectoryResponse>('list-directory', (params) => listHostDirectoryImpl(params))
 }
 
 /**
- * list-directory 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * list-directory 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，
  * 行为单源——socket 路径与本地直调不会分叉。
  */
-export async function listMachineDirectoryImpl(params: ListMachineDirectoryRequest | undefined): Promise<ListMachineDirectoryResponse> {
+export async function listHostDirectoryImpl(params: ListHostDirectoryRequest | undefined): Promise<ListHostDirectoryResponse> {
     const { path: targetPath, homeDir } = params ?? {}
 
     if (!targetPath || !homeDir) {

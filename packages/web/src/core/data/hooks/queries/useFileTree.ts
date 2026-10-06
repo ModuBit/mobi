@@ -22,8 +22,8 @@ import type { FileNode, ListDirectoryResponse } from '@/core/data/api/types'
 export type { FileNode }
 
 /**
- * 把 hub 的目录响应映射为 FileNode[]：
- * hub 的 entry 只有 name，需按被列目录的 dirPath 拼出完整相对路径。
+ * 把 daemon 的目录响应映射为 FileNode[]：
+ * daemon 的 entry 只有 name，需按被列目录的 dirPath 拼出完整相对路径。
  * 过滤掉 'other' 类型。dirPath '.' 视为根。
  *
  * 同时透传 truncated/total：listDirectory（树浏览）在条目数达上限时截断，
@@ -55,8 +55,8 @@ export function parseDirectoryEntries(data: ListDirectoryResponse, dirPath: stri
 /**
  * 文件内容：二进制流结果。
  * - blob：原始内容（按 mime 在前端三分发：文本 → blob.text()、图片 → objectURL、二进制 → 提示下载）
- * - mime：来自 hub 的 Content-Type
- * - etag：来自 hub 的 ETag，用于后续 304 协商
+ * - mime：来自 daemon 的 Content-Type
+ * - etag：来自 daemon 的 ETag，用于后续 304 协商
  * null 表示尚未加载或 304 命中（保持旧缓存）。
  */
 export type FileContent = { blob: Blob; mime: string; etag?: string }
@@ -88,7 +88,7 @@ export function useFileContent(sessionId: string | null, filePath: string | null
                 // 浏览器侧缓存主要靠 react-query cache + refetch 协商
                 return await api.files.read(sessionId, filePath)
             } catch (error) {
-                // 非 2xx 被 axios throw，笼统状态码文案转 hub body 的真实原因（如读边界拒绝详情）
+                // 非 2xx 被 axios throw，笼统状态码文案转 daemon body 的真实原因（如读边界拒绝详情）
                 throw toApiError(error)
             }
         },
@@ -105,7 +105,7 @@ export type FileMeta = { mime: string; size: number; etag: string; writable?: bo
 
 /**
  * 获取文件元数据（mime/size/etag/writable）。
- * hub 返回 success:false 或缺少 meta 时抛错，由 react-query 透出 error。
+ * daemon 返回 success:false 或缺少 meta 时抛错，由 react-query 透出 error。
  */
 export function useFileMeta(sessionId: string | null, filePath: string | null) {
     const api = useMobiApi()

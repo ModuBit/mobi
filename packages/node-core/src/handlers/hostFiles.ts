@@ -27,7 +27,7 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
  * machine 通道文件读取策略（跨会话存活的静态资源读取，消息附件预览等）：
  *
  * - 同名覆盖 common handlers 在 machine 连接上的默认注册——registerHandler 是 Map.set，
- *   apiMachine 装配顺序里本模块后注册即生效。默认版 workingDirectory 固定为 runner 启动目录，
+ *   apiMachine 装配顺序里本模块后注册即生效。默认版 workingDirectory 固定为 daemon 启动目录，
  *   无法按工作区寻址；本版以显式 cwd 参数化（缺省回退 process.cwd()，对齐 uploads.ts 惯例）
  * - 安全边界 = 读边界（ADR 0004：cwd 子树 ∪ home−黑名单 ∪ /tmp，与 session 通道同源
  *   validateReadPath）。曾有的扩展名白名单已废除（ADR 0006）：session 文件 RPC 的执行层
@@ -35,13 +35,13 @@ import type { ReadFileMetaResponse, ReadFileRangeRequest, ReadFileRangeResponse 
  *   的文件读行为分叉；闸门 = 目录黑名单 + 敏感文件名单（凭证/历史/密钥，validateReadPath 单源）
  */
 
-interface MachineReadFileMetaRequest {
+interface HostReadFileMetaRequest {
     path: string
     /** 显式工作区根目录；缺省回退 process.cwd() */
     cwd?: string
 }
 
-interface MachineReadFileRangeRequest extends ReadFileRangeRequest {
+interface HostReadFileRangeRequest extends ReadFileRangeRequest {
     /** 同上 */
     cwd?: string
 }
@@ -50,12 +50,12 @@ interface MachineReadFileRangeRequest extends ReadFileRangeRequest {
  * machine 通道读取的统一入口策略：读边界（cwd ∪ home−黑名单 ∪ /tmp）。
  * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
  */
-function resolveAllowedMachinePath(
+function resolveAllowedHostPath(
     cwd: string,
     relPath: string | undefined,
     homeDir: string,
 ): { abs: string } | { error: string; code?: string } {
-    // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，hub 据此映射 403）
+    // 空路径拒绝（边界类拒绝统一 ACCESS_DENIED，daemon 据此映射 403）
     if (!relPath) return { error: 'Invalid path: outside readable boundary', code: 'ACCESS_DENIED' }
     const effectiveCwd = normalizeCwdParam(cwd, process.cwd())
     // 解析与校验同源：validateReadPath 的 valid 结果自带 resolvedPath，无手抄二次解析
@@ -71,11 +71,11 @@ function resolveAllowedMachinePath(
 }
 
 /**
- * readFileMeta 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * readFileMeta 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，
  * 行为单源——socket 路径与本地直调不会分叉。
  */
-export function machineReadFileMetaImpl(data: MachineReadFileMetaRequest, homeDir: string): Promise<ReadFileMetaResponse> {
-    const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path, homeDir)
+export function hostReadFileMetaImpl(data: HostReadFileMetaRequest, homeDir: string): Promise<ReadFileMetaResponse> {
+    const resolved = resolveAllowedHostPath(data.cwd ?? '', data.path, homeDir)
     if ('error' in resolved) {
         return Promise.resolve(rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined))
     }
@@ -95,8 +95,8 @@ export function machineReadFileMetaImpl(data: MachineReadFileMetaRequest, homeDi
 /**
  * readFileRange 实现（同上，本地化直调目标）。
  */
-export async function machineReadFileRangeImpl(data: MachineReadFileRangeRequest, homeDir: string): Promise<ReadFileRangeResponse> {
-    const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path, homeDir)
+export async function hostReadFileRangeImpl(data: HostReadFileRangeRequest, homeDir: string): Promise<ReadFileRangeResponse> {
+    const resolved = resolveAllowedHostPath(data.cwd ?? '', data.path, homeDir)
     if ('error' in resolved) {
         return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
     }
@@ -112,8 +112,8 @@ export async function machineReadFileRangeImpl(data: MachineReadFileRangeRequest
 /**
  * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界单闸门）。
  */
-export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
-    rpcHandlerManager.registerHandler<MachineReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', (data) => machineReadFileMetaImpl(data, homeDir))
+export function registerHostFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
+    rpcHandlerManager.registerHandler<HostReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', (data) => hostReadFileMetaImpl(data, homeDir))
 
-    rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', (data) => machineReadFileRangeImpl(data, homeDir))
+    rpcHandlerManager.registerHandler<HostReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', (data) => hostReadFileRangeImpl(data, homeDir))
 }

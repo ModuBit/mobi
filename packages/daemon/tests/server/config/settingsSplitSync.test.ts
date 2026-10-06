@@ -23,7 +23,7 @@ import { updateSettingsFile } from '../../../src/config/settings'
 
 /**
  * settings 拆分的两处回归锁定：
- * 1. co-located 开箱即连：全新目录（无 settings.cli.json）下 hub 首启必须创建 cli 文件
+ * 1. co-located 开箱即连：全新目录（无 settings.cli.json）下 daemon 首启必须创建 cli 文件
  *    并同步 cliApiToken——existsSync 守卫曾使该链路在全新安装上永不触发
  * 2. updateSettingsFile 值未变不写盘：纯读路径不得刷新 mtime / 触发 watcher 事件
  */

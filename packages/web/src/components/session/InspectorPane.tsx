@@ -126,7 +126,7 @@ const StyledTabs = styled(Tabs)`
 
 export interface InspectorPaneProps {
     sessionId: string
-    /** session 是否在线（CLI runner 已连接）；离线时 rightChrome 改浮动定位（不进 tabBar） */
+    /** session 是否在线（CLI 已连接）；离线时 rightChrome 改浮动定位（不进 tabBar） */
     active?: boolean
 }
 
@@ -334,7 +334,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
 
     const hasTabs = tabs.length > 0
     // 空态：居中 3 按钮。休眠也显示——openFile/桌面 machine 化照常可用，终端创建后
-    // hub 自动唤醒 + session_waking 重试兜底（dormancy：首动作自然变慢，无独立门控）
+    // daemon 自动唤醒 + session_waking 重试兜底（dormancy：首动作自然变慢，无独立门控）
     const showEmpty = expanded && !hasTabs
 
     return (
@@ -380,7 +380,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             )}
             {/* 终端 tab 休眠/离线时不叠 ActivateCover：TerminalView 自带重连遮罩
                 （create 被拒 → session_waking 提示 + 自动重试 + 手动「重连」按钮，
-                重发 create 即触发 hub 唤醒），再盖一层恢复引导是重复门控 */}
+                重发 create 即触发 daemon 唤醒），再盖一层恢复引导是重复门控 */}
         </Layout>
     )
 }

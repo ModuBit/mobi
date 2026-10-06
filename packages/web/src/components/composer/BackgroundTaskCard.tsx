@@ -71,7 +71,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     // 无 sidechain 数据（toolUseId=null）的任务打开不了 drawer——点击守卫由本组件内聚，
     // 调用方无需（也不应）再判 toolUseId
     const clickable = task.toolUseId != null
-    // || 而非 ??：超时转后台等补建条目 description 可能是空串（hub 侧缓存未命中时诚实降级），同样走兜底
+    // || 而非 ??：超时转后台等补建条目 description 可能是空串（daemon 侧缓存未命中时诚实降级），同样走兜底
     const name = task.description || 'Background task'
 
     const [drawerOpen, setDrawerOpen] = useState(false)

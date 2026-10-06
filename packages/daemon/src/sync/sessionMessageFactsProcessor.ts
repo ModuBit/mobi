@@ -23,7 +23,7 @@ import {
     type SyncEvent,
 } from '@mobi/shared'
 
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import type { Store, StoredMessage } from '../store'
 import { extractWithdrawnContent } from '../store/messages'
 
@@ -246,11 +246,11 @@ export class SessionMessageFactsProcessor {
         const first = this.store.messages.getMessagesByNativeId(sessionId, nativeId)[0]
         if (!first) return
         if (TERMINAL_LIFECYCLES.has(first.lifecycle ?? '')) {
-            hubLogger.debug(`[messages-facts] withdrawn skipped: anchor already terminal (sid=${sessionId} nativeId=${nativeId} lifecycle=${first.lifecycle})`)
+            daemonLogger.debug(`[messages-facts] withdrawn skipped: anchor already terminal (sid=${sessionId} nativeId=${nativeId} lifecycle=${first.lifecycle})`)
             return
         }
         if (this.store.messages.hasQueuedMessagesAfter(sessionId, first.seq)) {
-            hubLogger.debug(`[messages-facts] withdrawn skipped: queued rows exist after anchor (sid=${sessionId} nativeId=${nativeId} seq=${first.seq})`)
+            daemonLogger.debug(`[messages-facts] withdrawn skipped: queued rows exist after anchor (sid=${sessionId} nativeId=${nativeId} seq=${first.seq})`)
             return
         }
 

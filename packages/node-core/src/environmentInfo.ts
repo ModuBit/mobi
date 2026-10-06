@@ -17,7 +17,7 @@
 /**
  * 环境信息快照（debug 用）。
  *
- * ticket-12 从 cli ui/doctor 抽出归 node-core：runner（daemon）与 claude 会话
+ * ticket-12 从 cli ui/doctor 抽出归 node-core：daemon 与 claude 会话
  * （session）启动时都要把它注入 machine metadata / SDK env；cli 的 doctor 命令
  * 同样复用。ui/doctor 保留 re-export。
  */

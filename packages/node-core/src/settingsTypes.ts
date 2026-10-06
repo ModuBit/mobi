@@ -41,6 +41,6 @@ export interface Settings {
   // true（默认）= 注入即响应（等同 Claude CLI 的 respondToBashCommands:true）；
   // false = 仅本地执行、UI 展示合成工具对，模型完全不参与（!cmd 不耗 token）。
   bashInjectContext?: boolean
-  // web 工具配置（provider 启停/凭据/当前选择），由 runner RPC 读写；会话进程 mtime 惰性读
+  // web 工具配置（provider 启停/凭据/当前选择），由 daemon RPC 读写；会话进程 mtime 惰性读
   webTools?: WebToolsConfig
 }

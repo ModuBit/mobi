@@ -179,7 +179,7 @@ export function parseRewindSseEvent(event: unknown): RewindSseEvent | null {
 /**
  * SSE rewind 两段回报接入（SSEProvider 在 handleSyncEvent 分发前调用）：
  * 识别并消费事件，返回 true 表示已消费（调用方跳过后续 switch）。
- * truncated 到达即清消息窗口（seq >= deleteFromSeq 的已加载行，与 Hub 软删除同范围）——
+ * truncated 到达即清消息窗口（seq >= deleteFromSeq 的已加载行，与 daemon 软删除同范围）——
  * 无论会话视图是否挂载，窗口数据保持正确，切回时无需补拉。
  */
 export function ingestRewindSseEvent(event: unknown): boolean {
@@ -191,7 +191,7 @@ export function ingestRewindSseEvent(event: unknown): boolean {
         // 后续 completed 落终态（「已回退至此」分隔线）、30s 超时兜底随之生效，sender 同步禁用。
         // 载荷不含锚点，nativeId 留空（completion.nativeId 仅存档不消费）；
         // 本地已发起则不覆盖（保留真实锚点）。页面重载后迟到的孤立 truncated 会被
-        // hub 去重挡住（M5 不重放广播），到达即说明 rewind 真实在途
+        // daemon 去重挡住（M5 不重放广播），到达即说明 rewind 真实在途
         if (!store.progressBySession.get(parsed.sessionId)) {
             store.beginRewind(parsed.sessionId, '')
         }

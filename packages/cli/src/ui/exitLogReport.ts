@@ -71,7 +71,8 @@ export function printExitReport(opts: ExitReportOptions = {}): void {
 
 function tag(t: ProcessType): string {
     const label = t.toUpperCase().padEnd(6)
-    const color = t === 'hub' ? chalk.magenta : t === 'runner' ? chalk.blue : chalk.green
+    // 历史 exits 记录的 daemon/runner 值已由 readExitRecords 归并为 daemon
+    const color = t === 'cli' ? chalk.green : chalk.blue
     return color(label)
 }
 

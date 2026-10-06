@@ -46,7 +46,7 @@ export type RewindSessionState = {
     rewinding?: boolean
     /** 会话激活（CLI 在线）；false = 离线，rewind RPC 无法送达 → 隐藏入口；undefined = 不可判定（保守不隐藏） */
     active?: boolean
-    /** 上下文边界指针（会话 metadata.contextBoundarySeq，hub compact_boundary 落库 / context-cleared 事件时推进）；
+    /** 上下文边界指针（会话 metadata.contextBoundarySeq，daemon compact_boundary 落库 / context-cleared 事件时推进）；
      *  缺失（存量会话未回填）按 0 处理 = 保守放行，不误伤存量行 */
     contextBoundarySeq?: number
 }
@@ -55,7 +55,7 @@ export type RewindSessionState = {
  * rewind 入口显隐判据（PC footer 操作组 / 移动长按 Drawer 共用）。
  *
  * 体验层：可能因数据未对齐而误判——误判方向只会隐藏入口（保守），
- * 放行侧由 Hub 闸门（后台任务集合）+ CLI 预检（transcript 锚点存在性）把守。
+ * 放行侧由 daemon 闸门（后台任务集合）+ CLI 预检（transcript 锚点存在性）把守。
  */
 export function canRewindMessage(
     message: RewindableMessage,
@@ -194,7 +194,7 @@ export function rewindRejectReasonKey(reason: string | undefined):
 
 /**
  * rewind 执行失败 catch 的 reason 提取：优先取 HTTP 错误体里的 `error` 字段
- * （hub 409/403 透传的 CLI 拒绝原因，如 busy），非 HTTP 错误回退 Error.message。
+ * （daemon 409/403 透传的 CLI 拒绝原因，如 busy），非 HTTP 错误回退 Error.message。
  * 裸读 err.message 只会拿到 axios 标准串（"Request failed with status code 409"），
  * 409 体里的 reason 永远到不了文案映射。
  * 实现统一收口到 api client 的 extractApiError（同一提取语义，勿再复制）。
@@ -232,7 +232,7 @@ export function rewindFailedReasonKey(error: string | undefined):
 
 /**
  * 文件恢复失败 error → i18n key 判别（终态 filesRestored=false 的部分降态提示）：
- * 边界反查失败（CLI 截断后 Hub 行已不可定位）有明确语义文案，其余笼统提醒检查工作目录。
+ * 边界反查失败（CLI 截断后 daemon 行已不可定位）有明确语义文案，其余笼统提醒检查工作目录。
  * 与 rewindRejectReasonKey 同理：CLI reason 是英文串不直出，原文经 console 留诊断。
  */
 export function rewindFilesFailedKey(error: string | undefined): 'chat.rewind.filesFailedBoundary' | 'chat.rewind.filesFailed' {

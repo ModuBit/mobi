@@ -37,7 +37,7 @@ export type RpcHandlerMap = Map<string, RpcHandler>;
  */
 export interface RpcRequest {
     method: string;
-    params: unknown; // 直接对象（hub 不再 JSON.stringify）
+    params: unknown; // 直接对象（daemon 不再 JSON.stringify）
 }
 
 /**

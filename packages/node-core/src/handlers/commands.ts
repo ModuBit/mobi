@@ -29,7 +29,7 @@ export function registerCommandHandlers(rpcHandlerManager: RpcHandlerManager, wo
     rpcHandlerManager.registerHandler<{ cwd?: string }, RefreshMetadataResponse>('refreshMetadata', (params) => refreshMetadataImpl(params, workingDirectory))
 }
 
-/** refreshMetadata 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，行为单源 */
+/** refreshMetadata 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，行为单源 */
 export async function refreshMetadataImpl(params: { cwd?: string } | undefined, workingDirectory?: string): Promise<RefreshMetadataResponse> {
     // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
     const effectiveCwd = params?.cwd || workingDirectory

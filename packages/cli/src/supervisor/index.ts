@@ -42,7 +42,7 @@ import { cleanupOrphans } from './orphanCleanup'
 /** supervisor 启动时若期望托管集为空，等待首条指令的宽限时间 */
 const IDLE_EXIT_MS = 30_000
 
-/** hub 健康检查超时 */
+/** daemon 健康检查超时 */
 const HUB_HEALTH_TIMEOUT_MS = 30_000
 
 export async function runSupervisor(): Promise<void> {

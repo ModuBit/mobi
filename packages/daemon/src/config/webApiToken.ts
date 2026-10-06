@@ -73,10 +73,10 @@ export async function getOrCreateWebApiToken(dataDir: string): Promise<WebApiTok
 /**
  * 轮换 Web API token：强制生成新值并覆盖持久化
  *
- * 供 CLI 经 HTTP API（POST /cli/web-token）远程调用——webApiToken 归 hub 所有，
+ * 供 CLI 经 HTTP API（POST /cli/web-token）远程调用——webApiToken 归 daemon 所有，
  * 远程部署下 CLI 无法直接写 daemon 的 settings.daemon.json。
  * 调用方（路由）负责同步热更新 configuration 单例。
- * 注意：若 hub 以 WEB_API_TOKEN 环境变量启动，重启后 env 值仍会覆盖本次轮换。
+ * 注意：若 daemon 以 WEB_API_TOKEN 环境变量启动，重启后 env 值仍会覆盖本次轮换。
  */
 export async function rotateWebApiToken(dataDir: string): Promise<WebApiTokenResult> {
     const settingsFile = getSettingsFile(dataDir)

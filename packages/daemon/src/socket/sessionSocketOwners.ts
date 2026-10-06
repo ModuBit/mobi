@@ -17,7 +17,7 @@
 /**
  * 「一个会话同时只允许一条 CLI socket」的接管仲裁表。
  *
- * 没有它时，同一 session 的两条连接会短暂并存（hub 重启后旧 CLI 重连与唤醒新 CLI
+ * 没有它时，同一 session 的两条连接会短暂并存（daemon 重启后旧 CLI 重连与唤醒新 CLI
  * 是真实场景）：RpcRegistry 的后写覆盖把方法映射判给后到者；先到者此后断开时
  * `unregisterAll` 连根拔掉唯一有效注册——幸存的 CLI 从此对所有会话 RPC 不可达，
  * web 端彻底失去对 Claude Code 进程的管理（2026-09-30 事故）。

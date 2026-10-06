@@ -363,7 +363,7 @@ export function ingestUiCommandEvent(event: SyncEvent): boolean {
     // 红线（D10）：本函数是 workspace 打开动作的唯一入口，只允许被 SSE 事件监听路径调用——
     // 禁止进 ToolCallBlock 渲染/effect，否则刷新页面重渲染消息气泡时会重复执行。
     // 瞬态事件不落库不进快照，刷新后 tab 消失为预期（D9）。
-    // 信封 sessionId 由 Hub 盖章；缺省（会话无关动作）不路由 inspector。
+    // 信封 sessionId 由 daemon 盖章；缺省（会话无关动作）不路由 inspector。
     // 未知 action / target（未来 A 类扩展）静默跳过。
     // 展开语义对齐 ActionLink file/open 默认行为：agent 意图是"展示给用户"，
     // inspector 折叠时只开 tab 等于没做

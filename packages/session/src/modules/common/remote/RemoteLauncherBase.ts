@@ -82,7 +82,7 @@ export abstract class RemoteLauncherBase {
         handlers: RemoteLauncherAbortHandlers
     ): void {
         rpcHandlerManager.registerHandler('abort', async (params: { stopKind?: StopKind }) => {
-            // stopKind 入口校验：缺省（旧 hub / 本地触发）或未知值（未来第 4 档 / 手误字符串）
+            // stopKind 入口校验：缺省（旧 daemon / 本地触发）或未知值（未来第 4 档 / 手误字符串）
             // 一律回落 'turn'——isCancelQueued 负向默认下，未知值透传会静默升级为破坏性清队列
             await handlers.onAbort(normalizeStopKind(params?.stopKind));
         });

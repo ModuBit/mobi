@@ -245,7 +245,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         try {
             await action()
         } catch (e) {
-            // hub 对「会话仍存活但 requestId 已被处理」返回 404 + code:'permission_request_gone'
+            // daemon 对「会话仍存活但 requestId 已被处理」返回 404 + code:'permission_request_gone'
             // （典型：首次 approve 成功但 SSE 滞后致卡片残留，用户重复点击）。此情形静默收起，不报错；
             // 其余 404（会话被删 / 路由错误等）仍当真实失败提示，避免掩盖问题。
             const data = (isAxiosError(e) ? (e.response?.data as { code?: string; error?: string } | undefined) : undefined)

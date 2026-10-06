@@ -18,9 +18,9 @@
  * open_in_mobi 核心工具工厂（agent-apps A 类 UI 呈现，借鉴 codex open_in_codex）。
  *
  * 统一的"在 mobi 打开"工具：target 判别联合（file / terminal，后续增量扩展），
- * 经 CLI↔Hub socket 发 ui-command → Hub 按 Web 在线状态广播或静默，
+ * 经 CLI↔daemon socket 发 ui-command → daemon 按 Web 在线状态广播或静默，
  * 回执 { delivered } 是本工具的核心语义。仅挂 remote 壳（mobiAppsServer，
- * D1：local HTTP 壳不挂载——local 模式无 Hub/Web 链路）。
+ * D1：local HTTP 壳不挂载——local 模式无 daemon/Web 链路）。
  *
  * 回执三分支（勿混淆）：
  * - delivered: true → 已在用户 Web 端打开（已广播语义，非"用户已看到"）
@@ -35,7 +35,7 @@ import { errorTextResult, textResult, type MobiToolTextResult } from './toolResu
 export const OPEN_IN_MOBI_TOOL_NAME = 'open_in_mobi' as const
 
 export interface OpenInMobiToolDeps {
-    /** 发送 UI 命令到 Hub（emitWithAck 等回执，见 ApiSessionClient.sendUiCommand） */
+    /** 发送 UI 命令到 daemon（emitWithAck 等回执，见 ApiSessionClient.sendUiCommand） */
     sendUiCommand: (action: UiCommandAction) => Promise<UiCommandAck>
 }
 
@@ -80,7 +80,7 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
             // isError 并透出真实原因——不伪装成"已忽略"误导 agent 反复重试永不成功的操作
             if (answer.reason && answer.reason !== 'no-web-online') {
                 return {
-                    content: [{ type: 'text', text: `The UI command was rejected by mobi hub (${answer.reason}).` }],
+                    content: [{ type: 'text', text: `The UI command was rejected by mobi daemon (${answer.reason}).` }],
                     isError: true,
                 };
             }
@@ -91,7 +91,7 @@ export function createOpenInMobiTool(deps: OpenInMobiToolDeps) {
             );
         } catch (error) {
             // socket 断开/ack 超时：连接故障，不伪装成"已忽略"
-            return errorTextResult('Failed to send the UI command to mobi hub', error);
+            return errorTextResult('Failed to send the UI command to mobi daemon', error);
         }
     }
 

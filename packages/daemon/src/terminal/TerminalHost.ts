@@ -106,7 +106,7 @@ export class TerminalHost {
                 emitToSocket(payload.terminalId, 'terminal:exit', payload)
                 terminalRegistry.remove(payload.terminalId)
             },
-            // 错误即终态：送达后摘除条目，防 web 无限重连循环（旧 hub 转发路径同款）
+            // 错误即终态：送达后摘除条目，防 web 无限重连循环（历史 daemon 转发路径同款）
             onError: (payload) => {
                 emitToSocket(payload.terminalId, 'terminal:error', payload)
                 terminalRegistry.remove(payload.terminalId)

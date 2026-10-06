@@ -24,7 +24,6 @@ export type SSESubscription = {
     namespace: string
     all: boolean
     sessionId: string | null
-    machineId: string | null
 }
 
 type SSEConnection = SSESubscription & {
@@ -52,7 +51,6 @@ export class SSEManager {
         namespace: string
         all?: boolean
         sessionId?: string | null
-        machineId?: string | null
         visibility?: VisibilityState
         /** snapshot delta 能力协商（票 02）：老 web 缺省 false，恒收全量 */
         snapshotDelta?: boolean
@@ -66,7 +64,6 @@ export class SSEManager {
             namespace: options.namespace,
             all: Boolean(options.all),
             sessionId: options.sessionId ?? null,
-            machineId: options.machineId ?? null,
             send: options.send,
             sendHeartbeat: options.sendHeartbeat,
             snapshot: this.snapshotSync.attachSubscription({
@@ -86,8 +83,7 @@ export class SSEManager {
             id: subscription.id,
             namespace: subscription.namespace,
             all: subscription.all,
-            sessionId: subscription.sessionId,
-            machineId: subscription.machineId
+            sessionId: subscription.sessionId
         }
     }
 
@@ -143,7 +139,6 @@ export class SSEManager {
             namespace: connection.namespace,
             all: connection.all,
             sessionId: connection.sessionId,
-            machineId: connection.machineId,
         }
     }
 
@@ -254,10 +249,6 @@ export class SSEManager {
         }
 
         if ('sessionId' in event && connection.sessionId === event.sessionId) {
-            return true
-        }
-
-        if ('machineId' in event && connection.machineId === event.machineId) {
             return true
         }
 

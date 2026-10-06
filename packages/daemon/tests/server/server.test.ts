@@ -15,10 +15,10 @@
  */
 
 /**
- * startHub / HubHandle.stop 生命周期（ticket-16 验收项）。
+ * startServer / ServerHandle.stop 生命周期（ticket-16 验收项）。
  *
- * startHub 从 index.ts 抽出后成为可复用组件——daemon 同进程编排依赖
- * 「stop 后端口真正释放」（否则 runner stop → hub 重启会撞自己残留的监听），
+ * startServer 从 index.ts 抽出后成为可复用组件——daemon 同进程编排依赖
+ * 「stop 后端口真正释放」（否则 daemon stop → start 会撞自己残留的监听），
  * 此处做真实起停验证：起 → /health 可达 → stop → 端口可被重新绑定。
  */
 
@@ -26,9 +26,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startHub, type HubHandle } from '../../src/server'
+import { startServer, type ServerHandle } from '../../src/server'
 
-const DATA_DIR = join(tmpdir(), `mobi-test-hub-server-${process.pid}`)
+const DATA_DIR = join(tmpdir(), `mobi-test-server-${process.pid}`)
 
 /** 借用即还：拿一个当前空闲的 TCP 端口 */
 function pickFreePort(): Promise<number> {
@@ -44,14 +44,14 @@ function pickFreePort(): Promise<number> {
     })
 }
 
-describe('startHub / stop 生命周期', () => {
-    let handle: HubHandle
+describe('startServer / stop 生命周期', () => {
+    let handle: ServerHandle
     let port: number
     const savedEnv: Record<string, string | undefined> = {}
 
     beforeAll(async () => {
         mkdirSync(DATA_DIR, { recursive: true })
-        // startHub 经 env 覆盖监听地址，须隔离并事后还原（bun test 单文件单进程）。
+        // startServer 经 env 覆盖监听地址，须隔离并事后还原（bun test 单文件单进程）。
         // 宿主端口同样 pickFree：随机主端口 +10000 派生会越界（>65535），显式指定
         for (const key of ['MOBI_HOME', 'MOBI_LISTEN_HOST', 'MOBI_LISTEN_PORT', 'MOBI_HOST_PORT']) {
             savedEnv[key] = process.env[key]
@@ -59,7 +59,7 @@ describe('startHub / stop 生命周期', () => {
         process.env.MOBI_HOME = DATA_DIR
         port = await pickFreePort()
         process.env.MOBI_HOST_PORT = String(await pickFreePort())
-        handle = await startHub({ host: '127.0.0.1', port })
+        handle = await startServer({ host: '127.0.0.1', port })
     })
 
     afterAll(async () => {

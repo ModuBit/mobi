@@ -45,7 +45,7 @@ const defaultSettings: Settings = {}
  * （controlServer 探活）、doctor、upgrader/processRestarter、supervisor 孤儿清理、
  * e2e 脚本。
  *
- * 501/502 起字段随 hub/runner 更名 daemon 读旧写新：写恒用 httpPort/controlPort，
+ * 501/502 起字段随单机 daemon 更名读旧写新：写恒用 httpPort/controlPort，
  * 读取方对存量旧字段 hubPort/runnerHttpPort 做兜底（ ?? 过渡，见各读取点）。
  */
 export interface DaemonLocallyPersistedState {
@@ -143,7 +143,7 @@ export async function readDaemonSettings(): Promise<DaemonSettings> {
     return JSON.parse(content)
   }
 
-  // 解析失败抛错（fail-fast，与 hub 侧 readSettingsRaw 对称）：
+  // 解析失败抛错（fail-fast，与 daemon 侧 readSettingsRaw 对称）：
   // updateDaemonSettings 锁内经此读取，吞错返回 {} 会把 daemon 文件覆盖成只剩 listen*，
   // webApiToken/vapidKeys 等字段全丢
   const content = await readFile(configuration.daemonSettingsFile, 'utf8')
@@ -151,8 +151,8 @@ export async function readDaemonSettings(): Promise<DaemonSettings> {
 }
 
 /**
- * 设置文件锁内的读-改-写（cli 与 hub 对称的锁协议：.lock wx 独占创建 + 重试 + stale 清理）。
- * cli 文件与 hub 文件各有自己的锁文件，跨进程互斥。
+ * 设置文件锁内的读-改-写（cli 与 daemon 对称的锁协议：.lock wx 独占创建 + 重试 + stale 清理）。
+ * cli 文件与 daemon 文件各有自己的锁文件，跨进程互斥。
  */
 async function withSettingsLock<S extends object>(
   settingsFile: string,
@@ -265,11 +265,11 @@ const LEGACY_CLI_FIELDS = [
 ] as const
 
 /**
- * cli 侧旧单文件 settings.json 的一次性迁移（hub 与 cli 不同机器部署时，
- * hub 的迁移够不到 cli 机器，cli 自己把存量 cli 字段搬进 settings.cli.json）。
+ * cli 侧旧单文件 settings.json 的一次性迁移（daemon 与 cli 不同机器部署时，
+ * daemon 的迁移够不到 cli 机器，cli 自己把存量 cli 字段搬进 settings.cli.json）。
  *
  * 语义：旧文件存在 → 取 cli 专属字段补缺写入 cli 文件（已有值不覆盖，幂等）。
- * 不归档旧文件——归档权归 hub 侧迁移：co-located 时 hub 启动会统一 rename .bak；
+ * 不归档旧文件——归档权归 daemon 侧迁移：co-located 时 daemon 启动会统一 rename .bak；
  * 远程部署时旧文件留在 cli 机器上无害（新代码不再读它）。
  * 解析失败仅警告跳过不阻断：cli 侧凭证缺失还有交互式 prompt 兜底，
  * fail-fast 会把坏旧文件放大成所有命令不可用。

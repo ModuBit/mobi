@@ -25,7 +25,7 @@
 
 import { nextBackoffMs, nextCrashCount, shouldGiveUp } from './restartPolicy'
 
-/** ticket-22 起唯一托管组件：hub+runner 已合并为 daemon（16 票过渡的 hub/runner 双组件删除） */
+/** ticket-22 起唯一托管组件：历史 hub/runner 双组件已合并为单机 daemon */
 export type ComponentName = 'daemon'
 export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 
@@ -86,7 +86,7 @@ export class Supervisor {
     private readonly runtimes = new Map<ComponentName, ComponentRuntime>()
     private readonly envs = new Map<ComponentName, Record<string, string | undefined>>()
     private shuttingDown = false
-    /** shutdown 过程中等待退出的组件队列（保证先 runner 后 hub） */
+    /** shutdown 过程中等待退出的组件队列（先 executor 后 server 的组件级清理） */
     private shutdownQueue: ComponentName[] = []
 
     constructor(

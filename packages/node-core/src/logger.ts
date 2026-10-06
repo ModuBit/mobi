@@ -20,7 +20,7 @@
  * - 远程日志（DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING）
  * - debugLargeJson（大对象截断落盘）
  *
- * 文件名按 processType 分：runner → {ts}-runner.log，交互 → {ts}-cli.log。
+ * 文件名按 processType 分：daemon 后台 → {ts}-daemon.log，交互 → {ts}-cli.log。
  */
 
 import chalk from 'chalk'
@@ -184,7 +184,7 @@ export type LogFileInfo = {
 };
 
 /**
- * List runner log files in descending modification time order.
+ * List daemon log files in descending modification time order.
  * Returns up to `limit` entries; empty array if none.
  */
 export async function listRunnerLogFiles(limit: number = 50): Promise<LogFileInfo[]> {
@@ -212,7 +212,7 @@ export async function listRunnerLogFiles(limit: number = 50): Promise<LogFileInf
 }
 
 /**
- * Get the most recent runner log file, or null if none exist.
+ * Get the most recent daemon log file, or null if none exist.
  */
 export async function getLatestRunnerLog(): Promise<LogFileInfo | null> {
     const [latest] = await listRunnerLogFiles(1);

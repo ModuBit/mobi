@@ -36,7 +36,7 @@ const SYNTHETIC_PROCESSES = [
     // 落 user-session 兜底、不再被 doctor clean 认领
     { pid: PID_DEV_RUNNER, name: 'mobi', cmd: 'mobi runner start' },
     { pid: PID_DEV_HUB, name: 'mobi', cmd: 'mobi hub start' },
-    { pid: PID_DEV_SESSION, name: 'mobi', cmd: 'mobi session --started-by runner' },
+    { pid: PID_DEV_SESSION, name: 'mobi', cmd: 'mobi session --started-by daemon' },
     { pid: PID_DEV_SUPERVISOR, name: 'bun', cmd: 'bun src/index.ts service supervise --sync' },
     { pid: PID_DEV_VERSION_CHECK, name: 'mobi', cmd: 'mobi --version' },
     { pid: PID_E2E_SUPERVISOR, name: 'mobi', cmd: 'mobi service supervise --sync' },

@@ -16,7 +16,7 @@
 
 /**
  * spawn 结果 → {@link SpawnGatewayResult} 的映射单源（ticket-18 抽出）。
- * 所有 spawn 回执路径（runner 直调回执等）共用，
+ * 所有 spawn 回执路径（executor 直调回执等）共用，
  * 成功/already-running/error(+failure 分类) 归一不会分叉。
  */
 
@@ -25,7 +25,7 @@ import type { SpawnGatewayResult } from './executorHost'
 
 export function mapSpawnResultToGateway(result: unknown): SpawnGatewayResult {
     // 文字来路的失败统一走这里：上游的人话多半归 'other'（原样透出），
-    // 只有 runner 等 webhook 超时那一句会被读成 'timeout'
+    // 只有 executor 等 webhook 超时那一句会被读成 'timeout'
     const spawnError = (message: string) => ({ type: 'error' as const, message, failure: classifyTransportFailure(message) })
 
     if (result && typeof result === 'object') {

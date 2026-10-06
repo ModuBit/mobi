@@ -115,7 +115,7 @@ export function lastUserMessageAt(messages: DecryptedMessage[]): number | undefi
 
 /**
  * StatusBar 计时起点的合成（docs/pending.md #55 方案 1）：
- * - `fromRuntime`（runtimeState.runStartedAt）：CLI running 翻转 false→true 时上报、hub 落库 +
+ * - `fromRuntime`（runtimeState.runStartedAt）：CLI running 翻转 false→true 时上报、daemon 落库 +
  *   SSE 推——**权威来源**，长会话消息窗口滑出本轮 user 消息时仍可拿到正确起点
  * - `fromMessages`（lastUserMessageAt）：窗口内消息推导——SSE 事件丢失/尚未到达时比
  *   runtimeState 新（刚出现的 user 消息 vs 上一轮残留值）
@@ -627,7 +627,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // ──────────────────────────────────────────────────────────────
     // fork 生命周期（fork-session spec §4.2/§4.3）：入口 → 确认 → 创建 → 跳转
-    // fork 无 dry-run 预检（hub 侧纯动作，失败确认后 toast 归因）；
+    // fork 无 dry-run 预检（daemon 侧纯动作，失败确认后 toast 归因）；
     // draft 记录锚点与入口（PC Popover / 移动 Drawer），messageId 定位 PC Popover
     // ──────────────────────────────────────────────────────────────
     const [forkDraft, setForkDraft] = useState<{ anchorNativeId: string; source: 'popover' | 'drawer'; targetText: string | null; messageId?: string } | null>(null)
@@ -1430,7 +1430,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}
-                // 休眠/待激活会话放行 composer（dormancy spec §B：发消息即唤醒，hub 入队后
+                // 休眠/待激活会话放行 composer（dormancy spec §B：发消息即唤醒，daemon 入队后
                 // 服务端触发 spawn，web 无需先做「恢复」动作）；唤醒首响应慢几秒是唯一感知
                 allowSendWhenInactive
                 running={session?.running ?? false}

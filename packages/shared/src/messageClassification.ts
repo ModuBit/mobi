@@ -66,7 +66,7 @@ const DISCARD_RULES: readonly ClassificationRule[] = [
  */
 const EPHEMERAL_RULES: readonly ClassificationRule[] = [
     // 后台任务过程帧：实时渲染进度；回放不需要——后台任务 UI 的权威数据源是
-    // runtimeState.backgroundTasks（hub 从原始流派生），与时间线块无关（见 reducerTimeline）
+    // runtimeState.backgroundTasks（daemon 从原始流派生），与时间线块无关（见 reducerTimeline）
     { type: 'system', subtype: 'task_progress' },
     { type: 'system', subtype: 'task_started' },
     { type: 'system', subtype: 'task_updated' },

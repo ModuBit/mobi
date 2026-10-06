@@ -76,7 +76,7 @@ export function registerFileHandlers(
     // 读边界（cwd ∪ home−黑名单）与写边界（严格 cwd）分离——读放宽不放大写风险。
     // ~ 展开语义内聚在 shared 校验层（validateReadPath/validateWritePath），
     // valid 结果自带 resolvedPath，调用方直接用它读写，杜绝「校验对象 ≠ 实际读写对象」的漂移。
-    // 边界拒绝统一带结构化码 ACCESS_DENIED，hub 据此映射 403（区别于 ENOENT→404 / 其他→500）
+    // 边界拒绝统一带结构化码 ACCESS_DENIED，daemon 据此映射 403（区别于 ENOENT→404 / 其他→500）
     const readable = (path: string) => validateReadPath(path, workingDirectory, homeDir)
     const writable = (path: string) => validateWritePath(path, workingDirectory, homeDir)
 
@@ -171,7 +171,7 @@ export function registerFileHandlers(
 }
 
 /**
- * saveFile 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，
+ * saveFile 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，
  * 行为单源——socket 路径与本地直调不会分叉。
  */
 export async function saveFileImpl(data: SaveFileRequest, workingDirectory: string, homeDir: string): Promise<SaveFileResponse> {

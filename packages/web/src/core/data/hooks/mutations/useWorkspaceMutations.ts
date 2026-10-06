@@ -20,7 +20,7 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { invalidateWorkspaceViews } from '@/core/lib/invalidateViews'
 import type { Workspace, WorkspaceFolder } from '@/core/data/api/types'
 
-/** 创建工作区入参（folders 合法性由 hub validateWorkspaceFolders 把关） */
+/** 创建工作区入参（folders 合法性由 daemon validateWorkspaceFolders 把关） */
 export interface CreateWorkspaceInput {
     name: string
     folders: WorkspaceFolder[]
@@ -78,7 +78,7 @@ export function useUpdateWorkspace() {
     })
 }
 
-/** 删除工作区（hub 侧名下会话解绑进「最近」，会话维度缓存也要刷新） */
+/** 删除工作区（daemon 侧名下会话解绑进「最近」，会话维度缓存也要刷新） */
 export function useDeleteWorkspace() {
     const api = useMobiApi()
     const invalidate = useInvalidateWorkspaceCaches()

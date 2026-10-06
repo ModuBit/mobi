@@ -31,7 +31,7 @@
  */
 import { existsSync } from 'node:fs'
 import { rename, readFile } from 'node:fs/promises'
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import { getCliSettingsFile, getLegacyHubSettingsFile, getLegacySettingsFile, getSettingsFile, updateSettingsFile } from './settings'
 
 /** 迁移结果 */
@@ -83,7 +83,7 @@ async function splitLegacySettings(dataDir: string): Promise<MigrationResult> {
     try {
         legacy = JSON.parse(await readFile(legacyFile, 'utf8')) as Record<string, unknown>
     } catch (error) {
-        hubLogger.error(`[Hub] Legacy ${legacyFile} exists but cannot be parsed. Please fix or remove it and restart.`, error)
+        daemonLogger.error(`[DAEMON] Legacy ${legacyFile} exists but cannot be parsed. Please fix or remove it and restart.`, error)
         return { migrated: false, reason: 'parse-error' }
     }
 
@@ -109,7 +109,7 @@ async function splitLegacySettings(dataDir: string): Promise<MigrationResult> {
     }
     await rename(legacyFile, legacyFile + '.bak')
 
-    hubLogger.info(`[Hub] Migrated legacy ${legacyFile} -> ${hubFile} + ${getCliSettingsFile(dataDir)} (legacy kept as ${legacyFile}.bak)`)
+    daemonLogger.info(`[DAEMON] Migrated legacy ${legacyFile} -> ${hubFile} + ${getCliSettingsFile(dataDir)} (legacy kept as ${legacyFile}.bak)`)
     return { migrated: true, reason: 'migrated' }
 }
 
@@ -125,5 +125,5 @@ async function migrateHubSettingsFilename(dataDir: string): Promise<void> {
         return
     }
     await rename(legacyHubFile, daemonFile)
-    hubLogger.info(`[Hub] Migrated legacy settings filename ${legacyHubFile} -> ${daemonFile}`)
+    daemonLogger.info(`[DAEMON] Migrated legacy settings filename ${legacyHubFile} -> ${daemonFile}`)
 }

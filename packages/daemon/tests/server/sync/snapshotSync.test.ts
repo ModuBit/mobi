@@ -423,8 +423,8 @@ describe('SnapshotSync', () => {
         subscription.resolve(next.publication)
 
         expect(stats.snapshot()).toMatchObject({
-            'cli-to-hub': { fullFrames: 1, deltaFrames: 1 },
-            'hub-to-web': { fullFrames: 1, deltaFrames: 1 },
+            'cli-to-daemon': { fullFrames: 1, deltaFrames: 1 },
+            'server-to-web': { fullFrames: 1, deltaFrames: 1 },
         })
     })
 

@@ -87,7 +87,7 @@ export function parseStartOptions(args: string[]): {
             i += 1
         } else if (arg === '--started-by') {
             // 设置启动来源
-            options.startedBy = consumeFlagValue(args, i, arg) as 'runner' | 'terminal'
+            options.startedBy = consumeFlagValue(args, i, arg) as 'daemon' | 'terminal'
             i += 1
         } else if (arg === '--workspace') {
             // 归属工作区 id（Web spawn 透传；终端亦可手动指定）

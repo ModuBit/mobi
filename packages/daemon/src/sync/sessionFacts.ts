@@ -18,7 +18,7 @@ import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode
 
 /**
  * CLI 会话「事实上报」管线（深化候选③）：CLI 运行时持续上报会话实时状态
- * （心跳 / 水位 / 目标 / 轮次起点 / 结束），hub 校验鉴权后落库 runtimeState + SSE 推 web。
+ * （心跳 / 水位 / 目标 / 轮次起点 / 结束），daemon 校验鉴权后落库 runtimeState + SSE 推 web。
  *
  * 本文件是载荷类型与 sink 接口的单一声明源——此前同一组回调签名在
  * SessionHandlersDeps / CliHandlersDeps / SocketServerDeps 手写三遍且已漂移

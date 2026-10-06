@@ -19,7 +19,7 @@ import { isRoleWrappedRecord } from '@mobi/shared/messages'
 import { TASK_TOOL_NAMES } from './tasks'
 
 /**
- * 出口剥离（egress strip）：消息行离开 hub 供 web 消费时按工具策略对 tool_result
+ * 出口剥离（egress strip）：消息行离开 daemon 供 web 消费时按工具策略对 tool_result
  * 重内容做的展示层瘦身。存储层始终是完整事实，剥离只作用于消费边界且不可变——
  * 术语见 packages/daemon/CONTEXT.md「出口剥离」。
  *
@@ -27,7 +27,7 @@ import { TASK_TOOL_NAMES } from './tasks'
  * 1. 文件类工具（内容可从磁盘重建）→ content 替换为占位
  * 2. 其余工具 → content 截断到 2048 字符（≤2048 原样，小结果零感知；未知工具/新
  *    SDK 工具自动落入此默认，无需维护工具清单）
- * 3. Task 族豁免——hub 投影与 web TaskTextView 都消费其结果，且输出小
+ * 3. Task 族豁免——daemon 投影与 web TaskTextView 都消费其结果，且输出小
  * 4. is_error 豁免——失败结果是排障关键
  *
  * 另收编 base64 图片数据剥离（原 messageService.stripHeavyImagePayload）。

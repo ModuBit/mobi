@@ -25,9 +25,9 @@
  * 退出后被看门狗杀掉。因此自动拉起一律 ensureSupervisorRunning + 控制指令，
  * 由 supervisor 作为父进程托管，CLI 会话结束后 daemon 仍存活。
  *
- * ticket-22 合并：旧 maybeAutoStartServer（探 hub 健康）+ maybeAutoStartRunner
- *（探 runner 进程/版本）合为单组件 ensureDaemonRunning——daemon 同进程含
- * hub+runner，一次拉起即全量就绪；旧 runner 的「二进制 mtime 版本比对」随
+ * ticket-22 合并：旧 maybeAutoStartServer（探 daemon 健康）+ maybeAutoStartRunner
+ *（探 daemon 进程/版本）合为单组件 ensureDaemonRunning——daemon 同进程含
+ * daemon+runner，一次拉起即全量就绪；旧 runner 的「二进制 mtime 版本比对」随
  * mtime 自重启删除（升级路径由 upgrader 走 service restart 替换整个 daemon）。
  *
  * 触发条件保持既有语义：

@@ -21,14 +21,14 @@
  * 原因（机器离线 / 目录建不出来 / 那台机器没在跑 / 超时）与投递失败的原因
  * （目标进程不在）是两类完全不同的失败，合在一个工具里 agent 分不清该重试哪个。
  *
- * 失败文案**不由本工具拼**：Hub 侧 AgentSessionService 是唯一翻译点（含 RPC 内部
+ * 失败文案**不由本工具拼**：daemon 侧 AgentSessionService 是唯一翻译点（含 RPC 内部
  * 错误 → 人话）。本工具只把自己产生的连接故障译出来，其余原样透出——那几句是
  * 写成能独立读懂的一整句的。
  *
- * 成功文案反过来：Hub 只报事实（`readiness`），措辞由本工具按三种就绪状态给（见
+ * 成功文案反过来：daemon 只报事实（`readiness`），措辞由本工具按三种就绪状态给（见
  * successDetail）——「建好了但输入通道还没接上」既不是失败也不是普通成功，得说出来。
  *
- * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 Hub，local 模式无此通道。
+ * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 daemon，local 模式无此通道。
  */
 
 import { z } from 'zod'
@@ -39,15 +39,15 @@ import { errorTextResult, textResult, type MobiToolTextResult } from './toolResu
 export const CREATE_SESSION_TOOL_NAME = 'create_session' as const
 
 export interface CreateSessionToolDeps {
-    /** 让 Hub 起会话（emitWithAck 等回执，见 ApiSessionClient.createSessionForAgent） */
+    /** 让 daemon 起会话（emitWithAck 等回执，见 ApiSessionClient.createSessionForAgent） */
     createSession: (input: Omit<AgentCreateSessionRequest, 'sid'>) => Promise<AgentCreateSessionAck>
 }
 
 export type CreateSessionToolResult = MobiToolTextResult
 
 /**
- * 建成功后三种就绪状态的措辞。Hub 只报事实（`readiness`），话由这里说——与失败文案
- * 反过来（那边 Hub 是唯一翻译点）。
+ * 建成功后三种就绪状态的措辞。daemon 只报事实（`readiness`），话由这里说——与失败文案
+ * 反过来（那边 daemon 是唯一翻译点）。
  *
  * `not-ready` 那句的重点是**拦住「再建一个」**：会话确实建好了，等不到输入通道接通只是慢，
  * 为此重建会得到两个会话（D42）。所以它既不报错、也不说「请重试」，而是明说「这个会话就是
@@ -107,13 +107,13 @@ export function createCreateSessionTool(deps: CreateSessionToolDeps) {
         try {
             answer = await deps.createSession(parsed.data)
         } catch (error) {
-            // socket 断开 / ack 超时：连接故障。与业务失败（Hub 给的人话）语义不同，
+            // socket 断开 / ack 超时：连接故障。与业务失败（daemon 给的人话）语义不同，
             // 且此处**不能**沿用「可能已建」的说法——ack 没回来根本不知道走到哪一步
-            return errorTextResult('Failed to reach mobi hub', error)
+            return errorTextResult('Failed to reach mobi daemon', error)
         }
 
         if (!answer.ok) {
-            // Hub 已把失败译成人话（含「可能已建，先 list_sessions」这类行动指引），原样透出
+            // daemon 已把失败译成人话（含「可能已建，先 list_sessions」这类行动指引），原样透出
             return { content: [{ type: 'text', text: answer.error }], isError: true }
         }
 

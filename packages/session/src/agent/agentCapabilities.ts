@@ -64,7 +64,7 @@ export function registerAgentCapabilities(flavor: string, caps: AgentCapabilitie
  * 回写 agent 会话标题（Mobi → agent 单向同步）。
  *
  * 按 `locator.flavor` 查注册表调对应 agent 的实现。两个触发源都走此函数：
- * - Web UI 重命名 → Hub `rename-session` RPC → CLI handler → 此函数
+ * - Web UI 重命名 → daemon `rename-session` RPC → CLI handler → 此函数
  * - agent 调用标题变更工具（如 Claude 的 `change_title` MCP）→ handler → 此函数
  *
  * 会话未就绪（无 sessionId）/ agent 未注册 rename 能力 → throw，

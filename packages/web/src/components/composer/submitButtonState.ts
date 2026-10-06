@@ -36,7 +36,7 @@ export interface ResolveSubmitButtonStateInput {
     canSend: boolean
     /** agent 是否正在运行一个 turn */
     running: boolean
-    /** 发送 mutation 是否进行中（消息已提交、hub 尚未 ack 为 running 的过渡态） */
+    /** 发送 mutation 是否进行中（消息已提交、daemon 尚未 ack 为 running 的过渡态） */
     sending: boolean
     /** 中止请求是否进行中 */
     abortPending: boolean

@@ -18,7 +18,7 @@
  * fork 域纯函数（无 React / store 依赖，PC footer 与移动 Drawer 两入口共用）。
  * 判据语义见 fork-session spec §4.1：镜像 canRewindMessage（rewind.ts，只读复用其预览截断），
  * 差异点：仅 remote 会话、无 forkedFrom/forkFrom 的会话、无 nativeAckAt 要求
- * （fork 是 hub 侧纯动作，CLI 离线也可创建，假锚点由 hub forkSession 校验兜底）。
+ * （fork 是 daemon 侧纯动作，CLI 离线也可创建，假锚点由 daemon forkSession 校验兜底）。
  */
 
 import type { ForkedFromMetadata, ForkFromMetadata, NativeMessageMetadata } from '@mobi/shared'
@@ -50,7 +50,7 @@ export type ForkSessionState = {
 /**
  * fork 入口显隐判据（PC footer 操作组 / 移动长按 Drawer 共用，spec §4.1）。
  *
- * 体验层：误判方向只会隐藏入口（保守），放行侧由 hub forkSession
+ * 体验层：误判方向只会隐藏入口（保守），放行侧由 daemon forkSession
  * （锚点存在性 / 边界校验）把守——点确认后失败走 toast 归因。
  */
 export function canForkMessage(
@@ -110,9 +110,9 @@ export function agentBlockMessageKey(block: { id: string; localId: string | null
 }
 
 /**
- * hub forkSession 失败 reason code → i18n key 判别（镜像 rewindRejectReasonKey）：
+ * daemon forkSession 失败 reason code → i18n key 判别（镜像 rewindRejectReasonKey）：
  * 已知 code 各归专用文案，其余（session-not-found / access-denied / 未知）笼统
- * unavailable——hub 的英文 error 串不直出给用户。
+ * unavailable——daemon 的英文 error 串不直出给用户。
  */
 export function forkRejectReasonKey(code: string | undefined):
     | 'chat.fork.anchorMissing'
@@ -131,7 +131,7 @@ export function forkRejectReasonKey(code: string | undefined):
 
 /**
  * fork 执行失败 catch 的 code 提取：优先取 HTTP 错误体里的 `code` 字段
- * （hub fork 路由透传的失败归因），非 HTTP 错误 / 无 code 返回 undefined
+ * （daemon fork 路由透传的失败归因），非 HTTP 错误 / 无 code 返回 undefined
  * （文案层回退笼统提示）。裸读 err.message 只会拿到 axios 标准串，永远到不了文案映射。
  */
 export function extractForkRejectCode(err: unknown): string | undefined {

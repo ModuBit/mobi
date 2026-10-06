@@ -103,7 +103,7 @@ export function useFileEditor(
                 return { ok: false }
             }
             if (r.error) {
-                // 业务错误（CLI rpcError 经 hub 包成 500，或断网）→ 提示用户，避免静默失败。
+                // 业务错误（CLI rpcError 经 daemon 包成 500，或断网）→ 提示用户，避免静默失败。
                 // 旧逻辑此处静默返回 ok:false，UI 无任何反馈，用户误以为已保存。
                 message.error(r.error)
                 return { ok: false }

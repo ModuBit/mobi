@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import { Server as Engine } from '@socket.io/bun-engine'
 import { Server, type DefaultEventsMap } from 'socket.io'
 import { jwtVerify } from 'jose'
@@ -116,7 +116,7 @@ export function createSocketServer(deps: SocketServerDeps): {
     // origin:'*' 在此合法。web 层 credentials:true 才与 '*' 互斥，由 assertCorsOriginsForCredentials 守卫。
     // 这里仅提示：若运维误以为 web 也允许 '*'，会导致 web 静默 401（web 层启动会 throw 阻断）。
     if (allowAllOrigins) {
-        hubLogger.warn('[CORS] socket 允许 origin:"*"（credentials:false，合法）。' +
+        daemonLogger.warn('[CORS] socket 允许 origin:"*"（credentials:false，合法）。' +
             '注意：web HTTP 层 credentials:true 与 "*" 互斥，会在启动时 throw。')
     }
     const corsOriginOption = allowAllOrigins ? '*' : corsOrigins
@@ -133,11 +133,11 @@ export function createSocketServer(deps: SocketServerDeps): {
     const makeEngineOptions = () => ({
         path: '/socket.io/',
         cors: corsOptions,
-        // 4MB：允许 readFileRange 单 chunk 二进制响应（cli → hub 方向）。
+        // 4MB：允许 readFileRange 单 chunk 二进制响应（cli → daemon 方向）。
         // maxHttpBufferSize 是 engine 层选项，必须直接设在 bun-engine 上——
         // io.bind(外部 engine) 不会把上面 new Server(maxHttpBufferSize) 的同名选项透传过来。
         // bun-engine 默认仅 1MB，超过会判定 "payload too large" 并断开 cli 连接（transport close），
-        // 表现为 hub stream 拿不到 chunk、大文件（图片/视频）预览 body 为空。
+        // 表现为 daemon stream 拿不到 chunk、大文件（图片/视频）预览 body 为空。
         // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一（与 RPC_BINARY_CHUNK_SIZE 协同）。
         maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE,
         allowRequest: async (req: Request) => {

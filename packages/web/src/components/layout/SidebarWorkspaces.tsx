@@ -143,7 +143,7 @@ export function SidebarWorkspaces() {
                         navigate({ to: '/sessions' })
                     }
                 } catch (error) {
-                    // gate 阻塞（hub 删除前自动休眠被挡）→ 逐项原因文案；其余通用错误
+                    // gate 阻塞（daemon 删除前自动休眠被挡）→ 逐项原因文案；其余通用错误
                     messageApi.error(deleteBlockedText(error, t) ?? t('common.error'))
                 }
             },

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
@@ -105,14 +105,14 @@ export function createWebApp(options: {
     app.use('*', compress())
 
     // 未捕获异常兜底：打出真实堆栈再回 500。Hono 默认 onError 静默返回纯文本
-    // "Internal Server Error"，路由内任何 throw 在 hub 日志里零痕迹，无法定位故障
+    // "Internal Server Error"，路由内任何 throw 在 daemon 日志里零痕迹，无法定位故障
     app.onError((err, c) => {
-        hubLogger.error(`[Web] Unhandled error on ${c.req.method} ${c.req.path}`, err)
+        daemonLogger.error(`[Web] Unhandled error on ${c.req.method} ${c.req.path}`, err)
         return c.json({ error: 'Internal Server Error' }, 500)
     })
 
     /**
-     * 静态资源 Cache-Control 注入（Hub 远端 PWA 冷启动慢的根因修复）。
+     * 静态资源 Cache-Control 注入（远端 PWA 冷启动慢的根因修复）。
      *
      * 在下游路由处理完成后，按 staticCacheControl 策略给成功的 GET/HEAD 响应注入分层
      * Cache-Control（仅 200-299 与 304，不含 3xx 重定向）。见 utils/staticCacheControl.ts
@@ -275,7 +275,7 @@ export function createHostApp(options: {
     const app = new Hono()
 
     app.onError((err, c) => {
-        hubLogger.error(`[Host] Unhandled error on ${c.req.method} ${c.req.path}`, err)
+        daemonLogger.error(`[Host] Unhandled error on ${c.req.method} ${c.req.path}`, err)
         return c.json({ error: 'Internal Host Error' }, 500)
     })
 
@@ -299,7 +299,7 @@ export function createHostApp(options: {
 
 /**
  * 宿主 listener：Bun.serve 只绑 127.0.0.1，承载 /cli/* HTTP 与 /cli namespace 的
- * Socket.IO engine。返回 server 供关停（HubHandle.stop 统一收口）
+ * Socket.IO engine。返回 server 供关停（ServerHandle.stop 统一收口）
  */
 export function startHostServer(options: {
     hostApp: Hono
@@ -322,7 +322,7 @@ export function startHostServer(options: {
         }
     })
 
-    hubLogger.info(`[Host] Host channel listening on 127.0.0.1:${configuration.hostPort} (loopback only)`)
+    daemonLogger.info(`[Host] Host channel listening on 127.0.0.1:${configuration.hostPort} (loopback only)`)
 
     return server
 }
@@ -371,8 +371,8 @@ export async function startWebServer(options: {
         }
     })
 
-    hubLogger.info(`[Web] Mobi Hub listening on ${configuration.listenHost}:${configuration.listenPort}`)
-    hubLogger.info(`[Web] public URL: ${configuration.publicUrl}`)
+    daemonLogger.info(`[Web] Mobi Daemon listening on ${configuration.listenHost}:${configuration.listenPort}`)
+    daemonLogger.info(`[Web] public URL: ${configuration.publicUrl}`)
 
     return server
 }

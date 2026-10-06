@@ -153,7 +153,7 @@ export function hasCrossSessionOrigin(meta: unknown): boolean {
  * 展示与历史回放）。三个出口各是一种机制，但问的是同一个问题：
  *
  * ① **落库行 → SDK 的重连回灌**（`cli/api/apiSession.ts` 的 backfill 守卫）
- * ② **Hub 的 CLI 房间回灌**（`hub/sync/messageService.ts` 的 `sendMessage`——那一侧连 emit
+ * ② **daemon 的 CLI 房间回灌**（`daemon/sync/messageService.ts` 的 `sendMessage`——那一侧连 emit
  *    都省掉，机制不同但理由同一句；2026-09-13 起直接问本判据，不再由调用方传标志）
  * ③ **信封被 CC 的 hook 观测回来时的重复落库**（`cli/claude/utils/inboundCrossSession.ts`——
  *    观测路径读的是**信封**不是 meta，此处由信封读侧归一成同一个 origin 后复用本判据）

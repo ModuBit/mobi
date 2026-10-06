@@ -46,7 +46,7 @@ export interface CrossSessionEnvelope extends CrossSessionOrigin {
      * 反查不到会话、也无消息身份（见 `inboundCrossSession.ts` 的甄别规则）。
      */
     fromSessionId: string
-    /** 本条消息的标识（Hub 预生成，与落库行的 localId 同值） */
+    /** 本条消息的标识（daemon 预生成，与落库行的 localId 同值） */
     messageId: string
 }
 

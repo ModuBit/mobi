@@ -21,7 +21,7 @@ import { FolderGit2, MessageSquare, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { truncateRewindPreview } from '@/domain/chat/rewind'
 
-/** dry-run 预检结果（hub POST /api/sessions/:id/rewind/dry-run 响应体） */
+/** dry-run 预检结果（daemon POST /api/sessions/:id/rewind/dry-run 响应体） */
 export type RewindDryRunResult = {
     canRewind: boolean
     canRestoreFiles: boolean

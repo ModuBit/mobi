@@ -15,8 +15,8 @@
  */
 
 /**
- * HTTP control server for runner management
- * Provides endpoints for listing sessions, stopping sessions, and runner shutdown
+ * HTTP control server for executor management
+ * Provides endpoints for listing sessions, stopping sessions, and executor shutdown
  */
 
 import fastify from 'fastify';
@@ -27,7 +27,7 @@ import { Metadata } from '@mobi/node-core/api/types';
 import { RUNNER_SESSION_STARTED_PATH } from '@mobi/shared/hostProtocol';
 import { TrackedSession } from './types';
 
-export function startRunnerControlServer({
+export function startExecutorControlServer({
   getChildren,
   stopSession,
   requestShutdown,
@@ -120,9 +120,9 @@ export function startRunnerControlServer({
 
     // Spawn new session
     // （端点已删，ticket-20：spawnRunnerSession 零调用方——spawn 唯一入口是
-    //  daemon 进程内的 RunnerSessionBridge 直调）
+    //  daemon 进程内的 ExecutorBridge 直调）
 
-    // Stop runner
+    // Stop executor
     typed.post('/stop', {
       schema: {
         response: {
@@ -132,11 +132,11 @@ export function startRunnerControlServer({
         }
       }
     }, async () => {
-      logger.debug('[CONTROL SERVER] Stop runner request received');
+      logger.debug('[CONTROL SERVER] Stop executor request received');
 
       // Give time for response to arrive
       setTimeout(() => {
-        logger.debug('[CONTROL SERVER] Triggering runner shutdown');
+        logger.debug('[CONTROL SERVER] Triggering executor shutdown');
         requestShutdown();
       }, 50);
 

@@ -23,7 +23,7 @@ import type { SDKToLogConverter } from './sdkToLogConverter'
  * 发送侧输出帧（delta 协议，.scratch/snapshot-delta spec）：
  * - full：全量帧（流首帧 / forceFull 重发 / 周期 checkpoint），携带完整 DecryptedMessage + rev（baseRev=null）
  * - delta：增量帧（此后每次 flush 的增量 op）
- * - stream-end：流结束信号（full message 已持久化，hub 据此清缓存与订阅游标；由 claudeRemote
+ * - stream-end：流结束信号（full message 已持久化，daemon 据此清缓存与订阅游标；由 claudeRemote
  *   在标记 fullDelivered 时发出，不经本发送器的 buffer 状态机）
  * transport 消费方据此映射到 socket 协议（sendContentSnapshot / sendSnapshotDelta / sendSnapshotStreamEnd）
  */
@@ -33,7 +33,7 @@ export type SnapshotOut =
     | { kind: 'stream-end'; localId: string }
 
 /** 周期 checkpoint：每 N 个增量帧插入一次全量帧。任何一帧丢失（zod 拒/网络）都会让链断档，
- *  hub 丢弃后续 delta 直到下个全量——checkpoint 把该静默窗口封顶在 N × intervalMs（20 × 500ms = 10s） */
+ *  daemon 丢弃后续 delta 直到下个全量——checkpoint 把该静默窗口封顶在 N × intervalMs（20 × 500ms = 10s） */
 const CHECKPOINT_EVERY_DELTAS = 20
 
 // —— 流式入参预览节流（.scratch/streaming-tool-input-preview，常量采纳 ZCode 同款）——
@@ -122,7 +122,7 @@ export type ContentBlock =
  * 每 500ms 发送一次。发送采用「首帧全量 + 此后增量」：流首帧（或 socket 重连重发）
  * 携带完整累积内容建立基线，之后每帧只发增量 op（append 后缀 / new-block / replace-block），
  * 传输量 O(N) 而非全量重发的 O(N²)。op 直接从 buffer 状态变迁产出（事件驱动，无 diff 比较）。
- * rev/baseRev 由本发送器按流分配，接收方（hub）严格衔接校验、断档丢弃等全量重基线。
+ * rev/baseRev 由本发送器按流分配，接收方（daemon）严格衔接校验、断档丢弃等全量重基线。
  *
  * text/thinking 流式逐字追加，过程中即可输出（半截文本有意义）。
  * tool_use 在 content_block_start 即下发 input={} 占位——前端立即建 running 卡片，
@@ -161,7 +161,7 @@ export class StreamSnapshotSender {
     setSnapshotOpts(opts: { parentToolUseId?: string; model?: string; sdkUuid?: string; messageId?: string }): void {
         this.snapshotOpts = opts
         // 缺省回退 PENDING_ID 而非沿用上一条消息的 uuid——sdkUuid 是 per-message 的，
-        // 沿用旧值会让新流覆盖旧消息的 hub 缓存 / web 行（消息互相吞并）
+        // 沿用旧值会让新流覆盖旧消息的 daemon 缓存 / web 行（消息互相吞并）
         this.sdkUuid = opts.sdkUuid ?? null
         this.fullDelivered = false
         // 新消息流：rev 归零、首帧必全量（sent-state 随 clearBuffers 的 buffer 重建自然重置）
@@ -317,7 +317,7 @@ export class StreamSnapshotSender {
         // 增量：无脏 buffer 直接跳过（collectDeltas 结果必空）
         if (!this.hasDirty()) return
 
-        // 周期 checkpoint：封顶任何单帧丢失造成的静默断档窗口（hub 丢弃到下个全量为止）
+        // 周期 checkpoint：封顶任何单帧丢失造成的静默断档窗口（daemon 丢弃到下个全量为止）
         if (this.deltasSinceFull >= CHECKPOINT_EVERY_DELTAS) {
             this.emitFull()
             return
@@ -341,11 +341,11 @@ export class StreamSnapshotSender {
     }
 
     /**
-     * socket 重连后重发全量帧（重基线规则：断线期间的 delta 帧已丢，hub 链必断档，
+     * socket 重连后重发全量帧（重基线规则：断线期间的 delta 帧已丢，daemon 链必断档，
      * 全量帧重建基线）。无在途内容或当前消息的 full 已下发时为 no-op——buffers 会保留到
      * 下条 message_start 才清，不设防会对已落库消息重发陈旧全量（web 端变重复幽灵气泡）。
      * 直接调 emitFull 绕过 flush 的首帧 dirty 守卫：重基线必须无条件发出（缓存可能已被
-     * hub 侧清掉，即便本地 buffer 全部 clean）。
+     * daemon 侧清掉，即便本地 buffer 全部 clean）。
      */
     forceFullFlush(): void {
         if (this.destroyed || this.buffers.size === 0 || this.fullDelivered) return

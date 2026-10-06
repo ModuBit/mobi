@@ -23,7 +23,7 @@ interface QueueItem<T> {
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
     noBatch?: boolean; // If true, never batch-merge with others (no isolate's restart-to-next-session semantics, for !bash local execution)
-    localId?: string; // 用户消息的本地 ID，用于通知 Hub 已消费
+    localId?: string; // 用户消息的本地 ID，用于通知 daemon 已消费
 }
 
 /**
@@ -39,8 +39,8 @@ function mergePayloads(a: PromptPayload, b: PromptPayload): PromptPayload {
 }
 
 /**
- * in-flight 集合容量上限（近期守卫）。被 collect/steal 的 localId 在 Hub 确认 consumed 前需保留，
- * 以拒绝取消（防幽灵消息）。正常情况下 Hub 几百 ms 内即落库，in-flight 实际只积压个位数；
+ * in-flight 集合容量上限（近期守卫）。被 collect/steal 的 localId 在 daemon 确认 consumed 前需保留，
+ * 以拒绝取消（防幽灵消息）。正常情况下 daemon 几百 ms 内即落库，in-flight 实际只积压个位数；
  * 此上限只是防止异常积压时无界增长。
  */
 export const IN_FLIGHT_CAP = 500
@@ -49,12 +49,12 @@ export const IN_FLIGHT_CAP = 500
  * 「曾 shift 出队列」的 localId 容量上限（最终兜底）。
  *
  * in-flight 淘汰只是因为「近期守卫」过期，但「这条消息曾经被 dispatch 喂给 agent」这一事实永久
- * 有效——即便 Hub 迟迟未落库（onBatchConsumed 的 socket emit 丢失 / Hub 重启不重放历史），
+ * 有效——即便 daemon 迟迟未落库（onBatchConsumed 的 socket emit 丢失 / daemon 重启不重放历史），
  * 也不能让 Web 取消成功删除 DB，否则 agent 已收到并会回复一条用户以为已取消的幽灵消息。
  * 故 in-flight 淘汰时把 localId 留在 everDispatched，tryCancel 对其仍返回 'submitted'（保守不可取消）。
  *
  * 只有当 everDispatched 也超限（单 session dispatch 5000 条仍未落库，现实不可达）才彻底遗忘，
- * 退回 'not-in-queue' 交 Hub DB 裁决。reset/close 随 session 清空。
+ * 退回 'not-in-queue' 交 daemon DB 裁决。reset/close 随 session 清空。
  */
 export const EVER_DISPATCHED_CAP = 5000
 
@@ -71,7 +71,7 @@ export class MessageQueue<T> {
     /** collectBatch 前的排序屏障（见 setBeforeCollect） */
     private beforeCollectHandler: (() => void | Promise<void>) | null = null;
     /**
-     * 已被 collectBatch/steal 取出（即将喂给 agent）、但 Hub 尚未确认 consumed 的 localId。
+     * 已被 collectBatch/steal 取出（即将喂给 agent）、但 daemon 尚未确认 consumed 的 localId。
      * 取消竞态防护：此集合内的消息已离开队列，不可取消，否则会产生幽灵消息
      * （agent 收到并回复一条用户以为已取消的消息）。FIFO 有界（IN_FLIGHT_CAP），防长会话无界增长。
      */
@@ -79,7 +79,7 @@ export class MessageQueue<T> {
     /**
      * 曾 shift 出队列（dispatch 给 agent 或经 pushAfterClear 丢弃）的全部 localId，FIFO 有界
      * （EVER_DISPATCHED_CAP）。即便 in-flight 近期守卫过期淘汰，此处仍保留——「曾 dispatch」
-     * 的事实永久有效，Hub 未落库时也不可取消（详见 EVER_DISPATCHED_CAP 注释）。
+     * 的事实永久有效，daemon 未落库时也不可取消（详见 EVER_DISPATCHED_CAP 注释）。
      */
     private readonly everDispatchedLocalIds: Map<string, true> = new Map();
     modeHasher: (mode: T) => string;
@@ -110,13 +110,13 @@ export class MessageQueue<T> {
      *
      * 为什么需要：collectBatch 触发的 onBatchConsumed（pushed fact）走直连 socket emit，
      * 而上游发送队列（OutgoingMessageQueue）经 setTimeout(0) 异步发送上一轮消息（含 result）。
-     * turn 结束立即消费排队消息时，fact 会抢在上一轮 result 落库前到达 Hub——position_at
+     * turn 结束立即消费排队消息时，fact 会抢在上一轮 result 落库前到达 daemon——position_at
      * 跳变时刻早于 result 的 created_at，Web 按 positionAt 排序时排队消息会被排到
      * 上一轮 result 之前。屏障保证「先清空上游发送队列，再上报消费事实」。
      *
-     * 屏障的边界：只保证 emit 顺序，fact.at（CLI 时钟）与 result 落库时刻（Hub 时钟）
+     * 屏障的边界：只保证 emit 顺序，fact.at（CLI 时钟）与 result 落库时刻（daemon 时钟）
      * 跨时钟比较仍可能不严格大于（同毫秒 tie 时 seq 决胜排队消息必输）——该残余竞态由
-     * Hub 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底，见 hub store/messages.ts。
+     * daemon 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底，见 daemon store/messages.ts。
      */
     setBeforeCollect(handler: (() => void | Promise<void>) | null): void {
         this.beforeCollectHandler = handler;
@@ -212,7 +212,7 @@ export class MessageQueue<T> {
         const methodName = isolate ? 'pushIsolateAndClear' : 'pushAndClear';
         logger.debug(`[MessageQueue] ${methodName}() mode=${modeHash}, clearing ${this.queue.length} messages`);
 
-        // 被清空的排队项需要通知 Hub 标记为已推送（lifecycle='pushed'），否则其 DB 行永远停留 queued，
+        // 被清空的排队项需要通知 daemon 标记为已推送（lifecycle='pushed'），否则其 DB 行永远停留 queued，
         // Web 悬浮条会永久卡死。收集带 localId 的丢弃项，触发 onBatchConsumed（与正常消费同路径）。
         const discardedLocalIds = this.queue
             .map(item => item.localId)
@@ -251,7 +251,7 @@ export class MessageQueue<T> {
     }
 
     /**
-     * rewind 前清空未消费排队项（不注入新消息）：丢弃项经 onBatchConsumed 通知 Hub 标记，
+     * rewind 前清空未消费排队项（不注入新消息）：丢弃项经 onBatchConsumed 通知 daemon 标记，
      * 防 Web 悬浮条永久卡死（对齐 pushAfterClear 的丢弃通知与 markInFlight 模式）。
      * 与 pushAfterClear 的区别：不压入任何替代消息。Query restart module
      * 负责在调用本方法后配对注入 isolate 退出哨兵。
@@ -355,7 +355,7 @@ export class MessageQueue<T> {
      * - 'cancelled'：仍在队列中，已移除（可安全取消）。
      * - 'submitted'：已 collectBatch/steal（in-flight），或曾 shift 出队列（everDispatched），
      *   即将/已经喂给 agent，不可取消（否则幽灵消息）。
-     * - 'not-in-queue'：CLI 未知（尚未送达，或 everDispatched 已彻底遗忘），交由 Hub DB 裁决。
+     * - 'not-in-queue'：CLI 未知（尚未送达，或 everDispatched 已彻底遗忘），交由 daemon DB 裁决。
      */
     tryCancel(localId: string): 'cancelled' | 'submitted' | 'not-in-queue' {
         if (this.inFlightLocalIds.has(localId)) return 'submitted'
@@ -453,7 +453,7 @@ export class MessageQueue<T> {
             logger.debug(`[MessageQueue] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
         }
 
-        // 通知 Hub：这批消息已被消费
+        // 通知 daemon：这批消息已被消费
         if (consumedLocalIds.length > 0) {
             // 同步标记 in-flight（早于 onBatchConsumed 触发的异步 socket），关闭取消竞态窗口
             for (const id of consumedLocalIds) this.markInFlight(id);

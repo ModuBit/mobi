@@ -21,7 +21,7 @@ import { MetadataSchema } from '@mobi/shared'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
-import type { MachineHost } from '../../../src/executor/executorHost'
+import type { ExecutorHost } from '../../../src/executor/executorHost'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
@@ -243,9 +243,9 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
         let spawnCall: Record<string, unknown> | null = null
         const engineRef: { engine?: SyncEngine } = {}
 
-        // ticket-20 起 spawn 观测点从 machine socket RPC 改为 MachineHost 直调入参
-        const machineHost = {
-            spawnSession: async (_machineId: string, _directory: string, options?: SpawnSessionOptions) => {
+        // ticket-20 起 spawn 观测点从 machine socket RPC 改为 ExecutorHost 直调入参
+        const executorHost = {
+            spawnSession: async (_directory: string, options?: SpawnSessionOptions) => {
                 const engine = engineRef.engine!
                 const spawned = engine.getOrCreateSession(
                     'tag-fork-resumed', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
@@ -254,7 +254,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
                 spawnCall = (options ?? {}) as Record<string, unknown>
                 return { type: 'success', sessionId: spawned.id }
             },
-        } as unknown as MachineHost
+        } as unknown as ExecutorHost
 
         const io = {
             of() { return { sockets: new Map() } },
@@ -263,7 +263,7 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
             getSocketIdForMethod() { return null },
         } as unknown as RpcRegistry
         const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-        const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
+        const engine = new SyncEngine(store, io, registry, sseManager, undefined, executorHost)
         engineRef.engine = engine
         return {
             engine,

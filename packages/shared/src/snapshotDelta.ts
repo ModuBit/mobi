@@ -18,13 +18,13 @@ import { SNAPSHOT_PENDING_ID, type DecryptedMessage, type SnapshotBlock, type Sn
 
 /**
  * Snapshot delta 协议的 apply 端共享逻辑（.scratch/snapshot-delta 票 02）：
- * hub 拼接器与 web 消息窗口 store 共用同一份实现，避免双实现漂移。
+ * daemon 拼接器与 web 消息窗口 store 共用同一份实现，避免双实现漂移。
  * 语义与发送端（CLI StreamSnapshotSender）的状态变迁一一对应。
  */
 
 /**
  * 构造 message-snapshot 全量事件的 message 体（唯一形状，票 03 /simplify 收敛）：
- * hub 三处下发点（sessionHandlers 全量帧 / forwarder 追赶 / resync 端点补发）共用，
+ * daemon 三处下发点（sessionHandlers 全量帧 / forwarder 追赶 / resync 端点补发）共用，
  * 防字段漂移——web 端 locateSnapshotBlocks/snapshotRev 衔接链依赖此形状。
  * rev=null 为 legacy 无链全量（不建 delta 链，snapshotRev 缺省）。
  */

@@ -17,7 +17,7 @@
 /**
  * 执行中任务面板
  * 统一展示前台任务（Agent）与后台任务（Bash/Agent/Monitor），弱化前后台区分：
- * - 前台任务读 runtime_state.foregroundTasks（hub 消息投影落库，纯 DB 单源，
+ * - 前台任务读 runtime_state.foregroundTasks（daemon 消息投影落库，纯 DB 单源，
  *   展示与消息到达性解耦；foreground-tasks spec D2），点击打开 ToolDetailDrawer
  * - 后台任务复用 BackgroundTaskCard，标题旁显示闪电图标、运行中带停止按钮
  * - 合并前是 AgentPanel（前台）+ BackgroundTaskPanel（后台）两个独立面板

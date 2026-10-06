@@ -15,14 +15,14 @@
  */
 
 /**
- * Runner-specific types (not related to API/server communication)
+ * Executor-specific types (not related to API/server communication)
  */
 
 import { Metadata } from '@mobi/node-core/api/types';
 import { ChildProcess } from 'child_process';
 
 /**
- * Session tracking for runner
+ * Session tracking for executor
  */
 export interface TrackedSession {
   startedBy: 'runner' | string;

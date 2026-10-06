@@ -211,7 +211,7 @@ export function extractBackgroundTaskIdsFromMessageContent(
 }
 
 /**
- * task_started 消息中被 hub 判定为「入口丢弃」的 taskId（ambient 家务 / in_process_teammate，
+ * task_started 消息中被 daemon 判定为「入口丢弃」的 taskId（ambient 家务 / in_process_teammate，
  * spec D1/D2）。两处共用同一判定：deltas 提取的 task_started 过滤、以及调用方维护被滤集合。
  * 非丢弃（或 taskId 缺失/非字符串）返回 null。
  */
@@ -221,7 +221,7 @@ function droppedTaskStartedId(data: Record<string, unknown>): string | null {
 }
 
 /**
- * 从 task_started 消息中提取被 hub 过滤丢弃（ambient / in_process_teammate）的 taskId 集合。
+ * 从 task_started 消息中提取被 daemon 过滤丢弃（ambient / in_process_teammate）的 taskId 集合。
  * 调用方（sessionHandlers）将结果并入连接级 filteredTaskIds，作为 deltas 提取的
  * excludedTaskIds——这些任务不得经 task_updated patch.is_backgrounded 豁免通道补建/直落终态。
  * 非 task_started 消息返回空集合。
@@ -256,13 +256,13 @@ export function extractExcludedTaskStartedIds(content: unknown): Set<string> {
  *   唯一豁免是 task_updated 携带 patch.is_backgrounded=true：该任务可能本就不在集合中
  *   （task_started 时被判前台丢弃的同款盲区，spec D3），终态直落 completed 分支、
  *   非终态在「taskId 不在已知集合」前提下补建 started（防正常追踪中的后台任务被降级覆盖）
- * - persistedTaskIds：已持久化的 backgroundTasks taskId（hub 重启/CLI 重连后连接级 knownTaskIds
+ * - persistedTaskIds：已持久化的 backgroundTasks taskId（daemon 重启/CLI 重连后连接级 knownTaskIds
  *   清空且不从 DB 回种），补建守卫同 knownTaskIds 一起挡住持久化的真实条目被降级覆盖
- * - excludedTaskIds：被 hub 过滤丢弃的任务（ambient 家务 / in_process_teammate）——
+ * - excludedTaskIds：被 daemon 过滤丢弃的任务（ambient 家务 / in_process_teammate）——
  *   is_backgrounded 豁免通道（补建 + 终态直落）命中即 return null，防 running 幽灵卡复活
  * - taskInfoCache：task 元信息缓存（task_started / background_tasks_changed 喂入），
  *   补建条目据此回填 description / toolName / toolUseId——超时转后台场景 patch 不带这些字段，
- *   缓存未命中（hub/CLI 重启且 bg_changed 未再携带）时维持 'unknown' / 空描述的诚实降级
+ *   缓存未命中（daemon/CLI 重启且 bg_changed 未再携带）时维持 'unknown' / 空描述的诚实降级
  */
 export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
@@ -399,7 +399,7 @@ export function extractBackgroundTaskDeltasFromMessageContent(
             // 中途后台化补建（spec D3）：前台任务 task_started 时被丢（判前台 return null），
             // 事后转后台经 patch.is_backgrounded 到达且不会再有 task_started——仅对盲区任务补建。
             // 已在 knownTaskIds 中的任务（写侧 started delta 会收录）说明已被 task_started 正常追踪，
-            // 携带真实 toolUseId/subagentType/toolName；persistedTaskIds 同理覆盖 hub 重启/CLI 重连后
+            // 携带真实 toolUseId/subagentType/toolName；persistedTaskIds 同理覆盖 daemon 重启/CLI 重连后
             // 连接级集合清空的场景——两者任一命中即跳过补建，避免持久化的真实条目被降级条目整体覆盖
             if (patchExplicitBg
                 && knownTaskIds?.has(taskId) !== true
@@ -443,7 +443,7 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         // 终态直落 completed。
         // patchExplicitBg 时跳过 knownTaskIds 过滤：SDK 已显式标注后台，且该任务可能本就不在
         // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书。
-        // persistedTaskIds 同样放行：hub/CLI 换血重启后连接级 knownTaskIds 清空，但终态消息
+        // persistedTaskIds 同样放行：daemon/CLI 换血重启后连接级 knownTaskIds 清空，但终态消息
         // （Bash 任务典型路径 task_updated.patch.status）仍会晚到——不认持久化条目的话，
         // 跨重启完成的任务永卡 running（2026-09-23 实测：部署换血后完成的两个后台任务幽灵卡死）。
         // knownTaskIds 未传（undefined）= 旧调用方契约不过滤，保持不变

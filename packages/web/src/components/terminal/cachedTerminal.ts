@@ -165,7 +165,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
     const wireSocket = () => {
         const terminalOrigin = __MOBI_HUB_URL__ ?? window.location.origin
         socket = io(`${terminalOrigin}/terminal`, {
-            // httpOnly cookie（mobi_token）按 host 携带；dev 端口不同仍可直连 Hub，production 保持同源
+            // httpOnly cookie（mobi_token）按 host 携带；dev 端口不同仍可直连 daemon，production 保持同源
             transports: ['websocket'],
             path: '/socket.io',
         })
@@ -202,7 +202,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
             setStatus('connected')
             terminal.write('\x1b[32m[Terminal connected]\x1b[0m\r\n')
         })
-        // terminal:ready：hub 处理完 terminal:create 后回传，标志终端会话真正建立。
+        // terminal:ready：daemon 处理完 terminal:create 后回传，标志终端会话真正建立。
         // reconnect（socket 仍连着、重发 create）时不会触发 connect 事件，靠 ready 恢复 connected 态。
         socket.on('terminal:ready', (d: { sessionId: string; terminalId: string }) => {
             if (d.sessionId === sessionId && d.terminalId === terminalId) {
@@ -216,7 +216,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         socket.on('connect_error', () => setStatus('error'))
         // terminal:error：daemon 内部 emit（emitTerminalError/onIdle/cleanup）普遍只带
         // { terminalId, message }，不带 sessionId；每个实例独占
-        // socket，socketId 天然隔离事件，故只按 terminalId 过滤，sessionId 标可选如实反映 hub 违约
+        // socket，socketId 天然隔离事件，故只按 terminalId 过滤，sessionId 标可选如实反映 daemon 违约
         socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string }) => {
             if (d.terminalId === terminalId) {
                 setStatus('error')
@@ -234,8 +234,8 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         if (!socket) return
         if (socket.connected) {
             // socket 连着（如 CLI 断开导致的 error）：重发 create 重新打开终端会话。
-            // hub 端同一 socket 重注册会先清旧 entry（避免 "already in use"），CLI 复用已存在的 PTY。
-            // 成功后 hub 回传 terminal:ready → setStatus('connected')。
+            // daemon 端同一 socket 重注册会先清旧 entry（避免 "already in use"），CLI 复用已存在的 PTY。
+            // 成功后 daemon 回传 terminal:ready → setStatus('connected')。
             const { cols, rows } = terminal
             socket.emit('terminal:create', { sessionId, terminalId, cols, rows })
             isOpen = true

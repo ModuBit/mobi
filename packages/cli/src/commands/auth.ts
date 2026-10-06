@@ -22,16 +22,16 @@ import { configuration } from '@mobi/node-core/configuration'
 import { readSettings, updateSettings } from '@mobi/node-core/persistence'
 import type { CommandDefinition } from './types'
 
-/** GET/POST /cli/web-token 响应（hub 侧 webApiToken 归 hub 所有，cli 经 API 读取/轮换） */
+/** GET/POST /cli/web-token 响应（daemon 侧 webApiToken 归 daemon 所有，cli 经 API 读取/轮换） */
 interface WebTokenApiResponse {
     webToken: string
-    /** hub 以 WEB_API_TOKEN 环境变量启动时为 true：重启后轮换会被 env 值覆盖 */
+    /** daemon 以 WEB_API_TOKEN 环境变量启动时为 true：重启后轮换会被 env 值覆盖 */
     envOverride: boolean
 }
 
 /**
  * 调 daemon 的 web-token HTTP API。webApiToken 持久化在 daemon 机器的 settings.daemon.json，
- * cli 与 hub 可不同机器部署，任何部署形态下都经 API 读写而非本地文件。
+ * cli 与 daemon 可不同机器部署，任何部署形态下都经 API 读写而非本地文件。
  */
 async function requestWebToken(method: 'GET' | 'POST'): Promise<WebTokenApiResponse> {
     const res = await fetch(`${configuration.apiUrl}/cli/web-token`, {
@@ -40,10 +40,10 @@ async function requestWebToken(method: 'GET' | 'POST'): Promise<WebTokenApiRespo
         signal: AbortSignal.timeout(10_000)
     })
     if (res.status === 401) {
-        throw new Error('CLI_API_TOKEN 未被 hub 接受，请先运行 mobi auth login 配置凭证')
+        throw new Error('CLI_API_TOKEN 未被 daemon 接受，请先运行 mobi auth login 配置凭证')
     }
     if (!res.ok) {
-        throw new Error(`hub 返回 ${res.status}（${configuration.apiUrl}/cli/web-token）`)
+        throw new Error(`daemon 返回 ${res.status}（${configuration.apiUrl}/cli/web-token）`)
     }
     return await res.json() as WebTokenApiResponse
 }
@@ -58,8 +58,8 @@ function printWebToken(result: WebTokenApiResponse, rotated: boolean): void {
         console.log(chalk.gray('\n  轮换: mobi auth rotate-web-token'))
     }
     if (result.envOverride) {
-        console.log(chalk.yellow('  ⚠ hub 以 WEB_API_TOKEN 环境变量运行：env 优先级高于文件，hub 重启后轮换会被 env 值覆盖失效。'))
-        console.log(chalk.gray('    如需持久轮换，请先移除/更新 hub 侧该环境变量再 rotate。'))
+        console.log(chalk.yellow('  ⚠ daemon 以 WEB_API_TOKEN 环境变量运行：env 优先级高于文件，daemon 重启后轮换会被 env 值覆盖失效。'))
+        console.log(chalk.gray('    如需持久轮换，请先移除/更新 daemon 侧该环境变量再 rotate。'))
     }
     console.log('')
 }
@@ -123,15 +123,15 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
     }
 
     if (subcommand === 'web-token') {
-        // 回显当前 webApiToken（Web 浏览器登录用）——经 hub API 读取，
-        // 与 hub 校验源保持一致（env > hub 文件），远程部署同样可用
+        // 回显当前 webApiToken（Web 浏览器登录用）——经 daemon API 读取，
+        // 与 daemon 校验源保持一致（env > daemon 文件），远程部署同样可用
         printWebToken(await requestWebToken('GET'), false)
         return
     }
 
     if (subcommand === 'rotate-web-token') {
         // 经 daemon API 生成新 webApiToken：daemon 落盘 settings.daemon.json 并即时热更新，
-        // 无需重启 hub；远程部署（cli/hub 不同机器）下这是唯一可行的轮换途径
+        // 无需重启 daemon；远程部署（cli/daemon 不同机器）下这是唯一可行的轮换途径
         printWebToken(await requestWebToken('POST'), true)
         return
     }
@@ -160,7 +160,7 @@ ${chalk.bold('Usage:')}
   mobi auth login                Enter and save CLI_API_TOKEN
   mobi auth logout               Clear saved credentials
   mobi auth web-token            Show webApiToken (Web 浏览器登录用)
-  mobi auth rotate-web-token     Rotate webApiToken (hub 热加载)
+  mobi auth rotate-web-token     Rotate webApiToken (daemon 热加载)
 
 ${chalk.gray('For initial setup, use:')} ${chalk.cyan('mobi setup settings')}
 ${chalk.gray('Token priority:')} env CLI_API_TOKEN > ~/.mobi/settings.cli.json > auto-generated

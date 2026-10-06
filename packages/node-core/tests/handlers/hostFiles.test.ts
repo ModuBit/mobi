@@ -19,7 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, join } from 'path'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerMachineFileHandlers } from '@/handlers/hostFiles'
+import { registerHostFileHandlers } from '@/handlers/hostFiles'
 
 /**
  * machine 通道文件读取 handler 测试
@@ -40,7 +40,7 @@ describe('machine file RPC handlers', () => {
         }
         rootDir = await mkdtemp(join(tmpdir(), 'mobi-machine-files-'))
         rpc = new RpcHandlerManager({ scopePrefix: SCOPE })
-        registerMachineFileHandlers(rpc)
+        registerHostFileHandlers(rpc)
     })
 
     afterEach(async () => {

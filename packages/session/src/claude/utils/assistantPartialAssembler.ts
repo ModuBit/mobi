@@ -23,7 +23,7 @@ import { logger } from '@mobi/node-core/logger'
  * SDK 开启 includePartialMessages 时，同一条 Anthropic message（共享 message.id）的多个 content
  * block 会被拆成多条 SDK assistant 消息分别 emit。本装配器按 message.id 累积同一条 message 的
  * 所有 block，在 message 边界（非 assistant 消息 / 迭代结束）时输出一条完整 assistant 消息，
- * 使下游始终收到完整 message（一条 message 对应一个 uuid），Hub 去重语义单一。
+ * 使下游始终收到完整 message（一条 message 对应一个 uuid），daemon 去重语义单一。
  *
  * 用 `Map<msgId, Pending>` 而非单槽：**不依赖 SDK「同 message 的 partial 连续 emit」假设**——
  * 即使 SDK 交错 emit 不同 message 的 partial，各自累积到自己的槽，输出时按 message_start 顺序

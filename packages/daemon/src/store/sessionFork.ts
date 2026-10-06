@@ -26,7 +26,7 @@ import { casUpdateSessionMetadataBestEffort, getSession } from './sessions'
 import type { StoredMessage, StoredSession } from './types'
 
 /**
- * fork 会话创建的存储层（fork-session spec §5.1，hub 侧点 fork 时）：
+ * fork 会话创建的存储层（fork-session spec §5.1，daemon 侧点 fork 时）：
  * 单事务内完成「新建待激活会话行 + 复制锚点所在 turn 的消息行 + 插入溯源自定义消息」，
  * 建行与复制要么全成要么全不成——半成品 fork 行（有行无消息）会以空会话形态污染列表。
  */
@@ -35,7 +35,7 @@ import type { StoredMessage, StoredSession } from './types'
  * turn 起点判定（fork 复制切割的切割点判据，fork-session spec §2）。
  *
  * ⚠️ 与 web `packages/web/src/domain/chat/turnBoundary.ts` 的 isTurnStart **同语义、两端各自实现**
- * （web 端用于窗口裁剪、hub 端用于 fork 切割），改动信封结构时须两端同步：
+ * （web 端用于窗口裁剪、daemon 端用于 fork 切割），改动信封结构时须两端同步：
  * 三种消息开启新 turn——user 信封（用户发言）、system:compact_boundary（压缩后即新上下文）、
  * context-cleared 事件（/clear 完成）。边界半边复用 isContextBoundaryContent（边界指针同判据）。
  */
@@ -97,7 +97,7 @@ function findTurnStartSeq(db: Database, sessionId: string, upToSeq: number): num
 /**
  * 会话冻结标题解析（写入侧文案的权威语义，对齐 web getSessionDisplayName 的稳定子集）：
  * name → path 基名 → id 前 8 位。刻意不含 summary.text——summary 是动态生成物，
- * 冻结文案（消息即快照，ADR 0003）要的是身份字段。hub/legacyRefMigration 共用。
+ * 冻结文案（消息即快照，ADR 0003）要的是身份字段。daemon/legacyRefMigration 共用。
  */
 export function resolveSessionTitle(metadata: unknown, sessionId: string): string {
     if (isObject(metadata)) {
@@ -249,7 +249,7 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
     const run = db.transaction((): InsertForkAtAnchorResult => {
         // 1. 新建 fork 会话行。tag 必须非空：resume spawn 后 CLI bootstrapSession 以
         //    「nativeSessionId 查行 → 复用行 tag」绑定既有行，tag NULL 会让 CLI 判定
-        //    「未找到」另建新行 → hub mergeSessions 摧毁 fork 行（E2E P0 实证）。
+        //    「未找到」另建新行 → daemon mergeSessions 摧毁 fork 行（E2E P0 实证）。
         //    namespace / machine_id / workspace_id / runtime_state 继承 parent——配置快照含
         //    model/effort/outputStyle/permissionMode，激活后 CLI keep-alive 回流同值
         const forkSessionId = randomUUID()
@@ -348,8 +348,8 @@ function insertForkAtAnchor(db: Database, params: InsertForkAtAnchorParams): Ins
 }
 
 /**
- * fork 行激活失败的 hub 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
- * forkError 上报通道不可达，错误态由 hub 直接落 metadata）。保留 forkFrom（未激活判定
+ * fork 行激活失败的 daemon 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
+ * forkError 上报通道不可达，错误态由 daemon 直接落 metadata）。保留 forkFrom（未激活判定
  * 与删除守卫的依据，shared FORK_ERROR_METADATA 契约），叠加 forkError。
  * CAS/重试/尽力而为语义见 casUpdateSessionMetadataBestEffort。
  *
@@ -366,7 +366,7 @@ export function markForkActivationError(
     }))
 }
 
-/** fork 会话创建领域存储（Store 聚合的子 Store，见 hub 编码规范；ContextBoundaryStore 同例） */
+/** fork 会话创建领域存储（Store 聚合的子 Store，见 daemon 编码规范；ContextBoundaryStore 同例） */
 export class SessionForkStore {
     private readonly db: Database
 

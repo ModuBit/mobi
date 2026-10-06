@@ -17,7 +17,7 @@
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
 import type { CacheStatus, ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { Store } from '../store'
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import { clampAliveTime } from './aliveTime'
 import { isSessionRowDeletable } from './sessionDeleteGuard'
 import { EventPublisher } from './eventPublisher'
@@ -183,7 +183,7 @@ export class SessionCache {
         // permissionMode 顶层可写快照已删除（深化候选⑤）：降级为 runtimeState.permissionMode 的
         // 只读投影 getter——可写副本仅剩 runtimeState 一处（RuntimeStateStore.merge），「双写漂移」
         // 类 bug（2fd3150e 漏落库 / 88da6179 失败脏写）失去存在土壤。getter 使 wire 形状不变
-        // （GET /sessions/:id 与 session-updated 全量载荷 JSON 序列化时自动带值），hub 重启后
+        // （GET /sessions/:id 与 session-updated 全量载荷 JSON 序列化时自动带值），daemon 重启后
         // refreshSession 也自动从 DB runtimeState 恢复；严格模式下赋值会 TypeError（暴露漏改的写点）
         Object.defineProperty(session, 'permissionMode', {
             get: () => session.runtimeState?.permissionMode,
@@ -419,7 +419,7 @@ export class SessionCache {
                 this.runtimeStateStore.merge(session, patch)
             } catch {
                 // 合并写失败（会话行消失 / namespace 不匹配）：收尾判定照常广播，但持久化已丢失——留痕便于诊断
-                hubLogger.warn(`[sessionCache] handleSessionEnd mergeRuntimeState failed, teamState 收尾未持久化 (id=${session.id})`)
+                daemonLogger.warn(`[sessionCache] handleSessionEnd mergeRuntimeState failed, teamState 收尾未持久化 (id=${session.id})`)
             }
         }
 

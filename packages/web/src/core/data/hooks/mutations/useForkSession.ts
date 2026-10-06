@@ -24,7 +24,7 @@ import { invalidateWorkspaceViews } from '@/core/lib/invalidateViews'
  * fork 会话创建 Hook（fork-session spec §4.3 / §5.1）：
  * POST /api/sessions/:id/fork → 成功后失效工作区维度视图缓存（新会话进侧栏各分组）
  * 并跳转新会话（导航与 useSessionActions 的 deleteSession 同层收口，容器组件只做编排）。
- * 失败 reject 原始错误（hub 响应体 code 供 forkRejectReasonKey 归因），由调用方 toast。
+ * 失败 reject 原始错误（daemon 响应体 code 供 forkRejectReasonKey 归因），由调用方 toast。
  */
 export function useForkSession(sessionId: string): {
     /** 创建分叉会话；resolve 新会话 id（已跳转） */

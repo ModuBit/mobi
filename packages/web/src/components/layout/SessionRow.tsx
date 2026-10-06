@@ -77,7 +77,7 @@ export function SessionRow({
     const { t } = useTranslation()
     const sessionBadge = useNotificationBadgeStore((s) => s.badges.get(session.id))
     const hasUnread = Boolean(sessionBadge && (sessionBadge.ready || sessionBadge.permission))
-    // fork 行：hub 建行时标题已落库（metadata.name 含「· 分叉」后缀），
+    // fork 行：daemon 建行时标题已落库（metadata.name 含「· 分叉」后缀），
     // 徽标状态纯函数可得（spec §4.3）
     const forkState = resolveForkSessionState(session, t)
     // dropdown 打开时鼠标移向 portal 菜单会离开行 → hover CSS 隐藏按钮组 → 触发器卸载导致菜单关闭。

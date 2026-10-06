@@ -18,8 +18,8 @@
  * 需要用户介入的状态反馈（声音 + 移动端震动）。
  *
  * 监听对象是「会话状态转换」而非具体事件（2026-09-26 定稿）：
- * - 输出完成等待输入：running true→false（hub Ready 通知有 60s 冷却，快速连续
- *   对话会漏；状态转换每轮都发生，不依赖 hub 防抖/冷却）
+ * - 输出完成等待输入：running true→false（daemon Ready 通知有 60s 冷却，快速连续
+ *   对话会漏；状态转换每轮都发生，不依赖 daemon 防抖/冷却）
  * - 等待审批/AskUserQuestion：pendingRequests 0→N（AskUserQuestion 也走 permission
  *   request 通道，天然合并覆盖）
  *

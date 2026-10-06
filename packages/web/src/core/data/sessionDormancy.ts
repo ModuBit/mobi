@@ -35,7 +35,7 @@ export interface DormancyActionDeps {
 }
 
 /** 从 axios 错误中提取 409 携带的逐项 blocker code（非 axios / 无字段返回空）。
- *  休眠与删除两路共用：删除 active 会话时 hub 会先自动休眠，被 gate 阻塞的 409
+ *  休眠与删除两路共用：删除 active 会话时 daemon 会先自动休眠，被 gate 阻塞的 409
  *  同样携带 blockers（结构同源） */
 export function extractBlockers(error: unknown): string[] {
     return axios.isAxiosError(error)
@@ -55,7 +55,7 @@ export function dormancyBlockedText(blockers: string[], t: TFunction, blockedKey
 
 /**
  * 删除入口的阻塞文案组合（PC/移动端删除失败 catch 共用，extract→判空→定 key 三步
- * 单点收口）：409 blockers（hub 删除前自动休眠被 gate 挡）→「无法删除：…」；
+ * 单点收口）：409 blockers（daemon 删除前自动休眠被 gate 挡）→「无法删除：…」；
  * 非阻塞错误返回 null，调用方自行决定回退（PC 通用错误 toast / 移动端静默）。
  */
 export function deleteBlockedText(error: unknown, t: TFunction): string | null {

@@ -15,7 +15,7 @@
  */
 
 /**
- * 自定义 Web 工具配置协议（跨 hub/web/cli 共享）。
+ * 自定义 Web 工具配置协议（跨 daemon/web/cli 共享）。
  *
  * 用途：CLI 侧通过 SDK toolAliases 把内置 WebSearch/WebFetch 重定向到自建 provider
  * 实现（如 Tavily、博查）。配置明文存于 `~/.mobi/settings.json` 的 `webTools` 段，
@@ -65,7 +65,7 @@ export type WebToolsConfig = z.infer<typeof WebToolsConfigSchema>
 export type WebToolProviderSettings = z.infer<typeof WebToolProviderSettingsSchema>
 
 /**
- * 提交方向 schema（web → runner set 请求体）：credentials 值放宽为 string | null。
+ * 提交方向 schema（web → daemon set 请求体）：credentials 值放宽为 string | null。
  * 在场性协议：键不在场 = 保持旧值（新 UI 未修改）；空串 = 保持旧值（旧客户端兼容）；
  * null = 清除凭据；非空 = 覆盖。落盘方向仍用 WebToolsConfigSchema（纯 string）。
  */
@@ -80,7 +80,7 @@ export type WebToolsConfigSubmission = z.infer<typeof WebToolsConfigSubmissionSc
 export type WebToolProviderSubmission = z.infer<typeof WebToolProviderSubmissionSchema>
 
 /**
- * verify-web-tools-provider RPC 请求体（hub 路由 400 校验与 runner handler 边界共用）。
+ * verify-web-tools-provider RPC 请求体（daemon 路由 400 校验与 handler 边界共用）。
  * credentials 草稿只认纯 string record：null/数字等畸形值在边界整体拒绝，
  * 而非静默过滤后用已存凭据跑真实验证造成「验证通过」假阳性。
  */

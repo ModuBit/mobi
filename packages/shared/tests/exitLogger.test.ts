@@ -42,12 +42,12 @@ function readJson(path: string): unknown {
 
 describe('exitLogger recordExit', () => {
   it('追加一条 JSONL 记录到 exits.log', () => {
-    const logger = installExitLogger('hub', { logsDir })
+    const logger = installExitLogger('daemon', { logsDir })
     logger.recordExit({ reason: 'normal', exitCode: 0 })
 
     const records = readExitRecords(logsDir)
     expect(records).toHaveLength(1)
-    expect(records[0].processType).toBe('hub')
+    expect(records[0].processType).toBe('daemon')
     expect(records[0].reason).toBe('normal')
     expect(records[0].exitCode).toBe(0)
     expect(records[0].pid).toBe(process.pid)

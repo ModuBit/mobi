@@ -30,7 +30,7 @@
  */
 
 // turn 来源三态、跨会话来源 concept、以及「这条是不是 mobi 投的」判据，单源都在 shared
-// （与 web 的呈现判据、hub 的落库形状同一份）
+// （与 web 的呈现判据、daemon 的落库形状同一份）
 import { isMobiDelivered, normalizeFromSessionId } from '@mobi/shared'
 import type { CrossSessionOrigin, TurnOrigin } from '@mobi/shared'
 
@@ -90,7 +90,7 @@ export function classifyInboundTurn(input: InboundPromptInput): InboundTurn | nu
     if (!peer) return null
 
     // mobi 自发投递的信封带 from-session-id，**不由本观测路径落库**：那条消息的投递路径
-    // 自己负责落库（Hub 在 RPC 投递成功后写行），观测路径再记一次会在目标会话里留下
+    // 自己负责落库（daemon 在 RPC 投递成功后写行），观测路径再记一次会在目标会话里留下
     // 两行一模一样的消息。
     //
     // 2026-09-12 实测（本特性的 E2E）：CLI 经 stdin 推入一封带信封的消息后，CC 的

@@ -22,7 +22,7 @@ import type { ForegroundTaskItem } from '@mobi/shared/types'
 /**
  * 前台执行中任务清单的消息投影（foreground-tasks spec D1/D3/D4）：
  * Agent 类工具的 tool_use 入清单、tool_result 移除、轮次 result 到达清扫孤儿。
- * 与 backgroundTasks 的区别：无 CLI 上报通道，hub 从已持久化消息自维护；
+ * 与 backgroundTasks 的区别：无 CLI 上报通道，daemon 从已持久化消息自维护；
  * 与 tasks（任务列表）的区别：这里投影的是工具执行态，不是 TaskCreate 条目。
  *
  * 投影无状态：配对幂等性全部由 applyForegroundTaskDeltas 承担（started 按

@@ -32,18 +32,18 @@ describe('logs 命令核心：findLatestLog', () => {
         if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true })
     })
 
-    it('hub/runner/cli 各自最新可定位', () => {
-        writeFileSync(join(TEST_DIR, '2026-07-23-01-00-00-pid-1-runner.log'), '')
+    it('daemon（含历史 -hub/-runner 文件名）/cli 各自最新可定位', () => {
+        writeFileSync(join(TEST_DIR, '2026-07-23-01-00-00-pid-1-hub.log'), '')
         writeFileSync(join(TEST_DIR, '2026-07-23-02-00-00-pid-2-runner.log'), '')
-        writeFileSync(join(TEST_DIR, '2026-07-23-03-00-00-pid-3-hub.log'), '')
+        writeFileSync(join(TEST_DIR, '2026-07-23-03-00-00-pid-3-daemon.log'), '')
         writeFileSync(join(TEST_DIR, '2026-07-23-04-00-00-pid-4-cli.log'), '')
 
-        expect(findLatestLog(TEST_DIR, 'runner')!.endsWith('02-00-00-pid-2-runner.log')).toBe(true)
-        expect(findLatestLog(TEST_DIR, 'hub')!.endsWith('pid-3-hub.log')).toBe(true)
+        // 历史 -hub/-runner 文件名归入 daemon 桶，最新者胜
+        expect(findLatestLog(TEST_DIR, 'daemon')!.endsWith('pid-3-daemon.log')).toBe(true)
         expect(findLatestLog(TEST_DIR, 'cli')!.endsWith('pid-4-cli.log')).toBe(true)
     })
 
     it('无匹配返回 null', () => {
-        expect(findLatestLog(TEST_DIR, 'hub')).toBeNull()
+        expect(findLatestLog(TEST_DIR, 'daemon')).toBeNull()
     })
 })

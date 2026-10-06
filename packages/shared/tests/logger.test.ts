@@ -68,22 +68,34 @@ describe('shared logger', () => {
     })
 
     it('findLatestLog 返回指定 processType 的最新文件', () => {
-        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-1-runner.log')
-        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-runner.log')
+        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-1-cli.log')
+        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-cli.log')
         writeFileSync(old, 'old')
         writeFileSync(fresh, 'new')
-        writeFileSync(join(TEST_DIR, '2026-07-23-00-00-00-pid-3-hub.log'), 'other type')
+        writeFileSync(join(TEST_DIR, '2026-07-23-00-00-00-pid-3-daemon.log'), 'other type')
         // findLatestLog 按 mtime 判新旧——必须显式设置 mtime 与文件名时间戳一致：
         // CI 上 writeFileSync 连续创建的文件 mtime 可能同 tick，排序退化取决于 readdir 顺序（环境随机）
         utimesSync(old, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'))
         utimesSync(fresh, new Date('2026-07-23T00:00:00Z'), new Date('2026-07-23T00:00:00Z'))
-        const latest = findLatestLog(TEST_DIR, 'runner')
+        const latest = findLatestLog(TEST_DIR, 'cli')
+        expect(latest).not.toBeNull()
+        expect(latest!.endsWith('pid-2-cli.log')).toBe(true)
+    })
+
+    it('findLatestLog 历史文件名（-hub.log / -runner.log）归入 daemon 桶', () => {
+        const legacyHub = join(TEST_DIR, '2026-07-22-00-00-00-pid-1-hub.log')
+        const legacyRunner = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-runner.log')
+        writeFileSync(legacyHub, 'old')
+        writeFileSync(legacyRunner, 'new')
+        utimesSync(legacyHub, new Date('2026-07-22T00:00:00Z'), new Date('2026-07-22T00:00:00Z'))
+        utimesSync(legacyRunner, new Date('2026-07-23T00:00:00Z'), new Date('2026-07-23T00:00:00Z'))
+        const latest = findLatestLog(TEST_DIR, 'daemon')
         expect(latest).not.toBeNull()
         expect(latest!.endsWith('pid-2-runner.log')).toBe(true)
     })
 
     it('findLatestLog 无匹配返回 null', () => {
-        expect(findLatestLog(TEST_DIR, 'hub')).toBeNull()
+        expect(findLatestLog(TEST_DIR, 'daemon')).toBeNull()
     })
 
     it('cleanupOldLogs 删超龄文件，保留 exits.log 与新文件', () => {

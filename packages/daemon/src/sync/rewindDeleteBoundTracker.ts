@@ -25,7 +25,7 @@
  * 对齐 BackgroundTaskTracker 的注入模式：index.ts 组装层创建，SyncEngine（受理时写）
  * 与 CLI socket handler（截断回报时读）共用同一实例。
  *
- * 内存语义：hub 重启丢上界 → 截断回报回退到无上界删除（回到旧行为，罕见窗口内可接受）。
+ * 内存语义：daemon 重启丢上界 → 截断回报回退到无上界删除（回到旧行为，罕见窗口内可接受）。
  */
 
 export class RewindDeleteBoundTracker {

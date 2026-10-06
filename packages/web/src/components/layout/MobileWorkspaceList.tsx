@@ -245,7 +245,7 @@ export function MobileWorkspaceList() {
                         navigateFromMenu(() => navigate({ to: '/sessions' }))
                     }
                 } catch (error) {
-                    // gate 阻塞（hub 删除前自动休眠被挡）→ 逐项原因文案；其余保持静默（原行为）
+                    // gate 阻塞（daemon 删除前自动休眠被挡）→ 逐项原因文案；其余保持静默（原行为）
                     const text = deleteBlockedText(error, t)
                     if (text) {
                         messageApi.error(text)
@@ -271,7 +271,7 @@ export function MobileWorkspaceList() {
 
     // ActionSheet 当前操作的 session
     const actionSession = actionSessionId ? findSession(actionSessionId) : null
-    // Drawer 标题（fork 行标题已由 hub 落库，displayName 自然区分）
+    // Drawer 标题（fork 行标题已由 daemon 落库，displayName 自然区分）
     const actionSessionDisplayTitle = actionSession ? getSessionDisplayName(actionSession) : ''
 
     return (

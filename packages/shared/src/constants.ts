@@ -15,15 +15,15 @@
  */
 
 /**
- * RPC 二进制传输相关常量（cli 读文件分片 / hub 流式转发 / bun-engine 传输上限）。
+ * RPC 二进制传输相关常量（cli 读文件分片 / daemon 流式转发 / bun-engine 传输上限）。
  *
- * 集中在 shared 作为单一事实源，避免 CLI 分片读取与 Hub 的 maxHttpBufferSize
+ * 集中在 shared 作为单一事实源，避免 CLI 分片读取与 daemon 的 maxHttpBufferSize
  * 形成跨包隐式契约（之前仅靠注释维系，调一端不报错、首传大文件时 'payload too large' 断连）。
  */
 
 /**
  * 单次 readFileRange / uploadFileRange RPC 的二进制 chunk 大小（2 MiB）。
- * cli 按此切片读文件、hub 按此流式转发。
+ * cli 按此切片读文件、daemon 按此流式转发。
  */
 export const RPC_BINARY_CHUNK_SIZE = 2 * 1024 * 1024
 

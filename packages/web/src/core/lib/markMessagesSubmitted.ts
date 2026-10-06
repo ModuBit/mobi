@@ -20,7 +20,7 @@ import { sortMessages } from './messages'
 /**
  * 把 localId 命中的排队消息翻为 pushed（lifecycle='pushed' + lifecycleAt + status='sent'）。
  * SSE `messages-submitted` 事件的 `submittedAt` 值即 pushed 转换时刻，落 `lifecycleAt`；
- * 同时 positionAt 跳到该时刻——对齐 hub 侧 position_at = lifecycle_at 的跳变语义，
+ * 同时 positionAt 跳到该时刻——对齐 daemon 侧 position_at = lifecycle_at 的跳变语义，
  * 保证运行中消费的消息排在 turn 之后。消费跳变是唯一打破「到达顺序 = 有序」的场景，随后按
  * positionAt 重排恢复有序。first-write-wins：单调守卫 `lifecycle === 'queued'`，
  * 已离开排队态（pushed 及之后）的不动。

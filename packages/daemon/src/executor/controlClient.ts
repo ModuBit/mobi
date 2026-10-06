@@ -15,28 +15,26 @@
  */
 
 /**
- * runner controlServer 的 CLI 侧客户端（`mobi runner list / stop-session`）。
+ * executor controlServer 的 CLI 侧客户端（`mobi sessions list / stop`）。
  *
- * ticket-22 收缩：旧的自重启协作族（checkIfRunnerRunningAndCleanupStaleState /
- * isRunnerRunningCurrentlyInstalledMobiVersion / stopRunner——依赖 runner.state.json
- * 的 pid/版本比对）随 runner mtime 自重启与独立 runner 进程一起删除；传输底座
- * 在 @mobi/node-core/utils/loopbackControlPost（读 daemon.state.json 的
- * controlPort 探活）。
+ * 历史（ticket-22 前后）：旧的自重启协作族（依赖 runner.state.json 的 pid/版本
+ * 比对）已随独立 runner 进程一起删除；传输底座在
+ * @mobi/node-core/utils/loopbackControlPost（读 daemon.state.json 的 controlPort 探活）。
  */
 
 import { loopbackControlPost } from '@mobi/node-core/utils/loopbackControlPost';
 
-async function runnerPost(path: string, body?: unknown): Promise<{ error?: string } | Record<string, unknown>> {
+async function executorPost(path: string, body?: unknown): Promise<{ error?: string } | Record<string, unknown>> {
   return loopbackControlPost(path, body);
 }
 
-export async function listRunnerSessions(): Promise<unknown[]> {
-  const result = await runnerPost('/list');
+export async function listExecutorSessions(): Promise<unknown[]> {
+  const result = await executorPost('/list');
   const children = (result as { children?: unknown[] }).children;
   return children || [];
 }
 
-export async function stopRunnerSession(sessionId: string): Promise<boolean> {
-  const result = await runnerPost('/stop-session', { sessionId });
+export async function stopExecutorSession(sessionId: string): Promise<boolean> {
+  const result = await executorPost('/stop-session', { sessionId });
   return (result as { success?: boolean }).success || false;
 }

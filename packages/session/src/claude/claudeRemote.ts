@@ -270,7 +270,7 @@ export interface TurnTrackingState {
  *  CC 对排队消息（push 时预设的 command_uuid = nativeId）的生命周期回执：
  *  started → processing、completed → done、cancelled / discarded / refused 直传；
  *  terminal_reason 开放透传（上游 Open set，U-13，转 fact 的 terminalReason 供 web 标注）；
- *  queued 不上报（Hub 已有初始排队态），非法/缺字段返回 null。 */
+ *  queued 不上报（daemon 已有初始排队态），非法/缺字段返回 null。 */
 export function commandLifecycleToFact(
     message: unknown
 ): { nativeId: string; state: CommandLifecycleState; terminalReason?: string } | null {
@@ -336,7 +336,7 @@ export function buildForkStartupFields(plan: ForkActivationPlan): {
  * - fork 激活轮：恒取 forkFrom.parentNativeId，**完全绕过 claudeCheckSession 守卫**——
  *   守卫检查的是 mobi 行自身的 nativeSessionId（fork 预生成 id 无 transcript，必判失败
  *   → startFrom=null → 退化成新会话而非 fork）。fork 激活的权威数据是 forkFrom 簿记，
- *   不依赖 claudeArgs 里的 --resume（该值是 hub spawn 时传的 fork 行预生成 id，
+ *   不依赖 claudeArgs 里的 --resume（该值是 daemon spawn 时传的 fork 行预生成 id，
  *   只用于 bootstrapSession 绑定 mobi 行，激活不消费它）
  * - 普通轮：沿用现状——sessionId transcript 有效则用之，无效回落 claudeArgs 的 --resume
  */
@@ -579,7 +579,7 @@ export async function sdkOutputLoop(
         // 标记该 message 的 snapshot 已被 full 取代，abort 时 consumePendingFull 不再补全（避免重复）。
         // 守卫 message.id：只对聚合 full（有 id）置位；透传的缺 id assistant（异常路径）不置位，
         // 让 snapshot 补全仍能处理它，避免误跳过导致内容丢失。
-        // 同时发 stream-end：full 的 localId（jsonl uuid）≠ 流 sdkUuid，hub 无法自行映射，
+        // 同时发 stream-end：full 的 localId（jsonl uuid）≠ 流 sdkUuid，daemon 无法自行映射，
         // 需信号才能精确清缓存与订阅游标（否则缓存滞留 TTL、resync 误补发 → 幽灵重复气泡）
         if (msg.type === 'assistant' && (msg as SDKAssistantMessage).message?.id) {
             opts.snapshotSender.markFullDelivered();
@@ -686,7 +686,7 @@ export async function sdkOutputLoop(
         // 双路径无重复。trigger/user_message_uuid/timestamp 仅 informational 不判定。
         // transcript 挂接（sdk.d.ts 要求「mount a fresh transcript under new_conversation_id
         // 并重置缓存标题」）：CC 切到新对话文件后 converter/scanner 仍按旧 id 走——
-        // 复用 init 的文件等待 + onSessionFound 收口（launcher 侧幂等绑定 + hub 补行 +
+        // 复用 init 的文件等待 + onSessionFound 收口（launcher 侧幂等绑定 + daemon 补行 +
         // scanner.onNewSession 切监听文件），resume 才不会丢 reset 之后的对话历史
         if (message.type === 'conversation_reset') {
             const resetMsg = message as SDKConversationResetMessage;
@@ -790,7 +790,7 @@ export async function userInputLoop(
         markInputPushed: () => void
         /**
          * 已 collect 消息的丢弃防线（pending #94）：nextMessage 返回的消息已被 collectBatch
-         * shift（pushed fact 已发、Hub lifecycle 已推进），若此刻轮次 abort 已触发，静默丢弃
+         * shift（pushed fact 已发、daemon lifecycle 已推进），若此刻轮次 abort 已触发，静默丢弃
          * 即永久悬空。此回调把消息交回投递方（launcher 暂存 pending，下轮原样投递）
          */
         onCollectedMessageAbandoned?: (message: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }) => void
@@ -983,7 +983,7 @@ export async function claudeRemote(opts: {
      * 由 launcher 甄别落库。恒同步调用、不阻塞 SDK 主流程（回调内部自行兜错） */
     onInboundPrompt?: (input: { prompt: string; source?: string }) => void,
     /** SessionStart(resume/fork) 缓存过期观测回调（null = 无需上报，见 buildCacheStatusFromSessionStart）。
-     * 恒同步调用、不阻塞 SDK 主流程；launcher 转 reportCacheStatus 上报 hub */
+     * 恒同步调用、不阻塞 SDK 主流程；launcher 转 reportCacheStatus 上报 daemon */
     onCacheStatus?: (status: CacheStatus | null) => void,
 }) {
 
@@ -1117,7 +1117,7 @@ export async function claudeRemote(opts: {
         cwd: opts.path,
         // 开启后 SDK 会把同一 Anthropic message 的多个 content block 作为独立的
         // SDKAssistantMessage emit（共享 message.id、各自独立 uuid——SDK 文档明确行为）。
-        // mobi 直接透传每条消息、用各自 uuid 作 localId，Hub 去重天然正确；前端
+        // mobi 直接透传每条消息、用各自 uuid 作 localId，daemon 去重天然正确；前端
         // resolveMessageCache 按 parentUuid 清理 snapshot，不依赖 full.id == snapshot.id。
         includePartialMessages: true,
         agentProgressSummaries: true,
@@ -1252,7 +1252,7 @@ export async function claudeRemote(opts: {
                         opts.onSessionFound(input.session_id)
                     }
                     // 恢复场景缓存信号观测（upstream-suggestions ①）：SDK 0.3.268 hook input 携带
-                    // prompt_cache_likely_expired 等，组装载荷交 launcher 上报 hub（null 不报）。
+                    // prompt_cache_likely_expired 等，组装载荷交 launcher 上报 daemon（null 不报）。
                     // 探针日志供 cache-miss-after-resume 调查 grep（上游 TTL 判定的权威观测点）
                     if (input.hook_event_name === 'SessionStart') {
                         const cacheStatus = buildCacheStatusFromSessionStart(input)
@@ -1361,7 +1361,7 @@ export async function claudeRemote(opts: {
             opts.getConverter(),
         );
         snapshotSender.start();
-        // socket 重连重基线：断线期间增量帧已丢，重连后立即重发全量帧重建 hub 侧基线
+        // socket 重连重基线：断线期间增量帧已丢，重连后立即重发全量帧重建 daemon 侧基线
         opts.registerSnapshotReset?.(() => snapshotSender?.forceFullFlush());
         outputLoopPromise = sdkOutputLoop(q, loopCtx, {
             path: opts.path,

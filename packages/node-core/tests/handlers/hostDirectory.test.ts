@@ -19,7 +19,7 @@ import { mkdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerMachineDirectoryHandler } from '@/handlers/hostDirectory'
+import { registerHostDirectoryHandler } from '@/handlers/hostDirectory'
 
 async function createTempDir(prefix: string): Promise<string> {
     const base = tmpdir()
@@ -44,7 +44,7 @@ describe('machine list-directory RPC handler', () => {
         await writeFile(join(homeDir, 'README.md'), '# test')
 
         rpc = new RpcHandlerManager({ scopePrefix })
-        registerMachineDirectoryHandler(rpc)
+        registerHostDirectoryHandler(rpc)
     })
 
     it('仅返回目录（含隐藏目录），不含文件', async () => {

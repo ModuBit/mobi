@@ -91,14 +91,14 @@ function deriveCorsOrigins(publicUrl: string): string[] {
 }
 
 /**
- * Load hub settings with priority: env > file > default
+ * Load daemon settings with priority: env > file > default
  * Saves new env values to file when not already present
  */
 export async function loadServerSettings(
   dataDir: string,
 ): Promise<ServerSettingsResult> {
   const settingsFile = getSettingsFile(dataDir);
-  // 锁内完成 读→env 回填→写 整个临界区（与 cli 受限写/其他 hub 写点互斥）
+  // 锁内完成 读→env 回填→写 整个临界区（与 cli 受限写/其他 daemon 写点互斥）
   return withSettingsLock(settingsFile, async () => {
     const settings = await readSettings(settingsFile);
 

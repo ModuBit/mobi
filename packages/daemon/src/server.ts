@@ -15,17 +15,17 @@
  */
 
 /**
- * hub 生命周期（ticket-16 自 index.ts 抽出）。
+ * daemon Web/同步服务生命周期（原 hubServer.ts，602 定名 server.ts）。
  *
- * `startHub` 只负责「起一个 hub」：装配 config/store/socket/web 全家并监听就绪，
- * 返回 `HubHandle`（port + stop）。**不含任何进程级职责**——exit logger、信号
+ * `startServer` 只负责「起服务」：装配 config/store/socket/web 全家并监听就绪，
+ * 返回 `ServerHandle`（port + stop）。**不含任何进程级职责**——exit logger、信号
  * 处理、启动崩溃检测、进程驻留（`await new Promise(() => {})`）都由调用方
- * （index.ts 的 `hub start-sync` 薄壳 / daemonEntry 的同进程编排）承担，
- * 否则与 runner 同进程时两套信号处理互抢、hub shutdown 直接 exit 砍掉清理。
+ * （daemonEntry 的同进程编排）承担，否则两套信号处理互抢、shutdown 直接 exit
+ * 砍掉清理。
  */
 
 import { configuration, createConfiguration } from './configuration'
-import { hubLogger } from './logger'
+import { daemonLogger } from './logger'
 import { Store } from './store'
 import { SyncEngine, type SyncEvent } from './sync/syncEngine'
 import { BackgroundTaskTracker } from './sync/backgroundTaskTracker'
@@ -39,11 +39,11 @@ import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { SnapshotDeltaStats } from './sync/snapshotDeltaStats'
 import { SnapshotSync } from './sync/snapshotSync'
-import { LocalMachineHost } from './executor/localExecutor'
-import type { RunnerSessionBridge } from './executor/lifecycle'
+import { LocalExecutor } from './executor/localExecutor'
+import type { ExecutorBridge } from './executor/lifecycle'
 import { createSessionTrackingSync } from './executor/sessionTracking'
 import { updateExecutorState as writeExecutorState } from './sync/executorRuntime'
-import type { RunnerState } from '@mobi/node-core/api/types'
+import type { ExecutorState } from '@mobi/node-core/api/types'
 import { parseAccessToken } from './utils/accessToken'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
 import { PushService } from './push/pushService'
@@ -52,8 +52,8 @@ import { VisibilityTracker } from './visibility/visibilityTracker'
 import type { Server as BunServer } from 'bun'
 import type { WebSocketData } from '@socket.io/bun-engine'
 
-/** hub 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
-export interface HubHandle {
+/** 服务句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
+export interface ServerHandle {
     /** 实际监听端口（config 解析结果，可能来自 env/settings/default） */
     port: number
     /** 宿主通道端口（ticket-21：/cli socket + /cli/* HTTP 独立 loopback listener，127.0.0.1 only） */
@@ -61,22 +61,22 @@ export interface HubHandle {
     /** 数据目录（state 文件所在，供调用方绑定退出清理） */
     dataDir: string
     /**
-     * runner 会话执行桥注入（ticket-18）：daemon 编排在 runner core 就绪后调用——
-     * LocalMachineHost.spawnSession 翻直调，session-alive 驱动追踪补登/刷新。
-     * 未调用（hub 单独跑 / 测试）时两条路径都走 socket 兜底，行为与此前一致。
+     * 会话执行桥注入（ticket-18）：daemon 编排在 executor 就绪后调用——
+     * LocalExecutor.spawnSession 翻直调，session-alive 驱动追踪补登/刷新。
+     * 未调用（单测）时 spawn 报 bridge 未接线。
      */
-    setRunnerBridge(bridge: RunnerSessionBridge): void
+    setExecutorBridge(bridge: ExecutorBridge): void
     /**
-     * executor 状态直写（ticket-20 建，401 起 machineCache 落库退场）：daemon 编排注入给
-     * runner core——spawn 结果上报 / 关停状态经此写 executorRuntime 内存单例并广播
+     * executor 状态直写（401 起 machineCache 落库退场）：daemon 编排注入给
+     * executor core——spawn 结果上报 / 关停状态经此写 executorRuntime 内存单例并广播
      * daemon-status。
      */
-    updateExecutorState(handler: (state: RunnerState | null) => RunnerState): void
+    updateExecutorState(handler: (state: ExecutorState | null) => ExecutorState): void
     /** 优雅关停：清 state → 通知/SSE/engine/web 逐层停。幂等（二次调用为 no-op） */
     stop(): Promise<void>
 }
 
-export interface StartHubOptions {
+export interface StartServerOptions {
     /** 传入则覆盖 env/settings 的监听地址（daemon start-sync --host 透传） */
     host?: string
     /** 传入则覆盖 env/settings 的监听端口 */
@@ -95,28 +95,28 @@ function formatSource(source: 'env' | 'file' | 'default' | 'generated'): string 
 /** 首次生成 token 时打印的横幅（CLI / Web 密钥共用，避免两段重复） */
 function printTokenBanner(title: string, token: string, file: string, footer?: string): void {
     const bar = '='.repeat(70)
-    hubLogger.info('')
-    hubLogger.info(bar)
-    hubLogger.info(`  ${title}`)
-    hubLogger.info(bar)
-    hubLogger.info('')
-    hubLogger.info(`  Token: ${token}`)
-    hubLogger.info('')
-    hubLogger.info(`  Saved to: ${file}`)
-    hubLogger.info('')
+    daemonLogger.info('')
+    daemonLogger.info(bar)
+    daemonLogger.info(`  ${title}`)
+    daemonLogger.info(bar)
+    daemonLogger.info('')
+    daemonLogger.info(`  Token: ${token}`)
+    daemonLogger.info('')
+    daemonLogger.info(`  Saved to: ${file}`)
+    daemonLogger.info('')
     if (footer) {
-        hubLogger.info(`  ${footer}`)
-        hubLogger.info('')
+        daemonLogger.info(`  ${footer}`)
+        daemonLogger.info('')
     }
-    hubLogger.info(bar)
-    hubLogger.info('')
+    daemonLogger.info(bar)
+    daemonLogger.info('')
 }
 
-export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
+export async function startServer(opts: StartServerOptions = {}): Promise<ServerHandle> {
     if (opts.host) process.env.MOBI_LISTEN_HOST = opts.host
     if (opts.port) process.env.MOBI_LISTEN_PORT = String(opts.port)
 
-    hubLogger.info('Mobi Hub starting...')
+    daemonLogger.info('Mobi Daemon starting...')
 
     const config = await createConfiguration()
 
@@ -124,7 +124,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     if (config.cliApiTokenIsNew) {
         printTokenBanner('NEW CLI_API_TOKEN GENERATED', config.cliApiToken, config.settingsFile)
     } else {
-        hubLogger.info(`[Hub] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
+        daemonLogger.info(`[DAEMON] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
     }
 
     // 首次生成 Web 密钥时打印横幅（Web 浏览器登录用，与 CLI 密钥独立）
@@ -136,12 +136,12 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
             '查看命令: mobi auth web-token    轮换命令: mobi auth rotate-web-token'
         )
     } else {
-        hubLogger.info(`[Hub] WEB_API_TOKEN: loaded from ${formatSource(config.sources.webApiToken)}`)
+        daemonLogger.info(`[DAEMON] WEB_API_TOKEN: loaded from ${formatSource(config.sources.webApiToken)}`)
     }
 
-    hubLogger.info(`[Hub] MOBI_LISTEN_HOST: ${config.listenHost} (${formatSource(config.sources.listenHost)})`)
-    hubLogger.info(`[Hub] MOBI_LISTEN_PORT: ${config.listenPort} (${formatSource(config.sources.listenPort)})`)
-    hubLogger.info(`[Hub] MOBI_PUBLIC_URL: ${config.publicUrl} (${formatSource(config.sources.publicUrl)})`)
+    daemonLogger.info(`[DAEMON] MOBI_LISTEN_HOST: ${config.listenHost} (${formatSource(config.sources.listenHost)})`)
+    daemonLogger.info(`[DAEMON] MOBI_LISTEN_PORT: ${config.listenPort} (${formatSource(config.sources.listenPort)})`)
+    daemonLogger.info(`[DAEMON] MOBI_PUBLIC_URL: ${config.publicUrl} (${formatSource(config.sources.publicUrl)})`)
 
     // 数据存储
     const store = new Store(config.dbPath)
@@ -194,25 +194,25 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         agentSessions: () => syncEngine?.agentSessions
     })
 
-    // machine 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：
-    // LocalMachineHost 直调 node-core handler 实现函数，不经 socket
-    // runner bridge 持有槽（ticket-18）：LocalMachineHost 构造期 runner 尚未启动，
+    // 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：
+    // LocalExecutor 直调 node-core handler 实现函数，不经 socket
+    // bridge 持有槽（ticket-18）：LocalExecutor 构造期 executor 尚未启动，
     // 惰性 getter 在 spawn 时解包——注入前为 null（spawn 报 bridge 未接线），daemon 编排注入后直调
-    let runnerBridge: RunnerSessionBridge | null = null
+    let executorBridge: ExecutorBridge | null = null
     syncEngine = new SyncEngine(
         store,
         socketServer.io,
         socketServer.rpcRegistry,
         sseManager,
         rewindDeleteBoundTracker,
-        new LocalMachineHost(() => runnerBridge)
+        new LocalExecutor(() => executorBridge)
     )
 
     // daemon 主 namespace 盖章 + executor 初始态（401：machines 行自注册退场——
     // store 层已删，executor 权威状态只在 executorRuntime 内存单例，205 定）
     syncEngine.setDaemonNamespace(parseAccessToken(configuration.cliApiToken)?.namespace ?? 'default')
-    const initialRunnerState: RunnerState = { status: 'running', pid: process.pid, startedAt: Date.now() }
-    writeExecutorState(() => initialRunnerState)
+    const initialExecutorState: ExecutorState = { status: 'running', pid: process.pid, startedAt: Date.now() }
+    writeExecutorState(() => initialExecutorState)
 
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)
@@ -246,32 +246,32 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
     // 启动 settings.daemon.json 监听：webApiToken 轮换时热 reload，无需重启 daemon
     const settingsWatcher = startWebApiTokenWatcher()
 
-    hubLogger.info('')
-    hubLogger.info('[Web] Hub listening on :' + config.listenPort)
-    hubLogger.info('[Web] Local:  http://localhost:' + config.listenPort)
-    hubLogger.info('[Host] Host channel on 127.0.0.1:' + config.hostPort + ' (loopback only)')
-    hubLogger.info('')
-    hubLogger.info('Mobi Hub is ready!')
+    daemonLogger.info('')
+    daemonLogger.info('[Web] Listening on :' + config.listenPort)
+    daemonLogger.info('[Web] Local:  http://localhost:' + config.listenPort)
+    daemonLogger.info('[Host] Host channel on 127.0.0.1:' + config.hostPort + ' (loopback only)')
+    daemonLogger.info('')
+    daemonLogger.info('Mobi Daemon is ready!')
 
-    // daemon 进程状态由 daemonEntry 统一写 daemon.state.json（ticket-22：hub.state.json 停写）
+    // daemon 进程状态由 daemonEntry 统一写 daemon.state.json（历史 daemon/runner state 文件已停写）
 
     let stopped = false
-    const setRunnerBridge = (bridge: RunnerSessionBridge): void => {
-        runnerBridge = bridge
+    const setExecutorBridge = (bridge: ExecutorBridge): void => {
+        executorBridge = bridge
         // executor 管线就绪：此后 spawn/resume 判据从「machineCache 有在线机器」切换为该标志
         syncEngine?.markExecutorReady()
-        // 会话 socket 重连/心跳 → 会话行 metadata 同步进 runner 追踪表（Q8 补登 + 查重键刷新）
+        // 会话 socket 重连/心跳 → 会话行 metadata 同步进 executor 追踪表（Q8 补登 + 查重键刷新）
         const engine = syncEngine
         engine?.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), bridge.registerSessionTracking))
     }
 
     /**
-     * executor 状态直写（ticket-20 建，205 收敛读源，401 落库退场）：daemon 编排注入给
-     * runner core——spawn 结果上报 / 关停状态经此①写 executorRuntime 内存单例（权威读源，
+     * executor 状态直写（205 收敛读源，401 落库退场）：daemon 编排注入给
+     * executor core——spawn 结果上报 / 关停状态经此①写 executorRuntime 内存单例（权威读源，
      * /api/daemon/status 与 daemon-status SSE 的数据源）②广播 daemon-status 事件。
      * handler 只应用一次（以 executorRuntime 旧值为基）。
      */
-    const updateExecutorState = (handler: (state: RunnerState | null) => RunnerState): void => {
+    const updateExecutorState = (handler: (state: ExecutorState | null) => ExecutorState): void => {
         writeExecutorState(handler)
         syncEngine?.publishDaemonStatus()
     }
@@ -280,12 +280,12 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         port: config.listenPort,
         hostPort: config.hostPort,
         dataDir: config.dataDir,
-        setRunnerBridge,
+        setExecutorBridge,
         updateExecutorState,
         stop: async () => {
             if (stopped) return
             stopped = true
-            hubLogger.info('Shutting down...')
+            daemonLogger.info('Shutting down...')
             notificationHub?.stop()
             syncEngine?.stop()
             sseManager?.stop()
@@ -293,7 +293,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
             webServer?.stop()
             settingsWatcher.stop()
             store.close()
-            hubLogger.info('Shutdown complete.')
+            daemonLogger.info('Shutdown complete.')
         },
     }
 }

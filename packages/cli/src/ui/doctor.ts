@@ -18,7 +18,7 @@
  * Doctor command implementation
  * 
  * Provides comprehensive diagnostics and troubleshooting information
- * for mobi CLI including configuration, runner status, logs, and links
+ * for mobi CLI including configuration, daemon status, logs, and links
  */
 
 import chalk from 'chalk'
@@ -103,8 +103,8 @@ export async function runDoctorCommand(): Promise<void> {
         console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
         console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
 
-        // Settings（cli 与 hub 分文件展示：hub 与 cli 可不同机器部署，
-        // 本机读不到 hub 文件时提示远端而非报错）
+        // Settings（cli 与 daemon 分文件展示：daemon 与 cli 可不同机器部署，
+        // 本机读不到 daemon 文件时提示远端而非报错）
         let settings;
         try {
             settings = await readSettings();
@@ -184,7 +184,7 @@ export async function runDoctorCommand(): Promise<void> {
 
             // Display each group
             Object.entries(grouped).forEach(([type, processes]) => {
-                // 历史 hub/runner 类型键随识别集合收敛删除（601）；历史 exits.log/残留进程
+                // 历史 daemon/runner 类型键随识别集合收敛删除（601）；历史 exits.log/残留进程
                 // 的未知类型走 fallback 原样显示（展示容错）
                 const typeLabels: Record<string, string> = {
                     'current': '📍 Current Process',
@@ -232,9 +232,9 @@ export async function runDoctorCommand(): Promise<void> {
         const allLogs = getLogFiles(configuration.logsDir);
         
         if (allLogs.length > 0) {
-            // Separate runner and regular logs
-            const runnerLogs = allLogs.filter(({ file }) => file.includes('runner'));
-            const regularLogs = allLogs.filter(({ file }) => !file.includes('runner'));
+            // Separate daemon logs（历史 -runner.log / -hub.log）and regular logs
+            const daemonLogs = allLogs.filter(({ file }) => file.includes('runner') || file.includes('daemon') || file.includes('hub'));
+            const regularLogs = allLogs.filter(({ file }) => !(file.includes('runner') || file.includes('daemon') || file.includes('hub')));
 
             // Show regular logs (max 10)
             if (regularLogs.length > 0) {
@@ -249,19 +249,19 @@ export async function runDoctorCommand(): Promise<void> {
                 }
             }
 
-            // Show runner logs (max 5)
-            if (runnerLogs.length > 0) {
-                console.log(chalk.blue('\nRunner Logs:'));
-                const runnerLogsToShow = runnerLogs.slice(0, 5);
-                runnerLogsToShow.forEach(({ file, path, modified }) => {
+            // Show daemon logs (max 5)
+            if (daemonLogs.length > 0) {
+                console.log(chalk.blue('\nDaemon Logs:'));
+                const daemonLogsToShow = daemonLogs.slice(0, 5);
+                daemonLogsToShow.forEach(({ file, path, modified }) => {
                     console.log(`  ${chalk.green(file)} - ${modified.toLocaleString()}`);
                     console.log(chalk.gray(`    ${path}`));
                 });
-                if (runnerLogs.length > 5) {
-                    console.log(chalk.gray(`  ... and ${runnerLogs.length - 5} more runner log files`));
+                if (daemonLogs.length > 5) {
+                    console.log(chalk.gray(`  ... and ${daemonLogs.length - 5} more daemon log files`));
                 }
             } else {
-                console.log(chalk.yellow('\nNo runner log files found'));
+                console.log(chalk.yellow('\nNo daemon log files found'));
             }
         } else {
             console.log(chalk.yellow('No log files found'));

@@ -27,8 +27,8 @@ export function fileEtag(size: number, mtimeMs: number): string {
 }
 
 /**
- * readFileMeta RPC 响应（CLI → hub → web 三端单源形状，加字段只改这里）：
- * 结构化 code（'ENOENT'/'ACCESS_DENIED'/...）供 hub 精确分流 HTTP 状态，不依赖文案正则。
+ * readFileMeta RPC 响应（CLI → daemon → web 三端单源形状，加字段只改这里）：
+ * 结构化 code（'ENOENT'/'ACCESS_DENIED'/...）供 daemon 精确分流 HTTP 状态，不依赖文案正则。
  */
 export interface ReadFileMetaResponse {
     success: boolean
@@ -40,7 +40,7 @@ export interface ReadFileMetaResponse {
 }
 
 /**
- * readFileRange RPC 响应（CLI → hub → web 三端单源形状，加字段只改这里）：
+ * readFileRange RPC 响应（CLI → daemon → web 三端单源形状，加字段只改这里）：
  * chunk 为单分片二进制（Socket.IO 原生序列化透传）；失败时结构化 code 透传（ENOENT 等）。
  */
 export type RpcReadFileRangeResponse =

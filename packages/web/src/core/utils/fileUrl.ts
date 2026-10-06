@@ -37,7 +37,7 @@ export function buildReadFileUrl(
     opts: {
         /** 文件内容版本（来自 meta.etag）；省略则不带 v（如尚未拿到 meta） */
         etag?: string
-        /** 下载模式：追加 download=1，让 hub 下发 attachment content-disposition */
+        /** 下载模式：追加 download=1，让 daemon 下发 attachment content-disposition */
         download?: boolean
         /**
          * 重试计数：加载失败后手动重试用。
@@ -88,14 +88,14 @@ export function buildServeFileUrl(sessionId: string, relPath: string): string {
 
 /**
  * 会话文件寻址上下文（read-file 端点寻址所需字段的单源类型）：
- * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达）；
+ * 有 sessionId 走 session 端点（ADR 0006 后执行层在 daemon，会话退出仍可达）；
  * 无会话行（spawn 前的草稿/画板）回退 host 端点（cwd 单参数）；双缺 = 无法构造任何端点。
  */
 export interface FileRefContext {
     sessionId?: string
     cwd?: string
     /**
-     * 会话行元数据在手（非 null）却缺 cwd——ADR 0006 后 hub 的 session 寻址
+     * 会话行元数据在手（非 null）却缺 cwd——ADR 0006 后 daemon 的 session 寻址
      * 必然失败且无回退，此时构造 session URL 只会把「优雅无图」劣化成报错破图。
      * 元数据为 null（尚未加载）不置位：乐观走 session 端点，不因加载时序降级。
      */
@@ -124,7 +124,7 @@ export function fileRefContext(
  * 用户消息 image block → 可取数 URL（气泡 ImageView 渲染、composer 附件缩略图、
  * 画板重编辑取 PNG 共用）：blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地
  * 预览、网络图）；否则视为服务端 .mobi/uploads 路径，经 read-file 端点构造。
- * 有 sessionId 走 session 端点（ADR 0006 后执行层在 runner，会话退出仍可达）；无会话行
+ * 有 sessionId 走 session 端点（ADR 0006 后执行层在 daemon，会话退出仍可达）；无会话行
  * （spawn 前的草稿/画板）回退 host 端点（cwd 单参数）。双缺（如新建会话页的恢复态）
  * 返回 null。判据来自 shared——跨会话投递用同一份判断「这条消息是否依赖宿主上的本地文件」，
  * 两处不一致会出现「渲染得出来却被拒」或「投递成功却是破图」

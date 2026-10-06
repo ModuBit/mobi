@@ -18,7 +18,7 @@ import type { ApiSessionClient } from '../api/apiSession'
 import { logger } from '@mobi/node-core/logger'
 import { restoreTerminalState } from '../ui/terminalState'
 
-type RunnerLifecycleOptions = {
+type SessionLifecycleOptions = {
     apiSession: ApiSessionClient
     logTag: string
     stopKeepAlive?: () => void
@@ -26,7 +26,7 @@ type RunnerLifecycleOptions = {
     onAfterClose?: () => Promise<void> | void
 }
 
-export type RunnerLifecycle = {
+export type SessionLifecycle = {
     setExitCode: (code: number) => void
     setArchiveReason: (reason: string) => void
     markCrash: (error: unknown) => void
@@ -35,7 +35,7 @@ export type RunnerLifecycle = {
     registerProcessHandlers: () => void
 }
 
-export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLifecycle {
+export function createSessionLifecycle(options: SessionLifecycleOptions): SessionLifecycle {
     let exitCode = 0
     let archiveReason = 'User terminated'
     let cleanupPromise: Promise<void> | null = null

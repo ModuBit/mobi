@@ -84,7 +84,7 @@ export async function runMobiMcpStdioBridge(argv: string[]): Promise<void> {
 
     // Register the single tool and forward to HTTP MCP.
     // 名字 / 说明 / 标题 / schema 全部取自工具形状单源（changeTitleShape）：本桥只转发不执行，
-    // 所以它要的是形状，而不是 createChangeTitleTool 那套依赖（连带 logger / config / Hub 客户端）。
+    // 所以它要的是形状，而不是 createChangeTitleTool 那套依赖（连带 logger / config / daemon 客户端）。
     // 此前这里自己抄了一份，同一工具两个真相源。
     const changeTitleTool = CHANGE_TITLE_TOOL_SHAPE;
 

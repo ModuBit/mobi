@@ -92,9 +92,9 @@ export function summarizeTurnDiffFiles(files: readonly TurnDiffFileEntry[]): Tur
 
 // ─── 审查数据链（git RPC，ADR 0006 machine 通道）───────────────────────────────
 
-/** machine 通道 git RPC 方法名（CLI handler 注册与 hub RpcGateway 转发共用，防漂移单源） */
+/** machine 通道 git RPC 方法名（CLI handler 注册与 daemon RpcGateway 转发共用，防漂移单源） */
 export const GIT_REVIEW_RPC = {
-    /** 会话删除时的快照引用清理（hub best-effort 调用） */
+    /** 会话删除时的快照引用清理（daemon best-effort 调用） */
     clear: 'clearTurnSnapshots',
     // 审查重写 v2 六方法（spec .scratch/review-render-rewrite）：DiffTarget 统一模型
     overview: 'gitReviewOverview',
@@ -143,7 +143,7 @@ export const ReviewScopeSummarySchema = z.object({
 })
 export type ReviewScopeSummary = z.infer<typeof ReviewScopeSummarySchema>
 
-/** 审查总览：四档 + commit 可用性一次拉（与会话 metadata 解析出的 cwd 绑定，hub 只透传） */
+/** 审查总览：四档 + commit 可用性一次拉（与会话 metadata 解析出的 cwd 绑定，daemon 只透传） */
 export const ReviewOverviewSchema = z.object({
     unavailableScopes: ReviewUnavailableScopesSchema,
     isGitRepository: z.boolean(),

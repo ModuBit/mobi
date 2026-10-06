@@ -15,7 +15,7 @@
  */
 
 /**
- * 会话进程族 RPC 网关（Hub → CLI，按 sessionId 路由）。
+ * 会话进程族 RPC 网关（daemon → CLI，按 sessionId 路由）。
  *
  * machine 族（按 machineId 路由）在 ticket-17/20 已本地直调化，本类只剩会话族，
  * 传输语义在 {@link SocketRpcCaller}。
@@ -140,7 +140,7 @@ export class RpcGateway {
     }
 
     /**
-     * 把一条跨会话消息投给目标会话的 CLI（Hub → CLI）。
+     * 把一条跨会话消息投给目标会话的 CLI（daemon → CLI）。
      *
      * 与 steerCliQueuedMessage 的分界：那条从**目标自己的投递队列**里取出排队消息，
      * 有本地排队态、要绑定 native_id；这条不走队列——消息由别的会话投来，

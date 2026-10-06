@@ -32,7 +32,7 @@ export async function runCli(): Promise<void> {
     }
 
     // cli 侧旧单文件 settings.json 的一次性迁移（profile 的 MOBI_HOME 已就位）。
-    // 须先于 configuration 首次读 settings：远程部署形态下 hub 的迁移够不到 cli 机器
+    // 须先于 configuration 首次读 settings：远程部署形态下 daemon 的迁移够不到 cli 机器
     const { migrateLegacyCliSettings } = await import('@mobi/node-core/persistence')
     await migrateLegacyCliSettings()
 

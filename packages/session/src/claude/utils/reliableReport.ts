@@ -17,11 +17,11 @@
 /**
  * rewind 两段回报的可靠上报（M5，at-least-once + 服务端幂等）：
  * fire-and-forget 的 socket.emit 在断线窗口内会静默丢事件——CLI 已截断 transcript、
- * Hub 未软删除，永久分叉（幽灵消息）。本队列把回报改为 ack 确认制：
+ * daemon 未软删除，永久分叉（幽灵消息）。本队列把回报改为 ack 确认制：
  *
  * - ack 成功 → 出队发下一条（单飞：同一时刻至多一条在途，保证 truncated 先于 completed 的顺序）
  * - ack 失败/超时 → 保留队首，定时重试；socket 重连 → 立即 flush
- * - 服务端幂等（hub 按 nativeId+deleteFromSeq 去重；completed 广播重放被 web 守卫吞），
+ * - 服务端幂等（daemon 按 nativeId+deleteFromSeq 去重；completed 广播重放被 web 守卫吞），
  *   重发因此安全
  *
  * 残留（可接受）：进程崩溃在「截断完成 → 回报 ack 前」，内存队列随进程丢失；
@@ -30,7 +30,7 @@
 
 import { logger } from '@mobi/node-core/logger';
 
-/** 待上报的 rewind 回报（event + body 与 hub socket handler 入参同构） */
+/** 待上报的 rewind 回报（event + body 与 daemon socket handler 入参同构） */
 export type PendingRewindReport =
     | { event: 'rewind-truncated'; body: { sid: string; nativeId: string; deleteFromSeq: number } }
     | { event: 'rewind-completed'; body: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number } };

@@ -17,8 +17,8 @@
 /**
  * stdio 孤儿管道防护。
  *
- * 会话 CLI 由 runner 以 detached:true + stdio pipe spawn（runner/run.ts），stdout/stderr
- * 的读端在 runner 手里（收集调试日志尾巴）。runner 死亡（服务重启/换血等）时：
+ * 会话 CLI 由 executor 以 detached:true + stdio pipe spawn（executor/lifecycle.ts），stdout/stderr
+ * 的读端在 executor 手里（收集调试日志尾巴）。executor 死亡（服务重启/换血等）时：
  * - 进程因 detached 幸存、agent 对话走 socket 不受影响——这正是设计意图；
  * - 但 stdout/stderr 管道读端永久消失，没有任何"重连"机制会修复它们。
  *

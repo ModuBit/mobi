@@ -68,14 +68,14 @@ export class SessionReceiveReadiness {
     }
 
     /**
-     * 会话进程结束（CLI 正常收尾上报 session-end、或 hub 归档）时把这条事实抹掉，回到
+     * 会话进程结束（CLI 正常收尾上报 session-end、或 daemon 归档）时把这条事实抹掉，回到
      * 「还没上报过」。
      *
      * **抹掉，而不是留一个 false**：留 false 会让下一次询问立刻拿到「不能收」这个**确定的
      * 结论**；而进程重启后、sink 接通前的真相应是「还没接上、没有定论」。把没定论说成确定
      * 结论，正是这套事实要消灭的那类谎（`unavailable` 与 `timeout` 的差别就在这）。
      *
-     * 清理点有两个：CLI 正常收尾（session-end）与 hub 归档；CLI 被强杀 / 崩溃时两者都不会
+     * 清理点有两个：CLI 正常收尾（session-end）与 daemon 归档；CLI 被强杀 / 崩溃时两者都不会
      * 发生，那条路由 SyncEngine 的心跳过期兜底覆盖（`expireInactive` 对判定为「不在了」的
      * 会话调用本方法）——所以这里不是唯一出口，条目不会只增不减。
      */

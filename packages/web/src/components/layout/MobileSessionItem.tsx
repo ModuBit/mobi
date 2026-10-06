@@ -47,7 +47,7 @@ export function MobileSessionItem({ session, active, onClick, onLongPress }: Mob
 
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt, t)
-    // fork 行：hub 建行时标题已落库（metadata.name 含「· 分叉」后缀），
+    // fork 行：daemon 建行时标题已落库（metadata.name 含「· 分叉」后缀），
     // 待激活/激活失败徽标纯 metadata 可判（spec §4.3）
     const forkState = resolveForkSessionState(session, t)
     // 未激活会话：状态点与标题一同减淡，退到背景层

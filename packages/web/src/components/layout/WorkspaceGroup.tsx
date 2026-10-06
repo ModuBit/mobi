@@ -70,7 +70,7 @@ export function WorkspaceGroup({
         showMore, collapse,
     } = useWorkspaceSessions(workspace.id, activeSessionId)
 
-    // 新建会话：带上工作区归属（hub 侧把 cwd 锁定工作区 primary folder + 挂 workspaceId）
+    // 新建会话：带上工作区归属（daemon 侧把 cwd 锁定工作区 primary folder + 挂 workspaceId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
         navigate({ to: '/sessions/new', search: { workspaceId: workspace.id } })

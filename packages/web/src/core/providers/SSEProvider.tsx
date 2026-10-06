@@ -52,11 +52,11 @@ import {
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
 import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
-import type { DaemonStatus, RunnerState } from '@/core/data/api/types'
+import type { DaemonStatus, ExecutorState } from '@/core/data/api/types'
 
 /**
  * blocks → composer 分段还原（撤回回填，spec §7.5）。
- * 信封内层 blocks 为 UserContentBlock[]；形状异常（旧 hub / 脏数据）→ null，
+ * 信封内层 blocks 为 UserContentBlock[]；形状异常（旧 daemon / 脏数据）→ null，
  * 消费方兜底 originalText 纯文本（与排队消息「编辑回填」同构）。
  */
 function safeDeserializeSegments(blocks: unknown[]): ComposerSegments | null {
@@ -146,7 +146,7 @@ function patchSessionCache(
         if ('effort' in delta) {
             runtimeStatePatch = { ...runtimeStatePatch, effort: delta.effort }
         }
-        // Hub runtimeState 完整更新（todos/tasks/teamState 等），直接替换
+        // daemon runtimeState 完整更新（todos/tasks/teamState 等），直接替换
         if ('runtimeState' in delta && isObject(delta.runtimeState)) {
             runtimeStatePatch = delta.runtimeState as Record<string, unknown>
             runtimeStateReplace = true
@@ -212,10 +212,10 @@ let toastSeq = 0
  */
 /** executor 状态同值判定：SSE 解析产生全新对象，引用比较恒 false；顶层字段均为
  *  原始类型（status/pid/httpPort…），浅比较即等值 */
-function sameExecutorState(a: RunnerState | null, b: RunnerState | null): boolean {
+function sameExecutorState(a: ExecutorState | null, b: ExecutorState | null): boolean {
     if (a === b) return true
     if (!a || !b) return false
-    const ka = Object.keys(a) as Array<keyof RunnerState>
+    const ka = Object.keys(a) as Array<keyof ExecutorState>
     if (ka.length !== Object.keys(b).length) return false
     return ka.every(k => a[k] === b[k])
 }
@@ -335,7 +335,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     }
 
     /**
-     * 断连后的状态对账：hub broadcast 不重放断连期间的事件，漏掉的变更须由 web 端补拉。
+     * 断连后的状态对账：daemon broadcast 不重放断连期间的事件，漏掉的变更须由 web 端补拉。
      * 各失效对象与缺口：
      * - sessions 列表 + workspaceViews：侧边栏/工作区分组成员与计数变化
      * - 当前会话详情（['session', sid]）：agentState（等待授权/AskUserQuestion）与
@@ -354,7 +354,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     }
 
     /**
-     * snapshot delta 主动补基线（fire-and-forget）：对当前会话请求 hub 重发流式全量基线。
+     * snapshot delta 主动补基线（fire-and-forget）：对当前会话请求 daemon 重发流式全量基线。
      * 两个触发条件共用——路由进会话页（effect）/ 连接建立含重连（connection-changed）。
      * 会话 id 单一来源 window.location.pathname（不在会话页或未连接时静默跳过）。
      */
@@ -365,7 +365,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     }
 
     // delta 协议：切换进会话页时主动 resync——此刻窗口可能尚无流式消息记录，直接收到的
-    // 增量帧会被丢弃；resync 让 hub 补发全量基线（并重建该订阅游标），此后增量继续衔接。
+    // 增量帧会被丢弃；resync 让 daemon 补发全量基线（并重建该订阅游标），此后增量继续衔接。
     // 首次连接早于进页的场景由 connection-changed 分支的 resync 覆盖
     useEffect(() => {
         resyncActiveSession(subscriptionIdRef.current)
@@ -377,7 +377,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         const nt = notifyRef.current
 
         // rewind 两段回报（rewind-truncated / rewind-completed）：shared SyncEventSchema
-        // 由 hub 线并行扩展中，web 侧按 type 字段先行接入（SSEClient 只 JSON.parse 不做 zod
+        // 由 daemon 线并行扩展中，web 侧按 type 字段先行接入（SSEClient 只 JSON.parse 不做 zod
         // 校验，未知事件天然透传）；已消费则跳过后续 switch
         if (ingestRewindSseEvent(event)) return
 
@@ -395,7 +395,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 详情缓存尚未建立（如 spawn 后 CLI 首次心跳的 active:true 广播早于会话页
                 // 首次 GET 往返抵达）时，patchSessionCache 的 updater 会因 old=undefined
                 // 丢弃信号，且 staleTime 30s 内无任何重拉 → 新会话常驻「恢复会话」浮层。
-                // 此场景转为 invalidate 标记 stale：进入页面 mount 时必 refetch（hub 广播
+                // 此场景转为 invalidate 标记 stale：进入页面 mount 时必 refetch（daemon 广播
                 // 发出时内存必已是新值，refetch 结果不会回退）；已有数据走正常 patch。
                 if (qc.getQueryData(queryKeys.session(event.sessionId)) === undefined) {
                     qc.invalidateQueries({ queryKey: queryKeys.session(event.sessionId) })
@@ -403,7 +403,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 patchSessionCache(qc, event.sessionId, event.data)
                 // 需要用户介入的状态转换（输出完成等待输入 / 审批·提问到达）→ 声音+震动。
                 // 独立于 toast 三分支：正盯着的会话（toast 会 ignore）也要响，且不经过
-                // hub Ready 通知的 60s 冷却（每轮转换都反馈）。首次见到只记基线不响。
+                // daemon Ready 通知的 60s 冷却（每轮转换都反馈）。首次见到只记基线不响。
                 const attentionKind = trackAttentionTransition(event.sessionId, event.data)
                 if (attentionKind) notifyAttention(attentionKind)
                 // 只有改变分组成员资格的载荷才失效工作区视图：
@@ -418,7 +418,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 break
             }
             case 'sdk-metadata-refreshed':
-                // hub 后台刷新 sdkMetadata 完成（内容有变）→ 失效本 session 的 metadata query，触发 refetch 拿新值
+                // daemon 后台刷新 sdkMetadata 完成（内容有变）→ 失效本 session 的 metadata query，触发 refetch 拿新值
                 qc.invalidateQueries({ queryKey: queryKeys.sdkMetadata(event.sessionId) })
                 break
             case 'session-removed':
@@ -435,7 +435,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 if (event.message) {
                     // 拦截 prompt_suggestion: 写入瞬时 store, 不进 React Query 消息缓存。
                     // prompt_suggestion 是「下一轮建议」的瞬时语义(非聊天历史), 刷新即丢失;
-                    // Hub DB 侧已按 ephemeral 分类存储 + 历史查询过滤, Web 端这里不重复入缓存。
+                    // daemon DB 侧已按 ephemeral 分类存储 + 历史查询过滤, Web 端这里不重复入缓存。
                     const suggestion = extractPromptSuggestion(event.message.content)
                     if (suggestion) {
                         usePromptSuggestionStore.getState().setSuggestion(event.sessionId, suggestion)
@@ -448,7 +448,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'message-snapshot': {
                 if (event.message && event.sessionId) {
                     // 同 message-received: 若快照通道也携带 prompt_suggestion, 写入瞬时 store 不入缓存。
-                    // 当前 SDK 不走此通道, 此处为防御, 避免未来 Hub 重放/SDK 变更时污染消息缓存。
+                    // 当前 SDK 不走此通道, 此处为防御, 避免未来 daemon 重放/SDK 变更时污染消息缓存。
                     const suggestion = extractPromptSuggestion(event.message.content)
                     if (suggestion) {
                         usePromptSuggestionStore.getState().setSuggestion(event.sessionId, suggestion)
@@ -477,7 +477,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 空 sessionId 守卫（对齐 messages-submitted 兄弟分支）：schema 虽必填，
                 // SSEClient 只 JSON.parse 不校验，防御空串写 store 垃圾键
                 if (!event.sessionId) break
-                // 撤回刚发消息（#53 / spec §7.5）：乐观移除与 hub 软删除（softDeleteMessagesFrom
+                // 撤回刚发消息（#53 / spec §7.5）：乐观移除与 daemon 软删除（softDeleteMessagesFrom
                 // 无上界）对齐。目标已在本地窗口 → 移除即一致状态，refetch 恒 no-op 不发起；
                 // 未移除（另一端撤回 / 窗口外历史行）→ 本地无墓碑记录可依，refetch 兜底对账
                 const removed = withdrawFrom(event.sessionId, event.localId)
@@ -501,7 +501,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 break
             case 'workspace-removed':
                 // 名下会话已解绑进「最近」→ 与 session-* 共用 workspaceViews 批处理
-                // （批量失效工作区 + 两个分组视图）；session 级缓存由 hub 逐会话发的
+                // （批量失效工作区 + 两个分组视图）；session 级缓存由 daemon 逐会话发的
                 // session-updated 走 patchSessionCache，invalidateQueries 天然去重
                 scheduleInvalidation('workspaceViews')
                 break
@@ -515,7 +515,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         document.hidden ? 'hidden' : 'visible'
                     ).catch(() => {})
                     // delta 协议：连接（含重连）建立后，对流式中的当前会话补发全量基线——
-                    // 重连后订阅游标在 hub 侧已重置，但 web 窗口可能还没收到任何全量 snapshot
+                    // 重连后订阅游标在 daemon 侧已重置，但 web 窗口可能还没收到任何全量 snapshot
                     resyncActiveSession(event.data.subscriptionId)
                 }
                 if (event.connected === false) {
@@ -665,7 +665,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // all=true 用于接收所有 session 相关事件（如 session-updated）
                 // visibility 传递初始可见性状态；认证走 httpOnly cookie（SSEClient credentials: 'include'）
                 const initialVisibility = document.hidden ? 'hidden' : 'visible'
-                // snapshotDelta=1：delta 能力协商（增量帧按订阅进度转发；跟不上时 hub 全量追赶）
+                // snapshotDelta=1：delta 能力协商（增量帧按订阅进度转发；跟不上时 daemon 全量追赶）
                 return `${window.location.origin}/api/events?all=true&visibility=${initialVisibility}&snapshotDelta=1`
             },
             handleUnauthorized
@@ -679,7 +679,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         client.connect()
 
-        // 页面可见性变化时上报 Hub（仅在状态实际变化时发送）
+        // 页面可见性变化时上报 daemon（仅在状态实际变化时发送）
         let lastHidden = document.hidden
         const handleVisibilityChange = () => {
             if (document.hidden === lastHidden) return

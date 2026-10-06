@@ -16,10 +16,10 @@
 
 /**
  * 会话追踪补登（ticket-18，Q8）：daemon 同进程后，会话进程的生命周期事实不再
- * 只经 runner 的子进程 exit 事件到达——daemon 重启会清空追踪表，而活着的会话
+ * 只经 executor 的子进程 exit 事件到达——daemon 重启会清空追踪表，而活着的会话
  * 进程重连时没有任何事件把表补回来（唤醒去重因此漏判，盲 spawn 出第二个进程）。
  *
- * 本模块是补登/刷新决策的纯函数单源，数据面仍是 runner 的 `pidToTrackedSession`
+ * 本模块是补登/刷新决策的纯函数单源，数据面仍是 executor 的 `pidToTrackedSession`
  * Map（键 = pid）：
  * - **刷新**：表里已有该 sessionId 的表项 → 把查重键 `resumeSessionId` 对齐会话
  *   **当前** `metadata.nativeSessionId`（/clear、fork 换链后旧键失效，07 M 缺口）
@@ -33,7 +33,7 @@ import type { TrackedSession } from './types'
 /** 补登信号来源 = 会话 socket 重连（session-alive）时的会话行 metadata 摘要 */
 export interface SessionTrackingSignal {
     sessionId: string
-    /** 会话宿主进程 pid（非 runner 子进程视角） */
+    /** 会话宿主进程 pid（非 executor 子进程视角） */
     hostPid?: number | null
     /** 会话当前 native session id（查重键） */
     nativeSessionId?: string | null
@@ -76,7 +76,7 @@ export function applySessionTrackingSignal(
     }
 
     const entry: TrackedSession = {
-        // 补登表项不是 runner 子进程：stopSession 按外部会话分支 kill by pid，
+        // 补登表项不是 executor 子进程：stopSession 按外部会话分支 kill by pid，
         // 语义与 webhook 注册的外部会话一致
         startedBy: `backfill (${signal.startedBy ?? 'unknown'})`,
         MobiSessionId: signal.sessionId,
@@ -89,7 +89,7 @@ export function applySessionTrackingSignal(
 
 /**
  * 清理死 pid 表项（就地修改）。子进程表项另有 exit 事件即时清理；本函数兜底
- * 非子进程（webhook 外部会话 / 补登）表项——runner 心跳周期调用（照用既有机制）。
+ * 非子进程（webhook 外部会话 / 补登）表项——executor 心跳周期调用（照用既有机制）。
  *
  * @returns 被清除的 pid 列表（供日志）
  */
@@ -109,7 +109,7 @@ export function pruneDeadTrackedSessions(
 
 /**
  * 补登 glue（单源）：从会话行 metadata 摘取追踪信号交给 bridge。hubServer 注入
- * runner bridge 时与测试共用——两侧的「读哪几个字段、怎么归一」不会分叉。
+ * executor bridge 时与测试共用——两侧的「读哪几个字段、怎么归一」不会分叉。
  */
 export function createSessionTrackingSync(
     getSession: (sid: string) => { metadata?: { hostPid?: number; nativeSessionId?: string | null; startedBy?: string | null } | null | undefined } | null | undefined,

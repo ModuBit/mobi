@@ -19,7 +19,7 @@
  * 起 runner.state.json 停写，controlServer 端口记录在 daemon.state.json 的
  * controlPort，502 前旧名 runnerHttpPort 读兜底）→ 探活 → loopback fetch。
  * daemon（controlClient）与 session（sessionWebhook）两侧共用，从
- * runner/controlClient 的 runnerPost 抽出（personal-agent-rewrite 解缠 6）。
+ * 历史 controlClient 的 runnerPost 抽出（personal-agent-rewrite 解缠 6）。
  */
 
 import { readDaemonState, type LegacyDaemonStateFields } from '../persistence'

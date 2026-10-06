@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 import { existsSync } from 'node:fs'
 import { mkdir, open, readFile, rename, stat, unlink, writeFile, chmod, type FileHandle } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -24,7 +24,7 @@ import { dirname, join } from 'node:path'
  *
  * 2026-09-05 起配置文件按部署归属拆分：daemon 与 cli 支持不同机器部署，
  * daemon 不再与 cli 共享一份 settings.json（cli 侧为 settings.cli.json）。
- * 2026-10-06 起 hub 概念随单机 daemon 定稿更名 daemon（remove-machine 501），
+ * 2026-10-06 起 daemon 概念随单机 daemon 定稿更名 daemon（remove-machine 501），
  * 文件名 settings.hub.json → settings.daemon.json（读旧写新，见 migrateSettings）。
  */
 export interface Settings {
@@ -68,7 +68,7 @@ export function getCliSettingsFile(dataDir: string): string {
 /**
  * 设置文件多进程锁（对称实现 cli 侧 persistence.updateSettings 的锁协议）。
  * 锁文件 = 目标文件 + '.lock'；wx 独占创建 + 重试 + stale 清理，锁内读-改-写。
- * hub 启动写点与 cli 受限写共用同一锁文件，消除此前互不感知的 lost-update 竞争。
+ * daemon 启动写点与 cli 受限写共用同一锁文件，消除此前互不感知的 lost-update 竞争。
  */
 export async function withSettingsLock<T>(
     settingsFile: string,
@@ -133,7 +133,7 @@ export async function readSettings(settingsFile: string): Promise<Settings | nul
         return JSON.parse(content)
     } catch (error) {
         // Return null to signal parse error - caller should not overwrite
-        hubLogger.error(`[WARN] Failed to parse ${settingsFile}: ${error}`)
+        daemonLogger.error(`[WARN] Failed to parse ${settingsFile}: ${error}`)
         return null
     }
 }
@@ -158,7 +158,7 @@ export async function writeSettings(settingsFile: string, settings: Settings): P
 
 /**
  * 锁内的读-改-写：与 cli 侧 updateSettings 同款协议（同锁文件命名约定），
- * 所有对 hub 设置文件的写都应走此入口，避免与 cli 受限写互踩（lost update）。
+ * 所有对 daemon 设置文件的写都应走此入口，避免与 cli 受限写互踩（lost update）。
  * 泛型 S 允许对 cli 配置文件（settings.cli.json，形状归 cli 包定义）做受限写。
  */
 export async function updateSettingsFile<S extends object = Settings>(
@@ -171,7 +171,7 @@ export async function updateSettingsFile<S extends object = Settings>(
         const before = JSON.stringify(current)
         const updated = await updater(current)
         // 值未变不写盘：get-or-create 命中、迁移补缺无缺等纯读路径不刷新 mtime
-        //（否则每次 hub 启动多次无谓 I/O，且触发 settingsWatcher 的目录事件）
+        //（否则每次 daemon 启动多次无谓 I/O，且触发 settingsWatcher 的目录事件）
         if (JSON.stringify(updated) === before) {
             return updated
         }

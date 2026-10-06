@@ -18,7 +18,7 @@ import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaF
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import { hubLogger } from '../../../logger'
+import { daemonLogger } from '../../../logger'
 import type { Store, StoredMessage, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { SessionFactsSink } from '../../../sync/sessionFacts'
@@ -148,7 +148,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     onWebappEvent?.(publication)
                 }
             } catch (error) {
-                hubLogger.error(`[messages-facts] publication 发布失败（跳过继续）: type=${publication.type} sid=${publication.sessionId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`)
+                daemonLogger.error(`[messages-facts] publication 发布失败（跳过继续）: type=${publication.type} sid=${publication.sessionId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`)
             }
         }
     }
@@ -157,7 +157,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const parsed = messageSchema.safeParse(data)
         if (!parsed.success) {
             // 帧被拒即流断（后续 delta 全失配），必须留痕——静默丢弃会让冻死无法归因
-            hubLogger.warn(`[snapshot-delta] session-message 载荷校验失败: ${parsed.error.issues[0]?.path.join('.') ?? '?'} ${parsed.error.issues[0]?.message ?? ''}`)
+            daemonLogger.warn(`[snapshot-delta] session-message 载荷校验失败: ${parsed.error.issues[0]?.path.join('.') ?? '?'} ${parsed.error.issues[0]?.message ?? ''}`)
             return
         }
 
@@ -212,7 +212,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 保持缺省，仍由 attach 兜底——绝不读 session.metadata（跨时代残留旧值）
         const metadata = messageFactsProcessor.enrichMetadata(sid, parsed.data.metadata ?? null)
 
-        // positionBeforeResultId 归属声明（审查卡）：position_at 权威在 hub——按 CLI 带
+        // positionBeforeResultId 归属声明（审查卡）：position_at 权威在 daemon——按 CLI 带
         // 的归属 result 行 nativeId 定位，取该行之前（-1ms）；锚查不到（异常时序）退回
         // 默认落库时刻
         const resultPos = parsed.data.positionBeforeResultId !== undefined
@@ -255,8 +255,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     })
 
     // snapshot 流结束（delta 协议）：full message 已持久化，精确清理该流的缓存与全部订阅游标。
-    // full 的 localId（jsonl uuid）与流的 sdkUuid 不同，hub 无法自行映射——信号由 CLI 在
-    // 标记 fullDelivered 时附带发出（老 hub 无此 handler，静默忽略，零兼容风险）
+    // full 的 localId（jsonl uuid）与流的 sdkUuid 不同，daemon 无法自行映射——信号由 CLI 在
+    // 标记 fullDelivered 时附带发出（老 daemon 无此 handler，静默忽略，零兼容风险）
     socket.on('snapshot-stream-end', (data: { sid?: unknown; localId?: unknown }) => {
         if (!data || typeof data.sid !== 'string' || typeof data.localId !== 'string' || data.localId.length === 0) {
             return
@@ -482,11 +482,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     }
 
     // rewind 截断成功（CLI 两段回报第一段，含 CLI 反查的锚点批首行 seq）：
-    // Hub 即刻软删除（先 CLI 截断成功再 Hub 删），随即转 SSE 过渡态。
+    // daemon 即刻软删除（先 CLI 截断成功再 daemon 删），随即转 SSE 过渡态。
     // 软删除带上界（M3）：只删 rewind 受理时点已存在的行——回报迟到时，受理后新发的消息不被误删。
     // ack 确认制（M5）：CLI 可靠队列据此出队；去重后重放回报仅回 ack（软删除/SSE 不重复执行）
     socket.on('rewind-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }, ack?: () => void) => {
-        // deleteFromSeq 须为正整数（seq 从 1 起）：Hub 是软删除的执行端，CLI 端 reportRewindCompletion
+        // deleteFromSeq 须为正整数（seq 从 1 起）：daemon 是软删除的执行端，CLI 端 reportRewindCompletion
         // 的 >0 防御不足以兜底异常载荷——0/负数会让 seq >= fromSeq 命中全部行，整会话历史被软删除
         if (!data || typeof data.sid !== 'string'
             || typeof data.nativeId !== 'string' || data.nativeId.length === 0
@@ -505,7 +505,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             ack?.()
             return
         }
-        // 受理时记录的上界（一次性消费；无记录 = hub 重启丢内存 → 回退无上界删除，旧行为）
+        // 受理时记录的上界（一次性消费；无记录 = daemon 重启丢内存 → 回退无上界删除，旧行为）
         const bound = rewindDeleteBoundTracker?.consume(data.sid) ?? undefined
         store.messages.softDeleteMessagesFrom(data.sid, data.deleteFromSeq, bound)
         emitRewindEvent({ type: 'rewind-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })

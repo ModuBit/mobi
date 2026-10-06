@@ -15,7 +15,7 @@
  */
 
 /**
- * web 工具配置 RPC（machine 级，注册在 runner 进程）：
+ * web 工具配置 RPC（注册在 daemon 进程）：
  * - get-web-tools-config：读 settings.webTools，存量归一后凭据脱敏回显
  * - set-web-tools-config：submission schema-parse → 锁内凭据 merge（在场性三分支：键不在场/空串=保持、null=清除、非空=覆盖）+ 选择校验 → updateSettings 落盘（文件锁+原子写）
  * - verify-web-tools-provider：用草稿（优先）或已存凭据发起一次真实搜索，验证连通性并返回延迟
@@ -76,7 +76,7 @@ export function validateSelection(config: WebToolsConfig): string | null {
 const declaredCredentialKey = (id: WebToolProviderId, key: string): boolean =>
     credentialKeysFor(id).includes(key)
 
-/** verify 连通检测的超时上限：hub 侧 machine RPC 有 30s socket 超时，条目 timeoutMs（最高 120s）超出部分必被掐断白等，钳到上限内留余量 */
+/** verify 连通检测的超时上限：daemon 侧 machine RPC 有 30s socket 超时，条目 timeoutMs（最高 120s）超出部分必被掐断白等，钳到上限内留余量 */
 const VERIFY_TIMEOUT_CAP_MS = 20_000
 
 /**
@@ -102,7 +102,7 @@ export function mergeProviderCredentials(current: WebToolsConfig, incoming: WebT
     return { ...incoming, providers: mergedProviders } as WebToolsConfig
 }
 
-/** 注册到 runner 的 machine 级 RPC（apiMachine 构造器调用） */
+/** 注册 machine 级 RPC（历史 apiMachine 构造器装配点；现仅测试引用） */
 export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<Record<string, never>, { config: RedactedWebToolsConfig } | { error: string }>(
         'get-web-tools-config',
@@ -120,7 +120,7 @@ export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManag
     >('verify-web-tools-provider', (params) => verifyWebToolsProviderImpl(params))
 }
 
-/** get-web-tools-config 实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost 共用，行为单源 */
+/** get-web-tools-config 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，行为单源 */
 export async function getWebToolsConfigImpl(): Promise<{ config: RedactedWebToolsConfig } | { error: string }> {
     try {
         const settings = await readSettings()
@@ -160,7 +160,7 @@ export async function setWebToolsConfigImpl(params: { config: unknown }): Promis
  * 不落盘、不泄露凭据值
  */
 export async function verifyWebToolsProviderImpl(params: { providerId: WebToolProviderId; credentials?: Record<string, string> }): Promise<{ success: true; latencyMs: number } | { success: false; error: string }> {
-    // RPC 边界 schema 校验：与 hub 路由共用同一 schema，credentials 畸形值（null/数字）
+    // RPC 边界 schema 校验：与 daemon 路由共用同一 schema，credentials 畸形值（null/数字）
     // 整体拒绝而非静默过滤——否则会用已存凭据跑真实验证，返回「验证通过」假阳性
     const parsed = VerifyWebToolsProviderSchema.safeParse(params)
     if (!parsed.success) {
@@ -179,7 +179,7 @@ export async function verifyWebToolsProviderImpl(params: { providerId: WebToolPr
         }
         const { missing, apiKey } = prepareCredentials(providerId, merged)
         if (missing.length > 0) return { success: false, error: `缺少凭据：${missing.join(', ')}` }
-        // 超时钳制：条目 timeoutMs 最高 120s，超出 hub 30s socket 上限的部分必被掐断白等
+        // 超时钳制：条目 timeoutMs 最高 120s，超出 daemon 30s socket 上限的部分必被掐断白等
         const timeoutMs = Math.min(entry?.timeoutMs ?? 15_000, VERIFY_TIMEOUT_CAP_MS)
         const provider = createProviderFor(providerId, { apiKey: apiKey!, timeoutMs })
         const started = Date.now()

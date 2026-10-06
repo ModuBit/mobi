@@ -15,8 +15,8 @@
  */
 
 /**
- * 宿主协议：daemon（原 runner + machine handlers）与外界（hub / web / session）的
- * 类型契约单一来源——机器注册、runner 状态上报、spawn 请求/响应、worktree 形状。
+ * 宿主协议：daemon 与外界（daemon / web / session）的类型契约单一来源——
+ * executor 状态上报、spawn 请求/响应、worktree 形状。
  *
  * 这些类型本就是跨进程协议（socket RPC / HTTP webhook），不依赖任何端侧实现；
  * 原先散在 cli 的 api/types 与 modules/common/rpcTypes，personal-agent-rewrite
@@ -26,10 +26,10 @@
 import { z } from 'zod'
 import type { EffortLevel, PermissionMode } from './modes'
 
-// —— 机器注册协议（runner → hub POST /cli/machines）——
+// —— executor 状态上报协议 ——
 
 /** 机器静态能力与身份（host 名、平台、版本、目录布局） */
-export const MachineMetadataSchema = z.object({
+export const HostMetadataSchema = z.object({
     host: z.string(),
     platform: z.string(),
     mobiCliVersion: z.string(),
@@ -39,18 +39,17 @@ export const MachineMetadataSchema = z.object({
     mobiLibDir: z.string()
 })
 
-export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
+export type HostMetadata = z.infer<typeof HostMetadataSchema>
 
-// —— runner 状态上报（runner → hub，运行时状态机）——
+// —— executor 状态上报（运行时状态机）——
 // Schema 定义在 schemas.ts（协议 schema 单一来源，daemon-status 事件 payload 复用），
 // 此处 re-export 保持本文件作为宿主协议类型入口的稳定性
 
-export { RunnerStateSchema, type RunnerState } from './schemas'
+export { ExecutorStateSchema, type ExecutorState } from './schemas'
 
-// —— spawn 契约（hub spawn RPC ↔ runner）——
+// —— spawn 契约（daemon executor ↔ 会话子进程）——
 
 export interface SpawnSessionOptions {
-    machineId?: string
     directory: string
     sessionId?: string
     resumeSessionId?: string
@@ -73,7 +72,7 @@ export type SpawnSessionResult =
     | { type: 'error'; errorMessage: string }
     | { type: 'already-running' }
 
-// —— worktree 形状（runner 创建结果 ↔ 会话侧环境感知共用）——
+// —— worktree 形状（executor 创建结果 ↔ 会话侧环境感知共用）——
 
 export type WorktreeInfo = {
     basePath: string;
@@ -83,9 +82,9 @@ export type WorktreeInfo = {
     createdAt: number;
 };
 
-// —— session-started webhook（session → runner controlServer，Q3 spawn 判据）——
+// —— session-started webhook（session → executor controlServer，Q3 spawn 判据）——
 
-/** 会话自报端点路径（runner controlServer 与会话侧客户端共用单一来源） */
+/** 会话自报端点路径（executor controlServer 与会话侧客户端共用单一来源） */
 export const RUNNER_SESSION_STARTED_PATH = '/session-started'
 
 /**

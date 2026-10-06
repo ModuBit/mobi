@@ -104,7 +104,6 @@ describe('toSessionSummary', () => {
                 path: '/workspace',
                 host: 'localhost',
                 name: 'my-workspace',
-                machineId: 'machine-1',
                 summary: { text: '工作区摘要', updatedAt: 1000 },
                 flavor: 'claude',
                 worktree: {
@@ -118,7 +117,6 @@ describe('toSessionSummary', () => {
         expect(summary.metadata).not.toBeNull()
         expect(summary.metadata!.name).toBe('my-workspace')
         expect(summary.metadata!.path).toBe('/workspace')
-        expect(summary.metadata!.machineId).toBe('machine-1')
         expect(summary.metadata!.summary).toEqual({ text: '工作区摘要' })
         expect(summary.metadata!.flavor).toBe('claude')
         expect(summary.metadata!.worktree?.branch).toBe('main')

@@ -95,7 +95,7 @@ const Hint = styled.span<{ $token: Token }>`
 /**
  * 用途路由卡：web_search / web_fetch 两行下拉直接选已启用 provider，变更即时保存（无保存按钮）。
  * 空 provider 时转引导态（只有标题 + 提示）。Select 支持 allowClear：路由可随时撤销
- * （清除后 runner resolve 回落 null → NO_PROVIDER，mobi 不再拦截该工具）；
+ * （清除后 daemon resolve 回落 null → NO_PROVIDER，mobi 不再拦截该工具）；
  * 单 provider 时切无可切（下拉只有同值项），但清除始终可用——teardown 流程：清路由 → 禁用 provider。
  */
 export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardProps) {

@@ -71,7 +71,6 @@ export type SessionMetadataSummary = {
     name?: string
     os?: string
     summary?: { text: string; updatedAt: number }
-    machineId?: string
     /** 会话当前所属上游 session uuid（rewind 判据与消息行 metadata.nativeSessionId 比对） */
     nativeSessionId?: string
     /** 上下文边界指针：最近一次 compact/clear 边界消息的 seq（rewind/fork 入口边界判据；缺失 = 存量会话未回填，按保守放行处理） */
@@ -99,8 +98,8 @@ export type MessagesResponse = {
 
 // ============ 机器类型 ============
 
-// Runner 状态
-export type RunnerState = {
+// executor 状态
+export type ExecutorState = {
     status?: string
     pid?: number
     httpPort?: number
@@ -126,8 +125,8 @@ export type DaemonStatus = {
         displayName?: string
         homeDir?: string
     }
-    /** executor 运行时（runner 上报：running / shutting-down / spawn 结果），启动早期为 null */
-    executor: RunnerState | null
+    /** executor 运行时（daemon 上报：running / shutting-down / spawn 结果），启动早期为 null */
+    executor: ExecutorState | null
 }
 
 // ============ 认证类型 ============
@@ -204,7 +203,7 @@ import type { Workspace, WorkspaceFolder } from '@mobi/shared'
 
 export type { Workspace, WorkspaceFolder }
 
-/** 工作区会话分页响应（hub 返回完整 Session） */
+/** 工作区会话分页响应（daemon 返回完整 Session） */
 export interface WorkspaceSessionsResponse {
     sessions: Session[]
     nextCursor: number | null

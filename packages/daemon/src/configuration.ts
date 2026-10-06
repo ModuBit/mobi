@@ -15,7 +15,7 @@
  */
 
 /**
- * Configuration for mobi-hub
+ * Configuration for the mobi daemon
  *
  * Configuration is loaded with priority: environment variable > settings.daemon.json > default
  * When values are read from environment variables and not present in settings.daemon.json,
@@ -36,18 +36,18 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { chmod } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { hubLogger } from './logger'
+import { daemonLogger } from './logger'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getOrCreateWebApiToken } from './config/webApiToken'
 import { getCliSettingsFile, getSettingsFile, updateSettingsFile } from './config/settings'
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
 
 /**
- * co-located cliApiToken 同步：把 hub 的 cliApiToken 写一份到同目录 settings.cli.json
- * （cli 文件不存在时创建，保证全新安装的「hub 首启 → 本机 cli 即连」开箱体验）。
+ * co-located cliApiToken 同步：把 daemon 的 cliApiToken 写一份到同目录 settings.cli.json
+ * （cli 文件不存在时创建，保证全新安装的「daemon 首启 → 本机 cli 即连」开箱体验）。
  * cli 文件归 cli 所有：仅在 cli 字段缺省时写入，不覆盖用户经 `mobi auth login` 配置的值；
  * 空文件（仅占位）同样视为缺凭证补写。远程部署无同目录文件，创建一个只含凭证的
- * cli 文件在 hub 机器上无害且不会被任何进程读取。
+ * cli 文件在 daemon 机器上无害且不会被任何进程读取。
  */
 async function syncCliApiTokenToCoLocatedCli(dataDir: string, token: string): Promise<void> {
     const cliFile = getCliSettingsFile(dataDir)
@@ -56,9 +56,9 @@ async function syncCliApiTokenToCoLocatedCli(dataDir: string, token: string): Pr
             if (current.cliApiToken) return current
             return { ...current, cliApiToken: token }
         })
-        hubLogger.info(`[Hub] Synced cliApiToken to co-located ${cliFile}`)
+        daemonLogger.info(`[DAEMON] Synced cliApiToken to co-located ${cliFile}`)
     } catch (e) {
-        hubLogger.warn(`[Hub] Sync cliApiToken to cli settings failed (ignored): ${e}`)
+        daemonLogger.warn(`[DAEMON] Sync cliApiToken to cli settings failed (ignored): ${e}`)
     }
 }
 
@@ -75,14 +75,14 @@ export function resolveHostPort(listenPort: number): number {
         if (Number.isFinite(parsed) && parsed > 0 && parsed < 65_536) {
             return parsed
         }
-        hubLogger.warn(`[Hub] MOBI_HOST_PORT="${raw}" 非法（须为 1-65535），回退派生端口`)
+        daemonLogger.warn(`[DAEMON] MOBI_HOST_PORT="${raw}" 非法（须为 1-65535），回退派生端口`)
     }
     // 派生越界（listenPort 接近 65535 时）wrap 回非特权段；生产端口 2222-2224 派生恒在界内
     const derived = listenPort + HOST_PORT_OFFSET
     if (derived <= 65_535) {
         return derived
     }
-    hubLogger.warn(`[Hub] listenPort ${listenPort} 派生宿主端口 ${derived} 越界，wrap 回非特权段`)
+    daemonLogger.warn(`[DAEMON] listenPort ${listenPort} 派生宿主端口 ${derived} 越界，wrap 回非特权段`)
     return 1_024 + (derived % (65_535 - 1_024))
 }
 
@@ -206,7 +206,7 @@ class Configuration {
             ? process.env.DB_PATH.replace(/^~/, homedir())
             : join(dataDir, 'mobi.db')
 
-        // 3. Load hub settings (with persistence)
+        // 3. Load daemon settings (with persistence)
         // 拆分迁移前置：旧 settings.json → settings.daemon.json + settings.cli.json（一次性，
         // 解析失败会抛错终止启动，防静默丢配置）
         const { migrateLegacySettings } = await import('./config/migrateSettings')
@@ -220,7 +220,7 @@ class Configuration {
         const settingsResult = await loadServerSettings(dataDir)
 
         if (settingsResult.savedToFile) {
-            hubLogger.info(`[Hub] Configuration saved to ${getSettingsFile(dataDir)}`)
+            daemonLogger.info(`[DAEMON] Configuration saved to ${getSettingsFile(dataDir)}`)
         }
 
         // 4. Create configuration instance
@@ -235,7 +235,7 @@ class Configuration {
         const tokenResult = await getOrCreateCliApiToken(dataDir)
         config._setCliApiToken(tokenResult.token, tokenResult.source, tokenResult.isNew)
         // co-located 便利：同目录存在 cli 配置且其无连接凭证时同步一份，
-        // 保持「hub 首启 → 本机 cli 即连」的开箱体验；远程部署无同目录文件自动跳过
+        // 保持「daemon 首启 → 本机 cli 即连」的开箱体验；远程部署无同目录文件自动跳过
         await syncCliApiTokenToCoLocatedCli(dataDir, tokenResult.token)
 
         // 存量 settings 权限收敛（ticket-21）：升级前以 0644 落盘的文件补收紧到 0600

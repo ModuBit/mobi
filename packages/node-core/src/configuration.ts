@@ -32,7 +32,7 @@ import type { Settings } from './settingsTypes'
 class Configuration {
     private _apiUrl: string
     private _cliApiToken: string
-    public readonly isRunnerProcess: boolean
+    public readonly isDaemonProcess: boolean
 
     // Directories and paths (from persistence)
     public readonly mobiHomeDir: string
@@ -76,9 +76,9 @@ class Configuration {
             || `http://127.0.0.1:${process.env.MOBI_HOST_PORT ?? 12222}`
         this._cliApiToken = process.env.CLI_API_TOKEN || ''
 
-        // Check if we're running as runner based on process args
+        // 按进程参数判定 daemon 后台形态（`mobi daemon start-sync`）
         const args = getCliArgs()
-        this.isRunnerProcess = args.length >= 2 && args[0] === 'runner' && (args[1] === 'start-sync')
+        this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start-sync')
 
         // Directory configuration - Priority: MOBI_HOME env > default home dir
         if (process.env.MOBI_HOME) {
@@ -136,7 +136,7 @@ class Configuration {
             // 忽略读取错误，使用默认值
         }
 
-        // 拆分迁移前的旧单文件 settings.json 兜底（远程部署形态：hub 的迁移够不到 cli
+        // 拆分迁移前的旧单文件 settings.json 兜底（远程部署形态：daemon 的迁移够不到 cli
         // 机器，落盘迁移由 runCli 的 migrateLegacyCliSettings 异步完成，但本构造器在
         // 模块加载时同步执行、早于它——此处内存合并保证首启命令就能读到存量配置）
         const legacySettingsFile = join(this.mobiHomeDir, 'settings.json')
@@ -171,9 +171,9 @@ class Configuration {
         return this._apiUrl
     }
 
-    /** 当前进程的日志分类：runner 后台进程为 'runner'，交互进程为 'cli' */
-    get processType(): 'runner' | 'cli' {
-        return this.isRunnerProcess ? 'runner' : 'cli'
+    /** 当前进程的日志分类：daemon 后台进程为 'daemon'，交互进程为 'cli' */
+    get processType(): 'daemon' | 'cli' {
+        return this.isDaemonProcess ? 'daemon' : 'cli'
     }
 
     get cliApiToken(): string {

@@ -28,7 +28,7 @@ function hasFlag(args: string[], flags: string[]): boolean {
  * 把 `-c` / `--continue` 规范化为显式 `--resume <最近 sessionId>`。
  *
  * 背景（pending #6）：`-c` 无显式 session id，mobi 端识别不了，导致同一 Claude
- * 会话每次 `-c` 都新建一条 Hub session。而 mobi 主导选择 resume 目标后，下游
+ * 会话每次 `-c` 都新建一条 daemon session。而 mobi 主导选择 resume 目标后，下游
  * 全走现成的 `--resume` 路径（sessionFactory 的 tag 复用、claudeLocal 透传、
  * scanner 预加载、claudeRemote 的 resolveResumeSessionId），零额外改动。
  *

@@ -18,7 +18,7 @@ import { isAbsolute } from 'node:path';
 
 /**
  * 获取调用时的当前工作目录
- * 优先使用 MOBI_INVOKED_CWD 环境变量（用于 runner-spawned sessions）
+ * 优先使用 MOBI_INVOKED_CWD 环境变量（用于 daemon spawn 的会话）
  */
 export function getInvokedCwd(): string {
     const invokedCwd = process.env.MOBI_INVOKED_CWD?.trim();

@@ -173,7 +173,7 @@ export function reduceTimeline(
             // SDK 对所有 Bash/Agent 任务都 emit task_started（前后台都发），live 每个工具轮都夹带
             // 一条；落成块会打断 groupCollapsibleToolCalls 的连续可折叠 zone（流式期间工具卡片
             // 全散落、历史加载过滤 ephemeral 后又恢复）。后台任务 UI 的唯一数据源是
-            // runtimeState.backgroundTasks（hub 从原始流派生），与 blocks 时间线无关。
+            // runtimeState.backgroundTasks（daemon 从原始流派生），与 blocks 时间线无关。
             if (msg.content.type === 'bg-task-started' || msg.content.type === 'bg-task-updated') {
                 continue
             }

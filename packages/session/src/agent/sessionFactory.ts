@@ -30,7 +30,7 @@ import { runtimePath } from '@mobi/node-core/projectPath'
 import { readWorktreeEnv, readGitBranch } from '@mobi/node-core/utils/worktreeEnv'
 import packageJson from '../../package.json'
 
-export type SessionStartedBy = 'runner' | 'terminal'
+export type SessionStartedBy = 'daemon' | 'terminal'
 
 export type SessionBootstrapOptions = {
     flavor: string
@@ -40,7 +40,7 @@ export type SessionBootstrapOptions = {
     agentState?: AgentState | null
     model?: string
     effort?: EffortLevel
-    claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
+    claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 daemon session
     startingMode?: 'local' | 'remote'
     /** 归属工作区（Web spawn 透传；缺省 = 游离） */
     workspaceId?: string
@@ -77,7 +77,7 @@ export function buildSessionMetadata(options: {
         mobiHomeDir: configuration.mobiHomeDir,
         mobiLibDir,
         mobiToolsDir: resolve(mobiLibDir, 'tools', 'unpacked'),
-        startedFromRunner: options.startedBy === 'runner',
+        startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
         startedBy: options.startedBy,
         lifecycleState: 'running',
@@ -90,15 +90,15 @@ export function buildSessionMetadata(options: {
 
 async function reportSessionStarted(sessionId: string, metadata: Metadata): Promise<void> {
     try {
-        logger.debug(`[START] Reporting session ${sessionId} to runner`)
+        logger.debug(`[START] Reporting session ${sessionId} to daemon`)
         const result = await notifyRunnerSessionStarted(sessionId, metadata)
         if (result?.error) {
-            logger.debug(`[START] Failed to report to runner (may not be running):`, result.error)
+            logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error)
         } else {
-            logger.debug(`[START] Reported session ${sessionId} to runner`)
+            logger.debug(`[START] Reported session ${sessionId} to daemon`)
         }
     } catch (error) {
-        logger.debug('[START] Failed to report to runner (may not be running):', error)
+        logger.debug('[START] Failed to report to daemon (may not be running):', error)
     }
 }
 
@@ -140,7 +140,7 @@ async function resolveAdditionalDirectories(input: {
     const { workspace, sessionMetadata, workingDirectory } = input
 
     // 优先级 1：冻结列表回放（键存在即冻结，空列表同样冻结——单文件夹工作区冻结 []，
-    // resume 不再重读工作区）。hub 对已绑工作区的会话始终返回 workspace，但冻结后工作区
+    // resume 不再重读工作区）。daemon 对已绑工作区的会话始终返回 workspace，但冻结后工作区
     // folders 的任何变更都不应影响历史会话，故此处不看 workspace
     const frozen = readFrozenAdditionalDirectories(sessionMetadata)
     if (frozen) {
@@ -186,35 +186,35 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
     const startedBy = options.startedBy ?? 'terminal'
     const agentState = options.agentState === undefined ? {} : options.agentState
 
-    // 与 hub 通信的 API 客户端
+    // 与 daemon 通信的 API 客户端
     const api = await ApiClient.create()
 
     let sessionTag = options.tag ?? randomUUID()
 
-    // 若有 --resume <nativeSessionId>，尝试找到已有 Hub session 并复用其 tag
+    // 若有 --resume <nativeSessionId>，尝试找到已有 daemon session 并复用其 tag
     const resumeClaudeSessionId = extractResumeSessionId(options.claudeArgs)
     if (resumeClaudeSessionId) {
-        logger.debug(`[START] --resume 检测到 nativeSessionId: ${resumeClaudeSessionId}，尝试复用 Hub session`)
+        logger.debug(`[START] --resume 检测到 nativeSessionId: ${resumeClaudeSessionId}，尝试复用 daemon session`)
         try {
             const existingSession = await api.getSessionByClaudeSessionId(resumeClaudeSessionId)
             if (existingSession?.tag) {
                 if (existingSession.active) {
                     // 该 Claude 会话仍有一个 mobi 进程在跑（如另一终端还挂着）：
-                    // 复用 tag 会让两个进程并到同一条 Hub session，消息流交错、
+                    // 复用 tag 会让两个进程并到同一条 daemon session，消息流交错、
                     // runtimeState 互相覆盖。对齐 Web 端「active 的 session 不可再
                     // 接入」语义——降级为新建 session；Claude 层照旧 resume
                     // （与用户裸跑两个 claude -c 同水平，mobi 不拦）
-                    logger.debug(`[START] 已有 Hub session (id=${existingSession.id}) 仍在运行，不复用 tag，新建 session`)
+                    logger.debug(`[START] 已有 daemon session (id=${existingSession.id}) 仍在运行，不复用 tag，新建 session`)
                 } else {
-                    // 用已有 session 的 tag 调用 getOrCreateSession，Hub 会返回同一条记录
+                    // 用已有 session 的 tag 调用 getOrCreateSession，daemon 会返回同一条记录
                     sessionTag = existingSession.tag
-                    logger.debug(`[START] 找到已有 Hub session (id=${existingSession.id})，复用 tag: ${sessionTag}`)
+                    logger.debug(`[START] 找到已有 daemon session (id=${existingSession.id})，复用 tag: ${sessionTag}`)
                 }
             } else {
-                logger.debug(`[START] 未找到对应 Hub session，新建`)
+                logger.debug(`[START] 未找到对应 daemon session，新建`)
             }
         } catch (error) {
-            logger.debug(`[START] 查找 Hub session 失败，降级为新建:`, error)
+            logger.debug(`[START] 查找 daemon session 失败，降级为新建:`, error)
         }
     }
 
@@ -253,7 +253,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         }))
     }
 
-    // 通知 runner session 已启动
+    // 通知 daemon session 已启动
     await reportSessionStarted(sessionInfo.id, metadata)
 
     return {

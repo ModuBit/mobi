@@ -17,7 +17,7 @@
 /**
  * change_title 核心工具工厂（transport 无关）。
  *
- * 核心逻辑单点承载：发 summary 到 Hub（更新 mobi 侧标题 + Web 显示）→
+ * 核心逻辑单点承载：发 summary 到 daemon（更新 mobi 侧标题 + Web 显示）→
  * best-effort 回写 agent 侧标题（失败不阻塞 mobi 侧已完成的改名）。
  * transport 适配器只做壳：local 模式经 HTTP MCP Server 的 registerTool 挂载，
  * remote 模式经 SDK createSdkMcpServer 进程内挂载（ADR 0001）。
@@ -38,7 +38,7 @@ import { errorTextResult, textResult, type MobiToolTextResult } from './toolResu
 export { CHANGE_TITLE_TOOL_NAME }
 
 export interface ChangeTitleToolDeps {
-    /** 发送 summary 消息到 Hub（更新 mobi 侧标题 + Web 显示） */
+    /** 发送 summary 消息到 daemon（更新 mobi 侧标题 + Web 显示） */
     sendSummary: ApiSessionClient['sendClaudeSessionMessage']
     /** 回写 agent 侧标题（实现为 syncAgentRename；会话未就绪时 throw） */
     syncRename: (locator: AgentSessionLocator | null, title: string) => Promise<void>
@@ -71,7 +71,7 @@ export function createChangeTitleTool(deps: ChangeTitleToolDeps) {
         const title = parsed.data.title;
         logger.debug('[mobiMCP] Changing title to:', title);
         try {
-            // 1. 发 summary 到 Hub（更新 mobi 侧标题 + Web 显示）
+            // 1. 发 summary 到 daemon（更新 mobi 侧标题 + Web 显示）
             deps.sendSummary({
                 type: 'summary',
                 summary: title,
@@ -101,7 +101,7 @@ export type ChangeTitleTool = ReturnType<typeof createChangeTitleTool>
 
 /**
  * 会话场景的组装入口（local HTTP 壳与 remote SDK 进程内壳共用，消除 deps 装配复制）：
- * hub summary 通道 = ApiSessionClient、agent 改名能力 = syncAgentRename。
+ * daemon summary 通道 = ApiSessionClient、agent 改名能力 = syncAgentRename。
  */
 export function createChangeTitleToolForSession(
     client: ApiSessionClient,

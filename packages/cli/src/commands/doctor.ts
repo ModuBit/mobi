@@ -65,7 +65,7 @@ ${chalk.bold('Usage:')}
         }
 
         if (commandArgs[0] === 'exits') {
-            // mobi doctor exits [--process hub|runner|cli] [--limit N]
+            // mobi doctor exits [--process daemon|cli] [--limit N]
             const processIdx = commandArgs.indexOf('--process')
             const processFilter = processIdx >= 0 ? commandArgs[processIdx + 1] as ProcessType : undefined
             const limitIdx = commandArgs.indexOf('--limit')
@@ -77,7 +77,7 @@ ${chalk.bold('Usage:')}
         }
 
         if (commandArgs.length > 0) {
-            // 历史子命令 hub/runner 已随 machine 概念收敛删除（601），未知子命令不再透传
+            // 历史子命令 daemon/runner 已随 machine 概念收敛删除（601），未知子命令不再透传
             console.log(chalk.yellow(`Unknown doctor subcommand: ${commandArgs[0]}`))
         }
         await runDoctorCommand()

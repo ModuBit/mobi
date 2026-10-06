@@ -254,7 +254,7 @@ export class Store {
         if (missing.length > 0) {
             throw new Error(
                 `SQLite schema is missing required tables (${missing.join(', ')}). ` +
-                'For databases created before the workspace-entity feature, stop hub/runner and run ' +
+                'For databases created before the workspace-entity feature, stop the daemon and run ' +
                 '`bun scripts/migrate-workspaces.ts` to migrate; otherwise back up and rebuild the database.'
             )
         }
@@ -266,7 +266,7 @@ export class Store {
         if (!sessionColumns.some(column => column.name === 'workspace_id')) {
             throw new Error(
                 `Detected legacy 'group_key' sessions schema (sessions has no workspace_id column) at ${this.dbPath}. ` +
-                'Stop hub/runner, then run `bun scripts/migrate-workspaces.ts` to migrate the database before starting this version.'
+                'Stop the daemon, then run `bun scripts/migrate-workspaces.ts` to migrate the database before starting this version.'
             )
         }
 
@@ -279,7 +279,7 @@ export class Store {
         if (!nativeIdCol) {
             throw new Error(
                 `Detected legacy messages schema (messages has no native_id column) at ${this.dbPath}. ` +
-                'Stop hub/runner, then run ' +
+                'Stop the daemon, then run ' +
                 `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN native_id TEXT"' and restart.`
             )
         }
@@ -290,7 +290,7 @@ export class Store {
         if (!messageColumns.some(column => column.name === 'metadata')) {
             throw new Error(
                 `Detected legacy messages schema (messages has no metadata column) at ${this.dbPath}. ` +
-                'Stop hub/runner, then run ' +
+                'Stop the daemon, then run ' +
                 `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN metadata TEXT; ALTER TABLE messages ADD COLUMN deleted_at INTEGER;"' and restart.`
             )
         }
@@ -314,7 +314,7 @@ export class Store {
         if (nativeIdCol.hidden !== 3) {
             throw new Error(
                 `Detected messages.native_id is not a STORED generated column (hidden=${nativeIdCol.hidden ?? 0}) at ${this.dbPath}. ` +
-                'Stop hub/runner, then rebuild the column as ' +
+                'Stop the daemon, then rebuild the column as ' +
                 `'native_id TEXT GENERATED ALWAYS AS (json_extract(metadata, '$.nativeId')) STORED' ` +
                 '(drop the plain column and recreate, since SQLite cannot ALTER a plain column into a generated one), then restart.'
             )

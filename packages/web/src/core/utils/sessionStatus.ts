@@ -35,7 +35,7 @@ type AvatarStatusInput = Pick<Session, 'id' | 'active' | 'running'> & {
  * 多处复用：SidebarWorkspaces、MobileWorkspaceList
  *
  * 待审批判定双数据源：
- *   - 列表项（SessionSummary）：只有 pendingRequestsCount（hub 序列化时已计数）
+ *   - 列表项（SessionSummary）：只有 pendingRequestsCount（daemon 序列化时已计数）
  *   - 详情项（Session）：只有 agentState.requests
  * 任一来源 > 0 即视为待审批，否则列表里 pendingRequestsCount 缺失会导致待审批会话
  * 仍显示运行中蓝色（useSessions 把 SessionSummary as Session[]，agentState 恒空）。

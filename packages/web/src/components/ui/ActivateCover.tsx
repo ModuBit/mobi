@@ -35,7 +35,7 @@ interface ActivateCoverProps {
 }
 
 /**
- * 会话未激活（CLI runner 未连接）时的覆盖层：铺满父容器、居中「恢复会话」按钮。
+ * 会话未激活（CLI 未连接）时的覆盖层：铺满父容器、居中「恢复会话」按钮。
  * 聊天输入框与检视面板共用，避免两处各自维护样式/loading/文案。
  * 父容器需 position: relative。
  */

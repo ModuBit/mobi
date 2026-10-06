@@ -44,13 +44,13 @@ function isConnectionError(error: unknown): boolean {
 
 // 降级到纯本地模式（直接运行 claude）
 async function runLocalMode(options: StartOptions): Promise<void> {
-    console.log(chalk.yellow('⚠️  Running in local-only mode (no Hub connection)'))
+    console.log(chalk.yellow('⚠️  Running in local-only mode (no daemon connection)'))
     console.log(chalk.gray('   Remote control features are disabled.\n'))
 
     if (options.workspaceId) {
-        // 工作区归属需要 Hub 连接（校验 folders 并冻结），离线降级时无法生效
-        console.warn(chalk.yellow('⚠️  Hub 不可达，--workspace 已忽略'))
-        console.warn(chalk.gray('   Workspace membership requires a Hub connection.\n'))
+        // 工作区归属需要 daemon 连接（校验 folders 并冻结），离线降级时无法生效
+        console.warn(chalk.yellow('⚠️  daemon 不可达，--workspace 已忽略'))
+        console.warn(chalk.gray('   Workspace membership requires a daemon connection.\n'))
     }
 
     const claudeArgs = [...(options.claudeArgs || [])]
@@ -179,8 +179,8 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
             // 连接错误 - 降级到本地模式
             if (isConnectionError(error)) {
-                console.log(chalk.yellow('⚠️  Unable to connect to Mobi Hub'))
-                console.log(chalk.gray(`   Hub URL: ${configuration.apiUrl}`))
+                console.log(chalk.yellow('⚠️  Unable to connect to Mobi daemon'))
+                console.log(chalk.gray(`   daemon URL: ${configuration.apiUrl}`))
                 console.log(chalk.gray('   Falling back to local-only mode...\n'))
 
                 try {
@@ -211,9 +211,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
             if (serverProtocolVersion !== undefined && serverProtocolVersion !== PROTOCOL_VERSION) {
                 if (serverProtocolVersion < PROTOCOL_VERSION) {
-                    console.error(chalk.yellow(`  Hint: hub protocol version (${serverProtocolVersion}) is behind CLI (${PROTOCOL_VERSION}). Please update the hub.`))
+                    console.error(chalk.yellow(`  Hint: daemon protocol version (${serverProtocolVersion}) is behind CLI (${PROTOCOL_VERSION}). Please update the daemon.`))
                 } else {
-                    console.error(chalk.yellow(`  Hint: CLI protocol version (${PROTOCOL_VERSION}) is behind hub (${serverProtocolVersion}). Please update the CLI.`))
+                    console.error(chalk.yellow(`  Hint: CLI protocol version (${PROTOCOL_VERSION}) is behind daemon (${serverProtocolVersion}). Please update the CLI.`))
                 }
             }
 

@@ -28,7 +28,7 @@ export type FileMetaReadResult =
 
 /**
  * fs 异常 → Result 失败分支的统一整形：errno code 全量透传为结构化码——
- * hub 按 ENOENT → 404 / ACCESS_DENIED → 403 / 其余 → 500 映射状态，
+ * daemon 按 ENOENT → 404 / ACCESS_DENIED → 403 / 其余 → 500 映射状态，
  * 未映射的 code 仍随响应体下发辅助诊断（权限、符号链接循环等），不依赖文案。
  */
 /**

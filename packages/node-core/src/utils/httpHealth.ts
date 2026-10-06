@@ -16,7 +16,7 @@
 
 /**
  * 轮询等待一个 HTTP URL 返回 2xx。
- * 收敛自 commands/hub.ts 与 commands/service.ts 各自重复的 waitForHubReady。
+ * 收敛自历史 commands/hub.ts 与 commands/service.ts 各自重复的 ready 轮询实现。
  */
 
 /** 单次探测 URL 是否返回 2xx（waitForUrlOk 的最小单元） */

@@ -15,19 +15,19 @@
  */
 
 /**
- * Agent 会话操作 handler（B 类工具族，CLI→Hub 入口）。
+ * Agent 会话操作 handler（B 类工具族，CLI→daemon 入口）。
  *
  * 分工：本文件只做外层校验、鉴权、调用服务、把结果转 ack；业务规则全在
  * AgentSessionService（整个能力对象一次交付，见 deps）。
  *
- * 鉴权模型与 ui-command 一致：namespace 由 Hub 从**鉴权过的 sid** 解析，
+ * 鉴权模型与 ui-command 一致：namespace 由 daemon 从**鉴权过的 sid** 解析，
  * CLI 不填、也不可信——agent 因此只能看到自己 namespace 内的资源。
  */
 
 import { z } from 'zod'
 import { EFFORT_LEVELS, PermissionModeSchema } from '@mobi/shared'
 import type { ClientToServerEvents } from '@mobi/shared'
-import { hubLogger } from '../../../logger'
+import { daemonLogger } from '../../../logger'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 import type { StoredSession } from '../../../store'
@@ -79,9 +79,9 @@ const sendMessagePayloadSchema = z.object({
 
 /** 结构性故障的文案：与上游失败共用 `error` 字段（见 AgentCreateSessionAck 注释），
  *  但必须说清「这不是你做错了」——否则 agent 会反复改入参重试一个改不好的东西 */
-const INVALID_ARGUMENTS_ERROR = 'The request was rejected by mobi hub: invalid arguments.'
+const INVALID_ARGUMENTS_ERROR = 'The request was rejected by mobi daemon: invalid arguments.'
 const SERVICE_UNAVAILABLE_ERROR =
-    'The request was rejected by mobi hub: the session service is not available. ' +
+    'The request was rejected by mobi daemon: the session service is not available. ' +
     'This is a mobi bug, not something you did — do not retry.'
 
 /**
@@ -166,7 +166,7 @@ const UNAVAILABLE_REPLIES: readonly UnavailableReplyRow[] = [
  * 空清单会把「服务没接上」伪装成「什么都没有」。
  */
 function registerUnavailableAgentSessionHandlers(socket: CliSocketWithData): void {
-    hubLogger.error('[AgentSessions] 服务未装配，B 类事件一律被拒（组装 bug）')
+    daemonLogger.error('[AgentSessions] 服务未装配，B 类事件一律被拒（组装 bug）')
     for (const { event, reply } of UNAVAILABLE_REPLIES) {
         // 四个事件的 ack 签名各不相同，表驱动跨过了事件联合类型——一次显式 cast，
         // 与文件里逐 handler 的 `as XxxHandler` 同类

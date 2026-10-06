@@ -24,7 +24,7 @@ export type WebToolsStatus = 'enabled' | 'unconfigured' | 'offline' | 'loading'
 /**
  * 状态派生：以实际路由为准——search/fetch 任一路由指向 provider 才算"已启用"
  * （写入侧 validateSelection 保证路由目标已启用且凭据齐全）。
- * 仅开关打开而无路由 → unconfigured：runner resolve 返回 null、每次调用 NO_PROVIDER，绿点徽标不能虚报可用。
+ * 仅开关打开而无路由 → unconfigured：daemon resolve 返回 null、每次调用 NO_PROVIDER，绿点徽标不能虚报可用。
  */
 export function deriveWebToolsStatus(data: WebToolsConfigQueryData | undefined): Exclude<WebToolsStatus, 'loading'> {
     if (data?.status !== 'ok') return 'offline'

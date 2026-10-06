@@ -160,7 +160,7 @@ export function parseActionUri(raw: string): RegisteredAction | UnregisteredActi
 }
 
 /**
- * 构造 mobi URI（写入侧：hub 注入消息、测试；渲染层点击时构造同走此处）。
+ * 构造 mobi URI（写入侧：daemon 注入消息、测试；渲染层点击时构造同走此处）。
  * 参数值经 encodeURIComponent；undefined/null 参数（可选字段缺省）整键剔除，
  * 不落 `undefined` 字面量；已注册键才可构造——写入侧不允许产出未注册动作。
  * 入参用 z.input（transform 前形态：expand 可传 boolean 或省略），解析侧输出才是
@@ -178,7 +178,7 @@ export function buildActionUri<K extends ActionKey>(key: K, params: z.input<(typ
 }
 
 /**
- * 存量 ref block → 动作链接文本（ADR 0003 迁移，hub 消费）。
+ * 存量 ref block → 动作链接文本（ADR 0003 迁移，daemon 消费）。
  * title 由调用方解析后传入（查不到目标传降级文案）；未注册的 targetType 返回 null（保守不改写）。
  */
 export function refBlockToActionText(ref: { targetType: string; id: string }, title: string): string | null {

@@ -19,7 +19,7 @@ import { stream } from 'hono/streaming'
 import { basename } from 'node:path'
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import type { ReadFileMetaResponse, RpcReadFileRangeResponse } from '@mobi/shared/fileMeta'
-import { hubLogger } from '../../logger'
+import { daemonLogger } from '../../logger'
 
 /**
  * 文件内容读取器：session 通道（sessionId 寻址）与 machine 通道（machineId+cwd 寻址）的公共面。
@@ -36,7 +36,7 @@ export interface FileContentReader {
  * CSP（与通道无关：serve-file 预览 / read-file 浏览器打开 / machine 通道，全部经
  * serveFileContent 恒注）。
  *
- * 威胁模型：模型/机器侧产出的 HTML 若在 hub 同源顶层执行（产物卡「浏览器打开」「复制链接」、
+ * 威胁模型：模型/机器侧产出的 HTML 若在 daemon 同源顶层执行（产物卡「浏览器打开」「复制链接」、
  * 预览），脚本将自带 httpOnly cookie 可自由调 mobi API。CSP 把能力面收窄：
  *   - script/style/font 'self' + https:  → 支持同目录文件与外部 CDN，'unsafe-inline' 兼容行内
  *     <script>/<style>（产物页常规形态）
@@ -191,7 +191,7 @@ export async function serveFileContent(
             }
             const len = Math.min(CHUNK, end - offset + 1)
             const r = await reader.readFileRange(absPath, offset, len)
-            // 运行时守卫兜底：hub↔CLI 响应经 rpcGateway 类型 cast、无运行时校验，
+            // 运行时守卫兜底：daemon↔CLI 响应经 rpcGateway 类型 cast、无运行时校验，
             // 版本偏斜的 CLI 返回 success 但缺 chunk 时干净截断而非静默 TypeError
             if (!r.success || !r.chunk) {
                 // 流中失败只能截断（响应头已随 stream 发出，状态码不可再改）；
@@ -199,7 +199,7 @@ export async function serveFileContent(
                 const detail = r.success
                     ? 'success response without chunk'
                     : `${r.error}${r.code ? ` (${r.code})` : ''}`
-                hubLogger.warn(`[serveFileContent] readFileRange failed: ${detail}`)
+                daemonLogger.warn(`[serveFileContent] readFileRange failed: ${detail}`)
                 break
             }
             await s.write(r.chunk)

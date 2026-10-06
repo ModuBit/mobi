@@ -20,14 +20,14 @@
  * **本特性的核心**：会话 A 里的 agent 把一条消息投给会话 B，B 的 agent 收到它、
  * 看出它来自哪个会话、再用同一个工具回信给 A。
  *
- * 失败文案**不由本工具拼**：Hub 侧 AgentSessionService 是唯一翻译点（含 RPC 内部
+ * 失败文案**不由本工具拼**：daemon 侧 AgentSessionService 是唯一翻译点（含 RPC 内部
  * 错误 → 人话 + 逐目标结果）。本工具只把自己产生的连接故障译出来，其余原样透出。
  *
  * 回执不是「成功/失败」两态而是**逐目标清单**（D15/D16）：扇出不做事务，
  * 部分成功就是部分成功。顶层 isError 只在**一个目标都没成**时置位——
  * 那时「发消息」这件事确实没发生。
  *
- * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 Hub，local 模式无此通道。
+ * 仅挂 remote 壳（mobiAppsServer）：B 类链路依赖 daemon，local 模式无此通道。
  */
 
 import { z } from 'zod'
@@ -46,7 +46,7 @@ export interface SendMessageToolDeps {
 
 export type SendMessageToolResult = MobiToolTextResult
 
-/** 失败条目：hub 的句子写在能独立读懂的前提下，所以这里是「说明 + 原句」而非改写它 */
+/** 失败条目：daemon 的句子写在能独立读懂的前提下，所以这里是「说明 + 原句」而非改写它 */
 function renderFailure(result: AgentSendMessageTargetResult): string {
     return `- ${result.sessionId}: NOT delivered — ${result.error ?? 'no reason given'}`
 }
@@ -56,7 +56,7 @@ function renderFailure(result: AgentSendMessageTargetResult): string {
  *
  * 全成与部分成分别给不同的话：全成时不需要 agent 做任何事（重点是「别等回复」），
  * 部分成时它必须知道自己还有没送到的地方、而且**不能盲目重发**（超时那份可能已经送达，
- * 这句话由 hub 的目标条目给出）。
+ * 这句话由 daemon 的目标条目给出）。
  */
 export function renderDeliveryResults(results: readonly AgentSendMessageTargetResult[]): string {
     const delivered = results.filter((result) => result.ok)
@@ -93,7 +93,7 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
     // 提供的只有「正文文本 + 本机文件路径」——shared 词汇里的 quote.messageId 只有源会话
     // 知道、FileRefFields（id/size/previewUrl）是 composer 上传侧生成的事实字段，展开进
     // JSON Schema 既烧 context 又诱导模型手编假数据（2026-09-29 /context 实测 6k）。
-    // wire 形态由 toWireContent 执行期装配，hub 的 gateContent 严格校验不放松。
+    // wire 形态由 toWireContent 执行期装配，daemon 的 gateContent 严格校验不放松。
     const attachmentPath = z.string().min(1).describe(
         'Absolute path to a file on YOUR machine (the machine this session runs on).',
     )
@@ -111,14 +111,14 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
         ),
     })
 
-    // stat 失败不阻塞：size 只是渲染事实，文件可达性由 hub 的同机闸逐目标裁决并报原因
+    // stat 失败不阻塞：size 只是渲染事实，文件可达性由 daemon 的同机闸逐目标裁决并报原因
     const toWireBlock = (block: z.infer<typeof sendMessageBlockSchema>): UserContentBlock => {
         if (block.type === 'text') return block
         let size = 0
         try {
             size = statSync(block.path).size
         } catch {
-            // 文件不存在/不可读：照常装配，hub 闸拒绝时逐目标报错（文案已含文件名）
+            // 文件不存在/不可读：照常装配，daemon 闸拒绝时逐目标报错（文案已含文件名）
         }
         return {
             type: block.type,
@@ -146,14 +146,14 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
             answer = await deps.sendMessage({ targets: parsed.data.targets, content: toWireContent(parsed.data.content) })
         } catch (error) {
             // socket 断开 / ack 超时：连接故障。此处**不能**说「可能已送达」——
-            // ack 没回来，连 hub 走到哪一步都不知道
-            return errorTextResult('Failed to reach mobi hub', error)
+            // ack 没回来，连 daemon 走到哪一步都不知道
+            return errorTextResult('Failed to reach mobi daemon', error)
         }
 
         if (!answer.ok) {
             // 顶层拒绝（入参形状 / 鉴权 / 装配）：一个字都没发出去
             return {
-                content: [{ type: 'text', text: `The message was rejected by mobi hub (${answer.reason}). Nothing was sent.` }],
+                content: [{ type: 'text', text: `The message was rejected by mobi daemon (${answer.reason}). Nothing was sent.` }],
                 isError: true,
             }
         }
@@ -174,7 +174,7 @@ export function createSendMessageTool(deps: SendMessageToolDeps) {
         // 附件段的末句是「说实话」的那一句：块里给 URL **不会被取回**——CLI 的
         // blocks→prompt 转换只会 readFileSync（`buildPromptFromBlocks`），https 与
         // data: 一律失败并降级成 `@值` 文本。原先那句「网络图就写 URL」推荐了一件
-        // 做不到的事，而 hub 侧的自足 URL 判据又正好放行它，于是「报成功、对面拿到
+        // 做不到的事，而 daemon 侧的自足 URL 判据又正好放行它，于是「报成功、对面拿到
         // 一段文本」。这里改成如实描述，让 agent 自己选：给本机文件，或把 URL 写进正文
         description:
             'Send a message to one or more sessions. Each target receives it as a user message tagged with this session, ' +

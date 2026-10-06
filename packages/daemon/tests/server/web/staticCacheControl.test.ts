@@ -79,7 +79,7 @@ describe('staticCacheControl（纯函数策略）', () => {
     })
 })
 
-describe('Hub 静态资源 Cache-Control（集成）', () => {
+describe('静态资源 Cache-Control（集成）', () => {
     let app: ReturnType<typeof import('../../../src/web/server').createWebApp>
     let cleanup: () => void
     let tmpDist: string

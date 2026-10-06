@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 
-/** 传输段：CLI→hub（socket session-message）与 hub→web（SSE 下发） */
-export type SnapshotStatsLeg = 'cli-to-hub' | 'hub-to-web'
+/** 传输段：CLI→daemon（socket session-message）与 daemon→web（SSE 下发） */
+export type SnapshotStatsLeg = 'cli-to-daemon' | 'server-to-web'
 
 export type SnapshotStatsCounters = {
     fullFrames: number
@@ -36,8 +36,8 @@ const emptyCounters = (): SnapshotStatsCounters => ({ fullFrames: 0, fullBytes: 
  */
 export class SnapshotDeltaStats {
     private readonly legs: Record<SnapshotStatsLeg, SnapshotStatsCounters> = {
-        'cli-to-hub': emptyCounters(),
-        'hub-to-web': emptyCounters(),
+        'cli-to-daemon': emptyCounters(),
+        'server-to-web': emptyCounters(),
     }
     // -Infinity 起步：首次记录即输出基线（外部注入的时钟起点未知，不能假设从 0 计时）
     private lastLogAt = Number.NEGATIVE_INFINITY
@@ -45,7 +45,7 @@ export class SnapshotDeltaStats {
     constructor(
         private readonly enabled: boolean,
         private readonly logIntervalMs = 30_000,
-        private readonly log: (message: string) => void = (m) => { hubLogger.info(m) },
+        private readonly log: (message: string) => void = (m) => { daemonLogger.info(m) },
         private readonly now: () => number = Date.now,
     ) {}
 
@@ -80,19 +80,19 @@ export class SnapshotDeltaStats {
     /** 程序化读取（测试 / 后续观测面板） */
     snapshot(): Record<SnapshotStatsLeg, SnapshotStatsCounters> {
         return {
-            'cli-to-hub': { ...this.legs['cli-to-hub'] },
-            'hub-to-web': { ...this.legs['hub-to-web'] },
+            'cli-to-daemon': { ...this.legs['cli-to-daemon'] },
+            'server-to-web': { ...this.legs['server-to-web'] },
         }
     }
 
-    /** 单行汇总（hub 日志可读） */
+    /** 单行汇总（daemon 日志可读） */
     summary(): string {
         const fmt = (leg: SnapshotStatsLeg, label: string) => {
             const c = this.legs[leg]
             const avg = c.deltaFrames > 0 ? ` (均 ${Math.round(c.deltaBytes / c.deltaFrames)}B/帧)` : ''
             return `${label}: full ${c.fullFrames} 帧 / ${fmtBytes(c.fullBytes)}, delta ${c.deltaFrames} 帧 / ${fmtBytes(c.deltaBytes)}${avg}`
         }
-        return `[snapshot-stats] ${fmt('cli-to-hub', 'cli→hub')}; ${fmt('hub-to-web', 'hub→web')}`
+        return `[snapshot-stats] ${fmt('cli-to-daemon', 'cli→daemon')}; ${fmt('server-to-web', 'daemon→web')}`
     }
 }
 

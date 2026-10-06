@@ -17,7 +17,7 @@
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
- * 构造 runner spawn mobi 子进程（默认 claude 命令）的 CLI 参数。
+ * 构造 executor spawn 会话子进程（默认 claude 命令）的 CLI 参数。
  * 从 run.ts 抽出为纯函数，便于单元测试。
  */
 export function buildClaudeSpawnArgs(options: SpawnSessionOptions): string[] {
@@ -26,7 +26,7 @@ export function buildClaudeSpawnArgs(options: SpawnSessionOptions): string[] {
     if (options.resumeSessionId) {
         args.push('--resume', options.resumeSessionId)
     }
-    args.push('--mobi-starting-mode', 'remote', '--started-by', 'runner')
+    args.push('--mobi-starting-mode', 'remote', '--started-by', 'daemon')
     if (options.model) {
         args.push('--model', options.model)
     }

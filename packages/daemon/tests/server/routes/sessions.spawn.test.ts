@@ -21,7 +21,7 @@ import type { SyncEngine } from '../../../src/sync/syncEngine'
 
 /**
  * POST /api/sessions/spawn（ticket 201：原 POST /api/machines/:id/spawn 去机器维度迁入
- * sessions 资源域）。homeDir 校验直源 buildMachineMetadata()（与 daemon 进程同机），
+ * sessions 资源域）。homeDir 校验直源 buildHostMetadata()（与 daemon 进程同机），
  * 故测试目录基于真实 os.homedir() 构造，不再 mock 机器 metadata。
  */
 
@@ -29,7 +29,7 @@ import type { SyncEngine } from '../../../src/sync/syncEngine'
 const spawnCalls: unknown[][] = []
 
 /** mock 工作区表：id → 工作区（归属校验用） */
-const workspaces = new Map<string, { id: string; namespace: string; machineId: string }>()
+const workspaces = new Map<string, { id: string; namespace: string }>()
 
 const mockSyncEngine = {
     getWorkspace: (id: string) => workspaces.get(id),
@@ -88,7 +88,7 @@ describe('Sessions API spawn', () => {
     test('POST /api/sessions/spawn body 中的 workspaceId 透传给 engine.spawnSession options', async () => {
         const token = await getAuthToken(app)
         // workspace-7 归属 default namespace → 校验通过
-        workspaces.set('workspace-7', { id: 'workspace-7', namespace: 'default', machineId: '' })
+        workspaces.set('workspace-7', { id: 'workspace-7', namespace: 'default' })
         const before = spawnCalls.length
 
         const res = await app.request('/api/sessions/spawn', {
@@ -103,7 +103,7 @@ describe('Sessions API spawn', () => {
         expect(res.status).toBe(200)
         expect(spawnCalls.length).toBe(before + 1)
         const args = spawnCalls[spawnCalls.length - 1]
-        expect((args[2] as { workspaceId?: string }).workspaceId).toBe('workspace-7')
+        expect((args[1] as { workspaceId?: string }).workspaceId).toBe('workspace-7')
     })
 
     test('POST /api/sessions/spawn workspaceId 不存在 → 404（存在性校验在前）', async () => {

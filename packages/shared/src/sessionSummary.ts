@@ -19,7 +19,6 @@ import type { ForkedFromMetadata, ForkFromMetadata, Session, WorktreeMetadata } 
 export type SessionSummaryMetadata = {
     name?: string
     path: string
-    machineId?: string
     summary?: { text: string }
     flavor?: string | null
     worktree?: WorktreeMetadata
@@ -62,7 +61,6 @@ export function toSessionSummary(session: Session): SessionSummary {
     const metadata: SessionSummaryMetadata | null = session.metadata ? {
         name: session.metadata.name,
         path: session.metadata.path,
-        machineId: session.metadata.machineId ?? undefined,
         summary: session.metadata.summary ? { text: session.metadata.summary.text } : undefined,
         flavor: session.metadata.flavor ?? null,
         worktree: session.metadata.worktree,

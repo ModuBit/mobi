@@ -137,7 +137,7 @@ export const ContentBlockSchema = z.discriminatedUnion('type', [
 ])
 
 /** 用户消息通道词汇（渲染四型，刻意不含 custom-event）：用户输入禁伪造应用事件，
- *  hub 入参校验（UserMessageContentSchema）据此拒绝 */
+ *  daemon 入参校验（UserMessageContentSchema）据此拒绝 */
 export const UserContentBlockSchema = RenderBlockSchema
 
 /** 用户消息 content 三形态：裸 string / 单 block / block 数组 */
@@ -159,7 +159,7 @@ export const MessageContentSchema = z.union([
  *
  * 两个消费方都问这个问题，答案必须一致：
  * - Web 的 image 渲染据此绕过 read-file 端点（乐观回显的 blob、网络图，D23 旁路）
- * - Hub 的跨会话投递归据据此判断「这条消息是否依赖目标机器上的文件」（D22 的同机器约束）
+ * - daemon 的跨会话投递归据据此判断「这条消息是否依赖目标机器上的文件」（D22 的同机器约束）
  *
  * 判据只此一份的理由是**不一致会互相拆台**：Web 认为自足而投递认为需要本地文件，
  * 就会出现「明明渲染得出来却被拒」的怪事，反之则是渲染成破图而投递报成功。
@@ -229,7 +229,7 @@ function parseLegacyAttachment(raw: unknown): UserDocumentBlock | undefined {
  * 读取侧跨来源归一（三形态 + legacy 平铺兼容）：string / 单 block / block 数组 / 旧平铺对象 → ContentBlock[]。
  *
  * - ref 退场（ADR 0003）后单通道：所有来源接受同一词汇，历史 ref block 输入按 unknown 剔除
- *   （存量 ref 消息由 hub 迁移为 mobi URI 动作链接，见 hub 侧迁移）
+ *   （存量 ref 消息由 daemon 迁移为 mobi URI 动作链接，见 daemon 侧迁移）
  * - unknown block 剔除并打 debug 日志
  * - 全部无法识别 / 空字符串 / 空数组 / 畸形输入返回 null
  */
@@ -264,7 +264,7 @@ export function normalizeContentBlocks(raw: unknown): ContentBlock[] | null {
 
 /**
  * 用户消息通道归一入口。ref 退场后与 {@link normalizeContentBlocks} 等价，
- * 名称保留给存量调用方（hub/CLI/web）语义清晰：返回类型收窄为 UserContentBlock[]。
+ * 名称保留给存量调用方（daemon/CLI/web）语义清晰：返回类型收窄为 UserContentBlock[]。
  */
 export function normalizeUserContent(raw: unknown): UserContentBlock[] | null {
     const blocks = normalizeContentBlocks(raw)

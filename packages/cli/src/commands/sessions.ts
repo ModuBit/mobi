@@ -24,8 +24,8 @@
 
 import chalk from 'chalk'
 import {
-    listRunnerSessions,
-    stopRunnerSession
+    listExecutorSessions,
+    stopExecutorSession
 } from '@mobi/daemon/executor/controlClient'
 import type { CommandDefinition } from './types'
 
@@ -55,7 +55,7 @@ export const sessionsCommand: CommandDefinition = {
 
         if (subcommand === 'list') {
             try {
-                const sessions = await listRunnerSessions()
+                const sessions = await listExecutorSessions()
 
                 if (sessions.length === 0) {
                     console.log('No active sessions this daemon is aware of')
@@ -77,7 +77,7 @@ export const sessionsCommand: CommandDefinition = {
             }
 
             try {
-                const success = await stopRunnerSession(sessionId)
+                const success = await stopExecutorSession(sessionId)
                 console.log(success ? 'Session stopped' : 'Failed to stop session')
             } catch {
                 console.log('No daemon running')

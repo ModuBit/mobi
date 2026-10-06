@@ -64,7 +64,7 @@ const ACTION_EXECUTORS: {
 /**
  * 构造动作分发 hook：解析 URI（未注册/畸形统一 toast 降级）后按注册键分发执行。
  *
- * @param opts.sessionId 覆盖路由推断的会话 id——恢复会话后 Hub 可能返回新的权威
+ * @param opts.sessionId 覆盖路由推断的会话 id——恢复会话后 daemon 可能返回新的权威
  * 会话 ID，恢复成功方用新 id 重放动作（file/open 的 tab 状态按会话隔离）
  */
 export function useActionDispatcher() {

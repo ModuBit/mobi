@@ -18,7 +18,7 @@
 export type ContextResetClient = {
     /** SSE 边界事件：web 渲染「上下文已重置」分隔线（与 /clear 一致） */
     sendSessionEvent: (event: { type: 'context-cleared' }) => void
-    /** hub 落 runtimeState.contextUsage = null：水位线隐藏，直到下个真实 turn 的 result */
+    /** daemon 落 runtimeState.contextUsage = null：水位线隐藏，直到下个真实 turn 的 result */
     clearContextUsage: () => void
 }
 

@@ -329,8 +329,8 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
         }, REFRESH_SPIN_MIN_MS)
     }, [isSearching, refetchSearch, queryClient, sessionId])
 
-    /** 拉单个目录（根/子共用）：hub success:false 抛错，由 react-query 透出 error。
-     *  返回 { entries, truncated, total }：truncated/total 来自 hub 的 listDirectory 截断信息，
+    /** 拉单个目录（根/子共用）：daemon success:false 抛错，由 react-query 透出 error。
+     *  返回 { entries, truncated, total }：truncated/total 来自 daemon 的 listDirectory 截断信息，
      *  前端据此在目录末尾挂「仅展示前 N 项」提示节点。 */
     const fetchDirectory = async (path: string) => {
         const res = await api.files.list(sessionId, path)
@@ -627,7 +627,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                         icon={<RotateCw size={14} className={isRefreshing ? 'refresh-spinning' : undefined} />}
                         onClick={handleRefresh}
                         // 刷新中禁用：invalidateQueries 默认 cancelRefetch，而 fetchDirectory 未接
-                        // react-query 的 signal，取消只作用于 promise、请求仍会打到 hub——连点 N 次
+                        // react-query 的 signal，取消只作用于 promise、请求仍会打到 daemon——连点 N 次
                         // 就是 N 个真实请求（前 N-1 个结果被丢弃）。REFRESH_SPIN_MIN_MS 顺带成为节流窗口
                         disabled={isRefreshing}
                         aria-label={t('files.refreshTree')}

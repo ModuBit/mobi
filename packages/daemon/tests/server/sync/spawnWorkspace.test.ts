@@ -16,8 +16,8 @@
 
 import { describe, test, expect } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
-import { LocalMachineHost } from '../../../src/executor/localExecutor'
-import type { RunnerSessionBridge } from '../../../src/executor/lifecycle'
+import { LocalExecutor } from '../../../src/executor/localExecutor'
+import type { ExecutorBridge } from '../../../src/executor/lifecycle'
 import type { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
@@ -25,7 +25,7 @@ import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 /**
  * spawn 链路透传 workspaceId 单测（ticket-20 起 socket 通道删除，观测点改为
  * runner bridge 的 spawn 入参）：
- * Web → engine.spawnSession → LocalMachineHost → RunnerSessionBridge.spawnSession。
+ * Web → engine.spawnSession → LocalExecutor → ExecutorBridge.spawnSession。
  * workspaceId 是最后一个位置参数，未传时入参中不出现有效值。
  */
 
@@ -39,7 +39,7 @@ function makeEngine(capture: BridgeCapture): SyncEngine {
     const registry = { getSocketIdForMethod: () => null } as unknown as RpcRegistry
     const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
     const store = new Store(':memory:')
-    const bridge: RunnerSessionBridge = {
+    const bridge: ExecutorBridge = {
         spawnSession: async (options) => {
             capture.spawnCalls.push(options)
             return { type: 'success', sessionId: 'spawned-1' } satisfies SpawnSessionResult
@@ -47,7 +47,7 @@ function makeEngine(capture: BridgeCapture): SyncEngine {
         stopSession: () => true,
         registerSessionTracking: () => {},
     }
-    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost(() => bridge))
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalExecutor(() => bridge))
     return engine
 }
 
@@ -56,7 +56,7 @@ describe('spawn 链路透传 workspaceId（bridge 直调）', () => {
         const capture: BridgeCapture = { spawnCalls: [] }
         const engine = makeEngine(capture)
         try {
-            const result = await engine.spawnSession('machine-p1', '/tmp/proj', { workspaceId: 'workspace-42' })
+            const result = await engine.spawnSession('/tmp/proj', { workspaceId: 'workspace-42' })
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
             expect(capture.spawnCalls).toHaveLength(1)
             expect(capture.spawnCalls[0]).toMatchObject({
@@ -72,7 +72,7 @@ describe('spawn 链路透传 workspaceId（bridge 直调）', () => {
         const capture: BridgeCapture = { spawnCalls: [] }
         const engine = makeEngine(capture)
         try {
-            const result = await engine.spawnSession('machine-p1', '/tmp/proj')
+            const result = await engine.spawnSession('/tmp/proj')
             expect(result).toEqual({ type: 'success', sessionId: 'spawned-1' })
             expect(capture.spawnCalls).toHaveLength(1)
             expect((capture.spawnCalls[0] as unknown as Record<string, unknown>).workspaceId).toBeUndefined()

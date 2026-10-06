@@ -16,7 +16,7 @@
 
 import type { Context } from 'hono'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
-import { buildMachineMetadata } from '@mobi/node-core/hostMetadata'
+import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import type { Session, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 
@@ -72,7 +72,7 @@ export function requireSessionFromParam(
  * 不再经 machines 行 metadata 中转（buildHostMetadata 为 602 改名目标）。
  */
 export function requireHostHomeDir(): string {
-    return buildMachineMetadata().homeDir
+    return buildHostMetadata().homeDir
 }
 
 /**

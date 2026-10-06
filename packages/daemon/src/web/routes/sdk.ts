@@ -45,8 +45,7 @@ export function createSdkRoutes(getSyncEngine: () => SyncEngine | null): Hono<We
         if (cwdError) return cwdError
 
         try {
-            // machineId 实参为 D4=C 路由残留（本地实现忽略），602 形参收窄时删除
-            const result = await engine.machineRefreshMetadata('', cwd)
+            const result = await engine.hostRefreshMetadata(cwd)
             return c.json({ success: true, metadata: result.metadata ?? {} })
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to refresh metadata' }, 500)

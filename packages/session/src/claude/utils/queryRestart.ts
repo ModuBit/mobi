@@ -129,7 +129,7 @@ export class QueryRestartController {
 
     private commit(request: QueryRestartRequest): void {
         this.pending = request
-        // 保留原有丢弃通知语义：clearPending 通知 Hub 后，隔离哨兵单独入队唤醒 launcher。
+        // 保留原有丢弃通知语义：clearPending 通知 daemon 后，隔离哨兵单独入队唤醒 launcher。
         this.queue.clearPending()
         this.queue.pushIsolateAndClear(RESTART_EXIT_SENTINEL, { permissionMode: 'default' })
     }

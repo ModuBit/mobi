@@ -21,7 +21,7 @@ import type { Session } from '@mobi/shared/types'
  *
  * 常规会话：active 行不可删（须先归档）——防误删有 CLI 进程挂靠的会话。
  * fork 行（fork-session spec §4.3/§5.3）：metadata.forkFrom 在场 = 未完成激活
- * （激活成功即被 hub 清除；激活失败错误态也保留 forkFrom）——「fork 行未激活不算 active」，
+ * （激活成功即被 daemon 清除；激活失败错误态也保留 forkFrom）——「fork 行未激活不算 active」，
  * 待激活/错误态均可删除。激活进行中（running，首条消息已触发 spawn）仍保护，
  * 避免删行后孤儿化 CLI 进程。
  */

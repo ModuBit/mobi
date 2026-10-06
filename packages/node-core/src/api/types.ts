@@ -44,26 +44,12 @@ export type Workspace = z.infer<typeof WorkspaceSchema>
 
 export { AgentStateSchema, AttachmentMetadataSchema, MetadataSchema, WorkspaceSchema }
 
-// 宿主协议类型（MachineMetadata / RunnerState）已下沉 @mobi/shared/hostProtocol，
-// 此处 re-export 保持既有调用方不变（搬迁票删）
-import type { MachineMetadata, RunnerState } from '@mobi/shared/hostProtocol'
-export { MachineMetadataSchema } from '@mobi/shared/hostProtocol'
-export type { MachineMetadata } from '@mobi/shared/hostProtocol'
-export { RunnerStateSchema } from '@mobi/shared/hostProtocol'
-export type { RunnerState } from '@mobi/shared/hostProtocol'
-
-export type Machine = {
-    id: string
-    seq: number
-    createdAt: number
-    updatedAt: number
-    active: boolean
-    activeAt: number
-    metadata: MachineMetadata | null
-    metadataVersion: number
-    runnerState: RunnerState | null
-    runnerStateVersion: number
-}
+// 宿主协议类型（HostMetadata / ExecutorState）已下沉 @mobi/shared/hostProtocol，
+// 此处 re-export 保持既有调用方不变
+export { HostMetadataSchema } from '@mobi/shared/hostProtocol'
+export type { HostMetadata } from '@mobi/shared/hostProtocol'
+export { ExecutorStateSchema } from '@mobi/shared/hostProtocol'
+export type { ExecutorState } from '@mobi/shared/hostProtocol'
 
 export const CliMessagesResponseSchema = z.object({
     messages: z.array(z.object({
@@ -71,7 +57,7 @@ export const CliMessagesResponseSchema = z.object({
         seq: z.number(),
         createdAt: z.number(),
         localId: z.string().nullable().optional(),
-        /** native 锚点（rewind 判据与截断边界反查依赖；Hub DTO 已含，缺省兼容旧 Hub） */
+        /** native 锚点（rewind 判据与截断边界反查依赖；daemon DTO 已含，缺省兼容旧 daemon） */
         metadata: z.object({
             nativeId: z.string().optional(),
             nativeSessionId: z.string().optional()
@@ -100,7 +86,7 @@ export const CreateSessionResponseSchema = z.object({
         runtimeState: RuntimeStateSchema.optional(),
         model: z.string().nullable().optional(),
         permissionMode: PermissionModeSchema.optional(),
-        tag: z.string().nullable().optional(),   // 用于 --resume 时复用 Hub session
+        tag: z.string().nullable().optional(),   // 用于 --resume 时复用 daemon session
         /** 归属工作区（null = 游离） */
         workspaceId: z.string().nullable().optional()
     }),
@@ -133,7 +119,7 @@ export const MessageMetaSchema = z.object({
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
 
-/** 旧平铺 content（历史落库回放 / 旧 hub 窗口期）：宽松 schema 单源自 shared（与 normalizeUserContent 的 legacy 通道同一份规则），此处仅别名 */
+/** 旧平铺 content（历史落库回放 / 旧 daemon 窗口期）：宽松 schema 单源自 shared（与 normalizeUserContent 的 legacy 通道同一份规则），此处仅别名 */
 const LegacyFlatUserContentSchema = LegacyFlatObjectSchema
 
 export const UserMessageSchema = z.object({

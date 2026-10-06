@@ -497,7 +497,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
     // 注意：running 时不禁用发送——运行中发送的消息会进入排队悬浮条（queued），
     // 等当前 turn 结束由 gated pump 喂给 agent。abort 走独立按钮/Ctrl+C，与此独立。
-    // 空判定同时看 text / 附件 / 引用，对齐 hub「message requires text or attachments」语义
+    // 空判定同时看 text / 附件 / 引用，对齐 daemon「message requires text or attachments」语义
     const canSend = (hasText || hasAttachments || hasQuotes) && !controlsDisabled && !sending && !hasPendingPermission
     // 合并按钮状态：canSend 时展示发送（含 running 中有内容的特殊情况），否则 running/sending 中展示停止
     const submitButtonState = resolveSubmitButtonState({

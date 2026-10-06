@@ -15,12 +15,12 @@
  */
 
 /**
- * 静态资源的分层 Cache-Control 策略（Hub 远端 PWA 冷启动慢的根因修复）。
+ * 静态资源的分层 Cache-Control 策略（远端部署 PWA 冷启动慢的根因修复）。
  *
- * 背景：Hub 部署在远端（内网穿透/VPN/公网）时，PWA 冷启动存在 SW 接管竞态——
+ * 背景：daemon 部署在远端（内网穿透/VPN/公网）时，PWA 冷启动存在 SW 接管竞态——
  * OS 刚拉起进程的瞬间，Service Worker 尚未 boot 完成，浏览器对 index.html / 主 bundle /
  * 字体的首批请求会绕过 SW 直连远端。SW precache 清单里虽有这些文件，但在 SW 激活接管前
- * 不会拦截请求。此时唯一能兜底的是浏览器 HTTP 缓存，而 Hub 用 hono/bun 的 serveStatic
+ * 不会拦截请求。此时唯一能兜底的是浏览器 HTTP 缓存，而 daemon 用 hono/bun 的 serveStatic
  * 托管静态资源时默认不发任何 Cache-Control → 浏览器无法可靠缓存 → 每次冷启都重走慢隧道
  * 拉 2.5MB+ JS 与字体 → 几十秒到一分钟的启动延迟。
  *

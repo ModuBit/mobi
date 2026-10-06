@@ -22,7 +22,7 @@ import { uuid } from '@/core/lib/uuid'
  * Composer 分段模型：输入框 text + 附件双桶 + 引用，用户消息的 UI 侧权威形态。
  *
  * ChatComposer 持有此形态，发送前经 serializeSegments 转为 UserContentBlock[]
- * 直传 hub（{content: blocks} 新格式），删除旧的「@path 文本拼接」通道；
+ * 直传 daemon（{content: blocks} 新格式），删除旧的「@path 文本拼接」通道；
  * 编辑/回填方向经 deserializeSegments 反向还原。
  */
 
@@ -30,7 +30,7 @@ import { uuid } from '@/core/lib/uuid'
 export interface BlockFileRef {
     id: string
     filename: string
-    /** 工作区相对路径（hub url source 的 value） */
+    /** 工作区相对路径（daemon url source 的 value） */
     path: string
     mimeType: string
     size: number

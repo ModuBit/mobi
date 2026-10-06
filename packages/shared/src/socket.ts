@@ -69,7 +69,7 @@ export type AgentSessionSummary = {
     workspaceId: string | null
     /** 工作目录。metadata 解析失败时缺省（不填假值） */
     path?: string
-    /** 该会话的 CLI 进程是否还活着（Hub 内存态，非落库字段） */
+    /** 该会话的 CLI 进程是否还活着（daemon 内存态，非落库字段） */
     active: boolean
     /** 此刻是否有 turn 在跑 */
     running: boolean
@@ -89,7 +89,7 @@ export type AgentSessionsAck =
 /**
  * list_sessions 的 limit 默认值与上限。
  *
- * 放协议层而不是 Hub 侧：工具 schema（给模型的契约）与 Hub 侧截断规则必须同源，
+ * 放协议层而不是 daemon 侧：工具 schema（给模型的契约）与 daemon 侧截断规则必须同源，
  * 各写一份必然漂移——模型看到的上限与真正生效的上限对不上是最难查的那类 bug。
  */
 export const AGENT_SESSIONS_DEFAULT_LIMIT = 20
@@ -119,7 +119,7 @@ export type AgentCreateSessionRequest = {
      * 不该靠「它想一轮要好几秒」这个巧合兜住——spawn 回执到输入通道接通实测差 134–549ms。
      *
      * 传 `false` 就是旧语义（spawn 回执即返回），只在**明确知道接下来不会马上投递**时才用。
-     * 超时预算固定在 Hub 侧、不在这里暴露：签名上多一个旋钮就是多一个会被填错的地方。
+     * 超时预算固定在 daemon 侧、不在这里暴露：签名上多一个旋钮就是多一个会被填错的地方。
      */
     waitForReady?: boolean
 }
@@ -135,7 +135,7 @@ export type AgentCreateSessionReadiness =
     | 'ready'
     /** 等满固定预算仍没等到：会话在，但此刻投递可能落空 */
     | 'not-ready'
-    /** 没等（`waitForReady: false`）。**不是「不能收」**——Hub 没有这个事实 */
+    /** 没等（`waitForReady: false`）。**不是「不能收」**——daemon 没有这个事实 */
     | 'not-checked'
 
 /**
@@ -183,16 +183,16 @@ export type AgentSendMessageAck =
     | { ok: false; reason: AgentOpFailureReason }
 
 /**
- * 一条待投递/已投递的跨会话消息（Hub 侧编排的载荷，也是 push-agent-message RPC 的载荷）。
+ * 一条待投递/已投递的跨会话消息（daemon 侧编排的载荷，也是 push-agent-message RPC 的载荷）。
  *
  * 传的是**归一后的 blocks**，不是渲染好的文本，也不含信封：信封的插入与
  * blocks→payload 转换都在**目标 CLI** 侧做（那一步是 Web 用户消息在跑的同一个函数）。
- * 三个标识由 Hub 解析/预生成后带下去——CLI 没有别的会话的信息，反查不了。
+ * 三个标识由 daemon 解析/预生成后带下去——CLI 没有别的会话的信息，反查不了。
  */
 export type AgentMessageDelivery = {
     /** 归一后的内容块（信封不在其中；CLI 在转换前把信封以首尾两个 text block 插在它外面） */
     blocks: UserContentBlock[]
-    /** 信封的 message-id，兼作落库行的 localId（Hub 预生成，投递前就确定，不必等落库） */
+    /** 信封的 message-id，兼作落库行的 localId（daemon 预生成，投递前就确定，不必等落库） */
     messageId: string
     /** 信封 from-name。类型取自 `CrossSessionOrigin`——发送方身份的 concept 在
      *  `inboundOrigin.ts`，此处是它的 RPC 形态 */
@@ -200,16 +200,16 @@ export type AgentMessageDelivery = {
     /** 信封 from-session-id；收件方据此回信。**mobi 自发投递这一路恒有 id**，故把 concept 里
      *  可空的取值收窄为非空。
      *
-     *  字段保持**平铺**而不是嵌成一个 origin 对象：这是 hub↔CLI 的 wire 形状，改布局会让旧 CLI
+     *  字段保持**平铺**而不是嵌成一个 origin 对象：这是 daemon↔CLI 的 wire 形状，改布局会让旧 CLI
      *  的 `parseAgentMessagePush` 解析失败（它判 null 并把消息报成「拒收」），故只收形状的类型来源，
      *  不动布局 */
     fromSessionId: NonNullable<CrossSessionOrigin['fromSessionId']>
 }
 
 /**
- * push-agent-message RPC 回执（CLI → Hub）。
+ * push-agent-message RPC 回执（CLI → daemon）。
  *
- * 失败**不抛错**：抛错会把这条回执变成连接故障（Hub 只能报「目标会话不可达」），
+ * 失败**不抛错**：抛错会把这条回执变成连接故障（daemon 只能报「目标会话不可达」），
  * 而 handler 其实跑了、只是没收下（input stream 已关 / 没接上）。与 spawn 回执的
  * `{ type: 'error' }` 同一路数——出站 RPC 的失败用返回值表达，异常留给传输层。
  */
@@ -294,7 +294,7 @@ export const UpdateNewMessageBodySchema = z.object({
         localId: z.string().nullable().optional(),
         content: z.unknown()
     }),
-    /** 补写回填标记（hub attach 路径）：与 SSE 侧 SyncEventSchema message-received 的
+    /** 补写回填标记（daemon attach 路径）：与 SSE 侧 SyncEventSchema message-received 的
      *  backfill 同义——标识历史行重播而非新消息，消费方据此只 merge 不 append */
     backfill: z.boolean().optional()
 })
@@ -322,7 +322,7 @@ export const UpdateSchema = z.object({
 export type Update = z.infer<typeof UpdateSchema>
 
 export interface ServerToClientEvents {
-    /** Hub→CLI 会话推送（session room）：new-message / update-session 两种 body，按 body.t 判别 */
+    /** daemon→CLI 会话推送（session room）：new-message / update-session 两种 body，按 body.t 判别 */
     'session-update': (data: Update) => void
     'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     'terminal:open': (data: TerminalOpenPayload) => void
@@ -344,7 +344,7 @@ export interface NativeMessageMetadata {
 }
 
 export interface ClientToServerEvents {
-    /** CLI→Hub 会话消息落库主通道（agent output / agent event / snapshot 透传，按 content 判别） */
+    /** CLI→daemon 会话消息落库主通道（agent output / agent event / snapshot 透传，按 content 判别） */
     'session-message': (data: {
         sid: string
         message: unknown
@@ -353,19 +353,19 @@ export interface ClientToServerEvents {
         snapshot?: boolean
         /** 全量帧的 rev 标记（delta 协议）：新 CLI 携带，缺省 = legacy 全量（老协议直通） */
         frame?: { rev: number; baseRev: null }
-        /** 增量帧（delta 协议）：携带时 message 字段缺省，hub 走拼接器路径。
-         *  同时携带 snapshot:true——老 hub（无 delta 分支）至少按快照透传处理而非误落库
-         *  （混版本防 transcript 污染）；新 hub 分支顺序 snapshotDelta 优先，不受影响 */
+        /** 增量帧（delta 协议）：携带时 message 字段缺省，daemon 走拼接器路径。
+         *  同时携带 snapshot:true——老 daemon（无 delta 分支）至少按快照透传处理而非误落库
+         *  （混版本防 transcript 污染）；新 daemon 分支顺序 snapshotDelta 优先，不受影响 */
         snapshotDelta?: SnapshotDeltaFrame
         category?: MessageCategory
         /** 审查卡位置声明（turn-diff 卡等 CLI 合成消息）：值为**归属 result 行**的 nativeId
-         *  ——hub 据此把落库 position_at 定为该 result 行之前（-1ms，CLI 锚定具体行不找
+         *  ——daemon 据此把落库 position_at 定为该 result 行之前（-1ms，CLI 锚定具体行不找
          *  「最新」），恒早于 queue 投喂的 position 地板（MAX+1），queue 立即投喂场景卡片
-         *  不输给下一轮用户气泡。老 hub 忽略 */
+         *  不输给下一轮用户气泡。老 daemon 忽略 */
         positionBeforeResultId?: string
     }) => void
-    /** snapshot 流结束信号（delta 协议）：full message 已持久化，hub 据此精确清理该流缓存
-     *  （full 的 localId 与流的 sdkUuid 不同，hub 无法自行映射）。老 hub 无此 handler，静默忽略 */
+    /** snapshot 流结束信号（delta 协议）：full message 已持久化，daemon 据此精确清理该流缓存
+     *  （full 的 localId 与流的 sdkUuid 不同，daemon 无法自行映射）。老 daemon 无此 handler，静默忽略 */
     'snapshot-stream-end': (data: {
         sid: string
         /** 流式 snapshot 的 localId（message_start 的 sdkUuid） */
@@ -379,11 +379,11 @@ export interface ClientToServerEvents {
         permissionMode?: PermissionMode
         model?: string | null
         effort?: EffortLevel
-        /** 当前 output style：随 keep-alive 上报，hub 落 runtimeState.outputStyle 供 resume 回放 */
+        /** 当前 output style：随 keep-alive 上报，daemon 落 runtimeState.outputStyle 供 resume 回放 */
         outputStyle?: string
     }) => void
     // ack 制：CLI 关 socket 前等回执，裸 emit + 立即 close 会把事件丢在本地缓冲
-    // （hub 收不到 → active 永久悬挂，2026-09-30 事故）
+    // （daemon 收不到 → active 永久悬挂，2026-09-30 事故）
     'session-end': (data: { sid: string; time: number }, ack: (response: { ok: boolean }) => void) => void
     'update-metadata': (data: { sid: string; expectedVersion: number; metadata: unknown }, cb: (answer: {
         result: 'error'
@@ -418,42 +418,42 @@ export interface ClientToServerEvents {
     ping: (callback: () => void) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
     // ===== 消息事实协议 =====
-    /** CLI→Hub 统一消息事实事件：批内合并多 kind fact 一次往返（MessageFact 联合见 messages.ts）。
+    /** CLI→daemon 统一消息事实事件：批内合并多 kind fact 一次往返（MessageFact 联合见 messages.ts）。
      *  原 4 个独立事件（messages-submitted/bound/native-attached/acked）已下线，语义由各 fact kind 承载 */
     'messages-facts': (data: { sid: string; facts: MessageFact[] }) => void
-    /** rewind 截断成功（CLI → Hub）：Hub 即刻按 deleteFromSeq 软删除并转 SSE */
+    /** rewind 截断成功（CLI → daemon）：daemon 即刻按 deleteFromSeq 软删除并转 SSE */
     'rewind-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
-    /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因；skippedLinks>0 时部分路径被安全护栏跳过 */
+    /** rewind 终态（CLI → daemon）：filesRestored false 时 error 携带原因；skippedLinks>0 时部分路径被安全护栏跳过 */
     'rewind-completed': (data: { sid: string; filesRestored: boolean; error?: string; skippedLinks?: number }) => void
-    /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
+    /** CLI 事件驱动上报上下文用量（daemon 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */
     'context-usage': (data: { sid: string; contextUsage: ContextUsage | null }) => void
-    /** CLI 事件驱动上报 goal 状态（hub 落库到 runtimeState.goalStatus + SSE 推 web）。
+    /** CLI 事件驱动上报 goal 状态（daemon 落库到 runtimeState.goalStatus + SSE 推 web）。
      * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理）。 */
     'goal-status': (data: { sid: string; goalStatus: GoalStatus | null }) => void
-    /** CLI 轮次起点上报（running 翻转 false→true 时，hub 落库到 runtimeState.runStartedAt + SSE 推 web）。
+    /** CLI 轮次起点上报（running 翻转 false→true 时，daemon 落库到 runtimeState.runStartedAt + SSE 推 web）。
      * StatusBar 计时的权威来源——不随 web 消息窗口化丢失（docs/pending.md #55） */
     'run-started': (data: { sid: string; runStartedAt: number }) => void
-    /** CLI 会话恢复（resume/fork）时上报 prompt cache 状态（hub 落库到 runtimeState.cacheStatus + SSE 推 web）。
+    /** CLI 会话恢复（resume/fork）时上报 prompt cache 状态（daemon 落库到 runtimeState.cacheStatus + SSE 推 web）。
      * cacheStatus 为 null 表示清空（首 turn result 到达后 CLI 清除，过期提示只在首轮前有意义） */
     'cache-status': (data: { sid: string; cacheStatus: CacheStatus | null }) => void
     /** CLI「本会话此刻能不能收消息」的翻转上报（sink 接通 true / 轮次收尾断开 false）。
-     * **不落库**——只喂 hub 的会话内 latch（等「建完即可用」），跨进程重启没有意义；
+     * **不落库**——只喂 daemon 的会话内 latch（等「建完即可用」），跨进程重启没有意义；
      * 且它会反复翻转，不是「会话还在不在」的判据。 */
     'receive-readiness': (data: { sid: string; canReceive: boolean }) => void
-    /** CLI→Hub 的 UI 命令（agent 触达 mobi 界面，A 类）。ack 语义：delivered=true 表示已广播给活跃 Web 连接
+    /** CLI→daemon 的 UI 命令（agent 触达 mobi 界面，A 类）。ack 语义：delivered=true 表示已广播给活跃 Web 连接
      *  （非"用户已看到"，Web 不参与 ack）；无 Web 在线时 delivered=false（调用成功非错误，CLI 转平和反馈）。
      *  socket 断开/ack 超时由 emitWithAck reject 体现，属连接故障，与离线语义区分 */
     'sendUiCommand': (data: { sid: string; action: UiCommandAction }, cb: (answer: UiCommandAck) => void) => void
-    /** CLI→Hub 的会话操作（agent 触达其他会话，B 类）。与 A 类的区别：不依赖 Web 在线、
-     *  不是瞬态呈现（落库即终态）。namespace 由 Hub 从鉴权过的 sid 解析，CLI 不填。 */
-    /** 同上，列出会话供 agent 挑选派活目标。sid 是发问方自己的会话（Hub 据此定 namespace），
+    /** CLI→daemon 的会话操作（agent 触达其他会话，B 类）。与 A 类的区别：不依赖 Web 在线、
+     *  不是瞬态呈现（落库即终态）。namespace 由 daemon 从鉴权过的 sid 解析，CLI 不填。 */
+    /** 同上，列出会话供 agent 挑选派活目标。sid 是发问方自己的会话（daemon 据此定 namespace），
      *  其余字段是 agent 的查询条件——namespace 不在入参里，也不可信。 */
     'listSessionsForAgent': (data: AgentSessionsRequest, cb: (answer: AgentSessionsAck) => void) => void
     /** 同上，在本机起一个新会话进程。语义是「现在就有了这个会话」，
      *  没有「建了行但空着」的中间态——建完即可往里发消息。 */
     'createSessionForAgent': (data: AgentCreateSessionRequest, cb: (answer: AgentCreateSessionAck) => void) => void
-    /** 同上，把一条消息投给别的会话。**不经投递队列**——Hub 落库即终态并经 RPC 直推目标
+    /** 同上，把一条消息投给别的会话。**不经投递队列**——daemon 落库即终态并经 RPC 直推目标
      *  CLI 的 input stream，因此不可取消、不可编辑、不在 Web 上呈现排队态。
      *  成功判据是「已进入对方输入流」，不是「对方已读」。 */
     'sendMessageToSessionForAgent': (data: AgentSendMessageRequest, cb: (answer: AgentSendMessageAck) => void) => void

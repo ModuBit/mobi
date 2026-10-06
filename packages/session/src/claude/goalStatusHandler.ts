@@ -25,7 +25,7 @@ import { logger } from '@mobi/node-core/logger'
  *
  * 收到 scanner 提取的 goal_status attachment 后双发:
  *   1. goal_progress 消息    → 聊天流(stream 标注:达成那轮仍渲染 ✓ 达成 绿)
- *   2. reportGoalStatus RPC → hub runtimeState.goalStatus(吊顶 / 徽标)
+ *   2. reportGoalStatus RPC → daemon runtimeState.goalStatus(吊顶 / 徽标)
  *
  * met=true 时立即上报 null 让 UI 立即清空(达成态不再驻留吊顶);
  * goal_progress 消息照发 met:true,stream 标注仍标绿。
@@ -47,7 +47,7 @@ export class GoalStatusHandler {
             ...goalStatus,
         })
 
-        // 2. RPC 上报 → hub runtimeState.goalStatus(吊顶 / 徽标)
+        // 2. RPC 上报 → daemon runtimeState.goalStatus(吊顶 / 徽标)
         this.report(status, goalStatus)
     }
 

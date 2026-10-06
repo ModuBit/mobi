@@ -17,11 +17,11 @@
 /**
  * 上下文边界判据单一来源（fork / rewind 入口共用，fork-session spec §2）：
  * `msg.seq > contextBoundarySeq` = 边界之后（可操作）。
- * 语义对齐 hub `contextBoundary.ts`（CONTEXT_BOUNDARY_SEQ_KEY），两端同步义务注释同款。
+ * 语义对齐 daemon `contextBoundary.ts`（CONTEXT_BOUNDARY_SEQ_KEY），两端同步义务注释同款。
  *
  * 缺失语义：
- * - 指针缺失（undefined，存量会话未回填）→ 按 0 = 保守放行（hub 读侧首次消费会回填）
- * - 行 seq 缺失（快照流式行）→ 不可判定保守放行（放行侧 hub 闸门 + CLI 预检把守）
+ * - 指针缺失（undefined，存量会话未回填）→ 按 0 = 保守放行（daemon 读侧首次消费会回填）
+ * - 行 seq 缺失（快照流式行）→ 不可判定保守放行（放行侧 daemon 闸门 + CLI 预检把守）
  */
 export function isAfterContextBoundary(
     seq: number | null | undefined,

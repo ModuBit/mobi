@@ -19,13 +19,13 @@ import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { RedactedWebToolsConfig, WebToolsConfigSubmission } from '@mobi/shared'
 
-/** 两跳加载结果：ok / offline（executor 未就绪或网络异常）/ error（runner 读盘失败，文案区分于离线） */
+/** 两跳加载结果：ok / offline（executor 未就绪或网络异常）/ error（daemon 读盘失败，文案区分于离线） */
 export type WebToolsConfigQueryData =
     | { status: 'ok'; config: RedactedWebToolsConfig }
     | { status: 'offline' }
     | { status: 'error'; message: string }
 
-/** 保存结果：失败带 runner 校验原因（validateSelection 等），供调用方 toast 具体错误而非通用文案 */
+/** 保存结果：失败带 daemon 校验原因（validateSelection 等），供调用方 toast 具体错误而非通用文案 */
 export type WebToolsSaveResult = { ok: true } | { ok: false; error: string }
 
 /**
@@ -39,7 +39,7 @@ export function webToolsConfigQuery(api: ReturnType<typeof useMobiApi>) {
         queryFn: async (): Promise<WebToolsConfigQueryData> => {
             try {
                 const configRes = await api.webTools.get()
-                // 200 + { error } 变体 = runner 读盘失败（executor 在线），与离线分开提示
+                // 200 + { error } 变体 = daemon 读盘失败（executor 在线），与离线分开提示
                 if (!('config' in configRes.data)) {
                     return { status: 'error', message: configRes.data.error ?? '' }
                 }

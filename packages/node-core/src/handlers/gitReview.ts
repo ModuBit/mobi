@@ -25,7 +25,7 @@
  * turn 档供数（turn-archive B）：统一经 TurnAttributionProvider（归档唯一供数源）——
  * patch 直读归档封口定稿、contents 空降级（归档只存统计+patch，全文零进盘）。
  *
- * cwd 由 hub 从会话 metadata 注入（与 machineReadFileMeta 同信任模型）；路径统一以
+ * cwd 由 daemon 从会话 metadata 注入（与 hostReadFileMeta 同信任模型）；路径统一以
  * repoRoot 为基准（git 在 repoRoot 执行，diff 输出的路径即仓库相对路径，盘上读取
  * 同基准）。untracked 行数计数：`git diff --no-index --numstat /dev/null <path>`
  * （ChatGPT 同解，差异以退出码 1 表达须从 stdout 取），超过 UNTRACKED_COUNT_CAP
@@ -536,7 +536,7 @@ function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffF
 }
 
 /**
- * machine 通道 gitReview RPC 注册（cwd 由 hub 从会话 metadata 注入，信任模型同 machineReadFileMeta）。
+ * machine 通道 gitReview RPC 注册（cwd 由 daemon 从会话 metadata 注入，信任模型同 hostReadFileMeta）。
  * git 执行统一走 gitExec 的收口 git()；本模块只负责查询编排与降级语义。
  *
  * 七连 handler 样板（reader 装配 + try/catch rpcError 同构）收敛为方法表 +
@@ -548,12 +548,12 @@ function mergeEntries(a: TurnDiffFileEntry[], b: TurnDiffFileEntry[]): TurnDiffF
 type GitReviewHandlerDef = {
     /** debug 日志标签（`[GitReview] <log> failed`） */
     log: string
-    /** rpcError 文案（hub 透传给 web 的错误信息） */
+    /** rpcError 文案（daemon 透传给 web 的错误信息） */
     error: string
     run: (reader: GitReviewReader, data: never) => Promise<unknown>
 }
 
-/** 会话删除清落盘状态（wire 名留 clearTurnSnapshots——hub 契约不变，语义已换）：
+/** 会话删除清落盘状态（wire 名留 clearTurnSnapshots——daemon 契约不变，语义已换）：
  *  删 `.mobi/turn-diffs/<sid>/` 整目录——turn 归档在此，tool-changes.json 孤儿
  *  （持久层已退场）同目录顺带清掉 */
 async function clearSessionState(cwd: string, sessionId: string): Promise<number> {
@@ -621,7 +621,7 @@ export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager):
 }
 
 /**
- * gitReview 族 RPC 统一实现（ticket-17 本地化直调目标）：注册闭包与 LocalMachineHost
+ * gitReview 族 RPC 统一实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor
  * 共用，行为单源——socket 路径与本地直调不会分叉（方法表查表 + 同构 try/catch rpcError）。
  */
 export async function gitReviewRpcImpl(method: string, data: { cwd: string } & Record<string, unknown>): Promise<unknown> {

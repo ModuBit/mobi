@@ -46,7 +46,7 @@ function isOptimisticMessage(msg: DecryptedMessage): boolean {
 /**
  * 是否为「仍在排队、未被 agent 消费」的消息（悬浮条展示、从线程剔除的判断依据）。
  *
- * 只读显式 `lifecycle==='queued'`——这是 Hub 写入时用 denylist 谓词裁决的单一结果，
+ * 只读显式 `lifecycle==='queued'`——这是 daemon 写入时用 denylist 谓词裁决的单一结果，
  * Web 不再反推来源/时间戳。乐观消息（尚未收到服务端 echo）由 useSendMessage 直接置
  * lifecycle='queued'。
  * status='sending'（非 running 发送，在途开新 turn）/ status='failed' 排除。
@@ -59,7 +59,7 @@ export function isQueuedInMobi(msg: DecryptedMessage): boolean {
 /**
  * 消息比较函数，用于排序。
  *
- * 主排序键 = positionAt（与 hub 侧 position_at 排序语义对齐）：排队消息被消费时
+ * 主排序键 = positionAt（与 daemon 侧 position_at 排序语义对齐）：排队消息被消费时
  * positionAt 跳到消费时刻，保证「运行中消费的消息排在 turn 之后」。seq 只是落库自增序号，
  * 不随排队消费跳变——若以 seq 为主键，运行中发消息时用户消息会卡在上一轮 assistant 输出中间
  *（乐观发送时刻早于 turn 结束时落库的后续 assistant 消息）。positionAt 缺失（如 snapshot）回退 seq。

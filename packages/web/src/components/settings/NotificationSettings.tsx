@@ -32,7 +32,7 @@ type Token = ReturnType<typeof useToken>['token']
 type Tone = 'default' | 'success' | 'error'
 
 interface NotificationSettingsProps {
-    /** 当前命名空间（hub 端从 token 解析，client 仅作语义占位） */
+    /** 当前命名空间（daemon 端从 token 解析，client 仅作语义占位） */
     namespace: string
 }
 

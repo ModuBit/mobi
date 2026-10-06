@@ -15,7 +15,7 @@
  */
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import type { RunnerState } from '@mobi/node-core/api/types'
+import type { ExecutorState } from '@mobi/node-core/api/types'
 import { DEFAULT_STOP_KIND, isCancelQueued, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
@@ -26,11 +26,11 @@ import type { SessionFactsSink } from './sessionFacts'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
-import { LocalMachineHost } from '../executor/localExecutor'
+import { LocalExecutor } from '../executor/localExecutor'
 import {
     isUnexpectedAlreadyRunning,
     UNEXPECTED_ALREADY_RUNNING,
-    type MachineHost,
+    type ExecutorHost,
     type RpcDeleteUploadResponse,
     type RpcGetWebToolsConfigResponse,
     type RpcListDirectoryResponse,
@@ -45,7 +45,7 @@ import {
     type SpawnSessionOptions
 } from '../executor/executorHost'
 import { getExecutorState } from './executorRuntime'
-import { buildMachineMetadata } from '@mobi/node-core/hostMetadata'
+import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
@@ -53,7 +53,7 @@ import { RpcGateway } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 import { readRpcFailure } from './rpcFailure'
 import { SessionReceiveReadiness } from './sessionReceiveReadiness'
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 
 export type { Session, SyncEvent } from '@mobi/shared/types'
 export type { SyncEventListener } from './eventPublisher'
@@ -108,16 +108,16 @@ export class SyncEngine {
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
     /** 执行层（ticket-15 起）：文件/spawn 等本机执行调用收拢点；ticket-20 起 socket 实现退场，
-     *  LocalMachineHost 是唯一实现（public 供装配与契约测试注入边界）。401 起字段名去 machine
-     *  （类型名 MachineHost 与目录改名随 602） */
-    readonly executor: MachineHost
+     *  LocalExecutor 是唯一实现（public 供装配与契约测试注入边界）。401 起字段名去 machine
+     *  （类型名 ExecutorHost 与目录改名随 602） */
+    readonly executor: ExecutorHost
     private readonly store: Store
     /**
      * 「这个会话此刻能不能收消息」的事实（不落库——它随会话进程生灭）。
      *
      * 与 `active` / `running` 都不同：那两个各自回答「进程在不在」与「这一轮在不在干活」，
      * 而建完会话到真能收消息之间隔着上百毫秒，正是这个事实要填的缝。为什么必须由 CLI 报
-     * 而不是 Hub 猜，见 SessionReceiveReadiness 的说明。
+     * 而不是 daemon 猜，见 SessionReceiveReadiness 的说明。
      */
     private readonly receiveReadiness = new SessionReceiveReadiness()
     /** rewind 软删除上界（受理时写 / 截断回报消费；与 CLI socket handler 共用实例，index.ts 注入） */
@@ -126,13 +126,13 @@ export class SyncEngine {
     /** 唤醒防重入：在途 resume spawn 的会话集合（wakeSession 单源读写） */
     private readonly wakeInFlight = new Set<string>()
     /**
-     * executor（同进程 runner 管线）就绪标志：bridge 注入即置位（hubServer.setRunnerBridge）。
+     * executor（同进程 spawn 管线）就绪标志：bridge 注入即置位（server.setExecutorBridge）。
      * 取代旧 machineCache online 检查作为「能否 spawn/resume」的判据——旧判据依赖 machines 表
      * 行状态，新判据直接反映执行层接线事实：bridge 未注入时 spawn 必报「bridge 未接线」。
      */
     private executorReady = false
     /** daemon 主 namespace（setDaemonNamespace 由 hubServer 盖章）：daemon-status 事件无
-     *  sessionId/machineId 可解析，投递路由（SSE shouldSend namespace 匹配）靠它 */
+     *  sessionId 可解析，投递路由（SSE shouldSend namespace 匹配）靠它 */
     private daemonNamespace: string | null = null
 
     constructor(
@@ -141,7 +141,7 @@ export class SyncEngine {
         rpcRegistry: RpcRegistry,
         sseManager: SSEManager,
         rewindDeleteBounds?: RewindDeleteBoundTracker,
-        executor?: MachineHost
+        executor?: ExecutorHost
     ) {        this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.agentSessions = new AgentSessionService({
@@ -149,9 +149,8 @@ export class SyncEngine {
             // 与 Web 侧 spawn 路由共用同一个实现——工作区归属规则只写一份
             checkWorkspaceAssignable: (workspaceId, namespace) => checkWorkspaceAssignable(this, workspaceId, namespace),
             spawnSession: async (directory, options) => {
-                // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约。
-                // machineId 形参残留约定：本地实现忽略，实参空串（602 形参收窄时删）
-                const result = await this.executor.spawnSession('', directory, options)
+                // agent 会话创建不走 resume（无 resume 目标，already-running 不可达），收窄回既有契约
+                const result = await this.executor.spawnSession(directory, options)
                 return isUnexpectedAlreadyRunning(result)
                     ? { type: 'error', message: UNEXPECTED_ALREADY_RUNNING, failure: 'other' }
                     : result
@@ -189,7 +188,7 @@ export class SyncEngine {
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
         // socket 版实现已随 machine 通道删除（ticket-20）；缺省给无 bridge 的本地实现——
         // 非直调路径全可用，spawn 会报「bridge 未接线」（生产由 hubServer 注入带 bridge 的实例）
-        this.executor = executor ?? new LocalMachineHost(() => null)
+        this.executor = executor ?? new LocalExecutor(() => null)
         this.store = store
         this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
         this.factsSink = {
@@ -379,9 +378,9 @@ export class SyncEngine {
 
     /**
      * 会话追踪同步钩子（ticket-18 Q8）：会话 socket 重连/心跳到达时，把会话行
-     * metadata（hostPid + 当前 nativeSessionId）同步给 runner 追踪表——daemon
-     * 重启后的补登与查重键刷新都从这里驱动。由 hubServer 在 runner bridge 就绪
-     * 后注入；未注入（hub 单独跑、测试）时为 no-op。
+     * metadata（hostPid + 当前 nativeSessionId）同步给 executor 追踪表——daemon
+     * 重启后的补登与查重键刷新都从这里驱动。由 server 在 executor bridge 就绪
+     * 后注入；未注入（daemon 单独跑、测试）时为 no-op。
      */
     private sessionTrackingSync: ((sid: string) => void) | null = null
 
@@ -403,7 +402,7 @@ export class SyncEngine {
         try {
             this.sessionTrackingSync?.(payload.sid)
         } catch (error) {
-            hubLogger.debug('[SYNC] Session tracking sync failed:', error)
+            daemonLogger.debug('[SYNC] Session tracking sync failed:', error)
         }
         // 激活翻转入参快照：handleSessionAlive 同步更新 sessionCache，前后各读一次即可判定翻转
         const wasActive = this.sessionCache.getSession(payload.sid)?.active ?? false
@@ -437,9 +436,9 @@ export class SyncEngine {
     getDaemonStatus(): {
         status: 'ok'
         host: { hostname: string; platform: string; displayName?: string; homeDir?: string }
-        executor: RunnerState | null
+        executor: ExecutorState | null
     } {
-        const metadata = buildMachineMetadata()
+        const metadata = buildHostMetadata()
         return {
             status: 'ok',
             host: {
@@ -463,7 +462,7 @@ export class SyncEngine {
 
     /**
      * daemon 主 namespace 盖章（401 起 registerLocalMachine 的 machines 行写入退场，
-     * 唯一残留职责）：daemon-status 事件无 sessionId/machineId 可解析，SSE 投递路由
+     * 唯一残留职责）：daemon-status 事件无 sessionId 可解析，SSE 投递路由
      * （shouldSend namespace 匹配）靠它。
      */
     setDaemonNamespace(namespace: string): void {
@@ -541,7 +540,7 @@ export class SyncEngine {
     }
 
     async abortSession(sessionId: string, stopKind: StopKind = DEFAULT_STOP_KIND): Promise<void> {
-        // 先 RPC 后批删：CLI 已收到（受理）才成立，此刻才删 hub 层排队消息——RPC 抛错
+        // 先 RPC 后批删：CLI 已收到（受理）才成立，此刻才删 daemon 层排队消息——RPC 抛错
         // （CLI 离线/超时）则不删（安全方向：少删不误删，重试后仍有得删）。
         // 取舍：result 回拉竞态（CLI 中断 result 先于批删到达、pump 拉走 queued 消息）窗口
         // 极小可接受，且 CC 层消息由 cancelQueued 兜底。store 在本层持有（同 rewind 的
@@ -560,7 +559,7 @@ export class SyncEngine {
         if (namespace) this.sessionCache.markBackgroundTaskStopped(sessionId, taskId, namespace)
     }
 
-    // rewind 预检（Web → Hub → CLI RPC 转发）：锚点存在性 + rewindFiles(dryRun)，结果原样透传给 Web
+    // rewind 预检（Web → daemon → CLI RPC 转发）：锚点存在性 + rewindFiles(dryRun)，结果原样透传给 Web
     async rewindDryRun(sessionId: string, nativeId: string): Promise<unknown> {
         return await this.rpcGateway.rewindDryRun(sessionId, nativeId)
     }
@@ -568,7 +567,7 @@ export class SyncEngine {
     // rewind 执行（RPC 只做受理；CLI 闸门复检，结果经 socket 两段回报 → SSE 推 Web）
     async rewind(sessionId: string, nativeId: string, restoreFiles: boolean): Promise<unknown> {
         // 受理时点上界在 RPC 前采样：CLI handler 在回 ack 前要 await 文件回滚（大仓库可超
-        // rpcGateway 30s 超时）——hub 侧 RPC 抛错但 CLI 已受理并继续截断，迟到回报仍需上界防御，
+        // rpcGateway 30s 超时）——daemon 侧 RPC 抛错但 CLI 已受理并继续截断，迟到回报仍需上界防御，
         // 故结果未知（抛错）与受理成功两条路径都标记（fail-safe，M3）
         const maxSeq = this.store.messages.getMaxSeq(sessionId)
         let result: unknown
@@ -591,7 +590,7 @@ export class SyncEngine {
      * fork 会话创建（web 点 fork → 建行 + 复制锚点 turn + 溯源消息，fork-session spec §5.1）。
      * namespace 访问协调留在引擎；锚点资格、复制范围与原子建行由 sessionFork module 收口。
      * 成功后 refreshSession 使 fork 行进缓存并发 session-added SSE，
-     * web 列表即时出现「待激活」项。CLI 离线时点 fork 允许（复制是 hub 侧动作）。
+     * web 列表即时出现「待激活」项。CLI 离线时点 fork 允许（复制是 daemon 侧动作）。
      */
     forkSession(sessionId: string, anchorNativeId: string, namespace: string): ForkSessionResult {
         const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
@@ -634,7 +633,7 @@ export class SyncEngine {
         return { ok: true }
     }
 
-    /** DB 里的生命周期终态：CLI 自行归档后 metadata 落 archived，hub 缓存可能仍悬挂 active */
+    /** DB 里的生命周期终态：CLI 自行归档后 metadata 落 archived，daemon 缓存可能仍悬挂 active */
     private isArchivedInDb(sessionId: string): boolean {
         const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
         return session?.metadata?.lifecycleState === 'archived'
@@ -665,7 +664,7 @@ export class SyncEngine {
         // CLI 忙时 RPC 可能等长达 30s（emitWithAck timeout），而 sessionCache 已更新，
         // 应让调用方立即拿到结果；RPC 失败（CLI 离线 / 会话未就绪）仅 warn 不影响本地一致性
         void this.rpcGateway.requestRename(sessionId, name).catch(error => {
-            hubLogger.warn(`[renameSession] 同步 CC 标题失败 (best-effort，忽略): ${(error as Error).message}`)
+            daemonLogger.warn(`[renameSession] 同步 CC 标题失败 (best-effort，忽略): ${(error as Error).message}`)
         })
     }
 
@@ -682,8 +681,8 @@ export class SyncEngine {
         // best-effort 清理轮次快照引用（ADR 0008 refs 治理 / pending #87）：CLI 离线时
         // 引用暂留——不消费不转发，仅占本机 .git 空间，不影响正确性
         if (located) {
-            void this.executor.clearTurnSnapshots('', located.cwd, sessionId).catch((error) => {
-                hubLogger.warn(`[deleteSession] 清理轮次快照引用失败 (best-effort，忽略): ${(error as Error).message}`)
+            void this.executor.clearTurnSnapshots(located.cwd, sessionId).catch((error) => {
+                daemonLogger.warn(`[deleteSession] 清理轮次快照引用失败 (best-effort，忽略): ${(error as Error).message}`)
             })
         }
     }
@@ -780,17 +779,16 @@ export class SyncEngine {
     }
 
     async spawnSession(
-        machineId: string,
         directory: string,
         options: SpawnSessionOptions = {},
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
-        const result = await this.executor.spawnSession(machineId, directory, options)
+        const result = await this.executor.spawnSession(directory, options)
         // Web 新会话路径无 resume 目标，already-running 不可达；防御性按错误处理
         if (isUnexpectedAlreadyRunning(result)) {
             return { type: 'error', message: UNEXPECTED_ALREADY_RUNNING }
         }
         if (result.type === 'error') {
-            // 传输分类是 hub 内部的说法（给 agent 的失败翻译用，见 rpcFailure），
+            // 传输分类是 daemon 内部的说法（给 agent 的失败翻译用，见 rpcFailure），
             // 不进 HTTP body：Web 只读 message，多带一个字段等于悄悄改了一处对外契约
             return { type: 'error', message: result.message }
         }
@@ -798,8 +796,8 @@ export class SyncEngine {
     }
 
     /**
-     * fork 行激活失败的 hub 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
-     * forkError 上报通道不可达，错误态由 hub 直接落档）。仅 forkFrom 在场的行生效；
+     * fork 行激活失败的 daemon 侧标记（spec §5.3「CLI 离线 / 机器关机」场景：CLI 进程内的
+     * forkError 上报通道不可达，错误态由 daemon 直接落档）。仅 forkFrom 在场的行生效；
      * best-effort，写失败仅 warn（下次激活重试路径会重新标记）。
      */
     private markForkActivationErrorIfPending(sessionId: string, code: string, detail?: string): void {
@@ -807,7 +805,7 @@ export class SyncEngine {
         if (!session?.metadata?.forkFrom) return
         const ok = this.store.sessionFork.markForkActivationError(sessionId, code, detail)
         if (!ok) {
-            hubLogger.warn(`[forkSession] forkError 落档放弃（并发竞争或会话消失）: ${sessionId}`)
+            daemonLogger.warn(`[forkSession] forkError 落档放弃（并发竞争或会话消失）: ${sessionId}`)
         }
     }
 
@@ -826,9 +824,9 @@ export class SyncEngine {
         void this.resumeSession(sessionId, session.namespace)
             // resumeSession 的 RPC 层（spawn/ack 超时）会 throw 而非返回 error result；
             // 唤醒是 fire-and-forget，异常必须就地消化——unhandled rejection 在 Bun 下
-            // 默认终止进程（= 整个 hub 下线），且对休眠会话发消息即可触发
+            // 默认终止进程（= 整个 daemon 下线），且对休眠会话发消息即可触发
             .catch((error) => {
-                hubLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)
+                daemonLogger.warn(`[dormancy] wakeSession spawn failed (session=${sessionId}): ${error instanceof Error ? error.message : String(error)}`)
             })
             .finally(() => {
                 this.wakeInFlight.delete(sessionId)
@@ -860,7 +858,7 @@ export class SyncEngine {
         // 此时 fallback 为新会话而非 resume
         const resumeToken = metadata.nativeSessionId
 
-        // 单机世界：executor（同进程 runner 管线）就绪即可 resume——不再有「挑机器/
+        // 单机世界：executor（同进程 spawn 管线）就绪即可 resume——不再有「挑机器/
         // 匹配 metadata.machineId|host」这一层（machine 概念移除，ticket 201）
         if (!this.isExecutorReady()) {
             // fork 行：executor 未就绪也激活不了——daemon 侧落 forkError 错误态（spec §5.3）
@@ -869,8 +867,6 @@ export class SyncEngine {
         }
 
         const spawnResult = await this.executor.spawnSession(
-            // machineId 形参为 D4=C 路由残留（本地实现忽略），602 形参收窄时删除
-            '',
             metadata.path,
             {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
                 model: session.runtimeState?.model ?? undefined,
@@ -882,9 +878,9 @@ export class SyncEngine {
         )
 
         if (spawnResult.type === 'already-running') {
-            // 唤醒去重（.scratch/wake-dedup）：runner 报告已有活 child 在 resume 该目标，
+            // 唤醒去重（.scratch/wake-dedup）：executor 报告已有活 child 在 resume 该目标，
             // 未 spawn 新进程。旧进程断连中正无限重连（≤5s 间隔），恢复交给其重连 +
-            // web 终端 create 重试 / handleSessionAlive 补投收敛——hub 零等待：不得落到
+            // web 终端 create 重试 / handleSessionAlive 补投收敛——daemon 零等待：不得落到
             // waitForSessionActive，否则断连场景（重连遥遥无期）会干等满 15s
             return { type: 'success', sessionId: access.sessionId }
         }
@@ -924,8 +920,8 @@ export class SyncEngine {
         return false
     }
 
-    async checkPathsExist(machineId: string, paths: string[]): Promise<Record<string, boolean>> {
-        return await this.executor.checkPathsExist(machineId, paths)
+    async checkPathsExist(paths: string[]): Promise<Record<string, boolean>> {
+        return await this.executor.checkPathsExist(paths)
     }
 
     /**
@@ -933,8 +929,8 @@ export class SyncEngine {
      * 文件/路径类 RPC 不再经会话进程——会话进程活不活不影响可达性（休眠特性的
      * 「冷可读」地基）。cwd 取会话工作目录，缺失显式报错，**不回退 session
      * socket**——双执行路径正是本决策要消灭的东西。save-file 亦 machine 化
-     * （dormancy：冷编辑器自动保存不唤醒；写边界由 hub 注入 cwd 锚定，不再依赖
-     * runner 进程自身 cwd）。machineId 入参已随 machine 概念移除退场
+     * （dormancy：冷编辑器自动保存不唤醒；写边界由 daemon 注入 cwd 锚定，不再依赖
+     * daemon 进程自身 cwd）。machineId 入参已随 machine 概念移除退场
      * （remove-machine 302：本地实现忽略，空串占位，602 形参收窄时删）。
      */
     private resolveSessionFileExecution(sessionId: string): { cwd: string } {
@@ -953,35 +949,34 @@ export class SyncEngine {
 
     async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineReadFileMeta('', cwd, path)
+        return await this.executor.hostReadFileMeta(cwd, path)
     }
 
     async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineReadFileRange('', cwd, path, offset, length)
+        return await this.executor.hostReadFileRange(cwd, path, offset, length)
     }
 
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineSaveFile('', cwd, path, content, baseEtag)
+        return await this.executor.hostSaveFile(cwd, path, content, baseEtag)
     }
 
     async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineSearchFiles('', cwd, query, type)
+        return await this.executor.hostSearchFiles(cwd, query, type)
     }
 
     async listSessionDirectory(sessionId: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineListSessionDirectory('', cwd, path, prefix)
+        return await this.executor.hostListSessionDirectory(cwd, path, prefix)
     }
 
-    async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
-        return await this.executor.listMachineDirectory(machineId, path, homeDir)
+    async listHostDirectory(path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
+        return await this.executor.listHostDirectory(path, homeDir)
     }
 
-    async machineUploadFileRange(
-        machineId: string,
+    async hostUploadFileRange(
         cwd: string,
         filename: string,
         path: string | undefined,
@@ -989,87 +984,86 @@ export class SyncEngine {
         content: Uint8Array,
         totalSize?: number,
     ): Promise<RpcWriteFileRangeResponse> {
-        return await this.executor.machineUploadFileRange(machineId, cwd, filename, path, offset, content, totalSize)
+        return await this.executor.hostUploadFileRange(cwd, filename, path, offset, content, totalSize)
     }
 
-    async machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
-        return await this.executor.machineDeleteUpload(machineId, cwd, path)
+    async hostDeleteUpload(cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
+        return await this.executor.hostDeleteUpload(cwd, path)
     }
 
     /** 同 path 原子替换 machine 上的已上传文件 */
-    async machineReplaceUpload(machineId: string, cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
-        return await this.executor.machineReplaceUpload(machineId, cwd, path, content)
+    async hostReplaceUpload(cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
+        return await this.executor.hostReplaceUpload(cwd, path, content)
     }
 
-    /** machine 通道读文件元信息（跨会话存活的静态资源读取，见 MachineHost.machineReadFileMeta） */
-    async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
-        return await this.executor.machineReadFileMeta('', cwd, path)
+    /** machine 通道读文件元信息（跨会话存活的静态资源读取，见 ExecutorHost.hostReadFileMeta） */
+    async hostReadFileMeta(cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
+        return await this.executor.hostReadFileMeta(cwd, path)
     }
 
     // ── 审查重写 v2 六方法（DiffTarget 统一模型，同 resolveSessionFileExecution 寻址）──
     async gitReviewOverview(sessionId: string): Promise<ReviewOverview | { success: false; error: string }> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineGitReviewOverview('', cwd, sessionId)
+        return await this.executor.hostGitReviewOverview(cwd, sessionId)
     }
 
     async gitReviewFiles(sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineGitReviewFiles('', cwd, sessionId, target)
+        return await this.executor.hostGitReviewFiles(cwd, sessionId, target)
     }
 
     async gitReviewDiff(sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineGitReviewDiff('', cwd, sessionId, target, path)
+        return await this.executor.hostGitReviewDiff(cwd, sessionId, target, path)
     }
 
     async gitReviewContents(sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineGitReviewContents('', cwd, sessionId, target, path)
+        return await this.executor.hostGitReviewContents(cwd, sessionId, target, path)
     }
 
     async gitReviewCommits(sessionId: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineGitReviewCommits('', cwd, cursor)
+        return await this.executor.hostGitReviewCommits(cwd, cursor)
     }
 
     async gitReviewInit(sessionId: string): Promise<ReviewActionResult | { success: false; error: string }> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineGitReviewInit('', cwd)
+        return await this.executor.hostGitReviewInit(cwd)
     }
 
     /** machine 通道分片读文件（同上） */
-    async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
-        return await this.executor.machineReadFileRange('', cwd, path, offset, length)
+    async hostReadFileRange(cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
+        return await this.executor.hostReadFileRange(cwd, path, offset, length)
     }
 
-    async machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
-        return await this.executor.machineSearchFiles('', cwd, query, type)
+    async hostSearchFiles(cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
+        return await this.executor.hostSearchFiles(cwd, query, type)
     }
 
-    async machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
-        return await this.executor.machineListSessionDirectory('', cwd, path, prefix)
+    async hostListSessionDirectory(cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
+        return await this.executor.hostListSessionDirectory(cwd, path, prefix)
     }
 
-    async machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {
-        return await this.executor.machineRefreshMetadata(machineId, cwd)
+    async hostRefreshMetadata(cwd: string): Promise<RpcRefreshMetadataResponse> {
+        return await this.executor.hostRefreshMetadata(cwd)
     }
 
-    // web 工具配置读写（纯透传，hub 不存任何 web 工具状态）
-    async getWebToolsConfig(machineId: string): Promise<RpcGetWebToolsConfigResponse> {
-        return await this.executor.getWebToolsConfig(machineId)
+    // web 工具配置读写（纯透传，daemon 不存任何 web 工具状态）
+    async getWebToolsConfig(): Promise<RpcGetWebToolsConfigResponse> {
+        return await this.executor.getWebToolsConfig()
     }
 
-    async setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse> {
-        return await this.executor.setWebToolsConfig(machineId, config)
+    async setWebToolsConfig(config: unknown): Promise<RpcSetWebToolsConfigResponse> {
+        return await this.executor.setWebToolsConfig(config)
     }
 
-    /** Web 工具 provider 验证连接（透传 runner RPC；草稿凭据优先，不落盘） */
+    /** Web 工具 provider 验证连接（透传 executor RPC；草稿凭据优先，不落盘） */
     async verifyWebToolsProvider(
-        machineId: string,
         providerId: string,
         credentials?: Record<string, string>,
     ): Promise<RpcVerifyWebToolsProviderResponse> {
-        return await this.executor.verifyWebToolsProvider(machineId, providerId, credentials)
+        return await this.executor.verifyWebToolsProvider(providerId, credentials)
     }
 
     async uploadFileRange(
@@ -1081,18 +1075,18 @@ export class SyncEngine {
         totalSize?: number,
     ): Promise<RpcWriteFileRangeResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineUploadFileRange('', cwd, filename, path, offset, content, totalSize)
+        return await this.executor.hostUploadFileRange(cwd, filename, path, offset, content, totalSize)
     }
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineDeleteUpload('', cwd, path)
+        return await this.executor.hostDeleteUpload(cwd, path)
     }
 
     /** 同 path 原子替换会话 machine 上的已上传文件（「编辑已有上传」场景） */
     async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
         const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.machineReplaceUpload('', cwd, path, content)
+        return await this.executor.hostReplaceUpload(cwd, path, content)
     }
 
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {

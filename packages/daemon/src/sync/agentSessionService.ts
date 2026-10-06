@@ -44,7 +44,7 @@ import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import type { ReceiveReadiness } from './sessionReceiveReadiness'
 import { readRpcFailure, type RpcFailureKind } from './rpcFailure'
 import { randomUUID } from 'node:crypto'
-import { hubLogger } from '../logger'
+import { daemonLogger } from '../logger'
 
 /** 工作区归属校验结论（与 Web 侧 spawn 路由同一规则的取值；单机语义下机器恒匹配，只判存在性） */
 export type WorkspaceAssignability = 'ok' | 'not_found'
@@ -92,7 +92,7 @@ export interface AgentSessionServiceDeps {
     /** 工作区归属校验：与 Web 侧 spawn 路由共用同一实现，两处规则不能各写一份 */
     checkWorkspaceAssignable: (workspaceId: string, namespace: string) => WorkspaceAssignability
     /**
-     * 起会话进程（既有 spawn 链路：Hub → runner RPC → spawn CLI → 等会话 webhook）。
+     * 起会话进程（既有 spawn 链路：daemon → executor → spawn CLI → 等会话 webhook）。
      *
      * 失败支的 `failure` 是传输故障分类，**由适配器在产生故障的那一层定下**——本服务
      * 按分类值分支，不解析文案（见 rpcFailure 模块头）。类型上是必填的：这条分类
@@ -172,7 +172,7 @@ export class AgentSessionService {
      *
      * 前置闸（工作区归属）不花钱就能给出确定的失败原因，别让它藏在 RPC 报错里。
      *
-     * 成功即代表**会话已经存在**：既有 spawn 链路会等 runner 的会话 webhook
+     * 成功即代表**会话已经存在**：既有 spawn 链路会等 executor 的会话 webhook
      * （最多 15s）才返回，所以拿到 sessionId 时行已落、进程已起。
      *
      * 默认还会再等它**能收消息**（`waitForReady`，见 resolveReadiness）——「进程起了」与
@@ -198,7 +198,7 @@ export class AgentSessionService {
         }
 
         // 会话名字在建完后单独写（D10 的可选 title）。不把它透传进 spawn 链路，是因为那条路
-        // 要新增一个 CLI 启动参数再跨四层传下来（shared → rpcGateway → runner → CLI args）；
+        // 要新增一个 CLI 启动参数再跨四层传下来（shared → rpcGateway → executor → CLI args）；
         // 也不走 Web 手动改名那条路，因为它要往会话进程发 RPC，而此刻新会话的 RPC 还没装好
         // （见 deps.renameSession 的说明）。就写 mobi 侧的名字，一步到位、没有时序可赌。
         if (input.title !== undefined) {
@@ -251,7 +251,7 @@ export class AgentSessionService {
             await this.deps.renameSession(sessionId, title)
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error)
-            hubLogger.warn(
+            daemonLogger.warn(
                 `[AgentSessions] 会话 ${sessionId} 的初始标题 "${title}" 没设上（会话已可用，仅少个称呼）: ${reason}`
             )
         }
@@ -356,7 +356,7 @@ export class AgentSessionService {
             // 投递已经发生，这一步失败只是「Web 上看不到这条」——对调用方而言这仍是成功
             // （ok 的语义是「已进入对方输入队列」，D27）。报失败会让 agent 重发，那才是真的
             // 双份。失败只应出现在 mobi 自身故障（磁盘/DB），留 error 日志归因
-            hubLogger.error(
+            daemonLogger.error(
                 `[AgentSessions] 跨会话消息已投递但落库失败 sid=${targetSessionId} messageId=${message.messageId}: ` +
                 (error instanceof Error ? error.stack ?? error.message : String(error))
             )
@@ -419,13 +419,13 @@ function gateContent(content: unknown): { ok: true; blocks: AgentMessageDelivery
  *
  * 只翻译超时一支：它描述的是一个不确定的结局（进程可能已经起来了），agent 无从据此行动。
  * 上游自己产出的失败（目录建不出来 / 进程起来就退出）本来就是人话，归 `other` 原样
- * 透出，不另造一套映射。（ticket-25 起 spawn 走本地直调，「machine 没跑 runner」的
+ * 透出，不另造一套映射。（ticket-25 起 spawn 走本地直调，「executor 未就绪」的
  * unreachable 分类不再出现，该支文案随之删除。）
  */
 function translateSpawnFailure(failure: RpcFailureKind, message: string): string {
     switch (failure) {
         case 'timeout':
-            // 两种超时共用一句：RPC 30s 未回，与 runner 等会话 webhook 15s 未果。
+            // 两种超时共用一句：RPC 30s 未回，与 executor 等会话 webhook 15s 未果。
             // 两种情况下进程都可能已经起来了——所以说「可能已建」，并给出避免建重的方法
             return (
                 'The machine did not respond in time. The session may or may not have been created — ' +
@@ -470,7 +470,7 @@ function translatePushFailure(failure: RpcFailureKind, message: string, canRecei
  * 中间的会话上次报的是「能收」，死在一轮之间的报的是「不能收」，对 agent 而言**都是没了**。
  *
  * 所以：
- * - **从没上报过** → 可能还没连上（刚建出来的会话就是这样），也可能 hub 刚重启过。
+ * - **从没上报过** → 可能还没连上（刚建出来的会话就是这样），也可能 daemon 刚重启过。
  *   如实说不确定，并把「可能还在启动」摆在前头——编一个「已经退出」会把 agent 吓走，
  *   而它只是还没开门。
  * - **上报过** → 它连上过、也说到过话，现在连 RPC 都送不到，那是连接没了。

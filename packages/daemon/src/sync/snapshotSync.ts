@@ -70,7 +70,7 @@ type CursorEntry = {
 }
 
 /**
- * Hub 内快照同步的状态 module。
+ * daemon 内快照同步的状态 module。
  *
  * Socket adapter 在完成载荷校验和会话访问检查后调用 ingest；SSE adapter 在完成
  * namespace / session 过滤后调用订阅 handle。module 只决定快照内容，不执行网络发送。
@@ -99,7 +99,7 @@ export class SnapshotSync {
     ingest(input: SnapshotIngress): SnapshotIngestResult {
         this.sweepExpiredCache()
         if (input.kind === 'full') {
-            this.stats.record('cli-to-hub', 'full', input)
+            this.stats.record('cli-to-daemon', 'full', input)
             const { sessionId, localId, content, rev } = input
             if (localId !== null && rev !== null && locateSnapshotBlocks(content) !== null) {
                 const existing = this.cache.get(sessionId)?.get(localId)
@@ -118,7 +118,7 @@ export class SnapshotSync {
             }
         }
 
-        this.stats.record('cli-to-hub', 'delta', input.frame)
+        this.stats.record('cli-to-daemon', 'delta', input.frame)
         const { sessionId, frame } = input
         const entries = this.cache.get(sessionId)
         const entry = entries?.get(frame.localId)
@@ -220,7 +220,7 @@ export class SnapshotSync {
         if (publication.type === 'message-snapshot') {
             const localId = publication.message.localId
             const rev = publication.message.snapshotRev
-            // 游标武装要求 hub 侧基线在场：legacy（rev 无值）与 shape-drift（信封不可导航、
+            // 游标武装要求 daemon 侧基线在场：legacy（rev 无值）与 shape-drift（信封不可导航、
             // 缓存未建）全量只透传内容，武装了也永远衔接不上，还钉死订阅等一个不存在的链
             if (wantsDelta && localId !== null && rev !== undefined
                 && this.cache.get(publication.sessionId)?.get(localId) !== undefined) {
@@ -272,7 +272,7 @@ export class SnapshotSync {
         if (entries.size === 0) this.cache.delete(sessionId)
     }
 
-    /** 构造全量基线事件并记 hub-to-web 全量观测（resync 与订阅兜底路径共用）。 */
+    /** 构造全量基线事件并记 server-to-web 全量观测（resync 与订阅兜底路径共用）。 */
     private fullPublication(
         sessionId: string,
         localId: string,
@@ -292,14 +292,14 @@ export class SnapshotSync {
         return publication
     }
 
-    /** hub-to-web 观测：同一 publication 扇出给 N 个订阅时字节只测一次（对齐旧 broadcast 的 precomputedBytes 纪律）。 */
+    /** server-to-web 观测：同一 publication 扇出给 N 个订阅时字节只测一次（对齐旧 broadcast 的 precomputedBytes 纪律）。 */
     private recordToWeb(kind: 'full' | 'delta', publication: object): void {
         let bytes = this.publicationBytes.get(publication)
         if (bytes === undefined) {
             bytes = this.stats.bytesOf(publication)
             this.publicationBytes.set(publication, bytes)
         }
-        this.stats.record('hub-to-web', kind, publication, bytes)
+        this.stats.record('server-to-web', kind, publication, bytes)
     }
 
     /** 取订阅在某会话下的流游标表，缺则建。 */

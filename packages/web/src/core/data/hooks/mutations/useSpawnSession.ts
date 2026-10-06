@@ -62,7 +62,7 @@ export function useSpawnSession(): {
                     input.workspaceId
                 )
 
-                // hub spawnSession 失败时返回 { type:'error', message } 且 HTTP 仍 200，
+                // daemon spawnSession 失败时返回 { type:'error', message } 且 HTTP 仍 200，
                 // axios 对 200 不抛错——必须读取 body.type 判定，否则真实失败原因被吞，
                 // NewSessionPage 仅显示「创建会话失败」兜底文案而看不到具体错误。
                 const data = res.data as SpawnResponse | undefined

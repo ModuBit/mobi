@@ -15,14 +15,14 @@
  */
 
 /**
- * shared logger 底座：hub / runner / cli 三类进程共用。
+ * shared logger 底座：daemon / cli 两类进程共用（历史 -hub/-runner 文件名读取侧归并 daemon）。
  * 走子路径 @mobi/shared/logger（不进 barrel，避免 node:fs/chalk 污染 web bundle，
  * 与 exitLogger/profile 同策略）。
  *
  * 设计：
  * - debug 仅落盘 + ringBuffer（交互模式不打扰 console）
  * - info/warn/error 落盘 + console（前台运行可见；后台 stdio:ignore 时 console 被丢弃但文件已留存）
- * - 行格式：[HH:mm:ss.SSS] [hub] INFO 消息
+ * - 行格式：[HH:mm:ss.SSS] [daemon] INFO 消息
  * - 文件名：{YYYY-MM-DD-HH-MM-SS-pid-PID}-{processType}.log
  */
 
@@ -31,7 +31,26 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } 
 import { join } from 'node:path'
 import type { RingBufferReader } from './exitLogger'
 
-export type LogProcessType = 'hub' | 'runner' | 'cli'
+/**
+ * 日志文件名后缀的进程类型。历史文件名 -hub.log / -runner.log 随单机 daemon
+ * 定稿收敛为 -daemon.log（remove-machine 602）；读取侧对旧后缀做容错归并
+ * （findLatestLog / cleanupOldLogs / `mobi logs daemon`）。
+ */
+export type LogProcessType = 'daemon' | 'cli'
+
+/** 历史 processType 后缀 → 当前类型（daemon 吸收 hub/runner，读侧容错单源） */
+const LEGACY_LOG_TYPE_MAP: Record<string, LogProcessType> = {
+    daemon: 'daemon',
+    hub: 'daemon',
+    runner: 'daemon',
+    cli: 'cli',
+}
+
+/** 按文件名后缀归类日志文件；未知后缀返回 null */
+export function logFileType(filename: string): LogProcessType | null {
+    const match = /-([a-z]+)\.log$/.exec(filename)
+    return match ? LEGACY_LOG_TYPE_MAP[match[1]] ?? null : null
+}
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export interface MobiLogger extends RingBufferReader {
@@ -239,13 +258,13 @@ function ensureDir(dir: string): void {
     }
 }
 
-/** 查找指定 processType 的最新日志文件（按 mtime 降序），无则 null */
+/** 查找指定 processType 的最新日志文件（按 mtime 降序），无则 null。
+ *  历史文件名（-hub.log / -runner.log）归入 daemon 桶参与比较 */
 export function findLatestLog(logsDir: string, processType: LogProcessType): string | null {
     if (!existsSync(logsDir)) return null
-    const suffix = `-${processType}.log`
     let best: { path: string; mtime: number } | null = null
     for (const file of readdirSync(logsDir)) {
-        if (!file.endsWith(suffix)) continue
+        if (logFileType(file) !== processType) continue
         const fullPath = join(logsDir, file)
         const mtime = statSync(fullPath).mtimeMs
         if (!best || mtime > best.mtime) best = { path: fullPath, mtime }
@@ -268,8 +287,7 @@ export function cleanupOldLogs(
     let removed = 0
 
     const byType: Record<LogProcessType, { path: string; mtime: number }[]> = {
-        hub: [],
-        runner: [],
+        daemon: [],
         cli: [],
     }
     for (const file of readdirSync(logsDir)) {
@@ -282,7 +300,8 @@ export function cleanupOldLogs(
             removed++
             continue
         }
-        const type = (['hub', 'runner', 'cli'] as LogProcessType[]).find(t => file.endsWith(`-${t}.log`))
+        // 历史后缀（daemon/runner）归入 daemon 桶一起参与保留数裁剪
+        const type = logFileType(file)
         if (type) byType[type].push({ path: fullPath, mtime: st.mtimeMs })
     }
     // 单类超出保留数，删最旧的

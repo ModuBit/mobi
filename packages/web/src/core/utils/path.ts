@@ -59,10 +59,10 @@ export function normalizeDirectoryPath(path: string): string {
 
 /**
  * 判断路径是否位于 homeDir 内（homeDir 本身也算在内）。
- * 浏览器端纯字符串判断（无 node path 可用），与 hub 侧 validateHomeDirPath 的
+ * 浏览器端纯字符串判断（无 node path 可用），与 daemon 侧 validateHomeDirPath 的
  * 权威判定保持同向：斜杠归一（win32 反斜杠路径）+ 大小写不敏感——宁可放行由
- * hub 400 兜底，不可误杀（误杀会锁死 Windows 机器上的整个表单）。`..` 等形态
- * 不折叠，交 hub resolve 后的权威判定。
+ * daemon 400 兜底，不可误杀（误杀会锁死 Windows 机器上的整个表单）。`..` 等形态
+ * 不折叠，交 daemon resolve 后的权威判定。
  */
 export function isPathWithinHomeDir(path: string, homeDir: string): boolean {
     if (!path || !homeDir) return false

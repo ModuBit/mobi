@@ -18,12 +18,11 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import type { Server } from 'socket.io'
 import { SyncEngine } from '../../../src/sync/syncEngine'
-import { LocalMachineHost } from '../../../src/executor/localExecutor'
+import { LocalExecutor } from '../../../src/executor/localExecutor'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
 
-const MACHINE_ID = 'test-machine'
 const NAMESPACE = 'default'
 
 interface EngineHandle {
@@ -32,8 +31,8 @@ interface EngineHandle {
     cleanup: () => void
     /** 手动标记会话为 active（模拟 /session-started webhook） */
     markActive: (sessionId: string) => void
-    /** 获取底层 executor（原 machineHost），用于恢复原始方法 */
-    getMachineHost: () => any
+    /** 获取底层 executor（原 executorHost），用于恢复原始方法 */
+    getExecutorHost: () => any
 }
 
 /**
@@ -48,7 +47,6 @@ function createSessionWithPath(h: EngineHandle, path: string, nativeId?: string)
         {
             path,
             host: 'test-host',                             // MetadataSchema 必填
-            machineId: MACHINE_ID,                         // 用于匹配在线 machine
             nativeSessionId: nativeId                      // 用于 resume token
         },
         {},                                                // agentState
@@ -58,7 +56,7 @@ function createSessionWithPath(h: EngineHandle, path: string, nativeId?: string)
     )
 }
 
-/** 构造测试 engine，注册一台在线 machine（executorReady 缺省就绪；executorNotReady 用例外） */
+/** 构造测试 engine（executorReady 缺省就绪；executorNotReady 用例外） */
 function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
     const store = new Store(':memory:')
 
@@ -77,9 +75,9 @@ function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
         broadcast: () => {},
     } as unknown as SSEManager
 
-    // LocalMachineHost 只带 bridge 槽（socket 兜底已删，ticket-20）——用例真正穿过
-    // LocalMachineHost 的直调路径
-    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalMachineHost())
+    // LocalExecutor 只带 bridge 槽（socket 兜底已删，ticket-20）——用例真正穿过
+    // LocalExecutor 的直调路径
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, new LocalExecutor())
 
     // executor 就绪（ticket 201 起 resume/spawn 判据；机器列表层已删）
     if (opts.executorReady !== false) {
@@ -102,7 +100,7 @@ function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
                 running: false,
             })
         },
-        getMachineHost: () => (engine as any).executor,
+        getExecutorHost: () => (engine as any).executor,
     }
 }
 
@@ -112,25 +110,25 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getMachineHost().spawnSession
+        originalSpawn = h.getExecutorHost().spawnSession
     })
 
     afterEach(() => {
         // 恢复原始方法
         if (originalSpawn) {
-            h.getMachineHost().spawnSession = originalSpawn
+            h.getExecutorHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
 
     test('新会话 spawn → RPC 成功返回 sessionId', async () => {
         // Mock executor.spawnSession 返回成功
-        h.getMachineHost().spawnSession = mock(async () => ({
+        h.getExecutorHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: 'session-new-1',
         }))
 
-        const result = await h.engine.spawnSession(MACHINE_ID, '/tmp/new', {})
+        const result = await h.engine.spawnSession('/tmp/new', {})
 
         expect(result.type).toBe('success')
         if (result.type !== 'success') return
@@ -140,11 +138,11 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
 
     test('新会话收到 unexpected already-running → error (S09)', async () => {
         // Mock executor 返回 already-running（新会话不应该出现）
-        h.getMachineHost().spawnSession = mock(async () => ({
+        h.getExecutorHost().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
 
-        const result = await h.engine.spawnSession(MACHINE_ID, '/tmp/unexpected', {})
+        const result = await h.engine.spawnSession('/tmp/unexpected', {})
 
         expect(result.type).toBe('error')
         if (result.type === 'error') {
@@ -159,12 +157,12 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getMachineHost().spawnSession
+        originalSpawn = h.getExecutorHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getMachineHost().spawnSession = originalSpawn
+            h.getExecutorHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -176,7 +174,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
 
         // Mock spawnSession（不应该被调用）
         const spawnMock = mock(async () => ({ type: 'success' as const, sessionId: 'should-not-call' }))
-        h.getMachineHost().spawnSession = spawnMock
+        h.getExecutorHost().spawnSession = spawnMock
 
         const result = await h.engine.resumeSession(existing.id, NAMESPACE)
 
@@ -194,7 +192,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
         const existing = createSessionWithPath(h, '/tmp/inactive')
 
         // Mock spawnSession 返回成功（sessionId 相同）
-        h.getMachineHost().spawnSession = mock(async () => ({
+        h.getExecutorHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: existing.id,
         }))
@@ -202,7 +200,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
         // 启动 resumeSession，它会调用 waitForSessionActive 轮询
         const resumePromise = h.engine.resumeSession(existing.id, NAMESPACE)
 
-        // 异步标记会话为 active，模拟 runner 发送 /session-started
+        // 异步标记会话为 active，模拟 executor 发送 /session-started
         setTimeout(() => h.markActive(existing.id), 100)
 
         const result = await resumePromise
@@ -220,22 +218,22 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getMachineHost().spawnSession
+        originalSpawn = h.getExecutorHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getMachineHost().spawnSession = originalSpawn
+            h.getExecutorHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
 
-    test('runner 返回 already-running → hub 零等待 success', async () => {
+    test('executor 返回 already-running → server 零等待 success', async () => {
         // 创建一个未 active 的会话（用于 resume），必须有完整的 metadata.path
         const existing = createSessionWithPath(h, '/tmp/already')
 
         // Mock executor 返回 already-running
-        h.getMachineHost().spawnSession = mock(async () => ({
+        h.getExecutorHost().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
 
@@ -255,12 +253,12 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getMachineHost().spawnSession
+        originalSpawn = h.getExecutorHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getMachineHost().spawnSession = originalSpawn
+            h.getExecutorHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -269,7 +267,7 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
         const existing = createSessionWithPath(h, '/tmp/timeout')
 
         // Mock spawnSession 返回成功，但不标记为 active
-        h.getMachineHost().spawnSession = mock(async () => ({
+        h.getExecutorHost().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: existing.id,
         }))
@@ -295,21 +293,21 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getMachineHost().spawnSession
+        originalSpawn = h.getExecutorHost().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getMachineHost().spawnSession = originalSpawn
+            h.getExecutorHost().spawnSession = originalSpawn
         }
         h.cleanup()
     })
 
-    test('runner 返回 error → 原样传递', async () => {
+    test('executor 返回 error → 原样传递', async () => {
         const existing = createSessionWithPath(h, '/tmp/error')
 
         // Mock executor 返回错误
-        h.getMachineHost().spawnSession = mock(async () => ({
+        h.getExecutorHost().spawnSession = mock(async () => ({
             type: 'error' as const,
             message: 'Test spawn failed',
         }))

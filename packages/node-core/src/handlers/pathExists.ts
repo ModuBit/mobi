@@ -16,7 +16,7 @@
 
 /**
  * path-exists 实现（ticket-17 自 apiMachine 注册闭包抽出，本地化直调目标）。
- * 注册闭包与 LocalMachineHost 共用，行为单源。
+ * 注册闭包与 LocalExecutor 共用，行为单源。
  */
 
 import { stat } from 'node:fs/promises'

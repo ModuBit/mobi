@@ -16,18 +16,18 @@
 
 /**
  * 机器身份元数据构造：machine 注册时上报的静态身份。
- * daemon（runner）与 session（终端游离会话）都要注册 machine，
+ * daemon 与 session（终端游离会话）的宿主元数据，
  * 构造逻辑是宿主能力，归 node-core（锚 cli/package.json 取版本）。
  */
 
 import os from 'node:os'
 
-import type { MachineMetadata } from '@mobi/shared/hostProtocol'
+import type { HostMetadata } from '@mobi/shared/hostProtocol'
 import { configuration } from '@mobi/node-core/configuration'
 import { runtimePath } from '@mobi/node-core/projectPath'
 import packageJson from '../../cli/package.json'
 
-export function buildMachineMetadata(): MachineMetadata {
+export function buildHostMetadata(): HostMetadata {
     return {
         host: process.env.MOBI_HOSTNAME || os.hostname(),
         platform: os.platform(),

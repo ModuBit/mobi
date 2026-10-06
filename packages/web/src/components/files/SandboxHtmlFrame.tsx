@@ -23,7 +23,7 @@
  * - URL 经 buildServeFileUrl（relPath 按段编码，相对路径基准交给浏览器原生解析）
  * - sandbox allow-same-origin：iframe 与 mobi 同源，引用的 CSS/JS 子资源才不被 Chrome
  *   ORB 拦截；获得 mobi origin 能力后由服务端 PREVIEW_CSP 收窄到「只加载资源、不联网」
- *   （ADR 0007，安全规则在 hub 单源，本组件不复刻）
+ *   （ADR 0007，安全规则在 daemon 单源，本组件不复刻）
  * - key 绑 meta 查询的 dataUpdatedAt：每次 refetch 都重建 iframe（不论 etag 是否变化）。
  *   用 dataUpdatedAt 而非 etag，是因为改引用的 CSS/JS 不会变 HTML 自身的 etag，但仍需
  *   重建才能拉到新引用资源；serve-file 已设 no-cache，重建时连带引用资源回源验证

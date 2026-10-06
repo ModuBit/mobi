@@ -71,7 +71,7 @@ const Hint = styled.span<{ $token: Token }>`
 /**
  * Web 工具子页：顶部用途路由卡（web_search/web_fetch 即时保存）+ 下方 provider 卡列表
  * （开关外置、点击卡身展开内联凭据编辑器）。
- * 配置真相源在宿主的 `~/.mobi/settings.json`（daemon 纯透传 runner RPC）。
+ * 配置真相源在宿主的 `~/.mobi/settings.json`（daemon 纯透传 executor RPC）。
  */
 export function WebToolsSection() {
     const { token } = useToken()
@@ -114,7 +114,7 @@ export function WebToolsSection() {
      * 即时保存（路由/开关/凭据）。
      * 路由字段：undefined = 未提及回填现值；null = 显式清除（allowClear）——providers/路由整体替换语义下
      * 构造 payload 时必须区分这两者，否则清除意图会被回填吞掉。
-     * 失败提示统一在此收口并透传 runner 原因（编辑器静默依赖本约定）。
+     * 失败提示统一在此收口并透传 daemon 原因（编辑器静默依赖本约定）。
      */
     const saveBase = async (next: {
         searchProviderId?: WebToolProviderId | null

@@ -15,20 +15,19 @@
  */
 
 /**
- * Runner 生命周期核心（ticket-16 拆分；ticket-22 起无独立进程入口）。
+ * 会话执行器（executor）生命周期核心（ticket-16 拆分；无独立进程入口）。
  *
- * `startRunnerCore` 只负责「起一个 runner」：锁、control server、定时自检，返回
- * `RunnerHandle`。machine 通道已删（ticket-20）：本机 machine 行由 hub 侧自注册，
- * runner 侧运行时事实（httpPort / spawn 结果 / 关停状态）经注入的
- * {@link RunnerCoreDeps.updateExecutorState} 直写。**不含任何进程级职责**——
- * exit logger、信号处理、崩溃检测由调用方承担（daemonEntry 同进程编排）。
+ * `startExecutor` 只负责「起一个执行器」：锁、control server、定时自检，返回
+ * `ExecutorHandle`。运行时事实（controlPort / spawn 结果 / 关停状态）经注入的
+ * {@link ExecutorCoreDeps.updateExecutorState} 直写同进程 server。**不含任何
+ * 进程级职责**——exit logger、信号处理、崩溃检测由调用方承担（daemonEntry 同进程编排）。
  */
 
 import fs from 'fs/promises';
 
 import { TrackedSession } from './types';
 import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
-import { RunnerState, Metadata } from '@mobi/node-core/api/types';
+import { ExecutorState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
@@ -36,71 +35,70 @@ import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistenc
 import { getConfiguration, resolveHostPort } from '../configuration';
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
-import { startRunnerControlServer } from './controlServer';
+import { startExecutorControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
 
-/** 关停来源（三类，hub 侧 runnerState.shutdownSource 透传） */
-export type RunnerShutdownSource = 'mobi-cli' | 'os-signal' | 'exception';
+/** 关停来源（三类，server 侧 executorState.shutdownSource 透传） */
+export type ExecutorShutdownSource = 'mobi-cli' | 'os-signal' | 'exception';
 
 /**
- * hub → runner 核心的会话执行桥（ticket-18）：spawn/stop 直调 + 追踪表补登。
+ * server → executor 核心的会话执行桥（ticket-18）：spawn/stop 直调 + 追踪表补登。
  * spawn 契约与 controlServer /spawn-session 曾完全同源（同一份 spawnSession
  * 闭包）；该端点已随 machine 通道删除（ticket-20），spawn 唯一入口是本桥。
  */
-export interface RunnerSessionBridge {
+export interface ExecutorBridge {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
     stopSession: (sessionId: string) => boolean
     /** 追踪补登/刷新（Q8）：决策单源见 sessionTracking.applySessionTrackingSignal */
     registerSessionTracking: (signal: SessionTrackingSignal) => void
 }
 
-/** runner 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
-export interface RunnerHandle {
+/** executor 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
+export interface ExecutorHandle {
     /** control server 端口（daemon.state.json 的 controlPort 记录用） */
     httpPort: number
     /**
-     * 会话执行桥（ticket-18）：hub 侧 LocalMachineHost 直调本 runner 核心的
-     * spawn/stop/追踪表，绕过 socket loopback。daemon 编排在 runner 就绪后
-     * 经 HubHandle.setRunnerBridge 注入。
+     * 会话执行桥（ticket-18）：server 侧 LocalExecutor 直调本核心的
+     * spawn/stop/追踪表，绕过 socket loopback。daemon 编排在 executor 就绪后
+     * 经 ServerHandle.setExecutorBridge 注入。
      */
-    bridge: RunnerSessionBridge
+    bridge: ExecutorBridge
     /**
      * 优雅关停（幂等）。清理顺序沿用原 cleanupAndShutdown：停心跳 → 上报
      * shutting-down → 停 control server → 清 state → 释放锁。
-     * **不杀 detached 会话子进程**（现状语义：runner 停止时会话存活）。
+     * **不杀 detached 会话子进程**（现状语义：executor 停止时会话存活）。
      */
-    stop(source: RunnerShutdownSource, errorMessage?: string): Promise<void>
+    stop(source: ExecutorShutdownSource, errorMessage?: string): Promise<void>
     /**
      * 内部关停请求（control server 的 shutdown 指令 / 心跳自杀检查）完成时
      * resolve——薄壳据此退出进程。外部 stop() 触发的关停同样兑现此 promise。
      */
-    exited: Promise<{ source: RunnerShutdownSource; errorMessage?: string }>
+    exited: Promise<{ source: ExecutorShutdownSource; errorMessage?: string }>
 }
 
 /**
- * daemon 编排注入的 hub 侧能力（ticket-20）：machine 通道删除后，runner 运行时
- * 事实直写 hub（同进程）。缺省（standalone `runner start-sync`）时静默跳过——
- * 该形态本就不连 hub。
+ * daemon 编排注入的 server 侧能力（ticket-20）：machine 通道删除后，executor 运行时
+ * 事实直写同进程 server。
  */
-export interface RunnerCoreDeps {
+export interface ExecutorCoreDeps {
     /** 本机 runnerState 直写（spawn 结果上报 / httpPort / 关停状态） */
-    updateExecutorState: (handler: (state: RunnerState | null) => RunnerState) => void
+    updateExecutorState: (handler: (state: ExecutorState | null) => ExecutorState) => void
 }
 
-/** 锁已被占用：另一 runner 实例在跑（薄壳据此静默退出，非错误） */
-export class RunnerLockHeldError extends Error {
+/** 锁已被占用：另一 executor 实例在跑（daemonEntry 据此停服退出，非错误） */
+export class ExecutorLockHeldError extends Error {
     constructor() {
-        super('Runner lock file already held, another runner is running');
-        this.name = 'RunnerLockHeldError';
+        super('Executor lock file already held, another executor is running');
+        this.name = 'ExecutorLockHeldError';
     }
 }
 
 /**
- * 会话子进程的宿主端口求值：daemon 进程内（startRunnerCore 经 daemonEntry 编排）用
- * daemon 配置（hub 已初始化，含 listenPort 派生）；standalone runner（退化形态，配置
- * 未初始化）回退 env/默认派生——与 node-core CLI 侧默认 12222 对齐
+ * 会话子进程的宿主端口求值：daemon 进程内（startExecutor 经 daemonEntry 编排）用
+ * daemon 配置（server 已初始化，含 listenPort 派生）；直跑形态（配置未初始化）回退
+ * env/默认派生——与 node-core CLI 侧默认 12222 对齐
  */
 function resolveSpawnHostPort(): number {
     try {
@@ -110,11 +108,11 @@ function resolveSpawnHostPort(): number {
     }
 }
 
-export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHandle> {
-  // Acquire exclusive lock (proves runner is running)
+export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHandle> {
+  // Acquire exclusive lock (proves the executor is running)
   const daemonLockHandle: FileHandle | null = await acquireDaemonLock(5, 200);
   if (!daemonLockHandle) {
-    throw new RunnerLockHeldError();
+    throw new ExecutorLockHeldError();
   }
 
   // Setup state - key by PID
@@ -142,25 +140,25 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
 
   // Handle webhook from MOBI session reporting itself
   const onMobiSessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
-    logger.debugLargeJson(`[RUNNER RUN] Session reported`, sessionMetadata);
+    logger.debugLargeJson(`[EXECUTOR] Session reported`, sessionMetadata);
 
     const pid = sessionMetadata.hostPid;
     if (!pid) {
-      logger.debug(`[RUNNER RUN] Session webhook missing hostPid for sessionId: ${sessionId}`);
+      logger.debug(`[EXECUTOR] Session webhook missing hostPid for sessionId: ${sessionId}`);
       return;
     }
 
-    logger.debug(`[RUNNER RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`);
-    logger.debug(`[RUNNER RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
+    logger.debug(`[EXECUTOR] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`);
+    logger.debug(`[EXECUTOR] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
 
-    // Check if we already have this PID (runner-spawned)
+    // Check if we already have this PID (executor-spawned)
     const existingSession = pidToTrackedSession.get(pid);
 
-    if (existingSession && existingSession.startedBy === 'runner') {
-      // Update runner-spawned session with reported data
+    if (existingSession && existingSession.startedBy === 'daemon') {
+      // Update executor-spawned session with reported data
       existingSession.MobiSessionId = sessionId;
       existingSession.MobiSessionMetadataFromLocalWebhook = sessionMetadata;
-      logger.debug(`[RUNNER RUN] Updated runner-spawned session ${sessionId} with metadata`);
+      logger.debug(`[EXECUTOR] Updated executor-spawned session ${sessionId} with metadata`);
 
       // Resolve any awaiter for this PID
       const awaiter = pidToAwaiter.get(pid);
@@ -168,7 +166,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         pidToAwaiter.delete(pid);
         pidToErrorAwaiter.delete(pid);
         awaiter(existingSession);
-        logger.debug(`[RUNNER RUN] Resolved session awaiter for PID ${pid}`);
+        logger.debug(`[EXECUTOR] Resolved session awaiter for PID ${pid}`);
       }
     } else if (!existingSession) {
       // New session started externally
@@ -179,21 +177,21 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         pid
       };
       pidToTrackedSession.set(pid, trackedSession);
-      logger.debug(`[RUNNER RUN] Registered externally-started session ${sessionId}`);
+      logger.debug(`[EXECUTOR] Registered externally-started session ${sessionId}`);
     }
   };
 
   // Spawn a new session (sessionId reserved for future --resume functionality)
   const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-    logger.debugLargeJson('[RUNNER RUN] Spawning session', options);
+    logger.debugLargeJson('[EXECUTOR] Spawning session', options);
 
     // 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时
     // 不再 spawn 第二个进程。「表项存在 = 进程存活」由 exit 既有清理保证；查重
-    // 决策与结果构造单源见 spawnDedup。hub 侧对 already-running 零等待幂等消费（票 02）
+    // 决策与结果构造单源见 spawnDedup。server 侧对 already-running 零等待幂等消费（票 02）
     const dedupGuard = createResumeDedupGuard(pidToTrackedSession);
     const dedupHit = dedupGuard(options.resumeSessionId);
     if (dedupHit) {
-      logger.debug('[RUNNER RUN] Spawn deduped: live child already resuming this session');
+      logger.debug('[EXECUTOR] Spawn deduped: live child already resuming this session');
       return dedupHit;
     }
 
@@ -209,13 +207,13 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     if (sessionType === 'simple') {
       try {
         await fs.access(directory);
-        logger.debug(`[RUNNER RUN] Directory exists: ${directory}`);
+        logger.debug(`[EXECUTOR] Directory exists: ${directory}`);
       } catch (_error) {
-        logger.debug(`[RUNNER RUN] Directory doesn't exist, creating: ${directory}`);
+        logger.debug(`[EXECUTOR] Directory doesn't exist, creating: ${directory}`);
 
         // Check if directory creation is approved
         if (!approvedNewDirectoryCreation) {
-          logger.debug(`[RUNNER RUN] Directory creation not approved for: ${directory}`);
+          logger.debug(`[EXECUTOR] Directory creation not approved for: ${directory}`);
           return {
             type: 'requestToApproveDirectoryCreation',
             directory
@@ -224,7 +222,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
 
         try {
           await fs.mkdir(directory, { recursive: true });
-          logger.debug(`[RUNNER RUN] Successfully created directory: ${directory}`);
+          logger.debug(`[EXECUTOR] Successfully created directory: ${directory}`);
           directoryCreated = true;
         } catch (mkdirError: unknown) {
           const errno = mkdirError as NodeJS.ErrnoException;
@@ -244,7 +242,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
             errorMessage += `System error: ${errStr}. Please verify the path is valid and you have the necessary permissions.`;
           }
 
-          logger.debug(`[RUNNER RUN] Directory creation failed: ${errorMessage}`);
+          logger.debug(`[EXECUTOR] Directory creation failed: ${errorMessage}`);
           return {
             type: 'error',
             errorMessage
@@ -254,9 +252,9 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     } else {
       try {
         await fs.access(directory);
-        logger.debug(`[RUNNER RUN] Worktree base directory exists: ${directory}`);
+        logger.debug(`[EXECUTOR] Worktree base directory exists: ${directory}`);
       } catch (_error) {
-        logger.debug(`[RUNNER RUN] Worktree base directory missing: ${directory}`);
+        logger.debug(`[EXECUTOR] Worktree base directory missing: ${directory}`);
         return {
           type: 'error',
           errorMessage: `Worktree sessions require an existing Git repository. Directory not found: ${directory}`
@@ -271,7 +269,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         nameHint: worktreeName
       });
       if (!worktreeResult.ok) {
-        logger.debug(`[RUNNER RUN] Worktree creation failed: ${worktreeResult.error}`);
+        logger.debug(`[EXECUTOR] Worktree creation failed: ${worktreeResult.error}`);
         return {
           type: 'error',
           errorMessage: worktreeResult.error
@@ -279,7 +277,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       }
       worktreeInfo = worktreeResult.info;
       spawnDirectory = worktreeInfo.worktreePath;
-      logger.debug(`[RUNNER RUN] Created worktree ${worktreeInfo.worktreePath} (branch ${worktreeInfo.branch})`);
+      logger.debug(`[EXECUTOR] Created worktree ${worktreeInfo.worktreePath} (branch ${worktreeInfo.branch})`);
     }
 
     const cleanupWorktree = async () => {
@@ -291,7 +289,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         worktreePath: worktreeInfo.worktreePath
       });
       if (!result.ok) {
-        logger.debug(`[RUNNER RUN] Failed to remove worktree ${worktreeInfo.worktreePath}: ${result.error}`);
+        logger.debug(`[EXECUTOR] Failed to remove worktree ${worktreeInfo.worktreePath}: ${result.error}`);
       }
     };
     const maybeCleanupWorktree = async (reason: string) => {
@@ -300,7 +298,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       }
       const pid = MobiProcess?.pid;
       if (pid && isProcessAlive(pid)) {
-        logger.debug(`[RUNNER RUN] Skipping worktree cleanup after ${reason}; child still running`, {
+        logger.debug(`[EXECUTOR] Skipping worktree cleanup after ${reason}; child still running`, {
           pid,
           worktreePath: worktreeInfo.worktreePath
         });
@@ -350,12 +348,12 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         if (!trimmed) {
           return;
         }
-        logger.debug('[RUNNER RUN] Child stderr tail', trimmed);
+        logger.debug('[EXECUTOR] Child stderr tail', trimmed);
       };
 
       MobiProcess = spawnMobiCli(args, {
         cwd: spawnDirectory,
-        detached: true,  // Sessions stay alive when runner stops
+        detached: true,  // Sessions stay alive when the executor stops
         stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
         env: {
           ...process.env,
@@ -384,7 +382,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
           details.push(formatSpawnError(spawnErrorBeforePidCheck));
         }
         const errorMessage = `Failed to spawn MOBI process - no PID returned (${details.join('; ')})`;
-        logger.debug('[RUNNER RUN] Failed to spawn process - no PID returned', spawnErrorBeforePidCheck ?? null);
+        logger.debug('[EXECUTOR] Failed to spawn process - no PID returned', spawnErrorBeforePidCheck ?? null);
         reportSpawnOutcomeToHub?.({
           type: 'error',
           details: {
@@ -400,7 +398,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       MobiProcess.removeListener('error', captureSpawnErrorBeforePidCheck);
 
       const pid = MobiProcess.pid;
-      logger.debug(`[RUNNER RUN] Spawned process with PID ${pid}`);
+      logger.debug(`[EXECUTOR] Spawned process with PID ${pid}`);
       let observedExitCode: number | null = null;
       let observedExitSignal: NodeJS.Signals | null = null;
       const buildWebhookFailureMessage = (reason: 'timeout' | 'exit-before-webhook' | 'process-error-before-webhook'): string => {
@@ -432,7 +430,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       };
 
       const trackedSession: TrackedSession = {
-        startedBy: 'runner',
+        startedBy: 'daemon',
         pid,
         childProcess: MobiProcess,
         resumeSessionId: options.resumeSessionId,
@@ -445,7 +443,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       MobiProcess.on('exit', (code, signal) => {
         observedExitCode = typeof code === 'number' ? code : null;
         observedExitSignal = signal ?? null;
-        logger.debug(`[RUNNER RUN] Child PID ${pid} exited with code ${code}, signal ${signal}`);
+        logger.debug(`[EXECUTOR] Child PID ${pid} exited with code ${code}, signal ${signal}`);
         if (code !== 0 || signal) {
           logStderrTail();
         }
@@ -459,7 +457,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       });
 
       MobiProcess.on('error', (error) => {
-        logger.debug('[RUNNER RUN] Child process error:', error);
+        logger.debug('[EXECUTOR] Child process error:', error);
         const errorAwaiter = pidToErrorAwaiter.get(pid);
         if (errorAwaiter) {
           pidToErrorAwaiter.delete(pid);
@@ -470,14 +468,14 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       });
 
       // Wait for webhook to populate session with MobiSessionId
-      logger.debug(`[RUNNER RUN] Waiting for session webhook for PID ${pid}`);
+      logger.debug(`[EXECUTOR] Waiting for session webhook for PID ${pid}`);
 
       const spawnResult = await new Promise<SpawnSessionResult>((resolve) => {
         // Set timeout for webhook
         const timeout = setTimeout(() => {
           pidToAwaiter.delete(pid);
           pidToErrorAwaiter.delete(pid);
-          logger.debug(`[RUNNER RUN] Session webhook timeout for PID ${pid}`);
+          logger.debug(`[EXECUTOR] Session webhook timeout for PID ${pid}`);
           logStderrTail();
           resolve({
             type: 'error',
@@ -491,7 +489,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
         pidToAwaiter.set(pid, (completedSession) => {
           clearTimeout(timeout);
           pidToErrorAwaiter.delete(pid);
-          logger.debug(`[RUNNER RUN] Session ${completedSession.MobiSessionId} fully spawned with webhook`);
+          logger.debug(`[EXECUTOR] Session ${completedSession.MobiSessionId} fully spawned with webhook`);
           resolve({
             type: 'success',
             sessionId: completedSession.MobiSessionId!
@@ -522,7 +520,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
       return spawnResult;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.debug('[RUNNER RUN] Failed to spawn session:', error);
+      logger.debug('[EXECUTOR] Failed to spawn session:', error);
       await maybeCleanupWorktree('exception');
       reportSpawnOutcomeToHub?.({
         type: 'error',
@@ -539,43 +537,43 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
 
   // Stop a session by sessionId or PID fallback
   const stopSession = (sessionId: string): boolean => {
-    logger.debug(`[RUNNER RUN] Attempting to stop session ${sessionId}`);
+    logger.debug(`[EXECUTOR] Attempting to stop session ${sessionId}`);
 
     // Try to find by sessionId first
     for (const [pid, session] of pidToTrackedSession.entries()) {
       if (session.MobiSessionId === sessionId ||
         (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
-        if (session.startedBy === 'runner' && session.childProcess) {
+        if (session.startedBy === 'daemon' && session.childProcess) {
           try {
             void killProcessByChildProcess(session.childProcess);
-            logger.debug(`[RUNNER RUN] Requested termination for runner-spawned session ${sessionId}`);
+            logger.debug(`[EXECUTOR] Requested termination for executor-spawned session ${sessionId}`);
           } catch (error) {
-            logger.debug(`[RUNNER RUN] Failed to kill session ${sessionId}:`, error);
+            logger.debug(`[EXECUTOR] Failed to kill session ${sessionId}:`, error);
           }
         } else {
           // For externally started sessions, try to kill by PID
           try {
             void killProcess(pid);
-            logger.debug(`[RUNNER RUN] Requested termination for external session PID ${pid}`);
+            logger.debug(`[EXECUTOR] Requested termination for external session PID ${pid}`);
           } catch (error) {
-            logger.debug(`[RUNNER RUN] Failed to kill external session PID ${pid}`, error);
+            logger.debug(`[EXECUTOR] Failed to kill external session PID ${pid}`, error);
           }
         }
 
         pidToTrackedSession.delete(pid);
-        logger.debug(`[RUNNER RUN] Removed session ${sessionId} from tracking`);
+        logger.debug(`[EXECUTOR] Removed session ${sessionId} from tracking`);
         return true;
       }
     }
 
-    logger.debug(`[RUNNER RUN] Session ${sessionId} not found`);
+    logger.debug(`[EXECUTOR] Session ${sessionId} not found`);
     return false;
   };
 
   // Handle child process exit
   const onChildExited = (pid: number) => {
-    logger.debug(`[RUNNER RUN] Removing exited process PID ${pid} from tracking`);
+    logger.debug(`[EXECUTOR] Removing exited process PID ${pid} from tracking`);
     pidToTrackedSession.delete(pid);
     pidToAwaiter.delete(pid);
     pidToErrorAwaiter.delete(pid);
@@ -584,12 +582,12 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
   // 关停请求（一次性）：内部触发（control server 指令 / 心跳自杀）与外部
   // handle.stop() 汇聚到同一份清理，exited promise 兑现后薄壳退出进程
   let shutdownRequest: Promise<unknown> | null = null;
-  let resolveExited: ((value: { source: RunnerShutdownSource; errorMessage?: string }) => void) | null = null;
-  const exited = new Promise<{ source: RunnerShutdownSource; errorMessage?: string }>((resolve) => {
+  let resolveExited: ((value: { source: ExecutorShutdownSource; errorMessage?: string }) => void) | null = null;
+  const exited = new Promise<{ source: ExecutorShutdownSource; errorMessage?: string }>((resolve) => {
     resolveExited = resolve;
   });
-  const requestShutdown = (source: RunnerShutdownSource, errorMessage?: string) => {
-    logger.debug(`[RUNNER RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
+  const requestShutdown = (source: ExecutorShutdownSource, errorMessage?: string) => {
+    logger.debug(`[EXECUTOR] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
     if (resolveExited) {
       resolveExited({ source, errorMessage });
       resolveExited = null;
@@ -597,27 +595,27 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
   };
 
   // Start control server
-  const { port: controlPort, stop: stopControlServer } = await startRunnerControlServer({
+  const { port: controlPort, stop: stopControlServer } = await startExecutorControlServer({
     getChildren: getCurrentChildren,
     stopSession,
     requestShutdown: () => requestShutdown('mobi-cli'),
     onMobiSessionWebhook
   });
 
-  // 本机 machine 行由 hub 侧自注册（ticket-20：machine 通道删除，daemon 即本机）；
-  // runner 这里只补 control server 端口等运行时事实（httpPort 在 hub 注册时未知）
-  deps?.updateExecutorState((state: RunnerState | null) => ({
+  // machine 通道删除后（ticket-20）executor 与 server 同进程；
+  // 这里只补 control server 端口等运行时事实（server 装配时未知）
+  deps?.updateExecutorState((state: ExecutorState | null) => ({
     ...(state ?? { status: 'running' }),
     status: 'running',
     pid: process.pid,
     httpPort: controlPort,
     startedAt: state?.startedAt ?? Date.now(),
   }));
-  logger.debug('[RUNNER RUN] Runner state reported (local machine channel)');
+  logger.debug('[EXECUTOR] Executor state reported (in-process direct write)');
 
   reportSpawnOutcomeToHub = (outcome) => {
-    void deps?.updateExecutorState((state: RunnerState | null) => {
-      const baseState: RunnerState = state
+    void deps?.updateExecutorState((state: ExecutorState | null) => {
+      const baseState: ExecutorState = state
         ? { ...state }
         : { status: 'running' };
 
@@ -655,24 +653,24 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
   // 清理已死会话的追踪行（决策单源在 sessionTracking.pruneDeadTrackedSessions）。
   // 旧职责退役（ticket-22）：二进制 mtime 自重启删除（与 supervisor restart 重叠，
   // 升级路径由 upgrader/processRestarter 走 service restart 替换整个 daemon）；
-  // runner.state.json 心跳停写（daemon.state.json 由 daemonEntry 维护，读取方已迁移）
+  // 历史 runner.state.json 心跳停写（daemon.state.json 由 daemonEntry 维护，读取方已迁移）
   const heartbeatIntervalMs = parseInt(process.env.MOBI_RUNNER_HEARTBEAT_INTERVAL || '60000');
   const pruneStaleSessionsInterval = setInterval(() => {
     for (const pid of pruneDeadTrackedSessions(pidToTrackedSession, isProcessAlive)) {
-      logger.debug(`[RUNNER RUN] Removing stale session with PID ${pid} (process no longer exists)`);
+      logger.debug(`[EXECUTOR] Removing stale session with PID ${pid} (process no longer exists)`);
     }
   }, heartbeatIntervalMs);
 
   // 优雅清理（幂等）：清理顺序与原 cleanupAndShutdown 一致，只是不再 process.exit
-  const cleanup = async (source: RunnerShutdownSource, errorMessage?: string) => {
-    logger.debug(`[RUNNER RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+  const cleanup = async (source: ExecutorShutdownSource, errorMessage?: string) => {
+    logger.debug(`[EXECUTOR] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
 
     // Clear prune interval
     clearInterval(pruneStaleSessionsInterval);
-    logger.debug('[RUNNER RUN] Prune interval cleared');
+    logger.debug('[EXECUTOR] Prune interval cleared');
 
-    // Update runner state before shutting down（同步直写，无需等待发送窗口）
-    deps?.updateExecutorState((state: RunnerState | null) => ({
+    // Update executor state before shutting down（同步直写，无需等待发送窗口）
+    deps?.updateExecutorState((state: ExecutorState | null) => ({
       ...state,
       status: 'shutting-down',
       shutdownRequestedAt: Date.now(),
@@ -682,20 +680,20 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     await stopControlServer();
     await releaseDaemonLock(daemonLockHandle);
 
-    logger.debug('[RUNNER RUN] Cleanup completed');
+    logger.debug('[EXECUTOR] Cleanup completed');
   };
 
-  // hub 直调桥（ticket-18）：spawn/stop 复用本闭包内实现；追踪补登单源在 sessionTracking
-  const bridge: RunnerSessionBridge = {
+  // server 直调桥（ticket-18）：spawn/stop 复用本闭包内实现；追踪补登单源在 sessionTracking
+  const bridge: ExecutorBridge = {
     spawnSession,
     stopSession,
     registerSessionTracking: (signal) => {
       const outcome = applySessionTrackingSignal(pidToTrackedSession, signal, isProcessAlive);
-      logger.debug(`[RUNNER RUN] Session tracking signal ${signal.sessionId}: ${outcome.op}${outcome.op === 'skip' ? ` (${outcome.reason})` : ''}`);
+      logger.debug(`[EXECUTOR] Session tracking signal ${signal.sessionId}: ${outcome.op}${outcome.op === 'skip' ? ` (${outcome.reason})` : ''}`);
     },
   };
 
-  const handle: RunnerHandle = {
+  const handle: ExecutorHandle = {
     httpPort: controlPort,
     bridge,
     stop: async (source, errorMessage) => {
@@ -715,7 +713,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     }
   });
 
-  logger.debug('[RUNNER RUN] Runner started successfully, waiting for shutdown request');
+  logger.debug('[EXECUTOR] Executor started successfully, waiting for shutdown request');
 
   return handle;
 }

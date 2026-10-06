@@ -15,9 +15,9 @@
  */
 
 /**
- * Runner doctor utilities
+ * Executor doctor utilities
  *
- * Process discovery and cleanup functions for the runner
+ * Process discovery and cleanup functions for the daemon
  * Helps diagnose and fix issues with hung or orphaned processes
  */
 
@@ -133,7 +133,7 @@ async function getProcessProfiles(pids: number[]): Promise<Map<number, string | 
     return result
 }
 
-// 历史类型（runner/hub start 形态、runner-version-check 等）随 machine 概念收敛
+// 历史类型（runner/daemon start 形态、runner-version-check 等）随 machine 概念收敛
 // 从识别集合删除（601）——那些进程形态早已不存在，doctor clean 不再认领
 const RUNNABLE_TYPES = new Set([
   'daemon', 'dev-daemon',
@@ -175,8 +175,8 @@ export async function findAllMobiProcesses(attributor: ProfileAttributor = getPr
         // 绕过它强杀子进程后会残留"无子进程却永不退出"的幽灵（profile 归属
         // 靠 ps -E 读 env 的 MOBI_HOME，supervisor 由 CLI spawn 时继承）
         type = isDevMode ? 'dev-supervisor' : 'supervisor';
-      } else if (cmd.includes('--started-by runner')) {
-        // 注入词仍为 'runner'（spawnArgs，602 随内部命名一把梭收口）
+      } else if (cmd.includes('--started-by daemon')) {
+        // daemon executor spawn 会话子进程的注入词（spawnArgs）
         type = isDevMode ? 'dev-spawned-session' : 'spawned-session';
       } else if (cmd.includes('doctor')) {
         type = isDevMode ? 'dev-doctor' : 'doctor';

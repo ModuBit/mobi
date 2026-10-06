@@ -19,9 +19,8 @@
  *
  * daemon 侧一切「要在本机做的执行层事」（spawn / 文件 / git 审查 / webTools /
  * 元数据）都收到这个接口上，调用方（syncEngine 透传 + agent 会话服务）不再感知传输。
- * 唯一实现 {@link LocalMachineHost}（ticket-20 起 socket 版实现随 machine 通道删除）。
+ * 唯一实现 {@link LocalExecutor}（socket 版实现随 machine 通道删除，ticket-20）。
  *
- * `machineId` 参数保留（D4=C 路由残留）：多机删除是 ⑤ 的事，先不做形参收窄。
  * 返回类型沿用现有 RPC 结果类型——`RpcFailure` 的 `kind` 分类由实现保证
  * （agentSessionService 依此选文案，不读句子）。
  */
@@ -100,7 +99,7 @@ export type RpcReplaceUploadResponse = {
     error?: string
 }
 
-// web 工具配置读取响应（runner 侧凭据已脱敏）
+// web 工具配置读取响应（凭据已脱敏）
 export type RpcGetWebToolsConfigResponse = {
     config: RedactedWebToolsConfig
 }
@@ -138,29 +137,29 @@ export type RpcPathExistsResponse = {
 
 /**
  * 机器执行层接口。方法集与原 rpcGateway 的 machine 族方法一一对应
- * （grep `machineRpc(` 全集见 ticket-15 Comments），签名原样保留。
+ * （grep `machineRpc(` 全集见 ticket-15 Comments）；machineId 形参已随单机化收窄（602）。
  */
-export interface MachineHost {
-    spawnSession(machineId: string, directory: string, options?: SpawnSessionOptions): Promise<SpawnGatewayResult>
-    checkPathsExist(machineId: string, paths: string[]): Promise<Record<string, boolean>>
-    machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse>
-    machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse>
-    machineGitReviewOverview(machineId: string, cwd: string, sessionId: string): Promise<ReviewOverview | { success: false; error: string }>
-    machineGitReviewFiles(machineId: string, cwd: string, sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }>
-    machineGitReviewDiff(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }>
-    machineGitReviewContents(machineId: string, cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }>
-    machineGitReviewCommits(machineId: string, cwd: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }>
-    machineGitReviewInit(machineId: string, cwd: string): Promise<ReviewActionResult | { success: false; error: string }>
-    clearTurnSnapshots(machineId: string, cwd: string, sessionId: string): Promise<void>
-    machineSaveFile(machineId: string, cwd: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse>
-    listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse>
-    machineUploadFileRange(machineId: string, cwd: string, filename: string, path: string | undefined, offset: number, content: Uint8Array, totalSize?: number): Promise<RpcWriteFileRangeResponse>
-    machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse>
-    machineReplaceUpload(machineId: string, cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse>
-    getWebToolsConfig(machineId: string): Promise<RpcGetWebToolsConfigResponse>
-    setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse>
-    verifyWebToolsProvider(machineId: string, providerId: string, credentials?: Record<string, string>): Promise<RpcVerifyWebToolsProviderResponse>
-    machineSearchFiles(machineId: string, cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse>
-    machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse>
-    machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse>
+export interface ExecutorHost {
+    spawnSession(directory: string, options?: SpawnSessionOptions): Promise<SpawnGatewayResult>
+    checkPathsExist(paths: string[]): Promise<Record<string, boolean>>
+    hostReadFileMeta(cwd: string, path: string): Promise<RpcReadFileMetaResponse>
+    hostReadFileRange(cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse>
+    hostGitReviewOverview(cwd: string, sessionId: string): Promise<ReviewOverview | { success: false; error: string }>
+    hostGitReviewFiles(cwd: string, sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }>
+    hostGitReviewDiff(cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }>
+    hostGitReviewContents(cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }>
+    hostGitReviewCommits(cwd: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }>
+    hostGitReviewInit(cwd: string): Promise<ReviewActionResult | { success: false; error: string }>
+    clearTurnSnapshots(cwd: string, sessionId: string): Promise<void>
+    hostSaveFile(cwd: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse>
+    listHostDirectory(path: string, homeDir: string): Promise<RpcListDirectoryResponse>
+    hostUploadFileRange(cwd: string, filename: string, path: string | undefined, offset: number, content: Uint8Array, totalSize?: number): Promise<RpcWriteFileRangeResponse>
+    hostDeleteUpload(cwd: string, path: string): Promise<RpcDeleteUploadResponse>
+    hostReplaceUpload(cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse>
+    getWebToolsConfig(): Promise<RpcGetWebToolsConfigResponse>
+    setWebToolsConfig(config: unknown): Promise<RpcSetWebToolsConfigResponse>
+    verifyWebToolsProvider(providerId: string, credentials?: Record<string, string>): Promise<RpcVerifyWebToolsProviderResponse>
+    hostSearchFiles(cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse>
+    hostListSessionDirectory(cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse>
+    hostRefreshMetadata(cwd: string): Promise<RpcRefreshMetadataResponse>
 }

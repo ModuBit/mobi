@@ -17,9 +17,9 @@
 import { z } from 'zod'
 import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
 
-// —— runner 状态上报（runner → hub，运行时状态机；hostProtocol re-export 保持协议入口）——
+// —— executor 状态上报（运行时状态机；hostProtocol re-export 保持协议入口）——
 
-export const RunnerStateSchema = z.object({
+export const ExecutorStateSchema = z.object({
     status: z.union([z.enum(['running', 'shutting-down']), z.string()]),
     pid: z.number().optional(),
     httpPort: z.number().optional(),
@@ -35,7 +35,7 @@ export const RunnerStateSchema = z.object({
     }).nullable().optional()
 })
 
-export type RunnerState = z.infer<typeof RunnerStateSchema>
+export type ExecutorState = z.infer<typeof ExecutorStateSchema>
 // Usage statistics for assistant messages（ticket-12 下沉：node-core api/types 与 cli claude/types 共用）
 export const UsageSchema = z.object({
   input_tokens: z.number().int().nonnegative(),
@@ -73,8 +73,8 @@ export const WorkspaceFolderSchema = z.object({
 export type WorkspaceFolder = z.infer<typeof WorkspaceFolderSchema>
 
 /**
- * 工作区 folders 校验错误码：校验规则跨端共享（web 表单门禁 + hub API 守卫），
- * 但文案是各端展示层的事——hub 用 WORKSPACE_FOLDERS_ERROR_MESSAGES 出英文 400 文案，
+ * 工作区 folders 校验错误码：校验规则跨端共享（web 表单门禁 + daemon API 守卫），
+ * 但文案是各端展示层的事——daemon 用 WORKSPACE_FOLDERS_ERROR_MESSAGES 出英文 400 文案，
  * web 按码映射 i18n key
  */
 export type WorkspaceFoldersError =
@@ -83,7 +83,7 @@ export type WorkspaceFoldersError =
     | 'no_primary'     // 无主目录
     | 'multi_primary'  // 多个主目录
 
-/** hub 400 响应文案（web 不用，见 WorkspaceFoldersError 注释） */
+/** daemon 400 响应文案（web 不用，见 WorkspaceFoldersError 注释） */
 export const WORKSPACE_FOLDERS_ERROR_MESSAGES: Record<WorkspaceFoldersError, string> = {
     empty: 'At least one folder is required',
     empty_path: 'Every folder path is required',
@@ -210,7 +210,7 @@ export type ForkedFromMetadata = z.infer<typeof ForkedFromMetadataSchema>
  * fork 激活失败错误态（fork-session spec §5.3）。
  *
  * 契约：CLI 激活预检/激活失败时写入（ticket 04 对接），激活成功或用户删除会话时清除。
- * ⚠️ 失败时必须保留 forkFrom（不清除）——web 的待激活判定与 hub 的删除守卫都以 forkFrom
+ * ⚠️ 失败时必须保留 forkFrom（不清除）——web 的待激活判定与 daemon 的删除守卫都以 forkFrom
  * 在场为「未激活」依据；forkError 只是叠加的失败标记，不是替代。
  */
 const ForkErrorMetadataSchema = z.object({
@@ -242,7 +242,6 @@ export const MetadataSchema = z.object({
     name: z.string().optional(),
     os: z.string().optional(),
     summary: MetadataSummarySchema.optional(),
-    machineId: z.string().optional(),
     nativeSessionId: z.string().optional(),
     /** 上下文边界指针：最近一次 compact/clear 边界消息的 seq（O(1) 边界判定，fork/rewind 入口共用；缺失=未回填） */
     contextBoundarySeq: z.number().optional(),
@@ -259,9 +258,11 @@ export const MetadataSchema = z.object({
     mobiHomeDir: z.string().optional(),
     mobiLibDir: z.string().optional(),
     mobiToolsDir: z.string().optional(),
-    startedFromRunner: z.boolean().optional(),
+    startedFromDaemon: z.boolean().optional(),
     hostPid: z.number().optional(),
-    startedBy: z.enum(['runner', 'terminal']).optional(),
+    // 新值为 'daemon'；'runner' 是历史落库值的读侧容错（spawned CLI 写入 metadata JSON，
+    // 存量会话行仍携带），勿删——删了旧会话 metadata 解析会被 strip/报错
+    startedBy: z.enum(['daemon', 'runner', 'terminal']).optional(),
     lifecycleState: z.string().optional(),
     lifecycleStateSince: z.number().optional(),
     archivedBy: z.string().optional(),
@@ -412,7 +413,7 @@ export const BackgroundTaskItemSchema = z.object({
     subagentType: z.string().optional(),
     /** 'paused'：task_updated patch 可携带 paused（SDKTaskUpdatedMessage.patch.status 联合），枚举无 pending 时 paused 是最近的诚实表达 */
     status: z.enum(['running', 'completed', 'failed', 'stopped', 'paused']),
-    /** 是否为后台任务（进入 backgroundTasks 的都是后台任务，恒 true）。SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 hub 判定后写入，供 Web 端统一区分前后台渲染。
+    /** 是否为后台任务（进入 backgroundTasks 的都是后台任务，恒 true）。SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 daemon 判定后写入，供 Web 端统一区分前后台渲染。
      *  default(true)：存量 DB 记录（isBackground 字段加入前持久化的 runtime_state）经 RuntimeStateSchema.safeParse 时缺此字段，默认 true 与「进入 backgroundTasks 即后台」的语义一致，避免整条数组被 strip */
     isBackground: z.boolean().default(true),
     metrics: z.object({
@@ -430,7 +431,7 @@ export type BackgroundTaskItem = z.infer<typeof BackgroundTaskItemSchema>
 const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
 
 /** 可清理的 runtimeState 字段白名单（清理 API 契约的单源）：
- *  hub 路由 z.enum / store 可清理集合 / web 清理按钮类型均由此派生，新增字段只改这里 */
+ *  daemon 路由 z.enum / store 可清理集合 / web 清理按钮类型均由此派生，新增字段只改这里 */
 export const CLEARABLE_RUNTIME_STATE_FIELDS = [
     'todos',
     'tasks',
@@ -443,8 +444,8 @@ export const CLEARABLE_RUNTIME_STATE_FIELDS = [
 
 export type ClearableRuntimeStateField = (typeof CLEARABLE_RUNTIME_STATE_FIELDS)[number]
 
-/** 前台执行中任务条目（foreground-tasks spec D3/D8）：hub 从消息投影维护的「正在跑的前台任务」清单。
- *  与 backgroundTasks 的区别：前台任务无 CLI 上报通道，纯 hub 消息投影；无状态字段（等待审批与
+/** 前台执行中任务条目（foreground-tasks spec D3/D8）：daemon 从消息投影维护的「正在跑的前台任务」清单。
+ *  与 backgroundTasks 的区别：前台任务无 CLI 上报通道，纯 daemon 消息投影；无状态字段（等待审批与
  *  执行中统一视为运行中，spec D5）。第一版只收 Agent 类工具，字段名留非 Agent 扩展空间。 */
 export const ForegroundTaskItemSchema = z.object({
     toolUseId: z.string(),
@@ -458,7 +459,7 @@ export type ForegroundTaskItem = z.infer<typeof ForegroundTaskItemSchema>
 const ForegroundTasksSchema = z.array(ForegroundTaskItemSchema)
 
 /**
- * 从 background_tasks_changed 的 tasks 数组提取存活后台任务 id 集合（CLI 与 Hub 共用规则）：
+ * 从 background_tasks_changed 的 tasks 数组提取存活后台任务 id 集合（CLI 与 daemon 共用规则）：
  * task_id 为非空字符串才收录；ambient === true 的家务任务（checkpoint/live-update watcher 等）
  * 跳过——「全部停止」/ 后台面板只面向用户可见的工作（spec D1/D2）。
  * 非数组输入返回空集合（调用方按 REPLACE 语义整体替换即清空）。
@@ -647,13 +648,13 @@ export const RuntimeStateSchema = z.object({
     todos: TodosSchema.optional(),
     tasks: TasksSchema.optional(),
     backgroundTasks: BackgroundTasksSchema.optional(),
-    /** 前台执行中任务清单：hub 从消息投影维护（foreground-tasks spec D1/D4），工具出结果或
+    /** 前台执行中任务清单：daemon 从消息投影维护（foreground-tasks spec D1/D4），工具出结果或
      *  轮次 result 到达时移除，空清单删字段。与 backgroundTasks 无交集（后台任务另有上报通道） */
     foregroundTasks: ForegroundTasksSchema.optional(),
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
-    /** 当前权限模式（CLI keep-alive 上报落库，hub 重启后 resume 回放；与 model/effort/outputStyle 持久化对齐）。
+    /** 当前权限模式（CLI keep-alive 上报落库，daemon 重启后 resume 回放；与 model/effort/outputStyle 持久化对齐）。
      * catch：CLI 新版本引入未知权限模式时单字段降级为 undefined（回落 default），不拖垮整条
      * runtimeState 解析——safeParse 全有全无会让 model/effort/outputStyle 等恢复字段一并丢失 */
     permissionMode: z.enum(PERMISSION_MODES).optional().catch(undefined),
@@ -715,7 +716,7 @@ export const DecryptedMessageSchema = z.object({
     positionAt: z.number().optional(),
     content: z.unknown(),
     createdAt: z.number(),
-    /** 标识流式快照消息（未落库，Hub 直接透传给 Web） */
+    /** 标识流式快照消息（未落库，daemon 直接透传给 Web） */
     snapshot: z.boolean().optional(),
     /** snapshot 流当前帧序号（delta 协议票 02）：web 据此衔接后续增量帧（baseRev 校验） */
     snapshotRev: z.number().int().nonnegative().optional(),
@@ -725,8 +726,8 @@ export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
 
 // ============================================================================
 // Snapshot Delta 协议（.scratch/snapshot-delta spec）
-// CLI→hub（session-message）与 hub→web（message-snapshot-delta）共用的增量载荷。
-// 链路无 diff：CLI 从流式 buffer 产出 op，hub/web 只 apply；单连接内 TCP 有序，
+// CLI→daemon（session-message）与 daemon→web（message-snapshot-delta）共用的增量载荷。
+// 链路无 diff：CLI 从流式 buffer 产出 op，daemon/web 只 apply；单连接内 TCP 有序，
 // 唯一风险是断线，恢复靠事件驱动重基线（流首帧全量 / 重连重发全量），无周期 checkpoint。
 // ============================================================================
 
@@ -772,8 +773,8 @@ export type SnapshotBlockDelta = z.infer<typeof SnapshotBlockDeltaSchema>
 /**
  * snapshot 增量帧（delta-only）：baseRev 必须与接收方已持有的 rev 严格衔接，
  * 不连续即丢弃等全量基线。rev 由产出方（CLI）按流（每条消息）分配、单调递增。
- * 全量帧不走本 schema——CLI→hub 以 message + frame:{rev, baseRev:null} 标记携带，
- * hub→web 以 message-snapshot 事件携带（见 buildSnapshotMessage）。
+ * 全量帧不走本 schema——CLI→daemon 以 message + frame:{rev, baseRev:null} 标记携带，
+ * daemon→web 以 message-snapshot 事件携带（见 buildSnapshotMessage）。
  */
 export const SnapshotDeltaFrameSchema = z.object({
     localId: z.string(),
@@ -801,7 +802,7 @@ export const SessionSchema = z.object({
     runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
     mode: z.enum(['local', 'remote']).optional(),
-    tag: z.string().nullable().optional(),   // Hub session 的标签，用于 getOrCreateSession 时复用
+    tag: z.string().nullable().optional(),   // daemon session 的标签，用于 getOrCreateSession 时复用
     /** 归属工作区（null = 游离，进「最近」） */
     workspaceId: z.string().nullable().optional(),
     /** 会话置顶（true = 进「置顶」分组，同时从「工作区」「最近」过滤掉） */
@@ -831,11 +832,11 @@ const DaemonStatusChangedSchema = SessionEventBaseSchema.extend({
             displayName: z.string().optional(),
             homeDir: z.string().optional(),
         }),
-        executor: RunnerStateSchema.nullable().optional(),
+        executor: ExecutorStateSchema.nullable().optional(),
     }),
 })
 
-/** workspace 事件（hub 的 EventPublisher.resolveNamespace 不认 workspaceId，无缓存回查，namespace 必填） */
+/** workspace 事件（daemon 的 EventPublisher.resolveNamespace 不认 workspaceId，无缓存回查，namespace 必填） */
 const WorkspaceChangedSchema = SessionEventBaseSchema.extend({
     workspaceId: z.string(),
     namespace: z.string()
@@ -860,7 +861,7 @@ export const OpenInMobiTargetSchema = z.discriminatedUnion('type', [
 ])
 
 /**
- * UI 命令动作判别联合（agent → Hub → Web 的 A 类呈现指令）。
+ * UI 命令动作判别联合（agent → daemon → Web 的 A 类呈现指令）。
  * 统一信封形状 { action, payload }：payload 按 action 自定义，无统一 target 概念不强加
  * （会话无关动作如 set_theme 同型扩展）。
  */
@@ -889,7 +890,7 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionChangedSchema.extend({
         type: z.literal('message-received'),
         message: DecryptedMessageSchema,
-        /** 补写回填标记（hub attach 路径）：标识这是 DB metadata 补写后的旧行重播而非新消息，
+        /** 补写回填标记（daemon attach 路径）：标识这是 DB metadata 补写后的旧行重播而非新消息，
          *  web 端据此只 merge 已在窗口的行、不 append——否则 resume 后历史行（!bash 合成对/
          *  compact 事件行）被误当新消息以旧 positionAt 插入出 ghost 气泡 */
         backfill: z.boolean().optional()
@@ -907,7 +908,7 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         /** 被安全护栏跳过的文件数（symlink/hardlink/非常规文件，spec E2）；>0 时 web 提示 */
         skippedLinks: z.number().optional()
     }),
-    // 撤回刚发消息（#53 / 批次 A）：hub 已软删除该行及其后全部行，blocks 为 content
+    // 撤回刚发消息（#53 / 批次 A）：daemon 已软删除该行及其后全部行，blocks 为 content
     // 信封内层 UserContentBlock[]（web deserializeSegments 还原 composer，失败兜底 originalText）
     SessionChangedSchema.extend({
         type: z.literal('message-withdrawn'),
@@ -935,7 +936,7 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         type: z.literal('message-snapshot'),
         message: DecryptedMessageSchema
     }),
-    // snapshot 增量帧（delta 协议票 02）：hub→web 段按订阅进度转发；web 收到后按序拼接，
+    // snapshot 增量帧（delta 协议票 02）：daemon→web 段按订阅进度转发；web 收到后按序拼接，
     // baseRev 与本地持有 rev 不衔接即丢弃等全量基线（message-snapshot 全量或 full message 终态）
     SessionChangedSchema.extend({
         type: z.literal('message-snapshot-delta'),
@@ -971,7 +972,7 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         localIds: z.array(z.string()),
         submittedAt: z.number(),
     }),
-    // 后台刷新 sdkMetadata 完成且内容有变 → 通知 web refetch（SWR 配套，见 hub metadata 端点）
+    // 后台刷新 sdkMetadata 完成且内容有变 → 通知 web refetch（SWR 配套，见 daemon metadata 端点）
     SessionEventBaseSchema.extend({
         type: z.literal('sdk-metadata-refreshed'),
         sessionId: z.string()
@@ -980,8 +981,8 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     WorkspaceChangedSchema.extend({ type: z.literal('workspace-updated') }),
     WorkspaceChangedSchema.extend({ type: z.literal('workspace-removed') }),
     // agent 触达 mobi 界面的 A 类 UI 命令（瞬态事件：不落库、不进快照、刷新不恢复，见 .scratch/agent-apps/spec.md D9）。
-    // sessionId 是可选路由元数据：Hub 从 socket sid 解析后盖章（会话无关动作如 set_theme 缺省 → namespace 全播），
-    // CLI 不填——投递路由属 Hub 职责，payload 只描述"做什么"
+    // sessionId 是可选路由元数据：daemon 从 socket sid 解析后盖章（会话无关动作如 set_theme 缺省 → namespace 全播），
+    // CLI 不填——投递路由属 daemon 职责，payload 只描述"做什么"
     SessionEventBaseSchema.extend({
         type: z.literal('ui-command'),
         sessionId: z.string().optional(),

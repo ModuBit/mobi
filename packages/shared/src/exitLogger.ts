@@ -15,9 +15,9 @@
  */
 
 /**
- * 进程退出日志 —— 集中式记录 hub/runner/cli 的正常/异常/被外部杀死退出。
+ * 进程退出日志 —— 集中式记录 daemon/cli 的正常/异常/被外部杀死退出。
  *
- * 与 profile.ts 同属跨包基础设施（hub / cli 共用），故置于 shared 包。
+ * 与 profile.ts 同属跨包基础设施（daemon / cli 共用），故置于 shared 包。
  *
  * 设计见 docs/superpowers/specs/2026-07-20-exit-logging-design.md
  *
@@ -42,7 +42,7 @@ import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
-export type ProcessType = 'hub' | 'runner' | 'cli' | 'daemon'
+export type ProcessType = 'daemon' | 'cli'
 
 export type ExitReason =
   | 'normal'
@@ -144,6 +144,13 @@ export function isProcessAlive(pid: number): boolean {
  * 读取 exits.log 全部记录（按时间正序），供 doctor exits 命令使用。
  * 跳过空行与解析失败的行。
  */
+/** 读 exits.log 记录的 processType：历史 daemon/runner 归并为 daemon（单机 daemon 定稿后的统一标签） */
+function readLegacyProcessType(parsed: Partial<ExitRecord>): ProcessType | null {
+    const raw = (parsed as { processType?: unknown }).processType
+    if (raw === 'daemon' || raw === 'runner') return 'daemon'
+    return raw === 'daemon' || raw === 'cli' ? raw : null
+}
+
 export function readExitRecords(logsDir: string): ExitRecord[] {
   const file = join(logsDir, EXIT_LOG_FILENAME)
   if (!existsSync(file)) return []
@@ -158,11 +165,12 @@ export function readExitRecords(logsDir: string): ExitRecord[] {
     const trimmed = line.trim()
     if (!trimmed) continue
     try {
-      const parsed = JSON.parse(trimmed) as Partial<ExitRecord>
+      const parsed = JSON.parse(trimmed) as Partial<ExitRecord> & { processType?: string }
       // 前向兼容：旧记录无 ppid/parentCommand 字段，补 null
       records.push({
         timestamp: parsed.timestamp ?? '',
-        processType: parsed.processType ?? 'cli',
+        // 历史记录的 daemon/runner 归并为 daemon（单机 daemon 定稿后的统一标签）
+        processType: (readLegacyProcessType(parsed) ?? 'cli'),
         pid: parsed.pid ?? 0,
         exitCode: parsed.exitCode ?? null,
         signal: parsed.signal ?? null,
@@ -194,7 +202,7 @@ export function installExitLogger(
   let peakMemoryMb = computeMemoryMb()
 
   // 启动时仅采集 parentPid（process.ppid 读取，零成本）；
-  // 父进程命令行（需 fork/exec ps）延迟到 recordExit 时再采集 —— 避免每次 hub/cli
+  // 父进程命令行（需 fork/exec ps）延迟到 recordExit 时再采集 —— 避免每次 daemon/cli
   // 冷启动都同步阻塞在最坏 2s 的 ps 上（受限/繁忙环境下放大启动延迟）。
   const parentPid = process.ppid > 0 ? process.ppid : null
 
@@ -270,13 +278,13 @@ export function installExitLogger(
 /**
  * 在进程上挂载退出/崩溃/信号 handler，统一分发到 exitLogger。
  *
- * 注意：runner 已有自己的优雅退出流程（requestShutdown），runner 侧应自行挂载
+ * 注意：executor 已有自己的优雅退出流程（requestShutdown），executor 侧应自行挂载
  * 并在 handler 内既驱动 requestShutdown 又调 recordExit，而不是用这个默认实现。
  */
 /** process.on('exit') 内同步回调的入参 */
 export interface ExitSyncInfo {
   /** 本次退出是否由 uncaughtException / unhandledRejection 触发。
-   *  调用方据此区分「崩溃」与「正常/信号退出」——例如 hub 崩溃时应跳过清理 state，
+   *  调用方据此区分「崩溃」与「正常/信号退出」——例如 daemon 崩溃时应跳过清理 state，
    *  保留 pid 痕迹供下次启动的 detectPreviousHubCrash 检出。 */
   crashed: boolean
 }
@@ -284,7 +292,7 @@ export interface ExitSyncInfo {
 export interface InstallHandlersOptions {
   /** 信号记录后是否立即 process.exit。默认 false。
    * cli 主进程传 true（无自定义退出 handler，否则 Ctrl+C/SIGTERM 无法终止进程）；
-   * hub 保留 false（依赖自有 shutdown handler 优雅退出）。
+   * daemon 保留 false（依赖自有 shutdown handler 优雅退出）。
    * uncaughtException/unhandledRejection 不受此选项影响——崩溃始终 exit(1)。 */
   exitOnSignal?: boolean
   /** process.on('exit') 内同步调用。

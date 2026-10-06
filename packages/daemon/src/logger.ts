@@ -18,11 +18,11 @@ import { createLogger, type MobiLogger } from '@mobi/shared/logger'
 import { resolveMobiLogsDir } from '@mobi/shared/exitLogger'
 
 /**
- * hub 进程统一 logger。
+ * daemon 进程统一 logger。
  * main() 最早初始化；其 ringBuffer 注入 exitLogger，崩溃 dump 可还原崩溃前上下文。
- * 文件：~/.mobi/logs/{ts}-hub.log
+ * 文件：~/.mobi/logs/{ts}-daemon.log（历史文件名 -hub.log，读取侧容错归并）
  */
-export const hubLogger: MobiLogger = createLogger({
-    processType: 'hub',
+export const daemonLogger: MobiLogger = createLogger({
+    processType: 'daemon',
     logsDir: resolveMobiLogsDir(),
 })

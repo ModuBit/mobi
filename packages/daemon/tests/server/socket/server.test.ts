@@ -19,7 +19,7 @@ import { createSocketServer, extractTerminalToken } from '../../../src/socket/se
 import { SnapshotSync } from '../../../src/sync/snapshotSync'
 import { testJwtSecret } from '../helpers/setupTestApp'
 import { AUTH_COOKIE_NAME } from '../../../src/web/auth/session'
-import { hubLogger } from '../../../src/logger'
+import { daemonLogger } from '../../../src/logger'
 
 describe('extractTerminalToken 双源提取', () => {
     test('cookie 优先：带 mobi_token cookie 返回 cookie token', () => {
@@ -65,7 +65,7 @@ describe('extractTerminalToken 双源提取', () => {
 
 describe('CORS 守卫', () => {
     test('corsOrigins 含 * 触发 warn', () => {
-        const warnSpy = spyOn(hubLogger, 'warn').mockImplementation(() => undefined)
+        const warnSpy = spyOn(daemonLogger, 'warn').mockImplementation(() => undefined)
         createSocketServer({ store: null as never, jwtSecret: testJwtSecret, corsOrigins: ['*'], snapshotSync: new SnapshotSync() })
         expect(warnSpy).toHaveBeenCalled()
         expect(String(warnSpy.mock.calls[0][0])).toContain('CORS')
@@ -73,7 +73,7 @@ describe('CORS 守卫', () => {
     })
 
     test('corsOrigins 具体域名不 warn', () => {
-        const warnSpy = spyOn(hubLogger, 'warn').mockImplementation(() => undefined)
+        const warnSpy = spyOn(daemonLogger, 'warn').mockImplementation(() => undefined)
         createSocketServer({ store: null as never, jwtSecret: testJwtSecret, corsOrigins: ['http://localhost:3000'], snapshotSync: new SnapshotSync() })
         expect(warnSpy).not.toHaveBeenCalled()
         warnSpy.mockRestore()

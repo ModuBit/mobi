@@ -20,9 +20,9 @@ type TFunction = (key: string, options?: Record<string, unknown>) => string
 
 /**
  * fork 会话行的列表呈现（fork-session spec §4.3）：
- * - metadata.forkFrom 在场 = 未激活（激活成功后 hub 清除、SSE session-updated 驱动缓存更新即消失）
+ * - metadata.forkFrom 在场 = 未激活（激活成功后 daemon 清除、SSE session-updated 驱动缓存更新即消失）
  * - metadata.forkError 在场 = 激活失败错误态（叠加在 forkFrom 之上，spec §5.3）
- * - 标题由 hub 建行时落库（metadata.name = 「〈parent 标题〉 · 分叉」，写入时冻结），
+ * - 标题由 daemon 建行时落库（metadata.name = 「〈parent 标题〉 · 分叉」，写入时冻结），
  *   web 侧不拼接——走 getSessionDisplayName 的 name 优先路径自然命中
  *
  * 状态只依赖 session 自身 metadata，走纯函数 resolveForkSessionState；fork 行零额外查询。
@@ -62,9 +62,9 @@ const NON_FORK_STATE: ForkSessionRowState = {
 
 /**
  * fork 行徽标状态（纯函数，只读 session 自身 metadata，独立导出便于单测）。
- * forkFrom 存废驱动待激活/错误态徽标：hub 激活清除 forkFrom（SSE 到达）→ 徽标消失；
+ * forkFrom 存废驱动待激活/错误态徽标：daemon 激活清除 forkFrom（SSE 到达）→ 徽标消失；
  * 激活失败写入 forkError → 徽标转错误态。「是否 fork 行」本身不在此判定——
- * 标题区分走 metadata.name（hub 落库，sessionUtils 判 forkedFrom/forkFrom）。
+ * 标题区分走 metadata.name（daemon 落库，sessionUtils 判 forkedFrom/forkFrom）。
  */
 export function resolveForkSessionState(session: Session, t: TFunction): ForkSessionRowState {
     const forkFrom = session.metadata?.forkFrom

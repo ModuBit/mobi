@@ -94,7 +94,7 @@ function extractParentToolUseId(content: unknown): string | null {
  * 边界消息识别（fork/rewind 入口判据「边界指针」的判定来源，fork-session spec §2）：
  * 两种边界——system:compact_boundary（压缩完成，新上下文起点）与 context-cleared 事件
  * （/clear 完成）。语义与 web 端 turnBoundary.isTurnStart 同源（两端各自实现：
- * web 端用于渲染裁剪，hub 端用于边界指针维护），改动信封结构时须两端同步。
+ * web 端用于渲染裁剪，daemon 端用于边界指针维护），改动信封结构时须两端同步。
  */
 export function isContextBoundaryContent(content: unknown): boolean {
     const record = unwrapRoleWrappedRecordEnvelope(content)
@@ -429,8 +429,8 @@ const POSITION_TIMELINE_FILTER = `${HISTORY_CATEGORY_FILTER} ${NOT_DELETED_FILTE
  *
  * position 地板：position_at = max(pushedAt, 时间线当前 MAX(position_at) + 1)，事务内原子计算。
  * pushedAt 来自 CLI 时钟（messages-facts pushed fact.at），而时间线内相邻消息（如同批 flush 的
- * result）的 position_at 是 hub 落库时刻——跨时钟比较不保证严格大于，且同毫秒 tie 时 seq 决胜
- * （排队消息 seq 是入队时分配的旧值）必排到 result 之前。max+1 把排序正确性收归 hub 单点：
+ * result）的 position_at 是 daemon 落库时刻——跨时钟比较不保证严格大于，且同毫秒 tie 时 seq 决胜
+ * （排队消息 seq 是入队时分配的旧值）必排到 result 之前。max+1 把排序正确性收归 daemon 单点：
  * 消费时刻的排队消息必然严格排在时间线所有既有消息（含同批 flush 的 result）之后，与任何
  * 时钟域、传输延迟无关。pushedAt 正常（晚于全部既有行）时行为不变。
  */
@@ -486,7 +486,7 @@ export function advanceMessagesAcked(
 }
 
 /** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded/refused——CC command_lifecycle
- *  状态，取值单源 CommandLifecycleState；withdrawn——撤回留档，仅 hub 内部使用）。
+ *  状态，取值单源 CommandLifecycleState；withdrawn——撤回留档，仅 daemon 内部使用）。
  *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4，含 refused)
  *  可从 queued/pushed/acked/processing 推进（withdrawn 走同档——queued/pushed/acked/processing 可撤回，
  *  已终态行不可），但已处终态(含 withdrawn)不被覆盖、processing 不回退——
@@ -563,8 +563,8 @@ export function markTerminalReason(
 
 /** 从 user 消息 content 信封提取撤回回填载荷（SSE message-withdrawn，批次 A）：
  *  - blocks：信封内层经 normalizeUserContent 归一的 UserContentBlock[]（web composer 直接还原输入）
- *  - originalText：text block 纯文本拼接——hub 不存 originalText 原始字段（grep 全仓核实，
- *    web 端 originalText 是发送时本地态），此处为 hub 侧唯一来源，供 web normalize 失败时兜底
+ *  - originalText：text block 纯文本拼接——daemon 不存 originalText 原始字段（grep 全仓核实，
+ *    web 端 originalText 是发送时本地态），此处为 daemon 侧唯一来源，供 web normalize 失败时兜底
  *  非 user 信封 / 无法归一 → blocks 空、originalText null（web 端回退空 composer，不抛错）。 */
 export function extractWithdrawnContent(content: unknown): { blocks: unknown[]; originalText: string | null } {
     const inner = unwrapRoleWrappedRecordEnvelope(content)?.content
@@ -582,8 +582,8 @@ export function getUnsubmittedLocalMessages(db: Database, sessionId: string): St
     return rows.map(toStoredMessage)
 }
 
-/** 锚 seq 之后是否仍存在 hub 层排队（lifecycle='queued'）的未删行——撤回守卫 1b（批次 A）：
- *  用户连发场景下后续消息 B 尚未到 CLI（hub 排队中），撤回 A 的无上界软删会连带删掉 B。
+/** 锚 seq 之后是否仍存在 daemon 层排队（lifecycle='queued'）的未删行——撤回守卫 1b（批次 A）：
+ *  用户连发场景下后续消息 B 尚未到 CLI（daemon 排队中），撤回 A 的无上界软删会连带删掉 B。
  *  LIMIT 1 探测即返回，O(1)。 */
 export function hasQueuedMessagesAfter(db: Database, sessionId: string, seq: number): boolean {
     const row = db.prepare(

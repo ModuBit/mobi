@@ -60,14 +60,14 @@ export function useSessionActions(sessionId: string | null): {
             await api.sessions.abort(sessionId, stopKind)
         },
         onMutate: (stopKind?: StopKind) => {
-            // 清队列档：乐观移除本地 queued 行，与 hub 批删同步——onSettled 的 fetchLatest
+            // 清队列档：乐观移除本地 queued 行，与 daemon 批删同步——onSettled 的 fetchLatest
             // 走 merge（只增/更新不删），缺这步悬浮条残留（单条取消靠 onMutate 乐观删除，同款模式）
             if (!sessionId) return
             if (isCancelQueued(stopKind ?? DEFAULT_STOP_KIND)) removeQueuedMessages(sessionId)
         },
         onSuccess: () => void invalidateSession(),
         onSettled: (_data, _error, stopKind) => {
-            // 仅清队列档 refetch：hub 已物理删除 queued 行，merge 不会复活，靠整页拉取清空
+            // 仅清队列档 refetch：daemon 已物理删除 queued 行，merge 不会复活，靠整页拉取清空
             // QueuedMessagesBar（spec §6.2）；普通停止的行更新由 SSE 增量到位，不再拉整页。
             // mutationFn 入参可为 undefined（点按路径），按缺省档判断
             if (!sessionId) return

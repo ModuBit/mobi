@@ -38,7 +38,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     readonly mcpServers: Record<string, McpServerConfig>;
     readonly allowedTools?: string[];
     readonly hookSettings: string | Settings;
-    readonly startedBy: 'runner' | 'terminal';
+    readonly startedBy: 'daemon' | 'terminal';
     readonly startingMode: 'local' | 'remote';
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
@@ -47,7 +47,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     localLaunchFailure: LocalLaunchFailure | null = null;
     /**
      * fork 激活计划（fork-session spec §5.2）：bootstrap 从 fork 行 metadata.forkFrom
-     * 解析；首条消息触发激活，init 返回预生成 id 时由 launcher 置 null 并上报 hub
+     * 解析；首条消息触发激活，init 返回预生成 id 时由 launcher 置 null 并上报 daemon
      * 清除 forkFrom。null = 非 fork 激活轮（普通 / 已激活）。
      */
     forkActivation: ForkActivationPlan | null;
@@ -65,7 +65,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         onModeChange: (mode: 'local' | 'remote') => void;
         allowedTools?: string[];
         mode?: 'local' | 'remote';
-        startedBy: 'runner' | 'terminal';
+        startedBy: 'daemon' | 'terminal';
         startingMode: 'local' | 'remote';
         hookSettings: string | Settings;
         permissionMode?: PermissionMode;

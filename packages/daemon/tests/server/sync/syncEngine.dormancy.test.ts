@@ -19,7 +19,7 @@ import { describe, test, expect, spyOn } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
-import type { MachineHost, SpawnGatewayResult } from '../../../src/executor/executorHost'
+import type { ExecutorHost, SpawnGatewayResult } from '../../../src/executor/executorHost'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
@@ -31,7 +31,7 @@ import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /** 构造带 spawn 计数的 SyncEngine（spawn fake 同步创建新会话并上报 alive；
  *  spawnReply 提供时 fake 原样返回该结果、不造会话——already-running 场景用。
- *  ticket-20 起 spawn 观测点从 machine socket RPC 改为 MachineHost 直调入参） */
+ *  ticket-20 起 spawn 观测点从 machine socket RPC 改为 ExecutorHost 直调入参） */
 function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorReady?: boolean } = {}): {
     engine: SyncEngine
     store: Store
@@ -42,8 +42,8 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
     const engineRef: { engine?: SyncEngine } = {}
     const calls: Record<string, unknown>[] = []
 
-    const machineHost = {
-        spawnSession: async (_machineId: string, _directory: string, options?: SpawnSessionOptions) => {
+    const executorHost = {
+        spawnSession: async (_directory: string, options?: SpawnSessionOptions) => {
             calls.push((options ?? {}) as Record<string, unknown>)
             if (opts.spawnReply) return opts.spawnReply as unknown as SpawnGatewayResult
             const engine = engineRef.engine!
@@ -53,7 +53,7 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
             engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
             return { type: 'success', sessionId: spawned.id }
         },
-    } as unknown as MachineHost
+    } as unknown as ExecutorHost
 
     const io = {
         of() { return { sockets: new Map() } },
@@ -62,7 +62,7 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
         getSocketIdForMethod() { return null },
     } as unknown as RpcRegistry
     const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-    const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, executorHost)
     engineRef.engine = engine
     // executor 就绪（ticket 201 起 resume 判据；机器列表层已删）
     if (opts.executorReady !== false) {
@@ -167,13 +167,13 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
         }
     })
 
-    test('spawn 失败（MachineHost 抛错）→ 异常就地消化，不构成 unhandled rejection', async () => {
+    test('spawn 失败（ExecutorHost 抛错）→ 异常就地消化，不构成 unhandled rejection', async () => {
         const store = new Store(':memory:')
         const throwingHost = {
             spawnSession: async () => {
                 throw new Error('spawn failed')
             },
-        } as unknown as MachineHost
+        } as unknown as ExecutorHost
         const io = {
             of() { return { sockets: new Map() } },
         } as unknown as import('socket.io').Server

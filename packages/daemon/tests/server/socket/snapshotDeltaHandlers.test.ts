@@ -24,7 +24,7 @@ import type { StoredSession } from '../../../src/store/types'
 import type { SyncEvent } from '../../../src/sync/syncEngine'
 
 /**
- * snapshot delta 协议 handler 层接缝测试（票 01 建 CLI→hub 段、票 02 加 hub→web 段）：
+ * snapshot delta 协议 handler 层接缝测试（票 01 建 CLI→daemon 段、票 02 加 daemon→web 段）：
  * session-message 帧（全量/增量/legacy）进 → message-snapshot（全量）/ message-snapshot-delta（增量）出。
  * 断言外部行为（帧进出），不触及拼接器内部状态。
  */

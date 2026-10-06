@@ -15,9 +15,9 @@
  */
 
 /**
- * 会话自报 webhook 客户端（session 侧）：会话启动后向本机 runner（daemon）
- * POST /session-started，驱动 runner 的追踪表登记（Q3 spawn 判据的闭环信号）。
- * 从 runner/controlClient 拆出（personal-agent-rewrite 解缠 6）——session 不再
+ * 会话自报 webhook 客户端（session 侧）：会话启动后向本机 daemon（executor
+ * controlServer）POST /session-started，驱动 executor 的追踪表登记（Q3 spawn 判据的闭环信号）。
+ * 从 daemon controlClient 拆出（personal-agent-rewrite 解缠 6）——session 不再
  * 依赖 daemon 包；端点路径与请求体类型单源于 @mobi/shared/hostProtocol。
  */
 

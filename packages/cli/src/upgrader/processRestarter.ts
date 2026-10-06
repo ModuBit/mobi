@@ -41,7 +41,7 @@ export async function detectActiveProcesses(): Promise<ActiveProcesses> {
 }
 
 /**
- * 重启 daemon（hub+runner 同进程，一次重启即全量替换为新版二进制）
+ * 重启 daemon（单进程，一次重启即全量替换为新版二进制）
  * 使用 mobi service restart 子命令
  */
 export async function restartProcesses(): Promise<void> {

@@ -53,12 +53,12 @@ export function setUnauthorizedHandler(handler: () => void): () => void {
 
 // 创建 API 客户端（使用当前页面的 origin）
 // cookie 链路：withCredentials 让浏览器自动随同源请求携带 httpOnly cookie，
-// 不再手写 Authorization header（CORS credentials 配套见 hub server.ts）
+// 不再手写 Authorization header（CORS credentials 配套见 daemon server.ts）
 
 /**
  * 从请求异常中提取服务端下发的业务错误文案。
  * axios 对非 2xx 抛 AxiosError，其 message 只有笼统的「Request failed with status code N」；
- * hub 的错误响应 body 恒为 { success:false, error }，把真实原因（如读边界的
+ * daemon 的错误响应 body 恒为 { success:false, error }，把真实原因（如读边界的
  * 「Access denied: ... protected directory」）提取出来供 UI 直接展示。
  */
 export function extractApiError(error: unknown): string {
@@ -139,7 +139,7 @@ export function createMobiApi() {
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
             // 手动休眠（dormancy）：gate 阻塞时 409 携带逐项 blocker
             dormant: (sessionId: string) => client.post(`/api/sessions/${sessionId}/dormant`),
-            // 中断会话：stopKind 三档停止（缺省 'turn' 只停本轮，hub 侧同款缺省语义）
+            // 中断会话：stopKind 三档停止（缺省 'turn' 只停本轮，daemon 侧同款缺省语义）
             abort: (sessionId: string, stopKind?: StopKind) =>
                 client.post(`/api/sessions/${sessionId}/abort`, { stopKind }),
             switch: (sessionId: string) => client.post(`/api/sessions/${sessionId}/switch`),
@@ -157,7 +157,7 @@ export function createMobiApi() {
             // rewind 执行：闸门通过即受理（202），结果经 SSE 两段回报（rewind-truncated → rewind-completed）
             rewind: (sessionId: string, nativeId: string, restoreFiles: boolean) =>
                 client.post(`/api/sessions/${sessionId}/rewind`, { nativeId, restoreFiles }),
-            // fork 会话创建：建待激活会话行 + 复制锚点 turn（fork-session spec §5.1，hub 侧纯动作不要求 CLI 在线）；
+            // fork 会话创建：建待激活会话行 + 复制锚点 turn（fork-session spec §5.1，daemon 侧纯动作不要求 CLI 在线）；
             // 成功返回新会话 id 供跳转；失败 { error, code } 供归因文案（code 经 forkRejectReasonKey 映射）
             fork: (sessionId: string, anchorNativeId: string) =>
                 client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/fork`, { anchorNativeId }),
@@ -241,7 +241,7 @@ export function createMobiApi() {
         messages: {
             list: (sessionId: string, params?: { beforeSeq?: number; limit?: number }) =>
                 client.get<MessagesResponse>(`/api/sessions/${sessionId}/messages`, { params }),
-            // content 三形态（string / 单 block / block 数组），hub 端统一走 UserMessageContentSchema
+            // content 三形态（string / 单 block / block 数组），daemon 端统一走 UserMessageContentSchema
             send: (sessionId: string, content: UserMessageContent, localId?: string) =>
                 client.post(`/api/sessions/${sessionId}/messages`, { content, localId }),
             sidechain: (sessionId: string, parentToolUseId: string, opts?: { signal?: AbortSignal }) =>
@@ -289,7 +289,7 @@ export function createMobiApi() {
                     { params: { path } },
                 ),
             // save-file：inspector 编辑保存（octet-stream；path/baseEtag 走 header）。
-            // conflict → 409，CLI 业务错误（rpcError）经 hub 包成 500；
+            // conflict → 409，CLI 业务错误（rpcError）经 daemon 包成 500；
             // 二者都放行（validateStatus），让 useSaveFile 按 data.success 分流，
             // mutationFn 永不抛错（符合其 error:never 类型签名），仅断网等网络异常才 reject。
             save: (
@@ -354,7 +354,7 @@ export function createMobiApi() {
 
         // Workspaces（工作区实体化，会话按工作区 / 「最近」组织）
         workspaces: {
-            // 工作区列表（?machineId= 过滤某机器名下工作区）
+            // 工作区列表
             list: () =>
                 client.get<{ workspaces: Workspace[] }>('/api/workspaces', {
                 }),
@@ -450,7 +450,7 @@ export function createMobiApi() {
                 client.get('/api/sdk/host-metadata', { params: { cwd }, signal: opts?.signal }),
         },
 
-        // Web 工具配置（daemon 纯透传 runner RPC；凭据脱敏回显，executor 未就绪 502 reject）
+        // Web 工具配置（daemon 纯透传 executor RPC；凭据脱敏回显，executor 未就绪 502 reject）
         webTools: {
             get: () =>
                 client.get<{ config: RedactedWebToolsConfig } | { error: string }>('/api/web-tools'),

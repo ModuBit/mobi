@@ -58,7 +58,7 @@ describe('startWebApiTokenWatcher', () => {
         // 等待 FSEvents/inotify 注册目录监听（macOS FSEvents 需要一小段准备时间）
         await new Promise(r => setTimeout(r, 300))
 
-        // 原子重写（tmp + rename，模拟 CLI updateSettings 与 hub writeSettings）
+        // 原子重写（tmp + rename，模拟 CLI updateSettings 与 daemon writeSettings）
         const settingsFile = join(dataDir, 'settings.daemon.json')
         const newToken = 'rotated-web-token-' + Date.now()
         await writeFile(settingsFile + '.tmp', JSON.stringify({ webApiToken: newToken }))

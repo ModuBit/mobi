@@ -60,9 +60,9 @@ const UI_COMMAND_ACK_TIMEOUT_MS = 5_000
 /** Agent 会话操作 ack 等待上限（ms）：同 UI 命令口径，超时按连接故障处理 */
 const AGENT_OP_ACK_TIMEOUT_MS = 5_000
 /** 建会话的 ack 等待上限（ms）：这一步在起真进程（见 createSessionForAgent 注释），
- *  5s 必然不够。取 45s = Hub 侧 RPC 30s 上限 + 余量 */
+ *  5s 必然不够。取 45s = daemon 侧 RPC 30s 上限 + 余量 */
 const AGENT_CREATE_SESSION_ACK_TIMEOUT_MS = 45_000
-/** 投递消息的 ack 等待上限（ms）：Hub 侧并发扇出，卡住的目标最多吃掉一次 30s RPC 上限
+/** 投递消息的 ack 等待上限（ms）：daemon 侧并发扇出，卡住的目标最多吃掉一次 30s RPC 上限
  *  （见 sendMessageToSessionsForAgent 注释），60s 留一倍余量 */
 const AGENT_SEND_MESSAGE_ACK_TIMEOUT_MS = 60_000
 
@@ -99,7 +99,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly rewindReportQueue: ReliableRewindReportQueue
     /**
      * snapshot 流重基线回调（delta 协议）：socket 重连建立后调用，让进行中消息的
-     * snapshot 发送器立即重发全量帧（断线期间的增量帧已丢，hub 链必断档，全量重建基线）。
+     * snapshot 发送器立即重发全量帧（断线期间的增量帧已丢，daemon 链必断档，全量重建基线）。
      * 由 claudeRemoteLauncher 在创建发送器时注入。
      */
     private onSnapshotTransportReset: (() => void) | null = null
@@ -161,7 +161,7 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         // rewind 两段回报改走可靠队列（M5）：ack 确认 + 失败重试 + 重连补发，
-        // 断线窗口内 fire-and-forget 丢事件会造成 CLI transcript / Hub DB 永久分叉
+        // 断线窗口内 fire-and-forget 丢事件会造成 CLI transcript / daemon DB 永久分叉
         const sock = this.socket
         this.rewindReportQueue = new ReliableRewindReportQueue({
             get connected() { return sock.connected },
@@ -178,9 +178,9 @@ export class ApiSessionClient extends EventEmitter {
             this.rpcHandlerManager.onSocketConnect(this.socket)
             this.idleTimer?.onReconnect()
             this.clearManualReconnect()
-            // 补发未确认的 rewind 回报（ack 制：断线期间的回报在此重放，hub 幂等消化）
+            // 补发未确认的 rewind 回报（ack 制：断线期间的回报在此重放，daemon 幂等消化）
             this.rewindReportQueue.onConnected()
-            // snapshot delta 流重基线：断线期间的增量帧已丢，重发全量帧重建 hub 侧基线
+            // snapshot delta 流重基线：断线期间的增量帧已丢，重发全量帧重建 daemon 侧基线
             this.onSnapshotTransportReset?.()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
@@ -199,7 +199,7 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         this.socket.on('disconnect', (reason) => {
-            // 断开原因落盘（WARN）：hub 重启/换血后会话退出的定位证据——曾因 debug 不落盘而无从排查
+            // 断开原因落盘（WARN）：daemon 重启/换血后会话退出的定位证据——曾因 debug 不落盘而无从排查
             logger.warn('[API] Socket disconnected:', reason)
             this.scheduleManualReconnect(reason)
             this.rpcHandlerManager.onSocketDisconnect()
@@ -294,7 +294,7 @@ export class ApiSessionClient extends EventEmitter {
         }
 
         // mobi 自发投递的跨会话消息**不由落库行回灌**：它的投递通道是 push-agent-message RPC
-        // （Hub 刻意不回灌 CLI 房间），落库行只供 Web 展示与历史回放。但断线重连后的
+        // （daemon 刻意不回灌 CLI 房间），落库行只供 Web 展示与历史回放。但断线重连后的
         // backfillMessages 会照 seq 把这行读回来——不跳过就会被二次入队，同一句话投两遍。
         // seq 记账已在上方完成：这行仍是会话序列的一部分，重连时不能被当成「没见过的」。
         if (isMobiSentCrossSession(message.content)) {
@@ -303,7 +303,7 @@ export class ApiSessionClient extends EventEmitter {
 
         const userResult = UserMessageSchema.safeParse(message.content)
         if (userResult.success) {
-            // localId 由 Hub 放在 message 外层（与 content 信封同级），合并进 UserMessage
+            // localId 由 daemon 放在 message 外层（与 content 信封同级），合并进 UserMessage
             // 供 runClaude 入队 → collectBatch → emitMessagesSubmitted 追踪 consume
             this.enqueueUserMessage({ ...userResult.data, localId: message.localId ?? userResult.data.localId ?? undefined })
             return
@@ -401,14 +401,14 @@ export class ApiSessionClient extends EventEmitter {
     sendClaudeSessionMessage(body: RawJSONLines): void {
         // mobi 合成事件信封（turnDiffReporter 等非 SDK 消息，mobiCustomEvent 标记）：
         // custom role 原样落库（ADR 0002 自定义事件形态），不经 agent output 包装。
-        // localId 无 native 语义（随机生成仅供 hub 去重）；结构性合成消息不携带 native 锚点
+        // localId 无 native 语义（随机生成仅供 daemon 去重）；结构性合成消息不携带 native 锚点
         if ((body as { mobiCustomEvent?: unknown }).mobiCustomEvent === true) {
             this.socket.emit('session-message', {
                 sid: this.sessionId,
                 message: body,
                 localId: randomUUID(),
                 category: 'persistent',
-                // 位置声明（turnDiffReporter 卡片）：归属 result 行的 nativeId——hub 据
+                // 位置声明（turnDiffReporter 卡片）：归属 result 行的 nativeId——daemon 据
                 // 该行定位 position_at（result 前 -1ms），早于 queue 投喂的 position 地板，
                 // 卡片不输给下一轮用户气泡
                 positionBeforeResultId: (body as { positionBeforeResultId?: string }).positionBeforeResultId,
@@ -416,13 +416,13 @@ export class ApiSessionClient extends EventEmitter {
             return
         }
 
-        // 在发送端分类，避免 Hub 重复分类
+        // 在发送端分类，避免 daemon 重复分类
         const subtype = body.type === 'system' ? body.subtype : undefined
         const category = classifyMessage(body.type, subtype)
 
         // discard 统一在此拦截：remote 循环入口（claudeRemoteLauncher）虽已过滤，
         // 但 local 模式 scanner（转录 JSONL 含 command_lifecycle 等控制帧）等旁路
-        // 直接调用本方法——发送端唯一咽喉点，保证 discard 消息不进 Hub 不落库
+        // 直接调用本方法——发送端唯一咽喉点，保证 discard 消息不进 daemon 不落库
         if (category === 'discard') return
 
         // 恢复后缓存过期提示的生命周期终点：首个 result 帧（两模式共用咽喉点）即清，
@@ -461,8 +461,8 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.emit('session-message', {
             sid: this.sessionId,
             message: content,
-            // 使用 Claude Code 的 uuid 作为 localId，供 Hub DB 去重
-            // resume 场景下同一消息的 uuid 保持不变，Hub 可通过 localId 避免重复存储
+            // 使用 Claude Code 的 uuid 作为 localId，供 daemon DB 去重
+            // resume 场景下同一消息的 uuid 保持不变，daemon 可通过 localId 避免重复存储
             localId: body.uuid,
             // SDK 消息自带 uuid 与 session id，一并写入 metadata（rewind 锚点）
             metadata: { nativeId: body.uuid, nativeSessionId: body.session_id || undefined },
@@ -488,7 +488,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 发送流式内容快照——全量帧（delta 协议基线）。frame 携带 rev（baseRev=null）；
-     * 缺省时为 legacy 全量（老协议直通，hub 不建链）。
+     * 缺省时为 legacy 全量（老协议直通，daemon 不建链）。
      */
     sendContentSnapshot(message: DecryptedMessage, frame?: { rev: number }): void {
         this.socket.emit('session-message', {
@@ -501,7 +501,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** 发送流式内容快照——增量帧（首帧全量基线之后，仅携带增量 op）。
-     *  带 snapshot:true——老 hub（无 delta 分支）按快照透传而非误落库（混版本防 transcript 污染） */
+     *  带 snapshot:true——老 daemon（无 delta 分支）按快照透传而非误落库（混版本防 transcript 污染） */
     sendSnapshotDelta(frame: SnapshotDeltaFrame): void {
         this.socket.emit('session-message', {
             sid: this.sessionId,
@@ -512,8 +512,8 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    /** snapshot 流结束信号：full message 已持久化，hub 据此精确清该流缓存与订阅游标
-     *  （full 的 localId 与流的 sdkUuid 不同，hub 无法自行映射）。老 hub 无 handler 静默忽略 */
+    /** snapshot 流结束信号：full message 已持久化，daemon 据此精确清该流缓存与订阅游标
+     *  （full 的 localId 与流的 sdkUuid 不同，daemon 无法自行映射）。老 daemon 无 handler 静默忽略 */
     sendSnapshotStreamEnd(localId: string): void {
         this.socket.emit('snapshot-stream-end', { sid: this.sessionId, localId })
     }
@@ -543,7 +543,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 落库入站 turn（UserPromptSubmit hook 观测到的 peer / scheduled / loop）。
-     * 该消息未经 hub 发送通道，此处是它唯一的持久化入口；
+     * 该消息未经 daemon 发送通道，此处是它唯一的持久化入口；
      * sentFrom 保留 'cli' 是存量行形状（这条是 CLI 转记的不假），**不入队由下面的
      * crossSession 标注决定**——见 shared 的 isQueueableUserSubmission 判据②。
      *
@@ -631,13 +631,13 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    /** 通知 Hub：这批 localId 的消息已推给 Claude Code（pushed 转换，写入 lifecycle/lifecycle_at） */
+    /** 通知 daemon：这批 localId 的消息已推给 Claude Code（pushed 转换，写入 lifecycle/lifecycle_at） */
     emitMessagesSubmitted(localIds: string[]): void {
         if (localIds.length === 0) return
         this.emitFacts([{ kind: 'pushed', localIds, at: Date.now() }])
     }
 
-    /** 通知 Hub：这批 localId 的用户消息已绑定 native 锚点（push 给 SDK 时生成，批内同值）。
+    /** 通知 daemon：这批 localId 的用户消息已绑定 native 锚点（push 给 SDK 时生成，批内同值）。
      * nativeSessionId 在 push 时已知（非首条消息）则直接带上，省去 attach 补写往返；
      * 首条消息 push 时 session id 未知，留空由 attach 补写 */
     emitMessagesBound(bindings: { localId: string; nativeId: string }[], nativeSessionId?: string): void {
@@ -650,12 +650,12 @@ export class ApiSessionClient extends EventEmitter {
         })))
     }
 
-    /** 通知 Hub：native session 已切换（onSessionFound 变化），补写该会话缺 nativeSessionId 的消息行 */
+    /** 通知 daemon：native session 已切换（onSessionFound 变化），补写该会话缺 nativeSessionId 的消息行 */
     emitNativeAttached(nativeSessionId: string): void {
         this.emitFacts([{ kind: 'attached', nativeSessionId }])
     }
 
-    /** 通知 Hub：CC 已回显接收该 nativeId 的用户消息（acked 转换，rewind 判据） */
+    /** 通知 daemon：CC 已回显接收该 nativeId 的用户消息（acked 转换，rewind 判据） */
     emitMessagesAcked(nativeId: string): void {
         this.emitFacts([{ kind: 'acked', nativeId, at: Date.now() }])
     }
@@ -671,7 +671,7 @@ export class ApiSessionClient extends EventEmitter {
         this.emitFacts([{ kind: 'lifecycle', nativeId, state, at: at ?? Date.now(), ...(terminalReason ? { terminalReason } : {}) }])
     }
 
-    /** 上报撤回（#53：最后一条 user 无输出即停）——hub 据此软删除并广播 message-withdrawn 回填 */
+    /** 上报撤回（#53：最后一条 user 无输出即停）——daemon 据此软删除并广播 message-withdrawn 回填 */
     emitWithdrawnFact(nativeId: string): void {
         this.emitFacts([{ kind: 'withdrawn', nativeId, at: Date.now() }])
     }
@@ -687,7 +687,7 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 反查 rewind 截断边界：同 metadata.nativeId 的最小 seq 行（锚点批首行，1:N 批整批同删的定界）。
      * 走既有 GET /cli/sessions/:id/messages 接口正向分页（afterSeq 游标递进，对齐 backfillMessages）；
-     * 消息按 seq 升序返回，首个命中即最小 seq。未找到（行已删 / Hub DTO 未含 metadata）返回 0，
+     * 消息按 seq 升序返回，首个命中即最小 seq。未找到（行已删 / daemon DTO 未含 metadata）返回 0，
      * 调用方按边界反查失败处理（跳过 truncated 上报，completed 带 error 收尾）。
      */
     async fetchRewindBoundary(nativeId: string): Promise<number> {
@@ -731,18 +731,18 @@ export class ApiSessionClient extends EventEmitter {
         return 0
     }
 
-    /** rewind 截断成功上报（CLI → Hub，ack 确认制）：Hub 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
+    /** rewind 截断成功上报（CLI → daemon，ack 确认制）：daemon 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
     emitRewindTruncated(nativeId: string, deleteFromSeq: number): void {
         this.rewindReportQueue.enqueue({ event: 'rewind-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
     }
 
-    /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */
+    /** rewind 终态上报（CLI → daemon，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */
     emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void {
         this.rewindReportQueue.enqueue({ event: 'rewind-completed', body: { sid: this.sessionId, filesRestored, error, skippedLinks } })
     }
 
     /**
-     * 发送 UI 命令到 Hub（agent-apps，A 类 UI 呈现）。
+     * 发送 UI 命令到 daemon（agent-apps，A 类 UI 呈现）。
      * emitWithAck 等回执（回执 { delivered } 是 open_in_mobi 等工具的核心语义，
      * 不用 reportContextUsage 的 fire-and-forget 模式）；超时/断连 reject，
      * 由调用方按连接故障处理（与离线 delivered:false 语义区分）。
@@ -771,9 +771,9 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 在某台机器上起一个新会话（B 类工具族）。
      *
-     * 等待上限比列表类长得多：这一步真的在起进程——runner 要等会话 webhook
-     * （最多 15s），Hub 的 RPC 自身也有 30s 上限，所以 ack 可能几秒后才回。
-     * 口径仍与列表类一致：业务失败走 ack 的 ok:false（文案已由 Hub 翻译好），
+     * 等待上限比列表类长得多：这一步真的在起进程——daemon 要等会话 webhook
+     * （最多 15s），daemon 的 RPC 自身也有 30s 上限，所以 ack 可能几秒后才回。
+     * 口径仍与列表类一致：业务失败走 ack 的 ok:false（文案已由 daemon 翻译好），
      * 连接故障走 reject。
      */
     async createSessionForAgent(input: Omit<AgentCreateSessionRequest, 'sid'>): Promise<AgentCreateSessionAck> {
@@ -786,7 +786,7 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 把一条消息投给若干会话（B 类工具族）。
      *
-     * 等待上限比列表类长：Hub 侧每个目标一次 RPC 往返（单次上限 30s），扇出并发但要等
+     * 等待上限比列表类长：daemon 侧每个目标一次 RPC 往返（单次上限 30s），扇出并发但要等
      * 最慢的那个回来。60s = 一次卡住的 30s 上限 + 一倍余量。
      *
      * 口径与列表类一致：业务失败（入参非法 / 无权限）走 ack 的 ok:false，
@@ -801,7 +801,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 上报上下文用量（事件驱动采集）。
-     * Hub 落库到 runtimeState.contextUsage + SSE 推 web。
+     * daemon 落库到 runtimeState.contextUsage + SSE 推 web。
      */
     reportContextUsage(usage: ContextUsage): void {
         this.socket.emit('context-usage', {
@@ -812,7 +812,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 清空上下文用量（/clear 后新会话从 0 开始）。
-     * 复用 context-usage 通道，contextUsage 传 null：hub 据此清 runtimeState.contextUsage + SSE 推，
+     * 复用 context-usage 通道，contextUsage 传 null：daemon 据此清 runtimeState.contextUsage + SSE 推，
      * web 端用量线隐藏，直到下次真实 turn 的 result 到达。
      */
     clearContextUsage(): void {
@@ -824,7 +824,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 上报当前轮次起点（running 翻转 false→true 时，SessionBase.onRunningChange 触发）。
-     * Hub 落库到 runtimeState.runStartedAt + SSE 推 web——StatusBar 计时的权威来源，
+     * daemon 落库到 runtimeState.runStartedAt + SSE 推 web——StatusBar 计时的权威来源，
      * 不随 web 消息窗口化丢失（docs/pending.md #55）。
      */
     reportRunStarted(at: number): void {
@@ -837,11 +837,11 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 上报「本会话此刻能不能收消息」（sink 接通 / 断开时各一次，**状态翻转才报**）。
      *
-     * Hub 用它等「建完即可用」：从 spawn 回执到 sink 接通隔着 130–550ms，回执那一刻只有
+     * daemon 用它等「建完即可用」：从 spawn 回执到 sink 接通隔着 130–550ms，回执那一刻只有
      * 「进程上线了」。也用它把投递失败说准——「还没接上」和「已经退出」是两回事。
      *
      * 它是**此刻**的事实，不是稳定属性：sink 在每轮收尾被清空、下一轮再接上，所以这个值
-     * 会反复翻转（见 Hub 侧 SessionReceiveReadiness 的说明）。
+     * 会反复翻转（见 daemon 侧 SessionReceiveReadiness 的说明）。
      *
      * 这里是唯一的出口，但**写端不在这里**：谁在什么时候翻，由
      * [`claude/utils/inboundChannel.ts`](claude/utils/inboundChannel.ts) 的 InboundChannel 决定
@@ -855,7 +855,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * 上报 goal 状态（hub 落库到 runtimeState.goalStatus + SSE 推 web）。
+     * 上报 goal 状态（daemon 落库到 runtimeState.goalStatus + SSE 推 web）。
      * goalStatus 为 null 表示清空（达成 10s 后自动清空 / 手动清理）。
      */
     reportGoalStatus(goalStatus: GoalStatus | null): void {
@@ -866,7 +866,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * 上报会话恢复时的 prompt cache 状态（hub 落库到 runtimeState.cacheStatus + SSE 推 web）。
+     * 上报会话恢复时的 prompt cache 状态（daemon 落库到 runtimeState.cacheStatus + SSE 推 web）。
      * 仅 SessionStart(resume/fork) 且缓存过期时调用；首个 result 帧到达时由
      * sendClaudeSessionMessage 统一清空（过期提示只在首轮前有意义）。
      */
@@ -880,7 +880,7 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * 首个 result 帧到达时清空缓存过期提示。无条件 emit（不以本进程是否上报过为前提）：
      * CLI 重启后 flag 类记忆会丢，而「result = 恢复提示生命周期终点」是会话级语义；
-     * hub 侧 merge 对已空字段 changed=false 不广播，常态 turn 的清空事件零开销。
+     * daemon 侧 merge 对已空字段 changed=false 不广播，常态 turn 的清空事件零开销。
      */
     private clearCacheStatusOnResult(): void {
         this.socket.emit('cache-status', {
@@ -904,10 +904,10 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * 会话结束上报（ack 制）：确认 hub 落达（或超时兜底）才返回，调用方（cleanup
-     * 流程）据此再关 socket——裸 emit + 立即 close 会把事件丢在本地缓冲，hub 收不到
+     * 会话结束上报（ack 制）：确认 daemon 落达（或超时兜底）才返回，调用方（cleanup
+     * 流程）据此再关 socket——裸 emit + 立即 close 会把事件丢在本地缓冲，daemon 收不到
      * session-end，active 永久悬挂（2026-09-30 事故）。超时/断连时关闭照常进行，
-     * hub 侧由心跳过期清扫收敛 active。
+     * daemon 侧由心跳过期清扫收敛 active。
      */
     async sendSessionDeath(): Promise<void> {
         void cleanupUploadDir(this.sessionId)
@@ -1140,7 +1140,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * 服务端主动断开（'io server disconnect'）的兜底重连：socket.io v4 对该 reason
-     * 不自动重连（hub 优雅关闭/单连接被踢都会走到），必须手动 connect() 恢复重连循环，
+     * 不自动重连（daemon 优雅关闭/单连接被踢都会走到），必须手动 connect() 恢复重连循环，
      * 否则 10 分钟 disconnect timeout 到期会话进程直接退出（2026-08-17 排查的根因链）。
      * transport 层断开（transport close/error/ping timeout）走 socket.io 内置自动重连，不干预；
      * 'io client disconnect' 是本进程主动断开（退出路径），禁止兜底——否则进程退不出去。

@@ -53,7 +53,7 @@ export type ContextUsageChannels = {
     /** 读：拉取 getContextUsage summary（detail:'summary'，零 API/零 LLM——本地估算）；
      *  query 不在（已关闭）/调用失败 → undefined，调用方按无细分上报 */
     fetchSummary: () => Promise<SDKControlGetContextUsageResponse | undefined>
-    /** 写：向 hub 上报水位 */
+    /** 写：向 daemon 上报水位 */
     reportUsage: (usage: ContextUsage) => void
 }
 
@@ -180,7 +180,7 @@ export class ContextUsageTracker {
      * rawMaxTokens 是 CC 权威窗口（替代 guessContextWindow 的 [1m] 正则猜测优先级）。
      * 仅在尚无窗口记忆时上报（lastMaxTokens===0 = 本会话还没有 result）；拉取期间已有
      * result 到达（竞态）则放弃——result 路径的实测值更权威。
-     * resume 会话由调用方跳过：hub 已持久化真实水位/成本（web 首拉恢复），
+     * resume 会话由调用方跳过：daemon 已持久化真实水位/成本（web 首拉恢复），
      * 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
      */
     async collectStartupUsage(query: Query): Promise<void> {

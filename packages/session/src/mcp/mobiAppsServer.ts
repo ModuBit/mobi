@@ -26,7 +26,7 @@
  * 两类同处一个 server（照 codex 的 codex_apps：一个 namespace 装全部应用工具）；
  * mobi-core 则是与 mobi 应用无关的内置基础能力（change_title / web 工具）。
  *
- * 仅挂 remote 壳：本 server 的工具都依赖 Hub 链路，local HTTP 壳不挂载。
+ * 仅挂 remote 壳：本 server 的工具都依赖 daemon 链路，local HTTP 壳不挂载。
  * 不设 alwaysLoad：默认 tool search defer，工具定义不进上下文。
  */
 

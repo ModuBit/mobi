@@ -15,7 +15,7 @@
  */
 
 /**
- * push-agent-message RPC handler（Hub → CLI 的跨会话消息投递）。
+ * push-agent-message RPC handler（daemon → CLI 的跨会话消息投递）。
  *
  * 本模块是**本特性与既有投递路径的分界点**：消息从别的会话投来，本会话从没为它排过队，
  * 因此 handler 的三步里没有一步碰投递队列——
@@ -27,7 +27,7 @@
  * 拿不到 session / queue，想 steal 也无从下手。测试锁的就是这一点。
  *
  * 失败一律用返回值表达（见 shared 的 AgentMessagePushResult），不抛错：抛错会把
- * 回执变成连接故障，Hub 只能报一句与事实无关的「目标会话不可达」，而真相是
+ * 回执变成连接故障，daemon 只能报一句与事实无关的「目标会话不可达」，而真相是
  * 「handler 跑了但没收下」。
  */
 
@@ -46,8 +46,8 @@ export type AgentMessageSink = (payload: PromptPayload) => boolean
 /**
  * RPC 载荷 → 可投递的 delivery（形状不对返回 null）。
  *
- * Hub 是可信来源（它自己先用同一份词汇表校验过），这里仍要挡：**形状不对时抛错会把
- * RPC 变成连接故障**，Hub 只能报一句与事实无关的「目标会话不可达」，而真相是载荷坏了。
+ * daemon 是可信来源（它自己先用同一份词汇表校验过），这里仍要挡：**形状不对时抛错会把
+ * RPC 变成连接故障**，daemon 只能报一句与事实无关的「目标会话不可达」，而真相是载荷坏了。
  * 返回 null 让调用方给出明确拒绝。
  *
  * 用 shared 的 `UserMessageContentSchema` 复核，而不是信任 `params` 的 cast：

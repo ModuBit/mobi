@@ -22,7 +22,7 @@ import { z } from 'zod'
 /**
  * Web 契约快照测试（personal-agent-rewrite 票 02）
  *
- * 冻结 hub→web 契约（路径+响应形状+SSE 事件类型），锁定表象防无意破坏。
+ * 冻结 daemon→web 契约（路径+响应形状+SSE 事件类型），锁定表象防无意破坏。
  * 后续包重组改内部实现时（③④⑤），本测试不变——变红即误删契约，停下。
  *
  * 范围：全部 HTTP 路由形状 + SSE 事件 type 枚举

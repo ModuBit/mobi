@@ -34,7 +34,7 @@ import { resolveSessionTitle } from './sessionFork'
  * LIKE 筛选（fork 行数有限），无 messages 全表扫描。
  */
 
-/** 迁移结果（观测用，hub 启动日志可打点） */
+/** 迁移结果（观测用，daemon 启动日志可打点） */
 export interface LegacyRefMigrationResult {
     /** LIKE 命中的行数 */
     scanned: number

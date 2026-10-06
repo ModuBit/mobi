@@ -114,7 +114,7 @@ export class MessageStore {
     }
 
     /** 按 nativeId 单调推进 lifecycle 至 command_lifecycle 状态（单源 CommandLifecycleState）+
-     *  withdrawn（撤回留档，仅 hub 内部——非 command_lifecycle 帧），
+     *  withdrawn（撤回留档，仅 daemon 内部——非 command_lifecycle 帧），
      *  已处终态（含 withdrawn）不被覆盖、processing 不回退，返回实际推进的行 id。 */
     advanceMessagesLifecycle(
         sessionId: string,
@@ -140,7 +140,7 @@ export class MessageStore {
         return getMessagesByNativeId(this.db, sessionId, nativeId)
     }
 
-    /** 锚 seq 之后是否仍有 hub 层排队行——撤回守卫 1b（用户连发场景不连带删后续排队消息） */
+    /** 锚 seq 之后是否仍有 daemon 层排队行——撤回守卫 1b（用户连发场景不连带删后续排队消息） */
     hasQueuedMessagesAfter(sessionId: string, seq: number): boolean {
         return hasQueuedMessagesAfter(this.db, sessionId, seq)
     }

@@ -16,7 +16,7 @@
 
 import { CLEARABLE_RUNTIME_STATE_FIELDS, DEFAULT_STOP_KIND, STOP_KIND_VALUES, SESSION_CONFIG_FIELDS, DiffTargetSchema, EFFORT_LEVELS, PermissionModeSchema, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, type SessionConfigFieldKey } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
-import { buildMachineMetadata } from '@mobi/node-core/hostMetadata'
+import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
@@ -238,14 +238,13 @@ export function createSessionsRoutes(
 
         // 安全校验：directory 必须在本机 homeDir 内（单机后 homeDir 直源宿主静态身份，
         // 与 daemon 进程同机等价，不再经 machines 行 metadata 中转）
-        const homeDir = buildMachineMetadata().homeDir
+        const homeDir = buildHostMetadata().homeDir
         const validation = validateHomeDirPath(parsed.data.directory, homeDir)
         if (!validation.valid) {
             return c.json({ error: validation.error }, 403)
         }
 
         const result = await engine.spawnSession(
-            '', // machineId 形参为 D4=C 路由残留（本地实现忽略），602 形参收窄时删除
             parsed.data.directory,
             {   // 选项对象化（深化候选②）：resumeSessionId 等缺省字段不再靠 undefined 占位对位
                 agent: parsed.data.agent,
@@ -398,7 +397,7 @@ export function createSessionsRoutes(
         if (!Number.isFinite(totalSize) || totalSize <= 0) {
             return c.json({ success: false, error: 'Invalid Content-Length' }, 400)
         }
-        // 第一道闸：hub 预校验总大小，超限直接 413 不开始传（省带宽）
+        // 第一道闸：daemon 预校验总大小，超限直接 413 不开始传（省带宽）
         if (totalSize > MAX_UPLOAD_BYTES) {
             return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
         }
@@ -431,7 +430,7 @@ export function createSessionsRoutes(
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        // 休眠会话放行（dormancy：冷编辑器自动保存不唤醒；engine 已 machine 化，写边界由 hub 注入 cwd）
+        // 休眠会话放行（dormancy：冷编辑器自动保存不唤醒；写边界由 daemon 注入 cwd）
         const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
         if (sessionResult instanceof Response) return sessionResult
 
@@ -754,7 +753,7 @@ export function createSessionsRoutes(
     })
 
     // fork 会话创建：建待激活会话行 + 复制锚点 turn + 溯源消息（fork-session spec §5.1）。
-    // 纯 hub 侧动作，不要求会话 active（CLI 离线时点 fork 允许），不碰 CLI RPC。
+    // 纯 daemon 侧动作，不要求会话 active（CLI 离线时点 fork 允许），不碰 CLI RPC。
     // 成功响应 { sessionId } = 新会话 id（web 跳转用）；失败带 reason code 供 web 归因
     app.post('/sessions/:id/fork', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
@@ -1076,7 +1075,7 @@ export function createSessionsRoutes(
         }
     })
 
-    // ── 审查重写 v2（DiffTarget 统一模型，六方法）：hub 纯转发。六条路由的
+    // ── 审查重写 v2（DiffTarget 统一模型，六方法）：daemon 纯转发。六条路由的
     // 「守卫 → body 解析 → engine 调用 → 错误兜底」同构样板收为方法表 + 注册循环
     // （与 CLI 侧 GIT_REVIEW_HANDLERS 表驱动同款收口）；wire 契约（方法/校验错误
     // 文案/兜底文案/状态码）不变 ──

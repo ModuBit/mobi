@@ -15,13 +15,13 @@
  */
 
 /**
- * 唤醒去重（spec .scratch/wake-dedup）：hub 判定会话「离线」只看 socket，不知道
+ * 唤醒去重（spec .scratch/wake-dedup）：server 判定会话「离线」只看 socket，不知道
  * 进程死活；盲 spawn 会与「活着但断连中」的旧进程构成双进程（CC 并发 resume 无锁，
  * 安静交错写同一份 jsonl）。本模块是查重决策的纯函数单源：给定在册 child 集合与
  * 本次 spawn 的 resume 目标，返回命中的活表项或 null。
  *
- * 「表项存在 = 进程存活」由 runner 既有 exit 清理保证（child 退出即删表项，含
- * SIGKILL——runner 是直接父进程必然收到 exit 事件），不另设探活。
+ * 「表项存在 = 进程存活」由 executor 既有 exit 清理保证（child 退出即删表项，含
+ * SIGKILL——executor 是直接父进程必然收到 exit 事件），不另设探活。
  */
 
 import type { TrackedSession } from './types'

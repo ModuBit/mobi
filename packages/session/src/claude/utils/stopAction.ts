@@ -17,7 +17,7 @@
 import { DEFAULT_STOP_KIND, STOP_KIND_VALUES, type StopKind } from '@mobi/shared'
 
 /**
- * abort 入口的 stopKind 校验：不白名单的值（旧 hub 手误、未来第 4 档在旧 CLI 上运行）
+ * abort 入口的 stopKind 校验：不白名单的值（旧 daemon 手误、未来第 4 档在旧 CLI 上运行）
  * 回落 DEFAULT_STOP_KIND('turn')。isCancelQueued 是负向默认（kind !== 'turn' 即清队列），
  * 未知值不校验直接透传会静默升级为破坏性清队列——宁降不升。
  */

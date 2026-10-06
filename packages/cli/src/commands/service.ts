@@ -52,8 +52,8 @@ export const serviceCommand: CommandDefinition = {
         }
 
         // 解析可选的组件前缀：service daemon <action>（等价于无前缀）
-        // hub/runner 前缀已随单组件模型删除（ticket-22）；旧客户端发的
-        // hub/runner scope 由 supervisor 服务端归一为 daemon
+        // daemon/runner 前缀已随单组件模型删除（ticket-22）；旧客户端发的
+        // daemon/runner scope 由 supervisor 服务端归一为 daemon
         let actionArgs = args
         if (args[0] === 'daemon') {
             actionArgs = args.slice(1)

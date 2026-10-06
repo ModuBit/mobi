@@ -88,7 +88,7 @@ export class AgentSessionBase<Mode> {
 
     onRunningChange = (running: boolean) => {
         // 轮次起点上报（running 翻转 false→true）：StatusBar 计时的权威来源，
-        // 经 hub 落库 runtimeState.runStartedAt + SSE 推 web——不随消息窗口化丢失
+        // 经 daemon 落库 runtimeState.runStartedAt + SSE 推 web——不随消息窗口化丢失
         //（docs/pending.md #55）。非翻转（重复同值上报）不触发
         if (running && !this.running) {
             this.client.reportRunStarted(Date.now())
@@ -149,7 +149,7 @@ export class AgentSessionBase<Mode> {
     };
 
     /**
-     * keep-alive 附带的 runtime 快照：permissionMode/model/effort/outputStyle 会经 hub
+     * keep-alive 附带的 runtime 快照：permissionMode/model/effort/outputStyle 会经 daemon
      * 落 runtimeState 持久化——进程重启后 resume 链路回放这些字段（syncEngine resume 分支），
      * 缺报即回落默认值。outputStyle 与 effort 同款：切换受理（setOutputStyle）后即时生效于后续上报。
      * outputStyle undefined = 「跟随 CC settings」（NewSessionPage 默认不携带字段 spawn）：

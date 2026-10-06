@@ -27,7 +27,7 @@ import type { DecryptedMessage } from '@/core/data/api/types'
  * 发送消息 Mutation Hook
  *
  * 入参为 Composer 分段（text + 附件双桶 + 引用），内部 serializeSegments 转
- * UserContentBlock[] 后以 { content: blocks } 新格式直传 hub——不再拼接 @path 文本。
+ * UserContentBlock[] 后以 { content: blocks } 新格式直传 daemon——不再拼接 @path 文本。
  *
  * 发送时立即在 store 追加一条乐观气泡：
  * - 会话运行中 → status='queued'（悬浮条展示，等待 agent 消费）
@@ -48,9 +48,9 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
             return api.messages.send(sessionId, vars.blocks, vars.localId)
         },
         onMutate: async (vars: { blocks: UserContentBlock[]; localId: string }) => {
-            // 乐观气泡：content 信封持 blocks 数组，与 hub messageService.sendMessage 落库形态同构。
+            // 乐观气泡：content 信封持 blocks 数组，与 daemon messageService.sendMessage 落库形态同构。
             // positionAt / createdAt 共用同一发送时刻；lifecycleAt 仅排队轨道携带
-            //（= createdAt，对齐 hub「queued 时 lifecycle_at = created_at」契约），
+            //（= createdAt，对齐 daemon「queued 时 lifecycle_at = created_at」契约），
             // 非排队轨道恒 null——否则服务端 echo 被 mergeMessages 第 (1) 步无条件
             // 继承乐观 lifecycleAt，永久携带 lifecycle=null + 伪时间戳的非法组合
             const now = Date.now()

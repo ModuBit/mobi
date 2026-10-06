@@ -24,7 +24,7 @@ import type { RedactedWebToolsConfig } from '@mobi/shared'
 
 /**
  * 验证连接结果（verify RPC envelope，success 风格）：
- * 成功带延迟毫秒数；失败带错误文案（runner/传输层错误统一收敛为 success:false 由调用侧包装）。
+ * 成功带延迟毫秒数；失败带错误文案（daemon/传输层错误统一收敛为 success:false 由调用侧包装）。
  */
 export type VerifyResult = { success: true; latencyMs: number } | { success: false; error: string }
 
@@ -38,7 +38,7 @@ export interface CredentialEditorProps {
      * 失败 toast 归属上层（WebToolsSection.saveBase）——本组件收到 false 时保持编辑态静默返回，禁止重复弹错。
      */
     onSave: (credentials: Record<string, string>) => Promise<boolean>
-    /** 空对象 = 用已存凭据验证（runner 侧已存值兜底）；非空 = 验证草稿新值 */
+    /** 空对象 = 用已存凭据验证（daemon 侧已存值兜底）；非空 = 验证草稿新值 */
     onVerify: (credentials: Record<string, string>) => Promise<VerifyResult>
 }
 
@@ -96,7 +96,7 @@ const VerifyOutcome = styled.span<{ $token: Token; $ok: boolean }>`
 /**
  * 凭据编辑器：只读预览态（掩码 preview）↔ 替换编辑态。
  *
- * 设计动机：hub 只回脱敏 preview（如 `tvly-******56`），明文不可回传浏览器——
+ * 设计动机：daemon 只回脱敏 preview（如 `tvly-******56`），明文不可回传浏览器——
  * 掩码串不可被误当作真实值编辑，改凭据必须点「替换」显式表达意图（清空重填）。
  * 凭据未设置（set:false）时无预览可显，直接进入编辑态。
  *
@@ -141,7 +141,7 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
     /**
      * 在场性过滤：只取草稿值 ≠ 初始 preview 且非空的键（保存与验证共用）。
      * 空串必须排除：写侧 merge 对空凭据键静默保持旧值，提交空串会造成「已保存」却未改的假象。
-     * 验证不同：空草稿 + 已存凭据 → 传空对象用已存值验证（runner 兜底），
+     * 验证不同：空草稿 + 已存凭据 → 传空对象用已存值验证（daemon 兜底），
      * 只有「无草稿变更且无已存凭据」才无可验证。
      */
     const changedCredentials = (): Record<string, string> =>

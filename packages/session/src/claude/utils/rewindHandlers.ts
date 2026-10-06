@@ -66,11 +66,11 @@ function parseNativeId(payload: unknown): string {
 }
 
 /**
- * 注册 rewind 两个 RPC handler（Web → Hub → CLI，对齐 rename-session 模式）：
+ * 注册 rewind 两个 RPC handler（Web → daemon → CLI，对齐 rename-session 模式）：
  *
  * - `rewind-dry-run`：预检。锚点存在性（getSessionMessages，假锚点/换链旧行 → 拒绝）
  *   + rewindFiles dryRun（file checkpoint 可达性）
- * - `rewind`：执行。闸门复检（队列/running，放行侧唯一权威——Hub 只查了后台任务）→
+ * - `rewind`：执行。闸门复检（队列/running，放行侧唯一权威——daemon 只查了后台任务）→
  *   锚点复检 → 文件回滚（**先于截断**：PoC poc8 实测截断后被截区间的 checkpoint 立即
  *   作废，截断前调用才有效）→ 向 restart module 提交 rewind 请求 → 退出当前 query；
  *   受理即返 `{ accepted: true }`，结果经 socket 两段回报
@@ -140,7 +140,7 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
         // tryPrepare 在回调执行前同步占位并在所有拒绝/异常路径自动释放；ready 时由 module
         // 原子完成「pending 置位 → 清排队 → 哨兵入队」，调用方不再接触重启协议状态。
         const result = await session.restart.tryPrepare(async () => {
-            // 闸门复检（Hub 已查后台任务集合）：队列非空 / 前台运行中 → 拒绝
+            // 闸门复检（daemon 已查后台任务集合）：队列非空 / 前台运行中 → 拒绝
             if (messageQueue.size() > 0) {
                 return { ready: false, reason: 'message queue is not empty' };
             }

@@ -15,14 +15,13 @@
  */
 
 /**
- * `daemon start-sync` 进程编排（ticket-16）：hub 与 runner 同进程。
+ * `daemon start-sync` 进程编排（ticket-16 单进程化）。
  *
- * 本模块不改任何业务路径，只验证「同进程」本身——hub/runner 各自的生命周期
- * 核心见 {@link ./hubServer} 与 {@link ./runner/run}，这里承担此前两个入口
- * 薄壳各自的进程级职责（exit logger、信号、崩溃检测），合一为组件名 `daemon`。
+ * 本模块不改任何业务路径，只承担进程级职责（exit logger、信号、崩溃检测）：
+ * Web/同步服务装配见 {@link ./server}，会话执行器见 {@link ./executor/lifecycle}。
  *
- * 关停顺序 = runner.stop → hub.stop（会话宿主先行，服务殿后）。
- * state 文件：daemon.state.json（ticket-22 起 hub/runner state 文件停写，
+ * 关停顺序 = executor.stop → server.stop（会话宿主先行，服务殿后）。
+ * state 文件：daemon.state.json（历史 daemon/runner state 文件已停写，
  * doctor/upgrader/e2e 脚本等读取方统一从 persistence 读 daemon 状态）。
  */
 
@@ -36,9 +35,9 @@ import {
     type DaemonLocallyPersistedState,
 } from '@mobi/node-core/persistence'
 import { logger } from '@mobi/node-core/logger'
-import { hubLogger } from './logger'
-import { startHub, type HubHandle } from './server'
-import { startRunnerCore, RunnerLockHeldError, type RunnerHandle } from './executor/lifecycle'
+import { daemonLogger } from './logger'
+import { startServer, type ServerHandle } from './server'
+import { startExecutor, ExecutorLockHeldError, type ExecutorHandle } from './executor/lifecycle'
 
 export interface StartDaemonOptions {
     host?: string
@@ -67,12 +66,12 @@ function detectPreviousCrash(exitLogger: ExitLogger): void {
 }
 
 export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> {
-    // —— 退出日志合一（组件名 daemon）：hub/runner 的进程职责在此收口 ——
-    // ringBuffer 注入 hubLogger（hub 是 daemon 的主服务；runner 的 logger
-    // 独立写文件，崩溃 dump 上下文以 hub 侧为准）
+    // —— 退出日志合一（组件名 daemon）：原 hub/runner 的进程职责在此收口 ——
+    // ringBuffer 注入 daemonLogger（daemon 主服务与执行器共用一个 logger，
+    // 崩溃 dump 上下文同源）
     const exitLogger = installExitLogger('daemon', {
         logsDir: resolveMobiLogsDir(),
-        ringBuffer: hubLogger,
+        ringBuffer: daemonLogger,
     })
     installExitHandlers('daemon', exitLogger, undefined, {
         // 崩溃（uncaught/unhandled，由上面的 handlers 记录并 exit）时保留
@@ -84,50 +83,48 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     detectPreviousCrash(exitLogger)
     cleanupOldLogs(resolveMobiLogsDir())
 
-    logger.debug('[DAEMON] Starting daemon (hub + runner in one process)...')
+    logger.debug('[DAEMON] Starting daemon (web server + executor in one process)...')
 
-    // hub 先起（runner 以 socket 客户端身份连本进程 hub，等 listen 就绪）
-    const hub: HubHandle = await startHub(opts)
-    logger.debug(`[DAEMON] Hub ready on port ${hub.port}`)
+    // 服务先起（executor 以宿主通道客户端身份连本进程，等 listen 就绪）
+    const server: ServerHandle = await startServer(opts)
+    logger.debug(`[DAEMON] Server ready on port ${server.port}`)
 
-    // 再起 runner。若旧形态 runner（独立进程）还在占锁：静默退出让用户显式
-    // 切换（`mobi runner stop` 后再起 daemon）；升级路径下版本不匹配的旧
-    // runner 由 CLI start 命令先行替换，这里不越权重写
-    let runner: RunnerHandle
+    // 再起执行器。若另一 daemon 实例还占着锁：静默退出让用户显式处理
+    //（R4 旧锁活性检测在 acquireDaemonLock 内：活旧实例拒启，死锁清理后接管）
+    let executor: ExecutorHandle
     try {
-        // runner 运行时事实直写 hub（ticket-20 machine 通道删除后的本地替身；
-        // 401 起 runner core 选项同步去 machine 命名）
-        runner = await startRunnerCore({ updateExecutorState: (handler) => hub.updateExecutorState(handler) })
+        // executor 运行时事实直写同进程 server（ticket-20 machine 通道删除后的本地直调）
+        executor = await startExecutor({ updateExecutorState: (handler) => server.updateExecutorState(handler) })
     } catch (error) {
-        if (error instanceof RunnerLockHeldError) {
-            logger.debug('[DAEMON] Another runner holds the lock; stopping hub and exiting')
-            await hub.stop()
-            console.log('Another runner is already running. Stop it first (mobi runner stop), then start the daemon again.')
+        if (error instanceof ExecutorLockHeldError) {
+            logger.debug('[DAEMON] Another executor holds the lock; stopping server and exiting')
+            await server.stop()
+            console.log('Another daemon is already running. Stop it first (mobi daemon stop), then start the daemon again.')
             process.exit(0)
         }
         throw error
     }
-    logger.debug(`[DAEMON] Runner ready (control port ${runner.httpPort})`)
+    logger.debug(`[DAEMON] Executor ready (control port ${executor.httpPort})`)
 
-    // runner 桥注入（ticket-18）：spawn 直调 + session-alive 驱动追踪补登
-    hub.setRunnerBridge(runner.bridge)
-    logger.debug('[DAEMON] Runner session bridge wired to hub')
+    // 执行桥注入（ticket-18）：spawn 直调 + session-alive 驱动追踪补登
+    server.setExecutorBridge(executor.bridge)
+    logger.debug('[DAEMON] Executor session bridge wired to server')
 
     writeDaemonState({
         pid: process.pid,
-        httpPort: hub.port,
-        hostPort: hub.hostPort,
-        controlPort: runner.httpPort,
+        httpPort: server.port,
+        hostPort: server.hostPort,
+        controlPort: executor.httpPort,
         startTime: new Date().toLocaleString()
     } satisfies DaemonLocallyPersistedState)
 
-    // 关停编排：先 runner（会话宿主）后 hub（服务），幂等
+    // 关停编排：先 executor（会话宿主）后 server（服务），幂等
     let shuttingDown = false
     const shutdown = async (exitCode: number) => {
         if (shuttingDown) return
         shuttingDown = true
-        await runner.stop('os-signal').catch(() => {})
-        await hub.stop().catch(() => {})
+        await executor.stop('os-signal').catch(() => {})
+        await server.stop().catch(() => {})
         clearDaemonState()
         process.exit(exitCode)
     }
@@ -135,11 +132,11 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
     process.on('SIGINT', () => void shutdown(0))
     process.on('SIGTERM', () => void shutdown(0))
 
-    // runner 内部关停（control server 指令 / 心跳自杀）→ 整个 daemon 一起退
-    // （同进程语义：runner 死即 daemon 死，supervisor 负责重拉）
-    void runner.exited.then(({ source, errorMessage }) => {
+    // executor 内部关停（control server 指令 / 心跳自杀）→ 整个 daemon 一起退
+    // （同进程语义：executor 死即 daemon 死，supervisor 负责重拉）
+    void executor.exited.then(({ source, errorMessage }) => {
         if (shuttingDown) return
-        logger.debug(`[DAEMON] Runner requested shutdown (source: ${source}, errorMessage: ${errorMessage}), stopping daemon`)
+        logger.debug(`[DAEMON] Executor requested shutdown (source: ${source}, errorMessage: ${errorMessage}), stopping daemon`)
         void shutdown(0)
     })
 
@@ -152,7 +149,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
 // 常规路径是 CLI `mobi daemon start-sync` 动态 import startDaemon 调用
 if (import.meta.main) {
     startDaemon().catch((error) => {
-        hubLogger.error('Fatal error:', error)
+        daemonLogger.error('Fatal error:', error)
         process.exit(1)
     })
 }

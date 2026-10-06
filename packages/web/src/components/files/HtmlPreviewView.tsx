@@ -33,7 +33,7 @@ export default function HtmlPreviewView({ sessionId, filePath, view, text, wrap 
     if (view === 'source') {
         return <TextContentView text={text} filePath={filePath} highlight wrap={wrap} />
     }
-    // 空文件路径才降级提示；越界判定已下沉 hub（isWithinDir）
+    // 空文件路径才降级提示；越界判定已下沉 daemon（isWithinDir）
     if (!filePath) {
         return <Empty description={t('files.previewUnavailable')} style={{ marginTop: 40 }} />
     }

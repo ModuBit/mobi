@@ -20,8 +20,8 @@
  * nativeSessionId 演进刷新；pid 退出后表项清理、再 wake 正常放行。
  *
  * fake bridge 用与 run.ts 同款的数据面（Map<number, TrackedSession> +
- * createResumeDedupGuard + applySessionTrackingSignal）——测的是 hub 侧 glue 与
- * runner 侧决策函数的组合，真实 spawn 管线由 spawnContract / E2E 覆盖。
+ * createResumeDedupGuard + applySessionTrackingSignal）——测的是 server 侧 glue 与
+ * executor 侧决策函数的组合，真实 spawn 管线由 spawnContract / E2E 覆盖。
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test'
@@ -30,22 +30,21 @@ import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
-import { LocalMachineHost } from '../../../src/executor/localExecutor'
-import type { MachineHost } from '../../../src/executor/executorHost'
+import { LocalExecutor } from '../../../src/executor/localExecutor'
+import type { ExecutorHost } from '../../../src/executor/executorHost'
 import { createResumeDedupGuard } from '../../../src/executor/spawnDedup'
 import { applySessionTrackingSignal, createSessionTrackingSync, pruneDeadTrackedSessions } from '../../../src/executor/sessionTracking'
 import type { SessionTrackingSignal } from '../../../src/executor/sessionTracking'
-import type { RunnerSessionBridge } from '../../../src/executor/lifecycle'
+import type { ExecutorBridge } from '../../../src/executor/lifecycle'
 import type { TrackedSession } from '../../../src/executor/types'
 import type { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol'
 
-const MACHINE_ID = 'test-machine'
 const NAMESPACE = 'default'
 
 interface Harness {
     engine: SyncEngine
     store: Store
-    machineHost: MachineHost
+    executorHost: ExecutorHost
     tracked: Map<number, TrackedSession>
     /** 可控存活判定：deadPids 里的 pid 视为已退出 */
     killPid: (pid: number) => void
@@ -65,13 +64,13 @@ function makeHarness(): Harness {
     const registry = { getSocketIdForMethod: () => null } as unknown as RpcRegistry
     const sseManager = { broadcast: () => {} } as unknown as SSEManager
 
-    // in-memory runner 数据面（与 run.ts 同款组合）
+    // in-memory executor 数据面（与 lifecycle.ts 同款组合）
     const tracked = new Map<number, TrackedSession>()
     const deadPids = new Set<number>()
     const isAlive = (pid: number) => !deadPids.has(pid)
     const spawnCalls: SpawnSessionOptions[] = []
 
-    let bridge: RunnerSessionBridge | null = {
+    let bridge: ExecutorBridge | null = {
         spawnSession: async (options) => {
             spawnCalls.push(options)
             const hit = createResumeDedupGuard(tracked)(options.resumeSessionId)
@@ -84,18 +83,18 @@ function makeHarness(): Harness {
         stopSession: () => true,
     }
 
-    // LocalMachineHost 只带 bridge——socket 兜底已删（ticket-20），直调是唯一路径
-    const machineHost = new LocalMachineHost(() => bridge)
+    // LocalExecutor 只带 bridge——socket 兜底已删（ticket-20），直调是唯一路径
+    const executorHost = new LocalExecutor(() => bridge)
 
-    const engine = new SyncEngine(store, io, registry, sseManager, undefined, machineHost)
+    const engine = new SyncEngine(store, io, registry, sseManager, undefined, executorHost)
 
-    // hubServer.setRunnerBridge 同款 glue（单源 createSessionTrackingSync）
+    // server.setExecutorBridge 同款 glue（单源 createSessionTrackingSync）
     engine.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), (signal) => bridge!.registerSessionTracking(signal)))
 
     return {
         engine,
         store,
-        machineHost,
+        executorHost,
         tracked,
         killPid: (pid) => deadPids.add(pid),
         isAlive,
@@ -112,7 +111,7 @@ function makeHarness(): Harness {
 function seedSession(h: Harness, nativeId: string | null, hostPid: number) {
     return h.store.sessions.getOrCreateSession(
         `/tmp/bf-${hostPid}`,
-        { path: `/tmp/bf-${hostPid}`, host: 'test-host', machineId: MACHINE_ID, nativeSessionId: nativeId ?? undefined, hostPid, startedBy: 'runner' },
+        { path: `/tmp/bf-${hostPid}`, host: 'test-host', nativeSessionId: nativeId ?? undefined, hostPid, startedBy: 'daemon' },
         {},
         NAMESPACE,
     )
@@ -130,7 +129,7 @@ describe('会话追踪补登（Q8）：daemon 重启 → 重连 → wake 去重'
 
         expect(h.tracked.get(4242)).toMatchObject({ MobiSessionId: session.id, pid: 4242, resumeSessionId: 'native-1' })
 
-        const result = await h.machineHost.spawnSession(MACHINE_ID, '/tmp/bf-4242', { resumeSessionId: 'native-1' })
+        const result = await h.executorHost.spawnSession('/tmp/bf-4242', { resumeSessionId: 'native-1' })
         expect(result).toEqual({ type: 'already-running' })
         expect(h.spawnCalls.length).toBe(1) // dedup 命中：spawn 入口被调但未放行二次进程
     })
@@ -139,7 +138,7 @@ describe('会话追踪补登（Q8）：daemon 重启 → 重连 → wake 去重'
         const session = seedSession(h, 'native-1', 4242)
         h.engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
 
-        const result = await h.machineHost.spawnSession(MACHINE_ID, '/tmp/other', { resumeSessionId: 'native-other' })
+        const result = await h.executorHost.spawnSession('/tmp/other', { resumeSessionId: 'native-other' })
         expect(result.type).toBe('success')
     })
 
@@ -156,7 +155,7 @@ describe('会话追踪补登（Q8）：daemon 重启 → 重连 → wake 去重'
         h.engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
 
         expect(h.tracked.get(4242)?.resumeSessionId).toBe('native-new')
-        expect(await h.machineHost.spawnSession(MACHINE_ID, '/tmp/bf-4242', { resumeSessionId: 'native-new' }))
+        expect(await h.executorHost.spawnSession('/tmp/bf-4242', { resumeSessionId: 'native-new' }))
             .toEqual({ type: 'already-running' })
     })
 
@@ -169,7 +168,7 @@ describe('会话追踪补登（Q8）：daemon 重启 → 重连 → wake 去重'
         expect(pruneDeadTrackedSessions(h.tracked, h.isAlive)).toEqual([4242])
         expect(h.tracked.size).toBe(0)
 
-        const result = await h.machineHost.spawnSession(MACHINE_ID, '/tmp/bf-4242', { resumeSessionId: 'native-1' })
+        const result = await h.executorHost.spawnSession('/tmp/bf-4242', { resumeSessionId: 'native-1' })
         expect(result.type).toBe('success')
     })
 

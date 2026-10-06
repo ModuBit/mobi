@@ -22,7 +22,7 @@ import { awaitServiceWorkerReady, ServiceWorkerReadyTimeout } from '@/core/pwa/s
 /**
  * base64url → Uint8Array（VAPID key 转换）
  * Push API 要求 applicationServerKey 为 Uint8Array，
- * 而 hub 返回的 VAPID 公钥是 base64url 字符串。
+ * 而 daemon 返回的 VAPID 公钥是 base64url 字符串。
  */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
     const padding = '='.repeat((4 - (base64.length % 4)) % 4)
@@ -51,12 +51,12 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
  * - permission=denied → 返回 'denied'（需用户手动改浏览器设置）
  *
  * @param namespace 当前命名空间。
- *   hub 端 /api/push/subscribe 通过 auth 中间件从 token 自动解析 namespace，
+ *   daemon 端 /api/push/subscribe 通过 auth 中间件从 token 自动解析 namespace，
  *   client 无需在 body 显式传入；此参数为调用方语义对齐与未来 unsubscribe 扩展预留。
  * @returns permission 当前权限状态；error 订阅失败原因（null=无）；enable() 触发授权与订阅流程
  */
 export function useNotificationSetup(namespace: string) {
-    // namespace 当前由 hub 从 token 解析，client 不传；void 标注避免 lint 未用警告
+    // namespace 当前由 daemon 从 token 解析，client 不传；void 标注避免 lint 未用警告
     void namespace
     // useMobiApi 需要 token（见 client.ts 第 246 行 useMobiApi()）
     const api = useMobiApi()
@@ -72,9 +72,9 @@ export function useNotificationSetup(namespace: string) {
     const setSubscribed = useNotificationStore((s) => s.setSubscribed)
     const setError = useNotificationStore((s) => s.setError)
 
-    // mount 时查询当前 namespace 在 hub 的订阅状态(而非浏览器站点级 getSubscription)。
-    // hub 按 namespace 查询:换号(namespace 变)后 subscribed 反映新 namespace,不被上一用户遗留的
-    // 浏览器订阅误判(Gate 换号重挂 → useNotificationSetup 重新 mount → 重查 hub)。
+    // mount 时查询当前 namespace 在 daemon 的订阅状态(而非浏览器站点级 getSubscription)。
+    // daemon 按 namespace 查询:换号(namespace 变)后 subscribed 反映新 namespace,不被上一用户遗留的
+    // 浏览器订阅误判(Gate 换号重挂 → useNotificationSetup 重新 mount → 重查 daemon)。
     useEffect(() => {
         let active = true
         apiRef.current.push.getSubscriptionStatus()

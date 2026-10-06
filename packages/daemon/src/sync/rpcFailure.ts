@@ -15,7 +15,7 @@
  */
 
 /**
- * RPC 传输故障的**分类**——Hub → CLI 与 Hub → machine 两条 RPC 通道共用。
+ * RPC 传输故障的**分类**——daemon → CLI 与 daemon → machine 两条 RPC 通道共用。
  *
  * 这个模块只装「分类」这一个概念，不含任何判据：**分类由产生故障的那一层定下**
  * （适配器见 rpcGateway 的 `rpcCall` / `spawnSession`），消费方（领域层）只读，
@@ -55,7 +55,7 @@ export class RpcFailure extends Error {
  *
  * **不是 `RpcFailure` 的一律读成 `other`**：分类只有在产生故障的那一层才拿得到，
  * 拿不到就是拿不到——此时把原始句子原样透出去，比在消费方再猜一遍诚实得多。
- * 这也正是本模块要立的规矩：hub 自己抛的错不该被当成跨进程散文去猜。
+ * 这也正是本模块要立的规矩：daemon 自己抛的错不该被当成跨进程散文去猜。
  */
 export function readRpcFailure(error: unknown): { kind: RpcFailureKind; message: string } {
     if (error instanceof RpcFailure) {

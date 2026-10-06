@@ -37,7 +37,7 @@ interface LoopOptions {
     /** CC output style（Web spawn 透传；经 applyStartupOutputStyle（applyFlagSettings）注入） */
     outputStyle?: string
     startingMode?: 'local' | 'remote'
-    startedBy?: 'runner' | 'terminal'
+    startedBy?: 'daemon' | 'terminal'
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
     onModeChange: (mode: 'local' | 'remote') => void
