@@ -109,7 +109,7 @@ describe('宿主通道独立监听（ticket-21）', () => {
     test('settings 写入后权限 0600（token 凭证收紧）', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'mobi-settings-perm-'))
         try {
-            const file = join(dir, 'settings.hub.json')
+            const file = join(dir, 'settings.daemon.json')
             await writeSettings(file, {} as never)
             expect(statSync(file).mode & 0o777).toBe(0o600)
 

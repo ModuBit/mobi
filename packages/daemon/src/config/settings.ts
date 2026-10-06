@@ -20,15 +20,17 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile, chmod, type Fil
 import { dirname, join } from 'node:path'
 
 /**
- * Hub 专属设置（settings.hub.json）。
+ * Daemon 专属设置（settings.daemon.json）。
  *
- * 2026-09-05 起配置文件按部署归属拆分：hub 与 cli 支持不同机器部署，
- * hub 不再与 cli 共享一份 settings.json（cli 侧为 settings.cli.json）。
+ * 2026-09-05 起配置文件按部署归属拆分：daemon 与 cli 支持不同机器部署，
+ * daemon 不再与 cli 共享一份 settings.json（cli 侧为 settings.cli.json）。
+ * 2026-10-06 起 hub 概念随单机 daemon 定稿更名 daemon（remove-machine 501），
+ * 文件名 settings.hub.json → settings.daemon.json（读旧写新，见 migrateSettings）。
  */
 export interface Settings {
-    /** CLI 接入验证基准（hub 权威；co-located 首启会同步一份到 settings.cli.json） */
+    /** CLI 接入验证基准（daemon 权威；co-located 首启会同步一份到 settings.cli.json） */
     cliApiToken?: string
-    /** Web 浏览器登录凭证（纯 hub；settingsWatcher 热更新） */
+    /** Web 浏览器登录凭证（纯 daemon；settingsWatcher 热更新） */
     webApiToken?: string
     vapidKeys?: {
         publicKey: string
@@ -39,11 +41,17 @@ export interface Settings {
     listenPort?: number
     publicUrl?: string
     corsOrigins?: string[]
-    hubName?: string
+    /** 实例名称（PWA 实例标识）；旧名 hubName 由读取侧兼容（serverSettings 读旧写新） */
+    daemonName?: string
 }
 
-/** hub 配置文件（本文件字段的唯一持久化位置） */
+/** daemon 配置文件（本文件字段的唯一持久化位置） */
 export function getSettingsFile(dataDir: string): string {
+    return join(dataDir, 'settings.daemon.json')
+}
+
+/** 文件名定稿前的旧名（迁移源；迁移后 rename 为新名，见 migrateSettings） */
+export function getLegacyHubSettingsFile(dataDir: string): string {
     return join(dataDir, 'settings.hub.json')
 }
 

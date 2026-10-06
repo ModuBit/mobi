@@ -30,7 +30,7 @@ interface WebTokenApiResponse {
 }
 
 /**
- * 调 hub 的 web-token HTTP API。webApiToken 持久化在 hub 机器的 settings.hub.json，
+ * 调 daemon 的 web-token HTTP API。webApiToken 持久化在 daemon 机器的 settings.daemon.json，
  * cli 与 hub 可不同机器部署，任何部署形态下都经 API 读写而非本地文件。
  */
 async function requestWebToken(method: 'GET' | 'POST'): Promise<WebTokenApiResponse> {
@@ -52,7 +52,7 @@ function printWebToken(result: WebTokenApiResponse, rotated: boolean): void {
     console.log(chalk.bold(`\nWeb API Token${rotated ? '（已轮换）' : ''} (Web 浏览器登录用)\n`))
     console.log(chalk.green(`  ${result.webToken}`))
     if (rotated) {
-        console.log(chalk.gray('\n  已持久化到 hub 的 settings.hub.json 并即时生效。'))
+        console.log(chalk.gray('\n  已持久化到 daemon 的 settings.daemon.json 并即时生效。'))
         console.log(chalk.gray('  注意：已登录的 Web 会话最长 1 天后自然失效，新登录需用上方 token。'))
     } else {
         console.log(chalk.gray('\n  轮换: mobi auth rotate-web-token'))
@@ -131,7 +131,7 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
     }
 
     if (subcommand === 'rotate-web-token') {
-        // 经 hub API 生成新 webApiToken：hub 落盘 settings.hub.json 并即时热更新，
+        // 经 daemon API 生成新 webApiToken：daemon 落盘 settings.daemon.json 并即时热更新，
         // 无需重启 hub；远程部署（cli/hub 不同机器）下这是唯一可行的轮换途径
         printWebToken(await requestWebToken('POST'), true)
         return

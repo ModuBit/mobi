@@ -38,8 +38,8 @@ class Configuration {
     public readonly mobiHomeDir: string
     public readonly logsDir: string
     public readonly settingsFile: string
-    /** hub 配置文件（listen* 等），仅本机 co-located 部署时可写；远程部署时它在 hub 机器上 */
-    public readonly hubSettingsFile: string
+    /** daemon 配置文件（listen* 等），仅本机 co-located 部署时可写；远程部署时它在 daemon 机器上 */
+    public readonly daemonSettingsFile: string
     public readonly privateKeyFile: string
     public readonly runnerLockFile: string
     /** daemon 本地状态文件（唯一组件的进程状态） */
@@ -90,9 +90,9 @@ class Configuration {
 
         this.logsDir = join(this.mobiHomeDir, 'logs')
         // cli 专属配置（连接凭证/machineId/claudeEnv 等），随 cli 部署位置走；
-        // hub 配置在 settings.hub.json（本机 co-located 时同目录，远程时在 hub 机器上）
+        // daemon 配置在 settings.daemon.json（本机 co-located 时同目录，远程时在 daemon 机器上）
         this.settingsFile = join(this.mobiHomeDir, 'settings.cli.json')
-        this.hubSettingsFile = join(this.mobiHomeDir, 'settings.hub.json')
+        this.daemonSettingsFile = join(this.mobiHomeDir, 'settings.daemon.json')
         this.privateKeyFile = join(this.mobiHomeDir, 'access.key')
         this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
         this.daemonStateFile = join(this.mobiHomeDir, 'daemon.state.json')

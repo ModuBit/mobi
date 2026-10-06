@@ -31,8 +31,8 @@ import { isProcessAlive } from './utils/process';
 export type { Settings } from './settingsTypes'
 import type { Settings } from './settingsTypes'
 
-/** hub 设置文件受限写形状：cli 只允许写 listen*（hub 监听配置），其余字段归 hub 所有 */
-export interface HubListenSettings {
+/** daemon 设置文件受限写形状：cli 只允许写 listen*（daemon 监听配置），其余字段归 daemon 所有 */
+export interface DaemonSettings {
   listenHost?: string
   listenPort?: number
 }
@@ -103,15 +103,41 @@ export async function readSettings(): Promise<Settings> {
   }
 }
 
-export async function readHubSettings(): Promise<HubListenSettings> {
-  if (!existsSync(configuration.hubSettingsFile)) {
-    return {}
+/**
+ * settings.daemon.json 文件名定稿（remove-machine 501）：旧名 settings.hub.json → 新名
+ * settings.daemon.json 的读旧写新迁移。新文件已存在（daemon 侧已迁移）→ 幂等跳过；
+ * 旧文件不存在 → 无事发生。rename 失败（如并发下旧文件已被 daemon 侧迁走）静默忽略。
+ */
+async function migrateHubSettingsFilename(): Promise<void> {
+  const legacyFile = join(configuration.mobiHomeDir, 'settings.hub.json')
+  const newFile = configuration.daemonSettingsFile
+  if (!existsSync(legacyFile) || existsSync(newFile)) {
+    return
+  }
+  try {
+    await rename(legacyFile, newFile)
+    console.log(`[PERSISTENCE] Migrated ${legacyFile} -> ${newFile}`)
+  } catch {
+    // 并发迁移竞争：daemon 侧可能已抢先 rename，忽略
+  }
+}
+
+export async function readDaemonSettings(): Promise<DaemonSettings> {
+  // 读旧写新：新文件已定稿读新文件；仅存量旧文件时读旧（co-located 升级窗口兼容）
+  if (!existsSync(configuration.daemonSettingsFile)) {
+    const legacyFile = join(configuration.mobiHomeDir, 'settings.hub.json')
+    if (!existsSync(legacyFile)) {
+      return {}
+    }
+    // 解析失败抛错（fail-fast，与 daemon 侧 readSettingsRaw 对称）
+    const content = await readFile(legacyFile, 'utf8')
+    return JSON.parse(content)
   }
 
   // 解析失败抛错（fail-fast，与 hub 侧 readSettingsRaw 对称）：
-  // updateHubSettings 锁内经此读取，吞错返回 {} 会把 hub 文件覆盖成只剩 listen*，
+  // updateDaemonSettings 锁内经此读取，吞错返回 {} 会把 daemon 文件覆盖成只剩 listen*，
   // webApiToken/vapidKeys 等字段全丢
-  const content = await readFile(configuration.hubSettingsFile, 'utf8')
+  const content = await readFile(configuration.daemonSettingsFile, 'utf8')
   return JSON.parse(content)
 }
 
@@ -200,17 +226,19 @@ export async function updateSettings(
 }
 
 /**
- * 受限写本机 hub 设置文件的 listen* 字段（co-located 部署时 hub 与 cli 同 MOBI_HOME）。
- * 锁内读-改-写且只合并 listen*：hub 文件其余字段（token/vapidKeys 等）归 hub 所有，
- * 不得被 cli 侧写覆盖。远程部署时 hub 文件不在本机，此写只影响本机残留文件——
- * 远程场景的 hub 监听配置应直接编辑 hub 机器上的 settings.hub.json。
+ * 受限写本机 daemon 设置文件的 listen* 字段（co-located 部署时 daemon 与 cli 同 MOBI_HOME）。
+ * 写前先做文件名迁移（旧 settings.hub.json → settings.daemon.json，读旧写新）。
+ * 锁内读-改-写且只合并 listen*：daemon 文件其余字段（token/vapidKeys 等）归 daemon 所有，
+ * 不得被 cli 侧写覆盖。远程部署时 daemon 文件不在本机，此写只影响本机残留文件——
+ * 远程场景的 daemon 监听配置应直接编辑 daemon 机器上的 settings.daemon.json。
  */
-export async function updateHubSettings(
-  updater: (current: HubListenSettings) => HubListenSettings | Promise<HubListenSettings>
-): Promise<HubListenSettings> {
-  return withSettingsLock(configuration.hubSettingsFile, readHubSettings, async (current) => {
+export async function updateDaemonSettings(
+  updater: (current: DaemonSettings) => DaemonSettings | Promise<DaemonSettings>
+): Promise<DaemonSettings> {
+  await migrateHubSettingsFilename()
+  return withSettingsLock(configuration.daemonSettingsFile, readDaemonSettings, async (current) => {
     const next = await updater(current)
-    // listen* 允许更新，其余字段（hub 所有：token/vapidKeys 等）原样保留
+    // listen* 允许更新，其余字段（daemon 所有：token/vapidKeys 等）原样保留
     return { ...current, listenHost: next.listenHost, listenPort: next.listenPort }
   })
 }

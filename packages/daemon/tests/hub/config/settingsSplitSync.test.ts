@@ -71,7 +71,7 @@ describe('co-located cliApiToken 同步（开箱即连）', () => {
 
 describe('updateSettingsFile 纯读不写盘', () => {
     test('updater 未改变内容时跳过写盘（mtime 不变）', async () => {
-        const file = join(dataDir, 'settings.hub.json')
+        const file = join(dataDir, 'settings.daemon.json')
         await updateSettingsFile(file, (current) => ({ ...current, webApiToken: 't1' }))
         const mtimeBefore = statSync(file).mtimeMs
 
@@ -82,7 +82,7 @@ describe('updateSettingsFile 纯读不写盘', () => {
     })
 
     test('内容有变化时正常写盘', async () => {
-        const file = join(dataDir, 'settings.hub.json')
+        const file = join(dataDir, 'settings.daemon.json')
         await updateSettingsFile(file, (current) => ({ ...current, webApiToken: 't1' }))
         const mtimeBefore = statSync(file).mtimeMs
 

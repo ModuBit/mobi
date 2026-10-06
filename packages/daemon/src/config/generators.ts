@@ -56,7 +56,7 @@ export type SettingsValueReadResult<T> = {
  * @example
  * ```typescript
  * const result = await getOrCreateSettingsValue({
- *   settingsFile: '/path/to/settings.hub.json',
+ *   settingsFile: '/path/to/settings.daemon.json',
  *   readValue: (settings) => settings.apiKey ? { value: settings.apiKey } : null,
  *   writeValue: (settings, value) => { settings.apiKey = value },
  *   generate: () => crypto.randomUUID()

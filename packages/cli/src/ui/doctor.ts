@@ -24,7 +24,7 @@
 import chalk from 'chalk'
 import { spawn } from 'node:child_process'
 import { configuration } from '@mobi/node-core/configuration'
-import { readSettings, readHubSettings } from '@mobi/node-core/persistence'
+import { readSettings, readDaemonSettings } from '@mobi/node-core/persistence'
 import { findAllMobiProcesses } from '@mobi/daemon/runner/doctor'
 import { readDaemonState } from '@mobi/node-core/persistence'
 import { isProcessAlive } from '@mobi/node-core/utils/process'
@@ -129,17 +129,17 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
             settings = {};
         }
         try {
-            const hubSettings = await readHubSettings();
-            console.log(chalk.bold('\n📄 Hub Settings (settings.hub.json):'));
-            if (Object.keys(hubSettings).length === 0 && !existsSync(configuration.hubSettingsFile)) {
-                // 非 co-located 部署：hub 文件不在本机是正常形态，不是故障
-                console.log(chalk.gray(`Not found locally (${configuration.hubSettingsFile}) — hub may be deployed on a remote machine.`));
+            const daemonSettings = await readDaemonSettings();
+            console.log(chalk.bold('\n📄 Daemon Settings (settings.daemon.json):'));
+            if (Object.keys(daemonSettings).length === 0 && !existsSync(configuration.daemonSettingsFile)) {
+                // 非 co-located 部署：daemon 配置文件不在本机是正常形态，不是故障
+                console.log(chalk.gray(`Not found locally (${configuration.daemonSettingsFile}) — daemon may be deployed on a remote machine.`));
             } else {
-                console.log(chalk.gray(JSON.stringify(hubSettings, null, 2)));
+                console.log(chalk.gray(JSON.stringify(daemonSettings, null, 2)));
             }
         } catch (_error) {
-            console.log(chalk.bold('\n📄 Hub Settings:'));
-            console.log(chalk.red('❌ Failed to read hub settings'));
+            console.log(chalk.bold('\n📄 Daemon Settings:'));
+            console.log(chalk.red('❌ Failed to read daemon settings'));
         }
         // Authentication status (direct-connect)
         console.log(chalk.bold('\n🔐 Direct Connect Auth'));

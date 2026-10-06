@@ -29,7 +29,7 @@ export interface Settings {
   // All machine operations use this ID
   machineId?: string
   // cli 的连接凭证（`mobi auth login` 写入，随 cli 部署位置走）；
-  // hub 侧验证基准存 settings.hub.json，两份语义独立
+  // daemon 侧验证基准存 settings.daemon.json，两份语义独立
   cliApiToken?: string
   // 超时配置
   disconnectTimeoutMs?: number   // 连接断开超时

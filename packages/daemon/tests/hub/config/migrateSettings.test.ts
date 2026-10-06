@@ -32,7 +32,7 @@ afterEach(() => {
 })
 
 const LEGACY_FULL = {
-    // hub 字段
+    // daemon 字段（旧键 hubName 迁移时改写为新键 daemonName）
     cliApiToken: 'cli-token-123',
     webApiToken: 'web-token-456',
     vapidKeys: { publicKey: 'pk', privateKey: 'sk' },
@@ -70,13 +70,13 @@ describe('migrateLegacySettings', () => {
         expect(existsSync(legacy)).toBe(false)
         expect(existsSync(legacy + '.bak')).toBe(true)
 
-        const hub = readJson(join(dataDir, 'settings.hub.json'))
+        const hub = readJson(join(dataDir, 'settings.daemon.json'))
         expect(hub.cliApiToken).toBe('cli-token-123')
         expect(hub.webApiToken).toBe('web-token-456')
         expect(hub.vapidKeys).toEqual({ publicKey: 'pk', privateKey: 'sk' })
         expect(hub.listenPort).toBe(2222)
-        expect(hub.hubName).toBe('home-mac')
-        // hub 文件不落 cli 字段
+        expect(hub.daemonName).toBe('home-mac')
+        // daemon 文件不落 cli 字段
         expect(hub.machineId).toBeUndefined()
         expect(hub.claudeEnv).toBeUndefined()
 
@@ -88,7 +88,7 @@ describe('migrateLegacySettings', () => {
         expect(cli.claudeEnv).toEqual({ FOO: '1' })
         expect(cli.bashInjectContext).toBe(false)
         expect(cli.webTools).toEqual({ searchProviderId: 'tavily' })
-        // cli 文件不落 hub 字段
+        // cli 文件不落 daemon 字段
         expect(cli.webApiToken).toBeUndefined()
         expect(cli.listenPort).toBeUndefined()
         // 死字段两文件都不落
@@ -99,14 +99,14 @@ describe('migrateLegacySettings', () => {
     test('无旧文件 → 幂等跳过', async () => {
         const result = await migrateLegacySettings(dataDir)
         expect(result).toEqual({ migrated: false, reason: 'no-legacy' })
-        expect(existsSync(join(dataDir, 'settings.hub.json'))).toBe(false)
+        expect(existsSync(join(dataDir, 'settings.daemon.json'))).toBe(false)
     })
 
     test('已迁移（hub 文件已存在）→ 旧字段仅补缺、不覆盖新值，旧文件归档 .bak', async () => {
-        // 场景：hub 新文件已存在（如升级后先跑过 wizard / 旧 .bak 被手动还原）。
+        // 场景：daemon 新文件已存在（如升级后先跑过 wizard / 旧 .bak 被手动还原）。
         // 旧文件不能整文件覆盖新文件，也不能静默丢弃——按补缺合并后归档。
         writeFileSync(join(dataDir, 'settings.json'), JSON.stringify(LEGACY_FULL))
-        writeFileSync(join(dataDir, 'settings.hub.json'), JSON.stringify({ cliApiToken: 'hub-kept' }))
+        writeFileSync(join(dataDir, 'settings.daemon.json'), JSON.stringify({ cliApiToken: 'hub-kept' }))
         writeFileSync(join(dataDir, 'settings.cli.json'), JSON.stringify({ cliApiToken: 'cli-kept' }))
 
         const result = await migrateLegacySettings(dataDir)
@@ -116,7 +116,7 @@ describe('migrateLegacySettings', () => {
         expect(existsSync(join(dataDir, 'settings.json'))).toBe(false)
         expect(existsSync(join(dataDir, 'settings.json.bak'))).toBe(true)
 
-        const hub = readJson(join(dataDir, 'settings.hub.json'))
+        const hub = readJson(join(dataDir, 'settings.daemon.json'))
         // 已有值不被旧文件覆盖
         expect(hub.cliApiToken).toBe('hub-kept')
         // 缺失字段由旧文件补齐
@@ -150,7 +150,7 @@ describe('migrateLegacySettings', () => {
 
         expect(result).toEqual({ migrated: true, reason: 'migrated' })
         expect(existsSync(join(dataDir, 'settings.cli.json'))).toBe(false)
-        const hub = readJson(join(dataDir, 'settings.hub.json'))
+        const hub = readJson(join(dataDir, 'settings.daemon.json'))
         expect(hub.webApiToken).toBe('w')
     })
 
@@ -161,6 +161,50 @@ describe('migrateLegacySettings', () => {
 
         expect(result).toEqual({ migrated: false, reason: 'parse-error' })
         expect(existsSync(join(dataDir, 'settings.json'))).toBe(true)
+        expect(existsSync(join(dataDir, 'settings.daemon.json'))).toBe(false)
+    })
+})
+
+describe('settings.hub.json → settings.daemon.json 文件名迁移（501）', () => {
+    test('仅存量旧名文件 → rename 为新名，内容不变', async () => {
+        writeFileSync(join(dataDir, 'settings.hub.json'), JSON.stringify({ webApiToken: 'kept', listenPort: 2222 }))
+
+        await migrateLegacySettings(dataDir)
+
         expect(existsSync(join(dataDir, 'settings.hub.json'))).toBe(false)
+        const daemon = readJson(join(dataDir, 'settings.daemon.json'))
+        expect(daemon.webApiToken).toBe('kept')
+        expect(daemon.listenPort).toBe(2222)
+    })
+
+    test('新名已存在 → 幂等跳过，旧名残留无害', async () => {
+        writeFileSync(join(dataDir, 'settings.hub.json'), JSON.stringify({ webApiToken: 'stale' }))
+        writeFileSync(join(dataDir, 'settings.daemon.json'), JSON.stringify({ webApiToken: 'current' }))
+
+        await migrateLegacySettings(dataDir)
+
+        expect(readJson(join(dataDir, 'settings.daemon.json')).webApiToken).toBe('current')
+        // 旧名不覆盖新名；残留文件所有读点已切新名，无害
+        expect(readJson(join(dataDir, 'settings.hub.json')).webApiToken).toBe('stale')
+    })
+
+    test('拆分迁移产生的新名文件不被文件名迁移二次触碰', async () => {
+        // 拆分先写 settings.daemon.json → 文件名迁移应跳过（新名已存在）
+        writeFileSync(join(dataDir, 'settings.json'), JSON.stringify(LEGACY_FULL))
+
+        await migrateLegacySettings(dataDir)
+
+        expect(existsSync(join(dataDir, 'settings.daemon.json'))).toBe(true)
+        expect(readJson(join(dataDir, 'settings.daemon.json')).cliApiToken).toBe('cli-token-123')
+    })
+
+    test('旧单文件拆分时 hubName 键改写为 daemonName（读旧写新）', async () => {
+        writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ hubName: 'legacy-name' }))
+
+        await migrateLegacySettings(dataDir)
+
+        const daemon = readJson(join(dataDir, 'settings.daemon.json'))
+        expect(daemon.daemonName).toBe('legacy-name')
+        expect(daemon.hubName).toBeUndefined()
     })
 })

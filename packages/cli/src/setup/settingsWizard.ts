@@ -16,7 +16,7 @@
 
 import chalk from 'chalk'
 import { randomBytes } from 'node:crypto'
-import { readSettings, readHubSettings, updateSettings, updateHubSettings } from '@mobi/node-core/persistence'
+import { readSettings, readDaemonSettings, updateSettings, updateDaemonSettings } from '@mobi/node-core/persistence'
 import { askYesNo, askInput, askPort } from './prompts'
 
 /**
@@ -41,17 +41,17 @@ export interface SettingsResult {
 }
 
 /**
- * 交互式配置 cli 凭证（settings.cli.json）与本机 hub 监听（settings.hub.json）
+ * 交互式配置 cli 凭证（settings.cli.json）与本机 daemon 监听（settings.daemon.json）
  */
 export async function runSettingsWizard(): Promise<SettingsResult> {
     if (!process.stdin.isTTY) {
         console.log(chalk.yellow('Setup requires an interactive terminal.'))
-        console.log(chalk.gray('Set environment variables or edit ~/.mobi/settings.cli.json / settings.hub.json manually.'))
+        console.log(chalk.gray('Set environment variables or edit ~/.mobi/settings.cli.json / settings.daemon.json manually.'))
         process.exit(1)
     }
 
     const settings = await readSettings()
-    const hubSettings = await readHubSettings()
+    const daemonSettings = await readDaemonSettings()
 
     // 1. 配置 cliApiToken
     if (settings.cliApiToken) {
@@ -69,7 +69,7 @@ export async function runSettingsWizard(): Promise<SettingsResult> {
     }
 
     // 2. 配置 listenHost
-    const currentHost = hubSettings.listenHost ?? '127.0.0.1'
+    const currentHost = daemonSettings.listenHost ?? '127.0.0.1'
     console.log(`  Host: ${chalk.cyan(currentHost)}`)
     const shouldChangeHost = currentHost !== '127.0.0.1' ? true : await askYesNo('Customize listen host?')
     const listenHost = shouldChangeHost
@@ -77,7 +77,7 @@ export async function runSettingsWizard(): Promise<SettingsResult> {
         : currentHost
 
     // 3. 配置 listenPort
-    const currentPort = hubSettings.listenPort ?? 2222
+    const currentPort = daemonSettings.listenPort ?? 2222
     console.log(`  Port: ${chalk.cyan(currentPort)}`)
     const shouldChangePort = currentPort !== 2222 ? true : await askYesNo('Customize listen port?')
     const listenPort = shouldChangePort
@@ -87,8 +87,8 @@ export async function runSettingsWizard(): Promise<SettingsResult> {
     // 4. 派生 apiUrl
     const apiUrl = `http://${listenHost}:${listenPort}`
 
-    // 5. 写入配置：listen* 属 hub（本机 hub 文件），apiUrl 属 cli（连接目标，随 cli 走）
-    await updateHubSettings(s => ({ ...s, listenHost, listenPort }))
+    // 5. 写入配置：listen* 属 daemon（本机 daemon 配置文件），apiUrl 属 cli（连接目标，随 cli 走）
+    await updateDaemonSettings(s => ({ ...s, listenHost, listenPort }))
     await updateSettings(s => ({ ...s, apiUrl }))
 
     console.log('')

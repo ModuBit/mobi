@@ -86,7 +86,7 @@ export interface StartHubOptions {
 function formatSource(source: 'env' | 'file' | 'default' | 'generated'): string {
     switch (source) {
         case 'env': return 'environment'
-        case 'file': return 'settings.hub.json'
+        case 'file': return 'settings.daemon.json'
         case 'default': return 'default'
         case 'generated': return 'generated'
     }
@@ -243,7 +243,7 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         hostEngine: socketServer.hostEngine,
     })
 
-    // 启动 settings.hub.json 监听：webApiToken 轮换时热 reload，无需重启 hub
+    // 启动 settings.daemon.json 监听：webApiToken 轮换时热 reload，无需重启 daemon
     const settingsWatcher = startWebApiTokenWatcher()
 
     hubLogger.info('')

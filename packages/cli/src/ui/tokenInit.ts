@@ -68,7 +68,7 @@ async function promptForToken(): Promise<string> {
     console.log(chalk.yellow('\nNo CLI_API_TOKEN found.'))
     console.log(chalk.gray('Where to find the token:'))
     console.log(chalk.gray('  1. Check the server startup logs (first run shows generated token)'))
-    console.log(chalk.gray('  2. Read ~/.mobi/settings.hub.json on the server'))
+    console.log(chalk.gray('  2. Read ~/.mobi/settings.daemon.json on the server'))
     console.log(chalk.gray('  3. Ask your server administrator (if token is set via env var)\n'))
 
     try {

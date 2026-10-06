@@ -18,7 +18,7 @@
  * CLI API Token management
  *
  * Handles automatic generation and persistence of CLI_API_TOKEN.
- * Priority: environment variable > settings.hub.json > auto-generate
+ * Priority: environment variable > settings.daemon.json > auto-generate
  */
 
 import { hubLogger } from '../logger'
@@ -78,8 +78,8 @@ function normalizeCliApiToken(rawToken: string, source: CliApiTokenSource): { to
  *
  * Priority:
  * 1. CLI_API_TOKEN environment variable (highest - backward compatible)
- * 2. settings.hub.json cliApiToken field
- * 3. Auto-generate and save to settings.hub.json
+ * 2. settings.daemon.json cliApiToken field
+ * 3. Auto-generate and save to settings.daemon.json
  */
 export async function getOrCreateCliApiToken(dataDir: string): Promise<CliApiTokenResult> {
     const settingsFile = getSettingsFile(dataDir)

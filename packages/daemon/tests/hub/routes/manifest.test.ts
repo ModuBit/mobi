@@ -49,7 +49,7 @@ describe('Manifest API', () => {
         expect(res.headers.get('content-type')).toContain('application/manifest+json')
     })
 
-    test('GET /manifest.webmanifest name 包含 hubName', async () => {
+    test('GET /manifest.webmanifest name 包含 daemonName', async () => {
         const res = await app.request('/manifest.webmanifest')
         const body = await res.json() as Record<string, unknown>
         expect(body.name).toMatch(/^Mobi - /)

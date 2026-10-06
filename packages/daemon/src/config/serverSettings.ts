@@ -15,13 +15,13 @@
  */
 
 /**
- * Hub Settings Management
+ * Daemon Server Settings Management
  *
- * Handles loading and persistence of hub configuration.
- * Priority: environment variable > settings.hub.json > default value
+ * Handles loading and persistence of daemon configuration.
+ * Priority: environment variable > settings.daemon.json > default value
  *
- * When a value is loaded from environment variable and not present in settings.hub.json,
- * it will be saved to settings.hub.json for future use
+ * When a value is loaded from environment variable and not present in settings.daemon.json,
+ * it will be saved to settings.daemon.json for future use
  */
 
 import { hostname } from "node:os";
@@ -31,6 +31,7 @@ import {
   readSettings,
   withSettingsLock,
   writeSettings,
+  type Settings,
 } from "./settings";
 
 export interface ServerSettings {
@@ -38,7 +39,7 @@ export interface ServerSettings {
   listenPort: number;
   publicUrl: string;
   corsOrigins: string[];
-  hubName: string;
+  daemonName: string;
 }
 
 export interface ServerSettingsResult {
@@ -48,7 +49,7 @@ export interface ServerSettingsResult {
     listenPort: "env" | "file" | "default";
     publicUrl: "env" | "file" | "default";
     corsOrigins: "env" | "file" | "default";
-    hubName: "env" | "file" | "default";
+    daemonName: "env" | "file" | "default";
   };
   savedToFile: boolean;
 }
@@ -114,7 +115,7 @@ export async function loadServerSettings(
       listenPort: "default",
       publicUrl: "default",
       corsOrigins: "default",
-      hubName: "default",
+      daemonName: "default",
     };
 
     // listenHost: env > file > default
@@ -179,21 +180,27 @@ export async function loadServerSettings(
       corsOrigins = deriveCorsOrigins(publicUrl);
     }
 
-    // hubName: env > file > os.hostname()
-    let hubName: string;
-    if (process.env.MOBI_HUB_NAME) {
-      hubName = process.env.MOBI_HUB_NAME;
-      sources.hubName = "env";
-      if (settings.hubName === undefined) {
-        settings.hubName = hubName;
+    // daemonName: env > file > os.hostname()
+    // 读旧写新（501）：env 兼容 MOBI_HUB_NAME、文件键兼容 hubName，回填恒写新名
+    const envName = process.env.MOBI_DAEMON_NAME ?? process.env.MOBI_HUB_NAME;
+    const legacyFileValue = (settings as Settings & { hubName?: string }).hubName;
+    let daemonName: string;
+    if (envName) {
+      daemonName = envName;
+      sources.daemonName = "env";
+      if (settings.daemonName === undefined) {
+        settings.daemonName = daemonName;
         needsSave = true;
       }
-    } else if (settings.hubName !== undefined) {
-      hubName = settings.hubName;
-      sources.hubName = "file";
+    } else if (settings.daemonName !== undefined) {
+      daemonName = settings.daemonName;
+      sources.daemonName = "file";
+    } else if (legacyFileValue !== undefined) {
+      daemonName = legacyFileValue;
+      sources.daemonName = "file";
     } else {
-      hubName = hostname() || "mobi";
-      sources.hubName = "default";
+      daemonName = hostname() || "mobi";
+      sources.daemonName = "default";
     }
 
     // Save settings if any new values were added
@@ -207,7 +214,7 @@ export async function loadServerSettings(
         listenPort,
         publicUrl,
         corsOrigins,
-        hubName,
+        daemonName,
       },
       sources,
       savedToFile: needsSave,

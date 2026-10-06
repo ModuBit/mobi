@@ -63,7 +63,7 @@ describe('CLI web-token API（远程部署语义：cli 经 HTTP 读取/轮换 hu
         // configuration 单例热更新（立即生效，不等 watcher）
         expect(getConfiguration().webApiToken).toBe(body.webToken)
 
-        // 持久化到 settings.hub.json（重启后仍有效）
+        // 持久化到 settings.daemon.json（重启后仍有效）
         const settings = JSON.parse(readFileSync(getConfiguration().settingsFile, 'utf8')) as { webApiToken?: string }
         expect(settings.webApiToken).toBe(body.webToken)
 

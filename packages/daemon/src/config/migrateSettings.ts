@@ -15,21 +15,24 @@
  */
 
 /**
- * 旧单文件 settings.json → settings.hub.json + settings.cli.json 的自动迁移。
+ * 旧单文件 settings.json → settings.daemon.json + settings.cli.json 的自动迁移。
  *
- * 背景：2026-09-05 起配置按部署归属拆分（hub 与 cli 支持不同机器部署）。
- * 迁移在 hub 启动时执行一次：旧文件存在 → 按字段归属拆入两个新文件
+ * 背景：2026-09-05 起配置按部署归属拆分（daemon 与 cli 支持不同机器部署）。
+ * 迁移在 daemon 启动时执行一次：旧文件存在 → 按字段归属拆入两个新文件
  * （新文件已有值不覆盖）→ 旧文件 rename 为 settings.json.bak 保留。
  *
  * 语义：
- * - 旧文件解析失败 → fail-fast 不动文件（沿用 hub 防丢语义，由调用方报错退出）
+ * - 旧文件解析失败 → fail-fast 不动文件（沿用防丢语义，由调用方报错退出）
  * - 无旧文件 → 幂等跳过
  * - 新文件已存在（如升级后先跑过 wizard）→ 旧字段仅补缺、不覆盖新文件已有值，之后同样归档
+ *
+ * 另含文件名定稿迁移（remove-machine 501）：settings.hub.json → settings.daemon.json
+ * rename（读旧写新，新名已存在则幂等跳过）。
  */
 import { existsSync } from 'node:fs'
 import { rename, readFile } from 'node:fs/promises'
 import { hubLogger } from '../logger'
-import { getCliSettingsFile, getLegacySettingsFile, getSettingsFile, updateSettingsFile } from './settings'
+import { getCliSettingsFile, getLegacyHubSettingsFile, getLegacySettingsFile, getSettingsFile, updateSettingsFile } from './settings'
 
 /** 迁移结果 */
 export interface MigrationResult {
@@ -38,7 +41,7 @@ export interface MigrationResult {
     reason: 'no-legacy' | 'migrated' | 'parse-error'
 }
 
-/** cli 专属字段：迁移时落 settings.cli.json，其余（hub 接口内字段）落 settings.hub.json */
+/** cli 专属字段：迁移时落 settings.cli.json，其余（daemon 接口内字段）落 settings.daemon.json */
 const CLI_ONLY_FIELDS = [
     'machineId',
     'apiUrl',
@@ -55,7 +58,17 @@ const CLI_ONLY_FIELDS = [
 /** 死字段（零读写点）：不迁移，随旧文件 .bak 归档 */
 const DEAD_FIELDS = ['machineIdConfirmedByServer', 'runnerAutoStartWhenRunningMobi'] as const
 
+/** daemon 侧旧键 → 新键（501 hubName → daemonName 读旧写新） */
+const LEGACY_KEY_RENAMES: Record<string, string> = { hubName: 'daemonName' }
+
 export async function migrateLegacySettings(dataDir: string): Promise<MigrationResult> {
+    const split = await splitLegacySettings(dataDir)
+    await migrateHubSettingsFilename(dataDir)
+    return split
+}
+
+/** 旧单文件 settings.json 拆分迁移（501 前的原 migrateLegacySettings 主体） */
+async function splitLegacySettings(dataDir: string): Promise<MigrationResult> {
     const legacyFile = getLegacySettingsFile(dataDir)
     const hubFile = getSettingsFile(dataDir)
 
@@ -71,23 +84,23 @@ export async function migrateLegacySettings(dataDir: string): Promise<MigrationR
         return { migrated: false, reason: 'parse-error' }
     }
 
-    // 按归属拆分：cli 专属字段落 cli 文件，其余（hub Settings 已裁剪，只认得 hub 字段）
-    // 落 hub 文件；死字段丢弃（留在 .bak 归档）
+    // 按归属拆分：cli 专属字段落 cli 文件，其余（daemon Settings 已裁剪，只认得 daemon 字段）
+    // 落 daemon 文件（旧键经 LEGACY_KEY_RENAMES 改写为新键）；死字段丢弃（留在 .bak 归档）
     const cliSplit: Record<string, unknown> = {}
-    const hubSplit: Record<string, unknown> = {}
+    const daemonSplit: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(legacy)) {
         if ((DEAD_FIELDS as readonly string[]).includes(key)) continue
         if ((CLI_ONLY_FIELDS as readonly string[]).includes(key)) {
             cliSplit[key] = value
         } else {
-            hubSplit[key] = value
+            daemonSplit[LEGACY_KEY_RENAMES[key] ?? key] = value
         }
     }
 
     // 补缺合并而非整文件覆盖：新文件已存在时（升级后先跑过 wizard 等）保留其已有值，
     // 旧文件只填缺失字段；锁内读-改-写与其他写点互斥。
     // cli 拆分结果为空且 cli 文件不存在时不写：空 {} 占位会阻断 co-located 同步
-    await updateSettingsFile(hubFile, (existing) => ({ ...hubSplit, ...existing }))
+    await updateSettingsFile(hubFile, (existing) => ({ ...daemonSplit, ...existing }))
     if (Object.keys(cliSplit).length > 0 || existsSync(getCliSettingsFile(dataDir))) {
         await updateSettingsFile<Record<string, unknown>>(getCliSettingsFile(dataDir), (existing) => ({ ...cliSplit, ...existing }))
     }
@@ -95,4 +108,19 @@ export async function migrateLegacySettings(dataDir: string): Promise<MigrationR
 
     hubLogger.info(`[Hub] Migrated legacy ${legacyFile} -> ${hubFile} + ${getCliSettingsFile(dataDir)} (legacy kept as ${legacyFile}.bak)`)
     return { migrated: true, reason: 'migrated' }
+}
+
+/**
+ * 文件名定稿迁移（501）：旧名 settings.hub.json → 新名 settings.daemon.json。
+ * 仅 rename 不改内容；新名已存在（cli 侧或先前启动已迁移）→ 幂等跳过，旧名残留无害
+ * （所有读点已切新名）。cli 侧 node-core 有对称迁移（co-located 升级窗口谁先到谁迁）。
+ */
+async function migrateHubSettingsFilename(dataDir: string): Promise<void> {
+    const legacyHubFile = getLegacyHubSettingsFile(dataDir)
+    const daemonFile = getSettingsFile(dataDir)
+    if (!existsSync(legacyHubFile) || existsSync(daemonFile)) {
+        return
+    }
+    await rename(legacyHubFile, daemonFile)
+    hubLogger.info(`[Hub] Migrated legacy settings filename ${legacyHubFile} -> ${daemonFile}`)
 }

@@ -21,7 +21,8 @@ import { join } from 'node:path'
 
 /**
  * settings 拆分（cli 侧）：updateSettings 只动 settings.cli.json，
- * listen* 等 hub 字段经 updateHubSettings 写 settings.hub.json，两文件互不覆盖。
+ * listen* 等 daemon 字段经 updateDaemonSettings 写 settings.daemon.json，两文件互不覆盖。
+ * 含 501 文件名迁移：旧 settings.hub.json 读旧写新到 settings.daemon.json。
  */
 
 let home: string
@@ -43,54 +44,78 @@ async function loadPersistence() {
 
 const cliFile = () => join(home, 'settings.cli.json')
 const hubFile = () => join(home, 'settings.hub.json')
+const daemonFile = () => join(home, 'settings.daemon.json')
 
 function readJson(file: string): Record<string, unknown> {
     return JSON.parse(readFileSync(file, 'utf8'))
 }
 
 describe('cli settings 拆分', () => {
-    it('updateSettings 只写 settings.cli.json，不触碰 settings.hub.json', async () => {
+    it('updateSettings 只写 settings.cli.json，不触碰 settings.daemon.json', async () => {
         const { updateSettings } = await loadPersistence()
 
         await updateSettings(s => ({ ...s, cliApiToken: 'cli-token', machineId: 'mid' }))
 
         expect(existsSync(cliFile())).toBe(true)
         expect(readJson(cliFile()).cliApiToken).toBe('cli-token')
-        expect(existsSync(hubFile())).toBe(false)
+        expect(existsSync(daemonFile())).toBe(false)
     })
 
-    it('updateHubSettings 只写 settings.hub.json 的 listen*，保留 hub 文件其他字段，不动 cli 文件', async () => {
-        writeFileSync(hubFile(), JSON.stringify({ webApiToken: 'hub-kept', listenPort: 2222 }))
+    it('updateDaemonSettings 只写 settings.daemon.json 的 listen*，保留其他字段，不动 cli 文件', async () => {
+        writeFileSync(daemonFile(), JSON.stringify({ webApiToken: 'daemon-kept', listenPort: 2222 }))
         writeFileSync(cliFile(), JSON.stringify({ cliApiToken: 'cli-kept' }))
-        const { updateHubSettings } = await loadPersistence()
+        const { updateDaemonSettings } = await loadPersistence()
 
-        await updateHubSettings(s => ({ ...s, listenHost: '0.0.0.0', listenPort: 3000 }))
+        await updateDaemonSettings(s => ({ ...s, listenHost: '0.0.0.0', listenPort: 3000 }))
 
-        const hub = readJson(hubFile())
-        expect(hub.listenHost).toBe('0.0.0.0')
-        expect(hub.listenPort).toBe(3000)
-        // hub 文件其他字段保留（受限写，不整文件覆盖）
-        expect(hub.webApiToken).toBe('hub-kept')
+        const daemon = readJson(daemonFile())
+        expect(daemon.listenHost).toBe('0.0.0.0')
+        expect(daemon.listenPort).toBe(3000)
+        // daemon 文件其他字段保留（受限写，不整文件覆盖）
+        expect(daemon.webApiToken).toBe('daemon-kept')
         // cli 文件不动
         expect(readJson(cliFile()).cliApiToken).toBe('cli-kept')
     })
 
-    it('updateHubSettings 在 hub 文件不存在时创建（co-located 首配场景）', async () => {
-        const { updateHubSettings } = await loadPersistence()
+    it('updateDaemonSettings 在文件不存在时创建（co-located 首配场景）', async () => {
+        const { updateDaemonSettings } = await loadPersistence()
 
-        await updateHubSettings(s => ({ ...s, listenPort: 3333 }))
+        await updateDaemonSettings(s => ({ ...s, listenPort: 3333 }))
 
-        expect(readJson(hubFile())).toEqual({ listenPort: 3333 })
+        expect(readJson(daemonFile())).toEqual({ listenPort: 3333 })
     })
 
-    it('hub 文件解析失败时 updateHubSettings 抛错且不覆盖文件（fail-fast 防丢 hub 字段）', async () => {
-        writeFileSync(hubFile(), '{broken json')
-        const { updateHubSettings } = await loadPersistence()
+    it('文件解析失败时 updateDaemonSettings 抛错且不覆盖文件（fail-fast 防丢字段）', async () => {
+        writeFileSync(daemonFile(), '{broken json')
+        const { updateDaemonSettings } = await loadPersistence()
 
-        await expect(updateHubSettings(s => ({ ...s, listenPort: 3333 }))).rejects.toThrow()
+        await expect(updateDaemonSettings(s => ({ ...s, listenPort: 3333 }))).rejects.toThrow()
 
         // 原文件原样保留（不被「只剩 listen*」的内容覆盖）
-        expect(readFileSync(hubFile(), 'utf8')).toBe('{broken json')
+        expect(readFileSync(daemonFile(), 'utf8')).toBe('{broken json')
+    })
+
+    it('501 读旧写新：仅存量 settings.hub.json 时 updateDaemonSettings rename 到新名再写', async () => {
+        writeFileSync(hubFile(), JSON.stringify({ webApiToken: 'legacy-kept', listenPort: 2222 }))
+        const { updateDaemonSettings } = await loadPersistence()
+
+        await updateDaemonSettings(s => ({ ...s, listenPort: 4000 }))
+
+        // 旧名消失、内容迁入新名，listen* 更新、其余字段保留
+        expect(existsSync(hubFile())).toBe(false)
+        const daemon = readJson(daemonFile())
+        expect(daemon.webApiToken).toBe('legacy-kept')
+        expect(daemon.listenPort).toBe(4000)
+    })
+
+    it('501 读旧写新：新名缺失且旧名存在时 readDaemonSettings 读旧文件（升级窗口兼容）', async () => {
+        writeFileSync(hubFile(), JSON.stringify({ listenPort: 2222 }))
+        const { readDaemonSettings } = await loadPersistence()
+
+        await expect(readDaemonSettings()).resolves.toEqual({ listenPort: 2222 })
+        // 纯读不迁移（迁移只在写路径发生）
+        expect(existsSync(hubFile())).toBe(true)
+        expect(existsSync(daemonFile())).toBe(false)
     })
 
     describe('migrateLegacyCliSettings（cli 侧一次性迁移，远程部署形态）', () => {

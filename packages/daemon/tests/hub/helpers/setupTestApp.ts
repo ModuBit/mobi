@@ -47,7 +47,7 @@ export async function setupTestApp(
     const store = new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
     process.env.WEB_API_TOKEN = testWebApiToken
-    // 钉死 publicUrl 为 http：createConfiguration 会读 settings.hub.json（env > file > default），
+    // 钉死 publicUrl 为 http：createConfiguration 会读 settings.daemon.json（env > file > default），
     // 若本机配了 https publicUrl(部署用) 会污染 secure cookie 判定 → auth Secure 断言误失败。
     // env 优先级最高,显式设 http 隔离测试环境。
     process.env.MOBI_PUBLIC_URL = 'http://localhost:2222'

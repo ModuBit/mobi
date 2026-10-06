@@ -27,13 +27,13 @@ export function createManifestRoutes(): Hono {
     const app = new Hono()
 
     app.get('/manifest.webmanifest', (c) => {
-        const hubName = configuration.hubName
-        const id = 'mobi-' + createHash('sha256').update(hubName).digest('hex').slice(0, 8)
+        const daemonName = configuration.daemonName
+        const id = 'mobi-' + createHash('sha256').update(daemonName).digest('hex').slice(0, 8)
 
         const manifest = {
             id,
-            name: `Mobi - ${hubName}`,
-            short_name: `Mobi·${toShortName(hubName)}`,
+            name: `Mobi - ${daemonName}`,
+            short_name: `Mobi·${toShortName(daemonName)}`,
             description: 'Claude Code 远程控制工具',
             start_url: '/?from=pwa',
             scope: '/',

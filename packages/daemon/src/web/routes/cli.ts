@@ -88,7 +88,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         return await next()
     })
 
-    // webApiToken 远程读取/轮换：webApiToken 归 hub 所有（settings.hub.json），
+    // webApiToken 远程读取/轮换：webApiToken 归 daemon 所有（settings.daemon.json），
     // cli 与 hub 可不同机器部署，cli 经此 API 代行原「直接写文件」的 rotate 语义
     app.get('/web-token', (c) => {
         return c.json({

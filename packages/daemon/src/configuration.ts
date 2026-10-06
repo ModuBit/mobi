@@ -17,8 +17,8 @@
 /**
  * Configuration for mobi-hub
  *
- * Configuration is loaded with priority: environment variable > settings.hub.json > default
- * When values are read from environment variables and not present in settings.hub.json,
+ * Configuration is loaded with priority: environment variable > settings.daemon.json > default
+ * When values are read from environment variables and not present in settings.daemon.json,
  * they are automatically saved for future use
  *
  * Optional environment variables:
@@ -91,7 +91,7 @@ export interface ConfigSources {
     listenPort: ConfigSource
     publicUrl: ConfigSource
     corsOrigins: ConfigSource
-    hubName: ConfigSource
+    daemonName: ConfigSource
     cliApiToken: 'env' | 'file' | 'generated'
     webApiToken: 'env' | 'file' | 'generated'
 }
@@ -115,7 +115,7 @@ class Configuration {
     /** Web API token 是否为新生成（首次启动展示用） */
     public readonly webApiTokenIsNew: boolean
 
-    /** Path to settings.hub.json file */
+    /** Path to settings.daemon.json file */
     public readonly settingsFile: string
 
     /** Data directory for credentials and state */
@@ -143,8 +143,8 @@ class Configuration {
     /** Allowed CORS origins for Web App + Socket.IO (comma-separated env override) */
     public readonly corsOrigins: string[]
 
-    /** Hub 实例名称，用于 PWA 实例标识 */
-    public readonly hubName: string
+    /** 实例名称，用于 PWA 实例标识 */
+    public readonly daemonName: string
 
     /** Sources of each configuration value */
     public readonly sources: ConfigSources
@@ -166,7 +166,7 @@ class Configuration {
         this.hostPort = resolveHostPort(this.listenPort)
         this.publicUrl = serverSettings.publicUrl
         this.corsOrigins = serverSettings.corsOrigins
-        this.hubName = serverSettings.hubName
+        this.daemonName = serverSettings.daemonName
 
         // CLI API token - will be set by _setCliApiToken() before create() returns
         this.cliApiToken = ''
@@ -207,7 +207,7 @@ class Configuration {
             : join(dataDir, 'mobi.db')
 
         // 3. Load hub settings (with persistence)
-        // 拆分迁移前置：旧 settings.json → settings.hub.json + settings.cli.json（一次性，
+        // 拆分迁移前置：旧 settings.json → settings.daemon.json + settings.cli.json（一次性，
         // 解析失败会抛错终止启动，防静默丢配置）
         const { migrateLegacySettings } = await import('./config/migrateSettings')
         const migration = await migrateLegacySettings(dataDir)
