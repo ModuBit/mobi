@@ -123,7 +123,7 @@ describe('ensureDaemonRunning', () => {
     })
 
     it('daemon 已在运行（pid 存活 + health 探测通过）则跳过', async () => {
-        mockReadDaemonState.mockResolvedValue({ pid: 4321, hubPort: 2222, hostPort: 12222, runnerHttpPort: 3000, startTime: 'now' })
+        mockReadDaemonState.mockResolvedValue({ pid: 4321, httpPort: 2222, hostPort: 12222, controlPort: 3000, startTime: 'now' })
         mockIsProcessAlive.mockReturnValue(true)
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 

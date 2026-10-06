@@ -32,7 +32,7 @@ import { RunnerState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
-import { acquireRunnerLock, releaseRunnerLock } from '@mobi/node-core/persistence';
+import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistence';
 import { getConfiguration, resolveHostPort } from '../configuration';
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
@@ -58,7 +58,7 @@ export interface RunnerSessionBridge {
 
 /** runner 句柄：stop 只做组件级清理，不碰进程（不 process.exit、不挂信号） */
 export interface RunnerHandle {
-    /** control server 端口（daemon.state.json / runner.state.json 记录用） */
+    /** control server 端口（daemon.state.json 的 controlPort 记录用） */
     httpPort: number
     /**
      * 会话执行桥（ticket-18）：hub 侧 LocalMachineHost 直调本 runner 核心的
@@ -112,8 +112,8 @@ function resolveSpawnHostPort(): number {
 
 export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHandle> {
   // Acquire exclusive lock (proves runner is running)
-  const runnerLockHandle: FileHandle | null = await acquireRunnerLock(5, 200);
-  if (!runnerLockHandle) {
+  const daemonLockHandle: FileHandle | null = await acquireDaemonLock(5, 200);
+  if (!daemonLockHandle) {
     throw new RunnerLockHeldError();
   }
 
@@ -680,7 +680,7 @@ export async function startRunnerCore(deps?: RunnerCoreDeps): Promise<RunnerHand
     }));
 
     await stopControlServer();
-    await releaseRunnerLock(runnerLockHandle);
+    await releaseDaemonLock(daemonLockHandle);
 
     logger.debug('[RUNNER RUN] Cleanup completed');
   };

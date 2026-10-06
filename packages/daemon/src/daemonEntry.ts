@@ -115,9 +115,9 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<void> 
 
     writeDaemonState({
         pid: process.pid,
-        hubPort: hub.port,
+        httpPort: hub.port,
         hostPort: hub.hostPort,
-        runnerHttpPort: runner.httpPort,
+        controlPort: runner.httpPort,
         startTime: new Date().toLocaleString()
     } satisfies DaemonLocallyPersistedState)
 

@@ -53,12 +53,12 @@ vi.mock('@/api/apiSession', () => ({
 }))
 
 // 会话自报 webhook 已拆到 session 侧（解缠 6），mock 跟随新位置；
-// 底层传输 utils/loopbackRunnerPost 一并桩掉，防测试环境真发 loopback 请求
+// 底层传输 utils/loopbackControlPost 一并桩掉，防测试环境真发 loopback 请求
 vi.mock('@/agent/sessionWebhook', () => ({
     notifyRunnerSessionStarted: async () => null
 }))
-vi.mock('@mobi/node-core/utils/loopbackRunnerPost', () => ({
-    loopbackRunnerPost: async () => ({ error: 'mocked' })
+vi.mock('@mobi/node-core/utils/loopbackControlPost', () => ({
+    loopbackControlPost: async () => ({ error: 'mocked' })
 }))
 
 vi.mock('@mobi/node-core/configuration', () => ({

@@ -41,7 +41,8 @@ class Configuration {
     /** daemon 配置文件（listen* 等），仅本机 co-located 部署时可写；远程部署时它在 daemon 机器上 */
     public readonly daemonSettingsFile: string
     public readonly privateKeyFile: string
-    public readonly runnerLockFile: string
+    /** daemon 实例锁文件（防双实例；502 前旧名 runner.state.json.lock，读旧见 acquireDaemonLock） */
+    public readonly daemonLockFile: string
     /** daemon 本地状态文件（唯一组件的进程状态） */
     public readonly daemonStateFile: string
     public readonly supervisorSocketFile: string
@@ -94,7 +95,7 @@ class Configuration {
         this.settingsFile = join(this.mobiHomeDir, 'settings.cli.json')
         this.daemonSettingsFile = join(this.mobiHomeDir, 'settings.daemon.json')
         this.privateKeyFile = join(this.mobiHomeDir, 'access.key')
-        this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
+        this.daemonLockFile = join(this.mobiHomeDir, 'daemon.lock')
         this.daemonStateFile = join(this.mobiHomeDir, 'daemon.state.json')
         this.supervisorSocketFile = join(this.mobiHomeDir, 'supervisor.sock')
         this.supervisorStateFile = join(this.mobiHomeDir, 'supervisor-state.json')

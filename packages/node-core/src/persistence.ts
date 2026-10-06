@@ -41,19 +41,28 @@ const defaultSettings: Settings = {}
 
 /**
  * daemon 本地状态（唯一进程状态文件）：
- * daemonEntry 启动就绪时写入、优雅退出时清理。读取方：loopbackRunnerPost
+ * daemonEntry 启动就绪时写入、优雅退出时清理。读取方：loopbackControlPost
  * （controlServer 探活）、doctor、upgrader/processRestarter、supervisor 孤儿清理、
  * e2e 脚本。
+ *
+ * 501/502 起字段随 hub/runner 更名 daemon 读旧写新：写恒用 httpPort/controlPort，
+ * 读取方对存量旧字段 hubPort/runnerHttpPort 做兜底（ ?? 过渡，见各读取点）。
  */
 export interface DaemonLocallyPersistedState {
   pid: number;
-  /** 主端口（Web + /terminal） */
-  hubPort: number;
+  /** 主端口（Web + /terminal）；旧名 hubPort（读兜底） */
+  httpPort: number;
   /** 宿主通道端口（ticket-21：/cli socket + /cli/* HTTP 的 loopback listener） */
   hostPort: number;
-  /** runner controlServer 端口（同进程 runner 的进程管理通道） */
-  runnerHttpPort: number;
+  /** 同进程 executor 的 controlServer 端口（进程管理通道）；旧名 runnerHttpPort（读兜底） */
+  controlPort: number;
   startTime: string;
+}
+
+/** 502 前的旧字段名（读兜底用） */
+export interface LegacyDaemonStateFields {
+  hubPort?: number
+  runnerHttpPort?: number
 }
 
 /**
@@ -338,18 +347,41 @@ export async function clearMachineId(): Promise<void> {
 }
 
 /**
- * Acquire an exclusive lock file for the runner.
- * The lock file proves the runner is running and prevents multiple instances.
- * Returns the file handle to hold for the runner's lifetime, or null if locked.
+ * Acquire an exclusive lock file for the daemon.
+ * The lock file proves the daemon is running and prevents multiple instances.
+ * Returns the file handle to hold for the daemon's lifetime, or null if locked.
+ *
+ * 502 锁文件定稿（R4）：runner.state.json.lock → daemon.lock 读旧防双实例——
+ * 旧名锁存在且 pid 活 → 视为占用（拒启）；pid 死/损坏 → 清理旧名锁后正常获取新锁。
  */
-export async function acquireRunnerLock(
+export async function acquireDaemonLock(
   maxAttempts: number = 5,
   delayIncrementMs: number = 200
 ): Promise<FileHandle | null> {
+  // 升级窗口防双实例：旧名锁仍被活进程持有 → 拒启（R4）
+  const legacyLockFile = join(configuration.mobiHomeDir, 'runner.state.json.lock')
+  if (existsSync(legacyLockFile)) {
+    let legacyAlive = false
+    try {
+      const legacyPid = Number(readFileSync(legacyLockFile, 'utf-8').trim());
+      legacyAlive = Number.isFinite(legacyPid) && legacyPid > 0 && isProcessAlive(legacyPid);
+    } catch {
+      // 旧锁损坏内容按死锁处理（下方删除）
+    }
+    if (legacyAlive) {
+      return null;
+    }
+    try {
+      unlinkSync(legacyLockFile);
+    } catch {
+      // 并发竞争下可能已被其他进程删除，继续尝试新锁
+    }
+  }
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // 'wx' ensures we only create if it doesn't exist (atomic lock acquisition)
-      const fileHandle = await open(configuration.runnerLockFile, 'wx');
+      const fileHandle = await open(configuration.daemonLockFile, 'wx');
       // Write PID to lock file for debugging
       await fileHandle.writeFile(String(process.pid));
       return fileHandle;
@@ -357,10 +389,10 @@ export async function acquireRunnerLock(
       if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'EEXIST') {
         // Lock file exists, check if process is still running.
         // 锁内容不是「存活进程的 PID」（死 PID / 空文件 / 损坏内容）一律视为陈旧锁删除——
-        // 否则一个 0 字节残留锁会让所有后续 runner 拿锁失败后静默退出（E2E 实踩）
+        // 否则一个 0 字节残留锁会让所有后续 daemon 拿锁失败后静默退出（E2E 实踩）
         let staleLock: boolean
         try {
-          const lockPid = Number(readFileSync(configuration.runnerLockFile, 'utf-8').trim());
+          const lockPid = Number(readFileSync(configuration.daemonLockFile, 'utf-8').trim());
           staleLock = !Number.isFinite(lockPid) || lockPid <= 0 || !isProcessAlive(lockPid);
         } catch {
           // Can't read lock file, might be corrupted
@@ -368,7 +400,7 @@ export async function acquireRunnerLock(
         }
         if (staleLock) {
           try {
-            unlinkSync(configuration.runnerLockFile);
+            unlinkSync(configuration.daemonLockFile);
           } catch {
             // 并发竞争下可能已被其他进程删除，下一轮重试兜底
           }
@@ -387,16 +419,16 @@ export async function acquireRunnerLock(
 }
 
 /**
- * Release runner lock by closing handle and deleting lock file
+ * Release daemon lock by closing handle and deleting lock file
  */
-export async function releaseRunnerLock(lockHandle: FileHandle): Promise<void> {
+export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
   try {
     await lockHandle.close();
   } catch { /* 错误可忽略：handle 可能已关闭 */ }
 
   try {
-    if (existsSync(configuration.runnerLockFile)) {
-      unlinkSync(configuration.runnerLockFile);
+    if (existsSync(configuration.daemonLockFile)) {
+      unlinkSync(configuration.daemonLockFile);
     }
   } catch { /* 错误可忽略：锁文件可能已被其他进程删除 */ }
 }

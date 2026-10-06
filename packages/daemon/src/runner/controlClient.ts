@@ -20,14 +20,14 @@
  * ticket-22 收缩：旧的自重启协作族（checkIfRunnerRunningAndCleanupStaleState /
  * isRunnerRunningCurrentlyInstalledMobiVersion / stopRunner——依赖 runner.state.json
  * 的 pid/版本比对）随 runner mtime 自重启与独立 runner 进程一起删除；传输底座
- * 在 @mobi/node-core/utils/loopbackRunnerPost（读 daemon.state.json 的
- * runnerHttpPort 探活）。
+ * 在 @mobi/node-core/utils/loopbackControlPost（读 daemon.state.json 的
+ * controlPort 探活）。
  */
 
-import { loopbackRunnerPost } from '@mobi/node-core/utils/loopbackRunnerPost';
+import { loopbackControlPost } from '@mobi/node-core/utils/loopbackControlPost';
 
 async function runnerPost(path: string, body?: unknown): Promise<{ error?: string } | Record<string, unknown>> {
-  return loopbackRunnerPost(path, body);
+  return loopbackControlPost(path, body);
 }
 
 export async function listRunnerSessions(): Promise<unknown[]> {

@@ -166,7 +166,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
             console.log(chalk.green('✓ Daemon is running'));
             console.log(`  PID: ${state.pid}`);
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
-            console.log(`  Hub Port: ${state.hubPort}`);
+            console.log(`  HTTP Port: ${state.httpPort ?? (state as typeof state & { hubPort?: number }).hubPort}`);
             console.log(`  Host Port: ${state.hostPort}`);
         } else if (state && !isRunning) {
             console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));

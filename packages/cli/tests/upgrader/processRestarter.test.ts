@@ -19,7 +19,7 @@ import { detectActiveProcesses, formatActiveProcessesPrompt, hasActiveProcesses,
 
 // mock persistence
 vi.mock('@mobi/node-core/persistence', () => ({
-    readDaemonState: vi.fn().mockResolvedValue({ pid: 1000, hubPort: 2222, hostPort: 12222, runnerHttpPort: 3000, startTime: 'now' }),
+    readDaemonState: vi.fn().mockResolvedValue({ pid: 1000, httpPort: 2222, hostPort: 12222, controlPort: 3000, startTime: 'now' }),
 }))
 
 // mock process utils

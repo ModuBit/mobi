@@ -52,8 +52,10 @@ export async function restartProcesses(): Promise<void> {
     // 透传当前监听端口给 service restart（非默认端口时）
     const state = await readDaemonState()
     const args = ['service', 'restart']
-    if (state?.hubPort && state.hubPort !== 2222) {
-        args.push('--port', String(state.hubPort))
+    // 502 读旧写新：新名 httpPort，存量旧名 hubPort 兜底
+    const httpPort = state ? (state.httpPort ?? (state as typeof state & { hubPort?: number }).hubPort) : undefined;
+    if (httpPort && httpPort !== 2222) {
+        args.push('--port', String(httpPort))
     }
 
     const cmd = getMobiCliCommand(args)

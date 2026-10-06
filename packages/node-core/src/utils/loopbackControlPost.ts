@@ -15,24 +15,34 @@
  */
 
 /**
- * 向本机 runner controlServer 发 POST 的传输底座：读 daemon 本地状态（ticket-22
+ * 向本机 executor controlServer 发 POST 的传输底座：读 daemon 本地状态（ticket-22
  * 起 runner.state.json 停写，controlServer 端口记录在 daemon.state.json 的
- * runnerHttpPort）→ 探活 → loopback fetch。daemon（controlClient）与 session
- * （sessionWebhook）两侧共用，从 runner/controlClient 的 runnerPost 抽出
- * （personal-agent-rewrite 解缠 6）。
+ * controlPort，502 前旧名 runnerHttpPort 读兜底）→ 探活 → loopback fetch。
+ * daemon（controlClient）与 session（sessionWebhook）两侧共用，从
+ * runner/controlClient 的 runnerPost 抽出（personal-agent-rewrite 解缠 6）。
  */
 
-import { readDaemonState } from '../persistence'
+import { readDaemonState, type LegacyDaemonStateFields } from '../persistence'
 import { isProcessAlive } from './process'
 import { logger } from '../logger'
 
-/** 向本机 runner controlServer 发 POST；daemon 不在 / 请求失败时返回 { error } 不抛异常 */
-export async function loopbackRunnerPost(
+/** 向本机 executor controlServer 发 POST；daemon 不在 / 请求失败时返回 { error } 不抛异常 */
+export async function loopbackControlPost(
     path: string,
     body?: unknown
 ): Promise<{ error?: string } | Record<string, unknown>> {
     const state = await readDaemonState();
-    if (!state?.runnerHttpPort) {
+    if (!state) {
+        const errorMessage = 'No daemon running, no state file found';
+        logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+        return {
+            error: errorMessage
+        };
+    }
+
+    // 502 读旧写新：新名 controlPort，存量旧名 runnerHttpPort 兜底
+    const controlPort = state.controlPort ?? (state as typeof state & LegacyDaemonStateFields).runnerHttpPort;
+    if (!controlPort) {
         const errorMessage = 'No daemon running, no state file found';
         logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
         return {
@@ -50,7 +60,7 @@ export async function loopbackRunnerPost(
 
     try {
         const timeout = process.env.MOBI_RUNNER_HTTP_TIMEOUT ? parseInt(process.env.MOBI_RUNNER_HTTP_TIMEOUT) : 10_000;
-        const response = await fetch(`http://127.0.0.1:${state.runnerHttpPort}${path}`, {
+        const response = await fetch(`http://127.0.0.1:${controlPort}${path}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body || {}),
