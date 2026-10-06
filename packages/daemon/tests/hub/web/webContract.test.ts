@@ -111,7 +111,7 @@ describe('Web Contract Snapshot', () => {
             'rewind-truncated',
             'rewind-completed',
             'message-withdrawn',
-            'machine-updated',
+            'daemon-status',
             'toast',
             'message-snapshot',
             'message-snapshot-delta',

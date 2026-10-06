@@ -42,24 +42,10 @@ export const MachineMetadataSchema = z.object({
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
 
 // —— runner 状态上报（runner → hub，运行时状态机）——
+// Schema 定义在 schemas.ts（协议 schema 单一来源，daemon-status 事件 payload 复用），
+// 此处 re-export 保持本文件作为宿主协议类型入口的稳定性
 
-export const RunnerStateSchema = z.object({
-    status: z.union([z.enum(['running', 'shutting-down']), z.string()]),
-    pid: z.number().optional(),
-    httpPort: z.number().optional(),
-    startedAt: z.number().optional(),
-    shutdownRequestedAt: z.number().optional(),
-    shutdownSource: z.union([z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']), z.string()]).optional(),
-    lastSpawnError: z.object({
-        message: z.string(),
-        pid: z.number().optional(),
-        exitCode: z.number().nullable().optional(),
-        signal: z.string().nullable().optional(),
-        at: z.number()
-    }).nullable().optional()
-})
-
-export type RunnerState = z.infer<typeof RunnerStateSchema>
+export { RunnerStateSchema, type RunnerState } from './schemas'
 
 // —— spawn 契约（hub spawn RPC ↔ runner）——
 

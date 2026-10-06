@@ -42,10 +42,10 @@ exports[`Web Contract Snapshot HTTP routes snapshot 1`] = `
 exports[`Web Contract Snapshot SSE event types snapshot 1`] = `
 [
   "connection-changed",
+  "daemon-status",
   "desktop-control-changed",
   "heartbeat",
   "idle-timeout-warning",
-  "machine-updated",
   "message-received",
   "message-snapshot",
   "message-snapshot-delta",

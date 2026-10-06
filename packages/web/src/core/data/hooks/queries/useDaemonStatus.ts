@@ -17,16 +17,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import type { DaemonStatus } from '@/core/data/api/types'
 
-/** GET /api/daemon/status 返回形状（205 补 executor 段后此处同步扩展） */
-export interface DaemonStatus {
-    status: 'ok' | 'starting'
-    host: {
-        hostname: string
-        platform: string
-        homeDir: string
-    }
-}
+export type { DaemonStatus }
 
 /**
  * 获取 daemon 状态（单机：daemon 即宿主）。

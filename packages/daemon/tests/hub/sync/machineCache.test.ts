@@ -16,19 +16,18 @@
 
 import { describe, test, expect } from 'bun:test'
 import { MachineCache } from '../../../src/sync/machineCache'
-import { EventPublisher } from '../../../src/sync/eventPublisher'
 import { Store } from '../../../src/store'
 
 /**
  * ticket-20 验收用例：machine 通道删除后本机由 daemon 自注册——
  * 常驻 active、无心跳也不过期（含长时间 inactive 驱逐豁免）；
  * 对照组：非本机机器走原有超时翻 inactive / 驱逐语义不变。
+ * （发射语义 205 起收敛到 executorRuntime 写路径，cache 不再持有 publisher）
  */
 
 function makeCache(): { cache: MachineCache; store: Store; cleanup: () => void } {
     const store = new Store(':memory:')
-    const sseManager = { broadcast: () => {} } as unknown as import('../../../src/sse/sseManager').SSEManager
-    const cache = new MachineCache(store, new EventPublisher(sseManager, (event) => event.namespace))
+    const cache = new MachineCache(store)
     return {
         cache,
         store,

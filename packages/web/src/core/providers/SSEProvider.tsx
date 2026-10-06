@@ -52,7 +52,7 @@ import {
 import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
 import { requestComposerBackfill } from '@/core/data/stores/composerBackfillStore'
 import { deserializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
-import type { Machine, MachinesResponse, RunnerState } from '@/core/data/api/types'
+import type { DaemonStatus, RunnerState } from '@/core/data/api/types'
 
 /**
  * blocks → composer 分段还原（撤回回填，spec §7.5）。
@@ -202,26 +202,17 @@ const INVALIDATION_BATCH_MS = 16
 let toastSeq = 0
 
 /**
- * machine-updated 事件负载 → ['machines'] 缓存 patch：数据已随事件推送，不再 refetch
- * （事件是机器列表变化的唯一来源，refetch 是把推到门口的数据回店里重查一遍）。
+ * daemon-status 事件负载 → ['daemon-status'] 单对象缓存 patch（205）：payload 与
+ * GET /api/daemon/status 的 200 响应同形（daemon 侧同一投影 getDaemonStatus），
+ * 校形后直写换代即可，无需字段级合并。
  *
- * 负载四种形状（hub machineCache / machineHandlers）：
- * - null：机器删除 → 按 machineId 移除
- * - 全量 machine（带 metadata 字段）：合并进已有缓存行（只覆写投影字段，保留 fetch 缓存的
- *   hub 专有字段，避免同一缓存混入两种形状）；缓存无此行时 upsert 投影。metadata 的归一化
- *   hub machineCache 已做——host/platform 必为 string、displayName/homeDir 非字符串即缺省，
- *   这里只做字段挑选，不复制第二份归一化表
- * - { active: false }：过期下线 → 从缓存移除。GET /api/machines 只返回 active 机器
- *   （getOnlineMachinesByNamespace），保留 active:false 行会让 patch 与 refetch 语义分叉
- *   （死机器在被兜底 refetch 清走前仍出现在机器选择列表）
- * - { id }：仅 id 占位——hub 侧同步跟随一条全量事件，此处 no-op
- *
- * 缓存不存在时不创建（避免把单机 patch 写成"完整列表"）；无实质变化返回 undefined
- * 让 react-query 跳过换代（throttle 心跳每 ~10s 重复广播同值全量，稳态热路径）。
+ * 缓存不存在时不创建（宿主状态只有挂载了 useDaemonStatus 的页面消费，无消费方时
+ * 写缓存无意义）；无实质变化返回 undefined 让 react-query 跳过换代——重复上报
+ * 同值（如状态重申广播）不该逼依赖方重渲染。
  */
-/** runnerState 同值判定：SSE 每帧重解析出全新对象，引用比较恒 false；顶层字段均为
- *  原始类型（status/pid/httpPort…），浅比较即等值。均空也算同值 */
-function sameRunnerState(a: Machine['runnerState'], b: Machine['runnerState']): boolean {
+/** executor 状态同值判定：SSE 解析产生全新对象，引用比较恒 false；顶层字段均为
+ *  原始类型（status/pid/httpPort…），浅比较即等值 */
+function sameExecutorState(a: RunnerState | null, b: RunnerState | null): boolean {
     if (a === b) return true
     if (!a || !b) return false
     const ka = Object.keys(a) as Array<keyof RunnerState>
@@ -229,73 +220,28 @@ function sameRunnerState(a: Machine['runnerState'], b: Machine['runnerState']): 
     return ka.every(k => a[k] === b[k])
 }
 
-function patchMachinesCache(qc: QueryClient, machineId: string, data: unknown): void {
-    if (!qc.getQueryData(queryKeys.machines)) return
-    qc.setQueryData<MachinesResponse>(queryKeys.machines, (prev) => {
+function patchDaemonStatusCache(qc: QueryClient, data: unknown): void {
+    if (!isObject(data) || !qc.getQueryData(queryKeys.daemonStatus)) return
+    qc.setQueryData<DaemonStatus>(queryKeys.daemonStatus, (prev) => {
         if (!prev) return undefined
-        if (data === null) {
-            if (!prev.machines.some(m => m.id === machineId)) return undefined
-            return { ...prev, machines: prev.machines.filter(m => m.id !== machineId) }
+        const next = data as DaemonStatus
+        // 同值跳过：host 静态身份浅比较 + executor 状态浅比较（SSE 解析每帧新引用）
+        if (prev.status === next.status
+            && prev.host.hostname === next.host.hostname
+            && prev.host.platform === next.host.platform
+            && prev.host.displayName === next.host.displayName
+            && prev.host.homeDir === next.host.homeDir
+            && sameExecutorState(prev.executor ?? null, next.executor ?? null)) {
+            return undefined
         }
-        if (!isObject(data)) return undefined
-        if ('metadata' in data) {
-            // 全量 machine → web 投影（字段挑选，归一化已由 hub 完成，见 docblock）
-            const meta = isObject(data.metadata) ? data.metadata as Record<string, unknown> : null
-            // hub 已保证 host/platform 为 string（'unknown' 兜底）、displayName/homeDir 非字符串即缺省，
-            // 此处信任归一化结果直接断言 web 形状（运行时再验一遍就是第二份归一化表）
-            const metadata = (meta ? {
-                host: meta.host,
-                platform: meta.platform,
-                ...(meta.displayName !== undefined && { displayName: meta.displayName }),
-                ...(meta.homeDir !== undefined && { homeDir: meta.homeDir }),
-            } : null) as Machine['metadata']
-            const runnerState = (data.runnerState ?? null) as Machine['runnerState']
-            const old = prev.machines.find(m => m.id === machineId)
-            // 合并而非替换：fetch 缓存的是 hub 全行，patch 只覆写投影字段，专有字段原地保留
-            const next: Machine = old
-                ? { ...old, active: data.active === true, metadata, runnerState }
-                : { id: machineId, active: data.active === true, metadata, runnerState }
-            // 同值跳过：全量广播高频且多数无变化，避免每次都造新引用逼 react-query 深比较。
-            // runnerState 经 SSE 每帧新解析、引用必不同，按顶层字段浅比较（值均为原始类型）
-            if (old
-                && old.active === next.active
-                && old.metadata?.host === next.metadata?.host
-                && old.metadata?.platform === next.metadata?.platform
-                && old.metadata?.displayName === next.metadata?.displayName
-                && old.metadata?.homeDir === next.metadata?.homeDir
-                && sameRunnerState(old.runnerState, next.runnerState)) {
-                return undefined
-            }
-            const machines = old
-                ? prev.machines.map(m => (m.id === machineId ? next : m))
-                : [...prev.machines, next]
-            return { ...prev, machines }
-        }
-        if ('active' in data) {
-            const active = data.active === true
-            // 下线（active:false）即移除——GET /api/machines 只返回 active 机器，
-            // 保留下线行会让 patch 与 refetch 语义分叉（死机器滞留选择列表）
-            if (!active) {
-                if (!prev.machines.some(m => m.id === machineId)) return undefined
-                return { ...prev, machines: prev.machines.filter(m => m.id !== machineId) }
-            }
-            let changed = false
-            const machines = prev.machines.map(m => {
-                if (m.id !== machineId || m.active === active) return m
-                changed = true
-                return { ...m, active }
-            })
-            return changed ? { ...prev, machines } : undefined
-        }
-        // { id } 占位形状：全量事件随后即到，此处不动缓存
-        return undefined
+        return next
     })
 }
 
 type PendingInvalidations = {
     sessions: boolean
     workspaceViews: boolean
-    machines: boolean
+    daemonStatus: boolean
     sessionIds: Set<string>
 }
 
@@ -342,7 +288,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const pendingInvalidationsRef = useRef<PendingInvalidations>({
         sessions: false,
         workspaceViews: false,
-        machines: false,
+        daemonStatus: false,
         sessionIds: new Set(),
     })
 
@@ -351,12 +297,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     // - 'workspaceViews'：工作区维度视图（['workspaces'] / ['workspaceSessions'] / ['recentSessions']）。
     //   session 增删改会改变工作区组与「最近」的 sessionIds 成员，必须一并刷新，
     //   否则新会话不出现 / 删除会话残留
-    function scheduleInvalidation(scope: 'sessions' | 'machines' | 'workspaceViews', sessionId?: string) {
+    function scheduleInvalidation(scope: 'sessions' | 'daemonStatus' | 'workspaceViews', sessionId?: string) {
         const pending = pendingInvalidationsRef.current
         if (scope === 'sessions') {
             pending.sessions = true
-        } else if (scope === 'machines') {
-            pending.machines = true
+        } else if (scope === 'daemonStatus') {
+            pending.daemonStatus = true
         } else {
             pending.workspaceViews = true
         }
@@ -369,20 +315,20 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             invalidationTimerRef.current = null
             const p = pendingInvalidationsRef.current
             const qc = queryClientRef.current
-            if (!p.sessions && !p.workspaceViews && !p.machines && p.sessionIds.size === 0) return
+            if (!p.sessions && !p.workspaceViews && !p.daemonStatus && p.sessionIds.size === 0) return
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
             // 工作区维度视图三键（workspaces/recentSessions/workspaceSessions 根前缀）由 helper 统一收口
             if (p.workspaceViews) tasks.push(invalidateWorkspaceViews(qc))
-            if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
+            if (p.daemonStatus) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.daemonStatus }))
             for (const sid of Array.from(p.sessionIds)) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))
             }
 
             p.sessions = false
             p.workspaceViews = false
-            p.machines = false
+            p.daemonStatus = false
             p.sessionIds.clear()
             if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
         }, INVALIDATION_BATCH_MS)
@@ -402,8 +348,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         // sid 为 null（不在会话页）时仍失效列表与工作区视图——侧边栏状态也需对账
         scheduleInvalidation('sessions', sid ?? undefined)
         scheduleInvalidation('workspaceViews')
-        // 断连窗口内的 machine-updated 不会被重放，patch 模式的确定性对账点
-        scheduleInvalidation('machines')
+        // 断连窗口内的 daemon-status 不会被重放，patch 模式的确定性对账点
+        scheduleInvalidation('daemonStatus')
         if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
     }
 
@@ -545,8 +491,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 })
                 break
             }
-            case 'machine-updated':
-                patchMachinesCache(queryClientRef.current, event.machineId, event.data)
+            case 'daemon-status':
+                patchDaemonStatusCache(queryClientRef.current, event.data)
                 break
             case 'workspace-added':
             case 'workspace-updated':
@@ -773,7 +719,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             pendingInvalidationsRef.current = {
                 sessions: false,
                 workspaceViews: false,
-                machines: false,
+                daemonStatus: false,
                 sessionIds: new Set(),
             }
         }

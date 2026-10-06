@@ -16,6 +16,26 @@
 
 import { z } from 'zod'
 import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
+
+// —— runner 状态上报（runner → hub，运行时状态机；hostProtocol re-export 保持协议入口）——
+
+export const RunnerStateSchema = z.object({
+    status: z.union([z.enum(['running', 'shutting-down']), z.string()]),
+    pid: z.number().optional(),
+    httpPort: z.number().optional(),
+    startedAt: z.number().optional(),
+    shutdownRequestedAt: z.number().optional(),
+    shutdownSource: z.union([z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']), z.string()]).optional(),
+    lastSpawnError: z.object({
+        message: z.string(),
+        pid: z.number().optional(),
+        exitCode: z.number().nullable().optional(),
+        signal: z.string().nullable().optional(),
+        at: z.number()
+    }).nullable().optional()
+})
+
+export type RunnerState = z.infer<typeof RunnerStateSchema>
 // Usage statistics for assistant messages（ticket-12 下沉：node-core api/types 与 cli claude/types 共用）
 export const UsageSchema = z.object({
   input_tokens: z.number().int().nonnegative(),
@@ -799,8 +819,21 @@ const SessionChangedSchema = SessionEventBaseSchema.extend({
     sessionId: z.string()
 })
 
-const MachineChangedSchema = SessionEventBaseSchema.extend({
-    machineId: z.string()
+/**
+ * daemon 状态变化（单机，原 machine-updated 的替身）：host 静态身份 + executor 运行时。
+ * payload 与 GET /api/daemon/status 的 200 响应体同形（web 据此直 patch 单对象缓存）。
+ */
+const DaemonStatusChangedSchema = SessionEventBaseSchema.extend({
+    data: z.object({
+        status: z.literal('ok'),
+        host: z.object({
+            hostname: z.string(),
+            platform: z.string(),
+            displayName: z.string().optional(),
+            homeDir: z.string().optional(),
+        }),
+        executor: RunnerStateSchema.nullable().optional(),
+    }),
 })
 
 /** workspace 事件（hub 的 EventPublisher.resolveNamespace 不认 workspaceId，无缓存回查，namespace 必填） */
@@ -885,9 +918,8 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         blocks: z.array(z.unknown()),
         originalText: z.string().nullable()
     }),
-    MachineChangedSchema.extend({
-        type: z.literal('machine-updated'),
-        data: z.unknown().optional()
+    DaemonStatusChangedSchema.extend({
+        type: z.literal('daemon-status'),
     }),
     SessionEventBaseSchema.extend({
         type: z.literal('toast'),

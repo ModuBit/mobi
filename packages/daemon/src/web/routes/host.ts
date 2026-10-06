@@ -19,12 +19,11 @@
  *
  * 语义：取代原 GET /api/machines（恒单元素的机器列表）——单机世界 daemon 即宿主，
  * 状态直出本进程，不再有「机器列表」这一层。就绪判据与旧 machines API 一致：
- * syncEngine 未接入（启动早期）返回 503 starting；就绪后返回宿主静态身份。
- * executor 运行时状态（spawn 结果/关停）由 ticket 205 经 executorRuntime 补全。
+ * syncEngine 未接入（启动早期）返回 503 starting；就绪后返回 host 静态身份 +
+ * executor 运行时（executorRuntime 内存单例，205 起不再落库）。
  */
 
 import { Hono } from 'hono'
-import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 
@@ -36,17 +35,8 @@ export function createHostRoutes(getSyncEngine: () => SyncEngine | null): Hono<W
         if (!engine) {
             return c.json({ status: 'starting' }, 503)
         }
-        // 宿主静态身份（hostname/platform/homeDir 不随时间变化）；executor 动态状态
-        // 在 205 接入 executorRuntime 后补全
-        const metadata = buildMachineMetadata()
-        return c.json({
-            status: 'ok',
-            host: {
-                hostname: metadata.host,
-                platform: metadata.platform,
-                homeDir: metadata.homeDir,
-            },
-        })
+        // host 静态身份 + executor 动态状态同一投影（daemon-status SSE 事件同形）
+        return c.json(engine.getDaemonStatus())
     })
 
     return app

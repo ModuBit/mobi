@@ -263,16 +263,16 @@ export function NewSessionPage() {
     )
 
     // 宿主 homeDir（单机：daemon 即宿主，直源 daemon status）
-    const machineHomeDir = daemonStatus?.host?.homeDir
+    const hostHomeDir = daemonStatus?.host?.homeDir
     // 过渡态回显：宿主显示名 + home 缩写为 ~ 的目录（仅展示用，非提交值）
-    const machineLabel = daemonStatus?.host?.hostname ?? ''
+    const hostLabel = daemonStatus?.host?.displayName ?? daemonStatus?.host?.hostname ?? ''
     const directoryLabel = useMemo(() => {
         if (!selectedDirectory) return ''
-        if (machineHomeDir && selectedDirectory.startsWith(machineHomeDir)) {
-            return '~' + selectedDirectory.slice(machineHomeDir.length)
+        if (hostHomeDir && selectedDirectory.startsWith(hostHomeDir)) {
+            return '~' + selectedDirectory.slice(hostHomeDir.length)
         }
         return selectedDirectory
-    }, [selectedDirectory, machineHomeDir])
+    }, [selectedDirectory, hostHomeDir])
 
     // 选定工作区 → 机器 + 工作目录（primary folder）一次性冻结进 state，并把所选同步回
     // URL param（replace 不产生历史条目）——param 是工作区选择的唯一驱动源：手动改选后
@@ -883,7 +883,7 @@ export function NewSessionPage() {
 
                 <InputCard>
                 {isPending ? (
-                    <SessionCreating machineLabel={machineLabel} directory={directoryLabel} />
+                    <SessionCreating hostLabel={hostLabel} directory={directoryLabel} />
                 ) : (
                 <div
                     ref={wrapperRef}
@@ -898,7 +898,7 @@ export function NewSessionPage() {
                         selectedWorkspaceId={selectedWorkspaceId}
                         onWorkspaceChange={handleWorkspaceChange}
                         onCreateWorkspace={() => setWorkspaceModalOpen(true)}
-                        machineLabel={machineLabel}
+                        hostLabel={hostLabel}
                         directoryLabel={directoryLabel}
                         disabled={false}
                     />

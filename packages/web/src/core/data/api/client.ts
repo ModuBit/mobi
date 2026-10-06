@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, Machine, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
 import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
@@ -391,7 +391,7 @@ export function createMobiApi() {
 
         // Host / daemon（单机：daemon 即宿主；机器列表这一层随 machine 概念移除退场）
         daemon: {
-            status: () => client.get<{ status: 'ok' | 'starting'; host: { hostname: string; platform: string; homeDir: string } }>('/api/daemon/status'),
+            status: () => client.get<DaemonStatus>('/api/daemon/status'),
         },
 
         // 宿主文件域（单机：/api/files/*，原 /api/machines/:id/* 去 machineId 重组；
@@ -469,7 +469,8 @@ export function createMobiApi() {
                 ),
         },
 
-        // Machines（过渡组：仅剩列表；205 切 /api/daemon/status 后删除）
+        // Machines（过渡组：仅剩列表。宿主身份/就绪已切 /api/daemon/status（205），
+        // 此组只剩 WorkspaceFormModal 的 machineId 来源——404 workspaces 去 machineId 时删除）
         machines: {
             list: () => client.get<{ machines: Machine[] }>('/api/machines'),
         },

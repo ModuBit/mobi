@@ -40,8 +40,8 @@ interface EnvironmentBarProps {
     onWorkspaceChange: (workspaceId: string) => void
     /** 点击下拉底部「+ 新建工作区」（打开 WorkspaceFormModal，完成后由父组件回填选中） */
     onCreateWorkspace?: () => void
-    /** 选中工作区的机器显示名（只读回显，仅展示用） */
-    machineLabel?: string
+    /** 选中工作区的宿主显示名（displayName → hostname，只读回显，仅展示用） */
+    hostLabel?: string
     /** 选中工作区的主目录（只读回显，仅展示用） */
     directoryLabel?: string
     /** 是否禁用 */
@@ -66,7 +66,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
         selectedWorkspaceId,
         onWorkspaceChange,
         onCreateWorkspace,
-        machineLabel,
+        hostLabel,
         directoryLabel,
         disabled = false,
     } = props
@@ -126,7 +126,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
             </div>
 
             {/* 派生环境只读回显：机器 + 主目录（选中工作区后展示） */}
-            {selectedWorkspaceId && (machineLabel || directoryLabel) && (
+            {selectedWorkspaceId && (hostLabel || directoryLabel) && (
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -143,7 +143,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
                         }}>
-                            {machineLabel}{directoryLabel ? ` · ${directoryLabel}` : ''}
+                            {hostLabel}{directoryLabel ? ` · ${directoryLabel}` : ''}
                         </span>
                     </AppTooltip>
                 </div>

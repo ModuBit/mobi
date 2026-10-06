@@ -16,7 +16,6 @@
 
 import { z } from 'zod'
 import type { Store } from '../store'
-import { EventPublisher } from './eventPublisher'
 
 const machineMetadataSchema = z.object({
     host: z.string().optional(),
@@ -52,12 +51,8 @@ export interface Machine {
 
 export class MachineCache {
     private readonly machines: Map<string, Machine> = new Map()
-    private readonly lastBroadcastAtByMachineId: Map<string, number> = new Map()
 
-    constructor(
-        private readonly store: Store,
-        private readonly publisher: EventPublisher
-    ) {
+    constructor(private readonly store: Store) {
     }
 
     getMachines(): Machine[] {
@@ -96,11 +91,9 @@ export class MachineCache {
     refreshMachine(machineId: string): Machine | null {
         const stored = this.store.machines.getMachine(machineId)
         if (!stored) {
-            const existed = this.machines.delete(machineId)
-            this.lastBroadcastAtByMachineId.delete(machineId)
-            if (existed) {
-                this.publisher.emit({ type: 'machine-updated', machineId, data: null })
-            }
+            // 发射点已收敛到 executorRuntime 写路径（ticket 205），删除路径无 daemon-status
+            // 事件——单机常驻机器不会消失，此分支只为 401 store 退场前的写路径完整性保留
+            this.machines.delete(machineId)
             return null
         }
 
@@ -139,13 +132,11 @@ export class MachineCache {
         }
 
         this.machines.set(machineId, machine)
-        this.publisher.emit({ type: 'machine-updated', machineId, data: machine })
         return machine
     }
 
     warmupCache(): void {
         this.machines.clear()
-        this.lastBroadcastAtByMachineId.clear()
         const machines = this.store.machines.getMachines()
         for (const machine of machines) {
             this.refreshMachine(machine.id)
@@ -162,7 +153,7 @@ export class MachineCache {
         const machine = this.getOrCreateMachine(id, metadata, runnerState, namespace)
         machine.active = true
         machine.activeAt = Date.now()
-        this.publisher.emit({ type: 'machine-updated', machineId: id, data: machine })
+        // 启动期广播由 hubServer 的 executor 初始状态镜像 + publishDaemonStatus 承担（205 起发射点收敛）
         return machine
     }
 }

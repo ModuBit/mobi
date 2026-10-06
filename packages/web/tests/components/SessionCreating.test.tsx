@@ -47,24 +47,24 @@ describe('SessionCreating', () => {
     afterEach(cleanup)
 
     it('渲染机器名与目录回显', () => {
-        render(<SessionCreating machineLabel="mbp-pro" directory="~/workspace/mobi" />, { wrapper })
+        render(<SessionCreating hostLabel="mbp-pro" directory="~/workspace/mobi" />, { wrapper })
         expect(screen.getByText('mbp-pro')).toBeInTheDocument()
         expect(screen.getByText('~/workspace/mobi')).toBeInTheDocument()
     })
 
     it('directory 为空时回显 /', () => {
-        render(<SessionCreating machineLabel="mbp" directory="" />, { wrapper })
+        render(<SessionCreating hostLabel="mbp" directory="" />, { wrapper })
         expect(screen.getByText('/')).toBeInTheDocument()
     })
 
     it('显示固定创建文案（不切换、不计时）', () => {
-        render(<SessionCreating machineLabel="mbp" directory="~/mobi" />, { wrapper })
+        render(<SessionCreating hostLabel="mbp" directory="~/mobi" />, { wrapper })
         expect(screen.getByText('正在创建会话…')).toBeInTheDocument()
         expect(screen.getByText('已发送请求，等待响应…')).toBeInTheDocument()
     })
 
     it('文案容器具备 role=status 可访问性', () => {
-        render(<SessionCreating machineLabel="mbp" directory="~/mobi" />, { wrapper })
+        render(<SessionCreating hostLabel="mbp" directory="~/mobi" />, { wrapper })
         const status = screen.getByRole('status')
         expect(status).toHaveTextContent('正在创建会话')
         expect(status).toHaveAttribute('aria-live', 'polite')

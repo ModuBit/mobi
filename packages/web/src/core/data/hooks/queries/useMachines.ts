@@ -20,7 +20,10 @@ import { queryKeys } from '@/core/lib/query-keys'
 import type { Machine } from '@/core/data/api/types'
 
 /**
- * 获取在线机器列表
+ * 机器列表（过渡 hook，205 后唯一消费方 = WorkspaceFormModal 的 machineId 下拉）：
+ * 宿主身份/就绪判据已切 useDaemonStatus（/api/daemon/status），本缓存不再有
+ * daemon-status 事件 patch——refetchInterval 兜底足够（machineId 恒单值）。
+ * 404 workspaces 去 machineId 时随 GET /api/machines 一并删除。
  */
 export function useMachines(enabled: boolean = true): {
     machines: Machine[]
@@ -37,8 +40,6 @@ export function useMachines(enabled: boolean = true): {
             return res.data
         },
         enabled: enabled,
-        // 稳态更新走 machine-updated 事件 patch（SSEProvider），不再随 CLI 心跳 refetch；
-        // 低频兜底覆盖未知的漏事件场景（确定性对账在 SSE 重连的 resyncAfterGap）
         refetchInterval: 5 * 60_000,
     })
 

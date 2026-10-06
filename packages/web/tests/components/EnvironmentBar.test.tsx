@@ -146,7 +146,7 @@ describe('EnvironmentBar 工作区即环境', () => {
                 workspaces={WORKSPACES}
                 selectedWorkspaceId="p1"
                 onWorkspaceChange={vi.fn()}
-                machineLabel="Dev Box"
+                hostLabel="Dev Box"
                 directoryLabel="~/workspace/mobi"
             />,
             { wrapper: cpWrapper },
@@ -161,7 +161,7 @@ describe('EnvironmentBar 工作区即环境', () => {
                 workspaces={WORKSPACES}
                 selectedWorkspaceId={null}
                 onWorkspaceChange={vi.fn()}
-                machineLabel="Dev Box"
+                hostLabel="Dev Box"
                 directoryLabel="~/workspace/mobi"
             />,
             { wrapper: cpWrapper },

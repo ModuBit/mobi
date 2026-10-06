@@ -44,6 +44,7 @@ import type { RunnerSessionBridge } from './runner/run'
 import { createSessionTrackingSync } from './runner/sessionTracking'
 import { ensureMachineId } from './runner/authSetup'
 import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
+import { updateExecutorState } from './sync/executorRuntime'
 import type { RunnerState } from '@mobi/node-core/api/types'
 import { parseAccessToken } from './utils/accessToken'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
@@ -210,14 +211,17 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
 
     // 本机自注册（ticket-20）：machine 通道删除，daemon 即本机——启动时 upsert 本机行并
     // 常驻 active（无心跳，也无过期翻转点——ticket-25 起机器过期逻辑已删）。machineId 与
-    // runner 侧 authSetup 同源（settings 持久化的 UUID，ensureMachineId 首次生成）
+    // runner 侧 authSetup 同源（settings 持久化的 UUID，ensureMachineId 首次生成）。
+    // runnerState 同时镜像进 executorRuntime 内存单例（205：权威读源），落库仅诊断兼容（R2）
     const localMachineId = await ensureMachineId()
+    const initialRunnerState: RunnerState = { status: 'running', pid: process.pid, startedAt: Date.now() }
     syncEngine.registerLocalMachine(
         localMachineId,
         buildMachineMetadata(),
-        { status: 'running', pid: process.pid, startedAt: Date.now() },
+        initialRunnerState,
         parseAccessToken(configuration.cliApiToken)?.namespace ?? 'default'
     )
+    updateExecutorState(() => initialRunnerState)
 
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)
@@ -270,8 +274,17 @@ export async function startHub(opts: StartHubOptions = {}): Promise<HubHandle> {
         engine?.setSessionTrackingSync(createSessionTrackingSync((sid) => engine.getSession(sid), bridge.registerSessionTracking))
     }
 
+    /**
+     * 本机 executor 状态直写（ticket-20 建，205 收敛读源）：daemon 编排注入给 runner core
+     * ——spawn 结果上报 / 关停状态经此①写 executorRuntime 内存单例（权威读源，
+     * /api/daemon/status 与 daemon-status SSE 的数据源）②落库 machineCache（R2：诊断
+     * 兼容暂留，401 store 退场时删）③广播 daemon-status 事件。
+     * handler 只应用一次（以 executorRuntime 旧值为基），machineCache 落库取其结果。
+     */
     const updateLocalMachineRunnerState = (handler: (state: RunnerState | null) => RunnerState): void => {
-        syncEngine?.updateMachineRunnerState(localMachineId, handler)
+        const next = updateExecutorState(handler)
+        syncEngine?.updateMachineRunnerState(localMachineId, () => next)
+        syncEngine?.publishDaemonStatus()
     }
 
     return {

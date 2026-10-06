@@ -45,6 +45,8 @@ import {
     type SpawnSessionOptions
 } from '../machine/MachineHost'
 import { MachineCache, type Machine } from './machineCache'
+import { getExecutorState } from './executorRuntime'
+import { buildMachineMetadata } from '@mobi/node-core/machineMetadata'
 import { AgentSessionService } from './agentSessionService'
 import { MessageService, type SendMessagePayload } from './messageService'
 import { WorkspaceCache } from './workspaceCache'
@@ -131,6 +133,9 @@ export class SyncEngine {
      * 行状态，新判据直接反映执行层接线事实：bridge 未注入时 spawn 必报「bridge 未接线」。
      */
     private executorReady = false
+    /** daemon 主 namespace（registerLocalMachine 时由 hubServer 盖章）：daemon-status 事件无
+     *  sessionId/machineId 可解析，投递路由（SSE shouldSend namespace 匹配）靠它 */
+    private daemonNamespace: string | null = null
 
     constructor(
         store: Store,
@@ -141,7 +146,7 @@ export class SyncEngine {
         machineHost?: MachineHost
     ) {        this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
-        this.machineCache = new MachineCache(store, this.eventPublisher)
+        this.machineCache = new MachineCache(store)
         this.agentSessions = new AgentSessionService({
             getOnlineMachinesByNamespace: (namespace) => this.machineCache.getOnlineMachinesByNamespace(namespace),
             getSessionsByNamespace: (namespace) => this.sessionCache.getSessionsByNamespace(namespace),
@@ -232,9 +237,7 @@ export class SyncEngine {
         if ('sessionId' in event && event.sessionId) {
             return this.getSession(event.sessionId)?.namespace
         }
-        if ('machineId' in event) {
-            return this.machineCache.getMachine(event.machineId)?.namespace
-        }
+        // daemon-status 等无 sessionId 事件不带 namespace：广播层不过滤（全连接可见）
         return undefined
     }
 
@@ -393,8 +396,6 @@ export class SyncEngine {
     handleRealtimeEvent(event: SyncEvent): void {
         if (event.type === 'session-updated' && event.sessionId) {
             this.sessionCache.refreshSession(event.sessionId)
-        } else if (event.type === 'machine-updated' && event.machineId) {
-            this.machineCache.refreshMachine(event.machineId)
         } else if (event.type === 'message-received' && event.sessionId) {
             if (!this.getSession(event.sessionId)) {
                 this.sessionCache.refreshSession(event.sessionId)
@@ -458,10 +459,42 @@ export class SyncEngine {
     readonly factsSink: SessionFactsSink
 
     /**
+     * daemon 状态读数（ticket 205）：host 静态身份 + executor 运行时内存单例。
+     * GET /api/daemon/status 与 daemon-status SSE 共用本投影，保证两通道同形。
+     */
+    getDaemonStatus(): {
+        status: 'ok'
+        host: { hostname: string; platform: string; displayName?: string; homeDir?: string }
+        executor: RunnerState | null
+    } {
+        const metadata = buildMachineMetadata()
+        return {
+            status: 'ok',
+            host: {
+                hostname: metadata.host,
+                platform: metadata.platform,
+                ...(metadata.displayName !== undefined && { displayName: metadata.displayName }),
+                ...(metadata.homeDir !== undefined && { homeDir: metadata.homeDir }),
+            },
+            executor: getExecutorState(),
+        }
+    }
+
+    /** daemon 状态变化广播（发射点唯一：updateExecutorState 的写路径经此出网） */
+    publishDaemonStatus(): void {
+        this.eventPublisher.emit({
+            type: 'daemon-status',
+            data: this.getDaemonStatus(),
+            namespace: this.daemonNamespace ?? undefined,
+        })
+    }
+
+    /**
      * 本机自注册（ticket-20）：machine 通道删除后 daemon 即本机——启动时 upsert 本机行、
      * 常驻 active（无心跳，也无过期翻转点——ticket-25 起机器过期逻辑已删）。
      */
     registerLocalMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): void {
+        this.daemonNamespace = namespace
         this.machineCache.registerLocalMachine(id, metadata, runnerState, namespace)
     }
 

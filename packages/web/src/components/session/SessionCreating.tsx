@@ -166,8 +166,8 @@ const Progress = styled.div`
 `
 
 export interface SessionCreatingProps {
-    /** 机器显示名（displayName → host → id.slice，见 NewSessionPage.machineLabel） */
-    machineLabel: string
+    /** 宿主显示名（displayName → hostname，见 NewSessionPage.hostLabel） */
+    hostLabel: string
     /** 工作目录（已格式化，home 被替换为 ~） */
     directory: string
 }
@@ -178,14 +178,14 @@ export interface SessionCreatingProps {
  * mount 时机即 isPending 起始，MobiLogo 的「小跳三下」正好在显示时循环播放。
  * 纯展示组件，无任何时间状态——进度条与光标是 CSS 动画循环，不基于真实进度推导。
  */
-export function SessionCreating({ machineLabel, directory }: SessionCreatingProps) {
+export function SessionCreating({ hostLabel, directory }: SessionCreatingProps) {
     const { t } = useTranslation()
 
     return (
         <View>
             <EnvChip>
                 <span className="live-dot" />
-                <span className="machine">{machineLabel}</span>
+                <span className="machine">{hostLabel}</span>
                 <span className="sep">·</span>
                 <span className="path">{directory || '/'}</span>
             </EnvChip>

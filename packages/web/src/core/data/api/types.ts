@@ -131,6 +131,19 @@ export type Machine = {
 
 export type MachinesResponse = { machines: Machine[] }
 
+/** GET /api/daemon/status 返回形状（与 daemon-status SSE 事件 payload 同形，SSEProvider 直 patch） */
+export type DaemonStatus = {
+    status: 'ok' | 'starting'
+    host: {
+        hostname: string
+        platform: string
+        displayName?: string
+        homeDir?: string
+    }
+    /** executor 运行时（runner 上报：running / shutting-down / spawn 结果），启动早期为 null */
+    executor: RunnerState | null
+}
+
 // ============ 认证类型 ============
 
 // ============ 启动/操作类型 ============
