@@ -15,71 +15,59 @@
  */
 
 import { EventEmitter } from 'node:events'
-import { randomUUID } from 'node:crypto'
-import { io, type Socket } from 'socket.io-client'
-import axios from 'axios'
 import { logger } from '@mobi/node-core/logger'
-import { backoff } from '@mobi/node-core/utils/time'
-import { apiValidationError } from '@mobi/node-core/utils/errorUtils'
-import { AsyncLock } from '@mobi/node-core/utils/lock'
-import type { RawJSONLines } from '../claude/types'
 import { configuration } from '@mobi/node-core/configuration'
-import type { AgentCreateSessionAck, AgentCreateSessionRequest, AgentSendMessageAck, AgentSendMessageRequest, AgentSessionsAck, AgentSessionsRequest, CacheStatus, ClientToServerEvents, CommandLifecycleState, ContextUsage, CrossSessionOrigin, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, SnapshotDeltaFrame, TurnOrigin, UiCommandAction, UiCommandAck, Update } from '@mobi/shared'
-import {
-    classifyMessage,
-    isMobiSentCrossSession,
-    toCrossSessionMeta
+import type { RawJSONLines } from '../claude/types'
+import type {
+    AgentCreateSessionAck,
+    AgentCreateSessionRequest,
+    AgentSendMessageAck,
+    AgentSendMessageRequest,
+    AgentSessionsAck,
+    AgentSessionsRequest,
+    CacheStatus,
+    CommandLifecycleState,
+    ContextUsage,
+    CrossSessionOrigin,
+    DecryptedMessage,
+    EffortLevel,
+    GoalStatus,
+    MessageFact,
+    SnapshotDeltaFrame,
+    TurnOrigin,
+    UiCommandAction,
+    UiCommandAck,
 } from '@mobi/shared'
 import type {
     AgentState,
-    MessageContent,
     MessageMeta,
     Metadata,
     Session,
     SessionModel,
     SessionPermissionMode,
-    UserMessage
+    UserMessage,
 } from '@mobi/node-core/api/types'
-import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from '@mobi/node-core/api/types'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerCommandHandlers } from '@mobi/node-core/handlers/commands'
-import { cleanupUploadDir } from '@mobi/node-core/handlers/uploads'
-import { applyVersionedAck } from '@mobi/node-core/api/versionedUpdate'
 import { IdleTimer } from '../modules/common/idleTimer'
-import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
+import { SessionTransport } from './sessionTransport'
+import { SessionChannel } from './sessionChannel'
 
-/** 兜底重连初始退避（ms），上限 30s */
-const MANUAL_RECONNECT_BASE_DELAY_MS = 1_000
-const MANUAL_RECONNECT_MAX_DELAY_MS = 30_000
-/** connect_error 落盘节流窗口（ms） */
-const CONNECT_ERROR_LOG_WINDOW_MS = 60_000
-/** rewind 回报 ack 等待上限（ms）：超时视为失败进可靠队列重试 */
-const REWIND_REPORT_ACK_TIMEOUT_MS = 5_000
-/** UI 命令 ack 等待上限（ms）：超时按连接故障处理（与离线 delivered:false 语义区分） */
-const UI_COMMAND_ACK_TIMEOUT_MS = 5_000
-/** Agent 会话操作 ack 等待上限（ms）：同 UI 命令口径，超时按连接故障处理 */
-const AGENT_OP_ACK_TIMEOUT_MS = 5_000
-/** 建会话的 ack 等待上限（ms）：这一步在起真进程（见 createSessionForAgent 注释），
- *  5s 必然不够。取 45s = daemon 侧 RPC 30s 上限 + 余量 */
-const AGENT_CREATE_SESSION_ACK_TIMEOUT_MS = 45_000
-/** 投递消息的 ack 等待上限（ms）：daemon 侧并发扇出，卡住的目标最多吃掉一次 30s RPC 上限
- *  （见 sendMessageToSessionsForAgent 注释），60s 留一倍余量 */
-const AGENT_SEND_MESSAGE_ACK_TIMEOUT_MS = 60_000
-
+/**
+ * CLI↔daemon 会话通道门面（深化候选③票①）。
+ *
+ * 实现拆为两个深 module，本类只做装配与转发（消费方零迁移）：
+ * - {@link SessionTransport} 会话传输：连接/重连/退避/ack 超时/心跳——传输保活语义
+ * - {@link SessionChannel} 会话协议：消息收发五族/快照/事实与状态上报/rewind 回报/
+ *   agent 编排 RPC/版本化 CAS 更新——会话语义
+ *
+ * 留在门面的：生命周期编排（IdleTimer + rpcHandlerManager 接线、flush 排空顺序、
+ * close 次序）与对消费者的 EventEmitter 事件（'reconnected'/'message'/'idle-timeout' 等）。
+ */
 export class ApiSessionClient extends EventEmitter {
-    private readonly token: string
     readonly sessionId: string
-    private metadata: Metadata | null
-    private metadataVersion: number
-    private agentState: AgentState | null
-    private agentStateVersion: number
-    private readonly socket: Socket<ServerToClientEvents, ClientToServerEvents>
-    private pendingMessages: UserMessage[] = []
-    private pendingMessageCallback: ((message: UserMessage) => void) | null = null
-    private lastSeenMessageSeq: number | null = null
-    private backfillInFlight: Promise<void> | null = null
-    private needsBackfill = false
-    private hasConnectedOnce = false
+    private readonly transport: SessionTransport
+    private readonly channel: SessionChannel
     readonly rpcHandlerManager: RpcHandlerManager
     private idleTimer: IdleTimer | null = null
     /**
@@ -87,22 +75,6 @@ export class ApiSessionClient extends EventEmitter {
      * 空闲到点不退出、进入 IdleTimer 阻塞复查。由 runClaude 装配完成后安装。
      */
     private dormancyDecide: (() => boolean) | null = null
-    private agentStateLock = new AsyncLock()
-    private metadataLock = new AsyncLock()
-    /** 服务端主动断开的兜底重连定时器（socket.io v4 对 'io server disconnect' 不自动重连） */
-    private manualReconnectTimer: ReturnType<typeof setTimeout> | null = null
-    /** 兜底重连退避（连续被服务端断开时指数增长，connect 成功复位） */
-    private manualReconnectDelayMs = MANUAL_RECONNECT_BASE_DELAY_MS
-    /** connect_error 落盘节流：重连循环每 1-5s 触发一次，窗口内只记首条防刷屏 */
-    private lastConnectErrorLogAt = 0
-    /** rewind 两段回报的可靠上报队列（ack 确认制，M5） */
-    private readonly rewindReportQueue: ReliableRewindReportQueue
-    /**
-     * snapshot 流重基线回调（delta 协议）：socket 重连建立后调用，让进行中消息的
-     * snapshot 发送器立即重发全量帧（断线期间的增量帧已丢，daemon 链必断档，全量重建基线）。
-     * 由 claudeRemoteLauncher 在创建发送器时注入。
-     */
-    private onSnapshotTransportReset: (() => void) | null = null
 
     // 原 ApiClient.sessionSyncClient 工厂（ticket-12：ApiClient 归 node-core 后跨包无法直接构造本类）
     static create(token: string, session: Session): ApiSessionClient {
@@ -111,39 +83,19 @@ export class ApiSessionClient extends EventEmitter {
 
     constructor(token: string, session: Session) {
         super()
-        this.token = token
         this.sessionId = session.id
-        this.metadata = session.metadata
-        this.metadataVersion = session.metadataVersion
-        this.agentState = session.agentState
-        this.agentStateVersion = session.agentStateVersion
 
         this.rpcHandlerManager = new RpcHandlerManager({
             scopePrefix: this.sessionId,
             logger: (msg, data) => logger.debug(msg, data)
         })
 
-        if (this.metadata?.path) {
+        if (session.metadata?.path) {
             // 深化候选②票②：socket 注册只剩 refreshMetadata（唯一活 wire——daemon rpcGateway
             // 经 'rpc-request' 调用）；文件/上传/审查族 handler 注册已死（ticket-20 起 daemon
             // 全走 LocalExecutor 直调），不再上线
-            registerCommandHandlers(this.rpcHandlerManager, this.metadata.path)
+            registerCommandHandlers(this.rpcHandlerManager, session.metadata.path)
         }
-
-        this.socket = io(`${configuration.apiUrl}/cli`, {
-            auth: {
-                token: this.token,
-                clientType: 'session-scoped' as const,
-                sessionId: this.sessionId
-            },
-            path: '/socket.io/',
-            reconnection: true,
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            transports: ['websocket'],
-            autoConnect: false
-        })
 
         // 初始化 IdleTimer。休眠 gate 的复查判定经 onIdleTimeoutBlockedRecheck 注入
         // （单一接线：到点查 gate → 阻塞则 IdleTimer 自主进入复查节奏），provider 在
@@ -163,481 +115,112 @@ export class ApiSessionClient extends EventEmitter {
             this.idleTimer?.reset()
         })
 
-        // rewind 两段回报改走可靠队列（M5）：ack 确认 + 失败重试 + 重连补发，
-        // 断线窗口内 fire-and-forget 丢事件会造成 CLI transcript / daemon DB 永久分叉
-        const sock = this.socket
-        this.rewindReportQueue = new ReliableRewindReportQueue({
-            get connected() { return sock.connected },
-            emitAck: (event, body, callback) => {
-                (sock.timeout(REWIND_REPORT_ACK_TIMEOUT_MS) as unknown as {
-                    emit: (e: string, b: unknown, cb: (err: unknown, res?: unknown) => void) => void
-                }).emit(event, body, callback)
+        const rpcHandlerManager = this.rpcHandlerManager
+        this.transport = new SessionTransport(token, this.sessionId, {
+            onConnected: ({ first }) => {
+                this.emit('reconnected')
+                rpcHandlerManager.onSocketConnect(this.transport.socket)
+                this.idleTimer?.onReconnect()
+                // 协议层连接反应：rewind 补发、snapshot 重基线、断窗补拉、存活上报
+                this.channel.handleConnected(first)
             },
+            onDisconnected: () => {
+                rpcHandlerManager.onSocketDisconnect()
+                this.idleTimer?.onDisconnect()
+                this.channel.handleDisconnected()
+            },
+            onRpcRequest: (data) => rpcHandlerManager.handleRequest(data),
+            onSessionUpdate: (update) => this.channel.handleSessionUpdate(update),
         })
 
-        this.socket.on('connect', () => {
-            logger.debug('Socket connected successfully')
-            this.emit('reconnected')
-            this.rpcHandlerManager.onSocketConnect(this.socket)
-            this.idleTimer?.onReconnect()
-            this.clearManualReconnect()
-            // 补发未确认的 rewind 回报（ack 制：断线期间的回报在此重放，daemon 幂等消化）
-            this.rewindReportQueue.onConnected()
-            // snapshot delta 流重基线：断线期间的增量帧已丢，重发全量帧重建 daemon 侧基线
-            this.onSnapshotTransportReset?.()
-            if (this.hasConnectedOnce) {
-                this.needsBackfill = true
-            }
-            void this.backfillIfNeeded()
-            this.hasConnectedOnce = true
-            this.socket.emit('session-alive', {
-                sid: this.sessionId,
-                time: Date.now(),
-                running: false
-            })
+        this.channel = new SessionChannel({
+            token,
+            session,
+            transport: this.transport,
+            onMessage: (content) => this.emit('message', content),
+            // 版本化更新等协议活动重置空闲计时器（生命周期语义留在门面）
+            onActivity: () => this.idleTimer?.reset(),
         })
-
-        this.socket.on('rpc-request', async (data: { method: string; params: unknown }, callback: (response: unknown) => void) => {
-            callback(await this.rpcHandlerManager.handleRequest(data))
-        })
-
-        this.socket.on('disconnect', (reason) => {
-            // 断开原因落盘（WARN）：daemon 重启/换血后会话退出的定位证据——曾因 debug 不落盘而无从排查
-            logger.warn('[API] Socket disconnected:', reason)
-            this.scheduleManualReconnect(reason)
-            this.rpcHandlerManager.onSocketDisconnect()
-            this.idleTimer?.onDisconnect()
-            if (this.hasConnectedOnce) {
-                this.needsBackfill = true
-            }
-        })
-
-        this.socket.on('connect_error', (error) => {
-            // 节流落盘：错误文案是「重连为何失败」的直接证据（鉴权拒绝 / 网络不可达 / 握手失败）
-            const now = Date.now()
-            if (now - this.lastConnectErrorLogAt > CONNECT_ERROR_LOG_WINDOW_MS) {
-                this.lastConnectErrorLogAt = now
-                logger.warn('[API] Socket connection error:', error instanceof Error ? error.message : String(error))
-            }
-            this.rpcHandlerManager.onSocketDisconnect()
-            this.idleTimer?.onDisconnect()
-        })
-
-        this.socket.on('error', (payload) => {
-            logger.debug('[API] Socket error:', payload)
-        })
-
-        this.socket.on('session-update', (data: Update) => {
-            try {
-                if (!data.body) return
-
-                if (data.body.t === 'new-message') {
-                    this.handleIncomingMessage(data.body.message)
-                    return
-                }
-
-                if (data.body.t === 'update-session') {
-                    if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        const parsed = MetadataSchema.safeParse(data.body.metadata.value)
-                        if (parsed.success) {
-                            this.metadata = parsed.data
-                        } else {
-                            logger.debug('[API] Ignoring invalid metadata update', { version: data.body.metadata.version })
-                        }
-                        this.metadataVersion = data.body.metadata.version
-                    }
-                    if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-                        const next = data.body.agentState.value
-                        if (next == null) {
-                            this.agentState = null
-                        } else {
-                            const parsed = AgentStateSchema.safeParse(next)
-                            if (parsed.success) {
-                                this.agentState = parsed.data
-                            } else {
-                                logger.debug('[API] Ignoring invalid agentState update', { version: data.body.agentState.version })
-                            }
-                        }
-                        this.agentStateVersion = data.body.agentState.version
-                    }
-                    return
-                }
-
-                this.emit('message', data.body)
-            } catch (error) {
-                logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { error })
-            }
-        })
-
-        this.socket.connect()
     }
+
+    // ── 入站 ──
 
     onUserMessage(callback: (data: UserMessage) => void): void {
-        this.pendingMessageCallback = callback
-        while (this.pendingMessages.length > 0) {
-            callback(this.pendingMessages.shift()!)
-        }
+        this.channel.onUserMessage(callback)
     }
 
-    private enqueueUserMessage(message: UserMessage): void {
-        if (this.pendingMessageCallback) {
-            this.pendingMessageCallback(message)
-        } else {
-            this.pendingMessages.push(message)
-        }
-    }
-
-    private handleIncomingMessage(message: { seq?: number; localId?: string | null; content: unknown }): void {
-        const seq = typeof message.seq === 'number' ? message.seq : null
-        if (seq !== null) {
-            if (this.lastSeenMessageSeq !== null && seq <= this.lastSeenMessageSeq) {
-                return
-            }
-            this.lastSeenMessageSeq = seq
-        }
-
-        // mobi 自发投递的跨会话消息**不由落库行回灌**：它的投递通道是 push-agent-message RPC
-        // （daemon 刻意不回灌 CLI 房间），落库行只供 Web 展示与历史回放。但断线重连后的
-        // backfillMessages 会照 seq 把这行读回来——不跳过就会被二次入队，同一句话投两遍。
-        // seq 记账已在上方完成：这行仍是会话序列的一部分，重连时不能被当成「没见过的」。
-        if (isMobiSentCrossSession(message.content)) {
-            return
-        }
-
-        const userResult = UserMessageSchema.safeParse(message.content)
-        if (userResult.success) {
-            // localId 由 daemon 放在 message 外层（与 content 信封同级），合并进 UserMessage
-            // 供 runClaude 入队 → collectBatch → emitMessagesSubmitted 追踪 consume
-            this.enqueueUserMessage({ ...userResult.data, localId: message.localId ?? userResult.data.localId ?? undefined })
-            return
-        }
-
-        this.emit('message', message.content)
-    }
-
-    private async backfillIfNeeded(): Promise<void> {
-        if (!this.needsBackfill) {
-            return
-        }
-        try {
-            await this.backfillMessages()
-            this.needsBackfill = false
-        } catch (error) {
-            logger.debug('[API] Backfill failed', error)
-            this.needsBackfill = true
-        }
-    }
-
-    private async backfillMessages(): Promise<void> {
-        if (this.backfillInFlight) {
-            await this.backfillInFlight
-            return
-        }
-
-        const startSeq = this.lastSeenMessageSeq
-        if (startSeq === null) {
-            logger.debug('[API] Skipping backfill because no last-seen message sequence is available')
-            return
-        }
-
-        const limit = 200
-        const run = async () => {
-            let cursor = startSeq
-            while (true) {
-                const response = await axios.get(
-                    `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                    {
-                        params: { afterSeq: cursor, limit },
-                        headers: {
-                            Authorization: `Bearer ${this.token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        timeout: 15_000
-                    }
-                )
-
-                const parsed = CliMessagesResponseSchema.safeParse(response.data)
-                if (!parsed.success) {
-                    throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
-                }
-
-                const messages = parsed.data.messages
-                if (messages.length === 0) {
-                    break
-                }
-
-                let maxSeq = cursor
-                for (const message of messages) {
-                    if (typeof message.seq === 'number') {
-                        if (message.seq > maxSeq) {
-                            maxSeq = message.seq
-                        }
-                    }
-                    this.handleIncomingMessage(message)
-                }
-
-                const observedSeq = this.lastSeenMessageSeq ?? maxSeq
-                const nextCursor = Math.max(maxSeq, observedSeq)
-                if (nextCursor <= cursor) {
-                    logger.debug('[API] Backfill stopped due to non-advancing cursor', {
-                        cursor,
-                        maxSeq,
-                        observedSeq
-                    })
-                    break
-                }
-
-                cursor = nextCursor
-                if (messages.length < limit) {
-                    break
-                }
-            }
-        }
-
-        this.backfillInFlight = run().finally(() => {
-            this.backfillInFlight = null
-        })
-
-        await this.backfillInFlight
-    }
+    // ── 出站消息五族（会话协议）──
 
     sendClaudeSessionMessage(body: RawJSONLines): void {
-        // mobi 合成事件信封（turnDiffReporter 等非 SDK 消息，mobiCustomEvent 标记）：
-        // custom role 原样落库（ADR 0002 自定义事件形态），不经 agent output 包装。
-        // localId 无 native 语义（随机生成仅供 daemon 去重）；结构性合成消息不携带 native 锚点
-        if ((body as { mobiCustomEvent?: unknown }).mobiCustomEvent === true) {
-            this.socket.emit('session-message', {
-                sid: this.sessionId,
-                message: body,
-                localId: randomUUID(),
-                category: 'persistent',
-                // 位置声明（turnDiffReporter 卡片）：归属 result 行的 nativeId——daemon 据
-                // 该行定位 position_at（result 前 -1ms），早于 queue 投喂的 position 地板，
-                // 卡片不输给下一轮用户气泡
-                positionBeforeResultId: (body as { positionBeforeResultId?: string }).positionBeforeResultId,
-            })
-            return
-        }
-
-        // 在发送端分类，避免 daemon 重复分类
-        const subtype = body.type === 'system' ? body.subtype : undefined
-        const category = classifyMessage(body.type, subtype)
-
-        // discard 统一在此拦截：remote 循环入口（claudeRemoteLauncher）虽已过滤，
-        // 但 local 模式 scanner（转录 JSONL 含 command_lifecycle 等控制帧）等旁路
-        // 直接调用本方法——发送端唯一咽喉点，保证 discard 消息不进 daemon 不落库
-        if (category === 'discard') return
-
-        // 恢复后缓存过期提示的生命周期终点：首个 result 帧（两模式共用咽喉点）即清，
-        // 提示只在「恢复后首轮前」有意义。RawJSONLines 无 'result' discriminant
-        // （见 sdkToLogConverter case 'result'），走开放形状断言（同 claudeRemoteLauncher 先例）
-        if ((body as { type?: string }).type === 'result') {
-            this.clearCacheStatusOnResult()
-        }
-
-        let content: MessageContent
-
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
-            content = {
-                role: 'user',
-                content: {
-                    type: 'text',
-                    text: body.message.content
-                },
-                meta: {
-                    sentFrom: 'cli'
-                }
-            }
-        } else {
-            content = {
-                role: 'agent',
-                content: {
-                    type: 'output',
-                    data: body
-                },
-                meta: {
-                    sentFrom: 'cli'
-                }
-            }
-        }
-
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: content,
-            // 使用 Claude Code 的 uuid 作为 localId，供 daemon DB 去重
-            // resume 场景下同一消息的 uuid 保持不变，daemon 可通过 localId 避免重复存储
-            localId: body.uuid,
-            // SDK 消息自带 uuid 与 session id，一并写入 metadata（rewind 锚点）
-            metadata: { nativeId: body.uuid, nativeSessionId: body.session_id || undefined },
-            category
-        })
-
-        if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
-            this.updateMetadata((metadata) => ({
-                ...metadata,
-                name: body.summary,
-                summary: {
-                    text: body.summary,
-                    updatedAt: Date.now()
-                }
-            }))
-        }
-    }
-
-    /** 注册 snapshot 流重基线回调（delta 协议，socket 重连时触发全量重发） */
-    setSnapshotTransportReset(fn: (() => void) | null): void {
-        this.onSnapshotTransportReset = fn
-    }
-
-    /**
-     * 发送流式内容快照——全量帧（delta 协议基线）。frame 携带 rev（baseRev=null）；
-     * 缺省时为 legacy 全量（老协议直通，daemon 不建链）。
-     */
-    sendContentSnapshot(message: DecryptedMessage, frame?: { rev: number }): void {
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: message.content,
-            localId: message.localId ?? undefined,
-            snapshot: true,
-            frame: frame ? { rev: frame.rev, baseRev: null } : undefined,
-        })
-    }
-
-    /** 发送流式内容快照——增量帧（首帧全量基线之后，仅携带增量 op）。
-     *  带 snapshot:true——老 daemon（无 delta 分支）按快照透传而非误落库（混版本防 transcript 污染） */
-    sendSnapshotDelta(frame: SnapshotDeltaFrame): void {
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: undefined,
-            localId: frame.localId,
-            snapshot: true,
-            snapshotDelta: frame,
-        })
-    }
-
-    /** snapshot 流结束信号：full message 已持久化，daemon 据此精确清该流缓存与订阅游标
-     *  （full 的 localId 与流的 sdkUuid 不同，daemon 无法自行映射）。老 daemon 无 handler 静默忽略 */
-    sendSnapshotStreamEnd(localId: string): void {
-        this.socket.emit('snapshot-stream-end', { sid: this.sessionId, localId })
+        this.channel.sendClaudeSessionMessage(body)
     }
 
     sendUserMessage(text: string, meta?: MessageMeta): void {
-        if (!text) {
-            return
-        }
-
-        const content: MessageContent = {
-            role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
-            meta: {
-                sentFrom: 'cli',
-                ...(meta ?? {})
-            }
-        }
-
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: content
-        })
+        this.channel.sendUserMessage(text, meta)
     }
 
-    /**
-     * 落库入站 turn（UserPromptSubmit hook 观测到的 peer / scheduled / loop）。
-     * 该消息未经 daemon 发送通道，此处是它唯一的持久化入口；
-     * sentFrom 保留 'cli' 是存量行形状（这条是 CLI 转记的不假），**不入队由下面的
-     * crossSession 标注决定**——见 shared 的 isQueueableUserSubmission 判据②。
-     *
-     * `origin` 就是信封读侧归一出来的来源身份（与原消息同一 concept）；scheduled / loop
-     * 不是别的会话发来的，传 null——**来源身份照样写**（crossSession 键恒在，名字空串），
-     * 只是没有 id。
-     */
+    /** 落库入站 turn（UserPromptSubmit hook 观测到的 peer / scheduled / loop）——语义详见 SessionChannel */
     sendInboundCrossSessionMessage(text: string, kind: TurnOrigin, origin: CrossSessionOrigin | null, nativeId: string): void {
-        const content: MessageContent = {
-            role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
-            meta: {
-                sentFrom: 'cli',
-                // 跨会话来源形状单源（shared 的 origin concept）。`origin` 为 null 就是
-                // 「这条 turn 没有来源会话」（scheduled / loop）——投影照写空名字，键仍然恒在，
-                // web 端判空后显示「来自 其他会话」；键缺失会让 web 的 compact 误判守卫失效，
-                // 降级消息会被误渲染成 compact-summary
-                ...toCrossSessionMeta(origin),
-                // turnOrigin 区分入站来源（spec 批次 D）：peer/scheduled/loop
-                turnOrigin: kind
-            }
-        }
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: content,
-            // hook 输入无稳定 native 锚，localId 仅作唯一标识（随机 uuid）；
-            // SDK 重试重放的理论重复观测无去重，概率低可接受
-            localId: nativeId,
-            metadata: { nativeId },
-            category: classifyMessage('user')
-        })
+        this.channel.sendInboundCrossSessionMessage(text, kind, origin, nativeId)
     }
 
     sendAgentMessage(body: unknown): void {
-        const content = {
-            role: 'agent',
-            content: {
-                type: 'agent',
-                data: body
-            },
-            meta: {
-                sentFrom: 'cli'
-            }
-        }
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: content
-        })
+        this.channel.sendAgentMessage(body)
     }
 
-    sendSessionEvent(event: {
-        type: 'switch'
-        mode: 'local' | 'remote'
-    } | {
-        type: 'message'
-        message: string
-    } | {
-        type: 'context-cleared'
-    } | {
-        /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */
-        type: 'compact-started'
-    } | {
-        type: 'compact-completed'
-    } | {
-        type: 'permission-mode-changed'
-        mode: SessionPermissionMode
-    } | {
-        type: 'ready'
-    }, id?: string): void {
-        const content = {
-            role: 'agent',
-            content: {
-                id: id ?? randomUUID(),
-                type: 'event',
-                data: event
-            }
-        }
-
-        this.socket.emit('session-message', {
-            sid: this.sessionId,
-            message: content
-        })
+    sendSessionEvent(
+        event: {
+            type: 'switch'
+            mode: 'local' | 'remote'
+        } | {
+            type: 'message'
+            message: string
+        } | {
+            type: 'context-cleared'
+        } | {
+            /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */
+            type: 'compact-started'
+        } | {
+            type: 'compact-completed'
+        } | {
+            type: 'permission-mode-changed'
+            mode: SessionPermissionMode
+        } | {
+            type: 'ready'
+        },
+        id?: string,
+    ): void {
+        this.channel.sendSessionEvent(event, id)
     }
+
+    // ── 流式快照三方法 ──
+
+    /** 注册 snapshot 流重基线回调（delta 协议，socket 重连时触发全量重发） */
+    setSnapshotTransportReset(fn: (() => void) | null): void {
+        this.channel.setSnapshotTransportReset(fn)
+    }
+
+    /** 发送流式内容快照——全量帧（delta 协议基线）。语义详见 SessionChannel */
+    sendContentSnapshot(message: DecryptedMessage, frame?: { rev: number }): void {
+        this.channel.sendContentSnapshot(message, frame)
+    }
+
+    /** 发送流式内容快照——增量帧（首帧全量基线之后，仅携带增量 op） */
+    sendSnapshotDelta(frame: SnapshotDeltaFrame): void {
+        this.channel.sendSnapshotDelta(frame)
+    }
+
+    /** snapshot 流结束信号：full message 已持久化，daemon 据此精确清该流缓存与订阅游标 */
+    sendSnapshotStreamEnd(localId: string): void {
+        this.channel.sendSnapshotStreamEnd(localId)
+    }
+
+    // ── 消息事实六合一（旧接口翻译为 channel.report，wire 仍是 messages-facts 单事件）──
 
     /** 通知 daemon：这批 localId 的消息已推给 Claude Code（pushed 转换，写入 lifecycle/lifecycle_at） */
     emitMessagesSubmitted(localIds: string[]): void {
         if (localIds.length === 0) return
-        this.emitFacts([{ kind: 'pushed', localIds, at: Date.now() }])
+        this.channel.report({ kind: 'facts', facts: [{ kind: 'pushed', localIds, at: Date.now() }] })
     }
 
     /** 通知 daemon：这批 localId 的用户消息已绑定 native 锚点（push 给 SDK 时生成，批内同值）。
@@ -645,22 +228,25 @@ export class ApiSessionClient extends EventEmitter {
      * 首条消息 push 时 session id 未知，留空由 attach 补写 */
     emitMessagesBound(bindings: { localId: string; nativeId: string }[], nativeSessionId?: string): void {
         if (bindings.length === 0) return
-        this.emitFacts(bindings.map((b): MessageFact => ({
-            kind: 'bound',
-            localId: b.localId,
-            nativeId: b.nativeId,
-            ...(nativeSessionId ? { nativeSessionId } : {})
-        })))
+        this.channel.report({
+            kind: 'facts',
+            facts: bindings.map((b): MessageFact => ({
+                kind: 'bound',
+                localId: b.localId,
+                nativeId: b.nativeId,
+                ...(nativeSessionId ? { nativeSessionId } : {})
+            })),
+        })
     }
 
     /** 通知 daemon：native session 已切换（onSessionFound 变化），补写该会话缺 nativeSessionId 的消息行 */
     emitNativeAttached(nativeSessionId: string): void {
-        this.emitFacts([{ kind: 'attached', nativeSessionId }])
+        this.channel.report({ kind: 'facts', facts: [{ kind: 'attached', nativeSessionId }] })
     }
 
     /** 通知 daemon：CC 已回显接收该 nativeId 的用户消息（acked 转换，rewind 判据） */
     emitMessagesAcked(nativeId: string): void {
-        this.emitFacts([{ kind: 'acked', nativeId, at: Date.now() }])
+        this.channel.report({ kind: 'facts', facts: [{ kind: 'acked', nativeId, at: Date.now() }] })
     }
 
     /** 上报 command_lifecycle 终态信号（CC 排队消息生命周期回执转译，见 commandLifecycleToFact）。
@@ -671,146 +257,25 @@ export class ApiSessionClient extends EventEmitter {
         at?: number,
         terminalReason?: string,
     ): void {
-        this.emitFacts([{ kind: 'lifecycle', nativeId, state, at: at ?? Date.now(), ...(terminalReason ? { terminalReason } : {}) }])
+        this.channel.report({
+            kind: 'facts',
+            facts: [{ kind: 'lifecycle', nativeId, state, at: at ?? Date.now(), ...(terminalReason ? { terminalReason } : {}) }],
+        })
     }
 
     /** 上报撤回（#53：最后一条 user 无输出即停）——daemon 据此软删除并广播 message-withdrawn 回填 */
     emitWithdrawnFact(nativeId: string): void {
-        this.emitFacts([{ kind: 'withdrawn', nativeId, at: Date.now() }])
+        this.channel.report({ kind: 'facts', facts: [{ kind: 'withdrawn', nativeId, at: Date.now() }] })
     }
 
-    /** 消息事实上报统一出口：一批 fact 一次往返（messages-facts 事件） */
-    private emitFacts(facts: MessageFact[]): void {
-        this.socket.emit('messages-facts', {
-            sid: this.sessionId,
-            facts
-        })
-    }
-
-    /**
-     * 反查 rewind 截断边界：同 metadata.nativeId 的最小 seq 行（锚点批首行，1:N 批整批同删的定界）。
-     * 走既有 GET /cli/sessions/:id/messages 接口正向分页（afterSeq 游标递进，对齐 backfillMessages）；
-     * 消息按 seq 升序返回，首个命中即最小 seq。未找到（行已删 / daemon DTO 未含 metadata）返回 0，
-     * 调用方按边界反查失败处理（跳过 truncated 上报，completed 带 error 收尾）。
-     */
-    async fetchRewindBoundary(nativeId: string): Promise<number> {
-        let cursor = 0
-        const limit = 200
-        while (true) {
-            const response = await axios.get(
-                `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    params: { afterSeq: cursor, limit },
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 15_000
-                }
-            )
-
-            const parsed = CliMessagesResponseSchema.safeParse(response.data)
-            if (!parsed.success) {
-                throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
-            }
-
-            const messages = parsed.data.messages
-            if (messages.length === 0) break
-
-            let maxSeq = cursor
-            for (const message of messages) {
-                if (typeof message.seq === 'number' && message.seq > maxSeq) {
-                    maxSeq = message.seq
-                }
-                if (message.metadata?.nativeId === nativeId && typeof message.seq === 'number') {
-                    // 升序遍历，首个命中即批首行
-                    return message.seq
-                }
-            }
-
-            if (maxSeq <= cursor || messages.length < limit) break
-            cursor = maxSeq
-        }
-        return 0
-    }
-
-    /** rewind 截断成功上报（CLI → daemon，ack 确认制）：daemon 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
-    emitRewindTruncated(nativeId: string, deleteFromSeq: number): void {
-        this.rewindReportQueue.enqueue({ event: 'rewind-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
-    }
-
-    /** rewind 终态上报（CLI → daemon，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */
-    emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void {
-        this.rewindReportQueue.enqueue({ event: 'rewind-completed', body: { sid: this.sessionId, filesRestored, error, skippedLinks } })
-    }
-
-    /**
-     * 发送 UI 命令到 daemon（agent-apps，A 类 UI 呈现）。
-     * emitWithAck 等回执（回执 { delivered } 是 open_in_mobi 等工具的核心语义，
-     * 不用 reportContextUsage 的 fire-and-forget 模式）；超时/断连 reject，
-     * 由调用方按连接故障处理（与离线 delivered:false 语义区分）。
-     */
-    async sendUiCommand(action: UiCommandAction): Promise<UiCommandAck> {
-        const answer = await this.socket
-            .timeout(UI_COMMAND_ACK_TIMEOUT_MS)
-            .emitWithAck('sendUiCommand', { sid: this.sessionId, action })
-        return answer as UiCommandAck
-    }
-
-    /**
-     * 列出会话供 agent 挑选派活目标（B 类工具族）。
-     *
-     * 与 sendUiCommand 同口径：业务失败（入参非法 / 无权限）走 ack 的
-     * ok:false，连接故障走 reject，两者语义不同。
-     * 查询条件从 wire 类型派生（去掉 sid）——CLI 只填 sid，其余原样透传。
-     */
-    async listSessionsForAgent(query: Omit<AgentSessionsRequest, 'sid'>): Promise<AgentSessionsAck> {
-        const answer = await this.socket
-            .timeout(AGENT_OP_ACK_TIMEOUT_MS)
-            .emitWithAck('listSessionsForAgent', { sid: this.sessionId, ...query })
-        return answer as AgentSessionsAck
-    }
-
-    /**
-     * 在某台机器上起一个新会话（B 类工具族）。
-     *
-     * 等待上限比列表类长得多：这一步真的在起进程——daemon 要等会话 webhook
-     * （最多 15s），daemon 的 RPC 自身也有 30s 上限，所以 ack 可能几秒后才回。
-     * 口径仍与列表类一致：业务失败走 ack 的 ok:false（文案已由 daemon 翻译好），
-     * 连接故障走 reject。
-     */
-    async createSessionForAgent(input: Omit<AgentCreateSessionRequest, 'sid'>): Promise<AgentCreateSessionAck> {
-        const answer = await this.socket
-            .timeout(AGENT_CREATE_SESSION_ACK_TIMEOUT_MS)
-            .emitWithAck('createSessionForAgent', { sid: this.sessionId, ...input })
-        return answer as AgentCreateSessionAck
-    }
-
-    /**
-     * 把一条消息投给若干会话（B 类工具族）。
-     *
-     * 等待上限比列表类长：daemon 侧每个目标一次 RPC 往返（单次上限 30s），扇出并发但要等
-     * 最慢的那个回来。60s = 一次卡住的 30s 上限 + 一倍余量。
-     *
-     * 口径与列表类一致：业务失败（入参非法 / 无权限）走 ack 的 ok:false，
-     * 连接故障走 reject。**进了扇出顶层恒 ok:true**，成败逐条看 results。
-     */
-    async sendMessageToSessionsForAgent(input: Omit<AgentSendMessageRequest, 'sid'>): Promise<AgentSendMessageAck> {
-        const answer = await this.socket
-            .timeout(AGENT_SEND_MESSAGE_ACK_TIMEOUT_MS)
-            .emitWithAck('sendMessageToSessionForAgent', { sid: this.sessionId, ...input })
-        return answer as AgentSendMessageAck
-    }
+    // ── 运行状态上报（旧接口翻译为 channel.report）──
 
     /**
      * 上报上下文用量（事件驱动采集）。
      * daemon 落库到 runtimeState.contextUsage + SSE 推 web。
      */
     reportContextUsage(usage: ContextUsage): void {
-        this.socket.emit('context-usage', {
-            sid: this.sessionId,
-            contextUsage: usage,
-        })
+        this.channel.report({ kind: 'context-usage', contextUsage: usage })
     }
 
     /**
@@ -819,10 +284,7 @@ export class ApiSessionClient extends EventEmitter {
      * web 端用量线隐藏，直到下次真实 turn 的 result 到达。
      */
     clearContextUsage(): void {
-        this.socket.emit('context-usage', {
-            sid: this.sessionId,
-            contextUsage: null,
-        })
+        this.channel.report({ kind: 'context-usage', contextUsage: null })
     }
 
     /**
@@ -831,10 +293,7 @@ export class ApiSessionClient extends EventEmitter {
      * 不随 web 消息窗口化丢失（docs/pending.md #55）。
      */
     reportRunStarted(at: number): void {
-        this.socket.emit('run-started', {
-            sid: this.sessionId,
-            runStartedAt: at,
-        })
+        this.channel.report({ kind: 'run-started', runStartedAt: at })
     }
 
     /**
@@ -847,14 +306,11 @@ export class ApiSessionClient extends EventEmitter {
      * 会反复翻转（见 daemon 侧 SessionReceiveReadiness 的说明）。
      *
      * 这里是唯一的出口，但**写端不在这里**：谁在什么时候翻，由
-     * [`claude/utils/inboundChannel.ts`](claude/utils/inboundChannel.ts) 的 InboundChannel 决定
+     * [`claude/utils/inboundChannel.ts`](../claude/utils/inboundChannel.ts) 的 InboundChannel 决定
      * （sink 生死与上报必须同步，两者分开在两个文件里就是靠人记着配对）。
      */
     reportReceiveReadiness(canReceive: boolean): void {
-        this.socket.emit('receive-readiness', {
-            sid: this.sessionId,
-            canReceive,
-        })
+        this.channel.report({ kind: 'receive-readiness', canReceive })
     }
 
     /**
@@ -862,10 +318,7 @@ export class ApiSessionClient extends EventEmitter {
      * goalStatus 为 null 表示清空（达成 10s 后自动清空 / 手动清理）。
      */
     reportGoalStatus(goalStatus: GoalStatus | null): void {
-        this.socket.emit('goal-status', {
-            sid: this.sessionId,
-            goalStatus,
-        })
+        this.channel.report({ kind: 'goal-status', goalStatus })
     }
 
     /**
@@ -874,37 +327,75 @@ export class ApiSessionClient extends EventEmitter {
      * sendClaudeSessionMessage 统一清空（过期提示只在首轮前有意义）。
      */
     reportCacheStatus(cacheStatus: CacheStatus): void {
-        this.socket.emit('cache-status', {
-            sid: this.sessionId,
-            cacheStatus,
-        })
+        this.channel.report({ kind: 'cache-status', cacheStatus })
+    }
+
+    // ── rewind（会话协议）──
+
+    /**
+     * 反查 rewind 截断边界：同 metadata.nativeId 的最小 seq 行（锚点批首行，1:N 批整批同删的定界）。
+     * 未找到返回 0，调用方按边界反查失败处理（跳过 truncated 上报，completed 带 error 收尾）。
+     */
+    fetchRewindBoundary(nativeId: string): Promise<number> {
+        return this.channel.fetchRewindBoundary(nativeId)
+    }
+
+    /** rewind 截断成功上报（CLI → daemon，ack 确认制）：daemon 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
+    emitRewindTruncated(nativeId: string, deleteFromSeq: number): void {
+        this.channel.emitRewindTruncated(nativeId, deleteFromSeq)
+    }
+
+    /** rewind 终态上报（CLI → daemon，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因；skippedLinks 为安全护栏跳过的文件数（spec E2） */
+    emitRewindCompleted(filesRestored: boolean, error?: string, skippedLinks?: number): void {
+        this.channel.emitRewindCompleted(filesRestored, error, skippedLinks)
+    }
+
+    // ── agent 编排 RPC（B 类工具族 / UI 命令）──
+
+    /**
+     * 发送 UI 命令到 daemon（agent-apps，A 类 UI 呈现）。
+     * ack 回执（{ delivered } 是 open_in_mobi 等工具的核心语义，不用 fire-and-forget）；
+     * 超时/断连 reject，由调用方按连接故障处理（与离线 delivered:false 语义区分）。
+     */
+    sendUiCommand(action: UiCommandAction): Promise<UiCommandAck> {
+        return this.channel.sendUiCommand(action)
     }
 
     /**
-     * 首个 result 帧到达时清空缓存过期提示。无条件 emit（不以本进程是否上报过为前提）：
-     * CLI 重启后 flag 类记忆会丢，而「result = 恢复提示生命周期终点」是会话级语义；
-     * daemon 侧 merge 对已空字段 changed=false 不广播，常态 turn 的清空事件零开销。
+     * 列出会话供 agent 挑选派活目标（B 类工具族）。
+     * 业务失败（入参非法 / 无权限）走 ack 的 ok:false，连接故障走 reject——语义详见 SessionChannel。
      */
-    private clearCacheStatusOnResult(): void {
-        this.socket.emit('cache-status', {
-            sid: this.sessionId,
-            cacheStatus: null,
-        })
+    listSessionsForAgent(query: Omit<AgentSessionsRequest, 'sid'>): Promise<AgentSessionsAck> {
+        return this.channel.listSessionsForAgent(query)
     }
+
+    /**
+     * 起一个新会话（B 类工具族）。等待上限 45s：这一步真的在起进程（daemon 等会话 webhook
+     * 最多 15s + RPC 自身 30s 上限），ack 可能几秒后才回——口径详见 SessionChannel。
+     */
+    createSessionForAgent(input: Omit<AgentCreateSessionRequest, 'sid'>): Promise<AgentCreateSessionAck> {
+        return this.channel.createSessionForAgent(input)
+    }
+
+    /**
+     * 把一条消息投给若干会话（B 类工具族）。等待上限 60s：daemon 侧每个目标一次 30s RPC 往返，
+     * 扇出并发但要等最慢的回来。**进了扇出顶层恒 ok:true**，成败逐条看 results——详见 SessionChannel。
+     */
+    sendMessageToSessionsForAgent(input: Omit<AgentSendMessageRequest, 'sid'>): Promise<AgentSendMessageAck> {
+        return this.channel.sendMessageToSessionsForAgent(input)
+    }
+
+    // ── 保活（会话传输）──
 
     keepAlive(
         running: boolean,
         mode: 'local' | 'remote',
-        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string }
+        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel; outputStyle?: string },
     ): void {
-        this.socket.volatile.emit('session-alive', {
-            sid: this.sessionId,
-            time: Date.now(),
-            running,
-            mode,
-            ...(runtime ?? {})
-        })
+        this.transport.keepAlive(this.sessionId, running, mode, runtime)
     }
+
+    // ── 会话结束 ──
 
     /**
      * 会话结束上报（ack 制）：确认 daemon 落达（或超时兜底）才返回，调用方（cleanup
@@ -912,165 +403,34 @@ export class ApiSessionClient extends EventEmitter {
      * session-end，active 永久悬挂（2026-09-30 事故）。超时/断连时关闭照常进行，
      * daemon 侧由心跳过期清扫收敛 active。
      */
-    async sendSessionDeath(): Promise<void> {
-        void cleanupUploadDir(this.sessionId)
-        try {
-            await this.socket.timeout(5_000).emitWithAck('session-end', { sid: this.sessionId, time: Date.now() })
-        } catch {
-            // 上报失败不阻塞退出流程
-        }
+    sendSessionDeath(): Promise<void> {
+        return this.channel.sendSessionDeath()
     }
 
+    // ── 版本化 CAS 更新（会话协议）──
+
     updateMetadata(handler: (metadata: Metadata) => Metadata): void {
-        this.metadataLock.inLock(async () => {
-            // 重置空闲计时器（状态更新）
-            this.idleTimer?.reset()
-
-            await backoff(async () => {
-                const current = this.metadata ?? ({} as Metadata)
-                const updated = handler(current)
-
-                const answer = await this.socket.emitWithAck('update-metadata', {
-                    sid: this.sessionId,
-                    expectedVersion: this.metadataVersion,
-                    metadata: updated
-                }) as unknown
-
-                applyVersionedAck(answer, {
-                    valueKey: 'metadata',
-                    parseValue: (value) => {
-                        const parsed = MetadataSchema.safeParse(value)
-                        return parsed.success ? parsed.data : null
-                    },
-                    applyValue: (value) => {
-                        this.metadata = value
-                    },
-                    applyVersion: (version) => {
-                        this.metadataVersion = version
-                    },
-                    logInvalidValue: (context, version) => {
-                        const suffix = context === 'success' ? 'ack' : 'version-mismatch ack'
-                        logger.debug(`[API] Ignoring invalid metadata value from ${suffix}`, { version })
-                    },
-                    invalidResponseMessage: 'Invalid update-metadata response',
-                    errorMessage: 'Metadata update failed',
-                    versionMismatchMessage: 'Metadata version mismatch'
-                })
-            })
-        })
+        this.channel.updateMetadata(handler)
     }
 
     updateAgentState(handler: (state: AgentState) => AgentState): void {
-        this.agentStateLock.inLock(async () => {
-            // 重置空闲计时器（状态更新）
-            this.idleTimer?.reset()
-
-            await backoff(async () => {
-                const current = this.agentState ?? ({} as AgentState)
-                const updated = handler(current)
-
-                const answer = await this.socket.emitWithAck('update-state', {
-                    sid: this.sessionId,
-                    expectedVersion: this.agentStateVersion,
-                    agentState: updated
-                }) as unknown
-
-                applyVersionedAck(answer, {
-                    valueKey: 'agentState',
-                    parseValue: (value) => {
-                        const parsed = AgentStateSchema.safeParse(value)
-                        return parsed.success ? parsed.data : null
-                    },
-                    applyValue: (value) => {
-                        this.agentState = value
-                    },
-                    applyVersion: (version) => {
-                        this.agentStateVersion = version
-                    },
-                    logInvalidValue: (context, version) => {
-                        const suffix = context === 'success' ? 'ack' : 'version-mismatch ack'
-                        logger.debug(`[API] Ignoring invalid agentState value from ${suffix}`, { version })
-                    },
-                    invalidResponseMessage: 'Invalid update-state response',
-                    errorMessage: 'Agent state update failed',
-                    versionMismatchMessage: 'Agent state version mismatch'
-                })
-            })
-        })
+        this.channel.updateAgentState(handler)
     }
 
-    private async waitForConnected(timeoutMs: number): Promise<boolean> {
-        if (this.socket.connected) {
-            return true
-        }
+    // ── 生命周期（门面职责）──
 
-        this.socket.connect()
-
-        return await new Promise<boolean>((resolve) => {
-            let settled = false
-
-            const cleanup = () => {
-                this.socket.off('connect', onConnect)
-                clearTimeout(timeout)
-            }
-
-            const onConnect = () => {
-                if (settled) return
-                settled = true
-                cleanup()
-                resolve(true)
-            }
-
-            const timeout = setTimeout(() => {
-                if (settled) return
-                settled = true
-                cleanup()
-                resolve(false)
-            }, Math.max(0, timeoutMs))
-
-            this.socket.on('connect', onConnect)
-        })
-    }
-
-    private async drainLock(lock: AsyncLock, timeoutMs: number): Promise<boolean> {
-        if (timeoutMs <= 0) {
-            return false
-        }
-
-        return await new Promise<boolean>((resolve) => {
-            let settled = false
-            let timeout: ReturnType<typeof setTimeout> | null = null
-
-            const finish = (value: boolean) => {
-                if (settled) return
-                settled = true
-                if (timeout) {
-                    clearTimeout(timeout)
-                }
-                resolve(value)
-            }
-
-            timeout = setTimeout(() => finish(false), timeoutMs)
-
-            lock.inLock(async () => { })
-                .then(() => finish(true))
-                .catch(() => finish(false))
-        })
-    }
-
+    /** 排空在途更新 + 确认 daemon 落达（deadline 语义，超时放弃不抛） */
     async flush(options?: { timeoutMs?: number }): Promise<void> {
         const deadlineMs = Date.now() + (options?.timeoutMs ?? 5_000)
-
         const remainingMs = () => Math.max(0, deadlineMs - Date.now())
 
-        await this.drainLock(this.metadataLock, remainingMs())
-        await this.drainLock(this.agentStateLock, remainingMs())
+        await this.channel.drainPendingUpdates(remainingMs)
 
         if (remainingMs() === 0) {
             return
         }
 
-        const connected = await this.waitForConnected(remainingMs())
+        const connected = await this.transport.waitForConnected(remainingMs())
         if (!connected) {
             return
         }
@@ -1080,19 +440,14 @@ export class ApiSessionClient extends EventEmitter {
             return
         }
 
-        try {
-            await this.socket.timeout(pingTimeoutMs).emitWithAck('ping')
-        } catch {
-            // best effort
-        }
+        await this.transport.ping(pingTimeoutMs)
     }
 
     close(): void {
         this.rpcHandlerManager.setOnRpcCalled(undefined)
         this.rpcHandlerManager.onSocketDisconnect()
         this.idleTimer?.destroy()
-        this.clearManualReconnect()
-        this.socket.disconnect()
+        this.transport.disconnect()
     }
 
     /**
@@ -1124,11 +479,11 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private handleIdleWarning(): void {
-        if (!this.socket.connected) {
+        if (!this.transport.connected) {
             logger.debug('[API] Socket not connected, skipping idle warning')
             return
         }
-        this.socket.emit('idle-timeout-warning', {
+        this.transport.emit('idle-timeout-warning', {
             sid: this.sessionId,
             timeoutAt: Date.now() + configuration.timeoutWarningMs,
             remainingMs: configuration.timeoutWarningMs
@@ -1139,34 +494,6 @@ export class ApiSessionClient extends EventEmitter {
     private handleDisconnectTimeout(): void {
         logger.debug('[API] Disconnect timeout, exiting')
         this.emit('disconnect-timeout')
-    }
-
-    /**
-     * 服务端主动断开（'io server disconnect'）的兜底重连：socket.io v4 对该 reason
-     * 不自动重连（daemon 优雅关闭/单连接被踢都会走到），必须手动 connect() 恢复重连循环，
-     * 否则 10 分钟 disconnect timeout 到期会话进程直接退出（2026-08-17 排查的根因链）。
-     * transport 层断开（transport close/error/ping timeout）走 socket.io 内置自动重连，不干预；
-     * 'io client disconnect' 是本进程主动断开（退出路径），禁止兜底——否则进程退不出去。
-     */
-    private scheduleManualReconnect(reason: string): void {
-        if (reason !== 'io server disconnect' || this.manualReconnectTimer) return
-        const delay = this.manualReconnectDelayMs
-        this.manualReconnectDelayMs = Math.min(this.manualReconnectDelayMs * 2, MANUAL_RECONNECT_MAX_DELAY_MS)
-        logger.warn(`[API] Server-initiated disconnect, manual reconnect in ${delay}ms`)
-        this.manualReconnectTimer = setTimeout(() => {
-            this.manualReconnectTimer = null
-            if (!this.socket.connected) this.socket.connect()
-        }, delay)
-        this.manualReconnectTimer.unref?.()
-    }
-
-    /** connect 成功后清兜底定时器并复位退避 */
-    private clearManualReconnect(): void {
-        if (this.manualReconnectTimer) {
-            clearTimeout(this.manualReconnectTimer)
-            this.manualReconnectTimer = null
-        }
-        this.manualReconnectDelayMs = MANUAL_RECONNECT_BASE_DELAY_MS
     }
 
     private handleIdleTimeout(): void {

@@ -50,6 +50,16 @@ _Avoid_: 各消费方自行从链推导「上一轮」（口径双写）、HEAD 
 
 ### 进程内组件
 
+**会话传输（SessionTransport）**:
+CLI↔daemon socket 的连接生命周期 module——建连鉴权、断线重连（内置自动重连 + 服务端断开的手动兜底退避，loopback 口径 0.5s 起封顶 5s）、connect_error 节流落盘、ack 发送咽喉（emitWithAck 统一超时）、keepAlive 心跳。不含任何会话语义。
+_Avoid_: 在协议层直接摸 socket（emit/timeout 散落）、把重连退避当远端 hub 时代口径调（1s→30s 已随单机化作废）
+
+**会话协议（SessionChannel）**:
+CLI↔daemon 的会话语义 module——入站分流（用户消息入队 + seq 记账 + 断线 HTTP 补拉）、出站消息五族、流式快照三方法、事实与状态上报（单一 `report` 出口，kind 映射回各 socket 事件，wire 不变）、rewind 两段回报（可靠队列）、agent 编排 RPC、metadata/agentState 版本化 CAS。连接反应（补拉/重基线/存活上报）由它响应传输回调。
+_Avoid_: 绕开 report 直接 emit 事实类事件、把传输保活语义（重连/心跳）写进协议层
+
+`ApiSessionClient` 是两者的装配门面：生命周期编排（IdleTimer/RpcHandlerManager/flush/close 次序）+ 对消费者的 EventEmitter 事件；37 个公开成员零迁移。
+
 **Hook Server**:
 local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server（hook 经 hook-forwarder 命令转发）。
 

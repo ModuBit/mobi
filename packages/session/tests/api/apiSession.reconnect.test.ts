@@ -118,35 +118,35 @@ describe('断开 reason 观测（落盘 WARN）', () => {
 })
 
 describe('服务端主动断开的手动重连兜底', () => {
-    it("'io server disconnect' → 初始退避 1s 后手动 connect（socket.io v4 对该 reason 不自动重连）", () => {
+    it("'io server disconnect' → 初始退避 0.5s 后手动 connect（socket.io v4 对该 reason 不自动重连）", () => {
         makeClient()
         expect(connectSpy).toHaveBeenCalledTimes(1) // 构造尾部首次 connect
 
         mockSocket.fire('disconnect', 'io server disconnect')
         expect(connectSpy).toHaveBeenCalledTimes(1) // 未到退避时间，不立即连
 
-        vi.advanceTimersByTime(1_000)
+        vi.advanceTimersByTime(500)
         expect(connectSpy).toHaveBeenCalledTimes(2) // 兜底重连
     })
 
-    it('兜底重连指数退避：连续服务端断开翻倍（1s → 2s）', () => {
+    it('兜底重连指数退避：连续服务端断开翻倍（0.5s → 1s）', () => {
         makeClient()
         mockSocket.fire('disconnect', 'io server disconnect')
-        vi.advanceTimersByTime(1_000)
+        vi.advanceTimersByTime(500)
         expect(connectSpy).toHaveBeenCalledTimes(2)
 
-        // 第二次服务端断开：退避翻倍到 2s，1s 时不应重连
+        // 第二次服务端断开：退避翻倍到 1s，0.5s 时不应重连
         mockSocket.fire('disconnect', 'io server disconnect')
-        vi.advanceTimersByTime(1_000)
+        vi.advanceTimersByTime(500)
         expect(connectSpy).toHaveBeenCalledTimes(2)
-        vi.advanceTimersByTime(1_000)
+        vi.advanceTimersByTime(500)
         expect(connectSpy).toHaveBeenCalledTimes(3)
     })
 
-    it('connect 成功后退避复位（再次服务端断开回到 1s）并清兜底定时器', () => {
+    it('connect 成功后退避复位（再次服务端断开回到 0.5s）并清兜底定时器', () => {
         makeClient()
         mockSocket.fire('disconnect', 'io server disconnect')
-        vi.advanceTimersByTime(1_000)
+        vi.advanceTimersByTime(500)
         expect(connectSpy).toHaveBeenCalledTimes(2)
 
         // 兜底重连成功
@@ -155,8 +155,8 @@ describe('服务端主动断开的手动重连兜底', () => {
         mockSocket.connected = false
 
         mockSocket.fire('disconnect', 'io server disconnect')
-        vi.advanceTimersByTime(1_000)
-        expect(connectSpy).toHaveBeenCalledTimes(3) // 1s 即触发（退避已复位）
+        vi.advanceTimersByTime(500)
+        expect(connectSpy).toHaveBeenCalledTimes(3) // 0.5s 即触发（退避已复位）
     })
 
     it("'transport close' / 'transport error' → 不手动兜底（交给 socket.io 内置自动重连）", () => {
@@ -181,8 +181,8 @@ describe('断开计时器联动（现有行为回归锁）', () => {
         // disconnectTimeoutMs mock 为 600s：断开后 599s 不退出，connect 后计时器清除
         mockSocket.fire('disconnect', 'io server disconnect')
 
-        // 先手动兜底连上（1s 退避）
-        vi.advanceTimersByTime(1_000)
+        // 先手动兜底连上（0.5s 退避）
+        vi.advanceTimersByTime(500)
         mockSocket.connected = true
         mockSocket.fire('connect')
         // 连上后即使再过 10 分钟也不应触发 disconnect-timeout
