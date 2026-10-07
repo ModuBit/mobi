@@ -19,7 +19,6 @@
  */
 
 import { Metadata } from '@mobi/node-core/api/types';
-import { ChildProcess } from 'child_process';
 
 /**
  * Session tracking for executor
@@ -29,7 +28,8 @@ export interface TrackedSession {
   MobiSessionId?: string;
   MobiSessionMetadataFromLocalWebhook?: Metadata;
   pid: number;
-  childProcess?: ChildProcess;
+  /** 子进程引用的最小面（kill 用 pid；cross-spawn ChildProcess 结构兼容） */
+  childProcess?: { pid?: number | undefined };
   /** 本 child 的 resume 目标（native session id）。唤醒去重的比对键（.scratch/wake-dedup）：
    *  手动 / webhook 注册的表项拿不到该信息，字段缺省 = 不参与查重 */
   resumeSessionId?: string;

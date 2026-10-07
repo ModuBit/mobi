@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { ChildProcess } from 'node:child_process';
 import spawn from 'cross-spawn';
 
 export const isWindows = (): boolean => process.platform === 'win32';
@@ -144,8 +143,11 @@ async function waitForProcessToDie(pid: number, force: boolean): Promise<void> {
   }
 }
 
+/** 杀进程所需的最小监听面（ChildProcess 结构兼容；executor 追踪行的 childProcess 投影） */
+export type KillableChild = { pid?: number | undefined };
+
 export async function killProcessByChildProcess(
-  child: ChildProcess,
+  child: KillableChild,
   force: boolean = false
 ): Promise<boolean> {
   const pid = child.pid;

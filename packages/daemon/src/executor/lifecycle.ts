@@ -25,20 +25,19 @@
 
 import fs from 'fs/promises';
 
-import { TrackedSession } from './types';
 import { ExecutorState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
 import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistence';
 import { getConfiguration } from '../configuration';
-import { DEFAULT_LISTEN_PORT, hostChannelUrl, resolveHostPort } from '@mobi/node-core/hostChannel';
+import { DEFAULT_LISTEN_PORT, resolveHostPort } from '@mobi/node-core/hostChannel';
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
 import { startExecutorControlServer } from './controlServer';
-import { buildClaudeSpawnArgs } from './spawnArgs';
-import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
+import { createWorktree, removeWorktree } from './worktree';
 import { SessionTrackingTable } from './sessionTrackingTable';
+import { spawnSession as runSpawnSession, type SpawnOutcome } from './spawnSession';
 import type { SessionTrackingSignal } from './sessionTracking';
 import { ShutdownLatch } from './shutdownLatch';
 
@@ -126,13 +125,6 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     signal?: NodeJS.Signals | null
   };
   let reportSpawnOutcomeToHub: ((outcome: { type: 'success' } | { type: 'error'; details: SpawnFailureDetails }) => void) | null = null;
-  const formatSpawnError = (error: unknown): string => {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return String(error);
-  };
-
   const getCurrentChildren = () => trackingTable.all();
 
   // Handle webhook from MOBI session reporting itself
@@ -140,326 +132,20 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     trackingTable.applyWebhook(sessionId, sessionMetadata);
   };
 
-  // Spawn a new session (sessionId reserved for future --resume functionality)
-  const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-    logger.debugLargeJson('[EXECUTOR] Spawning session', options);
-
-    // 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时
-    // 不再 spawn 第二个进程。「表项存在 = 进程存活」由 exit 既有清理保证；查重
-    // 决策与结果构造单源见 spawnDedup。server 侧对 already-running 零等待幂等消费（票 02）
-    const dedupHit = trackingTable.checkResumeDedup(options.resumeSessionId);
-    if (dedupHit) {
-      logger.debug('[EXECUTOR] Spawn deduped: live child already resuming this session');
-      return dedupHit;
-    }
-
-    const { directory, approvedNewDirectoryCreation = true } = options;
-    const sessionType = options.sessionType ?? 'simple';
-    const worktreeName = options.worktreeName;
-    let directoryCreated = false;
-    let spawnDirectory = directory;
-    let worktreeInfo: WorktreeInfo | null = null;
-    let MobiProcess: ReturnType<typeof spawnMobiCli> | null = null;
-
-    // 判断directory是否存在，如果不存在则尝试创建
-    if (sessionType === 'simple') {
-      try {
-        await fs.access(directory);
-        logger.debug(`[EXECUTOR] Directory exists: ${directory}`);
-      } catch (_error) {
-        logger.debug(`[EXECUTOR] Directory doesn't exist, creating: ${directory}`);
-
-        // Check if directory creation is approved
-        if (!approvedNewDirectoryCreation) {
-          logger.debug(`[EXECUTOR] Directory creation not approved for: ${directory}`);
-          return {
-            type: 'requestToApproveDirectoryCreation',
-            directory
-          };
-        }
-
-        try {
-          await fs.mkdir(directory, { recursive: true });
-          logger.debug(`[EXECUTOR] Successfully created directory: ${directory}`);
-          directoryCreated = true;
-        } catch (mkdirError: unknown) {
-          const errno = mkdirError as NodeJS.ErrnoException;
-          let errorMessage = `Unable to create directory at '${directory}'. `;
-
-          // Provide more helpful error messages based on the error code
-          if (errno.code === 'EACCES') {
-            errorMessage += `Permission denied. You don't have write access to create a folder at this location. Try using a different path or check your permissions.`;
-          } else if (errno.code === 'ENOTDIR') {
-            errorMessage += `A file already exists at this path or in the parent path. Cannot create a directory here. Please choose a different location.`;
-          } else if (errno.code === 'ENOSPC') {
-            errorMessage += `No space left on device. Your disk is full. Please free up some space and try again.`;
-          } else if (errno.code === 'EROFS') {
-            errorMessage += `The file system is read-only. Cannot create directories here. Please choose a writable location.`;
-          } else {
-            const errStr = errno.message || String(mkdirError);
-            errorMessage += `System error: ${errStr}. Please verify the path is valid and you have the necessary permissions.`;
-          }
-
-          logger.debug(`[EXECUTOR] Directory creation failed: ${errorMessage}`);
-          return {
-            type: 'error',
-            errorMessage
-          };
-        }
-      }
-    } else {
-      try {
-        await fs.access(directory);
-        logger.debug(`[EXECUTOR] Worktree base directory exists: ${directory}`);
-      } catch (_error) {
-        logger.debug(`[EXECUTOR] Worktree base directory missing: ${directory}`);
-        return {
-          type: 'error',
-          errorMessage: `Worktree sessions require an existing Git repository. Directory not found: ${directory}`
-        };
-      }
-    }
-
-    // 尝试创建worktree
-    if (sessionType === 'worktree') {
-      const worktreeResult = await createWorktree({
-        basePath: directory,
-        nameHint: worktreeName
-      });
-      if (!worktreeResult.ok) {
-        logger.debug(`[EXECUTOR] Worktree creation failed: ${worktreeResult.error}`);
-        return {
-          type: 'error',
-          errorMessage: worktreeResult.error
-        };
-      }
-      worktreeInfo = worktreeResult.info;
-      spawnDirectory = worktreeInfo.worktreePath;
-      logger.debug(`[EXECUTOR] Created worktree ${worktreeInfo.worktreePath} (branch ${worktreeInfo.branch})`);
-    }
-
-    const cleanupWorktree = async () => {
-      if (!worktreeInfo) {
-        return;
-      }
-      const result = await removeWorktree({
-        repoRoot: worktreeInfo.basePath,
-        worktreePath: worktreeInfo.worktreePath
-      });
-      if (!result.ok) {
-        logger.debug(`[EXECUTOR] Failed to remove worktree ${worktreeInfo.worktreePath}: ${result.error}`);
-      }
-    };
-    const maybeCleanupWorktree = async (reason: string) => {
-      if (!worktreeInfo) {
-        return;
-      }
-      const pid = MobiProcess?.pid;
-      if (pid && isProcessAlive(pid)) {
-        logger.debug(`[EXECUTOR] Skipping worktree cleanup after ${reason}; child still running`, {
-          pid,
-          worktreePath: worktreeInfo.worktreePath
-        });
-        return;
-      }
-      await cleanupWorktree();
-    };
-
-    try {
-
-      // Resolve authentication token if provided
-      let extraEnv: Record<string, string> = {};
-      if (options.token) {
-        // Mobi 当前仅支持 Claude
-        extraEnv = {
-          CLAUDE_CODE_OAUTH_TOKEN: options.token
-        };
-      }
-
-      if (worktreeInfo) {
-        extraEnv = {
-          ...extraEnv,
-          MOBI_WORKTREE_BASE_PATH: worktreeInfo.basePath,
-          MOBI_WORKTREE_BRANCH: worktreeInfo.branch,
-          MOBI_WORKTREE_NAME: worktreeInfo.name,
-          MOBI_WORKTREE_PATH: worktreeInfo.worktreePath,
-          MOBI_WORKTREE_CREATED_AT: String(worktreeInfo.createdAt)
-        };
-      }
-
-      // Construct arguments for the CLI（纯函数构造，便于单测）
-      const args = buildClaudeSpawnArgs(options);
-
-      // sessionId reserved for future use
-      const MAX_TAIL_CHARS = 4000;
-      let stderrTail = '';
-      const appendTail = (current: string, chunk: Buffer | string): string => {
-        const text = chunk.toString();
-        if (!text) {
-          return current;
-        }
-        const combined = current + text;
-        return combined.length > MAX_TAIL_CHARS ? combined.slice(-MAX_TAIL_CHARS) : combined;
-      };
-      const logStderrTail = () => {
-        const trimmed = stderrTail.trim();
-        if (!trimmed) {
-          return;
-        }
-        logger.debug('[EXECUTOR] Child stderr tail', trimmed);
-      };
-
-      MobiProcess = spawnMobiCli(args, {
-        cwd: spawnDirectory,
-        detached: true,  // Sessions stay alive when the executor stops
-        stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
-        env: {
-          ...process.env,
-          ...extraEnv,
-          // 宿主通道端口（ticket-21）：会话子进程必须连 loopback 宿主 listener——
-          // 显式注入覆盖继承值（profile/legacy env 可能还指向主端口），不依赖 settings 猜测
-          MOBI_API_URL: hostChannelUrl(resolveSpawnHostPort())
-        }
-      });
-
-      MobiProcess.stderr?.on('data', (data) => {
-        stderrTail = appendTail(stderrTail, data);
-      });
-
-      let spawnErrorBeforePidCheck: Error | null = null;
-      const captureSpawnErrorBeforePidCheck = (error: Error) => {
-        spawnErrorBeforePidCheck = error;
-      };
-      MobiProcess.once('error', captureSpawnErrorBeforePidCheck);
-
-      if (!MobiProcess.pid) {
-        // Allow the async 'error' event to fire before we read it
-        await new Promise((resolve) => setImmediate(resolve));
-        const details = [`cwd=${spawnDirectory}`];
-        if (spawnErrorBeforePidCheck) {
-          details.push(formatSpawnError(spawnErrorBeforePidCheck));
-        }
-        const errorMessage = `Failed to spawn MOBI process - no PID returned (${details.join('; ')})`;
-        logger.debug('[EXECUTOR] Failed to spawn process - no PID returned', spawnErrorBeforePidCheck ?? null);
-        reportSpawnOutcomeToHub?.({
-          type: 'error',
-          details: {
-            message: errorMessage
-          }
-        });
-        await maybeCleanupWorktree('no-pid');
-        return {
-          type: 'error',
-          errorMessage
-        };
-      }
-      MobiProcess.removeListener('error', captureSpawnErrorBeforePidCheck);
-
-      const pid = MobiProcess.pid;
-      logger.debug(`[EXECUTOR] Spawned process with PID ${pid}`);
-      let observedExitCode: number | null = null;
-      let observedExitSignal: NodeJS.Signals | null = null;
-      const buildWebhookFailureMessage = (reason: 'timeout' | 'exit-before-webhook' | 'process-error-before-webhook'): string => {
-        let message: string;
-        if (reason === 'exit-before-webhook') {
-          message = `Session process exited before webhook for PID ${pid}`;
-        } else if (reason === 'process-error-before-webhook') {
-          message = `Session process error before webhook for PID ${pid}`;
-        } else {
-          message = `Session webhook timeout for PID ${pid}`;
-        }
-
-        if (observedExitCode !== null || observedExitSignal) {
-          if (observedExitCode !== null) {
-            message += ` (exit code ${observedExitCode})`;
-          } else {
-            message += ` (signal ${observedExitSignal})`;
-          }
-        }
-
-        const trimmedTail = stderrTail.trim();
-        if (trimmedTail) {
-          const compactTail = trimmedTail.replace(/\s+/g, ' ');
-          const tailForMessage = compactTail.length > 800 ? compactTail.slice(-800) : compactTail;
-          message += `. stderr: ${tailForMessage}`;
-        }
-
-        return message;
-      };
-
-      const trackedSession: TrackedSession = {
-        startedBy: 'daemon',
-        pid,
-        childProcess: MobiProcess,
-        resumeSessionId: options.resumeSessionId,
-        directoryCreated,
-        message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
-      };
-
-      trackingTable.registerDaemon(trackedSession);
-
-      MobiProcess.on('exit', (code, signal) => {
-        observedExitCode = typeof code === 'number' ? code : null;
-        observedExitSignal = signal ?? null;
-        logger.debug(`[EXECUTOR] Child PID ${pid} exited with code ${code}, signal ${signal}`);
-        if (code !== 0 || signal) {
-          logStderrTail();
-        }
-        trackingTable.failAwaiter(pid, buildWebhookFailureMessage('exit-before-webhook'));
-        trackingTable.remove(pid);
-      });
-
-      MobiProcess.on('error', (error) => {
-        logger.debug('[EXECUTOR] Child process error:', error);
-        trackingTable.failAwaiter(pid, buildWebhookFailureMessage('process-error-before-webhook'));
-        trackingTable.remove(pid);
-      });
-
-      // Wait for webhook to populate session with MobiSessionId
-      logger.debug(`[EXECUTOR] Waiting for session webhook for PID ${pid}`);
-
-      // 15 second timeout - I have seen timeouts on 10 seconds
-      // even though session was still created successfully in ~2 more seconds
-      const waitResult = await trackingTable.waitForWebhook(pid, 15_000, () => {
-        logger.debug(`[EXECUTOR] Session webhook timeout for PID ${pid}`);
-        logStderrTail();
-        return buildWebhookFailureMessage('timeout');
-      });
-      const spawnResult: SpawnSessionResult = waitResult.ok
-        ? { type: 'success', sessionId: waitResult.sessionId }
-        : { type: 'error', errorMessage: waitResult.errorMessage };
-      if (spawnResult.type === 'error') {
-        reportSpawnOutcomeToHub?.({
-          type: 'error',
-          details: {
-            message: spawnResult.errorMessage,
-            pid,
-            exitCode: observedExitCode,
-            signal: observedExitSignal
-          }
-        });
-        await maybeCleanupWorktree('spawn-error');
-      } else {
-        reportSpawnOutcomeToHub?.({ type: 'success' });
-      }
-      return spawnResult;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.debug('[EXECUTOR] Failed to spawn session:', error);
-      await maybeCleanupWorktree('exception');
-      reportSpawnOutcomeToHub?.({
-        type: 'error',
-        details: {
-          message: `Failed to spawn session: ${errorMessage}`
-        }
-      });
-      return {
-        type: 'error',
-        errorMessage: `Failed to spawn session: ${errorMessage}`
-      };
-    }
+  // 会话 spawn 编排（架构评审候选⑧票②）：主体提升为模块级 spawnSession
+  // （executor/spawnSession.ts，依赖注入可假件驱动）；reportOutcome 闭包引用后置
+  // 装配的 reportSpawnOutcomeToHub（controlServer 起来前可空）
+  const spawnDeps = {
+    trackingTable,
+    hostPort: resolveSpawnHostPort(),
+    reportOutcome: (outcome: SpawnOutcome) => { reportSpawnOutcomeToHub?.(outcome); },
+    fs,
+    spawn: spawnMobiCli,
+    createWorktree,
+    removeWorktree,
+    isProcessAlive,
   };
-
+  const spawnSession = (options: SpawnSessionOptions) => runSpawnSession(options, spawnDeps);
   // Stop a session by sessionId or PID fallback
   const stopSession = (sessionId: string): boolean => {
     logger.debug(`[EXECUTOR] Attempting to stop session ${sessionId}`);
