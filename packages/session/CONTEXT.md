@@ -76,6 +76,10 @@ _Avoid_: 测试里构造整套 launcher 才能驱动 claudeRemote
 SDK 消息 → 落库行的转换装配 module（深化候选④票③）：converter（SDKToLogConverter）、出站排队（OutgoingMessageQueue 的 tool_use 配对延迟与 FIFO 仲裁）、流式快照发送器工厂三件单一归属。dispatch 的「result 先入列再触发轮次合成」顺序契约在此锁定（此前靠跨文件时序注释维持）；运行层经 `createSnapshotSender` 消费，不再借 converter。
 _Avoid_: 在 launcher/运行层直接 new converter 或 OutgoingMessageQueue、把停止/撤回语义写进转换链（经 dispatchHooks 注入）
 
+**会话观测三件套（sessionObservability）**:
+goal 状态处理器（GoalStatusHandler 双发）与轮次变更合成器（TurnDiffReporter，含 turn 封口归档/全文目录构造）的单一装配点（`sessionObservability.ts`，架构评审候选⑦）——local/remote 双 launcher 共用；发送 adapter 是双模唯一差异点（local 直发 vs remote 经转换链入列保 FIFO），以 turnDiffSend 注入。scanner 接线（eager vs 惰性/顺序编排）是真差异，留各自 launcher。
+_Avoid_: 在任一 launcher 里再手写 goalHandler/turnDiffReporter 构造（或复制 turnArchive/turnFulltext store 装配）、把 scanner 接线也塞进工厂（两份编排放进同一工厂再参数化是过度收口）
+
 **Hook Server**:
 local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server（hook 经 hook-forwarder 命令转发）。
 

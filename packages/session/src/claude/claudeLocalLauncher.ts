@@ -15,10 +15,7 @@
  */
 
 import { claudeLocal } from "./claudeLocal";
-import { GoalStatusHandler } from "./goalStatusHandler";
-import { TurnDiffReporter } from "./turnDiffReporter";
-import { FileTurnArchiveStore, getTurnArchivePath } from "@mobi/node-core/git/turnArchiveStore";
-import { FileTurnFulltextStore, getTurnFulltextRoot } from "@mobi/node-core/git/turnFulltextStore";
+import { createSessionObservability } from "./sessionObservability";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
@@ -60,18 +57,12 @@ export async function claudeLocalLauncher(
     const scannerSessionId = session.sessionId ?? extractSessionIdFromArgs(session.claudeArgs);
     logger.debug(`[LocalLauncher] Creating scanner: sessionId=${scannerSessionId}, path=${session.path}`);
 
-    // goal 状态处理器:双发 reportGoalStatus RPC + goal_progress 聊天消息
-    const goalHandler = new GoalStatusHandler(session.client, (m) => session.client.sendClaudeSessionMessage(m));
-
-    // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；顺序流直发
-    // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
-    // 全文目录存储（hydration）：封口落 a/b 全文 + 归档带 ref
-    const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
-    const turnFulltext = new FileTurnFulltextStore(getTurnFulltextRoot(session.path, session.client.sessionId), session.path);
-    const turnDiffReporter = new TurnDiffReporter(
+    // 观测三件套工厂（架构评审候选⑦）：goal/turnDiff 构造单源；
+    // local 侧 turnDiff 直发（不参与 FIFO 时间线）
+    const { goalHandler, turnDiffReporter } = createSessionObservability(
+        session.client,
         (m) => session.client.sendClaudeSessionMessage(m),
-        turnArchive,
-        turnFulltext,
+        session.path,
     );
 
     // Create scanner

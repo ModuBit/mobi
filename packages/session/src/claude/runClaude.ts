@@ -102,12 +102,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     logger.debugLargeJson('[START] MOBI process started', getEnvironmentInfo());
     logger.debug(`[START] Options: startedBy=${startedBy}, startingMode=${options.startingMode}`);
 
-    // Validate daemon spawn requirements
+    // daemon spawn ⇒ remote 是派生规则而非静默纠正：daemon 侧 spawn 的会话由
+    // Web 驱动，local（终端直连）物理不可能——强转后的语义就是调用方目标态
     if (startedBy === 'daemon' && options.startingMode === 'local') {
         logger.debug('Daemon spawn requested with local mode - forcing remote mode');
         options.startingMode = 'remote';
-        // TODO: Eventually we should error here instead of silently switching
-        // throw new Error('Daemon-spawned sessions cannot use local/interactive mode');
     }
 
     const initialState: AgentState = {};

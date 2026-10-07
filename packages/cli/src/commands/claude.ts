@@ -42,7 +42,10 @@ function isConnectionError(error: unknown): boolean {
     )
 }
 
-// 降级到纯本地模式（直接运行 claude）
+// 降级逃生舱（架构评审候选⑦文档化）：daemon 不可达时的最终兜底，直接 spawn claude。
+// 刻意最简——无观测、无落库、无会话行；不是与 claudeLocal 平行的第三份会话实现
+// （claudeLocal 依赖 ApiSessionClient，同样需要 daemon 可达，此处不可收编）。
+// 边界：daemon 可达时的终端会话走 session 宿主的 local 模式（观测三件套齐全）。
 async function runLocalMode(options: StartOptions): Promise<void> {
     console.log(chalk.yellow('⚠️  Running in local-only mode (no daemon connection)'))
     console.log(chalk.gray('   Remote control features are disabled.\n'))

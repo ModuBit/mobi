@@ -47,10 +47,7 @@ import { handleRewindRefusal } from "./utils/rewindRefusal";
 import { verifyForkAnchorExists, omitForkFrom, withForkError, forkActivationFailureMessage, type ForkActivationFailureReason } from "./utils/forkActivation";
 import type { ApiSessionClient } from "../api/apiSession";
 import type { ForkErrorCode } from "@mobi/shared";
-import { GoalStatusHandler } from "./goalStatusHandler";
-import { TurnDiffReporter } from "./turnDiffReporter";
-import { FileTurnArchiveStore, getTurnArchivePath } from "@mobi/node-core/git/turnArchiveStore";
-import { FileTurnFulltextStore, getTurnFulltextRoot } from "@mobi/node-core/git/turnFulltextStore";
+import { createSessionObservability } from "./sessionObservability";
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
@@ -514,21 +511,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             onSwitch: () => this.handleSwitchRequest()
         });
 
-        // goal 状态处理器：scanner 提取 goal_status attachment 后双发(RPC + goal_progress 消息)
-        const goalHandler = new GoalStatusHandler(
+        // 观测三件套工厂（架构评审候选⑦）：goal/turnDiff 构造单源；
+        // remote 侧 turnDiff 经转换链入列（FIFO，合成卡片排在 result 与延迟中的
+        // assistant 消息之后）——发送 adapter 是双模唯一差异点
+        const { goalHandler, turnDiffReporter } = createSessionObservability(
             session.client,
-            (m) => session.client.sendClaudeSessionMessage(m),
-        );
-        // 轮次变更合成器（ADR 0008 / turn-archive B）：归档封口 + 投影降级；
-        // 合成消息经 messageQueue 入列(FIFO，排在 result 与延迟中的 assistant 消息之后)
-        // turn 封口归档（历史轮回看的事实源）：构造零 I/O，封口失败不阻塞
-        // 全文目录存储（hydration）：封口落 a/b 全文 + 归档带 ref
-        const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
-        const turnFulltext = new FileTurnFulltextStore(getTurnFulltextRoot(session.path, session.client.sessionId), session.path);
-        const turnDiffReporter = new TurnDiffReporter(
             (m) => stream.queue.enqueue(m),
-            turnArchive,
-            turnFulltext,
+            session.path,
         );
         // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 daemon
         // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
