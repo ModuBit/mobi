@@ -45,7 +45,7 @@ export function createSdkRoutes(getSyncEngine: () => SyncEngine | null): Hono<We
         if (cwdError) return cwdError
 
         try {
-            const result = await engine.hostRefreshMetadata(cwd)
+            const result = await engine.executionAccess.hostRefreshMetadata(cwd)
             return c.json({ success: true, metadata: result.metadata ?? {} })
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to refresh metadata' }, 500)

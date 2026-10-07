@@ -32,9 +32,11 @@ function createTestEngine(overrides?: {
     verifyWebToolsProvider?: (id: string, providerId: string, credentials?: Record<string, string>) => Promise<unknown>
 }): SyncEngine {
     return {
-        getWebToolsConfig: overrides?.getWebToolsConfig ?? vi.fn(),
-        setWebToolsConfig: overrides?.setWebToolsConfig ?? vi.fn(),
-        verifyWebToolsProvider: overrides?.verifyWebToolsProvider ?? vi.fn(),
+        executionAccess: {
+            getWebToolsConfig: overrides?.getWebToolsConfig ?? vi.fn(),
+            setWebToolsConfig: overrides?.setWebToolsConfig ?? vi.fn(),
+            verifyWebToolsProvider: overrides?.verifyWebToolsProvider ?? vi.fn(),
+        },
     } as unknown as SyncEngine
 }
 

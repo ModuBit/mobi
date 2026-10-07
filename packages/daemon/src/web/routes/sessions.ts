@@ -412,8 +412,8 @@ export function createSessionsRoutes(
                 reader,
                 filename,
                 totalSize,
-                (fn, p, off, chunk) => engine.uploadFileRange(sessionId, fn, p, off, chunk, totalSize),
-                (p) => engine.deleteUploadFile(sessionId, p),
+                (fn, p, off, chunk) => engine.executionAccess.uploadFileRange(sessionId, fn, p, off, chunk, totalSize),
+                (p) => engine.executionAccess.deleteUploadFile(sessionId, p),
             )
             return c.json({ success: true, path })
         } catch (error) {
@@ -472,7 +472,7 @@ export function createSessionsRoutes(
         const content = concatBytes(parts)
 
         try {
-            const res = await engine.saveFile(sessionResult.sessionId, path, content, baseEtag)
+            const res = await engine.executionAccess.saveFile(sessionResult.sessionId, path, content, baseEtag)
             if (!res.success && (res as { conflict?: boolean }).conflict) {
                 return c.json(res, 409)
             }
@@ -506,7 +506,7 @@ export function createSessionsRoutes(
         }
 
         try {
-            const result = await engine.deleteUploadFile(sessionResult.sessionId, parsed.data.path)
+            const result = await engine.executionAccess.deleteUploadFile(sessionResult.sessionId, parsed.data.path)
             if (!result.success) {
                 return c.json(result, 400)
             }
@@ -566,7 +566,7 @@ export function createSessionsRoutes(
         }
 
         try {
-            const result = await engine.replaceUploadFile(sessionResult.sessionId, path, concatBytes(parts))
+            const result = await engine.executionAccess.replaceUploadFile(sessionResult.sessionId, path, concatBytes(parts))
             if (!result.success) {
                 return c.json(result, 400)
             }
@@ -926,7 +926,7 @@ export function createSessionsRoutes(
         const type = c.req.query('type') as 'file' | 'directory' | undefined
 
         try {
-            const result = await engine.searchSessionFiles(sessionResult.sessionId, query, type)
+            const result = await engine.executionAccess.searchSessionFiles(sessionResult.sessionId, query, type)
             return c.json(result)
         } catch (error) {
             return c.json({
@@ -956,7 +956,7 @@ export function createSessionsRoutes(
         const prefix = c.req.query('prefix') ?? undefined
 
         try {
-            const result = await engine.listSessionDirectory(sessionResult.sessionId, path, prefix)
+            const result = await engine.executionAccess.listSessionDirectory(sessionResult.sessionId, path, prefix)
             return c.json(result)
         } catch (error) {
             return c.json({
@@ -986,8 +986,8 @@ export function createSessionsRoutes(
         // 共享文件服务逻辑（meta/304/Range/stream）抽至 serveFileContent，
         // 与 serve-file（HTML 预览静态资源）复用。
         return serveFileContent(c, {
-            readFileMeta: (p) => engine.readFileMeta(sessionResult.sessionId, p),
-            readFileRange: (p, o, l) => engine.readFileRange(sessionResult.sessionId, p, o, l),
+            readFileMeta: (p) => engine.executionAccess.readFileMeta(sessionResult.sessionId, p),
+            readFileRange: (p, o, l) => engine.executionAccess.readFileRange(sessionResult.sessionId, p, o, l),
         }, path, { download })
     })
 
@@ -1030,8 +1030,8 @@ export function createSessionsRoutes(
         // download=1：top-level 打开会脱离 sandbox（同源执行），强制 attachment 触发下载而非渲染
         const download = c.req.query('download') === '1'
         return serveFileContent(c, {
-            readFileMeta: (p) => engine.readFileMeta(sessionResult.sessionId, p),
-            readFileRange: (p, o, l) => engine.readFileRange(sessionResult.sessionId, p, o, l),
+            readFileMeta: (p) => engine.executionAccess.readFileMeta(sessionResult.sessionId, p),
+            readFileRange: (p, o, l) => engine.executionAccess.readFileRange(sessionResult.sessionId, p, o, l),
         }, absPath, {
             download,
             extraHeaders: { 'x-content-type-options': 'nosniff' },
@@ -1061,7 +1061,7 @@ export function createSessionsRoutes(
         }
 
         try {
-            const meta = await engine.readFileMeta(sessionResult.sessionId, path)
+            const meta = await engine.executionAccess.readFileMeta(sessionResult.sessionId, path)
             if (!meta.success) {
                 // 结构化 code → 状态码分流单点在 fileMetaHttpStatus（与 serveFileContent 共用）
                 return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, fileMetaHttpStatus(meta.code))
@@ -1101,7 +1101,7 @@ export function createSessionsRoutes(
             fallback: 'Failed to collect review overview',
             invalidError: null,
             parse: () => [],
-            run: (engine, sessionId) => engine.gitReviewOverview(sessionId),
+            run: (engine, sessionId) => engine.executionAccess.gitReviewOverview(sessionId),
         },
         {
             path: 'files',
@@ -1112,7 +1112,7 @@ export function createSessionsRoutes(
                 const parsed = DiffTargetSchema.safeParse(body)
                 return parsed.success ? [parsed.data] : null
             },
-            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>]) => engine.gitReviewFiles(sessionId, args[0]),
+            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>]) => engine.executionAccess.gitReviewFiles(sessionId, args[0]),
         },
         {
             path: 'diff',
@@ -1125,7 +1125,7 @@ export function createSessionsRoutes(
                 if (!parsedTarget.success || typeof b?.path !== 'string' || b.path.length === 0) return null
                 return [parsedTarget.data, b.path]
             },
-            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>, string]) => engine.gitReviewDiff(sessionId, args[0], args[1]),
+            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>, string]) => engine.executionAccess.gitReviewDiff(sessionId, args[0], args[1]),
         },
         {
             path: 'contents',
@@ -1138,7 +1138,7 @@ export function createSessionsRoutes(
                 if (!parsedTarget.success || typeof b?.path !== 'string' || b.path.length === 0) return null
                 return [parsedTarget.data, b.path]
             },
-            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>, string]) => engine.gitReviewContents(sessionId, args[0], args[1]),
+            run: (engine, sessionId, args: [z.infer<typeof DiffTargetSchema>, string]) => engine.executionAccess.gitReviewContents(sessionId, args[0], args[1]),
         },
         {
             path: 'commits',
@@ -1149,7 +1149,7 @@ export function createSessionsRoutes(
                 const cursor = (body as { cursor?: unknown } | null)?.cursor
                 return [typeof cursor === 'string' ? cursor : undefined]
             },
-            run: (engine, sessionId, args: [string | undefined]) => engine.gitReviewCommits(sessionId, args[0]),
+            run: (engine, sessionId, args: [string | undefined]) => engine.executionAccess.gitReviewCommits(sessionId, args[0]),
         },
         {
             path: 'init',
@@ -1157,7 +1157,7 @@ export function createSessionsRoutes(
             fallback: 'Failed to initialize git repository',
             invalidError: null,
             parse: () => [],
-            run: (engine, sessionId) => engine.gitReviewInit(sessionId),
+            run: (engine, sessionId) => engine.executionAccess.gitReviewInit(sessionId),
         },
     ]
 

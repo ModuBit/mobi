@@ -16,7 +16,7 @@
 
 import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { ExecutorState } from '@mobi/node-core/api/types'
-import { DEFAULT_STOP_KIND, isCancelQueued, type DiffTarget, type PermissionAnswers, type PermissionUpdate, type ReviewActionResult, type ReviewCommitsResult, type ReviewContentsResult, type ReviewFilesResult, type ReviewOverview, type ReviewPatchResult, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionAnswers, type PermissionUpdate, type Workspace, type WorkspaceFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ForkCreationFailureReason } from '../store/sessionFork'
@@ -27,23 +27,8 @@ import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { LocalExecutor } from '../executor/localExecutor'
-import {
-    isUnexpectedAlreadyRunning,
-    UNEXPECTED_ALREADY_RUNNING,
-    type ExecutorHost,
-    type RpcDeleteUploadResponse,
-    type RpcGetWebToolsConfigResponse,
-    type RpcListDirectoryResponse,
-    type RpcReadFileMetaResponse,
-    type RpcReadFileRangeResponse,
-    type RpcRefreshMetadataResponse,
-    type RpcReplaceUploadResponse,
-    type RpcSaveFileResponse,
-    type RpcSetWebToolsConfigResponse,
-    type RpcVerifyWebToolsProviderResponse,
-    type RpcWriteFileRangeResponse,
-    type SpawnSessionOptions
-} from '../executor/executorHost'
+import { SessionExecutionAccess } from '../executor/sessionExecutionAccess'
+import { isUnexpectedAlreadyRunning, UNEXPECTED_ALREADY_RUNNING, type ExecutorHost, type RpcRefreshMetadataResponse, type SpawnSessionOptions } from '../executor/executorHost'
 import { getExecutorState } from './executorRuntime'
 import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
@@ -109,8 +94,11 @@ export class SyncEngine {
     private readonly rpcGateway: RpcGateway
     /** 执行层（ticket-15 起）：文件/spawn 等本机执行调用收拢点；ticket-20 起 socket 实现退场，
      *  LocalExecutor 是唯一实现（public 供装配与契约测试注入边界）。401 起字段名去 machine
-     *  （类型名 ExecutorHost 与目录改名随 602） */
+     *  （类型名 ExecutorHost 与目录改名随 602）。本类只经它做 spawn/清理类编排 */
     readonly executor: ExecutorHost
+    /** 会话执行访问（深化候选②票①）：文件/审查/web 工具等本机执行消费面的单一入口——
+     *  此前的 27 个纯/轻透传方法迁入该 module，web 路由直接消费，本类不再转发 */
+    readonly executionAccess: SessionExecutionAccess
     private readonly store: Store
     /**
      * 「这个会话此刻能不能收消息」的事实（不落库——它随会话进程生灭）。
@@ -189,6 +177,7 @@ export class SyncEngine {
         // socket 版实现已随 machine 通道删除（ticket-20）；缺省给无 bridge 的本地实现——
         // 非直调路径全可用，spawn 会报「bridge 未接线」（生产由 hubServer 注入带 bridge 的实例）
         this.executor = executor ?? new LocalExecutor(() => null)
+        this.executionAccess = new SessionExecutionAccess(store, this.executor)
         this.store = store
         this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
         this.factsSink = {
@@ -676,14 +665,10 @@ export class SyncEngine {
     }
 
     async deleteSession(sessionId: string): Promise<void> {
-        // 删除前读执行定位（删后 sessionCache 无行可查）；metadata 缺失不阻塞删除
-        const located = (() => {
-            try {
-                return this.resolveSessionFileExecution(sessionId)
-            } catch {
-                return null
-            }
-        })()
+        // 删除前读执行定位（删后 store 无行可查）；metadata 缺失不阻塞删除。
+        // 寻址规则单源在 executionAccess（store 直读）
+        const cwd = this.executionAccess.tryResolveCwd(sessionId)
+        const located = cwd !== null ? { cwd } : null
         await this.sessionCache.deleteSession(sessionId)
         // best-effort 清理轮次快照引用（ADR 0008 refs 治理 / pending #87）：CLI 离线时
         // 引用暂留——不消费不转发，仅占本机 .git 空间，不影响正确性
@@ -925,175 +910,6 @@ export class SyncEngine {
             await new Promise((resolve) => setTimeout(resolve, 250))
         }
         return false
-    }
-
-    async checkPathsExist(paths: string[]): Promise<Record<string, boolean>> {
-        return await this.executor.checkPathsExist(paths)
-    }
-
-    /**
-     * 会话文件 RPC 的执行定位（ADR 0006）：session 寻址、本机执行，无条件单路径。
-     * 文件/路径类 RPC 不再经会话进程——会话进程活不活不影响可达性（休眠特性的
-     * 「冷可读」地基）。cwd 取会话工作目录，缺失显式报错，**不回退 session
-     * socket**——双执行路径正是本决策要消灭的东西。save-file 亦 machine 化
-     * （dormancy：冷编辑器自动保存不唤醒；写边界由 daemon 注入 cwd 锚定，不再依赖
-     * daemon 进程自身 cwd）。machineId 入参已随 machine 概念移除退场
-     * （remove-machine 302：本地实现忽略，空串占位，602 形参收窄时删）。
-     */
-    private resolveSessionFileExecution(sessionId: string): { cwd: string } {
-        const session = this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId)
-        if (!session) {
-            throw new Error(`Session not found: ${sessionId}`)
-        }
-        // metadata 已是 MetadataSchema 的解析产物（sessionCache safeParse），
-        // path 类型由 schema 保证，无需再 cast + typeof 校验
-        const cwd = session.metadata?.path
-        if (!cwd) {
-            throw new Error(`Session ${sessionId} metadata is missing cwd — file RPC cannot be routed (see ADR 0006)`)
-        }
-        return { cwd }
-    }
-
-    async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostReadFileMeta(cwd, path)
-    }
-
-    async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostReadFileRange(cwd, path, offset, length)
-    }
-
-    async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostSaveFile(cwd, path, content, baseEtag)
-    }
-
-    async searchSessionFiles(sessionId: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostSearchFiles(cwd, query, type)
-    }
-
-    async listSessionDirectory(sessionId: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostListSessionDirectory(cwd, path, prefix)
-    }
-
-    async listHostDirectory(path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
-        return await this.executor.listHostDirectory(path, homeDir)
-    }
-
-    async hostUploadFileRange(
-        cwd: string,
-        filename: string,
-        path: string | undefined,
-        offset: number,
-        content: Uint8Array,
-        totalSize?: number,
-    ): Promise<RpcWriteFileRangeResponse> {
-        return await this.executor.hostUploadFileRange(cwd, filename, path, offset, content, totalSize)
-    }
-
-    async hostDeleteUpload(cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
-        return await this.executor.hostDeleteUpload(cwd, path)
-    }
-
-    /** 同 path 原子替换 machine 上的已上传文件 */
-    async hostReplaceUpload(cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
-        return await this.executor.hostReplaceUpload(cwd, path, content)
-    }
-
-    /** machine 通道读文件元信息（跨会话存活的静态资源读取，见 ExecutorHost.hostReadFileMeta） */
-    async hostReadFileMeta(cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
-        return await this.executor.hostReadFileMeta(cwd, path)
-    }
-
-    // ── 审查重写 v2 六方法（DiffTarget 统一模型，同 resolveSessionFileExecution 寻址）──
-    async gitReviewOverview(sessionId: string): Promise<ReviewOverview | { success: false; error: string }> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostGitReviewOverview(cwd, sessionId)
-    }
-
-    async gitReviewFiles(sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostGitReviewFiles(cwd, sessionId, target)
-    }
-
-    async gitReviewDiff(sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostGitReviewDiff(cwd, sessionId, target, path)
-    }
-
-    async gitReviewContents(sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostGitReviewContents(cwd, sessionId, target, path)
-    }
-
-    async gitReviewCommits(sessionId: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostGitReviewCommits(cwd, cursor)
-    }
-
-    async gitReviewInit(sessionId: string): Promise<ReviewActionResult | { success: false; error: string }> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostGitReviewInit(cwd)
-    }
-
-    /** machine 通道分片读文件（同上） */
-    async hostReadFileRange(cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
-        return await this.executor.hostReadFileRange(cwd, path, offset, length)
-    }
-
-    async hostSearchFiles(cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse> {
-        return await this.executor.hostSearchFiles(cwd, query, type)
-    }
-
-    async hostListSessionDirectory(cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
-        return await this.executor.hostListSessionDirectory(cwd, path, prefix)
-    }
-
-    async hostRefreshMetadata(cwd: string): Promise<RpcRefreshMetadataResponse> {
-        return await this.executor.hostRefreshMetadata(cwd)
-    }
-
-    // web 工具配置读写（纯透传，daemon 不存任何 web 工具状态）
-    async getWebToolsConfig(): Promise<RpcGetWebToolsConfigResponse> {
-        return await this.executor.getWebToolsConfig()
-    }
-
-    async setWebToolsConfig(config: unknown): Promise<RpcSetWebToolsConfigResponse> {
-        return await this.executor.setWebToolsConfig(config)
-    }
-
-    /** Web 工具 provider 验证连接（透传 executor RPC；草稿凭据优先，不落盘） */
-    async verifyWebToolsProvider(
-        providerId: string,
-        credentials?: Record<string, string>,
-    ): Promise<RpcVerifyWebToolsProviderResponse> {
-        return await this.executor.verifyWebToolsProvider(providerId, credentials)
-    }
-
-    async uploadFileRange(
-        sessionId: string,
-        filename: string,
-        path: string | undefined,
-        offset: number,
-        content: Uint8Array,
-        totalSize?: number,
-    ): Promise<RpcWriteFileRangeResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostUploadFileRange(cwd, filename, path, offset, content, totalSize)
-    }
-
-    async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostDeleteUpload(cwd, path)
-    }
-
-    /** 同 path 原子替换会话 machine 上的已上传文件（「编辑已有上传」场景） */
-    async replaceUploadFile(sessionId: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse> {
-        const { cwd } = this.resolveSessionFileExecution(sessionId)
-        return await this.executor.hostReplaceUpload(cwd, path, content)
     }
 
     async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {

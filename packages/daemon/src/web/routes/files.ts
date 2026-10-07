@@ -67,7 +67,7 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         }
 
         try {
-            const exists = await engine.checkPathsExist(uniquePaths)
+            const exists = await engine.executionAccess.checkPathsExist(uniquePaths)
             return c.json({ exists })
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to check paths' }, 500)
@@ -95,7 +95,7 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         }
 
         try {
-            const result = await engine.listHostDirectory(path, homeDir)
+            const result = await engine.executionAccess.listHostDirectory(path, homeDir)
             return c.json(result)
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }, 500)
@@ -127,8 +127,8 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         return serveFileContent(
             c,
             {
-                readFileMeta: (p) => engine.hostReadFileMeta(cwd, p),
-                readFileRange: (p, o, l) => engine.hostReadFileRange(cwd, p, o, l),
+                readFileMeta: (p) => engine.executionAccess.hostReadFileMeta(cwd, p),
+                readFileRange: (p, o, l) => engine.executionAccess.hostReadFileRange(cwd, p, o, l),
             },
             path,
             {
@@ -160,7 +160,7 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         if (cwdError) return cwdError
 
         try {
-            const result = await engine.hostSearchFiles(cwd, query, type)
+            const result = await engine.executionAccess.hostSearchFiles(cwd, query, type)
             return c.json(result)
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to search files' }, 500)
@@ -186,7 +186,7 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         const prefix = c.req.query('prefix') ?? undefined
 
         try {
-            const result = await engine.hostListSessionDirectory(cwd, path, prefix)
+            const result = await engine.executionAccess.hostListSessionDirectory(cwd, path, prefix)
             return c.json(result)
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list session directory' }, 500)
@@ -232,8 +232,8 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
                 reader,
                 filename,
                 totalSize,
-                (fn, p, off, chunk) => engine.hostUploadFileRange(cwd, fn, p, off, chunk, totalSize),
-                (p) => engine.hostDeleteUpload(cwd, p),
+                (fn, p, off, chunk) => engine.executionAccess.hostUploadFileRange(cwd, fn, p, off, chunk, totalSize),
+                (p) => engine.executionAccess.hostDeleteUpload(cwd, p),
             )
             return c.json({ success: true, path })
         } catch (error) {
@@ -260,7 +260,7 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         if (cwdError) return cwdError
 
         try {
-            const result = await engine.hostDeleteUpload(body.cwd, body.path)
+            const result = await engine.executionAccess.hostDeleteUpload(body.cwd, body.path)
             return c.json(result)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to delete upload' }, 500)
@@ -315,7 +315,7 @@ export function createFilesRoutes(getSyncEngine: () => SyncEngine | null): Hono<
         }
 
         try {
-            const result = await engine.hostReplaceUpload(cwd, path, concatBytes(parts))
+            const result = await engine.executionAccess.hostReplaceUpload(cwd, path, concatBytes(parts))
             return c.json(result)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to replace upload' }, 500)

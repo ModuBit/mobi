@@ -43,20 +43,22 @@ const mockSyncEngine = {
         sessionId: 's1',
         session: mockSession,
     }),
-    readFileMeta: async (_sessionId: string, path: string) => {
-        if (path === 'missing.txt') {
-            return { success: false, error: 'File not found', code: 'ENOENT' }
-        }
-        if (path === 'secret.txt') {
-            return { success: false, error: 'Access denied: protected directory', code: 'ACCESS_DENIED' }
-        }
-        if (path === 'boom.txt') {
-            return { success: false, error: 'stat crashed' }
-        }
-        return {
-            success: true,
-            meta: { mime: 'text/plain', size: 11, etag: '11-1' },
-        }
+    executionAccess: {
+        readFileMeta: async (_sessionId: string, path: string) => {
+            if (path === 'missing.txt') {
+                return { success: false, error: 'File not found', code: 'ENOENT' }
+            }
+            if (path === 'secret.txt') {
+                return { success: false, error: 'Access denied: protected directory', code: 'ACCESS_DENIED' }
+            }
+            if (path === 'boom.txt') {
+                return { success: false, error: 'stat crashed' }
+            }
+            return {
+                success: true,
+                meta: { mime: 'text/plain', size: 11, etag: '11-1' },
+            }
+        },
     },
 } as unknown as SyncEngine
 

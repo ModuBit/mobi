@@ -43,10 +43,12 @@ function makeEngine(saveImpl: (a: SaveArgs) => unknown, session: Session = mockS
     const calls: SaveArgs[] = []
     const engine = {
         resolveSessionAccess: () => ({ ok: true as const, sessionId: 'test-session-1', session }),
-        saveFile: async (sid: string, path: string, content: Uint8Array, baseEtag: string) => {
-            const args = { sid, path, content, baseEtag }
-            calls.push(args)
-            return saveImpl(args)
+        executionAccess: {
+            saveFile: async (sid: string, path: string, content: Uint8Array, baseEtag: string) => {
+                const args = { sid, path, content, baseEtag }
+                calls.push(args)
+                return saveImpl(args)
+            },
         },
     }
     return { engine: engine as unknown as SyncEngine, calls }

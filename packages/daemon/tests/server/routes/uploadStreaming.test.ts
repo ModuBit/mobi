@@ -53,14 +53,16 @@ const mockSyncEngine = {
         sessionId: 's1',
         session: mockSession,
     }),
-    uploadFileRange: async (
-        _sid: string, _fn: string, _path: string | undefined, offset: number, chunk: Uint8Array,
-    ) => {
-        uploadCalls.push({ offset, chunkLen: chunk.length })
-        if (offset === 0) return { success: true, path: '.mobi/uploads/x.png', written: chunk.length }
-        return { success: true, written: chunk.length }
+    executionAccess: {
+        uploadFileRange: async (
+            _sid: string, _fn: string, _path: string | undefined, offset: number, chunk: Uint8Array,
+        ) => {
+            uploadCalls.push({ offset, chunkLen: chunk.length })
+            if (offset === 0) return { success: true, path: '.mobi/uploads/x.png', written: chunk.length }
+            return { success: true, written: chunk.length }
+        },
+        deleteUploadFile: async () => ({ success: true }),
     },
-    deleteUploadFile: async () => ({ success: true }),
 } as unknown as SyncEngine
 
 describe('POST /api/sessions/:id/upload 流式', () => {

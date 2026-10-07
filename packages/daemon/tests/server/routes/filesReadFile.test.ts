@@ -30,24 +30,26 @@ const CHUNK = 'PNGDATA-bin'
 const HOME = homedir()
 
 const mockSyncEngine = {
-    hostReadFileMeta: async (_cwd: unknown, path: string) => {
-        if (path.endsWith('.missing.png')) {
-            return { success: false, error: 'ENOENT', code: 'ENOENT' }
-        }
-        if (path.endsWith('.png')) {
-            return { success: true, meta: { mime: 'image/png', size: CHUNK.length, etag: '8-123' } }
-        }
-        if (path.endsWith('.html')) {
-            return { success: true, meta: { mime: 'text/html', size: CHUNK.length, etag: '1-1' } }
-        }
-        return { success: false, error: 'File extension ".bin" is not allowed over machine channel' }
-    },
-    hostReadFileRange: async (_cwd: unknown, p: unknown, offset: number, length: number) => {
-        // 版本偏斜 CLI 模拟：success 但缺 chunk（rpcGateway 类型 cast 无运行时校验），serveFileContent 须干净截断
-        if ((p as string).endsWith('.ghost.png')) {
-            return { success: true }
-        }
-        return { success: true, chunk: new TextEncoder().encode(CHUNK.slice(offset, offset + length)) }
+    executionAccess: {
+        hostReadFileMeta: async (_cwd: unknown, path: string) => {
+            if (path.endsWith('.missing.png')) {
+                return { success: false, error: 'ENOENT', code: 'ENOENT' }
+            }
+            if (path.endsWith('.png')) {
+                return { success: true, meta: { mime: 'image/png', size: CHUNK.length, etag: '8-123' } }
+            }
+            if (path.endsWith('.html')) {
+                return { success: true, meta: { mime: 'text/html', size: CHUNK.length, etag: '1-1' } }
+            }
+            return { success: false, error: 'File extension ".bin" is not allowed over machine channel' }
+        },
+        hostReadFileRange: async (_cwd: unknown, p: unknown, offset: number, length: number) => {
+            // 版本偏斜 CLI 模拟：success 但缺 chunk（rpcGateway 类型 cast 无运行时校验），serveFileContent 须干净截断
+            if ((p as string).endsWith('.ghost.png')) {
+                return { success: true }
+            }
+            return { success: true, chunk: new TextEncoder().encode(CHUNK.slice(offset, offset + length)) }
+        },
     },
 } as unknown as SyncEngine
 

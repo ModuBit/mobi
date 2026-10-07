@@ -51,14 +51,16 @@ const mockSyncEngine = {
         sessionId: 's1',
         session: mockSession,
     }),
-    readFileMeta: async () => ({
-        success: true,
-        meta: { mime: FILE_MIME, size: FILE_CONTENT.byteLength, etag: FILE_ETAG },
-    }),
-    readFileRange: async (_sessionId: string, _path: string, offset: number, length: number) => {
-        rangeCalls.push({ offset, length })
-        const chunk = FILE_CONTENT.subarray(offset, offset + length)
-        return { success: true, chunk }
+    executionAccess: {
+        readFileMeta: async () => ({
+            success: true,
+            meta: { mime: FILE_MIME, size: FILE_CONTENT.byteLength, etag: FILE_ETAG },
+        }),
+        readFileRange: async (_sessionId: string, _path: string, offset: number, length: number) => {
+            rangeCalls.push({ offset, length })
+            const chunk = FILE_CONTENT.subarray(offset, offset + length)
+            return { success: true, chunk }
+        },
     },
 } as unknown as SyncEngine
 
@@ -229,13 +231,15 @@ describe('GET /api/sessions/:id/read-file 空文件', () => {
                 sessionId: 's1',
                 session: mockSession,
             }),
-            readFileMeta: async () => ({
-                success: true,
-                meta: { mime: 'application/x-empty', size: 0, etag: '0-1' },
-            }),
-            readFileRange: async (_s: string, _p: string, offset: number, length: number) => {
-                emptyRangeCalls.push({ offset, length })
-                return { success: true, chunk: new Uint8Array(0) }
+            executionAccess: {
+                readFileMeta: async () => ({
+                    success: true,
+                    meta: { mime: 'application/x-empty', size: 0, etag: '0-1' },
+                }),
+                readFileRange: async (_s: string, _p: string, offset: number, length: number) => {
+                    emptyRangeCalls.push({ offset, length })
+                    return { success: true, chunk: new Uint8Array(0) }
+                },
             },
         } as unknown as SyncEngine
         const setup = await setupTestApp(emptyEngine)

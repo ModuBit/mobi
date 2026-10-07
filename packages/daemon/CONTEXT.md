@@ -91,3 +91,9 @@ _Avoid_: 在 Socket handler 内内联落库规则（规则必须有主）、把�
 **出口剥离**:
 消息行离开 daemon 供 web 消费时，按工具策略对 tool_result 重内容做的展示层瘦身——文件类工具结果替换为占位、其余工具截断，Task 族与失败结果豁免。消息行在存储中始终是完整事实层；剥离只作用于消费边界、不可变命中才拷贝，不改存储事实，可随时调整或回退。
 _Avoid_: 数据删除（存储未动）、脱敏（目的不是安全）、内容裁剪（不指明发生在消费边界）
+
+### 本机执行
+
+**会话执行访问**:
+daemon 内本机执行消费面的单一入口（`SessionExecutionAccess`）：session 寻址族（按会话行解析 cwd 后落执行层：文件读写/上传替换/审查六方法）、host 直调族（web 端点自带 cwd/homeDir 的纯转发）、web 工具配置族。web 路由直接消费它；SyncEngine 只保留真编排（spawn/resume/wake/fork/rewind/dormancy），不再做透传。寻址规则（ADR 0006）：session 寻址、本机执行、无条件单路径，cwd 缺失显式报错、不回退会话 socket。
+_Avoid_: 在 SyncEngine 上加回透传方法（透传链正是深化候选②要消灭的）、在路由里自行查会话行解析 cwd（寻址规则单源在 module）

@@ -48,16 +48,18 @@ const mockSyncEngine = {
         sessionId: 's1',
         session: mockSession,
     }),
-    readFileMeta: async (_sessionId: string, path: string) => {
-        metaCalls.push(path)
-        return {
-            success: true,
-            meta: { mime: 'text/html', size: FILE_CONTENT.byteLength, etag: '5-1' },
-        }
-    },
-    readFileRange: async (_sessionId: string, _path: string, offset: number, length: number) => {
-        const chunk = FILE_CONTENT.subarray(offset, offset + length)
-        return { success: true, chunk }
+    executionAccess: {
+        readFileMeta: async (_sessionId: string, path: string) => {
+            metaCalls.push(path)
+            return {
+                success: true,
+                meta: { mime: 'text/html', size: FILE_CONTENT.byteLength, etag: '5-1' },
+            }
+        },
+        readFileRange: async (_sessionId: string, _path: string, offset: number, length: number) => {
+            const chunk = FILE_CONTENT.subarray(offset, offset + length)
+            return { success: true, chunk }
+        },
     },
 } as unknown as SyncEngine
 
@@ -146,10 +148,13 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         // 「复制链接」顶层打开时此前无 CSP——与 HTML 同一漏网。普通位图（png）不注入。
         const svgEngine = {
             ...mockSyncEngine,
-            readFileMeta: async () => ({
-                success: true,
-                meta: { mime: 'image/svg+xml', size: FILE_CONTENT.byteLength, etag: '5-1' },
-            }),
+            executionAccess: {
+                ...mockSyncEngine.executionAccess,
+                readFileMeta: async () => ({
+                    success: true,
+                    meta: { mime: 'image/svg+xml', size: FILE_CONTENT.byteLength, etag: '5-1' },
+                }),
+            },
         } as unknown as SyncEngine
         const setup = await setupTestApp(svgEngine)
         try {
@@ -171,14 +176,16 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
                 sessionId: 's1',
                 session: mockSession,
             }),
-            readFileMeta: async () => ({
-                success: true,
-                meta: { mime: 'text/css', size: FILE_CONTENT.byteLength, etag: '5-1' },
-            }),
-            readFileRange: async (_s: string, _p: string, offset: number, length: number) => ({
-                success: true,
-                chunk: FILE_CONTENT.subarray(offset, offset + length),
-            }),
+            executionAccess: {
+                readFileMeta: async () => ({
+                    success: true,
+                    meta: { mime: 'text/css', size: FILE_CONTENT.byteLength, etag: '5-1' },
+                }),
+                readFileRange: async (_s: string, _p: string, offset: number, length: number) => ({
+                    success: true,
+                    chunk: FILE_CONTENT.subarray(offset, offset + length),
+                }),
+            },
         } as unknown as SyncEngine
         const setup = await setupTestApp(engine)
         try {
@@ -211,9 +218,12 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         // ACCESS_DENIED 拒绝，锁定「拒绝结果经 fileMetaHttpStatus 映射 403」的契约。
         const rejectingEngine = {
             ...mockSyncEngine,
-            readFileMeta: async (_sessionId: string, path: string) => {
-                metaCalls.push(path)
-                return { success: false, error: `Access denied: Path '${path}' is outside the working directory`, code: 'ACCESS_DENIED' }
+            executionAccess: {
+                ...mockSyncEngine.executionAccess,
+                readFileMeta: async (_sessionId: string, path: string) => {
+                    metaCalls.push(path)
+                    return { success: false, error: `Access denied: Path '${path}' is outside the working directory`, code: 'ACCESS_DENIED' }
+                },
             },
         } as unknown as SyncEngine
         const setup = await setupTestApp(rejectingEngine)
@@ -276,8 +286,10 @@ describe('GET /api/sessions/:id/serve-file/* 错误码', () => {
                 sessionId: 's1',
                 session: mockSession,
             }),
-            readFileMeta: async () => ({ success: false, error: 'ENOENT: no such file or directory', code: 'ENOENT' }),
-            readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+            executionAccess: {
+    readFileMeta: async () => ({ success: false, error: 'ENOENT: no such file or directory', code: 'ENOENT' }),
+                readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+            },
         } as unknown as SyncEngine
         const setup = await setupTestApp(engine)
         try {
@@ -300,8 +312,10 @@ describe('GET /api/sessions/:id/serve-file/* 错误码', () => {
                 sessionId: 's1',
                 session: mockSession,
             }),
-            readFileMeta: async () => ({ success: false, error: 'registry: foo not found in cache' }),
-            readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+            executionAccess: {
+    readFileMeta: async () => ({ success: false, error: 'registry: foo not found in cache' }),
+                readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+            },
         } as unknown as SyncEngine
         const setup = await setupTestApp(engine)
         try {
@@ -323,8 +337,10 @@ describe('GET /api/sessions/:id/serve-file/* 错误码', () => {
                 sessionId: 's1',
                 session: noCwdSession,
             }),
-            readFileMeta: async () => ({ success: true, meta: { mime: 'text/html', size: 1, etag: 'e' } }),
-            readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+            executionAccess: {
+    readFileMeta: async () => ({ success: true, meta: { mime: 'text/html', size: 1, etag: 'e' } }),
+                readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+            },
         } as unknown as SyncEngine
         const setup = await setupTestApp(engine)
         try {

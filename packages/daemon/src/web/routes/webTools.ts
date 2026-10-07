@@ -34,7 +34,7 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const result = await engine.getWebToolsConfig()
+            const result = await engine.executionAccess.getWebToolsConfig()
             return c.json(result)
         } catch (error) {
             // 502 = executor RPC 传输层不可达/超时；业务失败走 envelope 200（与 CLI 侧 RpcHandlerManager ack 行为对齐）
@@ -54,7 +54,7 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const result = await engine.setWebToolsConfig(body.config)
+            const result = await engine.executionAccess.setWebToolsConfig(body.config)
             return c.json(result)
         } catch (error) {
             // 502 = executor RPC 传输层不可达/超时；业务失败走 envelope 200（与 CLI 侧 RpcHandlerManager ack 行为对齐）
@@ -79,7 +79,7 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const result = await engine.verifyWebToolsProvider(parsed.data.providerId, parsed.data.credentials)
+            const result = await engine.executionAccess.verifyWebToolsProvider(parsed.data.providerId, parsed.data.credentials)
             return c.json(result)
         } catch (error) {
             // 502 = executor RPC 传输层不可达/超时；业务失败走 envelope 200（与 get/set 一致）
