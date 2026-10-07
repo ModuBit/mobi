@@ -24,6 +24,7 @@ import {
     type RemoteRewindPlan,
 } from '@/claude/claudeRemote'
 import type { EnhancedMode } from '@/claude/types'
+import { stubSnapshotSender } from './utils/splitRemoteArgs'
 
 /**
  * attach 编舞测试（深化候选④票①）：interface 收窄为「轮次参数 + 消息源 + 事件汇」后，
@@ -69,7 +70,7 @@ function makeEvents() {
         onMessage: vi.fn(),
         onSnapshot: vi.fn(),
         registerSnapshotReset: vi.fn(),
-        getConverter: () => ({ convertSnapshot: vi.fn() }) as never,
+        createSnapshotSender: () => stubSnapshotSender() as never,
         onCompletionEvent: vi.fn(),
         onCompactCompleted: vi.fn(),
         onCompactStart: vi.fn(),

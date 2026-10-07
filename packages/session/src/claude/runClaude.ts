@@ -335,14 +335,49 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     let currentEffort: EffortLevel = options.effort ?? 'medium';
     let currentPermissionMode: PermissionMode = options.permissionMode ?? 'default';
     let currentModel: SessionModel = initialModel;
-    let currentFallbackModel: string | undefined = undefined; // Track current fallback model
-    let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
-    let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
-    let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
-    let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    // 消息级 meta 覆盖五字段的会话级记忆（深化候选④票③：五段同构解析归 MESSAGE_META_FIELDS 表，
+    // 与会话级 LIVE_CONFIG_APPLIERS 并列成「会话级/消息级」两张配置表）
+    const sessionMetaOverrides: SessionMetaOverrides = {
+        fallbackModel: undefined,
+        customSystemPrompt: undefined,
+        appendSystemPrompt: undefined,
+        allowedTools: undefined,
+        disallowedTools: undefined,
+    };
 
     // SDK Query 动态控制引用，用于 setModel/setPermissionMode
     const queryControlRef: QueryControlRef = { current: null };
+
+
+/** 消息级 meta 覆盖字段表（深化候选④票③）：五段同构解析归一。
+ *  key = meta 字段名 = EnhancedMode 同名键；到达时「取会话记忆 → meta 覆盖
+ *  （null 归一 undefined）→ 回写记忆」三步同构，仅日志文案逐字段差异 */
+type SessionMetaValue = string | string[] | undefined
+type SessionMetaOverrides = {
+    fallbackModel: string | undefined
+    customSystemPrompt: string | undefined
+    appendSystemPrompt: string | undefined
+    allowedTools: string[] | undefined
+    disallowedTools: string[] | undefined
+}
+const MESSAGE_META_FIELDS: ReadonlyArray<{
+    key: keyof SessionMetaOverrides
+    label: string
+    capitalLabel: string
+    describeUpdated: (v: SessionMetaValue) => string
+    describeCurrent: (v: SessionMetaValue) => string
+}> = [
+    { key: 'customSystemPrompt', label: 'custom system prompt', capitalLabel: 'Custom system prompt',
+      describeUpdated: (v) => (typeof v === 'string' && v) ? 'set' : 'reset to none', describeCurrent: (v) => v ? 'set' : 'none' },
+    { key: 'fallbackModel', label: 'fallback model', capitalLabel: 'Fallback model',
+      describeUpdated: (v) => (typeof v === 'string' && v) || 'none', describeCurrent: (v) => (typeof v === 'string' && v) || 'none' },
+    { key: 'appendSystemPrompt', label: 'append system prompt', capitalLabel: 'Append system prompt',
+      describeUpdated: (v) => (typeof v === 'string' && v) ? 'set' : 'reset to none', describeCurrent: (v) => v ? 'set' : 'none' },
+    { key: 'allowedTools', label: 'allowed tools', capitalLabel: 'Allowed tools',
+      describeUpdated: (v) => Array.isArray(v) ? v.join(', ') : 'none', describeCurrent: (v) => (Array.isArray(v) && v.length) ? v.join(', ') : 'none' },
+    { key: 'disallowedTools', label: 'disallowed tools', capitalLabel: 'Disallowed tools',
+      describeUpdated: (v) => Array.isArray(v) ? v.join(', ') : 'none', describeCurrent: (v) => (Array.isArray(v) && v.length) ? v.join(', ') : 'none' },
+]
 
     // live 配置字段的「session 状态读写 + 运行中动态 apply」接线表（深化候选②）：
     // 新增 live 字段在此注册一行，diff 与动态 apply 由 syncSessionModes 统一遍历；
@@ -407,54 +442,19 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         const messageModel = currentModel ?? undefined;
         logger.debug(`[loop] User message received with permission mode: ${currentPermissionMode}, model: ${currentModel ?? 'auto'}`);
 
-        // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
-        let messageCustomSystemPrompt = currentCustomSystemPrompt;
-        if (message.meta && 'customSystemPrompt' in message.meta) {
-            messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
-            currentCustomSystemPrompt = messageCustomSystemPrompt;
-            logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no custom system prompt override, using current: ${currentCustomSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
-        let messageFallbackModel = currentFallbackModel;
-        if (message.meta && 'fallbackModel' in message.meta) {
-            messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
-            currentFallbackModel = messageFallbackModel;
-            logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no fallback model override, using current: ${currentFallbackModel || 'none'}`);
-        }
-
-        // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
-        let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta && 'appendSystemPrompt' in message.meta) {
-            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
-            currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
-        let messageAllowedTools = currentAllowedTools;
-        if (message.meta && 'allowedTools' in message.meta) {
-            messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
-            currentAllowedTools = messageAllowedTools;
-            logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no allowed tools override, using current: ${currentAllowedTools ? currentAllowedTools.join(', ') : 'none'}`);
-        }
-
-        // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
-        let messageDisallowedTools = currentDisallowedTools;
-        if (message.meta && 'disallowedTools' in message.meta) {
-            messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
-            currentDisallowedTools = messageDisallowedTools;
-            logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
+        // 消息级 meta 覆盖（五字段同构，深化候选④票③归表）：取会话记忆 → meta 覆盖
+        // （null 归一 undefined）→ 回写记忆；本条消息的生效值进 enhancedMode
+        const messageMeta: SessionMetaOverrides = { ...sessionMetaOverrides };
+        for (const field of MESSAGE_META_FIELDS) {
+            if (message.meta && field.key in message.meta) {
+                const override = ((message.meta as Record<string, unknown>)[field.key] || undefined) as SessionMetaValue;
+                // 表驱动写入走联合视图（字段级类型在 EnhancedMode 消费处收口）
+                ;(messageMeta as Record<string, SessionMetaValue>)[field.key] = override;
+                ;(sessionMetaOverrides as Record<string, SessionMetaValue>)[field.key] = override;
+                logger.debug(`[loop] ${field.capitalLabel} updated from user message: ${field.describeUpdated(override)}`);
+            } else {
+                logger.debug(`[loop] User message received with no ${field.label} override, using current: ${field.describeCurrent(sessionMetaOverrides[field.key])}`);
+            }
         }
 
         // 防御性归一：daemon 落库恒为 block 数组，但历史库回放/旧 daemon 窗口期可能仍是平铺对象或 string。
@@ -471,11 +471,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode ?? 'default',
             model: messageModel,
-            fallbackModel: messageFallbackModel,
-            customSystemPrompt: messageCustomSystemPrompt,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools
+            fallbackModel: messageMeta.fallbackModel,
+            customSystemPrompt: messageMeta.customSystemPrompt,
+            appendSystemPrompt: messageMeta.appendSystemPrompt,
+            allowedTools: messageMeta.allowedTools,
+            disallowedTools: messageMeta.disallowedTools
         };
 
         if (specialCommand.type === 'compact') {
@@ -662,11 +662,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 permissionMode: currentSessionRef.current?.getPermissionMode() ?? currentPermissionMode,
                 model: currentModel ?? undefined,
                 effort: currentEffort,
-                fallbackModel: currentFallbackModel,
-                customSystemPrompt: currentCustomSystemPrompt,
-                appendSystemPrompt: currentAppendSystemPrompt,
-                allowedTools: currentAllowedTools,
-                disallowedTools: currentDisallowedTools,
+                fallbackModel: sessionMetaOverrides.fallbackModel,
+                customSystemPrompt: sessionMetaOverrides.customSystemPrompt,
+                appendSystemPrompt: sessionMetaOverrides.appendSystemPrompt,
+                allowedTools: sessionMetaOverrides.allowedTools,
+                disallowedTools: sessionMetaOverrides.disallowedTools,
             }),
             flushConfig: syncSessionModes,
         });

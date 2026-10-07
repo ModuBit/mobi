@@ -966,8 +966,9 @@ export interface RemoteSessionEvents {
     onSnapshot: (out: import('./utils/streamSnapshotSender').SnapshotOut) => void
     /** 注册 snapshot 流重基线回调（socket 重连时触发发送器重发全量帧）；缺省不注册 */
     registerSnapshotReset?: (fn: () => void) => void
-    /** Snapshot converter，用于生成与最终消息一致的 DecryptedMessage */
-    getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter
+    /** 流式快照发送器工厂（深化候选④票③：converter 归转换链 runtime 所有，
+     *  运行层不再经 getConverter 借用——sender 构造收进 runtime 一处） */
+    createSnapshotSender: (onSnapshot: (out: import('./utils/streamSnapshotSender').SnapshotOut) => void) => import('./utils/streamSnapshotSender').StreamSnapshotSender
     onCompletionEvent?: (message: string) => void
     /** compact 结束（result）时触发，发结构化完成事件给 web 作压缩态退出信号（成功失败都发） */
     onCompactCompleted?: () => void
@@ -1388,11 +1389,8 @@ export async function claudeRemote(
 
     /** attach 完成后启动流式快照发送器与输出循环（提前激活与 fallback attach 共用） */
     const startOutputLoop = (q: Query): void => {
-        // 流式输出：Snapshot 发送器
-        snapshotSender = new StreamSnapshotSender(
-            events.onSnapshot,
-            events.getConverter(),
-        );
+        // 流式输出：Snapshot 发送器（构造归转换链 runtime，见事件汇 createSnapshotSender）
+        snapshotSender = events.createSnapshotSender(events.onSnapshot);
         snapshotSender.start();
         // socket 重连重基线：断线期间增量帧已丢，重连后立即重发全量帧重建 daemon 侧基线
         events.registerSnapshotReset?.(() => snapshotSender?.forceFullFlush());

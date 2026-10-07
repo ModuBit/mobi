@@ -20,12 +20,27 @@
  * 直接用三分组构造，不经此适配。
  */
 
+/** StreamSnapshotSender 无操作替身：旧扁平 opts 测试与 attach 编舞测试共用
+ *  （sender 构造已收进 SessionStreamRuntime，测试不再有真 converter 可喂） */
+export function stubSnapshotSender(): Record<string, unknown> {
+    const noop = () => {}
+    return {
+        start: noop, destroy: noop, forceFullFlush: noop, flush: noop, clearBuffers: noop,
+        setSnapshotOpts: noop, startBlock: noop, append: noop, endBlock: noop,
+        currentStreamLocalId: () => null, markFullDelivered: noop, consumePendingFull: () => null,
+        injectThinkingMeta: noop,
+    }
+}
+
 /** 旧扁平 opts 的 rewind 四件套 → RemoteRewindPlan 子对象（resumeSessionAt 缺省 = 非截断轮） */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function splitRemoteArgs(flat: Record<string, any>): any[] {
     const {
         resumeSessionAt, resumeDropsTurn, onRewindTruncated, onRewindRefusal,
         nextMessage, onCollectedMessageAbandoned,
+        // getConverter 已被 createSnapshotSender 取代（深化候选④票③）——旧测试的
+        // converter 替身仅服务 sender 构造，直接换成无操作 sender 替身
+        getConverter: _getConverter,
         ...rest
     } = flat
 
@@ -45,7 +60,7 @@ export function splitRemoteArgs(flat: Record<string, any>): any[] {
 
     const round: Record<string, any> = { rewind }
     const source: Record<string, any> = { nextMessage, onCollectedMessageAbandoned }
-    const events: Record<string, any> = {}
+    const events: Record<string, any> = { createSnapshotSender: () => stubSnapshotSender() }
     for (const [k, v] of Object.entries(rest)) {
         if (roundKeys.includes(k)) round[k] = v
         else if (sourceKeys.includes(k)) source[k] = v

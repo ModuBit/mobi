@@ -31,14 +31,13 @@ import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "../ui/messageFormatterInk";
 import { logger } from "@mobi/node-core/logger";
-import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { applyContextReset } from "./utils/contextReset";
+import { SessionStreamRuntime } from "./claudeSessionRuntime";
 import { applySessionIdBinding } from "./utils/sessionIdBinding";
 import { CompactStartGate } from "./utils/compactLifecycle";
 import { InboundChannel } from "./utils/inboundChannel";
 import { ContextUsageTracker } from "./contextUsageTracker";
 import { EnhancedMode, type QueryControlRef } from "./types";
-import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
 import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
@@ -55,7 +54,7 @@ import { FileTurnFulltextStore, getTurnFulltextRoot } from "@mobi/node-core/git/
 import { getProjectPath } from "./utils/path";
 import { discoverCapabilities } from "./utils/capabilityDiscovery";
 import type { LauncherDormancyFacts } from "./utils/dormancyGate";
-import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
+import { extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
     resolvePostInterruptAction,
@@ -70,13 +69,6 @@ import {
 
 /** commands_changed 触发能力发现的最小间隔 */
 const COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS = 10_000;
-
-interface PermissionsField {
-    date: number;
-    result: 'approved' | 'denied';
-    mode?: ClaudePermissionMode;
-    allowedTools?: string[];
-}
 
 /** fork 激活失败上报的最小 client 面（结构化参数，避免依赖具体 client 实现类） */
 type ForkFailureReporter = Pick<ApiSessionClient, 'updateMetadata' | 'sendSessionEvent'>;
@@ -535,7 +527,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const turnArchive = new FileTurnArchiveStore(getTurnArchivePath(session.path, session.client.sessionId));
         const turnFulltext = new FileTurnFulltextStore(getTurnFulltextRoot(session.path, session.client.sessionId), session.path);
         const turnDiffReporter = new TurnDiffReporter(
-            (m) => messageQueue.enqueue(m),
+            (m) => stream.queue.enqueue(m),
             turnArchive,
             turnFulltext,
         );
@@ -651,9 +643,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         });
         this.permissionHandler = permissionHandler;
 
-        const messageQueue = new OutgoingMessageQueue<RawJSONLines>(
-            (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
-        );
+        // 转换链装配（深化候选④票③）：converter + 出站排队 + snapshot 发送器工厂
+        // 收进 SessionStreamRuntime 单一归属；权限回执传活引用（回填与 converter 同视图）
+        const stream = new SessionStreamRuntime({
+            context: { sessionId: session.sessionId || 'unknown', cwd: session.path, version: process.env.npm_package_version },
+            permissionResponses: permissionHandler.getResponses(),
+            send: (logMessage) => session.client.sendClaudeSessionMessage(logMessage),
+        });
 
         // 消费前排序屏障：排队消息被消费时（collectBatch → onBatchConsumed → pushed fact 直连
         // emit），先清空本发送队列——上一轮消息（含 result）经 setTimeout(0) 异步发送，不 flush 的
@@ -661,20 +657,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // Web 按 positionAt 排序会把排队消息排到上一轮 result 之前（详见 setBeforeCollect）。
         // 屏障只保证「fact 晚于 result 发出」；跨时钟时间戳比较（fact.at vs result 落库时刻）
         // 的残余竞态由 daemon 侧 markMessagesPushed 的 position 地板（时间线 max+1）兜底。
-        session.queue.setBeforeCollect(() => messageQueue.flush());
+        session.queue.setBeforeCollect(() => stream.queue.flush());
 
         permissionHandler.setOnPermissionRequest((toolCallId: string) => {
-            messageQueue.releaseToolCall(toolCallId);
+            stream.queue.releaseToolCall(toolCallId);
         });
 
-        const sdkToLogConverter = new SDKToLogConverter({
-            sessionId: session.sessionId || 'unknown',
-            cwd: session.path,
-            version: process.env.npm_package_version
-        }, permissionHandler.getResponses());
+
 
         const handleSessionFound = (sessionId: string) => {
-            sdkToLogConverter.updateSessionId(sessionId);
+            stream.converter.updateSessionId(sessionId);
         };
         this.handleSessionFound = handleSessionFound;
         session.addSessionFoundCallback(handleSessionFound);
@@ -793,7 +785,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     for (const c of umessage.message.content) {
                         if (c.type === 'tool_result' && c.tool_use_id) {
                             ongoingToolCalls.delete(c.tool_use_id);
-                            messageQueue.releaseToolCall(c.tool_use_id);
+                            stream.queue.releaseToolCall(c.tool_use_id);
                         }
                     }
                 }
@@ -830,110 +822,39 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             };
         }
 
-        /** 转换尾段（票③将随 converter 装配收进 runtime）：discarded 过滤、中断 result 处理、
-         *  权限回填写入、tool_use 延迟排队、落库入列与轮次变更合成触发 */
-        const dispatchConverted = (logMessage: RawJSONLines, message: SDKMessage): void => {
-            // 轮次变更观测（投影口径数据源），失败不影响主流程
-            turnDiffReporter.observe(logMessage);
 
-            // 过滤 discard 类消息，不发送到 daemon
-            if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
-                return
-            }
-
-            // 中断 result 处理（emitAbortedEvent 的消费点，见 pendingAbortInfo 注释）。
-            // 正常/compact result 到达即作废待注入信息与撤回抑制标志（跨 turn 陈旧防护）。
-            // RawJSONLines 无 'result' discriminant（见 sdkToLogConverter case 'result'），走开放形状断言
-            if ((logMessage as { type?: string }).type === 'result') {
+        /** 转换尾段钩子（深化候选④票③）：停止/撤回语义留 launcher，链路顺序归 runtime */
+        const dispatchHooks = {
+            observeTurnDiff: (m: RawJSONLines) => turnDiffReporter.observe(m),
+            /** 中断 result：撤回死亡回执只拦第一条（标志消费即清）；stopKind/stillQueuedCount
+             *  注入下一条经过的中断 result；正常/compact result 清标志（跨 turn 陈旧防护） */
+            consumeResultFlags: (logMessage: RawJSONLines): boolean => {
                 const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
-                if (isAbortedTerminalReason(reason)) {
-                    // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 daemon 转发/落库。
-                    // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
-                    // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
-                    if (this.suppressNextInterruptedResult) {
-                        this.suppressNextInterruptedResult = false
-                        return
-                    }
-                    if (this.pendingAbortInfo) {
-                        const target = logMessage as unknown as Record<string, unknown>
-                        target.stopKind = this.pendingAbortInfo.stopKind
-                        target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
-                        this.pendingAbortInfo = null
-                    }
-                } else {
+                if (!isAbortedTerminalReason(reason)) {
                     this.pendingAbortInfo = null
                     this.suppressNextInterruptedResult = false
+                    return false
                 }
-            }
-
-            if (logMessage.type === 'user' && logMessage.message?.content) {
-                const content = Array.isArray(logMessage.message.content)
-                    ? logMessage.message.content
-                    : [];
-
-                for (let i = 0; i < content.length; i++) {
-                    const c = content[i];
-                    if (c.type === 'tool_result' && c.tool_use_id) {
-                        const responses = permissionHandler.getResponses();
-                        const response = responses.get(c.tool_use_id);
-
-                        if (response) {
-                            const permissions: PermissionsField = {
-                                date: response.receivedAt || Date.now(),
-                                result: response.approved ? 'approved' : 'denied'
-                            };
-
-                            if (response.mode) {
-                                permissions.mode = response.mode;
-                            }
-
-                            if (response.allowTools && response.allowTools.length > 0) {
-                                permissions.allowedTools = response.allowTools;
-                            }
-
-                            content[i] = {
-                                ...c,
-                                permissions
-                            };
-                        }
-                    }
+                // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 daemon 转发/落库。
+                // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
+                // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
+                if (this.suppressNextInterruptedResult) {
+                    this.suppressNextInterruptedResult = false
+                    return true
                 }
-            }
-
-            if (logMessage.type === 'assistant' && message.type === 'assistant') {
-                const assistantMsg = message as SDKAssistantMessage;
-                const toolCallIds: string[] = [];
-
-                if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
-                    for (const block of assistantMsg.message.content) {
-                        if (block.type === 'tool_use' && block.id) {
-                            toolCallIds.push(block.id);
-                        }
-                    }
+                if (this.pendingAbortInfo) {
+                    const target = logMessage as unknown as Record<string, unknown>
+                    target.stopKind = this.pendingAbortInfo.stopKind
+                    target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
+                    this.pendingAbortInfo = null
                 }
-
-                if (toolCallIds.length > 0) {
-                    const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
-
-                    if (!isSidechain) {
-                        messageQueue.enqueue(logMessage, {
-                            delay: 250,
-                            toolCallIds
-                        });
-                        return;
-                    }
-                }
-            }
-
-            // result 先入列再触发合成：卡片必须排在 result 之后（FIFO 时间线顺序）。
-            // 合成完成后经同一队列入列。两行顺序不可换——非 git 投影口径的合成是
-            // 同步快路径（无 await），先触发会让卡片抢先注册进队列；撤回路径（上方
-            // 提前 return）不触发——被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
-            messageQueue.enqueue(logMessage);
-            if ((logMessage as { type?: string }).type === 'result') {
+                return false
+            },
+            /** result 行入列后触发轮次变更合成（卡片必须排在 result 之后——顺序契约在 runtime.dispatch） */
+            onResultEnqueued: (m: RawJSONLines) => {
                 // uuid = result 行落库 localId 同源（apiSession 咽喉点）——卡片位置声明按它锚定归属行
-                void turnDiffReporter.onTurnEnd((logMessage as { uuid?: string }).uuid);
-            }
+                void turnDiffReporter.onTurnEnd((m as { uuid?: string }).uuid);
+            },
         }
 
         /** SDK 消息唯一入口：拦截 → 观测 → 转换 → 分发 的装配序 */
@@ -947,9 +868,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             handleInitSignal(message)
             trackToolUsage(message)
             const msg = applyPlanModeApproval(message)
-            const logMessage = sdkToLogConverter.convert(msg);
+            const logMessage = stream.converter.convert(msg);
             if (logMessage) {
-                dispatchConverted(logMessage, message)
+                stream.dispatch(logMessage, message, dispatchHooks)
             }
         };
 
@@ -1009,7 +930,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 if (isNewSession) {
                     messageBuffer.addMessage('Starting new Claude session...', 'status');
                     permissionHandler.reset();
-                    sdkToLogConverter.resetParentChain();
+                    stream.converter.resetParentChain();
                     logger.debug(`[remote]: New session detected (previous: ${previousSessionId}, current: ${session.sessionId})`);
                 } else {
                     messageBuffer.addMessage('Continuing Claude session...', 'status');
@@ -1221,7 +1142,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onReady: () => this.handleTurnReady(),
                         onSnapshot: (out) => this.sendSnapshotOut(out),
                         registerSnapshotReset: (fn) => session.client.setSnapshotTransportReset(fn),
-                        getConverter: () => sdkToLogConverter,
+                        createSnapshotSender: (onSnapshot) => stream.createSnapshotSender(onSnapshot),
                         // 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库。
                         // 经 messageQueue 入队（非直接 send）：让 messageQueue 统一仲裁顺序——abort 时
                         // messageQueue 可能含 delay 中的上一条 assistant（tool_use 未配对 result），补全按 FIFO
@@ -1230,12 +1151,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // 清理 snapshot + 追加补全 full，刷新后内容仍在。
                         onAbortFlush: (pending) => {
                             try {
-                                const raw = sdkToLogConverter.convertSnapshot(pending.blocks, {
+                                const raw = stream.converter.convertSnapshot(pending.blocks, {
                                     model: pending.model,
                                     parentToolUseId: pending.parentToolUseId,
                                     messageId: pending.messageId,
                                 });
-                                messageQueue.enqueue(raw);
+                                stream.queue.enqueue(raw);
                             } catch (e) {
                                 logger.warn('[remote]: onAbortFlush failed', e);
                             }
@@ -1299,7 +1220,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     logger.debug('[remote]: launch finally');
 
                     for (const [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
-                        const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
+                        const converted = stream.converter.generateInterruptedToolResult(toolCallId, parentToolCallId);
                         if (converted) {
                             logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
                             session.client.sendClaudeSessionMessage(converted);
@@ -1308,8 +1229,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     ongoingToolCalls.clear();
 
                     logger.debug('[remote]: flushing message queue');
-                    await messageQueue.flush();
-                    messageQueue.destroy();
+                    await stream.queue.flush();
+                    stream.queue.destroy();
                     logger.debug('[remote]: message queue flushed');
 
                     this.abortController = null;

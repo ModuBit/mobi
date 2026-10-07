@@ -72,6 +72,10 @@ _Avoid_: 往轮次参数里塞 on* 回调、绕开 listener 直接透传散回�
 本轮待投递用户消息的拉取与交回（nextMessage + onCollectedMessageAbandoned）。独立成组的意义是测试面——事件汇 fake + 可控消息源可直驱运行层，锁 attach 编舞（提前激活/fallback/rewind/fork 四路径）的对外可观察行为。
 _Avoid_: 测试里构造整套 launcher 才能驱动 claudeRemote
 
+**转换链（SessionStreamRuntime）**:
+SDK 消息 → 落库行的转换装配 module（深化候选④票③）：converter（SDKToLogConverter）、出站排队（OutgoingMessageQueue 的 tool_use 配对延迟与 FIFO 仲裁）、流式快照发送器工厂三件单一归属。dispatch 的「result 先入列再触发轮次合成」顺序契约在此锁定（此前靠跨文件时序注释维持）；运行层经 `createSnapshotSender` 消费，不再借 converter。
+_Avoid_: 在 launcher/运行层直接 new converter 或 OutgoingMessageQueue、把停止/撤回语义写进转换链（经 dispatchHooks 注入）
+
 **Hook Server**:
 local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server（hook 经 hook-forwarder 命令转发）。
 
