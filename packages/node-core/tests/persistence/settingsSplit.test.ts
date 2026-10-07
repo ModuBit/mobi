@@ -181,7 +181,7 @@ describe('cli settings 拆分', () => {
     })
 
     it('503 machineId 清除：cli 配置残留字段被一次性删除，其余字段保留（幂等）', async () => {
-        writeFileSync(cliFile(), JSON.stringify({ cliApiToken: 'kept', machineId: 'legacy-mid', apiUrl: 'http://x' }))
+        writeFileSync(cliFile(), JSON.stringify({ cliApiToken: 'kept', machineId: 'legacy-mid', updateChannel: 'beta' }))
         const { migrateLegacyCliSettings } = await loadPersistence()
 
         await migrateLegacyCliSettings()
@@ -189,7 +189,7 @@ describe('cli settings 拆分', () => {
         const cli = readJson(cliFile())
         expect(cli.machineId).toBeUndefined()
         expect(cli.cliApiToken).toBe('kept')
-        expect(cli.apiUrl).toBe('http://x')
+        expect(cli.updateChannel).toBe('beta')
 
         // 幂等：再跑不写盘（无残留直接返回）
         await migrateLegacyCliSettings()

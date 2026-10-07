@@ -20,13 +20,17 @@
  * 端口漂移类 bug 一处修——这里的断言就是全仓库的口径。
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
     DEFAULT_LISTEN_PORT,
     HOST_PORT_OFFSET,
     resolveHostPort,
     hostChannelUrl,
     defaultHostChannelUrl,
+    localDaemonHostChannelUrl,
 } from '@/hostChannel'
 
 afterEach(() => {
@@ -69,5 +73,42 @@ describe('hostChannelUrl / defaultHostChannelUrl', () => {
 
     it('开箱默认 = 默认主端口的派生 URL', () => {
         expect(defaultHostChannelUrl()).toBe('http://127.0.0.1:12222')
+    })
+})
+
+describe('localDaemonHostChannelUrl（同机 CLI 地址权威源）', () => {
+    const stateFile = join(tmpdir(), 'mobi-test-host-channel', 'daemon.state.json')
+    const daemonSettingsFile = join(tmpdir(), 'mobi-test-host-channel', 'settings.daemon.json')
+
+    beforeEach(() => {
+        rmSync(dirname(stateFile), { recursive: true, force: true })
+        mkdirSync(dirname(stateFile), { recursive: true })
+    })
+
+    it('daemon 运行中：state 的 hostPort 是权威事实，优先于 settings 派生', () => {
+        writeFileSync(stateFile, JSON.stringify({ pid: 1, httpPort: 2300, hostPort: 12300, controlPort: 3333 }))
+        writeFileSync(daemonSettingsFile, JSON.stringify({ listenPort: 2222 }))
+        expect(localDaemonHostChannelUrl(stateFile, daemonSettingsFile)).toBe('http://127.0.0.1:12300')
+    })
+
+    it('daemon 未运行：settings.daemon.json 的 listenPort 派生（自定义端口场景）', () => {
+        writeFileSync(daemonSettingsFile, JSON.stringify({ listenPort: 2300 }))
+        expect(localDaemonHostChannelUrl(stateFile, daemonSettingsFile)).toBe('http://127.0.0.1:12300')
+    })
+
+    it('listenPort 派生尊重 MOBI_HOST_PORT env 覆盖', () => {
+        vi.stubEnv('MOBI_HOST_PORT', '13000')
+        writeFileSync(daemonSettingsFile, JSON.stringify({ listenPort: 2300 }))
+        expect(localDaemonHostChannelUrl(stateFile, daemonSettingsFile)).toBe('http://127.0.0.1:13000')
+    })
+
+    it('两文件均缺失：回退默认派生 12222', () => {
+        expect(localDaemonHostChannelUrl(stateFile, daemonSettingsFile)).toBe('http://127.0.0.1:12222')
+    })
+
+    it('损坏 JSON / 非法端口字段 fail-open 回退（不抛错）', () => {
+        writeFileSync(stateFile, '{oops')
+        writeFileSync(daemonSettingsFile, JSON.stringify({ listenPort: 'x' }))
+        expect(localDaemonHostChannelUrl(stateFile, daemonSettingsFile)).toBe('http://127.0.0.1:12222')
     })
 })

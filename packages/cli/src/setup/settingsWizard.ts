@@ -37,7 +37,6 @@ function generateToken(): string {
 export interface SettingsResult {
     listenHost: string
     listenPort: number
-    apiUrl: string
 }
 
 /**
@@ -84,19 +83,17 @@ export async function runSettingsWizard(): Promise<SettingsResult> {
         ? await askPort('Listen port', currentPort)
         : currentPort
 
-    // 4. 派生 apiUrl
-    const apiUrl = `http://${listenHost}:${listenPort}`
-
-    // 5. 写入配置：listen* 属 daemon（本机 daemon 配置文件），apiUrl 属 cli（连接目标，随 cli 走）
+    // 写入配置：listen* 属 daemon（本机 daemon 配置文件）。CLI 侧不再写连接地址——
+    // settings.cli.json 的 apiUrl 是 ADR 0009（ticket-25）删除的死字段，连接目标由
+    // CLI 从 daemon 权威源派生（hostChannel.localDaemonHostChannelUrl）
     await updateDaemonSettings(s => ({ ...s, listenHost, listenPort }))
-    await updateSettings(s => ({ ...s, apiUrl }))
 
     console.log('')
     console.log(chalk.green('Settings configured:'))
     console.log(`  Token:     ${chalk.gray(maskToken((await readSettings()).cliApiToken ?? ''))}`)
     console.log(`  Host:      ${chalk.cyan(listenHost)}`)
     console.log(`  Port:      ${chalk.cyan(listenPort)}`)
-    console.log(`  API URL:   ${chalk.cyan(apiUrl)}`)
+    console.log(`  Web URL:   ${chalk.cyan(`http://${listenHost}:${listenPort}`)}`)
 
-    return { listenHost, listenPort, apiUrl }
+    return { listenHost, listenPort }
 }

@@ -17,7 +17,8 @@
 /**
  * 自动拉起收编 supervisor 后的行为锁定：
  * - daemon 经 ensureSupervisorRunning + 控制指令拉起，不再直接 spawn start-sync
- * - 既有触发条件语义不变（MOBI_API_URL / apiUrl / cliApiToken / daemon 已在运行）
+ * - 既有触发条件语义不变（MOBI_API_URL / cliApiToken / daemon 已在运行）；
+ *   settings.cli.json 的 apiUrl 是 ADR 0009 删除的死字段，不构成跳过守卫
  * - 拉起失败静默降级，不向上抛错
  */
 
@@ -62,10 +63,10 @@ vi.mock('@mobi/node-core/logger', () => ({
 
 import { ensureDaemonRunning } from '@/utils/autoStartServer'
 
-/** 默认满足全部触发条件（无 MOBI_API_URL、无 apiUrl、有 token、daemon 未运行） */
+/** 默认满足全部触发条件（无 MOBI_API_URL、有 token、daemon 未运行） */
 function resetHappyPathPreconditions(): void {
     delete process.env.MOBI_API_URL
-    mockReadSettings.mockResolvedValue({ apiUrl: undefined, serverUrl: undefined, cliApiToken: 'token' })
+    mockReadSettings.mockResolvedValue({ cliApiToken: 'token' })
     mockReadDaemonState.mockResolvedValue(null)
     mockIsProcessAlive.mockReturnValue(false)
     // daemon health 探测失败（未运行）
@@ -106,12 +107,12 @@ describe('ensureDaemonRunning', () => {
         expect(mockSendControlCommand).not.toHaveBeenCalled()
     })
 
-    it('settings.json 配置了 apiUrl 则跳过', async () => {
-        mockReadSettings.mockResolvedValue({ apiUrl: 'https://remote.example.com' })
+    it('settings.json 残留历史 apiUrl 不再挡自动拉起（死字段不复活守卫）', async () => {
+        mockReadSettings.mockResolvedValue({ apiUrl: 'https://remote.example.com', cliApiToken: 'token' })
 
         await ensureDaemonRunning()
 
-        expect(mockEnsureSupervisorRunning).not.toHaveBeenCalled()
+        expect(mockEnsureSupervisorRunning).toHaveBeenCalledTimes(1)
     })
 
     it('settings.json 无 cliApiToken 则跳过', async () => {

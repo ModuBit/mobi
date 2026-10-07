@@ -43,7 +43,6 @@ const LEGACY_FULL = {
     hubName: 'home-mac',
     // cli 字段
     machineId: 'mid-1',
-    apiUrl: 'http://localhost:2222',
     updateChannel: 'stable',
     disconnectTimeoutMs: 600000,
     claudeEnv: { FOO: '1' },
@@ -83,7 +82,8 @@ describe('migrateLegacySettings', () => {
         const cli = readJson(join(dataDir, 'settings.cli.json'))
         // machineId 已随 machine 概念移除（503 死字段）：不迁移
         expect(cli.machineId).toBeUndefined()
-        expect(cli.apiUrl).toBe('http://localhost:2222')
+        // apiUrl 是 ADR 0009 删除的死字段：不迁移，随旧文件 .bak 归档
+        expect(cli.apiUrl).toBeUndefined()
         expect(cli.updateChannel).toBe('stable')
         expect(cli.disconnectTimeoutMs).toBe(600000)
         expect(cli.claudeEnv).toEqual({ FOO: '1' })

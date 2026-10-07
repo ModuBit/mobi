@@ -27,7 +27,7 @@ import { join } from 'node:path'
 // 版本号指 mobi CLI 包（安装主体），本模块搬入 node-core 后跨包锚定（与 projectPath 同理）
 import packageJson from '../../cli/package.json'
 import { getCliArgs } from './utils/cliArgs'
-import { defaultHostChannelUrl } from './hostChannel'
+import { localDaemonHostChannelUrl } from './hostChannel'
 import type { Settings } from './settingsTypes'
 
 class Configuration {
@@ -68,12 +68,6 @@ class Configuration {
     private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs' | 'claudeEnv' | 'bashInjectContext'> = {}
 
     constructor() {
-        // Server configuration
-        // 默认指向宿主通道 listener（ticket-21）：URL/端口派生单源
-        // @mobi/node-core/hostChannel（env MOBI_HOST_PORT 覆盖时两侧同源生效）。
-        // daemon spawn 的会话子进程会显式注入精确值，这里只是同机 CLI 的开箱默认
-        this._apiUrl = process.env.MOBI_API_URL
-            || defaultHostChannelUrl()
         this._cliApiToken = process.env.CLI_API_TOKEN || ''
 
         // 按进程参数判定 daemon 后台形态（`mobi daemon start-sync`）
@@ -99,6 +93,12 @@ class Configuration {
         this.daemonStateFile = join(this.mobiHomeDir, DAEMON_STATE_FILENAME)
         this.supervisorSocketFile = join(this.mobiHomeDir, 'supervisor.sock')
         this.supervisorStateFile = join(this.mobiHomeDir, 'supervisor-state.json')
+
+        // 连接地址：env 显式指定 > daemon 权威源派生（运行事实 state.hostPort >
+        // 配置意图 settings.daemon.json listenPort > 默认派生，见 hostChannel）。
+        // daemon spawn 的会话子进程会显式注入精确值，这里只是同机 CLI 的默认
+        this._apiUrl = process.env.MOBI_API_URL
+            || localDaemonHostChannelUrl(this.daemonStateFile, this.daemonSettingsFile)
 
         this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_EXPERIMENTAL?.toLowerCase() || '')
         this.isAgentTeamsEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_AGENT_TEAMS?.toLowerCase() || '')

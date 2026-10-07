@@ -43,8 +43,6 @@ export interface MigrationResult {
 
 /** cli 专属字段：迁移时落 settings.cli.json，其余（daemon 接口内字段）落 settings.daemon.json */
 const CLI_ONLY_FIELDS = [
-    'apiUrl',
-    'serverUrl',
     'updateChannel',
     'disconnectTimeoutMs',
     'idleTimeoutMs',
@@ -54,11 +52,15 @@ const CLI_ONLY_FIELDS = [
     'webTools',
 ] as const
 
-/** 死字段（零读写点）：不迁移，随旧文件 .bak 归档；machineId 随 machine 概念移除入列（503） */
+/** 死字段（零读写点）：不迁移，随旧文件 .bak 归档；machineId 随 machine 概念移除入列（503）；
+ *  apiUrl/serverUrl 是 hub 时代「CLI 连远程 hub」的连接目标，ADR 0009（ticket-25）删除——
+ *  CLI 连接目标现由 hostChannel.localDaemonHostChannelUrl 从 daemon 权威源派生 */
 const DEAD_FIELDS = [
     'machineIdConfirmedByServer',
     'runnerAutoStartWhenRunningMobi',
     'machineId',
+    'apiUrl',
+    'serverUrl',
 ] as const
 
 /** daemon 侧旧键 → 新键（501 hubName → daemonName 读旧写新） */

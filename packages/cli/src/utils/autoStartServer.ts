@@ -31,8 +31,9 @@
  * mtime 自重启删除（升级路径由 upgrader 走 service restart 替换整个 daemon）。
  *
  * 触发条件保持既有语义：
- * 1. MOBI_API_URL 未设置（使用默认本机 daemon）
- * 2. settings.cli.json 中存在 cliApiToken（daemon 曾启动过）且未配置独立 apiUrl
+ * 1. MOBI_API_URL 未设置（使用默认本机 daemon；远程目标只能经此 env 显式指定，
+ *    settings.cli.json 的 apiUrl 已是 ADR 0009 删除的死字段，不构成守卫）
+ * 2. settings.cli.json 中存在 cliApiToken（daemon 曾启动过）
  * 3. daemon 未在运行（daemon.state.json pid 存活 + /health 探测）
  */
 

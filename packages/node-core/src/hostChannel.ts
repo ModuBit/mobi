@@ -27,6 +27,8 @@
  * 只单源它的地址知识。
  */
 
+import { readFileSync } from 'node:fs'
+
 /** daemon 主端口默认值（开箱：2222 → 宿主 12222） */
 export const DEFAULT_LISTEN_PORT = 2222
 
@@ -63,4 +65,38 @@ export function hostChannelUrl(hostPort: number): string {
 /** 同机 CLI 的开箱默认地址：daemon 按默认主端口起时的宿主通道 URL */
 export function defaultHostChannelUrl(): string {
     return hostChannelUrl(resolveHostPort(DEFAULT_LISTEN_PORT))
+}
+
+/** 从 JSON 文件读合法端口（整数 1-65535）；缺失/损坏/非法 fail-open 返回 null */
+function readJsonPort(file: string, key: string): number | null {
+    try {
+        const parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+        const port = Number(parsed[key])
+        return Number.isFinite(port) && Number.isInteger(port) && port > 0 && port < 65_536 ? port : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * 同机 CLI 的连接地址：daemon 自己是唯一权威，CLI 不维护会漂移的手写副本。
+ *
+ * ADR 0009（ticket-25）删除了 settings.cli.json 的 apiUrl——连接目标从权威源派生：
+ * 1. daemon 运行中：daemon.state.json 的 hostPort（daemon 启动时写入的事实）
+ * 2. daemon 未运行：settings.daemon.json 的 listenPort 派生（拉起后的配置意图，
+ *    覆盖 wizard 自定义端口场景），派生经 resolveHostPort 尊重 MOBI_HOST_PORT env
+ * 3. 都没有：默认主端口派生（开箱 2222→12222）
+ *
+ * 任意一层 fail-open：读不到/损坏即落下一层，CLI 永远拿到可用地址。
+ */
+export function localDaemonHostChannelUrl(daemonStateFile: string, daemonSettingsFile: string): string {
+    const stateHostPort = readJsonPort(daemonStateFile, 'hostPort')
+    if (stateHostPort !== null) {
+        return hostChannelUrl(stateHostPort)
+    }
+    const listenPort = readJsonPort(daemonSettingsFile, 'listenPort')
+    if (listenPort !== null) {
+        return hostChannelUrl(resolveHostPort(listenPort))
+    }
+    return defaultHostChannelUrl()
 }
