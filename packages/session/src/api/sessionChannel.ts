@@ -59,7 +59,13 @@ import type { SessionTransport } from './sessionTransport'
 
 /** rewind 回报 ack 等待上限（ms）：超时视为失败进可靠队列重试 */
 const REWIND_REPORT_ACK_TIMEOUT_MS = 5_000
-/** UI 命令 ack 等待上限（ms）：超时按连接故障处理（与离线 delivered:false 语义区分） */
+/** 分页拉取的 CLI 消息行信封（seq/localId 与 content 同级，metadata 携带 nativeId） */
+type CliMessageRow = {
+    seq?: number
+    localId?: string | null
+    content: unknown
+    metadata?: { nativeId?: string } | null
+}/** UI 命令 ack 等待上限（ms）：超时按连接故障处理（与离线 delivered:false 语义区分） */
 const UI_COMMAND_ACK_TIMEOUT_MS = 5_000
 /** Agent 会话操作 ack 等待上限（ms）：同 UI 命令口径，超时按连接故障处理 */
 const AGENT_OP_ACK_TIMEOUT_MS = 5_000
@@ -120,8 +126,9 @@ export class SessionChannel {
     private metadataVersion: number
     private agentState: AgentState | null
     private agentStateVersion: number
-    private readonly metadataLock = new AsyncLock()
-    private readonly agentStateLock = new AsyncLock()
+    /** 版本化 CAS 更新槽（票②参数化：两槽同构，36×2 行复制体收进 VersionedUpdateSlot） */
+    private readonly metadataSlot: VersionedUpdateSlot<Metadata>
+    private readonly agentStateSlot: VersionedUpdateSlot<AgentState>
 
     private pendingMessages: UserMessage[] = []
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null
@@ -159,6 +166,50 @@ export class SessionChannel {
                 transport.emitAckCallback(event, body, REWIND_REPORT_ACK_TIMEOUT_MS, callback)
             },
         })
+
+        this.metadataSlot = new VersionedUpdateSlot(
+            { transport, sessionId: this.sessionId, onActivity: opts.onActivity },
+            {
+                event: 'update-metadata',
+                valueKey: 'metadata',
+                getCurrent: () => ({ value: this.metadata, version: this.metadataVersion }),
+                applyValue: (value) => {
+                    this.metadata = value
+                },
+                applyVersion: (version) => {
+                    this.metadataVersion = version
+                },
+                parseValue: (value) => {
+                    const parsed = MetadataSchema.safeParse(value)
+                    return parsed.success ? parsed.data : null
+                },
+                invalidResponseMessage: 'Invalid update-metadata response',
+                errorMessage: 'Metadata update failed',
+                versionMismatchMessage: 'Metadata version mismatch',
+            },
+        )
+
+        this.agentStateSlot = new VersionedUpdateSlot(
+            { transport, sessionId: this.sessionId, onActivity: opts.onActivity },
+            {
+                event: 'update-state',
+                valueKey: 'agentState',
+                getCurrent: () => ({ value: this.agentState, version: this.agentStateVersion }),
+                applyValue: (value) => {
+                    this.agentState = value
+                },
+                applyVersion: (version) => {
+                    this.agentStateVersion = version
+                },
+                parseValue: (value) => {
+                    const parsed = AgentStateSchema.safeParse(value)
+                    return parsed.success ? parsed.data : null
+                },
+                invalidResponseMessage: 'Invalid update-state response',
+                errorMessage: 'Agent state update failed',
+                versionMismatchMessage: 'Agent state version mismatch',
+            },
+        )
     }
 
     // ── 连接状态反应（由门面在传输回调里驱动）──
@@ -288,6 +339,57 @@ export class SessionChannel {
         }
     }
 
+    /** 单页拉取 GET /cli/sessions/:id/messages（afterSeq 游标正向分页，15s 超时） */
+    private async fetchMessagePage(afterSeq: number, limit: number): Promise<CliMessageRow[]> {
+        const response = await axios.get(
+            `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+            {
+                params: { afterSeq, limit },
+                headers: {
+                    Authorization: `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 15_000,
+            },
+        )
+
+        const parsed = CliMessagesResponseSchema.safeParse(response.data)
+        if (!parsed.success) {
+            throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
+        }
+        return parsed.data.messages
+    }
+
+    /** 正向分页遍历（票②归一：断窗补拉与 rewind 边界反查共用同一游标推进循环）。
+     *  visit 返回 true 提前终止；游标不动（本页无 seq / 全回退）或不足一页时自然停 */
+    private async forEachMessagePage(
+        startSeq: number,
+        visit: (messages: CliMessageRow[], maxSeq: number) => boolean,
+    ): Promise<void> {
+        const limit = 200
+        let cursor = startSeq
+        while (true) {
+            const messages = await this.fetchMessagePage(cursor, limit)
+            if (messages.length === 0) break
+
+            let maxSeq = cursor
+            for (const message of messages) {
+                if (typeof message.seq === 'number' && message.seq > maxSeq) {
+                    maxSeq = message.seq
+                }
+            }
+
+            if (visit(messages, maxSeq)) return
+
+            if (maxSeq <= cursor) {
+                logger.debug('[API] Message page walk stopped due to non-advancing cursor', { cursor, maxSeq })
+                break
+            }
+            cursor = maxSeq
+            if (messages.length < limit) break
+        }
+    }
+
     private async backfillMessages(): Promise<void> {
         if (this.backfillInFlight) {
             await this.backfillInFlight
@@ -300,58 +402,13 @@ export class SessionChannel {
             return
         }
 
-        const limit = 200
         const run = async () => {
-            let cursor = startSeq
-            while (true) {
-                const response = await axios.get(
-                    `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                    {
-                        params: { afterSeq: cursor, limit },
-                        headers: {
-                            Authorization: `Bearer ${this.token}`,
-                            'Content-Type': 'application/json',
-                        },
-                        timeout: 15_000,
-                    },
-                )
-
-                const parsed = CliMessagesResponseSchema.safeParse(response.data)
-                if (!parsed.success) {
-                    throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
-                }
-
-                const messages = parsed.data.messages
-                if (messages.length === 0) {
-                    break
-                }
-
-                let maxSeq = cursor
+            await this.forEachMessagePage(startSeq, (messages) => {
                 for (const message of messages) {
-                    if (typeof message.seq === 'number') {
-                        if (message.seq > maxSeq) {
-                            maxSeq = message.seq
-                        }
-                    }
                     this.handleIncomingMessage(message)
                 }
-
-                const observedSeq = this.lastSeenMessageSeq ?? maxSeq
-                const nextCursor = Math.max(maxSeq, observedSeq)
-                if (nextCursor <= cursor) {
-                    logger.debug('[API] Backfill stopped due to non-advancing cursor', {
-                        cursor,
-                        maxSeq,
-                        observedSeq,
-                    })
-                    break
-                }
-
-                cursor = nextCursor
-                if (messages.length < limit) {
-                    break
-                }
-            }
+                return false
+            })
         }
 
         this.backfillInFlight = run().finally(() => {
@@ -627,48 +684,22 @@ export class SessionChannel {
     // ── rewind 两段回报（ack 确认制可靠队列）──
 
     /** 反查 rewind 截断边界：同 metadata.nativeId 的最小 seq 行（锚点批首行，1:N 批整批同删的定界）。
-     *  走既有 GET /cli/sessions/:id/messages 接口正向分页（afterSeq 游标递进，对齐 backfillMessages）；
-     *  消息按 seq 升序返回，首个命中即最小 seq。未找到（行已删 / daemon DTO 未含 metadata）返回 0，
-     *  调用方按边界反查失败处理（跳过 truncated 上报，completed 带 error 收尾）。 */
+     *  走既有消息接口正向分页（票②归一后的游标循环）；消息按 seq 升序返回，首个命中即最小 seq。
+     *  未找到（行已删 / daemon DTO 未含 metadata）返回 0，调用方按边界反查失败处理
+     *  （跳过 truncated 上报，completed 带 error 收尾）。 */
     async fetchRewindBoundary(nativeId: string): Promise<number> {
-        let cursor = 0
-        const limit = 200
-        while (true) {
-            const response = await axios.get(
-                `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    params: { afterSeq: cursor, limit },
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    timeout: 15_000,
-                },
-            )
-
-            const parsed = CliMessagesResponseSchema.safeParse(response.data)
-            if (!parsed.success) {
-                throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
-            }
-
-            const messages = parsed.data.messages
-            if (messages.length === 0) break
-
-            let maxSeq = cursor
+        let boundary = 0
+        await this.forEachMessagePage(0, (messages) => {
             for (const message of messages) {
-                if (typeof message.seq === 'number' && message.seq > maxSeq) {
-                    maxSeq = message.seq
-                }
                 if (message.metadata?.nativeId === nativeId && typeof message.seq === 'number') {
                     // 升序遍历，首个命中即批首行
-                    return message.seq
+                    boundary = message.seq
+                    return true
                 }
             }
-
-            if (maxSeq <= cursor || messages.length < limit) break
-            cursor = maxSeq
-        }
-        return 0
+            return false
+        })
+        return boundary
     }
 
     /** rewind 截断成功上报（CLI → daemon，ack 确认制）：daemon 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
@@ -748,87 +779,19 @@ export class SessionChannel {
     // ── 版本化 CAS 更新（metadata / agentState）──
 
     updateMetadata(handler: (metadata: Metadata) => Metadata): void {
-        this.metadataLock.inLock(async () => {
-            this.onActivity?.()
-
-            await backoff(async () => {
-                const current = this.metadata ?? ({} as Metadata)
-                const updated = handler(current)
-
-                const answer = await this.transport.emitWithAck<unknown>('update-metadata', {
-                    sid: this.sessionId,
-                    expectedVersion: this.metadataVersion,
-                    metadata: updated,
-                }, 5_000)
-
-                applyVersionedAck(answer, {
-                    valueKey: 'metadata',
-                    parseValue: (value) => {
-                        const parsed = MetadataSchema.safeParse(value)
-                        return parsed.success ? parsed.data : null
-                    },
-                    applyValue: (value) => {
-                        this.metadata = value
-                    },
-                    applyVersion: (version) => {
-                        this.metadataVersion = version
-                    },
-                    logInvalidValue: (context, version) => {
-                        const suffix = context === 'success' ? 'ack' : 'version-mismatch ack'
-                        logger.debug(`[API] Ignoring invalid metadata value from ${suffix}`, { version })
-                    },
-                    invalidResponseMessage: 'Invalid update-metadata response',
-                    errorMessage: 'Metadata update failed',
-                    versionMismatchMessage: 'Metadata version mismatch',
-                })
-            })
-        })
+        this.metadataSlot.update(handler)
     }
 
     updateAgentState(handler: (state: AgentState) => AgentState): void {
-        this.agentStateLock.inLock(async () => {
-            this.onActivity?.()
-
-            await backoff(async () => {
-                const current = this.agentState ?? ({} as AgentState)
-                const updated = handler(current)
-
-                const answer = await this.transport.emitWithAck<unknown>('update-state', {
-                    sid: this.sessionId,
-                    expectedVersion: this.agentStateVersion,
-                    agentState: updated,
-                }, 5_000)
-
-                applyVersionedAck(answer, {
-                    valueKey: 'agentState',
-                    parseValue: (value) => {
-                        const parsed = AgentStateSchema.safeParse(value)
-                        return parsed.success ? parsed.data : null
-                    },
-                    applyValue: (value) => {
-                        this.agentState = value
-                    },
-                    applyVersion: (version) => {
-                        this.agentStateVersion = version
-                    },
-                    logInvalidValue: (context, version) => {
-                        const suffix = context === 'success' ? 'ack' : 'version-mismatch ack'
-                        logger.debug(`[API] Ignoring invalid agentState value from ${suffix}`, { version })
-                    },
-                    invalidResponseMessage: 'Invalid update-state response',
-                    errorMessage: 'Agent state update failed',
-                    versionMismatchMessage: 'Agent state version mismatch',
-                })
-            })
-        })
+        this.agentStateSlot.update(handler)
     }
 
     // ── flush 支撑：等待在途版本化更新排空 ──
 
     /** 排空 metadata/agentState 在途更新（deadline 语义：超时放弃，不抛） */
     async drainPendingUpdates(remainingMs: () => number): Promise<void> {
-        await this.drainLock(this.metadataLock, remainingMs())
-        await this.drainLock(this.agentStateLock, remainingMs())
+        await this.drainLock(this.metadataSlot.lock, remainingMs())
+        await this.drainLock(this.agentStateSlot.lock, remainingMs())
     }
 
     private async drainLock(lock: AsyncLock, timeoutMs: number): Promise<boolean> {
@@ -854,6 +817,64 @@ export class SessionChannel {
             lock.inLock(async () => { })
                 .then(() => finish(true))
                 .catch(() => finish(false))
+        })
+    }
+}
+
+/**
+ * 版本化 CAS 更新槽（深化候选③票②）：锁串行 + backoff 重试 + ack 版本推进的单实现。
+ * metadata / agentState 两个槽形状同构，只差事件名、请求键名、Schema 与存储指向——
+ * 此前 36×2 行复制体参数化收口于此。
+ */
+class VersionedUpdateSlot<TValue> {
+    readonly lock = new AsyncLock()
+
+    constructor(
+        private readonly deps: { transport: SessionTransport; sessionId: string; onActivity?: () => void },
+        private readonly opts: {
+            /** socket 事件名（update-metadata / update-state） */
+            event: string
+            /** 请求体里更新值的键名（metadata / agentState），同时是 ack 里的值键 */
+            valueKey: string
+            getCurrent: () => { value: TValue | null; version: number }
+            applyValue: (value: TValue | null) => void
+            applyVersion: (version: number) => void
+            parseValue: (value: unknown) => TValue | null
+            invalidResponseMessage: string
+            errorMessage: string
+            versionMismatchMessage: string
+        },
+    ) {}
+
+    /** 版本化 CAS 更新：值提交 + 版本冲突由 backoff 重试收敛（applyVersionedAck 推进本地版本） */
+    update(handler: (current: TValue) => TValue): void {
+        this.lock.inLock(async () => {
+            this.deps.onActivity?.()
+
+            await backoff(async () => {
+                const { value: current, version } = this.opts.getCurrent()
+                const updated = handler(current ?? ({} as TValue))
+
+                const answer = await this.deps.transport.emitWithAck<unknown>(this.opts.event, {
+                    sid: this.deps.sessionId,
+                    expectedVersion: version,
+                    [this.opts.valueKey]: updated,
+                }, 5_000)
+
+                applyVersionedAck(answer, {
+                    valueKey: this.opts.valueKey,
+                    parseValue: this.opts.parseValue,
+                    applyValue: this.opts.applyValue,
+                    applyVersion: this.opts.applyVersion,
+                    logInvalidValue: (context, ackVersion) => {
+                        const suffix = context === 'success' ? 'ack' : 'version-mismatch ack'
+                        logger.debug(`[API] Ignoring invalid ${this.opts.valueKey} value from ${suffix}`, { version: ackVersion })
+                    },
+                    invalidResponseMessage: this.opts.invalidResponseMessage,
+                    errorMessage: this.opts.errorMessage,
+                    versionMismatchMessage: this.opts.versionMismatchMessage,
+                })
+            })
         })
     }
 }

@@ -189,4 +189,17 @@ describe('SessionChannel：版本化更新', () => {
             5_000,
         )
     })
+
+    it('updateAgentState 对称走 update-state 咽喉（票②参数化后的行为锁）', async () => {
+        const { channel, transport, onActivity } = makeHarness()
+        channel.updateAgentState((s) => ({ ...s, paused: true }))
+
+        await vi.waitFor(() => expect(onActivity).toHaveBeenCalled())
+        const fake = transport as unknown as { emitWithAck: ReturnType<typeof vi.fn> }
+        expect(fake.emitWithAck).toHaveBeenCalledWith(
+            'update-state',
+            expect.objectContaining({ sid: 'session-1', expectedVersion: 0, agentState: { paused: true } }),
+            5_000,
+        )
+    })
 })
