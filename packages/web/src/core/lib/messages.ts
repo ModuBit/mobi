@@ -62,9 +62,19 @@ export function isQueuedInMobi(msg: DecryptedMessage): boolean {
  * 主排序键 = positionAt（与 daemon 侧 position_at 排序语义对齐）：排队消息被消费时
  * positionAt 跳到消费时刻，保证「运行中消费的消息排在 turn 之后」。seq 只是落库自增序号，
  * 不随排队消费跳变——若以 seq 为主键，运行中发消息时用户消息会卡在上一轮 assistant 输出中间
- *（乐观发送时刻早于 turn 结束时落库的后续 assistant 消息）。positionAt 缺失（如 snapshot）回退 seq。
+ *（乐观发送时刻早于 turn 结束时落库的后续 assistant 消息）。positionAt 缺失（如历史快照）回退 seq。
+ *
+ * 流式 snapshot 行（snapshot=true，positionAt/seq 均空）视为「锚点在未来」：其落库后的
+ * position_at = 完成时刻，必然晚于当前一切已锚定行，故排序上恒排在已锚定行（含 mid-stream
+ * 用户消息）之后——保证流式期间窗口排序与刷新后 DB 排序一致。若按流首帧 createdAt 参与比较，
+ * mid-stream 用户消息会被整条持续增长的流式气泡压在下方（落库后顺序反转）。
+ * snapshot 行之间按 createdAt（流首帧时刻）保持相对顺序；锚点行间比较不受影响。
  */
 export function compareMessages(a: DecryptedMessage, b: DecryptedMessage): number {
+    const aSnap = a.snapshot === true
+    const bSnap = b.snapshot === true
+    if (aSnap !== bSnap) return aSnap ? 1 : -1
+
     const aPos = typeof a.positionAt === 'number' ? a.positionAt : null
     const bPos = typeof b.positionAt === 'number' ? b.positionAt : null
 

@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId } from '@/core/lib/messages'
+import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId, sortMessages } from '@/core/lib/messages'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 创建 mock DecryptedMessage */
@@ -119,6 +119,77 @@ describe('isQueuedInMobi', () => {
             },
         })
         expect(isQueuedInMobi(msg)).toBe(false)
+    })
+})
+
+describe('sortMessages 流式行锚定（实时排序 = DB 落库排序）', () => {
+    // 流式 snapshot 行没有 positionAt/seq（wrapAsDecryptedMessage 只填 createdAt=流首帧时刻），
+    // 其将来落库的 position_at = 完成时刻，必然晚于当前一切已锚定行。因此排序上
+    // snapshot 行必须视为「锚点在未来」——mid-stream 用户消息（positionAt=发送时刻）
+    // 在实时窗口中就该排在流式行上方，与刷新后 DB 顺序一致（否则用户消息被整条
+    // 持续增长的流式气泡压在下方，视觉即「用户消息跑到 agent 消息后面」）
+    it('流式行（createdAt 早）排在 mid-stream 用户消息（positionAt 晚）之下', () => {
+        const result = sortMessages([
+            createMessage({
+                id: 'user-mid', seq: 90, positionAt: 5000, createdAt: 5000,
+                lifecycle: 'queued', content: { role: 'user', content: 'hi' },
+            }),
+            createMessage({
+                id: 'snap', seq: null, positionAt: undefined, createdAt: 1000, snapshot: true,
+                lifecycle: null, content: { role: 'agent', content: { type: 'output', data: {} } },
+            }),
+        ])
+        expect(result.map(m => m.id)).toEqual(['user-mid', 'snap'])
+    })
+
+    it('已消费跳变的用户行（positionAt=消费时刻）同样排在流式行之上', () => {
+        const result = sortMessages([
+            createMessage({
+                id: 'snap', seq: null, positionAt: undefined, createdAt: 1000, snapshot: true,
+                lifecycle: null, content: { role: 'agent', content: { type: 'output', data: {} } },
+            }),
+            createMessage({
+                id: 'user-jumped', seq: 90, positionAt: 9000, createdAt: 5000,
+                lifecycle: 'pushed', content: { role: 'user', content: 'hi' },
+            }),
+        ])
+        expect(result.map(m => m.id)).toEqual(['user-jumped', 'snap'])
+    })
+
+    it('乐观行（无锚点非 snapshot）也排在流式行之上——落库后 positionAt=发送时刻，DB 顺序同向', () => {
+        const result = sortMessages([
+            createMessage({
+                id: 'snap', seq: null, positionAt: undefined, createdAt: 1000, snapshot: true,
+                lifecycle: null, content: { role: 'agent', content: { type: 'output', data: {} } },
+            }),
+            createMessage({
+                id: 'opt', seq: null, positionAt: undefined, createdAt: 5000,
+                lifecycle: 'queued', content: { role: 'user', content: 'hi' },
+            }),
+        ])
+        expect(result.map(m => m.id)).toEqual(['opt', 'snap'])
+    })
+
+    it('多条流式行之间保持 createdAt 顺序', () => {
+        const result = sortMessages([
+            createMessage({
+                id: 'snap-b', seq: null, positionAt: undefined, createdAt: 2000, snapshot: true,
+                lifecycle: null, content: { role: 'agent', content: { type: 'output', data: {} } },
+            }),
+            createMessage({
+                id: 'snap-a', seq: null, positionAt: undefined, createdAt: 1000, snapshot: true,
+                lifecycle: null, content: { role: 'agent', content: { type: 'output', data: {} } },
+            }),
+        ])
+        expect(result.map(m => m.id)).toEqual(['snap-a', 'snap-b'])
+    })
+
+    it('已锚定行之间不受流式行影响（positionAt 主序照旧）', () => {
+        const result = sortMessages([
+            createMessage({ id: 'm2', seq: 2, positionAt: 2000, createdAt: 2000, lifecycle: null }),
+            createMessage({ id: 'm1', seq: 1, positionAt: 1000, createdAt: 1000, lifecycle: null }),
+        ])
+        expect(result.map(m => m.id)).toEqual(['m1', 'm2'])
     })
 })
 
