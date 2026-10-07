@@ -225,6 +225,13 @@ export class SyncEngine {
         this.handleRealtimeEvent(event)
     }
 
+    /** CLI 房间 new-message 广播出口（socket handler 经 deps 惰性取用）。
+     *  过渡透传：信封构造权已收归 messageService 单一构造点，socket 侧 handler 只传参；
+     *  消息受理 module（SessionMessageIntakeProcessor）落地后由其 publication 翻译直调 */
+    emitCliNewMessage(...args: Parameters<MessageService['emitNewMessageToCli']>): void {
+        this.messageService.emitNewMessageToCli(...args)
+    }
+
     private resolveNamespace(event: SyncEvent): string | undefined {
         if (event.namespace) {
             return event.namespace

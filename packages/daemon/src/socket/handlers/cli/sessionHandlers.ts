@@ -93,11 +93,16 @@ export type SessionHandlersDeps = {
      *  实现方为 SyncEngine/SessionCache——此前五个 onXxx 回调在此/在 CliHandlersDeps/
      *  SocketServerDeps 手写三遍且已漂移） */
     factsSink?: SessionFactsSink
+    /** CLI 房间 new-message 广播出口（messageService.emitNewMessageToCli 的单一构造点）。
+     *  此前 handler 内联拼第二份载荷且信封 id 已分叉（randomUUID vs msg.id）——
+     *  构造权收归 messageService 后 handler 只传参。缺装配时跳过 CLI 广播（部分单测
+     *  只关心 SSE 侧），生产装配恒注入 */
+    emitCliNewMessage?: (sessionId: string, msg: { id: string; seq: number | null; createdAt: number }, message: ReturnType<typeof toDecryptedMessage>, options?: { backfill?: boolean; exceptSocketId?: string }) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, snapshotSync, factsSink, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, snapshotSync, factsSink, emitCliNewMessage, onWebappEvent } = deps
 
     // runtimeState 投影内部持有跨消息配对状态，故每个 Socket 连接独立实例化。
     const runtimeProjector = new SessionMessageRuntimeProjector(store, backgroundTaskTracker)
@@ -113,18 +118,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const backfillFlag = options?.backfill ? { backfill: true as const } : undefined
         for (const msg of msgs) {
             const base = toDecryptedMessage(msg)
-            const message = { ...base, seq: msg.seq }
-            socket.to(`session:${sid}`).emit('session-update', {
-                id: randomUUID(),
-                seq: msg.seq,
-                createdAt: Date.now(),
-                body: {
-                    t: 'new-message' as const,
-                    sid,
-                    message,
-                    ...backfillFlag,
-                },
-            })
+            // CLI 房间广播走 messageService 单一构造点（信封 id/createdAt 复用消息行自身）；
+            // 排除发送方自身 socket，防 CLI 收到自己上报消息的 echo 二次入队
+            emitCliNewMessage?.(sid, msg, base, { ...backfillFlag, exceptSocketId: socket.id })
             onWebappEvent?.({
                 type: 'message-received',
                 sessionId: sid,

@@ -51,6 +51,7 @@ function makeFakeSocket() {
     const handlers = new Map<string, (...args: unknown[]) => void>()
     const updates: { event: string; payload: unknown }[] = []
     return {
+        id: 'sock-1',
         updates,
         on(event: string, handler: (...args: unknown[]) => void) {
             handlers.set(event, handler)
@@ -457,9 +458,11 @@ describe('receive-readiness：CLI 上报「此刻能不能收消息」→ 校验
 })
 
 describe('messages-facts：Socket adapter', () => {
-    test('把 module 的存储行 publication 翻译为 room update 与 SSE 事件', () => {
+    test('把 module 的存储行 publication 翻译为 CLI 广播出口与 SSE 事件', () => {
         const fakeSocket = makeFakeSocket()
         const events: SyncEvent[] = []
+        // CLI 房间广播出口的调用捕获（信封构造在 messageService 单一构造点，handler 只传参）
+        const cliEmits: { sid: string; msgId: string | null; exceptSocketId: unknown }[] = []
         const boundMessage: StoredMessage = {
             ...makeMsg('m1', 'loc-1', 1),
             metadata: { nativeId: 'nu-1' },
@@ -475,6 +478,9 @@ describe('messages-facts：Socket adapter', () => {
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
             snapshotSync: new SnapshotSync(),
+            emitCliNewMessage: (sid, msg, _message, options) => {
+                cliEmits.push({ sid, msgId: msg.id, exceptSocketId: options?.exceptSocketId })
+            },
             onWebappEvent: event => { events.push(event) },
         }
 
@@ -487,17 +493,11 @@ describe('messages-facts：Socket adapter', () => {
             facts: [{ kind: 'bound', localId: 'loc-1', nativeId: 'nu-1' }],
         })
 
-        expect(fakeSocket.updates).toHaveLength(1)
-        expect(fakeSocket.updates[0]).toMatchObject({
-            event: 'session-update',
-            payload: {
-                body: {
-                    t: 'new-message',
-                    sid: 's1',
-                    message: { localId: 'loc-1', metadata: { nativeId: 'nu-1' } },
-                },
-            },
-        })
+        // CLI 房间广播经出口发出：携带消息行自身 id（信封构造权在 messageService），
+        // 且排除发送方 socket（防 CLI 收到自己上报消息的 echo 二次入队）
+        expect(cliEmits).toEqual([
+            { sid: 's1', msgId: 'm1', exceptSocketId: 'sock-1' },
+        ])
         expect(events).toEqual([{
             type: 'message-received',
             sessionId: 's1',

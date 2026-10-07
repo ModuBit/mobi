@@ -31,6 +31,7 @@ function makeFakeSocket() {
     const handlers = new Map<string, (...args: unknown[]) => void>()
     const updates: { room: string; payload: unknown }[] = []
     return {
+        id: 'sock-1',
         on(event: string, handler: (...args: unknown[]) => void) {
             handlers.set(event, handler)
         },
@@ -51,6 +52,8 @@ function makeFakeSocket() {
 function makeDeps(store: Store, opts: { rewindDeleteBoundTracker?: RewindDeleteBoundTracker } = {}) {
     const events: SyncEvent[] = []
     const accessError = { called: false }
+    // CLI 房间 new-message 广播出口的调用捕获（信封构造在 messageService 单一构造点）
+    const cliEmits: Array<{ msg: { id: string; seq: number | null; createdAt: number }; message: { localId: string | null; metadata: unknown }; options?: { backfill?: boolean; exceptSocketId?: string } }> = []
     const deps: SessionHandlersDeps = {
         store,
         resolveSessionAccess: (sid: string) => {
@@ -62,11 +65,12 @@ function makeDeps(store: Store, opts: { rewindDeleteBoundTracker?: RewindDeleteB
         backgroundTaskTracker: new BackgroundTaskTracker(),
         snapshotSync: new SnapshotSync(),
         rewindDeleteBoundTracker: opts.rewindDeleteBoundTracker,
+        emitCliNewMessage: (_sid, msg, message, options) => { cliEmits.push({ msg, message: message as never, options }) },
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
     // rewind 两段回报事件尚未收录进 shared SyncEventSchema（hub 本地扩展形态），断言侧放宽读取
     const rewindEvents = events as unknown as { type: string; deleteFromSeq?: number; filesRestored?: boolean; error?: string }[]
-    return { deps, events, rewindEvents, accessError }
+    return { deps, events, rewindEvents, accessError, cliEmits }
 }
 
 describe('message 事件带 metadata', () => {
@@ -80,7 +84,7 @@ describe('message 事件带 metadata', () => {
 
     test('落库到 metadata 列并广播', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, events } = makeDeps(store)
+        const { deps, events, cliEmits } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('session-message', {
@@ -95,10 +99,11 @@ describe('message 事件带 metadata', () => {
         expect(rows).toHaveLength(1)
         expect(rows[0].metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'sess-9' })
 
-        // 落库后广播：room update + SSE message-received，DTO 直出 metadata
-        expect(fakeSocket.updates).toHaveLength(1)
-        const update = fakeSocket.updates[0].payload as { body: { message: { metadata: unknown } } }
-        expect(update.body.message.metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'sess-9' })
+        // 落库后广播：CLI 房间出口 + SSE message-received，DTO 直出 metadata
+        expect(cliEmits).toHaveLength(1)
+        expect(cliEmits[0].message.metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'sess-9' })
+        // 发送方自身被排除（防 CLI 收到自己的 echo 二次入队）
+        expect(cliEmits[0].options?.exceptSocketId).toBe('sock-1')
         expect(events.some(e => e.type === 'message-received')).toBe(true)
     })
 
@@ -126,7 +131,7 @@ describe('messages-facts attached（native session 补写）', () => {
         store.messages.addMessage(sid, WEBAPP_USER, 'local-2', 'persistent', { nativeId: 'u2', nativeSessionId: 'old' }) // 已归属
 
         const fakeSocket = makeFakeSocket()
-        const { deps, events } = makeDeps(store)
+        const { deps, events, cliEmits } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
@@ -136,10 +141,9 @@ describe('messages-facts attached（native session 补写）', () => {
         expect(rows.find(r => r.localId === 'local-2')?.metadata?.nativeSessionId).toBe('old')
 
         // 广播只覆盖被补写的行（1 条），DTO metadata 已含新 session id
-        expect(fakeSocket.updates).toHaveLength(1)
-        const update = fakeSocket.updates[0].payload as { body: { message: { localId: string; metadata: unknown } } }
-        expect(update.body.message.localId).toBe('local-1')
-        expect(update.body.message.metadata).toEqual({ nativeId: 'u1', nativeSessionId: 'ns-1' })
+        expect(cliEmits).toHaveLength(1)
+        expect(cliEmits[0].message.localId).toBe('local-1')
+        expect(cliEmits[0].message.metadata).toEqual({ nativeId: 'u1', nativeSessionId: 'ns-1' })
         expect(events.filter(e => e.type === 'message-received')).toHaveLength(1)
     })
 
@@ -179,7 +183,7 @@ describe('messages-facts attached（native session 补写）', () => {
         store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'u1' })
 
         const fakeSocket = makeFakeSocket()
-        const { deps, events } = makeDeps(store)
+        const { deps, events, cliEmits } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'attached', nativeSessionId: 'ns-1' }] })
@@ -187,9 +191,9 @@ describe('messages-facts attached（native session 补写）', () => {
         // SSE message-received 带 backfill: true
         const sse = events.find(e => e.type === 'message-received') as { backfill?: boolean }
         expect(sse?.backfill).toBe(true)
-        // CLI room new-message 载荷同步携带
-        const update = fakeSocket.updates[0].payload as { body: { backfill?: boolean } }
-        expect(update.body.backfill).toBe(true)
+        // CLI 房间广播出口同步携带
+        expect(cliEmits).toHaveLength(1)
+        expect(cliEmits[0].options?.backfill).toBe(true)
     })
 
     test('普通新消息广播不带 backfill 字段（真新消息语义不变）', () => {
@@ -305,7 +309,7 @@ describe('messages-facts acked（isReplay 回显确认）', () => {
         store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
 
         const fakeSocket = makeFakeSocket()
-        const { deps, events } = makeDeps(store)
+        const { deps, events, cliEmits } = makeDeps(store)
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
 
         fakeSocket.emit('messages-facts', { sid, facts: [{ kind: 'acked', nativeId: 'uu-1' }] })
@@ -313,11 +317,10 @@ describe('messages-facts acked（isReplay 回显确认）', () => {
         const row = store.messages.getMessages(sid, 10)[0]
         expect(row.metadata?.nativeAckAt).toBeTypeOf('number')
 
-        // 广播补写行：room update + SSE message-received，DTO metadata 已含 nativeAckAt
-        expect(fakeSocket.updates).toHaveLength(1)
-        const update = fakeSocket.updates[0].payload as { body: { message: { localId: string; metadata: unknown } } }
-        expect(update.body.message.localId).toBe('local-1')
-        expect((update.body.message.metadata as Record<string, unknown>).nativeAckAt).toBeTypeOf('number')
+        // 广播补写行：CLI 房间出口 + SSE message-received，DTO metadata 已含 nativeAckAt
+        expect(cliEmits).toHaveLength(1)
+        expect(cliEmits[0].message.localId).toBe('local-1')
+        expect((cliEmits[0].message.metadata as Record<string, unknown>).nativeAckAt).toBeTypeOf('number')
         expect(events.filter(e => e.type === 'message-received')).toHaveLength(1)
     })
 

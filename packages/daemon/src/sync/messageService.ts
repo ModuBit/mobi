@@ -208,21 +208,37 @@ export class MessageService {
     }
 
     /**
-     * CLI 房间 new-message 广播的单一构造点（sendMessage 与 redeliverQueued 共用）：
-     * update 载荷形态（id/seq/createdAt/body{t:'new-message',sid,message}）只在此声明，
-     * 补投路径与正常入队路径对 CLI 天然一致，无「逐字段对齐」的注释约定负担。
-     * 不含 message-received SSE——那由 sendMessage 在调用后按需单独发。
+     * CLI 房间 new-message 广播的**唯一构造点**（sendMessage / redeliverQueued /
+     * CLI 受理路径的 broadcastStoredMessages 共用）：update 载荷形态
+     * （id/seq/createdAt/body{t:'new-message',sid,message[,backfill]}）只在此声明。
+     * 信封 id/createdAt 复用消息行自身（身份稳定、跨端对账可查；CLI 侧去重靠
+     * message.seq 的 lastSeenMessageSeq 记账，不消费信封 id）。
+     *
+     * - backfill：attach 补写路径的重播标记（web 端据此走 backfill merge，不实时弹气泡）
+     * - exceptSocketId：CLI 自报消息（session-message / messages-facts）落库后回灌房间时，
+     *   必须排除发送方自身 socket——否则 CLI 会收到自己刚发的 user 消息 echo，
+     *   handleIncomingMessage 按 seq 视作新消息二次入队（同句话投两遍）
+     * 不含 message-received SSE——那由调用方按需单独发。
      */
-    private emitNewMessageToCli(sessionId: string, msg: { id: string; seq: number | null; createdAt: number }, message: ReturnType<typeof toDecryptedMessage>): void {
-        this.io.of('/cli').to(`session:${sessionId}`).emit('session-update', {
+    emitNewMessageToCli(
+        sessionId: string,
+        msg: { id: string; seq: number | null; createdAt: number },
+        message: ReturnType<typeof toDecryptedMessage>,
+        options?: { backfill?: boolean; exceptSocketId?: string },
+    ): void {
+        const room = `session:${sessionId}`
+        let target = this.io.of('/cli').to(room)
+        if (options?.exceptSocketId) target = target.except(options.exceptSocketId)
+        target.emit('session-update', {
             id: msg.id,
             seq: msg.seq,
             createdAt: msg.createdAt,
             body: {
                 t: 'new-message' as const,
                 sid: sessionId,
-                message
-            }
+                message,
+                ...(options?.backfill ? { backfill: true as const } : {}),
+            },
         })
     }
 }

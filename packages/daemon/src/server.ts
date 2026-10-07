@@ -191,7 +191,9 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         hasActiveSseConnection: (namespace) => sseManager?.hasActiveConnection(namespace) ?? false,
         publishUiCommand: (event) => syncEngine?.publishUiCommand(event),
         // Agent 会话操作（agent 触达其他会话，B 类）：同属 SyncEngine 内部实例，惰性取用
-        agentSessions: () => syncEngine?.agentSessions
+        agentSessions: () => syncEngine?.agentSessions,
+        // CLI 房间 new-message 广播出口（messageService 单一构造点），惰性取用
+        emitCliNewMessage: () => syncEngine?.emitCliNewMessage.bind(syncEngine)
     })
 
     // 执行层显式注入（ticket-15 接口 / ticket-17 本地化 / ticket-20 唯一实现）：

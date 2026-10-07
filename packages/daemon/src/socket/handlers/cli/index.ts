@@ -28,7 +28,7 @@ import type { AccessErrorReason, AccessResult } from './types'
 import { registerUiCommandHandlers } from './uiCommandHandlers'
 import { registerAgentSessionHandlers } from './agentSessionHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
-import { registerSessionHandlers } from './sessionHandlers'
+import { registerSessionHandlers, type SessionHandlersDeps } from './sessionHandlers'
 
 export type CliHandlersDeps = {
     io: SocketServer
@@ -49,6 +49,8 @@ export type CliHandlersDeps = {
     agentSessions?: AgentSessionOps
     /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
     factsSink?: SessionFactsSink
+    /** CLI 房间 new-message 广播出口（messageService 单一构造点，sessionHandlers 消费） */
+    emitCliNewMessage?: NonNullable<SessionHandlersDeps['emitCliNewMessage']>
     onWebappEvent?: (event: SyncEvent) => void
     /**
      * 同 session CLI socket 的接管仲裁表（单一持有者保证方法映射不悬空）。
@@ -58,7 +60,7 @@ export type CliHandlersDeps = {
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
+    const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, emitCliNewMessage, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
     const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
@@ -109,6 +111,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         snapshotSync,
         rewindDeleteBoundTracker,
         factsSink,
+        emitCliNewMessage,
         onWebappEvent
     })
     registerUiCommandHandlers(socket, {

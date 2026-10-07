@@ -117,6 +117,52 @@ describe('MessageService.redeliverQueued（fork 激活翻转补投）', () => {
     })
 })
 
+describe('MessageService.emitNewMessageToCli（CLI 房间 new-message 唯一构造点）', () => {
+    /** io 桩：捕获 room emit 与 except 排除（Socket.IO 4.5+ 的广播排除修饰符） */
+    function makeEmitterService() {
+        const emits: Array<{ room: string; except: string | null; event: string; payload: unknown }> = []
+        const io = {
+            of: () => ({
+                to: (room: string) => ({
+                    except: (socketId: string) => ({
+                        emit: (event: string, payload: unknown) => { emits.push({ room, except: socketId, event, payload }) },
+                    }),
+                    emit: (event: string, payload: unknown) => { emits.push({ room, except: null, event, payload }) },
+                }),
+            }),
+        }
+        const service = new MessageService({ messages: {} } as never, io as never, {} as never)
+        return { service, emits }
+    }
+
+    test('信封 id/createdAt 复用消息行自身（身份稳定，CLI 去重靠 message.seq）', () => {
+        const { service, emits } = makeEmitterService()
+
+        service.emitNewMessageToCli('s1', { id: 'm1', seq: 7, createdAt: 42 }, { id: 'm1', seq: 7 } as never)
+
+        expect(emits).toHaveLength(1)
+        expect(emits[0]).toMatchObject({
+            room: 'session:s1',
+            except: null,
+            event: 'session-update',
+            payload: { id: 'm1', seq: 7, createdAt: 42, body: { t: 'new-message', sid: 's1' } },
+        })
+        expect(emits[0].payload).not.toHaveProperty('body.backfill')
+    })
+
+    test('backfill 标记进 body；exceptSocketId 排除发送方 socket', () => {
+        const { service, emits } = makeEmitterService()
+
+        service.emitNewMessageToCli('s1', { id: 'm2', seq: 8, createdAt: 50 }, { id: 'm2', seq: 8 } as never, { backfill: true, exceptSocketId: 'sock-9' })
+
+        expect(emits).toHaveLength(1)
+        expect(emits[0]).toMatchObject({
+            except: 'sock-9',
+            payload: { id: 'm2', body: { t: 'new-message', sid: 's1', backfill: true } },
+        })
+    })
+})
+
 describe('MessageService 出口剥离死重 base64 图片数据', () => {
     /** 构造 Read 工具读图的 transcript 帧：同一张图在 tool_use_result 与 tool_result image 各存一份 */
     function imageReadFrame(seq: number, base64: string): StoredMessage {

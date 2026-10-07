@@ -28,6 +28,7 @@ import { constantTimeEquals } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
 import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
+import type { SessionHandlersDeps } from './handlers/cli/sessionHandlers'
 import { registerTerminalHandlers } from './handlers/terminal'
 import type { AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
@@ -100,7 +101,14 @@ export type SocketServerDeps = {
     /** Agent 会话操作服务（B 类工具族）。支持惰性求值——同为 SyncEngine 内部实例，
      *  在 socket server 之后创建。取不到时 handler 回 handler-misconfigured */
     agentSessions?: () => AgentSessionService | undefined
+    /** CLI 房间 new-message 广播出口（messageService 单一构造点）。支持惰性求值——
+     *  messageService 是 SyncEngine 内部实例，在 socket server 之后创建 */
+    emitCliNewMessage?: () => CliNewMessageEmitter | undefined
 }
+
+/** CLI 房间 new-message 广播出口类型（messageService.emitNewMessageToCli 的签名投影，
+ *  单一声明源在 SessionHandlersDeps，CliHandlersDeps / SocketServerDeps 复用同一形状） */
+export type CliNewMessageEmitter = NonNullable<SessionHandlersDeps['emitCliNewMessage']>
 
 export function createSocketServer(deps: SocketServerDeps): {
     io: SocketServer
@@ -240,6 +248,7 @@ export function createSocketServer(deps: SocketServerDeps): {
             // 会话事实（心跳/水位/目标/轮次/结束）→ sink 落库。
             // 惰性形式在 connection 时解包——SyncEngine 在 socket server 之后创建，此时必已就绪
             factsSink: typeof deps.factsSink === 'function' ? deps.factsSink() : deps.factsSink,
+            emitCliNewMessage: deps.emitCliNewMessage?.(),
             onWebappEvent: deps.onWebappEvent,    // Web端实时事件
             hasActiveSseConnection: deps.hasActiveSseConnection,
             publishUiCommand: deps.publishUiCommand,
