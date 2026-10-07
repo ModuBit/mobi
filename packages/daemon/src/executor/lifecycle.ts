@@ -26,7 +26,6 @@
 import fs from 'fs/promises';
 
 import { TrackedSession } from './types';
-import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
 import { ExecutorState, Metadata } from '@mobi/node-core/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
@@ -38,8 +37,10 @@ import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
 import { startExecutorControlServer } from './controlServer';
 import { buildClaudeSpawnArgs } from './spawnArgs';
-import { createResumeDedupGuard } from './spawnDedup';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
+import { SessionTrackingTable } from './sessionTrackingTable';
+import type { SessionTrackingSignal } from './sessionTracking';
+import { ShutdownLatch } from './shutdownLatch';
 
 /** 关停来源（三类，server 侧 executorState.shutdownSource 透传） */
 export type ExecutorShutdownSource = 'mobi-cli' | 'os-signal' | 'exception';
@@ -116,12 +117,8 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     throw new ExecutorLockHeldError();
   }
 
-  // Setup state - key by PID
-  const pidToTrackedSession = new Map<number, TrackedSession>();
-
-  // Session spawning awaiter system
-  const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
-  const pidToErrorAwaiter = new Map<number, (errorMessage: string) => void>();
+  // 追踪表（架构评审候选⑧票①）：会话行与 spawn 等待端的单一持有者
+  const trackingTable = new SessionTrackingTable();
   type SpawnFailureDetails = {
     message: string
     pid?: number
@@ -136,50 +133,11 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     return String(error);
   };
 
-  // Helper functions
-  const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
+  const getCurrentChildren = () => trackingTable.all();
 
   // Handle webhook from MOBI session reporting itself
   const onMobiSessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
-    logger.debugLargeJson(`[EXECUTOR] Session reported`, sessionMetadata);
-
-    const pid = sessionMetadata.hostPid;
-    if (!pid) {
-      logger.debug(`[EXECUTOR] Session webhook missing hostPid for sessionId: ${sessionId}`);
-      return;
-    }
-
-    logger.debug(`[EXECUTOR] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`);
-    logger.debug(`[EXECUTOR] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
-
-    // Check if we already have this PID (executor-spawned)
-    const existingSession = pidToTrackedSession.get(pid);
-
-    if (existingSession && existingSession.startedBy === 'daemon') {
-      // Update executor-spawned session with reported data
-      existingSession.MobiSessionId = sessionId;
-      existingSession.MobiSessionMetadataFromLocalWebhook = sessionMetadata;
-      logger.debug(`[EXECUTOR] Updated executor-spawned session ${sessionId} with metadata`);
-
-      // Resolve any awaiter for this PID
-      const awaiter = pidToAwaiter.get(pid);
-      if (awaiter) {
-        pidToAwaiter.delete(pid);
-        pidToErrorAwaiter.delete(pid);
-        awaiter(existingSession);
-        logger.debug(`[EXECUTOR] Resolved session awaiter for PID ${pid}`);
-      }
-    } else if (!existingSession) {
-      // New session started externally
-      const trackedSession: TrackedSession = {
-        startedBy: 'mobi directly - likely by user from terminal',
-        MobiSessionId: sessionId,
-        MobiSessionMetadataFromLocalWebhook: sessionMetadata,
-        pid
-      };
-      pidToTrackedSession.set(pid, trackedSession);
-      logger.debug(`[EXECUTOR] Registered externally-started session ${sessionId}`);
-    }
+    trackingTable.applyWebhook(sessionId, sessionMetadata);
   };
 
   // Spawn a new session (sessionId reserved for future --resume functionality)
@@ -189,8 +147,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     // 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时
     // 不再 spawn 第二个进程。「表项存在 = 进程存活」由 exit 既有清理保证；查重
     // 决策与结果构造单源见 spawnDedup。server 侧对 already-running 零等待幂等消费（票 02）
-    const dedupGuard = createResumeDedupGuard(pidToTrackedSession);
-    const dedupHit = dedupGuard(options.resumeSessionId);
+    const dedupHit = trackingTable.checkResumeDedup(options.resumeSessionId);
     if (dedupHit) {
       logger.debug('[EXECUTOR] Spawn deduped: live child already resuming this session');
       return dedupHit;
@@ -439,7 +396,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
         message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
       };
 
-      pidToTrackedSession.set(pid, trackedSession);
+      trackingTable.registerDaemon(trackedSession);
 
       MobiProcess.on('exit', (code, signal) => {
         observedExitCode = typeof code === 'number' ? code : null;
@@ -448,62 +405,29 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
         if (code !== 0 || signal) {
           logStderrTail();
         }
-        const errorAwaiter = pidToErrorAwaiter.get(pid);
-        if (errorAwaiter) {
-          pidToErrorAwaiter.delete(pid);
-          pidToAwaiter.delete(pid);
-          errorAwaiter(buildWebhookFailureMessage('exit-before-webhook'));
-        }
-        onChildExited(pid);
+        trackingTable.failAwaiter(pid, buildWebhookFailureMessage('exit-before-webhook'));
+        trackingTable.remove(pid);
       });
 
       MobiProcess.on('error', (error) => {
         logger.debug('[EXECUTOR] Child process error:', error);
-        const errorAwaiter = pidToErrorAwaiter.get(pid);
-        if (errorAwaiter) {
-          pidToErrorAwaiter.delete(pid);
-          pidToAwaiter.delete(pid);
-          errorAwaiter(buildWebhookFailureMessage('process-error-before-webhook'));
-        }
-        onChildExited(pid);
+        trackingTable.failAwaiter(pid, buildWebhookFailureMessage('process-error-before-webhook'));
+        trackingTable.remove(pid);
       });
 
       // Wait for webhook to populate session with MobiSessionId
       logger.debug(`[EXECUTOR] Waiting for session webhook for PID ${pid}`);
 
-      const spawnResult = await new Promise<SpawnSessionResult>((resolve) => {
-        // Set timeout for webhook
-        const timeout = setTimeout(() => {
-          pidToAwaiter.delete(pid);
-          pidToErrorAwaiter.delete(pid);
-          logger.debug(`[EXECUTOR] Session webhook timeout for PID ${pid}`);
-          logStderrTail();
-          resolve({
-            type: 'error',
-            errorMessage: buildWebhookFailureMessage('timeout')
-          });
-          // 15 second timeout - I have seen timeouts on 10 seconds
-          // even though session was still created successfully in ~2 more seconds
-        }, 15_000);
-
-        // Register awaiter
-        pidToAwaiter.set(pid, (completedSession) => {
-          clearTimeout(timeout);
-          pidToErrorAwaiter.delete(pid);
-          logger.debug(`[EXECUTOR] Session ${completedSession.MobiSessionId} fully spawned with webhook`);
-          resolve({
-            type: 'success',
-            sessionId: completedSession.MobiSessionId!
-          });
-        });
-        pidToErrorAwaiter.set(pid, (errorMessage) => {
-          clearTimeout(timeout);
-          resolve({
-            type: 'error',
-            errorMessage
-          });
-        });
+      // 15 second timeout - I have seen timeouts on 10 seconds
+      // even though session was still created successfully in ~2 more seconds
+      const waitResult = await trackingTable.waitForWebhook(pid, 15_000, () => {
+        logger.debug(`[EXECUTOR] Session webhook timeout for PID ${pid}`);
+        logStderrTail();
+        return buildWebhookFailureMessage('timeout');
       });
+      const spawnResult: SpawnSessionResult = waitResult.ok
+        ? { type: 'success', sessionId: waitResult.sessionId }
+        : { type: 'error', errorMessage: waitResult.errorMessage };
       if (spawnResult.type === 'error') {
         reportSpawnOutcomeToHub?.({
           type: 'error',
@@ -541,7 +465,8 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     logger.debug(`[EXECUTOR] Attempting to stop session ${sessionId}`);
 
     // Try to find by sessionId first
-    for (const [pid, session] of pidToTrackedSession.entries()) {
+    for (const session of trackingTable.all()) {
+      const pid = session.pid;
       if (session.MobiSessionId === sessionId ||
         (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
@@ -562,7 +487,7 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
           }
         }
 
-        pidToTrackedSession.delete(pid);
+        trackingTable.remove(pid);
         logger.debug(`[EXECUTOR] Removed session ${sessionId} from tracking`);
         return true;
       }
@@ -572,34 +497,15 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     return false;
   };
 
-  // Handle child process exit
-  const onChildExited = (pid: number) => {
-    logger.debug(`[EXECUTOR] Removing exited process PID ${pid} from tracking`);
-    pidToTrackedSession.delete(pid);
-    pidToAwaiter.delete(pid);
-    pidToErrorAwaiter.delete(pid);
-  };
-
-  // 关停请求（一次性）：内部触发（control server 指令 / 心跳自杀）与外部
-  // handle.stop() 汇聚到同一份清理，exited promise 兑现后薄壳退出进程
-  let shutdownRequest: Promise<unknown> | null = null;
-  let resolveExited: ((value: { source: ExecutorShutdownSource; errorMessage?: string }) => void) | null = null;
-  const exited = new Promise<{ source: ExecutorShutdownSource; errorMessage?: string }>((resolve) => {
-    resolveExited = resolve;
-  });
-  const requestShutdown = (source: ExecutorShutdownSource, errorMessage?: string) => {
-    logger.debug(`[EXECUTOR] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
-    if (resolveExited) {
-      resolveExited({ source, errorMessage });
-      resolveExited = null;
-    }
-  };
+  // 关停闩（架构评审候选⑧票①）：关停请求一次性汇聚（内部 control 指令与外部
+  // handle.stop 同一份清理）；清理体经函数声明提升引用后置装配（controlServer/interval）
+  const shutdownLatch = new ShutdownLatch<ExecutorShutdownSource>((source, errorMessage) => doCleanup(source, errorMessage));
 
   // Start control server
   const { port: controlPort, stop: stopControlServer } = await startExecutorControlServer({
     getChildren: getCurrentChildren,
     stopSession,
-    requestShutdown: () => requestShutdown('mobi-cli'),
+    requestShutdown: () => shutdownLatch.shutdown('mobi-cli'),
     onMobiSessionWebhook
   });
 
@@ -657,13 +563,15 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
   // 历史 runner.state.json 心跳停写（daemon.state.json 由 daemonEntry 维护，读取方已迁移）
   const heartbeatIntervalMs = parseInt(process.env.MOBI_RUNNER_HEARTBEAT_INTERVAL || '60000');
   const pruneStaleSessionsInterval = setInterval(() => {
-    for (const pid of pruneDeadTrackedSessions(pidToTrackedSession, isProcessAlive)) {
+    for (const pid of trackingTable.pruneDead()) {
       logger.debug(`[EXECUTOR] Removing stale session with PID ${pid} (process no longer exists)`);
     }
   }, heartbeatIntervalMs);
 
-  // 优雅清理（幂等）：清理顺序与原 cleanupAndShutdown 一致，只是不再 process.exit
-  const cleanup = async (source: ExecutorShutdownSource, errorMessage?: string) => {
+  // 优雅清理（幂等，由 ShutdownLatch 保证只跑一次）：清理顺序与原 cleanupAndShutdown 一致，
+  // 只是不再 process.exit。必须是函数声明（提升）：ShutdownLatch 构造时即引用，
+  // 而 stopControlServer / interval 在其后装配
+  async function doCleanup(source: ExecutorShutdownSource, errorMessage?: string) {
     logger.debug(`[EXECUTOR] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
 
     // Clear prune interval
@@ -679,40 +587,28 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
     }));
 
     await stopControlServer();
-    await releaseDaemonLock(daemonLockHandle);
+    // 持锁必非空（获取失败在 startExecutor 顶部已 throw）；函数声明提升不继承
+    // const 的控制流收窄，需显式收窄
+    await releaseDaemonLock(daemonLockHandle as FileHandle);
 
     logger.debug('[EXECUTOR] Cleanup completed');
-  };
+  }
 
   // server 直调桥（ticket-18）：spawn/stop 复用本闭包内实现；追踪补登单源在 sessionTracking
   const bridge: ExecutorBridge = {
     spawnSession,
     stopSession,
     registerSessionTracking: (signal) => {
-      const outcome = applySessionTrackingSignal(pidToTrackedSession, signal, isProcessAlive);
-      logger.debug(`[EXECUTOR] Session tracking signal ${signal.sessionId}: ${outcome.op}${outcome.op === 'skip' ? ` (${outcome.reason})` : ''}`);
+      trackingTable.applySignal(signal);
     },
   };
 
   const handle: ExecutorHandle = {
     httpPort: controlPort,
     bridge,
-    stop: async (source, errorMessage) => {
-      requestShutdown(source, errorMessage);
-      if (!shutdownRequest) {
-        shutdownRequest = cleanup(source, errorMessage);
-      }
-      await shutdownRequest;
-    },
-    exited,
+    stop: (source, errorMessage) => shutdownLatch.shutdown(source, errorMessage),
+    exited: shutdownLatch.exited,
   };
-
-  // 内部关停请求（control server 指令 / 心跳自杀）：挂起清理，薄壳 await exited 退出
-  void exited.then(({ source, errorMessage }) => {
-    if (!shutdownRequest) {
-      shutdownRequest = cleanup(source, errorMessage);
-    }
-  });
 
   logger.debug('[EXECUTOR] Executor started successfully, waiting for shutdown request');
 
