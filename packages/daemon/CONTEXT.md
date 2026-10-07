@@ -82,6 +82,10 @@ _Avoid_: 前台 Agent 面板数据（那是消费方视角）、运行中任务�
 daemon 对会话子进程上报的 `pushed`、`bound`、`attached`、`acked`、`lifecycle`、`withdrawn` 事实做字段收窄、幂等或单调落库，并生成领域 publication 的过程。`SessionMessageFactsProcessor` 是这些规则及连接级 native session 上下文的权威入口；Socket handler 只校验批次外层与访问权，并把 publication 翻译成 room / SSE 通知。
 _Avoid_: 在 Socket handler 内按 fact kind 直接写库、把 Socket/SSE 对象传入事实处理模块
 
+**消息受理**:
+daemon 对会话子进程上报的终态消息行的落库受理：nsid 补写（连接级上下文经注入 enricher）、position 锚定（positionBeforeResultId → 归属 result 行 position_at − 1）、上下文边界指针推进、流式快照清理，以及运行状态投影的编排。`SessionMessageIntakeProcessor` 是这些规则的权威入口，以惰性 publication 产出；Socket adapter 只做载荷校验、访问权判定与 publication 翻译（CLI 房间广播 + message-received / session-updated SSE）。
+_Avoid_: 在 Socket handler 内内联落库规则（规则必须有主）、把受理与「消息事实处理」混称（事实是消息行的后续状态流转，受理是首次落库）
+
 ### 消息出口
 
 **出口剥离**:

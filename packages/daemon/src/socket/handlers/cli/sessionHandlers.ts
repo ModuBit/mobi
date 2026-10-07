@@ -15,7 +15,6 @@
  */
 
 import { CacheStatusSchema, ContextUsageSchema, GoalStatusSchema, SnapshotDeltaFrameSchema, type ClientToServerEvents, type SDKMetadata } from '@mobi/shared'
-import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { daemonLogger } from '../../../logger'
@@ -27,11 +26,14 @@ import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTr
 import type { SnapshotSync } from '../../../sync/snapshotSync'
 import { toDecryptedMessage } from '../../../sync/messageService'
 import { sdkMetadataChanged } from '../../../sync/sessionCache'
-import { isContextBoundaryContent } from '../../../store/messages'
 import {
     SessionMessageFactsProcessor,
     type MessageFactsPublication,
 } from '../../../sync/sessionMessageFactsProcessor'
+import {
+    SessionMessageIntakeProcessor,
+    type SessionMessageIntakePublication,
+} from '../../../sync/sessionMessageIntakeProcessor'
 import { SessionMessageRuntimeProjector } from '../../../sync/sessionMessageRuntimeProjector'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -108,6 +110,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     const runtimeProjector = new SessionMessageRuntimeProjector(store, backgroundTaskTracker)
     // attached 事实同样建立连接级 native session 上下文，每个 Socket 独立实例化。
     const messageFactsProcessor = new SessionMessageFactsProcessor(store)
+    // 消息受理 module（连接级：编排注入的 projector，nsid 补写复用 factsProcessor 的连接级上下文）。
+    // 落库规则（position 锚定/边界指针/快照清理/nsid 补写）的权威入口在此，adapter 只校验与翻译。
+    const intakeProcessor = new SessionMessageIntakeProcessor(
+        store,
+        snapshotSync,
+        runtimeProjector,
+        (sessionId, metadata) => messageFactsProcessor.enrichMetadata(sessionId, metadata),
+    )
 
     /** 事实处理 module 只返回领域 publication；Socket adapter 在此翻译为 room + SSE 通知。 */
     const broadcastStoredMessages = (
@@ -145,6 +155,24 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 }
             } catch (error) {
                 daemonLogger.error(`[messages-facts] publication 发布失败（跳过继续）: type=${publication.type} sid=${publication.sessionId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`)
+            }
+        }
+    }
+
+    /** 受理 module publication 的翻译（对齐 publishMessageFacts）：runtime-state-updated
+     *  归并为 session-updated SSE；stored-messages 走广播出口。单条失败留痕不中止。 */
+    const publishIntakePublications = (publications: Iterable<SessionMessageIntakePublication>): void => {
+        for (const publication of publications) {
+            try {
+                if (publication.type === 'stored-messages') {
+                    broadcastStoredMessages(publication.sessionId, publication.messages)
+                } else if (publication.type === 'runtime-state-updated') {
+                    onWebappEvent?.({ type: 'session-updated', sessionId: publication.sessionId, data: publication.data })
+                } else {
+                    onWebappEvent?.(publication)
+                }
+            } catch (error) {
+                daemonLogger.error(`[session-message] 受理 publication 发布失败（跳过继续）: type=${publication.type} sid=${publication.sessionId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`)
             }
         }
     }
@@ -198,56 +226,17 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
         const session = sessionAccess.value
 
-        // 使用 CLI 传来的 category（CLI 已在发送端分类），降级为 persistent
-        const category: MessageCategory = parsed.data.category ?? 'persistent'
-
-        // 落库自动补 nsid：CLI 本地合成行（!bash 工具对、sendSessionEvent 事件行）不经 SDK、
-        // 无 session_id 可抄，落库后滞留 attach 孤儿池——每次 CLI 进程重启（resume）首条消息
-        // 触发 attach 时整池重播，窗口外旧行被 web 误当新消息 append（ghost 气泡）。
-        // 取「本连接已上报」的 nsid 补上；本轮未上报（resume 的 pre-SDK 窗口 / 首条消息前）
-        // 保持缺省，仍由 attach 兜底——绝不读 session.metadata（跨时代残留旧值）
-        const metadata = messageFactsProcessor.enrichMetadata(sid, parsed.data.metadata ?? null)
-
-        // positionBeforeResultId 归属声明（审查卡）：position_at 权威在 daemon——按 CLI 带
-        // 的归属 result 行 nativeId 定位，取该行之前（-1ms）；锚查不到（异常时序）退回
-        // 默认落库时刻
-        const resultPos = parsed.data.positionBeforeResultId !== undefined
-            ? store.messages.getResultPositionAt(sid, parsed.data.positionBeforeResultId)
-            : null
-        const positionAt = resultPos !== null ? resultPos - 1 : undefined
-
-        const msg = store.messages.addMessage(sid, content, localId, category, metadata, positionAt)
-
-        // 终态已持久化：兼容清理同 localId 的流式快照。
-        snapshotSync.messagePersisted(sid, localId ?? null)
-
-        // 边界指针推进（fork/rewind 入口判据，fork-session spec §2）。两个写入时机：
-        // compact_boundary 落库 → 该行 seq；context-cleared 事件到达 → 当前 MAX(seq)。
-        // 二者刚落库后 MAX 恒含该行 seq，统一取 MAX 兼容 resume 重放去重路径下
-        // msg.seq 落后于当前 MAX 的情况；单调守卫在 advance 内部（不回退、幂等）
-        if (isContextBoundaryContent(content)) {
-            store.contextBoundary.advance(sid, store.messages.getMaxSeq(sid))
-            // 指针写在 session metadata 上，必须广播 session-updated 驱动 web 缓存失效——
-            // web 的 fork/rewind 入口读 SessionMetadataSummary.contextBoundarySeq，
-            // 不广播则 compact/clear 后不刷新页面时入口不消失（陈旧缓存放行，前端实测坑）
-            onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: store.sessions.getSession(sid) })
-        }
-
-        for (const runtimeState of runtimeProjector.project({
+        // 受理主路径：落库规则（nsid 补写/position 锚定/边界指针/快照清理）与投影编排的
+        // 权威入口在 SessionMessageIntakeProcessor，adapter 只校验载荷与访问权、翻译 publication
+        publishIntakePublications(intakeProcessor.intake({
             sessionId: sid,
-            namespace: session.namespace,
+            category: parsed.data.category ?? 'persistent',
             content,
-        })) {
-            onWebappEvent?.({
-                type: 'session-updated',
-                sessionId: sid,
-                data: { sid, runtimeState },
-            })
-        }
-
-        // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
-        // 刚落库的行 seq 恒为 number，广播复用统一 DTO 映射（同 facts publication 路径）
-        broadcastStoredMessages(sid, [msg])
+            localId,
+            metadata: parsed.data.metadata ?? null,
+            positionBeforeResultId: parsed.data.positionBeforeResultId,
+            namespace: session.namespace,
+        }))
     })
 
     // snapshot 流结束（delta 协议）：full message 已持久化，精确清理该流的缓存与全部订阅游标。
