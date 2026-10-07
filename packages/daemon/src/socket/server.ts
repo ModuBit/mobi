@@ -22,21 +22,18 @@ import { parseCookie } from 'cookie'
 import { z } from 'zod'
 import { RPC_MAX_HTTP_BUFFER_SIZE } from '@mobi/shared'
 import type { Store } from '../store'
-import type { SessionFactsSink } from '../sync/sessionFacts'
 import { configuration } from '../configuration'
 import { constantTimeEquals } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
 import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
-import type { SessionHandlersDeps } from './handlers/cli/sessionHandlers'
 import { registerTerminalHandlers } from './handlers/terminal'
-import type { AgentSessionService } from '../sync/agentSessionService'
 import { RpcRegistry } from './rpcRegistry'
 import { SessionSocketOwners } from './sessionSocketOwners'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { SnapshotSync } from '../sync/snapshotSync'
 import type { RewindDeleteBoundTracker } from '../sync/rewindDeleteBoundTracker'
-import type { SyncEvent } from '../sync/syncEngine'
+import type { SessionSocketCapabilities, LazyCapability } from './capabilities'
 import { TerminalRegistry } from './terminalRegistry'
 import { TerminalHost } from '../terminal/TerminalHost'
 import type { CliSocketWithData, SocketData, SocketServer } from './socketTypes'
@@ -89,26 +86,14 @@ export type SocketServerDeps = {
     /** 会话归属与工作目录（终端 pty 的 cwd = metadata.path）。pty 由 daemon 持有
      *  （ticket-19），active 状态不再参与终端链路 */
     getSession?: (sessionId: string) => { namespace: string; sessionPath: string | null } | null
-    onWebappEvent?: (event: SyncEvent) => void
-    /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts）。
-     *  支持惰性求值——组装层 socket server 先于 SyncEngine 创建，handler 触发时才取 sink */
-    factsSink?: SessionFactsSink | (() => SessionFactsSink | undefined)
-    /** Web SSE 在线检查（ui-command 离线静默判定；hidden 后台 tab 也算在线） */
-    hasActiveSseConnection?: (namespace: string) => boolean
-    /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播）。
-     *  支持惰性求值——SyncEngine 在 socket server 之后创建 */
-    publishUiCommand?: (event: Extract<SyncEvent, { type: 'ui-command' }>) => void
-    /** Agent 会话操作服务（B 类工具族）。支持惰性求值——同为 SyncEngine 内部实例，
-     *  在 socket server 之后创建。取不到时 handler 回 handler-misconfigured */
-    agentSessions?: () => AgentSessionService | undefined
-    /** CLI 房间 new-message 广播出口（messageService 单一构造点）。支持惰性求值——
-     *  messageService 是 SyncEngine 内部实例，在 socket server 之后创建 */
-    emitCliNewMessage?: () => CliNewMessageEmitter | undefined
+} & Partial<Pick<SessionSocketCapabilities, 'onWebappEvent' | 'hasActiveSseConnection' | 'publishUiCommand'>> & {
+    /** 能力签名单源 socket/capabilities.ts（架构评审候选⑥票①）；须惰性的三项在此
+     *  写 getter 投影——组装层 socket server 先于 SyncEngine 创建（真环，见文件头），
+     *  connection 时解包。factsSink 兼容实体直传（部分测试用） */
+    factsSink?: SessionSocketCapabilities['factsSink'] | LazyCapability<SessionSocketCapabilities['factsSink']>
+    agentSessions?: LazyCapability<SessionSocketCapabilities['agentSessions']>
+    emitCliNewMessage?: LazyCapability<SessionSocketCapabilities['emitCliNewMessage']>
 }
-
-/** CLI 房间 new-message 广播出口类型（messageService.emitNewMessageToCli 的签名投影，
- *  单一声明源在 SessionHandlersDeps，CliHandlersDeps / SocketServerDeps 复用同一形状） */
-export type CliNewMessageEmitter = NonNullable<SessionHandlersDeps['emitCliNewMessage']>
 
 export function createSocketServer(deps: SocketServerDeps): {
     io: SocketServer

@@ -20,10 +20,10 @@ import { randomUUID } from 'node:crypto'
 import { daemonLogger } from '../../../logger'
 import type { Store, StoredMessage, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
-import type { SessionFactsSink } from '../../../sync/sessionFacts'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { SnapshotSync } from '../../../sync/snapshotSync'
+import type { SessionSocketCapabilities } from '../../capabilities'
 import { toDecryptedMessage } from '../../../sync/messageService'
 import { sdkMetadataChanged } from '../../../sync/sessionCache'
 import {
@@ -81,6 +81,8 @@ const updateStateSchema = z.object({
     agentState: z.unknown().nullable()
 })
 
+/** 会话消息/事实 handler 的依赖：连接级私有依赖 + 能力投影（能力签名单源
+ *  ../../capabilities.ts，架构评审候选⑥票①——此前同一组签名三层手写且已漂移） */
 export type SessionHandlersDeps = {
     store: Store
     resolveSessionAccess: ResolveSessionAccess
@@ -91,17 +93,7 @@ export type SessionHandlersDeps = {
     snapshotSync: SnapshotSync
     /** rewind 软删除上界（写侧：SyncEngine 受理时 mark；读侧：受理 module rewindTruncate 消费，共用实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
-    /** 会话事实上报落库入口（深化候选③：单一声明源见 sync/sessionFacts.ts，
-     *  实现方为 SyncEngine/SessionCache——此前五个 onXxx 回调在此/在 CliHandlersDeps/
-     *  SocketServerDeps 手写三遍且已漂移） */
-    factsSink?: SessionFactsSink
-    /** CLI 房间 new-message 广播出口（messageService.emitNewMessageToCli 的单一构造点）。
-     *  此前 handler 内联拼第二份载荷且信封 id 已分叉（randomUUID vs msg.id）——
-     *  构造权收归 messageService 后 handler 只传参。缺装配时跳过 CLI 广播（部分单测
-     *  只关心 SSE 侧），生产装配恒注入 */
-    emitCliNewMessage?: (sessionId: string, msg: { id: string; seq: number | null; createdAt: number }, message: ReturnType<typeof toDecryptedMessage>, options?: { backfill?: boolean; exceptSocketId?: string }) => void
-    onWebappEvent?: (event: SyncEvent) => void
-}
+} & Partial<Pick<SessionSocketCapabilities, 'factsSink' | 'emitCliNewMessage' | 'onWebappEvent'>>
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
     const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, snapshotSync, factsSink, emitCliNewMessage, onWebappEvent } = deps

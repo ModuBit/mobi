@@ -97,3 +97,9 @@ _Avoid_: 数据删除（存储未动）、脱敏（目的不是安全）、内�
 **会话执行访问**:
 daemon 内本机执行消费面的单一入口（`SessionExecutionAccess`）：session 寻址族（按会话行解析 cwd 后落执行层：文件读写/上传替换/审查六方法）、host 直调族（web 端点自带 cwd/homeDir 的纯转发）、web 工具配置族。web 路由直接消费它；SyncEngine 只保留真编排（spawn/resume/wake/fork/rewind/dormancy），不再做透传。寻址规则（ADR 0006）：session 寻址、本机执行、无条件单路径，cwd 缺失显式报错、不回退会话 socket。
 _Avoid_: 在 SyncEngine 上加回透传方法（透传链正是深化候选②要消灭的）、在路由里自行查会话行解析 cwd（寻址规则单源在 module）
+
+### CLI socket
+
+**CLI socket 能力集**（`SessionSocketCapabilities`）:
+socket 层消费的 daemon 侧会话能力的单一声明源（`socket/capabilities.ts`，架构评审候选⑥票①）：factsSink / emitCliNewMessage / onWebappEvent / hasActiveSseConnection / publishUiCommand / agentSessions 六项实体签名一份，`SocketServerDeps` / `CliHandlersDeps` / `SessionHandlersDeps` 三层只做 Partial/Pick/getter 投影——改一个能力签名从跨 4 文件变一处。factsSink 的载荷类型另有声明源 `sync/sessionFacts.ts`。组装层 socket server 先于 SyncEngine 创建（真环），惰性项在 SocketServerDeps 侧写 getter 投影、connection 时解包。
+_Avoid_: 三层 deps 手写能力字段（漂移前科：emitCliNewMessage 链式投影 + factsSink 手写三遍丢字段）、绕过 capabilities 直接引 SyncEngine 内部类型当 deps

@@ -17,19 +17,19 @@
 import type { Store, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SessionSocketOwners } from '../../sessionSocketOwners'
-import type { SyncEvent } from '../../../sync/syncEngine'
+import type { SessionSocketCapabilities } from '../../capabilities'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
-import type { SessionFactsSink } from '../../../sync/sessionFacts'
-import type { AgentSessionOps } from '../../../sync/agentSessionService'
 import type { SnapshotCliLease, SnapshotSync } from '../../../sync/snapshotSync'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 import { registerUiCommandHandlers } from './uiCommandHandlers'
 import { registerAgentSessionHandlers } from './agentSessionHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
-import { registerSessionHandlers, type SessionHandlersDeps } from './sessionHandlers'
+import { registerSessionHandlers } from './sessionHandlers'
 
+/** 连接级 CLI handler 的依赖：私有依赖（io/仲裁表/共享实例）+ 能力投影
+ *  （能力签名单源 ../../capabilities.ts，架构评审候选⑥票①） */
 export type CliHandlersDeps = {
     io: SocketServer
     store: Store
@@ -40,24 +40,12 @@ export type CliHandlersDeps = {
     snapshotSync: SnapshotSync
     /** rewind 软删除上界（SyncEngine 受理时写；与 SyncEngine 共用同一实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
-    /** Web SSE 在线检查（ui-command 离线静默判定；hidden 后台 tab 也算在线） */
-    hasActiveSseConnection?: (namespace: string) => boolean
-    /** ui-command SyncEvent 发布（经 EventPublisher 盖章 namespace 并 SSE 广播） */
-    publishUiCommand?: (event: Extract<SyncEvent, { type: 'ui-command' }>) => void
-    /** Agent 会话操作能力（B 类工具族的四个方法，整份一次交付）。
-     *  缺装配时 handler 一次性回 handler-misconfigured，不静默返回空清单 */
-    agentSessions?: AgentSessionOps
-    /** 会话事实上报落库入口（深化候选③：单一声明源 sync/sessionFacts.ts） */
-    factsSink?: SessionFactsSink
-    /** CLI 房间 new-message 广播出口（messageService 单一构造点，sessionHandlers 消费） */
-    emitCliNewMessage?: NonNullable<SessionHandlersDeps['emitCliNewMessage']>
-    onWebappEvent?: (event: SyncEvent) => void
     /**
      * 同 session CLI socket 的接管仲裁表（单一持有者保证方法映射不悬空）。
      * 由 server.ts 组装传入；缺省（部分单测直接调 registerCliHandlers）时跳过仲裁。
      */
     sessionSocketOwners?: SessionSocketOwners
-}
+} & Partial<SessionSocketCapabilities>
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
     const { io, store, rpcRegistry, sessionSocketOwners, backgroundTaskTracker, snapshotSync, rewindDeleteBoundTracker, factsSink, emitCliNewMessage, onWebappEvent, hasActiveSseConnection, publishUiCommand, agentSessions } = deps
