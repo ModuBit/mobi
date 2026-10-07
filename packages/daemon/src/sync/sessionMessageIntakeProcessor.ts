@@ -20,6 +20,7 @@ import type { Store, StoredMessage, StoredSession } from '../store'
 import { isContextBoundaryContent } from '../store/messages'
 import type { SnapshotSync } from './snapshotSync'
 import type { SessionMessageRuntimeProjector } from './sessionMessageRuntimeProjector'
+import type { RewindDeleteBoundTracker } from './rewindDeleteBoundTracker'
 
 /** 连接级 nsid 补写出口（实现方 SessionMessageFactsProcessor.enrichMetadata——
  *  连接级 native session 上下文的单一所有者不变，受理 module 只消费不持有） */
@@ -73,6 +74,8 @@ export class SessionMessageIntakeProcessor {
         private readonly snapshotSync: SnapshotSync,
         private readonly runtimeProjector: SessionMessageRuntimeProjector,
         private readonly enrichMetadata: IntakeMetadataEnricher,
+        /** rewind 软删上界（SyncEngine 受理时 mark，此处消费）；缺装配回退无上界删除（旧行为） */
+        private readonly rewindDeleteBoundTracker?: RewindDeleteBoundTracker,
     ) {}
 
     *intake(input: SessionMessageIntakeInput): Generator<SessionMessageIntakePublication> {
@@ -123,5 +126,22 @@ export class SessionMessageIntakeProcessor {
         }
 
         yield { type: 'stored-messages', sessionId, messages: [msg] }
+    }
+
+    /**
+     * rewind 软删受理（CLI 两段回报第一段）：幂等重放判定 → 消费受理上界 → 软删除。
+     * 载荷校验（deleteFromSeq 正整数等）与访问权留在 Socket adapter，协议不变。
+     *
+     * 返回 false = CLI 可靠队列重放（软删除已执行过，调用方跳过 SSE 仅回 ack）。
+     */
+    rewindTruncate(input: { sessionId: string; nativeId: string; deleteFromSeq: number }): boolean {
+        const { sessionId, nativeId, deleteFromSeq } = input
+        if (this.rewindDeleteBoundTracker?.isDuplicateTruncated(sessionId, nativeId, deleteFromSeq)) {
+            return false
+        }
+        // 受理时记录的上界（一次性消费；无记录 = daemon 重启丢内存 → 回退无上界删除，旧行为）
+        const bound = this.rewindDeleteBoundTracker?.consume(sessionId) ?? undefined
+        this.store.messages.softDeleteMessagesFrom(sessionId, deleteFromSeq, bound)
+        return true
     }
 }

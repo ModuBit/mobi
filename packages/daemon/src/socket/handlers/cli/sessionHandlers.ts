@@ -89,7 +89,7 @@ export type SessionHandlersDeps = {
     backgroundTaskTracker: BackgroundTaskTracker
     /** 快照同步 module：接收已校验的全量/增量帧并维护流生命周期。 */
     snapshotSync: SnapshotSync
-    /** rewind 软删除上界（读侧：rewind-truncated 消费；写侧：SyncEngine 受理时 mark，共用实例） */
+    /** rewind 软删除上界（写侧：SyncEngine 受理时 mark；读侧：受理 module rewindTruncate 消费，共用实例） */
     rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     /** 会话事实上报落库入口（深化候选③：单一声明源见 sync/sessionFacts.ts，
      *  实现方为 SyncEngine/SessionCache——此前五个 onXxx 回调在此/在 CliHandlersDeps/
@@ -112,11 +112,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     const messageFactsProcessor = new SessionMessageFactsProcessor(store)
     // 消息受理 module（连接级：编排注入的 projector，nsid 补写复用 factsProcessor 的连接级上下文）。
     // 落库规则（position 锚定/边界指针/快照清理/nsid 补写）的权威入口在此，adapter 只校验与翻译。
+    // rewindDeleteBoundTracker 为组装层共享实例（SyncEngine 受理时 mark，此处消费），非连接级
     const intakeProcessor = new SessionMessageIntakeProcessor(
         store,
         snapshotSync,
         runtimeProjector,
         (sessionId, metadata) => messageFactsProcessor.enrichMetadata(sessionId, metadata),
+        rewindDeleteBoundTracker,
     )
 
     /** 事实处理 module 只返回领域 publication；Socket adapter 在此翻译为 room + SSE 通知。 */
@@ -485,15 +487,15 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             ack?.()
             return
         }
-        // CLI 可靠队列的重放（ack 丢失后原样重发）→ 幂等跳过：软删除/SSE 均已执行过
-        if (rewindDeleteBoundTracker?.isDuplicateTruncated(data.sid, data.nativeId, data.deleteFromSeq)) {
-            ack?.()
-            return
+        // 软删规则（幂等重放判定/上界消费）在受理 module；adapter 只做载荷校验、访问权与 SSE 翻译
+        const executed = intakeProcessor.rewindTruncate({
+            sessionId: data.sid,
+            nativeId: data.nativeId,
+            deleteFromSeq: data.deleteFromSeq,
+        })
+        if (executed) {
+            emitRewindEvent({ type: 'rewind-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })
         }
-        // 受理时记录的上界（一次性消费；无记录 = daemon 重启丢内存 → 回退无上界删除，旧行为）
-        const bound = rewindDeleteBoundTracker?.consume(data.sid) ?? undefined
-        store.messages.softDeleteMessagesFrom(data.sid, data.deleteFromSeq, bound)
-        emitRewindEvent({ type: 'rewind-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })
         ack?.()
     })
 

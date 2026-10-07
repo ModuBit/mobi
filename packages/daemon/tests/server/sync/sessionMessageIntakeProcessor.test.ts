@@ -19,6 +19,7 @@ import { SessionMessageIntakeProcessor } from '../../../src/sync/sessionMessageI
 import { SessionMessageRuntimeProjector } from '../../../src/sync/sessionMessageRuntimeProjector'
 import { SnapshotSync } from '../../../src/sync/snapshotSync'
 import { BackgroundTaskTracker } from '../../../src/sync/backgroundTaskTracker'
+import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
 import { Store } from '../../../src/store'
 import type { SessionMessageIntakePublication } from '../../../src/sync/sessionMessageIntakeProcessor'
 
@@ -36,7 +37,7 @@ const todoEnvelope = {
 }
 
 /** 搭建受理 module（真实 Store / Projector；SnapshotSync 记录 messagePersisted 调用） */
-function makeHarness(opts: { enrich?: (sid: string, m: unknown) => unknown } = {}) {
+function makeHarness(opts: { enrich?: (sid: string, m: unknown) => unknown; tracker?: RewindDeleteBoundTracker } = {}) {
     const store = new Store(':memory:')
     const sid = store.sessions.getOrCreateSession('intake-test', { path: '/tmp/x' }, null, 'default').id
     const persistedCalls: Array<{ sid: string; localId: string | null }> = []
@@ -56,6 +57,7 @@ function makeHarness(opts: { enrich?: (sid: string, m: unknown) => unknown } = {
             enrichCalls.push({ sid: sessionId, metadata })
             return opts.enrich?.(sessionId, metadata) as never ?? metadata
         },
+        opts.tracker,
     )
     const intake = (input: Partial<Parameters<SessionMessageIntakeProcessor['intake']>[0]> = {}) =>
         [...processor.intake({
@@ -66,7 +68,7 @@ function makeHarness(opts: { enrich?: (sid: string, m: unknown) => unknown } = {
             namespace: 'default',
             ...input,
         })]
-    return { store, sid, intake, persistedCalls, enrichCalls }
+    return { store, sid, module: processor, intake, persistedCalls, enrichCalls }
 }
 
 const types = (pubs: SessionMessageIntakePublication[]) => pubs.map(p => p.type)
@@ -149,5 +151,51 @@ describe('SessionMessageIntakeProcessor：受理规则收口', () => {
         const runtimePub = pubs[0] as Extract<SessionMessageIntakePublication, { type: 'runtime-state-updated' }>
         expect(runtimePub.data.sid).toBeDefined()
         expect(runtimePub.data.runtimeState.todos).toBeInstanceOf(Array)
+    })
+})
+
+describe('SessionMessageIntakeProcessor.rewindTruncate（rewind 软删受理）', () => {
+    /** 落 n 条消息并返回实际 seq 列表（offset 区分批次：localId 是去重键，复用会被吞） */
+    const seed = (h: ReturnType<typeof makeHarness>, n: number, offset = 0) => {
+        for (let i = 1; i <= n; i++) h.store.messages.addMessage(h.sid, userEnvelope(`m${offset + i}`), `loc-${offset + i}`)
+    }
+
+    test('首次回报：消费受理上界，软删 [deleteFromSeq, bound]，受理后新行保留', () => {
+        const tracker = new RewindDeleteBoundTracker()
+        const h = makeHarness({ tracker })
+        seed(h, 3)
+        // 受理时点最大 seq=3，受理后新发 seq 4、5（迟到回报窗口）
+        tracker.markAccepted(h.sid, 3)
+        seed(h, 2, 3)
+
+        const executed = h.module.rewindTruncate({ sessionId: h.sid, nativeId: 'u2', deleteFromSeq: 2 })
+
+        expect(executed).toBe(true)
+        expect(h.store.messages.getMessages(h.sid, 10).map(r => r.seq)).toEqual([1, 4, 5])
+    })
+
+    test('CLI 可靠队列重放（同 nativeId + deleteFromSeq）→ 幂等跳过（返回 false，不二次软删）', () => {
+        const h = makeHarness({ tracker: new RewindDeleteBoundTracker() })
+        seed(h, 3)
+
+        expect(h.module.rewindTruncate({ sessionId: h.sid, nativeId: 'u2', deleteFromSeq: 2 })).toBe(true)
+        expect(h.module.rewindTruncate({ sessionId: h.sid, nativeId: 'u2', deleteFromSeq: 2 })).toBe(false)
+        expect(h.store.messages.getMessages(h.sid, 10).map(r => r.seq)).toEqual([1])
+    })
+
+    test('无上界记录（daemon 重启丢内存）→ 回退无上界删除到尾', () => {
+        const h = makeHarness({ tracker: new RewindDeleteBoundTracker() })
+        seed(h, 3)
+
+        expect(h.module.rewindTruncate({ sessionId: h.sid, nativeId: 'u2', deleteFromSeq: 2 })).toBe(true)
+        expect(h.store.messages.getMessages(h.sid, 10).map(r => r.seq)).toEqual([1])
+    })
+
+    test('tracker 缺装配 → 仍执行软删（旧行为兜底）', () => {
+        const h = makeHarness()
+        seed(h, 2)
+
+        expect(h.module.rewindTruncate({ sessionId: h.sid, nativeId: 'u1', deleteFromSeq: 1 })).toBe(true)
+        expect(h.store.messages.getMessages(h.sid, 10)).toHaveLength(0)
     })
 })

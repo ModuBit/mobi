@@ -83,7 +83,7 @@ daemon 对会话子进程上报的 `pushed`、`bound`、`attached`、`acked`、`
 _Avoid_: 在 Socket handler 内按 fact kind 直接写库、把 Socket/SSE 对象传入事实处理模块
 
 **消息受理**:
-daemon 对会话子进程上报的终态消息行的落库受理：nsid 补写（连接级上下文经注入 enricher）、position 锚定（positionBeforeResultId → 归属 result 行 position_at − 1）、上下文边界指针推进、流式快照清理，以及运行状态投影的编排。`SessionMessageIntakeProcessor` 是这些规则的权威入口，以惰性 publication 产出；Socket adapter 只做载荷校验、访问权判定与 publication 翻译（CLI 房间广播 + message-received / session-updated SSE）。
+daemon 对会话子进程上报的终态消息行的落库受理：nsid 补写（连接级上下文经注入 enricher）、position 锚定（positionBeforeResultId → 归属 result 行 position_at − 1）、上下文边界指针推进、流式快照清理，以及运行状态投影的编排；rewind 软删（幂等重放判定 → 消费受理上界 → 软删除）同由其 `rewindTruncate` 受理。`SessionMessageIntakeProcessor` 是这些规则的权威入口，以惰性 publication 产出；Socket adapter 只做载荷校验、访问权判定与 publication 翻译（CLI 房间广播 + message-received / session-updated SSE）。
 _Avoid_: 在 Socket handler 内内联落库规则（规则必须有主）、把受理与「消息事实处理」混称（事实是消息行的后续状态流转，受理是首次落库）
 
 ### 消息出口
