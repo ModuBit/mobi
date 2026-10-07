@@ -24,7 +24,10 @@ import { parseSpecialCommand } from "../parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@mobi/node-core/utils/future";
 import type { PromptPayload } from "@mobi/node-core/utils/promptBuilder";
-import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { SnapshotOut } from "./utils/streamSnapshotSender";
+import type { CacheStatus } from "@mobi/shared";
+import type { PushOrigin } from "./utils/stopAction";
+import type { SDKAssistantMessage, SDKControlGetContextUsageResponse, SDKMessage, SDKResultMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "../ui/messageFormatterInk";
 import { logger } from "@mobi/node-core/logger";
@@ -409,6 +412,98 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.session.client.sendSessionEvent({ type: 'compact-started' })
     }
 
+    /** SessionStart(resume/fork) 缓存过期上报：null（非恢复/warm）不产生事件 */
+    private reportCacheStatusEvent(status: CacheStatus | null): void {
+        if (status) this.session.client.reportCacheStatus(status);
+    }
+
+    private handleCompletionEvent(message: string): void {
+        logger.debug(`[remote]: Completion event: ${message}`);
+        this.session.client.sendSessionEvent({ type: 'message', message });
+    }
+
+    /** compact 终态（成功失败都到）：started 闸门清位（失败路径无 boundary，靠此兜底） */
+    private handleCompactCompleted(): void {
+        logger.debug('[remote]: Compaction completed');
+        this.compactStartGate.reset();
+        this.session.client.sendSessionEvent({ type: 'compact-completed' });
+    }
+
+    /** 上下文重置收口（/clear 与 CC 侧 conversation_reset 双源同汇）：边界事件 + 清水位 +
+     *  归零记忆（与 output style 切换共用；applyContextReset 幂等，双路径无重复） */
+    private handleContextCleared(): void {
+        logger.debug('[remote]: Context cleared');
+        applyContextReset(this.session.client, () => this.contextTracker.reset());
+    }
+
+    /** CC 侧 conversation_reset（plan 退出清除上下文 / fresh session / onboarding；mobi 自身
+     *  /clear 走 specialCommand 拦截不产生本帧）。SDK 指引每帧都 reset，与 onContextCleared
+     *  同一收口 */
+    private handleConversationReset(trigger?: string): void {
+        logger.debug(`[remote]: Conversation reset (trigger=${trigger ?? '-'})`);
+        applyContextReset(this.session.client, () => this.contextTracker.reset());
+    }
+
+    /** result 用量上报：非 compact result 到达即 turn 正常收尾（中断 result 不经过此回调——
+     *  撤回复验语义见 resetTurnTracking） */
+    private handleResultUsage(resultMsg: SDKResultMessage, isCompact: boolean): void {
+        if (!isCompact) this.resetTurnTracking()
+        void this.contextTracker.onResult(resultMsg, isCompact)
+    }
+
+    /** 压缩成功终态：started 闸门清位，允许下一次压缩重新触发；水位上报（post_tokens）收口在 tracker */
+    private handleCompactBoundary(postTokens: number | undefined): void {
+        this.compactStartGate.reset();
+        this.contextTracker.onCompactBoundary(postTokens)
+    }
+
+    private handleSessionReset(): void {
+        logger.debug('[remote]: Session reset');
+        this.session.clearSessionId();
+    }
+
+    /** turn 就绪事件：投递队列与暂存批次皆空时才发（有排队消息时不报就绪） */
+    private handleTurnReady(): void {
+        if (!this.pendingBatch && this.session.queue.size() === 0) {
+            this.session.client.sendSessionEvent({ type: 'ready' });
+        }
+    }
+
+    /** snapshot delta 协议三出口：全量帧走 legacy snapshot 通道（带 rev 标记），增量帧走
+     *  snapshotDelta 通道（daemon 侧拼接器重建全量），stream-end 信号通知 daemon 清缓存与
+     *  订阅游标（full 落库即流结束） */
+    private sendSnapshotOut(out: SnapshotOut): void {
+        if (out.kind === 'full') {
+            this.session.client.sendContentSnapshot(out.message, { rev: out.frame.rev });
+        } else if (out.kind === 'delta') {
+            this.session.client.sendSnapshotDelta(out.frame);
+        } else {
+            this.session.client.sendSnapshotStreamEnd(out.localId);
+        }
+    }
+
+    /** 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。push 时若
+     *  native session id 已知（非首条）直接带上，省去 attach 补写往返。同时是 turn 追踪的
+     *  push 接线点（批次 A）：更新策略收口在 applyPushToTurnTracking（纯函数，C1 修法 1）——
+     *  新 turn 的 push 复位 hasOutput 并覆盖撤回锚；steer push 只覆盖锚、不复位 hasOutput
+     *  （turn 运行中的插队不该抹掉「已产出输出」的事实） */
+    private handleMessagesBound(bindings: { localId: string; nativeId: string }[], origin?: PushOrigin): void {
+        const last = bindings[bindings.length - 1]
+        if (last) {
+            this.turnTracking = applyPushToTurnTracking(
+                this.turnTracking,
+                last.nativeId,
+                origin ?? 'turn',
+            )
+        }
+        this.session.client.emitMessagesBound(bindings, this.session.sessionId ?? undefined)
+    }
+
+    /** 撤回复验判据：本 turn 有任何模型输出即置位（见 TurnTrackingState） */
+    private observeTurnOutput(): void {
+        this.turnTracking.hasOutput = true
+    }
+
     public async launch(): Promise<RemoteLauncherExitReason> {
         return this.start({
             onExit: () => this.handleExitFromUi(),
@@ -594,23 +689,27 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
         // 主线 assistant 到达即实时上报水位（turn 内逐步上涨），编排收口在 contextTracker.onAssistantUsage。
 
-        const onMessage = (message: SDKMessage): void => {
-            // 注意：此处不做 resetIdleTimer——SDK 消息不等于用户活动。CC 会偶发推送
-            // commands_changed 等内部帧（会话空闲数小时后仍会到达），若据此重排空闲
-            // 计时，自动休眠永远到不了点（生产实锤：休眠特性上线前一个会话 34h 不退）。
-            // 「turn 正在跑」的休眠保护由 dormancy gate 的 turn_running 事实承担（见
-            // runClaude.readDormancyFacts），活动判定只认用户意图：消息出队 / RPC / 终端输入。
+        // ── SDK 消息处理管线（深化候选④票②：7 类关注点拆命名 handler，onMessage 只剩装配）──
+        // 注意：此处不做 resetIdleTimer——SDK 消息不等于用户活动。CC 会偶发推送
+        // commands_changed 等内部帧（会话空闲数小时后仍会到达），若据此重排空闲
+        // 计时，自动休眠永远到不了点（生产实锤：休眠特性上线前一个会话 34h 不退）。
+        // 「turn 正在跑」的休眠保护由 dormancy gate 的 turn_running 事实承担（见
+        // runClaude.readDormancyFacts），活动判定只认用户意图：消息出队 / RPC / 终端输入。
 
-            // 拦截 isReplay 回显：CC 接收确认信号，不 convert、不落库，转 ack 上报
-            // （nativeAckAt 数据源）。回显 uuid = 当初 push 时预设的 nativeId，故按 uuid 回填。
+        /** isReplay 回显拦截：CC 接收确认信号，不 convert、不落库，转 ack 上报
+         *  （nativeAckAt 数据源）。回显 uuid = 当初 push 时预设的 nativeId，故按 uuid 回填 */
+        const interceptReplayAck = (message: SDKMessage): boolean => {
             if (isReplayUserMessage(message)) {
                 session.client.emitMessagesAcked(message.uuid)
-                return
+                return true
             }
+            return false
+        }
 
-            // 拦截 command_lifecycle 帧：CC 排队消息生命周期回执。控制帧不 convert 不落库
-            //（classifyMessage discard 兜底），只取信号转 lifecycle fact 上报 daemon。
-            // command_uuid = push 时预设的 nativeId，daemon 按 nativeId 反查推进
+        /** command_lifecycle 帧拦截：CC 排队消息生命周期回执。控制帧不 convert 不落库
+         *  （classifyMessage discard 兜底），只取信号转 lifecycle fact 上报 daemon。
+         *  command_uuid = push 时预设的 nativeId，daemon 按 nativeId 反查推进 */
+        const interceptLifecycleFact = (message: SDKMessage): boolean => {
             const lifecycleSignal = commandLifecycleToFact(message)
             if (lifecycleSignal) {
                 session.client.emitLifecycleFact(
@@ -619,21 +718,26 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     undefined,
                     lifecycleSignal.terminalReason,
                 )
-                return
+                return true
             }
+            return false
+        }
 
-            // 后台任务存活集合（批次 A『全部停止』档的遍历源）：level 信号整体替换（REPLACE 语义，
-            // 见 SDKBackgroundTasksChangedMessage——勿做增量合并）。不 early-return，保持既有落库行为。
-            // SDKSystemMessage 联合尚未收录该 subtype（SDK 0.3.251），走开放形状断言
+        /** 后台任务存活集合（批次 A『全部停止』档的遍历源）：level 信号整体替换（REPLACE 语义，
+         *  见 SDKBackgroundTasksChangedMessage——勿做增量合并）。不 early-return，保持既有落库行为。
+         *  SDKSystemMessage 联合尚未收录该 subtype（SDK 0.3.251），走开放形状断言 */
+        const trackBackgroundTasks = (message: SDKMessage): void => {
             if (message.type === 'system' && (message as unknown as { subtype?: string }).subtype === 'background_tasks_changed') {
                 this.backgroundTaskIds = collectLiveTaskIds((message as unknown as { tasks?: unknown }).tasks)
             }
+        }
 
-            // 命令列表变化（SDKCommandsChangedMessage，sdk.d.ts REPLACE 语义）：CC 在技能/
-            // 命令目录变化时推送（与用户交互无关，会话空闲期也会到达）。supportedCommands()
-            // 已跟踪最新推送，此处只需重跑能力发现刷新 sdkMetadata.commands → daemon SSE →
-            // web 命令面板 refetch；消息本体由 classifyMessage discard（不进消息流）。
-            // 节流：目录扫描期可能连发，10s 内只发现一次
+        /** 命令列表变化（SDKCommandsChangedMessage，sdk.d.ts REPLACE 语义）：CC 在技能/
+         *  命令目录变化时推送（与用户交互无关，会话空闲期也会到达）。supportedCommands()
+         *  已跟踪最新推送，此处只需重跑能力发现刷新 sdkMetadata.commands → daemon SSE →
+         *  web 命令面板 refetch；消息本体由 classifyMessage discard（不进消息流）。
+         *  节流：目录扫描期可能连发，10s 内只发现一次；窗口内 trailing 补发一次不丢尾变更 */
+        const refreshCommandsOnChanged = (message: SDKMessage): void => {
             if (message.type === 'system' && (message as { subtype?: string }).subtype === 'commands_changed') {
                 const now = Date.now();
                 if (now - this.lastCommandsChangedDiscoveryAt > COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS && this.queryRef) {
@@ -647,19 +751,21 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     }, COMMANDS_CHANGED_DISCOVERY_THROTTLE_MS);
                 }
             }
+        }
 
-            formatClaudeMessageForInk(message, messageBuffer);
-            permissionHandler.onMessage(message);
-
-            // 记录 CLI 请求名：init 先于一切 assistant 到达且每次新 query（含 resume）都重发，
-            // 模型切换自动更新——tracker 的窗口猜测与 result.modelUsage 用同源的模型名
+        /** init 帧：记录 CLI 请求名（模型切换自动更新——tracker 的窗口猜测与 result.modelUsage
+         *  用同源的模型名）+ fork 激活收口（init 返回预生成 id 即 CC 已物化 fork transcript——
+         *  清本地簿记 + 上报 daemon 清除 forkFrom（保留 forkedFrom）） */
+        const handleInitSignal = (message: SDKMessage): void => {
             if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
                 this.contextTracker.onInit((message as { model?: string }).model)
-                // fork 激活收口（fork-session spec §5.2 步骤 4/5）：init 返回预生成 id 即 CC
-                // 已物化 fork transcript——清本地簿记 + 上报 daemon 清除 forkFrom（保留 forkedFrom）
                 this.settleForkActivation((message as { session_id?: string }).session_id)
             }
+        }
 
+        /** 工具调用观测：assistant 的 tool_use 记账（嵌套场景记 parentToolCallId）、
+         *  enter_plan_mode 待确认集合、主线 usage 水位；user 的 tool_result 清账并放行排队发送 */
+        const trackToolUsage = (message: SDKMessage): void => {
             if (message.type === 'assistant') {
                 const usageMsg = message as SDKAssistantMessage;
                 // 主线 assistant（子代理 parent_tool_use_id 非空，其 usage 是独立子上下文不作水位）；
@@ -692,135 +798,158 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     }
                 }
             }
+        }
 
-            let msg = message;
-
-            if (message.type === 'user') {
-                const umessage = message as SDKUserMessage;
-                if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                    msg = {
-                        ...umessage,
-                        message: {
-                            ...umessage.message,
-                            content: umessage.message.content.map((c: ContentBlockParam): ContentBlockParam => {
-                                if (c.type === 'tool_result' && c.tool_use_id && enterPlanModeToolCalls.has(c.tool_use_id)) {
-                                    enterPlanModeToolCalls.delete(c.tool_use_id);
-                                    if (!c.is_error) {
-                                        logger.debug('[remote]: enter plan mode succeeded, syncing permissionMode');
-                                        permissionHandler.handleModeChange('plan');
-                                    }
-                                    return c;
-                                }
-                                return c;
-                            })
+        /** enter_plan_mode 批准生效（成功 tool_result）：同步 permissionMode 为 plan。
+         *  exit_plan_mode 已改 allow + query.setPermissionMode 直切（见 permissionHandler），
+         *  不再拦截伪造 tool_result */
+        const applyPlanModeApproval = (message: SDKMessage): SDKMessage => {
+            if (message.type !== 'user') {
+                return message;
+            }
+            const umessage = message as SDKUserMessage;
+            if (!umessage.message.content || !Array.isArray(umessage.message.content)) {
+                return message;
+            }
+            return {
+                ...umessage,
+                message: {
+                    ...umessage.message,
+                    content: umessage.message.content.map((c: ContentBlockParam): ContentBlockParam => {
+                        if (c.type === 'tool_result' && c.tool_use_id && enterPlanModeToolCalls.has(c.tool_use_id)) {
+                            enterPlanModeToolCalls.delete(c.tool_use_id);
+                            if (!c.is_error) {
+                                logger.debug('[remote]: enter plan mode succeeded, syncing permissionMode');
+                                permissionHandler.handleModeChange('plan');
+                            }
+                            return c;
                         }
-                    };
+                        return c;
+                    })
+                }
+            };
+        }
+
+        /** 转换尾段（票③将随 converter 装配收进 runtime）：discarded 过滤、中断 result 处理、
+         *  权限回填写入、tool_use 延迟排队、落库入列与轮次变更合成触发 */
+        const dispatchConverted = (logMessage: RawJSONLines, message: SDKMessage): void => {
+            // 轮次变更观测（投影口径数据源），失败不影响主流程
+            turnDiffReporter.observe(logMessage);
+
+            // 过滤 discard 类消息，不发送到 daemon
+            if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
+                return
+            }
+
+            // 中断 result 处理（emitAbortedEvent 的消费点，见 pendingAbortInfo 注释）。
+            // 正常/compact result 到达即作废待注入信息与撤回抑制标志（跨 turn 陈旧防护）。
+            // RawJSONLines 无 'result' discriminant（见 sdkToLogConverter case 'result'），走开放形状断言
+            if ((logMessage as { type?: string }).type === 'result') {
+                const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
+                if (isAbortedTerminalReason(reason)) {
+                    // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 daemon 转发/落库。
+                    // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
+                    // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
+                    if (this.suppressNextInterruptedResult) {
+                        this.suppressNextInterruptedResult = false
+                        return
+                    }
+                    if (this.pendingAbortInfo) {
+                        const target = logMessage as unknown as Record<string, unknown>
+                        target.stopKind = this.pendingAbortInfo.stopKind
+                        target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
+                        this.pendingAbortInfo = null
+                    }
+                } else {
+                    this.pendingAbortInfo = null
+                    this.suppressNextInterruptedResult = false
                 }
             }
 
+            if (logMessage.type === 'user' && logMessage.message?.content) {
+                const content = Array.isArray(logMessage.message.content)
+                    ? logMessage.message.content
+                    : [];
+
+                for (let i = 0; i < content.length; i++) {
+                    const c = content[i];
+                    if (c.type === 'tool_result' && c.tool_use_id) {
+                        const responses = permissionHandler.getResponses();
+                        const response = responses.get(c.tool_use_id);
+
+                        if (response) {
+                            const permissions: PermissionsField = {
+                                date: response.receivedAt || Date.now(),
+                                result: response.approved ? 'approved' : 'denied'
+                            };
+
+                            if (response.mode) {
+                                permissions.mode = response.mode;
+                            }
+
+                            if (response.allowTools && response.allowTools.length > 0) {
+                                permissions.allowedTools = response.allowTools;
+                            }
+
+                            content[i] = {
+                                ...c,
+                                permissions
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (logMessage.type === 'assistant' && message.type === 'assistant') {
+                const assistantMsg = message as SDKAssistantMessage;
+                const toolCallIds: string[] = [];
+
+                if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
+                    for (const block of assistantMsg.message.content) {
+                        if (block.type === 'tool_use' && block.id) {
+                            toolCallIds.push(block.id);
+                        }
+                    }
+                }
+
+                if (toolCallIds.length > 0) {
+                    const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
+
+                    if (!isSidechain) {
+                        messageQueue.enqueue(logMessage, {
+                            delay: 250,
+                            toolCallIds
+                        });
+                        return;
+                    }
+                }
+            }
+
+            // result 先入列再触发合成：卡片必须排在 result 之后（FIFO 时间线顺序）。
+            // 合成完成后经同一队列入列。两行顺序不可换——非 git 投影口径的合成是
+            // 同步快路径（无 await），先触发会让卡片抢先注册进队列；撤回路径（上方
+            // 提前 return）不触发——被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
+            messageQueue.enqueue(logMessage);
+            if ((logMessage as { type?: string }).type === 'result') {
+                // uuid = result 行落库 localId 同源（apiSession 咽喉点）——卡片位置声明按它锚定归属行
+                void turnDiffReporter.onTurnEnd((logMessage as { uuid?: string }).uuid);
+            }
+        }
+
+        /** SDK 消息唯一入口：拦截 → 观测 → 转换 → 分发 的装配序 */
+        const onMessage = (message: SDKMessage): void => {
+            if (interceptReplayAck(message)) return
+            if (interceptLifecycleFact(message)) return
+            trackBackgroundTasks(message)
+            refreshCommandsOnChanged(message)
+            formatClaudeMessageForInk(message, messageBuffer);
+            permissionHandler.onMessage(message);
+            handleInitSignal(message)
+            trackToolUsage(message)
+            const msg = applyPlanModeApproval(message)
             const logMessage = sdkToLogConverter.convert(msg);
             if (logMessage) {
-                // 轮次变更观测（投影口径数据源），失败不影响主流程
-                turnDiffReporter.observe(logMessage);
-
-                // 过滤 discard 类消息，不发送到 daemon
-                if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
-                    return
-                }
-
-                // 中断 result 处理（emitAbortedEvent 的消费点，见 pendingAbortInfo 注释）。
-                // 正常/compact result 到达即作废待注入信息与撤回抑制标志（跨 turn 陈旧防护）。
-                // RawJSONLines 无 'result' discriminant（见 sdkToLogConverter case 'result'），走开放形状断言
-                if ((logMessage as { type?: string }).type === 'result') {
-                    const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
-                    if (isAbortedTerminalReason(reason)) {
-                        // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 daemon 转发/落库。
-                        // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
-                        // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
-                        if (this.suppressNextInterruptedResult) {
-                            this.suppressNextInterruptedResult = false
-                            return
-                        }
-                        if (this.pendingAbortInfo) {
-                            const target = logMessage as unknown as Record<string, unknown>
-                            target.stopKind = this.pendingAbortInfo.stopKind
-                            target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
-                            this.pendingAbortInfo = null
-                        }
-                    } else {
-                        this.pendingAbortInfo = null
-                        this.suppressNextInterruptedResult = false
-                    }
-                }
-
-                if (logMessage.type === 'user' && logMessage.message?.content) {
-                    const content = Array.isArray(logMessage.message.content)
-                        ? logMessage.message.content
-                        : [];
-
-                    for (let i = 0; i < content.length; i++) {
-                        const c = content[i];
-                        if (c.type === 'tool_result' && c.tool_use_id) {
-                            const responses = permissionHandler.getResponses();
-                            const response = responses.get(c.tool_use_id);
-
-                            if (response) {
-                                const permissions: PermissionsField = {
-                                    date: response.receivedAt || Date.now(),
-                                    result: response.approved ? 'approved' : 'denied'
-                                };
-
-                                if (response.mode) {
-                                    permissions.mode = response.mode;
-                                }
-
-                                if (response.allowTools && response.allowTools.length > 0) {
-                                    permissions.allowedTools = response.allowTools;
-                                }
-
-                                content[i] = {
-                                    ...c,
-                                    permissions
-                                };
-                            }
-                        }
-                    }
-                }
-
-                if (logMessage.type === 'assistant' && message.type === 'assistant') {
-                    const assistantMsg = message as SDKAssistantMessage;
-                    const toolCallIds: string[] = [];
-
-                    if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
-                        for (const block of assistantMsg.message.content) {
-                            if (block.type === 'tool_use' && block.id) {
-                                toolCallIds.push(block.id);
-                            }
-                        }
-                    }
-
-                    if (toolCallIds.length > 0) {
-                        const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
-
-                        if (!isSidechain) {
-                            messageQueue.enqueue(logMessage, {
-                                delay: 250,
-                                toolCallIds
-                            });
-                            return;
-                        }
-                    }
-                }
-
-                // result 先入列再触发合成：卡片必须排在 result 之后（FIFO 时间线顺序）。
-                // 合成完成后经同一队列入列。两行顺序不可换——非 git 投影口径的合成是
-                // 同步快路径（无 await），先触发会让卡片抢先注册进队列；撤回路径（上方
-                // 提前 return）不触发——被撤回 turn 的变更已随撤回回滚，出卡反而是噪音
-                messageQueue.enqueue(logMessage);
-                if ((logMessage as { type?: string }).type === 'result') {
-                    // uuid = result 行落库 localId 同源（apiSession 咽喉点）——卡片位置声明按它锚定归属行
-                    void turnDiffReporter.onTurnEnd((logMessage as { uuid?: string }).uuid);
-                }
+                dispatchConverted(logMessage, message)
             }
         };
 
@@ -1022,10 +1151,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 事件汇：module → launcher 的全部回调与能力回投（单 listener 对象）
                     const events: RemoteSessionEvents = {
                         onInboundPrompt: handleInboundPrompt,
-                        // SessionStart(resume/fork) 缓存过期上报：null（非恢复/warm）不产生事件
-                        onCacheStatus: (status) => {
-                            if (status) session.client.reportCacheStatus(status);
-                        },
+                        onCacheStatus: (status) => this.reportCacheStatusEvent(status),
                         onQueryReady: (query, { isResume }) => {
                             this.queryRef = query;
                             // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。
@@ -1084,64 +1210,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onRunningChange: session.onRunningChange,
                         onMessage,
-                        onCompletionEvent: (message: string) => {
-                            logger.debug(`[remote]: Completion event: ${message}`);
-                            session.client.sendSessionEvent({ type: 'message', message });
-                        },
-                        onCompactCompleted: () => {
-                            logger.debug('[remote]: Compaction completed');
-                            // 压缩终态（成功失败都到）：started 闸门清位（失败路径无 boundary，靠此兜底）
-                            this.compactStartGate.reset();
-                            session.client.sendSessionEvent({ type: 'compact-completed' });
-                        },
-                        onCompactStart: () => {
-                            this.handleCompactStart();
-                        },
-                        onContextCleared: () => {
-                            logger.debug('[remote]: Context cleared');
-                            // /clear 语义收口：边界事件 + 清水位 + 归零记忆（与 output style 切换共用）
-                            applyContextReset(session.client, () => this.contextTracker.reset());
-                        },
-                        onConversationReset: (info) => {
-                            // CC 侧 conversation_reset（plan 退出清除上下文 / fresh session / onboarding；
-                            // mobi 自身 /clear 走 specialCommand 拦截不产生本帧）。SDK 指引每帧都 reset，
-                            // 与 onContextCleared 同一收口（applyContextReset 幂等，双路径无重复）
-                            logger.debug(`[remote]: Conversation reset (trigger=${info.trigger ?? '-'})`);
-                            applyContextReset(session.client, () => this.contextTracker.reset());
-                        },
-                        onContextUsage: (resultMsg, isCompact) => {
-                            // 非 compact result 到达即 turn 正常收尾（中断 result 不经过此回调——
-                            // 撤回复验语义见 resetTurnTracking）
-                            if (!isCompact) this.resetTurnTracking()
-                            void this.contextTracker.onResult(resultMsg, isCompact)
-                        },
-                        onCompactBoundary: (postTokens) => {
-                            // 压缩成功终态：started 闸门清位，允许下一次压缩重新触发；
-                            // 水位上报（post_tokens）收口在 tracker
-                            this.compactStartGate.reset();
-                            this.contextTracker.onCompactBoundary(postTokens)
-                        },
-                        onSessionReset: () => {
-                            logger.debug('[remote]: Session reset');
-                            session.clearSessionId();
-                        },
-                        onReady: () => {
-                            if (!this.pendingBatch && session.queue.size() === 0) {
-                                session.client.sendSessionEvent({ type: 'ready' });
-                            }
-                        },
-                        onSnapshot: (out) => {
-                            // delta 协议三出口：全量帧走 legacy snapshot 通道（带 rev 标记），
-                            // 增量帧走 snapshotDelta 通道（daemon 侧拼接器重建全量），
-                            // stream-end 信号通知 daemon 清缓存与订阅游标（full 落库即流结束）
-                            if (out.kind === 'full') {
-                                session.client.sendContentSnapshot(out.message, { rev: out.frame.rev });
-                            } else if (out.kind === 'delta') {
-                                session.client.sendSnapshotDelta(out.frame);
-                            } else {
-                                session.client.sendSnapshotStreamEnd(out.localId);
-                            }
-                        },
+                        onCompletionEvent: (message) => this.handleCompletionEvent(message),
+                        onCompactCompleted: () => this.handleCompactCompleted(),
+                        onCompactStart: () => this.handleCompactStart(),
+                        onContextCleared: () => this.handleContextCleared(),
+                        onConversationReset: (info) => this.handleConversationReset(info.trigger),
+                        onContextUsage: (resultMsg, isCompact) => this.handleResultUsage(resultMsg, isCompact),
+                        onCompactBoundary: (postTokens) => this.handleCompactBoundary(postTokens),
+                        onSessionReset: () => this.handleSessionReset(),
+                        onReady: () => this.handleTurnReady(),
+                        onSnapshot: (out) => this.sendSnapshotOut(out),
                         registerSnapshotReset: (fn) => session.client.setSnapshotTransportReset(fn),
                         getConverter: () => sdkToLogConverter,
                         // 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库。
@@ -1173,19 +1251,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // applyPushToTurnTracking（纯函数，C1 修法 1）——新 turn 的 push 复位
                         // hasOutput 并覆盖撤回锚；steer push 只覆盖锚、不复位 hasOutput
                         //（turn 运行中的插队不该抹掉「已产出输出」的事实）
-                        onMessagesBound: (bindings, origin) => {
-                            const last = bindings[bindings.length - 1]
-                            if (last) {
-                                this.turnTracking = applyPushToTurnTracking(
-                                    this.turnTracking,
-                                    last.nativeId,
-                                    origin ?? 'turn',
-                                )
-                            }
-                            session.client.emitMessagesBound(bindings, session.sessionId ?? undefined)
-                        },
-                        // 撤回复验判据：本 turn 有任何模型输出即置位（见 TurnTrackingState）
-                        onTurnOutput: () => { this.turnTracking.hasOutput = true },
+                        onMessagesBound: (bindings, origin) => this.handleMessagesBound(bindings, origin),
+                        onTurnOutput: () => this.observeTurnOutput(),
                     };
 
                     await claudeRemote(round, source, events);
