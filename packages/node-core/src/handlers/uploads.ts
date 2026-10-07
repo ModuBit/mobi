@@ -51,14 +51,10 @@ export interface WriteFileRangeRequest {
     totalSize?: number
 }
 
-export interface WriteFileRangeResponse {
-    success: boolean
-    /** 首块返回：工作区相对路径 */
-    path?: string
-    /** 本次写入字节数 */
-    written?: number
-    error?: string
-}
+/** 精确 union（深化候选②票②）：written 恒在；path 仅首块（offset=0）返回工作区相对路径 */
+export type WriteFileRangeResponse =
+    | { success: true; written: number; path?: string }
+    | { success: false; error: string }
 
 export interface DeleteUploadRequest {
     path: string
@@ -66,10 +62,9 @@ export interface DeleteUploadRequest {
     cwd?: string
 }
 
-export interface DeleteUploadResponse {
-    success: boolean
-    error?: string
-}
+export type DeleteUploadResponse =
+    | { success: true }
+    | { success: false; error: string }
 
 export interface ReplaceUploadRequest {
     /** 目标路径（工作区相对，须在 uploads 目录内）：文件名原样保留不进唯一名生成——
@@ -82,10 +77,9 @@ export interface ReplaceUploadRequest {
     cwd?: string
 }
 
-export interface ReplaceUploadResponse {
-    success: boolean
-    error?: string
-}
+export type ReplaceUploadResponse =
+    | { success: true }
+    | { success: false; error: string }
 
 /**
  * 校验文件扩展名是否合法

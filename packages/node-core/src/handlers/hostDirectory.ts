@@ -24,11 +24,10 @@ export interface ListHostDirectoryRequest {
     homeDir: string
 }
 
-export interface ListHostDirectoryResponse {
-    success: boolean
-    entries?: Array<{ name: string }>
-    error?: string
-}
+/** 精确 union（深化候选②票②）：条目形状 { name } 收窄，与 RpcListDirectoryResponse 的窄面别名兼容 */
+export type ListHostDirectoryResponse =
+    | { success: true; entries: Array<{ name: string }> }
+    | { success: false; error: string }
 
 
 /**

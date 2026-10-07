@@ -28,6 +28,8 @@
 import type { DiffTarget, RedactedWebToolsConfig, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
 import type { RpcFailureKind } from '../sync/rpcFailure'
+import type { ListHostDirectoryResponse } from '@mobi/node-core/handlers/hostDirectory'
+import type { RefreshMetadataResponse } from '@mobi/node-core/handlers/commands'
 
 // 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared，此处 re-export 兼容既有引用
 import type {
@@ -68,11 +70,9 @@ export function isUnexpectedAlreadyRunning(
     return result.type === 'already-running'
 }
 
-export type RpcRefreshMetadataResponse = {
-    success: boolean
-    metadata?: SDKMetadata
-    error?: string
-}
+// refreshMetadata 是唯一活 wire（daemon rpcGateway ↔ 会话进程 socket），envelope 原样保留；
+// 形状单源在 node-core commands.RefreshMetadataResponse（深化候选②票②：别名化消 as）
+export type RpcRefreshMetadataResponse = RefreshMetadataResponse
 
 // saveFile 响应（覆盖已存在文件 + etag OCC；请求侧 content 为 Uint8Array 二进制附件）
 export type RpcSaveFileResponse =
@@ -80,29 +80,26 @@ export type RpcSaveFileResponse =
     | { success: false; conflict: true; currentEtag: string }
     | { success: false; error: string; code?: string }
 
-// 文件范围写入响应（对称 readFileRange，content 为 Uint8Array 二进制附件）
-export type RpcWriteFileRangeResponse = {
-    success: boolean
-    path?: string
-    written?: number
-    error?: string
-}
+// 文件范围写入响应（对称 readFileRange，content 为 Uint8Array 二进制附件）。
+// 精确 union（深化候选②票②），形状与 node-core uploads.WriteFileRangeResponse 单源对齐：
+// written 恒在；path 仅首块（offset=0）返回工作区相对路径
+export type RpcWriteFileRangeResponse =
+    | { success: true; written: number; path?: string }
+    | { success: false; error: string }
 
-export type RpcDeleteUploadResponse = {
-    success: boolean
-    error?: string
-}
+export type RpcDeleteUploadResponse =
+    | { success: true }
+    | { success: false; error: string }
 
 // 同 path 原子替换上传响应（「编辑已有上传」场景；content 为 Uint8Array 二进制附件）
-export type RpcReplaceUploadResponse = {
-    success: boolean
-    error?: string
-}
+export type RpcReplaceUploadResponse =
+    | { success: true }
+    | { success: false; error: string }
 
-// web 工具配置读取响应（凭据已脱敏）
-export type RpcGetWebToolsConfigResponse = {
-    config: RedactedWebToolsConfig
-}
+// web 工具配置读取响应（凭据已脱敏；读 settings 失败返回 { error }，与 node-core impl 对齐消 as）
+export type RpcGetWebToolsConfigResponse =
+    | { config: RedactedWebToolsConfig }
+    | { error: string }
 
 // web 工具配置写入响应（业务失败走 envelope，不用传输层错误表达）
 export type RpcSetWebToolsConfigResponse =
@@ -121,15 +118,11 @@ export type RpcDirectoryEntry = {
     modified?: number
 }
 
-export type RpcListDirectoryResponse = {
-    success: boolean
-    entries?: RpcDirectoryEntry[]
-    /** 树浏览：条目数达到上限被截断（搜索路径不置位） */
-    truncated?: boolean
-    /** 树浏览：截断前的条目总数，用于前端「共 N 项」提示 */
-    total?: number
-    error?: string
-}
+// 精确 union（深化候选②票②），形状与 node-core sessionFiles.ListSessionFilesResponse 单源对齐：
+// truncated/total 仅树浏览路径出现
+export type RpcListDirectoryResponse =
+    | { success: true; entries: RpcDirectoryEntry[]; truncated?: boolean; total?: number }
+    | { success: false; error: string }
 
 export type RpcPathExistsResponse = {
     exists: Record<string, boolean>
@@ -152,7 +145,7 @@ export interface ExecutorHost {
     hostGitReviewInit(cwd: string): Promise<ReviewActionResult | { success: false; error: string }>
     clearTurnSnapshots(cwd: string, sessionId: string): Promise<void>
     hostSaveFile(cwd: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse>
-    listHostDirectory(path: string, homeDir: string): Promise<RpcListDirectoryResponse>
+    listHostDirectory(path: string, homeDir: string): Promise<ListHostDirectoryResponse>
     hostUploadFileRange(cwd: string, filename: string, path: string | undefined, offset: number, content: Uint8Array, totalSize?: number): Promise<RpcWriteFileRangeResponse>
     hostDeleteUpload(cwd: string, path: string): Promise<RpcDeleteUploadResponse>
     hostReplaceUpload(cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse>

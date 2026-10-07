@@ -86,29 +86,34 @@ export class LocalExecutor implements ExecutorHost {
     }
 
     // ── git 审查族（ticket-17 组4：本地直调，方法表查表单源）──
+    // gitReviewRpcImpl 按 method 动态查表只能返回宽集，窄化 as 收敛到这一个 helper（深化候选②票②）：
+    // 每方法的精确返回类型由调用方类型参数声明，与 GIT_REVIEW_HANDLERS 表内 run 的返回一致
+    private async callGitReview<T>(method: string, data: { cwd: string } & Record<string, unknown>): Promise<T | { success: false; error: string }> {
+        return await gitReviewRpcImpl(method, data) as T | { success: false; error: string }
+    }
 
     async hostGitReviewOverview(cwd: string, sessionId: string) {
-        return await gitReviewRpcImpl(GIT_REVIEW_RPC.overview, { cwd, sessionId }) as ReviewOverview | { success: false; error: string }
+        return await this.callGitReview<ReviewOverview>(GIT_REVIEW_RPC.overview, { cwd, sessionId })
     }
 
     async hostGitReviewFiles(cwd: string, sessionId: string, target: DiffTarget) {
-        return await gitReviewRpcImpl(GIT_REVIEW_RPC.files, { cwd, sessionId, target }) as ReviewFilesResult | { success: false; error: string }
+        return await this.callGitReview<ReviewFilesResult>(GIT_REVIEW_RPC.files, { cwd, sessionId, target })
     }
 
     async hostGitReviewDiff(cwd: string, sessionId: string, target: DiffTarget, path: string) {
-        return await gitReviewRpcImpl(GIT_REVIEW_RPC.diff, { cwd, sessionId, target, path }) as ReviewPatchResult | { success: false; error: string }
+        return await this.callGitReview<ReviewPatchResult>(GIT_REVIEW_RPC.diff, { cwd, sessionId, target, path })
     }
 
     async hostGitReviewContents(cwd: string, sessionId: string, target: DiffTarget, path: string) {
-        return await gitReviewRpcImpl(GIT_REVIEW_RPC.contents, { cwd, sessionId, target, path }) as ReviewContentsResult | { success: false; error: string }
+        return await this.callGitReview<ReviewContentsResult>(GIT_REVIEW_RPC.contents, { cwd, sessionId, target, path })
     }
 
     async hostGitReviewCommits(cwd: string, cursor?: string) {
-        return await gitReviewRpcImpl(GIT_REVIEW_RPC.commits, { cwd, cursor }) as ReviewCommitsResult | { success: false; error: string }
+        return await this.callGitReview<ReviewCommitsResult>(GIT_REVIEW_RPC.commits, { cwd, cursor })
     }
 
     async hostGitReviewInit(cwd: string) {
-        return await gitReviewRpcImpl(GIT_REVIEW_RPC.init, { cwd }) as ReviewActionResult
+        return await this.callGitReview<ReviewActionResult>(GIT_REVIEW_RPC.init, { cwd })
     }
 
     async clearTurnSnapshots(cwd: string, sessionId: string) {
@@ -123,9 +128,9 @@ export class LocalExecutor implements ExecutorHost {
 
     // ── 目录与搜索组（ticket-17 组3：本地直调）──
 
-    // 条目形状（仅 name）比 RpcListDirectoryEntry 窄——as 断言透传
-    async listHostDirectory(path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
-        return await listHostDirectoryImpl({ path, homeDir }) as RpcListDirectoryResponse
+    // 返回形状单源 node-core ListHostDirectoryResponse（条目仅 name），无 as
+    async listHostDirectory(path: string, homeDir: string) {
+        return await listHostDirectoryImpl({ path, homeDir })
     }
 
     async hostUploadFileRange(
@@ -149,9 +154,9 @@ export class LocalExecutor implements ExecutorHost {
 
     // ── web-tools + metadata 组（ticket-17 组5：本地直调）──
 
-    // error envelope 形状比 ExecutorHost 响应类型宽——as 断言透传
+    // 返回形状与 node-core impl 对齐（{config} | {error}），无 as
     async getWebToolsConfig(): Promise<RpcGetWebToolsConfigResponse> {
-        return await getWebToolsConfigImpl() as RpcGetWebToolsConfigResponse
+        return await getWebToolsConfigImpl()
     }
 
     async setWebToolsConfig(config: unknown) {
@@ -171,6 +176,6 @@ export class LocalExecutor implements ExecutorHost {
     }
 
     async hostRefreshMetadata(cwd: string): Promise<RpcRefreshMetadataResponse> {
-        return await refreshMetadataImpl({ cwd }) as RpcRefreshMetadataResponse
+        return await refreshMetadataImpl({ cwd })
     }
 }

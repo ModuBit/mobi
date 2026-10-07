@@ -116,7 +116,8 @@ export function useFileMeta(sessionId: string | null, filePath: string | null) {
             if (!sessionId || !filePath) return null
             try {
                 const res = await api.files.meta(sessionId, filePath)
-                if (res.data.success === false || !res.data.meta) {
+                // 精确 union（深化候选②票②）：失败分支 meta 恒缺，判 success 即可窄化
+                if (res.data.success === false) {
                     throw new Error(res.data.error ?? 'file-meta failed')
                 }
                 // writable 在响应顶层（CLI 通道语义），并入 meta 对象方便消费方单点取用

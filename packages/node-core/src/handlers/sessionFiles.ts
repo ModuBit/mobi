@@ -46,15 +46,10 @@ interface FileEntry {
     path?: string
 }
 
-export interface ListSessionFilesResponse {
-    success: boolean
-    entries?: FileEntry[]
-    /** 树浏览：条目数达到 MAX_TREE_ENTRIES 被截断 */
-    truncated?: boolean
-    /** 树浏览：截断前的条目总数（含被截断部分），用于前端「共 N 项」提示 */
-    total?: number
-    error?: string
-}
+/** 精确 union（深化候选②票②）：搜索/树浏览失败统一 error envelope；truncated/total 仅树浏览路径出现 */
+export type ListSessionFilesResponse =
+    | { success: true; entries: FileEntry[]; truncated?: boolean; total?: number }
+    | { success: false; error: string }
 
 /**
  * 判断路径是否应触发 ripgrep 搜索

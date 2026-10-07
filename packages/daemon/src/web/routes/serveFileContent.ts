@@ -98,7 +98,8 @@ export async function serveFileContent(
     opts: ServeOptions = {},
 ): Promise<Response> {
     const meta = await reader.readFileMeta(absPath)
-    if (!meta.success || !meta.meta) {
+    // 精确 union（深化候选②票②）：失败分支 meta 恒缺、error/code 恒在，无需再判 meta.meta
+    if (!meta.success) {
         return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, fileMetaHttpStatus(meta.code))
     }
     const { mime, size, etag } = meta.meta

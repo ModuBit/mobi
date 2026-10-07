@@ -29,15 +29,11 @@ export function fileEtag(size: number, mtimeMs: number): string {
 /**
  * readFileMeta RPC 响应（CLI → daemon → web 三端单源形状，加字段只改这里）：
  * 结构化 code（'ENOENT'/'ACCESS_DENIED'/...）供 daemon 精确分流 HTTP 状态，不依赖文案正则。
+ * 精确 union（深化候选②票②）：成功分支字段非可选，失败分支带结构化 code。
  */
-export interface ReadFileMetaResponse {
-    success: boolean
-    meta?: RpcFileMeta
-    /** 可写性：路径是否在写边界（严格 cwd 子树）内。false 时 web 端 inspector 直接只读态 */
-    writable?: boolean
-    error?: string
-    code?: string
-}
+export type ReadFileMetaResponse =
+    | { success: true; meta: RpcFileMeta; writable: boolean }
+    | { success: false; error: string; code?: string }
 
 /**
  * readFileRange RPC 响应（CLI → daemon → web 三端单源形状，加字段只改这里）：

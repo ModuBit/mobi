@@ -24,6 +24,7 @@ import type {
     ReviewPatchResult,
 } from '@mobi/shared'
 import type { StoredSession } from '../store/types'
+import type { ListHostDirectoryResponse } from '@mobi/node-core/handlers/hostDirectory'
 import type {
     ExecutorHost,
     RpcDeleteUploadResponse,
@@ -179,7 +180,7 @@ export class SessionExecutionAccess {
         return await this.executor.hostListSessionDirectory(cwd, path, prefix)
     }
 
-    async listHostDirectory(path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
+    async listHostDirectory(path: string, homeDir: string): Promise<ListHostDirectoryResponse> {
         return await this.executor.listHostDirectory(path, homeDir)
     }
 
