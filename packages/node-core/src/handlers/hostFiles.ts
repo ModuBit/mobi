@@ -15,9 +15,7 @@
  */
 
 import { resolve } from 'path'
-import { homedir } from 'os'
 import { logger } from '@mobi/node-core/logger'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { rpcError } from './rpcResponses'
 import { validateReadPath, validateWritePath } from './pathSecurity'
 import { normalizeCwdParam, readFileMetaAt, readFileRangeAt } from './fileRead'
@@ -109,11 +107,3 @@ export async function hostReadFileRangeImpl(data: HostReadFileRangeRequest, home
     return result
 }
 
-/**
- * machine 通道文件读取 handler：meta 与 range 共用统一入口策略（读边界单闸门）。
- */
-export function registerHostFileHandlers(rpcHandlerManager: RpcHandlerManager, homeDir: string = homedir()): void {
-    rpcHandlerManager.registerHandler<HostReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', (data) => hostReadFileMetaImpl(data, homeDir))
-
-    rpcHandlerManager.registerHandler<HostReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', (data) => hostReadFileRangeImpl(data, homeDir))
-}

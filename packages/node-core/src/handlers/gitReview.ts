@@ -53,7 +53,6 @@ import { FileTurnArchiveStore, getTurnArchivePath, type TurnArchiveRecord } from
 import { getTurnFulltextRoot } from '@mobi/node-core/git/turnFulltextStore'
 import { gatePathForSource, toReviewEntry, TurnAttributionProvider } from '@mobi/node-core/git/turnAttributionProvider'
 import { resolveDiffTarget } from '@mobi/node-core/git/diffTargetResolver'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import type { TurnDiffStats } from '@mobi/shared'
 import { rpcError } from './rpcResponses'
 import { logger } from '@mobi/node-core/logger'
@@ -614,11 +613,6 @@ const GIT_REVIEW_HANDLERS: readonly (GitReviewHandlerDef & { method: string })[]
     },
 ]
 
-export function registerGitReviewHandlers(rpcHandlerManager: RpcHandlerManager): void {
-    for (const def of GIT_REVIEW_HANDLERS) {
-        rpcHandlerManager.registerHandler<{ cwd: string }, unknown>(def.method, (data) => gitReviewRpcImpl(def.method, data))
-    }
-}
 
 /**
  * gitReview 族 RPC 统一实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor

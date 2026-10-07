@@ -16,31 +16,26 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
-import { tmpdir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { basename, join } from 'path'
-import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerHostFileHandlers } from '@/handlers/hostFiles'
+import { hostReadFileMetaImpl, hostReadFileRangeImpl } from '@/handlers/hostFiles'
 
 /**
- * machine 通道文件读取 handler 测试
+ * machine 通道文件读取实现测试
  *
- * 使用真实 RpcHandlerManager + handleRequest，验证完整注册链路；
- * 策略断言：严格 cwd 边界（../ 逃逸 / 同前缀兄弟目录）+ 扩展名白名单。
+ * 深化候选②票②：socket 注册退场（registerHostFileHandlers 已删），hostReadFileMetaImpl /
+ * hostReadFileRangeImpl 直调（homeDir 与原注册默认一致，取真实 home）；
+ * 策略断言：严格 cwd 边界（../ 逃逸 / 同前缀兄弟目录）+ 读边界白名单。
  */
 
-const SCOPE = 'machine-files-test'
-
-describe('machine file RPC handlers', () => {
+describe('machine file 读取实现', () => {
     let rootDir: string
-    let rpc: RpcHandlerManager
 
     beforeEach(async () => {
         if (rootDir) {
             await rm(rootDir, { recursive: true, force: true })
         }
         rootDir = await mkdtemp(join(tmpdir(), 'mobi-machine-files-'))
-        rpc = new RpcHandlerManager({ scopePrefix: SCOPE })
-        registerHostFileHandlers(rpc)
     })
 
     afterEach(async () => {
@@ -48,10 +43,7 @@ describe('machine file RPC handlers', () => {
     })
 
     function handleMeta(params: Record<string, unknown>) {
-        return rpc.handleRequest({
-            method: `${SCOPE}:readFileMeta`,
-            params,
-        }) as Promise<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string; code?: string }>
+        return hostReadFileMetaImpl(params as { path: string; cwd?: string }, homedir()) as Promise<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string; code?: string }>
     }
 
     describe('cwd 边界', () => {
@@ -118,31 +110,27 @@ describe('machine file RPC handlers', () => {
     })
 
     describe('machine readFileRange', () => {
+        // 深化候选②票②：socket 注册退场，hostReadFileRangeImpl 直调
+        function handleRange(params: Record<string, unknown>) {
+            return hostReadFileRangeImpl(params as { path: string; cwd?: string; offset: number; length: number }, homedir())
+        }
+
         it('返回真实字节', async () => {
             const body = Buffer.from('console.log(1)')
             await writeFile(join(rootDir, 'm.js'), body)
-            const r = (await rpc.handleRequest({
-                method: `${SCOPE}:readFileRange`,
-                params: { path: 'm.js', cwd: rootDir, offset: 0, length: body.length },
-            })) as { success: boolean; chunk?: Uint8Array }
+            const r = (await handleRange({ path: 'm.js', cwd: rootDir, offset: 0, length: body.length })) as { success: boolean; chunk?: Uint8Array }
             expect(r.success).toBe(true)
             expect(Buffer.from(r.chunk!).toString()).toBe('console.log(1)')
         })
 
         it('txt 文件读字节（白名单废除后任意文本可读）', async () => {
             await writeFile(join(rootDir, 'n.txt'), 'x')
-            const r = (await rpc.handleRequest({
-                method: `${SCOPE}:readFileRange`,
-                params: { path: 'n.txt', cwd: rootDir, offset: 0, length: 1 },
-            })) as { success: boolean }
+            const r = (await handleRange({ path: 'n.txt', cwd: rootDir, offset: 0, length: 1 })) as { success: boolean }
             expect(r.success).toBe(true)
         })
 
         it('meta 后文件被删除：ENOENT 结构化码透传（与 meta 对齐）', async () => {
-            const r = (await rpc.handleRequest({
-                method: `${SCOPE}:readFileRange`,
-                params: { path: 'gone.png', cwd: rootDir, offset: 0, length: 1 },
-            })) as { success: boolean; code?: string }
+            const r = (await handleRange({ path: 'gone.png', cwd: rootDir, offset: 0, length: 1 })) as { success: boolean; code?: string }
             expect(r.success).toBe(false)
             expect(r.code).toBe('ENOENT')
         })

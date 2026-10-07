@@ -18,8 +18,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerHostDirectoryHandler } from '@/handlers/hostDirectory'
+import { listHostDirectoryImpl } from '@/handlers/hostDirectory'
 
 async function createTempDir(prefix: string): Promise<string> {
     const base = tmpdir()
@@ -28,10 +27,9 @@ async function createTempDir(prefix: string): Promise<string> {
     return path
 }
 
-describe('machine list-directory RPC handler', () => {
+// 深化候选②票②：socket 注册退场（无生产接线），测试面 = listHostDirectoryImpl 直调
+describe('listHostDirectoryImpl（host 目录列举实现）', () => {
     let homeDir: string
-    let rpc: RpcHandlerManager
-    const scopePrefix = 'machine-test'
 
     beforeEach(async () => {
         if (homeDir) {
@@ -42,23 +40,12 @@ describe('machine list-directory RPC handler', () => {
         await mkdir(join(homeDir, 'projects'), { recursive: true })
         await mkdir(join(homeDir, '.config'), { recursive: true })
         await writeFile(join(homeDir, 'README.md'), '# test')
-
-        rpc = new RpcHandlerManager({ scopePrefix })
-        registerHostDirectoryHandler(rpc)
     })
 
     it('仅返回目录（含隐藏目录），不含文件', async () => {
-        const response = await rpc.handleRequest({
-            method: `${scopePrefix}:list-directory`,
-            params: { path: homeDir, homeDir }
-        })
+        const parsed = await listHostDirectoryImpl({ path: homeDir, homeDir })
 
-        const parsed = response as {
-            success: boolean
-            entries?: Array<{ name: string }>
-        }
         expect(parsed.success).toBe(true)
-
         const names = (parsed.entries ?? []).map((e) => e.name)
         expect(names).toContain('projects')
         expect(names).toContain('.config')
@@ -66,23 +53,15 @@ describe('machine list-directory RPC handler', () => {
     })
 
     it('拒绝访问 homeDir 外的路径', async () => {
-        const response = await rpc.handleRequest({
-            method: `${scopePrefix}:list-directory`,
-            params: { path: '/etc', homeDir }
-        })
+        const parsed = await listHostDirectoryImpl({ path: '/etc', homeDir })
 
-        const parsed = response as { success: boolean; error?: string }
         expect(parsed.success).toBe(false)
         expect(parsed.error).toContain('outside the home directory')
     })
 
     it('拒绝 homeDir 为空时', async () => {
-        const response = await rpc.handleRequest({
-            method: `${scopePrefix}:list-directory`,
-            params: { path: homeDir, homeDir: '' }
-        })
+        const parsed = await listHostDirectoryImpl({ path: homeDir, homeDir: '' })
 
-        const parsed = response as { success: boolean; error?: string }
         expect(parsed.success).toBe(false)
     })
 })

@@ -15,16 +15,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm, readFile, stat } from 'fs/promises'
+import { mkdtemp, readFile, stat } from 'fs/promises'
 import { existsSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerUploadHandlers } from '@/handlers/uploads'
+import { writeFileRangeImpl, deleteUploadImpl, replaceUploadImpl, type WriteFileRangeRequest } from '@/handlers/uploads'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 /**
- * uploads handler 测试
+ * uploads 实现测试
+ *
+ * 深化候选②票②：socket 注册退场（registerUploadHandlers 已删），writeFileRangeImpl /
+ * deleteUploadImpl / replaceUploadImpl 直调。
  *
  * 验证：
  * - writeFileRange：offset=0 首块创建文件 + offset>0 后续块追加
@@ -33,44 +35,12 @@ import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
  * - getUploadsDir：返回正确路径
  */
 
-// 测试用的 handler 返回结构（write/delete 共用 success/path/written/error 字段）
-interface MockHandlerResult {
-    success: boolean
-    path?: string
-    written?: number
-    error?: string
-}
-
-// 模拟的 RpcHandlerManager，用于测试
-class MockRpcHandlerManager {
-    handlers = new Map<string, (data: unknown) => unknown>()
-
-    registerHandler<TReq, TRes>(
-        method: string,
-        handler: (data: TReq) => TRes | Promise<TRes>,
-    ): void {
-        // 测试 mock：异构 handler 存入同一 Map，擦除泛型
-        this.handlers.set(method, handler as (data: unknown) => unknown)
-    }
-
-    async call(method: string, data: unknown): Promise<MockHandlerResult> {
-        const handler = this.handlers.get(method)
-        if (!handler) {
-            throw new Error(`No handler registered for method: ${method}`)
-        }
-        return Promise.resolve(handler(data)).then((r) => r as MockHandlerResult)
-    }
-}
-
-describe('writeFileRange handler', () => {
-    let mockRpc: MockRpcHandlerManager
+describe('writeFileRange 实现', () => {
     let tempDir: string
 
     beforeEach(() => {
-        mockRpc = new MockRpcHandlerManager()
         tempDir = join(tmpdir(), `mobi-test-wfr-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         mkdirSync(tempDir, { recursive: true })
-        registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
     })
 
     afterEach(() => {
@@ -79,9 +49,12 @@ describe('writeFileRange handler', () => {
         }
     })
 
+    // 深化候选②票②：socket 注册退场，writeFileRangeImpl 直调
+    const writeRange = (data: WriteFileRangeRequest) => writeFileRangeImpl(data, tempDir)
+
     it('offset=0 首块：创建文件 + 返回 path/written', async () => {
         const content = new Uint8Array([1, 2, 3, 4])
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             filename: 'test.png', offset: 0, content, totalSize: 4,
         })
 
@@ -96,7 +69,7 @@ describe('writeFileRange handler', () => {
     })
 
     it('上传就绪同时确保 .mobi/.gitignore 含 turn-diffs/（单源 mobiGitignore）', async () => {
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             filename: 'g.png', offset: 0, content: new Uint8Array([1]), totalSize: 1,
         })
         expect(res.success).toBe(true)
@@ -108,7 +81,7 @@ describe('writeFileRange handler', () => {
 
     it('多段扩展名：防碰撞随机段插在扩展簇之前，.excalidraw.png 保持完整', async () => {
         const content = new Uint8Array([1, 2, 3])
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             filename: 'sketch-20260920-001516.excalidraw.png', offset: 0, content, totalSize: 3,
         })
 
@@ -120,7 +93,7 @@ describe('writeFileRange handler', () => {
     it('隐藏文件：前导点属文件名而非扩展名，唯一名不以连字符开头', async () => {
         // 可触达场景：前导点 + 白名单后缀（纯 .gitignore 无扩展名，validateFileExtension 已拒）
         const content = new Uint8Array([1])
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             filename: '.secret.txt', offset: 0, content, totalSize: 1,
         })
 
@@ -130,13 +103,13 @@ describe('writeFileRange handler', () => {
     })
 
     it('offset>0 后续块：按 offset 追加写，内容拼接正确', async () => {
-        const first = await mockRpc.call('writeFileRange', {
+        const first = await writeRange({
             filename: 'a.zip', offset: 0, content: new Uint8Array([1, 2]), totalSize: 4,
         })
         expect(first.success).toBe(true)
         expect(first.path).toBeTruthy()
 
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: first.path, offset: 2, content: new Uint8Array([3, 4]),
         })
 
@@ -149,7 +122,7 @@ describe('writeFileRange handler', () => {
     })
 
     it('totalSize 预校验：超 50MB 首块即拒绝，不创建文件', async () => {
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             filename: 'big.zip', offset: 0, content: new Uint8Array([1]),
             totalSize: 50 * 1024 * 1024 + 1,
         })
@@ -159,7 +132,7 @@ describe('writeFileRange handler', () => {
     })
 
     it('扩展名校验：黑名单/非白名单拒绝', async () => {
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             filename: 'evil.exe', offset: 0, content: new Uint8Array([1]), totalSize: 1,
         })
 
@@ -167,7 +140,7 @@ describe('writeFileRange handler', () => {
     })
 
     it('path 遍历防护：后续块 path 逃逸 uploads 目录拒绝', async () => {
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: '../../../etc/passwd', offset: 0, content: new Uint8Array([1]),
         })
 
@@ -175,18 +148,18 @@ describe('writeFileRange handler', () => {
     })
 
     it('offset>0 但文件不存在（path 指向不存在的路径）：open r+ 失败 → rpcError', async () => {
-        const first = await mockRpc.call('writeFileRange', {
+        const first = await writeRange({
             filename: 'create.zip', offset: 0, content: new Uint8Array([1, 2]), totalSize: 2,
         })
         expect(first.success).toBe(true)
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: '.mobi/uploads/2099-01/nope-xxx.png', offset: 5, content: new Uint8Array([3]),
         })
         expect(res.success).toBe(false)
     })
 
     it('offset=0 但传 path（非 filename）：拒绝（首块必须 filename，#4 防御 offset=0+path 覆盖已存在文件）', async () => {
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: '.mobi/uploads/2099-01/nope.png', offset: 0, content: new Uint8Array([1]),
         })
         // #4: else if(path && offset>0) —— offset=0+path 不满足，走 else 拒绝（防止覆盖已存在 uploads 文件开头）
@@ -195,11 +168,11 @@ describe('writeFileRange handler', () => {
     })
 
     it('offset 越界：后续块 offset > 文件 size → 拒绝，不扩展稀疏文件', async () => {
-        const first = await mockRpc.call('writeFileRange', {
+        const first = await writeRange({
             filename: 'no-hole.zip', offset: 0, content: new Uint8Array([1, 2, 3, 4]), totalSize: 4,
         })
         expect(first.success).toBe(true)
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: first.path, offset: 9999, content: new Uint8Array([5]),
         })
         expect(res.success).toBe(false)
@@ -212,7 +185,7 @@ describe('writeFileRange handler', () => {
 
     it('累计超限兜底：首块小、后续累计超 50MB → 拒绝', async () => {
         // 首块：伪造小的 totalSize 通过预校验
-        const first = await mockRpc.call('writeFileRange', {
+        const first = await writeRange({
             filename: 'sneaky.zip', offset: 0,
             content: new Uint8Array(new Array(10).fill(0)),
             totalSize: 10,
@@ -221,7 +194,7 @@ describe('writeFileRange handler', () => {
 
         // 后续：写一块使累计超 50MB
         const big = new Uint8Array(MAX_UPLOAD_BYTES + 1)
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: first.path, offset: 10, content: big,
         })
 
@@ -231,7 +204,7 @@ describe('writeFileRange handler', () => {
 
     it('累计封顶看实际文件大小：tracker 缺失（既有文件 / cli 重启后）仍按文件大小封顶', async () => {
         // 先正常上传一个 dummy，拿到当月 uploads 目录前缀
-        const dummy = await mockRpc.call('writeFileRange', {
+        const dummy = await writeRange({
             filename: 'probe.png', offset: 0, content: new Uint8Array([1]), totalSize: 1,
         })
         expect(dummy.success).toBe(true)
@@ -245,7 +218,7 @@ describe('writeFileRange handler', () => {
         await fs.truncate(targetFull, MAX_UPLOAD_BYTES - 10)
 
         // writeFileRange offset>0 指向既有大文件；tracker 无 entry，须按实际文件大小封顶
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeRange({
             path: targetRel, offset: MAX_UPLOAD_BYTES - 10, content: new Uint8Array(100),
         })
         // 修复后：baseWritten = max(0, size≈MAX-10)，+100 > MAX → 拒绝
@@ -255,15 +228,12 @@ describe('writeFileRange handler', () => {
     })
 })
 
-describe('deleteUpload handler', () => {
-    let mockRpc: MockRpcHandlerManager
+describe('deleteUpload 实现', () => {
     let tempDir: string
 
     beforeEach(() => {
-        mockRpc = new MockRpcHandlerManager()
         tempDir = join(tmpdir(), `mobi-test-del-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         mkdirSync(tempDir, { recursive: true })
-        registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
     })
 
     afterEach(() => {
@@ -272,8 +242,12 @@ describe('deleteUpload handler', () => {
         }
     })
 
+    // 深化候选②票②：socket 注册退场，deleteUploadImpl 直调
+    const deleteUpload = (data: { path: string }) => deleteUploadImpl(data, tempDir)
+    const writeRange = (data: WriteFileRangeRequest) => writeFileRangeImpl(data, tempDir)
+
     it('应能删除已上传的文件', async () => {
-        const uploadResult = await mockRpc.call('writeFileRange', {
+        const uploadResult = await writeRange({
             filename: 'to-delete.png',
             offset: 0,
             content: new Uint8Array([1, 2, 3]),
@@ -284,32 +258,29 @@ describe('deleteUpload handler', () => {
         const fullPath = resolve(tempDir, uploadResult.path!)
         expect(existsSync(fullPath)).toBe(true)
 
-        const deleteResult = await mockRpc.call('deleteUpload', { path: uploadResult.path })
+        const deleteResult = await deleteUpload({ path: uploadResult.path! })
         expect(deleteResult.success).toBe(true)
         expect(existsSync(fullPath)).toBe(false)
     })
 
     it('应拒绝不在 uploads 目录内的路径', async () => {
-        const result = await mockRpc.call('deleteUpload', { path: '../../../etc/passwd' })
+        const result = await deleteUpload({ path: '../../../etc/passwd' })
         expect(result.success).toBe(false)
         expect(result.error).toContain('Invalid')
     })
 
     it('应拒绝空路径', async () => {
-        const result = await mockRpc.call('deleteUpload', { path: '' })
+        const result = await deleteUpload({ path: '' })
         expect(result.success).toBe(false)
     })
 })
 
-describe('replaceUpload handler', () => {
-    let mockRpc: MockRpcHandlerManager
+describe('replaceUpload 实现', () => {
     let tempDir: string
 
     beforeEach(() => {
-        mockRpc = new MockRpcHandlerManager()
         tempDir = join(tmpdir(), `mobi-test-rep-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         mkdirSync(tempDir, { recursive: true })
-        registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
     })
 
     afterEach(() => {
@@ -318,8 +289,12 @@ describe('replaceUpload handler', () => {
         }
     })
 
+    // 深化候选②票②：socket 注册退场，replaceUploadImpl 直调
+    const replaceUpload = (data: { path: string; content: Uint8Array }) => replaceUploadImpl(data, tempDir)
+    const writeRange = (data: WriteFileRangeRequest) => writeFileRangeImpl(data, tempDir)
+
     it('覆盖已存在文件：path 不变、内容换血、无临时文件残留', async () => {
-        const uploadResult = await mockRpc.call('writeFileRange', {
+        const uploadResult = await writeRange({
             filename: 'sketch-1.excalidraw.png',
             offset: 0,
             content: new Uint8Array([1, 2, 3]),
@@ -327,7 +302,7 @@ describe('replaceUpload handler', () => {
         })
         const relPath = uploadResult.path!
 
-        const replaceResult = await mockRpc.call('replaceUpload', {
+        const replaceResult = await replaceUpload({
             path: relPath,
             content: new Uint8Array([9, 8, 7, 6]),
         })
@@ -341,7 +316,7 @@ describe('replaceUpload handler', () => {
     })
 
     it('源文件已不存在：幂等写入（目标目录缺位也自动创建）', async () => {
-        const result = await mockRpc.call('replaceUpload', {
+        const result = await replaceUpload({
             path: '.mobi/uploads/2026-01/sketch-old-abc.excalidraw.png',
             content: new Uint8Array([4, 5]),
         })
@@ -351,7 +326,7 @@ describe('replaceUpload handler', () => {
     })
 
     it('应拒绝不在 uploads 目录内的路径', async () => {
-        const result = await mockRpc.call('replaceUpload', {
+        const result = await replaceUpload({
             path: '../../../etc/passwd',
             content: new Uint8Array([1]),
         })
@@ -360,7 +335,7 @@ describe('replaceUpload handler', () => {
     })
 
     it('应拒绝黑名单扩展名的 path', async () => {
-        const result = await mockRpc.call('replaceUpload', {
+        const result = await replaceUpload({
             path: '.mobi/uploads/evil.exe',
             content: new Uint8Array([1]),
         })
@@ -368,7 +343,7 @@ describe('replaceUpload handler', () => {
     })
 
     it('应拒绝空内容与空路径', async () => {
-        expect((await mockRpc.call('replaceUpload', { path: '.mobi/uploads/a.png', content: new Uint8Array() })).success).toBe(false)
-        expect((await mockRpc.call('replaceUpload', { path: '', content: new Uint8Array([1]) })).success).toBe(false)
+        expect((await replaceUpload({ path: '.mobi/uploads/a.png', content: new Uint8Array() })).success).toBe(false)
+        expect((await replaceUpload({ path: '', content: new Uint8Array([1]) })).success).toBe(false)
     })
 })

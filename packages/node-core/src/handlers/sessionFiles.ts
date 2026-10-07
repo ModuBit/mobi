@@ -18,7 +18,6 @@ import { logger } from '@mobi/node-core/logger'
 import { readdir, stat } from 'fs/promises'
 import { join, resolve, isAbsolute } from 'path'
 import { homedir } from 'os'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { validatePath, isWithinBlacklistedDir } from './pathSecurity'
 import { getErrorMessage, rpcError } from './rpcResponses'
 import { runStream as runRipgrepStream } from '../ripgrep/index'
@@ -387,10 +386,3 @@ export async function listSessionDirectoryImpl(data: ListSessionFilesRequest & {
     }
 }
 
-export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
-    // 接口 1：ripgrep 模糊搜索（工作目录内）
-    rpcHandlerManager.registerHandler<{ query: string, cwd?: string, type?: 'file' | 'directory' }, ListSessionFilesResponse>('searchSessionFiles', (data) => searchSessionFilesImpl(data, workingDirectory))
-
-    // 接口 2：目录列表（工作目录内 + 外）
-    rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string; prefix?: string }, ListSessionFilesResponse>('listSessionDirectory', (data) => listSessionDirectoryImpl(data, workingDirectory))
-}

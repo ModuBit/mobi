@@ -35,7 +35,6 @@ import {
 } from '@mobi/shared'
 import { updateSettings, readSettings } from '@mobi/node-core/persistence'
 import { createProviderFor, prepareCredentials } from '@mobi/node-core/webtools/registry'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 
 export type ValidateResult = { ok: true; config: WebToolsConfigSubmission } | { ok: false; error: string }
 
@@ -102,23 +101,6 @@ export function mergeProviderCredentials(current: WebToolsConfig, incoming: WebT
     return { ...incoming, providers: mergedProviders } as WebToolsConfig
 }
 
-/** 注册 machine 级 RPC（历史 apiMachine 构造器装配点；现仅测试引用） */
-export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<Record<string, never>, { config: RedactedWebToolsConfig } | { error: string }>(
-        'get-web-tools-config',
-        () => getWebToolsConfigImpl(),
-    )
-
-    rpcHandlerManager.registerHandler<{ config: unknown }, { success: true } | { success: false; error: string }>(
-        'set-web-tools-config',
-        (params) => setWebToolsConfigImpl(params),
-    )
-
-    rpcHandlerManager.registerHandler<
-        { providerId: WebToolProviderId; credentials?: Record<string, string> },
-        { success: true; latencyMs: number } | { success: false; error: string }
-    >('verify-web-tools-provider', (params) => verifyWebToolsProviderImpl(params))
-}
 
 /** get-web-tools-config 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，行为单源 */
 export async function getWebToolsConfigImpl(): Promise<{ config: RedactedWebToolsConfig } | { error: string }> {

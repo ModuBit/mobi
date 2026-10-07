@@ -16,7 +16,6 @@
 
 import { readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { rpcError, getErrorMessage } from './rpcResponses'
 
@@ -31,12 +30,6 @@ export interface ListHostDirectoryResponse {
     error?: string
 }
 
-/**
- * 注册 machine 级 list-directory RPC handler
- */
-export function registerHostDirectoryHandler(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<ListHostDirectoryRequest, ListHostDirectoryResponse>('list-directory', (params) => listHostDirectoryImpl(params))
-}
 
 /**
  * list-directory 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，

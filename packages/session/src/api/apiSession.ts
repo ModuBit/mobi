@@ -42,7 +42,7 @@ import type {
 } from '@mobi/node-core/api/types'
 import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from '@mobi/node-core/api/types'
 import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerCommonHandlers } from '@mobi/node-core/handlers/registerCommonHandlers'
+import { registerCommandHandlers } from '@mobi/node-core/handlers/commands'
 import { cleanupUploadDir } from '@mobi/node-core/handlers/uploads'
 import { applyVersionedAck } from '@mobi/node-core/api/versionedUpdate'
 import { IdleTimer } from '../modules/common/idleTimer'
@@ -124,7 +124,10 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         if (this.metadata?.path) {
-            registerCommonHandlers(this.rpcHandlerManager, this.metadata.path)
+            // 深化候选②票②：socket 注册只剩 refreshMetadata（唯一活 wire——daemon rpcGateway
+            // 经 'rpc-request' 调用）；文件/上传/审查族 handler 注册已死（ticket-20 起 daemon
+            // 全走 LocalExecutor 直调），不再上线
+            registerCommandHandlers(this.rpcHandlerManager, this.metadata.path)
         }
 
         this.socket = io(`${configuration.apiUrl}/cli`, {

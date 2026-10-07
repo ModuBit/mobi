@@ -19,7 +19,6 @@ import { mkdir, writeFile, rm, open, stat, rename } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, resolve, relative, extname, sep, dirname, basename } from 'path'
 import { homedir } from 'os'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from './rpcResponses'
 import { getUploadsDir } from '@mobi/node-core/constants/uploadPaths'
 import { ensureMobiGitignore } from '@mobi/node-core/git/mobiGitignore'
@@ -205,31 +204,6 @@ export async function cleanupUploadDir(_sessionId?: string): Promise<void> {
     // 新版本使用持久化存储，无需清理
 }
 
-/**
- * 注册上传相关的 RPC handlers
- *
- * @param rpcHandlerManager RPC 处理器管理器
- * @param workingDirectory 当前工作目录（工作区根目录）
- */
-export function registerUploadHandlers(
-    rpcHandlerManager: RpcHandlerManager,
-    workingDirectory: string,
-): void {
-    // 分块写文件（替换旧 base64 整包 uploadFile，对称 readFileRange 无状态）
-    rpcHandlerManager.registerHandler<WriteFileRangeRequest, WriteFileRangeResponse>(
-        'writeFileRange',
-        (data) => writeFileRangeImpl(data, workingDirectory))
-
-    // 删除上传文件
-    rpcHandlerManager.registerHandler<DeleteUploadRequest, DeleteUploadResponse>(
-        'deleteUpload',
-        (data) => deleteUploadImpl(data, workingDirectory))
-
-    // 同 path 原子替换上传（「编辑已有上传」场景，如画板重编辑换图）
-    rpcHandlerManager.registerHandler<ReplaceUploadRequest, ReplaceUploadResponse>(
-        'replaceUpload',
-        (data) => replaceUploadImpl(data, workingDirectory))
-}
 
 /**
  * writeFileRange 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，

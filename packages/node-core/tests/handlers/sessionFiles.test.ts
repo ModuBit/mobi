@@ -18,8 +18,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { mkdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter, filterByPrefix, registerSessionFilesHandler } from '@/handlers/sessionFiles'
+import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter, filterByPrefix, listSessionDirectoryImpl } from '@/handlers/sessionFiles'
 
 describe('isSearchQuery', () => {
     it('普通文件名应触发搜索', () => {
@@ -191,9 +190,8 @@ describe('filterByPrefix', () => {
     })
 })
 
-describe('listSessionDirectory handler — 上限与 prefix 下推', () => {
+describe('listSessionDirectory 实现 — 上限与 prefix 下推', () => {
     let rootDir: string
-    let rpc: RpcHandlerManager
 
     beforeEach(async () => {
         const base = tmpdir()
@@ -204,20 +202,17 @@ describe('listSessionDirectory handler — 上限与 prefix 下推', () => {
             await mkdir(join(rootDir, `aaa${String(i).padStart(4, '0')}`), { recursive: true })
         }
         await mkdir(join(rootDir, 'workspace'), { recursive: true })
-
-        rpc = new RpcHandlerManager({ scopePrefix: 'sf-test' })
-        registerSessionFilesHandler(rpc, rootDir)
     })
 
     afterEach(async () => {
         await rm(rootDir, { recursive: true, force: true }).catch(() => {})
     })
 
+    // 深化候选②票②：socket 注册退场，listSessionDirectoryImpl 直调
+    const listDir = (data: { path: string; prefix?: string }) => listSessionDirectoryImpl(data, rootDir)
+
     it('无 prefix 时 workspace 被 MAX_TREE_ENTRIES 截断 + 响应带 truncated/total', async () => {
-        const res = (await rpc.handleRequest({
-            method: 'sf-test:listSessionDirectory',
-            params: { path: '' },
-        })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean; total?: number }
+        const res = (await listDir({ path: '' })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean; total?: number }
 
         expect(res.success).toBe(true)
         expect(res.truncated).toBe(true)
@@ -228,10 +223,7 @@ describe('listSessionDirectory handler — 上限与 prefix 下推', () => {
     })
 
     it('带 prefix 时 workspace 必返回且不再截断', async () => {
-        const res = (await rpc.handleRequest({
-            method: 'sf-test:listSessionDirectory',
-            params: { path: '', prefix: 'worksp' },
-        })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean }
+        const res = (await listDir({ path: '', prefix: 'worksp' })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean }
 
         expect(res.success).toBe(true)
         expect((res.entries ?? []).map((e) => e.name)).toContain('workspace')
@@ -239,10 +231,7 @@ describe('listSessionDirectory handler — 上限与 prefix 下推', () => {
     })
 
     it('无 prefix 与有 prefix 行为解耦：未匹配 prefix 返回空', async () => {
-        const res = (await rpc.handleRequest({
-            method: 'sf-test:listSessionDirectory',
-            params: { path: '', prefix: 'zzz' },
-        })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean }
+        const res = (await listDir({ path: '', prefix: 'zzz' })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean }
 
         expect(res.success).toBe(true)
         expect((res.entries ?? []).length).toBe(0)

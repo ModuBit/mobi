@@ -29,13 +29,13 @@ vi.mock('@mobi/node-core/webtools/registry', async (importOriginal) => ({
 
 import type { WebToolsConfigSubmission } from '@mobi/shared'
 import { readSettings, updateSettings, type Settings } from '@mobi/node-core/persistence'
-import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import type { RpcRequest } from '@mobi/node-core/rpc/types'
 import {
     parseWebToolsConfig,
     validateSelection,
     mergeProviderCredentials,
-    registerWebToolsConfigHandler,
+    getWebToolsConfigImpl,
+    setWebToolsConfigImpl,
+    verifyWebToolsProviderImpl,
 } from '@/handlers/webToolsConfig'
 import { createProviderFor } from '@mobi/node-core/webtools/registry'
 
@@ -141,8 +141,7 @@ describe('set handler 语义（parse → merge → validateSelection，merge 后
     })
 })
 
-describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager.handleRequest）', () => {
-    const SCOPE = 'test'
+describe('get / set 实现（Impl 直调；原 RPC 注册链路随票②退场）', () => {
     // updateSettings 的 mock：对内存快照应用 updater 并返回（模拟锁内读-改-写）
     let persisted: Settings
 
@@ -157,20 +156,10 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         })
     })
 
-    function makeManager(): RpcHandlerManager {
-        const manager = new RpcHandlerManager({ scopePrefix: SCOPE, logger: () => {} })
-        registerWebToolsConfigHandler(manager)
-        return manager
-    }
-
-    const call = (manager: RpcHandlerManager, method: string, params: unknown) =>
-        manager.handleRequest({ method: `${SCOPE}:${method}`, params } satisfies RpcRequest)
-
     it('set：留空凭据保存成功，落盘沿用旧值且选择校验在 merge 之后（防顺序回归）', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'old' }, timeoutMs: 15_000 }] } }
-        const manager = makeManager()
 
-        const response = await call(manager, 'set-web-tools-config', {
+        const response = await setWebToolsConfigImpl({
             config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] },
         })
 
@@ -182,9 +171,7 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
     })
 
     it('set：merge 后仍缺凭据 → success:false 且不落盘（updater 抛出）', async () => {
-        const manager = makeManager()
-
-        const response = await call(manager, 'set-web-tools-config', {
+        const response = await setWebToolsConfigImpl({
             config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] },
         })
 
@@ -200,18 +187,16 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
                 providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'secret' }, timeoutMs: 15_000 }],
             },
         }
-        const manager = makeManager()
 
-        const response = await call(manager, 'get-web-tools-config', {}) as { config: { providers?: Array<{ credentials: Record<string, { set: boolean; preview?: string }> }> } }
+        const response = await getWebToolsConfigImpl() as { config: { providers?: Array<{ credentials: Record<string, { set: boolean; preview?: string }> }> } }
 
         expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true, preview: '******' } })
     })
 
     it('get：存量配置损坏 → 回退空配置，不抛 RPC error', async () => {
         persisted = { webTools: { providers: 'garbage' } as unknown as Settings['webTools'] }
-        const manager = makeManager()
 
-        const response = await call(manager, 'get-web-tools-config', {}) as { config: unknown }
+        const response = await getWebToolsConfigImpl() as { config: unknown }
 
         expect(response).toEqual({ config: {} })
     })
@@ -226,10 +211,9 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
                 ],
             } as unknown as Settings['webTools'],
         }
-        const manager = makeManager()
 
         // 脱敏页保存：tavily 键不在场（保持旧值）
-        const response = await call(manager, 'set-web-tools-config', {
+        const response = await setWebToolsConfigImpl({
             config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] },
         })
 
@@ -249,9 +233,8 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
                 ],
             } as unknown as Settings['webTools'],
         }
-        const manager = makeManager()
 
-        const response = await call(manager, 'get-web-tools-config', {}) as {
+        const response = await getWebToolsConfigImpl() as {
             config: { searchProviderId?: string; providers?: Array<{ id: string; credentials: Record<string, { set: boolean; preview?: string }> }> }
         }
 
@@ -261,7 +244,7 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
     })
 })
 
-describe('verify-web-tools-provider handler', () => {
+describe('verify-web-tools-provider 实现（verifyWebToolsProviderImpl 直调）', () => {
     // updateSettings 的 mock：对内存快照应用 updater 并返回（模拟锁内读-改-写）
     let persisted: Settings
 
@@ -277,21 +260,11 @@ describe('verify-web-tools-provider handler', () => {
         })
     })
 
-    function makeManager(): RpcHandlerManager {
-        const manager = new RpcHandlerManager({ scopePrefix: 'test', logger: () => {} })
-        registerWebToolsConfigHandler(manager)
-        return manager
-    }
-
-    const call = (manager: RpcHandlerManager, method: string, params: unknown) =>
-        manager.handleRequest({ method: `test:${method}`, params } satisfies RpcRequest)
-
     it('草稿凭据优先于已存值（保存前验证新 key）；search 只取 1 条省配额', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
         const provider = { search: vi.fn().mockResolvedValue([]) }
         vi.mocked(createProviderFor).mockReturnValue(provider as never)
-        const manager = makeManager()
-        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: 'draft' } })
+        const res = await verifyWebToolsProviderImpl({ providerId: 'tavily', credentials: { apiKey: 'draft' } })
         expect(res).toEqual({ success: true, latencyMs: expect.any(Number) })
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'draft', timeoutMs: 15_000 })
         expect(provider.search).toHaveBeenCalledWith({ query: 'connection test', maxResults: 1 })
@@ -300,23 +273,20 @@ describe('verify-web-tools-provider handler', () => {
     it('草稿脏键（未声明凭据键）不参与合成', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
         vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
-        const manager = makeManager()
-        await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: 'draft', junk: 'j' } })
+        await verifyWebToolsProviderImpl({ providerId: 'tavily', credentials: { apiKey: 'draft', junk: 'j' } })
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'draft', timeoutMs: 15_000 })
     })
 
     it('无草稿 → 用已存凭据', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
         vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
-        const manager = makeManager()
-        await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        await verifyWebToolsProviderImpl({ providerId: 'tavily' })
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'stored', timeoutMs: 15_000 })
     })
 
     it('凭据缺失 → success:false 带原因', async () => {
         persisted = {}
-        const manager = makeManager()
-        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        const res = await verifyWebToolsProviderImpl({ providerId: 'tavily' })
         expect(res).toEqual({ success: false, error: expect.stringContaining('缺少凭据') })
     })
 
@@ -325,20 +295,19 @@ describe('verify-web-tools-provider handler', () => {
         vi.mocked(createProviderFor).mockReturnValue({
             search: vi.fn().mockRejectedValue(new Error('Invalid API key')),
         } as never)
-        const manager = makeManager()
-        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        const res = await verifyWebToolsProviderImpl({ providerId: 'tavily' })
         expect(res).toEqual({ success: false, error: 'Invalid API key' })
     })
 
     it('缺少 providerId → success:false（schema 边界拒绝）', async () => {
-        const manager = makeManager()
-        const res = await call(manager, 'verify-web-tools-provider', {})
+        // @ts-expect-error 缺参路径：schema 边界拒绝而非类型层拦住
+        const res = await verifyWebToolsProviderImpl({})
         expect(res).toEqual({ success: false, error: expect.stringContaining('providerId') })
     })
 
     it('未知 providerId → success:false（schema enum 拒绝，handler 不再手写兜底）', async () => {
-        const manager = makeManager()
-        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'nope' })
+        // @ts-expect-error 非法 enum 值路径：schema 拒绝
+        const res = await verifyWebToolsProviderImpl({ providerId: 'nope' })
         expect(res).toEqual({ success: false, error: expect.stringContaining('verify 参数非法') })
         expect(createProviderFor).not.toHaveBeenCalled()
     })
@@ -346,8 +315,8 @@ describe('verify-web-tools-provider handler', () => {
     it('credentials 含 null 等畸形值 → 整体拒绝而非静默用已存凭据（防验证假阳性）', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
         vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
-        const manager = makeManager()
-        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: null } })
+        // @ts-expect-error 畸形凭据路径：schema 整体拒绝
+        const res = await verifyWebToolsProviderImpl({ providerId: 'tavily', credentials: { apiKey: null } })
         expect(res).toEqual({ success: false, error: expect.stringContaining('verify 参数非法') })
         // 关键：绝不能用已存凭据跑真实验证（否则用户以为草稿通过了）
         expect(createProviderFor).not.toHaveBeenCalled()
@@ -356,8 +325,7 @@ describe('verify-web-tools-provider handler', () => {
     it('条目 timeoutMs 超过 hub socket 上限 → 钳制到 20s（超出部分必被 hub 30s 掐断白等）', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 120_000 }] } }
         vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
-        const manager = makeManager()
-        await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        await verifyWebToolsProviderImpl({ providerId: 'tavily' })
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'stored', timeoutMs: 20_000 })
     })
 })

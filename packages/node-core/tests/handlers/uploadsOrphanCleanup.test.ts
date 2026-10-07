@@ -18,7 +18,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 
 /**
  * 首块孤儿清理专项测试。
@@ -47,41 +46,16 @@ vi.mock('fs/promises', async (importOriginal) => {
     }
 })
 
-const { registerUploadHandlers } = await import('@/handlers/uploads')
-
-interface MockHandlerResult {
-    success: boolean
-    path?: string
-    written?: number
-    error?: string
-}
-
-class MockRpcHandlerManager {
-    handlers = new Map<string, (data: unknown) => unknown>()
-
-    registerHandler<TReq, TRes>(
-        method: string,
-        handler: (data: TReq) => TRes | Promise<TRes>,
-    ): void {
-        this.handlers.set(method, handler as (data: unknown) => unknown)
-    }
-
-    async call(method: string, data: unknown): Promise<MockHandlerResult> {
-        const handler = this.handlers.get(method)
-        if (!handler) throw new Error(`No handler registered for: ${method}`)
-        return Promise.resolve(handler(data)).then((r) => r as MockHandlerResult)
-    }
-}
+// 深化候选②票②：socket 注册退场（registerUploadHandlers 已删），writeFileRangeImpl 直调；
+// 动态 import 保持 vi.mock 生效时序
+const { writeFileRangeImpl } = await import('@/handlers/uploads')
 
 describe('writeFileRange 首块孤儿清理', () => {
-    let mockRpc: MockRpcHandlerManager
     let tempDir: string
 
     beforeEach(() => {
-        mockRpc = new MockRpcHandlerManager()
         tempDir = join(tmpdir(), `mobi-test-orphan-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         mkdirSync(tempDir, { recursive: true })
-        registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
     })
 
     afterEach(() => {
@@ -91,12 +65,12 @@ describe('writeFileRange 首块孤儿清理', () => {
     })
 
     it('首块 write 失败 → 清理孤儿文件并返回错误（不泄漏空 / 半成品文件）', async () => {
-        const res = await mockRpc.call('writeFileRange', {
+        const res = await writeFileRangeImpl({
             filename: 'orphan.png',
             offset: 0,
             content: new Uint8Array([1, 2, 3]),
             totalSize: 3,
-        })
+        }, tempDir)
 
         // write 抛错 → 返回 rpcError（不返回 path）
         expect(res.success).toBe(false)

@@ -15,32 +15,10 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { mkdir, rm, writeFile, stat, readFile, readdir, mkdtemp } from 'fs/promises'
+import { rm, writeFile, stat, readFile, readdir, mkdtemp } from 'fs/promises'
 import { join } from 'path'
-import { tmpdir } from 'os'
-import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { registerFileHandlers } from '@/handlers/files'
-
-// 从注册的 handler 中取出指定方法直接调用（绕过 socket，单测 handler 逻辑）
-function getHandler(mgr: RpcHandlerManager, method: string) {
-    // @ts-expect-error 访问私有 handlers Map 取注册的方法
-    const entry = (mgr as unknown as {
-        handlers: Map<string, { handler: (p: unknown) => unknown }>
-    }).handlers.get(`session:${method}`)
-    if (!entry) throw new Error(`handler ${method} not registered`)
-    return entry.handler as (p: {
-        path: string
-        content: Uint8Array
-        baseEtag: string
-    }) => Promise<{
-        success: boolean
-        etag?: string
-        conflict?: boolean
-        currentEtag?: string
-        error?: string
-        code?: string
-    }>
-}
+import { homedir, tmpdir } from 'os'
+import { saveFileImpl } from '@/handlers/files'
 
 async function etagOf(dir: string, rel: string) {
     const st = await stat(join(dir, rel))
@@ -55,23 +33,24 @@ async function expectFile(p: string, want: string) {
     expect(await readFile(p, 'utf-8')).toBe(want)
 }
 
-describe('saveFile handler', () => {
+describe('saveFile 实现（saveFileImpl 直调）', () => {
     let dir: string
-    let mgr: RpcHandlerManager
 
     beforeEach(async () => {
         dir = await mkdtemp(join(tmpdir(), 'mobi-save-'))
-        mgr = new RpcHandlerManager({ scopePrefix: 'session' })
-        registerFileHandlers(mgr, dir)
         await writeFile(join(dir, 'a.md'), '# hello\n', 'utf-8')
     })
     afterEach(async () => {
         await rm(dir, { recursive: true, force: true })
     })
 
+    // 深化候选②票②：socket 注册退场，改 saveFileImpl 直调（homeDir 与原注册默认一致，取真实 home）
+    const save = (data: { path: string; content: Uint8Array; baseEtag: string }) =>
+        saveFileImpl(data, dir, homedir())
+
     it('baseEtag 匹配 → 原子覆盖，返回新 etag', async () => {
         const base = await etagOf(dir, 'a.md')
-        const res = await getHandler(mgr, 'saveFile')({
+        const res = await save({
             path: 'a.md', content: toBytes('# world\n'), baseEtag: base,
         })
         expect(res.success).toBe(true)
@@ -81,7 +60,7 @@ describe('saveFile handler', () => {
     })
 
     it('baseEtag 不匹配（文件已被改）→ conflict，不写', async () => {
-        const res = await getHandler(mgr, 'saveFile')({
+        const res = await save({
             path: 'a.md', content: toBytes('# world\n'), baseEtag: 'stale-etag',
         })
         expect(res.success).toBe(false)
@@ -91,7 +70,7 @@ describe('saveFile handler', () => {
     })
 
     it('路径越权（工作目录外）→ 失败，非 conflict', async () => {
-        const res = await getHandler(mgr, 'saveFile')({
+        const res = await save({
             path: '../escape.md', content: toBytes('x'), baseEtag: 'x',
         })
         expect(res.success).toBe(false)
@@ -99,7 +78,7 @@ describe('saveFile handler', () => {
     })
 
     it('文件不存在 → 失败 + ENOENT', async () => {
-        const res = await getHandler(mgr, 'saveFile')({
+        const res = await save({
             path: 'nope.md', content: toBytes('x'), baseEtag: 'x',
         })
         expect(res.success).toBe(false)
@@ -108,7 +87,7 @@ describe('saveFile handler', () => {
 
     it('原子写：写后无 .mobi-tmp 残留', async () => {
         const base = await etagOf(dir, 'a.md')
-        await getHandler(mgr, 'saveFile')({
+        await save({
             path: 'a.md', content: toBytes('# x\n'), baseEtag: base,
         })
         const files = await readdir(dir)
@@ -116,7 +95,7 @@ describe('saveFile handler', () => {
     })
 
     it('force（baseEtag=""）→ 即使 etag 不匹配也覆盖', async () => {
-        const res = await getHandler(mgr, 'saveFile')({
+        const res = await save({
             path: 'a.md', content: toBytes('# forced\n'), baseEtag: '',
         })
         expect(res.success).toBe(true)
@@ -126,7 +105,7 @@ describe('saveFile handler', () => {
 
     it('空内容（清空文件）→ 成功覆盖，文件变空（清空是合法操作）', async () => {
         const base = await etagOf(dir, 'a.md')
-        const res = await getHandler(mgr, 'saveFile')({
+        const res = await save({
             path: 'a.md', content: new Uint8Array(0), baseEtag: base,
         })
         expect(res.success).toBe(true)

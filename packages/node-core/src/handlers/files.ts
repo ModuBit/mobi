@@ -17,26 +17,12 @@
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { fileEtag, type ReadFileMetaResponse, type RpcReadFileRangeResponse } from '@mobi/shared/fileMeta'
 import { logger } from '@mobi/node-core/logger'
-import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
-import { createHash, randomUUID } from 'crypto'
+import { stat, writeFile, rename, unlink } from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { join } from 'path'
-import { homedir } from 'os'
-import type { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
-import { validateReadPath, validateWritePath } from './pathSecurity'
+import { validateWritePath } from './pathSecurity'
 import { getErrorMessage, rpcError } from './rpcResponses'
-import { fsError, normalizeCwdParam, readFileMetaAt, readFileRangeAt } from './fileRead'
-
-interface WriteFileRequest {
-    path: string
-    content: string
-    expectedHash?: string | null
-}
-
-interface WriteFileResponse {
-    success: boolean
-    hash?: string
-    error?: string
-}
+import { fsError, normalizeCwdParam } from './fileRead'
 
 export interface SaveFileRequest {
     path: string
@@ -67,108 +53,6 @@ export interface ReadFileRangeRequest {
 // 响应形状单源在 shared（RpcReadFileRangeResponse），此处别名兼容既有引用
 export type ReadFileRangeResponse = RpcReadFileRangeResponse
 
-export function registerFileHandlers(
-    rpcHandlerManager: RpcHandlerManager,
-    workingDirectory: string,
-    /** 用户 home（读边界 home 通道 + 黑名单基准；显式注入便于测试，缺省取系统 home） */
-    homeDir: string = homedir(),
-): void {
-    // 读边界（cwd ∪ home−黑名单）与写边界（严格 cwd）分离——读放宽不放大写风险。
-    // ~ 展开语义内聚在 shared 校验层（validateReadPath/validateWritePath），
-    // valid 结果自带 resolvedPath，调用方直接用它读写，杜绝「校验对象 ≠ 实际读写对象」的漂移。
-    // 边界拒绝统一带结构化码 ACCESS_DENIED，daemon 据此映射 403（区别于 ENOENT→404 / 其他→500）
-    const readable = (path: string) => validateReadPath(path, workingDirectory, homeDir)
-    const writable = (path: string) => validateWritePath(path, workingDirectory, homeDir)
-
-    // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
-    rpcHandlerManager.registerHandler<ReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
-        logger.debug('Read file meta:', data.path)
-
-        const validation = readable(data.path)
-        if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
-        }
-
-        const result = await readFileMetaAt(validation.resolvedPath)
-        if (!result.success) {
-            // 整 result 落日志：保留 errno code 等结构化信息，非映射码（EACCES 等）排查不丢上下文
-            logger.debug('Failed to read file meta:', result)
-            return result
-        }
-        return { success: true, meta: result.meta, writable: writable(data.path).valid }
-    })
-
-    // readFileRange：无状态读 [offset, offset+length)，返回 Uint8Array（Socket.IO binary 附件）
-    rpcHandlerManager.registerHandler<ReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {
-        logger.debug('Read file range:', data.path, data.offset, data.length)
-
-        const validation = readable(data.path)
-        if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
-        }
-
-        const result = await readFileRangeAt(validation.resolvedPath, data.offset, data.length)
-        if (!result.success) {
-            logger.debug('Failed to read file range:', result)
-        }
-        return result
-    })
-
-    rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
-        logger.debug('Write file request:', data.path)
-
-        // 写边界（严格 cwd 子树）与可写性判定同源 validateWritePath；~ 前缀路径
-        // 被显式拒绝（不做字面目录名写入），hash/stat 校验与实际写入都用 resolvedPath
-        const validation = writable(data.path)
-        if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path', { code: 'ACCESS_DENIED' })
-        }
-
-        try {
-            if (data.expectedHash !== null && data.expectedHash !== undefined) {
-                try {
-                    const existingBuffer = await readFile(validation.resolvedPath)
-                    const existingHash = createHash('sha256').update(existingBuffer).digest('hex')
-
-                    if (existingHash !== data.expectedHash) {
-                        return rpcError(`File hash mismatch. Expected: ${data.expectedHash}, Actual: ${existingHash}`)
-                    }
-                } catch (error) {
-                    const nodeError = error as NodeJS.ErrnoException
-                    if (nodeError.code !== 'ENOENT') {
-                        throw error
-                    }
-                    return rpcError('File does not exist but hash was provided')
-                }
-            } else {
-                try {
-                    await stat(validation.resolvedPath)
-                    return rpcError('File already exists but was expected to be new')
-                } catch (error) {
-                    const nodeError = error as NodeJS.ErrnoException
-                    if (nodeError.code !== 'ENOENT') {
-                        throw error
-                    }
-                }
-            }
-
-            const buffer = Buffer.from(data.content, 'base64')
-            await writeFile(validation.resolvedPath, buffer)
-
-            const hash = createHash('sha256').update(buffer).digest('hex')
-
-            return { success: true, hash }
-        } catch (error) {
-            logger.debug('Failed to write file:', error)
-            return rpcError(getErrorMessage(error, 'Failed to write file'))
-        }
-    })
-
-    // saveFile：覆盖已存在文件 + etag OCC + 原子写（tmp+rename）。
-    // 对称 readFileMeta（etag = ${size}-${mtimeMs}）；baseEtag 由前端 readFileMeta 提供。
-    // 仅覆盖已存在文件（新建走 upload 链路）；越权由 writable 校验（写边界严格 cwd）拦截。
-    rpcHandlerManager.registerHandler<SaveFileRequest, SaveFileResponse>('saveFile', (data) => saveFileImpl(data, workingDirectory, homeDir))
-}
 
 /**
  * saveFile 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，

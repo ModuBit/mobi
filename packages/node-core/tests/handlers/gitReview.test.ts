@@ -26,9 +26,9 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { GitReviewReader, registerGitReviewHandlers, truncatePatch } from '@/handlers/gitReview'
+import { GitReviewReader, gitReviewRpcImpl, truncatePatch } from '@/handlers/gitReview'
 import { getTurnArchivePath } from '@mobi/node-core/git/turnArchiveStore'
-import { REVIEW_RENDER_MAX_LINES, ReviewContentsResultSchema } from '@mobi/shared'
+import { GIT_REVIEW_RPC, REVIEW_RENDER_MAX_LINES, ReviewContentsResultSchema } from '@mobi/shared'
 
 const execFileAsync = promisify(execFile)
 
@@ -204,17 +204,19 @@ describe('GitReviewReader v2 六方法（真 git 集成）', () => {
         }
     })
 
-    it('RPC 注册：v2 六方法可经 handler map 直调', async () => {
-        const handlers = new Map<string, (params: never) => Promise<unknown>>()
-        registerGitReviewHandlers({
-            registerHandler: (method, handler) => handlers.set(method, handler as never),
-        } as never)
+    it('RPC 统一入口：v2 六方法可经方法表直调（gitReviewRpcImpl）', async () => {
+        // 深化候选②票②：socket 注册退场（registerGitReviewHandlers 已删），
+        // 直接按 GIT_REVIEW_RPC 方法表构造（每方法经 gitReviewRpcImpl 直调）
+        const handlers = new Map<string, (params: { cwd: string } & Record<string, unknown>) => Promise<unknown>>()
+        for (const method of Object.values(GIT_REVIEW_RPC)) {
+            handlers.set(method, (data) => gitReviewRpcImpl(method, data))
+        }
         for (const method of ['gitReviewOverview', 'gitReviewFiles', 'gitReviewDiff', 'gitReviewContents', 'gitReviewCommits', 'gitReviewInit']) {
             expect(handlers.has(method)).toBe(true)
         }
-        const overview = await handlers.get('gitReviewOverview')!({ cwd: v2Dir, sessionId: v2Session } as never) as { isGitRepository: boolean }
+        const overview = await handlers.get('gitReviewOverview')!({ cwd: v2Dir, sessionId: v2Session }) as { isGitRepository: boolean }
         expect(overview.isGitRepository).toBe(true)
-        const commits = await handlers.get('gitReviewCommits')!({ cwd: v2Dir } as never) as { commits: unknown[] }
+        const commits = await handlers.get('gitReviewCommits')!({ cwd: v2Dir }) as { commits: unknown[] }
         expect(commits.commits.length).toBeGreaterThan(0)
     })
 })
