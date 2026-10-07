@@ -98,6 +98,14 @@ _Avoid_: 数据删除（存储未动）、脱敏（目的不是安全）、内�
 daemon 内本机执行消费面的单一入口（`SessionExecutionAccess`）：session 寻址族（按会话行解析 cwd 后落执行层：文件读写/上传替换/审查六方法）、host 直调族（web 端点自带 cwd/homeDir 的纯转发）、web 工具配置族。web 路由直接消费它；SyncEngine 只保留真编排（spawn/resume/wake/fork/rewind/dormancy），不再做透传。寻址规则（ADR 0006）：session 寻址、本机执行、无条件单路径，cwd 缺失显式报错、不回退会话 socket。
 _Avoid_: 在 SyncEngine 上加回透传方法（透传链正是深化候选②要消灭的）、在路由里自行查会话行解析 cwd（寻址规则单源在 module）
 
+**会话追踪表**（`SessionTrackingTable`）:
+executor 侧会话行的单一持有者（架构评审候选⑧）：表行与 spawn 等待端（awaiter）按 pid 同生共死收编同体——webhook 登记/回填/resolve、failAwaiter（exit/error 先于 webhook）、remove、prune、唤醒去重、追踪补登全部经表方法；纯函数族（sessionTracking/spawnDedup）保持独立签名由表转发。
+_Avoid_: 绕开表直接操作 Map 或手写 awaiter delete 配对（此前 6 处配对散在闭包各路径）、给表加业务编排（spawn 编排在 spawnSession.ts）
+
+**spawn 编排**（`spawnSession`）:
+daemon spawn 会话子进程的编排主体（架构评审候选⑧）：模块级函数 + 全副作用经 SpawnSessionDeps 注入（fs/spawn/worktree/isProcessAlive/追踪表/结果上报），测试假件驱动（dedup/目录文案树/worktree 清理时机/webhook 等待七场景）；errno 文案树与 webhook 失败消息是导出纯函数。startExecutor 只剩装配。
+_Avoid_: 往编排里加闭包自由变量（新状态进追踪表）、绕过 deps 直接 import 副作用件（假件驱动即失效）
+
 ### CLI socket
 
 **CLI socket 能力集**（`SessionSocketCapabilities`）:
