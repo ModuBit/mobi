@@ -7,3 +7,7 @@
 **co-located 部署**:
 daemon 与会话子进程同机同 MOBI_HOME 的唯一部署形态（单机假设）。token 由 daemon 首启自动同步到 `settings.cli.json`，开箱即连。
 _Avoid_: 远程部署（多机拓扑旧形态，已废）
+
+**宿主通道拓扑**:
+宿主通道地址知识的单一归属（`hostChannel.ts`，架构评审候选⑤）：端口派生规则（主端口 + 10000，2222→12222）、`MOBI_HOST_PORT` env 覆盖（非法回退派生 fail-open、越界 wrap 回非特权段）与 loopback URL 构造。daemon 权威派生、同机 CLI 开箱默认、executor spawn 注入三方只消费这里的结论；通道决策本身（独立 loopback listener、不经 frp 暴露）见 ADR 0009 与 daemon CONTEXT。
+_Avoid_: 在任何包再写一份 +10000/12222/2222 派生逻辑或「注释对齐」契约（此前四处编码点即此类泄漏）

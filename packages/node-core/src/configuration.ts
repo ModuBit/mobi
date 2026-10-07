@@ -27,6 +27,7 @@ import { join } from 'node:path'
 // 版本号指 mobi CLI 包（安装主体），本模块搬入 node-core 后跨包锚定（与 projectPath 同理）
 import packageJson from '../../cli/package.json'
 import { getCliArgs } from './utils/cliArgs'
+import { defaultHostChannelUrl } from './hostChannel'
 import type { Settings } from './settingsTypes'
 
 class Configuration {
@@ -68,12 +69,11 @@ class Configuration {
 
     constructor() {
         // Server configuration
-        // 默认指向宿主通道 listener（ticket-21：/cli socket + /cli/* HTTP 在
-        // 127.0.0.1 的独立 loopback 端口，派生规则 = 主端口 + 10000，与 daemon 侧
-        // resolveHostPort 对齐；MOBI_HOST_PORT 覆盖时两侧同读该 env）。daemon spawn
-        // 的会话子进程会显式注入精确值，这里只是同机 CLI 的开箱默认
+        // 默认指向宿主通道 listener（ticket-21）：URL/端口派生单源
+        // @mobi/node-core/hostChannel（env MOBI_HOST_PORT 覆盖时两侧同源生效）。
+        // daemon spawn 的会话子进程会显式注入精确值，这里只是同机 CLI 的开箱默认
         this._apiUrl = process.env.MOBI_API_URL
-            || `http://127.0.0.1:${process.env.MOBI_HOST_PORT ?? 12222}`
+            || defaultHostChannelUrl()
         this._cliApiToken = process.env.CLI_API_TOKEN || ''
 
         // 按进程参数判定 daemon 后台形态（`mobi daemon start-sync`）

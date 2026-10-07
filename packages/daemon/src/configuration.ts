@@ -25,6 +25,7 @@
  * - CLI_API_TOKEN: Shared secret for mobi CLI authentication (auto-generated if not set)
  * - MOBI_LISTEN_HOST: Host/IP to bind the HTTP service (default: 127.0.0.1)
  * - MOBI_LISTEN_PORT: Port for HTTP service (default: 2222)
+ * - MOBI_HOST_PORT: Host channel port (default: listenPort + 10000, see @mobi/node-core/hostChannel)
  * - MOBI_PUBLIC_URL: Public URL for external access
  * - CORS_ORIGINS: Comma-separated CORS origins
  * - VAPID_SUBJECT: Contact email or URL for Web Push
@@ -41,6 +42,8 @@ import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getOrCreateWebApiToken } from './config/webApiToken'
 import { getCliSettingsFile, getSettingsFile, updateSettingsFile } from './config/settings'
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
+// 宿主端口派生/解析单源 @mobi/node-core/hostChannel（架构评审候选⑤），这里只消费结论
+import { resolveHostPort } from '@mobi/node-core/hostChannel'
 
 /**
  * co-located cliApiToken 同步：把 daemon 的 cliApiToken 写一份到同目录 settings.cli.json
@@ -63,29 +66,6 @@ async function syncCliApiTokenToCoLocatedCli(dataDir: string, token: string): Pr
 }
 
 export type ConfigSource = 'env' | 'file' | 'default'
-
-/** 宿主端口派生偏移：listenPort + 10000（与 CLI 侧默认 12222 对齐） */
-const HOST_PORT_OFFSET = 10_000
-
-/** 宿主端口解析：env MOBI_HOST_PORT 优先，否则按主端口派生（非法值回退派生，fail-open） */
-export function resolveHostPort(listenPort: number): number {
-    const raw = process.env.MOBI_HOST_PORT
-    if (raw) {
-        const parsed = Number.parseInt(raw, 10)
-        if (Number.isFinite(parsed) && parsed > 0 && parsed < 65_536) {
-            return parsed
-        }
-        daemonLogger.warn(`[DAEMON] MOBI_HOST_PORT="${raw}" 非法（须为 1-65535），回退派生端口`)
-    }
-    // 派生越界（listenPort 接近 65535 时）wrap 回非特权段；生产端口 2222-2224 派生恒在界内
-    const derived = listenPort + HOST_PORT_OFFSET
-    if (derived <= 65_535) {
-        return derived
-    }
-    daemonLogger.warn(`[DAEMON] listenPort ${listenPort} 派生宿主端口 ${derived} 越界，wrap 回非特权段`)
-    return 1_024 + (derived % (65_535 - 1_024))
-}
-
 export interface ConfigSources {
     listenHost: ConfigSource
     listenPort: ConfigSource
@@ -130,7 +110,7 @@ class Configuration {
     /**
      * 宿主通道端口（ticket-21 Q10=a）：/cli socket namespace 与 /cli/* HTTP 挂在
      * 这个端口的 loopback listener 上，不经 frp 暴露——外网物理够不到宿主通道。
-     * 派生自 listenPort + 10000（2222→12222），env MOBI_HOST_PORT 可覆盖
+     * 派生规则（+10000 / env MOBI_HOST_PORT 覆盖）单源 @mobi/node-core/hostChannel
      */
     public readonly hostPort: number
 

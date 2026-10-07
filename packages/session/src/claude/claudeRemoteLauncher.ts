@@ -61,7 +61,6 @@ import {
     applyPushToTurnTracking,
     stopBackgroundTasksAllSettled,
 } from './utils/stopAction';
-import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
     type RemoteLauncherExitReason
