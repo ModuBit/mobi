@@ -64,28 +64,28 @@ export async function runSupervisor(): Promise<void> {
     let finished = false
     let idleTimer: ReturnType<typeof setTimeout> | null = null
 
-    const crashLogPath = (name: 'daemon') => join(configuration.logsDir, `${name}-crash.log`)
+    const crashLogPath = join(configuration.logsDir, 'daemon-crash.log')
 
     const supervisor = new Supervisor(
         {
-            spawn: (name, env) =>
-                spawnMobiCli([name, 'start-sync'], {
+            spawn: (env) =>
+                spawnMobiCli(['daemon', 'start-sync'], {
                     // 不 detach：子进程 ppid 指向 supervisor，PPID 看门狗才能感知 supervisor 死亡
                     // stderr 管道用于崩溃现场落盘
                     stdio: ['ignore', 'ignore', 'pipe'],
                     env,
                 }),
             now: () => Date.now(),
-            writeCrashLog: (name, tail) => {
+            writeCrashLog: (tail) => {
                 try {
                     writeFileSync(
-                        crashLogPath(name),
+                        crashLogPath,
                         `${new Date().toISOString()}\n\n${tail}`,
                         'utf8',
                     )
-                    logger.debug(`[SUPERVISOR] ${name} crash log written: ${crashLogPath(name)}`)
+                    logger.debug(`[SUPERVISOR] daemon crash log written: ${crashLogPath}`)
                 } catch (error) {
-                    logger.debug(`[SUPERVISOR] Failed to write ${name} crash log`, error)
+                    logger.debug('[SUPERVISOR] Failed to write daemon crash log', error)
                 }
             },
         },
@@ -130,7 +130,7 @@ export async function runSupervisor(): Promise<void> {
     async function waitForDaemonHealthyAfterRespawn(prevPid: number | undefined): Promise<boolean> {
         const deadline = Date.now() + HUB_HEALTH_TIMEOUT_MS
         while (Date.now() < deadline) {
-            const pid = supervisor.status().daemon.pid
+            const pid = supervisor.status().pid
             if (pid !== undefined && pid !== prevPid && (await isUrlOk(daemonHealthUrl()))) {
                 return true
             }
@@ -150,15 +150,15 @@ export async function runSupervisor(): Promise<void> {
      * - daemon 在跑且未变更配置（幂等 start）：旧实例即目标，直接健康门
      */
     async function launchDaemonAndWait(mode: 'start' | 'restart', configChanged: boolean): Promise<void> {
-        const report = supervisor.status().daemon
+        const report = supervisor.status()
         const alreadyRunning = desired.daemon && report.status === 'running'
         const needsRespawn = mode === 'restart' || (configChanged && alreadyRunning)
         const prevPid = report.pid
 
         if (needsRespawn) {
-            supervisor.restart('daemon', daemonEnv())
+            supervisor.restart(daemonEnv())
         } else {
-            supervisor.start('daemon', daemonEnv())
+            supervisor.start(daemonEnv())
         }
         desired.daemon = true
         everManaged = true
@@ -185,16 +185,16 @@ export async function runSupervisor(): Promise<void> {
                 if ('port' in request && request.port) desired.port = request.port
                 const configChanged = desired.host !== prevHost || desired.port !== prevPort
                 await launchDaemonAndWait(mode, mode === 'restart' ? false : configChanged)
-                return { pid: process.pid, ...supervisor.status() }
+                return { pid: process.pid, daemon: supervisor.status() }
             }
             case 'stop': {
-                supervisor.stop('daemon')
+                supervisor.stop()
                 desired.daemon = false
                 writeDesiredState(desired)
-                return { pid: process.pid, ...supervisor.status() }
+                return { pid: process.pid, daemon: supervisor.status() }
             }
             case 'status':
-                return { pid: process.pid, ...supervisor.status() }
+                return { pid: process.pid, daemon: supervisor.status() }
             case 'shutdown':
                 void finish(0)
                 return { stopping: true }
@@ -256,7 +256,7 @@ export async function runSupervisor(): Promise<void> {
 
     // 4. 恢复期望状态（B 路径开机自启 = 恢复停机前配置）。
     if (desired.daemon) {
-        supervisor.start('daemon', daemonEnv())
+        supervisor.start(daemonEnv())
         everManaged = true
         const healthy = await waitForUrlOk(daemonHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
         if (!healthy) logger.debug('[SUPERVISOR] daemon not healthy after restore, continuing')

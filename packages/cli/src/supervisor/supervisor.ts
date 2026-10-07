@@ -17,6 +17,10 @@
 /**
  * Supervisor 托管状态机：daemon 子进程的 spawn/监控/退避重启/崩溃计数。
  *
+ * 单被管组件（架构评审候选⑥票②特化）：ticket-22 起唯一托管组件就是 daemon
+ * （历史 hub/runner 双组件已合并），本类不再保留多组件泛型形状——状态机
+ * （desired 标志 / runtime 单槽 / env 单槽）与 API 都直接表达单组件事实。
+ *
  * 设计约束：
  * - 本类不含任何业务逻辑（不碰 SQLite/网络/协议），spawn、时钟、崩溃日志
  *   全部由构造注入，保证可独立单测
@@ -25,8 +29,6 @@
 
 import { nextBackoffMs, nextCrashCount, shouldGiveUp } from './restartPolicy'
 
-/** ticket-22 起唯一托管组件：历史 hub/runner 双组件已合并为单机 daemon */
-export type ComponentName = 'daemon'
 export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 
 /** supervisor 眼中的子进程（与 ChildProcess 接口兼容，便于注入假对象） */
@@ -38,8 +40,8 @@ export interface ManagedProcess {
     kill(signal?: NodeJS.Signals): void
 }
 
-export interface ComponentStatusReport {
-    name: ComponentName
+/** daemon 的托管状态报告（IPC `status` 指令 wire 形状见 index.ts：{ pid, daemon }） */
+export interface DaemonStatusReport {
     /** 是否在期望托管集中 */
     managed: boolean
     status: ComponentStatus
@@ -48,17 +50,17 @@ export interface ComponentStatusReport {
 }
 
 export interface SupervisorDeps {
-    spawn: (name: ComponentName, env: Record<string, string | undefined>) => ManagedProcess
+    spawn: (env: Record<string, string | undefined>) => ManagedProcess
     now: () => number
-    writeCrashLog: (name: ComponentName, stderrTail: string) => void
+    writeCrashLog: (stderrTail: string) => void
 }
 
 export interface SupervisorHooks {
-    /** 期望托管集清空（daemon 被显式 stop）时触发；supervisor 进程据此退出 */
+    /** 期望托管撤销（daemon 被显式 stop）时触发；supervisor 进程据此退出 */
     onEmpty: () => void
 }
 
-interface ComponentRuntime {
+interface DaemonRuntime {
     process: ManagedProcess | null
     status: ComponentStatus
     startedAt: number
@@ -82,12 +84,11 @@ const MAX_STDERR_TAIL_CHARS = 8_000
 const KILL_GRACE_MS = 5_000
 
 export class Supervisor {
-    private readonly desired = new Set<ComponentName>()
-    private readonly runtimes = new Map<ComponentName, ComponentRuntime>()
-    private readonly envs = new Map<ComponentName, Record<string, string | undefined>>()
+    /** 期望托管标志（单组件：true = 应有 daemon 在跑） */
+    private desired = false
+    private runtime: DaemonRuntime | null = null
+    private env: Record<string, string | undefined> | null = null
     private shuttingDown = false
-    /** shutdown 过程中等待退出的组件队列（先 executor 后 server 的组件级清理） */
-    private shutdownQueue: ComponentName[] = []
 
     constructor(
         private readonly deps: SupervisorDeps,
@@ -95,34 +96,34 @@ export class Supervisor {
     ) {}
 
     /**
-     * 托管并启动一个组件。真正在跑则幂等跳过（但刷新 env，供下次重拉使用）；
+     * 托管并启动 daemon。真正在跑则幂等跳过（但刷新 env，供下次重拉使用）；
      * failed/backoff 态（崩溃放弃或退避等待中）显式 start 视为用户要求现在就绪
      * ——清崩溃计数立即重拉，否则 `mobi daemon start` 对 failed 组件是 no-op，
      * 自动拉起路径（ensureDaemonRunning）也永远救不活它。
      */
-    start(name: ComponentName, env: Record<string, string | undefined> = process.env): void {
+    start(env: Record<string, string | undefined> = process.env): void {
         if (this.shuttingDown) throw new Error('supervisor is shutting down')
-        this.envs.set(name, env)
-        if (this.desired.has(name)) {
-            const rt = this.ensureRuntime(name)
+        this.env = env
+        if (this.desired) {
+            const rt = this.ensureRuntime()
             if (rt.process) return
             if (rt.restartTimer) {
                 clearTimeout(rt.restartTimer)
                 rt.restartTimer = null
             }
             rt.consecutiveCrashes = 0
-            this.spawnComponent(name)
+            this.spawnDaemon()
             return
         }
-        this.desired.add(name)
-        this.spawnComponent(name)
+        this.desired = true
+        this.spawnDaemon()
     }
 
-    /** 显式停止一个组件：不触发崩溃重启；托管集清空时回调 onEmpty。 */
-    stop(name: ComponentName): void {
-        if (!this.desired.has(name)) return
-        this.desired.delete(name)
-        const rt = this.ensureRuntime(name)
+    /** 显式停止 daemon：不触发崩溃重启；托管撤销时回调 onEmpty。 */
+    stop(): void {
+        if (!this.desired) return
+        this.desired = false
+        const rt = this.ensureRuntime()
         if (rt.restartTimer) {
             clearTimeout(rt.restartTimer)
             rt.restartTimer = null
@@ -130,24 +131,24 @@ export class Supervisor {
         rt.consecutiveCrashes = 0
         if (rt.process) {
             this.terminateProcess(rt)
-            // exit 事件到达时 desired 已不含 name → 走"显式停止"分支
+            // exit 事件到达时 desired 已撤销 → 走"显式停止"分支
         } else {
             rt.status = 'stopped'
         }
-        if (this.desired.size === 0 && !this.shuttingDown) {
+        if (!this.desired && !this.shuttingDown) {
             this.hooks.onEmpty()
         }
     }
 
     /** 显式重启：重置崩溃计数，当前进程退出后立即重拉（不经退避）。 */
-    restart(name: ComponentName, env?: Record<string, string | undefined>): void {
+    restart(env?: Record<string, string | undefined>): void {
         if (this.shuttingDown) throw new Error('supervisor is shutting down')
-        if (env) this.envs.set(name, env)
-        const rt = this.ensureRuntime(name)
+        if (env) this.env = env
+        const rt = this.ensureRuntime()
         rt.consecutiveCrashes = 0
-        if (!this.desired.has(name)) {
-            this.desired.add(name)
-            this.spawnComponent(name)
+        if (!this.desired) {
+            this.desired = true
+            this.spawnDaemon()
             return
         }
         if (rt.process) {
@@ -159,71 +160,53 @@ export class Supervisor {
                 clearTimeout(rt.restartTimer)
                 rt.restartTimer = null
             }
-            this.spawnComponent(name)
+            this.spawnDaemon()
         }
     }
 
     /**
-     * 有序关停全部组件：单组件（daemon）后语义退化为「停 daemon」，保留 Promise
-     * 形态与 exit 事件驱动 + 宽限 SIGKILL 的既有保证。
+     * 有序关停 daemon：保留 Promise 形态与 exit 事件驱动 + 宽限 SIGKILL 的既有保证。
      */
     shutdown(): Promise<void> {
         if (this.shuttingDown) return Promise.resolve()
         this.shuttingDown = true
 
-        this.shutdownQueue = (['daemon'] as ComponentName[]).filter((name) => {
-            const rt = this.runtimes.get(name)
-            if (!rt) return false
-            if (rt.restartTimer) {
-                clearTimeout(rt.restartTimer)
-                rt.restartTimer = null
-            }
-            return Boolean(rt.process)
-        })
+        const rt = this.runtime
+        if (rt?.restartTimer) {
+            clearTimeout(rt.restartTimer)
+            rt.restartTimer = null
+        }
+        const child = rt?.process
 
         return new Promise<void>((resolve) => {
-            const stopNext = () => {
-                const name = this.shutdownQueue.shift()
-                if (!name) {
-                    resolve()
-                    return
-                }
-                const rt = this.runtimes.get(name)!
-                const process = rt.process
-                if (!process) {
-                    stopNext()
-                    return
-                }
-                // exit 事件驱动串行停止（挂起时由宽限 SIGKILL 保证 exit 终会到达）
-                process.on('exit', () => stopNext())
-                this.terminateProcess(rt)
+            if (!child) {
+                resolve()
+                return
             }
-            stopNext()
+            // exit 事件驱动停止（挂起时由宽限 SIGKILL 保证 exit 终会到达）
+            child.on('exit', () => resolve())
+            this.terminateProcess(rt)
         })
     }
 
-    status(): Record<ComponentName, ComponentStatusReport> {
-        const reportFor = (name: ComponentName): ComponentStatusReport => {
-            const rt = this.runtimes.get(name)
-            return {
-                name,
-                managed: this.desired.has(name),
-                status: rt?.status ?? 'stopped',
-                pid: rt?.process?.pid,
-                consecutiveCrashes: rt?.consecutiveCrashes ?? 0,
-            }
+    status(): DaemonStatusReport {
+        const rt = this.runtime
+        return {
+            managed: this.desired,
+            status: rt?.status ?? 'stopped',
+            pid: rt?.process?.pid,
+            consecutiveCrashes: rt?.consecutiveCrashes ?? 0,
         }
-        return { daemon: reportFor('daemon') }
     }
 
-    private spawnComponent(name: ComponentName): void {
-        const rt = this.ensureRuntime(name)
+    private spawnDaemon(): void {
+        const rt = this.ensureRuntime()
         rt.status = 'running'
         rt.startedAt = this.deps.now()
         rt.stderrTail = ''
         rt.restartOnExit = false
 
-        const child = this.deps.spawn(name, this.envs.get(name) ?? process.env)
+        const child = this.deps.spawn(this.env ?? process.env)
         rt.process = child
         child.stderr?.on('data', (chunk: Buffer) => {
             const combined = rt.stderrTail + chunk.toString('utf8')
@@ -237,7 +220,7 @@ export class Supervisor {
         // 新进程引用清成幽灵，并按崩溃路径退避重拉，撞同一端口进入崩溃循环
         child.on('exit', () => {
             if (rt.process !== child) return
-            this.handleExit(name)
+            this.handleExit()
         })
         // spawn 异步失败（二进制缺失/无权限等）只 emit error、不 emit exit：
         // 不监听会让组件永远卡在 running（无重启、无崩溃现场），且未监听的
@@ -250,7 +233,7 @@ export class Supervisor {
                 combined.length > MAX_STDERR_TAIL_CHARS
                     ? combined.slice(-MAX_STDERR_TAIL_CHARS)
                     : combined
-            this.handleExit(name)
+            this.handleExit()
         })
     }
 
@@ -260,7 +243,7 @@ export class Supervisor {
      * 升级回调以 child 引用比对——exit 后重拉的新进程（rt.process 已换）
      * 不受迟到定时器误伤；handleExit 亦会清理定时器，双保险。
      */
-    private terminateProcess(rt: ComponentRuntime): void {
+    private terminateProcess(rt: DaemonRuntime): void {
         const child = rt.process
         if (!child) return
         if (rt.killTimer) clearTimeout(rt.killTimer)
@@ -273,8 +256,8 @@ export class Supervisor {
         }, KILL_GRACE_MS)
     }
 
-    private handleExit(name: ComponentName): void {
-        const rt = this.runtimes.get(name)
+    private handleExit(): void {
+        const rt = this.runtime
         if (!rt) return
         rt.process = null
         if (rt.killTimer) {
@@ -282,8 +265,8 @@ export class Supervisor {
             rt.killTimer = null
         }
 
-        // 显式 stop：desired 已不含该组件（stop() 先删再 kill）
-        if (!this.desired.has(name)) {
+        // 显式 stop：desired 已撤销（stop() 先撤销再 kill）
+        if (!this.desired) {
             rt.status = 'stopped'
             return
         }
@@ -305,7 +288,7 @@ export class Supervisor {
                 rt.status = 'stopped'
                 return
             }
-            this.spawnComponent(name)
+            this.spawnDaemon()
             return
         }
 
@@ -316,7 +299,7 @@ export class Supervisor {
             // 放弃自动重启。desired 保留：supervisor 自身重启（B 路径开机拉起）
             // 时给组件一次新机会；service status 如实显示 failed
             rt.status = 'failed'
-            this.deps.writeCrashLog(name, rt.stderrTail)
+            this.deps.writeCrashLog(rt.stderrTail)
             return
         }
 
@@ -324,16 +307,15 @@ export class Supervisor {
         const delay = nextBackoffMs(rt.consecutiveCrashes)
         rt.restartTimer = setTimeout(() => {
             rt.restartTimer = null
-            if (this.desired.has(name) && !this.shuttingDown) {
-                this.spawnComponent(name)
+            if (this.desired && !this.shuttingDown) {
+                this.spawnDaemon()
             }
         }, delay)
     }
 
-    private ensureRuntime(name: ComponentName): ComponentRuntime {
-        let rt = this.runtimes.get(name)
-        if (!rt) {
-            rt = {
+    private ensureRuntime(): DaemonRuntime {
+        if (!this.runtime) {
+            this.runtime = {
                 process: null,
                 status: 'stopped',
                 startedAt: 0,
@@ -343,8 +325,7 @@ export class Supervisor {
                 stderrTail: '',
                 restartOnExit: false,
             }
-            this.runtimes.set(name, rt)
         }
-        return rt
+        return this.runtime
     }
 }

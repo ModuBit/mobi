@@ -26,7 +26,7 @@ import chalk from 'chalk'
 import { configuration } from '@mobi/node-core/configuration'
 import { ensureSupervisorRunning, sendControlCommand, type ServiceScope } from '@/supervisor/control'
 import { readDesiredState } from '@/supervisor/desiredState'
-import type { ComponentStatusReport } from '@/supervisor/supervisor'
+import type { DaemonStatusReport } from '@/supervisor/supervisor'
 
 export interface StartOptions {
     host?: string
@@ -35,12 +35,10 @@ export interface StartOptions {
 
 interface ServiceStatusPayload {
     pid: number
-    daemon: ComponentStatusReport
+    daemon: DaemonStatusReport
 }
 
-const LABEL: Record<ComponentStatusReport['name'], string> = { daemon: 'Daemon' }
-
-function colorStatus(status: ComponentStatusReport['status']): string {
+function colorStatus(status: DaemonStatusReport['status']): string {
     if (status === 'running') return chalk.green('running')
     if (status === 'failed') return chalk.red('failed')
     if (status === 'backoff') return chalk.yellow('backoff')
@@ -91,7 +89,7 @@ function printStatus(payload: ServiceStatusPayload): void {
     const crashText = report.consecutiveCrashes > 0
         ? chalk.gray(` [连续崩溃 ${report.consecutiveCrashes}]`)
         : ''
-    console.log(`  ${LABEL[report.name].padEnd(9)}: ${colorStatus(report.status)}${pidText}${crashText}`)
+    console.log(`  ${'Daemon'.padEnd(9)}: ${colorStatus(report.status)}${pidText}${crashText}`)
     if (desired.daemon) {
         console.log(`  Web URL:   ${chalk.cyan(`http://localhost:${desired.port}`)}`)
     }
