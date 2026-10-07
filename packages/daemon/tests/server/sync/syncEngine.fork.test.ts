@@ -21,7 +21,7 @@ import { MetadataSchema } from '@mobi/shared'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
-import type { ExecutorHost } from '../../../src/executor/executorHost'
+import { LocalExecutor } from '../../../src/executor/localExecutor'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
@@ -243,18 +243,19 @@ describe('SyncEngine.resumeSession fork 待激活行', () => {
         let spawnCall: Record<string, unknown> | null = null
         const engineRef: { engine?: SyncEngine } = {}
 
-        // ticket-20 起 spawn 观测点从 machine socket RPC 改为 ExecutorHost 直调入参
-        const executorHost = {
-            spawnSession: async (_directory: string, options?: SpawnSessionOptions) => {
+        // ticket-20 起 spawn 观测点从 machine socket RPC 改为直调入参；
+        // 深化候选②票③：fake 走 ExecutorBridge（真 seam），req 即 spawn 入参全集
+        const executorHost = new LocalExecutor(() => ({
+            spawnSession: async (req: Record<string, unknown>) => {
                 const engine = engineRef.engine!
                 const spawned = engine.getOrCreateSession(
                     'tag-fork-resumed', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
                 )
                 engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
-                spawnCall = (options ?? {}) as Record<string, unknown>
+                spawnCall = req
                 return { type: 'success', sessionId: spawned.id }
             },
-        } as unknown as ExecutorHost
+        }) as never)
 
         const io = {
             of() { return { sockets: new Map() } },

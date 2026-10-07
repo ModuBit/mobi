@@ -19,7 +19,7 @@ import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import { RewindDeleteBoundTracker } from '../../../src/sync/rewindDeleteBoundTracker'
-import type { ExecutorHost } from '../../../src/executor/executorHost'
+import { LocalExecutor } from '../../../src/executor/localExecutor'
 
 /**
  * renameSession 单测：验证 sessionCache 更新后 best-effort 同步 RPC 到 CLI。
@@ -40,7 +40,7 @@ function makeEngine(opts: {
     renameOnline: boolean
     emitDelayMs?: number
     onlineMethods?: string[]
-    executorHost?: ExecutorHost
+    executorHost?: LocalExecutor
 }): EngineHandle {
     const store = new Store(':memory:')
     const emitCalls: { method: string; params: unknown }[] = []
@@ -408,17 +408,18 @@ describe('SyncEngine.resumeSession 回放 runtimeState', () => {
         // 让 resumeSession 的 waitForSessionActive 立即通过
         const engineRef: { engine?: SyncEngine } = {}
         const spawnOptions: Record<string, unknown>[] = []
-        const executorHost = {
-            spawnSession: async (_directory: string, options?: Record<string, unknown>) => {
+        // 深化候选②票③：fake 走 ExecutorBridge（真 seam）；req 即 spawn 入参全集
+        const executorHost = new LocalExecutor(() => ({
+            spawnSession: async (req: Record<string, unknown>) => {
                 const engine = engineRef.engine!
                 const spawned = engine.getOrCreateSession(
                     'tag-resumed-new', { path: '/tmp/proj', host: 'h-1' }, null, 'default'
                 )
                 engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
-                spawnOptions.push(options ?? {})
+                spawnOptions.push(req)
                 return { type: 'success', sessionId: spawned.id }
             },
-        } as unknown as ExecutorHost
+        }) as never)
 
         const io = {
             of() { return { sockets: new Map() } },

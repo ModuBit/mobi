@@ -19,7 +19,7 @@ import { describe, test, expect, spyOn } from 'bun:test'
 import { SyncEngine } from '../../../src/sync/syncEngine'
 import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
-import type { ExecutorHost, SpawnGatewayResult } from '../../../src/executor/executorHost'
+import { LocalExecutor } from '../../../src/executor/localExecutor'
 import type { SpawnSessionOptions } from '@mobi/shared/hostProtocol'
 
 /**
@@ -42,10 +42,11 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
     const engineRef: { engine?: SyncEngine } = {}
     const calls: Record<string, unknown>[] = []
 
-    const executorHost = {
-        spawnSession: async (_directory: string, options?: SpawnSessionOptions) => {
-            calls.push((options ?? {}) as Record<string, unknown>)
-            if (opts.spawnReply) return opts.spawnReply as unknown as SpawnGatewayResult
+    // 深化候选②票③：fake 走 ExecutorBridge（真 seam），req 即 spawn 入参全集
+    const executorHost = new LocalExecutor(() => ({
+        spawnSession: async (req: Record<string, unknown>) => {
+            calls.push(req)
+            if (opts.spawnReply) return opts.spawnReply
             const engine = engineRef.engine!
             const spawned = engine.getOrCreateSession(
                 `tag-wake-${calls.length}`, { path: '/tmp/proj', host: 'h-1' }, null, 'default'
@@ -53,7 +54,7 @@ function makeWakeEngine(opts: { spawnReply?: Record<string, unknown>; executorRe
             engine.handleSessionAlive({ sid: spawned.id, time: Date.now() })
             return { type: 'success', sessionId: spawned.id }
         },
-    } as unknown as ExecutorHost
+    }) as never)
 
     const io = {
         of() { return { sockets: new Map() } },
@@ -169,11 +170,13 @@ describe('SyncEngine.wakeSession（dormancy 唤醒管线）', () => {
 
     test('spawn 失败（ExecutorHost 抛错）→ 异常就地消化，不构成 unhandled rejection', async () => {
         const store = new Store(':memory:')
-        const throwingHost = {
+        // 深化候选②票③：fake 走 ExecutorBridge；LocalExecutor 把 bridge 抛错归一为
+        // error 结果（不再穿透），fire-and-forget 侧同样「就地消化」
+        const throwingHost = new LocalExecutor(() => ({
             spawnSession: async () => {
                 throw new Error('spawn failed')
             },
-        } as unknown as ExecutorHost
+        }) as never)
         const io = {
             of() { return { sockets: new Map() } },
         } as unknown as import('socket.io').Server

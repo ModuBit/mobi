@@ -31,7 +31,6 @@ import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
 import { LocalExecutor } from '../../../src/executor/localExecutor'
-import type { ExecutorHost } from '../../../src/executor/executorHost'
 import { createResumeDedupGuard } from '../../../src/executor/spawnDedup'
 import { applySessionTrackingSignal, createSessionTrackingSync, pruneDeadTrackedSessions } from '../../../src/executor/sessionTracking'
 import type { SessionTrackingSignal } from '../../../src/executor/sessionTracking'
@@ -44,7 +43,7 @@ const NAMESPACE = 'default'
 interface Harness {
     engine: SyncEngine
     store: Store
-    executorHost: ExecutorHost
+    executorHost: LocalExecutor
     tracked: Map<number, TrackedSession>
     /** 可控存活判定：deadPids 里的 pid 视为已退出 */
     killPid: (pid: number) => void

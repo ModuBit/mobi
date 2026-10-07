@@ -28,7 +28,7 @@ import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { LocalExecutor } from '../executor/localExecutor'
 import { SessionExecutionAccess } from '../executor/sessionExecutionAccess'
-import { isUnexpectedAlreadyRunning, UNEXPECTED_ALREADY_RUNNING, type ExecutorHost, type RpcRefreshMetadataResponse, type SpawnSessionOptions } from '../executor/executorHost'
+import { isUnexpectedAlreadyRunning, UNEXPECTED_ALREADY_RUNNING, type RpcRefreshMetadataResponse, type SpawnSessionOptions } from '../executor/executorHost'
 import { getExecutorState } from './executorRuntime'
 import { buildHostMetadata } from '@mobi/node-core/hostMetadata'
 import { AgentSessionService } from './agentSessionService'
@@ -92,10 +92,10 @@ export class SyncEngine {
     private readonly workspaceCache: WorkspaceCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
-    /** 执行层（ticket-15 起）：文件/spawn 等本机执行调用收拢点；ticket-20 起 socket 实现退场，
-     *  LocalExecutor 是唯一实现（public 供装配与契约测试注入边界）。401 起字段名去 machine
-     *  （类型名 ExecutorHost 与目录改名随 602）。本类只经它做 spawn/清理类编排 */
-    readonly executor: ExecutorHost
+    /** 执行层（ticket-15 起）：spawn/清理类编排的执行点；ticket-20 起 socket 实现退场，
+     *  LocalExecutor 是唯一形态（深化候选②票③删 ExecutorHost 接口，测试注入走
+     *  LocalExecutor + fake ExecutorBridge）；文件/审查族消费面在 executionAccess */
+    readonly executor: LocalExecutor
     /** 会话执行访问（深化候选②票①）：文件/审查/web 工具等本机执行消费面的单一入口——
      *  此前的 27 个纯/轻透传方法迁入该 module，web 路由直接消费，本类不再转发 */
     readonly executionAccess: SessionExecutionAccess
@@ -129,7 +129,7 @@ export class SyncEngine {
         rpcRegistry: RpcRegistry,
         sseManager: SSEManager,
         rewindDeleteBounds?: RewindDeleteBoundTracker,
-        executor?: ExecutorHost
+        executor?: LocalExecutor
     ) {        this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.agentSessions = new AgentSessionService({

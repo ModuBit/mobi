@@ -25,8 +25,8 @@ import type {
 } from '@mobi/shared'
 import type { StoredSession } from '../store/types'
 import type { ListHostDirectoryResponse } from '@mobi/node-core/handlers/hostDirectory'
+import type { LocalExecutor } from './localExecutor'
 import type {
-    ExecutorHost,
     RpcDeleteUploadResponse,
     RpcGetWebToolsConfigResponse,
     RpcListDirectoryResponse,
@@ -53,12 +53,12 @@ type SessionLookup = { sessions: { getSession(sessionId: string): StoredSession 
  * 寻址规则（ADR 0006）：session 寻址、本机执行，无条件单路径——文件/路径类操作
  * 不经会话进程（会话活不活不影响可达性，休眠「冷可读」的地基）；cwd 取会话行
  * metadata.path，缺失显式报错，**不回退 session socket**（双执行路径正是该决策
- * 要消灭的东西）。web 路由直接消费本 module；ExecutorHost 是执行层（票③处置）。
+ * 要消灭的东西）。web 路由直接消费本 module；LocalExecutor 是执行层（票③起具体类直依赖）。
  */
 export class SessionExecutionAccess {
     constructor(
         private readonly store: SessionLookup,
-        private readonly executor: ExecutorHost,
+        private readonly executor: LocalExecutor,
     ) {}
 
     /** 会话工作目录解析（session 寻址族的公共前置）：

@@ -15,10 +15,10 @@
  */
 
 /**
- * {@link ExecutorHost} 的唯一本地实现（ticket-17/20）：直调 node-core handlers 的
- * 实现函数（socket 版实现随 machine 通道删除）。
- *
- * machineId 形参已随单机化收窄（602），无路由标识。
+ * 本机执行层（深化候选②票③）：原 ExecutorHost 接口随 wire 协议遗物身份删除——
+ * 单 adapter 的假想 seam 不再存在，测试注入走 ExecutorBridge（生产/测试两个
+ * adapter，真 seam）。直调 node-core handlers 实现函数（socket 版实现随 machine
+ * 通道删除）；machineId 形参已随单机化收窄（602），无路由标识。
  */
 
 import { homedir } from 'node:os'
@@ -32,11 +32,11 @@ import { searchSessionFilesImpl, listSessionDirectoryImpl } from '@mobi/node-cor
 import { gitReviewRpcImpl } from '@mobi/node-core/handlers/gitReview'
 import { getWebToolsConfigImpl, setWebToolsConfigImpl, verifyWebToolsProviderImpl } from '@mobi/node-core/handlers/webToolsConfig'
 import { refreshMetadataImpl } from '@mobi/node-core/handlers/commands'
-import type { ExecutorHost, RpcGetWebToolsConfigResponse, RpcListDirectoryResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './executorHost'
+import type { RpcGetWebToolsConfigResponse, RpcRefreshMetadataResponse, SpawnSessionOptions } from './executorHost'
 import { mapSpawnResultToGateway } from './spawnResultMapping'
 import type { ExecutorBridge } from '../executor/lifecycle'
 
-export class LocalExecutor implements ExecutorHost {
+export class LocalExecutor {
     /** 会话执行桥（ticket-18 spawn 直调）；daemon 编排在 executor 就绪后注入 */
     private readonly executorBridge: () => ExecutorBridge | null
 
@@ -121,7 +121,7 @@ export class LocalExecutor implements ExecutorHost {
     }
 
     // ── 写/上传组（ticket-17 组2：本地直调）──
-    // 回退 workingDirectory 仅在 cwd 缺省时生效；ExecutorHost 四方法恒注入 cwd，回退不参与语义
+    // 回退 workingDirectory 仅在 cwd 缺省时生效；调用方（SessionExecutionAccess）恒注入 cwd，回退不参与语义
     async hostSaveFile(cwd: string, path: string, content: Uint8Array, baseEtag: string) {
         return await saveFileImpl({ cwd, path, content, baseEtag }, homedir(), homedir())
     }

@@ -16,7 +16,7 @@
 
 import { describe, test, expect } from 'bun:test'
 import { SessionExecutionAccess } from '../../../src/executor/sessionExecutionAccess'
-import type { ExecutorHost } from '../../../src/executor/executorHost'
+import type { LocalExecutor } from '../../../src/executor/localExecutor'
 import { Store } from '../../../src/store'
 
 /**
@@ -44,7 +44,7 @@ function makeHarness() {
         hostGitReviewOverview: rec('hostGitReviewOverview'),
         checkPathsExist: rec('checkPathsExist'),
         getWebToolsConfig: rec('getWebToolsConfig'),
-    } as unknown as ExecutorHost
+    } as unknown as LocalExecutor
     const store = new Store(':memory:')
     const access = new SessionExecutionAccess(store, executor)
     /** 建 session 行并返回 id（metadata 带 path 即 cwd 锚） */

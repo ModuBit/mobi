@@ -25,10 +25,9 @@
  * （agentSessionService 依此选文案，不读句子）。
  */
 
-import type { DiffTarget, RedactedWebToolsConfig, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
-import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
+import type { RedactedWebToolsConfig } from '@mobi/shared'
+import type { EffortLevel, PermissionMode } from '@mobi/shared/types'
 import type { RpcFailureKind } from '../sync/rpcFailure'
-import type { ListHostDirectoryResponse } from '@mobi/node-core/handlers/hostDirectory'
 import type { RefreshMetadataResponse } from '@mobi/node-core/handlers/commands'
 
 // 文件元数据（流式读取前置查询）与文件范围读取——响应形状单源在 shared，此处 re-export 兼容既有引用
@@ -128,31 +127,3 @@ export type RpcPathExistsResponse = {
     exists: Record<string, boolean>
 }
 
-/**
- * 机器执行层接口。方法集与原 rpcGateway 的 machine 族方法一一对应
- * （grep `machineRpc(` 全集见 ticket-15 Comments）；machineId 形参已随单机化收窄（602）。
- */
-export interface ExecutorHost {
-    spawnSession(directory: string, options?: SpawnSessionOptions): Promise<SpawnGatewayResult>
-    checkPathsExist(paths: string[]): Promise<Record<string, boolean>>
-    hostReadFileMeta(cwd: string, path: string): Promise<RpcReadFileMetaResponse>
-    hostReadFileRange(cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse>
-    hostGitReviewOverview(cwd: string, sessionId: string): Promise<ReviewOverview | { success: false; error: string }>
-    hostGitReviewFiles(cwd: string, sessionId: string, target: DiffTarget): Promise<ReviewFilesResult | { success: false; error: string }>
-    hostGitReviewDiff(cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewPatchResult | { success: false; error: string }>
-    hostGitReviewContents(cwd: string, sessionId: string, target: DiffTarget, path: string): Promise<ReviewContentsResult | { success: false; error: string }>
-    hostGitReviewCommits(cwd: string, cursor?: string): Promise<ReviewCommitsResult | { success: false; error: string }>
-    hostGitReviewInit(cwd: string): Promise<ReviewActionResult | { success: false; error: string }>
-    clearTurnSnapshots(cwd: string, sessionId: string): Promise<void>
-    hostSaveFile(cwd: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse>
-    listHostDirectory(path: string, homeDir: string): Promise<ListHostDirectoryResponse>
-    hostUploadFileRange(cwd: string, filename: string, path: string | undefined, offset: number, content: Uint8Array, totalSize?: number): Promise<RpcWriteFileRangeResponse>
-    hostDeleteUpload(cwd: string, path: string): Promise<RpcDeleteUploadResponse>
-    hostReplaceUpload(cwd: string, path: string, content: Uint8Array): Promise<RpcReplaceUploadResponse>
-    getWebToolsConfig(): Promise<RpcGetWebToolsConfigResponse>
-    setWebToolsConfig(config: unknown): Promise<RpcSetWebToolsConfigResponse>
-    verifyWebToolsProvider(providerId: string, credentials?: Record<string, string>): Promise<RpcVerifyWebToolsProviderResponse>
-    hostSearchFiles(cwd: string, query: string, type?: 'file' | 'directory'): Promise<RpcListDirectoryResponse>
-    hostListSessionDirectory(cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse>
-    hostRefreshMetadata(cwd: string): Promise<RpcRefreshMetadataResponse>
-}

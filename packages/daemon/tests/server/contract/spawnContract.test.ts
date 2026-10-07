@@ -32,7 +32,7 @@ interface EngineHandle {
     /** 手动标记会话为 active（模拟 /session-started webhook） */
     markActive: (sessionId: string) => void
     /** 获取底层 executor（原 executorHost），用于恢复原始方法 */
-    getExecutorHost: () => any
+    getLocalExecutor: () => any
 }
 
 /**
@@ -100,7 +100,7 @@ function makeEngine(opts: { executorReady?: boolean } = {}): EngineHandle {
                 running: false,
             })
         },
-        getExecutorHost: () => (engine as any).executor,
+        getLocalExecutor: () => (engine as any).executor,
     }
 }
 
@@ -110,20 +110,20 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getExecutorHost().spawnSession
+        originalSpawn = h.getLocalExecutor().spawnSession
     })
 
     afterEach(() => {
         // 恢复原始方法
         if (originalSpawn) {
-            h.getExecutorHost().spawnSession = originalSpawn
+            h.getLocalExecutor().spawnSession = originalSpawn
         }
         h.cleanup()
     })
 
     test('新会话 spawn → RPC 成功返回 sessionId', async () => {
         // Mock executor.spawnSession 返回成功
-        h.getExecutorHost().spawnSession = mock(async () => ({
+        h.getLocalExecutor().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: 'session-new-1',
         }))
@@ -138,7 +138,7 @@ describe('Spawn Contract: 新会话 spawn (S01)', () => {
 
     test('新会话收到 unexpected already-running → error (S09)', async () => {
         // Mock executor 返回 already-running（新会话不应该出现）
-        h.getExecutorHost().spawnSession = mock(async () => ({
+        h.getLocalExecutor().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
 
@@ -157,12 +157,12 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getExecutorHost().spawnSession
+        originalSpawn = h.getLocalExecutor().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getExecutorHost().spawnSession = originalSpawn
+            h.getLocalExecutor().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -174,7 +174,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
 
         // Mock spawnSession（不应该被调用）
         const spawnMock = mock(async () => ({ type: 'success' as const, sessionId: 'should-not-call' }))
-        h.getExecutorHost().spawnSession = spawnMock
+        h.getLocalExecutor().spawnSession = spawnMock
 
         const result = await h.engine.resumeSession(existing.id, NAMESPACE)
 
@@ -192,7 +192,7 @@ describe('Spawn Contract: Resume 会话 (S02)', () => {
         const existing = createSessionWithPath(h, '/tmp/inactive')
 
         // Mock spawnSession 返回成功（sessionId 相同）
-        h.getExecutorHost().spawnSession = mock(async () => ({
+        h.getLocalExecutor().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: existing.id,
         }))
@@ -218,12 +218,12 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getExecutorHost().spawnSession
+        originalSpawn = h.getLocalExecutor().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getExecutorHost().spawnSession = originalSpawn
+            h.getLocalExecutor().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -233,7 +233,7 @@ describe('Spawn Contract: already-running 结果 (S03)', () => {
         const existing = createSessionWithPath(h, '/tmp/already')
 
         // Mock executor 返回 already-running
-        h.getExecutorHost().spawnSession = mock(async () => ({
+        h.getLocalExecutor().spawnSession = mock(async () => ({
             type: 'already-running' as const,
         }))
 
@@ -253,12 +253,12 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getExecutorHost().spawnSession
+        originalSpawn = h.getLocalExecutor().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getExecutorHost().spawnSession = originalSpawn
+            h.getLocalExecutor().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -267,7 +267,7 @@ describe('Spawn Contract: 等待 active 超时 (S06)', () => {
         const existing = createSessionWithPath(h, '/tmp/timeout')
 
         // Mock spawnSession 返回成功，但不标记为 active
-        h.getExecutorHost().spawnSession = mock(async () => ({
+        h.getLocalExecutor().spawnSession = mock(async () => ({
             type: 'success' as const,
             sessionId: existing.id,
         }))
@@ -293,12 +293,12 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
 
     beforeEach(() => {
         h = makeEngine()
-        originalSpawn = h.getExecutorHost().spawnSession
+        originalSpawn = h.getLocalExecutor().spawnSession
     })
 
     afterEach(() => {
         if (originalSpawn) {
-            h.getExecutorHost().spawnSession = originalSpawn
+            h.getLocalExecutor().spawnSession = originalSpawn
         }
         h.cleanup()
     })
@@ -307,7 +307,7 @@ describe('Spawn Contract: RPC 错误处理 (S07)', () => {
         const existing = createSessionWithPath(h, '/tmp/error')
 
         // Mock executor 返回错误
-        h.getExecutorHost().spawnSession = mock(async () => ({
+        h.getLocalExecutor().spawnSession = mock(async () => ({
             type: 'error' as const,
             message: 'Test spawn failed',
         }))
