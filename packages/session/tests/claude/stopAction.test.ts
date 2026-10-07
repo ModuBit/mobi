@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { isAbortedTerminalReason } from '@mobi/shared'
-import { collectLiveTaskIds } from '@/claude/claudeRemoteLauncher'
+import { extractLiveBackgroundTaskIds as collectLiveTaskIds } from '@mobi/shared'
 import {
     resolveStopAction,
     resolvePostInterruptAction,

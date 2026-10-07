@@ -927,6 +927,12 @@ export interface RemoteRoundParams {
     hookSettings: string | Settings
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
     additionalDirectories?: string[]
+    /**
+     * 已合成 plugin_errors 横幅的内容签名（会话级去重 Set，launcher 持有、每轮传同一
+     * 实例）：query 重启 init 重带相同错误时不再重复落库横幅。缺省时运行层自建
+     * （降级为轮内去重，仅测试/旧签名适配路径）
+     */
+    pluginErrorDedup?: Set<string>
     getSessionConfig: () => EnhancedMode
     flushConfig?: () => void
     canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>
@@ -1023,9 +1029,9 @@ export async function claudeRemote(
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
     // （origin 透传：normal/bash 注入不标 = 'turn'；steer sink 用带 'steer' 的包装）
-    // 已合成横幅的 plugin_errors 内容签名（会话作用域，跨 query 重启共享——
-    // 每次 init 重带相同错误时不重复落库横幅，见 sdkOutputLoop 消费处注释）
-    const synthesizedPluginErrorContents = new Set<string>()
+    // 已合成横幅的 plugin_errors 内容签名：会话作用域（launcher 持有跨轮传入；
+    // 缺省自建 = 轮内去重），每次 init 重带相同错误时不重复落库横幅，见 sdkOutputLoop 消费处注释
+    const synthesizedPluginErrorContents = params.pluginErrorDedup ?? new Set<string>()
 
     const onBound = (binding: { localIds: string[]; nativeId: string }, origin?: PushOrigin) => {
         events.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })), origin)
@@ -1424,6 +1430,31 @@ export async function claudeRemote(
     // 已 collect 未投递的 initial（pending #94 存活不变量）：须声明在 try 外——catch 子句
     // 与 try 块是兄弟作用域，try 内 let 对 catch 不可见；push 进 SDK input stream 或被特殊
     // 命令接管（含本地 bash）即清空，仍非空时轮次异常经 onCollectedMessageAbandoned 交回暂存
+    // ---- attach 编舞共用段（三路径仅 query 来源不同，深化候选④后的 /simplify 收敛）----
+
+    /** attach 后统一段：标记消费 → output style 注入（须先于任何用户消息 push，见
+     *  applyStartupOutputStyle 时序注释）→ onQueryReady 交出 interrupt/close 引用 → 启动
+     *  输出循环。async 保持调用方 await 链——onQueryReady 先于任何 push 的顺序不可变 */
+    const attachAndStart = async (q: Query): Promise<void> => {
+        response = q
+        warmConsumed = true
+        await applyStartupOutputStyle(q, params.outputStyle)
+        events.onQueryReady?.(q, { isResume: startFrom != null })
+        startOutputLoop(q)
+    }
+
+    /** collect 首条消息并守卫：空流退出（null）；已 collect 但轮次已中止则交回暂存
+     *  （pending #94 存活不变量）并退出 */
+    const collectInitial = async () => {
+        const msg = await source.nextMessage(loopAbort.signal)
+        if (!msg) return null
+        if (loopAbort.signal.aborted) {
+            source.onCollectedMessageAbandoned?.(msg)
+            return null
+        }
+        return msg
+    }
+
     let unpushedInitial: { message: PromptPayload; mode: EnhancedMode; localIds: string[] } | null = null;
     try {
         // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
@@ -1453,13 +1484,8 @@ export async function claudeRemote(
                 throw e
             }
             await params.rewind?.onTruncated?.()
-            const msg = await source.nextMessage(loopAbort.signal)
+            const msg = await collectInitial()
             if (!msg) {
-                return
-            }
-            // 已 collect 但轮次已中止：交回暂存（pending #94 存活不变量）
-            if (loopAbort.signal.aborted) {
-                source.onCollectedMessageAbandoned?.(msg)
                 return
             }
             initial = msg
@@ -1474,21 +1500,10 @@ export async function claudeRemote(
             if (warmRef) {
                 // 提前激活核心（spec 2026-08-28 ①）：不等首条消息即 attach + 启动输出循环，
                 // 首条消息等待窗口内的旁路流量（跨会话等 SDK 注入）被即时消费落库
-                response = warmRef.query(messages)
-                warmConsumed = true
-                // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
-                await applyStartupOutputStyle(response, params.outputStyle)
-                // 把 Query 引用传给外部，用于 interrupt/close 控制
-                events.onQueryReady?.(response, { isResume: startFrom != null });
-                startOutputLoop(response)
+                await attachAndStart(warmRef.query(messages))
             }
-            const msg = await source.nextMessage(loopAbort.signal)
+            const msg = await collectInitial()
             if (!msg) {
-                return
-            }
-            // 已 collect 但轮次已中止：交回暂存（pending #94 存活不变量）
-            if (loopAbort.signal.aborted) {
-                source.onCollectedMessageAbandoned?.(msg)
                 return
             }
             initial = msg
@@ -1526,14 +1541,9 @@ export async function claudeRemote(
             // 截断轮（resumeSessionAt）复用预热进程：startup 预热已完成 resume+截断加载，
             // 直接 attach，不重新 spawn 冷启动。截断轮仍不提前激活（保持现状），
             // 只是 attach 时复用；常规轮已提前激活（warmConsumed=true）不进此分支
-            response = warmRef.query(messages)
-            warmConsumed = true
-            // output style 注入须先于任何用户消息 push——截断轮 attach 前特殊命令处理
-            // （bash 注入）已可能 push 进 messages，attach 后立即补注（见 helper 时序注释）
-            await applyStartupOutputStyle(response, params.outputStyle)
-            // 把 Query 引用传给外部，用于 interrupt/close 控制
-            events.onQueryReady?.(response, { isResume: startFrom != null });
-            startOutputLoop(response)
+            // 截断轮 attach 前特殊命令处理（bash 注入）已可能 push 进 messages，
+            // attach 后立即补注 output style（见 attachAndStart 时序注释）
+            await attachAndStart(warmRef.query(messages))
         } else if (!warmConsumed) {
             // fallback attach（startup 失败路径，行为同现状）：首条消息到了再冷启动 attach
             const fallbackConfig = params.getSessionConfig()
@@ -1544,12 +1554,7 @@ export async function claudeRemote(
                 model: fallbackConfig.model,
                 effort: fallbackConfig.effort,
             }
-            response = query({ prompt: messages, options: fallbackOptions })
-            // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
-            await applyStartupOutputStyle(response, params.outputStyle)
-            // 把 Query 引用传给外部，用于 interrupt/close 控制
-            events.onQueryReady?.(response, { isResume: startFrom != null });
-            startOutputLoop(response)
+            await attachAndStart(query({ prompt: messages, options: fallbackOptions }))
         }
 
         // initial 处理完成，回填模型名的逻辑已上移到 handleSpecialCommand 之前（见上方注释）
@@ -1615,8 +1620,9 @@ export async function claudeRemote(
         // 通知未退出的循环终止
         loopAbort.abort()
         // 关闭 SDK 输出，确保 sdkOutputLoop 停止迭代
+        // response 仅在 attachAndStart 闭包内赋值，TS 流分析在此收窄为 never，显式还原
         if (response) {
-            try { response.close() } catch (e) {
+            try { (response as Query).close() } catch (e) {
                 logger.debug(`[claudeRemote] Error closing response:`, e)
             }
         }

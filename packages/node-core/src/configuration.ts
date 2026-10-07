@@ -96,7 +96,7 @@ class Configuration {
         this.daemonSettingsFile = join(this.mobiHomeDir, 'settings.daemon.json')
         this.privateKeyFile = join(this.mobiHomeDir, 'access.key')
         this.daemonLockFile = join(this.mobiHomeDir, 'daemon.lock')
-        this.daemonStateFile = join(this.mobiHomeDir, 'daemon.state.json')
+        this.daemonStateFile = join(this.mobiHomeDir, DAEMON_STATE_FILENAME)
         this.supervisorSocketFile = join(this.mobiHomeDir, 'supervisor.sock')
         this.supervisorStateFile = join(this.mobiHomeDir, 'supervisor-state.json')
 
@@ -248,5 +248,9 @@ class Configuration {
         return this.settings.bashInjectContext ?? true
     }
 }
+
+/** daemon 进程状态文件名（daemon.state.json）——doctor 等按任意 profile home
+ *  组路径时也用同一常量（configuration.daemonStateFile 只覆盖本进程 home） */
+export const DAEMON_STATE_FILENAME = 'daemon.state.json'
 
 export const configuration: Configuration = new Configuration()

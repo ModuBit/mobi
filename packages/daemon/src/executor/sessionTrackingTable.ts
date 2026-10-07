@@ -60,9 +60,10 @@ export class SessionTrackingTable {
         this.sessions.set(session.pid, session);
     }
 
-    /** 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时命中 */
+    /** 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时命中。
+     *  传快照而非内部 Map 活引用——spawnDedup 只做一次性决策，不应对表内部结构形成依赖 */
     checkResumeDedup(resumeSessionId: string | undefined) {
-        return createResumeDedupGuard(this.sessions)(resumeSessionId);
+        return createResumeDedupGuard(new Map(this.sessions))(resumeSessionId);
     }
 
     /**

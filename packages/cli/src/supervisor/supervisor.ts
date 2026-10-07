@@ -28,6 +28,7 @@
  */
 
 import { nextBackoffMs, nextCrashCount, shouldGiveUp } from './restartPolicy'
+import { keepTail } from '@mobi/node-core/utils/keepTail'
 
 export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 
@@ -209,11 +210,7 @@ export class Supervisor {
         const child = this.deps.spawn(this.env ?? process.env)
         rt.process = child
         child.stderr?.on('data', (chunk: Buffer) => {
-            const combined = rt.stderrTail + chunk.toString('utf8')
-            rt.stderrTail =
-                combined.length > MAX_STDERR_TAIL_CHARS
-                    ? combined.slice(-MAX_STDERR_TAIL_CHARS)
-                    : combined
+            rt.stderrTail = keepTail(rt.stderrTail + chunk.toString('utf8'), MAX_STDERR_TAIL_CHARS)
         })
         // 身份校验（对齐下方 error 回调）：rt.process 已换新（stop→start 竞态下重拉）
         // 或已清空（error 已处理过）时，旧子进程迟到的 exit 直接忽略——否则会把
@@ -228,11 +225,7 @@ export class Supervisor {
         child.on('error', (error) => {
             // exit 已处理过（如对已退出进程 kill 迟到报 ESRCH）：忽略，防双计数
             if (rt.process !== child) return
-            const combined = `${rt.stderrTail}\n[spawn error] ${error.message}`
-            rt.stderrTail =
-                combined.length > MAX_STDERR_TAIL_CHARS
-                    ? combined.slice(-MAX_STDERR_TAIL_CHARS)
-                    : combined
+            rt.stderrTail = keepTail(`${rt.stderrTail}\n[spawn error] ${error.message}`, MAX_STDERR_TAIL_CHARS)
             this.handleExit()
         })
     }

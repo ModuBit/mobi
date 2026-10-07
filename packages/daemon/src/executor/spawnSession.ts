@@ -27,6 +27,7 @@
 import { SpawnSessionOptions, SpawnSessionResult } from '@mobi/shared/hostProtocol';
 import { logger } from '@mobi/node-core/logger';
 import { hostChannelUrl } from '@mobi/node-core/hostChannel';
+import { keepTail } from '@mobi/node-core/utils/keepTail';
 import { buildClaudeSpawnArgs } from './spawnArgs';
 import type { WorktreeInfo } from './worktree';
 import type { SessionTrackingTable } from './sessionTrackingTable';
@@ -263,11 +264,7 @@ export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSess
         let stderrTail = '';
         const appendTail = (current: string, chunk: Buffer | string): string => {
             const text = chunk.toString();
-            if (!text) {
-                return current;
-            }
-            const combined = current + text;
-            return combined.length > MAX_TAIL_CHARS ? combined.slice(-MAX_TAIL_CHARS) : combined;
+            return text ? keepTail(current + text, MAX_TAIL_CHARS) : current;
         };
         const logStderrTail = () => {
             const trimmed = stderrTail.trim();

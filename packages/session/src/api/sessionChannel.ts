@@ -96,8 +96,19 @@ export type SessionChannelReport =
     /** prompt cache 状态（null = 清空，首个 result 帧统一清） */
     | { kind: 'cache-status'; cacheStatus: CacheStatus | null }
 
-export type SessionChannelOptions = {
-    token: string
+/** 自定义事件载荷（session-message event 信封的 data 形状；类型单源——
+ *  ApiSessionClient.sendSessionEvent 门面直接引用，新增 variant 只改这里） */
+export type SessionEventPayload =
+    | { type: 'switch'; mode: 'local' | 'remote' }
+    | { type: 'message'; message: string }
+    | { type: 'context-cleared' }
+    /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */
+    | { type: 'compact-started' }
+    | { type: 'compact-completed' }
+    | { type: 'permission-mode-changed'; mode: SessionPermissionMode }
+    | { type: 'ready' }
+
+export type SessionChannelOptions = {    token: string
     session: Session
     transport: SessionTransport
     /** 非用户内容入站（session-update 事件体 / 无法解析的消息 content）向上冒泡 */
@@ -582,25 +593,8 @@ export class SessionChannel {
         })
     }
 
-    sendSessionEvent(event: {
-        type: 'switch'
-        mode: 'local' | 'remote'
-    } | {
-        type: 'message'
-        message: string
-    } | {
-        type: 'context-cleared'
-    } | {
-        /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */
-        type: 'compact-started'
-    } | {
-        type: 'compact-completed'
-    } | {
-        type: 'permission-mode-changed'
-        mode: SessionPermissionMode
-    } | {
-        type: 'ready'
-    }, id?: string): void {
+    /** 自定义事件载荷（类型单源：新增 variant 只改这里，门面 sendSessionEvent 直接引用） */
+    sendSessionEvent(event: SessionEventPayload, id?: string): void {
         const content = {
             role: 'agent',
             content: {

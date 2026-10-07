@@ -1018,3 +1018,12 @@ interrupt（用户停止）
 **发现**（remove-machine 202-205 逐票实施时确认，205 Comments 在案）：`packages/daemon/tests/hub/web/webContract.test.ts` 的「HTTP routes snapshot」是在测试文件内**自模拟**注册路由（注释称「与 src/web/server.ts 实际注册保持一致」），并非扫描真实 server.ts——201-204 域重组（`/api/machines/:id/*` → `/api/sessions/spawn`、`/api/files/*`、`/api/sdk/host-metadata`、`/api/web-tools`、`/api/daemon/status`）后 stub 清单未同步，快照仍在锁旧路由面，契约快照已失真。
 
 **建议**：改为从 server.ts 真实导出路由清单（Hono `app.routes`）生成快照，消灭「自模拟脱节」这类漂移；或至少在 404/603 收口票把 stub 清单同步到终态。当前不阻塞任何行为（旧路由已真删，web client 也已切新域）。
+
+## 104. /simplify 跳过项（93 commits 审查，2026-10-07）
+
+四角度审查（Reuse/Simplification/Efficiency/Altitude）落地 14 项修复后，以下 4 项因行为敏感/超范围跳过：
+
+- **startedBy 开放字符串承载 kill 语义**：`executor/types.ts` 的 `startedBy: 'runner' | string` 开放字符串在 lifecycle/sessionTrackingTable/sessionTracking 三处比较判别行归属（kill-by-child vs kill-by-pid），其中 'runner' 已是死值、'backfill (...)' 靠注释维持语义。建议收窄判别联合或把 kill 策略收进 SessionTrackingTable.stopTarget；连带 stopSession 的 PID- 前缀解析/双键匹配内联也可一并收口。
+- **resume 参数解析四处漂移**：session.ts consumeOneTimeFlags / claudeLocalLauncher extractSessionIdFromArgs（认 --continue/-c）/ sessionFactory extractResumeSessionId / claudeRemote resolveResumeSessionId 四份实现，旗标集已不一致（--continue 只有 local 认）。统一前需产品裁决各旗标语义。
+- **VersionedUpdateSlot 首写丢字段风险**：`sessionChannel.ts` `handler(current ?? ({} as TValue))`——首次写入（current null）时 handler 收 `{}`，`({...m, sdkMetadata})` 形状的调用方会静默清掉其余 metadata 字段。建议 slot opts 加 `seed: () => TValue`。
+- **socket handler 逐处 `as HandlerType` 强转**：agentSessionHandlers 等 raw-unknown + safeParse + cast 模式每 handler 重复，可沉到 `registerValidated(socket, event, schema, handler)` 装配 seam。

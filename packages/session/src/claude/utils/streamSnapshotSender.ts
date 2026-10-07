@@ -115,6 +115,20 @@ export type ContentBlock =
     | { type: 'thinking'; thinking: string; durationMs?: number; done?: boolean }
     | { type: 'tool_use'; id: string; name: string; input: unknown }
 
+/** 流式预览判等：快路径覆盖窗口预览（白名单 string 字段的扁平对象，热路径大头——
+ *  大 payload 工具的完整 input 双 stringify 每帧两遍是纯浪费），逐键比较免序列化；
+ *  任意形状（完整 parse 路径）回退 JSON.stringify */
+function samePreviewInput(a: unknown, b: unknown): boolean {
+    if (a === b) return true
+    const isFlatStringRecord = (v: unknown): v is Record<string, string> =>
+        typeof v === 'object' && v !== null && Object.values(v).every(x => typeof x === 'string')
+    if (isFlatStringRecord(a) && isFlatStringRecord(b)) {
+        const keys = Object.keys(a)
+        return keys.length === Object.keys(b).length && keys.every(k => a[k] === b[k])
+    }
+    return JSON.stringify(a) === JSON.stringify(b)
+}
+
 /**
  * 流式 Snapshot 发送器（delta 协议，.scratch/snapshot-delta spec）
  *
@@ -249,7 +263,7 @@ export class StreamSnapshotSender {
         // 内容未变不标脏：大 payload 工具（闭合引号在窗口外）每次重算的提取结果完全相同，
         // 不设防则每 8KB 增长 / 750ms 间隔都发一帧内容相同的 replace-block（纯协议流量）。
         // 节流游标照常推进（否则 interval 每次周期 flush 都白白重算）
-        if (JSON.stringify(preview.input) === JSON.stringify(buffer.previewInput)) {
+        if (samePreviewInput(preview.input, buffer.previewInput)) {
             buffer.lastPreviewAt = now
             buffer.lastPreviewLen = buffer.inputJson.length
             return false

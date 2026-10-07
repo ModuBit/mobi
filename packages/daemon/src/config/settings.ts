@@ -16,8 +16,9 @@
 
 import { daemonLogger } from '../logger'
 import { existsSync } from 'node:fs'
-import { mkdir, open, readFile, rename, stat, unlink, writeFile, chmod, type FileHandle } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { withFileLock } from '@mobi/node-core/persistence'
 
 /**
  * Daemon 专属设置（settings.daemon.json）。
@@ -66,58 +67,15 @@ export function getCliSettingsFile(dataDir: string): string {
 }
 
 /**
- * 设置文件多进程锁（对称实现 cli 侧 persistence.updateSettings 的锁协议）。
- * 锁文件 = 目标文件 + '.lock'；wx 独占创建 + 重试 + stale 清理，锁内读-改-写。
- * daemon 启动写点与 cli 受限写共用同一锁文件，消除此前互不感知的 lost-update 竞争。
+ * 设置文件多进程锁：锁协议单源 @mobi/node-core/persistence withFileLock（锁文件 =
+ * 目标文件 + '.lock'，wx 独占创建 + 重试 + stale 清理）。daemon 启动写点与 cli
+ * 受限写共用同一锁文件，消除此前互不感知的 lost-update 竞争。
  */
 export async function withSettingsLock<T>(
     settingsFile: string,
     fn: () => Promise<T>
 ): Promise<T> {
-    const LOCK_RETRY_INTERVAL_MS = 100
-    const MAX_LOCK_ATTEMPTS = 50
-    const STALE_LOCK_TIMEOUT_MS = 10000
-
-    // 锁文件落盘前确保父目录存在（与 writeSettings 的 mkdir 一致），
-    // 否则对尚不存在目录的首次写会在 open 锁文件时 ENOENT
-    if (!existsSync(dirname(settingsFile))) {
-        await mkdir(dirname(settingsFile), { recursive: true, mode: 0o700 })
-    }
-
-    const lockFile = settingsFile + '.lock'
-    let fileHandle: FileHandle | null = null
-    let attempts = 0
-
-    while (attempts < MAX_LOCK_ATTEMPTS) {
-        try {
-            fileHandle = await open(lockFile, 'wx')
-            break
-        } catch (err: unknown) {
-            if (err && typeof err === 'object' && (err as { code?: unknown }).code === 'EEXIST') {
-                attempts++
-                await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_INTERVAL_MS))
-                try {
-                    const stats = await stat(lockFile)
-                    if (Date.now() - stats.mtimeMs > STALE_LOCK_TIMEOUT_MS) {
-                        await unlink(lockFile).catch(() => {})
-                    }
-                } catch { /* stale 检查失败不阻塞 */ }
-            } else {
-                throw err
-            }
-        }
-    }
-
-    if (!fileHandle) {
-        throw new Error(`Failed to acquire settings lock after ${MAX_LOCK_ATTEMPTS * LOCK_RETRY_INTERVAL_MS / 1000} seconds`)
-    }
-
-    try {
-        return await fn()
-    } finally {
-        await fileHandle.close()
-        await unlink(lockFile).catch(() => {})
-    }
+    return withFileLock(settingsFile, fn)
 }
 
 /**

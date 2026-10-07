@@ -51,7 +51,7 @@ import { RpcHandlerManager } from '@mobi/node-core/rpc/RpcHandlerManager'
 import { registerCommandHandlers } from '@mobi/node-core/handlers/commands'
 import { IdleTimer } from '../modules/common/idleTimer'
 import { SessionTransport } from './sessionTransport'
-import { SessionChannel } from './sessionChannel'
+import { SessionChannel, type SessionEventPayload } from './sessionChannel'
 
 /**
  * CLI↔daemon 会话通道门面（深化候选③票①）。
@@ -168,28 +168,7 @@ export class ApiSessionClient extends EventEmitter {
         this.channel.sendAgentMessage(body)
     }
 
-    sendSessionEvent(
-        event: {
-            type: 'switch'
-            mode: 'local' | 'remote'
-        } | {
-            type: 'message'
-            message: string
-        } | {
-            type: 'context-cleared'
-        } | {
-            /** 压缩开始（手动 /compact 与自动压缩统一 started 信号，launcher 幂等收口后发出） */
-            type: 'compact-started'
-        } | {
-            type: 'compact-completed'
-        } | {
-            type: 'permission-mode-changed'
-            mode: SessionPermissionMode
-        } | {
-            type: 'ready'
-        },
-        id?: string,
-    ): void {
+    sendSessionEvent(event: SessionEventPayload, id?: string): void {
         this.channel.sendSessionEvent(event, id)
     }
 

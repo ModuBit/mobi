@@ -118,13 +118,8 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
 
   // 追踪表（架构评审候选⑧票①）：会话行与 spawn 等待端的单一持有者
   const trackingTable = new SessionTrackingTable();
-  type SpawnFailureDetails = {
-    message: string
-    pid?: number
-    exitCode?: number | null
-    signal?: NodeJS.Signals | null
-  };
-  let reportSpawnOutcomeToHub: ((outcome: { type: 'success' } | { type: 'error'; details: SpawnFailureDetails }) => void) | null = null;
+  // controlServer 起来后才接线（见下方赋值处），类型单源 spawnSession.ts
+  let reportSpawnOutcomeToHub: ((outcome: SpawnOutcome) => void) | null = null;
   const getCurrentChildren = () => trackingTable.all();
 
   // Handle webhook from MOBI session reporting itself

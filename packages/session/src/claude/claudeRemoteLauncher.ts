@@ -122,6 +122,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     /** turn 追踪（批次 A 撤回）：均为单值标量（D10）。hasOutput 由 sdkOutputLoop 回调置位、
      *  result 到达复位；lastPushedNativeId 在 push 用户消息时覆盖记录（丢失只降级不误删） */
     private turnTracking: TurnTrackingState = { hasOutput: false, lastPushedNativeId: null }
+    /** 已合成 plugin_errors 横幅的内容签名（会话级去重，跨 query 重启传入运行层） */
+    private readonly pluginErrorDedup = new Set<string>()
     /** 存活的后台任务 id（批次 A『全部停止』档的 stopTask 遍历源）。来源：background_tasks_changed
      *  系统消息（sdk.d.ts 明确 REPLACE 语义——每次整体换掉集合，勿增量合并；query 轮结束清空）。
      *  SDK 未提供任务列表查询 API（backgroundTasks() 是「后台化前台任务」开关，返回 boolean），只能自维护 */
@@ -708,7 +710,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
          *  SDKSystemMessage 联合尚未收录该 subtype（SDK 0.3.251），走开放形状断言 */
         const trackBackgroundTasks = (message: SDKMessage): void => {
             if (message.type === 'system' && (message as unknown as { subtype?: string }).subtype === 'background_tasks_changed') {
-                this.backgroundTaskIds = collectLiveTaskIds((message as unknown as { tasks?: unknown }).tasks)
+                this.backgroundTaskIds = extractLiveBackgroundTaskIds((message as unknown as { tasks?: unknown }).tasks)
             }
         }
 
@@ -789,6 +791,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
             const umessage = message as SDKUserMessage;
             if (!umessage.message.content || !Array.isArray(umessage.message.content)) {
+                return message;
+            }
+            // 无待生效批准时零命中：user 消息（含高频 tool_result）直接返回原引用，
+            // 避免热路径上的三层克隆与全 content 遍历
+            if (enterPlanModeToolCalls.size === 0) {
                 return message;
             }
             return {
@@ -934,6 +941,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 轮次装配参数（深化候选④票①：SDK options 组装输入）
                     const round: RemoteRoundParams = {
                         sessionId: session.sessionId,
+                        pluginErrorDedup: this.pluginErrorDedup,
                         // rewind 截断轮计划（深化候选④票①：四件套同生共死收成子对象）：
                         // 保留锚语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃；
                         // 配对护栏 dropsTurn（spec E1）供 SDK fork 校验截断区间只含目标 turn
@@ -1285,16 +1293,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             this.processCleanupRef.current = null;
         }
     }
-}
-
-/**
- * 从 background_tasks_changed 的 tasks 数组提取存活任务 id 集合（批次 A『全部停止』遍历源）。
- * 提取规则（task_id 非空字符串 + 跳过 ambient 家务任务，spec D1/D2；非数组输入返回空集合
- * 即 REPLACE 语义清空）单源于 shared 的 extractLiveBackgroundTaskIds——cli 与 daemon 共用，
- * 此处仅作薄包装以保持既有导出签名（ReadonlySet）与调用方不变。
- */
-export function collectLiveTaskIds(tasks: unknown): ReadonlySet<string> {
-    return extractLiveBackgroundTaskIds(tasks)
 }
 
 export async function claudeRemoteLauncher(

@@ -142,28 +142,28 @@ export function createSocketServer(deps: SocketServerDeps): {
         }
     })
 
-    // 宿主实例（/cli namespace）：绑宿主端口 engine，由 startHostServer 挂载
-    const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
+    // 双 Server 实例（宿主 /cli 与主端口 /terminal）共用同一组选项（CORS + 4MB 上限）
+    const makeServerOptions = () => ({
         cors: corsOptions,
         // 4MB：允许 readFileRange 单 chunk 二进制响应（socket.io 默认 1MB，超过会断连）。
         // 值在 @mobi/shared RPC_MAX_HTTP_BUFFER_SIZE 统一，与 RPC_BINARY_CHUNK_SIZE 协同
         maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE
     })
+
+    // 宿主实例（/cli namespace）：绑宿主端口 engine，由 startHostServer 挂载
+    const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>(makeServerOptions())
     const hostEngine = new Engine(makeEngineOptions())
     io.bind(hostEngine)
 
     // 主端口实例（/terminal namespace）：绑主端口 engine，由 startWebServer 挂载
-    const webIo = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
-        cors: corsOptions,
-        maxHttpBufferSize: RPC_MAX_HTTP_BUFFER_SIZE
-    })
+    const webIo = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>(makeServerOptions())
     const engine = new Engine(makeEngineOptions())
     webIo.bind(engine)
 
     const idleTimeoutMs = resolveEnvNumber('MOBI_TERMINAL_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS)
+    // 单 env 限额（历史 per-socket/per-session 曾为独立配置，合并后同值——
+    // 消费方字段名保留语义，不再起中间别名）
     const maxTerminals = resolveEnvNumber('MOBI_TERMINAL_MAX_TERMINALS', DEFAULT_MAX_TERMINALS)
-    const maxTerminalsPerSocket = maxTerminals
-    const maxTerminalsPerSession = maxTerminals
     
     const cliNs = io.of('/cli')
     // 终端 namespace 挂在主端口 socket.io 实例上（web 浏览器可达；frp 转发主端口）
@@ -268,8 +268,8 @@ export function createSocketServer(deps: SocketServerDeps): {
         getSession: (sessionId) => deps.getSession?.(sessionId) ?? null,
         terminalRegistry,
         terminalHost,
-        maxTerminalsPerSocket,
-        maxTerminalsPerSession
+        maxTerminalsPerSocket: maxTerminals,
+        maxTerminalsPerSession: maxTerminals
     }))
 
     return { io, engine, hostEngine, rpcRegistry }

@@ -23,7 +23,7 @@
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat, chmod } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { configuration } from './configuration'
 import { isProcessAlive } from './utils/process';
 // Settings 定义已抽 settingsTypes.ts（断 configuration↔persistence 循环，ticket-11）；
@@ -151,25 +151,26 @@ export async function readDaemonSettings(): Promise<DaemonSettings> {
 }
 
 /**
- * 设置文件锁内的读-改-写（cli 与 daemon 对称的锁协议：.lock wx 独占创建 + 重试 + stale 清理）。
+ * 文件锁原语（cli 与 daemon 共用的锁协议单源：.lock wx 独占创建 + 重试 + stale 清理）。
+ * 锁文件 = 目标文件 + '.lock'；锁内执行 fn（读-改-写组合由调用方决定）。
  * cli 文件与 daemon 文件各有自己的锁文件，跨进程互斥。
  */
-async function withSettingsLock<S extends object>(
-  settingsFile: string,
-  read: () => Promise<S>,
-  updater: (current: S) => S | Promise<S>
-): Promise<S> {
+export async function withFileLock<T>(
+  targetFile: string,
+  fn: () => Promise<T>
+): Promise<T> {
   // Timing constants
   const LOCK_RETRY_INTERVAL_MS = 100;  // How long to wait between lock attempts
   const MAX_LOCK_ATTEMPTS = 50;        // Maximum number of attempts (5 seconds total)
   const STALE_LOCK_TIMEOUT_MS = 10000; // Consider lock stale after 10 seconds
 
-  if (!existsSync(configuration.mobiHomeDir)) {
-    await mkdir(configuration.mobiHomeDir, { recursive: true });
+  // 锁文件落盘前确保父目录存在，否则对尚不存在目录的首次写会在 open 锁文件时 ENOENT
+  // （0700：目录可能含 token 凭证类文件）
+  if (!existsSync(dirname(targetFile))) {
+    await mkdir(dirname(targetFile), { recursive: true, mode: 0o700 });
   }
 
-  const lockFile = settingsFile + '.lock';
-  const tmpFile = settingsFile + '.tmp';
+  const lockFile = targetFile + '.lock';
   let fileHandle;
   let attempts = 0;
 
@@ -203,6 +204,23 @@ async function withSettingsLock<S extends object>(
   }
 
   try {
+    return await fn();
+  } finally {
+    // Release lock
+    await fileHandle.close();
+    await unlink(lockFile).catch(() => { }); // Remove lock file
+  }
+}
+
+/**
+ * 设置文件锁内的读-改-写（temp+rename 原子写）。
+ */
+async function withSettingsLock<S extends object>(
+  settingsFile: string,
+  read: () => Promise<S>,
+  updater: (current: S) => S | Promise<S>
+): Promise<S> {
+  return withFileLock(settingsFile, async () => {
     // Read current settings with defaults
     const current = await read();
 
@@ -210,17 +228,14 @@ async function withSettingsLock<S extends object>(
     const updated = await updater(current);
 
     // Write atomically using rename
+    const tmpFile = settingsFile + '.tmp';
     await writeFile(tmpFile, JSON.stringify(updated, null, 2));
     // settings 含 token 凭证（ticket-21 收紧）：落盘前限权，rename 保留 tmp 权限
     await chmod(tmpFile, 0o600);
     await rename(tmpFile, settingsFile); // Atomic on POSIX
 
     return updated;
-  } finally {
-    // Release lock
-    await fileHandle.close();
-    await unlink(lockFile).catch(() => { }); // Remove lock file
-  }
+  });
 }
 
 /**

@@ -45,7 +45,20 @@ export function registerEmbeddedClaudeBinaryLoader(loader: () => Promise<string>
  * - 传给 SDK 的 pathToClaudeCodeExecutable → 触发自动解析（正确）
  * - 用于 spawn → 调用方需 `?? 'claude'` 回退 PATH
  */
-export async function getClaudeExecutablePath(): Promise<string | undefined> {
+// 进程级 memo：extractFromBunfs 每次调用都同步 readFileSync 整个内嵌二进制再全量
+// sha256（缓存只省写不省读+哈希），而 remote 会话每轮 query 重启都会重新解析——
+// 结果对进程生命周期确定（env/编译态/loader 不变），缓存 promise；异常不缓存（重试可能恢复）
+let cachedResolve: Promise<string | undefined> | null = null;
+
+export function getClaudeExecutablePath(): Promise<string | undefined> {
+    cachedResolve ??= resolveClaudeExecutable().catch((error: unknown) => {
+        cachedResolve = null;
+        throw error;
+    });
+    return cachedResolve;
+}
+
+async function resolveClaudeExecutable(): Promise<string | undefined> {
     if (process.env.MOBI_CLAUDE_PATH) {
         return process.env.MOBI_CLAUDE_PATH;
     }

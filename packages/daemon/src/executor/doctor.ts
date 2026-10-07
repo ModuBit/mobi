@@ -28,6 +28,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { killProcess } from '@mobi/node-core/utils/process';
+import { DAEMON_STATE_FILENAME } from '@mobi/node-core/configuration';
 
 export interface MobiProcess {
   pid: number
@@ -46,7 +47,7 @@ export function getMobiHomeForProfile(profile: string): string {
 
 async function readRunnerPid(mobiHome: string): Promise<number | undefined> {
   try {
-    const statePath = join(mobiHome, 'daemon.state.json')
+    const statePath = join(mobiHome, DAEMON_STATE_FILENAME)
     if (!existsSync(statePath)) return undefined
     const state = JSON.parse(await readFile(statePath, 'utf8'))
     return state.pid

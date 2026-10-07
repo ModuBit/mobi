@@ -94,7 +94,9 @@ export class SessionStreamRuntime {
     dispatch(logMessage: RawJSONLines, message: SDKMessage, hooks: StreamDispatchHooks): void {
         hooks.observeTurnDiff(logMessage)
 
-        // 过滤 discard 类消息，不发送到 daemon
+        // 过滤 discard 类消息，不发送到 daemon。上游过滤（提前剪掉，不占队列槽位、
+        // 不触发 tool_use hold）；下游兜底在 sessionChannel.sendClaudeSessionMessage——
+        // 咽喉点才是 invariant 保证（local scanner 等旁路不经此处），两处规则同源 classifyMessage
         if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
             return
         }
