@@ -32,6 +32,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { query, startup } from '@anthropic-ai/claude-agent-sdk'
 import { userInputLoop, claudeRemote, type LoopContext } from '@/claude/claudeRemote'
+import { splitRemoteArgs } from './utils/splitRemoteArgs'
 import type { EnhancedMode } from '@/claude/types'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -132,7 +133,7 @@ describe('claudeRemote initial 路径已 collect 消息的存活', () => {
             onCollectedMessageAbandoned: abandoned,
         })
 
-        await expect(claudeRemote(opts as never)).rejects.toThrow('cold attach boom')
+        await expect(claudeRemote(...splitRemoteArgs(opts))).rejects.toThrow('cold attach boom')
 
         expect(abandoned).toHaveBeenCalledTimes(1)
         expect(abandoned).toHaveBeenCalledWith({ message: 'wake-probe', mode: MODE, localIds: ['m1'] })

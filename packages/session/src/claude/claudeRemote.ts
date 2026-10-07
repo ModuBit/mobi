@@ -871,121 +871,154 @@ export async function applyStartupOutputStyle(response: Query, outputStyle: stri
     }
 }
 
-export async function claudeRemote(opts: {
-
-    // Fixed parameters
-    sessionId: string | null,
-    path: string,
+/**
+ * rewind 截断轮计划（深化候选④票①）：四件套同生共死，只在截断轮存在——
+ * 收成子对象让「截断轮」成为显式概念（forkActivation 子对象先例）。
+ */
+export interface RemoteRewindPlan {
     /**
      * rewind 截断轮保留锚（锚点用户消息前最近一条 user/assistant entry uuid，见 rewindAnchor）：
      * 携带时本轮为截断轮——startup 预热 boot 时按 resume 加载历史到锚点即截断，
-     * 截断确认后经 onRewindTruncated 回报（先截断后软删除），再等用户消息
+     * 截断确认后经 onTruncated 回报（先截断后软删除），再等用户消息
      */
-    resumeSessionAt?: string,
-    /**
-     * output style（prompt 组装期决策）：session 当前值，undefined = CC 读 settings 默认。
-     * 不走 sdkOptions（Options 无顶层字段且 settings 槽位被占）——query attach 后经
-     * applyStartupOutputStyle → applyFlagSettings 注入 session 级 flag layer
-     */
-    outputStyle?: string,
+    resumeAt: string
     /**
      * 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
      * SDK fork 时校验截断区间只含该 turn；含其他则 refusal（error_during_execution，
-     * 消息前缀 "Resume rejected by --resume-drops-turn:"）。refusal 检测/recovery 在 T4。
-     * 仅在 resumeSessionAt 有值时配对传入，其余轮 undefined。
+     * 消息前缀 "Resume rejected by --resume-drops-turn:"）。
      */
-    resumeDropsTurn?: string,
+    dropsTurn: string
     /** rewind 截断完成后（startup 预热 boot 加载历史到锚点）立即回调，做两段回报 */
-    onRewindTruncated?: () => Promise<void>,
+    onTruncated: () => Promise<void>
     /**
      * rewind refusal 恢复（spec E1）：SDK 拒绝截断（startup 抛错或首个 result is_error）时触发。
      * launcher 应完成当前 restart 请求 + plain resume（不带截断点，保留证据）+ emitRewindCompleted(false)。
      * refusal 是 deterministic，重发必败——host 不应 retry，而是放弃截断回到 plain resume。
      */
-    onRewindRefusal?: (msg: string) => Promise<void> | void,
+    onRefusal: (msg: string) => Promise<void> | void
+}
+
+/**
+ * 单轮 query 的装配输入（深化候选④票①）：SDK options 组装所需的轮次参数与装配依赖。
+ * 每轮随 restart 语义变化（rewind / fork 字段只在该轮存在）。
+ */
+export interface RemoteRoundParams {
+    sessionId: string | null
+    path: string
+    /** rewind 截断轮计划（携带时本轮为截断轮，不提前激活） */
+    rewind?: RemoteRewindPlan
+    /**
+     * output style（prompt 组装期决策）：session 当前值，undefined = CC 读 settings 默认。
+     * 不走 sdkOptions（Options 无顶层字段且 settings 槽位被占）——query attach 后经
+     * applyStartupOutputStyle → applyFlagSettings 注入 session 级 flag layer
+     */
+    outputStyle?: string
     /**
      * fork 激活计划（fork-session spec §5.2）：待激活分叉会话的首条消息触发轮携带。
      * 携带时 resume 权威值取 forkFrom.parentNativeId（绕过 claudeCheckSession 守卫，
      * 见 resolveStartSessionId），sdkOptions 追加 forkSession/resumeSessionAt/sessionId，
      * 首条消息 turn 开始时 CC 物化 fork transcript 并以预生成 id 返回 init。
      */
-    forkActivation?: ForkActivationPlan,
-    mcpServers?: Record<string, McpServerConfig>,
-    claudeEnvVars?: Record<string, string>,
-    claudeArgs?: string[],
-    allowedTools: string[],
-    hookSettings: string | Settings,
+    forkActivation?: ForkActivationPlan
+    mcpServers?: Record<string, McpServerConfig>
+    claudeEnvVars?: Record<string, string>
+    claudeArgs?: string[]
+    allowedTools: string[]
+    hookSettings: string | Settings
     /** 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放 metadata） */
-    additionalDirectories?: string[],
-    getSessionConfig: () => EnhancedMode,
-    flushConfig?: () => void,
-    canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
+    additionalDirectories?: string[]
+    getSessionConfig: () => EnhancedMode
+    flushConfig?: () => void
+    canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>
     /** MCP elicitation 受理（批次 C）：form 走审批链路，url decline 兜底 */
-    onElicitation: (request: ElicitationRequest, options: { signal: AbortSignal; requestId: string }) => Promise<ElicitationResult | null>,
+    onElicitation: (request: ElicitationRequest, options: { signal: AbortSignal; requestId: string }) => Promise<ElicitationResult | null>
+}
 
-    // Dynamic parameters
+/**
+ * 消息源（深化候选④票①）：本轮待投递用户消息的拉取与交回。
+ * 独立成组的意义是测试面——事件汇 fake + 假消息源可直接驱动双循环（attach 编舞测试）。
+ */
+export interface MessageSource {
     /**
      * 拉取下一条用户消息。signal 用于轮次收尾时中止队列等待（不 shift、消息留队）；
      * 若消息已 shift 且轮次 abort 已触发，调用方经 onCollectedMessageAbandoned 交回
      * 暂存（pending #94 存活不变量）
      */
-    nextMessage: (signal?: AbortSignal) => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>,
+    nextMessage: (signal?: AbortSignal) => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>
     /**
      * 已 collect 消息的丢弃防线（pending #94）：initial / inputLoop 消费的消息在 push 进
      * SDK input stream 前因轮次中止或异常无法投递时，经此回调交回投递方暂存到下一轮。
      * 消息此刻 lifecycle 已推进为 pushed，静默丢弃即永久悬空
      */
-    onCollectedMessageAbandoned?: (message: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }) => void,
-    /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定。
-     *  origin 标注 push 来源（批次 A 撤回语义）：'turn' = 新 turn 首 push（缺省），
-     *  'steer' = turn 运行中的 steer sink push——launcher 据此决定是否复位 hasOutput（C1） */
-    onMessagesBound: (bindings: { localId: string; nativeId: string }[], origin?: PushOrigin) => void,
-    onReady: () => void,
+    onCollectedMessageAbandoned?: (message: { message: PromptPayload; mode: EnhancedMode; localIds: string[] }) => void
+}
 
-    // Callbacks
-    onSessionFound: (id: string) => void,
-    onRunningChange?: (running: boolean) => void,
-    onMessage: (message: SDKMessage) => void,
+/**
+ * 事件汇（深化候选④票①）：module → launcher 的全部回调（含能力回投），单一 listener 对象
+ * 取代原 43 字段 opts 里的 ~24 个散回调。字段名与原回调名一致（零翻译），
+ * 可选性原样保留——可选性是调用契约的一部分（如 onRewindRefusal 缺省 = 非 rewind 轮语义门控）。
+ */
+export interface RemoteSessionEvents {
+    onSessionFound: (id: string) => void
+    onRunningChange?: (running: boolean) => void
+    onMessage: (message: SDKMessage) => void
     /** Snapshot 发送输出（delta 协议）：全量帧携带完整消息，增量帧只携带 op */
-    onSnapshot: (out: import('./utils/streamSnapshotSender').SnapshotOut) => void,
+    onSnapshot: (out: import('./utils/streamSnapshotSender').SnapshotOut) => void
     /** 注册 snapshot 流重基线回调（socket 重连时触发发送器重发全量帧）；缺省不注册 */
-    registerSnapshotReset?: (fn: () => void) => void,
+    registerSnapshotReset?: (fn: () => void) => void
     /** Snapshot converter，用于生成与最终消息一致的 DecryptedMessage */
-    getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter,
-    onCompletionEvent?: (message: string) => void,
+    getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter
+    onCompletionEvent?: (message: string) => void
     /** compact 结束（result）时触发，发结构化完成事件给 web 作压缩态退出信号（成功失败都发） */
-    onCompactCompleted?: () => void,
+    onCompactCompleted?: () => void
     /** compact 开始（system:status{compacting}）时触发，launcher 幂等收口后发 compact-started 事件 */
-    onCompactStart?: () => void,
-    onContextCleared?: () => void,
+    onCompactStart?: () => void
+    onContextCleared?: () => void
     /** CC 侧 conversation_reset（plan 退出清除上下文等；mobi 自身 /clear 不产生本帧）。
-     * launcher 接线与 onContextCleared 同一收口 applyContextReset（幂等），见 sdkOutputLoop */
-    onConversationReset?: (info: { trigger?: string; newConversationId: string }) => void,
+     *  launcher 接线与 onContextCleared 同一收口 applyContextReset（幂等），见 sdkOutputLoop */
+    onConversationReset?: (info: { trigger?: string; newConversationId: string }) => void
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
-    onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
-    onSessionReset?: () => void,
+    onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void
+    onSessionReset?: () => void
     /** 上下文用量上报触发（result 时；launcher 从 resultMsg 本地组装，零额外 API）。
-     * isCompact=true 表示这是 compact 的 result：用量改由 compact_boundary 上报，launcher 只回填成本 */
-    onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void,
+     *  isCompact=true 表示这是 compact 的 result：用量改由 compact_boundary 上报，launcher 只回填成本 */
+    onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void
     /** compact_boundary 到达：post_tokens 为压缩后 token（失败时 undefined），launcher 据此上报压缩后占用 */
-    onCompactBoundary?: (postTokens: number | undefined) => void,
+    onCompactBoundary?: (postTokens: number | undefined) => void
     /** turn 输出观测（批次 A 撤回复验判据，透传给 sdkOutputLoop，见 TurnTrackingState） */
-    onTurnOutput?: () => void,
+    onTurnOutput?: () => void
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
-    onQueryReady?: (query: Query, meta: { isResume: boolean }) => void,
+    onQueryReady?: (query: Query, meta: { isResume: boolean }) => void
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
     // push 携带可选 localId：steal 路径的消息同样预设 uuid 并上报绑定
-    onSteerSinkReady?: (push: (payload: PromptPayload, localId?: string) => boolean) => void,
+    onSteerSinkReady?: (push: (payload: PromptPayload, localId?: string) => boolean) => void
     /** 跨会话消息 sink 就绪回调：把**别的会话投来**的消息 push 进 SDK input stream。
      *  与 steer sink 分开是因为入参不同——这条不经投递队列，因此不传 localId、不绑定 native_id */
-    onAgentMessageSinkReady?: (push: (payload: PromptPayload) => boolean) => void,
+    onAgentMessageSinkReady?: (push: (payload: PromptPayload) => boolean) => void
     /** UserPromptSubmit hook 观测回调：入站 prompt（含跨会话 peer 消息）直达 wrapper，
-     * 由 launcher 甄别落库。恒同步调用、不阻塞 SDK 主流程（回调内部自行兜错） */
-    onInboundPrompt?: (input: { prompt: string; source?: string }) => void,
+     *  由 launcher 甄别落库。恒同步调用、不阻塞 SDK 主流程（回调内部自行兜错） */
+    onInboundPrompt?: (input: { prompt: string; source?: string }) => void
     /** SessionStart(resume/fork) 缓存过期观测回调（null = 无需上报，见 buildCacheStatusFromSessionStart）。
-     * 恒同步调用、不阻塞 SDK 主流程；launcher 转 reportCacheStatus 上报 daemon */
-    onCacheStatus?: (status: CacheStatus | null) => void,
-}) {
+     *  恒同步调用、不阻塞 SDK 主流程；launcher 转 reportCacheStatus 上报 daemon */
+    onCacheStatus?: (status: CacheStatus | null) => void
+    /** 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定。
+     *  origin 标注 push 来源（批次 A 撤回语义）：'turn' = 新 turn 首 push（缺省），
+     *  'steer' = turn 运行中的 steer sink push——launcher 据此决定是否复位 hasOutput（C1） */
+    onMessagesBound: (bindings: { localId: string; nativeId: string }[], origin?: PushOrigin) => void
+    onReady: () => void
+}
+
+/**
+ * 会话单轮运行（深化候选④票①收口）：interface 收窄为「轮次装配参数 + 消息源 + 事件汇」三分组，
+ * 取代原 43 字段扁平 opts 的回调交换机形态。launcher 是唯一调用方；票②拆 launcher 侧装配，
+ * 票③收口转换链（converter/snapshot）归属。
+ */
+export async function claudeRemote(
+    params: RemoteRoundParams,
+    source: MessageSource,
+    events: RemoteSessionEvents,
+) {
+
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
     // （origin 透传：normal/bash 注入不标 = 'turn'；steer sink 用带 'steer' 的包装）
@@ -994,21 +1027,21 @@ export async function claudeRemote(opts: {
     const synthesizedPluginErrorContents = new Set<string>()
 
     const onBound = (binding: { localIds: string[]; nativeId: string }, origin?: PushOrigin) => {
-        opts.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })), origin)
+        events.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })), origin)
     }
 
     // Check if session is valid
-    const forkFields = opts.forkActivation ? buildForkStartupFields(opts.forkActivation) : null
+    const forkFields = params.forkActivation ? buildForkStartupFields(params.forkActivation) : null
     const startFrom = resolveStartSessionId({
-        forkActivation: opts.forkActivation,
-        sessionId: opts.sessionId,
-        path: opts.path,
-        claudeArgs: opts.claudeArgs,
+        forkActivation: params.forkActivation,
+        sessionId: params.sessionId,
+        path: params.path,
+        claudeArgs: params.claudeArgs,
     })
 
     // Set environment variables for Claude Code SDK
-    if (opts.claudeEnvVars) {
-        Object.entries(opts.claudeEnvVars).forEach(([key, value]) => {
+    if (params.claudeEnvVars) {
+        Object.entries(params.claudeEnvVars).forEach(([key, value]) => {
             process.env[key] = value;
         });
     }
@@ -1022,7 +1055,7 @@ export async function claudeRemote(opts: {
     const pregeneratedSessionId = !startFrom ? randomUUID() : undefined
     if (pregeneratedSessionId) {
         logger.debug(`[claudeRemote] Pregenerated session ID: ${pregeneratedSessionId}`)
-        opts.onSessionFound(pregeneratedSessionId)
+        events.onSessionFound(pregeneratedSessionId)
     }
 
     // !bash 输出注入 sink：把「命令+输出」作为隐藏 user 消息 push 进 SDK input stream。
@@ -1042,8 +1075,8 @@ export async function claudeRemote(opts: {
         const dangerCheck = checkDangerousCommand(command)
         if (dangerCheck.isDangerous) {
             logger.warn(`[claudeRemote] Dangerous command blocked: ${command} (${dangerCheck.reason})`)
-            opts.onMessage(createBashToolUseMessage(toolCallId, command))
-            opts.onMessage(createBashToolResultMessage(
+            events.onMessage(createBashToolUseMessage(toolCallId, command))
+            events.onMessage(createBashToolResultMessage(
                 toolCallId,
                 `⚠ 命令已拦截：${dangerCheck.reason}`,
                 true,
@@ -1051,8 +1084,8 @@ export async function claudeRemote(opts: {
             return
         }
 
-        opts.onRunningChange?.(true)
-        opts.onMessage(createBashToolUseMessage(toolCallId, command))
+        events.onRunningChange?.(true)
+        events.onMessage(createBashToolUseMessage(toolCallId, command))
 
         // 在用户工作目录下执行命令（沙箱隔离 + 超时控制）
         let stdout = ''
@@ -1061,7 +1094,7 @@ export async function claudeRemote(opts: {
         try {
             const sandboxedCommand = await wrapCommand(command)
             const result = await spawnWithTimeout(sandboxedCommand, {
-                cwd: opts.path,
+                cwd: params.path,
                 timeout: 30000,
             })
             stdout = result.stdout
@@ -1081,7 +1114,7 @@ export async function claudeRemote(opts: {
             ? `${stdout}\n${stderr}`
             : stdout || stderr
 
-        opts.onMessage(createBashToolResultMessage(toolCallId, output, hasError))
+        events.onMessage(createBashToolResultMessage(toolCallId, output, hasError))
 
         // 注入输出到 SDK context（默认开启，settings.cli.json 的 bashInjectContext 可关）。
         // 模型据此感知并响应；注入本身不回显（见 sink 注释）。高危拦截路径已 return，不会走到这。
@@ -1101,7 +1134,7 @@ export async function claudeRemote(opts: {
         // - !turnStarted（注入关 / sink 未接通 / messages 已关闭不会触发轮次）：必须手动复位，
         //   否则 running 永久卡 true（query 退出后 push 被丢弃即此情形）。
         if (!turnStarted) {
-            opts.onRunningChange?.(false)
+            events.onRunningChange?.(false)
         }
     }
 
@@ -1110,11 +1143,11 @@ export async function claudeRemote(opts: {
     // 首条消息的消费路径（nextMessage → handleSpecialCommand → push）原样后移，语义零变化。
     let warmRef: WarmQuery | null = null
 
-    const baseConfig = opts.getSessionConfig()
+    const baseConfig = params.getSessionConfig()
     // 先解析 claude 可执行路径（dev 模式返回 undefined，由 SDK 自动 require.resolve）
     const claudeExecutable = await getClaudeExecutablePath()
     const sdkOptions: Options = {
-        cwd: opts.path,
+        cwd: params.path,
         // 开启后 SDK 会把同一 Anthropic message 的多个 content block 作为独立的
         // SDKAssistantMessage emit（共享 message.id、各自独立 uuid——SDK 文档明确行为）。
         // mobi 直接透传每条消息、用各自 uuid 作 localId，daemon 去重天然正确；前端
@@ -1133,10 +1166,10 @@ export async function claudeRemote(opts: {
         resume: startFrom ?? undefined,
         // rewind 截断：resume 时只加载到该 uuid（锚点前最近一条 assistant message）为止。
         // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被
-        // 模型当成「空消息」触发一轮无意义回复。rewind 轮取 opts.resumeSessionAt；
+        // 模型当成「空消息」触发一轮无意义回复。rewind 轮取 params.rewind.resumeAt；
         // fork 激活轮取分叉锚点（fork 直接用 agent 回复 uuid，无需向前换算，spec §6），
         // 两者互斥（fork 不占 rewind 的重启单槽，走正常消息触发路径）
-        resumeSessionAt: forkFields?.resumeSessionAt ?? opts.resumeSessionAt,
+        resumeSessionAt: forkFields?.resumeSessionAt ?? params.rewind?.resumeAt,
         // fork 激活（fork-session spec §5.2）：resume+forkSession+resumeSessionAt 三字段
         // 独立可选、组合成立（spec §3 PoC 实证）。仅 fork 激活轮有值
         forkSession: forkFields?.forkSession,
@@ -1144,12 +1177,12 @@ export async function claudeRemote(opts: {
         // hookSettings 占用——query attach 后经 applyStartupOutputStyle 注入
         // 配对护栏（spec E1）：声明截断要丢弃的 turn 的 prompt UUID（= rewind 目标 user msg nativeId）。
         // SDK fork 时校验截断区间只含该 turn；含其他则 refusal。refusal 检测/recovery 在 T4。
-        resumeDropsTurn: opts.resumeDropsTurn,
+        resumeDropsTurn: params.rewind?.dropsTurn,
         // 新会话轮：预生成的 nativeSessionId；fork 激活轮：预生成 id 来自 forkFrom 簿记
         // （forkNativeId，spec §5.2——SDK sessionId option 语义保证 CC 采用）；
         // resume 轮：undefined
         sessionId: forkFields?.sessionId ?? pregeneratedSessionId,
-        mcpServers: opts.mcpServers,
+        mcpServers: params.mcpServers,
         // 内置插件挂载（inline-artifacts ticket 05）：visualize 等随二进制分发的 local plugin。
         // 编译态路径指向 runtime 解包目录（ensureRuntimeAssets 启动时已保证就绪），开发态指向
         // 仓库源目录。SDK 自动把 plugins 转成 claude 进程的 --plugin-dir，无需手工拼 flag
@@ -1189,7 +1222,7 @@ export async function claudeRemote(opts: {
         // （nativeAckAt 数据源，rewind 锚点可靠性）。必须与 launcher onMessage 拦截同一 PR 上线，
         // 否则回显会重复落库。
         extraArgs: { 'replay-user-messages': null },
-        allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
+        allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(params.allowedTools) : params.allowedTools,
         disallowedTools: baseConfig.disallowedTools,
         // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch → 执行层重定向到
         // mobi-core in-process 工具（web_search/web_fetch 执行载体）。
@@ -1199,12 +1232,12 @@ export async function claudeRemote(opts: {
             WebFetch: `mcp__${MOBI_CORE_SERVER_NAME}__web_fetch`,
         },
         canUseTool: async (toolName, input, options) => {
-            const result = await opts.canCallTool(toolName, input, options);
+            const result = await params.canCallTool(toolName, input, options);
             return result;
         },
         // MCP elicitation 受理（批次 C，spec D1/D2）：form 走审批链路，url decline 兜底。
         // opts 类型声明 onElicitation 非可选（唯一 caller launcher 恒绑定），无需守卫
-        onElicitation: opts.onElicitation,
+        onElicitation: params.onElicitation,
         // U-20：实时捕获 claude 进程 stderr 落 debug 日志。退出错误已由 SDK formatStderrTail
         // 自动追加到错误 message（launcher catch 透传）；此处覆盖「hang 不退出」的诊断场景——
         // stderr 实时可见进程卡在哪（spec 批次 G）。chunk 截断防病态输出挤占 ringBuffer 配额
@@ -1216,12 +1249,12 @@ export async function claudeRemote(opts: {
             logger.debug('[claude stderr]', truncated);
         },
         pathToClaudeCodeExecutable: claudeExecutable,
-        settings: opts.hookSettings,
+        settings: params.hookSettings,
         // env 会整体替换子进程环境（不与 process.env 合并），故必须自行展开，
         // 否则 PATH / HOME / ANTHROPIC_API_KEY 等继承变量会丢失
         env: { ...process.env, ...buildClaudeFeatureEnv() } as Record<string, string>,
         // .mobi 目录（附件访问）+ 工作区冻结的额外工作目录（创建时来自工作区 folders，resume 时回放）
-        additionalDirectories: [join(opts.path, '.mobi'), ...(opts.additionalDirectories ?? [])],
+        additionalDirectories: [join(params.path, '.mobi'), ...(params.additionalDirectories ?? [])],
         toolConfig: {
             askUserQuestion: { previewFormat: 'markdown' }
         },
@@ -1238,7 +1271,7 @@ export async function claudeRemote(opts: {
                         // idle 门控造成 turn 串扰，result 还会把用户 turn 误显示为空闲。
                         // 自己的 push 先行调用过，此处幂等无妨。
                         markInputPushed();
-                        opts.onInboundPrompt?.({ prompt: input.prompt, source: input.source })
+                        events.onInboundPrompt?.({ prompt: input.prompt, source: input.source })
                     }
                     return { continue: true }
                 }],
@@ -1249,7 +1282,7 @@ export async function claudeRemote(opts: {
             SessionStart: [{
                 hooks: [async (input) => {
                     if (input.hook_event_name === 'SessionStart' && input.session_id) {
-                        opts.onSessionFound(input.session_id)
+                        events.onSessionFound(input.session_id)
                     }
                     // 恢复场景缓存信号观测（upstream-suggestions ①）：SDK 0.3.268 hook input 携带
                     // prompt_cache_likely_expired 等，组装载荷交 launcher 上报 daemon（null 不报）。
@@ -1257,7 +1290,7 @@ export async function claudeRemote(opts: {
                     if (input.hook_event_name === 'SessionStart') {
                         const cacheStatus = buildCacheStatusFromSessionStart(input)
                         logger.info(`[cache-probe] source=${input.source} likelyExpired=${input.prompt_cache_likely_expired} contextTokens=${input.context_tokens} secondsSinceLastResponse=${input.seconds_since_last_response} reported=${cacheStatus !== null}`)
-                        opts.onCacheStatus?.(cacheStatus)
+                        events.onCacheStatus?.(cacheStatus)
                     }
                     return { continue: true }
                 }],
@@ -1284,8 +1317,8 @@ export async function claudeRemote(opts: {
             logger.debug(`[claudeRemote] Running state changed to: ${running}`);
             // result → 放行 userInputLoop 门控
             if (!newRunning) resolveIdle()
-            if (opts.onRunningChange) {
-                opts.onRunningChange(running);
+            if (events.onRunningChange) {
+                events.onRunningChange(running);
             }
         }
     };
@@ -1328,8 +1361,8 @@ export async function claudeRemote(opts: {
     // 所以不传 localIds（也就不会绑定 native_id）。markInputPushed 照常调：消息一旦进
     // input stream 就会驱动处理——会话空闲时立刻起一轮，忙时被当前 turn 在下一个工具
     // 结果处吸收，两种情况下 running 都该如实置位。
-    if (opts.onAgentMessageSinkReady) {
-        opts.onAgentMessageSinkReady((payload: PromptPayload) => {
+    if (events.onAgentMessageSinkReady) {
+        events.onAgentMessageSinkReady((payload: PromptPayload) => {
             if (messages.done) return false;
             try {
                 markInputPushed();
@@ -1357,30 +1390,30 @@ export async function claudeRemote(opts: {
     const startOutputLoop = (q: Query): void => {
         // 流式输出：Snapshot 发送器
         snapshotSender = new StreamSnapshotSender(
-            opts.onSnapshot,
-            opts.getConverter(),
+            events.onSnapshot,
+            events.getConverter(),
         );
         snapshotSender.start();
         // socket 重连重基线：断线期间增量帧已丢，重连后立即重发全量帧重建 daemon 侧基线
-        opts.registerSnapshotReset?.(() => snapshotSender?.forceFullFlush());
+        events.registerSnapshotReset?.(() => snapshotSender?.forceFullFlush());
         outputLoopPromise = sdkOutputLoop(q, loopCtx, {
-            path: opts.path,
-            onMessage: opts.onMessage,
-            onSnapshot: opts.onSnapshot,
-            onAbortFlush: opts.onAbortFlush,
+            path: params.path,
+            onMessage: events.onMessage,
+            onSnapshot: events.onSnapshot,
+            onAbortFlush: events.onAbortFlush,
             snapshotSender,
-            onSessionFound: opts.onSessionFound,
-            onReady: opts.onReady,
+            onSessionFound: events.onSessionFound,
+            onReady: events.onReady,
             onRunningChange: updateRunning,
-            onCompletionEvent: opts.onCompletionEvent,
-            onCompactCompleted: opts.onCompactCompleted,
-            onCompactStart: opts.onCompactStart,
-            onContextUsage: opts.onContextUsage,
-            onCompactBoundary: opts.onCompactBoundary,
-            onConversationReset: opts.onConversationReset,
+            onCompletionEvent: events.onCompletionEvent,
+            onCompactCompleted: events.onCompactCompleted,
+            onCompactStart: events.onCompactStart,
+            onContextUsage: events.onContextUsage,
+            onCompactBoundary: events.onCompactBoundary,
+            onConversationReset: events.onConversationReset,
             synthesizedPluginErrorContents,
-            onTurnOutput: opts.onTurnOutput,
-            onRewindRefusal: opts.onRewindRefusal,
+            onTurnOutput: events.onTurnOutput,
+            onRewindRefusal: params.rewind?.onRefusal,
             signal: loopAbort.signal,
         }).catch((e) => { outputLoopError = e })
         // 防首条消息等待窗口的未处理 rejection：race 接管前先挂 no-op catch
@@ -1398,7 +1431,7 @@ export async function claudeRemote(opts: {
         // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
         // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断。
         let initial: { message: PromptPayload; mode: EnhancedMode; localIds: string[] };
-        if (opts.resumeSessionAt) {
+        if (params.rewind) {
             // 截断轮：串行 startup 截断 → 回报 → 等用户消息。回报必须落在 nextMessage 之前——
             // 用户消息依赖 Web 回填（rewind-completed），回填依赖回报，若等 nextMessage 再回报会死锁。
             // 截断轮不提前激活（截断本身就是要丢历史，窗口内无旁路流量价值），行为与现状一致。
@@ -1410,25 +1443,25 @@ export async function claudeRemote(opts: {
                 // 门控 onRewindRefusal 已定义才走 recovery（与 sdkOutputLoop result 路径的 F3 门控一致）：
                 // 未定义（防御：非 rewind 轮误现 refusal 前缀）时按普通 startup 失败向上抛，
                 // 由 launcher catch 补发 completed { error }，不静默 return 丢错误
-                if (isRewindRefusalError(e) && opts.onRewindRefusal) {
+                if (isRewindRefusalError(e) && params.rewind?.onRefusal) {
                     // recovery（spec E1）：clear pending + plain resume（不带截断点）保留证据 + 报错。
                     // refusal 是 deterministic，重发必败——不 retry 截断，让 launcher 完成 restart 请求
                     // 后 while 循环自然以常规轮重启（plain resume，保留全部历史证据）。
                     logger.warn('[claudeRemote] rewind refused, falling back to plain resume', e)
-                    await opts.onRewindRefusal?.(e instanceof Error ? e.message : String(e))
+                    await params.rewind?.onRefusal?.(e instanceof Error ? e.message : String(e))
                     return  // 由 onRewindRefusal 触发 clear + 终态回报，while 循环继续 plain resume
                 }
                 // 非 refusal 的 startup 失败仍向上抛，由 launcher catch 补发 completed { error }
                 throw e
             }
-            await opts.onRewindTruncated?.()
-            const msg = await opts.nextMessage(loopAbort.signal)
+            await params.rewind?.onTruncated?.()
+            const msg = await source.nextMessage(loopAbort.signal)
             if (!msg) {
                 return
             }
             // 已 collect 但轮次已中止：交回暂存（pending #94 存活不变量）
             if (loopAbort.signal.aborted) {
-                opts.onCollectedMessageAbandoned?.(msg)
+                source.onCollectedMessageAbandoned?.(msg)
                 return
             }
             initial = msg
@@ -1446,18 +1479,18 @@ export async function claudeRemote(opts: {
                 response = warmRef.query(messages)
                 warmConsumed = true
                 // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
-                await applyStartupOutputStyle(response, opts.outputStyle)
+                await applyStartupOutputStyle(response, params.outputStyle)
                 // 把 Query 引用传给外部，用于 interrupt/close 控制
-                opts.onQueryReady?.(response, { isResume: startFrom != null });
+                events.onQueryReady?.(response, { isResume: startFrom != null });
                 startOutputLoop(response)
             }
-            const msg = await opts.nextMessage(loopAbort.signal)
+            const msg = await source.nextMessage(loopAbort.signal)
             if (!msg) {
                 return
             }
             // 已 collect 但轮次已中止：交回暂存（pending #94 存活不变量）
             if (loopAbort.signal.aborted) {
-                opts.onCollectedMessageAbandoned?.(msg)
+                source.onCollectedMessageAbandoned?.(msg)
                 return
             }
             initial = msg
@@ -1471,7 +1504,7 @@ export async function claudeRemote(opts: {
         // 已 collect 未投递的 initial 开始追踪（声明在 try 外，见其注释）
         unpushedInitial = initial;
 
-        const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
+        const specialCommandCtx = createSpecialCommandContext(events, executeBashCommand)
         const initialResult = await handleSpecialCommand(asCommandText(initial.message), specialCommandCtx, initial.localIds)
 
         if (initialResult.shouldExit) {
@@ -1499,13 +1532,13 @@ export async function claudeRemote(opts: {
             warmConsumed = true
             // output style 注入须先于任何用户消息 push——截断轮 attach 前特殊命令处理
             // （bash 注入）已可能 push 进 messages，attach 后立即补注（见 helper 时序注释）
-            await applyStartupOutputStyle(response, opts.outputStyle)
+            await applyStartupOutputStyle(response, params.outputStyle)
             // 把 Query 引用传给外部，用于 interrupt/close 控制
-            opts.onQueryReady?.(response, { isResume: startFrom != null });
+            events.onQueryReady?.(response, { isResume: startFrom != null });
             startOutputLoop(response)
         } else if (!warmConsumed) {
             // fallback attach（startup 失败路径，行为同现状）：首条消息到了再冷启动 attach
-            const fallbackConfig = opts.getSessionConfig()
+            const fallbackConfig = params.getSessionConfig()
             const fallbackOptions: Options = {
                 ...sdkOptions,
                 // allowDangerouslySkipPermissions 由 sdkOptions 展开继承（无条件携带，见上方注释）
@@ -1515,9 +1548,9 @@ export async function claudeRemote(opts: {
             }
             response = query({ prompt: messages, options: fallbackOptions })
             // output style 注入须先于任何用户消息 push（见 applyStartupOutputStyle 时序注释）
-            await applyStartupOutputStyle(response, opts.outputStyle)
+            await applyStartupOutputStyle(response, params.outputStyle)
             // 把 Query 引用传给外部，用于 interrupt/close 控制
-            opts.onQueryReady?.(response, { isResume: startFrom != null });
+            events.onQueryReady?.(response, { isResume: startFrom != null });
             startOutputLoop(response)
         }
 
@@ -1526,8 +1559,8 @@ export async function claudeRemote(opts: {
         // 注入 steer sink：把仍排队的消息 payload push 进 SDK input stream，返回 true。
         // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
         // localId 携带时同样预设 uuid 并上报绑定（steal 路径单条消息）。
-        if (opts.onSteerSinkReady) {
-            opts.onSteerSinkReady((payload: PromptPayload, localId?: string) => {
+        if (events.onSteerSinkReady) {
+            events.onSteerSinkReady((payload: PromptPayload, localId?: string) => {
                 try {
                     markInputPushed();
                     // origin='steer'：turn 运行中的插队 push——launcher 不得据此复位 hasOutput（C1）
@@ -1555,14 +1588,14 @@ export async function claudeRemote(opts: {
         // —— 输入循环：initial 已被外层消费，此刻才安全启动（避免双消费者竞争绕过特殊命令处理）；
         // 输出循环已在提前激活 / fallback attach 时启动
         const inputLoopPromise = userInputLoop(messages, loopCtx, {
-            nextMessage: opts.nextMessage,
+            nextMessage: source.nextMessage,
             specialCommandCtx,
             isRunning: () => running,
             waitForIdle,
             onBound,
             markInputPushed,
             signal: loopAbort.signal,
-            onCollectedMessageAbandoned: opts.onCollectedMessageAbandoned,
+            onCollectedMessageAbandoned: source.onCollectedMessageAbandoned,
         })
 
         await Promise.race([outputLoopPromise!, inputLoopPromise])
@@ -1570,7 +1603,7 @@ export async function claudeRemote(opts: {
     } catch (e) {
         // initial 已 collect 未投递且轮次异常：交回投递方暂存，否则随局部变量永久悬空（pending #94）
         if (unpushedInitial) {
-            opts.onCollectedMessageAbandoned?.(unpushedInitial);
+            source.onCollectedMessageAbandoned?.(unpushedInitial);
         }
         // 增强错误日志：捕获 SDK 抛出的非标准错误对象。
         // 保持 debug 级：此处 re-throw，错误最终由 claudeRemoteLauncher 的终态 catch

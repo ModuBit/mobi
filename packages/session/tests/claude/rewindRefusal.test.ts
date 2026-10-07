@@ -24,6 +24,7 @@ import {
     type RewindRefusalHandlerDeps,
 } from '../../src/claude/utils/rewindRefusal'
 import { claudeRemote } from '../../src/claude/claudeRemote'
+import { splitRemoteArgs } from './utils/splitRemoteArgs'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     query: vi.fn(),
@@ -155,7 +156,7 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
             onRewindRefusal,
         }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         expect(onRewindRefusal).toHaveBeenCalledTimes(1)
         expect(onRewindRefusal).toHaveBeenCalledWith(refusalMsg)
@@ -179,7 +180,7 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
             onRewindRefusal,
         }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         expect(onRewindRefusal).toHaveBeenCalledTimes(1)
         expect(onRewindRefusal).toHaveBeenCalledWith(wrappedMsg)
@@ -196,7 +197,7 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
             onRewindRefusal,
         }
 
-        await expect(claudeRemote(opts)).rejects.toThrow('spawn failed')
+        await expect(claudeRemote(...splitRemoteArgs(opts))).rejects.toThrow('spawn failed')
         expect(onRewindRefusal).not.toHaveBeenCalled()
         expect(onRewindTruncated).not.toHaveBeenCalled()
     })
@@ -212,7 +213,7 @@ describe('claudeRemote rewind refusal recovery（路径 A：startup 抛错）', 
             // 不带 onRewindRefusal
         }
 
-        await expect(claudeRemote(opts)).rejects.toThrow(REWIND_REFUSAL_PREFIX)
+        await expect(claudeRemote(...splitRemoteArgs(opts))).rejects.toThrow(REWIND_REFUSAL_PREFIX)
     })
 })
 
@@ -278,7 +279,7 @@ describe('claudeRemote rewind refusal recovery（路径 B：result is_error）',
             onContextUsage,
         }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         // onRewindTruncated 已触发（startup 成功后报告截断成功）
         expect(onRewindTruncated).toHaveBeenCalledTimes(1)
@@ -337,7 +338,7 @@ describe('claudeRemote rewind refusal recovery（路径 B：result is_error）',
             onReady,
         }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         // 非 refusal error 不触发 onRewindRefusal
         expect(onRewindRefusal).not.toHaveBeenCalled()
@@ -397,7 +398,7 @@ describe('claudeRemote rewind refusal recovery（路径 B：result is_error）',
             onContextUsage,
         }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         // refusal 前缀 result 但 onRewindRefusal 未定义 → 不短路 → onReady 被调（F3 修复）
         expect(onReady).toHaveBeenCalled()

@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { query, startup } from '@anthropic-ai/claude-agent-sdk'
 import { claudeRemote, isReplayUserMessage } from '../../src/claude/claudeRemote'
+import { splitRemoteArgs } from './utils/splitRemoteArgs'
 import { reportRewindCompletion, type RewindReportClient } from '../../src/claude/utils/rewindReport'
 import type { PendingRewind } from '../../src/claude/types'
 
@@ -90,7 +91,7 @@ describe('claudeRemote rewind 截断空跑轮', () => {
         })
         const opts = { ...truncationOpts(), nextMessage }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         // 截断由 startup 预热承载：options 携带 resumeSessionAt + file checkpointing
         expect(mockedStartup).toHaveBeenCalledTimes(1)
@@ -116,7 +117,7 @@ describe('claudeRemote rewind 截断空跑轮', () => {
         // 截断轮同时携带 resumeSessionAt（保留锚）+ resumeDropsTurn（丢弃的 turn prompt UUID）
         const opts = { ...truncationOpts(), resumeDropsTurn: 'user-msg-uuid', nextMessage }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         // SDK startup 收到配对的 resumeSessionAt + resumeDropsTurn，
         // fork 时校验截断区间只含该 turn；含其他则 refusal（T3 只验传参，refusal 处理在 T4）
@@ -135,7 +136,7 @@ describe('claudeRemote rewind 截断空跑轮', () => {
         })
         const opts = { ...truncationOpts(), resumeSessionAt: undefined, nextMessage }
 
-        await claudeRemote(opts)
+        await claudeRemote(...splitRemoteArgs(opts))
 
         // 常规轮 query 的 prompt 是 messages iterable（非空字符串）
         const [arg] = mockedQuery.mock.calls[0] as [{ prompt: unknown; options: Record<string, unknown> }]

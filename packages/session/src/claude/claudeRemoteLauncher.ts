@@ -17,7 +17,7 @@
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Session } from "./session";
-import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState } from "./claudeRemote";
+import { claudeRemote, commandLifecycleToFact, isReplayUserMessage, type TurnTrackingState, type RemoteRoundParams, type MessageSource, type RemoteSessionEvents } from "./claudeRemote";
 import { classifyInboundTurn } from './utils/inboundCrossSession';
 import { createAgentMessagePushHandler } from './utils/agentMessagePushHandler';
 import { parseSpecialCommand } from "../parsers/specialCommands";
@@ -893,39 +893,41 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 this.abortFuture = new Future<void>();
                 let modeHash: string | null = null;
                 try {
-                    await claudeRemote({
+                    // 轮次装配参数（深化候选④票①：SDK options 组装输入）
+                    const round: RemoteRoundParams = {
                         sessionId: session.sessionId,
-                        // rewind 截断轮携带保留锚（其前最近一条 user/assistant entry uuid，见 rewindAnchor）：
-                        // 语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃
-                        resumeSessionAt: rewind?.resumeAt,
+                        // rewind 截断轮计划（深化候选④票①：四件套同生共死收成子对象）：
+                        // 保留锚语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃；
+                        // 配对护栏 dropsTurn（spec E1）供 SDK fork 校验截断区间只含目标 turn
+                        rewind: rewind ? {
+                            resumeAt: rewind.resumeAt,
+                            dropsTurn: rewind.nativeId,
+                            // startup 截断完成后回报（先截断后软删除），并完成当前 restart 请求。
+                            // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
+                            onTruncated: async () => {
+                                session.restart.complete(rewind);
+                                await reportRewindCompletion(session.client, rewind);
+                            },
+                            onRefusal: async (msg: string) => {
+                                const currentRestart = session.restart.current();
+                                handleRewindRefusal({
+                                    pendingRewind: currentRestart?.kind === 'rewind' ? currentRestart : null,
+                                    // 路径 B 回退：onRewindTruncated 已完成 restart 请求，
+                                    // 但 rewind 局部变量仍持有受理阶段的真实 filesRestored/skippedLinks
+                                    fallbackRewindData: {
+                                        filesRestored: rewind.filesRestored,
+                                        skippedLinks: rewind.skippedLinks,
+                                    },
+                                    clearPendingRewind: () => { session.restart.complete(rewind) },
+                                    emitRewindCompleted: (filesRestored, error, skippedLinks) =>
+                                        session.client.emitRewindCompleted(filesRestored, error, skippedLinks),
+                                    sendSessionEvent: (event) =>
+                                        session.client.sendSessionEvent(event),
+                                }, msg)
+                            },
+                        } : undefined,
                         // output style：session 当前值，每轮循环读取（切换 RPC 更新后经哨兵重启生效）
                         outputStyle: session.getOutputStyle(),
-                        // 配对护栏（spec E1）：丢弃的 turn prompt UUID（= rewind 目标 user msg nativeId），
-                        // SDK fork 时校验截断区间只含该 turn；含其他则 refusal（refusal 处理在 T4）
-                        resumeDropsTurn: rewind?.nativeId,
-                        // startup 截断完成后回报（先截断后软删除），并完成当前 restart 请求。
-                        // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
-                        onRewindTruncated: rewind ? async () => {
-                            session.restart.complete(rewind);
-                            await reportRewindCompletion(session.client, rewind);
-                        } : undefined,
-                        onRewindRefusal: rewind ? async (msg: string) => {
-                            const currentRestart = session.restart.current();
-                            handleRewindRefusal({
-                                pendingRewind: currentRestart?.kind === 'rewind' ? currentRestart : null,
-                                // 路径 B 回退：onRewindTruncated 已完成 restart 请求，
-                                // 但 rewind 局部变量仍持有受理阶段的真实 filesRestored/skippedLinks
-                                fallbackRewindData: {
-                                    filesRestored: rewind.filesRestored,
-                                    skippedLinks: rewind.skippedLinks,
-                                },
-                                clearPendingRewind: () => { session.restart.complete(rewind) },
-                                emitRewindCompleted: (filesRestored, error, skippedLinks) =>
-                                    session.client.emitRewindCompleted(filesRestored, error, skippedLinks),
-                                sendSessionEvent: (event) =>
-                                    session.client.sendSessionEvent(event),
-                            }, msg)
-                        } : undefined,
                         // fork 激活（fork-session spec §5.2）：预检通过后携带激活计划，
                         // claudeRemote 据此组装 resume(parent)+forkSession+resumeSessionAt(锚点)+sessionId(预生成 id)
                         forkActivation: forkActivation ?? undefined,
@@ -937,44 +939,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         flushConfig: this.flushConfig,
                         canCallTool: permissionHandler.handleToolCall,
                         onElicitation: permissionHandler.handleElicitation,
-                        onInboundPrompt: handleInboundPrompt,
-                        // SessionStart(resume/fork) 缓存过期上报：null（非恢复/warm）不产生事件
-                        onCacheStatus: (status) => {
-                            if (status) session.client.reportCacheStatus(status);
-                        },
-                        onQueryReady: (query, { isResume }) => {
-                            this.queryRef = query;
-                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。
-                            // resume 会话跳过：daemon 已持久化真实水位/成本（web 首拉恢复），
-                            // 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
-                            if (!isResume) void this.contextTracker.collectStartupUsage(query);
-                            // 暴露给外部用于动态 setModel/setPermissionMode
-                            if (this.queryControlRef) {
-                                this.queryControlRef.current = query;
-                            }
-                            // 修复配置漂移：将预热期间积累的配置变更同步到 Query
-                            this.flushConfig();
-                            if (this.processCleanupRef) {
-                                this.processCleanupRef.current = () => {
-                                    query.close();
-                                    this.queryRef = null;
-                                    if (this.queryControlRef) {
-                                        this.queryControlRef.current = null;
-                                    }
-                                };
-                            }
-                            // U-27：会话能力面经三方法落 metadata（替代 extractSDKMetadataAsync
-                            // 专用 headless 进程）。异步不阻塞 turn；失败静默保旧值（spec 批次 G）。
-                            // per-session 去重：onQueryReady 每轮触发，同一会话只发现一次。
-                            // resume 首轮 sessionId 尚未回写（--resume 分支跳过 pregeneration 的
-                            // 同步 onSessionFound，真实 id 在 init 后异步到达）——以 pending 哨兵
-                            // 先发现一次，真实 id 就绪的下轮再刷新并此后去重
-                            const discoveryKey = session.sessionId ?? '__pending__';
-                            if (discoveryKey !== this.capabilityDiscoveredForSession) {
-                                this.capabilityDiscoveredForSession = discoveryKey;
-                                this.runCapabilityDiscovery();
-                            }
-                        },
+                        claudeEnvVars: session.claudeEnvVars,
+                        claudeArgs: session.claudeArgs,
+                        additionalDirectories: session.additionalDirectories,
+                    };
+
+                    // 消息源：本轮待投递用户消息的拉取与交回（测试可 fake 驱动的 seam）
+                    const source: MessageSource = {
                         nextMessage: async (roundEndSignal?: AbortSignal) => {
                             if (this.pendingBatch) {
                                 const p = this.pendingBatch;
@@ -1046,6 +1017,48 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // 已 collect 消息的丢弃防线接线（pending #94）：claudeRemote 侧 initial /
                         // inputLoop 在轮次中止/异常时交回，暂存到下一轮投递
                         onCollectedMessageAbandoned: (msg) => { this.holdForNextRound(msg) },
+                    };
+
+                    // 事件汇：module → launcher 的全部回调与能力回投（单 listener 对象）
+                    const events: RemoteSessionEvents = {
+                        onInboundPrompt: handleInboundPrompt,
+                        // SessionStart(resume/fork) 缓存过期上报：null（非恢复/warm）不产生事件
+                        onCacheStatus: (status) => {
+                            if (status) session.client.reportCacheStatus(status);
+                        },
+                        onQueryReady: (query, { isResume }) => {
+                            this.queryRef = query;
+                            // 首轮前水位：基础占用 + CC 权威窗口（仅会话尚无 result 时生效，tracker 内有双检）。
+                            // resume 会话跳过：daemon 已持久化真实水位/成本（web 首拉恢复），
+                            // 静态基线 totalTokens + costUsd 0 会把真实读数覆盖回退到首个 result 才自愈
+                            if (!isResume) void this.contextTracker.collectStartupUsage(query);
+                            // 暴露给外部用于动态 setModel/setPermissionMode
+                            if (this.queryControlRef) {
+                                this.queryControlRef.current = query;
+                            }
+                            // 修复配置漂移：将预热期间积累的配置变更同步到 Query
+                            this.flushConfig();
+                            if (this.processCleanupRef) {
+                                this.processCleanupRef.current = () => {
+                                    query.close();
+                                    this.queryRef = null;
+                                    if (this.queryControlRef) {
+                                        this.queryControlRef.current = null;
+                                    }
+                                };
+                            }
+                            // U-27：会话能力面经三方法落 metadata（替代 extractSDKMetadataAsync
+                            // 专用 headless 进程）。异步不阻塞 turn；失败静默保旧值（spec 批次 G）。
+                            // per-session 去重：onQueryReady 每轮触发，同一会话只发现一次。
+                            // resume 首轮 sessionId 尚未回写（--resume 分支跳过 pregeneration 的
+                            // 同步 onSessionFound，真实 id 在 init 后异步到达）——以 pending 哨兵
+                            // 先发现一次，真实 id 就绪的下轮再刷新并此后去重
+                            const discoveryKey = session.sessionId ?? '__pending__';
+                            if (discoveryKey !== this.capabilityDiscoveredForSession) {
+                                this.capabilityDiscoveredForSession = discoveryKey;
+                                this.runCapabilityDiscovery();
+                            }
+                        },
                         onSessionFound: (sessionId) => {
                             // 绑定幂等守卫：systemInit 与 SessionStart hook（remote 进程内回调，ADR 0001）
                             // 双源共用，同 id 不重复触发
@@ -1070,9 +1083,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onRunningChange: session.onRunningChange,
-                        claudeEnvVars: session.claudeEnvVars,
-                        claudeArgs: session.claudeArgs,
-                        additionalDirectories: session.additionalDirectories,
                         onMessage,
                         onCompletionEvent: (message: string) => {
                             logger.debug(`[remote]: Completion event: ${message}`);
@@ -1176,7 +1186,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         // 撤回复验判据：本 turn 有任何模型输出即置位（见 TurnTrackingState）
                         onTurnOutput: () => { this.turnTracking.hasOutput = true },
-                    });
+                    };
+
+                    await claudeRemote(round, source, events);
 
                     session.consumeOneTimeFlags();
 

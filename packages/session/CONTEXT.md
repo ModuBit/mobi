@@ -60,6 +60,18 @@ _Avoid_: 绕开 report 直接 emit 事实类事件、把传输保活语义（重
 
 `ApiSessionClient` 是两者的装配门面：生命周期编排（IdleTimer/RpcHandlerManager/flush/close 次序）+ 对消费者的 EventEmitter 事件；37 个公开成员零迁移。
 
+**会话运行（claudeRemote 单轮）**:
+remote 会话单轮运行 module，interface = 轮次装配参数（RemoteRoundParams，含 rewind/fork 子对象）+ 消息源 + 事件汇三分组（深化候选④票①）。SDK options 装配、attach 编舞（预热/提前激活/fallback/截断四路径）、双循环协调都在其后。
+_Avoid_: 给它加第 N 个回调参数（新事件进事件汇 interface）、把 launcher 的编排逻辑写进运行层
+
+**事件汇（RemoteSessionEvents）**:
+会话运行 module → launcher 的全部回调与能力回投，单一 listener 对象。字段名与历史回调名一致（零翻译），可选性是调用契约——缺省 onRewindRefusal 即「非 rewind 轮」的语义门控。
+_Avoid_: 往轮次参数里塞 on* 回调、绕开 listener 直接透传散回调
+
+**消息源（MessageSource）**:
+本轮待投递用户消息的拉取与交回（nextMessage + onCollectedMessageAbandoned）。独立成组的意义是测试面——事件汇 fake + 可控消息源可直驱运行层，锁 attach 编舞（提前激活/fallback/rewind/fork 四路径）的对外可观察行为。
+_Avoid_: 测试里构造整套 launcher 才能驱动 claudeRemote
+
 **Hook Server**:
 local 模式下接收 Claude 子进程 SessionStart hook 的本地 HTTP server（hook 经 hook-forwarder 命令转发）。
 

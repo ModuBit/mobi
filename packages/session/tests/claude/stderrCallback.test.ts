@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { startup } from '@anthropic-ai/claude-agent-sdk'
 import { claudeRemote } from '../../src/claude/claudeRemote'
+import { splitRemoteArgs } from './utils/splitRemoteArgs'
 import { logger } from '@mobi/node-core/logger'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -76,7 +77,7 @@ describe('Options.stderr 实时捕获（spec 批次 G U-20）', () => {
             return warmRef as never
         })
 
-        await claudeRemote(minimalOpts() as never)
+        await claudeRemote(...splitRemoteArgs(minimalOpts()))
 
         expect(logger.debug).toHaveBeenCalledWith('[claude stderr]', '[claude] boot warning: something odd')
     })
@@ -89,7 +90,7 @@ describe('Options.stderr 实时捕获（spec 批次 G U-20）', () => {
             return warmRef as never
         })
 
-        await claudeRemote(minimalOpts() as never)
+        await claudeRemote(...splitRemoteArgs(minimalOpts()))
 
         expect(logger.debug).toHaveBeenCalledWith(
             '[claude stderr]',
