@@ -103,7 +103,7 @@ Web ↔ Socket.IO(/terminal) ↔ daemon 内 TerminalManager（pty），实时双
 | **[PushService](./push)** | Web Push 通知，离线时推送通知 |
 | **[NotificationHub](./notification)** | 通知调度，监听事件并分发通知 |
 | **[Store](./store)** | 数据存储，SQLite 数据库 |
-| **[LocalExecutor（executor/）](../../../packages/daemon/src/executor/localExecutor.ts)** | 进程内执行器：会话子进程 spawn 管线、controlServer、worktree、spawnDedup（直调 node-core handler） |
+| **[LocalExecutor（executor/）](../../../packages/daemon/src/executor/localExecutor.ts)** | 进程内执行器：会话子进程 spawn 管线、controlServer、worktree、spawnDedup（直调 node-core handler）、记忆三档裁决注入（config/memorySettings，见 [config](./config/README.md#记忆设置与三档隔离agent-memory)） |
 
 ## 组件依赖关系
 

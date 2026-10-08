@@ -51,6 +51,22 @@
 | `hubName` | string | 自动生成 | 实例名称（PWA 实例标识） |
 | `vapidKeys.publicKey` | string | 自动生成 | Web Push VAPID 公钥（Base64） |
 | `vapidKeys.privateKey` | string | 自动生成 | Web Push VAPID 私钥（Base64） |
+| `memory.engine` | `'off' \| 'hindsight'` | `off` | 长期记忆引擎（默认关闭，隐私姿态） |
+| `memory.endpoint` | string | - | Hindsight API 地址（Cloud 或 self-host；engine 开启时必填） |
+| `memory.apiToken` | string | - | API token 明文（仅 daemon 落盘与 env 注入，Web 回显只带 `apiTokenSet`） |
+| `memory.rules` | array | `[]` | 记忆隔离规则：`{target, mode, tag?, bank?}`；target 为 `{type:'workspace', id}` 或 `{type:'path', path}`。裁决序：路径规则（最长前缀）> workspace 规则（spawn 的工作区语境）> 默认 normal |
+| `memory.bankName` | string | `mobi-global` | 全局池 bank 名覆盖（高级） |
+| `memory.disabledWorkspaces` | string[] | `[]` | 按目录关闭记忆的排除名单（前缀匹配、支持 `~`） |
+
+**记忆隔离三档**（`rules[].mode`，未命中路径/工作区 = 默认 `normal`）：
+
+| 模式 | bank | 写（retain） | 读（recall） | 适用 |
+|------|------|------|------|------|
+| `normal` | `mobi-global` | 打 `project:<tag>` 溯源 tag | any 过滤（本项目 ∪ 全局层） | 默认：各项目独立记忆、长期沉淀共享 |
+| `open` | `mobi-global` | 不打 tag | 不过滤 | 闲聊：从写入起即全局可见 |
+| `isolated` | `mobi-iso-<tag>`（可覆盖） | 打 `project:<tag>` | 不过滤 | 独立项目：硬隔离，与全局互不可见 |
+
+`<tag>` = 规则的 `tag` 覆盖值（多目标同名 = 共享组）或 git 仓库名（worktree 归主仓）。会话 spawn 时按（档位 × tag）在 `<dataDir>/memory/hindsight/projects/` 生成 per-scope hindsight 配置文件，经 `HINDSIGHT_CONFIG` 注入会话进程；设置变更下个新会话生效。
 
 **宿主通道端口**：会话子进程回连 daemon 的 loopback-only listener（`/cli` socket + `/cli/*` HTTP），端口 = 主端口 + 10000（2222→12222），可被 `MOBI_HOST_PORT` 覆盖；只绑 `127.0.0.1`，不经 frp 暴露。
 
