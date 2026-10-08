@@ -639,6 +639,8 @@
             "saveButton": "Save",
             "savedHint": "Saved · takes effect on next new session",
             "saveFailed": "Save failed",
+            "loadFailed": "Failed to load memory settings. Make sure the daemon is reachable and retry",
+            "endpointInvalid": "Invalid API URL: a full URL with scheme is required (e.g. http://localhost:9999)",
             "ruleAddWorkspace": "Select a workspace to add a rule",
             "ruleAddPath": "Add by path (advanced)",
             "rulePathPlaceholder": "Directory path (e.g. ~/notes)",

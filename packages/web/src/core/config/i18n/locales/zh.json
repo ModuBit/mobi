@@ -630,6 +630,8 @@
             "saveButton": "保存",
             "savedHint": "已保存 · 下个新会话生效",
             "saveFailed": "保存失败",
+            "loadFailed": "记忆设置加载失败，请确认 daemon 可达后重试",
+            "endpointInvalid": "API 地址无效：需要带协议的完整 URL（如 http://localhost:9999）",
             "ruleAddWorkspace": "选择工作区添加规则",
             "ruleAddPath": "按路径添加（高级）",
             "rulePathPlaceholder": "目录路径（如 ~/notes）",

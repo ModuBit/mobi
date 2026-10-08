@@ -70,6 +70,8 @@ const i18nMap = vi.hoisted(() => ({
     'settings.memory.saveButton': '保存',
     'settings.memory.savedHint': '已保存 · 下个新会话生效',
     'settings.memory.saveFailed': '保存失败',
+    'settings.memory.loadFailed': '记忆设置加载失败，请确认 daemon 可达后重试',
+    'settings.memory.endpointInvalid': 'API 地址无效：需要带协议的完整 URL（如 http://localhost:9999）',
 }))
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -112,13 +114,17 @@ describe('纯函数：链接与出本机判定', () => {
         expect(deriveMemoryUiUrl('http://192.168.1.10:3456/api')).toBe('http://192.168.1.10:9999')
         expect(deriveMemoryUiUrl('')).toBeNull()
         expect(deriveMemoryUiUrl('not a url')).toBeNull()
+        // 无 scheme 输入：WHATWG URL 不抛错但 hostname 为空，不生成坏链接（localhost://:9999）
+        expect(deriveMemoryUiUrl('localhost:9999')).toBeNull()
     })
 
-    it('isOffMachineEndpoint：非本机主机 → true；localhost/非法 → false', () => {
+    it('isOffMachineEndpoint：非本机主机 → true；localhost/非法/无 scheme → false', () => {
         expect(isOffMachineEndpoint('https://api.example.com')).toBe(true)
         expect(isOffMachineEndpoint('http://localhost:8080')).toBe(false)
         expect(isOffMachineEndpoint('http://127.0.0.1:8080')).toBe(false)
         expect(isOffMachineEndpoint('garbage')).toBe(false)
+        // 无 scheme：解析不出 hostname，不误报「数据出本机」
+        expect(isOffMachineEndpoint('localhost:9999')).toBe(false)
     })
 })
 
@@ -130,6 +136,15 @@ describe('MemorySection 默认关闭态', () => {
         await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.privacyHint'])).toBeInTheDocument())
         expect(screen.queryByLabelText('API 地址')).not.toBeInTheDocument()
         expect(screen.queryByText(i18nMap['settings.memory.offMachineWarning'])).not.toBeInTheDocument()
+    })
+
+    it('加载失败（daemon 不可达）：不按空默认初始化草稿（无表单可编辑），显示加载失败提示', async () => {
+        stableApi.memory.get.mockRejectedValue(new Error('network down'))
+        renderSection()
+
+        await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.loadFailed'])).toBeInTheDocument())
+        // 表单不渲染——防「空草稿一次保存覆写已存配置」
+        expect(screen.queryByLabelText('API 地址')).not.toBeInTheDocument()
     })
 })
 

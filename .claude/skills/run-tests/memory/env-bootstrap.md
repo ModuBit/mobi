@@ -98,6 +98,11 @@ daemon spawn 的会话 CLI 是 `bun packages/cli/src/index.ts` 源码直跑，�
 （审查 RPC 曾在独立 runner 进程执行、需单独重启 runner——ticket-16 起 runner 并入 daemon，
 重启 daemon 即可，原 runner 单独重启段已失效删除。）
 
+⚠️ **前提：bootstrap 已退出（2026-10-09 实测）**。bootstrap 常驻（末尾 `wait`）期间 kill 它的
+daemon 子进程 → `wait` 返回 → 脚本退出路径触发 trap 清理，**整个数据目录被 rm**（`~/.mobi-e2e/logs`
+连同消失，重启后现起 daemon 会因日志重定向目录不存在直接退出 1）。bootstrap 还活着时没有
+「只重启 daemon」——要么等/杀 bootstrap 后自管 daemon，要么接受清空走完整 bootstrap 重建素材。
+
 1. 找 PID：`ps -eo pid,ppid,command | grep -E "profile e2e|2224" | grep -v grep`
    （e2e 两件套：daemon / `bun run dev`；生产 daemon 是 `~/.local/bin/mobi`，**禁碰**）
 2. `kill -TERM <daemon pid>` → 轮询 `lsof -nP -iTCP:2224 -sTCP:LISTEN` 直到端口释放（实测 1s）

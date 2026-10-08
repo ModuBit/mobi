@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { MemoryEndpointCheckResult, MemoryRule } from '@mobi/shared'
-import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint } from '@mobi/shared'
+import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint, parseEndpointUrl } from '@mobi/shared'
 import { SettingsCard } from '@/components/settings/blocks/shared'
 import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemorySettings'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
@@ -118,7 +118,7 @@ export function MemorySection() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message } = App.useApp()
-    const { settings, loaded, saving, save, check } = useMemorySettings()
+    const { settings, loaded, offline, saving, save, check } = useMemorySettings()
     const workspacesQuery = useWorkspaces()
 
     // 表单草稿（可变输入——最小标识外状态，非派生对象）
@@ -145,7 +145,14 @@ export function MemorySection() {
         setInitialized(true)
     }, [loaded, initialized, settings])
 
-    if (!loaded) return <Placeholder />
+    if (!loaded) {
+        return (
+            <Wrap>
+                {offline && <Alert type="warning" showIcon message={t('settings.memory.loadFailed')} />}
+                <Placeholder />
+            </Wrap>
+        )
+    }
 
     const uiUrl = deriveMemoryUiUrl(endpoint)
     const offMachine = engine === 'hindsight' && isOffMachineEndpoint(endpoint)
@@ -176,9 +183,16 @@ export function MemorySection() {
     })
 
     const handleSave = async () => {
-        if (engine === 'hindsight' && !endpoint.trim()) {
-            message.error(t('settings.memory.endpointRequired'))
-            return
+        if (engine === 'hindsight') {
+            if (!endpoint.trim()) {
+                message.error(t('settings.memory.endpointRequired'))
+                return
+            }
+            // 无 scheme（localhost:9999）等解析不出 hostname 的输入在保存口拦下
+            if (!parseEndpointUrl(endpoint)) {
+                message.error(t('settings.memory.endpointInvalid'))
+                return
+            }
         }
         const result = await save(buildSubmission())
         if (!result.ok) {

@@ -153,8 +153,9 @@ const USER_PROFILE_PAGE = {
  * scope 身份单源（纯函数）：mode/tag/bankId/slug 一处推导，build（文件内容）与
  * sync（文件名 slug）消费同一结果——文件名与内容不可能错位。
  * tag 缺省链 = rule.tag 覆盖（共享组名）→ gitProject → 'default'。
- * isolated 档 bank 覆盖必须进 slug：同 tag 不同 bank 的两条规则（如同名仓库各隔
- * 各的）若共用 `<mode>-<tag>` 文件名会互相覆写，隔离错乱。
+ * isolated 档 bank 覆盖时 slug 带 bank+tag 双标识：同 tag 不同 bank（同名仓库各隔各的）
+ * 与同 bank 不同 tag（多仓库共用一库）两个方向都不能共用文件——retainTags/bankId
+ * 任一不同，共用即后写者管辖前者的会话。
  */
 export function resolveMemoryScope(
     memory: Pick<MemorySettings, 'bankName'>,
@@ -163,11 +164,12 @@ export function resolveMemoryScope(
 ): { mode: MemoryIsolationMode; tag: string; bankId: string; slug: string } {
     const mode = rule?.mode ?? 'normal'
     const tag = rule?.tag?.trim() || gitProject || 'default'
+    const bank = rule?.bank?.trim()
     const bankId = mode === 'isolated'
-        ? (rule?.bank?.trim() || `${ISO_BANK_PREFIX}${tag}`)
+        ? (bank || `${ISO_BANK_PREFIX}${tag}`)
         : (memory.bankName?.trim() || GLOBAL_BANK_DEFAULT)
-    const slug = mode === 'isolated' && rule?.bank?.trim()
-        ? `${mode}-${rule.bank.trim()}`
+    const slug = mode === 'isolated' && bank
+        ? `${mode}-${bank}-${tag}`
         : `${mode}-${tag}`
     return { mode, tag, bankId, slug }
 }

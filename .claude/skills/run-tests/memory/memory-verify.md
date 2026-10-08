@@ -3,7 +3,7 @@ name: memory-verify
 description: 长期记忆（hindsight）E2E 主线——fake 服务桩四场景（off/active/改设置/非法配置），断言面=mobi 侧行为
 metadata:
   type: recipe
-  last_verified: 2026-10-08
+  last_verified: 2026-10-09
 ---
 
 # 记忆（agent-memory）E2E 验证
@@ -14,7 +14,7 @@ metadata:
 
 - 挂载 = 会话 CLI 进程树（cli 自身或内层 claude）args 含 `--plugin-dir …/plugins/memory-hindsight`
 - env 注入 = fake 服务收到 hook 请求且 `hasAuth:true`（HINDSIGHT_API_TOKEN 到达会话进程）
-- 管理配置文件 = `~/.mobi-e2e/memory/hindsight/projects/<mode>-<gitProject>.json`（per-scope：档位×tag）：normal 含 bankId=mobi-global + retainTags project:demo + recallOptions any；open 含 retainTags:[] 无 recallOptions；isolated 含覆盖/派生 bank（mobi-iso-*）无 recallOptions
+- 管理配置文件 = `~/.mobi-e2e/memory/hindsight/projects/<mode>-<tag>.json`（per-scope：档位×tag；isolated 的 bank 覆盖时文件名带 bank+tag 双标识 `isolated-<bank>-<tag>.json`）：normal 含 bankId=mobi-global + retainTags project:demo + recallOptions any；open 含 retainTags:[] 无 recallOptions；isolated 含覆盖/派生 bank（mobi-iso-*）无 recallOptions
 - settings 开关直改 `~/.mobi-e2e/settings.daemon.json` memory 段（spawn 每次现读，「下会话生效」）
 
 ## 场景

@@ -66,7 +66,7 @@
 | `open` | `mobi-global` | 不打 tag | 不过滤 | 闲聊：从写入起即全局可见 |
 | `isolated` | `mobi-iso-<tag>`（可覆盖） | 打 `project:<tag>` | 不过滤 | 独立项目：硬隔离，与全局互不可见 |
 
-`<tag>` = 规则的 `tag` 覆盖值（多目标同名 = 共享组）或 git 仓库名（worktree 归主仓）。会话 spawn 时按（档位 × tag）在 `<dataDir>/memory/hindsight/projects/` 生成 per-scope hindsight 配置文件，经 `HINDSIGHT_CONFIG` 注入会话进程；设置变更下个新会话生效。
+`<tag>` = 规则的 `tag` 覆盖值（多目标同名 = 共享组）或 git 仓库名（worktree 归主仓）。会话 spawn 时按 scope（档位 × tag × bank）在 `<dataDir>/memory/hindsight/projects/` 生成 per-scope hindsight 配置文件（`<mode>-<tag>.json`；isolated 的 bank 覆盖时文件名带 `isolated-<bank>-<tag>` 双标识，防同 tag 不同 bank、同 bank 不同 tag 的规则互相覆写），经 `HINDSIGHT_CONFIG` 注入会话进程；设置变更下个新会话生效。
 
 **宿主通道端口**：会话子进程回连 daemon 的 loopback-only listener（`/cli` socket + `/cli/*` HTTP），端口 = 主端口 + 10000（2222→12222），可被 `MOBI_HOST_PORT` 覆盖；只绑 `127.0.0.1`，不经 frp 暴露。
 

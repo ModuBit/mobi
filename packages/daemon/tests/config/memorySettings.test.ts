@@ -183,16 +183,22 @@ describe('syncMemoryManagedConfig（per-scope 幂等落盘）', () => {
             .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-mobi.json'))
     })
 
-    it('bank 覆盖进 slug：同 tag 不同 bank 的 isolated 规则分文件（防互相覆写）', async () => {
+    it('bank+tag 双标识进 slug：同 tag 不同 bank、同 bank 不同 tag 的 isolated 规则均分文件（防互相覆写）', async () => {
         const vaultA: MemoryRule = { target: { type: 'path', path: '/x' }, mode: 'isolated', bank: 'vault-a' }
         const vaultB: MemoryRule = { target: { type: 'path', path: '/y' }, mode: 'isolated', bank: 'vault-b' }
+        const sharedVault: MemoryRule = { target: { type: 'path', path: '/z' }, mode: 'isolated', bank: 'vault-a', tag: 'other' }
         const a = await syncMemoryManagedConfig(dataDir, active, 'demo', vaultA)
         const b = await syncMemoryManagedConfig(dataDir, active, 'demo', vaultB)
-        expect(a).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-a.json'))
-        expect(b).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-b.json'))
+        // 同 bank（vault-a）不同 tag（demo/other，多仓库共库场景）也不能共用文件——
+        // retainTags（project:<tag>）不同，共用则后写者管辖前者的会话
+        const c = await syncMemoryManagedConfig(dataDir, active, 'demo', sharedVault)
+        expect(a).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-a-demo.json'))
+        expect(b).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-b-demo.json'))
+        expect(c).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-a-other.json'))
         // 各自内容互不覆写
         expect(JSON.parse(readFileSync(a, 'utf-8')).bankId).toBe('vault-a')
         expect(JSON.parse(readFileSync(b, 'utf-8')).bankId).toBe('vault-b')
+        expect(JSON.parse(readFileSync(c, 'utf-8')).retainTags).toEqual(['project:other'])
     })
 
     it('slug 非法字符清洗为 `_`（防路径穿越）', async () => {

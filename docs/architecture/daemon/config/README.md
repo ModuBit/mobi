@@ -10,7 +10,7 @@ Configuration 管理 daemon 的所有运行时配置，遵循统一的优先级�
 
 ## 记忆设置与三档隔离（agent-memory）
 
-`settings.daemon.json` 的 `memory` 段（形状单源 `@mobi/shared` MemorySettingsSchema）。spawn 时 executor 逐次求值（`resolveMemoryEnv(directory, workspaceId)`）：读设置 → `resolveMemoryRule` 解析隔离规则（**路径规则最长前缀 > workspace 规则按 spawn 的 workspaceId > 默认 normal**）→ `resolveGitProjectName` 展开 tag → 按（档位 × tag）幂等生成 per-scope hindsight 配置文件（`<dataDir>/memory/hindsight/projects/<mode>-<tag>.json`，isolated 的 bank 覆盖进文件名防同 tag 互写）→ 返回注入子进程的 env（`MOBI_MEMORY_ENGINE` / `HINDSIGHT_API_URL` / `HINDSIGHT_API_TOKEN` / `HINDSIGHT_CONFIG`）。三档语义（normal/open/isolated）与设置项见 `docs/configuration.md`。
+`settings.daemon.json` 的 `memory` 段（形状单源 `@mobi/shared` MemorySettingsSchema）。spawn 时 executor 逐次求值（`resolveMemoryEnv(directory, workspaceId)`）：读设置 → 裁决（off/非法/排除零额外 I/O 即降级）→ `resolveMemoryRule` 解析隔离规则（**路径规则最长前缀 > workspace 规则按 spawn 的 workspaceId > 默认 normal**）→ `resolveGitProjectName` 展开 tag → 按 scope（档位 × tag × bank）幂等生成 per-scope hindsight 配置文件（`<dataDir>/memory/hindsight/projects/<mode>-<tag>.json`，isolated 的 bank 覆盖时文件名带 `isolated-<bank>-<tag>` 双标识——同 tag 不同 bank、同 bank 不同 tag 都不互相覆写）→ 返回注入子进程的 env（`MOBI_MEMORY_ENGINE` / `HINDSIGHT_API_URL` / `HINDSIGHT_API_TOKEN` / `HINDSIGHT_CONFIG`）。三档语义（normal/open/isolated）与设置项见 `docs/configuration.md`。
 
 > 2026-09-05 起配置按部署归属拆分：daemon 配置在 `settings.daemon.json`，cli 配置在 `settings.cli.json`（归 cli 包所有，见 `docs/configuration.md`）。daemon 与 cli 支持不同机器部署。501 起文件名读旧写新（旧 `settings.hub.json` 首启自动 rename）。
 

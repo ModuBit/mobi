@@ -452,7 +452,7 @@ export function createMobiApi() {
 
         // 长期记忆设置（daemon 本地 settings.daemon.json；apiToken 脱敏回显只回 set 标记）
         memory: {
-            get: () => client.get<{ settings: RedactedMemorySettings }>('/api/memory'),
+            get: () => client.get<{ settings: RedactedMemorySettings } | { error: string }>('/api/memory'),
             // apiToken 在场性协议：不在场 = 保持旧值；空串 = 清除；非空 = 覆盖
             set: (submission: MemorySettingsSubmission) =>
                 client.post<{ settings: RedactedMemorySettings } | { error: string }>('/api/memory', submission),

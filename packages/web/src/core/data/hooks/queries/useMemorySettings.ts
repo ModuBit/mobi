@@ -25,6 +25,8 @@ import type { MemoryEndpointCheckResult, MemorySettings, MemorySettingsSubmissio
  */
 export interface MemorySettingsState {
     settings: RedactedMemorySettings | null
+    /** 加载失败（daemon 不可达 / 读盘失败）——失败时草稿不按空默认值初始化（防一次保存覆写已存配置） */
+    offline: boolean
     loaded: boolean
     saving: boolean
     /** 提交（apiToken 在场性协议见 MemorySettingsSubmission）；成功失效缓存重读；失败带原因 */
@@ -50,19 +52,39 @@ export function useMemorySettings(): MemorySettingsState {
 
     const query = useQuery({
         queryKey: queryKeys.memorySettings,
-        queryFn: async () => (await api.memory.get()).data.settings,
+        queryFn: async (): Promise<{ status: 'ok'; settings: RedactedMemorySettings } | { status: 'offline' }> => {
+            try {
+                const data = (await api.memory.get()).data
+                if ('settings' in data) {
+                    return { status: 'ok', settings: data.settings }
+                }
+                console.warn('[memorySettings] 加载失败', data)
+                return { status: 'offline' }
+            } catch (error) {
+                // daemon 不可达等传输层异常：不按空默认值初始化草稿（否则一次保存覆写已存配置）
+                console.warn('[memorySettings] 加载失败', error)
+                return { status: 'offline' }
+            }
+        },
         staleTime: 30_000,
         retry: false,
         refetchOnWindowFocus: false,
     })
 
     const saveMutation = useMutation({
-        mutationFn: async (submission: MemorySettingsSubmission) => {
-            const res = await api.memory.set(submission)
-            if (!('settings' in res.data)) {
-                return { ok: false as const, error: res.data.error ?? '' }
+        mutationFn: async (submission: MemorySettingsSubmission): Promise<{ ok: true } | { ok: false; error: string }> => {
+            // 未成功加载禁止保存（双保险：loaded 已挡 UI，此处挡绕过 UI 的调用）
+            if (query.data?.status !== 'ok') return { ok: false, error: '' }
+            try {
+                const res = await api.memory.set(submission)
+                if (!('settings' in res.data)) {
+                    return { ok: false, error: res.data.error ?? '' }
+                }
+                return { ok: true }
+            } catch {
+                // 传输层异常：error 留空，调用方回退通用文案（对齐 webTools）
+                return { ok: false, error: '' }
             }
-            return { ok: true as const }
         },
         onSuccess: (result) => {
             if (result.ok) {
@@ -72,8 +94,9 @@ export function useMemorySettings(): MemorySettingsState {
     })
 
     return {
-        settings: query.data ?? null,
-        loaded: !query.isPending,
+        settings: query.data?.status === 'ok' ? query.data.settings : null,
+        offline: !query.isPending && query.data?.status === 'offline',
+        loaded: query.data?.status === 'ok',
         saving: saveMutation.isPending,
         save: (submission) => saveMutation.mutateAsync(submission),
         check: async (input) => {

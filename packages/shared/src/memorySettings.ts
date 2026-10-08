@@ -125,18 +125,31 @@ export type MemoryEndpointCheckResult =
 /** Cloud 默认 API 地址（endpoint 输入占位提示） */
 export const HINDSIGHT_CLOUD_API_URL = 'https://api.hindsight.vectorize.io'
 
+/**
+ * endpoint 解析单源：合法 URL 且 hostname 非空才可用。无 scheme 的输入
+ * （`localhost:9999`）会被 WHATWG URL 按非标准 protocol 解析而不抛错、hostname 为空——
+ * 不拦住会误判「数据出本机」并生成坏链接。
+ */
+export function parseEndpointUrl(endpoint: string): URL | null {
+    const trimmed = endpoint.trim()
+    if (!trimmed) return null
+    try {
+        const url = new URL(trimmed)
+        return url.hostname ? url : null
+    } catch {
+        return null
+    }
+}
+
 /** 主机名是否指向本机（不出本机的判定） */
 export function isLocalHostname(hostname: string): boolean {
     return ['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'].includes(hostname)
 }
 
-/** endpoint 是否会把记忆数据送出本机（合法 URL 且主机非本机 → 提示「数据将离开本机」） */
+/** endpoint 是否会把记忆数据送出本机（可用 URL 且主机非本机 → 提示「数据将离开本机」） */
 export function isOffMachineEndpoint(endpoint: string): boolean {
-    try {
-        return !isLocalHostname(new URL(endpoint.trim()).hostname)
-    } catch {
-        return false
-    }
+    const url = parseEndpointUrl(endpoint)
+    return url ? !isLocalHostname(url.hostname) : false
 }
 
 /**
@@ -145,15 +158,10 @@ export function isOffMachineEndpoint(endpoint: string): boolean {
  * 非法/空 endpoint → null（不渲染链接）。
  */
 export function deriveMemoryUiUrl(endpoint: string): string | null {
-    const trimmed = endpoint.trim()
-    if (!trimmed) return null
-    try {
-        const url = new URL(trimmed)
-        if (url.hostname === 'hindsight.vectorize.io' || url.hostname.endsWith('.hindsight.vectorize.io')) {
-            return 'https://ui.hindsight.vectorize.io'
-        }
-        return `${url.protocol}//${url.hostname}:9999`
-    } catch {
-        return null
+    const url = parseEndpointUrl(endpoint)
+    if (!url) return null
+    if (url.hostname === 'hindsight.vectorize.io' || url.hostname.endsWith('.hindsight.vectorize.io')) {
+        return 'https://ui.hindsight.vectorize.io'
     }
+    return `${url.protocol}//${url.hostname}:9999`
 }
