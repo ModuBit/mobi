@@ -25,6 +25,8 @@ description: 全面升级项目依赖到最新版本。当用户提到"升级依
 
 对每个包记录：包名、当前版本约束、所在位置（哪个 package.json 的 dependencies/devDependencies）。
 
+> ⚠️ package.json 之外的 vendored 资产（hindsight plugin）不在此扫描范围，由第九步单独覆盖。
+
 ### 第二步：从 npm 查询最新版本
 
 **必须从 npm 实时查询，禁止依赖训练数据或本地猜测。** 使用 `npm view <pkg> version` 获取每个包的最新版本。可以分批并发查询以提高效率。
@@ -202,6 +204,21 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 
 **建议处置**：挖掘出的建议在汇报的「新功能引入建议」章节列出，由用户当场定夺；同时**落盘到 `docs/upstream-suggestions.md` 台账**（每条含功能名/出处/价值/落地位置/优先级/状态六字段 + 来源版本区间，采纳后的立项跟进仍在 `docs/pending.md`，终态后回写台账状态）。
 
+### 第九步：vendored 第三方资产检查（hindsight plugin）
+
+`packages/cli/plugins/memory-hindsight/` 是对 npm 包 `@vectorize-io/hindsight-coding-agents` 的 **vendor 落位**——**不在任何 package.json 里**（`npm pack` 拉取拷贝），第一步的依赖扫描和 `bun outdated` 都发现不了它。每次升级依赖必须显式检查。
+
+**权威流程载体是随代码走的 [packages/cli/plugins/memory-hindsight/VENDOR-NOTES.md](../../../packages/cli/plugins/memory-hindsight/VENDOR-NOTES.md)（重新 vendor 命令、裁剪清单、版本号），本步以它为准；下述要点是执行时不可漏的检查项：**
+
+1. `npm view @vectorize-io/hindsight-coding-agents version` 对比 VENDOR-NOTES.md 记录的 vendored 版本（当前 0.8.0）
+2. 无新版 → 跳过。有新版 → 按 VENDOR-NOTES「重新 vendor」命令拉包，**只拷裁剪清单内的 7 个 dist 文件 + `skill/SKILL.md`**（其余 ~50 个 harness 入口是其他工具的，不拷）
+3. **对照上游 `plugin.json` 的 `hooks` / `mcpServers` 段 diff 本地三件套**（`.claude-plugin/plugin.json` / `hooks/hooks.json` / `.mcp.json`）——它们是上游 dcode 形态清单的 CC 格式改写（`${PLUGIN_ROOT}`→`${CLAUDE_PLUGIN_ROOT}`、入口指向 `claude-*`）。上游若**新增 hook 事件、改 hook 入口、改 mcpServers 配置**，本地改写必须同步，否则新能力静默丢失
+4. 更新 VENDOR-NOTES.md 版本号 + 日期；dist 文件有增减时同步 node-core `bundledPlugins.ts` 资产清单
+5. **验证**（上游 hook 协议版本间有变动史，typecheck 拦不住）：
+   - `bun run test:node-core`（bundledPlugins.test 锁 repo 文件与 TS 常量一致性）
+   - memory 插件 PoC：跑 `/run-tests` 的 e2e-memory 脚本（挂载信号 → hook 触发 → retain 落库全链路，VENDOR-NOTES 的升级前置要求）
+6. 汇报：vendored 版本变化（旧→新）、上游 plugin.json 是否有协议面变更、验证结果
+
 ## 版本约束规范
 
 | 原约束 | 推荐写法 | 说明 |
@@ -219,4 +236,5 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 - **patchedDependencies 维护**：每次升级必须执行第七步，按上游新版情况处理补丁（移除/迁移/重做），不只是「移除」——上游没修但改了代码，补丁要跟着重做
 - **anthropic/claude 包强制 changelog 检查**：升任何 `@anthropic-ai/*` 包必须执行第八步——拉 SDK + Claude Code 两个 changelog，对照 mobi SDK 使用面评估影响（防御）+ 挖掘可引入的新功能并产出建议表（进攻），typecheck 拦不住的运行时行为用 E2E 回归
 - **changelog 抓取规范**：必须 WebFetch + URL 逐字符照抄第八步表格（禁止 webReader、禁止改写 URL）+ 拿到后与 npm latest 交叉验证（详见第八步第 1 小节）
+- **vendored 资产检查**：每次升级必须执行第九步——hindsight plugin（`@vectorize-io/hindsight-coding-agents` 的 vendor 落位）不在任何 package.json 里，依赖扫描与 `bun outdated` 均不可见，只能显式查 npm 对比 VENDOR-NOTES 版本；有新版须按 VENDOR-NOTES 重新 vendor + diff 上游 plugin.json 协议面 + 跑 bundledPlugins 测试与 memory E2E
 - **提交规范**：commit message 使用 `chore:` 前缀，列出关键变更
