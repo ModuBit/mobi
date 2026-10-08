@@ -27,8 +27,12 @@ const stableApi = {
 vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => stableApi,
 }))
+// workspace 数据源（规则编辑契约用例注入）——类型别名单写，避免 .tsx 里
+// `Array<{...}>` 字面量被 oxc 解析为 JSX 开标签
+type WorkspaceStub = { id: string; name: string; folders: { path: string }[] }
+const stableWorkspaces = vi.hoisted(() => ({ data: [] as WorkspaceStub[] }))
 vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
-    useWorkspaces: () => ({ data: [] }),
+    useWorkspaces: () => ({ data: stableWorkspaces.data }),
 }))
 
 // i18n：key → 断言用中文文案（与 locales zh.json 对齐的最小子集），支持 {{xxx}} 插值
@@ -44,8 +48,18 @@ const i18nMap = vi.hoisted(() => ({
     'settings.memory.tokenSetPlaceholder': '已设置 · 留空保持不变',
     'settings.memory.tokenUnsetPlaceholder': '粘贴 API Token（可选）',
     'settings.memory.tokenClear': '清除已存 Token',
-    'settings.memory.mapTitle': '路径 → Bank 映射',
-    'settings.memory.mapAdd': '添加映射',
+    'settings.memory.mapTitle': '记忆隔离',
+    'settings.memory.ruleAddWorkspace': '选择工作区添加规则',
+    'settings.memory.ruleAddPath': '按路径添加（高级）',
+    'settings.memory.rulePathPlaceholder': '目录路径（如 ~/notes）',
+    'settings.memory.modeNormal': '独立记忆',
+    'settings.memory.modeOpen': '完全共享',
+    'settings.memory.modeIsolated': '完全隔离',
+    'settings.memory.tagLabel': '共享组名',
+    'settings.memory.bankLabel': '隔离库名',
+    'settings.memory.bankNameLabel': '全局记忆库名',
+    'settings.memory.bankNamePlaceholder': 'mobi-global',
+    'settings.memory.ruleRemove': '删除该规则',
     'settings.memory.excludedTitle': '按工作区关闭',
     'settings.memory.statusTitle': '连接状态',
     'settings.memory.checkButton': '检查连接',
@@ -149,7 +163,8 @@ describe('MemorySection hindsight 开启态', () => {
         let payload = stableApi.memory.set.mock.calls[0][0]
         expect(payload.apiToken).toBeUndefined()
         expect(payload.engine).toBe('hindsight')
-        expect(payload.mapPathToBank).toEqual({})
+        expect(payload.rules).toEqual([])
+        expect(payload.bankName).toBe('')
         expect(payload.disabledWorkspaces).toEqual([])
 
         // 填写后携带
@@ -158,6 +173,41 @@ describe('MemorySection hindsight 开启态', () => {
         await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledTimes(2))
         payload = stableApi.memory.set.mock.calls[1][0]
         expect(payload.apiToken).toBe('tok-123')
+    })
+
+    it('隔离规则编辑契约：workspace 选择添加 → 档位切换出条件覆盖 → payload 携带', async () => {
+        stableWorkspaces.data = [{ id: 'w-learn', name: '学习', folders: [{ path: '/x/learn' }] }]
+        renderSection()
+        await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
+
+        // 添加 workspace 规则（默认 normal）
+        fireEvent.mouseDown(screen.getByLabelText('选择工作区添加规则'))
+        await waitFor(() => expect(screen.getByText('学习')).toBeInTheDocument())
+        fireEvent.click(screen.getByText('学习'))
+        await waitFor(() => expect(screen.getByLabelText('共享组名')).toBeInTheDocument())
+
+        // 填共享组名
+        fireEvent.change(screen.getByLabelText('共享组名'), { target: { value: 'learn' } })
+
+        // 切到 isolated → 共享组名消失、隔离库名出现
+        fireEvent.mouseDown(screen.getByLabelText('记忆隔离'))
+        await waitFor(() => expect(screen.getByText('完全隔离')).toBeInTheDocument())
+        fireEvent.click(screen.getByText('完全隔离'))
+        await waitFor(() => expect(screen.queryByLabelText('共享组名')).not.toBeInTheDocument())
+        await waitFor(() => expect(screen.getByLabelText('隔离库名')).toBeInTheDocument())
+        fireEvent.change(screen.getByLabelText('隔离库名'), { target: { value: 'vault' } })
+
+        // 全局库名覆盖
+        fireEvent.change(screen.getByLabelText('全局记忆库名'), { target: { value: 'my-pool' } })
+
+        // 保存 payload：规则与覆盖值形状正确
+        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
+        const payload = stableApi.memory.set.mock.calls[0][0]
+        expect(payload.rules).toEqual([
+            { target: { type: 'workspace', id: 'w-learn' }, mode: 'isolated', bank: 'vault' },
+        ])
+        expect(payload.bankName).toBe('my-pool')
     })
 
     it('清除 token：提交空串（在场性=清除）', async () => {

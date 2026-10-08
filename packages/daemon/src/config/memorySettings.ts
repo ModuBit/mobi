@@ -27,28 +27,31 @@
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, normalize } from 'node:path'
 import { homedir } from 'node:os'
 // 设置形状单源在 shared 协议（web 提交/回显同 schema 派生，双定义必漂移）。
 // re-export 保持 daemon 包内既有 import 路径（settings.ts / lifecycle.ts）不动
-import type { MemorySettings } from '@mobi/shared'
-export type { MemorySettings }
+import type { MemorySettings, MemoryRule } from '@mobi/shared'
+export type { MemorySettings, MemoryRule }
 
 /**
  * 记忆设置块（settings.daemon.json `memory` 字段；v1 引擎仅 hindsight）。
  * 形状权威见 @mobi/shared MemorySettingsSchema。
  */
 
-/** mobi 管理的 hindsight 配置文件根目录（per-project 文件在其 projects/ 下） */
+/** mobi 管理的 hindsight 配置文件根目录（per-scope 文件在其 projects/ 下） */
 export const MEMORY_MANAGED_CONFIG_REL_PATH = join('memory', 'hindsight')
 
-/** per-project 配置文件名清洗：非法字符归一为 `_`（basename 已无分隔符，防 `..` 等） */
-function projectSlug(gitProject: string): string {
-    return gitProject.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+$/, '_') || 'default'
+/** per-scope 配置文件名清洗：非法字符归一为 `_`（basename 已无分隔符，防 `..` 等） */
+function projectSlug(raw: string): string {
+    return raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+$/, '_') || 'default'
 }
 
-/** 全局个人 bank 基名（bankNamespace 非空时前缀成 `<ns>::mobi-personal`） */
-const PERSONAL_BANK_BASE = 'mobi-personal'
+/** 全局池默认 bank 名（normal/open 共用；bankName 设置项可覆盖） */
+const GLOBAL_BANK_DEFAULT = 'mobi-global'
+
+/** isolated 档派生 bank 前缀（`mobi-iso-<tag/gitProject>`，与 global 对仗） */
+const ISO_BANK_PREFIX = 'mobi-iso-'
 
 /**
  * 会话记忆裁决结果：
@@ -77,6 +80,38 @@ function isWorkspaceDisabled(disabled: string[] | undefined, directory: string):
 /** 归一化引擎值（未知值视为 off，fail-closed） */
 function normalizeEngine(raw: unknown): 'off' | 'hindsight' {
     return raw === 'hindsight' ? 'hindsight' : 'off'
+}
+
+/**
+ * 隔离规则解析（纯函数，spec 三档定稿裁决序）：
+ * **路径规则（最长前缀优先）> workspace 规则（按 spawn 的 workspaceId 直查）> 默认 normal**。
+ *
+ * - workspace 档位跟会话的工作区语境走，不听目录——同目录挂多个不同档 workspace 时，
+ *   从哪个 workspace spawn 就用哪个档（spawn options.workspaceId 是明确语境，无歧义）
+ * - 路径规则作裸目录 spawn 兜底（无 workspaceId 时 workspace 档跳过）
+ * - 路径前缀匹配对齐 hook mapLookup 语义（normalize + 尾分隔符归一，~ 展开）
+ */
+export function resolveMemoryRule(
+    rules: MemoryRule[] | undefined,
+    directory: string,
+    workspaceId: string | undefined,
+): MemoryRule | undefined {
+    if (!rules?.length) return undefined
+    const dir = normalize(expandHome(directory))
+    let best: { rule: MemoryRule; len: number } | undefined
+    for (const rule of rules) {
+        if (rule.target.type === 'path') {
+            const e = normalize(expandHome(rule.target.path.trim()))
+            if (!e) continue
+            const hit = dir === e || dir.startsWith(e.endsWith('/') ? e : e + '/')
+            // 最长前缀优先：更精确的路径规则盖过更宽的
+            if (hit && (!best || e.length > best.len)) best = { rule, len: e.length }
+        } else if (rule.target.type === 'workspace' && workspaceId && rule.target.id === workspaceId) {
+            // 路径规则恒优先于 workspace 规则（best 已命中路径时不动）
+            if (!best) best = { rule, len: -1 }
+        }
+    }
+    return best?.rule
 }
 
 /**
@@ -118,34 +153,43 @@ const USER_PROFILE_PAGE = {
 }
 
 /**
- * 生成 mobi 管理的 hindsight 配置文件内容（纯函数）。
- * 拓扑定稿（spec）：静态全局个人 bank + `project:{gitProject}` 溯源 tag；
- * gitIngest/冷启动重导入默认关（个人 bank 不装 commit log）；
- * autoUpdate 关（vendored 版本权威归 mobi 发版）。
+ * 生成 mobi 管理的 hindsight 配置文件内容（纯函数，三档隔离 spec 定稿）。
+ * gitIngest/冷启动重导入默认关（个人记忆不装 commit log）；autoUpdate 关（vendored
+ * 版本权威归 mobi 发版）。
  *
- * 召回过滤（omp per-project-tagged 配方，云端实测 any 语义 = 本项目记忆 ∪ 无 tag 全局）：
- * vendored hook 的 recallOptions 静态透传不展开占位符，故 gitProject 由调用方按会话目录
- * 展开后传入（resolveGitProjectName 复刻 hook 侧探测，保证与 retain tag 一致）。
+ * 三档形态（tag 一律 = `rule.tag ?? gitProject`，**展开值弃占位符**——hook 的
+ * recallOptions 静态透传不展开 `{gitProject}`，mobi spawn 侧展开写入；retain/recall
+ * 两侧 tag 同出 mobi 展开，一致性自动成立）：
+ * - normal（默认）：全局池 + `project:<tag>` 溯源 + recall `any(project:<tag>)`
+ *   （云端实测 any = 本项目记忆 ∪ 无 tag 全局层）
+ * - open：`retainTags: []`——无 tag 记忆的**主动写入口**（未固化期间即全局可见，
+ *   与官方 untagged=全局层语义咬合）；recall 不配（全量）
+ * - isolated：独立 bank `mobi-iso-<tag>`（rule.bank 覆盖）+ 不过滤（bank 已物理隔离）
+ *
  * 已知限制（2026-10-08 实测）：服务端固化会给部分 observation 打知识分类 tags
  * （knowledge:*）——retain tags 不继承（observation_scopes per_tag 实验证伪），any 过滤
  * 下这类带不匹配 tag 的条目被滤（实测 18 条中 1 条）；tags 不支持通配，无法白名单，
  * 记 pending 观察上游。
  */
-export function buildMemoryManagedConfig(memory: MemorySettings | undefined, gitProject?: string): string {
+export function buildMemoryManagedConfig(
+    memory: MemorySettings | undefined,
+    gitProject?: string,
+    rule?: MemoryRule,
+): string {
     const settings = normalizeEngine(memory?.engine) === 'hindsight' ? memory : undefined
-    const bankId = settings?.bankNamespace?.trim()
-        ? `${settings.bankNamespace.trim()}::${PERSONAL_BANK_BASE}`
-        : PERSONAL_BANK_BASE
+    const mode = rule?.mode ?? 'normal'
+    const tag = rule?.tag?.trim() || gitProject || 'unknown'
+    const bankId = mode === 'isolated'
+        ? (rule?.bank?.trim() || `${ISO_BANK_PREFIX}${tag}`)
+        : (settings?.bankName?.trim() || GLOBAL_BANK_DEFAULT)
     return JSON.stringify({
         apiUrl: settings?.endpoint?.trim() ?? '',
         autoUpdate: false,
         gitIngest: false,
         bankId,
-        retainTags: ['project:{gitProject}'],
-        ...(gitProject ? { recallOptions: { tags: [`project:${gitProject}`], tags_match: 'any' } } : {}),
-        ...(settings?.mapPathToBank && Object.keys(settings.mapPathToBank).length > 0
-            ? { mapPathToBank: settings.mapPathToBank }
-            : {}),
+        // open 档不打 tag（真·全局记忆）；normal/isolated 打项目溯源 tag（展开值）
+        retainTags: mode === 'open' ? [] : [`project:${tag}`],
+        ...(mode === 'normal' ? { recallOptions: { tags: [`project:${tag}`], tags_match: 'any' } } : {}),
         customPages: {
             'User Profile': USER_PROFILE_PAGE,
         },
@@ -153,17 +197,21 @@ export function buildMemoryManagedConfig(memory: MemorySettings | undefined, git
 }
 
 /**
- * 同步 mobi 管理的 per-project hindsight 配置文件（幂等：内容未变不写盘，避免刷新 mtime）。
- * per-project：每个 git 项目一份（recallOptions 里的展开 tag 是项目级值），同项目幂等复用。
- * 原子写 temp + rename，目录权限随 dataDir（0700）。
+ * 同步 mobi 管理的 per-scope hindsight 配置文件（幂等：内容未变不写盘，避免刷新 mtime）。
+ * per-scope：每个（档位 × tag）组合一份（isolated 与 normal 同 tag 也分文件，
+ * bank 互异不可共用），同 scope 幂等复用。原子写 temp + rename，目录权限随 dataDir（0700）。
  */
 export function syncMemoryManagedConfig(
     dataDir: string,
     memory: MemorySettings | undefined,
     gitProject?: string,
+    rule?: MemoryRule,
 ): string {
-    const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', `${projectSlug(gitProject ?? 'default')}.json`)
-    const content = buildMemoryManagedConfig(memory, gitProject)
+    const mode = rule?.mode ?? 'normal'
+    const tag = rule?.tag?.trim() || gitProject || 'default'
+    const slug = `${mode}-${tag}`
+    const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', `${projectSlug(slug)}.json`)
+    const content = buildMemoryManagedConfig(memory, gitProject, rule)
     try {
         if (readFileSync(target, 'utf-8') === content) {
             return target

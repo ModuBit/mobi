@@ -45,7 +45,7 @@ export interface MemoryRoutesDeps {
 /**
  * 提交合并（锁内读-改-写的 updater，纯函数便于单测）：
  * - apiToken 在场性协议：不在场 = 保持旧值；空串 = 清除；非空 = 覆盖
- * - 其余字段（engine/endpoint/mapPathToBank/disabledWorkspaces）整体替换
+ * - 其余字段（engine/endpoint/rules/disabledWorkspaces/bankName）整体替换
  */
 export function mergeMemorySubmission(
     current: MemorySettings | undefined,
@@ -54,8 +54,9 @@ export function mergeMemorySubmission(
     const next: MemorySettings = { ...current }
     if (submission.engine !== undefined) next.engine = submission.engine
     if (submission.endpoint !== undefined) next.endpoint = submission.endpoint
-    if (submission.mapPathToBank !== undefined) next.mapPathToBank = submission.mapPathToBank
+    if (submission.rules !== undefined) next.rules = submission.rules
     if (submission.disabledWorkspaces !== undefined) next.disabledWorkspaces = submission.disabledWorkspaces
+    if (submission.bankName !== undefined) next.bankName = submission.bankName?.trim() || undefined
     if (submission.apiToken !== undefined) {
         // 空串 = 清除（undefined 键移除，spawn 裁决侧 trim 后判空）
         next.apiToken = submission.apiToken.trim() || undefined

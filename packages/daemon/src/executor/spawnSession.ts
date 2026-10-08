@@ -60,10 +60,11 @@ export type SpawnSessionDeps = {
     createWorktree: (input: { basePath: string; nameHint?: string }) => Promise<{ ok: true; info: WorktreeInfo } | { ok: false; error: string }>;
     removeWorktree: (input: { repoRoot: string; worktreePath: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
     isProcessAlive: (pid: number) => boolean;
-    /** 会话级记忆裁决（agent-memory 票 02）：按 workspace 目录求值——active 返回注入
-     *  子进程的 env（MOBI_MEMORY_ENGINE + HINDSIGHT_*），降级（off/非法/排除）返回空对象。
-     *  装配层负责读 daemon 设置与同步管理配置文件；求值放装配、执行放 spawn */
-    resolveMemoryEnv: (workspaceDirectory: string) => Promise<Record<string, string>>;
+    /** 会话级记忆裁决（agent-memory 票 02；三档隔离票 05 加 workspaceId 语境）：
+     *  按 workspace 目录 + spawn 的 workspaceId 求值——active 返回注入子进程的 env
+     *  （MOBI_MEMORY_ENGINE + HINDSIGHT_*），降级（off/非法/排除）返回空对象。
+     *  装配层负责读 daemon 设置、解析隔离规则与同步管理配置文件；求值放装配、执行放 spawn */
+    resolveMemoryEnv: (workspaceDirectory: string, workspaceId: string | undefined) => Promise<Record<string, string>>;
 };
 
 /** spawn 前 error 捕获的字符串化（error 事件负载到错误文案） */
@@ -279,7 +280,7 @@ export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSess
         };
 
         // 记忆 env 求值自带防御：任何故障（设置读取失败等）降级为空对象，不阻断 spawn
-        const memoryEnv = await deps.resolveMemoryEnv(options.directory).catch((error) => {
+        const memoryEnv = await deps.resolveMemoryEnv(options.directory, options.workspaceId).catch((error) => {
             logger.debug('[EXECUTOR] resolveMemoryEnv failed; session continues without memory', error);
             return {};
         });

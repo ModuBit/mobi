@@ -15,7 +15,9 @@ PORT=2224
 FAKE_PORT=3999
 E2E_HOME="$HOME/.mobi-e2e"
 SETTINGS="$E2E_HOME/settings.daemon.json"
-MANAGED_CFG="$E2E_HOME/memory/hindsight/projects/demo.json"
+MANAGED_CFG="$E2E_HOME/memory/hindsight/projects/normal-demo.json"
+MANAGED_OPEN_CFG="$E2E_HOME/memory/hindsight/projects/open-demo.json"
+MANAGED_ISO_CFG="$E2E_HOME/memory/hindsight/projects/isolated-demo.json"
 DAEMON_LOG="$E2E_HOME/logs/daemon.log"
 FAKE_LOG="/tmp/e2e-memory-requests.jsonl"
 JAR="/tmp/e2e-memory-jar.txt"
@@ -213,11 +215,43 @@ else
     bad "active：hook 未发请求"
 fi
 if grep -q '"hasAuth":true' "$FAKE_LOG"; then ok "active：请求携带 Bearer token（HINDSIGHT_API_TOKEN 注入成立）"; else bad "active：请求缺 token"; fi
-if [ -f "$MANAGED_CFG" ] && grep -q 'mobi-personal' "$MANAGED_CFG" && grep -q 'retainTags' "$MANAGED_CFG" \
+if [ -f "$MANAGED_CFG" ] && grep -q 'mobi-global' "$MANAGED_CFG" && grep -q 'retainTags' "$MANAGED_CFG" \
     && grep -q '"tags_match": "any"' "$MANAGED_CFG"; then
-    ok "active：per-project 管理配置文件已生成（bankId/retainTags/recallOptions any）"
+    ok "active：per-scope 管理配置文件已生成（mobi-global/retainTags/recallOptions any）"
 else
     bad "active：管理配置文件缺失或形状不对（${MANAGED_CFG}）"
+fi
+
+# ── 场景 2b/2c：三档隔离配置生成（open / isolated 路径规则，票 05/07）──
+
+echo "## 场景 2b：open 档（不打 tag + 全量召回）"
+set_memory '{"engine":"hindsight","endpoint":"http://127.0.0.1:'"$FAKE_PORT"'","apiToken":"fake-e2e-token","rules":[{"target":{"type":"path","path":"'"$DEMO_DIR"'"},"mode":"open"}]}'
+S2B=$(spawn_session "$DEMO_DIR")
+if [ -n "$S2B" ]; then ok "open 会话 spawn 成功 ($S2B)"; else bad "open 会话 spawn 失败"; fi
+if wait_for 10 bash -c "[ -f $MANAGED_OPEN_CFG ]"; then
+    if grep -q '"retainTags": \[\]' "$MANAGED_OPEN_CFG" && ! grep -q 'recallOptions' "$MANAGED_OPEN_CFG" \
+        && grep -q 'mobi-global' "$MANAGED_OPEN_CFG"; then
+        ok "open：retainTags 空 + 无 recallOptions + 全局池"
+    else
+        bad "open：配置形状不对（$MANAGED_OPEN_CFG）"
+    fi
+else
+    bad "open：配置文件未生成（$MANAGED_OPEN_CFG）"
+fi
+
+echo "## 场景 2c：isolated 档（独立 bank + 不过滤）"
+set_memory '{"engine":"hindsight","endpoint":"http://127.0.0.1:'"$FAKE_PORT"'","apiToken":"fake-e2e-token","rules":[{"target":{"type":"path","path":"'"$DEMO_DIR"'"},"mode":"isolated","bank":"iso-e2e-vault"}]}'
+S2C=$(spawn_session "$DEMO_DIR")
+if [ -n "$S2C" ]; then ok "isolated 会话 spawn 成功 ($S2C)"; else bad "isolated 会话 spawn 失败"; fi
+if wait_for 10 bash -c "[ -f $MANAGED_ISO_CFG ]"; then
+    if grep -q 'iso-e2e-vault' "$MANAGED_ISO_CFG" && ! grep -q 'recallOptions' "$MANAGED_ISO_CFG" \
+        && grep -q '"project:demo"' "$MANAGED_ISO_CFG"; then
+        ok "isolated：覆盖 bank + 无 recallOptions + 项目溯源 tag"
+    else
+        bad "isolated：配置形状不对（$MANAGED_ISO_CFG）"
+    fi
+else
+    bad "isolated：配置文件未生成（$MANAGED_ISO_CFG）"
 fi
 
 # ── 场景 3：运行中改设置 → 旧会话不受影响、新会话按新设置 ────────────
@@ -286,7 +320,7 @@ fi
 
 # ── 收尾：停掉本脚本 spawn 的会话（按精确 sessionId，走 API）────────
 
-for sid in $S1 $S2 $S3 $S4; do
+for sid in $S1 $S2 $S2B $S2C $S3 $S4; do
     [ -n "$sid" ] && curl -s -b "$JAR" -X DELETE "http://localhost:$PORT/api/sessions/$sid" >/dev/null
 done
 

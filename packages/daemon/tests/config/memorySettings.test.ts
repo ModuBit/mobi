@@ -20,10 +20,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
     resolveSessionMemory,
+    resolveMemoryRule,
     buildMemoryManagedConfig,
     syncMemoryManagedConfig,
     MEMORY_MANAGED_CONFIG_REL_PATH,
     type MemorySettings,
+    type MemoryRule,
 } from '@/config/memorySettings'
 
 const MANAGED = '/managed/hindsight/coding-agent.json'
@@ -72,46 +74,96 @@ describe('resolveSessionMemory（会话级记忆裁决）', () => {
     })
 })
 
-describe('buildMemoryManagedConfig（hindsight 管理配置拓扑）', () => {
-    it('定稿拓扑：静态个人 bank + 项目溯源 tag + gitIngest/autoUpdate 关 + 画像页', () => {
-        const cfg = JSON.parse(buildMemoryManagedConfig(active))
-        expect(cfg.bankId).toBe('mobi-personal')
-        expect(cfg.retainTags).toEqual(['project:{gitProject}'])
+describe('resolveMemoryRule（隔离规则裁决序）', () => {
+    const wsRule = (id: string, mode: MemoryRule['mode'], extra?: Partial<MemoryRule>): MemoryRule =>
+        ({ target: { type: 'workspace', id }, mode, ...extra })
+    const pathRule = (path: string, mode: MemoryRule['mode'], extra?: Partial<MemoryRule>): MemoryRule =>
+        ({ target: { type: 'path', path }, mode, ...extra })
+
+    it('无规则 → undefined（默认 normal）', () => {
+        expect(resolveMemoryRule(undefined, '/w', 'ws-1')).toBeUndefined()
+        expect(resolveMemoryRule([], '/w', 'ws-1')).toBeUndefined()
+    })
+
+    it('workspace 规则按 spawn 的 workspaceId 直查（档位跟工作区语境走，不听目录）', () => {
+        const rules = [wsRule('learn', 'normal', { tag: 'learn' }), wsRule('lab', 'isolated')]
+        expect(resolveMemoryRule(rules, '/any/dir', 'learn')).toMatchObject({ mode: 'normal', tag: 'learn' })
+        expect(resolveMemoryRule(rules, '/any/dir', 'lab')).toMatchObject({ mode: 'isolated' })
+        // 无 workspaceId（裸目录 spawn）→ workspace 档跳过
+        expect(resolveMemoryRule(rules, '/any/dir', undefined)).toBeUndefined()
+    })
+
+    it('路径规则恒优先于 workspace 规则；多路径命中取最长前缀', () => {
+        const rules = [
+            wsRule('ws-1', 'isolated'),
+            pathRule('/a', 'open'),
+            pathRule('/a/b/c', 'normal', { tag: 'deep' }),
+            pathRule('/a/b', 'open'),
+        ]
+        expect(resolveMemoryRule(rules, '/a/b/c/x', 'ws-1')).toMatchObject({ mode: 'normal', tag: 'deep' })
+        expect(resolveMemoryRule(rules, '/a/b/y', 'ws-1')).toMatchObject({ mode: 'open' })
+        expect(resolveMemoryRule(rules, '/a/z', 'ws-1')).toMatchObject({ mode: 'open' })
+        // 路径不命中 → workspace 档生效
+        expect(resolveMemoryRule(rules, '/elsewhere', 'ws-1')).toMatchObject({ mode: 'isolated' })
+    })
+
+    it('路径前缀匹配：~ 展开、尾分隔符归一、`/a/b` 不误命中 `/a/bc`', () => {
+        const rules = [pathRule('~/notes', 'open')]
+        expect(resolveMemoryRule(rules, join(process.env.HOME ?? '', 'notes', 'chat'), undefined)).toMatchObject({ mode: 'open' })
+        expect(resolveMemoryRule(rules, '/x/notes-similar', undefined)).toBeUndefined()
+    })
+})
+
+describe('buildMemoryManagedConfig（三档配置生成）', () => {
+    it('normal（默认）：全局池 + 展开 tag 溯源 + any 召回过滤', () => {
+        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'demo'))
+        expect(cfg.bankId).toBe('mobi-global')
+        expect(cfg.retainTags).toEqual(['project:demo'])
+        expect(cfg.recallOptions).toEqual({ tags: ['project:demo'], tags_match: 'any' })
         expect(cfg.gitIngest).toBe(false)
         expect(cfg.autoUpdate).toBe(false)
         expect(cfg.apiUrl).toBe(active.endpoint)
         expect(cfg.customPages['User Profile'].source_query).toContain('durable preferences')
-        // mapPathToBank 未配置时不写空对象
-        expect(cfg).not.toHaveProperty('mapPathToBank')
-        // gitProject 未传（诊断/兜底形态）：无 recallOptions——全量召回
-        expect(cfg).not.toHaveProperty('recallOptions')
-        // observationScopes 不配置（per_tag 实验证伪：不解决固化丢 retain tags，见 spec）
         expect(cfg).not.toHaveProperty('observationScopes')
     })
 
-    it('omp 配方：gitProject 展开进 recallOptions（any = 本项目记忆 ∪ 无 tag 全局）', () => {
-        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'demo'))
-        expect(cfg.recallOptions).toEqual({ tags: ['project:demo'], tags_match: 'any' })
+    it('normal + tag 覆盖（共享组）：retain/recall 两侧同出覆盖值', () => {
+        const rule: MemoryRule = { target: { type: 'workspace', id: 'w' }, mode: 'normal', tag: 'learn' }
+        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'rust', rule))
+        expect(cfg.retainTags).toEqual(['project:learn'])
+        expect(cfg.recallOptions).toEqual({ tags: ['project:learn'], tags_match: 'any' })
+        expect(cfg.bankId).toBe('mobi-global')
     })
 
-    it('mapPathToBank 原样透传；bankNamespace 前缀 bankId', () => {
-        const cfg = JSON.parse(buildMemoryManagedConfig({
-            ...active,
-            mapPathToBank: { '~/learn/rust': 'learning' },
-            bankNamespace: 'alice',
-        }, 'demo'))
-        expect(cfg.mapPathToBank).toEqual({ '~/learn/rust': 'learning' })
-        expect(cfg.bankId).toBe('alice::mobi-personal')
+    it('open：不打 tag（无 tag 记忆主动写入口）+ 无召回过滤', () => {
+        const rule: MemoryRule = { target: { type: 'workspace', id: 'w' }, mode: 'open' }
+        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'chat', rule))
+        expect(cfg.retainTags).toEqual([])
+        expect(cfg).not.toHaveProperty('recallOptions')
+        expect(cfg.bankId).toBe('mobi-global')
     })
 
-    it('engine off 时生成空 apiUrl 的中性配置（文件仍可写，无连接信息）', () => {
-        const cfg = JSON.parse(buildMemoryManagedConfig(undefined, 'demo'))
-        expect(cfg.apiUrl).toBe('')
-        expect(cfg.bankId).toBe('mobi-personal')
+    it('isolated：派生 mobi-iso-<tag> bank + 无召回过滤；bank 覆盖生效', () => {
+        const derived: MemoryRule = { target: { type: 'workspace', id: 'w' }, mode: 'isolated' }
+        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'secret', derived))
+        expect(cfg.bankId).toBe('mobi-iso-secret')
+        expect(cfg.retainTags).toEqual(['project:secret'])
+        expect(cfg).not.toHaveProperty('recallOptions')
+
+        const overridden: MemoryRule = { ...derived, bank: 'vault' }
+        expect(JSON.parse(buildMemoryManagedConfig(active, 'secret', overridden)).bankId).toBe('vault')
+    })
+
+    it('bankName 高级覆盖全局池；engine off 时生成空 apiUrl 的中性配置', () => {
+        const cfg = JSON.parse(buildMemoryManagedConfig({ ...active, bankName: 'my-pool' }, 'demo'))
+        expect(cfg.bankId).toBe('my-pool')
+        const off = JSON.parse(buildMemoryManagedConfig(undefined, 'demo'))
+        expect(off.apiUrl).toBe('')
+        expect(off.bankId).toBe('mobi-global')
     })
 })
 
-describe('syncMemoryManagedConfig（per-project 幂等落盘）', () => {
+describe('syncMemoryManagedConfig（per-scope 幂等落盘）', () => {
     let dataDir: string
     beforeAll(() => {
         dataDir = mkdtempSync(join(tmpdir(), 'mobi-memory-settings-test-'))
@@ -120,25 +172,27 @@ describe('syncMemoryManagedConfig（per-project 幂等落盘）', () => {
         rmSync(dataDir, { recursive: true, force: true })
     })
 
-    it('按项目落 projects/<slug>.json；内容与 buildMemoryManagedConfig 一致', () => {
-        const target = syncMemoryManagedConfig(dataDir, active, 'demo')
-        expect(target).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'demo.json'))
-        expect(readFileSync(target, 'utf-8')).toBe(buildMemoryManagedConfig(active, 'demo'))
-        // 不同项目互不覆盖（per-project 隔离）
-        const other = syncMemoryManagedConfig(dataDir, active, 'mobi')
-        expect(readFileSync(other, 'utf-8')).toBe(buildMemoryManagedConfig(active, 'mobi'))
-        expect(readFileSync(target, 'utf-8')).toBe(buildMemoryManagedConfig(active, 'demo'))
+    it('按（档位 × tag）落 projects/<slug>.json；isolated 与 normal 同 tag 分文件互不覆写', () => {
+        const normalRule: MemoryRule = { target: { type: 'path', path: '/x' }, mode: 'normal', tag: 'demo' }
+        const isoRule: MemoryRule = { target: { type: 'path', path: '/y' }, mode: 'isolated', tag: 'demo' }
+        const normal = syncMemoryManagedConfig(dataDir, active, 'demo', normalRule)
+        const iso = syncMemoryManagedConfig(dataDir, active, 'demo', isoRule)
+        expect(normal).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-demo.json'))
+        expect(iso).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-demo.json'))
+        expect(JSON.parse(readFileSync(normal, 'utf-8')).bankId).toBe('mobi-global')
+        expect(JSON.parse(readFileSync(iso, 'utf-8')).bankId).toBe('mobi-iso-demo')
+        // 无规则默认档 = normal-<gitProject>
+        expect(syncMemoryManagedConfig(dataDir, active, 'mobi'))
+            .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-mobi.json'))
     })
 
-    it('项目名非法字符清洗为 `_`（防路径穿越），缺省归 default', () => {
-        expect(syncMemoryManagedConfig(dataDir, active, 'a/b')).toBe(
-            join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'a_b.json'))
-        expect(syncMemoryManagedConfig(dataDir, active)).toBe(
-            join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'default.json'))
+    it('slug 非法字符清洗为 `_`（防路径穿越）', () => {
+        expect(syncMemoryManagedConfig(dataDir, active, 'a/b'))
+            .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-a_b.json'))
     })
 
-    it('同项目内容未变不重写（mtime 哨兵不动）；设置变更后覆写新内容', async () => {
-        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'mtime-probe.json')
+    it('同 scope 内容未变不重写（mtime 哨兵不动）；设置变更后覆写新内容', async () => {
+        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-mtime-probe.json')
         syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
         const past = new Date(Date.now() - 60_000)
         utimesSync(target, past, past)
@@ -147,12 +201,12 @@ describe('syncMemoryManagedConfig（per-project 幂等落盘）', () => {
         syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
         expect(statSync(target).mtimeMs).toBe(before)
 
-        syncMemoryManagedConfig(dataDir, { ...active, bankNamespace: 'bob' }, 'mtime-probe')
-        expect(JSON.parse(readFileSync(target, 'utf-8')).bankId).toBe('bob::mobi-personal')
+        syncMemoryManagedConfig(dataDir, { ...active, bankName: 'bob-pool' }, 'mtime-probe')
+        expect(JSON.parse(readFileSync(target, 'utf-8')).bankId).toBe('bob-pool')
     })
 
     it('文件损坏（非 JSON 比较不等）时按新内容覆写', () => {
-        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'corrupt.json')
+        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-corrupt.json')
         syncMemoryManagedConfig(dataDir, active, 'corrupt')
         writeFileSync(target, 'corrupted{')
         syncMemoryManagedConfig(dataDir, active, 'corrupt')

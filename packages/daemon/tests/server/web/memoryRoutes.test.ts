@@ -47,9 +47,15 @@ function makeApp(fetchImpl?: typeof fetch) {
 }
 
 describe('GET /api/memory（脱敏回显）', () => {
-    it('apiToken 只回 apiTokenSet 标记，不回传值；bankNamespace 不暴露', async () => {
+    it('apiToken 只回 apiTokenSet 标记，不回传值；rules/bankName 原样回显', async () => {
         await Bun.write(settingsFile, JSON.stringify({
-            memory: { engine: 'hindsight', endpoint: 'https://api.example.com', apiToken: 'secret-token', bankNamespace: 'ns1' },
+            memory: {
+                engine: 'hindsight',
+                endpoint: 'https://api.example.com',
+                apiToken: 'secret-token',
+                rules: [{ target: { type: 'workspace', id: 'w1' }, mode: 'isolated', bank: 'vault' }],
+                bankName: 'my-pool',
+            },
         }))
         const res = await makeApp().request('/api/memory')
         expect(res.status).toBe(200)
@@ -58,6 +64,8 @@ describe('GET /api/memory（脱敏回显）', () => {
             engine: 'hindsight',
             endpoint: 'https://api.example.com',
             apiTokenSet: true,
+            rules: [{ target: { type: 'workspace', id: 'w1' }, mode: 'isolated', bank: 'vault' }],
+            bankName: 'my-pool',
         })
     })
 

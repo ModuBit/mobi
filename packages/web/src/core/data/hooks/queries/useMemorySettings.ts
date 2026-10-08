@@ -38,8 +38,9 @@ export function toDraft(settings: RedactedMemorySettings | null | undefined): Me
     return {
         engine: settings?.engine,
         endpoint: settings?.endpoint,
-        mapPathToBank: settings?.mapPathToBank ? { ...settings.mapPathToBank } : {},
+        rules: settings?.rules ? settings.rules.map((r) => ({ ...r, target: { ...r.target } })) : [],
         disabledWorkspaces: settings?.disabledWorkspaces ? [...settings.disabledWorkspaces] : [],
+        bankName: settings?.bankName,
         apiTokenDraft: '',
     }
 }
