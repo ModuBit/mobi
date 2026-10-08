@@ -186,6 +186,18 @@ describe('syncMemoryManagedConfig（per-scope 幂等落盘）', () => {
             .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-mobi.json'))
     })
 
+    it('bank 覆盖进 slug：同 tag 不同 bank 的 isolated 规则分文件（防互相覆写）', () => {
+        const vaultA: MemoryRule = { target: { type: 'path', path: '/x' }, mode: 'isolated', bank: 'vault-a' }
+        const vaultB: MemoryRule = { target: { type: 'path', path: '/y' }, mode: 'isolated', bank: 'vault-b' }
+        const a = syncMemoryManagedConfig(dataDir, active, 'demo', vaultA)
+        const b = syncMemoryManagedConfig(dataDir, active, 'demo', vaultB)
+        expect(a).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-a.json'))
+        expect(b).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-b.json'))
+        // 各自内容互不覆写
+        expect(JSON.parse(readFileSync(a, 'utf-8')).bankId).toBe('vault-a')
+        expect(JSON.parse(readFileSync(b, 'utf-8')).bankId).toBe('vault-b')
+    })
+
     it('slug 非法字符清洗为 `_`（防路径穿越）', () => {
         expect(syncMemoryManagedConfig(dataDir, active, 'a/b'))
             .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-a_b.json'))

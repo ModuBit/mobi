@@ -209,7 +209,11 @@ export function syncMemoryManagedConfig(
 ): string {
     const mode = rule?.mode ?? 'normal'
     const tag = rule?.tag?.trim() || gitProject || 'default'
-    const slug = `${mode}-${tag}`
+    // isolated 档 bank 覆盖必须进 slug：同 tag 不同 bank 的两条规则（如同名仓库各隔
+    // 各的）若共用 <mode>-<tag> 文件名会互相覆写，隔离错乱
+    const slug = mode === 'isolated' && rule?.bank?.trim()
+        ? `${mode}-${rule.bank.trim()}`
+        : `${mode}-${tag}`
     const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', `${projectSlug(slug)}.json`)
     const content = buildMemoryManagedConfig(memory, gitProject, rule)
     try {
