@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, utimesSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
-import { MOBI_PLUGIN_MANIFEST_REL_PATH, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
+import { bundledPluginProbeRelPaths, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { projectPath } from '@mobi/node-core/projectPath';
 
@@ -61,11 +61,25 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     expect(statSync(target).mtimeMs).toBe(before);
   });
 
-  it('探针（manifest）缺失时重新释放——skill 文件缺失不触发（探针与 skill 命名解耦）', async () => {
-    // 探针 = manifest（释放末尾才写，存在即全量完成）；删 skill 不重释放，删 manifest 才触发
-    rmSync(join(runtimeRoot, MOBI_PLUGIN_MANIFEST_REL_PATH));
-    const target = join(runtimeRoot, VISUALIZE_SKILL_REL_PATH);
+  it('释放时同步写盘全部插件的清单文件（.json 不走嵌入，从常量写盘）', async () => {
+    await syncPluginAssets(runtimeRoot, [skillAsset()]);
 
+    for (const probe of bundledPluginProbeRelPaths()) {
+      expect(existsSync(join(runtimeRoot, probe))).toBe(true);
+    }
+    // memory-hindsight 三份清单内容与常量一致（探针文件同时也是内容落点）
+    const mcpPath = join(runtimeRoot, 'plugins/memory-hindsight/.mcp.json');
+    expect(readFileSync(mcpPath, 'utf-8')).toContain('HINDSIGHT_MCP_HARNESS');
+  });
+
+  it('探针（任一清单文件）缺失时重新释放——skill 文件缺失不触发（探针与 skill 命名解耦）', async () => {
+    // 探针 = 各插件清单文件（释放末尾才写，全部存在即全量完成）；删 skill 不重释放，删清单才触发
+    rmSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH));
+    await syncPluginAssets(runtimeRoot, [skillAsset()]);
+    expect(existsSync(join(runtimeRoot, VISUALIZE_SKILL_REL_PATH))).toBe(false);
+
+    rmSync(join(runtimeRoot, 'plugins/memory-hindsight/.mcp.json'));
+    const target = join(runtimeRoot, VISUALIZE_SKILL_REL_PATH);
     await syncPluginAssets(runtimeRoot, [skillAsset()]);
 
     expect(existsSync(target)).toBe(true);

@@ -1,0 +1,10 @@
+{
+    "name": "memory-hindsight",
+    "version": "0.8.0",
+    "description": "Hindsight long-term memory (vendored @vectorize-io/hindsight-coding-agents runtime; connect via HINDSIGHT_API_URL / HINDSIGHT_CONFIG)",
+    "author": {
+        "name": "Maner·Fan"
+    },
+    "license": "MIT",
+    "hooks": "./hooks/hooks.json"
+}

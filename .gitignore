@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 dev-dist/
+# 豁免：vendored 第三方 runtime（memory-hindsight 插件随二进制分发，须入库）
+!packages/cli/plugins/*/dist/
 .cert/
 
 # tsc 增量缓存

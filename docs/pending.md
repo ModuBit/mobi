@@ -1027,3 +1027,11 @@ interrupt（用户停止）
 - **resume 参数解析四处漂移**：session.ts consumeOneTimeFlags / claudeLocalLauncher extractSessionIdFromArgs（认 --continue/-c）/ sessionFactory extractResumeSessionId / claudeRemote resolveResumeSessionId 四份实现，旗标集已不一致（--continue 只有 local 认）。统一前需产品裁决各旗标语义。
 - **VersionedUpdateSlot 首写丢字段风险**：`sessionChannel.ts` `handler(current ?? ({} as TValue))`——首次写入（current null）时 handler 收 `{}`，`({...m, sdkMetadata})` 形状的调用方会静默清掉其余 metadata 字段。建议 slot opts 加 `seed: () => TValue`。
 - **socket handler 逐处 `as HandlerType` 强转**：agentSessionHandlers 等 raw-unknown + safeParse + cast 模式每 handler 重复，可沉到 `registerValidated(socket, event, schema, handler)` 装配 seam。
+
+## 105. viteConfig.test.ts 对宿主注入的 MOBI_API_URL 环境变量敏感（2026-10-08 发现）
+
+**现象**：在 mobi 宿主内跑 `bun run test:web`（agent-memory 票 01 全量验证时），`tests/viteConfig.test.ts` 失败——期望 `__MOBI_HUB_URL__ = http://localhost:2222` 实际 `http://127.0.0.1:12222`。净环境（`env -u MOBI_API_URL`）下 298/298 全过。
+
+**根因**：`vite.config.ts` 读 `process.env.MOBI_API_URL`（宿主通道注入，spawn 的会话进程必然携带），而测试断言的是未注入时的默认值——在 mobi 会话内开发/跑测试必失败，CI 与终端直跑不触发。
+
+**建议**：测试侧对 `MOBI_API_URL` 做 env 隔离（`vi.stubEnv` 置空后 import 配置，或 viteConfig 抽纯函数注入 base url）；属存量测试脆弱性，与 agent-memory 改动无关。

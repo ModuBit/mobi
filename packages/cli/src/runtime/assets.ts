@@ -21,7 +21,7 @@ import * as tar from 'tar';
 import packageJson from '../../package.json';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { isBunCompiled, runtimePath } from '@mobi/node-core/projectPath';
-import { MOBI_PLUGIN_MANIFEST, MOBI_PLUGIN_MANIFEST_REL_PATH, PLUGIN_ASSET_PREFIX } from '@mobi/node-core/runtime/bundledPlugins';
+import { BUNDLED_PLUGIN_MANIFEST_FILES, PLUGIN_ASSET_PREFIX, bundledPluginProbeRelPaths } from '@mobi/node-core/runtime/bundledPlugins';
 import { UNPACKED_PLATFORM_MARKER } from '@mobi/node-core/utils/resolveBinaryPath';
 
 const RUNTIME_MARKER = '.runtime-version';
@@ -142,12 +142,12 @@ function isPluginAsset(asset: EmbeddedAsset): boolean {
 }
 
 /**
- * 插件段解包完整性探针：锚定插件 manifest——syncPluginAssets 把它放在全部资源
- * 释放完之后写，存在即「上一轮全量释放完成」，与具体 skill 命名解耦（skill 改名/
+ * 插件段解包完整性探针：锚定各插件的全部清单文件——syncPluginAssets 把它们放在全部资源
+ * 释放完之后写，全部存在即「上一轮全量释放完成」，与具体 skill/dist 命名解耦（改名/
  * 增删不再使探针失效而触发无谓全量重释放）。与 areToolsUnpacked 同款语义。
  */
 function arePluginsUnpacked(runtimeRoot: string): boolean {
-    return existsSync(join(runtimeRoot, MOBI_PLUGIN_MANIFEST_REL_PATH));
+    return bundledPluginProbeRelPaths().every((rel) => existsSync(join(runtimeRoot, rel)));
 }
 
 /**
@@ -165,9 +165,13 @@ export async function syncPluginAssets(runtimeRoot: string, embeddedAssets: Embe
     }
 
     // 插件清单不走 embedded asset（.json 被 resolveJsonModule 解析为对象），从常量写盘
-    const manifestTarget = join(runtimeRoot, MOBI_PLUGIN_MANIFEST_REL_PATH);
-    mkdirSync(dirname(manifestTarget), { recursive: true });
-    writeFileSync(manifestTarget, MOBI_PLUGIN_MANIFEST);
+    for (const [name, files] of Object.entries(BUNDLED_PLUGIN_MANIFEST_FILES)) {
+        for (const [rel, content] of Object.entries(files)) {
+            const manifestTarget = join(runtimeRoot, PLUGIN_ASSET_PREFIX, name, rel);
+            mkdirSync(dirname(manifestTarget), { recursive: true });
+            writeFileSync(manifestTarget, content);
+        }
+    }
 }
 
 export async function ensureRuntimeAssets(): Promise<void> {
