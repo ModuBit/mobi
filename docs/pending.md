@@ -1040,6 +1040,6 @@ interrupt（用户停止）
 
 agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服务端固化 observation 时会打知识分类 tags（如 `knowledge:feature-work`）且**不继承 retain tags**（`observation_scopes: per_tag` 实验证伪，两条实验记忆被合并、tags 为服务端分类）——固化丢 retain tags 是服务端行为，配置面无法解决。any 语义下「带不匹配 tag」的条目被滤：广谱扫描 18 条 observation 中 1 条（~6%），且是最相关那条。tags 过滤不支持通配（`knowledge:*` 被当字面量），tags_match 合法值仅 any/all/any_strict/all_strict/exact。
 
-**建议**：观察 hindsight 上游——支持 tag 通配/prefix 匹配后把 `knowledge:*` 加入召回白名单（`buildMemoryManagedConfig` 的 recallOptions 一处即可）；或上游让 observation 继承 retain tags。当前损失面小（已固化无分类条照常召回），不阻塞使用。
+**定性修正（2026-10-08 上游核实，vectorize-io/hindsight #5007）**：`observation_scopes: "shared"` 是官方文档推荐的「对付易变 per-session tags」的解法——固化产物归 untagged 全局层是**设计语义而非 bug**；mobi 的 any 配方（tag 匹配 ∪ untagged）与该语义咬合，默认场景无需处理。**残留可做项**：① knowledge:* 分类条被 any 滤掉——上游支持 tag 通配后把 `knowledge:*` 加入召回白名单（`buildMemoryManagedConfig` 一处）；② tag 级硬隔离（全局池 + 读写按 tag 约束）仅 self-host 可达——consolidation strategies（按 tag scope 固化）或 #5048 per-caller tag scopes（2026-10-01 合入 main 的服务端扩展）；若未来 mobi 提供 self-host 记忆引导，可评估自动生成这两类服务端配置；Cloud 形态不开放，只能提 feature request。
 
 **更重要的衍生影响（同日补充）**：固化丢 retain tags 意味着**项目隔离只在固化前窗口（~16 分钟）可靠**——固化后记忆变无 tag 全局层，其他项目会话经 any 语义照常召回，长期看所有项目固化记忆汇成全局共享池（omp tag 软隔离模式在 Cloud 固化行为下的天花板）。强隔离需求的现成正解是 `mapPathToBank` 真分库（设置页已支持）；tag 隔离定位为「默认软隔离 + 防误导入」，不承诺硬边界。
