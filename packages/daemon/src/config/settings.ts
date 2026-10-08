@@ -19,6 +19,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { withFileLock } from '@mobi/node-core/persistence'
+import type { MemorySettings } from './memorySettings'
 
 /**
  * Daemon 专属设置（settings.daemon.json）。
@@ -44,6 +45,8 @@ export interface Settings {
     corsOrigins?: string[]
     /** 实例名称（PWA 实例标识）；旧名 hubName 由读取侧兼容（serverSettings 读旧写新） */
     daemonName?: string
+    /** 长期记忆设置块（agent-memory 票 02）：引擎三态 + endpoint + 例外映射 + workspace 排除 */
+    memory?: MemorySettings
 }
 
 /** daemon 配置文件（本文件字段的唯一持久化位置） */

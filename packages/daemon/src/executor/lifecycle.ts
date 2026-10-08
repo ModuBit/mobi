@@ -31,6 +31,8 @@ import { logger } from '@mobi/node-core/logger';
 import { spawnMobiCli } from '@mobi/node-core/utils/spawnMobiCli';
 import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistence';
 import { getConfiguration } from '../configuration';
+import { readSettings } from '../config/settings';
+import { resolveSessionMemory, syncMemoryManagedConfig } from '../config/memorySettings';
 import { DEFAULT_LISTEN_PORT, resolveHostPort } from '@mobi/node-core/hostChannel';
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
@@ -109,6 +111,37 @@ function resolveSpawnHostPort(): number {
     }
 }
 
+/**
+ * 会话级记忆 env 求值（agent-memory 票 02）：每次 spawn 现读设置文件——
+ * 设置变更自然落到下一个新会话（「下会话生效」语义，无 watcher）。
+ * active 时同步 mobi 管理的 hindsight 配置文件（幂等），再返回注入 env；
+ * 降级仅记诊断日志，不阻断 spawn（非法配置 fail-open 到无记忆）。
+ */
+function makeResolveMemoryEnv(): (workspaceDirectory: string) => Promise<Record<string, string>> {
+    return async (workspaceDirectory) => {
+        try {
+            const config = getConfiguration();
+            const settings = await readSettings(config.settingsFile);
+            const resolution = resolveSessionMemory(
+                settings?.memory,
+                workspaceDirectory,
+                syncMemoryManagedConfig(config.dataDir, settings?.memory),
+            );
+            if (!resolution.active) {
+                if (resolution.reason !== 'off') {
+                    logger.debug(`[EXECUTOR] Memory plugin not mounted (${resolution.reason}) for ${workspaceDirectory}`);
+                }
+                return {};
+            }
+            return resolution.env;
+        } catch (error) {
+            // 设置读取失败等异常：记忆是增强能力，任何故障都不得阻断会话 spawn
+            logger.debug('[EXECUTOR] Memory resolution failed; session continues without memory', error);
+            return {};
+        }
+    };
+}
+
 export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHandle> {
   // Acquire exclusive lock (proves the executor is running)
   const daemonLockHandle: FileHandle | null = await acquireDaemonLock(5, 200);
@@ -130,9 +163,10 @@ export async function startExecutor(deps?: ExecutorCoreDeps): Promise<ExecutorHa
   // 会话 spawn 编排（架构评审候选⑧票②）：主体提升为模块级 spawnSession
   // （executor/spawnSession.ts，依赖注入可假件驱动）；reportOutcome 闭包引用后置
   // 装配的 reportSpawnOutcomeToHub（controlServer 起来前可空）
-  const spawnDeps = {
+    const spawnDeps = {
     trackingTable,
     hostPort: resolveSpawnHostPort(),
+    resolveMemoryEnv: makeResolveMemoryEnv(),
     reportOutcome: (outcome: SpawnOutcome) => { reportSpawnOutcomeToHub?.(outcome); },
     fs,
     spawn: spawnMobiCli,

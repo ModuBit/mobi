@@ -68,6 +68,7 @@ function makeDeps(overrides: Partial<SpawnSessionDeps> = {}) {
         createWorktree: vi.fn().mockResolvedValue({ ok: true, info: { worktreePath: '/wt', basePath: '/repo', branch: 'b', name: 'wt', createdAt: 1 } as never }),
         removeWorktree: vi.fn().mockResolvedValue({ ok: true }),
         isProcessAlive: vi.fn().mockReturnValue(false),
+        resolveMemoryEnv: vi.fn().mockResolvedValue({}),
         ...overrides,
     }
     return { deps, table, spawnFn }
@@ -224,6 +225,54 @@ describe('spawnSession webhook 等待与上报', () => {
 
         expect((result as { errorMessage: string }).errorMessage).toBe(
             buildWebhookFailureMessage('exit-before-webhook', 51, { exitCode: 3, exitSignal: null }, 'boom\nstack trace'))
+    })
+})
+
+describe('spawnSession 记忆 env 注入（agent-memory 票 02）', () => {
+    it('active 时记忆 env 并入 spawn env（覆盖继承值，按 workspace 目录求值）', async () => {
+        const child = new FakeProcess()
+        child.pid = 60
+        const resolveMemoryEnv = vi.fn().mockResolvedValue({
+            MOBI_MEMORY_ENGINE: 'hindsight',
+            HINDSIGHT_API_URL: 'https://api.hindsight.vectorize.io',
+            HINDSIGHT_CONFIG: '/managed/hindsight/coding-agent.json',
+        })
+        const spawnFn = vi.fn((..._params: Parameters<SpawnSessionDeps['spawn']>) => child)
+        const { deps, table } = makeDeps({ spawn: spawnFn, resolveMemoryEnv })
+
+        const pending = spawnSession({ ...simpleOptions, directory: '/work/my-repo' }, deps)
+        await vi.waitFor(() => expect(table.get(60)).toBeDefined())
+        table.applyWebhook('sess-mem', { hostPid: 60 } as never)
+        const result = await pending
+
+        expect(result).toEqual({ type: 'success', sessionId: 'sess-mem' })
+        // 按 workspace 目录（非 worktree 目录）求值
+        expect(resolveMemoryEnv).toHaveBeenCalledWith('/work/my-repo')
+        const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
+        expect(spawnEnv.MOBI_MEMORY_ENGINE).toBe('hindsight')
+        expect(spawnEnv.HINDSIGHT_API_URL).toBe('https://api.hindsight.vectorize.io')
+        expect(spawnEnv.MOBI_API_URL).toContain('12222')
+    })
+
+    it('降级（空对象）时 spawn env 不含记忆键；env 求值异常不阻断 spawn', async () => {
+        for (const resolveMemoryEnv of [
+            vi.fn().mockResolvedValue({}),
+            vi.fn().mockRejectedValue(new Error('settings read failed')),
+        ]) {
+            const child = new FakeProcess()
+            child.pid = 61
+            const spawnFn = vi.fn((..._params: Parameters<SpawnSessionDeps['spawn']>) => child)
+            const { deps, table } = makeDeps({ spawn: spawnFn, resolveMemoryEnv })
+
+            const pending = spawnSession(simpleOptions, deps)
+            await vi.waitFor(() => expect(table.get(61)).toBeDefined())
+            table.applyWebhook('sess-mem-2', { hostPid: 61 } as never)
+            const result = await pending
+
+            expect(result).toEqual({ type: 'success', sessionId: 'sess-mem-2' })
+            const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
+            expect(spawnEnv.MOBI_MEMORY_ENGINE).toBeUndefined()
+        }
     })
 })
 

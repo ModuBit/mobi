@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import {
     bundledPluginPath,
     buildBundledPluginOptions,
+    buildMemoryPluginOptions,
     BUNDLED_PLUGINS,
     OPTIONAL_BUNDLED_PLUGINS,
     ALL_BUNDLED_PLUGIN_NAMES,
@@ -81,12 +82,39 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
         expect(bundledPluginPath('memory-hindsight')).toBe(join(projectPath(), 'plugins', 'memory-hindsight'));
     });
 
-    it('SDK options 只携带恒挂载插件（按需插件挂载由 spawn 裁决点决定，agent-memory 票 02）', () => {
+    it('SDK options 默认只携带恒挂载插件（无记忆 env 信号时不挂按需插件）', () => {
         const options = buildBundledPluginOptions();
         expect(options).toEqual([
             { type: 'local', path: bundledPluginPath('mobi') },
         ]);
         expect(options[0].path).toContain('plugins/mobi');
+    });
+
+    it('记忆插件按 spawn 注入的 env 信号挂载（daemon 裁决的会话侧单点）', async () => {
+        vi.stubEnv('MOBI_MEMORY_ENGINE', 'hindsight');
+        try {
+            // buildMemoryPluginOptions 单点裁决
+            expect(buildMemoryPluginOptions()).toEqual([
+                { type: 'local', path: bundledPluginPath('memory-hindsight') },
+            ]);
+            // 拼装面同源生效（三消费方不各自判断）
+            const options = buildBundledPluginOptions();
+            expect(options.map((o) => o.path)).toEqual([
+                bundledPluginPath('mobi'),
+                bundledPluginPath('memory-hindsight'),
+            ]);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('记忆 env 信号非法值不挂载（fail-closed：仅认 hindsight）', () => {
+        vi.stubEnv('MOBI_MEMORY_ENGINE', 'mem0');
+        try {
+            expect(buildMemoryPluginOptions()).toEqual([]);
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 
     it('解包探针覆盖全部插件的全部清单文件（存在即上一轮全量释放完成）', () => {

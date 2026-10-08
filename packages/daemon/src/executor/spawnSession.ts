@@ -60,6 +60,10 @@ export type SpawnSessionDeps = {
     createWorktree: (input: { basePath: string; nameHint?: string }) => Promise<{ ok: true; info: WorktreeInfo } | { ok: false; error: string }>;
     removeWorktree: (input: { repoRoot: string; worktreePath: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
     isProcessAlive: (pid: number) => boolean;
+    /** 会话级记忆裁决（agent-memory 票 02）：按 workspace 目录求值——active 返回注入
+     *  子进程的 env（MOBI_MEMORY_ENGINE + HINDSIGHT_*），降级（off/非法/排除）返回空对象。
+     *  装配层负责读 daemon 设置与同步管理配置文件；求值放装配、执行放 spawn */
+    resolveMemoryEnv: (workspaceDirectory: string) => Promise<Record<string, string>>;
 };
 
 /** spawn 前 error 捕获的字符串化（error 事件负载到错误文案） */
@@ -274,6 +278,12 @@ export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSess
             logger.debug('[EXECUTOR] Child stderr tail', trimmed);
         };
 
+        // 记忆 env 求值自带防御：任何故障（设置读取失败等）降级为空对象，不阻断 spawn
+        const memoryEnv = await deps.resolveMemoryEnv(options.directory).catch((error) => {
+            logger.debug('[EXECUTOR] resolveMemoryEnv failed; session continues without memory', error);
+            return {};
+        });
+
         MobiProcess = deps.spawn(args, {
             cwd: spawnDirectory,
             detached: true,  // Sessions stay alive when the executor stops
@@ -283,7 +293,9 @@ export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSess
                 ...extraEnv,
                 // 宿主通道端口（ticket-21）：会话子进程必须连 loopback 宿主 listener——
                 // 显式注入覆盖继承值（profile/legacy env 可能还指向主端口），不依赖 settings 猜测
-                MOBI_API_URL: hostChannelUrl(deps.hostPort)
+                MOBI_API_URL: hostChannelUrl(deps.hostPort),
+                // 记忆 env 覆盖继承值（用户 shell 自有的 HINDSIGHT_* 不得串入 mobi 挂载的记忆会话）
+                ...memoryEnv,
             }
         });
 

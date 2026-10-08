@@ -140,14 +140,35 @@ export function bundledPluginPath(name: BundledPluginName): string {
 }
 
 /**
- * SDK Options 的 plugins 字段：恒挂载内置插件全部以 local plugin 挂载。
+ * 按需插件挂载信号（daemon executor spawn 时注入的 env 契约，见 daemon
+ * config/memorySettings）：`MOBI_MEMORY_ENGINE=hindsight` 时会话进程挂载记忆插件。
+ * 由 daemon 裁决（设置三态 + workspace 排除 + 配置合法性）后注入；terminal 直连
+ * 会话（不经 executor spawn）无此 env，天然不挂载。
+ */
+export const MEMORY_PLUGIN_ENV = 'MOBI_MEMORY_ENGINE';
+
+/** 记忆插件挂载：按 spawn 注入的 env 信号裁决（三处消费方与恒挂载插件同源拼装） */
+export function buildMemoryPluginOptions(): SdkPluginConfig[] {
+    if (process.env[MEMORY_PLUGIN_ENV] !== 'hindsight') {
+        return [];
+    }
+    return [{
+        type: 'local' as const,
+        path: bundledPluginPath('memory-hindsight'),
+    }];
+}
+
+/**
+ * SDK Options 的 plugins 字段：恒挂载内置插件 + env 信号激活的记忆插件。
  * remote 模式直接进 sdkOptions（SDK 自动转成 claude 进程的 --plugin-dir）；
  * local 模式经 claudeLocalLauncher 传给 claudeLocal 拼同义 flag。
- * 按需插件（OPTIONAL_BUNDLED_PLUGINS）不在此处——挂载裁决见 spawn 装配（agent-memory 票 02）。
  */
 export function buildBundledPluginOptions(): SdkPluginConfig[] {
-    return BUNDLED_PLUGINS.map((name) => ({
-        type: 'local' as const,
-        path: bundledPluginPath(name),
-    }));
+    return [
+        ...BUNDLED_PLUGINS.map((name) => ({
+            type: 'local' as const,
+            path: bundledPluginPath(name),
+        })),
+        ...buildMemoryPluginOptions(),
+    ];
 }
