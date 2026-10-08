@@ -71,6 +71,8 @@ export const queryKeys = {
     gitReviewPatch: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-patch', sessionId, targetKey(target), path, String(version)] as const,
     gitReviewContents: (sessionId: string, target: DiffTarget, path: string, version: number | string = '') => ['git-review-v2-contents', sessionId, targetKey(target), path, String(version)] as const,
     gitReviewCommits: (sessionId: string) => ['git-review-v2-commits', sessionId] as const,
+    /** 记忆设置（daemon settings.daemon.json memory 段脱敏回显） */
+    memorySettings: ['memory-settings'] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
     /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */

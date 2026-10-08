@@ -561,6 +561,10 @@
             "debug": {
                 "title": "调试",
                 "desc": "诊断信息与实验开关"
+            },
+            "memory": {
+                "title": "长期记忆",
+                "desc": "让 mobi 越聊越了解你"
             }
         },
         "webTools": {
@@ -597,6 +601,39 @@
             "apiKeyPlaceholder": "粘贴 API Key",
             "offline": "机器离线，无法加载 Web 工具配置",
             "loadFailed": "加载 Web 工具配置失败"
+        },
+        "memory": {
+            "engineTitle": "记忆引擎",
+            "engineOff": "关闭",
+            "engineHindsight": "Hindsight",
+            "privacyHint": "记忆默认关闭 · 开启后对话中的关键信息会被提取并跨会话召回",
+            "endpointLabel": "API 地址",
+            "offMachineWarning": "数据将离开本机：记忆会写入远端服务，请确认你信任该 endpoint",
+            "endpointRequired": "开启记忆需要先填写 API 地址",
+            "tokenLabel": "API Token",
+            "tokenSetPlaceholder": "已设置 · 留空保持不变",
+            "tokenUnsetPlaceholder": "粘贴 API Token（可选）",
+            "tokenClear": "清除已存 Token",
+            "tokenCleared": "Token 已清除",
+            "mapTitle": "路径 → Bank 映射",
+            "mapHint": "默认全部会话共用一个个人 bank · 需要硬隔离的目录可映射到独立 bank",
+            "mapPathPlaceholder": "工作区目录（如 ~/workspace/private）",
+            "mapBankPlaceholder": "bank id（如 my-private-bank）",
+            "mapAdd": "添加映射",
+            "mapRemove": "删除该映射",
+            "excludedTitle": "按工作区关闭",
+            "excludedHint": "命中的工作区（含其子目录）不挂载记忆 · 支持自由输入任意路径",
+            "excludedPlaceholder": "选择或输入要排除的目录",
+            "statusTitle": "连接状态",
+            "checkButton": "检查连接",
+            "checkOk": "可达（{{ms}}ms）",
+            "checkUnreachable": "不可达：服务未起或地址错误",
+            "checkUnauthorized": "鉴权失败：Token 错误",
+            "checkServerError": "服务异常",
+            "openUi": "打开记忆界面",
+            "saveButton": "保存",
+            "savedHint": "已保存 · 下个新会话生效",
+            "saveFailed": "保存失败"
         }
     },
     "debug": {

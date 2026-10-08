@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -448,6 +448,17 @@ export function createMobiApi() {
             // 新建会话页选目录后、会话行尚未存在时的元数据通道（slash 命令等）
             hostMetadata: (cwd: string, opts?: { signal?: AbortSignal }) =>
                 client.get('/api/sdk/host-metadata', { params: { cwd }, signal: opts?.signal }),
+        },
+
+        // 长期记忆设置（daemon 本地 settings.daemon.json；apiToken 脱敏回显只回 set 标记）
+        memory: {
+            get: () => client.get<{ settings: RedactedMemorySettings }>('/api/memory'),
+            // apiToken 在场性协议：不在场 = 保持旧值；空串 = 清除；非空 = 覆盖
+            set: (submission: MemorySettingsSubmission) =>
+                client.post<{ settings: RedactedMemorySettings } | { error: string }>('/api/memory', submission),
+            // 健康检查（草稿 endpoint/token，token 缺省 daemon 用已存值兜底）
+            check: (input: { endpoint: string; apiToken?: string }) =>
+                client.post<MemoryEndpointCheckResult | { error: string }>('/api/memory/check', input),
         },
 
         // Web 工具配置（daemon 纯透传 executor RPC；凭据脱敏回显，executor 未就绪 502 reject）

@@ -29,22 +29,15 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
+// 设置形状单源在 shared 协议（web 提交/回显同 schema 派生，双定义必漂移）。
+// re-export 保持 daemon 包内既有 import 路径（settings.ts / lifecycle.ts）不动
+import type { MemorySettings } from '@mobi/shared'
+export type { MemorySettings }
 
-/** 记忆设置块（settings.daemon.json `memory` 字段；v1 引擎仅 hindsight） */
-export interface MemorySettings {
-    /** 引擎三态：off（默认）/ hindsight；mem0 为未来候选值 */
-    engine?: 'off' | 'hindsight'
-    /** Hindsight API 地址（Cloud 或 self-host）；engine 非 off 时必填 */
-    endpoint?: string
-    /** API token（Cloud/鉴权 self-host 用；仅经 env 注入不落管理配置文件） */
-    apiToken?: string
-    /** 路径 → bank 例外映射（硬隔离/分组共享），原样写入管理配置文件 */
-    mapPathToBank?: Record<string, string>
-    /** workspace 级记忆关闭名单（工作区目录绝对路径，前缀匹配、支持 ~），命中的会话不挂记忆 */
-    disabledWorkspaces?: string[]
-    /** 多用户 bank 命名空间前缀（v1 仅 schema 预留，无 UI） */
-    bankNamespace?: string
-}
+/**
+ * 记忆设置块（settings.daemon.json `memory` 字段；v1 引擎仅 hindsight）。
+ * 形状权威见 @mobi/shared MemorySettingsSchema。
+ */
 
 /** mobi 管理的 hindsight 配置文件相对 dataDir 路径 */
 export const MEMORY_MANAGED_CONFIG_REL_PATH = join('memory', 'hindsight', 'coding-agent.json')

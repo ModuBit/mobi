@@ -33,6 +33,7 @@ const SettingsLayout = lazyRoute(routeChunkLoaders.SettingsLayout)
 const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
 const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
 const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
+const MemorySection = lazyRoute(routeChunkLoaders.MemorySection)
 const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
 
 
@@ -121,6 +122,12 @@ const settingsWebToolsRoute = createRoute({
     path: 'web-tools',
     component: WebToolsSection,
 })
+// 长期记忆分区
+const settingsMemoryRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'memory',
+    component: MemorySection,
+})
 // 调试分区（未解锁渲染空分区）
 const settingsDebugRoute = createRoute({
     getParentRoute: () => settingsRoute,
@@ -153,6 +160,7 @@ export const router = createRouter({
                 settingsIndexRoute,
                 settingsNotificationsRoute,
                 settingsWebToolsRoute,
+                settingsMemoryRoute,
                 settingsDebugRoute,
             ]),
         ]),

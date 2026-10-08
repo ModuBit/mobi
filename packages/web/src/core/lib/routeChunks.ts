@@ -47,6 +47,7 @@ export const routeChunkLoaders = {
     NotificationsSection: defineLoader(() => import('@/components/settings/sections/NotificationsSection'), 'NotificationsSection'),
     SettingsIndex: defineLoader(() => import('@/components/settings/sections/SettingsIndex'), 'SettingsIndex'),
     WebToolsSection: defineLoader(() => import('@/components/settings/sections/WebToolsSection'), 'WebToolsSection'),
+    MemorySection: defineLoader(() => import('@/components/settings/sections/MemorySection'), 'MemorySection'),
     DebugSectionRoute: defineLoader(() => import('@/components/settings/sections/DebugSectionRoute'), 'DebugSectionRoute'),
 } satisfies Record<string, RouteChunkLoader>
 

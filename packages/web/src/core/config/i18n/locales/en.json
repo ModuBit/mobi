@@ -570,6 +570,10 @@
             "debug": {
                 "title": "Debug",
                 "desc": "Diagnostics and feature flags"
+            },
+            "memory": {
+                "title": "Long-term Memory",
+                "desc": "Mobi remembers across sessions"
             }
         },
         "webTools": {
@@ -606,6 +610,39 @@
             "apiKeyPlaceholder": "Paste API Key",
             "offline": "Machine offline, unable to load web tools config",
             "loadFailed": "Failed to load web tools config"
+        },
+        "memory": {
+            "engineTitle": "Memory Engine",
+            "engineOff": "Off",
+            "engineHindsight": "Hindsight",
+            "privacyHint": "Memory is off by default · when enabled, key facts from conversations are extracted and recalled across sessions",
+            "endpointLabel": "API URL",
+            "offMachineWarning": "Data leaves this machine: memories will be written to the remote service — make sure you trust this endpoint",
+            "endpointRequired": "An API URL is required to enable memory",
+            "tokenLabel": "API Token",
+            "tokenSetPlaceholder": "Set · leave empty to keep",
+            "tokenUnsetPlaceholder": "Paste API token (optional)",
+            "tokenClear": "Clear stored token",
+            "tokenCleared": "Token cleared",
+            "mapTitle": "Path → Bank Mapping",
+            "mapHint": "All sessions share one personal bank by default · map sensitive directories to isolated banks",
+            "mapPathPlaceholder": "Workspace directory (e.g. ~/workspace/private)",
+            "mapBankPlaceholder": "bank id (e.g. my-private-bank)",
+            "mapAdd": "Add mapping",
+            "mapRemove": "Remove this mapping",
+            "excludedTitle": "Disable per Workspace",
+            "excludedHint": "Matched workspaces (and subdirectories) run without memory · free-form paths allowed",
+            "excludedPlaceholder": "Pick or type directories to exclude",
+            "statusTitle": "Connection",
+            "checkButton": "Check",
+            "checkOk": "Reachable ({{ms}}ms)",
+            "checkUnreachable": "Unreachable: service down or wrong URL",
+            "checkUnauthorized": "Unauthorized: wrong token",
+            "checkServerError": "Server error",
+            "openUi": "Open memory UI",
+            "saveButton": "Save",
+            "savedHint": "Saved · takes effect on next new session",
+            "saveFailed": "Save failed"
         }
     },
     "debug": {

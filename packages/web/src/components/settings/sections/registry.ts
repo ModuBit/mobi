@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Bell, Globe, Bug, type LucideIcon } from 'lucide-react'
+import { Bell, Globe, Bug, Brain, type LucideIcon } from 'lucide-react'
 import { isDebugUnlocked } from '@/core/lib/debug'
 
 /**
@@ -29,7 +29,7 @@ export type SettingsSectionBadge = 'web-tools-status'
 /** 设置分区定义：入口列表（mobile）与分区导航（PC）共用的单一真相 */
 export interface SettingsSection {
     /** 分区 id（同时是子路由段） */
-    id: 'notifications' | 'web-tools' | 'debug'
+    id: 'notifications' | 'web-tools' | 'memory' | 'debug'
     /** i18n 标题 key */
     titleKey: string
     /** i18n 副标题 key */
@@ -44,6 +44,7 @@ export interface SettingsSection {
 export const SETTINGS_SECTIONS: SettingsSection[] = [
     { id: 'notifications', titleKey: 'settings.sections.notifications.title', descKey: 'settings.sections.notifications.desc', icon: Bell, visible: () => true },
     { id: 'web-tools', titleKey: 'settings.sections.webTools.title', descKey: 'settings.sections.webTools.desc', icon: Globe, visible: () => true, badge: 'web-tools-status' },
+    { id: 'memory', titleKey: 'settings.sections.memory.title', descKey: 'settings.sections.memory.desc', icon: Brain, visible: () => true },
     { id: 'debug', titleKey: 'settings.sections.debug.title', descKey: 'settings.sections.debug.desc', icon: Bug, visible: () => isDebugUnlocked() },
 ]
 
