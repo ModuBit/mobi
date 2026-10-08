@@ -68,30 +68,30 @@ describe('shared logger', () => {
     })
 
     it('findLatestLog 返回指定 processType 的最新文件', () => {
-        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-1-cli.log')
-        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-cli.log')
+        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-99999981-cli.log')
+        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-99999982-cli.log')
         writeFileSync(old, 'old')
         writeFileSync(fresh, 'new')
-        writeFileSync(join(TEST_DIR, '2026-07-23-00-00-00-pid-3-daemon.log'), 'other type')
+        writeFileSync(join(TEST_DIR, '2026-07-23-00-00-00-pid-99999983-daemon.log'), 'other type')
         // findLatestLog 按 mtime 判新旧——必须显式设置 mtime 与文件名时间戳一致：
         // CI 上 writeFileSync 连续创建的文件 mtime 可能同 tick，排序退化取决于 readdir 顺序（环境随机）
         utimesSync(old, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'))
         utimesSync(fresh, new Date('2026-07-23T00:00:00Z'), new Date('2026-07-23T00:00:00Z'))
         const latest = findLatestLog(TEST_DIR, 'cli')
         expect(latest).not.toBeNull()
-        expect(latest!.endsWith('pid-2-cli.log')).toBe(true)
+        expect(latest!.endsWith('pid-99999982-cli.log')).toBe(true)
     })
 
     it('findLatestLog 历史文件名（-hub.log / -runner.log）归入 daemon 桶', () => {
-        const legacyHub = join(TEST_DIR, '2026-07-22-00-00-00-pid-1-hub.log')
-        const legacyRunner = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-runner.log')
+        const legacyHub = join(TEST_DIR, '2026-07-22-00-00-00-pid-99999981-hub.log')
+        const legacyRunner = join(TEST_DIR, '2026-07-23-00-00-00-pid-99999982-runner.log')
         writeFileSync(legacyHub, 'old')
         writeFileSync(legacyRunner, 'new')
         utimesSync(legacyHub, new Date('2026-07-22T00:00:00Z'), new Date('2026-07-22T00:00:00Z'))
         utimesSync(legacyRunner, new Date('2026-07-23T00:00:00Z'), new Date('2026-07-23T00:00:00Z'))
         const latest = findLatestLog(TEST_DIR, 'daemon')
         expect(latest).not.toBeNull()
-        expect(latest!.endsWith('pid-2-runner.log')).toBe(true)
+        expect(latest!.endsWith('pid-99999982-runner.log')).toBe(true)
     })
 
     it('findLatestLog 无匹配返回 null', () => {
@@ -99,8 +99,8 @@ describe('shared logger', () => {
     })
 
     it('cleanupOldLogs 删超龄文件，保留 exits.log 与新文件', () => {
-        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-1-runner.log')
-        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-runner.log')
+        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-99999981-runner.log')
+        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-99999982-runner.log')
         const exits = join(TEST_DIR, 'exits.log')
         writeFileSync(old, 'x')
         writeFileSync(fresh, 'x')
@@ -116,11 +116,53 @@ describe('shared logger', () => {
         expect(existsSync(exits)).toBe(true)
     })
 
+    it('cleanupOldLogs 超龄也不删存活进程的日志（保命优先）', () => {
+        // 长跑 daemon 写日志频率低，mtime 可能远早于测试等短命进程产生的日志；
+        // 若按 mtime/数量裁剪，会把仍在运行的进程日志删掉（2026-10-07 生产假死排查时
+        // 74546 的运行日志即被如此清掉）。文件名含 pid，据此保护存活进程。
+        const alive = join(TEST_DIR, `2020-01-01-00-00-00-pid-${process.pid}-daemon.log`)
+        const dead = join(TEST_DIR, '2020-01-01-00-00-00-pid-99999999-daemon.log')
+        writeFileSync(alive, 'x')
+        writeFileSync(dead, 'x')
+        const oldDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+        utimesSync(alive, oldDate, oldDate)
+        utimesSync(dead, oldDate, oldDate)
+
+        cleanupOldLogs(TEST_DIR)
+
+        expect(existsSync(alive)).toBe(true)
+        expect(existsSync(dead)).toBe(false)
+    })
+
+    it('cleanupOldLogs keepPerType 裁剪跳过存活进程日志', () => {
+        const alive = join(TEST_DIR, `2026-07-20-00-00-00-pid-${process.pid}-daemon.log`)
+        const deadFiles = [
+            '2026-07-21-00-00-00-pid-99999991-daemon.log',
+            '2026-07-22-00-00-00-pid-99999992-daemon.log',
+            '2026-07-23-00-00-00-pid-99999993-daemon.log',
+        ]
+        const now = Date.now()
+        const write = (p: string, ageHours: number) => {
+            writeFileSync(p, 'x')
+            const d = new Date(now - ageHours * 60 * 60 * 1000)
+            utimesSync(p, d, d)
+        }
+        write(alive, 3) // 存活进程日志反而是最旧的
+        deadFiles.forEach((f, i) => write(join(TEST_DIR, f), 2 - i))
+
+        const { removed } = cleanupOldLogs(TEST_DIR, { keepPerType: 1 })
+
+        // 存活日志不占名额也不被裁剪；死进程日志按保留数裁掉最旧 2 个
+        expect(removed).toBe(2)
+        expect(existsSync(alive)).toBe(true)
+        expect(existsSync(join(TEST_DIR, deadFiles[2]!))).toBe(true)
+    })
+
     it('cleanupOldLogs 单类超 keepPerType 时删最旧', () => {
         // 造 3 个 runner 日志，keepPerType=1，应删最旧 2 个。
         // mtime 显式设置为 now-2h/-1h/now（确定性 + 均不超 maxAgeDays 默认 7 天）：
         // writeFileSync 连续创建的文件 mtime 在 CI 上可能同 tick，排序退化取决于 readdir 顺序（环境随机）
-        const files = ['2026-07-20-00-00-00-pid-1-runner.log', '2026-07-21-00-00-00-pid-2-runner.log', '2026-07-22-00-00-00-pid-3-runner.log']
+        const files = ['2026-07-20-00-00-00-pid-99999981-runner.log', '2026-07-21-00-00-00-pid-99999982-runner.log', '2026-07-22-00-00-00-pid-99999983-runner.log']
         const now = Date.now()
         const ages = [2, 1, 0]
         files.forEach((f, i) => {

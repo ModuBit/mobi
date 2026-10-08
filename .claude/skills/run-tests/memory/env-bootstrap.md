@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / daemon 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-10-06
+  last_verified: 2026-10-07
 ---
 
 # 环境启动
@@ -49,6 +49,12 @@ failed 态常驻且 socket 失联不可发现），累积 10 个后才根治为�
 | e2e | 2224 | 5175 |
 
 default 与 e2e 端口隔离、互不冲突；冲突即环境异常。
+
+**宿主 env 泄漏盖过 profile（2026-10-07 实踩）**：在 mobi Web 会话里跑
+`smoke.sh`，宿主导出的 `MOBI_LISTEN_PORT=2222` 优先级高于 `--profile e2e`
+的 2224，daemon 落 2222 撞生产实例（报 `Is port 2222 in use?` 启动超时）。
+解法：`env -u MOBI_LISTEN_PORT -u MOBI_API_URL .claude/skills/run-tests/scripts/smoke.sh --source`。
+凡在 mobi 宿主会话内起 e2e 组件，先剥离 MOBI_LISTEN_PORT / MOBI_API_URL。
 
 ## 故障恢复
 

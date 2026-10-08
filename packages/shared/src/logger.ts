@@ -258,6 +258,22 @@ function ensureDir(dir: string): void {
     }
 }
 
+/** 从日志文件名解析 pid（{ts}-pid-{pid}-{type}.log），无 pid 段返回 null */
+function pidFromLogFileName(file: string): number | null {
+    const m = file.match(/-pid-(\d+)-/)
+    return m ? Number(m[1]) : null
+}
+
+/** pid 是否指向存活进程（EPERM = 存在但无权发信号，同样视为存活） */
+function isPidAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0)
+        return true
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM'
+    }
+}
+
 /** 查找指定 processType 的最新日志文件（按 mtime 降序），无则 null。
  *  历史文件名（-hub.log / -runner.log）归入 daemon 桶参与比较 */
 export function findLatestLog(logsDir: string, processType: LogProcessType): string | null {
@@ -275,6 +291,9 @@ export function findLatestLog(logsDir: string, processType: LogProcessType): str
 /**
  * 清理 {ts}-*.log：超 maxAgeDays 天 或 单类超 keepPerType 个。
  * 不动 exits.log 与 dumps/（exitLogger 自带滚动）。
+ * 文件名 pid 仍存活的日志一律保留（保命优先）：长跑 daemon 写日志频率低，
+ * mtime 会落后于测试等短命进程的日志，按 mtime/数量裁剪会删掉在跑进程的日志
+ * （2026-10-07 生产假死排查时运行日志即被如此清掉，无从定因）。
  */
 export function cleanupOldLogs(
     logsDir: string,
@@ -292,6 +311,9 @@ export function cleanupOldLogs(
     }
     for (const file of readdirSync(logsDir)) {
         if (!file.endsWith('.log') || file === 'exits.log') continue
+        // 存活进程的日志不删也不占保留名额（pid 复用导致的误保为保守副作用，可接受）
+        const pid = pidFromLogFileName(file)
+        if (pid !== null && isPidAlive(pid)) continue
         const fullPath = join(logsDir, file)
         const st = statSync(fullPath)
         // 超龄直接删
