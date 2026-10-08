@@ -30,6 +30,7 @@ import chalk from 'chalk'
 import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RingBufferReader } from './exitLogger'
+import { isProcessAlive } from './exitLogger'
 
 /**
  * 日志文件名后缀的进程类型。历史文件名 -hub.log / -runner.log 随单机 daemon
@@ -264,16 +265,6 @@ function pidFromLogFileName(file: string): number | null {
     return m ? Number(m[1]) : null
 }
 
-/** pid 是否指向存活进程（EPERM = 存在但无权发信号，同样视为存活） */
-function isPidAlive(pid: number): boolean {
-    try {
-        process.kill(pid, 0)
-        return true
-    } catch (error) {
-        return (error as NodeJS.ErrnoException).code === 'EPERM'
-    }
-}
-
 /** 查找指定 processType 的最新日志文件（按 mtime 降序），无则 null。
  *  历史文件名（-hub.log / -runner.log）归入 daemon 桶参与比较 */
 export function findLatestLog(logsDir: string, processType: LogProcessType): string | null {
@@ -313,7 +304,7 @@ export function cleanupOldLogs(
         if (!file.endsWith('.log') || file === 'exits.log') continue
         // 存活进程的日志不删也不占保留名额（pid 复用导致的误保为保守副作用，可接受）
         const pid = pidFromLogFileName(file)
-        if (pid !== null && isPidAlive(pid)) continue
+        if (pid !== null && isProcessAlive(pid)) continue
         const fullPath = join(logsDir, file)
         const st = statSync(fullPath)
         // 超龄直接删

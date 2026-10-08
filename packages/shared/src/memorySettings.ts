@@ -115,3 +115,45 @@ export type MemoryEndpointCheckResult =
     | { status: 'unreachable'; reason: string }
     | { status: 'unauthorized' }
     | { status: 'error'; reason: string }
+
+// ---------------------------------------------------------------------------
+// endpoint 拓扑知识（协议层单源）：hindsight 部署形态的地址推断，web 表现层
+// （endpoint 占位 / 「数据出本机」提示 / 「打开记忆界面」链接）消费。
+// self-host UI 端口（:9999）是 vendored 版本实测行为，升级 vendored 时同步（VENDOR-NOTES）。
+// ---------------------------------------------------------------------------
+
+/** Cloud 默认 API 地址（endpoint 输入占位提示） */
+export const HINDSIGHT_CLOUD_API_URL = 'https://api.hindsight.vectorize.io'
+
+/** 主机名是否指向本机（不出本机的判定） */
+export function isLocalHostname(hostname: string): boolean {
+    return ['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'].includes(hostname)
+}
+
+/** endpoint 是否会把记忆数据送出本机（合法 URL 且主机非本机 → 提示「数据将离开本机」） */
+export function isOffMachineEndpoint(endpoint: string): boolean {
+    try {
+        return !isLocalHostname(new URL(endpoint.trim()).hostname)
+    } catch {
+        return false
+    }
+}
+
+/**
+ * 「打开记忆界面」链接（纯函数）：
+ * Cloud（hindsight.vectorize.io 域）→ 官方 dashboard；self-host → 同主机 9999 端口。
+ * 非法/空 endpoint → null（不渲染链接）。
+ */
+export function deriveMemoryUiUrl(endpoint: string): string | null {
+    const trimmed = endpoint.trim()
+    if (!trimmed) return null
+    try {
+        const url = new URL(trimmed)
+        if (url.hostname === 'hindsight.vectorize.io' || url.hostname.endsWith('.hindsight.vectorize.io')) {
+            return 'https://ui.hindsight.vectorize.io'
+        }
+        return `${url.protocol}//${url.hostname}:9999`
+    } catch {
+        return null
+    }
+}

@@ -129,14 +129,16 @@ export function resolveMobiHome(): string {
 
 /**
  * 检测 pid 是否存活（启动检测兜底用，零依赖 process.kill 探测）。
+ * EPERM = 进程存在但无权发信号（别的用户的进程），同样视为存活——
+ * 否则活进程的产物（持久锁等）会被误判 stale。
  */
 export function isProcessAlive(pid: number): boolean {
   if (!Number.isFinite(pid) || pid <= 0) return false
   try {
     process.kill(pid, 0)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
 

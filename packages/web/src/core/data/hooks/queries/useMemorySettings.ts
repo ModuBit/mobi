@@ -34,14 +34,13 @@ export interface MemorySettingsState {
 }
 
 /** 脱敏设置 → 表单草稿（apiToken 三态：已存→空草稿「保持」语义、未存→undefined） */
-export function toDraft(settings: RedactedMemorySettings | null | undefined): MemorySettings & { apiTokenDraft: '' } {
+export function toDraft(settings: RedactedMemorySettings | null | undefined): MemorySettings {
     return {
         engine: settings?.engine,
         endpoint: settings?.endpoint,
         rules: settings?.rules ? settings.rules.map((r) => ({ ...r, target: { ...r.target } })) : [],
         disabledWorkspaces: settings?.disabledWorkspaces ? [...settings.disabledWorkspaces] : [],
         bankName: settings?.bankName,
-        apiTokenDraft: '',
     }
 }
 

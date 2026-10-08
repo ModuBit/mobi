@@ -115,30 +115,30 @@ function resolveSpawnHostPort(): number {
 /**
  * 会话级记忆 env 求值（agent-memory 票 02；三档隔离票 05 加 workspaceId）：
  * 每次 spawn 现读设置文件——设置变更自然落到下一个新会话（「下会话生效」语义，无 watcher）。
- * active 时按会话解析隔离规则（路径规则 > workspace 规则（spawn 的 workspaceId 语境）>
- * 默认 normal）、算 gitProject、同步 per-scope 管理配置文件（幂等——tag/bank 是
- * scope 级展开值，hook 侧占位符不展开），再返回注入 env；降级仅记诊断日志，
- * 不阻断 spawn（非法配置 fail-open 到无记忆）。
+ * **先裁决后副作用**：resolveSessionMemory 是纯内存判定（off/非法/排除零额外 I/O），
+ * active 才付重活——解析隔离规则（路径规则 > workspace 规则 > 默认 normal）、
+ * git 探测、同步 per-scope 管理配置文件（幂等——tag/bank 是 scope 级展开值，
+ * hook 侧占位符不展开）；降级仅记诊断日志，不阻断 spawn（非法配置 fail-open 到无记忆）。
  */
 function makeResolveMemoryEnv(): (workspaceDirectory: string, workspaceId: string | undefined) => Promise<Record<string, string>> {
     return async (workspaceDirectory, workspaceId) => {
         try {
             const config = getConfiguration();
-            const settings = await readSettings(config.settingsFile);
-            const rule = resolveMemoryRule(settings?.memory?.rules, workspaceDirectory, workspaceId);
-            const gitProject = await resolveGitProjectName(workspaceDirectory);
-            const resolution = resolveSessionMemory(
-                settings?.memory,
-                workspaceDirectory,
-                syncMemoryManagedConfig(config.dataDir, settings?.memory, gitProject, rule),
-            );
-            if (!resolution.active) {
-                if (resolution.reason !== 'off') {
+            const memory = (await readSettings(config.settingsFile))?.memory;
+            // 裁决先行（config 路径占位——active 分支内才生成并覆盖）
+            const resolution = resolveSessionMemory(memory, workspaceDirectory, '');
+            if (!memory || !resolution.active) {
+                if ('reason' in resolution && resolution.reason !== 'off') {
                     logger.debug(`[EXECUTOR] Memory plugin not mounted (${resolution.reason}) for ${workspaceDirectory}`);
                 }
                 return {};
             }
-            return resolution.env;
+            const rule = resolveMemoryRule(memory.rules, workspaceDirectory, workspaceId);
+            const gitProject = await resolveGitProjectName(workspaceDirectory);
+            return {
+                ...resolution.env,
+                HINDSIGHT_CONFIG: await syncMemoryManagedConfig(config.dataDir, memory, gitProject, rule),
+            };
         } catch (error) {
             // 设置读取失败等异常：记忆是增强能力，任何故障都不得阻断会话 spawn
             logger.debug('[EXECUTOR] Memory resolution failed; session continues without memory', error);

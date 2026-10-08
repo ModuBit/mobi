@@ -246,8 +246,8 @@ describe('spawnSession 记忆 env 注入（agent-memory 票 02）', () => {
         const result = await pending
 
         expect(result).toEqual({ type: 'success', sessionId: 'sess-mem' })
-        // 按 workspace 目录（非 worktree 目录）求值
-        expect(resolveMemoryEnv).toHaveBeenCalledWith('/work/my-repo')
+        // 按 workspace 目录（非 worktree 目录）求值；workspaceId 缺省（裸目录 spawn）透传 undefined
+        expect(resolveMemoryEnv).toHaveBeenCalledWith('/work/my-repo', undefined)
         const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
         expect(spawnEnv.MOBI_MEMORY_ENGINE).toBe('hindsight')
         expect(spawnEnv.HINDSIGHT_API_URL).toBe('https://api.hindsight.vectorize.io')

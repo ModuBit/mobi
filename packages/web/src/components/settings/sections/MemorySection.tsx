@@ -20,48 +20,13 @@ import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { MemoryEndpointCheckResult, MemoryRule } from '@mobi/shared'
+import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint } from '@mobi/shared'
 import { SettingsCard } from '@/components/settings/blocks/shared'
 import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemorySettings'
 import { useWorkspaces } from '@/core/data/hooks/queries/useWorkspaces'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
-
-/** Cloud 默认 API 地址（endpoint 输入占位提示） */
-export const HINDSIGHT_CLOUD_API_URL = 'https://api.hindsight.vectorize.io'
-
-/** 主机名是否指向本机（不出本机的判定） */
-export function isLocalHostname(hostname: string): boolean {
-    return ['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'].includes(hostname)
-}
-
-/** endpoint 是否会把记忆数据送出本机（合法 URL 且主机非本机 → 提示「数据将离开本机」） */
-export function isOffMachineEndpoint(endpoint: string): boolean {
-    try {
-        return !isLocalHostname(new URL(endpoint.trim()).hostname)
-    } catch {
-        return false
-    }
-}
-
-/**
- * 「打开记忆界面」链接（纯函数）：
- * Cloud（hindsight.vectorize.io 域）→ 官方 dashboard；self-host → 同主机 9999 端口
- * （UI 端口规则见票 01 VENDOR-NOTES 实测）。非法/空 endpoint → null（不渲染链接）。
- */
-export function deriveMemoryUiUrl(endpoint: string): string | null {
-    const trimmed = endpoint.trim()
-    if (!trimmed) return null
-    try {
-        const url = new URL(trimmed)
-        if (url.hostname === 'hindsight.vectorize.io' || url.hostname.endsWith('.hindsight.vectorize.io')) {
-            return 'https://ui.hindsight.vectorize.io'
-        }
-        return `${url.protocol}//${url.hostname}:9999`
-    } catch {
-        return null
-    }
-}
 
 const Wrap = styled.div`
     display: flex;
@@ -164,7 +129,6 @@ export function MemorySection() {
     const [bankName, setBankName] = useState('')
     const [disabledWorkspaces, setDisabledWorkspaces] = useState<string[]>([])
     const [checkResult, setCheckResult] = useState<MemoryEndpointCheckResult | null>(null)
-    const [savedAt, setSavedAt] = useState(0)
     // 高级路径规则输入（折叠式，不默认占屏）
     const [pathDraft, setPathDraft] = useState('')
 
@@ -222,7 +186,6 @@ export function MemorySection() {
             return
         }
         setTokenDraft('')
-        setSavedAt(Date.now())
         message.success(t('settings.memory.savedHint'))
     }
 
@@ -440,7 +403,6 @@ export function MemorySection() {
                 <Button type="primary" loading={saving} onClick={() => { void handleSave() }}>
                     {t('settings.memory.saveButton')}
                 </Button>
-                {savedAt > 0 && <Hint $token={token}>{t('settings.memory.savedHint')}</Hint>}
             </Footer>
         </Wrap>
     )

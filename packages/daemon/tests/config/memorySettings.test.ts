@@ -154,12 +154,9 @@ describe('buildMemoryManagedConfig（三档配置生成）', () => {
         expect(JSON.parse(buildMemoryManagedConfig(active, 'secret', overridden)).bankId).toBe('vault')
     })
 
-    it('bankName 高级覆盖全局池；engine off 时生成空 apiUrl 的中性配置', () => {
+    it('bankName 高级覆盖全局池', () => {
         const cfg = JSON.parse(buildMemoryManagedConfig({ ...active, bankName: 'my-pool' }, 'demo'))
         expect(cfg.bankId).toBe('my-pool')
-        const off = JSON.parse(buildMemoryManagedConfig(undefined, 'demo'))
-        expect(off.apiUrl).toBe('')
-        expect(off.bankId).toBe('mobi-global')
     })
 })
 
@@ -172,25 +169,25 @@ describe('syncMemoryManagedConfig（per-scope 幂等落盘）', () => {
         rmSync(dataDir, { recursive: true, force: true })
     })
 
-    it('按（档位 × tag）落 projects/<slug>.json；isolated 与 normal 同 tag 分文件互不覆写', () => {
+    it('按（档位 × tag）落 projects/<slug>.json；isolated 与 normal 同 tag 分文件互不覆写', async () => {
         const normalRule: MemoryRule = { target: { type: 'path', path: '/x' }, mode: 'normal', tag: 'demo' }
         const isoRule: MemoryRule = { target: { type: 'path', path: '/y' }, mode: 'isolated', tag: 'demo' }
-        const normal = syncMemoryManagedConfig(dataDir, active, 'demo', normalRule)
-        const iso = syncMemoryManagedConfig(dataDir, active, 'demo', isoRule)
+        const normal = await syncMemoryManagedConfig(dataDir, active, 'demo', normalRule)
+        const iso = await syncMemoryManagedConfig(dataDir, active, 'demo', isoRule)
         expect(normal).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-demo.json'))
         expect(iso).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-demo.json'))
         expect(JSON.parse(readFileSync(normal, 'utf-8')).bankId).toBe('mobi-global')
         expect(JSON.parse(readFileSync(iso, 'utf-8')).bankId).toBe('mobi-iso-demo')
         // 无规则默认档 = normal-<gitProject>
-        expect(syncMemoryManagedConfig(dataDir, active, 'mobi'))
+        expect(await syncMemoryManagedConfig(dataDir, active, 'mobi'))
             .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-mobi.json'))
     })
 
-    it('bank 覆盖进 slug：同 tag 不同 bank 的 isolated 规则分文件（防互相覆写）', () => {
+    it('bank 覆盖进 slug：同 tag 不同 bank 的 isolated 规则分文件（防互相覆写）', async () => {
         const vaultA: MemoryRule = { target: { type: 'path', path: '/x' }, mode: 'isolated', bank: 'vault-a' }
         const vaultB: MemoryRule = { target: { type: 'path', path: '/y' }, mode: 'isolated', bank: 'vault-b' }
-        const a = syncMemoryManagedConfig(dataDir, active, 'demo', vaultA)
-        const b = syncMemoryManagedConfig(dataDir, active, 'demo', vaultB)
+        const a = await syncMemoryManagedConfig(dataDir, active, 'demo', vaultA)
+        const b = await syncMemoryManagedConfig(dataDir, active, 'demo', vaultB)
         expect(a).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-a.json'))
         expect(b).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'isolated-vault-b.json'))
         // 各自内容互不覆写
@@ -198,30 +195,30 @@ describe('syncMemoryManagedConfig（per-scope 幂等落盘）', () => {
         expect(JSON.parse(readFileSync(b, 'utf-8')).bankId).toBe('vault-b')
     })
 
-    it('slug 非法字符清洗为 `_`（防路径穿越）', () => {
-        expect(syncMemoryManagedConfig(dataDir, active, 'a/b'))
+    it('slug 非法字符清洗为 `_`（防路径穿越）', async () => {
+        expect(await syncMemoryManagedConfig(dataDir, active, 'a/b'))
             .toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-a_b.json'))
     })
 
     it('同 scope 内容未变不重写（mtime 哨兵不动）；设置变更后覆写新内容', async () => {
         const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-mtime-probe.json')
-        syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
+        await syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
         const past = new Date(Date.now() - 60_000)
         utimesSync(target, past, past)
         const before = statSync(target).mtimeMs
 
-        syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
+        await syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
         expect(statSync(target).mtimeMs).toBe(before)
 
-        syncMemoryManagedConfig(dataDir, { ...active, bankName: 'bob-pool' }, 'mtime-probe')
+        await syncMemoryManagedConfig(dataDir, { ...active, bankName: 'bob-pool' }, 'mtime-probe')
         expect(JSON.parse(readFileSync(target, 'utf-8')).bankId).toBe('bob-pool')
     })
 
-    it('文件损坏（非 JSON 比较不等）时按新内容覆写', () => {
+    it('文件损坏（非 JSON 比较不等）时按新内容覆写', async () => {
         const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'normal-corrupt.json')
-        syncMemoryManagedConfig(dataDir, active, 'corrupt')
+        await syncMemoryManagedConfig(dataDir, active, 'corrupt')
         writeFileSync(target, 'corrupted{')
-        syncMemoryManagedConfig(dataDir, active, 'corrupt')
+        await syncMemoryManagedConfig(dataDir, active, 'corrupt')
         expect(() => JSON.parse(readFileSync(target, 'utf-8'))).not.toThrow()
     })
 })

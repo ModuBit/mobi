@@ -26,12 +26,14 @@
  *   hindsight 配置分层「默认 < env < 文件」，不重定位则 env 注入被用户文件覆盖）
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join, normalize } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import { homedir } from 'node:os'
 // 设置形状单源在 shared 协议（web 提交/回显同 schema 派生，双定义必漂移）。
 // re-export 保持 daemon 包内既有 import 路径（settings.ts / lifecycle.ts）不动
-import type { MemorySettings, MemoryRule } from '@mobi/shared'
+import type { MemorySettings, MemoryRule, MemoryIsolationMode } from '@mobi/shared'
+import { expandHomePath, isWithinDir } from '@mobi/shared/pathSecurity'
+import { writeFileAtomic } from '@mobi/node-core/git/atomicWrite'
 export type { MemorySettings, MemoryRule }
 
 /**
@@ -62,18 +64,13 @@ export type SessionMemoryResolution =
     | { active: false; reason: 'off' | 'invalid-endpoint' | 'workspace-excluded'; env: Record<string, never> }
     | { active: true; engine: 'hindsight'; env: Record<string, string> }
 
-/** ~ 展开为家目录（对齐 hindsight optInPaths 语义） */
-function expandHome(p: string): string {
-    return p === '~' || p.startsWith('~/') ? join(homedir(), p.slice(2)) : p
-}
-
 /** workspace 排除匹配：前缀语义（`/a/b` 覆盖其下所有会话目录），~ 展开 */
 function isWorkspaceDisabled(disabled: string[] | undefined, directory: string): boolean {
     if (!disabled?.length) return false
-    const dir = expandHome(directory)
+    const dir = expandHomePath(directory, homedir())
     return disabled.some((entry) => {
-        const e = expandHome(entry.trim())
-        return !e ? false : dir === e || dir.startsWith(e.endsWith('/') ? e : e + '/')
+        const e = expandHomePath(entry.trim(), homedir())
+        return e ? isWithinDir(dir, e) : false
     })
 }
 
@@ -97,15 +94,15 @@ export function resolveMemoryRule(
     workspaceId: string | undefined,
 ): MemoryRule | undefined {
     if (!rules?.length) return undefined
-    const dir = normalize(expandHome(directory))
+    const dir = expandHomePath(directory, homedir())
     let best: { rule: MemoryRule; len: number } | undefined
     for (const rule of rules) {
         if (rule.target.type === 'path') {
-            const e = normalize(expandHome(rule.target.path.trim()))
-            if (!e) continue
-            const hit = dir === e || dir.startsWith(e.endsWith('/') ? e : e + '/')
-            // 最长前缀优先：更精确的路径规则盖过更宽的
-            if (hit && (!best || e.length > best.len)) best = { rule, len: e.length }
+            // 相对路径规则跳过（resolve 语义会把相对前缀并到 cwd 造成误命中）
+            const e = expandHomePath(rule.target.path.trim(), homedir())
+            if (!e || !isAbsolute(e)) continue
+            // 最长前缀优先：更精确的路径规则盖过更宽的（isWithinDir 内部 resolve 归一，对齐 hook mapLookup 语义）
+            if (isWithinDir(dir, e) && (!best || e.length > best.len)) best = { rule, len: e.length }
         } else if (rule.target.type === 'workspace' && workspaceId && rule.target.id === workspaceId) {
             // 路径规则恒优先于 workspace 规则（best 已命中路径时不动）
             if (!best) best = { rule, len: -1 }
@@ -153,9 +150,33 @@ const USER_PROFILE_PAGE = {
 }
 
 /**
+ * scope 身份单源（纯函数）：mode/tag/bankId/slug 一处推导，build（文件内容）与
+ * sync（文件名 slug）消费同一结果——文件名与内容不可能错位。
+ * tag 缺省链 = rule.tag 覆盖（共享组名）→ gitProject → 'default'。
+ * isolated 档 bank 覆盖必须进 slug：同 tag 不同 bank 的两条规则（如同名仓库各隔
+ * 各的）若共用 `<mode>-<tag>` 文件名会互相覆写，隔离错乱。
+ */
+export function resolveMemoryScope(
+    memory: Pick<MemorySettings, 'bankName'>,
+    gitProject?: string,
+    rule?: MemoryRule,
+): { mode: MemoryIsolationMode; tag: string; bankId: string; slug: string } {
+    const mode = rule?.mode ?? 'normal'
+    const tag = rule?.tag?.trim() || gitProject || 'default'
+    const bankId = mode === 'isolated'
+        ? (rule?.bank?.trim() || `${ISO_BANK_PREFIX}${tag}`)
+        : (memory.bankName?.trim() || GLOBAL_BANK_DEFAULT)
+    const slug = mode === 'isolated' && rule?.bank?.trim()
+        ? `${mode}-${rule.bank.trim()}`
+        : `${mode}-${tag}`
+    return { mode, tag, bankId, slug }
+}
+
+/**
  * 生成 mobi 管理的 hindsight 配置文件内容（纯函数，三档隔离 spec 定稿）。
- * gitIngest/冷启动重导入默认关（个人记忆不装 commit log）；autoUpdate 关（vendored
- * 版本权威归 mobi 发版）。
+ * 只在会话裁决 active 后调用（lifecycle 先判 off/非法/排除再付 I/O）——settings
+ * 语义收紧为「已开启的设置」。gitIngest/冷启动重导入默认关（个人记忆不装
+ * commit log）；autoUpdate 关（vendored 版本权威归 mobi 发版）。
  *
  * 三档形态（tag 一律 = `rule.tag ?? gitProject`，**展开值弃占位符**——hook 的
  * recallOptions 静态透传不展开 `{gitProject}`，mobi spawn 侧展开写入；retain/recall
@@ -172,18 +193,13 @@ const USER_PROFILE_PAGE = {
  * 记 pending 观察上游。
  */
 export function buildMemoryManagedConfig(
-    memory: MemorySettings | undefined,
+    memory: MemorySettings,
     gitProject?: string,
     rule?: MemoryRule,
 ): string {
-    const settings = normalizeEngine(memory?.engine) === 'hindsight' ? memory : undefined
-    const mode = rule?.mode ?? 'normal'
-    const tag = rule?.tag?.trim() || gitProject || 'unknown'
-    const bankId = mode === 'isolated'
-        ? (rule?.bank?.trim() || `${ISO_BANK_PREFIX}${tag}`)
-        : (settings?.bankName?.trim() || GLOBAL_BANK_DEFAULT)
+    const { mode, tag, bankId } = resolveMemoryScope(memory, gitProject, rule)
     return JSON.stringify({
-        apiUrl: settings?.endpoint?.trim() ?? '',
+        apiUrl: memory.endpoint?.trim() ?? '',
         autoUpdate: false,
         gitIngest: false,
         bankId,
@@ -199,21 +215,16 @@ export function buildMemoryManagedConfig(
 /**
  * 同步 mobi 管理的 per-scope hindsight 配置文件（幂等：内容未变不写盘，避免刷新 mtime）。
  * per-scope：每个（档位 × tag）组合一份（isolated 与 normal 同 tag 也分文件，
- * bank 互异不可共用），同 scope 幂等复用。原子写 temp + rename，目录权限随 dataDir（0700）。
+ * bank 互异不可共用），同 scope 幂等复用。原子写走 writeFileAtomic（tmp + rename
+ * 统一纪律，自带 mkdir 与 pid 后缀防并发碰撞）。
  */
-export function syncMemoryManagedConfig(
+export async function syncMemoryManagedConfig(
     dataDir: string,
-    memory: MemorySettings | undefined,
+    memory: MemorySettings,
     gitProject?: string,
     rule?: MemoryRule,
-): string {
-    const mode = rule?.mode ?? 'normal'
-    const tag = rule?.tag?.trim() || gitProject || 'default'
-    // isolated 档 bank 覆盖必须进 slug：同 tag 不同 bank 的两条规则（如同名仓库各隔
-    // 各的）若共用 <mode>-<tag> 文件名会互相覆写，隔离错乱
-    const slug = mode === 'isolated' && rule?.bank?.trim()
-        ? `${mode}-${rule.bank.trim()}`
-        : `${mode}-${tag}`
+): Promise<string> {
+    const { slug } = resolveMemoryScope(memory, gitProject, rule)
     const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', `${projectSlug(slug)}.json`)
     const content = buildMemoryManagedConfig(memory, gitProject, rule)
     try {
@@ -223,9 +234,6 @@ export function syncMemoryManagedConfig(
     } catch {
         // 首次生成（文件不存在）走下方写盘
     }
-    mkdirSync(dirname(target), { recursive: true })
-    const tmp = target + '.tmp'
-    writeFileSync(tmp, content)
-    renameSync(tmp, target)
+    await writeFileAtomic(target, content)
     return target
 }

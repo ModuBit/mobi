@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, utimesSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
-import { bundledPluginProbeRelPaths, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
+import { bundledPluginProbeRelPaths, MEMORY_HINDSIGHT_VENDORED_REL_PATHS, VISUALIZE_SKILL_REL_PATH } from '@mobi/node-core/runtime/bundledPlugins';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { projectPath } from '@mobi/node-core/projectPath';
 
@@ -95,5 +95,15 @@ describe('syncPluginAssets（runtime 解包 · inline-artifacts ticket 05）', (
     } finally {
       rmSync(otherRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe('vendored 资产清单对齐（embeddedAssets ↔ MEMORY_HINDSIGHT_VENDORED_REL_PATHS）', () => {
+  it('embedded asset() 首参的 memory-hindsight 路径集合与常量一致（升级增删文件漏改即红）', () => {
+    // vitest 非 compiled 走 stub 拿不到真实 COMMON_ASSETS，静态提取 bun 版源码的
+    // asset('plugins/memory-hindsight/...') 调用首参——把「保持一致」从注释升为机器检查
+    const src = readFileSync(join(projectPath(), 'src', 'runtime', 'embeddedAssets.bun.ts'), 'utf-8');
+    const embedded = [...src.matchAll(/asset\('(plugins\/memory-hindsight\/[^']+)'/g)].map((m) => m[1]!);
+    expect([...embedded].sort()).toEqual([...MEMORY_HINDSIGHT_VENDORED_REL_PATHS].sort());
   });
 });
