@@ -43,4 +43,5 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [产物声明验证](inline-artifact-verify.md) — :mobi-artifact 全链路（inline 图片/iframe/悬空降级/窄屏）断言 testid 集 / rm 文件造悬空比 DB 造消息简单 / 挂载验证看内层 claude 的 --plugin-dir / **孤儿进程误判挂载失效的坑**
 - [跨会话投递验证](send-message-verify.md) — 造会话（curl 直调 spawn）/ 探针**必须点名工具**（否则收件方去用 CC 原生 SendMessage）/ meta+lifecycle+「恰好一行」断言 / 往返·扇出·建完即用·无幽灵的验法 / 富内容与**跨机器靠改 DB machineId**（改完必还原）/ Auto 也会卡审批的坑 / **落库那份 vs 推给 CC 那份的差别（信封+中和+回信提示只在 CC 那份）** / create_session 的 title 只落 mobi 侧（CC 侧必失败）/ **杀会话 CLI 必须验证归属**（按「最新那个」或空模式匹配会误杀生产会话，2026-09-12 事故）
 - [会话切换性能量测](switch-perf-probe.md) — pushState+popstate SPA 切换探针 / rAF paint 计时 / 基线：热切 ~30ms、方向首切 ~260ms longtask
+- [记忆 E2E 验证](memory-verify.md) — fake 服务桩四场景一键脚本 e2e-memory.sh；断言面=mobi 侧行为；bash3.2 全角字符/bash -c 函数不可见/排队消息不触发 hook 三坑
 - [设计走查](design-walkthrough.md) — DESIGN.md 合规走查 / computed style 实测取值 / mobi-ui state.theme 切换 / theme 改后须整页 reload / selected+active 命中第三档判别

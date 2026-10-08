@@ -64,6 +64,13 @@ for i in $(seq 1 30); do test -f ~/.mobi-e2e/ready.flag && echo "READY" && break
 1. `list_pages` 找到测试页 → `close_page` 关闭
 2. 清理环境：`bash .claude/skills/run-tests/scripts/e2e-cleanup.sh`
 
+## 自动化 E2E 脚本（无浏览器）
+
+部分特性有可重复的自动化脚本（环境已 bootstrap 后一键跑，无需浏览器）：
+
+- 记忆主线：`bash .claude/skills/run-tests/scripts/e2e-memory.sh`（fake 服务桩四场景；recipe 见 `memory/memory-verify.md`）
+- 可用性冒烟：`.claude/skills/run-tests/scripts/smoke.sh`（见 SKILL.md「可用性门」）
+
 ## 配置
 
 E2E profile 配置位于 `~/.mobi/profiles/e2e.env`，定义了端口、数据目录和 API Token（`e2e-test-token-mobi`）。token 用途与诊断命令见 `memory/pitfalls-general.md`。
