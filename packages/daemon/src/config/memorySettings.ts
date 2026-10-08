@@ -26,7 +26,7 @@
  *   hindsight 配置分层「默认 < env < 文件」，不重定位则 env 注入被用户文件覆盖）
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 // 设置形状单源在 shared 协议（web 提交/回显同 schema 派生，双定义必漂移）。
@@ -39,8 +39,13 @@ export type { MemorySettings }
  * 形状权威见 @mobi/shared MemorySettingsSchema。
  */
 
-/** mobi 管理的 hindsight 配置文件相对 dataDir 路径 */
-export const MEMORY_MANAGED_CONFIG_REL_PATH = join('memory', 'hindsight', 'coding-agent.json')
+/** mobi 管理的 hindsight 配置文件根目录（per-project 文件在其 projects/ 下） */
+export const MEMORY_MANAGED_CONFIG_REL_PATH = join('memory', 'hindsight')
+
+/** per-project 配置文件名清洗：非法字符归一为 `_`（basename 已无分隔符，防 `..` 等） */
+function projectSlug(gitProject: string): string {
+    return gitProject.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+$/, '_') || 'default'
+}
 
 /** 全局个人 bank 基名（bankNamespace 非空时前缀成 `<ns>::mobi-personal`） */
 const PERSONAL_BANK_BASE = 'mobi-personal'
@@ -117,10 +122,16 @@ const USER_PROFILE_PAGE = {
  * 拓扑定稿（spec）：静态全局个人 bank + `project:{gitProject}` 溯源 tag；
  * gitIngest/冷启动重导入默认关（个人 bank 不装 commit log）；
  * autoUpdate 关（vendored 版本权威归 mobi 发版）。
- * 注：recall 侧 tag 过滤（omp per-project-tagged 并集）待票 01 云端实测
- * `{gitProject}` 占位符在 recallOptions 内的展开行为后再接线，默认召回全部相关记忆。
+ *
+ * 召回过滤（omp per-project-tagged 配方，云端实测 any 语义 = 本项目记忆 ∪ 无 tag 全局）：
+ * vendored hook 的 recallOptions 静态透传不展开占位符，故 gitProject 由调用方按会话目录
+ * 展开后传入（resolveGitProjectName 复刻 hook 侧探测，保证与 retain tag 一致）。
+ * 已知限制（2026-10-08 实测）：服务端固化会给部分 observation 打知识分类 tags
+ * （knowledge:*）——retain tags 不继承（observation_scopes per_tag 实验证伪），any 过滤
+ * 下这类带不匹配 tag 的条目被滤（实测 18 条中 1 条）；tags 不支持通配，无法白名单，
+ * 记 pending 观察上游。
  */
-export function buildMemoryManagedConfig(memory: MemorySettings | undefined): string {
+export function buildMemoryManagedConfig(memory: MemorySettings | undefined, gitProject?: string): string {
     const settings = normalizeEngine(memory?.engine) === 'hindsight' ? memory : undefined
     const bankId = settings?.bankNamespace?.trim()
         ? `${settings.bankNamespace.trim()}::${PERSONAL_BANK_BASE}`
@@ -131,6 +142,7 @@ export function buildMemoryManagedConfig(memory: MemorySettings | undefined): st
         gitIngest: false,
         bankId,
         retainTags: ['project:{gitProject}'],
+        ...(gitProject ? { recallOptions: { tags: [`project:${gitProject}`], tags_match: 'any' } } : {}),
         ...(settings?.mapPathToBank && Object.keys(settings.mapPathToBank).length > 0
             ? { mapPathToBank: settings.mapPathToBank }
             : {}),
@@ -141,12 +153,17 @@ export function buildMemoryManagedConfig(memory: MemorySettings | undefined): st
 }
 
 /**
- * 同步 mobi 管理的 hindsight 配置文件（幂等：内容未变不写盘，避免刷新 mtime）。
+ * 同步 mobi 管理的 per-project hindsight 配置文件（幂等：内容未变不写盘，避免刷新 mtime）。
+ * per-project：每个 git 项目一份（recallOptions 里的展开 tag 是项目级值），同项目幂等复用。
  * 原子写 temp + rename，目录权限随 dataDir（0700）。
  */
-export function syncMemoryManagedConfig(dataDir: string, memory: MemorySettings | undefined): string {
-    const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH)
-    const content = buildMemoryManagedConfig(memory)
+export function syncMemoryManagedConfig(
+    dataDir: string,
+    memory: MemorySettings | undefined,
+    gitProject?: string,
+): string {
+    const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', `${projectSlug(gitProject ?? 'default')}.json`)
+    const content = buildMemoryManagedConfig(memory, gitProject)
     try {
         if (readFileSync(target, 'utf-8') === content) {
             return target
@@ -159,9 +176,4 @@ export function syncMemoryManagedConfig(dataDir: string, memory: MemorySettings 
     writeFileSync(tmp, content)
     renameSync(tmp, target)
     return target
-}
-
-/** dataDir 下管理配置文件是否已就绪（诊断用） */
-export function memoryManagedConfigExists(dataDir: string): boolean {
-    return existsSync(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH))
 }

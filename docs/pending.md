@@ -1035,3 +1035,9 @@ interrupt（用户停止）
 **根因**：`vite.config.ts` 读 `process.env.MOBI_API_URL`（宿主通道注入，spawn 的会话进程必然携带），而测试断言的是未注入时的默认值——在 mobi 会话内开发/跑测试必失败，CI 与终端直跑不触发。
 
 **建议**：测试侧对 `MOBI_API_URL` 做 env 隔离（`vi.stubEnv` 置空后 import 配置，或 viteConfig 抽纯函数注入 base url）；属存量测试脆弱性，与 agent-memory 改动无关。
+
+## 106. hindsight 召回 any 过滤会滤掉服务端 knowledge:* 分类 observation（2026-10-08 实测）
+
+agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服务端固化 observation 时会打知识分类 tags（如 `knowledge:feature-work`）且**不继承 retain tags**（`observation_scopes: per_tag` 实验证伪，两条实验记忆被合并、tags 为服务端分类）——固化丢 retain tags 是服务端行为，配置面无法解决。any 语义下「带不匹配 tag」的条目被滤：广谱扫描 18 条 observation 中 1 条（~6%），且是最相关那条。tags 过滤不支持通配（`knowledge:*` 被当字面量），tags_match 合法值仅 any/all/any_strict/all_strict/exact。
+
+**建议**：观察 hindsight 上游——支持 tag 通配/prefix 匹配后把 `knowledge:*` 加入召回白名单（`buildMemoryManagedConfig` 的 recallOptions 一处即可）；或上游让 observation 继承 retain tags。当前损失面小（已固化无分类条照常召回），不阻塞使用。

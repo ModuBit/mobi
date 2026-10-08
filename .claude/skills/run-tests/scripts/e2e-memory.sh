@@ -15,7 +15,7 @@ PORT=2224
 FAKE_PORT=3999
 E2E_HOME="$HOME/.mobi-e2e"
 SETTINGS="$E2E_HOME/settings.daemon.json"
-MANAGED_CFG="$E2E_HOME/memory/hindsight/coding-agent.json"
+MANAGED_CFG="$E2E_HOME/memory/hindsight/projects/demo.json"
 DAEMON_LOG="$E2E_HOME/logs/daemon.log"
 FAKE_LOG="/tmp/e2e-memory-requests.jsonl"
 JAR="/tmp/e2e-memory-jar.txt"
@@ -114,8 +114,14 @@ cli_found()  { [ -n "$(find_cli_pid "$1")" ]; }
 mounted()    { plugin_mounted "$1"; }
 log_ge()     { [ "$(fake_log_lines)" -ge "$1" ]; }
 
-# 会话是否空闲（running=false；回合排队消息不触发 hook，须等回合结束）
+# 会话是否空闲（running=false；回合排队消息不触发 hook，须等回合结束）。
+# 连续两次确认（间隔 2s）：running 翻转存在 false-negative 窗口，单次读取会把
+# 回合边界误判为空闲、把消息排进 running 回合（UserPromptSubmit hook 不触发）
 session_idle() {
+    curl -s -b "$JAR" "http://localhost:$PORT/api/sessions/$1" \
+        | python3 -c 'import json,sys; exit(0 if not json.load(sys.stdin).get("session",{}).get("running") else 1)' \
+        || return 1
+    sleep 2
     curl -s -b "$JAR" "http://localhost:$PORT/api/sessions/$1" \
         | python3 -c 'import json,sys; exit(0 if not json.load(sys.stdin).get("session",{}).get("running") else 1)'
 }
@@ -207,8 +213,9 @@ else
     bad "active：hook 未发请求"
 fi
 if grep -q '"hasAuth":true' "$FAKE_LOG"; then ok "active：请求携带 Bearer token（HINDSIGHT_API_TOKEN 注入成立）"; else bad "active：请求缺 token"; fi
-if [ -f "$MANAGED_CFG" ] && grep -q 'mobi-personal' "$MANAGED_CFG" && grep -q 'retainTags' "$MANAGED_CFG"; then
-    ok "active：管理配置文件已生成（bankId/retainTags）"
+if [ -f "$MANAGED_CFG" ] && grep -q 'mobi-personal' "$MANAGED_CFG" && grep -q 'retainTags' "$MANAGED_CFG" \
+    && grep -q '"tags_match": "any"' "$MANAGED_CFG"; then
+    ok "active：per-project 管理配置文件已生成（bankId/retainTags/recallOptions any）"
 else
     bad "active：管理配置文件缺失或形状不对（${MANAGED_CFG}）"
 fi
@@ -240,10 +247,12 @@ fi
 # 旧会话不受影响：其 CLI 进程仍存活，再发一条消息 hook 依旧请求
 if [ -n "$CLI2" ] && kill -0 "$CLI2" 2>/dev/null; then
     ok "旧会话进程存活（运行中会话不受设置变更影响）"
-    # 等第一回合结束再发（回合中消息排队不触发 UserPromptSubmit hook）
+    # 等第一回合结束再发（回合中消息排队不触发 UserPromptSubmit hook；且回合后的
+    # Stop retain 后台任务会再次翻转 running、拖长下一条排队消息的消费——hook 请求
+    # 最终必到但可晚于 30s，故等待窗口放大到 90s）
     if wait_for 60 session_idle "$S2"; then
         send_message "$S2"
-        if wait_for 30 log_ge $((LINES_OFF + 1)); then
+        if wait_for 90 log_ge $((LINES_OFF + 1)); then
             ok "旧会话：改设置后 hook 仍请求（运行中会话行为不变）"
         else
             bad "旧会话：改设置后 hook 不应停止请求"

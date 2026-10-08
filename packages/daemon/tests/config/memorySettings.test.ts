@@ -83,6 +83,15 @@ describe('buildMemoryManagedConfig（hindsight 管理配置拓扑）', () => {
         expect(cfg.customPages['User Profile'].source_query).toContain('durable preferences')
         // mapPathToBank 未配置时不写空对象
         expect(cfg).not.toHaveProperty('mapPathToBank')
+        // gitProject 未传（诊断/兜底形态）：无 recallOptions——全量召回
+        expect(cfg).not.toHaveProperty('recallOptions')
+        // observationScopes 不配置（per_tag 实验证伪：不解决固化丢 retain tags，见 spec）
+        expect(cfg).not.toHaveProperty('observationScopes')
+    })
+
+    it('omp 配方：gitProject 展开进 recallOptions（any = 本项目记忆 ∪ 无 tag 全局）', () => {
+        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'demo'))
+        expect(cfg.recallOptions).toEqual({ tags: ['project:demo'], tags_match: 'any' })
     })
 
     it('mapPathToBank 原样透传；bankNamespace 前缀 bankId', () => {
@@ -90,19 +99,19 @@ describe('buildMemoryManagedConfig（hindsight 管理配置拓扑）', () => {
             ...active,
             mapPathToBank: { '~/learn/rust': 'learning' },
             bankNamespace: 'alice',
-        }))
+        }, 'demo'))
         expect(cfg.mapPathToBank).toEqual({ '~/learn/rust': 'learning' })
         expect(cfg.bankId).toBe('alice::mobi-personal')
     })
 
     it('engine off 时生成空 apiUrl 的中性配置（文件仍可写，无连接信息）', () => {
-        const cfg = JSON.parse(buildMemoryManagedConfig(undefined))
+        const cfg = JSON.parse(buildMemoryManagedConfig(undefined, 'demo'))
         expect(cfg.apiUrl).toBe('')
         expect(cfg.bankId).toBe('mobi-personal')
     })
 })
 
-describe('syncMemoryManagedConfig（幂等落盘）', () => {
+describe('syncMemoryManagedConfig（per-project 幂等落盘）', () => {
     let dataDir: string
     beforeAll(() => {
         dataDir = mkdtempSync(join(tmpdir(), 'mobi-memory-settings-test-'))
@@ -111,29 +120,42 @@ describe('syncMemoryManagedConfig（幂等落盘）', () => {
         rmSync(dataDir, { recursive: true, force: true })
     })
 
-    it('首次生成到 dataDir/memory/hindsight/coding-agent.json；内容与 buildMemoryManagedConfig 一致', () => {
-        const target = syncMemoryManagedConfig(dataDir, active)
-        expect(target).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH))
-        expect(readFileSync(target, 'utf-8')).toBe(buildMemoryManagedConfig(active))
+    it('按项目落 projects/<slug>.json；内容与 buildMemoryManagedConfig 一致', () => {
+        const target = syncMemoryManagedConfig(dataDir, active, 'demo')
+        expect(target).toBe(join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'demo.json'))
+        expect(readFileSync(target, 'utf-8')).toBe(buildMemoryManagedConfig(active, 'demo'))
+        // 不同项目互不覆盖（per-project 隔离）
+        const other = syncMemoryManagedConfig(dataDir, active, 'mobi')
+        expect(readFileSync(other, 'utf-8')).toBe(buildMemoryManagedConfig(active, 'mobi'))
+        expect(readFileSync(target, 'utf-8')).toBe(buildMemoryManagedConfig(active, 'demo'))
     })
 
-    it('内容未变不重写（mtime 哨兵不动）；设置变更后覆写新内容', async () => {
-        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH)
+    it('项目名非法字符清洗为 `_`（防路径穿越），缺省归 default', () => {
+        expect(syncMemoryManagedConfig(dataDir, active, 'a/b')).toBe(
+            join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'a_b.json'))
+        expect(syncMemoryManagedConfig(dataDir, active)).toBe(
+            join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'default.json'))
+    })
+
+    it('同项目内容未变不重写（mtime 哨兵不动）；设置变更后覆写新内容', async () => {
+        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'mtime-probe.json')
+        syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
         const past = new Date(Date.now() - 60_000)
         utimesSync(target, past, past)
         const before = statSync(target).mtimeMs
 
-        syncMemoryManagedConfig(dataDir, active)
+        syncMemoryManagedConfig(dataDir, active, 'mtime-probe')
         expect(statSync(target).mtimeMs).toBe(before)
 
-        syncMemoryManagedConfig(dataDir, { ...active, bankNamespace: 'bob' })
+        syncMemoryManagedConfig(dataDir, { ...active, bankNamespace: 'bob' }, 'mtime-probe')
         expect(JSON.parse(readFileSync(target, 'utf-8')).bankId).toBe('bob::mobi-personal')
     })
 
     it('文件损坏（非 JSON 比较不等）时按新内容覆写', () => {
-        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH)
+        const target = join(dataDir, MEMORY_MANAGED_CONFIG_REL_PATH, 'projects', 'corrupt.json')
+        syncMemoryManagedConfig(dataDir, active, 'corrupt')
         writeFileSync(target, 'corrupted{')
-        syncMemoryManagedConfig(dataDir, active)
+        syncMemoryManagedConfig(dataDir, active, 'corrupt')
         expect(() => JSON.parse(readFileSync(target, 'utf-8'))).not.toThrow()
     })
 })

@@ -33,6 +33,7 @@ import { acquireDaemonLock, releaseDaemonLock } from '@mobi/node-core/persistenc
 import { getConfiguration } from '../configuration';
 import { readSettings } from '../config/settings';
 import { resolveSessionMemory, syncMemoryManagedConfig } from '../config/memorySettings';
+import { resolveGitProjectName } from '../config/gitProject';
 import { DEFAULT_LISTEN_PORT, resolveHostPort } from '@mobi/node-core/hostChannel';
 import type { FileHandle } from 'node:fs/promises';
 import { isProcessAlive, killProcess, killProcessByChildProcess } from '@mobi/node-core/utils/process';
@@ -114,18 +115,20 @@ function resolveSpawnHostPort(): number {
 /**
  * 会话级记忆 env 求值（agent-memory 票 02）：每次 spawn 现读设置文件——
  * 设置变更自然落到下一个新会话（「下会话生效」语义，无 watcher）。
- * active 时同步 mobi 管理的 hindsight 配置文件（幂等），再返回注入 env；
- * 降级仅记诊断日志，不阻断 spawn（非法配置 fail-open 到无记忆）。
+ * active 时按会话目录展开 gitProject、同步 per-project 管理配置文件（幂等，
+ * recallOptions 的 any 过滤 tag 是项目级值——hook 侧占位符不展开，mobi 侧展开），
+ * 再返回注入 env；降级仅记诊断日志，不阻断 spawn（非法配置 fail-open 到无记忆）。
  */
 function makeResolveMemoryEnv(): (workspaceDirectory: string) => Promise<Record<string, string>> {
     return async (workspaceDirectory) => {
         try {
             const config = getConfiguration();
             const settings = await readSettings(config.settingsFile);
+            const gitProject = await resolveGitProjectName(workspaceDirectory);
             const resolution = resolveSessionMemory(
                 settings?.memory,
                 workspaceDirectory,
-                syncMemoryManagedConfig(config.dataDir, settings?.memory),
+                syncMemoryManagedConfig(config.dataDir, settings?.memory, gitProject),
             );
             if (!resolution.active) {
                 if (resolution.reason !== 'off') {
