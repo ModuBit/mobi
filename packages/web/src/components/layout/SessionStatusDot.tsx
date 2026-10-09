@@ -24,16 +24,20 @@ import { PixelLoader } from '@/components/ui/PixelLoader'
  * 波形映射（getSessionLoader）+ 列表小格（3px）+ 标题减淡的维度由此处与 SessionName 分担。
  * 状态指示亮度不在此叠加——ghost 波形自带逐格暗态（0.16~0.40），再叠透明度会双重减淡埋进背景。
  * 指示器增加任何维度（如 aria 语义、tooltip）只改这里，两处行组件自动同步。
+ *
+ * 恒定包裹 inline-flex span：PixelLoader（inline-grid）直接作 flex item 与经行内包裹层
+ * 参与基线对齐的盒高不同，分支分叉曾致休眠行状态点偏离行中心——DOM 路径必须唯一，
+ * 差异只允许落在属性上（如休眠行的 title 注解，见下）。
  */
 export function SessionStatusDot({ session }: { session: Session }) {
     const { t } = useTranslation()
-    // 休眠（dormancy）会话：状态点带文字注解——列表里唯一的显式状态文案
-    if (!session.active) {
-        return (
-            <span title={t('session.state.dormant')}>
-                <PixelLoader {...getSessionLoader(session)} size={3} />
-            </span>
-        )
-    }
-    return <PixelLoader {...getSessionLoader(session)} size={3} />
+    return (
+        // 休眠（dormancy）会话：状态点带文字注解——列表里唯一的显式状态文案
+        <span
+            title={session.active ? undefined : t('session.state.dormant')}
+            style={{ display: 'inline-flex', flexShrink: 0 }}
+        >
+            <PixelLoader {...getSessionLoader(session)} size={3} />
+        </span>
+    )
 }
