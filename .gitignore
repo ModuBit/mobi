@@ -66,3 +66,4 @@ video-assets
 
 # perf 测速原始输出（逐次 run 的 JSON，不进版本库；caps.json 与报告进）
 perf/bench/runs/
+
