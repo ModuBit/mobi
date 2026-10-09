@@ -44,6 +44,8 @@ export type { RpcFileMeta, RpcReadFileMetaResponse, RpcReadFileRangeResponse }
 export type SpawnSessionOptions = {
     /** Mobi 当前仅支持 Claude */
     agent?: 'claude'
+    /** mobi 会话行 id（唤醒/激活路径携带）：executor spawn 查重键之一，见 shared SpawnSessionOptions */
+    sessionId?: string
     model?: string
     permissionMode?: PermissionMode
     sessionType?: 'simple' | 'worktree'

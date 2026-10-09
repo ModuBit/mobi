@@ -24,7 +24,7 @@
  * 概念而是「表行的等待端」，delete 配对全部消失在内部。
  *
  * 纯函数族（applySessionTrackingSignal / pruneDeadTrackedSessions /
- * createResumeDedupGuard，sessionTracking.ts / spawnDedup.ts）保持独立签名
+ * createSpawnDedupGuard，sessionTracking.ts / spawnDedup.ts）保持独立签名
  * 不变——server 侧 contract 测试直接消费它们；本表在方法内转发。
  */
 
@@ -33,7 +33,7 @@ import type { Metadata } from '@mobi/node-core/api/types';
 import { isProcessAlive } from '@mobi/node-core/utils/process';
 import type { TrackedSession } from './types';
 import { applySessionTrackingSignal, pruneDeadTrackedSessions, type SessionTrackingSignal } from './sessionTracking';
-import { createResumeDedupGuard } from './spawnDedup';
+import { createSpawnDedupGuard, type SpawnDedupKey } from './spawnDedup';
 
 /** waitForWebhook 的结果：webhook 到达（成功）或 exit/error/超时（失败） */
 export type WebhookWaitResult =
@@ -60,10 +60,11 @@ export class SessionTrackingTable {
         this.sessions.set(session.pid, session);
     }
 
-    /** 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时命中。
+    /** 唤醒去重（.scratch/wake-dedup + #108 双键）：同机已有活 child 属于同一会话时命中——
+     *  resume 目标相同，或 mobi 行 id 相同（覆盖 webhook 前在途窗口）。
      *  传快照而非内部 Map 活引用——spawnDedup 只做一次性决策，不应对表内部结构形成依赖 */
-    checkResumeDedup(resumeSessionId: string | undefined) {
-        return createResumeDedupGuard(new Map(this.sessions))(resumeSessionId);
+    checkSpawnDedup(key: SpawnDedupKey) {
+        return createSpawnDedupGuard(new Map(this.sessions))(key);
     }
 
     /**

@@ -20,7 +20,7 @@
  * nativeSessionId 演进刷新；pid 退出后表项清理、再 wake 正常放行。
  *
  * fake bridge 用与 run.ts 同款的数据面（Map<number, TrackedSession> +
- * createResumeDedupGuard + applySessionTrackingSignal）——测的是 server 侧 glue 与
+ * createSpawnDedupGuard + applySessionTrackingSignal）——测的是 server 侧 glue 与
  * executor 侧决策函数的组合，真实 spawn 管线由 spawnContract / E2E 覆盖。
  */
 
@@ -31,7 +31,7 @@ import { Store } from '../../../src/store'
 import type { RpcRegistry } from '../../../src/socket/rpcRegistry'
 import type { SSEManager } from '../../../src/sse/sseManager'
 import { LocalExecutor } from '../../../src/executor/localExecutor'
-import { createResumeDedupGuard } from '../../../src/executor/spawnDedup'
+import { createSpawnDedupGuard } from '../../../src/executor/spawnDedup'
 import { applySessionTrackingSignal, createSessionTrackingSync, pruneDeadTrackedSessions } from '../../../src/executor/sessionTracking'
 import type { SessionTrackingSignal } from '../../../src/executor/sessionTracking'
 import type { ExecutorBridge } from '../../../src/executor/lifecycle'
@@ -72,7 +72,7 @@ function makeHarness(): Harness {
     let bridge: ExecutorBridge | null = {
         spawnSession: async (options) => {
             spawnCalls.push(options)
-            const hit = createResumeDedupGuard(tracked)(options.resumeSessionId)
+            const hit = createSpawnDedupGuard(tracked)({ resumeSessionId: options.resumeSessionId, mobiSessionId: options.sessionId })
             if (hit) return hit
             return { type: 'success', sessionId: `spawned-${spawnCalls.length}` }
         },

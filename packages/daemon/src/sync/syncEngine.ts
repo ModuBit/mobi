@@ -861,6 +861,9 @@ export class SyncEngine {
         const spawnResult = await this.executor.spawnSession(
             metadata.path,
             {   // Mobi 当前仅支持 Claude（agent 缺省）；resume 无 sessionType/worktreeName/workspaceId
+                // sessionId：本行的查重键——目标行已有活 child（含在途启动中）时 already-running 零等待
+                // 返回，恢复交给 CLI 重连 + handleSessionAlive 补投（#108 首条消息唤醒竞态的闸）
+                sessionId: access.sessionId,
                 model: session.runtimeState?.model ?? undefined,
                 permissionMode: session.permissionMode,
                 resumeSessionId: resumeToken,

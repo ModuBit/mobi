@@ -100,12 +100,12 @@ describe('SessionTrackingTable 失败端与退场', () => {
 })
 
 describe('SessionTrackingTable 纯函数转发', () => {
-    it('checkResumeDedup 命中活行（决策单源在 spawnDedup，此处只验证接线）', () => {
+    it('checkSpawnDedup 命中活行（决策单源在 spawnDedup，此处只验证接线）', () => {
         const table = new SessionTrackingTable()
         table.registerDaemon({ startedBy: 'daemon', pid: 700, resumeSessionId: 'resume-1' } as TrackedSession)
-        const hit = table.checkResumeDedup('resume-1')
+        const hit = table.checkSpawnDedup({ resumeSessionId: 'resume-1' })
         expect(hit).toBeDefined()
-        expect(table.checkResumeDedup('no-such')).toBeNull()
+        expect(table.checkSpawnDedup({ resumeSessionId: 'no-such' })).toBeNull()
     })
 
     it('pruneDead 清死行并返回 pid（决策单源在 sessionTracking）', () => {

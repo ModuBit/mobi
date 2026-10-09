@@ -137,12 +137,17 @@ const MAX_TAIL_CHARS = 4000;
 export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSessionDeps): Promise<SpawnSessionResult> {
     logger.debugLargeJson('[EXECUTOR] Spawning session', options);
 
-    // 唤醒去重（.scratch/wake-dedup）：同机已有活 child 以相同 resume 目标拉起时
-    // 不再 spawn 第二个进程。「表项存在 = 进程存活」由 exit 既有清理保证；查重
-    // 决策与结果构造单源见 spawnDedup。server 侧对 already-running 零等待幂等消费（票 02）
-    const dedupHit = deps.trackingTable.checkResumeDedup(options.resumeSessionId);
+    // 唤醒去重（.scratch/wake-dedup + #108 双键）：同机已有活 child 属于同一会话时不再
+    // spawn 第二个进程——resume 目标相同，或 mobi 行 id 相同（在途 child 已由 webhook /
+    // 注册戳带上行 id，覆盖「webhook 已到、socket 未活跃」的首条消息唤醒竞态窗口）。
+    // 「表项存在 = 进程存活」由 exit 既有清理保证；查重决策与结果构造单源见 spawnDedup。
+    // server 侧对 already-running 零等待幂等消费（票 02）
+    const dedupHit = deps.trackingTable.checkSpawnDedup({
+        resumeSessionId: options.resumeSessionId,
+        mobiSessionId: options.sessionId,
+    });
     if (dedupHit) {
-        logger.debug('[EXECUTOR] Spawn deduped: live child already resuming this session');
+        logger.debug('[EXECUTOR] Spawn deduped: live child already exists for this session');
         return dedupHit;
     }
 
@@ -344,6 +349,9 @@ export async function spawnSession(options: SpawnSessionOptions, deps: SpawnSess
             pid,
             childProcess: MobiProcess,
             resumeSessionId: options.resumeSessionId,
+            // 调用方已知行 id（唤醒/激活路径）时注册即盖戳：dedup 在 webhook 前的窗口
+            // 也能按行 id 命中；webhook 到达后 applyWebhook 会用 CLI 上报值对齐
+            MobiSessionId: options.sessionId,
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
         };

@@ -51,6 +51,11 @@ export { ExecutorStateSchema, type ExecutorState } from './schemas'
 
 export interface SpawnSessionOptions {
     directory: string
+    /**
+     * mobi 会话行 id（daemon 唤醒/激活路径携带，Web 新建路径尚无行 id 缺省）。
+     * executor spawn 查重键之一：同一行已有活 child（含 webhook 尚未到达的在途 child）
+     * 时不盲 spawn 第二个进程——#108 首条消息唤醒竞态的闸
+     */
     sessionId?: string
     resumeSessionId?: string
     approvedNewDirectoryCreation?: boolean
