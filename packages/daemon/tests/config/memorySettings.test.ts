@@ -135,10 +135,10 @@ describe('buildMemoryManagedConfig（三档配置生成）', () => {
         expect(cfg.bankId).toBe('mobi-global')
     })
 
-    it('open：不打 tag（无 tag 记忆主动写入口）+ 无召回过滤', () => {
+    it('open：写入同 normal 打溯源 tag（读侧可随时收窄）+ 无召回过滤', () => {
         const rule: MemoryRule = { target: { type: 'workspace', id: 'w' }, mode: 'open' }
         const cfg = JSON.parse(buildMemoryManagedConfig(active, 'chat', rule))
-        expect(cfg.retainTags).toEqual([])
+        expect(cfg.retainTags).toEqual(['project:chat'])
         expect(cfg).not.toHaveProperty('recallOptions')
         expect(cfg.bankId).toBe('mobi-global')
     })

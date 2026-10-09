@@ -639,7 +639,7 @@
             "modeOpen": "完全共享",
             "modeIsolated": "完全隔离",
             "modeNormalHint": "各项目独立记忆，长期沉淀后全局共享",
-            "modeOpenHint": "不打项目标签，从写入起即全局可见（适合闲聊）",
+            "modeOpenHint": "写入照常打项目标签便于溯源，召回不过滤、全局可见（适合闲聊）",
             "modeIsolatedHint": "独立记忆库，与全局记忆互不可见",
             "tagLabel": "共享组名",
             "tagPlaceholder": "留空按仓库名自动生成；多个工作区填同一组名即可互通",

@@ -26,7 +26,7 @@ import { z } from 'zod'
 /**
  * 记忆隔离档位（spec 三档定稿）：
  * - normal（默认）：全局池 + project tag 溯源 + any 召回（本项目 ∪ 全局层）
- * - open：全局池 + 不打 tag（无 tag 记忆的主动写入口）+ 全量召回
+ * - open：全局池 + 写入照常打 project tag（溯源恒在，读侧随时可收窄）+ 全量召回（不过滤）
  * - isolated：独立 bank 物理分库 + 不过滤
  */
 export const MemoryIsolationModeSchema = z.enum(['normal', 'open', 'isolated'])

@@ -648,7 +648,7 @@
             "modeOpen": "Fully shared",
             "modeIsolated": "Isolated",
             "modeNormalHint": "Each project keeps its own memory, shared globally after consolidation",
-            "modeOpenHint": "No project tags; visible globally from the moment it is written (good for casual chats)",
+            "modeOpenHint": "Writes still carry project tags for attribution; recall is unfiltered and globally visible (good for casual chats)",
             "modeIsolatedHint": "Separate memory bank, invisible to and from global memory",
             "tagLabel": "Share group",
             "tagPlaceholder": "Auto-derived from repo name if empty; use the same group name to share across workspaces",

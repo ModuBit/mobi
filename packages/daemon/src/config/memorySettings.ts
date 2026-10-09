@@ -185,8 +185,9 @@ export function resolveMemoryScope(
  * 两侧 tag 同出 mobi 展开，一致性自动成立）：
  * - normal（默认）：全局池 + `project:<tag>` 溯源 + recall `any(project:<tag>)`
  *   （云端实测 any = 本项目记忆 ∪ 无 tag 全局层）
- * - open：`retainTags: []`——无 tag 记忆的**主动写入口**（未固化期间即全局可见，
- *   与官方 untagged=全局层语义咬合）；recall 不配（全量）
+ * - open：写入同 normal 打 `project:<tag>` 溯源；recall 不配（全量）。
+ *   写路径恒定单源——写侧决定不可逆（无 tag 永久失去溯源），读侧随时可收窄/改判
+ *   （hindsight tag 迁移实测可事后批量改）
  * - isolated：独立 bank `mobi-iso-<tag>`（rule.bank 覆盖）+ 不过滤（bank 已物理隔离）
  *
  * 已知限制（2026-10-08 实测）：服务端固化会给部分 observation 打知识分类 tags
@@ -205,8 +206,8 @@ export function buildMemoryManagedConfig(
         autoUpdate: false,
         gitIngest: false,
         bankId,
-        // open 档不打 tag（真·全局记忆）；normal/isolated 打项目溯源 tag（展开值）
-        retainTags: mode === 'open' ? [] : [`project:${tag}`],
+        // 写入恒定打项目溯源 tag（展开值）——三档写路径单源，档位差异只体现在召回侧
+        retainTags: [`project:${tag}`],
         ...(mode === 'normal' ? { recallOptions: { tags: [`project:${tag}`], tags_match: 'any' } } : {}),
         customPages: {
             'User Profile': USER_PROFILE_PAGE,
