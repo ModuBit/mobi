@@ -19,7 +19,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { PermissionHandler, coerceElicitationContent } from '../../src/claude/utils/permissionHandler'
 import { ELICITATION_TOOL_NAME } from '@mobi/shared'
-import type { AgentState } from '../../src/api/types'
+import type { AgentState } from '@mobi/node-core/api/types'
 import type { PendingPermissionRequest } from '../../src/modules/common/permission/BasePermissionHandler'
 
 // ─── mock session 工厂（与 permissionHandler.test.ts 同一 stub 方式）─────────

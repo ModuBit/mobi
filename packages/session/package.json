@@ -17,20 +17,20 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.283",
-    "@anthropic-ai/sandbox-runtime": "^0.0.77",
-    "@anthropic-ai/sdk": "^0.128.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.283",
+    "@anthropic-ai/sandbox-runtime": "^0.0.79",
+    "@anthropic-ai/sdk": "^0.132.1",
     "@mobi/node-core": "workspace:*",
     "@mobi/shared": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.30.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "axios": "^1.20.0",
     "socket.io-client": "^4.8.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "bun-types": "^1.4.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "sideEffects": false
 }

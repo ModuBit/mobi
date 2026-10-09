@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import type { ApiSessionClient } from '@/lib'
+import type { ApiSessionClient } from '../../src/api/apiSession'
 import { GoalStatusHandler } from '../../src/claude/goalStatusHandler'
 
 const makeDeps = () => ({

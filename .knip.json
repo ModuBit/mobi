@@ -1,14 +1,15 @@
 {
-    "$schema": "https://unpkg.com/knip@5/schema.json",
+    "$schema": "https://unpkg.com/knip@6/schema.json",
     "ignore": [
         ".scratch/**",
+        ".mobi/**",
         "scripts/**",
         "packages/*/scripts/**",
-        "packages/cli/stubs/**",
-        "packages/cli/tests/fixtures/**"
+        "perf/**"
     ],
     "ignoreBinaries": [
-        "sha256sum"
+        "uvx",
+        "loginctl"
     ],
     "rules": {
         "files": "error",
@@ -22,7 +23,6 @@
         "nsTypes": "off",
         "duplicates": "off",
         "enumMembers": "off",
-        "classMembers": "off",
         "optionalPeerDependencies": "off",
         "catalog": "off"
     },
@@ -33,10 +33,6 @@
                 "src/bootstrap.ts"
             ]
         },
-        "packages/web": {
-            "entry": [
-                "src/core/pwa/sw.ts"
-            ]
-        }
+        "packages/web": {}
     }
 }

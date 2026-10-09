@@ -1059,3 +1059,13 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 - `GET /memories?tags=` 不是 observations 列表（恒 0 条）；tag 过滤生效面在 recall 层（`POST /memories/recall` body `{query, tags, tags_match}`）
 
 **触发时做法**：封装 `mobi memory migrate-tag`（list-by-tag → 并发 PATCH → 轮询 operations 确认收尾）+ 设置页或 CLI 入口；mobi 一个 tag ≈ 一个项目的会话归档（几十到几百文档），逐个 PATCH 量级完全够用。实验脚本 `/tmp/hindsight-tag-mig-test.ts`（临时文件，重跑参考本条 API 面即可）。
+
+## 108. claude-agent-sdk 0.3.295 首条消息管线回归：双 CLI 进程 + 消息悬空（2026-10-09 升级依赖实测）
+
+`/upgrade-deps` 升级 `@anthropic-ai/claude-agent-sdk` 0.3.283→0.3.295 时 E2E 实锤回归，**当前全仓钉死 0.3.283**（package.json 精确版本，勿改回 `^`——`^0.3.283` 会再次解析到 0.3.295）。
+
+**复现**（e2e 环境，bootstrap → 建工作区 → 发首条消息）：spawn 只收到一次 `POST /api/sessions/spawn`，但 daemon 拉起**两个 CLI 进程**（相差 ~1s；第一个带 `--model/--permission-mode/--workspace`，第二个只有 `--mobi-starting-mode remote --started-by daemon --effort medium`），两个都连上宿主通道(12224)；用户消息卡 `lifecycle=queued` 永不消费，「立即提交」也无效，assistant 消息零落库；CC transcript（~/.claude/projects/）侧 turn 完整跑完。UI 侧并发出现乐观会话 id 与 DB 真实 id 分叉（URL 78ef7712 vs DB cb622132）。
+
+**对照**：SDK 钉 0.3.283 同流程单 CLI 进程、消息即时流转（thinking/工具/usage/封口全落库、刷新持久化全过）。`@anthropic-ai/sdk` 0.132.1 与 `sandbox-runtime` 0.0.79 与 0.3.283 组合 E2E 通过，嫌疑收敛在 agent-sdk 0.3.284~0.3.295 区间（changelog 值得重点排查：0.3.286 省略 permissionMode 时交给 CC 默认（mobi 恒显式传，初步排除）、0.3.295 改为 `--flag=value` 传参、0.3.284+ 启动/ handshake 行为 parity 2.1.284~295）。
+
+**下一步**：SDK 版本二分（0.3.284 起步）或 trace daemon 三处 spawnSession 调用点（syncEngine.ts:139/773/861）找出第二个进程的来源；修前升级保持钉死。

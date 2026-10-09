@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PermissionHandler } from '../../src/claude/utils/permissionHandler'
-import type { AgentState } from '../../src/api/types'
+import type { AgentState } from '@mobi/node-core/api/types'
 
 // ─── mock session 工厂 ─────────────────────────────────────────
 
