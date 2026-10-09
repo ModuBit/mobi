@@ -1043,3 +1043,19 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 **定性修正（2026-10-08 上游核实，vectorize-io/hindsight #5007）**：`observation_scopes: "shared"` 是官方文档推荐的「对付易变 per-session tags」的解法——固化产物归 untagged 全局层是**设计语义而非 bug**；mobi 的 any 配方（tag 匹配 ∪ untagged）与该语义咬合，默认场景无需处理。**残留可做项**：① knowledge:* 分类条被 any 滤掉——上游支持 tag 通配后把 `knowledge:*` 加入召回白名单（`buildMemoryManagedConfig` 一处）；② tag 级硬隔离（全局池 + 读写按 tag 约束）仅 self-host 可达——consolidation strategies（按 tag scope 固化）或 #5048 per-caller tag scopes（2026-10-01 合入 main 的服务端扩展）；若未来 mobi 提供 self-host 记忆引导，可评估自动生成这两类服务端配置；Cloud 形态不开放，只能提 feature request。
 
 **更重要的衍生影响（同日补充）**：固化丢 retain tags 意味着**项目隔离只在固化前窗口（~16 分钟）可靠**——固化后记忆变无 tag 全局层，其他项目会话经 any 语义照常召回，长期看所有项目固化记忆汇成全局共享池（omp tag 软隔离模式在 Cloud 固化行为下的天花板）。强隔离需求的现成正解是 `mapPathToBank` 真分库（设置页已支持）；tag 隔离定位为「默认软隔离 + 防误导入」，不承诺硬边界。
+
+## 107. hindsight 记忆 tag 迁移封装（2026-10-09 实测定案，待需求触发）
+
+**背景**：未来可能需要把某项目 tag 的存量记忆迁到另一个 tag（改仓库名、项目合并等）。已用 hindsight Cloud 实测定案，API 能力足够，mobi 侧暂不实现——出现真实迁移需求时再封装。
+
+**实测结论**（2026-10-09，Cloud，测试 bank 已清理）：
+
+- 同 bank tag 迁移可行：`GET /documents?tags=<old>` 列文档 → 逐文档改 tags → **recall 隔离即时翻转**（实测 old 2 条→0、new 0→4），无需重新 ingest、无需等 consolidation pass
+- **文档写 `PUT /documents/{id}`，Cloud 实测 405，实际用 `PATCH`**（body `{"tags":[...]}` 全量替换，空数组=清空，省略=422）；OPTIONS `allow` 头只列 GET，不可信
+- **无批量端点**，大量迁移靠客户端有界并发（8–16 路）；单次 PATCH 是纯元数据写（不重嵌入），分钟级可扫千级文档
+- 大量的真实成本是 **re-consolidation 级联**：tag 变更会作废该文档的 consolidated observations 并排队重合并，共源的其他 documents 也被重置——共源密集的 bank 上队列可达文档自身 memory 数的许多倍；迁移纪律 = 低峰 + 限流 + 可重跑（tags 按集合比较，集合未变的 PATCH 幂等零成本）
+- 迁移期间 recall 不停服（过滤读当前 tags）；被作废的 observation 在重合并完成前短暂缺席 recall
+- 跨 bank（isolated 档之间 / normal→isolated）：`POST /banks/{id}/document-transfer/export` + import，后台操作、按目标 bank 模型重嵌入重算实体
+- `GET /memories?tags=` 不是 observations 列表（恒 0 条）；tag 过滤生效面在 recall 层（`POST /memories/recall` body `{query, tags, tags_match}`）
+
+**触发时做法**：封装 `mobi memory migrate-tag`（list-by-tag → 并发 PATCH → 轮询 operations 确认收尾）+ 设置页或 CLI 入口；mobi 一个 tag ≈ 一个项目的会话归档（几十到几百文档），逐个 PATCH 量级完全够用。实验脚本 `/tmp/hindsight-tag-mig-test.ts`（临时文件，重跑参考本条 API 面即可）。
