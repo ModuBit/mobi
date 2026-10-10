@@ -702,4 +702,15 @@ describe('update-metadata：sdkMetadata 变更 → sdk-metadata-refreshed 补发
 
         expect(events.some(e => e.type === 'sdk-metadata-refreshed')).toBe(true)
     })
+
+    test('CLI 推送 metadata 不顶新 updated_at（ambient 写，侧栏「最近交互」语义）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { store, sid, deps, version } = makeUpdateMetadataDeps(undefined)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        const before = store.sessions.getSession(sid)!.updatedAt
+        emitUpdateMetadata(fakeSocket, sid, version, { path: '/tmp/x', host: 'h2' })
+
+        expect(store.sessions.getSession(sid)!.updatedAt).toBe(before)
+    })
 })

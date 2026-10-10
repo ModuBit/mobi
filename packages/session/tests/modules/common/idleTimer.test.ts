@@ -93,6 +93,40 @@ describe('IdleTimer', () => {
         expect(callbacks.onDisconnectTimeout).not.toHaveBeenCalled()
     })
 
+    it('重连不清零空闲进度：断开前后累计满空闲期即休眠（2026-10-10 生产回归）', () => {
+        // 场景：daemon 重启 → 会话断开 → daemon 回来重连。旧实现 onReconnect 恒排
+        // 完整空闲期，daemon 只要隔天重启一次，空闲计数永远攒不满、会话永不休眠。
+        // 修后按「距上次真实活动已过多久」折算剩余时间（断开窗口计入空闲进度）。
+        const { timer, callbacks } = makeTimer()
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 300_000) // 已空闲近一天
+        timer.onDisconnect()                              // daemon 重启
+        vi.advanceTimersByTime(300_000)                   // 断开 5 分钟（计入空闲进度）
+        timer.onReconnect()                               // daemon 回来
+
+        // 剩余空闲进度恰为 0：立即到点（照常走 gate，此处未注入 gate = 直接退出）
+        vi.advanceTimersByTime(0)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+        expect(callbacks.onDisconnectTimeout).not.toHaveBeenCalled()
+    })
+
+    it('重连后真实活动（reset）重新等完整空闲期', () => {
+        const { timer, callbacks } = makeTimer()
+        timer.start()
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 300_000)
+        timer.onDisconnect()
+        vi.advanceTimersByTime(300_000)
+        timer.onReconnect()
+        timer.reset()                                     // 用户活动：重置基准
+
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1_000)
+        expect(callbacks.onIdleTimeout).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1_000)
+        expect(callbacks.onIdleTimeout).toHaveBeenCalledTimes(1)
+    })
+
     it('断开窗口内重复 onDisconnect（connect_error 每次重试触发）重连后不得误杀', () => {
         // 场景：hub 重启（deploy）→ 'disconnect' 启动断开计时 → 重连尝试每次
         // 'connect_error' 再调 onDisconnect → hub 恢复后重连成功。

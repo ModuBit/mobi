@@ -86,27 +86,26 @@ export function getOrCreateSession(
             return toStoredSession(existing)
         }
 
-        const updatedAt = Date.now()
-
+        // metadata 合并属环境噪音写（CC 偶发 commands_changed 触发 capability 刷新等），
+        // 不顶新 updated_at：侧栏相对时间与列表排序（web compareSessionsForList）都以
+        // updated_at 为「最近真实交互」，ambient 写顶新会造成空闲多日的会话显示成
+        // 「1 小时前」（2026-10-10 生产实锤）。真实交互（消息/runtime_state）各有自己的写点
         db.prepare(`
             UPDATE sessions
             SET metadata = @metadata,
                 metadata_version = metadata_version + 1,
-                updated_at = @updated_at,
                 seq = seq + 1
             WHERE id = @id
         `).run({
             id: existing.id,
-            metadata: JSON.stringify(merged),
-            updated_at: updatedAt
+            metadata: JSON.stringify(merged)
         })
 
-        // 直接基于内存数据构造返回值，避免多余 DB 读取
+        // 直接基于内存数据构造返回值，避免多余 DB 读取（updatedAt 保持行内原值）
         return {
             ...toStoredSession(existing),
             metadata: merged,
             metadataVersion: existing.metadata_version + 1,
-            updatedAt,
             seq: existing.seq + 1,
         }
     }

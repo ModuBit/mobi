@@ -61,6 +61,14 @@ export class IdleTimer {
     private readonly onIdleTimeout: () => void;
 
     private state: TimerState = 'stopped';
+    /**
+     * 最近一次真实活动时刻（start / reset 时推进）。空闲判定的时间戳基准：
+     * 排程时按「距上次活动已过多久」折算剩余时间，而非恒排完整空闲期——
+     * 否则 daemon 每次重启（断开→重连→重排）都会把倒计时清零，会话永远
+     * 攒不满空闲期（2026-10-10 生产实锤：10-07 起空闲的会话因 10-09/10-10
+     * 两次 daemon 重启迟迟不休眠）。断开窗口不计活动、但计入空闲进度。
+     */
+    private lastActivityAt = 0;
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
     private blockedRecheckTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly onIdleTimeoutBlockedRecheck?: () => boolean;
@@ -89,6 +97,7 @@ export class IdleTimer {
         }
 
         this.state = 'running';
+        this.lastActivityAt = Date.now();
         this.scheduleIdleTimers();
         logger.debug('[IdleTimer] Started');
     }
@@ -122,6 +131,7 @@ export class IdleTimer {
         }
 
         this.state = 'running';
+        this.lastActivityAt = Date.now();
         this.scheduleIdleTimers();
         logger.debug('[IdleTimer] Reset');
     }
@@ -172,7 +182,8 @@ export class IdleTimer {
             this.disconnectTimer = null;
         }
 
-        // 重新开始空闲计时
+        // 重排空闲计时——不推进 lastActivityAt：重连不是用户活动，
+        // 重连前已累积的空闲进度原样折算进剩余时间（见 lastActivityAt 注释）
         this.scheduleIdleTimers();
         logger.debug('[IdleTimer] Reconnected, restarted idle timers');
     }
@@ -204,8 +215,13 @@ export class IdleTimer {
     private scheduleIdleTimers(): void {
         this.clearIdleTimers();
 
+        // 时间戳基准：按「距上次真实活动已过多久」折算剩余时间。
+        // 断开窗口（onDisconnect 清计时器 → onReconnect 重排）不重置进度，
+        // 已超期则 delay 折算为 0、立即到点（照常过休眠 gate）
+        const remainingMs = Math.max(0, this.idleTimeoutMs - (Date.now() - this.lastActivityAt));
+
         // 预警计时器
-        const warningDelay = this.idleTimeoutMs - this.warningMs;
+        const warningDelay = remainingMs - this.warningMs;
         if (warningDelay > 0) {
             this.warningTimer = setTimeout(() => {
                 if (this.state === 'running' && !this.isDisconnected) {
@@ -227,7 +243,7 @@ export class IdleTimer {
             }
             logger.debug('[IdleTimer] Idle timeout reached');
             this.onIdleTimeout();
-        }, this.idleTimeoutMs);
+        }, remainingMs);
     }
 
     private clearIdleTimers(): void {
