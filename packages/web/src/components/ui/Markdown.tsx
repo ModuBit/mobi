@@ -160,8 +160,9 @@ const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children, str
     }
 
     // openui 交互 UI（Intelligent UI Native 层）：渲染为 react-ui 官方组件库，
-    // 流式状态随所在代码块（x-markdown 按块级 memo 传递 streamStatus）
-    if (explicit === 'openui') {
+    // 流式状态随所在代码块（x-markdown 按块级 memo 传递 streamStatus）。
+    // 标签双收：官方 inlineMode prompt 教的是 openui-lang，mobi 历史口径是 openui
+    if (explicit === 'openui' || explicit === 'openui-lang') {
         return <OpenUIBlock code={children} streaming={streamStatus === 'loading'} />
     }
 

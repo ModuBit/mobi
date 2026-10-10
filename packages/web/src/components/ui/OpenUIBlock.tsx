@@ -22,6 +22,12 @@
 
 import { lazy, Suspense } from 'react'
 
+// 关停 OpenUI Inspect 调试面板的自动挂载：@openuidev/react-lang 有模块级 side effect，
+// NODE_ENV=development 时向 document.body 注入第三方调试挂件（含推广外链）。生产 build
+// 该块被 dead-code 消除，dev 环境靠预置其幂等 flag 阻断——必须发生在 react-lang 模块
+// 加载（即下方懒 chunk）之前，故放在本薄壳模块顶层
+;(globalThis as Record<symbol, unknown>)[Symbol.for('openui.devtools.autoMount')] = true
+
 const LazyOpenUIRenderer = lazy(() => import('./openui/renderer'))
 
 export interface OpenUIBlockProps {

@@ -1128,3 +1128,9 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 > 2026-10-10 票 01 实施发现：fenced `openui` 封口时 parser 结构化错误（`OpenUIError[]`，含 statementId/component/hint）当前只能 web 内联降级显示（警示条 + 非法语句丢弃、块不移除）。票面原定「diagnostics 落 turn journal」，但 web 侧无 turn journal 写通道（review-v3 journal 归因主源在 daemon 侧、CLI capture 写入，web 无 append API）。
 
 **候选方向**：daemon 侧补一个 diagnostics 写端点（web 封口校验后上报）或 CLI 侧在封口归档时自行跑 parser 校验落 journal。触发条件：票 07 安全评审/真机使用发现内联提示不够（需要跨设备回看或归档检索）时再做。相关：`.scratch/generative-ui/issues/01`。
+
+## 112. 生成文件无 CI 生成钩子（fileTypeIcons 缺口）
+
+> 2026-10-10 票 02 实施发现：`*.generated.ts` 全局 gitignore，但 `packages/web/src/components/ui/fileTypeIcons.generated.ts`（436b3805 引入）既不入库也无任何 CI/构建钩子调用 `gen:file-type-icons`——干净 checkout 后 `bun run test`（FileTypeBadge.test）与 typecheck 都会因 import 缺失挂。本票的 `openuiCatalogPrompt.generated.ts` 已走 gitignore 例外入库规避同类问题。
+
+**治本方向**：CI `test`/`typecheck` job 加生成前置步（或根 `postinstall` 跑 gen 脚本），两个 gen 脚本统一挂载。

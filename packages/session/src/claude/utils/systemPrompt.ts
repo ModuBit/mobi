@@ -16,6 +16,7 @@
 
 import { trimIdent } from "@mobi/node-core/utils/trimIdent";
 import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_DIRECTIVE, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
+import { OPENUI_CATALOG_PROMPT } from "./openuiCatalogPrompt.generated";
 
 /**
  * mobi 注入的基础 system prompt：
@@ -68,11 +69,16 @@ export interface AppendSystemPromptConfig {
  * 统一 append 语义：customSystemPrompt 与 appendSystemPrompt 不再区分（历史上一为 replace、
  * 一为 append，replace 会整体丢掉 claude_code 默认 prompt，是脚枪），现都作为追加内容拼接。
  *
- * 拼接顺序：用户 custom → 用户 append → mobi base（change_title）。
- * 用户内容在前、mobi base 在后，保持历史顺序。
+ * 拼接顺序：用户 custom → 用户 append → mobi base（change_title/artifact 契约）→
+ * openui catalog prompt（generative-ui 票 02）。
+ *
+ * 【通道裁决（票 02）】catalog prompt 走 session 侧 systemPrompt 组装链（与
+ * :mobi-artifact 声明教学的 BASE_SYSTEM_PROMPT 同一链路、常驻契约），不走
+ * appendSystemPrompt——那是用户自定义配置通道，程序化注入混入会互相污染且不可
+ * 独立演进。判据措辞单一来源在生成脚本的 OPENUI_PROMPT_OPTIONS，非代码路由。
  */
 export function buildAppendSystemPrompt(config: AppendSystemPromptConfig): string {
-    return [config.customSystemPrompt, config.appendSystemPrompt, BASE_SYSTEM_PROMPT]
+    return [config.customSystemPrompt, config.appendSystemPrompt, BASE_SYSTEM_PROMPT, OPENUI_CATALOG_PROMPT]
         .filter((part): part is string => Boolean(part))
         .join('\n\n');
 }

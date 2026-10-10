@@ -24,6 +24,8 @@ dev-dist/
 # Generated files
 *.generated.ts
 *.generated.d.ts
+# 例外：openui catalog prompt 生成物入库（CI 无生成钩子，靠同步测试守门防漂移）
+!packages/session/src/claude/utils/openuiCatalogPrompt.generated.ts
 
 # CLI build output
 dist-exe/

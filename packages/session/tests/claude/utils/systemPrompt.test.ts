@@ -16,37 +16,41 @@
 
 import { describe, it, expect } from 'vitest';
 import { systemPrompt, buildAppendSystemPrompt } from '@/claude/utils/systemPrompt';
+import { OPENUI_CATALOG_PROMPT } from '@/claude/utils/openuiCatalogPrompt.generated';
 import { buildActionUri } from '@mobi/shared';
 
+/** 无用户自定义时的完整追加内容（base + openui catalog，票 02 起形状） */
+const fullAppend = `${systemPrompt}\n\n${OPENUI_CATALOG_PROMPT}`;
+
 describe('buildAppendSystemPrompt', () => {
-  it('仅返回 base（change_title 指令）当无用户自定义', () => {
+  it('无用户自定义时返回 base + openui catalog（change_title 与 catalog 都在）', () => {
     const result = buildAppendSystemPrompt({});
-    expect(result).toBe(systemPrompt);
+    expect(result).toBe(fullAppend);
     expect(result).toContain('change_title');
   });
 
   it('把 customSystemPrompt 作为追加内容（不替换 base）', () => {
     const result = buildAppendSystemPrompt({ customSystemPrompt: 'You are concise.' });
     // custom 在前，base 在后，\n\n 连接
-    expect(result).toBe(`You are concise.\n\n${systemPrompt}`);
+    expect(result).toBe(`You are concise.\n\n${fullAppend}`);
   });
 
   it('把 appendSystemPrompt 作为追加内容', () => {
     const result = buildAppendSystemPrompt({ appendSystemPrompt: 'Be brief.' });
-    expect(result).toBe(`Be brief.\n\n${systemPrompt}`);
+    expect(result).toBe(`Be brief.\n\n${fullAppend}`);
   });
 
-  it('custom 与 append 同时存在时按 custom → append → base 顺序拼接', () => {
+  it('custom 与 append 同时存在时按 custom → append → base → catalog 顺序拼接', () => {
     const result = buildAppendSystemPrompt({
       customSystemPrompt: 'CUSTOM',
       appendSystemPrompt: 'APPEND',
     });
-    expect(result).toBe(`CUSTOM\n\nAPPEND\n\n${systemPrompt}`);
+    expect(result).toBe(`CUSTOM\n\nAPPEND\n\n${fullAppend}`);
   });
 
   it('空字符串与 undefined 等价（被过滤）', () => {
     expect(buildAppendSystemPrompt({ customSystemPrompt: '', appendSystemPrompt: undefined }))
-      .toBe(systemPrompt);
+      .toBe(fullAppend);
   });
 
   it('base 含 mobi://file/open 协议段：模板字面量、时机约束、编码提醒三要素', () => {
@@ -94,5 +98,36 @@ describe('产物声明契约（inline-artifacts ticket 04）', () => {
   it('既有 base 内容不受契约追加影响', () => {
     expect(prompt).toContain('change_title');
     expect(prompt).toContain('[a.ts](mobi://file/open?path=src/a.ts)');
+  });
+});
+
+describe('openui catalog prompt 契约（generative-ui 票 02）', () => {
+  it('含官方围栏教学（```openui-lang 标签，inlineMode 段自带）', () => {
+    expect(OPENUI_CATALOG_PROMPT).toContain('```openui-lang');
+  });
+
+  it('含纯问题不出码约束（官方 inlineMode 段，PoC 场景 s09/s15/s19 口径）', () => {
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/plain text\. Do NOT output any openui-lang code/i);
+  });
+
+  it('三层形态判据齐全：native 围栏 / app 文件+mode=app 声明 / fenced 小片段', () => {
+    const routings = OPENUI_CATALOG_PROMPT.match(/Form routing:/g) ?? [];
+    expect(routings).toHaveLength(3);
+    // app 线：自包含单文件 + Edit 迭代 + mode=app 声明（与 base 的 artifact 指令衔接）
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/self-contained single-file \.html/i);
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/iterate with Edit/i);
+    expect(OPENUI_CATALOG_PROMPT).toContain('mode="app"');
+  });
+
+  it('含组件目录签名与关键语法规则（catalog 主体在，否则模型无从生成合法 DSL）', () => {
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/root = Stack\(/);
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/PascalCase/i);
+    expect(OPENUI_CATALOG_PROMPT.length).toBeGreaterThan(10_000);
+  });
+
+  it('与生成脚本同源同步（升 react-ui 或改判据措辞后未重生成即红）', async () => {
+    const { OPENUI_PROMPT_OPTIONS } = await import('../../../scripts/generate-openui-prompt');
+    const { openuiLibrary } = await import('@openuidev/react-ui/genui-lib');
+    expect(openuiLibrary.prompt(OPENUI_PROMPT_OPTIONS)).toBe(OPENUI_CATALOG_PROMPT);
   });
 });

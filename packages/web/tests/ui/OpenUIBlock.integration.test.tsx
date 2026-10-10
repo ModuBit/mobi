@@ -59,6 +59,15 @@ describe('fenced openui 渲染闭环', () => {
         expect(container.querySelector('.openui-block')).toBeInTheDocument()
     })
 
+    it('官方 openui-lang 标签同路径渲染（catalog prompt inlineMode 教的标签）', async () => {
+        const content = '```openui-lang\n' + SAMPLE + '\n```'
+        displayState.current = content
+        const { container } = render(<Markdown content={content} />)
+
+        expect(await screen.findByText('拓扑语言')).toBeInTheDocument()
+        expect(container.querySelector('.openui-block')).toBeInTheDocument()
+    })
+
     it('未知 lang 回落现状代码块（向后兼容）', async () => {
         displayState.current = '```ts\nconst a = 1\n```'
         const { container } = render(<Markdown content={'```ts\nconst a = 1\n```'} />)
