@@ -40,8 +40,7 @@ import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleIt
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { UiSendProvider } from '@/components/ui/openui/actionContext'
-import { deriveOpenUITerminalStates } from '@/components/ui/openui/actionState'
-import { useOpenUIActionStore } from '@/components/ui/openui/actionStore'
+import { useOpenUIActionLifecycle } from '@/components/ui/openui/useOpenUIActionLifecycle'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
@@ -1267,15 +1266,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor })
     }, [sendMutation])
 
-    // 档③终态扫描（票 04）：从消息窗口派生各锚点的 done/failed/running，批量推进
-    // actionStore。点击即时翻转的 running 与扫描合成（幂等）；刷新后的状态恢复
-    // 也走这里（锚点随消息 meta 落库）。messages 窗口 / running 任一变化重扫
-    useEffect(() => {
-        const derived = deriveOpenUITerminalStates(messages, session?.running ?? false)
-        if (derived.size > 0) {
-            useOpenUIActionStore.getState().applyDerived(derived)
-        }
-    }, [messages, session?.running])
+    // 档③终态推进（票 04）：接线收口在 openui 目录（useOpenUIActionLifecycle），
+    // 此处只喂数据——消息窗口 + 会话运行态
+    useOpenUIActionLifecycle(messages, session?.running ?? false)
 
     const handleAbort = async (stopKind: StopKind) => {
         await sessionActions.abortSession(stopKind)
