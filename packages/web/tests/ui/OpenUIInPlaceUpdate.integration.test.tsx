@@ -17,7 +17,7 @@
 /**
  * 回路③原地更新规格（generative-ui 票 04）：
  * - 档③块（$actionState 声明 + 三元派生 label）初始渲染 idle 文案；
- * - 点击 → sendMessage 携 sourceBlock（锚点）→ store 翻 running → 按钮文案
+ * - 点击 → sendMessage 携 anchor（档③锚点）→ store 翻 running → 按钮文案
  *   原地翻「执行中…」（markdown content 不变——变更只发生在外部 store 注入的
  *   initialState reactive binding）；
  * - running 期间重复点击去重（不再发送）；
@@ -39,7 +39,7 @@ vi.mock('@/components/ui/useStreamingContent', () => ({
 }))
 
 const { Markdown } = await import('@/components/ui/Markdown')
-const { OpenUIActionProvider, OpenUIAnchorProvider } = await import('@/components/ui/openui/actionContext')
+const { UiSendProvider, OpenUIAnchorProvider } = await import('@/components/ui/openui/actionContext')
 const { useOpenUIActionStore } = await import('@/components/ui/openui/actionStore')
 
 // 档③块（prompt additionalRules 教的 Action-state convention 形态）
@@ -55,11 +55,11 @@ function renderActionBlock() {
     const sendMessage = vi.fn()
     displayState.current = fenced(ACTION_BLOCK)
     render(
-        <OpenUIActionProvider sendMessage={sendMessage}>
+        <UiSendProvider sendMessage={sendMessage}>
             <OpenUIAnchorProvider anchor={ANCHOR}>
                 <Markdown content={fenced(ACTION_BLOCK)} />
             </OpenUIAnchorProvider>
-        </OpenUIActionProvider>,
+        </UiSendProvider>,
     )
     return sendMessage
 }
@@ -75,14 +75,14 @@ describe('回路③：原地更新', () => {
         expect(await screen.findByText('预订')).toBeInTheDocument()
     })
 
-    it('点击 → 发送携 sourceBlock + 翻 running → 文案原地翻「执行中…」，content 不变', async () => {
+    it('点击 → 发送携 origin+anchor + 翻 running → 文案原地翻「执行中…」，content 不变', async () => {
         const sendMessage = renderActionBlock()
         await screen.findByText('预订')
 
         fireEvent.click(screen.getByText('预订'))
 
         expect(sendMessage).toHaveBeenCalledTimes(1)
-        expect(sendMessage.mock.calls[0][1]).toEqual({ sourceBlock: ANCHOR })
+        expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui', anchor: ANCHOR })
         // markdown content 恒定（原地更新不动消息文本）
         expect(displayState.current).toBe(fenced(ACTION_BLOCK))
         expect(await screen.findByText('执行中…')).toBeInTheDocument()
@@ -115,16 +115,17 @@ describe('回路③：原地更新', () => {
         const sendMessage = vi.fn()
         displayState.current = fenced(ACTION_BLOCK)
         render(
-            <OpenUIActionProvider sendMessage={sendMessage}>
+            <UiSendProvider sendMessage={sendMessage}>
                 <Markdown content={fenced(ACTION_BLOCK)} />
-            </OpenUIActionProvider>,
+            </UiSendProvider>,
         )
         await screen.findByText('预订')
 
         fireEvent.click(screen.getByText('预订'))
 
         expect(sendMessage).toHaveBeenCalledTimes(1)
-        expect(sendMessage.mock.calls[0][1]).toBeUndefined()
+        // 无锚点：origin 仍显式（openui 档），只是不带 anchor（档②退化）
+        expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui' })
         // 无锚点不注入 initialState——label 恒 idle 文案
         expect(screen.getByText('预订')).toBeInTheDocument()
         expect(useOpenUIActionStore.getState().phases.size).toBe(0)

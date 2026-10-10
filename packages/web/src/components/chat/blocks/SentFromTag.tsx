@@ -24,28 +24,35 @@
 import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { MousePointerClick, AppWindow } from 'lucide-react'
+import { isUiMessageOrigin, type UiMessageOrigin } from '@mobi/shared'
+
+/**
+ * 来源 → 展示元数据的唯一映射：Record 保证 exhaustive——shared 加一个 UI 回灌来源
+ * 而漏配此处，类型层即红（不会静默不显示）。图标/文案是 web 展示概念，留在 web。
+ */
+const ORIGIN_META: Record<UiMessageOrigin, { labelKey: string; Icon: typeof MousePointerClick }> = {
+    openui: { labelKey: 'chat.origin.openui', Icon: MousePointerClick },
+    app: { labelKey: 'chat.origin.app', Icon: AppWindow },
+}
 
 /** 来源 → i18n key（仅 UI 回灌两值；其余 null 不标） */
 export function sentFromTagLabelKey(sentFrom: string | null | undefined): string | null {
-    if (sentFrom === 'openui') return 'chat.origin.openui'
-    if (sentFrom === 'app') return 'chat.origin.app'
-    return null
+    return isUiMessageOrigin(sentFrom) ? ORIGIN_META[sentFrom].labelKey : null
 }
 
 /** 弱化来源 chip：与 user-msg-terminal 同呈现档（小号 + 三级前景色，可辨识不抢焦） */
 export function SentFromTag({ sentFrom }: { sentFrom: string | null | undefined }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const key = sentFromTagLabelKey(sentFrom)
-    if (key === null) return null
-    const Icon = sentFrom === 'app' ? AppWindow : MousePointerClick
+    if (!isUiMessageOrigin(sentFrom)) return null
+    const { labelKey, Icon } = ORIGIN_META[sentFrom]
     return (
         <span
             data-testid="user-msg-origin"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11 }}
         >
             <Icon size={12} />
-            {t(key)}
+            {t(labelKey)}
         </span>
     )
 }

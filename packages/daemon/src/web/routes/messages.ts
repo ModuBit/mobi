@@ -15,7 +15,7 @@
  */
 
 import { Hono } from 'hono'
-import { UserMessageContentSchema, normalizeUserContent } from '@mobi/shared'
+import { UserMessageContentSchema, normalizeUserContent, UiMessageOriginSchema } from '@mobi/shared'
 import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
@@ -35,10 +35,10 @@ const sidechainQuerySchema = z.object({
 const newFormatBodySchema = z.object({
     content: UserMessageContentSchema,
     localId: z.string().min(1).optional(),
-    // 来源诊断标记（generative-ui 票 03/06 回路②回灌）：只收窄 'openui' | 'app'
-    // 两个值，缺省归 'webapp'——开放枚举会让客户端可伪造 'cli'，破坏跨会话判定的
-    // sentFrom 借道（'app' = 沙箱 app bridge issueNewTurn，票 06）
-    sentFrom: z.enum(['openui', 'app']).optional(),
+    // 来源诊断标记（generative-ui 回路②回灌）：合法值即 shared 的 UI 回灌来源词汇
+    // （单一来源 UI_MESSAGE_ORIGINS）——开放枚举会让客户端可伪造 'cli'，破坏跨会话判定的
+    // sentFrom 借道；'app' = 沙箱 app bridge issueNewTurn（票 06）
+    sentFrom: UiMessageOriginSchema.optional(),
     // 档③锚点（票 04 原地更新）：发起 UI 块所在的 agent text block id，落库进
     // meta.openuiAnchor——web 刷新后扫描恢复按钮态的数据源
     sourceBlock: z.string().min(1).max(200).optional(),

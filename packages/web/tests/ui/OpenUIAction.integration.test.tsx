@@ -16,7 +16,7 @@
 
 /**
  * 回路② send-message 回灌规格（generative-ui 票 03）：
- * - Button 点击（用户显式手势）→ 经 OpenUIActionProvider 注入的 sendMessage 发出，
+ * - Button 点击（用户显式手势）→ 经 UiSendProvider 注入的 sendMessage 发出，
  *   文本含 label 与当前表单值；
  * - 无 provider（会话页外渲染）→ 点击不抛错、不发送；
  * - 无任何自动发送路径：挂载/流式期间即使点击也不发送（验收④的测试面——
@@ -37,7 +37,7 @@ vi.mock('@/components/ui/useStreamingContent', () => ({
 }))
 
 const { Markdown } = await import('@/components/ui/Markdown')
-const { OpenUIActionProvider } = await import('@/components/ui/openui/actionContext')
+const { UiSendProvider } = await import('@/components/ui/openui/actionContext')
 // 懒 chunk 直连：流式守卫 seam 在 renderer 的 streaming prop（经 Markdown 时由块级
 // 揭示状态派生——mock 下即时全显恒 done，测不到 loading 态，故绕过直接渲染）
 const OpenUIRenderer = (await import('@/components/ui/openui/renderer')).default
@@ -57,9 +57,9 @@ function renderWithProvider(streaming = false) {
     const sendMessage = vi.fn()
     displayState.current = fenced(FORM_SAMPLE)
     render(
-        <OpenUIActionProvider sendMessage={sendMessage}>
+        <UiSendProvider sendMessage={sendMessage}>
             <Markdown content={fenced(FORM_SAMPLE)} streaming={streaming} />
-        </OpenUIActionProvider>,
+        </UiSendProvider>,
     )
     return sendMessage
 }
@@ -92,9 +92,9 @@ describe('回路②：openui Button → send-message 回灌', () => {
     it('流式期间点击 → 不发送（块自身未封口）', async () => {
         const sendMessage = vi.fn()
         render(
-            <OpenUIActionProvider sendMessage={sendMessage}>
+            <UiSendProvider sendMessage={sendMessage}>
                 <OpenUIRenderer code={FORM_SAMPLE} streaming />
-            </OpenUIActionProvider>,
+            </UiSendProvider>,
         )
         await screen.findByText('Contact Us')
         await screen.findByText('Submit')

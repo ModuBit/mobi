@@ -15,7 +15,8 @@
  */
 
 import { useMutation } from '@tanstack/react-query'
-import type { UserContentBlock } from '@mobi/shared'
+import type { UiMessageOrigin, UserContentBlock } from '@mobi/shared'
+import { UI_ANCHOR_ORIGIN } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { makeClientSideId } from '@/core/lib/messages'
 import { serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
@@ -37,16 +38,12 @@ import type { DecryptedMessage } from '@/core/data/api/types'
  * 无法通过 mergeMessages 的 localId 去重替换乐观气泡。
  * 因此在 mutate(segments) 时生成一次 localId，与 blocks 一起传入。
  *
- * 来源标记（generative-ui 票 03）：sentFrom 诊断标记（'openui' = 交互 UI 回路②
- * 发出），存储/展示与手打消息无差别；乐观气泡 meta 与之一致，避免 echo 合并后翻转。
+ * 来源标记（generative-ui 票 03）：sentFrom = UI 回灌来源（shared UiMessageOrigin
+ * 单一来源），存储/展示与手打消息无差别；乐观气泡 meta 与之一致，避免 echo 合并后翻转。
  */
 
-/** 发送来源：手打缺省 'webapp'；'openui' = fenced openui 块回灌（票 03）；
- *  'app' = 沙箱 app bridge MobiApp.issueNewTurn 回灌（票 06） */
-export type SendSource = 'openui' | 'app'
-
-/** 发送变量（mutation 内部词汇）：blocks + localId + 可选来源与档③锚点 */
-type SendVars = { blocks: UserContentBlock[]; localId: string; sentFrom?: SendSource; sourceBlock?: string }
+/** 发送变量（mutation 内部词汇）：blocks + localId + 可选 UI 回灌来源与档③锚点 */
+type SendVars = { blocks: UserContentBlock[]; localId: string; sentFrom?: UiMessageOrigin; sourceBlock?: string }
 
 export function useSendMessage(sessionId: string, isRunning: boolean) {
     const api = useMobiApi()
@@ -81,7 +78,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                     // 服务端行携带，扫描在运行期读不到锚点、终态翻转要等刷新才发生
                     meta: {
                         sentFrom: vars.sentFrom ?? 'webapp',
-                        ...(vars.sentFrom === 'openui' && vars.sourceBlock ? { openuiAnchor: vars.sourceBlock } : {}),
+                        ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.sourceBlock ? { openuiAnchor: vars.sourceBlock } : {}),
                     },
                 },
                 createdAt: now,
@@ -106,7 +103,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
     // 分段序列化为 blocks，保证 onMutate 与 mutationFn 用同一份产物）。必须同时覆盖两者——
     // 只覆盖 mutate 会让展开的 mutateAsync 仍按旧签名工作，调用方传参错位会丢 localId，
     // 导致服务端 echo 无法按 localId 去重乐观气泡 → 重复消息。
-    const send = (segments: ComposerSegments, opts?: { sentFrom?: SendSource; sourceBlock?: string }): SendVars => ({
+    const send = (segments: ComposerSegments, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }): SendVars => ({
         blocks: serializeSegments(segments),
         localId: makeClientSideId('local'),
         ...(opts?.sentFrom ? { sentFrom: opts.sentFrom } : {}),
@@ -114,7 +111,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
     })
     return {
         ...mutation,
-        mutate: (segments: ComposerSegments, opts?: { sentFrom?: SendSource; sourceBlock?: string }) => mutation.mutate(send(segments, opts)),
-        mutateAsync: (segments: ComposerSegments, opts?: { sentFrom?: SendSource; sourceBlock?: string }) => mutation.mutateAsync(send(segments, opts)),
+        mutate: (segments: ComposerSegments, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }) => mutation.mutate(send(segments, opts)),
+        mutateAsync: (segments: ComposerSegments, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }) => mutation.mutateAsync(send(segments, opts)),
     }
 }

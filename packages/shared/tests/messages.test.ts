@@ -26,8 +26,34 @@ import {
     STOP_KIND_VALUES,
     LIFECYCLE_RANK,
     MESSAGE_ROLES,
+    UI_MESSAGE_ORIGINS,
+    UiMessageOriginSchema,
+    isUiMessageOrigin,
+    UI_ANCHOR_ORIGIN,
     type MessageFact,
 } from '../src/messages'
+
+describe('UI 回灌来源词汇', () => {
+    it('受控子集恰为 openui / app（与 daemon 入口 schema 同源）', () => {
+        expect(UI_MESSAGE_ORIGINS).toEqual(['openui', 'app'])
+    })
+    it('schema 收窄：两值放行，端来源与伪造值拒绝（cli 借道防线）', () => {
+        expect(UiMessageOriginSchema.safeParse('openui').success).toBe(true)
+        expect(UiMessageOriginSchema.safeParse('app').success).toBe(true)
+        expect(UiMessageOriginSchema.safeParse('cli').success).toBe(false)
+        expect(UiMessageOriginSchema.safeParse('webapp').success).toBe(false)
+    })
+    it('谓词：命中子集收窄，其余（含 null/undefined/未知串）为否', () => {
+        expect(isUiMessageOrigin('app')).toBe(true)
+        expect(isUiMessageOrigin('openui')).toBe(true)
+        expect(isUiMessageOrigin('openLink')).toBe(false)
+        expect(isUiMessageOrigin(null)).toBe(false)
+        expect(isUiMessageOrigin(undefined)).toBe(false)
+    })
+    it('档③锚点资格来源是 openui（app bridge 无原地更新语义）', () => {
+        expect(UI_ANCHOR_ORIGIN).toBe('openui')
+    })
+})
 
 describe('MESSAGE_ROLES', () => {
     it('三足鼎立：user / agent / custom（ADR 0002）', () => {

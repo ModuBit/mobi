@@ -49,7 +49,7 @@ import '@openuidev/react-ui/defaults.css'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { OPENUI_LIGHT_THEME, OPENUI_DARK_THEME } from './theme'
 import { buildOpenUIMessage } from './actionMessage'
-import { useOpenUISendMessage, useOpenUIAnchor } from './actionContext'
+import { useUiSendMessage, useOpenUIAnchor } from './actionContext'
 import { useOpenUIActionStore } from './actionStore'
 
 export interface OpenUIRendererProps {
@@ -65,7 +65,7 @@ const MAX_SHOWN_ERRORS = 3
 export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps) {
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
-    const sendMessage = useOpenUISendMessage()
+    const sendMessage = useUiSendMessage()
     const anchor = useOpenUIAnchor()
     // 档③ phase：无锚点恒 idle（store 订阅须传稳定 selector，避免 Map 身份触发重渲染）
     const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? 'idle' : 'idle'))
@@ -82,7 +82,7 @@ export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps)
         const text = buildOpenUIMessage(event)
         if (!text) return
         if (anchor !== null) setPhase(anchor, 'running')
-        sendMessage?.(text, anchor !== null ? { sourceBlock: anchor } : undefined)
+        sendMessage?.(text, { origin: 'openui', ...(anchor !== null ? { anchor } : {}) })
     }, [streaming, phase, anchor, setPhase, sendMessage])
 
     // 档③注入：idle 不注入（让 $actionState 声明默认值生效，非档③块零影响）；

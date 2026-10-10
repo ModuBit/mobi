@@ -31,6 +31,7 @@
 
 import { getField, isAbortedTerminalReason } from '@mobi/shared'
 import type { DecryptedMessage } from '@/core/data/api/types'
+import { UI_ANCHOR_ORIGIN } from '@mobi/shared'
 
 /** $actionState 的值域（与 catalog prompt 教学、renderer 注入三方共享的词汇） */
 export type OpenUIActionPhase = 'idle' | 'running' | 'done' | 'failed'
@@ -54,7 +55,7 @@ function readAnchor(msg: DecryptedMessage): string | null {
     if (env?.role !== 'user') return null
     const meta = env.meta
     if (typeof meta !== 'object' || meta === null) return null
-    if ((meta as Record<string, unknown>).sentFrom !== 'openui') return null
+    if ((meta as Record<string, unknown>).sentFrom !== UI_ANCHOR_ORIGIN) return null
     const anchor = (meta as { openuiAnchor?: unknown }).openuiAnchor
     return typeof anchor === 'string' && anchor.length > 0 ? anchor : null
 }

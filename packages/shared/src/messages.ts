@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { z } from 'zod'
 import { getMeta, isObject } from './utils'
 import { hasCrossSessionOrigin } from './inboundOrigin'
 
@@ -130,6 +131,34 @@ export type { RoleWrappedRecord }
  * `(string & {})` 让任意新值仍可赋值而不必先改这里。
  */
 export type SentFrom = 'cli' | 'webapp' | (string & {})
+
+/**
+ * UI 回灌来源（generative-ui 回路②③）：`meta.sentFrom` 的**受控子集**——交互 UI 发出的
+ * 消息（'openui' = fenced openui 块动作，'app' = 沙箱 app bridge 的 MobiApp.issueNewTurn），
+ * 与端来源（'cli' / 'webapp'）同字段不同层，不并进 {@link SentFrom} 的开放联合。
+ *
+ * 单一来源（2026-10-10 架构评审候选 1 收口）：此前两个字面量散在 daemon 入口 zod、
+ * web 发送类型、Tag 映射、锚点扫描四处各写一遍，加来源（如 openLink 第二通道）漏改
+ * 任一处是静默错（Tag 不显示 / 锚点不识别）。daemon 的 sentFrom schema、web 的类型与
+ * 映射都从这里派生——新增来源只改这里 + 各消费方按需显式接入。
+ */
+export const UI_MESSAGE_ORIGINS = ['openui', 'app'] as const
+export type UiMessageOrigin = (typeof UI_MESSAGE_ORIGINS)[number]
+
+/** UI 回灌来源的合法值 schema（daemon web 入口校验用，取值来源即 UI_MESSAGE_ORIGINS） */
+export const UiMessageOriginSchema = z.enum(UI_MESSAGE_ORIGINS)
+
+/** 是否为 UI 回灌来源（读取侧判别：meta.sentFrom 命中受控子集） */
+export function isUiMessageOrigin(value: unknown): value is UiMessageOrigin {
+    return typeof value === 'string' && (UI_MESSAGE_ORIGINS as readonly string[]).includes(value)
+}
+
+/**
+ * 档③原地更新锚点的资格来源：仅 fenced openui 块携带 `meta.openuiAnchor`——app bridge
+ * 无原地更新语义。锚点写入（daemon messageService 落库 / web 乐观气泡 meta）与读取
+ * （web 终态扫描 readAnchor）都问这一个常量，不各写一遍字面量。
+ */
+export const UI_ANCHOR_ORIGIN: UiMessageOrigin = 'openui'
 
 /**
  * 用户消息生命周期状态（messages.lifecycle 列 / DecryptedMessage.lifecycle）。

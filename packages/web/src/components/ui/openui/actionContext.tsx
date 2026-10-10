@@ -15,41 +15,43 @@
  */
 
 /**
- * OpenUI 回路②（send-message → intake）的注入 seam（generative-ui 票 03）。
+ * UI 回灌（回路② send-message → intake）的注入 seam（generative-ui 票 03，票 06 起承载
+ * app 档、2026-10-10 收口更名）。
  *
- * fenced openui 块渲染在 markdown 深处，天然够不到 ChatContainer 的发送通道；
- * 这里用轻量 context 把「发一条用户消息」从会话页注入进来——provider 端复用
- * ChatContainer 既有的 useSendMessage mutation 实例，保证与手打消息同链路
- * （乐观气泡 / 排队轨道 / rewind 清除 / daemon intake 单点），不新开通道。
+ * fenced openui 块与沙箱 app iframe 都渲染在 markdown / 产物视图深处，天然够不到
+ * ChatContainer 的发送通道；这里用轻量 context 把「发一条用户消息」从会话页注入
+ * 进来——provider 端复用 ChatContainer 既有的 useSendMessage mutation 实例，保证与
+ * 手打消息同链路（乐观气泡 / 排队轨道 / rewind 清除 / daemon intake 单点），不新开通道。
  *
  * 本模块必须保持零重依赖（进主 bundle）；OpenUI 事件 → 文本的组装在
  * actionMessage.ts，由懒 chunk 内的 renderer 消费。
  */
 
 import { createContext, useContext, type ReactNode } from 'react'
+import type { UiMessageOrigin } from '@mobi/shared'
 
-/** 回路②注入的发送入口：组装好的消息文本，与手打消息走同一 intake。
- *  from 标记发起层（票 06）：'openui' fenced 块（缺省）/ 'app' 沙箱 app bridge */
-export type OpenUISendMessage = (text: string, opts?: { sourceBlock?: string; from?: 'openui' | 'app' }) => void
+/** UI 回灌注入的发送入口：组装好的消息文本，与手打消息走同一 intake。
+ *  origin 必填显式（'openui' fenced 块 / 'app' 沙箱 app bridge），anchor 为档③锚点 */
+export type UiSendMessage = (text: string, opts: { origin: UiMessageOrigin; anchor?: string }) => void
 
-const OpenUIActionContext = createContext<OpenUISendMessage | null>(null)
+const UiSendContext = createContext<UiSendMessage | null>(null)
 
-export function OpenUIActionProvider({
+export function UiSendProvider({
     sendMessage,
     children,
 }: {
-    sendMessage: OpenUISendMessage
+    sendMessage: UiSendMessage
     children: ReactNode
 }) {
-    return <OpenUIActionContext.Provider value={sendMessage}>{children}</OpenUIActionContext.Provider>
+    return <UiSendContext.Provider value={sendMessage}>{children}</UiSendContext.Provider>
 }
 
 /**
- * 取回路②发送入口。无 provider（markdown 在会话页外渲染——Drawer 预览、
+ * 取 UI 回灌发送入口。无 provider（markdown 在会话页外渲染——Drawer 预览、
  * 独立文档视图等）返回 null，调用方静默 no-op：交互块照常渲染，只是不发消息。
  */
-export function useOpenUISendMessage(): OpenUISendMessage | null {
-    return useContext(OpenUIActionContext)
+export function useUiSendMessage(): UiSendMessage | null {
+    return useContext(UiSendContext)
 }
 
 /**

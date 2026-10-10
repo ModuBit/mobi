@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { isMobiDelivered, normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
-import type { CrossSessionOrigin } from '@mobi/shared'
+import { isMobiDelivered, normalizeUserContent, toCrossSessionMeta, UI_ANCHOR_ORIGIN } from '@mobi/shared'
+import type { CrossSessionOrigin, UiMessageOrigin } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
@@ -52,9 +52,9 @@ export type SendMessagePayload = {
     /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象），透传给 messageService 归一 */
     content: unknown
     localId?: string | null
-    /** 来源标识（meta.sentFrom）；'openui' = 交互 UI 回路②回灌（票 03），
-     *  'app' = 沙箱 app bridge issueNewTurn 回灌（票 06）——均诊断标记 */
-    sentFrom?: 'webapp' | 'cli' | 'openui' | 'app'
+    /** 来源标识（meta.sentFrom）；UI 回灌两值（'openui' / 'app'）见 shared
+     *  UiMessageOrigin（单一来源），均诊断标记 */
+    sentFrom?: 'webapp' | 'cli' | UiMessageOrigin
     /** 档③锚点（票 04 原地更新）：发起 UI 块所在 agent text block id，落库 meta.openuiAnchor */
     sourceBlock?: string
     /**
@@ -155,8 +155,8 @@ export class MessageService {
             content: blocks,
             meta: {
                 sentFrom,
-                // 档③锚点只在 openui 来源上落（手打/cli 无意义），web 侧扫描恢复按钮态的判据
-                ...(payload.sourceBlock && sentFrom === 'openui' ? { openuiAnchor: payload.sourceBlock } : {}),
+                // 档③锚点只在 openui 来源上落（手打/cli/app 无意义——资格常量在 shared），web 侧扫描恢复按钮态的判据
+                ...(payload.sourceBlock && sentFrom === UI_ANCHOR_ORIGIN ? { openuiAnchor: payload.sourceBlock } : {}),
                 ...(origin ? toCrossSessionMeta(origin) : {})
             }
         }

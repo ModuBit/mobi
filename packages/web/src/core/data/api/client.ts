@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, DaemonStatus, ListDirectoryResponse, ListFilesResponse, Workspace, WorkspaceFolder, WorkspaceSessionsResponse } from './types'
-import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult } from '@mobi/shared'
+import type { RedactedMemorySettings, MemorySettingsSubmission, MemoryEndpointCheckResult, PermissionAnswers, PermissionMode, PermissionUpdate, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, StopKind, UserMessageContent, ClearableRuntimeStateField, DiffTarget, ReviewActionResult, ReviewCommitsResult, ReviewContentsResult, ReviewFilesResult, ReviewOverview, ReviewPatchResult, UiMessageOrigin } from '@mobi/shared'
 import type { ReadFileMetaResponse } from '@mobi/shared/fileMeta'
 
 // 全局 401 处理回调（由外部设置）
@@ -242,10 +242,10 @@ export function createMobiApi() {
             list: (sessionId: string, params?: { beforeSeq?: number; limit?: number }) =>
                 client.get<MessagesResponse>(`/api/sessions/${sessionId}/messages`, { params }),
             // content 三形态（string / 单 block / block 数组），daemon 端统一走 UserMessageContentSchema；
-            // sentFrom 仅收窄字面量 'openui' | 'app'（交互 UI 回灌的来源诊断标记，票 03/06），
-            // 缺省由 daemon 归 'webapp'——开放字符串会让客户端可伪造 'cli'，破坏跨会话判定借道；
+            // sentFrom = UI 回灌来源（shared UiMessageOrigin 单一来源，票 03/06），缺省由
+            // daemon 归 'webapp'——开放字符串会让客户端可伪造 'cli'，破坏跨会话判定借道；
             // sourceBlock = 档③锚点（agent text block id，随消息落库 meta，票 04 原地更新回写定位）
-            send: (sessionId: string, content: UserMessageContent, localId?: string, sentFrom?: 'openui' | 'app', sourceBlock?: string) =>
+            send: (sessionId: string, content: UserMessageContent, localId?: string, sentFrom?: UiMessageOrigin, sourceBlock?: string) =>
                 client.post(`/api/sessions/${sessionId}/messages`, {
                     content,
                     ...(localId !== undefined ? { localId } : {}),
