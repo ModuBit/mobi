@@ -25,6 +25,7 @@ import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
 import { locateQuotedMessage, type QuoteLocateFn } from '@/core/lib/quoteLocate'
 import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
 import { ArtifactEnvProvider } from '@/components/ui/ArtifactDirectiveComponents'
+import { OpenUIAnchorProvider } from '@/components/ui/openui/actionContext'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
@@ -106,9 +107,12 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                         quotes={ctx.resolveQuoteAnnotations?.(block.id)}
                         onLocate={ctx.onQuoteLocate ?? locateQuotedMessage}
                     >
-                        {/* 产物声明寻址上下文（read-file / file/open 构造所需），与引用批注同点注入 */}
+                        {/* 产物声明寻址上下文（read-file / file/open 构造所需），与引用批注同点注入；
+                            档③锚点（block.id，引用批注同词汇）同点注入——openui 块的原地更新靠它定向 */}
                         <ArtifactEnvProvider refCtx={fileRefContext(ctx.sessionId, ctx.metadata)}>
-                            <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                            <OpenUIAnchorProvider anchor={block.id}>
+                                <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} aborted={block.aborted} />
+                            </OpenUIAnchorProvider>
                         </ArtifactEnvProvider>
                     </QuoteAnnotationsProvider>
                 </div>

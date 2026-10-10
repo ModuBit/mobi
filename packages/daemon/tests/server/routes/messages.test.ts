@@ -158,7 +158,15 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
 
         const res = await postMessage(engine, { content: 'hi', sentFrom: 'openui' })
         expect(res.status).toBe(200)
-        expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui' })
+        expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui', sourceBlock: undefined })
+    })
+
+    test('新格式：sourceBlock（档③锚点）随 openui 透传（票 04 原地更新）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: 'hi', sentFrom: 'openui', sourceBlock: 'agent-text-blk-1' })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui', sourceBlock: 'agent-text-blk-1' })
     })
 
     test('新格式：sentFrom 白名单外取值（如伪造 cli）→ 400，不透传', async () => {

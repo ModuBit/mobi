@@ -54,6 +54,8 @@ export type SendMessagePayload = {
     localId?: string | null
     /** 来源标识（meta.sentFrom）；'openui' = 交互 UI 回路②回灌（generative-ui 票 03 诊断标记） */
     sentFrom?: 'webapp' | 'cli' | 'openui'
+    /** 档③锚点（票 04 原地更新）：发起 UI 块所在 agent text block id，落库 meta.openuiAnchor */
+    sourceBlock?: string
     /**
      * 跨会话来源身份（agent 经 send_message_to_session 投来的消息）。
      *
@@ -152,6 +154,8 @@ export class MessageService {
             content: blocks,
             meta: {
                 sentFrom,
+                // 档③锚点只在 openui 来源上落（手打/cli 无意义），web 侧扫描恢复按钮态的判据
+                ...(payload.sourceBlock && sentFrom === 'openui' ? { openuiAnchor: payload.sourceBlock } : {}),
                 ...(origin ? toCrossSessionMeta(origin) : {})
             }
         }

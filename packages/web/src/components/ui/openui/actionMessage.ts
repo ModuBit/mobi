@@ -60,7 +60,8 @@ export function buildOpenUIMessage(event: OpenUIActionInput): string | null {
 /**
  * formState → 扁平 [key, value] 列表。命名表单（{ [formName]: {...fields} } 单键
  * 嵌套）展开内层；无名快照（整个 store）保持顶层——后者混有非表单 state，
- * 一律拍平反而丢结构。
+ * 一律拍平反而丢结构。`$` 前缀键是宿主机制变量（reactive bindings，如档③的
+ * $actionState），不是用户输入，不进消息文本。
  */
 function flattenFormState(event: OpenUIActionInput): [string, unknown][] {
     const formState = event.formState
@@ -72,7 +73,7 @@ function flattenFormState(event: OpenUIActionInput): [string, unknown][] {
             return Object.entries(inner as Record<string, unknown>)
         }
     }
-    return Object.entries(formState)
+    return Object.entries(formState).filter(([key]) => !key.startsWith('$'))
 }
 
 /** 字段值格式化：对象/数组 JSON 序列化保持结构，原始值 String 收敛。

@@ -52,6 +52,12 @@ export const OPENUI_PROMPT_OPTIONS = {
         'When the user asks a plain question, wants an explanation, or the answer is simple text, respond in plain markdown with NO openui-lang code.',
         'Keep the prose around the UI concise. Do not duplicate the UI\'s content as markdown tables or lists.',
         'Component names are case-sensitive PascalCase — lowercase names are silently dropped and will not render.',
+        // 档③原地更新（票 04）：执行类按钮（下单/预订/保存/提交后执行动作）的状态绑定约定。
+        // $actionState 值域与 web 侧注入词汇共享（idle/running/done/failed），host 在
+        // turn 进行/完成时改写该变量原地翻转按钮，UI 源码（markdown content）不变。
+        // 派生用嵌套三元（表达式层 Ternary + == 实证支持；组件层无 Switch）
+        'Action-state convention: for buttons that trigger the assistant to EXECUTE a task (order / book / save / run), declare a reactive variable `$actionState = "idle"` and derive the button label with a ternary, e.g. `btnLabel = $actionState == "done" ? "已完成 ✓" : ($actionState == "running" ? "执行中…" : "预订")` then `btn = Button(btnLabel, "primary")`. The host flips $actionState (idle → running → done/failed) in place as the action\'s turn progresses — never use $actionState for anything other than execution-state UI, and always keep the idle case as a clickable button label.',
+        'When the user triggers an action from the UI, the follow-up message will carry the UI state values as plain text — treat it as the user\'s instruction to execute, use your normal tools (with the usual permission flow), and confirm the outcome briefly in prose; do NOT regenerate the same UI block unless asked.',
     ],
 } as const
 

@@ -130,4 +130,13 @@ describe('openui catalog prompt 契约（generative-ui 票 02）', () => {
     const { openuiLibrary } = await import('@openuidev/react-ui/genui-lib');
     expect(openuiLibrary.prompt(OPENUI_PROMPT_OPTIONS)).toBe(OPENUI_CATALOG_PROMPT);
   });
+
+  it('含档③ $actionState 约定（票 04 原地更新：声明 + 三元派生 + 值域词汇）', () => {
+    expect(OPENUI_CATALOG_PROMPT).toContain('$actionState = "idle"');
+    // 派生教嵌套三元（表达式层 Ternary；组件层无 Switch 组件）
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/\$actionState == "done" \?/);
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/idle → running → done\/failed/);
+    // 回灌消息的处理语义：当作执行指令，勿重复生成同一 UI 块
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/do NOT regenerate the same UI block/);
+  });
 });

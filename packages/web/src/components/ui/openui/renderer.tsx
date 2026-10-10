@@ -31,9 +31,16 @@
  * sendMessage 走手打消息同一链路。发送只可能由用户手势（Button 点击/表单提交）
  * 触发——react-lang 的 onAction 仅在这些交互回调里被调起；流式期间 UI 尚未封口，
  * 一律不发送。
+ *
+ * 回路③原地更新（票 04）：agent 正文的 openui 块带锚点（actionContext 注入的
+ * text block id），档③约定变量 `$actionState`（idle/running/done/failed，catalog
+ * prompt 教学）由外部 actionStore 承载——phase 变化经 initialState 的 reactive
+ * binding 重建（initialize 只覆盖 $ 键，表单值保留），按钮文案随
+ * `Switch($actionState, ...)` 派生翻转，markdown content 不变。running 期间
+ * 重复点击去重。
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Alert } from 'antd'
 import { Renderer, type ActionEvent, type OpenUIError } from '@openuidev/react-lang'
 import { ThemeProvider, openuiLibrary } from '@openuidev/react-ui'
@@ -42,7 +49,8 @@ import '@openuidev/react-ui/defaults.css'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { OPENUI_LIGHT_THEME, OPENUI_DARK_THEME } from './theme'
 import { buildOpenUIMessage } from './actionMessage'
-import { useOpenUISendMessage } from './actionContext'
+import { useOpenUISendMessage, useOpenUIAnchor } from './actionContext'
+import { useOpenUIActionStore } from './actionStore'
 
 export interface OpenUIRendererProps {
     /** fence 内的 OpenUI Lang 源码 */
@@ -58,15 +66,32 @@ export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps)
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useOpenUISendMessage()
+    const anchor = useOpenUIAnchor()
+    // 档③ phase：无锚点恒 idle（store 订阅须传稳定 selector，避免 Map 身份触发重渲染）
+    const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? 'idle' : 'idle'))
+    const setPhase = useOpenUIActionStore((s) => s.setPhase)
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
-    // 无 provider（会话页外的 markdown 渲染）静默 no-op
+    // 无 provider（会话页外的 markdown 渲染）静默 no-op。
+    // 回路③：带锚点的块在发起时即时翻 running（不等扫描），running 期间去重
     const handleAction = useCallback((event: ActionEvent) => {
         if (streaming) return
         if (event.type !== 'continue_conversation') return
+        // running 去重（票 04）：turn 进行中重复点击不再发起
+        if (phase === 'running') return
         const text = buildOpenUIMessage(event)
-        if (text && sendMessage) sendMessage(text)
-    }, [streaming, sendMessage])
+        if (!text) return
+        if (anchor !== null) setPhase(anchor, 'running')
+        sendMessage?.(text, anchor !== null ? { sourceBlock: anchor } : undefined)
+    }, [streaming, phase, anchor, setPhase, sendMessage])
+
+    // 档③注入：idle 不注入（让 $actionState 声明默认值生效，非档③块零影响）；
+    // 其余 phase 以 reactive binding 进 initialState——引用变化触发 react-lang
+    // 重建 store（initialize 只覆盖 $ 键，表单值保留），UI 按派生式翻转
+    const initialState = useMemo(
+        () => (anchor !== null && phase !== 'idle' ? { $actionState: phase } : undefined),
+        [anchor, phase],
+    )
 
     return (
         <div className="openui-block">
@@ -78,6 +103,7 @@ export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps)
                     isStreaming={streaming}
                     onError={setErrors}
                     onAction={handleAction}
+                    initialState={initialState}
                 />
             </ThemeProvider>
             {streaming || errors.length === 0 ? null : (

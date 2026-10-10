@@ -29,7 +29,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
 /** 回路②注入的发送入口：组装好的消息文本，与手打消息走同一 intake */
-export type OpenUISendMessage = (text: string) => void
+export type OpenUISendMessage = (text: string, opts?: { sourceBlock?: string }) => void
 
 const OpenUIActionContext = createContext<OpenUISendMessage | null>(null)
 
@@ -49,4 +49,22 @@ export function OpenUIActionProvider({
  */
 export function useOpenUISendMessage(): OpenUISendMessage | null {
     return useContext(OpenUIActionContext)
+}
+
+/**
+ * 回路③锚点（generative-ui 票 04）：agent 正文 text block 的 chat block id
+ * （quote annotations 同一词汇，落库稳定）。由 blocks/index.tsx 的 agent-text
+ * 分支按消息粒度提供——档③的「原地更新」靠它把 action 状态定向回发起 UI 块，
+ * markdown content 不变。非 agent 正文（用户消息/Drawer 预览）无锚点 → 档③
+ * 自动降级为档②纯发送。
+ */
+const OpenUIAnchorContext = createContext<string | null>(null)
+
+export function OpenUIAnchorProvider({ anchor, children }: { anchor: string; children: ReactNode }) {
+    return <OpenUIAnchorContext.Provider value={anchor}>{children}</OpenUIAnchorContext.Provider>
+}
+
+/** 取档③锚点；无 provider 返回 null（档③禁用） */
+export function useOpenUIAnchor(): string | null {
+    return useContext(OpenUIAnchorContext)
 }

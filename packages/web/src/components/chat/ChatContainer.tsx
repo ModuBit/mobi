@@ -40,6 +40,8 @@ import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleIt
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { OpenUIActionProvider } from '@/components/ui/openui/actionContext'
+import { deriveOpenUITerminalStates } from '@/components/ui/openui/actionState'
+import { useOpenUIActionStore } from '@/components/ui/openui/actionStore'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
@@ -1254,10 +1256,22 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 回路②（generative-ui 票 03）：fenced openui 块内 Button 点击 → 同一 sendMutation
     // 发出（乐观气泡/排队轨道/rewind 清除/daemon intake 与手打消息完全同链路），
     // sentFrom='openui' 仅作诊断标记。useCallback 依赖 sendMutation（引用稳定，由
-    // useMutation 保证），避免 ChatContainer 每帧重渲染翻 context value 击穿懒 chunk 的 memo
-    const sendOpenUIMessage = useCallback((text: string) => {
-        sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: 'openui' })
+    // useMutation 保证），避免 ChatContainer 每帧重渲染翻 context value 击穿懒 chunk 的 memo。
+    // 回路③（票 04）：sourceBlock = 档③锚点（agent text block id），随消息落库
+    // （meta.openuiAnchor），刷新后扫描恢复按钮态的数据源
+    const sendOpenUIMessage = useCallback((text: string, opts?: { sourceBlock?: string }) => {
+        sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: 'openui', sourceBlock: opts?.sourceBlock })
     }, [sendMutation])
+
+    // 档③终态扫描（票 04）：从消息窗口派生各锚点的 done/failed/running，批量推进
+    // actionStore。点击即时翻转的 running 与扫描合成（幂等）；刷新后的状态恢复
+    // 也走这里（锚点随消息 meta 落库）。messages 窗口 / running 任一变化重扫
+    useEffect(() => {
+        const derived = deriveOpenUITerminalStates(messages, session?.running ?? false)
+        if (derived.size > 0) {
+            useOpenUIActionStore.getState().applyDerived(derived)
+        }
+    }, [messages, session?.running])
 
     const handleAbort = async (stopKind: StopKind) => {
         await sessionActions.abortSession(stopKind)

@@ -38,6 +38,9 @@ const newFormatBodySchema = z.object({
     // 来源诊断标记（generative-ui 票 03 回路②）：只收窄 'openui' 一个值，缺省归
     // 'webapp'——开放枚举会让客户端可伪造 'cli'，破坏跨会话判定的 sentFrom 借道
     sentFrom: z.literal('openui').optional(),
+    // 档③锚点（票 04 原地更新）：发起 UI 块所在的 agent text block id，落库进
+    // meta.openuiAnchor——web 刷新后扫描恢复按钮态的数据源
+    sourceBlock: z.string().min(1).max(200).optional(),
 })
 
 /** 旧版 web/PWA 平铺发送格式（窗口期兼容） */
@@ -111,13 +114,15 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!parsed.success) {
             return c.json({ error: 'Invalid body' }, 400)
         }
+        // in 收窄须直接写判别（别名布尔不触发 narrowing），三元处一次取全新格式专属字段
+        const newVars = 'content' in parsed.data ? parsed.data : null
 
         // 双格式收敛到同一归一函数：新格式直传，旧平铺组装为 {type:'text',text,attachments} 对象。
         // 归一在此预检——空文本/空附件是客户端错误须回 400（service 层 throw 仅作非 HTTP 入口防线，
         // 若落到那里会被 Hono 兜底成 500）
         const rawContent = 'content' in parsed.data
             ? parsed.data.content
-            : { type: 'text', text: parsed.data.text, attachments: parsed.data.attachments }
+            : { type: 'text' as const, text: parsed.data.text, attachments: parsed.data.attachments }
         if (normalizeUserContent(rawContent) === null) {
             return c.json({ error: 'Message requires text or attachments' }, 400)
         }
@@ -126,7 +131,8 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             content: rawContent,
             localId: parsed.data.localId,
             // 新格式才可能携带 'openui'；旧平铺格式恒手打语义
-            sentFrom: 'content' in parsed.data ? parsed.data.sentFrom ?? 'webapp' : 'webapp',
+            sentFrom: newVars ? newVars.sentFrom ?? 'webapp' : 'webapp',
+            sourceBlock: newVars?.sourceBlock,
         })
         // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的
         // 会话行，活跃 no-op）。入队已持久化，spawn 失败消息仍留 queued，下次发送或手动

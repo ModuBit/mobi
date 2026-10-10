@@ -47,15 +47,16 @@ describe('buildOpenUIMessage（回路② 消息组装）', () => {
         expect(text).toBe('查看详情')
     })
 
-    it('无名 formState（store 快照）→ 顶层平铺，对象值 JSON 保持结构', () => {
+    it('无名 formState（store 快照）→ 顶层平铺，对象值 JSON 保持结构；$ 前缀键（宿主机制变量）不进文本', () => {
         const text = buildOpenUIMessage({
             type: 'continue_conversation',
             humanFriendlyMessage: '应用筛选',
-            formState: { sort: 'desc', tags: ['a', 'b'] },
+            formState: { sort: 'desc', tags: ['a', 'b'], $actionState: 'idle' },
         })
         expect(text).toContain('UI 当前值：')
         expect(text).toContain('- sort: desc')
         expect(text).toContain('- tags: ["a","b"]')
+        expect(text).not.toContain('$actionState')
     })
 
     it('react-ui 表单字段 { value: X } 包裹形态解包（E2E 实测 name: {"value":"林墨墨"}）', () => {
