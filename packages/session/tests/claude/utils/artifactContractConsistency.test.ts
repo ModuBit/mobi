@@ -31,6 +31,7 @@ import {
   ARTIFACTS_DIR_REL,
   ARTIFACT_DIRECTIVE,
   ARTIFACT_HTML_INLINE_LIMIT_MB,
+  MOBI_THEME_VAR_LIST,
 } from '@mobi/shared';
 import { systemPrompt } from '@/claude/utils/systemPrompt';
 import { projectPath } from '@mobi/node-core/projectPath';
@@ -86,5 +87,12 @@ describe('产物声明协议三方一致性（shared 常量 ↔ 常驻契约 ↔
     expect(SKILL_MD).toMatch(/ONLY from explicit user actions/);
     expect(SKILL_MD).toMatch(/never call it automatically/i);
     expect(SKILL_MD).toMatch(/never expose raw JSON dumps/i);
+  });
+
+  it('skill 教学的 --mobi-* 变量 ⊆ shared 词表（与 openui skill 同 pivot，防散文虚构）', () => {
+    const taught = new Set(SKILL_MD.match(/--mobi-[a-z-]+/g) ?? []);
+    const known = new Set(MOBI_THEME_VAR_LIST);
+    const invented = [...taught].filter((v) => !known.has(v));
+    expect(invented).toEqual([]);
   });
 });

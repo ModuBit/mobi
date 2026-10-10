@@ -37,6 +37,7 @@
  */
 
 import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
+import { MOBI_THEME_VAR_LIST, type MobiThemeVar } from '@mobi/shared'
 
 /** bridge 消息的 type 白名单值（唯一） */
 export const APP_BRIDGE_MSG_TYPE = 'mobi-app'
@@ -108,7 +109,7 @@ export function createAppBridgeRateLimiter(now: () => number = () => Date.now())
 // 宿主 → app：--mobi-* 主题变量注入（票 05）
 // ---------------------------------------------------------------------------
 
-/** 双档 token 的最小投影类型（buildMobiThemeCss 只消费其中的色板/圆角键） */
+/** 双档 token 的最小投影类型（变量值来源只消费其中的色板/圆角键） */
 type MobiThemeToken = Pick<
     typeof shadcnLightToken,
     | 'colorBgBase' | 'colorBgContainer' | 'colorBgElevated' | 'colorBgLayout'
@@ -118,37 +119,47 @@ type MobiThemeToken = Pick<
 >
 
 /**
+ * 变量名 → 值来源（exhaustive：键集即 shared MOBI_THEME_VAR_LIST——shared 表加变量
+ * 漏配此处来源，编译即红；反向多配也红）。值来源三类：token 字段 / 派生（圆角补 px）/
+ * 字面量（字体系统栈——宿主 var(--font-body) 在 iframe 里解析不到）。
+ */
+const MOBI_VAR_SOURCES: Record<MobiThemeVar, (t: MobiThemeToken, mode: 'light' | 'dark') => string> = {
+    '--mobi-color-scheme': (_t, mode) => mode,
+    '--mobi-bg': (t) => t.colorBgContainer,
+    '--mobi-bg-base': (t) => t.colorBgBase,
+    '--mobi-bg-elevated': (t) => t.colorBgElevated,
+    '--mobi-bg-layout': (t) => t.colorBgLayout,
+    '--mobi-fg': (t) => t.colorText,
+    '--mobi-fg-secondary': (t) => t.colorTextSecondary,
+    '--mobi-fg-muted': (t) => t.colorTextTertiary,
+    '--mobi-primary': (t) => t.colorPrimary,
+    '--mobi-success': (t) => t.colorSuccess,
+    '--mobi-warning': (t) => t.colorWarning,
+    '--mobi-danger': (t) => t.colorError,
+    '--mobi-border': (t) => t.colorBorder,
+    '--mobi-border-muted': (t) => t.colorBorderSecondary,
+    '--mobi-radius': (t) => `${t.borderRadius}px`,
+    '--mobi-font-body': () => '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    '--mobi-font-mono': () => 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace',
+}
+
+/**
  * 构建 `--mobi-*` 主题 CSS（mode=app 注入；对齐 ChatGPT --viz-* 三招：主题变量 /
  * base styles / 尺寸自适应——尺寸自适应归调用方 chrome，这里只管前两招）。
+ * 变量清单单一来源在 shared MOBI_THEME_VARS（prompt 教学与契约测试同 pivot）。
  *
  * 覆盖语义（app 自带样式永远赢）：
  * - 变量声明在 `:root`——是宿主→app 的输入通道（app 消费取色，不重定义）；
  * - color-scheme 与 base 样式（body 的 margin/背景/前景/字体）走 `:where()`（特异性 0），
- *   app 自身任何选择器（哪怕裸 `body`）都能覆盖；
- * - 字体变量给系统栈——宿主的 var(--font-body) 在 iframe 里解析不到。
+ *   app 自身任何选择器（哪怕裸 `body`）都能覆盖。
  */
 export function buildMobiThemeCss(mode: 'light' | 'dark'): string {
     const t: MobiThemeToken = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
+    const declarations = MOBI_THEME_VAR_LIST.map((name) => `  ${name}: ${MOBI_VAR_SOURCES[name](t, mode)};`)
     return [
         `:where(:root) { color-scheme: ${mode}; }`,
         ':root {',
-        `  --mobi-color-scheme: ${mode};`,
-        `  --mobi-bg: ${t.colorBgContainer};`,
-        `  --mobi-bg-base: ${t.colorBgBase};`,
-        `  --mobi-bg-elevated: ${t.colorBgElevated};`,
-        `  --mobi-bg-layout: ${t.colorBgLayout};`,
-        `  --mobi-fg: ${t.colorText};`,
-        `  --mobi-fg-secondary: ${t.colorTextSecondary};`,
-        `  --mobi-fg-muted: ${t.colorTextTertiary};`,
-        `  --mobi-primary: ${t.colorPrimary};`,
-        `  --mobi-success: ${t.colorSuccess};`,
-        `  --mobi-warning: ${t.colorWarning};`,
-        `  --mobi-danger: ${t.colorError};`,
-        `  --mobi-border: ${t.colorBorder};`,
-        `  --mobi-border-muted: ${t.colorBorderSecondary};`,
-        `  --mobi-radius: ${t.borderRadius}px;`,
-        '  --mobi-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;',
-        '  --mobi-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;',
+        ...declarations,
         '}',
         ':where(body) { margin: 0; background: var(--mobi-bg); color: var(--mobi-fg); font-family: var(--mobi-font-body); }',
     ].join('\n')

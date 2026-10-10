@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { systemPrompt, buildAppendSystemPrompt } from '@/claude/utils/systemPrompt';
 import { OPENUI_CORE_PROMPT } from '@/claude/utils/openuiCorePrompt.generated';
-import { buildActionUri } from '@mobi/shared';
+import { buildActionUri, MOBI_THEME_VAR_LIST } from '@mobi/shared';
 import { projectPath } from '@mobi/node-core/projectPath';
 
 /** 无用户自定义时的完整追加内容（base + openui 核心段，票 02 注入 / 票 08 分层后形状） */
@@ -181,5 +181,12 @@ describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => 
     expect(skill).toMatch(/ONLY from explicit user actions/i);
     // 判据缺位防护：skill 单独被读时三层判据仍在
     expect((skill.match(/Form routing:/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('skill 教学的 --mobi-* 变量 ⊆ shared 词表（教学虚构变量会让模型照抄产出坏 app）', () => {
+    const taught = new Set(skill.match(/--mobi-[a-z-]+/g) ?? []);
+    const known = new Set(MOBI_THEME_VAR_LIST);
+    const invented = [...taught].filter((v) => !known.has(v));
+    expect(invented).toEqual([]);
   });
 });

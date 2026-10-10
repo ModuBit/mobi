@@ -44,6 +44,7 @@ import { openuiLibrary } from '@openuidev/react-ui/genui-lib'
 import { generateSystemPrompt } from '@openuidev/react-lang'
 import { openuiExamples } from '@openuidev/react-ui/genui-lib/prompt-options'
 import { projectPath } from '@mobi/node-core/projectPath'
+import { MOBI_THEME_PALETTE_VARS } from '@mobi/shared'
 
 /**
  * 核心组件白名单（常驻 system prompt 的高频子集）：简单交互场景（表单/选择卡/
@@ -83,8 +84,20 @@ const SHARED_RULES = [
 ]
 
 /** mode=app 细则（票 05/06）——只在全量版（skill）常驻；核心段判据保留路由、细节一句指路 */
+/**
+ * 调色板教学句：变量清单从 shared MOBI_THEME_PALETTE_VARS 拼出——与 web 侧注入 CSS
+ * 同一 pivot（架构评审候选 3），教学不可能列出宿主不注入的变量（模型照抄即坏 app）。
+ * 前段固定句法（background/color/borders/accent/radius/fonts 带用法示例），其余变量
+ * 以 plus 列表收尾。
+ */
+function appPaletteRule(): string {
+    const rest = MOBI_THEME_PALETTE_VARS.filter(
+        (v) => !['--mobi-bg', '--mobi-fg', '--mobi-border', '--mobi-primary', '--mobi-radius', '--mobi-font-body', '--mobi-font-mono'].includes(v),
+    )
+    return `For mode="app" HTML apps: the host injects a \`--mobi-*\` CSS variable palette (and a low-specificity base style) that follows the user's light/dark theme \u2014 style your app with these variables (background: var(--mobi-bg), color: var(--mobi-fg), borders: var(--mobi-border), accent: var(--mobi-primary), radius: var(--mobi-radius), fonts var(--mobi-font-body)/var(--mobi-font-mono), plus ${rest.join('/')}) instead of hard-coded colors, so the app adapts to both themes automatically; your own CSS always wins over the injected base.`
+}
 const APP_DETAIL_RULES = [
-    'For mode="app" HTML apps: the host injects a `--mobi-*` CSS variable palette (and a low-specificity base style) that follows the user\'s light/dark theme — style your app with these variables (background: var(--mobi-bg), color: var(--mobi-fg), borders: var(--mobi-border), accent: var(--mobi-primary), radius: var(--mobi-radius), fonts: var(--mobi-font-body)/var(--mobi-font-mono), plus --mobi-fg-secondary/--mobi-fg-muted/--mobi-success/--mobi-warning/--mobi-danger/--mobi-bg-elevated) instead of hard-coded colors, so the app adapts to both themes automatically; your own CSS always wins over the injected base.',
+    appPaletteRule(),
     // 档② app bridge（票 06）：app → 宿主回灌。宿主注入 window.MobiApp.issueNewTurn(text)
     'For mode="app" HTML apps: the host also injects `window.MobiApp.issueNewTurn(text)` — call it ONLY from explicit user actions (e.g. a "continue with these choices" button onclick) to send the app\'s current state back to the conversation; the message arrives as if the user typed it. Keep the text a concise plain-language summary of the chosen state (recommended under 200 chars), never call it automatically, and do NOT expose raw JSON dumps.',
 ]

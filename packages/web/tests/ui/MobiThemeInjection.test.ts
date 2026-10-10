@@ -25,6 +25,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { buildMobiThemeCss, injectMobiThemeStyle } from '@/components/files/sandboxAppHost'
+import { MOBI_THEME_VAR_LIST } from '@mobi/shared'
 import { classifyArtifact, parseArtifactParams } from '@/domain/chat/artifactDirectives'
 
 describe('buildMobiThemeCss（--mobi-* 主题变量）', () => {
@@ -52,6 +53,15 @@ describe('buildMobiThemeCss（--mobi-* 主题变量）', () => {
         expect(css).toContain(':where(body)')
         // 变量声明不带 :where（:root 通道），保证 app 消费到确定值
         expect(css).toMatch(/^:root \{/m)
+    })
+
+    it('注入变量 ⊇ shared 词表全集（表加变量漏配来源即红——教学与注入同 pivot）', () => {
+        for (const mode of ['light', 'dark'] as const) {
+            const css = buildMobiThemeCss(mode)
+            for (const v of MOBI_THEME_VAR_LIST) {
+                expect(css).toContain(`${v}: `)
+            }
+        }
     })
 })
 
