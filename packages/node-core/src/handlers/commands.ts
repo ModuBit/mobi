@@ -26,7 +26,16 @@ export type RefreshMetadataResponse = {
 }
 
 export function registerCommandHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory?: string): void {
-    rpcHandlerManager.registerHandler<{ cwd?: string }, RefreshMetadataResponse>('refreshMetadata', (params) => refreshMetadataImpl(params, workingDirectory))
+    // skipIdleTimerReset（pending #114）：refreshMetadata 是 daemon→session RPC 全集里
+    // 唯一的 ambient 成员（SWR 后台刷新，metadata 端点命中缓存时 fire-and-forget、
+    // 周期性发生）——进 idle reset 会持续清零空闲倒计时（后台刷新期间会话永不休眠）。
+    // 其余 daemon→session RPC（permission/abort/rewind/config 族）都是用户显式动作，
+    // 保持重置语义。与 daemon 侧 touchUpdatedAt 的 ambient opt-out 同一分类学
+    rpcHandlerManager.registerHandler<{ cwd?: string }, RefreshMetadataResponse>(
+        'refreshMetadata',
+        (params) => refreshMetadataImpl(params, workingDirectory),
+        { skipIdleTimerReset: true },
+    )
 }
 
 /** refreshMetadata 实现（ticket-17 本地化直调目标）：注册闭包与 LocalExecutor 共用，行为单源 */

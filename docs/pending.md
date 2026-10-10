@@ -1147,7 +1147,7 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 
 ## 114. session 侧 idle 时钟把 ambient RPC 当活动（2026-10-10 架构评审深度角度发现）
 
-> f7a04232 在 daemon 侧确立「ambient 写不算活动」分类学（metadata 合并不顶 updated_at），但同类没贯穿到 session 侧 idle 时钟。
+> ✅ 2026-10-10 已修：`registerCommandHandlers` 的 refreshMetadata 注册带 `skipIdleTimerReset: true`（机制早已存在、零使用的死配置，本次接上唯一 ambient 成员——SWR 后台刷新）。红→绿接线测试在 `packages/node-core/tests/handlers/commands.test.ts`。其余 daemon→session RPC（permission/abort/rewind/config 族）均为用户显式动作，保持重置语义。
 
 **现象**：`packages/session/src/api/apiSession.ts:114`（`setOnRpcCalled(() => this.idleTimer?.reset())`）对**所有** RPC 一律重置空闲计时——daemon 后台 capability 刷新（`syncEngine.ts:926` commands_changed → refreshMetadata RPC）打进来也 reset。后台刷新周期性发生时会话空闲倒计时被持续清零，与被修的「daemon 重启清零」是同类根因，极端下可致会话永不休眠。
 
