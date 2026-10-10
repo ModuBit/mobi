@@ -151,9 +151,10 @@ const widthModeValue = (mode: WidthMode): string => (mode === 'auto' ? '100%' : 
 
 /**
  * HTML inline：SandboxHtmlFrame 的聊天流 chrome（定高 480/640 + 宽度三档）。
- * iframe 机制（serve-file URL/sandbox/meta 驱动重建/滚动条主题）单源在 frame。
+ * iframe 机制（serve-file URL/sandbox/meta 驱动重建/滚动条主题）单源在 frame；
+ * app（mode=app，generative-ui 票 05）追加 --mobi-* 主题注入（frame 收口）。
  */
-export function HtmlInline({ sessionId, path, wide }: ArtifactInlineProps & { wide?: boolean }) {
+export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps & { wide?: boolean; app?: boolean }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     // 流式闸：流式揭示期间不挂 iframe（加载竞速逐字揭示 = 布局抖动），同尺寸占位顶住
@@ -186,6 +187,7 @@ export function HtmlInline({ sessionId, path, wide }: ArtifactInlineProps & { wi
                         sessionId={sessionId}
                         path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
+                        injectTheme={app}
                         style={{
                             width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,

@@ -32,8 +32,9 @@ import type { DirectiveDefinition } from './directives'
 /** artifact 指令在注册表中的名字（由 shared 字面量派生，ui 路由表按此寻址） */
 export const ARTIFACT_DIRECTIVE_NAME = ARTIFACT_DIRECTIVE.slice(DIRECTIVE_PREFIX.length)
 
-/** 展示意愿 mode：`card` 强制产物卡；`wide` 仅 HTML 放宽容器；缺省 = auto（web 按类型定） */
-export type ArtifactMode = 'card' | 'wide'
+/** 展示意愿 mode：`card` 强制产物卡；`wide` 仅 HTML 放宽容器；`app` = 沙箱交互 app
+ *  （generative-ui 票 05：HTML inline 附加主题变量注入，与 wide 同高档）；缺省 = auto */
+export type ArtifactMode = 'card' | 'wide' | 'app'
 
 /** 声明的类型化参数。mode 非法值按缺省 auto 处理（模型输出容错优先，不因拼写降级整条声明） */
 export interface ArtifactParams {
@@ -42,7 +43,7 @@ export interface ArtifactParams {
 }
 
 /**
- * artifact 指令语义：path 必填（非空字符串），mode 仅接受 card/wide。
+ * artifact 指令语义：path 必填（非空字符串），mode 仅接受 card/wide/app。
  * 非法（缺 path / 空 path）返回 null，消费方按原文诚实降级。
  * 去重键 = path：同一路径一条消息只保留首次声明（同一产物不重复渲染）。
  */
@@ -51,7 +52,7 @@ const ARTIFACT_DEFINITION: DirectiveDefinition<ArtifactParams> = {
     parse: (attrs) => {
         const { path, mode } = attrs
         if (path === undefined || path.trim() === '') return null
-        return { path, mode: mode === 'card' || mode === 'wide' ? mode : undefined }
+        return { path, mode: mode === 'card' || mode === 'wide' || mode === 'app' ? mode : undefined }
     },
     dedupeKey: (params) => params.path,
 }
@@ -112,13 +113,16 @@ export type ArtifactMetaState =
 /** 渲染裁决：产物卡（可带降级原因）或 inline（分型所需字段已齐备，视图层零再判定） */
 export type ArtifactVerdict =
     | { action: 'card'; reason?: ArtifactCardReason }
-    | { action: 'inline'; kind: Exclude<ArtifactKind, 'pdf' | 'unknown'>; etag: string; wide: boolean }
+    | { action: 'inline'; kind: Exclude<ArtifactKind, 'pdf' | 'unknown'>; etag: string; wide: boolean; app: boolean }
 
 /**
  * 渲染裁决纯函数：「给定 (path, meta, mode) → 渲染形态」的唯一出处。
  * 此前裁决顺序（pending → missing → unsupported → too-large → mode 覆盖 → 分型）
  * 由渲染组件的 6 个 JSX 早退分支承载，无法脱离 React 测试；收进 domain 后组件
  * 退化为 Verdict → 视图映射。
+ * mode='app'（generative-ui 票 05）：仅对 HTML 生效——inline 时附带 app 标记
+ * （SandboxHtmlFrame 据此注入 --mobi-* 主题变量），并蕴含 wide 的高档；非 HTML
+ * 文件上的 app 声明按无此标记处理（对图片/音视频注入主题没有意义）。
  */
 export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: string): ArtifactVerdict {
     const kind = resolveArtifactKind(path)
@@ -127,5 +131,6 @@ export function classifyArtifact(path: string, meta: ArtifactMetaState, mode?: s
     if (!isInlineCapableKind(kind)) return { action: 'card', reason: 'unsupported' }
     if (meta.size > ARTIFACT_INLINE_LIMIT_BYTES[kind]) return { action: 'card', reason: 'too-large' }
     if (mode === 'card') return { action: 'card' }
-    return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' }
+    const app = mode === 'app' && kind === 'html'
+    return { action: 'inline', kind, etag: meta.etag, wide: mode === 'wide' || app, app }
 }

@@ -139,4 +139,11 @@ describe('openui catalog prompt 契约（generative-ui 票 02）', () => {
     // 回灌消息的处理语义：当作执行指令，勿重复生成同一 UI 块
     expect(OPENUI_CATALOG_PROMPT).toMatch(/do NOT regenerate the same UI block/);
   });
+
+  it('含 mode=app 主题变量教学（票 05：--mobi-* 调色板 + 双档自适应 + 自带 CSS 优先）', () => {
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/--mobi-\*` CSS variable palette/);
+    expect(OPENUI_CATALOG_PROMPT).toContain('var(--mobi-bg)');
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/light\/dark theme/);
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/your own CSS always wins/);
+  });
 });

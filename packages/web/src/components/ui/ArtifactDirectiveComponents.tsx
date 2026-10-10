@@ -311,5 +311,5 @@ const ArtifactVerdictView: FC<{ path: string, mode?: string, sessionId: string, 
     if (verdict.kind === 'audio' || verdict.kind === 'video') {
         return <MediaInline sessionId={sessionId} path={path} etag={verdict.etag} kind={verdict.kind} />
     }
-    return <HtmlInline sessionId={sessionId} path={path} etag={verdict.etag} wide={verdict.wide} />
+    return <HtmlInline sessionId={sessionId} path={path} etag={verdict.etag} wide={verdict.wide} app={verdict.app} />
 }

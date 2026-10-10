@@ -24,9 +24,12 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
 import { ArtifactDirectiveView } from '@/components/ui/ArtifactDirectiveComponents'
 
-// 测试断言按 i18n key（项目惯例：t 直接回 key，见 FileContentView.test）
+// 测试断言按 i18n key（项目惯例：t 直接回 key，见 FileContentView.test）。
+// initReactI18next 桩：SandboxHtmlFrame 引 uiStore → @/core/config/i18n 顶层
+// import 它（票 05 主题注入引入的链路），mock 须补齐该导出
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
+    initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
 describe('ArtifactDirectiveView 解析失败降级', () => {

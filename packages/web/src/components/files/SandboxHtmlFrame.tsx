@@ -16,7 +16,7 @@
 
 /**
  * 沙箱 HTML frame：serve-file → sandboxed iframe 的唯一机制收口（inspector 预览与
- * 聊天流产物 inline 是它的两个 chrome 形态，机制不许再各写一份——曾在两边逐行重复
+ * 聊天流产物 inline 是它的两个 chrome 形态，机制不许再写一份——曾在两边逐行重复
  * 且已漂移：滚动条主题注入只有一边有）。
  *
  * 机制面（本组件收口，调用方无需知道）：
@@ -28,13 +28,17 @@
  *   用 dataUpdatedAt 而非 etag，是因为改引用的 CSS/JS 不会变 HTML 自身的 etag，但仍需
  *   重建才能拉到新引用资源；serve-file 已设 no-cache，重建时连带引用资源回源验证
  * - load 后注入滚动条主题（iframe 与宿主同源才可行，见 injectArtifactScrollbarStyle）
+ * - injectTheme（generative-ui 票 05，mode=app 专用）：注入 `--mobi-*` 主题变量 + 低特异
+ *   base 样式；宿主亮/暗切换时原地更新已注入的 style（不重载 iframe，不打断 app 运行态）
  *
  * chrome 面（调用方决定）：尺寸、边框、圆角等经 style 透传；包装容器由调用方自理。
  */
 
-import type { CSSProperties } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { buildServeFileUrl } from '@/core/utils/fileUrl'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 
 /** 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
  * 产物页面多未设 color-scheme，原生浅色滚动条压在深色页面上很突兀；iframe 与宿主
@@ -60,6 +64,75 @@ export function injectArtifactScrollbarStyle(doc: Document | null | undefined): 
     }
 }
 
+/** 双档 token 的最小投影类型（buildMobiThemeCss 只消费其中的色板/圆角键） */
+type MobiThemeToken = Pick<
+    typeof shadcnLightToken,
+    | 'colorBgBase' | 'colorBgContainer' | 'colorBgElevated' | 'colorBgLayout'
+    | 'colorText' | 'colorTextSecondary' | 'colorTextTertiary'
+    | 'colorPrimary' | 'colorSuccess' | 'colorWarning' | 'colorError'
+    | 'colorBorder' | 'colorBorderSecondary' | 'borderRadius'
+>
+
+/**
+ * 构建 `--mobi-*` 主题 CSS（generative-ui 票 05，mode=app 注入；对齐 ChatGPT --viz-* 三招：
+ * 主题变量 / base styles / 尺寸自适应——尺寸自适应归调用方 chrome，这里只管前两招）。
+ *
+ * 覆盖语义（app 自带样式永远赢）：
+ * - 变量声明在 `:root`——是宿主→app 的输入通道（app 消费取色，不重定义）；
+ * - color-scheme 与 base 样式（body 的 margin/背景/前景/字体）走 `:where()`（特异性 0），
+ *   app 自身任何选择器（哪怕裸 `body`）都能覆盖；
+ * - 字体变量给系统栈——宿主的 var(--font-body) 在 iframe 里解析不到。
+ */
+export function buildMobiThemeCss(mode: 'light' | 'dark'): string {
+    const t: MobiThemeToken = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
+    return [
+        `:where(:root) { color-scheme: ${mode}; }`,
+        ':root {',
+        `  --mobi-color-scheme: ${mode};`,
+        `  --mobi-bg: ${t.colorBgContainer};`,
+        `  --mobi-bg-base: ${t.colorBgBase};`,
+        `  --mobi-bg-elevated: ${t.colorBgElevated};`,
+        `  --mobi-bg-layout: ${t.colorBgLayout};`,
+        `  --mobi-fg: ${t.colorText};`,
+        `  --mobi-fg-secondary: ${t.colorTextSecondary};`,
+        `  --mobi-fg-muted: ${t.colorTextTertiary};`,
+        `  --mobi-primary: ${t.colorPrimary};`,
+        `  --mobi-success: ${t.colorSuccess};`,
+        `  --mobi-warning: ${t.colorWarning};`,
+        `  --mobi-danger: ${t.colorError};`,
+        `  --mobi-border: ${t.colorBorder};`,
+        `  --mobi-border-muted: ${t.colorBorderSecondary};`,
+        `  --mobi-radius: ${t.borderRadius}px;`,
+        '  --mobi-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;',
+        '  --mobi-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;',
+        '}',
+        ':where(body) { margin: 0; background: var(--mobi-bg); color: var(--mobi-fg); font-family: var(--mobi-font-body); }',
+    ].join('\n')
+}
+
+const MOBI_THEME_STYLE_ID = 'mobi-app-theme'
+
+/**
+ * 注入/更新 `--mobi-*` 主题样式（幂等）：已存在则原地更新 textContent——宿主切换
+ * 亮/暗时 app 即时跟随，无需重载 iframe。跨域/未就绪静默跳过。
+ */
+export function injectMobiThemeStyle(doc: Document | null | undefined, mode: 'light' | 'dark'): void {
+    try {
+        if (!doc?.head) return
+        const existing = doc.getElementById(MOBI_THEME_STYLE_ID)
+        if (existing) {
+            existing.textContent = buildMobiThemeCss(mode)
+            return
+        }
+        const style = doc.createElement('style')
+        style.id = MOBI_THEME_STYLE_ID
+        style.textContent = buildMobiThemeCss(mode)
+        doc.head.appendChild(style)
+    } catch {
+        // contentDocument 不可达（理论不可达：同源沙箱）——不注入
+    }
+}
+
 export interface SandboxHtmlFrameProps {
     sessionId: string
     /** 相对 session cwd 的 posix 路径（serve-file 的 relPath） */
@@ -68,21 +141,36 @@ export interface SandboxHtmlFrameProps {
     title: string
     /** chrome：尺寸/边框等由调用方声明 */
     style?: CSSProperties
+    /** mode=app 专用（generative-ui 票 05）：注入 --mobi-* 主题变量并跟随宿主亮/暗 */
+    injectTheme?: boolean
 }
 
-export function SandboxHtmlFrame({ sessionId, path, title, style }: SandboxHtmlFrameProps) {
+export function SandboxHtmlFrame({ sessionId, path, title, style, injectTheme = false }: SandboxHtmlFrameProps) {
     // 订阅同一 fileMeta query（react-query 按 queryKey 去重，多消费方零额外请求），
     // dataUpdatedAt 驱动 iframe 重建（机制见文件头）
     const { data: meta, dataUpdatedAt } = useFileMeta(sessionId, path)
+    const themeMode = useUiStore((s) => resolveTheme(s.theme))
+    const frameRef = useRef<HTMLIFrameElement | null>(null)
+
+    // 主题跟随：宿主题档变化 → 原地更新注入的 style（iframe 重建后 dataUpdatedAt 变化
+    // 也经此补注——新文档 load 前 contentDocument 为 about:blank，注入幂等无副作用）
+    useEffect(() => {
+        if (injectTheme) injectMobiThemeStyle(frameRef.current?.contentDocument, themeMode)
+    }, [injectTheme, themeMode, dataUpdatedAt])
+
     return (
         <iframe
             key={dataUpdatedAt}
+            ref={frameRef}
             src={buildServeFileUrl(sessionId, path)}
             data-etag={meta?.etag ?? ''}
             sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
             referrerPolicy="no-referrer"
             title={title}
-            onLoad={(e) => injectArtifactScrollbarStyle(e.currentTarget.contentDocument)}
+            onLoad={(e) => {
+                injectArtifactScrollbarStyle(e.currentTarget.contentDocument)
+                if (injectTheme) injectMobiThemeStyle(e.currentTarget.contentDocument, themeMode)
+            }}
             style={style}
         />
     )

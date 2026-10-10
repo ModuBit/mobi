@@ -114,10 +114,10 @@ describe('classifyArtifact（渲染裁决纯函数，裁决顺序收口）', () 
         expect(classifyArtifact('/a.png', READY, 'card')).toEqual({ action: 'card' })
     })
 
-    it('校验全过 → inline verdict：kind/etag/wide 齐备（wide 仅 html 语义成立，统一带出）', () => {
-        expect(classifyArtifact('/a.png', READY)).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false })
-        expect(classifyArtifact('/a.mp4', READY)).toEqual({ action: 'inline', kind: 'video', etag: 'e1', wide: false })
-        expect(classifyArtifact('/a.html', READY, 'wide')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true })
-        expect(classifyArtifact('/a.html', READY)).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: false })
+    it('校验全过 → inline verdict：kind/etag/wide/app 齐备（wide 仅 html 语义成立，统一带出）', () => {
+        expect(classifyArtifact('/a.png', READY)).toEqual({ action: 'inline', kind: 'image', etag: 'e1', wide: false, app: false })
+        expect(classifyArtifact('/a.mp4', READY)).toEqual({ action: 'inline', kind: 'video', etag: 'e1', wide: false, app: false })
+        expect(classifyArtifact('/a.html', READY, 'wide')).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: true, app: false })
+        expect(classifyArtifact('/a.html', READY)).toEqual({ action: 'inline', kind: 'html', etag: 'e1', wide: false, app: false })
     })
 })
