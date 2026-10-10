@@ -1260,16 +1260,20 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // UI 回灌（generative-ui 回路②③）：fenced openui 块与沙箱 app bridge 发出的消息走
     // 同一 sendMutation（乐观气泡/排队轨道/rewind 清除/daemon intake 与手打完全同链路）。
     // 这里是 web 层 origin/anchor 词汇到 wire 字段（sentFrom/sourceBlock）的唯一映射点；
-    // 合法值在 shared UiMessageOrigin（单一来源）。dep 用稳定的底层 mutate（useSendMessage
-    // 已 useCallback 化；包装对象本身每渲染新建，不能作 dep——流式期间每个 delta 会击穿
-    // 懒 chunk 的 memo），保证 context value 引用稳定。
-    const sendUiMutate = sendMutation.mutate
-    const sendUiMessage = useCallback((text: string, opts: { origin: UiMessageOrigin; anchor?: string }) => {
-        sendUiMutate({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor })
-    }, [sendUiMutate])
+    // 合法值在 shared UiMessageOrigin（单一来源）。用 stableMutateAsync 并透传 promise——
+    // 档③据此在发送失败时回滚乐观 running（dep 用稳定的底层引用，useSendMessage 已
+    // useCallback/ref 桥化；包装对象本身每渲染新建，不能作 dep——流式期间每个 delta
+    // 会击穿懒 chunk 的 memo），保证 context value 引用稳定。
+    const sendUiMutateAsync = sendMutation.mutateAsync
+    const sendUiMessage = useCallback((text: string, opts: { origin: UiMessageOrigin; anchor?: string }) =>
+        // then(void 化)：UI 回灌不消费响应体，UiSendMessage 契约只关心成败
+        sendUiMutateAsync({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor })
+            .then(() => undefined),
+    [sendUiMutateAsync])
 
     // 档③终态推进（票 04）：接线收口在 openui 目录（useOpenUIActionLifecycle），
-    // 此处只喂数据——消息窗口 + 会话运行态
+    // 此处只喂数据——消息窗口 + 会话运行态（本组件 key={sessionId} 挂载，切会话即
+    // 重建实例，跨会话的 store 清理由 hook 卸载 cleanup 承担，见其内部注释）
     useOpenUIActionLifecycle(messages, session?.running ?? false)
 
     const handleAbort = async (stopKind: StopKind) => {

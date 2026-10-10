@@ -42,14 +42,22 @@ import type { DecryptedMessage } from '@/core/data/api/types'
 /** $actionState 的值域（与 catalog prompt 教学、renderer 注入三方共享的词汇） */
 export type OpenUIActionPhase = 'idle' | 'running' | 'done' | 'failed'
 
+/** 排队轨道前段（queued→pushed→acked 单调推进）：lifecycle 停在这一段 = 消息尚未被
+ *  agent 消费。MessageLifecycle 词汇见 shared；终态（cancelled/discarded/refused/
+ *  withdrawn）不出现在这里——带锚点的消息一旦离开排队轨道就视为已消费 */
+const UNCONSUMED_LIFECYCLES = new Set(['queued', 'pushed', 'acked'])
+
 /** 从消息 meta 读档③锚点（发起时由 daemon 写入，见 messageService）。
- *  信封解包走 shared 单源（unwrapRoleWrappedRecordEnvelope），不复刻信封形状 */
-function readAnchor(msg: DecryptedMessage): string | null {
+ *  信封解包走 shared 单源（unwrapRoleWrappedRecordEnvelope），不复刻信封形状。
+ *  consumed = 该消息已被 agent 消费（不在排队轨道前段；非排队轨道的 lifecycle 为
+ *  null，服务端直收亦视为已消费）——result 配对只认消费后的，见 derive 注释 */
+function readAnchor(msg: DecryptedMessage): { anchor: string; consumed: boolean } | null {
     const env = unwrapRoleWrappedRecordEnvelope(msg.content)
     if (!env || env.role !== 'user') return null
     const meta = env.meta
     if (!isObject(meta) || meta.sentFrom !== UI_ANCHOR_ORIGIN) return null
-    return typeof meta.openuiAnchor === 'string' && meta.openuiAnchor.length > 0 ? meta.openuiAnchor : null
+    if (typeof meta.openuiAnchor !== 'string' || meta.openuiAnchor.length === 0) return null
+    return { anchor: meta.openuiAnchor, consumed: !UNCONSUMED_LIFECYCLES.has(msg.lifecycle ?? '') }
 }
 
 /** agent 输出消息的 result 载荷（turn 终态证据所在）；非 result 形态返回 null。
@@ -71,22 +79,28 @@ function readResultPayload(msg: DecryptedMessage): Record<string, unknown> | nul
  * 扫描消息窗口，派生每个档③锚点的状态。返回 anchor → phase 映射。
  * done/failed 由 result 终态证据判定；窗口尾部 pending（有发起无终态）在会话
  * running 时归 running——点击后的即时翻转也走同一词汇，两来源幂等合成。
+ *
+ * 排队插队门控：锚点消息未消费（lifecycle 仍在 queued/pushed/acked）时其后出现的
+ * result 属于上一个 turn（本消息还没轮到 agent 处理），不归因给它——否则 turn 进行
+ * 中点击的 action 会被前 turn 的收尾 result 误翻 done。仅消费后（processing 及之后
+ * /非排队轨道）的 result 才配对。
  */
 export function deriveOpenUITerminalStates(
     messages: readonly DecryptedMessage[],
     isSessionRunning: boolean,
 ): Map<string, Exclude<OpenUIActionPhase, 'idle'>> {
     const out = new Map<string, Exclude<OpenUIActionPhase, 'idle'>>()
-    let pending: { anchor: string } | null = null
+    let pending: { anchor: string; consumed: boolean } | null = null
 
     for (const msg of messages) {
         const anchor = readAnchor(msg)
         if (anchor !== null) {
             // 下一条 openui action 开始：上一段未决的锚点保持上一轮判定
-            pending = { anchor }
+            pending = anchor
             continue
         }
         if (!pending) continue
+        if (!pending.consumed) continue
         const result = readResultPayload(msg)
         if (result === null) continue
         if (isAbortedTerminalReason(getField(result, 'terminal_reason'))) {

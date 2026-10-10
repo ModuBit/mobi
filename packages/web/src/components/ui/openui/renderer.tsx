@@ -81,8 +81,13 @@ export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps)
         if (phase === 'running') return
         const text = buildOpenUIMessage(event)
         if (!text) return
+        // 发送失败回滚：乐观 running 只有落库后扫描派生才能翻终态，请求失败时消息
+        // 不会落库、去重闸门还挡着重试——不回滚会永久卡 running
         if (anchor !== null) setPhase(anchor, 'running')
-        sendMessage?.(text, { origin: 'openui', ...(anchor !== null ? { anchor } : {}) })
+        Promise.resolve(sendMessage?.(text, { origin: 'openui', ...(anchor !== null ? { anchor } : {}) }))
+            .catch(() => {
+                if (anchor !== null) setPhase(anchor, 'idle')
+            })
     }, [streaming, phase, anchor, setPhase, sendMessage])
 
     // 档③注入：idle 不注入（让 $actionState 声明默认值生效，非档③块零影响）；

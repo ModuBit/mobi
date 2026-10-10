@@ -45,7 +45,10 @@ const resultMsg = (data: Record<string, unknown>): DecryptedMessage => ({
     content: { role: 'agent', content: { type: 'output', data } } as DecryptedMessage['content'],
 })
 
-const openuiAction = (anchor: string) => userMsg({ sentFrom: 'openui', openuiAnchor: anchor })
+const openuiAction = (anchor: string, lifecycle?: string) => ({
+    ...userMsg({ sentFrom: 'openui', openuiAnchor: anchor }),
+    ...(lifecycle ? { lifecycle: lifecycle as DecryptedMessage['lifecycle'] } : {}),
+})
 
 describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
     it('发起后有 result 终态证据 → done', () => {
@@ -89,5 +92,26 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
         ], false)
         expect(out.get('blk-1')).toBe('done')
         expect(out.get('blk-2')).toBe('failed')
+    })
+
+    // queued 插队窗口：排队轨道（queued/pushed/acked = 未被 agent 消费）内出现的
+    // result 属于上一个 turn，不能归因给这个锚点——否则点完按钮瞬间就被前 turn 的
+    // 收尾 result 误翻 done。消费后（processing 及之后）的 result 才是本 turn 终态证据
+    it('锚点消息仍在排队轨道（queued）→ 其后 result 是前 turn 的，不归因', () => {
+        const msgs = [
+            openuiAction('blk-1', 'queued'),
+            resultMsg({ stop_reason: 'end_turn' }),
+        ]
+        // running 中保持 running（agent 即将消费它）；会话已停也不给终态条目
+        expect(deriveOpenUITerminalStates(msgs, true).get('blk-1')).toBe('running')
+        expect(deriveOpenUITerminalStates(msgs, false).has('blk-1')).toBe(false)
+    })
+
+    it('锚点消息已被消费（processing）→ 其后 result 归因为 done', () => {
+        const out = deriveOpenUITerminalStates([
+            openuiAction('blk-1', 'processing'),
+            resultMsg({ stop_reason: 'end_turn' }),
+        ], false)
+        expect(out.get('blk-1')).toBe('done')
     })
 })

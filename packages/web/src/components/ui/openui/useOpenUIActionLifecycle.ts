@@ -23,7 +23,7 @@
  * ChatContainer 只负责喂数据（消息窗口 + 会话运行态），不感知扫描细节。
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import { deriveOpenUITerminalStates } from './actionState'
 import { useOpenUIActionStore } from './actionStore'
@@ -32,13 +32,29 @@ export function useOpenUIActionLifecycle(
     messages: readonly DecryptedMessage[],
     isSessionRunning: boolean,
 ): void {
+    // 签名门控：流式期间 messages 数组身份每 delta 变一次，但扫描结果只随「窗口内容
+    // 概要」变化——length 覆盖 prepend/追加/移除，末条 id 覆盖新消息与 result 翻转，
+    // running 单列（终态判定输入）。同签名跳过重扫，流式 delta（同 id 内容追加）零开销
+    const lastSignatureRef = useRef<string | null>(null)
+
     // 从消息窗口派生各锚点的 done/failed/running，批量推进 actionStore。点击即时翻转
     // 的 running 与扫描合成（applyDerived 幂等）；刷新后的状态恢复也走这里（锚点随
-    // 消息 meta 落库）。messages 窗口 / running 任一变化重扫
+    // 消息 meta 落库）。
     useEffect(() => {
+        const tail = messages[messages.length - 1]
+        const signature = `${messages.length}|${tail?.id ?? ''}|${isSessionRunning}`
+        if (signature === lastSignatureRef.current) return
+        lastSignatureRef.current = signature
         const derived = deriveOpenUITerminalStates(messages, isSessionRunning)
         if (derived.size > 0) {
             useOpenUIActionStore.getState().applyDerived(derived)
         }
     }, [messages, isSessionRunning])
+
+    // 卸载清理：actionStore 是模块级单例，ChatContainer（key={sessionId}）切换/卸载时
+    // 若不清空，上一会话的 phase 会残留给下一会话的同名锚点；清空后状态由下次挂载的
+    // 首次扫描从落库 meta 恢复，安全
+    useEffect(() => () => {
+        useOpenUIActionStore.getState().clearAll()
+    }, [])
 }

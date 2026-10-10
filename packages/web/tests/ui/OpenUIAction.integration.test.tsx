@@ -32,7 +32,8 @@ vi.mock('@/components/ui/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
 const { Markdown } = await import('@/components/ui/Markdown')
-const { UiSendProvider } = await import('@/components/ui/openui/actionContext')
+const { UiSendProvider, OpenUIAnchorProvider } = await import('@/components/ui/openui/actionContext')
+const { useOpenUIActionStore } = await import('@/components/ui/openui/actionStore')
 // 懒 chunk 直连：流式守卫 seam 在 renderer 的 streaming prop（经 Markdown 时由块级
 // 揭示状态派生——mock 下即时全显恒 done，测不到 loading 态，故绕过直接渲染）
 const OpenUIRenderer = (await import('@/components/ui/openui/renderer')).default
@@ -112,5 +113,34 @@ describe('回路②：openui Button → send-message 回灌', () => {
         await ready()
 
         expect(sendMessage).not.toHaveBeenCalled()
+    })
+})
+
+describe('档③：发送失败回滚乐观 running', () => {
+    afterEach(() => {
+        cleanup()
+        useOpenUIActionStore.getState().clearAll()
+    })
+
+    it('sendMessage reject → 锚点 phase 回滚 idle（否则永久卡 running 且去重拦截重试）', async () => {
+        const sendMessage = vi.fn(() => Promise.reject(new Error('daemon 不可达')))
+        streamingDisplayState.current = fenced(FORM_SAMPLE)
+        render(
+            <UiSendProvider sendMessage={sendMessage}>
+                <OpenUIAnchorProvider anchor="blk-x">
+                    <OpenUIRenderer code={FORM_SAMPLE} streaming={false} />
+                </OpenUIAnchorProvider>
+            </UiSendProvider>,
+        )
+        await ready()
+
+        fireEvent.click(screen.getByText('Submit'))
+        expect(useOpenUIActionStore.getState().phases.get('blk-x')).toBe('running')
+
+        // reject 在微任务里送达；回滚后 phase 应离开 running
+        await vi.waitFor(() => {
+            expect(useOpenUIActionStore.getState().phases.get('blk-x')).not.toBe('running')
+        })
+        expect(useOpenUIActionStore.getState().phases.get('blk-x')).toBe('idle')
     })
 })

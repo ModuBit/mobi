@@ -75,4 +75,24 @@ describe('useOpenUIActionLifecycle（档③终态推进接线）', () => {
         renderHook(() => useOpenUIActionLifecycle([resultMessage('end_turn')], false))
         expect(useOpenUIActionStore.getState().phases.size).toBe(0)
     })
+
+    it('卸载清空 store（ChatContainer key 重建/离场时跨会话残留归零）', () => {
+        const { unmount } = renderHook(() => useOpenUIActionLifecycle([anchoredMessage('a3')], true))
+        expect(useOpenUIActionStore.getState().phases.get('a3')).toBe('running')
+        unmount()
+        expect(useOpenUIActionStore.getState().phases.size).toBe(0)
+    })
+
+    it('同签名（窗口概要不变）跳过重扫——流式 delta 不覆盖本地即时翻转', () => {
+        const { rerender } = renderHook(
+            ({ messages }: { messages: DecryptedMessage[] }) => useOpenUIActionLifecycle(messages, false),
+            { initialProps: { messages: [anchoredMessage('a4'), resultMessage('end_turn')] } },
+        )
+        expect(useOpenUIActionStore.getState().phases.get('a4')).toBe('done')
+        // 用户重新点击（即时翻 running），随后流式 delta 推送同 id 新数组——签名
+        // （length + tail id + running）不变，重扫若执行会把 running 覆盖回 done
+        useOpenUIActionStore.getState().setPhase('a4', 'running')
+        rerender({ messages: [anchoredMessage('a4'), { ...resultMessage('end_turn') }] })
+        expect(useOpenUIActionStore.getState().phases.get('a4')).toBe('running')
+    })
 })

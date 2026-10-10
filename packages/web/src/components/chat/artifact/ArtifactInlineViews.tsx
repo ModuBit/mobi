@@ -193,8 +193,11 @@ export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps &
                         path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
                         app={app ? {
-                            // 无 provider（Drawer 预览）时回调缺省：主题照注，只是不开 bridge
-                            onIssueNewTurn: sendMessage ? (text) => sendMessage(text, { origin: 'app' }) : undefined,
+                            // 无 provider（Drawer 预览）时回调缺省：主题照注，只是不开 bridge。
+                            // app 档无档③ phase 回滚诉求，失败吞掉（onError 已统一记日志+拉平）
+                            onIssueNewTurn: sendMessage
+                                ? (text) => void Promise.resolve(sendMessage(text, { origin: 'app' })).catch(() => {})
+                                : undefined,
                         } : undefined}
                         style={{
                             width: '100%', height: frameHeight,

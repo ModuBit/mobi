@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { UiMessageOrigin, UserContentBlock } from '@mobi/shared'
 import { UI_ANCHOR_ORIGIN } from '@mobi/shared'
@@ -54,7 +54,8 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
             if (import.meta.env.DEV) {
                 console.log('[Send] api.messages.send', { sessionId, localId: vars.localId, blocksLen: vars.blocks.length })
             }
-            return api.messages.send(sessionId, vars.blocks, vars.localId, vars.sentFrom, vars.sourceBlock)
+            return api.messages.send(sessionId, vars.blocks, vars.localId,
+                { sentFrom: vars.sentFrom, sourceBlock: vars.sourceBlock })
         },
         onMutate: async (vars: SendVars) => {
             // 乐观气泡：content 信封持 blocks 数组，与 daemon messageService.sendMessage 落库形态同构。
@@ -121,9 +122,17 @@ type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock'>
         (segments: ComposerSegments, opts?: SendOpts) => mutation.mutate(send(segments, opts)),
         [mutation.mutate],
     )
+    // mutateAsync 同样稳定化（ref 桥：底层引用每渲染新建但总是最新，包装引用恒定）——
+    // 档③失败回滚需要可等待的 promise，且消费方 memo 不能被击穿
+    const mutateAsyncRef = useRef(mutation.mutateAsync)
+    mutateAsyncRef.current = mutation.mutateAsync
+    const stableMutateAsync = useCallback(
+        (segments: ComposerSegments, opts?: SendOpts) => mutateAsyncRef.current(send(segments, opts)),
+        [],
+    )
     return {
         ...mutation,
         mutate: stableMutate,
-        mutateAsync: (segments: ComposerSegments, opts?: SendOpts) => mutation.mutateAsync(send(segments, opts)),
+        mutateAsync: stableMutateAsync,
     }
 }

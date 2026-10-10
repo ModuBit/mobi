@@ -96,9 +96,13 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, app }: Sandbox
     const { data: meta, dataUpdatedAt } = useFileMeta(sessionId, path)
     const themeMode = useUiStore((s) => resolveTheme(s.theme))
     const frameRef = useRef<HTMLIFrameElement | null>(null)
-    // 回调经 ref 存（调用方闭包随渲染变化），监听器只挂一次不因回调变化重挂
+    // 回调经 ref 存（调用方闭包随渲染变化），监听器只挂一次不因回调变化重挂。
+    // 渲染期只读 ref.current，写入收在 effect 里（React 18 并发渲染下渲染期写 ref
+    // 可能被丢弃或读到撕裂值）
     const onIssueNewTurnRef = useRef(app?.onIssueNewTurn)
-    onIssueNewTurnRef.current = app?.onIssueNewTurn
+    useEffect(() => {
+        onIssueNewTurnRef.current = app?.onIssueNewTurn
+    }, [app])
 
     // app 档主题跟随：宿主题档变化 → 原地更新注入的 style。dep 用布尔（对象身份每
     // 渲染必变会白写 iframe style）；iframe 重建后的补注由 onLoad 承担，无需 dataUpdatedAt
