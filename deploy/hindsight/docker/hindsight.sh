@@ -92,7 +92,10 @@ list_bank_ids() {
 import json, sys
 d = json.load(sys.stdin)
 items = d.get("items") or d.get("banks") or (d if isinstance(d, list) else [])
-print("\n".join(b[k] for b in items if isinstance(b, dict) for k in ("bank_id", "id") if k in b))'
+# 双键容错取首个命中（bank_id 优先）；两键同在时 for 循环会打两行，故用 next
+print("\n".join(
+    next(b[k] for k in ("bank_id", "id") if k in b)
+    for b in items if isinstance(b, dict) and any(k in b for k in ("bank_id", "id"))))'
 }
 
 wait_op() { # $1=bank_id $2=operation_id：轮询直到完成，最终 JSON 存 LAST_OP_JSON
