@@ -38,11 +38,12 @@
  */
 
 import { writeFileSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openuiLibrary } from '@openuidev/react-ui/genui-lib'
 import { generateSystemPrompt } from '@openuidev/react-lang'
 import { openuiExamples } from '@openuidev/react-ui/genui-lib/prompt-options'
+import { projectPath } from '@mobi/node-core/projectPath'
 
 /**
  * 核心组件白名单（常驻 system prompt 的高频子集）：简单交互场景（表单/选择卡/
@@ -208,7 +209,9 @@ export const SKILL_FILE_HEADER = `<!--
 <!-- ⚠️ 生成文件——勿手改。重生成：bun run packages/session/scripts/generate-openui-prompt.ts -->
 `
 
-// 仅直接执行时写盘（测试 import 本模块拿选项时不落盘）
+// 仅直接执行时写盘（测试 import 本模块拿选项时不落盘）。
+// 跨包产物路径锚定：SKILL.md 属主是 cli 安装根（projectPath），不数上级目录层数——
+// 层数路径在文件挪位时静默写错地方（票 08 实踩两次）
 if (import.meta.main) {
     const scriptDir = dirname(fileURLToPath(import.meta.url))
     const coreOut = resolve(scriptDir, '../src/claude/utils/openuiCorePrompt.generated.ts')
@@ -216,7 +219,7 @@ if (import.meta.main) {
     writeFileSync(coreOut, `${tsHeader}export const OPENUI_CORE_PROMPT = ${JSON.stringify(core)}\n`)
     console.log(`written ${coreOut} (${core.length} chars)`)
 
-    const skillOut = resolve(scriptDir, '../../../packages/cli/plugins/mobi/skills/openui/SKILL.md')
+    const skillOut = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui', 'SKILL.md')
     const skill = buildSkillMarkdown()
     writeFileSync(skillOut, `${SKILL_FILE_HEADER}${skill}`)
     console.log(`written ${skillOut} (${skill.length} chars)`)

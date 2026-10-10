@@ -16,11 +16,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { systemPrompt, buildAppendSystemPrompt } from '@/claude/utils/systemPrompt';
 import { OPENUI_CORE_PROMPT } from '@/claude/utils/openuiCorePrompt.generated';
 import { buildActionUri } from '@mobi/shared';
+import { projectPath } from '@mobi/node-core/projectPath';
 
 /** 无用户自定义时的完整追加内容（base + openui 核心段，票 02 注入 / 票 08 分层后形状） */
 const fullAppend = `${systemPrompt}\n\n${OPENUI_CORE_PROMPT}`;
@@ -150,13 +150,14 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
   it('与生成脚本同源同步（升 react-ui 或改判据措辞后未重生成即红）', async () => {
     const { buildCorePrompt, buildSkillMarkdown, SKILL_FILE_HEADER } = await import('../../../scripts/generate-openui-prompt');
     expect(buildCorePrompt()).toBe(OPENUI_CORE_PROMPT);
-    const skillPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../cli/plugins/mobi/skills/openui/SKILL.md');
+    // SKILL.md 路径锚定 cli 安装根（与生成脚本同一锚点，不数目录层数）
+    const skillPath = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui', 'SKILL.md');
     expect(readFileSync(skillPath, 'utf8')).toBe(`${SKILL_FILE_HEADER}${buildSkillMarkdown()}`);
   });
 });
 
 describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => {
-  const skillPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../cli/plugins/mobi/skills/openui/SKILL.md');
+  const skillPath = join(projectPath(), 'plugins', 'mobi', 'skills', 'openui', 'SKILL.md');
   const skill = readFileSync(skillPath, 'utf8');
 
   it('frontmatter：name=openui + description 覆盖复杂组件触发词', () => {
