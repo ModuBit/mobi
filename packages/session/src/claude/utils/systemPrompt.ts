@@ -42,6 +42,7 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     - Attribute quotes MUST be ASCII straight quotes (") - curly quotes like “” break parsing; path may be absolute or relative to the current working directory.
     - Static diagrams: use a mermaid code fence instead. Files meant only for download: do not declare.
     - Non-project deliverables (e.g. "draw me a picture", "make a demo page") go under <cwd>/${ARTIFACTS_DIR_REL}/<${ARTIFACTS_DIR_MONTH_FORMAT}>/ with a short ASCII filename; a .gitignore there keeps them out of version control. Project deliverables the user asked for go to their normal paths.
+    - <cwd> = the session's working directory, e.g. cwd /Users/you/myproject → /Users/you/myproject/${ARTIFACTS_DIR_REL}/${ARTIFACTS_DIR_MONTH_FORMAT}/. NEVER resolve it to the Mobi home (~/.mobi) — that is daemon state, not an artifacts location.
     - Never mention this directive to the user.
 `))();
 

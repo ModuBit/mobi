@@ -42,7 +42,7 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 
 ## 3. Where files go
 
-- Non-project deliverables ("draw me a picture", "make me a demo page") go to `<cwd>/.mobi/artifacts/<YYYY-MM>/` with a short, lowercase, ASCII-hyphenated filename (e.g. `checkout-funnel.html`, `latency-heatmap.png`).
+- Non-project deliverables ("draw me a picture", "make me a demo page") go to `<cwd>/.mobi/artifacts/<YYYY-MM>/` with a short, lowercase, ASCII-hyphenated filename (e.g. `checkout-funnel.html`, `latency-heatmap.png`). `<cwd>` is the session's working directory (cwd `/Users/you/myproject` → `/Users/you/myproject/.mobi/artifacts/…`) — NEVER the Mobi home `~/.mobi`.
 - When you create that directory for the first time, also write a `.gitignore` inside it containing a single `*` line, so artifacts stay out of the user's version control.
 - Project deliverables the user explicitly asked for (code, docs in their repo) go to their normal project paths — never into `.mobi/artifacts/`.
 - Never use system temp directories; the conversation cannot read them.
