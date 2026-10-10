@@ -41,8 +41,9 @@ import type { DecryptedMessage } from '@/core/data/api/types'
  * 发出），存储/展示与手打消息无差别；乐观气泡 meta 与之一致，避免 echo 合并后翻转。
  */
 
-/** 发送来源：手打缺省 'webapp'；'openui' = fenced openui 块的 Button 回灌 */
-export type SendSource = 'openui'
+/** 发送来源：手打缺省 'webapp'；'openui' = fenced openui 块回灌（票 03）；
+ *  'app' = 沙箱 app bridge MobiApp.issueNewTurn 回灌（票 06） */
+export type SendSource = 'openui' | 'app'
 
 /** 发送变量（mutation 内部词汇）：blocks + localId + 可选来源与档③锚点 */
 type SendVars = { blocks: UserContentBlock[]; localId: string; sentFrom?: SendSource; sourceBlock?: string }

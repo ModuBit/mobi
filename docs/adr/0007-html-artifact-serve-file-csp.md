@@ -31,3 +31,22 @@ accepted（2026-09-26）。产物声明特性（`:mobi-artifact`）的渲染安�
 - top-level 打开（浏览器打开通道）没有 iframe sandbox（sandbox 是 iframe 标签属性不随 URL 走），防线只剩 CSP 单道——已接受取舍，不做 sandbox 中间页
 - 双主题由产物自身负责（skill 教 `prefers-color-scheme` / `light-dark()`），iframe 内容不继承 mobi 主题
 - 已知边界：用户项目恰为 home 时，读取黑名单（ADR 0004）会拦 `.mobi`——产物目录（`.mobi/artifacts/`）与附件（`.mobi/uploads/`）在该场景同样不可读，为既有语义的自然延伸，不单独豁免
+
+## 增补（2026-10-10，generative-ui 票 06）：mode=app 入向 bridge
+
+`:mobi-artifact mode="app"` 在 CSP/sandbox 之外开一条**入向**通道：宿主向 iframe 注入 `window.MobiApp.issueNewTurn(text)`，app 经 postMessage 把消息发回宿主、进消息受理 intake。这是新攻击面，评估如下：
+
+**威胁**：mode=app 的文件可以是任意 HTML（用户手写声明、或模型产物被篡改）。app 内脚本能以用户身份发消息（冒充用户诱导 agent 执行指令），且「脚本自动调用」与「用户点击按钮」在宿主侧**不可区分**——这是与 ChatGPT GenUI / CopilotKit Websandbox 相同的界，非 mobi 特有弱点。
+
+**缓解（四道校验，全部在宿主 web 层，单源 `appBridge.ts` + SandboxHtmlFrame）**：
+
+1. 来源 frame：`event.source` 必须是宿主自己渲染的那个 sandbox iframe——任意第三方 frame 的 postMessage 不进通道
+2. 白名单：仅 `type:'mobi-app'` + `action:'issueNewTurn'`；`openLink` 等第二通道需求出现再加（票 06 记录 pending）
+3. schema：text 限 string / trim 非空 / ≤4000 字符，超限整体拒绝不截断
+4. 限流：同一 frame 最小间隔 1s——把「脚本刷消息」的伤害面压到「最多每秒一条」
+
+**辨识**：app 发出的消息落库 `meta.sentFrom='app'`（窄字面量，daemon schema 收窄两值 'openui'|'app'，防伪造 'cli' 借道），气泡 header 弱化标注「应用触发」——用户能一眼分辨「这条不是我手打的」，异常时能及时发现并处理。
+
+**残余风险（接受）**：无法阻止 app 脚本在合法频率内冒充用户发消息。定界依据：CSP 已禁 `connect-src`（app 不能直接调 mobi API），bridge 是唯一发言通道且消息**可见、可辨识、有限频**；用户对 mode=app 的 HTML 有选择权（声明了才会开 bridge）。若未来出现滥用，升级路径是「bridge 消息需用户确认」的显式审批 UI。
+
+**与 CSP 的关系**：`script-src 'unsafe-inline'` 使宿主注入的 bridge 脚本可执行（该 flag 本为产物页行内脚本兼容，非为 bridge 引入）；`connect-src 'none'` 不受影响（postMessage 非网络请求）。bridge 不放宽任何 CSP 指令，通道按显式 `mode="app"` 声明开启——普通产物零通道现状不变。

@@ -177,6 +177,7 @@
         }
     },
     "chat": {
+        "origin": { "openui": "界面触发", "app": "应用触发" },
         "message": {
             "terminalCancelled": "已取消",
             "terminalDiscarded": "已丢弃",

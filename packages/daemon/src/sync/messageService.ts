@@ -52,8 +52,9 @@ export type SendMessagePayload = {
     /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象），透传给 messageService 归一 */
     content: unknown
     localId?: string | null
-    /** 来源标识（meta.sentFrom）；'openui' = 交互 UI 回路②回灌（generative-ui 票 03 诊断标记） */
-    sentFrom?: 'webapp' | 'cli' | 'openui'
+    /** 来源标识（meta.sentFrom）；'openui' = 交互 UI 回路②回灌（票 03），
+     *  'app' = 沙箱 app bridge issueNewTurn 回灌（票 06）——均诊断标记 */
+    sentFrom?: 'webapp' | 'cli' | 'openui' | 'app'
     /** 档③锚点（票 04 原地更新）：发起 UI 块所在 agent text block id，落库 meta.openuiAnchor */
     sourceBlock?: string
     /**

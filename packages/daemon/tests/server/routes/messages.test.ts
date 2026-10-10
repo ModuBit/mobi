@@ -169,6 +169,14 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui', sourceBlock: 'agent-text-blk-1' })
     })
 
+    test('新格式：sentFrom=app 透传（沙箱 app bridge 回灌，generative-ui 票 06）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: '按当前选择继续', sentFrom: 'app' })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({ content: '按当前选择继续', localId: undefined, sentFrom: 'app', sourceBlock: undefined })
+    })
+
     test('新格式：sentFrom 白名单外取值（如伪造 cli）→ 400，不透传', async () => {
         const { engine, sent } = makeSendEngine()
 

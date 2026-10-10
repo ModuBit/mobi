@@ -34,6 +34,7 @@ import { AppImage } from '@/components/ui/AppImage'
 import { SandboxHtmlFrame } from '@/components/files/SandboxHtmlFrame'
 import { useFileMediaSrc } from '@/components/files/useFileMediaSrc'
 import { useDirectiveStreaming } from '@/components/ui/directiveStreamGate'
+import { useOpenUISendMessage } from '@/components/ui/openui/actionContext'
 import { basename } from '@/core/utils/path'
 
 /** inline 视图公共 props：寻址与校验产物（ArtifactDirectiveView 已把关） */
@@ -152,11 +153,15 @@ const widthModeValue = (mode: WidthMode): string => (mode === 'auto' ? '100%' : 
 /**
  * HTML inline：SandboxHtmlFrame 的聊天流 chrome（定高 480/640 + 宽度三档）。
  * iframe 机制（serve-file URL/sandbox/meta 驱动重建/滚动条主题）单源在 frame；
- * app（mode=app，generative-ui 票 05）追加 --mobi-* 主题注入（frame 收口）。
+ * app（mode=app，generative-ui 票 05）追加 --mobi-* 主题注入（frame 收口），
+ * 并开启 bridge 回灌（票 06）：app 内 MobiApp.issueNewTurn → 回路② intake
+ * （sentFrom='app'）。无 provider（Drawer 预览等会话页外渲染）时不开 bridge——
+ * 与 useOpenUISendMessage 的静默 no-op 语义一致。
  */
 export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps & { wide?: boolean; app?: boolean }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
+    const sendMessage = useOpenUISendMessage()
     // 流式闸：流式揭示期间不挂 iframe（加载竞速逐字揭示 = 布局抖动），同尺寸占位顶住
     const streaming = useDirectiveStreaming()
     const [widthMode, setWidthMode] = useState<WidthMode>('auto')
@@ -188,6 +193,7 @@ export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps &
                         path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
                         injectTheme={app}
+                        onIssueNewTurn={app && sendMessage ? (text) => sendMessage(text, { from: 'app' }) : undefined}
                         style={{
                             width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,

@@ -30,6 +30,9 @@
  * - load 后注入滚动条主题（iframe 与宿主同源才可行，见 injectArtifactScrollbarStyle）
  * - injectTheme（generative-ui 票 05，mode=app 专用）：注入 `--mobi-*` 主题变量 + 低特异
  *   base 样式；宿主亮/暗切换时原地更新已注入的 style（不重载 iframe，不打断 app 运行态）
+ * - onIssueNewTurn（generative-ui 票 06，mode=app 专用）：注入 app 侧 `MobiApp` API 并
+ *   监听其 postMessage——四道校验（来源 frame / 白名单 / schema / 限流，收口在
+ *   appBridge.ts）通过后回调；iframe 重建（key 变化）自动换新监听与限流器
  *
  * chrome 面（调用方决定）：尺寸、边框、圆角等经 style 透传；包装容器由调用方自理。
  */
@@ -39,6 +42,7 @@ import { useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { buildServeFileUrl } from '@/core/utils/fileUrl'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
+import { createAppBridgeRateLimiter, injectAppBridgeScript, parseAppBridgeMessage } from './appBridge'
 
 /** 产物 iframe 的滚动条主题（主题中性：透明轨道 + 半透明灰 thumb，深浅色页面通用）。
  * 产物页面多未设 color-scheme，原生浅色滚动条压在深色页面上很突兀；iframe 与宿主
@@ -143,20 +147,45 @@ export interface SandboxHtmlFrameProps {
     style?: CSSProperties
     /** mode=app 专用（generative-ui 票 05）：注入 --mobi-* 主题变量并跟随宿主亮/暗 */
     injectTheme?: boolean
+    /**
+     * mode=app 专用（generative-ui 票 06）：app 内 `MobiApp.issueNewTurn(text)` 的宿主侧
+     * 回调（校验收口在本组件，见文件头）。缺省 = 不开 bridge（普通产物零通道现状）。
+     */
+    onIssueNewTurn?: (text: string) => void
 }
 
-export function SandboxHtmlFrame({ sessionId, path, title, style, injectTheme = false }: SandboxHtmlFrameProps) {
+export function SandboxHtmlFrame({ sessionId, path, title, style, injectTheme = false, onIssueNewTurn }: SandboxHtmlFrameProps) {
     // 订阅同一 fileMeta query（react-query 按 queryKey 去重，多消费方零额外请求），
     // dataUpdatedAt 驱动 iframe 重建（机制见文件头）
     const { data: meta, dataUpdatedAt } = useFileMeta(sessionId, path)
     const themeMode = useUiStore((s) => resolveTheme(s.theme))
     const frameRef = useRef<HTMLIFrameElement | null>(null)
+    // 回调经 ref 存（调用方闭包随渲染变化），监听器只挂一次不因回调变化重挂
+    const onIssueNewTurnRef = useRef(onIssueNewTurn)
+    onIssueNewTurnRef.current = onIssueNewTurn
 
     // 主题跟随：宿主题档变化 → 原地更新注入的 style（iframe 重建后 dataUpdatedAt 变化
     // 也经此补注——新文档 load 前 contentDocument 为 about:blank，注入幂等无副作用）
     useEffect(() => {
         if (injectTheme) injectMobiThemeStyle(frameRef.current?.contentDocument, themeMode)
     }, [injectTheme, themeMode, dataUpdatedAt])
+
+    // bridge 监听（票 06）：来源 frame 校验（event.source === 本 frame 的 contentWindow）
+    // 在这里做——白名单/schema/限流收口在 appBridge.ts。组件生命周期内挂一次；
+    // iframe 重建不换 frameRef，但 key 变化会重挂整棵子树触发 onLoad 重注入脚本
+    const bridgeEnabled = onIssueNewTurn !== undefined
+    useEffect(() => {
+        if (!bridgeEnabled) return
+        const allowOnce = createAppBridgeRateLimiter()
+        const handleMessage = (ev: MessageEvent) => {
+            if (ev.source !== frameRef.current?.contentWindow) return
+            const parsed = parseAppBridgeMessage(ev.data)
+            if (!parsed || !allowOnce()) return
+            onIssueNewTurnRef.current?.(parsed.text)
+        }
+        window.addEventListener('message', handleMessage)
+        return () => window.removeEventListener('message', handleMessage)
+    }, [bridgeEnabled])
 
     return (
         <iframe
@@ -170,6 +199,7 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, injectTheme = 
             onLoad={(e) => {
                 injectArtifactScrollbarStyle(e.currentTarget.contentDocument)
                 if (injectTheme) injectMobiThemeStyle(e.currentTarget.contentDocument, themeMode)
+                if (bridgeEnabled) injectAppBridgeScript(e.currentTarget.contentDocument)
             }}
             style={style}
         />

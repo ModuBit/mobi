@@ -52,6 +52,7 @@ import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
+import { SentFromTag } from './blocks/SentFromTag'
 import { renderUserBubbleHeader, type ChatBlockContext } from './blocks'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
@@ -1072,6 +1073,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const crossSessionFrom = getCrossSessionFrom(crossSessionOrigin)
             const turnOrigin = isUserText && block ? readTurnOrigin(block.meta) : null
             const showCrossSessionTag = crossSessionOrigin !== null
+            // UI 来源标记（票 06 安全缓解）：openui/app 回灌的消息与手打可辨识；
+            // 跨会话消息 sentFrom='cli' 不命中（sentFromTagLabelKey 只认两值）
+            const sentFromTag = isUserText && block ? <SentFromTag sentFrom={block.meta?.sentFrom} /> : null
             // 附件层（图片/文档/引用 chip）：与正文同源 block，挂 bubble header（正文只剩 text）
             const userExtras = isUserText && block ? renderUserBubbleHeader(block, renderCtx) : undefined
 
@@ -1136,11 +1140,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             return {
                 ...item,
                 // header 槽两段堆叠：附件层（图片/文档/引用 chip）在上，跨会话来源标签保序其后
-                //（各自可空，全空则 header 保持 undefined 零改动）
-                header: (userExtras || showCrossSessionTag) ? (
+                //（各自可空，全空则 header 保持 undefined 零改动）；UI 来源标记居末（弱化 chip）
+                header: (userExtras || showCrossSessionTag || sentFromTag) ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {userExtras}
                         {showCrossSessionTag ? <CrossSessionTag from={crossSessionFrom} turnOrigin={turnOrigin ?? undefined} /> : null}
+                        {sentFromTag}
                     </div>
                 ) : undefined,
                 classNames: isUserText
@@ -1255,12 +1260,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 回路②（generative-ui 票 03）：fenced openui 块内 Button 点击 → 同一 sendMutation
     // 发出（乐观气泡/排队轨道/rewind 清除/daemon intake 与手打消息完全同链路），
-    // sentFrom='openui' 仅作诊断标记。useCallback 依赖 sendMutation（引用稳定，由
+    // sentFrom 仅作诊断标记。useCallback 依赖 sendMutation（引用稳定，由
     // useMutation 保证），避免 ChatContainer 每帧重渲染翻 context value 击穿懒 chunk 的 memo。
     // 回路③（票 04）：sourceBlock = 档③锚点（agent text block id），随消息落库
-    // （meta.openuiAnchor），刷新后扫描恢复按钮态的数据源
-    const sendOpenUIMessage = useCallback((text: string, opts?: { sourceBlock?: string }) => {
-        sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: 'openui', sourceBlock: opts?.sourceBlock })
+    // （meta.openuiAnchor），刷新后扫描恢复按钮态的数据源。
+    // app bridge（票 06）：from='app'——沙箱 app 内 MobiApp.issueNewTurn 回灌
+    const sendOpenUIMessage = useCallback((text: string, opts?: { sourceBlock?: string; from?: 'openui' | 'app' }) => {
+        sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: opts?.from ?? 'openui', sourceBlock: opts?.sourceBlock })
     }, [sendMutation])
 
     // 档③终态扫描（票 04）：从消息窗口派生各锚点的 done/failed/running，批量推进

@@ -28,8 +28,9 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 
-/** 回路②注入的发送入口：组装好的消息文本，与手打消息走同一 intake */
-export type OpenUISendMessage = (text: string, opts?: { sourceBlock?: string }) => void
+/** 回路②注入的发送入口：组装好的消息文本，与手打消息走同一 intake。
+ *  from 标记发起层（票 06）：'openui' fenced 块（缺省）/ 'app' 沙箱 app bridge */
+export type OpenUISendMessage = (text: string, opts?: { sourceBlock?: string; from?: 'openui' | 'app' }) => void
 
 const OpenUIActionContext = createContext<OpenUISendMessage | null>(null)
 

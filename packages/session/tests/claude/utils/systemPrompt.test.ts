@@ -146,4 +146,10 @@ describe('openui catalog prompt 契约（generative-ui 票 02）', () => {
     expect(OPENUI_CATALOG_PROMPT).toMatch(/light\/dark theme/);
     expect(OPENUI_CATALOG_PROMPT).toMatch(/your own CSS always wins/);
   });
+
+  it('含 app bridge 教学（票 06：MobiApp.issueNewTurn——仅显式用户动作触发 + 简洁状态摘要）', () => {
+    expect(OPENUI_CATALOG_PROMPT).toContain('window.MobiApp.issueNewTurn(text)');
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/ONLY from explicit user actions/i);
+    expect(OPENUI_CATALOG_PROMPT).toMatch(/never call it automatically/i);
+  });
 });

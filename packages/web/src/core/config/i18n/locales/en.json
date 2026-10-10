@@ -177,6 +177,7 @@
         }
     },
     "chat": {
+        "origin": { "openui": "UI action", "app": "App action" },
         "message": {
             "terminalCancelled": "Cancelled",
             "terminalDiscarded": "Discarded",
