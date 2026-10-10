@@ -36,18 +36,25 @@ import type { DecryptedMessage } from '@/core/data/api/types'
  * 关键：乐观 localId 必须与服务端发送 localId 一致，否则服务端 echo
  * 无法通过 mergeMessages 的 localId 去重替换乐观气泡。
  * 因此在 mutate(segments) 时生成一次 localId，与 blocks 一起传入。
+ *
+ * 来源标记（generative-ui 票 03）：sentFrom 诊断标记（'openui' = 交互 UI 回路②
+ * 发出），存储/展示与手打消息无差别；乐观气泡 meta 与之一致，避免 echo 合并后翻转。
  */
+
+/** 发送来源：手打缺省 'webapp'；'openui' = fenced openui 块的 Button 回灌 */
+export type SendSource = 'openui'
+
 export function useSendMessage(sessionId: string, isRunning: boolean) {
     const api = useMobiApi()
 
     const mutation = useMutation({
-        mutationFn: (vars: { blocks: UserContentBlock[]; localId: string }) => {
+        mutationFn: (vars: { blocks: UserContentBlock[]; localId: string; sentFrom?: SendSource }) => {
             if (import.meta.env.DEV) {
                 console.log('[Send] api.messages.send', { sessionId, localId: vars.localId, blocksLen: vars.blocks.length })
             }
-            return api.messages.send(sessionId, vars.blocks, vars.localId)
+            return api.messages.send(sessionId, vars.blocks, vars.localId, vars.sentFrom)
         },
-        onMutate: async (vars: { blocks: UserContentBlock[]; localId: string }) => {
+        onMutate: async (vars: { blocks: UserContentBlock[]; localId: string; sentFrom?: SendSource }) => {
             // 乐观气泡：content 信封持 blocks 数组，与 daemon messageService.sendMessage 落库形态同构。
             // positionAt / createdAt 共用同一发送时刻；lifecycleAt 仅排队轨道携带
             //（= createdAt，对齐 daemon「queued 时 lifecycle_at = created_at」契约），
@@ -66,7 +73,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                 content: {
                     role: 'user',
                     content: vars.blocks,
-                    meta: { sentFrom: 'webapp' },
+                    meta: { sentFrom: vars.sentFrom ?? 'webapp' },
                 },
                 createdAt: now,
                 status: isRunning ? 'queued' : 'sending',
@@ -90,13 +97,14 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
     // 分段序列化为 blocks，保证 onMutate 与 mutationFn 用同一份产物）。必须同时覆盖两者——
     // 只覆盖 mutate 会让展开的 mutateAsync 仍按旧签名工作，调用方传参错位会丢 localId，
     // 导致服务端 echo 无法按 localId 去重乐观气泡 → 重复消息。
-    const send = (segments: ComposerSegments): { blocks: UserContentBlock[]; localId: string } => ({
+    const send = (segments: ComposerSegments, sentFrom?: SendSource): { blocks: UserContentBlock[]; localId: string; sentFrom?: SendSource } => ({
         blocks: serializeSegments(segments),
         localId: makeClientSideId('local'),
+        ...(sentFrom ? { sentFrom } : {}),
     })
     return {
         ...mutation,
-        mutate: (segments: ComposerSegments) => mutation.mutate(send(segments)),
-        mutateAsync: (segments: ComposerSegments) => mutation.mutateAsync(send(segments)),
+        mutate: (segments: ComposerSegments, opts?: { sentFrom?: SendSource }) => mutation.mutate(send(segments, opts?.sentFrom)),
+        mutateAsync: (segments: ComposerSegments, opts?: { sentFrom?: SendSource }) => mutation.mutateAsync(send(segments, opts?.sentFrom)),
     }
 }

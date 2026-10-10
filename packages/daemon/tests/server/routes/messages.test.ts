@@ -153,6 +153,22 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         expect(sent[0].payload).toEqual({ content: [{ type: 'text', text: 'yo' }], localId: undefined, sentFrom: 'webapp' })
     })
 
+    test('新格式：sentFrom=openui 透传（回路②来源诊断标记，generative-ui 票 03）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: 'hi', sentFrom: 'openui' })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui' })
+    })
+
+    test('新格式：sentFrom 白名单外取值（如伪造 cli）→ 400，不透传', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: 'hi', sentFrom: 'cli' })
+        expect(res.status).toBe(400)
+        expect(sent).toHaveLength(0)
+    })
+
     test('旧平铺格式：组装为 {type:text,text,attachments} 交同一归一函数', async () => {
         const { engine, sent } = makeSendEngine()
         const attachments = [{ id: '1', filename: 'a.png', mimeType: 'image/png', size: 3, path: '/p/a.png' }]

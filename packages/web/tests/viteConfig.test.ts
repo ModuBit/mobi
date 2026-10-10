@@ -14,8 +14,20 @@
  * limitations under the License.
  */
 
-import { describe, expect, test } from 'vitest'
-import viteConfig from '../vite.config'
+import { describe, expect, test, afterAll, vi } from 'vitest'
+
+// 宿主 shell 的 MOBI_API_URL（本机 daemon profile 指向 12222）会盖过配置默认的
+// 2222，使断言环境敏感（2026-10-10 踩过，与 MOBI_MEMORY_ENGINE 同类坑）。
+// 配置在模块顶层读 env，stub 必须先于动态 import 执行——静态 import 会在 hook
+// 前完成求值
+vi.stubEnv('MOBI_API_URL', '')
+vi.stubEnv('MOBI_WEB_PORT', '')
+
+const viteConfig = (await import('../vite.config')).default
+
+afterAll(() => {
+    vi.unstubAllEnvs()
+})
 
 describe('Vite dev terminal 配置', () => {
     test('向 dev 客户端注入 Hub URL，terminal 可绕过 Bun 下失效的 Vite WS tunnel', () => {

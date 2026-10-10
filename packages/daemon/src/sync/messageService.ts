@@ -52,7 +52,8 @@ export type SendMessagePayload = {
     /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象），透传给 messageService 归一 */
     content: unknown
     localId?: string | null
-    sentFrom?: 'webapp' | 'cli'
+    /** 来源标识（meta.sentFrom）；'openui' = 交互 UI 回路②回灌（generative-ui 票 03 诊断标记） */
+    sentFrom?: 'webapp' | 'cli' | 'openui'
     /**
      * 跨会话来源身份（agent 经 send_message_to_session 投来的消息）。
      *

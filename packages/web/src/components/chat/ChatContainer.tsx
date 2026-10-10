@@ -39,6 +39,7 @@ import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from '
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
+import { OpenUIActionProvider } from '@/components/ui/openui/actionContext'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, isCompactStart, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
@@ -1250,6 +1251,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (import.meta.env.DEV) console.log('[Send] sendMutation.mutate 已调用')
     }
 
+    // 回路②（generative-ui 票 03）：fenced openui 块内 Button 点击 → 同一 sendMutation
+    // 发出（乐观气泡/排队轨道/rewind 清除/daemon intake 与手打消息完全同链路），
+    // sentFrom='openui' 仅作诊断标记。useCallback 依赖 sendMutation（引用稳定，由
+    // useMutation 保证），避免 ChatContainer 每帧重渲染翻 context value 击穿懒 chunk 的 memo
+    const sendOpenUIMessage = useCallback((text: string) => {
+        sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: 'openui' })
+    }, [sendMutation])
+
     const handleAbort = async (stopKind: StopKind) => {
         await sessionActions.abortSession(stopKind)
     }
@@ -1284,6 +1293,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         // 全屏浮层挂载层：全宽（不受 CHAT_MAX_WIDTH 限宽），画板全屏时撑满整个内容区
         // （红框区域）；内层聊天列保持 1200 居中不受影响
         // data-perf-region：dev-only layout-shift 归因观测器（core/lib/layoutShiftObserver）消费
+        // 回路② provider：覆盖消息列表 + composer，fenced openui 块深处的 onAction 经此回灌
+        <OpenUIActionProvider sendMessage={sendOpenUIMessage}>
         <div ref={setChatFullscreenEl} style={{ position: 'relative', height: '100%', width: '100%' }} data-perf-region="chat">
             <div
                 style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto', position: 'relative' }}
@@ -1463,5 +1474,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         </div>
             </div>
         </div>
+        </OpenUIActionProvider>
     )
 }

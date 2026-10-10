@@ -26,16 +26,23 @@
  * - 封口后（streaming=false）onError 给出的结构化错误（未知组件/缺必填 props 等）
  *   以「降级显示」呈现：非法语句由 parser 丢弃，块本身不移除，错误摘要内联提示。
  *   turn journal 落点：web 侧暂无 journal 写通道，降级为 UI 呈现，缺口记 pending。
+ *
+ * 回路②（票 03）：onAction 的 continue_conversation → 经 actionContext 注入的
+ * sendMessage 走手打消息同一链路。发送只可能由用户手势（Button 点击/表单提交）
+ * 触发——react-lang 的 onAction 仅在这些交互回调里被调起；流式期间 UI 尚未封口，
+ * 一律不发送。
  */
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Alert } from 'antd'
-import { Renderer, type OpenUIError } from '@openuidev/react-lang'
+import { Renderer, type ActionEvent, type OpenUIError } from '@openuidev/react-lang'
 import { ThemeProvider, openuiLibrary } from '@openuidev/react-ui'
 import '@openuidev/react-ui/index.css'
 import '@openuidev/react-ui/defaults.css'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { OPENUI_LIGHT_THEME, OPENUI_DARK_THEME } from './theme'
+import { buildOpenUIMessage } from './actionMessage'
+import { useOpenUISendMessage } from './actionContext'
 
 export interface OpenUIRendererProps {
     /** fence 内的 OpenUI Lang 源码 */
@@ -50,6 +57,16 @@ const MAX_SHOWN_ERRORS = 3
 export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps) {
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
+    const sendMessage = useOpenUISendMessage()
+
+    // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
+    // 无 provider（会话页外的 markdown 渲染）静默 no-op
+    const handleAction = useCallback((event: ActionEvent) => {
+        if (streaming) return
+        if (event.type !== 'continue_conversation') return
+        const text = buildOpenUIMessage(event)
+        if (text && sendMessage) sendMessage(text)
+    }, [streaming, sendMessage])
 
     return (
         <div className="openui-block">
@@ -60,6 +77,7 @@ export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps)
                     library={openuiLibrary as never}
                     isStreaming={streaming}
                     onError={setErrors}
+                    onAction={handleAction}
                 />
             </ThemeProvider>
             {streaming || errors.length === 0 ? null : (

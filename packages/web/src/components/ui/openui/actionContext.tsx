@@ -1,0 +1,52 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * OpenUI 回路②（send-message → intake）的注入 seam（generative-ui 票 03）。
+ *
+ * fenced openui 块渲染在 markdown 深处，天然够不到 ChatContainer 的发送通道；
+ * 这里用轻量 context 把「发一条用户消息」从会话页注入进来——provider 端复用
+ * ChatContainer 既有的 useSendMessage mutation 实例，保证与手打消息同链路
+ * （乐观气泡 / 排队轨道 / rewind 清除 / daemon intake 单点），不新开通道。
+ *
+ * 本模块必须保持零重依赖（进主 bundle）；OpenUI 事件 → 文本的组装在
+ * actionMessage.ts，由懒 chunk 内的 renderer 消费。
+ */
+
+import { createContext, useContext, type ReactNode } from 'react'
+
+/** 回路②注入的发送入口：组装好的消息文本，与手打消息走同一 intake */
+export type OpenUISendMessage = (text: string) => void
+
+const OpenUIActionContext = createContext<OpenUISendMessage | null>(null)
+
+export function OpenUIActionProvider({
+    sendMessage,
+    children,
+}: {
+    sendMessage: OpenUISendMessage
+    children: ReactNode
+}) {
+    return <OpenUIActionContext.Provider value={sendMessage}>{children}</OpenUIActionContext.Provider>
+}
+
+/**
+ * 取回路②发送入口。无 provider（markdown 在会话页外渲染——Drawer 预览、
+ * 独立文档视图等）返回 null，调用方静默 no-op：交互块照常渲染，只是不发消息。
+ */
+export function useOpenUISendMessage(): OpenUISendMessage | null {
+    return useContext(OpenUIActionContext)
+}

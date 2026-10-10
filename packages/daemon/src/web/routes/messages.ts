@@ -35,6 +35,9 @@ const sidechainQuerySchema = z.object({
 const newFormatBodySchema = z.object({
     content: UserMessageContentSchema,
     localId: z.string().min(1).optional(),
+    // 来源诊断标记（generative-ui 票 03 回路②）：只收窄 'openui' 一个值，缺省归
+    // 'webapp'——开放枚举会让客户端可伪造 'cli'，破坏跨会话判定的 sentFrom 借道
+    sentFrom: z.literal('openui').optional(),
 })
 
 /** 旧版 web/PWA 平铺发送格式（窗口期兼容） */
@@ -119,7 +122,12 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Message requires text or attachments' }, 400)
         }
 
-        await engine.sendMessage(sessionId, { content: rawContent, localId: parsed.data.localId, sentFrom: 'webapp' })
+        await engine.sendMessage(sessionId, {
+            content: rawContent,
+            localId: parsed.data.localId,
+            // 新格式才可能携带 'openui'；旧平铺格式恒手打语义
+            sentFrom: 'content' in parsed.data ? parsed.data.sentFrom ?? 'webapp' : 'webapp',
+        })
         // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的
         // 会话行，活跃 no-op）。入队已持久化，spawn 失败消息仍留 queued，下次发送或手动
         // 唤醒重试；进程上线后 handleSessionAlive → redeliverQueued 补投
