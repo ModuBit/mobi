@@ -15,11 +15,16 @@
  */
 
 /**
- * mode=app 入向 bridge（generative-ui 票 06）：沙箱 app → 宿主的受控通信通道。
+ * mode=app 宿主注入（generative-ui 票 05/06）：沙箱 app 档的「宿主 → app / app → 宿主」
+ * 两侧注入通道单文件（web 侧的宿主通道拓扑，对应 daemon 侧同概念）。
  *
- * 形态参照 ChatGPT GenUI / CopilotKit Websandbox 的「宿主注入全局对象」：iframe load
- * 后注入 `window.MobiApp.issueNewTurn(text)`，内部经 postMessage 发宿主；宿主侧经
- * 四道校验后才进消息受理 intake（与 openui 回路② 同一单点）：
+ * 宿主 → app（票 05）：`--mobi-*` 主题变量调色板。iframe load 后注入，宿主亮/暗切换时
+ * 原地更新（不重载 iframe，不打断 app 运行态）；变量名清单同时是 openui skill 教学
+ * 文本的依据，改名须同步生成脚本。
+ *
+ * app → 宿主（票 06）入向 bridge：宿主注入 `window.MobiApp.issueNewTurn(text)` 全局
+ * 对象，内部经 postMessage 发宿主；宿主侧经四道校验后才进消息受理 intake（与 openui
+ * 回路②同一单点）：
  *   1. 来源 frame：event.source 必须是宿主自己渲染的那个 sandbox iframe（组件层收口）
  *   2. 白名单：仅 type 'mobi-app' + action 'issueNewTurn'（本模块 parseAppBridgeMessage）
  *   3. schema：text 限 string / trim 非空 / 限长（超限整体拒绝，不截断——截断会静默改语义）
@@ -30,6 +35,8 @@
  * script-src 带 'unsafe-inline'（产物页行内脚本是常规形态），宿主注入的脚本可执行；
  * connect-src 'none' 不影响 postMessage（非网络请求）。
  */
+
+import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 
 /** bridge 消息的 type 白名单值（唯一） */
 export const APP_BRIDGE_MSG_TYPE = 'mobi-app'
@@ -94,5 +101,78 @@ export function createAppBridgeRateLimiter(now: () => number = () => Date.now())
         if (at - lastAt < APP_BRIDGE_MIN_INTERVAL_MS) return false
         lastAt = at
         return true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 宿主 → app：--mobi-* 主题变量注入（票 05）
+// ---------------------------------------------------------------------------
+
+/** 双档 token 的最小投影类型（buildMobiThemeCss 只消费其中的色板/圆角键） */
+type MobiThemeToken = Pick<
+    typeof shadcnLightToken,
+    | 'colorBgBase' | 'colorBgContainer' | 'colorBgElevated' | 'colorBgLayout'
+    | 'colorText' | 'colorTextSecondary' | 'colorTextTertiary'
+    | 'colorPrimary' | 'colorSuccess' | 'colorWarning' | 'colorError'
+    | 'colorBorder' | 'colorBorderSecondary' | 'borderRadius'
+>
+
+/**
+ * 构建 `--mobi-*` 主题 CSS（mode=app 注入；对齐 ChatGPT --viz-* 三招：主题变量 /
+ * base styles / 尺寸自适应——尺寸自适应归调用方 chrome，这里只管前两招）。
+ *
+ * 覆盖语义（app 自带样式永远赢）：
+ * - 变量声明在 `:root`——是宿主→app 的输入通道（app 消费取色，不重定义）；
+ * - color-scheme 与 base 样式（body 的 margin/背景/前景/字体）走 `:where()`（特异性 0），
+ *   app 自身任何选择器（哪怕裸 `body`）都能覆盖；
+ * - 字体变量给系统栈——宿主的 var(--font-body) 在 iframe 里解析不到。
+ */
+export function buildMobiThemeCss(mode: 'light' | 'dark'): string {
+    const t: MobiThemeToken = mode === 'dark' ? shadcnDarkToken : shadcnLightToken
+    return [
+        `:where(:root) { color-scheme: ${mode}; }`,
+        ':root {',
+        `  --mobi-color-scheme: ${mode};`,
+        `  --mobi-bg: ${t.colorBgContainer};`,
+        `  --mobi-bg-base: ${t.colorBgBase};`,
+        `  --mobi-bg-elevated: ${t.colorBgElevated};`,
+        `  --mobi-bg-layout: ${t.colorBgLayout};`,
+        `  --mobi-fg: ${t.colorText};`,
+        `  --mobi-fg-secondary: ${t.colorTextSecondary};`,
+        `  --mobi-fg-muted: ${t.colorTextTertiary};`,
+        `  --mobi-primary: ${t.colorPrimary};`,
+        `  --mobi-success: ${t.colorSuccess};`,
+        `  --mobi-warning: ${t.colorWarning};`,
+        `  --mobi-danger: ${t.colorError};`,
+        `  --mobi-border: ${t.colorBorder};`,
+        `  --mobi-border-muted: ${t.colorBorderSecondary};`,
+        `  --mobi-radius: ${t.borderRadius}px;`,
+        '  --mobi-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;',
+        '  --mobi-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;',
+        '}',
+        ':where(body) { margin: 0; background: var(--mobi-bg); color: var(--mobi-fg); font-family: var(--mobi-font-body); }',
+    ].join('\n')
+}
+
+const MOBI_THEME_STYLE_ID = 'mobi-app-theme'
+
+/**
+ * 注入/更新 `--mobi-*` 主题样式（幂等）：已存在则原地更新 textContent——宿主切换
+ * 亮/暗时 app 即时跟随，无需重载 iframe。跨域/未就绪静默跳过。
+ */
+export function injectMobiThemeStyle(doc: Document | null | undefined, mode: 'light' | 'dark'): void {
+    try {
+        if (!doc?.head) return
+        const existing = doc.getElementById(MOBI_THEME_STYLE_ID)
+        if (existing) {
+            existing.textContent = buildMobiThemeCss(mode)
+            return
+        }
+        const style = doc.createElement('style')
+        style.id = MOBI_THEME_STYLE_ID
+        style.textContent = buildMobiThemeCss(mode)
+        doc.head.appendChild(style)
+    } catch {
+        // contentDocument 不可达（理论不可达：同源沙箱）——不注入
     }
 }

@@ -192,8 +192,7 @@ export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps &
                         sessionId={sessionId}
                         path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
-                        injectTheme={app}
-                        onIssueNewTurn={app && sendMessage ? (text) => sendMessage(text, { origin: 'app' }) : undefined}
+                        app={app && sendMessage ? { onIssueNewTurn: (text) => sendMessage(text, { origin: 'app' }) } : undefined}
                         style={{
                             width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,

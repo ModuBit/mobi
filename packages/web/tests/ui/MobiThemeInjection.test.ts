@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildMobiThemeCss, injectMobiThemeStyle } from '@/components/files/SandboxHtmlFrame'
+import { buildMobiThemeCss, injectMobiThemeStyle } from '@/components/files/sandboxAppHost'
 import { classifyArtifact, parseArtifactParams } from '@/domain/chat/artifactDirectives'
 
 describe('buildMobiThemeCss（--mobi-* 主题变量）', () => {

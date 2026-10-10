@@ -41,7 +41,7 @@ function postFrom(source: Window | null, data: unknown) {
 
 function renderFrame(onIssueNewTurn?: (text: string) => void) {
     const { container } = render(
-        <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" onIssueNewTurn={onIssueNewTurn} />,
+        <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" app={onIssueNewTurn ? { onIssueNewTurn } : undefined} />,
     )
     const iframe = container.querySelector('iframe')!
     expect(iframe).not.toBeNull()
@@ -86,9 +86,9 @@ describe('SandboxHtmlFrame bridge（票 06）', () => {
         const first = vi.fn()
         const second = vi.fn()
         const { container, rerender } = render(
-            <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" onIssueNewTurn={first} />,
+            <SandboxHtmlFrame sessionId="s1" path="a.html" title="t" app={{ onIssueNewTurn: first }} />,
         )
-        rerender(<SandboxHtmlFrame sessionId="s1" path="a.html" title="t" onIssueNewTurn={second} />)
+        rerender(<SandboxHtmlFrame sessionId="s1" path="a.html" title="t" app={{ onIssueNewTurn: second }} />)
         const iframe = container.querySelector('iframe')!
         postFrom(iframe.contentWindow, { type: 'mobi-app', action: 'issueNewTurn', text: 'x' })
         expect(second).toHaveBeenCalled()
