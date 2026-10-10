@@ -83,11 +83,18 @@ describe('bundledPlugins（恒挂载 mobi 聚合 + 按需 memory-hindsight）', 
     });
 
     it('SDK options 默认只携带恒挂载插件（无记忆 env 信号时不挂按需插件）', () => {
-        const options = buildBundledPluginOptions();
-        expect(options).toEqual([
-            { type: 'local', path: bundledPluginPath('mobi') },
-        ]);
-        expect(options[0].path).toContain('plugins/mobi');
+        // 隔离开发者 shell 可能导出的真实信号（hindsight 部署机器带 MOBI_MEMORY_ENGINE），
+        // 默认态断言对环境敏感，先清掉再断言
+        vi.stubEnv('MOBI_MEMORY_ENGINE', undefined)
+        try {
+            const options = buildBundledPluginOptions();
+            expect(options).toEqual([
+                { type: 'local', path: bundledPluginPath('mobi') },
+            ]);
+            expect(options[0].path).toContain('plugins/mobi');
+        } finally {
+            vi.unstubAllEnvs()
+        }
     });
 
     it('记忆插件按 spawn 注入的 env 信号挂载（daemon 裁决的会话侧单点）', async () => {

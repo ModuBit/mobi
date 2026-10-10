@@ -1071,3 +1071,60 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 **根因（2026-10-09 定位）**：不是 SDK 行为变化，是 daemon 既有 **create-then-wake 盲 spawn 竞态**，SDK 0.3.29x 只是让 CLI 启动变慢从而必踩中——spawn 路由不等 CLI 活跃即返回；web 随即 POST 首条消息 → `wakeSession` 见 `session.active=false`（CLI#1 在途未握手）→ `resumeSession` 走「nativeSessionId 空 → 回退全新 spawn」拉起 CLI#2；去重闸 `findRunningResumeDuplicate` 只比对 resumeSessionId（新会话为空）→ 直通。0.3.283 启动快，握手赢过消息 POST，竞态不显。
 
 **修复**：spawn 去重闸双键化——`findRunningDuplicate`（spawnDedup.ts）新增 mobi 会话行 id 比对键（webhook 回填 + `options.sessionId` 注册即盖戳覆盖在途窗口），`resumeSession` spawn 时携带 `sessionId`；命中 already-running 零等待，恢复交给既有 CLI 重连 + `handleSessionAlive` 补投。E2E 实证：0.3.295 + 修复后单 CLI 进程、消息即时流转、thinking/工具/落库/刷新持久化全过，SDK 已恢复 `^0.3.295`。
+
+## 109. CC transcript 只增不减 → 永续会话不可行 + hindsight Stop hook 缺口重放问题（2026-10-09 跨 agent 调研）
+
+**调研背景**：跨 agent 会话存储形态对比（CC / Codex / pi / DeepSeek Harness dsh），结论是 CC 的单文件 append-only transcript 在「长会话/永续会话」方向问题最大。
+
+**CC 侧事实**：
+
+- transcript 是裸 jsonl 单文件纯追加，**compact 不减文件**——只追加 `isCompactSummary` 行，上下文窗口变小了但磁盘上原文线性累积，永续会话下涨到爆炸
+- **fork = CC 原生 forkSession 全量复制历史**（uuid 保留，PoC 实证）——不能当「续命」手段，fork 出的会话带着全部包袱
+- CC 自身没有 compression（存储层）、分代（schema 版本迁移）、fork 种子（继承内容不复制父全量）任何一项
+
+**对比参照**（同为 append-only 但工程化更完整）：dsh（deepseek-ai/deepseek-harness）`~/.dsh/sessions/<project>/<session-id>/v4.jsonl.zstd`——zstd 压缩 + 版本在文件名（format v0→v4 迁移管线写新代不原地改）+ fork 继承存头行 `session/end-seed` 种子而非全量复制 + session.lock 单写者锁；pi（badlogic/pi-mono）是唯一在**数据模型层**解决长会话的主流 agent：entry tree + SqliteSessionRepo，/tree /fork /clone 原生分支 + 内建 compaction。Codex rollout-*.jsonl 与 CC 同朴素。
+
+**hindsight hook 侧的连带影响**：
+
+- Stop hook 靠 cursor 文件（`/tmp/hindsight-claude-code/<sessionId>.retain.json`）做增量 retain，每次要**重读全量 transcript jsonl 过滤**（isMeta/isSidechain/isCompactSummary + stripInjectedMemory）——transcript 越大，每 turn Stop hook 读文件成本越大
+- **中途关 hook 再开**：cursor 落在关闭点，重开后下一次 Stop 会把关停期间的缺口消息一次性全量投给 hindsight（大 payload + 重复提取费用）；删 cursor = 显式放弃缺口，无「跳过缺口」选项
+- mobi 侧影响较低：mobi 会话消息已落自己的库（turn 封口/归档已交付），hindsight 只是旁路记忆层；**纯 CC 终端用户**（不经过 mobi）的永续会话意愿最受打击
+
+**候选方向**（均未立项）：
+
+1. **摘要重启**（正解，纯使用层）：不做物理永续，长会话定期让 agent 产出交接摘要，新会话首条消息 = 摘要 + hindsight recall 兜底历史——与 CC compact 语义天然契合，mobi 可做成「归档并重启」一键动作
+2. **mobi 侧治标**：Stop hook 投喂前按 cursor + turn 归档裁剪投喂范围，规避全量重读；关停窗口的缺口给「跳过/补投」用户选择而非默认全量
+3. **上游期望**（弱）：CC transcript 分代/压缩属 Anthropic 侧设计，不可期；dsh 的「种子 fork」是数据层正解形态，mobi fork 已是全量复制（PoC 在案），若未来做会话瘦身可参考
+
+**2026-10-09 调研补充（官方文档 + GitHub + 社区，证实「不是只有我们遇到」）**：
+
+- **官方立场**：Anthropic 工程博客《Effective harnesses for long-running agents》明说「compaction 不够」——单 context window 循环即使 Opus 也会失败（一次性铺太多 / 提前宣布完成），官方方案**不在 transcript 层**，恰是我们候选 1 的重装版：initializer agent（首窗口铺环境：features JSON 清单 + progress 文件 + git 初始 commit）+ coding agent（每窗口只做一个 feature、结束留 clean state：commit + progress 更新）。官方代码示例 anthropics/claude-quickstarts/autonomous-coding。
+- **SDK/API 层**：平台侧三件套——compaction（服务端摘要重开）、context editing（客户端清 stale tool results，实测 agentic search +29%）、memory tool（文件式外置记忆，+context editing +39%）。 Cookbook 立场：compaction 管当前窗口、memory 管跨窗口，**正交组合**——与「CC transcript + hindsight 旁路」的 mobi 现状同构。
+- **GitHub 实锤（同根因 issue 群）**：#21022（>50MB transcript 整载内存挂死，请求「auto-rotate sessions at configurable size + Continue in new session + links related sessions」——即摘要重启的官方化措辞）；#50998（长会话线性 token 膨胀，auto-compact 不救）；#26771（提议 compaction 摘要带 `[transcript:lines X-Y]` 索引引用以便按需回捞原文——与 mobi「裁剪投喂」思路同源）；#22467（要求 compact 后 verbatim 保留最近 N turn）。
+- **社区收敛打法**：handoff/state 文件（任务边界让 agent 更新一个 md，aggressive /clear）；60% 上下文手动 /compact 带 preservation 指令（decisions/files/next/things-not-to-redo）；外部记忆层（mem0/ChatGPT observer 等）承载跨会话记忆，不让 compaction 当记忆系统。**没有任何一家在修 transcript 文件本身**——dsh/pi 的数据层方案（分代/压缩/entry tree）是异类，CC 生态的共识就是「transcript 无限涨 + 状态外置」。
+
+**2026-10-09 补充②（#21022 的官方处理 = 未修复关闭）**：#21022 于 2026-03-06 被 github-actions bot 以「inactive for too long」关闭，stateReason=**NOT_PLANNED**，随后 7 天无活动自动锁帖；社区追问「是否已解决」无官方回应。关闭前评论还把问题面扩大：CC 启动时扫描 `~/.claude/projects/<project>/` 下全部 jsonl 建 resume 列表，147MB 文件导致 resume/甚至全新会话首条 prompt 都挂（挪走大 jsonl 立即恢复）。**结论：上游不会修，且大 transcript 的危害不止 hindsight Stop hook 变慢——CC 自身会挂死**，「归档并重启」的优先级因此比候选方向里写的更硬。
+
+**transcript 瘦身工具生态与 mobi 可能的切入点（用户提出）**：社区已有 [Cozempic](https://github.com/Ruya-AI/cozempic)（pip 装，`cozempic treat current -rx aggressive --execute`）——对 CC jsonl 做 13 种**结构保留**的裁剪策略（>32KB mega-block 修剪、文档去重等），自动备份，`reload` 修完直接拉 `claude --resume`。证明「原地瘦身 transcript」可行且有人付费级使用。mobi 侧候选形态：CC mod/plugin 或 mobi 内建命令——按 cozempic 同款纪律（结构保留 + 备份 + 只删 tool_result/mega-block 不动 uuid/parentUuid 链与 isCompactSummary 锚）做「归档并重启」的存储侧配套；与候选 1（摘要重启）组合 = 官方 harness 模式 + 数据层瘦身的完整方案。实施前需先核实 CC 对 transcript 的读取假设（resume 回放、fork uuid 保留、mobi turn 归档 hydration 均锚定原文件——瘦身必须与 mobi turn-archive 兼容，见 turn-archive B 交付记录）。
+
+**2026-10-09 补充③（Claude Mods 已 ship，写路径事件化——「sqlite 替换 jsonl」的可行性裁决）**：function hooks 已于 2026-10-01 以 **Claude Mods** 名义 ship 进 CLI/桌面端（9-03 提案 #91870 → 9-09 定名 → 10-01 可用；自定义 mod 仍 early access，默认关，`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`；官方 `/diff`、AGENTS.md loader、telemetry、org security 四个内置功能即 mods 实现，reference 见 code.claude.com/docs/en/plugins/mods/reference，v2.1.287）。用户设想「CC 无非读写 transcript，用 mods 换 sqlite」——**核实结论：存储引擎替换不可行（resume/fork 读 jsonl 的路径不在 mod 事件面），但写路径被事件化，能达成同等目的**：
+
+- **`session.append`**（关键事件）：conversation 保留的每一行（prompt/response block/tool result/notice）**落盘前**可 `next({...e, message})` 改写 content——①写入时瘦身：tool_result 落盘前裁剪/摘要，jsonl 从不长大（比 cozempic 事后修剪更前置，直治 #21022/#50998 根源）；②逐行落 sqlite 镜像：jsonl 退化为纯 durability log（CC resume 用），查询/回捞/分析全走 sqlite
+- **压缩策略 mod 化**：`session.compact` 事件（可 `{skip}`）+ `$.session.compact()` 方法 + `$.session.usage().context.percent`——「摘要重启」可做成 mod（阈值触发摘要→新会话）；`$.model.fork`/`$.model.complete` 支持后台 agent 做摘要
+- **`$.session.messages()`** 读最近 4096 条；`$.store` 4MiB 跨会话 KV；classic hooks 以 `classic.*` 事件名全部可用（含 SessionStart/Stop/PreCompact 等）
+- **限制**：`turn.step` 只能改 model/effort 不能改 messages（历史内容口子只有 session.append 写时与 prompt.context/section 注入）；hook 单事件 10s、`$.fs` 单文件 4MiB（大 jsonl 须 `$.process` 子进程）；写时改写有损且 resume 回放的就是瘦身后内容（纯 CC 是 feature，需文档明示）
+- **定位**：目标用户 = mobi 覆盖不到的裸 CC 场景（与 hindsight hook 同一批人）；mobi 用户已有 daemon 层 DB 镜像。战略层面：mods 落地兑现了 9-04 对齐的预期（观测/拦截/渲染翻译层可被吃掉），mobi 押传输层/移动端不变；SDK 侧暴露面（sdk.d.ts/changelog）仍需另行核实才能进 mobi 集成路径
+
+## 110. 沙箱 App 文件形态的渐进渲染（file watcher 流式预览）
+
+> 2026-10-10 Intelligent UI 脑暴裁决（spec `.scratch/generative-ui/spec.md` v2 §5）：Sandbox App 层走文件形态（CC `Write`/`Edit` 自包含 `.html`），**v1 写完再展示**，渐进渲染暂缓。
+
+**背景**：CopilotKit OpenIntelligentUI 实证沙箱 UI 可流式渐进（有序契约：height → placeholder → css → html → js，CSS 到齐前占位、HTML 渐进、JS 就绪才激活）。mobi 的等价物 = CC 写文件过程中 mobi watch 文件增量 → inline iframe 预览热刷新（dev-server 式体验）。基建基本现成：turn-file-changes、审查档、`buildReadFileUrl` etag 参数（src 直连内容不刷新的修复正是为此类场景）。
+
+**触发条件**：Native UI + Sandbox App 两层落地后，真机用出「大 app 生成等待无反馈」的体感问题时再做。契约设计抄 CopilotKit `docs/architecture.md`（MIT）。
+
+## 111. openui 封口 diagnostics 的 turn journal 落点
+
+> 2026-10-10 票 01 实施发现：fenced `openui` 封口时 parser 结构化错误（`OpenUIError[]`，含 statementId/component/hint）当前只能 web 内联降级显示（警示条 + 非法语句丢弃、块不移除）。票面原定「diagnostics 落 turn journal」，但 web 侧无 turn journal 写通道（review-v3 journal 归因主源在 daemon 侧、CLI capture 写入，web 无 append API）。
+
+**候选方向**：daemon 侧补一个 diagnostics 写端点（web 封口校验后上报）或 CLI 侧在封口归档时自行跑 parser 校验落 journal。触发条件：票 07 安全评审/真机使用发现内联提示不够（需要跨设备回看或归档检索）时再做。相关：`.scratch/generative-ui/issues/01`。

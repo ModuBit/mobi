@@ -255,6 +255,10 @@ describe('spawnSession 记忆 env 注入（agent-memory 票 02）', () => {
     })
 
     it('降级（空对象）时 spawn env 不含记忆键；env 求值异常不阻断 spawn', async () => {
+        // 隔离开发者 shell 可能导出的真实信号（spawn env 继承 process.env，
+        // hindsight 部署机器带 MOBI_MEMORY_ENGINE 会让「不含记忆键」断言对环境敏感）
+        vi.stubEnv('MOBI_MEMORY_ENGINE', undefined)
+        try {
         for (const resolveMemoryEnv of [
             vi.fn().mockResolvedValue({}),
             vi.fn().mockRejectedValue(new Error('settings read failed')),
@@ -272,6 +276,9 @@ describe('spawnSession 记忆 env 注入（agent-memory 票 02）', () => {
             expect(result).toEqual({ type: 'success', sessionId: 'sess-mem-2' })
             const spawnEnv = (spawnFn.mock.calls[0] as unknown as [unknown, { env: Record<string, string> }])[1].env
             expect(spawnEnv.MOBI_MEMORY_ENGINE).toBeUndefined()
+        }
+        } finally {
+            vi.unstubAllEnvs()
         }
     })
 })

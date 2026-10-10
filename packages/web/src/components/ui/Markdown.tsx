@@ -33,6 +33,7 @@ import { ActionLink } from './ActionLink'
 import { Favicon } from './Favicon'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
+import { OpenUIBlock } from './OpenUIBlock'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
 // 必须排在 '@ant-design/x-markdown' 导入之后（同名 keyframes 后定义者胜，见文件内注释）
 import './markdownOverride.css'
@@ -141,7 +142,7 @@ const ExternalLink: FC<ComponentProps<{ href?: string }>> = (    { href, childre
 }
 
 /** 默认的 code 渲染：块级走 CodeHighlighter（未指定 lang 时自动检测），行内保持原生 <code> */
-const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children }) => {
+const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children, streamStatus }) => {
     if (typeof children !== 'string') return null
 
     if (!block) {
@@ -156,6 +157,12 @@ const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children }) =
     // mermaid 图：渲染为 mermaid 图（而非代码高亮），与编辑器一致
     if (explicit === 'mermaid') {
         return <MermaidDiagram code={children} />
+    }
+
+    // openui 交互 UI（Intelligent UI Native 层）：渲染为 react-ui 官方组件库，
+    // 流式状态随所在代码块（x-markdown 按块级 memo 传递 streamStatus）
+    if (explicit === 'openui') {
+        return <OpenUIBlock code={children} streaming={streamStatus === 'loading'} />
     }
 
     return <AutoDetectCodeBlock code={children} explicitLang={explicit} />
