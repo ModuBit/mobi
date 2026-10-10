@@ -41,6 +41,10 @@ const ANNOTATION_PROTOCOL = [
     `When you address an annotation, emit exactly one inline directive \`${QUOTE_DIRECTIVE}{index="N"}\``,
     'at the single most relevant point in your reply, where N is that quote\'s one-based',
     '`index` in this message. Rules:',
+    '- Format is exactly ONE ASCII colon hugging the name, no space anywhere:',
+    '  correct: `:mobi-quote{index="1"}`.',
+    `  Wrong forms: \`::: ${QUOTE_DIRECTIVE.slice(1)}\`, \`：${QUOTE_DIRECTIVE.slice(1)}\``,
+    '  (full-width colon), `: mobi-quote` (space after colon).',
     '- Emit directives only for quotes with role="agent"; never for role="user" quotes.',
     '- Emit each directive at most once, in your final answer; do not repeat it in',
     '  intermediate progress messages.',
@@ -181,6 +185,9 @@ describe('buildPromptFromBlocks', () => {
             ),
         )
         expect(r).toContain('mobi-quote{index="N"}')
+        // 反例对照（2026-10-10 生产实锤 c568aa0b）：点名错误形态，降低模型语法记岔率
+        expect(r).toContain('::: mobi-quote')
+        expect(r).toContain('：mobi-quote')
     })
 
     it('单条 quote 含评论：comment 以 <user-comment> 子标签紧随 excerpt', () => {

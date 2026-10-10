@@ -30,14 +30,33 @@
 export const DIRECTIVE_PREFIX = ':mobi-'
 
 /**
- * 通用完整形态：`:mobi-<name>{<attrs>}`——name 小写字母开头可含数字连字符，
+ * 前缀容错 lead（2026-10-10 生产实锤，c568aa0b 会话）：模型偶发把单半角冒号写岔——
+ * markdown 围栏风格 `:::`、全角冒号 `：`、冒号后带空格（`: ：mobi-quote`），语法
+ * 记岔时 directive 不被解析、整串原文裸奔进聊天流。`mobi-<name>{...}` 字面量不可能
+ * 出现在正常散文，窄归一吞掉变体前缀——同 attrs 弯引号「容错而非降级」哲学。
+ * 只容错 1-3 个冒号与冒号之间/之后的空格、制表符（不吃换行防跨行误吞，也不吃
+ * 指令前的普通分隔空格——raw 边界与正形保持一致，既有去重/截断行为不变）。
+ */
+export const DIRECTIVE_LEAD = '(?:[:：][ \t]*){1,3}'
+
+/**
+ * 通用完整形态：`[:：]…mobi-<name>{<attrs>}`——name 小写字母开头可含数字连字符，
  * attrs 为不含花括号的任意串（`key="val"` 空格分隔，见 parseDirectiveAttrs）。
  * 去重/解析与 markdown 扩展（directivePlugin）的 tokenizer 由它派生，对同一
  * directive 的判定同源，语法变更只改这一处。
  */
-export const DIRECTIVE_SHAPE = `${DIRECTIVE_PREFIX}([a-z][a-z0-9-]*)\\{([^{}]*)\\}`
+export const DIRECTIVE_SHAPE = `${DIRECTIVE_LEAD}mobi-([a-z][a-z0-9-]*)\\{([^{}]*)\\}`
 
 const DIRECTIVE_RE = new RegExp(DIRECTIVE_SHAPE, 'g')
+
+/** lead + 指令名的快速判定（dedupe 热路径 / tokenizer start 用） */
+const DIRECTIVE_LEAD_RE = new RegExp(`${DIRECTIVE_LEAD}mobi-`)
+
+/** 下一个指令（含变体前缀）在 src 中的起点；无命中返回 -1（marked start 约定） */
+export function findDirectiveStart(src: string): number {
+    const m = src.match(DIRECTIVE_LEAD_RE)
+    return m?.index ?? -1
+}
 
 /** attrs 值允许的引号：直引号 + 中文弯引号（模型在中文语境输出易带弯引号，容错而非降级） */
 const ATTR_QUOTE = '["“”]'
@@ -117,7 +136,8 @@ export function registerDirective<P>(definition: DirectiveDefinition<P>): void {
  *  前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容，
  *  不会引发已揭示内容的重淡入。 */
 export function dedupeDirectiveText(text: string): string {
-    if (!text.includes(DIRECTIVE_PREFIX)) return text
+    // 快速路径同源放宽：变体前缀（::: / 全角冒号 / 带空格）也要进去重管线
+    if (!DIRECTIVE_LEAD_RE.test(text)) return text
     const seen = new Set<string>()
     let out = ''
     let cursor = 0
@@ -148,7 +168,7 @@ export function dedupeDirectiveText(text: string): string {
  * attrs 未闭合——两者都只在**串尾**命中，正文里带后随文字的 `:mobi-x` 字样
  * （讨论语法本身）不受影响。
  */
-const INCOMPLETE_DIRECTIVE_TAIL_RE = new RegExp(`${DIRECTIVE_PREFIX}[a-z][a-z0-9-]*(?:\\{[^{}]*$|$)`)
+const INCOMPLETE_DIRECTIVE_TAIL_RE = new RegExp(`${DIRECTIVE_LEAD}mobi-[a-z][a-z0-9-]*(?:\\{[^{}]*$|$)`)
 
 /**
  * drip 原子揭示截断：把流式揭示前缀里「尚未闭合的 directive 尾巴」扣住不进渲染。

@@ -1134,3 +1134,13 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 > 2026-10-10 票 02 实施发现：`*.generated.ts` 全局 gitignore，但 `packages/web/src/components/ui/fileTypeIcons.generated.ts`（436b3805 引入）既不入库也无任何 CI/构建钩子调用 `gen:file-type-icons`——干净 checkout 后 `bun run test`（FileTypeBadge.test）与 typecheck 都会因 import 缺失挂。本票的 `openuiCatalogPrompt.generated.ts` 已走 gitignore 例外入库规避同类问题。
 
 **治本方向**：CI `test`/`typecheck` job 加生成前置步（或根 `postinstall` 跑 gen 脚本），两个 gen 脚本统一挂载。
+
+## 113. ThemeProvider 忽略 system 档——主题为 system 时恒落 light（2026-10-10 发现）
+
+> shadcn 底座 spec（`.scratch/shadcn-foundation/spec.md` D4）票 02 顺带修复；此处防丢失。
+
+**现象**：`packages/web/src/core/config/theme/ThemeProvider.tsx:30` 用 `theme === 'dark'` 判定暗色（`theme` 是 uiStore 原始值，可为 `'system'`），且 algorithm 取值同源于此判定——`theme: 'system'` 时恒走 defaultAlgorithm（light），系统深色偏好不生效。`data-theme` 属性倒是会同步 `'system'` 字面量。
+
+**对照**：`uiStore.resolveTheme` 是现成的解析单源（matchMedia），消费方 `SandboxHtmlFrame` 等已正确使用；ThemeProvider 漏用。且 uiStore 无 matchMedia 变更监听——system 档下系统主题切换不会触发跟随（需订阅 `prefers-color-scheme` change），修复时一并考虑。
+
+**修法方向**：ThemeProvider 改用 `resolveTheme(theme)` 派生 isDark；system 档跟随 = 在 uiStore 或 ThemeProvider 订阅 matchMedia change 触发重解析。

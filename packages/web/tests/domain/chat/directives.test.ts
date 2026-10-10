@@ -67,6 +67,22 @@ describe('parseDirectiveHits', () => {
         expect(hits.map(h => h.name)).toEqual(['quote', 't'])
         for (const h of hits) expect(text.slice(h.start, h.end)).toBe(h.raw)
     })
+
+    it('前缀变体归一（2026-10-10 生产实锤 c568aa0b）：::: / 全角冒号 / 冒号带空格仍命中且 raw 覆盖变体', () => {
+        for (const lead of ['::: ', '：：', ': ：', ': ', ':']) {
+            const text = `${lead}mobi-quote{index="1"}`
+            const hits = parseDirectiveHits(text)
+            expect(hits, lead).toHaveLength(1)
+            expect(hits[0]!.name, lead).toBe('quote')
+            expect(hits[0]!.attrs, lead).toEqual({ index: '1' })
+            expect(text.slice(hits[0]!.start, hits[0]!.end), lead).toBe(text) // raw 含变体前缀，消费方整体摘除
+        }
+    })
+
+    it('正常散文中的冒号不误吞：缺指令形态（无 {}）不命中', () => {
+        expect(parseDirectiveHits('见 ::: mobi-quote 文档章节')).toHaveLength(0)
+        expect(parseDirectiveHits('参数是 ：mobi-quote 与 {index}')).toHaveLength(0)
+    })
 })
 
 describe('registerDirective', () => {
@@ -97,6 +113,12 @@ describe('dedupeDirectiveText（quote 已注册：同 index 只留首个）', ()
         const text = `${DIRECTIVE_PREFIX}future{x="1"} ${DIRECTIVE_PREFIX}future{x="1"} ${QUOTE_DIRECTIVE}{index="0"} ${QUOTE_DIRECTIVE}{index="0"}`
         expect(dedupeDirectiveText(text)).toBe(text)
     })
+
+    it('变体前缀同样进去重管线（快速路径放宽，2026-10-10）', () => {
+        // 快速路径曾用 includes(':mobi-')——变体前缀不含该子串会整段跳过去重
+        const text = '：：mobi-quote{index="1"} 开头 ::: mobi-quote{index="1"} 结尾'
+        expect(dedupeDirectiveText(text)).toBe('：：mobi-quote{index="1"} 开头  结尾')
+    })
 })
 
 describe('truncateIncompleteDirectiveTail（drip 原子揭示：未闭合尾巴扣住不进渲染）', () => {
@@ -108,6 +130,8 @@ describe('truncateIncompleteDirectiveTail（drip 原子揭示：未闭合尾巴�
     it('尾部未闭合 directive 扣住（drip 半截不进 x-markdown）', () => {
         expect(truncateIncompleteDirectiveTail('正文 :mobi-quote{index="')).toBe('正文 ')
         expect(truncateIncompleteDirectiveTail('正文 :mobi-quote')).toBe('正文 ')
+        // 变体前缀的半截尾巴同样扣住（同源放宽）
+        expect(truncateIncompleteDirectiveTail('正文 ::: mobi-quote{index="')).toBe('正文 ')
     })
 
     it('已闭合尾巴 + 更早的未闭合（第一个未闭合位置截断）', () => {

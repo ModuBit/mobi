@@ -73,6 +73,13 @@ function buildAnnotationProtocol(): string {
         `When you address an annotation, emit exactly one inline directive \`${QUOTE_DIRECTIVE}{index="N"}\``,
         'at the single most relevant point in your reply, where N is that quote\'s one-based',
         '`index` in this message. Rules:',
+        // 反例对照（2026-10-10 生产实锤 c568aa0b）：模型把单半角冒号记成 markdown 围栏
+        // 风格 `:::` / 全角冒号 / 冒号后带空格，directive 不被解析、原文裸奔进聊天流。
+        // 正例紧贴 + 错误形态点名，模型对反例教学的遵守率显著更高
+        '- Format is exactly ONE ASCII colon hugging the name, no space anywhere:',
+        '  correct: `:mobi-quote{index="1"}`.',
+        `  Wrong forms: \`::: ${QUOTE_DIRECTIVE.slice(1)}\`, \`：${QUOTE_DIRECTIVE.slice(1)}\``,
+        '  (full-width colon), `: mobi-quote` (space after colon).',
         '- Emit directives only for quotes with role="agent"; never for role="user" quotes.',
         '- Emit each directive at most once, in your final answer; do not repeat it in',
         '  intermediate progress messages.',

@@ -23,7 +23,7 @@
  */
 
 import type { Tokens, TokenizerAndRendererExtension } from 'marked'
-import { DIRECTIVE_PREFIX, DIRECTIVE_SHAPE } from '@/domain/chat/directives'
+import { DIRECTIVE_SHAPE, findDirectiveStart } from '@/domain/chat/directives'
 
 /** directive 完整形态（派生自 domain 单源，锚定串首供 tokenizer 逐段匹配） */
 const DIRECTIVE_TOKEN_RE = new RegExp(`^${DIRECTIVE_SHAPE}`)
@@ -33,7 +33,8 @@ export function directiveExtension(): TokenizerAndRendererExtension {
         name: 'mobiDirective',
         level: 'inline',
         start(src: string) {
-            return src.indexOf(DIRECTIVE_PREFIX)
+            // 同源放宽：变体前缀（::: / 全角冒号 / 带空格）也要能定位到指令起点
+            return findDirectiveStart(src)
         },
         tokenizer(src: string) {
             const match = src.match(DIRECTIVE_TOKEN_RE)
