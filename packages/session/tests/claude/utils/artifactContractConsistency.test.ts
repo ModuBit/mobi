@@ -61,10 +61,30 @@ describe('产物声明协议三方一致性（shared 常量 ↔ 常驻契约 ↔
     expect(SKILL_MD).toMatch(new RegExp(`under ${ARTIFACT_HTML_INLINE_LIMIT_MB} MB`));
   });
 
-  it('mode 枚举两份文本都在（card / wide）', () => {
+  it('mode 枚举两份文本都在（card / wide / app）', () => {
     for (const text of [systemPrompt, SKILL_MD]) {
       expect(text).toContain('mode="card"');
       expect(text).toContain('mode="wide"');
+      expect(text).toContain('mode="app"');
     }
+  });
+
+  it('mode=app 主题教学分流（票 09 漂移修复锁定）：app 段教 --mobi-* 变量、禁自写 prefers-color-scheme', () => {
+    // skill §2 Both themes 分流：app 档用注入变量（票 05 宿主注入），普通产物才用 media query。
+    // 若有人改回「一刀切 prefers-color-scheme」教学，本断言红——app 自写媒体查询会与注入变量打架
+    const bothThemes = SKILL_MD.split('**Both themes.**')[1]?.split('**Full-width')[0] ?? '';
+    expect(bothThemes).toContain('mode="app"');
+    expect(bothThemes).toContain('var(--mobi-bg)');
+    expect(bothThemes).toContain('var(--mobi-primary)');
+    // app 分支明确禁自写主题媒体查询；prefers-color-scheme 只允许出现在普通产物分支
+    const appBranch = bothThemes.split('`mode="app"`')[1]?.split('Any other HTML artifact')[0] ?? '';
+    expect(appBranch).toMatch(/do NOT write your own `prefers-color-scheme`/i);
+  });
+
+  it('bridge 细则在 skill（票 06/09：issueNewTurn 仅显式动作 + 简洁摘要 + 不 dump JSON）', () => {
+    expect(SKILL_MD).toContain('window.MobiApp.issueNewTurn(text)');
+    expect(SKILL_MD).toMatch(/ONLY from explicit user actions/);
+    expect(SKILL_MD).toMatch(/never call it automatically/i);
+    expect(SKILL_MD).toMatch(/never expose raw JSON dumps/i);
   });
 });

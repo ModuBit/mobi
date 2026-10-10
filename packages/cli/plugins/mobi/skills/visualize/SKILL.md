@@ -5,6 +5,10 @@ description: Proactively use this skill whenever the user asks for a chart, grap
 
 # Visualize
 
+<!-- 维护者注（不面向模型）：本 skill 是 mode=app 规范的承载层——后续要约束 app 的
+     样式（设计 token）、组件模式、性能上限等，都往 §2/§4 加章节，不改常驻 system
+     prompt（wire 契约在 BASE，知识在此，分层见 generative-ui 票 09）。 -->
+
 Build visuals that live in the conversation. The user sees them inline in the chat stream — no inspector, no file hunting. Read this file in full before authoring; reread truncated ranges in smaller calls.
 
 ## 1. Choosing the form
@@ -29,7 +33,10 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 - **Images and media**: embed as `data:` URIs, or reference files you also wrote into the same artifacts directory (same-origin relative paths work). Remote image URLs are blocked.
 - **No network calls**: `fetch`, `XMLHttpRequest`, `WebSocket`, and form submissions to servers are cut off by CSP (`connect-src 'none'`) and will fail silently. All data goes inline in the file.
 - **Size target: under 2 MB.** Aggregate, bin, downsample, or round precision for large datasets. Over the limit the visual degrades to a file card.
-- **Both themes.** The iframe does not inherit Mobi's theme. Use `prefers-color-scheme` with `light-dark()` (or a media-query pair) for every color; never hardcode a light-only or dark-only palette. Verify both directions read clearly.
+- **Both themes.** Two cases, do not mix them up:
+  - `mode="app"` (section 4): the host injects a `--mobi-*` CSS variable palette that follows the user's light/dark theme — style with these variables (`background: var(--mobi-bg)`, `color: var(--mobi-fg)`, `border: var(--mobi-border)`, accent `var(--mobi-primary)`, `border-radius: var(--mobi-radius)`, fonts `var(--mobi-font-body)` / `var(--mobi-font-mono)`, plus `--mobi-fg-secondary` / `--mobi-fg-muted` / `--mobi-success` / `--mobi-warning` / `--mobi-danger` / `--mobi-bg-elevated`) instead of hard-coded colors. Do NOT write your own `prefers-color-scheme` media queries or `light-dark()` here — the injected variables already track the theme, and your CSS always wins over the injected base style.
+  - Any other HTML artifact (no mode, `wide`, or `card`): the iframe does not inherit Mobi's theme and nothing is injected. Use `prefers-color-scheme` with `light-dark()` (or a media-query pair) for every color; never hardcode a light-only or dark-only palette.
+  - Either way, verify both directions read clearly.
 - **Full-width container.** The preview fills the chat column (desktop can reach ~1200px, phones full-width); design fluidly — columns stack gracefully on narrow viewports, no fixed pixel assumptions.
 - Interactive controls use native elements (`button`, `input`, `select`); keep essential content available without hover (touch users).
 
@@ -43,6 +50,7 @@ The declared HTML renders in a sandboxed iframe served by Mobi with a strict CSP
 ## 4. Choosing the mode
 
 - *(default)* — let Mobi decide by file type. Almost always right.
+- `mode="app"` — interactive mini-apps the user operates inside the chat: planning boards, configurators, selectors, calculators. This is the only mode that opens the **host bridge**: the page gets the `--mobi-*` theme palette (section 2) plus `window.MobiApp.issueNewTurn(text)`. Call it ONLY from explicit user actions (e.g. a "continue with these choices" button onclick) to send the app's current state back to the conversation — the message arrives as if the user typed it. Keep the text a concise plain-language summary (under 200 chars recommended); never call it automatically, never expose raw JSON dumps. It also renders in a taller frame — good for full-page layouts.
 - `mode="wide"` — only for full-screen app mockups with their application shell, or when several compact panels must sit side by side to be comparable. Never widen a single chart, map, or timeline just because it is dense.
 - `mode="card"` — complex HTML applications, multi-file projects, or anything that needs more room than an inline frame gives. The card opens the inspector pane.
 
