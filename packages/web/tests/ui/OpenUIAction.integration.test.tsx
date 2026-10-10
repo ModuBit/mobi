@@ -27,14 +27,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
-// 受控揭示进度（与 OpenUIBlock.integration.test 同模式）
-const displayState = vi.hoisted(() => ({ current: '' }))
-vi.mock('@/components/ui/useStreamingContent', () => ({
-    useStreamingContent: () => displayState.current,
-    STREAM_BASE_RATE: 0.1,
-    computeRevealRate: vi.fn(() => 0.1),
-    revealIntervalFor: vi.fn(() => 0),
-}))
+import { streamingDisplayState } from '../helpers/streamingContentMock'
+vi.mock('@/components/ui/useStreamingContent', async () =>
+    (await import('../helpers/streamingContentMock')).streamingContentMock())
 
 const { Markdown } = await import('@/components/ui/Markdown')
 const { UiSendProvider } = await import('@/components/ui/openui/actionContext')
@@ -55,7 +50,7 @@ const fenced = (body: string) => '```openui\n' + body + '\n```'
 /** 渲染带 provider 的 fenced 表单，返回 sendMessage spy */
 function renderWithProvider(streaming = false) {
     const sendMessage = vi.fn()
-    displayState.current = fenced(FORM_SAMPLE)
+    streamingDisplayState.current = fenced(FORM_SAMPLE)
     render(
         <UiSendProvider sendMessage={sendMessage}>
             <Markdown content={fenced(FORM_SAMPLE)} streaming={streaming} />
@@ -105,7 +100,7 @@ describe('回路②：openui Button → send-message 回灌', () => {
     })
 
     it('无 provider（会话页外渲染）→ 点击不抛错、不发送', async () => {
-        displayState.current = fenced(FORM_SAMPLE)
+        streamingDisplayState.current = fenced(FORM_SAMPLE)
         render(<Markdown content={fenced(FORM_SAMPLE)} />)
         await ready()
 

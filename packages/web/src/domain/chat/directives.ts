@@ -54,6 +54,9 @@ const DIRECTIVE_LEAD_RE = new RegExp(`${DIRECTIVE_LEAD}mobi-`)
 
 /** 下一个指令（含变体前缀）在 src 中的起点；无命中返回 -1（marked start 约定） */
 export function findDirectiveStart(src: string): number {
+    // 冒号前置守卫：lead 首字符必为冒号，无冒号文本（流式 markdown 的绝大多数）
+    // 免整串正则扫描——tokenizer 的 start 钩子对每段剩余 src 调用，成倍放大
+    if (!src.includes(':') && !src.includes('：')) return -1
     const m = src.match(DIRECTIVE_LEAD_RE)
     return m?.index ?? -1
 }
@@ -136,7 +139,9 @@ export function registerDirective<P>(definition: DirectiveDefinition<P>): void {
  *  前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容，
  *  不会引发已揭示内容的重淡入。 */
 export function dedupeDirectiveText(text: string): string {
-    // 快速路径同源放宽：变体前缀（::: / 全角冒号 / 带空格）也要进去重管线
+    // 快速路径同源放宽：变体前缀（::: / 全角冒号 / 带空格）也要进去重管线；
+    // 冒号前置守卫（同 findDirectiveStart）让无指令的普通文本免整串正则
+    if (!text.includes(':') && !text.includes('：')) return text
     if (!DIRECTIVE_LEAD_RE.test(text)) return text
     const seen = new Set<string>()
     let out = ''

@@ -192,7 +192,10 @@ export function HtmlInline({ sessionId, path, wide, app }: ArtifactInlineProps &
                         sessionId={sessionId}
                         path={path}
                         title={t('chat.artifact.htmlTitle', { defaultValue: basename(path) })}
-                        app={app && sendMessage ? { onIssueNewTurn: (text) => sendMessage(text, { origin: 'app' }) } : undefined}
+                        app={app ? {
+                            // 无 provider（Drawer 预览）时回调缺省：主题照注，只是不开 bridge
+                            onIssueNewTurn: sendMessage ? (text) => sendMessage(text, { origin: 'app' }) : undefined,
+                        } : undefined}
                         style={{
                             width: '100%', height: frameHeight,
                             border: `1px solid ${token.colorBorderSecondary}`,

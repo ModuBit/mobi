@@ -1131,7 +1131,7 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 
 ## 112. 生成文件无 CI 生成钩子（fileTypeIcons 缺口）
 
-> 2026-10-10 票 02 实施发现：`*.generated.ts` 全局 gitignore，但 `packages/web/src/components/ui/fileTypeIcons.generated.ts`（436b3805 引入）既不入库也无任何 CI/构建钩子调用 `gen:file-type-icons`——干净 checkout 后 `bun run test`（FileTypeBadge.test）与 typecheck 都会因 import 缺失挂。本票的 `openuiCatalogPrompt.generated.ts` 已走 gitignore 例外入库规避同类问题。
+> 2026-10-10 票 02 实施发现：`*.generated.ts` 全局 gitignore，但 `packages/web/src/components/ui/fileTypeIcons.generated.ts`（436b3805 引入）既不入库也无任何 CI/构建钩子调用 `gen:file-type-icons`——干净 checkout 后 `bun run test`（FileTypeBadge.test）与 typecheck 都会因 import 缺失挂。本票的 `openuiCorePrompt.generated.ts`（票 08 更名，原 openuiCatalogPrompt.generated.ts）已走 gitignore 例外入库规避同类问题。
 
 **治本方向**：CI `test`/`typecheck` job 加生成前置步（或根 `postinstall` 跑 gen 脚本），两个 gen 脚本统一挂载。
 
@@ -1144,3 +1144,11 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 **对照**：`uiStore.resolveTheme` 是现成的解析单源（matchMedia），消费方 `SandboxHtmlFrame` 等已正确使用；ThemeProvider 漏用。且 uiStore 无 matchMedia 变更监听——system 档下系统主题切换不会触发跟随（需订阅 `prefers-color-scheme` change），修复时一并考虑。
 
 **修法方向**：ThemeProvider 改用 `resolveTheme(theme)` 派生 isDark；system 档跟随 = 在 uiStore 或 ThemeProvider 订阅 matchMedia change 触发重解析。
+
+## 114. session 侧 idle 时钟把 ambient RPC 当活动（2026-10-10 架构评审深度角度发现）
+
+> f7a04232 在 daemon 侧确立「ambient 写不算活动」分类学（metadata 合并不顶 updated_at），但同类没贯穿到 session 侧 idle 时钟。
+
+**现象**：`packages/session/src/api/apiSession.ts:114`（`setOnRpcCalled(() => this.idleTimer?.reset())`）对**所有** RPC 一律重置空闲计时——daemon 后台 capability 刷新（`syncEngine.ts:926` commands_changed → refreshMetadata RPC）打进来也 reset。后台刷新周期性发生时会话空闲倒计时被持续清零，与被修的「daemon 重启清零」是同类根因，极端下可致会话永不休眠。
+
+**修法方向**：在 apiSession/idle 边界对 RPC method 分类（用户交互 vs ambient 簿记，如 refreshMetadata 类不触发 reset）——与 daemon `touchUpdatedAt` 的显式 opt-out 同构。属行为修复，需独立验证（复现：等后台刷新周期观察 idle 计时不归零）。

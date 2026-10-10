@@ -95,4 +95,11 @@ describe('产物声明协议三方一致性（shared 常量 ↔ 常驻契约 ↔
     const invented = [...taught].filter((v) => !known.has(v));
     expect(invented).toEqual([]);
   });
+
+  it('「<cwd> ≠ Mobi home」诫命两份文本都在（防措辞漂移无红灯）', () => {
+    // 317ac9ba 落地：目录模板已有三方锁，但 NEVER ~/.mobi 诫命是两份手写散文
+    for (const text of [systemPrompt, SKILL_MD]) {
+      expect(text).toMatch(/NEVER (resolve it to the )?Mobi home|NEVER the Mobi home/i);
+    }
+  });
 });

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { UiMessageOrigin, UserContentBlock } from '@mobi/shared'
 import { UI_ANCHOR_ORIGIN } from '@mobi/shared'
@@ -103,15 +104,26 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
     // 分段序列化为 blocks，保证 onMutate 与 mutationFn 用同一份产物）。必须同时覆盖两者——
     // 只覆盖 mutate 会让展开的 mutateAsync 仍按旧签名工作，调用方传参错位会丢 localId，
     // 导致服务端 echo 无法按 localId 去重乐观气泡 → 重复消息。
-    const send = (segments: ComposerSegments, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }): SendVars => ({
+/** 发送选项（mutate / mutateAsync / send 三处共用，不再各写一遍匿名形状） */
+type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock'>
+
+    const send = (segments: ComposerSegments, opts?: SendOpts): SendVars => ({
         blocks: serializeSegments(segments),
         localId: makeClientSideId('local'),
         ...(opts?.sentFrom ? { sentFrom: opts.sentFrom } : {}),
         ...(opts?.sourceBlock ? { sourceBlock: opts.sourceBlock } : {}),
     })
+    // mutate 稳定化：底层 mutation.mutate 引用由 useMutation 保证跨渲染不变（选项经
+    // 内部 ref 更新），包装层用 useCallback 保持同一引用——消费方（ChatContainer 的
+    // sendUiMessage → UiSendProvider value）依赖它做 memo，不稳定则流式期间每个 delta
+    // 击穿全部 context 消费者。mutateAsync 不参与 memo 链，保持直传
+    const stableMutate = useCallback(
+        (segments: ComposerSegments, opts?: SendOpts) => mutation.mutate(send(segments, opts)),
+        [mutation.mutate],
+    )
     return {
         ...mutation,
-        mutate: (segments: ComposerSegments, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }) => mutation.mutate(send(segments, opts)),
-        mutateAsync: (segments: ComposerSegments, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }) => mutation.mutateAsync(send(segments, opts)),
+        mutate: stableMutate,
+        mutateAsync: (segments: ComposerSegments, opts?: SendOpts) => mutation.mutateAsync(send(segments, opts)),
     }
 }

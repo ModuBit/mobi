@@ -1073,7 +1073,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const turnOrigin = isUserText && block ? readTurnOrigin(block.meta) : null
             const showCrossSessionTag = crossSessionOrigin !== null
             // UI 来源标记（票 06 安全缓解）：openui/app 回灌的消息与手打可辨识；
-            // 跨会话消息 sentFrom='cli' 不命中（sentFromTagLabelKey 只认两值）
+            // 跨会话消息 sentFrom='cli' 不命中（SentFromTag 只认两值）
             const sentFromTag = isUserText && block ? <SentFromTag sentFrom={block.meta?.sentFrom} /> : null
             // 附件层（图片/文档/引用 chip）：与正文同源 block，挂 bubble header（正文只剩 text）
             const userExtras = isUserText && block ? renderUserBubbleHeader(block, renderCtx) : undefined
@@ -1260,11 +1260,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // UI 回灌（generative-ui 回路②③）：fenced openui 块与沙箱 app bridge 发出的消息走
     // 同一 sendMutation（乐观气泡/排队轨道/rewind 清除/daemon intake 与手打完全同链路）。
     // 这里是 web 层 origin/anchor 词汇到 wire 字段（sentFrom/sourceBlock）的唯一映射点；
-    // 合法值在 shared UiMessageOrigin（单一来源）。useCallback 依赖 sendMutation（引用稳定，
-    // 由 useMutation 保证），避免 ChatContainer 每帧重渲染翻 context value 击穿懒 chunk 的 memo。
+    // 合法值在 shared UiMessageOrigin（单一来源）。dep 用稳定的底层 mutate（useSendMessage
+    // 已 useCallback 化；包装对象本身每渲染新建，不能作 dep——流式期间每个 delta 会击穿
+    // 懒 chunk 的 memo），保证 context value 引用稳定。
+    const sendUiMutate = sendMutation.mutate
     const sendUiMessage = useCallback((text: string, opts: { origin: UiMessageOrigin; anchor?: string }) => {
-        sendMutation.mutate({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor })
-    }, [sendMutation])
+        sendUiMutate({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor })
+    }, [sendUiMutate])
 
     // 档③终态推进（票 04）：接线收口在 openui 目录（useOpenUIActionLifecycle），
     // 此处只喂数据——消息窗口 + 会话运行态

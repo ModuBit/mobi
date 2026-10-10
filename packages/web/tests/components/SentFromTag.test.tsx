@@ -23,22 +23,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
-import { sentFromTagLabelKey, SentFromTag } from '@/components/chat/blocks/SentFromTag'
+import { SentFromTag } from '@/components/chat/blocks/SentFromTag'
 
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
-
-describe('sentFromTagLabelKey（判定纯函数）', () => {
-    it('仅 openui/app 两值给 key，其余（含 cli、未知、缺省）null', () => {
-        expect(sentFromTagLabelKey('openui')).toBe('chat.origin.openui')
-        expect(sentFromTagLabelKey('app')).toBe('chat.origin.app')
-        expect(sentFromTagLabelKey('cli')).toBeNull()
-        expect(sentFromTagLabelKey('whatever')).toBeNull()
-        expect(sentFromTagLabelKey(undefined)).toBeNull()
-        expect(sentFromTagLabelKey(null)).toBeNull()
-    })
-})
 
 describe('SentFromTag（渲染）', () => {
     it('openui / app 渲染来源 chip，手打不渲染', () => {

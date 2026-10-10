@@ -29,46 +29,38 @@
  * 终态证据。刷新后重扫同一数据即可恢复状态——锚点随消息落库，不依赖内存。
  */
 
-import { getField, isAbortedTerminalReason } from '@mobi/shared'
+import {
+    getField,
+    isAbortedTerminalReason,
+    isObject,
+    UI_ANCHOR_ORIGIN,
+    unwrapOutputMessage,
+    unwrapRoleWrappedRecordEnvelope,
+} from '@mobi/shared'
 import type { DecryptedMessage } from '@/core/data/api/types'
-import { UI_ANCHOR_ORIGIN } from '@mobi/shared'
 
 /** $actionState 的值域（与 catalog prompt 教学、renderer 注入三方共享的词汇） */
 export type OpenUIActionPhase = 'idle' | 'running' | 'done' | 'failed'
 
-/** 消息 content 信封的最小投影（shared DecryptedMessage.content 是 unknown，此处收窄） */
-type MessageEnvelope = {
-    role?: unknown
-    meta?: unknown
-    content?: unknown
-}
-
-function readEnvelope(msg: DecryptedMessage): MessageEnvelope | null {
-    const env = msg.content as unknown
-    if (typeof env !== 'object' || env === null) return null
-    return env as MessageEnvelope
-}
-
-/** 从消息 meta 读档③锚点（发起时由 daemon 写入，见 messageService） */
+/** 从消息 meta 读档③锚点（发起时由 daemon 写入，见 messageService）。
+ *  信封解包走 shared 单源（unwrapRoleWrappedRecordEnvelope），不复刻信封形状 */
 function readAnchor(msg: DecryptedMessage): string | null {
-    const env = readEnvelope(msg)
-    if (env?.role !== 'user') return null
+    const env = unwrapRoleWrappedRecordEnvelope(msg.content)
+    if (!env || env.role !== 'user') return null
     const meta = env.meta
-    if (typeof meta !== 'object' || meta === null) return null
-    if ((meta as Record<string, unknown>).sentFrom !== UI_ANCHOR_ORIGIN) return null
-    const anchor = (meta as { openuiAnchor?: unknown }).openuiAnchor
-    return typeof anchor === 'string' && anchor.length > 0 ? anchor : null
+    if (!isObject(meta) || meta.sentFrom !== UI_ANCHOR_ORIGIN) return null
+    return typeof meta.openuiAnchor === 'string' && meta.openuiAnchor.length > 0 ? meta.openuiAnchor : null
 }
 
-/** agent 输出消息的 result 载荷（turn 终态证据所在）；非 result 形态返回 null */
+/** agent 输出消息的 result 载荷（turn 终态证据所在）；非 result 形态返回 null。
+ *  信封解包走 shared 单源（unwrapOutputMessage）。终态判据保留**字段存在性**
+ *  （stop_reason / terminal_reason / usage 任一在场）而非 shared 的 data.type ===
+ *  'result'——后者是更严的口径，字段启发式是本模块对「证据充足」的刻意防御：
+ *  result 行理论上必带 usage（SDK 契约），万一 type 缺失也认字段，宁可多判不漏判 */
 function readResultPayload(msg: DecryptedMessage): Record<string, unknown> | null {
-    const env = readEnvelope(msg)
-    if (env?.role !== 'agent') return null
-    const data = env.content as { type?: unknown; data?: unknown } | undefined
-    if (data?.type !== 'output' || typeof data.data !== 'object' || data.data === null) return null
-    const payload = data.data as Record<string, unknown>
-    // result 消息携带 stop_reason / terminal_reason / usage（E2E 实测形态）；
-    // 中途 assistant 块不带这些字段。跨格式访问走 getField（web 规范）
+    const unwrapped = unwrapOutputMessage(msg.content)
+    if (!unwrapped || unwrapped.role !== 'agent') return null
+    const payload = unwrapped.data
     const hasTerminal = getField(payload, 'stop_reason') != null
         || getField(payload, 'terminal_reason') != null
         || typeof payload.usage === 'object'

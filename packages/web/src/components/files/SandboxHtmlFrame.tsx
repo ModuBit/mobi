@@ -81,12 +81,12 @@ export interface SandboxHtmlFrameProps {
     /** chrome：尺寸/边框等由调用方声明 */
     style?: CSSProperties
     /**
-     * app 档（mode=app 专用，generative-ui 票 05/06）：在场即开启主题变量注入 +
-     * bridge 三件套联动（见文件头）；回调是 app 内 `MobiApp.issueNewTurn(text)` 经
-     * 四道校验后的宿主侧出口。缺省 = 普通产物预览，零通道现状。
+     * app 档（mode=app 专用，generative-ui 票 05/06）：在场即开启 `--mobi-*` 主题注入
+     * （外观跟随，无交互也能用——Drawer 预览等无 provider 场景照常注入）；回调在场才
+     * 开 bridge（四道校验见文件头）。两个关注点各自正交退化，联动收在实现里。
      */
     app?: {
-        onIssueNewTurn: (text: string) => void
+        onIssueNewTurn?: (text: string) => void
     }
 }
 
@@ -100,16 +100,17 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, app }: Sandbox
     const onIssueNewTurnRef = useRef(app?.onIssueNewTurn)
     onIssueNewTurnRef.current = app?.onIssueNewTurn
 
-    // app 档主题跟随：宿主题档变化 → 原地更新注入的 style（iframe 重建后 dataUpdatedAt
-    // 变化也经此补注——新文档 load 前 contentDocument 为 about:blank，注入幂等无副作用）
+    // app 档主题跟随：宿主题档变化 → 原地更新注入的 style。dep 用布尔（对象身份每
+    // 渲染必变会白写 iframe style）；iframe 重建后的补注由 onLoad 承担，无需 dataUpdatedAt
+    const themeEnabled = app !== undefined
     useEffect(() => {
-        if (app) injectMobiThemeStyle(frameRef.current?.contentDocument, themeMode)
-    }, [app, themeMode, dataUpdatedAt])
+        if (themeEnabled) injectMobiThemeStyle(frameRef.current?.contentDocument, themeMode)
+    }, [themeEnabled, themeMode])
 
     // app 档 bridge 监听：来源 frame 校验（event.source === 本 frame 的 contentWindow）
     // 在这里做——白名单/schema/限流收口在 sandboxAppHost.ts。组件生命周期内挂一次；
     // iframe 重建不换 frameRef，但 key 变化会重挂整棵子树触发 onLoad 重注入脚本
-    const bridgeEnabled = app !== undefined
+    const bridgeEnabled = app?.onIssueNewTurn !== undefined
     useEffect(() => {
         if (!bridgeEnabled) return
         const allowOnce = createAppBridgeRateLimiter()
@@ -136,7 +137,7 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, app }: Sandbox
                 injectArtifactScrollbarStyle(e.currentTarget.contentDocument)
                 if (app) {
                     injectMobiThemeStyle(e.currentTarget.contentDocument, themeMode)
-                    injectAppBridgeScript(e.currentTarget.contentDocument)
+                    if (bridgeEnabled) injectAppBridgeScript(e.currentTarget.contentDocument)
                 }
             }}
             style={style}

@@ -35,11 +35,6 @@ const ORIGIN_META: Record<UiMessageOrigin, { labelKey: string; Icon: typeof Mous
     app: { labelKey: 'chat.origin.app', Icon: AppWindow },
 }
 
-/** 来源 → i18n key（仅 UI 回灌两值；其余 null 不标） */
-export function sentFromTagLabelKey(sentFrom: string | null | undefined): string | null {
-    return isUiMessageOrigin(sentFrom) ? ORIGIN_META[sentFrom].labelKey : null
-}
-
 /** 弱化来源 chip：与 user-msg-terminal 同呈现档（小号 + 三级前景色，可辨识不抢焦） */
 export function SentFromTag({ sentFrom }: { sentFrom: string | null | undefined }) {
     const { t } = useTranslation()

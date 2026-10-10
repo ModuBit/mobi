@@ -27,14 +27,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
-// 受控揭示进度：模拟流式半截内容（与 MarkdownIncomplete.test 同模式）
-const displayState = vi.hoisted(() => ({ current: '' }))
-vi.mock('@/components/ui/useStreamingContent', () => ({
-    useStreamingContent: () => displayState.current,
-    STREAM_BASE_RATE: 0.1,
-    computeRevealRate: vi.fn(() => 0.1),
-    revealIntervalFor: vi.fn(() => 0),
-}))
+import { streamingDisplayState } from '../helpers/streamingContentMock'
+vi.mock('@/components/ui/useStreamingContent', async () =>
+    (await import('../helpers/streamingContentMock')).streamingContentMock())
 
 const { Markdown } = await import('@/components/ui/Markdown')
 
@@ -50,7 +45,7 @@ describe('fenced openui 渲染闭环', () => {
     afterEach(() => cleanup())
 
     it('openui fence 渲染为 react-ui 组件（文本 + 表格）', async () => {
-        displayState.current = fenced(SAMPLE)
+        streamingDisplayState.current = fenced(SAMPLE)
         const { container } = render(<Markdown content={fenced(SAMPLE)} />)
 
         // 懒加载 chunk 异步落地，findBy 等 Suspense resolve
@@ -61,7 +56,7 @@ describe('fenced openui 渲染闭环', () => {
 
     it('官方 openui-lang 标签同路径渲染（catalog prompt inlineMode 教的标签）', async () => {
         const content = '```openui-lang\n' + SAMPLE + '\n```'
-        displayState.current = content
+        streamingDisplayState.current = content
         const { container } = render(<Markdown content={content} />)
 
         expect(await screen.findByText('拓扑语言')).toBeInTheDocument()
@@ -69,7 +64,7 @@ describe('fenced openui 渲染闭环', () => {
     })
 
     it('未知 lang 回落现状代码块（向后兼容）', async () => {
-        displayState.current = '```ts\nconst a = 1\n```'
+        streamingDisplayState.current = '```ts\nconst a = 1\n```'
         const { container } = render(<Markdown content={'```ts\nconst a = 1\n```'} />)
 
         // AutoDetectCodeBlock 异步高亮，等 code 元素出现
@@ -80,7 +75,7 @@ describe('fenced openui 渲染闭环', () => {
     it('流式期间半截源码宽松渲染，不抛错', async () => {
         // 悬空引用 + 未闭合括号：streaming parser 应容忍并渐进渲染
         const partial = 'root = Stack([title, tbl])\ntitle = TextContent("流式标题"'
-        displayState.current = fenced(partial)
+        streamingDisplayState.current = fenced(partial)
         render(<Markdown content={fenced(partial)} streaming />)
 
         expect(await screen.findByText('流式标题')).toBeInTheDocument()
@@ -92,7 +87,7 @@ describe('fenced openui 渲染闭环', () => {
         const broken = `root = Stack([title, bad])
 title = TextContent("拓扑语言", "large-heavy")
 bad = UnknownComp("x")`
-        displayState.current = fenced(broken)
+        streamingDisplayState.current = fenced(broken)
         const { container } = render(<Markdown content={fenced(broken)} />)
 
         expect(await screen.findByText(/无效语句已被忽略/)).toBeInTheDocument()

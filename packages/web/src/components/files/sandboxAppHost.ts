@@ -167,6 +167,12 @@ export function buildMobiThemeCss(mode: 'light' | 'dark'): string {
 
 const MOBI_THEME_STYLE_ID = 'mobi-app-theme'
 
+/** 两档 CSS 的模块级缓存：输出只有 light/dark 两个确定值，主题切换/重渲染零重建 */
+const MOBI_THEME_CSS: Record<'light' | 'dark', string> = {
+    light: buildMobiThemeCss('light'),
+    dark: buildMobiThemeCss('dark'),
+}
+
 /**
  * 注入/更新 `--mobi-*` 主题样式（幂等）：已存在则原地更新 textContent——宿主切换
  * 亮/暗时 app 即时跟随，无需重载 iframe。跨域/未就绪静默跳过。
@@ -174,15 +180,13 @@ const MOBI_THEME_STYLE_ID = 'mobi-app-theme'
 export function injectMobiThemeStyle(doc: Document | null | undefined, mode: 'light' | 'dark'): void {
     try {
         if (!doc?.head) return
-        const existing = doc.getElementById(MOBI_THEME_STYLE_ID)
-        if (existing) {
-            existing.textContent = buildMobiThemeCss(mode)
-            return
+        let style = doc.getElementById(MOBI_THEME_STYLE_ID)
+        if (!style) {
+            style = doc.createElement('style')
+            style.id = MOBI_THEME_STYLE_ID
+            doc.head.appendChild(style)
         }
-        const style = doc.createElement('style')
-        style.id = MOBI_THEME_STYLE_ID
-        style.textContent = buildMobiThemeCss(mode)
-        doc.head.appendChild(style)
+        style.textContent = MOBI_THEME_CSS[mode]
     } catch {
         // contentDocument 不可达（理论不可达：同源沙箱）——不注入
     }

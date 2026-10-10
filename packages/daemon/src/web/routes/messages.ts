@@ -131,8 +131,8 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         await engine.sendMessage(sessionId, {
             content: rawContent,
             localId: parsed.data.localId,
-            // 新格式才可能携带 'openui'；旧平铺格式恒手打语义
-            sentFrom: newVars ? newVars.sentFrom ?? 'webapp' : 'webapp',
+            // 旧平铺格式恒手打语义（不带 UI 回灌来源），缺省归 'webapp'
+            sentFrom: newVars?.sentFrom ?? 'webapp',
             sourceBlock: newVars?.sourceBlock,
         })
         // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的

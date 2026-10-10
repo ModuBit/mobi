@@ -29,14 +29,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
-// 受控揭示进度（与 OpenUIBlock.integration.test 同模式）
-const displayState = vi.hoisted(() => ({ current: '' }))
-vi.mock('@/components/ui/useStreamingContent', () => ({
-    useStreamingContent: () => displayState.current,
-    STREAM_BASE_RATE: 0.1,
-    computeRevealRate: vi.fn(() => 0.1),
-    revealIntervalFor: vi.fn(() => 0),
-}))
+import { streamingDisplayState } from '../helpers/streamingContentMock'
+vi.mock('@/components/ui/useStreamingContent', async () =>
+    (await import('../helpers/streamingContentMock')).streamingContentMock())
 
 const { Markdown } = await import('@/components/ui/Markdown')
 const { UiSendProvider, OpenUIAnchorProvider } = await import('@/components/ui/openui/actionContext')
@@ -53,7 +48,7 @@ const ANCHOR = 'agent-text-blk-1'
 
 function renderActionBlock() {
     const sendMessage = vi.fn()
-    displayState.current = fenced(ACTION_BLOCK)
+    streamingDisplayState.current = fenced(ACTION_BLOCK)
     render(
         <UiSendProvider sendMessage={sendMessage}>
             <OpenUIAnchorProvider anchor={ANCHOR}>
@@ -84,7 +79,7 @@ describe('回路③：原地更新', () => {
         expect(sendMessage).toHaveBeenCalledTimes(1)
         expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui', anchor: ANCHOR })
         // markdown content 恒定（原地更新不动消息文本）
-        expect(displayState.current).toBe(fenced(ACTION_BLOCK))
+        expect(streamingDisplayState.current).toBe(fenced(ACTION_BLOCK))
         expect(await screen.findByText('执行中…')).toBeInTheDocument()
         expect(useOpenUIActionStore.getState().phases.get(ANCHOR)).toBe('running')
     })
@@ -113,7 +108,7 @@ describe('回路③：原地更新', () => {
 
     it('无锚点（档②块）：点击照常发送但 store 不翻转、label 不变', async () => {
         const sendMessage = vi.fn()
-        displayState.current = fenced(ACTION_BLOCK)
+        streamingDisplayState.current = fenced(ACTION_BLOCK)
         render(
             <UiSendProvider sendMessage={sendMessage}>
                 <Markdown content={fenced(ACTION_BLOCK)} />

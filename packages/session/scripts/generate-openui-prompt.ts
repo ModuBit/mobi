@@ -53,7 +53,7 @@ import { MOBI_THEME_PALETTE_VARS } from '@mobi/shared'
  * Carousel/Modal/Tabs/Accordion/DatePicker/Slider/EditableTable 等）。
  * 官方示例含 card-block 正确用法，模仿示例写 CardBlock 仍合法——签名细节在 skill。
  */
-export const CORE_COMPONENTS = [
+const CORE_COMPONENTS = [
     // 布局骨架
     'Stack', 'Col', 'Card', 'CardHeader', 'Separator',
     // 文本
@@ -83,9 +83,9 @@ const SHARED_RULES = [
     'When the user triggers an action from the UI, the follow-up message will carry the UI state values as plain text — treat it as the user\'s instruction to execute, use your normal tools (with the usual permission flow), and confirm the outcome briefly in prose; do NOT regenerate the same UI block unless asked.',
 ]
 
-/** mode=app 细则（票 05/06）——只在全量版（skill）常驻；核心段判据保留路由、细节一句指路 */
 /**
- * 调色板教学句：变量清单从 shared MOBI_THEME_PALETTE_VARS 拼出——与 web 侧注入 CSS
+ * 档②调色板教学句（票 05/06）——只在全量版（skill）常驻；核心段判据保留路由、细节
+ * 一句指路。变量清单从 shared MOBI_THEME_PALETTE_VARS 拼出——与 web 侧注入 CSS
  * 同一 pivot（架构评审候选 3），教学不可能列出宿主不注入的变量（模型照抄即坏 app）。
  * 前段固定句法（background/color/borders/accent/radius/fonts 带用法示例），其余变量
  * 以 plus 列表收尾。
@@ -107,7 +107,7 @@ const APP_DETAIL_RULES = [
  * 语法构造不算组件）——升级 react-ui 后示例内容变化时筛选自适应，不按索引硬编码。
  * 大示例（card-block/editabletable/charts）与核心清单不一致，下沉全量版。
  */
-export function pickCoreExamples(coreNames: readonly string[]): string[] {
+function pickCoreExamples(coreNames: readonly string[]): string[] {
     const core = new Set<string>(coreNames)
     return openuiExamples.filter((ex) => {
         const comps = [...new Set(ex.match(/\b[A-Z][a-zA-Z]+\(/g)?.map((s) => s.slice(0, -1)) ?? [])]
@@ -131,10 +131,10 @@ export const OPENUI_CORE_PROMPT_OPTIONS = {
         // 失败模式是「多一次工具调用」而非「静默丢语句」
         'The component reference in this prompt is a CORE SUBSET only. If the UI you are about to write needs any component NOT documented above — charts, tables with editing, calendars, date pickers, carousels, modals, tabs, accordions, sliders, entity lists, card blocks (Overview/Composite/Context/Visual/Snippet), or advanced image layouts — invoke the `openui` skill FIRST and read its full component catalog before writing the code. Never guess a signature that is not documented above.',
     ],
-} as const
+}
 
 /** 全量版 prompt 选项（进 openui skill；判据同核心防单读缺位，app 细则全文在此） */
-export const OPENUI_FULL_PROMPT_OPTIONS = {
+const OPENUI_FULL_PROMPT_OPTIONS = {
     inlineMode: true,
     examples: openuiExamples,
     preamble: OPENUI_CORE_PROMPT_OPTIONS.preamble,
@@ -155,8 +155,6 @@ export function buildCorePrompt(): string {
         ...spec,
         components,
         ...OPENUI_CORE_PROMPT_OPTIONS,
-        additionalRules: [...OPENUI_CORE_PROMPT_OPTIONS.additionalRules],
-        examples: [...OPENUI_CORE_PROMPT_OPTIONS.examples],
     })
 }
 

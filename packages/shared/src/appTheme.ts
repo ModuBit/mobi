@@ -48,5 +48,7 @@ export const MOBI_THEME_VAR_LIST = Object.values(MOBI_THEME_VARS).flat() as read
 
 export type MobiThemeVar = (typeof MOBI_THEME_VAR_LIST)[number]
 
-/** 教学列举用：非调色板变量（meta 组）不进 prompt 文本 */
-export const MOBI_THEME_PALETTE_VARS = MOBI_THEME_VAR_LIST.filter((v) => !MOBI_THEME_VARS.meta.includes(v as never))
+/** 教学列举用：非调色板变量（meta 组）不进 prompt 文本——正向派生非 meta 组，免排除 cast */
+export const MOBI_THEME_PALETTE_VARS = Object.entries(MOBI_THEME_VARS)
+    .filter(([group]) => group !== 'meta')
+    .flatMap(([, vars]) => vars)
