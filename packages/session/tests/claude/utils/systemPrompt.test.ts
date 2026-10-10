@@ -15,12 +15,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { systemPrompt, buildAppendSystemPrompt } from '@/claude/utils/systemPrompt';
-import { OPENUI_CATALOG_PROMPT } from '@/claude/utils/openuiCatalogPrompt.generated';
+import { OPENUI_CORE_PROMPT } from '@/claude/utils/openuiCorePrompt.generated';
 import { buildActionUri } from '@mobi/shared';
 
-/** 无用户自定义时的完整追加内容（base + openui catalog，票 02 起形状） */
-const fullAppend = `${systemPrompt}\n\n${OPENUI_CATALOG_PROMPT}`;
+/** 无用户自定义时的完整追加内容（base + openui 核心段，票 02 注入 / 票 08 分层后形状） */
+const fullAppend = `${systemPrompt}\n\n${OPENUI_CORE_PROMPT}`;
 
 describe('buildAppendSystemPrompt', () => {
   it('无用户自定义时返回 base + openui catalog（change_title 与 catalog 都在）', () => {
@@ -101,55 +104,81 @@ describe('产物声明契约（inline-artifacts ticket 04）', () => {
   });
 });
 
-describe('openui catalog prompt 契约（generative-ui 票 02）', () => {
+describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层收窄）', () => {
   it('含官方围栏教学（```openui-lang 标签，inlineMode 段自带）', () => {
-    expect(OPENUI_CATALOG_PROMPT).toContain('```openui-lang');
+    expect(OPENUI_CORE_PROMPT).toContain('```openui-lang');
   });
 
   it('含纯问题不出码约束（官方 inlineMode 段，PoC 场景 s09/s15/s19 口径）', () => {
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/plain text\. Do NOT output any openui-lang code/i);
+    expect(OPENUI_CORE_PROMPT).toMatch(/plain text\. Do NOT output any openui-lang code/i);
   });
 
-  it('三层形态判据齐全：native 围栏 / app 文件+mode=app 声明 / fenced 小片段', () => {
-    const routings = OPENUI_CATALOG_PROMPT.match(/Form routing:/g) ?? [];
+  it('三层形态判据齐全：native 围栏 / app 文件+mode=app 声明 / fenced 小片段（判据常驻）', () => {
+    const routings = OPENUI_CORE_PROMPT.match(/Form routing:/g) ?? [];
     expect(routings).toHaveLength(3);
-    // app 线：自包含单文件 + Edit 迭代 + mode=app 声明（与 base 的 artifact 指令衔接）
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/self-contained single-file \.html/i);
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/iterate with Edit/i);
-    expect(OPENUI_CATALOG_PROMPT).toContain('mode="app"');
+    expect(OPENUI_CORE_PROMPT).toMatch(/self-contained single-file \.html/i);
+    expect(OPENUI_CORE_PROMPT).toMatch(/iterate with Edit/i);
+    expect(OPENUI_CORE_PROMPT).toContain('mode="app"');
   });
 
-  it('含组件目录签名与关键语法规则（catalog 主体在，否则模型无从生成合法 DSL）', () => {
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/root = Stack\(/);
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/PascalCase/i);
-    expect(OPENUI_CATALOG_PROMPT.length).toBeGreaterThan(10_000);
+  it('核心组件签名在（简单场景自洽），低频组件签名不在（分层生效）', () => {
+    // 签名文档形态是「Name(param: type, ...)」；惯例段提及（如 Charts 语法示例）不算
+    for (const c of ['Stack(', 'Button(label:', 'OptionCards(', 'FormControl(', 'Chips(', 'Table(']) {
+      expect(OPENUI_CORE_PROMPT).toContain(c);
+    }
+    for (const c of ['LineChart(labels:', 'Carousel(children:', 'DatePicker(', 'Modal(title:', 'EditableTable(', 'OverviewCardBlock(']) {
+      expect(OPENUI_CORE_PROMPT).not.toContain(c);
+    }
+  });
+
+  it('分层引导在：组件不在清单先加载 openui skill（失败模式=多一次调用而非静默丢语句）', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/CORE SUBSET/i);
+    expect(OPENUI_CORE_PROMPT).toMatch(/invoke the `openui` skill FIRST/i);
+    expect(OPENUI_CORE_PROMPT).toMatch(/Never guess a signature/i);
+  });
+
+  it('档③ $actionState 约定在核心段（票 04 原地更新）', () => {
+    expect(OPENUI_CORE_PROMPT).toContain('$actionState = "idle"');
+    expect(OPENUI_CORE_PROMPT).toMatch(/\$actionState == "done" \?/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/idle → running → done\/failed/);
+  });
+
+  it('核心段体积受控（≤26K chars ≈ 6.5K tokens——膨胀预算门，超限须先收窄再扩）', () => {
+    expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(26_000);
   });
 
   it('与生成脚本同源同步（升 react-ui 或改判据措辞后未重生成即红）', async () => {
-    const { OPENUI_PROMPT_OPTIONS } = await import('../../../scripts/generate-openui-prompt');
-    const { openuiLibrary } = await import('@openuidev/react-ui/genui-lib');
-    expect(openuiLibrary.prompt(OPENUI_PROMPT_OPTIONS)).toBe(OPENUI_CATALOG_PROMPT);
+    const { buildCorePrompt, buildSkillMarkdown, SKILL_FILE_HEADER } = await import('../../../scripts/generate-openui-prompt');
+    expect(buildCorePrompt()).toBe(OPENUI_CORE_PROMPT);
+    const skillPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../cli/plugins/mobi/skills/openui/SKILL.md');
+    expect(readFileSync(skillPath, 'utf8')).toBe(`${SKILL_FILE_HEADER}${buildSkillMarkdown()}`);
+  });
+});
+
+describe('openui skill（全量目录，票 08 随 mobi 插件分发）', () => {
+  const skillPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../cli/plugins/mobi/skills/openui/SKILL.md');
+  const skill = readFileSync(skillPath, 'utf8');
+
+  it('frontmatter：name=openui + description 覆盖复杂组件触发词', () => {
+    expect(skill).toMatch(/\n---\nname: openui\n/);
+    expect(skill).toMatch(/description: Full openui-lang component catalog/);
+    expect(skill).toMatch(/charts/);
   });
 
-  it('含档③ $actionState 约定（票 04 原地更新：声明 + 三元派生 + 值域词汇）', () => {
-    expect(OPENUI_CATALOG_PROMPT).toContain('$actionState = "idle"');
-    // 派生教嵌套三元（表达式层 Ternary；组件层无 Switch 组件）
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/\$actionState == "done" \?/);
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/idle → running → done\/failed/);
-    // 回灌消息的处理语义：当作执行指令，勿重复生成同一 UI 块
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/do NOT regenerate the same UI block/);
+  it('全量组件目录在（核心段下沉的低频件 + 语法 root = Stack）', () => {
+    expect(skill).toMatch(/root = Stack\(/);
+    for (const c of ['LineChart(labels:', 'Carousel(children:', 'DatePicker(', 'Modal(title:', 'EditableTable(', 'OverviewCardBlock(', 'Accordion(', 'Tabs(']) {
+      expect(skill).toContain(c);
+    }
+    expect(skill.length).toBeGreaterThan(30_000);
   });
 
-  it('含 mode=app 主题变量教学（票 05：--mobi-* 调色板 + 双档自适应 + 自带 CSS 优先）', () => {
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/--mobi-\*` CSS variable palette/);
-    expect(OPENUI_CATALOG_PROMPT).toContain('var(--mobi-bg)');
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/light\/dark theme/);
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/your own CSS always wins/);
-  });
-
-  it('含 app bridge 教学（票 06：MobiApp.issueNewTurn——仅显式用户动作触发 + 简洁状态摘要）', () => {
-    expect(OPENUI_CATALOG_PROMPT).toContain('window.MobiApp.issueNewTurn(text)');
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/ONLY from explicit user actions/i);
-    expect(OPENUI_CATALOG_PROMPT).toMatch(/never call it automatically/i);
+  it('mode=app 细则全文在 skill（--mobi-* 调色板 + MobiApp.issueNewTurn——核心段只留指路）', () => {
+    expect(skill).toMatch(/--mobi-\*` CSS variable palette/);
+    expect(skill).toContain('var(--mobi-bg)');
+    expect(skill).toContain('window.MobiApp.issueNewTurn(text)');
+    expect(skill).toMatch(/ONLY from explicit user actions/i);
+    // 判据缺位防护：skill 单独被读时三层判据仍在
+    expect((skill.match(/Form routing:/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 });

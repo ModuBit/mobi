@@ -16,7 +16,7 @@
 
 import { trimIdent } from "@mobi/node-core/utils/trimIdent";
 import { ARTIFACTS_DIR_MONTH_FORMAT, ARTIFACTS_DIR_REL, ARTIFACT_DIRECTIVE, MOBI_CORE_SERVER_NAME } from "@mobi/shared";
-import { OPENUI_CATALOG_PROMPT } from "./openuiCatalogPrompt.generated";
+import { OPENUI_CORE_PROMPT } from "./openuiCorePrompt.generated";
 
 /**
  * mobi 注入的基础 system prompt：
@@ -70,15 +70,19 @@ export interface AppendSystemPromptConfig {
  * 一为 append，replace 会整体丢掉 claude_code 默认 prompt，是脚枪），现都作为追加内容拼接。
  *
  * 拼接顺序：用户 custom → 用户 append → mobi base（change_title/artifact 契约）→
- * openui catalog prompt（generative-ui 票 02）。
+ * openui 核心段（generative-ui 票 02 注入、票 08 分层收窄）。
  *
- * 【通道裁决（票 02）】catalog prompt 走 session 侧 systemPrompt 组装链（与
+ * 【通道裁决（票 02）】openui prompt 走 session 侧 systemPrompt 组装链（与
  * :mobi-artifact 声明教学的 BASE_SYSTEM_PROMPT 同一链路、常驻契约），不走
  * appendSystemPrompt——那是用户自定义配置通道，程序化注入混入会互相污染且不可
- * 独立演进。判据措辞单一来源在生成脚本的 OPENUI_PROMPT_OPTIONS，非代码路由。
+ * 独立演进。判据措辞单一来源在生成脚本的 OPENUI_CORE_PROMPT_OPTIONS，非代码路由。
+ *
+ * 【分层（票 08）】常驻的只是核心段（判据 + 语法骨架 + 核心组件子集 + 官方示例）；
+ * 全量 52 组件目录在随 mobi 插件分发的 openui skill，模型写复杂 UI 前按引导规则
+ * 主动加载——多数不出 UI 的会话（生产实测 167 会话仅 1 个出过 openui）不再背全量。
  */
 export function buildAppendSystemPrompt(config: AppendSystemPromptConfig): string {
-    return [config.customSystemPrompt, config.appendSystemPrompt, BASE_SYSTEM_PROMPT, OPENUI_CATALOG_PROMPT]
+    return [config.customSystemPrompt, config.appendSystemPrompt, BASE_SYSTEM_PROMPT, OPENUI_CORE_PROMPT]
         .filter((part): part is string => Boolean(part))
         .join('\n\n');
 }

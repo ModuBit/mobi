@@ -26,6 +26,7 @@ import ripgrepLicense from '../../tools/licenses/ripgrep-LICENSE' with { type: '
 // ensureRuntimeAssets 按同名相对路径释放到 runtime 目录；plugin.json 等清单/接线
 // .json 不走嵌入（.json 被 resolveJsonModule 解析为对象），由 syncPluginAssets 从常量写盘
 import visualizeSkillMd from '../../plugins/mobi/skills/visualize/SKILL.md' with { type: 'file' };
+import openuiSkillMd from '../../plugins/mobi/skills/openui/SKILL.md' with { type: 'file' };
 import hindsightClaudeHook from '../../plugins/memory-hindsight/dist/claude-hook.js' with { type: 'file' };
 import hindsightClaudeSessionStartHook from '../../plugins/memory-hindsight/dist/claude-sessionstart-hook.js' with { type: 'file' };
 import hindsightClaudeStopHook from '../../plugins/memory-hindsight/dist/claude-stop-hook.js' with { type: 'file' };
@@ -55,6 +56,7 @@ const COMMON_ASSETS: EmbeddedAsset[] = [
     // 内置插件（各平台共用，故放 COMMON）；清单文件由 syncPluginAssets 从常量写盘。
     // memory-hindsight vendored 资产清单与 MEMORY_HINDSIGHT_VENDORED_REL_PATHS 保持一致
     asset('plugins/mobi/skills/visualize/SKILL.md', visualizeSkillMd),
+    asset('plugins/mobi/skills/openui/SKILL.md', openuiSkillMd),
     asset('plugins/memory-hindsight/dist/claude-hook.js', hindsightClaudeHook),
     asset('plugins/memory-hindsight/dist/claude-sessionstart-hook.js', hindsightClaudeSessionStartHook),
     asset('plugins/memory-hindsight/dist/claude-stop-hook.js', hindsightClaudeStopHook),

@@ -47,7 +47,7 @@ export const VISUALIZE_SKILL_REL_PATH = 'plugins/mobi/skills/visualize/SKILL.md'
 /** mobi 插件清单内容（repo 内同名文件与本常量的一致性由 bundledPlugins.test 锁定） */
 export const MOBI_PLUGIN_MANIFEST = JSON.stringify({
     name: 'mobi',
-    description: 'Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via :mobi-artifact',
+    description: 'Mobi built-in skills: conversation-visible artifacts (charts, media, single-file HTML pages) via :mobi-artifact; full openui-lang component catalog for interactive UI blocks',
 }, null, 4);
 
 /** memory-hindsight 插件清单（vendored runtime 的接入壳，上游形态见 VENDOR-NOTES.md） */
