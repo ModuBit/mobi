@@ -65,6 +65,49 @@ describe('resolveFormSnapshotInjection（快照回注映射）', () => {
         expect(resolveFormSnapshotInjection(code, formState)).toEqual({ $todos: { task1: true, task2: true, task3: false } })
     })
 
+    it('多表单：快照键 ∈ forms 映射 → 原样回注（票 03：不要求源码唯一空对象声明）', () => {
+        const multiForm = [
+            'root = Card([formA, formB])',
+            'formA = Form("panel-a", buttonsA, [fieldA])',
+            'checksA = CheckBoxGroup("todos-a", [a], null, $todosA)',
+            'formB = Form("panel-b", buttonsB, [fieldB])',
+            'checksB = CheckBoxGroup("todos-b", [b], null, $todosB)',
+            '$todosA = {}',
+            '$todosB = {}',
+        ].join('\n')
+        const forms = new Map([['panel-a', ['$todosA']], ['panel-b', ['$todosB']]])
+        expect(resolveFormSnapshotInjection(multiForm, { '$todosB': { b: true } }, forms)).toEqual({ $todosB: { b: true } })
+        expect(resolveFormSnapshotInjection(multiForm, { '$todosA': { a: true } }, forms)).toEqual({ $todosA: { a: true } })
+    })
+
+    it('多表单：快照键不在 forms 映射（伪造/无关键）→ null 静默降级（票 03）', () => {
+        const multiForm = [
+            'root = Card([formA, formB])',
+            'formA = Form("panel-a", buttonsA, [fieldA])',
+            'checksA = CheckBoxGroup("todos-a", [a], null, $todosA)',
+            'formB = Form("panel-b", buttonsB, [fieldB])',
+            'checksB = CheckBoxGroup("todos-b", [b], null, $todosB)',
+            '$todosA = {}',
+            '$todosB = {}',
+        ].join('\n')
+        const forms = new Map([['panel-a', ['$todosA']], ['panel-b', ['$todosB']]])
+        expect(resolveFormSnapshotInjection(multiForm, { '$evil': { x: 1 } }, forms)).toBeNull()
+    })
+
+    it('多表单：forms 未提供（解析失败降级）→ 键为 $ 标识符仍原样回注（快照源自家持久化，信任）', () => {
+        const multiForm = [
+            'root = Card([formA, formB])',
+            'formA = Form("panel-a", buttonsA, [fieldA])',
+            'checksA = CheckBoxGroup("todos-a", [a], null, $todosA)',
+            'formB = Form("panel-b", buttonsB, [fieldB])',
+            'checksB = CheckBoxGroup("todos-b", [b], null, $todosB)',
+            '$todosA = {}',
+            '$todosB = {}',
+        ].join('\n')
+        // 无 forms 表时键是 $ 标识符即信任回注——比旧「唯一空对象声明」约束恢复面更广
+        expect(resolveFormSnapshotInjection(multiForm, { '$todosB': { b: true } })).toEqual({ $todosB: { b: true } })
+    })
+
     it('多个空对象声明变量无法唯一定位 → null（静默降级）', () => {
         const multi = code + '\n$other = {}'
         const formState = { 'todo-panel': { task1: true } }

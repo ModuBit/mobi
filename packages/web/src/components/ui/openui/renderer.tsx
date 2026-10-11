@@ -102,15 +102,18 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
         return byVar
     }, [anchor, stateVars, phasesMap])
 
-    // 表单快照（状态持久化票 02）：per-action 粒度下各操作快照随各自复合键派生；注入端
-    // 的多表单精确映射在快照票 03 落地，此处取本 fence 任一快照（单表单场景即正确形态）
+    // 表单快照（状态持久化票 02，票 03 多表单）：per-action 粒度下各操作快照随各自
+    // 复合键派生，恢复时**合并全部**（同名容器后写覆盖可接受）——单表单场景只有
+    // 一键有快照，行为不变
     const formState = useMemo(() => {
         if (anchor === null) return undefined
-        for (const v of stateVars) {
-            const snap = formStatesMap.get(actionStateKey(anchor, v)) ?? formStatesMap.get(anchor)
-            if (snap !== undefined) return snap
+        let merged: Record<string, unknown> | undefined
+        for (const v of [...stateVars, null]) {
+            const snap = formStatesMap.get(actionStateKey(anchor, v)) ?? (v === null ? formStatesMap.get(anchor) : undefined)
+            if (snap === undefined) continue
+            merged = { ...merged, ...snap }
         }
-        return undefined
+        return merged
     }, [anchor, stateVars, formStatesMap])
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
@@ -156,11 +159,11 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
 
     // 档③注入（per-action 票 02）：idle 不注入（让源码声明默认值生效，非档③块零
     // 影响）；按操作粒度逐变量注入各自 phase——旧「单值写入全部值域变量」是串状态
-    // 根因，已废除。快照经 resolveFormSnapshotInjection 映射到表单容器，无法唯一定位
-    // 时静默降级（phase 照常）
+    // 根因，已废除。快照经 resolveFormSnapshotInjection 映射回注：forms 映射提供
+    // 归属校验（多表单各自精确回注，票 03），定位失败静默降级（phase 照常）
     const snapshotInjection = useMemo(
-        () => (anchor !== null && formState ? resolveFormSnapshotInjection(code, formState) : null),
-        [anchor, formState, code],
+        () => (anchor !== null && formState ? resolveFormSnapshotInjection(code, formState, bindings.forms) : null),
+        [anchor, formState, code, bindings.forms],
     )
     const initialState = useMemo(() => {
         if (anchor === null) return undefined
