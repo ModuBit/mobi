@@ -3,7 +3,7 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复 / daemon 单独重启
 metadata:
   type: recipe
-  last_verified: 2026-10-07
+  last_verified: 2026-10-11
 ---
 
 # 环境启动
@@ -120,6 +120,8 @@ daemon 子进程 → `wait` 返回 → 脚本退出路径触发 trap 清理，**
 `POST /api/auth` body 字段是 **`accessToken`**（不是 token）：`curl -c jar -d '{"accessToken":"e2e-test-token-mobi"}'` 换 httpOnly cookie，后续 `-b jar`。SSE 直接 `curl -N -b jar "http://localhost:2224/api/events?all=1[&snapshotDelta=1]"`（后者协商 delta，模拟新 web；缺省模拟老 web）。
 
 ## 坑（误判）
+
+- **web dev 先于 daemon state 就绪启动 → 登录 404（2026-10-11）** — web dev.ts 的 MOBI_API_URL 从 daemon.state.json 的 hostPort 派生，daemon 未就绪时 fallback 到默认 12222（生产宿主端口）→ e2e web 的 `POST /api/auth` 404。症状：登录页点 Connect 无反应，network 里 /api/auth 404。修法：等 `ready.flag` 后按 PID 杀掉 5175 的 bun，`env -u MOBI_LISTEN_PORT -u MOBI_API_URL bun run src/dev.ts --profile e2e` 重启 web dev（setsid 后台）。
 
 - **bootstrap 依赖 shell PATH 里的 bun** — 脚本内部裸调 `bun`；Claude 会话的 shell 常无 `~/.bun/bin`，表现为「等待 Daemon 就绪超时 + 日志 `bun: command not found`」且静默失败。先 `export PATH="$HOME/.bun/bin:$PATH"` 再跑 bootstrap（2026-09-03）
 - **bootstrap 被沙箱按进程组回收（2026-09-11）** — 工具调用结束时沙箱可能 SIGTERM 整个进程组：`nohup &` 内联跑和 `run_in_background` 跑都被回收过（脚本有 TERM trap → cleanup → exit 0，exits.log 见 signal-term，uptime 10-40s 不等；同形状调用存活与否不确定）。**稳定解法：`perl -e 'use POSIX qw(setsid); setsid(); exec @ARGV' bash …/e2e-bootstrap.sh`**——setsid 脱离进程组，组杀不可及；READY 后必须 `curl /health` 复核 daemon 真活
