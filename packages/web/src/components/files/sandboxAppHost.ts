@@ -119,9 +119,25 @@ type MobiThemeToken = Pick<
 >
 
 /**
+ * colorPrimary 之上的可读前景色：按 WCAG 亮度公式（YIQ）派生黑/白——mobi 双档
+ * primary 一深一浅，app 若硬编码白字在暗档会白底白字（2026-10-11 番茄钟实踩）。
+ * 生成物教学（on-primary）与这里的派生是同一契约的两端。
+ */
+function contrastOnPrimary(primary: string): string {
+    const hex = primary.replace('#', '')
+    const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
+    const int = Number.parseInt(full, 16)
+    if (Number.isNaN(int)) return '#fff'
+    const r = (int >> 16) & 0xff
+    const g = (int >> 8) & 0xff
+    const b = int & 0xff
+    return (r * 299 + g * 587 + b * 114) / 1000 >= 160 ? '#1f1f1f' : '#fff'
+}
+
+/**
  * 变量名 → 值来源（exhaustive：键集即 shared MOBI_THEME_VAR_LIST——shared 表加变量
- * 漏配此处来源，编译即红；反向多配也红）。值来源三类：token 字段 / 派生（圆角补 px）/
- * 字面量（字体系统栈——宿主 var(--font-body) 在 iframe 里解析不到）。
+ * 漏配此处来源，编译即红；反向多配也红）。值来源三类：token 字段 / 派生（圆角补 px、
+ * on-primary 按亮度）/ 字面量（字体系统栈——宿主 var(--font-body) 在 iframe 里解析不到）。
  */
 const MOBI_VAR_SOURCES: Record<MobiThemeVar, (t: MobiThemeToken, mode: 'light' | 'dark') => string> = {
     '--mobi-color-scheme': (_t, mode) => mode,
@@ -133,6 +149,7 @@ const MOBI_VAR_SOURCES: Record<MobiThemeVar, (t: MobiThemeToken, mode: 'light' |
     '--mobi-fg-secondary': (t) => t.colorTextSecondary,
     '--mobi-fg-muted': (t) => t.colorTextTertiary,
     '--mobi-primary': (t) => t.colorPrimary,
+    '--mobi-on-primary': (t) => contrastOnPrimary(t.colorPrimary),
     '--mobi-success': (t) => t.colorSuccess,
     '--mobi-warning': (t) => t.colorWarning,
     '--mobi-danger': (t) => t.colorError,

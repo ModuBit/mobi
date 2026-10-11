@@ -35,8 +35,9 @@ export const MOBI_THEME_VARS = {
     surfaces: ['--mobi-bg', '--mobi-bg-base', '--mobi-bg-elevated', '--mobi-bg-layout'],
     /** 前景文本 */
     foregrounds: ['--mobi-fg', '--mobi-fg-secondary', '--mobi-fg-muted'],
-    /** 语义强调色 */
-    accents: ['--mobi-primary', '--mobi-success', '--mobi-warning', '--mobi-danger'],
+    /** 语义强调色（on-primary = primary 色块之上可读的前景色——mobi 双档 primary
+     *  一深一浅，硬编码白字在暗档会白底白字，生成物必须用它给色块上的文字取色） */
+    accents: ['--mobi-primary', '--mobi-on-primary', '--mobi-success', '--mobi-warning', '--mobi-danger'],
     /** 边框与圆角 */
     borders: ['--mobi-border', '--mobi-border-muted', '--mobi-radius'],
     /** 字体栈 */

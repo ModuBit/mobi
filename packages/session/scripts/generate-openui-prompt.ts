@@ -94,7 +94,7 @@ function appPaletteRule(): string {
     const rest = MOBI_THEME_PALETTE_VARS.filter(
         (v) => !['--mobi-bg', '--mobi-fg', '--mobi-border', '--mobi-primary', '--mobi-radius', '--mobi-font-body', '--mobi-font-mono'].includes(v),
     )
-    return `For mode="app" HTML apps: the host injects a \`--mobi-*\` CSS variable palette (and a low-specificity base style) that follows the user's light/dark theme \u2014 style your app with these variables (background: var(--mobi-bg), color: var(--mobi-fg), borders: var(--mobi-border), accent: var(--mobi-primary), radius: var(--mobi-radius), fonts var(--mobi-font-body)/var(--mobi-font-mono), plus ${rest.join('/')}) instead of hard-coded colors, so the app adapts to both themes automatically; your own CSS always wins over the injected base.`
+    return `For mode="app" HTML apps: the host injects a \`--mobi-*\` CSS variable palette (and a low-specificity base style) that follows the user's light/dark theme \u2014 style your app with these variables (background: var(--mobi-bg), color: var(--mobi-fg), borders: var(--mobi-border), accent: var(--mobi-primary), radius: var(--mobi-radius), fonts var(--mobi-font-body)/var(--mobi-font-mono), plus ${rest.join('/')}) instead of hard-coded colors, so the app adapts to both themes automatically; text placed on a colored block (e.g. a primary button or chip) takes \`color: var(--mobi-on-primary)\` \u2014 never hardcode white/black, the accent is light-toned in dark theme; your own CSS always wins over the injected base.`
 }
 const APP_DETAIL_RULES = [
     appPaletteRule(),
