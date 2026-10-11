@@ -145,6 +145,19 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/idle → running → done\/failed/);
   });
 
+  it('per-action 教学在核心段（per-action 粒度票 04）：每操作一变量 + Set 即时反馈 + 多操作独立', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/its OWN reactive variable/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/never share one variable between actions/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/Set\(\$actionState, "running"\)/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/Multi-action panels/);
+  });
+
+  it('一次性操作条件渲染句式在核心段（per-action 票 04）：idle 按钮 / failed 重试 / 其余文字', () => {
+    expect(OPENUI_CORE_PROMPT).toMatch(/never renders as a clickable button again/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/only a failed turn stays retryable/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/TextContent\("已提交 ✓", "small"\)/);
+  });
+
   it('核心段体积受控（≤26K chars ≈ 6.5K tokens——膨胀预算门，超限须先收窄再扩）', () => {
     expect(OPENUI_CORE_PROMPT.length).toBeLessThanOrEqual(26_000);
   });

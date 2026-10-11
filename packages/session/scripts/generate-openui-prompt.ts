@@ -75,14 +75,17 @@ const SHARED_RULES = [
     'When the user asks a plain question, wants an explanation, or the answer is simple text, respond in plain markdown with NO openui-lang code.',
     'Keep the prose around the UI concise. Do not duplicate the UI\'s content as markdown tables or lists.',
     'Component names are case-sensitive PascalCase — lowercase names are silently dropped and will not render.',
-    // 档③原地更新（票 04，票 02 修订值域识别）：执行类按钮的状态变量约定。
-    // host 按默认值域识别状态变量（idle/running/done/failed），名字自由（惯用
-    // $actionState，模型自创名 $mdState 实测同样生效）——默认值必须取自值域，
-    // 否则 host 注入不命中。派生用三元（表达式层实证支持）
-    'Action-state convention: for buttons that trigger the assistant to EXECUTE a task (order / book / save / run), declare a reactive variable whose default value is exactly "idle" (the host recognizes state variables by this value vocabulary: idle / running / done / failed — any variable name works, `$actionState` is the conventional choice) and derive the button label with a ternary, e.g. `btnLabel = $actionState == "done" ? "已完成 ✓" : ($actionState == "running" ? "执行中…" : "预订")` then `btn = Button(btnLabel, "primary")`. The host flips the variable (idle → running → done/failed) in place as the action\'s turn progresses — never use these state variables for anything other than execution-state UI, and always keep the idle case as a clickable button label.',
-    // 一次性操作（票 02）：Set step 即时置位 + 快照容器约定。表单绑定变量用空对象
-    // 声明（host 提交后回注恢复勾选态）；$submitted 惯用 Set 置位让按钮即时变已提交
-    'One-shot action convention: for forms that should be submitted only once, bind the form state to a reactive object declared empty (e.g. `$answers = {}` — the host restores the submitted values on reload), and derive the button from that state plus a Set step for instant feedback, e.g. `$submitted = false` then `btn = Button($submitted == true ? "已提交 ✓" : "提交", Action([Set($submitted, true), @ToAssistant(summary)]), "primary")`. Repeatable interactions (menus, explorers) need none of this.',
+    // 档③原地更新 + per-action 粒度（票 04/02/per-action 票 02-04）：每个操作一个
+    // 专属状态变量（值域约定，名字自由），Set step 做本地即时反馈；host 按操作粒度
+    // 回写（registry 身份 + 绑定表），多操作不共享变量——共享是串状态根因
+    'Action-state convention: each ACTION (a button that triggers the assistant to EXECUTE a task) gets its OWN reactive variable whose default value is exactly "idle" (the host recognizes state variables by this value vocabulary: idle / running / done / failed — any variable name works, `$actionState` is the conventional choice); never share one variable between actions. Advance it with a Set step for instant local feedback, e.g. `btn = Button(btnLabel, Action([Set($actionState, "running"), @ToAssistant("预订")]), "primary")`, and derive the label with a ternary, e.g. `btnLabel = $actionState == "done" ? "已完成 ✓" : ($actionState == "running" ? "执行中…" : "预订")`. The host flips the same variable in place per action as that action\'s turn progresses (idle → running → done/failed); failed means the turn was interrupted and the action may be retried — never use these state variables for anything other than execution-state UI.',
+    // 一次性操作（票 02/per-action 票 03-04）：条件渲染绑操作状态变量——idle 才渲染
+    // 按钮、failed 保持可重试、其余终态替换为文字（按钮原地消失，非灰化——DSL 无
+    // disabled）；快照容器空对象声明供提交后恢复勾选态
+    'One-shot action convention: for forms that should be submitted only once, bind the form state to a reactive object declared empty (e.g. `$answers = {}` — the host restores the submitted values on reload) and swap the button for plain text once submitted, driven by the action state variable: `$submitBtn = $actionState == "idle" ? Button("提交", Action([Set($actionState, "running"), @ToAssistant(summary)]), "primary") : ($actionState == "failed" ? Button("重试", Action([Set($actionState, "running"), @ToAssistant(summary)]), "primary") : TextContent("已提交 ✓", "small"))` — a submitted one-shot action never renders as a clickable button again (only a failed turn stays retryable). Repeatable interactions (menus, explorers) need none of this.',
+    // 多操作面板（per-action 票 02 E2E 实锤句）：各操作独立——E2E 曾实测共享变量的
+    // 双卡面板点 A 连带翻 B（串状态），故独立变量是硬约定
+    'Multi-action panels: every action in one openui-lang block must have its own state variable (never share one between actions) — actions run independently, clicking one must not change another\'s label, and the host tracks each separately (two quick-stat cards each flip only its own 执行中… → 已完成 ✓).',
     'When the user triggers an action from the UI, the follow-up message will carry the UI state values as plain text — treat it as the user\'s instruction to execute, use your normal tools (with the usual permission flow), and confirm the outcome briefly in prose; do NOT regenerate the same UI block unless asked.',
 ]
 
