@@ -534,6 +534,12 @@ Agent 工具（`Task` / `Agent`）是渲染复杂度最高的部分，有内联�
 
 详细架构、关键决策与调试方法见 [→ 流式逐字渲染](streaming.md)
 
+### OpenUI 渲染层
+
+fenced `openui` 代码块渲染为可交互 UI（Intelligent UI Native 层），含两条回灌回路：操作发消息（档②）、操作状态随 agent turn 原地更新（档③）。
+
+详细架构见 [→ OpenUI 渲染层](openui.md)
+
 ### 工具调用折叠
 
 消息渲染管线中，工具调用经过两层过滤后再展示：
