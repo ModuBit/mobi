@@ -32,18 +32,19 @@
  * 触发——react-lang 的 onAction 仅在这些交互回调里被调起；流式期间 UI 尚未封口，
  * 一律不发送。
  *
- * 回路③原地更新（票 04）：agent 正文的 openui 块带锚点（actionContext 注入的
- * text block id），档③约定变量 `$actionState`（idle/running/done/failed，catalog
- * prompt 教学）由外部 actionStore 承载——phase 变化经 initialState 的 reactive
- * binding 重建（initialize 只覆盖 $ 键，表单值保留），按钮文案随
- * `Switch($actionState, ...)` 派生翻转，markdown content 不变。running 期间
- * 重复点击去重。
+ * 回路③原地更新（票 04，per-action 粒度票 02）：agent 正文的 openui 块带锚点
+ * （actionContext 注入的 text block id），每个操作的状态由值域约定变量（catalog
+ * prompt 教学，名字自由）承载，存储键为 `anchor#var` 复合键——同块多操作互不串。
+ * 操作身份由 mobiLibrary 覆盖 Button 的点击 registry 提供（statementId → 绑定表
+ * 回查），phase 变化经 initialState 的 reactive binding 重建（initialize 只覆盖
+ * $ 键，表单值保留），按钮文案随派生三元翻转，markdown content 不变。running
+ * 期间同操作重复点击去重，不同操作互不阻塞。
  */
 
 import { useCallback, useMemo, useState } from 'react'
 import { Alert } from 'antd'
 import { Renderer, type ActionEvent, type OpenUIError } from '@openuidev/react-lang'
-import { ThemeProvider, openuiLibrary } from '@openuidev/react-ui'
+import { ThemeProvider } from '@openuidev/react-ui'
 import '@openuidev/react-ui/index.css'
 import '@openuidev/react-ui/defaults.css'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
@@ -51,7 +52,10 @@ import { OPENUI_LIGHT_THEME, OPENUI_DARK_THEME } from './theme'
 import { buildOpenUIMessage } from './actionMessage'
 import { useUiSendMessage, useOpenUIAnchor } from './actionContext'
 import { useOpenUIActionStore } from './actionStore'
+import { actionStateKey, type OpenUIActionPhase } from './actionState'
 import { resolveStateActionVars, resolveFormSnapshotInjection } from './snapshotInjection'
+import { resolveActionBindings } from './bindingParser'
+import { mobiLibrary, takeClickedActionStatementId } from './mobiLibrary'
 
 export interface OpenUIRendererProps {
     /** fence 内的 OpenUI Lang 源码 */
@@ -73,55 +77,103 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useUiSendMessage()
-    // 档③ phase：无锚点恒 idle（store 订阅须传稳定 selector，避免 Map 身份触发重渲染）
-    const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? 'idle' : 'idle'))
-    // 表单快照（状态持久化票 02）：随 derive 写入，initialState 注入恢复提交时刻表单
-    const formState = useOpenUIActionStore((s) => (anchor !== null ? s.formStates.get(anchor) : undefined))
+    // 操作绑定表（per-action 票 02）：本 fence 的操作 → 状态变量绑定，一次解析随 code 记忆
+    const bindings = useMemo(() => resolveActionBindings(code), [code])
+    // per-action phase/快照：订阅整 Map（action 点击是低频事件，Map 引用仅在 set 时变化），
+    // 本 fence 的键集随绑定表动态，无法用固定 selector 逐键订阅
+    const phasesMap = useOpenUIActionStore((s) => s.phases)
+    const formStatesMap = useOpenUIActionStore((s) => s.formStates)
     const setPhase = useOpenUIActionStore((s) => s.setPhase)
+
+    // 本 fence 的操作状态变量集：绑定表为准；绑定表为空（解析失败/纯展示）降级值域识别
+    // （snapshotInjection 的旧路径，保留为降级语义）
+    const stateVars = useMemo(() => {
+        if (bindings.stateVars.length > 0) return bindings.stateVars
+        return resolveStateActionVars(code)
+    }, [bindings, code])
+
+    // 各操作的当前 phase（anchor === null 时无状态可查，恒 idle）
+    const phasesByVar = useMemo(() => {
+        const byVar = new Map<string, OpenUIActionPhase>()
+        if (anchor === null) return byVar
+        for (const v of stateVars) {
+            byVar.set(v, phasesMap.get(actionStateKey(anchor, v)) ?? phasesMap.get(anchor) ?? 'idle')
+        }
+        return byVar
+    }, [anchor, stateVars, phasesMap])
+
+    // 表单快照（状态持久化票 02）：per-action 粒度下各操作快照随各自复合键派生；注入端
+    // 的多表单精确映射在快照票 03 落地，此处取本 fence 任一快照（单表单场景即正确形态）
+    const formState = useMemo(() => {
+        if (anchor === null) return undefined
+        for (const v of stateVars) {
+            const snap = formStatesMap.get(actionStateKey(anchor, v)) ?? formStatesMap.get(anchor)
+            if (snap !== undefined) return snap
+        }
+        return undefined
+    }, [anchor, stateVars, formStatesMap])
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
     // 无 provider（会话页外的 markdown 渲染）静默 no-op。
-    // 回路③：带锚点的块在发起时即时翻 running（不等扫描），running 期间去重
+    // 回路③（per-action 票 02）：操作身份来自点击 registry——mobiLibrary 覆盖 Button
+    // 在同步帧写入被点按钮的 statementId（react-lang 的 ActionEvent 不带身份：载荷在
+    // steps 循环前捕获，Set 置位不进 formState，实测实证），回查绑定表 actions 映射
+    // 得状态变量；statementId 无绑定（模型偏离教学/inline 按钮）→ 三级推断兜底，全落空
+    // → null，状态键退化为裸 anchor（块级行为）。running 去重按操作粒度，互不阻塞。
     const handleAction = useCallback((event: ActionEvent) => {
         if (streaming) return
         if (event.type !== 'continue_conversation') return
-        // running 去重（票 04）：turn 进行中重复点击不再发起
-        if (phase === 'running') return
+        const clickedId = takeClickedActionStatementId()
+        const boundVar = clickedId !== null ? bindings.actions.get(clickedId) : undefined
+        const payload = event.formState != null && typeof event.formState === 'object' ? event.formState as Record<string, unknown> : null
+        // 身份推断：registry statementId 绑定（最可信）→ 绑定表唯一状态变量（单操作块
+        // 恒定走它——保证首次与后续点击同键，去重才成立）
+        const stateVar = boundVar
+            ?? (bindings.stateVars.length === 1 ? bindings.stateVars[0]! : null)
+        // running 去重（票 02 起 per-action）：只挡同一状态键（同操作变量；降级块级
+        // 键同理）的重复点击——直接查 store 原始键，与乐观翻转写同一把钥匙
+        const stateKey = actionStateKey(anchor ?? '', stateVar)
+        const current = anchor !== null ? phasesMap.get(stateKey) ?? 'idle' : 'idle'
+        if (current === 'running') return
         const text = buildOpenUIMessage(event)
         if (!text) return
         // 发送失败回滚：乐观 running 只有落库后扫描派生才能翻终态，请求失败时消息
         // 不会落库、去重闸门还挡着重试——不回滚会永久卡 running
-        if (anchor !== null) setPhase(anchor, 'running')
+        if (anchor !== null) setPhase(stateKey, 'running')
         Promise.resolve(sendMessage?.(text, {
             origin: 'openui',
             ...(anchor !== null ? { anchor } : {}),
+            // 操作身份（per-action 票 02）：daemon 落 meta.openuiStateVar 供 derive 配对
+            ...(stateVar !== null ? { stateVar } : {}),
             // 表单快照（状态持久化票 02）：原始 formState 整体携带（含 $ 绑定变量——
             // 快照目的就是恢复勾选态），daemon 落 meta.openuiFormState 供刷新后回注
-            ...(event.formState != null && typeof event.formState === 'object' ? { formState: event.formState as Record<string, unknown> } : {}),
+            ...(payload !== null ? { formState: payload } : {}),
         }))
             .catch(() => {
-                if (anchor !== null) setPhase(anchor, 'idle')
+                if (anchor !== null) setPhase(stateKey, 'idle')
             })
-    }, [streaming, phase, anchor, setPhase, sendMessage])
+    }, [streaming, anchor, bindings, phasesByVar, setPhase, sendMessage])
 
-    // 档③注入：idle 且无快照不注入（让源码声明默认值生效，非档③块零影响）。
-    // 状态变量按值域识别（票 02 修订）：源码中默认值 ∈ {idle,running,done,failed} 的
-    // 全部 $ 变量逐一注入 phase——$actionState 只是教学惯用名，模型自创名（$mdState
-    // 等）同样生效。快照经 resolveFormSnapshotInjection 映射到唯一的空对象声明变量，
-    // 无法唯一定位时静默降级（phase 照常）
-    const stateVars = useMemo(() => resolveStateActionVars(code), [code])
+    // 档③注入（per-action 票 02）：idle 不注入（让源码声明默认值生效，非档③块零
+    // 影响）；按操作粒度逐变量注入各自 phase——旧「单值写入全部值域变量」是串状态
+    // 根因，已废除。快照经 resolveFormSnapshotInjection 映射到表单容器，无法唯一定位
+    // 时静默降级（phase 照常）
     const snapshotInjection = useMemo(
         () => (anchor !== null && formState ? resolveFormSnapshotInjection(code, formState) : null),
         [anchor, formState, code],
     )
     const initialState = useMemo(() => {
         if (anchor === null) return undefined
-        const phaseKeys = phase !== 'idle' && stateVars.length > 0
-            ? Object.fromEntries(stateVars.map((v) => [v, phase]))
-            : undefined
-        if (!phaseKeys && !snapshotInjection) return undefined
+        let hasPhase = false
+        const phaseKeys: Record<string, OpenUIActionPhase> = {}
+        for (const [v, phase] of phasesByVar) {
+            if (phase === 'idle') continue
+            hasPhase = true
+            phaseKeys[v] = phase
+        }
+        if (!hasPhase && !snapshotInjection) return undefined
         return { ...phaseKeys, ...snapshotInjection }
-    }, [anchor, phase, stateVars, snapshotInjection])
+    }, [anchor, phasesByVar, snapshotInjection])
 
     return (
         <div className="openui-block">
@@ -129,7 +181,7 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
                 <Renderer
                     response={code}
                     // react-ui 与 react-lang 双 d.ts 实例的类型身份不同（同 API），运行时同库
-                    library={openuiLibrary as never}
+                    library={mobiLibrary as never}
                     isStreaming={streaming}
                     onError={setErrors}
                     onAction={handleAction}

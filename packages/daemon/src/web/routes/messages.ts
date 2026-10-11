@@ -49,6 +49,10 @@ const newFormatBodySchema = z.object({
         if (v === undefined) return undefined
         return JSON.stringify(v).length <= 4096 ? v : undefined
     }),
+    // 操作状态变量名（per-action 粒度票 02）：本次操作绑定的 `$` 状态变量，落库进
+    // meta.openuiStateVar——derive 按（锚点， 变量）配对判定该操作的终态。同 formState
+    // 资格门（仅 openui 来源落）；超限静默丢弃
+    stateVar: z.string().min(2).max(64).regex(/^\$[A-Za-z]\w*$/).optional(),
 })
 
 /** 旧版 web/PWA 平铺发送格式（窗口期兼容） */
@@ -142,6 +146,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             sentFrom: newVars?.sentFrom ?? 'webapp',
             sourceBlock: newVars?.sourceBlock,
             formState: newVars?.formState,
+            stateVar: newVars?.stateVar,
         })
         // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的
         // 会话行，活跃 no-op）。入队已持久化，spawn 失败消息仍留 queued，下次发送或手动

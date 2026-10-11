@@ -45,8 +45,13 @@ const resultMsg = (data: Record<string, unknown>): DecryptedMessage => ({
     content: { role: 'agent', content: { type: 'output', data } } as DecryptedMessage['content'],
 })
 
-const openuiAction = (anchor: string, lifecycle?: string, formState?: Record<string, unknown>) => ({
-    ...userMsg({ sentFrom: 'openui', openuiAnchor: anchor, ...(formState ? { openuiFormState: formState } : {}) }),
+const openuiAction = (anchor: string, lifecycle?: string, formState?: Record<string, unknown>, stateVar?: string) => ({
+    ...userMsg({
+        sentFrom: 'openui',
+        openuiAnchor: anchor,
+        ...(formState ? { openuiFormState: formState } : {}),
+        ...(stateVar ? { openuiStateVar: stateVar } : {}),
+    }),
     ...(lifecycle ? { lifecycle: lifecycle as DecryptedMessage['lifecycle'] } : {}),
 })
 
@@ -67,6 +72,28 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
         ]
         const out = deriveOpenUITerminalStates(msgs, false)
         expect(out.get('blk-9')).toEqual({ phase: 'done', formState: snap })
+    })
+
+    it('per-action：meta 带 openuiStateVar → 派生键为复合键 anchor#var（票 02）', () => {
+        const msgs = [
+            openuiAction('blk-1', undefined, undefined, '$mdState'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+        ]
+        const out = deriveOpenUITerminalStates(msgs, false)
+        expect(out.get('blk-1#$mdState')).toEqual({ phase: 'done' })
+        expect(out.has('blk-1')).toBe(false)
+    })
+
+    it('per-action：双操作先后发起各自配对，互不覆盖（票 02）', () => {
+        const msgs = [
+            openuiAction('blk-1', undefined, undefined, '$mdState'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+            openuiAction('blk-1', undefined, undefined, '$jsonState'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 2 } }),
+        ]
+        const out = deriveOpenUITerminalStates(msgs, false)
+        expect(out.get('blk-1#$mdState')?.phase).toBe('done')
+        expect(out.get('blk-1#$jsonState')?.phase).toBe('done')
     })
 
     it('无快照条目不带 formState 键（与旧形状一致）', () => {

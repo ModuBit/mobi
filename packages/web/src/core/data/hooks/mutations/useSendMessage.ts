@@ -44,7 +44,7 @@ import type { DecryptedMessage } from '@/core/data/api/types'
  */
 
 /** 发送变量（mutation 内部词汇）：blocks + localId + 可选 UI 回灌来源与档③锚点 */
-type SendVars = { blocks: UserContentBlock[]; localId: string; sentFrom?: UiMessageOrigin; sourceBlock?: string; formState?: Record<string, unknown> }
+type SendVars = { blocks: UserContentBlock[]; localId: string; sentFrom?: UiMessageOrigin; sourceBlock?: string; formState?: Record<string, unknown>; stateVar?: string }
 
 export function useSendMessage(sessionId: string, isRunning: boolean) {
     const api = useMobiApi()
@@ -55,7 +55,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                 console.log('[Send] api.messages.send', { sessionId, localId: vars.localId, blocksLen: vars.blocks.length })
             }
             return api.messages.send(sessionId, vars.blocks, vars.localId,
-                { sentFrom: vars.sentFrom, sourceBlock: vars.sourceBlock, formState: vars.formState })
+                { sentFrom: vars.sentFrom, sourceBlock: vars.sourceBlock, formState: vars.formState, stateVar: vars.stateVar })
         },
         onMutate: async (vars: SendVars) => {
             // 乐观气泡：content 信封持 blocks 数组，与 daemon messageService.sendMessage 落库形态同构。
@@ -106,7 +106,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
     // 只覆盖 mutate 会让展开的 mutateAsync 仍按旧签名工作，调用方传参错位会丢 localId，
     // 导致服务端 echo 无法按 localId 去重乐观气泡 → 重复消息。
 /** 发送选项（mutate / mutateAsync / send 三处共用，不再各写一遍匿名形状） */
-type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock' | 'formState'>
+type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock' | 'formState' | 'stateVar'>
 
     const send = (segments: ComposerSegments, opts?: SendOpts): SendVars => ({
         blocks: serializeSegments(segments),
@@ -114,6 +114,7 @@ type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock' | 'formState'>
         ...(opts?.sentFrom ? { sentFrom: opts.sentFrom } : {}),
         ...(opts?.sourceBlock ? { sourceBlock: opts.sourceBlock } : {}),
         ...(opts?.formState ? { formState: opts.formState } : {}),
+        ...(opts?.stateVar ? { stateVar: opts.stateVar } : {}),
     })
     // mutate 稳定化：底层 mutation.mutate 引用由 useMutation 保证跨渲染不变（选项经
     // 内部 ref 更新），包装层用 useCallback 保持同一引用——消费方（ChatContainer 的

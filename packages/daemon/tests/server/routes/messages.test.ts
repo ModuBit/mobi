@@ -192,6 +192,25 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         })
     })
 
+    test('新格式：stateVar（操作身份）随 openui 透传（per-action 票 02）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: '数 md', sentFrom: 'openui', stateVar: '$mdState' })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({
+            content: '数 md', localId: undefined, sentFrom: 'openui', sourceBlock: undefined,
+            formState: undefined, stateVar: '$mdState',
+        })
+    })
+
+    test('新格式：非法 stateVar（非 $ 前缀）→ 400（票 02 schema 校验）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: '数 md', sentFrom: 'openui', stateVar: 'mdState' })
+        expect(res.status).toBe(400)
+        expect(sent).toHaveLength(0)
+    })
+
     test('新格式：sentFrom=app 透传（沙箱 app bridge 回灌，generative-ui 票 06）', async () => {
         const { engine, sent } = makeSendEngine()
 

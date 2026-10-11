@@ -60,6 +60,9 @@ export type SendMessagePayload = {
     /** 表单快照（状态持久化票 02）：openui 回灌点击时刻的 formState，落库 meta.openuiFormState——
      *  web 刷新后回注恢复提交时刻表单；仅 openui 来源生效（同锚点资格） */
     formState?: Record<string, unknown>
+    /** 操作状态变量名（per-action 粒度票 02）：本次操作绑定的 `$` 变量，落库
+     *  meta.openuiStateVar——derive 按（锚点， 变量）配对判定该操作终态；仅 openui 来源生效 */
+    stateVar?: string
     /**
      * 跨会话来源身份（agent 经 send_message_to_session 投来的消息）。
      *
@@ -161,6 +164,7 @@ export class MessageService {
                 // 档③锚点只在 openui 来源上落（手打/cli/app 无意义——资格常量在 shared），web 侧扫描恢复按钮态的判据
                 ...(payload.sourceBlock && sentFrom === UI_ANCHOR_ORIGIN ? { openuiAnchor: payload.sourceBlock } : {}),
                 ...(payload.formState && sentFrom === UI_ANCHOR_ORIGIN ? { openuiFormState: payload.formState } : {}),
+                ...(payload.stateVar && sentFrom === UI_ANCHOR_ORIGIN ? { openuiStateVar: payload.stateVar } : {}),
                 ...(origin ? toCrossSessionMeta(origin) : {})
             }
         }

@@ -33,7 +33,7 @@ import type { UiMessageOrigin } from '@mobi/shared'
 /** UI 回灌注入的发送入口：组装好的消息文本，与手打消息走同一 intake。
  *  origin 必填显式（'openui' fenced 块 / 'app' 沙箱 app bridge），anchor 为档③锚点；
  *  返回发送 promise（可等待失败——档③据此回滚乐观 running），不关心结果的调用方忽略即可 */
-export type UiSendMessage = (text: string, opts: { origin: UiMessageOrigin; anchor?: string; formState?: Record<string, unknown> }) => void | Promise<void>
+export type UiSendMessage = (text: string, opts: { origin: UiMessageOrigin; anchor?: string; formState?: Record<string, unknown>; stateVar?: string }) => void | Promise<void>
 
 const UiSendContext = createContext<UiSendMessage | null>(null)
 

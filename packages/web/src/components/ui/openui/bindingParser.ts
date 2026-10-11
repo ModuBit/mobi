@@ -44,11 +44,15 @@ export interface ActionBindings {
     setTargets: string[]
     /** 全部操作状态变量（Set 目标 ∪ label/action 表达式引用，值域过滤后） */
     stateVars: string[]
+    /** Button statementId → 该操作绑定的状态变量（Set 目标优先；无 Set 时子树内
+     *  唯一值域变量兜底，无法唯一定位不入表）——事件点击身份（statementId registry
+     *  通道，见 mobiLibrary）回查的映射 */
+    actions: Map<string, string>
     /** formName → 该表单子树内的数据容器变量（快照精确回注） */
     forms: Map<string, string[]>
 }
 
-const EMPTY_BINDINGS: ActionBindings = { setTargets: [], stateVars: [], forms: new Map() }
+const EMPTY_BINDINGS: ActionBindings = { setTargets: [], stateVars: [], actions: new Map(), forms: new Map() }
 
 /** parser 单例（schema 构建昂贵；parse 本身无状态） */
 let parser: ReturnType<typeof createParser> | null = null
@@ -71,36 +75,47 @@ function isStateRef(node: Record<string, unknown>): node is { k: 'StateRef'; n: 
 interface Collector {
     stateRefs: Set<string>
     setTargets: Set<string>
+    /** Button statementId → 子树内 Set 目标（教学句式） */
+    buttonSets: Map<string, string>
+    /** Button statementId → 子树内 StateRef 引用集（无 Set 时唯一值域变量兜底的原料） */
+    buttonRefs: Map<string, Set<string>>
     /** formName → 数据容器变量（收集期，后聚合为 Map） */
     formRefs: Array<{ formName: string; ref: string }>
 }
 
 /**
- * 递归 walk：element 节点下钻 props（Form 记录 formName 上下文），表达式节点按
- * k 判别收集 StateRef 与 `Set` 目标模式。字符串/数字等标量叶子直接剪枝。
+ * 递归 walk：element 节点下钻 props（Form 记 formName 上下文、Button 记 statementId
+ * 上下文），表达式节点按 k 判别收集 StateRef 与 `Set` 目标模式。Button 嵌套 Button
+ * 非 DSL 形态，出现时内层后写覆盖（可接受边缘）。
  */
-function walk(node: unknown, formName: string | null, out: Collector): void {
+function walk(node: unknown, formName: string | null, buttonId: string | null, out: Collector): void {
     if (node == null || typeof node !== 'object') return
     if (Array.isArray(node)) {
-        for (const item of node) walk(item, formName, out)
+        for (const item of node) walk(item, formName, buttonId, out)
         return
     }
     const rec = node as Record<string, unknown>
     if (rec.type === 'element' && typeof rec.typeName === 'string') {
         const el = rec as unknown as ElementNode
+        const isButton = el.typeName === 'Button' && typeof el.statementId === 'string'
         const innerForm = el.typeName === 'Form' && typeof el.props.name === 'string' ? el.props.name : formName
-        for (const value of Object.values(el.props)) walk(value, innerForm, out)
+        const innerButton = isButton ? (el.statementId as string) : buttonId
+        for (const value of Object.values(el.props)) walk(value, innerForm, innerButton, out)
         return
     }
     if (!isExprNode(rec)) {
         // props 容器对象（非表达式叶子）——继续下钻其字段
-        for (const value of Object.values(rec)) walk(value, formName, out)
+        for (const value of Object.values(rec)) walk(value, formName, buttonId, out)
         return
     }
     if (isStateRef(rec)) {
         out.stateRefs.add(rec.n)
-        // Form 子树内的 StateRef 记归属（值域/数据分类在聚合期做——walk 不看声明表）
         if (formName !== null) out.formRefs.push({ formName, ref: rec.n })
+        if (buttonId !== null) {
+            const refs = out.buttonRefs.get(buttonId)
+            if (refs === undefined) out.buttonRefs.set(buttonId, new Set([rec.n]))
+            else refs.add(rec.n)
+        }
         return
     }
     // `Set` step 模式：数组里 Ph("Set") 后紧跟目标 StateRef（parser 实证形状）
@@ -114,10 +129,11 @@ function walk(node: unknown, formName: string | null, out: Collector): void {
                 && isExprNode(next) && isStateRef(next)
             ) {
                 out.setTargets.add(next.n)
+                if (buttonId !== null) out.buttonSets.set(buttonId, next.n)
             }
         }
     }
-    for (const value of Object.values(rec)) walk(value, formName, out)
+    for (const value of Object.values(rec)) walk(value, formName, buttonId, out)
 }
 
 /**
@@ -134,8 +150,8 @@ export function resolveActionBindings(code: string): ActionBindings {
     }
     if (result.root === null) return EMPTY_BINDINGS
 
-    const out: Collector = { stateRefs: new Set(), setTargets: new Set(), formRefs: [] }
-    walk(result.root, null, out)
+    const out: Collector = { stateRefs: new Set(), setTargets: new Set(), buttonSets: new Map(), buttonRefs: new Map(), formRefs: [] }
+    walk(result.root, null, null, out)
 
     // 值域过滤：stateDeclarations 是变量默认值的权威（声明未达/未定义引用天然排除）
     const declarations = result.stateDeclarations as Record<string, unknown>
@@ -143,6 +159,18 @@ export function resolveActionBindings(code: string): ActionBindings {
         Object.keys(declarations).filter((name) => declarations[name] != null && PHASE_VALUES.has(String(declarations[name]))),
     )
     const dataVars = new Set(Object.keys(declarations).filter((name) => !phaseVars.has(name)))
+
+    // 操作映射：Set 目标优先；无 Set 的 Button 取子树内唯一值域变量（无法唯一定位不入表——
+    // 身份推断将对该操作降级块级）
+    const actions = new Map<string, string>()
+    for (const [id, target] of out.buttonSets) {
+        if (phaseVars.has(target)) actions.set(id, target)
+    }
+    for (const [id, refs] of out.buttonRefs) {
+        if (actions.has(id)) continue
+        const phaseRefs = [...refs].filter((name) => phaseVars.has(name))
+        if (phaseRefs.length === 1) actions.set(id, phaseRefs[0]!)
+    }
 
     const forms = new Map<string, string[]>()
     for (const { formName, ref } of out.formRefs) {
@@ -156,6 +184,7 @@ export function resolveActionBindings(code: string): ActionBindings {
     return {
         setTargets: [...out.setTargets].filter((name) => phaseVars.has(name)),
         stateVars: [...out.stateRefs].filter((name) => phaseVars.has(name)),
+        actions,
         forms,
     }
 }

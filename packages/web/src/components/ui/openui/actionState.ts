@@ -49,6 +49,15 @@ export type OpenUIActionState = {
     formState?: Record<string, unknown>
 }
 
+/**
+ * per-action 状态键单源（per-action 粒度票 02）：操作状态存储与派生的键拼装。
+ * 有变量身份 → `anchor#var`（同块多操作互不串）；无（模型偏离教学 + 绑定表也空）
+ * → 裸 anchor（块级行为，与 per-action 之前等价）。写读两侧必须同源拼装。
+ */
+export function actionStateKey(anchor: string, stateVar: string | null): string {
+    return stateVar === null ? anchor : `${anchor}#${stateVar}`
+}
+
 /** 排队轨道前段（queued→pushed→acked 单调推进）：lifecycle 停在这一段 = 消息尚未被
  *  agent 消费。MessageLifecycle 词汇见 shared；终态（cancelled/discarded/refused/
  *  withdrawn）不出现在这里——带锚点的消息一旦离开排队轨道就视为已消费 */
@@ -57,8 +66,9 @@ const UNCONSUMED_LIFECYCLES = new Set(['queued', 'pushed', 'acked'])
 /** 从消息 meta 读档③锚点（发起时由 daemon 写入，见 messageService）。
  *  信封解包走 shared 单源（unwrapRoleWrappedRecordEnvelope），不复刻信封形状。
  *  consumed = 该消息已被 agent 消费（不在排队轨道前段；非排队轨道的 lifecycle 为
- *  null，服务端直收亦视为已消费）——result 配对只认消费后的，见 derive 注释 */
-function readAnchor(msg: DecryptedMessage): { anchor: string; consumed: boolean; formState?: Record<string, unknown> } | null {
+ *  null，服务端直收亦视为已消费）——result 配对只认消费后的，见 derive 注释。
+ *  stateVar = per-action 身份（票 02）：缺失时派生键退化为裸 anchor（块级）。 */
+function readAnchor(msg: DecryptedMessage): { anchor: string; stateVar: string | null; consumed: boolean; formState?: Record<string, unknown> } | null {
     const env = unwrapRoleWrappedRecordEnvelope(msg.content)
     if (!env || env.role !== 'user') return null
     const meta = env.meta
@@ -67,7 +77,8 @@ function readAnchor(msg: DecryptedMessage): { anchor: string; consumed: boolean;
     // 表单快照（票 02）：daemon 侧仅 openui 来源落，形状 object 才认
     const rawFormState = meta.openuiFormState
     const formState = isObject(rawFormState) ? (rawFormState as Record<string, unknown>) : undefined
-    return { anchor: meta.openuiAnchor, consumed: !UNCONSUMED_LIFECYCLES.has(msg.lifecycle ?? ''), formState }
+    const stateVar = typeof meta.openuiStateVar === 'string' && meta.openuiStateVar.length > 0 ? meta.openuiStateVar : null
+    return { anchor: meta.openuiAnchor, stateVar, consumed: !UNCONSUMED_LIFECYCLES.has(msg.lifecycle ?? ''), formState }
 }
 
 /** agent 输出消息的 result 载荷（turn 终态证据所在）；非 result 形态返回 null。
@@ -100,7 +111,7 @@ export function deriveOpenUITerminalStates(
     isSessionRunning: boolean,
 ): Map<string, OpenUIActionState> {
     const out = new Map<string, OpenUIActionState>()
-    let pending: { anchor: string; consumed: boolean; formState?: Record<string, unknown> } | null = null
+    let pending: { anchor: string; stateVar: string | null; consumed: boolean; formState?: Record<string, unknown> } | null = null
 
     for (const msg of messages) {
         const anchor = readAnchor(msg)
@@ -114,11 +125,15 @@ export function deriveOpenUITerminalStates(
         const result = readResultPayload(msg)
         if (result === null) continue
         const phase: OpenUIActionState['phase'] = isAbortedTerminalReason(getField(result, 'terminal_reason')) ? 'failed' : 'done'
-        out.set(pending.anchor, pending.formState ? { phase, formState: pending.formState } : { phase })
+        const entry: OpenUIActionState = pending.formState ? { phase, formState: pending.formState } : { phase }
+        out.set(actionStateKey(pending.anchor, pending.stateVar), entry)
         pending = null
     }
     // 窗口尾部仍 pending：会话 running → running；会话已停但无终态证据（CLI 掉线
     // 消息丢失等）→ 不给条目，保持调用方已翻转的即时态（宁可停在执行态，不误报）
-    if (pending && isSessionRunning) out.set(pending.anchor, { phase: 'running', ...(pending.formState ? { formState: pending.formState } : {}) })
+    if (pending && isSessionRunning) {
+        const entry: OpenUIActionState = { phase: 'running', ...(pending.formState ? { formState: pending.formState } : {}) }
+        out.set(actionStateKey(pending.anchor, pending.stateVar), entry)
+    }
     return out
 }
