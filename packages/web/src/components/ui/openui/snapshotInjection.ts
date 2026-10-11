@@ -26,8 +26,9 @@
  *   降级（phase 照常，快照缺失只丢「刷新恢复勾选」这一增强）。
  */
 
-/** 档③ phase 值域（与 actionState 的 OpenUIActionPhase 同词汇） */
-const PHASE_VALUES = new Set(['idle', 'running', 'done', 'failed'])
+/** 档③ phase 值域（单源于 bindingParser——绑定解析与快照回注共享同一词汇） */
+export { PHASE_VALUES } from './bindingParser'
+import { PHASE_VALUES } from './bindingParser'
 
 /** `$var = "…" ` 字符串声明（捕获变量名与默认值） */
 const STATE_VAR_DECL = /\$([A-Za-z]\w*)\s*=\s*"([^"]*)"/g
