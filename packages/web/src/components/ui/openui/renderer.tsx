@@ -42,6 +42,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Alert } from 'antd'
 import { Renderer, type ActionEvent, type OpenUIError } from '@openuidev/react-lang'
 import { ThemeProvider } from '@openuidev/react-ui'
@@ -54,7 +55,7 @@ import { useUiSendMessage, useOpenUIAnchor } from './actionContext'
 import { useOpenUIActionStore } from './actionStore'
 import { actionStateKey, type OpenUIActionPhase } from './actionState'
 import { resolveStateActionVars, resolveMergedSnapshotInjection } from './snapshotInjection'
-import { resolveActionBindings } from './bindingParser'
+import { resolveActionBindings, EMPTY_BINDINGS } from './bindingParser'
 import { mobiLibrary, takeClickedActionStatementId } from './mobiLibrary'
 
 export interface OpenUIRendererProps {
@@ -77,12 +78,17 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useUiSendMessage()
-    // 操作绑定表（per-action 票 02）：本 fence 的操作 → 状态变量绑定，一次解析随 code 记忆
-    const bindings = useMemo(() => resolveActionBindings(code), [code])
-    // per-action phase/快照：订阅整 Map（action 点击是低频事件，Map 引用仅在 set 时变化），
-    // 本 fence 的键集随绑定表动态，无法用固定 selector 逐键订阅
-    const phasesMap = useOpenUIActionStore((s) => s.phases)
-    const formStatesMap = useOpenUIActionStore((s) => s.formStates)
+    // 操作绑定表（per-action 票 02）：本 fence 的操作 → 状态变量绑定。流式期间跳过
+    // AST 全量解析（code 每 delta 变化，解析结果无处消费——点击被 streaming 闸门挡、
+    // 快照回注只在封口后生效），封口时 streaming 翻转触发一次真解析
+    const bindings = useMemo(
+        () => (streaming ? EMPTY_BINDINGS : resolveActionBindings(code)),
+        [code, streaming],
+    )
+    // per-action phase/快照：**per-key 切片订阅**（useShallow 数组等价）而非整 Map——
+    // 整 Map 订阅下任意块的写入都换新 Map 引用，屏幕上全部 openui 块重渲染且
+    // react-lang 随 initialState 引用变化重建 store；切片后只有本 fence 有变化的块重渲染。
+    // 事件内读最新 Map 走 getState（handleAction 去重闸），不依赖订阅
     const setPhase = useOpenUIActionStore((s) => s.setPhase)
 
     // 本 fence 的操作状态变量集：绑定表为准；绑定表为空（解析失败/纯展示）降级值域识别
@@ -93,25 +99,36 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     }, [bindings, code])
 
     // 各操作的当前 phase（anchor === null 时无状态可查，恒 idle）
+    const phaseValues = useOpenUIActionStore(
+        useShallow((s) =>
+            anchor === null
+                ? []
+                : stateVars.map((v) => s.phases.get(actionStateKey(anchor, v)) ?? s.phases.get(anchor) ?? 'idle' as const),
+        ),
+    )
     const phasesByVar = useMemo(() => {
         const byVar = new Map<string, OpenUIActionPhase>()
-        if (anchor === null) return byVar
-        for (const v of stateVars) {
-            byVar.set(v, phasesMap.get(actionStateKey(anchor, v)) ?? phasesMap.get(anchor) ?? 'idle')
-        }
+        stateVars.forEach((v, i) => byVar.set(v, phaseValues[i]!))
         return byVar
-    }, [anchor, stateVars, phasesMap])
+    }, [stateVars, phaseValues])
 
     // 表单快照（状态持久化票 02，票 03 多表单）：per-action 粒度下各操作快照随各自
-    // 复合键派生。逐条解析后合并注入映射（resolveMergedSnapshotInjection）——不能先
-    // 合并原始快照再解析：两个表单容器会破坏「唯一对象值键」判据整体降级（E2E 实锤）
-    const snapshotInjection = useMemo(() => {
-        if (anchor === null) return null
-        const snapshots = [...stateVars, null].map((v) =>
-            formStatesMap.get(actionStateKey(anchor, v)) ?? (v === null ? formStatesMap.get(anchor) : undefined),
-        )
-        return resolveMergedSnapshotInjection(code, snapshots, bindings.forms)
-    }, [anchor, stateVars, formStatesMap, code, bindings.forms])
+    // 复合键派生。切片订阅本 fence 的快照值；逐条解析后合并注入映射
+    // （resolveMergedSnapshotInjection）——不能先合并原始快照再解析：两个表单容器会
+    // 破坏「唯一对象值键」判据整体降级（E2E 实锤）
+    const snapshotValues = useOpenUIActionStore(
+        useShallow((s) =>
+            anchor === null
+                ? []
+                : [...stateVars, null].map((v) =>
+                    s.formStates.get(actionStateKey(anchor, v)) ?? (v === null ? s.formStates.get(anchor) : undefined),
+                ),
+        ),
+    )
+    const snapshotInjection = useMemo(
+        () => resolveMergedSnapshotInjection(code, snapshotValues, bindings.forms),
+        [code, snapshotValues, bindings.forms],
+    )
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
     // 无 provider（会话页外的 markdown 渲染）静默 no-op。
@@ -131,9 +148,10 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
         const stateVar = boundVar
             ?? (bindings.stateVars.length === 1 ? bindings.stateVars[0]! : null)
         // running 去重（票 02 起 per-action）：只挡同一状态键（同操作变量；降级块级
-        // 键同理）的重复点击——直接查 store 原始键，与乐观翻转写同一把钥匙
+        // 键同理）的重复点击——事件帧读 store 最新值（getState，不经订阅），与乐观
+        // 翻转写同一把钥匙
         const stateKey = actionStateKey(anchor ?? '', stateVar)
-        const current = anchor !== null ? phasesMap.get(stateKey) ?? 'idle' : 'idle'
+        const current = anchor !== null ? useOpenUIActionStore.getState().phases.get(stateKey) ?? 'idle' : 'idle'
         if (current === 'running') return
         const text = buildOpenUIMessage(event)
         if (!text) return
@@ -152,7 +170,7 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
             .catch(() => {
                 if (anchor !== null) setPhase(stateKey, 'idle')
             })
-    }, [streaming, anchor, bindings, phasesByVar, setPhase, sendMessage])
+    }, [streaming, anchor, bindings, setPhase, sendMessage])
 
     const initialState = useMemo(() => {
         if (anchor === null) return undefined

@@ -15,7 +15,7 @@
  */
 
 import { Hono } from 'hono'
-import { UserMessageContentSchema, normalizeUserContent, UiMessageOriginSchema } from '@mobi/shared'
+import { STATE_VAR_RE, UserMessageContentSchema, normalizeUserContent, UiMessageOriginSchema } from '@mobi/shared'
 import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
@@ -52,7 +52,7 @@ const newFormatBodySchema = z.object({
     // 操作状态变量名（per-action 粒度票 02）：本次操作绑定的 `$` 状态变量，落库进
     // meta.openuiStateVar——derive 按（锚点， 变量）配对判定该操作的终态。同 formState
     // 资格门（仅 openui 来源落）；超限静默丢弃
-    stateVar: z.string().min(2).max(64).regex(/^\$[A-Za-z]\w*$/).optional(),
+    stateVar: z.string().min(2).max(64).regex(STATE_VAR_RE).optional(),
 })
 
 /** 旧版 web/PWA 平铺发送格式（窗口期兼容） */

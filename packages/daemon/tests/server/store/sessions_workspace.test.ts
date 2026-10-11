@@ -102,12 +102,13 @@ describe('sessions 与 workspace 关联', () => {
         expect(page1.total).toBe(3)
         expect(page1.nextCursor).not.toBeNull()
 
-        // 翻页间隙：剩余会话的 updated_at 被顶到 cursor 之上（如 metadata 更新）
+        // 翻页间隙：剩余会话的 updated_at 被顶到 cursor 之上（真实通道是运行态写——
+        // 元数据写已收口为永不顶起 updated_at，见 updateSessionMetadata）
         const remaining = store.sessions.getSessionsByNamespace('default')
             .filter(s => s.workspaceId === workspace.id)
             .slice(2)   // 第三条（page1 未加载）
         expect(remaining.length).toBe(1)
-        store.sessions.updateSessionMetadata(remaining[0].id, { path: '/a/mobi', name: 'bumped' }, remaining[0].metadataVersion, 'default')
+        store.sessions.setRuntimeState(remaining[0].id, {}, Date.now() + 1000, 'default')
 
         // 下一页空结果：旧行为 total 归 0 → 前端 remainingCount=0、「展开更多」消失但会话没加载完
         const page2 = store.sessions.getSessionsByWorkspace('default', workspace.id, page1.nextCursor, 2)

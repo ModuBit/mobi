@@ -166,11 +166,10 @@ export function updateSessionMetadata(
     metadata: unknown,
     expectedVersion: number,
     namespace: string,
-    options?: { touchUpdatedAt?: boolean }
 ): VersionedUpdateResult<unknown | null> {
-    const now = Date.now()
-    const touchUpdatedAt = options?.touchUpdatedAt !== false
-
+    // 元数据写**永不**更新 updated_at（生产实锤：空闲多日的会话被 meta 写顶到「最近」
+    // 最前）——真交互写（消息/运行态 setRuntimeState 等）各自显式设置 updated_at，
+    // 本函数没有也不该有 touch 用户，故不设旗标、在收口点直接禁止
     return updateVersionedField({
         db,
         table: 'sessions',
@@ -186,13 +185,9 @@ export function updateSessionMetadata(
         },
         decode: safeJsonParse,
         setClauses: [
-            'updated_at = CASE WHEN @touch_updated_at = 1 THEN @updated_at ELSE updated_at END',
             'seq = seq + 1'
         ],
-        params: {
-            updated_at: now,
-            touch_updated_at: touchUpdatedAt ? 1 : 0
-        }
+        params: {}
     })
 }
 
@@ -225,7 +220,6 @@ export function casUpdateSessionMetadataBestEffort(
             { ...base, ...next },
             stored.metadataVersion,
             stored.namespace,
-            { touchUpdatedAt: false }
         )
         if (result.result === 'success') return true
         if (result.result === 'error') return false

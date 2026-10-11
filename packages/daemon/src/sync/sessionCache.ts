@@ -520,7 +520,6 @@ export class SessionCache {
             newMetadata,
             session.metadataVersion,
             session.namespace,
-            { touchUpdatedAt: false }
         )
 
         if (result.result === 'error') {
@@ -579,7 +578,6 @@ export class SessionCache {
                     mergedMetadata,
                     latest.metadataVersion,
                     namespace,
-                    { touchUpdatedAt: false }
                 )
                 if (result.result === 'success') {
                     break
@@ -770,7 +768,6 @@ export class SessionCache {
             newMetadata,
             session.metadataVersion,
             session.namespace,
-            { touchUpdatedAt: false }
         )
 
         if (result.result === 'success') {
@@ -819,7 +816,6 @@ export class SessionCache {
             newMetadata,
             session.metadataVersion,
             session.namespace,
-            { touchUpdatedAt: false }
         )
         if (result.result !== 'success') return false
 

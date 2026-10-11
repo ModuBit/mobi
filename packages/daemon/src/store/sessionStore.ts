@@ -64,10 +64,9 @@ export class SessionStore {
         id: string,
         metadata: unknown,
         expectedVersion: number,
-        namespace: string,
-        options?: { touchUpdatedAt?: boolean }
+        namespace: string
     ): VersionedUpdateResult<unknown | null> {
-        return updateSessionMetadata(this.db, id, metadata, expectedVersion, namespace, options)
+        return updateSessionMetadata(this.db, id, metadata, expectedVersion, namespace)
     }
 
     updateSessionAgentState(

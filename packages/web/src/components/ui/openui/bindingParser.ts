@@ -52,7 +52,8 @@ export interface ActionBindings {
     forms: Map<string, string[]>
 }
 
-const EMPTY_BINDINGS: ActionBindings = { setTargets: [], stateVars: [], actions: new Map(), forms: new Map() }
+/** 全空绑定（模块级单例）：流式期间的解析跳过闸门等消费方共用同一实例 */
+export const EMPTY_BINDINGS: ActionBindings = { setTargets: [], stateVars: [], actions: new Map(), forms: new Map() }
 
 /** parser 单例（schema 构建昂贵；parse 本身无状态） */
 let parser: ReturnType<typeof createParser> | null = null

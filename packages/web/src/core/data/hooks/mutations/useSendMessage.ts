@@ -16,8 +16,8 @@
 
 import { useCallback, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { buildUiAnchorMeta } from '@mobi/shared'
 import type { UiMessageOrigin, UserContentBlock } from '@mobi/shared'
-import { UI_ANCHOR_ORIGIN } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { makeClientSideId } from '@/core/lib/messages'
 import { serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
@@ -83,9 +83,13 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                     // 多操作块按钮卡死执行中
                     meta: {
                         sentFrom: vars.sentFrom ?? 'webapp',
-                        ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.sourceBlock ? { openuiAnchor: vars.sourceBlock } : {}),
-                        ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.formState ? { openuiFormState: vars.formState } : {}),
-                        ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.stateVar ? { openuiStateVar: vars.stateVar } : {}),
+                        // 锚点 meta 组装走 shared 单源（daemon 落库同 helper）——乐观气泡
+                        // 与落库行逐字段一致，echo 合并前后才有同一配对身份
+                        ...buildUiAnchorMeta(vars.sentFrom, {
+                            sourceBlock: vars.sourceBlock,
+                            formState: vars.formState,
+                            stateVar: vars.stateVar,
+                        }),
                     },
                 },
                 createdAt: now,
@@ -116,10 +120,8 @@ type SendOpts = Pick<SendVars, 'sentFrom' | 'sourceBlock' | 'formState' | 'state
     const send = (segments: ComposerSegments, opts?: SendOpts): SendVars => ({
         blocks: serializeSegments(segments),
         localId: makeClientSideId('local'),
-        ...(opts?.sentFrom ? { sentFrom: opts.sentFrom } : {}),
-        ...(opts?.sourceBlock ? { sourceBlock: opts.sourceBlock } : {}),
-        ...(opts?.formState ? { formState: opts.formState } : {}),
-        ...(opts?.stateVar ? { stateVar: opts.stateVar } : {}),
+        // undefined 字段 JSON 序列化时被丢弃，等价于「未传」（与 client.ts send 同语义）
+        ...(opts ?? {}),
     })
     // mutate 稳定化：底层 mutation.mutate 引用由 useMutation 保证跨渲染不变（选项经
     // 内部 ref 更新），包装层用 useCallback 保持同一引用——消费方（ChatContainer 的

@@ -33,6 +33,7 @@ import {
     getField,
     isAbortedTerminalReason,
     isObject,
+    QUEUE_LIFECYCLE_STATES,
     UI_ANCHOR_ORIGIN,
     unwrapOutputMessage,
     unwrapRoleWrappedRecordEnvelope,
@@ -59,9 +60,9 @@ export function actionStateKey(anchor: string, stateVar: string | null): string 
 }
 
 /** 排队轨道前段（queued→pushed→acked 单调推进）：lifecycle 停在这一段 = 消息尚未被
- *  agent 消费。MessageLifecycle 词汇见 shared；终态（cancelled/discarded/refused/
- *  withdrawn）不出现在这里——带锚点的消息一旦离开排队轨道就视为已消费 */
-const UNCONSUMED_LIFECYCLES = new Set(['queued', 'pushed', 'acked'])
+ *  agent 消费。集合单源在 shared（QUEUE_LIFECYCLE_STATES）；终态（cancelled/
+ *  discarded/refused/withdrawn）不出现在这里——带锚点的消息一旦离开排队轨道就视为已消费 */
+const UNCONSUMED_LIFECYCLES = new Set<string>(QUEUE_LIFECYCLE_STATES)
 
 /** 从消息 meta 读档③锚点（发起时由 daemon 写入，见 messageService）。
  *  信封解包走 shared 单源（unwrapRoleWrappedRecordEnvelope），不复刻信封形状。
@@ -115,7 +116,8 @@ export function deriveOpenUITerminalStates(
     isSessionRunning: boolean,
 ): Map<string, OpenUIActionState> {
     const out = new Map<string, OpenUIActionState>()
-    type Pending = { anchor: string; stateVar: string | null; consumed: boolean; formState?: Record<string, unknown> }
+    // pending 锚点条目 = readAnchor 的返回形状（同一记录，勿再手抄一份字段）
+    type Pending = NonNullable<ReturnType<typeof readAnchor>>
     const pendings: Pending[] = []
 
     for (const msg of messages) {

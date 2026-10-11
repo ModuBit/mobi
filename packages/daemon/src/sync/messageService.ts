@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { isMobiDelivered, normalizeUserContent, toCrossSessionMeta, UI_ANCHOR_ORIGIN } from '@mobi/shared'
+import { buildUiAnchorMeta, isMobiDelivered, normalizeUserContent, toCrossSessionMeta } from '@mobi/shared'
 import type { CrossSessionOrigin, UiMessageOrigin } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
@@ -161,10 +161,13 @@ export class MessageService {
             content: blocks,
             meta: {
                 sentFrom,
-                // 档③锚点只在 openui 来源上落（手打/cli/app 无意义——资格常量在 shared），web 侧扫描恢复按钮态的判据
-                ...(payload.sourceBlock && sentFrom === UI_ANCHOR_ORIGIN ? { openuiAnchor: payload.sourceBlock } : {}),
-                ...(payload.formState && sentFrom === UI_ANCHOR_ORIGIN ? { openuiFormState: payload.formState } : {}),
-                ...(payload.stateVar && sentFrom === UI_ANCHOR_ORIGIN ? { openuiStateVar: payload.stateVar } : {}),
+                // 档③锚点 meta 组装走 shared 单源（资格闸 + openui* 键词汇）——web 乐观
+                // 气泡侧用同一 helper，两侧逐字段一致才有 echo 合并后的同一配对身份
+                ...buildUiAnchorMeta(sentFrom, {
+                    sourceBlock: payload.sourceBlock,
+                    formState: payload.formState,
+                    stateVar: payload.stateVar,
+                }),
                 ...(origin ? toCrossSessionMeta(origin) : {})
             }
         }

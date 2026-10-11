@@ -139,10 +139,9 @@ export function registerDirective<P>(definition: DirectiveDefinition<P>): void {
  *  前缀稳定（后来的重复只会让尾部更短）——与流式渲染的 append-only 假设兼容，
  *  不会引发已揭示内容的重淡入。 */
 export function dedupeDirectiveText(text: string): string {
-    // 快速路径同源放宽：变体前缀（::: / 全角冒号 / 带空格）也要进去重管线；
-    // 冒号前置守卫（同 findDirectiveStart）让无指令的普通文本免整串正则
-    if (!text.includes(':') && !text.includes('：')) return text
-    if (!DIRECTIVE_LEAD_RE.test(text)) return text
+    // 快速路径单源：findDirectiveStart 的 -1 返回即「无指令」（冒号守卫 + lead 正则
+    // 都在其中），此处不再手抄一份同义守卫
+    if (findDirectiveStart(text) === -1) return text
     const seen = new Set<string>()
     let out = ''
     let cursor = 0

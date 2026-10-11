@@ -29,6 +29,7 @@
 /** 档③ phase 值域（单源于 bindingParser——绑定解析与快照回注共享同一词汇） */
 export { PHASE_VALUES } from './bindingParser'
 import { PHASE_VALUES } from './bindingParser'
+import { STATE_VAR_RE } from '@mobi/shared'
 
 /** `$var = "…" ` 字符串声明（捕获变量名与默认值） */
 const STATE_VAR_DECL = /\$([A-Za-z]\w*)\s*=\s*"([^"]*)"/g
@@ -47,8 +48,9 @@ export function resolveStateActionVars(code: string): string[] {
     return out
 }
 
-/** `$var` 合法标识符形状（命名表单快照键的原样回注判据） */
-const SNAPSHOT_KEY_RE = /^\$[A-Za-z]\w*$/
+/** `$var` 合法标识符形状 = shared STATE_VAR_RE（与 daemon zod 校验同一正则，
+ *  两端漂移会造成「daemon 收下、回注拒绝」的静默失败） */
+const SNAPSHOT_KEY_RE = STATE_VAR_RE
 
 /**
  * 解析表单快照 → 要并入 initialState 的 `$` 键映射；无法唯一定位注入目标 → null。

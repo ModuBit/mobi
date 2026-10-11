@@ -267,10 +267,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             metadata,
             expectedVersion,
             sessionAccess.value.namespace,
-            // CLI 推送的 metadata（path/version/commands、capability 刷新等）是环境事实，
-            // 非用户交互——不顶新 updated_at（侧栏相对时间与列表排序的「最近交互」语义，
-            // 同 SDKMetadata 写路径；顶新会把空闲多日的会话显示成「1 小时前」）
-            { touchUpdatedAt: false }
         )
         if (result.result === 'success') {
             cb({ result: 'success', version: result.version, metadata: result.value })

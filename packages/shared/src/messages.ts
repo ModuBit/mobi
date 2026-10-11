@@ -161,6 +161,31 @@ export function isUiMessageOrigin(value: unknown): value is UiMessageOrigin {
 export const UI_ANCHOR_ORIGIN: UiMessageOrigin = 'openui'
 
 /**
+ * 档③锚点 meta 的组装单源：daemon 落库（messageService）与 web 乐观气泡
+ * （useSendMessage）两侧的 meta 必须**逐字段一致**——echo 合并不回填 meta，
+ * 乐观气泡缺字段会让扫描按「无身份」配对（per-action E2E 实锤多操作卡 running）。
+ * 资格闸（仅 openui 来源）与 `openui*` 键词汇都在这一处，两包各自展开即得。
+ */
+export function buildUiAnchorMeta(
+    sentFrom: string | undefined,
+    parts: { sourceBlock?: string; formState?: Record<string, unknown>; stateVar?: string },
+): Record<string, unknown> {
+    if (sentFrom !== UI_ANCHOR_ORIGIN) return {}
+    return {
+        ...(parts.sourceBlock ? { openuiAnchor: parts.sourceBlock } : {}),
+        ...(parts.formState ? { openuiFormState: parts.formState } : {}),
+        ...(parts.stateVar ? { openuiStateVar: parts.stateVar } : {}),
+    }
+}
+
+/**
+ * `$var` 状态变量标识符形状（单源）：daemon 落 `meta.openuiStateVar` 的 zod 校验
+ * 与 web 快照回注的键判据（SNAPSHOT_KEY_RE）共用——两端正则漂移会造成
+ * 「daemon 收下、刷新回注拒绝」的静默恢复失败。
+ */
+export const STATE_VAR_RE = /^\$[A-Za-z]\w*$/
+
+/**
  * 用户消息生命周期状态（messages.lifecycle 列 / DecryptedMessage.lifecycle）。
  * - `null`：非排队轨道（agent/CLI/system 输出等），从不进入排队悬浮条
  * - `'queued'`：webapp 用户提交、等待 CLI 消费（悬浮展示）
@@ -190,6 +215,13 @@ export const LIFECYCLE_RANK: Record<Exclude<MessageLifecycle, null>, number> = {
 export const COMMAND_LIFECYCLE_STATES = ['processing', 'done', 'cancelled', 'discarded', 'refused'] as const satisfies readonly MessageLifecycle[]
 
 export type CommandLifecycleState = (typeof COMMAND_LIFECYCLE_STATES)[number]
+
+/**
+ * 排队轨道前段（单一来源）：queued→pushed→acked 单调推进，lifecycle 停在这一段 =
+ * 消息尚未被 agent 消费。web 终态扫描的 result 配对只认消费后的锚点消息——
+ * satisfies 保证不越出 MessageLifecycle 值域（消费端勿手写字面量副本）。
+ */
+export const QUEUE_LIFECYCLE_STATES = ['queued', 'pushed', 'acked'] as const satisfies readonly MessageLifecycle[]
 
 /** candidate 是否比 current 更靠后（rank 严格更大且不同 rank——同 rank 的不同终态互不覆盖）。
  *  null（非排队轨道）不参与推进。 */

@@ -39,6 +39,9 @@ export const FENCE_INDEX_TOKEN_PREFIX = 'mobi-fence-'
 const OPENUI_FENCE_OPEN = /^(`{3,})[ \t]*(openui(?:-lang)?(?:[ \t]+[^\n]*?)?)[ \t]*$/
 /** GFM 闭栏行：行首 ≥3 反引号 */
 const FENCE_CLOSE = /^`{3,}\s*$/
+/** 身份 token 匹配（模块级预编译——annotate/parse 在流式渲染热路径上逐次调用） */
+const FENCE_TOKEN_RE = new RegExp(`${FENCE_INDEX_TOKEN_PREFIX}(\\d+)`)
+const FENCE_TOKEN_BOUNDED_RE = new RegExp(`(?:^|\\s)${FENCE_INDEX_TOKEN_PREFIX}(\\d+)(?:$|\\s)`)
 
 /**
  * 给 content 中每个完整 openui fence 的 info string 追加文档序身份 token。
@@ -68,7 +71,7 @@ export function annotateOpenuiFences(content: string): string {
             break
         }
         const info = open[2]!.trim()
-        const existing = info.match(new RegExp(`${FENCE_INDEX_TOKEN_PREFIX}(\\d+)`))
+        const existing = info.match(FENCE_TOKEN_RE)
         if (existing) {
             // 沿用原号（重扫已注解的 content），后续新 fence 从最大号+1 续编
             nextIndex = Math.max(nextIndex, Number.parseInt(existing[1]!, 10) + 1)
@@ -89,7 +92,7 @@ export function annotateOpenuiFences(content: string): string {
  */
 export function parseFenceIndexToken(lang: string | undefined): number | null {
     if (!lang || !/^openui(?:-lang)?(?:\s|$)/.test(lang)) return null
-    const m = lang.match(new RegExp(`(?:^|\\s)${FENCE_INDEX_TOKEN_PREFIX}(\\d+)(?:$|\\s)`))
+    const m = lang.match(FENCE_TOKEN_BOUNDED_RE)
     if (!m) return null
     const n = Number.parseInt(m[1]!, 10)
     return Number.isFinite(n) ? n : null
