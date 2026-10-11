@@ -52,14 +52,16 @@ const SNAPSHOT_KEY_RE = /^\$[A-Za-z]\w*$/
 
 /**
  * 解析表单快照 → 要并入 initialState 的 `$` 键映射；无法唯一定位注入目标 → null。
- * 按值形状分类而非先剥 `$` 键——react-lang 命名表单的 formName 本身就是 `$` 变量
- * （返回 `{ "$todos": {...} }`，E2E 实锤），盲目剥 `$` 会把唯一数据剥空：
- * - 恰有一个对象值键（命名表单容器）且其余键全是 `$` 机制键：
- *   键为 `$` 标识符形状时**原样回注**（键即绑定变量名——票 03：forms 映射提供时
- *   校验归属，多表单不再要求源码唯一空对象声明）；非 `$` 形状走源码容器定位
- * - 无对象值键（无名表单顶层）→ 剥 `$` 机制键后整体即字段集，源码唯一空对象
- *   声明定位（既有语义）
- * - 其余形状（多个对象值键 / 对象值键与无名标量混杂）无法判定 → 降级
+ * 按值形状分类而非先剥 `$` 键——react-lang 的载荷键就是 `$` 变量名（返回
+ * `{ "$todos": {...} }`，E2E 实锤），盲目剥 `$` 会把唯一数据剥空：
+ * - `$` 标识符键直接回注：对象值键是命名表单容器（键即绑定变量名，forms 提供
+ *   时校验归属，伪造/无关键 → 整体降级 null）；标量值键是直接绑定 `$var` 的字段
+ *   原样回注。值 ∈ phase 值域的标量键是状态机制变量瞬态，剔除——否则回注以
+ *   idle 覆盖派生的 done，一次性操作按钮解锁定复开
+ * - 非 `$` 键走既有容器定位语义：唯一对象值 = 命名表单字段集、纯标量 = 无名表单
+ *   字段，注入源码中唯一的空对象声明 `$` 变量（0/多个 → null）
+ * - 混合包（容器 + 标量字段共存，E2E 实锤 `{ $subscribe, $contact, $formAState }`
+ *   形状）：两桶各自解析后合并——容器键与标量键都是独立 initialState 键
  */
 export function resolveFormSnapshotInjection(
     code: string,
@@ -69,29 +71,58 @@ export function resolveFormSnapshotInjection(
     const isPlainObject = (v: unknown) => v != null && typeof v === 'object' && !Array.isArray(v)
     const entries = Object.entries(formState)
     if (entries.length === 0) return null
-    const objectEntries = entries.filter(([, v]) => isPlainObject(v))
-    const scalarEntries = entries.filter(([, v]) => !isPlainObject(v))
+    const knownFormVars = forms !== undefined && forms.size > 0 ? new Set([...forms.values()].flat()) : null
 
+    const direct: Record<string, unknown> = {}
+    const legacyEntries: Array<[string, unknown]> = []
+    for (const [key, value] of entries) {
+        if (SNAPSHOT_KEY_RE.test(key)) {
+            if (isPlainObject(value)) {
+                if (knownFormVars !== null && !knownFormVars.has(key)) return null
+                direct[key] = value
+            } else if (!PHASE_VALUES.has(String(value))) {
+                direct[key] = value
+            }
+        } else {
+            legacyEntries.push([key, value])
+        }
+    }
+    if (legacyEntries.length === 0) return Object.keys(direct).length > 0 ? direct : null
+
+    const legacyObjects = legacyEntries.filter(([, v]) => isPlainObject(v))
+    const legacyScalars = legacyEntries.filter(([, v]) => !isPlainObject(v))
     let fields: Record<string, unknown> | null = null
-    let directKey: string | null = null
-    if (objectEntries.length === 1 && scalarEntries.every(([k]) => k.startsWith('$'))) {
-        const [key, value] = objectEntries[0]!
-        fields = value as Record<string, unknown>
-        if (SNAPSHOT_KEY_RE.test(key)) directKey = key
-    } else if (objectEntries.length === 0) {
-        fields = Object.fromEntries(scalarEntries.filter(([k]) => !k.startsWith('$')))
-        if (Object.keys(fields).length === 0) return null
-    }
+    if (legacyObjects.length === 1 && legacyScalars.length === 0) fields = legacyObjects[0]![1] as Record<string, unknown>
+    else if (legacyObjects.length === 0 && legacyScalars.length > 0) fields = Object.fromEntries(legacyScalars)
     if (fields === null) return null
-
-    // 原样回注通道：快照键即绑定变量名；forms 提供时校验归属（伪造/无关键 → 降级）
-    if (directKey !== null) {
-        if (forms !== undefined && forms.size > 0 && ![...forms.values()].flat().includes(directKey)) return null
-        return { [directKey]: fields }
-    }
 
     // 容器定位通道：源码唯一空对象声明（无名表单 / 非 $ 形状命名键的既有语义）
     const containers = [...code.matchAll(EMPTY_OBJ_DECL)].map((m) => `$${m[1]}`)
     if (containers.length !== 1) return null
-    return { [containers[0]!]: fields }
+    return { ...direct, [containers[0]!]: fields }
+}
+
+/**
+ * per-action 多快照合并回注（renderer 消费）：各操作的快照**逐条解析后合并**注入
+ * 映射。不能先合并原始快照再解析——两个表单容器（两个对象值键）会破坏「唯一对象
+ * 值键」判据整体降级 null，双表单的值全丢（2026-10-11 E2E 实锤：锁定靠 derive
+ * 恢复正常，值静默丢失）。全部无法解析 → null。
+ */
+export function resolveMergedSnapshotInjection(
+    code: string,
+    snapshots: ReadonlyArray<Record<string, unknown> | undefined>,
+    forms?: Map<string, string[]>,
+): Record<string, unknown> | null {
+    let merged: Record<string, unknown> | null = null
+    for (const snap of snapshots) {
+        if (snap === undefined) continue
+        const injection = resolveFormSnapshotInjection(code, snap, forms)
+        if (injection === null) continue
+        if (merged === null) {
+            merged = injection
+            continue
+        }
+        merged = { ...merged, ...injection }
+    }
+    return merged
 }

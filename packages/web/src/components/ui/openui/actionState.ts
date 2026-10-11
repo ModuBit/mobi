@@ -105,35 +105,45 @@ function readResultPayload(msg: DecryptedMessage): Record<string, unknown> | nul
  * result 属于上一个 turn（本消息还没轮到 agent 处理），不归因给它——否则 turn 进行
  * 中点击的 action 会被前 turn 的收尾 result 误翻 done。仅消费后（processing 及之后
  * /非排队轨道）的 result 才配对。
+ *
+ * 交叠 turn（并发点击多操作，per-action E2E 2026-10-11 实锤）：多条锚点背靠背落库
+ * 且各自 result 未到齐——pending 是**队列**而非单槽位，result 按序消费队首**已消费**
+ * 的锚点。单槽位下后者覆盖前者，前者的 result 错配给后者、前者终态丢失恒卡 running。
  */
 export function deriveOpenUITerminalStates(
     messages: readonly DecryptedMessage[],
     isSessionRunning: boolean,
 ): Map<string, OpenUIActionState> {
     const out = new Map<string, OpenUIActionState>()
-    let pending: { anchor: string; stateVar: string | null; consumed: boolean; formState?: Record<string, unknown> } | null = null
+    type Pending = { anchor: string; stateVar: string | null; consumed: boolean; formState?: Record<string, unknown> }
+    const pendings: Pending[] = []
 
     for (const msg of messages) {
         const anchor = readAnchor(msg)
         if (anchor !== null) {
-            // 下一条 openui action 开始：上一段未决的锚点保持上一轮判定
-            pending = anchor
+            // 新一条 openui action 开始：入队等待自己的 result（交叠时不挤掉未决前任）
+            pendings.push(anchor)
             continue
         }
-        if (!pending) continue
-        if (!pending.consumed) continue
+        if (pendings.length === 0) continue
         const result = readResultPayload(msg)
         if (result === null) continue
+        // 队首未消费 → 其后 result 属于上一个 turn，谁都不消费（保持等待，不误报）；
+        // 交叠时严格按队首闸门（跳过队首配给后任会把前 turn result 错配给后发起的操作）
+        if (!pendings[0]!.consumed) continue
+        const pending = pendings.shift()!
         const phase: OpenUIActionState['phase'] = isAbortedTerminalReason(getField(result, 'terminal_reason')) ? 'failed' : 'done'
         const entry: OpenUIActionState = pending.formState ? { phase, formState: pending.formState } : { phase }
         out.set(actionStateKey(pending.anchor, pending.stateVar), entry)
-        pending = null
     }
-    // 窗口尾部仍 pending：会话 running → running；会话已停但无终态证据（CLI 掉线
-    // 消息丢失等）→ 不给条目，保持调用方已翻转的即时态（宁可停在执行态，不误报）
-    if (pending && isSessionRunning) {
-        const entry: OpenUIActionState = { phase: 'running', ...(pending.formState ? { formState: pending.formState } : {}) }
-        out.set(actionStateKey(pending.anchor, pending.stateVar), entry)
+    // 窗口尾部仍有多条未决：会话 running → 各自归 running（交叠时互不遮蔽）；会话已停
+    // 但无终态证据（CLI 掉线消息丢失等）→ 不给条目，保持调用方已翻转的即时态（宁可停
+    // 在执行态，不误报）
+    if (isSessionRunning) {
+        for (const pending of pendings) {
+            const entry: OpenUIActionState = { phase: 'running', ...(pending.formState ? { formState: pending.formState } : {}) }
+            out.set(actionStateKey(pending.anchor, pending.stateVar), entry)
+        }
     }
     return out
 }

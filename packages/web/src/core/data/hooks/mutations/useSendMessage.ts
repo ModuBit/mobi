@@ -77,10 +77,15 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                     role: 'user',
                     content: vars.blocks,
                     // 档③锚点同步进乐观气泡（票 04）：echo 合并不会回填 meta，若只在
-                    // 服务端行携带，扫描在运行期读不到锚点、终态翻转要等刷新才发生
+                    // 服务端行携带，扫描在运行期读不到锚点、终态翻转要等刷新才发生。
+                    // per-action（E2E 2026-10-11 实锤）：stateVar/formState 同理——缺了
+                    // derive 按「无身份」配对写裸键，复合键 running 永不被终态覆盖，
+                    // 多操作块按钮卡死执行中
                     meta: {
                         sentFrom: vars.sentFrom ?? 'webapp',
                         ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.sourceBlock ? { openuiAnchor: vars.sourceBlock } : {}),
+                        ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.formState ? { openuiFormState: vars.formState } : {}),
+                        ...(vars.sentFrom === UI_ANCHOR_ORIGIN && vars.stateVar ? { openuiStateVar: vars.stateVar } : {}),
                     },
                 },
                 createdAt: now,

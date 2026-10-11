@@ -170,4 +170,30 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
         ], false)
         expect(out.get('blk-1')?.phase).toBe('done')
     })
+
+    // 并发点击实锤（per-action E2E 2026-10-11）：交叠 turn 的两条锚点背靠背落库，
+    // 单 pending 槽位被后者覆盖 → 前者的 result 错配给后者、前者终态丢失恒卡 running
+    it('交叠双操作：两锚点背靠背发起，result 按序各自归因不互相覆盖', () => {
+        const msgs = [
+            openuiAction('blk-1', 'processing', undefined, '$mdState'),
+            openuiAction('blk-1', 'processing', undefined, '$jsonState'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 2 } }),
+        ]
+        const out = deriveOpenUITerminalStates(msgs, false)
+        expect(out.get('blk-1#$mdState')?.phase).toBe('done')
+        expect(out.get('blk-1#$jsonState')?.phase).toBe('done')
+    })
+
+    it('交叠且队首未消费：result 不归因给任何锚点（插队窗口保护不因交叠失效）', () => {
+        const msgs = [
+            openuiAction('blk-1', 'queued', undefined, '$mdState'),
+            openuiAction('blk-1', 'processing', undefined, '$jsonState'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+        ]
+        const out = deriveOpenUITerminalStates(msgs, true)
+        // result 属于更早的 turn，两个锚点都不消费它；尾部双双归 running
+        expect(out.get('blk-1#$mdState')?.phase).toBe('running')
+        expect(out.get('blk-1#$jsonState')?.phase).toBe('running')
+    })
 })

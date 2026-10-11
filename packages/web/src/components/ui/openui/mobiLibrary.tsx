@@ -29,13 +29,28 @@ import type { ComponentRenderProps, Library } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
 import type { ReactNode } from 'react'
 
-/** 最近一次点击的按钮 statementId；onAction 消费后清空（take 语义） */
-let lastClickedStatementId: string | null = null
+/** 点击 registry 的 globalThis 槽位：Symbol.for 键跨模块实例共享。vite dev
+ *  re-optimize 会产生同一模块的两个实例（E2E 2026-10-11 实锤：写读落不同实例，
+ *  刷新后首次点击身份 miss），模块级变量各持一份必断 */
+const CLICKED_ID_KEY = Symbol.for('mobi.openui.clickedActionStatementId')
+
+type RegistryHost = Record<symbol, string | null>
+
+/** 写入点击身份（Button capture 同步帧调用） */
+function writeClickedStatementId(id: string | null): void {
+    ;(globalThis as RegistryHost)[CLICKED_ID_KEY] = id
+}
+
+/** 测试跨实例写入用（与组件 capture 写同一位）；产品代码勿用 */
+export function writeClickedStatementIdForTest(id: string | null): void {
+    writeClickedStatementId(id)
+}
 
 /** renderer onAction 入口取走点击身份（取后即清——陈旧身份不得跨事件存活） */
 export function takeClickedActionStatementId(): string | null {
-    const id = lastClickedStatementId
-    lastClickedStatementId = null
+    const host = globalThis as RegistryHost
+    const id = host[CLICKED_ID_KEY] ?? null
+    host[CLICKED_ID_KEY] = null
     return id
 }
 
@@ -54,7 +69,7 @@ const mobiButton: ButtonComponent = {
             <span
                 style={{ display: 'contents' }}
                 onClickCapture={() => {
-                    lastClickedStatementId = ctx.statementId ?? null
+                    writeClickedStatementId(ctx.statementId ?? null)
                 }}
             >
                 {inner}

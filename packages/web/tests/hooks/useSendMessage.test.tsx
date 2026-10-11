@@ -258,6 +258,54 @@ describe('useSendMessage', () => {
         })
     })
 
+    it('openui 乐观气泡 meta 携带 openuiStateVar/openuiFormState（per-action E2E 2026-10-11 实锤——echo 合并不回填 meta，缺了 derive 按「无身份」配对写裸键，复合键 running 永不被终态覆盖）', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        const formState = { '$todos': { task1: true } }
+        await act(async () => {
+            result.current.mutate(textOnly('界面触发'), {
+                sentFrom: 'openui',
+                sourceBlock: 'blk-7:1:0',
+                stateVar: '$mdState',
+                formState,
+            })
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        const optimistic = readStoreMessages()[0]
+        const meta = (optimistic.content as { meta: Record<string, unknown> }).meta
+        expect(meta.sentFrom).toBe('openui')
+        expect(meta.openuiAnchor).toBe('blk-7:1:0')
+        expect(meta.openuiStateVar).toBe('$mdState')
+        expect(meta.openuiFormState).toBe(formState)
+    })
+
+    it('手打消息的乐观气泡 meta 不带 openui 字段（资格只认 openui 来源）', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate(textOnly('手打'), {
+                sentFrom: 'webapp',
+                sourceBlock: 'blk-7:1:0',
+                stateVar: '$mdState',
+            })
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        const meta = (readStoreMessages()[0].content as { meta: Record<string, unknown> }).meta
+        expect(meta.openuiAnchor).toBeUndefined()
+        expect(meta.openuiStateVar).toBeUndefined()
+        expect(meta.openuiFormState).toBeUndefined()
+    })
+
     it('onError 时调用 fetchLatestMessages(api, sessionId)', async () => {
         mocks.send.mockRejectedValue(new Error('network down'))
 
