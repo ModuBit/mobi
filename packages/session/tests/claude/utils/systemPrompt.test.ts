@@ -156,6 +156,8 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/never renders as a clickable button again/);
     expect(OPENUI_CORE_PROMPT).toMatch(/only a failed turn stays retryable/);
     expect(OPENUI_CORE_PROMPT).toMatch(/TextContent\("已提交 ✓", "small"\)/);
+    // 布尔开关否定式（E2E 实锤模型自创 $submitted 闸，宿主永不写它 → 按钮永不锁定）
+    expect(OPENUI_CORE_PROMPT).toMatch(/never introduce a separate boolean flag like `\$submitted`/);
   });
 
   it('核心段体积受控（≤26K chars ≈ 6.5K tokens——膨胀预算门，超限须先收窄再扩）', () => {
