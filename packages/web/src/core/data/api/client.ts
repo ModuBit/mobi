@@ -245,7 +245,7 @@ export function createMobiApi() {
             // sentFrom = UI 回灌来源（shared UiMessageOrigin 单一来源，票 03/06），缺省由
             // daemon 归 'webapp'——开放字符串会让客户端可伪造 'cli'，破坏跨会话判定借道；
             // sourceBlock = 档③锚点（agent text block id，随消息落库 meta，票 04 原地更新回写定位）
-            send: (sessionId: string, content: UserMessageContent, localId?: string, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string }) =>
+            send: (sessionId: string, content: UserMessageContent, localId?: string, opts?: { sentFrom?: UiMessageOrigin; sourceBlock?: string; formState?: Record<string, unknown> }) =>
                 client.post(`/api/sessions/${sessionId}/messages`, {
                     content,
                     ...(localId !== undefined ? { localId } : {}),

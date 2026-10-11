@@ -212,6 +212,29 @@ describe('useSendMessage', () => {
         ])
     })
 
+    it('send opts 的 formState 进入 api.messages.send 第 4 参（表单快照票 02——E2E 实锤 send() 组装曾丢失该字段）', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate(textOnly('界面触发'), {
+                sentFrom: 'openui',
+                sourceBlock: 'anchor-1',
+                formState: { $actionState: 'idle', answers: { a: true } },
+            })
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        expect(mocks.send.mock.calls[0][3]).toEqual({
+            sentFrom: 'openui',
+            sourceBlock: 'anchor-1',
+            formState: { $actionState: 'idle', answers: { a: true } },
+        })
+    })
+
     it('onError 时调用 fetchLatestMessages(api, sessionId)', async () => {
         mocks.send.mockRejectedValue(new Error('network down'))
 

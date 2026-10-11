@@ -29,20 +29,25 @@
  */
 
 import { create } from 'zustand'
-import type { OpenUIActionPhase } from './actionState'
+import type { OpenUIActionPhase, OpenUIActionState } from './actionState'
 
 interface OpenUIActionStateStore {
     phases: Map<string, OpenUIActionPhase>
+    /** 表单快照（状态持久化票 02）：anchor → 点击时刻的原始 formState，随扫描派生写入；
+     *  只增不删（done 后快照保留供刷新恢复），同 anchor 重复提交覆盖（后提交为准） */
+    formStates: Map<string, Record<string, unknown>>
     /** 点击即时翻转（running）；终态值同样可写（扫描 apply 前的乐观口） */
     setPhase: (anchor: string, phase: OpenUIActionPhase) => void
-    /** 扫描结果批量应用：只推进，不回退（done 后新 turn 未发起时不翻回 running） */
-    applyDerived: (derived: Map<string, OpenUIActionPhase>) => void
+    /** 扫描结果批量应用：phase 只推进不回退（done 后新 turn 未发起时不翻回 running）；
+     *  快照只增不删（后写覆盖） */
+    applyDerived: (derived: Map<string, OpenUIActionState>) => void
     /** 会话清理（ChatContainer 卸载） */
     clearAll: () => void
 }
 
 export const useOpenUIActionStore = create<OpenUIActionStateStore>((set) => ({
     phases: new Map(),
+    formStates: new Map(),
 
     setPhase: (anchor, phase) =>
         set((s) => {
@@ -56,13 +61,23 @@ export const useOpenUIActionStore = create<OpenUIActionStateStore>((set) => ({
         set((s) => {
             let changed = false
             const next = new Map(s.phases)
-            for (const [anchor, phase] of derived) {
-                if (next.get(anchor) === phase) continue
-                next.set(anchor, phase)
-                changed = true
+            let nextForms = s.formStates
+            let formsChanged = false
+            for (const [anchor, state] of derived) {
+                if (next.get(anchor) !== state.phase) {
+                    next.set(anchor, state.phase)
+                    changed = true
+                }
+                if (state.formState && nextForms.get(anchor) !== state.formState) {
+                    const forms = formsChanged ? nextForms : new Map(nextForms)
+                    forms.set(anchor, state.formState)
+                    nextForms = forms
+                    formsChanged = true
+                }
             }
-            return changed ? { phases: next } : s
+            if (!changed && !formsChanged) return s
+            return { phases: next, ...(formsChanged ? { formStates: nextForms } : {}) }
         }),
 
-    clearAll: () => set({ phases: new Map() }),
+    clearAll: () => set({ phases: new Map(), formStates: new Map() }),
 }))

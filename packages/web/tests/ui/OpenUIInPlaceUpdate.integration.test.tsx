@@ -77,7 +77,8 @@ describe('回路③：原地更新', () => {
         fireEvent.click(screen.getByText('预订'))
 
         expect(sendMessage).toHaveBeenCalledTimes(1)
-        expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui', anchor: ANCHOR })
+        // formState 恒传出（票 02）：原始快照含 $ 机制键，daemon 落库端负责资格与限长
+        expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui', anchor: ANCHOR, formState: { $actionState: 'idle' } })
         // markdown content 恒定（原地更新不动消息文本）
         expect(streamingDisplayState.current).toBe(fenced(ACTION_BLOCK))
         expect(await screen.findByText('执行中…')).toBeInTheDocument()
@@ -120,7 +121,7 @@ describe('回路③：原地更新', () => {
 
         expect(sendMessage).toHaveBeenCalledTimes(1)
         // 无锚点：origin 仍显式（openui 档），只是不带 anchor（档②退化）
-        expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui' })
+        expect(sendMessage.mock.calls[0][1]).toEqual({ origin: 'openui', formState: { $actionState: 'idle' } })
         // 无锚点不注入 initialState——label 恒 idle 文案
         expect(screen.getByText('预订')).toBeInTheDocument()
         expect(useOpenUIActionStore.getState().phases.size).toBe(0)

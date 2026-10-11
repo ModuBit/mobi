@@ -51,6 +51,7 @@ import { OPENUI_LIGHT_THEME, OPENUI_DARK_THEME } from './theme'
 import { buildOpenUIMessage } from './actionMessage'
 import { useUiSendMessage, useOpenUIAnchor } from './actionContext'
 import { useOpenUIActionStore } from './actionStore'
+import { resolveStateActionVars, resolveFormSnapshotInjection } from './snapshotInjection'
 
 export interface OpenUIRendererProps {
     /** fence 内的 OpenUI Lang 源码 */
@@ -75,6 +76,8 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     const sendMessage = useUiSendMessage()
     // 档③ phase：无锚点恒 idle（store 订阅须传稳定 selector，避免 Map 身份触发重渲染）
     const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? (baseAnchor !== null ? s.phases.get(baseAnchor) : undefined) ?? 'idle' : 'idle'))
+    // 表单快照（状态持久化票 02）：随 derive 写入，initialState 注入恢复提交时刻表单
+    const formState = useOpenUIActionStore((s) => (anchor !== null ? s.formStates.get(anchor) ?? (baseAnchor !== null ? s.formStates.get(baseAnchor) : undefined) : undefined))
     const setPhase = useOpenUIActionStore((s) => s.setPhase)
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
@@ -90,19 +93,36 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
         // 发送失败回滚：乐观 running 只有落库后扫描派生才能翻终态，请求失败时消息
         // 不会落库、去重闸门还挡着重试——不回滚会永久卡 running
         if (anchor !== null) setPhase(anchor, 'running')
-        Promise.resolve(sendMessage?.(text, { origin: 'openui', ...(anchor !== null ? { anchor } : {}) }))
+        Promise.resolve(sendMessage?.(text, {
+            origin: 'openui',
+            ...(anchor !== null ? { anchor } : {}),
+            // 表单快照（状态持久化票 02）：原始 formState 整体携带（含 $ 绑定变量——
+            // 快照目的就是恢复勾选态），daemon 落 meta.openuiFormState 供刷新后回注
+            ...(event.formState != null && typeof event.formState === 'object' ? { formState: event.formState as Record<string, unknown> } : {}),
+        }))
             .catch(() => {
                 if (anchor !== null) setPhase(anchor, 'idle')
             })
     }, [streaming, phase, anchor, setPhase, sendMessage])
 
-    // 档③注入：idle 不注入（让 $actionState 声明默认值生效，非档③块零影响）；
-    // 其余 phase 以 reactive binding 进 initialState——引用变化触发 react-lang
-    // 重建 store（initialize 只覆盖 $ 键，表单值保留），UI 按派生式翻转
-    const initialState = useMemo(
-        () => (anchor !== null && phase !== 'idle' ? { $actionState: phase } : undefined),
-        [anchor, phase],
+    // 档③注入：idle 且无快照不注入（让源码声明默认值生效，非档③块零影响）。
+    // 状态变量按值域识别（票 02 修订）：源码中默认值 ∈ {idle,running,done,failed} 的
+    // 全部 $ 变量逐一注入 phase——$actionState 只是教学惯用名，模型自创名（$mdState
+    // 等）同样生效。快照经 resolveFormSnapshotInjection 映射到唯一的空对象声明变量，
+    // 无法唯一定位时静默降级（phase 照常）
+    const stateVars = useMemo(() => resolveStateActionVars(code), [code])
+    const snapshotInjection = useMemo(
+        () => (anchor !== null && formState ? resolveFormSnapshotInjection(code, formState) : null),
+        [anchor, formState, code],
     )
+    const initialState = useMemo(() => {
+        if (anchor === null) return undefined
+        const phaseKeys = phase !== 'idle' && stateVars.length > 0
+            ? Object.fromEntries(stateVars.map((v) => [v, phase]))
+            : undefined
+        if (!phaseKeys && !snapshotInjection) return undefined
+        return { ...phaseKeys, ...snapshotInjection }
+    }, [anchor, phase, stateVars, snapshotInjection])
 
     return (
         <div className="openui-block">

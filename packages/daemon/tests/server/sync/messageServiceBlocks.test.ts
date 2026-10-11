@@ -84,3 +84,29 @@ describe('MessageService.sendMessage 内容归一落库', () => {
         expect(msgs).toHaveLength(0)
     })
 })
+
+describe('MessageService.sendMessage meta 装配（openui 锚点/快照资格）', () => {
+    test('openui 来源：sourceBlock→meta.openuiAnchor、formState→meta.openuiFormState（票 02）', async () => {
+        const { service, sessionId } = makeService()
+        await service.sendMessage(sessionId, {
+            content: '执行', sentFrom: 'openui',
+            sourceBlock: 'msg-1:1:0', formState: { 'todo-panel': { task1: true } },
+        })
+        const m = service.getMessagesAfter(sessionId, { afterSeq: 0, limit: 1 })[0]
+        const meta = (m.content as { meta: Record<string, unknown> }).meta
+        expect(meta.openuiAnchor).toBe('msg-1:1:0')
+        expect(meta.openuiFormState).toEqual({ 'todo-panel': { task1: true } })
+    })
+
+    test('webapp 来源不带锚点/快照（资格仅 openui）', async () => {
+        const { service, sessionId } = makeService()
+        await service.sendMessage(sessionId, {
+            content: '手打', sentFrom: 'webapp',
+            sourceBlock: 'msg-1:1:0', formState: { a: 1 },
+        })
+        const m = service.getMessagesAfter(sessionId, { afterSeq: 0, limit: 1 })[0]
+        const meta = (m.content as { meta: Record<string, unknown> }).meta
+        expect(meta.openuiAnchor).toBeUndefined()
+        expect(meta.openuiFormState).toBeUndefined()
+    })
+})

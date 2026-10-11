@@ -137,8 +137,10 @@ describe('openui 核心段契约（generative-ui 票 02 注入、票 08 分层�
     expect(OPENUI_CORE_PROMPT).toMatch(/Never guess a signature/i);
   });
 
-  it('档③ $actionState 约定在核心段（票 04 原地更新）', () => {
-    expect(OPENUI_CORE_PROMPT).toContain('$actionState = "idle"');
+  it('档③ 状态变量值域约定在核心段（票 04 原地更新 + 票 02 值域识别修订）', () => {
+    // 宿主按默认值域识别状态变量（模型自创名 $mdState 实测同样生效），$actionState 是惯用名
+    expect(OPENUI_CORE_PROMPT).toMatch(/default value is exactly "idle"/);
+    expect(OPENUI_CORE_PROMPT).toMatch(/idle \/ running \/ done \/ failed/);
     expect(OPENUI_CORE_PROMPT).toMatch(/\$actionState == "done" \?/);
     expect(OPENUI_CORE_PROMPT).toMatch(/idle → running → done\/failed/);
   });

@@ -45,8 +45,8 @@ const resultMsg = (data: Record<string, unknown>): DecryptedMessage => ({
     content: { role: 'agent', content: { type: 'output', data } } as DecryptedMessage['content'],
 })
 
-const openuiAction = (anchor: string, lifecycle?: string) => ({
-    ...userMsg({ sentFrom: 'openui', openuiAnchor: anchor }),
+const openuiAction = (anchor: string, lifecycle?: string, formState?: Record<string, unknown>) => ({
+    ...userMsg({ sentFrom: 'openui', openuiAnchor: anchor, ...(formState ? { openuiFormState: formState } : {}) }),
     ...(lifecycle ? { lifecycle: lifecycle as DecryptedMessage['lifecycle'] } : {}),
 })
 
@@ -56,7 +56,36 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
             openuiAction('blk-1'),
             resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 10 } }),
         ], false)
-        expect(out.get('blk-1')).toBe('done')
+        expect(out.get('blk-1')?.phase).toBe('done')
+    })
+
+    it('meta 携带 openuiFormState → 派生条目携带快照（票 02）', () => {
+        const snap = { 'todo-panel': { task1: true } }
+        const msgs = [
+            openuiAction('blk-9', undefined, snap),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+        ]
+        const out = deriveOpenUITerminalStates(msgs, false)
+        expect(out.get('blk-9')).toEqual({ phase: 'done', formState: snap })
+    })
+
+    it('无快照条目不带 formState 键（与旧形状一致）', () => {
+        const out = deriveOpenUITerminalStates([
+            openuiAction('blk-10'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+        ], false)
+        expect(out.get('blk-10')).toEqual({ phase: 'done' })
+    })
+
+    it('fence 级三段锚点（block.id:line）与旧 block 级锚点同为 opaque 字符串各自归因', () => {
+        const out = deriveOpenUITerminalStates([
+            openuiAction('msg-1:1:0'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+            openuiAction('msg-1:1:1'),
+            resultMsg({ stop_reason: 'end_turn', usage: { input_tokens: 1 } }),
+        ], false)
+        expect(out.get('msg-1:1:0')?.phase).toBe('done')
+        expect(out.get('msg-1:1:1')?.phase).toBe('done')
     })
 
     it('terminal_reason aborted_* → failed', () => {
@@ -64,12 +93,12 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
             openuiAction('blk-1'),
             resultMsg({ terminal_reason: 'aborted_streaming' }),
         ], false)
-        expect(out.get('blk-1')).toBe('failed')
+        expect(out.get('blk-1')?.phase).toBe('failed')
     })
 
     it('发起后无终态 + 会话 running → running；会话已停 → 不给条目（不误报）', () => {
         const msgs = [openuiAction('blk-1')]
-        expect(deriveOpenUITerminalStates(msgs, true).get('blk-1')).toBe('running')
+        expect(deriveOpenUITerminalStates(msgs, true).get('blk-1')?.phase).toBe('running')
         expect(deriveOpenUITerminalStates(msgs, false).has('blk-1')).toBe(false)
     })
 
@@ -90,8 +119,8 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
             openuiAction('blk-2'),
             resultMsg({ terminal_reason: 'aborted_tools' }),
         ], false)
-        expect(out.get('blk-1')).toBe('done')
-        expect(out.get('blk-2')).toBe('failed')
+        expect(out.get('blk-1')?.phase).toBe('done')
+        expect(out.get('blk-2')?.phase).toBe('failed')
     })
 
     // queued 插队窗口：排队轨道（queued/pushed/acked = 未被 agent 消费）内出现的
@@ -103,7 +132,7 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
             resultMsg({ stop_reason: 'end_turn' }),
         ]
         // running 中保持 running（agent 即将消费它）；会话已停也不给终态条目
-        expect(deriveOpenUITerminalStates(msgs, true).get('blk-1')).toBe('running')
+        expect(deriveOpenUITerminalStates(msgs, true).get('blk-1')?.phase).toBe('running')
         expect(deriveOpenUITerminalStates(msgs, false).has('blk-1')).toBe(false)
     })
 
@@ -112,6 +141,6 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
             openuiAction('blk-1', 'processing'),
             resultMsg({ stop_reason: 'end_turn' }),
         ], false)
-        expect(out.get('blk-1')).toBe('done')
+        expect(out.get('blk-1')?.phase).toBe('done')
     })
 })

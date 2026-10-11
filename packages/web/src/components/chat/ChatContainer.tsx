@@ -1265,9 +1265,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // useCallback/ref 桥化；包装对象本身每渲染新建，不能作 dep——流式期间每个 delta
     // 会击穿懒 chunk 的 memo），保证 context value 引用稳定。
     const sendUiMutateAsync = sendMutation.mutateAsync
-    const sendUiMessage = useCallback((text: string, opts: { origin: UiMessageOrigin; anchor?: string }) =>
+    const sendUiMessage = useCallback((text: string, opts: { origin: UiMessageOrigin; anchor?: string; formState?: Record<string, unknown> }) =>
         // then(void 化)：UI 回灌不消费响应体，UiSendMessage 契约只关心成败
-        sendUiMutateAsync({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor })
+        sendUiMutateAsync({ ...emptySegments(), text }, { sentFrom: opts.origin, sourceBlock: opts.anchor, formState: opts.formState })
             .then(() => undefined),
     [sendUiMutateAsync])
 

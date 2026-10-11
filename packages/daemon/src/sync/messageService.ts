@@ -57,6 +57,9 @@ export type SendMessagePayload = {
     sentFrom?: 'webapp' | 'cli' | UiMessageOrigin
     /** 档③锚点（票 04 原地更新）：发起 UI 块所在 agent text block id，落库 meta.openuiAnchor */
     sourceBlock?: string
+    /** 表单快照（状态持久化票 02）：openui 回灌点击时刻的 formState，落库 meta.openuiFormState——
+     *  web 刷新后回注恢复提交时刻表单；仅 openui 来源生效（同锚点资格） */
+    formState?: Record<string, unknown>
     /**
      * 跨会话来源身份（agent 经 send_message_to_session 投来的消息）。
      *
@@ -157,6 +160,7 @@ export class MessageService {
                 sentFrom,
                 // 档③锚点只在 openui 来源上落（手打/cli/app 无意义——资格常量在 shared），web 侧扫描恢复按钮态的判据
                 ...(payload.sourceBlock && sentFrom === UI_ANCHOR_ORIGIN ? { openuiAnchor: payload.sourceBlock } : {}),
+                ...(payload.formState && sentFrom === UI_ANCHOR_ORIGIN ? { openuiFormState: payload.formState } : {}),
                 ...(origin ? toCrossSessionMeta(origin) : {})
             }
         }

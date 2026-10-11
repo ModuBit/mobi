@@ -42,6 +42,13 @@ import type { DecryptedMessage } from '@/core/data/api/types'
 /** $actionState 的值域（与 catalog prompt 教学、renderer 注入三方共享的词汇） */
 export type OpenUIActionPhase = 'idle' | 'running' | 'done' | 'failed'
 
+/** 派生条目（状态持久化票 02）：phase 之外携带锚点消息 meta 上的表单快照——
+ *  renderer 回注 initialState 恢复提交时刻表单；快照缺失（超限丢弃/旧消息）为 undefined */
+export type OpenUIActionState = {
+    phase: Exclude<OpenUIActionPhase, 'idle'>
+    formState?: Record<string, unknown>
+}
+
 /** 排队轨道前段（queued→pushed→acked 单调推进）：lifecycle 停在这一段 = 消息尚未被
  *  agent 消费。MessageLifecycle 词汇见 shared；终态（cancelled/discarded/refused/
  *  withdrawn）不出现在这里——带锚点的消息一旦离开排队轨道就视为已消费 */
@@ -51,13 +58,16 @@ const UNCONSUMED_LIFECYCLES = new Set(['queued', 'pushed', 'acked'])
  *  信封解包走 shared 单源（unwrapRoleWrappedRecordEnvelope），不复刻信封形状。
  *  consumed = 该消息已被 agent 消费（不在排队轨道前段；非排队轨道的 lifecycle 为
  *  null，服务端直收亦视为已消费）——result 配对只认消费后的，见 derive 注释 */
-function readAnchor(msg: DecryptedMessage): { anchor: string; consumed: boolean } | null {
+function readAnchor(msg: DecryptedMessage): { anchor: string; consumed: boolean; formState?: Record<string, unknown> } | null {
     const env = unwrapRoleWrappedRecordEnvelope(msg.content)
     if (!env || env.role !== 'user') return null
     const meta = env.meta
     if (!isObject(meta) || meta.sentFrom !== UI_ANCHOR_ORIGIN) return null
     if (typeof meta.openuiAnchor !== 'string' || meta.openuiAnchor.length === 0) return null
-    return { anchor: meta.openuiAnchor, consumed: !UNCONSUMED_LIFECYCLES.has(msg.lifecycle ?? '') }
+    // 表单快照（票 02）：daemon 侧仅 openui 来源落，形状 object 才认
+    const rawFormState = meta.openuiFormState
+    const formState = isObject(rawFormState) ? (rawFormState as Record<string, unknown>) : undefined
+    return { anchor: meta.openuiAnchor, consumed: !UNCONSUMED_LIFECYCLES.has(msg.lifecycle ?? ''), formState }
 }
 
 /** agent 输出消息的 result 载荷（turn 终态证据所在）；非 result 形态返回 null。
@@ -88,9 +98,9 @@ function readResultPayload(msg: DecryptedMessage): Record<string, unknown> | nul
 export function deriveOpenUITerminalStates(
     messages: readonly DecryptedMessage[],
     isSessionRunning: boolean,
-): Map<string, Exclude<OpenUIActionPhase, 'idle'>> {
-    const out = new Map<string, Exclude<OpenUIActionPhase, 'idle'>>()
-    let pending: { anchor: string; consumed: boolean } | null = null
+): Map<string, OpenUIActionState> {
+    const out = new Map<string, OpenUIActionState>()
+    let pending: { anchor: string; consumed: boolean; formState?: Record<string, unknown> } | null = null
 
     for (const msg of messages) {
         const anchor = readAnchor(msg)
@@ -103,15 +113,12 @@ export function deriveOpenUITerminalStates(
         if (!pending.consumed) continue
         const result = readResultPayload(msg)
         if (result === null) continue
-        if (isAbortedTerminalReason(getField(result, 'terminal_reason'))) {
-            out.set(pending.anchor, 'failed')
-        } else {
-            out.set(pending.anchor, 'done')
-        }
+        const phase: OpenUIActionState['phase'] = isAbortedTerminalReason(getField(result, 'terminal_reason')) ? 'failed' : 'done'
+        out.set(pending.anchor, pending.formState ? { phase, formState: pending.formState } : { phase })
         pending = null
     }
     // 窗口尾部仍 pending：会话 running → running；会话已停但无终态证据（CLI 掉线
     // 消息丢失等）→ 不给条目，保持调用方已翻转的即时态（宁可停在执行态，不误报）
-    if (pending && isSessionRunning) out.set(pending.anchor, 'running')
+    if (pending && isSessionRunning) out.set(pending.anchor, { phase: 'running', ...(pending.formState ? { formState: pending.formState } : {}) })
     return out
 }

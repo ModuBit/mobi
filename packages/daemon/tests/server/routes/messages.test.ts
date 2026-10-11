@@ -158,7 +158,7 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
 
         const res = await postMessage(engine, { content: 'hi', sentFrom: 'openui' })
         expect(res.status).toBe(200)
-        expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui', sourceBlock: undefined })
+        expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui', sourceBlock: undefined, formState: undefined })
     })
 
     test('新格式：sourceBlock（档③锚点）随 openui 透传（票 04 原地更新）', async () => {
@@ -169,12 +169,35 @@ describe('POST /api/sessions/:id/messages（双发送格式）', () => {
         expect(sent[0].payload).toEqual({ content: 'hi', localId: undefined, sentFrom: 'openui', sourceBlock: 'agent-text-blk-1' })
     })
 
+    test('新格式：formState（表单快照）随 openui 透传（状态持久化票 02）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: '提交了待办', sentFrom: 'openui', formState: { 'todo-panel': { task1: true } } })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({
+            content: '提交了待办', localId: undefined, sentFrom: 'openui', sourceBlock: undefined,
+            formState: { 'todo-panel': { task1: true } },
+        })
+    })
+
+    test('新格式：formState 超限（>4KB 序列化）→ 静默丢弃快照，消息照发（票 02）', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const big = { big: 'x'.repeat(5000) }
+        const res = await postMessage(engine, { content: '提交了待办', sentFrom: 'openui', formState: big })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({
+            content: '提交了待办', localId: undefined, sentFrom: 'openui', sourceBlock: undefined,
+            formState: undefined,
+        })
+    })
+
     test('新格式：sentFrom=app 透传（沙箱 app bridge 回灌，generative-ui 票 06）', async () => {
         const { engine, sent } = makeSendEngine()
 
         const res = await postMessage(engine, { content: '按当前选择继续', sentFrom: 'app' })
         expect(res.status).toBe(200)
-        expect(sent[0].payload).toEqual({ content: '按当前选择继续', localId: undefined, sentFrom: 'app', sourceBlock: undefined })
+        expect(sent[0].payload).toEqual({ content: '按当前选择继续', localId: undefined, sentFrom: 'app', sourceBlock: undefined, formState: undefined })
     })
 
     test('新格式：sentFrom 白名单外取值（如伪造 cli）→ 400，不透传', async () => {

@@ -42,6 +42,13 @@ const newFormatBodySchema = z.object({
     // 档③锚点（票 04 原地更新）：发起 UI 块所在的 agent text block id，落库进
     // meta.openuiAnchor——web 刷新后扫描恢复按钮态的数据源
     sourceBlock: z.string().min(1).max(200).optional(),
+    // 表单快照（状态持久化票 02）：openui 回灌时点击时刻的原始 formState，落库进
+    // meta.openuiFormState——刷新后回注恢复提交时刻表单。超限静默丢弃（transform
+    // 置 undefined）而非 422：快照是增强不是必须，不能因它丢操作
+    formState: z.record(z.string(), z.unknown()).optional().transform((v) => {
+        if (v === undefined) return undefined
+        return JSON.stringify(v).length <= 4096 ? v : undefined
+    }),
 })
 
 /** 旧版 web/PWA 平铺发送格式（窗口期兼容） */
@@ -134,6 +141,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             // 旧平铺格式恒手打语义（不带 UI 回灌来源），缺省归 'webapp'
             sentFrom: newVars?.sentFrom ?? 'webapp',
             sourceBlock: newVars?.sourceBlock,
+            formState: newVars?.formState,
         })
         // 休眠/待激活会话唤醒（fire-and-forget）：判定单点在 wakeSession 内部（用刷新后的
         // 会话行，活跃 no-op）。入队已持久化，spawn 失败消息仍留 queued，下次发送或手动
