@@ -57,18 +57,24 @@ export interface OpenUIRendererProps {
     code: string
     /** 所在消息是否仍在流式（流式期间表单交互禁用、错误不呈现） */
     streaming: boolean
+    /** fence 身份序号（状态持久化票 01）：null = 非 TextBlock 注解路径，锚点退回 block 级 */
+    fenceIndex?: number | null
 }
 
 /** 最多内联展示的错误条数（避免长错误列表撑爆消息流） */
 const MAX_SHOWN_ERRORS = 3
 
-export default function OpenUIRenderer({ code, streaming }: OpenUIRendererProps) {
+export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRendererProps) {
+    // 锚点下钻（状态持久化票 01）：TextBlock 注解路径拼 fence 段；derive 配对消息 meta
+    // 时新回灌写 full、旧会话历史写 base——双读兼容让旧会话状态恢复不断（写恒用 full，
+    // full === base 时双读第二支幂等）
+    const baseAnchor = useOpenUIAnchor()
+    const anchor = baseAnchor !== null && fenceIndex != null ? `${baseAnchor}:${fenceIndex}` : baseAnchor
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useUiSendMessage()
-    const anchor = useOpenUIAnchor()
     // 档③ phase：无锚点恒 idle（store 订阅须传稳定 selector，避免 Map 身份触发重渲染）
-    const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? 'idle' : 'idle'))
+    const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? (baseAnchor !== null ? s.phases.get(baseAnchor) : undefined) ?? 'idle' : 'idle'))
     const setPhase = useOpenUIActionStore((s) => s.setPhase)
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；

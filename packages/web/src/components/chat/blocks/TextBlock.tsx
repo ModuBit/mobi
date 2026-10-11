@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
 import { DirectiveStreamGate } from '@/components/ui/directiveStreamGate'
 import { dedupeDirectiveText } from '@/domain/chat/directives'
+import { annotateOpenuiFences } from '@/components/ui/openui/fenceIndex'
 import { isInterruptedSyntheticText } from '@/domain/chat/normalizeAgent'
 
 /**
@@ -88,7 +89,10 @@ function StreamingGatedMarkdown({ text, isStreaming, enableSlashCommand, enableM
 }) {
     return (
         <DirectiveStreamGate.Provider value={!!isStreaming}>
-            <Markdown content={dedupeDirectiveText(text)} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
+            {/* openui fence 身份注解（票：状态持久化）：档③锚点下钻到 fence 级的身份段来源，
+                与 dedupe 同为管线内 content 变换（仅 openui fence 的 info string 追加 token，
+                其余字节不动）；只在本路径注解——Drawer 预览等无锚点场景退回 block 级 */}
+            <Markdown content={annotateOpenuiFences(dedupeDirectiveText(text))} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
         </DirectiveStreamGate.Provider>
     )
 }

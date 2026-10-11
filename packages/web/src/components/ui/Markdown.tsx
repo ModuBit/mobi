@@ -34,6 +34,7 @@ import { Favicon } from './Favicon'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { OpenUIBlock } from './OpenUIBlock'
+import { parseFenceIndexToken } from './openui/fenceIndex'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
 // 必须排在 '@ant-design/x-markdown' 导入之后（同名 keyframes 后定义者胜，见文件内注释）
 import './markdownOverride.css'
@@ -163,7 +164,9 @@ const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children, str
     // 流式状态随所在代码块（x-markdown 按块级 memo 传递 streamStatus）。
     // 标签双收：官方 inlineMode prompt 教的是 openui-lang，mobi 历史口径是 openui
     if (explicit === 'openui' || explicit === 'openui-lang') {
-        return <OpenUIBlock code={children} streaming={streamStatus === 'loading'} />
+        // fence 身份序号（状态持久化票 01）：annotateOpenuiFences 注入的 token，anchor 下钻用；
+        // 无 token（非 TextBlock 路径）传 null，renderer 退回 block 级锚点
+        return <OpenUIBlock code={children} streaming={streamStatus === 'loading'} fenceIndex={parseFenceIndexToken(lang)} />
     }
 
     return <AutoDetectCodeBlock code={children} explicitLang={explicit} />

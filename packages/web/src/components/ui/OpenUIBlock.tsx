@@ -35,14 +35,17 @@ export interface OpenUIBlockProps {
     code: string
     /** 所在消息是否仍在流式 */
     streaming: boolean
+    /** fence 身份序号（状态持久化票 01）：TextBlock 渲染路径由 annotateOpenuiFences 注入，
+     *  档③锚点据此下钻 `${anchor}:${n}`；非注解路径（Drawer 预览等）为 null，退回 block 级 */
+    fenceIndex?: number | null
 }
 
-export function OpenUIBlock({ code, streaming }: OpenUIBlockProps) {
+export function OpenUIBlock({ code, streaming, fenceIndex }: OpenUIBlockProps) {
     return (
         <Suspense
             fallback={<div className="openui-block-loading" style={{ padding: 16, color: 'var(--ant-color-text-tertiary)', fontSize: 12 }}>渲染中…</div>}
         >
-            <LazyOpenUIRenderer code={code} streaming={streaming} />
+            <LazyOpenUIRenderer code={code} streaming={streaming} fenceIndex={fenceIndex ?? null} />
         </Suspense>
     )
 }
