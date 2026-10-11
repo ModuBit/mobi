@@ -66,18 +66,17 @@ export interface OpenUIRendererProps {
 const MAX_SHOWN_ERRORS = 3
 
 export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRendererProps) {
-    // 锚点下钻（状态持久化票 01）：TextBlock 注解路径拼 fence 段；derive 配对消息 meta
-    // 时新回灌写 full、旧会话历史写 base——双读兼容让旧会话状态恢复不断（写恒用 full，
-    // full === base 时双读第二支幂等）
+    // 锚点下钻（状态持久化票 01）：TextBlock 注解路径拼 fence 段——一个 text block
+    // 多个 openui 块各自独立状态；derive 配对消息 meta 时写的就是这个 full 键，单键读
     const baseAnchor = useOpenUIAnchor()
     const anchor = baseAnchor !== null && fenceIndex != null ? `${baseAnchor}:${fenceIndex}` : baseAnchor
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useUiSendMessage()
     // 档③ phase：无锚点恒 idle（store 订阅须传稳定 selector，避免 Map 身份触发重渲染）
-    const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? (baseAnchor !== null ? s.phases.get(baseAnchor) : undefined) ?? 'idle' : 'idle'))
+    const phase = useOpenUIActionStore((s) => (anchor !== null ? s.phases.get(anchor) ?? 'idle' : 'idle'))
     // 表单快照（状态持久化票 02）：随 derive 写入，initialState 注入恢复提交时刻表单
-    const formState = useOpenUIActionStore((s) => (anchor !== null ? s.formStates.get(anchor) ?? (baseAnchor !== null ? s.formStates.get(baseAnchor) : undefined) : undefined))
+    const formState = useOpenUIActionStore((s) => (anchor !== null ? s.formStates.get(anchor) : undefined))
     const setPhase = useOpenUIActionStore((s) => s.setPhase)
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
