@@ -63,6 +63,45 @@ describe('annotateOpenuiFences', () => {
         const out = annotateOpenuiFences(src)
         expect(out.match(new RegExp(FENCE_INDEX_TOKEN_PREFIX, 'g'))).toHaveLength(1)
     })
+
+    it('外层非 openui 围栏内的 openui 样行只是内容，不注解（外层围栏上下文追踪）', () => {
+        const src = [
+            '```markdown',
+            '示例：',
+            '',
+            '```openui',
+            'x = 1',
+            '```',
+            '',
+            '如上',
+            '```',
+            '后记',
+        ].join('\n')
+        expect(annotateOpenuiFences(src)).toBe(src)
+    })
+
+    it('外层围栏未闭合时其内容整体透传（内含 openui 样围栏也不注解）', () => {
+        const src = '```markdown\n```openui\nx = 1\n'
+        expect(annotateOpenuiFences(src)).toBe(src)
+    })
+
+    it('GFM 闭栏长度规则：内容里的短反引号行不闭合 4 反引号 openui fence', () => {
+        const body = [
+            '示例内嵌：',
+            '```ts',
+            'const a = 1',
+            '```',
+            '继续内容',
+        ].join('\n')
+        const src = '````openui\n' + body + '\n````'
+        const out = annotateOpenuiFences(src)
+        expect(out).toBe('````openui mobi-fence-0\n' + body + '\n````')
+    })
+
+    it('GFM 闭栏长度规则：短反引号行不是闭栏 → fence 保持未闭合不编号', () => {
+        const src = '````openui\nx = 1\n```\n更多\n'
+        expect(annotateOpenuiFences(src)).toBe(src)
+    })
 })
 
 describe('parseFenceIndexToken', () => {

@@ -36,13 +36,15 @@ const userMsg = (meta?: Record<string, unknown>): DecryptedMessage => ({
     content: { role: 'user', content: [{ type: 'text', text: 'x' }], meta: meta ?? { sentFrom: 'webapp' } } as DecryptedMessage['content'],
 })
 
-const resultMsg = (data: Record<string, unknown>): DecryptedMessage => ({
+/** agent result 行：data.type='result' 是 shared isTurnResultUnwrapped 的终点判据
+ *  （显式传 type 可构造非 result 的中途输出） */
+const resultMsg = (data: Record<string, unknown> = {}): DecryptedMessage => ({
     id: `a-${Math.random()}`,
     seq: 2,
     localId: null,
     createdAt: 1,
     isSidechain: false,
-    content: { role: 'agent', content: { type: 'output', data } } as DecryptedMessage['content'],
+    content: { role: 'agent', content: { type: 'output', data: { type: 'result', ...data } } } as DecryptedMessage['content'],
 })
 
 const openuiAction = (anchor: string, lifecycle?: string, formState?: Record<string, unknown>, stateVar?: string) => ({
@@ -195,5 +197,51 @@ describe('deriveOpenUITerminalStates（档③终态扫描）', () => {
         // result 属于更早的 turn，两个锚点都不消费它；尾部双双归 running
         expect(out.get('blk-1#$mdState')?.phase).toBe('running')
         expect(out.get('blk-1#$jsonState')?.phase).toBe('running')
+    })
+
+    // 扫描时刻消费盲区（code-review 2026-10-11）：turn 进行中点击 → 锚点 consumed
+    // 翻转不触发重扫 → 重扫时队首闸门已放行，锚点会与滞留窗口的上一 turn result
+    // 错配。顺序 turn 保证孤儿 result 必在合法 result 之前——按
+    // 「孤儿数 = result 数 − 已消费锚点数」剥离后再配对
+    it('孤儿剥离：turn 中点击的锚点只与自己的 result 配对，不吃上一 turn 的陈旧 result', () => {
+        const msgs = [
+            openuiAction('blk-1', 'processing'),
+            resultMsg({ terminal_reason: 'aborted_streaming' }), // 上一 turn 的收尾（若误配则误显失败）
+            resultMsg({ stop_reason: 'end_turn' }), // 本 turn 的真终态
+        ]
+        const out = deriveOpenUITerminalStates(msgs, false)
+        expect(out.get('blk-1')?.phase).toBe('done')
+    })
+
+    it('孤儿剥离 + 交叠：先到的前 turn result 不参与，两锚点按序配对自己的 result', () => {
+        const msgs = [
+            openuiAction('blk-1', 'processing', undefined, '$mdState'),
+            openuiAction('blk-1', 'processing', undefined, '$jsonState'),
+            resultMsg({ terminal_reason: 'aborted_streaming' }), // 交叠点击前那个 turn 的收尾
+            resultMsg({ stop_reason: 'end_turn' }),
+            resultMsg({ stop_reason: 'end_turn' }),
+        ]
+        const out = deriveOpenUITerminalStates(msgs, false)
+        expect(out.get('blk-1#$mdState')?.phase).toBe('done')
+        expect(out.get('blk-1#$jsonState')?.phase).toBe('done')
+    })
+
+    it('孤儿剥离在部分消费时也生效：queued 队首挡住配对，已消费的后任不吃孤儿 result', () => {
+        const msgs = [
+            openuiAction('blk-1', 'queued', undefined, '$mdState'),
+            openuiAction('blk-1', 'processing', undefined, '$jsonState'),
+            resultMsg({ stop_reason: 'end_turn' }), // 更早 turn 的收尾
+        ]
+        const out = deriveOpenUITerminalStates(msgs, true)
+        expect(out.get('blk-1#$mdState')?.phase).toBe('running')
+        expect(out.get('blk-1#$jsonState')?.phase).toBe('running')
+    })
+
+    it('usage:null（typeof null === "object"）不再被字段启发式误判为终态证据', () => {
+        const out = deriveOpenUITerminalStates([
+            openuiAction('blk-1'),
+            resultMsg({ type: 'text', usage: null }), // 中途输出行，非 result
+        ], false)
+        expect(out.has('blk-1')).toBe(false)
     })
 })

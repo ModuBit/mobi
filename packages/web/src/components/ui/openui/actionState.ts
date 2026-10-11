@@ -33,6 +33,7 @@ import {
     getField,
     isAbortedTerminalReason,
     isObject,
+    isTurnResultUnwrapped,
     QUEUE_LIFECYCLE_STATES,
     UI_ANCHOR_ORIGIN,
     unwrapOutputMessage,
@@ -83,18 +84,13 @@ function readAnchor(msg: DecryptedMessage): { anchor: string; stateVar: string |
 }
 
 /** agent 输出消息的 result 载荷（turn 终态证据所在）；非 result 形态返回 null。
- *  信封解包走 shared 单源（unwrapOutputMessage）。终态判据保留**字段存在性**
- *  （stop_reason / terminal_reason / usage 任一在场）而非 shared 的 data.type ===
- *  'result'——后者是更严的口径，字段启发式是本模块对「证据充足」的刻意防御：
- *  result 行理论上必带 usage（SDK 契约），万一 type 缺失也认字段，宁可多判不漏判 */
+ *  信封解包与终点判定都走 shared 单源（unwrapOutputMessage + isTurnResultUnwrapped，
+ *  data.type === 'result'）——字段启发式会并行出第二套口径（usage:null 也被
+ *  typeof === 'object' 误判为证据），shared 修正信封形状时此处必须跟随 */
 function readResultPayload(msg: DecryptedMessage): Record<string, unknown> | null {
     const unwrapped = unwrapOutputMessage(msg.content)
-    if (!unwrapped || unwrapped.role !== 'agent') return null
-    const payload = unwrapped.data
-    const hasTerminal = getField(payload, 'stop_reason') != null
-        || getField(payload, 'terminal_reason') != null
-        || typeof payload.usage === 'object'
-    return hasTerminal ? payload : null
+    if (unwrapped === null || !isTurnResultUnwrapped(unwrapped)) return null
+    return unwrapped.data
 }
 
 /**
@@ -102,14 +98,17 @@ function readResultPayload(msg: DecryptedMessage): Record<string, unknown> | nul
  * done/failed 由 result 终态证据判定；窗口尾部 pending（有发起无终态）在会话
  * running 时归 running——点击后的即时翻转也走同一词汇，两来源幂等合成。
  *
- * 排队插队门控：锚点消息未消费（lifecycle 仍在 queued/pushed/acked）时其后出现的
- * result 属于上一个 turn（本消息还没轮到 agent 处理），不归因给它——否则 turn 进行
- * 中点击的 action 会被前 turn 的收尾 result 误翻 done。仅消费后（processing 及之后
- * /非排队轨道）的 result 才配对。
- *
  * 交叠 turn（并发点击多操作，per-action E2E 2026-10-11 实锤）：多条锚点背靠背落库
  * 且各自 result 未到齐——pending 是**队列**而非单槽位，result 按序消费队首**已消费**
  * 的锚点。单槽位下后者覆盖前者，前者的 result 错配给后者、前者终态丢失恒卡 running。
+ *
+ * 孤儿 result 剥离（code-review 2026-10-11 实锤的扫描时刻消费盲区）：turn A 进行中
+ * 点击 → 锚点 M 入队（queued）→ R_prev（turn A 收尾）落在 M 之后 → M 变 consumed
+ * 不触发重扫 → R_mine 到达重扫时，仅凭「队首已消费」闸门会把 M 与陈旧的 R_prev
+ * 配对（R_prev 若 aborted 则按钮误显失败）。顺序 turn 处理保证孤儿 result（先于
+ * 首个锚点消费的旧 turn 收尾）必排在全部合法 result 之前，故
+ * `孤儿数 = result 数 − 已消费锚点数`（负值即 turn 未跑完，无孤儿）——先剥离再按
+ * 序配对，扫描时刻/刷新窗口两口径同一算术，无需历史消费时刻。
  */
 export function deriveOpenUITerminalStates(
     messages: readonly DecryptedMessage[],
@@ -119,6 +118,7 @@ export function deriveOpenUITerminalStates(
     // pending 锚点条目 = readAnchor 的返回形状（同一记录，勿再手抄一份字段）
     type Pending = NonNullable<ReturnType<typeof readAnchor>>
     const pendings: Pending[] = []
+    const results: Array<Record<string, unknown>> = []
 
     for (const msg of messages) {
         const anchor = readAnchor(msg)
@@ -127,12 +127,17 @@ export function deriveOpenUITerminalStates(
             pendings.push(anchor)
             continue
         }
-        if (pendings.length === 0) continue
         const result = readResultPayload(msg)
-        if (result === null) continue
-        // 队首未消费 → 其后 result 属于上一个 turn，谁都不消费（保持等待，不误报）；
-        // 交叠时严格按队首闸门（跳过队首配给后任会把前 turn result 错配给后发起的操作）
-        if (!pendings[0]!.consumed) continue
+        if (result === null || pendings.length === 0) continue
+        results.push(result)
+    }
+
+    const consumedCount = pendings.filter((p) => p.consumed).length
+    const orphanCount = Math.max(0, results.length - consumedCount)
+
+    // 队首未消费 → 其后 result 属于上一个 turn，谁都不消费（保持等待，不误报）
+    for (const result of results.slice(orphanCount)) {
+        if (!pendings[0]!.consumed) break
         const pending = pendings.shift()!
         const phase: OpenUIActionState['phase'] = isAbortedTerminalReason(getField(result, 'terminal_reason')) ? 'failed' : 'done'
         const entry: OpenUIActionState = pending.formState ? { phase, formState: pending.formState } : { phase }

@@ -64,6 +64,14 @@ export const useOpenUIActionStore = create<OpenUIActionStateStore>((set) => ({
             let nextForms = s.formStates
             let formsChanged = false
             for (const [anchor, state] of derived) {
+                // 终态单调守卫：done/failed 不被扫描派生的 running 打回（注释承诺的
+                // 「只推进不回退」）——rewind 删掉 result 行后派生会给出 running，
+                // 覆写会让一次性按钮「已提交 ✓」复活且终态证据已不在窗口。重跑
+                // （repeatable 再点）走 setPhase 乐观口，不经这里
+                const current = next.get(anchor)
+                // 整条跳过：phase 回退被挡时其快照同样不覆盖——终态后的 running 派生
+                // 来自陈旧窗口（rewind），不代表新的提交时刻
+                if (state.phase === 'running' && (current === 'done' || current === 'failed')) continue
                 if (next.get(anchor) !== state.phase) {
                     next.set(anchor, state.phase)
                     changed = true

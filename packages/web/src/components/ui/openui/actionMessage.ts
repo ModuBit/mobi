@@ -34,10 +34,23 @@ import type { ActionEvent } from '@openuidev/react-lang'
 /** ActionEvent 的最小结构投影：测试构造事件不必拉全类型（open_url 等分支不关心） */
 export type OpenUIActionInput = Pick<ActionEvent, 'type' | 'humanFriendlyMessage' | 'formState' | 'formName'>
 
+/** 表单值表头的本地化文案（renderer 经 useTranslation 传入；缺省中文——
+ *  消息发给 agent 阅读，UI 语言只是呈现偏好） */
+export interface OpenUIMessageLabels {
+    namedFormValues: (formName: string) => string
+    uiValues: string
+}
+
+/** 缺省中文表头（actionMessage.test 的既有断言形状） */
+const DEFAULT_LABELS: OpenUIMessageLabels = {
+    namedFormValues: (formName) => `表单「${formName}」当前值：`,
+    uiValues: 'UI 当前值：',
+}
+
 /**
  * 组装发给 agent 的用户消息文本；不可发送（非本回路类型 / 无内容）返回 null。
  */
-export function buildOpenUIMessage(event: OpenUIActionInput): string | null {
+export function buildOpenUIMessage(event: OpenUIActionInput, labels: OpenUIMessageLabels = DEFAULT_LABELS): string | null {
     if (event.type !== 'continue_conversation') return null
 
     const label = event.humanFriendlyMessage.trim()
@@ -48,7 +61,7 @@ export function buildOpenUIMessage(event: OpenUIActionInput): string | null {
     if (label) lines.push(label)
     if (fields.length > 0) {
         if (label) lines.push('')
-        lines.push(event.formName ? `表单「${event.formName}」当前值：` : 'UI 当前值：')
+        lines.push(event.formName ? labels.namedFormValues(event.formName) : labels.uiValues)
         for (const [key, value] of fields) {
             if (value === undefined) continue
             lines.push(`- ${key}: ${formatValue(value)}`)

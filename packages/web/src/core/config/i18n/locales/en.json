@@ -178,6 +178,10 @@
     },
     "chat": {
         "origin": { "openui": "UI action", "app": "App action" },
+        "openuiMessage": {
+            "formValues": "Current values of form \"{{formName}}\":",
+            "uiValues": "Current UI values:"
+        },
         "message": {
             "terminalCancelled": "Cancelled",
             "terminalDiscarded": "Discarded",

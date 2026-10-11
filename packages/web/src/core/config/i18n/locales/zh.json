@@ -178,6 +178,10 @@
     },
     "chat": {
         "origin": { "openui": "界面触发", "app": "应用触发" },
+        "openuiMessage": {
+            "formValues": "表单「{{formName}}」当前值：",
+            "uiValues": "UI 当前值："
+        },
         "message": {
             "terminalCancelled": "已取消",
             "terminalDiscarded": "已丢弃",

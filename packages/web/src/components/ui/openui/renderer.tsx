@@ -45,6 +45,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { Alert } from 'antd'
 import { Renderer, type ActionEvent, type OpenUIError } from '@openuidev/react-lang'
+import { useTranslation } from 'react-i18next'
 import { ThemeProvider } from '@openuidev/react-ui'
 import '@openuidev/react-ui/index.css'
 import '@openuidev/react-ui/defaults.css'
@@ -54,7 +55,7 @@ import { buildOpenUIMessage } from './actionMessage'
 import { useUiSendMessage, useOpenUIAnchor } from './actionContext'
 import { useOpenUIActionStore } from './actionStore'
 import { actionStateKey, type OpenUIActionPhase } from './actionState'
-import { resolveStateActionVars, resolveMergedSnapshotInjection } from './snapshotInjection'
+import { resolveMergedSnapshotInjection } from './snapshotInjection'
 import { resolveActionBindings, EMPTY_BINDINGS } from './bindingParser'
 import { mobiLibrary, takeClickedActionStatementId } from './mobiLibrary'
 
@@ -78,6 +79,12 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     const mode = useUiStore((s) => resolveTheme(s.theme))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useUiSendMessage()
+    // 回灌消息表头的本地化（code-review 2026-10-11：组装纯函数不硬编码 UI 语言）
+    const { t } = useTranslation()
+    const messageLabels = useMemo(() => ({
+        namedFormValues: (formName: string) => t('chat.openuiMessage.formValues', { formName }),
+        uiValues: t('chat.openuiMessage.uiValues'),
+    }), [t])
     // 操作绑定表（per-action 票 02）：本 fence 的操作 → 状态变量绑定。流式期间跳过
     // AST 全量解析（code 每 delta 变化，解析结果无处消费——点击被 streaming 闸门挡、
     // 快照回注只在封口后生效），封口时 streaming 翻转触发一次真解析
@@ -91,12 +98,10 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     // 事件内读最新 Map 走 getState（handleAction 去重闸），不依赖订阅
     const setPhase = useOpenUIActionStore((s) => s.setPhase)
 
-    // 本 fence 的操作状态变量集：绑定表为准；绑定表为空（解析失败/纯展示）降级值域识别
-    // （snapshotInjection 的旧路径，保留为降级语义）
-    const stateVars = useMemo(() => {
-        if (bindings.stateVars.length > 0) return bindings.stateVars
-        return resolveStateActionVars(code)
-    }, [bindings, code])
+    // 本 fence 的操作状态变量集：绑定表为准（bindingParser 与 react-lang 同
+    // parser——源码 react-lang 解析不了时这里也为空，纯正则降级通道已随
+    // 63aacaa5 裁决删除，不存在「绑定表空但 UI 正常渲染」的中间态）
+    const stateVars = bindings.stateVars
 
     // 各操作的当前 phase（anchor === null 时无状态可查，恒 idle）
     const phaseValues = useOpenUIActionStore(
@@ -126,8 +131,8 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
         ),
     )
     const snapshotInjection = useMemo(
-        () => resolveMergedSnapshotInjection(code, snapshotValues, bindings.forms),
-        [code, snapshotValues, bindings.forms],
+        () => resolveMergedSnapshotInjection(snapshotValues, bindings.forms),
+        [snapshotValues, bindings.forms],
     )
 
     // 回路②：用户手势触发的 continue_conversation 才组装发送（见文件头注释）；
@@ -139,8 +144,11 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     // → null，状态键退化为裸 anchor（块级行为）。running 去重按操作粒度，互不阻塞。
     const handleAction = useCallback((event: ActionEvent) => {
         if (streaming) return
-        if (event.type !== 'continue_conversation') return
+        // 取走在点击 capture 同步帧写入的身份（取后即清）——必须先于任何 early
+        // return，否则 open_url 等非本回路事件的 statementId 残留 registry，被后续
+        // 无 capture 前置的事件读到陈旧身份错键（code-review 2026-10-11）
         const clickedId = takeClickedActionStatementId()
+        if (event.type !== 'continue_conversation') return
         const boundVar = clickedId !== null ? bindings.actions.get(clickedId) : undefined
         const payload = event.formState != null && typeof event.formState === 'object' ? event.formState as Record<string, unknown> : null
         // 身份推断：registry statementId 绑定（最可信）→ 绑定表唯一状态变量（单操作块
@@ -153,7 +161,7 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
         const stateKey = actionStateKey(anchor ?? '', stateVar)
         const current = anchor !== null ? useOpenUIActionStore.getState().phases.get(stateKey) ?? 'idle' : 'idle'
         if (current === 'running') return
-        const text = buildOpenUIMessage(event)
+        const text = buildOpenUIMessage(event, messageLabels)
         if (!text) return
         // 发送失败回滚：乐观 running 只有落库后扫描派生才能翻终态，请求失败时消息
         // 不会落库、去重闸门还挡着重试——不回滚会永久卡 running
@@ -170,7 +178,7 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
             .catch(() => {
                 if (anchor !== null) setPhase(stateKey, 'idle')
             })
-    }, [streaming, anchor, bindings, setPhase, sendMessage])
+    }, [streaming, anchor, bindings, setPhase, sendMessage, messageLabels])
 
     const initialState = useMemo(() => {
         if (anchor === null) return undefined

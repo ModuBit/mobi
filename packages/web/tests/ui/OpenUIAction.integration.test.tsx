@@ -81,7 +81,10 @@ describe('回路②：openui Button → send-message 回灌', () => {
         expect(sendMessage).toHaveBeenCalledTimes(1)
         const text = sendMessage.mock.calls[0][0] as string
         expect(text).toContain('Submit')
-        expect(text).toContain('表单「contact」当前值：')
+        // 表头文案经 i18n 参数化（renderer 传入）——期望值也从同一 i18n 实例取，
+        // 语言环境（jsdom navigator.language=en）变化不断言死中文
+        const { default: i18n } = await import('@/core/config/i18n')
+        expect(text).toContain(i18n.t('chat.openuiMessage.formValues', { formName: 'contact' }))
         expect(text).toContain('林墨墨')
     })
 

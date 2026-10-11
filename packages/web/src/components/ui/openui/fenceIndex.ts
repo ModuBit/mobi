@@ -37,16 +37,30 @@ export const FENCE_INDEX_TOKEN_PREFIX = 'mobi-fence-'
 
 /** openui fence 开栏行：行首 ≥3 反引号 + openui / openui-lang（容忍既有与额外 info token） */
 const OPENUI_FENCE_OPEN = /^(`{3,})[ \t]*(openui(?:-lang)?(?:[ \t]+[^\n]*?)?)[ \t]*$/
-/** GFM 闭栏行：行首 ≥3 反引号 */
-const FENCE_CLOSE = /^`{3,}\s*$/
+/** 任意反引号围栏开栏行（非 openui 的外层围栏——其内容不属于文档顶层 fence 序列） */
+const FENCE_OPEN_ANY = /^(`{3,})/
+/** GFM 闭栏行：行首反引号串、无 info string（长度须 ≥ 对应开栏，见 findFenceClose） */
+const FENCE_CLOSE = /^(`{3,})\s*$/
 /** 身份 token 匹配（模块级预编译——annotate/parse 在流式渲染热路径上逐次调用） */
 const FENCE_TOKEN_RE = new RegExp(`${FENCE_INDEX_TOKEN_PREFIX}(\\d+)`)
 const FENCE_TOKEN_BOUNDED_RE = new RegExp(`(?:^|\\s)${FENCE_INDEX_TOKEN_PREFIX}(\\d+)(?:$|\\s)`)
+
+/** 从 from 起找围栏闭栏行：GFM 闭栏反引号数 ≥ 开栏——内容里更短的反引号行
+ *  （嵌套代码示例等）不是闭栏；未闭合返回 -1 */
+function findFenceClose(lines: readonly string[], from: number, openLen: number): number {
+    for (let j = from; j < lines.length; j++) {
+        const m = lines[j]!.match(FENCE_CLOSE)
+        if (m && m[1]!.length >= openLen) return j
+    }
+    return -1
+}
 
 /**
  * 给 content 中每个完整 openui fence 的 info string 追加文档序身份 token。
  * 纯函数幂等：已带 token 的沿用原号（流式增长时新闭合 fence 从最大号+1 续编）；
  * 未闭合 fence 不编号（闭合前不渲染 OpenUIBlock，无消费方）。
+ * 围栏上下文按 GFM 扫描：非 openui 外层围栏整体透传——其内部出现的 openui 样
+ * 围栏行只是示例文本，不注解也不参与编号。
  */
 export function annotateOpenuiFences(content: string): string {
     const lines = content.split('\n')
@@ -54,34 +68,39 @@ export function annotateOpenuiFences(content: string): string {
     let nextIndex = 0
     for (let i = 0; i < lines.length; i++) {
         const open = lines[i]!.match(OPENUI_FENCE_OPEN)
-        if (!open) {
-            out.push(lines[i]!)
-            continue
-        }
-        // 找闭栏；未闭合（流式）不编号，剩余行原样透传
-        let closeAt = -1
-        for (let j = i + 1; j < lines.length; j++) {
-            if (FENCE_CLOSE.test(lines[j]!)) {
-                closeAt = j
+        if (open) {
+            const closeAt = findFenceClose(lines, i + 1, open[1]!.length)
+            if (closeAt === -1) {
+                out.push(...lines.slice(i))
                 break
             }
+            const info = open[2]!.trim()
+            const existing = info.match(FENCE_TOKEN_RE)
+            if (existing) {
+                // 沿用原号（重扫已注解的 content），后续新 fence 从最大号+1 续编
+                nextIndex = Math.max(nextIndex, Number.parseInt(existing[1]!, 10) + 1)
+                out.push(lines[i]!)
+            } else {
+                out.push(`${open[1]}${info} ${FENCE_INDEX_TOKEN_PREFIX}${nextIndex}`)
+                nextIndex++
+            }
+            out.push(...lines.slice(i + 1, closeAt + 1))
+            i = closeAt
+            continue
         }
-        if (closeAt === -1) {
-            out.push(...lines.slice(i))
-            break
-        }
-        const info = open[2]!.trim()
-        const existing = info.match(FENCE_TOKEN_RE)
-        if (existing) {
-            // 沿用原号（重扫已注解的 content），后续新 fence 从最大号+1 续编
-            nextIndex = Math.max(nextIndex, Number.parseInt(existing[1]!, 10) + 1)
+        const anyOpen = lines[i]!.match(FENCE_OPEN_ANY)
+        if (anyOpen) {
+            const closeAt = findFenceClose(lines, i + 1, anyOpen[1]!.length)
             out.push(lines[i]!)
-        } else {
-            out.push(`${open[1]}${info} ${FENCE_INDEX_TOKEN_PREFIX}${nextIndex}`)
-            nextIndex++
+            if (closeAt === -1) {
+                out.push(...lines.slice(i + 1))
+                break
+            }
+            out.push(...lines.slice(i + 1, closeAt + 1))
+            i = closeAt
+            continue
         }
-        out.push(...lines.slice(i + 1, closeAt + 1))
-        i = closeAt
+        out.push(lines[i]!)
     }
     return out.join('\n')
 }
