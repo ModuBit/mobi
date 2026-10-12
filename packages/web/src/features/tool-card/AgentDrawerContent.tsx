@@ -25,10 +25,10 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ChatBlock } from '@/domain/chat'
 import { Markdown } from '@/ui/Markdown'
 import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
-import { BUBBLE_ROLES } from '@/features/chat/bubbleRoles'
+import { BUBBLE_ROLES } from '@/ui/bubbleRoles'
 import { useAgentSidechain } from './useAgentSidechain'
 import { extractTextFromResult } from '@/features/tool-card/views/_results'
-import { AgentLoadingBubble } from '@/features/chat/AgentLoadingBubble'
+import { AgentLoadingBubble } from '@/ui/AgentLoadingBubble'
 import { isTeamAgentTool } from './knownTools'
 
 /** Drawer 场景下覆盖全局 CSS 对 Bubble.List 的副作用 */

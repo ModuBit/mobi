@@ -20,7 +20,7 @@ import type { ClearRuntimeStateField } from '@/ui/ClearStateButton'
 import { Tooltip, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
-import { AgentLoadingBubble } from './AgentLoadingBubble'
+import { AgentLoadingBubble } from '@/ui/AgentLoadingBubble'
 import { GoalBadge } from './GoalBadge'
 
 interface StatusBarProps {

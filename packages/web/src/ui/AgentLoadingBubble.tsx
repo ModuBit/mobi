@@ -16,8 +16,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { theme } from 'antd'
-import { useElapsedSeconds } from './useElapsedSeconds'
-import { ScrambleText } from './ScrambleText'
+import { useElapsedSeconds } from '@/ui/useElapsedSeconds'
+import { ScrambleText } from '@/ui/ScrambleText'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
 import { StatusStateIcon } from '@/ui/toolIcons'
 import { PixelLoader } from '@/ui/PixelLoader'

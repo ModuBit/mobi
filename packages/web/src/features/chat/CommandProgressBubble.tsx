@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { PixelLoader } from '@/ui/PixelLoader'
 import { ShinyText } from '@/ui/ShinyText'
-import { useElapsedSeconds } from './useElapsedSeconds'
+import { useElapsedSeconds } from '@/ui/useElapsedSeconds'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
 
 /**

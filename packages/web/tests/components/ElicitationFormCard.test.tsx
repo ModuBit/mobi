@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vite
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { ElicitationFormCard } from '@/features/chat/ElicitationFormCard'
+import { ElicitationFormCard } from '@/features/composer/ElicitationFormCard'
 import type { PermissionAnswers, SDKUIHints } from '@mobi/shared'
 
 // mock i18next — 与 PermissionFooter.test.tsx 同样的模式

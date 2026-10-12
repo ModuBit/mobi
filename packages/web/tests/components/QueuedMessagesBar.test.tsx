@@ -50,7 +50,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
 
-import { QueuedMessagesBar } from '@/features/chat/QueuedMessagesBar'
+import { QueuedMessagesBar } from '@/features/composer/QueuedMessagesBar'
 
 /** 构建排队中的 user 消息（lifecycle='queued'） */
 function queuedMsg(id: string, text: string, createdAt = 1000): DecryptedMessage {

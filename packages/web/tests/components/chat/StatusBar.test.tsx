@@ -24,7 +24,7 @@ afterEach(cleanup)
 // StatusBar 的职责：「有 goal / cacheStatus（expired）/ running（含 status）时渲染对应内容，否则不渲染」。
 // mock 掉 AgentLoadingBubble 与 GoalBadge，隔离各自内部依赖，
 // 让测试聚焦 StatusBar 自身的渲染门控与并列逻辑。
-vi.mock('@/features/chat/AgentLoadingBubble', () => ({
+vi.mock('@/ui/AgentLoadingBubble', () => ({
     AgentLoadingBubble: ({ agentId, status }: { agentId: string; status: string }) => (
         <div data-testid="loading-bubble" data-agent={agentId} data-status={status} />
     ),

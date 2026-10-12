@@ -76,9 +76,9 @@ import { spring } from '@/ui/motion/presets'
 import { SKETCH_DOCK_HEIGHT_RATIO, SKETCH_DOCK_GAP, SKETCH_DOCK_SIDE_INSET, SKETCH_Z_COMPOSER } from '@/domain/sketch/sketchLayout'
 
 import { MobiLogo } from '@/ui/MobiLogo'
-// BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
+// BUBBLE_ROLES 由 BubbleListChat 内部使用（from '@/ui/bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
-export { BUBBLE_ROLES } from './bubbleRoles'
+export { BUBBLE_ROLES } from '@/ui/bubbleRoles'
 
 const { useToken } = antTheme
 

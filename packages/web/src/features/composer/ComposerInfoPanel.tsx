@@ -35,7 +35,7 @@ import { RequestUserInputFooter } from '@/features/tool-card/RequestUserInputFoo
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { isElicitationToolName, parseElicitationPayload } from '@/domain/tool/elicitation'
-import { ElicitationFormCard } from '@/features/chat/ElicitationFormCard'
+import { ElicitationFormCard } from '@/features/composer/ElicitationFormCard'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { inferToolRow } from '@/core/lib/toolRow'
 import { FileChip } from '@/ui/FileChip'
@@ -54,7 +54,7 @@ import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { isQueuedInMobi } from '@/core/lib/messages'
 import { getMessageWindowState, subscribeMessageWindow } from '@/core/data/stores/messageWindowStore'
-import { QueuedMessagesBar } from '@/features/chat/QueuedMessagesBar'
+import { QueuedMessagesBar } from '@/features/composer/QueuedMessagesBar'
 
 const { Text } = Typography
 const { useToken } = antTheme
