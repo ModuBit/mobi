@@ -16,7 +16,7 @@
 
 import type { AgentStatus } from '@/ui/pixel-avatar/types'
 import type { CacheStatus, GoalStatus } from '@mobi/shared'
-import type { ClearRuntimeStateField } from '@/features/composer/ClearStateButton'
+import type { ClearRuntimeStateField } from '@/ui/ClearStateButton'
 import { Tooltip, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'

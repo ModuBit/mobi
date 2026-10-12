@@ -37,7 +37,7 @@ import type { StructuredPatch } from '@/domain/chat/types'
 import { FilePathText } from '@/ui/FilePathText'
 import { ToolViewPanel } from './ToolViewPanel'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { PIERRE_BRIDGE_VARS } from '@/features/review/pierreTheme'
+import { PIERRE_BRIDGE_VARS } from '@/ui/pierreTheme'
 
 const { useToken } = antTheme
 

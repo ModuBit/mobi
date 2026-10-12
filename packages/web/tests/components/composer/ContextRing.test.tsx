@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { ContextRing, resolveRingTone } from '@/features/composer/ContextRing'
+import { ContextRing, resolveRingTone } from '@/ui/ContextRing'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { ContextUsage } from '@mobi/shared'
 

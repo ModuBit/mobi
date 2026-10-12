@@ -20,7 +20,7 @@ import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/ui/Markdown'
 import { CrossfadeText } from '@/ui/CrossfadeText'
-import { StatusIcon } from '@/features/tool-card/toolIcons'
+import { StatusIcon } from '@/ui/toolIcons'
 import { useSmoothStickBottom } from '@/features/chat/useSmoothStickBottom'
 
 /** 思考过程渲染 */

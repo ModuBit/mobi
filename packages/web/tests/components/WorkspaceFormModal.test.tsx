@@ -55,8 +55,8 @@ vi.mock('@/core/data/hooks/mutations/useWorkspaceMutations', () => ({
 }))
 
 const listingResult = vi.hoisted(() => ({ options: [], isLoading: false }))
-vi.mock('@/features/session/useMachineDirectoryListing', () => ({
-    useMachineDirectoryListing: () => listingResult,
+vi.mock('@/core/data/hooks/useDirectoryListing', () => ({
+    useDirectoryListing: () => listingResult,
     parsePrefixInput: vi.fn(),
 }))
 

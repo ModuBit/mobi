@@ -44,7 +44,7 @@ vi.mock('@/core/data/stores/authStore', () => ({
 }))
 
 // —— mock useThemeLocaleToggle：返回 resolvedTheme / locale / toggleTheme / toggleLocale ——
-vi.mock('@/features/layout/useThemeLocaleToggle', () => ({
+vi.mock('@/ui/useThemeLocaleToggle', () => ({
     useThemeLocaleToggle: () => ({
         resolvedTheme: 'light',
         locale: 'zh',
@@ -59,7 +59,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 // —— 静态化 Logo 组件，避免动画/图片干扰 DOM 断言 ——
-vi.mock('@/features/layout/Logo', () => ({ Logo: () => null }))
+vi.mock('@/ui/Logo', () => ({ Logo: () => null }))
 vi.mock('@/ui/MobiLogo', () => ({ MobiLogo: () => null }))
 
 const wrapper = ({ children }: { children: ReactNode }) => (

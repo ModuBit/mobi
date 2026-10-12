@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { StatusStateIcon, StatusToolIcon, statusIconStyle } from '@/features/tool-card/toolIcons'
+import { StatusStateIcon, StatusToolIcon, statusIconStyle } from '@/ui/toolIcons'
 import { STATUS_DOT_COLORS, toStatusDotState } from '@/core/utils/statusColor'
 import type { AgentStatus } from '@/ui/pixel-avatar/types'
 

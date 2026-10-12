@@ -59,7 +59,7 @@ import {
     saveLastUsedWorkspaceId,
 } from '@/domain/session/preferences'
 import { SidebarToggle } from '@/features/layout/SidebarToggle'
-import { Logo } from '@/features/layout/Logo'
+import { Logo } from '@/ui/Logo'
 import { enableVConsole } from '@/core/lib/vconsole'
 import { unlockDebug, isDebugUnlocked } from '@/core/lib/debug'
 import { MobileMenuButton } from '@/features/layout/MobileMenu'

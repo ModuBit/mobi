@@ -17,8 +17,8 @@
 import styled from '@emotion/styled'
 import { Popover } from 'antd'
 import type { GoalStatus } from '@mobi/shared'
-import type { ClearRuntimeStateField } from '@/features/composer/ClearStateButton'
-import { ClearStateButton } from '@/features/composer/ClearStateButton'
+import type { ClearRuntimeStateField } from '@/ui/ClearStateButton'
+import { ClearStateButton } from '@/ui/ClearStateButton'
 import { STATUS_DOT_COLORS } from '@/core/utils/statusColor'
 
 /**

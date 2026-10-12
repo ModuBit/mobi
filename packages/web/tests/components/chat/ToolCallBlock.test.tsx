@@ -35,8 +35,8 @@ vi.mock('@ant-design/x', () => ({
 }))
 
 // mock 工具图标（部分 mock：保留真实导出，只替换图标节点）
-vi.mock('@/features/tool-card/toolIcons', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/features/tool-card/toolIcons')>()
+vi.mock('@/ui/toolIcons', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/ui/toolIcons')>()
     return {
         ...actual,
         getToolIcon: () => <span data-testid="tool-icon" />,

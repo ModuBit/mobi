@@ -22,7 +22,7 @@ import { MobileDrawer } from '@/ui/MobileDrawer'
 import { validateWorkspaceFolders, type WorkspaceFolder, type WorkspaceFoldersError } from '@mobi/shared'
 import { useDaemonStatus } from '@/core/data/hooks/queries/useDaemonStatus'
 import { useCreateWorkspace, useUpdateWorkspace } from '@/core/data/hooks/mutations/useWorkspaceMutations'
-import { useMachineDirectoryListing } from '@/features/session/useMachineDirectoryListing'
+import { useDirectoryListing } from '@/core/data/hooks/useDirectoryListing'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { Workspace } from '@/core/data/api/types'
 import { isPathWithinHomeDir } from '@/core/utils/path'
@@ -62,7 +62,7 @@ function FolderRow({
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const isMobile = useIsMobile()
-    const { options, isLoading } = useMachineDirectoryListing(folder.path, homeDir)
+    const { options, isLoading } = useDirectoryListing(folder.path, homeDir)
 
     const autoCompleteOptions = useMemo(() => {
         if (!folder.path.trim() && homeDir) {

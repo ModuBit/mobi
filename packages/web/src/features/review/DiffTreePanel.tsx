@@ -30,7 +30,7 @@ import type { TurnDiffFileKind } from '@mobi/shared'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { basename } from '@/core/utils/path'
 import { buildPathTree, collectDirKeys, commonDirectoryPrefix, type NestedFileNode } from '@/core/utils/pathTree'
-import { KindBadge } from '@/features/turnDiff/present'
+import { KindBadge } from '@/ui/present'
 import { FileTypeBadge } from '@/ui/FileTypeBadge'
 
 /**

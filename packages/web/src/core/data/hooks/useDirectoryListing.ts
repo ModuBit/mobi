@@ -71,7 +71,7 @@ function isExactDirectoryMatch(
  * - 输入前缀时从缓存本地过滤（如 /home/admin/git → 从 /home/admin 缓存中过滤 git）
  * - 隐藏目录默认不展示，仅当前缀以 . 开头时展示
  */
-export function useMachineDirectoryListing(
+export function useDirectoryListing(
     directory: string,
     homeDir?: string,
 ): {

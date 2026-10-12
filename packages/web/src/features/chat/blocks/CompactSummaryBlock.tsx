@@ -20,7 +20,7 @@ import { useState, useMemo, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CompactSummaryBlock } from '@/domain/chat/types'
 import { Markdown } from '@/ui/Markdown'
-import { StatusIcon } from '@/features/tool-card/toolIcons'
+import { StatusIcon } from '@/ui/toolIcons'
 
 /** 格式化 token 数量 */
 function formatTokens(tokens: number): string {

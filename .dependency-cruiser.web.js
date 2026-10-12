@@ -28,19 +28,15 @@ const base = require('./.dependency-cruiser.js')
  * 存量跨域边豁免清单（票 03 裁决中，清零后删除）。
  * 列表 = from 文件（实际跨域引用的发起方），按域分组；
  * 票 03 逐边四选一裁决（下沉 domain / 下沉 ui / 改 props / 并域）后逐文件移除。
+ * 批次 1 已消 14 文件（通用资产下沉 ui/：toolIcons/agentPalette/pierreTheme/present/
+ * Logo/MobiWordmark/useThemeLocaleToggle/usePwaMode/InstallButton+mobileMenu.styles/
+ * ContextRing+ContextBreakdown/ClearStateButton；useDirectoryListing 下沉 core/data/hooks）。
  */
 const FEATURE_ISOLATION_EXEMPT = [
-  /* ===== chat（8 文件：blocks 系引 tool-card/turnDiff/review，容器引 workspace/composer）===== */
-  '^packages/web/src/features/chat/AgentLoadingBubble\\.tsx$',
+  /* ===== chat（3 文件：ToolCallBlock 引 tool-card 呈现注册表；ChatContainer 引 composer；ArtifactInlineViews 引 files——注入化裁决中）===== */
   '^packages/web/src/features/chat/artifact/ArtifactInlineViews\\.tsx$',
-  '^packages/web/src/features/chat/blocks/CompactSummaryBlock\\.tsx$',
-  '^packages/web/src/features/chat/blocks/ReasoningBlock\\.tsx$',
   '^packages/web/src/features/chat/blocks/ToolCallBlock\\.tsx$',
-  '^packages/web/src/features/chat/blocks/ToolCallGroupBlock\\.tsx$',
-  '^packages/web/src/features/chat/blocks/TurnDiffCard\\.tsx$',
   '^packages/web/src/features/chat/ChatContainer\\.tsx$',
-  '^packages/web/src/features/chat/GoalBadge\\.tsx$',
-  '^packages/web/src/features/chat/StatusBar\\.tsx$',
   /* ===== composer（3 文件：引 chat）===== */
   '^packages/web/src/features/composer/ChatComposer\\.tsx$',
   '^packages/web/src/features/composer/ComposerInfoPanel\\.tsx$',
@@ -48,22 +44,11 @@ const FEATURE_ISOLATION_EXEMPT = [
   /* ===== layout（2 文件：引 workspace）===== */
   '^packages/web/src/features/layout/MobileWorkspaceList\\.tsx$',
   '^packages/web/src/features/layout/SidebarWorkspaces\\.tsx$',
-  /* ===== login（1 文件：引 workspace）===== */
-  '^packages/web/src/features/login/BootLogPanel\\.tsx$',
-  /* ===== review（2 文件：引 tool-card）===== */
-  '^packages/web/src/features/review/DiffTreePanel\\.tsx$',
-  '^packages/web/src/features/review/GitReviewView\\.tsx$',
-  /* ===== session（2 文件：引 chat/review 等）===== */
+  /* ===== session（2 文件：引 chat/review/files/layout 等，页面壳编排）===== */
   '^packages/web/src/features/session/ChatPane\\.tsx$',
   '^packages/web/src/features/session/InspectorPane\\.tsx$',
-  /* ===== settings（1 文件：引 workspace）===== */
-  '^packages/web/src/features/settings/blocks/PwaCard\\.tsx$',
-  /* ===== tool-card（3 文件：引 chat/session）===== */
+  /* ===== tool-card（1 文件：AgentDrawerContent 引 chat 气泡装配，三角一角）===== */
   '^packages/web/src/features/tool-card/AgentDrawerContent\\.tsx$',
-  '^packages/web/src/features/tool-card/PermissionFooter\\.tsx$',
-  '^packages/web/src/features/tool-card/views/DiffView\\.tsx$',
-  /* ===== workspace（1 文件）===== */
-  '^packages/web/src/features/workspace/WorkspaceFormModal\\.tsx$',
 ]
 
 const featuresDir = path.resolve(__dirname, 'packages/web/src/features')

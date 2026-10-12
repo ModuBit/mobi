@@ -36,7 +36,7 @@ import { BackgroundTaskCard } from './BackgroundTaskCard'
 import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
 import type { ForegroundTaskItem } from '@mobi/shared/types'
 import type { MobiApi } from '@/core/data/api/client'
-import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
+import { ClearStateButton, type ClearRuntimeStateField } from '@/ui/ClearStateButton'
 
 const spinKeyframes = css`
 @keyframes tasks-panel-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }

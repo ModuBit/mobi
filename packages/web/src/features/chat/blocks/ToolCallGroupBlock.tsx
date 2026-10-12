@@ -23,7 +23,7 @@ import type { ChatBlockContext } from './index'
 import { ToolCallRenderer, TOOL_THINK_CONTENT_STYLES } from './ToolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { STATUS_DOT_COLORS } from '@/core/utils/statusColor'
-import { StatusIcon } from '@/features/tool-card/toolIcons'
+import { StatusIcon } from '@/ui/toolIcons'
 import {
   countFailedInGroup,
   formatGroupTitle,

@@ -47,7 +47,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => true,
 }))
 
-vi.mock('@/features/layout/useThemeLocaleToggle', () => ({
+vi.mock('@/ui/useThemeLocaleToggle', () => ({
     useThemeLocaleToggle: () => ({
         resolvedTheme: 'dark',
         locale: 'zh',
@@ -63,7 +63,7 @@ vi.mock('@/core/pwa/useForceUpdate', () => ({
 
 // usePwaMode 门控刷新/重启行:用可变对象便于单测切换 PWA/非 PWA
 const pwaState = { current: true }
-vi.mock('@/features/layout/usePwaMode', () => ({
+vi.mock('@/ui/usePwaMode', () => ({
     usePwaMode: () => pwaState.current,
 }))
 

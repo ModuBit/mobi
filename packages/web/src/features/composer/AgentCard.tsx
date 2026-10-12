@@ -16,7 +16,7 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/ui/pixel-avatar/PixelAvatar'
-import { agentCardBg } from '@/features/composer/agentPalette'
+import { agentCardBg } from '@/ui/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useTranslation } from 'react-i18next'
 

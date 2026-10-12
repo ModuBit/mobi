@@ -25,7 +25,7 @@ import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
 import { resolveDisplayPath } from '@/core/utils/path'
 import { getFileToolTarget, getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay, countLines } from '@/core/lib/toolInputUtils'
 import { inferToolRow, type ToolRow } from '@/core/lib/toolRow'
-import { TOOL_ICON_MAP, LUCIDE_TOOL_NAMES } from './toolIcons'
+import { TOOL_ICON_MAP, LUCIDE_TOOL_NAMES } from '@/ui/toolIcons'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
 
