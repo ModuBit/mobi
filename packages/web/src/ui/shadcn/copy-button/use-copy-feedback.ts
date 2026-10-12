@@ -16,8 +16,7 @@
 
 // uiarc 源码组件（shadcn 模型，进项目即归我们维护）；升级 add --overwrite 会冲掉本头
 // 与下方本地修改，需按 registry.json localMods 登记恢复。
-// 本地修改：copy 走 copyTextToClipboard（保留 execCommand 降级——非安全上下文/旧内核）；
-// 复位时长导出为常量供消费壳复用（避免壳自定时长与内层错位）。
+// 本地修改：copy 走 copyTextToClipboard（保留 execCommand 降级——非安全上下文/旧内核）。
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,8 +24,8 @@ import { copyTextToClipboard } from "@/core/utils/clipboard";
 
 export type CopyFeedbackState = "idle" | "copied" | "error";
 
-/** 复制反馈复位时长（ms）：内层按钮与消费壳的 tooltip 文案共用同一时长，避免错位 */
-export const COPY_FEEDBACK_RESET_MS = 1900;
+/** 复制反馈复位时长（ms）：从「已复制」回到 idle 的停留时间 */
+const COPY_FEEDBACK_RESET_MS = 1900;
 
 /** Shared clipboard state for actions that render their own button or menu. */
 export function useCopyFeedback(duration = COPY_FEEDBACK_RESET_MS) {

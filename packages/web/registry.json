@@ -10,7 +10,7 @@
                 "全部文件补版权头",
                 "copy-button.tsx：新增 copiedLabel/failedLabel props（上游硬编码英文文案）",
                 "use-copy-feedback.ts：copy 走 copyTextToClipboard（execCommand 降级，core/utils/clipboard）",
-                "use-copy-feedback.ts：复位时长导出 COPY_FEEDBACK_RESET_MS（消费壳 tooltip 复用同一时长，避免壳自定 2000ms 与内层 1900ms 错位）",
+                "use-copy-feedback.ts：复位时长具名常量 COPY_FEEDBACK_RESET_MS（1900ms，模块内自用）",
                 "copy-button.module.css：.button 作用域设计变量→mobi token 映射（foundation.css 不全局引入）"
             ]
         }

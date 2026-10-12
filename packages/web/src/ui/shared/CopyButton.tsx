@@ -16,16 +16,17 @@
 
 /**
  * 消息流复制按钮适配壳（uiarc copy-button 的 iconOnly 形态，shadcn 底座首个迁移组件）：
- * 集成 antd Tooltip（hover 文案随复制状态翻转）与 i18n；复制行为/动效由 registry 组件承担，
+ * 只做 i18n 文案适配与调用点收口；复制行为/动效由 registry 组件承担，
  * clipboard 降级见 copy-button/use-copy-feedback（copyTextToClipboard）。
+ *
+ * 不挂 Tooltip：按钮的可访问名（aria-label）与 aria-live 状态区已表达「是什么 / 结果如何」，
+ * 气泡在此并无增量信息；且点击时文案从「复制」变「已复制」会让正开着的气泡改宽重排，
+ * 与图标交叉淡出叠在一起就是肉眼可见的闪动。
  * 与移动端长按菜单共用的工具函数在 core/utils/clipboard。
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CopyButton as ArcCopyButton } from '@/ui/shadcn/copy-button/copy-button'
-import { COPY_FEEDBACK_RESET_MS } from '@/ui/shadcn/copy-button/use-copy-feedback'
 
 interface CopyButtonProps {
     text: string
@@ -34,29 +35,16 @@ interface CopyButtonProps {
 
 export function CopyButton({ text, className }: CopyButtonProps) {
     const { t } = useTranslation()
-    const [copied, setCopied] = useState(false)
-    // tooltip 文案随复制状态翻转；复位时长取内层共享常量，与按钮对勾同步复位
-    const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-    useEffect(() => () => {
-        if (resetTimer.current) clearTimeout(resetTimer.current)
-    }, [])
 
     return (
-        <Tooltip title={copied ? t('chat.copied') : t('chat.copy')}>
-            <ArcCopyButton
-                value={text}
-                label={t('chat.copy')}
-                copiedLabel={t('chat.copied')}
-                failedLabel={t('chat.copyFailed')}
-                iconOnly
-                variant="plain"
-                className={className}
-                onCopied={() => {
-                    if (resetTimer.current) clearTimeout(resetTimer.current)
-                    setCopied(true)
-                    resetTimer.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_RESET_MS)
-                }}
-            />
-        </Tooltip>
+        <ArcCopyButton
+            value={text}
+            label={t('chat.copy')}
+            copiedLabel={t('chat.copied')}
+            failedLabel={t('chat.copyFailed')}
+            iconOnly
+            variant="plain"
+            className={className}
+        />
     )
 }

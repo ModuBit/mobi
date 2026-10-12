@@ -38,7 +38,6 @@ export interface CopyButtonProps {
   iconOnly?: boolean;
   variant?: "outline" | "plain";
   disabled?: boolean;
-  onCopied?: () => void;
 }
 
 /** Copy feedback is deliberately unhurried: a slow, almost critically damped spring and long, soft crossfades read as calm, never busy.
@@ -99,19 +98,15 @@ function MorphText({ text, reduced }: { text: string; reduced: boolean }) {
   </motion.span>;
 }
 
-export function CopyButton({ value, label = "Copy", copiedLabel = "Copied", failedLabel = "Failed", className, iconOnly = false, variant = "outline", disabled, onCopied }: CopyButtonProps) {
+export function CopyButton({ value, label = "Copy", copiedLabel = "Copied", failedLabel = "Failed", className, iconOnly = false, variant = "outline", disabled }: CopyButtonProps) {
   const { state, copy } = useCopyFeedback();
   const reduced = useReducedMotion() ?? false;
   const text = state === "copied" ? copiedLabel : state === "error" ? failedLabel : label;
 
-  async function handleCopy() {
-    if (await copy(value)) onCopied?.();
-  }
-
   return <><button
     type="button"
     className={[styles.button, iconOnly && styles.iconOnly, variant === "plain" && styles.plain, className].filter(Boolean).join(" ")}
-    onClick={() => void handleCopy()}
+    onClick={() => void copy(value)}
     aria-label={label}
     data-copy-state={state}
     disabled={disabled}

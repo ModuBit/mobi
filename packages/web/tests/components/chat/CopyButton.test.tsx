@@ -86,7 +86,7 @@ describe('CopyButton 适配壳', () => {
         })
         expect(screen.getByRole('status').textContent).toBe('chat.copy: chat.copied')
 
-        // 推进超过复位时长（内层按钮与 tooltip 共用 COPY_FEEDBACK_RESET_MS）后 status 区清空
+        // 推进超过复位时长后 status 区清空
         await act(async () => {
             await vi.advanceTimersByTimeAsync(2000)
         })
