@@ -15,7 +15,7 @@
  */
 
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, utimesSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncPluginAssets } from '@/runtime/assets';
@@ -105,5 +105,23 @@ describe('vendored 资产清单对齐（embeddedAssets ↔ MEMORY_HINDSIGHT_VEND
     const src = readFileSync(join(projectPath(), 'src', 'runtime', 'embeddedAssets.bun.ts'), 'utf-8');
     const embedded = [...src.matchAll(/asset\('(plugins\/memory-hindsight\/[^']+)'/g)].map((m) => m[1]!);
     expect([...embedded].sort()).toEqual([...MEMORY_HINDSIGHT_VENDORED_REL_PATHS].sort());
+  });
+});
+
+/**
+ * 本地补丁守卫：vendored dist 被 re-vendor 整目录覆盖，补丁会静默丢失。
+ * 补丁内容与理由见 plugins/memory-hindsight/VENDOR-NOTES.md「本地补丁」一节。
+ */
+describe('vendored 补丁：pageRefreshEveryTurns 的 0 档', () => {
+  const distFiles = () => readdirSync(join(projectPath(), 'plugins', 'memory-hindsight', 'dist'))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => ({ name: f, src: readFileSync(join(projectPath(), 'plugins', 'memory-hindsight', 'dist', f), 'utf-8') }));
+
+  it('解析默认值用 ?? 而非 ||——0（mobi 的「从不刷新」档）不能被吞成 1（每轮）', () => {
+    const files = distFiles();
+    expect(files.filter((f) => f.src.includes('pageRefreshEveryTurns: raw.pageRefreshEveryTurns || 1')).map((f) => f.name)).toEqual([]);
+    // 0.8.0 的 6 个入口各自内联一份配置解析（tsup 逐入口自包含）；数量变化 = 上游结构变了，
+    // 须复核补丁是否还落在全部解析点
+    expect(files.filter((f) => f.src.includes('pageRefreshEveryTurns: raw.pageRefreshEveryTurns ?? 1'))).toHaveLength(6);
   });
 });
