@@ -13,7 +13,7 @@
   },
   "scripts": {
     "start": "bun run src/daemonEntry.ts",
-    "dev": "bun --watch run src/daemonEntry.ts",
+    "dev": "bun run --watch --preload ./scripts/preloadProfile.ts src/daemonEntry.ts --profile dev",
     "build": "bun build src/daemonEntry.ts --outdir dist --target bun",
     "generate:embedded-web-assets": "bun run scripts/generate-embedded-web-assets.ts",
     "typecheck": "tsc --noEmit",

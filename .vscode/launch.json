@@ -39,7 +39,7 @@
       "name": "Debug: Web Dev Server (dev profile)",
       "type": "bun",
       "request": "launch",
-      "program": "${workspaceFolder}/packages/web/src/dev.ts",
+      "program": "${workspaceFolder}/packages/web/src/app/dev.ts",
       "cwd": "${workspaceFolder}/packages/web",
       "args": ["--profile", "dev"],
       "env": {
