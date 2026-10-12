@@ -22,6 +22,37 @@
 
 @layer theme, base, components, properties, antd, utilities;
 
+/* shadcn token 桥（shadcn 底座票 02）：--background 系变量由 ThemeProvider 经
+   core/config/theme/cssVars.ts 注入（:root 亮档 / .dark 暗档，与 antd 同源派生），
+   此处 @theme inline 映射为 Tailwind utility（bg-background / text-foreground / rounded-lg…），
+   供 components/shadcn 与 components/arc 源码组件消费。变量缺失时回落 antd 无关的
+   transparent/继承值——消费组件必须在 ThemeProvider 树内（全站即如此） */
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    /* shadcn 组件源的 rounded-sm/md/lg/xl 语义，从注入的 --radius 派生 */
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+}
+
 /* 样式模块导入 */
 @import './styles/fonts.css';
 @import './styles/variables.css';

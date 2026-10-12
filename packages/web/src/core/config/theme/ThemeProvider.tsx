@@ -18,25 +18,34 @@ import React, { useEffect } from 'react'
 import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
-import { useUiStore } from '@/core/data/stores/uiStore'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import i18n from '@/core/config/i18n'
 import { shadcnLightToken, shadcnDarkToken } from './tokens'
 import { shadcnLightComponents, shadcnDarkComponents } from './components'
+import { injectShadcnThemeCss } from './cssVars'
 
 // 动态主题提供者：订阅 uiStore.theme 和 locale，切换 Shadcn 风格主题
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const theme = useUiStore((state) => state.theme)
     const locale = useUiStore((state) => state.locale)
-    const isDark = theme === 'dark'
+    // 解析后档位是全站主题单源：antd algorithm、data-theme、.dark class、shadcn 变量
+    // 注入四通道都从这里派生（system 档按系统偏好解析——此前裸判 theme === 'dark'，
+    // system 恒落 light 且 data-theme 写入 'system' 字面量令 highlight.css 失效，见 pending #113）
+    const mode = resolveTheme(theme)
+    const isDark = mode === 'dark'
     const token = isDark ? shadcnDarkToken : shadcnLightToken
     const components = isDark ? shadcnDarkComponents : shadcnLightComponents
     const algorithm = isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm
     const antdLocale = locale === 'zh' ? zhCN : enUS
 
-    // 同步 data-theme 属性到 html 元素，用于 CSS 选择器
+    // 同步 DOM 三通道到 html 元素（同源同 effect，杜绝档位错位窗口）：
+    // data-theme（解析后档位，highlight.css 等消费）+ .dark class（shadcn 组件消费）+
+    // shadcn 命名变量注入（幂等原地更新）
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme)
-    }, [theme])
+        document.documentElement.setAttribute('data-theme', mode)
+        document.documentElement.classList.toggle('dark', isDark)
+        injectShadcnThemeCss(document, mode)
+    }, [mode, isDark])
 
     // 同步 i18n 语言
     useEffect(() => {
