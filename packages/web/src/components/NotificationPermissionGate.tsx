@@ -18,20 +18,7 @@ import { useEffect } from 'react'
 import { App, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
-
-/**
- * 模块级守卫：同一页面生命周期内只引导一次（刷新后重置）。
- * 放在 setTimeout 回调内置位，避免 React StrictMode 双调 effect 时被 cleanup 清掉后不再补设。
- */
-let permissionPromptShown = false
-
-/**
- * 重置引导 flag(换号 logout 时调用,让新用户重新获得首次引导)。
- * flag 为模块级单例,SPA 内 logout→login 不刷新页面,不重置则新用户不再引导。
- */
-export function resetPermissionPrompt() {
-    permissionPromptShown = false
-}
+import { claimPermissionPrompt } from '@/core/notifications/permissionPrompt'
 
 /**
  * 首次通知权限引导。
@@ -41,8 +28,9 @@ export function resetPermissionPrompt() {
  * - denied：弹引导提示用户去浏览器站点设置开启。
  * - granted：什么都不做。
  *
- * 渲染 null（纯副作用组件）。由 SSEProvider 在 token 存在时挂载，
- * 将原本散落在 SSEProvider 内联的权限引导逻辑收敛到此，使其可独立测试。
+ * 渲染 null（纯副作用组件）。由 App 组装层在 token 存在时挂载（分层治理票 01
+ * 起不再由 SSEProvider 挂载），将权限引导逻辑收敛到此，使其可独立测试；
+ * 引导 flag（一次性守卫 + 换号重置）在 core/notifications/permissionPrompt。
  */
 export function NotificationPermissionGate() {
     const { notification } = App.useApp()
@@ -53,8 +41,7 @@ export function NotificationPermissionGate() {
         if (typeof Notification === 'undefined') return
 
         const timerId = setTimeout(() => {
-            if (permissionPromptShown) return
-            permissionPromptShown = true
+            if (!claimPermissionPrompt()) return
 
             if (Notification.permission === 'default') {
                 // 需要用户手势触发浏览器授权弹窗，用带按钮的页面通知承载

@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-import type { AgentStatus } from '@/components/pixel-avatar/types'
-import { statusColorOf } from '@/components/tool-card/toolIcons'
-import type { PixelVariant } from '@/components/ui/PixelLoader'
+import type { AgentStatus } from '@/core/utils/agentStatus'
+import { statusColorOf } from '@/core/utils/statusColor'
 import type { Session } from '@/core/data/api/types'
 import { stableHash } from '@/core/utils/hash'
+
+/**
+ * 会话列表状态指示的波形词汇（PixelLoader 波形变体的 core 侧定义权，
+ * 分层治理票 01——sessionStatus 只描述「哪种波形」，波形实现留 ui/PixelLoader）。
+ */
+export type LoaderVariant = 'drive' | 'dots' | 'orbit' | 'twinkle' | 'ghost'
 
 /**
  * getSessionAvatarStatus 的最小输入结构。
@@ -57,7 +62,7 @@ export const AWAITING_AUTH_LOADER: SessionLoader = { variant: 'orbit', color: st
 
 /** 会话状态 → 列表状态指示（PixelLoader 波形）的配置；phase 供 twinkle/ghost 相位轮转 */
 export type SessionLoader = {
-    variant: PixelVariant
+    variant: LoaderVariant
     /** 语义例外色（审批橙）；缺省继承环境文字色 */
     color?: string
     /** 相位（秒，[0,5)）：twinkle 行间错相 + twinkle/ghost 树轮转种子，从会话 id 派生 */

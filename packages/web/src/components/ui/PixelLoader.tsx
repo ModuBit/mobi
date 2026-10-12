@@ -15,6 +15,7 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react'
+import type { LoaderVariant } from '@/core/utils/sessionStatus'
 
 /**
  * 像素网格加载器（参考 beautifului.dev Loading State）。
@@ -31,7 +32,8 @@ import type { CSSProperties, ReactNode } from 'react'
  * 格子元素树按变体提升到模块级——重渲染时 React 直接跳过子树 reconcile。
  */
 
-export type PixelVariant = 'drive' | 'dots' | 'orbit' | 'twinkle' | 'ghost'
+/** 波形变体（定义权在 core/utils/sessionStatus——sessionStatus 描述波形语义，本组件实现波形） */
+export type PixelVariant = LoaderVariant
 
 /** chevron 波形 delay：(列 + |行-1|) × 90ms——中间行先亮，向两侧/右下扩散成箭头波前 */
 const CHEVRON_DELAYS = Array.from({ length: 9 }, (_, i) =>

@@ -49,7 +49,6 @@
  * 接受时 excerpt = range.toString()（window 原文，不做任何清洗——引用忠实于所选）。
  */
 
-import type { HTMLAttributes } from 'react'
 import { QUOTE_EXCERPT_MAX } from '@mobi/shared'
 import { QUOTE_MAX_COUNT, type PendingQuoteRef } from './composerSegments'
 
@@ -107,14 +106,21 @@ export interface QuoteAnchorInput {
     forbidden?: boolean
 }
 
+/** 渲染层锚点属性（可 spread 到 div 的最小显式形态；替代 HTMLAttributes——domain 零 React，分层治理票 01） */
+export interface QuoteAnchorProps {
+    style: { display: 'contents'; userSelect?: 'none' }
+    /** data-quote-* 锚点属性（message-id / role / allowed / block / forbidden，见上方锚点契约） */
+    [dataAttr: `data-quote-${string}`]: string
+}
+
 /**
- * 渲染层锚点属性（React 形态，与上方判定常量同一词汇——两处拼写漂移会被测试抓出）。
+ * 渲染层锚点属性（与上方判定常量同一词汇——两处拼写漂移会被测试抓出）。
  * 载体 div 一律 `display: contents`：锚点只做 DOM 爬取标记，不参与布局零样式影响
  * （不做几何定位，无「display:contents 零矩形」坑）。
  * forbidden（禁区）完整语义在此单点承载：第二道防御标记 + user-select:none——
  * 消费方不得只落标记不带禁选。
  */
-export function quoteAnchorProps(input: QuoteAnchorInput): HTMLAttributes<HTMLDivElement> {
+export function quoteAnchorProps(input: QuoteAnchorInput): QuoteAnchorProps {
     return {
         style: {
             display: 'contents',

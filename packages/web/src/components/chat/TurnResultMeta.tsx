@@ -1,0 +1,109 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * turn 结束概要（可折叠）。收起态保持「duration · N tokens · time」一行概要，
+ * 展开态显示 result 完整详情（耗时/首 token/轮次/模型/成本/token 细分）。
+ * 数据全部来自 CLI 透传的 result 消息，零额外采集。
+ * （src 分层治理票 01 自 domain/chat/eventFormatter.tsx 迁入——UI 组件归位业务域。）
+ *
+ * 本地命令（/usage /cost /help 等不调主模型的指令）result.usage 为 0 → tokens===0：
+ * 只显示「duration · time」，不显示 token 数、不可展开（反正也没有 token 细分）。
+ * 判据是 tokens===0 这个数据特征，不维护命令清单。
+ */
+
+import { useState } from 'react'
+import type { ReactNode } from 'react'
+import { theme } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { formatMessageTime } from '@/core/utils/timeFormat'
+import { formatTokens } from '@/core/lib/formatTokens'
+import { formatCacheHitRate } from '@/core/lib/cacheHitRate'
+import { formatDurationMs, formatTokensCount, type TurnResultEvent } from '@/domain/chat'
+
+/** 详情表单行：label 左、value 右（tabular-nums 对齐） */
+function DetailRow({ label, value }: { label: string; value: string | number }) {
+    const { token } = theme.useToken()
+    return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '2px 0' }}>
+            <span style={{ color: token.colorTextTertiary }}>{label}</span>
+            <span style={{ color: token.colorText, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+        </div>
+    )
+}
+
+/** 概要行 + 可展开详情；actions（复制/fork 操作组）挂概要行尾（position A） */
+export function TurnResultMeta({ event, createdAt, actions }: { event: TurnResultEvent; createdAt?: number; actions?: ReactNode }) {
+    const { t } = useTranslation()
+    const { token } = theme.useToken()
+    const [open, setOpen] = useState(false)
+    const dur = formatDurationMs(event.durationMs)
+    const time = createdAt ? formatMessageTime(createdAt) : null
+    // 无 LLM 调用的本地命令：tokens===0，精简显示（只耗时+时间），不可展开
+    const noTokens = event.tokens === 0
+    const hasDetail = !noTokens && (event.numTurns != null || event.ttftMs !== undefined || event.costUsd !== undefined
+        || event.inputTokens !== undefined || event.model !== undefined
+        || event.cacheReadTokens !== undefined || event.cacheCreationTokens !== undefined)
+
+    return (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextTertiary }}>
+            {/* 概要行 flex：actions（复制/fork 操作组）贴行尾；展开详情 grid 独立其下不参与 */}
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span
+                    {...(hasDetail ? { role: 'button' as const, onClick: () => setOpen(o => !o) } : {})}
+                    style={{ cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none', flex: 1, minWidth: 0 }}
+                >
+                    {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
+                    {dur}{!noTokens && <> · {formatTokensCount(event.tokens)}</>}
+                    {event.cacheHitRate !== undefined && <> · ⚡{formatCacheHitRate(event.cacheHitRate)}</>}
+                    {time && <span style={{ marginLeft: 8 }}>{time}</span>}
+                </span>
+                {actions}
+            </div>
+            {hasDetail && (
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateRows: open ? '1fr' : '0fr',
+                        opacity: open ? 1 : 0,
+                        transition: 'grid-template-rows 0.22s ease, opacity 0.22s ease',
+                    }}
+                >
+                    <div style={{ overflow: 'hidden' }}>
+                        <div style={{ marginTop: 6, padding: '6px 10px', borderLeft: `2px solid ${token.colorBorderSecondary}`, marginLeft: '1em' }}>
+                            <DetailRow label={t('chat.turnDetail.duration')} value={dur} />
+                            {event.ttftMs !== undefined && <DetailRow label={t('chat.turnDetail.ttft')} value={formatDurationMs(event.ttftMs)} />}
+                            {event.numTurns != null && <DetailRow label={t('chat.turnDetail.turns')} value={event.numTurns} />}
+                            {event.model && <DetailRow label={t('chat.turnDetail.model')} value={event.model} />}
+                            {event.costUsd !== undefined && <DetailRow label={t('chat.turnDetail.cost')} value={`$${event.costUsd.toFixed(4)}`} />}
+                            {event.inputTokens !== undefined && <DetailRow label={t('chat.turnDetail.input')} value={formatTokens(event.inputTokens)} />}
+                            {event.outputTokens !== undefined && <DetailRow label={t('chat.turnDetail.output')} value={formatTokens(event.outputTokens)} />}
+                            {event.cacheReadTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheRead')} value={formatTokens(event.cacheReadTokens)} />}
+                            {event.cacheCreationTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheWrite')} value={formatTokens(event.cacheCreationTokens)} />}
+                            {event.totalInputTokens !== undefined && <DetailRow label={t('chat.turnDetail.totalInput')} value={formatTokens(event.totalInputTokens)} />}
+                            {event.cacheHitRate !== undefined && <DetailRow label={t('chat.turnDetail.cacheHit')} value={formatCacheHitRate(event.cacheHitRate)} />}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {event.error && (
+                <div style={{ marginTop: 2, color: 'rgba(255, 77, 79, 0.63)', fontFamily: 'var(--font-sans)' }}>
+                    {event.error}
+                </div>
+            )}
+        </div>
+    )
+}

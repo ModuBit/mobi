@@ -50,11 +50,19 @@ failed 态常驻且 socket 失联不可发现），累积 10 个后才根治为�
 
 default 与 e2e 端口隔离、互不冲突；冲突即环境异常。
 
-**宿主 env 泄漏盖过 profile（2026-10-07 实踩）**：在 mobi Web 会话里跑
-`smoke.sh`，宿主导出的 `MOBI_LISTEN_PORT=2222` 优先级高于 `--profile e2e`
-的 2224，daemon 落 2222 撞生产实例（报 `Is port 2222 in use?` 启动超时）。
-解法：`env -u MOBI_LISTEN_PORT -u MOBI_API_URL .claude/skills/run-tests/scripts/smoke.sh --source`。
-凡在 mobi 宿主会话内起 e2e 组件，先剥离 MOBI_LISTEN_PORT / MOBI_API_URL。
+**宿主 env 泄漏盖过 profile（2026-10-07 实踩；2026-10-12 扩至 bootstrap）**：在 mobi Web
+会话里跑 E2E 组件，宿主导出的 MOBI_* 环境变量优先级高于 `--profile e2e`（profile 只填空位）。
+两种症状：
+- `smoke.sh`：`MOBI_LISTEN_PORT=2222` 把 daemon 拉去撞生产实例（`Is port 2222 in use?` 启动超时）
+- `e2e-bootstrap.sh`：`MOBI_API_URL=http://127.0.0.1:12222`（宿主 web API）让 vite proxy 指向宿主
+  daemon——web 一切 `/api/*` 404、登录卡死，**无端口报错，症状隐蔽**；看 `~/.mobi-e2e/logs/web.log`
+  的 `[PROFILE] MOBI_API_URL` 是否为 `http://localhost:2224` 即可确诊
+
+解法（凡在 mobi 宿主会话内起 e2e 组件，一律剥离后再跑）：
+```bash
+env -u MOBI_API_URL -u MOBI_LISTEN_PORT -u MOBI_LISTEN_HOST -u MOBI_HOME -u MOBI_WEB_PORT -u MOBI_PUBLIC_URL -u MOBI_PROXY_PORT \
+  bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh   # smoke.sh 同理
+```
 
 ## 故障恢复
 

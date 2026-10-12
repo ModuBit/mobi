@@ -25,7 +25,7 @@ import { FileTypeBadge } from '@/components/ui/FileTypeBadge'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
 import { GitReviewView } from '@/components/review/GitReviewView'
-import { parseTargetKey } from '@/components/review/reviewEntries'
+import { parseTargetKey } from '@/core/lib/targetKey'
 
 import { getEditorApi } from '@/components/files/EditorRegistry'
 // TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，

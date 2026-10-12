@@ -20,7 +20,7 @@ import { theme as antTheme } from 'antd'
 import { TURN_DIFF_EVENT, type ContentBlock, type UserCustomEventBlock } from '@mobi/shared'
 import type { CustomBlock as CustomBlockType } from '@/domain/chat'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { serializeTargetKey } from '@/components/review/reviewEntries'
+import { serializeTargetKey } from '@/core/lib/targetKey'
 import { Markdown } from '@/components/ui/Markdown'
 import { TurnDiffCard } from './TurnDiffCard'
 

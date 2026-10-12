@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-export type AgentStatus = 'outputting' | 'awaiting_auth' | 'idle' | 'inactive';
+// AgentStatus 定义已迁 core/utils/agentStatus（分层治理票 01）——会话状态语义归 core，
+// 此处重导出维持 pixel-avatar 域内既有引用面（sprites/animations、PixelAvatar 等）
+export type { AgentStatus } from '@/core/utils/agentStatus'
+import type { AgentStatus } from '@/core/utils/agentStatus'
 
 /** 根据 session 状态计算 AgentStatus */
 export function getAgentStatus(opts: {

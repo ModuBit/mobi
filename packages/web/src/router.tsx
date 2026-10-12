@@ -17,9 +17,9 @@
 import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { App } from './App'
-import { lazyRoute, routeChunkLoaders } from '@/core/lib/routeChunks'
+import { lazyRoute, routeChunkLoaders } from '@/routeChunks'
 
-// 页面组件用 React.lazy 拆成独立 chunk（加载器与预取定义见 @/core/lib/routeChunks，
+// 页面组件用 React.lazy 拆成独立 chunk（加载器与预取定义见 @/routeChunks，
 // 该模块独立存在以避免 App ↔ router 循环依赖）。App（root，含 SSEProvider）保持
 // eager（所有路由共用）兜 root 级懒加载（LoginPage/MainLayout 自身），
 // MainLayout 内层再兜页面级懒加载（跳转时侧边栏不闪、只有内容区出 loading）。

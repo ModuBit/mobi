@@ -49,8 +49,7 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/core/data/hooks/useNotify', () => ({
     useNotify: () => ({ warning: vi.fn(), success: vi.fn(), info: vi.fn(), error: vi.fn(), destroy: vi.fn() }),
 }))
-vi.mock('@/components/NotificationPermissionGate', () => ({
-    NotificationPermissionGate: () => null,
+vi.mock('@/core/notifications/permissionPrompt', () => ({
     resetPermissionPrompt: vi.fn(),
 }))
 vi.mock('react-i18next', () => ({

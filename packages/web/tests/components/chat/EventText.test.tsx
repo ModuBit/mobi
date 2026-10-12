@@ -14,20 +14,27 @@
  * limitations under the License.
  */
 
+/**
+ * Agent 事件渲染全链单测（分层治理票 01 自 tests/domain/eventFormatter.test.tsx 迁入）：
+ * domain/chat/eventFormatter 产出结构化描述 + components/chat/EventText 执行 t() 与呈现。
+ * 此处锁的是「用户看到的文本」；纯结构断言（aborted 优先级等）在 tests/chat/eventFormatter.test.ts。
+ */
+
 import { describe, it, expect, beforeAll, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import i18n from '../../src/core/config/i18n'
-import { formatEvent } from '../../src/domain/chat'
-import type { AgentEvent } from '../../src/domain/chat/types'
+import i18n from '@/core/config/i18n'
+import { formatEvent } from '@/domain/chat'
+import { EventText } from '@/components/chat/EventText'
+import type { AgentEvent } from '@/domain/chat/types'
 
 beforeAll(async () => {
     await i18n.changeLanguage('zh')
 })
 
 const renderEvent = (event: AgentEvent) =>
-    render(<ConfigProvider>{formatEvent(event, k => k) as React.ReactNode}</ConfigProvider>)
+    render(<ConfigProvider><EventText formatted={formatEvent(event)} /></ConfigProvider>)
 
 describe('formatEvent turn-result', () => {
     afterEach(cleanup)
@@ -136,36 +143,30 @@ describe('formatEvent turn-result', () => {
 describe('formatEvent compact / microcompact', () => {
     afterEach(cleanup)
 
-    // formatEvent 的 t 由调用方注入（真实渲染走 i18n），测试用最小映射解析文案
-    const zhT = (k: string) =>
-        ({ 'chat.contextCompacted': '上下文已压缩', 'chat.contextMicrocompacted': '上下文已微压缩' })[k] ?? k
-
-    const renderCompactEvent = (event: AgentEvent) =>
-        render(<ConfigProvider>{formatEvent(event, zhT) as React.ReactNode}</ConfigProvider>)
-
     it('compact 事件渲染压缩统计（label · pre → post tokens · 耗时）', () => {
-        renderCompactEvent({
+        renderEvent({
             type: 'compact',
             trigger: 'auto',
             preTokens: 318983,
             postTokens: 30326,
             durationMs: 140848,
         })
-        expect(screen.getByText(/上下文已压缩/)).toBeInTheDocument()
+        // label 走真实 zh i18n（chat.contextCompacted = 对话已优化），不 mock——锁生产行为
+        expect(screen.getByText('对话已优化')).toBeInTheDocument()
         expect(screen.getByText(/319\.0k/)).toBeInTheDocument()
         expect(screen.getByText(/30\.3k/)).toBeInTheDocument()
         expect(screen.getByText(/2m 20s/)).toBeInTheDocument()
     })
 
     it('compact 缺耗时时只显示 token 变化（数据缺失容错）', () => {
-        renderCompactEvent({
+        renderEvent({
             type: 'compact',
             trigger: 'manual',
             preTokens: 1000,
             postTokens: 500,
             durationMs: 0,
         })
-        expect(screen.getByText(/上下文已压缩/)).toBeInTheDocument()
+        expect(screen.getByText('对话已优化')).toBeInTheDocument()
         expect(screen.getByText(/1\.0k/)).toBeInTheDocument()
         expect(screen.getByText(/→ 500/)).toBeInTheDocument()
     })
@@ -173,33 +174,33 @@ describe('formatEvent compact / microcompact', () => {
     it('失败压缩（post_tokens 缺失兜底 0）不渲染「pre → 0」假统计', () => {
         // CLI 注释明确 post_tokens 可选（失败时缺失），normalizeAgent 兜底 0——
         // 渲染 "319.0k → 0" 等于对用户声称压缩成功且压到 0 tokens
-        renderCompactEvent({
+        renderEvent({
             type: 'compact',
             trigger: 'auto',
             preTokens: 318983,
             postTokens: 0,
             durationMs: 0,
         })
-        expect(screen.getByText(/上下文已压缩/)).toBeInTheDocument()
+        expect(screen.getByText('对话已优化')).toBeInTheDocument()
         expect(screen.getByText(/319\.0k/)).toBeInTheDocument()
         expect(screen.queryByText(/→/)).not.toBeInTheDocument()
     })
 
     it('microcompact 事件渲染节省 token 数', () => {
-        renderCompactEvent({
+        renderEvent({
             type: 'microcompact',
             trigger: 'auto',
             preTokens: 50000,
             tokensSaved: 45000,
         })
-        expect(screen.getByText(/上下文已微压缩/)).toBeInTheDocument()
+        expect(screen.getByText('对话已精简')).toBeInTheDocument()
         expect(screen.getByText(/45\.0k tokens/)).toBeInTheDocument()
     })
 })
 
 // 防漏网根因：Task 7 只测到 normalize 层，没跨 reducer→render，
 // 导致 formatEvent 缺 goal-progress case（落 default:return null）无人发现。
-// 此 describe 覆盖 reducer→render 全链：formatEvent 对 goal-progress 返回非 null JSX
+// 此 describe 覆盖 reducer→render 全链：EventText 对 goal-progress 渲染非空内容
 describe('formatEvent goal-progress', () => {
     afterEach(cleanup)
 

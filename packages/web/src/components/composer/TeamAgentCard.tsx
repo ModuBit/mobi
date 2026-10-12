@@ -16,7 +16,7 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import { statusColorOf, type StatusDotState } from '@/components/tool-card/toolIcons'
+import { statusColorOf, type StatusDotState } from '@/core/utils/statusColor'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import type { TeamMember } from '@mobi/shared'
 

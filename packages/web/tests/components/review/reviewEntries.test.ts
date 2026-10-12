@@ -16,12 +16,13 @@
 
 /**
  * 审查条目语义纯函数单测（审查重写 v2）：可展开判定（isDiffable）、档位可用性
- * （isTargetUnavailable）、Select 序列化键往返（parseTargetKey）。
+ * （isTargetUnavailable）。序列化键往返随实现迁 core/lib/targetKey（分层治理票 01），
+ * 测试见 tests/core/lib/targetKey.test.ts。
  * 箭头显隐、Collapse 过滤、树面板联动、档位禁用共用这些口径——边界在这里锁死。
  */
 
 import { describe, expect, it } from 'vitest'
-import { isDiffable, isTargetUnavailable, parseTargetKey } from '@/components/review/reviewEntries'
+import { isDiffable, isTargetUnavailable } from '@/components/review/reviewEntries'
 import type { DiffTarget, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 
 function entry(overrides: Partial<ReviewFileEntry> = {}): ReviewFileEntry {
@@ -76,20 +77,5 @@ describe('isTargetUnavailable（档位可用性矩阵）', () => {
         expect(isTargetUnavailable(nonGit, { kind: 'turn' })).toBe(false)
         expect(isTargetUnavailable(nonGit, { kind: 'worktree', area: 'uncommitted' })).toBe(true)
         expect(isTargetUnavailable(nonGit, { kind: 'commit', range: { base: 'a', head: 'b' } })).toBe(true)
-    })
-})
-
-describe('parseTargetKey（Select 序列化键往返）', () => {
-    it('三种 kind 往返一致；损坏输入抛错', () => {
-        for (const t of [
-            { kind: 'turn' } as DiffTarget,
-            { kind: 'turn', turnIndex: 3 } as DiffTarget,
-            { kind: 'worktree', area: 'uncommitted' } as DiffTarget,
-            { kind: 'commit', range: { base: 'a', head: 'b' } } as DiffTarget,
-        ]) {
-            expect(parseTargetKey(JSON.stringify(t))).toEqual(t)
-        }
-        expect(() => parseTargetKey('not json')).toThrow()
-        expect(() => parseTargetKey(JSON.stringify({ kind: 'branch' }))).toThrow()
     })
 })

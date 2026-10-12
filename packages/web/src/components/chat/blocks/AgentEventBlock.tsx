@@ -17,14 +17,13 @@
 import { memo } from 'react'
 import type { ReactNode } from 'react'
 import { theme as antTheme } from 'antd'
-import { useTranslation } from 'react-i18next'
 import type { AgentEventBlock as AgentEventBlockType } from '@/domain/chat'
 import { formatEvent } from '@/domain/chat'
+import { EventText } from '../EventText'
 
 /** Agent 事件渲染。actions 仅 turn-result 概要行消费（复制/fork 操作组，挂行尾） */
 export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }: { block: AgentEventBlockType; actions?: ReactNode }) {
     const { token } = antTheme.useToken()
-    const { t } = useTranslation()
 
     // 后台任务完成卡片
     if (block.event.type === 'bg-task-completed') {
@@ -68,8 +67,9 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
         )
     }
 
-    const content = formatEvent(block.event, t, block.createdAt, actions)
-    if (content === null) return null
+    // domain 产出结构化描述（分层治理票 01：i18n key + params），EventText 执行 t() 与呈现
+    const formatted = formatEvent(block.event, block.createdAt)
+    if (formatted === null) return null
 
     const d = block.display
     const alignClass = d?.align ? `event-align-${d.align}` : undefined
@@ -90,7 +90,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block, actions }:
                 color: colorValue,
             }}
         >
-            {content}
+            <EventText formatted={formatted} actions={actions} />
         </div>
     )
 })

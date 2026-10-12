@@ -42,7 +42,8 @@ import { RatioSplitLayout } from '@/components/ui/SplitLayout'
 import { RowDiff } from './RowDiff'
 import { DiffTreePanel } from './DiffTreePanel'
 import { defaultDeps, type GitReviewDeps } from './reviewDeps'
-import { isDiffable, isTargetUnavailable, parseTargetKey as DiffTargetParse, serializeTargetKey } from './reviewEntries'
+import { isDiffable, isTargetUnavailable } from './reviewEntries'
+import { parseTargetKey as DiffTargetParse, serializeTargetKey } from '@/core/lib/targetKey'
 
 // 对外保持原导出面（测试/消费方从 GitReviewView 取注入接口类型）
 export type { GitReviewDeps } from './reviewDeps'

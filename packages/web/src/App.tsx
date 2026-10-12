@@ -21,8 +21,9 @@ import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect, useState, Suspense } from 'react'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
-import { prefetchRouteChunks } from '@/core/lib/routeChunks'
+import { prefetchRouteChunks } from '@/routeChunks'
 import { MobiLogo } from '@/components/ui/MobiLogo'
+import { NotificationPermissionGate } from '@/components/NotificationPermissionGate'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()
@@ -95,6 +96,8 @@ export function App() {
     return (
         <ErrorBoundary>
             <SSEProvider>
+                {/* 通知权限引导：全局横切 UI，由组装层挂载（分层治理票 01，原在 SSEProvider 内） */}
+                {authenticated && <NotificationPermissionGate />}
                 {/* root 级懒加载兜底：只接 MainLayout/LoginPage 自身 chunk 的 suspend。
                     页面级 chunk 由 MainLayout 内容区的内层 Suspense 兜——跳转时布局不动 */}
                 <Suspense fallback={<RouteLoadingFallback />}>

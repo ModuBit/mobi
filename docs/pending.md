@@ -1152,3 +1152,9 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 **现象**：`packages/session/src/api/apiSession.ts:114`（`setOnRpcCalled(() => this.idleTimer?.reset())`）对**所有** RPC 一律重置空闲计时——daemon 后台 capability 刷新（`syncEngine.ts:926` commands_changed → refreshMetadata RPC）打进来也 reset。后台刷新周期性发生时会话空闲倒计时被持续清零，与被修的「daemon 重启清零」是同类根因，极端下可致会话永不休眠。
 
 **修法方向**：在 apiSession/idle 边界对 RPC method 分类（用户交互 vs ambient 簿记，如 refreshMetadata 类不触发 reset）——与 daemon `touchUpdatedAt` 的显式 opt-out 同构。属行为修复，需独立验证（复现：等后台刷新周期观察 idle 计时不归零）。
+
+## 115. microcompact 文案「tokens」重复渲染（2026-10-12 分层治理票 01 发现）
+
+**现象**：`domain/chat/eventFormatter.ts`（原 eventFormatter.tsx）microcompact case 中 `formatTokensCount(saved)` 产物已含「 tokens」后缀，拼接处又显式补一次 ` tokens`——用户看到「📦 对话已精简 · 45.0k tokens tokens」。存量行为（旧实现同样如此），票 01 以行为零变更为由原样保留并在代码注释标记。
+
+**修法方向**：删拼接处的冗余 ` tokens`，同时更新 EventText.test.tsx 的 microcompact 断言（现为 `/45\.0k tokens/` 正则，双写时也通过）。属用户可见文案修复，红→绿各一步即可。

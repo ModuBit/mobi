@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
 import { App } from 'antd'
-import { NotificationPermissionGate, resetPermissionPrompt } from '@/components/NotificationPermissionGate'
+import { resetPermissionPrompt } from '@/core/notifications/permissionPrompt'
 import { useNotificationStore } from '@/core/data/stores/notificationStore'
 import type { Session, SyncEvent, DecryptedMessage, UserContentBlock } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
@@ -725,10 +725,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         }
     }, [authenticated, logout, handleSyncEvent])
 
-    return (
-        <>
-            {children}
-            {authenticated && <NotificationPermissionGate />}
-        </>
-    )
+    // 通知权限引导 Gate 已上移 App 组装层（分层治理票 01）——core 不反向依赖 UI 组件
+    return <>{children}</>
 }

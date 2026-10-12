@@ -19,7 +19,7 @@
  * 单独导出供批量失效所有 ['workspaceSessions', workspaceId] 查询使用（invalidateWorkspaceViews）
  */
 import type { DiffTarget } from '@mobi/shared'
-import { serializeTargetKey } from '@/components/review/reviewEntries'
+import { serializeTargetKey } from '@/core/lib/targetKey'
 
 /** DiffTarget → 查询键片段（统一走 serializeTargetKey，与 viewState/菜单 key 同一 wire 契约） */
 const targetKey = serializeTargetKey

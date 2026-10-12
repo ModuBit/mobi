@@ -28,7 +28,7 @@
         "test:cli": "cd packages/cli && bun run test",
         "test:web": "cd packages/web && bun run test",
         "lint": "eslint packages/shared/src packages/node-core/src packages/daemon/src packages/session/src packages/cli/src packages/web/src",
-        "lint:deps": "depcruise packages/shared/src packages/node-core/src packages/daemon/src packages/session/src packages/cli/src packages/web/src",
+        "lint:deps": "for p in shared node-core daemon session cli; do bunx depcruise packages/$p/src --config .dependency-cruiser.js || exit 1; done && bunx depcruise packages/web/src --config .dependency-cruiser.web.js --ts-config tsconfig.depcruise.json",
         "lint:knip": "knip",
         "prepare": "husky",
         "build:hub": "cd packages/daemon && bun run build"

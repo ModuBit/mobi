@@ -110,6 +110,34 @@ module.exports = {
       },
     },
 
+    /* ===== web 分层治理（.scratch/src-governance 票 01）=====
+       core 是基础设施层，不允许向上依赖 UI 层（components/pages；票 02 迁移后换
+       features/ui/pages/app）；domain 是纯逻辑层，零 React / 零 i18n runtime / 零 antd */
+    {
+      name: 'web-core-no-upward',
+      comment: 'web core 不允许依赖 components/pages（UI 层向上泄漏）',
+      severity: 'error',
+      from: {
+        path: '^packages/web/src/core',
+      },
+      to: {
+        path: '^packages/web/src/(components|pages)',
+      },
+    },
+    {
+      name: 'web-domain-no-react',
+      comment: 'web domain 零 React：不允许依赖 react 系/react-i18next/antd/@tanstack（type-only 同罪）',
+      severity: 'error',
+      from: {
+        path: '^packages/web/src/domain',
+      },
+      to: {
+        // bun 布局下第三方包 symlink 解析为 node_modules/.bun/<pkg>@<ver>/node_modules/<pkg>/，
+        // 规则做子串匹配（非锚定）天然命中尾部段；包名后须紧跟 / 或行尾（react 不误伤 react-dom）
+        path: 'node_modules/(react|react-dom|react-i18next|antd|@ant-design/[^/]+|@tanstack/[^/]+)(/|$)',
+      },
+    },
+
     /* ===== SnapshotSync 模块边界 ===== */
     // 快照同步 module 只决定快照内容（衔接判定/游标/缓存），历史回放由 adapter 层查 DB 后
     // 喂进来、网络发送归 socket/sse adapter、观测只记录不聚合——越界即腐化起点，CI 硬卡
@@ -129,15 +157,17 @@ module.exports = {
   options: {
     // monorepo 基础路径
     baseDir: '.',
-    // 使用 tsconfig 解析路径
+    // 使用 tsconfig 解析路径（各包 paths alias 的解析：lint:deps 按包巡航时经
+    // --ts-config 指定该包 tsconfig——depcruise 只支持单一 tsConfig，多包合并会互相污染）
     tsPreCompilationDeps: true,
-    // 验证依赖的模块是否确实存在
+    // 验证依赖的模块是否确实存在；node_modules 只作叶子不递归（保留边供 forbidden 匹配）
     doNotFollow: {
       path: 'node_modules',
     },
+    // dist 是 gitignored 的构建产物（如 packages/web/dist），不应纳入依赖巡检。
+    // node_modules 不 exclude（保留第三方包依赖边——web-domain-no-react 等规则依赖它）
     exclude: {
-      // dist 是 gitignored 的构建产物（如 packages/web/dist），不应纳入依赖巡检
-      path: '(node_modules|dist)',
+      path: 'dist',
     },
   },
 }

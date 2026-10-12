@@ -66,7 +66,8 @@ export {
 
 // 事件处理
 export { parseMessageAsEvent, dedupeAgentEvents, foldApiErrorEvents } from './reducerEvents'
-export { formatEvent, extractApiErrorDetail } from './eventFormatter'
+export type { I18nText, EventLine, FormattedEvent, TurnResultEvent } from './eventFormatter'
+export { formatEvent, extractApiErrorDetail, formatDurationMs, formatTokensCount } from './eventFormatter'
 
 // CLI 输出处理
 export { isCliOutputText, createCliOutputBlock, mergeCliOutputBlocks } from './reducerCliOutput'

@@ -62,8 +62,7 @@ vi.mock('@/core/data/hooks/useNotify', () => ({
 vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => ({ visibility: { report: vi.fn().mockResolvedValue(undefined) } }),
 }))
-vi.mock('@/components/NotificationPermissionGate', () => ({
-    NotificationPermissionGate: () => null,
+vi.mock('@/core/notifications/permissionPrompt', () => ({
     resetPermissionPrompt: gateResetSpy,
 }))
 vi.mock('react-i18next', () => ({

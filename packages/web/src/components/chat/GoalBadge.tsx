@@ -19,7 +19,7 @@ import { Popover } from 'antd'
 import type { GoalStatus } from '@mobi/shared'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { ClearStateButton } from '@/components/composer/ClearStateButton'
-import { STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
+import { STATUS_DOT_COLORS } from '@/core/utils/statusColor'
 
 /**
  * goal 徽标（StatusBar 内渲染，靠右）。

@@ -23,7 +23,7 @@
  * 档位寻址换 DiffTarget（可用性矩阵在 overview.unavailableScopes）。
  */
 
-import { DiffTargetSchema, type DiffTarget, type ReviewFileEntry, type ReviewOverview } from '@mobi/shared'
+import { type DiffTarget, type ReviewFileEntry, type ReviewOverview } from '@mobi/shared'
 
 /**
  * 可 diff 判定：只有文本类条目才可展开（不可展开的行点击无效果、无箭头）。binary 是
@@ -41,14 +41,4 @@ export function isTargetUnavailable(overview: ReviewOverview | undefined, target
     if (target.kind === 'turn') return overview.unavailableScopes.turn
     if (target.kind === 'commit') return overview.unavailableScopes.commit
     return overview.unavailableScopes[target.area]
-}
-
-/** DiffTarget → 序列化键（与 parseTargetKey 互逆；菜单 key / query key / viewState 共用的 wire 契约，收口单点） */
-export function serializeTargetKey(target: DiffTarget): string {
-    return JSON.stringify(target)
-}
-
-/** Select 序列化键 → DiffTarget（损坏输入抛错，调用方吞掉不切档） */
-export function parseTargetKey(key: string): DiffTarget {
-    return DiffTargetSchema.parse(JSON.parse(key))
 }

@@ -30,7 +30,7 @@
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
+import { STATUS_DOT_COLORS } from '@/core/utils/statusColor'
 const Badge = styled.span<{ $textColor: string; $bgColor: string }>`
     display: inline-flex;
     align-items: center;
