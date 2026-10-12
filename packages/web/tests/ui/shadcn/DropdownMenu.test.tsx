@@ -141,6 +141,26 @@ describe('DropdownMenu 的 items 结构', () => {
         expect(screen.getByText('禁用项').closest('[role="menuitem"]')).toHaveAttribute('data-disabled')
     })
 
+    it('子菜单项聚焦不让本级高亮跟着走（子菜单面板是本级的 DOM 后代，focusin 会冒上来）', () => {
+        render(
+            <DropdownMenu
+                trigger={<button type="button">触发</button>}
+                items={[
+                    { label: '提交', children: [{ label: 'c1' }, { label: '删提交', destructive: true }] },
+                ]}
+            />
+        )
+        openMenu(screen.getByText('触发'))
+        fireEvent.click(screen.getByText('提交').closest('[role="menuitem"]')!)
+
+        // 危险色调只能落在子菜单那一级的高亮上（高亮是唯一带 data-tone 的 span；弹层 portal
+        // 到 body，所以要查 document 而不是 render 容器）。本级若不按面板归属过滤，会把
+        // 子菜单项的 offsetTop/tone 认成自己的——真机表现就是面板下方漂着第二个背景色。
+        fireEvent.focusIn(screen.getByText('删提交').closest('[role="menuitem"]')!)
+
+        expect(document.querySelectorAll('span[data-tone="danger"]')).toHaveLength(1)
+    })
+
     it('side / align 透到弹层的 data-side / data-align（CSS 的入场位移与原点据此分档）', () => {
         render(
             <DropdownMenu

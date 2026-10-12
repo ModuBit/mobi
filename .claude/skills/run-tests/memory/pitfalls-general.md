@@ -201,3 +201,77 @@ HTMLElement.prototype.focus = function () {
 
 **判据**：这是真机同样存在的 bug，不是 jsdom 假象——React 事件沿 React 树冒泡是框架行为。
 遇到「弹层开完即关」别先怀疑测试环境。
+
+## Radix 弹层「退出动画不播、当帧被摘掉」——portal 级 Presence 的 ref 被组件层吞掉（2026-10-12）
+
+**现象**：`dropdown-menu` 的 `.menu[data-state="closed"]`（`animation: menu-exit … both` + 130ms 过渡）
+进入动画完全正常、退出动画一条 `transitionstart`/`animationstart` 都没有，节点在**与 `data-state=closed`
+同一次提交内**就从 DOM 消失。CSS 逐条核对与上游 uiarc 站点完全相同，上游**同一组件在自己站上退出动画是正常的**。
+
+**根因**：`@radix-ui/react-menu` 有**两层** `Presence`——portal 级（`MenuPortal`）和 content 级（`MenuContent`）。
+两层的探测 ref 都经 `cloneElement(child, { ref })` 交给**各自的直接子元素**：
+- content 级直接子元素就是 ContentImpl → 拿到 DOM 节点 → 读到 `animationName` 正常 → 会走 `ANIMATION_OUT`；
+- portal 级的直接子元素是 **Portal 的 children**（上游内联的 `<Content>`，我们抽出的 **`<MenuLevel>` 函数组件**）。
+
+React 19 起函数组件的 `ref` 走 props，**组件不接不转 = ref 被静默吞掉** → 该 Presence 的
+`stylesRef.current` 一直是 `null`（`@radix-ui/react-presence@1.1.11` 的初值就是 `null`）→
+关闭时 `getAnimationName(null)` 得 `"none"` → 直接 `send("UNMOUNT")`，整棵 portal 当帧拆掉，
+内层的退出动画根本没机会播。
+
+**判据链（本次全套实测）**：
+- 关闭时只有 **1 次** `getAnimationName` 读取被记录——`getAnimationName(null)` 不碰任何元素，**不会留下痕迹**，别指望从读取日志看出它。
+- 反证：把 `modal={false}` 还原、关掉 `StrictMode`、给 open 态/菜单/portal 包裹层全部注入非 `none` 的
+  `animationName`（`getComputedStyle` 打 Proxy 强改返回值），**四种都仍当帧卸载** → 说明决定卸载的那一方
+  不是在看这些元素。
+- 对照：上游 `https://uiarc.dev/components/dropdown-menu` 现场开合，DOM 结构一模一样
+  （`body > div(无类) > div[role=menu]`），关闭事件是 `transitionstart` → `animationstart menu-exit` → **~140ms 后才 REMOVED**。
+
+**诊断 recipe（含 Proxy 看 Radix 到底读了什么）**：
+
+```js
+// 只看 Radix 自己的读取：Proxy 包 getComputedStyle 返回的活对象，记录 caller 栈区分是不是自己的探针
+const prev = window.getComputedStyle;
+window.getComputedStyle = function (el, ps) {
+  const real = prev.call(this, el, ps);
+  if (el?.getAttribute?.('role') !== 'menu') return real;
+  return new Proxy(real, { get(t, p) {
+    if (p === 'animationName' || p === 'display')
+      window.__reads.push({ p: String(p), v: String(t[p]), stack: new Error().stack.split('\n')[2] });
+    return typeof t[p] === 'function' ? t[p].bind(t) : t[p];
+  }});
+};
+// 再配 MutationObserver 盯 [role=menu] 的 data-state + childList，看「翻转」与「REMOVED」是否同一微任务批
+```
+
+**修法**：让中间层把 ref 转下去——`MenuLevel` 接 `ref?: Ref<HTMLDivElement>` 并挂到
+`DropdownPrimitive.Content` / `SubContent` 上（React 19 下函数组件直接收 `ref` prop 即可，无需 `forwardRef`）。
+**通用规律**：任何在 Radix `Portal` 与 `Content` 之间插入的组件层都必须透传 ref，否则退出动画必失效。
+
+**不可用单测兜底**：jsdom 不算 CSS 动画，`getComputedStyle().animationName` 恒为空 → Radix presence 无论对错都立即卸载，
+写不出能红能绿的 jsdom 复现。此条只能靠真机开合时序验收（`data-state=closed` 之后必须还有
+`animationstart`/`transitionstart`，且 `REMOVED` 要晚 ~130ms）。
+
+## 级联菜单「父面板漂着第二个高亮」——子菜单面板是父面板的 DOM 后代，focusin 冒上来（2026-10-12）
+
+**现象**：悬停/聚焦子菜单里的项时，父面板外侧（甚至面板下方几百 px 的空白处）多出一块同色圆角背景，
+和一个正常高亮并排出现——「有两个 hover 背景色」。
+
+**根因**：Radix 把 `SubContent` 渲染在**父面板 DOM 内部**（不是并列的兄弟 portal），所以
+`parent.querySelectorAll('[role="menuitem"]')` 会连子菜单的项一起抓到。面板的 `onFocus` 若用
+`event.target.closest('[role="menuitem"]')` 取项、直接吃 `item.offsetTop`，子菜单项的 `offsetTop`
+（相对 `SubContent`，可达数百 px）就被父级当成自己的，高亮被 `translateY` 到面板外。
+
+**诊断**：面板与外层高亮各挂 `position:absolute` + `translateY(offsetTop)`，直接量 `getBoundingClientRect()`
+与父面板 rect 比对即可——高亮 rect 落在面板 rect 之外就是它。真机一次量到位，不必读源码。
+本次实测：子菜单第 20 项 `offsetTop: 725` → 父高亮 rect `y=800`，而父面板只有 `y 74–266`。
+
+**修法**：按面板归属过滤——每级面板都带 `data-dropdown-scroll-root`（本来就是子项滚动哨兵找容器用的标记），
+`event.target.closest('[data-dropdown-scroll-root]') !== event.currentTarget` 就直接 return。
+**通用规律**：任何「面板类容器」的 focus/pointer 处理器都要先判「事件是不是落在我这层」，
+因为嵌套面板在 DOM 上是后代关系。
+
+**可单测**：这条能在 jsdom 复现——聚焦子菜单里的 `destructive` 项，断言 `document.querySelectorAll('span[data-tone="danger"]')`
+长度为 1（红：父级也变色 → 2）。注意**弹层 portal 到 body，要查 `document` 而不是 render 容器**，
+否则拿到空集合、测试会假绿。
+
+

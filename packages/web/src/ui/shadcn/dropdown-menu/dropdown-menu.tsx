@@ -38,7 +38,7 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, ReactNode } from "react";
+import type { CSSProperties, FocusEvent, ReactNode, Ref } from "react";
 import * as DropdownPrimitive from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -124,8 +124,14 @@ function TriggerLabel({ text }: { text: string }) {
  * 高亮元素，会画到一级面板上。
  * 面板带 `data-dropdown-scroll-root`：子项里的滚动哨兵靠它找滚动容器（不给消费方
  * 暴露 CSS Modules 的哈希类名）。
+ *
+ * **ref 必须透传到面板根元素**：Radix 的 portal 级 `Presence` 把探测 ref 通过
+ * `cloneElement` 交给 Portal 的**直接子元素**——也就是本组件。它拿不到 DOM 节点时
+ * `stylesRef` 恒为 null，关闭时 `getAnimationName(null)` 判成 `"none"`，于是当帧
+ * 就把整棵 portal 卸掉，`.menu[data-state="closed"]` 的退出动画永远跑不起来
+ * （上游把 Content 内联在 Portal 里所以没这层；React 19 起函数组件的 ref 走 props）。
  */
-function MenuLevel({ variant, items, side, align, sideOffset, alignOffset }: { variant: "root" | "sub"; items: DropdownItem[]; side?: MenuSide; align?: MenuAlign; sideOffset: number; alignOffset?: number }) {
+function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, ref }: { variant: "root" | "sub"; items: DropdownItem[]; side?: MenuSide; align?: MenuAlign; sideOffset: number; alignOffset?: number; ref?: Ref<HTMLDivElement> }) {
   const reduced = useReducedMotion();
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const pointer = useRef(false);
@@ -133,6 +139,11 @@ function MenuLevel({ variant, items, side, align, sideOffset, alignOffset }: { v
   useEffect(() => () => window.clearTimeout(clearTimer.current), []);
   // Radix focuses the highlighted item (pointer or keyboard) and the content when the pointer leaves an item.
   function onPanelFocus(event: FocusEvent<HTMLDivElement>) {
+    // 子菜单面板是**本面板的 DOM 后代**（Radix 把 SubContent 渲染在父面板里），焦点进子菜单时
+    // focusin 会一路冒到本级。不按面板归属过滤的话，本级会把子菜单项的 offsetTop 当成自己的，
+    // 高亮被画到面板外——悬停子菜单时面板下方漂着第二个背景色就是这么来的。
+    // data-dropdown-scroll-root 是每级面板的唯一标记（同一属性也供子项里的滚动哨兵找容器）。
+    if (event.target instanceof HTMLElement && event.target.closest('[data-dropdown-scroll-root]') !== event.currentTarget) return;
     const item = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[role="menuitem"]') : null;
     window.clearTimeout(clearTimer.current);
     if (!item) {
@@ -173,9 +184,9 @@ function MenuLevel({ variant, items, side, align, sideOffset, alignOffset }: { v
   </>;
   // 子菜单关闭即卸载（Radix Presence）——antd 时代靠 destroyOnHidden 兜的 popup 残留问题不存在
   if (variant === "sub") {
-    return <DropdownPrimitive.SubContent className={styles.subMenu} data-dropdown-scroll-root sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.SubContent>;
+    return <DropdownPrimitive.SubContent ref={ref} className={styles.subMenu} data-dropdown-scroll-root sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.SubContent>;
   }
-  return <DropdownPrimitive.Content className={styles.menu} data-dropdown-scroll-root side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
+  return <DropdownPrimitive.Content ref={ref} className={styles.menu} data-dropdown-scroll-root side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
 }
 
 export function DropdownMenu({ label, trigger, items, icon, side = "bottom", align = "end" }: DropdownMenuProps) {
