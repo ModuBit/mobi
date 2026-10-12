@@ -193,3 +193,80 @@ describe('DropdownMenu 的 items 结构', () => {
         expect(onRowClick).not.toHaveBeenCalled()
     })
 })
+
+/**
+ * 子菜单的窄屏两条不变量（2026-10-13 真机回归：审查范围「已提交」在 390px 屏上顶出右缘 150px、
+ * 且列表滚动后上下贴边）。jsdom 无布局，故：
+ * - 结构按其 DOM 契约断言（滚动容器 / 面板标记）；
+ * - 贴边位移用桩矩形 + 桩 innerWidth，靠 window resize 触发重算——真机上首次重算由 ResizeObserver
+ *   的首次回调（观察即回调）与 Radix 写定位时的 MutationObserver 触发，两者在 jsdom 里都不发信号。
+ */
+describe('子菜单的窄屏贴边与滚动留白', () => {
+    const INITIAL_INNER_WIDTH = window.innerWidth
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+        Object.defineProperty(window, 'innerWidth', { value: INITIAL_INNER_WIDTH, writable: true, configurable: true })
+    })
+
+    /** 打开二级子菜单，返回子菜单面板（面板 = 带 data-dropdown-panel 的 role=menu） */
+    function openSubmenu(): HTMLElement {
+        render(
+            <DropdownMenu
+                trigger={<button type="button">触发</button>}
+                items={[{ label: '提交', children: [{ label: 'c1' }, { label: 'c2' }] }]}
+            />
+        )
+        openMenu(screen.getByText('触发'))
+        fireEvent.click(screen.getByText('提交').closest('[role="menuitem"]')!)
+
+        const panels = [...document.querySelectorAll<HTMLElement>('[data-dropdown-panel]')]
+        expect(panels).toHaveLength(2)
+        return panels[1]!
+    }
+
+    /** 只桩子菜单的定位层（面板的父元素）：别的元素保持 jsdom 的零矩形，免得干扰 Radix 自己的定位 */
+    function stubSubWrapperRect(sub: HTMLElement, rect: { x: number; right: number; width: number }) {
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+            const box = this === sub.parentElement
+                ? { left: rect.x, right: rect.right, width: rect.width }
+                : { left: 0, right: 0, width: 0 }
+            return { ...box, top: 0, bottom: 0, height: 0, x: box.left, y: 0, toJSON: () => ({}) } as DOMRect
+        })
+    }
+
+    it('条目收在自带滚动标记的容器里，面板另带层级标记（两标记各司其职）', () => {
+        const sub = openSubmenu()
+
+        // 面板标记：判焦点是否从子菜单冒上来（子菜单面板是本级的 DOM 后代）
+        expect(sub).toHaveAttribute('data-dropdown-panel')
+        // 滚动标记：面板的直接子元素才是滚动容器（子项里的哨兵拿它当 IO root），条目都在它下面
+        const container = sub.querySelector<HTMLElement>(':scope > [data-dropdown-scroll-root]')
+        expect(container).not.toBeNull()
+        expect(container!.querySelectorAll('[role="menuitem"]')).toHaveLength(2)
+        // 面板自身不再挂滚动标记：否则哨兵会把不滚动的面板当 root，翻页判定失效
+        expect(sub).not.toHaveAttribute('data-dropdown-scroll-root')
+    })
+
+    it('子菜单右缘越屏时整体左移贴回屏内（Radix 的 shift 挪不动横向）', () => {
+        const sub = openSubmenu()
+        Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+        // 390px 屏里的实测值：面板 340 宽、落在 x=200，右缘 540
+        stubSubWrapperRect(sub, { x: 200, right: 540, width: 340 })
+
+        window.dispatchEvent(new Event('resize'))
+
+        // 右缘收到 390 - 12（边缘留白），即左移 540 - 378 = 162
+        expect(sub.style.getPropertyValue('--submenu-shift-x')).toBe('-162px')
+    })
+
+    it('装得下时不补位移（宽屏右翻或右侧有余量，都不该被推走）', () => {
+        const sub = openSubmenu()
+        Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true })
+        stubSubWrapperRect(sub, { x: 900, right: 1240, width: 340 })
+
+        window.dispatchEvent(new Event('resize'))
+
+        expect(sub.style.getPropertyValue('--submenu-shift-x')).toBe('')
+    })
+})

@@ -34,13 +34,17 @@
 //     bottomLeft / bottomRight），迁移须能指名方位。
 //  6. 透传 open / onOpenChange 受控开合——`content` 项不是菜单项，Radix 不会替它关弹层
 //     （附件面板的相机行点了要收起面板），消费方需要能自己关。
+//  7. 子菜单横向贴边校正——Radix 的 shift/flip 对 left/right 档位挪不动横向（原因见
+//     useSubmenuEdgeShift 注释），宽子菜单在窄屏直接顶出屏幕右缘，由组件侧按实测矩形补上。
+//  8. 条目容器——高亮与条目收进 .items（子菜单的滚动容器），面板 padding 留在外层：滚动容器
+//     自身的 padding 会随内容滚出视口，表现为「滚动后内容紧贴上下边缘」。
 // 注：Radix 的弹层按触发器的矩形定位（floating-ui autoUpdate），因此**触发器必须常驻布局**——
 // 消费方若把触发器放进 hover-only 的容器，关闭瞬间容器塌成 display:none、rect 归零到视口
 // 原点，仍在退场的菜单会被甩到左上角。此为消费方约束，组件侧不做兜底。
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, ReactNode, Ref } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, FocusEvent, ReactNode, Ref, RefObject } from "react";
 import * as DropdownPrimitive from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -127,11 +131,68 @@ function TriggerLabel({ text }: { text: string }) {
   </motion.span>;
 }
 
+/** 面板与视口边缘的最小间距：与 Radix 入参 collisionPadding 同值，避免两套口径 */
+const EDGE_PADDING = 12;
+
+/** 横向贴边校正量的载体（CSS 侧由 .subMenu 的 translate 消费） */
+const SUBMENU_SHIFT_VAR = "--submenu-shift-x";
+
+/**
+ * 子菜单的横向贴边校正（本地修改 7）。
+ *
+ * Radix 的定位中间件管不了横向溢出：PopperContent 写死 `shift({ mainAxis: true, crossAxis: false })`，
+ * 而 floating-ui 对 left/right 档位的「crossAxis」正是**横向**（getSideAxis('right') === 'x'）——
+ * 开关反了：子菜单只会上下挪，永远不左右挪；`flip` 在锚点自身就贴着屏幕边时也无处可翻。
+ * 结果 = 宽子菜单在窄屏上直接顶出屏幕右缘（2026-10-12 实测：390px 视口里 340px 面板落在 x=200，
+ * 右缘 540，溢出 150px；同一份数据在宽屏上看不出来，纯窄屏才暴露）。
+ *
+ * 这里按实测矩形把面板整体平移回屏内：允许压住父面板（原生菜单就是这个观感），只保证左右各留
+ * EDGE_PADDING。位移写进自定义属性，由 CSS 的 `translate` 消费——**不能借用 transform**，那被开合
+ * 动画占着。
+ *
+ * 量的是**外层包裹元素**的矩形而不是面板自身：开合动画给面板挂了 scale，动画期间面板矩形是缩过的
+ * （按它算出来的位移会少一截，实测残留 3px 溢出）。包裹元素的布局盒不含这层 transform，取值稳定，
+ * 于是位移是绝对量，重算天然幂等。重算点取 Radix 写入定位（盯包裹元素的 style）、面板尺寸变化
+ * （子菜单内容会分页长出来）与窗口尺寸变化。
+ */
+function useSubmenuEdgeShift(panel: HTMLDivElement | null): void {
+  useLayoutEffect(() => {
+    if (!panel) return;
+    const el = panel;
+    // Radix 的定位写在这层包裹元素的 style 上，它同时是「未被动画缩放」的布局盒
+    const wrapper = el.parentElement;
+    const apply = () => {
+      const box = (wrapper ?? el).getBoundingClientRect();
+      const overflowRight = box.right - (window.innerWidth - EDGE_PADDING);
+      const overflowLeft = EDGE_PADDING - box.left;
+      // 两侧都溢出（面板比视口还宽）时以右缘为准——左缘贴边后右侧仍被裁，总比两侧都露在外面强
+      const shift = overflowRight > 0 ? -overflowRight : overflowLeft > 0 ? overflowLeft : 0;
+      if (shift === 0) el.style.removeProperty(SUBMENU_SHIFT_VAR);
+      else el.style.setProperty(SUBMENU_SHIFT_VAR, `${shift}px`);
+    };
+    // **不能只测一次**：Radix 的定位落在它自己的提交里，可能晚于本 effect——那时量到的矩形还是
+    // 「没溢出」，此后再无触发就永远校正不上（首版实测栽在这）。主力是盯包裹元素的 style：
+    // 定位一落地/一重算就量一次，确定性来自 Radix 的动作而非帧序。
+    const positioning = new MutationObserver(apply);
+    if (wrapper) positioning.observe(wrapper, { attributes: true, attributeFilter: ["style"] });
+    // 尺寸变化：首次回调本身就带当前尺寸（可当首测），此后子菜单内容长出来（提交列表分页）也走这里
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    window.addEventListener("resize", apply);
+    return () => {
+      positioning.disconnect();
+      observer.disconnect();
+      window.removeEventListener("resize", apply);
+    };
+  }, [panel]);
+}
+
 /**
  * 菜单面板（一级 Content 或子菜单 SubContent）：自带本级的滑动高亮与键盘/指针判据。
  * 抽成一层是因为子菜单是独立弹出的面板，高亮态必须每级各持一份——子项若共用一级的
  * 高亮元素，会画到一级面板上。
- * 面板带 `data-dropdown-scroll-root`：子项里的滚动哨兵靠它找滚动容器（不给消费方
+ * 面板带 `data-dropdown-panel`（本级归属标记，判焦点是否从子菜单冒上来）；条目收在
+ * `data-dropdown-scroll-root` 的容器里（子项里的滚动哨兵靠它找滚动容器，不给消费方
  * 暴露 CSS Modules 的哈希类名）。
  *
  * **ref 必须透传到面板根元素**：Radix 的 portal 级 `Presence` 把探测 ref 通过
@@ -146,13 +207,24 @@ function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, ref }
   const pointer = useRef(false);
   const clearTimer = useRef(0);
   useEffect(() => () => window.clearTimeout(clearTimer.current), []);
+  // 面板元素：既要把 Radix Presence 的探测 ref 透传下去（见上方注释），本级还要拿它做贴边校正。
+  // 走 state 而非 ref：Radix 的面板比本级的 layout effect 晚一拍才挂上节点（实测 effect 跑时
+  // 恒为 null），state 一到就重跑校正 effect，正好赶上可测的时机。
+  const [panel, setPanelNode] = useState<HTMLDivElement | null>(null);
+  const setPanel = useCallback((node: HTMLDivElement | null) => {
+    setPanelNode(node);
+    if (typeof ref === "function") ref(node);
+    else if (ref) (ref as RefObject<HTMLDivElement | null>).current = node;
+  }, [ref]);
+  // 纵向由 Radix 的 shift 负责（对 left/right 档位它调的正是纵向），横向只能自己补
+  useSubmenuEdgeShift(variant === "sub" ? panel : null);
   // Radix focuses the highlighted item (pointer or keyboard) and the content when the pointer leaves an item.
   function onPanelFocus(event: FocusEvent<HTMLDivElement>) {
     // 子菜单面板是**本面板的 DOM 后代**（Radix 把 SubContent 渲染在父面板里），焦点进子菜单时
     // focusin 会一路冒到本级。不按面板归属过滤的话，本级会把子菜单项的 offsetTop 当成自己的，
     // 高亮被画到面板外——悬停子菜单时面板下方漂着第二个背景色就是这么来的。
-    // data-dropdown-scroll-root 是每级面板的唯一标记（同一属性也供子项里的滚动哨兵找容器）。
-    if (event.target instanceof HTMLElement && event.target.closest('[data-dropdown-scroll-root]') !== event.currentTarget) return;
+    // data-dropdown-panel 是每级面板的唯一标记（条目容器的滚动标记另有其名，见下方 body）。
+    if (event.target instanceof HTMLElement && event.target.closest('[data-dropdown-panel]') !== event.currentTarget) return;
     const item = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[role="menuitem"]') : null;
     window.clearTimeout(clearTimer.current);
     if (!item) {
@@ -186,16 +258,20 @@ function MenuLevel({ variant, items, side, align, sideOffset, alignOffset, ref }
     return <Fragment key={item.key ?? index}>{separator}<DropdownPrimitive.Item className={item.destructive ? `${styles.item} ${styles.destructive}` : styles.item} data-tone={tone} data-selected={item.selected ? "" : undefined} style={style} disabled={item.disabled} title={item.title} onSelect={item.onSelect}>{inner}</DropdownPrimitive.Item></Fragment>;
   }
 
-  const body = <>
+  // 条目容器（本地修改 8）：高亮与条目同层——一起随内容滚动，offsetTop 也才有同一基准。
+  // 面板 padding 留在外层，滚动收在这一层，滚动时上下留白才不会跟着滚走。
+  // 子项里的滚动哨兵拿 data-dropdown-scroll-root 当 IntersectionObserver 的 root，故它必须落在
+  // 真正滚动的元素上（子菜单高度受限时才是滚动容器）。
+  const body = <div className={styles.items} data-dropdown-scroll-root>
     {/* One highlight glides between items for the pointer and jumps instantly for the keyboard. */}
     <motion.span className={styles.highlight} data-tone={highlight?.danger ? "danger" : undefined} aria-hidden="true" initial={false} animate={highlight ? { y: highlight.top, height: highlight.height, opacity: 1 } : { opacity: 0 }} transition={{ default: highlight?.glide && !reduced ? motionTokens.spring.snappy : { duration: 0 }, opacity: { duration: reduced ? 0 : .08 } }}/>
     {items.map(entry)}
-  </>;
+  </div>;
   // 子菜单关闭即卸载（Radix Presence）——antd 时代靠 destroyOnHidden 兜的 popup 残留问题不存在
   if (variant === "sub") {
-    return <DropdownPrimitive.SubContent ref={ref} className={styles.subMenu} data-dropdown-scroll-root sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.SubContent>;
+    return <DropdownPrimitive.SubContent ref={setPanel} className={styles.subMenu} data-dropdown-panel sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={EDGE_PADDING} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.SubContent>;
   }
-  return <DropdownPrimitive.Content ref={ref} className={styles.menu} data-dropdown-scroll-root side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={12} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
+  return <DropdownPrimitive.Content ref={setPanel} className={styles.menu} data-dropdown-panel side={side} align={align} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={EDGE_PADDING} loop onFocus={onPanelFocus} onPointerMoveCapture={() => { pointer.current = true; }} onKeyDownCapture={() => { pointer.current = false; }} onClick={event => event.stopPropagation()}>{body}</DropdownPrimitive.Content>;
 }
 
 export function DropdownMenu({ label, trigger, items, icon, side = "bottom", align = "end", open, onOpenChange }: DropdownMenuProps) {

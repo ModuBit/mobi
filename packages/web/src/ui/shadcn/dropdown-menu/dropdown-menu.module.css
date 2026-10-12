@@ -79,8 +79,12 @@
 /* Submenus open sideways, sized by their content and capped so a long list scrolls instead of running off-screen.
    原点不借 --radix-dropdown-menu-content-* 那组变量：子菜单面板是**父面板的 DOM 后代**（Radix
    MenuSubContent 不 portal，不是兄弟节点），那组变量是给一级面板定位用的，借来几何对不上——
-   侧向原点写死；翻边时 Radix 置 data-side=left */
-.subMenu { max-height: min(60dvh, 340px); max-width: min(90vw, 420px); overflow-y: auto; overscroll-behavior: contain; transform-origin: left center; }
+   侧向原点写死；翻边时 Radix 置 data-side=left
+   translate 消费 --submenu-shift-x（本地修改 7）：横向溢出由 dropdown-menu.tsx 的贴边校正补上
+   （Radix 的 shift/flip 对 left/right 档位挪不动横向），不能用 transform——那被开合动画占着 */
+.subMenu { max-width: min(90vw, 420px); transform-origin: left center; translate: var(--submenu-shift-x, 0px) 0; }
+/* 条目容器才是子菜单的滚动容器：上下限挂这里，面板 padding 才不会被滚走（本地修改 8） */
+.subMenu > .items { max-height: min(60dvh, 340px); overflow-y: auto; overscroll-behavior: contain; }
 .subMenu[data-side="left"] { transform-origin: right center; }
 .menu[data-side="top"] { --menu-y: 5px; }
 .menu[data-side="left"] { --menu-x: 5px; --menu-y: 0px; }
@@ -92,7 +96,11 @@
 }
 /* Radix unmounts when the exit animation ends, so a no-op keyframe times the exit while the transition does the visual work. */
 .menu[data-state="closed"] { opacity: 0; transform: translate(calc(var(--menu-x) * .5), calc(var(--menu-y) * .5)) scale(.985); transition: opacity 130ms var(--ease-standard), transform 130ms var(--ease-standard); animation: menu-exit 130ms linear both; pointer-events: none; }
-.highlight { position: absolute; top: 0; right: 5px; left: 5px; border-radius: calc(var(--radius-panel) - 6px); background: var(--surface-muted); opacity: 0; pointer-events: none; transition: background-color var(--duration-fast) var(--ease-standard); }
+/* 条目容器（本地修改 8）：高亮与条目同处一层——两者一起随内容滚动，offsetTop 也才有同一基准。
+   面板的 padding 留在外层的 .menu/.subMenu 上，滚动只发生在这里：滚动容器自己的 padding 会随内容
+   滚出视口，滚动后内容便贴住面板上下边缘（子菜单长列表在真机上的表现）。 */
+.items { position: relative; min-width: 0; }
+.highlight { position: absolute; top: 0; right: 0; left: 0; border-radius: calc(var(--radius-panel) - 6px); background: var(--surface-muted); opacity: 0; pointer-events: none; transition: background-color var(--duration-fast) var(--ease-standard); }
 .highlight[data-tone="danger"] { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); }
 .item { position: relative; display: flex; min-width: 0; min-height: 36px; align-items: center; gap: 10px; padding: 0 11px; border-radius: calc(var(--radius-panel) - 6px); color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; transition: color var(--duration-fast) var(--ease-standard), opacity var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms), transform var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms); }
 .icon { display: inline-flex; width: 17px; color: var(--text-secondary); }

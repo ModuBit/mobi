@@ -52,7 +52,9 @@ export type { GitReviewDeps } from './reviewDeps'
 /** 「已提交」子菜单在 scope 菜单里的 key（commit 档选中态高亮它） */
 const COMMITS_MENU_KEY = 'commits'
 
-/** commit 菜单项/占位/哨兵的统一宽度：子菜单 popup 宽由它撑定，三处必须一致（窄屏由 antd.css 收口） */
+/** commit 菜单项/占位/哨兵的统一宽度：子菜单 popup 宽由它撑定，三处必须一致。
+ *  窄屏不会因此溢出：面板 max-width 收口 + 菜单组件自带横向贴边校正（见 dropdown-menu.tsx），
+ *  本行窄了由省略号链（每层 min-width:0）收。 */
 const COMMIT_ITEM_WIDTH = 300
 
 /** 树点文件定位前等 Collapse 展开动画结束的延时：动画中行头位置未定，立即滚会停偏 */

@@ -34,7 +34,9 @@
                 "dropdown-menu.module.css：变量来源由 antd --ant-* 改为 cssVars.ts 注入 :root/.dark 的全局变量——antd cssVar 只在组件子树内可解析，弹层 portal 到 body 后 token 全空（无底色/无描边/无圆角/无投影 + 过渡失效），全局变量对 portal 同样可见",
                 "dropdown-menu.module.css：上游四档时长/三档曲线收敛到 --mobi-duration-*/--mobi-ease-*（cssVars.ts 单源），按 DESIGN.md 禁止 registry 组件自带第二套缓动语言",
                 "core/config/theme/cssVars.ts：SHADCN_VAR_MAPPINGS 增补组件实际消费而标准 shadcn 变量集未覆盖的 token（--border-strong/--border-subtle/--text-secondary/--radius-lg/--shadow-resting/--shadow-floating），并新增 MOTION_VARS 投影（antd cssVar 不产出 motion 变量）",
-                "dropdown-menu.module.css：.menu 的 z-index 上游写死 60 → var(--mobi-z-overlay, 50)（共存纪律：antd 弹层 z 从 1000 起）"
+                "dropdown-menu.module.css：.menu 的 z-index 上游写死 60 → var(--mobi-z-overlay, 50)（共存纪律：antd 弹层 z 从 1000 起）",
+                "dropdown-menu.tsx：子菜单横向贴边校正（useSubmenuEdgeShift）——Radix 的定位挪不动横向：PopperContent 写死 shift({ mainAxis: true, crossAxis: false })，而 floating-ui 对 left/right 档位的 crossAxis 正是横向（getSideAxis('right') === 'x'），flip 在锚点自身贴屏时也无处可翻，宽子菜单于是直接顶出屏幕右缘（390px 屏实测溢出 150px）。改法是量包裹元素的矩形（不含开合动画的 scale）算绝对位移，写进 --submenu-shift-x 交由 CSS 的 translate 消费，重算点＝Radix 写定位 / 面板尺寸变化 / 窗口变化",
+                "dropdown-menu.tsx + .module.css：条目收进 .items 容器（子菜单的滚动容器，data-dropdown-scroll-root 随之落到容器上），面板 padding 留在外层 .menu/.subMenu——滚动容器自身的 padding 会随内容滚出视口，表现为「滚动后内容紧贴上下边缘」；高亮跟着进容器（与条目同基准 offsetTop、一起滚动）。面板层级标记独立成 data-dropdown-panel（焦点归属判据与滚动标记解耦）"
             ]
         }
     ]
