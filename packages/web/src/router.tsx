@@ -144,15 +144,6 @@ const pocDiffRoute = import.meta.env.DEV
     })
     : null
 
-// dev-only 验证路由（shadcn 底座票 03 临时页）：验证完成后整页删除
-const shadcnVerifyRoute = import.meta.env.DEV
-    ? createRoute({
-        getParentRoute: () => mainLayoutRoute,
-        path: 'lab/shadcn-verify',
-        component: lazy(() => import('./pages/lab/ShadcnVerifyPage')),
-    })
-    : null
-
 // Create router
 export const router = createRouter({
     routeTree: rootRoute.addChildren([
@@ -165,7 +156,6 @@ export const router = createRouter({
             ]),
             newSessionRoute,
             ...(pocDiffRoute ? [pocDiffRoute] : []),
-            ...(shadcnVerifyRoute ? [shadcnVerifyRoute] : []),
             settingsRoute.addChildren([
                 settingsIndexRoute,
                 settingsNotificationsRoute,
