@@ -63,6 +63,10 @@ src/
 5. **真机（Android Chrome）验收** = 迁移完成条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
 6. **登记入表**：完成后在上表加一行（含迁移 commit），此后该组件使用统一按表
 
+### 单一来源（禁止重复实现）
+
+同一语义组件（Button / Dialog / Select…）**只允许一份实现**：归属登记表每组件一行、一个来源；registry 目录用语义名（`button/`），禁止来源后缀命名（`button-uiarc` / `button-b`）。替换迁移 = 先删旧实现、再登记新来源，**不允许并存过渡期**——`shadcn/button` 与 `arc/button` 并存即选型漂移的开始。eslint `mobi/no-duplicate-registry-component` 已强制（`shadcn/` 与 `arc/` 下同名组件目录并存 → error）。
+
 ### 禁区（不随迁移改变）
 
 - **antx + x-markdown + 流式渲染管线**：永久不迁移（Streamdown 换栈回滚是先例）

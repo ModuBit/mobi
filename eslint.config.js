@@ -70,6 +70,21 @@ module.exports = tseslint.config(
     },
   },
 
+  // 同一语义组件禁止在多个 registry 目录重复实现（shadcn 底座票 04，
+  // 规范见 docs/conventions/web.md「组件选型」章），只作用于 registry 目录内文件
+  {
+    files: [
+      'packages/web/src/components/shadcn/**/*.{ts,tsx}',
+      'packages/web/src/components/arc/**/*.{ts,tsx}',
+    ],
+    plugins: {
+      'mobi': customRules,
+    },
+    rules: {
+      'mobi/no-duplicate-registry-component': 'error',
+    },
+  },
+
   // registry 后端依赖门禁（shadcn 底座票 04）：shadcn 生态的原语后端包只允许被
   // 组件源码目录消费，业务代码直接 import → error。白名单目录尚不存在时规则
   // 同样成立（= 完全禁止），首个组件 add 进目录后自动获得豁免。

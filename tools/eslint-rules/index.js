@@ -7,6 +7,7 @@
 
 const noInternalImport = require('./no-internal-import')
 const enforceLicenseHeader = require('./enforce-license-header')
+const noDuplicateRegistryComponent = require('./no-duplicate-registry-component')
 
 const plugin = {
   meta: {
@@ -16,6 +17,7 @@ const plugin = {
   rules: {
     'no-internal-import': noInternalImport,
     'enforce-license-header': enforceLicenseHeader,
+    'no-duplicate-registry-component': noDuplicateRegistryComponent,
   },
 }
 
