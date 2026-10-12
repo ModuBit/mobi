@@ -19,8 +19,8 @@
  * 语法、扫描、去重与注册表单源（自 quote 专属实现通用化而来）。
  *
  * 分工：本模块只管「指令」这一语法层——某指令的语义（参数含义、发射时机、CLI 协议
- * 文案）留在各 per-type 模块（如 quoteDirectives），渲染组件路由在 components/ui 的
- * MobiDirective。新增一个内联指令 = domain 注册一项 + ui 路由表加一行。
+ * 文案）留在各 per-type 模块（如 quoteDirectives），渲染组件路由在 ui/shared 的
+ * quoteDirectiveComponents（MobiDirective）。新增一个内联指令 = domain 注册一项 + ui 路由表加一行。
  *
  * 流式半截 directive（未闭合）不命中扫描——x-markdown 的不完整语法占位负责流式期间
  * 的视觉过渡，闭合后自然成钮（沿袭 quote 专属实现的行为契约）。

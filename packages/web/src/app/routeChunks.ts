@@ -39,7 +39,9 @@ function defineLoader<T extends object>(load: () => Promise<T>, pick: keyof T & 
 // 保证预取拉到的 URL 就是路由真正要的 chunk，后续导航命中 HTTP 缓存毫秒级返回。
 export const routeChunkLoaders = {
     LoginPage: defineLoader(() => import('@/pages/LoginPage'), 'LoginPage'),
-    MainLayout: defineLoader(() => import('@/features/layout/MainLayout'), 'MainLayout'),
+    // MainLayout 走装配外壳（MainLayoutHost）：聊天块渲染注册表挂在壳上，
+    // 连带 Markdown/高亮/工具卡栈一起留在本 chunk，不进主入口 bundle
+    MainLayout: defineLoader(() => import('@/app/MainLayoutHost'), 'MainLayoutHost'),
     SessionsLayout: defineLoader(() => import('@/pages/SessionsLayout'), 'SessionsLayout'),
     SessionDetailPage: defineLoader(() => import('@/pages/SessionDetailPage'), 'SessionDetailPage'),
     NewSessionPage: defineLoader(() => import('@/pages/NewSessionPage'), 'NewSessionPage'),

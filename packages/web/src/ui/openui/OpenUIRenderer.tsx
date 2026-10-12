@@ -76,7 +76,7 @@ export default function OpenUIRenderer({ code, streaming, fenceIndex }: OpenUIRe
     // 多个 openui 块各自独立状态；derive 配对消息 meta 时写的就是这个 full 键，单键读
     const baseAnchor = useOpenUIAnchor()
     const anchor = baseAnchor !== null && fenceIndex != null ? `${baseAnchor}:${fenceIndex}` : baseAnchor
-    const mode = useUiStore((s) => resolveTheme(s.theme))
+    const mode = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
     const [errors, setErrors] = useState<OpenUIError[]>([])
     const sendMessage = useUiSendMessage()
     // 回灌消息表头的本地化（code-review 2026-10-11：组装纯函数不硬编码 UI 语言）

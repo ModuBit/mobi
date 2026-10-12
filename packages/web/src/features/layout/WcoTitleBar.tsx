@@ -144,12 +144,11 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
     const { t } = useTranslation()
     const { token } = useToken()
     const navigate = useNavigate()
-    const theme = useUiStore((s) => s.theme)
+    const resolvedTheme = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
     const toggleSidebar = useUiStore((s) => s.toggleSidebar)
     // PWA 新版本可用 → logo 旁出现低调更新入口（WCO 模式下 SidebarHeader 不渲染，此处是 PC 唯一入口）
     const updateReload = useUpdateAvailable()
-    const resolvedTheme = resolveTheme(theme)
 
     const resolvedSide = side ?? detectSide()
 

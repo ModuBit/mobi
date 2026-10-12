@@ -182,7 +182,7 @@ export function DiffView(props: {
 }) {
     const { t } = useTranslation()
     const { token } = useToken()
-    const resolved = useUiStore((s) => resolveTheme(s.theme))
+    const resolved = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
 
     const name = props.filePath ?? '_'
     const hasPatches = !!props.structuredPatches && props.structuredPatches.length > 0

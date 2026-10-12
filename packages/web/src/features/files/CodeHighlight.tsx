@@ -36,7 +36,7 @@ interface CodeHighlightProps {
  * 首次渲染：highlighter 异步加载期间返回 null，先 fallback 纯 `<pre>`，加载完成后切到高亮版本。
  */
 export default function CodeHighlight({ code, filePath, wrap = true }: CodeHighlightProps) {
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const lang = useMemo(() => resolveFileLang(filePath), [filePath])
     const html = useShikiHtml(code, lang, isDark)
 

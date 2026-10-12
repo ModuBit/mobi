@@ -14,7 +14,7 @@
 
 - **features 域间互引禁止**；多域共享知识下沉 `domain/`（纯逻辑）或 `ui/`（通用呈现）；「父编排子」的伪耦合改 props/注入
 - **组装链归 `pages/`**：编排其他域组件的容器（如 `pages/session/`）不放 features
-- **domain 零 React**（含 type-only）；**ui 零业务知识**；**core 零 UI 组件**
+- **domain 零 React**（含 type-only）；**ui 不得向上引 features/pages**（业务数据一律 props/注入传入；承载业务语义的呈现件本身合法，见下条 base/shared 二分）；**core 零 UI 组件**
 - **ui 内部组织**：`base/`（零业务语义，按性质分 interactive/layout/display/markdown/motion/brand/theme/sandbox 八组，组内平铺）+ `shared/`（多域共享的业务呈现件，平铺）+ 体系目录（`openui/` `pixel-avatar/` `shadcn/`）；层级封顶三层
 - **文件命名**：文件名要么是某个主导出物的名字（组件 / class → `PascalCase`，且与导出同名），要么是 `camelCase`（模块文件：hook / 工具 / 常量表 / 多组件模块）；目录 `kebab-case`。**eslint `mobi/filename-matches-export` 以 error 级强制**，例外仅 registry 上游件与生成文件
 

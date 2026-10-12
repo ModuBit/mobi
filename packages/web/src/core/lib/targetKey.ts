@@ -17,7 +17,7 @@
 /**
  * DiffTarget ↔ 序列化键的互逆对（src 分层治理票 01 自 review/reviewEntries 下沉）。
  * 菜单 key / query key / viewState 共用的 wire 契约——缓存寻址属 core 基建，
- * 归 core 自持后 query-keys 不再反向依赖业务 UI（components/review）。
+ * 归 core 自持后 query-keys 不再反向依赖业务 UI（features/review）。
  */
 
 import { DiffTargetSchema, type DiffTarget } from '@mobi/shared'

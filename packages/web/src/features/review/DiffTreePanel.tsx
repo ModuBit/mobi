@@ -64,7 +64,7 @@ export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
     onOpenFile: (path: string) => void
 }) {
     const { t } = useTranslation()
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const [filter, setFilter] = useState('')
     const q = filter.trim().toLowerCase()
     const filtered = useMemo(

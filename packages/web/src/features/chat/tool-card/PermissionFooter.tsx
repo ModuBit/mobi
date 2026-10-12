@@ -168,7 +168,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const { t } = useTranslation()
     const { token } = useToken()
     const queryClient = useQueryClient()
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const isMobile = useIsMobile()
     const permission = props.tool.permission
     // 收敛三个互斥 loading 为单一 pendingAction：'allow' | 'deny' | 'allowAllEdits' | PermissionUpdate[]（选中档的引用）

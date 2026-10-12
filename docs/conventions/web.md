@@ -10,7 +10,7 @@
 
 ```
 src/
-├── app/                     ← 组装层：App / main / router / routeChunks / dev*（唯一可引一切）
+├── app/                     ← 组装层：App / main / router / routeChunks / MainLayoutHost / dev*（唯一可引一切）
 ├── pages/                   ← 路由页面壳 + 会话组装域
 │   ├── LoginPage / NewSessionPage / SessionDetailPage / SessionsLayout / SettingsPage
 │   └── session/             ← 会话组装链（ChatPane / InspectorPane / SessionDetail /
@@ -18,7 +18,7 @@ src/
 ├── features/                ← 业务域（域间零互引；多域共享知识下沉 domain/ui）
 │   ├── chat/                ← 对话（含 tool-card 子域与 blocks/ 渲染器）
 │   ├── composer/ files/ layout/ login/ review/ settings/ sketchpad/ terminal/
-├── ui/                      ← 通用组件（零业务知识）
+├── ui/                      ← 通用组件层（不得向上引 features/pages）
 │   ├── base/                ← 基础件（零业务语义；按性质分 8 组，组内平铺）
 │   │   └── interactive/ layout/ display/ markdown/ motion/ brand/ theme/ sandbox/
 │   ├── shared/              ← 多域共享的业务呈现件（平铺）
@@ -60,7 +60,7 @@ src/
 
 ### ui/ 内部组织（2026-10-12 ui 治理）
 
-`ui/` 内二分，判据是**是否含业务语义**（是否 import `@/domain`、`@/core/data` 的业务类型）：
+`ui/` 内二分，判据是**是否承载 Mobi 的业务实体语义**——问「换个产品它还成立吗」：
 
 | 分区 | 职责 | 组织方式 |
 |---|---|---|
@@ -68,13 +68,15 @@ src/
 | `shared/` | **多域共享**、但带业务语义的呈现件（`ContextRing` / `StatusBar` / `GoalBadge` / `ToolRowItems` / `ArtifactDirectiveComponents` …）——这是 ui 的合法职责，退回任何单个 feature 都会重新制造域间引用 | 平铺 |
 | `openui/` `pixel-avatar/` `shadcn/` | 组件体系目录（`shadcn/` 见「组件选型」章） | 各自体系惯例（如 `pixel-avatar/sprites/`） |
 
-层级封顶：`ui/<分区>/<组>/<文件>`，组内不再建子目录。判断某件该进 `base/` 还是 `shared/`：**看它是否依赖业务类型**——依赖即 `shared/`，反之 `base/`。
+层级封顶：`ui/<分区>/<组>/<文件>`，组内不再建子目录。
+
+⚠️ **别拿「是否 import `@/domain` / `@mobi/shared`」当判据**——`base/markdown/Markdown.tsx` 依赖 `@/domain/chat/directives`（通用文本管线，无业务实体语义）、`base/sandbox/sandboxAppHost.ts` 依赖 `@mobi/shared` 的协议常量，两者都仍是基础件。绑定业务看的是**概念**（工作区 / 会话运行态 / 引用卡片 / 目标徽章…），不是 import 来源；结论按概念判，判完再回头看依赖是否也符合预期。
 
 ### 边界案例（票 03 裁决）
 
 - **工具卡并入 chat 域**：`tool-card` 是对话流的呈现子域，与 chat 十余条边纠缠、是循环主体——独立成域属假边界（「域过小或边界画错 → 并域」）。
 - **组装链上提 pages**：`ChatContainer` / `ChatComposer` / `ComposerInfoPanel` / session 页面壳扮演「编排其他域的组件」角色，归 `pages/session/`——features 只放「可被组装的业务域」，组装权归 pages。
-- **渲染注册表去循环**：装配器不静态 import 渲染器——共享类型抽 `types.ts`，纯函数下沉 `domain/`，组件引用走 React Context 注入（值在组装层环外组装，如 `BubbleRenderProvider`）。
+- **渲染注册表去循环**：装配器不静态 import 渲染器——共享类型抽 `types.ts`，纯函数下沉 `domain/`，组件引用走 React Context 注入（值在组装层环外组装，挂载点是 `app/MainLayoutHost`——放懒加载 chunk 里，避免 Markdown/高亮/工具卡整栈进主入口 bundle）。
 
 ## 组件选型
 

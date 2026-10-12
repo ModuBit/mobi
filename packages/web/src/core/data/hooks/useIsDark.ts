@@ -14,29 +14,16 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 
 /**
  * 当前是否为暗色主题。
  *
- * 订阅 uiStore.theme：light/dark 直接返回；system 模式下解析 OS 偏好，
- * 并监听 prefers-color-scheme 变化实时响应（uiStore 仅存 'system' 字符串，
- * OS 切换不会触发 store 更新，故在此补 matchMedia 监听）。
+ * 读 store 里解析后的档位：system 档所需的 OS 偏好由 store.systemIsDark 承载，
+ * 写入方是 ThemeProvider 挂载的 subscribeSystemTheme。本 hook 只订阅不监听
+ * matchMedia——与主界面主题（ThemeProvider 四通道）同源，OS 切档时一起翻档，
+ * 不会出现「主界面还是亮色、终端已切暗色」的错位。
  */
 export function useIsDark(): boolean {
-    const theme = useUiStore((s) => s.theme)
-    const [isDark, setIsDark] = useState(() => resolveTheme(theme) === 'dark')
-
-    useEffect(() => {
-        const apply = () => setIsDark(resolveTheme(theme) === 'dark')
-        apply()
-        if (theme !== 'system') return
-        const mql = window.matchMedia('(prefers-color-scheme: dark)')
-        const handler = () => apply()
-        mql.addEventListener('change', handler)
-        return () => mql.removeEventListener('change', handler)
-    }, [theme])
-
-    return isDark
+    return useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
 }

@@ -65,7 +65,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const isMobile = useIsMobile()
     const isRunning = task.status === 'running'
     // 无 sidechain 数据（toolUseId=null）的任务打开不了 drawer——点击守卫由本组件内聚，

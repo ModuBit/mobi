@@ -70,7 +70,7 @@ function stripeDotStyle(color: string, angle: 45 | 135 = 45): React.CSSPropertie
 export function ContextBreakdown({ usage }: { usage: ContextUsage }) {
     const { token } = theme.useToken()  // 文本色等 antd token（仅模式判定走 uiStore 单一来源）
     // 主题判定单一来源（与 AutoDetectCodeBlock 等同款惯例）
-    const isDark = useUiStore((state) => resolveTheme(state.theme) === 'dark')
+    const isDark = useUiStore((state) => resolveTheme(state.theme, state.systemIsDark) === 'dark')
     const [expanded, setExpanded] = useState<Set<ContextUsageCategoryKey>>(new Set())
 
     const breakdown = usage.breakdown

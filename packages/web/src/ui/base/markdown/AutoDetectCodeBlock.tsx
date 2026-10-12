@@ -72,7 +72,7 @@ function langLabel(lang: string, t: (key: string) => string): string {
  * - 主题跟随 ui store（dark / light）
  */
 const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code, explicitLang }) => {
-    const isDark = useUiStore((state) => resolveTheme(state.theme) === 'dark')
+    const isDark = useUiStore((state) => resolveTheme(state.theme, state.systemIsDark) === 'dark')
     const { t } = useTranslation()
     const [resolvedLang, setResolvedLang] = useState<string>(explicitLang ?? FALLBACK_LANGUAGE)
 

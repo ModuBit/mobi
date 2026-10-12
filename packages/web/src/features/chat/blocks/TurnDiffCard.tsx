@@ -42,7 +42,7 @@ export const TurnDiffCard = memo(function TurnDiffCard({ payload, onReview }: { 
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const [expanded, setExpanded] = useState(false)
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
 
     const overflow = payload.files.length - PREVIEW_COUNT
 

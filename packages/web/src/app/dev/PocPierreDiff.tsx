@@ -109,8 +109,9 @@ function makeLoadDiffFiles(behavior: LoaderBehavior) {
 
 export default function PocPierreDiff() {
     const theme = useUiStore((s) => s.theme)
+    const systemIsDark = useUiStore((s) => s.systemIsDark)
     const setTheme = useUiStore((s) => s.setTheme)
-    const resolved = resolveTheme(theme)
+    const resolved = resolveTheme(theme, systemIsDark)
     const [layout, setLayout] = useState<'unified' | 'split'>('unified')
     const [wrap, setWrap] = useState(false)
 

@@ -16,9 +16,9 @@
 
 /**
  * 档③原地更新生命周期（架构评审候选 5）：消息窗口 → 终态扫描 → store 推进的
- * 接线收口。此前这段 effect 住在 ChatContainer——$actionState 的完整生命周期因此
- * 横跨容器与 openui 目录两处；收进本 hook 后，档③的全部 web 侧逻辑（renderer 订阅 /
- * store / 扫描派生 / 本接线）同居 components/ui/openui/ 一个目录。
+ * 接线收口。此前这段 effect 住在 ChatContainer（现 pages/session）——$actionState 的
+ * 完整生命周期因此横跨容器与 openui 目录两处；收进本 hook 后，档③的全部 web 侧逻辑
+ * （renderer 订阅 / store / 扫描派生 / 本接线）同居 src/ui/openui/ 一个目录。
  *
  * ChatContainer 只负责喂数据（消息窗口 + 会话运行态），不感知扫描细节。
  */

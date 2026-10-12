@@ -17,8 +17,8 @@
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 
 export function useThemeLocaleToggle() {
-    const { theme, setTheme, locale, setLocale } = useUiStore()
-    const resolvedTheme = resolveTheme(theme)
+    const { theme, systemIsDark, setTheme, locale, setLocale } = useUiStore()
+    const resolvedTheme = resolveTheme(theme, systemIsDark)
 
     const toggleTheme = () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
     const toggleLocale = () => setLocale(locale === 'zh' ? 'en' : 'zh')

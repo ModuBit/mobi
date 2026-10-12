@@ -18,8 +18,8 @@
  * 聊天块渲染器注入上下文（分层治理票 03 破环）：
  * AgentDrawerContent（tool-card 抽屉，深在 ToolCallBlock 渲染树内）需要 blocks 渲染
  * 注册表，但 blocks/ToolCallBlock → ToolDetailDrawer → AgentDrawerContent → blocks
- * 成环。本文件只声明 Context 与 hook（零依赖不参与环）；渲染器值由 App 根（组装层，
- * 可引一切）注入——依赖反转：渲染实现与消费解耦。
+ * 成环。本文件只声明 Context 与 hook（零依赖不参与环）；渲染器值由 app/MainLayoutHost
+ * （组装层外壳，可引一切）注入——依赖反转：渲染实现与消费解耦。
  */
 
 import { createContext, useContext, type ReactNode } from 'react'
@@ -40,7 +40,7 @@ export type BubbleRenderers = {
 
 const BubbleRenderContext = createContext<BubbleRenderers | null>(null)
 
-/** 注入聊天块渲染器（App 根组装层挂载一次，值 = blocks 的 renderChatBlock / ToolCallGroupRenderer） */
+/** 注入聊天块渲染器（app/MainLayoutHost 组装层挂载一次，值 = blocks 的 renderChatBlock / ToolCallGroupRenderer） */
 export function BubbleRenderProvider({ value, children }: { value: BubbleRenderers; children: ReactNode }) {
     return <BubbleRenderContext.Provider value={value}>{children}</BubbleRenderContext.Provider>
 }
@@ -48,6 +48,6 @@ export function BubbleRenderProvider({ value, children }: { value: BubbleRendere
 /** 取聊天块渲染器（未注入 = 组装错误，fail fast） */
 export function useBubbleRenderers(): BubbleRenderers {
     const ctx = useContext(BubbleRenderContext)
-    if (!ctx) throw new Error('useBubbleRenderers 必须在 BubbleRenderProvider 内使用（App 根应挂载）')
+    if (!ctx) throw new Error('useBubbleRenderers 必须在 BubbleRenderProvider 内使用（app/MainLayoutHost 应挂载）')
     return ctx
 }

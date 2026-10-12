@@ -82,7 +82,7 @@ export function extractApiErrorDetail(error: unknown): string | null {
 
 /**
  * 格式化 Agent 事件为结构化描述（原返回 ReactNode，分层治理票 01 起纯数据化）。
- * 呈现由 components/chat/EventText 执行；turn-result 委托 TurnResultMeta（actions 挂概要行尾）。
+ * 呈现由 features/chat/EventText 执行；turn-result 委托 TurnResultMeta（actions 挂概要行尾）。
  */
 export function formatEvent(event: { type: string; [key: string]: unknown }, createdAt?: number): FormattedEvent {
     switch (event.type) {

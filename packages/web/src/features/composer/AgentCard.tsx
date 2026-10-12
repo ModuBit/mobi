@@ -35,7 +35,7 @@ export function AgentCard({ name, seed, onClick }: {
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
 
     return (
         <div

@@ -14,75 +14,54 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+/**
+ * useIsDark 是「读 store 解析后档位」的纯消费者：system 档所需的 OS 偏好来自
+ * store.systemIsDark（写入方见 uiStore.test.ts 的 subscribeSystemTheme），
+ * 本 hook 不再自持 matchMedia 订阅——断言它对四种输入组合给出正确档位即可。
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook } from '@testing-library/react'
 
 // mock uiStore：绕过 persist（persist 的 localStorage 在本测试环境不可用），
-// 保留 actual.resolveTheme（system 模式解析 matchMedia）
-const { mockState } = vi.hoisted(() => ({ mockState: { theme: 'dark' as string } }))
+// 保留 actual.resolveTheme（真档位解析逻辑，正是被测对象的一部分）
+const { mockState } = vi.hoisted(() => ({
+    mockState: { theme: 'dark' as 'light' | 'dark' | 'system', systemIsDark: false },
+}))
 vi.mock('@/core/data/stores/uiStore', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/core/data/stores/uiStore')>()
     return {
         ...actual,
-        useUiStore: ((selector: (s: { theme: string }) => unknown) => selector(mockState)) as never,
+        useUiStore: ((selector: (s: typeof mockState) => unknown) => selector(mockState)) as never,
     }
 })
 
 import { useIsDark } from '@/core/data/hooks/useIsDark'
 
-/** 构造可控 matchMedia mock：返回 { fire(matches) } 模拟 OS 主题切换。
- *  matches 用 getter 暴露（useIsDark 的 handler 会重读 matchMedia.matches） */
-function mockMatchMedia(initial: boolean) {
-    const listeners = new Set<(e: { matches: boolean }) => void>()
-    let matches = initial
-    const mql = {
-        get matches() {
-            return matches
-        },
-        addEventListener: (_ev: string, cb: (e: { matches: boolean }) => void) => {
-            listeners.add(cb)
-        },
-        removeEventListener: (_ev: string, cb: (e: { matches: boolean }) => void) => {
-            listeners.delete(cb)
-        },
-    }
-    vi.stubGlobal('matchMedia', () => mql)
-    return {
-        fire: (m: boolean) => {
-            matches = m
-            listeners.forEach((cb) => cb({ matches: m }))
-        },
-    }
-}
-
 describe('useIsDark', () => {
     beforeEach(() => {
         mockState.theme = 'dark'
-    })
-    afterEach(() => {
-        vi.unstubAllGlobals()
+        mockState.systemIsDark = false
     })
 
     it('theme=dark → true', () => {
-        mockState.theme = 'dark'
         const { result } = renderHook(() => useIsDark())
         expect(result.current).toBe(true)
     })
 
-    it('theme=light → false', () => {
+    it('theme=light → false（与 OS 偏好无关）', () => {
         mockState.theme = 'light'
+        mockState.systemIsDark = true
         const { result } = renderHook(() => useIsDark())
         expect(result.current).toBe(false)
     })
 
-    it('theme=system：解析 matchMedia，OS 切换实时响应', () => {
-        const mql = mockMatchMedia(true) // OS 当前暗色
+    it('theme=system → 按 store.systemIsDark 解析', () => {
         mockState.theme = 'system'
-        const { result } = renderHook(() => useIsDark())
-        expect(result.current).toBe(true)
+        mockState.systemIsDark = true
+        expect(renderHook(() => useIsDark()).result.current).toBe(true)
 
-        // OS 切到亮色 → 监听器触发 → isDark 实时更新
-        act(() => mql.fire(false))
-        expect(result.current).toBe(false)
+        mockState.systemIsDark = false
+        expect(renderHook(() => useIsDark()).result.current).toBe(false)
     })
 })

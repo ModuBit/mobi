@@ -68,7 +68,7 @@ export function CodeEditorView({ text, filePath, wrap, readOnly = false, onChang
     const wrapComp = useRef(new Compartment())
     const themeComp = useRef(new Compartment())
     const readComp = useRef(new Compartment())
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
 
     // onChange 用 ref，避免 docChanged 闭包 stale + 避免 editor 重建
     const onChangeRef = useRef(onChange)

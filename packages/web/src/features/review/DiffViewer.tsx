@@ -55,7 +55,7 @@ export function DiffViewer({ sessionId, target, path, version, wrap, layout }: {
     const { t } = useTranslation()
     const api = useMobiApi()
     const queryClient = useQueryClient()
-    const resolved = useUiStore((s) => resolveTheme(s.theme))
+    const resolved = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
     // patch 与行内 RowDiff 同键共享缓存（RowDiff 先行闸 loading/error，这里只管渲染输入）。

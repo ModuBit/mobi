@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, ConfigProvider, Layout } from 'antd'
+import { theme as antTheme, Layout } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { MobiLogo } from '@/ui/base/brand/MobiLogo'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -23,7 +23,7 @@ import { MobileMenuDrawer } from './mobileMenu'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
 import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'
-import { useEffect, useMemo, Suspense } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
 import { UpdatePrompt } from './UpdatePrompt'
@@ -38,12 +38,13 @@ const { useToken } = antTheme
  * 使用 antd Layout 组件组织 AppSidebar + Content
  */
 export function MainLayout() {
-    const { theme } = useUiStore()
     const { t } = useTranslation()
     const { token } = useToken()
     const isMobile = useIsMobile()
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
-    const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
+    // 解析后档位只消费不推导——data-theme / antd algorithm 归 ThemeProvider 单源
+    // （见 core/config/theme/ThemeProvider.tsx），本组件只额外负责浏览器 chrome 色
+    const resolvedTheme = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
 
     // PWA 更新：回调广播到 useUpdateAvailable 的订阅方（PC 侧栏图标 / 移动端悬浮钮各自消费）
     const updateReload = useUpdateAvailable()
@@ -51,10 +52,10 @@ export function MainLayout() {
     // WCO 标题栏：桌面 PWA 启用时替代系统标题栏；PC Web / 移动端 / standalone 返回 false 不受影响
     const isWco = useWindowControlsOverlay()
 
-    // 应用主题：同步 data-theme + 浏览器 chrome（标签栏/地址栏）theme-color
+    // 应用主题：同步浏览器 chrome（标签栏/地址栏）theme-color
     // theme-color 取 resolveChromeColor —— 与 WcoTitleBar 同源、与 html 背景一致
+    // （data-theme 属性由 ThemeProvider 单源写入，此处不再重复）
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', resolvedTheme)
         const chromeColor = resolveChromeColor(resolvedTheme)
         document.querySelectorAll('meta[name="theme-color"]')
             .forEach(m => m.setAttribute('content', chromeColor))
@@ -73,12 +74,7 @@ export function MainLayout() {
     useEffect(() => startLayoutShiftObserver(), [])
 
     return (
-        <ConfigProvider
-            theme={{
-                algorithm: resolvedTheme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
-            }}
-        >
-            <WcoContext.Provider value={isWco}>
+        <WcoContext.Provider value={isWco}>
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
@@ -120,8 +116,7 @@ export function MainLayout() {
             </div>
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />
-            </WcoContext.Provider>
-        </ConfigProvider>
+        </WcoContext.Provider>
     )
 }
 

@@ -117,7 +117,7 @@ function NonGitEmptyState({ onInit, pending }: { onInit: () => void; pending: bo
 /** memo：清单 50+ 行时，单行展开/pending 翻转只重渲该行（props 全为稳定原语/引用） */
 const FileRowHeader = memo(function FileRowHeader({ sessionId, file, expanded, pending }: { sessionId: string; file: ReviewFileEntry; expanded: boolean; pending?: boolean }) {
     const { t } = useTranslation()
-    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isDark = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark) === 'dark')
     const openFileTab = useWorkspaceStore((s) => s.openFileTab)
 
     /** 复制点击反馈：图标切绿勾 2s（与气泡 CopyButton 同款节奏）；卸载清定时器。

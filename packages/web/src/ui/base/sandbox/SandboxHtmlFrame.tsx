@@ -94,7 +94,7 @@ export function SandboxHtmlFrame({ sessionId, path, title, style, app }: Sandbox
     // 订阅同一 fileMeta query（react-query 按 queryKey 去重，多消费方零额外请求），
     // dataUpdatedAt 驱动 iframe 重建（机制见文件头）
     const { data: meta, dataUpdatedAt } = useFileMeta(sessionId, path)
-    const themeMode = useUiStore((s) => resolveTheme(s.theme))
+    const themeMode = useUiStore((s) => resolveTheme(s.theme, s.systemIsDark))
     const frameRef = useRef<HTMLIFrameElement | null>(null)
     // 回调经 ref 存（调用方闭包随渲染变化），监听器只挂一次不因回调变化重挂。
     // 渲染期只读 ref.current，写入收在 effect 里（React 18 并发渲染下渲染期写 ref
