@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { getDisplayName } from '@/components/composer/AttachmentItem'
+import { getDisplayName } from '@/features/composer/AttachmentItem'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 
 // 构造最小 FileAttachment（仅 getDisplayName 关心 path + file.name）

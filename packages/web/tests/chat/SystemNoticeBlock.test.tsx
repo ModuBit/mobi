@@ -25,7 +25,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { theme as antTheme } from 'antd'
-import { SystemNoticeBlock } from '@/components/chat/blocks/SystemNoticeBlock'
+import { SystemNoticeBlock } from '@/features/chat/blocks/SystemNoticeBlock'
 import type { SystemNoticeBlock as SystemNoticeBlockType, SystemNoticeLevel } from '@/domain/chat/types'
 
 // react-i18next 走 key 直通（断言 key 而非语言文案，翻译内容由真实资源文件承载）

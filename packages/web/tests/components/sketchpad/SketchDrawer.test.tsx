@@ -30,13 +30,13 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 }))
 
 // excalidraw 不可在 jsdom 渲染：SketchCanvas 桩只保留载体契约面——onCancel 出口
-vi.mock('@/components/sketchpad/SketchCanvas', () => ({
+vi.mock('@/features/sketchpad/SketchCanvas', () => ({
     SketchCanvas: ({ onCancel }: { onCancel: () => void }) => (
         <button type="button" data-testid="sketch-canvas-stub" onClick={onCancel}>画布桩</button>
     ),
 }))
 
-import { SketchDrawer } from '@/components/sketchpad/SketchDrawer'
+import { SketchDrawer } from '@/features/sketchpad/SketchDrawer'
 
 describe('SketchDrawer 防误关不变量', () => {
     beforeEach(() => {

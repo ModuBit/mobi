@@ -22,7 +22,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { UserBubbleHeader } from '@/components/chat/userBlocks/UserBubbleHeader'
+import { UserBubbleHeader } from '@/features/chat/userBlocks/UserBubbleHeader'
 import type { UserContentBlock } from '@mobi/shared'
 
 afterEach(cleanup)

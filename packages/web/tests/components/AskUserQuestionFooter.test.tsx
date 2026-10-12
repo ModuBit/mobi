@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
+import { AskUserQuestionFooter } from '@/features/tool-card/AskUserQuestionFooter'
 import type { ToolInfo } from '@/domain/tool/types'
 import type { MobiApi } from '@/core/data/api/client'
 

@@ -35,7 +35,7 @@ const registry = JSON.parse(readFileSync(resolve(webRoot, 'registry.json'), 'utf
 const SOURCES = ['shadcn', 'arc'] as const
 /** registry 源目录下的共享基建子目录（非组件，不参与登记） */
 const INFRA_DIRS = new Set(['lib'])
-const sourceRoot = (source: string) => resolve(webRoot, 'src/components', source)
+const sourceRoot = (source: string) => resolve(webRoot, 'src/ui', source)
 
 /** 列出某个 registry 源目录下已存在的顶层组件目录；源目录不存在返回空集 */
 function listSourceDirs(source: string): string[] {

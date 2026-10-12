@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveCopyShortcut } from '@/components/composer/copyShortcut'
+import { resolveCopyShortcut } from '@/features/composer/copyShortcut'
 
 describe('resolveCopyShortcut', () => {
     it('有选中文本时优先放行复制，即使有内容或正在运行', () => {

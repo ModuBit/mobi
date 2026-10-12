@@ -17,7 +17,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, fireEvent, cleanup } from '@testing-library/react'
-import MediaContentView from '@/components/files/MediaContentView'
+import MediaContentView from '@/features/files/MediaContentView'
 
 /** 从 media.src 取回 query 参数（不耦合具体编码方式） */
 function srcQuery(el: HTMLMediaElement) {

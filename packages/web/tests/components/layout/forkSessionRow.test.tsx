@@ -59,9 +59,9 @@ vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => mockApi,
 }))
 
-import { resolveForkSessionState, resolveForkErrorText } from '@/components/layout/forkSessionLabel'
-import { SessionRow } from '@/components/layout/SessionRow'
-import { MobileSessionItem } from '@/components/layout/MobileSessionItem'
+import { resolveForkSessionState, resolveForkErrorText } from '@/features/layout/forkSessionLabel'
+import { SessionRow } from '@/features/layout/SessionRow'
+import { MobileSessionItem } from '@/features/layout/MobileSessionItem'
 
 afterEach(cleanup)
 

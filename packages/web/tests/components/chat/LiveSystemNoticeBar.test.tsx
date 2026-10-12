@@ -21,7 +21,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
-import { LiveSystemNoticeBar } from '@/components/chat/LiveSystemNoticeBar'
+import { LiveSystemNoticeBar } from '@/features/chat/LiveSystemNoticeBar'
 import { useLiveNoticeStore, _resetForTest } from '@/core/data/stores/liveNoticeStore'
 
 vi.mock('react-i18next', async (orig) => {

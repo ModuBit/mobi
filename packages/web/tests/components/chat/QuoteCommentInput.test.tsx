@@ -23,7 +23,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { QuoteCommentInput } from '@/components/chat/QuoteCommentInput'
+import { QuoteCommentInput } from '@/features/chat/QuoteCommentInput'
 
 afterEach(cleanup)
 

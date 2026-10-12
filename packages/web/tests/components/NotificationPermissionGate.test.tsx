@@ -30,7 +30,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 async function renderGate() {
-    const { NotificationPermissionGate } = await import('@/components/NotificationPermissionGate')
+    const { NotificationPermissionGate } = await import('@/features/layout/NotificationPermissionGate')
     return render(
         <ConfigProvider>
             <AntdApp>

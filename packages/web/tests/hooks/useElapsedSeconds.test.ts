@@ -16,7 +16,7 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { useElapsedSeconds } from '@/components/chat/useElapsedSeconds'
+import { useElapsedSeconds } from '@/features/chat/useElapsedSeconds'
 
 describe('useElapsedSeconds', () => {
     it('初始值为 0（startedAt = now）', () => {

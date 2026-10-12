@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { extractDomain, extractExt, getSourceIcon, DOMAIN_ICON_MAP, EXT_ICON_MAP } from '@/components/ui/sourceIcon'
+import { extractDomain, extractExt, getSourceIcon, DOMAIN_ICON_MAP, EXT_ICON_MAP } from '@/ui/sourceIcon'
 import { render } from '@testing-library/react'
 
 describe('extractDomain', () => {

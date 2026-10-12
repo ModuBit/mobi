@@ -47,7 +47,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => true,
 }))
 
-vi.mock('@/components/layout/useThemeLocaleToggle', () => ({
+vi.mock('@/features/layout/useThemeLocaleToggle', () => ({
     useThemeLocaleToggle: () => ({
         resolvedTheme: 'dark',
         locale: 'zh',
@@ -63,22 +63,22 @@ vi.mock('@/core/pwa/useForceUpdate', () => ({
 
 // usePwaMode 门控刷新/重启行:用可变对象便于单测切换 PWA/非 PWA
 const pwaState = { current: true }
-vi.mock('@/components/layout/usePwaMode', () => ({
+vi.mock('@/features/layout/usePwaMode', () => ({
     usePwaMode: () => pwaState.current,
 }))
 
 // MobileWorkspaceList 自带 API/hooks,mock 掉避免噪声
-vi.mock('@/components/layout/MobileWorkspaceList', () => ({
+vi.mock('@/features/layout/MobileWorkspaceList', () => ({
     MobileWorkspaceList: () => null,
 }))
 
 // MobileDrawer 渲染重(portal + history guard + emotion),mock 成裸 div 透传 children
-vi.mock('@/components/ui/MobileDrawer', () => ({
+vi.mock('@/ui/MobileDrawer', () => ({
     MobileDrawer: ({ children, open }: { children: ReactNode; open: boolean }) =>
         open ? <div data-testid="drawer">{children}</div> : null,
 }))
 
-import { MobileMenuDrawer } from '@/components/layout/MobileMenu'
+import { MobileMenuDrawer } from '@/features/layout/MobileMenu'
 
 describe('MobileMenuDrawer 刷新按钮', () => {
     let reloadSpy: ReturnType<typeof vi.fn>

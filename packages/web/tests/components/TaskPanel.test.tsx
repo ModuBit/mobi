@@ -18,7 +18,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { TaskPanel } from '@/components/composer/TaskPanel'
+import { TaskPanel } from '@/features/composer/TaskPanel'
 import type { TaskItem } from '@mobi/shared'
 
 // mock i18next

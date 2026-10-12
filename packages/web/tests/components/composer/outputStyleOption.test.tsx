@@ -26,7 +26,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { buildOutputStyleSelectOptions, renderOutputStyleOption } from '@/components/composer/outputStyleOption'
+import { buildOutputStyleSelectOptions, renderOutputStyleOption } from '@/features/composer/outputStyleOption'
 
 afterEach(cleanup)
 

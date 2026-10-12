@@ -35,8 +35,8 @@ vi.mock('@ant-design/x', () => ({
 }))
 
 // mock 工具图标（部分 mock：保留真实导出，只替换图标节点）
-vi.mock('@/components/tool-card/toolIcons', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/components/tool-card/toolIcons')>()
+vi.mock('@/features/tool-card/toolIcons', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/features/tool-card/toolIcons')>()
     return {
         ...actual,
         getToolIcon: () => <span data-testid="tool-icon" />,
@@ -47,16 +47,16 @@ vi.mock('@/components/tool-card/toolIcons', async (importOriginal) => {
 })
 
 // mock ToolDetailDrawer：open 时渲染标记节点，供 drawer 开合断言
-vi.mock('@/components/tool-card/ToolDetailDrawer', () => ({
+vi.mock('@/features/tool-card/ToolDetailDrawer', () => ({
     ToolDetailDrawer: ({ open }: { open?: boolean }) =>
         open ? <div data-testid="tool-detail-drawer" role="dialog" /> : null,
 }))
 
 // mock OverflowContainer / FilePathText 为简单 div
-vi.mock('@/components/ui/OverflowContainer', () => ({
+vi.mock('@/ui/OverflowContainer', () => ({
     OverflowContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
-vi.mock('@/components/ui/FilePathText', () => ({
+vi.mock('@/ui/FilePathText', () => ({
     FilePathText: ({ path }: { path: string }) => <span>{path}</span>,
 }))
 
@@ -78,7 +78,7 @@ vi.mock('@/core/data/api/client', async (orig) => {
     }
 })
 
-import { ToolCallRenderer } from '@/components/chat/blocks/ToolCallBlock'
+import { ToolCallRenderer } from '@/features/chat/blocks/ToolCallBlock'
 
 function makeWriteBlock(overrides: Partial<{ state: ChatBlock extends { kind: 'tool-call' } ? import('@/domain/chat').ChatToolCall['state'] : never }> = {}): Extract<ChatBlock, { kind: 'tool-call' }> {
     return {

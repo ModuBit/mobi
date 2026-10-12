@@ -17,9 +17,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import type { SubmitButtonState } from '@/components/composer/submitButtonState'
-import { LONG_PRESS_MS } from '@/components/composer/submitButtonState'
-import { SubmitButton } from '@/components/composer/SubmitButton'
+import type { SubmitButtonState } from '@/features/composer/submitButtonState'
+import { LONG_PRESS_MS } from '@/features/composer/submitButtonState'
+import { SubmitButton } from '@/features/composer/SubmitButton'
 
 const stopState: SubmitButtonState = { kind: 'stop', disabled: false, loading: false }
 

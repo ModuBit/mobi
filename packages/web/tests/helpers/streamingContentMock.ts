@@ -22,7 +22,7 @@
  * import 之上，直接引用 import 绑定会报 before-initialization）：
  *
  *   import { streamingDisplayState } from '<rel>/helpers/streamingContentMock'
- *   vi.mock('@/components/ui/useStreamingContent', async () =>
+ *   vi.mock('@/ui/useStreamingContent', async () =>
  *     (await import('<rel>/helpers/streamingContentMock')).streamingContentMock())
  *
  * displayState 单独静态导入供测试控制揭示文本（.current）。

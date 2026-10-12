@@ -24,9 +24,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { AgentTextBlock, UserTextBlock } from '@/domain/chat'
-import { renderChatBlock, type ChatBlockContext } from '@/components/chat/blocks'
+import { renderChatBlock, type ChatBlockContext } from '@/features/chat/blocks'
 
-vi.mock('@/components/ui/Markdown', () => ({
+vi.mock('@/ui/Markdown', () => ({
     Markdown: ({ content }: { content: string }) => <div data-testid="md">{content}</div>,
 }))
 

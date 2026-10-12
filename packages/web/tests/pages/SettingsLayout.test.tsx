@@ -22,11 +22,11 @@ const mediaMatches = { value: true }
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useMediaQuery: () => mediaMatches.value,
 }))
-vi.mock('@/components/layout/PageHeader', () => ({
+vi.mock('@/features/layout/PageHeader', () => ({
     PageHeader: ({ left }: { left: React.ReactNode }) => <header data-testid="page-header">{left}</header>,
 }))
-vi.mock('@/components/layout/SidebarToggle', () => ({ SidebarToggle: () => <button data-testid="sidebar-toggle" /> }))
-vi.mock('@/components/layout/MobileMenu', () => ({ MobileMenuButton: () => <button data-testid="mobile-menu" /> }))
+vi.mock('@/features/layout/SidebarToggle', () => ({ SidebarToggle: () => <button data-testid="sidebar-toggle" /> }))
+vi.mock('@/features/layout/MobileMenu', () => ({ MobileMenuButton: () => <button data-testid="mobile-menu" /> }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }))
 // 锁定调试分区未解锁态，避免受其它用例 localStorage 污染
 vi.mock('@/core/lib/debug', () => ({ isDebugUnlocked: () => false }))

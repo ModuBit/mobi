@@ -23,7 +23,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
-import { SentFromTag } from '@/components/chat/blocks/SentFromTag'
+import { SentFromTag } from '@/features/chat/blocks/SentFromTag'
 
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),

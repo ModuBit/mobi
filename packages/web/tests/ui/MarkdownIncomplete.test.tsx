@@ -29,7 +29,7 @@ import '@testing-library/jest-dom/vitest'
 
 // 受控 display：直接驱动「揭示进度」（与 MarkdownStreaming.test 同模式）
 const displayState = vi.hoisted(() => ({ current: '' }))
-vi.mock('@/components/ui/useStreamingContent', () => ({
+vi.mock('@/ui/useStreamingContent', () => ({
     useStreamingContent: () => displayState.current,
     STREAM_BASE_RATE: 0.1,
     computeRevealRate: vi.fn(() => 0.1),
@@ -45,9 +45,9 @@ vi.mock('@ant-design/x-markdown', () => ({
     },
 }))
 
-const { Markdown } = await import('@/components/ui/Markdown')
+const { Markdown } = await import('@/ui/Markdown')
 const { IncompleteEmphasis, IncompleteLink, IncompleteInlineCode } = await import(
-    '@/components/ui/MarkdownIncomplete'
+    '@/ui/MarkdownIncomplete'
 )
 
 describe('未完成语法占位组件', () => {

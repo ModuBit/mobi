@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useOpenUIActionStore } from '@/components/ui/openui/actionStore'
+import { useOpenUIActionStore } from '@/ui/openui/actionStore'
 
 describe('useOpenUIActionStore.applyDerived（终态单调守卫）', () => {
     beforeEach(() => useOpenUIActionStore.getState().clearAll())

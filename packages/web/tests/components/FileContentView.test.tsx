@@ -19,7 +19,7 @@ import React from 'react'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { App as AntApp } from 'antd'
-import FileContentView from '@/components/files/FileContentView'
+import FileContentView from '@/features/files/FileContentView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -92,12 +92,12 @@ vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
 
 // 编辑器 mock：text/markdown 一律挂编辑器（readonly = !editable），编辑器内部行为
 // 由 CodeEditorView.test / MarkdownEditorView.test 覆盖，这里只断言「挂了哪个 + 只读态」
-vi.mock('@/components/files/CodeEditorView', () => ({
+vi.mock('@/features/files/CodeEditorView', () => ({
     CodeEditorView: ({ text, readOnly }: { text: string; readOnly?: boolean }) => (
         <div data-testid="code-editor" data-read-only={String(!!readOnly)}>{text}</div>
     ),
 }))
-vi.mock('@/components/files/MarkdownEditorView', () => ({
+vi.mock('@/features/files/MarkdownEditorView', () => ({
     MarkdownEditorView: ({ text, readOnly }: { text: string; readOnly?: boolean }) => (
         <div data-testid="md-editor" data-read-only={String(!!readOnly)}>{text}</div>
     ),

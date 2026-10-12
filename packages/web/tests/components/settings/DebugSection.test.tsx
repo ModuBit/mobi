@@ -23,7 +23,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider, App as AntdApp } from 'antd'
-import { DebugSection } from '@/components/settings/blocks/DebugSection'
+import { DebugSection } from '@/features/settings/blocks/DebugSection'
 import { unlockDebug, lockDebug } from '@/core/lib/debug'
 import { enableDiag, disableDiag, dumpDiag } from '@/core/lib/diag'
 

@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveActionBindings } from '@/components/ui/openui/bindingParser'
+import { resolveActionBindings } from '@/ui/openui/bindingParser'
 
 /** E2E 实锤的双卡源码（11:44 现场）：md 卡带 Set 教学句式，json 卡无 Set */
 const DUAL_CARD = [

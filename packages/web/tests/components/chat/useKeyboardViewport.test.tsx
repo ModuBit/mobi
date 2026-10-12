@@ -18,7 +18,7 @@
 // 基线跟随环境变化必须可逆，否则桌面缩放/URL 栏回落会永久假「键盘弹出」
 import { describe, it, expect, afterEach } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
-import { useKeyboardViewport } from '@/components/chat/useKeyboardViewport'
+import { useKeyboardViewport } from '@/features/chat/useKeyboardViewport'
 
 /** jsdom 无 visualViewport：可变几何 + EventTarget 的假体，按需改属性后手动派发事件 */
 function stubVisualViewport() {

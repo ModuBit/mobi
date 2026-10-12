@@ -37,7 +37,7 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-import { CredentialEditor } from '@/components/settings/webtools/CredentialEditor'
+import { CredentialEditor } from '@/features/settings/webtools/CredentialEditor'
 
 const provider = {
     id: 'tavily' as const,

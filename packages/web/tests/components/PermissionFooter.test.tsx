@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vite
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { PermissionFooter } from '@/features/tool-card/PermissionFooter'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { queryKeys } from '@/core/lib/query-keys'

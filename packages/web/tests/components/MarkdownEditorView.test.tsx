@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, waitFor, cleanup } from '@testing-library/react'
-import { MarkdownEditorView } from '@/components/files/MarkdownEditorView'
+import { MarkdownEditorView } from '@/features/files/MarkdownEditorView'
 
 // jsdom 没有 ResizeObserver（MarkdownToolbar 工具栏横向滚动依赖）
 beforeAll(() => {

@@ -1,0 +1,165 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * diff 文件树面板（审查视图右侧可开合）：筛选输入 + 目录树（复用文件目录树的
+ * pathTree 工具），点文件叶节点 → 主列表展开该文件。树内文件挂 kind 徽标，与清单同语义。
+ */
+
+import { useEffect, useMemo, useState } from 'react'
+import styled from '@emotion/styled'
+import { Empty, Flex, Input, Tree } from 'antd'
+import type { TreeProps } from 'antd'
+import type { DataNode } from 'antd/es/tree'
+import { useTranslation } from 'react-i18next'
+import { Search, FolderClosed, FolderOpen } from 'lucide-react'
+import type { TurnDiffFileKind } from '@mobi/shared'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { basename } from '@/core/utils/path'
+import { buildPathTree, collectDirKeys, commonDirectoryPrefix, type NestedFileNode } from '@/core/utils/pathTree'
+import { KindBadge } from '@/features/turnDiff/present'
+import { FileTypeBadge } from '@/ui/FileTypeBadge'
+
+/**
+ * 树区容器。与文件树 TreeWrap 同款行对齐修正：inline svg 图标默认 baseline 对齐
+ * 会低半格，icon 槽转 inline-flex + line-height 0 垂直居中于行（2026-09-30 反馈）。
+ */
+const TreeArea = styled.div`
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    && .ant-tree-iconEle {
+        display: inline-flex;
+        align-items: center;
+        line-height: 0;
+    }
+    && .ant-tree-node-content-wrapper {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+    }
+    && .ant-tree-title {
+        min-width: 0;
+        white-space: nowrap;
+    }
+`
+
+export function DiffTreePanel({ files, selectedPath, onOpenFile }: {
+    /** 最小结构（path/kind）——turn/review 两种条目形状共用 */
+    files: ReadonlyArray<{ path: string; kind: TurnDiffFileKind }>
+    selectedPath: string | null
+    onOpenFile: (path: string) => void
+}) {
+    const { t } = useTranslation()
+    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const [filter, setFilter] = useState('')
+    const q = filter.trim().toLowerCase()
+    const filtered = useMemo(
+        () => (q ? files.filter((f) => f.path.toLowerCase().includes(q)) : files),
+        [files, q],
+    )
+    const entryByPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files])
+
+    // 扁平条目 → 嵌套树（与文件目录树搜索同一条 buildPathTree 通路）。
+    // 先剥公共目录前缀：变更全落项目子树时树从项目目录起展示（与文件树根语义一致）；
+    // 按全量 files 计算而非 filtered，筛选时树形不随结果集跳变。树内 path 变相对，
+    // 叶子 key 拼回前缀还原全路径，选中/打开仍走全路径语义
+    const rootPrefix = useMemo(() => commonDirectoryPrefix(files.map((f) => f.path)), [files])
+    const tree = useMemo(
+        () => buildPathTree(filtered.map((f) => ({ name: basename(f.path), path: f.path.slice(rootPrefix.length), type: 'file' as const }))),
+        [filtered, rootPrefix],
+    )
+
+    /** 受控展开：数据（档位/筛选）变化即全展开——面板的树只承载变更文件，量小，全展开即默认形态 */
+    const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
+    useEffect(() => {
+        setExpandedKeys(collectDirKeys(tree))
+    }, [tree])
+
+    const treeData: DataNode[] = useMemo(() => {
+        const render = (nodes: NestedFileNode[]): DataNode[] =>
+            nodes.map((n) => {
+                if (n.type === 'directory') {
+                    return {
+                        key: n.path,
+                        title: n.name,
+                        // 与文件树同款：双图标挂 icon 槽，展开/收起切换交给 CSS（aria-expanded 显隐）
+                        icon: () => (
+                            <>
+                                <FolderClosed className="folder-closed" size={14} />
+                                <FolderOpen className="folder-open" size={14} />
+                            </>
+                        ),
+                        children: n.children ? render(n.children) : undefined,
+                    }
+                }
+                const entry = entryByPath.get(rootPrefix + n.path)
+                return {
+                    key: rootPrefix + n.path,
+                    // 文件类型图标走 icon 槽（与文件树同源 FileTypeBadge），kind 徽标留在 title
+                    icon: () => <FileTypeBadge path={n.path} size={14} knownFile />,
+                    title: (
+                        // 单行完整展示：徽标 + 全名不省略，超宽由容器横向滚动
+                        // （与文件树 Popover 同款语义——省略号吞名字难看，滚动兜底）
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                            {entry && <KindBadge kind={entry.kind} isDark={isDark} fontSize={10} />}
+                            <span>{n.name}</span>
+                        </span>
+                    ),
+                    isLeaf: true,
+                }
+            })
+        return render(tree)
+    }, [tree, entryByPath, isDark])
+
+    const onSelect: TreeProps['onSelect'] = (_keys, info) => {
+        if (info.node.isLeaf !== false) onOpenFile(String(info.node.key))
+    }
+
+    return (
+        <Flex
+            data-testid="review-tree-panel"
+            vertical
+            className="review-tree"
+            style={{ height: '100%', minHeight: 0, padding: 8 }}
+        >
+            <Input
+                size="small"
+                allowClear
+                prefix={<Search size={13} />}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder={t('review.filterPlaceholder')}
+                data-testid="review-tree-filter"
+            />
+            <TreeArea>
+                {filtered.length > 0 ? (
+                    <Tree
+                        blockNode
+                        showIcon
+                        treeData={treeData}
+                        expandedKeys={expandedKeys}
+                        onExpand={(keys) => setExpandedKeys(keys)}
+                        selectedKeys={selectedPath ? [selectedPath] : []}
+                        onSelect={onSelect}
+                    />
+                ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('files.noResults')} style={{ marginTop: 24 }} />
+                )}
+            </TreeArea>
+        </Flex>
+    )
+}

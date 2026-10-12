@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
-import { useFileListing } from '@/components/composer/useFileListing'
+import { useFileListing } from '@/features/composer/useFileListing'
 import type { CapabilityTarget, ListDirectoryFn, SearchFilesFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 
 const target: CapabilityTarget = { kind: 'machine', machineId: 'm1', cwd: '/home/u' }

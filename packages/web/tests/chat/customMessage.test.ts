@@ -24,7 +24,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeDecryptedMessage } from '@/domain/chat/normalize'
 import { reduceChatBlocks } from '@/domain/chat/reducer'
-import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
+import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import type { CustomBlock } from '@/domain/chat/types'
 

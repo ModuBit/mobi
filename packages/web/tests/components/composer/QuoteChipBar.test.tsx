@@ -22,7 +22,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { QuoteChipBar } from '@/components/composer/QuoteChipBar'
+import { QuoteChipBar } from '@/features/composer/QuoteChipBar'
 import type { ComposerQuoteRef } from '@/domain/chat/composerSegments'
 
 afterEach(cleanup)

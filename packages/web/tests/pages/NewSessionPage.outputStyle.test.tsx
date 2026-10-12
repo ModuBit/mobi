@@ -52,7 +52,7 @@ vi.mock('@/core/data/hooks/mutations/useSpawnSession', () => ({
 
 // —— mock 画板载体：React.lazy 仍会在挂载时触发 excalidraw 模块图加载（open-color.json
 //    在 vitest 下无 JSON import attribute 而炸），本规格与其无关，桩掉 ——
-vi.mock('@/components/sketchpad/SketchDrawer', () => ({ SketchDrawer: () => null }))
+vi.mock('@/features/sketchpad/SketchDrawer', () => ({ SketchDrawer: () => null }))
 
 // —— mock 数据 hooks：单工作区，工作区经 localStorage 恢复路径自动选中 ——
 // 注意 machines 必须是模块级稳定引用：capTarget 依赖 machines，逐渲染新数组会让
@@ -95,7 +95,7 @@ vi.mock('@/core/data/hooks/queries/useDirectoryCapabilities', () => ({
         deleteUpload: noop,
     }),
 }))
-vi.mock('@/components/composer/useDirectoryCommands', () => ({
+vi.mock('@/features/composer/useDirectoryCommands', () => ({
     useDirectoryCommands: () => ({ commandsData: undefined, isLoading: false }),
 }))
 
@@ -124,10 +124,10 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 }))
 
 // —— 静态化布局组件：避免 router/动画上下文干扰 ——
-vi.mock('@/components/layout/SidebarToggle', () => ({ SidebarToggle: () => null }))
-vi.mock('@/components/layout/MobileMenu', () => ({ MobileMenuButton: () => null }))
-vi.mock('@/components/layout/Logo', () => ({ Logo: () => null }))
-vi.mock('@/components/workspace/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
+vi.mock('@/features/layout/SidebarToggle', () => ({ SidebarToggle: () => null }))
+vi.mock('@/features/layout/MobileMenu', () => ({ MobileMenuButton: () => null }))
+vi.mock('@/features/layout/Logo', () => ({ Logo: () => null }))
+vi.mock('@/features/workspace/WorkspaceFormModal', () => ({ WorkspaceFormModal: () => null }))
 
 // jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
 class ResizeObserverStub {

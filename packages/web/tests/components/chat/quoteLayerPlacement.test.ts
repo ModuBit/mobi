@@ -16,7 +16,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { computeQuoteLayerPlacement, QUOTE_LAYER_GAP, QUOTE_LAYER_VIEWPORT_MARGIN } from '@/components/chat/quoteLayerPlacement'
+import { computeQuoteLayerPlacement, QUOTE_LAYER_GAP, QUOTE_LAYER_VIEWPORT_MARGIN } from '@/features/chat/quoteLayerPlacement'
 
 /** 800×600 视口（jsdom 默认 innerWidth/innerHeight），测试内按需改写后还原 */
 function withViewport(width: number, height: number, fn: () => void): void {

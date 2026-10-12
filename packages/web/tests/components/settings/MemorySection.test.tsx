@@ -87,7 +87,7 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-import { MemorySection } from '@/components/settings/sections/MemorySection'
+import { MemorySection } from '@/features/settings/sections/MemorySection'
 import { deriveMemoryUiUrl, isOffMachineEndpoint } from '@mobi/shared'
 
 function renderSection() {

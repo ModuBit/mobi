@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, cleanup } from '@testing-library/react'
 
-import { useMenuNavigate } from '@/components/layout/useMenuNavigate'
+import { useMenuNavigate } from '@/features/layout/useMenuNavigate'
 import { useUiStore } from '@/core/data/stores/uiStore'
 
 describe('useMenuNavigate（抽屉滑出起步后再导航）', () => {

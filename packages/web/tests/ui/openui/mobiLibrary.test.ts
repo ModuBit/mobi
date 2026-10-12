@@ -22,7 +22,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { takeClickedActionStatementId } from '@/components/ui/openui/mobiLibrary'
+import { takeClickedActionStatementId } from '@/ui/openui/mobiLibrary'
 
 describe('点击 registry（跨模块实例共享）', () => {
     afterEach(() => {
@@ -30,9 +30,9 @@ describe('点击 registry（跨模块实例共享）', () => {
     })
 
     it('实例 A 写、实例 B 读同一位（vite re-optimize 双实例断裂回归）', async () => {
-        const instA = await import('@/components/ui/openui/mobiLibrary')
+        const instA = await import('@/ui/openui/mobiLibrary')
         vi.resetModules()
-        const instB = await import('@/components/ui/openui/mobiLibrary')
+        const instB = await import('@/ui/openui/mobiLibrary')
         expect(instA).not.toBe(instB)
 
         instB.writeClickedStatementIdForTest('stmt-9')
@@ -40,7 +40,7 @@ describe('点击 registry（跨模块实例共享）', () => {
     })
 
     it('take 语义：读后即清，陈旧身份不跨事件存活', async () => {
-        const inst = await import('@/components/ui/openui/mobiLibrary')
+        const inst = await import('@/ui/openui/mobiLibrary')
         inst.writeClickedStatementIdForTest('stmt-1')
         expect(takeClickedActionStatementId()).toBe('stmt-1')
         expect(takeClickedActionStatementId()).toBeNull()

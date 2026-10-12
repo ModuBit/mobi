@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
+import { useAttachmentHandling } from '@/features/composer/useAttachmentHandling'
 import { validateFile } from '@/core/lib/fileAttachments'
 import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 

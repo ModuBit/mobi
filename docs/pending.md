@@ -1158,3 +1158,11 @@ agent-memory 落地 omp any 配方（per-project recallOptions）时实测：服
 **现象**：`domain/chat/eventFormatter.ts`（原 eventFormatter.tsx）microcompact case 中 `formatTokensCount(saved)` 产物已含「 tokens」后缀，拼接处又显式补一次 ` tokens`——用户看到「📦 对话已精简 · 45.0k tokens tokens」。存量行为（旧实现同样如此），票 01 以行为零变更为由原样保留并在代码注释标记。
 
 **修法方向**：删拼接处的冗余 ` tokens`，同时更新 EventText.test.tsx 的 microcompact 断言（现为 `/45\.0k tokens/` 正则，双写时也通过）。属用户可见文案修复，红→绿各一步即可。
+
+## 116. antd Space `direction` 弃用 warning（2026-10-12 分层治理票 02 E2E 发现）
+
+**现象**：E2E 浏览器控制台唯一 error 级输出：`[antd: Space] direction is deprecated. Please use orientation instead.`。存量问题（antd v6 弃用提示），非票 02 迁移引入。
+
+**范围**：`grep 'Space direction='` 命中 3 文件——`features/chat/userBlocks/UserBlocksView.tsx`、`features/terminal/VirtualKeyEditor.tsx`、`features/terminal/VirtualKeyPicker.tsx`。
+
+**修法方向**：三处 `direction="..."` 改 `orientation="..."`，antd v6 语义不变，纯机械改名。

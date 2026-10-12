@@ -5,13 +5,13 @@ import { ConfigProvider } from 'antd'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { AskUserQuestionView } from '@/components/tool-card/views/AskUserQuestionView'
-import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
-import type { ToolViewProps } from '@/components/tool-card/views/_all'
+import { AskUserQuestionView } from '@/features/tool-card/views/AskUserQuestionView'
+import { getToolResultViewComponent } from '@/features/tool-card/views/_results'
+import type { ToolViewProps } from '@/features/tool-card/views/_all'
 import type { ToolInfo } from '@/domain/tool/types'
 
 const VIEW_SRC = readFileSync(
-    resolve(dirname(fileURLToPath(import.meta.url)), '../../src/components/tool-card/views/AskUserQuestionView.tsx'),
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../src/features/tool-card/views/AskUserQuestionView.tsx'),
     'utf-8'
 )
 

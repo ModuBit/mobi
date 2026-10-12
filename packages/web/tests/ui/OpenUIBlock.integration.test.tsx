@@ -28,10 +28,10 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
 import { streamingDisplayState } from '../helpers/streamingContentMock'
-vi.mock('@/components/ui/useStreamingContent', async () =>
+vi.mock('@/ui/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
-const { Markdown } = await import('@/components/ui/Markdown')
+const { Markdown } = await import('@/ui/Markdown')
 
 const SAMPLE = `root = Stack([title, tbl])
 title = TextContent("拓扑语言", "large-heavy")

@@ -24,7 +24,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act } from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { useRef, type ReactElement } from 'react'
-import { useSmoothStickBottom } from '@/components/chat/useSmoothStickBottom'
+import { useSmoothStickBottom } from '@/features/chat/useSmoothStickBottom'
 
 let rafMap: Map<number, FrameRequestCallback>
 let rafSeq: number

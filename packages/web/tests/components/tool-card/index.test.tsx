@@ -19,7 +19,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ToolCard } from '@/components/tool-card'
+import { ToolCard } from '@/features/tool-card'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { MobiApi } from '@/core/data/api/client'
 

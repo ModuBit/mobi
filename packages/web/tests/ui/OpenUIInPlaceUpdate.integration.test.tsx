@@ -30,12 +30,12 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
 import { streamingDisplayState } from '../helpers/streamingContentMock'
-vi.mock('@/components/ui/useStreamingContent', async () =>
+vi.mock('@/ui/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
-const { Markdown } = await import('@/components/ui/Markdown')
-const { UiSendProvider, OpenUIAnchorProvider } = await import('@/components/ui/openui/actionContext')
-const { useOpenUIActionStore } = await import('@/components/ui/openui/actionStore')
+const { Markdown } = await import('@/ui/Markdown')
+const { UiSendProvider, OpenUIAnchorProvider } = await import('@/ui/openui/actionContext')
+const { useOpenUIActionStore } = await import('@/ui/openui/actionStore')
 
 // 档③块（prompt additionalRules 教的 Action-state convention 形态）
 const ACTION_BLOCK = `root = Stack([btn])

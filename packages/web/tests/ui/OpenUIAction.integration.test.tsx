@@ -28,15 +28,15 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
 import { streamingDisplayState } from '../helpers/streamingContentMock'
-vi.mock('@/components/ui/useStreamingContent', async () =>
+vi.mock('@/ui/useStreamingContent', async () =>
     (await import('../helpers/streamingContentMock')).streamingContentMock())
 
-const { Markdown } = await import('@/components/ui/Markdown')
-const { UiSendProvider, OpenUIAnchorProvider } = await import('@/components/ui/openui/actionContext')
-const { useOpenUIActionStore } = await import('@/components/ui/openui/actionStore')
+const { Markdown } = await import('@/ui/Markdown')
+const { UiSendProvider, OpenUIAnchorProvider } = await import('@/ui/openui/actionContext')
+const { useOpenUIActionStore } = await import('@/ui/openui/actionStore')
 // 懒 chunk 直连：流式守卫 seam 在 renderer 的 streaming prop（经 Markdown 时由块级
 // 揭示状态派生——mock 下即时全显恒 done，测不到 loading 态，故绕过直接渲染）
-const OpenUIRenderer = (await import('@/components/ui/openui/renderer')).default
+const OpenUIRenderer = (await import('@/ui/openui/renderer')).default
 
 // 官方 prompt 示例的 contact form（Form(name, buttons, fields) 教学形态）
 const FORM_SAMPLE = `root = Stack([title, form])

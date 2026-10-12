@@ -18,7 +18,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
-import { InstallButton } from '@/components/layout/InstallButton'
+import { InstallButton } from '@/features/layout/InstallButton'
 
 // t(key) 直接返回 key,断言用 key 字符串
 vi.mock('react-i18next', () => ({

@@ -40,7 +40,7 @@ vi.mock('@/core/lib/composerDrafts', () => ({
     clearDraft: draftStore.clear,
 }))
 
-import { useComposerDraft } from '@/components/composer/useComposerDraft'
+import { useComposerDraft } from '@/features/composer/useComposerDraft'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 
 /** 等待一个 rAF（stub 为 setTimeout(0)）完成 */

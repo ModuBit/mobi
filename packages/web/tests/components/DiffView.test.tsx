@@ -31,9 +31,9 @@ vi.mock('@pierre/diffs/react', () => ({
     },
 }))
 // pierreTheme 预热 side effect 在 jsdom 无意义，桩掉
-vi.mock('@/components/review/pierreTheme', () => ({ PIERRE_BRIDGE_VARS: {} }))
+vi.mock('@/features/review/pierreTheme', () => ({ PIERRE_BRIDGE_VARS: {} }))
 
-import { DiffView } from '@/components/tool-card/views/DiffView'
+import { DiffView } from '@/features/tool-card/views/DiffView'
 
 afterEach(() => {
     cleanup()

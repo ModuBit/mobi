@@ -44,7 +44,7 @@ vi.mock('socket.io-client', () => ({
 }))
 
 import { Terminal } from '@xterm/xterm'
-import { createCachedTerminal, buildBanner } from '@/components/terminal/cachedTerminal'
+import { createCachedTerminal, buildBanner } from '@/features/terminal/cachedTerminal'
 
 // helper：触发 cachedTerminal 内部 socket 的事件
 function fire(ev: string, ...args: unknown[]) {

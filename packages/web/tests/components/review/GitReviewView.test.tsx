@@ -40,13 +40,13 @@ vi.mock('react-i18next', async (orig) => {
             k === 'review.fileCount' ? `${opts?.count} 个文件` : k }),
     }
 })
-vi.mock('@/components/review/DiffViewer', () => ({
+vi.mock('@/features/review/DiffViewer', () => ({
     DiffViewer: ({ path, layout }: { path: string; layout: string }) => (
         <div data-testid="diff-viewer-stub" data-path={path} data-layout={layout} />
     ),
 }))
 
-import { GitReviewView, type GitReviewDeps } from '@/components/review/GitReviewView'
+import { GitReviewView, type GitReviewDeps } from '@/features/review/GitReviewView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import type { DiffTarget, ReviewCommit, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 

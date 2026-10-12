@@ -18,11 +18,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { ConfigProvider } from 'antd'
 import type { ReactNode } from 'react'
-import { TeamAgentCard } from '@/components/composer/TeamAgentCard'
+import { TeamAgentCard } from '@/features/composer/TeamAgentCard'
 import type { TeamMember } from '@mobi/shared'
 
 // PixelAvatar 用 canvas，jsdom 无 getContext('2d')；stub 成占位 canvas
-vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
+vi.mock('@/ui/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => <canvas data-testid="pixel-avatar" />,
 }))
 

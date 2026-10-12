@@ -17,7 +17,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { commentTextareaAction } from '@/core/lib/commentTextareaKeys'
-import { QuoteCommentInput } from '@/components/chat/QuoteCommentInput'
+import { QuoteCommentInput } from '@/features/chat/QuoteCommentInput'
 
 /** 构造带 IME 组合标志与修饰键的键盘事件 */
 function keyEvent(key: string, isComposing: boolean, mods: { ctrlKey?: boolean; metaKey?: boolean } = {}): React.KeyboardEvent<HTMLInputElement> {

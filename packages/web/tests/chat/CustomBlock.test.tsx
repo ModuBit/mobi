@@ -80,7 +80,7 @@ vi.mock('@ant-design/x-markdown', () => ({
     },
 }))
 
-import { CustomBlockView } from '@/components/chat/blocks/CustomBlock'
+import { CustomBlockView } from '@/features/chat/blocks/CustomBlock'
 import type { CustomBlock } from '@/domain/chat/types'
 
 afterEach(cleanup)

@@ -37,11 +37,11 @@ vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => vi.fn(),
 }))
 
-vi.mock('@/components/layout/useSessionRowNavigate', () => ({
+vi.mock('@/features/layout/useSessionRowNavigate', () => ({
     useSessionRowNavigate: () => vi.fn(),
 }))
 
-import { RecentGroup } from '@/components/layout/RecentGroup'
+import { RecentGroup } from '@/features/layout/RecentGroup'
 
 function makeSession(id: string, overrides: Partial<Session> = {}): Session {
     return {

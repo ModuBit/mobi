@@ -55,7 +55,7 @@ vi.mock('@/core/data/hooks/mutations/useWorkspaceMutations', () => ({
 }))
 
 const listingResult = vi.hoisted(() => ({ options: [], isLoading: false }))
-vi.mock('@/components/session/useMachineDirectoryListing', () => ({
+vi.mock('@/features/session/useMachineDirectoryListing', () => ({
     useMachineDirectoryListing: () => listingResult,
     parsePrefixInput: vi.fn(),
 }))
@@ -74,7 +74,7 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => mobileState.current,
 }))
 
-import { WorkspaceFormModal } from '@/components/workspace/WorkspaceFormModal'
+import { WorkspaceFormModal } from '@/features/workspace/WorkspaceFormModal'
 import type { Workspace } from '@/core/data/api/types'
 
 function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {

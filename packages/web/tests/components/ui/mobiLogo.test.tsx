@@ -17,10 +17,10 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { MOBI_MARK_PATH } from '@/components/layout/brandPaths'
+import { MOBI_MARK_PATH } from '@/ui/brandPaths'
 import { useUiStore } from '@/core/data/stores/uiStore'
 
-const { MobiLogo } = await import('@/components/ui/MobiLogo')
+const { MobiLogo } = await import('@/ui/MobiLogo')
 
 afterEach(cleanup)
 

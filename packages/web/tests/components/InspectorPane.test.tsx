@@ -19,10 +19,10 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntdApp } from 'antd'
-import { InspectorPane } from '@/components/session/InspectorPane'
+import { InspectorPane } from '@/features/session/InspectorPane'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
-import { getEditorApi } from '@/components/files/EditorRegistry'
+import { getEditorApi } from '@/features/files/EditorRegistry'
 
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => false,
@@ -46,7 +46,7 @@ vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
 }))
 // mock TerminalView：真实组件依赖 xterm/cachedTerminal（jsdom 无 DOM 布局），
 // 用 marker div 暴露 props，验证 terminal tab 渲染接线
-vi.mock('@/components/terminal/TerminalView', () => ({
+vi.mock('@/features/terminal/TerminalView', () => ({
     default: ({ sessionId, terminalId }: { sessionId: string; terminalId: string }) => (
         <div
             data-testid="mock-terminal-view"
@@ -60,11 +60,11 @@ vi.mock('@/core/hooks/useCachedInstance', () => ({
     clearCachedInstance: vi.fn(),
 }))
 // mock FileContentView：真实组件拉 file meta/content（query hooks），dirty/关闭测试只需占位
-vi.mock('@/components/files/FileContentView', () => ({
+vi.mock('@/features/files/FileContentView', () => ({
     default: () => <div data-testid="mock-fc" />,
 }))
 // mock EditorRegistry：getEditorApi 返回可控的 isDirty/saveNow（验证关 tab 保存逻辑）
-vi.mock('@/components/files/EditorRegistry', () => ({
+vi.mock('@/features/files/EditorRegistry', () => ({
     getEditorApi: vi.fn(),
     registerEditor: vi.fn(),
     unregisterEditor: vi.fn(),

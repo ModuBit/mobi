@@ -17,13 +17,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { TURN_DIFF_EVENT } from '@mobi/shared'
 import type { ChatBlock, ChatToolCall, ToolCallBlock, UserTextBlock, AgentTextBlock, AgentEventBlock } from '@/domain/chat'
-import type { ChatBlockContext } from '@/components/chat/blocks'
-import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
-import { renderChatBlock } from '@/components/chat/blocks'
+import type { ChatBlockContext } from '@/features/chat/blocks'
+import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
+import { renderChatBlock } from '@/features/chat/blocks'
 
 // Mock renderChatBlock：返回 block id 标记，方便断言 items 顺序与内容
-vi.mock('@/components/chat/blocks', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/components/chat/blocks')>()
+vi.mock('@/features/chat/blocks', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/features/chat/blocks')>()
     return {
         ...actual,
         renderChatBlock: vi.fn((_block: ChatBlock, _ctx: ChatBlockContext) => `rendered:${_block.id}`),
@@ -31,8 +31,8 @@ vi.mock('@/components/chat/blocks', async (importOriginal) => {
 })
 
 // Mock ToolCallGroupRenderer
-vi.mock('@/components/chat/blocks/ToolCallBlock', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/components/chat/blocks/ToolCallBlock')>()
+vi.mock('@/features/chat/blocks/ToolCallBlock', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/features/chat/blocks/ToolCallBlock')>()
     return {
         ...actual,
         ToolCallGroupRenderer: (_props: { blocks: ToolCallBlock[] }) => `group:${_props.blocks.map(b => b.id).join(',')}`,

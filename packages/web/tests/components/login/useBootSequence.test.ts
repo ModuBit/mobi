@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useBootSequence } from '@/components/login/useBootSequence'
+import { useBootSequence } from '@/features/login/useBootSequence'
 
 /** 构造可控 matchMedia mock（参考 tests/lib/vconsole.test.ts） */
 function mockMatchMedia(matches: boolean) {

@@ -19,10 +19,10 @@ import '@testing-library/jest-dom/vitest'
 import { render, waitFor, cleanup } from '@testing-library/react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { MermaidCodeBlock, MermaidPreview } from '@/components/files/MermaidPreview'
+import { MermaidCodeBlock, MermaidPreview } from '@/features/files/MermaidPreview'
 import { common, createLowlight } from 'lowlight'
-import { resetMermaidCache } from '@/components/files/mermaidRender'
-import { resetMermaidZoomCache } from '@/components/files/mermaidWidget'
+import { resetMermaidCache } from '@/ui/mermaidRender'
+import { resetMermaidZoomCache } from '@/features/files/mermaidWidget'
 
 // mock mermaid：render 返回固定 svg，验证 decoration 注入即可（不跑真 dagre）
 const renderMock = vi.fn(async (_id: string, _code: string) => ({ svg: '<svg class="mock-svg"/>' }))

@@ -42,7 +42,7 @@ import { render, cleanup, act, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ComposerInfoPanel } from '@/components/composer/ComposerInfoPanel'
+import { ComposerInfoPanel } from '@/features/composer/ComposerInfoPanel'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ForegroundTaskItem } from '@mobi/shared/types'
 
@@ -55,7 +55,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 // mock PixelAvatar，jsdom 不支持 canvas
-vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
+vi.mock('@/ui/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => null,
 }))
 

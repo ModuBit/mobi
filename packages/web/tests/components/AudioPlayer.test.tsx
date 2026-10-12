@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, fireEvent } from '@testing-library/react'
-import AudioPlayer from '@/components/files/AudioPlayer'
+import AudioPlayer from '@/features/files/AudioPlayer'
 
 // jsdom 的 HTMLAudioElement.play/pause 无实现，mock 并 dispatch 对应事件
 beforeEach(() => {

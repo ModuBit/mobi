@@ -22,7 +22,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isDiffable, isTargetUnavailable } from '@/components/review/reviewEntries'
+import { isDiffable, isTargetUnavailable } from '@/features/review/reviewEntries'
 import type { DiffTarget, ReviewFileEntry, ReviewOverview } from '@mobi/shared'
 
 function entry(overrides: Partial<ReviewFileEntry> = {}): ReviewFileEntry {

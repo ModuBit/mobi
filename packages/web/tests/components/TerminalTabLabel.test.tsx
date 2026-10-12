@@ -19,7 +19,7 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 // 导入真实 i18n 实例并切换到 zh，让 useTranslation 返回实际翻译文本（含 {{n}} 插值）
 import i18n from '@/core/config/i18n'
-import { TerminalTabLabel } from '@/components/session/TerminalTabLabel'
+import { TerminalTabLabel } from '@/features/session/TerminalTabLabel'
 import type { InspectorTabEntry } from '@/core/data/stores/workspaceStore'
 
 beforeAll(async () => {

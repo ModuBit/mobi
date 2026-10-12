@@ -1,0 +1,420 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Layout, Tabs, Button, Dropdown, App, Spin } from 'antd'
+import { AppTooltip } from '@/ui/AppTooltip'
+import type { MenuProps } from 'antd'
+import { useTranslation } from 'react-i18next'
+import styled from '@emotion/styled'
+import { PanelRightClose, Folder, FileDiff, Maximize, Minimize, Plus } from 'lucide-react'
+import { FileTypeBadge } from '@/ui/FileTypeBadge'
+import FileTreeView from '@/features/files/FileTreeView'
+import FileContentView from '@/features/files/FileContentView'
+import { GitReviewView } from '@/features/review/GitReviewView'
+import { parseTargetKey } from '@/core/lib/targetKey'
+
+import { getEditorApi } from '@/features/files/EditorRegistry'
+// TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，
+// 不进会话页首载关键路径（终端为低频功能）。default export，React.lazy 直接可用
+const TerminalView = lazy(() => import('@/features/terminal/TerminalView'))
+import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
+import { InspectorEmptyState } from './InspectorEmptyState'
+import { TerminalTabLabel } from './TerminalTabLabel'
+import { INSPECTOR_ACTIONS, type InspectorActionContext } from './inspectorActions'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import {
+    useWorkspaceStore,
+    type InspectorTabEntry,
+    MAX_TERMINALS_PER_SESSION,
+} from '@/core/data/stores/workspaceStore'
+
+/**
+ * editable-card 提供关闭 × 机制，但其卡片外观（边框/背景）过重。
+ * 这里覆盖样式：去边框、透明背景，hover/active 用填充色，呈现简洁的胶囊式 tab。
+ * 用 && 提升 emotion 选择器优先级以压过 antd 的 .ant-tabs-card 规则。
+ */
+const StyledTabs = styled(Tabs)`
+    && > .ant-tabs-nav .ant-tabs-tab,
+    && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 4px 10px;
+        margin: 2px 2px;
+    }
+    && > .ant-tabs-nav .ant-tabs-tab:hover {
+        background: var(--ant-color-fill-quaternary);
+    }
+    && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
+        background: var(--ant-color-fill-tertiary);
+        border-color: transparent;
+    }
+    && > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+        font-weight: 500;
+    }
+    /* tab 内容垂直居中：让只有图标的「+」与「图标+文字」tab 对齐 */
+    && .ant-tabs-tab-btn {
+        display: inline-flex;
+        align-items: center;
+    }
+    /* 关闭按钮：默认隐藏，hover tab 时才显示（保留占位，避免 hover 时布局抖动） */
+    && .ant-tabs-tab-remove {
+        margin-inline-start: 2px;
+        padding: 2px;
+        border-radius: 4px;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    && > .ant-tabs-nav .ant-tabs-tab:hover .ant-tabs-tab-remove {
+        opacity: 1;
+    }
+    && .ant-tabs-tab-remove:hover {
+        background: var(--ant-color-fill);
+    }
+    /* 触屏设备（无 hover）：关闭按钮常驻显示 */
+    @media (hover: none) {
+        && .ant-tabs-tab-remove {
+            opacity: 1;
+        }
+    }
+    /* 隐藏 editable-card 默认的底部墨条（line 风格不需要） */
+    && > .ant-tabs-nav .ant-tabs-ink-bar {
+        background: transparent;
+    }
+    /* 去掉 nav 底部分割线（editable-card 默认有一条 border-bottom） */
+    && > .ant-tabs-nav::before {
+        border-bottom: none;
+    }
+    /* 高度链：让 tab 内容占满剩余空间。
+       多页 PDF / xterm 等需要 tabpane 有 bounded height 才能在内部滚动/自适应，
+       否则内容会把整条链撑开（tabpane → FileContentView / TerminalView 全部 height:auto），
+       表现为「不能滚动 / 终端占不满」。flex 滚动容器还需配合 minHeight:0（见各组件）。
+       注意 antd v5 类名链为 body-holder > body > content > tabpane（v4 的 content-holder 已废弃）。*/
+    && {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    && > .ant-tabs-body-holder {
+        flex: 1;
+        min-height: 0;
+    }
+    && > .ant-tabs-body-holder > .ant-tabs-body {
+        height: 100%;
+    }
+    && > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content {
+        height: 100%;
+    }
+    && > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content > .ant-tabs-tabpane {
+        height: 100%;
+    }
+`
+
+export interface InspectorPaneProps {
+    sessionId: string
+    /** session 是否在线（CLI 已连接）；离线时 rightChrome 改浮动定位（不进 tabBar） */
+    active?: boolean
+}
+
+/** 尾部「+」tab 的 key（仅作菜单触发，不进 store） */
+const ADD_TAB_KEY = '__inspector_add'
+
+/**
+ * 审查 tab 表面（turn-diff 票06）：档位持久化挂 tab viewState——切走再切回保持
+ * 上次档位；hook 须在稳定组件里调（renderTabContent 在 items map 里跑，不能内联）
+ */
+function ReviewTab({ sessionId, tabId }: { sessionId: string; tabId: string }) {
+    const tab = useWorkspaceStore((s) => s.getSession(sessionId).tabs.find((t) => t.id === tabId))
+    const target = (() => {
+        const raw = tab?.viewState?.reviewTarget as string | undefined
+        try {
+            return raw ? parseTargetKey(raw) : { kind: 'turn' as const }
+        } catch {
+            return { kind: 'turn' as const }
+        }
+    })()
+    const layout = tab?.viewState?.reviewLayout === 'split' ? 'split' : 'unified'
+    const setTabViewState = useWorkspaceStore((s) => s.setTabViewState)
+    return (
+        <GitReviewView
+            sessionId={sessionId}
+            target={target}
+            onTargetChange={(t) => setTabViewState(sessionId, tabId, { reviewTarget: JSON.stringify(t) })}
+            layout={layout}
+            onLayoutChange={(l) => setTabViewState(sessionId, tabId, { reviewLayout: l })}
+        />
+    )
+}
+
+export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) {
+    const { t } = useTranslation()
+    const { modal, message } = App.useApp()
+    const isMobile = useIsMobile()
+    const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
+    const tabs = useWorkspaceStore((s) => s.getSession(sessionId).tabs)
+    const activeTabId = useWorkspaceStore((s) => s.getSession(sessionId).activeTabId)
+    const chatHidden = useWorkspaceStore((s) => s.getSession(sessionId).chatHidden)
+    const setExpanded = useWorkspaceStore((s) => s.setExpanded)
+    const setChatHidden = useWorkspaceStore((s) => s.setChatHidden)
+    const openFileTreeTab = useWorkspaceStore((s) => s.openFileTreeTab)
+    const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
+    const closeTab = useWorkspaceStore((s) => s.closeTab)
+    // 关 tab：editable 文件有未保存编辑时弹确认（保存/不保存/取消），其余直接关
+    const handleCloseTab = useCallback((tabId: string) => {
+        const api = getEditorApi(tabId)
+        const doClose = () => closeTab(sessionId, tabId)
+        if (!api?.isDirty()) {
+            doClose()
+            return
+        }
+        const instance = modal.confirm({
+            title: t('files.unsavedTitle', '有未保存的修改'),
+            content: t('files.unsavedBody', '关闭前是否保存？'),
+            maskClosable: false,
+            footer: () => (
+                <>
+                    <Button danger onClick={() => { instance?.destroy(); doClose() }}>
+                        {t('files.discardClose', '不保存关闭')}
+                    </Button>
+                    <Button onClick={() => instance?.destroy()}>
+                        {t('files.cancel', '取消')}
+                    </Button>
+                    <Button type="primary" onClick={async () => {
+                        // 保存失败（冲突 / 业务错误）→ 不关 tab：避免静默丢弃用户编辑。
+                        // 关掉确认框（让用户回到编辑器看 conflict/error 反馈），tab 保留，message 提示。
+                        const { ok } = await api.saveNow()
+                        if (!ok) {
+                            instance?.destroy()
+                            message.error(t('files.saveFailed', '保存失败，请处理后重试'))
+                            return
+                        }
+                        instance?.destroy()
+                        doClose()
+                    }}>
+                        {t('files.saveAndClose', '保存并关闭')}
+                    </Button>
+                </>
+            ),
+        })
+    }, [closeTab, sessionId, t, modal, message])
+    const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
+    const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
+    const openReviewTab = useWorkspaceStore((s) => s.openReviewTab)
+    const renameTerminalTab = useWorkspaceStore((s) => s.renameTerminalTab)
+    // 终端数与上限：达上限时 disable 新建入口（叠加 INSPECTOR_ACTIONS.disabled）
+    const terminalCount = tabs.filter((t) => t.mode === 'terminal').length
+    const terminalLimitReached = terminalCount >= MAX_TERMINALS_PER_SESSION
+
+    // 首次展开才挂载内容（懒加载闸）；与 destroyOnHidden={false} 分工 keepalive。
+    const [everExpanded, setEverExpanded] = useState(false)
+    useEffect(() => {
+        if (expanded) setEverExpanded(true)
+    }, [expanded])
+
+    const rightChrome = useMemo(
+        () => (
+            <RightChrome
+                isMobile={isMobile}
+                chatHidden={chatHidden}
+                onToggleChat={(v) => setChatHidden(sessionId, v)}
+                onCollapse={() => setExpanded(sessionId, false)}
+                t={t}
+            />
+        ),
+        [isMobile, chatHidden, setChatHidden, setExpanded, sessionId, t],
+    )
+
+    // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS（可用性与执行都在清单上）
+    const actionsContext: InspectorActionContext = {
+        terminalLimitReached,
+        openFile: () => openFileTreeTab(sessionId),
+        openTerminal: () => openTerminalTab(sessionId),
+        openReview: () => openReviewTab(sessionId),
+    }
+    const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
+        const { Icon } = action
+        const disabled = action.disabled || action.enabled?.(actionsContext) === false
+        return {
+            key: action.key,
+            icon: <Icon size={14} />,
+            label: t(action.labelKey),
+            disabled,
+            onClick: disabled ? undefined : () => action.run(actionsContext),
+        }
+    })
+
+    const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
+        if (tab.mode === 'file' && tab.filePath) {
+            return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} />
+        }
+        if (tab.mode === 'terminal' && tab.terminalId) {
+            return (
+                <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                    <TerminalView sessionId={sessionId} terminalId={tab.terminalId} />
+                </Suspense>
+            )
+        }
+        if (tab.mode === 'review') {
+            // git 审查视图（turn-diff）：数据 machine 通道现查，休眠可开；档位挂 viewState 持久化
+            return <ReviewTab sessionId={sessionId} tabId={tab.id} />
+        }
+        return (
+            <FileTreeView
+                sessionId={sessionId}
+                active={activeTabId === tab.id}
+                onOpenFile={(filePath, fileName) => openFileInTab(sessionId, tab.id, filePath, fileName)}
+            />
+        )
+    }
+
+    const tabItems = [
+        ...tabs.map((tab) => ({
+            key: tab.id,
+            label: (
+                <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
+                    {tab.mode === 'terminal' ? (
+                        <TerminalTabLabel
+                            tab={tab}
+                            onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
+                        />
+                    ) : tab.mode === 'review' ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <FileDiff size={14} />
+                            {t('session.inspector.review')}
+                        </span>
+                    ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {/* 文件 tab 按扩展名画类型徽章（TS 色块/目录 glyph），tree tab 保持 Folder */}
+                            {tab.mode === 'file' ? (
+                                <FileTypeBadge path={tab.filePath ?? ''} size={14} />
+                            ) : (
+                                <Folder size={14} />
+                            )}
+                            {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
+                        </span>
+                    )}
+                </AppTooltip>
+            ),
+            children: renderTabContent(tab),
+            closable: true,
+        })),
+        // 尾部「+」：作为不可关闭的 tab 项，点击弹出下拉菜单新增 tab
+        {
+            key: ADD_TAB_KEY,
+            label: (
+                <Dropdown menu={{ items: addMenuItems }} trigger={['click']}>
+                    <span
+                        role="button"
+                        aria-label={t('session.inspector.addTab')}
+                        style={{ display: 'inline-flex', alignItems: 'center', padding: '0 4px' }}
+                    >
+                        <Plus size={14} />
+                    </span>
+                </Dropdown>
+            ),
+            children: null,
+            closable: false,
+            disabled: false,
+        },
+    ]
+
+    const hasTabs = tabs.length > 0
+    // 空态：居中 3 按钮。休眠也显示——openFile/桌面 machine 化照常可用，终端创建后
+    // daemon 自动唤醒 + session_waking 重试兜底（dormancy：首动作自然变慢，无独立门控）
+    const showEmpty = expanded && !hasTabs
+
+    return (
+        <Layout style={{ height: '100%', position: 'relative', paddingBottom: 'max(0px, env(safe-area-inset-bottom))' }}>
+            {/* tab 内容：有 tab 时渲染。active 切换（在线↔离线）不卸载（destroyOnHidden + 同一条件分支），
+                离线时保留作毛玻璃背景，模糊可见关闭前的内容。空态/未展开不渲染（避免无谓 RPC）。 */}
+            {everExpanded && hasTabs && (
+                <StyledTabs
+                    type="editable-card"
+                    hideAdd
+                    activeKey={activeTabId ?? undefined}
+                    onChange={(key) => {
+                        // 「+」tab 仅作菜单触发，不切换激活
+                        if (key === ADD_TAB_KEY) return
+                        setActiveTab(sessionId, key)
+                    }}
+                    items={tabItems}
+                    size="small"
+                    destroyOnHidden={false}
+                    onEdit={(targetKey, action) => {
+                        if (action === 'remove' && typeof targetKey === 'string') {
+                            // 关闭 terminal tab：清理缓存实例（dispose 发 terminal:close 杀 PTY + 断 socket）。
+                            // 切换 tab 不走此处，PTY 保留（keepalive）。
+                            const closingTab = tabs.find((t) => t.id === targetKey)
+                            if (closingTab?.mode === 'terminal' && closingTab.terminalId) {
+                                clearCachedInstance(`terminal:${sessionId}:${closingTab.terminalId}`)
+                            }
+                            handleCloseTab(targetKey)
+                        }
+                    }}
+                    tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
+                    // 离线时 rightChrome 改为浮动定位（置于毛玻璃之上），不放进 tabBar
+                    tabBarExtraContent={active ? { right: rightChrome } : undefined}
+                />
+            )}
+            {everExpanded && showEmpty && (
+                <InspectorEmptyState actionsContext={actionsContext} />
+            )}
+            {/* 空态/离线态的浮动 rightChrome（tab 态的在 tabBarExtraContent）。
+                zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点 */}
+            {(showEmpty || !active) && (
+                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>{rightChrome}</div>
+            )}
+            {/* 终端 tab 休眠/离线时不叠 ActivateCover：TerminalView 自带重连遮罩
+                （create 被拒 → session_waking 提示 + 自动重试 + 手动「重连」按钮，
+                重发 create 即触发 daemon 唤醒），再盖一层恢复引导是重复门控 */}
+        </Layout>
+    )
+}
+
+/** 右上角 chrome：最大化/恢复 + 收起。空态与 Tab 态共用。 */
+function RightChrome({
+    isMobile,
+    chatHidden,
+    onToggleChat,
+    onCollapse,
+    t,
+}: {
+    isMobile: boolean
+    chatHidden: boolean
+    onToggleChat: (v: boolean) => void
+    onCollapse: () => void
+    t: (k: string) => string
+}) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {!isMobile && (
+                chatHidden ? (
+                    <AppTooltip title={t('session.inspector.restore')}>
+                        <Button type="text" size="small" icon={<Minimize size={16} />} aria-label={t('session.inspector.restore')} onClick={() => onToggleChat(false)} />
+                    </AppTooltip>
+                ) : (
+                    <AppTooltip title={t('session.inspector.maximize')}>
+                        <Button type="text" size="small" icon={<Maximize size={16} />} aria-label={t('session.inspector.maximize')} onClick={() => onToggleChat(true)} />
+                    </AppTooltip>
+                )
+            )}
+            <AppTooltip title={t('session.inspector.collapse')}>
+                <Button type="text" size="small" icon={<PanelRightClose size={16} />} aria-label={t('session.inspector.collapse')} onClick={onCollapse} />
+            </AppTooltip>
+        </div>
+    )
+}

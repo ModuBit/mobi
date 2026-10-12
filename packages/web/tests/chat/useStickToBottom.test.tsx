@@ -24,7 +24,7 @@ import {
     REFOLLOW_DEBOUNCE_MS,
     CHASE_ABORT_RETRY_MS,
     type StickToBottomController,
-} from '@/components/chat/useStickToBottom'
+} from '@/features/chat/useStickToBottom'
 
 /** rAF 手动桩：chase 平滑追赶逐帧驱动（jsdom rAF 时序不可控） */
 let rafMap: Map<number, FrameRequestCallback>

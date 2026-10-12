@@ -29,12 +29,12 @@ vi.mock('@/core/data/stores/uiStore', () => ({
     useUiStore: (selector: (s: typeof mockState) => unknown) => selector(mockState),
 }))
 
-vi.mock('@/components/layout/useWindowControlsOverlay', () => ({
+vi.mock('@/features/layout/useWindowControlsOverlay', () => ({
     useWco: vi.fn(() => false),
 }))
 
-import { useWco } from '@/components/layout/useWindowControlsOverlay'
-import { SidebarToggle } from '@/components/layout/SidebarToggle'
+import { useWco } from '@/features/layout/useWindowControlsOverlay'
+import { SidebarToggle } from '@/features/layout/SidebarToggle'
 
 describe('SidebarToggle WCO 降级', () => {
     beforeEach(() => vi.clearAllMocks())

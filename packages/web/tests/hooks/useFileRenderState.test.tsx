@@ -19,7 +19,7 @@ import '@testing-library/jest-dom/vitest'
 import { renderHook, cleanup, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { useFileRenderState } from '@/components/files/useFileRenderState'
+import { useFileRenderState } from '@/features/files/useFileRenderState'
 
 // mock 两个 query hook，测试只关心它们的返回值如何映射到 RenderState
 vi.mock('@/core/data/hooks/queries/useFileTree', () => ({

@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import FileTreeView from '@/components/files/FileTreeView'
+import FileTreeView from '@/features/files/FileTreeView'
 import { queryKeys } from '@/core/lib/query-keys'
 
 // jsdom 没有 ResizeObserver（antd Tree 依赖）

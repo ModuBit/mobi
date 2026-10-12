@@ -17,7 +17,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import ImageContentView from '@/components/files/ImageContentView'
+import ImageContentView from '@/features/files/ImageContentView'
 
 /** 从 img.src 取回 query 参数（不耦合具体编码方式，比字符串包含更稳） */
 function srcQuery(img: HTMLImageElement) {

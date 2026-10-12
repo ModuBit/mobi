@@ -19,7 +19,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { SessionDetail } from '@/components/session/SessionDetail'
+import { SessionDetail } from '@/features/session/SessionDetail'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 
 // mock 路由
@@ -44,16 +44,16 @@ vi.mock('@/core/data/hooks/queries/useSession', () => ({
 }))
 
 // mock 子组件，只关心是否被渲染
-vi.mock('@/components/chat/ChatContainer', () => ({
+vi.mock('@/features/chat/ChatContainer', () => ({
     ChatContainer: () => <div data-testid="chat-container" />,
 }))
-vi.mock('@/components/session/SessionContextBar', () => ({
+vi.mock('@/features/session/SessionContextBar', () => ({
     SessionContextBar: ({ metadata }: { metadata: unknown }) => (
         <div data-testid="session-context-bar">{metadata ? 'has-metadata' : 'no-metadata'}</div>
     ),
 }))
 // PixelAvatar 内部使用 canvas（jsdom 无 getContext），stub 掉避免崩溃
-vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
+vi.mock('@/ui/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => <div data-testid="pixel-avatar" />,
 }))
 

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveSubmitButtonState } from '@/components/composer/submitButtonState'
+import { resolveSubmitButtonState } from '@/features/composer/submitButtonState'
 
 describe('resolveSubmitButtonState', () => {
     it('空闲且有内容 → 发送（可用）', () => {

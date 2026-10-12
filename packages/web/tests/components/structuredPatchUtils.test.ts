@@ -20,7 +20,7 @@
  * 行体为 unified 前缀 + 原行内容（前缀后无分隔空格）
  */
 import { describe, it, expect } from 'vitest'
-import { composePatchText, composePatchFromLineRows, countPatchLines, patchForEdit } from '@/components/tool-card/views/structuredPatchUtils'
+import { composePatchText, composePatchFromLineRows, countPatchLines, patchForEdit } from '@/features/tool-card/views/structuredPatchUtils'
 
 describe('composePatchText', () => {
     it('单 hunk：带文件头与 hunk 头，行体原样透传', () => {

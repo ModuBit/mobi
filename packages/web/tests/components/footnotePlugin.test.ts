@@ -22,7 +22,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { extractFootnotes } from '@/components/ui/footnotePlugin'
+import { extractFootnotes } from '@/ui/footnotePlugin'
 
 describe('extractFootnotes', () => {
     it('无脚注内容直接返回原文', () => {

@@ -18,8 +18,8 @@ import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { afterEach, beforeEach } from 'vitest'
-import PdfContentViewImpl from '@/components/files/PdfContentViewImpl'
-import { clampScale } from '@/components/files/PdfToolbar'
+import PdfContentViewImpl from '@/features/files/PdfContentViewImpl'
+import { clampScale } from '@/features/files/PdfToolbar'
 import { useWorkspaceStore, DEFAULT_INSPECTOR_STATE } from '@/core/data/stores/workspaceStore'
 
 /** 读 store 里某 tab 的视图状态（记忆恢复测试 helper） */
@@ -81,7 +81,7 @@ vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}))
 vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}))
 
 // mock PdfContinuousView：暴露 previewScale/renderScale 到 data-*，便于断言混合缩放状态
-vi.mock('@/components/files/PdfContinuousView', () => ({
+vi.mock('@/features/files/PdfContinuousView', () => ({
     default: ({ previewScale, renderScale }: { previewScale: number; renderScale: number }) => (
         <div data-testid="pdf-continuous" data-preview={previewScale} data-render={renderScale} />
     ),

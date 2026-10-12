@@ -16,9 +16,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { AgentTurnActions } from '@/components/chat/AgentTurnActions'
-import { ForkConfirmView } from '@/components/chat/ForkConfirmView'
-import { MessageActionsDrawer } from '@/components/chat/MessageActionsDrawer'
+import { AgentTurnActions } from '@/features/chat/AgentTurnActions'
+import { ForkConfirmView } from '@/features/chat/ForkConfirmView'
+import { MessageActionsDrawer } from '@/features/chat/MessageActionsDrawer'
 
 // mock i18next：提供 fork 相关文案映射（initReactI18next 必须 noop 导出，避免 i18n 顶层 init 报错）
 vi.mock('react-i18next', () => ({

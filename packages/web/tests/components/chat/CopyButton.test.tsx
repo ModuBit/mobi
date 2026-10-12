@@ -23,7 +23,7 @@
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
-import { CopyButton } from '@/components/chat/CopyButton'
+import { CopyButton } from '@/ui/CopyButton'
 
 const writeTextSpy = vi.hoisted(() => vi.fn<(text: string) => Promise<void>>())
 

@@ -70,7 +70,7 @@ API 历史路径中，`isSidechain` 标记被清除（`isSidechain: false`），
 
 ### ToolCallRenderer
 
-**文件**：`components/chat/blocks/ToolCallBlock.tsx`
+**文件**：`features/chat/blocks/ToolCallBlock.tsx`
 
 所有 tool-call block 的统一渲染入口，使用 Ant Design X 的 `<Think>` 组件实现折叠/展开。
 
@@ -173,13 +173,13 @@ Drawer 内的 sidechain 对话渲染，使用 `Bubble.List` 组件。
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| `ToolCallRenderer` | `components/chat/blocks/ToolCallBlock.tsx` | 聊天内联渲染入口，Think 折叠 |
-| `ToolCallPreviewContent` | `components/chat/blocks/ToolCallBlock.tsx` | 内联预览内容（Agent prompt / 结果） |
+| `ToolCallRenderer` | `features/chat/blocks/ToolCallBlock.tsx` | 聊天内联渲染入口，Think 折叠 |
+| `ToolCallPreviewContent` | `features/chat/blocks/ToolCallBlock.tsx` | 内联预览内容（Agent prompt / 结果） |
 | `ToolCard` | `components/tool-card/index.tsx` | 卡片式渲染（Card + Modal），含 Task 摘要 |
 | `ToolDetailDrawer` | `components/tool-card/ToolDetailDrawer.tsx` | Drawer 容器，路由到 Agent / 普通视图 |
 | `AgentDrawerContent` | `components/tool-card/AgentDrawerContent.tsx` | Drawer 内 sidechain Bubble.List |
-| `AgentLoadingBubble` | `components/chat/AgentLoadingBubble.tsx` | 运行中加载动画（PixelAvatar + vibing 文字） |
+| `AgentLoadingBubble` | `features/chat/AgentLoadingBubble.tsx` | 运行中加载动画（PixelAvatar + vibing 文字） |
 | `useAgentSidechain` | `components/tool-card/useAgentSidechain.ts` | Agent sidechain 数据获取（双路径） |
 | `knownTools` | `components/tool-card/knownTools.tsx` | 工具注册（`isAgentTool` / `getAgentTitle` / subtitle） |
 | `getAgentPrompt` | `components/tool-card/index.tsx` | 提取 Agent 工具的 prompt 文本 |
-| `buildChatBubbleItems` | `components/chat/buildBubbleItems.tsx` | ChatBlock[] → BubbleItemBase[] 转换 |
+| `buildChatBubbleItems` | `features/chat/buildBubbleItems.tsx` | ChatBlock[] → BubbleItemBase[] 转换 |

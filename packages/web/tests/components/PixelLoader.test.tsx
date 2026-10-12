@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { PixelLoader } from '@/components/ui/PixelLoader'
+import { PixelLoader } from '@/ui/PixelLoader'
 
 describe('PixelLoader', () => {
     it('渲染 9 个像素格，按 chevron 波形逐格注入 delay', () => {

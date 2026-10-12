@@ -18,11 +18,11 @@ import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render } from '@testing-library/react'
 
-vi.mock('@/components/files/CodeHighlight', () => ({
+vi.mock('@/features/files/CodeHighlight', () => ({
     default: ({ code }: { code: string }) => <div data-testid="tc-highlight">{code}</div>,
 }))
 
-const TextContentView = (await import('@/components/files/TextContentView')).default
+const TextContentView = (await import('@/features/files/TextContentView')).default
 
 describe('TextContentView', () => {
     it('高亮分支：外层包 .text-content-view 容器（承载 padding）', () => {

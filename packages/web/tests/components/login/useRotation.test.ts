@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useRotation } from '@/components/login/useRotation'
+import { useRotation } from '@/features/login/useRotation'
 
 /** 构造可控 matchMedia mock（参考 useBootSequence.test.ts） */
 function mockMatchMedia(matches: boolean) {

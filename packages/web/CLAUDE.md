@@ -4,7 +4,7 @@
 
 ## 组件选型
 
-**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件——机器事实源 `registry.json`（`tests/conventions/componentRegistry.test.ts` 守卫一致性），表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：官方组件默认 Base UI（components.json 已锁）；同一组件禁止多实现（替换迁移先删旧再登记）；registry 组件不预装、迁移须真机验收后登记入表；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui/@base-ui 等）只允许被 `src/components/shadcn/`、`src/components/arc/` import（lint 已强制）。
+**默认 antd**（含新代码）。shadcn 系组件仅限「归属登记表」内已迁移组件——机器事实源 `registry.json`（`tests/conventions/componentRegistry.test.ts` 守卫一致性），表与迁移流程见 [docs/conventions/web.md「组件选型」章](../../docs/conventions/web.md#组件选型)。要点：官方组件默认 Base UI（components.json 已锁）；同一组件禁止多实现（替换迁移先删旧再登记）；registry 组件不预装、迁移须真机验收后登记入表；antx + 流式渲染管线为永久禁区；registry 后端包（@radix-ui/@base-ui 等）只允许被 `src/ui/shadcn/`、`src/ui/arc/` import（lint 已强制）。
 
 ## 编码规范
 
@@ -14,21 +14,21 @@
 
 | 文件 | 职责 |
 |------|------|
-| `src/router.tsx` | 路由配置 |
+| `src/app/router.tsx` | 路由配置 |
 | `src/core/providers/SSEProvider.tsx` | SSE 连接管理 |
 | `src/core/data/api/types.ts` | API 类型定义 |
 | `src/core/data/sessionResume.ts` | 会话恢复（请求、权威 ID、查询缓存收敛） |
 | `src/domain/chat/normalize.ts` | 消息标准化（DecryptedMessage → NormalizedMessage） |
 | `src/domain/chat/reducer.ts` | 消息归约（NormalizedMessage[] → ChatBlock[]） |
 | `src/domain/chat/types.ts` | NormalizedMessage / ChatBlock 类型定义 |
-| `src/components/tool-card/knownTools.tsx` | 工具卡片注册 |
+| `src/features/tool-card/knownTools.tsx` | 工具卡片注册 |
 | `src/core/lib/query-keys.ts` | 查询缓存 Key |
 | `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验（分桶/MIME 投影单一来源 bucketCompletedAttachments） |
 | `src/core/lib/composerDrafts.ts` | per-session 草稿持久化（分段结构 text/files/images/quotes，sessionStorage，旧格式兼容读取） |
 
 ## 移动端 Drawer 规范
 
-所有移动端底部弹出 Drawer（`placement="bottom"`）**优先使用 `MobileDrawer`**（`src/components/ui/MobileDrawer.tsx`），以下不变量由组件统一收口，调用方不要再手动配置：
+所有移动端底部弹出 Drawer（`placement="bottom"`）**优先使用 `MobileDrawer`**（`src/ui/MobileDrawer.tsx`），以下不变量由组件统一收口，调用方不要再手动配置：
 
 - **高度自适应 + 上限**：组件内置 `wrapper: { height: 'auto', maxHeight: '85dvh' }`（需调整上限时传 `maxHeight` prop）
 - **底部安全边界**：sheet 自带 `paddingBottom: 'max(24px, env(safe-area-inset-bottom))'`——**禁止调用方往 `styles.body` 传 padding**（组件强制 `padding: 0`，body padding 会把 sheet 抬离屏底、露出 mask 空隙），同样禁止覆盖 `body.overflow` / `body.maxHeight`

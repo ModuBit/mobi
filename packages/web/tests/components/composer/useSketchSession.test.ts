@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
-import { useSketchSession, type UseSketchSessionDeps } from '@/components/composer/useSketchSession'
+import { useSketchSession, type UseSketchSessionDeps } from '@/features/composer/useSketchSession'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 
 function makeDeps(overrides: Partial<UseSketchSessionDeps> = {}) {

@@ -35,7 +35,7 @@ import {
     CompactHoverSelect,
     COMPACT_DROPDOWN_CLASS,
     MODEL_DROPDOWN_FULLWIDTH_CLASS,
-} from '@/components/composer/CompactHoverSelect'
+} from '@/features/composer/CompactHoverSelect'
 
 // jsdom 无 ResizeObserver / matchMedia，antd Select 弹层路径依赖——最小 stub
 class ResizeObserverStub {

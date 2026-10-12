@@ -30,7 +30,7 @@ vi.mock('react-i18next', () => ({
     // 浅 mock 下其他模块（i18n init）可能引用，补占位避免 mock 不完整报错
     initReactI18next: { type: '3rd-party', init: () => {} },
 }))
-vi.mock('@/components/settings/sections/NotificationsSection', () => ({
+vi.mock('@/features/settings/sections/NotificationsSection', () => ({
     NotificationsSection: () => <div data-testid="notifications-section" />,
 }))
 vi.mock('@/core/lib/debug', () => ({ isDebugUnlocked: () => false }))
@@ -38,7 +38,7 @@ vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => () => {},
 }))
 
-import { SettingsIndex } from '@/components/settings/sections/SettingsIndex'
+import { SettingsIndex } from '@/features/settings/sections/SettingsIndex'
 import { useWebToolsStatus } from '@/core/data/hooks/queries/useWebToolsStatus'
 
 afterEach(() => cleanup())

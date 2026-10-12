@@ -22,7 +22,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
-import { buildPermissionModeSelectOptions, renderPermissionModeOption } from '@/components/composer/permissionModeOption'
+import { buildPermissionModeSelectOptions, renderPermissionModeOption } from '@/features/composer/permissionModeOption'
 
 const t = (key: string) => {
     const dict: Record<string, string> = {

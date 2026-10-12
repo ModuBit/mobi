@@ -27,7 +27,7 @@ import {
     createPressureFixer,
     rewritePointerPressure,
     type PressureFixEditor,
-} from '@/components/sketchpad/pressureFix'
+} from '@/features/sketchpad/pressureFix'
 
 /** jsdom 无 PointerEvent 构造器时以 MouseEvent 兜底（改写路径只需其存在，不读专有字段） */
 beforeEach(() => {

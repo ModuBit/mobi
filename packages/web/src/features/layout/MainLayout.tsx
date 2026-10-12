@@ -1,0 +1,135 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { theme as antTheme, ConfigProvider, Layout } from 'antd'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { MobiLogo } from '@/ui/MobiLogo'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { AppSidebar } from './AppSidebar'
+import { MobileMenuDrawer } from './MobileMenu'
+import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
+import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
+import { Outlet } from '@tanstack/react-router'
+import { useEffect, useMemo, Suspense } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Helmet } from 'react-helmet-async'
+import { UpdatePrompt } from './UpdatePrompt'
+import { registerServiceWorker } from '@/core/pwa/registerSW'
+import { setUpdateReload, useUpdateAvailable } from '@/core/pwa/useUpdateAvailable'
+import { startLayoutShiftObserver } from '@/core/lib/layoutShiftObserver'
+
+const { useToken } = antTheme
+
+/**
+ * 主布局组件
+ * 使用 antd Layout 组件组织 AppSidebar + Content
+ */
+export function MainLayout() {
+    const { theme } = useUiStore()
+    const { t } = useTranslation()
+    const { token } = useToken()
+    const isMobile = useIsMobile()
+    const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
+    const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
+
+    // PWA 更新：回调广播到 useUpdateAvailable 的订阅方（PC 侧栏图标 / 移动端悬浮钮各自消费）
+    const updateReload = useUpdateAvailable()
+
+    // WCO 标题栏：桌面 PWA 启用时替代系统标题栏；PC Web / 移动端 / standalone 返回 false 不受影响
+    const isWco = useWindowControlsOverlay()
+
+    // 应用主题：同步 data-theme + 浏览器 chrome（标签栏/地址栏）theme-color
+    // theme-color 取 resolveChromeColor —— 与 WcoTitleBar 同源、与 html 背景一致
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', resolvedTheme)
+        const chromeColor = resolveChromeColor(resolvedTheme)
+        document.querySelectorAll('meta[name="theme-color"]')
+            .forEach(m => m.setAttribute('content', chromeColor))
+    }, [resolvedTheme])
+
+    // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
+    useEffect(() => {
+        const unregister = registerServiceWorker((reload) => {
+            setUpdateReload(reload)
+        })
+        return unregister
+    }, [])
+
+    // dev-only layout-shift 源归因观测器（docs/research-claude-ai-perf.md §2.5）：
+    // 位移源按 data-perf-region 归因输出到 console 与 window.__mobiPerf，生产空转
+    useEffect(() => startLayoutShiftObserver(), [])
+
+    return (
+        <ConfigProvider
+            theme={{
+                algorithm: resolvedTheme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+            }}
+        >
+            <WcoContext.Provider value={isWco}>
+            <Helmet>
+                <title>{t('siteTitle')}</title>
+            </Helmet>
+            {/* 移动端顶栏悬浮更新胶囊（MainLayout 挂载即全局）；PC 端入口在 SidebarHeader / WcoTitleBar。
+                关闭 = 清空 reload 状态，SW 下次更新才再提示 */}
+            {isMobile && <UpdatePrompt onUpdate={updateReload} onClose={() => setUpdateReload(null)} />}
+            {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪 */}
+            <div style={{
+                height: '100dvh',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+            }}>
+                {isWco && <WcoTitleBar />}
+                <Layout style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: 'hidden',
+                    flexDirection: 'row',
+                    background: token.colorBgContainer,
+                }}>
+                    <AppSidebar />
+                    <Layout.Content style={{
+                        flex: 1,
+                        display: 'flex',
+                        overflow: 'hidden',
+                        minWidth: 0,
+                        borderRadius: !isMobile && sidebarExpanded ? '12px 0 0 12px' : undefined,
+                        borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
+                        background: token.colorBgLayout,
+                    }}>
+                        {/* 页面级懒加载 chunk 的内层边界：跳转时只内容区出 loading，
+                            侧边栏/布局骨架保持不动（外层 App 的 Suspense 只兜 MainLayout 自身） */}
+                        <Suspense fallback={<ContentLoadingFallback />}>
+                            <Outlet />
+                        </Suspense>
+                    </Layout.Content>
+                </Layout>
+            </div>
+            {/* 移动端底部弹出菜单 */}
+            <MobileMenuDrawer />
+            </WcoContext.Provider>
+        </ConfigProvider>
+    )
+}
+
+/** 内容区路由 chunk 拉取期间的占位：局部居中 MobiLogo 小跳（loop），布局（侧边栏）保持可见，避免全屏白闪 */
+function ContentLoadingFallback() {
+    return (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MobiLogo size={48} />
+        </div>
+    )
+}

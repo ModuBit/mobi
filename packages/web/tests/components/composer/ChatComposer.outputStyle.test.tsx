@@ -34,7 +34,7 @@ import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { App } from 'antd'
 import '@testing-library/jest-dom/vitest'
-import { OutputStyleSwitch } from '@/components/composer/OutputStyleSwitch'
+import { OutputStyleSwitch } from '@/features/composer/OutputStyleSwitch'
 
 // mock mutation hook：模块级稳定引用（mock 对象跨渲染保持同一身份，避免 effect 无限循环）
 const { mutateSpy, mutationMock } = vi.hoisted(() => {

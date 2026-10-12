@@ -23,7 +23,7 @@ import type {
     MotionValue,
     PanInfo,
 } from 'motion/react'
-import { MobileDrawer } from '@/components/ui/MobileDrawer'
+import { MobileDrawer } from '@/ui/MobileDrawer'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 
 // 记录 animate 调用参数（target / options），供「否决沉降回原位」「速度继承」断言。

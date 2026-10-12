@@ -74,8 +74,8 @@ module.exports = tseslint.config(
   // 规范见 docs/conventions/web.md「组件选型」章），只作用于 registry 目录内文件
   {
     files: [
-      'packages/web/src/components/shadcn/**/*.{ts,tsx}',
-      'packages/web/src/components/arc/**/*.{ts,tsx}',
+      'packages/web/src/ui/shadcn/**/*.{ts,tsx}',
+      'packages/web/src/ui/arc/**/*.{ts,tsx}',
     ],
     plugins: {
       'mobi': customRules,
@@ -91,7 +91,7 @@ module.exports = tseslint.config(
   // 新增后端家族（如 @ark-ui/*）时扩充 group。
   {
     files: ['packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
-    ignores: ['packages/web/src/components/shadcn/**', 'packages/web/src/components/arc/**'],
+    ignores: ['packages/web/src/ui/shadcn/**', 'packages/web/src/ui/arc/**'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
@@ -104,7 +104,7 @@ module.exports = tseslint.config(
             '@react-aria/*',
             'react-aria-components',
           ],
-          message: 'shadcn registry 后端包只能被 src/components/shadcn/ 或 src/components/arc/ 消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
+          message: 'shadcn registry 后端包只能被 src/ui/shadcn/ 或 src/ui/arc/ 消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
         }],
       }],
     },

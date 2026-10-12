@@ -22,7 +22,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { QuoteSelectionPopover } from '@/components/chat/QuoteSelectionPopover'
+import { QuoteSelectionPopover } from '@/features/chat/QuoteSelectionPopover'
 
 afterEach(cleanup)
 

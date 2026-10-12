@@ -16,7 +16,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { ContextBreakdown } from '@/components/composer/ContextBreakdown'
+import { ContextBreakdown } from '@/features/composer/ContextBreakdown'
 import type { ContextUsage } from '@mobi/shared'
 
 const usage = {

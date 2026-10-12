@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveStopPress, LONG_PRESS_MS } from '@/components/composer/submitButtonState'
+import { resolveStopPress, LONG_PRESS_MS } from '@/features/composer/submitButtonState'
 
 describe('resolveStopPress（停止按钮长按阈值判定）', () => {
     it('短于阈值 → click', () => expect(resolveStopPress(200)).toBe('click'))

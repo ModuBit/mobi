@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
-import { SplitLayout } from '@/components/ui/SplitLayout'
+import { SplitLayout } from '@/ui/SplitLayout'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 
 /** 切换移动 / 桌面：mock useIsMobile 读取此变量 */

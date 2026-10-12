@@ -24,19 +24,19 @@ afterEach(cleanup)
 // StatusBar 的职责：「有 goal / cacheStatus（expired）/ running（含 status）时渲染对应内容，否则不渲染」。
 // mock 掉 AgentLoadingBubble 与 GoalBadge，隔离各自内部依赖，
 // 让测试聚焦 StatusBar 自身的渲染门控与并列逻辑。
-vi.mock('@/components/chat/AgentLoadingBubble', () => ({
+vi.mock('@/features/chat/AgentLoadingBubble', () => ({
     AgentLoadingBubble: ({ agentId, status }: { agentId: string; status: string }) => (
         <div data-testid="loading-bubble" data-agent={agentId} data-status={status} />
     ),
 }))
 
-vi.mock('@/components/chat/GoalBadge', () => ({
+vi.mock('@/features/chat/GoalBadge', () => ({
     GoalBadge: ({ goal, sessionId }: { goal: GoalStatus; sessionId?: string }) => (
         <div data-testid="goal-badge" data-met={String(goal.met)} data-session={sessionId ?? ''} />
     ),
 }))
 
-import { StatusBar } from '@/components/chat/StatusBar'
+import { StatusBar } from '@/features/chat/StatusBar'
 
 const activeGoal: GoalStatus = { met: false, condition: '所有测试通过' }
 const expiredCache: CacheStatus = {

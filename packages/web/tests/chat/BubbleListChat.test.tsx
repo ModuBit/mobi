@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
-import { BubbleListChat, type ChatBubbleItem } from '@/components/chat/BubbleListChat'
+import { BubbleListChat, type ChatBubbleItem } from '@/features/chat/BubbleListChat'
 
 // jsdom 无 ResizeObserver / IntersectionObserver，Bubble.List 与 useStickToBottom 依赖它们
 const origRO = globalThis.ResizeObserver

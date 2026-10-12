@@ -15,7 +15,7 @@
  */
 
 import { useParams } from '@tanstack/react-router'
-import { SessionDetail } from '@/components/session/SessionDetail'
+import { SessionDetail } from '@/features/session/SessionDetail'
 
 /**
  * 会话详情页

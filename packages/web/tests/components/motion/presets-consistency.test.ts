@@ -18,7 +18,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spring } from '@/components/motion/presets'
+import { spring } from '@/ui/motion/presets'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // 本文件在 packages/web/tests/components/motion/，DESIGN.md 在 packages/web/，

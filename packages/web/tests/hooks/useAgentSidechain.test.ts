@@ -28,7 +28,7 @@ vi.mock('@/core/data/hooks/queries/useSidechainMessages', () => ({
     useSidechainMessages: vi.fn(),
 }))
 
-import { useAgentSidechain } from '@/components/tool-card/useAgentSidechain'
+import { useAgentSidechain } from '@/features/tool-card/useAgentSidechain'
 import { useSidechainMessages } from '@/core/data/hooks/queries/useSidechainMessages'
 
 const mockUseSidechainMessages = useSidechainMessages as unknown as ReturnType<typeof vi.fn>

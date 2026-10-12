@@ -27,7 +27,7 @@ vi.mock('@/core/data/hooks/mutations/useSaveFile', () => ({
     useSaveFile: () => ({ mutateAsync }),
 }))
 
-import { useFileEditor } from '@/components/files/useFileEditor'
+import { useFileEditor } from '@/features/files/useFileEditor'
 import { AUTOSAVE_DEBOUNCE_MS } from '@/core/config/editConfig'
 
 function Wrapper({ children }: { children: React.ReactNode }) {

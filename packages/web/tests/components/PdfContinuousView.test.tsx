@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, cleanup, act } from '@testing-library/react'
-import PdfContinuousView from '@/components/files/PdfContinuousView'
+import PdfContinuousView from '@/features/files/PdfContinuousView'
 
 // react-pdf mock：Page 渲染 data-testid + data-page + data-scale，便于断言
 vi.mock('react-pdf', async () => {

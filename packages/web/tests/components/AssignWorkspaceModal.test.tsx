@@ -50,7 +50,7 @@ vi.mock('@/core/data/hooks/queries/useWorkspaces', () => ({
 }))
 
 // MobileDrawer 桩：绕开 framer-motion jsdom spring 发散（既有惯例，见 MobileMenu.test）
-vi.mock('@/components/ui/MobileDrawer', () => ({
+vi.mock('@/ui/MobileDrawer', () => ({
     MobileDrawer: ({ open, title, children }: { open: boolean; title?: string; children: ReactNode }) =>
         open ? (
             <div data-testid="mobile-drawer">
@@ -64,7 +64,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
 }))
 
-import { AssignWorkspaceModal } from '@/components/workspace/AssignWorkspaceModal'
+import { AssignWorkspaceModal } from '@/features/workspace/AssignWorkspaceModal'
 
 const session = {
     id: 'sess-1',

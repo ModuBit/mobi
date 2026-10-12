@@ -24,7 +24,7 @@ vi.mock('@/core/data/stores/uiStore', () => ({
     resolveTheme: (t: string) => t,
 }))
 
-import { CodeEditorView } from '@/components/files/CodeEditorView'
+import { CodeEditorView } from '@/features/files/CodeEditorView'
 
 describe('CodeEditorView', () => {
     it('渲染 CodeMirror 编辑器（.cm-editor 存在）', () => {

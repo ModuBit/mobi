@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { deriveOpenUITerminalStates } from '@/components/ui/openui/actionState'
+import { deriveOpenUITerminalStates } from '@/ui/openui/actionState'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 const userMsg = (meta?: Record<string, unknown>): DecryptedMessage => ({

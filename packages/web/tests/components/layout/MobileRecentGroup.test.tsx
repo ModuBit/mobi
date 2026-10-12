@@ -40,7 +40,7 @@ vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => vi.fn(),
 }))
 
-import { MobileRecentGroup } from '@/components/layout/MobileRecentGroup'
+import { MobileRecentGroup } from '@/features/layout/MobileRecentGroup'
 
 function makeSession(id: string, overrides: Partial<Session> = {}): Session {
     return {

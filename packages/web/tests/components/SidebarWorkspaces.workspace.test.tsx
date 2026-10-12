@@ -85,7 +85,7 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
-import { SidebarWorkspaces } from '@/components/layout/SidebarWorkspaces'
+import { SidebarWorkspaces } from '@/features/layout/SidebarWorkspaces'
 import type { Session, Workspace } from '@/core/data/api/types'
 
 function makeSession(id: string, name: string, overrides: Partial<Session> = {}): Session {

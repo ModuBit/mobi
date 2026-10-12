@@ -19,7 +19,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import type { ReactNode } from 'react'
-import { CommandProgressBubble } from '@/components/chat/CommandProgressBubble'
+import { CommandProgressBubble } from '@/features/chat/CommandProgressBubble'
 
 // mock i18next：提供命令进度文案映射
 // initReactI18next 必须 noop 导出 —— 同 SessionCreating.test，避免 i18n 顶层 init 报错

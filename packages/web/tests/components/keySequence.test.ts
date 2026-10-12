@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildKeySequence } from '@/components/terminal/keySequence'
+import { buildKeySequence } from '@/features/terminal/keySequence'
 
 describe('buildKeySequence', () => {
     it('Ctrl + 字母 → 控制码（Ctrl+C = \\x03）', () => {

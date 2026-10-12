@@ -67,10 +67,10 @@ vi.mock('react-i18next', () => ({
 // RouteCard 真实渲染（保留渲染断言），另捕获 onChange 供路由变更用例稳定触发：
 // 当前 provider 清单仅 tavily 一项，真实 Select 恒锁定（无可选项），走 UI 交互断言不了 onChange 路径
 const routeState = vi.hoisted(() => ({ onChange: null as null | ((next: { searchProviderId?: 'tavily' | null; fetchProviderId?: 'tavily' | null }) => Promise<boolean>) }))
-vi.mock('@/components/settings/webtools/RouteCard', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/components/settings/webtools/RouteCard')>()
+vi.mock('@/features/settings/webtools/RouteCard', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/features/settings/webtools/RouteCard')>()
     return {
-        RouteCard: (props: import('@/components/settings/webtools/RouteCard').RouteCardProps) => {
+        RouteCard: (props: import('@/features/settings/webtools/RouteCard').RouteCardProps) => {
             routeState.onChange = props.onChange
             return <actual.RouteCard {...props} />
         },
@@ -80,17 +80,17 @@ vi.mock('@/components/settings/webtools/RouteCard', async (importOriginal) => {
 // CredentialEditor（S9 占位）真实渲染（仍为 null），另捕获 onSave 供凭据保存用例稳定触发——
 // 编辑器内容 S9 才实装，UI 路径尚不可达
 const editorState = vi.hoisted(() => ({ onSave: null as null | ((credentials: Record<string, string>) => Promise<boolean>) }))
-vi.mock('@/components/settings/webtools/CredentialEditor', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@/components/settings/webtools/CredentialEditor')>()
+vi.mock('@/features/settings/webtools/CredentialEditor', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/features/settings/webtools/CredentialEditor')>()
     return {
-        CredentialEditor: (props: import('@/components/settings/webtools/CredentialEditor').CredentialEditorProps) => {
+        CredentialEditor: (props: import('@/features/settings/webtools/CredentialEditor').CredentialEditorProps) => {
             editorState.onSave = props.onSave
             return <actual.CredentialEditor {...props} />
         },
     }
 })
 
-import { WebToolsSection } from '@/components/settings/sections/WebToolsSection'
+import { WebToolsSection } from '@/features/settings/sections/WebToolsSection'
 
 /** 渲染：QueryClientProvider（数据层 react-query）+ ConfigProvider + AntdApp（toast 可断言）；每渲染独立 QueryClient 防缓存串测 */
 function renderSection() {

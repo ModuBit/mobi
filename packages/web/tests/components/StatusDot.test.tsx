@@ -16,9 +16,9 @@
 
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { StatusStateIcon, StatusToolIcon, statusIconStyle } from '@/components/tool-card/toolIcons'
+import { StatusStateIcon, StatusToolIcon, statusIconStyle } from '@/features/tool-card/toolIcons'
 import { STATUS_DOT_COLORS, toStatusDotState } from '@/core/utils/statusColor'
-import type { AgentStatus } from '@/components/pixel-avatar/types'
+import type { AgentStatus } from '@/ui/pixel-avatar/types'
 
 /** jsdom 把 inline color 规范化为 rgb()，断言时对齐 */
 function rgb(hex: string): string {

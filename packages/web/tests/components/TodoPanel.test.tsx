@@ -18,7 +18,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { TodoPanel } from '@/components/composer/TodoPanel'
+import { TodoPanel } from '@/features/composer/TodoPanel'
 import type { TodoItem } from '@mobi/shared'
 
 // mock i18next

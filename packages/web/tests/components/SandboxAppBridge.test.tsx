@@ -23,7 +23,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render } from '@testing-library/react'
-import { SandboxHtmlFrame } from '@/components/files/SandboxHtmlFrame'
+import { SandboxHtmlFrame } from '@/features/files/SandboxHtmlFrame'
 
 vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
     useFileMeta: () => ({ data: { etag: 'e1' }, dataUpdatedAt: 1 }),

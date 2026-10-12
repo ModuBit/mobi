@@ -24,8 +24,8 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
-import { TextBlock } from '@/components/chat/blocks/TextBlock'
-import { QuoteAnnotationsProvider } from '@/components/ui/QuoteDirectiveComponents'
+import { TextBlock } from '@/features/chat/blocks/TextBlock'
+import { QuoteAnnotationsProvider } from '@/ui/QuoteDirectiveComponents'
 
 afterEach(cleanup)
 

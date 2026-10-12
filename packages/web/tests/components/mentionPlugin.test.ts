@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Marked } from 'marked'
-import mention from '@/components/ui/mentionPlugin'
+import mention from '@/ui/mentionPlugin'
 
 /** 用 mention 扩展构造一个 Marked 实例（gfm 开启删除线，模拟 user-text 渲染环境） */
 function render(text: string): string {

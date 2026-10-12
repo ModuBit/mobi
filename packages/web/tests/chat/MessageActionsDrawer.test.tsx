@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { MessageActionsDrawer, MessageActionsTrigger } from '@/components/chat/MessageActionsDrawer'
+import { MessageActionsDrawer, MessageActionsTrigger } from '@/features/chat/MessageActionsDrawer'
 
 // mock i18next：提供菜单与确认视图文案（initReactI18next 必须 noop 导出，避免 i18n 顶层 init 报错）
 vi.mock('react-i18next', () => ({

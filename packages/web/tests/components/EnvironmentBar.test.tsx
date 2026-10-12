@@ -50,7 +50,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-import { EnvironmentBar } from '@/components/composer/EnvironmentBar'
+import { EnvironmentBar } from '@/features/composer/EnvironmentBar'
 
 beforeAll(() => {
     // @ts-expect-error jsdom 无 ResizeObserver

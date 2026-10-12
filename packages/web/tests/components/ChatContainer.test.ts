@@ -213,7 +213,7 @@ describe('getApiErrorCode', () => {
 
 // ========== lastMessageActivityAt（#34 静默告警的活动时间源）==========
 
-import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt } from '@/components/chat/ChatContainer'
+import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt } from '@/features/chat/ChatContainer'
 
 describe('lastMessageActivityAt', () => {
     it('落库消息（有 positionAt）取最后一条的 positionAt', () => {
@@ -416,12 +416,12 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 }))
 
 // composer 不在本次断言范围
-vi.mock('@/components/composer/ChatComposer', () => ({
+vi.mock('@/features/composer/ChatComposer', () => ({
     ChatComposer: () => null,
 }))
 
 // 气泡列表替身：只渲染 footer（被测标注所在），content 链（tiptap 等）不进 DOM
-vi.mock('@/components/chat/BubbleListChat', () => ({
+vi.mock('@/features/chat/BubbleListChat', () => ({
     BubbleListChat: (props: { items: Array<{ key: string; footer?: React.ReactNode }> }) =>
         createElement(
             'div',
@@ -432,7 +432,7 @@ vi.mock('@/components/chat/BubbleListChat', () => ({
         ),
 }))
 
-import { ChatContainer } from '@/components/chat/ChatContainer'
+import { ChatContainer } from '@/features/chat/ChatContainer'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 造最小用户消息（content 为 role-wrapped 信封 + text，能走通 normalize→user-text block） */

@@ -18,7 +18,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { CommandHintBar } from '@/components/composer/CommandHintBar'
+import { CommandHintBar } from '@/features/composer/CommandHintBar'
 
 describe('CommandHintBar', () => {
     it('visible 时渲染提示文本', () => {

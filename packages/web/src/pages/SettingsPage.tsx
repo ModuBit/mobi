@@ -19,12 +19,12 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft } from 'lucide-react'
 import styled from '@emotion/styled'
-import { MobileMenuButton } from '@/components/layout/MobileMenu'
-import { SidebarToggle } from '@/components/layout/SidebarToggle'
-import { PageHeader } from '@/components/layout/PageHeader'
+import { MobileMenuButton } from '@/features/layout/MobileMenu'
+import { SidebarToggle } from '@/features/layout/SidebarToggle'
+import { PageHeader } from '@/features/layout/PageHeader'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
-import { SETTINGS_SECTIONS, SETTINGS_WIDE_QUERY, activeSection } from '@/components/settings/sections/registry'
-import { WebToolsStatusBadge } from '@/components/settings/sections/WebToolsStatusBadge'
+import { SETTINGS_SECTIONS, SETTINGS_WIDE_QUERY, activeSection } from '@/features/settings/sections/registry'
+import { WebToolsStatusBadge } from '@/features/settings/sections/WebToolsStatusBadge'
 
 const { Title } = Typography
 const { useToken } = antTheme

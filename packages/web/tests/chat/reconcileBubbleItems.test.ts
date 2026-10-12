@@ -15,8 +15,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { reconcileBubbleItems, type BubbleItemsCache } from '@/components/chat/reconcileBubbleItems'
-import type { ChatBubbleItem } from '@/components/chat/BubbleListChat'
+import { reconcileBubbleItems, type BubbleItemsCache } from '@/features/chat/reconcileBubbleItems'
+import type { ChatBubbleItem } from '@/features/chat/BubbleListChat'
 import type { ChatBlock } from '@/domain/chat'
 
 function block(id: string): ChatBlock {

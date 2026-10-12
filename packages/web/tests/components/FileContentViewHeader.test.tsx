@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, cleanup, act } from '@testing-library/react'
-import FileContentViewHeader from '@/components/files/FileContentViewHeader'
+import FileContentViewHeader from '@/features/files/FileContentViewHeader'
 
 // 记录 ResizeObserver callback，测试主动触发宽度变化
 let roCb: ((entries: { target: HTMLElement; contentRect: { width: number } }[]) => void) | null = null

@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import TerminalView from '@/components/terminal/TerminalView'
+import TerminalView from '@/features/terminal/TerminalView'
 import { clearAllInstances } from '@/core/hooks/useCachedInstance'
 
 // mock cachedTerminal：返回可控 status + subscribe
@@ -41,7 +41,7 @@ const { mockCreate, makeInstance } = vi.hoisted(() => {
     const mockCreate = vi.fn(() => makeInstance())
     return { makeInstance, mockCreate }
 })
-vi.mock('@/components/terminal/cachedTerminal', () => ({
+vi.mock('@/features/terminal/cachedTerminal', () => ({
     createCachedTerminal: mockCreate,
     disposeCachedTerminal: vi.fn(),
 }))

@@ -17,7 +17,7 @@
 import { cleanup, fireEvent, render, screen, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AppTooltip } from '@/components/ui/AppTooltip'
+import { AppTooltip } from '@/ui/AppTooltip'
 
 // mock antd Tooltip：open 时渲染 title（避开 portal/motion，聚焦 AppTooltip 的 open 控制逻辑）
 vi.mock('antd', async orig => {

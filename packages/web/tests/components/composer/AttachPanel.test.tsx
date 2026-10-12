@@ -22,7 +22,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { AttachPanel } from '@/components/composer/AttachPanel'
+import { AttachPanel } from '@/features/composer/AttachPanel'
 
 const mocks = vi.hoisted(() => ({ isMobile: false }))
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({

@@ -22,7 +22,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { App as AntApp } from 'antd'
-import { sceneFingerprint, type SketchCanvasHandle } from '@/components/sketchpad/SketchCanvas'
+import { sceneFingerprint, type SketchCanvasHandle } from '@/features/sketchpad/SketchCanvas'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 
 /** fake imperative API：可变的场景内容（供「先捕获、后修改」的时序模拟）；
@@ -78,7 +78,7 @@ vi.mock('@/domain/sketch/sketchFile', () => ({
     SKETCH_MARK: { format: 'excalidraw.png' },
 }))
 
-import { SketchCanvas } from '@/components/sketchpad/SketchCanvas'
+import { SketchCanvas } from '@/features/sketchpad/SketchCanvas'
 
 function renderCanvas(onCancel: () => void, opts: { initialSketch?: Blob | null } = {}) {
     let handle: SketchCanvasHandle | null = null

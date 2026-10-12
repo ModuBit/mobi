@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { spring } from '@/components/motion/presets'
+import { spring } from '@/ui/motion/presets'
 
 describe('motion spring 预设', () => {
     it('spring.ui：状态切换默认档，无 overshoot', () => {

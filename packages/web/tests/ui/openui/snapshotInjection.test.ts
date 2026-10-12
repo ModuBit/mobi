@@ -22,7 +22,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveFormSnapshotInjection, resolveMergedSnapshotInjection } from '@/components/ui/openui/snapshotInjection'
+import { resolveFormSnapshotInjection, resolveMergedSnapshotInjection } from '@/ui/openui/snapshotInjection'
 
 describe('resolveFormSnapshotInjection（快照回注映射）', () => {
     it('命名表单：$ 键对象值原样回注（E2E 实锤真实形状 { "$todos": {...} }）', () => {

@@ -18,7 +18,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import type { UserTextBlock, AgentEventBlock } from '@/domain/chat'
 import { REWIND_COMMAND } from '@/domain/chat/presentation'
 import { collectRewindBatchText, mergeSegmentRows } from '@/domain/chat/rewind'
-import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
+import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
 import {
     _resetForTest,
     _internal,

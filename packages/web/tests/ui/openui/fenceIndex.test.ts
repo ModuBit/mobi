@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { annotateOpenuiFences, parseFenceIndexToken, FENCE_INDEX_TOKEN_PREFIX } from '@/components/ui/openui/fenceIndex'
+import { annotateOpenuiFences, parseFenceIndexToken, FENCE_INDEX_TOKEN_PREFIX } from '@/ui/openui/fenceIndex'
 
 describe('annotateOpenuiFences', () => {
     it('单个完整 fence → 追加 0 号 token', () => {

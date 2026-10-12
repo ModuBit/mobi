@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import { CrossSessionTag } from '@/components/chat/blocks/CrossSessionTag'
+import { CrossSessionTag } from '@/features/chat/blocks/CrossSessionTag'
 import { getCrossSessionFrom } from '@/domain/chat/presentation'
 
 // mock i18next：只提供本组件用到的文案映射

@@ -23,7 +23,7 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-import { UpdatePrompt, UpdateIconButton } from '@/components/layout/UpdatePrompt'
+import { UpdatePrompt, UpdateIconButton } from '@/features/layout/UpdatePrompt'
 import { useUpdateAvailable, setUpdateReload } from '@/core/pwa/useUpdateAvailable'
 
 describe('UpdatePrompt（移动端顶栏悬浮胶囊）', () => {

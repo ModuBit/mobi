@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { filterBlocksForPagination } from '@/components/chat/filterBlocksForPagination'
+import { filterBlocksForPagination } from '@/features/chat/filterBlocksForPagination'
 import type { ChatBlock, ToolCallBlock } from '@/domain/chat/types'
 
 /** 构造 tool-call 块的辅助函数 */

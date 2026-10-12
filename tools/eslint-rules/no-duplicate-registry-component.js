@@ -28,7 +28,7 @@ const fs = require('fs')
 const path = require('path')
 
 // registry 根目录（相对 packages/web/），新增 registry 落位时扩充
-const REGISTRY_ROOTS = ['src/components/shadcn', 'src/components/arc']
+const REGISTRY_ROOTS = ['src/ui/shadcn', 'src/ui/arc']
 const WEB_PREFIX = 'packages/web/'
 
 /** 提取文件所属的 registry 根与顶层组件目录名；不在 registry 内返回 null */

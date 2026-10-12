@@ -22,7 +22,7 @@ import {
     CollapsibleUserMessage,
     USER_MESSAGE_COLLAPSE_THRESHOLD,
     estimateUserMessageOverflow,
-} from '@/components/chat/CollapsibleUserMessage'
+} from '@/features/chat/CollapsibleUserMessage'
 
 // mock i18next
 vi.mock('react-i18next', () => ({

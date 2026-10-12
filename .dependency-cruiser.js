@@ -110,18 +110,30 @@ module.exports = {
       },
     },
 
-    /* ===== web 分层治理（.scratch/src-governance 票 01）=====
-       core 是基础设施层，不允许向上依赖 UI 层（components/pages；票 02 迁移后换
-       features/ui/pages/app）；domain 是纯逻辑层，零 React / 零 i18n runtime / 零 antd */
+    /* ===== web 分层治理（.scratch/src-governance 票 01/02）=====
+       依赖只许向下 app → pages → features → ui → domain → core；
+       core 零 UI 组件、ui 零业务知识、domain 零 React（type-only 同罪）。
+       features 域间隔离规则在 .dependency-cruiser.web.js（需 readdir 动态生成） */
     {
       name: 'web-core-no-upward',
-      comment: 'web core 不允许依赖 components/pages（UI 层向上泄漏）',
+      comment: 'web core 不允许依赖 features/ui/pages/app（UI 层向上泄漏）',
       severity: 'error',
       from: {
         path: '^packages/web/src/core',
       },
       to: {
-        path: '^packages/web/src/(components|pages)',
+        path: '^packages/web/src/(features|ui|pages|app)',
+      },
+    },
+    {
+      name: 'web-ui-no-upward',
+      comment: 'web ui 是通用组件层（零业务知识），不允许依赖 features/pages/app',
+      severity: 'error',
+      from: {
+        path: '^packages/web/src/ui',
+      },
+      to: {
+        path: '^packages/web/src/(features|pages|app)',
       },
     },
     {

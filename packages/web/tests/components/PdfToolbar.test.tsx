@@ -34,7 +34,7 @@ import PdfToolbar, {
     MIN_SCALE,
     MAX_SCALE,
     SCALE_STEP,
-} from '@/components/files/PdfToolbar'
+} from '@/features/files/PdfToolbar'
 
 describe('PdfToolbar', () => {
     afterEach(() => {

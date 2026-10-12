@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup, render, screen, fireEvent } from '@testing-library/react'
-import { SuggestionChip } from '@/components/composer/SuggestionChip'
+import { SuggestionChip } from '@/features/composer/SuggestionChip'
 
 describe('SuggestionChip', () => {
     afterEach(() => cleanup())

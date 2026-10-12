@@ -19,7 +19,7 @@
  * 背景：review 动作曾是 disabled:true 占位，审查视图上线后未接线，空态按钮点不动（票09 E2E 发现）。
  */
 import { describe, it, expect, vi } from 'vitest'
-import { INSPECTOR_ACTIONS, type InspectorActionContext } from '@/components/session/inspectorActions'
+import { INSPECTOR_ACTIONS, type InspectorActionContext } from '@/features/session/inspectorActions'
 
 const ctx: InspectorActionContext = {
     terminalLimitReached: false,

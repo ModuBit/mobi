@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider, App as AntdApp } from 'antd'
-import { NotificationSettings } from '@/components/settings/NotificationSettings'
+import { NotificationSettings } from '@/features/settings/NotificationSettings'
 
 // 可变 mock 状态：每个用例可单独设置 permission / isPwa
 const mockState = vi.hoisted(() => ({
@@ -45,11 +45,11 @@ vi.mock('@/core/data/hooks/useNotificationSetup', () => ({
     }),
 }))
 // mock usePwaMode
-vi.mock('@/components/layout/usePwaMode', () => ({
+vi.mock('@/features/layout/usePwaMode', () => ({
     usePwaMode: () => mockState.isPwa,
 }))
 // mock InstallButton(避免 beforeinstallprompt 监听)
-vi.mock('@/components/layout/InstallButton', () => ({
+vi.mock('@/features/layout/InstallButton', () => ({
     InstallButton: () => <div data-testid="install-button" />,
 }))
 

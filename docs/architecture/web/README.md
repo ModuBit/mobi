@@ -24,8 +24,8 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 4. `src/core/providers/SSEProvider.tsx` — SSE 实时事件处理
 5. `src/core/notifications/` — toast 通知三分支决策（收到 toast 后前端本地判定展示方式）
 6. `src/domain/chat/` — 消息解析管线，理解 reducer → normalize → 分组流程
-7. `src/components/chat/` — 聊天视图，理解消息渲染管线
-8. `src/components/tool-card/` — 工具卡片，理解工具结果展示
+7. `src/features/chat/` — 聊天视图，理解消息渲染管线
+8. `src/features/tool-card/` — 工具卡片，理解工具结果展示
 9. `src/core/data/hooks/` — 数据查询层，理解缓存策略
 
 ### 术语表
@@ -504,7 +504,7 @@ flowchart LR
 4. `normalize.ts` / `normalizeAgent.ts` / `normalizeUser.ts` — 消息标准化
 5. `groupToolCalls.ts` — 连续可折叠工具调用分组
 
-**UI 层**（`components/chat/`）负责渲染：
+**UI 层**（`features/chat/`）负责渲染：
 
 1. `ChatContainer.tsx` — 编排容器，消费 useMessages 数据
 2. `buildBubbleItems.tsx` — 将 GroupedBlock[] 转为 Bubble 渲染项
@@ -590,8 +590,8 @@ ChatBlock[]
 |------|------|
 | `domain/chat/groupToolCalls.ts` | Zone 检测 + 分组算法 + 标题格式化 |
 | `domain/chat/reducerTools.ts` | `isHiddenTool()` 隐藏判断 |
-| `components/chat/blocks/ToolCallGroupBlock.tsx` | 折叠组渲染（Think 组件，默认收起） |
-| `components/chat/buildBubbleItems.tsx` | 调用分组函数，分发到渲染器 |
+| `features/chat/blocks/ToolCallGroupBlock.tsx` | 折叠组渲染（Think 组件，默认收起） |
+| `features/chat/buildBubbleItems.tsx` | 调用分组函数，分发到渲染器 |
 
 ### API 交互
 
@@ -677,7 +677,7 @@ Web 端区分三种状态，使用不同的管理方案：
 | 添加新数据查询 | `core/data/hooks/queries/` + `core/lib/query-keys.ts` |
 | 添加新工具卡片视图 | `components/tool-card/views/` + `components/tool-card/knownTools.tsx` |
 | 修改消息归约 | `domain/chat/reducer.ts` + `domain/chat/reducerTools.ts` |
-| 修改消息渲染 | `components/chat/ChatContainer.tsx` + `components/chat/blocks/` |
+| 修改消息渲染 | `features/chat/ChatContainer.tsx` + `features/chat/blocks/` |
 | 修改 SSE 事件处理 | `core/providers/SSEProvider.tsx` |
 | 修改主题 | `core/config/theme/tokens.ts` + `core/config/theme/components.ts` |
 | 添加新 UI 组件 | `components/ui/` 或对应功能域子目录 |

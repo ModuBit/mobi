@@ -22,8 +22,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useOpenUIActionLifecycle } from '@/components/ui/openui/useOpenUIActionLifecycle'
-import { useOpenUIActionStore } from '@/components/ui/openui/actionStore'
+import { useOpenUIActionLifecycle } from '@/ui/openui/useOpenUIActionLifecycle'
+import { useOpenUIActionStore } from '@/ui/openui/actionStore'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 携锚点的 openui 回灌用户消息（meta.openuiAnchor） */

@@ -18,8 +18,8 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
-import type { ToolViewProps } from '@/components/tool-card/views/_all'
+import { getToolResultViewComponent } from '@/features/tool-card/views/_results'
+import type { ToolViewProps } from '@/features/tool-card/views/_all'
 import type { ToolInfo } from '@/domain/tool/types'
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (

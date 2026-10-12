@@ -39,7 +39,7 @@ vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => mockNavigate,
 }))
 
-import { WcoTitleBar } from '@/components/layout/WcoTitleBar'
+import { WcoTitleBar } from '@/features/layout/WcoTitleBar'
 
 function renderFresh(side: 'mac' | 'win') {
     // 用 key 强制每次全新挂载，读取最新 mockState

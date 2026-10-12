@@ -4,9 +4,14 @@
 
 ## 目录结构
 
+> 2026-10-12 分层治理票 02 起的结构（完整分层规则与门禁清单票 04 成文）：
+> 依赖只许向下 `app → pages → features → ui → domain → core`，depcruise 强制
+> （`.dependency-cruiser.js` / `.dependency-cruiser.web.js`）。
+
 ```
 src/
-├── core/                    ← 基础设施
+├── app/                     ← 组装层：App / main / router / routeChunks / dev*（唯一可引一切）
+├── core/                    ← 基础设施（零 UI 组件）
 │   ├── data/                ← 数据层
 │   │   ├── api/             ← API 客户端与类型
 │   │   ├── stores/          ← Zustand 全局状态
@@ -15,25 +20,27 @@ src/
 │   ├── config/              ← 应用配置
 │   │   ├── i18n/            ← 国际化
 │   │   └── theme/           ← 主题系统
-│   ├── lib/                 ← 业务辅助逻辑
-│   ├── utils/               ← 纯工具函数
+│   ├── lib/                 ← 业务辅助逻辑（含 targetKey / cn）
+│   ├── notifications/       ← 通知子系统（含权限引导 flag）
+│   ├── utils/               ← 纯工具函数（含状态色基座 statusColor / agentStatus）
 │   └── providers/           ← React Context Provider
-├── domain/                  ← 领域逻辑（纯数据，不依赖 React）
+├── domain/                  ← 领域逻辑（纯数据，零 React / 零 JSX / 零 i18n runtime）
 │   ├── chat/                ← 聊天（消息解析、reducer、工具合并）
 │   ├── command/             ← 命令（斜杠命令处理）
 │   ├── session/             ← 会话（类型定义、用户偏好）
 │   └── tool/                ← 工具（输入解析、类型定义）
-├── components/              ← UI 组件
-├── pages/                   ← 页面路由
-├── App.tsx
-├── main.tsx
-└── router.tsx
+├── features/                ← 业务域（chat / composer / tool-card / files / settings /
+│   │                          session / review / terminal / sketchpad / login /
+│   │                          workspace / turnDiff / layout——域间互引禁止，票 03 收口）
+├── ui/                      ← 通用组件（零业务知识；arc/ shadcn/ registry 落位于此）
+├── pages/                   ← 路由页面壳
+└── styles/                  ← 全局样式
 ```
 
 ### 领域逻辑 vs UI 组件的边界
 
 - **`domain/`** 放纯数据处理和业务规则，不依赖 React（无 hooks、无 JSX）
-- **`components/`** 放 UI 渲染和 React hooks
+- **`features/`**（业务域）与 **`ui/`**（通用组件）放 UI 渲染和 React hooks
 - 新增领域逻辑时，如果文件不导入 React，应放入 `domain/` 对应子目录
 
 ## 组件选型
@@ -54,7 +61,7 @@ src/
 
 1. **确认动机**——无动机不迁；antd 存量不设清零目标
 2. **后端策略**：官方组件默认 Base UI（`components.json` 已锁 `style: "base-new-york"`）；第三方 registry 组件自带后端（多为 Radix）照常引入、登记入表即可——双后端并存属预期，同类组件仅一份实现兜住行为差异。registry 组件**不预装**——组件源码只在首个真实消费场景出现时才 add
-3. **落位**：官方 shadcn 组件落 `src/components/shadcn/`，uiarc 落 `src/components/arc/`，beautifului copy-paste 落 `src/components/shadcn/`（或就近业务目录，随迁移登记）
+3. **落位**：官方 shadcn 组件落 `src/ui/shadcn/`，uiarc 落 `src/ui/arc/`，beautifului copy-paste 落 `src/ui/shadcn/`（或就近业务目录，随迁移登记）
 4. **共存纪律**（底座票 03 实证）：
    - 弹层组件消费 `var(--mobi-z-overlay)`（antd 弹层 z 从 1000 起，生态默认 z-50 必被埋）
    - 禁止放进 emotion styled 带后代选择器的容器（unlayered 规则压过 Tailwind utilities layer）
@@ -70,7 +77,7 @@ src/
 ### 禁区（不随迁移改变）
 
 - **antx + x-markdown + 流式渲染管线**：永久不迁移（Streamdown 换栈回滚是先例）
-- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 `src/components/shadcn/`、`src/components/arc/` 消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
+- **shadcn registry 后端包**（`@radix-ui/*`、`@base-ui-components/*` 等）：只允许被 `src/ui/shadcn/`、`src/ui/arc/` 消费——eslint `no-restricted-imports` 已强制（`eslint.config.js`）
 
 ### 升级与本地修改纪律
 
@@ -118,7 +125,7 @@ export function parseCliOutputText(text: string) { ... }
 |------|------|------|
 | 纯数据解析、格式化（无 React 依赖） | `domain/` | `parseCliOutputText`、`detectMentionAtCursor`、`buildMentionPath` |
 | 通用工具函数 | `core/utils/` | `formatMessageTime`、`path.ts` |
-| UI 渲染、React hooks | `components/` | `CliOutputBlock`、`ToolCallRenderer` |
+| UI 渲染、React hooks | `features/` / `ui/` | `CliOutputBlock`、`ToolCallRenderer` |
 | 数据获取、状态管理 | `core/data/` | `useMessages`、`useAuthStore` |
 
 ### 容器组件模式
@@ -135,7 +142,7 @@ export function parseCliOutputText(text: string) { ... }
 容器组件中内联的交互子组件（下拉面板、弹窗、卡片等）必须抽为独立文件，与容器同目录：
 
 ```
-components/composer/
+features/composer/
 ├── ChatComposer.tsx          ← 编排层（状态管理 + 键盘导航 + 布局）
 ├── MentionDropdown.tsx       ← @ 文件引用下拉
 ├── SlashCommandDropdown.tsx  ← 斜杠命令下拉
@@ -152,7 +159,7 @@ components/composer/
 当一个模块需要渲染多种类型的块/卡片时，使用 `blocks/` 子目录组织：
 
 ```
-components/chat/
+features/chat/
 ├── ChatContainer.tsx      ← 编排层
 ├── blocks/                ← 各类型渲染器
 │   ├── index.tsx          ← renderChatBlock 调度器
@@ -266,7 +273,7 @@ Web 端样式采用 **emotion styled + Tailwind v4 共存**，与 Ant Design v6 
 | 方案 | 用途 |
 |------|------|
 | emotion `styled` | 现有组件的主流样式 |
-| Tailwind v4 utility | 新增组件可用（如登录页角色带 `components/login/`） |
+| Tailwind v4 utility | 新增组件可用（如登录页角色带 `features/login/`） |
 | Ant Design v6 | 基础组件库（Button / Input / Form 等） |
 
 ### Tailwind 与 antd / emotion 共存
@@ -275,7 +282,7 @@ Web 端样式采用 **emotion styled + Tailwind v4 共存**，与 Ant Design v6 
 - **`@layer` 分层**确保优先级：`@layer theme, base, components, properties, antd, utilities;`
   - Tailwind preflight / base 最低，utilities 最高
   - antd v6 cssinjs 与 emotion styled 均为 unlayered，优先级天然高于 Tailwind layer → **现有组件不受 Tailwind 影响**
-- 高频事件驱动的样式（如鼠标跟随）应提取**单一状态源 + `requestAnimationFrame` 节流**，避免每个子组件各自挂载监听器（参考 `components/login/useMouseLook.ts`）
+- 高频事件驱动的样式（如鼠标跟随）应提取**单一状态源 + `requestAnimationFrame` 节流**，避免每个子组件各自挂载监听器（参考 `features/login/useMouseLook.ts`）
 
 ### 主题色引用
 

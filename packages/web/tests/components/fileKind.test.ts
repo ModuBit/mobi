@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveFileKind } from '@/components/files/fileKind'
+import { resolveFileKind } from '@/features/files/fileKind'
 import type { FileMeta } from '@/core/data/hooks/queries/useFileTree'
 
 const meta = (mime: string, size = 100): FileMeta =>

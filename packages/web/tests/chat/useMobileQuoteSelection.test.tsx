@@ -22,7 +22,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, cleanup } from '@testing-library/react'
-import { useMobileQuoteSelection } from '@/components/chat/useMobileQuoteSelection'
+import { useMobileQuoteSelection } from '@/features/chat/useMobileQuoteSelection'
 
 /** 非 collapsed 的假 Range（hook 不消费 Range 内容，只透传给回调） */
 const fakeRange = { collapsed: false } as Range

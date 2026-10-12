@@ -68,31 +68,31 @@ vi.mock('@/core/data/api/client', () => ({
 }))
 
 // 三个分区组件桩：渲染触发按钮调用 onSessionAction，隔离 ActionSheet 逻辑
-vi.mock('@/components/layout/MobileWorkspaceGroup', () => ({
+vi.mock('@/features/layout/MobileWorkspaceGroup', () => ({
     MobileWorkspaceGroup: ({ onSessionAction }: { onSessionAction: (id: string) => void }) => (
         <button onClick={() => onSessionAction('sess-in-workspace')}>open-in-workspace</button>
     ),
 }))
-vi.mock('@/components/layout/MobileRecentGroup', () => ({
+vi.mock('@/features/layout/MobileRecentGroup', () => ({
     MobileRecentGroup: ({ onSessionAction }: { onSessionAction: (id: string) => void }) => (
         <button onClick={() => onSessionAction('sess-free')}>open-free</button>
     ),
 }))
-vi.mock('@/components/layout/MobilePinnedGroup', () => ({
+vi.mock('@/features/layout/MobilePinnedGroup', () => ({
     MobilePinnedGroup: () => null,
 }))
 
-vi.mock('@/components/workspace/WorkspaceFormModal', () => ({
+vi.mock('@/features/workspace/WorkspaceFormModal', () => ({
     WorkspaceFormModal: () => null,
 }))
 
 // AssignWorkspaceModal 桩：断言 open 状态
-vi.mock('@/components/workspace/AssignWorkspaceModal', () => ({
+vi.mock('@/features/workspace/AssignWorkspaceModal', () => ({
     AssignWorkspaceModal: ({ open }: { open: boolean }) =>
         open ? <div data-testid="assign-modal" /> : null,
 }))
 
-import { MobileWorkspaceList } from '@/components/layout/MobileWorkspaceList'
+import { MobileWorkspaceList } from '@/features/layout/MobileWorkspaceList'
 
 const inWorkspaceSession = {
     id: 'sess-in-workspace',

@@ -19,7 +19,7 @@ import { render, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { BackgroundTask } from '@/domain/chat/types'
 
-const { BackgroundTaskCard } = await import('@/components/composer/BackgroundTaskCard')
+const { BackgroundTaskCard } = await import('@/features/composer/BackgroundTaskCard')
 
 // jsdom 的 matchMedia stub恒 matches:false → useIsMobile 恒 true（移动端分支）。
 // 桌面端两击确认按钮（TwoStepConfirmButton）只在桌面分支渲染，这里固定 mock 桌面端

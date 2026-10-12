@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildOpenUIMessage } from '@/components/ui/openui/actionMessage'
+import { buildOpenUIMessage } from '@/ui/openui/actionMessage'
 
 describe('buildOpenUIMessage（回路② 消息组装）', () => {
     it('@ToAssistant message + 命名表单嵌套 formState → 主体 + 表名表头 + 内层字段', () => {

@@ -35,7 +35,7 @@ import { render } from '@testing-library/react'
 import { cleanup, fireEvent, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
-import { TasksPanel } from '@/components/composer/TasksPanel'
+import { TasksPanel } from '@/features/composer/TasksPanel'
 import type { MobiApi } from '@/core/data/api/client'
 
 // mock i18next
@@ -52,7 +52,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 // mock PixelAvatar，jsdom 不支持 canvas
-vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
+vi.mock('@/ui/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => null,
 }))
 

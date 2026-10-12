@@ -26,7 +26,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import i18n from '@/core/config/i18n'
 import { formatEvent } from '@/domain/chat'
-import { EventText } from '@/components/chat/EventText'
+import { EventText } from '@/features/chat/EventText'
 import type { AgentEvent } from '@/domain/chat/types'
 
 beforeAll(async () => {
