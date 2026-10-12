@@ -53,7 +53,7 @@ src/
 某个组件确有迁移价值时（antd 做不好 / registry 有领域贴合组件 / 动效诉求），按序走一遍：
 
 1. **确认动机**——无动机不迁；antd 存量不设清零目标
-2. **add 前核对原语后端**（Base UI / Radix / React Aria）；混用另一后端允许但登记。registry 组件**不预装**——组件源码只在首个真实消费场景出现时才 add
+2. **后端策略**：官方组件默认 Base UI（`components.json` 已锁 `style: "base-new-york"`）；第三方 registry 组件自带后端（多为 Radix）照常引入、登记入表即可——双后端并存属预期，同类组件仅一份实现兜住行为差异。registry 组件**不预装**——组件源码只在首个真实消费场景出现时才 add
 3. **落位**：官方 shadcn 组件落 `src/components/shadcn/`，uiarc 落 `src/components/arc/`，beautifului copy-paste 落 `src/components/shadcn/`（或就近业务目录，随迁移登记）
 4. **共存纪律**（底座票 03 实证）：
    - 弹层组件消费 `var(--mobi-z-overlay)`（antd 弹层 z 从 1000 起，生态默认 z-50 必被埋）

@@ -97,10 +97,12 @@ module.exports = tseslint.config(
         patterns: [{
           group: [
             '@radix-ui/*',
+            'radix-ui',
+            '@base-ui/react',
             '@base-ui-components/*',
-            '@base-ui/*',
             '@ark-ui/*',
             '@react-aria/*',
+            'react-aria-components',
           ],
           message: 'shadcn registry 后端包只能被 src/components/shadcn/ 或 src/components/arc/ 消费（组件选型规范见 docs/conventions/web.md「组件选型」章）',
         }],
