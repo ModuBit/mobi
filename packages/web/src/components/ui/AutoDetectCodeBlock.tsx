@@ -115,7 +115,7 @@ const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code
                         <CodeXml size={14} aria-hidden="true" />
                         {langLabel(resolvedLang, t)}
                     </span>
-                    <CopyButton text={code} size={18} />
+                    <CopyButton text={code} />
                 </div>
             )}
         >

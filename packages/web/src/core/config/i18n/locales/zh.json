@@ -279,6 +279,7 @@
         },
         "copy": "复制",
         "copied": "已复制",
+        "copyFailed": "复制失败",
         "messageActions": "更多操作",
         "rewind": {
             "title": "回退并编辑",

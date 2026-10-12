@@ -46,7 +46,7 @@ src/
 
 | 组件 | 归属 | 迁移于 | 说明 |
 |---|---|---|---|
-| （空——首个组件迁移完成时随 registry.json 一并填入） | | | |
+| copy-button | arc（uiarc） | 2026-10-12 | 首个迁移组件；零 headless 后端（motion+lucide 自足）；消费入口 `chat/CopyButton`（iconOnly 适配壳） |
 
 ### 单组件迁移流程
 
@@ -60,8 +60,8 @@ src/
    - 禁止放进 emotion styled 带后代选择器的容器（unlayered 规则压过 Tailwind utilities layer）
    - 已迁移的弹层组件与 antd Modal/Drawer **禁止叠开**（body 滚动锁冲突）
    - uiarc 组件若引入，不可全局 import 其 `foundation.css`（暗档判据特异性会盖过主题注入），token 由 `core/config/theme/cssVars.ts` 单源供给
-5. **真机（Android Chrome）验收** = 迁移完成条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
-6. **登记入表**：完成后在 `packages/web/registry.json` 加 entry（name/source/migratedIn），同步更新本章投影表，此后该组件使用统一按表
+5. **登记入表**：在 `packages/web/registry.json` 加 entry（name/source/migratedIn，本地修改记入 localMods），同步更新本章投影表——一致性测试要求目录里的组件必须已登记，登记与实现同提交
+6. **真机（Android Chrome）验收**：迁移完成的收尾条件，不是后续优化（registry 组件 desktop-first，mobi 是移动 PWA 重度场景）
 
 ### 单一来源（禁止重复实现）
 

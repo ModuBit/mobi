@@ -74,7 +74,7 @@ export function UserMessageFooter({
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span className="msg-copy-btn">
-                <CopyButton text={text} size={14} />
+                <CopyButton text={text} />
             </span>
             {canRewind && (
                 <span className="msg-copy-btn">

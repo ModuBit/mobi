@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { ForkConfirmView } from './ForkConfirmView'
-import { copyTextToClipboard } from './CopyButton'
+import { copyTextToClipboard } from '@/core/utils/clipboard'
 
 /** 长按选中的消息（canRewind 与 PC footer 判据同源——canRewindMessage；canFork 同源——canForkMessage） */
 export interface MessageActionTarget {

@@ -1,4 +1,16 @@
 {
-    "$comment": "组件归属注册表——shadcn 底座票 04。唯一机器事实源，消费方：tests/conventions/componentRegistry.test.ts（一致性守卫）、web.md「组件选型」章（投影表）。迁移流程完成后在此登记；name 用语义名，source 取 shadcn | arc。",
-    "components": []
+    "$comment": "组件归属注册表——shadcn 底座票 04。唯一机器事实源，消费方：tests/conventions/componentRegistry.test.ts（一致性守卫）、web.md「组件选型」章（投影表）。迁移流程完成后在此登记；name 用语义名，source 取 shadcn | arc；migratedIn 为迁移标识（commit 或日期/票号）；localMods 列本地修改点（add --overwrite 升级后照单恢复）。",
+    "components": [
+        {
+            "name": "copy-button",
+            "source": "arc",
+            "migratedIn": "2026-10-12 首个迁移组件（uiarc copy-button，零 headless 后端）",
+            "localMods": [
+                "全部文件补版权头",
+                "copy-button.tsx：新增 copiedLabel/failedLabel props（上游硬编码英文文案）",
+                "lib/use-copy-feedback.ts：copy 走 copyTextToClipboard（execCommand 降级，core/utils/clipboard）",
+                "copy-button.module.css：.button 作用域设计变量→mobi token 映射（foundation.css 不全局引入）"
+            ]
+        }
+    ]
 }
