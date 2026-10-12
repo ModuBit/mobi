@@ -43,6 +43,8 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ComposerInfoPanel } from '@/features/composer/ComposerInfoPanel'
+import { BubbleRenderProvider } from '@/features/chat/blocks/renderContext'
+import { renderChatBlock } from '@/features/chat/blocks'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ForegroundTaskItem } from '@mobi/shared/types'
 
@@ -70,7 +72,12 @@ const queryClient = new QueryClient()
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-        <ConfigProvider>{children}</ConfigProvider>
+        <ConfigProvider>
+            {/* 聊天块渲染器注入（分层治理票 03）：AgentDrawerContent 经 Context 消费，测试内补挂 */}
+            <BubbleRenderProvider value={{ renderBlock: renderChatBlock, renderToolGroup: () => null }}>
+                {children}
+            </BubbleRenderProvider>
+        </ConfigProvider>
     </QueryClientProvider>
 )
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ToolViewComponent, ToolViewProps } from '@/features/chat/tool-card/views/_all'
+import type { ToolViewComponent, ToolViewProps } from './types'
 import { useMemo } from 'react'
 import { BashView } from '@/features/chat/tool-card/views/BashView'
 import { GlobView } from '@/features/chat/tool-card/views/GlobView'
@@ -22,6 +22,7 @@ import { TeamCreateView } from '@/features/chat/tool-card/views/TeamCreateView'
 import { TeamDeleteView } from '@/features/chat/tool-card/views/TeamDeleteView'
 import { SendMessageView } from '@/features/chat/tool-card/views/SendMessageView'
 import { isObject, safeStringify } from '@mobi/shared'
+import { extractTextFromResult } from '@/domain/tool/resultText'
 import { getFileToolTarget } from '@/core/lib/toolInputUtils'
 import { theme as antTheme } from 'antd'
 import { formatLineRangeStats } from '@/features/chat/tool-card/views/lineNumberUtils'
@@ -36,73 +37,6 @@ import { patchForEdit } from './structuredPatchUtils'
 
 const { useToken } = antTheme
 
-function parseToolUseError(message: string): { isToolUseError: boolean; errorMessage: string | null } {
-    const regex = /<tool_use_error>(.*?)<\/tool_use_error>/s
-    const match = message.match(regex)
-
-    if (match) {
-        return {
-            isToolUseError: true,
-            errorMessage: typeof match[1] === 'string' ? match[1].trim() : ''
-        }
-    }
-    return { isToolUseError: false, errorMessage: null }
-}
-function extractTextFromContentBlock(block: unknown): string | null {
-    if (typeof block === 'string') return block
-    if (!isObject(block)) return null
-    if (block.type === 'text' && typeof block.text === 'string') return block.text
-    if (typeof block.text === 'string') return block.text
-    return null
-}
-export function extractTextFromResult(result: unknown, depth: number = 0): string | null {
-    if (depth > 2) return null
-    if (result === null || result === undefined) return null
-    if (typeof result === 'string') {
-        const toolUseError = parseToolUseError(result)
-        return toolUseError.isToolUseError ? (toolUseError.errorMessage ?? '') : result
-    }
-    if (Array.isArray(result)) {
-        const parts = result
-            .map(extractTextFromContentBlock)
-            .filter((part): part is string => part !== null && part.length > 0)
-        return parts.length > 0 ? parts.join('\n') : null
-    }
-    if (!isObject(result)) return null
-    if (typeof result.content === 'string') return result.content
-    if (typeof result.text === 'string') return result.text
-    if (typeof result.output === 'string') return result.output
-    if (typeof result.error === 'string') return result.error
-    if (typeof result.message === 'string') return result.message
-    const contentArray = Array.isArray(result.content) ? result.content : null
-    if (contentArray) {
-        const parts = contentArray
-            .map(extractTextFromContentBlock)
-            .filter((part): part is string => part !== null && part.length > 0)
-        return parts.length > 0 ? parts.join('\n') : null
-    }
-    const nestedOutput = isObject(result.output) ? result.output : null
-    if (nestedOutput) {
-        if (typeof nestedOutput.content === 'string') return nestedOutput.content
-        if (typeof nestedOutput.text === 'string') return nestedOutput.text
-    }
-    const nestedError = isObject(result.error) ? result.error : null
-    if (nestedError) {
-        if (typeof nestedError.message === 'string') return nestedError.message
-        if (typeof nestedError.error === 'string') return nestedError.error
-    }
-    const nestedResult = isObject(result.result) ? result.result : null
-    if (nestedResult) {
-        const nestedText = extractTextFromResult(nestedResult, depth + 1)
-        if (nestedText) return nestedText
-    }
-    const nestedData = isObject(result.data) ? result.data : null
-    if (nestedData) {
-        const nestedText = extractTextFromResult(nestedData, depth + 1)
-        if (nestedText) return nestedText
-    }
-    return null
-}
 function looksLikeHtml(text: string): boolean {
     const trimmed = text.trimStart()
     return trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.startsWith('<div') || trimmed.startsWith('<span')
@@ -146,11 +80,8 @@ function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; la
     }
     return <Markdown content={text} />
 }
-export function placeholderForState(state: ToolViewProps['block']['tool']['state']): string {
-    if (state === 'pending') return 'Waiting for permission…';
-    if (state === 'running') return 'Running...'
-    return '(no output)'
-}
+export { placeholderForState } from '@/domain/tool/resultText'
+import { placeholderForState } from '@/domain/tool/resultText'
 
 /** 无结果时的占位组件 */
 function ResultPlaceholder({ state }: { state: ToolViewProps['block']['tool']['state'] }) {

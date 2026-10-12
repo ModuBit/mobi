@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-import type { ComponentType } from 'react'
-import type { ToolCallBlock } from '@/domain/tool/types'
-import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { EditView } from '@/features/chat/tool-card/views/EditView'
 import { AskUserQuestionView } from '@/features/chat/tool-card/views/AskUserQuestionView'
 import { RequestUserInputView } from '@/features/chat/tool-card/views/RequestUserInputView'
@@ -31,12 +28,8 @@ import { TeamCreateView } from '@/features/chat/tool-card/views/TeamCreateView'
 import { TeamDeleteView } from '@/features/chat/tool-card/views/TeamDeleteView'
 import { SendMessageView, SendMessageFullView } from '@/features/chat/tool-card/views/SendMessageView'
 
-export type ToolViewProps = {
-    block: ToolCallBlock
-    metadata: SessionMetadataSummary | null
-}
-
-export type ToolViewComponent = ComponentType<ToolViewProps>
+export type { ToolViewProps, ToolViewComponent } from './types'
+import type { ToolViewComponent } from './types'
 
 export const toolViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashView,

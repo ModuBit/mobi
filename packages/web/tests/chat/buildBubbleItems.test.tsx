@@ -134,6 +134,9 @@ const defaultOptions = {
     rewindFailedLabel: 'Rewind failed',
     rewindFailedReasonLabel: 'Rewind not performed (range contains non-attributable entries)',
     skippedLinksLabel: '{{count}} path(s) skipped',
+    // 渲染器注入（分层治理票 03）：装配器不再静态依赖渲染注册表，测试传入真实实现
+    renderBlock: renderChatBlock,
+    renderToolGroup: (p: never) => null,
 }
 
 /** 把 React span 的 children（可能是 string/number/array/嵌套）拍平成纯文本，便于子串断言 */

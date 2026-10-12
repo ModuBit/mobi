@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import { theme as antTheme } from 'antd'
-import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
+import type { ToolViewProps } from './types'
 import { isObject } from '@mobi/shared'
 import { getFileToolTarget } from '@/core/lib/toolInputUtils'
 import { resolveDisplayPath } from '@/core/utils/path'

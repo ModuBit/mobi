@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
+import type { ToolViewProps } from './types'
 import { ChecklistList, extractUpdatePlanChecklist } from '@/features/chat/tool-card/checklist'
 
 /**

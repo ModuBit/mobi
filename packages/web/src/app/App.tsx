@@ -18,12 +18,15 @@ import { Outlet } from '@tanstack/react-router'
 import { SSEProvider } from '@/core/providers/SSEProvider'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useMemo } from 'react'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import { prefetchRouteChunks } from '@/app/routeChunks'
 import { MobiLogo } from '@/ui/MobiLogo'
 import { NotificationPermissionGate } from '@/features/layout/NotificationPermissionGate'
+import { BubbleRenderProvider } from '@/features/chat/blocks/renderContext'
+import { renderChatBlock } from '@/features/chat/blocks'
+import { ToolCallGroupRenderer } from '@/features/chat/blocks/ToolCallGroupBlock'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()
@@ -95,15 +98,25 @@ export function App() {
 
     return (
         <ErrorBoundary>
-            <SSEProvider>
-                {/* 通知权限引导：全局横切 UI，由组装层挂载（分层治理票 01，原在 SSEProvider 内） */}
-                {authenticated && <NotificationPermissionGate />}
-                {/* root 级懒加载兜底：只接 MainLayout/LoginPage 自身 chunk 的 suspend。
-                    页面级 chunk 由 MainLayout 内容区的内层 Suspense 兜——跳转时布局不动 */}
-                <Suspense fallback={<RouteLoadingFallback />}>
-                    <Outlet />
-                </Suspense>
-            </SSEProvider>
+            {/* 聊天块渲染器注入（分层治理票 03 破环）：值在组装层环外组装——
+                AgentDrawerContent 经 Context 消费 blocks 渲染注册表，避免
+                blocks → tool-card → AgentDrawerContent → blocks 循环 */}
+            <BubbleRenderProvider
+                value={useMemo(() => ({
+                    renderBlock: renderChatBlock,
+                    renderToolGroup: (p) => <ToolCallGroupRenderer {...p} />,
+                }), [])}
+            >
+                <SSEProvider>
+                    {/* 通知权限引导：全局横切 UI，由组装层挂载（分层治理票 01，原在 SSEProvider 内） */}
+                    {authenticated && <NotificationPermissionGate />}
+                    {/* root 级懒加载兜底：只接 MainLayout/LoginPage 自身 chunk 的 suspend。
+                        页面级 chunk 由 MainLayout 内容区的内层 Suspense 兜——跳转时布局不动 */}
+                    <Suspense fallback={<RouteLoadingFallback />}>
+                        <Outlet />
+                    </Suspense>
+                </SSEProvider>
+            </BubbleRenderProvider>
         </ErrorBoundary>
     )
 }

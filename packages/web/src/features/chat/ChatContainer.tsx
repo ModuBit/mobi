@@ -52,7 +52,8 @@ import { UserMessageFooter } from './UserMessageFooter'
 import { AgentTurnActions } from './AgentTurnActions'
 import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { SentFromTag } from './blocks/SentFromTag'
-import { renderUserBubbleHeader, type ChatBlockContext } from './blocks'
+import { renderUserBubbleHeader, renderChatBlock, type ChatBlockContext } from './blocks'
+import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, MessageActionsTrigger, type MessageActionTarget } from './MessageActionsDrawer'
 import { QuoteSelectionPopover, type QuoteSelectionPopoverState } from './QuoteSelectionPopover'
@@ -992,7 +993,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             chatBlocks,
             renderCtx,
             !!session?.running,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t(rewindFailedReasonKey(rewindCompletion?.error)), skippedLinksLabel: t('chat.rewind.skippedLinks') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t(rewindFailedReasonKey(rewindCompletion?.error)), skippedLinksLabel: t('chat.rewind.skippedLinks'), renderBlock: renderChatBlock, renderToolGroup: (p) => <ToolCallGroupRenderer {...p} /> },
         )
 
         // 移动端「⋯」菜单目标索引（key → 操作信息；判据与 footer 同源同帧计算）。

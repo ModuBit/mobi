@@ -25,6 +25,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { normalizeDecryptedMessage } from '@/domain/chat/normalize'
 import { reduceChatBlocks } from '@/domain/chat/reducer'
 import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
+import { renderChatBlock } from '@/features/chat/blocks'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import type { CustomBlock } from '@/domain/chat/types'
 
@@ -117,7 +118,7 @@ describe('custom 消息接入时间线', () => {
         }
 
         const items = buildChatBubbleItems([custom], { metadata: null, isThinking: false }, false, {
-            contextResetLabel: 'x', rewoundToHereLabel: 'x', rewindFailedLabel: 'x', rewindFailedReasonLabel: 'x', skippedLinksLabel: 'x',
+            contextResetLabel: 'x', rewoundToHereLabel: 'x', rewindFailedLabel: 'x', rewindFailedReasonLabel: 'x', skippedLinksLabel: 'x', renderBlock: renderChatBlock, renderToolGroup: () => null,
         })
 
         expect(items).toHaveLength(1)

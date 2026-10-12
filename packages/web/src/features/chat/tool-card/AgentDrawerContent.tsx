@@ -25,9 +25,10 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ChatBlock } from '@/domain/chat'
 import { Markdown } from '@/ui/Markdown'
 import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
+import { useBubbleRenderers } from '@/features/chat/blocks/renderContext'
 import { BUBBLE_ROLES } from '@/ui/bubbleRoles'
 import { useAgentSidechain } from './useAgentSidechain'
-import { extractTextFromResult } from '@/features/chat/tool-card/views/_results'
+import { extractTextFromResult } from '@/domain/tool/resultText'
 import { AgentLoadingBubble } from '@/ui/AgentLoadingBubble'
 import { isTeamAgentTool } from './knownTools'
 
@@ -99,6 +100,9 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
     const isRunning = tool.state === 'running' || tool.state === 'pending'
 
     // team agent 使用 input.name 作为 agent 标识，与 TeamAgentCard 保持一致
+    // 渲染器经 Context 注入（App 根挂载）——直接 import blocks 会与 ToolCallBlock 成环
+    const { renderBlock, renderToolGroup } = useBubbleRenderers()
+
     const agentAvatarName = isTeamAgentTool(tool.name, tool.input) && isObject(tool.input) && typeof tool.input.name === 'string'
         ? tool.input.name : tool.id
 
@@ -109,7 +113,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             childrenBlocks,
             { metadata, isThinking: false, disableDrawer: true },
             isRunning,
-            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t('chat.rewind.filesFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere'), rewindFailedLabel: t('chat.rewind.rewindFailed'), rewindFailedReasonLabel: t('chat.rewind.filesFailed'), skippedLinksLabel: t('chat.rewind.skippedLinks'), renderBlock, renderToolGroup },
         )
 
         const items = [...baseItems]

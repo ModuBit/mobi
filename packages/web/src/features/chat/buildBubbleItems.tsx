@@ -15,15 +15,13 @@
  */
 
 import type React from 'react'
-import type { ChatBlock, CustomBlock } from '@/domain/chat'
+import type { ChatBlock, CustomBlock, ToolCallBlock, AgentReasoningBlock } from '@/domain/chat'
 import { TURN_DIFF_EVENT } from '@mobi/shared'
 import { REWIND_COMMAND, isCompactStart } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
-import type { ChatBlockContext } from './blocks'
-import { groupCollapsibleToolCalls, type GroupedBlock } from '@/domain/chat/groupToolCalls'
+import type { ChatBlockContext } from './blocks/types'
+import { groupCollapsibleToolCalls, type GroupedBlock, type IsActiveReasoning } from '@/domain/chat/groupToolCalls'
 import { splitUserBodyAndAttachments } from '@/domain/chat/userContent'
-import { renderChatBlock } from './blocks'
-import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
 
 export type BuildBubbleOptions = {
     /** context-cleared 分隔线的翻译文本 */
@@ -36,6 +34,17 @@ export type BuildBubbleOptions = {
     rewindFailedReasonLabel: string
     /** skippedLinks>0 时显示的安全护栏跳过提示（{{count}} 插值） */
     skippedLinksLabel: string
+    /**
+     * 块渲染器（分层治理票 03 注入化破环：装配器不静态依赖渲染注册表 blocks/index，
+     * 否则 blocks → tool-card → AgentDrawerContent → buildBubbleItems → blocks 成环；
+     * 调用方传入 renderChatBlock）
+     */
+    renderBlock: (block: ChatBlock, ctx: ChatBlockContext) => React.ReactNode
+    /** 工具组渲染器（调用方传入 ToolCallGroupRenderer） */
+    renderToolGroup: (props: {
+        blocks: Array<ToolCallBlock | AgentReasoningBlock>
+        isActiveReasoning?: IsActiveReasoning
+    } & ChatBlockContext) => React.ReactNode
 }
 
 const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
@@ -137,7 +146,7 @@ export function buildChatBubbleItems(
             items.push({
                 key: block.id,
                 role: 'assistant',
-                content: <ToolCallGroupRenderer blocks={block.blocks} isActiveReasoning={isActiveReasoning} {...ctx} />,
+                content: options.renderToolGroup({ blocks: block.blocks, isActiveReasoning, ...ctx }),
                 variant: 'borderless',
             })
             continue
@@ -218,7 +227,7 @@ export function buildChatBubbleItems(
         // 导致 isStreaming=false 全显。只要是未落库的 snapshot 就应逐字回放。
         // 依赖 messageCache 在 full message 到达时及时清理 snapshot（替换为 full），
         // 否则残留的旧 snapshot block 会被逐字回放（messageCache 正常路径保证不残留）
-        const content = renderChatBlock(
+        const content = options.renderBlock(
             isSnapshot
                 ? { ...block, isStreaming: true }
                 : block,

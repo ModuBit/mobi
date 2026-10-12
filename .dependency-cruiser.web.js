@@ -5,9 +5,9 @@
  * 1. 由 lint:deps 以 `--ts-config tsconfig.depcruise.json`（仓库根）配套运行——
  *    解析 web 的 '@/' paths alias。此前 '@/' 边 unresolved，包内依赖图是断的
  *    （循环检测/分层规则对 @-import 全部失明）。
- * 2. no-circular 降为 warn：alias 解析后显形 22 条存量循环（tool-card/views 内部
- *    13+6 条、chat↔tool-card 三角 3 条）——src-governance 票 03 的裁决对象，
- *    清零后恢复 error（根配置其余包保持 error 硬卡）。
+ * 2. 22 条存量循环已清零（票 03 批次 5：views 类型抽离 types.ts / resultText 下沉
+ *    domain / buildBubbleItems 渲染器注入 + renderContext Context 注入），no-circular
+ *    恢复根配置的 error 硬卡。
  * 3. web-ui-no-upward 豁免 ArtifactDirectiveComponents：mobi 指令渲染链
  *    （Markdown → 指令组件 → artifact inline views）的解耦需 Markdown 组件
  *    注入化接口设计，属票 03 逐边裁决（豁免仅此一处，裁决后删除）。
@@ -67,13 +67,6 @@ const featureRules = fs.existsSync(featuresDir)
 module.exports = {
   forbidden: [
     ...base.forbidden.map((rule) => {
-      if (rule.name === 'no-circular') {
-        return {
-          ...rule,
-          severity: 'warn',
-          comment: 'web 存量循环（tool-card 内部 + chat↔tool-card 三角）票 03 逐边清零后恢复 error',
-        }
-      }
       if (rule.name === 'web-ui-no-upward') {
         return {
           ...rule,

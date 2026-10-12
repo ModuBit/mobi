@@ -15,9 +15,10 @@
  */
 
 import { theme as antTheme } from 'antd'
-import type { ToolViewProps } from '@/features/chat/tool-card/views/_all'
+import type { ToolViewProps } from './types'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
-import { extractTextFromResult, placeholderForState } from './_results'
+import { placeholderForState } from '@/domain/tool/resultText'
+import { extractTextFromResult } from '@/domain/tool/resultText'
 import { ToolViewPanel } from './ToolViewPanel'
 
 const { useToken } = antTheme

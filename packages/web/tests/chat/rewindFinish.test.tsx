@@ -18,7 +18,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import type { UserTextBlock, AgentEventBlock } from '@/domain/chat'
 import { REWIND_COMMAND } from '@/domain/chat/presentation'
 import { collectRewindBatchText, mergeSegmentRows } from '@/domain/chat/rewind'
-import { buildChatBubbleItems } from '@/features/chat/buildBubbleItems'
+import { buildChatBubbleItems, type BuildBubbleOptions } from '@/features/chat/buildBubbleItems'
+import { renderChatBlock } from '@/features/chat/blocks'
 import {
     _resetForTest,
     _internal,
@@ -93,7 +94,7 @@ function eventBlock(type: string): AgentEventBlock {
     return { kind: 'agent-event', id: `e-${type}`, createdAt: 2000, event: { type } as AgentEventBlock['event'] }
 }
 
-const opts = { contextResetLabel: '上下文已重置', rewoundToHereLabel: '已回退至此', rewindFailedLabel: '回退失败', rewindFailedReasonLabel: '回退未执行（区间含跨会话消息等无法归属的条目）', skippedLinksLabel: '{{count}} 个路径被安全护栏跳过（symlink/链接）' }
+const opts: BuildBubbleOptions = { renderBlock: renderChatBlock, renderToolGroup: () => null, contextResetLabel: '上下文已重置', rewoundToHereLabel: '已回退至此', rewindFailedLabel: '回退失败', rewindFailedReasonLabel: '回退未执行（区间含跨会话消息等无法归属的条目）', skippedLinksLabel: '{{count}} 个路径被安全护栏跳过（symlink/链接）' }
 
 describe('buildChatBubbleItems rewind 渲染', () => {
     it('rewind-completed 事件 → 「已回退至此」分隔线（对齐 context-cleared 形态）', () => {
