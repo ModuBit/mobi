@@ -71,6 +71,14 @@ const i18nMap = vi.hoisted(() => ({
     'settings.memory.savedHint': '已保存 · 下个新会话生效',
     'settings.memory.saveFailed': '保存失败',
     'settings.memory.loadFailed': '记忆设置加载失败，请确认 daemon 可达后重试',
+    'settings.memory.bankNameHint': '高级：覆盖全局共享池的库名，一般无需修改',
+    'settings.memory.injectTitle': '自动注入',
+    'settings.memory.injectModeLabel': '注入模式',
+    'settings.memory.injectReflect': '每轮合成',
+    'settings.memory.injectRecall': '直接注入检索结果',
+    'settings.memory.injectPages': '仅注入目录',
+    'settings.memory.injectNone': '不自动注入',
+    'settings.memory.pageRefreshLabel': '知识页目录刷新间隔（轮）',
     'settings.memory.endpointInvalid': 'API 地址无效：需要带协议的完整 URL（如 http://localhost:9999）',
 }))
 vi.mock('react-i18next', () => ({
@@ -220,6 +228,30 @@ describe('MemorySection hindsight 开启态', () => {
             { target: { type: 'workspace', id: 'w-learn' }, mode: 'isolated', bank: 'vault' },
         ])
         expect(payload.bankName).toBe('my-pool')
+    })
+
+    it('注入策略：mobi 默认 none / 0；改为开档后 payload 反映', async () => {
+        renderSection()
+        await waitFor(() => expect(screen.getByLabelText('API 地址')).toBeInTheDocument())
+
+        // 无存量设置 → 草稿回填 mobi 默认（关）
+        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalled())
+        let payload = stableApi.memory.set.mock.calls[0][0]
+        expect(payload.autoInject).toBe('none')
+        expect(payload.pageRefreshEveryTurns).toBe(0)
+
+        // 显式开档：每轮合成 + 间隔 5
+        fireEvent.mouseDown(screen.getByLabelText(i18nMap['settings.memory.injectModeLabel']))
+        await waitFor(() => expect(screen.getByText(i18nMap['settings.memory.injectReflect'])).toBeInTheDocument())
+        fireEvent.click(screen.getByText(i18nMap['settings.memory.injectReflect']))
+        fireEvent.change(screen.getByLabelText(i18nMap['settings.memory.pageRefreshLabel']), { target: { value: '5' } })
+
+        fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
+        await waitFor(() => expect(stableApi.memory.set).toHaveBeenCalledTimes(2))
+        payload = stableApi.memory.set.mock.calls[1][0]
+        expect(payload.autoInject).toBe('reflect')
+        expect(payload.pageRefreshEveryTurns).toBe(5)
     })
 
     it('清除 token：提交空串（在场性=清除）', async () => {

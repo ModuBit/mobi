@@ -43,6 +43,8 @@ export function toDraft(settings: RedactedMemorySettings | null | undefined): Me
         rules: settings?.rules ? settings.rules.map((r) => ({ ...r, target: { ...r.target } })) : [],
         disabledWorkspaces: settings?.disabledWorkspaces ? [...settings.disabledWorkspaces] : [],
         bankName: settings?.bankName,
+        autoInject: settings?.autoInject,
+        pageRefreshEveryTurns: settings?.pageRefreshEveryTurns,
     }
 }
 

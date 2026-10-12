@@ -15,11 +15,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Alert, App, Button, Input, Radio, Select, Tag, theme as antTheme, Tooltip } from 'antd'
+import { Alert, App, Button, Input, InputNumber, Radio, Select, Tag, theme as antTheme, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Brain, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import styled from '@emotion/styled'
-import type { MemoryEndpointCheckResult, MemoryRule } from '@mobi/shared'
+import type { MemoryAutoInjectMode, MemoryEndpointCheckResult, MemoryRule } from '@mobi/shared'
 import { deriveMemoryUiUrl, HINDSIGHT_CLOUD_API_URL, isOffMachineEndpoint, parseEndpointUrl } from '@mobi/shared'
 import { SettingsCard } from '@/features/settings/blocks/shared'
 import { toDraft, useMemorySettings } from '@/core/data/hooks/queries/useMemorySettings'
@@ -128,6 +128,9 @@ export function MemorySection() {
     const [rules, setRules] = useState<MemoryRule[]>([])
     const [bankName, setBankName] = useState('')
     const [disabledWorkspaces, setDisabledWorkspaces] = useState<string[]>([])
+    // 注入策略草稿（mobi 默认关：不自动注入 + 不刷目录；要在设置里显式开）
+    const [autoInject, setAutoInject] = useState<MemoryAutoInjectMode>('none')
+    const [pageRefreshEveryTurns, setPageRefreshEveryTurns] = useState(0)
     const [checkResult, setCheckResult] = useState<MemoryEndpointCheckResult | null>(null)
     // 高级路径规则输入（折叠式，不默认占屏）
     const [pathDraft, setPathDraft] = useState('')
@@ -142,6 +145,8 @@ export function MemorySection() {
         setRules(draft.rules ?? [])
         setBankName(draft.bankName ?? '')
         setDisabledWorkspaces(draft.disabledWorkspaces ?? [])
+        setAutoInject(draft.autoInject ?? 'none')
+        setPageRefreshEveryTurns(draft.pageRefreshEveryTurns ?? 0)
         setInitialized(true)
     }, [loaded, initialized, settings])
 
@@ -179,6 +184,9 @@ export function MemorySection() {
         disabledWorkspaces,
         // bankName 恒提交（空串走 merge 清除语义）
         bankName,
+        // 注入策略恒提交（显式值，缺省 = mobi 默认 none / 0）
+        autoInject,
+        pageRefreshEveryTurns,
         ...(tokenDraft.trim() ? { apiToken: tokenDraft.trim() } : {}),
     })
 
@@ -379,6 +387,39 @@ export function MemorySection() {
                             aria-label={t('settings.memory.bankNameLabel')}
                         />
                     </RowActions>
+                </Card>
+            )}
+
+            {engine === 'hindsight' && (
+                <Card $token={token}>
+                    <Title $token={token}>{t('settings.memory.injectTitle')}</Title>
+                    <Hint $token={token}>{t('settings.memory.injectHint')}</Hint>
+                    <div>
+                        <FieldLabel $token={token}>{t('settings.memory.injectModeLabel')}</FieldLabel>
+                        <Select
+                            style={{ width: 260 }}
+                            value={autoInject}
+                            onChange={(v) => setAutoInject(v)}
+                            options={[
+                                { value: 'reflect', label: t('settings.memory.injectReflect'), title: t('settings.memory.injectReflectHint') },
+                                { value: 'recall', label: t('settings.memory.injectRecall'), title: t('settings.memory.injectRecallHint') },
+                                { value: 'pages', label: t('settings.memory.injectPages'), title: t('settings.memory.injectPagesHint') },
+                                { value: 'none', label: t('settings.memory.injectNone'), title: t('settings.memory.injectNoneHint') },
+                            ]}
+                            aria-label={t('settings.memory.injectModeLabel')}
+                        />
+                    </div>
+                    <div>
+                        <FieldLabel $token={token}>{t('settings.memory.pageRefreshLabel')}</FieldLabel>
+                        <InputNumber
+                            min={0}
+                            style={{ width: 120 }}
+                            value={pageRefreshEveryTurns}
+                            onChange={(v) => setPageRefreshEveryTurns(typeof v === 'number' ? v : 1)}
+                            aria-label={t('settings.memory.pageRefreshLabel')}
+                        />
+                        <Hint $token={token}>{t('settings.memory.pageRefreshHint')}</Hint>
+                    </div>
                 </Card>
             )}
 

@@ -663,7 +663,20 @@
             "bankNameLabel": "Global bank name",
             "bankNamePlaceholder": "mobi-global",
             "bankNameHint": "Advanced: override the global pool bank name; rarely needed",
-            "ruleRemove": "Remove this rule"
+            "ruleRemove": "Remove this rule",
+            "injectTitle": "Auto-injection",
+            "injectHint": "How memory is injected into context each turn; off by default, lower options use fewer tokens",
+            "injectModeLabel": "Injection mode",
+            "injectReflect": "Synthesize each turn",
+            "injectReflectHint": "Synthesize an answer relevant to the current input each turn — most on-topic, but one extra model call per turn",
+            "injectRecall": "Inject retrieved results",
+            "injectRecallHint": "Skip synthesis; inject retrieved memory entries directly",
+            "injectPages": "Index only",
+            "injectPagesHint": "Inject only the knowledge-page index and tool guide — lightest; the model looks things up on demand",
+            "injectNone": "No auto-injection",
+            "injectNoneHint": "No automatic injection; memory tools remain for on-demand use",
+            "pageRefreshLabel": "Knowledge-page refresh interval (turns)",
+            "pageRefreshHint": "Refresh the index block every N turns; 0 = never (the block is injected every turn by default, ~2KB)"
         }
     },
     "debug": {

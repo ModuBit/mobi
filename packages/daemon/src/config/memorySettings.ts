@@ -209,6 +209,11 @@ export function buildMemoryManagedConfig(
         // 写入恒定打项目溯源 tag（展开值）——三档写路径单源，档位差异只体现在召回侧
         retainTags: [`project:${tag}`],
         ...(mode === 'normal' ? { recallOptions: { tags: [`project:${tag}`], tags_match: 'any' } } : {}),
+        // 注入策略：mobi 显式落定默认（none = 不自动注入 + 0 = 不刷目录），不依赖插件内置
+        // 默认（reflect + 每轮）。文件层盖过 env，因此也屏蔽用户 shell 自有的 HINDSIGHT_*——
+        // 与「mobi 管理配置文件」的隔离意图一致。想开自动注入时由设置在设置里显式选档
+        autoInject: memory.autoInject ?? 'none',
+        pageRefreshEveryTurns: memory.pageRefreshEveryTurns ?? 0,
         customPages: {
             'User Profile': USER_PROFILE_PAGE,
         },

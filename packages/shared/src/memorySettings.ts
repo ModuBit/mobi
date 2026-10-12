@@ -33,6 +33,16 @@ export const MemoryIsolationModeSchema = z.enum(['normal', 'open', 'isolated'])
 export type MemoryIsolationMode = z.infer<typeof MemoryIsolationModeSchema>
 
 /**
+ * 会话内自动注入模式（透传 vendored memory-hindsight 插件的 `autoInject`）：
+ * - reflect（插件默认）：每轮先让 LLM 合成记忆答案再注入——最贴合当前输入，但每轮一次 LLM 往返
+ * - recall：跳过 LLM 合成，直接注入检索结果
+ * - pages：只注入知识页目录 + 工具指南（最轻，保留「有记忆可查」的信号）
+ * - none：不自动注入，仅保留记忆工具按需调用
+ */
+export const MemoryAutoInjectModeSchema = z.enum(['reflect', 'recall', 'pages', 'none'])
+export type MemoryAutoInjectMode = z.infer<typeof MemoryAutoInjectModeSchema>
+
+/**
  * 规则目标（discriminated union，扩展点：后续加目标类型只加 literal）：
  * - workspace：按会话 spawn 时明确指定的 workspaceId 直查（档位跟工作区语境走，
  *   同目录挂多个不同档 workspace 时无歧义——从哪个 workspace spawn 用哪个档）
@@ -73,6 +83,10 @@ export const MemorySettingsSchema = z.object({
     disabledWorkspaces: z.array(z.string()).optional(),
     /** 全局池 bank 名（高级覆盖，缺省 mobi-global） */
     bankName: z.string().min(1).optional(),
+    /** 会话内自动注入模式（缺省 = mobi 默认 none：不自动注入）；写进 mobi 管理的 hindsight 配置文件透传给插件 */
+    autoInject: MemoryAutoInjectModeSchema.optional(),
+    /** 知识页目录刷新间隔（轮）；0 = 从不刷新（缺省 = mobi 默认 0） */
+    pageRefreshEveryTurns: z.number().int().min(0).optional(),
 })
 export type MemorySettings = z.infer<typeof MemorySettingsSchema>
 
@@ -88,6 +102,8 @@ export const MemorySettingsSubmissionSchema = z.object({
     rules: z.array(MemoryRuleSchema).optional(),
     disabledWorkspaces: z.array(z.string()).optional(),
     bankName: z.string().optional(),
+    autoInject: MemoryAutoInjectModeSchema.optional(),
+    pageRefreshEveryTurns: z.number().int().min(0).optional(),
 })
 export type MemorySettingsSubmission = z.infer<typeof MemorySettingsSubmissionSchema>
 

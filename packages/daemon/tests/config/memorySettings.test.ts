@@ -158,6 +158,20 @@ describe('buildMemoryManagedConfig（三档配置生成）', () => {
         const cfg = JSON.parse(buildMemoryManagedConfig({ ...active, bankName: 'my-pool' }, 'demo'))
         expect(cfg.bankId).toBe('my-pool')
     })
+
+    it('注入策略缺省落定 mobi 默认（none + 0），不依赖插件内置默认', () => {
+        const cfg = JSON.parse(buildMemoryManagedConfig(active, 'demo'))
+        expect(cfg.autoInject).toBe('none')
+        expect(cfg.pageRefreshEveryTurns).toBe(0)
+    })
+
+    it('注入策略设置后透传（显式开档）', () => {
+        const cfg = JSON.parse(buildMemoryManagedConfig(
+            { ...active, autoInject: 'reflect', pageRefreshEveryTurns: 3 }, 'demo',
+        ))
+        expect(cfg.autoInject).toBe('reflect')
+        expect(cfg.pageRefreshEveryTurns).toBe(3)
+    })
 })
 
 describe('syncMemoryManagedConfig（per-scope 幂等落盘）', () => {

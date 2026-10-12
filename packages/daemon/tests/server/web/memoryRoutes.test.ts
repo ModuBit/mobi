@@ -139,6 +139,30 @@ describe('POST /api/memory（锁内合并写）', () => {
         expect(disk.webApiToken).toBe('web-secret')
         expect(disk.memory.engine).toBe('hindsight')
     })
+
+    it('注入策略字段合并写（pageRefreshEveryTurns=0 不被吞）；非法 autoInject 400 拒绝', async () => {
+        await Bun.write(settingsFile, JSON.stringify({
+            memory: { engine: 'hindsight', endpoint: 'https://api.example.com' },
+        }))
+        const app = makeApp()
+
+        const res = await app.request('/api/memory', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ autoInject: 'none', pageRefreshEveryTurns: 0 }),
+        })
+        expect(res.status).toBe(200)
+        const disk = JSON.parse(await Bun.file(settingsFile).text())
+        expect(disk.memory.autoInject).toBe('none')
+        expect(disk.memory.pageRefreshEveryTurns).toBe(0)
+
+        const bad = await app.request('/api/memory', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ autoInject: 'bogus' }),
+        })
+        expect(bad.status).toBe(400)
+    })
 })
 
 describe('POST /api/memory/check（健康检查）', () => {

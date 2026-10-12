@@ -654,7 +654,20 @@
             "bankNameLabel": "全局记忆库名",
             "bankNamePlaceholder": "mobi-global",
             "bankNameHint": "高级：覆盖全局共享池的库名，一般无需修改",
-            "ruleRemove": "删除该规则"
+            "ruleRemove": "删除该规则",
+            "injectTitle": "自动注入",
+            "injectHint": "每轮自动把记忆注入上下文的方式；默认关闭，越往下越省 token",
+            "injectModeLabel": "注入模式",
+            "injectReflect": "每轮合成",
+            "injectReflectHint": "每轮先由记忆引擎合成与当前输入相关的答案再注入——最贴题，但每轮多一次模型调用",
+            "injectRecall": "直接注入检索结果",
+            "injectRecallHint": "跳过模型合成，直接注入召回到的记忆条目",
+            "injectPages": "仅注入目录",
+            "injectPagesHint": "只注入知识页目录与工具提示，最省 token，需要时再由模型主动查",
+            "injectNone": "不自动注入",
+            "injectNoneHint": "完全不自动注入，仅保留记忆工具供模型按需调用",
+            "pageRefreshLabel": "知识页目录刷新间隔（轮）",
+            "pageRefreshHint": "每 N 轮刷新一次目录块；0 = 从不刷新（该块默认每轮注入，约 2KB）"
         }
     },
     "debug": {
