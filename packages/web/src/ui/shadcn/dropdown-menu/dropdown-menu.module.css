@@ -77,8 +77,9 @@
    Transitions instead of keyframes, so a close that interrupts the open (or a reopen during the close) reverses from where it is. */
 .menu { --menu-x: 0px; --menu-y: -5px; z-index: var(--mobi-z-overlay, 50); min-width: min(12rem, var(--radix-dropdown-menu-content-available-width)); max-width: var(--radix-dropdown-menu-content-available-width); transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
 /* Submenus open sideways, sized by their content and capped so a long list scrolls instead of running off-screen.
-   Radix 只在一级面板上发布 content-* 变量，而子菜单面板是它的 DOM 兄弟节点（portal 同级），自定义属性不继承——
-   所以这里不能借用 --radix-dropdown-menu-content-transform-origin，侧向原点写死；翻边时 Radix 置 data-side=left */
+   原点不借 --radix-dropdown-menu-content-* 那组变量：子菜单面板是**父面板的 DOM 后代**（Radix
+   MenuSubContent 不 portal，不是兄弟节点），那组变量是给一级面板定位用的，借来几何对不上——
+   侧向原点写死；翻边时 Radix 置 data-side=left */
 .subMenu { max-height: min(60dvh, 340px); max-width: min(90vw, 420px); overflow-y: auto; overscroll-behavior: contain; transform-origin: left center; }
 .subMenu[data-side="left"] { transform-origin: right center; }
 .menu[data-side="top"] { --menu-y: 5px; }
